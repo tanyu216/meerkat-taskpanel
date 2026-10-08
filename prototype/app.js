@@ -60,6 +60,7 @@
     "toast.resume": "Resuming agent session",
     "toast.linked": "Opened linked task",
     "toast.activity": "Board revision",
+    "toast.reloaded": "Tasks reloaded",
     "toast.blocked": "This task is blocked",
     "theme.switchToDark": "Switch to dark theme",
     "theme.switchToLight": "Switch to light theme",
@@ -72,7 +73,19 @@
     "list.emptyRow": "No task in this project",
   };
 
-  var ME = "Mira Chen";
+  var ME = "Terry";
+
+  /* Avatar monograms for the team. One letter for the human owner, two for the
+     agent handles — the same labels the static markup carries. */
+  var MONOGRAM = {
+    Terry: "T",
+    elon: "EL",
+    jobs: "JO",
+    linus: "LI",
+    turing: "TU",
+    simons: "SI",
+    assistant: "AS",
+  };
 
   var state = {
     project: "TaskDashboard",
@@ -100,6 +113,10 @@
       if (parts[i]) out += parts[i].charAt(0).toUpperCase();
     }
     return out || "?";
+  }
+
+  function monogram(name) {
+    return MONOGRAM[name] || initials(name);
   }
 
   function numeric(id) {
@@ -385,11 +402,35 @@
       .find(".td-pri")
       .attr("aria-label", "Priority: " + PRIORITY_LABEL[data.priority]);
 
+    /* reuse the card's own monogram so card, list and drawer never disagree */
     var $avatar = $drawer.find("[data-detail-assignee-avatar]");
-    $avatar.text(initials(data.assignee)).attr("data-assignee-kind", data.kind);
+    var cardMono = $.trim($card.find("[data-card-assignee]").text());
+    $avatar
+      .text(cardMono || monogram(data.assignee))
+      .attr("data-assignee-kind", data.kind);
     $avatar.attr("title", data.assignee);
     $drawer.find("[data-detail-assignee-label]").text(data.assignee);
     $drawer.find("[data-detail-assignee]").attr("data-assignee-kind", data.kind);
+
+    /* agent cards advertise their platform next to the role name */
+    var platform = $card.find("[data-card-agent-badge]").attr("data-agent-platform") || "";
+    var $platformChip = $drawer.find("[data-detail-assignee-platform]");
+    if (platform) {
+      $platformChip
+        .prop("hidden", false)
+        .attr("data-agent-platform", platform)
+        .text(platform);
+    } else {
+      $platformChip.prop("hidden", true);
+    }
+
+    /* reporter stands in for "created by" until the activity block takes over */
+    var reporter = attr($card, "reporter") || ME;
+    $drawer.find("[data-detail-reporter-label]").text(reporter);
+    $drawer
+      .find("[data-detail-reporter-avatar]")
+      .text(monogram(reporter))
+      .attr("title", reporter);
 
     $drawer.find("[data-detail-project-label]").text(data.project);
     $drawer.find("[data-detail-id]").text(data.internalId);
@@ -443,6 +484,30 @@
     $("[data-detail-overlay]").attr("data-state", "open");
     $drawer.attr("data-state", "open").attr("aria-hidden", "false");
     $drawer.find("[data-detail-close]").trigger("focus");
+  }
+
+  /* ------------------------------------------ B18 · states showcase ------- */
+
+  function openStates() {
+    var $panel = $("[data-states-panel]");
+    if ($panel.attr("data-state") === "open") return;
+    $("[data-states-overlay]").prop("hidden", false).width();
+    $("[data-states-overlay]").attr("data-state", "open");
+    $panel.attr("data-state", "open").attr("aria-hidden", "false");
+    $("[data-states-close]").trigger("focus");
+  }
+
+  function closeStates() {
+    var $panel = $("[data-states-panel]");
+    if ($panel.attr("data-state") !== "open") return;
+    $panel.attr("data-state", "closed").attr("aria-hidden", "true");
+    $("[data-states-overlay]").attr("data-state", "closed");
+    window.setTimeout(function () {
+      if ($("[data-states-overlay]").attr("data-state") === "closed") {
+        $("[data-states-overlay]").prop("hidden", true);
+      }
+    }, 200);
+    $("[data-states-open]").trigger("focus");
   }
 
   function closeDetail() {
@@ -566,6 +631,7 @@
       "data-relations-parent": "0",
       "data-relations-blocks": "0",
       "data-relations-related": "0",
+      "data-reporter": task.reporter,
       "data-done": String(task.status === "done"),
       "data-canceled": String(task.status === "canceled"),
     });
@@ -613,15 +679,19 @@
 
     var $avatar = $('<span class="td-avatar" data-card-assignee></span>')
       .attr("title", task.assignee)
-      .text(initials(task.assignee));
+      .text(monogram(task.assignee));
 
     var $badge = $('<span class="td-agent-badge" data-card-agent-badge hidden></span>');
+    var $role = $('<span class="td-agent-role td-mono" data-card-agent-role hidden></span>')
+      .attr("title", task.assignee)
+      .text(task.assignee);
     if (task.kind === "agent") {
       $avatar.prop("hidden", true);
       $badge
         .prop("hidden", false)
         .attr("data-agent-platform", task.platform)
         .text(task.platform);
+      $role.prop("hidden", false);
     }
 
     var $meta =
@@ -647,6 +717,7 @@
         .append($priority)
         .append($avatar)
         .append($badge)
+        .append($role)
         .append($('<div class="td-card-foot-right"></div>').append($meta))
     );
 
@@ -788,7 +859,19 @@
       if (event.key === "Escape" || event.key === "Esc") {
         closeMoveMenu();
         closeDetail();
+        closeStates();
       }
+    });
+
+    /* B18 · states showcase ------------------------------------------------ */
+    $("[data-states-open]").on("click", openStates);
+    $("[data-states-close]").on("click", closeStates);
+    $("[data-states-overlay]").on("click", closeStates);
+
+    /* B17 · error state — Retry re-runs the real render pass */
+    $("[data-error-retry]").on("click", function () {
+      applyFilters();
+      toast(text("toast.reloaded"), "success");
     });
 
     /* I2 · card menu → move ------------------------------------------------- */
@@ -887,7 +970,7 @@
 
       var $comment = $('<article class="td-comment"></article>');
       $comment.append(
-        $('<span class="td-avatar"></span>').text(initials(ME))
+        $('<span class="td-avatar"></span>').text(monogram(ME))
       );
       $comment.append(
         $("<div></div>")
@@ -962,7 +1045,8 @@
         priority: $form.find("[data-create-task-priority]").val(),
         assignee: $assignee.val(),
         kind: $assignee.attr("data-assignee-kind") || "human",
-        platform: String($assignee.val() || "").toLowerCase(),
+        platform: $assignee.attr("data-agent-platform") || "",
+        reporter: ME,
         project: project,
         labels: [],
       };
@@ -1090,6 +1174,8 @@
     /* ---------------------------------------------------------- first pass */
     $("[data-detail-overlay]").prop("hidden", true);
     $("[data-detail-drawer]").attr("aria-hidden", "true");
+    $("[data-states-overlay]").prop("hidden", true);
+    $("[data-states-panel]").attr("aria-hidden", "true");
     applyFilters();
   });
 })(jQuery);

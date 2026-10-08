@@ -4,8 +4,7 @@ The structural contract of `index.html`. Selectors are **`data-*` semantic hooks
 Tailwind class names are never part of the contract, and no anchor is positional.
 
 Counts in the current build: **7 columns · 18 cards · 18 detail templates ·
-109 distinct i18n keys over 162 `data-i18n*` attributes** (plus 13 keys for copy that
-`app.js` generates).
+15 agent-session blocks · 109+ i18n keys** (plus the keys `app.js` uses for generated copy).
 
 ---
 
@@ -23,12 +22,12 @@ Counts in the current build: **7 columns · 18 cards · 18 detail templates ·
 |---|---|
 | Root | `header[data-topbar]` |
 | Brand | `[data-brand]` |
-| Project switcher | `[data-project-switcher]` (`<details class="dropdown">`) · `[data-project-current]` · `[data-project-option="…"]` · `[data-project-new]` |
+| Project switcher | `[data-project-switcher]` (`<details class="dropdown">`) · `[data-project-current]` · `[data-project-option="…"]` · `[data-project-new]` · `[data-project-switcher-icon]` |
 | Search | `[data-search]` → `[data-search-input]` |
 | Filters toggle | `[data-filter-toggle]` (`aria-pressed`, `aria-controls="td-filters"`) |
 | View toggle | `[data-view-toggle]` → `[data-view="board" \| "list"]` (`aria-pressed`) |
 | Theme toggle | `[data-theme-toggle]` → `[data-theme-icon="light" \| "dark"]` |
-| Revision | `[data-revision]` → `[data-revision-value]`, `.td-live-dot` |
+| Revision | `[data-revision]` → `[data-revision-label]`, `[data-revision-value]`, `.td-live-dot` |
 | Primary action | `[data-new-task]` |
 
 ## B03 · Sidebar
@@ -37,9 +36,10 @@ Counts in the current build: **7 columns · 18 cards · 18 detail templates ·
 |---|---|
 | Root | `aside[data-sidebar]` |
 | Nav | `[data-nav]` → `[data-nav-item="board" \| "list" \| "activity"]` (`aria-current="page"`) |
-| Projects | `[data-project-list]` → `[data-project="…"]` (`aria-current="page"`) → `[data-project-count]` |
-| Agents | `[data-agents-presence]` → `[data-agent-platform="claude\|openclaw\|codex\|pi"]` + `[data-presence="running\|idle"]` |
-| Identity | `[data-user]` (`.td-avatar` + name + role) |
+| Projects | `[data-project-list]` → `[data-project="…"]` (`aria-current="page"`) → `.td-side-icon` (prefix monogram, rail only) + `[data-project-count]` |
+| Agents | `[data-agents-presence]` → **one row per platform**: `[data-agent-platform="claude\|openclaw\|codex\|pi"]` + `[data-presence="running\|idle"]` |
+| States preview | `[data-states-open]` — sidebar footer control, opens **B18** |
+| Identity | `[data-user]` — the human owner (Terry), avatar + name + role |
 
 ## B04 · Filters bar
 
@@ -70,8 +70,9 @@ Counts in the current build: **7 columns · 18 cards · 18 detail templates ·
 | | |
 |---|---|
 | Root | `article.td-card[data-card]`, `draggable="true"` |
-| Scalars | `data-identifier` `data-id` `data-status` `data-priority` `data-project` `data-assignee` `data-assignee-kind` (`human\|agent`) `data-labels` `data-version` `data-comments` `data-attachments` `data-relations-parent` `data-relations-blocks` `data-relations-related` `data-done` `data-canceled` |
-| Parts | `[data-card-stripe]` · `[data-card-identifier]` · `[data-card-title]` (a real `<button>`) · `[data-card-labels]` → `[data-label]` · `[data-card-priority]` · `[data-card-assignee]` · `[data-card-agent-badge]` (`data-agent-platform`) · `[data-card-comment-count]` · `[data-card-attachment-count]` · `[data-card-relations]` → `[data-relation-parent \| blocks \| related]` · `[data-card-menu]` |
+| Scalars | `data-identifier` `data-id` `data-status` `data-priority` `data-project` `data-assignee` (role handle) `data-assignee-kind` (`human\|agent`) `data-reporter` `data-labels` `data-version` `data-comments` `data-attachments` `data-relations-parent` `data-relations-blocks` `data-relations-related` `data-done` `data-canceled` |
+| Parts | `[data-card-stripe]` · `[data-card-identifier]` · `[data-card-title]` (a real `<button>`) · `[data-card-labels]` → `[data-label]` · `[data-card-priority]` · `[data-card-assignee]` (monogram avatar) · `[data-card-agent-badge]` (`data-agent-platform`) · `[data-card-agent-role]` · `[data-card-comment-count]` · `[data-card-attachment-count]` · `[data-card-relations]` → `[data-relation-parent \| blocks \| related]` · `[data-card-menu]` |
+| Identity slot | human card → monogram avatar visible, badge and role empty+hidden. Agent card → avatar hidden but still carrying the monogram, `[data-card-agent-badge]` **and** `[data-card-agent-role]` visible, so every card states both the platform and the role name. |
 | States | default · `:hover` · `:focus-within` · `aria-selected="true"` · `data-dragging="true"` · `data-done="true"` · `data-canceled="true"` |
 
 ## B08 · List view
@@ -80,7 +81,7 @@ Counts in the current build: **7 columns · 18 cards · 18 detail templates ·
 |---|---|
 | Root | `section[data-list]` — mutually exclusive with `[data-board]` |
 | Hooks | `[data-list-rows]` (host) · `[data-list-row]` (`data-identifier`) |
-| Row parts | `[data-list-identifier]` · `[data-list-title]` · `[data-list-status]` → `[data-list-status-label]` · `[data-list-assignee]` · `[data-list-priority]` · `[data-list-revision]` |
+| Row parts | `[data-list-identifier]` · `[data-list-title]` · `[data-list-status]` → `[data-list-status-label]` · `[data-list-assignee]` (role handle) · `[data-list-priority]` → `[data-list-priority-label]` · `[data-list-revision]` |
 | Template | `template[data-list-row-template]` |
 
 Rows are projected from the cards that survive the active filters, so board and
@@ -93,7 +94,7 @@ list can never disagree.
 | Root | `aside[data-detail-drawer][data-state="closed\|open\|closing"]` (`role="dialog"`, `aria-modal="true"`) |
 | Scrim | `[data-detail-overlay][data-state]` |
 | Head | `[data-detail-identifier]` · `[data-detail-title]` · `[data-detail-status-chip]` → `[data-detail-status-chip-label]` · `[data-detail-close]` |
-| Properties | `[data-detail-props]` → status `[data-detail-status]` / `[data-detail-status-label]` · priority `[data-detail-priority]` / `[data-detail-priority-label]` · assignee `[data-detail-assignee]` / `[data-detail-assignee-avatar]` / `[data-detail-assignee-label]` · project `[data-detail-project]` / `[data-detail-project-label]` · internal id `[data-detail-id]` + `[data-detail-id-copy]` (`data-copy-value`) · `[data-detail-version]` |
+| Properties | `[data-detail-props]` → status `[data-detail-status]` / `[data-detail-status-label]` · priority `[data-detail-priority]` / `[data-detail-priority-label]` · assignee `[data-detail-assignee]` / `[data-detail-assignee-avatar]` / `[data-detail-assignee-label]` / `[data-detail-assignee-platform]` (platform badge, hidden for the human owner) · **reporter** `[data-detail-reporter]` / `[data-detail-reporter-avatar]` / `[data-detail-reporter-label]` · project `[data-detail-project]` / `[data-detail-project-label]` · internal id `[data-detail-id]` + `[data-detail-id-copy]` (`data-copy-value`) · `[data-detail-version]` |
 | Body | `[data-detail-description]` (rendered GFM) · `[data-detail-relations]` → `[data-relation-link]` · `[data-detail-agent-session]` → `[data-detail-agent-session-body]` → `[data-agent-session]` · `[data-detail-attachments]` · `[data-detail-comments]` · `[data-comment-form]` → `[data-comment-input]`, `[data-comment-submit]` · `[data-detail-activity]` |
 | Source | `template[data-detail-for="TD-…"]` holds one `[data-slot="description \| relations \| agent-session \| attachments \| comments \| activity"]` per card, wrapped by `[data-detail-templates]` |
 
@@ -102,7 +103,8 @@ list can never disagree.
 `dialog[data-create-task]` → `form[data-create-task-form]` →
 `[data-create-task-title]` · `[data-create-task-description]` ·
 `[data-create-task-status]` · `[data-create-task-priority]` ·
-`[data-create-task-assignee]` (options carry `data-assignee-kind`) ·
+`[data-create-task-assignee]` (one `<option>` per team member, each carrying
+`data-assignee-kind` and, for agents, `data-agent-platform`) ·
 `[data-create-task-project]` · `[data-modal-close]`.
 
 ## B11 · Create-project modal
@@ -118,13 +120,15 @@ revealed when a filter matches nothing).
 
 ## B13 · Loading state
 
-`[data-skeleton]` — three shimmer rows at the top of the list view.
+`[data-skeleton]` — three shimmer rows at the top of the list view. (The showcase in
+B18 has its own `[data-loading-state]` demo.)
 
 ## B14 · Toast region
 
 `div[data-toast-region]` (`role="status" aria-live="polite"`) plus
 `template[data-toast-template]` → `[data-toast][data-toast-kind="info\|success\|danger"]`
-→ `[data-toast-text]`. Auto-dismiss after 2.5s.
+→ `[data-toast-text]`. Auto-dismiss after 2.5s. The three kinds are also rendered
+statically inside B18 (`data-state="static"`, never auto-dismissed).
 
 ## B15 · Legend
 
@@ -137,7 +141,59 @@ every status and priority is visible in one screenshot.
 `[data-agent-session]` — rendered inside `[data-detail-agent-session]` from the
 card's template, with `[data-agent-platform]`, `[data-agent-platform-value]`
 (`--agent-platform claude`), `[data-agent-session-id]` and `[data-agent-resume]`.
-The same card exposes `[data-card-agent-badge]` + `data-agent-platform`.
+All **15 agent cards** carry a session block whose platform matches the card's
+`data-agent-platform` and whose session id is prefixed with that platform; the three
+human cards carry none and the drawer hides the section for them.
+
+## B17 · Error state
+
+| | |
+|---|---|
+| Root | `[data-error-state]` (`role="alert"`), hidden by default |
+| Parts | danger-coloured icon · `[data-i18n="error.title"]` · `[data-i18n="error.hint"]` · `[data-error-retry]` |
+| Surface | `--color-td-danger-soft` background — the token the style guide reserves for error surfaces |
+| Wiring | `Retry` re-runs the real render pass (`applyFilters`) and confirms with a success toast |
+
+B17 is demonstrated inside the B18 gallery rather than on the board, because the board
+only raises it when a load fails and this prototype performs no loads. It is therefore
+hidden by default for the same reason the panel is, and it is reachable in one click
+from the sidebar.
+
+## B18 · States showcase
+
+| | |
+|---|---|
+| Root | `[data-states-panel][data-state="closed\|open"]` (`role="dialog"`, `aria-modal="true"`, `aria-hidden`), hidden by default |
+| Opener | `[data-states-open]` in the sidebar footer |
+| Dismiss | `[data-states-close]` · `[data-states-overlay]` · `Esc` — same `data-state` + `hidden` pattern as the detail drawer |
+| Demos | `[data-loading-state]` (skeleton cards) · `[data-empty-column]` · `[data-empty-results]` · **B17** `[data-error-state]` · `[data-toast-states]` → the three `[data-toast]` kinds |
+
+The gallery is a prototype review surface: it puts every non-default state in one
+frame so coverage can be checked in a single screenshot. It adds no framework — a
+scrim, a panel and two jQuery handlers.
+
+---
+
+## Assignee model
+
+The board belongs to an AI-agent team, so the assignee pool is the six agent roles
+plus the human owner. Nothing else appears as an assignee, comment author or activity
+actor.
+
+| Member | Kind | Platform | Cards |
+|---|---|---|---|
+| `elon` | agent | `openclaw` | TD-131, TD-124, TD-118 |
+| `jobs` | agent | `claude` | TD-125, TD-121 |
+| `linus` | agent | `claude` | TD-128, TD-123, TD-115 |
+| `turing` | agent | `codex` | TD-129, TD-134, TD-127 |
+| `simons` | agent | `claude` | TD-130, TD-117 |
+| `assistant` | agent | `pi` | TD-133, TD-119 |
+| `Terry` | human | — | TD-126, TD-112, TD-122 (owner, reporter of all 18) |
+
+Every card carries `data-reporter="Terry"`: the owner files the task, an agent works
+it. The drawer shows Assignee (with the platform badge for agents) and Reporter as
+separate properties, and the lifecycle shows up again in the activity feed
+(`Terry created this task`, `<role> claimed the task`).
 
 ---
 
@@ -147,6 +203,7 @@ The same card exposes `[data-card-agent-badge]` + `data-agent-platform`.
 |---|---|
 | `[data-move-menu]` → `[data-move-to="status"]` | the single shared "Move to" menu reused by every card (I2 fallback for drag) |
 | `[data-drop-placeholder]` | transient placeholder bar created during `dragover` |
+| `[data-states-overlay]` | scrim behind B18 |
 | `template[data-toast-template]` / `template[data-list-row-template]` / `template[data-detail-for]` | inert markup sources for the interaction layer |
 | `[data-detail-slot-source]` | transient wrapper jQuery builds while copying a template into the drawer |
 | `[data-label="…"]` | one chip per card label |
@@ -167,10 +224,13 @@ of the file using the same namespace.
    which are set by `[data-status]` / `[data-priority]` attribute rules in
    `src/input.css`. Moving a card updates one attribute and the stripe, the dot and
    the chips follow.
-4. **Mono discipline**: every identifier, internal id, session id, version, count and
-   timestamp uses `.td-mono` with tabular numerals.
+4. **Mono discipline**: every identifier, internal id, session id, version, count,
+   timestamp and agent role handle uses `.td-mono` with tabular numerals.
 5. **Ids in the document** are unique and only used for `label[for]` /
    `aria-labelledby` / `aria-controls` — never as a styling hook.
-6. **No block is hidden by the stylesheet**: `board ↔ list`, drawer and modals are
-   toggled by the `hidden` attribute or `data-state`, so the static document is
-   readable with JavaScript disabled.
+6. **No block is hidden by the stylesheet**: `board ↔ list`, drawer, modals and the
+   states gallery are toggled by the `hidden` attribute or `data-state`, so the static
+   document is readable with JavaScript disabled.
+7. **One identity model** everywhere: `data-assignee` is always a role handle from
+   the table above, `data-assignee-kind` always separates agent from human, and
+   `data-agent-platform` always names one of claude / openclaw / codex / pi.

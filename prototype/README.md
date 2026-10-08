@@ -100,6 +100,8 @@ the style guide's token blocks in `src/input.css` are unlayered. Two consequence
 | I10 | Create a project | switcher → `New project…` | `[data-project-new]` |
 | I11 | Light/dark theme | theme button | `[data-theme-toggle]` |
 | I12 | Toast feedback | every mutation | `[data-toast-region]`, `[data-toast]` |
+| — | States gallery | sidebar footer button, `Esc` / scrim / close to dismiss | `[data-states-open]` → `[data-states-panel]` |
+| — | Error retry | `Retry` inside the error state | `[data-error-retry]` |
 
 Mutations that change board state (move, comment, create) also advance the
 `rev` counter in the top bar — the prototype's stand-in for the concurrent-write
@@ -175,6 +177,7 @@ top bar wraps and the drawer goes full width.
 | `10-create-task-modal.png` | create-task modal |
 | `11…14-viewport-*.png` | 1240 / 980 / 760 / 500 |
 | `15-no-javascript.png` | the same document with both `<script>` tags removed — proof that the core structure survives without JavaScript (all 18 cards visible, because the project filter is the only thing JS removes) |
+| `16-states-panel.png` | the states gallery: loading, empty column, no results, error and the three toast kinds in one frame |
 
 Captured with headless Chrome at device-scale-factor 1 with transitions disabled so
 the frames are deterministic; `index.html` itself is untouched.
@@ -193,6 +196,16 @@ every width tested.
 
 ---
 
+## Who is on the board
+
+TaskDashboard is a board for an AI-agent team, so the assignee pool is the team
+itself: six agent roles — `elon` (openclaw), `jobs` / `linus` / `simons` (claude),
+`turing` (codex), `assistant` (pi) — plus the human owner `Terry`, who files every
+task (`data-reporter="Terry"` on all 18 cards). Cards show the platform badge **and**
+the role handle; the drawer separates Assignee from Reporter; comments and activity
+use the same handles. See [DESIGN.md §10](DESIGN.md#10-team--identity-model) and the
+assignee table in [BLOCKS.md](BLOCKS.md#assignee-model).
+
 ## Notes and known limits
 
 - **Project scoping.** The switcher and the sidebar filter the board by
@@ -205,5 +218,11 @@ every width tested.
   prototype has no transport to resume anything with, by design.
 - **The activity nav item** reports the current revision and task count instead of
   opening a fifth surface, which the block inventory does not define.
+- **The states gallery is a review surface, not a product screen.** It exists so every
+  non-default state (loading, empty column, no results, error, three toast kinds) can
+  be inspected and captured in one frame. It is opened from the sidebar footer and is
+  hidden by default. The error state lives inside it because the board only raises that
+  state when a load fails and this prototype performs no loads; `Retry` re-runs the
+  real render pass.
 - **Dark theme values** come from `design-spec.md` §2.2 because the style guide
   defines no dark palette; status and priority keep one value in both themes.

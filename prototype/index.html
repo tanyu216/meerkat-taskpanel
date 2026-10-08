@@ -187,20 +187,25 @@
         <section>
           <h2 class="td-side-label" data-i18n="sidebar.agents">Active agents</h2>
           <div class="mt-2" data-agents-presence>
-            <div class="td-agent-row" title="claude · running">
+            <div class="td-agent-row" title="claude · jobs, linus, simons" data-agent-row="claude">
               <span class="td-agent-badge" data-agent-platform="claude">claude</span>
-              <span class="td-side-name td-agent-text">Claude</span>
-              <span class="td-presence" data-presence="running" role="img" aria-label="running"></span>
+              <span class="td-side-name td-agent-text td-mono">jobs, linus, simons</span>
+              <span class="td-presence" data-presence="running" role="img" data-i18n-aria-label="presence.running" aria-label="running"></span>
             </div>
-            <div class="td-agent-row" title="openclaw · running">
+            <div class="td-agent-row" title="openclaw · elon">
               <span class="td-agent-badge" data-agent-platform="openclaw">openclaw</span>
-              <span class="td-side-name td-agent-text">OpenClaw</span>
-              <span class="td-presence" data-presence="running" role="img" aria-label="running"></span>
+              <span class="td-side-name td-agent-text td-mono">elon</span>
+              <span class="td-presence" data-presence="running" role="img" data-i18n-aria-label="presence.running" aria-label="running"></span>
             </div>
-            <div class="td-agent-row" title="codex · idle">
+            <div class="td-agent-row" title="codex · turing">
               <span class="td-agent-badge" data-agent-platform="codex">codex</span>
-              <span class="td-side-name td-agent-text">Codex</span>
-              <span class="td-presence" data-presence="idle" role="img" aria-label="idle"></span>
+              <span class="td-side-name td-agent-text td-mono">turing</span>
+              <span class="td-presence" data-presence="idle" role="img" data-i18n-aria-label="presence.idle" aria-label="idle"></span>
+            </div>
+            <div class="td-agent-row" title="pi · assistant">
+              <span class="td-agent-badge" data-agent-platform="pi">pi</span>
+              <span class="td-side-name td-agent-text td-mono">assistant</span>
+              <span class="td-presence" data-presence="running" role="img" data-i18n-aria-label="presence.running" aria-label="running"></span>
             </div>
           </div>
         </section>
@@ -289,11 +294,18 @@
           </div>
         </section>
 
+        <button type="button" class="td-side-item td-state-btn" data-states-open title="UI states preview">
+          <svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M4 5h6v6H4zM14 5h6v3h-6zM4 15h6v4H4zM14 12h6v7h-6z" />
+          </svg>
+          <span class="td-side-text" data-i18n="sidebar.states">States</span>
+        </button>
+
         <div class="td-user" data-user>
-          <span class="td-avatar td-avatar-lg">MC</span>
+          <span class="td-avatar td-avatar-lg">T</span>
           <span class="td-user-text">
-            <span class="block text-sm font-medium">Mira Chen</span>
-            <span class="block text-xs text-td-ink-3" data-i18n="user.role">Maintainer</span>
+            <span class="block text-sm font-medium">Terry</span>
+            <span class="block text-xs text-td-ink-3" data-i18n="user.role">Owner</span>
           </span>
         </div>
       </aside>
@@ -388,8 +400,9 @@
                 data-status="backlog"
                 data-priority="none"
                 data-project="TaskDashboard"
-                data-assignee="Ana Ruiz"
-                data-assignee-kind="human"
+                data-assignee="elon"
+                data-assignee-kind="agent"
+                data-reporter="Terry"
                 data-labels="ux,board"
                 data-version="v1"
                 data-comments="0"
@@ -430,8 +443,9 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="Ana Ruiz">AR</span>
-                  <span class="td-agent-badge" data-card-agent-badge hidden></span>
+                  <span class="td-avatar" data-card-assignee title="elon" hidden>EL</span>
+                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="openclaw">openclaw</span>
+                  <span class="td-agent-role td-mono" data-card-agent-role title="elon">elon</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations hidden>
                       <span data-relation-parent hidden>
@@ -468,8 +482,9 @@
                 data-status="backlog"
                 data-priority="low"
                 data-project="TaskDashboard"
-                data-assignee="Tom Okafor"
-                data-assignee-kind="human"
+                data-assignee="turing"
+                data-assignee-kind="agent"
+                data-reporter="Terry"
                 data-labels="security,audit"
                 data-version="v2"
                 data-comments="0"
@@ -510,8 +525,9 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="Tom Okafor">TO</span>
-                  <span class="td-agent-badge" data-card-agent-badge hidden></span>
+                  <span class="td-avatar" data-card-assignee title="turing" hidden>TU</span>
+                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="codex">codex</span>
+                  <span class="td-agent-role td-mono" data-card-agent-role title="turing">turing</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations>
                       <span data-relation-parent>
@@ -548,8 +564,9 @@
                 data-status="backlog"
                 data-priority="low"
                 data-project="Orchestrator"
-                data-assignee="Codex"
+                data-assignee="turing"
                 data-assignee-kind="agent"
+                data-reporter="Terry"
                 data-labels="perf,backend"
                 data-version="v2"
                 data-comments="1"
@@ -590,8 +607,9 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="Codex" hidden>CX</span>
+                  <span class="td-avatar" data-card-assignee title="turing" hidden>TU</span>
                   <span class="td-agent-badge" data-card-agent-badge data-agent-platform="codex">codex</span>
+                  <span class="td-agent-role td-mono" data-card-agent-role title="turing">turing</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations hidden>
                       <span data-relation-parent hidden>
@@ -647,8 +665,9 @@
                 data-status="todo"
                 data-priority="high"
                 data-project="TaskDashboard"
-                data-assignee="Mira Chen"
-                data-assignee-kind="human"
+                data-assignee="linus"
+                data-assignee-kind="agent"
+                data-reporter="Terry"
                 data-labels="a11y,board"
                 data-version="v3"
                 data-comments="4"
@@ -689,8 +708,9 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="Mira Chen">MC</span>
-                  <span class="td-agent-badge" data-card-agent-badge hidden></span>
+                  <span class="td-avatar" data-card-assignee title="linus" hidden>LI</span>
+                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="claude">claude</span>
+                  <span class="td-agent-role td-mono" data-card-agent-role title="linus">linus</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations>
                       <span data-relation-parent>
@@ -727,8 +747,9 @@
                 data-status="todo"
                 data-priority="medium"
                 data-project="TaskDashboard"
-                data-assignee="Pi"
+                data-assignee="assistant"
                 data-assignee-kind="agent"
+                data-reporter="Terry"
                 data-labels="api"
                 data-version="v1"
                 data-comments="2"
@@ -768,8 +789,9 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="Pi" hidden>PI</span>
+                  <span class="td-avatar" data-card-assignee title="assistant" hidden>AS</span>
                   <span class="td-agent-badge" data-card-agent-badge data-agent-platform="pi">pi</span>
+                  <span class="td-agent-role td-mono" data-card-agent-role title="assistant">assistant</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations hidden>
                       <span data-relation-parent hidden>
@@ -806,8 +828,9 @@
                 data-status="todo"
                 data-priority="low"
                 data-project="Orchestrator"
-                data-assignee="Dev Patel"
+                data-assignee="Terry"
                 data-assignee-kind="human"
+                data-reporter="Terry"
                 data-labels="docs"
                 data-version="v3"
                 data-comments="3"
@@ -847,7 +870,7 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="Dev Patel">DP</span>
+                  <span class="td-avatar" data-card-assignee title="Terry">T</span>
                   <span class="td-agent-badge" data-card-agent-badge hidden></span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations hidden>
@@ -904,8 +927,9 @@
                 data-status="in_progress"
                 data-priority="urgent"
                 data-project="TaskDashboard"
-                data-assignee="Claude"
+                data-assignee="jobs"
                 data-assignee-kind="agent"
+                data-reporter="Terry"
                 data-labels="design,prototype"
                 data-version="v5"
                 data-comments="6"
@@ -946,8 +970,9 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="Claude" hidden>CL</span>
+                  <span class="td-avatar" data-card-assignee title="jobs" hidden>JO</span>
                   <span class="td-agent-badge" data-card-agent-badge data-agent-platform="claude">claude</span>
+                  <span class="td-agent-role td-mono" data-card-agent-role title="jobs">jobs</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations>
                       <span data-relation-parent hidden>
@@ -984,8 +1009,9 @@
                 data-status="in_progress"
                 data-priority="low"
                 data-project="TaskDashboard"
-                data-assignee="Ana Ruiz"
-                data-assignee-kind="human"
+                data-assignee="simons"
+                data-assignee-kind="agent"
+                data-reporter="Terry"
                 data-labels="perf,board"
                 data-version="v2"
                 data-comments="3"
@@ -1026,8 +1052,9 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="Ana Ruiz">AR</span>
-                  <span class="td-agent-badge" data-card-agent-badge hidden></span>
+                  <span class="td-avatar" data-card-assignee title="simons" hidden>SI</span>
+                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="claude">claude</span>
+                  <span class="td-agent-role td-mono" data-card-agent-role title="simons">simons</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations hidden>
                       <span data-relation-parent hidden>
@@ -1064,8 +1091,9 @@
                 data-status="in_progress"
                 data-priority="high"
                 data-project="Orchestrator"
-                data-assignee="Codex"
+                data-assignee="turing"
                 data-assignee-kind="agent"
+                data-reporter="Terry"
                 data-labels="realtime,backend"
                 data-version="v4"
                 data-comments="2"
@@ -1106,8 +1134,9 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="Codex" hidden>CX</span>
+                  <span class="td-avatar" data-card-assignee title="turing" hidden>TU</span>
                   <span class="td-agent-badge" data-card-agent-badge data-agent-platform="codex">codex</span>
+                  <span class="td-agent-role td-mono" data-card-agent-role title="turing">turing</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations hidden>
                       <span data-relation-parent hidden>
@@ -1163,8 +1192,9 @@
                 data-status="in_review"
                 data-priority="high"
                 data-project="TaskDashboard"
-                data-assignee="OpenClaw"
+                data-assignee="elon"
                 data-assignee-kind="agent"
+                data-reporter="Terry"
                 data-labels="agent,ui"
                 data-version="v4"
                 data-comments="3"
@@ -1205,8 +1235,9 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="OpenClaw" hidden>OC</span>
+                  <span class="td-avatar" data-card-assignee title="elon" hidden>EL</span>
                   <span class="td-agent-badge" data-card-agent-badge data-agent-platform="openclaw">openclaw</span>
+                  <span class="td-agent-role td-mono" data-card-agent-role title="elon">elon</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations>
                       <span data-relation-parent hidden>
@@ -1243,8 +1274,9 @@
                 data-status="in_review"
                 data-priority="medium"
                 data-project="TaskDashboard"
-                data-assignee="Dev Patel"
+                data-assignee="Terry"
                 data-assignee-kind="human"
+                data-reporter="Terry"
                 data-labels="ui"
                 data-version="v2"
                 data-comments="2"
@@ -1284,7 +1316,7 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="Dev Patel">DP</span>
+                  <span class="td-avatar" data-card-assignee title="Terry">T</span>
                   <span class="td-agent-badge" data-card-agent-badge hidden></span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations>
@@ -1322,8 +1354,9 @@
                 data-status="in_review"
                 data-priority="low"
                 data-project="Site Refresh"
-                data-assignee="Tom Okafor"
-                data-assignee-kind="human"
+                data-assignee="jobs"
+                data-assignee-kind="agent"
+                data-reporter="Terry"
                 data-labels="design"
                 data-version="v2"
                 data-comments="1"
@@ -1363,8 +1396,9 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="Tom Okafor">TO</span>
-                  <span class="td-agent-badge" data-card-agent-badge hidden></span>
+                  <span class="td-avatar" data-card-assignee title="jobs" hidden>JO</span>
+                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="claude">claude</span>
+                  <span class="td-agent-role td-mono" data-card-agent-role title="jobs">jobs</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations hidden>
                       <span data-relation-parent hidden>
@@ -1420,8 +1454,9 @@
                 data-status="blocked"
                 data-priority="medium"
                 data-project="TaskDashboard"
-                data-assignee="Claude"
+                data-assignee="linus"
                 data-assignee-kind="agent"
+                data-reporter="Terry"
                 data-labels="data"
                 data-version="v3"
                 data-comments="5"
@@ -1461,8 +1496,9 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="Claude" hidden>CL</span>
+                  <span class="td-avatar" data-card-assignee title="linus" hidden>LI</span>
                   <span class="td-agent-badge" data-card-agent-badge data-agent-platform="claude">claude</span>
+                  <span class="td-agent-role td-mono" data-card-agent-role title="linus">linus</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations>
                       <span data-relation-parent hidden>
@@ -1499,8 +1535,9 @@
                 data-status="blocked"
                 data-priority="urgent"
                 data-project="Orchestrator"
-                data-assignee="Ana Ruiz"
-                data-assignee-kind="human"
+                data-assignee="elon"
+                data-assignee-kind="agent"
+                data-reporter="Terry"
                 data-labels="backend,infra"
                 data-version="v5"
                 data-comments="7"
@@ -1541,8 +1578,9 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="Ana Ruiz">AR</span>
-                  <span class="td-agent-badge" data-card-agent-badge hidden></span>
+                  <span class="td-avatar" data-card-assignee title="elon" hidden>EL</span>
+                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="openclaw">openclaw</span>
+                  <span class="td-agent-role td-mono" data-card-agent-role title="elon">elon</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations>
                       <span data-relation-parent hidden>
@@ -1598,8 +1636,9 @@
                 data-status="done"
                 data-priority="medium"
                 data-project="TaskDashboard"
-                data-assignee="Dev Patel"
-                data-assignee-kind="human"
+                data-assignee="simons"
+                data-assignee-kind="agent"
+                data-reporter="Terry"
                 data-labels="design,ui"
                 data-version="v4"
                 data-comments="4"
@@ -1640,8 +1679,9 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="Dev Patel">DP</span>
-                  <span class="td-agent-badge" data-card-agent-badge hidden></span>
+                  <span class="td-avatar" data-card-assignee title="simons" hidden>SI</span>
+                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="claude">claude</span>
+                  <span class="td-agent-role td-mono" data-card-agent-role title="simons">simons</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations hidden>
                       <span data-relation-parent hidden>
@@ -1678,8 +1718,9 @@
                 data-status="done"
                 data-priority="high"
                 data-project="TaskDashboard"
-                data-assignee="Pi"
+                data-assignee="assistant"
                 data-assignee-kind="agent"
+                data-reporter="Terry"
                 data-labels="api"
                 data-version="v2"
                 data-comments="2"
@@ -1719,8 +1760,9 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="Pi" hidden>PI</span>
+                  <span class="td-avatar" data-card-assignee title="assistant" hidden>AS</span>
                   <span class="td-agent-badge" data-card-agent-badge data-agent-platform="pi">pi</span>
+                  <span class="td-agent-role td-mono" data-card-agent-role title="assistant">assistant</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations hidden>
                       <span data-relation-parent hidden>
@@ -1757,8 +1799,9 @@
                 data-status="done"
                 data-priority="low"
                 data-project="Site Refresh"
-                data-assignee="Tom Okafor"
-                data-assignee-kind="human"
+                data-assignee="linus"
+                data-assignee-kind="agent"
+                data-reporter="Terry"
                 data-labels="ci"
                 data-version="v3"
                 data-comments="2"
@@ -1798,8 +1841,9 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="Tom Okafor">TO</span>
-                  <span class="td-agent-badge" data-card-agent-badge hidden></span>
+                  <span class="td-avatar" data-card-assignee title="linus" hidden>LI</span>
+                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="claude">claude</span>
+                  <span class="td-agent-role td-mono" data-card-agent-role title="linus">linus</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations hidden>
                       <span data-relation-parent hidden>
@@ -1855,8 +1899,9 @@
                 data-status="canceled"
                 data-priority="none"
                 data-project="TaskDashboard"
-                data-assignee="Ana Ruiz"
+                data-assignee="Terry"
                 data-assignee-kind="human"
+                data-reporter="Terry"
                 data-labels="ux"
                 data-version="v1"
                 data-comments="1"
@@ -1896,7 +1941,7 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="Ana Ruiz">AR</span>
+                  <span class="td-avatar" data-card-assignee title="Terry">T</span>
                   <span class="td-agent-badge" data-card-agent-badge hidden></span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations hidden>
@@ -2039,9 +2084,16 @@
             </button>
 
             <span class="td-prop-label" data-i18n="prop.assignee">Assignee</span>
-            <button type="button" class="td-prop-value" data-detail-assignee>
-              <span class="td-avatar" data-detail-assignee-avatar>MC</span>
-              <span data-detail-assignee-label>Mira Chen</span>
+            <button type="button" class="td-prop-value" data-detail-assignee data-assignee-kind="agent">
+              <span class="td-avatar" data-detail-assignee-avatar data-assignee-kind="agent">LI</span>
+              <span data-detail-assignee-label>linus</span>
+              <span class="td-agent-badge" data-detail-assignee-platform data-agent-platform="claude">claude</span>
+            </button>
+
+            <span class="td-prop-label" data-i18n="prop.reporter">Reporter</span>
+            <button type="button" class="td-prop-value" data-detail-reporter>
+              <span class="td-avatar" data-detail-reporter-avatar>T</span>
+              <span data-detail-reporter-label>Terry</span>
             </button>
 
             <span class="td-prop-label" data-i18n="prop.project">Project</span>
@@ -2149,10 +2201,10 @@
           <h3 class="td-section-title" data-i18n="drawer.comments">Comments</h3>
           <div data-detail-comments>
             <article class="td-comment">
-              <span class="td-avatar">DP</span>
+              <span class="td-avatar">JO</span>
               <div>
                 <div class="td-comment-meta">
-                  <span class="font-medium text-td-ink">Dev Patel</span>
+                  <span class="font-medium text-td-ink td-mono">jobs</span>
                   <span data-i18n="comment.human">human</span>
                   <span class="td-mono" title="2026-10-08 09:12">2h ago</span>
                 </div>
@@ -2160,10 +2212,10 @@
               </div>
             </article>
             <article class="td-comment">
-              <span class="td-avatar" data-assignee-kind="agent">CL</span>
+              <span class="td-avatar" data-assignee-kind="agent">JO</span>
               <div>
                 <div class="td-comment-meta">
-                  <span class="font-medium text-td-ink td-mono">claude</span>
+                  <span class="font-medium text-td-ink td-mono">jobs</span>
                   <span data-i18n="comment.agent">agent</span>
                   <span class="td-mono" title="2026-10-08 08:40">3h ago</span>
                 </div>
@@ -2171,10 +2223,10 @@
               </div>
             </article>
             <article class="td-comment td-comment-decision">
-              <span class="td-avatar">MC</span>
+              <span class="td-avatar">T</span>
               <div>
                 <div class="td-comment-meta">
-                  <span class="font-medium text-td-ink">Mira Chen</span>
+                  <span class="font-medium text-td-ink">Terry</span>
                   <span class="td-chip" data-i18n="comment.decision">decision</span>
                   <span class="td-mono" title="2026-10-08 07:55">4h ago</span>
                 </div>
@@ -2203,22 +2255,22 @@
           <h3 class="td-section-title" data-i18n="drawer.activity">Activity</h3>
           <div data-detail-activity>
             <div class="td-activity">
-              <span class="font-medium">Mira Chen</span>
+              <span class="font-medium">Terry</span>
               <span data-i18n="activity.created">created this task</span>
               <span class="td-activity-ts" title="2026-10-05 11:20">3d ago</span>
             </div>
             <div class="td-activity">
-              <span class="font-medium">claude</span>
+              <span class="font-medium td-mono">jobs</span>
               <span data-i18n="activity.claimed">claimed the task</span>
               <span class="td-activity-ts" title="2026-10-06 09:02">2d ago</span>
             </div>
             <div class="td-activity">
-              <span class="font-medium">Mira Chen</span>
+              <span class="font-medium">Terry</span>
               <span class="td-mono">status: backlog → todo</span>
               <span class="td-activity-ts" title="2026-10-07 14:30">1d ago</span>
             </div>
             <div class="td-activity">
-              <span class="font-medium">Dev Patel</span>
+              <span class="font-medium td-mono">jobs</span>
               <span data-i18n="activity.commented">commented</span>
               <span class="td-activity-ts" title="2026-10-08 09:12">2h ago</span>
             </div>
@@ -2274,14 +2326,13 @@
             <label class="td-field flex-1">
               <span class="td-field-label" data-i18n="createTask.field.assignee">Assignee</span>
               <select class="td-select w-full" name="assignee" data-create-task-assignee>
-                <option value="Mira Chen" data-assignee-kind="human">Mira Chen</option>
-                <option value="Dev Patel" data-assignee-kind="human">Dev Patel</option>
-                <option value="Ana Ruiz" data-assignee-kind="human">Ana Ruiz</option>
-                <option value="Tom Okafor" data-assignee-kind="human">Tom Okafor</option>
-                <option value="Claude" data-assignee-kind="agent">claude</option>
-                <option value="OpenClaw" data-assignee-kind="agent">openclaw</option>
-                <option value="Codex" data-assignee-kind="agent">codex</option>
-                <option value="Pi" data-assignee-kind="agent">pi</option>
+                <option value="elon" data-assignee-kind="agent" data-agent-platform="openclaw">elon · openclaw</option>
+                <option value="jobs" data-assignee-kind="agent" data-agent-platform="claude">jobs · claude</option>
+                <option value="linus" data-assignee-kind="agent" data-agent-platform="claude">linus · claude</option>
+                <option value="turing" data-assignee-kind="agent" data-agent-platform="codex">turing · codex</option>
+                <option value="simons" data-assignee-kind="agent" data-agent-platform="claude">simons · claude</option>
+                <option value="assistant" data-assignee-kind="agent" data-agent-platform="pi">assistant · pi</option>
+                <option value="Terry" data-assignee-kind="human">Terry · owner</option>
               </select>
             </label>
             <label class="td-field flex-1">
@@ -2335,6 +2386,131 @@
         <button data-i18n-aria-label="modal.close" aria-label="Close">close</button>
       </form>
     </dialog>
+
+    <!-- =====================================================================
+         B18 · States showcase — hidden by default, opened from the sidebar
+         Demonstrates every non-default state side by side. Hosts B17.
+         ================================================================== -->
+    <div class="td-scrim" data-states-overlay data-state="closed" hidden></div>
+
+    <section
+      class="td-states-panel"
+      data-states-panel
+      data-state="closed"
+      role="dialog"
+      aria-modal="true"
+      aria-hidden="true"
+      aria-labelledby="td-states-title"
+    >
+      <header class="td-states-head">
+        <h2 class="text-lg font-semibold" id="td-states-title" data-i18n="states.title">UI states</h2>
+        <button
+          type="button"
+          class="td-iconbtn"
+          style="margin-left: auto"
+          data-states-close
+          data-i18n-aria-label="states.close"
+          aria-label="Close the states preview"
+        >
+          <svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6 6 18" /></svg>
+        </button>
+      </header>
+
+      <div class="td-states-body">
+        <div class="td-states-grid">
+          <!-- loading -->
+          <section class="td-state-card" data-loading-state>
+            <h3 class="td-state-title" data-i18n="states.loading">Loading</h3>
+            <p class="td-state-note" data-i18n="states.loadingNote">Skeleton placeholders hold the row height until data settles.</p>
+            <div class="td-state-demo">
+              <div class="td-skel-card">
+                <span class="td-skeleton" style="height: 10px; width: 44px"></span>
+                <span class="td-skeleton" style="height: 12px; width: 78%"></span>
+                <span class="td-skeleton" style="height: 12px; width: 56%"></span>
+                <div class="td-skel-row">
+                  <span class="td-skeleton" style="height: 18px; width: 18px; border-radius: 999px"></span>
+                  <span class="td-skeleton" style="height: 10px; width: 40px"></span>
+                </div>
+              </div>
+              <div class="td-skel-card">
+                <span class="td-skeleton" style="height: 10px; width: 44px"></span>
+                <span class="td-skeleton" style="height: 12px; width: 64%"></span>
+                <span class="td-skeleton" style="height: 12px; width: 42%"></span>
+                <div class="td-skel-row">
+                  <span class="td-skeleton" style="height: 18px; width: 18px; border-radius: 999px"></span>
+                  <span class="td-skeleton" style="height: 10px; width: 40px"></span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- empty column -->
+          <section class="td-state-card" data-empty-column>
+            <h3 class="td-state-title" data-i18n="states.emptyColumn">Empty column</h3>
+            <p class="td-state-note" data-i18n="states.emptyColumnNote">An empty column stays a drop target.</p>
+            <div class="td-state-demo">
+              <div class="td-empty">
+                <span class="td-empty-title" data-i18n="column.empty.title">No tasks</span>
+                <span class="td-empty-hint" data-i18n="column.empty.hint">Drop a card here to move it to Backlog.</span>
+                <button type="button" class="btn btn-outline btn-sm" data-column-add data-i18n="column.empty.add">Add</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- no results -->
+          <section class="td-state-card" data-empty-results>
+            <h3 class="td-state-title" data-i18n="states.emptyResults">No results</h3>
+            <p class="td-state-note" data-i18n="states.emptyResultsNote">Shown when the active filters match nothing.</p>
+            <div class="td-state-demo">
+              <div class="td-empty">
+                <svg class="td-icon" style="width: 20px; height: 20px" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 8v5M12 16h.01" />
+                </svg>
+                <span class="td-empty-title" data-i18n="noResults.title">No tasks match your filters</span>
+                <span class="td-empty-hint" data-i18n="noResults.hint">Adjust the search or clear the filters to see the full board.</span>
+                <button type="button" class="btn btn-outline btn-sm" data-filter-clear data-i18n="noResults.clear">Clear filters</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- B17 · error -->
+          <section class="td-state-card" data-error-card>
+            <h3 class="td-state-title" data-i18n="states.error">Error</h3>
+            <p class="td-state-note" data-i18n="states.errorNote">Raised when the board cannot be loaded.</p>
+            <div class="td-state-demo">
+              <div class="td-error" data-error-state role="alert">
+                <svg class="td-icon" style="width: 20px; height: 20px" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M12 4 3 20h18L12 4ZM12 10v4M12 17h.01" />
+                </svg>
+                <span class="td-empty-title" data-i18n="error.title">Could not load tasks</span>
+                <span class="td-empty-hint" data-i18n="error.hint">The board did not respond. Check the connection and try again.</span>
+                <button type="button" class="btn btn-outline btn-sm" data-error-retry data-i18n="error.retry">Retry</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- toast kinds -->
+          <section class="td-state-card td-state-card-wide" data-toast-states>
+            <h3 class="td-state-title" data-i18n="states.toasts">Toasts</h3>
+            <p class="td-state-note" data-i18n="states.toastsNote">Operation feedback, dismissed after 2.5 seconds.</p>
+            <div class="td-state-demo td-state-demo-toasts">
+              <div class="td-toast" data-toast data-toast-kind="info" data-state="static">
+                <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 8v5M12 16h.01" /></svg>
+                <span data-i18n="toast.sample.info">Switched to project Orchestrator</span>
+              </div>
+              <div class="td-toast" data-toast data-toast-kind="success" data-state="static">
+                <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM8.5 12.4l2.4 2.4 4.6-5" /></svg>
+                <span data-i18n="toast.sample.success">Moved TD-128 → Done</span>
+              </div>
+              <div class="td-toast" data-toast data-toast-kind="danger" data-state="static">
+                <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4 3 20h18L12 4ZM12 10v4M12 17h.01" /></svg>
+                <span data-i18n="toast.sample.danger">TD-118 is blocked</span>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
 
     <!-- =====================================================================
          Auxiliary surfaces driven by jQuery
@@ -2417,15 +2593,21 @@
           <div class="td-file"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg><span class="td-file-name">focus-order-record.png</span><span class="td-file-size">248 KB</span></div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar">DP</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Dev Patel</span><span>human</span><span class="td-mono" title="2026-10-08 09:12">2h ago</span></div><div class="td-comment-body">Tab order looks right in the recording. Keep the stripe colour as the only status signal inside a card.</div></div></article>
-          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">CL</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">claude</span><span>agent</span><span class="td-mono" title="2026-10-08 08:40">3h ago</span></div><div class="td-comment-body">Applied roving tabindex to the card list. Waiting on the decision about the Escape key scope.</div></div></article>
-          <article class="td-comment td-comment-decision"><span class="td-avatar">MC</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Mira Chen</span><span class="td-chip">decision</span><span class="td-mono" title="2026-10-08 07:55">4h ago</span></div><div class="td-comment-body">Escape closes the drawer only, never the board selection. Moving this to In Progress today.</div></div></article>
+          <article class="td-comment"><span class="td-avatar">JO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span>human</span><span class="td-mono" title="2026-10-08 09:12">2h ago</span></div><div class="td-comment-body">Tab order looks right in the recording. Keep the stripe colour as the only status signal inside a card.</div></div></article>
+          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">JO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span>agent</span><span class="td-mono" title="2026-10-08 08:40">3h ago</span></div><div class="td-comment-body">Applied roving tabindex to the card list. Waiting on the decision about the Escape key scope.</div></div></article>
+          <article class="td-comment td-comment-decision"><span class="td-avatar">T</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="td-chip">decision</span><span class="td-mono" title="2026-10-08 07:55">4h ago</span></div><div class="td-comment-body">Escape closes the drawer only, never the board selection. Moving this to In Progress today.</div></div></article>
+        </div>
+        <div data-slot="agent-session">
+          <div class="td-session" data-agent-session>
+            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="claude">claude</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume>Resume</button></div>
+            <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3">Session</span><span class="td-copy" data-agent-session-id>sess_claude_01HQ19XD1NZZQ</span></div>
+          </div>
         </div>
         <div data-slot="activity">
-          <div class="td-activity"><span class="font-medium">Mira Chen</span><span>created this task</span><span class="td-activity-ts" title="2026-10-05 11:20">3d ago</span></div>
-          <div class="td-activity"><span class="font-medium td-mono">claude</span><span>claimed the task</span><span class="td-activity-ts" title="2026-10-06 09:02">2d ago</span></div>
-          <div class="td-activity"><span class="font-medium">Mira Chen</span><span class="td-mono">status: backlog → todo</span><span class="td-activity-ts" title="2026-10-07 14:30">1d ago</span></div>
-          <div class="td-activity"><span class="font-medium">Dev Patel</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 09:12">2h ago</span></div>
+          <div class="td-activity"><span class="font-medium">Terry</span><span>created this task</span><span class="td-activity-ts" title="2026-10-05 11:20">3d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">jobs</span><span>claimed the task</span><span class="td-activity-ts" title="2026-10-06 09:02">2d ago</span></div>
+          <div class="td-activity"><span class="font-medium">Terry</span><span class="td-mono">status: backlog → todo</span><span class="td-activity-ts" title="2026-10-07 14:30">1d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">jobs</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 09:12">2h ago</span></div>
         </div>
       </template>
 
@@ -2468,14 +2650,14 @@
           <div class="td-file"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg><span class="td-file-name">drawer-states.png</span><span class="td-file-size">640 KB</span></div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar">MC</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Mira Chen</span><span>human</span><span class="td-mono" title="2026-10-08 10:05">1h ago</span></div><div class="td-comment-body">Column width at 300 pixels and the 16 pixel gap match the guide. Keep the board the only horizontal scroller.</div></div></article>
-          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">CL</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">claude</span><span>agent</span><span class="td-mono" title="2026-10-08 09:30">2h ago</span></div><div class="td-comment-body">All seven column states render from static markup, so the board survives with JavaScript disabled.</div></div></article>
+          <article class="td-comment"><span class="td-avatar">T</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span>human</span><span class="td-mono" title="2026-10-08 10:05">1h ago</span></div><div class="td-comment-body">Column width at 300 pixels and the 16 pixel gap match the guide. Keep the board the only horizontal scroller.</div></div></article>
+          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">JO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span>agent</span><span class="td-mono" title="2026-10-08 09:30">2h ago</span></div><div class="td-comment-body">All seven column states render from static markup, so the board survives with JavaScript disabled.</div></div></article>
         </div>
         <div data-slot="activity">
-          <div class="td-activity"><span class="font-medium">Mira Chen</span><span>created this task</span><span class="td-activity-ts" title="2026-10-07 09:00">1d ago</span></div>
-          <div class="td-activity"><span class="font-medium td-mono">claude</span><span>claimed the task</span><span class="td-activity-ts" title="2026-10-07 09:04">1d ago</span></div>
-          <div class="td-activity"><span class="font-medium">Mira Chen</span><span class="td-mono">status: todo → in_progress</span><span class="td-activity-ts" title="2026-10-08 08:15">4h ago</span></div>
-          <div class="td-activity"><span class="font-medium">Jobs</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 10:05">1h ago</span></div>
+          <div class="td-activity"><span class="font-medium">Terry</span><span>created this task</span><span class="td-activity-ts" title="2026-10-07 09:00">1d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">jobs</span><span>claimed the task</span><span class="td-activity-ts" title="2026-10-07 09:04">1d ago</span></div>
+          <div class="td-activity"><span class="font-medium">Terry</span><span class="td-mono">status: todo → in_progress</span><span class="td-activity-ts" title="2026-10-08 08:15">4h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">jobs</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 10:05">1h ago</span></div>
         </div>
       </template>
 
@@ -2518,15 +2700,15 @@
           <div class="td-file"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg><span class="td-file-name">resume-flow.md</span><span class="td-file-size">6 KB</span></div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar">TO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Tom Okafor</span><span>human</span><span class="td-mono" title="2026-10-08 08:20">3h ago</span></div><div class="td-comment-body">Please keep the session id monospaced and copyable from the drawer.</div></div></article>
-          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">OC</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">openclaw</span><span>agent</span><span class="td-mono" title="2026-10-08 07:10">4h ago</span></div><div class="td-comment-body">Badge and session block are both rendered. The resume control is wired to the session record.</div></div></article>
-          <article class="td-comment td-comment-decision"><span class="td-avatar">MC</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Mira Chen</span><span class="td-chip">decision</span><span class="td-mono" title="2026-10-08 06:40">5h ago</span></div><div class="td-comment-body">Ship the read-only block first, editing waits for the agent auth work.</div></div></article>
+          <article class="td-comment"><span class="td-avatar">SI</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">simons</span><span>human</span><span class="td-mono" title="2026-10-08 08:20">3h ago</span></div><div class="td-comment-body">Please keep the session id monospaced and copyable from the drawer.</div></div></article>
+          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">EL</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">elon</span><span>agent</span><span class="td-mono" title="2026-10-08 07:10">4h ago</span></div><div class="td-comment-body">Badge and session block are both rendered. The resume control is wired to the session record.</div></div></article>
+          <article class="td-comment td-comment-decision"><span class="td-avatar">T</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="td-chip">decision</span><span class="td-mono" title="2026-10-08 06:40">5h ago</span></div><div class="td-comment-body">Ship the read-only block first, editing waits for the agent auth work.</div></div></article>
         </div>
         <div data-slot="activity">
-          <div class="td-activity"><span class="font-medium">Mira Chen</span><span>created this task</span><span class="td-activity-ts" title="2026-10-06 13:40">2d ago</span></div>
-          <div class="td-activity"><span class="font-medium td-mono">openclaw</span><span>claimed the task</span><span class="td-activity-ts" title="2026-10-06 13:45">2d ago</span></div>
-          <div class="td-activity"><span class="font-medium td-mono">openclaw</span><span class="td-mono">status: in_progress → in_review</span><span class="td-activity-ts" title="2026-10-08 07:10">4h ago</span></div>
-          <div class="td-activity"><span class="font-medium">Tom Okafor</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 08:20">3h ago</span></div>
+          <div class="td-activity"><span class="font-medium">Terry</span><span>created this task</span><span class="td-activity-ts" title="2026-10-06 13:40">2d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">elon</span><span>claimed the task</span><span class="td-activity-ts" title="2026-10-06 13:45">2d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">elon</span><span class="td-mono">status: in_progress → in_review</span><span class="td-activity-ts" title="2026-10-08 07:10">4h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">simons</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 08:20">3h ago</span></div>
         </div>
       </template>
 
@@ -2565,15 +2747,15 @@
           <div class="td-file"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg><span class="td-file-name">duplicate-events.log</span><span class="td-file-size">18 KB</span></div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">CL</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">claude</span><span>agent</span><span class="td-mono" title="2026-10-08 07:40">4h ago</span></div><div class="td-comment-body">Confirmed the duplicate rows. The event identity is the same for both moves.</div></div></article>
-          <article class="td-comment"><span class="td-avatar">AR</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Ana Ruiz</span><span>human</span><span class="td-mono" title="2026-10-08 07:05">5h ago</span></div><div class="td-comment-body">Blocked on the stream landing. Leaving the reproduction notes in the description.</div></div></article>
-          <article class="td-comment td-comment-decision"><span class="td-avatar">AR</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Ana Ruiz</span><span class="td-chip">decision</span><span class="td-mono" title="2026-10-07 16:20">1d ago</span></div><div class="td-comment-body">Deduplicate on the server, not in the drawer.</div></div></article>
+          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">JO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span>agent</span><span class="td-mono" title="2026-10-08 07:40">4h ago</span></div><div class="td-comment-body">Confirmed the duplicate rows. The event identity is the same for both moves.</div></div></article>
+          <article class="td-comment"><span class="td-avatar">LI</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">linus</span><span>human</span><span class="td-mono" title="2026-10-08 07:05">5h ago</span></div><div class="td-comment-body">Blocked on the stream landing. Leaving the reproduction notes in the description.</div></div></article>
+          <article class="td-comment td-comment-decision"><span class="td-avatar">LI</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">linus</span><span class="td-chip">decision</span><span class="td-mono" title="2026-10-07 16:20">1d ago</span></div><div class="td-comment-body">Deduplicate on the server, not in the drawer.</div></div></article>
         </div>
         <div data-slot="activity">
-          <div class="td-activity"><span class="font-medium">Ana Ruiz</span><span>created this task</span><span class="td-activity-ts" title="2026-10-06 10:00">2d ago</span></div>
-          <div class="td-activity"><span class="font-medium td-mono">claude</span><span>claimed the task</span><span class="td-activity-ts" title="2026-10-06 10:12">2d ago</span></div>
-          <div class="td-activity"><span class="font-medium td-mono">claude</span><span class="td-mono">status: in_progress → blocked</span><span class="td-activity-ts" title="2026-10-08 07:40">4h ago</span></div>
-          <div class="td-activity"><span class="font-medium">Ana Ruiz</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 07:05">5h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">linus</span><span>created this task</span><span class="td-activity-ts" title="2026-10-06 10:00">2d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">jobs</span><span>claimed the task</span><span class="td-activity-ts" title="2026-10-06 10:12">2d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">jobs</span><span class="td-mono">status: in_progress → blocked</span><span class="td-activity-ts" title="2026-10-08 07:40">4h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">linus</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 07:05">5h ago</span></div>
         </div>
       </template>
 
@@ -2611,14 +2793,14 @@
           </div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">PI</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">pi</span><span>agent</span><span class="td-mono" title="2026-10-08 08:00">3h ago</span></div><div class="td-comment-body">Draft shape is in the description. Waiting for the project prefix decision before I touch the identifier.</div></div></article>
-          <article class="td-comment"><span class="td-avatar">DP</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Dev Patel</span><span>human</span><span class="td-mono" title="2026-10-07 15:40">1d ago</span></div><div class="td-comment-body">Keep the version opaque, clients should only compare it for equality.</div></div></article>
+          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">AS</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">assistant</span><span>agent</span><span class="td-mono" title="2026-10-08 08:00">3h ago</span></div><div class="td-comment-body">Draft shape is in the description. Waiting for the project prefix decision before I touch the identifier.</div></div></article>
+          <article class="td-comment"><span class="td-avatar">JO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span>human</span><span class="td-mono" title="2026-10-07 15:40">1d ago</span></div><div class="td-comment-body">Keep the version opaque, clients should only compare it for equality.</div></div></article>
         </div>
         <div data-slot="activity">
-          <div class="td-activity"><span class="font-medium">Dev Patel</span><span>created this task</span><span class="td-activity-ts" title="2026-10-07 15:30">1d ago</span></div>
-          <div class="td-activity"><span class="font-medium td-mono">pi</span><span>claimed the task</span><span class="td-activity-ts" title="2026-10-07 15:34">1d ago</span></div>
-          <div class="td-activity"><span class="font-medium">Dev Patel</span><span class="td-mono">status: backlog → todo</span><span class="td-activity-ts" title="2026-10-08 08:10">3h ago</span></div>
-          <div class="td-activity"><span class="font-medium">Dev Patel</span><span>commented</span><span class="td-activity-ts" title="2026-10-07 15:40">1d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">jobs</span><span>created this task</span><span class="td-activity-ts" title="2026-10-07 15:30">1d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">assistant</span><span>claimed the task</span><span class="td-activity-ts" title="2026-10-07 15:34">1d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">jobs</span><span class="td-mono">status: backlog → todo</span><span class="td-activity-ts" title="2026-10-08 08:10">3h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">jobs</span><span>commented</span><span class="td-activity-ts" title="2026-10-07 15:40">1d ago</span></div>
         </div>
       </template>
 
@@ -2652,15 +2834,21 @@
           <div class="td-file"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg><span class="td-file-name">filter-profile.json</span><span class="td-file-size">9 KB</span></div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar">AR</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Ana Ruiz</span><span>human</span><span class="td-mono" title="2026-10-08 09:50">1h ago</span></div><div class="td-comment-body">Profiled the board at 18 cards: the debounce removes the flicker on fast typing.</div></div></article>
-          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">CL</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">claude</span><span>agent</span><span class="td-mono" title="2026-10-08 09:20">2h ago</span></div><div class="td-comment-body">Empty columns now show their own state instead of collapsing.</div></div></article>
-          <article class="td-comment td-comment-decision"><span class="td-avatar">MC</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Mira Chen</span><span class="td-chip">decision</span><span class="td-mono" title="2026-10-07 11:00">1d ago</span></div><div class="td-comment-body">Keep the columns mounted while filtering so the board never reflows.</div></div></article>
+          <article class="td-comment"><span class="td-avatar">LI</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">linus</span><span>human</span><span class="td-mono" title="2026-10-08 09:50">1h ago</span></div><div class="td-comment-body">Profiled the board at 18 cards: the debounce removes the flicker on fast typing.</div></div></article>
+          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">JO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span>agent</span><span class="td-mono" title="2026-10-08 09:20">2h ago</span></div><div class="td-comment-body">Empty columns now show their own state instead of collapsing.</div></div></article>
+          <article class="td-comment td-comment-decision"><span class="td-avatar">T</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="td-chip">decision</span><span class="td-mono" title="2026-10-07 11:00">1d ago</span></div><div class="td-comment-body">Keep the columns mounted while filtering so the board never reflows.</div></div></article>
+        </div>
+        <div data-slot="agent-session">
+          <div class="td-session" data-agent-session>
+            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="claude">claude</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume>Resume</button></div>
+            <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3">Session</span><span class="td-copy" data-agent-session-id>sess_claude_01HQ5VFF3A40E</span></div>
+          </div>
         </div>
         <div data-slot="activity">
-          <div class="td-activity"><span class="font-medium">Mira Chen</span><span>created this task</span><span class="td-activity-ts" title="2026-10-07 10:40">1d ago</span></div>
-          <div class="td-activity"><span class="font-medium td-mono">claude</span><span>claimed the task</span><span class="td-activity-ts" title="2026-10-07 10:44">1d ago</span></div>
-          <div class="td-activity"><span class="font-medium">Mira Chen</span><span class="td-mono">status: todo → in_progress</span><span class="td-activity-ts" title="2026-10-07 11:05">1d ago</span></div>
-          <div class="td-activity"><span class="font-medium">Ana Ruiz</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 09:50">1h ago</span></div>
+          <div class="td-activity"><span class="font-medium">Terry</span><span>created this task</span><span class="td-activity-ts" title="2026-10-07 10:40">1d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">jobs</span><span>claimed the task</span><span class="td-activity-ts" title="2026-10-07 10:44">1d ago</span></div>
+          <div class="td-activity"><span class="font-medium">Terry</span><span class="td-mono">status: todo → in_progress</span><span class="td-activity-ts" title="2026-10-07 11:05">1d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">linus</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 09:50">1h ago</span></div>
         </div>
       </template>
 
@@ -2694,14 +2882,14 @@
           <div class="td-file"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg><span class="td-file-name">skeleton-rows.png</span><span class="td-file-size">180 KB</span></div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar">DP</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Dev Patel</span><span>human</span><span class="td-mono" title="2026-10-08 08:55">2h ago</span></div><div class="td-comment-body">Row grid is fixed at six columns, so the skeleton keeps the same rhythm as the real rows.</div></div></article>
-          <article class="td-comment td-comment-decision"><span class="td-avatar">MC</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Mira Chen</span><span class="td-chip">decision</span><span class="td-mono" title="2026-10-07 18:10">22h ago</span></div><div class="td-comment-body">Three rows is enough. More than three reads as a slow interface.</div></div></article>
+          <article class="td-comment"><span class="td-avatar">JO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span>human</span><span class="td-mono" title="2026-10-08 08:55">2h ago</span></div><div class="td-comment-body">Row grid is fixed at six columns, so the skeleton keeps the same rhythm as the real rows.</div></div></article>
+          <article class="td-comment td-comment-decision"><span class="td-avatar">T</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="td-chip">decision</span><span class="td-mono" title="2026-10-07 18:10">22h ago</span></div><div class="td-comment-body">Three rows is enough. More than three reads as a slow interface.</div></div></article>
         </div>
         <div data-slot="activity">
-          <div class="td-activity"><span class="font-medium">Dev Patel</span><span>created this task</span><span class="td-activity-ts" title="2026-10-07 17:00">22h ago</span></div>
-          <div class="td-activity"><span class="font-medium">Mira Chen</span><span class="td-mono">status: todo → in_progress</span><span class="td-activity-ts" title="2026-10-07 17:20">22h ago</span></div>
-          <div class="td-activity"><span class="font-medium">Dev Patel</span><span class="td-mono">status: in_progress → in_review</span><span class="td-activity-ts" title="2026-10-08 08:55">2h ago</span></div>
-          <div class="td-activity"><span class="font-medium">Mira Chen</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 08:55">2h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">jobs</span><span>created this task</span><span class="td-activity-ts" title="2026-10-07 17:00">22h ago</span></div>
+          <div class="td-activity"><span class="font-medium">Terry</span><span class="td-mono">status: todo → in_progress</span><span class="td-activity-ts" title="2026-10-07 17:20">22h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">jobs</span><span class="td-mono">status: in_progress → in_review</span><span class="td-activity-ts" title="2026-10-08 08:55">2h ago</span></div>
+          <div class="td-activity"><span class="font-medium">Terry</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 08:55">2h ago</span></div>
         </div>
       </template>
 
@@ -2734,15 +2922,21 @@
           <div class="td-file"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg><span class="td-file-name">theme-swap.png</span><span class="td-file-size">410 KB</span></div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar">DP</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Dev Patel</span><span>human</span><span class="td-mono" title="2026-10-07 12:10">1d ago</span></div><div class="td-comment-body">Both themes are registered on the document element, so the toggle only swaps one attribute.</div></div></article>
-          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">PI</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">pi</span><span>agent</span><span class="td-mono" title="2026-10-07 11:40">1d ago</span></div><div class="td-comment-body">Verified the dark palette against the contrast floor before closing.</div></div></article>
-          <article class="td-comment td-comment-decision"><span class="td-avatar">MC</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Mira Chen</span><span class="td-chip">decision</span><span class="td-mono" title="2026-10-07 11:00">1d ago</span></div><div class="td-comment-body">Approved. The status palette keeps one value in both themes.</div></div></article>
+          <article class="td-comment"><span class="td-avatar">JO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span>human</span><span class="td-mono" title="2026-10-07 12:10">1d ago</span></div><div class="td-comment-body">Both themes are registered on the document element, so the toggle only swaps one attribute.</div></div></article>
+          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">AS</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">assistant</span><span>agent</span><span class="td-mono" title="2026-10-07 11:40">1d ago</span></div><div class="td-comment-body">Verified the dark palette against the contrast floor before closing.</div></div></article>
+          <article class="td-comment td-comment-decision"><span class="td-avatar">T</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="td-chip">decision</span><span class="td-mono" title="2026-10-07 11:00">1d ago</span></div><div class="td-comment-body">Approved. The status palette keeps one value in both themes.</div></div></article>
+        </div>
+        <div data-slot="agent-session">
+          <div class="td-session" data-agent-session>
+            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="claude">claude</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume>Resume</button></div>
+            <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3">Session</span><span class="td-copy" data-agent-session-id>sess_claude_01HQ023PX3Y8E</span></div>
+          </div>
         </div>
         <div data-slot="activity">
-          <div class="td-activity"><span class="font-medium">Mira Chen</span><span>created this task</span><span class="td-activity-ts" title="2026-10-06 09:30">2d ago</span></div>
-          <div class="td-activity"><span class="font-medium">Dev Patel</span><span class="td-mono">status: todo → in_progress</span><span class="td-activity-ts" title="2026-10-06 10:00">2d ago</span></div>
-          <div class="td-activity"><span class="font-medium">Dev Patel</span><span class="td-mono">status: in_review → done</span><span class="td-activity-ts" title="2026-10-07 12:10">1d ago</span></div>
-          <div class="td-activity"><span class="font-medium">Mira Chen</span><span>approved the change</span><span class="td-activity-ts" title="2026-10-07 12:30">1d ago</span></div>
+          <div class="td-activity"><span class="font-medium">Terry</span><span>created this task</span><span class="td-activity-ts" title="2026-10-06 09:30">2d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">jobs</span><span class="td-mono">status: todo → in_progress</span><span class="td-activity-ts" title="2026-10-06 10:00">2d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">jobs</span><span class="td-mono">status: in_review → done</span><span class="td-activity-ts" title="2026-10-07 12:10">1d ago</span></div>
+          <div class="td-activity"><span class="font-medium">Terry</span><span>approved the change</span><span class="td-activity-ts" title="2026-10-07 12:30">1d ago</span></div>
         </div>
       </template>
 
@@ -2777,14 +2971,14 @@
           </div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">PI</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">pi</span><span>agent</span><span class="td-mono" title="2026-10-06 14:20">2d ago</span></div><div class="td-comment-body">Sequence is scoped per project, so two projects can both hold number 119.</div></div></article>
-          <article class="td-comment"><span class="td-avatar">TO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Tom Okafor</span><span>human</span><span class="td-mono" title="2026-10-06 15:00">2d ago</span></div><div class="td-comment-body">Confirmed against the audit export. Identifiers stay stable.</div></div></article>
+          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">AS</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">assistant</span><span>agent</span><span class="td-mono" title="2026-10-06 14:20">2d ago</span></div><div class="td-comment-body">Sequence is scoped per project, so two projects can both hold number 119.</div></div></article>
+          <article class="td-comment"><span class="td-avatar">SI</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">simons</span><span>human</span><span class="td-mono" title="2026-10-06 15:00">2d ago</span></div><div class="td-comment-body">Confirmed against the audit export. Identifiers stay stable.</div></div></article>
         </div>
         <div data-slot="activity">
-          <div class="td-activity"><span class="font-medium">Dev Patel</span><span>created this task</span><span class="td-activity-ts" title="2026-10-06 13:00">2d ago</span></div>
-          <div class="td-activity"><span class="font-medium td-mono">pi</span><span>claimed the task</span><span class="td-activity-ts" title="2026-10-06 13:05">2d ago</span></div>
-          <div class="td-activity"><span class="font-medium td-mono">pi</span><span class="td-mono">status: in_progress → done</span><span class="td-activity-ts" title="2026-10-06 15:20">2d ago</span></div>
-          <div class="td-activity"><span class="font-medium">Tom Okafor</span><span>commented</span><span class="td-activity-ts" title="2026-10-06 15:00">2d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">jobs</span><span>created this task</span><span class="td-activity-ts" title="2026-10-06 13:00">2d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">assistant</span><span>claimed the task</span><span class="td-activity-ts" title="2026-10-06 13:05">2d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">assistant</span><span class="td-mono">status: in_progress → done</span><span class="td-activity-ts" title="2026-10-06 15:20">2d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">simons</span><span>commented</span><span class="td-activity-ts" title="2026-10-06 15:00">2d ago</span></div>
         </div>
       </template>
 
@@ -2812,13 +3006,13 @@
           </ul>
         </div>
         <div data-slot="comments">
-          <article class="td-comment td-comment-decision"><span class="td-avatar">MC</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Mira Chen</span><span class="td-chip">decision</span><span class="td-mono" title="2026-10-04 16:00">4d ago</span></div><div class="td-comment-body">Closing this. The card stays neutral: border and surface only.</div></div></article>
+          <article class="td-comment td-comment-decision"><span class="td-avatar">T</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="td-chip">decision</span><span class="td-mono" title="2026-10-04 16:00">4d ago</span></div><div class="td-comment-body">Closing this. The card stays neutral: border and surface only.</div></div></article>
         </div>
         <div data-slot="activity">
-          <div class="td-activity"><span class="font-medium">Ana Ruiz</span><span>created this task</span><span class="td-activity-ts" title="2026-10-04 14:00">4d ago</span></div>
-          <div class="td-activity"><span class="font-medium">Ana Ruiz</span><span class="td-mono">status: backlog → in_review</span><span class="td-activity-ts" title="2026-10-04 15:00">4d ago</span></div>
-          <div class="td-activity"><span class="font-medium">Mira Chen</span><span>commented</span><span class="td-activity-ts" title="2026-10-04 16:00">4d ago</span></div>
-          <div class="td-activity"><span class="font-medium">Mira Chen</span><span class="td-mono">status: in_review → canceled</span><span class="td-activity-ts" title="2026-10-04 16:05">4d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">linus</span><span>created this task</span><span class="td-activity-ts" title="2026-10-04 14:00">4d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">linus</span><span class="td-mono">status: backlog → in_review</span><span class="td-activity-ts" title="2026-10-04 15:00">4d ago</span></div>
+          <div class="td-activity"><span class="font-medium">Terry</span><span>commented</span><span class="td-activity-ts" title="2026-10-04 16:00">4d ago</span></div>
+          <div class="td-activity"><span class="font-medium">Terry</span><span class="td-mono">status: in_review → canceled</span><span class="td-activity-ts" title="2026-10-04 16:05">4d ago</span></div>
         </div>
       </template>
 
@@ -2845,11 +3039,17 @@
             <li><span class="td-check" data-checked="false"></span><span>Bulk move action</span></li>
           </ul>
         </div>
+        <div data-slot="agent-session">
+          <div class="td-session" data-agent-session>
+            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="openclaw">openclaw</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform openclaw</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume>Resume</button></div>
+            <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3">Session</span><span class="td-copy" data-agent-session-id>sess_openclaw_01HQ0VWFJ9QEW</span></div>
+          </div>
+        </div>
         <div data-slot="activity">
-          <div class="td-activity"><span class="font-medium">Ana Ruiz</span><span>created this task</span><span class="td-activity-ts" title="2026-10-08 09:00">2h ago</span></div>
-          <div class="td-activity"><span class="font-medium">Ana Ruiz</span><span>added the label ux</span><span class="td-activity-ts" title="2026-10-08 09:02">2h ago</span></div>
-          <div class="td-activity"><span class="font-medium">Dev Patel</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 09:40">1h ago</span></div>
-          <div class="td-activity"><span class="font-medium">Ana Ruiz</span><span class="td-mono">status: todo → backlog</span><span class="td-activity-ts" title="2026-10-08 10:10">1h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">linus</span><span>created this task</span><span class="td-activity-ts" title="2026-10-08 09:00">2h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">linus</span><span>added the label ux</span><span class="td-activity-ts" title="2026-10-08 09:02">2h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">jobs</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 09:40">1h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">linus</span><span class="td-mono">status: todo → backlog</span><span class="td-activity-ts" title="2026-10-08 10:10">1h ago</span></div>
         </div>
       </template>
 
@@ -2879,11 +3079,17 @@
         <div data-slot="relations">
           <span class="td-rel-item"><span class="text-xs text-td-ink-3">Parent</span><button type="button" class="td-copy" data-relation-link>TD-118</button></span>
         </div>
+        <div data-slot="agent-session">
+          <div class="td-session" data-agent-session>
+            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="codex">codex</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform codex</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume>Resume</button></div>
+            <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3">Session</span><span class="td-copy" data-agent-session-id>sess_codex_01HQ54E9GD4XA</span></div>
+          </div>
+        </div>
         <div data-slot="activity">
-          <div class="td-activity"><span class="font-medium">Tom Okafor</span><span>created this task</span><span class="td-activity-ts" title="2026-10-08 08:30">2h ago</span></div>
-          <div class="td-activity"><span class="font-medium">Tom Okafor</span><span>added the label security</span><span class="td-activity-ts" title="2026-10-08 08:31">2h ago</span></div>
-          <div class="td-activity"><span class="font-medium">Mira Chen</span><span>linked a parent task</span><span class="td-activity-ts" title="2026-10-08 09:10">2h ago</span></div>
-          <div class="td-activity"><span class="font-medium">Tom Okafor</span><span class="td-mono">status: todo → backlog</span><span class="td-activity-ts" title="2026-10-08 09:30">2h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">simons</span><span>created this task</span><span class="td-activity-ts" title="2026-10-08 08:30">2h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">simons</span><span>added the label security</span><span class="td-activity-ts" title="2026-10-08 08:31">2h ago</span></div>
+          <div class="td-activity"><span class="font-medium">Terry</span><span>linked a parent task</span><span class="td-activity-ts" title="2026-10-08 09:10">2h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">simons</span><span class="td-mono">status: todo → backlog</span><span class="td-activity-ts" title="2026-10-08 09:30">2h ago</span></div>
         </div>
       </template>
 
@@ -2917,13 +3123,13 @@
           </div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">CX</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">codex</span><span>agent</span><span class="td-mono" title="2026-10-08 08:15">3h ago</span></div><div class="td-comment-body">Profiled 40 project switches: the reload dominates the frame budget.</div></div></article>
+          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">TU</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">turing</span><span>agent</span><span class="td-mono" title="2026-10-08 08:15">3h ago</span></div><div class="td-comment-body">Profiled 40 project switches: the reload dominates the frame budget.</div></div></article>
         </div>
         <div data-slot="activity">
-          <div class="td-activity"><span class="font-medium">Dev Patel</span><span>created this task</span><span class="td-activity-ts" title="2026-10-08 07:40">4h ago</span></div>
-          <div class="td-activity"><span class="font-medium td-mono">codex</span><span>claimed the task</span><span class="td-activity-ts" title="2026-10-08 07:45">4h ago</span></div>
-          <div class="td-activity"><span class="font-medium td-mono">codex</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 08:15">3h ago</span></div>
-          <div class="td-activity"><span class="font-medium">Dev Patel</span><span class="td-mono">status: todo → backlog</span><span class="td-activity-ts" title="2026-10-08 09:00">2h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">jobs</span><span>created this task</span><span class="td-activity-ts" title="2026-10-08 07:40">4h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">turing</span><span>claimed the task</span><span class="td-activity-ts" title="2026-10-08 07:45">4h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">turing</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 08:15">3h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">jobs</span><span class="td-mono">status: todo → backlog</span><span class="td-activity-ts" title="2026-10-08 09:00">2h ago</span></div>
         </div>
       </template>
 
@@ -2955,14 +3161,14 @@
           <div class="td-file"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg><span class="td-file-name">lease-notes.md</span><span class="td-file-size">5 KB</span></div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar">DP</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Dev Patel</span><span>human</span><span class="td-mono" title="2026-10-08 08:05">3h ago</span></div><div class="td-comment-body">Draft outline is in the description. Needs the expiry rule spelled out.</div></div></article>
-          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">CX</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">codex</span><span>agent</span><span class="td-mono" title="2026-10-08 08:40">2h ago</span></div><div class="td-comment-body">The lease holder is recorded in the activity log, so the docs can reference that row.</div></div></article>
+          <article class="td-comment"><span class="td-avatar">JO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span>human</span><span class="td-mono" title="2026-10-08 08:05">3h ago</span></div><div class="td-comment-body">Draft outline is in the description. Needs the expiry rule spelled out.</div></div></article>
+          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">TU</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">turing</span><span>agent</span><span class="td-mono" title="2026-10-08 08:40">2h ago</span></div><div class="td-comment-body">The lease holder is recorded in the activity log, so the docs can reference that row.</div></div></article>
         </div>
         <div data-slot="activity">
-          <div class="td-activity"><span class="font-medium">Dev Patel</span><span>created this task</span><span class="td-activity-ts" title="2026-10-08 07:50">3h ago</span></div>
-          <div class="td-activity"><span class="font-medium">Dev Patel</span><span>attached lease-notes.md</span><span class="td-activity-ts" title="2026-10-08 07:52">3h ago</span></div>
-          <div class="td-activity"><span class="font-medium">Dev Patel</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 08:05">3h ago</span></div>
-          <div class="td-activity"><span class="font-medium td-mono">codex</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 08:40">2h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">jobs</span><span>created this task</span><span class="td-activity-ts" title="2026-10-08 07:50">3h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">jobs</span><span>attached lease-notes.md</span><span class="td-activity-ts" title="2026-10-08 07:52">3h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">jobs</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 08:05">3h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">turing</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 08:40">2h ago</span></div>
         </div>
       </template>
 
@@ -3000,14 +3206,14 @@
           <div class="td-file"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg><span class="td-file-name">reconnect-policy.md</span><span class="td-file-size">4 KB</span></div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">CX</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">codex</span><span>agent</span><span class="td-mono" title="2026-10-08 09:15">2h ago</span></div><div class="td-comment-body">The revision counter in the top bar is driven by the same value the stream publishes.</div></div></article>
-          <article class="td-comment td-comment-decision"><span class="td-avatar">MC</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Mira Chen</span><span class="td-chip">decision</span><span class="td-mono" title="2026-10-08 09:35">2h ago</span></div><div class="td-comment-body">Reconnect with backoff, never poll in a loop.</div></div></article>
+          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">TU</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">turing</span><span>agent</span><span class="td-mono" title="2026-10-08 09:15">2h ago</span></div><div class="td-comment-body">The revision counter in the top bar is driven by the same value the stream publishes.</div></div></article>
+          <article class="td-comment td-comment-decision"><span class="td-avatar">T</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="td-chip">decision</span><span class="td-mono" title="2026-10-08 09:35">2h ago</span></div><div class="td-comment-body">Reconnect with backoff, never poll in a loop.</div></div></article>
         </div>
         <div data-slot="activity">
-          <div class="td-activity"><span class="font-medium">Mira Chen</span><span>created this task</span><span class="td-activity-ts" title="2026-10-07 08:00">1d ago</span></div>
-          <div class="td-activity"><span class="font-medium td-mono">codex</span><span>claimed the task</span><span class="td-activity-ts" title="2026-10-07 08:10">1d ago</span></div>
-          <div class="td-activity"><span class="font-medium">Mira Chen</span><span class="td-mono">status: todo → in_progress</span><span class="td-activity-ts" title="2026-10-07 09:00">1d ago</span></div>
-          <div class="td-activity"><span class="font-medium td-mono">codex</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 09:15">2h ago</span></div>
+          <div class="td-activity"><span class="font-medium">Terry</span><span>created this task</span><span class="td-activity-ts" title="2026-10-07 08:00">1d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">turing</span><span>claimed the task</span><span class="td-activity-ts" title="2026-10-07 08:10">1d ago</span></div>
+          <div class="td-activity"><span class="font-medium">Terry</span><span class="td-mono">status: todo → in_progress</span><span class="td-activity-ts" title="2026-10-07 09:00">1d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">turing</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 09:15">2h ago</span></div>
         </div>
       </template>
 
@@ -3045,15 +3251,21 @@
           <div class="td-file"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg><span class="td-file-name">bucket-policy.json</span><span class="td-file-size">3 KB</span></div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar">AR</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Ana Ruiz</span><span>human</span><span class="td-mono" title="2026-10-08 08:45">2h ago</span></div><div class="td-comment-body">The adapter is written, but I cannot test a signed URL without the bucket policy.</div></div></article>
-          <article class="td-comment"><span class="td-avatar">TO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Tom Okafor</span><span>human</span><span class="td-mono" title="2026-10-08 09:05">2h ago</span></div><div class="td-comment-body">Infra review is queued for tomorrow. Nothing moves until then.</div></div></article>
-          <article class="td-comment td-comment-decision"><span class="td-avatar">MC</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Mira Chen</span><span class="td-chip">decision</span><span class="td-mono" title="2026-10-08 09:30">2h ago</span></div><div class="td-comment-body">Marked blocked. Do not backfill before the policy is approved.</div></div></article>
+          <article class="td-comment"><span class="td-avatar">LI</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">linus</span><span>human</span><span class="td-mono" title="2026-10-08 08:45">2h ago</span></div><div class="td-comment-body">The adapter is written, but I cannot test a signed URL without the bucket policy.</div></div></article>
+          <article class="td-comment"><span class="td-avatar">SI</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">simons</span><span>human</span><span class="td-mono" title="2026-10-08 09:05">2h ago</span></div><div class="td-comment-body">Infra review is queued for tomorrow. Nothing moves until then.</div></div></article>
+          <article class="td-comment td-comment-decision"><span class="td-avatar">T</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="td-chip">decision</span><span class="td-mono" title="2026-10-08 09:30">2h ago</span></div><div class="td-comment-body">Marked blocked. Do not backfill before the policy is approved.</div></div></article>
+        </div>
+        <div data-slot="agent-session">
+          <div class="td-session" data-agent-session>
+            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="openclaw">openclaw</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform openclaw</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume>Resume</button></div>
+            <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3">Session</span><span class="td-copy" data-agent-session-id>sess_openclaw_01HQ631YCE84K</span></div>
+          </div>
         </div>
         <div data-slot="activity">
-          <div class="td-activity"><span class="font-medium">Ana Ruiz</span><span>created this task</span><span class="td-activity-ts" title="2026-10-06 09:20">2d ago</span></div>
-          <div class="td-activity"><span class="font-medium">Ana Ruiz</span><span class="td-mono">status: todo → in_progress</span><span class="td-activity-ts" title="2026-10-06 10:00">2d ago</span></div>
-          <div class="td-activity"><span class="font-medium">Mira Chen</span><span class="td-mono">status: in_progress → blocked</span><span class="td-activity-ts" title="2026-10-08 09:30">2h ago</span></div>
-          <div class="td-activity"><span class="font-medium">Tom Okafor</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 09:05">2h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">linus</span><span>created this task</span><span class="td-activity-ts" title="2026-10-06 09:20">2d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">linus</span><span class="td-mono">status: todo → in_progress</span><span class="td-activity-ts" title="2026-10-06 10:00">2d ago</span></div>
+          <div class="td-activity"><span class="font-medium">Terry</span><span class="td-mono">status: in_progress → blocked</span><span class="td-activity-ts" title="2026-10-08 09:30">2h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">simons</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 09:05">2h ago</span></div>
         </div>
       </template>
 
@@ -3083,13 +3295,19 @@
           </ul>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar">TO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Tom Okafor</span><span>human</span><span class="td-mono" title="2026-10-08 07:20">4h ago</span></div><div class="td-comment-body">Found two more inline colours in the drawer. They are on the same token now.</div></div></article>
+          <article class="td-comment"><span class="td-avatar">SI</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">simons</span><span>human</span><span class="td-mono" title="2026-10-08 07:20">4h ago</span></div><div class="td-comment-body">Found two more inline colours in the drawer. They are on the same token now.</div></div></article>
+        </div>
+        <div data-slot="agent-session">
+          <div class="td-session" data-agent-session>
+            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="claude">claude</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume>Resume</button></div>
+            <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3">Session</span><span class="td-copy" data-agent-session-id>sess_claude_01HQ7NVVZVFQY</span></div>
+          </div>
         </div>
         <div data-slot="activity">
-          <div class="td-activity"><span class="font-medium">Tom Okafor</span><span>created this task</span><span class="td-activity-ts" title="2026-10-07 13:00">1d ago</span></div>
-          <div class="td-activity"><span class="font-medium">Tom Okafor</span><span class="td-mono">status: backlog → in_progress</span><span class="td-activity-ts" title="2026-10-07 13:10">1d ago</span></div>
-          <div class="td-activity"><span class="font-medium">Tom Okafor</span><span class="td-mono">status: in_progress → in_review</span><span class="td-activity-ts" title="2026-10-08 07:20">4h ago</span></div>
-          <div class="td-activity"><span class="font-medium">Tom Okafor</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 07:20">4h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">simons</span><span>created this task</span><span class="td-activity-ts" title="2026-10-07 13:00">1d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">simons</span><span class="td-mono">status: backlog → in_progress</span><span class="td-activity-ts" title="2026-10-07 13:10">1d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">simons</span><span class="td-mono">status: in_progress → in_review</span><span class="td-activity-ts" title="2026-10-08 07:20">4h ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">simons</span><span>commented</span><span class="td-activity-ts" title="2026-10-08 07:20">4h ago</span></div>
         </div>
       </template>
 
@@ -3121,13 +3339,19 @@
           <div class="td-file"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg><span class="td-file-name">guard-report.txt</span><span class="td-file-size">1 KB</span></div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar">TO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Tom Okafor</span><span>human</span><span class="td-mono" title="2026-10-06 16:30">2d ago</span></div><div class="td-comment-body">Green on the first run. The storage and session checks are in the same script.</div></div></article>
+          <article class="td-comment"><span class="td-avatar">SI</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">simons</span><span>human</span><span class="td-mono" title="2026-10-06 16:30">2d ago</span></div><div class="td-comment-body">Green on the first run. The storage and session checks are in the same script.</div></div></article>
+        </div>
+        <div data-slot="agent-session">
+          <div class="td-session" data-agent-session>
+            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="claude">claude</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume>Resume</button></div>
+            <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3">Session</span><span class="td-copy" data-agent-session-id>sess_claude_01HQ1AD8PQT6D</span></div>
+          </div>
         </div>
         <div data-slot="activity">
-          <div class="td-activity"><span class="font-medium">Tom Okafor</span><span>created this task</span><span class="td-activity-ts" title="2026-10-06 14:00">2d ago</span></div>
-          <div class="td-activity"><span class="font-medium">Tom Okafor</span><span class="td-mono">status: todo → in_progress</span><span class="td-activity-ts" title="2026-10-06 14:10">2d ago</span></div>
-          <div class="td-activity"><span class="font-medium">Tom Okafor</span><span class="td-mono">status: in_progress → done</span><span class="td-activity-ts" title="2026-10-06 16:30">2d ago</span></div>
-          <div class="td-activity"><span class="font-medium">Mira Chen</span><span>added the label ci</span><span class="td-activity-ts" title="2026-10-06 16:40">2d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">simons</span><span>created this task</span><span class="td-activity-ts" title="2026-10-06 14:00">2d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">simons</span><span class="td-mono">status: todo → in_progress</span><span class="td-activity-ts" title="2026-10-06 14:10">2d ago</span></div>
+          <div class="td-activity"><span class="font-medium td-mono">simons</span><span class="td-mono">status: in_progress → done</span><span class="td-activity-ts" title="2026-10-06 16:30">2d ago</span></div>
+          <div class="td-activity"><span class="font-medium">Terry</span><span>added the label ci</span><span class="td-activity-ts" title="2026-10-06 16:40">2d ago</span></div>
         </div>
       </template>
     </div>

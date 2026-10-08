@@ -151,6 +151,8 @@ animated. Drag: the source card drops to `opacity .5`, the target column shows a
 | Toast | info / success / danger, auto-dismiss after 2.5s |
 | Skeleton | 1.4s linear shimmer |
 | Empty state | icon + one primary line + one secondary line + primary action |
+| Error state | danger-soft surface + danger icon + one primary line + one secondary line + `Retry` (`role="alert"`) |
+| States gallery | hidden by default · `data-state` open/closed · `Esc` / scrim / close button dismiss |
 
 ---
 
@@ -239,3 +241,68 @@ Both naming generations are still live in the stylesheet: `src/input.css` expose
 the style-guide short names (`--bg`, `--surface`, `--accent`, `--st-progress`, …)
 **and** the design-spec `--td-*` aliases, all pointing at the single set of
 `--color-td-*` values. One palette, no duplicated literals.
+
+---
+
+## 10. Team & identity model
+
+TaskDashboard is a board for an **AI-agent team**, so the people on it are the team
+that actually runs the work: six agent roles and the human owner. No invented
+personas, and no second identity vocabulary anywhere in the prototype.
+
+| Member | Kind | Platform badge | Role |
+|---|---|---|---|
+| `elon` | agent | `openclaw` | platform work |
+| `jobs` | agent | `claude` | design + prototype work |
+| `linus` | agent | `claude` | accessibility, data, CI |
+| `turing` | agent | `codex` | backend, realtime, caching |
+| `simons` | agent | `claude` | performance, theming |
+| `assistant` | agent | `pi` | API surface |
+| `Terry` | human | — | owner / reporter |
+
+**Every task has a reporter as well as an assignee.** `Terry` files all 18 tasks
+(`data-reporter="Terry"` on every card) and the agents work them, which is what makes
+the `created` → `claimed` → `status:` lifecycle in the activity feed readable. The
+drawer shows Assignee and Reporter as separate properties.
+
+Identity shows up in exactly one shape per surface:
+
+- **Card footer** — human: a monogram avatar. Agent: the platform badge (dashed, per
+  the style guide's "dashed ring + semantic badge") **plus** the role handle in mono,
+  so a card always states both *which platform* and *which role* holds it.
+- **List row** — the role handle in the assignee column.
+- **Drawer** — Assignee (monogram avatar + role + platform badge for agents) and Reporter.
+- **Sidebar presence** — one row per platform, listing the roles on it, with a
+  running/idle dot. Claude carries three roles (jobs, linus, simons), the others one.
+- **Comments and activity** — agents render as mono handles (`jobs`, `elon`, …); the
+  human renders as a plain name (`Terry`). At least one comment is the human owner's
+  and at least one is a `decision`.
+- **Create-task modal** — one option per team member, each carrying
+  `data-assignee-kind`, and `data-agent-platform` for the six agents.
+
+`data-assignee` therefore always holds a handle from this table, never a display name,
+and `data-agent-platform` always holds one of claude / openclaw / codex / pi.
+
+---
+
+## 11. Review round R1
+
+A design review of v1 asked for two gaps to be closed and one content decision to be
+changed. All three are in the build:
+
+1. **Identity model replaced.** The v1 prototype used invented human personas
+   (Ana Ruiz, Dev Patel, Mira Chen, Tom Okafor) as assignees. They are gone — see §10.
+   Cards, avatars, badges, session blocks, comments, activity, the sidebar presence
+   list, the drawer and the create-task modal all speak one identity model now. The 18
+   cards, their statuses and their priorities are unchanged.
+2. **States completed** — B17 error state (`[data-error-state]`, danger-soft surface,
+   wired `Retry`) and B18 states showcase (`[data-states-open]` in the sidebar footer
+   opens `[data-states-panel]`, a gallery of loading / empty column / no results /
+   error / three toast kinds, dismissible with `Esc` or the scrim). Both reuse the
+   existing `data-state` + `hidden` overlay pattern; no new framework.
+3. `[data-empty]` and `[data-skeleton]` still work as before — the new hooks are
+   additional, not replacements.
+
+The states gallery is a **prototype review surface**, not a product screen: it exists so
+every non-default state can be inspected and captured in one frame. `BLOCKS.md` B18
+records it as such.
