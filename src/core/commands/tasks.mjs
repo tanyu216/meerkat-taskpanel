@@ -1,0 +1,376 @@
+/**
+ * Task use-cases: create, update, claim, heartbeat, move, archive, list.
+ *
+ * Every command here is one transaction containing, in order:
+ *   1. the domain checks (so a refusal costs nothing),
+ *   2. the write,
+ *   3. exactly one `task_activities` row describing it.
+ *
+ * `moveStatus` is where the delivery gate bites: `→ in_review` without a report
+ * for the current round raises 422 with the command that fixes it. The result
+ * is the same whether the refusal comes from here or from the trigger.
+ */
+
+import { DomainError } from "../../shared/errors.mjs";
+import { assertClaimable, decideClaim, explainLostClaim } from "../domain/claim.mjs";
+import { assertDeliveryGate, checkDeliveryGate } from "../domain/delivery-gate.mjs";
+import { assertTransition } from "../domain/status.mjs";
+import { isArchivable, normalizeTaskCreate, normalizeTaskUpdate } from "../domain/task.mjs";
+import { transaction } from "../storage/unit-of-work.mjs";
+import { actorOf } from "./context.mjs";
+import { resolveAssignment } from "./dictionary.mjs";
+
+/**
+ * @param {object} ctx
+ * @param {{projectId: string, title: string, actor: object, assignee?: string, assigneeKind?: string, reporter?: string, reporterKind?: string, forceCreate?: boolean, [key: string]: unknown}} input
+ */
+export function createTask(ctx, input) {
+  const actor = actorOf(input.actor);
+  const now = ctx.now();
+
+  return transaction(
+    ctx.db,
+    () => {
+      const project = ctx.repos.projects.get(input.projectId);
+      if (project === null) {
+        throw new DomainError("NOT_FOUND", {
+          message: `no project ${input.projectId}`,
+          details: { field: "projectId", received: input.projectId },
+        });
+      }
+
+      // Reserve the identifier first: if anything later refuses, the whole
+      // transaction (counter included) rolls back, so a serial is never burned.
+      const identifier =
+        input.identifier ?? ctx.repos.projects.allocateIdentifier(input.projectId).identifier;
+
+      // Validate everything a caller supplied *before* touching the dictionary,
+      // so a rejected create cannot leave a stray assignee behind.
+      const candidate = normalizeTaskCreate(input, {
+        now,
+        id: input.id ?? ctx.newId(),
+        identifier,
+        projectId: input.projectId,
+      });
+
+      const dictionaryAudit = [];
+      if (input.assignee !== undefined && input.assignee !== null) {
+        const resolved = resolveAssignment(ctx, {
+          kind: "assignee",
+          name: input.assignee,
+          actorKind: input.assigneeKind ?? "agent",
+          forceCreate: input.forceCreate,
+        });
+        Object.assign(candidate, resolved.patch);
+        dictionaryAudit.push(...resolved.audit);
+      }
+      if (input.reporter !== undefined && input.reporter !== null) {
+        const resolved = resolveAssignment(ctx, {
+          kind: "reporter",
+          name: input.reporter,
+          actorKind: input.reporterKind ?? "human",
+          forceCreate: input.forceCreate,
+        });
+        candidate.reporterId = resolved.patch.reporterId;
+        dictionaryAudit.push(...resolved.audit);
+      }
+
+      const task = ctx.repos.tasks.insert(candidate);
+      ctx.repos.activities.append({
+        taskId: task.id,
+        actorKind: actor.kind,
+        actorId: actor.id,
+        event: "task_created",
+        changes: {
+          identifier: task.identifier,
+          status: task.status,
+          priority: task.priority,
+          ...(dictionaryAudit.length > 0 ? { dictionaries: dictionaryAudit } : {}),
+        },
+        createdAt: now,
+      });
+      return task;
+    },
+    { op: "tasks.create" },
+  );
+}
+
+/**
+ * @param {object} ctx
+ * @param {{id: string, ifVersion?: number, patch?: object, actor: object, assignee?: string, reporter?: string, forceCreate?: boolean}} input
+ */
+export function updateTask(ctx, input) {
+  const actor = actorOf(input.actor);
+  const now = ctx.now();
+  const base = input.patch ?? {};
+  // An assignee change is a patch in its own right, so the payload may be empty
+  // as long as *something* ends up changing (checked once the dictionary has
+  // been consulted).
+  const patch = Object.keys(base).length === 0 ? {} : normalizeTaskUpdate(base, { now });
+
+  return transaction(
+    ctx.db,
+    () => {
+      const current = ctx.repos.tasks.get(input.id);
+      if (current === null) {
+        throw new DomainError("NOT_FOUND", { message: `no task ${input.id}`, details: { taskId: input.id } });
+      }
+
+      const dictionaryAudit = [];
+      if (input.assignee !== undefined) {
+        const resolved = resolveAssignment(ctx, { kind: "assignee", name: input.assignee, forceCreate: input.forceCreate });
+        Object.assign(patch, resolved.patch);
+        dictionaryAudit.push(...resolved.audit);
+      }
+      if (input.reporter !== undefined) {
+        const resolved = resolveAssignment(ctx, { kind: "reporter", name: input.reporter, actorKind: "human", forceCreate: input.forceCreate });
+        patch.reporterId = resolved.patch.reporterId;
+        dictionaryAudit.push(...resolved.audit);
+      }
+
+      if (Object.keys(patch).length === 0) {
+        throw new DomainError("VALIDATION_FAILED", {
+          message: "nothing to update: pass a patch or an assignee/reporter",
+          details: { allowed: ["title", "description", "priority", "kind", "labels", "assignee", "reporter"] },
+        });
+      }
+
+      const task = ctx.repos.tasks.updateCas({
+        id: input.id,
+        ifVersion: input.ifVersion,
+        patch,
+        now,
+      });
+      ctx.repos.activities.append({
+        taskId: task.id,
+        actorKind: actor.kind,
+        actorId: actor.id,
+        event: "task_updated",
+        changes: { fields: Object.keys(patch), ...(dictionaryAudit.length > 0 ? { dictionaries: dictionaryAudit } : {}) },
+        createdAt: now,
+      });
+      return task;
+    },
+    { op: "tasks.update" },
+  );
+}
+
+/**
+ * Claim a task, or reuse the claim this actor already holds.
+ *
+ * @param {object} ctx
+ * @param {{id: string, actor: object, ifVersion?: number}} input
+ * @returns {{task: object, reused: boolean, stole: boolean}}
+ */
+export function claim(ctx, input) {
+  const actor = actorOf(input.actor);
+  const now = ctx.now();
+
+  return transaction(
+    ctx.db,
+    () => {
+      const current = ctx.repos.tasks.get(input.id);
+      if (current === null) {
+        throw new DomainError("NOT_FOUND", { message: `no task ${input.id}`, details: { taskId: input.id } });
+      }
+
+      const verdict = assertClaimable(current, { actor: actor.id, now });
+
+      if (verdict.action === "reuse") {
+        // A second claim by the same actor is not an error and not an event:
+        // returning the existing claim keeps agents from piling up activity rows.
+        return { task: current, reused: true, stole: false };
+      }
+
+      let task;
+      if (verdict.steal === true) {
+        task = ctx.repos.tasks.stealStaleClaim({ id: input.id, ifVersion: input.ifVersion, actor: actor.id, now });
+      } else {
+        const result = ctx.repos.tasks.claimCas({
+          id: input.id,
+          ifVersion: input.ifVersion,
+          actor: actor.id,
+          now,
+        });
+        if (!result.claimed) {
+          throw explainLostClaim({ before: current, after: result.task, actor: actor.id, now, ifVersion: input.ifVersion });
+        }
+        task = result.task;
+      }
+
+      ctx.repos.activities.append({
+        taskId: task.id,
+        actorKind: actor.kind,
+        actorId: actor.id,
+        event: "task_claimed",
+        changes: {
+          from: current.status,
+          to: task.status,
+          ...(verdict.steal === true ? { stoleFrom: current.claimedBy } : {}),
+        },
+        createdAt: now,
+      });
+      return { task, reused: false, stole: verdict.steal === true };
+    },
+    { op: "tasks.claim" },
+  );
+}
+
+/**
+ * Pulse a claim. Never changes status, so it cannot resurrect finished work.
+ * @param {object} ctx
+ * @param {{id: string, actor: object}} input
+ */
+export function heartbeat(ctx, input) {
+  const actor = actorOf(input.actor);
+  const now = ctx.now();
+
+  return transaction(
+    ctx.db,
+    () => {
+      const existing = ctx.repos.tasks.get(input.id);
+      if (existing === null) {
+        throw new DomainError("NOT_FOUND", { message: `no task ${input.id}`, details: { taskId: input.id } });
+      }
+      // Decide first so a corrupt row is reported rather than half-repaired.
+      if (existing.status === "in_progress" && (existing.claimedBy === null || existing.claimedBy === "")) {
+        throw new DomainError("EXECUTION_STATE_CORRUPT", {
+          message: `${existing.identifier} is in_progress but nobody claims it`,
+          details: { taskId: existing.id, status: existing.status },
+        });
+      }
+      const task = ctx.repos.tasks.setHeartbeat({ id: input.id, actor: actor.id, now });
+      ctx.repos.activities.append({
+        taskId: task.id,
+        actorKind: actor.kind,
+        actorId: actor.id,
+        event: "task_heartbeat",
+        changes: { heartbeatAt: task.heartbeatAt },
+        createdAt: now,
+      });
+      return task;
+    },
+    { op: "tasks.heartbeat" },
+  );
+}
+
+/**
+ * Move a task's status. The delivery gate is enforced here *and* by the
+ * database; this pass exists so the refusal carries a repair command.
+ *
+ * @param {object} ctx
+ * @param {{id: string, to: string, actor: object, ifVersion?: number}} input
+ */
+export function moveStatus(ctx, input) {
+  const actor = actorOf(input.actor);
+  const now = ctx.now();
+
+  return transaction(
+    ctx.db,
+    () => {
+      const current = ctx.repos.tasks.get(input.id);
+      if (current === null) {
+        throw new DomainError("NOT_FOUND", { message: `no task ${input.id}`, details: { taskId: input.id } });
+      }
+
+      assertTransition(current.status, input.to);
+
+      if (input.to === "in_review") {
+        assertDeliveryGate({
+          task: current,
+          reports: ctx.repos.reports.listRounds(current.id).map((round) => ({ round })),
+          to: input.to,
+        });
+      }
+
+      const task = ctx.repos.tasks.moveCas({ id: input.id, ifVersion: input.ifVersion, to: input.to, now });
+      ctx.repos.activities.append({
+        taskId: task.id,
+        actorKind: actor.kind,
+        actorId: actor.id,
+        event: "task_moved",
+        changes: { from: current.status, to: task.status, deliveryRound: task.deliveryRound },
+        createdAt: now,
+      });
+      return task;
+    },
+    { op: "tasks.move" },
+  );
+}
+
+/**
+ * Archive a finished task. Status is never touched (I6).
+ * @param {object} ctx
+ * @param {{id: string, actor: object, ifVersion?: number, days?: number}} input
+ */
+export function archive(ctx, input) {
+  const actor = actorOf(input.actor);
+  const now = ctx.now();
+
+  return transaction(
+    ctx.db,
+    () => {
+      const current = ctx.repos.tasks.get(input.id);
+      if (current === null) {
+        throw new DomainError("NOT_FOUND", { message: `no task ${input.id}`, details: { taskId: input.id } });
+      }
+      const { eligible, eligibleAt } = isArchivable(current, {
+        now,
+        ...(input.days === undefined ? {} : { days: input.days }),
+      });
+      if (!eligible) {
+        throw new DomainError("VALIDATION_FAILED", {
+          message: `${current.identifier} can be archived from ${eligibleAt}`,
+          details: { taskId: current.id, eligibleAt, statusChangedAt: current.statusChangedAt },
+          hint: { fix: "wait out the archive window, or archive with an explicit shorter window" },
+        });
+      }
+
+      const task = ctx.repos.tasks.archive({ id: input.id, ifVersion: input.ifVersion, now });
+      ctx.repos.activities.append({
+        taskId: task.id,
+        actorKind: actor.kind,
+        actorId: actor.id,
+        event: "task_archived",
+        changes: { archivedAt: task.archivedAt },
+        createdAt: now,
+      });
+      return task;
+    },
+    { op: "tasks.archive" },
+  );
+}
+
+/**
+ * @param {object} ctx
+ * @param {{projectId?: string, status?: string|string[], assigneeId?: string, includeArchived?: boolean, limit?: number, offset?: number}} [filter]
+ */
+export function listTasks(ctx, filter = {}) {
+  return ctx.repos.tasks.list(filter);
+}
+
+/**
+ * Whether a move would be allowed, without doing it — the question a UI asks
+ * before offering a button.
+ *
+ * @param {object} ctx
+ * @param {{taskId: string, to: string}} input
+ */
+export function canMove(ctx, input) {
+  const task = ctx.repos.tasks.get(input.taskId);
+  if (task === null) {
+    throw new DomainError("NOT_FOUND", { message: `no task ${input.taskId}`, details: { taskId: input.taskId } });
+  }
+  const verdict = checkDeliveryGate({
+    task,
+    reports: ctx.repos.reports.listRounds(task.id).map((round) => ({ round })),
+    to: input.to,
+  });
+  if (!verdict.ok) return verdict;
+  try {
+    assertTransition(task.status, input.to);
+  } catch (err) {
+    return { ok: false, reason: err.code, details: err.details };
+  }
+  return { ok: true };
+}

@@ -24,6 +24,9 @@ step() {
 step "node --test"
 node --test
 
+step "npm run test:coverage (src/core + src/shared >= 80% line/branch/function)"
+npm run test:coverage
+
 step "npm run check"
 npm run check
 
