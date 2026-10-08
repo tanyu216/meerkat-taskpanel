@@ -1,0 +1,217 @@
+/* ============================================================================
+   TaskDashboard — brand token layer v1
+   ----------------------------------------------------------------------------
+   Single source of truth for the brand layer.  Values are fixed by
+   `brief.md` §2–§4; the three light-mode corrections in §6 are applied here and
+   listed with before → after in `BRAND.md` → "WCAG AA verification".
+   BRAND.md quotes these tokens, it does not restate conflicting values.
+
+   Theme contract (daisyUI):
+     light  →  :root
+     dark   →  [data-theme="dark"]
+
+   Every colour appears twice, on purpose:
+     --color-*   daisyUI v5 canonical name  (what daisyUI reads)
+     --p/--b1/…  daisyUI v4 legacy alias    (kept for older consumers)
+   The two sets must always be edited together.
+   ========================================================================= */
+
+/* --------------------------------------------------------------- light ---- */
+
+:root {
+  color-scheme: light;
+
+  /* ---- daisyUI v5 canonical theme colours ------------------------------- */
+  --color-base-100: #ffffff;          /* cards / panels / column containers  */
+  --color-base-200: #f5f6f7;          /* app canvas / sunken surfaces        */
+  --color-base-300: #e6e8eb;          /* partitions / hairline bed           */
+  --color-base-content: #14181b;      /* primary text                        */
+
+  --color-primary: #0f7a73;           /* THE brand line: buttons, selection, links, focus */
+  --color-primary-content: #ffffff;
+  --color-secondary: #3a474e;         /* secondary buttons / neutral emphasis */
+  --color-secondary-content: #ffffff;
+  --color-accent: #a1641a;            /* warm signal — used sparingly         */
+  --color-accent-content: #ffffff;
+  --color-neutral: #1f2a2e;           /* neutral face / dark top bar          */
+  --color-neutral-content: #f5f6f7;
+
+  --color-info: #3b6fd4;
+  --color-info-content: #ffffff;
+  --color-success: #187a4c;
+  --color-success-content: #ffffff;
+  --color-warning: #8a5a00;
+  --color-warning-content: #ffffff;
+  --color-error: #c0392b;
+  --color-error-content: #ffffff;
+
+  /* ---- daisyUI v4 legacy aliases --------------------------------------- */
+  --p: var(--color-primary);
+  --pc: var(--color-primary-content);
+  --s: var(--color-secondary);
+  --sc: var(--color-secondary-content);
+  --a: var(--color-accent);
+  --ac: var(--color-accent-content);
+  --n: var(--color-neutral);
+  --nc: var(--color-neutral-content);
+  --b1: var(--color-base-100);
+  --b2: var(--color-base-200);
+  --b3: var(--color-base-300);
+  --bc: var(--color-base-content);
+  --in: var(--color-info);
+  --inc: var(--color-info-content);
+  --su: var(--color-success);
+  --suc: var(--color-success-content);
+  --wa: var(--color-warning);
+  --wac: var(--color-warning-content);
+  --er: var(--color-error);
+  --erc: var(--color-error-content);
+
+  /* ---- daisyUI structural knobs (4px grid, brief.md §4) ----------------- */
+  --radius-selector: 4px;             /* chips / badges                      */
+  --radius-field: 6px;                /* buttons / inputs / cards            */
+  --radius-box: 8px;                  /* panels / drawers                    */
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;                         /* cards are shadowless by rule        */
+  --noise: 0;
+
+  /* ---- brand extension tokens ------------------------------------------ */
+  --brand-bg: #f5f6f7;                /* app canvas                          */
+  --brand-surface: #ffffff;           /* cards / panels                      */
+  --brand-sunken: #f5f6f7;            /* sidebar / column slots / code bed   */
+  --brand-hover: #f0f2f3;             /* hover face                          */
+  --brand-active: #e6e8eb;            /* selected / pressed                  */
+  --brand-border: #e6e8eb;            /* hairline border                     */
+  --brand-border-strong: #cfd5d9;     /* emphasis border / drop target       */
+  --brand-text: #14181b;              /* primary text                        */
+  --brand-text-2: #4a555e;            /* secondary text — 7.63:1 on white    */
+  --brand-text-3: #7e8a91;            /* auxiliary / placeholder             */
+  --brand-text-4: #b8c0c5;            /* disabled / weakest                  */
+  --brand-focus-ring: rgba(15, 122, 115, 0.35);
+
+  /* ---- status colours — 7 states, one mapping each ---------------------- */
+  --brand-st-backlog: #6c777e;        /* §6 correction of #7e8a91 → 4.59:1   */
+  --brand-st-todo: #5a6b75;
+  --brand-st-progress: #ac640d;       /* §6 correction of #b4690e → 4.58:1   */
+  --brand-st-review: #6e56cf;
+  --brand-st-blocked: #c0392b;
+  --brand-st-done: #187a4c;
+  --brand-st-canceled: #b8c0c5;       /* held at brief value — see BRAND.md  */
+
+  /* ---- priority colours — 5 levels ------------------------------------- */
+  --brand-pri-urgent: #c0392b;
+  --brand-pri-high: #a1641a;
+  --brand-pri-medium: #8a5a00;
+  --brand-pri-low: #4779ad;           /* §6 correction of #4a7fb5 → 4.56:1   */
+  --brand-pri-none: #b8c0c5;          /* held at brief value — see BRAND.md  */
+
+  /* ---- typography ------------------------------------------------------- */
+  --font-sans: "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont,
+    "SF Pro Text", "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas,
+    monospace;
+
+  --text-11: 11px;                    /* corner badges                       */
+  --text-12: 12px;                    /* meta / labels                       */
+  --text-13: 13px;
+  --text-14: 14px;                    /* UI body baseline                    */
+  --text-16: 16px;                    /* titles only, and above              */
+  --text-20: 20px;
+  --text-24: 24px;
+
+  --leading-body: 1.5;
+  --leading-title: 1.35;
+
+  --weight-regular: 400;              /* body                                */
+  --weight-medium: 500;               /* emphasis / labels                   */
+  --weight-semibold: 600;             /* titles                              */
+
+  /* ---- spacing — 4px grid ---------------------------------------------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+
+  /* ---- radius ---------------------------------------------------------- */
+  --radius-full: 999px;               /* avatars / count dots                */
+
+  /* ---- border ---------------------------------------------------------- */
+  --brand-hairline: 0.5px;            /* partition rules only                */
+
+  /* ---- elevation — floats only; cards never cast ---------------------- */
+  --shadow-pop: 0 8px 24px rgba(15, 20, 23, 0.1),
+    0 1px 2px rgba(15, 20, 23, 0.06);
+
+  /* ---- motion ---------------------------------------------------------- */
+  --dur-1: 120ms;                     /* hover / press                       */
+  --dur-2: 180ms;                     /* drawer / dialog                     */
+  --ease-brand: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ---------------------------------------------------------------- dark ---- */
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* ---- daisyUI v5 canonical theme colours ------------------------------- */
+  --color-base-100: #0f1417;
+  --color-base-200: #161b1e;
+  --color-base-300: #1f262a;
+  --color-base-content: #e6edf0;
+
+  --color-primary: #2aa79b;
+  --color-primary-content: #0f1417;
+  --color-secondary: #8b969c;
+  --color-secondary-content: #0f1417;
+  --color-accent: #e8a93a;
+  --color-accent-content: #0f1417;
+  --color-neutral: #2a3236;
+  --color-neutral-content: #e6edf0;
+
+  --color-info: #7ea6f0;
+  --color-info-content: #0f1417;
+  --color-success: #57c98a;
+  --color-success-content: #0f1417;
+  --color-warning: #e0a93a;
+  --color-warning-content: #0f1417;
+  --color-error: #f0796e;
+  --color-error-content: #0f1417;
+
+  /* ---- brand extension tokens ------------------------------------------ */
+  --brand-bg: #0f1417;
+  --brand-surface: #161b1e;
+  --brand-sunken: #0f1417;
+  --brand-hover: #1f262a;
+  --brand-active: #283034;
+  --brand-border: #1f262a;
+  --brand-border-strong: #313b41;
+  --brand-text: #e6edf0;
+  --brand-text-2: #9ba7ae;
+  --brand-text-3: #7c868c;
+  --brand-text-4: #5a646a;
+  --brand-focus-ring: rgba(42, 167, 155, 0.4);
+
+  /* ---- status colours --------------------------------------------------- */
+  --brand-st-backlog: #8b969c;
+  --brand-st-todo: #9ba7ae;
+  --brand-st-progress: #e0a93a;
+  --brand-st-review: #a99bff;
+  --brand-st-blocked: #f0796e;
+  --brand-st-done: #57c98a;
+  --brand-st-canceled: #7c868c;
+
+  /* ---- priority colours ------------------------------------------------- */
+  --brand-pri-urgent: #f0796e;
+  --brand-pri-high: #e0a93a;
+  --brand-pri-medium: #e8a93a;
+  --brand-pri-low: #7ea6f0;
+  --brand-pri-none: #7c868c;
+}
