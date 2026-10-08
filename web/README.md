@@ -5,6 +5,7 @@ The board frontend: **Vue 3 + Vite**, built to `dist/web`.
 Planned stack (decision 2026-10-08):
 
 - **Vue 3 + Vite** (SPA)
+- **Tailwind CSS + daisyUI** — same UI system as the design prototype
 - `vue-router` (board / task / project routes)
 - `pinia` (state)
 - `vue-i18n` — **English is the default**, Chinese is supported
