@@ -4798,6 +4798,12 @@ html[data-theme="dark"] {
     background-color: var(--color-td-hover);
     border-color: var(--color-td-line);
   }
+  .td-prop-labels {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 4px 6px;
+  }
   .td-copy {
     display: inline-flex;
     align-items: center;

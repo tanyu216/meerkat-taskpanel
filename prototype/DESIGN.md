@@ -847,11 +847,13 @@ the hooks they answer to and the roster they read.
 ### 18.5 The create dialog is two columns
 
 Left is the work — Title, then the Description editor. Right is its routing — Priority,
-Assignee, Project, Status, Reporter — in the order the addendum lists them. The tracks are
-equal above 760px (`minmax(0, 1fr)` twice, so a long value or the editor can never push the
-dialog wider than its box) and stack at ≤760px, which is its own media query rather than
-the shell's 759px one, because the dialog has to be single-column *at* 760. Labels are not
-a field: the create form never had one, and the addendum lists them as optional.
+Assignee, Project, Status, Reporter, then the optional Labels, Parent and Depends on. The
+tracks are equal above 760px (`minmax(0, 1fr)` twice, so a long value or the editor can
+never push the dialog wider than its box) and stack at ≤760px, which is its own media query
+rather than the shell's 759px one, because the dialog has to be single-column *at* 760.
+
+*(R3–R4: the right column ended at Reporter, and Labels were not a field. R5 adds them —
+see §22.)*
 
 ### 18.6 Recaptured and checked
 
@@ -900,7 +902,8 @@ to `clamp(220px, 40vh, 360px)`, so a phone-height window still fits the dialog.
 
 ### 19.3 B1/B2 — Parent and Depends on
 
-Two **Optional** fields close B10's right column, after Reporter. They are B22's control
+Two **Optional** fields close B10's right column — after Reporter as built in R4, after
+Labels as of R5. They are B22's control
 reading the working project's cards instead of a people roster: **identifier as value,
 title as the row's trailing text**. Parent is single-select with a clear button; Depends on
 is multi-select, each choice a removable chip, deduped. Both refuse free text — a relation
@@ -1036,3 +1039,77 @@ resolves to the dark and light boards respectively, while `Light` and `Dark` ren
 same under either. Checked and clean across 1512 / 1240 / 980 / 760 / 500 px: no
 page-level horizontal overflow at any width, no console errors, and the 7 columns × 18
 cards / existing `data-*` hooks are untouched.
+
+## 22. Labels — dynamic, no management entry
+
+Authority: `ARCHITECTURE §4.4` (labels). This round adds the label control to the create
+dialog's right column and a display-only label property to the task drawer. Structure and
+hooks: BLOCKS.md **B25**. The prototype is **pure UI** — no label is stored, fetched or
+filtered by it; what this section fixes is the contract the implementation must honour.
+
+### 22.1 One control, the same paradigm as Assignee/Reporter
+
+Labels are **B22's control**, not a new one. The control is `.td-combo` with
+`freeText: true` and the multi/chips half of the relation control (B24): free text over a
+fuzzy-matched list, and every accepted name becomes a removable chip. Matching is the same
+case-insensitive substring, ranked prefix → contains → subsequence; `↑`/`↓` move
+`aria-selected`, `Enter` accepts and never submits the form from this input, `Esc`
+dismisses, `Tab` closes. A label chip is a name, not an identifier, so it is **not**
+`.td-mono` — the one place this control differs from a relation chip.
+
+### 22.2 Dynamic growth — no preset list, no enum
+
+There is **no preset label list and no fixed enumeration**. The roster the picker offers is
+read back off the board's own cards (`data-labels`) at first pass, so "labels" means
+exactly "what the board already carries" — the same derivation-by-reading rule Reporter
+follows (§18.3). A name typed for the first time is offered as a `· new` row while you
+type and is created by the act of being used: **create and assign are the same upsert**, the
+`Assignees`/`Reporters` model exactly.
+
+### 22.3 Normalisation — first spelling wins
+
+Comparison is **case- and whitespace-insensitive**: `bug` / `Bug` / `bug ` are **one**
+label. The entry keeps the spelling it was **first written with**, and that spelling is
+what every surface then shows — the menu row, the chip, the card and the drawer. So typing
+`BUG` at a board that already holds `Bug` resolves to the existing `Bug`; it does not
+create a second label and does not re-case the first.
+
+### 22.4 Auto-cleanup is backend behaviour
+
+Reclaiming a label that has gone unused for a long period is a **server-side** concern, not
+a surface. The prototype **does not implement it and has no UI for it**: nothing in the
+interface deletes, renames, merges or expires a label. That is deliberate — auto-cleanup
+must not be reachable, or visible, from the board.
+
+### 22.5 No management entry — anywhere
+
+There is **no "manage labels" / "label library" / "delete label" / "edit labels" entry, and
+no such button.** The list grows only by being used, so there is nothing to manage and no
+surface that could manage it. This is the same rule §18.3 states for the two rosters, and
+it is what the addendum's part B hard-forbids.
+
+### 22.6 Task detail shows labels, it does not edit them
+
+The drawer's property grid carries a **Labels** row (`[data-detail-labels]`) that lists the
+task's labels as read-only chips, in the spelling the board adopted. It is display only —
+no input, no remove button, no editor — matching §22.5. Adding or changing a task's labels
+happens where the task is created.
+
+### 22.7 Recaptured and checked
+
+Recaptured (the right column gained a field, so every frame showing the dialog did):
+`10-create-task-modal`, `23-create-two-col`, `26-create-narrow-760`. New:
+`39-create-label-dropdown` (the fuzzy menu over the board's labels, with the `· new` row),
+`40-create-label-new-row` (a name the roster does not hold), `41-create-label-new-chip`
+(the accepted name as a chip), `42-create-label-normalised` (`Triaged` · `Bug` after
+`triaged` / `  Bug  ` / `BUG` / `bug` all resolved to two labels), `43-detail-labels` (the
+drawer's display-only row) and `44-create-label-narrow-760`.
+
+**Checked and clean.** `prototype-guard` passes; the purity grep over `*.html` / `*.js` /
+`*.css` returns **0** hits — in particular `localStorage` and `sessionStorage` are absent
+from every prototype file; the control was driven end to end (`ux`, `  NewThing  `, `ux`
+produced exactly two chips, the created card carried `data-labels="ux,NewThing"`, its
+drawer showed the same two, and the form reset to no chips and an empty input); zero
+console errors; no page-level horizontal overflow at 1512 / 1240 / 980 / 760 / 430 px and
+no overflow inside the create dialog at any of them; and 7 columns × 18 cards with every
+pre-existing hook are intact.

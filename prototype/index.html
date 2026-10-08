@@ -2267,6 +2267,15 @@
               <span class="td-mono" data-detail-project-label>TaskPanel</span>
             </button>
 
+            <!-- Labels, display-only: what the task carries, in the spelling
+                 the board adopted. There is no editor and no management entry
+                 here — labels are added by using them in the create dialog. -->
+            <span class="td-prop-label" data-i18n="prop.labels">Labels</span>
+            <div class="td-prop-value td-prop-labels" data-detail-labels>
+              <span class="badge badge-sm td-chip td-chip-label" data-label="a11y">a11y</span>
+              <span class="badge badge-sm td-chip td-chip-label" data-label="board">board</span>
+            </div>
+
             <span class="td-prop-label" data-i18n="prop.id">ID</span>
             <button type="button" class="td-copy" data-detail-id-copy data-copy-value="td_01HQ8ZC4M2K7V9P">
               <span data-detail-id>td_01HQ8ZC4M2K7V9P</span>
@@ -2613,6 +2622,59 @@ npm test
                     <li><button type="button" data-reporter-option data-reporter-value="Terry">Terry</button></li>
                   </ul>
                 </div>
+              </div>
+
+              <!-- Labels — the same free-text + fuzzy-match control as
+                   Assignee/Reporter, used many times at once: each accepted
+                   name becomes a removable chip. There is no preset list and
+                   no editor anywhere; a name typed for the first time is a
+                   new label, and `bug`/`Bug`/`bug ` are one label that keeps
+                   the spelling it was first written with. -->
+              <div class="td-field">
+                <div class="td-field-label-row">
+                  <label class="td-field-label" for="td-create-labels" data-i18n="createTask.field.labels">Labels</label>
+                  <span class="td-optional" data-i18n="createTask.optional">Optional</span>
+                </div>
+                <div class="td-combo" data-create-task-labels>
+                  <div class="td-chips" data-label-chips></div>
+                  <div class="td-combo-field">
+                    <input
+                      class="input input-sm td-input w-full"
+                      type="text"
+                      id="td-create-labels"
+                      name="labels"
+                      autocomplete="off"
+                      spellcheck="false"
+                      data-label-input
+                      role="combobox"
+                      aria-autocomplete="list"
+                      aria-haspopup="listbox"
+                      aria-controls="td-label-menu-create"
+                      data-i18n-title="combo.hint"
+                      title="↑↓ to choose, Enter to add, Esc to dismiss."
+                      data-i18n-placeholder="combo.labelsPlaceholder"
+                      placeholder="Search or type a new label…"
+                    />
+                  </div>
+                  <ul class="menu td-combo-menu" id="td-label-menu-create" role="listbox" data-label-menu hidden>
+                    <li><button type="button" data-label-option data-label-value="a11y">a11y</button></li>
+                    <li><button type="button" data-label-option data-label-value="api">api</button></li>
+                    <li><button type="button" data-label-option data-label-value="backend">backend</button></li>
+                    <li><button type="button" data-label-option data-label-value="board">board</button></li>
+                    <li><button type="button" data-label-option data-label-value="ci">ci</button></li>
+                    <li><button type="button" data-label-option data-label-value="design">design</button></li>
+                    <li><button type="button" data-label-option data-label-value="docs">docs</button></li>
+                    <li><button type="button" data-label-option data-label-value="perf">perf</button></li>
+                    <li><button type="button" data-label-option data-label-value="security">security</button></li>
+                    <li><button type="button" data-label-option data-label-value="ui">ui</button></li>
+                    <li><button type="button" data-label-option data-label-value="ux">ux</button></li>
+                  </ul>
+                  <!-- The seed rows above are the board's own labels, shown as
+                       the no-JS floor; the control redraws them from the live
+                       roster the moment it is focused. They are the inert
+                       resting state, not a source of truth. -->
+                </div>
+                <span class="td-field-hint" data-i18n="createTask.field.labelsHint">Labels grow as they are used. There is nothing to manage.</span>
               </div>
 
               <!-- Parent — at most one existing task in this project, the one

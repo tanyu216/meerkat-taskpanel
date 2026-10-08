@@ -200,7 +200,7 @@ list can never disagree.
 | Root | `aside[data-detail-drawer][data-state="closed\|open\|closing"]` (`role="dialog"`, `aria-modal="true"`) |
 | Scrim | `[data-detail-overlay][data-state]` |
 | Head | `[data-detail-identifier]` · `[data-detail-title]` · `[data-detail-status-chip]` → `[data-detail-status-chip-label]` · `[data-detail-close]` |
-| Properties | `[data-detail-props]` → status `[data-detail-status]` / `[data-detail-status-label]` · priority `[data-detail-priority]` / `[data-detail-priority-label]` · assignee `[data-detail-assignee]` / `[data-detail-assignee-avatar]` / `[data-detail-assignee-label]` (**an input**, see B22) / `[data-detail-assignee-platform]` (platform badge, hidden for the human owner) · **reporter** `[data-detail-reporter]` / `[data-detail-reporter-avatar]` / `[data-detail-reporter-label]` (an editable control — see B22) · project `[data-detail-project]` / `[data-detail-project-label]` · internal id `[data-detail-id]` + `[data-detail-id-copy]` (`data-copy-value`) · `[data-detail-version]` |
+| Properties | `[data-detail-props]` → status `[data-detail-status]` / `[data-detail-status-label]` · priority `[data-detail-priority]` / `[data-detail-priority-label]` · assignee `[data-detail-assignee]` / `[data-detail-assignee-avatar]` / `[data-detail-assignee-label]` (**an input**, see B22) / `[data-detail-assignee-platform]` (platform badge, hidden for the human owner) · **reporter** `[data-detail-reporter]` / `[data-detail-reporter-avatar]` / `[data-detail-reporter-label]` (an editable control — see B22) · project `[data-detail-project]` / `[data-detail-project-label]` · **labels** `[data-detail-labels]` (read-only chips — see B25) · internal id `[data-detail-id]` + `[data-detail-id-copy]` (`data-copy-value`) · `[data-detail-version]` |
 | Body | `[data-detail-description]` (rendered GFM) · `[data-detail-relations]` → `[data-relation-link]` · `[data-detail-agent-session]` → `[data-detail-agent-session-body]` → `[data-agent-session]` · `[data-detail-attachments]` · `[data-detail-comments]` · `[data-comment-form]` → `[data-comment-input]`, `[data-comment-submit]` · `[data-detail-activity]` |
 | Source | `template[data-detail-for="TD-…"]` holds one `[data-slot="description \| relations \| agent-session \| attachments \| comments \| activity"]` per card, wrapped by `[data-detail-templates]` |
 
@@ -212,7 +212,7 @@ list can never disagree.
 | Column | Hook | Fields |
 |---|---|---|
 | Left — the work | `[data-create-left]` | `[data-create-task-title]` (+ hint) · `[data-create-task-description]`, which is `[data-md-source]` inside **B23** |
-| Right — its routing | `[data-create-right]` | `[data-create-task-priority]` · **assignee** (**B22**) · `[data-create-task-project]` · `[data-create-task-status]` · **reporter** (**B22**) · **parent** (**B24**) · **depends-on** (**B24**) |
+| Right — its routing | `[data-create-right]` | `[data-create-task-priority]` · **assignee** (**B22**) · `[data-create-task-project]` · `[data-create-task-status]` · **reporter** (**B22**) · **labels** (**B25**) · **parent** (**B24**) · **depends-on** (**B24**) |
 
 **R4 — the dialog grew and the left column leads.** `.td-modal-box` is
 `min(1120px, 100vw − 32px)` tall to `100vh − 48px` with its own scroller (R3: 880px
@@ -228,11 +228,13 @@ internally, so every field stays reachable on a phone-width window.
 `[data-modal-close]` closes it, and `resetCreateTask()` is the single writer of its opening
 state — it also serves as the reset after a submit, so a second task starts exactly where
 the first one did. R4 taught it two more things to clear: the relation controls' inputs,
-and the depends-on chips, which a native form reset cannot reach.
+and the depends-on chips, which a native form reset cannot reach. R5 taught it the same for
+the label control — `[data-label-input]`, the `[data-label-chips]` chips and the generated
+`[data-label-menu]`.
 
-Labels are not a field: the create form never had one, and the addendum lists them as
-optional. The assignee is no longer a `<select>`; see B22. The two relation controls
-are marked **Optional** and leave the task creatable when empty; see B24.
+The assignee is no longer a `<select>`; see B22. Labels are a field as of R5 — the same
+combo control, many per task — see **B25**. The two relation controls are marked
+**Optional** and leave the task creatable when empty; see B24.
 
 ## B11 · Create-project modal
 
@@ -473,6 +475,37 @@ fan-in are noted in the spec, not enforced here.
 
 ---
 
+## B25 · Label control (R5)
+
+One field in B10's right column, between **Reporter** (B22) and **Parent** (B24), plus a
+read-only row in the **B09** drawer. It is **B22's control used many times at once**: free
+text over a fuzzy-matched list, and the multi/chips half of **B24**. Authority:
+`ARCHITECTURE §4.4`; narrative: DESIGN.md **§22**.
+
+| | |
+|---|---|
+| Root | `[data-create-task-labels]` (`.td-combo`) |
+| Chips | `[data-label-chips]` → one `[data-label-chip]` per label (`data-label-value`), each with a `[data-label-remove]` |
+| Input | `[data-label-input]` — `role="combobox"`, `aria-controls="td-label-menu-create"` |
+| Menu | `[data-label-menu]` → `[data-label-option]` (`data-label-value`) |
+| Drawer | `[data-detail-labels]` — chips from the card's `data-labels`, **no input, no remove** |
+| Roster | read off the board's cards (`data-labels`) at first pass — **no preset list, no enum** |
+| Free text | **on** (`freeText: true`): a name the roster does not hold is offered as a `· new` row and is created by being used |
+| Multi | **on**: every accepted name becomes a removable chip; the menu drops what is already chosen, and choosing it twice is a no-op |
+| Normalisation | case- and whitespace-insensitive (`bug` / `Bug` / `bug ` are one label); the entry keeps the **first spelling**, and that is what every surface shows |
+| Keyboard | `↑`/`↓` move, `Enter` accepts (opens the menu when it is closed, so it can never submit the form from this input), `Esc` dismisses, `Tab` closes — the B22/B24 loop, keyed off these hooks |
+| Markup | the menu ships an 11-row inert seed (the board's own labels) as the no-JS floor, redrawn from the live roster the moment the control is focused |
+
+**No management entry** — the hard constraint, shared with B22. There is **no "manage
+labels" / "label library" / "delete label" / "edit labels"** control anywhere in the
+prototype, and no button that adds, renames, merges or expires a label. Auto-cleanup of
+unused labels is a **backend** concern (DESIGN.md §22.4) and has no UI here.
+
+**UI only.** Nothing is stored, sent or filtered: the chips reach the created card's
+`data-labels` attribute and the drawer, and go no further.
+
+---
+
 ## Assignee model
 
 The board belongs to an AI-agent team, so the assignee pool is the six agent roles
@@ -516,6 +549,7 @@ not declared — it is read off the cards' `data-reporter` at first pass, which 
 | `[data-column-progress]` | the occupancy bar under each column head |
 | `[data-cidr-enabled]` | the allow-list section's on/off state, written by `[data-cidr-switch]` |
 | `data-assignee-value` / `data-reporter-value` | the name a roster option carries, read by `comboAccept()` |
+| `data-label-value` | the name a label option **and** a label chip carry (B25); `[data-label-remove]` drops the chip |
 | `[data-combo-new]` | marks the generated row that offers a name the roster does not hold yet |
 
 ---
@@ -534,7 +568,7 @@ copy:
 | `data-i18n-title` | `title` |
 | `data-i18n-arg` | the `%s` value for any of the four above; it is resolved as a key first, so `column.add` + `status.todo` reads `Add task to To Do` / `在待办中新建任务` |
 
-The catalogue is the in-memory `MESSAGES` object at the top of `app.js` — **198 keys per
+The catalogue is the in-memory `MESSAGES` object at the top of `app.js` — **214 keys per
 language, mirrored 1:1** (verified by set equality, not by eye), never an external file.
 Copy `app.js` composes at runtime (toast sentences, list rows, card aria labels, the token
 mask) is keyed there too.
@@ -597,6 +631,18 @@ separate keys.
 | `combo.taskHint` · `combo.clear` | the relation inputs' `title`, and the parent clear button's label (B24) |
 | `combo.noTasks` | what a relation menu says when the project has no matching task (B24) |
 
+**R5 adds five keys**, all mirrored:
+
+| Keys | Where |
+|---|---|
+| `createTask.field.labels` · `createTask.field.labelsHint` | the Labels field's label and hint (B25) |
+| `combo.labelsPlaceholder` | the label input's placeholder (B25) |
+| `combo.noLabels` | what the label menu says when every label it holds is already chosen (B25) |
+| `prop.labels` | the drawer's Labels property name (B09 / B25) |
+
+The label field reuses `createTask.optional` for its `Optional` chip and `combo.new` for
+the `· new` marker, exactly as B22 and B24 do, so R5 introduces no copy for either.
+
 ---
 
 ## Consistency items ("一致项")
@@ -627,3 +673,10 @@ separate keys.
    `badge` / `avatar` / `tabs` / `progress` / `toggle` / `select` classes, but the
    `data-*` attribute it answers to never moves — which is what let R3 re-shell
    eight components without touching one line of the interaction layer's bindings.
+10. **The label control is the roster control, not a parallel one.** It shares
+   `comboAccept()`/`makeRoster()` with assignee and reporter, so the `· new` row, the
+   upsert-on-use behaviour and the case-insensitive normalisation are the *same code*
+   — its hooks are its own (`data-label-*`, one set, no reuse of the assignee or
+   relation hooks), and its roster is read off the cards rather than declared, so it
+   cannot drift from what the board carries. No block, and no hook, offers to add,
+   rename or delete a label.

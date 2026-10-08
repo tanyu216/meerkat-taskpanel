@@ -1803,6 +1803,15 @@ html[data-theme="dark"] {
     border-color: var(--color-td-line);
   }
 
+  /* the label row shows chips, so it wraps and grows instead of staying on
+     one line like the other property values */
+  .td-prop-labels {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 4px 6px;
+  }
+
   .td-copy {
     display: inline-flex;
     align-items: center;

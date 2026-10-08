@@ -117,6 +117,7 @@
       "prop.assignee": "Assignee",
       "prop.reporter": "Reporter",
       "prop.project": "Project",
+      "prop.labels": "Labels",
       "prop.id": "ID",
       "prop.version": "Version",
       "drawer.description": "Description",
@@ -160,12 +161,17 @@
       "createTask.field.parentHint": "The task this one rolls up to. One parent, at most.",
       "createTask.field.depends": "Depends on",
       "createTask.field.dependsHint": "Tasks that must finish first. Leave blank to create.",
+      "createTask.field.labels": "Labels",
+      "createTask.field.labelsHint": "Labels grow as they are used. There is nothing to manage.",
       "createTask.optional": "Optional",
       /* The two roster controls: free text, fuzzy match, no roster editor. */
       "combo.assigneePlaceholder": "Search or type a new name…",
       "combo.reporterPlaceholder": "Search or type a new name…",
       "combo.empty": "No match — a new name is saved when you use it.",
       "combo.new": "· new",
+      /* The label control: the same free-text mode, many per task. */
+      "combo.labelsPlaceholder": "Search or type a new label…",
+      "combo.noLabels": "No matching label — type a new one.",
       "combo.hint": "Up and down to choose, Enter to accept, Escape to dismiss.",
       /* The two relation controls pick from the project's existing tasks. */
       "combo.parentPlaceholder": "Search project tasks…",
@@ -346,6 +352,7 @@
       "prop.assignee": "负责人",
       "prop.reporter": "创建人",
       "prop.project": "项目",
+      "prop.labels": "标签",
       "prop.id": "内部 ID",
       "prop.version": "版本",
       "drawer.description": "描述",
@@ -389,11 +396,15 @@
       "createTask.field.parentHint": "本任务归属的任务。最多一个父任务。",
       "createTask.field.depends": "前置依赖",
       "createTask.field.dependsHint": "须先完成的任务。留空即可创建。",
+      "createTask.field.labels": "标签",
+      "createTask.field.labelsHint": "标签随使用而生，无需管理。",
       "createTask.optional": "可选",
       "combo.assigneePlaceholder": "搜索或输入新姓名…",
       "combo.reporterPlaceholder": "搜索或输入新姓名…",
       "combo.empty": "无匹配——使用时将保存为新姓名。",
       "combo.new": "· 新",
+      "combo.labelsPlaceholder": "搜索或输入新标签…",
+      "combo.noLabels": "无匹配标签——输入新标签。",
       "combo.hint": "↑↓ 选择，Enter 确认，Esc 关闭。",
       "combo.parentPlaceholder": "搜索项目内任务…",
       "combo.dependsPlaceholder": "添加前置任务…",
@@ -1190,6 +1201,7 @@
       project: attr($card, "project"),
       assignee: attr($card, "assignee"),
       kind: attr($card, "assignee-kind"),
+      labels: attr($card, "labels"),
       version: attr($card, "version"),
     };
 
@@ -1255,6 +1267,22 @@
       .attr("title", reporter);
 
     $drawer.find("[data-detail-project-label]").text(data.project);
+
+    /* Labels are display-only here: the drawer shows what the task carries.
+       The names are taken verbatim from the card, so the spelling the board
+       adopted the label with is the spelling every surface shows. */
+    var $detailLabels = $drawer.find("[data-detail-labels]");
+    $detailLabels.empty();
+    $.each(String(data.labels || "").split(","), function (index, name) {
+      var trimmed = $.trim(name);
+      if (!trimmed) return;
+      $detailLabels.append(
+        $('<span class="badge badge-sm td-chip td-chip-label"></span>')
+          .attr("data-label", trimmed)
+          .text(trimmed)
+      );
+    });
+
     $drawer.find("[data-detail-id]").text(data.internalId);
     $drawer.find("[data-detail-id-copy]").attr("data-copy-value", data.internalId);
     $drawer.find("[data-detail-version]").text(data.version);
@@ -1426,11 +1454,16 @@
     $("[data-create-task-status]").val(status || "backlog");
     $("[data-create-task-priority]").val("none");
     $form.find("[data-assignee-input], [data-reporter-input]").val("");
-    /* the relation pickers hold no state a form reset can reach: the chips are
-       plain elements and the menus are generated, so both are cleared here */
-    $form.find("[data-parent-input], [data-depends-input]").val("");
-    $form.find("[data-depends-chips]").empty();
-    $form.find("[data-parent-menu], [data-depends-menu]").empty();
+    /* the relation and label controls hold no state a form reset can reach:
+       the chips are plain elements and the menus are generated, so both are
+       cleared here */
+    $form
+      .find("[data-parent-input], [data-depends-input], [data-label-input]")
+      .val("");
+    $form.find("[data-depends-chips], [data-label-chips]").empty();
+    $form
+      .find("[data-parent-menu], [data-depends-menu], [data-label-menu]")
+      .empty();
     /* scoped to this dialog: the drawer carries its own pair of menus, and a
        global clear would drop the drawer's keyboard position too */
     $form
@@ -1772,6 +1805,19 @@
 
   var assignees = makeRoster(ASSIGNEE_SEED);
   var reporters = makeRoster([]);
+  /* Labels have no declared roster at all: the roster is read back off the
+     cards, so "labels" means exactly "what the board already carries", and a
+     name used for the first time is added to it by the act of being used. */
+  var labels = makeRoster([]);
+
+  function seedLabels() {
+    $("[data-card]").each(function () {
+      var raw = attr($(this), "labels") || "";
+      $.each(String(raw).split(","), function (index, name) {
+        labels.upsert(name);
+      });
+    });
+  }
 
   /* The relation pickers choose from the working project's cards rather than a
      people roster: the value is the task identifier and the title rides along
@@ -1871,6 +1917,27 @@
       chipAttr: "data-depends-chip",
       removeAttr: "data-depends-remove",
       emptyKey: "combo.noTasks",
+    },
+    /* Labels — the assignee/reporter control used many times at once: free
+       text, fuzzy match, and each accepted name a removable chip. Like them it
+       grows by being used; unlike them it is not one value, so it carries the
+       multi/chips half of the relation control. A label chip is not an
+       identifier, so it is not `.td-mono` — hence `chipMono: false`. */
+    labels: {
+      roster: labels,
+      input: "[data-label-input]",
+      menu: "[data-label-menu]",
+      option: "[data-label-option]",
+      optionAttr: "data-label-option",
+      valueAttr: "data-label-value",
+      kindAttr: "",
+      freeText: true,
+      multi: true,
+      chips: "[data-label-chips]",
+      chipAttr: "data-label-chip",
+      removeAttr: "data-label-remove",
+      chipMono: false,
+      emptyKey: "combo.noLabels",
     },
   };
 
@@ -2015,35 +2082,35 @@
     $rows.eq(next).attr("aria-selected", "true");
   }
 
-  /* Turns an accepted task row into a chip in the multi control. The row's
-     identifier is the value; the title rides along as the chip's tooltip. */
-  function addRelationChip($input, config, $row) {
-    var value = $.trim(String($row.attr(config.valueAttr) || ""));
-    var title = $.trim(String($row.find(".td-combo-title").text() || ""));
+  /* Turns an accepted row into a chip in the multi control. A relation chip
+     states the task's identifier in mono and carries the task's title as its
+     tooltip; a label chip states the label's display name. */
+  function addComboChip($input, config, value, title) {
     var $remove = $("<button type='button' class='td-chip-remove'></button>")
       .attr(config.removeAttr, "")
       .attr("aria-label", text("combo.clear") + " " + value)
       .attr("title", text("combo.clear"))
-      .append(
-        $(
-          '<svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
-            '<path d="M6 6l12 12M18 6 6 18"></path></svg>'
-        )
-      );
+      .append($(ICON_CLOSE));
+    var $text =
+      config.chipMono === false
+        ? $("<span></span>").text(value)
+        : $("<span class='td-mono'></span>").text(value);
     var $chip = $("<span class='badge td-chip'></span>")
       .attr(config.chipAttr, "")
       .attr(config.valueAttr, value)
       .attr("title", title || value)
-      .append($("<span class='td-mono'></span>").text(value))
+      .append($text)
       .append($remove);
 
     $input.closest(".td-combo").find(config.chips).append($chip);
   }
 
   /* Accepting a row is the only mutation. A roster control takes the name into
-     its roster and states it in the input; a relation control has no roster —
-     it states the identifier (single) or drops a chip (multi). Nothing is sent
-     anywhere and nothing is stored. */
+     its roster — an unknown name is created by the act of using it, and a name
+     that differs only in case or spacing resolves to the entry already there,
+     which keeps the spelling it was first written with. A relation control has
+     no roster; it only ever names something that already exists. Either way
+     nothing is sent anywhere and nothing is stored. */
   function comboAccept($input, config, $row) {
     if (!$row || !$row.length) return;
     var value = $.trim(String($row.attr(config.valueAttr) || ""));
@@ -2052,7 +2119,12 @@
     if (config.freeText === false) {
       if (config.multi) {
         if (comboChosenValues($input, config).indexOf(value) === -1) {
-          addRelationChip($input, config, $row);
+          addComboChip(
+            $input,
+            config,
+            value,
+            $.trim(String($row.find(".td-combo-title").text() || ""))
+          );
         }
         /* clear the query and rebuild so the menu offers the rest */
         $input.val("");
@@ -2071,7 +2143,19 @@
       (config.kindAttr && $row.attr(config.kindAttr)) || "human",
       (config.kindAttr && $row.attr("data-agent-platform")) || ""
     );
-    $input.val(entry ? entry.name : value);
+    var name = entry ? entry.name : value;
+
+    if (config.multi) {
+      if (comboChosenValues($input, config).indexOf(name) === -1) {
+        addComboChip($input, config, name, "");
+      }
+      $input.val("");
+      renderCombo($input, config);
+      $input.trigger("change");
+      return;
+    }
+
+    $input.val(name);
     closeCombos();
     $input.trigger("change");
   }
@@ -2123,6 +2207,9 @@
   /* =========================================================== bindings === */
 
   $(function () {
+    /* the label roster is read off the board before anything binds to it */
+    seedLabels();
+
     /* I7 · view toggle ----------------------------------------------------- */
     $("[data-view-toggle]").on("click", "[data-view]", function () {
       setView($(this).attr("data-view"));
@@ -2359,9 +2446,10 @@
           return;
         }
         if (event.key === "Enter") {
-          /* a relation control never submits the form from its input: Enter
-             opens the menu when it is closed, and accepts when it is open */
-          if (config.freeText === false) {
+          /* a relation control, and the label control, never submit the form
+             from their input: Enter opens the menu when it is closed, and
+             accepts when it is open */
+          if (config.freeText === false || config.multi) {
             event.preventDefault();
             if (!open) renderCombo($input, config);
             else comboAccept($input, config, comboSelected($input, config));
@@ -2415,6 +2503,18 @@
         $input.trigger("change");
       }
     );
+
+    /* removing a label chip: the same shape, and the menu — if it is open —
+       puts the label straight back among the offers */
+    $("[data-create-task-form]").on("click", "[data-label-remove]", function () {
+      var $scope = $(this).closest(".td-combo");
+      var $input = $scope.find("[data-label-input]");
+      $(this).closest("[data-label-chip]").remove();
+      if (!$scope.find("[data-label-menu]").prop("hidden")) {
+        renderCombo($input, COMBO.labels);
+      }
+      $input.trigger("change");
+    });
 
     /* ----------------------------------------- I14 · Markdown editor ----- */
 
@@ -2602,6 +2702,14 @@
       var assignee = assignees.upsert(assigneeName) || assignees.get(ME);
       reporters.upsert(reporterName);
 
+      /* Each chip already states the label's display name — the spelling it
+         was first written with — so the card carries it as-is; no label is
+         filtered or re-cased here. */
+      var labelNames = [];
+      $form.find("[data-label-chip]").each(function () {
+        labelNames.push(String($(this).attr("data-label-value") || ""));
+      });
+
       var task = {
         identifier: nextIdentifier(project),
         internalId: newInternalId(),
@@ -2613,7 +2721,7 @@
         platform: assignee.platform,
         reporter: reporterName,
         project: project,
-        labels: [],
+        labels: labelNames,
       };
 
       var $card = buildCard(task);
