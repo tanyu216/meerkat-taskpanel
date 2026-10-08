@@ -3,10 +3,10 @@
 ## Requirements
 
 - **Node >= 22** — the project targets the `node:sqlite` era and uses modern ESM.
-- **No dependencies.** Everything in the scaffold uses Node builtins only
+- **No dependencies.** Everything in the project uses Node builtins only
   (`node:fs`, `node:path`, `node:test`, `node:child_process`, …).
 
-> **Do not run `npm install`.** The M0 scaffold needs no packages, no lockfile and no
+> **Do not run `npm install`.** The project needs no packages, no lockfile and no
 > network access. A `node_modules/` directory is gitignored and is not expected to exist.
 
 ## Layout

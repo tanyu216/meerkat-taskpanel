@@ -6,10 +6,12 @@
 发送心跳（heartbeat）、上报进度（progress）、沿依赖树汇总结果（rollup），人类则在同一个
 看板上观察同一份状态。
 
-> **状态：M0 脚手架 —— 核心尚未实现。**
-> 当前仓库只有工程脚手架：目录骨架、极薄的 CLI 桩、各宿主插件清单、skill 同步脚本，
-> 以及一套冒烟 / 契约测试。尚无领域模型、SQLite 仓储、状态机，也没有看板前端。
-> 各阶段内容见下方路线图。
+> **状态：核心（M1）与 CLI（M2）已落地。**
+> `src/core/` 已包含领域模型、SQLite 存储与迁移、用例与 `openBoard()`；`src/cli/` +
+> `src/server/` 提供了真实的 `taskctl` 命令面，以及 CLI 会在回环地址上自动启动的最小
+> 本地 `taskd` HTTP 服务（`TASKD_NO_AUTOSTART=1` 可禁用）。仍待实现：看板前端（`web/`）、
+> 完整 MCP server（`src/mcp/`）与完整的 HTTP/SSE 看板后端。详见 `CLAUDE.md` /
+> `docs/development.md`，各阶段见下方路线图。
 
 ## 仓库结构
 
@@ -78,9 +80,9 @@ npm run check
 
 | 阶段 | 内容 |
 |---|---|
-| **M0** | 脚手架：目录骨架、CLI 桩、清单、同步 / 校验脚本、测试（*当前仓库状态*） |
-| M1 | `src/core`：领域模型、SQLite 仓储、状态机、不变量 |
-| M2 | `taskctl` 命令面，对齐 `task-interface v1` |
+| **M0** | 脚手架：目录骨架、清单、同步 / 校验脚本、测试（*已落地*） |
+| M1 | `src/core`：领域模型、SQLite 仓储、状态机、不变量（*已落地*） |
+| M2 | `taskctl` 命令面，对齐 `task-interface v1`；最小本地 `taskd`（*已落地*） |
 | M3 | `src/mcp`：stdio MCP server |
 | M6 | `src/server` + `web`：本地 HTTP API、SSE 与 React 看板 |
 
