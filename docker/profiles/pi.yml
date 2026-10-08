@@ -1,0 +1,7 @@
+# Host profile: Pi. See docs/docker.md § Profiles.
+host: pi
+label: Pi
+installer: scripts/install/pi.sh
+target_dir: .agents/skills/task-panel
+skill_entry: SKILL.md
+wrapper: scripts/run.mjs

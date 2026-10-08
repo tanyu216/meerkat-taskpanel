@@ -1,0 +1,7 @@
+# Host profile: Codex. See docs/docker.md § Profiles.
+host: codex
+label: Codex
+installer: scripts/install/codex.sh
+target_dir: .codex/skills/task-panel
+skill_entry: SKILL.md
+wrapper: scripts/run.mjs

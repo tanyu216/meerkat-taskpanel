@@ -1,0 +1,31 @@
+# Deploy smoke test for the `taskd` service.
+#
+# This is the M0 skeleton: `command` runs docker/serve-skeleton.mjs, which only answers
+# GET /health. M6 swaps it for the real server under src/server/ — the healthcheck below
+# is the contract that must keep passing.
+#
+#   docker compose -f docker/docker-compose.yml up -d --build
+#   docker compose -f docker/docker-compose.yml down -v
+#
+# Compose v2.4 compatible: no top-level `version:` key, no newer spec features.
+
+services:
+  taskd:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: task-panel:local
+    environment:
+      TASKD_HOST: 0.0.0.0
+      TASKD_PORT: "9527"
+    ports:
+      - "9527:9527"
+    volumes:
+      - ../.data:/app/.data
+    command: ["node","docker/serve-skeleton.mjs"]
+    healthcheck:
+      test: ["CMD","node","-e","fetch('http://127.0.0.1:9527/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s

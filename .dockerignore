@@ -1,0 +1,28 @@
+# Trim the build context. The image only needs the Node sources, the skill, the
+# installers and the docker/ scripts themselves.
+
+# VCS
+.git
+
+# dependencies (the project has none, but never ship a stray tree)
+node_modules
+
+# build output
+dist
+*.tgz
+
+# runtime state — bind-mounted at run time via docker-compose.yml, never baked in
+.data
+
+# test / coverage output
+coverage
+
+# not needed inside the image
+prototype
+design
+
+# macOS
+.DS_Store
+
+# logs
+*.log

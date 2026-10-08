@@ -1,0 +1,7 @@
+# Host profile: OpenClaw. See docs/docker.md § Profiles.
+host: openclaw
+label: OpenClaw
+installer: scripts/install/openclaw.sh
+target_dir: .openclaw/skills/task-panel
+skill_entry: SKILL.md
+wrapper: scripts/run.mjs

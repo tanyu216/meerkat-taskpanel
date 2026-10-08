@@ -1,0 +1,7 @@
+# Host profile: Claude Code. See docs/docker.md § Profiles.
+host: claude
+label: Claude Code
+installer: scripts/install/claude.sh
+target_dir: .claude/skills/task-panel
+skill_entry: SKILL.md
+wrapper: scripts/run.mjs
