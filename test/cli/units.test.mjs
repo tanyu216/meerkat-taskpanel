@@ -107,13 +107,16 @@ describe("cli/index — the program, with injected streams", () => {
 });
 
 describe("cli/commands — the registry", () => {
-  it("names the card's groups, and no dictionary management command", () => {
+  it("names the card's groups, and no dictionary/label management command", () => {
     assert.deepEqual(
       groups.map((group) => group.name),
-      ["project", "context", "issue", "comment", "relation", "session", "assignees", "reporters", "report", "export", "token"],
+      ["project", "context", "issue", "comment", "relation", "session", "assignees", "reporters", "labels", "report", "export", "token"],
     );
     for (const { group, command } of allCommands()) {
-      assert.equal(/^(add|rm|remove|rename)$/.test(command.name) && /assignees|reporters/.test(group.name), false);
+      assert.equal(
+        /^(add|rm|remove|rename|create|delete|set)$/.test(command.name) && /assignees|reporters|labels/.test(group.name),
+        false,
+      );
     }
   });
 

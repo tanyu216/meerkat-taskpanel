@@ -5,39 +5,32 @@
  * this module exports no add/remove/rename. A task write resolves the free-text
  * name it was given against what already exists:
  *
- *   1. normalise  (`normalizeName`: NFKC, case-fold, collapse whitespace, trim)
+ *   1. normalise  (`normalizeName` = the shared `norm`: NFKC, case-fold,
+ *                   remove ALL whitespace)
  *   2. exact hit  → reuse (even with `forceCreate` — forcing only bypasses fuzzy)
  *   3. fuzzy hit  → exactly one candidate ⇒ reuse; several ⇒ refuse and list them
  *                   (never guess); none ⇒ create
  *   4. `forceCreate` skips 3 and creates
  *
+ * `normalizeName` is a re-export of `src/shared/norm.mjs#norm`, the single source
+ * of truth for labels / assignees / reporters alike. The name is kept because the
+ * `assignees`/`reporters` column is `normalized_name` — that column **is** `norm`.
+ *
  * Pure: no `node:` specifiers.
  */
 
 import { DomainError } from "../../shared/errors.mjs";
+import { norm } from "../../shared/norm.mjs";
 import { DICT_KINDS, DICTIONARY_KINDS } from "./enums.mjs";
 
-/** Fuzzy matching is prefix/substring on the normalised name. */
-export function normalizeName(raw) {
-  if (typeof raw !== "string") {
-    throw new DomainError("DICTIONARY_INVALID", {
-      message: "a dictionary name must be a string",
-      details: { field: "name", received: typeof raw },
-    });
-  }
-  const normalized = raw
-    .normalize("NFKC")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-  if (normalized === "") {
-    throw new DomainError("DICTIONARY_INVALID", {
-      message: "a dictionary name must not be empty",
-      details: { field: "name", received: raw },
-    });
-  }
-  return normalized;
-}
+/**
+ * Fuzzy matching is prefix/substring on the normalised name.
+ *
+ * Ruling F7 (2026-10-09) changed this from "collapse whitespace" to "remove ALL
+ * whitespace": `"B u g"` and `bug` are now the same key, and so are
+ * `code review` and `codereview`. `src/shared/norm.mjs` holds the definition.
+ */
+export const normalizeName = norm;
 
 /** @param {unknown} value */
 export function isDictionaryKind(value) {
@@ -117,6 +110,9 @@ const CAMEL = {
   id: "id",
   kind: "kind",
   display_name: "displayName",
+  // `normalized_name` is the historical column name for `norm` (F4-A): the value
+  // it holds is exactly `src/shared/norm.mjs#norm`, so a label and an assignee
+  // with the same spelling share one identity rule.
   normalized_name: "normalizedName",
   platform: "platform",
   first_seen_at: "firstSeenAt",

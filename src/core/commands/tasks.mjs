@@ -16,9 +16,11 @@ import { assertClaimable, decideClaim, explainLostClaim } from "../domain/claim.
 import { assertDeliveryGate, assertWaiverRequest, checkDeliveryGate } from "../domain/delivery-gate.mjs";
 import { assertTransition } from "../domain/status.mjs";
 import { isArchivable, normalizeTaskCreate, normalizeTaskUpdate } from "../domain/task.mjs";
+import { normalizeLabelName } from "../domain/labels.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { actorOf } from "./context.mjs";
 import { resolveAssignment } from "./dictionary.mjs";
+import { resolveLabels } from "./labels.mjs";
 
 /**
  * @param {object} ctx
@@ -75,6 +77,21 @@ export function createTask(ctx, input) {
         dictionaryAudit.push(...resolved.audit);
       }
 
+      // Labels grow the registry in the same transaction (§4.4): resolve them to
+      // the registry's display names before the row is written, and count the
+      // uses. A brand-new task references every label it names (F5-B).
+      let labelAudit = [];
+      if (candidate.labels.length > 0) {
+        const resolved = resolveLabels(ctx, {
+          projectId: candidate.projectId,
+          names: candidate.labels,
+          previousLabels: [],
+          now,
+        });
+        candidate.labels = resolved.stored;
+        labelAudit = resolved.audit;
+      }
+
       const task = ctx.repos.tasks.insert(candidate);
       ctx.repos.activities.append({
         taskId: task.id,
@@ -86,6 +103,7 @@ export function createTask(ctx, input) {
           status: task.status,
           priority: task.priority,
           ...(dictionaryAudit.length > 0 ? { dictionaries: dictionaryAudit } : {}),
+          ...(labelAudit.length > 0 ? { labels: labelAudit } : {}),
         },
         createdAt: now,
       });
@@ -128,6 +146,21 @@ export function updateTask(ctx, input) {
         dictionaryAudit.push(...resolved.audit);
       }
 
+      // A label patch is registered and its use-count delta applied here, against
+      // what the task currently names — so `["Bug"] → ["bug", "ui"]` adds one use
+      // and re-submitting the same labels changes no count (F5-B).
+      let labelAudit = [];
+      if (patch.labels !== undefined) {
+        const resolved = resolveLabels(ctx, {
+          projectId: current.projectId,
+          names: patch.labels,
+          previousLabels: current.labels,
+          now,
+        });
+        patch.labels = resolved.stored;
+        labelAudit = resolved.audit;
+      }
+
       if (Object.keys(patch).length === 0) {
         throw new DomainError("VALIDATION_FAILED", {
           message: "nothing to update: pass a patch or an assignee/reporter",
@@ -146,7 +179,11 @@ export function updateTask(ctx, input) {
         actorKind: actor.kind,
         actorId: actor.id,
         event: "task_updated",
-        changes: { fields: Object.keys(patch), ...(dictionaryAudit.length > 0 ? { dictionaries: dictionaryAudit } : {}) },
+        changes: {
+          fields: Object.keys(patch),
+          ...(dictionaryAudit.length > 0 ? { dictionaries: dictionaryAudit } : {}),
+          ...(labelAudit.length > 0 ? { labels: labelAudit } : {}),
+        },
         createdAt: now,
       });
       return task;
@@ -361,12 +398,25 @@ export function archive(ctx, input) {
       }
 
       const task = ctx.repos.tasks.archive({ id: input.id, ifVersion: input.ifVersion, now });
+
+      // An archived task no longer holds a *live* reference (F5-B), so each label
+      // it carried loses one use. That is what eventually lets an otherwise
+      // untouched label reach the GC's `use_count = 0` precondition.
+      let released = 0;
+      for (const name of current.labels) {
+        const label = ctx.repos.labels.getByNorm(current.projectId, normalizeLabelName(name));
+        if (label !== null) {
+          ctx.repos.labels.removeUse(label.id);
+          released += 1;
+        }
+      }
+
       ctx.repos.activities.append({
         taskId: task.id,
         actorKind: actor.kind,
         actorId: actor.id,
         event: "task_archived",
-        changes: { archivedAt: task.archivedAt },
+        changes: { archivedAt: task.archivedAt, ...(released > 0 ? { labelsReleased: released } : {}) },
         createdAt: now,
       });
       return task;

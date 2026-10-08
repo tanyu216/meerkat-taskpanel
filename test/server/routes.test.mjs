@@ -321,6 +321,25 @@ describe("server/routes — comments, relations, sessions, dictionary, export", 
     assert.equal((await call("DELETE", "/api/v1/assignees/x")).status, 404);
   });
 
+  it("reads the label registry, and offers no way to write it", async () => {
+    const labels = dataOf(await call("GET", "/api/v1/labels"));
+    assert.equal(labels.labels.length, 1, "the one label a task named");
+    assert.equal(labels.labels[0].display_name, "m2");
+    assert.equal(labels.labels[0].norm, "m2");
+    assert.equal(labels.labels[0].use_count, 1);
+    assert.match(labels.labels[0].color, /^#[0-9a-f]{6}$/i);
+    assert.equal(labels.labels[0].archived_at, null);
+
+    assert.deepEqual(dataOf(await call("GET", "/api/v1/labels?q=nope")).labels, []);
+    assert.equal(dataOf(await call("GET", "/api/v1/labels?q=M2")).labels.length, 1, "case-insensitive");
+    assert.equal(dataOf(await call("GET", "/api/v1/labels?project_id=demo&limit=1")).labels.length, 1);
+    assert.equal(dataOf(await call("GET", "/api/v1/labels?project_id=other")).labels.length, 0);
+    assert.equal(dataOf(await call("GET", "/api/v1/labels?include_archived=1")).labels.length, 1);
+    // Labels have no management surface, so there is nowhere to write one.
+    assert.equal((await call("POST", "/api/v1/labels", { name: "x" })).status, 404);
+    assert.equal((await call("DELETE", "/api/v1/labels/x")).status, 404);
+  });
+
   it("returns markdown from /export rather than writing files", async () => {
     const exported = dataOf(await call("POST", "/api/v1/export", { project_id: "demo" }));
     assert.equal(exported.cards.length, 3);

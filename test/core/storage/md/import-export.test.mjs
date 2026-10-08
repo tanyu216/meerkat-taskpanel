@@ -81,6 +81,46 @@ describe("md/import — statistics and behaviour", () => {
     }
   });
 
+  it("registers a card's labels, counting one use per card and keeping first-seen spelling", async () => {
+    const board = await boardWithCards({
+      "PROJ-0001.md": cardText({ labels: "[Bug, core]" }),
+      "PROJ-0002.md": cardText({ id: "PROJ-0002", labels: "[bug]" }),
+    });
+    try {
+      const stats = importMd({ db: board.db, repos: board.repos, dir: board.dir, now: TS });
+      assert.equal(stats.labels, 3, "one registration per label name across the cards");
+
+      const bug = board.repos.labels.getByNorm("proj", "bug");
+      assert.equal(bug.displayName, "Bug", "the first card's spelling wins");
+      assert.equal(bug.useCount, 2, "both cards name it");
+      assert.equal(countRows(board.db, "labels"), 2, "Bug and core, not three");
+      assert.ok(bug.color.length > 0);
+
+      // The imported task stores the registry's display names, so an export is
+      // byte-stable against the original card.
+      assert.deepEqual(board.repos.tasks.getByIdentifier("proj", "PROJ-0001").labels, ["Bug", "core"]);
+      assert.deepEqual(board.repos.tasks.getByIdentifier("proj", "PROJ-0002").labels, ["Bug"]);
+    } finally {
+      board.close();
+    }
+  });
+
+  it("moves the use count when a re-import drops a label", async () => {
+    const board = await boardWithCards({ "PROJ-0001.md": cardText({ labels: "[Bug, ui]" }) });
+    try {
+      importMd({ db: board.db, repos: board.repos, dir: board.dir, now: TS });
+      assert.equal(board.repos.labels.getByNorm("proj", "ui").useCount, 1);
+
+      writeFileSync(join(board.dir, "PROJ-0001.md"), cardText({ labels: "[Bug]" }), "utf8");
+      importMd({ db: board.db, repos: board.repos, dir: board.dir, now: TS, resume: true });
+
+      assert.equal(board.repos.labels.getByNorm("proj", "ui").useCount, 0, "the dropped label is released");
+      assert.equal(board.repos.labels.getByNorm("proj", "bug").useCount, 1, "the kept one is not double-counted");
+    } finally {
+      board.close();
+    }
+  });
+
   it("warns — but does not quietly bless — an in_review card with no report", async () => {
     const board = await boardWithCards({
       "PROJ-0001.md": cardText({ status: "in_review" }, { Report: "" }),

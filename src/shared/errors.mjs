@@ -75,6 +75,11 @@ export const ERROR_CODES = Object.freeze({
   DICTIONARY_INVALID: spec(422, "Dictionary name must not be empty."),
   DICTIONARY_CONFLICT: spec(409, "Dictionary entry already exists."),
 
+  // ---- Labels (ARCHITECTURE §4.4) -------------------------------------------
+  // Labels have no management surface, so the only conflict a caller can reach
+  // is the registry's own `UNIQUE(project_id, norm)`.
+  LABEL_CONFLICT: spec(409, "Label already exists in this project."),
+
   // ---- Persistence / migrations ---------------------------------------------
   MIGRATION_CHECKSUM_MISMATCH: spec(500, "A migration file changed after it was applied; migrations are append-only."),
   SCHEMA_MISMATCH: spec(500, "Database schema is not at the expected migration version."),
@@ -129,6 +134,7 @@ export const SQL_CONSTRAINT_CODES = Object.freeze([
   "ID_CONFLICT",
   "SESSION_DUPLICATE",
   "DICTIONARY_CONFLICT",
+  "LABEL_CONFLICT",
   "VALIDATION_FAILED",
   "NOT_FOUND",
 ]);

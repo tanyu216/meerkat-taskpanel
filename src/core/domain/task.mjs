@@ -9,7 +9,7 @@
  * Pure: no `node:` specifiers, no clock — callers pass `now`.
  */
 
-import { ARCHIVE_AFTER_DAYS, HEARTBEAT_FRESH_MS, IDENTIFIER_PATTERN } from "../../shared/constants.mjs";
+import { ARCHIVE_AFTER_DAYS, HEARTBEAT_FRESH_MS, IDENTIFIER_PATTERN, LABEL_MAX_LEN } from "../../shared/constants.mjs";
 import { DomainError } from "../../shared/errors.mjs";
 import { identifierPrefix } from "../../shared/ids.mjs";
 import { ACTOR_KINDS, DICT_KINDS, STATUSES, TASK_KINDS } from "./enums.mjs";
@@ -183,9 +183,9 @@ export function normalizeLabels(value) {
   for (const label of parsed) {
     const text = String(label).trim();
     if (text === "") continue;
-    if (text.length > 64) {
+    if (text.length > LABEL_MAX_LEN) {
       throw new DomainError("VALIDATION_FAILED", {
-        message: "labels must be 64 characters or fewer",
+        message: `labels must be ${LABEL_MAX_LEN} characters or fewer`,
         details: { field: "labels", received: text },
       });
     }

@@ -82,7 +82,7 @@ describe("contract/sql-parity — migration files", () => {
         `revision trigger must not exist for ${excluded}`,
       );
     }
-    assert.equal(REVISION_TABLES.length, 10);
+    assert.equal(REVISION_TABLES.length, 11);
   });
 });
 

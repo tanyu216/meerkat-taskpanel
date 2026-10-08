@@ -103,6 +103,8 @@ export const ACTIVITY_EVENTS = Object.freeze([
   "relation_added",
   "relation_removed",
   "dictionary_upsert",
+  // The label GC's own audit row (§4.4: soft-delete + `task_activities`).
+  "label_gc",
   "session_registered",
   "session_closed",
   "progress",

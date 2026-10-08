@@ -97,6 +97,49 @@ export const HEARTBEAT_FRESH_MS = 600_000;
 export const ARCHIVE_AFTER_DAYS = 7;
 
 // ---------------------------------------------------------------------------
+// Labels (ARCHITECTURE §4.1 / §4.4, rulings F1/F2/F5)
+// ---------------------------------------------------------------------------
+
+/**
+ * The label colour palette (F2-A): fixed, project-scoped, no user choice.
+ *
+ * A new label takes the first colour **not currently used by a non-archived
+ * label in the same project**; once the palette is exhausted the least-used
+ * colour wins (ties broken by palette order). A colour, once assigned, is never
+ * recomputed — a label that is archived and later revives keeps the colour it
+ * had.
+ *
+ * These are placeholders pending brand alignment (`design/` is out of scope for
+ * this card); the palette lives here so the algorithm and the tones are one edit
+ * apart.
+ */
+export const LABEL_PALETTE = Object.freeze([
+  "#e5484d", // red
+  "#f76b15", // orange
+  "#f5a623", // amber
+  "#eab308", // yellow
+  "#46a758", // green
+  "#12a594", // teal
+  "#0091ff", // blue
+  "#3e63dd", // indigo
+  "#8e4ec6", // purple
+  "#e93d82", // pink
+  "#8b8d98", // slate
+  "#ad7f58", // brown
+]);
+
+/** Default TTL: an unused label is collectable after this many days (30). */
+export const LABEL_TTL_DAYS_DEFAULT = 30;
+/** Env override for the TTL, in days. */
+export const LABEL_TTL_DAYS_ENV = "TASKD_LABEL_TTL_DAYS";
+/** Set to `off` to stop `taskd` from running the label GC at all. */
+export const LABEL_GC_ENV = "TASKD_LABEL_GC";
+/** `taskd`'s label-GC period (F1-C): once at startup, then every 24h. */
+export const LABEL_GC_INTERVAL_MS = 24 * 60 * 60 * 1000;
+/** Maximum length of a label (display) name. */
+export const LABEL_MAX_LEN = 64;
+
+// ---------------------------------------------------------------------------
 // Relations (ARCHITECTURE §4.2)
 // ---------------------------------------------------------------------------
 

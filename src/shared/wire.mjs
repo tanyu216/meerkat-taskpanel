@@ -189,6 +189,22 @@ export function dictionaryEntryToWire(entry) {
   };
 }
 
+/** @param {object} label a core Label DTO */
+export function labelToWire(label) {
+  if (label === null || label === undefined) return null;
+  return {
+    id: label.id,
+    project_id: label.projectId,
+    norm: label.norm,
+    display_name: label.displayName,
+    color: label.color,
+    use_count: label.useCount,
+    first_seen_at: label.firstSeenAt,
+    last_seen_at: label.lastSeenAt,
+    archived_at: label.archivedAt ?? null,
+  };
+}
+
 /** @param {object} report a core Report DTO */
 export function reportToWire(report) {
   if (report === null || report === undefined) return null;

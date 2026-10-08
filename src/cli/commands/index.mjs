@@ -18,6 +18,7 @@ import { COMMANDS as contextCommands } from "./context.mjs";
 import { COMMANDS as dictCommands, REPORTER_COMMANDS } from "./dict.mjs";
 import { COMMANDS as exportCommands } from "./export.mjs";
 import { COMMANDS as issueCommands } from "./issue.mjs";
+import { COMMANDS as labelCommands } from "./labels.mjs";
 import { COMMANDS as projectCommands } from "./project.mjs";
 import { COMMANDS as relationCommands } from "./relation.mjs";
 import { COMMANDS as reportCommands } from "./report.mjs";
@@ -33,6 +34,7 @@ export const groups = Object.freeze([
   { name: "session", summary: "Agent sessions per task.", commands: sessionCommands },
   { name: "assignees", summary: "Read-only dictionary of assignees.", commands: dictCommands },
   { name: "reporters", summary: "Read-only dictionary of reporters.", commands: REPORTER_COMMANDS },
+  { name: "labels", summary: "Read-only registry of labels.", commands: labelCommands },
   { name: "report", summary: "Write reports; generate templates.", commands: reportCommands },
   {
     name: "export",

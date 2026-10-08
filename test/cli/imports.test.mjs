@@ -50,6 +50,7 @@ const PLANNED_CLI = [
   "commands/relation.mjs",
   "commands/session.mjs",
   "commands/dict.mjs",
+  "commands/labels.mjs",
   "commands/export.mjs",
   "commands/token.mjs",
 ];
@@ -65,6 +66,7 @@ const PLANNED_SERVER = [
   "routes/relations.mjs",
   "routes/sessions.mjs",
   "routes/dictionary.mjs",
+  "routes/labels.mjs",
   "routes/export.mjs",
   "routes/token.mjs",
 ];

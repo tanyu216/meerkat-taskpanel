@@ -16,5 +16,6 @@ export * from "./relation.mjs";
 export * from "./report.mjs";
 export * from "./delivery-gate.mjs";
 export * from "./dictionary.mjs";
+export * from "./labels.mjs";
 export * from "./claim.mjs";
 export * from "./invariants.mjs";

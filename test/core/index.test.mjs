@@ -30,6 +30,7 @@ const PLANNED = [
   "domain/report.mjs",
   "domain/delivery-gate.mjs",
   "domain/dictionary.mjs",
+  "domain/labels.mjs",
   "domain/claim.mjs",
   "domain/invariants.mjs",
   "domain/index.mjs",
@@ -45,6 +46,7 @@ const PLANNED = [
   "storage/repositories/comments.mjs",
   "storage/repositories/reports.mjs",
   "storage/repositories/dictionary.mjs",
+  "storage/repositories/labels.mjs",
   "storage/repositories/agent-sessions.mjs",
   "storage/repositories/attachments.mjs",
   "storage/repositories/activities.mjs",
@@ -64,6 +66,7 @@ const PLANNED = [
   "commands/comments.mjs",
   "commands/relations.mjs",
   "commands/dictionary.mjs",
+  "commands/labels.mjs",
   "commands/agent-sessions.mjs",
   "commands/index.mjs",
 ];

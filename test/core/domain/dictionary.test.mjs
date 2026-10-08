@@ -29,11 +29,14 @@ const entry = (id, displayName, kind = "agent") => ({
 const EXISTING = [entry("as1", "Linus"), entry("as2", "Linus Torvalds"), entry("as3", "Ada"), entry("rp1", "Terry", "human")];
 
 describe("domain/dictionary — name normalisation", () => {
-  it("folds NFKC, case and whitespace", () => {
-    assert.equal(normalizeName("  Linus   Torvalds "), "linus torvalds");
+  it("folds NFKC, case and whitespace (F7: whitespace is removed, not collapsed)", () => {
+    assert.equal(normalizeName("  Linus   Torvalds "), "linustorvalds");
     assert.equal(normalizeName("ＴＥＲＲＹ"), "terry", "full-width folds to ASCII");
     assert.equal(normalizeName("LiNuS"), "linus");
-    assert.equal(normalizeName("a\t\nb"), "a b");
+    assert.equal(normalizeName("a\t\nb"), "ab");
+    // The ruling that changed A/R semantics: `B u g` is now the SAME key as `bug`.
+    assert.equal(normalizeName("B u g"), "bug");
+    assert.equal(normalizeName("code review"), "codereview", "word-internal spaces go too");
   });
 
   it("refuses a name that cannot identify anybody", () => {
@@ -84,7 +87,7 @@ describe("domain/dictionary — resolution", () => {
       const verdict = resolveDictionaryEntry(EXISTING, raw, { kind: "agent" });
       assert.equal(verdict.action, "reuse", raw);
       assert.equal(verdict.entry.id, "as2");
-      assert.equal(verdict.normalizedName, "linus torvalds", `${raw} must resolve to the stored key`);
+      assert.equal(verdict.normalizedName, "linustorvalds", `${raw} must resolve to the stored key`);
       assert.equal(verdict.displayName, "Linus Torvalds");
     }
   });
@@ -108,7 +111,7 @@ describe("domain/dictionary — resolution", () => {
     assert.equal(verdict.action, "create");
     assert.equal(verdict.entry, undefined);
     assert.equal(verdict.displayName, "Grace Hopper");
-    assert.equal(verdict.normalizedName, "grace hopper");
+    assert.equal(verdict.normalizedName, "gracehopper");
     assert.equal(resolveDictionaryEntry([], "Anyone", { kind: "human" }).action, "create");
   });
 

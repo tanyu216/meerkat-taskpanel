@@ -9,6 +9,7 @@
 import * as agentSessions from "./agent-sessions.mjs";
 import * as comments from "./comments.mjs";
 import * as dictionary from "./dictionary.mjs";
+import * as labels from "./labels.mjs";
 import * as projects from "./projects.mjs";
 import * as relations from "./relations.mjs";
 import * as reports from "./reports.mjs";
@@ -64,6 +65,10 @@ export function createCommands(ctx) {
     listAssignees: (input) => dictionary.listAssignees(ctx, input),
     listReporters: (input) => dictionary.listReporters(ctx, input),
 
+    // labels (read-only by design; the GC is internal housekeeping) ----------
+    listLabels: (input) => labels.listLabels(ctx, input),
+    collectUnusedLabels: (input) => labels.collectUnusedLabels(ctx, input),
+
     // agent sessions ---------------------------------------------------------
     registerSession: (input) => agentSessions.registerSession(ctx, input),
     closeSession: (input) => agentSessions.closeSession(ctx, input),
@@ -81,4 +86,18 @@ export const FORBIDDEN_DICTIONARY_COMMANDS = Object.freeze([
   "removeReporter",
   "renameReporter",
   "createReporter",
+]);
+
+/**
+ * Names the label surface deliberately does not expose (§4.4: no management
+ * entry). Labels grow from use; there is no add/remove/rename anywhere.
+ */
+export const FORBIDDEN_LABEL_COMMANDS = Object.freeze([
+  "addLabel",
+  "removeLabel",
+  "renameLabel",
+  "createLabel",
+  "deleteLabel",
+  "archiveLabel",
+  "setLabelColor",
 ]);

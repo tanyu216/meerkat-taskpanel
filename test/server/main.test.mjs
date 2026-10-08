@@ -14,10 +14,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
+import {
+  boardUrl,
+  createTaskd,
+  labelGcIntervalMs,
+  labelGcTtlDays,
+  startLabelGc,
+} from "../../src/server/index.mjs";
 import { createShutdown, main, portFromEnv } from "../../src/server/main.mjs";
-import { boardUrl } from "../../src/server/index.mjs";
 import { readRuntimePointer } from "../../src/core/index.mjs";
-import { DEFAULT_PORT } from "../../src/shared/constants.mjs";
+import {
+  DEFAULT_PORT,
+  LABEL_GC_INTERVAL_MS,
+  LABEL_TTL_DAYS_DEFAULT,
+} from "../../src/shared/constants.mjs";
 
 const tempDirs = [];
 after(() => {
@@ -131,6 +141,122 @@ describe("server/main — the daemon, started in-process", () => {
     } finally {
       await taskd.close();
     }
+  });
+});
+
+describe("server/index — the label GC timer (F1-C)", () => {
+  const AGENT = { kind: "agent", id: "linus" };
+
+  it("reads the interval and TTL from env, and honours the off switch", () => {
+    assert.equal(labelGcIntervalMs({}, undefined), LABEL_GC_INTERVAL_MS);
+    assert.equal(labelGcIntervalMs({ TASKD_LABEL_GC: "off" }, undefined), 0);
+    assert.equal(labelGcIntervalMs({}, 50), 50);
+    assert.equal(labelGcIntervalMs({}, -5), 0, "a negative interval means 'no timer'");
+
+    assert.equal(labelGcTtlDays({}, undefined), LABEL_TTL_DAYS_DEFAULT);
+    assert.equal(labelGcTtlDays({ TASKD_LABEL_TTL_DAYS: "0" }, undefined), 0);
+    assert.equal(labelGcTtlDays({ TASKD_LABEL_TTL_DAYS: "7" }, undefined), 7);
+    assert.equal(labelGcTtlDays({ TASKD_LABEL_TTL_DAYS: "nonsense" }, undefined), LABEL_TTL_DAYS_DEFAULT);
+  });
+
+  it("sweeps once at startup, and the timer prunes a label that stops being used", async () => {
+    const logs = [];
+    const taskd = await createTaskd({
+      dataDir: tempDir(),
+      host: "127.0.0.1",
+      port: 0,
+      env: {},
+      logger: (event) => logs.push(event),
+      // Disable the periodic timer but keep the startup sweep: the interval is
+      // the injected knob F1-C asks for.
+      gcIntervalMs: 0,
+      gcTtlDays: 0,
+    });
+    try {
+      assert.equal(taskd.labelGc.enabled, true);
+      assert.equal(taskd.labelGc.intervalMs, 0);
+      assert.deepEqual(taskd.labelGc.last, { archived: [], kept: 0, mismatched: [] }, "startup sweep on an empty board");
+      assert.deepEqual(logs.filter((entry) => String(entry.event).startsWith("label_gc")), [], "a sweep that collects nothing is silent");
+
+      const { commands, repos } = taskd.board;
+      commands.createProject({ id: "proj", name: "P", workspacePath: "/tmp/ws", actor: AGENT });
+      const task = commands.createTask({ projectId: "proj", title: "a", labels: ["Temp"], actor: AGENT });
+      commands.updateTask({ id: task.id, patch: { labels: [] }, actor: AGENT });
+      assert.equal(repos.labels.getByNorm("proj", "temp").archivedAt, null);
+
+      const result = taskd.labelGc.run();
+      assert.deepEqual(result.archived.map((label) => label.displayName), ["Temp"]);
+      assert.notEqual(repos.labels.getByNorm("proj", "temp").archivedAt, null);
+      const gcRow = taskd.board.db.prepare("SELECT * FROM task_activities WHERE event = 'label_gc'").get();
+      assert.equal(gcRow.task_id, null);
+      assert.equal(logs.filter((entry) => entry.event === "label_gc").length, 1, "a collecting sweep is logged");
+    } finally {
+      await taskd.close();
+    }
+  });
+
+  it("fires on its own once the interval elapses", async () => {
+    const taskd = await createTaskd({
+      dataDir: tempDir(),
+      host: "127.0.0.1",
+      port: 0,
+      env: { TASKD_LABEL_TTL_DAYS: "0" },
+      gcIntervalMs: 25,
+    });
+    try {
+      const { commands, repos } = taskd.board;
+      commands.createProject({ id: "proj", name: "P", workspacePath: "/tmp/ws", actor: AGENT });
+      const task = commands.createTask({ projectId: "proj", title: "a", labels: ["Timed"], actor: AGENT });
+      commands.updateTask({ id: task.id, patch: { labels: [] }, actor: AGENT });
+
+      const deadline = Date.now() + 3_000;
+      while (Date.now() < deadline && repos.labels.getByNorm("proj", "timed").archivedAt === null) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      assert.notEqual(
+        repos.labels.getByNorm("proj", "timed").archivedAt,
+        null,
+        "the unref'd timer swept without being called",
+      );
+    } finally {
+      await taskd.close();
+    }
+  });
+
+  it("is off entirely when TASKD_LABEL_GC=off", async () => {
+    const taskd = await createTaskd({
+      dataDir: tempDir(),
+      host: "127.0.0.1",
+      port: 0,
+      env: { TASKD_LABEL_GC: "off", TASKD_LABEL_TTL_DAYS: "0" },
+    });
+    try {
+      assert.equal(taskd.labelGc.enabled, false);
+      assert.equal(taskd.labelGc.intervalMs, 0);
+      assert.equal(taskd.labelGc.last, null, "not even the startup sweep ran");
+
+      const { commands, repos } = taskd.board;
+      commands.createProject({ id: "proj", name: "P", workspacePath: "/tmp/ws", actor: AGENT });
+      const task = commands.createTask({ projectId: "proj", title: "a", labels: ["Keep"], actor: AGENT });
+      commands.updateTask({ id: task.id, patch: { labels: [] }, actor: AGENT });
+      assert.equal(repos.labels.getByNorm("proj", "keep").archivedAt, null);
+    } finally {
+      await taskd.close();
+    }
+  });
+
+  it("logs a failed sweep instead of taking the daemon down", () => {
+    const logs = [];
+    const gc = startLabelGc({
+      board: { commands: { collectUnusedLabels: () => { throw new Error("boom"); } } },
+      env: {},
+      logger: (event) => logs.push(event),
+      options: { gcIntervalMs: 0 },
+    });
+    assert.equal(gc.last.failed, true);
+    assert.deepEqual(gc.last.archived, []);
+    assert.equal(logs.filter((entry) => entry.event === "label_gc_failed").length, 1);
+    gc.stop();
   });
 });
 

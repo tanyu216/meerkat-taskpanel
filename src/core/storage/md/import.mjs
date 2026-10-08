@@ -21,8 +21,10 @@ import { readFileSync, readdirSync } from "node:fs";
 import { basename, join, relative } from "node:path";
 
 import { DomainError } from "../../../shared/errors.mjs";
+import { LABEL_PALETTE } from "../../../shared/constants.mjs";
 import { contentHash, newId, sha256Hex } from "../../../shared/ids.mjs";
 import { normalizeName } from "../../domain/dictionary.mjs";
+import { labelDisplayName, nextColor, normalizeLabelName } from "../../domain/labels.mjs";
 import { normalizeCommentCreate } from "../../domain/comment.mjs";
 import { normalizeReportCreate } from "../../domain/report.mjs";
 import { parsePriority } from "../../domain/priority.mjs";
@@ -100,6 +102,7 @@ export function importMd(input) {
     reports: 0,
     activities: 0,
     dictionaries: 0,
+    labels: 0,
     warnings: [],
     check,
   };
@@ -179,12 +182,17 @@ export function importMd(input) {
         ensureProject(repos, card, projectIds.get(card.projectId), now);
         const dictionary = resolveCardDictionaries(repos, card, now);
         stats.dictionaries += dictionary.writes;
+        // Historical cards register their labels too, so the registry reflects an
+        // imported board rather than only boards built through the CLI (§3.7).
+        const labels = resolveCardLabels(repos, card, existing, now);
+        stats.labels += labels.writes;
 
         const task = buildTask(repos, card, {
           now,
           rel: entry.rel,
           hash: entry.hash,
           dictionary,
+          labels: labels.names,
           existing,
         });
         if (existing === null) {
@@ -481,8 +489,78 @@ function resolveCardDictionaries(repos, card, now) {
   return writes;
 }
 
+/**
+ * Event-driven label registration for one imported card (§3.7), the label twin
+ * of `resolveCardDictionaries`.
+ *
+ * Like that helper it talks to the repository directly rather than importing the
+ * command layer: `repos.labels` stays the single writer of the registry, and the
+ * storage layer keeps pointing at domain + storage only. The rules are the ones
+ * the command layer applies — `norm` identity, first-seen spelling wins, colours
+ * assigned once from the project's free palette, `use_count` moved by the diff
+ * against the task's previous labels ("none" for a fresh insert).
+ *
+ * @returns {{names: string[], writes: number}}
+ */
+function resolveCardLabels(repos, card, existing, now) {
+  const names = normalizeLabels(card.labels ?? null);
+  const previous = new Set((existing?.labels ?? []).map((name) => normalizeLabelName(name)));
+
+  if (names.length === 0) {
+    for (const key of previous) {
+      const label = repos.labels.getByNorm(card.projectId, key);
+      if (label !== null) repos.labels.removeUse(label.id);
+    }
+    return { names: [], writes: 0 };
+  }
+
+  const consumed = repos.labels.usedColors(card.projectId);
+  const stored = [];
+  const seen = new Set();
+  let writes = 0;
+
+  for (const raw of names) {
+    const key = normalizeLabelName(raw);
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    let label = repos.labels.getByNorm(card.projectId, key);
+    if (label === null) {
+      const color = nextColor(consumed, LABEL_PALETTE);
+      consumed.push(color);
+      label = repos.labels.upsert({
+        projectId: card.projectId,
+        norm: key,
+        displayName: labelDisplayName(raw),
+        color,
+        now,
+      }).entry;
+    } else {
+      label = repos.labels.upsert({
+        projectId: card.projectId,
+        norm: key,
+        displayName: label.displayName,
+        color: label.color,
+        now,
+        id: label.id,
+      }).entry;
+    }
+    writes += 1;
+    stored.push(label.displayName);
+    if (!previous.has(key)) repos.labels.addUse(label.id, now);
+  }
+
+  for (const key of previous) {
+    if (seen.has(key)) continue;
+    const label = repos.labels.getByNorm(card.projectId, key);
+    if (label !== null) repos.labels.removeUse(label.id);
+  }
+
+  return { names: stored, writes };
+}
+
 function buildTask(repos, card, context) {
-  const { now, rel, hash, dictionary } = context;
+  const { now, rel, hash, dictionary, labels } = context;
   const serial = repos.projects.get(card.projectId)?.nextTaskNumber ?? 1;
   const identifier = card.identifier;
 
@@ -492,7 +570,10 @@ function buildTask(repos, card, context) {
       description: card.background ?? "",
       priority: card.priority,
       kind: card.kind,
-      labels: card.labels,
+      // The registry's display names, not the raw frontmatter spellings — an
+      // imported card ends up with the same first-seen label spelling a CLI
+      // write would have produced.
+      labels: labels ?? card.labels,
       assigneeKind: dictionary.assigneeKind,
       assigneeId: dictionary.assigneeId,
       reporterId: dictionary.reporterId,

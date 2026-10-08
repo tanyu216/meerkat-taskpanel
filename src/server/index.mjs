@@ -13,17 +13,29 @@
  *
  * Nothing here writes a runtime pointer — the pointer has to name the *actual*
  * bound port, and only the caller knows that after `listen`.
+ *
+ * Besides the routes, the daemon owns the **label GC** (ruling F1-C): one sweep at
+ * startup and then on a 24h `unref()`ed timer. It lives here rather than in a
+ * route because `taskd` is the single writer — the one process that may prune the
+ * registry. See `startLabelGc` below.
  */
 
 import { createServer } from "node:http";
 
 import { currentRevision, openBoard, readToken } from "../core/index.mjs";
-import { VERSION } from "../shared/constants.mjs";
+import {
+  LABEL_GC_ENV,
+  LABEL_GC_INTERVAL_MS,
+  LABEL_TTL_DAYS_DEFAULT,
+  LABEL_TTL_DAYS_ENV,
+  VERSION,
+} from "../shared/constants.mjs";
 import { authorize } from "./auth.mjs";
 import { createRouter, errorResponse, readJsonBody, sendJson } from "./router.mjs";
 import { registerCommentRoutes } from "./routes/comments.mjs";
 import { registerDictionaryRoutes } from "./routes/dictionary.mjs";
 import { registerExportRoutes } from "./routes/export.mjs";
+import { registerLabelRoutes } from "./routes/labels.mjs";
 import { registerProjectRoutes } from "./routes/projects.mjs";
 import { registerRelationRoutes } from "./routes/relations.mjs";
 import { registerSessionRoutes } from "./routes/sessions.mjs";
@@ -66,6 +78,10 @@ function headerOf(req, name) {
  * @param {{
  *   dataDir?: string|null, dbPath?: string|null, host?: string, port?: number,
  *   env?: NodeJS.ProcessEnv, logger?: Function,
+ *   clock?: () => Date|string, idFactory?: () => string,
+ *   gcIntervalMs?: number,   // label GC period; 0 = startup sweep only (F1-C)
+ *   gcTtlDays?: number,      // label GC TTL in days
+ *   gc?: boolean,            // false = no label GC at all
  *   authorize?: Function,  // override for tests; defaults to the real check
  * }} [options]
  * @returns {Promise<{server: import('node:http').Server, url: string, port: number, host: string, board: object, token: string, close: () => Promise<void>}>}
@@ -90,7 +106,13 @@ export async function createTaskd(options = {}) {
     env,
     pointer: false,
     ...(logger === undefined ? {} : { logger }),
+    ...(options.clock === undefined ? {} : { clock: options.clock }),
+    ...(options.idFactory === undefined ? {} : { idFactory: options.idFactory }),
   });
+
+  // The label GC (F1-C): one sweep now, then on a timer. `taskd` is the single
+  // writer, so it is the one process that may prune the registry.
+  const labelGc = startLabelGc({ board, env, logger, options });
 
   const token = board.token === null ? null : readTokenFile(board.dataDir);
   const startedAt = Date.now();
@@ -122,6 +144,7 @@ export async function createTaskd(options = {}) {
   registerRelationRoutes(router, surface);
   registerSessionRoutes(router, surface);
   registerDictionaryRoutes(router, surface);
+  registerLabelRoutes(router, surface);
   registerExportRoutes(router, surface);
 
   const server = createServer((req, res) => {
@@ -199,9 +222,95 @@ export async function createTaskd(options = {}) {
     port: boundPort,
     url,
     token,
+    /** The label GC, exposed so a test can trigger a sweep without waiting out the timer. */
+    labelGc,
     async close() {
+      labelGc.stop();
       await new Promise((resolve) => server.close(resolve));
       board.close();
+    },
+  };
+}
+
+/** The GC period in ms: `0` disables it. `TASKD_LABEL_GC=off` is the env switch. */
+export function labelGcIntervalMs(env, override) {
+  if (Number.isFinite(override)) return Math.max(0, override);
+  if (env[LABEL_GC_ENV] === "off") return 0;
+  return LABEL_GC_INTERVAL_MS;
+}
+
+/** The TTL in days; `TASKD_LABEL_TTL_DAYS` overrides the default (F1-C / §4.4). */
+export function labelGcTtlDays(env, override) {
+  if (Number.isFinite(override)) return override;
+  const raw = env[LABEL_TTL_DAYS_ENV];
+  if (raw === undefined || raw === "") return LABEL_TTL_DAYS_DEFAULT;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : LABEL_TTL_DAYS_DEFAULT;
+}
+
+/**
+ * Run the label GC at startup and on a timer (ruling F1-C: default 24h, enabled
+ * by default, timer `unref()`ed so it never holds the process open, interval
+ * injectable so a test can disable or shorten it).
+ *
+ * The sweep is wrapped so a GC failure is **logged, never fatal**: housekeeping
+ * must not take the board down. A sweep that collects nothing writes nothing, so
+ * a fresh board costs one query and leaves no trace.
+ *
+ * @param {{board: object, env: NodeJS.ProcessEnv, logger?: Function, options: object}} input
+ */
+export function startLabelGc(input) {
+  const { board, env, logger, options } = input;
+  // On by default (F1-C). `TASKD_LABEL_GC=off` — or an explicit `gc: false` —
+  // turns off *both* the startup sweep and the timer; `gcIntervalMs: 0` only
+  // silences the timer while keeping the startup sweep.
+  const enabled = options.gc === undefined ? env[LABEL_GC_ENV] !== "off" : options.gc !== false;
+  const intervalMs = enabled ? labelGcIntervalMs(env, options.gcIntervalMs) : 0;
+  const ttlDays = labelGcTtlDays(env, options.gcTtlDays);
+  const state = { intervalMs, ttlDays, last: null, timer: null };
+
+  const run = () => {
+    let result;
+    try {
+      result = board.commands.collectUnusedLabels({ ttlDays });
+      if ((result.archived.length > 0 || result.mismatched.length > 0) && typeof logger === "function") {
+        logger({
+          event: "label_gc",
+          archived: result.archived.length,
+          kept: result.kept,
+          mismatched: result.mismatched.length,
+        });
+      }
+    } catch (err) {
+      // Never let the GC break the daemon (§4.4: "GC 失败绝不允许阻断").
+      if (typeof logger === "function") {
+        logger({ event: "label_gc_failed", code: err?.code ?? null, message: err?.message ?? String(err) });
+      }
+      result = { archived: [], kept: 0, mismatched: [], failed: true };
+    }
+    state.last = result;
+    return result;
+  };
+
+  if (enabled) run();
+  if (enabled && intervalMs > 0) {
+    state.timer = setInterval(run, intervalMs);
+    if (typeof state.timer.unref === "function") state.timer.unref();
+  }
+
+  return {
+    enabled,
+    intervalMs,
+    ttlDays,
+    run,
+    get last() {
+      return state.last;
+    },
+    stop() {
+      if (state.timer !== null) {
+        clearInterval(state.timer);
+        state.timer = null;
+      }
     },
   };
 }
