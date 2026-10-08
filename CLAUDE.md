@@ -1,0 +1,86 @@
+# CLAUDE.md
+
+Project guidance for Claude Code. Auto-loaded; keep it accurate and non-duplicative —
+`README.md` and `docs/` remain the single source of truth for prose.
+
+## Overview
+
+Task Panel is a **local-first task board for AI-agent teams**: agents claim work, send
+heartbeats, report progress and roll results up a dependency tree, while humans watch the
+same state on a kanban board. Persistence is a single SQLite database (Node's built-in
+`node:sqlite`) — no external services. Node **>= 22**, **zero runtime dependencies**,
+MIT, public repo.
+
+**Status (honest):** the core engine (**M1**) has landed — `src/core/` has the domain
+model, SQLite storage + migrations, use-cases and `openBoard()`. The *surfaces* are still
+stubs: the `taskctl` CLI is a version/help stub (real commands = M2), `src/mcp/` and
+`src/server/` are placeholders (M3/M6), and there is no board frontend yet. The
+`README.md` / `README.zh-CN.md` / `docs/install.md` banners still say "M0 scaffold" and
+are stale relative to `src/core/`.
+
+## Repository layout
+
+```text
+task-panel/
+├── package.json            # bin(taskctl), scripts; type:module; engines node>=22
+├── install.sh              # install dispatcher: --target claude|openclaw|codex|pi|all
+├── src/
+│   ├── core/               # engine: domain model, SQLite storage, commands, bootstrap
+│   │   ├── domain/         #   entities, state machine, invariants, delivery gate (no Node builtins)
+│   │   ├── storage/        #   driver, migrations, repositories, secrets, md import/export
+│   │   ├── commands/       #   use-cases
+│   │   └── bootstrap.mjs   #   openBoard()
+│   ├── cli/                # taskctl entry (stub until M2)
+│   ├── mcp/                # stdio MCP server (placeholder until M3)
+│   ├── server/             # local HTTP API + SSE (placeholder until M6)
+│   └── shared/             # DTOs, constants, errors, pure helpers
+├── web/                    # board frontend (Vue 3 + Vite planned) -> dist/web (README placeholder only)
+├── skills/task-panel/      # the skill — single source of truth (author here)
+├── plugins/{claude,codex,openclaw,pi}/  # per-host manifests + generated skills/ copies
+├── design/                 # brand assets, tokens; prototype/assets + PRD/DESIGN/BLOCKS are placeholders
+├── prototype/              # HTML + Tailwind/daisyUI prototype + screenshots (visual baseline)
+├── scripts/                # build, install/, sync-skills.mjs, verify/{manifests,skill,profiles,docker}
+├── test/                   # contract, core, concurrency, scaffold tests + fixtures
+└── docs/                   # install.md, development.md, docker.md, README.md
+```
+
+`dist/`, `.data/`, `node_modules/` and `coverage/` are build/runtime output — gitignored,
+never committed. Directories or files listed above but not present in a given checkout are
+planned, not implemented (e.g. `design/` has `brand/` only; there is no PRD/DESIGN/BLOCKS
+file yet; `web/` is a README placeholder).
+
+## Commands
+
+- `npm test` (`node --test`) — smoke / contract / unit suite.
+- `npm run check` (`check:skills` + `verify` + `test`) — the full local gate.
+- `npm run verify:docker` — containerised verification entry (build image + in-container suite + compose health smoke; always tears down).
+- `npm run verify:docker:container` — run `docker/verify-in-container.sh` when already inside the image.
+- `npm run check:skills` (`node scripts/sync-skills.mjs --check`) — assert generated skill copies match `skills/`.
+- `npm run build` (`node scripts/build.mjs`) — produce `dist/` (deletes and recreates it).
+- `npm run test:coverage` — `node --test` with an 80% line/branch/function floor on `src/core/**` + `src/shared/**`.
+- `node src/core/storage/md/migrate-cli.mjs check --dir <cards>` — md-card migration check (also `import` / `export`; exit 3 when `check` finds differences).
+- `bash install.sh --target claude|openclaw|codex|pi|all` — install the skill into each host's skill directory (flags: `--prefix`, `--link`, `--force`, `--dry-run`).
+- `taskctl` (`bin` → `src/cli/index.mjs`) — the CLI. Currently only `--version` / `--help`; the real command surface lands in M2.
+
+## Constraints / MUST-follow rules
+
+- **Verification runs inside Docker, not on the host.** Everything that *runs* — unit/integration/e2e tests, starting or serving the app, the CLI, host skill installs, plugin/bundle installs, migration rehearsals — must run in the container (`docker/`, `npm run verify:docker`, `docker/verify-in-container.sh`). Only pure static checks (lint/typecheck, `node --check`, text/static assertions, `git` operations) and prototype screenshots may run on the host.
+- **No new dependencies, no network.** Node builtins only; scripts, tests and the CLI must work fully offline. Do not run `npm install` — there is no lockfile and no `node_modules/` is expected.
+- **The skill is generated, never hand-edited.** Author only under `skills/task-panel/`. After any edit run `node scripts/sync-skills.mjs`; `plugins/*/skills/` are generated copies that must stay identical (`--check` fails CI on drift).
+- **Single writer.** The design assumes one local service owns the SQLite file — avoid concurrent writers against the same database.
+- **Commit with explicit paths:** `git commit -- <path>` (never a bare `git commit -a`).
+- **Code style / layering:** `src/core/domain/` imports **no Node builtins**; dependency direction is `cli|mcp|server -> core -> shared` (nothing imports from `cli`/`mcp`/`server`; `shared` imports nothing from `src/`); every failure is a domain error with a code, never a bare `Error`.
+
+## Key invariants to remember
+
+- The **delivery gate** requires a report **for the current delivery round** before a card can move to `in_review` — there is no waiver/escape hatch.
+- Invariants are pushed **down into the database** (triggers), not only enforced in the app layer; the trigger and the domain check are tested against each other under `test/contract/`.
+- The service model is **single-writer**: one local service owns the SQLite database.
+
+## Docs to read next (do not re-paste)
+
+- `README.md` / `README.zh-CN.md` — what the project is, install, roadmap (banners may lag the M1 code).
+- `docs/install.md` — `install.sh` flags, host destinations, uninstall.
+- `docs/development.md` — layout, Node requirement, commands, no-network/no-dependency policy.
+- `docs/docker.md` — why verification is containerised, build/run, profiles, troubleshooting.
+- `src/core/README.md` — what the core engine owns and the rules it enforces.
