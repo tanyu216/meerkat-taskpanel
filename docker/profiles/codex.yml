@@ -1,7 +1,12 @@
-# Host profile: Codex. See docs/docker.md § Profiles.
+# Host profile: Codex. See docs/docker.md § Profiles and docs/install.md.
 host: codex
 label: Codex
 installer: scripts/install/codex.sh
 target_dir: .codex/skills/task-panel
 skill_entry: SKILL.md
 wrapper: scripts/run.mjs
+# Codex reads .codex-plugin/plugin.json; OpenClaw also detects this marker as a
+# "codex" bundle.
+bundle: plugins/codex
+bundle_kind: bundle
+bundle_format: codex

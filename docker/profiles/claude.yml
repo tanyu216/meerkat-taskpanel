@@ -1,7 +1,13 @@
-# Host profile: Claude Code. See docs/docker.md § Profiles.
+# Host profile: Claude Code. See docs/docker.md § Profiles and docs/install.md.
 host: claude
 label: Claude Code
 installer: scripts/install/claude.sh
 target_dir: .claude/skills/task-panel
 skill_entry: SKILL.md
 wrapper: scripts/run.mjs
+# Distribution bundle this host installs from, and what the host's detector must report.
+# Claude Code reads .claude-plugin/plugin.json; the repository-root marketplace
+# (.claude-plugin/marketplace.json) points at this bundle.
+bundle: plugins/claude
+bundle_kind: bundle
+bundle_format: claude

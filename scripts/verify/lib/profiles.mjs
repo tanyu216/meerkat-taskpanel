@@ -25,7 +25,13 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { SKILL_NAME, VERSION } from "../../../src/shared/constants.mjs";
+import { MANIFESTS, validateManifests } from "../manifests.mjs";
+import { HOST_BUNDLES, inspectBundle, parseMarketplace } from "./bundle.mjs";
+import { readFrontmatterField } from "./frontmatter.mjs";
 import { MiniYamlError, parseMiniYaml } from "./mini-yaml.mjs";
+
+// Re-exported so the existing import path (`./profiles.mjs`) keeps working.
+export { readFrontmatterField };
 
 /** Hosts that must each ship a profile. */
 export const PROFILE_HOSTS = ["claude", "openclaw", "codex", "pi"];
@@ -33,40 +39,19 @@ export const PROFILE_HOSTS = ["claude", "openclaw", "codex", "pi"];
 /** Required keys of the flat profile schema. */
 export const REQUIRED_PROFILE_FIELDS = ["host", "label", "installer", "target_dir", "skill_entry", "wrapper"];
 
+/**
+ * Optional keys: the host's distribution bundle. When a profile declares `bundle`, the
+ * verifier additionally asserts the bundle's manifest parses and that the host's detector
+ * (see lib/bundle.mjs) recognizes it with the expected format and a loadable skill.
+ */
+export const BUNDLE_PROFILE_FIELDS = ["bundle", "bundle_kind", "bundle_format"];
+
 /** Repository root, derived from this file's location (scripts/verify/lib/ → up 3). */
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 /** Default throwaway home when the caller does not inject one. */
 export function defaultHome() {
   return join(tmpdir(), `taskpanel-profiles-${process.pid}`);
-}
-
-/**
- * Read the leading `---` frontmatter block of a markdown file and return one field's
- * value, or `null` when the block or the field is absent.
- *
- * @param {string} text
- * @param {string} field
- * @returns {string|null}
- */
-export function readFrontmatterField(text, field) {
-  const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(String(text ?? ""));
-  if (!match) return null;
-
-  for (const line of match[1].split(/\r?\n/)) {
-    const colon = line.indexOf(":");
-    if (colon === -1) continue;
-    if (line.slice(0, colon).trim() === field) {
-      let value = line.slice(colon + 1).trim();
-      const first = value[0];
-      if (value.length >= 2 && (first === '"' || first === "'") && value.at(-1) === first) {
-        value = value.slice(1, -1);
-      }
-      return value;
-    }
-  }
-
-  return null;
 }
 
 /**
@@ -132,6 +117,14 @@ export async function loadProfiles(profilesDir) {
       ok = false;
     }
 
+    // The bundle fields are a unit: either all three are present, or none are.
+    const bundleFields = BUNDLE_PROFILE_FIELDS.filter((f) => typeof parsed[f] === "string" && parsed[f] !== "");
+    if (bundleFields.length !== 0 && bundleFields.length !== BUNDLE_PROFILE_FIELDS.length) {
+      const missing = BUNDLE_PROFILE_FIELDS.filter((f) => !bundleFields.includes(f));
+      errors.push(`${host}: bundle fields must appear together; missing ${missing.join(", ")}`);
+      ok = false;
+    }
+
     if (ok) profiles[host] = parsed;
   }
 
@@ -165,6 +158,69 @@ export function buildChecks(profile, opts = {}) {
     TASKPANEL_FORCE: "1",
   };
 
+  const assertions = [
+    {
+      kind: "pathExists",
+      name: `${host}: ${profile.skill_entry} installed`,
+      path: entryPath,
+    },
+    {
+      kind: "skillFrontmatter",
+      name: `${host}: SKILL.md frontmatter name: ${SKILL_NAME}`,
+      path: skillMdPath,
+      field: "name",
+      value: SKILL_NAME,
+    },
+    {
+      kind: "wrapperVersion",
+      name: `${host}: ${profile.wrapper} --version == ${VERSION}`,
+      command: process.execPath,
+      args: [wrapperPath, "--version"],
+      env: installEnv,
+      expectedStdout: VERSION,
+    },
+  ];
+
+  // Per-host bundle assertions. The expectations come from the profile file when it
+  // declares them; otherwise they fall back to the shipped table, so ad-hoc profiles in
+  // tests stay terse.
+  const fallback = HOST_BUNDLES[host];
+  const bundleDir = profile.bundle ?? fallback?.dir;
+  const expectedKind = profile.bundle_kind ?? fallback?.openclawKind;
+  const expectedFormat = profile.bundle_format ?? fallback?.openclawFormat;
+
+  if (bundleDir && expectedKind && expectedFormat) {
+    const manifestRel = MANIFESTS.find((m) => m.label === host)?.path ?? fallback?.manifest;
+
+    if (manifestRel) {
+      assertions.push({
+        kind: "manifestParses",
+        name: `${host}: manifest parses (${manifestRel})`,
+        path: join(root, manifestRel),
+        manifestKey: host,
+        root,
+      });
+    }
+
+    assertions.push({
+      kind: "bundleDetected",
+      name: `${host}: bundle detected as ${expectedKind}/${expectedFormat} with skill ${SKILL_NAME}`,
+      dir: join(root, bundleDir),
+      expectedKind,
+      expectedFormat,
+      skillName: SKILL_NAME,
+    });
+
+    // The Claude marketplace lives at the repository root and points at ./plugins/*.
+    if (host === "claude") {
+      assertions.push({
+        kind: "marketplaceParses",
+        name: "claude: .claude-plugin/marketplace.json parses and its entries resolve",
+        root,
+      });
+    }
+  }
+
   return {
     host,
     home,
@@ -174,33 +230,13 @@ export function buildChecks(profile, opts = {}) {
     skillMdPath,
     wrapperPath,
     installerPath,
+    bundleDir,
     install: {
       command: "bash",
       args: [installerPath],
       env: installEnv,
     },
-    assertions: [
-      {
-        kind: "pathExists",
-        name: `${host}: ${profile.skill_entry} installed`,
-        path: entryPath,
-      },
-      {
-        kind: "skillFrontmatter",
-        name: `${host}: SKILL.md frontmatter name: ${SKILL_NAME}`,
-        path: skillMdPath,
-        field: "name",
-        value: SKILL_NAME,
-      },
-      {
-        kind: "wrapperVersion",
-        name: `${host}: ${profile.wrapper} --version == ${VERSION}`,
-        command: process.execPath,
-        args: [wrapperPath, "--version"],
-        env: installEnv,
-        expectedStdout: VERSION,
-      },
-    ],
+    assertions,
   };
 }
 
@@ -248,6 +284,41 @@ async function evaluate(assertion) {
       const ok = res.status === 0 && actual === assertion.expectedStdout;
       return { ok, detail: `exit ${res.status}, stdout ${JSON.stringify(actual)}` };
     }
+    case "manifestParses": {
+      const entry = MANIFESTS.find((m) => m.label === assertion.manifestKey);
+      if (!entry) return { ok: false, detail: `unknown manifest: ${assertion.manifestKey}` };
+      const report = await validateManifests(assertion.root);
+      const row = report.results.find((r) => r.label === assertion.manifestKey);
+      if (!row) return { ok: false, detail: `manifest not checked: ${entry.path}` };
+      return { ok: row.ok, detail: row.ok ? `${entry.path}: ok` : (row.error ?? "failed") };
+    }
+    case "bundleDetected": {
+      if (!existsSync(assertion.dir)) return { ok: false, detail: `bundle dir not found: ${assertion.dir}` };
+      const info = inspectBundle(assertion.dir);
+      const formatOk =
+        info.kind === assertion.expectedKind && info.format === assertion.expectedFormat;
+      if (!formatOk) {
+        return {
+          ok: false,
+          detail: `detected ${info.kind}/${info.format}, expected ${assertion.expectedKind}/${assertion.expectedFormat}`,
+        };
+      }
+      const skill = info.skills.find((s) => s.name === assertion.skillName);
+      if (!skill) {
+        const found = info.skills.map((s) => `${s.entry}:${s.name ?? "<no frontmatter name>"}`);
+        return {
+          ok: false,
+          detail: `no skill named ${assertion.skillName} (found: ${found.join(", ") || "none"})`,
+        };
+      }
+      return { ok: true, detail: `${info.kind}/${info.format} → ${skill.entry}` };
+    }
+    case "marketplaceParses": {
+      const market = parseMarketplace(assertion.root);
+      if (!market.ok) return { ok: false, detail: market.error ?? "marketplace did not resolve" };
+      const names = market.entries.map((e) => `${e.name}→${e.dir}(${e.format})`);
+      return { ok: true, detail: `${market.name}: ${names.join(", ")}` };
+    }
     default:
       return { ok: false, detail: `unknown assertion kind: ${assertion.kind}` };
   }
@@ -256,7 +327,7 @@ async function evaluate(assertion) {
 /**
  * Install every profile into `home` and verify the result.
  *
- * @param {{home?: string, profilesDir?: string, root?: string, quiet?: boolean, log?: (line: string) => void}} [opts]
+ * @param {{home?: string, profilesDir?: string, root?: string, quiet?: boolean, hosts?: string[], log?: (line: string) => void}} [opts]
  * @returns {Promise<{ok: boolean, home: string, profilesDir: string, errors: string[], results: Array<object>}>}
  */
 export async function runProfiles(opts = {}) {
@@ -273,9 +344,13 @@ export async function runProfiles(opts = {}) {
     return { ok: false, home, profilesDir, errors, results };
   }
 
+  // `hosts` narrows which profiles are *run*; every profile is still loaded and
+  // validated, so a broken sibling profile cannot hide behind a single-host run.
+  const selected = opts.hosts?.length ? PROFILE_HOSTS.filter((h) => opts.hosts.includes(h)) : PROFILE_HOSTS;
+
   await mkdir(home, { recursive: true });
 
-  for (const host of PROFILE_HOSTS) {
+  for (const host of selected) {
     const checks = buildChecks(profiles[host], { home, root });
     const steps = [];
 
