@@ -2,10 +2,13 @@
 
 > Implemented from `design-style-guide.md` (visual tokens — single source of truth)
 > and `design-spec.md` (structure, blocks, interactions, coverage), as amended by
-> `design-spec-addendum-v1.1.md` (access model, top bar, i18n).
+> `design-spec-addendum-v1.1.md` (access model, top bar, i18n) and
+> `design-spec-addendum-v1.2.md` (sidebar-footer switches, access-model rewrite).
 > Every value below is copied from those documents. **Nothing here is invented**;
-> §9 records every point where the two documents disagree and what was chosen, and
-> §14 records the judgement calls the v1.1 addendum left open.
+> §9 records every point where the two documents disagree and what was chosen,
+> §14 records the judgement calls the v1.1 addendum left open, and §15 the v1.2 round.
+> v1.2 changed no visual token: colour, type, spacing and radius are untouched, and the
+> brand re-skin remains a separate card.
 
 ---
 
@@ -319,14 +322,25 @@ top bar, the sidebar or anywhere else. §10 still governs who a task is *assigne
 that is a different question from who is *viewing*, and the two no longer share a
 component.
 
-What replaced the sidebar identity block is a **reachability readout**:
+What replaced the sidebar identity block is a **display-switch cluster**, not a
+reachability readout. Review round v1.2 moved the two display switches out of the bar and
+into the footer, and removed the bind-address copy entirely:
 
 | Surface | Content |
 |---|---|
-| Top bar, right end | `[data-revision]` · `[data-theme-toggle]` · `[data-lang-toggle]` · `[data-new-task]` |
-| Sidebar footer `[data-access-status]` | green dot + `Local · localhost` (mono) + `[data-access-open]` |
+| Top bar, right end | `[data-revision]` · `[data-new-task]` |
+| Sidebar footer `[data-access-status]` | `[data-theme-toggle]` · `[data-lang-toggle]` · `[data-access-open]` — one compact row |
 
-The top-bar order is exactly the one the addendum fixes; the primary action stays last.
+The top-bar order is exactly the one the v1.2 addendum fixes; the primary action stays
+last, and the bar holds **no display-mode control**. **Nothing in the chrome reports
+`Local` or `localhost` any more** — the readout, its green status dot and the styles that
+drew them are deleted outright, so the old model is not reachable from any selector. The
+bind address is stated *inside* B19 instead, as prose, where it can name the value the
+board actually binds.
+
+The footer row stays a row down to 1024px; below that the sidebar is a rail, so the three
+controls stack vertically and the `EN` / `中文` pair turns vertical to fit the 64px rail
+(56px under 560px) with no horizontal overflow at any width.
 
 **B19 · Access & token settings** — `[data-access-open]` opens `[data-access-panel]`,
 hidden by default and dismissed with `Esc`, the scrim (`[data-access-overlay]`) or
@@ -334,24 +348,45 @@ hidden by default and dismissed with `Esc`, the scrim (`[data-access-overlay]`) 
 drawer: `hidden` comes off first so the transition has a frame to start from, and the
 panel is only hidden again once the close transition has finished.
 
-The panel states the model in the order the addendum gives it:
+The panel states the model in the order the v1.2 addendum gives it:
 
 1. `Access` — the panel title.
-2. `Local only by default — this board listens on localhost.` and
-   `Remote (public) access requires a token.`
-3. Two scope rows: **Local** → `localhost` → `Enabled` (green dot, `data-access-state="on"`);
-   **Remote** → `0.0.0.0` → `Requires a token` (muted dot, `data-access-state="off"`).
-   The dot is the only colour in the block and it uses the success token, not a new one.
-4. `[data-token-block]` — the stand-in credential:
+2. **Binding**: `Binds to 0.0.0.0 by default — reachable from other devices on the
+   network.` The board is *not* local-only; it answers on every interface, and the two
+   controls below are what narrow that back down.
+3. **CIDR whitelist** `[data-cidr-whitelist]` — `Allowed source ranges (CIDR). Traffic
+   outside these ranges is rejected.` under it, a `[data-cidr-add]` button beside it, and
+   a `[data-cidr-list]` of `[data-cidr-row]`s: `[data-cidr-value]` (an editable input)
+   plus `[data-cidr-remove]`. Three ranges ship seeded — `192.168.0.0/16` (LAN),
+   `10.0.0.0/8` (LAN) and `203.0.113.0/24` (public). Adding appends one empty row and
+   focuses its input; removing drops the row it belongs to.
+4. **Token rule**: `Requests from outside localhost must present the token.` — localhost
+   is the one source that is exempt, every other source must present the token *and* come
+   from a whitelisted range.
+5. `[data-token-block]` — the stand-in credential:
 
 | Hook | Behaviour |
 |---|---|
 | `[data-token-value]` | the token, masked as `td_••••••••••••` — the `td_` prefix stays readable |
-| `[data-token-reveal]` | toggles the mask only; `aria-pressed` and `data-token-revealed` carry the state, the icon swaps |
+| `[data-token-reveal]` | toggles the mask only; `aria-pressed` and `data-token-revealed` carry the state |
 | `[data-token-copy]` | reports `Token copied` in a toast. **It does not touch the clipboard** |
 | `[data-token-reset]` | mints a new stand-in, shows it unmasked, reports `Token reset` |
 
 Captions: `Generated randomly at install time.` / `Keep it private — do not share publicly.`
+
+**Open defect, carried in from v1.1 (not introduced here, not fixed here).** The reveal
+control's two glyphs are inline SVG, and SVG elements have no `hidden` IDL attribute:
+`renderToken()` writes `.prop("hidden", …)`, which lands on a JS expando, so the
+`[hidden]` rule never matches and the eye glyph does not swap on reveal — only the mask
+does. The v1.2 theme switch, which is new code in the same file, therefore toggles the
+*attribute* instead (`showGlyph()` in `app.js`). The token glyph swap needs its own card;
+the token block is otherwise untouched by v1.2.
+
+**The CIDR whitelist is a UI placeholder too.** `[data-cidr-add]` and `[data-cidr-remove]`
+build and drop rows in the DOM and nothing else: no range is parsed, validated, compared
+or matched against anything, and no value is stored or sent. Its aria-label and title
+copy is keyed like all other copy, so rows added at runtime translate on the next
+language switch.
 
 **This is a UI placeholder and nothing else.** The value is generated in `app.js` from
 `Math.random()` and `Date.now()`, stretched through a Lehmer step so it reads like a
@@ -364,11 +399,12 @@ clipboard, no credential or endpoint of any kind, and no persistence across relo
 
 ## 13. i18n
 
-**English is the default** (`<html lang="en">`). `[data-lang-toggle]` in the top bar
-switches to Chinese and back; the active option carries `aria-pressed`, so the current
-language is always visible.
+**English is the default** (`<html lang="en">`). `[data-lang-toggle]` in the sidebar
+footer (moved there in v1.2) switches to Chinese and back; the active option carries
+`aria-pressed`, so the current language is always visible, and the group carries an
+`aria-label` and `title` from the catalogue.
 
-**One catalogue, in memory.** `app.js` holds `MESSAGES = { en: {…}, zh: {…} }` — **182
+**One catalogue, in memory.** `app.js` holds `MESSAGES = { en: {…}, zh: {…} }` — **181
 keys per language, mirrored 1:1** (a test asserts the two key sets are identical). No
 external file, no fetch, no build step; `text()` resolves against the active language,
 falls back to English and then to the key itself, so a missing translation shows up as
@@ -428,7 +464,9 @@ three are in the build, plus five judgement calls worth recording:
      so below that it would push the page wide — which §2.4 forbids at every width. In
      that 20px band only, the bar wraps and the shell lets its first row grow (one
      media query, `min-width: 760px and max-width: 779px`). The ≥780 and ≤759 layouts are
-     byte-for-byte unchanged.
+     byte-for-byte unchanged. *(v1.2 note: the switches this band was sized around have
+     left the bar, so the band rule may now be removable — it is **kept as reviewed**
+     rather than re-tuned, since re-flowing that band was not part of the v1.2 remit.)*
    - **Focus into an opened panel is deferred by one transition length.** A panel is
      still computed `visibility: hidden` on the frame it opens, so focusing a control
      inside it then is silently a no-op. The deferral is shared by the drawer, the states
@@ -438,3 +476,48 @@ three are in the build, plus five judgement calls worth recording:
 Two dead entries inherited from the R1 copy map (`placeholder.newProject` and the
 `toast.blocked` sentence, referenced by nothing) were dropped while the catalogue was
 being restructured.
+
+---
+
+## 15. Review round v1.2
+
+The v1.2 addendum (Terry, 2026-10-08 21:47/21:49) asked for three things: the two display
+switches moved out of the top bar and into the sidebar footer, the bind-address readout
+removed, and the B19 access model rewritten around a `0.0.0.0` bind plus a CIDR whitelist.
+All three are in, with four judgement calls worth recording:
+
+1. **The footer row is one row at ≥1024px and a stack below it.** §12 fixes the order
+   (theme · language · access) and the compactness. The rail is 64px (56px under 560px),
+   too narrow for a horizontal `EN` / `中文` pair, so at ≤1023px the three controls stack
+   and the pair itself turns vertical. This is a layout accommodation for the existing
+   rail, not a new token or a new component: the rail's own geometry is unchanged and no
+   width overflows.
+2. **The language pair keeps its markup, with reduced chrome in the footer.** In the bar
+   it sat in a bordered `.td-seg`; in the footer the container's background and border are
+   dropped and its buttons come down to the 24px of the icon buttons beside it, so the
+   three read as one cluster. `aria-pressed` still paints the active language — the state
+   stays visible, which is what the addendum requires.
+3. **The scope rows and the `Local · localhost` readout are gone, not hidden.** The two
+   Local/Remote rows, their `.td-access-scopes` / `.td-access-row` / `.td-access-scope` /
+   `.td-access-flag` styles and the footer's `.td-access-status-text` are **deleted** from
+   both `src/input.css` and the built `tw.css` — the old model is not reachable by any
+   selector. The `0.0.0.0` address is now stated once, in the panel, as prose.
+4. **The theme glyph actually swaps now.** The v1.1 control toggled its icons with
+   `.prop("hidden", …)`, which is a no-op on inline SVG (no `hidden` IDL attribute), so
+   the sun never turned into the moon. The v1.2 control toggles the attribute instead.
+   This is the one behaviour the round fixes beyond its brief, and only because the brief
+   asks for a state-carrying glyph in the new location. **The token block's reveal glyph
+   has the identical defect and is deliberately left alone** — see the open-defect note in
+   §12; it needs its own card.
+
+Recaptured for this round: `01-board-1512`, `11-viewport-1240`, `13-viewport-760`,
+`05-dark-theme`, `19-board-zh`, `15-no-javascript`, plus the access trio
+`17-access-panel`, `18-access-token-revealed`, `21-access-panel-dark`. The remaining
+captures are the v1.1 files, unchanged: they were not part of the addendum's recapture
+list, and the interaction states they show (drawer, menu, filters, modal, states panel)
+are not touched by this round — note that where a v1.1 capture includes the sidebar
+footer, it still shows the old readout.
+
+Checked and clean across 1512 / 1240 / 980 / 760 / 500 px, with the panel closed and open
+and with JavaScript disabled: no page-level horizontal overflow, no sidebar overflow,
+7 columns · 18 cards, and zero console errors.

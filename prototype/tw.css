@@ -2976,26 +2976,18 @@ html[data-theme="dark"] {
     color: var(--color-td-ink-2);
     border-top: 1px solid var(--color-td-line);
   }
-  .td-access-status-text {
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
   .td-access-status .td-iconbtn {
     width: 24px;
     height: 24px;
   }
-  .td-access-dot {
-    flex: none;
-    width: 6px;
-    height: 6px;
-    border-radius: var(--r-full);
-    background-color: var(--color-td-success);
+  .td-access-status .td-seg {
+    background-color: transparent;
+    border-color: transparent;
+    padding: 0;
   }
-  .td-access-row[data-access-state="off"] .td-access-dot {
-    background-color: var(--color-td-ink-4);
+  .td-access-status .td-seg-btn {
+    height: 24px;
+    padding: 0 6px;
   }
   .td-avatar {
     display: inline-flex;
@@ -3998,53 +3990,6 @@ html[data-theme="dark"] {
   .td-access-lead + .td-access-lead {
     margin-top: 4px;
   }
-  .td-access-scopes {
-    margin-top: 16px;
-    border: 1px solid var(--color-td-line);
-    border-radius: var(--r-md);
-    overflow: hidden;
-  }
-  .td-access-row {
-    display: grid;
-    grid-template-columns: 68px minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 12px;
-    font-size: 12px;
-    background-color: var(--color-td-surface);
-  }
-  .td-access-row + .td-access-row {
-    border-top: 1px solid var(--color-td-line);
-  }
-  .td-access-row-name {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-weight: 500;
-    color: var(--color-td-ink);
-  }
-  .td-access-scope {
-    min-width: 0;
-    overflow: hidden;
-    font-size: 12px;
-    color: var(--color-td-ink-2);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .td-access-flag {
-    display: inline-flex;
-    align-items: center;
-    height: 18px;
-    padding: 0 6px;
-    font-size: 11px;
-    font-weight: 500;
-    line-height: 1;
-    color: var(--color-td-ink-3);
-    background-color: var(--color-td-sunken);
-    border: 1px solid var(--color-td-line);
-    border-radius: var(--r-sm);
-    white-space: nowrap;
-  }
   .td-token {
     margin-top: 16px;
     padding: 12px;
@@ -4091,6 +4036,53 @@ html[data-theme="dark"] {
   }
   .td-token-notes > span {
     display: block;
+  }
+  .td-cidr {
+    margin-top: 16px;
+  }
+  .td-cidr-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .td-cidr-note {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--color-td-ink-3);
+  }
+  .td-cidr-list {
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-md);
+    overflow: hidden;
+  }
+  .td-cidr-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 8px;
+    background-color: var(--color-td-surface);
+  }
+  .td-cidr-row + .td-cidr-row {
+    border-top: 1px solid var(--color-td-line);
+  }
+  .td-cidr-value {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .td-cidr-row .td-iconbtn {
+    width: 28px;
+    height: 28px;
+    background-color: var(--color-td-surface);
+    border-color: var(--color-td-line);
+  }
+  .td-cidr + .td-access-lead {
+    margin-top: 16px;
   }
   .td-states-grid {
     display: grid;
@@ -4184,7 +4176,7 @@ html[data-theme="dark"] {
       align-items: center;
       padding: 16px 8px;
     }
-    .td-side-text, .td-side-label, .td-side-name, .td-count, .td-agent-row .td-agent-text, .td-access-status-text, .td-legend, .td-sidebar .td-agent-badge {
+    .td-side-text, .td-side-label, .td-side-name, .td-count, .td-agent-row .td-agent-text, .td-legend, .td-sidebar .td-agent-badge {
       display: none;
     }
     .td-side-icon {
@@ -4208,7 +4200,19 @@ html[data-theme="dark"] {
       padding: 0;
     }
     .td-access-status {
+      flex-direction: column;
+      align-items: center;
       justify-content: center;
+      gap: 6px;
+      padding: 8px 0 0;
+    }
+    .td-access-status .td-seg {
+      flex-direction: column;
+    }
+    .td-access-status .td-seg-btn {
+      justify-content: center;
+      padding: 0 4px;
+      font-size: 11px;
     }
   }
   @media (min-width: 760px) and (max-width: 779px) {

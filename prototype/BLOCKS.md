@@ -4,8 +4,8 @@ The structural contract of `index.html`. Selectors are **`data-*` semantic hooks
 Tailwind class names are never part of the contract, and no anchor is positional.
 
 Counts in the current build: **7 columns · 18 cards · 18 detail templates ·
-15 agent-session blocks · 150 i18n hooks in the markup + 32 keys `app.js` resolves for
-generated copy = 182 keys, mirrored in `en` and `zh`.**
+15 agent-session blocks · 149 i18n hooks in the markup + 32 keys `app.js` resolves for
+generated copy = 181 keys, mirrored in `en` and `zh`.**
 
 ---
 
@@ -28,12 +28,13 @@ generated copy = 182 keys, mirrored in `en` and `zh`.**
 | Filters toggle | `[data-filter-toggle]` (`aria-pressed`, `aria-controls="td-filters"`) |
 | View toggle | `[data-view-toggle]` → `[data-view="board" \| "list"]` (`aria-pressed`) |
 | Revision | `[data-revision]` → `[data-revision-label]`, `[data-revision-value]`, `.td-live-dot` |
-| Theme toggle | `[data-theme-toggle]` → `[data-theme-icon="light" \| "dark"]` (`aria-pressed`) |
-| Language toggle | `[data-lang-toggle]` → `[data-lang="en" \| "zh"]` (`aria-pressed` marks the active language, `lang` attribute per option) |
 | Primary action | `[data-new-task]` |
 
-Right-end order is fixed: revision · theme · language · primary action. There is **no
-user, account or sign-in element** anywhere in the bar.
+Right-end order is fixed: revision · primary action. There is **no user, account or
+sign-in element** anywhere in the bar.
+
+The theme switch and the language switch **left the bar in review round v1.2** and now
+live in the sidebar footer (B03). The bar holds no display-mode control of any kind.
 
 ## B03 · Sidebar
 
@@ -44,12 +45,19 @@ user, account or sign-in element** anywhere in the bar.
 | Projects | `[data-project-list]` → `[data-project="…"]` (`aria-current="page"`) → `.td-side-icon` (prefix monogram, rail only) + `[data-project-count]` |
 | Agents | `[data-agents-presence]` → **one row per platform**: `[data-agent-platform="claude\|openclaw\|codex\|pi"]` + `[data-presence="running\|idle"]` |
 | States preview | `[data-states-open]` — sidebar footer control, opens **B18** |
-| Access status | `[data-access-status]` — green dot + `Local · localhost` (mono) + `[data-access-open]`, the entry to **B19** |
+| Footer controls | `[data-access-status]` — one compact row: **theme switch** `[data-theme-toggle]` → `[data-theme-icon="light" \| "dark"]` (`aria-pressed`, `aria-label`/`title` promise the next theme) · **language switch** `[data-lang-toggle]` → `[data-lang="en" \| "zh"]` (`aria-pressed` marks the active language, `lang` attribute per option) · **access entry** `[data-access-open]`, which opens **B19** |
 
-The footer reports *reachability*, not *identity*: the former `[data-user]` block
+The footer carries *display switches*, not *reachability*: the former `[data-user]` block
 (avatar + name + role) was **removed** in review round v1.1, along with its `.td-user`,
-`.td-user-text` and `.td-avatar-lg` styles. The assignee model further down this file is
-a separate concern and is unchanged.
+`.td-user-text` and `.td-avatar-lg` styles, and the `Local · localhost` readout plus its
+green status dot were **removed** in review round v1.2 (Terry, 2026-10-08 21:47) — no
+bind-address status is shown anywhere in the chrome; the bind address is stated inside
+B19 instead. The assignee model further down this file is a separate concern and is
+unchanged.
+
+At the ≤1023px rail the row stacks (`flex-direction: column`) and the language pair turns
+vertical, so the three controls stay reachable and inside the 64px (56px under 560px)
+rail without horizontal overflow.
 
 ## B04 · Filters bar
 
@@ -189,10 +197,24 @@ scrim, a panel and two jQuery handlers.
 | Root | `[data-access-panel][data-state="closed\|open"]` (`role="dialog"`, `aria-modal="true"`, `aria-hidden`), **hidden by default** with the `hidden` attribute |
 | Opener | `[data-access-open]` in the sidebar footer |
 | Dismiss | `[data-access-close]` · `[data-access-overlay]` · `Esc` — same `data-state` + `hidden` pattern as the drawer and the states showcase; focus returns to the opener |
-| Model copy | `[data-i18n="access.model.local"]` · `[data-i18n="access.model.remote"]` |
-| Scope rows | `[data-access-scope="local"\|"remote"]` → `[data-access-state="on"\|"off"]` → `.td-access-dot` (green when local) + `.td-access-scope` (mono) + `.td-access-flag` |
+| Bind copy | `[data-i18n="access.model.bind"]` |
+| CIDR whitelist | `[data-cidr-whitelist]` → `[data-cidr-list]` → **n ×** `[data-cidr-row]` (`[data-cidr-value]` input + `[data-cidr-remove]`) · `[data-cidr-add]` |
+| CIDR copy | `[data-i18n="access.cidr.note"]` · `[data-i18n="access.cidr.add"]` · `[data-i18n="access.cidr.remove"]` · `[data-i18n="access.cidr.value"]` |
+| Token rule | `[data-i18n="access.model.token"]` |
 | Token block | `[data-token-block]` (`data-token-revealed="true\|false"`) → `[data-token-value]` · `[data-token-reveal]` (icons `[data-token-icon="hidden"\|"shown"]`) · `[data-token-copy]` · `[data-token-reset]` |
 | Captions | `[data-i18n="access.token.generated"]` · `[data-i18n="access.token.private"]` |
+
+The panel states the v1.2 access model: the board **binds to `0.0.0.0`** and is reachable
+from other devices on the network; a **CIDR whitelist** restricts which source ranges may
+reach it (`192.168.0.0/16`, `10.0.0.0/8`, `203.0.113.0/24` ship seeded, and rows can be
+added or removed); and **requests from outside localhost must present the token**. The
+v1.1 copy (`Local only by default — … listens on localhost.` / `Remote (public) access
+requires a token.`) and the two Local/Remote scope rows it headed are gone.
+
+The whitelist is a **front-end placeholder**: `[data-cidr-add]` appends one empty row and
+focuses its input, `[data-cidr-list]` delegates every `[data-cidr-remove]` to its own
+`[data-cidr-row]`. Rows live in the DOM only — nothing is validated, compared, stored or
+sent.
 
 `[data-token-value]` renders the stand-in masked as `td_••••••••••••` (the `td_` prefix
 stays visible); `Reveal` toggles the mask only, `Copy` reports a toast and touches no
@@ -252,9 +274,18 @@ Five attributes carry the keys, on every piece of user-visible copy:
 | `data-i18n-title` | `title` |
 | `data-i18n-arg` | the `%s` value for any of the four above; it is resolved as a key first, so `column.add` + `status.todo` reads `Add task to To Do` / `在待办中新建任务` |
 
-The catalogue is the in-memory `MESSAGES` object at the top of `app.js` — **182 keys per
+The catalogue is the in-memory `MESSAGES` object at the top of `app.js` — **181 keys per
 language, mirrored 1:1**, never an external file. Copy `app.js` composes at runtime
 (toast sentences, list rows, card aria labels, the token mask) is keyed there too.
+
+Every string the v1.2 footer and the rewritten B19 introduced is in that catalogue:
+the footer switches carry `access.theme` · `access.lang` · `access.lang.en` ·
+`access.lang.zh` (the theme switch's label and title are re-derived on every switch, so
+they are read from `theme.switchToDark` / `theme.switchToLight`), and the panel carries
+`access.model.bind` · `access.cidr.note` · `access.cidr.add` · `access.cidr.remove` ·
+`access.cidr.value` · `access.model.token`. Rows the whitelist adds at runtime are
+authored with the same `data-i18n-aria-label` / `data-i18n-title` hooks, so the next
+language switch translates them like any seeded row.
 
 `<html lang>` follows the switch (`en` / `zh-CN`), the switches in `[data-lang-toggle]`
 move their `aria-pressed`, and the drawer body — which arrives from an inert

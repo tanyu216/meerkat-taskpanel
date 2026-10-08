@@ -47,11 +47,7 @@
       "topbar.view.list": "List",
       "topbar.live": "Live",
       "topbar.revision.title": "Global revision",
-      "topbar.theme": "Switch to dark theme",
       "topbar.newTask": "New task",
-      "topbar.lang": "Language",
-      "topbar.lang.en": "EN",
-      "topbar.lang.zh": "中文",
       "nav.label": "Views",
       "nav.board": "Board",
       "nav.list": "List",
@@ -209,17 +205,21 @@
       "toast.sample.danger": "TD-118 is blocked",
       "theme.switchToDark": "Switch to dark theme",
       "theme.switchToLight": "Switch to light theme",
+      /* sidebar footer — theme + language switches, access entry */
+      "access.theme": "Switch to dark theme",
+      "access.lang": "Language",
+      "access.lang.en": "EN",
+      "access.lang.zh": "中文",
       /* access + token settings */
       "access.open": "Access and token settings",
       "access.title": "Access",
       "access.close": "Close access settings",
-      "access.status": "Local · localhost",
-      "access.model.local": "Local only by default — this board listens on localhost.",
-      "access.model.remote": "Remote (public) access requires a token.",
-      "access.scope.local": "Local",
-      "access.scope.localState": "Enabled",
-      "access.scope.remote": "Remote",
-      "access.scope.remoteState": "Requires a token",
+      "access.model.bind": "Binds to 0.0.0.0 by default — reachable from other devices on the network.",
+      "access.model.token": "Requests from outside localhost must present the token.",
+      "access.cidr.note": "Allowed source ranges (CIDR). Traffic outside these ranges is rejected.",
+      "access.cidr.add": "Add allowed range",
+      "access.cidr.remove": "Remove this range",
+      "access.cidr.value": "Allowed source range",
       "access.token.title": "Access token",
       "access.token.reveal": "Reveal token",
       "access.token.hide": "Hide token",
@@ -242,11 +242,7 @@
       "topbar.view.list": "列表",
       "topbar.live": "实时",
       "topbar.revision.title": "全局修订号",
-      "topbar.theme": "切换到深色主题",
       "topbar.newTask": "新建任务",
-      "topbar.lang": "语言",
-      "topbar.lang.en": "EN",
-      "topbar.lang.zh": "中文",
       "nav.label": "视图导航",
       "nav.board": "看板",
       "nav.list": "列表",
@@ -404,17 +400,21 @@
       "toast.sample.danger": "TD-118 已阻塞",
       "theme.switchToDark": "切换到深色主题",
       "theme.switchToLight": "切换到浅色主题",
+      /* sidebar footer — theme + language switches, access entry */
+      "access.theme": "切换到深色主题",
+      "access.lang": "语言",
+      "access.lang.en": "EN",
+      "access.lang.zh": "中文",
       /* access + token settings */
       "access.open": "访问与 Token 设置",
       "access.title": "访问",
       "access.close": "关闭访问设置",
-      "access.status": "本地 · localhost",
-      "access.model.local": "默认仅本地访问——看板只监听 localhost。",
-      "access.model.remote": "远程（公网）访问需要 Token。",
-      "access.scope.local": "本地",
-      "access.scope.localState": "已启用",
-      "access.scope.remote": "远程",
-      "access.scope.remoteState": "需要 Token",
+      "access.model.bind": "默认绑定 0.0.0.0 —— 同一网络内的其他设备可以直接访问。",
+      "access.model.token": "来自 localhost 之外的请求必须携带 Token。",
+      "access.cidr.note": "允许的来源网段（CIDR）。超出这些范围的流量将被拒绝。",
+      "access.cidr.add": "新增允许网段",
+      "access.cidr.remove": "删除该网段",
+      "access.cidr.value": "允许的来源网段",
       "access.token.title": "访问 Token",
       "access.token.reveal": "显示 Token",
       "access.token.hide": "隐藏 Token",
@@ -798,15 +798,35 @@
     });
   }
 
+  /* The two glyphs are inline SVG, and SVG elements carry no `hidden` IDL
+     attribute — `prop("hidden", …)` writes a JS expando and the `[hidden]` rule
+     never matches. The attribute is what hides them. */
+  function showGlyph($glyph, show) {
+    if (show) $glyph.removeAttr("hidden");
+    else $glyph.attr("hidden", "");
+  }
+
+  /* One place owns the sidebar theme switch: the `data-theme` attribute, the
+     pressed state, the promise it carries in label *and* title, and which glyph
+     shows. The language pass and the click handler both come through here, so
+     the button can never end up half-switched. */
+  function applyTheme(dark) {
+    var $button = $("[data-theme-toggle]");
+    var promise = dark ? text("theme.switchToLight") : text("theme.switchToDark");
+    $("html").attr("data-theme", dark ? "dark" : "taskdash");
+    $button
+      .attr("aria-pressed", String(dark))
+      .attr("aria-label", promise)
+      .attr("title", promise);
+    showGlyph($button.find('[data-theme-icon="light"]'), !dark);
+    showGlyph($button.find('[data-theme-icon="dark"]'), dark);
+  }
+
   /* Copy the interaction layer writes itself — card attributes, drawer property
      values, the theme button's promise — has no static hook to rewrite, so it
      is regenerated from the current state on every language change. */
   function refreshGeneratedCopy() {
-    var dark = $("html").attr("data-theme") === "dark";
-    $("[data-theme-toggle]").attr(
-      "aria-label",
-      dark ? text("theme.switchToLight") : text("theme.switchToDark")
-    );
+    applyTheme($("html").attr("data-theme") === "dark");
 
     $("[data-card]").each(function () {
       var $card = $(this);
@@ -904,6 +924,32 @@
     $reveal.attr("aria-label", label).attr("title", label);
     $reveal.find('[data-token-icon="hidden"]').prop("hidden", revealed);
     $reveal.find('[data-token-icon="shown"]').prop("hidden", !revealed);
+  }
+
+  /* One whitelist row, built from the same markup the three seeded rows carry,
+     so a row added at runtime is indistinguishable from a seeded one: same
+     delegated handlers, same translation hooks. The row is a placeholder —
+     the value is never validated, compared, stored or sent anywhere. */
+  function cidrRow(value) {
+    var $row = $('<li class="td-cidr-row" data-cidr-row></li>');
+
+    var $input = $(
+      '<input class="td-input td-mono td-cidr-value" type="text" autocomplete="off" spellcheck="false" data-cidr-value>'
+    )
+      .attr("data-i18n-aria-label", "access.cidr.value")
+      .attr("aria-label", text("access.cidr.value"))
+      .val(value || "");
+
+    var $remove = $(
+      '<button type="button" class="td-iconbtn" data-cidr-remove></button>'
+    )
+      .attr("data-i18n-aria-label", "access.cidr.remove")
+      .attr("data-i18n-title", "access.cidr.remove")
+      .attr("aria-label", text("access.cidr.remove"))
+      .attr("title", text("access.cidr.remove"))
+      .append(ICON_CLOSE);
+
+    return $row.append($input).append($remove);
   }
 
   /* Same open/close contract as the detail drawer: `data-state` drives the
@@ -1193,6 +1239,9 @@
     '<circle cx="12" cy="5" r="1.4" fill="currentColor" stroke="none"></circle>' +
     '<circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"></circle>' +
     '<circle cx="12" cy="19" r="1.4" fill="currentColor" stroke="none"></circle></svg>';
+  var ICON_CLOSE =
+    '<svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<path d="M6 6l12 12M18 6 6 18"></path></svg>';
 
   /* Builds the same hook-complete card markup as the static board. */
   function buildCard(task) {
@@ -1473,6 +1522,19 @@
       toast(text("toast.tokenReset"), "success");
     });
 
+    /* CIDR whitelist — a front-end-only list. Add appends an empty row and puts
+       the caret in it; remove drops the row it belongs to. Neither touches
+       anything outside the DOM. */
+    $("[data-cidr-add]").on("click", function () {
+      var $row = cidrRow("");
+      $("[data-cidr-list]").append($row);
+      $row.find("[data-cidr-value]").trigger("focus");
+    });
+
+    $("[data-cidr-list]").on("click", "[data-cidr-remove]", function () {
+      $(this).closest("[data-cidr-row]").remove();
+    });
+
     /* C · language --------------------------------------------------------- */
     $("[data-lang-toggle]").on("click", "[data-lang]", function () {
       setLang($(this).attr("data-lang"));
@@ -1736,16 +1798,8 @@
 
     /* I11 · theme ---------------------------------------------------------- */
     $("[data-theme-toggle]").on("click", function () {
-      var $button = $(this);
       var dark = $("html").attr("data-theme") !== "dark";
-      $("html").attr("data-theme", dark ? "dark" : "taskdash");
-      $button.attr("aria-pressed", String(dark));
-      $button.attr(
-        "aria-label",
-        dark ? text("theme.switchToLight") : text("theme.switchToDark")
-      );
-      $button.find('[data-theme-icon="light"]').prop("hidden", dark);
-      $button.find('[data-theme-icon="dark"]').prop("hidden", !dark);
+      applyTheme(dark);
       toast(dark ? text("toast.themeDark") : text("toast.themeLight"), "info");
     });
 

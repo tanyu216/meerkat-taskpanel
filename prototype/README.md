@@ -3,10 +3,11 @@
 A static, self-contained HTML prototype of the TaskDashboard board for an AI-agent
 team. It is the executable design baseline: tokens, block structure and interaction
 behaviour all come from `design-style-guide.md` + `design-spec.md` as amended by
-`design-spec-addendum-v1.1.md` (access model, top bar, i18n), with every disagreement
-between the sources recorded in
+`design-spec-addendum-v1.1.md` (access model, top bar, i18n) and
+`design-spec-addendum-v1.2.md` (sidebar-footer switches, access-model rewrite), with
+every disagreement between the sources recorded in
 [DESIGN.md §9](DESIGN.md#9-reconciliation--where-the-two-source-documents-disagree) and
-every judgement call the addendum left open recorded in §14.
+every judgement call the addenda left open recorded in §14 (v1.1) and §15 (v1.2).
 
 **Stack is closed: Tailwind CSS + daisyUI + jQuery (slim). No other CSS/UI/JS library,
 no CDN, no webfont, no network call, no storage.**
@@ -101,9 +102,9 @@ the style guide's token blocks in `src/input.css` are unlayered. Two consequence
 | I8 | Switch project | project switcher or sidebar list | `[data-project-option]`, `[data-project]` |
 | I9 | Create a task | `New task` or a column `+` (prefills that status) | `[data-new-task]`, `[data-column-add]` |
 | I10 | Create a project | switcher → `New project…` | `[data-project-new]` |
-| I11 | Light/dark theme | theme button | `[data-theme-toggle]` |
+| I11 | Light/dark theme | theme button in the sidebar footer | `[data-theme-toggle]` |
 | I12 | Toast feedback | every mutation | `[data-toast-region]`, `[data-toast]` |
-| — | Language switch | `EN` / `中文` in the top bar | `[data-lang-toggle]` → `[data-lang]` |
+| — | Language switch | `EN` / `中文` in the sidebar footer | `[data-lang-toggle]` → `[data-lang]` |
 | — | States gallery | sidebar footer button, `Esc` / scrim / close to dismiss | `[data-states-open]` → `[data-states-panel]` |
 | — | Error retry | `Retry` inside the error state | `[data-error-retry]` |
 | — | Access & token settings | sidebar footer entry, `Esc` / scrim / close to dismiss | `[data-access-open]` → `[data-access-panel]` |
@@ -166,15 +167,17 @@ looking at it (DESIGN.md §12).
 | Empty states | empty column + no-results |
 | Loading | 3 shimmer rows in the list view |
 | Themes | light (default) and dark |
-| Language | English (default) + Chinese via `[data-lang-toggle]` — 182 key pairs, mirrored |
-| Access model | B19 access & token panel; no user / account / sign-in element anywhere |
+| Language | English (default) + Chinese via `[data-lang-toggle]` — 181 key pairs, mirrored |
+| Access model | B19 access & token panel: binds `0.0.0.0`, CIDR whitelist, token required from outside localhost; no user / account / sign-in element anywhere |
 | Viewports | 1512 / 1240 / 980 / 760 / 500 — no page-level horizontal overflow |
 
 The board is the only horizontal scroll container; `html`, `body` and `main` never
-scroll sideways. Below 1023px the sidebar collapses to an icon rail, below 760px the
-top bar wraps and the drawer goes full width. Between **760 and 779px** the top bar also
-wraps: with the language switch in the bar it needs ~776px on one row, and wrapping is
-the only way to keep the page from going wider than the viewport (DESIGN.md §14).
+scroll sideways. Below 1023px the sidebar collapses to an icon rail — where the three
+footer controls stack and the `EN` / `中文` pair turns vertical to stay inside the rail —
+and below 760px the top bar wraps and the drawer goes full width. Between **760 and
+779px** the top bar also wraps: that band was sized around a bar that still held the
+language switch, and the wrap is now kept as reviewed rather than re-tuned (DESIGN.md
+§14, §15).
 
 ---
 
@@ -197,9 +200,17 @@ the only way to keep the page from going wider than the viewport (DESIGN.md §14
 | `16-states-panel.png` | the states gallery: loading, empty column, no results, error and the three toast kinds in one frame |
 | `17-access-panel.png` | B19 access & token settings, token masked |
 | `18-access-token-revealed.png` | the same panel with the stand-in token revealed |
-| `19-board-zh.png` | the board in Chinese — top bar, sidebar, filters, column headers, legend and the footer readout |
+| `19-board-zh.png` | the board in Chinese — top bar, sidebar, filters, column headers, legend and the footer switches |
 | `20-drawer-zh.png` | the drawer in Chinese: properties, relation labels, comment role chips and relative timestamps |
 | `21-access-panel-dark.png` | the access panel in dark theme |
+
+**v1.2 recapture:** `01-board-1512`, `11-viewport-1240`, `13-viewport-760`,
+`05-dark-theme`, `19-board-zh`, `15-no-javascript`, `17-access-panel`,
+`18-access-token-revealed` and `21-access-panel-dark` were re-shot against the v1.2
+build at the same geometry (device-scale-factor 2, viewports 1512×950 / 1240×900 /
+760×900). The other captures are the v1.1 files, kept as-is per the addendum; where a
+v1.1 frame includes the sidebar footer, it still shows the retired `Local · localhost`
+readout (DESIGN.md §15).
 
 Captured with headless Chrome at device-scale-factor 1 with transitions disabled so
 the frames are deterministic; `index.html` itself is untouched.
