@@ -40,6 +40,7 @@ export {
 export { ensureToken, generateToken, isToken, readToken, rotateToken } from "./storage/secrets/token-store.mjs";
 export {
   readRuntimePointer,
+  removeRuntimePointer,
   writeRuntimePointer,
 } from "./storage/secrets/runtime-pointer.mjs";
 export { exportMd, renderCard } from "./storage/md/export.mjs";

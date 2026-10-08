@@ -79,7 +79,19 @@ export function resolveDictionaryEntry(existing, raw, options) {
 
   const fuzzy = sameKind.filter((entry) => normalizeName(entry.displayName).includes(normalizedName));
   if (fuzzy.length === 1) {
-    return { action: "reuse", entry: fuzzy[0], displayName: fuzzy[0].displayName, normalizedName, kind };
+    // On reuse the verdict describes the *existing* entry — including its
+    // normalised name. Returning the caller's spelling here looks harmless and
+    // is not: `dictionary.upsert` keys on `(normalized_name, kind)`, so
+    // `--assignee linu` (a unique prefix of `linus`) would miss the row it just
+    // matched and insert a second one. M2's `issue create --assignee <text>` is
+    // what surfaced it; `test/core/domain/dictionary.test.mjs` pins it.
+    return {
+      action: "reuse",
+      entry: fuzzy[0],
+      displayName: fuzzy[0].displayName,
+      normalizedName: fuzzy[0].normalizedName ?? normalizeName(fuzzy[0].displayName),
+      kind,
+    };
   }
   if (fuzzy.length > 1 && !forceCreate) {
     throw ambiguous(raw, fuzzy);

@@ -46,6 +46,24 @@ const GATES = [
       "test/concurrency/",
     ],
   },
+  // M2's two new trees. `src/server` is exercised from both of its own suites
+  // and from the CLI ones — the CLI is how a user reaches every route, so a
+  // route test that only speaks HTTP would miss half the calls.
+  {
+    label: "src/cli",
+    include: "src/cli/**",
+    tests: [
+      "test/cli/",
+    ],
+  },
+  {
+    label: "src/server",
+    include: "src/server/**",
+    tests: [
+      "test/server/",
+      "test/cli/",
+    ],
+  },
 ];
 
 const THRESHOLD = 80;

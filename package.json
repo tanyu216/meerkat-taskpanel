@@ -31,7 +31,7 @@
     "check": "npm run check:skills && npm run verify && npm test",
     "verify:docker": "node scripts/verify/docker.mjs",
     "verify:docker:container": "bash docker/verify-in-container.sh",
-    "test:coverage": "node --test --test-reporter=tap --experimental-test-coverage --test-coverage-include='src/core/**' --test-coverage-include='src/shared/**' --test-coverage-lines=80 --test-coverage-branches=80 --test-coverage-functions=80"
+    "test:coverage": "node --test --test-reporter=tap --experimental-test-coverage --test-coverage-include='src/core/**' --test-coverage-include='src/shared/**' --test-coverage-include='src/cli/**' --test-coverage-include='src/server/**' --test-coverage-lines=80 --test-coverage-branches=80 --test-coverage-functions=80"
   },
   "keywords": [
     "task-management",

@@ -47,6 +47,9 @@ export const TASK_COLUMNS = Object.freeze([
   "meta_json",
   "report_latest_id",
   "delivery_round",
+  "report_waiver_round",
+  "report_waiver_reason",
+  "report_waived_at",
   "version",
   "created_at",
   "updated_at",
@@ -299,6 +302,10 @@ export function normalizeTaskCreate(input, context) {
     meta: input.meta ?? {},
     reportLatestId: null,
     deliveryRound: 1,
+    // A waiver is per delivery round and is never set at creation (F-B1).
+    reportWaiverRound: null,
+    reportWaiverReason: null,
+    reportWaivedAt: null,
     version: 1,
     createdAt: now,
     updatedAt: now,
@@ -367,6 +374,19 @@ export function normalizeTaskUpdate(input, context) {
   }
   if (input.labels !== undefined) patch.labels = normalizeLabels(input.labels);
   if (input.sortOrder !== undefined) patch.sortOrder = Number(input.sortOrder);
+  // `meta` is in UPDATABLE_TASK_FIELDS, so a caller may patch it — but M1 listed
+  // it without copying it, which silently dropped the write. M2's
+  // `issue update --meta k=v` (and the `--acceptance` sugar that lands in
+  // `meta.acceptance`) is what surfaced it.
+  if (input.meta !== undefined) {
+    if (input.meta === null || typeof input.meta !== "object" || Array.isArray(input.meta)) {
+      throw new DomainError("VALIDATION_FAILED", {
+        message: "meta must be an object",
+        details: { field: "meta", received: Array.isArray(input.meta) ? "array" : typeof input.meta },
+      });
+    }
+    patch.meta = input.meta;
+  }
   if (input.assigneeKind !== undefined) {
     if (input.assigneeKind !== null && !DICT_KINDS.includes(input.assigneeKind)) {
       throw new DomainError("VALIDATION_FAILED", {
@@ -422,6 +442,9 @@ const CAMEL = {
   meta_json: "meta",
   report_latest_id: "reportLatestId",
   delivery_round: "deliveryRound",
+  report_waiver_round: "reportWaiverRound",
+  report_waiver_reason: "reportWaiverReason",
+  report_waived_at: "reportWaivedAt",
   version: "version",
   created_at: "createdAt",
   updated_at: "updatedAt",

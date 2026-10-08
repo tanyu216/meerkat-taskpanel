@@ -73,6 +73,22 @@ describe("domain/dictionary — resolution", () => {
     assert.equal(resolveDictionaryEntry(EXISTING, "Torv", { kind: "agent" }).entry.id, "as2");
   });
 
+  it("reports the existing entry's own name on a fuzzy reuse, not the caller's spelling", () => {
+    // `dictionary.upsert` keys on `(normalized_name, kind)`. If the verdict
+    // echoed the caller's spelling, `--assignee Torv` would match `Torvald` and
+    // then *insert a second row* under the normalised name `torv`. M2 found this
+    // through `issue create --assignee <text>`; the row count is the assertion
+    // that matters, so it is made against a real board in
+    // `test/core/commands/*` as well.
+    for (const raw of ["Torv", "orvald", "TORVALD"]) {
+      const verdict = resolveDictionaryEntry(EXISTING, raw, { kind: "agent" });
+      assert.equal(verdict.action, "reuse", raw);
+      assert.equal(verdict.entry.id, "as2");
+      assert.equal(verdict.normalizedName, "linus torvalds", `${raw} must resolve to the stored key`);
+      assert.equal(verdict.displayName, "Linus Torvalds");
+    }
+  });
+
   it("refuses to guess when several entries match", () => {
     const three = [entry("a", "Linus"), entry("b", "Linus Torvalds"), entry("c", "Linus Pauling")];
     assert.throws(() => resolveDictionaryEntry(three, "lin", { kind: "agent" }), (err) => {

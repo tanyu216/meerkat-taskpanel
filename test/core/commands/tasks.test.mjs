@@ -544,3 +544,153 @@ describe("commands/tasks — claim accounting", () => {
     }, { clock: () => TS2 });
   });
 });
+
+describe("commands/tasks — the audited waiver (M2 F-B1)", () => {
+  const REASON = "hotfix: report follows in a change comment";
+
+  /** A task sitting in `in_progress`, ready to deliver. */
+  async function inProgress(commands) {
+    const task = commands.createTask({ projectId: "proj", title: "Ship M2", actor: AGENT });
+    commands.claim({ id: task.id, actor: AGENT });
+    return task;
+  }
+
+  it("moves to in_review with no report, stamps the row and audits report_waived", async () => {
+    await board(async ({ db, commands }) => {
+      const task = await inProgress(commands);
+      const before = revision(db);
+
+      const moved = commands.moveStatus({
+        id: task.id,
+        to: "in_review",
+        actor: AGENT,
+        noReport: true,
+        reason: REASON,
+      });
+
+      assert.equal(moved.status, "in_review");
+      assert.equal(moved.reportLatestId, null, "no report was written");
+      assert.equal(moved.reportWaiverRound, 1);
+      assert.equal(moved.reportWaiverReason, REASON);
+      assert.match(moved.reportWaivedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      assert.equal(countRows(db, "task_reports"), 0);
+      assert.deepEqual(activitiesFor(db, task.id), ["task_created", "task_claimed", "report_waived"]);
+      const activity = db
+        .prepare("SELECT changes_json FROM task_activities WHERE event = 'report_waived'")
+        .get();
+      assert.deepEqual(JSON.parse(activity.changes_json), {
+        from: "in_progress",
+        to: "in_review",
+        round: 1,
+        reason: REASON,
+        deliveryRound: 1,
+      });
+      // One UPDATE (status + the three waiver columns) and one audit row.
+      assert.equal(revision(db), before + 2, "the waiver columns must not cost a second bump");
+    });
+  });
+
+  it("refuses a missing, blank or too-short reason, writing nothing", async () => {
+    await board(async ({ db, commands }) => {
+      const task = await inProgress(commands);
+      const before = revision(db);
+
+      for (const reason of [undefined, "", "   ", "short", "1234567"]) {
+        assert.throws(
+          () => commands.moveStatus({ id: task.id, to: "in_review", actor: AGENT, noReport: true, reason }),
+          (err) => {
+            assert.equal(err.code, "VALIDATION_FAILED", JSON.stringify(reason));
+            assert.equal(err.details.field, "reason");
+            return true;
+          },
+        );
+      }
+      assert.equal(commands.getTask({ id: task.id }).status, "in_progress");
+      assert.equal(countRows(db, "task_reports"), 0);
+      assert.equal(revision(db), before, "a refused waiver changes nothing");
+    });
+  });
+
+  it("is only valid on a move to in_review", async () => {
+    await board(async ({ db, commands }) => {
+      const task = await inProgress(commands);
+      const before = revision(db);
+      assert.throws(
+        () => commands.moveStatus({ id: task.id, to: "blocked", actor: AGENT, noReport: true, reason: REASON }),
+        (err) => {
+          assert.equal(err.code, "VALIDATION_FAILED");
+          assert.deepEqual(err.details.allowed, ["in_review"]);
+          return true;
+        },
+      );
+      assert.equal(commands.getTask({ id: task.id }).status, "in_progress");
+      assert.equal(revision(db), before);
+    });
+  });
+
+  it("is spent when the round moves on — like a report", async () => {
+    await board(async ({ db, commands }) => {
+      const task = await inProgress(commands);
+      commands.moveStatus({ id: task.id, to: "in_review", actor: AGENT, noReport: true, reason: REASON });
+
+      // Rework: in_review → in_progress bumps the round to 2 and clears nothing.
+      const rework = commands.moveStatus({ id: task.id, to: "in_progress", actor: AGENT });
+      assert.equal(rework.deliveryRound, 2);
+
+      // A plain move still needs a report for round 2: the round-1 waiver is dead.
+      assert.throws(() => commands.moveStatus({ id: task.id, to: "in_review", actor: AGENT }), (err) => {
+        assert.equal(err.code, "REPORT_REQUIRED");
+        assert.equal(err.details.round, 2);
+        assert.deepEqual(err.details.existingRounds, []);
+        return true;
+      });
+      assert.equal(countRows(db, "task_reports"), 0);
+
+      // A fresh waiver for round 2 works.
+      const moved = commands.moveStatus({ id: task.id, to: "in_review", actor: AGENT, noReport: true, reason: REASON });
+      assert.equal(moved.reportWaiverRound, 2);
+    });
+  });
+
+  it("deliver --no-report is the same thing, atomically, and refuses a report at the same time", async () => {
+    await board(async ({ db, commands }) => {
+      const task = await inProgress(commands);
+      const before = revision(db);
+
+      const result = commands.deliver({ taskId: task.id, actor: AGENT, noReport: true, reason: REASON });
+      assert.equal(result.waived, true);
+      assert.equal(result.report, null);
+      assert.equal(result.task.status, "in_review");
+      assert.equal(result.task.reportWaiverRound, 1);
+      assert.equal(countRows(db, "task_reports"), 0);
+      assert.equal(revision(db), before + 2);
+
+      // Both at once is a usage error, not a silently picked winner.
+      const other = await inProgress(commands);
+      assert.throws(
+        () => commands.deliver({ taskId: other.id, actor: AGENT, report: report(), noReport: true, reason: REASON }),
+        (err) => {
+          assert.equal(err.code, "VALIDATION_FAILED");
+          assert.deepEqual(err.details.fields, ["noReport", "report"]);
+          return true;
+        },
+      );
+      // And deliver with neither is a usage error too.
+      assert.throws(() => commands.deliver({ taskId: other.id, actor: AGENT }), (err) => {
+        assert.equal(err.code, "VALIDATION_FAILED");
+        return true;
+      });
+    });
+  });
+
+  it("still prefers a report when one is available", async () => {
+    await board(async ({ db, commands }) => {
+      const task = await inProgress(commands);
+      const delivered = commands.deliver({ taskId: task.id, report: report(), actor: AGENT });
+      assert.equal(delivered.waived, false);
+      assert.equal(delivered.task.reportWaiverRound, null, "the normal path is not marked waived");
+      assert.equal(countRows(db, "task_reports"), 1);
+      assert.deepEqual(activitiesFor(db, task.id), ["task_created", "task_claimed", "task_delivered"]);
+    });
+  });
+});

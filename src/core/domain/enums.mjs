@@ -98,6 +98,7 @@ export const ACTIVITY_EVENTS = Object.freeze([
   "task_archived",
   "report_written",
   "task_delivered",
+  "report_waived",
   "comment_added",
   "relation_added",
   "relation_removed",

@@ -44,13 +44,14 @@ const TINY = {
 describe("storage/migrations — the shipped set", () => {
   it("reads the shipped migrations in version order with stable checksums", () => {
     const migrations = listMigrations();
-    assert.deepEqual(migrations.map((m) => m.version), ["0001", "0002", "0003", "0004", "0005"]);
+    assert.deepEqual(migrations.map((m) => m.version), ["0001", "0002", "0003", "0004", "0005", "0006"]);
     assert.deepEqual(migrations.map((m) => m.name), [
       "core_tables",
       "invariants",
       "reports",
       "dictionary",
       "task_meta",
+      "report_waiver",
     ]);
     for (const migration of migrations) {
       assert.match(migration.checksum, /^[0-9a-f]{64}$/);
@@ -64,17 +65,17 @@ describe("storage/migrations — the shipped set", () => {
     const board = await createTempBoard({ migrate: false });
     try {
       const first = applyMigrations(board.db);
-      assert.deepEqual(first.applied.map((a) => a.version), ["0001", "0002", "0003", "0004", "0005"]);
+      assert.deepEqual(first.applied.map((a) => a.version), ["0001", "0002", "0003", "0004", "0005", "0006"]);
       assert.deepEqual(first.skipped, []);
       for (const entry of first.applied) assert.equal(typeof entry.ms, "number");
 
       const second = applyMigrations(board.db);
       assert.deepEqual(second.applied, [], "re-apply must be a no-op");
-      assert.deepEqual(second.skipped, ["0001", "0002", "0003", "0004", "0005"]);
+      assert.deepEqual(second.skipped, ["0001", "0002", "0003", "0004", "0005", "0006"]);
 
       const rows = board.db.prepare("SELECT version, checksum FROM schema_migrations ORDER BY version").all();
-      assert.equal(rows.length, 5, "one bookkeeping row per file");
-      assert.deepEqual([...appliedMigrations(board.db).keys()], ["0001", "0002", "0003", "0004", "0005"]);
+      assert.equal(rows.length, 6, "one bookkeeping row per file");
+      assert.deepEqual([...appliedMigrations(board.db).keys()], ["0001", "0002", "0003", "0004", "0005", "0006"]);
     } finally {
       board.close();
     }
@@ -214,7 +215,7 @@ describe("storage/migrations — failure modes", () => {
 
   it("ships a default migrations dir that exists", () => {
     assert.match(defaultMigrationsDir(), /src\/core\/storage\/migrations$/);
-    assert.equal(listMigrations().length, 5);
+    assert.equal(listMigrations().length, 6);
   });
 });
 
@@ -227,8 +228,8 @@ describe("storage/migrations — startup check", () => {
         assert.ok(err instanceof DomainError);
         assert.equal(err.code, "SCHEMA_MISMATCH");
         assert.equal(err.http, 500);
-        assert.deepEqual(err.details.missing, ["0001", "0002", "0003", "0004", "0005"]);
-        assert.deepEqual(err.details.expected, ["0001", "0002", "0003", "0004", "0005"]);
+        assert.deepEqual(err.details.missing, ["0001", "0002", "0003", "0004", "0005", "0006"]);
+        assert.deepEqual(err.details.expected, ["0001", "0002", "0003", "0004", "0005", "0006"]);
         return true;
       });
 
@@ -237,7 +238,7 @@ describe("storage/migrations — startup check", () => {
         ok: true,
         missing: [],
         unknownApplied: [],
-        expected: ["0001", "0002", "0003", "0004", "0005"],
+        expected: ["0001", "0002", "0003", "0004", "0005", "0006"],
       });
 
       // A database that knows a migration this build does not ship.

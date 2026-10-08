@@ -221,10 +221,14 @@ export function createTasksRepository(db) {
      * Move a task's status. The delivery gate and the round bump are triggers,
      * so this method passes no policy — only the CAS.
      *
-     * @param {{id: string, ifVersion?: number, to: string, now: string, reportLatestId?: number|null}} input
+     * `waiver` (F-B1) stamps the three `report_waiver_*` columns in the *same*
+     * UPDATE as the status change. That is what makes the trigger's waiver
+     * branch see them, and what keeps a waived delivery to one revision.
+     *
+     * @param {{id: string, ifVersion?: number, to: string, now: string, reportLatestId?: number|null, waiver?: {round: number, reason: string}|null}} input
      */
     moveCas(input) {
-      const { id, ifVersion, to, now, reportLatestId } = input;
+      const { id, ifVersion, to, now, reportLatestId, waiver } = input;
       return transaction(
         db,
         () => {
@@ -237,6 +241,10 @@ export function createTasksRepository(db) {
           if (reportLatestId !== undefined) {
             sets.push("report_latest_id = ?");
             values.push(reportLatestId);
+          }
+          if (waiver !== undefined && waiver !== null) {
+            sets.push("report_waiver_round = ?", "report_waiver_reason = ?", "report_waived_at = ?");
+            values.push(waiver.round, waiver.reason, waiver.at ?? now);
           }
           const where = ["id = ?"];
           const whereValues = [id];

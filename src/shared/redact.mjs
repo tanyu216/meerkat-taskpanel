@@ -20,6 +20,19 @@ const BEARER_PATTERN = /\b(Bearer\s+)[^\s"',;]+/gi;
 export const REDACTED_TOKEN = "td_****";
 
 /**
+ * Keys whose **value** is a secret and must be blanked outright.
+ *
+ * The pattern matches a key that *ends* in the secret word (`token`,
+ * `api_token`, `client_secret`), not one that merely mentions it. That
+ * distinction is load-bearing in M2: `token_source` names *where* a token came
+ * from (`flag`/`env`/`file`/`none`) and `token_file` is a path — redacting
+ * either would turn a diagnostic into `td_****`, which is worse than useless
+ * when the whole point is to say "I did not leak the token, and here is which
+ * of the four it used".
+ */
+const SECRET_KEY = /(^|_)(token|secret|password|passwd|authorization|api_key)$/i;
+
+/**
  * Redact every token-shaped substring in `text`.
  *
  * @param {unknown} text
@@ -78,7 +91,10 @@ export function redactDeep(value, depth = 0) {
 
   const out = {};
   for (const [key, val] of Object.entries(value)) {
-    out[key] = /token|secret|password|authorization/i.test(key)
+    // An absent secret stays absent: `{token: null}` means "there is no token",
+    // and rewriting it to `td_****` would be a lie a caller could act on. Only a
+    // value that is actually there gets blanked.
+    out[key] = SECRET_KEY.test(key) && val !== null && val !== undefined
       ? REDACTED_TOKEN
       : redactDeep(val, depth + 1);
   }

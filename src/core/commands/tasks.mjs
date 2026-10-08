@@ -13,7 +13,7 @@
 
 import { DomainError } from "../../shared/errors.mjs";
 import { assertClaimable, decideClaim, explainLostClaim } from "../domain/claim.mjs";
-import { assertDeliveryGate, checkDeliveryGate } from "../domain/delivery-gate.mjs";
+import { assertDeliveryGate, assertWaiverRequest, checkDeliveryGate } from "../domain/delivery-gate.mjs";
 import { assertTransition } from "../domain/status.mjs";
 import { isArchivable, normalizeTaskCreate, normalizeTaskUpdate } from "../domain/task.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
@@ -258,12 +258,17 @@ export function heartbeat(ctx, input) {
  * Move a task's status. The delivery gate is enforced here *and* by the
  * database; this pass exists so the refusal carries a repair command.
  *
+ * `noReport: true` + `reason` is the audited waiver (F-B1): it satisfies the
+ * gate for the current round and is recorded as `report_waived` instead of
+ * `task_moved`, so the card's history says what actually happened.
+ *
  * @param {object} ctx
- * @param {{id: string, to: string, actor: object, ifVersion?: number}} input
+ * @param {{id: string, to: string, actor: object, ifVersion?: number, noReport?: boolean, reason?: string}} input
  */
 export function moveStatus(ctx, input) {
   const actor = actorOf(input.actor);
   const now = ctx.now();
+  const waiverReason = input.noReport === true ? assertWaiverRequest({ noReport: true, reason: input.reason, to: input.to }) : null;
 
   return transaction(
     ctx.db,
@@ -275,21 +280,50 @@ export function moveStatus(ctx, input) {
 
       assertTransition(current.status, input.to);
 
-      if (input.to === "in_review") {
+      const waiver =
+        waiverReason === null ? null : { round: current.deliveryRound, reason: waiverReason, at: now };
+
+      if (waiver === null) {
+        if (input.to === "in_review") {
+          assertDeliveryGate({
+            task: current,
+            reports: ctx.repos.reports.listRounds(current.id).map((round) => ({ round })),
+            to: input.to,
+          });
+        }
+      } else if (input.to === "in_review") {
+        // The same decision, made once, so the service and the trigger cannot
+        // disagree about whether this waiver is good enough.
         assertDeliveryGate({
           task: current,
           reports: ctx.repos.reports.listRounds(current.id).map((round) => ({ round })),
           to: input.to,
+          waiver,
         });
       }
 
-      const task = ctx.repos.tasks.moveCas({ id: input.id, ifVersion: input.ifVersion, to: input.to, now });
+      const task = ctx.repos.tasks.moveCas({
+        id: input.id,
+        ifVersion: input.ifVersion,
+        to: input.to,
+        now,
+        waiver,
+      });
       ctx.repos.activities.append({
         taskId: task.id,
         actorKind: actor.kind,
         actorId: actor.id,
-        event: "task_moved",
-        changes: { from: current.status, to: task.status, deliveryRound: task.deliveryRound },
+        event: waiver === null ? "task_moved" : "report_waived",
+        changes:
+          waiver === null
+            ? { from: current.status, to: task.status, deliveryRound: task.deliveryRound }
+            : {
+                from: current.status,
+                to: task.status,
+                round: waiver.round,
+                reason: waiver.reason,
+                deliveryRound: task.deliveryRound,
+              },
         createdAt: now,
       });
       return task;

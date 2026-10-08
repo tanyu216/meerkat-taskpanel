@@ -276,7 +276,7 @@ describe("repository guard files", () => {
   });
 });
 
-describe("taskctl CLI stub", () => {
+describe("taskctl CLI", () => {
   const cli = join(ROOT, "src", "cli", "index.mjs");
 
   it("--version exits 0 and prints the shared VERSION", () => {
@@ -293,10 +293,15 @@ describe("taskctl CLI stub", () => {
     }
   });
 
-  it("an unimplemented command exits 2 and says so on stderr", () => {
+  // M2 replaced the M0 stub: a command that does not exist is now a *usage*
+  // error (exit 2) against the real registry, not a "not implemented" notice.
+  // The full command surface is exercised in `test/cli/**`; this case only pins
+  // that the entry point still refuses nonsense the same way.
+  it("an unknown command exits 2 with a usage error on stderr", () => {
     const run = spawnSync(process.execPath, [cli, "claim", "T-1"], { encoding: "utf8" });
-    assert.equal(run.status, 2);
-    assert.match(run.stderr, /not implemented yet \(M0 scaffold\)/);
+    assert.equal(run.status, 2, run.stderr);
+    assert.match(run.stderr, /CLI_USAGE/);
+    assert.match(run.stderr, /unknown command "claim"/);
   });
 
   it("the skill wrapper forwards to the same CLI", () => {

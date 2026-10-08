@@ -466,23 +466,43 @@ describe("contract/invariants — the delivery gate, straight to SQL (A7)", () =
     });
   });
 
-  it("is a hard gate: no waiver column, no waiver path (F4)", async () => {
+  // M2 (F-B1) replaced M1's "there is no waiver at all": the gate is still the
+  // gate, but it now has exactly one extra way through, and the *trigger* is
+  // where that has to be true — this test writes SQL directly, bypassing
+  // `domain/delivery-gate.mjs` entirely. The two must agree, so this case and
+  // `test/core/domain/delivery-gate.test.mjs` assert the same boundaries.
+  it("lets a round-scoped, reasoned waiver through the trigger — and nothing weaker", async () => {
+    const REASON = "hotfix: report follows in a change comment";
+    const waive = (db, taskId, round, reason) =>
+      reasonCode(() =>
+        db
+          .prepare(
+            "UPDATE tasks SET status = 'in_review', report_waiver_round = ?, report_waiver_reason = ?, version = version + 1, updated_at = ? WHERE id = ?",
+          )
+          .run(round, reason, TS2, taskId),
+      );
+
     await withBoard(({ db }) => {
       insertProject(db);
       insertTask(db, { id: "t", identifier: "PROJ-0001", status: "in_progress" });
-      const columns = db
-        .prepare("SELECT name FROM pragma_table_info('tasks')")
-        .all()
-        .map((r) => r.name);
-      assert.equal(
-        columns.some((c) => /waiv|no_report|reason/i.test(c)),
-        false,
-        `a waiver column appeared: ${columns.join(",")}`,
-      );
-      const ddl = db
-        .prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='tr_deliver_gate'")
-        .get().sql;
-      assert.equal(/waiv/i.test(ddl), false, "the gate must not have a waiver branch");
+      assert.equal(deliver(db, "t"), "REPORT_REQUIRED", "no waiver at all is still refused");
+
+      assert.equal(waive(db, "t", 9, REASON), "REPORT_REQUIRED", "a waiver for another round does not count");
+      assert.equal(waive(db, "t", 1, "short"), "REPORT_REQUIRED", "a one-word reason is not a reason");
+      assert.equal(waive(db, "t", 1, "        "), "REPORT_REQUIRED", "whitespace is not a reason");
+      assert.equal(waive(db, "t", 1, null), "REPORT_REQUIRED", "no reason, no waiver");
+      assert.equal(db.prepare("SELECT status FROM tasks WHERE id = 't'").get().status, "in_progress");
+
+      assert.equal(waive(db, "t", 1, REASON), "NO_ERROR", "the current round with a real reason gets through");
+      const row = db.prepare("SELECT status, report_waiver_round FROM tasks WHERE id = 't'").get();
+      assert.equal(row.status, "in_review");
+      assert.equal(Number(row.report_waiver_round), 1);
+
+      // Coming back for rework bumps the round (0003), so the waiver is spent.
+      db.prepare("UPDATE tasks SET status = 'in_progress', version = version + 1, updated_at = ? WHERE id = 't'").run(TS2);
+      assert.equal(Number(db.prepare("SELECT delivery_round FROM tasks WHERE id = 't'").get().delivery_round), 2);
+      assert.equal(waive(db, "t", 1, REASON), "REPORT_REQUIRED", "round 1's waiver is dead");
+      assert.equal(waive(db, "t", 2, REASON), "NO_ERROR");
     });
   });
 

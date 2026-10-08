@@ -93,6 +93,12 @@ export const ERROR_CODES = Object.freeze({
   // ---- Secrets ---------------------------------------------------------------
   TOKEN_FILE_CORRUPT: spec(500, "Token file exists but is malformed; fix it by hand."),
   RUNTIME_POINTER_TOKEN_LEAK: spec(500, "Refusing to write a runtime pointer that contains a token."),
+
+  // ---- CLI surface (M2) ------------------------------------------------------
+  // Raised only by `src/cli`. They exist so a script can tell "you typed it
+  // wrong" (exit 2) from "the board refused" (exit 1) without parsing prose.
+  CLI_USAGE: spec(400, "Invalid command usage."),
+  CLI_IO: spec(400, "Could not talk to the task board."),
 });
 
 /** Codes the migration SQL must raise, verbatim, via `RAISE(ABORT,'CODE')`. */
@@ -146,6 +152,9 @@ export const JS_ONLY_CODES = Object.freeze([
   "SOURCE_CHANGED",
   "TOKEN_FILE_CORRUPT",
   "RUNTIME_POINTER_TOKEN_LEAK",
+  // CLI-only: no database trigger and no SQLite constraint can raise these.
+  "CLI_USAGE",
+  "CLI_IO",
 ]);
 
 /**

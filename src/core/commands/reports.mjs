@@ -10,6 +10,7 @@
  */
 
 import { DomainError } from "../../shared/errors.mjs";
+import { assertWaiverRequest } from "../domain/delivery-gate.mjs";
 import { normalizeReportCreate } from "../domain/report.mjs";
 import { assertTransition } from "../domain/status.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
@@ -69,13 +70,31 @@ export function writeReport(ctx, input) {
 /**
  * Deliver: report + `→ in_review`, atomically.
  *
+ * With `noReport: true` this is the *waived* delivery (F-B1): no report row is
+ * written, the task carries the waiver and the audit says `report_waived`. The
+ * two forms are mutually exclusive — sending both is a usage error, not a
+ * silently picked winner.
+ *
  * @param {object} ctx
- * @param {{taskId: string, report: object, actor: object, ifVersion?: number, to?: string}} input
+ * @param {{taskId: string, report?: object|null, actor: object, ifVersion?: number, to?: string, noReport?: boolean, reason?: string, seg?: string, sessionId?: string}} input
+ * @returns {{task: object, report: object|null, waived: boolean}}
  */
 export function deliver(ctx, input) {
   const actor = actorOf(input.actor);
   const to = input.to ?? "in_review";
   const now = ctx.now();
+  const waived = input.noReport === true;
+
+  const waiverReason = waived
+    ? assertWaiverRequest({ noReport: true, reason: input.reason, to, hasReport: input.report != null })
+    : null;
+  if (!waived && input.report == null) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: "deliver needs a report, or --no-report with a reason",
+      details: { fields: ["report", "noReport"] },
+      hint: { fix: "taskctl issue deliver <id> --report-file -" },
+    });
+  }
 
   return transaction(
     ctx.db,
@@ -84,9 +103,30 @@ export function deliver(ctx, input) {
 
       // The move must be legal at all. The *gate* is deliberately not consulted
       // here: this transaction is what satisfies it, by inserting the report
-      // below. The database trigger still checks that the insert really happened
-      // — if the ordering here were wrong, the status update would be refused.
+      // (or stamping the waiver) below. The database trigger still checks that
+      // it really happened — if the ordering here were wrong, the status update
+      // would be refused.
       assertTransition(task.status, to);
+
+      if (waived) {
+        const waiver = { round: task.deliveryRound, reason: waiverReason, at: now };
+        const moved = ctx.repos.tasks.moveCas({ id: task.id, ifVersion: input.ifVersion, to, now, waiver });
+        ctx.repos.activities.append({
+          taskId: task.id,
+          actorKind: actor.kind,
+          actorId: actor.id,
+          event: "report_waived",
+          changes: {
+            from: task.status,
+            to: moved.status,
+            round: waiver.round,
+            reason: waiver.reason,
+            deliveryRound: moved.deliveryRound,
+          },
+          createdAt: now,
+        });
+        return { task: moved, report: null, waived: true };
+      }
 
       const prepared = normalizeReportCreate({ ...input.report, author: input.report?.author ?? actor }, {
         taskRound: task.deliveryRound,
@@ -121,7 +161,7 @@ export function deliver(ctx, input) {
         },
         createdAt: now,
       });
-      return { task: moved, report };
+      return { task: moved, report, waived: false };
     },
     { op: "reports.deliver" },
   );

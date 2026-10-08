@@ -1,6 +1,6 @@
 ---
 name: task-panel
-description: Coordinate work across an AI Agent team using a shared local task board. Use when an agent needs to claim a task, heartbeat while working, report progress or status, hand off or spawn subtasks, declare dependencies, or roll child results up to a parent — and when a human wants to query the board. Runs the local `taskctl` CLI; no network required.
+description: Coordinate work across an AI Agent team using a shared local task board. Use when an agent or a human needs to create and track tasks, move them through a status workflow, assign owners, comment on a decision, link parent/child and blocking relations, record which agent session is working on what, deliver a task with a report, or export the board as markdown. Runs the local `taskctl` CLI; no network required.
 ---
 
 # Task Panel
@@ -12,10 +12,10 @@ status transitions, and rolls child results up its dependency tree.
 
 This skill is the agent-facing entry point. It is a thin wrapper over the `taskctl` CLI.
 
-> **Status: M0 scaffold.** The skill is installed and discoverable, but the `taskctl`
-> command surface is **not implemented yet**. Commands currently print
-> `not implemented yet (M0 scaffold)` and exit `2`. The command list in
-> `references/cli.md` is the planned M2 surface, aligned with `task-interface v1`.
+> **Status: M2.** The command surface is implemented and aligned with `task-interface v1`.
+> `taskctl` is an HTTP client for `taskd`, the local board service, and starts one
+> when there is none (set `TASKD_NO_AUTOSTART=1` to forbid that). See
+> `references/cli.md` for the full surface, the delivery gate and the `--json` contract.
 
 ## Running the CLI
 
@@ -38,13 +38,20 @@ taskctl --help
 
 ## When to use it
 
-- **Starting work** — claim a task before doing it, so two agents do not pick up the same one.
-- **While working** — heartbeat periodically; the board treats a stale heartbeat as a
-  possibly-abandoned task.
-- **Reporting** — push status transitions, progress notes and comments as work proceeds.
-- **Delegating** — spawn subtasks and declare dependencies between them.
-- **Finishing** — report the result and let the parent task's rollup pick it up.
+- **Finding the board** — `taskctl context current` says which project owns this directory.
+- **Starting work** — `taskctl issue list` to see what is open, then
+  `taskctl issue move <id> in_progress`.
+- **Asking for something** — `taskctl issue create --project <id> --title "…" --acceptance "…"`.
+- **While working** — `taskctl comment add <id> --body "…"`; a `decision`/`change`
+  comment is what a reviewer reads later.
+- **Delegating** — `taskctl issue create --kind epic …` plus
+  `taskctl relation add <parent> --type parent --target <child>`.
+- **Finishing** — `taskctl report template <id>` to get a report, fill in the TODO
+  lines, then `taskctl issue deliver <id> --report-file -`. **The board will not let a
+  task into `in_review` without a report** for the current round: the refusal prints the
+  exact command that fixes it.
 
 ## Reference
 
-See [`references/cli.md`](references/cli.md) for the full planned command surface and flags.
+See [`references/cli.md`](references/cli.md) for the command surface, the delivery gate,
+the report template and the `--json` contract.

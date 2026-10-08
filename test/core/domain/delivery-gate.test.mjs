@@ -8,7 +8,13 @@
 import assert from "node:assert/strict";
 import test, { describe, it } from "node:test";
 
-import { assertDeliveryGate, checkDeliveryGate } from "../../../src/core/domain/delivery-gate.mjs";
+import {
+  WAIVER_MIN_REASON_CHARS,
+  assertDeliveryGate,
+  assertWaiverRequest,
+  checkDeliveryGate,
+  waiverCovers,
+} from "../../../src/core/domain/delivery-gate.mjs";
 import { STATUSES } from "../../../src/core/domain/enums.mjs";
 import { DomainError } from "../../../src/shared/errors.mjs";
 
@@ -94,13 +100,87 @@ describe("domain/delivery-gate — the throw", () => {
     );
   });
 
-  it("never mentions a waiver (F4: the gate is hard)", () => {
+  it("leads with the compliant command and offers the audited waiver second (M2 F-B1)", () => {
     assert.throws(
       () => assertDeliveryGate({ task, reports: [], to: "in_review" }),
       (err) => {
-        assert.equal(/waiv|no-report|--no-report/i.test(JSON.stringify(err.toJSON())), false);
+        assert.equal(err.hint.command, "taskctl issue deliver PROJ-0007 --report-file -");
+        assert.match(err.hint.alternative, /--no-report --reason/);
+        assert.match(err.hint.note, /report_waived/);
         return true;
       },
     );
+  });
+});
+
+describe("domain/delivery-gate — the waiver (M2 F-B1)", () => {
+  const REASON = "hotfix: report follows in a change comment";
+
+  it("accepts a waiver for the current round only, and only with a real reason", () => {
+    assert.deepEqual(
+      checkDeliveryGate({ task, reports: [], to: "in_review", waiver: { round: 1, reason: REASON } }),
+      { ok: true, waived: true },
+    );
+
+    const round2 = { ...task, deliveryRound: 2 };
+    assert.equal(
+      checkDeliveryGate({ task: round2, reports: [], to: "in_review", waiver: { round: 1, reason: REASON } }).ok,
+      false,
+      "last round's waiver is dead once work resumes (round 2)",
+    );
+  });
+
+  it("refuses a short, empty or missing reason", () => {
+    for (const reason of [undefined, null, "", "   ", "short", "1234567"]) {
+      assert.equal(
+        checkDeliveryGate({ task, reports: [], to: "in_review", waiver: { round: 1, reason } }).ok,
+        false,
+        JSON.stringify(reason),
+      );
+    }
+    // Exactly WAIVER_MIN_REASON_CHARS characters is enough — the boundary the
+    // SQL trigger mirrors.
+    assert.equal(
+      checkDeliveryGate({ task, reports: [], to: "in_review", waiver: { round: 1, reason: "12345678" } }).ok,
+      true,
+    );
+  });
+
+  it("still passes on a report even when a waiver is offered", () => {
+    assert.deepEqual(
+      checkDeliveryGate({ task, reports: reports(1), to: "in_review", waiver: { round: 1, reason: REASON } }),
+      { ok: true },
+      "a report is the normal path; it is not marked waived",
+    );
+  });
+
+  it("validates the waiver request before anything is written", () => {
+    assert.equal(assertWaiverRequest({ reason: REASON, to: "in_review" }), REASON, "trimmed and returned");
+    assert.equal(assertWaiverRequest({ reason: `  ${REASON}  `, to: "in_review" }), REASON);
+
+    assert.throws(() => assertWaiverRequest({ reason: "short", to: "in_review" }), (err) => {
+      assert.equal(err.code, "VALIDATION_FAILED");
+      assert.equal(err.details.field, "reason");
+      assert.equal(err.details.minLength, WAIVER_MIN_REASON_CHARS);
+      return true;
+    });
+    assert.throws(() => assertWaiverRequest({ reason: REASON, to: "done" }), (err) => {
+      assert.equal(err.code, "VALIDATION_FAILED");
+      assert.deepEqual(err.details.allowed, ["in_review"]);
+      return true;
+    });
+    assert.throws(() => assertWaiverRequest({ reason: REASON, to: "in_review", hasReport: true }), (err) => {
+      assert.equal(err.code, "VALIDATION_FAILED");
+      assert.deepEqual(err.details.fields, ["noReport", "report"]);
+      return true;
+    });
+  });
+
+  it("pins the minimum reason length that the SQL trigger also enforces", () => {
+    assert.equal(WAIVER_MIN_REASON_CHARS, 8);
+    assert.equal(waiverCovers({ round: 1, reason: "1234567" }, 1), false);
+    assert.equal(waiverCovers({ round: 1, reason: "12345678" }, 1), true);
+    assert.equal(waiverCovers({ round: 1, reason: "x".repeat(8) }, 2), false);
+    assert.equal(waiverCovers(null, 1), false);
   });
 });

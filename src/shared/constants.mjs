@@ -27,6 +27,20 @@ export const DB_PATH_ENV = "TASKD_DB";
 export const PORT_ENV = "TASKD_PORT";
 /** Env override for the listen host. */
 export const HOST_ENV = "TASKD_HOST";
+/**
+ * Env override for the runtime pointer *file* (M2).
+ *
+ * The pointer is normally per-user (§7.1). The override exists so the test suite
+ * can run a board in a temp directory without touching the developer's own
+ * pointer — see `test/cli/helpers/cli-harness.mjs`.
+ */
+export const RUNTIME_POINTER_ENV = "TASKD_RUNTIME_POINTER";
+
+/** Env override for the access token (M2, §7.1: `--token` > this > token file). */
+export const TOKEN_ENV = "TASKD_TOKEN";
+
+/** Set to `1` to stop the CLI from spawning `taskd` (M2, §F-A1). */
+export const NO_AUTOSTART_ENV = "TASKD_NO_AUTOSTART";
 
 /** `<repo>/.data` — gitignored; overridden by `TASKD_DATA_DIR`. */
 export const DEFAULT_DATA_DIR = ".data";
@@ -40,6 +54,25 @@ export const LOGS_DIRNAME = "logs";
 export const DEFAULT_PORT = 9527;
 /** Default listen host (ARCHITECTURE §7: welcome LAN access). */
 export const DEFAULT_HOST = "0.0.0.0";
+
+/** Default host for a CLI-spawned `taskd`: a spawned daemon serves this machine. */
+export const DEFAULT_DAEMON_HOST = "127.0.0.1";
+/** How long the CLI waits for a freshly spawned `taskd` to answer `/health`. */
+export const AUTOSTART_TIMEOUT_MS = 5_000;
+/** How often it retries while waiting. */
+export const AUTOSTART_POLL_MS = 100;
+
+// ---------------------------------------------------------------------------
+// CLI exits (§F-C2: 0 ok | 1 runtime | 2 usage | 3 export --md --check differs)
+// ---------------------------------------------------------------------------
+
+/** Process exit codes. `3` is shared with `migrate-cli check` on purpose. */
+export const CLI_EXIT = Object.freeze({
+  OK: 0,
+  ERROR: 1,
+  USAGE: 2,
+  DIFFERENCES: 3,
+});
 
 // ---------------------------------------------------------------------------
 // Secrets (ARCHITECTURE §7.1)
