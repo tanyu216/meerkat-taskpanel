@@ -237,10 +237,11 @@ delivered rather than as a cap on the bar.
 
 ## 6. WCAG AA verification
 
-Computed by `verify-contrast.mjs` (pure node, no dependencies) against the
-WCAG 2.1 relative-luminance definition; full terminal evidence in
-`../T-20261008-214230-taskboardbrand/contrast.txt`. **48 pairs checked — 46
-PASS, 2 deliberately held** (see §6.4).
+Computed by `verify-contrast.mjs` out of the box — pure node, no dependencies,
+no install step — against the WCAG 2.1 relative-luminance definition. That script
+*is* the evidence: re-run it to reproduce every ratio below, and it rewrites its
+own `contrast.txt` transcript as it goes. **48 pairs checked — 46 PASS, 2 held by
+owner ruling** (see §6.5).
 
 ### 6.1 Content on its own background — target ≥ 4.5:1
 
@@ -313,7 +314,7 @@ names hue families for teal and amber only, so for these two the instruction was
 read literally — hue and saturation exactly preserved, lightness alone moved.
 `tokens.css` carries the corrected values, so the two files agree.
 
-### 6.5 Owner review note
+### 6.5 Owner ruling — decision closed
 
 **Two tokens are held at the brief value and still measure 1.84:1:**
 `--brand-st-canceled` and `--brand-pri-none`, both `#B8C0C5`.
@@ -333,19 +334,29 @@ as the non-text / weakest tier:
 - `none` — §2 priority rule: rendered as a **grey dash, no colour used**;
 - `canceled` — §2: `#B8C0C5` is the disabled / weakest value.
 
-**Two remedies, for the owner to choose:**
-
-1. **Accept as-is (current state).** Keeps the designed three-step grey ladder.
-   Correct if `canceled` and `none` are decorative absence markers. If they are
-   ever used for *text*, harden them as below.
-2. **Harden both to `#697881`** (4.56:1) and additionally push
-   `--brand-st-backlog` down to `#55636B` to restore separation — verified at
-   **6.21:1**, and now 20–22/255 clear of the hardened greys on every channel.
-   This meets AA as text, but it visibly strengthens the canceled and none
-   states and puts backlog within a few units of `--brand-st-todo` `#5A6B75`.
-
 No third option keeps both the AA-as-text target *and* the grey ladder, which is
-why this is a decision and not a calculation.
+why this was escalated as a decision rather than resolved as a calculation.
+
+**Owner ruling — Option 1 ACCEPTED. Decision closed.**
+
+1. **Accept as-is — ✔ ACCEPTED.** `--brand-st-canceled` and `--brand-pri-none`
+   remain `#B8C0C5`. The other five light status values and four light priority
+   values all clear AA (≥ 4.5:1) and ship as corrected in §6.4.
+2. **Harden both to `#697881`, backlog to `#55636B` — ✘ NOT adopted.** Recorded
+   above for context only; do not apply.
+
+**Rationale.** These two tokens are the *absence tier*: `canceled` is the
+disabled / weakest value and `none` is a grey dash that uses no colour. They are
+non-text markers — a dot, a stripe — and are always accompanied by a text label,
+so colour is never the sole carrier of the meaning. Darkening them would collapse
+the three-step grey ladder (canceled → backlog → todo) that the fixed 7-state
+mapping depends on, and would buy no accessibility in return.
+
+**Rule for implementers.** The two `#B8C0C5` swatches are for **non-text markers
+only**. When a canceled or none state must render as *text*, use `--brand-text-2`
+(`#4A555E`) or `--brand-text-3` (`#7E8A91`) instead — never `#B8C0C5`.
+
+**Status:** ruling dated 2026-10-08, by Jobs (design owner). No further action open.
 
 ---
 
@@ -365,8 +376,12 @@ why this is a decision and not a calculation.
 | `brand-poster.png` | canvas-design step ② — 1600×2000 brand surface |
 | `DIFFERENCE-dashi.md` | side-by-side separation from dashi-taskboard |
 
-Evidence, outside the repo in the task workspace
-`/Users/tanyu/.openclaw/team/workspace/T-20261008-214230-taskboardbrand/`:
+Evidence is reproducible rather than archived: the generators below live in the
+brand task workspace outside the repo, and re-running one regenerates its
+artefact on the spot — `node verify-contrast.mjs` rewrites its `contrast.txt`
+transcript, `render-logo.mjs` rewrites all four logo PNGs, `render-poster.mjs`
+rewrites `brand-poster.png`. No machine-local path is recorded here, so the
+scripts stay portable.
 
 | file | what it is |
 |---|---|
@@ -374,3 +389,8 @@ Evidence, outside the repo in the task workspace
 | `contrast.txt` | its full terminal output |
 | `render-logo.mjs` | rasterises the mark to the four PNG sizes |
 | `render-poster.mjs` | lays out and rasterises `brand-poster.png` |
+
+**Notes**
+
+- §6.5 owner ruling: Option 1 accepted — `canceled` / `none` stay `#B8C0C5`, for
+  non-text markers only.
