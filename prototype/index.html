@@ -2596,6 +2596,113 @@ npm test
                   </ul>
                 </div>
               </div>
+
+              <!-- Parent — at most one existing task in this project, the one
+                   this task rolls up to (relations type `parent`). Single
+                   select; the value is the task identifier, clearable. -->
+              <div class="td-field">
+                <div class="td-field-label-row">
+                  <label class="td-field-label" for="td-create-parent" data-i18n="createTask.field.parent">Parent</label>
+                  <span class="td-optional" data-i18n="createTask.optional">Optional</span>
+                </div>
+                <div class="td-combo" data-create-task-parent>
+                  <div class="td-combo-field">
+                    <input
+                      class="input input-sm td-input w-full"
+                      type="text"
+                      id="td-create-parent"
+                      name="parent"
+                      autocomplete="off"
+                      spellcheck="false"
+                      data-parent-input
+                      role="combobox"
+                      aria-autocomplete="list"
+                      aria-haspopup="listbox"
+                      aria-controls="td-parent-menu-create"
+                      data-i18n-title="combo.taskHint"
+                      title="↑↓ to choose, Enter to accept, Esc to dismiss."
+                      data-i18n-placeholder="combo.parentPlaceholder"
+                      placeholder="Search project tasks…"
+                    />
+                    <button
+                      type="button"
+                      class="td-combo-clear"
+                      data-parent-clear
+                      data-i18n-aria-label="combo.clear"
+                      data-i18n-title="combo.clear"
+                      aria-label="Clear"
+                      title="Clear"
+                    >
+                      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6 6 18" /></svg>
+                    </button>
+                  </div>
+                  <ul class="menu td-combo-menu" id="td-parent-menu-create" role="listbox" data-parent-menu hidden>
+                    <li><button type="button" data-parent-option data-parent-value="TD-131" title="Add bulk status change to board selection"><span class="td-mono td-combo-id">TD-131</span><span class="td-combo-title">Add bulk status change to board selection</span></button></li>
+                    <li><button type="button" data-parent-option data-parent-value="TD-129" title="Audit dependency licences for vendored assets"><span class="td-mono td-combo-id">TD-129</span><span class="td-combo-title">Audit dependency licences for vendored assets</span></button></li>
+                    <li><button type="button" data-parent-option data-parent-value="TD-128" title="Wire keyboard navigation across board columns"><span class="td-mono td-combo-id">TD-128</span><span class="td-combo-title">Wire keyboard navigation across board columns</span></button></li>
+                    <li><button type="button" data-parent-option data-parent-value="TD-133" title="Expose task version in the edit response"><span class="td-mono td-combo-id">TD-133</span><span class="td-combo-title">Expose task version in the edit response</span></button></li>
+                    <li><button type="button" data-parent-option data-parent-value="TD-125" title="Draft the v1 prototype of the task board"><span class="td-mono td-combo-id">TD-125</span><span class="td-combo-title">Draft the v1 prototype of the task board</span></button></li>
+                    <li><button type="button" data-parent-option data-parent-value="TD-130" title="Tighten filter debounce and query state"><span class="td-mono td-combo-id">TD-130</span><span class="td-combo-title">Tighten filter debounce and query state</span></button></li>
+                    <li><button type="button" data-parent-option data-parent-value="TD-124" title="Add agent session provenance block"><span class="td-mono td-combo-id">TD-124</span><span class="td-combo-title">Add agent session provenance block</span></button></li>
+                    <li><button type="button" data-parent-option data-parent-value="TD-126" title="Skeleton loading for list view"><span class="td-mono td-combo-id">TD-126</span><span class="td-combo-title">Skeleton loading for list view</span></button></li>
+                    <li><button type="button" data-parent-option data-parent-value="TD-123" title="Resolve duplication in timeline events"><span class="td-mono td-combo-id">TD-123</span><span class="td-combo-title">Resolve duplication in timeline events</span></button></li>
+                    <li><button type="button" data-parent-option data-parent-value="TD-117" title="Ship daisyUI theme mapping for tokens"><span class="td-mono td-combo-id">TD-117</span><span class="td-combo-title">Ship daisyUI theme mapping for tokens</span></button></li>
+                    <li><button type="button" data-parent-option data-parent-value="TD-119" title="Add per-project identifier prefixes"><span class="td-mono td-combo-id">TD-119</span><span class="td-combo-title">Add per-project identifier prefixes</span></button></li>
+                    <li><button type="button" data-parent-option data-parent-value="TD-112" title="Prototype an emoji reaction bar"><span class="td-mono td-combo-id">TD-112</span><span class="td-combo-title">Prototype an emoji reaction bar</span></button></li>
+                  </ul>
+                  <!-- The seed rows above mirror the working project's tasks and are
+                       redrawn from the live board the moment the control is focused;
+                       they are the inert resting state, not a source of truth. -->
+                </div>
+                <span class="td-field-hint" data-i18n="createTask.field.parentHint">The task this one rolls up to. One parent, at most.</span>
+              </div>
+
+              <!-- Depends on — a prerequisite DAG. Multi-select over this
+                   project's tasks; each choice is a removable chip and the
+                   list dedupes. UI only: no real graph or cycle check. -->
+              <div class="td-field">
+                <div class="td-field-label-row">
+                  <label class="td-field-label" for="td-create-depends" data-i18n="createTask.field.depends">Depends on</label>
+                  <span class="td-optional" data-i18n="createTask.optional">Optional</span>
+                </div>
+                <div class="td-combo" data-create-task-depends>
+                  <div class="td-chips" data-depends-chips></div>
+                  <div class="td-combo-field">
+                    <input
+                      class="input input-sm td-input w-full"
+                      type="text"
+                      id="td-create-depends"
+                      name="depends"
+                      autocomplete="off"
+                      spellcheck="false"
+                      data-depends-input
+                      role="combobox"
+                      aria-autocomplete="list"
+                      aria-haspopup="listbox"
+                      aria-controls="td-depends-menu-create"
+                      data-i18n-title="combo.taskHint"
+                      title="↑↓ to choose, Enter to add, Esc to dismiss."
+                      data-i18n-placeholder="combo.dependsPlaceholder"
+                      placeholder="Add a prerequisite…"
+                    />
+                  </div>
+                  <ul class="menu td-combo-menu" id="td-depends-menu-create" role="listbox" data-depends-menu hidden>
+                    <li><button type="button" data-depends-option data-depends-value="TD-131" title="Add bulk status change to board selection"><span class="td-mono td-combo-id">TD-131</span><span class="td-combo-title">Add bulk status change to board selection</span></button></li>
+                    <li><button type="button" data-depends-option data-depends-value="TD-129" title="Audit dependency licences for vendored assets"><span class="td-mono td-combo-id">TD-129</span><span class="td-combo-title">Audit dependency licences for vendored assets</span></button></li>
+                    <li><button type="button" data-depends-option data-depends-value="TD-128" title="Wire keyboard navigation across board columns"><span class="td-mono td-combo-id">TD-128</span><span class="td-combo-title">Wire keyboard navigation across board columns</span></button></li>
+                    <li><button type="button" data-depends-option data-depends-value="TD-133" title="Expose task version in the edit response"><span class="td-mono td-combo-id">TD-133</span><span class="td-combo-title">Expose task version in the edit response</span></button></li>
+                    <li><button type="button" data-depends-option data-depends-value="TD-125" title="Draft the v1 prototype of the task board"><span class="td-mono td-combo-id">TD-125</span><span class="td-combo-title">Draft the v1 prototype of the task board</span></button></li>
+                    <li><button type="button" data-depends-option data-depends-value="TD-130" title="Tighten filter debounce and query state"><span class="td-mono td-combo-id">TD-130</span><span class="td-combo-title">Tighten filter debounce and query state</span></button></li>
+                    <li><button type="button" data-depends-option data-depends-value="TD-124" title="Add agent session provenance block"><span class="td-mono td-combo-id">TD-124</span><span class="td-combo-title">Add agent session provenance block</span></button></li>
+                    <li><button type="button" data-depends-option data-depends-value="TD-126" title="Skeleton loading for list view"><span class="td-mono td-combo-id">TD-126</span><span class="td-combo-title">Skeleton loading for list view</span></button></li>
+                    <li><button type="button" data-depends-option data-depends-value="TD-123" title="Resolve duplication in timeline events"><span class="td-mono td-combo-id">TD-123</span><span class="td-combo-title">Resolve duplication in timeline events</span></button></li>
+                    <li><button type="button" data-depends-option data-depends-value="TD-117" title="Ship daisyUI theme mapping for tokens"><span class="td-mono td-combo-id">TD-117</span><span class="td-combo-title">Ship daisyUI theme mapping for tokens</span></button></li>
+                    <li><button type="button" data-depends-option data-depends-value="TD-119" title="Add per-project identifier prefixes"><span class="td-mono td-combo-id">TD-119</span><span class="td-combo-title">Add per-project identifier prefixes</span></button></li>
+                    <li><button type="button" data-depends-option data-depends-value="TD-112" title="Prototype an emoji reaction bar"><span class="td-mono td-combo-id">TD-112</span><span class="td-combo-title">Prototype an emoji reaction bar</span></button></li>
+                  </ul>
+                </div>
+                <span class="td-field-hint" data-i18n="createTask.field.dependsHint">Tasks that must finish first. Leave blank to create.</span>
+              </div>
             </div>
           </div>
 

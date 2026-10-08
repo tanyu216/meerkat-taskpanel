@@ -156,12 +156,23 @@
       "createTask.field.assignee": "Assignee",
       "createTask.field.project": "Project",
       "createTask.field.reporter": "Reporter",
+      "createTask.field.parent": "Parent",
+      "createTask.field.parentHint": "The task this one rolls up to. One parent, at most.",
+      "createTask.field.depends": "Depends on",
+      "createTask.field.dependsHint": "Tasks that must finish first. Leave blank to create.",
+      "createTask.optional": "Optional",
       /* The two roster controls: free text, fuzzy match, no roster editor. */
       "combo.assigneePlaceholder": "Search or type a new name…",
       "combo.reporterPlaceholder": "Search or type a new name…",
       "combo.empty": "No match — a new name is saved when you use it.",
       "combo.new": "· new",
       "combo.hint": "Up and down to choose, Enter to accept, Escape to dismiss.",
+      /* The two relation controls pick from the project's existing tasks. */
+      "combo.parentPlaceholder": "Search project tasks…",
+      "combo.dependsPlaceholder": "Add a prerequisite…",
+      "combo.noTasks": "No matching task in this project.",
+      "combo.clear": "Clear",
+      "combo.taskHint": "Up and down to choose, Enter to accept, Escape to dismiss.",
       /* Markdown editor chrome. */
       "md.label": "Markdown view",
       "md.write": "Write",
@@ -370,11 +381,21 @@
       "createTask.field.assignee": "负责人",
       "createTask.field.project": "项目",
       "createTask.field.reporter": "创建人",
+      "createTask.field.parent": "父任务",
+      "createTask.field.parentHint": "本任务归属的任务。最多一个父任务。",
+      "createTask.field.depends": "前置依赖",
+      "createTask.field.dependsHint": "须先完成的任务。留空即可创建。",
+      "createTask.optional": "可选",
       "combo.assigneePlaceholder": "搜索或输入新姓名…",
       "combo.reporterPlaceholder": "搜索或输入新姓名…",
       "combo.empty": "无匹配——使用时将保存为新姓名。",
       "combo.new": "· 新",
       "combo.hint": "↑↓ 选择，Enter 确认，Esc 关闭。",
+      "combo.parentPlaceholder": "搜索项目内任务…",
+      "combo.dependsPlaceholder": "添加前置任务…",
+      "combo.noTasks": "该项目中没有匹配的任务。",
+      "combo.clear": "清除",
+      "combo.taskHint": "↑↓ 选择，Enter 添加，Esc 关闭。",
       "md.label": "Markdown 视图",
       "md.write": "编辑",
       "md.preview": "预览",
@@ -1363,6 +1384,11 @@
     $("[data-create-task-status]").val(status || "backlog");
     $("[data-create-task-priority]").val("none");
     $form.find("[data-assignee-input], [data-reporter-input]").val("");
+    /* the relation pickers hold no state a form reset can reach: the chips are
+       plain elements and the menus are generated, so both are cleared here */
+    $form.find("[data-parent-input], [data-depends-input]").val("");
+    $form.find("[data-depends-chips]").empty();
+    $form.find("[data-parent-menu], [data-depends-menu]").empty();
     /* scoped to this dialog: the drawer carries its own pair of menus, and a
        global clear would drop the drawer's keyboard position too */
     $form
@@ -1632,6 +1658,16 @@
     return $.trim(String(name === undefined || name === null ? "" : name)).toLowerCase();
   }
 
+  /* Case-insensitive subsequence test — `lns` finds `linus`. Shared by the
+     people roster and the task roster the relation pickers read. */
+  function subsequence(haystack, needle) {
+    var at = 0;
+    for (var i = 0; i < haystack.length && at < needle.length; i++) {
+      if (haystack.charAt(i) === needle.charAt(at)) at++;
+    }
+    return at === needle.length;
+  }
+
   /* A tiny ordered map. `match` is the fuzzy pass the controls run on every
      keystroke: a case-insensitive substring first, and — only when nothing
      contains the query — a subsequence pass, so `lns` still finds `linus`
@@ -1659,14 +1695,6 @@
       if (typeof entry === "string") put(entry, "human", "");
       else put(entry.name, entry.kind, entry.platform);
     });
-
-    function subsequence(haystack, needle) {
-      var at = 0;
-      for (var i = 0; i < haystack.length && at < needle.length; i++) {
-        if (haystack.charAt(i) === needle.charAt(at)) at++;
-      }
-      return at === needle.length;
-    }
 
     return {
       all: function () {
@@ -1703,7 +1731,54 @@
   var assignees = makeRoster(ASSIGNEE_SEED);
   var reporters = makeRoster([]);
 
-  /* The two controls are the same control twice, so they share one
+  /* The relation pickers choose from the working project's cards rather than a
+     people roster: the value is the task identifier and the title rides along
+     for the menu row. A roster-shaped façade — `get` and `match` only — keeps
+     the combo's read contract unchanged. */
+  function taskCandidates() {
+    var project = $("[data-create-task-project]").val() || state.project;
+    var entries = [];
+    $("[data-card]").each(function () {
+      var $card = $(this);
+      if (attr($card, "project") !== project) return;
+      var identifier = attr($card, "identifier");
+      if (!identifier) return;
+      entries.push({
+        name: identifier,
+        identifier: identifier,
+        title: $.trim($card.find("[data-card-title]").text()),
+      });
+    });
+    return entries;
+  }
+
+  var taskRoster = {
+    get: function (key) {
+      var needle = rosterKey(key);
+      var found = $.grep(taskCandidates(), function (entry) {
+        return rosterKey(entry.identifier) === needle;
+      })[0];
+      return found || null;
+    },
+    match: function (query) {
+      var needle = rosterKey(query);
+      var entries = taskCandidates();
+      if (!needle) return entries;
+      var starts = [];
+      var contains = [];
+      var fuzzy = [];
+      $.each(entries, function (index, entry) {
+        var id = rosterKey(entry.identifier);
+        var title = rosterKey(entry.title);
+        if (id.indexOf(needle) === 0 || title.indexOf(needle) === 0) starts.push(entry);
+        else if (id.indexOf(needle) > 0 || title.indexOf(needle) > 0) contains.push(entry);
+        else if (subsequence(id, needle) || subsequence(title, needle)) fuzzy.push(entry);
+      });
+      return starts.concat(contains, fuzzy);
+    },
+  };
+
+  /* The controls are the same control repeatedly, so they share one
      implementation and differ only in the hooks they answer to and the roster
      they read — which is exactly the contract the markup carries. */
   var COMBO = {
@@ -1725,6 +1800,36 @@
       valueAttr: "data-reporter-value",
       kindAttr: "",
     },
+    /* Parent — one task, single select. `freeText: false` because a relation
+       can only point at a task that already exists. */
+    parent: {
+      roster: taskRoster,
+      input: "[data-parent-input]",
+      menu: "[data-parent-menu]",
+      option: "[data-parent-option]",
+      optionAttr: "data-parent-option",
+      valueAttr: "data-parent-value",
+      kindAttr: "",
+      freeText: false,
+      emptyKey: "combo.noTasks",
+    },
+    /* Depends on — many tasks, each accepted row becomes a chip. UI only: no
+       graph is built and no cycle is checked. */
+    depends: {
+      roster: taskRoster,
+      input: "[data-depends-input]",
+      menu: "[data-depends-menu]",
+      option: "[data-depends-option]",
+      optionAttr: "data-depends-option",
+      valueAttr: "data-depends-value",
+      kindAttr: "",
+      freeText: false,
+      multi: true,
+      chips: "[data-depends-chips]",
+      chipAttr: "data-depends-chip",
+      removeAttr: "data-depends-remove",
+      emptyKey: "combo.noTasks",
+    },
   };
 
   function comboMenu($input, config) {
@@ -1732,16 +1837,43 @@
   }
 
   function closeCombos() {
-    $("[data-assignee-menu], [data-reporter-menu]").prop("hidden", true);
-    $("[data-assignee-input], [data-reporter-input]").removeAttr("aria-expanded");
+    $.each(COMBO, function (name, config) {
+      $(config.menu).prop("hidden", true);
+      $(config.input).removeAttr("aria-expanded");
+    });
+  }
+
+  /* The identifiers already committed as chips in this control. */
+  function comboChosenValues($input, config) {
+    var values = [];
+    if (!config.chips) return values;
+    $input
+      .closest(".td-combo")
+      .find("[" + config.chipAttr + "]")
+      .each(function () {
+        values.push($(this).attr(config.valueAttr));
+      });
+    return values;
   }
 
   function comboOptionMarkup(entry, config, isNew) {
     var $option = $("<button type='button'></button>")
       .attr(config.optionAttr, "")
       .attr(config.valueAttr, entry.name)
-      .attr("aria-selected", "false")
-      .append($("<span></span>").text(entry.name));
+      .attr("aria-selected", "false");
+
+    /* A task row: identifier first, then the title it carries. */
+    if (entry.identifier) {
+      $option
+        .append(
+          $("<span class='td-mono td-combo-id'></span>").text(entry.identifier)
+        )
+        .append($("<span class='td-combo-title'></span>").text(entry.title));
+      if (entry.title) $option.attr("title", entry.title);
+      return $("<li></li>").append($option);
+    }
+
+    $option.append($("<span></span>").text(entry.name));
 
     /* Only the assignee control carries identity: for a reporter, whether the
        name is an agent is not part of what the board records. */
@@ -1766,7 +1898,9 @@
 
   /* Rebuilds one control's menu from what has been typed. The typed value is
      never discarded: when it is not in the roster it is offered as a new row,
-     because using a new name is the one thing this control is allowed to add. */
+     because using a new name is the one thing the roster controls may add. A
+     relation control owns no roster, so it only ever offers rows that exist —
+     and, in the multi case, only the ones not already chosen. */
   function renderCombo($input, config) {
     var $menu = comboMenu($input, config);
     if (!$menu.length) return;
@@ -1774,27 +1908,48 @@
     var typed = $.trim(String($input.val() || ""));
     var matches = config.roster.match(typed);
     var exact = config.roster.get(typed);
+    var chosen = comboChosenValues($input, config);
     var $list = $("<div></div>");
 
-    if (typed && !exact) {
+    if (config.freeText !== false && typed && !exact) {
       $list.append(
         comboOptionMarkup({ name: typed, kind: "human", platform: "" }, config, true)
       );
     }
     $.each(matches, function (index, entry) {
+      if (config.multi && chosen.indexOf(entry.name) !== -1) return;
       $list.append(comboOptionMarkup(entry, config, false));
     });
 
     $menu.empty();
     if (!$list.children().length) {
       $menu.append(
-        $("<li class='td-combo-empty'></li>").text(text("combo.empty"))
+        $("<li class='td-combo-empty'></li>").text(
+          text(config.emptyKey || "combo.empty")
+        )
       );
     } else {
       $menu.append($list.children());
     }
     $menu.prop("hidden", false);
     $input.attr("aria-expanded", "true");
+    positionComboMenu($input, config);
+  }
+
+  /* The create dialog scrolls its own box, so a menu hanging off a field near
+     the bottom would be clipped by that box. Measured in viewport coordinates
+     — which already account for the container's scroll — the menu flips above
+     its control when there is not room below. Outside the dialog there is no
+     such container and the menu stays where it is. */
+  function positionComboMenu($input, config) {
+    var $combo = $input.closest(".td-combo");
+    var $menu = comboMenu($input, config);
+    var box = $input.closest(".td-modal-box")[0];
+    $combo.removeAttr("data-drop");
+    if (!box || !$menu.length) return;
+    if ($menu[0].getBoundingClientRect().bottom > box.getBoundingClientRect().bottom - 8) {
+      $combo.attr("data-drop", "up");
+    }
   }
 
   /* The row the arrow keys are on. `aria-selected` is the single source of
@@ -1818,12 +1973,56 @@
     $rows.eq(next).attr("aria-selected", "true");
   }
 
-  /* Accepting a row is the only mutation: the roster takes the name, and the
-     input states it. Nothing is sent anywhere and nothing is kept. */
+  /* Turns an accepted task row into a chip in the multi control. The row's
+     identifier is the value; the title rides along as the chip's tooltip. */
+  function addRelationChip($input, config, $row) {
+    var value = $.trim(String($row.attr(config.valueAttr) || ""));
+    var title = $.trim(String($row.find(".td-combo-title").text() || ""));
+    var $remove = $("<button type='button' class='td-chip-remove'></button>")
+      .attr(config.removeAttr, "")
+      .attr("aria-label", text("combo.clear") + " " + value)
+      .attr("title", text("combo.clear"))
+      .append(
+        $(
+          '<svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+            '<path d="M6 6l12 12M18 6 6 18"></path></svg>'
+        )
+      );
+    var $chip = $("<span class='badge td-chip'></span>")
+      .attr(config.chipAttr, "")
+      .attr(config.valueAttr, value)
+      .attr("title", title || value)
+      .append($("<span class='td-mono'></span>").text(value))
+      .append($remove);
+
+    $input.closest(".td-combo").find(config.chips).append($chip);
+  }
+
+  /* Accepting a row is the only mutation. A roster control takes the name into
+     its roster and states it in the input; a relation control has no roster —
+     it states the identifier (single) or drops a chip (multi). Nothing is sent
+     anywhere and nothing is stored. */
   function comboAccept($input, config, $row) {
     if (!$row || !$row.length) return;
     var value = $.trim(String($row.attr(config.valueAttr) || ""));
     if (!value) return;
+
+    if (config.freeText === false) {
+      if (config.multi) {
+        if (comboChosenValues($input, config).indexOf(value) === -1) {
+          addRelationChip($input, config, $row);
+        }
+        /* clear the query and rebuild so the menu offers the rest */
+        $input.val("");
+        renderCombo($input, config);
+        $input.trigger("change");
+        return;
+      }
+      $input.val(value);
+      closeCombos();
+      $input.trigger("change");
+      return;
+    }
 
     var entry = config.roster.upsert(
       value,
@@ -2116,6 +2315,14 @@
           return;
         }
         if (event.key === "Enter") {
+          /* a relation control never submits the form from its input: Enter
+             opens the menu when it is closed, and accepts when it is open */
+          if (config.freeText === false) {
+            event.preventDefault();
+            if (!open) renderCombo($input, config);
+            else comboAccept($input, config, comboSelected($input, config));
+            return;
+          }
           if (!open) return;
           event.preventDefault();
           comboAccept($input, config, comboSelected($input, config));
@@ -2137,13 +2344,45 @@
       });
     });
 
+    /* the relation pickers' own affordances: clear the single parent, and
+       remove a prerequisite chip. Both are inside `.td-combo`, so the outside-
+       click pass leaves their menu alone. */
+    $("[data-create-task-parent]").on("click", "[data-parent-clear]", function () {
+      $(this)
+        .closest("[data-create-task-parent]")
+        .find("[data-parent-input]")
+        .val("")
+        .trigger("change");
+      /* clearing is a dismissal, not a fresh search — do not reopen the menu */
+      closeCombos();
+    });
+
+    $("[data-create-task-depends]").on(
+      "click",
+      "[data-depends-remove]",
+      function () {
+        var $scope = $(this).closest("[data-create-task-depends]");
+        var $input = $scope.find("[data-depends-input]");
+        $(this).closest("[data-depends-chip]").remove();
+        /* if the menu is open, it is offering the rest — put this one back */
+        if (!$scope.find("[data-depends-menu]").prop("hidden")) {
+          renderCombo($input, COMBO.depends);
+        }
+        $input.trigger("change");
+      }
+    );
+
     /* ----------------------------------------- I14 · Markdown editor ----- */
 
     $("[data-md-editor]").on("input", "[data-md-source]", function () {
       renderMarkdown($(this).closest("[data-md-editor]"));
     });
 
-    $("[data-md-editor]").on("scroll", "[data-md-source]", function () {
+    /* R4 — bound directly, not delegated: `scroll` does not bubble, so a
+       delegated handler on the editor never fires and the highlight layer
+       stays put while the textarea scrolls under it (the "Write mode will not
+       scroll" report). One direct binding per source keeps the two in step. */
+    $("[data-md-source]").on("scroll", function () {
       syncMarkdownScroll($(this));
     });
 

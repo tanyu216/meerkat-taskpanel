@@ -43,9 +43,9 @@ three footer dialogs are secondary surfaces and stay hidden until opened.
 | `vendor/jquery.slim.min.js` | jQuery 3.7.1 **slim** build, vendored locally |
 | `vendor/markdown-lite.js` | the Markdown → HTML renderer behind the editor's preview pane, vendored locally |
 | `vendor/highlight-lite.js` | the source highlighter behind the editor's syntax colours, vendored locally |
-| `DESIGN.md` | the design specification: tokens, type, spacing, states, a11y, reconciliation, access model, i18n, R3 |
-| `BLOCKS.md` | the block inventory B01–B23 with every `data-*` hook (B20 and B21 are the retired theme/language dialogs — see v1.4; B22 and B23 are R3's roster controls and Markdown editor) |
-| `screenshots/` | capture set (board, wide board, drawer, dark, list, menu, filters, empty, language menu, access + token, Chinese, 5 viewports, the two-column create dialog, the split editor, assignee autocomplete) |
+| `DESIGN.md` | the design specification: tokens, type, spacing, states, a11y, reconciliation, access model, i18n, R3, R4 |
+| `BLOCKS.md` | the block inventory B01–B24 with every `data-*` hook (B20 and B21 are the retired theme/language dialogs — see v1.4; B22 and B23 are R3's roster controls and Markdown editor; B24 is R4's Parent / Depends-on pair) |
+| `screenshots/` | capture set (board, wide board, drawer, dark, list, menu, filters, empty, language menu, access + token, Chinese, 5 viewports, the two-column create dialog, the split editor, assignee autocomplete, the Write-pane scroll proof, the Parent and Depends-on controls) |
 | `package.json` | declared devDependencies + `build:css` script |
 | `.gitignore` | keeps `node_modules/` out of the repository |
 
@@ -233,10 +233,21 @@ language switch, and the wrap is now kept as reviewed rather than re-tuned (DESI
 | `20-drawer-zh.png` | the drawer in Chinese: properties, relation labels, comment role chips and relative timestamps |
 | `21-access-panel-dark.png` | the access panel in dark theme |
 | `22-lang-menu.png` | the language dropdown open above the middle footer cell, `English` marked as the current choice |
-| `23-create-two-col.png` | **R3** — the create dialog: Title + Markdown editor on the left, Priority / Assignee / Project / Status / Reporter on the right |
-| `24-md-editor-split.png` | **R3** — the Markdown editor in Split mode: highlighted source beside the rendered preview |
-| `25-assignee-autocomplete.png` | **R3** — the assignee control mid-type: `ti · new` offered alongside the fuzzy match `turing` |
-| `26-create-narrow-760.png` | **R3** — the same dialog at 760px, stacked to one column |
+| `23-create-two-col.png` | **R4** — the create dialog: Title + Markdown editor on the left, Priority / Assignee / Project / Status / Reporter / Parent / Depends on on the right |
+| `24-md-editor-split.png` | **R4** — the Markdown editor in Split mode: highlighted source beside the rendered preview |
+| `25-assignee-autocomplete.png` | **R4** — the assignee control mid-type: `ti · new` offered alongside the fuzzy match `turing` |
+| `26-create-narrow-760.png` | **R4** — the same dialog at 760px, stacked to one column and scrolling internally |
+| `28-md-write-scroll.png` | **R4** — Write mode scrolled to the tail of a 60-step description: the edit pane scrolls and the highlight layer travels with it |
+| `29-create-parent-dropdown.png` | **R4** — the Parent control mid-type: fuzzy matches over the project's tasks, identifier + title, with the clear button shown |
+| `30-create-depends-multiselect.png` | **R4** — Depends on with two chips and the menu offering the tasks not yet chosen |
+
+**R4 recapture:** the create dialog changed size, so every frame that shows it was
+re-shot — `10-create-task-modal`, `23-create-two-col`, `24-md-editor-split`,
+`25-assignee-autocomplete` and `26-create-narrow-760` — and three frames are new:
+`28-md-write-scroll` (the Write pane scrolled to the tail, highlight in step),
+`29-create-parent-dropdown` and `30-create-depends-multiselect`. The board frames are
+untouched: the round changes the dialog's geometry and one scroll binding, and no pixel of
+the board. Captured at device-scale-factor 2 with transitions disabled, as before.
 
 **R3 recapture:** `01-board-1512`, `11-viewport-1240`, `13-viewport-760`, `05-dark-theme`,
 `19-board-zh`, `22-lang-menu`, `15-no-javascript`, `17-access-panel` and `03-drawer-agent`

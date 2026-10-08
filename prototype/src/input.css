@@ -2556,17 +2556,23 @@ html[data-theme="dark"] {
   /* Equal tracks above 760px; a single stack at or below it (see the
      responsive block). `min-width: 0` on both tracks is what keeps a long
      value or the code editor from pushing the dialog wider than its box. */
+  /* R4 — the dialog is wider and taller than R3's 880px/routing-height box: the
+     work on the left needs room, the routing on the right grew by two relation
+     fields. Capped against the viewport with an internal scroller, so a short
+     window scrolls the dialog rather than clipping it. */
   .td-modal-box {
-    width: min(880px, calc(100vw - 32px));
+    width: min(1120px, calc(100vw - 32px));
     max-width: none;
     max-height: calc(100vh - 48px);
     overflow-y: auto;
   }
 
+  /* Left column dominant: the description editor gets the wider track, the
+     routing fields keep a comfortable fixed-feeling one. */
   .td-two-col {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 20px;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    gap: 24px;
     align-items: start;
     margin-top: 12px;
   }
@@ -2607,6 +2613,14 @@ html[data-theme="dark"] {
     border: 1px solid var(--color-td-line);
     border-radius: var(--r-md);
     box-shadow: var(--shadow-pop);
+    /* daisyUI's `menu` is `column wrap`, which turns a long list into two
+       narrow columns; one column that scrolls is what a picker wants. The
+       rows must keep their height for that scroller to exist. */
+    flex-wrap: nowrap;
+  }
+
+  .td-combo-menu > li {
+    flex: none;
   }
 
   .td-combo-menu [data-assignee-option],
@@ -2666,6 +2680,152 @@ html[data-theme="dark"] {
     background-color: var(--color-td-surface);
   }
 
+  /* --- R4 · Parent / Depends-on pickers -------------------------------- */
+  /* Two more controls in the right column, both reading the current project's
+     cards rather than the people roster. They keep the combo's menu, keyboard
+     and hover vocabulary; only the row content and the clear affordance are
+     new. */
+
+  /* a label carrying the `Optional` chip beside it */
+  .td-field-label-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+
+  .td-field-label-row > .td-field-label {
+    margin-bottom: 0;
+  }
+
+  .td-optional {
+    padding: 1px 6px;
+    font-size: 10px;
+    line-height: 1.6;
+    color: var(--color-td-ink-3);
+    background-color: var(--color-td-sunken);
+    border: 1px solid var(--color-td-line);
+    border-radius: 999px;
+  }
+
+  /* the input and its clear button share one row */
+  .td-combo-field {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .td-combo-field > .td-input {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* the clear button only appears once the field carries a value — an empty
+     control has nothing to clear */
+  .td-combo-clear {
+    display: none;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    font-size: 14px;
+    line-height: 1;
+    color: var(--color-td-ink-3);
+    background-color: transparent;
+    border: 0;
+    border-radius: var(--r-sm);
+    cursor: pointer;
+  }
+
+  .td-combo-field:has(> .td-input:not(:placeholder-shown)) .td-combo-clear {
+    display: inline-flex;
+  }
+
+  .td-combo-clear:hover {
+    color: var(--color-td-ink);
+    background-color: var(--color-td-hover);
+  }
+
+  /* a menu with no room below its control opens upward instead (JS sets the
+     attribute from a measurement; the paint is pure CSS) */
+  .td-combo[data-drop="up"] .td-combo-menu {
+    top: auto;
+    bottom: calc(100% + 4px);
+  }
+
+  /* one task per row: identifier first, title trailing */
+  .td-combo-menu [data-parent-option],
+  .td-combo-menu [data-depends-option] {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    width: 100%;
+    font-size: 13px;
+    text-align: start;
+  }
+
+  .td-combo-id {
+    flex: none;
+    font-size: 12px;
+    color: var(--color-td-ink-3);
+  }
+
+  .td-combo-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* the depends-on selection reads as chips; daisyUI badges, one per task */
+  .td-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+
+  .td-chips:empty {
+    display: none;
+  }
+
+  .td-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px 2px 8px;
+    font-size: 12px;
+    color: var(--color-td-ink);
+    background-color: var(--color-td-accent-soft);
+    border: 1px solid var(--color-td-line);
+    border-radius: 999px;
+  }
+
+  .td-chip-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    font-size: 12px;
+    line-height: 1;
+    color: var(--color-td-ink-3);
+    background-color: transparent;
+    border: 0;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+
+  .td-chip-remove:hover {
+    color: var(--color-td-ink);
+    background-color: var(--color-td-hover);
+  }
+
   /* --- R3 · Markdown editor -------------------------------------------- */
   /* Source pane on the left, rendered pane on the right. The source pane is a
      transparent <textarea> stacked on a highlighted <pre>: both carry
@@ -2714,7 +2874,10 @@ html[data-theme="dark"] {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     min-height: 0;
-    height: 230px;
+    /* R4 — a markedly taller editing area than R3's fixed 230px, but still
+       bounded: it grows with the viewport up to a ceiling so the dialog keeps
+       an internal scroll instead of running off the screen. */
+    height: clamp(280px, 46vh, 520px);
   }
 
   .td-md-pane {
@@ -2772,7 +2935,11 @@ html[data-theme="dark"] {
     position: relative;
     display: block;
     width: 100%;
+    /* an explicit height plus its own scroller: the edit side scrolls the same
+       way the preview does, and keeps that scroller when scripting is off */
     height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
     resize: none;
     color: transparent;
     background-color: transparent;
@@ -2969,6 +3136,12 @@ html[data-theme="dark"] {
       width: calc(100vw - 16px);
       max-height: 92vh;
       padding: 16px;
+    }
+
+    /* single column now, so the editor can be a little shorter and the dialog
+       still fits a phone-height window */
+    .td-md-panes {
+      height: clamp(220px, 40vh, 360px);
     }
 
     /* two side-by-side panes in a 760px dialog are two unreadable columns */

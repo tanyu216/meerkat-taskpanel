@@ -178,16 +178,27 @@ list can never disagree.
 | Column | Hook | Fields |
 |---|---|---|
 | Left — the work | `[data-create-left]` | `[data-create-task-title]` (+ hint) · `[data-create-task-description]`, which is `[data-md-source]` inside **B23** |
-| Right — its routing | `[data-create-right]` | `[data-create-task-priority]` · **assignee** (**B22**) · `[data-create-task-project]` · `[data-create-task-status]` · **reporter** (**B22**) |
+| Right — its routing | `[data-create-right]` | `[data-create-task-priority]` · **assignee** (**B22**) · `[data-create-task-project]` · `[data-create-task-status]` · **reporter** (**B22**) · **parent** (**B24**) · **depends-on** (**B24**) |
 
-Equal tracks above 760px; a single stack at ≤760px. Both tracks are
-`minmax(0, 1fr)`, so neither a long title nor the editor can push the dialog wider than
-its own box. `[data-modal-close]` closes it, and `resetCreateTask()` is the single writer
-of its opening state — it also serves as the reset after a submit, so a second task starts
-exactly where the first one did.
+**R4 — the dialog grew and the left column leads.** `.td-modal-box` is
+`min(1120px, 100vw − 32px)` tall to `100vh − 48px` with its own scroller (R3: 880px
+wide, sized to its content). The two tracks are `minmax(0, 1.6fr)` / `minmax(0, 1fr)`,
+so the description editor holds the wider and much taller pane the work deserves while the
+routing column keeps a compact one. Both tracks stay `minmax(0, …)`, so neither a long
+title nor the editor can push the dialog wider than its own box — no horizontal overflow
+at 1512 / 1240 / 980 / 760 / 430.
+
+At ≤760px the tracks stack (`.td-two-col` collapses to one column) and the dialog scrolls
+internally, so every field stays reachable on a phone-width window.
+
+`[data-modal-close]` closes it, and `resetCreateTask()` is the single writer of its opening
+state — it also serves as the reset after a submit, so a second task starts exactly where
+the first one did. R4 taught it two more things to clear: the relation controls' inputs,
+and the depends-on chips, which a native form reset cannot reach.
 
 Labels are not a field: the create form never had one, and the addendum lists them as
-optional. The assignee is no longer a `<select>`; see B22.
+optional. The assignee is no longer a `<select>`; see B22. The two relation controls
+are marked **Optional** and leave the task creatable when empty; see B24.
 
 ## B11 · Create-project modal
 
@@ -370,10 +381,60 @@ The source pane is a **transparent textarea stacked on a highlighted `<pre>`**; 
 real input break lines in the same place. The `pre` and the textarea are the *only* two
 elements in the editor whose geometry must agree — everything else follows from them.
 
+**R4 — both panes scroll, and the highlight layer follows.** The edit side `.td-md-source`
+carries an explicit `height: 100%` beside `overflow-y: auto`, so overflowing source scrolls
+the way the preview always did; with scripting off the textarea keeps that native scroller
+and the layout is unchanged. `.td-md-panes` is `clamp(280px, 46vh, 520px)` — a markedly
+taller editing area than R3's fixed 230px, still bounded so the dialog scrolls rather than
+runs off the screen.
+
+The scroll binding is **direct**, not delegated: `scroll` does not bubble, so R3's
+`$(editor).on("scroll", "[data-md-source]", …)` never fired and the highlight `<pre>` stayed
+put while the text scrolled under it — the "Write mode will not scroll" report. Binding the
+handler to each source (`.on("scroll")` on the element, keyed off the same
+`[data-md-source]` hook) puts the two back on one `scrollTop`.
+
 Both vendored files are loaded with a plain `<script>` tag from `prototype/vendor/`, make
 no network request, read no storage, and are first-party rather than downloaded (DESIGN.md
 §18.4). Nothing is submitted, fetched or stored: the editor renders what is typed, in the
 page.
+
+---
+
+## B24 · Parent / Depends-on control (R4)
+
+Two optional relation fields in B10's right column. They are B22's control pointed at a
+different source: the **current project's cards**, not a people roster.
+
+| | Parent | Depends on |
+|---|---|---|
+| Root | `[data-create-task-parent]` (`.td-combo`) | `[data-create-task-depends]` (`.td-combo`) |
+| Input | `[data-parent-input]` | `[data-depends-input]` |
+| Menu | `[data-parent-menu]` → `[data-parent-option]` (`data-parent-value`) | `[data-depends-menu]` → `[data-depends-option]` (`data-depends-value`) |
+| Selection | single — the input states the identifier, `[data-parent-clear]` empties it | multi — one `[data-depends-chips]` chip per task (`[data-depends-chip]`, each with `[data-depends-remove]`) |
+| Semantics | `task_relations.type='parent'`, **one** parent | prerequisite DAG (no cycles) |
+
+Both are labelled **Optional** and both leave the task creatable when empty.
+
+| | |
+|---|---|
+| Options | read from `[data-card]` filtered to the project selected in `[data-create-task-project]` (default: the working project), as **identifier + title** — `identifier` is the value, the title is the row's trailing text and the chip's tooltip |
+| Ranking | the same substring ranking as B22 (prefix → contains → subsequence), over identifier and title together |
+| Free text | **off** (`freeText: false`): a relation can only point at a task that already exists, so there is no `· new` row and nothing is added to any roster |
+| Dedupe | a chosen chip is dropped from the menu on the next render; choosing it twice is a no-op |
+| Markup | the menus ship a 12-row inert seed (the working project's tasks) as the no-JS floor, redrawn from the live board the moment the control is focused |
+| Keyboard | `↑`/`↓` move, `Enter` accepts (opens the menu when it is closed, so it can never submit the form from these inputs), `Esc` dismisses, `Tab` closes — the B22 loop, keyed off these hooks |
+
+**Menus never tear the dialog.** `.td-combo-menu` is `flex-wrap: nowrap` with `flex: none`
+rows, because daisyUI's `menu` is `column wrap` and turned a twelve-task list into two
+narrow columns. Inside the dialog the menu is clipped by `.td-modal-box`'s own scroller, so
+`positionComboMenu()` measures the row and flips the menu above its control (CSS
+`.td-combo[data-drop="up"]`) when there is not room below — the depends-on field, last in
+the column, opens upward.
+
+**UI only.** No relation is written anywhere: no graph is built, no cycle is checked, and
+the chips reach neither the created card nor any store. The plan's ≤8 chain length and ≤8
+fan-in are noted in the spec, not enforced here.
 
 ---
 
@@ -489,6 +550,17 @@ separate keys.
 | `combo.empty` · `combo.new` | what the roster menu says when nothing matches, and the `· new` marker on a name the roster does not hold |
 | `md.label` · `md.write` · `md.preview` · `md.split` · `md.hint` | the Markdown editor's mode tabs and its hint (B23) |
 | `access.cidr.enabled` · `access.cidr.disabled` | the allow-list switch's two toasts (B19) |
+
+**R4 adds nine keys**, all mirrored:
+
+| Keys | Where |
+|---|---|
+| `createTask.field.parent` · `createTask.field.parentHint` | the Parent field's label and hint (B24) |
+| `createTask.field.depends` · `createTask.field.dependsHint` | the Depends-on field's label and hint (B24) |
+| `createTask.optional` | the `Optional` chip beside both relation labels (B10 / B24) |
+| `combo.parentPlaceholder` · `combo.dependsPlaceholder` | the two relation inputs' placeholders (B24) |
+| `combo.taskHint` · `combo.clear` | the relation inputs' `title`, and the parent clear button's label (B24) |
+| `combo.noTasks` | what a relation menu says when the project has no matching task (B24) |
 
 ---
 

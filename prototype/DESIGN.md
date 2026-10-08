@@ -844,3 +844,66 @@ no old-brand hex survives in `src/input.css`; 7 columns · 18 cards · legend ·
 empty state all visible with JavaScript disabled; zero console errors; and no page-level
 horizontal overflow at 1512 / 1240 / 980 / 760 / 430 px, nor inside the create dialog at
 1512 or 760.
+
+## 19. Review round R4 — create dialog fixed, parent & depends-on
+
+R4 is `design-spec-addendum.md` (2026-10-09), the follow-up to Terry's trial of the R3
+create dialog. Incremental revision of `prototype/**` on top of R3 — no rewrite.
+
+**No token change.** Every value still comes from `design/brand/tokens.css`; §2, §3, §4
+and the two daisyUI theme blocks are untouched, and `design/**` is not edited by this
+round. What moved is geometry and one interaction binding.
+
+### 19.1 A1 — Write mode scrolls, and the highlight follows
+
+The edit pane could not scroll; the preview could. Two causes:
+
+1. **`scroll` does not bubble.** R3 bound the sync as a delegated handler on the editor
+   (`$(editor).on("scroll", "[data-md-source]", …)`), which never fires — so the
+   transparent textarea scrolled under a highlight `<pre>` that stayed put, and the pane
+   read as frozen. R4 binds the handler directly to each source, keyed off the same
+   `[data-md-source]` hook: measured `scrollTop` is now identical on both layers.
+2. **The edit side has an explicit scroller.** `.td-md-source` carries `height: 100%`
+   with `overflow-y: auto`, beside the preview's own `overflow: auto`. With scripting off
+   the textarea keeps its native scroller and the layout is unchanged.
+
+### 19.2 A2 — the dialog is bigger, and the left column leads
+
+`.td-modal-box` goes from 880px to `min(1120px, 100vw − 32px)`, capped at `100vh − 48px`
+with its own scroller. The tracks become `minmax(0, 1.6fr)` / `minmax(0, 1fr)` so the
+description is the dominant pane, and `.td-md-panes` goes from a fixed 230px to
+`clamp(280px, 46vh, 520px)` — a markedly taller editing area, still bounded so the dialog
+scrolls instead of running off the screen. At ≤760px the tracks stack and the editor drops
+to `clamp(220px, 40vh, 360px)`, so a phone-height window still fits the dialog.
+
+### 19.3 B1/B2 — Parent and Depends on
+
+Two **Optional** fields close B10's right column, after Reporter. They are B22's control
+reading the working project's cards instead of a people roster: **identifier as value,
+title as the row's trailing text**. Parent is single-select with a clear button; Depends on
+is multi-select, each choice a removable chip, deduped. Both refuse free text — a relation
+can only point at a task that already exists — so there is no `· new` row and no roster is
+grown. Structure and hooks: BLOCKS.md **B24**. UI only: no graph, no cycle check, nothing
+stored.
+
+Two layout corrections came out of building them, both general:
+
+- daisyUI's `menu` is `column wrap`, so twelve rows became two narrow columns; the picker
+  menu is now one scrolling column (`flex-wrap: nowrap`, `flex: none` rows).
+- A menu hanging off the last field would be clipped by the dialog's own scroller, so the
+  menu measures its room and flips above its control (`.td-combo[data-drop="up"]`) when
+  there is none below.
+
+### 19.4 Recaptured and checked
+
+Recaptured (the dialog's geometry changed, so every frame that shows it did):
+`10-create-task-modal`, `23-create-two-col`, `24-md-editor-split`, `25-assignee-autocomplete`,
+`26-create-narrow-760`. New: `28-md-write-scroll` (Write scrolled to the tail of a 60-step
+description, highlight in step), `29-create-parent-dropdown`, `30-create-depends-multiselect`.
+
+Checked and clean: `prototype-guard` passes; the purity scan over `*.html` / `*.js` /
+`*.css` returns nothing; 7 columns · 18 cards and every pre-R4 hook intact; the create
+dialog scrolls its edit pane (measured `scrollHeight` 1171 → `clientHeight` 437, both layers
+at `scrollTop` 260) and its preview (2479 → 437); chips add, dedupe and remove; the form
+still resets after a submit; zero console errors; and no page-level horizontal overflow at
+1512 / 1240 / 980 / 760 / 430 px, with or without JavaScript.
