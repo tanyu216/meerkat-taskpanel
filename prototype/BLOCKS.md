@@ -4,7 +4,8 @@ The structural contract of `index.html`. Selectors are **`data-*` semantic hooks
 Tailwind class names are never part of the contract, and no anchor is positional.
 
 Counts in the current build: **7 columns · 18 cards · 18 detail templates ·
-15 agent-session blocks · 109+ i18n keys** (plus the keys `app.js` uses for generated copy).
+15 agent-session blocks · 150 i18n hooks in the markup + 32 keys `app.js` resolves for
+generated copy = 182 keys, mirrored in `en` and `zh`.**
 
 ---
 
@@ -26,9 +27,13 @@ Counts in the current build: **7 columns · 18 cards · 18 detail templates ·
 | Search | `[data-search]` → `[data-search-input]` |
 | Filters toggle | `[data-filter-toggle]` (`aria-pressed`, `aria-controls="td-filters"`) |
 | View toggle | `[data-view-toggle]` → `[data-view="board" \| "list"]` (`aria-pressed`) |
-| Theme toggle | `[data-theme-toggle]` → `[data-theme-icon="light" \| "dark"]` |
 | Revision | `[data-revision]` → `[data-revision-label]`, `[data-revision-value]`, `.td-live-dot` |
+| Theme toggle | `[data-theme-toggle]` → `[data-theme-icon="light" \| "dark"]` (`aria-pressed`) |
+| Language toggle | `[data-lang-toggle]` → `[data-lang="en" \| "zh"]` (`aria-pressed` marks the active language, `lang` attribute per option) |
 | Primary action | `[data-new-task]` |
+
+Right-end order is fixed: revision · theme · language · primary action. There is **no
+user, account or sign-in element** anywhere in the bar.
 
 ## B03 · Sidebar
 
@@ -39,7 +44,12 @@ Counts in the current build: **7 columns · 18 cards · 18 detail templates ·
 | Projects | `[data-project-list]` → `[data-project="…"]` (`aria-current="page"`) → `.td-side-icon` (prefix monogram, rail only) + `[data-project-count]` |
 | Agents | `[data-agents-presence]` → **one row per platform**: `[data-agent-platform="claude\|openclaw\|codex\|pi"]` + `[data-presence="running\|idle"]` |
 | States preview | `[data-states-open]` — sidebar footer control, opens **B18** |
-| Identity | `[data-user]` — the human owner (Terry), avatar + name + role |
+| Access status | `[data-access-status]` — green dot + `Local · localhost` (mono) + `[data-access-open]`, the entry to **B19** |
+
+The footer reports *reachability*, not *identity*: the former `[data-user]` block
+(avatar + name + role) was **removed** in review round v1.1, along with its `.td-user`,
+`.td-user-text` and `.td-avatar-lg` styles. The assignee model further down this file is
+a separate concern and is unchanged.
 
 ## B04 · Filters bar
 
@@ -172,6 +182,25 @@ The gallery is a prototype review surface: it puts every non-default state in on
 frame so coverage can be checked in a single screenshot. It adds no framework — a
 scrim, a panel and two jQuery handlers.
 
+## B19 · Access & token settings
+
+| | |
+|---|---|
+| Root | `[data-access-panel][data-state="closed\|open"]` (`role="dialog"`, `aria-modal="true"`, `aria-hidden`), **hidden by default** with the `hidden` attribute |
+| Opener | `[data-access-open]` in the sidebar footer |
+| Dismiss | `[data-access-close]` · `[data-access-overlay]` · `Esc` — same `data-state` + `hidden` pattern as the drawer and the states showcase; focus returns to the opener |
+| Model copy | `[data-i18n="access.model.local"]` · `[data-i18n="access.model.remote"]` |
+| Scope rows | `[data-access-scope="local"\|"remote"]` → `[data-access-state="on"\|"off"]` → `.td-access-dot` (green when local) + `.td-access-scope` (mono) + `.td-access-flag` |
+| Token block | `[data-token-block]` (`data-token-revealed="true\|false"`) → `[data-token-value]` · `[data-token-reveal]` (icons `[data-token-icon="hidden"\|"shown"]`) · `[data-token-copy]` · `[data-token-reset]` |
+| Captions | `[data-i18n="access.token.generated"]` · `[data-i18n="access.token.private"]` |
+
+`[data-token-value]` renders the stand-in masked as `td_••••••••••••` (the `td_` prefix
+stays visible); `Reveal` toggles the mask only, `Copy` reports a toast and touches no
+clipboard, `Reset` mints a new value in memory and shows it. The value is produced by
+`Math.random()` + `Date.now()`, held in `state.token`, and written to the DOM and
+nowhere else — **no storage, no transport, no credential, nothing persisted.** See
+DESIGN.md §12.
+
 ---
 
 ## Assignee model
@@ -203,15 +232,39 @@ separate properties, and the lifecycle shows up again in the activity feed
 |---|---|
 | `[data-move-menu]` → `[data-move-to="status"]` | the single shared "Move to" menu reused by every card (I2 fallback for drag) |
 | `[data-drop-placeholder]` | transient placeholder bar created during `dragover` |
-| `[data-states-overlay]` | scrim behind B18 |
+| `[data-states-overlay]` / `[data-access-overlay]` | scrims behind B18 and B19 |
 | `template[data-toast-template]` / `template[data-list-row-template]` / `template[data-detail-for]` | inert markup sources for the interaction layer |
 | `[data-detail-slot-source]` | transient wrapper jQuery builds while copying a template into the drawer |
 | `[data-label="…"]` | one chip per card label |
 
-`data-i18n`, `data-i18n-placeholder`, `data-i18n-aria-label` and `data-i18n-title`
-carry translation keys on every piece of user-visible copy. Copy generated by
-`app.js` (toast sentences, empty-row text) is keyed in the `I18N` map at the top
-of the file using the same namespace.
+---
+
+## i18n hooks
+
+English is the default language; `[data-lang-toggle]` switches to Chinese (DESIGN.md §13).
+Five attributes carry the keys, on every piece of user-visible copy:
+
+| Hook | Sets |
+|---|---|
+| `data-i18n` | the element's text |
+| `data-i18n-placeholder` | `placeholder` |
+| `data-i18n-aria-label` | `aria-label` |
+| `data-i18n-title` | `title` |
+| `data-i18n-arg` | the `%s` value for any of the four above; it is resolved as a key first, so `column.add` + `status.todo` reads `Add task to To Do` / `在待办中新建任务` |
+
+The catalogue is the in-memory `MESSAGES` object at the top of `app.js` — **182 keys per
+language, mirrored 1:1**, never an external file. Copy `app.js` composes at runtime
+(toast sentences, list rows, card aria labels, the token mask) is keyed there too.
+
+`<html lang>` follows the switch (`en` / `zh-CN`), the switches in `[data-lang-toggle]`
+move their `aria-pressed`, and the drawer body — which arrives from an inert
+`<template>` that the document-wide pass cannot reach — is translated again when it
+lands. A language switch also re-derives everything `app.js` owns, so an open drawer,
+the list view and the result counter all change language in place.
+
+Per-column empty-state hints and add-button labels share **one** key pair each and take
+their status name through `data-i18n-arg` (`status.backlog`, …) rather than fourteen
+separate keys.
 
 ---
 
@@ -228,9 +281,9 @@ of the file using the same namespace.
    timestamp and agent role handle uses `.td-mono` with tabular numerals.
 5. **Ids in the document** are unique and only used for `label[for]` /
    `aria-labelledby` / `aria-controls` — never as a styling hook.
-6. **No block is hidden by the stylesheet**: `board ↔ list`, drawer, modals and the
-   states gallery are toggled by the `hidden` attribute or `data-state`, so the static
-   document is readable with JavaScript disabled.
+6. **No block is hidden by the stylesheet**: `board ↔ list`, drawer, modals, the
+   states gallery and the access panel are toggled by the `hidden` attribute or
+   `data-state`, so the static document is readable with JavaScript disabled.
 7. **One identity model** everywhere: `data-assignee` is always a role handle from
    the table above, `data-assignee-kind` always separates agent from human, and
    `data-agent-platform` always names one of claude / openclaw / codex / pi.

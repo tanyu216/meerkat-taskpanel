@@ -853,13 +853,43 @@ html[data-theme="dark"] {
     background-color: var(--color-td-ink-4);
   }
 
-  .td-user {
+  /* Local access readout — the sidebar footer states how the board is
+     reachable, not who is looking at it. */
+  .td-access-status {
     display: flex;
     align-items: center;
     gap: 8px;
+    margin-top: 8px;
     padding: 8px 4px 0;
-    margin-top: auto;
+    font-size: 12px;
+    color: var(--color-td-ink-2);
     border-top: 1px solid var(--color-td-line);
+  }
+
+  .td-access-status-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .td-access-status .td-iconbtn {
+    width: 24px;
+    height: 24px;
+  }
+
+  /* reachability signal: green while the board answers on localhost */
+  .td-access-dot {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: var(--r-full);
+    background-color: var(--color-td-success);
+  }
+
+  .td-access-row[data-access-state="off"] .td-access-dot {
+    background-color: var(--color-td-ink-4);
   }
 
   /* --- avatars --------------------------------------------------------- */
@@ -875,12 +905,6 @@ html[data-theme="dark"] {
     color: var(--color-td-ink-2);
     background-color: var(--color-td-sunken);
     border-radius: var(--r-full);
-  }
-
-  .td-avatar-lg {
-    width: 28px;
-    height: 28px;
-    font-size: 11px;
   }
 
   /* Agent identity: dashed ring + semantic corner badge (style guide §1) */
@@ -2025,12 +2049,13 @@ html[data-theme="dark"] {
     margin-top: auto;
   }
 
-  /* the showcase button owns the auto margin, so the identity block sits under it */
-  .td-sidebar > .td-user {
+  /* the showcase button owns the auto margin, so the footer rows sit under it */
+  .td-sidebar > .td-access-status {
     margin-top: 8px;
   }
 
-  .td-states-panel {
+  .td-states-panel,
+  .td-access-panel {
     position: fixed;
     top: 50%;
     left: 50%;
@@ -2052,13 +2077,15 @@ html[data-theme="dark"] {
       visibility var(--dur-panel) var(--ease);
   }
 
-  .td-states-panel[data-state="open"] {
+  .td-states-panel[data-state="open"],
+  .td-access-panel[data-state="open"] {
     opacity: 1;
     visibility: visible;
     transform: translate(-50%, -50%) scale(1);
   }
 
-  .td-states-head {
+  .td-states-head,
+  .td-access-head {
     flex: none;
     display: flex;
     align-items: center;
@@ -2067,12 +2094,144 @@ html[data-theme="dark"] {
     border-bottom: 1px solid var(--color-td-line);
   }
 
-  .td-states-body {
+  .td-states-body,
+  .td-access-body {
     flex: 1 1 auto;
     min-height: 0;
     padding: 16px;
     overflow-y: auto;
     scrollbar-width: thin;
+  }
+
+  /* --- B19 · access & token settings ----------------------------------- */
+  /* Same floating-panel geometry as the states showcase, narrowed to a
+     settings column. */
+  .td-access-panel {
+    width: min(480px, calc(100vw - 32px));
+    max-height: min(88vh, 720px);
+  }
+
+  .td-access-body {
+    padding: 16px 20px 20px;
+  }
+
+  .td-access-lead {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--color-td-ink-2);
+  }
+
+  .td-access-lead + .td-access-lead {
+    margin-top: 4px;
+  }
+
+  .td-access-scopes {
+    margin-top: 16px;
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-md);
+    overflow: hidden;
+  }
+
+  .td-access-row {
+    display: grid;
+    grid-template-columns: 68px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+    background-color: var(--color-td-surface);
+  }
+
+  .td-access-row + .td-access-row {
+    border-top: 1px solid var(--color-td-line);
+  }
+
+  .td-access-row-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+    color: var(--color-td-ink);
+  }
+
+  .td-access-scope {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 12px;
+    color: var(--color-td-ink-2);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .td-access-flag {
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 0 6px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1;
+    color: var(--color-td-ink-3);
+    background-color: var(--color-td-sunken);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-sm);
+    white-space: nowrap;
+  }
+
+  /* --- token block ------------------------------------------------------ */
+  .td-token {
+    margin-top: 16px;
+    padding: 12px;
+    background-color: var(--color-td-sunken);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-lg);
+  }
+
+  .td-token-title {
+    margin: 0 0 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-td-ink);
+  }
+
+  .td-token-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .td-token-value {
+    flex: 1 1 auto;
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    height: 32px;
+    padding: 0 10px;
+    overflow: hidden;
+    font-size: 12px;
+    color: var(--color-td-ink-2);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    background-color: var(--color-td-surface);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-md);
+  }
+
+  .td-token-row .td-iconbtn {
+    background-color: var(--color-td-surface);
+    border-color: var(--color-td-line);
+  }
+
+  .td-token-notes {
+    margin: 8px 0 0;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--color-td-ink-3);
+  }
+
+  .td-token-notes > span {
+    display: block;
   }
 
   .td-states-grid {
@@ -2194,7 +2353,7 @@ html[data-theme="dark"] {
     .td-side-name,
     .td-count,
     .td-agent-row .td-agent-text,
-    .td-user-text,
+    .td-access-status-text,
     .td-legend,
     .td-sidebar .td-agent-badge {
       display: none;
@@ -2225,8 +2384,24 @@ html[data-theme="dark"] {
       padding: 0;
     }
 
-    .td-user {
+    .td-access-status {
       justify-content: center;
+    }
+  }
+
+  /* 760–779 → the single-row bar needs ~776px once the language switch sits in
+     it. Page-level horizontal overflow is forbidden at every width (§2.4), so
+     in this narrow band the bar wraps and the shell lets its first row grow.
+     The ≥780 and ≤759 layouts are untouched by this rule. */
+  @media (min-width: 760px) and (max-width: 779px) {
+    .td-shell {
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .td-topbar {
+      flex-wrap: wrap;
+      padding: 8px;
+      row-gap: 8px;
     }
   }
 
@@ -2289,7 +2464,8 @@ html[data-theme="dark"] {
       width: 100vw;
     }
 
-    .td-states-panel {
+    .td-states-panel,
+    .td-access-panel {
       width: calc(100vw - 16px);
       max-height: 92vh;
     }

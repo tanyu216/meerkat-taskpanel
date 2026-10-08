@@ -1,9 +1,11 @@
 # TaskDashboard — Design Specification (v1 prototype)
 
 > Implemented from `design-style-guide.md` (visual tokens — single source of truth)
-> and `design-spec.md` (structure, blocks, interactions, coverage).
+> and `design-spec.md` (structure, blocks, interactions, coverage), as amended by
+> `design-spec-addendum-v1.1.md` (access model, top bar, i18n).
 > Every value below is copied from those documents. **Nothing here is invented**;
-> §9 records every point where the two documents disagree and what was chosen.
+> §9 records every point where the two documents disagree and what was chosen, and
+> §14 records the judgement calls the v1.1 addendum left open.
 
 ---
 
@@ -306,3 +308,133 @@ changed. All three are in the build:
 The states gallery is a **prototype review surface**, not a product screen: it exists so
 every non-default state can be inspected and captured in one frame. `BLOCKS.md` B18
 records it as such.
+
+---
+
+## 12. Access model / token
+
+**The board has no accounts.** Anything that named a person *looking at* the app is
+gone: no avatar, no user name, no role chip, no account menu, no sign-in entry — in the
+top bar, the sidebar or anywhere else. §10 still governs who a task is *assigned* to;
+that is a different question from who is *viewing*, and the two no longer share a
+component.
+
+What replaced the sidebar identity block is a **reachability readout**:
+
+| Surface | Content |
+|---|---|
+| Top bar, right end | `[data-revision]` · `[data-theme-toggle]` · `[data-lang-toggle]` · `[data-new-task]` |
+| Sidebar footer `[data-access-status]` | green dot + `Local · localhost` (mono) + `[data-access-open]` |
+
+The top-bar order is exactly the one the addendum fixes; the primary action stays last.
+
+**B19 · Access & token settings** — `[data-access-open]` opens `[data-access-panel]`,
+hidden by default and dismissed with `Esc`, the scrim (`[data-access-overlay]`) or
+`[data-access-close]`. It uses the same `data-state` + `hidden` overlay contract as the
+drawer: `hidden` comes off first so the transition has a frame to start from, and the
+panel is only hidden again once the close transition has finished.
+
+The panel states the model in the order the addendum gives it:
+
+1. `Access` — the panel title.
+2. `Local only by default — this board listens on localhost.` and
+   `Remote (public) access requires a token.`
+3. Two scope rows: **Local** → `localhost` → `Enabled` (green dot, `data-access-state="on"`);
+   **Remote** → `0.0.0.0` → `Requires a token` (muted dot, `data-access-state="off"`).
+   The dot is the only colour in the block and it uses the success token, not a new one.
+4. `[data-token-block]` — the stand-in credential:
+
+| Hook | Behaviour |
+|---|---|
+| `[data-token-value]` | the token, masked as `td_••••••••••••` — the `td_` prefix stays readable |
+| `[data-token-reveal]` | toggles the mask only; `aria-pressed` and `data-token-revealed` carry the state, the icon swaps |
+| `[data-token-copy]` | reports `Token copied` in a toast. **It does not touch the clipboard** |
+| `[data-token-reset]` | mints a new stand-in, shows it unmasked, reports `Token reset` |
+
+Captions: `Generated randomly at install time.` / `Keep it private — do not share publicly.`
+
+**This is a UI placeholder and nothing else.** The value is generated in `app.js` from
+`Math.random()` and `Date.now()`, stretched through a Lehmer step so it reads like a
+credential and differs on every reset. It lives in `state.token` for the lifetime of the
+page and is written to the DOM and nowhere else: no storage API, no transport, no
+clipboard, no credential or endpoint of any kind, and no persistence across reloads.
+`Reset` is the only thing that changes it.
+
+---
+
+## 13. i18n
+
+**English is the default** (`<html lang="en">`). `[data-lang-toggle]` in the top bar
+switches to Chinese and back; the active option carries `aria-pressed`, so the current
+language is always visible.
+
+**One catalogue, in memory.** `app.js` holds `MESSAGES = { en: {…}, zh: {…} }` — **182
+keys per language, mirrored 1:1** (a test asserts the two key sets are identical). No
+external file, no fetch, no build step; `text()` resolves against the active language,
+falls back to English and then to the key itself, so a missing translation shows up as
+visible copy rather than an empty element.
+
+**Hooks.** `data-i18n` sets text; `data-i18n-placeholder`, `data-i18n-aria-label` and
+`data-i18n-title` set the three attributes; `data-i18n-arg` fills a `%s` in the string
+and is itself resolved as a key first — so `column.add` + `status.todo` reads
+`Add task to To Do` in English and `在待办中新建任务` in Chinese from **one** key pair
+instead of fourteen.
+
+**Coverage** (150 of the keys are on hooks in the markup): top bar (brand, switcher,
+search, view, revision, theme, language, primary action) · sidebar nav, project list,
+agent presence, legend, footer readout · the filter bar including **every** `<option>` ·
+all seven column headers **and** their empty-column messages and add-button labels ·
+the no-results empty state · the list view · the drawer (section titles, property
+labels, relation labels, comment role chips, relative timestamps, session block,
+buttons) · both modals · the error state · the states gallery · the token panel ·
+every toast, including the ones `app.js` composes at runtime.
+
+**Switching** rewrites the document in one pass (`translateTree`), then regenerates the
+copy `app.js` owns — card aria/titles, the drawer's status and priority *values*, list
+rows, the token mask, the theme button's label — and follows with `<html lang>`, a
+filter pass (the result counter lives in the copy) and a toast **in the new language**.
+
+Two details worth recording:
+
+- The drawer body is copied out of an inert `<template>`, which the document pass cannot
+  reach, so it is translated the moment it lands in the drawer — the templates carry the
+  same hooks as everything else.
+- The English text in the markup **is** the default rendering: what a JavaScript-free
+  reader sees is exactly what the `en` catalogue produces.
+
+Chinese copy is plain and verb-first, matching the English tone (§4 of the style guide).
+Identifiers, role handles, platform names, project names, card labels, task titles,
+file names, comment bodies and `--agent-platform` values stay as authored — they are
+data, not chrome.
+
+---
+
+## 14. Review round v1.1
+
+The addendum asked for the access model, the top-bar change and bilingual copy. All
+three are in the build, plus five judgement calls worth recording:
+
+1. **Identity removed from the chrome.** `[data-user]` and its `.td-user` /
+   `.td-avatar-lg` styles are gone; the sidebar footer now reports reachability and
+   hosts the access entry. The assignee model in §10 is untouched.
+2. **B19 added** — see §12.
+3. **i18n added** — see §13.
+4. **`[data-lang-toggle]` is a two-option segmented pair**, not a cycling button or a
+   dropdown. The addendum allows a click toggle; a pair makes the current language
+   visible and reuses the `[data-view-toggle]` control the top bar already has, so the
+   bar gains no new component vocabulary.
+5. **Two registered deviations:**
+   - **760–779px.** With the language switch in it, the single-row top bar needs ~776px,
+     so below that it would push the page wide — which §2.4 forbids at every width. In
+     that 20px band only, the bar wraps and the shell lets its first row grow (one
+     media query, `min-width: 760px and max-width: 779px`). The ≥780 and ≤759 layouts are
+     byte-for-byte unchanged.
+   - **Focus into an opened panel is deferred by one transition length.** A panel is
+     still computed `visibility: hidden` on the frame it opens, so focusing a control
+     inside it then is silently a no-op. The deferral is shared by the drawer, the states
+     showcase and the access panel, which fixes the same latent no-op the R1 drawer and
+     states panel had. No visual change.
+
+Two dead entries inherited from the R1 copy map (`placeholder.newProject` and the
+`toast.blocked` sentence, referenced by nothing) were dropped while the catalogue was
+being restructured.

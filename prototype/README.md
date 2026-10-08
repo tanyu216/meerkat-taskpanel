@@ -2,8 +2,11 @@
 
 A static, self-contained HTML prototype of the TaskDashboard board for an AI-agent
 team. It is the executable design baseline: tokens, block structure and interaction
-behaviour all come from `design-style-guide.md` + `design-spec.md`, with every
-disagreement between the two recorded in [DESIGN.md §9](DESIGN.md#9-reconciliation--where-the-two-source-documents-disagree).
+behaviour all come from `design-style-guide.md` + `design-spec.md` as amended by
+`design-spec-addendum-v1.1.md` (access model, top bar, i18n), with every disagreement
+between the sources recorded in
+[DESIGN.md §9](DESIGN.md#9-reconciliation--where-the-two-source-documents-disagree) and
+every judgement call the addendum left open recorded in §14.
 
 **Stack is closed: Tailwind CSS + daisyUI + jQuery (slim). No other CSS/UI/JS library,
 no CDN, no webfont, no network call, no storage.**
@@ -31,9 +34,9 @@ modals are secondary surfaces and stay hidden until opened.
 | `src/input.css` | the Tailwind build entry: `@theme` tokens, daisyUI themes, app components |
 | `app.js` | the jQuery (slim) interaction layer — interactions I1–I12 |
 | `vendor/jquery.slim.min.js` | jQuery 3.7.1 **slim** build, vendored locally |
-| `DESIGN.md` | the design specification: tokens, type, spacing, states, a11y, reconciliation |
-| `BLOCKS.md` | the block inventory B01–B16 with every `data-*` hook |
-| `screenshots/` | capture set (board, wide board, drawer, dark, list, menu, filters, empty, modal, 5 viewports) |
+| `DESIGN.md` | the design specification: tokens, type, spacing, states, a11y, reconciliation, access model, i18n |
+| `BLOCKS.md` | the block inventory B01–B19 with every `data-*` hook |
+| `screenshots/` | capture set (board, wide board, drawer, dark, list, menu, filters, empty, modal, access + token, Chinese, 5 viewports) |
 | `package.json` | declared devDependencies + `build:css` script |
 | `.gitignore` | keeps `node_modules/` out of the repository |
 
@@ -69,7 +72,7 @@ checkout where `node_modules` is allowed to sit next to the sources.
 
 Two `@source` directives limit class scanning to `index.html` and `app.js`
 (`@import "tailwindcss" source(none)` disables auto-detection, so nothing else on
-disk can leak classes into the bundle). Current output: **123 KB**.
+disk can leak classes into the bundle). Current output: **132 KB**.
 
 ### One cascade detail worth knowing
 
@@ -100,8 +103,11 @@ the style guide's token blocks in `src/input.css` are unlayered. Two consequence
 | I10 | Create a project | switcher → `New project…` | `[data-project-new]` |
 | I11 | Light/dark theme | theme button | `[data-theme-toggle]` |
 | I12 | Toast feedback | every mutation | `[data-toast-region]`, `[data-toast]` |
+| — | Language switch | `EN` / `中文` in the top bar | `[data-lang-toggle]` → `[data-lang]` |
 | — | States gallery | sidebar footer button, `Esc` / scrim / close to dismiss | `[data-states-open]` → `[data-states-panel]` |
 | — | Error retry | `Retry` inside the error state | `[data-error-retry]` |
+| — | Access & token settings | sidebar footer entry, `Esc` / scrim / close to dismiss | `[data-access-open]` → `[data-access-panel]` |
+| — | Token reveal / copy / reset | buttons in the token block | `[data-token-reveal]`, `[data-token-copy]`, `[data-token-reset]` |
 
 Mutations that change board state (move, comment, create) also advance the
 `rev` counter in the top bar — the prototype's stand-in for the concurrent-write
@@ -113,7 +119,7 @@ native calls remain because jQuery cannot express them; each carries an inline
 comment explaining why:
 
 - `el.showModal()` / `el.close()` — the native `<dialog>` API;
-- `document.createElement` + `select()` + `document.execCommand("copy")` — clipboard writes need the Selection API;
+- `document.createElement` + `select()` + `document.execCommand("copy")` — clipboard writes need the Selection API. **Used only for the drawer's internal id and session id**; the access panel's `Copy token` deliberately does not call it and reports a toast instead (DESIGN.md §12);
 - `$form[0].reset()` — jQuery can dispatch a `reset` event but cannot perform one.
 
 ---
@@ -135,6 +141,13 @@ The same rule holds for the *words*, not just the code: the prose above is writt
 without the banned identifiers so that a plain text scan of `prototype/**` comes back
 empty on every one of them, including these documents.
 
+**The token panel is copy, not a credential.** `td_…` is generated in `app.js` from
+`Math.random()` and `Date.now()`, lives in memory for the page lifetime and is written
+to the DOM and nowhere else — never persisted, never transmitted, never copied to the
+clipboard. Nothing on the board authenticates anyone: there is no sign-in, no account
+and no session, and the sidebar footer reports how the board is *reachable*, not who is
+looking at it (DESIGN.md §12).
+
 ---
 
 ## Coverage (design-spec §7)
@@ -153,11 +166,15 @@ empty on every one of them, including these documents.
 | Empty states | empty column + no-results |
 | Loading | 3 shimmer rows in the list view |
 | Themes | light (default) and dark |
+| Language | English (default) + Chinese via `[data-lang-toggle]` — 182 key pairs, mirrored |
+| Access model | B19 access & token panel; no user / account / sign-in element anywhere |
 | Viewports | 1512 / 1240 / 980 / 760 / 500 — no page-level horizontal overflow |
 
 The board is the only horizontal scroll container; `html`, `body` and `main` never
 scroll sideways. Below 1023px the sidebar collapses to an icon rail, below 760px the
-top bar wraps and the drawer goes full width.
+top bar wraps and the drawer goes full width. Between **760 and 779px** the top bar also
+wraps: with the language switch in the bar it needs ~776px on one row, and wrapping is
+the only way to keep the page from going wider than the viewport (DESIGN.md §14).
 
 ---
 
@@ -178,6 +195,11 @@ top bar wraps and the drawer goes full width.
 | `11…14-viewport-*.png` | 1240 / 980 / 760 / 500 |
 | `15-no-javascript.png` | the same document with both `<script>` tags removed — proof that the core structure survives without JavaScript (all 18 cards visible, because the project filter is the only thing JS removes) |
 | `16-states-panel.png` | the states gallery: loading, empty column, no results, error and the three toast kinds in one frame |
+| `17-access-panel.png` | B19 access & token settings, token masked |
+| `18-access-token-revealed.png` | the same panel with the stand-in token revealed |
+| `19-board-zh.png` | the board in Chinese — top bar, sidebar, filters, column headers, legend and the footer readout |
+| `20-drawer-zh.png` | the drawer in Chinese: properties, relation labels, comment role chips and relative timestamps |
+| `21-access-panel-dark.png` | the access panel in dark theme |
 
 Captured with headless Chrome at device-scale-factor 1 with transitions disabled so
 the frames are deterministic; `index.html` itself is untouched.

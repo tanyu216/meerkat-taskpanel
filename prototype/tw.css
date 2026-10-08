@@ -16,6 +16,8 @@
     --text-lg--line-height: 1.35;
     --font-weight-medium: 500;
     --font-weight-semibold: 600;
+    --default-transition-duration: 150ms;
+    --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     --default-font-family: var(--font-sans);
     --default-mono-font-family: var(--font-mono);
     --color-td-bg: #fafafb;
@@ -1562,6 +1564,78 @@
     border-end-end-radius: var(--join-es, var(--radius-field));
   }
   @layer daisyui.l1.l2.l3 {
+    .table {
+      font-size: 0.875rem;
+      position: relative;
+      width: 100%;
+      border-collapse: separate;
+      --tw-border-spacing-x: 0px;
+      --tw-border-spacing-y: 0px;
+      border-spacing: var(--tw-border-spacing-x) var(--tw-border-spacing-y);
+      border-radius: var(--radius-box);
+      text-align: left;
+    }
+    .table:where(:dir(rtl), [dir="rtl"], [dir="rtl"] *) {
+      text-align: right;
+    }
+    @media (hover: hover) {
+      :is(:is(.table tr.row-hover), .table tr.row-hover:nth-child(even)):hover {
+        background-color: var(--color-base-200);
+      }
+    }
+    .table :where(th, td) {
+      padding-inline: calc(0.25rem * 4);
+      padding-block: calc(0.25rem * 3);
+      vertical-align: middle;
+    }
+    .table :where(thead, tfoot) {
+      white-space: nowrap;
+      color: var(--color-base-content);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .table :where(thead, tfoot) {
+        color: color-mix(in oklab, var(--color-base-content) 60%, transparent);
+      }
+    }
+    .table :where(thead, tfoot) {
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+    .table :where(tfoot tr:first-child :is(td, th)) {
+      border-top: var(--border) solid var(--color-base-content);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .table :where(tfoot tr:first-child :is(td, th)) {
+        border-top: var(--border) solid color-mix(in oklch, var(--color-base-content) 5%, #0000);
+      }
+    }
+    .table :where(.table-pin-rows thead) {
+      position: sticky;
+      top: 0px;
+      z-index: 1;
+    }
+    .table :where(.table-pin-rows tfoot) {
+      position: sticky;
+      bottom: 0px;
+      z-index: 1;
+    }
+    .table :where(.table-pin-rows :is(thead, tfoot) tr) {
+      background-color: var(--color-base-100);
+    }
+    .table :where(.table-pin-cols tr th) {
+      position: sticky;
+      right: 0px;
+      left: 0px;
+      background-color: var(--color-base-100);
+    }
+    .table :where(thead tr :is(td, th), tbody tr:not(:last-child) :is(td, th)) {
+      border-bottom: var(--border) solid var(--color-base-content);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .table :where(thead tr :is(td, th), tbody tr:not(:last-child) :is(td, th)) {
+        border-bottom: var(--border) solid color-mix(in oklch, var(--color-base-content) 5%, #0000);
+      }
+    }
     .timeline {
       position: relative;
       display: flex;
@@ -2187,6 +2261,9 @@
   .inline {
     display: inline;
   }
+  .table {
+    display: table;
+  }
   .w-56 {
     width: calc(var(--spacing) * 56);
   }
@@ -2305,6 +2382,11 @@
   }
   .filter {
     filter: var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,);
+  }
+  .transition {
+    transition-property: color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --tw-gradient-from, --tw-gradient-via, --tw-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events;
+    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
+    transition-duration: var(--tw-duration, var(--default-transition-duration));
   }
   @layer daisyui.l1.l2 {
     .btn-primary {
@@ -2884,13 +2966,36 @@ html[data-theme="dark"] {
   .td-presence[data-presence="idle"] {
     background-color: var(--color-td-ink-4);
   }
-  .td-user {
+  .td-access-status {
     display: flex;
     align-items: center;
     gap: 8px;
+    margin-top: 8px;
     padding: 8px 4px 0;
-    margin-top: auto;
+    font-size: 12px;
+    color: var(--color-td-ink-2);
     border-top: 1px solid var(--color-td-line);
+  }
+  .td-access-status-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .td-access-status .td-iconbtn {
+    width: 24px;
+    height: 24px;
+  }
+  .td-access-dot {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: var(--r-full);
+    background-color: var(--color-td-success);
+  }
+  .td-access-row[data-access-state="off"] .td-access-dot {
+    background-color: var(--color-td-ink-4);
   }
   .td-avatar {
     display: inline-flex;
@@ -2904,11 +3009,6 @@ html[data-theme="dark"] {
     color: var(--color-td-ink-2);
     background-color: var(--color-td-sunken);
     border-radius: var(--r-full);
-  }
-  .td-avatar-lg {
-    width: 28px;
-    height: 28px;
-    font-size: 11px;
   }
   [data-assignee-kind="agent"] .td-avatar, .td-avatar[data-assignee-kind="agent"] {
     border: 1px dashed var(--color-td-line-strong);
@@ -3841,10 +3941,10 @@ html[data-theme="dark"] {
   .td-state-btn {
     margin-top: auto;
   }
-  .td-sidebar > .td-user {
+  .td-sidebar > .td-access-status {
     margin-top: 8px;
   }
-  .td-states-panel {
+  .td-states-panel, .td-access-panel {
     position: fixed;
     top: 50%;
     left: 50%;
@@ -3862,12 +3962,12 @@ html[data-theme="dark"] {
     transform: translate(-50%, -50%) scale(0.98);
     transition: opacity var(--dur-panel) var(--ease), transform var(--dur-panel) var(--ease), visibility var(--dur-panel) var(--ease);
   }
-  .td-states-panel[data-state="open"] {
+  .td-states-panel[data-state="open"], .td-access-panel[data-state="open"] {
     opacity: 1;
     visibility: visible;
     transform: translate(-50%, -50%) scale(1);
   }
-  .td-states-head {
+  .td-states-head, .td-access-head {
     flex: none;
     display: flex;
     align-items: center;
@@ -3875,12 +3975,122 @@ html[data-theme="dark"] {
     padding: 12px 16px;
     border-bottom: 1px solid var(--color-td-line);
   }
-  .td-states-body {
+  .td-states-body, .td-access-body {
     flex: 1 1 auto;
     min-height: 0;
     padding: 16px;
     overflow-y: auto;
     scrollbar-width: thin;
+  }
+  .td-access-panel {
+    width: min(480px, calc(100vw - 32px));
+    max-height: min(88vh, 720px);
+  }
+  .td-access-body {
+    padding: 16px 20px 20px;
+  }
+  .td-access-lead {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--color-td-ink-2);
+  }
+  .td-access-lead + .td-access-lead {
+    margin-top: 4px;
+  }
+  .td-access-scopes {
+    margin-top: 16px;
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-md);
+    overflow: hidden;
+  }
+  .td-access-row {
+    display: grid;
+    grid-template-columns: 68px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+    background-color: var(--color-td-surface);
+  }
+  .td-access-row + .td-access-row {
+    border-top: 1px solid var(--color-td-line);
+  }
+  .td-access-row-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+    color: var(--color-td-ink);
+  }
+  .td-access-scope {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 12px;
+    color: var(--color-td-ink-2);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .td-access-flag {
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 0 6px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1;
+    color: var(--color-td-ink-3);
+    background-color: var(--color-td-sunken);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-sm);
+    white-space: nowrap;
+  }
+  .td-token {
+    margin-top: 16px;
+    padding: 12px;
+    background-color: var(--color-td-sunken);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-lg);
+  }
+  .td-token-title {
+    margin: 0 0 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-td-ink);
+  }
+  .td-token-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .td-token-value {
+    flex: 1 1 auto;
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    height: 32px;
+    padding: 0 10px;
+    overflow: hidden;
+    font-size: 12px;
+    color: var(--color-td-ink-2);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    background-color: var(--color-td-surface);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-md);
+  }
+  .td-token-row .td-iconbtn {
+    background-color: var(--color-td-surface);
+    border-color: var(--color-td-line);
+  }
+  .td-token-notes {
+    margin: 8px 0 0;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--color-td-ink-3);
+  }
+  .td-token-notes > span {
+    display: block;
   }
   .td-states-grid {
     display: grid;
@@ -3974,7 +4184,7 @@ html[data-theme="dark"] {
       align-items: center;
       padding: 16px 8px;
     }
-    .td-side-text, .td-side-label, .td-side-name, .td-count, .td-agent-row .td-agent-text, .td-user-text, .td-legend, .td-sidebar .td-agent-badge {
+    .td-side-text, .td-side-label, .td-side-name, .td-count, .td-agent-row .td-agent-text, .td-access-status-text, .td-legend, .td-sidebar .td-agent-badge {
       display: none;
     }
     .td-side-icon {
@@ -3997,8 +4207,18 @@ html[data-theme="dark"] {
       justify-content: center;
       padding: 0;
     }
-    .td-user {
+    .td-access-status {
       justify-content: center;
+    }
+  }
+  @media (min-width: 760px) and (max-width: 779px) {
+    .td-shell {
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+    .td-topbar {
+      flex-wrap: wrap;
+      padding: 8px;
+      row-gap: 8px;
     }
   }
   @media (max-width: 979px) {
@@ -4041,7 +4261,7 @@ html[data-theme="dark"] {
     .td-drawer {
       width: 100vw;
     }
-    .td-states-panel {
+    .td-states-panel, .td-access-panel {
       width: calc(100vw - 16px);
       max-height: 92vh;
     }
