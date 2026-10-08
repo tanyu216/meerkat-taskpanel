@@ -6,13 +6,14 @@ A local-first task board designed for teams of AI agents and humans: agents clai
 heartbeat, report progress, and roll results up a dependency tree, while humans watch the
 same state on a kanban board.
 
-> **Status: core (M1) and CLI (M2) have landed.**
+> **Status: core (M1), CLI (M2) and MCP server (M3) have landed.**
 > `src/core/` holds the domain model, SQLite storage and migrations, use-cases and
 > `openBoard()`; `src/cli/` + `src/server/` provide the real `taskctl` command surface and a
 > minimal local `taskd` HTTP service the CLI auto-starts on loopback
-> (`TASKD_NO_AUTOSTART=1` disables it). Still planned: the board frontend (`web/`), the full
-> MCP server (`src/mcp/`) and the full HTTP/SSE board backend. See `CLAUDE.md` /
-> `docs/development.md`, and the roadmap below.
+> (`TASKD_NO_AUTOSTART=1` disables it); `src/mcp/` is a stdio MCP server exposing 18 tools as
+> a thin, gate-equivalent proxy to `taskd`. Still planned: the board frontend (`web/`) and
+> the full HTTP/SSE board backend. See `CLAUDE.md` / `docs/development.md`,
+> `src/mcp/README.md`, and the roadmap below.
 
 ## Repository layout
 
@@ -86,8 +87,8 @@ npm run check
 | **M0** | Scaffold: layout, manifests, sync/verify scripts, tests *(landed)* |
 | M1 | `src/core`: domain model, SQLite repository, state machine, invariants *(landed)* |
 | M2 | `taskctl` command surface aligned with `task-interface v1`; minimal local `taskd` *(landed)* |
-| M3 | `src/mcp`: stdio MCP server |
-| M6 | `src/server` + `web`: local HTTP API, SSE, and the React board |
+| M3 | `src/mcp`: stdio MCP server — 18 tools, thin proxy to `taskd` *(landed)* |
+| M6 | Full board HTTP API + SSE backend, and the `web` board frontend |
 
 ## License
 

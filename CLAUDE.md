@@ -11,12 +11,15 @@ same state on a kanban board. Persistence is a single SQLite database (Node's bu
 `node:sqlite`) — no external services. Node **>= 22**, **zero runtime dependencies**,
 MIT, public repo.
 
-**Status (honest):** the core engine (**M1**) has landed — `src/core/` has the domain
-model, SQLite storage + migrations, use-cases and `openBoard()`. The *surfaces* are still
-stubs: the `taskctl` CLI is a version/help stub (real commands = M2), `src/mcp/` and
-`src/server/` are placeholders (M3/M6), and there is no board frontend yet. The
-`README.md` / `README.zh-CN.md` / `docs/install.md` banners still say "M0 scaffold" and
-are stale relative to `src/core/`.
+**Status (honest):** **M1** (core engine), **M2** (the `taskctl` CLI + a minimal loopback
+`taskd`) and **M3** (the stdio MCP server) have landed. `src/core/` has the domain model,
+SQLite storage + migrations, use-cases and `openBoard()`; `src/cli/` is the real `taskctl`
+command surface and auto-starts the local `taskd` (`TASKD_NO_AUTOSTART=1` disables it);
+`src/server/` is that minimal loopback HTTP `taskd`; and `src/mcp/` is a real stdio MCP
+server — 18 frozen tools, a thin proxy to `taskd`, gate-equivalent (`task_deliver` is the
+only tool that reaches `in_review`; no dictionary-management tools). Still planned (M6):
+the full board HTTP API + SSE backend and the `web/` board frontend. See `src/mcp/README.md`
+and the roadmap in `README.md` / `README.zh-CN.md`.
 
 ## Repository layout
 
@@ -30,9 +33,9 @@ task-panel/
 │   │   ├── storage/        #   driver, migrations, repositories, secrets, md import/export
 │   │   ├── commands/       #   use-cases
 │   │   └── bootstrap.mjs   #   openBoard()
-│   ├── cli/                # taskctl entry (stub; M2 lands commands and auto-starts the local taskd)
-│   ├── mcp/                # stdio MCP server (placeholder until M3)
-│   ├── server/             # placeholder now; M2 adds a minimal taskd (loopback HTTP API, CLI auto-start); full HTTP API + SSE board backend = M6
+│   ├── cli/                # taskctl CLI (real command surface; auto-starts the local taskd)
+│   ├── mcp/                # stdio MCP server (M3; 18 tools, thin proxy to taskd)
+│   ├── server/             # minimal loopback taskd (CLI auto-start); full HTTP API + SSE board backend = M6
 │   └── shared/             # DTOs, constants, errors, pure helpers
 ├── web/                    # board frontend (Vue 3 + Vite planned) -> dist/web (README placeholder only)
 ├── skills/task-panel/      # the skill — single source of truth (author here)
@@ -62,7 +65,7 @@ file yet; `web/` is a README placeholder).
 - `npm run test:coverage` — `node --test` with an 80% line/branch/function floor on `src/core/**` + `src/shared/**`.
 - `node src/core/storage/md/migrate-cli.mjs check --dir <cards>` — md-card migration check (also `import` / `export`; exit 3 when `check` finds differences).
 - `bash install.sh --target claude|openclaw|codex|pi|all` — install the skill into each host's skill directory (flags: `--prefix`, `--link`, `--force`, `--dry-run`).
-- `taskctl` (`bin` → `src/cli/index.mjs`) — the CLI. Currently only `--version` / `--help`; the real command surface lands in M2.
+- `taskctl` (`bin` → `src/cli/index.mjs`) — the CLI (`project`, `issue`, `comment`, `relation`, `session`, `report`, `export`, `token`, … groups; auto-starts the local `taskd`).
 
 ## Constraints / MUST-follow rules
 
@@ -75,13 +78,14 @@ file yet; `web/` is a README placeholder).
 
 ## Key invariants to remember
 
-- The **delivery gate** requires a report **for the current delivery round** before a card can move to `in_review`. In this checkout the gate is still hard — enforced by a DB trigger *and* a domain check, with no waiver path (and tests pin that state). **M2 (approved, not yet landed) adds a documented, audited waiver**: `--no-report --reason "<why>"` (non-empty reason of at least 8 characters, mutually exclusive with `--report-file`, only valid on a move to `in_review`, recorded as a `report_waived` audit event, valid only for the current delivery round). The normal, compliant path remains writing a report.
+- The **delivery gate** requires a report **for the current delivery round** before a card can move to `in_review`; a report from an earlier round is history, not evidence. It is enforced by a DB trigger *and* a domain check, tested against each other. There is one narrow escape hatch (**M2**, F-B1): a documented, audited waiver — `--no-report --reason "<why>"` (reason of at least 8 characters, mutually exclusive with `--report-file`, only valid on a move to `in_review`, recorded as a `report_waived` activity, valid only for the current delivery round). The normal, compliant path remains writing a report. The **MCP surface is stricter**: `task_move` carries no waiver, so `task_deliver` is the only tool that reaches `in_review`.
 - Invariants are pushed **down into the database** (triggers), not only enforced in the app layer; the trigger and the domain check are tested against each other under `test/contract/`.
 - The service model is **single-writer**: one local service owns the SQLite database.
 
 ## Docs to read next (do not re-paste)
 
-- `README.md` / `README.zh-CN.md` — what the project is, install, roadmap (banners may lag the M1 code).
+- `README.md` / `README.zh-CN.md` — what the project is, install, roadmap.
+- `src/mcp/README.md` — what the stdio MCP server owns (and refuses to own), the 18 tools, protocol decisions.
 - `docs/install.md` — `install.sh` flags, host destinations, uninstall.
 - `docs/development.md` — layout, Node requirement, commands, no-network/no-dependency policy.
 - `docs/docker.md` — why verification is containerised, build/run, profiles, troubleshooting.

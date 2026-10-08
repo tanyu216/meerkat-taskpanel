@@ -4,9 +4,9 @@ Task Panel ships as an **Agent Skill** plus per-host plugin manifests. Installat
 copies (or symlinks) the skill from `skills/task-panel/` — the single source of truth —
 into each host's skill directory.
 
-> **Status: core (M1) and CLI (M2) have landed.** Installation works today and the skill is
-> discoverable, and the `taskctl` commands it describes are implemented. The board frontend,
-> the full MCP server and the full HTTP/SSE backend are still planned — see `CLAUDE.md` /
+> **Status: core (M1), CLI (M2) and MCP server (M3) have landed.** Installation works today
+> and the skill is discoverable, and the `taskctl` commands it describes are implemented.
+> The board frontend and the full HTTP/SSE backend are still planned — see `CLAUDE.md` /
 > `docs/development.md`.
 
 ## Quick start
