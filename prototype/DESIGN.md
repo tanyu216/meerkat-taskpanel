@@ -907,3 +907,59 @@ dialog scrolls its edit pane (measured `scrollHeight` 1171 → `clientHeight` 43
 at `scrollTop` 260) and its preview (2479 → 437); chips add, dedupe and remove; the form
 still resets after a submit; zero console errors; and no page-level horizontal overflow at
 1512 / 1240 / 980 / 760 / 430 px, with or without JavaScript.
+
+## 20. PROJECTS ordering (weight algorithm)
+
+The `PROJECTS` sidebar list is ranked by recent activity, not by creation time or name.
+This is the concrete UI expression of `ARCHITECTURE §4.6`; the prototype is **pure UI** —
+it does not implement the algorithm or touch the network, it only renders the order the
+server already decided.
+
+**Factors and weights.** Three inputs combine, `A7 = 0.50`, `A30 = 0.30`, `C = 0.20`:
+
+- `A7` — activity in the trailing 7-day window (heaviest weight: recency dominates).
+- `A30` — activity in the trailing 30-day window.
+- `C` — creation recency (older projects rank higher on this factor alone).
+
+**Normalisation.** Each factor is normalised *by rank*, not by raw value, so the three
+factors are comparable regardless of scale. With N participating projects and rank from 1
+(largest value) upward:
+
+```
+s = (N − rank + 1) / N
+```
+
+**Composite.** The weighted sum, rounded to three decimals for display:
+
+```
+total = 0.5·A7 + 0.3·A30 + 0.2·C
+```
+
+**Tie-break.** Equal totals resolve by most-recent activity (descending), then by project
+name (ascending). **Archived projects never participate** — they are excluded before
+ranking.
+
+**Activity definition.** A project's activity is the count of its `task_activities` rows in
+the window, **excluding pure heartbeats** (a heartbeat alone is liveness, not work).
+
+**Ownership.** Ranking is **computed server-side**; the frontend **consumes the order only**.
+The prototype bakes the resulting order and scores into the demo data
+(`data-order-score` / `data-order-rank`) so the list is machine-checkable without any
+client-side computation.
+
+### 20.1 Demo data
+
+With N = 3, the three factors rank and normalise as below (larger value ⇒ rank 1; for `C`,
+**earlier creation ⇒ smaller rank**):
+
+| Project      | A7 (7d) | A30 (30d) | Creation | s_A7  | s_A30 | s_C   | **total** | **rank** |
+|--------------|---------|-----------|----------|-------|-------|-------|-----------|----------|
+| Orchestrator | 20 (r1) | 55 (r1)   | newest (r3) | 1.000 | 1.000 | 0.333 | **0.867** | **1** |
+| TaskPanel    | 12 (r2) | 40 (r2)   | mid (r2)    | 0.667 | 0.667 | 0.667 | **0.667** | **2** |
+| Site Refresh | 3 (r3)  | 25 (r3)   | oldest (r1) | 0.333 | 0.333 | 1.000 | **0.467** | **3** |
+
+⇒ **Demo display order = Orchestrator → TaskPanel → Site Refresh.** Note this differs from
+the creation-time intuition (Site Refresh is the oldest, so it wins the `C` factor — but
+that factor carries the smallest weight, so it still lands last); the ordering exists to
+show activity weighting in the UI. Sidebar task counts (12 / 4 / 2) are unrelated to the
+ranking and stay fixed.

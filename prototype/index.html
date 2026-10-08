@@ -166,18 +166,20 @@
 
         <section>
           <h2 class="td-side-label" data-i18n="sidebar.projects">Projects</h2>
+          <!-- PROJECTS order is computed server-side (weighted activity ranking, ARCHITECTURE §4.6);
+               the frontend consumes the resulting order + scores only — no client-side computation. -->
           <div class="td-nav mt-2" data-project-list>
-            <button type="button" class="td-side-item" data-project="TaskPanel" aria-current="page" title="TaskPanel">
-              <span class="td-side-icon td-mono" aria-hidden="true">TD</span>
-              <span class="td-side-name td-mono">TaskPanel</span>
-              <span class="badge badge-sm td-count" data-project-count>12</span>
-            </button>
-            <button type="button" class="td-side-item" data-project="Orchestrator" title="Orchestrator">
+            <button type="button" class="td-side-item" data-project="Orchestrator" data-order-score="0.867" data-order-rank="1" title="Orchestrator">
               <span class="td-side-icon td-mono" aria-hidden="true">ORC</span>
               <span class="td-side-name td-mono">Orchestrator</span>
               <span class="badge badge-sm td-count" data-project-count>4</span>
             </button>
-            <button type="button" class="td-side-item" data-project="Site Refresh" title="Site Refresh">
+            <button type="button" class="td-side-item" data-project="TaskPanel" data-order-score="0.667" data-order-rank="2" aria-current="page" title="TaskPanel">
+              <span class="td-side-icon td-mono" aria-hidden="true">TD</span>
+              <span class="td-side-name td-mono">TaskPanel</span>
+              <span class="badge badge-sm td-count" data-project-count>12</span>
+            </button>
+            <button type="button" class="td-side-item" data-project="Site Refresh" data-order-score="0.467" data-order-rank="3" title="Site Refresh">
               <span class="td-side-icon td-mono" aria-hidden="true">SR</span>
               <span class="td-side-name td-mono">Site Refresh</span>
               <span class="badge badge-sm td-count" data-project-count>2</span>

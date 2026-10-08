@@ -59,7 +59,7 @@ bottom-aligned at `y = 27` with a delivered node above the tallest. It is drawn 
 |---|---|
 | Root | `aside[data-sidebar]` |
 | Nav | `[data-nav]` → `[data-nav-item="board" \| "list" \| "activity"]` (`aria-current="page"`) |
-| Projects | `[data-project-list]` → `[data-project="…"]` (`aria-current="page"`) → `.td-side-icon` (prefix monogram, rail only) + `[data-project-count]` |
+| Projects | `[data-project-list]` → `[data-project="…"]` (`aria-current="page"`) → `.td-side-icon` (prefix monogram, rail only) + `[data-project-count]`; each item carries `[data-order-score]` + `[data-order-rank]` (see below) |
 | Agents | `[data-agents-presence]` → **one row per platform**: `[data-agent-platform="claude\|openclaw\|codex\|pi"]` + `[data-presence="running\|idle"]` |
 | States preview | `[data-states-open]` — sidebar footer control, opens **B18** |
 | Footer controls | `[data-access-status]` — **three equal thirds** (`display: grid`, `repeat(3, minmax(0, 1fr))`), each cell a `.td-access-cell` block button with its icon and label centred, separated by a hairline on the inline start |
@@ -107,6 +107,17 @@ three 14px glyphs still fit the 64px rail (56px under 560px) without horizontal 
 The `.td-caret` goes with the labels — a third of the rail cannot hold a globe and a
 disclosure arrow side by side — and the language menu still opens from the remaining
 globe, floating over the board rather than inside the 64px column.
+
+**The `PROJECTS` list is ordered by activity, not alphabetically or by creation.** Items
+render in the order the **server** computed — a weighted rank over 7-day and 30-day
+activity plus creation recency (`ARCHITECTURE §4.6`; full rule in `DESIGN.md` §20), with
+tie-breaks and archived-project exclusion applied there. The frontend **consumes the order
+only** and does no computation. Each item exposes the decision for machine checks:
+`[data-order-score]` (the composite, e.g. `0.867`) and `[data-order-rank]` (`1`…`N`). The
+demo order is **Orchestrator → TaskPanel → Site Refresh** (scores 0.867 / 0.667 / 0.467),
+deliberately different from creation order so the weighting is visible. Consistency: ranks
+are contiguous from `1` and scores are non-increasing down the list; `[data-project-count]`
+(12 / 4 / 2) is independent of the ordering and unchanged.
 
 ## B04 · Filters bar
 
