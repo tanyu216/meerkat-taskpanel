@@ -1,0 +1,10 @@
+{
+  "id": "task-dashboard",
+  "name": "Task Dashboard",
+  "version": "0.0.0",
+  "description": "Task management board for AI Agent teams.",
+  "categories": ["developer-tools"],
+  "skills": ["./skills"],
+  "activation": { "onStartup": false },
+  "configSchema": { "type": "object", "additionalProperties": false }
+}

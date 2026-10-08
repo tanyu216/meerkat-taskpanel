@@ -1,0 +1,42 @@
+{
+  "name": "task-dashboard",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Task management board for AI Agent teams.",
+  "license": "MIT",
+  "bin": {
+    "taskctl": "./src/cli/index.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "src",
+    "skills",
+    "plugins",
+    "scripts",
+    "docs",
+    "install.sh",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "sync:skills": "node scripts/sync-skills.mjs",
+    "check:skills": "node scripts/sync-skills.mjs --check",
+    "verify": "node scripts/verify/manifests.mjs && node scripts/verify/skill.mjs",
+    "test": "node --test",
+    "check": "npm run check:skills && npm run verify && npm test"
+  },
+  "keywords": [
+    "task-management",
+    "ai-agent",
+    "kanban"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tanyu216/task-dashboard.git"
+  }
+}

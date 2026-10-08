@@ -1,0 +1,35 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+# Minimal and non-deploying: it re-runs the checks, builds dist/ and does a dry
+# packaging run so a release can be inspected. Nothing is published anywhere.
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Tests
+        run: node --test
+
+      - name: Skill sync is up to date
+        run: node scripts/sync-skills.mjs --check
+
+      - name: Manifests
+        run: node scripts/verify/manifests.mjs
+
+      - name: Skill definition
+        run: node scripts/verify/skill.mjs
+
+      - name: Build
+        run: node scripts/build.mjs
+
+      - name: Packaging dry run
+        run: npm pack --dry-run

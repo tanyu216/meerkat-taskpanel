@@ -1,0 +1,9 @@
+{
+  "name": "task-dashboard-pi",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Task management board for AI Agent teams (Pi / Agent Skills package).",
+  "license": "MIT",
+  "type": "module",
+  "files": ["skills"]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "task-dashboard",
+  "version": "0.0.0",
+  "description": "Task management board for AI Agent teams.",
+  "author": { "name": "tanyu216" },
+  "license": "MIT",
+  "homepage": "https://github.com/tanyu216/task-dashboard",
+  "repository": "https://github.com/tanyu216/task-dashboard",
+  "keywords": ["task-management", "ai-agent", "kanban"],
+  "skills": "./skills"
+}

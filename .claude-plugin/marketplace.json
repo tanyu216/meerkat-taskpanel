@@ -1,0 +1,15 @@
+{
+  "name": "task-dashboard-marketplace",
+  "owner": { "name": "tanyu216" },
+  "metadata": {
+    "description": "Task management board for AI Agent teams.",
+    "version": "0.0.0"
+  },
+  "plugins": [
+    {
+      "name": "task-dashboard",
+      "source": "./plugins/claude",
+      "description": "Task management board for AI Agent teams."
+    }
+  ]
+}
