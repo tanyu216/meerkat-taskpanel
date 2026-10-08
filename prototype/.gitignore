@@ -1,0 +1,6 @@
+# Build dependencies never live in this directory (see README.md "Build").
+node_modules/
+
+# Local capture scratch
+*.tmp
+.DS_Store

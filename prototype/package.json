@@ -1,0 +1,16 @@
+{
+  "name": "taskdashboard-prototype",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TaskDashboard v1 high-fidelity HTML prototype — Tailwind CSS + daisyUI + jQuery (slim)",
+  "scripts": {
+    "build:css": "tailwindcss -i src/input.css -o tw.css",
+    "watch:css": "tailwindcss -i src/input.css -o tw.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.3",
+    "daisyui": "^5.7.47",
+    "jquery": "^3.7.1",
+    "tailwindcss": "^4.3.3"
+  }
+}

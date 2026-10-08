@@ -1,0 +1,2153 @@
+/* ============================================================================
+   TaskDashboard v1 prototype — Tailwind CSS v4 entry point
+   ----------------------------------------------------------------------------
+   Stack (CLOSED): Tailwind CSS + daisyUI + jQuery (slim). No other CSS/UI
+   library, no CDN, no webfont.
+
+   Token authority: design-style-guide.md §2 (single source of truth for colour,
+   type, spacing, radius, shadow). Structure / block contract: design-spec.md §4.
+   Values below are copied verbatim from the style guide — never invent one.
+   ========================================================================== */
+
+@import "tailwindcss" source(none);
+
+/* daisyUI: default themes disabled — only the two project themes are registered.
+   The dark theme is registered under the name `dark` so that the spec-mandated
+   `data-theme="dark"` attribute drives both daisyUI and the `--td-*` layer.
+   See DESIGN.md §8 "Reconciliation". */
+@plugin "daisyui" {
+  themes: false;
+}
+
+@plugin "daisyui/theme" {
+  name: "taskdash";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+
+  --color-base-100: #ffffff; /* --surface      */
+  --color-base-200: #fafafb; /* --bg           */
+  --color-base-300: #f4f4f6; /* --surface-sunken */
+  --color-base-content: #16161a; /* --text-primary   */
+
+  --color-primary: #4f5bd5; /* --accent           */
+  --color-primary-content: #ffffff;
+  --color-secondary: #5b5b66; /* --text-secondary   */
+  --color-secondary-content: #ffffff;
+  --color-accent: #7c6be8; /* --st-review (邻近 accent) */
+  --color-accent-content: #ffffff;
+  --color-neutral: #16161a; /* --text-primary     */
+  --color-neutral-content: #fafafb;
+
+  --color-info: #4f5bd5;
+  --color-info-content: #ffffff;
+  --color-success: #2e9e63; /* --st-done    */
+  --color-success-content: #ffffff;
+  --color-warning: #c99700; /* --warning    */
+  --color-warning-content: #16161a;
+  --color-error: #e5484d; /* --danger     */
+  --color-error-content: #ffffff;
+
+  --radius-selector: 4px; /* --r-sm   */
+  --radius-field: 6px; /* --r-md   */
+  --radius-box: 8px; /* --r-lg   */
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0; /* style guide §1: 禁用重阴影 */
+  --noise: 0;
+}
+
+@plugin "daisyui/theme" {
+  name: "dark";
+  default: false;
+  prefersdark: false;
+  color-scheme: dark;
+
+  --color-base-100: #171a20;
+  --color-base-200: #0f1115;
+  --color-base-300: #12141a;
+  --color-base-content: #e8eaed;
+
+  --color-primary: #6d68f0;
+  --color-primary-content: #ffffff;
+  --color-secondary: #a6adba;
+  --color-secondary-content: #16161a;
+  --color-accent: #6d68f0;
+  --color-accent-content: #ffffff;
+  --color-neutral: #e8eaed;
+  --color-neutral-content: #16161a;
+
+  --color-info: #22b3d6;
+  --color-info-content: #16161a;
+  --color-success: #37b866;
+  --color-success-content: #16161a;
+  --color-warning: #e0972a;
+  --color-warning-content: #16161a;
+  --color-error: #ef5350;
+  --color-error-content: #16161a;
+
+  --radius-selector: 4px;
+  --radius-field: 6px;
+  --radius-box: 8px;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* Only these two files are scanned for class names (source(none) above). */
+@source "../index.html";
+@source "../app.js";
+
+/* ---------------------------------------------------------------------------
+   @theme — design-style-guide.md §2 tokens exposed to Tailwind utilities.
+   Namespace `td-*` is used for product tokens so they can never collide with
+   daisyUI's own semantic variables (primary/secondary/accent/…).
+   ------------------------------------------------------------------------- */
+@theme {
+  /* 2.1 Neutral & surface ------------------------------------------------ */
+  --color-td-bg: #fafafb;
+  --color-td-surface: #ffffff;
+  --color-td-sunken: #f4f4f6;
+  --color-td-hover: #f6f6f8;
+  --color-td-active: #ededf1;
+  --color-td-line: #e6e6ea;
+  --color-td-line-strong: #d5d5db;
+  --color-td-ink: #16161a;
+  --color-td-ink-2: #5b5b66;
+  --color-td-ink-3: #8e8e99;
+  --color-td-ink-4: #b4b4be;
+
+  /* 2.2 Brand & semantic ------------------------------------------------- */
+  --color-td-accent: #4f5bd5;
+  --color-td-accent-hover: #4450c4;
+  --color-td-accent-soft: rgba(79, 91, 213, 0.1);
+  --color-td-danger: #e5484d;
+  --color-td-danger-soft: #fdecec;
+  --color-td-warning: #c99700;
+  --color-td-success: #2e9e63;
+  --color-td-focus: rgba(79, 91, 213, 0.35);
+
+  /* 2.3 Status (7) ------------------------------------------------------- */
+  --color-td-st-backlog: #8e8e99;
+  --color-td-st-todo: #64748b;
+  --color-td-st-progress: #d9930d;
+  --color-td-st-review: #7c6be8;
+  --color-td-st-blocked: #e5484d;
+  --color-td-st-done: #2e9e63;
+  --color-td-st-canceled: #b4b4be;
+
+  /* 2.4 Priority (5) ----------------------------------------------------- */
+  --color-td-pri-urgent: #e5484d;
+  --color-td-pri-high: #e8843d;
+  --color-td-pri-medium: #d9a721;
+  --color-td-pri-low: #5b8def;
+  --color-td-pri-none: #b4b4be;
+
+  /* 2.3 Typography ------------------------------------------------------- */
+  --font-sans:
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+
+  --text-11: 11px;
+  --text-11--line-height: 1.5;
+  --text-xs: 12px;
+  --text-xs--line-height: 1.5;
+  --text-sm: 13px;
+  --text-sm--line-height: 1.5;
+  --text-base: 14px;
+  --text-base--line-height: 1.5;
+  --text-lg: 16px;
+  --text-lg--line-height: 1.35;
+  --text-xl: 20px;
+  --text-xl--line-height: 1.35;
+  --text-2xl: 24px;
+  --text-2xl--line-height: 1.35;
+
+  /* 2.5 Radius / elevation ---------------------------------------------- */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --shadow-pop:
+    0 8px 24px rgba(22, 22, 26, 0.1), 0 1px 2px rgba(22, 22, 26, 0.06);
+}
+
+/* ---------------------------------------------------------------------------
+   :root — the same palette under the style guide's own names (§2), plus the
+   design-spec §2 alias family (`--td-*`). One palette, three naming
+   generations, zero duplicated literals.
+   ------------------------------------------------------------------------- */
+:root {
+  --bg: var(--color-td-bg);
+  --surface: var(--color-td-surface);
+  --surface-sunken: var(--color-td-sunken);
+  --surface-hover: var(--color-td-hover);
+  --surface-active: var(--color-td-active);
+  --border: var(--color-td-line);
+  --border-strong: var(--color-td-line-strong);
+  --text-primary: var(--color-td-ink);
+  --text-secondary: var(--color-td-ink-2);
+  --text-tertiary: var(--color-td-ink-3);
+  --text-quaternary: var(--color-td-ink-4);
+  --accent: var(--color-td-accent);
+  --accent-hover: var(--color-td-accent-hover);
+  --accent-soft: var(--color-td-accent-soft);
+  --danger: var(--color-td-danger);
+  --danger-soft: var(--color-td-danger-soft);
+  --warning: var(--color-td-warning);
+  --success: var(--color-td-success);
+  --focus-ring: var(--color-td-focus);
+
+  --st-backlog: var(--color-td-st-backlog);
+  --st-todo: var(--color-td-st-todo);
+  --st-progress: var(--color-td-st-progress);
+  --st-review: var(--color-td-st-review);
+  --st-blocked: var(--color-td-st-blocked);
+  --st-done: var(--color-td-st-done);
+  --st-canceled: var(--color-td-st-canceled);
+
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --r-full: 999px;
+  --shadow-pop: 0 8px 24px rgba(22, 22, 26, 0.1), 0 1px 2px rgba(22, 22, 26, 0.06);
+
+  /* 2.4 layout ----------------------------------------------------------- */
+  --shell-sidebar: 248px;
+  --shell-rail: 64px;
+  --shell-topbar: 56px;
+  --shell-drawer: 520px;
+  --col-w: 300px;
+  --col-gap: 16px;
+  --main-pad-x: 24px;
+  --main-pad-y: 20px;
+
+  --dur-hover: 120ms;
+  --dur-panel: 180ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --scrim: rgba(22, 22, 26, 0.32);
+
+  /* design-spec §2.1 alias family (see DESIGN.md §8) */
+  --td-bg: var(--color-td-bg);
+  --td-surface: var(--color-td-surface);
+  --td-surface-2: var(--color-td-sunken);
+  --td-surface-3: var(--color-td-hover);
+  --td-border: var(--color-td-line);
+  --td-border-strong: var(--color-td-line-strong);
+  --td-text: var(--color-td-ink);
+  --td-text-2: var(--color-td-ink-2);
+  --td-text-3: var(--color-td-ink-3);
+  --td-text-disabled: var(--color-td-ink-4);
+  --td-accent: var(--color-td-accent);
+  --td-accent-hover: var(--color-td-accent-hover);
+  --td-accent-soft: var(--color-td-accent-soft);
+  --td-danger: var(--color-td-danger);
+  --td-warning: var(--color-td-warning);
+  --td-success: var(--color-td-success);
+  --td-info: var(--color-td-st-review);
+  --td-font-sans: var(--font-sans);
+  --td-font-mono: var(--font-mono);
+}
+
+/* ---------------------------------------------------------------------------
+   Dark theme — design-spec §2.2 values, mapped onto the style-guide role
+   names (the style guide defines no dark palette). Status/priority keep their
+   single values per design-spec §2.3 ("深色下同值使用").
+   ------------------------------------------------------------------------- */
+html[data-theme="dark"] {
+  --color-td-bg: #0f1115;
+  --color-td-surface: #171a20;
+  --color-td-sunken: #12141a;
+  --color-td-hover: #1e222a;
+  --color-td-active: #1e222a;
+  --color-td-line: rgba(255, 255, 255, 0.09);
+  --color-td-line-strong: rgba(255, 255, 255, 0.16);
+  --color-td-ink: #e8eaed;
+  --color-td-ink-2: #a6adba;
+  --color-td-ink-3: #767d8c;
+  --color-td-ink-4: #5a6170;
+  --color-td-accent: #6d68f0;
+  --color-td-accent-hover: #7c78f5;
+  --color-td-accent-soft: rgba(109, 104, 240, 0.18);
+  --color-td-focus: rgba(109, 104, 240, 0.35);
+  --color-td-danger: #ef5350;
+  --color-td-danger-soft: rgba(239, 83, 80, 0.14);
+  --color-td-warning: #e0972a;
+  --color-td-success: #37b866;
+}
+
+/* Unlayered on purpose: the token blocks above sit outside every cascade layer,
+   and unlayered declarations outrank layered ones — so a token override placed
+   inside the layered component block could never win against them. */
+@media (max-width: 559px) {
+  :root {
+    --shell-rail: 56px;
+    --main-pad-x: 12px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Base
+   ------------------------------------------------------------------------- */
+@layer base {
+  html {
+    overflow-x: hidden; /* §2.4 禁止页面级横向溢出 */
+  }
+
+  body {
+    margin: 0;
+    overflow-x: hidden;
+    background-color: var(--color-td-bg);
+    color: var(--color-td-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    transition:
+      background-color var(--dur-panel) var(--ease),
+      color var(--dur-panel) var(--ease);
+  }
+
+  /* Icon default: linear stroke 1.5, no emoji (style guide §1). */
+  svg {
+    flex: none;
+  }
+
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-td-accent);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px var(--color-td-focus);
+    border-radius: var(--r-sm);
+  }
+
+  ::placeholder {
+    color: var(--color-td-ink-3);
+    opacity: 1;
+  }
+
+  [hidden] {
+    display: none !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 1ms !important;
+      animation-duration: 1ms !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   App components.
+   These live directly in `@layer utilities` on purpose: daisyUI 5 emits its
+   component CSS into nested sub-layers of `utilities`, so a rule placed in
+   `@layer components` would always lose to daisyUI regardless of specificity.
+   Declaring the app components in `utilities` (after daisyUI, source order)
+   lets them override daisyUI defaults while Tailwind utilities still win.
+
+   Status / priority colour plumbing:
+   one attribute → one custom property; every component reads the variable, so
+   no component ever hard-codes a status or priority colour.
+   ------------------------------------------------------------------------- */
+@layer utilities {
+  [data-status="backlog"] {
+    --status-color: var(--color-td-st-backlog);
+  }
+  [data-status="todo"] {
+    --status-color: var(--color-td-st-todo);
+  }
+  [data-status="in_progress"] {
+    --status-color: var(--color-td-st-progress);
+  }
+  [data-status="in_review"] {
+    --status-color: var(--color-td-st-review);
+  }
+  [data-status="blocked"] {
+    --status-color: var(--color-td-st-blocked);
+  }
+  [data-status="done"] {
+    --status-color: var(--color-td-st-done);
+  }
+  [data-status="canceled"] {
+    --status-color: var(--color-td-st-canceled);
+  }
+
+  [data-priority="urgent"] {
+    --pri-color: var(--color-td-pri-urgent);
+  }
+  [data-priority="high"] {
+    --pri-color: var(--color-td-pri-high);
+  }
+  [data-priority="medium"] {
+    --pri-color: var(--color-td-pri-medium);
+  }
+  [data-priority="low"] {
+    --pri-color: var(--color-td-pri-low);
+  }
+  [data-priority="none"] {
+    --pri-color: var(--color-td-pri-none);
+  }
+
+  /* --- atoms ----------------------------------------------------------- */
+  .td-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .td-icon {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+  }
+
+  .td-icon-sm {
+    width: 14px;
+    height: 14px;
+  }
+
+  /* Section label — 11px uppercase tag (style guide §2.3: 11px 仅用于角标) */
+  .td-side-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-td-ink-3);
+  }
+
+  /* --- shells ---------------------------------------------------------- */
+  .td-shell {
+    display: grid;
+    grid-template-columns: var(--shell-sidebar) minmax(0, 1fr);
+    grid-template-rows: var(--shell-topbar) minmax(0, 1fr);
+    grid-template-areas:
+      "topbar topbar"
+      "sidebar main";
+    height: 100vh;
+    min-height: 100vh;
+  }
+
+  .td-topbar {
+    grid-area: topbar;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 0 12px;
+    background-color: var(--color-td-surface);
+    border-bottom: 1px solid var(--color-td-line);
+  }
+
+  .td-sidebar {
+    grid-area: sidebar;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    min-height: 0;
+    padding: 16px 12px;
+    overflow-y: auto;
+    background-color: var(--color-td-sunken);
+    border-right: 1px solid var(--color-td-line);
+  }
+
+  .td-main {
+    grid-area: main;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    padding: var(--main-pad-y) var(--main-pad-x);
+    gap: 12px;
+  }
+
+  /* --- topbar ---------------------------------------------------------- */
+  .td-brand {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .td-brand-name {
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.35;
+    white-space: nowrap;
+  }
+
+  .td-brand-sub {
+    font-size: 12px;
+    color: var(--color-td-ink-3);
+    white-space: nowrap;
+  }
+
+  .td-divider-v {
+    width: 1px;
+    height: 24px;
+    background-color: var(--color-td-line);
+  }
+
+  .td-search {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: 1 1 160px;
+    min-width: 0;
+    max-width: 340px;
+  }
+
+  .td-search .td-icon {
+    position: absolute;
+    left: 8px;
+    color: var(--color-td-ink-3);
+    pointer-events: none;
+  }
+
+  .td-input {
+    width: 100%;
+    height: 32px;
+    padding: 0 8px;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--color-td-ink);
+    background-color: var(--color-td-surface);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-md);
+    transition:
+      border-color var(--dur-hover) var(--ease),
+      background-color var(--dur-hover) var(--ease);
+  }
+
+  .td-search .td-input {
+    padding-left: 28px;
+  }
+
+  .td-input:hover {
+    border-color: var(--color-td-line-strong);
+  }
+
+  .td-input:focus {
+    outline: none;
+    border-color: var(--color-td-accent);
+    box-shadow: 0 0 0 3px var(--color-td-focus);
+  }
+
+  .td-input:disabled {
+    color: var(--color-td-ink-4);
+    background-color: var(--color-td-sunken);
+  }
+
+  .td-input[aria-invalid="true"] {
+    border-color: var(--color-td-danger);
+  }
+
+  /* Segmented Board/List control */
+  .td-seg {
+    display: inline-flex;
+    flex: none;
+    padding: 2px;
+    background-color: var(--color-td-sunken);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-md);
+  }
+
+  .td-seg-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 26px;
+    padding: 0 8px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-td-ink-2);
+    background: transparent;
+    border: 0;
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    transition:
+      background-color var(--dur-hover) var(--ease),
+      color var(--dur-hover) var(--ease);
+  }
+
+  .td-seg-btn:hover {
+    color: var(--color-td-ink);
+    background-color: var(--color-td-hover);
+  }
+
+  .td-seg-btn[aria-pressed="true"] {
+    color: var(--color-td-accent);
+    background-color: var(--color-td-surface);
+    border: 1px solid var(--color-td-line);
+  }
+
+  /* Compact icon button */
+  .td-iconbtn {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    color: var(--color-td-ink-2);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--r-md);
+    cursor: pointer;
+    transition:
+      background-color var(--dur-hover) var(--ease),
+      color var(--dur-hover) var(--ease),
+      border-color var(--dur-hover) var(--ease);
+  }
+
+  .td-iconbtn:hover {
+    color: var(--color-td-ink);
+    background-color: var(--color-td-hover);
+    border-color: var(--color-td-line);
+  }
+
+  .td-iconbtn:active,
+  .td-iconbtn[aria-pressed="true"] {
+    background-color: var(--color-td-active);
+  }
+
+  /* Revision / liveness readout */
+  .td-revision {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 8px;
+    font-size: 12px;
+    color: var(--color-td-ink-2);
+    white-space: nowrap;
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-md);
+    background-color: var(--color-td-surface);
+  }
+
+  .td-live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: var(--r-full);
+    background-color: var(--color-td-success);
+    box-shadow: 0 0 0 0 rgba(46, 158, 99, 0.5);
+    animation: td-pulse 2s var(--ease) infinite;
+  }
+
+  @keyframes td-pulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(46, 158, 99, 0.45);
+    }
+    70% {
+      box-shadow: 0 0 0 4px rgba(46, 158, 99, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(46, 158, 99, 0);
+    }
+  }
+
+  /* --- buttons (daisyUI `btn` + token overrides) ----------------------- */
+  .btn {
+    height: 32px;
+    min-height: 32px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: var(--r-md);
+    transition:
+      background-color var(--dur-hover) var(--ease),
+      border-color var(--dur-hover) var(--ease),
+      color var(--dur-hover) var(--ease);
+  }
+
+  .btn-sm {
+    height: 28px;
+    min-height: 28px;
+    font-size: 12px;
+  }
+
+  .btn-xs {
+    height: 22px;
+    min-height: 22px;
+    padding-inline: 8px;
+    font-size: 11px;
+  }
+
+  .btn-primary {
+    background-color: var(--color-td-accent);
+    border-color: var(--color-td-accent);
+    color: #ffffff;
+  }
+
+  .btn-primary:hover {
+    background-color: var(--color-td-accent-hover);
+    border-color: var(--color-td-accent-hover);
+  }
+
+  .btn-ghost {
+    color: var(--color-td-ink-2);
+    border-color: transparent;
+  }
+
+  .btn-ghost:hover {
+    color: var(--color-td-ink);
+    background-color: var(--color-td-hover);
+  }
+
+  .btn-outline {
+    color: var(--color-td-ink);
+    border-color: var(--color-td-line-strong);
+    background-color: var(--color-td-surface);
+  }
+
+  .btn-outline:hover {
+    background-color: var(--color-td-hover);
+    border-color: var(--color-td-ink-3);
+  }
+
+  .btn:disabled,
+  .btn[disabled] {
+    color: var(--color-td-ink-4);
+    background-color: var(--color-td-sunken);
+    border-color: var(--color-td-line);
+    cursor: not-allowed;
+  }
+
+  /* loading state (§3 Button) */
+  .btn.is-loading {
+    color: transparent;
+    pointer-events: none;
+    position: relative;
+  }
+
+  .btn.is-loading::after {
+    content: "";
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border: 1.5px solid currentColor;
+    border-top-color: transparent;
+    border-radius: var(--r-full);
+    color: #ffffff;
+    animation: td-spin 0.7s linear infinite;
+  }
+
+  @keyframes td-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* --- sidebar --------------------------------------------------------- */
+  .td-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .td-nav-item,
+  .td-side-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 32px;
+    padding: 0 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-td-ink-2);
+    text-align: left;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--r-md);
+    cursor: pointer;
+    transition:
+      background-color var(--dur-hover) var(--ease),
+      color var(--dur-hover) var(--ease);
+  }
+
+  .td-nav-item:hover,
+  .td-side-item:hover {
+    color: var(--color-td-ink);
+    background-color: var(--color-td-hover);
+  }
+
+  .td-nav-item[aria-current="page"],
+  .td-side-item[aria-current="page"] {
+    color: var(--color-td-accent);
+    background-color: var(--color-td-accent-soft);
+  }
+
+  .td-side-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* project prefix monogram — hidden unless the sidebar is an icon rail */
+  .td-side-icon {
+    display: none;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  /* count badge in nav/projects */
+  .td-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 18px;
+    padding: 0 5px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-td-ink-3);
+    background-color: var(--color-td-surface);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-full);
+  }
+
+  .td-agent-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 28px;
+    padding: 0 4px;
+    font-size: 12px;
+    color: var(--color-td-ink-2);
+  }
+
+  .td-presence {
+    width: 6px;
+    height: 6px;
+    border-radius: var(--r-full);
+    background-color: var(--color-td-ink-4);
+  }
+
+  .td-presence[data-presence="running"] {
+    background-color: var(--color-td-st-progress);
+  }
+
+  .td-presence[data-presence="idle"] {
+    background-color: var(--color-td-ink-4);
+  }
+
+  .td-user {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 4px 0;
+    margin-top: auto;
+    border-top: 1px solid var(--color-td-line);
+  }
+
+  /* --- avatars --------------------------------------------------------- */
+  .td-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--color-td-ink-2);
+    background-color: var(--color-td-sunken);
+    border-radius: var(--r-full);
+  }
+
+  .td-avatar-lg {
+    width: 28px;
+    height: 28px;
+    font-size: 11px;
+  }
+
+  /* Agent identity: dashed ring + semantic corner badge (style guide §1) */
+  [data-assignee-kind="agent"] .td-avatar,
+  .td-avatar[data-assignee-kind="agent"] {
+    border: 1px dashed var(--color-td-line-strong);
+    background-color: var(--color-td-surface);
+    color: var(--color-td-ink-2);
+  }
+
+  .td-agent-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 18px;
+    padding: 0 6px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--color-td-ink-2);
+    background-color: var(--color-td-surface);
+    border: 1px dashed var(--color-td-line-strong);
+    border-radius: var(--r-full);
+  }
+
+  /* --- filters bar ----------------------------------------------------- */
+  .td-filters {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .td-select {
+    height: 30px;
+    min-height: 30px;
+    padding: 0 26px 0 8px;
+    font-family: inherit;
+    font-size: 12px;
+    color: var(--color-td-ink);
+    background-color: var(--color-td-surface);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-md);
+    appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238E8E99' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M4 6.5 8 10.5 12 6.5'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 6px center;
+    background-size: 14px 14px;
+    cursor: pointer;
+    transition: border-color var(--dur-hover) var(--ease);
+  }
+
+  .td-select:hover {
+    border-color: var(--color-td-line-strong);
+  }
+
+  .td-select:focus {
+    outline: none;
+    border-color: var(--color-td-accent);
+    box-shadow: 0 0 0 3px var(--color-td-focus);
+  }
+
+  .td-filter-count {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-td-ink-2);
+    white-space: nowrap;
+  }
+
+  /* --- board / columns ------------------------------------------------- */
+  .td-board {
+    display: flex;
+    gap: var(--col-gap);
+    align-items: stretch;
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    padding-bottom: 4px;
+    overflow-x: auto; /* §2.4 the only allowed horizontal scroll container */
+    overflow-y: hidden;
+    scrollbar-width: thin;
+  }
+
+  .td-col {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 var(--col-w);
+    width: var(--col-w);
+    min-height: 0;
+    padding: 8px;
+    background-color: var(--color-td-sunken);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-lg);
+    transition: border-color var(--dur-hover) var(--ease);
+  }
+
+  /* drop target — 2px dashed border-strong (style guide §2.6) */
+  .td-col[data-drag-over="true"] {
+    border: 2px dashed var(--color-td-line-strong);
+  }
+
+  .td-col-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 28px;
+    padding: 0 2px 0 4px;
+    flex: none;
+  }
+
+  .td-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: var(--r-full);
+    background-color: var(--status-color);
+    flex: none;
+  }
+
+  .td-col-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-td-ink);
+    white-space: nowrap;
+  }
+
+  .td-col-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 120px;
+    margin-top: 4px;
+    padding: 2px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+
+  /* --- task card ------------------------------------------------------- */
+  .td-card {
+    position: relative;
+    display: block;
+    width: 100%;
+    padding: 8px 10px 8px 13px;
+    text-align: left;
+    background-color: var(--color-td-surface);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-md);
+    cursor: pointer;
+    /* card hysteresis: zero shadow on rest, border deepens on hover */
+    transition:
+      border-color var(--dur-hover) var(--ease),
+      background-color var(--dur-hover) var(--ease);
+  }
+
+  .td-card:hover {
+    border-color: var(--color-td-line-strong);
+    background-color: var(--color-td-surface);
+  }
+
+  .td-card:active {
+    background-color: var(--color-td-hover);
+  }
+
+  .td-card[aria-selected="true"],
+  .td-card[data-selected="true"] {
+    border-color: var(--color-td-accent);
+    box-shadow: 0 0 0 2px var(--color-td-accent);
+  }
+
+  .td-card[data-dragging="true"] {
+    opacity: 0.5;
+  }
+
+  .td-card-stripe {
+    position: absolute;
+    top: 8px;
+    bottom: 8px;
+    left: 0;
+    width: 3px;
+    border-radius: 0 var(--r-sm) var(--r-sm) 0;
+    background-color: var(--status-color);
+  }
+
+  .td-card-top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 20px;
+  }
+
+  .td-card-id {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-td-ink-3);
+  }
+
+  /* the title is a real <button> so Enter/Space open the detail natively */
+  .td-card-title {
+    display: -webkit-box;
+    width: 100%;
+    margin: 2px 0 0;
+    padding: 0;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.35;
+    color: var(--color-td-ink);
+    text-align: left;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .td-card[data-done="true"] .td-card-title {
+    color: var(--color-td-ink-3);
+  }
+
+  .td-card[data-canceled="true"] .td-card-title {
+    color: var(--color-td-ink-3);
+    text-decoration: line-through;
+  }
+
+  .td-card-labels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+  }
+
+  .td-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 18px;
+    padding: 0 6px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1;
+    color: var(--color-td-ink-2);
+    background-color: var(--color-td-sunken);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-sm);
+    white-space: nowrap;
+  }
+
+  .td-chip-label {
+    border-radius: var(--r-full);
+  }
+
+  /* status chip — colour is a signal, never the only signal (dot + text) */
+  .td-chip-status {
+    color: var(--color-td-ink-2);
+    background-color: var(--color-td-surface);
+  }
+
+  .td-chip-status .td-status-dot {
+    width: 6px;
+    height: 6px;
+  }
+
+  .td-chip-muted {
+    color: var(--color-td-ink-3);
+    background-color: transparent;
+    border-style: dashed;
+  }
+
+  .td-card-foot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    min-width: 0;
+  }
+
+  .td-card-foot-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+  }
+
+  .td-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-td-ink-3);
+    white-space: nowrap;
+  }
+
+  /* relation counters are icon + tabular number pairs */
+  .td-meta > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  /* priority glyph: colour + shape (style guide §2.4) */
+  .td-pri {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--pri-color);
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  .td-pri-glyph {
+    width: 12px;
+    height: 12px;
+  }
+
+  .td-pri-glyph rect {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+  }
+
+  .td-pri-glyph line {
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    display: none;
+  }
+
+  /* urgent/high → solid block */
+  [data-priority="urgent"] .td-pri-glyph rect,
+  [data-priority="high"] .td-pri-glyph rect {
+    fill: currentColor;
+  }
+
+  /* none → grey dash, no colour (降噪) */
+  [data-priority="none"] .td-pri-glyph rect {
+    display: none;
+  }
+
+  [data-priority="none"] .td-pri-glyph line {
+    display: block;
+  }
+
+  [data-priority="none"] .td-pri {
+    color: var(--color-td-ink-4);
+  }
+
+  /* card kebab menu */
+  .td-card-menu {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    margin-left: auto;
+    color: var(--color-td-ink-3);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    opacity: 0;
+    transition:
+      opacity var(--dur-hover) var(--ease),
+      background-color var(--dur-hover) var(--ease);
+  }
+
+  .td-card:hover .td-card-menu,
+  .td-card:focus-within .td-card-menu,
+  .td-card-menu[aria-expanded="true"] {
+    opacity: 1;
+  }
+
+  .td-card-menu:hover {
+    color: var(--color-td-ink);
+    background-color: var(--color-td-hover);
+    border-color: var(--color-td-line);
+  }
+
+  /* --- dropdown / menu (daisyUI) --------------------------------------- */
+  .menu {
+    padding: 4px;
+    font-size: 13px;
+    background-color: var(--color-td-surface);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-pop);
+  }
+
+  .menu li > button,
+  .menu li > a {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 28px;
+    padding: 0 8px;
+    font-size: 13px;
+    color: var(--color-td-ink-2);
+    border-radius: var(--r-sm);
+  }
+
+  .menu li > button:hover,
+  .menu li > a:hover {
+    color: var(--color-td-ink);
+    background-color: var(--color-td-hover);
+  }
+
+  .menu :where(li) > :where(button, a):focus-visible {
+    outline-offset: -2px;
+  }
+
+  /* --- empty / skeleton ------------------------------------------------ */
+  .td-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 12px;
+    color: var(--color-td-ink-3);
+    text-align: center;
+    border: 1px dashed var(--color-td-line-strong);
+    border-radius: var(--r-md);
+    background-color: transparent;
+  }
+
+  .td-empty-title {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-td-ink-2);
+  }
+
+  .td-empty-hint {
+    font-size: 11px;
+    color: var(--color-td-ink-3);
+  }
+
+  .td-empty-lg {
+    gap: 12px;
+    padding: 40px 24px;
+  }
+
+  .td-empty-lg .td-empty-title {
+    font-size: 14px;
+  }
+
+  .td-empty-lg .td-empty-hint {
+    font-size: 12px;
+  }
+
+  .td-skeleton {
+    position: relative;
+    overflow: hidden;
+    background-color: var(--color-td-sunken);
+    border-radius: var(--r-sm);
+    background-image: linear-gradient(
+      90deg,
+      var(--color-td-sunken) 25%,
+      var(--color-td-hover) 37%,
+      var(--color-td-sunken) 63%
+    );
+    background-size: 200% 100%;
+    animation: td-shimmer 1.4s linear infinite;
+  }
+
+  [data-theme="dark"] .td-skeleton {
+    background-image: linear-gradient(
+      90deg,
+      var(--color-td-sunken) 25%,
+      var(--color-td-active) 37%,
+      var(--color-td-sunken) 63%
+    );
+  }
+
+  @keyframes td-shimmer {
+    from {
+      background-position: 100% 0;
+    }
+    to {
+      background-position: -100% 0;
+    }
+  }
+
+  /* --- list view ------------------------------------------------------- */
+  .td-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .td-list-group {
+    background-color: var(--color-td-surface);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+  }
+
+  .td-list-row {
+    display: grid;
+    grid-template-columns: 74px minmax(0, 1fr) 108px 132px 96px 72px;
+    align-items: center;
+    gap: 12px;
+    min-height: 40px;
+    padding: 0 12px;
+    border-top: 1px solid var(--color-td-line);
+    cursor: pointer;
+    transition: background-color var(--dur-hover) var(--ease);
+  }
+
+  .td-list-row:hover {
+    background-color: var(--color-td-hover);
+  }
+
+  .td-list-row:first-child {
+    border-top: 0;
+  }
+
+  .td-list-head {
+    display: flex;
+    align-items: center;
+    height: 32px;
+    padding: 0 12px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-td-ink-3);
+    background-color: var(--color-td-sunken);
+    border-bottom: 1px solid var(--color-td-line);
+  }
+
+  .td-list-head .td-list-row {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    cursor: default;
+  }
+
+  /* keep cells at their natural width instead of stretching across the grid */
+  .td-list-row > * {
+    justify-self: start;
+    min-width: 0;
+  }
+
+  .td-list-row > [data-list-title] {
+    justify-self: stretch;
+  }
+
+  /* --- drawer ---------------------------------------------------------- */
+  .td-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background-color: var(--scrim);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-panel) var(--ease);
+  }
+
+  .td-scrim[data-state="open"] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .td-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    width: var(--shell-drawer);
+    max-width: 100vw;
+    background-color: var(--color-td-surface);
+    border-left: 1px solid var(--color-td-line);
+    box-shadow: var(--shadow-pop);
+    transform: translateX(100%);
+    visibility: hidden;
+    transition:
+      transform var(--dur-panel) var(--ease),
+      visibility var(--dur-panel) var(--ease);
+  }
+
+  .td-drawer[data-state="open"] {
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  .td-drawer[data-state="closing"] {
+    transform: translateX(100%);
+    visibility: visible;
+  }
+
+  .td-drawer-head {
+    flex: none;
+    padding: 12px 16px 12px 20px;
+    border-bottom: 1px solid var(--color-td-line);
+  }
+
+  .td-drawer-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 16px 20px 24px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+
+  .td-drawer-foot {
+    flex: none;
+    padding: 8px 16px;
+    border-top: 1px solid var(--color-td-line);
+    background-color: var(--color-td-surface);
+  }
+
+  .td-section {
+    padding: 16px 0;
+    border-top: 1px solid var(--color-td-line);
+  }
+
+  .td-section:first-child {
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .td-section-title {
+    margin: 0 0 8px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-td-ink-3);
+  }
+
+  /* property rows */
+  .td-props {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    row-gap: 4px;
+    align-items: center;
+  }
+
+  .td-prop-label {
+    font-size: 12px;
+    color: var(--color-td-ink-3);
+  }
+
+  .td-prop-value {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+    padding: 0 6px;
+    font-size: 13px;
+    color: var(--color-td-ink);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    text-align: left;
+  }
+
+  button.td-prop-value {
+    cursor: pointer;
+    transition: background-color var(--dur-hover) var(--ease);
+  }
+
+  button.td-prop-value:hover {
+    background-color: var(--color-td-hover);
+    border-color: var(--color-td-line);
+  }
+
+  .td-copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-td-ink-2);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    padding: 2px 6px;
+    cursor: pointer;
+  }
+
+  .td-copy:hover {
+    color: var(--color-td-ink);
+    background-color: var(--color-td-hover);
+    border-color: var(--color-td-line);
+  }
+
+  /* rendered GFM description */
+  .td-gfm {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--color-td-ink-2);
+  }
+
+  .td-gfm > * + * {
+    margin-top: 8px;
+  }
+
+  .td-gfm h4 {
+    margin: 12px 0 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-td-ink);
+  }
+
+  .td-gfm ul,
+  .td-gfm ol {
+    margin: 0;
+    padding-left: 18px;
+  }
+
+  .td-gfm li + li {
+    margin-top: 2px;
+  }
+
+  .td-gfm code {
+    padding: 1px 4px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--color-td-ink);
+    background-color: var(--color-td-sunken);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-sm);
+  }
+
+  .td-gfm pre {
+    margin: 0;
+    padding: 8px 10px;
+    overflow-x: auto;
+    background-color: var(--color-td-sunken);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-md);
+  }
+
+  .td-gfm pre code {
+    padding: 0;
+    background: transparent;
+    border: 0;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .td-gfm blockquote {
+    margin: 0;
+    padding: 2px 0 2px 10px;
+    border-left: 2px solid var(--color-td-line-strong);
+    color: var(--color-td-ink-3);
+  }
+
+  .td-gfm table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  .td-gfm th,
+  .td-gfm td {
+    padding: 4px 8px;
+    text-align: left;
+    border: 1px solid var(--color-td-line);
+  }
+
+  .td-gfm th {
+    font-weight: 600;
+    color: var(--color-td-ink);
+    background-color: var(--color-td-sunken);
+  }
+
+  .td-gfm .td-task-list {
+    list-style: none;
+    padding-left: 2px;
+  }
+
+  .td-gfm .td-task-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .td-gfm .td-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 13px;
+    height: 13px;
+    margin-top: 2px;
+    color: var(--color-td-ink-3);
+    border: 1px solid var(--color-td-line-strong);
+    border-radius: 3px;
+  }
+
+  .td-gfm .td-check[data-checked="true"] {
+    color: var(--color-td-success);
+    border-color: var(--color-td-success);
+  }
+
+  /* relations / attachments / session / comments / activity */
+  .td-rel {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+  }
+
+  .td-file {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-md);
+    background-color: var(--color-td-surface);
+  }
+
+  .td-file + .td-file {
+    margin-top: 8px;
+  }
+
+  .td-file-name {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-td-ink);
+  }
+
+  .td-file-size {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-td-ink-3);
+  }
+
+  .td-session {
+    padding: 8px 10px;
+    background-color: var(--color-td-sunken);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-md);
+  }
+
+  .td-comment {
+    display: flex;
+    gap: 8px;
+    padding: 8px 0;
+    border-top: 1px solid var(--color-td-line);
+  }
+
+  .td-comment:first-child {
+    border-top: 0;
+  }
+
+  .td-comment-body {
+    font-size: 13px;
+    color: var(--color-td-ink-2);
+    white-space: pre-line;
+  }
+
+  .td-comment-decision {
+    padding-left: 8px;
+    border-left: 2px solid var(--color-td-accent);
+  }
+
+  .td-comment-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--color-td-ink-3);
+  }
+
+  .td-activity {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    padding: 3px 0;
+    font-size: 12px;
+    color: var(--color-td-ink-2);
+  }
+
+  .td-activity-ts {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-td-ink-3);
+    white-space: nowrap;
+  }
+
+  .td-textarea {
+    width: 100%;
+    min-height: 64px;
+    padding: 6px 8px;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--color-td-ink);
+    background-color: var(--color-td-surface);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-md);
+    resize: vertical;
+    transition: border-color var(--dur-hover) var(--ease);
+  }
+
+  .td-textarea:hover {
+    border-color: var(--color-td-line-strong);
+  }
+
+  .td-textarea:focus {
+    outline: none;
+    border-color: var(--color-td-accent);
+    box-shadow: 0 0 0 3px var(--color-td-focus);
+  }
+
+  /* --- modal (daisyUI) ------------------------------------------------- */
+  .modal {
+    background-color: var(--scrim);
+  }
+
+  .modal-box {
+    width: 480px;
+    max-width: calc(100vw - 32px);
+    padding: 20px;
+    background-color: var(--color-td-surface);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-pop);
+  }
+
+  .td-field {
+    display: block;
+    margin-top: 12px;
+  }
+
+  .td-field-label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-td-ink-2);
+  }
+
+  .td-field-hint {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--color-td-ink-3);
+  }
+
+  .td-field-error {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--color-td-danger);
+  }
+
+  /* --- toast ----------------------------------------------------------- */
+  .td-toast-region {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-end;
+    pointer-events: none;
+  }
+
+  .td-toast {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 360px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: var(--color-td-ink);
+    background-color: var(--color-td-surface);
+    border: 1px solid var(--color-td-line);
+    border-left: 3px solid var(--color-td-ink-3);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-pop);
+    animation: td-toast-in var(--dur-panel) var(--ease);
+    pointer-events: auto;
+  }
+
+  .td-toast[data-toast-kind="success"] {
+    border-left-color: var(--color-td-success);
+  }
+
+  .td-toast[data-toast-kind="info"] {
+    border-left-color: var(--color-td-accent);
+  }
+
+  .td-toast[data-toast-kind="danger"] {
+    border-left-color: var(--color-td-danger);
+  }
+
+  .td-toast[data-state="leaving"] {
+    opacity: 0;
+    transform: translateY(4px);
+    transition:
+      opacity var(--dur-panel) var(--ease),
+      transform var(--dur-panel) var(--ease);
+  }
+
+  @keyframes td-toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* --- legend ---------------------------------------------------------- */
+  .td-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .td-legend-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 18px;
+    padding: 0 6px;
+    font-size: 11px;
+    color: var(--color-td-ink-2);
+    background-color: var(--color-td-surface);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-full);
+    white-space: nowrap;
+  }
+
+  .td-legend-chip[data-priority="none"] .td-pri-glyph {
+    width: 10px;
+    height: 10px;
+  }
+
+  /* --- tooltip (daisyUI) ---------------------------------------------- */
+  .tooltip::before {
+    font-size: 11px;
+    color: var(--color-td-surface);
+    background-color: var(--color-td-ink);
+    border-radius: var(--r-sm);
+  }
+
+  .tooltip::after {
+    border-top-color: var(--color-td-ink);
+  }
+
+  /* --- small pieces referenced by the interaction layer ---------------- */
+  .td-link {
+    padding: 0;
+    font-size: 12px;
+    color: var(--color-td-accent);
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+  }
+
+  .td-link:hover {
+    color: var(--color-td-accent-hover);
+    text-decoration: underline;
+  }
+
+  .td-rel-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .td-col-add {
+    width: 24px;
+    height: 24px;
+    margin-left: 2px;
+  }
+
+  .td-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .td-menu-item[aria-current="true"] {
+    color: var(--color-td-accent);
+    background-color: var(--color-td-accent-soft);
+  }
+
+  /* drag & drop placeholder bar (style guide §2.6) */
+  .td-drop-placeholder {
+    height: 44px;
+    border: 1px dashed var(--color-td-line-strong);
+    border-radius: var(--r-md);
+    background-color: var(--color-td-hover);
+  }
+
+  .td-list-row.is-skeleton {
+    cursor: default;
+  }
+
+  .td-list-row.is-skeleton:hover {
+    background-color: transparent;
+  }
+
+  /* the board is the only horizontal scroller, so it owns its scrollbar */
+  .td-board::-webkit-scrollbar,
+  .td-col-body::-webkit-scrollbar,
+  .td-drawer-body::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .td-board::-webkit-scrollbar-thumb,
+  .td-col-body::-webkit-scrollbar-thumb,
+  .td-drawer-body::-webkit-scrollbar-thumb {
+    background-color: var(--color-td-line-strong);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: var(--r-full);
+  }
+
+  /* --- responsive ------------------------------------------------------ */
+  /* <1024 → sidebar collapses to an icon rail (style guide §2.4) */
+  @media (max-width: 1023px) {
+    .td-shell {
+      grid-template-columns: var(--shell-rail) minmax(0, 1fr);
+    }
+
+    .td-sidebar {
+      align-items: center;
+      padding: 16px 8px;
+    }
+
+    .td-side-text,
+    .td-side-label,
+    .td-side-name,
+    .td-count,
+    .td-agent-row .td-agent-text,
+    .td-user-text,
+    .td-legend,
+    .td-sidebar .td-agent-badge {
+      display: none;
+    }
+
+    /* the project rows keep their identity through the prefix monogram */
+    .td-side-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      color: var(--color-td-ink-2);
+      background-color: var(--color-td-surface);
+      border: 1px solid var(--color-td-line);
+      border-radius: var(--r-sm);
+    }
+
+    .td-side-item[aria-current="page"] .td-side-icon {
+      color: var(--color-td-accent);
+      background-color: var(--color-td-accent-soft);
+      border-color: transparent;
+    }
+
+    .td-nav-item,
+    .td-side-item {
+      justify-content: center;
+      padding: 0;
+    }
+
+    .td-user {
+      justify-content: center;
+    }
+  }
+
+  /* <980 → filters wrap, topbar compresses (design-spec §3) */
+  @media (max-width: 979px) {
+    .td-main {
+      padding: 16px;
+    }
+
+    .td-filter-count {
+      margin-left: 0;
+    }
+
+    .td-brand-sub,
+    .td-brand-name {
+      display: none;
+    }
+  }
+
+  /* <760 → single column shell, drawer full width */
+  @media (max-width: 759px) {
+    .td-shell {
+      grid-template-columns: var(--shell-rail) minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .td-topbar {
+      flex-wrap: wrap;
+      height: auto;
+      gap: 6px;
+      padding: 8px;
+      row-gap: 8px;
+    }
+
+    /* the hairline separators are decoration; they cost a row at this width */
+    .td-topbar .td-divider-v {
+      display: none;
+    }
+
+    .td-search {
+      order: 10;
+      flex: 1 1 100%;
+      max-width: none;
+    }
+
+    /* keep the liveness dot, drop the readout, so the bar stays two rows */
+    .td-revision .td-revision-text,
+    .td-revision [data-revision-label],
+    [data-project-switcher-icon],
+    .td-new-task-label,
+    .td-view-toggle-label {
+      display: none;
+    }
+
+    .td-revision {
+      padding: 0 8px;
+    }
+
+    .td-drawer {
+      width: 100vw;
+    }
+
+    .td-list-row {
+      grid-template-columns: 64px minmax(0, 1fr) 84px;
+    }
+
+    .td-list-row > .td-hide-sm {
+      display: none;
+    }
+  }
+
+  /* <560 → keep only the essentials in the rail
+     (the matching token overrides live unlayered near the top of this file) */
+  @media (max-width: 559px) {
+    .td-sidebar {
+      padding: 12px 6px;
+    }
+  }
+
+  /* Declared last so it wins any same-specificity tie with another app class
+     (for example `.td-input.td-mono` in the create-project modal). */
+  .td-mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  input[type="search"]::-webkit-search-cancel-button,
+  input[type="text"]::-webkit-search-cancel-button {
+    display: none;
+  }
+}
