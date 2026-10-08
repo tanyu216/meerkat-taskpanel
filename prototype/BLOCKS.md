@@ -200,7 +200,7 @@ list can never disagree.
 | Root | `aside[data-detail-drawer][data-state="closed\|open\|closing"]` (`role="dialog"`, `aria-modal="true"`) |
 | Scrim | `[data-detail-overlay][data-state]` |
 | Head | `[data-detail-identifier]` · `[data-detail-title]` · `[data-detail-status-chip]` → `[data-detail-status-chip-label]` · `[data-detail-close]` |
-| Properties | `[data-detail-props]` → status `[data-detail-status]` / `[data-detail-status-label]` · priority `[data-detail-priority]` / `[data-detail-priority-label]` · assignee `[data-detail-assignee]` / `[data-detail-assignee-avatar]` / `[data-detail-assignee-label]` (**an input**, see B22) / `[data-detail-assignee-platform]` (platform badge, hidden for the human owner) · **reporter** `[data-detail-reporter]` / `[data-detail-reporter-avatar]` / `[data-detail-reporter-label]` (an editable control — see B22) · project `[data-detail-project]` / `[data-detail-project-label]` · **labels** `[data-detail-labels]` (read-only chips — see B25) · internal id `[data-detail-id]` + `[data-detail-id-copy]` (`data-copy-value`) · `[data-detail-version]` |
+| Properties | `[data-detail-props]` → status `[data-detail-status]` / `[data-detail-status-label]` · priority `[data-detail-priority]` / `[data-detail-priority-label]` · assignee `[data-detail-assignee]` / `[data-detail-assignee-avatar]` / `[data-detail-assignee-label]` (**an input**, see B22) / `[data-detail-assignee-platform]` (platform badge, hidden for the human owner) · **reporter** `[data-detail-reporter]` / `[data-detail-reporter-avatar]` / `[data-detail-reporter-label]` (an editable control — see B22) · project `[data-detail-project]` / `[data-detail-project-label]` · **labels** `[data-detail-labels]` (editable label combo — see B25) · internal id `[data-detail-id]` + `[data-detail-id-copy]` (`data-copy-value`) · `[data-detail-version]` |
 | Body | `[data-detail-description]` (rendered GFM) · `[data-detail-relations]` → `[data-relation-link]` · `[data-detail-agent-session]` → `[data-detail-agent-session-body]` → `[data-agent-session]` · `[data-detail-attachments]` · `[data-detail-comments]` · `[data-comment-form]` → `[data-comment-input]`, `[data-comment-submit]` · `[data-detail-activity]` |
 | Source | `template[data-detail-for="TD-…"]` holds one `[data-slot="description \| relations \| agent-session \| attachments \| comments \| activity"]` per card, wrapped by `[data-detail-templates]` |
 
@@ -477,10 +477,10 @@ fan-in are noted in the spec, not enforced here.
 
 ## B25 · Label control (R5)
 
-One field in B10's right column, between **Reporter** (B22) and **Parent** (B24), plus a
-read-only row in the **B09** drawer. It is **B22's control used many times at once**: free
-text over a fuzzy-matched list, and the multi/chips half of **B24**. Authority:
-`ARCHITECTURE §4.4`; narrative: DESIGN.md **§22**.
+One field in B10's right column, between **Reporter** (B22) and **Parent** (B24), plus the
+same control in the **B09** drawer's property grid. It is **B22's control used many times
+at once**: free text over a fuzzy-matched list, and the multi/chips half of **B24**.
+Authority: `ARCHITECTURE §4.4`; narrative: DESIGN.md **§22**.
 
 | | |
 |---|---|
@@ -488,13 +488,20 @@ text over a fuzzy-matched list, and the multi/chips half of **B24**. Authority:
 | Chips | `[data-label-chips]` → one `[data-label-chip]` per label (`data-label-value`), each with a `[data-label-remove]` |
 | Input | `[data-label-input]` — `role="combobox"`, `aria-controls="td-label-menu-create"` |
 | Menu | `[data-label-menu]` → `[data-label-option]` (`data-label-value`) |
-| Drawer | `[data-detail-labels]` — chips from the card's `data-labels`, **no input, no remove** |
+| Drawer | `[data-detail-labels]` — the **same editable control** in the drawer's own hook family: root `[data-detail-label-chips]` — one `[data-detail-label-chip]` per label (`data-detail-label-value`), each with a `[data-detail-label-remove]` · input `[data-detail-label-input]` (`aria-controls="td-label-menu-detail"`) · menu `[data-detail-label-menu]` → `[data-detail-label-option]` (`data-detail-label-value`). `freeText: true`, `multi: true` — the B22 Assignee/Reporter paradigm; the card's `data-labels` fill its chips on open |
 | Roster | read off the board's cards (`data-labels`) at first pass — **no preset list, no enum** |
 | Free text | **on** (`freeText: true`): a name the roster does not hold is offered as a `· new` row and is created by being used |
 | Multi | **on**: every accepted name becomes a removable chip; the menu drops what is already chosen, and choosing it twice is a no-op |
 | Normalisation | case- and whitespace-insensitive (`bug` / `Bug` / `bug ` are one label); the entry keeps the **first spelling**, and that is what every surface shows |
 | Keyboard | `↑`/`↓` move, `Enter` accepts (opens the menu when it is closed, so it can never submit the form from this input), `Esc` dismisses, `Tab` closes — the B22/B24 loop, keyed off these hooks |
 | Markup | the menu ships an 11-row inert seed (the board's own labels) as the no-JS floor, redrawn from the live roster the moment the control is focused |
+
+The two placements share one implementation (`COMBO.labels` in the dialog,
+`COMBO.detailLabels` in the drawer) and one roster, and differ only in the hook family they
+answer to — `data-label-*` in the dialog, `data-detail-label-*` in the drawer — so their
+delegated selectors never collide in the single document. The drawer's chips are rendered
+from the card's `data-labels` on open and are **editable**: type to fuzzy-match, accept to
+add a chip, remove to drop one, exactly as in the dialog.
 
 **No management entry** — the hard constraint, shared with B22. There is **no "manage
 labels" / "label library" / "delete label" / "edit labels"** control anywhere in the
@@ -549,7 +556,7 @@ not declared — it is read off the cards' `data-reporter` at first pass, which 
 | `[data-column-progress]` | the occupancy bar under each column head |
 | `[data-cidr-enabled]` | the allow-list section's on/off state, written by `[data-cidr-switch]` |
 | `data-assignee-value` / `data-reporter-value` | the name a roster option carries, read by `comboAccept()` |
-| `data-label-value` | the name a label option **and** a label chip carry (B25); `[data-label-remove]` drops the chip |
+| `data-label-value` / `data-detail-label-value` | the name a label option **and** a label chip carry (B25), in the create dialog and the drawer respectively; `[data-label-remove]` / `[data-detail-label-remove]` drops the chip |
 | `[data-combo-new]` | marks the generated row that offers a name the roster does not hold yet |
 
 ---

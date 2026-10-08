@@ -1268,20 +1268,20 @@
 
     $drawer.find("[data-detail-project-label]").text(data.project);
 
-    /* Labels are display-only here: the drawer shows what the task carries.
-       The names are taken verbatim from the card, so the spelling the board
-       adopted the label with is the spelling every surface shows. */
-    var $detailLabels = $drawer.find("[data-detail-labels]");
-    $detailLabels.empty();
+    /* Labels are editable here too: the drawer carries the same control as the
+       create dialog, with its own hook family. Fill the chips from the card's
+       `data-labels`, naming each label in the spelling the card was written
+       with — the board's adopted spelling — then clear the input and close the
+       menu so a previously opened card leaves nothing behind. */
+    var $detailLabelInput = $drawer.find("[data-detail-label-input]");
+    $drawer.find("[data-detail-label-chips]").empty();
     $.each(String(data.labels || "").split(","), function (index, name) {
       var trimmed = $.trim(name);
       if (!trimmed) return;
-      $detailLabels.append(
-        $('<span class="badge badge-sm td-chip td-chip-label"></span>')
-          .attr("data-label", trimmed)
-          .text(trimmed)
-      );
+      addComboChip($detailLabelInput, COMBO.detailLabels, trimmed, "");
     });
+    $detailLabelInput.val("");
+    $drawer.find("[data-detail-label-menu]").prop("hidden", true);
 
     $drawer.find("[data-detail-id]").text(data.internalId);
     $drawer.find("[data-detail-id-copy]").attr("data-copy-value", data.internalId);
@@ -1939,6 +1939,26 @@
       chipMono: false,
       emptyKey: "combo.noLabels",
     },
+    /* The drawer's own Labels control: the same label control the create dialog
+       carries, so it is configured identically and differs only in the hook
+       family it answers to — the two live in one document, so distinct hooks
+       keep their delegated selectors from colliding. */
+    detailLabels: {
+      roster: labels,
+      input: "[data-detail-label-input]",
+      menu: "[data-detail-label-menu]",
+      option: "[data-detail-label-option]",
+      optionAttr: "data-detail-label-option",
+      valueAttr: "data-detail-label-value",
+      kindAttr: "",
+      freeText: true,
+      multi: true,
+      chips: "[data-detail-label-chips]",
+      chipAttr: "data-detail-label-chip",
+      removeAttr: "data-detail-label-remove",
+      chipMono: false,
+      emptyKey: "combo.noLabels",
+    },
   };
 
   function comboMenu($input, config) {
@@ -2512,6 +2532,19 @@
       $(this).closest("[data-label-chip]").remove();
       if (!$scope.find("[data-label-menu]").prop("hidden")) {
         renderCombo($input, COMBO.labels);
+      }
+      $input.trigger("change");
+    });
+
+    /* the drawer's label chips remove the same way, against the drawer's own
+       hooks — bound to the drawer, the direct analogue of the create form's
+       scope, so dropping a chip behaves identically in both places */
+    $("[data-detail-drawer]").on("click", "[data-detail-label-remove]", function () {
+      var $scope = $(this).closest(".td-combo");
+      var $input = $scope.find("[data-detail-label-input]");
+      $(this).closest("[data-detail-label-chip]").remove();
+      if (!$scope.find("[data-detail-label-menu]").prop("hidden")) {
+        renderCombo($input, COMBO.detailLabels);
       }
       $input.trigger("change");
     });

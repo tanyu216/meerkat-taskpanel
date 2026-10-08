@@ -127,7 +127,7 @@ the style guide's token blocks in `src/input.css` are unlayered. Two consequence
 | — | Allow-list switch (R3) | the access panel's toggle; states and dims, nothing else | `[data-cidr-switch]` → `[data-cidr-whitelist]` |
 | I13 | Assignee / reporter (R3) | Roster autocomplete — fuzzy match on input, `↑↓`/`Enter`/`Esc`/`Tab`, free text upserts | `[data-assignee-input]` / `[data-reporter-input]` → `[data-assignee-menu]` / `[data-reporter-menu]` → `[data-assignee-option]` / `[data-reporter-option]` |
 | I14 | Markdown editor (R3) | Mode tabs set `data-md-mode`; every keystroke repaints the highlight layer and the preview | `[data-md-editor]` → `[data-md-toggle]`, `[data-md-source]`, `[data-md-highlight]`, `[data-md-preview]` |
-| I15 | Labels (R5) | The roster control used many times at once — fuzzy match, free text creates by use, case/whitespace-insensitive, removable chips; the drawer shows them read-only | `[data-label-input]` → `[data-label-menu]` → `[data-label-option]` · `[data-label-chips]` → `[data-label-chip]` → `[data-label-remove]` · `[data-detail-labels]` |
+| I15 | Labels (R5) | The roster control used many times at once — fuzzy match, free text creates by use, case/whitespace-insensitive, removable chips. One control, two placements: the create dialog and the drawer's Labels row are both editable | `[data-label-input]` → `[data-label-menu]` → `[data-label-option]` · `[data-label-chips]` → `[data-label-chip]` → `[data-label-remove]` · `[data-detail-label-input]` → `[data-detail-label-menu]` → `[data-detail-label-option]` · `[data-detail-label-chips]` → `[data-detail-label-chip]` → `[data-detail-label-remove]` |
 
 The footer's three cells act directly — none of them opens a dialog except the settings
 gear, which opens B19. `Esc` closes whatever is open: the drawer, the states showcase, the
@@ -251,16 +251,28 @@ language switch, and the wrap is now kept as reviewed rather than re-tuned (DESI
 | `40-create-label-new-row.png` | **R5** — a label the board does not hold yet: `zzz-new-label · new`, one Enter away from a new label |
 | `41-create-label-new-chip.png` | **R5** — the accepted name as a chip, with its remove button, and the menu reopening over the remaining labels |
 | `42-create-label-normalised.png` | **R5** — normalisation: `Triaged` · `Bug` after `triaged` / `  Bug  ` / `BUG` / `bug` all resolved to those two labels, first spelling kept |
-| `43-detail-labels.png` | **R5** — the drawer's property grid: the Labels row shows the task's chips, read-only, no input and no remove |
+| `43-detail-labels.png` | **R5** — the drawer's property grid: the Labels row carries the editable control, its chips filled from the task |
 | `44-create-label-narrow-760.png` | **R5** — the same control at 760px, stacked, its menu flipping down over the fields below |
+| `45-detail-label-dropdown.png` | **R5 fix** — the **drawer's** Labels row mid-type: fuzzy matches over the board's roster with the `· new` row |
+| `46-detail-label-new-chip.png` | **R5 fix** — a name the drawer's roster does not hold accepted into a new chip |
+| `47-detail-label-remove.png` | **R5 fix** — a chip's `×` pressed: the chip is gone, the row falls back to the remaining labels |
+| `48-detail-label-narrow-760.png` | **R5 fix** — the same control with the drawer full-width at 760px: no overflow |
 
 **R5 recapture:** the right column gained one field, so `10-create-task-modal`,
 `23-create-two-col` and `26-create-narrow-760` were re-shot, and six frames are new —
 `39-create-label-dropdown`, `40-create-label-new-row`, `41-create-label-new-chip`,
 `42-create-label-normalised`, `43-detail-labels` and `44-create-label-narrow-760`. The
-board frames are untouched: the round adds a field to the dialog and a read-only row to the
+board frames are untouched: the round adds a field to the dialog and a row to the
 drawer, and no pixel of the board. There is no management entry in any frame, because there
 is none in the prototype (DESIGN.md §22).
+
+**R5 fix recapture:** the drawer's Labels row became the editable control, so
+`43-detail-labels` was re-shot and four frames are new — `45-detail-label-dropdown`
+(the drawer's label input mid-type), `46-detail-label-new-chip` (an unseen name accepted
+into a chip), `47-detail-label-remove` (a chip removed) and `48-detail-label-narrow-760`
+(the same control at 760px, no overflow). Only the drawer's Labels row changes, so no board
+or dialog frame moves. There is still no management entry in any frame (DESIGN.md
+§22.5–§22.6, §22.8).
 
 **R4 recapture:** the create dialog changed size, so every frame that shows it was
 re-shot — `10-create-task-modal`, `23-create-two-col`, `24-md-editor-split`,

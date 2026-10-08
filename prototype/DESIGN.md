@@ -1043,7 +1043,7 @@ cards / existing `data-*` hooks are untouched.
 ## 22. Labels — dynamic, no management entry
 
 Authority: `ARCHITECTURE §4.4` (labels). This round adds the label control to the create
-dialog's right column and a display-only label property to the task drawer. Structure and
+dialog's right column and the same control to the task drawer. Structure and
 hooks: BLOCKS.md **B25**. The prototype is **pure UI** — no label is stored, fetched or
 filtered by it; what this section fixes is the contract the implementation must honour.
 
@@ -1088,12 +1088,17 @@ no such button.** The list grows only by being used, so there is nothing to mana
 surface that could manage it. This is the same rule §18.3 states for the two rosters, and
 it is what the addendum's part B hard-forbids.
 
-### 22.6 Task detail shows labels, it does not edit them
+### 22.6 Task detail edits labels too — one control, both surfaces
 
-The drawer's property grid carries a **Labels** row (`[data-detail-labels]`) that lists the
-task's labels as read-only chips, in the spelling the board adopted. It is display only —
-no input, no remove button, no editor — matching §22.5. Adding or changing a task's labels
-happens where the task is created.
+The drawer's property grid carries a **Labels** row (`[data-detail-labels]`) and it is the
+**same control as the create dialog's**, not a display of it: type to fuzzy-match the
+board's label roster, accept to add a chip, press a chip's `×` to drop it — the identical
+`.td-combo` paradigm and keyboard loop the drawer's Assignee and Reporter already use
+(§18.3 / §22.1). It differs only in the hooks it carries (`data-detail-label-*` rather than
+`data-label-*`, so the two controls' delegated selectors never collide), and it is filled
+from the card's `data-labels` on open, in the board's adopted spelling. Nothing about §22.4
+or §22.5 changes: auto-cleanup stays a backend concern, and there is still no management
+entry anywhere.
 
 ### 22.7 Recaptured and checked
 
@@ -1103,7 +1108,26 @@ Recaptured (the right column gained a field, so every frame showing the dialog d
 `40-create-label-new-row` (a name the roster does not hold), `41-create-label-new-chip`
 (the accepted name as a chip), `42-create-label-normalised` (`Triaged` · `Bug` after
 `triaged` / `  Bug  ` / `BUG` / `bug` all resolved to two labels), `43-detail-labels` (the
-drawer's display-only row) and `44-create-label-narrow-760`.
+drawer's Labels row) and `44-create-label-narrow-760`.
+
+### 22.8 The drawer's Labels row is the control, not a display
+
+The drawer's Labels row was a display-only chip list; it is now the **same editable
+control** the create dialog carries, so a task's labels are changed where the task is
+read, not only where it is created. Three frames are new: `45-detail-label-dropdown` (the
+drawer's label input mid-type, fuzzy matches over the board's roster with the `· new` row),
+`46-detail-label-new-chip` (a name the roster does not hold accepted into a chip) and
+`47-detail-label-remove` (a chip's `×` pressed, the chip gone and the row fallen back to
+the remaining labels) and `48-detail-label-narrow-760` (the same control with the drawer
+full-width at 760px, no overflow). The drawer's Assignee and Reporter were already editable
+(B22); the Labels row now matches them, and `43-detail-labels` is recaptured to show the
+input in place of the read-only chips. Structure is BLOCKS.md **B25**.
+
+**Checked and clean.** `prototype-guard` passes; the purity scan over `*.html` / `*.js` /
+`*.css` returns **0** hits (`localStorage` / `sessionStorage` absent); no management entry
+appears in any user-visible copy; no page-level horizontal overflow at 1512 / 1240 / 980 /
+760 / 500 px with the drawer open and its label menu open; and the drawer's Labels row now
+runs the identical control the create dialog does.
 
 **Checked and clean.** `prototype-guard` passes; the purity grep over `*.html` / `*.js` /
 `*.css` returns **0** hits — in particular `localStorage` and `sessionStorage` are absent

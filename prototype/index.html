@@ -2267,13 +2267,57 @@
               <span class="td-mono" data-detail-project-label>TaskPanel</span>
             </button>
 
-            <!-- Labels, display-only: what the task carries, in the spelling
-                 the board adopted. There is no editor and no management entry
-                 here — labels are added by using them in the create dialog. -->
+            <!-- Labels — the drawer's copy of the create dialog's control
+                 (B25): the same `.td-combo`, here carrying this surface's own
+                 hook family. Free text over the board's fuzzy label roster, a
+                 name the roster does not hold created by the act of using it,
+                 each accepted label a removable chip. There is no management
+                 entry: labels grow only by being used. -->
             <span class="td-prop-label" data-i18n="prop.labels">Labels</span>
-            <div class="td-prop-value td-prop-labels" data-detail-labels>
-              <span class="badge badge-sm td-chip td-chip-label" data-label="a11y">a11y</span>
-              <span class="badge badge-sm td-chip td-chip-label" data-label="board">board</span>
+            <div class="td-prop-value td-prop-combo" data-detail-labels>
+              <div class="td-combo td-combo-inline">
+                <div class="td-chips" data-detail-label-chips>
+                  <span class="badge td-chip" data-detail-label-chip data-detail-label-value="a11y" title="a11y">
+                    <span>a11y</span>
+                    <button type="button" class="td-chip-remove" data-detail-label-remove aria-label="Clear a11y" title="Clear"><svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+                  </span>
+                  <span class="badge td-chip" data-detail-label-chip data-detail-label-value="board" title="board">
+                    <span>board</span>
+                    <button type="button" class="td-chip-remove" data-detail-label-remove aria-label="Clear board" title="Clear"><svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+                  </span>
+                </div>
+                <input
+                  class="td-input td-input-flat"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  data-detail-label-input
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-haspopup="listbox"
+                  aria-controls="td-label-menu-detail"
+                  data-i18n-title="combo.hint"
+                  title="↑↓ to choose, Enter to accept, Esc to dismiss."
+                  data-i18n-placeholder="combo.labelsPlaceholder"
+                />
+                <ul class="menu td-combo-menu" id="td-label-menu-detail" role="listbox" data-detail-label-menu hidden>
+                  <li><button type="button" data-detail-label-option data-detail-label-value="a11y">a11y</button></li>
+                  <li><button type="button" data-detail-label-option data-detail-label-value="api">api</button></li>
+                  <li><button type="button" data-detail-label-option data-detail-label-value="backend">backend</button></li>
+                  <li><button type="button" data-detail-label-option data-detail-label-value="board">board</button></li>
+                  <li><button type="button" data-detail-label-option data-detail-label-value="ci">ci</button></li>
+                  <li><button type="button" data-detail-label-option data-detail-label-value="design">design</button></li>
+                  <li><button type="button" data-detail-label-option data-detail-label-value="docs">docs</button></li>
+                  <li><button type="button" data-detail-label-option data-detail-label-value="perf">perf</button></li>
+                  <li><button type="button" data-detail-label-option data-detail-label-value="security">security</button></li>
+                  <li><button type="button" data-detail-label-option data-detail-label-value="ui">ui</button></li>
+                  <li><button type="button" data-detail-label-option data-detail-label-value="ux">ux</button></li>
+                </ul>
+                <!-- The seed rows above are the board's own labels, shown as
+                     the no-JS floor; the control redraws them from the live
+                     roster the moment it is focused. They are the inert
+                     resting state, not a source of truth. -->
+              </div>
             </div>
 
             <span class="td-prop-label" data-i18n="prop.id">ID</span>
