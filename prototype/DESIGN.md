@@ -2,13 +2,16 @@
 
 > Implemented from `design-style-guide.md` (visual tokens — single source of truth)
 > and `design-spec.md` (structure, blocks, interactions, coverage), as amended by
-> `design-spec-addendum-v1.1.md` (access model, top bar, i18n) and
-> `design-spec-addendum-v1.2.md` (sidebar-footer switches, access-model rewrite).
+> `design-spec-addendum-v1.1.md` (access model, top bar, i18n),
+> `design-spec-addendum-v1.2.md` (sidebar-footer switches, access-model rewrite) and
+> `design-spec-v1.3.md` (footer split into three equal thirds; theme and language become
+> dialogs alongside settings).
 > Every value below is copied from those documents. **Nothing here is invented**;
 > §9 records every point where the two documents disagree and what was chosen,
-> §14 records the judgement calls the v1.1 addendum left open, and §15 the v1.2 round.
-> v1.2 changed no visual token: colour, type, spacing and radius are untouched, and the
-> brand re-skin remains a separate card.
+> §14 records the judgement calls the v1.1 addendum left open, §15 the v1.2 round and
+> §16 the v1.3 round.
+> v1.2 and v1.3 changed no visual token: colour, type, spacing and radius are untouched,
+> and the brand re-skin remains a separate card.
 
 ---
 
@@ -322,14 +325,28 @@ top bar, the sidebar or anywhere else. §10 still governs who a task is *assigne
 that is a different question from who is *viewing*, and the two no longer share a
 component.
 
-What replaced the sidebar identity block is a **display-switch cluster**, not a
-reachability readout. Review round v1.2 moved the two display switches out of the bar and
-into the footer, and removed the bind-address copy entirely:
+What replaced the sidebar identity block is a **row of dialog entries**, not a
+reachability readout. Review round v1.2 moved the display switches out of the bar and into
+the footer; review round v1.3 turned them into entries that open dialogs, and split the
+row into three equal thirds:
 
 | Surface | Content |
 |---|---|
 | Top bar, right end | `[data-revision]` · `[data-new-task]` |
-| Sidebar footer `[data-access-status]` | `[data-theme-toggle]` · `[data-lang-toggle]` · `[data-access-open]` — one compact row |
+| Sidebar footer `[data-access-status]` | three equal cells — `[data-theme-open]` (theme) · `[data-lang-open]` (language) · `[data-access-open]` (settings) — each opening a dialog |
+
+**Three equal thirds, each centred.** The footer is `display: grid` with
+`grid-template-columns: repeat(3, minmax(0, 1fr))` and `align-items: stretch`, so the
+three cells are each exactly one third of the sidebar column. Every cell is a
+`.td-access-cell` block button that fills its third, with icon and label centred on both
+axes (`display: flex; align-items: center; justify-content: center; gap: 6px;
+text-align: center`), a hairline `border-inline-start` between neighbours and a
+`:focus-visible` accent ring. The theme and language cells **state the value in force** —
+the theme's name (`Light` / `Dark`, 浅色 / 深色) beside a sun or moon glyph, the language's
+name (`EN` / `中文`) beside a globe — written by the same `applyTheme()` /
+`applyLanguageOptions()` functions the dialogs call. The settings cell reads `Settings` /
+`设置`. No inline switch survives: `[data-theme-toggle]` and `[data-lang-toggle]` are
+**deleted**, not hidden.
 
 The top-bar order is exactly the one the v1.2 addendum fixes; the primary action stays
 last, and the bar holds **no display-mode control**. **Nothing in the chrome reports
@@ -338,15 +355,28 @@ drew them are deleted outright, so the old model is not reachable from any selec
 bind address is stated *inside* B19 instead, as prose, where it can name the value the
 board actually binds.
 
-The footer row stays a row down to 1024px; below that the sidebar is a rail, so the three
-controls stack vertically and the `EN` / `中文` pair turns vertical to fit the 64px rail
-(56px under 560px) with no horizontal overflow at any width.
+The footer stays three equal thirds down to the smallest width; below 1024px the sidebar
+is a rail, so the labels drop out with the rest of the sidebar text and each third becomes
+a centred 14px glyph. Three glyphs fit the 64px rail (56px under 560px) with no horizontal
+overflow at any width, and the row itself never wraps.
 
 **B19 · Access & token settings** — `[data-access-open]` opens `[data-access-panel]`,
 hidden by default and dismissed with `Esc`, the scrim (`[data-access-overlay]`) or
 `[data-access-close]`. It uses the same `data-state` + `hidden` overlay contract as the
 drawer: `hidden` comes off first so the transition has a frame to start from, and the
 panel is only hidden again once the close transition has finished.
+
+**B20 / B21 · Theme and language settings** — v1.3 gives the other two footer cells the
+same treatment, as **one modal component with three instances** rather than three styles:
+both dialogs reuse B19's `.td-scrim`, its centred `.td-access-panel` card, its
+`.td-access-head` header and its `.td-access-body` body, adding only a `.td-choices` list
+of `.td-choice` rows. `[data-theme-open]` → `[data-theme-modal]`
+(`[data-theme-choice="light" | "dark"]`), `[data-lang-open]` → `[data-lang-modal]`
+(`[data-lang-choice="en" | "zh"]`), each with its own scrim, close button, `Esc` and
+overlay dismissal, each returning focus to the cell that opened it. The active row is
+marked by `aria-pressed="true"`, an accent field and a tick — never by colour alone. Only
+one of the three dialogs is ever open: `closeOtherDialogs()` closes the other two before
+one opens.
 
 The panel states the model in the order the v1.2 addendum gives it:
 
@@ -399,12 +429,12 @@ clipboard, no credential or endpoint of any kind, and no persistence across relo
 
 ## 13. i18n
 
-**English is the default** (`<html lang="en">`). `[data-lang-toggle]` in the sidebar
-footer (moved there in v1.2) switches to Chinese and back; the active option carries
-`aria-pressed`, so the current language is always visible, and the group carries an
-`aria-label` and `title` from the catalogue.
+**English is the default** (`<html lang="en">`). The `中文` choice in **B21** (the language
+dialog, opened from the middle footer cell) switches to Chinese and back; the active
+choice carries `aria-pressed`, the middle cell always shows the language in force, and the
+dialog's group carries an `aria-label` from the catalogue.
 
-**One catalogue, in memory.** `app.js` holds `MESSAGES = { en: {…}, zh: {…} }` — **181
+**One catalogue, in memory.** `app.js` holds `MESSAGES = { en: {…}, zh: {…} }` — **188
 keys per language, mirrored 1:1** (a test asserts the two key sets are identical). No
 external file, no fetch, no build step; `text()` resolves against the active language,
 falls back to English and then to the key itself, so a missing translation shows up as
@@ -416,19 +446,22 @@ and is itself resolved as a key first — so `column.add` + `status.todo` reads
 `Add task to To Do` in English and `在待办中新建任务` in Chinese from **one** key pair
 instead of fourteen.
 
-**Coverage** (150 of the keys are on hooks in the markup): top bar (brand, switcher,
-search, view, revision, theme, language, primary action) · sidebar nav, project list,
-agent presence, legend, footer readout · the filter bar including **every** `<option>` ·
-all seven column headers **and** their empty-column messages and add-button labels ·
-the no-results empty state · the list view · the drawer (section titles, property
+**Coverage.** Every user-visible string is keyed in that catalogue: the markup hooks carry
+the static copy and `app.js` composes the rest (toast sentences, list rows, card aria
+labels, the token mask) from the same table. Top bar (brand, switcher,
+search, view, revision, primary action) · sidebar nav, project list,
+agent presence, legend, the three footer dialog entries · the filter bar including
+**every** `<option>` · all seven column headers **and** their empty-column messages and
+add-button labels · the no-results empty state · the list view · the drawer (section titles, property
 labels, relation labels, comment role chips, relative timestamps, session block,
 buttons) · both modals · the error state · the states gallery · the token panel ·
 every toast, including the ones `app.js` composes at runtime.
 
 **Switching** rewrites the document in one pass (`translateTree`), then regenerates the
 copy `app.js` owns — card aria/titles, the drawer's status and priority *values*, list
-rows, the token mask, the theme button's label — and follows with `<html lang>`, a
-filter pass (the result counter lives in the copy) and a toast **in the new language**.
+rows, the token mask, and the names in the theme and language footer cells — and follows
+with `<html lang>`, a filter pass (the result counter lives in the copy) and a toast **in
+the new language**.
 
 Two details worth recording:
 
@@ -521,3 +554,48 @@ footer, it still shows the old readout.
 Checked and clean across 1512 / 1240 / 980 / 760 / 500 px, with the panel closed and open
 and with JavaScript disabled: no page-level horizontal overflow, no sidebar overflow,
 7 columns · 18 cards, and zero console errors.
+
+---
+
+## 16. Review round v1.3
+
+The v1.3 spec (Jobs, 2026-10-08, after Elon's rejection of v1.2) asked for two things:
+theme and language must open as **dialogs** like the settings panel, and the three footer
+entries must be **equal thirds, each centred**. Both are in, with three judgement calls
+worth recording.
+
+1. **The three dialogs are one component, not three.** The v1.2 theme button and language
+   segmented pair are deleted outright (`[data-theme-toggle]`, `[data-lang-toggle]`, the
+   `.td-seg` overrides that dressed them in the footer, and the four catalogue keys their
+   labels used). B20 and B21 are built from B19's own classes — `.td-scrim`,
+   `.td-access-panel`, `.td-access-head`, `.td-access-body` — so "same style as the
+   settings panel" is literally the same rules, not a look-alike. The only new component
+   is the `.td-choice` row inside them. No dialog uses `.td-dialog-*` or `.td-option*`:
+   those class names never reached `tw.css`.
+2. **The footer cell states the value, and the state has one writer.** `applyTheme()`
+   writes `html[data-theme]`, the sun/moon glyph **and** the theme's name in the left
+   cell; `applyLanguageOptions()` writes the language's name in the middle cell and the
+   `aria-pressed` of both `[data-lang-choice]` rows. Because the click handler and the
+   document-wide language pass both route through those two functions, a cell and the
+   document it describes cannot disagree — including when the language changes while a
+   dialog is open.
+3. **Equal thirds is a grid, and it survives the rail.** The footer is
+   `repeat(3, minmax(0, 1fr))` with `align-items: stretch` and a `border-inline-start`
+   hairline between neighbours, so the three cells measure identical widths on every
+   viewport. Below 1024px the sidebar is a 64px (56px under 560px) rail: the cells keep
+   their thirds and drop their labels with the rest of the sidebar text, leaving three
+   centred 14px glyphs that fit the rail without overflow. A wrapped or stacked footer
+   would have broken the "three equal thirds" requirement, so the row never wraps.
+   `minmax(0, 1fr)` (rather than a bare `1fr`) keeps a long label from pushing a cell
+   wider than its third.
+
+Recaptured for this round: `01-board-1512` (the footer's three cells), `11-viewport-1240`,
+`13-viewport-760` (the rail's three icon cells), `05-dark-theme`, `19-board-zh`,
+`15-no-javascript` (the cells render without JavaScript), `17-access-panel`, and two new
+frames — `22-theme-modal` and `23-lang-modal`. `18-access-token-revealed` and
+`21-access-panel-dark` are the v1.2 files, unchanged: the token block is not touched by
+this round.
+
+Checked and clean across 1512 / 1240 / 980 / 760 / 500 px: no page-level horizontal
+overflow, the three footer cells measure equal widths, 7 columns · 18 cards, and zero
+console errors.

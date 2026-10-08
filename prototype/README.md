@@ -3,11 +3,14 @@
 A static, self-contained HTML prototype of the TaskDashboard board for an AI-agent
 team. It is the executable design baseline: tokens, block structure and interaction
 behaviour all come from `design-style-guide.md` + `design-spec.md` as amended by
-`design-spec-addendum-v1.1.md` (access model, top bar, i18n) and
-`design-spec-addendum-v1.2.md` (sidebar-footer switches, access-model rewrite), with
+`design-spec-addendum-v1.1.md` (access model, top bar, i18n),
+`design-spec-addendum-v1.2.md` (sidebar-footer switches, access-model rewrite) and
+`design-spec-v1.3.md` (footer split into three equal thirds; theme and language become
+dialogs alongside settings), with
 every disagreement between the sources recorded in
 [DESIGN.md §9](DESIGN.md#9-reconciliation--where-the-two-source-documents-disagree) and
-every judgement call the addenda left open recorded in §14 (v1.1) and §15 (v1.2).
+every judgement call the addenda left open recorded in §14 (v1.1), §15 (v1.2) and
+§16 (v1.3).
 
 **Stack is closed: Tailwind CSS + daisyUI + jQuery (slim). No other CSS/UI/JS library,
 no CDN, no webfont, no network call, no storage.**
@@ -21,8 +24,10 @@ open prototype/index.html      # plain file:// — no server, no build step need
 ```
 
 `index.html` is complete without JavaScript: the top bar, sidebar, filters, all seven
-columns, all eighteen cards and the legend are static markup. The drawer and the two
-modals are secondary surfaces and stay hidden until opened.
+columns, all eighteen cards, the legend and the **three footer cells** (theme · language ·
+settings) are static markup, with the default theme and language already named in their
+cells. The drawer, the states gallery, the create-task / create-project modals and the
+three footer dialogs are secondary surfaces and stay hidden until opened.
 
 ---
 
@@ -36,7 +41,7 @@ modals are secondary surfaces and stay hidden until opened.
 | `app.js` | the jQuery (slim) interaction layer — interactions I1–I12 |
 | `vendor/jquery.slim.min.js` | jQuery 3.7.1 **slim** build, vendored locally |
 | `DESIGN.md` | the design specification: tokens, type, spacing, states, a11y, reconciliation, access model, i18n |
-| `BLOCKS.md` | the block inventory B01–B19 with every `data-*` hook |
+| `BLOCKS.md` | the block inventory B01–B21 with every `data-*` hook |
 | `screenshots/` | capture set (board, wide board, drawer, dark, list, menu, filters, empty, modal, access + token, Chinese, 5 viewports) |
 | `package.json` | declared devDependencies + `build:css` script |
 | `.gitignore` | keeps `node_modules/` out of the repository |
@@ -57,7 +62,7 @@ expose it to Tailwind only for the duration of the build:
 
 ```sh
 BUILD=/Users/tanyu/.openclaw/team/workspace/T-20261008-200429-taskboardproto/twbuild
-PROTO=/Users/tanyu/Documents/task-dashboard/prototype
+PROTO=/Users/tanyu/Documents/task-panel/prototype
 
 cd "$BUILD" && npm install            # tailwindcss, @tailwindcss/cli, daisyui, jquery
 
@@ -73,7 +78,7 @@ checkout where `node_modules` is allowed to sit next to the sources.
 
 Two `@source` directives limit class scanning to `index.html` and `app.js`
 (`@import "tailwindcss" source(none)` disables auto-detection, so nothing else on
-disk can leak classes into the bundle). Current output: **132 KB**.
+disk can leak classes into the bundle). Current output: **139 KB**.
 
 ### One cascade detail worth knowing
 
@@ -102,13 +107,17 @@ the style guide's token blocks in `src/input.css` are unlayered. Two consequence
 | I8 | Switch project | project switcher or sidebar list | `[data-project-option]`, `[data-project]` |
 | I9 | Create a task | `New task` or a column `+` (prefills that status) | `[data-new-task]`, `[data-column-add]` |
 | I10 | Create a project | switcher → `New project…` | `[data-project-new]` |
-| I11 | Light/dark theme | theme button in the sidebar footer | `[data-theme-toggle]` |
+| I11 | Light/dark theme | **B20** — left footer cell, then a choice; `Esc` / scrim / close to dismiss | `[data-theme-open]` → `[data-theme-modal]` → `[data-theme-choice]` |
 | I12 | Toast feedback | every mutation | `[data-toast-region]`, `[data-toast]` |
-| — | Language switch | `EN` / `中文` in the sidebar footer | `[data-lang-toggle]` → `[data-lang]` |
+| — | Language switch | **B21** — middle footer cell, then a choice; `Esc` / scrim / close to dismiss | `[data-lang-open]` → `[data-lang-modal]` → `[data-lang-choice]` |
 | — | States gallery | sidebar footer button, `Esc` / scrim / close to dismiss | `[data-states-open]` → `[data-states-panel]` |
 | — | Error retry | `Retry` inside the error state | `[data-error-retry]` |
-| — | Access & token settings | sidebar footer entry, `Esc` / scrim / close to dismiss | `[data-access-open]` → `[data-access-panel]` |
+| — | Access & token settings | **B19** — right footer cell, `Esc` / scrim / close to dismiss | `[data-access-open]` → `[data-access-panel]` |
 | — | Token reveal / copy / reset | buttons in the token block | `[data-token-reveal]`, `[data-token-copy]`, `[data-token-reset]` |
+
+The three footer dialogs are mutually exclusive: opening one closes the other two, and any
+`Esc` or scrim click closes whichever is open. Each returns focus to the cell that opened
+it.
 
 Mutations that change board state (move, comment, create) also advance the
 `rev` counter in the top bar — the prototype's stand-in for the concurrent-write
@@ -167,13 +176,14 @@ looking at it (DESIGN.md §12).
 | Empty states | empty column + no-results |
 | Loading | 3 shimmer rows in the list view |
 | Themes | light (default) and dark |
-| Language | English (default) + Chinese via `[data-lang-toggle]` — 181 key pairs, mirrored |
+| Language | English (default) + Chinese via the **B21** language dialog — 188 key pairs, mirrored |
 | Access model | B19 access & token panel: binds `0.0.0.0`, CIDR whitelist, token required from outside localhost; no user / account / sign-in element anywhere |
+| Footer | three equal thirds — theme · language · settings — each stating its current value and opening a dialog |
 | Viewports | 1512 / 1240 / 980 / 760 / 500 — no page-level horizontal overflow |
 
 The board is the only horizontal scroll container; `html`, `body` and `main` never
 scroll sideways. Below 1023px the sidebar collapses to an icon rail — where the three
-footer controls stack and the `EN` / `中文` pair turns vertical to stay inside the rail —
+footer cells keep their equal thirds and drop their labels, leaving three centred icons —
 and below 760px the top bar wraps and the drawer goes full width. Between **760 and
 779px** the top bar also wraps: that band was sized around a bar that still held the
 language switch, and the wrap is now kept as reviewed rather than re-tuned (DESIGN.md
@@ -200,17 +210,25 @@ language switch, and the wrap is now kept as reviewed rather than re-tuned (DESI
 | `16-states-panel.png` | the states gallery: loading, empty column, no results, error and the three toast kinds in one frame |
 | `17-access-panel.png` | B19 access & token settings, token masked |
 | `18-access-token-revealed.png` | the same panel with the stand-in token revealed |
-| `19-board-zh.png` | the board in Chinese — top bar, sidebar, filters, column headers, legend and the footer switches |
+| `19-board-zh.png` | the board in Chinese — top bar, sidebar, filters, column headers, legend and the footer cells, which now read 浅色 / 中文 / 设置 |
 | `20-drawer-zh.png` | the drawer in Chinese: properties, relation labels, comment role chips and relative timestamps |
 | `21-access-panel-dark.png` | the access panel in dark theme |
+| `22-theme-modal.png` | **B20** — the theme dialog open, `Light` marked as the current choice |
+| `23-lang-modal.png` | **B21** — the language dialog open, `EN` marked as the current choice |
 
-**v1.2 recapture:** `01-board-1512`, `11-viewport-1240`, `13-viewport-760`,
-`05-dark-theme`, `19-board-zh`, `15-no-javascript`, `17-access-panel`,
-`18-access-token-revealed` and `21-access-panel-dark` were re-shot against the v1.2
-build at the same geometry (device-scale-factor 2, viewports 1512×950 / 1240×900 /
-760×900). The other captures are the v1.1 files, kept as-is per the addendum; where a
-v1.1 frame includes the sidebar footer, it still shows the retired `Local · localhost`
-readout (DESIGN.md §15).
+**v1.3 recapture:** `01-board-1512`, `11-viewport-1240`, `13-viewport-760`,
+`05-dark-theme`, `19-board-zh`, `15-no-javascript` and `17-access-panel` were re-shot
+against the v1.3 build, and `22-theme-modal` / `23-lang-modal` are new — nine frames in
+all, at the same geometry (device-scale-factor 2, viewports 1512×950 /
+1240×900 / 760×900). The two modal frames are taken with the dialog already open, so the
+current choice is visible in the capture. `18-access-token-revealed` and
+`21-access-panel-dark` are the v1.2 files, unchanged: the token block was not touched by
+this round.
+
+**v1.2 recapture:** the same eight files as listed in §15 were re-shot against the v1.2
+build. The remaining captures are the v1.1 files, kept as-is; where a v1.1 frame includes
+the sidebar footer, it still shows the retired `Local · localhost` readout (DESIGN.md
+§15).
 
 Captured with headless Chrome at device-scale-factor 1 with transitions disabled so
 the frames are deterministic; `index.html` itself is untouched.

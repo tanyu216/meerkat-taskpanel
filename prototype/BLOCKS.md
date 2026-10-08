@@ -33,8 +33,9 @@ generated copy = 181 keys, mirrored in `en` and `zh`.**
 Right-end order is fixed: revision · primary action. There is **no user, account or
 sign-in element** anywhere in the bar.
 
-The theme switch and the language switch **left the bar in review round v1.2** and now
-live in the sidebar footer (B03). The bar holds no display-mode control of any kind.
+The theme and language controls **left the bar in review round v1.2** and became three
+dialog entries in the sidebar footer in **v1.3** (B03 → B20/B21/B19). The bar holds no
+display-mode control of any kind.
 
 ## B03 · Sidebar
 
@@ -45,9 +46,26 @@ live in the sidebar footer (B03). The bar holds no display-mode control of any k
 | Projects | `[data-project-list]` → `[data-project="…"]` (`aria-current="page"`) → `.td-side-icon` (prefix monogram, rail only) + `[data-project-count]` |
 | Agents | `[data-agents-presence]` → **one row per platform**: `[data-agent-platform="claude\|openclaw\|codex\|pi"]` + `[data-presence="running\|idle"]` |
 | States preview | `[data-states-open]` — sidebar footer control, opens **B18** |
-| Footer controls | `[data-access-status]` — one compact row: **theme switch** `[data-theme-toggle]` → `[data-theme-icon="light" \| "dark"]` (`aria-pressed`, `aria-label`/`title` promise the next theme) · **language switch** `[data-lang-toggle]` → `[data-lang="en" \| "zh"]` (`aria-pressed` marks the active language, `lang` attribute per option) · **access entry** `[data-access-open]`, which opens **B19** |
+| Footer entries | `[data-access-status]` — **three equal thirds** (`display: grid`, `repeat(3, minmax(0, 1fr))`), each cell a `.td-access-cell` block button with its icon and label centred, separated by a hairline on the inline start |
 
-The footer carries *display switches*, not *reachability*: the former `[data-user]` block
+The three cells, left to right, and the dialog each one opens (**review round v1.3**):
+
+| Cell | Hook | Label in the cell | Opens |
+|---|---|---|---|
+| Theme (left) | `[data-theme-open]` → `[data-theme-icon="light" \| "dark"]` + `[data-theme-label]` | the theme in force — `Light`/`Dark` (浅色/深色) | **B20** `[data-theme-modal]` |
+| Language (middle) | `[data-lang-open]` + `[data-lang-label]` | the language in force — `EN`/`中文` | **B21** `[data-lang-modal]` |
+| Settings (right) | `[data-access-open]` | `Settings`/`设置` | **B19** `[data-access-panel]` |
+
+**The state is in the label.** `applyTheme()` writes `[data-theme-label]` and the sun/moon
+`[data-theme-icon]`; `applyLanguageOptions()` writes `[data-lang-label]`. Both cells
+therefore state the current mode without the dialog being opened, and both are rewritten
+by the same functions the dialogs call, so cell and document cannot disagree. Each cell
+also carries `aria-haspopup="dialog"` and a `data-i18n-aria-label` / `data-i18n-title`
+key. Cells carry `:focus-visible` rings and are keyboard reachable; the theme and language
+cells contain no inline switches any more — the v1.2 `[data-theme-toggle]` and
+`[data-lang-toggle]` controls are **gone**.
+
+The footer carries *dialog entries*, not *reachability*: the former `[data-user]` block
 (avatar + name + role) was **removed** in review round v1.1, along with its `.td-user`,
 `.td-user-text` and `.td-avatar-lg` styles, and the `Local · localhost` readout plus its
 green status dot were **removed** in review round v1.2 (Terry, 2026-10-08 21:47) — no
@@ -55,9 +73,10 @@ bind-address status is shown anywhere in the chrome; the bind address is stated 
 B19 instead. The assignee model further down this file is a separate concern and is
 unchanged.
 
-At the ≤1023px rail the row stacks (`flex-direction: column`) and the language pair turns
-vertical, so the three controls stay reachable and inside the 64px (56px under 560px)
-rail without horizontal overflow.
+At the ≤1023px rail the three thirds hold (the row is never allowed to wrap) and the
+labels drop out with the rest of the sidebar text, so each cell is a centred 24px icon:
+three 14px glyphs still fit the 64px rail (56px under 560px) without horizontal
+overflow.
 
 ## B04 · Filters bar
 
@@ -223,6 +242,41 @@ clipboard, `Reset` mints a new value in memory and shows it. The value is produc
 nowhere else — **no storage, no transport, no credential, nothing persisted.** See
 DESIGN.md §12.
 
+## B20 · Theme dialog
+
+| | |
+|---|---|
+| Root | `[data-theme-modal][data-state="closed\|open"]` (`role="dialog"`, `aria-modal="true"`, `aria-hidden`), **hidden by default** with the `hidden` attribute |
+| Chrome | **the same modal as B19** — `.td-scrim` overlay + the same centred `.td-access-panel` card, `.td-access-head` header and `.td-access-body` body, so the three footer dialogs are one visual component |
+| Opener | `[data-theme-open]` in the sidebar footer (left cell) |
+| Dismiss | `[data-theme-close]` · `[data-theme-overlay]` · `Esc` — same `data-state` + `hidden` pattern as B19; focus returns to the opening cell |
+| Title | `[data-i18n="access.theme.title"]` |
+| Choices | `[data-theme-choice="light"]` (`Light`/`浅色`, sun glyph) · `[data-theme-choice="dark"]` (`Dark`/`深色`, moon glyph) — `.td-choice` rows, the active one carrying `aria-pressed="true"` plus the accent field and a tick |
+| Group | `.td-choices` with `role="group"`, labelled by `[data-i18n-aria-label="access.theme.group"]` |
+
+Choosing writes `html[data-theme]` **and** the footer cell's glyph and label through
+`applyTheme()`, then closes and reports a toast. The dialog is a chooser, never a live
+preview: nothing changes until a row is picked.
+
+## B21 · Language dialog
+
+| | |
+|---|---|
+| Root | `[data-lang-modal][data-state="closed\|open"]` (`role="dialog"`, `aria-modal="true"`, `aria-hidden`), **hidden by default** |
+| Chrome | identical to **B19**/**B20** — same scrim, same `.td-access-panel` card |
+| Opener | `[data-lang-open]` in the sidebar footer (middle cell) |
+| Dismiss | `[data-lang-close]` · `[data-lang-overlay]` · `Esc`; focus returns to the opening cell |
+| Title | `[data-i18n="access.lang.title"]` |
+| Choices | `[data-lang-choice="en"]` (`EN`, `lang="en"`) · `[data-lang-choice="zh"]` (`中文`, `lang="zh-CN"`) — active row marked with `aria-pressed="true"` |
+| Group | `.td-choices` with `role="group"`, labelled by `[data-i18n-aria-label="access.lang.group"]` |
+
+**One dialog at a time.** `closeOtherDialogs()` runs before any of the three opens, so the
+footer can never stack two surfaces; `Esc` and every scrim close all three, and each
+dialog returns focus to the cell that opened it.
+
+The theme and language dialogs take no new styling beyond the `.td-choices` / `.td-choice`
+row: they reuse B19's panel, header and body rules verbatim (DESIGN.md §16).
+
 ---
 
 ## Assignee model
@@ -254,7 +308,7 @@ separate properties, and the lifecycle shows up again in the activity feed
 |---|---|
 | `[data-move-menu]` → `[data-move-to="status"]` | the single shared "Move to" menu reused by every card (I2 fallback for drag) |
 | `[data-drop-placeholder]` | transient placeholder bar created during `dragover` |
-| `[data-states-overlay]` / `[data-access-overlay]` | scrims behind B18 and B19 |
+| `[data-states-overlay]` / `[data-access-overlay]` / `[data-theme-overlay]` / `[data-lang-overlay]` | scrims behind B18, B19, B20 and B21 |
 | `template[data-toast-template]` / `template[data-list-row-template]` / `template[data-detail-for]` | inert markup sources for the interaction layer |
 | `[data-detail-slot-source]` | transient wrapper jQuery builds while copying a template into the drawer |
 | `[data-label="…"]` | one chip per card label |
@@ -263,8 +317,8 @@ separate properties, and the lifecycle shows up again in the activity feed
 
 ## i18n hooks
 
-English is the default language; `[data-lang-toggle]` switches to Chinese (DESIGN.md §13).
-Five attributes carry the keys, on every piece of user-visible copy:
+English is the default language; the `中文` choice in **B21** switches to Chinese
+(DESIGN.md §13). Five attributes carry the keys, on every piece of user-visible copy:
 
 | Hook | Sets |
 |---|---|
@@ -274,24 +328,34 @@ Five attributes carry the keys, on every piece of user-visible copy:
 | `data-i18n-title` | `title` |
 | `data-i18n-arg` | the `%s` value for any of the four above; it is resolved as a key first, so `column.add` + `status.todo` reads `Add task to To Do` / `在待办中新建任务` |
 
-The catalogue is the in-memory `MESSAGES` object at the top of `app.js` — **181 keys per
+The catalogue is the in-memory `MESSAGES` object at the top of `app.js` — **188 keys per
 language, mirrored 1:1**, never an external file. Copy `app.js` composes at runtime
 (toast sentences, list rows, card aria labels, the token mask) is keyed there too.
 
-Every string the v1.2 footer and the rewritten B19 introduced is in that catalogue:
-the footer switches carry `access.theme` · `access.lang` · `access.lang.en` ·
-`access.lang.zh` (the theme switch's label and title are re-derived on every switch, so
-they are read from `theme.switchToDark` / `theme.switchToLight`), and the panel carries
-`access.model.bind` · `access.cidr.note` · `access.cidr.add` · `access.cidr.remove` ·
-`access.cidr.value` · `access.model.token`. Rows the whitelist adds at runtime are
-authored with the same `data-i18n-aria-label` / `data-i18n-title` hooks, so the next
-language switch translates them like any seeded row.
+Every string the v1.3 footer and its three dialogs introduced is in that catalogue:
 
-`<html lang>` follows the switch (`en` / `zh-CN`), the switches in `[data-lang-toggle]`
-move their `aria-pressed`, and the drawer body — which arrives from an inert
-`<template>` that the document-wide pass cannot reach — is translated again when it
-lands. A language switch also re-derives everything `app.js` owns, so an open drawer,
-the list view and the result counter all change language in place.
+| Keys | Where |
+|---|---|
+| `access.theme.open` · `access.theme.title` · `access.theme.group` · `access.theme.close` | B20 — the theme cell's aria-label/title, the dialog title, its group label and its close button |
+| `access.theme.light` · `access.theme.dark` | the two `[data-theme-choice]` rows **and** the current-value text in the theme cell (`applyTheme`) |
+| `access.lang.open` · `access.lang.title` · `access.lang.group` · `access.lang.close` | B21 — the language cell's aria-label/title, the dialog title, its group label and its close button |
+| `access.lang.en` · `access.lang.zh` | the two `[data-lang-choice]` rows **and** the current-value text in the language cell (`applyLanguageOptions`) |
+| `access.settings` | the settings cell's label |
+
+The rewritten B19 carries `access.model.bind` · `access.cidr.note` · `access.cidr.add` ·
+`access.cidr.remove` · `access.cidr.value` · `access.model.token`. Rows the whitelist
+adds at runtime are authored with the same `data-i18n-aria-label` / `data-i18n-title`
+hooks, so the next language switch translates them like any seeded row.
+
+The v1.2 keys the retired switches used (`access.theme` / `access.lang` as switch labels,
+`access.lang.en` / `access.lang.zh` as segments, `theme.switchToDark` /
+`theme.switchToLight`) are **gone from both dictionaries** — nothing references them.
+
+`<html lang>` follows the switch (`en` / `zh-CN`), the `[data-lang-choice]` rows move
+their `aria-pressed`, and the drawer body — which arrives from an inert `<template>` that
+the document-wide pass cannot reach — is translated again when it lands. A language
+switch also re-derives everything `app.js` owns, so an open drawer, the list view, the
+footer cell and the result counter all change language in place.
 
 Per-column empty-state hints and add-button labels share **one** key pair each and take
 their status name through `data-i18n-arg` (`status.backlog`, …) rather than fourteen

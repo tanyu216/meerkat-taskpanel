@@ -853,36 +853,68 @@ html[data-theme="dark"] {
     background-color: var(--color-td-ink-4);
   }
 
-  /* Display switches — the sidebar footer carries the two switches the top bar
-     used to hold (light/dark, EN/中文) plus the entry to the access + token
-     settings. It states nothing about reachability: the bind address lives in
-     the panel, not as standing status copy. */
+  /* Dialog entries — the sidebar footer holds three equal thirds (v1.3), each
+     opening a dialog: theme (left) · language (centre) · settings (right). Each
+     cell states the value in force — the theme and the language name themselves
+     — and nothing here reports reachability: the bind address lives inside the
+     settings dialog. */
   .td-access-status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
     margin-top: 8px;
-    padding: 8px 4px 0;
+    padding: 8px 0 0;
     font-size: 12px;
     color: var(--color-td-ink-2);
     border-top: 1px solid var(--color-td-line);
   }
 
-  .td-access-status .td-iconbtn {
-    width: 24px;
-    height: 24px;
+  /* One third each: icon + label centred in the cell on both axes. The hairline
+     on the inline start separates a cell from its neighbour without drawing a
+     leading edge on the row. */
+  .td-access-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    height: 28px;
+    /* 2px, not 4: a third of the footer is ~74px, and `Settings` + glyph needs
+       every one of them before the label starts to ellipsise */
+    padding: 0 2px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-td-ink-2);
+    text-align: center;
+    background: transparent;
+    border: 0;
+    border-inline-start: 1px solid var(--color-td-line);
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    transition:
+      background-color var(--dur-hover) var(--ease),
+      color var(--dur-hover) var(--ease);
   }
 
-  /* the moved language switch rides a step smaller than the top-bar original */
-  .td-access-status .td-seg {
-    background-color: transparent;
-    border-color: transparent;
-    padding: 0;
+  .td-access-cell:first-child {
+    border-inline-start: 0;
   }
 
-  .td-access-status .td-seg-btn {
-    height: 24px;
-    padding: 0 6px;
+  .td-access-cell:hover {
+    color: var(--color-td-ink);
+    background-color: var(--color-td-hover);
+  }
+
+  .td-access-cell:focus-visible {
+    outline: 2px solid var(--color-td-accent);
+    outline-offset: -2px;
+  }
+
+  .td-access-cell .td-side-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* --- avatars --------------------------------------------------------- */
@@ -2096,6 +2128,71 @@ html[data-theme="dark"] {
     scrollbar-width: thin;
   }
 
+  /* --- B20/B21 · theme + language dialogs ------------------------------- */
+  /* Same card as B19 — the theme and language choosers reuse the settings
+     dialog's chrome rather than inventing a second modal style. Only the
+     option list inside is new: one row per choice, the active row marked by
+     accent copy, a soft accent field and a tick. */
+  .td-choices {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .td-choice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-td-ink-2);
+    text-align: left;
+    background-color: var(--color-td-surface);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-md);
+    cursor: pointer;
+    transition:
+      background-color var(--dur-hover) var(--ease),
+      color var(--dur-hover) var(--ease),
+      border-color var(--dur-hover) var(--ease);
+  }
+
+  .td-choice:hover {
+    color: var(--color-td-ink);
+    background-color: var(--color-td-hover);
+  }
+
+  .td-choice[aria-pressed="true"] {
+    color: var(--color-td-accent);
+    background-color: var(--color-td-accent-soft);
+    border-color: transparent;
+  }
+
+  .td-choice:focus-visible {
+    outline: 2px solid var(--color-td-accent);
+    outline-offset: 2px;
+  }
+
+  .td-choice-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .td-choice-check {
+    flex: none;
+    visibility: hidden;
+  }
+
+  .td-choice[aria-pressed="true"] .td-choice-check {
+    visibility: visible;
+  }
+
   /* --- B19 · access & token settings ----------------------------------- */
   /* Same floating-panel geometry as the states showcase, narrowed to a
      settings column. */
@@ -2383,24 +2480,16 @@ html[data-theme="dark"] {
       padding: 0;
     }
 
-    /* the rail is 64px (56px under 560px) — the footer stacks its three
-       controls and the language pair turns vertical so nothing overflows */
+    /* the rail is 64px (56px under 560px): the footer keeps its three equal
+       thirds and loses the labels, so each cell is a centred 24px icon */
     .td-access-status {
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
       padding: 8px 0 0;
     }
 
-    .td-access-status .td-seg {
-      flex-direction: column;
-    }
-
-    .td-access-status .td-seg-btn {
-      justify-content: center;
-      padding: 0 4px;
-      font-size: 11px;
+    .td-access-cell {
+      gap: 0;
+      height: 24px;
+      padding: 0;
     }
   }
 
