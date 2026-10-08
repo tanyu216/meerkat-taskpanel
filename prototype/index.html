@@ -116,20 +116,27 @@
           </button>
         </div>
 
-        <span class="td-revision" data-revision>
-          <span class="td-live-dot" aria-hidden="true"></span>
-          <span class="td-revision-text" data-i18n="topbar.live">Live</span>
-          <span class="td-mono" data-revision-label data-i18n-title="topbar.revision.title" title="Global revision">
-            rev <span data-revision-value>128</span>
+        <!-- Right cluster — pushed to the header's right padding edge by
+             `margin-left: auto` on `.td-topbar-actions`, so the primary
+             `+ New task` action is flush right. Kept as one flex item so the
+             revision readout and the button never split across the wrapped
+             rows of the 760–779px band. -->
+        <div class="td-topbar-actions">
+          <span class="td-revision" data-revision>
+            <span class="td-live-dot" aria-hidden="true"></span>
+            <span class="td-revision-text" data-i18n="topbar.live">Live</span>
+            <span class="td-mono" data-revision-label data-i18n-title="topbar.revision.title" title="Global revision">
+              rev <span data-revision-value>128</span>
+            </span>
           </span>
-        </span>
 
-        <button type="button" class="btn btn-primary gap-2" data-new-task>
-          <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          <span class="td-new-task-label" data-i18n="topbar.newTask">New task</span>
-        </button>
+          <button type="button" class="btn btn-primary gap-2" data-new-task>
+            <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            <span class="td-new-task-label" data-i18n="topbar.newTask">New task</span>
+          </button>
+        </div>
       </header>
 
       <!-- ===================================================================

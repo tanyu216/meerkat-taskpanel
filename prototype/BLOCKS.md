@@ -30,9 +30,17 @@ shipped document · **198 catalogue keys, `en` and `zh` in exact parity.**
 | View toggle | `[data-view-toggle]` → `[data-view="board" \| "list"]` (`aria-pressed`) |
 | Revision | `[data-revision]` → `[data-revision-label]`, `[data-revision-value]`, `.td-live-dot` |
 | Primary action | `[data-new-task]` |
+| Right cluster | `.td-topbar-actions` — wraps Revision + Primary action; `margin-left: auto` pushes it to the header's right padding edge |
 
-Right-end order is fixed: revision · primary action. There is **no user, account or
-sign-in element** anywhere in the bar.
+Right-end order is fixed: revision · primary action, grouped as one `.td-topbar-actions`
+cluster. The cluster is **right-aligned — flush to the header's right padding edge** (R5):
+the search grows to its 340px cap, then `margin-left: auto` on the cluster absorbs the rest,
+so `[data-new-task]` hugs the right edge at 1512 / 1240 / 980 / 500 with no trailing gap.
+The cluster is a single flex item, so the revision readout and the button never split across
+the two rows the bar folds into at 760–779px — there the button sits flush right on its own
+row. The `[data-new-task]` hook and its interaction are unchanged: a click still opens the
+create dialog (**B10**). There is **no user, account or sign-in element** anywhere
+in the bar.
 
 The theme and language controls **left the bar in review round v1.2** and became three
 direct controls in the sidebar footer in **v1.4** (B03 · theme switch / language menu /

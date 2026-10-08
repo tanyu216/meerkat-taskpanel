@@ -3932,6 +3932,14 @@ html[data-theme="dark"] {
     border-radius: var(--r-md);
     background-color: var(--color-td-surface);
   }
+  .td-topbar-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+    min-width: 0;
+    margin-left: auto;
+  }
   .td-live-dot {
     width: 6px;
     height: 6px;
@@ -5874,6 +5882,9 @@ html[data-theme="dark"] {
       gap: 6px;
       padding: 8px;
       row-gap: 8px;
+    }
+    .td-topbar-actions {
+      gap: 6px;
     }
     .td-topbar .td-divider-v {
       display: none;
