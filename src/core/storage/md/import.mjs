@@ -65,12 +65,21 @@ export const KNOWN_CARD_KEYS = Object.freeze([
   "depends_on",
   "parent",
   "review_of",
-  "notify_elon",
+  "notify_leader",
   "goal",
 ]);
 
 /** Keys that are stored in `meta_json` rather than in a column. */
-const META_KEYS = Object.freeze(["notify_elon"]);
+const META_KEYS = Object.freeze(["notify_leader"]);
+
+/**
+ * Old frontmatter spellings kept as *read-only* aliases, mapped to their
+ * canonical key at parse time. The card field was renamed `notify_elon` →
+ * `notify_leader` (the field names a role, not a person), so a card written
+ * before the rename must still arrive — and must never be filed under
+ * `meta_json.legacy` as if it were an unknown key.
+ */
+const CARD_KEY_ALIASES = Object.freeze({ notify_elon: "notify_leader" });
 
 const TS_FALLBACK = "1970-01-01T00:00:00.000Z";
 
@@ -352,8 +361,15 @@ export function parseCard(text, { file }) {
   const legacy = {};
   const meta = {};
   for (const key of order) {
-    if (!KNOWN_CARD_KEYS.includes(key)) legacy[key] = data[key];
-    else if (META_KEYS.includes(key)) meta[key] = data[key];
+    const canonical = CARD_KEY_ALIASES[key] ?? key;
+    if (!KNOWN_CARD_KEYS.includes(canonical)) legacy[key] = data[key];
+    else if (META_KEYS.includes(canonical) && key === canonical) meta[canonical] = data[key];
+  }
+  // Read-compat: an alias only fills in for a canonical key the card did not
+  // carry, so the new spelling always wins regardless of key order.
+  for (const key of order) {
+    const canonical = CARD_KEY_ALIASES[key];
+    if (canonical !== undefined && meta[canonical] === undefined) meta[canonical] = data[key];
   }
 
   const reports = sections.has("Report") ? parseReportBlock(sections.get("Report")) : [];
@@ -384,7 +400,7 @@ export function parseCard(text, { file }) {
     dependsOn: normalizeLabels(data.depends_on ?? null),
     parent: typeof data.parent === "string" && data.parent.trim() !== "" ? data.parent : null,
     reviewOf: typeof data.review_of === "string" && data.review_of.trim() !== "" ? data.review_of : null,
-    notifyElon: nullable(meta.notify_elon),
+    notifyLeader: nullable(meta.notify_leader),
     acceptance: sections.has("Acceptance") ? parseAcceptanceBlock(sections.get("Acceptance")) : [],
     progress: sections.has("Progress") ? parseProgressBlock(sections.get("Progress")) : [],
     comments: sections.has("Comments")
@@ -409,7 +425,7 @@ export function parseCard(text, { file }) {
     legacy,
     meta: {
       ...(legacyStatus === null ? {} : { legacy_status: legacyStatus }),
-      ...(meta.notify_elon === undefined ? {} : { notify_elon: meta.notify_elon }),
+      ...(meta.notify_leader === undefined ? {} : { notify_leader: meta.notify_leader }),
       ...(Object.keys(legacy).length === 0 ? {} : { legacy }),
       acceptance_legacy: parseAcceptanceChecklist(sections.get("Acceptance")),
       ...(reportMissingWarning ? { import_warnings: ["report_missing"] } : {}),

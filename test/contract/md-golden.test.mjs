@@ -276,7 +276,7 @@ describe("contract/md-golden — the data that must survive", () => {
     try {
       const epic = board.repos.tasks.getByIdentifier("proj", "PROJ-0001");
       assert.equal(epic.meta.legacy.git_rules, "branch: feat/m1-core\ncommit: explicit paths only\nreview: Elon\n");
-      assert.equal(epic.meta.notify_elon, "yes");
+      assert.equal(epic.meta.notify_leader, "yes");
       assert.deepEqual(epic.meta.acceptance_legacy, [
         { text: "domain has no Node I/O", checked: true },
         { text: "storage uses node:sqlite only", checked: false },
@@ -314,6 +314,72 @@ describe("contract/md-golden — the data that must survive", () => {
         undefined,
         "a todo card needs no report, so there is nothing to warn about",
       );
+    } finally {
+      board.close();
+    }
+  });
+});
+
+describe("contract/md-golden — notify_leader, and the read-only notify_elon alias", () => {
+  it("round-trips the renamed key: import keeps it, export emits it and nothing else", async () => {
+    const board = await importFixtures();
+    try {
+      const epic = board.repos.tasks.getByIdentifier("proj", "PROJ-0001");
+      assert.equal(epic.meta.notify_leader, "yes", "the new key is the persisted one");
+      assert.equal(epic.meta.notify_elon, undefined, "the old key is never written");
+
+      const out = join(makeTempDir("md-notify-"), "cards");
+      exportMd({ repos: board.repos, outDir: out, now: TS });
+      const card = readFileSync(join(out, "PROJ-0001.md"), "utf8");
+      assert.match(card, /^notify_leader: yes$/m);
+      assert.equal(card.includes("notify_elon"), false, "the old key must not reappear");
+      assert.equal(card, readFileSync(join(GOLDEN, "PROJ-0001.md"), "utf8"), "and the card is byte-stable");
+    } finally {
+      board.close();
+    }
+  });
+
+  it("reads the legacy notify_elon as an alias — mapped to notify_leader, never left in legacy", async () => {
+    // A card written by the team before the rename: `notify_elon`, no `notify_leader`.
+    const legacyCard = readFileSync(join(FIXTURES, "PROJ-0001.md"), "utf8").replace("notify_leader: yes", "notify_elon: yes");
+    assert.match(legacyCard, /^notify_elon: yes$/m);
+
+    const dir = join(makeTempDir("md-alias-"), "cards");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "PROJ-0001.md"), legacyCard, "utf8");
+
+    const board = await createTempBoard();
+    const repos = createRepositories(board.db);
+    try {
+      importMd({ db: board.db, repos, dir, now: TS });
+      const epic = repos.tasks.getByIdentifier("proj", "PROJ-0001");
+      assert.equal(epic.meta.notify_leader, "yes", "the alias value lands on the canonical key");
+      assert.equal(epic.meta.notify_elon, undefined);
+      assert.equal(epic.meta.legacy?.notify_elon, undefined, "the alias is recognised, so it is not 'unrecognised'");
+
+      const out = join(makeTempDir("md-alias-out-"), "cards");
+      exportMd({ repos, outDir: out, now: TS });
+      const card = readFileSync(join(out, "PROJ-0001.md"), "utf8");
+      assert.match(card, /^notify_leader: yes$/m);
+      assert.equal(card.includes("notify_elon"), false, "the export speaks only the new name");
+    } finally {
+      board.close();
+    }
+  });
+
+  it("prefers the new key when a card carries both", async () => {
+    const both = readFileSync(join(FIXTURES, "PROJ-0001.md"), "utf8").replace("notify_leader: yes", "notify_elon: no\nnotify_leader: yes");
+    const board = await createTempBoard();
+    const repos = createRepositories(board.db);
+    const dir = join(makeTempDir("md-both-"), "cards");
+    try {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "PROJ-0001.md"), both, "utf8");
+      importMd({ db: board.db, repos, dir, now: TS });
+      const epic = repos.tasks.getByIdentifier("proj", "PROJ-0001");
+      assert.equal(epic.meta.notify_leader, "yes");
+      assert.equal(epic.meta.notify_elon, undefined);
+      assert.equal(epic.meta.legacy?.notify_elon, undefined);
     } finally {
       board.close();
     }

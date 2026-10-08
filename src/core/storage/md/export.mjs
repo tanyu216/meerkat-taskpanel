@@ -53,7 +53,7 @@ export const CARD_KEY_ORDER = Object.freeze([
   "blocked_at",
   "depends_on",
   "parent",
-  "notify_elon",
+  "notify_leader",
 ]);
 
 /**
@@ -137,7 +137,7 @@ export function renderCard(task, context) {
     if (parent !== null) data.parent = parent.identifier;
   }
 
-  if (meta.notify_elon !== undefined) data.notify_elon = meta.notify_elon;
+  if (meta.notify_leader !== undefined) data.notify_leader = meta.notify_leader;
   // Unrecognised keys go back exactly as they came in, in their original order.
   for (const [key, value] of Object.entries(meta.legacy ?? {})) {
     if (!Object.hasOwn(data, key)) data[key] = value;
