@@ -1,10 +1,11 @@
 <!doctype html>
-<html lang="en" data-theme="taskdash">
+<html lang="en" data-theme="taskpanel">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
-    <title data-i18n="app.title">TaskDashboard — Board</title>
+    <title data-i18n="app.title">TaskPanel — Board</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <link rel="stylesheet" href="tw.css" />
   </head>
   <body>
@@ -17,10 +18,16 @@
            ================================================================ -->
       <header class="td-topbar" data-topbar>
         <a class="td-brand" href="#" data-brand>
-          <svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path d="M4 5h6v6H4zM14 5h6v3h-6zM4 15h6v4H4zM14 12h6v7h-6z" />
+          <!-- Signal Bars — the brand mark, geometry fixed by BRAND.md §5.
+               bar1/bar2 read --color-td-ink, bar3 + node read --color-td-accent,
+               so the mark follows the active theme with no second file. -->
+          <svg class="td-logo" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+            <rect x="5" y="17" width="6" height="10" rx="3" fill="var(--color-td-ink)" />
+            <rect x="13" y="12" width="6" height="15" rx="3" fill="var(--color-td-ink)" />
+            <rect x="21" y="10" width="6" height="17" rx="3" fill="var(--color-td-accent)" />
+            <circle cx="24" cy="6" r="2.75" fill="var(--color-td-accent)" />
           </svg>
-          <span class="td-brand-name" data-i18n="app.brand">TaskDashboard</span>
+          <span class="td-brand-name" data-i18n="app.brand">TaskPanel</span>
           <span class="td-brand-sub" data-i18n="app.tagline">Agent Task Collaboration</span>
         </a>
 
@@ -31,15 +38,15 @@
             <svg class="td-icon td-icon-sm" data-project-switcher-icon viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M12 3 3 8l9 5 9-5-9-5ZM3 14l9 5 9-5" />
             </svg>
-            <span class="td-mono" data-project-current>TaskDashboard</span>
+            <span class="td-mono" data-project-current>TaskPanel</span>
             <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M6 9.5 12 15.5 18 9.5" />
             </svg>
           </summary>
           <ul class="dropdown-content menu w-56">
             <li>
-              <button type="button" data-project-option="TaskDashboard" aria-current="true">
-                <span class="td-mono">TaskDashboard</span>
+              <button type="button" data-project-option="TaskPanel" aria-current="true">
+                <span class="td-mono">TaskPanel</span>
               </button>
             </li>
             <li>
@@ -91,14 +98,17 @@
           </svg>
         </button>
 
-        <div class="td-seg" data-view-toggle role="group" data-i18n-aria-label="topbar.view" aria-label="View">
-          <button type="button" class="td-seg-btn" data-view="board" aria-pressed="true">
+        <!-- daisyUI `tabs` (boxed) carries the shell; `td-tabs` supplies the
+             brand tokens only. The two buttons stay `aria-pressed` toggles, so
+             `data-view-toggle` / `data-view` keep working unchanged. -->
+        <div class="tabs tabs-box td-tabs" data-view-toggle role="group" data-i18n-aria-label="topbar.view" aria-label="View">
+          <button type="button" class="tab td-tab" data-view="board" aria-pressed="true">
             <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M4 5h4v14H4zM10 5h4v9h-4zM16 5h4v11h-4z" />
             </svg>
             <span class="td-view-toggle-label" data-i18n="topbar.view.board">Board</span>
           </button>
-          <button type="button" class="td-seg-btn" data-view="list" aria-pressed="false">
+          <button type="button" class="tab td-tab" data-view="list" aria-pressed="false">
             <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M4 6h16M4 12h16M4 18h16" />
             </svg>
@@ -150,20 +160,20 @@
         <section>
           <h2 class="td-side-label" data-i18n="sidebar.projects">Projects</h2>
           <div class="td-nav mt-2" data-project-list>
-            <button type="button" class="td-side-item" data-project="TaskDashboard" aria-current="page" title="TaskDashboard">
+            <button type="button" class="td-side-item" data-project="TaskPanel" aria-current="page" title="TaskPanel">
               <span class="td-side-icon td-mono" aria-hidden="true">TD</span>
-              <span class="td-side-name td-mono">TaskDashboard</span>
-              <span class="td-count" data-project-count>12</span>
+              <span class="td-side-name td-mono">TaskPanel</span>
+              <span class="badge badge-sm td-count" data-project-count>12</span>
             </button>
             <button type="button" class="td-side-item" data-project="Orchestrator" title="Orchestrator">
               <span class="td-side-icon td-mono" aria-hidden="true">ORC</span>
               <span class="td-side-name td-mono">Orchestrator</span>
-              <span class="td-count" data-project-count>4</span>
+              <span class="badge badge-sm td-count" data-project-count>4</span>
             </button>
             <button type="button" class="td-side-item" data-project="Site Refresh" title="Site Refresh">
               <span class="td-side-icon td-mono" aria-hidden="true">SR</span>
               <span class="td-side-name td-mono">Site Refresh</span>
-              <span class="td-count" data-project-count>2</span>
+              <span class="badge badge-sm td-count" data-project-count>2</span>
             </button>
           </div>
         </section>
@@ -172,22 +182,22 @@
           <h2 class="td-side-label" data-i18n="sidebar.agents">Active agents</h2>
           <div class="mt-2" data-agents-presence>
             <div class="td-agent-row" title="claude · jobs, linus, simons" data-agent-row="claude">
-              <span class="td-agent-badge" data-agent-platform="claude">claude</span>
+              <span class="badge badge-xs td-agent-badge" data-agent-platform="claude">claude</span>
               <span class="td-side-name td-agent-text td-mono">jobs, linus, simons</span>
               <span class="td-presence" data-presence="running" role="img" data-i18n-aria-label="presence.running" aria-label="running"></span>
             </div>
             <div class="td-agent-row" title="openclaw · elon">
-              <span class="td-agent-badge" data-agent-platform="openclaw">openclaw</span>
+              <span class="badge badge-xs td-agent-badge" data-agent-platform="openclaw">openclaw</span>
               <span class="td-side-name td-agent-text td-mono">elon</span>
               <span class="td-presence" data-presence="running" role="img" data-i18n-aria-label="presence.running" aria-label="running"></span>
             </div>
             <div class="td-agent-row" title="codex · turing">
-              <span class="td-agent-badge" data-agent-platform="codex">codex</span>
+              <span class="badge badge-xs td-agent-badge" data-agent-platform="codex">codex</span>
               <span class="td-side-name td-agent-text td-mono">turing</span>
               <span class="td-presence" data-presence="idle" role="img" data-i18n-aria-label="presence.idle" aria-label="idle"></span>
             </div>
             <div class="td-agent-row" title="pi · assistant">
-              <span class="td-agent-badge" data-agent-platform="pi">pi</span>
+              <span class="badge badge-xs td-agent-badge" data-agent-platform="pi">pi</span>
               <span class="td-side-name td-agent-text td-mono">assistant</span>
               <span class="td-presence" data-presence="running" role="img" data-i18n-aria-label="presence.running" aria-label="running"></span>
             </div>
@@ -200,31 +210,31 @@
           <div class="td-legend mt-2" data-legend>
             <div class="td-legend td-legend-status" data-legend-status>
               <span class="td-legend-chip" data-status="backlog">
-                <span class="td-status-dot" aria-hidden="true"></span>
+                <span class="status td-status-dot" aria-hidden="true"></span>
                 <span data-i18n="status.backlog">Backlog</span>
               </span>
               <span class="td-legend-chip" data-status="todo">
-                <span class="td-status-dot" aria-hidden="true"></span>
+                <span class="status td-status-dot" aria-hidden="true"></span>
                 <span data-i18n="status.todo">To Do</span>
               </span>
               <span class="td-legend-chip" data-status="in_progress">
-                <span class="td-status-dot" aria-hidden="true"></span>
+                <span class="status td-status-dot" aria-hidden="true"></span>
                 <span data-i18n="status.in_progress">In Progress</span>
               </span>
               <span class="td-legend-chip" data-status="in_review">
-                <span class="td-status-dot" aria-hidden="true"></span>
+                <span class="status td-status-dot" aria-hidden="true"></span>
                 <span data-i18n="status.in_review">In Review</span>
               </span>
               <span class="td-legend-chip" data-status="blocked">
-                <span class="td-status-dot" aria-hidden="true"></span>
+                <span class="status td-status-dot" aria-hidden="true"></span>
                 <span data-i18n="status.blocked">Blocked</span>
               </span>
               <span class="td-legend-chip" data-status="done">
-                <span class="td-status-dot" aria-hidden="true"></span>
+                <span class="status td-status-dot" aria-hidden="true"></span>
                 <span data-i18n="status.done">Done</span>
               </span>
               <span class="td-legend-chip" data-status="canceled">
-                <span class="td-status-dot" aria-hidden="true"></span>
+                <span class="status td-status-dot" aria-hidden="true"></span>
                 <span data-i18n="status.canceled">Canceled</span>
               </span>
             </div>
@@ -368,7 +378,7 @@
       <main class="td-main">
         <section class="td-filters" id="td-filters" data-filters data-i18n-aria-label="filters.label" aria-label="Filters">
           <label class="td-sr" for="td-filter-assignee" data-i18n="filters.assignee">Assignee</label>
-          <select class="td-select" id="td-filter-assignee" data-filter-assignee>
+          <select class="select select-sm td-select" id="td-filter-assignee" data-filter-assignee>
             <option value="all" data-i18n="filters.assignee.all">Assignee: All</option>
             <option value="me" data-i18n="filters.assignee.me">Assignee: Me</option>
             <option value="human" data-i18n="filters.assignee.human">Assignee: Human</option>
@@ -376,7 +386,7 @@
           </select>
 
           <label class="td-sr" for="td-filter-priority" data-i18n="filters.priority">Priority</label>
-          <select class="td-select" id="td-filter-priority" data-filter-priority>
+          <select class="select select-sm td-select" id="td-filter-priority" data-filter-priority>
             <option value="all" data-i18n="filters.priority.all">Priority: All</option>
             <option value="urgent" data-i18n="filters.priority.urgent">Priority: Urgent</option>
             <option value="high" data-i18n="filters.priority.high">Priority: High</option>
@@ -385,26 +395,44 @@
             <option value="none" data-i18n="filters.priority.none">Priority: None</option>
           </select>
 
-          <label class="td-sr" for="td-filter-label" data-i18n="filters.labelLabel">Label</label>
-          <select class="td-select" id="td-filter-label" data-filter-label>
-            <option value="all" data-i18n="filters.label.all">Label: All</option>
-            <option value="a11y" data-i18n="filters.labelOption" data-i18n-arg="a11y">Label: a11y</option>
-            <option value="agent" data-i18n="filters.labelOption" data-i18n-arg="agent">Label: agent</option>
-            <option value="api" data-i18n="filters.labelOption" data-i18n-arg="api">Label: api</option>
-            <option value="backend" data-i18n="filters.labelOption" data-i18n-arg="backend">Label: backend</option>
-            <option value="board" data-i18n="filters.labelOption" data-i18n-arg="board">Label: board</option>
-            <option value="ci" data-i18n="filters.labelOption" data-i18n-arg="ci">Label: ci</option>
-            <option value="data" data-i18n="filters.labelOption" data-i18n-arg="data">Label: data</option>
-            <option value="design" data-i18n="filters.labelOption" data-i18n-arg="design">Label: design</option>
-            <option value="docs" data-i18n="filters.labelOption" data-i18n-arg="docs">Label: docs</option>
-            <option value="infra" data-i18n="filters.labelOption" data-i18n-arg="infra">Label: infra</option>
-            <option value="perf" data-i18n="filters.labelOption" data-i18n-arg="perf">Label: perf</option>
-            <option value="prototype" data-i18n="filters.labelOption" data-i18n-arg="prototype">Label: prototype</option>
-            <option value="realtime" data-i18n="filters.labelOption" data-i18n-arg="realtime">Label: realtime</option>
-            <option value="security" data-i18n="filters.labelOption" data-i18n-arg="security">Label: security</option>
-            <option value="ui" data-i18n="filters.labelOption" data-i18n-arg="ui">Label: ui</option>
-            <option value="ux" data-i18n="filters.labelOption" data-i18n-arg="ux">Label: ux</option>
-          </select>
+          <!-- Label selector — a daisyUI `dropdown` carrying a `menu`, one menu
+               item per label, with the active choice echoed as a `badge` on the
+               trigger. The chosen value lives on the element that owns the
+               `[data-filter-label]` hook, so the contract is unchanged while the
+               control is no longer a native <select>. -->
+          <details class="dropdown" data-filter-label data-filter-label-value="all">
+            <summary
+              class="btn btn-sm td-label-trigger"
+              role="button"
+              aria-haspopup="menu"
+              data-i18n-aria-label="filters.labelLabel"
+              aria-label="Label"
+            >
+              <span class="badge badge-sm td-chip td-chip-label" data-filter-label-summary>Label: All</span>
+              <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M6 9.5 12 15.5 18 9.5" />
+              </svg>
+            </summary>
+            <ul class="dropdown-content menu td-label-menu">
+              <li><button type="button" data-filter-label-option data-label-value="all" aria-current="true" data-i18n="filters.label.all">Label: All</button></li>
+              <li><button type="button" data-filter-label-option data-label-value="a11y" data-i18n="filters.labelOption" data-i18n-arg="a11y">Label: a11y</button></li>
+              <li><button type="button" data-filter-label-option data-label-value="agent" data-i18n="filters.labelOption" data-i18n-arg="agent">Label: agent</button></li>
+              <li><button type="button" data-filter-label-option data-label-value="api" data-i18n="filters.labelOption" data-i18n-arg="api">Label: api</button></li>
+              <li><button type="button" data-filter-label-option data-label-value="backend" data-i18n="filters.labelOption" data-i18n-arg="backend">Label: backend</button></li>
+              <li><button type="button" data-filter-label-option data-label-value="board" data-i18n="filters.labelOption" data-i18n-arg="board">Label: board</button></li>
+              <li><button type="button" data-filter-label-option data-label-value="ci" data-i18n="filters.labelOption" data-i18n-arg="ci">Label: ci</button></li>
+              <li><button type="button" data-filter-label-option data-label-value="data" data-i18n="filters.labelOption" data-i18n-arg="data">Label: data</button></li>
+              <li><button type="button" data-filter-label-option data-label-value="design" data-i18n="filters.labelOption" data-i18n-arg="design">Label: design</button></li>
+              <li><button type="button" data-filter-label-option data-label-value="docs" data-i18n="filters.labelOption" data-i18n-arg="docs">Label: docs</button></li>
+              <li><button type="button" data-filter-label-option data-label-value="infra" data-i18n="filters.labelOption" data-i18n-arg="infra">Label: infra</button></li>
+              <li><button type="button" data-filter-label-option data-label-value="perf" data-i18n="filters.labelOption" data-i18n-arg="perf">Label: perf</button></li>
+              <li><button type="button" data-filter-label-option data-label-value="prototype" data-i18n="filters.labelOption" data-i18n-arg="prototype">Label: prototype</button></li>
+              <li><button type="button" data-filter-label-option data-label-value="realtime" data-i18n="filters.labelOption" data-i18n-arg="realtime">Label: realtime</button></li>
+              <li><button type="button" data-filter-label-option data-label-value="security" data-i18n="filters.labelOption" data-i18n-arg="security">Label: security</button></li>
+              <li><button type="button" data-filter-label-option data-label-value="ui" data-i18n="filters.labelOption" data-i18n-arg="ui">Label: ui</button></li>
+              <li><button type="button" data-filter-label-option data-label-value="ux" data-i18n="filters.labelOption" data-i18n-arg="ux">Label: ux</button></li>
+            </ul>
+          </details>
 
           <button type="button" class="btn btn-ghost btn-sm" data-filter-clear data-i18n="filters.clear">Clear</button>
           <span class="td-filter-count" data-filter-count aria-live="polite" data-i18n="filters.count.initial">12 tasks</span>
@@ -412,8 +440,12 @@
 
         <!-- B12 · Empty state — no results -->
         <div class="td-empty td-empty-lg" data-empty data-empty-kind="no-results" hidden>
-          <svg class="td-icon" style="width: 24px; height: 24px" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 8v5M12 16h.01" />
+          <!-- the brand mark stands in for the generic no-results glyph -->
+          <svg class="td-logo td-logo-lg" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+            <rect x="5" y="17" width="6" height="10" rx="3" fill="var(--color-td-ink-3)" />
+            <rect x="13" y="12" width="6" height="15" rx="3" fill="var(--color-td-ink-3)" />
+            <rect x="21" y="10" width="6" height="17" rx="3" fill="var(--color-td-accent)" />
+            <circle cx="24" cy="6" r="2.75" fill="var(--color-td-accent)" />
           </svg>
           <span class="td-empty-title" data-i18n="noResults.title">No tasks match your filters</span>
           <span class="td-empty-hint" data-i18n="noResults.hint">Adjust the search or clear the filters to see the full board.</span>
@@ -427,9 +459,9 @@
           <!-- backlog -->
           <section class="td-col" data-column data-status="backlog" data-i18n-aria-label="status.backlog" aria-label="Backlog">
             <header class="td-col-head" data-column-header>
-              <span class="td-status-dot" data-column-dot aria-hidden="true"></span>
+              <span class="status td-status-dot" data-column-dot aria-hidden="true"></span>
               <h2 class="td-col-name" data-column-name data-i18n="status.backlog">Backlog</h2>
-              <span class="td-count" data-column-count>2</span>
+              <span class="badge badge-sm td-count" data-column-count>2</span>
               <button
                 type="button"
                 class="td-iconbtn td-col-add"
@@ -442,6 +474,8 @@
                 </svg>
               </button>
             </header>
+            <!-- column occupancy — share of the fullest column (refreshColumns) -->
+            <progress class="progress progress-xs td-col-progress" data-column-progress value="0" max="1" aria-hidden="true"></progress>
             <div class="td-col-body" data-column-body>
               <article
                 class="td-card"
@@ -451,7 +485,7 @@
                 data-id="td_01HQ8ZM4K2P7RQY"
                 data-status="backlog"
                 data-priority="none"
-                data-project="TaskDashboard"
+                data-project="TaskPanel"
                 data-assignee="elon"
                 data-assignee-kind="agent"
                 data-reporter="Terry"
@@ -485,8 +519,8 @@
                 </div>
                 <button type="button" class="td-card-title" data-card-title>Add bulk status change to board selection</button>
                 <div class="td-card-labels" data-card-labels>
-                  <span class="td-chip td-chip-label" data-label="ux">ux</span>
-                  <span class="td-chip td-chip-label" data-label="board">board</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="ux">ux</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="board">board</span>
                 </div>
                 <div class="td-card-foot">
                   <span class="td-pri" data-card-priority role="img" aria-label="Priority: None" title="Priority: None">
@@ -495,8 +529,8 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="elon" hidden>EL</span>
-                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="openclaw">openclaw</span>
+                  <span class="avatar" hidden><span class="td-avatar" data-card-assignee title="elon">EL</span></span>
+                  <span class="badge badge-xs td-agent-badge" data-card-agent-badge data-agent-platform="openclaw">openclaw</span>
                   <span class="td-agent-role td-mono" data-card-agent-role title="elon">elon</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations hidden>
@@ -533,7 +567,7 @@
                 data-id="td_01HQ8ZM4K2Q1XTV"
                 data-status="backlog"
                 data-priority="low"
-                data-project="TaskDashboard"
+                data-project="TaskPanel"
                 data-assignee="turing"
                 data-assignee-kind="agent"
                 data-reporter="Terry"
@@ -567,8 +601,8 @@
                 </div>
                 <button type="button" class="td-card-title" data-card-title>Audit dependency licences for vendored assets</button>
                 <div class="td-card-labels" data-card-labels>
-                  <span class="td-chip td-chip-label" data-label="security">security</span>
-                  <span class="td-chip td-chip-label" data-label="audit">audit</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="security">security</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="audit">audit</span>
                 </div>
                 <div class="td-card-foot">
                   <span class="td-pri" data-card-priority role="img" aria-label="Priority: Low" title="Priority: Low">
@@ -577,8 +611,8 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="turing" hidden>TU</span>
-                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="codex">codex</span>
+                  <span class="avatar" hidden><span class="td-avatar" data-card-assignee title="turing">TU</span></span>
+                  <span class="badge badge-xs td-agent-badge" data-card-agent-badge data-agent-platform="codex">codex</span>
                   <span class="td-agent-role td-mono" data-card-agent-role title="turing">turing</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations>
@@ -649,8 +683,8 @@
                 </div>
                 <button type="button" class="td-card-title" data-card-title>Cache task list responses per project</button>
                 <div class="td-card-labels" data-card-labels>
-                  <span class="td-chip td-chip-label" data-label="perf">perf</span>
-                  <span class="td-chip td-chip-label" data-label="backend">backend</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="perf">perf</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="backend">backend</span>
                 </div>
                 <div class="td-card-foot">
                   <span class="td-pri" data-card-priority role="img" aria-label="Priority: Low" title="Priority: Low">
@@ -659,8 +693,8 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="turing" hidden>TU</span>
-                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="codex">codex</span>
+                  <span class="avatar" hidden><span class="td-avatar" data-card-assignee title="turing">TU</span></span>
+                  <span class="badge badge-xs td-agent-badge" data-card-agent-badge data-agent-platform="codex">codex</span>
                   <span class="td-agent-role td-mono" data-card-agent-role title="turing">turing</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations hidden>
@@ -700,13 +734,15 @@
           <!-- todo -->
           <section class="td-col" data-column data-status="todo" data-i18n-aria-label="status.todo" aria-label="To Do">
             <header class="td-col-head" data-column-header>
-              <span class="td-status-dot" data-column-dot aria-hidden="true"></span>
+              <span class="status td-status-dot" data-column-dot aria-hidden="true"></span>
               <h2 class="td-col-name" data-column-name data-i18n="status.todo">To Do</h2>
-              <span class="td-count" data-column-count>2</span>
+              <span class="badge badge-sm td-count" data-column-count>2</span>
               <button type="button" class="td-iconbtn td-col-add" data-column-add data-i18n-aria-label="column.add" aria-label="Add task to To Do" data-i18n-arg="status.todo">
                 <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>
               </button>
             </header>
+            <!-- column occupancy — share of the fullest column (refreshColumns) -->
+            <progress class="progress progress-xs td-col-progress" data-column-progress value="0" max="1" aria-hidden="true"></progress>
             <div class="td-col-body" data-column-body>
               <article
                 class="td-card"
@@ -716,7 +752,7 @@
                 data-id="td_01HQ8ZC4M2K7V9P"
                 data-status="todo"
                 data-priority="high"
-                data-project="TaskDashboard"
+                data-project="TaskPanel"
                 data-assignee="linus"
                 data-assignee-kind="agent"
                 data-reporter="Terry"
@@ -750,8 +786,8 @@
                 </div>
                 <button type="button" class="td-card-title" data-card-title>Wire keyboard navigation across board columns</button>
                 <div class="td-card-labels" data-card-labels>
-                  <span class="td-chip td-chip-label" data-label="a11y">a11y</span>
-                  <span class="td-chip td-chip-label" data-label="board">board</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="a11y">a11y</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="board">board</span>
                 </div>
                 <div class="td-card-foot">
                   <span class="td-pri" data-card-priority role="img" aria-label="Priority: High" title="Priority: High">
@@ -760,8 +796,8 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="linus" hidden>LI</span>
-                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="claude">claude</span>
+                  <span class="avatar" hidden><span class="td-avatar" data-card-assignee title="linus">LI</span></span>
+                  <span class="badge badge-xs td-agent-badge" data-card-agent-badge data-agent-platform="claude">claude</span>
                   <span class="td-agent-role td-mono" data-card-agent-role title="linus">linus</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations>
@@ -798,7 +834,7 @@
                 data-id="td_01HQ9A2B7C4D6EFG"
                 data-status="todo"
                 data-priority="medium"
-                data-project="TaskDashboard"
+                data-project="TaskPanel"
                 data-assignee="assistant"
                 data-assignee-kind="agent"
                 data-reporter="Terry"
@@ -832,7 +868,7 @@
                 </div>
                 <button type="button" class="td-card-title" data-card-title>Expose task version in the edit response</button>
                 <div class="td-card-labels" data-card-labels>
-                  <span class="td-chip td-chip-label" data-label="api">api</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="api">api</span>
                 </div>
                 <div class="td-card-foot">
                   <span class="td-pri" data-card-priority role="img" aria-label="Priority: Medium" title="Priority: Medium">
@@ -841,8 +877,8 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="assistant" hidden>AS</span>
-                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="pi">pi</span>
+                  <span class="avatar" hidden><span class="td-avatar" data-card-assignee title="assistant">AS</span></span>
+                  <span class="badge badge-xs td-agent-badge" data-card-agent-badge data-agent-platform="pi">pi</span>
                   <span class="td-agent-role td-mono" data-card-agent-role title="assistant">assistant</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations hidden>
@@ -913,7 +949,7 @@
                 </div>
                 <button type="button" class="td-card-title" data-card-title>Document agent claim and lease semantics</button>
                 <div class="td-card-labels" data-card-labels>
-                  <span class="td-chip td-chip-label" data-label="docs">docs</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="docs">docs</span>
                 </div>
                 <div class="td-card-foot">
                   <span class="td-pri" data-card-priority role="img" aria-label="Priority: Low" title="Priority: Low">
@@ -922,8 +958,8 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="Terry">T</span>
-                  <span class="td-agent-badge" data-card-agent-badge hidden></span>
+                  <span class="avatar"><span class="td-avatar" data-card-assignee title="Terry">T</span></span>
+                  <span class="badge badge-xs td-agent-badge" data-card-agent-badge hidden></span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations hidden>
                       <span data-relation-parent hidden>
@@ -962,13 +998,15 @@
           <!-- in_progress -->
           <section class="td-col" data-column data-status="in_progress" data-i18n-aria-label="status.in_progress" aria-label="In Progress">
             <header class="td-col-head" data-column-header>
-              <span class="td-status-dot" data-column-dot aria-hidden="true"></span>
+              <span class="status td-status-dot" data-column-dot aria-hidden="true"></span>
               <h2 class="td-col-name" data-column-name data-i18n="status.in_progress">In Progress</h2>
-              <span class="td-count" data-column-count>2</span>
+              <span class="badge badge-sm td-count" data-column-count>2</span>
               <button type="button" class="td-iconbtn td-col-add" data-column-add data-i18n-aria-label="column.add" aria-label="Add task to In Progress" data-i18n-arg="status.in_progress">
                 <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>
               </button>
             </header>
+            <!-- column occupancy — share of the fullest column (refreshColumns) -->
+            <progress class="progress progress-xs td-col-progress" data-column-progress value="0" max="1" aria-hidden="true"></progress>
             <div class="td-col-body" data-column-body>
               <article
                 class="td-card"
@@ -978,7 +1016,7 @@
                 data-id="td_01HQ7Y1A9B3C5DHL"
                 data-status="in_progress"
                 data-priority="urgent"
-                data-project="TaskDashboard"
+                data-project="TaskPanel"
                 data-assignee="jobs"
                 data-assignee-kind="agent"
                 data-reporter="Terry"
@@ -1012,8 +1050,8 @@
                 </div>
                 <button type="button" class="td-card-title" data-card-title>Draft the v1 prototype of the task board</button>
                 <div class="td-card-labels" data-card-labels>
-                  <span class="td-chip td-chip-label" data-label="design">design</span>
-                  <span class="td-chip td-chip-label" data-label="prototype">prototype</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="design">design</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="prototype">prototype</span>
                 </div>
                 <div class="td-card-foot">
                   <span class="td-pri" data-card-priority role="img" aria-label="Priority: Urgent" title="Priority: Urgent">
@@ -1022,8 +1060,8 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="jobs" hidden>JO</span>
-                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="claude">claude</span>
+                  <span class="avatar" hidden><span class="td-avatar" data-card-assignee title="jobs">JO</span></span>
+                  <span class="badge badge-xs td-agent-badge" data-card-agent-badge data-agent-platform="claude">claude</span>
                   <span class="td-agent-role td-mono" data-card-agent-role title="jobs">jobs</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations>
@@ -1060,7 +1098,7 @@
                 data-id="td_01HQ8ZM4K2R8UWX"
                 data-status="in_progress"
                 data-priority="low"
-                data-project="TaskDashboard"
+                data-project="TaskPanel"
                 data-assignee="simons"
                 data-assignee-kind="agent"
                 data-reporter="Terry"
@@ -1094,8 +1132,8 @@
                 </div>
                 <button type="button" class="td-card-title" data-card-title>Tighten filter debounce and query state</button>
                 <div class="td-card-labels" data-card-labels>
-                  <span class="td-chip td-chip-label" data-label="perf">perf</span>
-                  <span class="td-chip td-chip-label" data-label="board">board</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="perf">perf</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="board">board</span>
                 </div>
                 <div class="td-card-foot">
                   <span class="td-pri" data-card-priority role="img" aria-label="Priority: Low" title="Priority: Low">
@@ -1104,8 +1142,8 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="simons" hidden>SI</span>
-                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="claude">claude</span>
+                  <span class="avatar" hidden><span class="td-avatar" data-card-assignee title="simons">SI</span></span>
+                  <span class="badge badge-xs td-agent-badge" data-card-agent-badge data-agent-platform="claude">claude</span>
                   <span class="td-agent-role td-mono" data-card-agent-role title="simons">simons</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations hidden>
@@ -1176,8 +1214,8 @@
                 </div>
                 <button type="button" class="td-card-title" data-card-title>Implement the revision stream</button>
                 <div class="td-card-labels" data-card-labels>
-                  <span class="td-chip td-chip-label" data-label="realtime">realtime</span>
-                  <span class="td-chip td-chip-label" data-label="backend">backend</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="realtime">realtime</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="backend">backend</span>
                 </div>
                 <div class="td-card-foot">
                   <span class="td-pri" data-card-priority role="img" aria-label="Priority: High" title="Priority: High">
@@ -1186,8 +1224,8 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="turing" hidden>TU</span>
-                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="codex">codex</span>
+                  <span class="avatar" hidden><span class="td-avatar" data-card-assignee title="turing">TU</span></span>
+                  <span class="badge badge-xs td-agent-badge" data-card-agent-badge data-agent-platform="codex">codex</span>
                   <span class="td-agent-role td-mono" data-card-agent-role title="turing">turing</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations hidden>
@@ -1227,13 +1265,15 @@
           <!-- in_review -->
           <section class="td-col" data-column data-status="in_review" data-i18n-aria-label="status.in_review" aria-label="In Review">
             <header class="td-col-head" data-column-header>
-              <span class="td-status-dot" data-column-dot aria-hidden="true"></span>
+              <span class="status td-status-dot" data-column-dot aria-hidden="true"></span>
               <h2 class="td-col-name" data-column-name data-i18n="status.in_review">In Review</h2>
-              <span class="td-count" data-column-count>2</span>
+              <span class="badge badge-sm td-count" data-column-count>2</span>
               <button type="button" class="td-iconbtn td-col-add" data-column-add data-i18n-aria-label="column.add" aria-label="Add task to In Review" data-i18n-arg="status.in_review">
                 <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>
               </button>
             </header>
+            <!-- column occupancy — share of the fullest column (refreshColumns) -->
+            <progress class="progress progress-xs td-col-progress" data-column-progress value="0" max="1" aria-hidden="true"></progress>
             <div class="td-col-body" data-column-body>
               <article
                 class="td-card"
@@ -1243,7 +1283,7 @@
                 data-id="td_01HQ7Y1A9B3C5DGK"
                 data-status="in_review"
                 data-priority="high"
-                data-project="TaskDashboard"
+                data-project="TaskPanel"
                 data-assignee="elon"
                 data-assignee-kind="agent"
                 data-reporter="Terry"
@@ -1277,8 +1317,8 @@
                 </div>
                 <button type="button" class="td-card-title" data-card-title>Add agent session provenance block</button>
                 <div class="td-card-labels" data-card-labels>
-                  <span class="td-chip td-chip-label" data-label="agent">agent</span>
-                  <span class="td-chip td-chip-label" data-label="ui">ui</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="agent">agent</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="ui">ui</span>
                 </div>
                 <div class="td-card-foot">
                   <span class="td-pri" data-card-priority role="img" aria-label="Priority: High" title="Priority: High">
@@ -1287,8 +1327,8 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="elon" hidden>EL</span>
-                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="openclaw">openclaw</span>
+                  <span class="avatar" hidden><span class="td-avatar" data-card-assignee title="elon">EL</span></span>
+                  <span class="badge badge-xs td-agent-badge" data-card-agent-badge data-agent-platform="openclaw">openclaw</span>
                   <span class="td-agent-role td-mono" data-card-agent-role title="elon">elon</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations>
@@ -1325,7 +1365,7 @@
                 data-id="td_01HQ7Y1A9B3C5DJM"
                 data-status="in_review"
                 data-priority="medium"
-                data-project="TaskDashboard"
+                data-project="TaskPanel"
                 data-assignee="Terry"
                 data-assignee-kind="human"
                 data-reporter="Terry"
@@ -1359,7 +1399,7 @@
                 </div>
                 <button type="button" class="td-card-title" data-card-title>Skeleton loading for list view</button>
                 <div class="td-card-labels" data-card-labels>
-                  <span class="td-chip td-chip-label" data-label="ui">ui</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="ui">ui</span>
                 </div>
                 <div class="td-card-foot">
                   <span class="td-pri" data-card-priority role="img" aria-label="Priority: Medium" title="Priority: Medium">
@@ -1368,8 +1408,8 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="Terry">T</span>
-                  <span class="td-agent-badge" data-card-agent-badge hidden></span>
+                  <span class="avatar"><span class="td-avatar" data-card-assignee title="Terry">T</span></span>
+                  <span class="badge badge-xs td-agent-badge" data-card-agent-badge hidden></span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations>
                       <span data-relation-parent hidden>
@@ -1439,7 +1479,7 @@
                 </div>
                 <button type="button" class="td-card-title" data-card-title>Normalise priority colour tokens</button>
                 <div class="td-card-labels" data-card-labels>
-                  <span class="td-chip td-chip-label" data-label="design">design</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="design">design</span>
                 </div>
                 <div class="td-card-foot">
                   <span class="td-pri" data-card-priority role="img" aria-label="Priority: Low" title="Priority: Low">
@@ -1448,8 +1488,8 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="jobs" hidden>JO</span>
-                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="claude">claude</span>
+                  <span class="avatar" hidden><span class="td-avatar" data-card-assignee title="jobs">JO</span></span>
+                  <span class="badge badge-xs td-agent-badge" data-card-agent-badge data-agent-platform="claude">claude</span>
                   <span class="td-agent-role td-mono" data-card-agent-role title="jobs">jobs</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations hidden>
@@ -1489,13 +1529,15 @@
           <!-- blocked -->
           <section class="td-col" data-column data-status="blocked" data-i18n-aria-label="status.blocked" aria-label="Blocked">
             <header class="td-col-head" data-column-header>
-              <span class="td-status-dot" data-column-dot aria-hidden="true"></span>
+              <span class="status td-status-dot" data-column-dot aria-hidden="true"></span>
               <h2 class="td-col-name" data-column-name data-i18n="status.blocked">Blocked</h2>
-              <span class="td-count" data-column-count>1</span>
+              <span class="badge badge-sm td-count" data-column-count>1</span>
               <button type="button" class="td-iconbtn td-col-add" data-column-add data-i18n-aria-label="column.add" aria-label="Add task to Blocked" data-i18n-arg="status.blocked">
                 <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>
               </button>
             </header>
+            <!-- column occupancy — share of the fullest column (refreshColumns) -->
+            <progress class="progress progress-xs td-col-progress" data-column-progress value="0" max="1" aria-hidden="true"></progress>
             <div class="td-col-body" data-column-body>
               <article
                 class="td-card"
@@ -1505,7 +1547,7 @@
                 data-id="td_01HQ7Y1A9B3C5DIL"
                 data-status="blocked"
                 data-priority="medium"
-                data-project="TaskDashboard"
+                data-project="TaskPanel"
                 data-assignee="linus"
                 data-assignee-kind="agent"
                 data-reporter="Terry"
@@ -1539,7 +1581,7 @@
                 </div>
                 <button type="button" class="td-card-title" data-card-title>Resolve duplication in timeline events</button>
                 <div class="td-card-labels" data-card-labels>
-                  <span class="td-chip td-chip-label" data-label="data">data</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="data">data</span>
                 </div>
                 <div class="td-card-foot">
                   <span class="td-pri" data-card-priority role="img" aria-label="Priority: Medium" title="Priority: Medium">
@@ -1548,8 +1590,8 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="linus" hidden>LI</span>
-                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="claude">claude</span>
+                  <span class="avatar" hidden><span class="td-avatar" data-card-assignee title="linus">LI</span></span>
+                  <span class="badge badge-xs td-agent-badge" data-card-agent-badge data-agent-platform="claude">claude</span>
                   <span class="td-agent-role td-mono" data-card-agent-role title="linus">linus</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations>
@@ -1620,8 +1662,8 @@
                 </div>
                 <button type="button" class="td-card-title" data-card-title>Migrate attachments to object storage</button>
                 <div class="td-card-labels" data-card-labels>
-                  <span class="td-chip td-chip-label" data-label="backend">backend</span>
-                  <span class="td-chip td-chip-label" data-label="infra">infra</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="backend">backend</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="infra">infra</span>
                 </div>
                 <div class="td-card-foot">
                   <span class="td-pri" data-card-priority role="img" aria-label="Priority: Urgent" title="Priority: Urgent">
@@ -1630,8 +1672,8 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="elon" hidden>EL</span>
-                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="openclaw">openclaw</span>
+                  <span class="avatar" hidden><span class="td-avatar" data-card-assignee title="elon">EL</span></span>
+                  <span class="badge badge-xs td-agent-badge" data-card-agent-badge data-agent-platform="openclaw">openclaw</span>
                   <span class="td-agent-role td-mono" data-card-agent-role title="elon">elon</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations>
@@ -1671,13 +1713,15 @@
           <!-- done -->
           <section class="td-col" data-column data-status="done" data-i18n-aria-label="status.done" aria-label="Done">
             <header class="td-col-head" data-column-header>
-              <span class="td-status-dot" data-column-dot aria-hidden="true"></span>
+              <span class="status td-status-dot" data-column-dot aria-hidden="true"></span>
               <h2 class="td-col-name" data-column-name data-i18n="status.done">Done</h2>
-              <span class="td-count" data-column-count>2</span>
+              <span class="badge badge-sm td-count" data-column-count>2</span>
               <button type="button" class="td-iconbtn td-col-add" data-column-add data-i18n-aria-label="column.add" aria-label="Add task to Done" data-i18n-arg="status.done">
                 <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>
               </button>
             </header>
+            <!-- column occupancy — share of the fullest column (refreshColumns) -->
+            <progress class="progress progress-xs td-col-progress" data-column-progress value="0" max="1" aria-hidden="true"></progress>
             <div class="td-col-body" data-column-body>
               <article
                 class="td-card"
@@ -1687,7 +1731,7 @@
                 data-id="td_01HQ6X0Z8A2B4CGJ"
                 data-status="done"
                 data-priority="medium"
-                data-project="TaskDashboard"
+                data-project="TaskPanel"
                 data-assignee="simons"
                 data-assignee-kind="agent"
                 data-reporter="Terry"
@@ -1721,8 +1765,8 @@
                 </div>
                 <button type="button" class="td-card-title" data-card-title>Ship daisyUI theme mapping for tokens</button>
                 <div class="td-card-labels" data-card-labels>
-                  <span class="td-chip td-chip-label" data-label="design">design</span>
-                  <span class="td-chip td-chip-label" data-label="ui">ui</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="design">design</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="ui">ui</span>
                 </div>
                 <div class="td-card-foot">
                   <span class="td-pri" data-card-priority role="img" aria-label="Priority: Medium" title="Priority: Medium">
@@ -1731,8 +1775,8 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="simons" hidden>SI</span>
-                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="claude">claude</span>
+                  <span class="avatar" hidden><span class="td-avatar" data-card-assignee title="simons">SI</span></span>
+                  <span class="badge badge-xs td-agent-badge" data-card-agent-badge data-agent-platform="claude">claude</span>
                   <span class="td-agent-role td-mono" data-card-agent-role title="simons">simons</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations hidden>
@@ -1769,7 +1813,7 @@
                 data-id="td_01HQ6X0Z8A2B4CIK"
                 data-status="done"
                 data-priority="high"
-                data-project="TaskDashboard"
+                data-project="TaskPanel"
                 data-assignee="assistant"
                 data-assignee-kind="agent"
                 data-reporter="Terry"
@@ -1803,7 +1847,7 @@
                 </div>
                 <button type="button" class="td-card-title" data-card-title>Add per-project identifier prefixes</button>
                 <div class="td-card-labels" data-card-labels>
-                  <span class="td-chip td-chip-label" data-label="api">api</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="api">api</span>
                 </div>
                 <div class="td-card-foot">
                   <span class="td-pri" data-card-priority role="img" aria-label="Priority: High" title="Priority: High">
@@ -1812,8 +1856,8 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="assistant" hidden>AS</span>
-                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="pi">pi</span>
+                  <span class="avatar" hidden><span class="td-avatar" data-card-assignee title="assistant">AS</span></span>
+                  <span class="badge badge-xs td-agent-badge" data-card-agent-badge data-agent-platform="pi">pi</span>
                   <span class="td-agent-role td-mono" data-card-agent-role title="assistant">assistant</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations hidden>
@@ -1884,7 +1928,7 @@
                 </div>
                 <button type="button" class="td-card-title" data-card-title>Set up prototype guard checks in CI</button>
                 <div class="td-card-labels" data-card-labels>
-                  <span class="td-chip td-chip-label" data-label="ci">ci</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="ci">ci</span>
                 </div>
                 <div class="td-card-foot">
                   <span class="td-pri" data-card-priority role="img" aria-label="Priority: Low" title="Priority: Low">
@@ -1893,8 +1937,8 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="linus" hidden>LI</span>
-                  <span class="td-agent-badge" data-card-agent-badge data-agent-platform="claude">claude</span>
+                  <span class="avatar" hidden><span class="td-avatar" data-card-assignee title="linus">LI</span></span>
+                  <span class="badge badge-xs td-agent-badge" data-card-agent-badge data-agent-platform="claude">claude</span>
                   <span class="td-agent-role td-mono" data-card-agent-role title="linus">linus</span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations hidden>
@@ -1934,13 +1978,15 @@
           <!-- canceled -->
           <section class="td-col" data-column data-status="canceled" data-i18n-aria-label="status.canceled" aria-label="Canceled">
             <header class="td-col-head" data-column-header>
-              <span class="td-status-dot" data-column-dot aria-hidden="true"></span>
+              <span class="status td-status-dot" data-column-dot aria-hidden="true"></span>
               <h2 class="td-col-name" data-column-name data-i18n="status.canceled">Canceled</h2>
-              <span class="td-count" data-column-count>1</span>
+              <span class="badge badge-sm td-count" data-column-count>1</span>
               <button type="button" class="td-iconbtn td-col-add" data-column-add data-i18n-aria-label="column.add" aria-label="Add task to Canceled" data-i18n-arg="status.canceled">
                 <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>
               </button>
             </header>
+            <!-- column occupancy — share of the fullest column (refreshColumns) -->
+            <progress class="progress progress-xs td-col-progress" data-column-progress value="0" max="1" aria-hidden="true"></progress>
             <div class="td-col-body" data-column-body>
               <article
                 class="td-card"
@@ -1950,7 +1996,7 @@
                 data-id="td_01HQ5W9Y7Z1A3BFI"
                 data-status="canceled"
                 data-priority="none"
-                data-project="TaskDashboard"
+                data-project="TaskPanel"
                 data-assignee="Terry"
                 data-assignee-kind="human"
                 data-reporter="Terry"
@@ -1984,7 +2030,7 @@
                 </div>
                 <button type="button" class="td-card-title" data-card-title>Prototype an emoji reaction bar</button>
                 <div class="td-card-labels" data-card-labels>
-                  <span class="td-chip td-chip-label" data-label="ux">ux</span>
+                  <span class="badge badge-sm td-chip td-chip-label" data-label="ux">ux</span>
                 </div>
                 <div class="td-card-foot">
                   <span class="td-pri" data-card-priority role="img" aria-label="Priority: None" title="Priority: None">
@@ -1993,8 +2039,8 @@
                       <line x1="2" y1="6" x2="10" y2="6" />
                     </svg>
                   </span>
-                  <span class="td-avatar" data-card-assignee title="Terry">T</span>
-                  <span class="td-agent-badge" data-card-agent-badge hidden></span>
+                  <span class="avatar"><span class="td-avatar" data-card-assignee title="Terry">T</span></span>
+                  <span class="badge badge-xs td-agent-badge" data-card-agent-badge hidden></span>
                   <div class="td-card-foot-right">
                     <span class="td-meta" data-card-relations hidden>
                       <span data-relation-parent hidden>
@@ -2041,28 +2087,28 @@
               <span data-i18n="list.loading">Loading tasks</span>
             </div>
             <div class="td-list-row is-skeleton">
-              <span class="td-skeleton" style="height: 12px; width: 48px"></span>
-              <span class="td-skeleton" style="height: 12px; width: 60%"></span>
-              <span class="td-skeleton td-hide-sm" style="height: 12px; width: 64px"></span>
-              <span class="td-skeleton td-hide-sm" style="height: 12px; width: 80px"></span>
-              <span class="td-skeleton td-hide-sm" style="height: 12px; width: 56px"></span>
-              <span class="td-skeleton" style="height: 12px; width: 40px"></span>
+              <span class="skeleton td-skeleton" style="height: 12px; width: 48px"></span>
+              <span class="skeleton td-skeleton" style="height: 12px; width: 60%"></span>
+              <span class="skeleton td-skeleton td-hide-sm" style="height: 12px; width: 64px"></span>
+              <span class="skeleton td-skeleton td-hide-sm" style="height: 12px; width: 80px"></span>
+              <span class="skeleton td-skeleton td-hide-sm" style="height: 12px; width: 56px"></span>
+              <span class="skeleton td-skeleton" style="height: 12px; width: 40px"></span>
             </div>
             <div class="td-list-row is-skeleton">
-              <span class="td-skeleton" style="height: 12px; width: 48px"></span>
-              <span class="td-skeleton" style="height: 12px; width: 72%"></span>
-              <span class="td-skeleton td-hide-sm" style="height: 12px; width: 64px"></span>
-              <span class="td-skeleton td-hide-sm" style="height: 12px; width: 80px"></span>
-              <span class="td-skeleton td-hide-sm" style="height: 12px; width: 56px"></span>
-              <span class="td-skeleton" style="height: 12px; width: 40px"></span>
+              <span class="skeleton td-skeleton" style="height: 12px; width: 48px"></span>
+              <span class="skeleton td-skeleton" style="height: 12px; width: 72%"></span>
+              <span class="skeleton td-skeleton td-hide-sm" style="height: 12px; width: 64px"></span>
+              <span class="skeleton td-skeleton td-hide-sm" style="height: 12px; width: 80px"></span>
+              <span class="skeleton td-skeleton td-hide-sm" style="height: 12px; width: 56px"></span>
+              <span class="skeleton td-skeleton" style="height: 12px; width: 40px"></span>
             </div>
             <div class="td-list-row is-skeleton">
-              <span class="td-skeleton" style="height: 12px; width: 48px"></span>
-              <span class="td-skeleton" style="height: 12px; width: 52%"></span>
-              <span class="td-skeleton td-hide-sm" style="height: 12px; width: 64px"></span>
-              <span class="td-skeleton td-hide-sm" style="height: 12px; width: 80px"></span>
-              <span class="td-skeleton td-hide-sm" style="height: 12px; width: 56px"></span>
-              <span class="td-skeleton" style="height: 12px; width: 40px"></span>
+              <span class="skeleton td-skeleton" style="height: 12px; width: 48px"></span>
+              <span class="skeleton td-skeleton" style="height: 12px; width: 52%"></span>
+              <span class="skeleton td-skeleton td-hide-sm" style="height: 12px; width: 64px"></span>
+              <span class="skeleton td-skeleton td-hide-sm" style="height: 12px; width: 80px"></span>
+              <span class="skeleton td-skeleton td-hide-sm" style="height: 12px; width: 56px"></span>
+              <span class="skeleton td-skeleton" style="height: 12px; width: 40px"></span>
             </div>
           </div>
 
@@ -2092,8 +2138,8 @@
       <header class="td-drawer-head">
         <div class="flex items-center gap-2">
           <span class="td-mono text-xs text-td-ink-3" data-detail-identifier>TD-128</span>
-          <span class="td-chip td-chip-status" data-detail-status-chip data-status="todo">
-            <span class="td-status-dot" aria-hidden="true"></span>
+          <span class="badge badge-sm td-chip td-chip-status" data-detail-status-chip data-status="todo">
+            <span class="status td-status-dot" aria-hidden="true"></span>
             <span data-detail-status-chip-label data-i18n="status.todo">To Do</span>
           </span>
           <button
@@ -2118,7 +2164,7 @@
           <div class="td-props" data-detail-props>
             <span class="td-prop-label" data-i18n="prop.status">Status</span>
             <button type="button" class="td-prop-value" data-detail-status data-status="todo">
-              <span class="td-status-dot" aria-hidden="true"></span>
+              <span class="status td-status-dot" aria-hidden="true"></span>
               <span data-detail-status-label>To Do</span>
               <svg class="td-icon td-icon-sm" style="color: var(--color-td-ink-4)" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 9.5 12 15.5 18 9.5" /></svg>
             </button>
@@ -2136,21 +2182,71 @@
             </button>
 
             <span class="td-prop-label" data-i18n="prop.assignee">Assignee</span>
-            <button type="button" class="td-prop-value" data-detail-assignee data-assignee-kind="agent">
-              <span class="td-avatar" data-detail-assignee-avatar data-assignee-kind="agent">LI</span>
-              <span data-detail-assignee-label>linus</span>
-              <span class="td-agent-badge" data-detail-assignee-platform data-agent-platform="claude">claude</span>
-            </button>
+            <!-- Re-assignment happens here, so this is an assignee control too:
+                 free text with the same fuzzy roster as the create dialog. -->
+            <div class="td-prop-value td-prop-combo" data-detail-assignee data-assignee-kind="agent">
+              <span class="avatar"><span class="td-avatar" data-detail-assignee-avatar data-assignee-kind="agent">LI</span></span>
+              <div class="td-combo td-combo-inline">
+                <input
+                  class="td-input td-input-flat"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  data-assignee-input
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-haspopup="listbox"
+                  aria-controls="td-assignee-menu-detail"
+                  data-i18n-title="combo.hint"
+                  title="↑↓ to choose, Enter to accept, Esc to dismiss."
+                  data-detail-assignee-label
+                  data-i18n-aria-label="prop.assignee"
+                  aria-label="Assignee"
+                  value="linus"
+                />
+                <ul class="menu td-combo-menu" id="td-assignee-menu-detail" role="listbox" data-assignee-menu hidden>
+                  <li><button type="button" data-assignee-option data-assignee-value="elon" data-assignee-kind="agent" data-agent-platform="openclaw">elon</button></li>
+                  <li><button type="button" data-assignee-option data-assignee-value="jobs" data-assignee-kind="agent" data-agent-platform="claude">jobs</button></li>
+                  <li><button type="button" data-assignee-option data-assignee-value="linus" data-assignee-kind="agent" data-agent-platform="claude">linus</button></li>
+                  <li><button type="button" data-assignee-option data-assignee-value="turing" data-assignee-kind="agent" data-agent-platform="codex">turing</button></li>
+                  <li><button type="button" data-assignee-option data-assignee-value="simons" data-assignee-kind="agent" data-agent-platform="claude">simons</button></li>
+                  <li><button type="button" data-assignee-option data-assignee-value="assistant" data-assignee-kind="agent" data-agent-platform="pi">assistant</button></li>
+                  <li><button type="button" data-assignee-option data-assignee-value="Terry" data-assignee-kind="human">Terry</button></li>
+                </ul>
+              </div>
+              <span class="badge badge-xs td-agent-badge" data-detail-assignee-platform data-agent-platform="claude">claude</span>
+            </div>
 
             <span class="td-prop-label" data-i18n="prop.reporter">Reporter</span>
-            <button type="button" class="td-prop-value" data-detail-reporter>
-              <span class="td-avatar" data-detail-reporter-avatar>T</span>
-              <span data-detail-reporter-label>Terry</span>
-            </button>
+            <div class="td-prop-value td-prop-combo" data-detail-reporter>
+              <span class="avatar"><span class="td-avatar" data-detail-reporter-avatar>T</span></span>
+              <div class="td-combo td-combo-inline">
+                <input
+                  class="td-input td-input-flat"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  data-reporter-input
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-haspopup="listbox"
+                  aria-controls="td-reporter-menu-detail"
+                  data-i18n-title="combo.hint"
+                  title="↑↓ to choose, Enter to accept, Esc to dismiss."
+                  data-detail-reporter-label
+                  data-i18n-aria-label="prop.reporter"
+                  aria-label="Reporter"
+                  value="Terry"
+                />
+                <ul class="menu td-combo-menu" id="td-reporter-menu-detail" role="listbox" data-reporter-menu hidden>
+                  <li><button type="button" data-reporter-option data-reporter-value="Terry">Terry</button></li>
+                </ul>
+              </div>
+            </div>
 
             <span class="td-prop-label" data-i18n="prop.project">Project</span>
             <button type="button" class="td-prop-value" data-detail-project>
-              <span class="td-mono" data-detail-project-label>TaskDashboard</span>
+              <span class="td-mono" data-detail-project-label>TaskPanel</span>
             </button>
 
             <span class="td-prop-label" data-i18n="prop.id">ID</span>
@@ -2219,7 +2315,7 @@
           <div data-detail-agent-session-body>
             <div class="td-session" data-agent-session>
             <div class="flex items-center gap-2">
-              <span class="td-agent-badge" data-agent-platform="claude">claude</span>
+              <span class="badge badge-xs td-agent-badge" data-agent-platform="claude">claude</span>
               <span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span>
               <button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">
                 Resume
@@ -2253,7 +2349,7 @@
           <h3 class="td-section-title" data-i18n="drawer.comments">Comments</h3>
           <div data-detail-comments>
             <article class="td-comment">
-              <span class="td-avatar">JO</span>
+              <span class="avatar"><span class="td-avatar">JO</span></span>
               <div>
                 <div class="td-comment-meta">
                   <span class="font-medium text-td-ink td-mono">jobs</span>
@@ -2264,7 +2360,7 @@
               </div>
             </article>
             <article class="td-comment">
-              <span class="td-avatar" data-assignee-kind="agent">JO</span>
+              <span class="avatar"><span class="td-avatar" data-assignee-kind="agent">JO</span></span>
               <div>
                 <div class="td-comment-meta">
                   <span class="font-medium text-td-ink td-mono">jobs</span>
@@ -2275,11 +2371,11 @@
               </div>
             </article>
             <article class="td-comment td-comment-decision">
-              <span class="td-avatar">T</span>
+              <span class="avatar"><span class="td-avatar">T</span></span>
               <div>
                 <div class="td-comment-meta">
                   <span class="font-medium text-td-ink">Terry</span>
-                  <span class="td-chip" data-i18n="comment.decision">decision</span>
+                  <span class="badge badge-sm td-chip" data-i18n="comment.decision">decision</span>
                   <span class="td-mono" title="2026-10-08 07:55" data-i18n="time.hoursAgo" data-i18n-arg="4">4h ago</span>
                 </div>
                 <div class="td-comment-body">Escape closes the drawer only — never the board selection. Moving this to In Progress today.</div>
@@ -2335,66 +2431,172 @@
          B10 · Create task modal
          ================================================================== -->
     <dialog class="modal" data-create-task>
-      <div class="modal-box">
+      <div class="modal-box td-modal-box">
         <h2 class="text-lg font-semibold" data-i18n="createTask.title">New task</h2>
         <form data-create-task-form>
-          <label class="td-field">
-            <span class="td-field-label" data-i18n="createTask.field.title">Title</span>
-            <input class="td-input" type="text" name="title" data-create-task-title required />
-            <span class="td-field-hint" data-i18n="createTask.field.titleHint">Short, verb first. Shown on the card.</span>
-          </label>
+          <!-- Two columns: the work itself on the left, its routing on the
+               right. Equal tracks above 760px, stacked at or below it — see
+               `.td-two-col` in src/input.css. -->
+          <div class="td-two-col" data-create-two-col>
+            <div class="td-col-left" data-create-left>
+              <label class="td-field">
+                <span class="td-field-label" data-i18n="createTask.field.title">Title</span>
+                <input class="input input-sm td-input w-full" type="text" name="title" data-create-task-title required />
+                <span class="td-field-hint" data-i18n="createTask.field.titleHint">Short, verb first. Shown on the card.</span>
+              </label>
 
-          <label class="td-field">
-            <span class="td-field-label" data-i18n="createTask.field.description">Description</span>
-            <textarea class="td-textarea" name="description" data-create-task-description></textarea>
-          </label>
+              <div class="td-field td-field-grow">
+                <span class="td-field-label" data-i18n="createTask.field.description">Description</span>
+                <!-- Markdown editor — a monospace source pane with live syntax
+                     highlighting and a rendered preview pane. Both are drawn
+                     locally: the renderer and the highlighter are vendored
+                     files under prototype/vendor/, never a network request. -->
+                <div class="td-md-editor" data-md-editor>
+                  <div class="td-md-bar">
+                    <div class="tabs tabs-box td-md-tabs" role="group" data-i18n-aria-label="md.label" aria-label="Markdown view">
+                      <button type="button" class="tab td-tab td-md-toggle" data-md-toggle="write" aria-pressed="true" data-i18n="md.write">Write</button>
+                      <button type="button" class="tab td-tab td-md-toggle" data-md-toggle="preview" aria-pressed="false" data-i18n="md.preview">Preview</button>
+                      <button type="button" class="tab td-tab td-md-toggle" data-md-toggle="split" aria-pressed="false" data-i18n="md.split">Split</button>
+                    </div>
+                    <span class="td-md-hint" data-i18n="md.hint">Markdown · rendered locally</span>
+                  </div>
+                  <div class="td-md-panes" data-md-mode="write">
+                    <div class="td-md-pane td-md-pane-write">
+                      <pre class="td-md-text td-md-highlight" data-md-highlight aria-hidden="true"></pre>
+                      <textarea
+                        class="td-md-text td-md-source"
+                        name="description"
+                        rows="8"
+                        spellcheck="false"
+                        autocomplete="off"
+                        data-md-source
+                        data-create-task-description
+                        data-i18n-aria-label="createTask.field.description"
+                        aria-label="Description"
+                      >## Context
 
-          <div class="flex gap-3">
-            <label class="td-field flex-1">
-              <span class="td-field-label" data-i18n="createTask.field.status">Status</span>
-              <select class="td-select w-full" name="status" data-create-task-status>
-                <option value="backlog" data-i18n="status.backlog">Backlog</option>
-                <option value="todo" data-i18n="status.todo">To Do</option>
-                <option value="in_progress" data-i18n="status.in_progress">In Progress</option>
-                <option value="in_review" data-i18n="status.in_review">In Review</option>
-                <option value="blocked" data-i18n="status.blocked">Blocked</option>
-                <option value="done" data-i18n="status.done">Done</option>
-                <option value="canceled" data-i18n="status.canceled">Canceled</option>
-              </select>
-            </label>
-            <label class="td-field flex-1">
-              <span class="td-field-label" data-i18n="createTask.field.priority">Priority</span>
-              <select class="td-select w-full" name="priority" data-create-task-priority>
-                <option value="none" data-i18n="priority.none">None</option>
-                <option value="low" data-i18n="priority.low">Low</option>
-                <option value="medium" data-i18n="priority.medium">Medium</option>
-                <option value="high" data-i18n="priority.high">High</option>
-                <option value="urgent" data-i18n="priority.urgent">Urgent</option>
-              </select>
-            </label>
-          </div>
+What is true today, and why this matters now.
 
-          <div class="flex gap-3">
-            <label class="td-field flex-1">
-              <span class="td-field-label" data-i18n="createTask.field.assignee">Assignee</span>
-              <select class="td-select w-full" name="assignee" data-create-task-assignee>
-                <option value="elon" data-assignee-kind="agent" data-agent-platform="openclaw">elon · openclaw</option>
-                <option value="jobs" data-assignee-kind="agent" data-agent-platform="claude">jobs · claude</option>
-                <option value="linus" data-assignee-kind="agent" data-agent-platform="claude">linus · claude</option>
-                <option value="turing" data-assignee-kind="agent" data-agent-platform="codex">turing · codex</option>
-                <option value="simons" data-assignee-kind="agent" data-agent-platform="claude">simons · claude</option>
-                <option value="assistant" data-assignee-kind="agent" data-agent-platform="pi">assistant · pi</option>
-                <option value="Terry" data-assignee-kind="human" data-i18n="createTask.option.owner">Terry · owner</option>
-              </select>
-            </label>
-            <label class="td-field flex-1">
-              <span class="td-field-label" data-i18n="createTask.field.project">Project</span>
-              <select class="td-select w-full" name="project" data-create-task-project>
-                <option value="TaskDashboard">TaskDashboard</option>
-                <option value="Orchestrator">Orchestrator</option>
-                <option value="Site Refresh">Site Refresh</option>
-              </select>
-            </label>
+## Acceptance
+
+- [ ] An observable outcome, not an activity
+- [ ] The check that proves it
+
+```sh
+# how to verify
+npm test
+```
+
+| Key | Action |
+| --- | ------ |
+| Enter | Open the task |
+| Esc | Close the drawer |</textarea>
+                    </div>
+                    <div class="td-md-pane td-md-pane-preview">
+                      <div class="td-gfm td-md-text td-md-preview" data-md-preview></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="td-col-right" data-create-right>
+              <label class="td-field">
+                <span class="td-field-label" data-i18n="createTask.field.priority">Priority</span>
+                <select class="select select-sm td-select w-full" name="priority" data-create-task-priority>
+                  <option value="none" data-i18n="priority.none">None</option>
+                  <option value="low" data-i18n="priority.low">Low</option>
+                  <option value="medium" data-i18n="priority.medium">Medium</option>
+                  <option value="high" data-i18n="priority.high">High</option>
+                  <option value="urgent" data-i18n="priority.urgent">Urgent</option>
+                </select>
+              </label>
+
+              <!-- Assignee — free text with fuzzy autocomplete over the
+                   in-memory roster. There is deliberately no roster editor
+                   anywhere: a new name is kept the moment it is used. -->
+              <div class="td-field">
+                <label class="td-field-label" for="td-create-assignee" data-i18n="createTask.field.assignee">Assignee</label>
+                <div class="td-combo">
+                  <input
+                    class="input input-sm td-input w-full"
+                    type="text"
+                    id="td-create-assignee"
+                    name="assignee"
+                    autocomplete="off"
+                    spellcheck="false"
+                    data-assignee-input
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-haspopup="listbox"
+                    aria-controls="td-assignee-menu-create"
+                    data-i18n-title="combo.hint"
+                    title="↑↓ to choose, Enter to accept, Esc to dismiss."
+                    data-i18n-placeholder="combo.assigneePlaceholder"
+                    placeholder="Search or type a new name…"
+                  />
+                  <ul class="menu td-combo-menu" id="td-assignee-menu-create" role="listbox" data-assignee-menu hidden>
+                    <li><button type="button" data-assignee-option data-assignee-value="elon" data-assignee-kind="agent" data-agent-platform="openclaw">elon</button></li>
+                    <li><button type="button" data-assignee-option data-assignee-value="jobs" data-assignee-kind="agent" data-agent-platform="claude">jobs</button></li>
+                    <li><button type="button" data-assignee-option data-assignee-value="linus" data-assignee-kind="agent" data-agent-platform="claude">linus</button></li>
+                    <li><button type="button" data-assignee-option data-assignee-value="turing" data-assignee-kind="agent" data-agent-platform="codex">turing</button></li>
+                    <li><button type="button" data-assignee-option data-assignee-value="simons" data-assignee-kind="agent" data-agent-platform="claude">simons</button></li>
+                    <li><button type="button" data-assignee-option data-assignee-value="assistant" data-assignee-kind="agent" data-agent-platform="pi">assistant</button></li>
+                    <li><button type="button" data-assignee-option data-assignee-value="Terry" data-assignee-kind="human">Terry</button></li>
+                  </ul>
+                </div>
+              </div>
+
+              <label class="td-field">
+                <span class="td-field-label" data-i18n="createTask.field.project">Project</span>
+                <select class="select select-sm td-select w-full" name="project" data-create-task-project>
+                  <option value="TaskPanel">TaskPanel</option>
+                  <option value="Orchestrator">Orchestrator</option>
+                  <option value="Site Refresh">Site Refresh</option>
+                </select>
+              </label>
+
+              <label class="td-field">
+                <span class="td-field-label" data-i18n="createTask.field.status">Status</span>
+                <select class="select select-sm td-select w-full" name="status" data-create-task-status>
+                  <option value="backlog" data-i18n="status.backlog">Backlog</option>
+                  <option value="todo" data-i18n="status.todo">To Do</option>
+                  <option value="in_progress" data-i18n="status.in_progress">In Progress</option>
+                  <option value="in_review" data-i18n="status.in_review">In Review</option>
+                  <option value="blocked" data-i18n="status.blocked">Blocked</option>
+                  <option value="done" data-i18n="status.done">Done</option>
+                  <option value="canceled" data-i18n="status.canceled">Canceled</option>
+                </select>
+              </label>
+
+              <!-- Reporter — the same free-text + fuzzy-match control, over the
+                   reporters the board already knows. No management entry. -->
+              <div class="td-field">
+                <label class="td-field-label" for="td-create-reporter" data-i18n="createTask.field.reporter">Reporter</label>
+                <div class="td-combo">
+                  <input
+                    class="input input-sm td-input w-full"
+                    type="text"
+                    id="td-create-reporter"
+                    name="reporter"
+                    autocomplete="off"
+                    spellcheck="false"
+                    data-reporter-input
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-haspopup="listbox"
+                    aria-controls="td-reporter-menu-create"
+                    data-i18n-title="combo.hint"
+                    title="↑↓ to choose, Enter to accept, Esc to dismiss."
+                    data-i18n-placeholder="combo.reporterPlaceholder"
+                    placeholder="Search or type a new name…"
+                  />
+                  <ul class="menu td-combo-menu" id="td-reporter-menu-create" role="listbox" data-reporter-menu hidden>
+                    <li><button type="button" data-reporter-option data-reporter-value="Terry">Terry</button></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="mt-5 flex justify-end gap-2">
@@ -2467,7 +2669,6 @@
           <svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6 6 18" /></svg>
         </button>
       </header>
-
       <div class="td-states-body">
         <div class="td-states-grid">
           <!-- loading -->
@@ -2476,21 +2677,21 @@
             <p class="td-state-note" data-i18n="states.loadingNote">Skeleton placeholders hold the row height until data settles.</p>
             <div class="td-state-demo">
               <div class="td-skel-card">
-                <span class="td-skeleton" style="height: 10px; width: 44px"></span>
-                <span class="td-skeleton" style="height: 12px; width: 78%"></span>
-                <span class="td-skeleton" style="height: 12px; width: 56%"></span>
+                <span class="skeleton td-skeleton" style="height: 10px; width: 44px"></span>
+                <span class="skeleton td-skeleton" style="height: 12px; width: 78%"></span>
+                <span class="skeleton td-skeleton" style="height: 12px; width: 56%"></span>
                 <div class="td-skel-row">
-                  <span class="td-skeleton" style="height: 18px; width: 18px; border-radius: 999px"></span>
-                  <span class="td-skeleton" style="height: 10px; width: 40px"></span>
+                  <span class="skeleton td-skeleton" style="height: 18px; width: 18px; border-radius: 999px"></span>
+                  <span class="skeleton td-skeleton" style="height: 10px; width: 40px"></span>
                 </div>
               </div>
               <div class="td-skel-card">
-                <span class="td-skeleton" style="height: 10px; width: 44px"></span>
-                <span class="td-skeleton" style="height: 12px; width: 64%"></span>
-                <span class="td-skeleton" style="height: 12px; width: 42%"></span>
+                <span class="skeleton td-skeleton" style="height: 10px; width: 44px"></span>
+                <span class="skeleton td-skeleton" style="height: 12px; width: 64%"></span>
+                <span class="skeleton td-skeleton" style="height: 12px; width: 42%"></span>
                 <div class="td-skel-row">
-                  <span class="td-skeleton" style="height: 18px; width: 18px; border-radius: 999px"></span>
-                  <span class="td-skeleton" style="height: 10px; width: 40px"></span>
+                  <span class="skeleton td-skeleton" style="height: 18px; width: 18px; border-radius: 999px"></span>
+                  <span class="skeleton td-skeleton" style="height: 10px; width: 40px"></span>
                 </div>
               </div>
             </div>
@@ -2593,13 +2794,19 @@
           <svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6 6 18" /></svg>
         </button>
       </header>
-
       <div class="td-access-body">
         <p class="td-access-lead" data-i18n="access.model.bind">Binds to 0.0.0.0 by default — reachable from other devices on the network.</p>
 
         <!-- CIDR whitelist. Front-end demo only: rows are added and removed in
              the DOM, and nothing is sent, stored or validated anywhere. -->
-        <section class="td-cidr" data-cidr-whitelist>
+        <section class="td-cidr" data-cidr-whitelist data-cidr-enabled="true">
+          <!-- daisyUI `toggle` — the allow-list is a switch, so the panel says
+               whether the list is in force before it lists anything. Display
+               only: the switch moves and the list dims, nothing else happens. -->
+          <label class="td-switch">
+            <input type="checkbox" class="toggle toggle-sm td-toggle" checked data-cidr-switch />
+            <span class="td-switch-text" data-i18n="access.cidr.enabled">IP allow-list in force</span>
+          </label>
           <div class="td-cidr-head">
             <p class="td-cidr-note" data-i18n="access.cidr.note">Allowed source ranges (CIDR). Traffic outside these ranges is rejected.</p>
             <button
@@ -2786,20 +2993,22 @@
     <!-- I2 · shared "Move to" menu, positioned next to the invoking kebab -->
     <div class="dropdown" data-move-menu hidden>
       <ul class="menu" data-i18n-aria-label="card.moveTo" aria-label="Move to">
-        <li><button type="button" class="td-menu-item" data-move-to="backlog"><span class="td-status-dot" data-status="backlog"></span><span data-i18n="status.backlog">Backlog</span></button></li>
-        <li><button type="button" class="td-menu-item" data-move-to="todo"><span class="td-status-dot" data-status="todo"></span><span data-i18n="status.todo">To Do</span></button></li>
-        <li><button type="button" class="td-menu-item" data-move-to="in_progress"><span class="td-status-dot" data-status="in_progress"></span><span data-i18n="status.in_progress">In Progress</span></button></li>
-        <li><button type="button" class="td-menu-item" data-move-to="in_review"><span class="td-status-dot" data-status="in_review"></span><span data-i18n="status.in_review">In Review</span></button></li>
-        <li><button type="button" class="td-menu-item" data-move-to="blocked"><span class="td-status-dot" data-status="blocked"></span><span data-i18n="status.blocked">Blocked</span></button></li>
-        <li><button type="button" class="td-menu-item" data-move-to="done"><span class="td-status-dot" data-status="done"></span><span data-i18n="status.done">Done</span></button></li>
-        <li><button type="button" class="td-menu-item" data-move-to="canceled"><span class="td-status-dot" data-status="canceled"></span><span data-i18n="status.canceled">Canceled</span></button></li>
+        <li><button type="button" class="td-menu-item" data-move-to="backlog"><span class="status td-status-dot" data-status="backlog"></span><span data-i18n="status.backlog">Backlog</span></button></li>
+        <li><button type="button" class="td-menu-item" data-move-to="todo"><span class="status td-status-dot" data-status="todo"></span><span data-i18n="status.todo">To Do</span></button></li>
+        <li><button type="button" class="td-menu-item" data-move-to="in_progress"><span class="status td-status-dot" data-status="in_progress"></span><span data-i18n="status.in_progress">In Progress</span></button></li>
+        <li><button type="button" class="td-menu-item" data-move-to="in_review"><span class="status td-status-dot" data-status="in_review"></span><span data-i18n="status.in_review">In Review</span></button></li>
+        <li><button type="button" class="td-menu-item" data-move-to="blocked"><span class="status td-status-dot" data-status="blocked"></span><span data-i18n="status.blocked">Blocked</span></button></li>
+        <li><button type="button" class="td-menu-item" data-move-to="done"><span class="status td-status-dot" data-status="done"></span><span data-i18n="status.done">Done</span></button></li>
+        <li><button type="button" class="td-menu-item" data-move-to="canceled"><span class="status td-status-dot" data-status="canceled"></span><span data-i18n="status.canceled">Canceled</span></button></li>
       </ul>
     </div>
 
     <!-- B14 · Toast region + template -->
-    <div class="td-toast-region" data-toast-region role="status" aria-live="polite"></div>
+    <!-- daisyUI `toast` for the stack, `alert` for each item; `td-toast` keeps
+         only the brand tokens, severity and the leave transition. -->
+    <div class="toast toast-end td-toast-region" data-toast-region role="status" aria-live="polite"></div>
     <template data-toast-template>
-      <div class="td-toast" data-toast data-toast-kind="info">
+      <div class="alert alert-sm td-toast" data-toast data-toast-kind="info">
         <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 8v5M12 16h.01" /></svg>
         <span data-toast-text></span>
       </div>
@@ -2810,8 +3019,8 @@
       <div class="td-list-row" data-list-row>
         <span class="td-mono text-xs text-td-ink-3" data-list-identifier></span>
         <span class="truncate text-sm" data-list-title></span>
-        <span class="td-chip td-chip-status td-hide-sm" data-list-status>
-          <span class="td-status-dot" aria-hidden="true"></span>
+        <span class="badge badge-sm td-chip td-chip-status td-hide-sm" data-list-status>
+          <span class="status td-status-dot" aria-hidden="true"></span>
           <span data-list-status-label></span>
         </span>
         <span class="td-avatar-row td-hide-sm" data-list-assignee></span>
@@ -2861,13 +3070,13 @@
           <div class="td-file"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg><span class="td-file-name">focus-order-record.png</span><span class="td-file-size">248 KB</span></div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar">JO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-08 09:12" data-i18n="time.hoursAgo" data-i18n-arg="2">2h ago</span></div><div class="td-comment-body">Tab order looks right in the recording. Keep the stripe colour as the only status signal inside a card.</div></div></article>
-          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">JO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span data-i18n="comment.agent">agent</span><span class="td-mono" title="2026-10-08 08:40" data-i18n="time.hoursAgo" data-i18n-arg="3">3h ago</span></div><div class="td-comment-body">Applied roving tabindex to the card list. Waiting on the decision about the Escape key scope.</div></div></article>
-          <article class="td-comment td-comment-decision"><span class="td-avatar">T</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="td-chip" data-i18n="comment.decision">decision</span><span class="td-mono" title="2026-10-08 07:55" data-i18n="time.hoursAgo" data-i18n-arg="4">4h ago</span></div><div class="td-comment-body">Escape closes the drawer only, never the board selection. Moving this to In Progress today.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar">JO</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-08 09:12" data-i18n="time.hoursAgo" data-i18n-arg="2">2h ago</span></div><div class="td-comment-body">Tab order looks right in the recording. Keep the stripe colour as the only status signal inside a card.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar" data-assignee-kind="agent">JO</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span data-i18n="comment.agent">agent</span><span class="td-mono" title="2026-10-08 08:40" data-i18n="time.hoursAgo" data-i18n-arg="3">3h ago</span></div><div class="td-comment-body">Applied roving tabindex to the card list. Waiting on the decision about the Escape key scope.</div></div></article>
+          <article class="td-comment td-comment-decision"><span class="avatar"><span class="td-avatar">T</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="badge badge-sm td-chip" data-i18n="comment.decision">decision</span><span class="td-mono" title="2026-10-08 07:55" data-i18n="time.hoursAgo" data-i18n-arg="4">4h ago</span></div><div class="td-comment-body">Escape closes the drawer only, never the board selection. Moving this to In Progress today.</div></div></article>
         </div>
         <div data-slot="agent-session">
           <div class="td-session" data-agent-session>
-            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="claude">claude</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
+            <div class="flex items-center gap-2"><span class="badge badge-xs td-agent-badge" data-agent-platform="claude">claude</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
             <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3" data-i18n="session.id">Session</span><span class="td-copy" data-agent-session-id>sess_claude_01HQ19XD1NZZQ</span></div>
           </div>
         </div>
@@ -2908,7 +3117,7 @@
         </div>
         <div data-slot="agent-session">
           <div class="td-session" data-agent-session>
-            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="claude">claude</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
+            <div class="flex items-center gap-2"><span class="badge badge-xs td-agent-badge" data-agent-platform="claude">claude</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
             <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3" data-i18n="session.id">Session</span><span class="td-copy" data-agent-session-id>sess_claude_01HQ7Y1A9B3C</span></div>
           </div>
         </div>
@@ -2918,8 +3127,8 @@
           <div class="td-file"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg><span class="td-file-name">drawer-states.png</span><span class="td-file-size">640 KB</span></div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar">T</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-08 10:05" data-i18n="time.hoursAgo" data-i18n-arg="1">1h ago</span></div><div class="td-comment-body">Column width at 300 pixels and the 16 pixel gap match the guide. Keep the board the only horizontal scroller.</div></div></article>
-          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">JO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span data-i18n="comment.agent">agent</span><span class="td-mono" title="2026-10-08 09:30" data-i18n="time.hoursAgo" data-i18n-arg="2">2h ago</span></div><div class="td-comment-body">All seven column states render from static markup, so the board survives with JavaScript disabled.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar">T</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-08 10:05" data-i18n="time.hoursAgo" data-i18n-arg="1">1h ago</span></div><div class="td-comment-body">Column width at 300 pixels and the 16 pixel gap match the guide. Keep the board the only horizontal scroller.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar" data-assignee-kind="agent">JO</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span data-i18n="comment.agent">agent</span><span class="td-mono" title="2026-10-08 09:30" data-i18n="time.hoursAgo" data-i18n-arg="2">2h ago</span></div><div class="td-comment-body">All seven column states render from static markup, so the board survives with JavaScript disabled.</div></div></article>
         </div>
         <div data-slot="activity">
           <div class="td-activity"><span class="font-medium">Terry</span><span>created this task</span><span class="td-activity-ts" title="2026-10-07 09:00" data-i18n="time.daysAgo" data-i18n-arg="1">1d ago</span></div>
@@ -2958,7 +3167,7 @@
         </div>
         <div data-slot="agent-session">
           <div class="td-session" data-agent-session>
-            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="openclaw">openclaw</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform openclaw</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
+            <div class="flex items-center gap-2"><span class="badge badge-xs td-agent-badge" data-agent-platform="openclaw">openclaw</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform openclaw</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
             <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3" data-i18n="session.id">Session</span><span class="td-copy" data-agent-session-id>sess_openclaw_01HQ7Y1A9B3C</span></div>
           </div>
         </div>
@@ -2968,9 +3177,9 @@
           <div class="td-file"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg><span class="td-file-name">resume-flow.md</span><span class="td-file-size">6 KB</span></div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar">SI</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">simons</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-08 08:20" data-i18n="time.hoursAgo" data-i18n-arg="3">3h ago</span></div><div class="td-comment-body">Please keep the session id monospaced and copyable from the drawer.</div></div></article>
-          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">EL</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">elon</span><span data-i18n="comment.agent">agent</span><span class="td-mono" title="2026-10-08 07:10" data-i18n="time.hoursAgo" data-i18n-arg="4">4h ago</span></div><div class="td-comment-body">Badge and session block are both rendered. The resume control is wired to the session record.</div></div></article>
-          <article class="td-comment td-comment-decision"><span class="td-avatar">T</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="td-chip" data-i18n="comment.decision">decision</span><span class="td-mono" title="2026-10-08 06:40" data-i18n="time.hoursAgo" data-i18n-arg="5">5h ago</span></div><div class="td-comment-body">Ship the read-only block first, editing waits for the agent auth work.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar">SI</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">simons</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-08 08:20" data-i18n="time.hoursAgo" data-i18n-arg="3">3h ago</span></div><div class="td-comment-body">Please keep the session id monospaced and copyable from the drawer.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar" data-assignee-kind="agent">EL</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">elon</span><span data-i18n="comment.agent">agent</span><span class="td-mono" title="2026-10-08 07:10" data-i18n="time.hoursAgo" data-i18n-arg="4">4h ago</span></div><div class="td-comment-body">Badge and session block are both rendered. The resume control is wired to the session record.</div></div></article>
+          <article class="td-comment td-comment-decision"><span class="avatar"><span class="td-avatar">T</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="badge badge-sm td-chip" data-i18n="comment.decision">decision</span><span class="td-mono" title="2026-10-08 06:40" data-i18n="time.hoursAgo" data-i18n-arg="5">5h ago</span></div><div class="td-comment-body">Ship the read-only block first, editing waits for the agent auth work.</div></div></article>
         </div>
         <div data-slot="activity">
           <div class="td-activity"><span class="font-medium">Terry</span><span>created this task</span><span class="td-activity-ts" title="2026-10-06 13:40" data-i18n="time.daysAgo" data-i18n-arg="2">2d ago</span></div>
@@ -3007,7 +3216,7 @@
         </div>
         <div data-slot="agent-session">
           <div class="td-session" data-agent-session>
-            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="claude">claude</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
+            <div class="flex items-center gap-2"><span class="badge badge-xs td-agent-badge" data-agent-platform="claude">claude</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
             <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3" data-i18n="session.id">Session</span><span class="td-copy" data-agent-session-id>sess_claude_01HQ7Y1A9B3D</span></div>
           </div>
         </div>
@@ -3015,9 +3224,9 @@
           <div class="td-file"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg><span class="td-file-name">duplicate-events.log</span><span class="td-file-size">18 KB</span></div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">JO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span data-i18n="comment.agent">agent</span><span class="td-mono" title="2026-10-08 07:40" data-i18n="time.hoursAgo" data-i18n-arg="4">4h ago</span></div><div class="td-comment-body">Confirmed the duplicate rows. The event identity is the same for both moves.</div></div></article>
-          <article class="td-comment"><span class="td-avatar">LI</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">linus</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-08 07:05" data-i18n="time.hoursAgo" data-i18n-arg="5">5h ago</span></div><div class="td-comment-body">Blocked on the stream landing. Leaving the reproduction notes in the description.</div></div></article>
-          <article class="td-comment td-comment-decision"><span class="td-avatar">LI</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">linus</span><span class="td-chip" data-i18n="comment.decision">decision</span><span class="td-mono" title="2026-10-07 16:20" data-i18n="time.daysAgo" data-i18n-arg="1">1d ago</span></div><div class="td-comment-body">Deduplicate on the server, not in the drawer.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar" data-assignee-kind="agent">JO</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span data-i18n="comment.agent">agent</span><span class="td-mono" title="2026-10-08 07:40" data-i18n="time.hoursAgo" data-i18n-arg="4">4h ago</span></div><div class="td-comment-body">Confirmed the duplicate rows. The event identity is the same for both moves.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar">LI</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">linus</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-08 07:05" data-i18n="time.hoursAgo" data-i18n-arg="5">5h ago</span></div><div class="td-comment-body">Blocked on the stream landing. Leaving the reproduction notes in the description.</div></div></article>
+          <article class="td-comment td-comment-decision"><span class="avatar"><span class="td-avatar">LI</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">linus</span><span class="badge badge-sm td-chip" data-i18n="comment.decision">decision</span><span class="td-mono" title="2026-10-07 16:20" data-i18n="time.daysAgo" data-i18n-arg="1">1d ago</span></div><div class="td-comment-body">Deduplicate on the server, not in the drawer.</div></div></article>
         </div>
         <div data-slot="activity">
           <div class="td-activity"><span class="font-medium td-mono">linus</span><span>created this task</span><span class="td-activity-ts" title="2026-10-06 10:00" data-i18n="time.daysAgo" data-i18n-arg="2">2d ago</span></div>
@@ -3056,13 +3265,13 @@
         </div>
         <div data-slot="agent-session">
           <div class="td-session" data-agent-session>
-            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="pi">pi</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform pi</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
+            <div class="flex items-center gap-2"><span class="badge badge-xs td-agent-badge" data-agent-platform="pi">pi</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform pi</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
             <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3" data-i18n="session.id">Session</span><span class="td-copy" data-agent-session-id>sess_pi_01HQ9A2B7C4D</span></div>
           </div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">AS</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">assistant</span><span data-i18n="comment.agent">agent</span><span class="td-mono" title="2026-10-08 08:00" data-i18n="time.hoursAgo" data-i18n-arg="3">3h ago</span></div><div class="td-comment-body">Draft shape is in the description. Waiting for the project prefix decision before I touch the identifier.</div></div></article>
-          <article class="td-comment"><span class="td-avatar">JO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-07 15:40" data-i18n="time.daysAgo" data-i18n-arg="1">1d ago</span></div><div class="td-comment-body">Keep the version opaque, clients should only compare it for equality.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar" data-assignee-kind="agent">AS</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">assistant</span><span data-i18n="comment.agent">agent</span><span class="td-mono" title="2026-10-08 08:00" data-i18n="time.hoursAgo" data-i18n-arg="3">3h ago</span></div><div class="td-comment-body">Draft shape is in the description. Waiting for the project prefix decision before I touch the identifier.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar">JO</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-07 15:40" data-i18n="time.daysAgo" data-i18n-arg="1">1d ago</span></div><div class="td-comment-body">Keep the version opaque, clients should only compare it for equality.</div></div></article>
         </div>
         <div data-slot="activity">
           <div class="td-activity"><span class="font-medium td-mono">jobs</span><span>created this task</span><span class="td-activity-ts" title="2026-10-07 15:30" data-i18n="time.daysAgo" data-i18n-arg="1">1d ago</span></div>
@@ -3102,13 +3311,13 @@
           <div class="td-file"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg><span class="td-file-name">filter-profile.json</span><span class="td-file-size">9 KB</span></div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar">LI</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">linus</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-08 09:50" data-i18n="time.hoursAgo" data-i18n-arg="1">1h ago</span></div><div class="td-comment-body">Profiled the board at 18 cards: the debounce removes the flicker on fast typing.</div></div></article>
-          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">JO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span data-i18n="comment.agent">agent</span><span class="td-mono" title="2026-10-08 09:20" data-i18n="time.hoursAgo" data-i18n-arg="2">2h ago</span></div><div class="td-comment-body">Empty columns now show their own state instead of collapsing.</div></div></article>
-          <article class="td-comment td-comment-decision"><span class="td-avatar">T</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="td-chip" data-i18n="comment.decision">decision</span><span class="td-mono" title="2026-10-07 11:00" data-i18n="time.daysAgo" data-i18n-arg="1">1d ago</span></div><div class="td-comment-body">Keep the columns mounted while filtering so the board never reflows.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar">LI</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">linus</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-08 09:50" data-i18n="time.hoursAgo" data-i18n-arg="1">1h ago</span></div><div class="td-comment-body">Profiled the board at 18 cards: the debounce removes the flicker on fast typing.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar" data-assignee-kind="agent">JO</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span data-i18n="comment.agent">agent</span><span class="td-mono" title="2026-10-08 09:20" data-i18n="time.hoursAgo" data-i18n-arg="2">2h ago</span></div><div class="td-comment-body">Empty columns now show their own state instead of collapsing.</div></div></article>
+          <article class="td-comment td-comment-decision"><span class="avatar"><span class="td-avatar">T</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="badge badge-sm td-chip" data-i18n="comment.decision">decision</span><span class="td-mono" title="2026-10-07 11:00" data-i18n="time.daysAgo" data-i18n-arg="1">1d ago</span></div><div class="td-comment-body">Keep the columns mounted while filtering so the board never reflows.</div></div></article>
         </div>
         <div data-slot="agent-session">
           <div class="td-session" data-agent-session>
-            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="claude">claude</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
+            <div class="flex items-center gap-2"><span class="badge badge-xs td-agent-badge" data-agent-platform="claude">claude</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
             <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3" data-i18n="session.id">Session</span><span class="td-copy" data-agent-session-id>sess_claude_01HQ5VFF3A40E</span></div>
           </div>
         </div>
@@ -3150,8 +3359,8 @@
           <div class="td-file"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg><span class="td-file-name">skeleton-rows.png</span><span class="td-file-size">180 KB</span></div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar">JO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-08 08:55" data-i18n="time.hoursAgo" data-i18n-arg="2">2h ago</span></div><div class="td-comment-body">Row grid is fixed at six columns, so the skeleton keeps the same rhythm as the real rows.</div></div></article>
-          <article class="td-comment td-comment-decision"><span class="td-avatar">T</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="td-chip" data-i18n="comment.decision">decision</span><span class="td-mono" title="2026-10-07 18:10" data-i18n="time.hoursAgo" data-i18n-arg="22">22h ago</span></div><div class="td-comment-body">Three rows is enough. More than three reads as a slow interface.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar">JO</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-08 08:55" data-i18n="time.hoursAgo" data-i18n-arg="2">2h ago</span></div><div class="td-comment-body">Row grid is fixed at six columns, so the skeleton keeps the same rhythm as the real rows.</div></div></article>
+          <article class="td-comment td-comment-decision"><span class="avatar"><span class="td-avatar">T</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="badge badge-sm td-chip" data-i18n="comment.decision">decision</span><span class="td-mono" title="2026-10-07 18:10" data-i18n="time.hoursAgo" data-i18n-arg="22">22h ago</span></div><div class="td-comment-body">Three rows is enough. More than three reads as a slow interface.</div></div></article>
         </div>
         <div data-slot="activity">
           <div class="td-activity"><span class="font-medium td-mono">jobs</span><span>created this task</span><span class="td-activity-ts" title="2026-10-07 17:00" data-i18n="time.hoursAgo" data-i18n-arg="22">22h ago</span></div>
@@ -3169,7 +3378,7 @@
             <li>Light theme and dark theme registered</li>
             <li>Radius scale aligned to the guide</li>
           </ul>
-          <pre><code>@plugin "daisyui/theme" { name: "taskdash"; }</code></pre>
+          <pre><code>@plugin "daisyui/theme" { name: "taskpanel"; }</code></pre>
           <table>
             <thead>
               <tr><th>Token</th><th>Value</th></tr>
@@ -3190,13 +3399,13 @@
           <div class="td-file"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg><span class="td-file-name">theme-swap.png</span><span class="td-file-size">410 KB</span></div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar">JO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-07 12:10" data-i18n="time.daysAgo" data-i18n-arg="1">1d ago</span></div><div class="td-comment-body">Both themes are registered on the document element, so the toggle only swaps one attribute.</div></div></article>
-          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">AS</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">assistant</span><span data-i18n="comment.agent">agent</span><span class="td-mono" title="2026-10-07 11:40" data-i18n="time.daysAgo" data-i18n-arg="1">1d ago</span></div><div class="td-comment-body">Verified the dark palette against the contrast floor before closing.</div></div></article>
-          <article class="td-comment td-comment-decision"><span class="td-avatar">T</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="td-chip" data-i18n="comment.decision">decision</span><span class="td-mono" title="2026-10-07 11:00" data-i18n="time.daysAgo" data-i18n-arg="1">1d ago</span></div><div class="td-comment-body">Approved. The status palette keeps one value in both themes.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar">JO</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-07 12:10" data-i18n="time.daysAgo" data-i18n-arg="1">1d ago</span></div><div class="td-comment-body">Both themes are registered on the document element, so the toggle only swaps one attribute.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar" data-assignee-kind="agent">AS</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">assistant</span><span data-i18n="comment.agent">agent</span><span class="td-mono" title="2026-10-07 11:40" data-i18n="time.daysAgo" data-i18n-arg="1">1d ago</span></div><div class="td-comment-body">Verified the dark palette against the contrast floor before closing.</div></div></article>
+          <article class="td-comment td-comment-decision"><span class="avatar"><span class="td-avatar">T</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="badge badge-sm td-chip" data-i18n="comment.decision">decision</span><span class="td-mono" title="2026-10-07 11:00" data-i18n="time.daysAgo" data-i18n-arg="1">1d ago</span></div><div class="td-comment-body">Approved. The status palette keeps one value in both themes.</div></div></article>
         </div>
         <div data-slot="agent-session">
           <div class="td-session" data-agent-session>
-            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="claude">claude</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
+            <div class="flex items-center gap-2"><span class="badge badge-xs td-agent-badge" data-agent-platform="claude">claude</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
             <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3" data-i18n="session.id">Session</span><span class="td-copy" data-agent-session-id>sess_claude_01HQ023PX3Y8E</span></div>
           </div>
         </div>
@@ -3222,7 +3431,7 @@
               <tr><th>Project</th><th>Prefix</th></tr>
             </thead>
             <tbody>
-              <tr><td>TaskDashboard</td><td>TD</td></tr>
+              <tr><td>TaskPanel</td><td>TD</td></tr>
               <tr><td>Orchestrator</td><td>ORC</td></tr>
             </tbody>
           </table>
@@ -3234,13 +3443,13 @@
         </div>
         <div data-slot="agent-session">
           <div class="td-session" data-agent-session>
-            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="pi">pi</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform pi</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
+            <div class="flex items-center gap-2"><span class="badge badge-xs td-agent-badge" data-agent-platform="pi">pi</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform pi</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
             <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3" data-i18n="session.id">Session</span><span class="td-copy" data-agent-session-id>sess_pi_01HQ6X0Z8A2B4</span></div>
           </div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">AS</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">assistant</span><span data-i18n="comment.agent">agent</span><span class="td-mono" title="2026-10-06 14:20" data-i18n="time.daysAgo" data-i18n-arg="2">2d ago</span></div><div class="td-comment-body">Sequence is scoped per project, so two projects can both hold number 119.</div></div></article>
-          <article class="td-comment"><span class="td-avatar">SI</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">simons</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-06 15:00" data-i18n="time.daysAgo" data-i18n-arg="2">2d ago</span></div><div class="td-comment-body">Confirmed against the audit export. Identifiers stay stable.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar" data-assignee-kind="agent">AS</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">assistant</span><span data-i18n="comment.agent">agent</span><span class="td-mono" title="2026-10-06 14:20" data-i18n="time.daysAgo" data-i18n-arg="2">2d ago</span></div><div class="td-comment-body">Sequence is scoped per project, so two projects can both hold number 119.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar">SI</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">simons</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-06 15:00" data-i18n="time.daysAgo" data-i18n-arg="2">2d ago</span></div><div class="td-comment-body">Confirmed against the audit export. Identifiers stay stable.</div></div></article>
         </div>
         <div data-slot="activity">
           <div class="td-activity"><span class="font-medium td-mono">jobs</span><span>created this task</span><span class="td-activity-ts" title="2026-10-06 13:00" data-i18n="time.daysAgo" data-i18n-arg="2">2d ago</span></div>
@@ -3274,7 +3483,7 @@
           </ul>
         </div>
         <div data-slot="comments">
-          <article class="td-comment td-comment-decision"><span class="td-avatar">T</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="td-chip" data-i18n="comment.decision">decision</span><span class="td-mono" title="2026-10-04 16:00" data-i18n="time.daysAgo" data-i18n-arg="4">4d ago</span></div><div class="td-comment-body">Closing this. The card stays neutral: border and surface only.</div></div></article>
+          <article class="td-comment td-comment-decision"><span class="avatar"><span class="td-avatar">T</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="badge badge-sm td-chip" data-i18n="comment.decision">decision</span><span class="td-mono" title="2026-10-04 16:00" data-i18n="time.daysAgo" data-i18n-arg="4">4d ago</span></div><div class="td-comment-body">Closing this. The card stays neutral: border and surface only.</div></div></article>
         </div>
         <div data-slot="activity">
           <div class="td-activity"><span class="font-medium td-mono">linus</span><span>created this task</span><span class="td-activity-ts" title="2026-10-04 14:00" data-i18n="time.daysAgo" data-i18n-arg="4">4d ago</span></div>
@@ -3309,7 +3518,7 @@
         </div>
         <div data-slot="agent-session">
           <div class="td-session" data-agent-session>
-            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="openclaw">openclaw</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform openclaw</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
+            <div class="flex items-center gap-2"><span class="badge badge-xs td-agent-badge" data-agent-platform="openclaw">openclaw</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform openclaw</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
             <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3" data-i18n="session.id">Session</span><span class="td-copy" data-agent-session-id>sess_openclaw_01HQ0VWFJ9QEW</span></div>
           </div>
         </div>
@@ -3349,7 +3558,7 @@
         </div>
         <div data-slot="agent-session">
           <div class="td-session" data-agent-session>
-            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="codex">codex</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform codex</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
+            <div class="flex items-center gap-2"><span class="badge badge-xs td-agent-badge" data-agent-platform="codex">codex</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform codex</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
             <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3" data-i18n="session.id">Session</span><span class="td-copy" data-agent-session-id>sess_codex_01HQ54E9GD4XA</span></div>
           </div>
         </div>
@@ -3386,12 +3595,12 @@
         </div>
         <div data-slot="agent-session">
           <div class="td-session" data-agent-session>
-            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="codex">codex</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform codex</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
+            <div class="flex items-center gap-2"><span class="badge badge-xs td-agent-badge" data-agent-platform="codex">codex</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform codex</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
             <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3" data-i18n="session.id">Session</span><span class="td-copy" data-agent-session-id>sess_codex_01HQ8ZM4K2R8</span></div>
           </div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">TU</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">turing</span><span data-i18n="comment.agent">agent</span><span class="td-mono" title="2026-10-08 08:15" data-i18n="time.hoursAgo" data-i18n-arg="3">3h ago</span></div><div class="td-comment-body">Profiled 40 project switches: the reload dominates the frame budget.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar" data-assignee-kind="agent">TU</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">turing</span><span data-i18n="comment.agent">agent</span><span class="td-mono" title="2026-10-08 08:15" data-i18n="time.hoursAgo" data-i18n-arg="3">3h ago</span></div><div class="td-comment-body">Profiled 40 project switches: the reload dominates the frame budget.</div></div></article>
         </div>
         <div data-slot="activity">
           <div class="td-activity"><span class="font-medium td-mono">jobs</span><span>created this task</span><span class="td-activity-ts" title="2026-10-08 07:40" data-i18n="time.hoursAgo" data-i18n-arg="4">4h ago</span></div>
@@ -3429,8 +3638,8 @@
           <div class="td-file"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg><span class="td-file-name">lease-notes.md</span><span class="td-file-size">5 KB</span></div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar">JO</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-08 08:05" data-i18n="time.hoursAgo" data-i18n-arg="3">3h ago</span></div><div class="td-comment-body">Draft outline is in the description. Needs the expiry rule spelled out.</div></div></article>
-          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">TU</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">turing</span><span data-i18n="comment.agent">agent</span><span class="td-mono" title="2026-10-08 08:40" data-i18n="time.hoursAgo" data-i18n-arg="2">2h ago</span></div><div class="td-comment-body">The lease holder is recorded in the activity log, so the docs can reference that row.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar">JO</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">jobs</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-08 08:05" data-i18n="time.hoursAgo" data-i18n-arg="3">3h ago</span></div><div class="td-comment-body">Draft outline is in the description. Needs the expiry rule spelled out.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar" data-assignee-kind="agent">TU</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">turing</span><span data-i18n="comment.agent">agent</span><span class="td-mono" title="2026-10-08 08:40" data-i18n="time.hoursAgo" data-i18n-arg="2">2h ago</span></div><div class="td-comment-body">The lease holder is recorded in the activity log, so the docs can reference that row.</div></div></article>
         </div>
         <div data-slot="activity">
           <div class="td-activity"><span class="font-medium td-mono">jobs</span><span>created this task</span><span class="td-activity-ts" title="2026-10-08 07:50" data-i18n="time.hoursAgo" data-i18n-arg="3">3h ago</span></div>
@@ -3465,7 +3674,7 @@
         </div>
         <div data-slot="agent-session">
           <div class="td-session" data-agent-session>
-            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="codex">codex</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform codex</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
+            <div class="flex items-center gap-2"><span class="badge badge-xs td-agent-badge" data-agent-platform="codex">codex</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform codex</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
             <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3" data-i18n="session.id">Session</span><span class="td-copy" data-agent-session-id>sess_codex_01HQ8ZM4K2S9</span></div>
           </div>
         </div>
@@ -3474,8 +3683,8 @@
           <div class="td-file"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg><span class="td-file-name">reconnect-policy.md</span><span class="td-file-size">4 KB</span></div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar" data-assignee-kind="agent">TU</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">turing</span><span data-i18n="comment.agent">agent</span><span class="td-mono" title="2026-10-08 09:15" data-i18n="time.hoursAgo" data-i18n-arg="2">2h ago</span></div><div class="td-comment-body">The revision counter in the top bar is driven by the same value the stream publishes.</div></div></article>
-          <article class="td-comment td-comment-decision"><span class="td-avatar">T</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="td-chip" data-i18n="comment.decision">decision</span><span class="td-mono" title="2026-10-08 09:35" data-i18n="time.hoursAgo" data-i18n-arg="2">2h ago</span></div><div class="td-comment-body">Reconnect with backoff, never poll in a loop.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar" data-assignee-kind="agent">TU</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">turing</span><span data-i18n="comment.agent">agent</span><span class="td-mono" title="2026-10-08 09:15" data-i18n="time.hoursAgo" data-i18n-arg="2">2h ago</span></div><div class="td-comment-body">The revision counter in the top bar is driven by the same value the stream publishes.</div></div></article>
+          <article class="td-comment td-comment-decision"><span class="avatar"><span class="td-avatar">T</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="badge badge-sm td-chip" data-i18n="comment.decision">decision</span><span class="td-mono" title="2026-10-08 09:35" data-i18n="time.hoursAgo" data-i18n-arg="2">2h ago</span></div><div class="td-comment-body">Reconnect with backoff, never poll in a loop.</div></div></article>
         </div>
         <div data-slot="activity">
           <div class="td-activity"><span class="font-medium">Terry</span><span>created this task</span><span class="td-activity-ts" title="2026-10-07 08:00" data-i18n="time.daysAgo" data-i18n-arg="1">1d ago</span></div>
@@ -3519,13 +3728,13 @@
           <div class="td-file"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg><span class="td-file-name">bucket-policy.json</span><span class="td-file-size">3 KB</span></div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar">LI</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">linus</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-08 08:45" data-i18n="time.hoursAgo" data-i18n-arg="2">2h ago</span></div><div class="td-comment-body">The adapter is written, but I cannot test a signed URL without the bucket policy.</div></div></article>
-          <article class="td-comment"><span class="td-avatar">SI</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">simons</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-08 09:05" data-i18n="time.hoursAgo" data-i18n-arg="2">2h ago</span></div><div class="td-comment-body">Infra review is queued for tomorrow. Nothing moves until then.</div></div></article>
-          <article class="td-comment td-comment-decision"><span class="td-avatar">T</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="td-chip" data-i18n="comment.decision">decision</span><span class="td-mono" title="2026-10-08 09:30" data-i18n="time.hoursAgo" data-i18n-arg="2">2h ago</span></div><div class="td-comment-body">Marked blocked. Do not backfill before the policy is approved.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar">LI</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">linus</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-08 08:45" data-i18n="time.hoursAgo" data-i18n-arg="2">2h ago</span></div><div class="td-comment-body">The adapter is written, but I cannot test a signed URL without the bucket policy.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar">SI</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">simons</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-08 09:05" data-i18n="time.hoursAgo" data-i18n-arg="2">2h ago</span></div><div class="td-comment-body">Infra review is queued for tomorrow. Nothing moves until then.</div></div></article>
+          <article class="td-comment td-comment-decision"><span class="avatar"><span class="td-avatar">T</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink">Terry</span><span class="badge badge-sm td-chip" data-i18n="comment.decision">decision</span><span class="td-mono" title="2026-10-08 09:30" data-i18n="time.hoursAgo" data-i18n-arg="2">2h ago</span></div><div class="td-comment-body">Marked blocked. Do not backfill before the policy is approved.</div></div></article>
         </div>
         <div data-slot="agent-session">
           <div class="td-session" data-agent-session>
-            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="openclaw">openclaw</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform openclaw</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
+            <div class="flex items-center gap-2"><span class="badge badge-xs td-agent-badge" data-agent-platform="openclaw">openclaw</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform openclaw</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
             <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3" data-i18n="session.id">Session</span><span class="td-copy" data-agent-session-id>sess_openclaw_01HQ631YCE84K</span></div>
           </div>
         </div>
@@ -3563,11 +3772,11 @@
           </ul>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar">SI</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">simons</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-08 07:20" data-i18n="time.hoursAgo" data-i18n-arg="4">4h ago</span></div><div class="td-comment-body">Found two more inline colours in the drawer. They are on the same token now.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar">SI</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">simons</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-08 07:20" data-i18n="time.hoursAgo" data-i18n-arg="4">4h ago</span></div><div class="td-comment-body">Found two more inline colours in the drawer. They are on the same token now.</div></div></article>
         </div>
         <div data-slot="agent-session">
           <div class="td-session" data-agent-session>
-            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="claude">claude</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
+            <div class="flex items-center gap-2"><span class="badge badge-xs td-agent-badge" data-agent-platform="claude">claude</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
             <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3" data-i18n="session.id">Session</span><span class="td-copy" data-agent-session-id>sess_claude_01HQ7NVVZVFQY</span></div>
           </div>
         </div>
@@ -3607,11 +3816,11 @@
           <div class="td-file"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg><span class="td-file-name">guard-report.txt</span><span class="td-file-size">1 KB</span></div>
         </div>
         <div data-slot="comments">
-          <article class="td-comment"><span class="td-avatar">SI</span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">simons</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-06 16:30" data-i18n="time.daysAgo" data-i18n-arg="2">2d ago</span></div><div class="td-comment-body">Green on the first run. The storage and session checks are in the same script.</div></div></article>
+          <article class="td-comment"><span class="avatar"><span class="td-avatar">SI</span></span><div><div class="td-comment-meta"><span class="font-medium text-td-ink td-mono">simons</span><span data-i18n="comment.human">human</span><span class="td-mono" title="2026-10-06 16:30" data-i18n="time.daysAgo" data-i18n-arg="2">2d ago</span></div><div class="td-comment-body">Green on the first run. The storage and session checks are in the same script.</div></div></article>
         </div>
         <div data-slot="agent-session">
           <div class="td-session" data-agent-session>
-            <div class="flex items-center gap-2"><span class="td-agent-badge" data-agent-platform="claude">claude</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
+            <div class="flex items-center gap-2"><span class="badge badge-xs td-agent-badge" data-agent-platform="claude">claude</span><span class="td-mono text-xs text-td-ink-2" data-agent-platform-value>--agent-platform claude</span><button type="button" class="btn btn-outline btn-xs" style="margin-left: auto" data-agent-resume data-i18n="drawer.resume">Resume</button></div>
             <div class="mt-2 flex items-center gap-2"><span class="text-xs text-td-ink-3" data-i18n="session.id">Session</span><span class="td-copy" data-agent-session-id>sess_claude_01HQ1AD8PQT6D</span></div>
           </div>
         </div>
@@ -3624,7 +3833,11 @@
       </template>
     </div>
 
+    <!-- Vendored locally, loaded from disk, never from a network. Every one of
+         these is a plain file in prototype/vendor/ — see DESIGN.md §10. -->
     <script src="vendor/jquery.slim.min.js"></script>
+    <script src="vendor/markdown-lite.js"></script>
+    <script src="vendor/highlight-lite.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

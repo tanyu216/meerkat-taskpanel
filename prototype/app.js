@@ -1,5 +1,5 @@
 /* ============================================================================
-   TaskDashboard v1 prototype — interaction layer
+   TaskPanel v1 prototype — interaction layer
    ----------------------------------------------------------------------------
    jQuery (slim build) only. Every binding uses `$(...).on(...)` with `data-*`
    hooks; no bare document.querySelector / addEventListener anywhere.
@@ -22,7 +22,7 @@
   ];
 
   var PROJECT_PREFIX = {
-    TaskDashboard: "TD",
+    TaskPanel: "TD",
     Orchestrator: "ORC",
     "Site Refresh": "SR",
   };
@@ -35,8 +35,8 @@
   var MESSAGES = {
     en: {
       /* chrome */
-      "app.title": "TaskDashboard — Board",
-      "app.brand": "TaskDashboard",
+      "app.title": "TaskPanel — Board",
+      "app.brand": "TaskPanel",
       "app.tagline": "Agent Task Collaboration",
       "project.new": "New project…",
       "topbar.search.label": "Search tasks",
@@ -155,6 +155,19 @@
       "createTask.field.priority": "Priority",
       "createTask.field.assignee": "Assignee",
       "createTask.field.project": "Project",
+      "createTask.field.reporter": "Reporter",
+      /* The two roster controls: free text, fuzzy match, no roster editor. */
+      "combo.assigneePlaceholder": "Search or type a new name…",
+      "combo.reporterPlaceholder": "Search or type a new name…",
+      "combo.empty": "No match — a new name is saved when you use it.",
+      "combo.new": "· new",
+      "combo.hint": "Up and down to choose, Enter to accept, Escape to dismiss.",
+      /* Markdown editor chrome. */
+      "md.label": "Markdown view",
+      "md.write": "Write",
+      "md.preview": "Preview",
+      "md.split": "Split",
+      "md.hint": "Markdown · rendered locally",
       "createTask.option.owner": "Terry · owner",
       "createTask.submit": "Create task",
       "createProject.title": "New project",
@@ -221,6 +234,8 @@
       "access.model.bind": "Binds to 0.0.0.0 by default — reachable from other devices on the network.",
       "access.model.token": "Requests from outside localhost must present the token.",
       "access.cidr.note": "Allowed source ranges (CIDR). Traffic outside these ranges is rejected.",
+      "access.cidr.enabled": "IP allow-list in force",
+      "access.cidr.disabled": "IP allow-list is off",
       "access.cidr.add": "Add allowed range",
       "access.cidr.remove": "Remove this range",
       "access.cidr.value": "Allowed source range",
@@ -234,8 +249,8 @@
     },
     zh: {
       /* chrome */
-      "app.title": "TaskDashboard — 看板",
-      "app.brand": "TaskDashboard",
+      "app.title": "TaskPanel — 看板",
+      "app.brand": "TaskPanel",
       "app.tagline": "Agent 任务协作面板",
       "project.new": "新建项目…",
       "topbar.search.label": "搜索任务",
@@ -354,6 +369,17 @@
       "createTask.field.priority": "优先级",
       "createTask.field.assignee": "负责人",
       "createTask.field.project": "项目",
+      "createTask.field.reporter": "创建人",
+      "combo.assigneePlaceholder": "搜索或输入新姓名…",
+      "combo.reporterPlaceholder": "搜索或输入新姓名…",
+      "combo.empty": "无匹配——使用时将保存为新姓名。",
+      "combo.new": "· 新",
+      "combo.hint": "↑↓ 选择，Enter 确认，Esc 关闭。",
+      "md.label": "Markdown 视图",
+      "md.write": "编辑",
+      "md.preview": "预览",
+      "md.split": "分栏",
+      "md.hint": "Markdown · 本地渲染",
       "createTask.option.owner": "Terry · 所有者",
       "createTask.submit": "创建任务",
       "createProject.title": "新建项目",
@@ -420,6 +446,8 @@
       "access.model.bind": "默认绑定 0.0.0.0 —— 同一网络内的其他设备可以直接访问。",
       "access.model.token": "来自 localhost 之外的请求必须携带 Token。",
       "access.cidr.note": "允许的来源网段（CIDR）。超出这些范围的流量将被拒绝。",
+      "access.cidr.enabled": "IP 白名单已启用",
+      "access.cidr.disabled": "IP 白名单已关闭",
       "access.cidr.add": "新增允许网段",
       "access.cidr.remove": "删除该网段",
       "access.cidr.value": "允许的来源网段",
@@ -455,7 +483,7 @@
   };
 
   var state = {
-    project: "TaskDashboard",
+    project: "TaskPanel",
     view: "board",
     lang: "en",
     moveIdentifier: null,
@@ -545,6 +573,9 @@
   /* ------------------------------------------------- board / column state */
 
   function refreshColumns() {
+    var columns = [];
+    var total = 0;
+
     $("[data-column]").each(function () {
       var $column = $(this);
       var visible = $column.find("[data-card]:not([hidden])").length;
@@ -552,6 +583,18 @@
       $column
         .find('[data-empty][data-empty-kind="column"]')
         .prop("hidden", visible !== 0);
+      columns.push({ $column: $column, visible: visible });
+      total += visible;
+    });
+
+    /* The occupancy bar under each header is that column's share of the board
+       — the shape of the work before any card is read. `max` is never 0, since
+       a progress element with max 0 is a dividing error. */
+    $.each(columns, function (index, entry) {
+      entry.$column.find("[data-column-progress]").attr({
+        value: entry.visible,
+        max: total || 1,
+      });
     });
   }
 
@@ -596,12 +639,50 @@
     }
   }
 
+  /* The label filter is a dropdown, not a native <select>, so its value is a
+     data attribute on the element that owns the `[data-filter-label]` hook
+     rather than a form value. Everything downstream still just reads a
+     string, and the hook name the contract fixes is unchanged. */
+  function labelFilterValue() {
+    return $("[data-filter-label]").attr("data-filter-label-value") || "all";
+  }
+
+  /* Restates the label control from that value: which row reads as chosen,
+     and what the trigger's badge says. Run from every filter pass, so a
+     language switch re-states it in the new language for free. */
+  function renderLabelFilter() {
+    var value = labelFilterValue();
+    var $filter = $("[data-filter-label]");
+
+    $filter.find("[data-filter-label-option]").each(function () {
+      var $option = $(this);
+      $option.attr(
+        "aria-current",
+        String($option.attr("data-label-value") === value)
+      );
+    });
+
+    var $chosen = $filter.find(
+      '[data-filter-label-option][data-label-value="' + value + '"]'
+    );
+    /* the row's own copy is already in the active language */
+    $filter
+      .find("[data-filter-label-summary]")
+      .text($chosen.length ? $.trim($chosen.text()) : text("filters.label.all"));
+  }
+
+  function closeLabelMenu() {
+    $("[data-filter-label]").removeAttr("open");
+  }
+
   /* I6 / I8 · one filter pass drives cards, column counts and the count readout */
   function applyFilters() {
+    renderLabelFilter();
+
     var query = $.trim(String($("[data-search-input]").val() || "")).toLowerCase();
     var byAssignee = $("[data-filter-assignee]").val();
     var byPriority = $("[data-filter-priority]").val();
-    var byLabel = $("[data-filter-label]").val();
+    var byLabel = labelFilterValue();
 
     var total = 0;
     var shown = 0;
@@ -673,7 +754,8 @@
     $("[data-search-input]").val("");
     $("[data-filter-assignee]").val("all");
     $("[data-filter-priority]").val("all");
-    $("[data-filter-label]").val("all");
+    $("[data-filter-label]").attr("data-filter-label-value", "all");
+    closeLabelMenu();
     applyFilters();
   }
 
@@ -816,7 +898,7 @@
   function applyTheme(dark) {
     var $switch = $("[data-theme-switch]");
     var label = text(dark ? "access.theme.switch.light" : "access.theme.switch.dark");
-    $("html").attr("data-theme", dark ? "dark" : "taskdash");
+    $("html").attr("data-theme", dark ? "dark" : "taskpanel");
     showGlyph($switch.find('[data-theme-icon="light"]'), !dark);
     showGlyph($switch.find('[data-theme-icon="dark"]'), dark);
     $switch
@@ -1084,7 +1166,8 @@
       .text(cardMono || monogram(data.assignee))
       .attr("data-assignee-kind", data.kind);
     $avatar.attr("title", data.assignee);
-    $drawer.find("[data-detail-assignee-label]").text(data.assignee);
+    /* re-assignment reads off the same roster the create dialog offers */
+    $drawer.find("[data-detail-assignee-label]").val(data.assignee);
     $drawer.find("[data-detail-assignee]").attr("data-assignee-kind", data.kind);
 
     /* agent cards advertise their platform next to the role name */
@@ -1101,7 +1184,8 @@
 
     /* reporter stands in for "created by" until the activity block takes over */
     var reporter = attr($card, "reporter") || ME;
-    $drawer.find("[data-detail-reporter-label]").text(reporter);
+    reporters.upsert(reporter);
+    $drawer.find("[data-detail-reporter-label]").val(reporter);
     $drawer
       .find("[data-detail-reporter-avatar]")
       .text(monogram(reporter))
@@ -1242,6 +1326,57 @@
   }
 
   /* --------------------------------------------------------- I9/I10 · modal */
+
+  /* One place sets up the create dialog, whether it was opened from the top
+     bar or from a column's add button: which status it starts on, which
+     project is in force, who reports it, and an empty editor in write mode.
+     Reset after a submit runs the same path, so a second task starts exactly
+     where the first one did. */
+  var DESCRIPTION_SEED = [
+    "## Context",
+    "",
+    "What is true today, and why this matters now.",
+    "",
+    "## Acceptance",
+    "",
+    "- [ ] An observable outcome, not an activity",
+    "- [ ] The check that proves it",
+    "",
+    "```sh",
+    "# how to verify",
+    "npm test",
+    "```",
+    "",
+    "| Key | Action |",
+    "| --- | ------ |",
+    "| Enter | Open the task |",
+    "| Esc | Close the drawer |",
+  ].join("\n");
+
+  function resetCreateTask($form, status) {
+    var $editor = $form.find("[data-md-editor]");
+
+    /* jQuery has no form-reset equivalent, so the native method is used. */
+    if ($form[0] && typeof $form[0].reset === "function") $form[0].reset();
+
+    $("[data-create-task-project]").val(state.project);
+    $("[data-create-task-status]").val(status || "backlog");
+    $("[data-create-task-priority]").val("none");
+    $form.find("[data-assignee-input], [data-reporter-input]").val("");
+    /* scoped to this dialog: the drawer carries its own pair of menus, and a
+       global clear would drop the drawer's keyboard position too */
+    $form
+      .find("[data-assignee-menu] [data-assignee-option]")
+      .attr("aria-selected", "false");
+    $form
+      .find("[data-reporter-menu] [data-reporter-option]")
+      .attr("aria-selected", "false");
+    $form.find("[data-md-source]").val(DESCRIPTION_SEED);
+    closeCombos();
+    setMarkdownMode($editor, "write");
+    renderMarkdown($editor);
+  }
+
 
   /* A native <dialog> can only be opened through showModal()/close(), which
      jQuery has no equivalent for — hence the direct element calls below. */
@@ -1469,6 +1604,281 @@
     toast(ok ? text("toast.copied") + ": " + value : value, ok ? "success" : "info");
   }
 
+  /* ------------------------------------- assignee / reporter rosters ----- */
+
+  /* Two in-memory rosters, and nothing else. There is no roster editor in the
+     interface, by design: the list is not something a person maintains, it is
+     something the board accumulates.
+
+     The assignee roster is seeded with the team this prototype already ships
+     — the seven handles the board and the sidebar name. The reporter roster is
+     derived at first pass from the cards themselves, so "reporters" means
+     exactly "who has reported here before".
+
+     Neither list is ever rejected at the edges: a name typed that is not yet
+     known is upserted the moment it is used. That upsert is the only way a
+     roster grows, which is why nothing here needs a maintenance screen. */
+  var ASSIGNEE_SEED = [
+    { name: "elon", kind: "agent", platform: "openclaw" },
+    { name: "jobs", kind: "agent", platform: "claude" },
+    { name: "linus", kind: "agent", platform: "claude" },
+    { name: "turing", kind: "agent", platform: "codex" },
+    { name: "simons", kind: "agent", platform: "claude" },
+    { name: "assistant", kind: "agent", platform: "pi" },
+    { name: "Terry", kind: "human", platform: "" },
+  ];
+
+  function rosterKey(name) {
+    return $.trim(String(name === undefined || name === null ? "" : name)).toLowerCase();
+  }
+
+  /* A tiny ordered map. `match` is the fuzzy pass the controls run on every
+     keystroke: a case-insensitive substring first, and — only when nothing
+     contains the query — a subsequence pass, so `lns` still finds `linus`
+     without ever outranking a name that genuinely contains what was typed. */
+  function makeRoster(seed) {
+    var byKey = {};
+    var order = [];
+
+    function put(name, kind, platform) {
+      var trimmed = $.trim(String(name === undefined || name === null ? "" : name));
+      if (!trimmed) return null;
+      var key = rosterKey(trimmed);
+      if (!byKey[key]) {
+        byKey[key] = {
+          name: trimmed,
+          kind: kind || "human",
+          platform: platform || "",
+        };
+        order.push(key);
+      }
+      return byKey[key];
+    }
+
+    $.each(seed || [], function (index, entry) {
+      if (typeof entry === "string") put(entry, "human", "");
+      else put(entry.name, entry.kind, entry.platform);
+    });
+
+    function subsequence(haystack, needle) {
+      var at = 0;
+      for (var i = 0; i < haystack.length && at < needle.length; i++) {
+        if (haystack.charAt(i) === needle.charAt(at)) at++;
+      }
+      return at === needle.length;
+    }
+
+    return {
+      all: function () {
+        return $.map(order, function (key) {
+          return byKey[key];
+        });
+      },
+      get: function (name) {
+        return byKey[rosterKey(name)] || null;
+      },
+      upsert: put,
+      /* Ranked matches for `query`. An empty query returns the whole roster in
+         seeding order, so the menu opens as a browsable list. */
+      match: function (query) {
+        var needle = rosterKey(query);
+        var entries = this.all();
+        if (!needle) return entries;
+
+        var starts = [];
+        var contains = [];
+        var fuzzy = [];
+        $.each(entries, function (index, entry) {
+          var haystack = rosterKey(entry.name);
+          var at = haystack.indexOf(needle);
+          if (at === 0) starts.push(entry);
+          else if (at > 0) contains.push(entry);
+          else if (subsequence(haystack, needle)) fuzzy.push(entry);
+        });
+        return starts.concat(contains, fuzzy);
+      },
+    };
+  }
+
+  var assignees = makeRoster(ASSIGNEE_SEED);
+  var reporters = makeRoster([]);
+
+  /* The two controls are the same control twice, so they share one
+     implementation and differ only in the hooks they answer to and the roster
+     they read — which is exactly the contract the markup carries. */
+  var COMBO = {
+    assignee: {
+      roster: assignees,
+      input: "[data-assignee-input]",
+      menu: "[data-assignee-menu]",
+      option: "[data-assignee-option]",
+      optionAttr: "data-assignee-option",
+      valueAttr: "data-assignee-value",
+      kindAttr: "data-assignee-kind",
+    },
+    reporter: {
+      roster: reporters,
+      input: "[data-reporter-input]",
+      menu: "[data-reporter-menu]",
+      option: "[data-reporter-option]",
+      optionAttr: "data-reporter-option",
+      valueAttr: "data-reporter-value",
+      kindAttr: "",
+    },
+  };
+
+  function comboMenu($input, config) {
+    return $input.closest(".td-combo").find(config.menu);
+  }
+
+  function closeCombos() {
+    $("[data-assignee-menu], [data-reporter-menu]").prop("hidden", true);
+    $("[data-assignee-input], [data-reporter-input]").removeAttr("aria-expanded");
+  }
+
+  function comboOptionMarkup(entry, config, isNew) {
+    var $option = $("<button type='button'></button>")
+      .attr(config.optionAttr, "")
+      .attr(config.valueAttr, entry.name)
+      .attr("aria-selected", "false")
+      .append($("<span></span>").text(entry.name));
+
+    /* Only the assignee control carries identity: for a reporter, whether the
+       name is an agent is not part of what the board records. */
+    if (config.kindAttr) {
+      $option.attr(config.kindAttr, entry.kind === "agent" ? "agent" : "human");
+      if (entry.kind === "agent" && entry.platform) {
+        $option.attr("data-agent-platform", entry.platform);
+        $option.append(
+          $("<span class='badge badge-xs td-agent-badge'></span>").text(entry.platform)
+        );
+      }
+    }
+    if (isNew) {
+      $option
+        .attr("data-combo-new", "true")
+        .append(
+          $("<span class='td-combo-new'></span>").text(text("combo.new"))
+        );
+    }
+    return $("<li></li>").append($option);
+  }
+
+  /* Rebuilds one control's menu from what has been typed. The typed value is
+     never discarded: when it is not in the roster it is offered as a new row,
+     because using a new name is the one thing this control is allowed to add. */
+  function renderCombo($input, config) {
+    var $menu = comboMenu($input, config);
+    if (!$menu.length) return;
+
+    var typed = $.trim(String($input.val() || ""));
+    var matches = config.roster.match(typed);
+    var exact = config.roster.get(typed);
+    var $list = $("<div></div>");
+
+    if (typed && !exact) {
+      $list.append(
+        comboOptionMarkup({ name: typed, kind: "human", platform: "" }, config, true)
+      );
+    }
+    $.each(matches, function (index, entry) {
+      $list.append(comboOptionMarkup(entry, config, false));
+    });
+
+    $menu.empty();
+    if (!$list.children().length) {
+      $menu.append(
+        $("<li class='td-combo-empty'></li>").text(text("combo.empty"))
+      );
+    } else {
+      $menu.append($list.children());
+    }
+    $menu.prop("hidden", false);
+    $input.attr("aria-expanded", "true");
+  }
+
+  /* The row the arrow keys are on. `aria-selected` is the single source of
+     truth for both the paint and what Enter will accept. */
+  function comboRows($input, config) {
+    return comboMenu($input, config).find(config.option);
+  }
+
+  function comboSelected($input, config) {
+    var $rows = comboRows($input, config);
+    var $current = $rows.filter('[aria-selected="true"]');
+    return $current.length ? $current : $rows.first();
+  }
+
+  function comboMove($input, config, step) {
+    var $rows = comboRows($input, config);
+    if (!$rows.length) return;
+    var index = $rows.index(comboSelected($input, config));
+    var next = Math.max(0, Math.min($rows.length - 1, index + step));
+    $rows.attr("aria-selected", "false");
+    $rows.eq(next).attr("aria-selected", "true");
+  }
+
+  /* Accepting a row is the only mutation: the roster takes the name, and the
+     input states it. Nothing is sent anywhere and nothing is kept. */
+  function comboAccept($input, config, $row) {
+    if (!$row || !$row.length) return;
+    var value = $.trim(String($row.attr(config.valueAttr) || ""));
+    if (!value) return;
+
+    var entry = config.roster.upsert(
+      value,
+      (config.kindAttr && $row.attr(config.kindAttr)) || "human",
+      (config.kindAttr && $row.attr("data-agent-platform")) || ""
+    );
+    $input.val(entry ? entry.name : value);
+    closeCombos();
+    $input.trigger("change");
+  }
+
+  /* ------------------------------------------------- the Markdown editor -- */
+
+  /* Both panes are drawn from the same source string on every keystroke: the
+     highlight layer behind the textarea, and the rendered preview. The two
+     vendored files do the work — this function only decides what to ask them
+     for, so a missing vendor file degrades to an empty pane rather than an
+     exception. */
+  function renderMarkdown($editor) {
+    var source = String($editor.find("[data-md-source]").val() || "");
+    var $highlight = $editor.find("[data-md-highlight]");
+    var $preview = $editor.find("[data-md-preview]");
+
+    if ($highlight.length && window.HighlightLite) {
+      $highlight.html(window.HighlightLite.markdown(source));
+    }
+    if ($preview.length && window.MarkdownLite) {
+      $preview.html(
+        window.MarkdownLite.render(source, {
+          highlight: function (code, language) {
+            return window.HighlightLite
+              ? window.HighlightLite.code(code, language)
+              : window.MarkdownLite.escape(code);
+          },
+        })
+      );
+    }
+  }
+
+  /* The highlight layer is painted, not scrolled: it follows the textarea. */
+  function syncMarkdownScroll($source) {
+    var $editor = $source.closest("[data-md-editor]");
+    var $highlight = $editor.find("[data-md-highlight]");
+    if (!$highlight.length) return;
+    $highlight.scrollTop($source.scrollTop()).scrollLeft($source.scrollLeft());
+  }
+
+  function setMarkdownMode($editor, mode) {
+    $editor.find(".td-md-panes").attr("data-md-mode", mode);
+    $editor.find("[data-md-toggle]").each(function () {
+      var $button = $(this);
+      $button.attr("aria-pressed", String($button.attr("data-md-toggle") === mode));
+    });
+  }
+
   /* =========================================================== bindings === */
 
   $(function () {
@@ -1503,8 +1913,22 @@
     $("[data-search]").on("input", "[data-search-input]", debouncedFilter);
     $("[data-filters]").on(
       "change",
-      "[data-filter-assignee], [data-filter-priority], [data-filter-label]",
+      "[data-filter-assignee], [data-filter-priority]",
       applyFilters
+    );
+
+    /* the label dropdown: choosing a row writes the value, restates the
+       trigger and re-runs the filter pass in one move */
+    $("[data-filter-label]").on(
+      "click",
+      "[data-filter-label-option]",
+      function () {
+        $(this)
+          .closest("[data-filter-label]")
+          .attr("data-filter-label-value", $(this).attr("data-label-value"));
+        closeLabelMenu();
+        applyFilters();
+      }
     );
     $(document).on("click", "[data-filter-clear]", function () {
       resetFilters();
@@ -1656,6 +2080,91 @@
         closeMoveMenu();
         closeLangMenu();
       }
+      /* the label dropdown and both roster menus float the same way */
+      if (!$(event.target).closest("[data-filter-label]").length) {
+        closeLabelMenu();
+      }
+      if (!$(event.target).closest(".td-combo").length) closeCombos();
+    });
+
+    /* ------------------------------------ I13 · assignee / reporter ------ */
+
+    /* One delegated pass per roster control. Every binding is keyed off the
+       hook the markup carries, so the create dialog and the detail drawer run
+       the same code with no second registration. */
+    $.each(COMBO, function (name, config) {
+      var input = config.input;
+
+      $(document).on("input", input, function () {
+        renderCombo($(this), config);
+      });
+
+      $(document).on("focus", input, function () {
+        var $input = $(this);
+        closeCombos();
+        renderCombo($input, config);
+      });
+
+      $(document).on("keydown", input, function (event) {
+        var $input = $(this);
+        var open = !comboMenu($input, config).prop("hidden");
+
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          event.preventDefault();
+          if (!open) renderCombo($input, config);
+          comboMove($input, config, event.key === "ArrowDown" ? 1 : -1);
+          return;
+        }
+        if (event.key === "Enter") {
+          if (!open) return;
+          event.preventDefault();
+          comboAccept($input, config, comboSelected($input, config));
+          return;
+        }
+        if (event.key === "Escape") {
+          if (!open) return;
+          /* the drawer also listens for Escape, so this one stops here */
+          event.stopPropagation();
+          closeCombos();
+          return;
+        }
+        if (event.key === "Tab") closeCombos();
+      });
+
+      $(document).on("click", config.option, function () {
+        var $option = $(this);
+        comboAccept($option.closest(".td-combo").find(input), config, $option);
+      });
+    });
+
+    /* ----------------------------------------- I14 · Markdown editor ----- */
+
+    $("[data-md-editor]").on("input", "[data-md-source]", function () {
+      renderMarkdown($(this).closest("[data-md-editor]"));
+    });
+
+    $("[data-md-editor]").on("scroll", "[data-md-source]", function () {
+      syncMarkdownScroll($(this));
+    });
+
+    $("[data-md-editor]").on("click", "[data-md-toggle]", function () {
+      setMarkdownMode(
+        $(this).closest("[data-md-editor]"),
+        $(this).attr("data-md-toggle")
+      );
+    });
+
+    /* ------------------------------------------- B19 · allow-list toggle -- */
+
+    /* Display only: the switch moves, the list beneath it dims, and a toast
+       says so. Nothing is written, sent or enforced. */
+    $("[data-cidr-switch]").on("change", function () {
+      var on = $(this).prop("checked");
+      $("[data-cidr-whitelist]").attr("data-cidr-enabled", String(on));
+      toast(
+        text(on ? "access.cidr.enabled" : "access.cidr.disabled"),
+        on ? "success" : "info"
+      );
     });
 
     /* I1 · drag and drop --------------------------------------------------- */
@@ -1775,14 +2284,16 @@
 
     /* I9 · create task ----------------------------------------------------- */
     $("[data-new-task]").on("click", function () {
-      $("[data-create-task-project]").val(state.project);
+      resetCreateTask($("[data-create-task-form]"), "backlog");
       openModal("[data-create-task]");
     });
 
+    /* a column's add button opens the same dialog, already routed to that
+       column's status — the left side is the work, the right side is where
+       it lands */
     $("[data-board]").on("click", "[data-column-add]", function () {
       var status = $(this).closest("[data-column]").attr("data-status");
-      $("[data-create-task-status]").val(status);
-      $("[data-create-task-project]").val(state.project);
+      resetCreateTask($("[data-create-task-form]"), status);
       openModal("[data-create-task]");
     });
 
@@ -1795,9 +2306,18 @@
         return;
       }
 
-      var $assignee = $form.find("[data-create-task-assignee] option:selected");
       var status = $form.find("[data-create-task-status]").val();
       var project = $form.find("[data-create-task-project]").val();
+
+      /* Both rosters upsert here: the task is what makes a name real. An
+         unknown assignee defaults to human, because a handle the board has
+         never seen carries no platform to claim. */
+      var assigneeName =
+        $.trim(String($form.find("[data-assignee-input]").val() || "")) || ME;
+      var reporterName =
+        $.trim(String($form.find("[data-reporter-input]").val() || "")) || ME;
+      var assignee = assignees.upsert(assigneeName) || assignees.get(ME);
+      reporters.upsert(reporterName);
 
       var task = {
         identifier: nextIdentifier(project),
@@ -1805,10 +2325,10 @@
         title: title,
         status: status,
         priority: $form.find("[data-create-task-priority]").val(),
-        assignee: $assignee.val(),
-        kind: $assignee.attr("data-assignee-kind") || "human",
-        platform: $assignee.attr("data-agent-platform") || "",
-        reporter: ME,
+        assignee: assignee.name,
+        kind: assignee.kind,
+        platform: assignee.platform,
+        reporter: reporterName,
         project: project,
         labels: [],
       };
@@ -1817,11 +2337,7 @@
       var placed = insertCard($card, status);
 
       closeModal("[data-create-task]");
-      /* jQuery has no form-reset equivalent, so the native method is used. */
-      $form[0].reset();
-      $("[data-create-task-project]").val(state.project);
-      $("[data-create-task-status]").val("backlog");
-      $("[data-create-task-priority]").val("none");
+      resetCreateTask($form, status);
 
       if (!placed) return;
       applyFilters();
@@ -1926,6 +2442,18 @@
     $("[data-access-overlay]").prop("hidden", true);
     $("[data-access-panel]").attr("aria-hidden", "true");
     $("[data-lang-menu]").prop("hidden", true);
+    $("[data-assignee-menu], [data-reporter-menu]").prop("hidden", true);
+
+    /* The reporter roster is the board's own history: it is read off the
+       cards rather than declared anywhere, so it cannot drift from them. */
+    $("[data-card]").each(function () {
+      var name = attr($(this), "reporter");
+      if (name) reporters.upsert(name, "human");
+    });
+
+    /* The static menus are already in the document, so the first paint needs
+       no rebuild — only the editor's two panes, which are derived. */
+    renderMarkdown($("[data-md-editor]"));
 
     /* The stand-in token is minted once per load, then rendered masked. */
     state.token.value = newToken();

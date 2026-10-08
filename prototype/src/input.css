@@ -1,5 +1,5 @@
 /* ============================================================================
-   TaskDashboard v1 prototype — Tailwind CSS v4 entry point
+   TaskPanel v1 prototype — Tailwind CSS v4 entry point
    ----------------------------------------------------------------------------
    Stack (CLOSED): Tailwind CSS + daisyUI + jQuery (slim). No other CSS/UI
    library, no CDN, no webfont.
@@ -20,32 +20,33 @@
 }
 
 @plugin "daisyui/theme" {
-  name: "taskdash";
+  name: "taskpanel";
   default: true;
   prefersdark: false;
   color-scheme: light;
 
+  /* Source: design/brand/tokens.css (brand single source of truth). */
   --color-base-100: #ffffff; /* --surface      */
-  --color-base-200: #fafafb; /* --bg           */
-  --color-base-300: #f4f4f6; /* --surface-sunken */
-  --color-base-content: #16161a; /* --text-primary   */
+  --color-base-200: #f5f6f7; /* --bg           */
+  --color-base-300: #e6e8eb; /* --surface-sunken / hairline bed */
+  --color-base-content: #14181b; /* --text-primary   */
 
-  --color-primary: #4f5bd5; /* --accent           */
+  --color-primary: #0f7a73; /* --accent — THE brand line */
   --color-primary-content: #ffffff;
-  --color-secondary: #5b5b66; /* --text-secondary   */
+  --color-secondary: #3a474e; /* --text-secondary   */
   --color-secondary-content: #ffffff;
-  --color-accent: #7c6be8; /* --st-review (邻近 accent) */
+  --color-accent: #a1641a; /* warm signal       */
   --color-accent-content: #ffffff;
-  --color-neutral: #16161a; /* --text-primary     */
-  --color-neutral-content: #fafafb;
+  --color-neutral: #1f2a2e; /* --text-primary     */
+  --color-neutral-content: #f5f6f7;
 
-  --color-info: #4f5bd5;
+  --color-info: #3b6fd4;
   --color-info-content: #ffffff;
-  --color-success: #2e9e63; /* --st-done    */
+  --color-success: #187a4c; /* --st-done    */
   --color-success-content: #ffffff;
-  --color-warning: #c99700; /* --warning    */
-  --color-warning-content: #16161a;
-  --color-error: #e5484d; /* --danger     */
+  --color-warning: #8a5a00; /* --warning    */
+  --color-warning-content: #ffffff;
+  --color-error: #c0392b; /* --danger     */
   --color-error-content: #ffffff;
 
   --radius-selector: 4px; /* --r-sm   */
@@ -64,28 +65,29 @@
   prefersdark: false;
   color-scheme: dark;
 
-  --color-base-100: #171a20;
-  --color-base-200: #0f1115;
-  --color-base-300: #12141a;
-  --color-base-content: #e8eaed;
+  /* Source: design/brand/tokens.css (brand single source of truth). */
+  --color-base-100: #0f1417;
+  --color-base-200: #161b1e;
+  --color-base-300: #1f262a;
+  --color-base-content: #e6edf0;
 
-  --color-primary: #6d68f0;
-  --color-primary-content: #ffffff;
-  --color-secondary: #a6adba;
-  --color-secondary-content: #16161a;
-  --color-accent: #6d68f0;
-  --color-accent-content: #ffffff;
-  --color-neutral: #e8eaed;
-  --color-neutral-content: #16161a;
+  --color-primary: #2aa79b;
+  --color-primary-content: #0f1417;
+  --color-secondary: #8b969c;
+  --color-secondary-content: #0f1417;
+  --color-accent: #e8a93a;
+  --color-accent-content: #0f1417;
+  --color-neutral: #2a3236;
+  --color-neutral-content: #e6edf0;
 
-  --color-info: #22b3d6;
-  --color-info-content: #16161a;
-  --color-success: #37b866;
-  --color-success-content: #16161a;
-  --color-warning: #e0972a;
-  --color-warning-content: #16161a;
-  --color-error: #ef5350;
-  --color-error-content: #16161a;
+  --color-info: #7ea6f0;
+  --color-info-content: #0f1417;
+  --color-success: #57c98a;
+  --color-success-content: #0f1417;
+  --color-warning: #e0a93a;
+  --color-warning-content: #0f1417;
+  --color-error: #f0796e;
+  --color-error-content: #0f1417;
 
   --radius-selector: 4px;
   --radius-field: 6px;
@@ -108,50 +110,52 @@
    ------------------------------------------------------------------------- */
 @theme {
   /* 2.1 Neutral & surface ------------------------------------------------ */
-  --color-td-bg: #fafafb;
+  /* Values copied verbatim from design/brand/tokens.css — never invent one. */
+  --color-td-bg: #f5f6f7;
   --color-td-surface: #ffffff;
-  --color-td-sunken: #f4f4f6;
-  --color-td-hover: #f6f6f8;
-  --color-td-active: #ededf1;
-  --color-td-line: #e6e6ea;
-  --color-td-line-strong: #d5d5db;
-  --color-td-ink: #16161a;
-  --color-td-ink-2: #5b5b66;
-  --color-td-ink-3: #8e8e99;
-  --color-td-ink-4: #b4b4be;
+  --color-td-sunken: #f5f6f7;
+  --color-td-hover: #f0f2f3;
+  --color-td-active: #e6e8eb;
+  --color-td-line: #e6e8eb;
+  --color-td-line-strong: #cfd5d9;
+  --color-td-ink: #14181b;
+  --color-td-ink-2: #4a555e;
+  --color-td-ink-3: #7e8a91;
+  --color-td-ink-4: #b8c0c5;
 
   /* 2.2 Brand & semantic ------------------------------------------------- */
-  --color-td-accent: #4f5bd5;
-  --color-td-accent-hover: #4450c4;
-  --color-td-accent-soft: rgba(79, 91, 213, 0.1);
-  --color-td-danger: #e5484d;
-  --color-td-danger-soft: #fdecec;
-  --color-td-warning: #c99700;
-  --color-td-success: #2e9e63;
-  --color-td-focus: rgba(79, 91, 213, 0.35);
+  --color-td-accent: #0f7a73;
+  --color-td-accent-hover: #0d6b65;
+  --color-td-accent-soft: rgba(15, 122, 115, 0.1);
+  --color-td-danger: #c0392b;
+  --color-td-danger-soft: #fbeeec;
+  --color-td-warning: #8a5a00;
+  --color-td-success: #187a4c;
+  --color-td-focus: rgba(15, 122, 115, 0.35);
 
   /* 2.3 Status (7) ------------------------------------------------------- */
-  --color-td-st-backlog: #8e8e99;
-  --color-td-st-todo: #64748b;
-  --color-td-st-progress: #d9930d;
-  --color-td-st-review: #7c6be8;
-  --color-td-st-blocked: #e5484d;
-  --color-td-st-done: #2e9e63;
-  --color-td-st-canceled: #b4b4be;
+  --color-td-st-backlog: #6c777e;
+  --color-td-st-todo: #5a6b75;
+  --color-td-st-progress: #ac640d;
+  --color-td-st-review: #6e56cf;
+  --color-td-st-blocked: #c0392b;
+  --color-td-st-done: #187a4c;
+  --color-td-st-canceled: #b8c0c5;
 
   /* 2.4 Priority (5) ----------------------------------------------------- */
-  --color-td-pri-urgent: #e5484d;
-  --color-td-pri-high: #e8843d;
-  --color-td-pri-medium: #d9a721;
-  --color-td-pri-low: #5b8def;
-  --color-td-pri-none: #b4b4be;
+  --color-td-pri-urgent: #c0392b;
+  --color-td-pri-high: #a1641a;
+  --color-td-pri-medium: #8a5a00;
+  --color-td-pri-low: #4779ad;
+  --color-td-pri-none: #b8c0c5;
 
-  /* 2.3 Typography ------------------------------------------------------- */
+  /* 2.3 Typography — no network font; Inter / JetBrains Mono are preferred
+     and the stack degrades to the system faces when they are absent. */
   --font-sans:
-    ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
-    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-mono:
-    ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   --text-11: 11px;
   --text-11--line-height: 1.5;
@@ -173,7 +177,7 @@
   --radius-md: 6px;
   --radius-lg: 8px;
   --shadow-pop:
-    0 8px 24px rgba(22, 22, 26, 0.1), 0 1px 2px rgba(22, 22, 26, 0.06);
+    0 8px 24px rgba(15, 20, 23, 0.1), 0 1px 2px rgba(15, 20, 23, 0.06);
 }
 
 /* ---------------------------------------------------------------------------
@@ -187,8 +191,12 @@
   --surface-sunken: var(--color-td-sunken);
   --surface-hover: var(--color-td-hover);
   --surface-active: var(--color-td-active);
-  --border: var(--color-td-line);
-  --border-strong: var(--color-td-line-strong);
+  /* `--border` is NOT aliased to the hairline colour here on purpose: daisyUI
+     reads that exact name as its structural border *width* knob
+     (`border: var(--border) solid …`), so aliasing it to a colour makes every
+     daisyUI rule that uses it invalid at computed-value time and the border
+     disappears. The hairline colour is `--color-td-line`; there is no second
+     name for it. */
   --text-primary: var(--color-td-ink);
   --text-secondary: var(--color-td-ink-2);
   --text-tertiary: var(--color-td-ink-3);
@@ -214,7 +222,7 @@
   --r-md: 6px;
   --r-lg: 8px;
   --r-full: 999px;
-  --shadow-pop: 0 8px 24px rgba(22, 22, 26, 0.1), 0 1px 2px rgba(22, 22, 26, 0.06);
+  --shadow-pop: 0 8px 24px rgba(15, 20, 23, 0.1), 0 1px 2px rgba(15, 20, 23, 0.06);
 
   /* 2.4 layout ----------------------------------------------------------- */
   --shell-sidebar: 248px;
@@ -229,7 +237,7 @@
   --dur-hover: 120ms;
   --dur-panel: 180ms;
   --ease: cubic-bezier(0.2, 0, 0, 1);
-  --scrim: rgba(22, 22, 26, 0.32);
+  --scrim: rgba(15, 20, 23, 0.32);
 
   /* design-spec §2.1 alias family (see DESIGN.md §8) */
   --td-bg: var(--color-td-bg);
@@ -259,25 +267,41 @@
    single values per design-spec §2.3 ("深色下同值使用").
    ------------------------------------------------------------------------- */
 html[data-theme="dark"] {
-  --color-td-bg: #0f1115;
-  --color-td-surface: #171a20;
-  --color-td-sunken: #12141a;
-  --color-td-hover: #1e222a;
-  --color-td-active: #1e222a;
-  --color-td-line: rgba(255, 255, 255, 0.09);
-  --color-td-line-strong: rgba(255, 255, 255, 0.16);
-  --color-td-ink: #e8eaed;
-  --color-td-ink-2: #a6adba;
-  --color-td-ink-3: #767d8c;
-  --color-td-ink-4: #5a6170;
-  --color-td-accent: #6d68f0;
-  --color-td-accent-hover: #7c78f5;
-  --color-td-accent-soft: rgba(109, 104, 240, 0.18);
-  --color-td-focus: rgba(109, 104, 240, 0.35);
-  --color-td-danger: #ef5350;
-  --color-td-danger-soft: rgba(239, 83, 80, 0.14);
-  --color-td-warning: #e0972a;
-  --color-td-success: #37b866;
+  --color-td-bg: #0f1417;
+  --color-td-surface: #161b1e;
+  --color-td-sunken: #0f1417;
+  --color-td-hover: #1f262a;
+  --color-td-active: #283034;
+  --color-td-line: #1f262a;
+  --color-td-line-strong: #313b41;
+  --color-td-ink: #e6edf0;
+  --color-td-ink-2: #9ba7ae;
+  --color-td-ink-3: #7c868c;
+  --color-td-ink-4: #5a646a;
+  --color-td-accent: #2aa79b;
+  --color-td-accent-hover: #35baae;
+  --color-td-accent-soft: rgba(42, 167, 155, 0.18);
+  --color-td-focus: rgba(42, 167, 155, 0.4);
+  --color-td-danger: #f0796e;
+  --color-td-danger-soft: rgba(240, 121, 110, 0.14);
+  --color-td-warning: #e0a93a;
+  --color-td-success: #57c98a;
+
+  /* status / priority carry their own dark values (they are no longer the
+     light values reused — see DESIGN.md §7 "Themes") */
+  --color-td-st-backlog: #8b969c;
+  --color-td-st-todo: #9ba7ae;
+  --color-td-st-progress: #e0a93a;
+  --color-td-st-review: #a99bff;
+  --color-td-st-blocked: #f0796e;
+  --color-td-st-done: #57c98a;
+  --color-td-st-canceled: #7c868c;
+
+  --color-td-pri-urgent: #f0796e;
+  --color-td-pri-high: #e0a93a;
+  --color-td-pri-medium: #e8a93a;
+  --color-td-pri-low: #7ea6f0;
+  --color-td-pri-none: #7c868c;
 }
 
 /* Unlayered on purpose: the token blocks above sit outside every cascade layer,
@@ -416,6 +440,24 @@ html[data-theme="dark"] {
     stroke-linecap: round;
     stroke-linejoin: round;
     fill: none;
+  }
+
+  /* Signal Bars (BRAND.md §5). A solid mark, not a stroked icon, so it takes no
+     stroke and reads its two fills from the theme tokens instead of currentColor.
+     The top bar aligns on baselines, and an SVG has none — `align-self: center`
+     keeps the mark optically centred against the wordmark without moving the
+     wordmark/tagline baseline pair. */
+  .td-logo {
+    width: 18px;
+    height: 18px;
+    flex: none;
+    align-self: center;
+  }
+
+  .td-logo-lg {
+    width: 28px;
+    height: 28px;
+    align-self: auto;
   }
 
   .td-icon-sm {
@@ -558,26 +600,27 @@ html[data-theme="dark"] {
     border-color: var(--color-td-danger);
   }
 
-  /* Segmented Board/List control */
-  .td-seg {
-    display: inline-flex;
+  /* Segmented Board/List control — daisyUI `tabs tabs-box`, brand tokens only.
+     daisyUI's own box painting is replaced with the sunken well this prototype
+     has always used, and the pressed tab takes the brand accent. */
+  .td-tabs {
     flex: none;
     padding: 2px;
+    gap: 0;
     background-color: var(--color-td-sunken);
     border: 1px solid var(--color-td-line);
     border-radius: var(--r-md);
   }
 
-  .td-seg-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
+  .td-tab {
     height: 26px;
+    min-height: 26px;
     padding: 0 8px;
+    gap: 4px;
     font-size: 12px;
     font-weight: 500;
     color: var(--color-td-ink-2);
-    background: transparent;
+    background-color: transparent;
     border: 0;
     border-radius: var(--r-sm);
     cursor: pointer;
@@ -586,12 +629,12 @@ html[data-theme="dark"] {
       color var(--dur-hover) var(--ease);
   }
 
-  .td-seg-btn:hover {
+  .td-tab:hover {
     color: var(--color-td-ink);
     background-color: var(--color-td-hover);
   }
 
-  .td-seg-btn[aria-pressed="true"] {
+  .td-tab[aria-pressed="true"] {
     color: var(--color-td-accent);
     background-color: var(--color-td-surface);
     border: 1px solid var(--color-td-line);
@@ -647,19 +690,19 @@ html[data-theme="dark"] {
     height: 6px;
     border-radius: var(--r-full);
     background-color: var(--color-td-success);
-    box-shadow: 0 0 0 0 rgba(46, 158, 99, 0.5);
+    box-shadow: 0 0 0 0 rgba(24, 122, 76, 0.5);
     animation: td-pulse 2s var(--ease) infinite;
   }
 
   @keyframes td-pulse {
     0% {
-      box-shadow: 0 0 0 0 rgba(46, 158, 99, 0.45);
+      box-shadow: 0 0 0 0 rgba(24, 122, 76, 0.45);
     }
     70% {
-      box-shadow: 0 0 0 4px rgba(46, 158, 99, 0);
+      box-shadow: 0 0 0 4px rgba(24, 122, 76, 0);
     }
     100% {
-      box-shadow: 0 0 0 0 rgba(46, 158, 99, 0);
+      box-shadow: 0 0 0 0 rgba(24, 122, 76, 0);
     }
   }
 
@@ -812,10 +855,9 @@ html[data-theme="dark"] {
   }
 
   /* count badge in nav/projects */
+  /* daisyUI `badge` — the count pill. Numerals stay in the mono face so every
+     column's count sits in vertical register down the board. */
   .td-count {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     min-width: 20px;
     height: 18px;
     padding: 0 5px;
@@ -977,9 +1019,9 @@ html[data-theme="dark"] {
     color: var(--color-td-ink-2);
   }
 
+  /* daisyUI `badge` — the platform badge. A dashed edge, because the platform
+     is the identity, not the state: a solid edge would read as a status. */
   .td-agent-badge {
-    display: inline-flex;
-    align-items: center;
     gap: 4px;
     height: 18px;
     padding: 0 6px;
@@ -1000,23 +1042,33 @@ html[data-theme="dark"] {
     min-width: 0;
   }
 
+  /* daisyUI `select select-sm` with the brand's own face: 30px tall, 12px,
+     hairline edge and the prototype's caret. The shell, the appearance reset
+     and the picker come from daisyUI; only the tokens and the caret are ours. */
   .td-select {
+    width: auto;
     height: 30px;
     min-height: 30px;
     padding: 0 26px 0 8px;
     font-family: inherit;
     font-size: 12px;
+    font-weight: 400;
     color: var(--color-td-ink);
     background-color: var(--color-td-surface);
     border: 1px solid var(--color-td-line);
     border-radius: var(--r-md);
-    appearance: none;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238E8E99' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M4 6.5 8 10.5 12 6.5'/></svg>");
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%237E8A91' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M4 6.5 8 10.5 12 6.5'/></svg>");
     background-repeat: no-repeat;
     background-position: right 6px center;
     background-size: 14px 14px;
     cursor: pointer;
     transition: border-color var(--dur-hover) var(--ease);
+  }
+
+  /* two selectors, so it outranks `.td-select`'s own `width: auto` whether or
+     not the utility beats the app block on source order */
+  .td-select.w-full {
+    width: 100%;
   }
 
   .td-select:hover {
@@ -1201,9 +1253,10 @@ html[data-theme="dark"] {
     margin-top: 6px;
   }
 
+  /* daisyUI `badge` with the brand's own face: 18px, 11px, hairline edge.
+     Everything below is a token override — the box, the flex centring and the
+     shrink behaviour all come from daisyUI. */
   .td-chip {
-    display: inline-flex;
-    align-items: center;
     gap: 4px;
     height: 18px;
     padding: 0 6px;
@@ -1214,7 +1267,6 @@ html[data-theme="dark"] {
     background-color: var(--color-td-sunken);
     border: 1px solid var(--color-td-line);
     border-radius: var(--r-sm);
-    white-space: nowrap;
   }
 
   .td-chip-label {
@@ -1419,6 +1471,8 @@ html[data-theme="dark"] {
     font-size: 12px;
   }
 
+  /* daisyUI `skeleton` — the brand's own shimmer replaces daisyUI's pulse, so
+     the placeholder sweeps rather than blinks. */
   .td-skeleton {
     position: relative;
     overflow: hidden;
@@ -1925,24 +1979,19 @@ html[data-theme="dark"] {
   }
 
   /* --- toast ----------------------------------------------------------- */
+  /* daisyUI `toast` for the stack and `alert` for the item. The alert's own
+     tinted fill is replaced with the surface + a severity stripe, which is how
+     this prototype has always read a toast. */
   .td-toast-region {
-    position: fixed;
-    right: 20px;
-    bottom: 20px;
     z-index: 60;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
     align-items: flex-end;
     pointer-events: none;
   }
 
   .td-toast {
-    display: flex;
-    align-items: center;
-    gap: 8px;
     max-width: 360px;
     padding: 8px 12px;
+    gap: 8px;
     font-size: 13px;
     color: var(--color-td-ink);
     background-color: var(--color-td-surface);
@@ -2405,6 +2454,410 @@ html[data-theme="dark"] {
     color: var(--color-td-danger);
   }
 
+  /* --- R3 · label dropdown (daisyUI `dropdown` + `menu` + `badge`) ------ */
+  /* The trigger is a daisyUI `btn` carrying the chosen label as a `badge`, so
+     the filter bar still states its own state without being opened. */
+  .td-label-trigger {
+    height: 28px;
+    padding: 0 8px;
+    gap: 6px;
+    font-weight: 500;
+    color: var(--color-td-ink-2);
+    background-color: var(--color-td-surface);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-md);
+  }
+
+  .td-label-trigger:hover {
+    color: var(--color-td-ink);
+    background-color: var(--color-td-hover);
+    border-color: var(--color-td-line-strong);
+  }
+
+  .td-label-menu {
+    min-width: 200px;
+    /* tall enough that the seventeen labels sit in one column at a normal
+       viewport height; on a short screen daisyUI's wrapping menu folds them
+       into a second column rather than scrolling */
+    max-height: 60vh;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-pop);
+  }
+
+  /* "Label: prototype" must not fold onto two lines */
+  .td-label-menu [data-filter-label-option] {
+    white-space: nowrap;
+  }
+
+  /* the active row states itself with a tick, as the card's move menu does */
+  .td-label-menu [data-filter-label-option][aria-current="true"] {
+    color: var(--color-td-accent);
+    font-weight: 500;
+  }
+
+  /* --- R3 · column occupancy (daisyUI `progress`) ----------------------- */
+  .td-col-progress {
+    flex: none;
+    width: 100%;
+    height: 2px;
+    margin: 0 0 8px;
+    color: var(--color-td-accent);
+    background-color: var(--color-td-line);
+    border-radius: var(--r-full);
+  }
+
+  .td-col-progress::-webkit-progress-bar {
+    background-color: var(--color-td-line);
+  }
+
+  .td-col-progress::-webkit-progress-value {
+    background-color: var(--color-td-accent);
+    border-radius: var(--r-full);
+  }
+
+  .td-col-progress::-moz-progress-bar {
+    background-color: var(--color-td-accent);
+    border-radius: var(--r-full);
+  }
+
+  /* --- R3 · allow-list switch (daisyUI `toggle`) ------------------------ */
+  .td-switch {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    cursor: pointer;
+  }
+
+  .td-switch-text {
+    font-size: 12px;
+    color: var(--color-td-ink-2);
+  }
+
+  .td-toggle {
+    color: var(--color-td-ink-3);
+    --input-color: var(--color-td-line-strong);
+  }
+
+  .td-toggle:checked {
+    color: var(--color-td-accent);
+    --input-color: var(--color-td-accent);
+  }
+
+  /* switched off, the list stays legible but stops asking to be read */
+  .td-cidr[data-cidr-enabled="false"] .td-cidr-list {
+    opacity: 0.45;
+  }
+
+  /* --- R3 · two-column create dialog ------------------------------------ */
+  /* Equal tracks above 760px; a single stack at or below it (see the
+     responsive block). `min-width: 0` on both tracks is what keeps a long
+     value or the code editor from pushing the dialog wider than its box. */
+  .td-modal-box {
+    width: min(880px, calc(100vw - 32px));
+    max-width: none;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+  }
+
+  .td-two-col {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+    margin-top: 12px;
+  }
+
+  .td-col-left,
+  .td-col-right {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  /* the editor takes whatever height the right column's fields leave */
+  .td-field-grow {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  /* --- R3 · assignee / reporter combo ----------------------------------- */
+  /* One control, two placements: the create dialog and the detail drawer. The
+     menu is daisyUI `menu`; only its box is branded here. */
+  .td-combo {
+    position: relative;
+    min-width: 0;
+  }
+
+  .td-combo-menu {
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 4px);
+    left: 0;
+    width: max(100%, 220px);
+    max-height: 232px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    padding: 4px;
+    background-color: var(--color-td-surface);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-pop);
+  }
+
+  .td-combo-menu [data-assignee-option],
+  .td-combo-menu [data-reporter-option] {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    font-size: 13px;
+    text-align: start;
+  }
+
+  /* the row the arrow keys are on — daisyUI's menu paints it on :hover, and
+     keyboard navigation needs the same affordance without a pointer */
+  .td-combo-menu [aria-selected="true"] {
+    color: var(--color-td-accent);
+    background-color: var(--color-td-accent-soft);
+  }
+
+  /* a name that is not in the roster yet: offered, but marked as new */
+  .td-combo-new {
+    font-size: 12px;
+    color: var(--color-td-ink-3);
+  }
+
+  .td-combo-empty {
+    padding: 6px 8px;
+    font-size: 12px;
+    color: var(--color-td-ink-3);
+  }
+
+  /* in the drawer the control sits in the property grid's value column */
+  .td-prop-combo {
+    gap: 6px;
+  }
+
+  .td-combo-inline {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .td-input-flat {
+    height: 24px;
+    padding: 0 6px;
+    font-size: 13px;
+    background-color: transparent;
+    border-color: transparent;
+    border-radius: var(--r-sm);
+  }
+
+  .td-input-flat:hover {
+    border-color: var(--color-td-line);
+    background-color: var(--color-td-hover);
+  }
+
+  .td-input-flat:focus {
+    background-color: var(--color-td-surface);
+  }
+
+  /* --- R3 · Markdown editor -------------------------------------------- */
+  /* Source pane on the left, rendered pane on the right. The source pane is a
+     transparent <textarea> stacked on a highlighted <pre>: both carry
+     `.td-md-text`, so they share one set of metrics and stay aligned to the
+     glyph. */
+  .td-md-editor {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-md);
+    overflow: hidden;
+    background-color: var(--color-td-surface);
+  }
+
+  .td-md-bar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background-color: var(--color-td-sunken);
+    border-bottom: 1px solid var(--color-td-line);
+  }
+
+  .td-md-tabs {
+    background-color: transparent;
+    border: 0;
+    padding: 0;
+  }
+
+  .td-md-toggle {
+    height: 24px;
+    min-height: 24px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  .td-md-hint {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--color-td-ink-3);
+  }
+
+  .td-md-panes {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    min-height: 0;
+    height: 230px;
+  }
+
+  .td-md-pane {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* one pane at a time in write / preview mode, two in split */
+  .td-md-panes[data-md-mode="write"] .td-md-pane-preview,
+  .td-md-panes[data-md-mode="preview"] .td-md-pane-write {
+    display: none;
+  }
+
+  .td-md-panes[data-md-mode="write"],
+  .td-md-panes[data-md-mode="preview"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .td-md-pane-write {
+    position: relative;
+    border-inline-end: 1px solid var(--color-td-line);
+  }
+
+  .td-md-panes[data-md-mode="write"] .td-md-pane-write,
+  .td-md-panes[data-md-mode="preview"] .td-md-pane-preview {
+    border-inline-end: 0;
+  }
+
+  /* Shared metrics: the highlight layer and the textarea must break lines at
+     the same place, so every property that can move a glyph is set once here. */
+  .td-md-text {
+    margin: 0;
+    padding: 10px 12px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.6;
+    tab-size: 2;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .td-md-highlight {
+    position: absolute;
+    inset: 0;
+    overflow: auto;
+    pointer-events: none;
+    color: var(--color-td-ink);
+    background-color: transparent;
+    scrollbar-width: none;
+  }
+
+  .td-md-source {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+    resize: none;
+    color: transparent;
+    background-color: transparent;
+    border: 0;
+    border-radius: 0;
+    caret-color: var(--color-td-ink);
+    outline: none;
+  }
+
+  .td-md-source::selection {
+    background-color: var(--color-td-accent-soft);
+  }
+
+  .td-md-source:focus {
+    outline: none;
+    box-shadow: none;
+  }
+
+  .td-md-preview {
+    height: 100%;
+    margin: 0;
+    padding: 10px 12px;
+    overflow: auto;
+    font-family: var(--font-sans);
+    scrollbar-width: thin;
+  }
+
+  .td-md-preview > *:first-child {
+    margin-top: 0;
+  }
+
+  /* Source tokens — the same seven-role vocabulary as a code fence, so the
+     editor and the preview speak one colour language. */
+  .td-hl-com {
+    color: var(--color-td-ink-3);
+    font-style: italic;
+  }
+  .td-hl-str {
+    color: var(--color-td-success);
+  }
+  .td-hl-num {
+    color: var(--color-td-pri-high);
+  }
+  .td-hl-key {
+    color: var(--color-td-accent);
+    font-weight: 500;
+  }
+  .td-hl-fn {
+    color: var(--color-td-st-review);
+  }
+  .td-hl-marker {
+    color: var(--color-td-ink-3);
+  }
+  .td-hl-heading {
+    color: var(--color-td-ink);
+    font-weight: 600;
+  }
+  .td-hl-strong {
+    color: var(--color-td-ink);
+    font-weight: 600;
+  }
+  .td-hl-em {
+    color: var(--color-td-ink-2);
+    font-style: italic;
+  }
+  .td-hl-del {
+    color: var(--color-td-ink-3);
+    text-decoration: line-through;
+  }
+  .td-hl-link {
+    color: var(--color-td-accent);
+  }
+  .td-hl-code,
+  .td-hl-fence {
+    color: var(--color-td-st-progress);
+  }
+  .td-hl-rule {
+    color: var(--color-td-ink-4);
+  }
+
+  [data-detail-reporter-label],
+  [data-detail-assignee-label] {
+    font-family: var(--font-sans);
+  }
+
   /* --- responsive ------------------------------------------------------ */
   /* <1024 → sidebar collapses to an icon rail (style guide §2.4) */
   @media (max-width: 1023px) {
@@ -2500,6 +2953,34 @@ html[data-theme="dark"] {
     .td-brand-sub,
     .td-brand-name {
       display: none;
+    }
+  }
+
+  /* ≤760 → the create dialog stacks: the routing fields drop below the work
+     they route. Its own query rather than the 759px shell one, because the
+     dialog has to be single-column at exactly 760. */
+  @media (max-width: 760px) {
+    .td-two-col {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 12px;
+    }
+
+    .td-modal-box {
+      width: calc(100vw - 16px);
+      max-height: 92vh;
+      padding: 16px;
+    }
+
+    /* two side-by-side panes in a 760px dialog are two unreadable columns */
+    .td-md-panes[data-md-mode="split"] {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+      height: 300px;
+    }
+
+    .td-md-panes[data-md-mode="split"] .td-md-pane-write {
+      border-inline-end: 0;
+      border-bottom: 1px solid var(--color-td-line);
     }
   }
 

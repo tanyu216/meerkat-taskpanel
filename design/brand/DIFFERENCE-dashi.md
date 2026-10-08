@@ -1,16 +1,16 @@
-# TaskDashboard brand vs. dashi-taskboard — separation statement
+# TaskPanel brand vs. dashi-taskboard — separation statement
 
 Reference palette: `refs/dashi-taskboard/web/src/styles.css` (its `:root` and
 `:root[data-theme="dark"]` blocks, read directly).
 
-TaskDashboard ships its own brand layer. It is not a reskin of dashi-taskboard
+TaskPanel ships its own brand layer. It is not a reskin of dashi-taskboard
 and shares no tokens with it. The two systems are distinguished on six
 independent axes — hue family, neutral cast, warm ramp, type strategy, token
 carrier and brand mark — so no single substitution can turn one into the other.
 
 ## Side-by-side
 
-| # | Dimension | dashi-taskboard | TaskDashboard | Verdict |
+| # | Dimension | dashi-taskboard | TaskPanel | Verdict |
 |---|---|---|---|---|
 | 1 | **Primary hue family** | `--accent: #317cff` — azure, **≈218°**, HSL saturation **100%**. A vivid, fully saturated blue. | `--color-primary: #0F7A73` — teal, **≈176°**, HSL saturation **78%**. (Brief notes ~178°; both sit inside the 165–185° teal band.) | Different hue family *and* lower saturation. Ours is a darker, calmer signal that reads as an instrument rather than a link. |
 | 2 | **Neutral cast** | Cool-but-neutral greys with no hue bias: `#fcfcfd` (bg), `#f3f3f4` (sidebar), `#171719` (dark bg), `#222225` (dark surface). | Green-cyan cast throughout: `#F5F6F7` / `#FFFFFF` (bg), `#E6E8EB` (partition), `#0F1417` (dark bg), `#161B1E` (dark surface). | The dashi neutrals are hue-free; ours are deliberately pulled toward the teal line, so the whole surface sits in one temperature. |
@@ -22,7 +22,7 @@ carrier and brand mark — so no single substitution can turn one into the other
 
 ### Bonus separations (not required, but they reinforce the point)
 
-| Dimension | dashi-taskboard | TaskDashboard | Verdict |
+| Dimension | dashi-taskboard | TaskPanel | Verdict |
 |---|---|---|---|
 | **Card elevation** | Cards carry a shadow (`--card-shadow: 0 3px 6px -2px …, 0 1px 1px …`), and hover deepens it. | **Cards cast no shadow at all.** Elevation is reserved for floats via `--shadow-pop`, used only on dropdowns, dialogs and drawers. | Cards are defined by their hairline edge and surface here. Quieter, flatter, more instrument-like. |
 | **Status distinguishability** | `--status-backlog`, `--status-todo` and `--status-canceled` are *all* `#9e9ea1` — three states collapse to one swatch in light mode. | Seven distinct values, one per state, with the mapping pinned as "unique, never mixed". | Ours treats the status ramp as information; dashi's light mode does not separate backlog from todo. |

@@ -1,8 +1,8 @@
 {
-  "name": "taskdashboard-prototype",
+  "name": "task-panel-prototype",
   "version": "1.0.0",
   "private": true,
-  "description": "TaskDashboard v1 high-fidelity HTML prototype — Tailwind CSS + daisyUI + jQuery (slim)",
+  "description": "TaskPanel v1 high-fidelity HTML prototype — Tailwind CSS + daisyUI + jQuery (slim)",
   "scripts": {
     "build:css": "tailwindcss -i src/input.css -o tw.css",
     "watch:css": "tailwindcss -i src/input.css -o tw.css --watch"

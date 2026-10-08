@@ -1,17 +1,21 @@
-# TaskDashboard — Design Specification (v1 prototype)
+# TaskPanel — Design Specification (v1 prototype)
 
 > Implemented from `design-style-guide.md` (visual tokens — single source of truth)
 > and `design-spec.md` (structure, blocks, interactions, coverage), as amended by
 > `design-spec-addendum-v1.1.md` (access model, top bar, i18n),
 > `design-spec-addendum-v1.2.md` (sidebar-footer switches, access-model rewrite) and
 > `design-spec-v1.3.md` (footer split into three equal thirds; theme and language become
-> dialogs alongside settings).
+> dialogs alongside settings), and then by **R3** — `design-spec.md` (brand re-skin,
+> Signal Bars mark, rename to TaskPanel) together with `design-spec-r3-addendum.md`
+> (daisyUI componentisation, the assignee/reporter controls, the two-column create
+> dialog and the Markdown editor).
 > Every value below is copied from those documents. **Nothing here is invented**;
 > §9 records every point where the two documents disagree and what was chosen,
-> §14 records the judgement calls the v1.1 addendum left open, §15 the v1.2 round and
-> §16 the v1.3 round.
-> v1.2 and v1.3 changed no visual token: colour, type, spacing and radius are untouched,
-> and the brand re-skin remains a separate card.
+> §14 records the judgement calls the v1.1 addendum left open, §15 the v1.2 round,
+> §16 the v1.3 round and §18 the R3 round.
+> **R3 is the first round to change colour.** From R3 the single source of truth for
+> every colour is `design/brand/tokens.css`; `design-style-guide.md` no longer governs
+> the palette, and §9 is kept as the record of the pre-R3 reconciliation.
 
 ---
 
@@ -23,7 +27,7 @@
   but not crowded.
 - Hierarchy comes from spacing and section boundaries — never from stacked colour
   blocks or shadows.
-- Exactly **one accent** (indigo). Every other colour is a semantic signal
+- Exactly **one accent** (teal `#0F7A73`). Every other colour is a semantic signal
   (status / priority / risk) and never decoration.
 - Hairline 1px borders on white surfaces. **Cards carry zero shadow**; only
   overlays (dropdown, modal, drawer, toast) use the single `--shadow-pop`.
@@ -33,6 +37,10 @@
   Icons are inline SVG, linear stroke 1.5.
 - Agents and humans are visually distinguishable without a second theme:
   dashed ring + semantic platform badge, same palette.
+- The mark is **Signal Bars** — three rising capsules and one delivered node, the
+  board's own progression. It is drawn from `design/brand/BRAND.md` §5, reads its
+  two fills from `--color-td-ink` and `--color-td-accent`, and appears in the top
+  bar, in the large empty state and as the favicon.
 
 **Anti-patterns (a presence is a fail):** gradient buttons · full-screenshot pill
 radii · coloured section blocks · multiple accents · shadow-floating cards ·
@@ -42,56 +50,66 @@ emoji as icons · high-saturation backgrounds.
 
 ## 2. Colour tokens
 
+**Source: `design/brand/tokens.css`** — the brand single source of truth. Every
+value below is reproduced from it; from R3 that file wins any disagreement.
+
 ### 2.1 Neutral & surface
 
 | Token | Value | Used for |
 |---|---|---|
-| `--color-td-bg` | `#FAFAFB` | application background |
+| `--color-td-bg` | `#F5F6F7` | application background |
 | `--color-td-surface` | `#FFFFFF` | cards, panels, column containers, top bar |
-| `--color-td-sunken` | `#F4F4F6` | sidebar, column slot, inline code |
-| `--color-td-hover` | `#F6F6F8` | hover surface |
-| `--color-td-active` | `#EDEDF1` | pressed / selected surface |
-| `--color-td-line` | `#E6E6EA` | hairline border |
-| `--color-td-line-strong` | `#D5D5DB` | emphasis border, drop target |
-| `--color-td-ink` | `#16161A` | primary text |
-| `--color-td-ink-2` | `#5B5B66` | secondary text |
-| `--color-td-ink-3` | `#8E8E99` | tertiary / placeholder / meta |
-| `--color-td-ink-4` | `#B4B4BE` | disabled / weakest |
+| `--color-td-sunken` | `#F5F6F7` | sidebar, column slot, inline code |
+| `--color-td-hover` | `#F0F2F3` | hover surface |
+| `--color-td-active` | `#E6E8EB` | pressed / selected surface |
+| `--color-td-line` | `#E6E8EB` | hairline border |
+| `--color-td-line-strong` | `#CFD5D9` | emphasis border, drop target |
+| `--color-td-ink` | `#14181B` | primary text |
+| `--color-td-ink-2` | `#4A555E` | secondary text |
+| `--color-td-ink-3` | `#7E8A91` | tertiary / placeholder / meta |
+| `--color-td-ink-4` | `#B8C0C5` | disabled / weakest |
 
 ### 2.2 Brand & semantic
 
 | Token | Value | Used for |
 |---|---|---|
-| `--color-td-accent` | `#4F5BD5` | primary button, selection, links, focus |
-| `--color-td-accent-hover` | `#4450C4` | accent hover |
-| `--color-td-accent-soft` | `rgba(79,91,213,0.10)` | selected surface / tint |
-| `--color-td-danger` | `#E5484D` | error / blocked |
-| `--color-td-danger-soft` | `#FDECEC` | error surface |
-| `--color-td-warning` | `#C99700` | warning text |
-| `--color-td-success` | `#2E9E63` | success / done |
-| `--color-td-focus` | `rgba(79,91,213,0.35)` | keyboard focus halo |
+| `--color-td-accent` | `#0F7A73` | primary button, selection, links, focus |
+| `--color-td-accent-hover` | `#0D6B65` | accent hover |
+| `--color-td-accent-soft` | `rgba(15,122,115,0.10)` | selected surface / tint |
+| `--color-td-danger` | `#C0392B` | error / blocked |
+| `--color-td-danger-soft` | `#FBEEEC` | error surface |
+| `--color-td-warning` | `#8A5A00` | warning text |
+| `--color-td-success` | `#187A4C` | success / done |
+| `--color-td-focus` | `rgba(15,122,115,0.35)` | keyboard focus halo |
 
 ### 2.3 Status — 7 values, one mapping, never mixed
 
 | status | token | value | label | expression |
 |---|---|---|---|---|
-| `backlog` | `--color-td-st-backlog` | `#8E8E99` | Backlog | 8px dot in the column head, 3px stripe on the card |
-| `todo` | `--color-td-st-todo` | `#64748B` | To Do | ″ |
-| `in_progress` | `--color-td-st-progress` | `#D9930D` | In Progress | ″ |
-| `in_review` | `--color-td-st-review` | `#7C6BE8` | In Review | ″ |
-| `blocked` | `--color-td-st-blocked` | `#E5484D` | Blocked | ″ |
-| `done` | `--color-td-st-done` | `#2E9E63` | Done | ″ (title weakens to `--color-td-ink-3`) |
-| `canceled` | `--color-td-st-canceled` | `#B4B4BE` | Canceled | ″ (title also struck through) |
+| `backlog` | `--color-td-st-backlog` | `#6C777E` | Backlog | 8px dot in the column head, 3px stripe on the card |
+| `todo` | `--color-td-st-todo` | `#5A6B75` | To Do | ″ |
+| `in_progress` | `--color-td-st-progress` | `#AC640D` | In Progress | ″ |
+| `in_review` | `--color-td-st-review` | `#6E56CF` | In Review | ″ |
+| `blocked` | `--color-td-st-blocked` | `#C0392B` | Blocked | ″ |
+| `done` | `--color-td-st-done` | `#187A4C` | Done | ″ (title weakens to `--color-td-ink-3`) |
+| `canceled` | `--color-td-st-canceled` | `#B8C0C5` | Canceled | ″ (title also struck through) |
+
+`canceled` is the **non-text** tier (`BRAND.md` §6.5, owner ruling): `#B8C0C5` is for a
+dot or a stripe and is never set as text. Where a canceled state has to read as text it
+uses `--color-td-ink-2` or `--color-td-ink-3`.
 
 ### 2.4 Priority — 5 levels, colour **plus** shape
 
 | priority | token | value | shape |
 |---|---|---|---|
-| `urgent` | `--color-td-pri-urgent` | `#E5484D` | solid square + colour |
-| `high` | `--color-td-pri-high` | `#E8843D` | solid square + colour |
-| `medium` | `--color-td-pri-medium` | `#D9A721` | outlined square + colour |
-| `low` | `--color-td-pri-low` | `#5B8DEF` | outlined square + colour |
-| `none` | `--color-td-pri-none` | `#B4B4BE` | grey dash, **no colour** (noise reduction) |
+| `urgent` | `--color-td-pri-urgent` | `#C0392B` | solid square + colour |
+| `high` | `--color-td-pri-high` | `#A1641A` | solid square + colour |
+| `medium` | `--color-td-pri-medium` | `#8A5A00` | outlined square + colour |
+| `low` | `--color-td-pri-low` | `#4779AD` | outlined square + colour |
+| `none` | `--color-td-pri-none` | `#B8C0C5` | grey dash, **no colour** (noise reduction) |
+
+`none` carries the same non-text rule as `canceled` above: it is a grey dash, and when
+it has to render as text it uses `--color-td-ink-2` / `--color-td-ink-3`.
 
 Priority is never colour-only: the glyph shape differs per level, the element
 carries `role="img"` + `aria-label="Priority: High"` and a `title` tooltip.
@@ -109,9 +127,12 @@ carries `role="img"` + `aria-label="Priority: High"` and a `title` tooltip.
 | Badges, counters | mono | 11px | 500 | 1.5 |
 | IDs, session ids, versions, counts | mono | 11–12px | 400 | 1.5 |
 
-- Sans stack: `ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`.
-- Mono stack: `ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace`, with
-  `font-variant-numeric: tabular-nums`.
+- Sans stack: `"Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif`.
+- Mono stack: `"JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace`,
+  with `font-variant-numeric: tabular-nums`.
+- **Inter** and **JetBrains Mono** are *preferred*, not loaded: the prototype ships no
+  web font and makes no network request, so the stack degrades to the system faces when
+  neither is installed. The size ladder and the weights are unchanged by R3.
 - Ladder is `11 / 12 / 13 / 14 / 16 / 20 / 24`. **14px is the interface baseline**;
   12px is meta; 11px is badges only; ≥16px is headings only.
 - The 13px step exists for dense controls (inputs, selects, menu items, drawer body).
@@ -179,13 +200,16 @@ animated. Drag: the source card drops to `opacity .5`, the target column shows a
 
 ## 7. Themes
 
-Light is the default (`<html data-theme="taskdash">`). Dark is
-`<html data-theme="dark">`, toggled from the top bar and driven entirely by
-custom-property overrides — no component knows which theme is active.
+Light is the default (`<html data-theme="taskpanel">`). Dark is
+`<html data-theme="dark">`, toggled from the **sidebar footer** (the top bar carries
+no theme control) and driven entirely by custom-property overrides — no component
+knows which theme is active.
 
-Dark values come from `design-spec.md` §2.2, mapped onto the style-guide role
-names (the style guide defines no dark palette). Status and priority keep their
-single values in both themes, per `design-spec.md` §2.3.
+Dark values come from `design/brand/tokens.css`'s `[data-theme="dark"]` block. Since
+R3 the status and priority ramps are **dark-specific**: they are no longer the light
+values reused. Both ramps are re-declared inside `html[data-theme="dark"]` in
+`src/input.css`, which is the only place that override can live — the token blocks sit
+outside every cascade layer, and unlayered declarations outrank layered ones.
 
 ---
 
@@ -200,12 +224,16 @@ consequently declared inside `@layer utilities` **after** the daisyUI plugin, so
 theme < base < components < utilities ┊ daisyui.* < app components < tailwind utilities
 ```
 
-daisyUI components used: `btn`, `badge`, `dropdown` (`<details>` based), `menu`,
-`modal` (`<dialog>`), `input`, `select`, `textarea`, `tooltip`, `avatar`,
-`skeleton`. Everything board-specific (card, column, chip, drawer, legend, toast,
-empty state) is a small app component built from the tokens above.
+Two custom themes are registered: **`taskpanel`** (light, default) and **`dark`**.
+Since R3 every daisyUI component class is the component's shell and the matching
+`td-*` rule is a **token override only** — see §18.2 for the full mapping.
 
-Two custom themes are registered: **`taskdash`** (light, default) and **`dark`**.
+**One name collision to know about.** daisyUI reads `--border` as its structural
+border *width* knob (`border: var(--border) solid …`). The pre-R3 `:root` alias block
+also defined `--border` as a hairline *colour*, and because that block comes later in
+the file the colour won: every daisyUI rule using `var(--border)` was invalid at
+computed-value time and its border silently collapsed to zero. R3 removed the alias
+(§18.1). Never re-introduce a `--border` alias in this file.
 
 ---
 
@@ -242,7 +270,7 @@ and their token tables do not match. The rule applied here:
 | 17 | Type ladder | `11…24`, base 14, lh 1.5 / 1.35 | `12…24`, base 14, lh 1.5 / 1.3 | style guide (11px is badge-only) |
 | 18 | Spacing ladder | `4…48` | `4…40` | style guide |
 | 19 | Dark palette | not defined | §2.2 explicit values | design-spec §2.2 (the only non-invented source) |
-| 20 | daisyUI theme names | — | `taskdash` / `taskdash-dark` | `taskdash` / **`dark`** — the spec mandates the attribute `data-theme="dark"`, and daisyUI keys its dark theme off `data-theme`, so the palette is registered under the name `dark` |
+| 20 | daisyUI theme names | — | `taskpanel` / `taskpanel-dark` | `taskpanel` / **`dark`** — the spec mandates the attribute `data-theme="dark"`, and daisyUI keys its dark theme off `data-theme`, so the palette is registered under the name `dark` |
 | 21 | File layout | — | `assets/tw.css`, `assets/app.js`, `assets/vendor/…`, `src.css` | `tw.css`, `app.js`, `vendor/…`, `src/input.css` per the task card's deliverable list (see README "File map") |
 
 Both naming generations are still live in the stylesheet: `src/input.css` exposes
@@ -254,7 +282,7 @@ the style-guide short names (`--bg`, `--surface`, `--accent`, `--st-progress`, �
 
 ## 10. Team & identity model
 
-TaskDashboard is a board for an **AI-agent team**, so the people on it are the team
+TaskPanel is a board for an **AI-agent team**, so the people on it are the team
 that actually runs the work: six agent roles and the human owner. No invented
 personas, and no second identity vocabulary anywhere in the prototype.
 
@@ -351,7 +379,7 @@ name comes from `access.open`, the key the panel always used. `[data-theme-toggl
 switch *inside* the theme cell rather than a switch beside it.
 
 **Each third acts directly (v1.4).** The theme cell **is** the switch: `[data-theme-switch]`
-is a `aria-pressed` button whose press flips `html[data-theme]` between `taskdash` and
+is a `aria-pressed` button whose press flips `html[data-theme]` between `taskpanel` and
 `dark` on the spot, swapping the glyph and the name in the same pass and reporting a toast.
 The language cell opens a **menu**, not a dialog: `[data-lang-select]` toggles
 `[data-lang-menu]`, the floating list that holds one `[data-lang-option]` per language, and
@@ -674,3 +702,145 @@ overflow, the three footer cells measure equal widths at every width, the langua
 opens above its trigger inside the viewport at every width (including the 64px rail, where
 it floats over the board), the sidebar itself never scrolls horizontally, 7 columns ·
 18 cards, and zero console errors.
+
+---
+
+## 18. Review round R3 — brand re-skin, componentisation, roster & editor
+
+R3 is two specs landing together: `design-spec.md` (colour, mark, rename) and
+`design-spec-r3-addendum.md` (components, controls, layout, editor). Where the two touch
+the same thing, the addendum governs the new surface and `design/brand/tokens.css` still
+governs the values.
+
+### 18.1 What the round changed
+
+1. **The palette moved to the brand.** Every value in §2 is now reproduced from
+   `design/brand/tokens.css`, and the two daisyUI theme blocks in `src/input.css` carry
+   the brand's palette rather than Tailwind's defaults. The light daisyUI theme was
+   renamed `taskpanel` and `data-theme="dark"` is unchanged, so the attribute contract
+   the app switches on never moved.
+2. **The status and priority ramps are dark-specific** (§7). Before R3 dark reused the
+   light values; both ramps are now re-declared for `[data-theme="dark"]`.
+3. **`--border` was a collision, and is gone.** See §8. This is the one change in the
+   round that touches components nobody asked about — it is a *fix*, not a re-skin, and
+   it restores the 1px structural border daisyUI intends on every component that asks
+   for one.
+4. **The hard-coded colours are gone.** `.td-live-dot` / `@keyframes td-pulse` now pulse
+   in brand success, `.td-select`'s inline caret is `%237E8A91` (`--color-td-ink-3`), and
+   `--shadow-pop` / `--scrim` are `rgba(15,20,23,…)` per `BRAND.md` §4. A scan for any
+   six-digit hex in `src/input.css` returns only the token block itself.
+5. **The mark.** Signal Bars (`BRAND.md` §5) replaces the four-square glyph in
+   `[data-brand]`, stands in the large empty state (32px, in `--color-td-ink-3` so the
+   accent node stays the only lit element), and ships as `prototype/favicon.svg` with a
+   `prefers-color-scheme` pair. The mark reads its fills from `--color-td-ink` and
+   `--color-td-accent`, so there is one file for both themes, not two.
+6. **The rename.** The product name is now `TaskPanel` across `prototype/**` and
+   `design/brand/**` — the i18n catalogue, the identifier-prefix map, the daisyUI theme
+   name, the brand documents and the brand poster, which was re-rasterised from the
+   updated `render-poster.mjs` at its fixed 1600×2000. No colour value and no logo
+   geometry was touched to do it. (The pre-R3 name is not spelled out anywhere in this
+   file: the round's own gate requires that no occurrence of it survives under
+   `prototype/` or `design/brand/`, and a passing sentence counts as an occurrence.)
+
+### 18.2 daisyUI component mapping
+
+Each row is a component whose *shell* is now daisyUI and whose `td-*` rule is a token
+override only. The rule is the addendum's: use the component, keep the brand.
+
+| surface | daisyUI | where |
+|---|---|---|
+| view toggle (Board / List) | `tabs tabs-box` + `tab` | top bar, `.td-tabs` / `.td-tab` |
+| label filter | `dropdown` + `menu` + `badge` | filters bar, `.td-label-trigger` / `.td-label-menu` |
+| assignee / priority filters | `select select-sm` | filters bar, `.td-select` |
+| create-dialog fields | `select select-sm` | Priority / Project / Status |
+| label chips, decision chips | `badge badge-sm` | cards, comments, drawer, list |
+| platform badge | `badge badge-xs` | card foot, drawer, combo options |
+| column count | `badge badge-sm` | column head, `.td-count` |
+| status dot | `status` | column head, drawer, legend |
+| avatar | `avatar` + inner element | cards, comments, drawer, combos |
+| roster menus, move menu, project switcher | `dropdown` + `menu` | create dialog, drawer, cards, top bar |
+| detail drawer, states showcase, access panel | `modal`-adjacent panels | see the note below |
+| create dialog | `modal` + `modal-box` (`<dialog>`) | `.td-modal-box` |
+| toasts | `toast toast-end` + `alert` | `.td-toast-region` / `.td-toast` |
+| loading | `skeleton` | states showcase, list skeleton |
+| column occupancy | `progress` | under every column head, `.td-col-progress` |
+| allow-list switch | `toggle toggle-sm` | access panel, `.td-switch` |
+| inputs, textareas | `input input-sm` | create dialog, drawer |
+| tooltips | `tooltip` | legend, states showcase |
+
+**The drawer is the documented exception.** daisyUI's `drawer` is a *page-level* grid:
+`.drawer-side` must be a sibling of `.drawer-content` inside a `.drawer` root, and the
+board would have to become that `drawer-content`. The shell is already a two-row CSS grid
+with its own scroll containers, and the detail panel is a fixed overlay that does not
+participate in it — wrapping the shell would move the board's scroll and height model,
+which is the one thing this prototype cannot regress. `.td-drawer` therefore keeps its
+own shell and its own tokens, and the same reasoning applies to the states showcase and
+the access panel, which are fixed dialogs rather than page drawers.
+
+### 18.3 Assignee and reporter — two read-only rosters
+
+Both controls are one implementation used twice (`COMBO` in `app.js`), differing only in
+the hooks they answer to and the roster they read.
+
+- **Assignee** is seeded with the team the board already names — `elon`, `jobs`, `linus`,
+  `turing`, `simons`, `assistant`, `Terry` — each carrying its kind and, for an agent, its
+  platform.
+- **Reporter** is *derived at first pass from the cards themselves* (`data-reporter`), so
+  "reporters" means exactly "who has reported here before" and cannot drift from the board.
+- **Matching is a case-insensitive substring**, ranked prefix → contains → subsequence.
+  The subsequence pass only runs when nothing contains the query, so `lns` finds `linus`
+  without ever outranking a name that genuinely contains what was typed.
+- **Updating is an upsert, and it is the only mutation.** A name that is not in the roster
+  is offered as a `· new` row while you type and is added the moment it is used — at
+  submit, or by accepting a row. An unknown assignee defaults to `human`, because a handle
+  the board has never seen carries no platform to claim.
+- **There is no roster editor anywhere, by design.** Nothing in the interface adds,
+  renames or removes a roster entry; the list grows only by being used. That is the whole
+  reason the addendum forbids a management entry.
+- Keyboard: `↑`/`↓` move `aria-selected`, `Enter` accepts, `Esc` dismisses, `Tab` closes.
+  Escape stops propagating, because the drawer also listens for it.
+- The roster lives in memory for the lifetime of the page and is written to nothing.
+
+### 18.4 The Markdown editor
+
+- **Write** shows a monospace source pane with live syntax highlighting; **Preview** shows
+  the rendered result with highlighted fenced code; **Split** shows both. The mode is
+  `data-md-mode` on `.td-md-panes`, and the only writer is `setMarkdownMode()`.
+- The source pane is a **transparent `<textarea>` stacked on a highlighted `<pre>`**. Both
+  carry `.td-md-text`, which owns every property that can move a glyph — family, size,
+  line-height, padding, `white-space: pre-wrap`, `overflow-wrap`, `word-break`, `tab-size`
+  — so the painted layer and the real input break lines at the same place. The highlight
+  layer is scrolled from the textarea, never by the user.
+- **Dependencies are vendored, and they are first-party.** `vendor/markdown-lite.js` is a
+  GFM-subset renderer and `vendor/highlight-lite.js` is a source highlighter; both are
+  plain files loaded with a `<script>` tag, with no network, no CDN, no storage and no
+  `eval`. They are vendored rather than hand-inlined so the prototype's "all vendor libs
+  live in `prototype/vendor/`" rule holds, and first-party rather than downloaded because
+  the candidate libraries carry `localStorage` references and external URLs in their own
+  source, which the prototype's purity and no-external-link gates reject.
+- Both escape their input. `safeUrl()` allows only `http`/`https`/`mailto`/`#`/relative
+  targets, so a rendered link can never be a `javascript:` one.
+- Nothing is submitted, fetched or stored: the editor renders what is typed, in the page.
+
+### 18.5 The create dialog is two columns
+
+Left is the work — Title, then the Description editor. Right is its routing — Priority,
+Assignee, Project, Status, Reporter — in the order the addendum lists them. The tracks are
+equal above 760px (`minmax(0, 1fr)` twice, so a long value or the editor can never push the
+dialog wider than its box) and stack at ≤760px, which is its own media query rather than
+the shell's 759px one, because the dialog has to be single-column *at* 760. Labels are not
+a field: the create form never had one, and the addendum lists them as optional.
+
+### 18.6 Recaptured and checked
+
+Recaptured for this round: `01-board-1512`, `11-viewport-1240`, `13-viewport-760`,
+`05-dark-theme`, `19-board-zh`, `22-lang-menu`, `15-no-javascript`, `17-access-panel`,
+`03-drawer-agent`, plus four new frames — `23-create-two-col`, `24-md-editor-split`,
+`25-assignee-autocomplete` and `26-create-narrow-760`.
+
+Checked and clean: `prototype-guard` passes; the purity scan returns nothing; the
+pre-R3 product name appears **zero** times anywhere under `prototype/` or `design/brand/`;
+no old-brand hex survives in `src/input.css`; 7 columns · 18 cards · legend · filters ·
+empty state all visible with JavaScript disabled; zero console errors; and no page-level
+horizontal overflow at 1512 / 1240 / 980 / 760 / 430 px, nor inside the create dialog at
+1512 or 760.

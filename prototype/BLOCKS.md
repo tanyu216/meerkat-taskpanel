@@ -1,11 +1,12 @@
-# TaskDashboard prototype — Block inventory
+# TaskPanel prototype — Block inventory
 
 The structural contract of `index.html`. Selectors are **`data-*` semantic hooks**;
 Tailwind class names are never part of the contract, and no anchor is positional.
 
-Counts in the current build: **7 columns · 18 cards · 18 detail templates ·
-15 agent-session blocks · 149 i18n hooks in the markup + 32 keys `app.js` resolves for
-generated copy = 181 keys, mirrored in `en` and `zh`.**
+Counts in the current build, measured in the live DOM: **7 columns · 18 cards ·
+18 detail templates** (`[data-slot]`: 18 description · 18 activity · 16 comments ·
+15 agent-session · 11 attachments · 9 relations) · **252 `data-i18n*` hooks** in the
+shipped document · **198 catalogue keys, `en` and `zh` in exact parity.**
 
 ---
 
@@ -14,7 +15,7 @@ generated copy = 181 keys, mirrored in `en` and `zh`.**
 | | |
 |---|---|
 | Root | `[data-app-shell]` (`.td-shell`) |
-| Attribute | theme is held on the document element: `html[data-theme="taskdash" \| "dark"]` |
+| Attribute | theme is held on the document element: `html[data-theme="taskpanel" \| "dark"]` |
 | Layout | `grid-template-areas: "topbar topbar" / "sidebar main"` |
 
 ## B02 · Top bar
@@ -22,7 +23,7 @@ generated copy = 181 keys, mirrored in `en` and `zh`.**
 | | |
 |---|---|
 | Root | `header[data-topbar]` |
-| Brand | `[data-brand]` |
+| Brand | `[data-brand]` → `.td-logo` (**Signal Bars**, `BRAND.md` §5) + `[data-i18n="app.brand"]` + `[data-i18n="app.tagline"]` |
 | Project switcher | `[data-project-switcher]` (`<details class="dropdown">`) · `[data-project-current]` · `[data-project-option="…"]` · `[data-project-new]` · `[data-project-switcher-icon]` |
 | Search | `[data-search]` → `[data-search-input]` |
 | Filters toggle | `[data-filter-toggle]` (`aria-pressed`, `aria-controls="td-filters"`) |
@@ -35,7 +36,14 @@ sign-in element** anywhere in the bar.
 
 The theme and language controls **left the bar in review round v1.2** and became three
 direct controls in the sidebar footer in **v1.4** (B03 · theme switch / language menu /
-B19). The bar holds no display-mode control of any kind.
+B19). The bar holds no display-mode control of any kind — restated and re-checked in **R3**,
+which changed the brand mark in this bar but touched no control in it.
+
+**The brand glyph is the Signal Bars mark** (R3), not a generic icon: three capsules
+bottom-aligned at `y = 27` with a delivered node above the tallest. It is drawn inline at
+18px, `aria-hidden`, on a `0 0 32 32` viewBox, and its two fills are
+`var(--color-td-ink)` and `var(--color-td-accent)` — so one element serves both themes.
+`favicon.svg` is the same geometry with a `prefers-color-scheme` pair.
 
 ## B03 · Sidebar
 
@@ -97,8 +105,15 @@ globe, floating over the board rather than inside the 64px column.
 | | |
 |---|---|
 | Root | `section#td-filters[data-filters]` |
-| Controls | `[data-filter-assignee]` (all/me/human/agent) · `[data-filter-priority]` (all/urgent/high/medium/low/none) · `[data-filter-label]` (all + 17 labels) |
+| Controls | `[data-filter-assignee]` (all/me/human/agent) · `[data-filter-priority]` (all/urgent/high/medium/low/none) · `[data-filter-label]` (all + 16 labels) |
+| Label selector | `[data-filter-label]` on a `<details class="dropdown">`; the chosen value lives on `data-filter-label-value`, the trigger states it via `[data-filter-label-summary]`, and the menu holds `[data-filter-label-option]` × 17, each with `data-label-value` and `aria-current` on the chosen one |
 | Actions | `[data-filter-clear]` · `[data-filter-count]` (`aria-live="polite"`) |
+
+**The label selector is a dropdown, not a `<select>`** (R3). Its hook name did not move:
+`[data-filter-label]` is still the element the interaction layer reads, but it now reads
+an attribute rather than a form value, because the addendum names this control
+specifically — it is the one filter with seventeen choices and it has to show which one is
+in force without being opened.
 
 ## B05 · Board
 
@@ -113,8 +128,14 @@ globe, floating over the board rather than inside the 64px column.
 | | |
 |---|---|
 | Root | `section.td-col[data-column][data-status]` |
-| Hooks | `[data-column-header]` · `[data-column-dot]` · `[data-column-name]` · `[data-column-count]` · `[data-column-add]` · `[data-column-body]` |
+| Hooks | `[data-column-header]` · `[data-column-dot]` · `[data-column-name]` · `[data-column-count]` · `[data-column-add]` · `[data-column-body]` · `[data-column-progress]` |
 | States | default · `data-drag-over="true"` · empty (`[data-empty]` inside the body) · live count badge |
+
+`[data-column-progress]` (R3) is a daisyUI `progress` sitting directly under the header.
+Its `value` is the column's visible count and its `max` is the board's total visible count,
+so it reads that column's **share of the board** — the shape of the work before any card is
+read. `refreshColumns()` is the only writer, and it never emits `max="0"`, since a progress
+element with a zero maximum is a dividing error.
 
 ## B07 · Card — 18 instances
 
@@ -145,18 +166,28 @@ list can never disagree.
 | Root | `aside[data-detail-drawer][data-state="closed\|open\|closing"]` (`role="dialog"`, `aria-modal="true"`) |
 | Scrim | `[data-detail-overlay][data-state]` |
 | Head | `[data-detail-identifier]` · `[data-detail-title]` · `[data-detail-status-chip]` → `[data-detail-status-chip-label]` · `[data-detail-close]` |
-| Properties | `[data-detail-props]` → status `[data-detail-status]` / `[data-detail-status-label]` · priority `[data-detail-priority]` / `[data-detail-priority-label]` · assignee `[data-detail-assignee]` / `[data-detail-assignee-avatar]` / `[data-detail-assignee-label]` / `[data-detail-assignee-platform]` (platform badge, hidden for the human owner) · **reporter** `[data-detail-reporter]` / `[data-detail-reporter-avatar]` / `[data-detail-reporter-label]` · project `[data-detail-project]` / `[data-detail-project-label]` · internal id `[data-detail-id]` + `[data-detail-id-copy]` (`data-copy-value`) · `[data-detail-version]` |
+| Properties | `[data-detail-props]` → status `[data-detail-status]` / `[data-detail-status-label]` · priority `[data-detail-priority]` / `[data-detail-priority-label]` · assignee `[data-detail-assignee]` / `[data-detail-assignee-avatar]` / `[data-detail-assignee-label]` (**an input**, see B22) / `[data-detail-assignee-platform]` (platform badge, hidden for the human owner) · **reporter** `[data-detail-reporter]` / `[data-detail-reporter-avatar]` / `[data-detail-reporter-label]` (an editable control — see B22) · project `[data-detail-project]` / `[data-detail-project-label]` · internal id `[data-detail-id]` + `[data-detail-id-copy]` (`data-copy-value`) · `[data-detail-version]` |
 | Body | `[data-detail-description]` (rendered GFM) · `[data-detail-relations]` → `[data-relation-link]` · `[data-detail-agent-session]` → `[data-detail-agent-session-body]` → `[data-agent-session]` · `[data-detail-attachments]` · `[data-detail-comments]` · `[data-comment-form]` → `[data-comment-input]`, `[data-comment-submit]` · `[data-detail-activity]` |
 | Source | `template[data-detail-for="TD-…"]` holds one `[data-slot="description \| relations \| agent-session \| attachments \| comments \| activity"]` per card, wrapped by `[data-detail-templates]` |
 
-## B10 · Create-task modal
+## B10 · Create-task modal — two columns
 
-`dialog[data-create-task]` → `form[data-create-task-form]` →
-`[data-create-task-title]` · `[data-create-task-description]` ·
-`[data-create-task-status]` · `[data-create-task-priority]` ·
-`[data-create-task-assignee]` (one `<option>` per team member, each carrying
-`data-assignee-kind` and, for agents, `data-agent-platform`) ·
-`[data-create-task-project]` · `[data-modal-close]`.
+`dialog[data-create-task]` → `.td-modal-box` → `form[data-create-task-form]` →
+`[data-create-two-col]`, which holds exactly two tracks:
+
+| Column | Hook | Fields |
+|---|---|---|
+| Left — the work | `[data-create-left]` | `[data-create-task-title]` (+ hint) · `[data-create-task-description]`, which is `[data-md-source]` inside **B23** |
+| Right — its routing | `[data-create-right]` | `[data-create-task-priority]` · **assignee** (**B22**) · `[data-create-task-project]` · `[data-create-task-status]` · **reporter** (**B22**) |
+
+Equal tracks above 760px; a single stack at ≤760px. Both tracks are
+`minmax(0, 1fr)`, so neither a long title nor the editor can push the dialog wider than
+its own box. `[data-modal-close]` closes it, and `resetCreateTask()` is the single writer
+of its opening state — it also serves as the reset after a submit, so a second task starts
+exactly where the first one did.
+
+Labels are not a field: the create form never had one, and the addendum lists them as
+optional. The assignee is no longer a `<select>`; see B22.
 
 ## B11 · Create-project modal
 
@@ -168,6 +199,12 @@ list can never disagree.
 `[data-empty]` with `data-empty-kind="column"` (one per column, revealed when the
 column has no visible card) or `data-empty-kind="no-results"` (one per board,
 revealed when a filter matches nothing).
+
+**The large empty state carries the brand mark** (R3): `[data-empty-lg]` with
+`data-empty-kind="no-results"` opens on a 28px Signal Bars mark, which replaced the
+generic no-results glyph. Its two lead bars are `--color-td-ink-3` rather than
+`--color-td-ink`, so on an empty board the accent node is still the only lit element on
+the surface.
 
 ## B13 · Loading state
 
@@ -231,7 +268,8 @@ scrim, a panel and two jQuery handlers.
 | Opener | `[data-access-open]` in the sidebar footer |
 | Dismiss | `[data-access-close]` · `[data-access-overlay]` · `Esc` — same `data-state` + `hidden` pattern as the drawer and the states showcase; focus returns to the opener |
 | Bind copy | `[data-i18n="access.model.bind"]` |
-| CIDR whitelist | `[data-cidr-whitelist]` → `[data-cidr-list]` → **n ×** `[data-cidr-row]` (`[data-cidr-value]` input + `[data-cidr-remove]`) · `[data-cidr-add]` |
+| CIDR whitelist | `[data-cidr-whitelist]` (`data-cidr-enabled="true\|false"`) → `[data-cidr-list]` → **n ×** `[data-cidr-row]` (`[data-cidr-value]` input + `[data-cidr-remove]`) · `[data-cidr-add]` |
+| Allow-list switch | `[data-cidr-switch]` — a daisyUI `toggle` stating whether the list above is in force |
 | CIDR copy | `[data-i18n="access.cidr.note"]` · `[data-i18n="access.cidr.add"]` · `[data-i18n="access.cidr.remove"]` · `[data-i18n="access.cidr.value"]` |
 | Token rule | `[data-i18n="access.model.token"]` |
 | Token block | `[data-token-block]` (`data-token-revealed="true\|false"`) → `[data-token-value]` · `[data-token-reveal]` (icons `[data-token-icon="hidden"\|"shown"]`) · `[data-token-copy]` · `[data-token-reset]` |
@@ -248,6 +286,13 @@ The whitelist is a **front-end placeholder**: `[data-cidr-add]` appends one empt
 focuses its input, `[data-cidr-list]` delegates every `[data-cidr-remove]` to its own
 `[data-cidr-row]`. Rows live in the DOM only — nothing is validated, compared, stored or
 sent.
+
+**The allow-list switch (R3)** is a daisyUI `toggle`, and it is display only: the switch
+moves, `[data-cidr-whitelist]` carries the state as `data-cidr-enabled`, the list dims to
+45% when it is off, and a toast says which way it went. Nothing is written, sent or
+enforced. Note the two names are deliberately different — `[data-cidr-switch]` is the
+input, `data-cidr-enabled` is the section's state — because a hook and the state it
+writes must not share one attribute name.
 
 `[data-token-value]` renders the stand-in masked as `td_••••••••••••` (the `td_` prefix
 stays visible); `Reveal` toggles the mask only, `Copy` reports a toast and touches no
@@ -283,6 +328,55 @@ open — the drawer, the states showcase, the access panel and now both floating
 
 ---
 
+## B22 · Assignee / Reporter control (R3)
+
+One control, two rosters, four placements.
+
+| | |
+|---|---|
+| Hooks | `[data-assignee-input]` · `[data-assignee-menu]` · `[data-assignee-option]` (`data-assignee-value`, `data-assignee-kind`, `data-agent-platform`) · `[data-reporter-input]` · `[data-reporter-menu]` · `[data-reporter-option]` (`data-reporter-value`) |
+| Shell | `.td-combo` (positioned) → `input.input` + `ul.menu.td-combo-menu` (daisyUI `menu`) |
+| Placements | create dialog — assignee and reporter (B10) · detail drawer — `[data-detail-assignee-label]` and `[data-detail-reporter-label]` are the inputs, inside `.td-prop-combo` |
+| Options | generated from the roster on every keystroke; the static seven on the assignee menu and the one on the reporter menu are the no-JS floor |
+| Keyboard | `↑`/`↓` move `aria-selected`, `Enter` accepts, `Esc` dismisses (`stopPropagation`, because the drawer also listens), `Tab` closes |
+| **No management entry** | there is no control anywhere that adds, renames or removes a roster entry — the list grows only by being used |
+
+The two rosters (DESIGN.md §18.3):
+
+| roster | seeded from | grows when |
+|---|---|---|
+| assignee | the seven handles the board names, each with its kind and platform | a task is created or re-assigned with a name the roster does not hold |
+| reporter | `data-reporter` across the 18 cards, read at first pass | a task is created with a new reporter |
+
+Matching is a case-insensitive substring, ranked prefix → contains → subsequence; the
+subsequence pass runs only when nothing contains the query. A name that is not in the
+roster is offered as a `· new` row while you type and is added the moment it is used. An
+unknown assignee defaults to `human`, because a handle the board has never seen carries no
+platform to claim. Both rosters live in memory and are written to nothing.
+
+## B23 · Markdown editor (R3)
+
+| | |
+|---|---|
+| Root | `[data-md-editor]` |
+| Mode | `[data-md-toggle="write \| preview \| split"]` (`aria-pressed`) sets `data-md-mode` on `.td-md-panes`; `setMarkdownMode()` is the only writer |
+| Source | `[data-md-source]` — a `<textarea>`, also `[data-create-task-description]` |
+| Highlight layer | `[data-md-highlight]` — a `<pre>` painted behind the textarea, `aria-hidden`, scrolled from it |
+| Preview | `[data-md-preview]` — rendered HTML inside `.td-gfm` |
+| Vendored | `vendor/markdown-lite.js` (`MarkdownLite.render`) · `vendor/highlight-lite.js` (`HighlightLite.markdown`, `HighlightLite.code`) |
+
+The source pane is a **transparent textarea stacked on a highlighted `<pre>`**; both carry
+`.td-md-text`, which owns every property that can move a glyph, so the painted layer and the
+real input break lines in the same place. The `pre` and the textarea are the *only* two
+elements in the editor whose geometry must agree — everything else follows from them.
+
+Both vendored files are loaded with a plain `<script>` tag from `prototype/vendor/`, make
+no network request, read no storage, and are first-party rather than downloaded (DESIGN.md
+§18.4). Nothing is submitted, fetched or stored: the editor renders what is typed, in the
+page.
+
+---
+
 ## Assignee model
 
 The board belongs to an AI-agent team, so the assignee pool is the six agent roles
@@ -304,6 +398,11 @@ it. The drawer shows Assignee (with the platform badge for agents) and Reporter 
 separate properties, and the lifecycle shows up again in the activity feed
 (`Terry created this task`, `<role> claimed the task`).
 
+**Since R3 this table is also the assignee roster's seed** (B22): the seven handles above
+are what the autocomplete offers, with the same kinds and platforms. The reporter roster is
+not declared — it is read off the cards' `data-reporter` at first pass, which today yields
+`Terry` alone. Neither roster is editable from the interface; both grow by being used.
+
 ---
 
 ## Auxiliary hooks (implementation detail, not part of §4)
@@ -317,6 +416,11 @@ separate properties, and the lifecycle shows up again in the activity feed
 | `template[data-toast-template]` / `template[data-list-row-template]` / `template[data-detail-for]` | inert markup sources for the interaction layer |
 | `[data-detail-slot-source]` | transient wrapper jQuery builds while copying a template into the drawer |
 | `[data-label="…"]` | one chip per card label |
+| `[data-filter-label-summary]` | the badge on the label dropdown's trigger, restated from `data-filter-label-value` |
+| `[data-column-progress]` | the occupancy bar under each column head |
+| `[data-cidr-enabled]` | the allow-list section's on/off state, written by `[data-cidr-switch]` |
+| `data-assignee-value` / `data-reporter-value` | the name a roster option carries, read by `comboAccept()` |
+| `[data-combo-new]` | marks the generated row that offers a name the roster does not hold yet |
 
 ---
 
@@ -334,9 +438,10 @@ copy:
 | `data-i18n-title` | `title` |
 | `data-i18n-arg` | the `%s` value for any of the four above; it is resolved as a key first, so `column.add` + `status.todo` reads `Add task to To Do` / `在待办中新建任务` |
 
-The catalogue is the in-memory `MESSAGES` object at the top of `app.js` — **185 keys per
-language, mirrored 1:1**, never an external file. Copy `app.js` composes at runtime
-(toast sentences, list rows, card aria labels, the token mask) is keyed there too.
+The catalogue is the in-memory `MESSAGES` object at the top of `app.js` — **198 keys per
+language, mirrored 1:1** (verified by set equality, not by eye), never an external file.
+Copy `app.js` composes at runtime (toast sentences, list rows, card aria labels, the token
+mask) is keyed there too.
 
 Every string the v1.4 footer introduces is in that catalogue:
 
@@ -353,7 +458,8 @@ The settings cell needs no key for a label: it has none. Its accessible name is
 `access.open`, the same key the panel's own opener always used.
 
 The rewritten B19 carries `access.model.bind` · `access.cidr.note` · `access.cidr.add` ·
-`access.cidr.remove` · `access.cidr.value` · `access.model.token`. Rows the whitelist
+`access.cidr.remove` · `access.cidr.value` · `access.model.token`, and since R3 also
+`access.cidr.enabled` / `access.cidr.disabled` for the allow-list switch. Rows the whitelist
 adds at runtime are authored with the same `data-i18n-aria-label` / `data-i18n-title`
 hooks, so the next language switch translates them like any seeded row.
 
@@ -373,6 +479,16 @@ footer cell and the result counter all change language in place.
 Per-column empty-state hints and add-button labels share **one** key pair each and take
 their status name through `data-i18n-arg` (`status.backlog`, …) rather than fourteen
 separate keys.
+
+**R3 adds thirteen keys**, all mirrored:
+
+| Keys | Where |
+|---|---|
+| `createTask.field.reporter` | the Reporter field label in B10 |
+| `combo.assigneePlaceholder` · `combo.reporterPlaceholder` · `combo.hint` | the two roster controls' placeholder and `title` (B22) |
+| `combo.empty` · `combo.new` | what the roster menu says when nothing matches, and the `· new` marker on a name the roster does not hold |
+| `md.label` · `md.write` · `md.preview` · `md.split` · `md.hint` | the Markdown editor's mode tabs and its hint (B23) |
+| `access.cidr.enabled` · `access.cidr.disabled` | the allow-list switch's two toasts (B19) |
 
 ---
 
@@ -395,3 +511,12 @@ separate keys.
 7. **One identity model** everywhere: `data-assignee` is always a role handle from
    the table above, `data-assignee-kind` always separates agent from human, and
    `data-agent-platform` always names one of claude / openclaw / codex / pi.
+8. **No brand value is hard-coded.** Every component reads `--color-td-*` through
+   `--status-color` / `--pri-color`, or takes its shell from daisyUI and its face
+   from a token override. A scan for six-digit hex in `src/input.css` returns the
+   token block and nothing else, and the only literals left in the markup are the
+   two `--color-td-*` references inside the Signal Bars mark and its favicon.
+9. **Every daisyUI component keeps its hook name.** An element may gain
+   `badge` / `avatar` / `tabs` / `progress` / `toggle` / `select` classes, but the
+   `data-*` attribute it answers to never moves — which is what let R3 re-shell
+   eight components without touching one line of the interaction layer's bindings.

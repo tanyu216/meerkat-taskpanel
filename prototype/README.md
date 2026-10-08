@@ -1,6 +1,6 @@
-# TaskDashboard — v1 high-fidelity prototype
+# TaskPanel — v1 high-fidelity prototype
 
-A static, self-contained HTML prototype of the TaskDashboard board for an AI-agent
+A static, self-contained HTML prototype of the TaskPanel board for an AI-agent
 team. It is the executable design baseline: tokens, block structure and interaction
 behaviour all come from `design-style-guide.md` + `design-spec.md` as amended by
 `design-spec-addendum-v1.1.md` (access model, top bar, i18n),
@@ -38,11 +38,14 @@ three footer dialogs are secondary surfaces and stay hidden until opened.
 | `index.html` | the prototype — every block as static HTML with `data-*` hooks |
 | `tw.css` | **build output** (Tailwind + daisyUI compiled). Do not edit by hand. |
 | `src/input.css` | the Tailwind build entry: `@theme` tokens, daisyUI themes, app components |
-| `app.js` | the jQuery (slim) interaction layer — interactions I1–I12 |
+| `app.js` | the jQuery (slim) interaction layer — interactions I1–I12, plus R3's roster controls (I13) and Markdown editor (I14) |
+| `favicon.svg` | the Signal Bars mark as the tab icon (renders `BRAND.md` §5; `prefers-color-scheme` pair) |
 | `vendor/jquery.slim.min.js` | jQuery 3.7.1 **slim** build, vendored locally |
-| `DESIGN.md` | the design specification: tokens, type, spacing, states, a11y, reconciliation, access model, i18n |
-| `BLOCKS.md` | the block inventory B01–B21 with every `data-*` hook (B20 and B21 are the retired theme/language dialogs — see v1.4) |
-| `screenshots/` | capture set (board, wide board, drawer, dark, list, menu, filters, empty, language menu, access + token, Chinese, 5 viewports) |
+| `vendor/markdown-lite.js` | the Markdown → HTML renderer behind the editor's preview pane, vendored locally |
+| `vendor/highlight-lite.js` | the source highlighter behind the editor's syntax colours, vendored locally |
+| `DESIGN.md` | the design specification: tokens, type, spacing, states, a11y, reconciliation, access model, i18n, R3 |
+| `BLOCKS.md` | the block inventory B01–B23 with every `data-*` hook (B20 and B21 are the retired theme/language dialogs — see v1.4; B22 and B23 are R3's roster controls and Markdown editor) |
+| `screenshots/` | capture set (board, wide board, drawer, dark, list, menu, filters, empty, language menu, access + token, Chinese, 5 viewports, the two-column create dialog, the split editor, assignee autocomplete) |
 | `package.json` | declared devDependencies + `build:css` script |
 | `.gitignore` | keeps `node_modules/` out of the repository |
 
@@ -51,6 +54,12 @@ three footer dialogs are secondary surfaces and stay hidden until opened.
 flatter layout (`tw.css`, `app.js`, `vendor/…`, `src/input.css`), which is what is
 shipped; the contents are the same. `index.html` references every asset by relative
 path, so the directory stays portable.
+
+**Every runtime dependency is a file in `vendor/`.** Nothing is fetched, and there is no
+CDN reference anywhere in the prototype — open `index.html` from disk with the network
+off and everything still works. R3's two additions are first-party rather than
+downloaded, because the obvious libraries carry `localStorage` references and external
+URLs in their own source and the purity gate rejects both (DESIGN.md §18.4).
 
 ---
 
@@ -114,6 +123,10 @@ the style guide's token blocks in `src/input.css` are unlayered. Two consequence
 | — | Error retry | `Retry` inside the error state | `[data-error-retry]` |
 | — | Access & token settings | **B19** — right footer cell, `Esc` / scrim / close to dismiss | `[data-access-open]` → `[data-access-panel]` |
 | — | Token reveal / copy / reset | buttons in the token block | `[data-token-reveal]`, `[data-token-copy]`, `[data-token-reset]` |
+| — | Label filter (R3) | the filter bar's dropdown; writes `data-filter-label-value`, restates the trigger badge, re-filters | `[data-filter-label]` → `[data-filter-label-option]` → `[data-filter-label-summary]` |
+| — | Allow-list switch (R3) | the access panel's toggle; states and dims, nothing else | `[data-cidr-switch]` → `[data-cidr-whitelist]` |
+| I13 | Assignee / reporter (R3) | Roster autocomplete — fuzzy match on input, `↑↓`/`Enter`/`Esc`/`Tab`, free text upserts | `[data-assignee-input]` / `[data-reporter-input]` → `[data-assignee-menu]` / `[data-reporter-menu]` → `[data-assignee-option]` / `[data-reporter-option]` |
+| I14 | Markdown editor (R3) | Mode tabs set `data-md-mode`; every keystroke repaints the highlight layer and the preview | `[data-md-editor]` → `[data-md-toggle]`, `[data-md-source]`, `[data-md-highlight]`, `[data-md-preview]` |
 
 The footer's three cells act directly — none of them opens a dialog except the settings
 gear, which opens B19. `Esc` closes whatever is open: the drawer, the states showcase, the
@@ -133,6 +146,10 @@ comment explaining why:
 - `document.createElement` + `select()` + `document.execCommand("copy")` — clipboard writes need the Selection API. **Used only for the drawer's internal id and session id**; the access panel's `Copy token` deliberately does not call it and reports a toast instead (DESIGN.md §12);
 - `$form[0].reset()` — jQuery can dispatch a `reset` event but cannot perform one;
 - `$el[0].getBoundingClientRect()` — the language menu is `position: fixed` and must be placed against the trigger's *viewport* box; jQuery's `offset()` is document-relative and drifts once the scrolling sidebar has moved (DESIGN.md §17).
+
+**R3 added no native call.** The roster controls, the label dropdown and the Markdown
+editor are entirely `$(...).on(...)` delegation: the two vendored files are reached through
+`window.MarkdownLite` / `window.HighlightLite`, which is a global lookup, not a DOM API.
 
 ---
 
@@ -197,7 +214,7 @@ language switch, and the wrap is now kept as reviewed rather than re-tuned (DESI
 
 | File | State |
 |---|---|
-| `01-board-1512.png` | default board (TaskDashboard project, 12 of 18 cards) |
+| `01-board-1512.png` | default board (TaskPanel project, 12 of 18 cards) |
 | `02-board-wide.png` | full 7-column board at 2600px — status coverage proof |
 | `03-drawer-agent.png` | drawer for an agent task: session block + GFM description |
 | `04-drawer-human.png` | drawer for a human task |
@@ -216,6 +233,24 @@ language switch, and the wrap is now kept as reviewed rather than re-tuned (DESI
 | `20-drawer-zh.png` | the drawer in Chinese: properties, relation labels, comment role chips and relative timestamps |
 | `21-access-panel-dark.png` | the access panel in dark theme |
 | `22-lang-menu.png` | the language dropdown open above the middle footer cell, `English` marked as the current choice |
+| `23-create-two-col.png` | **R3** — the create dialog: Title + Markdown editor on the left, Priority / Assignee / Project / Status / Reporter on the right |
+| `24-md-editor-split.png` | **R3** — the Markdown editor in Split mode: highlighted source beside the rendered preview |
+| `25-assignee-autocomplete.png` | **R3** — the assignee control mid-type: `ti · new` offered alongside the fuzzy match `turing` |
+| `26-create-narrow-760.png` | **R3** — the same dialog at 760px, stacked to one column |
+
+**R3 recapture:** `01-board-1512`, `11-viewport-1240`, `13-viewport-760`, `05-dark-theme`,
+`19-board-zh`, `22-lang-menu`, `15-no-javascript`, `17-access-panel` and `03-drawer-agent`
+were re-shot against the R3 build — the brand re-skin reaches every one of them — and four
+frames are new: `23-create-two-col`, `24-md-editor-split`, `25-assignee-autocomplete` and
+`26-create-narrow-760`. **The whole set was in fact recaptured** — a palette change reaches
+every pixel of every frame, so leaving any file behind would have shown a product that no
+longer exists. The captures that are not in the list above (`02-board-wide`,
+`04-drawer-human`, `06-list-view`, `07-move-menu`, `08-filters-agent`, `09-no-results`,
+`10-create-task-modal`, `12-viewport-980`, `14-viewport-500`, `16-states-panel`,
+`18-access-token-revealed`, `20-drawer-zh`, `21-access-panel-dark`) were re-shot in the same
+pass, at the same geometry, from the same handlers the v1.x frames used. Every frame in
+`screenshots/` is now R3. Captured at device-scale-factor 2, and no capture carries a
+transient toast.
 
 **v1.4 recapture:** `01-board-1512` (the three controls in the three thirds),
 `11-viewport-1240`, `13-viewport-760` (the rail: three glyphs, caret dropped),
@@ -258,7 +293,7 @@ every width tested.
 
 ## Who is on the board
 
-TaskDashboard is a board for an AI-agent team, so the assignee pool is the team
+TaskPanel is a board for an AI-agent team, so the assignee pool is the team
 itself: six agent roles — `elon` (openclaw), `jobs` / `linus` / `simons` (claude),
 `turing` (codex), `assistant` (pi) — plus the human owner `Terry`, who files every
 task (`data-reporter="Terry"` on all 18 cards). Cards show the platform badge **and**
@@ -269,7 +304,7 @@ assignee table in [BLOCKS.md](BLOCKS.md#assignee-model).
 ## Notes and known limits
 
 - **Project scoping.** The switcher and the sidebar filter the board by
-  `data-project`; TaskDashboard (12 cards) is the default, so the default board shows
+  `data-project`; TaskPanel (12 cards) is the default, so the default board shows
   12 of the 18 cards. All 18 are in the document, and `02-board-wide-2400.png` shows
   the full set — switch to a project with no cards to see the empty-column states.
 - **Comment lists are representative.** A card's `data-comments` number is the total
