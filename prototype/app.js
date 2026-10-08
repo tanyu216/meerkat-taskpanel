@@ -216,6 +216,7 @@
       "toast.filtersCleared": "Filters cleared",
       "toast.themeDark": "Dark theme on",
       "toast.themeLight": "Light theme on",
+      "toast.themeAuto": "Auto theme on — following the system",
       "toast.resume": "Resuming agent session",
       "toast.linked": "Opened linked task",
       "toast.activity": "Board revision",
@@ -227,11 +228,14 @@
       "toast.sample.info": "Switched to project Orchestrator",
       "toast.sample.success": "Moved TD-128 → Done",
       "toast.sample.danger": "TD-118 is blocked",
-      /* sidebar footer — three equal cells, one affordance each */
-      "access.theme.switch.dark": "Switch to dark theme",
-      "access.theme.switch.light": "Switch to light theme",
+      /* sidebar footer — three equal cells, one affordance each.
+         The theme cell is a three-state cycle, so its label names the state in
+         force and the state one press reaches: `Theme: Light. Activate for
+         Dark.` The three state names are the same keys the visible label uses. */
+      "access.theme.aria": "Theme: %s. Activate for %s.",
       "access.theme.light": "Light",
       "access.theme.dark": "Dark",
+      "access.theme.auto": "Auto",
       "access.lang.open": "Choose language",
       "access.lang.group": "Choose a language",
       "access.lang.en": "English",
@@ -438,6 +442,7 @@
       "toast.filtersCleared": "已清除筛选",
       "toast.themeDark": "已切换到深色主题",
       "toast.themeLight": "已切换到浅色主题",
+      "toast.themeAuto": "已切换到自动主题（跟随系统）",
       "toast.resume": "正在继续 Agent 会话",
       "toast.linked": "已打开关联任务",
       "toast.activity": "看板修订",
@@ -450,10 +455,10 @@
       "toast.sample.success": "已移动 TD-128 → 已完成",
       "toast.sample.danger": "TD-118 已阻塞",
       /* sidebar footer — three equal cells, one affordance each */
-      "access.theme.switch.dark": "切换到深色主题",
-      "access.theme.switch.light": "切换到浅色主题",
+      "access.theme.aria": "主题：%s。点击切换到%s。",
       "access.theme.light": "浅色",
       "access.theme.dark": "深色",
+      "access.theme.auto": "自动",
       "access.lang.open": "选择语言",
       "access.lang.group": "选择语言",
       "access.lang.en": "English",
@@ -911,23 +916,60 @@
     else $glyph.attr("hidden", "");
   }
 
-  /* One place owns the theme: the `data-theme` attribute, which glyph the
-     footer switch shows, the theme's name in that switch, and the label that
-     names the state one press reaches. The first pass and the press both come
-     through here, so the switch and the document can never disagree about the
-     active theme. */
-  function applyTheme(dark) {
+  /* The theme cell is a three-state cycle — Light → Dark → Auto → Light — and
+     this function is its only writer. `data-theme-mode` on `<html>` (mirrored
+     on the cell) is the machine-checkable state, `data-theme` on `<html>` is
+     what the CSS reads, the glyph and the name say the state in force, and
+     `aria-label` names both the state in force and the one a press reaches —
+     so the switch and the document can never disagree.
+
+     `Auto` is resolved by CSS alone: `html[data-theme="auto"]` follows
+     `prefers-color-scheme` in `src/input.css`. Nothing here reads `matchMedia`,
+     and nothing is written to storage. Light is the no-record default, which
+     is why the markup ships `data-theme-mode="light"`. */
+  var THEME_MODES = ["light", "dark", "auto"];
+
+  /* `data-theme` is the CSS hook: Light keeps the explicit light theme name
+     (`taskpanel`), and Auto gets a value of its own so the media query can
+     match it. */
+  var THEME_ATTR = { light: "taskpanel", dark: "dark", auto: "auto" };
+
+  /* One toast per mode; the cycle reports the mode it landed on. */
+  var THEME_TOAST = {
+    light: "toast.themeLight",
+    dark: "toast.themeDark",
+    auto: "toast.themeAuto",
+  };
+
+  function themeMode() {
+    var mode = $("html").attr("data-theme-mode");
+    return THEME_MODES.indexOf(mode) === -1 ? THEME_MODES[0] : mode;
+  }
+
+  function nextThemeMode(mode) {
+    return THEME_MODES[(THEME_MODES.indexOf(mode) + 1) % THEME_MODES.length];
+  }
+
+  function applyTheme(mode) {
+    if (THEME_MODES.indexOf(mode) === -1) mode = THEME_MODES[0];
     var $switch = $("[data-theme-switch]");
-    var label = text(dark ? "access.theme.switch.light" : "access.theme.switch.dark");
-    $("html").attr("data-theme", dark ? "dark" : "taskpanel");
-    showGlyph($switch.find('[data-theme-icon="light"]'), !dark);
-    showGlyph($switch.find('[data-theme-icon="dark"]'), dark);
+    var label = text(
+      "access.theme.aria",
+      text("access.theme." + mode),
+      text("access.theme." + nextThemeMode(mode))
+    );
+    $("html")
+      .attr("data-theme", THEME_ATTR[mode])
+      .attr("data-theme-mode", mode);
+    showGlyph($switch.find('[data-theme-icon="light"]'), mode === "light");
+    showGlyph($switch.find('[data-theme-icon="dark"]'), mode === "dark");
+    showGlyph($switch.find('[data-theme-icon="auto"]'), mode === "auto");
     $switch
+      .attr("data-theme-mode", mode)
+      .attr("aria-label", label)
+      .attr("title", label)
       .find("[data-theme-label]")
-      .text(text(dark ? "access.theme.dark" : "access.theme.light"));
-    /* the control is a switch, so `aria-pressed` carries the state and the
-       label carries both the state in force and the state one press reaches */
-    $switch.attr("aria-pressed", String(dark)).attr("aria-label", label).attr("title", label);
+      .text(text("access.theme." + mode));
   }
 
   /* Same idea for the language: `<html lang>`, the language's own short name in
@@ -944,7 +986,7 @@
      values, the theme button's promise — has no static hook to rewrite, so it
      is regenerated from the current state on every language change. */
   function refreshGeneratedCopy() {
-    applyTheme($("html").attr("data-theme") === "dark");
+    applyTheme(themeMode());
 
     $("[data-card]").each(function () {
       var $card = $(this);
@@ -2178,14 +2220,16 @@
 
     /* I11 · theme (left footer cell) -------------------------------------- */
 
-    /* A switch, not a chooser: the press applies the other theme to the
-       document, the glyph and the cell's own name at once — there is no
-       intermediate surface and nothing to dismiss. `applyTheme` writes the
-       label, so the cell and the document agree the moment this runs. */
+    /* A three-state cycle, not a chooser: each press applies the *next* mode —
+       Light → Dark → Auto → Light — to the document, the glyph and the cell's
+       own name at once. There is no intermediate surface and nothing to
+       dismiss. `applyTheme` writes the label, so the cell and the document
+       agree the moment this runs. `Auto` is resolved by the CSS media query
+       rather than here, so its toast names the mode, never the colours. */
     $("[data-theme-switch]").on("click", function () {
-      var dark = $("html").attr("data-theme") !== "dark";
-      applyTheme(dark);
-      toast(dark ? text("toast.themeDark") : text("toast.themeLight"), "info");
+      var mode = nextThemeMode(themeMode());
+      applyTheme(mode);
+      toast(text(THEME_TOAST[mode]), "info");
     });
 
     /* Language (centre footer cell) — a dropdown, not a chooser ------------ */

@@ -15,7 +15,7 @@ shipped document · **198 catalogue keys, `en` and `zh` in exact parity.**
 | | |
 |---|---|
 | Root | `[data-app-shell]` (`.td-shell`) |
-| Attribute | theme is held on the document element: `html[data-theme="taskpanel" \| "dark"]` |
+| Attribute | theme is held on the document element: `html[data-theme="taskpanel" \| "dark" \| "auto"]`, with the machine-checkable mode beside it in `html[data-theme-mode="light" \| "dark" \| "auto"]` (see B03) |
 | Layout | `grid-template-areas: "topbar topbar" / "sidebar main"` |
 
 ## B02 · Top bar
@@ -43,8 +43,8 @@ create dialog (**B10**). There is **no user, account or sign-in element** anywhe
 in the bar.
 
 The theme and language controls **left the bar in review round v1.2** and became three
-direct controls in the sidebar footer in **v1.4** (B03 · theme switch / language menu /
-B19). The bar holds no display-mode control of any kind — restated and re-checked in **R3**,
+direct controls in the sidebar footer in **v1.4** (B03 · three-state theme cycle / language
+menu / B19). The bar holds no display-mode control of any kind — restated and re-checked in **R3**,
 which changed the brand mark in this bar but touched no control in it.
 
 **The brand glyph is the Signal Bars mark** (R3), not a generic icon: three capsules
@@ -68,21 +68,36 @@ The three cells, left to right, and what each one does (**review round v1.4**):
 
 | Cell | Hook | What the cell shows | Affordance |
 |---|---|---|---|
-| Theme (left) | `[data-theme-switch]` → `[data-theme-icon="light" \| "dark"]` + `[data-theme-label]` | the theme in force — `Light`/`Dark` (浅色/深色) | **inline switch** — one press flips light ↔ dark, no dialog |
+| Theme (left) | `[data-theme-switch]` → `[data-theme-icon="light" \| "dark" \| "auto"]` + `[data-theme-label]` | the theme in force — `Light`/`Dark`/`Auto` (浅色/深色/自动) | **three-state cycle** — one press walks Light → Dark → Auto → Light, no dialog |
 | Language (middle) | `[data-lang-select]` + `[data-lang-label]` + `.td-caret` | the language in force — `EN`/`中文` | **dropdown menu** → `[data-lang-menu]` → `[data-lang-option="en" \| "zh"]` |
 | Settings (right) | `[data-access-open]` | nothing but the gear glyph | opens **B19** `[data-access-panel]` |
 
-**The state is in the label.** `applyTheme()` writes `html[data-theme]`, the sun/moon
-`[data-theme-icon]`, `[data-theme-label]` and the switch's `aria-pressed` +
-`aria-label` (which names both the state in force and the state one press reaches);
-`applyLanguageOptions()` writes `[data-lang-label]` and the `aria-pressed` of both
-`[data-lang-option]` rows. The theme cell and the language trigger therefore state the
-current mode without anything being opened, and both are rewritten by the same functions
-the press and the pick call, so cell and document cannot disagree. The settings cell
-carries no visible text at all: the gear is named by `data-i18n-aria-label="access.open"`
-alone. Cells carry `:focus-visible` rings and are keyboard reachable. The v1.2
-`[data-theme-toggle]` / `[data-lang-toggle]` controls stay **gone**, and the v1.3 dialogs
-are gone with them — see "Retired" below.
+**The theme cell is a three-state cycle, not a switch.** One press walks the modes in
+order — `light → dark → auto`, then back to `light` — and the machine-checkable state is
+`data-theme-mode="light \| dark \| auto"`, written on `<html>` in the markup and mirrored
+onto `[data-theme-switch]` by the same pass. `<html data-theme>` carries what the CSS
+reads: `taskpanel` (Light) · `dark` (Dark) · `auto` (Auto). **Light is the no-record
+default**, which is why the static document ships `data-theme="taskpanel"` +
+`data-theme-mode="light"` + the sun glyph + the `Light` label — what a JavaScript-free
+reader sees is the default state. Auto is resolved by CSS alone
+(`html[data-theme="auto"]` under `@media (prefers-color-scheme: dark)` in
+`src/input.css`); no script reads `matchMedia` and nothing is stored. The three state
+names, the defaults and the "explicit light/dark leaves auto behind" rule are recorded in
+`DESIGN.md` §7 and §21.
+
+**The state is in the label.** `applyTheme()` is the single writer of `html[data-theme]`,
+`html[data-theme-mode]`, the sun/moon/display `[data-theme-icon]`, `[data-theme-label]`
+and the cell's `data-theme-mode` + `aria-label` (which names both the state in force and
+the state one press reaches — `Theme: Light. Activate for Dark.`). A three-state cycle is
+not a toggle, so the cell carries **no `aria-pressed`**; the state rides on
+`data-theme-mode`. `applyLanguageOptions()` writes `[data-lang-label]` and the
+`aria-pressed` of both `[data-lang-option]` rows. The theme cell and the language trigger
+therefore state the current mode without anything being opened, and both are rewritten by
+the same functions the press and the pick call, so cell and document cannot disagree. The
+settings cell carries no visible text at all: the gear is named by
+`data-i18n-aria-label="access.open"` alone. Cells carry `:focus-visible` rings and are
+keyboard reachable. The v1.2 `[data-theme-toggle]` / `[data-lang-toggle]` controls stay
+**gone**, and the v1.3 dialogs are gone with them — see "Retired" below.
 
 **The language menu is a floating menu, not a panel.** Trigger and menu are two elements:
 the cell in the footer, and `[data-lang-menu]` at the end of the document next to the
@@ -339,8 +354,9 @@ DESIGN.md §12.
 `access.theme.title`, `access.theme.group`, `access.theme.close`) are **deleted** from
 `index.html`, `app.js`, `src/input.css` and the built `tw.css` — no selector reaches them
 and no `B20` hook exists in the document. What the left footer cell does now is the
-**inline switch** in B03 above. The one part that survives is the vocabulary: the cell
-still names the theme in force through `access.theme.light` / `access.theme.dark`.
+**three-state cycle** in B03 above. The one part that survives is the vocabulary: the cell
+still names the theme in force through `access.theme.light` / `access.theme.dark`, and
+since the cycle gained its third state, `access.theme.auto`.
 
 ## B21 · Language menu — replaced in v1.4
 
@@ -527,12 +543,12 @@ Every string the v1.4 footer introduces is in that catalogue:
 
 | Keys | Where |
 |---|---|
-| `access.theme.switch.dark` · `access.theme.switch.light` | the theme switch's `aria-label` / `title`, which name the state one press reaches (`applyTheme`) |
-| `access.theme.light` · `access.theme.dark` | the current-value text in the theme cell (`applyTheme`) |
+| `access.theme.aria` | the theme cell's `aria-label` / `title`, one `%s`-template filling in the state in force and the state one press reaches (`applyTheme`) — `Theme: Light. Activate for Dark.` |
+| `access.theme.light` · `access.theme.dark` · `access.theme.auto` | the current-value text in the theme cell, **and** the two state names the `access.theme.aria` template fills in (`applyTheme`) |
 | `access.lang.open` · `access.lang.group` | the trigger's `aria-label` / `title` and the menu's own label |
 | `access.lang.en` · `access.lang.zh` | the two `[data-lang-option]` rows — each language names itself (`English` / `中文`) in both catalogues |
 | `access.lang.short.en` · `access.lang.short.zh` | the current-value text in the language trigger (`applyLanguageOptions`) — `EN` / `中文` |
-| `toast.themeDark` · `toast.themeLight` · `toast.langEn` · `toast.langZh` | what the switch and the menu report when they act |
+| `toast.themeDark` · `toast.themeLight` · `toast.themeAuto` · `toast.langEn` · `toast.langZh` | what the theme cycle and the language menu report when they act — one toast per mode, plus one per language |
 
 The settings cell needs no key for a label: it has none. Its accessible name is
 `access.open`, the same key the panel's own opener always used.

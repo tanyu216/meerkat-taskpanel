@@ -200,16 +200,33 @@ animated. Drag: the source card drops to `opacity .5`, the target column shows a
 
 ## 7. Themes
 
-Light is the default (`<html data-theme="taskpanel">`). Dark is
-`<html data-theme="dark">`, toggled from the **sidebar footer** (the top bar carries
-no theme control) and driven entirely by custom-property overrides — no component
-knows which theme is active.
+Three states, cycled from the **sidebar footer** (the top bar carries no theme control):
+**Light → Dark → Auto → Light**, one press each.
 
-Dark values come from `design/brand/tokens.css`'s `[data-theme="dark"]` block. Since
-R3 the status and priority ramps are **dark-specific**: they are no longer the light
-values reused. Both ramps are re-declared inside `html[data-theme="dark"]` in
-`src/input.css`, which is the only place that override can live — the token blocks sit
-outside every cascade layer, and unlayered declarations outrank layered ones.
+| State | `<html>` attributes | Resolved by |
+|---|---|---|
+| **Light** (default) | `data-theme="taskpanel"` · `data-theme-mode="light"` | explicit — fixed |
+| **Dark** | `data-theme="dark"` · `data-theme-mode="dark"` | explicit — fixed |
+| **Auto** | `data-theme="auto"` · `data-theme-mode="auto"` | `@media (prefers-color-scheme: dark)` |
+
+`data-theme-mode` is the machine-checkable state; `data-theme` is what the CSS reads.
+Light keeps the theme name `taskpanel`, so the no-JS document and the **no-record
+default** are the same thing: **Light** — not "follow the system". Auto is the only
+state that follows the system, and the media query is the only thing that resolves it:
+`app.js` never reads `matchMedia` and never writes storage (§21). Picking Light or Dark
+therefore *leaves* Auto behind — an explicit choice is fixed.
+
+Every state is a custom-property override — no component knows which theme is active.
+Dark values come from `design/brand/tokens.css`'s `[data-theme="dark"]` block. Since R3
+the status and priority ramps are **dark-specific**: they are no longer the light values
+reused.
+
+CSS has no way to share one declaration list across a media boundary, so the dark token
+block is written **twice** in `src/input.css`: once for `html[data-theme="dark"]`, and
+once inside `@media (prefers-color-scheme: dark)` for `html[data-theme="auto"]` (with
+daisyUI's generated dark tokens repeated in the same block). **The two must be edited
+together.** Both live outside every cascade layer — unlayered declarations outrank
+layered ones — so they beat the `:root` block and daisyUI's `@layer base` output.
 
 ---
 
@@ -361,7 +378,7 @@ a dropdown and an icon button, no dialog between the press and the result:
 | Surface | Content |
 |---|---|
 | Top bar, right end | `[data-revision]` · `[data-new-task]` |
-| Sidebar footer `[data-access-status]` | three equal cells, one affordance each — `[data-theme-switch]` (inline theme switch) · `[data-lang-select]` (language dropdown) · `[data-access-open]` (icon-only settings) |
+| Sidebar footer `[data-access-status]` | three equal cells, one affordance each — `[data-theme-switch]` (inline three-state theme cycle) · `[data-lang-select]` (language dropdown) · `[data-access-open]` (icon-only settings) |
 
 **Three equal thirds, each centred.** The footer is `display: grid` with
 `grid-template-columns: repeat(3, minmax(0, 1fr))` and `align-items: stretch`, so the
@@ -370,7 +387,7 @@ three cells are each exactly one third of the sidebar column. Every cell is a
 axes (`display: flex; align-items: center; justify-content: center; gap: 6px;
 text-align: center`), a hairline `border-inline-start` between neighbours and a
 `:focus-visible` accent ring. The theme cell and the language trigger **state the value in
-force** — the theme's name (`Light` / `Dark`, 浅色 / 深色) beside a sun or moon glyph, the
+force** — the theme's name (`Light` / `Dark` / `Auto`, 浅色 / 深色 / 自动) beside a sun, moon or display glyph, the
 language's short name (`EN` / `中文`) beside a globe and a caret — written by the same
 `applyTheme()` / `applyLanguageOptions()` functions the press and the pick call. The
 settings cell shows nothing but a gear: it has no visible label at all, and its accessible
@@ -378,9 +395,12 @@ name comes from `access.open`, the key the panel always used. `[data-theme-toggl
 `[data-lang-toggle]` remain **deleted**, not hidden — what replaced them in v1.4 is a
 switch *inside* the theme cell rather than a switch beside it.
 
-**Each third acts directly (v1.4).** The theme cell **is** the switch: `[data-theme-switch]`
-is a `aria-pressed` button whose press flips `html[data-theme]` between `taskpanel` and
-`dark` on the spot, swapping the glyph and the name in the same pass and reporting a toast.
+**Each third acts directly (v1.4).** The theme cell **is** the control: `[data-theme-switch]`
+is a three-state cycle whose press walks `html[data-theme-mode]` `light → dark → auto` (and
+back to `light`), swapping `html[data-theme]`, the glyph and the name in the same pass and
+reporting a toast. It is a cycle, not a toggle, so it carries no `aria-pressed`: the state
+rides on `data-theme-mode` and the accessible name states both the mode in force and the one
+a press reaches (§21).
 The language cell opens a **menu**, not a dialog: `[data-lang-select]` toggles
 `[data-lang-menu]`, the floating list that holds one `[data-lang-option]` per language, and
 picking one switches the document and closes the menu. The settings cell is unchanged:
@@ -482,7 +502,7 @@ option carries `aria-pressed`, the trigger always shows the language in force, t
 name their own language (`English` / `中文`) in *both* catalogues, and the menu carries an
 `aria-label` from the catalogue.
 
-**One catalogue, in memory.** `app.js` holds `MESSAGES = { en: {…}, zh: {…} }` — **185
+**One catalogue, in memory.** `app.js` holds `MESSAGES = { en: {…}, zh: {…} }` — **209
 keys per language, mirrored 1:1** (a test asserts the two key sets are identical). No
 external file, no fetch, no build step; `text()` resolves against the active language,
 falls back to English and then to the key itself, so a missing translation shows up as
@@ -678,11 +698,13 @@ visible "Settings" text. All three are in, with three judgement calls worth reco
    against. This is the round's one new native call — `offset()` is document-relative and
    drifts once the sidebar has been scrolled. The clamping is the same idea as I2's:
    never off the top, never off an edge.
-3. **The switch states the state, twice.** `[data-theme-switch]` is an `aria-pressed`
-   toggle *and* a labelled control: the glyph swaps sun↔moon, `[data-theme-label]` swaps
-   `Light`↔`Dark` (浅色↔深色), and `aria-label` is rewritten to name the state one press
-   *reaches* (`Switch to dark theme` / `切换到深色主题`), so a screen-reader user hears the
-   action rather than only the state. `applyTheme()` remains the single writer of all four.
+3. **The switch states the state, twice.** `[data-theme-switch]` is a three-state cycle
+   *and* a labelled control: the glyph swaps sun↔moon↔display, `[data-theme-label]` swaps
+   `Light`↔`Dark`↔`Auto` (浅色↔深色↔自动), and `aria-label` is rewritten to name both the
+   state in force and the state one press *reaches* (`Theme: Light. Activate for Dark.` /
+   `主题：浅色。点击切换到深色。`), so a screen-reader user hears the action rather than only
+   the state. `applyTheme()` remains the single writer of all of them, `data-theme-mode`
+   included.
    The language trigger shows the language in force (`EN` / `中文`) and nothing about the
    other one; the menu marks the language in force with `aria-pressed`, accent copy and a
    tick, the same three signals the retired `.td-choice` row used. Picking the language
@@ -963,3 +985,54 @@ the creation-time intuition (Site Refresh is the oldest, so it wins the `C` fact
 that factor carries the smallest weight, so it still lands last); the ordering exists to
 show activity weighting in the UI. Sidebar task counts (12 / 4 / 2) are unrelated to the
 ranking and stay fixed.
+
+---
+
+## 21. Theme & language preferences (browser-local only)
+
+Authority: `ARCHITECTURE §8` (client preferences). Two preferences live on the client and
+**only** on the client:
+
+| Key | Values | Default | Surface |
+|---|---|---|---|
+| `taskpanel.theme` | `light` \| `dark` \| `auto` | **`light`** | the sidebar footer's left cell |
+| `taskpanel.lang` | `en` \| `zh` | **`en`** | the sidebar footer's centre cell |
+
+**Where they live.** Both are **stored in `localStorage` only — never on the server**. They
+do not travel in a request, they are not columns on any table, and they are not tied to an
+account or a device: a second browser starts at the defaults. The board's data is the same
+whichever preference is in force, so nothing here can change what the service stores.
+
+**No record ⇒ `light`.** With no stored value the theme is **Light** — an explicit light
+theme, **not** "follow the system". The same rule gives the no-JS document its default
+(§7): `<html data-theme="taskpanel" data-theme-mode="light">`. Language likewise starts at
+`en`.
+
+**Explicit beats auto.** Picking `light` or `dark` records a fixed choice and **disables
+auto** for as long as it stands — the system preference is not consulted again until the
+reader cycles back to Auto. `auto` means exactly one thing: **follow
+`prefers-color-scheme`**, dark when the OS asks for dark and light otherwise, re-evaluated
+live as the OS setting changes.
+
+**What the prototype does.** The prototype is **pure UI and writes no storage at all** —
+`app.js` holds the active mode in memory for the lifetime of the page, and the three states
+are demonstrated by `data-theme-mode`. The `localStorage` step belongs to the real
+implementation; wiring it here would break the purity gate (§18.4) and the "no real
+implementation in `prototype/**`" rule. What this document fixes is the *contract* the
+implementation must honour: the key names, the value sets, the defaults, and the
+light-by-default rule above.
+
+**Auto is CSS-only.** `html[data-theme="auto"]` resolves through
+`@media (prefers-color-scheme: dark)` in `src/input.css` (§7). No script reads `matchMedia`
+and no script decides the colours — a reader with JavaScript off still sees the right
+choices, because the no-JS document ships Light.
+
+**Recaptured and checked.** The left footer cell gained its third state, so `05-dark-theme`
+was re-shot with the cell in `Dark`, and six frames are new: `33-theme-light-1512`,
+`34-theme-dark-1512`, the `Auto` pair `35-theme-auto-darkos-1512` /
+`36-theme-auto-lightos-1512`, and `37-theme-footer-760` with its crop. The `Auto` pair is
+the proof — the same state captured under emulated dark and light system preferences
+resolves to the dark and light boards respectively, while `Light` and `Dark` render the
+same under either. Checked and clean across 1512 / 1240 / 980 / 760 / 500 px: no
+page-level horizontal overflow at any width, no console errors, and the 7 columns × 18
+cards / existing `data-*` hooks are untouched.

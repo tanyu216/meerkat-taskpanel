@@ -116,7 +116,7 @@ the style guide's token blocks in `src/input.css` are unlayered. Two consequence
 | I8 | Switch project | project switcher or sidebar list | `[data-project-option]`, `[data-project]` |
 | I9 | Create a task | `New task` or a column `+` (prefills that status) | `[data-new-task]`, `[data-column-add]` |
 | I10 | Create a project | switcher → `New project…` | `[data-project-new]` |
-| I11 | Light/dark theme | **left footer cell** — one press, no dialog | `[data-theme-switch]` |
+| I11 | Theme cycle — Light / Dark / Auto | **left footer cell** — one press walks the three states, no dialog | `[data-theme-switch]` → `[data-theme-mode]` |
 | I12 | Toast feedback | every mutation | `[data-toast-region]`, `[data-toast]` |
 | — | Language switch | **middle footer cell** — dropdown; `Esc` / a press outside closes it | `[data-lang-select]` → `[data-lang-menu]` → `[data-lang-option]` |
 | — | States gallery | sidebar footer button, `Esc` / scrim / close to dismiss | `[data-states-open]` → `[data-states-panel]` |
@@ -194,10 +194,10 @@ looking at it (DESIGN.md §12).
 | Attachments | ≥2 per sampled task |
 | Empty states | empty column + no-results |
 | Loading | 3 shimmer rows in the list view |
-| Themes | light (default) and dark |
-| Language | English (default) + Chinese via the language dropdown — 185 key pairs, mirrored |
+| Themes | three states cycled from the footer — **Light** (default) → **Dark** → **Auto** (follows `prefers-color-scheme`, CSS-only) → Light; no-record default is Light, not the system preference |
+| Language | English (default) + Chinese via the language dropdown — 209 key pairs, mirrored |
 | Access model | B19 access & token panel: binds `0.0.0.0`, CIDR whitelist, token required from outside localhost; no user / account / sign-in element anywhere |
-| Footer | three equal thirds — theme · language · settings — an inline switch, a dropdown and an icon-only button |
+| Footer | three equal thirds — theme · language · settings — a three-state theme cycle, a dropdown and an icon-only button |
 | Viewports | 1512 / 1240 / 980 / 760 / 500 — no page-level horizontal overflow |
 
 The board is the only horizontal scroll container; `html`, `body` and `main` never
@@ -218,7 +218,7 @@ language switch, and the wrap is now kept as reviewed rather than re-tuned (DESI
 | `02-board-wide.png` | full 7-column board at 2600px — status coverage proof |
 | `03-drawer-agent.png` | drawer for an agent task: session block + GFM description |
 | `04-drawer-human.png` | drawer for a human task |
-| `05-dark-theme.png` | dark theme |
+| `05-dark-theme.png` | dark theme (re-shot with the theme cell in its `Dark` state) |
 | `06-list-view.png` | list view with the skeleton rows |
 | `07-move-menu.png` | the shared "Move to" menu |
 | `08-filters-agent.png` | assignee filter = Agent |
@@ -240,6 +240,12 @@ language switch, and the wrap is now kept as reviewed rather than re-tuned (DESI
 | `28-md-write-scroll.png` | **R4** — Write mode scrolled to the tail of a 60-step description: the edit pane scrolls and the highlight layer travels with it |
 | `29-create-parent-dropdown.png` | **R4** — the Parent control mid-type: fuzzy matches over the project's tasks, identifier + title, with the clear button shown |
 | `30-create-depends-multiselect.png` | **R4** — Depends on with two chips and the menu offering the tasks not yet chosen |
+| `33-theme-light-1512.png` | **theme three-state** — `Light`, the no-record default: sun glyph, `Light` label, light board |
+| `34-theme-dark-1512.png` | **theme three-state** — one press on: `Dark`, moon glyph, dark board |
+| `35-theme-auto-darkos-1512.png` | **theme three-state** — two presses on: `Auto` under a **dark** system preference — display glyph, `Auto` label, dark board |
+| `36-theme-auto-lightos-1512.png` | **theme three-state** — the same `Auto` state under a **light** system preference: same label, same glyph, light board (the pair is the proof that Auto follows `prefers-color-scheme`) |
+| `37-theme-footer-760.png` | **theme three-state** — the rail at 760px: the footer's three cells collapse to three glyphs (sun · globe · gear), no overflow |
+| `38-theme-footer-760-closeup.png` | **theme three-state** — the same three cells, cropped |
 
 **R4 recapture:** the create dialog changed size, so every frame that shows it was
 re-shot — `10-create-task-modal`, `23-create-two-col`, `24-md-editor-split`,
@@ -248,6 +254,13 @@ re-shot — `10-create-task-modal`, `23-create-two-col`, `24-md-editor-split`,
 `29-create-parent-dropdown` and `30-create-depends-multiselect`. The board frames are
 untouched: the round changes the dialog's geometry and one scroll binding, and no pixel of
 the board. Captured at device-scale-factor 2 with transitions disabled, as before.
+
+**Theme three-state recapture:** the left footer cell gained its third state, so `05-dark-theme`
+was re-shot with the cell in `Dark` and six frames are new — `33-theme-light-1512`,
+`34-theme-dark-1512`, `35-theme-auto-darkos-1512` and `36-theme-auto-lightos-1512` (the
+`Auto` pair, captured under emulated dark and light system preferences), plus
+`37-theme-footer-760` and its crop for the rail. No toast appears in any of them: each shot
+waits out the 2.5s toast before the shutter. Nothing else on the board moves.
 
 **R3 recapture:** `01-board-1512`, `11-viewport-1240`, `13-viewport-760`, `05-dark-theme`,
 `19-board-zh`, `22-lang-menu`, `15-no-javascript`, `17-access-panel` and `03-drawer-agent`

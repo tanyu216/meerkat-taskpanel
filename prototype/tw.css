@@ -3638,6 +3638,62 @@ html[data-theme="dark"] {
   --color-td-pri-low: #7ea6f0;
   --color-td-pri-none: #7c868c;
 }
+@media (prefers-color-scheme: dark) {
+  html[data-theme="auto"] {
+    color-scheme: dark;
+    --color-td-bg: #0f1417;
+    --color-td-surface: #161b1e;
+    --color-td-sunken: #0f1417;
+    --color-td-hover: #1f262a;
+    --color-td-active: #283034;
+    --color-td-line: #1f262a;
+    --color-td-line-strong: #313b41;
+    --color-td-ink: #e6edf0;
+    --color-td-ink-2: #9ba7ae;
+    --color-td-ink-3: #7c868c;
+    --color-td-ink-4: #5a646a;
+    --color-td-accent: #2aa79b;
+    --color-td-accent-hover: #35baae;
+    --color-td-accent-soft: rgba(42, 167, 155, 0.18);
+    --color-td-focus: rgba(42, 167, 155, 0.4);
+    --color-td-danger: #f0796e;
+    --color-td-danger-soft: rgba(240, 121, 110, 0.14);
+    --color-td-warning: #e0a93a;
+    --color-td-success: #57c98a;
+    --color-td-st-backlog: #8b969c;
+    --color-td-st-todo: #9ba7ae;
+    --color-td-st-progress: #e0a93a;
+    --color-td-st-review: #a99bff;
+    --color-td-st-blocked: #f0796e;
+    --color-td-st-done: #57c98a;
+    --color-td-st-canceled: #7c868c;
+    --color-td-pri-urgent: #f0796e;
+    --color-td-pri-high: #e0a93a;
+    --color-td-pri-medium: #e8a93a;
+    --color-td-pri-low: #7ea6f0;
+    --color-td-pri-none: #7c868c;
+    --color-base-100: #0f1417;
+    --color-base-200: #161b1e;
+    --color-base-300: #1f262a;
+    --color-base-content: #e6edf0;
+    --color-primary: #2aa79b;
+    --color-primary-content: #0f1417;
+    --color-secondary: #8b969c;
+    --color-secondary-content: #0f1417;
+    --color-accent: #e8a93a;
+    --color-accent-content: #0f1417;
+    --color-neutral: #2a3236;
+    --color-neutral-content: #e6edf0;
+    --color-info: #7ea6f0;
+    --color-info-content: #0f1417;
+    --color-success: #57c98a;
+    --color-success-content: #0f1417;
+    --color-warning: #e0a93a;
+    --color-warning-content: #0f1417;
+    --color-error: #f0796e;
+    --color-error-content: #0f1417;
+  }
+}
 @media (max-width: 559px) {
   :root {
     --shell-rail: 56px;
@@ -4570,6 +4626,11 @@ html[data-theme="dark"] {
   }
   [data-theme="dark"] .td-skeleton {
     background-image: linear-gradient( 90deg, var(--color-td-sunken) 25%, var(--color-td-active) 37%, var(--color-td-sunken) 63% );
+  }
+  @media (prefers-color-scheme: dark) {
+    [data-theme="auto"] .td-skeleton {
+      background-image: linear-gradient( 90deg, var(--color-td-sunken) 25%, var(--color-td-active) 37%, var(--color-td-sunken) 63% );
+    }
   }
   @keyframes td-shimmer {
     from {
