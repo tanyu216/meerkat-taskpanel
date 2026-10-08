@@ -13,7 +13,12 @@
 
 import { DomainError } from "../../shared/errors.mjs";
 import { assertClaimable, decideClaim, explainLostClaim } from "../domain/claim.mjs";
-import { assertDeliveryGate, assertWaiverRequest, checkDeliveryGate } from "../domain/delivery-gate.mjs";
+import {
+  assertCreationGate,
+  assertDeliveryGate,
+  assertWaiverRequest,
+  checkDeliveryGate,
+} from "../domain/delivery-gate.mjs";
 import { assertTransition } from "../domain/status.mjs";
 import { isArchivable, normalizeTaskCreate, normalizeTaskUpdate } from "../domain/task.mjs";
 import { normalizeLabelName } from "../domain/labels.mjs";
@@ -54,6 +59,14 @@ export function createTask(ctx, input) {
         identifier,
         projectId: input.projectId,
       });
+
+      // The gate's INSERT-shaped half (M3fix D1). `createTask` is the single
+      // door the HTTP, CLI and MCP faces all share; refusing here — before any
+      // row is written — makes `in_review`/`done` unreachable at creation the
+      // same way a reportless `task_move` is refused. The md importer does not
+      // call this use-case (it writes history directly), which is why the guard
+      // cannot be a trigger: an INSERT trigger would abort an `in_review` import.
+      assertCreationGate({ task: candidate, status: candidate.status });
 
       const dictionaryAudit = [];
       if (input.assignee !== undefined && input.assignee !== null) {

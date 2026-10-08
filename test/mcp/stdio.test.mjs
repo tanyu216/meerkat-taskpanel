@@ -28,6 +28,7 @@
  */
 
 import assert from "node:assert/strict";
+import { once } from "node:events";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
@@ -172,6 +173,26 @@ describe("mcp/stdio — a real session over pipes", () => {
     assert.equal(exit.code, 0);
     assert.deepEqual(mcp.lines, []);
     assert.match(mcp.stderr(), /usage: node src\/mcp\/main\.mjs/);
+  });
+
+  it("treats SIGTERM and SIGINT as a clean shutdown (exit 0), not a crash", async () => {
+    for (const signal of ["SIGTERM", "SIGINT"]) {
+      const mcp = await startMcp({ env: boardlessEnv() });
+      try {
+        // A pong proves the process is past installing the handlers, so the
+        // signal below reaches `shutdown` rather than the OS default action.
+        mcp.send({ jsonrpc: "2.0", id: 1, method: "ping" });
+        assert.deepEqual(asJson(await mcp.nextLine()).result, {});
+        assert.equal(mcp.dangling(), "", "the reply was a whole line before the signal");
+
+        mcp.child.kill(signal);
+        const [code, term] = await once(mcp.child, "exit");
+        assert.equal(term, null, `${signal} must be handled, not fatal by default`);
+        assert.equal(code, 0, `${signal} is a clean shutdown`);
+      } finally {
+        await mcp.close().catch(() => {});
+      }
+    }
   });
 });
 

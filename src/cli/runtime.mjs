@@ -16,6 +16,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { basename } from "node:path";
 
 import { AUTOSTART_TIMEOUT_MS, NO_AUTOSTART_ENV } from "../shared/constants.mjs";
 import { resolveRuntimePointerPath } from "../shared/runtime-locator.mjs";
@@ -58,12 +59,15 @@ export async function ensureBoard(options = {}) {
   }
 
   if (env[NO_AUTOSTART_ENV] === "1" || env[NO_AUTOSTART_ENV] === "true") {
+    // The pointer's *path* is deliberately not echoed (M3fix D3): it is a host
+    // absolute path, and this refusal is echoed to MCP clients. The file name is
+    // kept, because that is what a human needs to fix it and it names no host.
     throw ioError(
       pointer === null
         ? `no board is running and ${NO_AUTOSTART_ENV} is set, so none was started`
-        : `the board named by ${pointer.path} is not answering and ${NO_AUTOSTART_ENV} is set, so none was started`,
+        : `the board named by the runtime pointer is not answering and ${NO_AUTOSTART_ENV} is set, so none was started`,
       {
-        details: { noAutostart: true, pointer: pointer?.path ?? null },
+        details: { noAutostart: true, pointer: pointer?.path === undefined ? null : basename(pointer.path) },
         hint: {
           fix: `start one with \`node src/server/main.mjs\`, or pass --url <url>, or unset ${NO_AUTOSTART_ENV}`,
         },

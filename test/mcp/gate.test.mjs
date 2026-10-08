@@ -249,6 +249,81 @@ describe("mcp/gate — rounds", () => {
   });
 });
 
+describe("mcp/gate — task_create cannot enter a delivery state (M3fix D1)", () => {
+  /** The create refusal as the *service* wrote it — one raw HTTP call. */
+  async function rawCreate(ctx, body) {
+    const response = await fetch(`${ctx.url}/api/v1/tasks`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${ctx.token}` },
+      body: JSON.stringify(body),
+    });
+    return { status: response.status, error: (await response.json()).error ?? null };
+  }
+
+  /** A board that exists but holds nothing — its own project, so counters are clean. */
+  async function emptyBoard(fn) {
+    return withMcp(async (ctx) => {
+      ctx.run(["project", "create", "--id", "cg", "--name", "Create Gate", "--workspace-path", ctx.dataDir, "--json"]);
+      return fn(ctx);
+    });
+  }
+
+  it("refuses `task_create {status:'in_review'}` with the reportless move's own document", async () => {
+    await emptyBoard(async (ctx) => {
+      const raw = await rawCreate(ctx, { project_id: "cg", title: "Skip review", status: "in_review" });
+      assert.equal(raw.status, 422, "the baseline is a real refusal");
+      assert.equal(raw.error.code, "REPORT_REQUIRED");
+
+      const result = await ctx.call("task_create", { project_id: "cg", title: "Skip review", status: "in_review" });
+      assert.equal(result.kind, "tool", "the tool ran and the board refused");
+      assert.equal(result.isError, true);
+      // Field for field against the service's own document. `details.taskId` is
+      // the one field that cannot match: each refused create mints a new uuid
+      // before the gate refuses it, so the raw call and the MCP call name
+      // different ids. Everything else is identical.
+      assert.equal(result.payload.code, raw.error.code);
+      assert.equal(result.payload.http, raw.error.http);
+      assert.equal(result.payload.message, raw.error.message);
+      assert.deepEqual(result.payload.hint, raw.error.hint);
+      assert.deepEqual({ ...result.payload.details, taskId: null }, { ...raw.error.details, taskId: null });
+      assert.equal(result.payload.details.round, 1);
+      assert.deepEqual(result.payload.details.existingRounds, []);
+      assert.equal(result.payload.hint.command, "taskctl issue deliver CG-0001 --report-file -");
+
+      // `done` is the other state a new card may not start in — reachable only
+      // through `in_review`, so it presupposes the same report.
+      const done = await ctx.call("task_create", { project_id: "cg", title: "Already done", status: "done" });
+      assert.equal(done.isError, true);
+      assert.equal(done.payload.code, "REPORT_REQUIRED");
+
+      // Neither attempt wrote anything, and the serial is intact for the next create.
+      const listed = await ctx.call("task_list", { project_id: "cg" });
+      assert.deepEqual(listed.payload.tasks, []);
+    });
+  });
+
+  it("refuses the same create through the CLI face", async () => {
+    await emptyBoard(async (ctx) => {
+      const cli = ctx.run(["issue", "create", "--project", "cg", "--title", "Skip review", "--status", "in_review", "--json"]);
+      assert.equal(cli.status, 1);
+      assert.equal(errorOf(cli).code, "REPORT_REQUIRED");
+    });
+  });
+
+  it("still creates a card that starts in todo or backlog", async () => {
+    await emptyBoard(async (ctx) => {
+      const todo = await ctx.call("task_create", { project_id: "cg", title: "Fine", status: "todo" });
+      assert.equal(todo.isError, false, JSON.stringify(todo.payload));
+      assert.equal(todo.payload.task.status, "todo");
+      assert.equal(todo.payload.task.identifier, "CG-0001");
+
+      const backlog = await ctx.call("task_create", { project_id: "cg", title: "Later", status: "backlog" });
+      assert.equal(backlog.isError, false, JSON.stringify(backlog.payload));
+      assert.equal(backlog.payload.task.status, "backlog");
+    });
+  });
+});
+
 describe("mcp/gate — the audited waiver, in the one tool that has it", () => {
   it("delivers without a report when the reason is a real one", async () => {
     await readyBoard(async (ctx) => {

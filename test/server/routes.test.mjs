@@ -610,3 +610,36 @@ describe("server/routes — a session registered from headers only", () => {
     assert.equal(registered.session.seg, "seg-from-header");
   });
 });
+
+// Last on purpose: earlier "edges" tests read the *global* task list and assume
+// its first two rows share a project. This one adds a second project, so it runs
+// after them (M3fix D1).
+describe("server/routes — task_create cannot enter a delivery state (M3fix D1)", () => {
+  before(async () => {
+    dataOf(await call("POST", "/api/v1/projects", { id: "cg", name: "Create Gate", workspace_path: "/tmp/cg" }));
+  });
+
+  it("refuses in_review/done exactly as a reportless move is refused", async () => {
+    for (const status of ["in_review", "done"]) {
+      const refused = await call("POST", "/api/v1/tasks", { project_id: "cg", title: "Too soon", status });
+      assert.equal(refused.status, 422, JSON.stringify(refused.body));
+      assert.equal(refused.body.error.code, "REPORT_REQUIRED");
+      assert.equal(refused.body.error.details.round, 1);
+      assert.deepEqual(refused.body.error.details.existingRounds, []);
+      assert.match(refused.body.error.hint.command, /issue deliver CG-0001/);
+      assert.match(refused.body.error.hint.alternative, /--no-report --reason/);
+    }
+
+    // Nothing was written, and the serial was not burned.
+    assert.deepEqual(dataOf(await call("GET", "/api/v1/tasks?project_id=cg")).tasks, []);
+  });
+
+  it("still creates a task in the states it may start in", async () => {
+    const created = dataOf(await call("POST", "/api/v1/tasks", { project_id: "cg", title: "Fine", status: "todo" }));
+    assert.equal(created.task.status, "todo");
+    assert.equal(created.task.identifier, "CG-0001", "a refused create did not burn the serial");
+
+    const backlog = dataOf(await call("POST", "/api/v1/tasks", { project_id: "cg", title: "Later", status: "backlog" }));
+    assert.equal(backlog.task.status, "backlog");
+  });
+});

@@ -12,7 +12,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -183,6 +183,25 @@ describe("package manifest", () => {
     const major = Number(range.match(/\d+/)?.[0]);
     assert.ok(Number.isFinite(major), `cannot parse node engines range: ${range}`);
     assert.ok(major >= 22, `engines.node must be >= 22, got ${range}`);
+  });
+
+  it("exposes the MCP server as a bin too, ready to run", async () => {
+    // M3's stdio server is a *program*, not just a library: a host config or an
+    // installer has to be able to start it without knowing where it lives. So it
+    // is a bin, and a bin has to actually be runnable — which is three separate
+    // facts, all of them easy to lose and none of them visible from here without
+    // being written down.
+    const pkg = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8"));
+
+    assert.equal(pkg.bin["taskpanel-mcp"], "./src/mcp/main.mjs");
+
+    const entry = join(ROOT, pkg.bin["taskpanel-mcp"]);
+    assert.ok(existsSync(entry), "bin target must exist");
+    assert.match(readFileSync(entry, "utf8"), /^#!\/usr\/bin\/env node\n/, "a bin needs a shebang");
+    assert.ok(
+      (statSync(entry).mode & 0o111) !== 0,
+      "a bin must be executable (`chmod +x`), or the launcher cannot run it",
+    );
   });
 });
 

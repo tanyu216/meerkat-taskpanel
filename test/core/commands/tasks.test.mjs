@@ -100,6 +100,40 @@ describe("commands/tasks — create and update", () => {
     });
   });
 
+  it("refuses to create a task directly in a delivery state (M3fix D1)", async () => {
+    await board(async ({ db, commands }) => {
+      const before = revision(db);
+
+      // `in_review`/`done` presuppose a delivery a new task has not made, so a
+      // create there is refused exactly like a reportless move: REPORT_REQUIRED,
+      // the same details and the same repair hint.
+      for (const status of ["in_review", "done"]) {
+        assert.throws(
+          () => commands.createTask({ projectId: "proj", title: "Too soon", status, actor: AGENT }),
+          (err) => {
+            assert.equal(err.code, "REPORT_REQUIRED", `status=${status}`);
+            assert.equal(err.details.round, 1);
+            assert.deepEqual(err.details.existingRounds, []);
+            assert.match(err.hint.command, /issue deliver PROJ-0001/);
+            return true;
+          },
+        );
+      }
+
+      assert.equal(countRows(db, "tasks"), 0, "nothing was written");
+      assert.equal(revision(db), before, "a refused create changes nothing");
+      assert.equal(commands.getProject({ id: "proj" }).nextTaskNumber, 1, "the serial was not burned");
+
+      // The states a task *may* start in still work.
+      for (const status of ["todo", "backlog", "blocked"]) {
+        assert.equal(
+          commands.createTask({ projectId: "proj", title: `Starts in ${status}`, status, actor: AGENT }).status,
+          status,
+        );
+      }
+    });
+  });
+
   it("resolves the assignee in the same transaction (event-driven dictionary)", async () => {
     await board(async ({ db, commands }) => {
       const task = commands.createTask({

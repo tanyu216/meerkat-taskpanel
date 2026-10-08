@@ -81,6 +81,10 @@ describe("cli/token — the three-step ladder", () => {
       (err) => {
         assert.equal(err.code, "TOKEN_FILE_CORRUPT");
         assert.equal(err.message.includes("not-a-token"), false, "must not echo the file body");
+        // M3fix D3: the payload is echoed to MCP clients, so it stays free of
+        // the host absolute path — the file *name* is the actionable part.
+        assert.equal(err.details.file, "token", "only the file name, never the host path");
+        assert.equal(JSON.stringify(err.hint).includes(dir), false, "the repair hint must not echo the host path");
         return true;
       },
     );

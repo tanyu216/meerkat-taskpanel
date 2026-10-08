@@ -104,7 +104,7 @@ export const TASK_TOOLS = [
         project_id: string("Project the task belongs to (required)."),
         title: string("One-line title (required)."),
         description: string("Longer description."),
-        status: oneOf(STATUSES, "Initial status (defaults to the project's)."),
+        status: oneOf(STATUSES, "Initial status (defaults to todo). in_review and done are refused at creation: a task must deliver a report before it can enter review."),
         priority: oneOf(PRIORITIES, "Priority."),
         kind: oneOf(KINDS, "task, or epic for a grouping card."),
         labels: stringArray("Label names; unknown ones are created in the project."),

@@ -89,6 +89,28 @@ export function parseArgv(argv) {
 }
 
 /**
+ * Write one whole line, resolved once the stream has accepted it.
+ *
+ * `Writable.write` returning `false` is not an error — it is the stream saying
+ * "I have buffered as much as I will for now". Awaiting `drain` in that case is
+ * what keeps a slow reader from making the pump drop or interleave a response;
+ * awaiting nothing when it returns `true` is what keeps the fast path fast.
+ *
+ * Exported so both arms can be unit-tested with a fake stream: real back-pressure
+ * needs a pipe buffer to fill, which no hermetic test can arrange reliably.
+ *
+ * @param {{write: (text: string) => boolean, once: (event: string, fn: () => void) => unknown}} stream
+ * @param {string} text
+ * @returns {Promise<void>}
+ */
+export function writeLine(stream, text) {
+  return new Promise((resolve) => {
+    if (stream.write(text)) resolve();
+    else stream.once("drain", resolve);
+  });
+}
+
+/**
  * Run the pump until stdin ends.
  *
  * @param {string[]} [argv]
@@ -115,11 +137,7 @@ export async function main(argv = process.argv.slice(2)) {
   let inFlight = null;
 
   /** One whole line out, awaited until the stream accepts it. */
-  const write = (text) =>
-    new Promise((resolve) => {
-      if (process.stdout.write(text)) resolve();
-      else process.stdout.once("drain", resolve);
-    });
+  const write = (text) => writeLine(process.stdout, text);
 
   const handleLine = async (line) => {
     const answer = await server.handleLine(line);

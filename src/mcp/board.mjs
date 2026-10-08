@@ -69,11 +69,6 @@ export function createBoardSession(options = {}) {
     /** Record the handshake's `clientInfo` before the first tool call. */
     identify,
 
-    /** Where the board is, if it has been resolved — for diagnostics only. */
-    peek() {
-      return resolved;
-    },
-
     /**
      * Everything a tool handler is given: the client plus the identity headers.
      * @returns {Promise<{client: object, actor: object, session: string|null, seg: string|null, url: string}>}

@@ -20,10 +20,52 @@
 
 import { DomainError } from "../../shared/errors.mjs";
 import { deliverCommandHint } from "../../shared/deliver-hint.mjs";
+import { STATUS } from "./enums.mjs";
 import { requiresReport } from "./status.mjs";
 
 /** Shortest reason that counts as a reason (`--no-report --reason <why>`). */
 export const WAIVER_MIN_REASON_CHARS = 8;
+
+/**
+ * Statuses a task may not be *created* in (M3fix D1).
+ *
+ * Both presuppose a delivery a brand-new task has not made: `in_review` needs a
+ * report for the current round, and `done` is reachable only *through*
+ * `in_review`. Creating directly in either is the INSERT-shaped twin of moving
+ * there without a report.
+ */
+export const CREATION_GATE_STATUSES = Object.freeze([STATUS.IN_REVIEW, STATUS.DONE]);
+
+/**
+ * Refuse an *initial* status a task may not start in.
+ *
+ * The UPDATE trigger (`tr_deliver_gate`) cannot cover this: it fires on UPDATE,
+ * while a create is an INSERT — and the md importer, which deliberately *writes
+ * history* rather than delivering, inserts `in_review`/`done` cards straight
+ * into the table without going through the gate. So the guarantee lives one
+ * layer up, in `createTask` — the single door every user-facing face (HTTP, CLI
+ * and MCP) goes through, and a door the importer never uses.
+ *
+ * The refusal is deliberately the *same structured error* a reportless move to
+ * `in_review` produces — `REPORT_REQUIRED`, the same `details` and the same
+ * repair `hint` — so the two cannot tell a caller different stories.
+ *
+ * @param {{task: {id: string, identifier?: string, deliveryRound?: number}, status: string}} input
+ * @throws {DomainError} REPORT_REQUIRED
+ */
+export function assertCreationGate(input) {
+  const { task, status } = input;
+  if (!CREATION_GATE_STATUSES.includes(status)) return true;
+
+  const round = task.deliveryRound ?? 1;
+  throw new DomainError("REPORT_REQUIRED", {
+    message:
+      `cannot create ${task.identifier ?? task.id} in ${status}: ` +
+      `no report for delivery round ${round} (rounds on file: none)`,
+    details: { taskId: task.id, identifier: task.identifier ?? null, round, existingRounds: [] },
+    hint: deliverCommandHint(task.identifier ?? task.id),
+  });
+}
 
 /**
  * Does this waiver cover this round?

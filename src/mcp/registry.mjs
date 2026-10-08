@@ -78,8 +78,6 @@ function describe(tool, key) {
 
 /** @param {object} property @param {unknown} value */
 function matchesType(property, value) {
-  if (Array.isArray(property.anyOf)) return property.anyOf.some((branch) => matchesType(branch, value));
-
   switch (property.type) {
     case "string":
       return typeof value === "string";
@@ -94,7 +92,7 @@ function matchesType(property, value) {
     case "array":
       if (!Array.isArray(value)) return false;
       // `items` is optional in JSON Schema; every array here declares one.
-      return property.items === undefined || value.every((item) => matchesType(property.items, item));
+      return property.items === undefined || value.every((item) => matches(property.items, item));
     default:
       // An untyped fragment cannot be checked, and refusing it would make a
       // forgotten `type:` look like a client error.
@@ -102,11 +100,32 @@ function matchesType(property, value) {
   }
 }
 
-/** @param {object} property @param {string} value */
-function matchesEnum(property, value) {
-  if (Array.isArray(property.anyOf)) return property.anyOf.some((branch) => matchesEnum(branch, value));
-  if (!Array.isArray(property.enum)) return true;
-  return property.enum.includes(value);
+/**
+ * Does `value` satisfy this fragment — type **and** range, together?
+ *
+ * A union branch counts only when the value satisfies *all* of it. Testing type
+ * and enum in two separate passes (with a single `some` over the branches in
+ * each) is how `task_list.status` would accept `"shipped"`: the union's array
+ * branch declares no `enum`, and a fragment that checks nothing must not be read
+ * as "anything goes". The same reasoning applies one level down — an array's
+ * items are matched with `matches`, so `["shipped"]` is refused too.
+ *
+ * @param {object} property
+ * @param {unknown} value
+ */
+function matches(property, value) {
+  if (Array.isArray(property.anyOf)) return property.anyOf.some((branch) => matches(branch, value));
+  if (!matchesType(property, value)) return false;
+  if (typeof value === "string" && Array.isArray(property.enum) && !property.enum.includes(value)) return false;
+  return true;
+}
+
+/** How to say what a fragment accepts, for the refusal message. */
+function expectation(property) {
+  if (Array.isArray(property.anyOf)) return property.anyOf.map(expectation).join(" or ");
+  if (Array.isArray(property.enum)) return `one of ${property.enum.join(", ")}`;
+  if (property.type === "array" && property.items !== undefined) return `an array of ${expectation(property.items)}`;
+  return `of type ${property.type ?? "the declared shape"}`;
 }
 
 /**
@@ -141,15 +160,10 @@ export function validateInput(tool, args) {
       });
     }
     if (value === undefined) continue;
-    if (!matchesType(property, value)) {
-      throw invalidParams(`${describe(tool, key)} must be of type ${property.type ?? "the declared shape"}`, {
-        details: { tool: tool.name, argument: key, received: value, expected: property.type ?? property.anyOf },
+    if (!matches(property, value)) {
+      throw invalidParams(`${describe(tool, key)} must be ${expectation(property)}`, {
+        details: { tool: tool.name, argument: key, received: value, expected: property.enum ?? property.anyOf ?? property.type },
         hint: { fix: property.description },
-      });
-    }
-    if (typeof value === "string" && !matchesEnum(property, value)) {
-      throw invalidParams(`${describe(tool, key)} must be one of ${property.enum.join(", ")}`, {
-        details: { tool: tool.name, argument: key, received: value, allowed: [...property.enum] },
       });
     }
   }

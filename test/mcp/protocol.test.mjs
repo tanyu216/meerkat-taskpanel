@@ -260,6 +260,21 @@ describe("mcp/protocol — line framing", () => {
     assert.deepEqual(framer.push("\n\n"), []);
     assert.equal(framer.flush(), null);
   });
+
+  it("tolerates CRLF and byte chunks, so a Windows host or a raw buffer still parses", () => {
+    // A chunk may arrive as bytes, not a string (`Buffer.from` arm)…
+    const framer = createLineFramer();
+    assert.deepEqual(framer.push(Buffer.from('{"jsonrpc":"2.0","id":1,"method":"ping"}\r\n')), [
+      '{"jsonrpc":"2.0","id":1,"method":"ping"}',
+    ]);
+    assert.equal(framer.flush(), null);
+
+    // …and a trailing `\r` with no newline before EOF is stripped rather than
+    // handed on as part of the line.
+    const crlf = createLineFramer();
+    crlf.push('{"a":1}\r');
+    assert.equal(crlf.flush(), '{"a":1}');
+  });
 });
 
 describe("mcp/protocol — argv", () => {
@@ -270,6 +285,12 @@ describe("mcp/protocol — argv", () => {
       help: false,
     });
     assert.deepEqual(parseArgv(["--url=http://x:1"]), { url: "http://x:1", token: null, help: false });
+    assert.deepEqual(parseArgv(["--url=http://x:1", "--token=td_abc"]), {
+      url: "http://x:1",
+      token: "td_abc",
+      help: false,
+    });
+    assert.deepEqual(parseArgv(["-h"]), { url: null, token: null, help: true });
     assert.deepEqual(parseArgv([]), { url: null, token: null, help: false });
     assert.equal(parseArgv(["--help"]).help, true);
   });
@@ -282,18 +303,24 @@ describe("mcp/protocol — argv", () => {
 });
 
 describe("mcp/protocol — result normalisation", () => {
-  it("separates a tool-level failure from a protocol-level one", () => {
-    const tool = readToolResult({
-      jsonrpc: "2.0",
-      id: 1,
-      result: { content: [{ type: "text", text: '{"code":"NOT_FOUND"}' }], isError: true },
+  it("separates a tool-level failure from a protocol-level one, through the real server", async () => {
+    // A board that is not there: `tools/call` reaches the world, so the tool
+    // *ran* and failed. The other shape is a `-32602` the tool never ran under.
+    // Both are produced by `src/mcp/server.mjs` + `result.mjs`, then classified
+    // by the harness — no hand-built envelope is fed in.
+    const session = createMcpSession({
+      url: "http://127.0.0.1:1",
+      env: { TASKD_RUNTIME_POINTER: "/nonexistent/taskpanel-runtime.json", TASKD_NO_AUTOSTART: "1" },
     });
-    assert.equal(tool.kind, "tool");
-    assert.equal(tool.isError, true);
-    assert.equal(tool.payload.code, "NOT_FOUND");
 
-    const rpc = readToolResult({ jsonrpc: "2.0", id: 1, error: { code: -32602, message: "no" } });
-    assert.equal(rpc.kind, "rpc");
+    const rpc = readToolResult(await session.request("tools/call", { name: "no_such_tool", arguments: {} }));
+    assert.equal(rpc.kind, "rpc", "an unknown tool never ran");
     assert.equal(rpc.isError, null);
+    assert.equal(rpc.rpc.code, -32602);
+
+    const tool = readToolResult(await session.request("tools/call", { name: "task_list", arguments: {} }));
+    assert.equal(tool.kind, "tool", "the tool ran; the board could not be reached");
+    assert.equal(tool.isError, true);
+    assert.equal(tool.payload.code, "CLI_IO");
   });
 });

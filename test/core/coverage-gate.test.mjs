@@ -10,6 +10,12 @@
  * The gate is deliberately a *test* rather than a flag on the main run: a
  * failure here names the module and the missing lines, in the same output as
  * everything else.
+ *
+ * Two kinds of floor are checked. Every gate asserts its **total**; a gate marked
+ * `perModule` also asserts **each of its modules**, because a total hides a
+ * module — 98% overall is reachable with one file at 40%. M3's `src/mcp` tree is
+ * the only one opted in for the stricter reading (the reasons the others are not
+ * are recorded next to the flag).
  */
 
 import assert from "node:assert/strict";
@@ -64,6 +70,19 @@ const GATES = [
       "test/cli/",
     ],
   },
+  // M3's stdio server: the AI-facing surface, held to the same 80% floor as the
+  // two above — and, unlike them, per module (see `perModule` below). Its suites
+  // drive real child processes, and `node --test` hands `NODE_V8_COVERAGE` down
+  // to them, so these numbers include `main.mjs`'s pump actually running, not
+  // merely the library it imports.
+  {
+    label: "src/mcp",
+    include: "src/mcp/**",
+    tests: [
+      "test/mcp/",
+    ],
+    perModule: true,
+  },
 ];
 
 const THRESHOLD = 80;
@@ -108,7 +127,7 @@ export function childEnv(env = process.env) {
 }
 
 /** Run one coverage pass and return its parsed summary. */
-function measure(gate) {
+function measure(gate, threshold = THRESHOLD) {
   const files = testFiles(gate.tests).filter((file) => !file.endsWith("coverage-gate.test.mjs"));
   assert.ok(files.length > 0, `no tests selected for ${gate.label}`);
 
@@ -118,9 +137,9 @@ function measure(gate) {
       "--test",
       "--experimental-test-coverage",
       `--test-coverage-include=${gate.include}`,
-      `--test-coverage-lines=${THRESHOLD}`,
-      `--test-coverage-branches=${THRESHOLD}`,
-      `--test-coverage-functions=${THRESHOLD}`,
+      `--test-coverage-lines=${threshold}`,
+      `--test-coverage-branches=${threshold}`,
+      `--test-coverage-functions=${threshold}`,
       ...files,
     ],
     { cwd: ROOT, encoding: "utf8", env: childEnv() },
@@ -203,6 +222,45 @@ describe("coverage gate (A11 / V11)", () => {
     assert.deepEqual(stripReporterMarker("ℹ all files | 88.10"), "all files | 88.10");
   });
 
+  it("holds every module of an opted-in tree to the threshold, not just its total", () => {
+    // `perModule` exists because a total hides a module: 98% overall is
+    // reachable with one file at 40%. `src/mcp` is the only tree opted in, and
+    // it was opted in *after* being measured — every module in it clears the
+    // floor on all three axes.
+    //
+    // The others are not, and the reason is measured rather than assumed:
+    //   * `src/cli` cannot be opted in today — `src/cli/errors.mjs` reports
+    //     branch 78.95% in this tree's own scoped run (lines 75-76, the
+    //     `renderErrorText` arms nothing exercises). Fixing it means editing
+    //     `src/cli/**`, which this card may not do; lowering the number to make
+    //     it pass would be the wrong fix.
+    //   * `src/server` does clear the floor per module, but it is not this
+    //     card's business to tighten a gate over a tree it did not touch.
+    //   * the three `src/core` gates stay on the total for the same reason as
+    //     `src/cli`: `src/core/storage/unit-of-work.mjs` (branch 68.00%) and
+    //     `src/core/storage/runtime-pointer.mjs` (branch 75.00%) are below it.
+    // Each of those is a card of its own. What matters here is that MCP's floor
+    // is enforced per module rather than trusted.
+    assert.deepEqual(
+      GATES.filter((gate) => gate.perModule === true).map((gate) => gate.label),
+      ["src/mcp"],
+    );
+  });
+
+  it("is not vacuous: raising the floor above src/mcp's real coverage turns the gate red", () => {
+    // A gate that cannot fail is not a gate. Run the *same* `src/mcp` gate with
+    // the floor at 100% and require two independent signs of failure: `node
+    // --test` exits non-zero on its own thresholds, and the per-module shortfall
+    // list is non-empty. If the 80% floor above were pinned to a number nothing
+    // could miss, this is the test that would catch it.
+    const gate = GATES.find((entry) => entry.label === "src/mcp");
+    const raised = measure(gate, 100);
+
+    assert.notEqual(raised.status, 0, "node --test must exit non-zero under a 100% floor");
+    const shortfall = worstModules(raised.output, 100);
+    assert.ok(shortfall.length > 0, `no src/mcp module fell under 100%:\n${raised.output.slice(-2000)}`);
+  });
+
   for (const gate of GATES) {
     it(`${gate.label} stays at or above ${THRESHOLD}% line / branch / function`, () => {
       const { status, output, summary } = measure(gate);
@@ -214,11 +272,18 @@ describe("coverage gate (A11 / V11)", () => {
         ["functions", summary.functions],
       ].filter(([, value]) => !(value >= THRESHOLD));
 
-      const shortfall = worstModules(output).join("\n");
+      const shortfall = worstModules(output);
+      if (gate.perModule === true) {
+        assert.deepEqual(
+          shortfall,
+          [],
+          `${gate.label} has modules below ${THRESHOLD}%:\n${shortfall.join("\n")}`,
+        );
+      }
       assert.deepEqual(
         below.map(([name, value]) => `${gate.label} ${name}=${value}`),
         [],
-        `${gate.label} is below ${THRESHOLD}%:\n${shortfall || output.slice(-2000)}`,
+        `${gate.label} is below ${THRESHOLD}%:\n${shortfall.join("\n") || output.slice(-2000)}`,
       );
       assert.equal(status, 0, `${gate.label}: node --test exited ${status} (its own thresholds)\n${output.slice(-2000)}`);
     });

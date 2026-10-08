@@ -14,6 +14,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { basename } from "node:path";
 
 import { TOKEN_BYTES, TOKEN_ENV, TOKEN_PREFIX } from "../shared/constants.mjs";
 import { DomainError } from "../shared/errors.mjs";
@@ -56,10 +57,14 @@ export function resolveToken(input = {}) {
     }
     const token = String(raw).trim();
     if (!isTokenShape(token)) {
+      // Path-free by policy (M3fix D3): this error is echoed to MCP clients, and
+      // a host absolute path is host-specific detail a caller cannot act on. The
+      // file *name* is kept — it is what a human needs to fix it, and it names no
+      // host.
       throw new DomainError("TOKEN_FILE_CORRUPT", {
         message: `the token file named by the runtime pointer does not contain a ${TOKEN_PREFIX}… token`,
-        details: { file },
-        hint: { fix: `delete ${file} and start the board again to generate a new token` },
+        details: { file: basename(file) },
+        hint: { fix: "delete the token file named by the runtime pointer and start the board again to generate a new token" },
       });
     }
     return { token, source: "file" };

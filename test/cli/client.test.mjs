@@ -277,6 +277,11 @@ describe("cli/runtime — the pointer", () => {
           assert.equal(err.code, "CLI_IO");
           assert.match(err.message, /not answering/);
           assert.match(err.hint.fix, /TASKD_NO_AUTOSTART/);
+          // M3fix D3: this payload is echoed to MCP clients — the pointer's host
+          // path stays out of it, in every field.
+          assert.equal(err.message.includes(path), false, "the message must not name the pointer's host path");
+          assert.equal(JSON.stringify(err.details).includes(path), false, "details must not name it either");
+          assert.equal(JSON.stringify(err.hint).includes(path), false);
           return true;
         },
       );
