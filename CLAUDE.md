@@ -30,9 +30,9 @@ task-panel/
 │   │   ├── storage/        #   driver, migrations, repositories, secrets, md import/export
 │   │   ├── commands/       #   use-cases
 │   │   └── bootstrap.mjs   #   openBoard()
-│   ├── cli/                # taskctl entry (stub until M2)
+│   ├── cli/                # taskctl entry (stub; M2 lands commands and auto-starts the local taskd)
 │   ├── mcp/                # stdio MCP server (placeholder until M3)
-│   ├── server/             # local HTTP API + SSE (placeholder until M6)
+│   ├── server/             # placeholder now; M2 adds a minimal taskd (loopback HTTP API, CLI auto-start); full HTTP API + SSE board backend = M6
 │   └── shared/             # DTOs, constants, errors, pure helpers
 ├── web/                    # board frontend (Vue 3 + Vite planned) -> dist/web (README placeholder only)
 ├── skills/task-panel/      # the skill — single source of truth (author here)
@@ -40,8 +40,10 @@ task-panel/
 ├── design/                 # brand assets, tokens; prototype/assets + PRD/DESIGN/BLOCKS are placeholders
 ├── prototype/              # HTML + Tailwind/daisyUI prototype + screenshots (visual baseline)
 ├── scripts/                # build, install/, sync-skills.mjs, verify/{manifests,skill,profiles,docker}
+├── docker/                 # containerised verify env: Dockerfile, docker-compose.yml, profiles/, serve-skeleton.mjs, verify-in-container.sh
 ├── test/                   # contract, core, concurrency, scaffold tests + fixtures
-└── docs/                   # install.md, development.md, docker.md, README.md
+├── docs/                   # install.md, development.md, docker.md, README.md
+└── .github/workflows/      # CI: check.yml (host static + container jobs), release.yml
 ```
 
 `dist/`, `.data/`, `node_modules/` and `coverage/` are build/runtime output — gitignored,
@@ -73,7 +75,7 @@ file yet; `web/` is a README placeholder).
 
 ## Key invariants to remember
 
-- The **delivery gate** requires a report **for the current delivery round** before a card can move to `in_review` — there is no waiver/escape hatch.
+- The **delivery gate** requires a report **for the current delivery round** before a card can move to `in_review`. In this checkout the gate is still hard — enforced by a DB trigger *and* a domain check, with no waiver path (and tests pin that state). **M2 (approved, not yet landed) adds a documented, audited waiver**: `--no-report --reason "<why>"` (non-empty reason of at least 8 characters, mutually exclusive with `--report-file`, only valid on a move to `in_review`, recorded as a `report_waived` audit event, valid only for the current delivery round). The normal, compliant path remains writing a report.
 - Invariants are pushed **down into the database** (triggers), not only enforced in the app layer; the trigger and the domain check are tested against each other under `test/contract/`.
 - The service model is **single-writer**: one local service owns the SQLite database.
 
