@@ -203,20 +203,17 @@
       "toast.sample.info": "Switched to project Orchestrator",
       "toast.sample.success": "Moved TD-128 → Done",
       "toast.sample.danger": "TD-118 is blocked",
-      /* sidebar footer — three equal cells, each the entry to its dialog */
-      "access.theme.open": "Open theme settings",
-      "access.theme.title": "Theme",
-      "access.theme.group": "Choose a theme",
-      "access.theme.close": "Close theme settings",
+      /* sidebar footer — three equal cells, one affordance each */
+      "access.theme.switch.dark": "Switch to dark theme",
+      "access.theme.switch.light": "Switch to light theme",
       "access.theme.light": "Light",
       "access.theme.dark": "Dark",
-      "access.lang.open": "Open language settings",
-      "access.lang.title": "Language",
+      "access.lang.open": "Choose language",
       "access.lang.group": "Choose a language",
-      "access.lang.close": "Close language settings",
-      "access.lang.en": "EN",
+      "access.lang.en": "English",
       "access.lang.zh": "中文",
-      "access.settings": "Settings",
+      "access.lang.short.en": "EN",
+      "access.lang.short.zh": "中文",
       /* access + token settings */
       "access.open": "Access and token settings",
       "access.title": "Access",
@@ -405,20 +402,17 @@
       "toast.sample.info": "已切换到项目 Orchestrator",
       "toast.sample.success": "已移动 TD-128 → 已完成",
       "toast.sample.danger": "TD-118 已阻塞",
-      /* sidebar footer — three equal cells, each the entry to its dialog */
-      "access.theme.open": "打开主题设置",
-      "access.theme.title": "主题",
-      "access.theme.group": "选择主题",
-      "access.theme.close": "关闭主题设置",
+      /* sidebar footer — three equal cells, one affordance each */
+      "access.theme.switch.dark": "切换到深色主题",
+      "access.theme.switch.light": "切换到浅色主题",
       "access.theme.light": "浅色",
       "access.theme.dark": "深色",
-      "access.lang.open": "打开语言设置",
-      "access.lang.title": "语言",
+      "access.lang.open": "选择语言",
       "access.lang.group": "选择语言",
-      "access.lang.close": "关闭语言设置",
-      "access.lang.en": "EN",
+      "access.lang.en": "English",
       "access.lang.zh": "中文",
-      "access.settings": "设置",
+      "access.lang.short.en": "EN",
+      "access.lang.short.zh": "中文",
       /* access + token settings */
       "access.open": "访问与 Token 设置",
       "access.title": "访问",
@@ -815,31 +809,31 @@
   }
 
   /* One place owns the theme: the `data-theme` attribute, which glyph the
-     footer cell shows, the theme's name in that cell, and which of the two
-     dialog choices reads as pressed. The first pass and the chooser both come
-     through here, so the cell, the dialog and the document can never disagree
-     about the active theme. */
+     footer switch shows, the theme's name in that switch, and the label that
+     names the state one press reaches. The first pass and the press both come
+     through here, so the switch and the document can never disagree about the
+     active theme. */
   function applyTheme(dark) {
-    var $cell = $("[data-theme-open]");
+    var $switch = $("[data-theme-switch]");
+    var label = text(dark ? "access.theme.switch.light" : "access.theme.switch.dark");
     $("html").attr("data-theme", dark ? "dark" : "taskdash");
-    showGlyph($cell.find('[data-theme-icon="light"]'), !dark);
-    showGlyph($cell.find('[data-theme-icon="dark"]'), dark);
-    $cell
+    showGlyph($switch.find('[data-theme-icon="light"]'), !dark);
+    showGlyph($switch.find('[data-theme-icon="dark"]'), dark);
+    $switch
       .find("[data-theme-label]")
       .text(text(dark ? "access.theme.dark" : "access.theme.light"));
-    $("[data-theme-choice]").each(function () {
-      var $choice = $(this);
-      $choice.attr("aria-pressed", String(($choice.attr("data-theme-choice") === "dark") === dark));
-    });
+    /* the control is a switch, so `aria-pressed` carries the state and the
+       label carries both the state in force and the state one press reaches */
+    $switch.attr("aria-pressed", String(dark)).attr("aria-label", label).attr("title", label);
   }
 
-  /* Same idea for the language: `<html lang>`, the name of the language in the
-     middle cell, and the chosen option in the language dialog. */
+  /* Same idea for the language: `<html lang>`, the language's own short name in
+     the footer trigger, and which option in the menu reads as chosen. */
   function applyLanguageOptions() {
-    $("[data-lang-label]").text(text("access.lang." + state.lang));
-    $("[data-lang-choice]").each(function () {
-      var $choice = $(this);
-      $choice.attr("aria-pressed", String($choice.attr("data-lang-choice") === state.lang));
+    $("[data-lang-label]").text(text("access.lang.short." + state.lang));
+    $("[data-lang-option]").each(function () {
+      var $option = $(this);
+      $option.attr("aria-pressed", String($option.attr("data-lang-option") === state.lang));
     });
   }
 
@@ -902,86 +896,69 @@
     }, 200);
   }
 
-  /* ------------------------------------- dialogs · theme / language / B19 -- */
+  /* ------------------------------------------ the language menu ----------- */
 
-  /* The three footer entries open the same way: the other two dialogs close
-     first, then the scrim comes on, then the panel leaves `hidden` a frame
-     before `data-state` flips so the transition has a start point, then focus
-     moves inside. Each dialog owns its own scrim and its own returning opener,
-     so closing always lands the caret back on the cell that opened it. */
-  function openDialog(dialog, $focus) {
-    var $panel = $(dialog.panel);
+  /* The footer's centre cell is a dropdown, not an entry to a dialog. It is
+     positioned the way the card's "Move to" menu is — `position: fixed` beside
+     the invoking control — for the same reason: the sidebar is a scroll
+     container, so an absolutely positioned menu would be clipped by it and
+     would drag a scrollbar along with it. It opens upward, because the cell it
+     belongs to sits at the bottom of the rail.
+     The trigger's own box is read in viewport coordinates, which is what
+     `position: fixed` is measured against; `offset()` is document-relative and
+     so drifts once the sidebar has been scrolled. */
+  function closeLangMenu() {
+    $("[data-lang-menu]").prop("hidden", true).removeAttr("style");
+    $("[data-lang-select]").attr("aria-expanded", "false");
+  }
+
+  function openLangMenu($button) {
+    var $menu = $("[data-lang-menu]");
+    var box = $button[0].getBoundingClientRect();
+    $menu.prop("hidden", false);
+    var width = $menu.outerWidth();
+    var left = Math.max(
+      8,
+      Math.min(box.left + box.width - width, $(window).width() - width - 8)
+    );
+    $menu
+      .css({
+        position: "fixed",
+        top: Math.max(8, box.top - $menu.outerHeight() - 4) + "px",
+        left: left + "px",
+        zIndex: 70,
+      });
+    $button.attr("aria-expanded", "true");
+  }
+
+  /* ------------------------------------------ dialog · B19 access --------- */
+
+  /* The one remaining dialog. `data-state` drives the transition and `hidden`
+     keeps the panel out of the static document; the panel leaves `hidden` a
+     frame before `data-state` flips so the transition has a start point, and
+     focus moves inside once it can take it. Closing lands the caret back on the
+     footer cell that opened it. */
+  function openAccess() {
+    var $panel = $("[data-access-panel]");
     if ($panel.attr("data-state") === "open") return;
-    closeOtherDialogs(dialog);
-    $(dialog.overlay).prop("hidden", false).width();
-    $(dialog.overlay).attr("data-state", "open");
+    $("[data-access-overlay]").prop("hidden", false).width();
+    $("[data-access-overlay]").attr("data-state", "open");
     $panel.prop("hidden", false).width();
     $panel.attr("data-state", "open").attr("aria-hidden", "false");
-    focusWhenOpen($focus, $panel);
+    focusWhenOpen($("[data-access-close]"), $panel);
   }
 
-  function closeDialog(dialog) {
-    var $panel = $(dialog.panel);
+  function closeAccess() {
+    var $panel = $("[data-access-panel]");
     if ($panel.attr("data-state") !== "open") return;
     $panel.attr("data-state", "closed").attr("aria-hidden", "true");
-    $(dialog.overlay).attr("data-state", "closed");
+    $("[data-access-overlay]").attr("data-state", "closed");
     window.setTimeout(function () {
-      if ($(dialog.panel).attr("data-state") !== "closed") return;
+      if ($panel.attr("data-state") !== "closed") return;
       $panel.prop("hidden", true);
-      $(dialog.overlay).prop("hidden", true);
+      $("[data-access-overlay]").prop("hidden", true);
     }, 200);
-    $(dialog.opener).trigger("focus");
-  }
-
-  /* Only one of the three is ever open: the footer is a row of entries to one
-     surface each, not a stack of surfaces. */
-  function closeOtherDialogs(dialog) {
-    $.each(DIALOGS, function (name, other) {
-      if (other !== dialog) closeDialog(other);
-    });
-  }
-
-  var DIALOGS = {
-    theme: {
-      panel: "[data-theme-modal]",
-      overlay: "[data-theme-overlay]",
-      opener: "[data-theme-open]",
-    },
-    lang: {
-      panel: "[data-lang-modal]",
-      overlay: "[data-lang-overlay]",
-      opener: "[data-lang-open]",
-    },
-    settings: {
-      panel: "[data-access-panel]",
-      overlay: "[data-access-overlay]",
-      opener: "[data-access-open]",
-    },
-  };
-
-  function activeTheme() {
-    return $("html").attr("data-theme") === "dark" ? "dark" : "light";
-  }
-
-  /* The caret starts on whatever is currently chosen, so Tab walks the other
-     choice as the very next stop. */
-  function openThemeDialog() {
-    openDialog(
-      DIALOGS.theme,
-      $('[data-theme-choice="' + activeTheme() + '"]')
-    );
-  }
-
-  function openLangDialog() {
-    openDialog(DIALOGS.lang, $('[data-lang-choice="' + state.lang + '"]'));
-  }
-
-  function closeThemeDialog() {
-    closeDialog(DIALOGS.theme);
-  }
-
-  function closeLangDialog() {
-    closeDialog(DIALOGS.lang);
+    $("[data-access-open]").trigger("focus");
   }
 
   /* -------------------------------------------- B19 · access + token ------ */
@@ -1053,16 +1030,6 @@
       .append(ICON_CLOSE);
 
     return $row.append($input).append($remove);
-  }
-
-  /* Same open/close contract as the detail drawer: `data-state` drives the
-     transition, `hidden` keeps the panel out of the static document. */
-  function openAccess() {
-    openDialog(DIALOGS.settings, $("[data-access-close]"));
-  }
-
-  function closeAccess() {
-    closeDialog(DIALOGS.settings);
   }
 
   /* ------------------------------------------------------- I3 · details --- */
@@ -1574,10 +1541,9 @@
     $(document).on("keydown", function (event) {
       if (event.key === "Escape" || event.key === "Esc") {
         closeMoveMenu();
+        closeLangMenu();
         closeDetail();
         closeStates();
-        closeThemeDialog();
-        closeLangDialog();
         closeAccess();
       }
     });
@@ -1587,31 +1553,35 @@
     $("[data-states-close]").on("click", closeStates);
     $("[data-states-overlay]").on("click", closeStates);
 
-    /* B20/B21 · theme + language dialogs ---------------------------------- */
-    $("[data-theme-open]").on("click", openThemeDialog);
-    $("[data-theme-close]").on("click", closeThemeDialog);
-    $("[data-theme-overlay]").on("click", closeThemeDialog);
+    /* I11 · theme (left footer cell) -------------------------------------- */
 
-    /* Choosing applies, closes and announces — the dialog stays a chooser and
-       never a live preview of the theme. `applyTheme` also rewrites the name in
-       the footer cell, so the cell and the document agree the moment this runs. */
-    $("[data-theme-choice]").on("click", function () {
-      var dark = $(this).attr("data-theme-choice") === "dark";
+    /* A switch, not a chooser: the press applies the other theme to the
+       document, the glyph and the cell's own name at once — there is no
+       intermediate surface and nothing to dismiss. `applyTheme` writes the
+       label, so the cell and the document agree the moment this runs. */
+    $("[data-theme-switch]").on("click", function () {
+      var dark = $("html").attr("data-theme") !== "dark";
       applyTheme(dark);
-      closeThemeDialog();
       toast(dark ? text("toast.themeDark") : text("toast.themeLight"), "info");
     });
 
-    $("[data-lang-open]").on("click", openLangDialog);
-    $("[data-lang-close]").on("click", closeLangDialog);
-    $("[data-lang-overlay]").on("click", closeLangDialog);
+    /* Language (centre footer cell) — a dropdown, not a chooser ------------ */
 
-    /* `setLang` runs the document-wide pass, which also rewrites the name in the
-       middle footer cell. Picking the language already in force is a no-op in
-       `setLang`, and the dialog still closes. */
-    $("[data-lang-choice]").on("click", function () {
-      setLang($(this).attr("data-lang-choice"));
-      closeLangDialog();
+    /* The trigger toggles the menu the same way a card kebab does; the menu
+       floats above the cell, so it is never clipped by the scrolling rail. */
+    $("[data-lang-select]").on("click", function () {
+      closeMoveMenu();
+      if ($(this).attr("aria-expanded") === "true") closeLangMenu();
+      else openLangMenu($(this));
+    });
+
+    /* `setLang` runs the document-wide pass, which also rewrites the short name
+       in the middle footer cell. Choosing closes the menu either way; picking
+       the language already in force is a no-op in `setLang`, so it reports
+       nothing — there is no switch to announce. */
+    $("[data-lang-menu]").on("click", "[data-lang-option]", function () {
+      closeLangMenu();
+      setLang($(this).attr("data-lang-option"));
     });
 
     /* B19 · access + token settings ---------------------------------------- */
@@ -1660,6 +1630,9 @@
     $("[data-board]").on("click", "[data-card-menu]", function (event) {
       event.stopPropagation();
       closeMoveMenu();
+      /* the press stops propagating, so the document handler below never gets
+         the chance to shut the other floating menu */
+      closeLangMenu();
       openMoveMenu($(this));
     });
 
@@ -1672,9 +1645,16 @@
       moveCard($card, status, true);
     });
 
+    /* Both menus float away from the control that opened them, so both close on
+       a press that lands outside themselves and their triggers. */
     $(document).on("click", function (event) {
-      if (!$(event.target).closest("[data-move-menu], [data-card-menu]").length) {
+      if (
+        !$(event.target).closest(
+          "[data-move-menu], [data-card-menu], [data-lang-menu], [data-lang-select]"
+        ).length
+      ) {
         closeMoveMenu();
+        closeLangMenu();
       }
     });
 
@@ -1945,10 +1925,7 @@
     $("[data-states-panel]").attr("aria-hidden", "true");
     $("[data-access-overlay]").prop("hidden", true);
     $("[data-access-panel]").attr("aria-hidden", "true");
-    $("[data-theme-overlay]").prop("hidden", true);
-    $("[data-theme-modal]").attr("aria-hidden", "true");
-    $("[data-lang-overlay]").prop("hidden", true);
-    $("[data-lang-modal]").attr("aria-hidden", "true");
+    $("[data-lang-menu]").prop("hidden", true);
 
     /* The stand-in token is minted once per load, then rendered masked. */
     state.token.value = newToken();

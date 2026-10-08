@@ -41,8 +41,8 @@ three footer dialogs are secondary surfaces and stay hidden until opened.
 | `app.js` | the jQuery (slim) interaction layer — interactions I1–I12 |
 | `vendor/jquery.slim.min.js` | jQuery 3.7.1 **slim** build, vendored locally |
 | `DESIGN.md` | the design specification: tokens, type, spacing, states, a11y, reconciliation, access model, i18n |
-| `BLOCKS.md` | the block inventory B01–B21 with every `data-*` hook |
-| `screenshots/` | capture set (board, wide board, drawer, dark, list, menu, filters, empty, modal, access + token, Chinese, 5 viewports) |
+| `BLOCKS.md` | the block inventory B01–B21 with every `data-*` hook (B20 and B21 are the retired theme/language dialogs — see v1.4) |
+| `screenshots/` | capture set (board, wide board, drawer, dark, list, menu, filters, empty, language menu, access + token, Chinese, 5 viewports) |
 | `package.json` | declared devDependencies + `build:css` script |
 | `.gitignore` | keeps `node_modules/` out of the repository |
 
@@ -107,30 +107,32 @@ the style guide's token blocks in `src/input.css` are unlayered. Two consequence
 | I8 | Switch project | project switcher or sidebar list | `[data-project-option]`, `[data-project]` |
 | I9 | Create a task | `New task` or a column `+` (prefills that status) | `[data-new-task]`, `[data-column-add]` |
 | I10 | Create a project | switcher → `New project…` | `[data-project-new]` |
-| I11 | Light/dark theme | **B20** — left footer cell, then a choice; `Esc` / scrim / close to dismiss | `[data-theme-open]` → `[data-theme-modal]` → `[data-theme-choice]` |
+| I11 | Light/dark theme | **left footer cell** — one press, no dialog | `[data-theme-switch]` |
 | I12 | Toast feedback | every mutation | `[data-toast-region]`, `[data-toast]` |
-| — | Language switch | **B21** — middle footer cell, then a choice; `Esc` / scrim / close to dismiss | `[data-lang-open]` → `[data-lang-modal]` → `[data-lang-choice]` |
+| — | Language switch | **middle footer cell** — dropdown; `Esc` / a press outside closes it | `[data-lang-select]` → `[data-lang-menu]` → `[data-lang-option]` |
 | — | States gallery | sidebar footer button, `Esc` / scrim / close to dismiss | `[data-states-open]` → `[data-states-panel]` |
 | — | Error retry | `Retry` inside the error state | `[data-error-retry]` |
 | — | Access & token settings | **B19** — right footer cell, `Esc` / scrim / close to dismiss | `[data-access-open]` → `[data-access-panel]` |
 | — | Token reveal / copy / reset | buttons in the token block | `[data-token-reveal]`, `[data-token-copy]`, `[data-token-reset]` |
 
-The three footer dialogs are mutually exclusive: opening one closes the other two, and any
-`Esc` or scrim click closes whichever is open. Each returns focus to the cell that opened
-it.
+The footer's three cells act directly — none of them opens a dialog except the settings
+gear, which opens B19. `Esc` closes whatever is open: the drawer, the states showcase, the
+access panel, the card's "Move to" menu and the language menu. The two floating menus also
+close on any press outside themselves and their trigger.
 
 Mutations that change board state (move, comment, create) also advance the
 `rev` counter in the top bar — the prototype's stand-in for the concurrent-write
 revision stream.
 
 **jQuery discipline.** Every event is bound with `$(...).on(...)` against a `data-*`
-hook. There is no `document.querySelector` and no `addEventListener` anywhere. Four
+hook. There is no `document.querySelector` and no `addEventListener` anywhere. Five
 native calls remain because jQuery cannot express them; each carries an inline
 comment explaining why:
 
 - `el.showModal()` / `el.close()` — the native `<dialog>` API;
 - `document.createElement` + `select()` + `document.execCommand("copy")` — clipboard writes need the Selection API. **Used only for the drawer's internal id and session id**; the access panel's `Copy token` deliberately does not call it and reports a toast instead (DESIGN.md §12);
-- `$form[0].reset()` — jQuery can dispatch a `reset` event but cannot perform one.
+- `$form[0].reset()` — jQuery can dispatch a `reset` event but cannot perform one;
+- `$el[0].getBoundingClientRect()` — the language menu is `position: fixed` and must be placed against the trigger's *viewport* box; jQuery's `offset()` is document-relative and drifts once the scrolling sidebar has moved (DESIGN.md §17).
 
 ---
 
@@ -176,9 +178,9 @@ looking at it (DESIGN.md §12).
 | Empty states | empty column + no-results |
 | Loading | 3 shimmer rows in the list view |
 | Themes | light (default) and dark |
-| Language | English (default) + Chinese via the **B21** language dialog — 188 key pairs, mirrored |
+| Language | English (default) + Chinese via the language dropdown — 185 key pairs, mirrored |
 | Access model | B19 access & token panel: binds `0.0.0.0`, CIDR whitelist, token required from outside localhost; no user / account / sign-in element anywhere |
-| Footer | three equal thirds — theme · language · settings — each stating its current value and opening a dialog |
+| Footer | three equal thirds — theme · language · settings — an inline switch, a dropdown and an icon-only button |
 | Viewports | 1512 / 1240 / 980 / 760 / 500 — no page-level horizontal overflow |
 
 The board is the only horizontal scroll container; `html`, `body` and `main` never
@@ -210,20 +212,27 @@ language switch, and the wrap is now kept as reviewed rather than re-tuned (DESI
 | `16-states-panel.png` | the states gallery: loading, empty column, no results, error and the three toast kinds in one frame |
 | `17-access-panel.png` | B19 access & token settings, token masked |
 | `18-access-token-revealed.png` | the same panel with the stand-in token revealed |
-| `19-board-zh.png` | the board in Chinese — top bar, sidebar, filters, column headers, legend and the footer cells, which now read 浅色 / 中文 / 设置 |
+| `19-board-zh.png` | the board in Chinese — top bar, sidebar, filters, column headers, legend and the footer cells, which now read 浅色 / 中文 / gear |
 | `20-drawer-zh.png` | the drawer in Chinese: properties, relation labels, comment role chips and relative timestamps |
 | `21-access-panel-dark.png` | the access panel in dark theme |
-| `22-theme-modal.png` | **B20** — the theme dialog open, `Light` marked as the current choice |
-| `23-lang-modal.png` | **B21** — the language dialog open, `EN` marked as the current choice |
+| `22-lang-menu.png` | the language dropdown open above the middle footer cell, `English` marked as the current choice |
+
+**v1.4 recapture:** `01-board-1512` (the three controls in the three thirds),
+`11-viewport-1240`, `13-viewport-760` (the rail: three glyphs, caret dropped),
+`05-dark-theme` (the switch in its Dark state), `19-board-zh`, `15-no-javascript` and
+`17-access-panel` were re-shot against the v1.4 build, and `22-lang-menu` is new — eight
+frames in all, at the same geometry (device-scale-factor 2, viewports 1512×950 /
+1240×900 / 760×900). The menu frame is taken with the dropdown already open, so the current
+choice is visible in the capture, and the toast region is hidden in every frame so no
+capture carries a transient toast. `22-theme-modal` and `23-lang-modal` are **deleted**
+with the dialogs they showed. `18-access-token-revealed` and `21-access-panel-dark` remain
+the v1.2 files, unchanged: the token block was not touched by this round.
 
 **v1.3 recapture:** `01-board-1512`, `11-viewport-1240`, `13-viewport-760`,
 `05-dark-theme`, `19-board-zh`, `15-no-javascript` and `17-access-panel` were re-shot
-against the v1.3 build, and `22-theme-modal` / `23-lang-modal` are new — nine frames in
-all, at the same geometry (device-scale-factor 2, viewports 1512×950 /
-1240×900 / 760×900). The two modal frames are taken with the dialog already open, so the
-current choice is visible in the capture. `18-access-token-revealed` and
-`21-access-panel-dark` are the v1.2 files, unchanged: the token block was not touched by
-this round.
+against the v1.3 build, and `22-theme-modal` / `23-lang-modal` were new — nine frames in
+all, at the same geometry. The two modal frames were taken with the dialog already open, so
+the current choice was visible in the capture.
 
 **v1.2 recapture:** the same eight files as listed in §15 were re-shot against the v1.2
 build. The remaining captures are the v1.1 files, kept as-is; where a v1.1 frame includes
