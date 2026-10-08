@@ -1,7 +1,7 @@
 # Installation
 
-Task Dashboard ships as an **Agent Skill** plus per-host plugin manifests. Installation
-copies (or symlinks) the skill from `skills/task-dashboard/` — the single source of truth —
+Task Panel ships as an **Agent Skill** plus per-host plugin manifests. Installation
+copies (or symlinks) the skill from `skills/task-panel/` — the single source of truth —
 into each host's skill directory.
 
 > **Status: M0 scaffold.** Installation works today and the skill is discoverable, but the
@@ -20,10 +20,10 @@ This installs into every supported host. Pick one host instead with
 
 | Host | `--target` value | Destination |
 |---|---|---|
-| Claude Code | `claude` | `~/.claude/skills/task-dashboard` |
-| OpenClaw | `openclaw` | `~/.openclaw/skills/task-dashboard` |
-| Codex | `codex` | `~/.codex/skills/task-dashboard` |
-| Pi / Agent Skills | `pi` | `~/.agents/skills/task-dashboard` |
+| Claude Code | `claude` | `~/.claude/skills/task-panel` |
+| OpenClaw | `openclaw` | `~/.openclaw/skills/task-panel` |
+| Codex | `codex` | `~/.codex/skills/task-panel` |
+| Pi / Agent Skills | `pi` | `~/.agents/skills/task-panel` |
 
 ## Usage
 
@@ -58,7 +58,7 @@ bash install.sh --target claude --link --force
 Install into an isolated home (useful for testing):
 
 ```bash
-bash install.sh --target all --prefix /tmp/taskdash-home
+bash install.sh --target all --prefix /tmp/taskpanel-home
 ```
 
 ## How it works
@@ -69,10 +69,10 @@ environment variables:
 
 | Variable | Meaning |
 |---|---|
-| `TASKDASH_TARGET_HOME` | Base home directory (default `$HOME`) |
-| `TASKDASH_LINK` | Symlink instead of copy |
-| `TASKDASH_FORCE` | Overwrite an existing destination |
-| `TASKDASH_DRY_RUN` | Print only, change nothing |
+| `TASKPANEL_TARGET_HOME` | Base home directory (default `$HOME`) |
+| `TASKPANEL_LINK` | Symlink instead of copy |
+| `TASKPANEL_FORCE` | Overwrite an existing destination |
+| `TASKPANEL_DRY_RUN` | Print only, change nothing |
 
 All four host installers share one implementation, `scripts/install/_common.sh`, so the
 behaviour above is identical everywhere. You can invoke a host script directly if you
@@ -88,7 +88,7 @@ Installation only writes to the destination paths listed above; nothing else is 
 Remove the install with:
 
 ```bash
-rm -rf ~/.claude/skills/task-dashboard
+rm -rf ~/.claude/skills/task-panel
 ```
 
 Nothing is written outside those directories, and nothing is sent over the network — see

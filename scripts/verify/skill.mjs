@@ -2,8 +2,8 @@
 /**
  * Contract check for the skill definition.
  *
- * `skills/task-dashboard/SKILL.md` must start with YAML frontmatter carrying
- *   name: task-dashboard
+ * `skills/task-panel/SKILL.md` must start with YAML frontmatter carrying
+ *   name: task-panel
  * and a non-empty `description` of at least 20 characters (per the Agent Skills spec,
  * the description is what the host uses to decide when to load the skill).
  *
@@ -15,8 +15,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const SKILL_PATH = "skills/task-dashboard/SKILL.md";
-const EXPECTED_NAME = "task-dashboard";
+const SKILL_PATH = "skills/task-panel/SKILL.md";
+const EXPECTED_NAME = "task-panel";
 const MIN_DESCRIPTION = 20;
 
 /**

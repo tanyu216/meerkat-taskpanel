@@ -1,4 +1,4 @@
-# Task Dashboard
+# Task Panel
 
 **Task management board for AI Agent teams.**
 
@@ -15,7 +15,7 @@ same state on a kanban board.
 ## Repository layout
 
 ```text
-task-dashboard/
+task-panel/
 ├── README.md / README.zh-CN.md   # docs (English default, Chinese mirror)
 ├── LICENSE / PRIVACY.md
 ├── package.json                  # workspace root, bin(taskctl), scripts
@@ -28,7 +28,7 @@ task-dashboard/
 │   ├── server/                   #   local HTTP API + SSE
 │   └── shared/                   #   shared DTOs / constants
 ├── web/                          # board frontend (React + Vite) → dist/web
-├── skills/task-dashboard/        # skill — single source of truth
+├── skills/task-panel/        # skill — single source of truth
 ├── plugins/                      # one dispatch unit per host (claude/codex/openclaw/pi)
 ├── design/                       # product design artifacts (PRD / DESIGN / BLOCKS / prototype / assets)
 ├── scripts/                      # build / install / sync / verify
@@ -48,10 +48,10 @@ installs the skill into each host's skill directory:
 
 | Host | Destination |
 |---|---|
-| `claude` | `~/.claude/skills/task-dashboard` |
-| `openclaw` | `~/.openclaw/skills/task-dashboard` |
-| `codex` | `~/.codex/skills/task-dashboard` |
-| `pi` | `~/.agents/skills/task-dashboard` |
+| `claude` | `~/.claude/skills/task-panel` |
+| `openclaw` | `~/.openclaw/skills/task-panel` |
+| `codex` | `~/.codex/skills/task-panel` |
+| `pi` | `~/.agents/skills/task-panel` |
 
 Useful flags: `--prefix <home>` (override the target home), `--link` (symlink instead of
 copy), `--force` (overwrite an existing destination), `--dry-run` (print destinations and

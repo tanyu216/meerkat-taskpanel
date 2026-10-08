@@ -28,7 +28,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 /** Temp dirs created by these tests, removed in the `after` hook. */
 const tempDirs = [];
 
-async function makeTempDir(prefix = "taskdash-test-") {
+async function makeTempDir(prefix = "taskpanel-test-") {
   const dir = await mkdtemp(join(tmpdir(), prefix));
   tempDirs.push(dir);
   return dir;
@@ -79,7 +79,7 @@ describe("plugin manifests", () => {
 describe("skill sync", () => {
   it("resolveSkillSource / listFiles return what the sync expects", async () => {
     const source = resolveSkillSource(ROOT);
-    assert.equal(source, join(ROOT, "skills", "task-dashboard"));
+    assert.equal(source, join(ROOT, "skills", "task-panel"));
 
     const files = await listFiles(source);
     assert.ok(files.includes("SKILL.md"), "SKILL.md must be listed");
@@ -110,8 +110,8 @@ describe("skill sync", () => {
   it("compareDirs detects changed, missing and extra files in a temp copy", async () => {
     const tmp = await makeTempDir();
 
-    const source = join(tmp, "src", "task-dashboard");
-    const dest = join(tmp, "dest", "task-dashboard");
+    const source = join(tmp, "src", "task-panel");
+    const dest = join(tmp, "dest", "task-panel");
 
     // Real skill source, copied twice — first as an identical mirror.
     await cp(resolveSkillSource(ROOT), source, { recursive: true });
@@ -159,10 +159,10 @@ describe("skill sync", () => {
 });
 
 describe("skill definition", () => {
-  it("SKILL.md has frontmatter with name: task-dashboard and a real description", async () => {
+  it("SKILL.md has frontmatter with name: task-panel and a real description", async () => {
     const result = await validateSkill(ROOT);
     assert.equal(result.ok, true, result.error);
-    assert.equal(result.name, "task-dashboard");
+    assert.equal(result.name, "task-panel");
     assert.ok(
       typeof result.description === "string" && result.description.length >= 20,
       "description must be non-empty and at least 20 characters",
@@ -210,13 +210,13 @@ describe("install.sh", () => {
     const run = spawnSync("bash", [join(ROOT, "install.sh"), "--target", "all", "--dry-run"], {
       cwd: ROOT,
       encoding: "utf8",
-      env: { ...process.env, TASKDASH_TARGET_HOME: fakeHome },
+      env: { ...process.env, TASKPANEL_TARGET_HOME: fakeHome },
     });
 
     assert.equal(run.status, 0, run.stderr);
     for (const hostDir of [".claude", ".openclaw", ".codex", ".agents"]) {
       assert.ok(
-        run.stdout.includes(join(fakeHome, hostDir, "skills", "task-dashboard")),
+        run.stdout.includes(join(fakeHome, hostDir, "skills", "task-panel")),
         `dry run must print the ${hostDir} destination path`,
       );
     }
@@ -226,8 +226,8 @@ describe("install.sh", () => {
 
   it("installs into a temp home and refuses to clobber an existing install", async () => {
     const fakeHome = await makeTempDir();
-    const dest = join(fakeHome, ".claude", "skills", "task-dashboard");
-    const env = { ...process.env, TASKDASH_TARGET_HOME: fakeHome };
+    const dest = join(fakeHome, ".claude", "skills", "task-panel");
+    const env = { ...process.env, TASKPANEL_TARGET_HOME: fakeHome };
 
     const first = spawnSync("bash", [join(ROOT, "scripts/install/claude.sh")], {
       cwd: ROOT,
@@ -248,7 +248,7 @@ describe("install.sh", () => {
     const forced = spawnSync("bash", [join(ROOT, "scripts/install/claude.sh")], {
       cwd: ROOT,
       encoding: "utf8",
-      env: { ...env, TASKDASH_FORCE: "1" },
+      env: { ...env, TASKPANEL_FORCE: "1" },
     });
     assert.equal(forced.status, 0, forced.stderr);
   });
@@ -302,7 +302,7 @@ describe("taskctl CLI stub", () => {
   it("the skill wrapper forwards to the same CLI", () => {
     const run = spawnSync(
       process.execPath,
-      [join(ROOT, "skills", "task-dashboard", "scripts", "run.mjs"), "--version"],
+      [join(ROOT, "skills", "task-panel", "scripts", "run.mjs"), "--version"],
       { encoding: "utf8", cwd: tmpdir() },
     );
     assert.equal(run.status, 0, run.stderr);

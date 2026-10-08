@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Thin wrapper that runs the Task Dashboard CLI from the skill.
+ * Thin wrapper that runs the Task Panel CLI from the skill.
  *
- * Resolves the repository root relative to this file (skills/task-dashboard/scripts/ →
+ * Resolves the repository root relative to this file (skills/task-panel/scripts/ →
  * up three levels), spawns the real CLI entry point with the caller's arguments, pipes
  * stdio through, and propagates the exit code. No business logic lives here.
  */

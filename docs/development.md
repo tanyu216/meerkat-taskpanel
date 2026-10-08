@@ -19,7 +19,7 @@
 | `src/server/` | Local HTTP API + SSE for the board (M6) |
 | `src/shared/` | Shared DTOs, constants, small pure helpers |
 | `web/` | React + Vite board frontend → `dist/web` |
-| `skills/task-dashboard/` | The skill — **single source of truth** |
+| `skills/task-panel/` | The skill — **single source of truth** |
 | `plugins/<host>/` | Per-host manifests + generated `skills/` copies |
 | `scripts/` | Build, install, sync and verify scripts |
 | `test/` | Smoke / contract tests |
@@ -52,7 +52,7 @@ npm run check     # check:skills + verify + test
 
 ## The skill is generated, never hand-edited
 
-`skills/task-dashboard/` is the only place the skill is authored. `scripts/sync-skills.mjs`
+`skills/task-panel/` is the only place the skill is authored. `scripts/sync-skills.mjs`
 copies it into `plugins/claude/skills/`, `plugins/codex/skills/`, `plugins/openclaw/skills/`
 and `plugins/pi/skills/`. Those copies are generated artifacts and are committed so that
 each host directory is self-contained — but they must always match the source.

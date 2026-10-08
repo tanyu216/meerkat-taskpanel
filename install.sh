@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# Task Dashboard installer.
+# Task Panel installer.
 #
 # Thin dispatcher: it parses the shared flags once and then runs
 # scripts/install/<host>.sh for each requested host, forwarding the options
-# through TASKDASH_* environment variables.
+# through TASKPANEL_* environment variables.
 #
 # Usage:
 #   install.sh [--target claude|openclaw|codex|pi|all] [--prefix <home>]
@@ -26,7 +26,7 @@ usage() {
   cat <<'EOF'
 Usage: install.sh [options]
 
-Install the Task Dashboard skill into one or more agent hosts.
+Install the Task Panel skill into one or more agent hosts.
 
 Options:
   --target <host>   claude | openclaw | codex | pi | all   (default: all)
@@ -37,16 +37,16 @@ Options:
   -h, --help        Show this help
 
 Destinations:
-  claude     <home>/.claude/skills/task-dashboard
-  openclaw   <home>/.openclaw/skills/task-dashboard
-  codex      <home>/.codex/skills/task-dashboard
-  pi         <home>/.agents/skills/task-dashboard
+  claude     <home>/.claude/skills/task-panel
+  openclaw   <home>/.openclaw/skills/task-panel
+  codex      <home>/.codex/skills/task-panel
+  pi         <home>/.agents/skills/task-panel
 
 Environment (set for each host installer):
-  TASKDASH_TARGET_HOME  overrides $HOME
-  TASKDASH_LINK         symlink instead of copy
-  TASKDASH_FORCE        overwrite an existing destination
-  TASKDASH_DRY_RUN      print only, change nothing
+  TASKPANEL_TARGET_HOME  overrides $HOME
+  TASKPANEL_LINK         symlink instead of copy
+  TASKPANEL_FORCE        overwrite an existing destination
+  TASKPANEL_DRY_RUN      print only, change nothing
 EOF
 }
 
@@ -107,9 +107,9 @@ case "$TARGET" in
     ;;
 esac
 
-# --prefix wins; otherwise honour an inherited TASKDASH_TARGET_HOME; else $HOME.
-TARGET_HOME="${PREFIX_HOME:-${TASKDASH_TARGET_HOME:-$HOME}}"
-DRY_RUN="${DRY_RUN:-${TASKDASH_DRY_RUN:-}}"
+# --prefix wins; otherwise honour an inherited TASKPANEL_TARGET_HOME; else $HOME.
+TARGET_HOME="${PREFIX_HOME:-${TASKPANEL_TARGET_HOME:-$HOME}}"
+DRY_RUN="${DRY_RUN:-${TASKPANEL_DRY_RUN:-}}"
 
 status=0
 
@@ -121,10 +121,10 @@ for host in $HOSTS; do
     continue
   fi
 
-  TASKDASH_TARGET_HOME="$TARGET_HOME" \
-    TASKDASH_LINK="$LINK" \
-    TASKDASH_FORCE="$FORCE" \
-    TASKDASH_DRY_RUN="$DRY_RUN" \
+  TASKPANEL_TARGET_HOME="$TARGET_HOME" \
+    TASKPANEL_LINK="$LINK" \
+    TASKPANEL_FORCE="$FORCE" \
+    TASKPANEL_DRY_RUN="$DRY_RUN" \
     bash "$installer" || status=1
 done
 

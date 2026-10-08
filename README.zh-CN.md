@@ -1,4 +1,4 @@
-# Task Dashboard
+# Task Panel
 
 **面向 AI Agent 团队的任务看板。**
 
@@ -14,7 +14,7 @@
 ## 仓库结构
 
 ```text
-task-dashboard/
+task-panel/
 ├── README.md / README.zh-CN.md   # 文档（默认英文，中文镜像）
 ├── LICENSE / PRIVACY.md
 ├── package.json                  # 工作区根 + bin(taskctl) + scripts
@@ -27,7 +27,7 @@ task-dashboard/
 │   ├── server/                   #   本地 HTTP API + SSE
 │   └── shared/                   #   共享 DTO / 常量
 ├── web/                          # 看板前端（React + Vite）→ dist/web
-├── skills/task-dashboard/        # skill —— 单一事实源
+├── skills/task-panel/        # skill —— 单一事实源
 ├── plugins/                      # 每宿主一个分发单元（claude/codex/openclaw/pi）
 ├── design/                       # 产品设计物（PRD / DESIGN / BLOCKS / prototype / assets）
 ├── scripts/                      # 构建 / 安装 / 同步 / 校验
@@ -47,10 +47,10 @@ skill 目录：
 
 | 宿主 | 落点 |
 |---|---|
-| `claude` | `~/.claude/skills/task-dashboard` |
-| `openclaw` | `~/.openclaw/skills/task-dashboard` |
-| `codex` | `~/.codex/skills/task-dashboard` |
-| `pi` | `~/.agents/skills/task-dashboard` |
+| `claude` | `~/.claude/skills/task-panel` |
+| `openclaw` | `~/.openclaw/skills/task-panel` |
+| `codex` | `~/.codex/skills/task-panel` |
+| `pi` | `~/.agents/skills/task-panel` |
 
 常用参数：`--prefix <home>`（覆盖目标 home）、`--link`（软链而非拷贝）、`--force`
 （覆盖已存在目标）、`--dry-run`（只打印落点，不做任何改动）。

@@ -1,5 +1,5 @@
 /**
- * Task Dashboard core.
+ * Task Panel core.
  *
  * Placeholder — M1: domain model / SQLite repo / state machine / invariants go here.
  */

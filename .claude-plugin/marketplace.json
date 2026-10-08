@@ -1,5 +1,5 @@
 {
-  "name": "task-dashboard-marketplace",
+  "name": "task-panel-marketplace",
   "owner": { "name": "tanyu216" },
   "metadata": {
     "description": "Task management board for AI Agent teams.",
@@ -7,7 +7,7 @@
   },
   "plugins": [
     {
-      "name": "task-dashboard",
+      "name": "task-panel",
       "source": "./plugins/claude",
       "description": "Task management board for AI Agent teams."
     }

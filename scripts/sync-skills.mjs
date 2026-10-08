@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Sync the single source of truth for the skill (`skills/task-dashboard/`) into each
- * host's plugin directory (`plugins/<host>/skills/task-dashboard/`).
+ * Sync the single source of truth for the skill (`skills/task-panel/`) into each
+ * host's plugin directory (`plugins/<host>/skills/task-panel/`).
  *
  * Those copies are GENERATED — never edit them by hand. `--check` verifies they are in
  * sync without writing anything, and is wired into CI (`npm run check:skills`).
@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 export const DEFAULT_HOSTS = ["claude", "codex", "openclaw", "pi"];
 
 /** Directory name of the skill inside `skills/` and inside each host's `skills/`. */
-export const SKILL_DIR_NAME = "task-dashboard";
+export const SKILL_DIR_NAME = "task-panel";
 
 /**
  * Absolute path to the skill source of truth.
@@ -171,7 +171,7 @@ function parseArgs(argv) {
 
 const USAGE = `Usage: node scripts/sync-skills.mjs [--check] [--root <dir>]
 
-Copies skills/task-dashboard/ into plugins/<host>/skills/task-dashboard/ for every host.
+Copies skills/task-panel/ into plugins/<host>/skills/task-panel/ for every host.
 
 Options:
   --check        Only verify the generated copies are in sync; do not write.

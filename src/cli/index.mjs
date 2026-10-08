@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * taskctl — Task Dashboard CLI entry point.
+ * taskctl — Task Panel CLI entry point.
  *
  * M0 scaffold: this is intentionally a stub. It only knows how to identify itself.
  * Real commands (claim, heartbeat, status, progress, comment, report, session-*,
  * spawn, depend, children, deps, rollup, query, read) land in M2 — see
- * skills/task-dashboard/references/cli.md.
+ * skills/task-panel/references/cli.md.
  */
 
 import { CLI_NAME, VERSION } from "../shared/constants.mjs";

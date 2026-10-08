@@ -1,5 +1,5 @@
 /**
- * Task Dashboard MCP server.
+ * Task Panel MCP server.
  *
  * Placeholder — M3: stdio MCP server.
  */

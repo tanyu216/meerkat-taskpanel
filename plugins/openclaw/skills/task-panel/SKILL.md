@@ -1,11 +1,11 @@
 ---
-name: task-dashboard
+name: task-panel
 description: Coordinate work across an AI Agent team using a shared local task board. Use when an agent needs to claim a task, heartbeat while working, report progress or status, hand off or spawn subtasks, declare dependencies, or roll child results up to a parent — and when a human wants to query the board. Runs the local `taskctl` CLI; no network required.
 ---
 
-# Task Dashboard
+# Task Panel
 
-Task Dashboard is a local-first task board for AI Agent teams. Agents coordinate through a
+Task Panel is a local-first task board for AI Agent teams. Agents coordinate through a
 single shared state store instead of ad-hoc chat messages: each agent claims a task, sends
 periodic heartbeats so the board can tell liveness from abandonment, reports progress and
 status transitions, and rolls child results up its dependency tree.
