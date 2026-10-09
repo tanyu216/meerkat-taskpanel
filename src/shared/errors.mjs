@@ -53,6 +53,16 @@ export const ERROR_CODES = Object.freeze({
   EXECUTION_ACTIVE: spec(409, "Another actor holds a fresh claim on this task."),
   EXECUTION_STATE_CORRUPT: spec(500, "in_progress without claimed_by — state is corrupt."),
   ARCHIVE_NOT_TERMINAL: spec(409, "Only done/canceled tasks may be archived."),
+  // The execution-side routing lock (T-20261009-230500-claimassignee): a card
+  // routed to an assignee is claimable only by that assignee, unless the audited
+  // `--allow-steal --reason` escape hatch is taken.
+  not_assignee: spec(
+    409,
+    "This task is assigned to somebody else; only the assignee may claim it.",
+    { fix: 'taskctl issue move <ref> in_progress --allow-steal --reason "<why>"' },
+  ),
+  // An epic is a grouping card: it carries no work, so nothing may claim it.
+  not_claimable: spec(409, "Epics are grouping cards and cannot be claimed."),
 
   // ---- Creation idempotency (T-20261009-175500-idem-taskpanel) ---------------
   // Raised when the partial unique index is the one that refuses a write, i.e.
@@ -156,6 +166,8 @@ export const JS_ONLY_CODES = Object.freeze([
   "CLAIM_LOST",
   "EXECUTION_ACTIVE",
   "EXECUTION_STATE_CORRUPT",
+  "not_assignee",
+  "not_claimable",
   "DICTIONARY_AMBIGUOUS",
   "DICTIONARY_INVALID",
   "MIGRATION_CHECKSUM_MISMATCH",
