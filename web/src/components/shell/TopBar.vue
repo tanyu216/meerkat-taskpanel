@@ -1,70 +1,110 @@
 <script setup>
 /**
- * B02 · Top bar.
+ * B02 · Top bar — brand, project switcher, search, the filter and view toggles,
+ * the live revision readout and the primary action.
  *
- * The real data bindings (projects, revision from the event stream, search,
- * the view/filter toggles) arrive in S3/S4. This stage ships the hook surface
- * the block contract declares, with inert shell state, so the selectors survive
- * the Vue compile and the shell is real rather than a mock.
+ * The right cluster (revision + New task) is one flex item pushed right with
+ * `margin-left: auto`, so it hugs the header's right padding edge and never
+ * splits across the rows the bar folds into. There is no user/account control
+ * and no theme or language control here — those live in the sidebar footer
+ * (B03); the contract asserts their absence from the bar.
  */
-const projects = ["TaskPanel", "Orchestrator", "Site Refresh"];
-const currentProject = "TaskPanel";
-const revision = 0;
+import { computed } from "vue";
+
+import { board, selectProject } from "../../stores/board.js";
+import { createProjectOpen, createTaskOpen, filtersOpen, setView, toggleFilters, view } from "../../stores/ui.js";
+
+const projects = computed(() => board.projects);
+const currentName = computed(() => board.projects.find((p) => p.id === board.currentProjectId)?.name ?? "—");
+
+function switchProject(id) {
+  if (id !== board.currentProjectId) selectProject(id);
+}
 </script>
 
 <template>
-  <header class="td-topbar navbar gap-2" data-topbar>
-    <a class="td-brand btn btn-ghost gap-2" href="#" data-brand>
-      <span class="td-brand-name">TaskPanel</span>
-      <span class="td-brand-sub">Agent Task Collaboration</span>
+  <header class="td-topbar" data-topbar>
+    <a class="td-brand" href="#" data-brand @click.prevent>
+      <span class="td-brand-name" data-i18n="app.brand">{{ $t("app.brand") }}</span>
+      <span class="td-brand-sub" data-i18n="app.tagline">{{ $t("app.tagline") }}</span>
     </a>
 
-    <details class="dropdown" data-project-switcher>
-      <summary class="btn btn-ghost gap-2">
-        <span class="td-project-switcher-icon" data-project-switcher-icon aria-hidden="true">▦</span>
-        <span class="td-mono" data-project-current>{{ currentProject }}</span>
+    <details class="td-details dropdown" data-project-switcher>
+      <summary class="btn btn-ghost btn-sm gap-2">
+        <span data-project-switcher-icon aria-hidden="true">▦</span>
+        <span class="td-mono" data-project-current>{{ currentName }}</span>
       </summary>
-      <ul class="dropdown-content menu w-56">
-        <li v-for="name in projects" :key="name">
-          <button type="button" :data-project-option="name" :aria-current="name === currentProject">
-            <span class="td-mono">{{ name }}</span>
+      <ul class="td-details-menu menu">
+        <li v-for="project in projects" :key="project.id">
+          <button
+            type="button"
+            :data-project-option="project.name"
+            :aria-current="project.id === board.currentProjectId ? 'true' : 'false'"
+            @click="switchProject(project.id)"
+          >
+            <span class="td-mono">{{ project.name }}</span>
           </button>
         </li>
         <li>
-          <button type="button" data-project-new>New project…</button>
+          <button type="button" data-project-new :data-i18n="'project.new'" @click="createProjectOpen = true">
+            {{ $t("project.new") }}
+          </button>
         </li>
       </ul>
     </details>
 
     <div class="td-search" data-search>
       <input
-        class="td-input input input-sm"
+        v-model="board.filters.search"
+        class="td-input"
         type="text"
         autocomplete="off"
         spellcheck="false"
-        placeholder="Search tasks, #ID, labels…"
         data-search-input
+        :data-i18n-placeholder="'topbar.search.placeholder'"
+        :aria-label="$t('topbar.search.label')"
+        :placeholder="$t('topbar.search.placeholder')"
       />
     </div>
 
-    <button type="button" class="td-iconbtn btn btn-ghost btn-sm" data-filter-toggle aria-pressed="true" aria-controls="td-filters" aria-label="Toggle filters">
-      Filters
+    <button
+      type="button"
+      class="btn btn-ghost btn-sm"
+      data-filter-toggle
+      :aria-pressed="filtersOpen ? 'true' : 'false'"
+      aria-controls="td-filters"
+      :aria-label="$t('topbar.filters')"
+      :data-i18n-aria-label="'topbar.filters'"
+      @click="toggleFilters"
+    >
+      {{ $t("filters.label") }}
     </button>
 
-    <div class="tabs tabs-box" data-view-toggle role="group" aria-label="View">
-      <button type="button" class="tab" data-view="board" aria-pressed="true">Board</button>
-      <button type="button" class="tab" data-view="list" aria-pressed="false">List</button>
+    <div class="tabs tabs-box" data-view-toggle role="group" :aria-label="$t('topbar.view')">
+      <button
+        v-for="mode in ['board', 'list']"
+        :key="mode"
+        type="button"
+        class="tab"
+        :data-view="mode"
+        :aria-pressed="view === mode ? 'true' : 'false'"
+        @click="setView(mode)"
+      >
+        {{ $t(`topbar.view.${mode}`) }}
+      </button>
     </div>
 
-    <div class="td-topbar-actions ml-auto">
+    <div class="td-topbar-actions">
       <span class="td-revision" data-revision>
-        <span class="td-revision-text">Live</span>
-        <span class="td-mono" data-revision-label title="Global revision">
-          rev <span data-revision-value>{{ revision }}</span>
+        <span class="td-live-dot" :data-connection="board.connection" aria-hidden="true"></span>
+        <span data-i18n="topbar.live">{{ $t("topbar.live") }}</span>
+        <span class="td-mono" data-revision-label :title="$t('topbar.revision.title')">
+          rev <span data-revision-value>{{ board.revision }}</span>
         </span>
       </span>
-
-      <button type="button" class="btn btn-primary btn-sm" data-new-task>New task</button>
+      <button type="button" class="btn btn-primary btn-sm" data-new-task :data-i18n="'topbar.newTask'" @click="createTaskOpen = true">
+        {{ $t("topbar.newTask") }}
+      </button>
     </div>
   </header>
 </template>

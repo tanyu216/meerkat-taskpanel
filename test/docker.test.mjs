@@ -462,8 +462,14 @@ describe("static: Dockerfile", () => {
     assert.match(text, /chown -R node:node/);
     assert.match(text, /EXPOSE 9527/);
     assert.match(text, /CMD \["node","src\/cli\/index\.mjs","--help"\]/);
-    // Offline/reproducible: no package installation of any kind.
-    assert.doesNotMatch(text, /apt-get|apt install|npm install|npm ci|yum|apk add/);
+    // Offline/reproducible: the runtime stage installs nothing from a package
+    // manager, and the one build-time install — the `webbuild` stage's frontend
+    // devDependencies (ruling A, 2026-10-09) — must be `--offline` against the
+    // committed cache, so the image still builds with no network.
+    assert.doesNotMatch(text, /apt-get|apt install|yum|apk add|npm install\b/);
+    for (const line of text.match(/npm ci[^\n]*/g) ?? []) {
+      assert.match(line, /--offline/, `npm ci must read only the offline cache: ${line}`);
+    }
   });
 });
 
