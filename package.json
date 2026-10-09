@@ -1,13 +1,15 @@
 {
   "name": "task-panel",
   "version": "1.0.0",
-  "private": true,
   "type": "module",
   "workspaces": [
     "web"
   ],
   "description": "Task management board for AI Agent teams.",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "taskctl": "./src/cli/index.mjs",
     "taskpanel-mcp": "./src/mcp/main.mjs"

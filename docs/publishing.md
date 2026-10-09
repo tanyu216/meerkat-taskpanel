@@ -34,21 +34,34 @@ Bump all six to the same value **in one commit**, then let CI confirm.
 ## 2. npm
 
 The published tarball's contents are decided by the `files` whitelist in the root
-`package.json` — `src/`, `skills/`, `plugins/`, `scripts/`, `docs/`, `install.sh` and the
-two READMEs. `web/`, `dist/` and the test/CI directories are **not** in it (the hosted
-board is a separate build; see [development.md](development.md#two-build-layers-engine-and-web)).
+`package.json` — `src/`, `skills/`, `plugins/`, `scripts/`, `docs/`, `install.sh`,
+`CHANGELOG.md`, `LICENSE` and the two READMEs. `web/`, `dist/` and the test/CI directories
+are **not** in it (the hosted board is a separate build; see
+[development.md](development.md#two-build-layers-engine-and-web)).
 
-**Precondition.** `npm publish` refuses a `private` package (`EPRIVATE`). Confirm the root
-`package.json` is publishable before packing — `npm pack --dry-run` fails fast if it is not.
+**Precondition — already enabled.** The root manifest is publishable: it carries no
+`private` flag (the flag that makes `npm publish` refuse with `EPRIVATE`), and its
+`publishConfig` declares `access: "public"`, so a move to a scoped name stays public by
+default. A green `npm pack` is *not* evidence of this — `pack` never refuses a private
+package, and it does run the `prepare` lifecycle script.
+
+**Not yet a live surface.** What gates a publish is registry state, not the manifest: the
+package **name** must be one you control and the **version** must not exist yet. The
+unscoped name `task-panel` is already taken on the public registry by an unrelated
+package, so a real `npm publish` is refused today and a release needs a name decision
+first — most likely a scope, which the `publishConfig.access` above already covers.
+
+Self-check — dry-run only; nothing below uploads anything:
 
 ```bash
-npm pack --dry-run          # inspect the exact file list, no tarball written
-npm pack                    # write task-panel-<version>.tgz
-npm publish                 # publish (Elon)
+npm pack --dry-run      # the exact file list, no tarball written
+npm pack                # write task-panel-<version>.tgz
+node scripts/release/pack-manifest.mjs task-panel-<version>.tgz   # ships the release, nothing else
+npm publish --dry-run   # walks every publish gate, uploads nothing
+npm publish             # the real publish (Elon) — a release, not a check
 ```
 
-`npm pack` runs no lifecycle scripts and needs no `npm install`: the engine is runtime
-zero-dependency and works offline.
+`npm pack` needs no `npm install`: the engine is runtime zero-dependency and works offline.
 
 ## 3. Git tag + GitHub Release
 
