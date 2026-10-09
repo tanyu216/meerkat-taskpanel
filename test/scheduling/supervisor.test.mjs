@@ -18,7 +18,7 @@
  */
 
 import assert from "node:assert/strict";
-import { dirname, resolve } from "node:path";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
@@ -35,8 +35,6 @@ import {
   wakeCommand,
 } from "../../src/shared/scheduling.mjs";
 import { runPatrolTick, runPollTick } from "../../scripts/supervisor.mjs";
-
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 /** A tiny collector standing in for a "spy" — records every call. */
 function spy(impl = () => undefined) {
@@ -548,7 +546,24 @@ describe("pruneRegistry (pure)", () => {
 // ---------------------------------------------------------------------------
 
 describe("supervisor module", () => {
-  it("is a repo-relative ESM module", () => {
-    assert.ok(ROOT.endsWith("task-panel"), ROOT);
+  // Resolved *relative to this test file*, never from a directory name — the
+  // checkout is mounted at /app inside the container, so any assertion keyed on
+  // the repo being named "task-panel" would hold on the host and fail there.
+  const SUPERVISOR_URL = new URL("../../scripts/supervisor.mjs", import.meta.url);
+  const SUPERVISOR_PATH = fileURLToPath(SUPERVISOR_URL);
+
+  it("is a repo-relative ESM file that exists", () => {
+    assert.ok(SUPERVISOR_PATH.endsWith(".mjs"), SUPERVISOR_PATH);
+    assert.ok(existsSync(SUPERVISOR_PATH), SUPERVISOR_PATH);
+  });
+
+  it("imports from wherever the checkout lives and exposes the runner surface (container form)", async () => {
+    // Container form: hold under an arbitrary ROOT (e.g. /app), where the parent
+    // directory is *not* named "task-panel". Loading by URL proves the module is
+    // importable in place; the export check proves it is the runner, not a stub.
+    const mod = await import(SUPERVISOR_URL.href);
+    for (const name of ["runPollTick", "runPatrolTick", "parseArgs", "loadRegistry", "saveRegistry"]) {
+      assert.equal(typeof mod[name], "function", `missing export: ${name}`);
+    }
   });
 });
