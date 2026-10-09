@@ -57,7 +57,9 @@ describe("cli/index — the program, with injected streams", () => {
       stdin: async () => "hi",
       readFile: () => "file",
     });
-    assert.deepEqual(ctx.actor, { kind: "agent", id: "s-1" });
+    // Identity is separate from attribution: the platform/session flag makes the
+    // actor an agent, but the session id rides on `ctx.session`, not the actor id.
+    assert.deepEqual(ctx.actor, { kind: "agent", id: "local" });
     assert.equal(ctx.session, "s-1");
     assert.deepEqual(ctx.args, { ref: "X" });
     assert.equal(ctx.cwd, "/tmp");
