@@ -1,24 +1,20 @@
 /**
- * The one module in `src/mcp` that knows `src/cli` exists (plan §3.5, F-E1).
+ * The board session — how `src/mcp` reaches the service (plan §3.5, F-E1).
  *
  * MCP reaches the board exactly the way `taskctl` does — `ensureBoard()` to find
  * or start it, `resolveToken()` to decide what to present, `createBoardClient()`
- * to carry the envelope and rebuild `DomainError`s. Reusing those three is not a
- * convenience; it is the mechanism behind acceptance criterion #3. Calling
- * `domainErrorFromPayload` is what makes the gate refusal a caller sees through
- * MCP *the same object* as the one a caller sees through the CLI. A second,
- * copied client would be a second error mapping, and that is precisely how
- * `REPORT_REQUIRED` and its repair hint would drift apart.
- *
- * The import list is a **whitelist** (`client/index.mjs`, `runtime.mjs`,
- * `token.mjs`), fixed by `test/mcp/imports.test.mjs`. Nothing may be added here
- * without widening that test, which is the point: the edge stays narrow enough
- * to read.
+ * to carry the envelope and rebuild `DomainError`s. Those three now live in
+ * `src/shared/transport/` (the transport seam was extracted out of `src/cli`,
+ * restoring the rule that nothing imports `src/cli`), so both surfaces sit on the
+ * same seam without either importing the other. Reusing it is what makes the gate
+ * refusal a caller sees through MCP *the same object* as the one a caller sees
+ * through the CLI: one `domainErrorFromPayload`, not two mappings that could drift
+ * `REPORT_REQUIRED` and its repair hint apart.
  *
  * Starting `taskd` is safe for a stdio server, and for one non-obvious reason:
- * `client/autostart.mjs` redirects the daemon's stdout to `<dataDir>/logs/taskd.log`.
- * A child that inherited our stdout would corrupt the JSON-RPC stream on the
- * first line it printed.
+ * `shared/transport/autostart.mjs` redirects the daemon's stdout to
+ * `<dataDir>/logs/taskd.log`. A child that inherited our stdout would corrupt the
+ * JSON-RPC stream on the first line it printed.
  *
  * Lazy by design (plan G2): `initialize` and `tools/list` must work on a machine
  * where no board has ever run, because a host resolving its tool list should not
@@ -27,9 +23,9 @@
  * so a board started a moment later can still be reached.
  */
 
-import { createBoardClient } from "../cli/client/index.mjs";
-import { ensureBoard, readPointer } from "../cli/runtime.mjs";
-import { resolveToken } from "../cli/token.mjs";
+import { createBoardClient } from "../shared/transport/client.mjs";
+import { ensureBoard, readPointer } from "../shared/transport/runtime.mjs";
+import { resolveToken } from "../shared/transport/token.mjs";
 import { mcpIdentity } from "./actor.mjs";
 
 /**

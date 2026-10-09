@@ -13,15 +13,18 @@
  * indistinguishable from a live one until you knock. So the pointer is only
  * believed after `/health` answers, and a dead address falls through to the
  * autostart path rather than producing a confusing connection error.
+ *
+ * Shared (extracted from `src/cli/runtime.mjs`) so both the CLI and the MCP
+ * surface resolve the board identically.
  */
 
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 
-import { AUTOSTART_TIMEOUT_MS, NO_AUTOSTART_ENV } from "../shared/constants.mjs";
-import { resolveRuntimePointerPath } from "../shared/runtime-locator.mjs";
+import { AUTOSTART_TIMEOUT_MS, NO_AUTOSTART_ENV } from "../constants.mjs";
+import { resolveRuntimePointerPath } from "../runtime-locator.mjs";
 import { ioError } from "./errors.mjs";
-import { probeHealth, spawnTaskd } from "./client/autostart.mjs";
+import { probeHealth, spawnTaskd } from "./autostart.mjs";
 
 export { probeHealth };
 

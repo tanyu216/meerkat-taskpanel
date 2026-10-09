@@ -1,6 +1,6 @@
 /**
- * Step 9, in detail: the transport seam (`client/http.mjs`) and the runtime
- * locator (`runtime.mjs`, `client/autostart.mjs`).
+ * Step 9, in detail: the transport seam (`shared/transport/http.mjs`) and the
+ * runtime locator (`shared/transport/runtime.mjs`, `shared/transport/autostart.mjs`).
  *
  * These are the modules whose *unhappy* paths matter most — a board that is
  * unreachable, an envelope that is malformed, a pointer left behind by a dead
@@ -17,10 +17,10 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { after, before, describe, it } from "node:test";
 
-import { createBoardClient } from "../../src/cli/client/index.mjs";
-import { domainErrorFromPayload, requestJson, withQuery } from "../../src/cli/client/http.mjs";
-import { probeHealth, repoRoot, serverEntry, spawnTaskd, waitForPointer } from "../../src/cli/client/autostart.mjs";
-import { ensureBoard, readPointer } from "../../src/cli/runtime.mjs";
+import { createBoardClient } from "../../src/shared/transport/client.mjs";
+import { domainErrorFromPayload, requestJson, withQuery } from "../../src/shared/transport/http.mjs";
+import { probeHealth, repoRoot, serverEntry, spawnTaskd, waitForPointer } from "../../src/shared/transport/autostart.mjs";
+import { ensureBoard, readPointer } from "../../src/shared/transport/runtime.mjs";
 import { ERROR_CODES, isDomainError } from "../../src/shared/errors.mjs";
 import { baseEnv, cleanupTempDirs, makeTempDir, startTaskd } from "./helpers/cli-harness.mjs";
 
@@ -35,7 +35,7 @@ const tempDir = () => {
   return dir;
 };
 
-describe("cli/client/http — query strings", () => {
+describe("shared/transport/http — query strings", () => {
   it("builds a query string, skipping empty values and repeating arrays", () => {
     assert.equal(withQuery("/a", undefined), "/a");
     assert.equal(withQuery("/a", { x: undefined, y: null, z: "" }), "/a");
@@ -45,7 +45,7 @@ describe("cli/client/http — query strings", () => {
   });
 });
 
-describe("cli/client/http — turning a payload back into a DomainError", () => {
+describe("shared/transport/http — turning a payload back into a DomainError", () => {
   it("preserves a known code, its details, hint and the server's status", () => {
     const err = domainErrorFromPayload({
       code: "REPORT_REQUIRED",
@@ -77,7 +77,7 @@ describe("cli/client/http — turning a payload back into a DomainError", () => 
   });
 });
 
-describe("cli/client/http — over a real board", () => {
+describe("shared/transport/http — over a real board", () => {
   let taskd;
   let url;
   before(async () => {
@@ -226,7 +226,7 @@ describe("cli/client/http — over a real board", () => {
   });
 });
 
-describe("cli/runtime — the pointer", () => {
+describe("shared/transport/runtime — the pointer", () => {
   it("reads a pointer, and treats missing or junk as none", () => {
     const dir = tempDir();
     const path = join(dir, "runtime.json");
@@ -311,7 +311,7 @@ describe("cli/runtime — the pointer", () => {
   });
 });
 
-describe("cli/client/autostart — the spawn path", () => {
+describe("shared/transport/autostart — the spawn path", () => {
   it("knows where the daemon program is", () => {
     // The repository is `/app` inside the verification image, so the root is not
     // assumed to have any particular name.

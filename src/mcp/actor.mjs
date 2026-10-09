@@ -2,10 +2,11 @@
  * Who the MCP process is (plan G3).
  *
  * The answer is "an agent", always. A host that speaks MCP over stdio *is* an
- * agent — there is no terminal and no human typing — so unlike `src/cli/actor.mjs`
- * there is no `--agent-platform` flag to flip the kind, and the `kind` is a
- * constant rather than a derivation. Saying `human` here would be a lie the audit
- * trail would carry forever.
+ * agent — there is no terminal and no human typing — so unlike the CLI's
+ * `resolveActor` (in `src/shared/transport/actor.mjs`) there is no
+ * `--agent-platform` flag to flip the kind, and the `kind` is a constant rather
+ * than a derivation. Saying `human` here would be a lie the audit trail would
+ * carry forever.
  *
  * The id is the interesting half, and it is resolved widest-name-first:
  *

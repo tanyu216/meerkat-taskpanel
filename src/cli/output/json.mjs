@@ -14,7 +14,7 @@
  * secret).
  */
 
-import { errorPayload } from "../errors.mjs";
+import { errorPayload } from "../../shared/transport/errors.mjs";
 import { redactDeep } from "../../shared/redact.mjs";
 
 /** @param {unknown} data */

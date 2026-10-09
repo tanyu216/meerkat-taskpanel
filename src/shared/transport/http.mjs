@@ -14,10 +14,14 @@
  * A connection that never happens is `CLI_IO`, not a domain error, and its
  * message never contains the token (it goes through `redactText` on the way out,
  * and the token is only ever put in a header).
+ *
+ * Shared (extracted from `src/cli/client/http.mjs`): this is the transport seam
+ * both the CLI and the MCP surface sit on, so a gate refusal reaches an MCP
+ * caller as *the same* `DomainError` the CLI sees — one error mapping, not two.
  */
 
-import { DomainError, ERROR_CODES, isDomainError } from "../../shared/errors.mjs";
-import { redactText } from "../../shared/redact.mjs";
+import { DomainError, ERROR_CODES, isDomainError } from "../errors.mjs";
+import { redactText } from "../redact.mjs";
 
 /** How long a single request may take before it is reported as a timeout. */
 export const REQUEST_TIMEOUT_MS = 30_000;

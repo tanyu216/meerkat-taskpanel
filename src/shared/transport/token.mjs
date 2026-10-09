@@ -9,15 +9,18 @@
  * never is.
  *
  * The token shape check lives here rather than in `src/core/storage` because the
- * CLI must not import storage (see `test/cli/imports.test.mjs`); it is three
+ * client must not import storage (see `test/cli/imports.test.mjs`); it is three
  * lines built from the same two constants core uses.
+ *
+ * Shared (extracted from `src/cli`) so both the CLI and the MCP surface resolve
+ * the token the same way, with the same priority and the same corruption error.
  */
 
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 
-import { TOKEN_BYTES, TOKEN_ENV, TOKEN_PREFIX } from "../shared/constants.mjs";
-import { DomainError } from "../shared/errors.mjs";
+import { TOKEN_BYTES, TOKEN_ENV, TOKEN_PREFIX } from "../constants.mjs";
+import { DomainError } from "../errors.mjs";
 
 /** `td_` + 64 hex characters — the same shape `token-store.mjs` writes. */
 export const TOKEN_FORMAT = new RegExp(`^${TOKEN_PREFIX}[0-9a-f]{${TOKEN_BYTES * 2}}$`);

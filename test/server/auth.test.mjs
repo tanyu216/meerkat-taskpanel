@@ -19,7 +19,7 @@ import test, { after, before, describe, it } from "node:test";
 
 import { isLoopbackAddress, isLoopbackRequest, presentedToken, authorize } from "../../src/server/auth.mjs";
 import { createTaskd } from "../../src/server/index.mjs";
-import { isTokenShape } from "../../src/cli/token.mjs";
+import { isTokenShape } from "../../src/shared/transport/token.mjs";
 
 const tempDirs = [];
 let taskd;

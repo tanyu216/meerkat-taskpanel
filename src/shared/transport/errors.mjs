@@ -1,5 +1,5 @@
 /**
- * How the CLI turns a failure into an exit code and a message (§F-C2).
+ * How a caller turns a failure into an exit code and a message (§F-C2).
  *
  * Every failure is a `DomainError` with a code, so the rule is one line: a usage
  * problem exits 2, anything else exits 1, and `export --md --check` with
@@ -9,11 +9,15 @@
  * adds no vocabulary of its own, which is what makes `--json` errors stable for
  * scripts. Everything is funneled through `redactDeep`, so a token can never
  * reach a terminal or a log even if it got into a message.
+ *
+ * Shared (extracted from `src/cli`): the exit-code contract is a CLI notion, but
+ * it sits here so the MCP edge can reuse the transport seam without reaching
+ * into `src/cli`.
  */
 
-import { CLI_EXIT } from "../shared/constants.mjs";
-import { DomainError, toErrorPayload } from "../shared/errors.mjs";
-import { redactDeep } from "../shared/redact.mjs";
+import { CLI_EXIT } from "../constants.mjs";
+import { DomainError, toErrorPayload } from "../errors.mjs";
+import { redactDeep } from "../redact.mjs";
 
 /**
  * "You typed it wrong." Always exits 2.

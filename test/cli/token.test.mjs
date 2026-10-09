@@ -14,9 +14,9 @@ import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
 import { withCli } from "./helpers/cli-harness.mjs";
-import { resolveActor } from "../../src/cli/actor.mjs";
-import { exitCodeFor, ioError, renderErrorText, usageError } from "../../src/cli/errors.mjs";
-import { TOKEN_FORMAT, isTokenShape, resolveToken } from "../../src/cli/token.mjs";
+import { resolveActor } from "../../src/shared/transport/actor.mjs";
+import { exitCodeFor, ioError, renderErrorText, usageError } from "../../src/shared/transport/errors.mjs";
+import { TOKEN_FORMAT, isTokenShape, resolveToken } from "../../src/shared/transport/token.mjs";
 import { DomainError } from "../../src/shared/errors.mjs";
 
 const TOKEN = `td_${"a1b2c3d4".repeat(8)}`;

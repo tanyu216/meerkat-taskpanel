@@ -20,7 +20,7 @@ speak MCP instead of a shell. That makes "same semantics as the CLI" the whole p
 * **No policy.** There is no delivery-gate logic in this directory — not a check, not a
   preflight `GET`. `task_move` posts `{to, if_version}` and forwards whatever comes back.
   The refusal an MCP caller sees is the `DomainError` `src/core/domain/delivery-gate.mjs`
-  raised, rebuilt by `src/cli/client/http.mjs#domainErrorFromPayload` — the *same*
+  raised, rebuilt by `src/shared/transport/http.mjs#domainErrorFromPayload` — the *same*
   function and therefore the *same object* the CLI sees, in a different container.
   `test/mcp/gate.test.mjs` asserts a refused `task_move` is field-for-field equal to the
   raw 422 body `taskd` sends.
@@ -97,17 +97,20 @@ contract test that asserts exact documents.
 
 ## Layering
 
-`mcp → cli (whitelist) → core (over HTTP) → shared`, plus `mcp → shared`.
+`mcp → shared (transport seam) → core (over HTTP) → shared`, i.e. `mcp → shared` and
+nothing sideways. `src/mcp` imports **no** `src/cli` module: the taskd transport seam
+(`client/http.mjs`, `createBoardClient`, `ensureBoard`/`readPointer`, `resolveToken`,
+`resolveActor`, the error mapping) now lives in `src/shared/transport/**`, so both the CLI
+and MCP sit on one seam without either importing the other.
 
-`board.mjs` is the **only** module here that imports `src/cli`, and only from a whitelist:
-`client/index.mjs`, `client/http.mjs`, `runtime.mjs`, `token.mjs`, `actor.mjs`,
-`errors.mjs`. Reusing the CLI's transport seam is what makes the gate equivalence
-structural rather than aspirational — a second HTTP client would be a second error
-mapping. `test/mcp/imports.test.mjs` makes widening that list a deliberate, reviewable
-act.
+Reusing that one seam is what makes the gate equivalence structural rather than
+aspirational — a second HTTP client would be a second error mapping. `board.mjs` is where
+MCP reaches it (`createBoardClient`, `ensureBoard`, `readPointer`, `resolveToken`), and
+`result.mjs` calls `domainErrorFromPayload` from `shared/transport/http.mjs` — the
+transport seam (`requestJson`, `withQuery`, the error rebuild), not policy.
 
-`client/http.mjs` is on the list because `domainErrorFromPayload` lives there. `http.mjs`
-is the transport seam (`requestJson`, `withQuery`, the error rebuild), not policy.
+`test/mcp/imports.test.mjs` pins these rules against the source text: no `src/cli`, no
+`src/server`, no storage, no HTTP server / spawner builtins.
 
 ## Tests
 

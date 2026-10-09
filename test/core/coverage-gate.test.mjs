@@ -229,11 +229,12 @@ describe("coverage gate (A11 / V11)", () => {
     // floor on all three axes.
     //
     // The others are not, and the reason is measured rather than assumed:
-    //   * `src/cli` cannot be opted in today — `src/cli/errors.mjs` reports
-    //     branch 78.95% in this tree's own scoped run (lines 75-76, the
-    //     `renderErrorText` arms nothing exercises). Fixing it means editing
-    //     `src/cli/**`, which this card may not do; lowering the number to make
-    //     it pass would be the wrong fix.
+    //   * `src/cli` stays on the total. A per-module reading of it was tried
+    //     before the transport seam moved out to `src/shared/transport/**`, when
+    //     one of its modules (the error renderer, now `errors.mjs` in shared) sat
+    //     below the floor. Re-opening that measurement for the now-smaller
+    //     `src/cli` tree is a card of its own; lowering the number to make it
+    //     pass would be the wrong fix.
     //   * `src/server` does clear the floor per module, but it is not this
     //     card's business to tighten a gate over a tree it did not touch.
     //   * the three `src/core` gates stay on the total for the same reason as

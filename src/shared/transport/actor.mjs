@@ -9,6 +9,9 @@
  *
  * `--agent <name>` names the actor without claiming to be an agent platform, so
  * a human running `taskctl --agent Terry issue move …` is recorded as a human.
+ *
+ * Pure. It lives in `src/shared` (extracted from `src/cli`) so the MCP surface
+ * reaches the same derivation without importing `src/cli`.
  */
 
 /** Env fallbacks, in the order the id resolution uses them. */

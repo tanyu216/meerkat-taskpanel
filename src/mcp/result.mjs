@@ -22,7 +22,7 @@
 
 import { DomainError, toErrorPayload } from "../shared/errors.mjs";
 import { redactDeep } from "../shared/redact.mjs";
-import { domainErrorFromPayload } from "../cli/client/http.mjs";
+import { domainErrorFromPayload } from "../shared/transport/http.mjs";
 
 /** @param {string} text */
 function textBlock(text) {

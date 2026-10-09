@@ -1,24 +1,24 @@
 /**
  * The `src/mcp` layering rules, machine-enforced (R5, plan §5.4).
  *
- * M3 adds one dependency edge that did not exist before — `src/mcp → src/cli` —
- * and the whole justification for it is that MCP reuses the CLI's *transport
- * seam* rather than growing a second copy of the error mapping. That is only
- * true while the edge stays narrow, so the edge is pinned here, against the
- * source text, in four pieces:
+ * M3 originally reused the CLI's transport seam through a pinned, temporary
+ * `src/mcp → src/cli` whitelist edge. That edge is gone: the seam now lives in
+ * `src/shared/transport/**`, so MCP reaches the same code without importing
+ * `src/cli`, and the charter rule — nothing imports from `cli`/`mcp`/`server` —
+ * holds again. This file asserts that, against the source text, in four pieces:
  *
  *   1. **Every planned module exists.** A scan over an empty (or half-written)
  *      tree must fail rather than pass vacuously.
  *   2. **No storage, no SQLite.** MCP talks to the board the way the CLI does:
  *      over HTTP. Reaching into `core/storage` would make the daemon optional
  *      and break the single-writer model.
- *   3. **The `src/cli` whitelist.** `client/index.mjs`, `runtime.mjs`,
- *      `token.mjs`, `actor.mjs`, `errors.mjs` — and nothing else. In particular
- *      never `commands/**` (policy must not be re-decided here) and never
- *      `output/**` (MCP has no human renderer).
+ *   3. **Nothing from `src/cli`.** The transport seam is shared now, so there is
+ *      no sideway edge left to whitelist. In particular never `commands/**`
+ *      (policy must not be re-decided here) and never `output/**` (MCP has no
+ *      human renderer).
  *   4. **No new dependencies, no HTTP server, no spawning.** Only `src/shared`
- *      and relative imports; the daemon is spawned by `client/autostart.mjs`,
- *      which is reached through the whitelisted `runtime.mjs`.
+ *      and relative imports; the daemon is spawned by
+ *      `shared/transport/autostart.mjs`, reached over HTTP afterwards.
  */
 
 import assert from "node:assert/strict";
@@ -58,31 +58,6 @@ const PLANNED_MCP = [
   "tools/dictionary.mjs",
   "tools/projects.mjs",
 ];
-
-/**
- * The *only* `src/cli` modules `src/mcp` may import (plan §3.5, F-E1).
- *
- * This array is the ruling, not a comment about it: widening it is a deliberate
- * edit that has to survive review, and narrowing the surface is what keeps "MCP
- * is a thin proxy" from decaying into "MCP is a second CLI".
- *
- * `client/http.mjs` is in the list because F-C1 requires it and F-C1 outranks
- * the enumeration in §3.5: the acceptance criterion is that a gate refusal
- * reaches an MCP caller as *the same error object* the CLI sees, and since
- * `src/cli/**` is read-only for this card, the only way to get that object is
- * `domainErrorFromPayload` — which lives in `http.mjs`. `createBoardClient` does
- * not re-export it. Note what this is *not*: `http.mjs` is the transport seam
- * (`requestJson`, `withQuery`, the error rebuild), not policy. No command file,
- * no renderer, nothing that decides anything.
- */
-const CLI_WHITELIST = [
-  "client/index.mjs",
-  "client/http.mjs",
-  "runtime.mjs",
-  "token.mjs",
-  "actor.mjs",
-  "errors.mjs",
-].map((rel) => resolve(CLI, rel));
 
 /** Node builtins MCP has no business with, however it is written. */
 const FORBIDDEN_BUILTINS = [
@@ -135,23 +110,14 @@ describe("mcp/imports — the layering rules", () => {
     assert.deepEqual(violations, [], "MCP is an HTTP client of the board, never a second writer");
   });
 
-  it("src/mcp never imports src/cli/commands/** or src/cli/output/**", () => {
+  it("src/mcp never imports src/cli — the transport seam is shared", () => {
     const violations = offending((file, specifier) => {
       if (!specifier.startsWith(".")) return false;
-      const target = resolveSpecifier(file, specifier);
-      return within(resolve(CLI, "commands"), target) || within(resolve(CLI, "output"), target);
+      // The seam moved to `src/shared/transport/**`, so no `src/cli` module —
+      // not commands, not output, not the transport — may be imported from here.
+      return within(CLI, resolveSpecifier(file, specifier));
     });
-    assert.deepEqual(violations, [], "policy is decided by the service, and MCP renders no human text");
-  });
-
-  it("src/mcp imports src/cli only through the whitelist", () => {
-    const violations = offending((file, specifier) => {
-      if (!specifier.startsWith(".")) return false;
-      const target = resolveSpecifier(file, specifier);
-      if (!within(CLI, target)) return false;
-      return !CLI_WHITELIST.includes(target);
-    });
-    assert.deepEqual(violations, [], "the transport seam is reusable; the command surface is not");
+    assert.deepEqual(violations, [], "the seam is shared; a sideways edge into src/cli is forbidden");
   });
 
   it("src/mcp never imports src/server (the daemon is reached over HTTP)", () => {
@@ -176,12 +142,12 @@ describe("mcp/imports — the layering rules", () => {
     assert.deepEqual(violations, [], "the image builds offline — a bare import would end that");
   });
 
-  it("src/mcp reaches src/shared and relative modules only, besides the whitelist", () => {
+  it("src/mcp reaches src/shared and relative modules only", () => {
     const violations = offending((file, specifier) => {
       if (isNodeBuiltin(specifier) || !specifier.startsWith(".")) return false;
       const target = resolveSpecifier(file, specifier);
-      // Inside `src/mcp` itself, in `src/shared`, or the whitelisted `src/cli`.
-      return !within(MCP, target) && !within(resolve(ROOT, "src/shared"), target) && !within(CLI, target);
+      // Inside `src/mcp` itself, or in `src/shared`.
+      return !within(MCP, target) && !within(resolve(ROOT, "src/shared"), target);
     });
     assert.deepEqual(violations, []);
   });

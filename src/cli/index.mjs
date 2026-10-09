@@ -21,14 +21,14 @@ import { pathToFileURL } from "node:url";
 
 import { CLI_EXIT } from "../shared/constants.mjs";
 import { redactText } from "../shared/redact.mjs";
-import { resolveActor } from "./actor.mjs";
+import { resolveActor } from "../shared/transport/actor.mjs";
 import { parseArgv } from "./argv.mjs";
-import { createBoardClient } from "./client/index.mjs";
+import { createBoardClient } from "../shared/transport/client.mjs";
 import { registry } from "./commands/index.mjs";
-import { exitCodeFor } from "./errors.mjs";
+import { exitCodeFor } from "../shared/transport/errors.mjs";
 import { renderFailure, renderResult } from "./output/index.mjs";
-import { ensureBoard, readPointer } from "./runtime.mjs";
-import { resolveToken } from "./token.mjs";
+import { ensureBoard, readPointer } from "../shared/transport/runtime.mjs";
+import { resolveToken } from "../shared/transport/token.mjs";
 import { commandUsage, groupUsage, topLevelUsage, versionLine } from "./usage.mjs";
 
 /** `--json`, in either spelling. Read from the raw argv so it survives a parse failure. */

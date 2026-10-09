@@ -33,10 +33,10 @@ task-panel/
 │   │   ├── storage/        #   driver, migrations, repositories, secrets, md import/export
 │   │   ├── commands/       #   use-cases
 │   │   └── bootstrap.mjs   #   openBoard()
-│   ├── cli/                # taskctl CLI (real command surface; auto-starts the local taskd)
+│   ├── cli/                # taskctl CLI (command surface; reaches taskd through shared/transport)
 │   ├── mcp/                # stdio MCP server (M3; 18 tools, thin proxy to taskd)
 │   ├── server/             # minimal loopback taskd (CLI auto-start); full HTTP API + SSE board backend = M6
-│   └── shared/             # DTOs, constants, errors, pure helpers
+│   └── shared/             # DTOs, constants, errors, pure helpers + the taskd transport seam (shared/transport/**)
 ├── web/                    # board frontend (Vue 3 + Vite planned) -> dist/web (README placeholder only)
 ├── skills/task-panel/      # the skill — single source of truth (author here)
 ├── plugins/{claude,codex,openclaw,pi}/  # per-host manifests + generated skills/ copies

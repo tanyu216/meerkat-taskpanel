@@ -1,5 +1,5 @@
 /**
- * Starting `taskd` when there is none (§F-A1) — the one place the CLI spawns a
+ * Starting `taskd` when there is none (§F-A1) — the one place the client spawns a
  * process, and therefore the one place worth reading carefully.
  *
  * The sequence, and why each step is where it is:
@@ -16,6 +16,10 @@
  * A stale pointer from a dead process is handled by comparing `pid`: if the file
  * still points at the pid we just started (or a live one), its URL is the right
  * one to try.
+ *
+ * Shared (extracted from `src/cli/client/autostart.mjs`) so the MCP surface can
+ * start the daemon the same way; the CLI's stdout-redirection guarantee is what
+ * keeps a stdio MCP server's JSON-RPC stream clean.
  */
 
 import { spawn } from "node:child_process";
@@ -23,11 +27,11 @@ import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { AUTOSTART_POLL_MS, AUTOSTART_TIMEOUT_MS, LOGS_DIRNAME } from "../../shared/constants.mjs";
-import { resolveDataDir } from "../../shared/runtime-locator.mjs";
-import { ioError } from "../errors.mjs";
+import { AUTOSTART_POLL_MS, AUTOSTART_TIMEOUT_MS, LOGS_DIRNAME } from "../constants.mjs";
+import { resolveDataDir } from "../runtime-locator.mjs";
+import { ioError } from "./errors.mjs";
 
-/** Repository root, from `src/cli/client/`. */
+/** Repository root, from `src/shared/transport/`. */
 export function repoRoot() {
   return resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 }

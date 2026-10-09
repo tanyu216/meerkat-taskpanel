@@ -16,7 +16,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
-import { waitForPointer } from "../../src/cli/client/autostart.mjs";
+import { waitForPointer } from "../../src/shared/transport/autostart.mjs";
 import {
   baseEnv,
   cleanupTempDirs,

@@ -16,7 +16,7 @@
  */
 
 import { redactText } from "../../shared/redact.mjs";
-import { renderErrorText } from "../errors.mjs";
+import { renderErrorText } from "../../shared/transport/errors.mjs";
 import { errorEnvelope, serialize, successEnvelope } from "./json.mjs";
 
 /**
