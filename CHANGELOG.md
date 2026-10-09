@@ -1,0 +1,76 @@
+# Changelog
+
+All notable changes to Task Panel are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
+project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [1.0.0] - 2026-10-09
+
+The first release. The engine has landed through **M6**: the core domain model, the
+`taskctl` CLI and its local `taskd`, the stdio MCP server, the four-host installer, the
+markdown migrator, and the full board HTTP API + SSE backend with the `web/` frontend.
+
+### Milestones
+
+- **M1 — core engine.** `src/core/`: the domain model, the SQLite repository and
+  migrations (Node's built-in `node:sqlite`), the task state machine, and the invariants
+  pushed down into database triggers, exposed through `openBoard()`.
+- **M2 — CLI and local service.** `src/cli/`: the `taskctl` command surface (`project`,
+  `issue`, `comment`, `relation`, `session`, `report`, `export`, `token`, `labels`,
+  `assignees`, `reporters`, `context`), and the minimal loopback `taskd` the CLI
+  auto-starts (`TASKD_NO_AUTOSTART=1` disables it).
+- **M3 — MCP server.** `src/mcp/`: a stdio MCP server exposing 18 frozen tools as a thin,
+  gate-equivalent proxy to `taskd`. `task_deliver` is the only tool that reaches
+  `in_review`.
+- **M4 — installers.** `install.sh` and `scripts/install/<host>.sh`: install the skill for
+  Claude Code, OpenClaw, Codex and pi, with comma-separated targets and a per-host
+  summary.
+- **M5 — markdown migrator.** `src/core/storage/md/` and
+  `node src/core/storage/md/migrate-cli.mjs`: import/export board cards as markdown, with
+  a reconcile and post-import invariants check.
+- **M6 — board API and frontend.** `src/server/`: the full board HTTP API and its SSE
+  event stream, serving the `web/` board frontend (Vue 3 + Vite) built to `web/dist`.
+
+### Added
+
+- **A delivery gate with evidence.** A card can only reach `in_review` with a report for
+  the *current* delivery round, enforced both in the domain layer and by a database
+  trigger. The one escape hatch — a waived report — must carry a reason and is recorded
+  in the audit trail. The MCP surface is stricter still: `task_move` carries no waiver, so
+  `task_deliver` is the only tool that can reach `in_review`.
+- **Dependencies and epics as first-class edges.** `depends_on` links form a DAG so
+  independent work runs in parallel; parent/child links roll a subtree's progress up into
+  its epic.
+- **Sessions that resume.** Every agent session gets a deterministic id derived from
+  `task + owner + segment`, so reconnecting reuses the same session.
+- **An append-only audit trail.** Comments, reports and activities are append-only.
+- **Local-first, zero runtime dependencies.** A single SQLite file is the only
+  persistence; the engine (`src/core`, `src/cli`, `src/server`, `src/mcp`), every script
+  and every test use Node builtins only and run fully offline.
+- **One board, many front doors.** A `taskctl` CLI, a stdio MCP server (18 tools), and the
+  local `taskd` HTTP API + SSE stream, with skill/plugin installers for Claude Code,
+  Codex, OpenClaw and pi.
+- **A read-only board frontend.** The `web/` Vue 3 board (kanban, task drawer, epic
+  roll-up) is served by `taskd` from `web/dist`; it renders state, it does not edit it.
+- **Long-running agent support.** Heartbeats set a freshness window on a claim; claims
+  go stale for their own holder after 30 minutes and for everyone after 6 hours, so a
+  crashed agent never wedges a card.
+- **Release tooling.** `scripts/verify/version.mjs` (the six-manifest version contract),
+  `scripts/release/pack-manifest.mjs` (npm tarball content check), and
+  `scripts/verify/install-e2e.sh` (containerised install + first-run end-to-end).
+
+### Changed
+
+- Version promoted from the `0.0.0` scaffold placeholder to `1.0.0`, kept identical across
+  the six shipped manifests (`package.json`, `plugins/pi/package.json`,
+  `plugins/{claude,codex}/*/plugin.json`, `plugins/openclaw/openclaw.plugin.json`,
+  `.claude-plugin/marketplace.json`) and now checked in CI.
+- The release pipeline: on a `v*` tag, `.github/workflows/release.yml` builds the frontend
+  and release tree, runs `npm pack`, verifies the tarball's contents, and opens a **draft**
+  GitHub Release. It previously did a packaging dry run only.
+
+[Unreleased]: https://github.com/tanyu216/task-panel/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/tanyu216/task-panel/releases/tag/v1.0.0
