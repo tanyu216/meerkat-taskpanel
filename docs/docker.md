@@ -264,8 +264,10 @@ Everything that *installs*, *serves*, or *deploys* goes through Docker.
 
 `.github/workflows/check.yml` has two jobs:
 
-- `check` — the host-side static job (Node 22, **no `npm install`**: it only runs source,
-  scripts and tests, which need no packages);
+- `check` — the host-side static job, on a **Node 22 and Node 24 matrix**
+  (`fail-fast: false`, both legs run the full step list; **no `npm install`**: it only runs
+  source, scripts and tests, which need no packages). It runs `node --test`, the coverage
+  gate (`npm run test:coverage`) and the `scripts/verify/*` checkers;
 - `docker` — builds `task-panel:verify` exactly like the local command and runs the same
   in-container script. This is the authoritative job, and the only one that touches the
   frontend: the `webbuild` stage installs `web/`'s devDependencies **offline** from the
@@ -274,7 +276,9 @@ Everything that *installs*, *serves*, or *deploys* goes through Docker.
   violate the container-first rule.
 
 Same tag, same command, same script as `npm run verify:docker` — locally green means
-CI green.
+CI green. See
+[development.md](development.md#local-and-ci-run-the-same-commands) for the local
+equivalent of each job.
 
 ## Cleanup
 

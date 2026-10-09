@@ -53,7 +53,28 @@ npm run check:skills
 npm run verify
 npm run build
 npm run check     # check:skills + verify + test
+npm run test:coverage   # node --test + the coverage gate (see below)
 ```
+
+### Local and CI run the same commands
+
+`.github/workflows/check.yml` is a thin wrapper: it shells out to the same scripts and
+tests a developer runs locally, so a green local run and a green CI run mean the same
+thing.
+
+- The **`check` job** runs on a **Node 22 and Node 24 matrix** (`fail-fast: false`, both
+  legs run the full step list) — the floor the project promises (`engines: node >= 22`)
+  and the current release line. It runs `node --test`, the coverage gate, and the
+  `scripts/verify/*` checkers.
+- The **`docker` job** is the authoritative one: it builds `task-panel:verify` and runs
+  `docker/verify-in-container.sh`, exactly as `npm run verify:docker` does. See
+  [docker.md](docker.md#ci).
+
+The **coverage gate** is `npm run test:coverage`, the same script
+`docker/verify-in-container.sh` runs. The line/branch/function floors live **once**, in
+that script in `package.json`; the workflow invokes the script rather than restating the
+numbers, so there is a single place to change them. A miss makes the script exit non-zero
+and turns the job red.
 
 ## Two build layers: engine and web
 

@@ -8,18 +8,33 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    strategy:
+      # Report every matrix entry: a red Node 24 leg must not cancel the Node 22 one
+      # (or vice versa) — the whole point of the matrix is to see both results.
+      fail-fast: false
+      matrix:
+        # The floor the project promises (`engines: node >= 22`) and the current
+        # release line. Both run the full step list below.
+        node-version: [22, 24]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: ${{ matrix.node-version }}
 
       # No `npm install`: the engine, scripts and tests use Node builtins only and run
       # offline. The `web/` frontend's build-time devDependencies are assembled offline
       # inside the `docker` job (image `webbuild` stage) — never installed on this runner.
       - name: Tests
         run: node --test
+
+      - name: Coverage gate
+        # The line/branch/function floors are *not* restated here: they live once, in the
+        # `test:coverage` script in package.json, and this step only invokes it — the same
+        # script the container's verify-in-container.sh runs. A miss exits non-zero, so the
+        # job goes red.
+        run: npm run test:coverage
 
       - name: Skill sync is up to date
         run: node scripts/sync-skills.mjs --check
