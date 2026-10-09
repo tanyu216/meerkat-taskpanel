@@ -176,23 +176,31 @@ $0 的本地 CLI 扫描，**只有真正认领到卡**时才启动模型回合�
 
 ### OpenClaw
 
-OpenClaw 是唯一**由框架代你执行规则**的宿主，也是唯一**不构建自家监督进程**的宿主：
-`install.sh --target openclaw` 只安装 skill。它的 `poll`/`patrol` 自动化本就是
-[`docs/scheduling.md`](docs/scheduling.md) 描述的这套设计，因此请安装
-[**openclaw-team**](https://github.com/tanyu216/openclaw-team) 框架 —— 一个基于文件、
-幂等的安装器，会搭起一支小型 Agent 团队（一名协调者 + 四名专家），自带派单、门禁与
-**调度（自动领取）** —— Task Panel 随即成为它们的看板，且**默认安装**：
+OpenClaw 是唯一**由框架代你执行规则**的宿主，也是唯一**不构建自家监督进程**的宿主 ——
+它的 `poll`/`patrol` 自动化本就是
+[`docs/scheduling.md`](docs/scheduling.md) 描述的这套设计。因此 OpenClaw 这条路分三层，
+按你真正的需要取用：
 
-```bash
-git clone https://github.com/tanyu216/openclaw-team
-cd openclaw-team
-./install.sh --dry-run      # 预览每一步动作
-./install.sh                # 幂等安装
-```
+1. **只装看板基座** —— `install.sh --target openclaw` **只安装 skill**：看板及其规则，
+   不含任何把工作派发给 Agent 的调度。
+2. **搭建 agents 团队** —— 要得到一支真正认领、干活的团队，请**依据自身情况**参考
+   [**openclaw-team**](https://github.com/tanyu216/openclaw-team) 来搭建 —— 一个基于文件、
+   幂等的安装器，会搭起一支小型 Agent 团队（一名协调者 + 四名专家），自带派单、门禁与
+   **调度（自动领取）**。
+3. **研发人员：直接开工** —— 若你是研发人员、只想尽快上手，可**直接安装 openclaw-team**，
+   免去手工拼装；它**默认**把 Task Panel 装成看板基座，开箱即用：
+
+   ```bash
+   git clone https://github.com/tanyu216/openclaw-team
+   cd openclaw-team
+   ./install.sh --dry-run      # 预览每一步动作
+   ./install.sh                # 幂等安装
+   ```
 
 Task Panel 是默认的任务提供方（传 `--no-task-panel` 可换用自家看板）；框架的 poll 与看板的
 `issue candidates` 在认领 / 候选判定上保持同步，这正是亮点 8 的意义。派单由调度器完成，
-因此八条规则由框架而非每个 Agent 各自落实。
+因此八条规则由框架而非每个 Agent 各自落实 —— 这是与下方各宿主**并列的一条路线，而非唯一路线**：
+Claude Code、Codex 与 `pi` 都直接操作同一块看板。
 
 ### Claude Code
 

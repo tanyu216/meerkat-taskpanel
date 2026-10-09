@@ -227,26 +227,34 @@ trigger differences — is in [`docs/scheduling.md`](docs/scheduling.md).
 ### OpenClaw
 
 OpenClaw is the one host where the rules are **enforced for you**, and the one
-host that builds **no supervisor of its own**: `install.sh --target openclaw`
-installs the skill only. Its `poll`/`patrol` automations already *are* the design
-in [`docs/scheduling.md`](docs/scheduling.md), so install the
-[**openclaw-team**](https://github.com/tanyu216/openclaw-team) framework — a
-file-based, idempotent installer that stands up a small agent team (one
-coordinator plus four specialists) with dispatch, gates and **scheduling
-(auto-claim)** — and Task Panel becomes their board, installed by default:
+host that builds **no supervisor of its own** — its `poll`/`patrol` automations
+already *are* the design in [`docs/scheduling.md`](docs/scheduling.md). So the
+OpenClaw path has three distinct layers; take the one you actually need:
 
-```bash
-git clone https://github.com/tanyu216/openclaw-team
-cd openclaw-team
-./install.sh --dry-run      # preview every action
-./install.sh                # idempotent install
-```
+1. **Board base only** — `install.sh --target openclaw` installs the **skill
+   only**: the board and its rules, with nothing that dispatches work to agents.
+2. **Build an agent team** — to get a team that actually claims and works cards,
+   build one **to fit your own situation** following
+   [**openclaw-team**](https://github.com/tanyu216/openclaw-team), a file-based,
+   idempotent installer that stands up a small agent team (one coordinator plus
+   four specialists) with dispatch, gates and **scheduling (auto-claim)**.
+3. **Developers: start right here** — if you are a developer who just wants to get
+   going, install openclaw-team directly and skip the manual assembly; it installs
+   Task Panel as the board base **by default**, so it works out of the box:
+
+   ```bash
+   git clone https://github.com/tanyu216/openclaw-team
+   cd openclaw-team
+   ./install.sh --dry-run      # preview every action
+   ./install.sh                # idempotent install
+   ```
 
 Task Panel is the default task provider (pass `--no-task-panel` to bring your own
 board instead); the framework's poll keeps its claim and candidate criteria in
 lockstep with the board's `issue candidates`, which is the point of Highlight 8.
 The dispatcher does the claiming, so the eight rules are applied by the framework
-rather than by each agent.
+rather than by each agent. This is one route **among the peers below, not the only
+one** — Claude Code, Codex and `pi` each work the same board directly.
 
 ### Claude Code
 
