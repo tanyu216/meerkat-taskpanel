@@ -157,7 +157,9 @@ export function cmdSnippet(argv, env = process.env) {
     const endIndex = current.indexOf(end);
     const cut = endIndex === -1 ? current.length : endIndex + end.length;
     const tail = current.slice(cut).replace(/^\n+/, "");
-    next = `${current.slice(0, start).replace(/\n+$/, "\n")}${block}\n${tail}`;
+    // `block` already ends in `\n`, so no extra `\n` before `tail` — an added one
+    // would leave a blank line after the block on every forced re-render.
+    next = `${current.slice(0, start).replace(/\n+$/, "\n")}${block}${tail}`;
   } else {
     return { status: "unchanged", detail: `block already present: ${opts.file}` };
   }
