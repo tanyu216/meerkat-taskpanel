@@ -1,0 +1,16 @@
+{
+  "_note": [
+    "The waiver ledger read by scripts/security/scan-gate.mjs (--waivers).",
+    "A waiver releases ONE advisory from the CVSS>=7.0 block, and only until it expires.",
+    "Policy: a waiver may be granted for at most 90 days, or 30 days when the advisory is",
+    "Critical. `expires` is inclusive. An expired, malformed, too-long or future-dated",
+    "waiver is refused and the advisory blocks again — so an entry here is never silent.",
+    "Shape:",
+    "  { \"id\": \"GHSA-....\" (or a CVE, matched against the advisory's aliases),",
+    "    \"package\": \"optional scoping; omit to cover the advisory in every package\",",
+    "    \"reason\": \"why this is acceptable — at least 8 characters\",",
+    "    \"granted\": \"YYYY-MM-DD\", \"expires\": \"YYYY-MM-DD\" }",
+    "Every entry is expected to carry a link to the issue that will remove it."
+  ],
+  "waivers": []
+}

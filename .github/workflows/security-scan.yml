@@ -1,0 +1,207 @@
+name: security-scan
+
+# Dependency-security gate.
+#
+# Three sources feed one verdict, and the verdict is `scripts/security/scan-gate.mjs`:
+#
+#   osv-scanner  →  osv-results.json  ┐
+#   npm audit    →  npm-audit.json    ├→  CVSS >= 7.0 blocks
+#   syft         →  sbom.spdx.json    ┘   unless an unexpired waiver covers it
+#
+# Two deliberate boundaries:
+#
+#   1. This workflow produces the SBOM itself, including on a `v*` tag push, rather than
+#      hanging off the release pipeline — the release and check workflows are owned by
+#      other changes and are not edited here. On a tag the SBOM is also attached to the
+#      release draft (which the release pipeline opens) if that release already exists.
+#   2. A finding never fails the run on its own: the scanner steps are `continue-on-error`
+#      and the gate exits 0 unless `SCAN_STRICT=1` (a repository variable) or a dispatch
+#      sets `strict: true`. Alerting stays useful; only an explicit opt-in turns a known
+#      advisory into a red build.
+#
+# What is scanned: this repository ships zero runtime dependencies, so the supply chain is
+# its **build chain** — `web/`'s build-time devDependencies, pinned by the one committed
+# lockfile `web/package-lock.json`. The SBOM is produced regardless.
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  schedule:
+    # Weekly, full: every lockfile in the tree, plus the SBOM.
+    - cron: "17 3 * * 1"
+    # Daily, incremental: only what changed in the last 24 hours — alert-only.
+    - cron: "17 3 * * 2-7"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "What to scan"
+        type: choice
+        options: [auto, full, incremental]
+        default: auto
+      strict:
+        description: "Fail the run when an unwaived High/Critical advisory is found"
+        type: boolean
+        default: false
+
+# Nothing here writes to the repository except the SBOM job, which needs `contents: write`
+# to attach an asset to an existing release draft.
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+  # The full-scan cron entry. `github.event.schedule` carries the cron string of the run,
+  # so the weekly/daily cadence is decided by comparing against this one value.
+  WEEKLY_CRON: "17 3 * * 1"
+
+jobs:
+  dependency-scan:
+    name: Dependency scan (osv-scanner + npm audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The incremental scan diffs the last 24 hours of history.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Resolve the scan mode
+        id: mode
+        run: |
+          set -euo pipefail
+          requested="${{ inputs.mode }}"
+          cron="${{ github.event.schedule }}"
+          if [ -n "$requested" ] && [ "$requested" != "auto" ]; then
+            mode="$requested"
+          elif [ "$cron" = "$WEEKLY_CRON" ]; then
+            mode="full"
+          elif [ -n "$cron" ]; then
+            mode="incremental"
+          else
+            # Push, pull request and the default dispatch all scan everything.
+            mode="full"
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "scan mode: $mode"
+
+      # The incremental run scans the lockfiles that changed in the last 24 hours. When
+      # none did, the scan set is genuinely empty: a real, empty report is written (rather
+      # than the step being skipped and the gate left with no input), so the run still says
+      # out loud that it had nothing to look at.
+      - name: Resolve the incremental targets
+        id: targets
+        if: steps.mode.outputs.mode != 'full'
+        run: |
+          set -euo pipefail
+          changed="$(git log --since='24 hours ago' --name-only --pretty=format: -- '*package-lock.json' 'package-lock.json' | sort -u | grep -v '^$' || true)"
+          if [ -z "$changed" ]; then
+            printf '{"results":[]}\n' > osv-results.json
+            echo "targets=" >> "$GITHUB_OUTPUT"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No lockfile changed in the last 24 hours — the incremental scan had nothing to read." >> "$GITHUB_STEP_SUMMARY"
+          else
+            targets="$(printf '%s\n' "$changed" | tr '\n' ' ')"
+            echo "targets=$targets" >> "$GITHUB_OUTPUT"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Incremental scan targets: $targets"
+          fi
+
+      # `--recursive` finds every lockfile and SBOM in the tree, including the web/ build
+      # chain the zero-runtime-dependency rule makes the interesting part of this repo.
+      - name: osv-scanner (full)
+        if: steps.mode.outputs.mode == 'full'
+        continue-on-error: true
+        uses: google/osv-scanner-action/osv-scanner-action@v2.0.2
+        with:
+          scan-args: |-
+            --recursive
+            --format=json
+            --output=osv-results.json
+            ./
+
+      - name: osv-scanner (incremental)
+        if: steps.mode.outputs.mode != 'full' && steps.targets.outputs.changed == 'true'
+        continue-on-error: true
+        uses: google/osv-scanner-action/osv-scanner-action@v2.0.2
+        with:
+          scan-args: |-
+            --format=json
+            --output=osv-results.json
+            ${{ steps.targets.outputs.targets }}
+
+      # `npm audit` reads the committed lockfile — no install, so this stays honest about
+      # the repository's no-dependency policy. It exits non-zero on a finding, which is why
+      # the step is alert-only; the JSON report is what the gate reads.
+      - name: npm audit (web/ build-time devDependencies)
+        continue-on-error: true
+        working-directory: web
+        run: npm audit --json --audit-level=high > "$GITHUB_WORKSPACE/npm-audit.json"
+
+      # The only step that can fail the run, and only when strict is asked for.
+      - name: Threshold gate (CVSS >= 7.0 blocks; SCAN_STRICT=1 enforces)
+        env:
+          SCAN_STRICT: ${{ (github.event.inputs.strict == 'true' || vars.SCAN_STRICT == '1') && '1' || '' }}
+        run: |
+          node scripts/security/scan-gate.mjs \
+            --input osv-results.json \
+            --input npm-audit.json \
+            --waivers scripts/security/waivers.json \
+            --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-scan-reports
+          path: |
+            osv-results.json
+            npm-audit.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+  sbom:
+    name: SBOM (syft)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Produced here, by this workflow, on every trigger — including a `v*` tag push.
+      - name: Generate the SBOM (syft, SPDX JSON)
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: sbom.spdx.json
+          artifact-name: task-panel-sbom.spdx.json
+          upload-artifact: true
+          upload-release-assets: false
+
+      # The release pipeline opens the draft release for the tag; it may well not have run
+      # yet when this job finishes, so this waits a little and then gives up quietly — the
+      # SBOM is published as a workflow artifact either way, and this job must never be the
+      # reason a release looks broken.
+      - name: Attach the SBOM to the release draft (tag pushes)
+        if: startsWith(github.ref, 'refs/tags/v')
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5 6; do
+            if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+              gh release upload "$GITHUB_REF_NAME" sbom.spdx.json --clobber
+              echo "attached sbom.spdx.json to the release draft for $GITHUB_REF_NAME"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::notice::no release exists yet for $GITHUB_REF_NAME — the SBOM is available as a workflow artifact"
