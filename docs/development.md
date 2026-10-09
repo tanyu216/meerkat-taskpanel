@@ -6,13 +6,13 @@
 - **The engine has no dependencies.** `src/**`, the scripts and every test use Node
   builtins only (`node:fs`, `node:path`, `node:test`, `node:child_process`, …).
 - **The board frontend (`web/`) has build-time devDependencies** — Vue 3, Vite,
-  Tailwind/daisyUI. They are resolved offline from a committed npm cache and never ship:
-  the hosted artefact is the static `web/dist`.
+  Tailwind/daisyUI. They are pinned by the committed `web/package-lock.json` and never
+  ship: the hosted artefact is the static `web/dist`.
 
 > **Do not run `npm install` for the engine.** It needs no packages, no lockfile and no
 > network access; a root `node_modules/` is gitignored and unexpected. The only install is
-> `web/`'s, and it happens inside the image build from `web/.vendor/npm-cache`
-> (see [docker.md](docker.md)) — never into the repository root.
+> `web/`'s, and it happens inside the image build (see [docker.md](docker.md)) — never into
+> the repository root.
 
 ## Layout
 
@@ -67,16 +67,17 @@ are **not** the same directory:
 | Release tree | skills + host plugins | `node scripts/build.mjs` | `dist/` — the npm **release tree**; never served |
 
 The web layer is the only part with dependencies. Vue/Vite/Tailwind/daisyUI are
-**build-time devDependencies**: they are resolved offline from the committed cache
-`web/.vendor/npm-cache` in the image's `webbuild` stage, and only the built `web/dist`
-crosses into the runtime image — no `node_modules` ships.
+**build-time devDependencies**: they are installed by the image's `webbuild` stage — offline
+when a cache is provided at `web/.vendor/npm-cache`, otherwise over the network pinned by
+the committed `web/package-lock.json` — and only the built `web/dist` crosses into the
+runtime image. No `node_modules` ships, and the runtime image itself installs nothing.
 
-> `web/` is still a README placeholder; the workspace lands with **M6b**. Until then the
-> command above is the intended interface, not yet runnable, and the image's `webbuild`
-> stage is a guarded no-op that emits an empty `web/dist`.
+> The `web/` workspace has landed with **M6b**. When `web/package.json` is absent from a
+> checkout the image's `webbuild` stage is a guarded no-op that emits an empty `web/dist`.
 
-The offline, container-first path is the image build — see
-[docker.md](docker.md#the-web-build-stage).
+The container-first path is the image build — see
+[docker.md](docker.md#the-web-build-stage). Runtime and verification are offline; only the
+image's frontend build stage may reach the network.
 
 ## The `taskd` HTTP surface (M6)
 

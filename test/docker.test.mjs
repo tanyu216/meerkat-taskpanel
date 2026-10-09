@@ -462,13 +462,38 @@ describe("static: Dockerfile", () => {
     assert.match(text, /chown -R node:node/);
     assert.match(text, /EXPOSE 9527/);
     assert.match(text, /CMD \["node","src\/cli\/index\.mjs","--help"\]/);
-    // Offline/reproducible: the runtime stage installs nothing from a package
-    // manager, and the one build-time install — the `webbuild` stage's frontend
-    // devDependencies (ruling A, 2026-10-09) — must be `--offline` against the
-    // committed cache, so the image still builds with no network.
-    assert.doesNotMatch(text, /apt-get|apt install|yum|apk add|npm install\b/);
-    for (const line of text.match(/npm ci[^\n]*/g) ?? []) {
-      assert.match(line, /--offline/, `npm ci must read only the offline cache: ${line}`);
+  });
+
+  it("keeps the runtime stage install-free while the webbuild stage may run npm ci", async () => {
+    const text = await read("docker/Dockerfile");
+
+    // The runtime stage (stage 2) installs nothing from a package manager. The
+    // offline-assembly constraint governs what the image *runs*, not the image's
+    // frontend build stage.
+    const runtimeStart = text.indexOf("# ── Stage 2: runtime");
+    assert.notEqual(runtimeStart, -1, "expected a stage-2 runtime header");
+    const runtimeStage = text.slice(runtimeStart);
+    assert.doesNotMatch(
+      runtimeStage,
+      /apt-get|apt install|yum|apk add|npm (install|ci)\b/,
+      "the runtime stage must install nothing from a package manager",
+    );
+
+    // The webbuild stage (stage 1) may run `npm ci`, with or without `--offline`.
+    // Three-way guard (ruling O1, 2026-10-09): offline when a cache is provided,
+    // a networked `npm ci` otherwise (pinned by the committed `web/package-lock.json`),
+    // skip when `web/package.json` is absent.
+    const webbuildStage = text.slice(0, runtimeStart);
+    const npmCiLines = webbuildStage.match(/npm ci[^\n]*/g) ?? [];
+    assert.ok(npmCiLines.length > 0, "the webbuild stage should install the frontend deps with npm ci");
+    assert.ok(
+      npmCiLines.some((line) => line.includes("--offline")),
+      "the guard must keep an offline npm ci branch for a provided cache",
+    );
+    // A networked `npm ci` (no `--offline`) is allowed, but the Dockerfile comment must
+    // say so — the boundary is documented, not silent.
+    if (npmCiLines.some((line) => !line.includes("--offline"))) {
+      assert.match(text, /network/i, "a networked npm ci (no --offline) must be documented in the Dockerfile comment");
     }
   });
 });
