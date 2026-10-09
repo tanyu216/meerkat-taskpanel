@@ -42,6 +42,7 @@ export function createCommands(ctx) {
     canMove: (input) => tasks.canMove(ctx, input),
     archive: (input) => tasks.archive(ctx, input),
     listTasks: (filter) => tasks.listTasks(ctx, filter),
+    listCandidates: (input) => tasks.listCandidates(ctx, input),
     getTask: (input) => ctx.repos.tasks.get(input.id ?? input.taskId),
     getTaskByIdentifier: (input) => ctx.repos.tasks.findByIdentifierAnyProject(input.identifier),
 

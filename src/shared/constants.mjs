@@ -93,6 +93,15 @@ export const SECRET_FILE_MODE = 0o600;
 
 /** A claim is "fresh" for 10 minutes; a fresher claim blocks other actors. */
 export const HEARTBEAT_FRESH_MS = 600_000;
+/**
+ * Claim staleness thresholds — kept in lockstep with the openclaw-team
+ * framework's `poll.mjs` (`CLAIM_STALE_SAME_MS` / `CLAIM_STALE_ANY_MS`) so the
+ * candidate read returns the same recovery pool the poll would claim.
+ */
+/** A claim older than 30 minutes is stale for its own holder (re-claimable by the same assignee). */
+export const CLAIM_STALE_SAME_MS = 30 * 60 * 1000;
+/** Any claim older than 6 hours is stale for everyone (reclaimable by any assignee). */
+export const CLAIM_STALE_ANY_MS = 6 * 60 * 60 * 1000;
 /** Terminal tasks become archivable after 7 days (I6). */
 export const ARCHIVE_AFTER_DAYS = 7;
 

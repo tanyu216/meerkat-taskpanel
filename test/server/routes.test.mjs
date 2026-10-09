@@ -671,3 +671,53 @@ describe("server/routes — creation idempotency (T-20261009-175500)", () => {
     assert.notEqual(dup.task.id, first.task.id);
   });
 });
+
+// Last on purpose, for the same reason as the two blocks above: it adds a
+// project and tasks that the earlier global-list assertions must not see.
+describe("server/routes — candidates (the poll read)", () => {
+  it("lists claimable cards and excludes unmet deps and epics", async () => {
+    await call("POST", "/api/v1/projects", { id: "cand", name: "Cand", workspace_path: "/tmp/cand" });
+
+    // `allow_dup` keeps the four cards distinct: they share one assignee, so the
+    // creation idempotency key would otherwise converge them onto one card.
+    const ready = dataOf(
+      await call("POST", "/api/v1/tasks", { project_id: "cand", title: "Ready", assignee: "pollbot", assignee_kind: "agent", allow_dup: true }),
+    );
+    dataOf(
+      await call("POST", "/api/v1/tasks", { project_id: "cand", title: "Epic", kind: "epic", assignee: "pollbot", assignee_kind: "agent", allow_dup: true }),
+    );
+    const blocked = dataOf(
+      await call("POST", "/api/v1/tasks", { project_id: "cand", title: "Blocked", assignee: "pollbot", assignee_kind: "agent", allow_dup: true }),
+    );
+    const blocker = dataOf(
+      await call("POST", "/api/v1/tasks", { project_id: "cand", title: "Blocker", assignee: "pollbot", assignee_kind: "agent", allow_dup: true }),
+    );
+    // `blocks` source = blocker, target = blocked — the blocked card's depends_on.
+    dataOf(await call("POST", `/api/v1/tasks/${blocker.task.identifier}/relations`, { type: "blocks", target: blocked.task.identifier }));
+
+    const candidates = dataOf(await call("GET", "/api/v1/tasks/candidates?assignee=pollbot"));
+    assert.deepEqual(
+      candidates.candidates.map((c) => c.identifier),
+      [ready.task.identifier, blocker.task.identifier],
+      "the blocked card is excluded (depends_on unmet) and so is the epic",
+    );
+    assert.deepEqual(
+      Object.keys(candidates.candidates[0]).sort(),
+      ["id", "identifier", "priority", "project", "reason", "sort", "status", "target", "title"],
+    );
+    assert.equal(candidates.candidates[0].status, "todo");
+    assert.equal(candidates.candidates[0].project, "cand");
+    assert.equal(candidates.candidates[0].target, "/tmp/cand");
+    assert.equal(candidates.candidates[0].reason, "ready");
+  });
+
+  it("answers an empty list for an unknown assignee, and 400 without one", async () => {
+    const none = dataOf(await call("GET", "/api/v1/tasks/candidates?assignee=nobody"));
+    assert.deepEqual(none.candidates, []);
+
+    const missing = await call("GET", "/api/v1/tasks/candidates");
+    assert.equal(missing.status, 400, JSON.stringify(missing.body));
+    assert.equal(missing.body.error.code, "VALIDATION_FAILED");
+    assert.equal(missing.body.error.details.field, "assignee");
+  });
+});

@@ -12,6 +12,7 @@
  */
 
 import { DomainError, isDomainError } from "../../shared/errors.mjs";
+import { CLAIM_STALE_ANY_MS, CLAIM_STALE_SAME_MS } from "../../shared/constants.mjs";
 import { assertClaimable, decideClaim, explainLostClaim } from "../domain/claim.mjs";
 import {
   assertCreationGate,
@@ -23,6 +24,7 @@ import { assertTransition } from "../domain/status.mjs";
 import { hasIdemDiscriminator, idemKey, idemSource, normalizeIdem } from "../domain/idem.mjs";
 import { isArchivable, normalizeTaskCreate, normalizeTaskUpdate } from "../domain/task.mjs";
 import { normalizeLabelName } from "../domain/labels.mjs";
+import { normalizeName } from "../domain/dictionary.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { actorOf } from "./context.mjs";
 import { resolveAssignment } from "./dictionary.mjs";
@@ -496,6 +498,145 @@ export function archive(ctx, input) {
  */
 export function listTasks(ctx, filter = {}) {
   return ctx.repos.tasks.list(filter);
+}
+
+/**
+ * The claimable candidates for an assignee — the read a poll performs *before*
+ * claiming, kept in lockstep with the openclaw-team `poll.mjs#scanCandidates`
+ * criteria so a provider swap changes nothing on the framework side.
+ *
+ * A candidate is:
+ *   * `ready` — `todo`, assigned to `assignee`, not an `epic`, and every
+ *     `blocks` edge pointing at it (its `depends_on`) is `done`;
+ *   * with `stale: true`, `in_progress` whose heartbeat is stale — the same
+ *     holder after 30 minutes (`stale_same`) or anyone after 6 hours
+ *     (`stale_any`) — the recovery pool.
+ *
+ * Read-only: the returned rows are *never* claimed here; claiming still goes
+ * through `claim` (and its steal/reuse semantics). The assignee is resolved the
+ * way every other read does it — against the dictionary's `id`, `display_name`
+ * or `normalized_name` — and an unknown assignee yields an empty list, not an
+ * error: asking "what can X claim?" for an X with no cards is a normal answer.
+ *
+ * @param {object} ctx
+ * @param {{assignee: string, stale?: boolean}} input
+ */
+export function listCandidates(ctx, input = {}) {
+  const assignee = String(input.assignee ?? "").trim();
+  const ids = assigneeEntryIds(ctx, assignee);
+  if (ids.length === 0) return [];
+
+  const now = ctx.now();
+  const isAssignee = (task) => task.kind !== "epic" && ids.includes(task.assigneeId);
+  const ready = ctx.repos.tasks.list({ status: "todo" }).filter(isAssignee);
+  const stale =
+    input.stale === true
+      ? ctx.repos.tasks
+          .list({ status: "in_progress" })
+          .filter((task) => isAssignee(task) && staleReason(task, assignee, now) !== null)
+      : [];
+
+  const projects = new Map();
+  const projectOf = (id) => {
+    if (!projects.has(id)) projects.set(id, ctx.repos.projects.get(id));
+    return projects.get(id);
+  };
+
+  const found = [];
+  for (const task of ready) {
+    if (allBlockersDone(ctx, task.id)) found.push({ task, reason: "ready" });
+  }
+  for (const task of stale) {
+    const reason = staleReason(task, assignee, now);
+    if (reason !== null && allBlockersDone(ctx, task.id)) found.push({ task, reason });
+  }
+
+  // Ready before recovery, then the board's own deterministic order.
+  const rank = { ready: 0, stale_same: 1, stale_any: 1 };
+  found.sort(
+    (a, b) =>
+      rank[a.reason] - rank[b.reason] ||
+      (a.task.sortOrder ?? 0) - (b.task.sortOrder ?? 0) ||
+      (a.task.createdAt ?? "").localeCompare(b.task.createdAt ?? "") ||
+      (a.task.projectId ?? "").localeCompare(b.task.projectId ?? "") ||
+      (a.task.identifier ?? "").localeCompare(b.task.identifier ?? ""),
+  );
+  return found.map(({ task, reason }) => candidateOf(task, reason, projectOf(task.projectId)));
+}
+
+/**
+ * The dictionary entries that name `assignee`: by id, by exact display name, or
+ * by normalised name. A read is inclusive — every matching entry's id is kept,
+ * so a name that happens to match two entries returns both sets of cards rather
+ * than guessing (the *write* path refuses ambiguity; a read must not).
+ *
+ * @param {object} ctx
+ * @param {string} assignee
+ * @returns {string[]}
+ */
+function assigneeEntryIds(ctx, assignee) {
+  if (assignee === "") return [];
+  const normName = normalizeName(assignee);
+  const ids = [];
+  for (const entry of ctx.repos.dictionary.list("assignee")) {
+    if (entry.id === assignee || entry.displayName === assignee || entry.normalizedName === normName) {
+      if (!ids.includes(entry.id)) ids.push(entry.id);
+    }
+  }
+  return ids;
+}
+
+/**
+ * Why an `in_progress` task is in the recovery pool, or `null` when it is not.
+ * Mirrors `poll.mjs`: `stale_any` wins over `stale_same`, and both are strict
+ * `>` comparisons. A task with no heartbeat is not surfaced — it is an
+ * execution-state anomaly the claim path refuses anyway, not a candidate.
+ *
+ * @param {object} task
+ * @param {string} assignee
+ * @param {string} now
+ * @returns {"stale_same"|"stale_any"|null}
+ */
+function staleReason(task, assignee, now) {
+  if (task.heartbeatAt === null || task.heartbeatAt === undefined || task.heartbeatAt === "") return null;
+  const age = new Date(now).getTime() - new Date(task.heartbeatAt).getTime();
+  if (!Number.isFinite(age) || age < 0) return null;
+  if (age > CLAIM_STALE_ANY_MS) return "stale_any";
+  if (task.claimedBy === assignee && age > CLAIM_STALE_SAME_MS) return "stale_same";
+  return null;
+}
+
+/**
+ * Every `blocks` edge pointing at `taskId` (its `depends_on`) is `done`.
+ * @param {object} ctx
+ * @param {string} taskId
+ * @returns {boolean}
+ */
+function allBlockersDone(ctx, taskId) {
+  return ctx.repos.relations
+    .listBlockerOf(taskId)
+    .every((edge) => ctx.repos.tasks.get(edge.source)?.status === "done");
+}
+
+/**
+ * The candidate projection: exactly the card's fields, plus `reason` so the
+ * poll can rank ready against recovery without re-deriving it.
+ * @param {object} task
+ * @param {string} reason
+ * @param {object|null} project
+ */
+function candidateOf(task, reason, project) {
+  return {
+    id: task.id,
+    identifier: task.identifier,
+    title: task.title,
+    status: task.status,
+    priority: task.priority,
+    project: task.projectId,
+    target: project?.workspacePath ?? "",
+    sort: task.sortOrder ?? 0,
+    reason,
+  };
 }
 
 /**

@@ -131,6 +131,40 @@ export const COMMANDS = [
   },
 
   {
+    name: "candidates",
+    summary: "List the claimable cards for an assignee (the poll's read; claim still goes through issue move/claim semantics).",
+    usage: "issue candidates --assignee <name> [--stale]",
+    positionals: [],
+    flags: [
+      { flag: "assignee", key: "assignee", as: "string", value: "<name>", required: true, summary: "Which assignee to list candidates for." },
+      { flag: "stale", key: "stale", as: "boolean", summary: "Also include stale-recovery candidates (in_progress with an expired heartbeat)." },
+    ],
+    async run(ctx) {
+      const { candidates } = await ctx.client.get("/api/v1/tasks/candidates", {
+        query: {
+          assignee: ctx.flags.assignee,
+          stale: ctx.flags.stale === true ? "1" : undefined,
+        },
+      });
+      const human =
+        candidates.length === 0
+          ? "no candidates"
+          : table(
+              ["identifier", "status", "priority", "project", "target", "reason"],
+              candidates.map((candidate) => [
+                candidate.identifier,
+                candidate.status,
+                candidate.priority,
+                candidate.project,
+                candidate.target,
+                candidate.reason,
+              ]),
+            );
+      return { data: { candidates }, human };
+    },
+  },
+
+  {
     name: "get",
     summary: "Show one task (by id or identifier).",
     usage: "issue get <id|identifier>",

@@ -96,6 +96,23 @@ export function registerTaskRoutes(router, surface) {
     return taskPayload(repos, task);
   });
 
+  // The poll's read: which claimable cards does `assignee` have? Registered
+  // before `/api/v1/tasks/:ref` so the literal `candidates` segment wins over
+  // the parameterised one (router matches in registration order).
+  router.get("/api/v1/tasks/candidates", ({ query }) => {
+    const assignee = query.get("assignee");
+    if (assignee === null || assignee.trim() === "") {
+      throw new DomainError("VALIDATION_FAILED", {
+        message: "assignee is required",
+        details: { field: "assignee" },
+        hint: { fix: "GET /api/v1/tasks/candidates?assignee=<name>" },
+      });
+    }
+    return {
+      candidates: commands.listCandidates({ assignee: assignee.trim(), stale: truthy(query.get("stale")) }),
+    };
+  });
+
   router.get("/api/v1/tasks/:ref", ({ params }) => taskPayload(repos, resolveTask(repos, params.ref)));
 
   router.patch("/api/v1/tasks/:ref", ({ params, body, actor }) => {

@@ -728,3 +728,122 @@ describe("commands/tasks — the audited waiver (M2 F-B1)", () => {
     });
   });
 });
+
+describe("commands/tasks — listCandidates (poll read)", () => {
+  /** A todo card assigned to linus, the poll's assignee. */
+  const linusTodo = (commands, extra = {}) =>
+    commands.createTask({ projectId: "proj", title: "For linus", assignee: "linus", assigneeKind: "agent", actor: AGENT, ...extra });
+
+  it("returns ready candidates with the card's projection, and is read-only", async () => {
+    await board(async ({ db, commands }) => {
+      const candidate = linusTodo(commands, { title: "Candidate" });
+      // Same assignee but already claimed → not a ready candidate.
+      const claimed = linusTodo(commands, { title: "Claimed", allowDup: true });
+      commands.claim({ id: claimed.id, actor: AGENT });
+      // A different assignee's ready card must not leak across.
+      commands.createTask({ projectId: "proj", title: "For Terry", assignee: "terry", assigneeKind: "agent", actor: AGENT });
+
+      const before = revision(db);
+      const candidates = commands.listCandidates({ assignee: "linus" });
+
+      assert.deepEqual(candidates.map((c) => c.identifier), [candidate.identifier]);
+      assert.deepEqual(
+        Object.keys(candidates[0]).sort(),
+        ["id", "identifier", "priority", "project", "reason", "sort", "status", "target", "title"],
+        "exactly the card's fields plus reason",
+      );
+      assert.equal(candidates[0].status, "todo", "the canonical status, never the ready alias");
+      assert.equal(candidates[0].priority, "medium");
+      assert.equal(candidates[0].project, "proj");
+      assert.equal(candidates[0].target, "/tmp/ws", "target is the project's workspace path");
+      assert.equal(candidates[0].sort, 0);
+      assert.equal(candidates[0].reason, "ready");
+      assert.equal(revision(db), before, "the poll read writes nothing");
+    });
+  });
+
+  it("excludes a task whose depends_on is not done, and admits it once done", async () => {
+    await board(async ({ db, commands }) => {
+      const blocker = linusTodo(commands, { title: "Blocker", allowDup: true });
+      const candidate = linusTodo(commands, { title: "Blocked", allowDup: true });
+      commands.addRelation({ type: "blocks", source: blocker.id, target: candidate.id, actor: AGENT });
+
+      // The blocker is still todo → the candidate's depends_on is unmet, and the
+      // blocker itself (deps-free) is the only ready card.
+      let candidates = commands.listCandidates({ assignee: "linus" });
+      assert.deepEqual(candidates.map((c) => c.identifier), [blocker.identifier]);
+
+      // Finish the blocker: claim, deliver with a report, review, done.
+      commands.claim({ id: blocker.id, actor: AGENT });
+      commands.deliver({ taskId: blocker.id, report: report(), actor: AGENT });
+      commands.moveStatus({ id: blocker.id, to: "done", actor: HUMAN });
+
+      candidates = commands.listCandidates({ assignee: "linus" });
+      assert.deepEqual(
+        candidates.map((c) => c.identifier),
+        [candidate.identifier],
+        "the blocked card becomes claimable exactly when every depends_on is done",
+      );
+    });
+  });
+
+  it("excludes epics and every non-todo status", async () => {
+    await board(async ({ db, commands }) => {
+      linusTodo(commands, { title: "An epic", kind: "epic" });
+      const blocked = linusTodo(commands, { title: "Blocked card" });
+      commands.moveStatus({ id: blocked.id, to: "blocked", actor: AGENT });
+
+      assert.deepEqual(commands.listCandidates({ assignee: "linus" }), [], "epic and blocked are never claimable");
+    });
+  });
+
+  it("resolves the assignee by display name or normalised name", async () => {
+    await board(async ({ db, commands }) => {
+      const byName = commands.createTask({ projectId: "proj", title: "One", assignee: "Linus", assigneeKind: "agent", actor: AGENT });
+      // A second spelling normalises to the same dictionary entry (F7: whitespace
+      // and case are removed), so `linus` must find both.
+      const byNorm = commands.createTask({ projectId: "proj", title: "Two", assignee: " l i n u s ", assigneeKind: "agent", actor: AGENT });
+
+      const candidates = commands.listCandidates({ assignee: "linus" });
+      assert.deepEqual(
+        candidates.map((c) => c.id).sort(),
+        [byName.id, byNorm.id].sort(),
+        "id, display_name and normalized_name all resolve to the same entry",
+      );
+    });
+  });
+
+  it("with stale: true, adds in_progress tasks whose heartbeat expired (poll parity)", async () => {
+    const NOW = "2026-10-08T00:00:00.000Z";
+    const ago = (ms) => new Date(new Date(NOW).getTime() + ms).toISOString();
+    const clock = () => NOW;
+
+    await board(async ({ db, commands }) => {
+      const staleSame = linusTodo(commands, { title: "Stale, same holder", allowDup: true });
+      commands.claim({ id: staleSame.id, actor: AGENT });
+      db.prepare("UPDATE tasks SET heartbeat_at = ? WHERE id = ?").run(ago(-31 * 60 * 1000), staleSame.id);
+
+      // Stale for anyone (>6h) and held by someone else — the recovery pool's
+      // other arm. The card is still *assigned* to linus.
+      const staleAny = linusTodo(commands, { title: "Stale, any holder", allowDup: true });
+      commands.claim({ id: staleAny.id, actor: HUMAN });
+      db.prepare("UPDATE tasks SET heartbeat_at = ? WHERE id = ?").run(ago(-7 * 60 * 60 * 1000), staleAny.id);
+
+      // A fresh heartbeat is not a candidate, even with stale: true.
+      const fresh = linusTodo(commands, { title: "Fresh", allowDup: true });
+      commands.claim({ id: fresh.id, actor: AGENT });
+
+      assert.deepEqual(commands.listCandidates({ assignee: "linus" }), [], "no todo cards remain, and stale is off");
+
+      const withStale = commands.listCandidates({ assignee: "linus", stale: true });
+      assert.deepEqual(
+        withStale.map((c) => [c.identifier, c.reason]),
+        [
+          [staleSame.identifier, "stale_same"],
+          [staleAny.identifier, "stale_any"],
+        ],
+      );
+      assert.ok(withStale.every((c) => c.status === "in_progress"), "recovery candidates report in_progress");
+    }, { clock });
+  });
+});

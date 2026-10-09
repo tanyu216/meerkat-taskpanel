@@ -356,3 +356,41 @@ describe("cli/issue — the actor recorded on a report", () => {
     });
   });
 });
+
+describe("cli/issue — candidates (the poll read)", () => {
+  it("lists claimable cards and excludes unmet deps and epics", async () => {
+    await board(async ({ run }) => {
+      // `--allow-dup` keeps the four cards distinct: they share one assignee, so
+      // the creation idempotency key would otherwise converge them onto one card.
+      const ready = createIssue(run, ["--title", "Ready", "--assignee", "pollbot", "--assignee-kind", "agent", "--allow-dup"]);
+      createIssue(run, ["--title", "Epic", "--kind", "epic", "--assignee", "pollbot", "--assignee-kind", "agent", "--allow-dup"]);
+      const blocked = createIssue(run, ["--title", "Blocked", "--assignee", "pollbot", "--assignee-kind", "agent", "--allow-dup"]);
+      const blocker = createIssue(run, ["--title", "Blocker", "--assignee", "pollbot", "--assignee-kind", "agent", "--allow-dup"]);
+      // `blocks` source = blocker, target = blocked — the blocked card's depends_on.
+      dataOf(run(["relation", "add", blocker.task.identifier, "--type", "blocks", "--target", blocked.task.identifier, "--json"]));
+
+      const candidates = dataOf(run(["issue", "candidates", "--assignee", "pollbot", "--json"]));
+      assert.deepEqual(
+        candidates.candidates.map((c) => c.identifier),
+        [ready.task.identifier, blocker.task.identifier],
+        "the blocked card is excluded (depends_on unmet) and so is the epic",
+      );
+      assert.equal(candidates.candidates[0].status, "todo");
+      assert.equal(candidates.candidates[0].project, "demo");
+      assert.equal(candidates.candidates[0].reason, "ready");
+
+      const human = run(["issue", "candidates", "--assignee", "pollbot"]);
+      assert.match(human.stdout, new RegExp(`${ready.task.identifier}\\s+todo\\s+medium`));
+      assert.match(human.stdout, new RegExp(`${blocker.task.identifier}\\s+todo\\s+medium`));
+    });
+  });
+
+  it("refuses a missing --assignee as a usage error", async () => {
+    await board(async ({ run }) => {
+      createIssue(run);
+      const missing = run(["issue", "candidates", "--json"]);
+      assert.equal(missing.status, 2);
+      assert.match(JSON.parse(missing.stdout).error.message, /--assignee is required/);
+    });
+  });
+});

@@ -29,6 +29,7 @@ export const BOOLEAN_FLAGS = Object.freeze(
     "show",
     "check",
     "include-archived",
+    "stale",
     "quiet",
   ]),
 );
