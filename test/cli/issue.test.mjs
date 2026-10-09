@@ -385,6 +385,27 @@ describe("cli/issue — candidates (the poll read)", () => {
     });
   });
 
+  it("--include-unassigned adds the unassigned public pool (supervisor policy)", async () => {
+    await board(async ({ run }) => {
+      const assigned = createIssue(run, ["--title", "Assigned", "--assignee", "pollbot", "--assignee-kind", "agent", "--allow-dup"]);
+      const pool = createIssue(run, ["--title", "Public pool", "--allow-dup"]);
+      createIssue(run, ["--title", "Someone else", "--assignee", "terry", "--assignee-kind", "agent", "--allow-dup"]);
+      createIssue(run, ["--title", "Pool epic", "--kind", "epic", "--allow-dup"]);
+
+      const without = dataOf(run(["issue", "candidates", "--assignee", "pollbot", "--json"]));
+      assert.deepEqual(without.candidates.map((c) => c.identifier), [assigned.task.identifier]);
+
+      const withPool = dataOf(
+        run(["issue", "candidates", "--assignee", "pollbot", "--include-unassigned", "--json"]),
+      );
+      assert.deepEqual(
+        withPool.candidates.map((c) => c.identifier),
+        [assigned.task.identifier, pool.task.identifier],
+      );
+      assert.equal(withPool.candidates[1].reason, "unassigned");
+    });
+  });
+
   it("refuses a missing --assignee as a usage error", async () => {
     await board(async ({ run }) => {
       createIssue(run);

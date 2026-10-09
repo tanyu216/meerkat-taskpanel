@@ -884,6 +884,41 @@ describe("commands/tasks — listCandidates (poll read)", () => {
       assert.ok(withStale.every((c) => c.status === "in_progress"), "recovery candidates report in_progress");
     }, { clock });
   });
+
+  it("includeUnassigned adds the unassigned public pool, after assigned cards", async () => {
+    await board(async ({ commands }) => {
+      const assigned = linusTodo(commands, { title: "Assigned" });
+      // The public pool: a claimable card nobody is routed to yet.
+      const pool = commands.createTask({ projectId: "proj", title: "Public pool", actor: AGENT });
+      commands.createTask({ projectId: "proj", title: "Pool epic", kind: "epic", actor: AGENT });
+      const blockedPool = commands.createTask({ projectId: "proj", title: "Blocked pool", actor: AGENT });
+      const poolBlocker = commands.createTask({ projectId: "proj", title: "Pool blocker", actor: AGENT });
+      commands.addRelation({ type: "blocks", source: poolBlocker.id, target: blockedPool.id, actor: AGENT });
+      commands.createTask({ projectId: "proj", title: "Someone else", assignee: "terry", assigneeKind: "agent", actor: AGENT });
+
+      // Without the flag the read is unchanged: exactly the assigned ready card.
+      assert.deepEqual(
+        commands.listCandidates({ assignee: "linus" }).map((c) => c.identifier),
+        [assigned.identifier],
+      );
+
+      const pooled = commands.listCandidates({ assignee: "linus", includeUnassigned: true });
+      assert.deepEqual(
+        pooled.map((c) => c.identifier),
+        [assigned.identifier, pool.identifier, poolBlocker.identifier],
+        "assigned first, then the pool; epic, blocked and another assignee's cards stay out",
+      );
+      assert.equal(pooled[1].reason, "unassigned");
+      assert.equal(pooled[1].status, "todo");
+
+      // The pool is offered even to a name with no dictionary entry — the read
+      // must not early-return just because the assignee resolves to nothing.
+      assert.deepEqual(
+        commands.listCandidates({ assignee: "ghost", includeUnassigned: true }).map((c) => c.identifier).sort(),
+        [pool.identifier, poolBlocker.identifier].sort(),
+      );
+    });
+  });
 });
 
 describe("commands/tasks — claim requires the actor to be the assignee (T-20261009-230500)", () => {

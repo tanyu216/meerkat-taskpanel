@@ -133,17 +133,19 @@ export const COMMANDS = [
   {
     name: "candidates",
     summary: "List the claimable cards for an assignee (the poll's read; claim still goes through issue move/claim semantics).",
-    usage: "issue candidates --assignee <name> [--stale]",
+    usage: "issue candidates --assignee <name> [--stale] [--include-unassigned]",
     positionals: [],
     flags: [
       { flag: "assignee", key: "assignee", as: "string", value: "<name>", required: true, summary: "Which assignee to list candidates for." },
       { flag: "stale", key: "stale", as: "boolean", summary: "Also include stale-recovery candidates (in_progress with an expired heartbeat)." },
+      { flag: "include-unassigned", key: "includeUnassigned", as: "boolean", summary: "Also include claimable unassigned cards (the public pool) — the supervisor's `claim_unassigned` read." },
     ],
     async run(ctx) {
       const { candidates } = await ctx.client.get("/api/v1/tasks/candidates", {
         query: {
           assignee: ctx.flags.assignee,
           stale: ctx.flags.stale === true ? "1" : undefined,
+          include_unassigned: ctx.flags.includeUnassigned === true ? "1" : undefined,
         },
       });
       const human =

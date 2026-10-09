@@ -109,7 +109,11 @@ export function registerTaskRoutes(router, surface) {
       });
     }
     return {
-      candidates: commands.listCandidates({ assignee: assignee.trim(), stale: truthy(query.get("stale")) }),
+      candidates: commands.listCandidates({
+        assignee: assignee.trim(),
+        stale: truthy(query.get("stale")),
+        includeUnassigned: truthy(query.get("include_unassigned")),
+      }),
     };
   });
 

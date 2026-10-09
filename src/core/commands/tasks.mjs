@@ -628,6 +628,10 @@ export function listTasks(ctx, filter = {}) {
  * A candidate is:
  *   * `ready` — `todo`, assigned to `assignee`, not an `epic`, and every
  *     `blocks` edge pointing at it (its `depends_on`) is `done`;
+ *   * `unassigned` — with `includeUnassigned: true`, a `todo`, non-`epic`,
+ *     `depends_on`-done card with no assignee: the public pool any actor may
+ *     claim (see `domain/claim.mjs#isAssignee`). This is the read a supervisor
+ *     uses when its policy is "claim unassigned tasks too";
  *   * with `stale: true`, `in_progress` whose heartbeat is stale — the same
  *     holder after 30 minutes (`stale_same`) or anyone after 6 hours
  *     (`stale_any`) — the recovery pool.
@@ -637,18 +641,27 @@ export function listTasks(ctx, filter = {}) {
  * way every other read does it — against the dictionary's `id`, `display_name`
  * or `normalized_name` — and an unknown assignee yields an empty list, not an
  * error: asking "what can X claim?" for an X with no cards is a normal answer.
+ * The one exception is the pool read: `includeUnassigned` still returns the
+ * unassigned cards when the assignee resolves to no dictionary entry, because
+ * the pool is not that assignee's to resolve.
  *
  * @param {object} ctx
- * @param {{assignee: string, stale?: boolean}} input
+ * @param {{assignee: string, stale?: boolean, includeUnassigned?: boolean}} input
  */
 export function listCandidates(ctx, input = {}) {
   const assignee = String(input.assignee ?? "").trim();
+  const includeUnassigned = input.includeUnassigned === true;
   const ids = assigneeEntryIds(ctx, assignee);
-  if (ids.length === 0) return [];
+  if (ids.length === 0 && !includeUnassigned) return [];
 
   const now = ctx.now();
   const isAssignee = (task) => task.kind !== "epic" && ids.includes(task.assigneeId);
   const ready = ctx.repos.tasks.list({ status: "todo" }).filter(isAssignee);
+  const pool = includeUnassigned
+    ? ctx.repos.tasks
+        .list({ status: "todo" })
+        .filter((task) => task.kind !== "epic" && (task.assigneeId === null || task.assigneeId === undefined || task.assigneeId === ""))
+    : [];
   const stale =
     input.stale === true
       ? ctx.repos.tasks
@@ -666,13 +679,17 @@ export function listCandidates(ctx, input = {}) {
   for (const task of ready) {
     if (allBlockersDone(ctx, task.id)) found.push({ task, reason: "ready" });
   }
+  for (const task of pool) {
+    if (allBlockersDone(ctx, task.id)) found.push({ task, reason: "unassigned" });
+  }
   for (const task of stale) {
     const reason = staleReason(task, assignee, now);
     if (reason !== null && allBlockersDone(ctx, task.id)) found.push({ task, reason });
   }
 
-  // Ready before recovery, then the board's own deterministic order.
-  const rank = { ready: 0, stale_same: 1, stale_any: 1 };
+  // Ready, then the pool this agent may take, then recovery — every rank then
+  // falls back to the board's own deterministic order.
+  const rank = { ready: 0, unassigned: 1, stale_same: 2, stale_any: 2 };
   found.sort(
     (a, b) =>
       rank[a.reason] - rank[b.reason] ||
