@@ -1,21 +1,31 @@
 name: release
 
+# A tag push (`v1.0.0`) is the release trigger. The job re-runs the same checks
+# as `check.yml`, then builds the frontend and the release tree, packages the
+# npm tarball, verifies the tarball's contents, and opens a **draft** GitHub
+# Release. Nothing is published anywhere automatically — a human promotes the
+# draft (npm publish / marketplace) from there.
 on:
   push:
     tags: ["v*"]
 
-# Minimal and non-deploying: it re-runs the checks, builds dist/ and does a dry
-# packaging run so a release can be inspected. Nothing is published anywhere.
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
 
+      # Same gate as `check.yml`: the release must not ship a tree that would fail
+      # the pull-request checks.
       - name: Tests
         run: node --test
 
@@ -25,11 +35,61 @@ jobs:
       - name: Manifests
         run: node scripts/verify/manifests.mjs
 
+      - name: Version manifests agree
+        run: node scripts/verify/version.mjs
+
       - name: Skill definition
         run: node scripts/verify/skill.mjs
 
-      - name: Build
-        run: node scripts/build.mjs
+      # The frontend is built exactly the way `check.yml` builds it — same
+      # Dockerfile, same offline `webbuild` stage. `--target webbuild` builds the
+      # stage alone so its `web/dist` can be pulled out; the full image below then
+      # reuses those cached layers, so the frontend is compiled once.
+      - name: Build the board frontend (webbuild stage)
+        run: docker build -f docker/Dockerfile --target webbuild -t task-panel:webbuild .
 
-      - name: Packaging dry run
-        run: npm pack --dry-run
+      - name: Extract web/dist from the webbuild stage
+        run: |
+          cid="$(docker create task-panel:webbuild)"
+          docker cp "$cid:/app/web/dist" ./web-dist
+          docker rm "$cid"
+          test -f ./web-dist/index.html
+          echo "web/dist: $(find ./web-dist -type f | wc -l) files"
+
+      - name: Build the verification image (same tag as check.yml)
+        run: docker build -f docker/Dockerfile -t task-panel:verify .
+
+      - name: Build the release tree (dist/)
+        run: |
+          node scripts/build.mjs
+          test -d dist/web
+
+      - name: Package the npm tarball
+        id: pack
+        run: |
+          tarball="$(npm pack --silent)"
+          echo "tarball=${tarball}" >> "$GITHUB_OUTPUT"
+          echo "packed ${tarball}"
+
+      - name: Verify the tarball's contents
+        run: node scripts/release/pack-manifest.mjs "${{ steps.pack.outputs.tarball }}"
+
+      # A DRAFT only. Promotion is a human decision; this workflow never
+      # publishes to the registry or a marketplace.
+      - name: Open the GitHub Release draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            index($0, "## [" v "]") == 1 { inside = 1; next }
+            inside && index($0, "## [") == 1 { exit }
+            inside { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "Task Panel ${GITHUB_REF_NAME}" > release-notes.md
+          fi
+          gh release create "$GITHUB_REF_NAME" "${{ steps.pack.outputs.tarball }}" \
+            --draft \
+            --title "Task Panel ${GITHUB_REF_NAME}" \
+            --notes-file release-notes.md

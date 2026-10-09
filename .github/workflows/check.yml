@@ -27,11 +27,14 @@ jobs:
       - name: Manifests
         run: node scripts/verify/manifests.mjs
 
+      - name: Version manifests agree
+        run: node scripts/verify/version.mjs
+
       - name: Skill definition
         run: node scripts/verify/skill.mjs
 
       - name: Shell script syntax
-        run: bash -n install.sh scripts/install/*.sh
+        run: bash -n install.sh scripts/install/*.sh scripts/verify/install-e2e.sh
 
   # Same image tag and same in-container command as `npm run verify:docker`, so a green
   # local run and a green CI run mean the same thing. This is the authoritative job: it is
@@ -48,3 +51,9 @@ jobs:
 
       - name: Run verification inside the container
         run: docker run --rm task-panel:verify bash docker/verify-in-container.sh
+
+      # Same image, same in-container command a developer runs, so a green CI run
+      # and a green local run mean the same thing: install the skill for all four
+      # hosts with a throwaway HOME, then drive the real CLI against a real taskd.
+      - name: Install + first-run end-to-end
+        run: docker run --rm task-panel:verify bash scripts/verify/install-e2e.sh
