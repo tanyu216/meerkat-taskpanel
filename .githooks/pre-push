@@ -1,0 +1,21 @@
+#!/bin/sh
+# Task Panel pre-push hook.
+#
+# Every version tag being pushed (`refs/tags/vX.Y.Z`) must have a `## [X.Y.Z]`
+# section in CHANGELOG.md. Git supplies one line per ref on stdin:
+#
+#   <local ref> <local sha> <remote ref> <remote sha>
+#
+# This is the earliest hookable point for a tag: git has no native `pre-tag`
+# hook (a tag is a ref, not a commit), so the rule is enforced here on the way
+# out, by `.githooks/pre-tag` when run by hand, and authoritatively in CI
+# (`.github/workflows/version-gate.yml`). Offline, Node builtins only.
+status=0
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  case "$remote_ref" in
+    refs/tags/v*)
+      node scripts/verify/changelog.mjs "${remote_ref#refs/tags/}" || status=1
+      ;;
+  esac
+done
+exit "$status"

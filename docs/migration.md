@@ -15,6 +15,45 @@ The field-by-field mapping contract this drill checks against is
 `ARCHITECTURE.md` **§4.8** (Schema 映射) and the container-verification rule is
 **§9.1**. Both are referenced by name + section below, never by line number.
 
+## The append-only migration gate
+
+> **Not the same "migration" as the rest of this page.** This section is about the
+> board's **SQL schema** migrations (`src/core/storage/migrations/*.sql`); everything
+> below it is about the team's **markdown cards**. Same word, two different things.
+
+The schema is built by numbered SQL files applied once, in order, by
+`src/core/storage/migrations-runner.mjs`. The history is **append-only** and each
+file's SHA-256 (line endings normalised) is recorded in the `schema_migrations` table;
+at startup the runner refuses a database whose applied file has since changed
+(`MIGRATION_CHECKSUM_MISMATCH`). That verdict only fires at *runtime*, against a
+database that already applied the old file.
+
+The **pre-commit hook** (`.githooks/pre-commit`) moves the same verdict to the earliest
+possible point. It runs `scripts/verify/migrations.mjs`, which reuses the runner's own
+`checksumFor`, so the gate and the database can never disagree:
+
+```bash
+node scripts/verify/migrations.mjs                 # this checkout (git HEAD baseline)
+node scripts/verify/migrations.mjs --dir <dir>     # another tree
+node scripts/verify/migrations.mjs --no-git        # numbering/name checks only
+```
+
+It refuses, with a non-zero exit:
+
+| Violation | Why |
+|---|---|
+| a file not named `NNNN_lower_snake_name.sql` | the runner would reject it anyway (fail fast) |
+| a **duplicate** version | two files claim the same slot |
+| a **gap** in the numbering (`0001`, `0003`) | the sequence is not contiguous from `0001` |
+| a **changed** already-committed file | checksum drift against the committed baseline — append a new file instead |
+| a **deleted** already-committed file | history would no longer be reconstructable |
+
+The checksum/deletion rules compare the working tree against git `HEAD`; with no history
+to compare against (a stripped checkout, the image — which ships no `.git`) the check
+degrades to the numbering/name rules rather than failing. The same script runs in CI via
+`npm run check` (it is part of `npm run verify`) and therefore inside the container job
+of `.github/workflows/check.yml` — no change to that file was needed.
+
 ## What the drill actually does
 
 `scripts/migrate/reconcile.mjs` runs the whole shadow pass against a directory of

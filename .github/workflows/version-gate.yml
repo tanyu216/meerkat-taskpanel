@@ -1,0 +1,32 @@
+name: version-gate
+
+# Tag-time release gate: a version tag must be documented — every `vX.Y.Z` push
+# must have a `## [X.Y.Z]` section in CHANGELOG.md, or the release draft ships
+# undocumented.
+#
+# This lives in its own workflow on purpose: `.github/workflows/check.yml` is
+# owned by a concurrent change and must not be modified, so the release/version
+# rule is carried here instead. The append-only migration check
+# (`scripts/verify/migrations.mjs`) already runs in CI through `npm run check`
+# inside the container job of `check.yml`, and locally through `.githooks/`.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Offline: the checker is Node builtins only — no `npm install`. The tag is
+      # never published, so the job only needs `contents: read`.
+      - name: Tag has a CHANGELOG entry
+        run: node scripts/verify/changelog.mjs "${GITHUB_REF_NAME}"

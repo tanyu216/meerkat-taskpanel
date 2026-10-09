@@ -70,6 +70,31 @@ git push origin v<version>  # triggers .github/workflows/release.yml
 > Commits in this repository use explicit paths (`git commit -- <path>`), never a bare
 > `git commit -a`. Tags and pushes are destructive-ish and are Elon's to make.
 
+### 3.1 The tag ↔ CHANGELOG gate
+
+A version tag is only cut when `CHANGELOG.md` documents it. The rule lives in one
+reusable, offline checker — `scripts/verify/changelog.mjs` — and every door calls it:
+
+```bash
+node scripts/verify/changelog.mjs v1.2.3     # exit 0 has an entry · 1 missing · 2 usage
+```
+
+Local hooks (`git config core.hooksPath .githooks`, wired by the root `package.json`
+`prepare` script — no `husky` dependency, see [`.githooks/README.md`](../.githooks/README.md)):
+
+- **`.githooks/pre-tag v1.2.3`** — run it yourself *before* `git tag`. Git has no native
+  `pre-tag` hook (a tag is a ref, not a commit), so this is invoked explicitly.
+- **`.githooks/pre-push`** — refuses a `refs/tags/vX.Y.Z` on its way out when the version
+  is missing from the changelog.
+- **`.githooks/pre-commit`** — the append-only migration check (see
+  [migration.md](migration.md#the-append-only-migration-gate)); unrelated to tagging but
+  shipped in the same directory.
+
+CI is the authority: **`.github/workflows/version-gate.yml`** runs on a `v*` tag push and
+runs the same checker against `${GITHUB_REF_NAME}`. It is a separate workflow on purpose —
+`.github/workflows/check.yml` is owned by a concurrent change and is deliberately not
+touched, so the release/version rule is carried by `version-gate.yml` instead.
+
 ## 4. Claude Code marketplace
 
 `.claude-plugin/marketplace.json` (marketplace name `task-panel-marketplace`) points its

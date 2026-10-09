@@ -1,0 +1,17 @@
+#!/bin/sh
+# Task Panel pre-tag gate.
+#
+#   sh .githooks/pre-tag v1.2.3
+#
+# Refuses a version tag whose `## [X.Y.Z]` section is missing from CHANGELOG.md,
+# so the tag is never created in the first place. Git has no native `pre-tag`
+# hook, so this one is invoked explicitly by the release process; the same rule
+# is also enforced by `.githooks/pre-push` (every tag leaving the machine) and by
+# CI (`.github/workflows/version-gate.yml`). See docs/publishing.md.
+#
+# Exit: 0 the tag has an entry (or is not a version tag) · 1 missing · 2 usage.
+if [ "$#" -lt 1 ]; then
+  echo "usage: .githooks/pre-tag <vX.Y.Z>" >&2
+  exit 2
+fi
+exec node scripts/verify/changelog.mjs "$1"

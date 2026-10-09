@@ -1,0 +1,12 @@
+#!/bin/sh
+# Task Panel pre-commit hook.
+#
+# Refuses a change to the board's SQL migration history: a numbering gap or
+# duplicate, an edited already-committed migration, or a deleted one. The check
+# is the same one CI runs (`node scripts/verify/migrations.mjs`) and the same
+# checksum the database runner enforces at runtime — see docs/migration.md.
+#
+# Offline, Node builtins only. Git runs hooks from the working-tree root, so the
+# script path is relative to the repository.
+set -e
+exec node scripts/verify/migrations.mjs
