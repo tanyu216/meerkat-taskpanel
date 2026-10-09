@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "web"
+  ],
   "description": "Task management board for AI Agent teams.",
   "license": "MIT",
   "bin": {
@@ -25,6 +28,8 @@
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
+    "build:web": "npm -w web run build",
+    "dev:web": "npm -w web run dev",
     "sync:skills": "node scripts/sync-skills.mjs",
     "check:skills": "node scripts/sync-skills.mjs --check",
     "verify": "node scripts/verify/manifests.mjs && node scripts/verify/skill.mjs",

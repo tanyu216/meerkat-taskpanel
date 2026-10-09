@@ -14,8 +14,11 @@ The rule is not "prefer Docker" — it means the *verification* path is containe
 small set of checks is still allowed on the host; see
 [Host-allowed checks](#host-allowed-checks).
 
-The image installs nothing (`npm install` appears nowhere in this project), so it builds
-offline and there is no lockfile to drift.
+The **runtime image installs nothing**: the engine is dependency-free, so the final stage
+builds offline and there is no root lockfile to drift. The one exception is a separate
+`webbuild` stage that assembles the `web/` frontend — its build-time devDependencies come
+from a committed offline cache, and only the static `web/dist` crosses into the runtime
+image. See [The web build stage](#the-web-build-stage).
 
 ## Prerequisites
 
@@ -46,7 +49,30 @@ no `prototype/`, no `design/`, no `node_modules`). The image:
 - sets `TASKD_HOST=0.0.0.0` and `TASKD_PORT=9527`;
 - runs as the non-root `node` user;
 - exposes `9527`;
-- defaults to `node src/cli/index.mjs --help`.
+- defaults to `node src/cli/index.mjs --help`;
+- carries `web/dist` — the built board frontend — copied from the `webbuild` stage. `taskd`
+  serves that directory as the hosted root (`STATIC_DIR_REL = "web/dist"`). There is no
+  `node_modules` in the image.
+
+## The web build stage
+
+`docker/Dockerfile` is multi-stage, because the repository has two build layers (see
+[development.md](development.md#two-build-layers-engine-and-web)):
+
+1. **`webbuild`** — `COPY . .`, then, once the frontend workspace exists,
+   `npm ci --offline --cache /app/web/.vendor/npm-cache` followed by the Vite build,
+   producing `web/dist`. `--offline` is deliberate: it reads the committed cache and
+   **hard-fails** instead of silently reaching the network. The machine proof is the build
+   itself:
+   `docker build --network=none -f docker/Dockerfile -t task-panel:verify .`.
+2. **runtime** (`node:22-bookworm-slim`, the final stage) — the repository as-is, plus
+   `COPY --from=webbuild /app/web/dist /app/web/dist`. Nothing from the frontend toolchain
+   ships: no `node_modules`, no Vite.
+
+> `web/` is still a README placeholder; the workspace lands with M6b. Until it does, the
+> `webbuild` stage is a guarded no-op that still emits an empty `/app/web/dist`, so the image
+> keeps building and the runtime contract is already in place. An empty `web/dist` is
+> equivalent to none at all: `taskd` probes for `index.html` and 404s as before.
 
 ## Run
 
@@ -172,7 +198,13 @@ host, because they are static or pure and touch nothing:
 - `node scripts/verify/manifests.mjs`, `node scripts/verify/skill.mjs`,
   `node scripts/sync-skills.mjs --check`;
 - `git` operations, file listing and inspection;
-- static rendering/screenshots of the design prototype under `prototype/`.
+- static rendering/screenshots of the design prototype under `prototype/`;
+- browser-rendered frontend checks — the DOM/selector contract assertions and the
+  prototype-vs-implementation screenshots for `web/`. The image has no Chromium (installing
+  it needs an apt mirror, i.e. network at build time), so these stay on the host, driving a
+  host-installed Chrome. This is the "browser rendering" exception under §9.1. For the same
+  reason `test/web/tokens.parity.test.mjs` reads `design/brand/tokens.css`, which
+  `.dockerignore` keeps out of the image, so it skips inside the container.
 
 Everything that *installs*, *serves*, or *deploys* goes through Docker.
 
@@ -180,9 +212,13 @@ Everything that *installs*, *serves*, or *deploys* goes through Docker.
 
 `.github/workflows/check.yml` has two jobs:
 
-- `check` — the host-side static job (Node 22, no `npm install`);
+- `check` — the host-side static job (Node 22, **no `npm install`**: it only runs source,
+  scripts and tests, which need no packages);
 - `docker` — builds `task-panel:verify` exactly like the local command and runs the same
-  in-container script.
+  in-container script. This is the authoritative job, and the only one that touches the
+  frontend: the `webbuild` stage resolves `web/`'s devDependencies from the vendored cache.
+  There is deliberately no host-side frontend job, which would install packages on the
+  runner and violate the container-first rule.
 
 Same tag, same command, same script as `npm run verify:docker` — locally green means
 CI green.
@@ -228,7 +264,9 @@ reaching out, it is a bug — the point of the container is that the suite runs 
 **The image build is slow every time.**
 Check the build context size. The root `.dockerignore` excludes `.git`, `prototype/`,
 `design/`, `node_modules/`, `.data/` and `coverage/`; a large context almost always means
-one of those got re-included.
+one of those got re-included. Once `web/` lands, `web/.vendor/npm-cache/` is a deliberate,
+expected part of the context — it is the offline frontend assembly — so the context grows
+by tens of MB on purpose.
 
 **`profiles: ... wrapper ... exit 1` / `Cannot find module .../src/cli/index.mjs`.**
 The skill was *copied* instead of linked, so the wrapper's relative path walked up out of

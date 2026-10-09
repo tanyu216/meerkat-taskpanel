@@ -1,0 +1,35 @@
+/*
+ * Board frontend stylesheet entry (M6b).
+ *
+ * Tailwind v4 + daisyUI come in as Vite plugins (`@tailwindcss/vite`), so this
+ * file is the CSS entry rather than a JS config. The brand token layer
+ * (`design/brand/tokens.css`) lands in a later stage (S2 · F5); this stage only
+ * needs the shell to mount and lay out.
+ */
+@import "tailwindcss";
+@plugin "daisyui";
+
+/* B01 · app shell — the two-area grid: a top bar spanning the full width, then
+   a sidebar rail beside the main column. Class-based (not a hook); the contract
+   names this layout in prose only. */
+.td-shell {
+  display: grid;
+  grid-template-areas:
+    "topbar topbar"
+    "sidebar main";
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.td-topbar {
+  grid-area: topbar;
+}
+.td-sidebar {
+  grid-area: sidebar;
+}
+.td-main {
+  grid-area: main;
+  overflow: auto;
+}

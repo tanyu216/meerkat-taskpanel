@@ -37,7 +37,7 @@ task-panel/
 │   ├── mcp/                # stdio MCP server (M3; 18 tools, thin proxy to taskd)
 │   ├── server/             # minimal loopback taskd (CLI auto-start); full HTTP API + SSE board backend = M6
 │   └── shared/             # DTOs, constants, errors, pure helpers + the taskd transport seam (shared/transport/**)
-├── web/                    # board frontend (Vue 3 + Vite planned) -> dist/web (README placeholder only)
+├── web/                    # board frontend (Vue 3 + Vite): build-time devDeps -> web/dist (README placeholder)
 ├── skills/task-panel/      # the skill — single source of truth (author here)
 ├── plugins/{claude,codex,openclaw,pi}/  # per-host manifests + generated skills/ copies
 ├── design/                 # brand assets, tokens; prototype/assets + PRD/DESIGN/BLOCKS are placeholders
@@ -52,7 +52,11 @@ task-panel/
 `dist/`, `.data/`, `node_modules/` and `coverage/` are build/runtime output — gitignored,
 never committed. Directories or files listed above but not present in a given checkout are
 planned, not implemented (e.g. `design/` has `brand/` only; there is no PRD/DESIGN/BLOCKS
-file yet; `web/` is a README placeholder).
+file yet; `web/` is still a README placeholder — its workspace lands with M6b).
+
+Mind the two different `dist` trees: `dist/` is the **npm release tree** that
+`scripts/build.mjs` writes; the **hosted frontend root** is `web/dist`, the static build of
+`web/` that `taskd` serves (`STATIC_DIR_REL`). They are not the same directory.
 
 ## Commands
 
@@ -70,7 +74,8 @@ file yet; `web/` is a README placeholder).
 ## Constraints / MUST-follow rules
 
 - **Verification runs inside Docker, not on the host.** Everything that *runs* — unit/integration/e2e tests, starting or serving the app, the CLI, host skill installs, plugin/bundle installs, migration rehearsals — must run in the container (`docker/`, `npm run verify:docker`, `docker/verify-in-container.sh`). Only pure static checks (lint/typecheck, `node --check`, text/static assertions, `git` operations) and prototype screenshots may run on the host.
-- **No new dependencies, no network.** Node builtins only; scripts, tests and the CLI must work fully offline. Do not run `npm install` — there is no lockfile and no `node_modules/` is expected.
+- **Runtime zero-dependency, no network.** The engine — `src/core/`, `src/cli/`, `src/server/`, `src/mcp/` — and every script and test use Node builtins only and work fully offline. Do not run `npm install` for them: there is no root lockfile and no `node_modules/` is expected.
+- **`web/` is the one exception, and it is build-time only.** The board frontend (Vue 3 + Vite + Tailwind/daisyUI) has its own `web/package.json` and lockfile, resolved offline from the committed npm cache `web/.vendor/npm-cache` in the image's `webbuild` stage. Nothing from it reaches the runtime image — the hosted artefact is the static `web/dist` that `taskd` serves (`STATIC_DIR_REL`). Never install frontend deps into the repository root.
 - **The skill is generated, never hand-edited.** Author only under `skills/task-panel/`. After any edit run `node scripts/sync-skills.mjs`; `plugins/*/skills/` are generated copies that must stay identical (`--check` fails CI on drift).
 - **Single writer.** The design assumes one local service owns the SQLite file — avoid concurrent writers against the same database.
 - **Commit with explicit paths:** `git commit -- <path>` (never a bare `git commit -a`).

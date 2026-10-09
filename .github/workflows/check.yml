@@ -15,7 +15,9 @@ jobs:
         with:
           node-version: "22"
 
-      # No `npm install`: the scaffold has no dependencies and must run offline.
+      # No `npm install`: the engine, scripts and tests use Node builtins only and run
+      # offline. The `web/` frontend's build-time devDependencies are assembled offline
+      # inside the `docker` job (image `webbuild` stage) — never installed on this runner.
       - name: Tests
         run: node --test
 
@@ -32,7 +34,10 @@ jobs:
         run: bash -n install.sh scripts/install/*.sh
 
   # Same image tag and same in-container command as `npm run verify:docker`, so a green
-  # local run and a green CI run mean the same thing. No `npm install` here either.
+  # local run and a green CI run mean the same thing. This is the authoritative job: it is
+  # the only place the frontend gets built — the `webbuild` stage resolves `web/`'s
+  # build-time devDependencies from the committed offline cache (`npm ci --offline`), not
+  # from the network.
   docker:
     runs-on: ubuntu-latest
     steps:

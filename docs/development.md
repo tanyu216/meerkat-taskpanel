@@ -3,11 +3,16 @@
 ## Requirements
 
 - **Node >= 22** — the project targets the `node:sqlite` era and uses modern ESM.
-- **No dependencies.** Everything in the project uses Node builtins only
-  (`node:fs`, `node:path`, `node:test`, `node:child_process`, …).
+- **The engine has no dependencies.** `src/**`, the scripts and every test use Node
+  builtins only (`node:fs`, `node:path`, `node:test`, `node:child_process`, …).
+- **The board frontend (`web/`) has build-time devDependencies** — Vue 3, Vite,
+  Tailwind/daisyUI. They are resolved offline from a committed npm cache and never ship:
+  the hosted artefact is the static `web/dist`.
 
-> **Do not run `npm install`.** The project needs no packages, no lockfile and no
-> network access. A `node_modules/` directory is gitignored and is not expected to exist.
+> **Do not run `npm install` for the engine.** It needs no packages, no lockfile and no
+> network access; a root `node_modules/` is gitignored and unexpected. The only install is
+> `web/`'s, and it happens inside the image build from `web/.vendor/npm-cache`
+> (see [docker.md](docker.md)) — never into the repository root.
 
 ## Layout
 
@@ -18,7 +23,7 @@
 | `src/mcp/` | Stdio MCP server (M3) |
 | `src/server/` | Local HTTP API + SSE for the board (M6) |
 | `src/shared/` | Shared DTOs, constants, small pure helpers |
-| `web/` | React + Vite board frontend → `dist/web` |
+| `web/` | Vue 3 + Vite board frontend → `web/dist` (the hosted frontend root) |
 | `skills/task-panel/` | The skill — **single source of truth** |
 | `plugins/<host>/` | Per-host manifests + generated `skills/` copies |
 | `scripts/` | Build, install, sync and verify scripts |
@@ -37,7 +42,7 @@ node scripts/sync-skills.mjs         # skills/ → plugins/<host>/skills (regene
 node scripts/sync-skills.mjs --check # verify the generated copies are in sync
 node scripts/verify/manifests.mjs    # validate the host + marketplace manifests
 node scripts/verify/skill.mjs        # validate SKILL.md frontmatter
-node scripts/build.mjs               # produce dist/ (web placeholder + host plugins)
+node scripts/build.mjs               # produce dist/ — the npm release tree (not web/dist)
 ```
 
 Or via npm aliases:
@@ -49,6 +54,29 @@ npm run verify
 npm run build
 npm run check     # check:skills + verify + test
 ```
+
+## Two build layers: engine and web
+
+The repository builds two independent layers plus a release tree, and the two `dist` names
+are **not** the same directory:
+
+| Layer | Source | Build | Output |
+|---|---|---|---|
+| Engine | `src/**`, `scripts/**` | nothing — Node runs the sources directly | *(no build step)* |
+| Web board | `web/**` | Vite (`npm --prefix web run build`) | `web/dist` — the **hosted frontend root**, served by `taskd` (`STATIC_DIR_REL`) |
+| Release tree | skills + host plugins | `node scripts/build.mjs` | `dist/` — the npm **release tree**; never served |
+
+The web layer is the only part with dependencies. Vue/Vite/Tailwind/daisyUI are
+**build-time devDependencies**: they are resolved offline from the committed cache
+`web/.vendor/npm-cache` in the image's `webbuild` stage, and only the built `web/dist`
+crosses into the runtime image — no `node_modules` ships.
+
+> `web/` is still a README placeholder; the workspace lands with **M6b**. Until then the
+> command above is the intended interface, not yet runnable, and the image's `webbuild`
+> stage is a guarded no-op that emits an empty `web/dist`.
+
+The offline, container-first path is the image build — see
+[docker.md](docker.md#the-web-build-stage).
 
 ## The `taskd` HTTP surface (M6)
 
@@ -111,12 +139,16 @@ gitignored.
 ## Build output
 
 `node scripts/build.mjs` deletes and recreates `dist/`, writes a `dist/web/.gitkeep`
-placeholder, and syncs the skill into `dist/plugins/<host>/`. `dist/` is gitignored.
+placeholder, and syncs the skill into `dist/plugins/<host>/`. `dist/` is gitignored, and
+**it is the npm release tree — not the hosted frontend.** The `dist/web/` placeholder is
+left over from the M0 scaffold; the real board frontend builds to `web/dist` (see
+[Two build layers](#two-build-layers-engine-and-web)).
 
 ## Constraints
 
 - **No network.** Scripts, tests and the CLI must work fully offline.
-- **No dependencies.** Prefer Node builtins; adding a package requires a deliberate
-  decision and an update to this document.
+- **No runtime dependencies.** Prefer Node builtins; adding a *runtime* package requires a
+  deliberate decision and an update to this document. `web/`'s build-time devDependencies
+  are the bounded exception — see [Two build layers](#two-build-layers-engine-and-web).
 - **Shell scripts** are POSIX `bash` with `set -eu`. Check them with
   `bash -n install.sh scripts/install/*.sh`.
