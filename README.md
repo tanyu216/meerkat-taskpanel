@@ -86,6 +86,17 @@ the [Highlights](#highlights) below describe.
 9. **Built for long-running agent fleets.** A heartbeat sets a 10-minute freshness window on
    a claim; a claim goes stale for its own holder after 30 minutes and for everyone after
    6 hours, so a crashed agent never wedges a card.
+10. **A no-gaps work history, readable as reports.** The append-only record under
+    [What it solves](#what-it-solves) is, in effect, a complete history of the work a team
+    did in an AI-agent environment — nobody has to log it separately. That same history
+    reads straight back out as **daily / weekly / monthly reports** with their **statistics**,
+    aggregated along any dimension — **project**, **kind / labels**, **assignee** or **time
+    window** — with **metrics you define yourself**. The statistics are **domain-agnostic by
+    design**: Task Panel is a general board for *any* team — software, operations, marketing,
+    business, strategy — and the one preset that ships (requirements / development / bugs /
+    incidents) is a single **example**, not the shape of the feature. Periodic reporting
+    lives in the skill, in
+    [`references/reports.md`](skills/task-panel/references/reports.md).
 
 ## Architecture
 
