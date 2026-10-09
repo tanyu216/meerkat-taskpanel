@@ -75,7 +75,7 @@ it does not create a row. Reads never write.
 |---|---|
 | `issue create --project <id> --title <t> [--acceptance <text>]… [--assignee <text>] [--reporter <text>] …` | Create a task. |
 | `issue list [--project] [--status <s>]… [--assignee-id] [--limit] [--include-archived]` | List tasks. |
-| `issue candidates --assignee <name> [--stale]` | The poll's read: claimable cards for an assignee (`todo`, non-`epic`, every `depends_on` done; `--stale` adds `in_progress` cards whose heartbeat expired). Read-only — claiming still goes through `issue move`/claim semantics. |
+| `issue candidates --assignee <name> [--stale] [--include-unassigned]` | The poll's read: claimable cards for an assignee (`todo`, non-`epic`, every `depends_on` done; `--stale` adds `in_progress` cards whose heartbeat expired; `--include-unassigned` adds the **public pool** — unassigned claimable cards — for a supervisor whose policy allows them). Read-only — claiming still goes through `issue move`/claim semantics. |
 | `issue get <id\|identifier>` | One task, plus `report_waivers[]`. |
 | `issue update <ref> [--title] [--description] [--priority] [--kind] [--label]… [--meta k=v]… [--acceptance <text>]…` | Patch. `--status` is refused here on purpose. |
 | `issue move <ref> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"]` | Move, subject to the delivery gate. A `todo → in_progress` move is a **claim**: only the card's assignee, unless `--allow-steal`. |

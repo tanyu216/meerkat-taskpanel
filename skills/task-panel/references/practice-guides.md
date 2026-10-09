@@ -114,6 +114,37 @@ Every write can name the actor and the conversation behind it
 "which agent session did this", and it is what lets a resumed conversation
 re-attach to the same work instead of starting over. Always pass the session id.
 
+## Waking & patrol (唤醒与巡检)
+
+Rule 1 says *claim first*; it does not say *wait to be told*. Work starts when a
+small **host-external supervisor** ([`scripts/supervisor.mjs`](../../../scripts/supervisor.mjs))
+finds claimable cards and wakes a worker for one. Nothing inside an agent does
+the polling — see the full design in
+[`docs/scheduling.md`](../../../docs/scheduling.md).
+
+Two layers, kept apart:
+
+| Layer | Cadence | Job | Cost |
+|---|---|---|---|
+| **poll** | 1 minute | `issue candidates` → claim → wake a worker | the scan is a $0 local CLI; a model turn starts **only** when a card was actually claimed |
+| **patrol** | 5 minutes | `issue list --status in_progress` → escalate a stale claim; report an unreadable heartbeat | $0 (no LLM by default) |
+
+Three things that keep it honest:
+
+- **The atomic claim is the only dispatch.** `issue move <ref> in_progress` is
+  compare-and-swap: whoever wins the claim is who works the card, and the loser
+  starts **no** worker. A wake is therefore idempotent and bounded by a
+  concurrency cap (`--max-concurrency`, default 8).
+- **A fresh heartbeat means do nothing.** An empty poll tick starts no worker at
+  all; a live claim is invisible to the next scan.
+- **A broken heartbeat is never silent.** If patrol cannot read a heartbeat, it
+  *reports* that instead of going quiet — the state that used to vanish.
+
+Installers drop per-host scheduling units (launchd / systemd / cron) and a wake
+script, and print the load command — they never enable a daemon for you. The
+installer also asks once whether the supervisor may claim **unassigned** cards
+(default yes) and remembers the answer in `<host>/task-panel.env`.
+
 ## OpenClaw
 
 ### Install
@@ -141,8 +172,11 @@ has the native-vs-bundle distinction.)
 - **The session id still travels with every write.** Pass
   `--agent-platform openclaw --session-id <id>` so a card's trail points back at the
   session that did the work (§8); the framework keeps that id stable across resumes.
-- **No trigger to wire.** Unlike Claude Code and Codex there is no "there is no
-  auto-claim" caveat here — the framework owns the trigger.
+- **No supervisor to build.** OpenClaw is the one host that installs **no**
+  scheduler of its own: `install.sh --target openclaw` writes the skill only, and
+  the [openclaw-team](https://github.com/tanyu216/openclaw-team) framework's
+  `poll` / `patrol` automations *are* the [Waking & patrol](#waking--patrol-唤醒与巡检)
+  design. Install that framework instead of wiring anything by hand.
 
 ## Claude Code
 
@@ -168,9 +202,12 @@ claude plugin list                                 # → task-panel, enabled
 - **Bind the card to the branch / worktree** you are working in: record it once
   when you claim (`session set <ref> --seg <seg> --backend claude`), so a card
   names the checkout it belongs to.
-- **There is no auto-claim.** Claude Code does not poll the board for you, so the
-  claim in §1 has to be triggered by a hook, a slash command, or an external
-  scheduler — the skill provides the mechanism, the trigger is yours to wire.
+- **No timers of its own — the loop lives outside.** Claude Code hooks fire only
+  on session events, so the claim in §1 is driven by the supervisor
+  ([Waking & patrol](#waking--patrol-唤醒与巡检)): a launchd / systemd / cron unit
+  runs `scripts/supervisor.mjs`, which wakes a headless `claude -p` session
+  (`--resume <sid>` to continue one). `install.sh` drops the units and the
+  `wake-claude.sh` glue and prints the load command.
 
 ## Codex
 
@@ -195,9 +232,11 @@ codex plugin list                                  # → task-panel
   `--agent-platform codex --session-id "$CODEX_THREAD_ID"`.
 - **Same claim-first order**, same board checks (§1). Resolve the project with
   `context current` before creating or claiming anything.
-- **There is no auto-claim.** Codex does not poll the board either, so §1 must be
-  driven by a Codex automation (or an external scheduler) — without one, an agent
-  waits to be told which card is its own.
+- **No timers of its own either.** Codex does not poll the board, so §1 is driven
+  by the supervisor ([Waking & patrol](#waking--patrol-唤醒与巡检)) waking a
+  `codex exec` turn, or by a Codex app automation
+  (`intervalMinutes` / `quotaAware` / `model` / `reasoningEffort`). The bundled
+  `~/.codex/task-panel-claim.sh` trigger remains the minimal fallback.
 
 ## A minimal worked example
 

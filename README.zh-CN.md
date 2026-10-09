@@ -159,9 +159,26 @@ OpenClaw 也可消费 Claude 格式的 bundle（`plugins/claude`），这是受�
 **自评≠验收**（Agent 只到 `in_review`，人接受才 `done`）；**冲突不抢占**（重读一次，
 仍可领才重试）；**可追溯**（携带会话 id）。宿主之间的差异，只在**由谁来执行这些规则**。
 
+### 调度：轮询与巡检
+
+认领不靠 Agent 的记忆。一个**宿主外部**的小型**监督进程**
+（[`scripts/supervisor.mjs`](scripts/supervisor.mjs)）运行两层：**每分钟轮询** —— 一次
+$0 的本地 CLI 扫描，**只有真正认领到卡**时才启动模型回合（原子认领是唯一的派单源）；
+以及**每五分钟巡检** —— 对心跳过期的认领升级告警，并把**无法解析的心跳如实上报**
+（绝不静默）。Claude Code 与 Codex **本身没有定时器**，因此这个循环活在它们**之外**，
+被唤醒的只是 worker（`claude -p`、`codex exec`、`pi run`）。
+
+`install.sh` 会写入各宿主的 launchd / systemd / cron 调度单元与唤醒脚本，并**打印**加载
+命令 —— 绝不替你启用守护进程。安装时还会问一次是否允许认领**未分配**的卡（默认允许），
+并把答案记到 `<宿主目录>/task-panel.env`。完整设计 —— 两层模型、仅触发才计费的成本闸门、
+幂等唤醒、并发上限、失效兜底，以及三宿主触发差异 —— 见
+[`docs/scheduling.md`](docs/scheduling.md)。
+
 ### OpenClaw
 
-OpenClaw 是唯一**由框架代你执行规则**的宿主。安装
+OpenClaw 是唯一**由框架代你执行规则**的宿主，也是唯一**不构建自家监督进程**的宿主：
+`install.sh --target openclaw` 只安装 skill。它的 `poll`/`patrol` 自动化本就是
+[`docs/scheduling.md`](docs/scheduling.md) 描述的这套设计，因此请安装
 [**openclaw-team**](https://github.com/tanyu216/openclaw-team) 框架 —— 一个基于文件、
 幂等的安装器，会搭起一支小型 Agent 团队（一名协调者 + 四名专家），自带派单、门禁与
 **调度（自动领取）** —— Task Panel 随即成为它们的看板，且**默认安装**：
@@ -184,8 +201,9 @@ Task Panel 是默认的任务提供方（传 `--no-task-panel` 可换用自家�
 列出你的待领卡）、安装 `~/.claude/commands/{board,claim,deliver}.md`、在 `claude` CLI 可用时
 注册 MCP server，并随包提供注入 `--agent <名>` 的 `taskctl` 包装脚本。随后用 `taskctl` 驱动
 看板，并在每次写入时带上宿主与会话 —— `--agent-platform claude --session-id <id>` —— 让卡的
-轨迹指回动手的那段对话。Claude Code **默认无自动领取**：规则 1 的认领须由 SessionStart hook、
-slash 命令或外部调度触发。
+轨迹指回动手的那段对话。Claude Code **本身没有定时器**，因此规则 1 的认领由外部驱动：
+[监督进程](#调度轮询与巡检)唤醒一个 `claude -p` 无头会话（用 `--resume <sid>` 续接同一会话），
+你也可以从 SessionStart hook 或 slash 命令手动触发。
 
 ### Codex
 
@@ -193,7 +211,8 @@ slash 命令或外部调度触发。
 claim-first 片段、写入可调度的认领触发脚本 `~/.codex/task-panel-claim.sh`（`--no-automation`
 跳过）、在 `codex` CLI 可用时注册 MCP server，并随包提供 `taskctl` 包装脚本。以同样方式操作
 看板，并用当前线程作为会话 id —— `--agent-platform codex --session-id "$CODEX_THREAD_ID"` ——
-做会话级归属。Codex 本身**默认无自动领取**，规则 1 需要认领触发脚本（或外部调度）来触发。
+做会话级归属。Codex **本身没有定时器**，因此规则 1 由[监督进程](#调度轮询与巡检)唤醒
+`codex exec` 回合（或使用 Codex 应用自动化）来驱动，随包的认领触发脚本作为最小后备。
 
 完整指南 —— 八条规则的展开、各宿主的安装与触发差异，以及一个最小示例 —— 在 skill 内：
 [`skills/task-panel/references/practice-guides.md`](skills/task-panel/references/practice-guides.md)。

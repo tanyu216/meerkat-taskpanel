@@ -205,9 +205,31 @@ preempt a conflict** (re-read once, retry only if still claimable); and **stay
 traceable** (carry the session id). What differs between hosts is *who applies
 them*.
 
+### Scheduling: poll & patrol
+
+Claiming is not left to an agent's memory. A small **host-external supervisor**
+([`scripts/supervisor.mjs`](scripts/supervisor.mjs)) runs a cheap **1-minute poll**
+— a $0 local CLI scan, where a model turn starts **only** when a card was actually
+claimed (the atomic claim is the single dispatch source) — and a **5-minute
+patrol** that escalates a claim whose heartbeat has gone stale and reports a
+heartbeat it cannot read (never silently). Claude Code and Codex have **no
+timers**, so the loop lives *outside* them and only the worker is woken
+(`claude -p`, `codex exec`, `pi run`).
+
+`install.sh` drops per-host launchd / systemd / cron units and a wake-glue
+script, and prints the exact load command — it never enables a daemon for you.
+The installer also asks once whether the supervisor may claim **unassigned**
+cards (default yes) and remembers the answer in
+`<host>/task-panel.env`. The full design — the two layers, the fire-only cost
+gate, idempotent wakes, the concurrency cap, the fail-safe, and the per-host
+trigger differences — is in [`docs/scheduling.md`](docs/scheduling.md).
+
 ### OpenClaw
 
-OpenClaw is the one host where the rules are **enforced for you**. Install the
+OpenClaw is the one host where the rules are **enforced for you**, and the one
+host that builds **no supervisor of its own**: `install.sh --target openclaw`
+installs the skill only. Its `poll`/`patrol` automations already *are* the design
+in [`docs/scheduling.md`](docs/scheduling.md), so install the
 [**openclaw-team**](https://github.com/tanyu216/openclaw-team) framework — a
 file-based, idempotent installer that stands up a small agent team (one
 coordinator plus four specialists) with dispatch, gates and **scheduling
@@ -235,8 +257,10 @@ hook that starts the board and lists your claimable cards), installs
 CLI is on `PATH`, and ships a `taskctl` shim that injects `--agent <name>`. Then drive the
 board with `taskctl`, stamping each write with the host and session —
 `--agent-platform claude --session-id <id>` — so a card's trail points back at the
-conversation that did the work. Claude Code has **no auto-claim**: the claim in rule 1 has
-to be triggered by the SessionStart hook, a slash command, or an external scheduler.
+conversation that did the work. Claude Code has **no timers of its own**, so the claim in
+rule 1 is driven from outside: the [supervisor](#scheduling-poll--patrol) wakes a headless
+`claude -p` session (`--resume <sid>` to continue one), or you trigger it by hand from the
+SessionStart hook or a slash command.
 
 ### Codex
 
@@ -245,8 +269,10 @@ claim-first snippet to `~/.codex/AGENTS.md`, writes the schedulable claim trigge
 `~/.codex/task-panel-claim.sh` (`--no-automation` skips it), registers the MCP server when
 the `codex` CLI is on `PATH`, and ships the `taskctl` shim. Work the board the same way,
 using the running thread as the session id — `--agent-platform codex --session-id
-"$CODEX_THREAD_ID"` — for conversation-level attribution. Codex has **no auto-claim** of
-its own, so rule 1 needs the claim trigger (or an external scheduler) to fire it.
+"$CODEX_THREAD_ID"` — for conversation-level attribution. Codex has **no timers of its
+own**, so rule 1 is driven by the [supervisor](#scheduling-poll--patrol) waking a
+`codex exec` turn (or a Codex app automation), with the bundled claim trigger as the
+minimal fallback.
 
 The full guide — the eight rules in detail, the per-host install and trigger
 differences, and a worked example — lives in the skill at

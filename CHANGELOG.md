@@ -7,6 +7,26 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Scheduling & patrol.** A host-external supervisor (`scripts/supervisor.mjs`) runs the
+  cheap 1-minute **poll** (a $0 candidate scan; an LLM turn starts only when a card is
+  actually claimed) and the 5-minute **patrol** (escalate a stale claim; report an
+  unreadable heartbeat, never silently). The atomic claim is the only dispatch source, so
+  wakes are idempotent and capped by a concurrency limit. The design is in
+  [`docs/scheduling.md`](docs/scheduling.md).
+- **Host scheduling units.** `install.sh` drops launchd / systemd / cron units and a
+  per-host wake script (`claude -p` + `--resume`, `codex exec`, `pi run`) for Claude Code,
+  Codex and Pi, prints the exact load command, and never enables a daemon. OpenClaw gets
+  none — it uses the [openclaw-team](https://github.com/tanyu216/openclaw-team)
+  framework's own poll/patrol, which are this design.
+- **The claim-unassigned question.** `install.sh` asks once (TTY only, default yes)
+  whether the supervisor may claim unassigned cards, and persists the answer to
+  `<host>/task-panel.env` as `TASKPANEL_CLAIM_UNASSIGNED`; `--claim-unassigned=yes|no` and
+  `--assignee-only` work non-interactively.
+- **`issue candidates --include-unassigned`** — the poll read now optionally adds the
+  unassigned public pool (the supervisor's `claim_unassigned` policy).
+
 ## [1.0.0] - 2026-10-09
 
 The first release. The engine has landed through **M6**: the core domain model, the

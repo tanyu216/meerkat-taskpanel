@@ -55,11 +55,62 @@ and `~/.claude/bin/taskctl`; it also runs `claude mcp add …` when the CLI is o
 (the schedulable trigger) and `~/.codex/bin/taskctl`, and runs `codex mcp add …`. Both
 shims inject `--agent <name>` on every call, with `TASKCTL_AGENT` as the fallback.
 
+### Scheduling units (claude, codex, pi)
+
+Claude Code, Codex and Pi have **no timers**, so the poll/patrol loop lives outside
+them: `install.sh` drops a set of scheduling units, a per-host wake-glue script, and
+a host config, then **prints the load command** — it never runs `launchctl`,
+`systemctl` or `crontab` for you. The design is in
+[`scheduling.md`](scheduling.md).
+
+| Artefact | Where | What |
+|---|---|---|
+| launchd | `<host>/scheduling/launchd/com.taskpanel.{poll,patrol}.plist` | `StartInterval` 60 / 300 |
+| systemd | `<host>/scheduling/systemd/taskpanel-{poll,patrol}.{service,timer}` | 60s / 300s timers |
+| cron | `<host>/scheduling/cron/taskpanel.cron` | `* * * * *` poll, `*/5 * * * *` patrol |
+| wake glue | `<host>/bin/wake-<host>.sh` | `claude -p` (+`--resume`), `codex exec`, `pi run` |
+| host config | `<host>/task-panel.env` | `TASKPANEL_CLAIM_UNASSIGNED=yes\|no` |
+| log (runtime) | `<host>/task-panel/supervisor.log` | the supervisor's tick log |
+| state (runtime) | `<host>/task-panel/supervisor.state.json` | the running registry |
+
+`<host>` is `~/.claude`, `~/.codex` or `~/.agents`. **OpenClaw gets none of these** —
+it installs the skill only and uses the
+[openclaw-team](https://github.com/tanyu216/openclaw-team) framework's own
+`poll`/`patrol` instead (see [`scheduling.md`](scheduling.md#openclaw-do-not-build-a-supervisor)).
+
+Load one of them to start the supervisor:
+
+```bash
+# macOS
+launchctl load ~/.claude/scheduling/launchd/com.taskpanel.poll.plist    # and .patrol.plist
+# Linux (user units)
+mkdir -p ~/.config/systemd/user && cp ~/.claude/scheduling/systemd/* ~/.config/systemd/user/
+systemctl --user enable --now taskpanel-poll.timer taskpanel-patrol.timer
+# Anywhere
+crontab ~/.claude/scheduling/cron/taskpanel.cron
+```
+
+### The claim-unassigned question
+
+When stdin is a TTY and no flag was given, `install.sh` asks once:
+
+```text
+Allow claiming unassigned tasks? [Y/n]
+```
+
+The answer is persisted to `<host>/task-panel.env` as
+`TASKPANEL_CLAIM_UNASSIGNED=yes|no`; the supervisor reads it as its default (an
+explicit `--claim-unassigned` flag or `$TASKPANEL_CLAIM_UNASSIGNED` overrides it).
+Non-interactive installs default to **yes**; `--claim-unassigned=no` /
+`--assignee-only` persist `no`. The file is merge-style: a re-run without
+`--force` keeps the existing value.
+
 ## install.sh reference
 
 ```text
 install.sh [--target claude|openclaw|codex|pi|all] [--prefix <home>]
            [--agent-name <name>] [--no-automation]
+           [--claim-unassigned=yes|no] [--assignee-only]
            [--link] [--force] [--dry-run] [--skip-node-check] [-h|--help]
 ```
 
@@ -68,7 +119,9 @@ install.sh [--target claude|openclaw|codex|pi|all] [--prefix <home>]
 | `--target <host>` | Which host(s) to install for. Default `all`. Repeatable, and a comma-separated list (`--target claude,codex`) works too. |
 | `--prefix <home>` | Install relative to `<home>` instead of `$HOME`. |
 | `--agent-name <name>` | The agent's identity on the board, written into the claude/codex bundle (default `$USER`). Must equal the board assignee for the agent to claim cards. |
-| `--no-automation` | Skip the Codex claim trigger script (Claude/OpenClaw/Pi are unaffected). |
+| `--no-automation` | Skip **all** Codex automation — the claim trigger *and* the scheduling units (Claude/OpenClaw/Pi are unaffected). |
+| `--claim-unassigned=yes\|no` | May the supervisor claim **unassigned** cards (the public pool)? Persisted to `<home>/<host>/task-panel.env`; overrides the interactive answer. Default `yes`. |
+| `--assignee-only` | Alias for `--claim-unassigned=no`. |
 | `--link` | Symlink the skill instead of copying it — edits to the repo take effect immediately. Recommended for a checkout. |
 | `--force` | The **only** way to overwrite. Without it, an existing destination is left untouched (merge, never clobber) and the installer prints a `left unchanged — use --force to overwrite` notice, so a re-run is safe, idempotent, and exits 0. With it, managed files and managed config keys are re-rendered from the current flags. |
 | `--dry-run` | Print every path that would be written/changed and change nothing. |
@@ -135,11 +188,12 @@ claude plugin validate "$PWD"       # validates the plugin + marketplace manifes
 
 Step 1 writes, merge-style and idempotently: the skill, `~/.claude/settings.json`
 (`env.TASKCTL_AGENT=alice` + a `SessionStart` hook that starts the board and lists
-claimable cards), `~/.claude/commands/{board,claim,deliver}.md`, and the `taskctl` shim at
-`~/.claude/bin/taskctl`. It also runs `claude mcp add taskpanel -- node <repo>/src/mcp/main.mjs`
-when the `claude` CLI is on `PATH` (otherwise it prints the exact command). Re-running is
-safe: existing `settings.json` keys and hooks are preserved, and `--force` is the only way
-to overwrite.
+claimable cards), `~/.claude/commands/{board,claim,deliver}.md`, the `taskctl` shim at
+`~/.claude/bin/taskctl`, and the scheduling set (`~/.claude/scheduling/*`, the
+`wake-claude.sh` glue and `~/.claude/task-panel.env`). It also runs
+`claude mcp add taskpanel -- node <repo>/src/mcp/main.mjs` when the `claude` CLI is on
+`PATH` (otherwise it prints the exact command). Re-running is safe: existing
+`settings.json` keys and hooks are preserved, and `--force` is the only way to overwrite.
 
 Uninstall:
 
@@ -148,7 +202,9 @@ claude mcp remove taskpanel
 claude plugin uninstall task-panel@task-panel-marketplace
 claude plugin marketplace remove task-panel-marketplace
 rm -rf ~/.claude/skills/task-panel ~/.claude/commands/{board,claim,deliver}.md \
-       ~/.claude/hooks/task-panel-session-start.sh ~/.claude/bin/taskctl
+       ~/.claude/hooks/task-panel-session-start.sh ~/.claude/bin/taskctl \
+       ~/.claude/bin/wake-claude.sh \
+       ~/.claude/scheduling ~/.claude/task-panel.env ~/.claude/task-panel
 ```
 
 ### OpenClaw
@@ -171,6 +227,13 @@ Format: bundle
 Bundle format: claude
 Bundle capabilities: skills
 ```
+
+> **No supervisor for OpenClaw.** Unlike the other three hosts, OpenClaw gets **no**
+> scheduling unit: it already has a scheduler in the
+> [openclaw-team](https://github.com/tanyu216/openclaw-team) framework, whose
+> `poll-<agent>` and `task-patrol` automations *are* the design in
+> [`scheduling.md`](scheduling.md). `install.sh --target openclaw` writes the skill
+> only — install that framework instead.
 
 > **Native vs bundle.** `plugins/openclaw/openclaw.plugin.json` is a *native* OpenClaw
 > manifest. A native plugin is an in-process runtime module and must ship
@@ -204,10 +267,14 @@ codex plugin list
 
 Step 1 writes, merge-style and idempotently: the skill, a claim-first snippet appended to
 `~/.codex/AGENTS.md` (existing content is preserved), the schedulable claim trigger
-`~/.codex/task-panel-claim.sh`, and the `taskctl` shim at `~/.codex/bin/taskctl`. It also
-runs `codex mcp add taskpanel -- node <repo>/src/mcp/main.mjs` when the `codex` CLI is on
-`PATH`. Codex has no hooks, so the trigger is the auto-claim mechanism — schedule it
-(e.g. `*/5 * * * * ~/.codex/task-panel-claim.sh`); `--no-automation` skips writing it.
+`~/.codex/task-panel-claim.sh`, the `taskctl` shim at `~/.codex/bin/taskctl`, and the
+scheduling set (`~/.codex/scheduling/*`, the `wake-codex.sh` glue and
+`~/.codex/task-panel.env`). It also runs
+`codex mcp add taskpanel -- node <repo>/src/mcp/main.mjs` when the `codex` CLI is on
+`PATH`. Codex has no hooks, so scheduling is the auto-claim mechanism — load one of the
+units (see [Scheduling units](#scheduling-units-claude-codex-pi)); the legacy trigger
+remains a minimal fallback you can schedule yourself. `--no-automation` skips the trigger
+*and* the scheduling set.
 
 Uninstall:
 
@@ -215,13 +282,15 @@ Uninstall:
 codex mcp remove taskpanel
 codex plugin remove task-panel
 codex plugin marketplace remove task-panel-marketplace
-rm -rf ~/.codex/skills/task-panel ~/.codex/task-panel-claim.sh ~/.codex/bin/taskctl
+rm -rf ~/.codex/skills/task-panel ~/.codex/task-panel-claim.sh ~/.codex/bin/taskctl \
+       ~/.codex/bin/wake-codex.sh \
+       ~/.codex/scheduling ~/.codex/task-panel.env ~/.codex/task-panel
 ```
 
 ### Pi / Agent Skills
 
 ```bash
-# 1. skill
+# 1. skill + scheduling set (units, wake-pi.sh, ~/.agents/task-panel.env)
 bash install.sh --target pi --link --force
 
 # 2. package
@@ -231,11 +300,15 @@ pi install "$PWD/plugins/pi"
 pi list
 ```
 
+Pi has no timer of its own, so step 1 also drops the units under
+`~/.agents/scheduling/` and the `~/.agents/bin/wake-pi.sh` glue; load one of them to
+run the supervisor (see [Scheduling units](#scheduling-units-claude-codex-pi)).
+
 Uninstall:
 
 ```bash
 pi remove "$PWD/plugins/pi"
-rm -rf ~/.agents/skills/task-panel
+rm -rf ~/.agents/skills/task-panel ~/.agents/scheduling ~/.agents/bin/wake-pi.sh ~/.agents/task-panel.env
 ```
 
 ## MCP (optional)

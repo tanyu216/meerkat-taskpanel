@@ -9,6 +9,7 @@ Documentation for Task Panel.
 | [development.md](development.md) | Repository layout, Node requirement, test / verify / build commands, the two build layers (engine vs `web/`) and the offline / dependency policy. |
 | [docker.md](docker.md) | Why verification and the four-host installs run in a container; the image build, the offline `web/` build stage, profiles and troubleshooting. |
 | [migration.md](migration.md) | Taking over the team's markdown cards: the dry run, shadow (read-only) mode, the single-point switch and the rollback. |
+| [scheduling.md](scheduling.md) | The two-layer poll/patrol model, the fire-only cost gate, the atomic-claim dispatch, the host-external supervisor, the three-host trigger differences, and why OpenClaw uses openclaw-team instead. |
 | [web-local-first.md](web-local-first.md) | The board frontend is loopback-only: why a remote browser gets 401 (no token injection) and what implementing it would take. |
 | [`../skills/task-panel/SKILL.md`](../skills/task-panel/SKILL.md) | The agent-facing skill definition. |
 | [`../skills/task-panel/references/cli.md`](../skills/task-panel/references/cli.md) | The `taskctl` command surface (M2, implemented). |
