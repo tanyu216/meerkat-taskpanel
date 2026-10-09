@@ -1,6 +1,6 @@
 {
   "name": "task-panel",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Task management board for AI Agent teams.",
   "author": { "name": "tanyu216" },
   "license": "MIT",

@@ -1,6 +1,6 @@
 {
   "name": "task-panel",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -24,6 +24,7 @@
     "install.sh",
     "README.md",
     "README.zh-CN.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {

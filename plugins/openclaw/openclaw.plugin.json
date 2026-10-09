@@ -1,7 +1,7 @@
 {
   "id": "task-panel",
   "name": "Task Panel",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Task management board for AI Agent teams.",
   "categories": ["developer-tools"],
   "skills": ["./skills"],

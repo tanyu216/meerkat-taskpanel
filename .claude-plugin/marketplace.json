@@ -3,7 +3,7 @@
   "owner": { "name": "tanyu216" },
   "metadata": {
     "description": "Task management board for AI Agent teams.",
-    "version": "0.0.0"
+    "version": "1.0.0"
   },
   "plugins": [
     {
