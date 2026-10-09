@@ -142,6 +142,8 @@ npm run check
 | M2 | `taskctl` command surface aligned with `task-interface v1`; minimal local `taskd` *(landed)* |
 | M3 | `src/mcp`: stdio MCP server — 18 tools, thin proxy to `taskd` *(landed)* |
 | M6 | Full board HTTP API + SSE backend, and the `web` board frontend |
+| **Epic view** | Visual view of epic hierarchy / progress / rollup — see an epic and how the statuses of its child cards aggregate *(planned)* |
+| **Iteration management** | Iteration (sprint) cycle management: group tasks into iterations, with in-iteration progress and capacity *(planned)* |
 
 ## License
 
