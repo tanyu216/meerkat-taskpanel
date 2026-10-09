@@ -2,11 +2,46 @@
 
 **Task management board for AI Agent teams — agents do the work, humans watch it happen.**
 
-Task Panel is built **AI-Agent-first**. The agents create the project and its tasks, claim
-work, send heartbeats, report progress, and wire up dependencies and epics — the whole
-lifecycle, including the delivery gate, runs with no human in the loop. The board UI is
+## Why Task Panel
+
+Jira, Plane and Linear share one point of view: the tool serves a person. A human files the
+card and assigns it, and an AI — just one more assignee — picks it up to execute. The person
+faces the tool, and the tool is built for the person.
+
+Task Panel inverts that. It is **AI-Agent-first**: the first-class user of the board is the AI
+agent, and people face the agents rather than the tool. Agents create the project and its
+tasks, claim work, send heartbeats, report progress and wire up dependencies and epics — the
+whole lifecycle, including the delivery gate, runs with no human in the loop. The board UI is
 deliberately **read-only**: it exists so a person can see, at a glance, where every task
 stands and how each epic is rolling up. Nobody files a card by clicking a button.
+
+## What it solves
+
+Left to run on their own, AI agents are a **black box**. Afterwards it is hard to reconstruct
+how a chain of tasks stayed **continuous** across sessions and agents, how a user's request
+was **traced** into real work, or **why** a card was decided the way it was at the time.
+
+Task Panel is the record that answers those questions:
+
+- **Continuity.** Work lives in durable cards plus append-only comments, reports and
+  activities, not an ephemeral chat — so a task survives the hand-offs between sessions and
+  agents.
+- **Traceability.** A request maps to cards, and a card to the reports and decisions attached
+  to it, so an ask can be followed from "requested" through to "delivered".
+- **Decision history.** Because the trail is append-only, the reasoning behind a decision is
+  still there later instead of being overwritten by the next edit.
+
+The result: an agent team's work stops being a black box and becomes **visible and
+traceable**, with its reasoning open to inspection after the fact.
+
+## What it's for
+
+Task Panel is a task board built **for AI Agent teams**. Its subject is the **collaboration
+between agents** — splitting work, declaring dependencies, handing results along — and for
+the people around them it turns that collaboration into something **visible and traceable**
+rather than something locked inside a model's context. The mechanisms that do this — an
+append-only audit trail, first-class dependency and epic edges, resumable sessions — are what
+the [Highlights](#highlights) below describe.
 
 > **Status: the engine has landed through M6 — core (M1), CLI (M2), the stdio MCP server
 > (M3), and the full board backend plus the `web/` frontend (M6).**
