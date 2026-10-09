@@ -159,16 +159,16 @@ describe("commands/relations", () => {
     await board(({ commands }) => {
       commands.createProject({ id: "other", name: "Other", workspacePath: "/tmp/other", actor: HUMAN });
       const epic = commands.createTask({ projectId: "proj", title: "Epic", kind: "epic", actor: AGENT });
-      const a = commands.createTask({ projectId: "proj", title: "A", actor: AGENT });
-      const b = commands.createTask({ projectId: "proj", title: "B", actor: AGENT });
+      const a = commands.createTask({ projectId: "proj", title: "A", kind: "epic", actor: AGENT });
+      const b = commands.createTask({ projectId: "proj", title: "B", kind: "epic", actor: AGENT });
       const c = commands.createTask({ projectId: "proj", title: "C", actor: AGENT });
       const elsewhere = commands.createTask({ projectId: "other", title: "Elsewhere", actor: AGENT });
 
       commands.addRelation({ type: "parent", source: epic.id, target: a.id, actor: AGENT });
       assert.throws(
-        () => commands.addRelation({ type: "parent", source: b.id, target: a.id, actor: AGENT }),
+        () => commands.addRelation({ type: "parent", source: c.id, target: a.id, actor: AGENT }),
         (err) => err.code === "VALIDATION_FAILED",
-        "b is not an epic",
+        "c is not an epic",
       );
       commands.addRelation({ type: "parent", source: a.id, target: b.id, actor: AGENT, force: true });
       assert.throws(

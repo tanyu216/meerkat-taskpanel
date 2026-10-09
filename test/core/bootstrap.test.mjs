@@ -43,7 +43,7 @@ describe("core/bootstrap — openBoard", () => {
       pointerUrl: undefined,
     });
     try {
-      assert.deepEqual(board.migration.applied.map((m) => m.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009"]);
+      assert.deepEqual(board.migration.applied.map((m) => m.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010"]);
       assert.equal(board.schema.ok, true);
       assert.match(board.version, /^\d+\.\d+\.\d+$/);
       assert.equal(board.dbPath, join(dataDir, "board.sqlite"));
@@ -98,7 +98,7 @@ describe("core/bootstrap — openBoard", () => {
     const second = await openBoard({ dataDir, pointerPath, env: {} });
     try {
       assert.deepEqual(second.migration.applied, []);
-      assert.deepEqual(second.migration.skipped, ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009"]);
+      assert.deepEqual(second.migration.skipped, ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010"]);
       assert.equal(second.token.created, false);
       assert.equal(readFileSync(join(dataDir, "token"), "utf8").trim(), token, "the token survives a restart");
       assert.equal(second.schema.ok, true);

@@ -348,7 +348,7 @@ describe("repositories/relations", () => {
   it("walks ancestors through a chain and reports parents and children", async () => {
     await board(({ repos }) => {
       const epic = makeTask(repos, { id: "epic", kind: "epic" });
-      const mid = makeTask(repos, { id: "mid" });
+      const mid = makeTask(repos, { id: "mid", kind: "epic" });
       const leaf = makeTask(repos, { id: "leaf" });
       repos.relations.insert({ type: "parent", source: epic.id, target: mid.id, now: TS });
       repos.relations.insert({ type: "parent", source: mid.id, target: leaf.id, now: TS });

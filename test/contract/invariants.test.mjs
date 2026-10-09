@@ -56,7 +56,7 @@ function claimWith(db, { taskId, version, actor, at }) {
 function seedRelationalBoard(db) {
   insertProject(db);
   for (const id of ["a", "b", "c", "d", "e"]) {
-    insertTask(db, { id, identifier: `PROJ-${id.toUpperCase()}`, status: "todo" });
+    insertTask(db, { id, identifier: `PROJ-${id.toUpperCase()}`, status: "todo", kind: "epic" });
   }
   insertProject(db, { id: "other" });
   insertTask(db, { id: "z", identifier: "OTHER-Z", project_id: "other", status: "todo" });
@@ -308,7 +308,7 @@ describe("contract/invariants — relations", () => {
     await withBoard(({ db }) => {
       seedRelationalBoard(db);
       for (const id of ["f", "g", "h", "i"]) {
-        insertTask(db, { id, identifier: `PROJ-${id.toUpperCase()}` });
+        insertTask(db, { id, identifier: `PROJ-${id.toUpperCase()}`, kind: id === "i" ? "task" : "epic" });
       }
       // a..h is already 8 nodes deep (a→b→c→d→e→f→g→h).
       const chain = ["b", "c", "d", "e", "f", "g", "h"];
