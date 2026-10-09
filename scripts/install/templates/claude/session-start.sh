@@ -18,7 +18,12 @@ if [ -x "$shim" ] && command -v node >/dev/null 2>&1; then
   "$shim" issue candidates --assignee "$name" 2>&1 || true
 else
   echo "-- 分给我的待领卡 --"
-  echo "(taskctl shim or node not found — run: taskctl issue candidates --assignee $name)"
+  # PATH-independent fallback: the shim lives under the host home and is *not* on
+  # PATH, so a bare `taskctl` here would be a command the user cannot run. Name
+  # the shim by absolute path, and offer the repo CLI for the case where the shim
+  # is missing but node is present.
+  echo "(taskctl shim or node not found — try: $shim issue candidates --assignee $name)"
+  echo "  or: node {{REPO}}/src/cli/index.mjs --agent $name issue candidates --assignee $name"
 fi
 
 echo

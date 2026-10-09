@@ -19,9 +19,14 @@ if [ ! -x "$shim" ]; then
 fi
 
 # One card at a time: skip when I already hold an in_progress card.
+#
+# The match uses the board's own identity rule (`norm`: NFKC → strip all
+# whitespace → case-fold), the same one the CLI applies to assignees. An exact
+# string compare would treat `Alice` / `A l i c e` as "not me" and make the
+# trigger re-attempt a claim it already holds.
 held="$("$shim" --json issue list --status in_progress 2>/dev/null || true)"
 held_ref="$(printf '%s' "$held" | TP_NAME="$name" node -e '
-  let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let ref="";try{const t=JSON.parse(s).data.tasks||[];const mine=t.find(x=>x.assignee&&x.assignee.display_name===process.env.TP_NAME);ref=mine?mine.identifier:"";}catch{}process.stdout.write(ref);});
+  let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let ref="";try{const key=v=>String(v==null?"":v).normalize("NFKC").replace(/\s+/g,"").toLowerCase();const me=key(process.env.TP_NAME);const t=JSON.parse(s).data.tasks||[];const mine=t.find(x=>x.assignee&&key(x.assignee.display_name)===me);ref=mine?mine.identifier:"";}catch{}process.stdout.write(ref);});
 ')"
 if [ -n "$held_ref" ]; then
   echo "task-panel-claim: already holding $held_ref — nothing to claim"

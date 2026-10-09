@@ -11,7 +11,10 @@ straight:
    deploys the rest of the host's setup too, not just the skill: MCP registration, the
    host config (`~/.claude/settings.json` / `~/.codex/AGENTS.md`), slash commands (Claude)
    or a claim trigger (Codex), and a `taskctl` shim that pins the agent identity. Writes
-   are **merge-style and idempotent** — existing keys and hooks are never clobbered.
+   are **merge-style and idempotent**: a repeat install **exits 0**, leaves every managed
+   file and config key at its existing value, and prints a
+   `left unchanged — use --force to overwrite` notice; `--force` is the *only* way to
+   overwrite. See [Idempotence](#idempotence-re-running-and-force).
 3. **The plugin/bundle** — the per-host manifest under `plugins/<host>/` that lets the
    host's own plugin system discover and enable the skill. This step needs the host CLI,
    so `install.sh` does **not** run it; it prints the command and you run it once.
@@ -67,7 +70,7 @@ install.sh [--target claude|openclaw|codex|pi|all] [--prefix <home>]
 | `--agent-name <name>` | The agent's identity on the board, written into the claude/codex bundle (default `$USER`). Must equal the board assignee for the agent to claim cards. |
 | `--no-automation` | Skip the Codex claim trigger script (Claude/OpenClaw/Pi are unaffected). |
 | `--link` | Symlink the skill instead of copying it — edits to the repo take effect immediately. Recommended for a checkout. |
-| `--force` | Overwrite existing files *and* managed config keys. Without it, an existing destination is left untouched (merge, never clobber), so a re-run is safe and idempotent. |
+| `--force` | The **only** way to overwrite. Without it, an existing destination is left untouched (merge, never clobber) and the installer prints a `left unchanged — use --force to overwrite` notice, so a re-run is safe, idempotent, and exits 0. With it, managed files and managed config keys are re-rendered from the current flags. |
 | `--dry-run` | Print every path that would be written/changed and change nothing. |
 | `--skip-node-check` | Skip the Node version check (see below). |
 
@@ -81,6 +84,29 @@ is guarded too.
 `install.sh` is a thin dispatcher: it parses the flags once, then runs
 `scripts/install/<host>.sh` for each host and prints a per-host summary. It exits
 non-zero if any host failed, and each failure names the destination and the fix.
+
+### Idempotence: re-running and `--force`
+
+Installing is **merge-style and idempotent**, so a re-run is never destructive and
+never an error:
+
+- **Re-running exits 0** even when nothing changed — an existing install is the desired
+  end state, not a conflict.
+- **Managed files and managed config keys keep their existing value by default.** The
+  skill directory, the emitted scripts (hook / trigger / shim / slash commands), the
+  `AGENTS.md` snippet, `env.TASKCTL_AGENT`, and the `SessionStart` hook are all left
+  exactly as they are, and the installer reports each as unchanged — for an emitted file,
+  `left unchanged — use --force to overwrite`. This means changing a flag such as
+  `--agent-name` on its own does **not** take effect on an existing install — it still
+  exits 0, with only the unchanged notices on stdout.
+- **`--force` is the only way to overwrite.** With it, the managed files and managed
+  config keys are re-rendered from the current flags (unrelated keys and hooks are still
+  preserved). Deleting the destination first also gives a clean slate.
+
+> One cosmetic exception: re-rendering the Codex `AGENTS.md` snippet with `--force` adds
+> exactly one trailing blank line (the sha256 changes; the rendered block and any
+> pre-existing content do not). A plain re-run without `--force` is byte-identical, and a
+> second `--force` is stable.
 
 ### Examples
 
@@ -307,10 +333,12 @@ Nothing is written outside those directories, and nothing is sent over the netwo
 - **`no 'node' on PATH` / `Node vNN.x is too old`** — Task Panel needs **Node >= 22**
   (the engine uses the built-in `node:sqlite` module). Install or upgrade Node and re-run;
   `--skip-node-check` bypasses the check if you know what you are doing.
-- **an install is already present** — that is the desired end state, not an error: a
-  re-run leaves existing files and config keys untouched (merge, never clobber) and exits
-  0. Re-run with `--force` to overwrite the managed files/keys, or delete the destination
-  first if you want a clean slate.
+- **`… left unchanged — use --force to overwrite` (or `already installed … unchanged`)** —
+  that is the desired end state, not an error: a re-run leaves existing files and config
+  keys untouched (merge, never clobber) and exits **0**. If you *meant* to change something
+  (e.g. a new `--agent-name`), re-run with `--force` to overwrite the managed files/keys,
+  or delete the destination first for a clean slate. See
+  [Idempotence](#idempotence-re-running-and-force).
 - **`skill source not found`** — run `install.sh` from this checkout (it resolves
   `skills/task-panel/` relative to itself); a `dist/` bundle must be unpacked first.
 - **`plugins/*/skills` out of date** — those copies are generated. Run

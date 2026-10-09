@@ -126,7 +126,9 @@ bash install.sh --target claude|openclaw|codex|pi|all
 默认 target 为 `all`。分发器转发到 `scripts/install/<host>.sh`，把 skill 安装到各宿主的
 skill 目录 —— 对 **Claude Code** 与 **Codex** 还会部署宿主 bundle 的其余部分：MCP 注册、
 宿主配置（`~/.claude/settings.json` / `~/.codex/AGENTS.md`）、slash 命令（Claude）或认领
-触发脚本（Codex），以及固定身份用的 `taskctl` 包装脚本。所有 bundle 写入均为**合并式且幂等**。
+触发脚本（Codex），以及固定身份用的 `taskctl` 包装脚本。所有 bundle 写入均为**合并式且
+幂等**：重复安装**退出码为 0**，受管文件与配置键一律保留旧值，并打印
+`left unchanged — use --force to overwrite` 提示 —— 唯有 `--force` 才会覆盖。
 `Bundle` 列是该宿主自身插件系统消费的清单文件 —— 注册它需要对应宿主的 CLI，因此
 `install.sh` 只打印命令，不代为执行；每个宿主的具体命令见
 [`docs/install.md`](docs/install.md#per-host-steps)。
@@ -143,9 +145,10 @@ OpenClaw 也可消费 Claude 格式的 bundle（`plugins/claude`），这是受�
 [`docs/install.md`](docs/install.md#openclaw)。
 
 常用参数：`--prefix <home>`（覆盖目标 home）、`--agent-name <名>`（该 Agent 在看板上的身份，
-默认 `$USER`，须与其 assignee 一致）、`--no-automation`（跳过 Codex 认领触发脚本）、
-`--link`（软链而非拷贝）、`--force`（覆盖既有文件与受管键）、`--dry-run`（预览每次写入、
-不做任何改动）、`--skip-node-check`（跳过 Node >= 22 检查）。
+默认 `$USER`，须与其 assignee 一致；对既有安装改名需配 `--force` 才生效）、`--no-automation`
+（跳过 Codex 认领触发脚本）、`--link`（软链而非拷贝）、`--force`（**唯一**的覆盖手段 ——
+不加时既有值一律保留并提示 `left unchanged — use --force to overwrite`）、`--dry-run`
+（预览每次写入、不做任何改动）、`--skip-node-check`（跳过 Node >= 22 检查）。
 
 ## 实践指南
 

@@ -165,10 +165,12 @@ installs the skill into each host's skill directory — and, for **Claude Code**
 **Codex**, the rest of the host bundle: MCP registration, the host config
 (`~/.claude/settings.json` / `~/.codex/AGENTS.md`), slash commands (Claude) or a claim
 trigger (Codex), and a `taskctl` shim that pins the agent identity. All bundle writes are
-merge-style and idempotent. The `Bundle` column is the per-host manifest that the host's
-own plugin system consumes — registering it needs that host's CLI, so `install.sh` only
-prints the command; see [`docs/install.md`](docs/install.md#per-host-steps) for the exact
-one per host.
+merge-style and idempotent: a repeat install **exits 0**, keeps every managed file and
+config key at its existing value, and prints `left unchanged — use --force to overwrite`;
+`--force` is the only way to overwrite. The `Bundle` column is the per-host manifest that
+the host's own plugin system consumes — registering it needs that host's CLI, so
+`install.sh` only prints the command; see
+[`docs/install.md`](docs/install.md#per-host-steps) for the exact one per host.
 
 | Host | `--target` | Skill directory | Bundle |
 |---|---|---|---|
@@ -182,10 +184,12 @@ skill-only route; `plugins/openclaw/openclaw.plugin.json` is a *native* manifest
 [`docs/install.md`](docs/install.md#openclaw) for the distinction.
 
 Useful flags: `--prefix <home>` (override the target home), `--agent-name <name>` (the
-agent's board identity, default `$USER` — must equal its assignee), `--no-automation`
-(skip the Codex claim trigger), `--link` (symlink instead of copy), `--force` (overwrite
-existing files and managed keys), `--dry-run` (preview every write and change nothing),
-`--skip-node-check` (bypass the Node >= 22 check).
+agent's board identity, default `$USER` — must equal its assignee; re-running with a new
+name needs `--force` to take effect), `--no-automation` (skip the Codex claim trigger),
+`--link` (symlink instead of copy), `--force` (**the only** way to overwrite existing files
+and managed keys — without it an existing value is kept and reported as
+`left unchanged — use --force to overwrite`), `--dry-run` (preview every write and change
+nothing), `--skip-node-check` (bypass the Node >= 22 check).
 
 ## Practice guide
 
