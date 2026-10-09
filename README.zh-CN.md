@@ -29,7 +29,7 @@ task-panel/
 │   ├── mcp/                      #   MCP server（stdio）
 │   ├── server/                   #   本地 HTTP API + SSE
 │   └── shared/                   #   共享 DTO / 常量
-├── web/                          # 看板前端（React + Vite）→ dist/web
+├── web/                          # 看板前端（Vue 3 + Vite）→ web/dist（托管根）
 ├── skills/task-panel/        # skill —— 单一事实源
 ├── plugins/                      # 每宿主一个分发单元（claude/codex/openclaw/pi）
 ├── design/                       # 产品设计物（PRD / DESIGN / BLOCKS / prototype / assets）
@@ -60,7 +60,7 @@ skill 目录：
 
 ## 开发
 
-需要 **Node >= 22**（`node:sqlite` 时代）。无需网络、无依赖 —— 全部只用 Node 内置模块。
+需要 **Node >= 22**（`node:sqlite` 时代）。引擎为**运行时**零依赖、无需网络 —— `src/` 下全部只用 Node 内置模块。唯一例外是 `web/`（Vue 3 + Vite + Tailwind + daisyUI），其**构建期** devDependencies 由镜像从随仓库提交的 `web/.vendor/npm-cache` 离线安装，产物不会进入运行时。
 
 ```bash
 node --test                          # 运行冒烟 / 契约测试

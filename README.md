@@ -30,7 +30,7 @@ task-panel/
 │   ├── mcp/                      #   MCP server (stdio)
 │   ├── server/                   #   local HTTP API + SSE
 │   └── shared/                   #   shared DTOs / constants
-├── web/                          # board frontend (React + Vite) → dist/web
+├── web/                          # board frontend (Vue 3 + Vite) → web/dist (hosted root)
 ├── skills/task-panel/        # skill — single source of truth
 ├── plugins/                      # one dispatch unit per host (claude/codex/openclaw/pi)
 ├── design/                       # product design artifacts (PRD / DESIGN / BLOCKS / prototype / assets)
@@ -62,8 +62,11 @@ change nothing).
 
 ## Development
 
-Requires **Node >= 22** (the `node:sqlite` era). No network access and no dependencies are
-needed — everything here uses Node builtins only.
+Requires **Node >= 22** (the `node:sqlite` era). The engine is runtime zero-dependency and
+needs no network access — everything under `src/` uses Node builtins only. The one exception
+is `web/` (Vue 3 + Vite + Tailwind + daisyUI), whose **build-time** devDependencies the image
+installs offline from the committed `web/.vendor/npm-cache`; nothing from it reaches the
+runtime.
 
 ```bash
 node --test                          # run the smoke / contract test suite

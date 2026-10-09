@@ -2,9 +2,10 @@
 /**
  * Build the distribution tree under `dist/`.
  *
- * M0 scaffold: there is no frontend or bundling step yet, so this only
+ * `dist/` is the npm release tree. The hosted board root is `web/dist`, produced by the
+ * frontend build — *not* `dist/web`. This only
  *   1. recreates `dist/` from scratch,
- *   2. drops a placeholder at `dist/web/.gitkeep`, and
+ *   2. drops a release-tree placeholder at `dist/web/.gitkeep` (not the board asset dir), and
  *   3. syncs the skill into `dist/plugins/<host>/`.
  *
  * No network access. Node builtins only.
@@ -29,7 +30,7 @@ async function main() {
     join(dist, "web", ".gitkeep"),
     "",
   );
-  console.log("  dist/web/.gitkeep");
+  console.log("  dist/web/.gitkeep (release-tree placeholder; hosted board root is web/dist)");
 
   const report = await syncSkills({ root, baseDir: dist });
   for (const r of report.hosts) {
