@@ -9,10 +9,16 @@
 # Usage:
 #   install.sh [--target claude|openclaw|codex|pi|all] [--prefix <home>]
 #              [--agent-name <name>] [--no-automation]
+#              [--claim-unassigned=yes|no] [--assignee-only]
 #              [--link] [--force] [--dry-run] [--skip-node-check] [-h|--help]
 #
 # `--target` also accepts a comma-separated list (e.g. `--target claude,codex`).
 # Default target is "all".
+#
+# It also asks (when stdin is a TTY and no flag was given) whether the supervisor
+# may claim **unassigned** cards, and persists the answer as
+# `<home>/<host>/task-panel.env` for the bundle hosts. Non-interactive runs
+# default to yes; `--claim-unassigned=no` / `--assignee-only` opt out.
 #
 # Before dispatching, it checks the runtime: Node >= 22 is required (the engine
 # uses the built-in `node:sqlite` module), and a missing or older `node` is a hard
@@ -35,6 +41,7 @@ TARGET=""
 PREFIX_HOME=""
 AGENT_NAME=""
 NO_AUTOMATION=""
+CLAIM_UNASSIGNED_FLAG=""
 LINK=""
 FORCE=""
 DRY_RUN=""
@@ -51,7 +58,11 @@ Options:
                     A comma-separated list is also accepted (claude,codex).
   --prefix <home>   Install relative to <home> instead of $HOME
   --agent-name <n>  Agent identity written into the host bundle (default: $USER)
-  --no-automation   Skip the Codex claim trigger script
+  --no-automation   Skip the Codex claim trigger and scheduling units
+  --claim-unassigned=yes|no
+                    May the supervisor claim unassigned cards? Persisted to the
+                    host config; also asked interactively on a TTY (default yes).
+  --assignee-only   Alias for --claim-unassigned=no (claim only my own cards)
   --link            Symlink the skill instead of copying it
   --force           Overwrite an existing installation
   --dry-run         Print the destination paths and change nothing
@@ -68,10 +79,14 @@ Destinations:
   codex      <home>/.codex/skills/task-panel
   pi         <home>/.agents/skills/task-panel
 
+The claim policy is written to <home>/<host>/task-panel.env for the hosts that
+build a supervisor (claude, codex, pi); OpenClaw installs openclaw-team instead.
+
 Environment (set for each host installer):
   TASKPANEL_TARGET_HOME  overrides $HOME
   TASKPANEL_AGENT_NAME   agent identity (default: $USER)
-  TASKPANEL_NO_AUTOMATION "1" to skip the Codex claim trigger
+  TASKPANEL_NO_AUTOMATION "1" to skip the Codex claim trigger + scheduling
+  TASKPANEL_CLAIM_UNASSIGNED  "yes"/"no" default for the claim policy
   TASKPANEL_LINK         symlink instead of copy
   TASKPANEL_FORCE        overwrite an existing destination
   TASKPANEL_DRY_RUN      print only, change nothing
@@ -116,6 +131,19 @@ while [ "$#" -gt 0 ]; do
       ;;
     --no-automation)
       NO_AUTOMATION="1"
+      shift
+      ;;
+    --claim-unassigned)
+      [ "$#" -ge 2 ] || die "--claim-unassigned requires a value (yes|no)"
+      CLAIM_UNASSIGNED_FLAG="$2"
+      shift 2
+      ;;
+    --claim-unassigned=*)
+      CLAIM_UNASSIGNED_FLAG="${1#*=}"
+      shift
+      ;;
+    --assignee-only)
+      CLAIM_UNASSIGNED_FLAG="no"
       shift
       ;;
     --link)
@@ -200,6 +228,20 @@ IFS="$OLD_IFS"
 TARGET_HOME="${PREFIX_HOME:-${TASKPANEL_TARGET_HOME:-$HOME}}"
 DRY_RUN="${DRY_RUN:-${TASKPANEL_DRY_RUN:-}}"
 
+# Resolve the "allow claiming unassigned tasks?" policy (per-host config default).
+# An explicit flag wins; else the environment; else ask on a TTY (default yes) —
+# and a dry run never blocks on a prompt. A bad value is a hard error, before any
+# host is dispatched, so a misspelt policy installs nothing.
+CLAIM_FLAG="${CLAIM_UNASSIGNED_FLAG:-${TASKPANEL_CLAIM_UNASSIGNED:-}}"
+TTY=""
+if [ -z "$DRY_RUN" ] && [ -t 0 ]; then
+  TTY="1"
+fi
+if ! CLAIM_UNASSIGNED="$(claim_unassigned_value "$CLAIM_FLAG" "$TTY")"; then
+  exit 2
+fi
+echo "install.sh: claim unassigned tasks: $CLAIM_UNASSIGNED"
+
 if [ -n "$DRY_RUN" ]; then
   echo "install.sh: dry run — no files will be changed"
 fi
@@ -221,6 +263,7 @@ FAIL $host — installer not found"
   if TASKPANEL_TARGET_HOME="$TARGET_HOME" \
       TASKPANEL_AGENT_NAME="$AGENT_NAME" \
       TASKPANEL_NO_AUTOMATION="$NO_AUTOMATION" \
+      TASKPANEL_CLAIM_UNASSIGNED="$CLAIM_UNASSIGNED" \
       TASKPANEL_LINK="$LINK" \
       TASKPANEL_FORCE="$FORCE" \
       TASKPANEL_DRY_RUN="$DRY_RUN" \

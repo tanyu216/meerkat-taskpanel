@@ -102,19 +102,99 @@ agent_name() {
   printf '%s\n' "$name"
 }
 
-# export_tp_env <host_dir> — export the TP_* variables the template renderer reads.
+# export_tp_env <host_dir> <label> — export the TP_* variables the template renderer reads.
 #
 # {{AGENT}} <- TP_AGENT, {{REPO}} <- TP_REPO, {{SHIM}} <- TP_SHIM, and so on. The
-# destinations are absolute under the target home so the hook / trigger / shim work
-# regardless of the caller's working directory.
+# destinations are absolute under the target home so the hook / trigger / shim / scheduling
+# units work regardless of the caller's working directory.
 export_tp_env() {
   host_dir="$1"
+  label="$2"
   TP_AGENT="$(agent_name)"
   TP_REPO="$(repo_root)"
   TP_SHIM="$(target_home)/$host_dir/bin/taskctl"
   TP_HOOK="$(target_home)/$host_dir/hooks/task-panel-session-start.sh"
   TP_TRIGGER="$(target_home)/$host_dir/task-panel-claim.sh"
+  # The host-external supervisor: the scheduling units run it, and it reads the config
+  # file written below. Log and state are fixed per host so a user always knows where
+  # they land (documented in docs/scheduling.md).
+  TP_HOST="$label"
+  TP_SUPERVISOR="$(repo_root)/scripts/supervisor.mjs"
+  TP_LOG="$(target_home)/$host_dir/task-panel/supervisor.log"
+  TP_STATE="$(target_home)/$host_dir/task-panel/supervisor.state.json"
+  TP_ENV="$(target_home)/$host_dir/task-panel.env"
+  TP_SCHED="$(target_home)/$host_dir/scheduling"
+  TP_WAKE="$(target_home)/$host_dir/bin/wake-$label.sh"
+  TP_CLAIM_UNASSIGNED="${TASKPANEL_CLAIM_UNASSIGNED:-yes}"
   export TP_AGENT TP_REPO TP_SHIM TP_HOOK TP_TRIGGER
+  export TP_HOST TP_SUPERVISOR TP_LOG TP_STATE TP_ENV TP_SCHED TP_WAKE TP_CLAIM_UNASSIGNED
+}
+
+# claim_unassigned_value <flag> <interactive> — decide the "allow claiming unassigned
+# tasks?" policy. Prints `yes` or `no`:
+#
+#   * an explicit <flag> (yes/no) wins, verbatim;
+#   * otherwise, when <interactive> is "1" (stdin is a TTY), ask the question —
+#     default yes on a blank answer;
+#   * otherwise default yes.
+#
+# An unrecognised <flag> is a hard error, not a silent default: a misspelt policy must
+# never quietly install the opposite of what was asked for.
+claim_unassigned_value() {
+  flag="$1"
+  interactive="$2"
+  case "$flag" in
+    yes | no)
+      printf '%s\n' "$flag"
+      return 0
+      ;;
+    "")
+      ;;
+    *)
+      echo "--claim-unassigned must be yes or no (got '$flag')." >&2
+      return 1
+      ;;
+  esac
+
+  if [ "$interactive" = "1" ]; then
+    printf 'Allow claiming unassigned tasks? [Y/n] ' >&2
+    answer=""
+    read -r answer || answer=""
+    case "$answer" in
+      "" | [Yy]*) printf 'yes\n' ;;
+      *) printf 'no\n' ;;
+    esac
+    return 0
+  fi
+
+  printf 'yes\n'
+}
+
+# install_scheduling — drop the poll/patrol units and the per-host wake glue, then
+# print the exact command that loads them. The installer never runs `launchctl` /
+# `systemctl` / `crontab` itself: enabling a daemon is the user's call, and a test or
+# `--dry-run` must have no side effects. Requires export_tp_env first.
+install_scheduling() {
+  emit_file "scheduling/launchd/com.taskpanel.poll.plist" "$TP_SCHED/launchd/com.taskpanel.poll.plist"
+  emit_file "scheduling/launchd/com.taskpanel.patrol.plist" "$TP_SCHED/launchd/com.taskpanel.patrol.plist"
+  emit_file "scheduling/systemd/taskpanel-poll.service" "$TP_SCHED/systemd/taskpanel-poll.service"
+  emit_file "scheduling/systemd/taskpanel-poll.timer" "$TP_SCHED/systemd/taskpanel-poll.timer"
+  emit_file "scheduling/systemd/taskpanel-patrol.service" "$TP_SCHED/systemd/taskpanel-patrol.service"
+  emit_file "scheduling/systemd/taskpanel-patrol.timer" "$TP_SCHED/systemd/taskpanel-patrol.timer"
+  emit_file "scheduling/cron/taskpanel.cron" "$TP_SCHED/cron/taskpanel.cron"
+  emit_file "$TP_HOST/wake-$TP_HOST.sh" "$TP_WAKE" --exec
+
+  echo "$TP_HOST: scheduling units installed under $TP_SCHED"
+  echo "$TP_HOST: to start the supervisor, load one of these (nothing is loaded for you):"
+  echo "  launchd:  launchctl load $TP_SCHED/launchd/com.taskpanel.poll.plist   # and .patrol.plist"
+  echo "  systemd:  mkdir -p ~/.config/systemd/user && cp $TP_SCHED/systemd/* ~/.config/systemd/user/ && systemctl --user enable --now taskpanel-poll.timer taskpanel-patrol.timer"
+  echo "  cron:     crontab $TP_SCHED/cron/taskpanel.cron"
+}
+
+# write_host_config — persist the claim policy the supervisor reads by default.
+# Requires export_tp_env first (TP_ENV, TP_CLAIM_UNASSIGNED).
+write_host_config() {
+  emit_file "host/task-panel.env" "$TP_ENV"
 }
 
 # ---------------------------------------------------------------------------
