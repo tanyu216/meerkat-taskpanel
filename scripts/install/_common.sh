@@ -23,6 +23,30 @@
 
 set -eu
 
+# is_int64 <value> — 0 when <value> is a non-negative integer that fits in a
+# signed 64-bit integer (the width bash's `[ … -lt … ]` test arithmetic uses),
+# 1 otherwise. Leading zeros are accepted ("007" is 7, "000" is 0). Both
+# TASKPANEL_MIN_NODE and the `node -v` major are checked through here so the
+# `-lt` comparison below can never overflow — an overflowed comparison errors
+# inside the `if`, reads as "false", and lets a too-old Node through.
+is_int64() {
+  value="$1"
+  case "$value" in
+    "" | *[!0-9]*) return 1 ;;
+  esac
+  case "$value" in
+    *[1-9]*) value="${value#"${value%%[!0]*}"}" ;;   # strip leading zeros
+    *) return 0 ;;                                     # all zeros -> 0, in range
+  esac
+  len="${#value}"
+  [ "$len" -lt 19 ] && return 0
+  [ "$len" -gt 19 ] && return 1
+  # Exactly 19 digits: at most INT64_MAX (9223372036854775807). Both operands
+  # are 19 characters of digits, so lexical order equals numeric order.
+  [ "$value" \> "9223372036854775807" ] && return 1
+  return 0
+}
+
 # require_node — refuse to install onto a runtime the engine cannot use.
 #
 # The engine stores to SQLite through the built-in `node:sqlite` module, which
@@ -36,18 +60,22 @@ set -eu
 # Returns 1 (0 when node is present and new enough, or the check is skipped).
 require_node() {
   [ "${TASKPANEL_SKIP_NODE_CHECK:-}" = "1" ] && return 0
+  # D-R1: `:-` treats an *empty* TASKPANEL_MIN_NODE exactly like an unset one —
+  # both fall back to the default 22 (shell convention; an empty env var is a
+  # normal way to say "default"). Use `${TASKPANEL_MIN_NODE-22}` plus a separate
+  # empty check if a set-but-empty value ever needs distinct handling.
   min="${TASKPANEL_MIN_NODE:-22}"
 
-  # D1a: the floor must be a non-negative integer. A bad value here would make
-  # `[ "$major" -lt "$min" ]` below fail inside the `if`, which takes the false
-  # branch and lets a too-old Node through — a silent fail-open. Validate it up
-  # front so a misspelt env is a hard failure, never a pass.
-  case "$min" in
-    "" | *[!0-9]*)
-      echo "TASKPANEL_MIN_NODE must be a non-negative integer (got '${min:-<empty>}')." >&2
-      return 1
-      ;;
-  esac
+  # D1a: the floor must be a non-negative integer that fits the comparison
+  # width (64-bit). A bad value here — non-numeric, empty, or overflowing —
+  # would make `[ "$major" -lt "$min" ]` below error inside the `if`, which
+  # takes the false branch and lets a too-old Node through: a silent fail-open.
+  # Validate it up front so a misspelt or overflowing env is a hard failure,
+  # never a pass.
+  if ! is_int64 "$min"; then
+    echo "TASKPANEL_MIN_NODE must be a non-negative integer up to 9223372036854775807 (got '${min:-<empty>}')." >&2
+    return 1
+  fi
 
   if ! command -v node >/dev/null 2>&1; then
     echo "node: no 'node' on PATH." >&2
@@ -64,13 +92,14 @@ require_node() {
   version="${version%"${version##*[![:space:]]}"}"   # strip trailing whitespace
   major="${version#v}"   # v22.11.0 -> 22.11.0
   major="${major%%.*}"   # 22.11.0  -> 22
-  case "$major" in
-    "" | *[!0-9]*)
-      echo "node: could not read the version ('node -v' printed '${version:-<empty>}')." >&2
-      echo "Task Panel needs Node >= $min." >&2
-      return 1
-      ;;
-  esac
+  # D1a (second face): the parsed major must itself be a readable, in-range
+  # integer. A huge/odd `node -v` (e.g. a shim printing `v999…`) would otherwise
+  # overflow the comparison and fail open exactly like a bad floor would.
+  if ! is_int64 "$major"; then
+    echo "node: could not read the version ('node -v' printed '${version:-<empty>}')." >&2
+    echo "Task Panel needs Node >= $min." >&2
+    return 1
+  fi
 
   if [ "$major" -lt "$min" ]; then
     echo "node: $version is too old — Task Panel needs Node >= $min." >&2

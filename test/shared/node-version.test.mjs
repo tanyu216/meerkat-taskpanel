@@ -65,10 +65,16 @@ describe("isSupportedNode — the runtime floor", () => {
 });
 
 describe("unsupportedNodeMessage — the one message every entry prints", () => {
-  it("names the bin, the requirement and the found version", () => {
-    const message = unsupportedNodeMessage("21.9.9", { bin: "taskctl" });
-    assert.match(message, /taskctl: Node 22 or newer is required/);
-    assert.match(message, /found 21\.9\.9/);
+  it("prints the complete four-line message — bin, requirement, found version, fix", () => {
+    assert.equal(
+      unsupportedNodeMessage("21.9.9", { bin: "taskctl" }),
+      [
+        "taskctl: Node 22 or newer is required — found 21.9.9.",
+        "The engine stores to SQLite through the built-in node:sqlite module (Node 22+);",
+        "on an older runtime it would fail later, mid-command, rather than here.",
+        "Install or upgrade Node: https://nodejs.org/  (or with nvm: `nvm install 22`).",
+      ].join("\n"),
+    );
   });
 
   it("shows 'no version' for an empty version", () => {
