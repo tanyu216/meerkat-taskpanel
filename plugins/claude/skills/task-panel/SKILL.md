@@ -1,6 +1,6 @@
 ---
 name: task-panel
-description: Coordinate work across an AI Agent team using a shared local task board. Use when an agent or a human needs to create and track tasks, move them through a status workflow, assign owners, comment on a decision, link parent/child and blocking relations, record which agent session is working on what, deliver a task with a report, or export the board as markdown. Runs the local `taskctl` CLI; no network required.
+description: Coordinate work across an AI Agent team using a shared local task board. Use when an agent or a human needs to create and track tasks, move them through a status workflow, assign owners, comment on a decision, link parent/child and blocking relations, record which agent session is working on what, deliver a task with a report, write a periodic (daily / weekly / monthly) report with statistics over completed work, or export the board as markdown. Runs the local `taskctl` CLI; no network required.
 ---
 
 # Task Panel
@@ -50,8 +50,13 @@ taskctl --help
   lines, then `taskctl issue deliver <id> --report-file -`. **The board will not let a
   task into `in_review` without a report** for the current round: the refusal prints the
   exact command that fixes it.
+- **Reporting on a period** — `node scripts/report.mjs --period daily|weekly|monthly`
+  builds a report (and its statistics) from the cards completed in the window, using the
+  templates under `references/templates/`. The counting rules live in
+  [`references/reports.md`](references/reports.md).
 
 ## Reference
 
 See [`references/cli.md`](references/cli.md) for the command surface, the delivery gate,
-the report template and the `--json` contract.
+the report template and the `--json` contract, and
+[`references/reports.md`](references/reports.md) for periodic reports and statistics.
