@@ -27,13 +27,13 @@ import { createServer } from "node:http";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, extname, join, normalize, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { BROWSER_LAYER_RULES } from "../../test/web/blocks.contract.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB = resolve(HERE, "..");
-const DIST = resolve(WEB, "dist");
+export const DIST = resolve(WEB, "dist");
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -66,7 +66,7 @@ function fixture(projectId, status, overrides = {}) {
   };
 }
 
-function fixtureApi() {
+export function fixtureApi() {
   const mk = (id, name) => ({
     id,
     name,
@@ -102,7 +102,7 @@ function fixtureApi() {
   return { projects, orderDebug, tasks, entries, labels };
 }
 
-function startServer() {
+export function startServer() {
   const data = fixtureApi();
   const server = createServer((req, res) => {
     const url = new URL(req.url, "http://127.0.0.1");
@@ -146,7 +146,7 @@ function startServer() {
 /* ----------------------------------------------------------- playwright */
 
 /** Resolve an already-installed Playwright, or null. Never installs anything. */
-function resolvePlaywright() {
+export function resolvePlaywright() {
   const roots = [process.env.PLAYWRIGHT_ROOT, join(WEB, "node_modules"), process.cwd()].filter(Boolean);
   // Glob the nvm + standard global roots so the common host layouts are covered.
   for (const base of ["/usr/local/lib/node_modules", "/opt/homebrew/lib/node_modules"]) roots.push(base);
@@ -183,7 +183,7 @@ function resolvePlaywright() {
  * the attribute at all — the contract's own data requires it (a human card's
  * hidden agent badge, a human roster option carry no `data-agent-platform`).
  */
-function evaluateRules(rules) {
+export function evaluateRules(rules) {
   const doc = document;
   const withinAll = (within) => (within ? Array.from(doc.querySelectorAll(within)) : [doc]);
   const out = [];
@@ -263,7 +263,7 @@ function evaluateRules(rules) {
 
 /* ------------------------------------------------------------------- main */
 
-async function run() {
+export async function run() {
   if (!existsSync(join(DIST, "index.html"))) throw Object.assign(new Error("web/dist is not built — run `npm -w web run build`"), { code: "SKIP" });
   const playwright = resolvePlaywright();
   if (!playwright) throw Object.assign(new Error("Playwright is not installed on this host"), { code: "SKIP" });
@@ -411,7 +411,13 @@ async function run() {
   }
 }
 
-run().then(
+/* The harness doubles as a module: `web/scripts/shot-compare.mjs` imports the
+   fixture server, the Playwright resolver and the in-page rule evaluator from
+   here rather than growing a second copy of each. Only run the smoke when this
+   file *is* the process entry point. */
+const isEntryPoint = process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
+
+if (isEntryPoint) run().then(
   (report) => {
     if (process.argv.includes("--json")) {
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
