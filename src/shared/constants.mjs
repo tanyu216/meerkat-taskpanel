@@ -13,7 +13,7 @@
 export const CLI_NAME = "taskctl";
 export const SKILL_NAME = "task-panel";
 export const PACKAGE_NAME = "task-panel";
-export const VERSION = "0.0.0";
+export const VERSION = "1.0.0";
 
 // ---------------------------------------------------------------------------
 // Data directory & files (ARCHITECTURE §7.1, plan §2 F8)

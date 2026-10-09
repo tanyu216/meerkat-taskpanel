@@ -140,7 +140,7 @@ docker compose -f docker/docker-compose.yml down -v
 `/health` answers:
 
 ```json
-{"status":"ok","stage":"scaffold","version":"0.0.0","uptimeMs":42}
+{"status":"ok","stage":"scaffold","version":"1.0.0","uptimeMs":42}
 ```
 
 Anything else returns `404 {"error":"not_found"}`.
