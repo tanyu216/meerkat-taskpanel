@@ -100,19 +100,25 @@ describe("cli/token — the three-step ladder", () => {
 });
 
 describe("cli/actor", () => {
+  // The identity (`id`) and the attribution (platform/session) are separate
+  // concerns (T-20261009-230500): the flags/env that say *which conversation* a
+  // write came from are not a name, so they never become the id. What turns the
+  // actor into an agent — the platform/session flags — is unchanged.
   it("is a human unless the caller names a platform or a session", () => {
     assert.deepEqual(resolveActor({ flags: {}, env: { USER: "tanyu" } }).actor, {
       kind: "human",
       id: "tanyu",
     });
     assert.deepEqual(resolveActor({ flags: {}, env: {} }).actor, { kind: "human", id: "local" });
+    // A platform or a session makes it an agent — but it is attribution, so it
+    // does not become the id.
     assert.deepEqual(
       resolveActor({ flags: { agentPlatform: "claude" }, env: {} }).actor,
-      { kind: "agent", id: "claude" },
+      { kind: "agent", id: "local" },
     );
     assert.deepEqual(
       resolveActor({ flags: { sessionId: "s-1" }, env: {} }).actor,
-      { kind: "agent", id: "s-1" },
+      { kind: "agent", id: "local" },
     );
   });
 
@@ -121,14 +127,51 @@ describe("cli/actor", () => {
     assert.deepEqual(resolved.actor, { kind: "human", id: "Terry" });
   });
 
-  it("falls back through TASKCTL_AGENT and records the platform/session it saw", () => {
+  it("prefers --agent over --session-id for the id, keeping the session as attribution", () => {
+    const resolved = resolveActor({ flags: { agent: "x", sessionId: "y" }, env: { USER: "tanyu" } });
+    assert.equal(resolved.actor.id, "x", "the session id must not shadow --agent");
+    assert.notEqual(resolved.actor.id, "y");
+    assert.equal(resolved.session, "y", "the session is still recorded as attribution");
+  });
+
+  it("takes the id from TASKCTL_AGENT — never from the session, platform or $USER", () => {
+    const resolved = resolveActor({
+      flags: {},
+      env: {
+        TASKCTL_AGENT: "linus",
+        TASKCTL_SESSION_ID: "sid",
+        TASKCTL_AGENT_PLATFORM: "claude",
+        USER: "tanyu",
+      },
+    });
+    assert.equal(resolved.actor.id, "linus", "two agents on one host must not collapse onto $USER");
+    assert.notEqual(resolved.actor.id, "sid");
+    assert.notEqual(resolved.actor.id, "claude");
+    assert.notEqual(resolved.actor.id, "tanyu");
+    // The attribution still rides along on the result.
+    assert.equal(resolved.platform, "claude");
+    assert.equal(resolved.session, "sid");
+  });
+
+  it("records the platform/session flags as attribution without letting them win the id", () => {
     const resolved = resolveActor({
       flags: { agentPlatform: "codex", sessionId: "s-9" },
-      env: { TASKCTL_AGENT: "ignored" },
+      env: { TASKCTL_AGENT: "linus" },
     });
-    assert.deepEqual(resolved.actor, { kind: "agent", id: "s-9" });
+    assert.deepEqual(resolved.actor, { kind: "agent", id: "linus" });
     assert.equal(resolved.platform, "codex");
     assert.equal(resolved.session, "s-9");
+  });
+
+  it("only reaches $USER / LOGNAME when nothing names an agent", () => {
+    assert.equal(resolveActor({ flags: {}, env: { USER: "tanyu" } }).actor.id, "tanyu");
+    assert.equal(resolveActor({ flags: {}, env: { LOGNAME: "tanyu" } }).actor.id, "tanyu");
+    // An agent identity — flag or env — beats the ambient OS user.
+    assert.equal(resolveActor({ flags: { agent: "linus" }, env: { USER: "tanyu" } }).actor.id, "linus");
+    assert.equal(
+      resolveActor({ flags: {}, env: { TASKCTL_AGENT: "linus", USER: "tanyu" } }).actor.id,
+      "linus",
+    );
   });
 });
 
