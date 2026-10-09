@@ -36,11 +36,42 @@ If `taskctl` is on your `PATH` (installed via `install.sh` or `npm link`), call 
 taskctl --help
 ```
 
+## Claiming work (claim-first)
+
+**Claim first, and only claim what is yours to claim.** Before touching a card,
+read the claimable set for *you* and take exactly one:
+
+```bash
+taskctl issue candidates --assignee <me>   # read-only: what may I claim?
+taskctl issue move <ref> in_progress       # take exactly one
+```
+
+Do **not** claim a card that any of these is true of — it is not yours:
+
+- it is **assigned to someone else** (the board refuses a claim by a different
+  actor; it is never silently reassigned);
+- it sits in **`backlog`** and has not been released for work (only the
+  dispatcher or a human moves it to `todo`);
+- it is an **`epic`** — a container, not a unit of work; claim its leaf children;
+- a **`depends_on` blocker is not `done`**.
+
+`issue candidates --assignee <me>` already withholds the last two; use
+`taskctl relation list <ref>` when a card you expected is missing. Hold **one
+card at a time**, keep its claim fresh, deliver with a report, and stop at
+`in_review` — a human accepts to `done`.
+
+These are the eight shared rules: claim-first, claim only what you should, one
+card at a time, a fresh heartbeat, deliver with a report, self-review ≠
+acceptance, never preempt a conflict, and stay traceable. The full statement, the
+per-host differences (Claude Code / Codex) and a worked example are in
+[`references/practice-guides.md`](references/practice-guides.md).
+
 ## When to use it
 
 - **Finding the board** — `taskctl context current` says which project owns this directory.
-- **Starting work** — `taskctl issue list` to see what is open, then
-  `taskctl issue move <id> in_progress`.
+- **Starting work** — `taskctl issue candidates --assignee <me>` to find your
+  claimable cards, then `taskctl issue move <id> in_progress` (see
+  [Claiming work](#claiming-work-claim-first)).
 - **Asking for something** — `taskctl issue create --project <id> --title "…" --acceptance "…"`.
 - **While working** — `taskctl comment add <id> --body "…"`; a `decision`/`change`
   comment is what a reviewer reads later.
@@ -61,5 +92,7 @@ taskctl --help
 ## Reference
 
 See [`references/cli.md`](references/cli.md) for the command surface, the delivery gate,
-the report template and the `--json` contract, and
-[`references/reports.md`](references/reports.md) for periodic reports and statistics.
+the report template and the `--json` contract,
+[`references/reports.md`](references/reports.md) for periodic reports and statistics, and
+[`references/practice-guides.md`](references/practice-guides.md) for the claim-first
+practice guide (Claude Code / Codex best practices).

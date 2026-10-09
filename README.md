@@ -166,6 +166,61 @@ Useful flags: `--prefix <home>` (override the target home), `--link` (symlink in
 copy), `--force` (overwrite an existing destination), `--dry-run` (print destinations and
 change nothing).
 
+## Practice guide
+
+Installing the skill is one line; working the board well is a set of habits.
+Every host shares the same **eight rules**: **claim first** (read
+`issue candidates --assignee <me>`, then `issue move <ref> in_progress`); claim
+only what is yours (not somebody else's card, not an unreleased `backlog` card,
+not an `epic`, and not a card whose `depends_on` blockers are unfinished); **one
+card at a time**; keep a **fresh heartbeat** (the board treats a claim as live for
+10 minutes); **deliver with a report** (the delivery gate); **self-review is not
+acceptance** (an agent reaches `in_review`, a human accepts to `done`); **never
+preempt a conflict** (re-read once, retry only if still claimable); and **stay
+traceable** (carry the session id). What differs between hosts is *who applies
+them*.
+
+### OpenClaw
+
+OpenClaw is the one host where the rules are **enforced for you**. Install the
+[**openclaw-team**](https://github.com/tanyu216/openclaw-team) framework — a
+file-based, idempotent installer that stands up a small agent team (one
+coordinator plus four specialists) with dispatch, gates and **scheduling
+(auto-claim)** — and Task Panel becomes their board, installed by default:
+
+```bash
+git clone https://github.com/tanyu216/openclaw-team
+cd openclaw-team
+./install.sh --dry-run      # preview every action
+./install.sh                # idempotent install
+```
+
+Task Panel is the default task provider (pass `--no-task-panel` to bring your own
+board instead); the framework's poll keeps its claim and candidate criteria in
+lockstep with the board's `issue candidates`, which is the point of Highlight 8.
+The dispatcher does the claiming, so the eight rules are applied by the framework
+rather than by each agent.
+
+### Claude Code
+
+Install the skill (or the marketplace plugin) per [Install](#install), then drive
+the board with `taskctl`, stamping each write with the host and session —
+`--agent-platform claude --session-id <id>` — so a card's trail points back at the
+conversation that did the work. Claude Code has **no auto-claim**: the claim in
+rule 1 has to be triggered by a hook, a slash command, or an external scheduler.
+
+### Codex
+
+Install to `~/.codex/skills/task-panel` (or `~/.agents/skills/task-panel`), then
+work the board the same way, using the running thread as the session id —
+`--agent-platform codex --session-id "$CODEX_THREAD_ID"` — for conversation-level
+attribution. Codex also has **no auto-claim**, so rule 1 needs a Codex automation
+(or an external scheduler) to fire it.
+
+The full guide — the eight rules in detail, the per-host install and trigger
+differences, and a worked example — lives in the skill at
+[`skills/task-panel/references/practice-guides.md`](skills/task-panel/references/practice-guides.md).
+
 ## Development
 
 Requires **Node >= 22** (the `node:sqlite` era). The engine is runtime zero-dependency and

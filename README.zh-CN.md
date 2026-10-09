@@ -130,6 +130,49 @@ OpenClaw 也可消费 Claude 格式的 bundle（`plugins/claude`），这是受�
 常用参数：`--prefix <home>`（覆盖目标 home）、`--link`（软链而非拷贝）、`--force`
 （覆盖已存在目标）、`--dry-run`（只打印落点，不做任何改动）。
 
+## 实践指南
+
+安装 skill 只需一行；把看板用好则是一套习惯。所有宿主共享同一条**八条规则**内核：
+**认领优先**（先 `issue candidates --assignee <我>`，再 `issue move <ref> in_progress`）；
+**只领该领的**（非本人 / `backlog` 未授权 / `epic` / `depends_on` 未满足 ⇒ 不领）；
+**一次一卡**；**心跳新鲜**（看板把认领视为存活 10 分钟）；**交付带报告**（交付门禁）；
+**自评≠验收**（Agent 只到 `in_review`，人接受才 `done`）；**冲突不抢占**（重读一次，
+仍可领才重试）；**可追溯**（携带会话 id）。宿主之间的差异，只在**由谁来执行这些规则**。
+
+### OpenClaw
+
+OpenClaw 是唯一**由框架代你执行规则**的宿主。安装
+[**openclaw-team**](https://github.com/tanyu216/openclaw-team) 框架 —— 一个基于文件、
+幂等的安装器，会搭起一支小型 Agent 团队（一名协调者 + 四名专家），自带派单、门禁与
+**调度（自动领取）** —— Task Panel 随即成为它们的看板，且**默认安装**：
+
+```bash
+git clone https://github.com/tanyu216/openclaw-team
+cd openclaw-team
+./install.sh --dry-run      # 预览每一步动作
+./install.sh                # 幂等安装
+```
+
+Task Panel 是默认的任务提供方（传 `--no-task-panel` 可换用自家看板）；框架的 poll 与看板的
+`issue candidates` 在认领 / 候选判定上保持同步，这正是亮点 8 的意义。派单由调度器完成，
+因此八条规则由框架而非每个 Agent 各自落实。
+
+### Claude Code
+
+按[安装](#安装)装好 skill（或 marketplace 插件），随后用 `taskctl` 驱动看板，并在每次写入
+时带上宿主与会话 —— `--agent-platform claude --session-id <id>` —— 让卡的轨迹指回动手的
+那段对话。Claude Code **默认无自动领取**：规则 1 的认领须由 hook、slash 命令或外部调度触发。
+
+### Codex
+
+装到 `~/.codex/skills/task-panel`（或 `~/.agents/skills/task-panel`），以同样方式操作看板，
+并用当前线程作为会话 id —— `--agent-platform codex --session-id "$CODEX_THREAD_ID"` ——
+做会话级归属。Codex 同样**默认无自动领取**，规则 1 需要一条 Codex automation（或外部调度）
+来触发。
+
+完整指南 —— 八条规则的展开、各宿主的安装与触发差异，以及一个最小示例 —— 在 skill 内：
+[`skills/task-panel/references/practice-guides.md`](skills/task-panel/references/practice-guides.md)。
+
 ## 开发
 
 需要 **Node >= 22**（`node:sqlite` 时代）。引擎为**运行时**零依赖、无需网络 —— `src/` 下全部只用 Node 内置模块。唯一例外是 `web/`（Vue 3 + Vite + Tailwind + daisyUI），其**构建期** devDependencies 由镜像从随仓库提交的 `web/.vendor/npm-cache` 离线安装，产物不会进入运行时。
