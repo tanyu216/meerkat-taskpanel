@@ -185,16 +185,27 @@ npm run verify:docker:container      # bash docker/verify-in-container.sh
 ```
 
 `docker/verify-in-container.sh` is the single source of truth for "is this repository
-healthy" — CI runs it too:
+healthy" — the CI `docker` job runs the exact same script, so this file is where a new
+check belongs. Its steps, in order:
 
 | Step | Command |
 |---|---|
 | 1 | `node --test` |
-| 2 | `npm run check` (skill sync, manifests, skill definition, tests) |
-| 3 | `bash install.sh --target all --dry-run` |
-| 4 | `node scripts/verify/profiles.mjs` |
+| 2 | `npm run test:coverage` (the line/branch/function floors) |
+| 3 | `npm run check` (skill sync, manifests, skill definition, tests) |
+| 4 | `node scripts/verify/contract.mjs` (API contract snapshot) |
+| 5 | `bash install.sh --target all --dry-run` |
+| 6 | `node scripts/verify/profiles.mjs` (all four hosts, throwaway home) |
+| 7 | `node scripts/verify/host-runtime.mjs` (offline host-runtime harness) |
+| 8 | `bash scripts/verify/install-e2e.sh` (install + first-run end-to-end) |
 
 Each step prints an `== ... ==` header and the script aborts on the first failure.
+
+> Steps 6 and 8 are the two that install into throwaway homes. Step 8 is the deepest —
+> it also drives the real `taskctl` against a real `taskd` — and it is the reason
+> `npm run verify:docker` and the CI `docker` job can no longer disagree: it used to live
+> only in CI, as a separate `docker run` *after* this script, so the two tracks diverged
+> and the local command could be green while CI was red. See [CI](#ci).
 
 ## Profiles
 
@@ -269,14 +280,32 @@ Everything that *installs*, *serves*, or *deploys* goes through Docker.
   source, scripts and tests, which need no packages). It runs `node --test`, the coverage
   gate (`npm run test:coverage`) and the `scripts/verify/*` checkers;
 - `docker` — builds `task-panel:verify` exactly like the local command and runs the same
-  in-container script. This is the authoritative job, and the only one that touches the
-  frontend: the `webbuild` stage installs `web/`'s devDependencies **offline** from the
-  committed cache (`npm ci --offline`), so the CI build reaches no registry. There is
-  deliberately no host-side frontend job, which would install packages on the runner and
-  violate the container-first rule.
+  in-container script, `docker/verify-in-container.sh`. This is the authoritative job, and
+  the only one that touches the frontend: the `webbuild` stage installs `web/`'s
+  devDependencies **offline** from the committed cache (`npm ci --offline`), so the CI
+  build reaches no registry. There is deliberately no host-side frontend job, which would
+  install packages on the runner and violate the container-first rule.
 
-Same tag, same command, same script as `npm run verify:docker` — locally green means
-CI green. See
+Same tag, same command, same script as `npm run verify:docker`'s second phase, and the
+same step list — no check runs in the container here that does not also run locally.
+The one asymmetry left is *additive and local-only*: `npm run verify:docker` also runs a
+third phase, the compose deploy smoke test (`docker compose up -d --build` → poll `/health`
+→ `down -v`, see [One-click verify](#one-click-verify)), which the CI job does not repeat.
+It can only make the local run stricter, never greener.
+
+The **`check` job**, by contrast, does *not* have a local one-command equivalent, and two
+of its properties are not reproduced by `verify:docker`:
+
+- it runs a **Node 22 and Node 24 matrix**, while the image is Node 22 only
+  (`node:22-bookworm-slim`) — a Node-24-only regression would be red in CI and green
+  locally;
+- it runs `node scripts/verify/version.mjs` and `bash -n` on the shell scripts directly on
+  the host. (Their behaviour is still covered in the container — `version.test.mjs` runs
+  under `node --test`, and `test/docker.test.mjs` runs `bash -n` on both container
+  scripts — but the standalone checkers are not.)
+
+"Locally green means CI green" therefore holds for the `docker` job exactly, and for the
+`check` job only up to the Node version and those two standalone checkers. See
 [development.md](development.md#local-and-ci-run-the-same-commands) for the local
 equivalent of each job.
 

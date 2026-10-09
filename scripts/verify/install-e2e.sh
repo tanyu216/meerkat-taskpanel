@@ -45,13 +45,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# One identity for the whole run, used for *both* the acting agent and the card's
+# assignee. The claim policy (`src/core/domain/claim.mjs`) only lets the assignee
+# claim a card, so an actor that differs from `--assignee` is refused with
+# `not_assignee` — which is exactly how this script used to fail. Keeping a single
+# variable is what stops the two from drifting apart again.
+AGENT_ID="install-e2e-bot"
+
 # A board in the throwaway data dir, on an OS-assigned port. Autostart is left
 # ON: starting taskd from the CLI *is* the path under test.
 export TASKD_DATA_DIR="$DATA_DIR"
 export TASKD_RUNTIME_POINTER="$POINTER"
 export TASKD_PORT=0
 export TASKD_HOST=127.0.0.1
-export TASKCTL_AGENT="install-e2e"
+export TASKCTL_AGENT="$AGENT_ID"
 unset TASKD_NO_AUTOSTART
 
 step "install.sh --target all --prefix <throwaway home>"
@@ -75,7 +82,7 @@ CREATE_JSON="$(node "$CLI" --json issue create \
   --title "Install e2e card" \
   --acceptance "the delivery gate refuses an empty report" \
   --label e2e \
-  --assignee install-e2e-bot)"
+  --assignee "$AGENT_ID")"
 echo "$CREATE_JSON"
 ID="$(printf '%s' "$CREATE_JSON" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).data.task.identifier))')"
 echo "  task identifier: $ID"

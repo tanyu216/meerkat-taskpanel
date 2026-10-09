@@ -576,7 +576,7 @@ describe("static: serve-skeleton", () => {
 });
 
 describe("static: verify-in-container.sh", () => {
-  it("is valid bash and runs the four verification steps", async () => {
+  it("is valid bash and runs the full verification step list", async () => {
     const path = join(ROOT, "docker", "verify-in-container.sh");
     assert.ok(existsSync(path), "docker/verify-in-container.sh must exist");
 
@@ -589,6 +589,22 @@ describe("static: verify-in-container.sh", () => {
     assert.match(text, /npm run check/);
     assert.match(text, /install\.sh --target all --dry-run/);
     assert.match(text, /scripts\/verify\/profiles\.mjs/);
+  });
+
+  it("runs the install + first-run end-to-end, so local and CI cover the same ground", async () => {
+    // The e2e used to be a separate `docker run` in CI only, which let
+    // `npm run verify:docker` be green while CI was red. It belongs to this script, on a
+    // line of its own (anchored, so a commented-out call does not satisfy the assertion).
+    const text = await read("docker/verify-in-container.sh");
+    assert.match(text, /^bash scripts\/verify\/install-e2e\.sh$/m);
+
+    // ...and the CI job must not duplicate it as a second command either.
+    const ci = await read(".github/workflows/check.yml");
+    assert.doesNotMatch(
+      ci,
+      /run: docker run --rm task-panel:verify bash scripts\/verify\/install-e2e\.sh/,
+      "the e2e must run via verify-in-container.sh, not as a separate CI step",
+    );
   });
 });
 

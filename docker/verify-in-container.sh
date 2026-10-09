@@ -10,7 +10,9 @@
 #   npm run verify:docker:container        # when already inside the image
 #
 # Each step prints a `== ... ==` header. Any failure exits non-zero immediately.
-# No step installs anything: the project is dependency-free and must run offline.
+# Nothing here reaches the network: the project is dependency-free. Two steps install
+# into throwaway homes — the four-host skill profiles, and the install + first-run
+# end-to-end, which additionally drives the real `taskctl` against a real `taskd`.
 
 set -euo pipefail
 
@@ -41,6 +43,13 @@ node scripts/verify/profiles.mjs
 
 step "host runtime claim path (offline mock harness: hook / trigger / wake scripts)"
 node scripts/verify/host-runtime.mjs
+
+# The deepest step: a fresh machine's first run — install the skill for all four hosts
+# with a throwaway HOME, then drive the real `taskctl` against a real `taskd`. It lives
+# here, and not only in CI, so `npm run verify:docker` and the CI `docker` job cover
+# exactly the same ground: a green local run means a green CI run.
+step "install + first-run end-to-end (throwaway HOME)"
+bash scripts/verify/install-e2e.sh
 
 echo
 echo "== all container checks passed =="

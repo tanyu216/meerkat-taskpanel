@@ -34,6 +34,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`issue candidates --include-unassigned`** — the poll read now optionally adds the
   unassigned public pool (the supervisor's `claim_unassigned` policy).
 
+### Fixed
+
+- **`scripts/verify/install-e2e.sh` no longer fails its own claim.** The script acted as
+  `TASKCTL_AGENT="install-e2e"` but assigned its card to `install-e2e-bot`, and the claim
+  policy only lets the assignee claim a card — so the run died on `not_assignee` at
+  `issue move … in_progress`. Actor and assignee now come from one variable, so they cannot
+  drift apart again.
+- **The install + first-run end-to-end is now a step of
+  `docker/verify-in-container.sh`.** It had been a separate `docker run` in CI only, which
+  meant `npm run verify:docker` could be green while the CI `docker` job was red. Both
+  tracks now run the same script; the CI job's duplicate step is gone.
+
 ## [1.0.0] - 2026-10-09
 
 The first release. The engine has landed through **M6**: the core domain model, the
