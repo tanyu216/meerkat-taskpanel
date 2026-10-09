@@ -3,15 +3,15 @@
  *
  * Two keys, both browser-local, both defaulting to their lightest value:
  *
- *   taskpanel.theme   "light" | "dark" | "auto"   (default "light")
- *   taskpanel.lang    "en" | "zh"                 (default "en")
+ *   meerkat-taskpanel.theme   "light" | "dark" | "auto"   (default "light")
+ *   meerkat-taskpanel.lang    "en" | "zh"                 (default "en")
  *
  * Nothing else is persisted, and nothing is sent anywhere. `applyTheme` and
  * `applyLang` are the *only* writers, and each mirrors its value onto the
  * document so the contract's `html[data-theme]` / `html[data-theme-mode]` /
  * `html[lang]` hold:
  *
- *   html[data-theme]       "taskpanel" | "dark" | "auto"   — what the CSS reads
+ *   html[data-theme]       "meerkat-taskpanel" | "dark" | "auto"   — what the CSS reads
  *   html[data-theme-mode]  "light" | "dark" | "auto"       — the mode in force
  *
  * `auto` is resolved entirely by CSS (`@media (prefers-color-scheme: dark)`),
@@ -26,15 +26,15 @@
 /** The three theme modes, in cycle order. */
 export const THEME_MODES = Object.freeze(["light", "dark", "auto"]);
 export const DEFAULT_THEME = "light";
-export const THEME_STORAGE_KEY = "taskpanel.theme";
+export const THEME_STORAGE_KEY = "meerkat-taskpanel.theme";
 
 /** The two shipped languages. */
 export const LANGS = Object.freeze(["en", "zh"]);
 export const DEFAULT_LANG = "en";
-export const LANG_STORAGE_KEY = "taskpanel.lang";
+export const LANG_STORAGE_KEY = "meerkat-taskpanel.lang";
 
 /** `data-theme` values, keyed by `data-theme-mode`. Different vocabulary, on purpose. */
-const THEME_DOC = Object.freeze({ light: "taskpanel", dark: "dark", auto: "auto" });
+const THEME_DOC = Object.freeze({ light: "meerkat-taskpanel", dark: "dark", auto: "auto" });
 
 /** The mode one press of the theme cell reaches (light → dark → auto → light). */
 export function nextTheme(mode) {

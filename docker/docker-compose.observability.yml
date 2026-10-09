@@ -1,4 +1,4 @@
-# Task Panel — observability overlay.
+# Meerkat TaskPanel — observability overlay.
 #
 #   docker compose -f docker/docker-compose.observability.yml up
 #
@@ -13,13 +13,13 @@
 # fact — but they are still *pulls*, so `docker compose up` needs the images present. See
 # docs/observability.md for the offline path.
 
-name: task-panel-observability
+name: meerkat-taskpanel-observability
 
 services:
   # The metrics source: /metrics (Prometheus text), /health (the SLO verdict) and
   # /v1/observe (push ingest), zero dependencies, from the repository image.
   monitoring:
-    image: task-panel:local
+    image: meerkat-taskpanel:local
     build:
       context: ..
       dockerfile: docker/Dockerfile
@@ -49,7 +49,7 @@ services:
       # Both files are mounted read-only: this container is a consumer of the committed
       # configuration, never a writer of it.
       - ../monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ../monitoring/prometheus/task-panel.rules.yml:/etc/prometheus/rules/task-panel.rules.yml:ro
+      - ../monitoring/prometheus/meerkat-taskpanel.rules.yml:/etc/prometheus/rules/meerkat-taskpanel.rules.yml:ro
       - prometheus-data:/prometheus
     depends_on:
       - monitoring

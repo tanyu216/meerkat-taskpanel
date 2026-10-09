@@ -34,7 +34,7 @@ after(async () => {
 
 /** A fresh temp dir removed after the suite. */
 async function makeTree() {
-  const dir = await mkdtemp(join(tmpdir(), "taskpanel-migrations-"));
+  const dir = await mkdtemp(join(tmpdir(), "meerkat-taskpanel-migrations-"));
   tempDirs.push(dir);
   return dir;
 }

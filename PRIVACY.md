@@ -1,6 +1,6 @@
 # Privacy
 
-Task Panel is **local-first** by design.
+Meerkat TaskPanel is **local-first** by design.
 
 - **No telemetry.** Nothing is collected, reported, or phoned home.
 - **No network calls.** The M0 scaffold makes no network requests at all. There is no

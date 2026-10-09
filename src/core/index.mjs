@@ -1,5 +1,5 @@
 /**
- * Task Panel core.
+ * Meerkat TaskPanel core.
  *
  * The engine of the board: the domain model, the SQLite storage layer, the
  * command surface and the bootstrap that wires them together. Surfaces (`cli/`,

@@ -1,9 +1,9 @@
 /**
- * Shared constants for Task Panel.
+ * Shared constants for Meerkat TaskPanel.
  *
  * These are the single source of truth for names used across the CLI, the skill,
  * the plugin manifests and the future MCP/HTTP surfaces. Keep them in sync with
- * `package.json` (name/version) and `skills/task-panel/SKILL.md` (skill name).
+ * `package.json` (name/version) and `skills/meerkat-taskpanel/SKILL.md` (skill name).
  *
  * `src/core/**` imports its tunables from here (never from `process.env` in
  * `domain/`, which must stay free of Node I/O) so a single edit moves the
@@ -11,8 +11,8 @@
  */
 
 export const CLI_NAME = "taskctl";
-export const SKILL_NAME = "task-panel";
-export const PACKAGE_NAME = "task-panel";
+export const SKILL_NAME = "meerkat-taskpanel";
+export const PACKAGE_NAME = "meerkat-taskpanel";
 export const VERSION = "1.0.0";
 
 // ---------------------------------------------------------------------------

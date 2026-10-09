@@ -52,7 +52,7 @@ export function isSupportedNode(version, min = MIN_NODE_MAJOR) {
  * @returns {string}
  */
 export function unsupportedNodeMessage(version, options = {}) {
-  const { min = MIN_NODE_MAJOR, bin = "task-panel" } = options;
+  const { min = MIN_NODE_MAJOR, bin = "meerkat-taskpanel" } = options;
   return [
     `${bin}: Node ${min} or newer is required — found ${version === "" ? "no version" : version}.`,
     `The engine stores to SQLite through the built-in node:sqlite module (Node ${min}+);`,

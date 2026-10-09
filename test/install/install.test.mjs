@@ -22,7 +22,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const NODE = process.execPath;
 
 const tempDirs = [];
-function makeTempDir(prefix = "taskpanel-install-") {
+function makeTempDir(prefix = "meerkat-taskpanel-install-") {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   tempDirs.push(dir);
   return dir;
@@ -47,7 +47,7 @@ describe("install.sh: targets", () => {
 
     assert.equal(run.status, 0, run.stderr);
     for (const hostDir of [".claude", ".codex"]) {
-      assert.ok(existsSync(join(home, hostDir, "skills", "task-panel", "SKILL.md")), `${hostDir} install missing`);
+      assert.ok(existsSync(join(home, hostDir, "skills", "meerkat-taskpanel", "SKILL.md")), `${hostDir} install missing`);
     }
     for (const hostDir of [".openclaw", ".agents"]) {
       assert.equal(existsSync(join(home, hostDir)), false, `${hostDir} must not be installed`);

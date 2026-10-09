@@ -51,8 +51,8 @@ const AGENT = "alice";
 
 /** Host → {dot-dir, has detection of which generated forms exist}. */
 const HOSTS = {
-  claude: { dir: ".claude", hook: ".claude/hooks/task-panel-session-start.sh", trigger: null, wake: ".claude/bin/wake-claude.sh", shim: ".claude/bin/taskctl", cli: "claude" },
-  codex: { dir: ".codex", hook: null, trigger: ".codex/task-panel-claim.sh", wake: ".codex/bin/wake-codex.sh", shim: ".codex/bin/taskctl", cli: "codex" },
+  claude: { dir: ".claude", hook: ".claude/hooks/meerkat-taskpanel-session-start.sh", trigger: null, wake: ".claude/bin/wake-claude.sh", shim: ".claude/bin/taskctl", cli: "claude" },
+  codex: { dir: ".codex", hook: null, trigger: ".codex/meerkat-taskpanel-claim.sh", wake: ".codex/bin/wake-codex.sh", shim: ".codex/bin/taskctl", cli: "codex" },
   pi: { dir: ".agents", hook: null, trigger: null, wake: ".agents/bin/wake-pi.sh", shim: null, cli: "pi" },
 };
 
@@ -165,7 +165,7 @@ function freshLog(name) {
 function installHost(host) {
   const res = run(
     [join(ROOT, "install.sh"), "--target", host, "--prefix", ctx.home, "--agent-name", AGENT, "--skip-node-check"],
-    { env: { TASKPANEL_TARGET_HOME: ctx.home } },
+    { env: { MEERKAT_TASKPANEL_TARGET_HOME: ctx.home } },
   );
   if (res.status !== 0) {
     throw new Error(`install.sh --target ${host} exited ${res.status}\n${res.stdout}\n${res.stderr}`);
@@ -365,7 +365,7 @@ function checkTrigger() {
 /** Hosts that ship neither form: assert the *absence* explicitly, with the reason. */
 function checkAbsences() {
   check("coverage map", "claude ships no cron trigger (SessionStart hook instead)", () => {
-    return existsSync(join(ctx.home, ".claude/task-panel-claim.sh")) ? "unexpected claude claim trigger" : null;
+    return existsSync(join(ctx.home, ".claude/meerkat-taskpanel-claim.sh")) ? "unexpected claude claim trigger" : null;
   }, "N/A — Claude uses the SessionStart hook");
 
   check("coverage map", "codex ships no SessionStart hook (cron trigger instead)", () => {
@@ -373,7 +373,7 @@ function checkAbsences() {
   }, "N/A — Codex has no hooks; the trigger is the automation");
 
   check("coverage map", "pi ships no hook, trigger or shim", () => {
-    for (const rel of [".agents/hooks", ".agents/task-panel-claim.sh", ".agents/bin/taskctl"]) {
+    for (const rel of [".agents/hooks", ".agents/meerkat-taskpanel-claim.sh", ".agents/bin/taskctl"]) {
       if (existsSync(join(ctx.home, rel))) return `unexpected ${rel}`;
     }
     return null;
@@ -387,7 +387,7 @@ function checkAbsences() {
 const ctx = { home: "", tmp: "", fakeBin: "" };
 
 function setup(homeArg) {
-  const tmp = mkdtempSync(join(tmpdir(), "taskpanel-hostruntime-"));
+  const tmp = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-hostruntime-"));
   ctx.tmp = tmp;
   ctx.home = homeArg ? resolve(homeArg) : join(tmp, "home");
   mkdirSync(ctx.home, { recursive: true });

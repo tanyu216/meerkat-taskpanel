@@ -36,7 +36,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 const tempDirs = [];
 
-function makeTempDir(prefix = "taskpanel-polish-") {
+function makeTempDir(prefix = "meerkat-taskpanel-polish-") {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   tempDirs.push(dir);
   return dir;
@@ -71,7 +71,7 @@ function makeFakeCli(binDir, name) {
 function fakeCliEnv(home, bin, log) {
   return {
     ...process.env,
-    TASKPANEL_TARGET_HOME: home,
+    MEERKAT_TASKPANEL_TARGET_HOME: home,
     FAKE_LOG: log,
     PATH: `${bin}:${process.env.PATH}`,
   };
@@ -117,8 +117,8 @@ describe("hostbundle polish: docs (D2)", () => {
 // ---------------------------------------------------------------------------
 
 describe("hostbundle polish: codex AGENTS.md is byte-stable (D3)", () => {
-  const BEGIN = "<!-- task-panel:begin -->";
-  const END = "<!-- task-panel:end -->";
+  const BEGIN = "<!-- meerkat-taskpanel:begin -->";
+  const END = "<!-- meerkat-taskpanel:end -->";
   /** The delimited block, verbatim. */
   const blockOf = (text) => text.slice(text.indexOf(BEGIN), text.indexOf(END) + END.length);
   /** Everything except trailing newlines. */
@@ -150,8 +150,8 @@ describe("hostbundle polish: codex AGENTS.md is byte-stable (D3)", () => {
     assert.equal(forced.status, 0, forced.stderr);
     const forcedText = readFileSync(agentsPath, "utf8");
 
-    assert.equal((forcedText.match(/<!-- task-panel:begin -->/g) ?? []).length, 1, "exactly one block");
-    assert.equal((forcedText.match(/<!-- task-panel:end -->/g) ?? []).length, 1, "exactly one block");
+    assert.equal((forcedText.match(/<!-- meerkat-taskpanel:begin -->/g) ?? []).length, 1, "exactly one block");
+    assert.equal((forcedText.match(/<!-- meerkat-taskpanel:end -->/g) ?? []).length, 1, "exactly one block");
     assert.equal(blockOf(forcedText), blockOf(firstText), "the rendered block must be unchanged");
     assert.ok(forcedText.startsWith("# My rules\n"), "pre-existing content must survive --force");
     assert.equal(chomp(forcedText), chomp(firstText), "--force may differ only by trailing newlines");
@@ -189,7 +189,7 @@ describe("hostbundle polish: SessionStart fallback (D4a)", () => {
     const run = runInstall(["--target", "claude", "--agent-name", "alice"], fakeCliEnv(home, bin, join(bin, "log")));
     assert.equal(run.status, 0, run.stderr);
 
-    const hook = join(home, ".claude", "hooks", "task-panel-session-start.sh");
+    const hook = join(home, ".claude", "hooks", "meerkat-taskpanel-session-start.sh");
     assert.ok(existsSync(hook));
     const text = readFileSync(hook, "utf8");
 
@@ -237,7 +237,7 @@ describe("hostbundle polish: trigger identity match (D4b)", () => {
     const install = runInstall(["--target", "codex", "--agent-name", "alice"], fakeCliEnv(home, bin, join(bin, "log")));
     assert.equal(install.status, 0, install.stderr);
 
-    const trigger = join(home, ".codex", "task-panel-claim.sh");
+    const trigger = join(home, ".codex", "meerkat-taskpanel-claim.sh");
     assert.ok(existsSync(trigger));
 
     // Replace the installed shim with one that reports an in_progress card whose
@@ -276,7 +276,7 @@ describe("hostbundle polish: trigger identity match (D4b)", () => {
       { data: { candidates: [{ identifier: "T-99" }] } },
     );
 
-    const run = spawnSync("bash", [join(home, ".codex", "task-panel-claim.sh")], {
+    const run = spawnSync("bash", [join(home, ".codex", "meerkat-taskpanel-claim.sh")], {
       encoding: "utf8",
       env: { ...process.env, TASKCTL_AGENT: "alice", FAKE_LOG: log },
     });

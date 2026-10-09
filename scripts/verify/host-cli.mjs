@@ -48,7 +48,7 @@ export const PROBES = [
     home: ".openclaw",
     steps: [
       ["plugins", "install", join(ROOT, "plugins/claude"), "--link", "--force", "--accept-capabilities"],
-      ["plugins", "inspect", "task-panel"],
+      ["plugins", "inspect", "meerkat-taskpanel"],
     ],
     expect: (output) => {
       if (!/Format:\s*bundle/.test(output)) return "expected `Format: bundle`";
@@ -66,7 +66,7 @@ export const PROBES = [
       ["plugin", "marketplace", "add", ROOT, "--json"],
       ["plugin", "marketplace", "list", "--json"],
     ],
-    expect: (output) => (/task-panel-marketplace/.test(output) ? null : "expected task-panel-marketplace"),
+    expect: (output) => (/meerkat-taskpanel-marketplace/.test(output) ? null : "expected meerkat-taskpanel-marketplace"),
   },
   {
     host: "codex",
@@ -78,7 +78,7 @@ export const PROBES = [
       ["plugin", "list"],
     ],
     expect: (output) =>
-      /task-panel@task-panel-marketplace/.test(output) ? null : "expected task-panel@task-panel-marketplace",
+      /meerkat-taskpanel@meerkat-taskpanel-marketplace/.test(output) ? null : "expected meerkat-taskpanel@meerkat-taskpanel-marketplace",
   },
   {
     host: "pi",
@@ -101,7 +101,7 @@ function tail(text, lines = 15) {
 
 /** Run one host probe in an isolated HOME. Returns a result row. */
 export function runProbe(probe, timeoutMs) {
-  const home = mkdtempSync(join(tmpdir(), `taskpanel-hostcli-${probe.host}-`));
+  const home = mkdtempSync(join(tmpdir(), `meerkat-taskpanel-hostcli-${probe.host}-`));
   // Some CLIs refuse to start when their config dir is absent (codex: "failed to
   // resolve CODEX_HOME"), so create the host's dot-directory up front.
   mkdirSync(join(home, probe.home), { recursive: true });

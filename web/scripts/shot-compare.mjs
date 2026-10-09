@@ -67,7 +67,7 @@ const WEB = resolve(HERE, "..");
 const PROTOTYPE = resolve(WEB, "../prototype/index.html");
 
 /** Review artefacts belong to the task workspace, never to the repository. */
-const DEFAULT_OUT = process.env.SHOT_OUT ?? "/Users/tanyu/.openclaw/team/workspace/T-20261009-034400-taskpanel-m6b/shots";
+const DEFAULT_OUT = process.env.SHOT_OUT ?? "/Users/tanyu/.openclaw/team/workspace/T-20261009-034400-meerkat-taskpanel-m6b/shots";
 
 /** Every shot is a viewport (non-full-page) capture: the board is a fixed shell. */
 const HEIGHT = 950;
@@ -195,8 +195,8 @@ async function shootImplementation(browser, url, combo, width, outDir) {
   // scheme or the wrong copy.
   await context.addInitScript(
     ([theme, lang]) => {
-      globalThis.localStorage?.setItem("taskpanel.theme", theme);
-      globalThis.localStorage?.setItem("taskpanel.lang", lang);
+      globalThis.localStorage?.setItem("meerkat-taskpanel.theme", theme);
+      globalThis.localStorage?.setItem("meerkat-taskpanel.lang", lang);
     },
     [combo.theme, combo.lang],
   );

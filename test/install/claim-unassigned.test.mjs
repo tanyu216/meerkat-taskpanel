@@ -4,7 +4,7 @@
  *
  * `install.sh` asks the question when stdin is a TTY and no flag was given,
  * defaults to **yes** everywhere else, and persists the answer as
- * `<target_home>/<host-dir>/task-panel.env` (`TASKPANEL_CLAIM_UNASSIGNED=…`) —
+ * `<target_home>/<host-dir>/meerkat-taskpanel.env` (`MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=…`) —
  * the file `scripts/supervisor.mjs` reads as its default. OpenClaw is the one
  * host that gets no such file, because it does not build its own supervisor
  * (it installs openclaw-team, whose poll/patrol already implement the design).
@@ -23,7 +23,7 @@ import { after, describe, it } from "node:test";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 const tempDirs = [];
-function makeTempDir(prefix = "taskpanel-claim-") {
+function makeTempDir(prefix = "meerkat-taskpanel-claim-") {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   tempDirs.push(dir);
   return dir;
@@ -42,7 +42,7 @@ function makeFakeCli(binDir, name) {
 
 /** An environment that sees fake host CLIs and installs into an isolated home. */
 function installEnv(home, bin) {
-  return { ...process.env, TASKPANEL_TARGET_HOME: home, PATH: `${bin}:${process.env.PATH}` };
+  return { ...process.env, MEERKAT_TASKPANEL_TARGET_HOME: home, PATH: `${bin}:${process.env.PATH}` };
 }
 
 function runInstall(args, env = {}) {
@@ -54,7 +54,7 @@ function runInstall(args, env = {}) {
 }
 
 function configOf(home, hostDir) {
-  const path = join(home, hostDir, "task-panel.env");
+  const path = join(home, hostDir, "meerkat-taskpanel.env");
   return existsSync(path) ? readFileSync(path, "utf8") : null;
 }
 
@@ -78,8 +78,8 @@ describe("install.sh: claim-unassigned flags and persisted config", () => {
 
     for (const hostDir of [".claude", ".codex"]) {
       const text = configOf(home, hostDir);
-      assert.ok(text !== null, `${hostDir}/task-panel.env must exist`);
-      assert.match(text, /^TASKPANEL_CLAIM_UNASSIGNED=yes$/m, `${hostDir} default must be yes`);
+      assert.ok(text !== null, `${hostDir}/meerkat-taskpanel.env must exist`);
+      assert.match(text, /^MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes$/m, `${hostDir} default must be yes`);
     }
   });
 
@@ -92,7 +92,7 @@ describe("install.sh: claim-unassigned flags and persisted config", () => {
       installEnv(home, bin),
     );
     assert.equal(run.status, 0, run.stderr);
-    assert.match(configOf(home, ".claude"), /^TASKPANEL_CLAIM_UNASSIGNED=no$/m);
+    assert.match(configOf(home, ".claude"), /^MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no$/m);
   });
 
   it("--assignee-only is an alias for --claim-unassigned=no", () => {
@@ -101,19 +101,19 @@ describe("install.sh: claim-unassigned flags and persisted config", () => {
     makeFakeCli(bin, "codex");
     const run = runInstall(["--target", "codex", "--agent-name", "alice", "--assignee-only"], installEnv(home, bin));
     assert.equal(run.status, 0, run.stderr);
-    assert.match(configOf(home, ".codex"), /^TASKPANEL_CLAIM_UNASSIGNED=no$/m);
+    assert.match(configOf(home, ".codex"), /^MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no$/m);
   });
 
-  it("honours the TASKPANEL_CLAIM_UNASSIGNED environment when no flag is given", () => {
+  it("honours the MEERKAT_TASKPANEL_CLAIM_UNASSIGNED environment when no flag is given", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
     makeFakeCli(bin, "claude");
     const run = runInstall(
       ["--target", "claude", "--agent-name", "alice"],
-      { ...installEnv(home, bin), TASKPANEL_CLAIM_UNASSIGNED: "no" },
+      { ...installEnv(home, bin), MEERKAT_TASKPANEL_CLAIM_UNASSIGNED: "no" },
     );
     assert.equal(run.status, 0, run.stderr);
-    assert.match(configOf(home, ".claude"), /^TASKPANEL_CLAIM_UNASSIGNED=no$/m);
+    assert.match(configOf(home, ".claude"), /^MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no$/m);
   });
 
   it("rejects an invalid value with a usage error and writes nothing", () => {

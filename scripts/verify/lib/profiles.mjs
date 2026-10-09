@@ -8,10 +8,10 @@
  *   buildChecks()   derives the destination paths + assertions  (pure, fully testable)
  *   runProfiles()   installs into a throwaway home and asserts  (I/O)
  *
- * Installation always happens under `TASKPANEL_TARGET_HOME`, never a real host home —
+ * Installation always happens under `MEERKAT_TASKPANEL_TARGET_HOME`, never a real host home —
  * the container/CI run must not touch `$HOME`.
  *
- * Installs use `--link` (`TASKPANEL_LINK=1`). The skill's wrapper resolves the CLI by
+ * Installs use `--link` (`MEERKAT_TASKPANEL_LINK=1`). The skill's wrapper resolves the CLI by
  * walking up from its own location, so only a symlinked skill points back at the
  * checkout; a copied skill has no `src/` beside it. Verification therefore mirrors
  * `install.sh --link`, which is also the mode the docs recommend for a checkout.
@@ -51,7 +51,7 @@ export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..
 
 /** Default throwaway home when the caller does not inject one. */
 export function defaultHome() {
-  return join(tmpdir(), `taskpanel-profiles-${process.pid}`);
+  return join(tmpdir(), `meerkat-taskpanel-profiles-${process.pid}`);
 }
 
 /**
@@ -152,10 +152,10 @@ export function buildChecks(profile, opts = {}) {
   const installerPath = join(root, profile.installer);
 
   const installEnv = {
-    TASKPANEL_TARGET_HOME: home,
+    MEERKAT_TASKPANEL_TARGET_HOME: home,
     // Link, not copy: the skill wrapper resolves the CLI relative to itself.
-    TASKPANEL_LINK: "1",
-    TASKPANEL_FORCE: "1",
+    MEERKAT_TASKPANEL_LINK: "1",
+    MEERKAT_TASKPANEL_FORCE: "1",
   };
 
   const assertions = [

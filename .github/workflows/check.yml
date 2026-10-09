@@ -69,13 +69,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build verification image
-        run: docker build -f docker/Dockerfile -t task-panel:verify .
+        run: docker build -f docker/Dockerfile -t meerkat-taskpanel:verify .
 
       - name: Run verification inside the container
-        run: docker run --rm task-panel:verify bash docker/verify-in-container.sh
+        run: docker run --rm meerkat-taskpanel:verify bash docker/verify-in-container.sh
 
       # Same image, same in-container command a developer runs, so a green CI run
       # and a green local run mean the same thing: install the skill for all four
       # hosts with a throwaway HOME, then drive the real CLI against a real taskd.
       - name: Install + first-run end-to-end
-        run: docker run --rm task-panel:verify bash scripts/verify/install-e2e.sh
+        run: docker run --rm meerkat-taskpanel:verify bash scripts/verify/install-e2e.sh

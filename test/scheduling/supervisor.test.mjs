@@ -212,8 +212,8 @@ describe("resolveClaimUnassigned (pure)", () => {
   it("follows flag > env > file, and accepts yes/no spellings", () => {
     assert.equal(resolveClaimUnassigned({ flag: "no" }), false);
     assert.equal(resolveClaimUnassigned({ flag: "yes", env: "no" }), true);
-    assert.equal(resolveClaimUnassigned({ env: "no", file: { TASKPANEL_CLAIM_UNASSIGNED: "yes" } }), false);
-    assert.equal(resolveClaimUnassigned({ file: { TASKPANEL_CLAIM_UNASSIGNED: "no" } }), false);
+    assert.equal(resolveClaimUnassigned({ env: "no", file: { MEERKAT_TASKPANEL_CLAIM_UNASSIGNED: "yes" } }), false);
+    assert.equal(resolveClaimUnassigned({ file: { MEERKAT_TASKPANEL_CLAIM_UNASSIGNED: "no" } }), false);
     assert.equal(resolveClaimUnassigned({ flag: "false" }), false);
     assert.equal(resolveClaimUnassigned({ flag: "true" }), true);
     assert.equal(resolveClaimUnassigned({ flag: "1" }), true);
@@ -230,9 +230,9 @@ describe("resolveClaimUnassigned (pure)", () => {
 describe("parseEnvFile (pure)", () => {
   it("reads KEY=value lines, ignoring blanks and comments", () => {
     const parsed = parseEnvFile(
-      ["# a comment", "", "TASKPANEL_CLAIM_UNASSIGNED=no", 'OTHER="quoted value"', "export THIRD=1"].join("\n"),
+      ["# a comment", "", "MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no", 'OTHER="quoted value"', "export THIRD=1"].join("\n"),
     );
-    assert.equal(parsed.TASKPANEL_CLAIM_UNASSIGNED, "no");
+    assert.equal(parsed.MEERKAT_TASKPANEL_CLAIM_UNASSIGNED, "no");
     assert.equal(parsed.OTHER, "quoted value");
     assert.equal(parsed.THIRD, "1");
   });
@@ -548,7 +548,7 @@ describe("pruneRegistry (pure)", () => {
 describe("supervisor module", () => {
   // Resolved *relative to this test file*, never from a directory name — the
   // checkout is mounted at /app inside the container, so any assertion keyed on
-  // the repo being named "task-panel" would hold on the host and fail there.
+  // the repo being named "meerkat-taskpanel" would hold on the host and fail there.
   const SUPERVISOR_URL = new URL("../../scripts/supervisor.mjs", import.meta.url);
   const SUPERVISOR_PATH = fileURLToPath(SUPERVISOR_URL);
 
@@ -559,7 +559,7 @@ describe("supervisor module", () => {
 
   it("imports from wherever the checkout lives and exposes the runner surface (container form)", async () => {
     // Container form: hold under an arbitrary ROOT (e.g. /app), where the parent
-    // directory is *not* named "task-panel". Loading by URL proves the module is
+    // directory is *not* named "meerkat-taskpanel". Loading by URL proves the module is
     // importable in place; the export check proves it is the runner, not a stub.
     const mod = await import(SUPERVISOR_URL.href);
     for (const name of ["runPollTick", "runPatrolTick", "parseArgs", "loadRegistry", "saveRegistry"]) {

@@ -2,7 +2,7 @@
  * The health / alerting thresholds — the numbers `/health` judges a window by, and the
  * numbers the Prometheus rules must encode.
  *
- * `SLO_TARGETS` is the single source of truth. `monitoring/prometheus/task-panel.rules.yml`
+ * `SLO_TARGETS` is the single source of truth. `monitoring/prometheus/meerkat-taskpanel.rules.yml`
  * is *not* allowed to restate them: `rules.mjs` parses the committed YAML and fails if the
  * expressions no longer carry these exact tokens, so the local verdict, the alert and the
  * docs cannot drift apart.

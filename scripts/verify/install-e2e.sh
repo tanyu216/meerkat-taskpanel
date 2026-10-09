@@ -8,7 +8,7 @@
 # `taskd` — create a project, create a card, get refused by the delivery gate,
 # satisfy the gate with a report, and read the dictionaries back.
 #
-#   docker run --rm task-panel:verify bash scripts/verify/install-e2e.sh
+#   docker run --rm meerkat-taskpanel:verify bash scripts/verify/install-e2e.sh
 #
 # Isolation: `HOME` for the install is a fresh `mktemp -d`, and the board's data
 # directory is another one — nothing here can touch `./.data`, `~/.claude`, or a
@@ -58,12 +58,12 @@ step "install.sh --target all --prefix <throwaway home>"
 bash install.sh --target all --prefix "$THROWAWAY_HOME"
 
 for host_dir in .claude .openclaw .codex .agents; do
-  target="$THROWAWAY_HOME/$host_dir/skills/task-panel/SKILL.md"
+  target="$THROWAWAY_HOME/$host_dir/skills/meerkat-taskpanel/SKILL.md"
   if [ ! -f "$target" ]; then
     echo "FAIL: install did not write $target" >&2
     exit 1
   fi
-  echo "  OK  $host_dir/skills/task-panel/SKILL.md"
+  echo "  OK  $host_dir/skills/meerkat-taskpanel/SKILL.md"
 done
 
 step "taskctl project create"

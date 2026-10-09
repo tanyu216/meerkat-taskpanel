@@ -3,7 +3,7 @@
  *
  * Three layers of coverage:
  *   1. pure logic in `scripts/verify/lib/**` (mini-yaml, profiles, docker-plan)
- *   2. an end-to-end run of `runProfiles` against a throwaway `TASKPANEL_TARGET_HOME`
+ *   2. an end-to-end run of `runProfiles` against a throwaway `MEERKAT_TASKPANEL_TARGET_HOME`
  *   3. static assertions on the container artifacts (Dockerfile, compose, profiles,
  *      .dockerignore, CI workflow)
  *
@@ -47,7 +47,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 /** Temp dirs created by these tests, removed in the `after` hook. */
 const tempDirs = [];
 
-async function makeTempDir(prefix = "taskpanel-docker-") {
+async function makeTempDir(prefix = "meerkat-taskpanel-docker-") {
   const dir = await mkdtemp(join(tmpdir(), prefix));
   tempDirs.push(dir);
   return dir;
@@ -133,10 +133,10 @@ describe("profiles: loadProfiles", () => {
     assert.deepEqual(hosts.slice().sort(), [...PROFILE_HOSTS].sort());
 
     const expected = {
-      claude: { dir: ".claude/skills/task-panel", installer: "scripts/install/claude.sh" },
-      openclaw: { dir: ".openclaw/skills/task-panel", installer: "scripts/install/openclaw.sh" },
-      codex: { dir: ".codex/skills/task-panel", installer: "scripts/install/codex.sh" },
-      pi: { dir: ".agents/skills/task-panel", installer: "scripts/install/pi.sh" },
+      claude: { dir: ".claude/skills/meerkat-taskpanel", installer: "scripts/install/claude.sh" },
+      openclaw: { dir: ".openclaw/skills/meerkat-taskpanel", installer: "scripts/install/openclaw.sh" },
+      codex: { dir: ".codex/skills/meerkat-taskpanel", installer: "scripts/install/codex.sh" },
+      pi: { dir: ".agents/skills/meerkat-taskpanel", installer: "scripts/install/pi.sh" },
     };
 
     for (const host of PROFILE_HOSTS) {
@@ -155,7 +155,7 @@ describe("profiles: loadProfiles", () => {
     const dir = await makeTempDir();
     await writeFile(
       join(dir, "claude.yml"),
-      "host: claude\nlabel: Claude Code\ninstaller: scripts/install/claude.sh\ntarget_dir: .claude/skills/task-panel\nskill_entry: SKILL.md\nwrapper: scripts/run.mjs\n",
+      "host: claude\nlabel: Claude Code\ninstaller: scripts/install/claude.sh\ntarget_dir: .claude/skills/meerkat-taskpanel\nskill_entry: SKILL.md\nwrapper: scripts/run.mjs\n",
     );
 
     const { errors } = await loadProfiles(dir);
@@ -168,7 +168,7 @@ describe("profiles: loadProfiles", () => {
 
   it("reports a host/file name mismatch and missing fields", async () => {
     const dir = await makeTempDir();
-    const base = "label: X\ninstaller: scripts/install/claude.sh\ntarget_dir: .claude/skills/task-panel\nskill_entry: SKILL.md\nwrapper: scripts/run.mjs\n";
+    const base = "label: X\ninstaller: scripts/install/claude.sh\ntarget_dir: .claude/skills/meerkat-taskpanel\nskill_entry: SKILL.md\nwrapper: scripts/run.mjs\n";
     await writeFile(join(dir, "claude.yml"), `host: openclaw\n${base}`);
     await writeFile(join(dir, "openclaw.yml"), "host: openclaw\nlabel: OpenClaw\n");
     await writeFile(join(dir, "codex.yml"), `host: codex\n${base}`);
@@ -204,30 +204,30 @@ describe("profiles: loadProfiles", () => {
 
 describe("profiles: readFrontmatterField", () => {
   it("reads a field from a leading frontmatter block, stripping quotes", () => {
-    assert.equal(readFrontmatterField("---\nname: task-panel\n---\n\n# Body\n", "name"), "task-panel");
-    assert.equal(readFrontmatterField('---\nname: "task-panel"\n---\n', "name"), "task-panel");
+    assert.equal(readFrontmatterField("---\nname: meerkat-taskpanel\n---\n\n# Body\n", "name"), "meerkat-taskpanel");
+    assert.equal(readFrontmatterField('---\nname: "meerkat-taskpanel"\n---\n', "name"), "meerkat-taskpanel");
   });
 
   it("returns null for a missing block, a missing field, or a non-mapping line", () => {
-    assert.equal(readFrontmatterField("# no frontmatter\nname: task-panel\n", "name"), null);
+    assert.equal(readFrontmatterField("# no frontmatter\nname: meerkat-taskpanel\n", "name"), null);
     assert.equal(readFrontmatterField("---\nother: x\n---\n", "name"), null);
-    assert.equal(readFrontmatterField("---\njust a heading\nname: task-panel\n---\n", "name"), "task-panel");
+    assert.equal(readFrontmatterField("---\njust a heading\nname: meerkat-taskpanel\n---\n", "name"), "meerkat-taskpanel");
   });
 });
 
 describe("profiles: buildChecks", () => {
   it("derives the destination paths and installer command from an injected home", async () => {
     const { profiles } = await loadProfiles(join(ROOT, "docker", "profiles"));
-    const checks = buildChecks(profiles.claude, { home: "/tmp/taskpanel-home", root: "/repo" });
+    const checks = buildChecks(profiles.claude, { home: "/tmp/meerkat-taskpanel-home", root: "/repo" });
 
-    assert.equal(checks.dest, join("/tmp/taskpanel-home", ".claude/skills/task-panel"));
+    assert.equal(checks.dest, join("/tmp/meerkat-taskpanel-home", ".claude/skills/meerkat-taskpanel"));
     assert.equal(checks.entryPath, join(checks.dest, "SKILL.md"));
     assert.equal(checks.skillMdPath, join(checks.dest, "SKILL.md"));
     assert.equal(checks.wrapperPath, join(checks.dest, "scripts/run.mjs"));
 
     assert.equal(checks.install.command, "bash");
     assert.equal(checks.install.args[0], join("/repo", "scripts/install/claude.sh"));
-    assert.equal(checks.install.env.TASKPANEL_TARGET_HOME, "/tmp/taskpanel-home");
+    assert.equal(checks.install.env.MEERKAT_TASKPANEL_TARGET_HOME, "/tmp/meerkat-taskpanel-home");
   });
 
   it("emits the required assertions", async () => {
@@ -266,7 +266,7 @@ describe("profiles: buildChecks", () => {
 
 describe("profiles: runProfiles", () => {
   it("installs every host into a throwaway home and verifies it", async () => {
-    const home = await makeTempDir("taskpanel-home-");
+    const home = await makeTempDir("meerkat-taskpanel-home-");
     const result = await runProfiles({
       home,
       profilesDir: join(ROOT, "docker", "profiles"),
@@ -290,9 +290,9 @@ describe("profiles: runProfiles", () => {
   });
 
   it("reports failure when a profile points at a missing installer", async () => {
-    const home = await makeTempDir("taskpanel-home-");
+    const home = await makeTempDir("meerkat-taskpanel-home-");
     const dir = await makeTempDir();
-    const base = "target_dir: .claude/skills/task-panel\nskill_entry: SKILL.md\nwrapper: scripts/run.mjs\n";
+    const base = "target_dir: .claude/skills/meerkat-taskpanel\nskill_entry: SKILL.md\nwrapper: scripts/run.mjs\n";
     await writeFile(join(dir, "claude.yml"), `host: claude\nlabel: Claude Code\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
     await writeFile(join(dir, "openclaw.yml"), `host: openclaw\nlabel: OpenClaw\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
     await writeFile(join(dir, "codex.yml"), `host: codex\nlabel: Codex\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
@@ -310,7 +310,7 @@ describe("profiles: runProfiles", () => {
 
 describe("docker-plan", () => {
   it("uses the documented image tag", () => {
-    assert.equal(imageTag(), "task-panel:verify");
+    assert.equal(imageTag(), "meerkat-taskpanel:verify");
   });
 
   it("builds a docker build command pinned to docker/Dockerfile", () => {
@@ -349,9 +349,9 @@ describe("docker-plan", () => {
   });
 
   it("builds a health inspect command for a named container", () => {
-    const args = healthInspectArgs("task-panel-taskd-1");
+    const args = healthInspectArgs("meerkat-taskpanel-taskd-1");
     assert.deepEqual(args.slice(0, 1), ["inspect"]);
-    assert.ok(args.includes("task-panel-taskd-1"));
+    assert.ok(args.includes("meerkat-taskpanel-taskd-1"));
     assert.ok(args.some((a) => a.includes("Health.Status")), "expected a health status format");
   });
 
@@ -369,7 +369,7 @@ describe("docker-plan", () => {
 
 /** Create a temp dir holding an executable `docker` stub; return a PATH with it first. */
 async function stubDocker(script) {
-  const dir = await makeTempDir("taskpanel-stub-");
+  const dir = await makeTempDir("meerkat-taskpanel-stub-");
   const bin = join(dir, "docker");
   await writeFile(bin, `#!/bin/sh\n${script}\n`);
   const { chmod } = await import("node:fs/promises");
@@ -433,7 +433,7 @@ describe("verify/docker.mjs (stubbed docker)", () => {
     // The health budget is normally 60s; shrink it so the timeout path is fast.
     const res = spawnSync(process.execPath, [join(ROOT, "scripts", "verify", "docker.mjs")], {
       encoding: "utf8",
-      env: { ...process.env, PATH: path, TASKPANEL_HEALTH_TIMEOUT_MS: "400" },
+      env: { ...process.env, PATH: path, MEERKAT_TASKPANEL_HEALTH_TIMEOUT_MS: "400" },
       timeout: 60_000,
     });
 
@@ -535,7 +535,7 @@ describe("static: docker-compose.yml", () => {
   it("defines the taskd service, port, volume, command and /health healthcheck", async () => {
     const text = await read("docker/docker-compose.yml");
     assert.match(text, /taskd:/);
-    assert.match(text, /image: task-panel:local/);
+    assert.match(text, /image: meerkat-taskpanel:local/);
     assert.match(text, /dockerfile: docker\/Dockerfile/);
     assert.match(text, /TASKD_HOST[:=]\s*"?0\.0\.0\.0"?/);
     assert.match(text, /TASKD_PORT[:=]\s*"?9527"?/);
@@ -605,7 +605,7 @@ describe("static: profiles and docs", () => {
     for (const needle of [
       "npm run verify:docker",
       "docker compose",
-      "TASKPANEL_TARGET_HOME",
+      "MEERKAT_TASKPANEL_TARGET_HOME",
       "/health",
       "Troubleshooting",
     ]) {
@@ -626,8 +626,8 @@ describe("static: CI workflow", () => {
   it("adds a docker job that mirrors the local build + in-container run", async () => {
     const text = await read(".github/workflows/check.yml");
     assert.match(text, /^  docker:/m, "expected a docker job");
-    assert.match(text, /docker build -f docker\/Dockerfile -t task-panel:verify \./);
-    assert.match(text, /docker run --rm task-panel:verify bash docker\/verify-in-container\.sh/);
+    assert.match(text, /docker build -f docker\/Dockerfile -t meerkat-taskpanel:verify \./);
+    assert.match(text, /docker run --rm meerkat-taskpanel:verify bash docker\/verify-in-container\.sh/);
     // No shell step may install dependencies (comments may still mention the rule).
     assert.doesNotMatch(text, /^\s*(-\s*)?run:.*npm (install|ci)/m, "CI must not install dependencies");
     // The original job is preserved.

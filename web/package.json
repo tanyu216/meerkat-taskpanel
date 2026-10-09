@@ -1,9 +1,9 @@
 {
-  "name": "@task-panel/web",
+  "name": "@meerkat-taskpanel/web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "TaskPanel board frontend (Vue 3 + Vite + Tailwind + daisyUI). Build-time devDependencies only; the shipped artefact is static `web/dist`.",
+  "description": "MeerkatTaskPanel board frontend (Vue 3 + Vite + Tailwind + daisyUI). Build-time devDependencies only; the shipped artefact is static `web/dist`.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

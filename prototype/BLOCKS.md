@@ -1,4 +1,4 @@
-# TaskPanel prototype — Block inventory
+# MeerkatTaskPanel prototype — Block inventory
 
 The structural contract of `index.html`. Selectors are **`data-*` semantic hooks**;
 Tailwind class names are never part of the contract, and no anchor is positional.
@@ -23,7 +23,7 @@ headings below.
 | | |
 |---|---|
 | Root | `[data-app-shell]` (`.td-shell`) |
-| Attribute | theme is held on the document element: `html[data-theme="taskpanel" \| "dark" \| "auto"]`, with the machine-checkable mode beside it in `html[data-theme-mode="light" \| "dark" \| "auto"]` (see B03) |
+| Attribute | theme is held on the document element: `html[data-theme="meerkat-taskpanel" \| "dark" \| "auto"]`, with the machine-checkable mode beside it in `html[data-theme-mode="light" \| "dark" \| "auto"]` (see B03) |
 | Layout | `grid-template-areas: "topbar topbar" / "sidebar main"` |
 
 ## B02 · Top bar
@@ -84,8 +84,8 @@ The three cells, left to right, and what each one does (**review round v1.4**):
 order — `light → dark → auto`, then back to `light` — and the machine-checkable state is
 `data-theme-mode="light \| dark \| auto"`, written on `<html>` in the markup and mirrored
 onto `[data-theme-switch]` by the same pass. `<html data-theme>` carries what the CSS
-reads: `taskpanel` (Light) · `dark` (Dark) · `auto` (Auto). **Light is the no-record
-default**, which is why the static document ships `data-theme="taskpanel"` +
+reads: `meerkat-taskpanel` (Light) · `dark` (Dark) · `auto` (Auto). **Light is the no-record
+default**, which is why the static document ships `data-theme="meerkat-taskpanel"` +
 `data-theme-mode="light"` + the sun glyph + the `Light` label — what a JavaScript-free
 reader sees is the default state. Auto is resolved by CSS alone
 (`html[data-theme="auto"]` under `@media (prefers-color-scheme: dark)` in
@@ -137,7 +137,7 @@ activity plus creation recency (`ARCHITECTURE §4.6`; full rule in `DESIGN.md` �
 tie-breaks and archived-project exclusion applied there. The frontend **consumes the order
 only** and does no computation. Each item exposes the decision for machine checks:
 `[data-order-score]` (the composite, e.g. `0.867`) and `[data-order-rank]` (`1`…`N`). The
-demo order is **Orchestrator → TaskPanel → Site Refresh** (scores 0.867 / 0.667 / 0.467),
+demo order is **Orchestrator → MeerkatTaskPanel → Site Refresh** (scores 0.867 / 0.667 / 0.467),
 deliberately different from creation order so the weighting is visible. Consistency: ranks
 are contiguous from `1` and scores are non-increasing down the list; `[data-project-count]`
 (12 / 4 / 2) is independent of the ordering and unchanged.

@@ -26,7 +26,7 @@ let taskd;
 let dataDir;
 
 before(async () => {
-  dataDir = mkdtempSync(join(tmpdir(), "taskpanel-auth-"));
+  dataDir = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-auth-"));
   tempDirs.push(dataDir);
   taskd = await createTaskd({ dataDir, host: "127.0.0.1", port: 0, env: {} });
 });

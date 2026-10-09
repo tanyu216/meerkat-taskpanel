@@ -1,5 +1,5 @@
 /**
- * The idempotency-key vocabulary (T-20261009-175500-idem-taskpanel).
+ * The idempotency-key vocabulary (T-20261009-175500-idem-meerkat-taskpanel).
  *
  * Pure functions only — no board, no clock, no Node builtins. The *shape* of the
  * key is a contract between this project and the md base (both must derive the

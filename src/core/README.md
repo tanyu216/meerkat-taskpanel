@@ -1,6 +1,6 @@
 # `src/core`
 
-The engine of Task Panel. It owns the domain model and everything that can be
+The engine of Meerkat TaskPanel. It owns the domain model and everything that can be
 expressed without knowing which surface called it — so the CLI, MCP server and HTTP API
 are all thin adapters over this module.
 

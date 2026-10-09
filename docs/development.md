@@ -24,7 +24,7 @@
 | `src/server/` | Local HTTP API + SSE for the board (M6) |
 | `src/shared/` | Shared DTOs, constants, small pure helpers |
 | `web/` | Vue 3 + Vite board frontend → `web/dist` (the hosted frontend root) |
-| `skills/task-panel/` | The skill — **single source of truth** |
+| `skills/meerkat-taskpanel/` | The skill — **single source of truth** |
 | `plugins/<host>/` | Per-host manifests + generated `skills/` copies |
 | `scripts/` | Build, install, sync and verify scripts |
 | `test/` | Smoke / contract tests |
@@ -66,7 +66,7 @@ thing.
   legs run the full step list) — the floor the project promises (`engines: node >= 22`)
   and the current release line. It runs `node --test`, the coverage gate, and the
   `scripts/verify/*` checkers.
-- The **`docker` job** is the authoritative one: it builds `task-panel:verify` and runs
+- The **`docker` job** is the authoritative one: it builds `meerkat-taskpanel:verify` and runs
   `docker/verify-in-container.sh`, exactly as `npm run verify:docker` does. See
   [docker.md](docker.md#ci).
 
@@ -155,7 +155,7 @@ state (§4.3); the row still exists in `task_activities` and under
 
 ## The skill is generated, never hand-edited
 
-`skills/task-panel/` is the only place the skill is authored. `scripts/sync-skills.mjs`
+`skills/meerkat-taskpanel/` is the only place the skill is authored. `scripts/sync-skills.mjs`
 copies it into `plugins/claude/skills/`, `plugins/codex/skills/`, `plugins/openclaw/skills/`
 and `plugins/pi/skills/`. Those copies are generated artifacts and are committed so that
 each host directory is self-contained — but they must always match the source.

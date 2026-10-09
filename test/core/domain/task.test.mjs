@@ -120,9 +120,9 @@ describe("domain/task — labels, paths, identifiers, timestamps", () => {
 
   it("builds and validates identifiers, keeping legacy ones importable", () => {
     assert.equal(identifierFor("proj", 7), "PROJ-0007");
-    assert.equal(identifierFor("task panel!", 12), "TASK-PANEL-0012");
+    assert.equal(identifierFor("meerkat-taskpanel!", 12), "MEERKAT-TASKPANEL-0012");
     assert.throws(() => identifierFor("###", 1), (e) => e.code === "VALIDATION_FAILED");
-    assert.equal(isValidIdentifier("T-20261008-230500-taskpanel-m1"), true);
+    assert.equal(isValidIdentifier("T-20261008-230500-meerkat-taskpanel-m1"), true);
     assert.equal(isValidIdentifier("nope/slash"), false);
   });
 

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Task Panel pre-commit hook.
+# Meerkat TaskPanel pre-commit hook.
 #
 # Refuses a change to the board's SQL migration history: a numbering gap or
 # duplicate, an edited already-committed migration, or a deleted one. The check

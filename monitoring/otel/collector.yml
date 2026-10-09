@@ -1,4 +1,4 @@
-# Task Panel — OpenTelemetry Collector configuration.
+# Meerkat TaskPanel — OpenTelemetry Collector configuration.
 #
 # Mounted read-only at /etc/otelcol-contrib/config.yml by
 # docker/docker-compose.observability.yml. The collector closes the OTLP half of the

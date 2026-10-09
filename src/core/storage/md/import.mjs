@@ -84,7 +84,7 @@ export const KNOWN_CARD_KEYS = Object.freeze([
 ]);
 
 /**
- * Resolve a card's `project:` value to a TaskPanel project id.
+ * Resolve a card's `project:` value to a MeerkatTaskPanel project id.
  *
  * §4.8 ④: the md value is a **registered name** (a key in `projects.json`), not
  * an id. With a registry, look the name up (or the id, so an exported card —

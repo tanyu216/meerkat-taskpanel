@@ -1,6 +1,6 @@
 /**
  * Unit tests for the skill's periodic-report helpers
- * (`skills/task-panel/scripts/report.mjs`).
+ * (`skills/meerkat-taskpanel/scripts/report.mjs`).
  *
  * These tests exercise the **pure functions only** — the report aggregator's
  * window math, label parsing, grouping, preset metrics and markdown rendering.
@@ -25,7 +25,7 @@ import {
   inWindow,
   aggregate,
   renderMarkdown,
-} from "../../skills/task-panel/scripts/report.mjs";
+} from "../../skills/meerkat-taskpanel/scripts/report.mjs";
 
 const DAY_MS = 86_400_000;
 

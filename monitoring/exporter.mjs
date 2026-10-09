@@ -77,7 +77,7 @@ export function parseConfig(env = {}) {
   return {
     host: env.MONITORING_HOST ?? DEFAULT_HOST,
     port: envInteger(env, "MONITORING_PORT", { fallback: DEFAULT_PORT, min: 1, max: 65_535 }),
-    serviceName: env.MONITORING_SERVICE_NAME ?? "task-panel",
+    serviceName: env.MONITORING_SERVICE_NAME ?? "meerkat-taskpanel",
     windowMs: envInteger(env, "MONITORING_SLO_WINDOW_MS", { fallback: SLO_TARGETS.windowMs, min: 1, max: 86_400_000 }),
     p95LatencyMs: envInteger(env, "MONITORING_SLO_P95_LATENCY_MS", { fallback: SLO_TARGETS.p95LatencyMs, min: 1, max: 3_600_000 }),
     otlpEndpoint: configured ? withMetricsPath(configured) : resolveOtlpEndpoint(env),
@@ -128,9 +128,9 @@ export function createExporter(options = {}) {
   const startedAt = config.now();
 
   const registry = new Registry({ now: config.now });
-  registry.registerGauge("task_panel_up", "1 while the monitoring exporter is serving.").set({}, 1);
-  const scrapes = registry.registerCounter("task_panel_exporter_scrapes_total", "Prometheus scrapes of /metrics.");
-  registry.registerGauge("task_panel_exporter_info", "Build information for the monitoring exporter.", ["version"]).set({ version: config.version }, 1);
+  registry.registerGauge("meerkat_taskpanel_up", "1 while the monitoring exporter is serving.").set({}, 1);
+  const scrapes = registry.registerCounter("meerkat_taskpanel_exporter_scrapes_total", "Prometheus scrapes of /metrics.");
+  registry.registerGauge("meerkat_taskpanel_exporter_info", "Build information for the monitoring exporter.", ["version"]).set({ version: config.version }, 1);
 
   /** The OTLP push state, as `/health` reports it. */
   const otel = {
@@ -144,7 +144,7 @@ export function createExporter(options = {}) {
 
   /**
    * Push one snapshot. Never throws — an observability outage must not become a
-   * task-panel outage — and never blocks a scrape: the result is recorded and returned.
+   * meerkat-taskpanel outage — and never blocks a scrape: the result is recorded and returned.
    */
   async function pushOnce() {
     const snapshot = registry.snapshot({ at: config.now() });
@@ -356,7 +356,7 @@ export async function startExporter(options = {}) {
 async function main() {
   const config = parseConfig(process.env);
   const exporter = await startExporter(config);
-  process.stdout.write(`task-panel monitoring exporter listening on ${exporter.url}\n`);
+  process.stdout.write(`meerkat-taskpanel monitoring exporter listening on ${exporter.url}\n`);
   process.stdout.write(`  GET ${exporter.url}/metrics\n  GET ${exporter.url}/health\n  POST ${exporter.url}/v1/observe\n`);
   process.stdout.write(
     config.otlpEndpoint === null

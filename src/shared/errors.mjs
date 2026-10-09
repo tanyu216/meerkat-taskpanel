@@ -64,7 +64,7 @@ export const ERROR_CODES = Object.freeze({
   // An epic is a grouping card: it carries no work, so nothing may claim it.
   not_claimable: spec(409, "Epics are grouping cards and cannot be claimed."),
 
-  // ---- Creation idempotency (T-20261009-175500-idem-taskpanel) ---------------
+  // ---- Creation idempotency (T-20261009-175500-idem-meerkat-taskpanel) ---------------
   // Raised when the partial unique index is the one that refuses a write, i.e.
   // a racing create lost. The create path catches this and converges onto the
   // existing task, so a caller only ever sees it when the row genuinely cannot

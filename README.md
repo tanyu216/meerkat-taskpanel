@@ -1,14 +1,14 @@
-# Task Panel
+# Meerkat TaskPanel
 
 **Task management board for AI Agent teams — agents do the work, humans watch it happen.**
 
-## Why Task Panel
+## Why Meerkat TaskPanel
 
 Jira, Plane and Linear share one point of view: the tool serves a person. A human files the
 card and assigns it, and an AI — just one more assignee — picks it up to execute. The person
 faces the tool, and the tool is built for the person.
 
-Task Panel inverts that. It is **AI-Agent-first**: the first-class user of the board is the AI
+Meerkat TaskPanel inverts that. It is **AI-Agent-first**: the first-class user of the board is the AI
 agent, and people face the agents rather than the tool. Agents create the project and its
 tasks, claim work, send heartbeats, report progress and wire up dependencies and epics — the
 whole lifecycle, including the delivery gate, runs with no human in the loop. The board UI is
@@ -21,7 +21,7 @@ Left to run on their own, AI agents are a **black box**. Afterwards it is hard t
 how a chain of tasks stayed **continuous** across sessions and agents, how a user's request
 was **traced** into real work, or **why** a card was decided the way it was at the time.
 
-Task Panel is the record that answers those questions:
+Meerkat TaskPanel is the record that answers those questions:
 
 - **Continuity.** Work lives in durable cards plus append-only comments, reports and
   activities, not an ephemeral chat — so a task survives the hand-offs between sessions and
@@ -36,7 +36,7 @@ traceable**, with its reasoning open to inspection after the fact.
 
 ## What it's for
 
-Task Panel is a task board built **for AI Agent teams**. Its subject is the **collaboration
+Meerkat TaskPanel is a task board built **for AI Agent teams**. Its subject is the **collaboration
 between agents** — splitting work, declaring dependencies, handing results along — and for
 the people around them it turns that collaboration into something **visible and traceable**
 rather than something locked inside a model's context. The mechanisms that do this — an
@@ -79,7 +79,7 @@ the [Highlights](#highlights) below describe.
    (18 tools) for MCP-speaking hosts, or over the local `taskd` HTTP API — with skill/plugin
    installers for Claude Code, Codex, OpenClaw and pi. The MCP surface is gate-equivalent:
    `task_deliver` is the only tool that can reach `in_review`.
-8. **Provider-agnostic by design.** Task Panel is the default board base for the
+8. **Provider-agnostic by design.** Meerkat TaskPanel is the default board base for the
    openclaw-team framework — its claim and candidate criteria are kept in lockstep with the
    framework's poll, so the board can be swapped (Jira, Plane, Linear, …) without changing
    the agents. Access is gated by a token and an optional CIDR allow-list.
@@ -92,15 +92,15 @@ the [Highlights](#highlights) below describe.
     reads straight back out as **daily / weekly / monthly reports** with their **statistics**,
     aggregated along any dimension — **project**, **kind / labels**, **assignee** or **time
     window** — with **metrics you define yourself**. The statistics are **domain-agnostic by
-    design**: Task Panel is a general board for *any* team — software, operations, marketing,
+    design**: Meerkat TaskPanel is a general board for *any* team — software, operations, marketing,
     business, strategy — and the one preset that ships (requirements / development / bugs /
     incidents) is a single **example**, not the shape of the feature. Periodic reporting
     lives in the skill, in
-    [`references/reports.md`](skills/task-panel/references/reports.md).
+    [`references/reports.md`](skills/meerkat-taskpanel/references/reports.md).
 
 ## Architecture
 
-Task Panel is three thin layers, with the dependency arrow always pointing inward:
+Meerkat TaskPanel is three thin layers, with the dependency arrow always pointing inward:
 `src/cli`, `src/mcp` and `src/server` are the front doors, `src/core` owns the domain model,
 SQLite storage and the use-cases, and `src/shared` holds the DTOs and helpers they agree on.
 The full tree is in [Repository layout](#repository-layout); to install the skill or plugin
@@ -117,7 +117,7 @@ Product prototype screenshots (the visual baseline for the board frontend):
 ## Repository layout
 
 ```text
-task-panel/
+meerkat-taskpanel/
 ├── README.md / README.zh-CN.md   # docs (English default, Chinese mirror)
 ├── LICENSE / PRIVACY.md
 ├── package.json                  # workspace root, bin(taskctl), scripts
@@ -130,7 +130,7 @@ task-panel/
 │   ├── server/                   #   local HTTP API + SSE
 │   └── shared/                   #   shared DTOs / constants
 ├── web/                          # board frontend (Vue 3 + Vite) → web/dist (hosted root)
-├── skills/task-panel/        # skill — single source of truth
+├── skills/meerkat-taskpanel/        # skill — single source of truth
 ├── plugins/                      # one dispatch unit per host (claude/codex/openclaw/pi)
 ├── design/                       # brand assets (+ assets/ and prototype/ placeholders; migration pending)
 ├── scripts/                      # build / install / sync / verify
@@ -174,10 +174,10 @@ the host's own plugin system consumes — registering it needs that host's CLI, 
 
 | Host | `--target` | Skill directory | Bundle |
 |---|---|---|---|
-| Claude Code | `claude` | `~/.claude/skills/task-panel` | `plugins/claude/.claude-plugin/plugin.json` |
-| OpenClaw | `openclaw` | `~/.openclaw/skills/task-panel` | `plugins/openclaw/openclaw.plugin.json` (native) |
-| Codex | `codex` | `~/.codex/skills/task-panel` | `plugins/codex/.codex-plugin/plugin.json` |
-| Pi / Agent Skills | `pi` | `~/.agents/skills/task-panel` | `plugins/pi/package.json` |
+| Claude Code | `claude` | `~/.claude/skills/meerkat-taskpanel` | `plugins/claude/.claude-plugin/plugin.json` |
+| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | `plugins/openclaw/openclaw.plugin.json` (native) |
+| Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | `plugins/codex/.codex-plugin/plugin.json` |
+| Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | `plugins/pi/package.json` |
 
 OpenClaw also consumes the Claude-format bundle (`plugins/claude`), which is the supported
 skill-only route; `plugins/openclaw/openclaw.plugin.json` is a *native* manifest — see
@@ -220,7 +220,7 @@ timers**, so the loop lives *outside* them and only the worker is woken
 script, and prints the exact load command — it never enables a daemon for you.
 The installer also asks once whether the supervisor may claim **unassigned**
 cards (default yes) and remembers the answer in
-`<host>/task-panel.env`. The full design — the two layers, the fire-only cost
+`<host>/meerkat-taskpanel.env`. The full design — the two layers, the fire-only cost
 gate, idempotent wakes, the concurrency cap, the fail-safe, and the per-host
 trigger differences — is in [`docs/scheduling.md`](docs/scheduling.md).
 
@@ -240,7 +240,7 @@ OpenClaw path has three distinct layers; take the one you actually need:
    four specialists) with dispatch, gates and **scheduling (auto-claim)**.
 3. **Developers: start right here** — if you are a developer who just wants to get
    going, install openclaw-team directly and skip the manual assembly; it installs
-   Task Panel as the board base **by default**, so it works out of the box:
+   Meerkat TaskPanel as the board base **by default**, so it works out of the box:
 
    ```bash
    git clone https://github.com/tanyu216/openclaw-team
@@ -249,7 +249,7 @@ OpenClaw path has three distinct layers; take the one you actually need:
    ./install.sh                # idempotent install
    ```
 
-Task Panel is the default task provider (pass `--no-task-panel` to bring your own
+Meerkat TaskPanel is the default task provider (pass `--no-meerkat-taskpanel` to bring your own
 board instead); the framework's poll keeps its claim and candidate criteria in
 lockstep with the board's `issue candidates`, which is the point of Highlight 8.
 The dispatcher does the claiming, so the eight rules are applied by the framework
@@ -274,7 +274,7 @@ SessionStart hook or a slash command.
 
 `install.sh --target codex --agent-name <name>` deploys the whole bundle: it appends a
 claim-first snippet to `~/.codex/AGENTS.md`, writes the schedulable claim trigger
-`~/.codex/task-panel-claim.sh` (`--no-automation` skips it), registers the MCP server when
+`~/.codex/meerkat-taskpanel-claim.sh` (`--no-automation` skips it), registers the MCP server when
 the `codex` CLI is on `PATH`, and ships the `taskctl` shim. Work the board the same way,
 using the running thread as the session id — `--agent-platform codex --session-id
 "$CODEX_THREAD_ID"` — for conversation-level attribution. Codex has **no timers of its
@@ -284,7 +284,7 @@ minimal fallback.
 
 The full guide — the eight rules in detail, the per-host install and trigger
 differences, and a worked example — lives in the skill at
-[`skills/task-panel/references/practice-guides.md`](skills/task-panel/references/practice-guides.md).
+[`skills/meerkat-taskpanel/references/practice-guides.md`](skills/meerkat-taskpanel/references/practice-guides.md).
 
 ## Development
 

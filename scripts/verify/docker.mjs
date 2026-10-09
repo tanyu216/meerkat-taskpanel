@@ -32,7 +32,7 @@ import {
 
 const COMPOSE_SERVICE = "taskd";
 // Overridable so the failure path can be exercised without a 60s wall-clock wait.
-const HEALTH_TIMEOUT_MS = Number(process.env.TASKPANEL_HEALTH_TIMEOUT_MS ?? 60_000);
+const HEALTH_TIMEOUT_MS = Number(process.env.MEERKAT_TASKPANEL_HEALTH_TIMEOUT_MS ?? 60_000);
 const HEALTH_POLL_MS = 2_000;
 
 /** @type {Array<{name: string, ok: boolean, detail: string, ms: number}>} */

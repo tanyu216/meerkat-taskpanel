@@ -1,6 +1,6 @@
 # Installation
 
-Task Panel ships as an **Agent Skill** (`skills/task-panel/`) plus one distribution
+Meerkat TaskPanel ships as an **Agent Skill** (`skills/meerkat-taskpanel/`) plus one distribution
 bundle per host (`plugins/`). There are three layers, and it is worth keeping them
 straight:
 
@@ -39,19 +39,19 @@ match the assignee the board uses for it; it defaults to `$USER`.
 
 | Host | `--target` | Skill destination | Bundle |
 |---|---|---|---|
-| Claude Code | `claude` | `~/.claude/skills/task-panel` | `plugins/claude` (`.claude-plugin/plugin.json`) |
-| OpenClaw | `openclaw` | `~/.openclaw/skills/task-panel` | `plugins/openclaw` (native `openclaw.plugin.json`) |
-| Codex | `codex` | `~/.codex/skills/task-panel` | `plugins/codex` (`.codex-plugin/plugin.json`) |
-| Pi / Agent Skills | `pi` | `~/.agents/skills/task-panel` | `plugins/pi` (`package.json`) |
+| Claude Code | `claude` | `~/.claude/skills/meerkat-taskpanel` | `plugins/claude` (`.claude-plugin/plugin.json`) |
+| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | `plugins/openclaw` (native `openclaw.plugin.json`) |
+| Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | `plugins/codex` (`.codex-plugin/plugin.json`) |
+| Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | `plugins/pi` (`package.json`) |
 
 The repository-root Claude marketplace `.claude-plugin/marketplace.json` points at
 `./plugins/claude`; Codex reads the same marketplace manifest.
 
 The two bundle hosts write more than the skill. **Claude** additionally writes
 `~/.claude/settings.json` (merged `env.TASKCTL_AGENT` + a `SessionStart` hook),
-`~/.claude/hooks/task-panel-session-start.sh`, `~/.claude/commands/{board,claim,deliver}.md`
+`~/.claude/hooks/meerkat-taskpanel-session-start.sh`, `~/.claude/commands/{board,claim,deliver}.md`
 and `~/.claude/bin/taskctl`; it also runs `claude mcp add …` when the CLI is on `PATH`.
-**Codex** writes `~/.codex/AGENTS.md` (a claim-first snippet), `~/.codex/task-panel-claim.sh`
+**Codex** writes `~/.codex/AGENTS.md` (a claim-first snippet), `~/.codex/meerkat-taskpanel-claim.sh`
 (the schedulable trigger) and `~/.codex/bin/taskctl`, and runs `codex mcp add …`. Both
 shims inject `--agent <name>` on every call, with `TASKCTL_AGENT` as the fallback.
 
@@ -67,13 +67,13 @@ they obey the no-default-permission-bypass boundary in
 
 | Artefact | Where | What |
 |---|---|---|
-| launchd | `<host>/scheduling/launchd/com.taskpanel.{poll,patrol}.plist` | `StartInterval` 60 / 300 |
-| systemd | `<host>/scheduling/systemd/taskpanel-{poll,patrol}.{service,timer}` | 60s / 300s timers |
-| cron | `<host>/scheduling/cron/taskpanel.cron` | `* * * * *` poll, `*/5 * * * *` patrol |
+| launchd | `<host>/scheduling/launchd/com.meerkat-taskpanel.{poll,patrol}.plist` | `StartInterval` 60 / 300 |
+| systemd | `<host>/scheduling/systemd/meerkat-taskpanel-{poll,patrol}.{service,timer}` | 60s / 300s timers |
+| cron | `<host>/scheduling/cron/meerkat-taskpanel.cron` | `* * * * *` poll, `*/5 * * * *` patrol |
 | wake glue | `<host>/bin/wake-<host>.sh` | `claude -p` (+`--resume`), `codex exec`, `pi run` |
-| host config | `<host>/task-panel.env` | `TASKPANEL_CLAIM_UNASSIGNED=yes\|no` |
-| log (runtime) | `<host>/task-panel/supervisor.log` | the supervisor's tick log |
-| state (runtime) | `<host>/task-panel/supervisor.state.json` | the running registry |
+| host config | `<host>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no` |
+| log (runtime) | `<host>/meerkat-taskpanel/supervisor.log` | the supervisor's tick log |
+| state (runtime) | `<host>/meerkat-taskpanel/supervisor.state.json` | the running registry |
 
 `<host>` is `~/.claude`, `~/.codex` or `~/.agents`. **OpenClaw gets none of these** —
 it installs the skill only and uses the
@@ -84,12 +84,12 @@ Load one of them to start the supervisor:
 
 ```bash
 # macOS
-launchctl load ~/.claude/scheduling/launchd/com.taskpanel.poll.plist    # and .patrol.plist
+launchctl load ~/.claude/scheduling/launchd/com.meerkat-taskpanel.poll.plist    # and .patrol.plist
 # Linux (user units)
 mkdir -p ~/.config/systemd/user && cp ~/.claude/scheduling/systemd/* ~/.config/systemd/user/
-systemctl --user enable --now taskpanel-poll.timer taskpanel-patrol.timer
+systemctl --user enable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer
 # Anywhere
-crontab ~/.claude/scheduling/cron/taskpanel.cron
+crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 ```
 
 ### The claim-unassigned question
@@ -100,9 +100,9 @@ When stdin is a TTY and no flag was given, `install.sh` asks once:
 Allow claiming unassigned tasks? [Y/n]
 ```
 
-The answer is persisted to `<host>/task-panel.env` as
-`TASKPANEL_CLAIM_UNASSIGNED=yes|no`; the supervisor reads it as its default (an
-explicit `--claim-unassigned` flag or `$TASKPANEL_CLAIM_UNASSIGNED` overrides it).
+The answer is persisted to `<host>/meerkat-taskpanel.env` as
+`MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes|no`; the supervisor reads it as its default (an
+explicit `--claim-unassigned` flag or `$MEERKAT_TASKPANEL_CLAIM_UNASSIGNED` overrides it).
 Non-interactive installs default to **yes**; `--claim-unassigned=no` /
 `--assignee-only` persist `no`. The file is merge-style: a re-run without
 `--force` keeps the existing value.
@@ -122,7 +122,7 @@ install.sh [--target claude|openclaw|codex|pi|all] [--prefix <home>]
 | `--prefix <home>` | Install relative to `<home>` instead of `$HOME`. |
 | `--agent-name <name>` | The agent's identity on the board, written into the claude/codex bundle (default `$USER`). Must equal the board assignee for the agent to claim cards. |
 | `--no-automation` | Skip **all** Codex automation — the claim trigger *and* the scheduling units (Claude/OpenClaw/Pi are unaffected). |
-| `--claim-unassigned=yes\|no` | May the supervisor claim **unassigned** cards (the public pool)? Persisted to `<home>/<host>/task-panel.env`; overrides the interactive answer. Default `yes`. |
+| `--claim-unassigned=yes\|no` | May the supervisor claim **unassigned** cards (the public pool)? Persisted to `<home>/<host>/meerkat-taskpanel.env`; overrides the interactive answer. Default `yes`. |
 | `--assignee-only` | Alias for `--claim-unassigned=no`. |
 | `--link` | Symlink the skill instead of copying it — edits to the repo take effect immediately. Recommended for a checkout. |
 | `--force` | The **only** way to overwrite. Without it, an existing destination is left untouched (merge, never clobber) and the installer prints a `left unchanged — use --force to overwrite` notice, so a re-run is safe, idempotent, and exits 0. With it, managed files and managed config keys are re-rendered from the current flags. |
@@ -181,10 +181,10 @@ bash install.sh --target claude --link --agent-name alice
 
 # 2. plugin (registers the marketplace, then installs the plugin)
 claude plugin marketplace add "$PWD"
-claude plugin install task-panel@task-panel-marketplace -y
+claude plugin install meerkat-taskpanel@meerkat-taskpanel-marketplace -y
 
 # verify
-claude plugin list                  # → task-panel@task-panel-marketplace, enabled
+claude plugin list                  # → meerkat-taskpanel@meerkat-taskpanel-marketplace, enabled
 claude plugin validate "$PWD"       # validates the plugin + marketplace manifests
 ```
 
@@ -192,21 +192,21 @@ Step 1 writes, merge-style and idempotently: the skill, `~/.claude/settings.json
 (`env.TASKCTL_AGENT=alice` + a `SessionStart` hook that starts the board and lists
 claimable cards), `~/.claude/commands/{board,claim,deliver}.md`, the `taskctl` shim at
 `~/.claude/bin/taskctl`, and the scheduling set (`~/.claude/scheduling/*`, the
-`wake-claude.sh` glue and `~/.claude/task-panel.env`). It also runs
-`claude mcp add taskpanel -- node <repo>/src/mcp/main.mjs` when the `claude` CLI is on
+`wake-claude.sh` glue and `~/.claude/meerkat-taskpanel.env`). It also runs
+`claude mcp add meerkat-taskpanel -- node <repo>/src/mcp/main.mjs` when the `claude` CLI is on
 `PATH` (otherwise it prints the exact command). Re-running is safe: existing
 `settings.json` keys and hooks are preserved, and `--force` is the only way to overwrite.
 
 Uninstall:
 
 ```bash
-claude mcp remove taskpanel
-claude plugin uninstall task-panel@task-panel-marketplace
-claude plugin marketplace remove task-panel-marketplace
-rm -rf ~/.claude/skills/task-panel ~/.claude/commands/{board,claim,deliver}.md \
-       ~/.claude/hooks/task-panel-session-start.sh ~/.claude/bin/taskctl \
+claude mcp remove meerkat-taskpanel
+claude plugin uninstall meerkat-taskpanel@meerkat-taskpanel-marketplace
+claude plugin marketplace remove meerkat-taskpanel-marketplace
+rm -rf ~/.claude/skills/meerkat-taskpanel ~/.claude/commands/{board,claim,deliver}.md \
+       ~/.claude/hooks/meerkat-taskpanel-session-start.sh ~/.claude/bin/taskctl \
        ~/.claude/bin/wake-claude.sh \
-       ~/.claude/scheduling ~/.claude/task-panel.env ~/.claude/task-panel
+       ~/.claude/scheduling ~/.claude/meerkat-taskpanel.env ~/.claude/meerkat-taskpanel
 ```
 
 ### OpenClaw
@@ -219,10 +219,10 @@ bash install.sh --target openclaw --link --force
 openclaw plugins install "$PWD/plugins/claude" --force --accept-capabilities
 
 # verify
-openclaw plugins inspect task-panel
+openclaw plugins inspect meerkat-taskpanel
 ```
 
-`openclaw plugins inspect task-panel` reports the bundle mapping:
+`openclaw plugins inspect meerkat-taskpanel` reports the bundle mapping:
 
 ```text
 Format: bundle
@@ -249,8 +249,8 @@ Bundle capabilities: skills
 Uninstall:
 
 ```bash
-openclaw plugins uninstall task-panel
-rm -rf ~/.openclaw/skills/task-panel
+openclaw plugins uninstall meerkat-taskpanel
+rm -rf ~/.openclaw/skills/meerkat-taskpanel
 ```
 
 ### Codex
@@ -261,7 +261,7 @@ bash install.sh --target codex --link --agent-name alice
 
 # 2. plugin
 codex plugin marketplace add "$PWD"
-codex plugin add task-panel@task-panel-marketplace
+codex plugin add meerkat-taskpanel@meerkat-taskpanel-marketplace
 
 # verify
 codex plugin list
@@ -269,10 +269,10 @@ codex plugin list
 
 Step 1 writes, merge-style and idempotently: the skill, a claim-first snippet appended to
 `~/.codex/AGENTS.md` (existing content is preserved), the schedulable claim trigger
-`~/.codex/task-panel-claim.sh`, the `taskctl` shim at `~/.codex/bin/taskctl`, and the
+`~/.codex/meerkat-taskpanel-claim.sh`, the `taskctl` shim at `~/.codex/bin/taskctl`, and the
 scheduling set (`~/.codex/scheduling/*`, the `wake-codex.sh` glue and
-`~/.codex/task-panel.env`). It also runs
-`codex mcp add taskpanel -- node <repo>/src/mcp/main.mjs` when the `codex` CLI is on
+`~/.codex/meerkat-taskpanel.env`). It also runs
+`codex mcp add meerkat-taskpanel -- node <repo>/src/mcp/main.mjs` when the `codex` CLI is on
 `PATH`. Codex has no hooks, so scheduling is the auto-claim mechanism — load one of the
 units (see [Scheduling units](#scheduling-units-claude-codex-pi)); the legacy trigger
 remains a minimal fallback you can schedule yourself. `--no-automation` skips the trigger
@@ -281,18 +281,18 @@ remains a minimal fallback you can schedule yourself. `--no-automation` skips th
 Uninstall:
 
 ```bash
-codex mcp remove taskpanel
-codex plugin remove task-panel
-codex plugin marketplace remove task-panel-marketplace
-rm -rf ~/.codex/skills/task-panel ~/.codex/task-panel-claim.sh ~/.codex/bin/taskctl \
+codex mcp remove meerkat-taskpanel
+codex plugin remove meerkat-taskpanel
+codex plugin marketplace remove meerkat-taskpanel-marketplace
+rm -rf ~/.codex/skills/meerkat-taskpanel ~/.codex/meerkat-taskpanel-claim.sh ~/.codex/bin/taskctl \
        ~/.codex/bin/wake-codex.sh \
-       ~/.codex/scheduling ~/.codex/task-panel.env ~/.codex/task-panel
+       ~/.codex/scheduling ~/.codex/meerkat-taskpanel.env ~/.codex/meerkat-taskpanel
 ```
 
 ### Pi / Agent Skills
 
 ```bash
-# 1. skill + scheduling set (units, wake-pi.sh, ~/.agents/task-panel.env)
+# 1. skill + scheduling set (units, wake-pi.sh, ~/.agents/meerkat-taskpanel.env)
 bash install.sh --target pi --link --force
 
 # 2. package
@@ -310,13 +310,13 @@ Uninstall:
 
 ```bash
 pi remove "$PWD/plugins/pi"
-rm -rf ~/.agents/skills/task-panel ~/.agents/scheduling ~/.agents/bin/wake-pi.sh ~/.agents/task-panel.env
+rm -rf ~/.agents/skills/meerkat-taskpanel ~/.agents/scheduling ~/.agents/bin/wake-pi.sh ~/.agents/meerkat-taskpanel.env
 ```
 
 ## MCP (optional)
 
 The skill drives the `taskctl` CLI and needs no MCP server. If you prefer the boolean
-tool interface, M3 ships a stdio MCP server as the `taskpanel-mcp` bin
+tool interface, M3 ships a stdio MCP server as the `meerkat-taskpanel-mcp` bin
 (`src/mcp/main.mjs`), a thin proxy to the same local `taskd`.
 
 For **Claude Code and Codex**, `install.sh` already runs the registration (when the host
@@ -324,10 +324,10 @@ CLI is on `PATH`); on a machine without it, it prints the exact command instead:
 
 ```bash
 # Claude Code (stdio)
-claude mcp add taskpanel -- node "$PWD/src/mcp/main.mjs"
+claude mcp add meerkat-taskpanel -- node "$PWD/src/mcp/main.mjs"
 
 # Codex
-codex mcp add taskpanel -- node "$PWD/src/mcp/main.mjs"
+codex mcp add meerkat-taskpanel -- node "$PWD/src/mcp/main.mjs"
 ```
 
 For OpenClaw/Pi, add the same command to that host's MCP configuration. MCP is strictly
@@ -346,7 +346,7 @@ npm run verify:docker                     # the full container suite, all four h
 
 That run includes `scripts/verify/profiles.mjs`, which for each host installs into a
 throwaway home and asserts: the skill lands at the host's destination, `SKILL.md`
-frontmatter still names `task-panel`, the wrapper resolves back to this checkout, the
+frontmatter still names `meerkat-taskpanel`, the wrapper resolves back to this checkout, the
 host manifest parses, and the bundle is recognized with a loadable skill. Run one host
 on its own with:
 
@@ -396,7 +396,7 @@ bundle stays isolated:
 
 ```bash
 bash install.sh --target all --prefix /tmp/tp-home
-TASKPANEL_TARGET_HOME=/tmp/tp-home bash scripts/install/claude.sh   # env equivalent
+MEERKAT_TASKPANEL_TARGET_HOME=/tmp/tp-home bash scripts/install/claude.sh   # env equivalent
 ```
 
 The host CLIs honour their own config-directory variables, so a fully isolated plugin
@@ -413,10 +413,10 @@ Each host's section above lists the plugin/bundle removal command. The skill its
 removed by deleting its destination:
 
 ```bash
-rm -rf ~/.claude/skills/task-panel      # claude
-rm -rf ~/.openclaw/skills/task-panel    # openclaw
-rm -rf ~/.codex/skills/task-panel       # codex
-rm -rf ~/.agents/skills/task-panel      # pi
+rm -rf ~/.claude/skills/meerkat-taskpanel      # claude
+rm -rf ~/.openclaw/skills/meerkat-taskpanel    # openclaw
+rm -rf ~/.codex/skills/meerkat-taskpanel       # codex
+rm -rf ~/.agents/skills/meerkat-taskpanel      # pi
 ```
 
 Nothing is written outside those directories, and nothing is sent over the network — see
@@ -424,7 +424,7 @@ Nothing is written outside those directories, and nothing is sent over the netwo
 
 ## Troubleshooting
 
-- **`no 'node' on PATH` / `Node vNN.x is too old`** — Task Panel needs **Node >= 22**
+- **`no 'node' on PATH` / `Node vNN.x is too old`** — Meerkat TaskPanel needs **Node >= 22**
   (the engine uses the built-in `node:sqlite` module). Install or upgrade Node and re-run;
   `--skip-node-check` bypasses the check if you know what you are doing.
 - **`… left unchanged — use --force to overwrite` (or `already installed … unchanged`)** —
@@ -434,7 +434,7 @@ Nothing is written outside those directories, and nothing is sent over the netwo
   or delete the destination first for a clean slate. See
   [Idempotence](#idempotence-re-running-and-force).
 - **`skill source not found`** — run `install.sh` from this checkout (it resolves
-  `skills/task-panel/` relative to itself); a `dist/` bundle must be unpacked first.
+  `skills/meerkat-taskpanel/` relative to itself); a `dist/` bundle must be unpacked first.
 - **`plugins/*/skills` out of date** — those copies are generated. Run
   `node scripts/sync-skills.mjs`; `npm run check:skills` fails CI on drift.
 - **OpenClaw does not list the plugin** — install the bundle

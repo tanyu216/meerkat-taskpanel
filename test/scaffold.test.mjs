@@ -28,7 +28,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 /** Temp dirs created by these tests, removed in the `after` hook. */
 const tempDirs = [];
 
-async function makeTempDir(prefix = "taskpanel-test-") {
+async function makeTempDir(prefix = "meerkat-taskpanel-test-") {
   const dir = await mkdtemp(join(tmpdir(), prefix));
   tempDirs.push(dir);
   return dir;
@@ -79,7 +79,7 @@ describe("plugin manifests", () => {
 describe("skill sync", () => {
   it("resolveSkillSource / listFiles return what the sync expects", async () => {
     const source = resolveSkillSource(ROOT);
-    assert.equal(source, join(ROOT, "skills", "task-panel"));
+    assert.equal(source, join(ROOT, "skills", "meerkat-taskpanel"));
 
     const files = await listFiles(source);
     assert.ok(files.includes("SKILL.md"), "SKILL.md must be listed");
@@ -110,8 +110,8 @@ describe("skill sync", () => {
   it("compareDirs detects changed, missing and extra files in a temp copy", async () => {
     const tmp = await makeTempDir();
 
-    const source = join(tmp, "src", "task-panel");
-    const dest = join(tmp, "dest", "task-panel");
+    const source = join(tmp, "src", "meerkat-taskpanel");
+    const dest = join(tmp, "dest", "meerkat-taskpanel");
 
     // Real skill source, copied twice — first as an identical mirror.
     await cp(resolveSkillSource(ROOT), source, { recursive: true });
@@ -159,10 +159,10 @@ describe("skill sync", () => {
 });
 
 describe("skill definition", () => {
-  it("SKILL.md has frontmatter with name: task-panel and a real description", async () => {
+  it("SKILL.md has frontmatter with name: meerkat-taskpanel and a real description", async () => {
     const result = await validateSkill(ROOT);
     assert.equal(result.ok, true, result.error);
-    assert.equal(result.name, "task-panel");
+    assert.equal(result.name, "meerkat-taskpanel");
     assert.ok(
       typeof result.description === "string" && result.description.length >= 20,
       "description must be non-empty and at least 20 characters",
@@ -193,9 +193,9 @@ describe("package manifest", () => {
     // being written down.
     const pkg = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8"));
 
-    assert.equal(pkg.bin["taskpanel-mcp"], "./src/mcp/main.mjs");
+    assert.equal(pkg.bin["meerkat-taskpanel-mcp"], "./src/mcp/main.mjs");
 
-    const entry = join(ROOT, pkg.bin["taskpanel-mcp"]);
+    const entry = join(ROOT, pkg.bin["meerkat-taskpanel-mcp"]);
     assert.ok(existsSync(entry), "bin target must exist");
     assert.match(readFileSync(entry, "utf8"), /^#!\/usr\/bin\/env node\n/, "a bin needs a shebang");
     assert.ok(
@@ -229,13 +229,13 @@ describe("install.sh", () => {
     const run = spawnSync("bash", [join(ROOT, "install.sh"), "--target", "all", "--dry-run"], {
       cwd: ROOT,
       encoding: "utf8",
-      env: { ...process.env, TASKPANEL_TARGET_HOME: fakeHome },
+      env: { ...process.env, MEERKAT_TASKPANEL_TARGET_HOME: fakeHome },
     });
 
     assert.equal(run.status, 0, run.stderr);
     for (const hostDir of [".claude", ".openclaw", ".codex", ".agents"]) {
       assert.ok(
-        run.stdout.includes(join(fakeHome, hostDir, "skills", "task-panel")),
+        run.stdout.includes(join(fakeHome, hostDir, "skills", "meerkat-taskpanel")),
         `dry run must print the ${hostDir} destination path`,
       );
     }
@@ -245,11 +245,11 @@ describe("install.sh", () => {
 
   it("installs into a temp home and re-installs idempotently", async () => {
     const fakeHome = await makeTempDir();
-    const dest = join(fakeHome, ".claude", "skills", "task-panel");
+    const dest = join(fakeHome, ".claude", "skills", "meerkat-taskpanel");
     // The direct host script now also registers MCP via the `claude` CLI when it is
     // present; drop CLAUDE_CONFIG_DIR so that registration (and any test run on a
     // machine that sets it) stays inside the isolated home.
-    const env = { ...process.env, TASKPANEL_TARGET_HOME: fakeHome };
+    const env = { ...process.env, MEERKAT_TASKPANEL_TARGET_HOME: fakeHome };
     delete env.CLAUDE_CONFIG_DIR;
 
     const first = spawnSync("bash", [join(ROOT, "scripts/install/claude.sh")], {
@@ -273,7 +273,7 @@ describe("install.sh", () => {
     const forced = spawnSync("bash", [join(ROOT, "scripts/install/claude.sh")], {
       cwd: ROOT,
       encoding: "utf8",
-      env: { ...env, TASKPANEL_FORCE: "1" },
+      env: { ...env, MEERKAT_TASKPANEL_FORCE: "1" },
     });
     assert.equal(forced.status, 0, forced.stderr);
   });
@@ -332,7 +332,7 @@ describe("taskctl CLI", () => {
   it("the skill wrapper forwards to the same CLI", () => {
     const run = spawnSync(
       process.execPath,
-      [join(ROOT, "skills", "task-panel", "scripts", "run.mjs"), "--version"],
+      [join(ROOT, "skills", "meerkat-taskpanel", "scripts", "run.mjs"), "--version"],
       { encoding: "utf8", cwd: tmpdir() },
     );
     assert.equal(run.status, 0, run.stderr);

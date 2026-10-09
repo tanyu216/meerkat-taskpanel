@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="TaskPanel">
-  <title>TaskPanel</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="MeerkatTaskPanel">
+  <title>MeerkatTaskPanel</title>
   <!-- Signal Bars — dark variant. Geometry is fixed by brief.md §5; only the
        fills change (bar1/bar2 → base-content, bar3 + node → dark primary). -->
   <rect x="5" y="17" width="6" height="10" rx="3" fill="#E6EDF0"/>

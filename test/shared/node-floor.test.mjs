@@ -10,7 +10,7 @@
  *
  * Two invariants matter and are asserted here:
  *
- *   * the message names the right bin and the requirement (`taskctl` / `taskpanel-mcp`);
+ *   * the message names the right bin and the requirement (`taskctl` / `meerkat-taskpanel-mcp`);
  *   * stdout stays empty on the fatal path — for the MCP server stdout is the
  *     JSON-RPC channel, and a banner on it would wedge the host's session.
  */
@@ -44,7 +44,7 @@ after(() => {
 
 /** An environment with no board and no permission to start one. */
 function boardlessEnv() {
-  const dir = makeTempDir("taskpanel-node-floor-");
+  const dir = makeTempDir("meerkat-taskpanel-node-floor-");
   return {
     TASKD_DATA_DIR: dir,
     TASKD_RUNTIME_POINTER: join(dir, "runtime.json"),
@@ -85,7 +85,7 @@ describe("MCP entry — the runtime floor", () => {
   it("refuses a too-old Node at stdin EOF: exit 2, empty JSON-RPC stdout", () => {
     const run = runLowNode(MCP_ENTRY, []);
     assert.equal(run.status, 2, run.stderr);
-    assert.match(run.stderr, /taskpanel-mcp: Node 22 or newer/);
+    assert.match(run.stderr, /meerkat-taskpanel-mcp: Node 22 or newer/);
     assert.equal(run.stdout, "", "stdout is the JSON-RPC channel and must stay empty on a fatal start");
   });
 

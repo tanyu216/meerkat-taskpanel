@@ -28,7 +28,7 @@ let dataDir;
 let taskId;
 
 before(async () => {
-  dataDir = mkdtempSync(join(tmpdir(), "taskpanel-attach-"));
+  dataDir = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-attach-"));
   tempDirs.push(dataDir);
   taskd = await createTaskd({ dataDir, host: "127.0.0.1", port: 0, env: {} });
   base = taskd.url;

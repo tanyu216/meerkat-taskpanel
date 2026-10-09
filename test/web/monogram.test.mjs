@@ -14,14 +14,14 @@ import { initialsOf } from "../../web/src/lib/monogram.js";
 describe("web/lib/monogram — initialsOf", () => {
   it("takes the first three letters of a single word, uppercased", () => {
     assert.equal(initialsOf("Orchestrator"), "ORC");
-    assert.equal(initialsOf("TaskPanel"), "TAS");
-    assert.equal(initialsOf("taskpanel"), "TAS");
+    assert.equal(initialsOf("MeerkatTaskPanel"), "MEE");
+    assert.equal(initialsOf("meerkat-taskpanel"), "MEE");
     assert.equal(initialsOf("Pi"), "PI");
   });
 
   it("takes the initial of each word, at most three", () => {
     assert.equal(initialsOf("Site Refresh"), "SR");
-    assert.equal(initialsOf("task panel"), "TP");
+    assert.equal(initialsOf("Meerkat TaskPanel"), "MT");
     assert.equal(initialsOf("One Two Three Four"), "OTT");
   });
 

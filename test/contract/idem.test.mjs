@@ -1,5 +1,5 @@
 /**
- * The creation idempotency key's database half (T-20261009-175500-idem-taskpanel).
+ * The creation idempotency key's database half (T-20261009-175500-idem-meerkat-taskpanel).
  *
  * The command layer's guard is a *read*; the guarantee is the partial unique
  * index `ux_tasks_idem_active` (0009). This file drives the rule straight into

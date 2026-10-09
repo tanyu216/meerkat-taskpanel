@@ -65,8 +65,8 @@ export const DEFAULT_LANGUAGE = "en";
 export const CATALOGUE = {
     en: {
       /* chrome */
-      "app.title": "TaskPanel — Board",
-      "app.brand": "TaskPanel",
+      "app.title": "MeerkatTaskPanel — Board",
+      "app.brand": "MeerkatTaskPanel",
       "app.tagline": "Agent Task Collaboration",
       "project.new": "New project…",
       "topbar.search.label": "Search tasks",
@@ -300,8 +300,8 @@ export const CATALOGUE = {
     },
     zh: {
       /* chrome */
-      "app.title": "TaskPanel — 看板",
-      "app.brand": "TaskPanel",
+      "app.title": "MeerkatTaskPanel — 看板",
+      "app.brand": "MeerkatTaskPanel",
       "app.tagline": "Agent 任务协作面板",
       "project.new": "新建项目…",
       "topbar.search.label": "搜索任务",

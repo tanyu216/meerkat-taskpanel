@@ -5,7 +5,7 @@ Project guidance for Claude Code. Auto-loaded; keep it accurate and non-duplicat
 
 ## Overview
 
-Task Panel is a **local-first task board for AI-agent teams**: agents claim work, send
+Meerkat TaskPanel is a **local-first task board for AI-agent teams**: agents claim work, send
 heartbeats, report progress and roll results up a dependency tree, while humans watch the
 same state on a kanban board. Persistence is a single SQLite database (Node's built-in
 `node:sqlite`) — no external services. Node **>= 22**, **zero runtime dependencies**,
@@ -24,7 +24,7 @@ and the roadmap in `README.md` / `README.zh-CN.md`.
 ## Repository layout
 
 ```text
-task-panel/
+meerkat-taskpanel/
 ├── package.json            # bin(taskctl), scripts; type:module; engines node>=22
 ├── install.sh              # install dispatcher: --target claude|openclaw|codex|pi|all
 ├── src/
@@ -38,7 +38,7 @@ task-panel/
 │   ├── server/             # minimal loopback taskd (CLI auto-start); full HTTP API + SSE board backend = M6
 │   └── shared/             # DTOs, constants, errors, pure helpers + the taskd transport seam (shared/transport/**)
 ├── web/                    # board frontend (Vue 3 + Vite): build-time devDeps -> web/dist (README placeholder)
-├── skills/task-panel/      # the skill — single source of truth (author here)
+├── skills/meerkat-taskpanel/      # the skill — single source of truth (author here)
 ├── plugins/{claude,codex,openclaw,pi}/  # per-host manifests + generated skills/ copies
 ├── design/                 # brand assets, tokens; prototype/assets + PRD/DESIGN/BLOCKS are placeholders
 ├── prototype/              # HTML + Tailwind/daisyUI prototype + screenshots (visual baseline)
@@ -78,7 +78,7 @@ Mind the two different `dist` trees: `dist/` is the **npm release tree** that
 - **Verification runs inside Docker, not on the host.** Everything that *runs* — unit/integration/e2e tests, starting or serving the app, the CLI, host skill installs, plugin/bundle installs, migration rehearsals — must run in the container (`docker/`, `npm run verify:docker`, `docker/verify-in-container.sh`). Only pure static checks (lint/typecheck, `node --check`, text/static assertions, `git` operations) and prototype screenshots may run on the host.
 - **Runtime zero-dependency, no network.** The engine — `src/core/`, `src/cli/`, `src/server/`, `src/mcp/` — and every script and test use Node builtins only and work fully offline. Do not run `npm install` for them: there is no root lockfile and no `node_modules/` is expected.
 - **`web/` is the one exception, and it is build-time only — and offline.** The board frontend (Vue 3 + Vite + Tailwind/daisyUI) has its own committed `web/package.json` + `web/package-lock.json` (the lockfile pins it) and is installed in the image's `webbuild` stage from the **committed npm cache** at `web/.vendor/npm-cache` (`npm ci --offline`). Because the cache is committed, the **image builds with no network** (`docker build --network=none` succeeds) and runtime + every verification step stay offline too. The cache is a **generated artefact** (linux/arm64, produced inside the arm64 container) — after any dependency bump, re-run the vendoring step in `docs/docker.md` and commit the refreshed cache alongside the lockfile. A three-way guard keeps the Dockerfile honest — cache present ⇒ `npm ci --offline`; no cache (a stripped checkout, never the committed configuration) ⇒ a documented networked `npm ci`; no `web/package.json` ⇒ skip and leave `web/dist` empty. Nothing from the toolchain reaches the runtime image — the hosted artefact is the static `web/dist` that `taskd` serves (`STATIC_DIR_REL`). Never install frontend deps into the repository root.
-- **The skill is generated, never hand-edited.** Author only under `skills/task-panel/`. After any edit run `node scripts/sync-skills.mjs`; `plugins/*/skills/` are generated copies that must stay identical (`--check` fails CI on drift).
+- **The skill is generated, never hand-edited.** Author only under `skills/meerkat-taskpanel/`. After any edit run `node scripts/sync-skills.mjs`; `plugins/*/skills/` are generated copies that must stay identical (`--check` fails CI on drift).
 - **Single writer.** The design assumes one local service owns the SQLite file — avoid concurrent writers against the same database.
 - **Commit with explicit paths:** `git commit -- <path>` (never a bare `git commit -a`).
 - **Code style / layering:** `src/core/domain/` imports **no Node builtins**; dependency direction is `cli|mcp|server -> core -> shared` (nothing imports from `cli`/`mcp`/`server`; `shared` imports nothing from `src/`); every failure is a domain error with a code, never a bare `Error`.

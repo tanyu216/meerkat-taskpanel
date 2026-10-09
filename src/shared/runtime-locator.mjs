@@ -106,11 +106,11 @@ export function resolveRuntimePointerPath(options = {}) {
   if (typeof override === "string" && override.trim() !== "") return resolve(override);
 
   if (platform === "darwin") {
-    return join(home, "Library", "Application Support", "TaskPanel", "runtime.json");
+    return join(home, "Library", "Application Support", "MeerkatTaskPanel", "runtime.json");
   }
 
   const xdg = env.XDG_STATE_HOME;
   const base =
     typeof xdg === "string" && xdg.trim() !== "" ? resolve(xdg) : join(home, ".local", "state");
-  return join(base, "task-panel", "runtime.json");
+  return join(base, "meerkat-taskpanel", "runtime.json");
 }

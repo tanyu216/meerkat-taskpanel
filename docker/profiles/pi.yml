@@ -2,7 +2,7 @@
 host: pi
 label: Pi
 installer: scripts/install/pi.sh
-target_dir: .agents/skills/task-panel
+target_dir: .agents/skills/meerkat-taskpanel
 skill_entry: SKILL.md
 wrapper: scripts/run.mjs
 # Pi consumes an npm package (package.json). Because the directory also ships a

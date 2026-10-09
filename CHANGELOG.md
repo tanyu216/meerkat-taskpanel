@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Task Panel are documented in this file.
+All notable changes to Meerkat TaskPanel are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -29,10 +29,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   framework's own poll/patrol, which are this design.
 - **The claim-unassigned question.** `install.sh` asks once (TTY only, default yes)
   whether the supervisor may claim unassigned cards, and persists the answer to
-  `<host>/task-panel.env` as `TASKPANEL_CLAIM_UNASSIGNED`; `--claim-unassigned=yes|no` and
+  `<host>/meerkat-taskpanel.env` as `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED`; `--claim-unassigned=yes|no` and
   `--assignee-only` work non-interactively.
 - **`issue candidates --include-unassigned`** — the poll read now optionally adds the
   unassigned public pool (the supervisor's `claim_unassigned` policy).
+
+### Changed
+
+- **Renamed to `meerkat-taskpanel`.** <!-- legacy-name-compat: quotes the former name to record the migration --> Every naming surface moved off the former `task-panel` / `TaskPanel` spellings — the npm package name and the MCP bin (`meerkat-taskpanel-mcp`), the skill source and its generated plugin copies (`skills/meerkat-taskpanel/`), the plugin + marketplace manifests, the installer environment variables (`MEERKAT_TASKPANEL_*`), the host config file (`<host>/meerkat-taskpanel.env`), the launchd / systemd / cron units, the per-user runtime directory (`Application Support/MeerkatTaskPanel/`, `~/.meerkat-taskpanel/`), the Docker image and compose project names, the Prometheus rules file and metric namespace, and the `web/` localStorage keys. The CLI keeps its name: `taskctl`.
+- **Backward compatibility.** The installer still accepts the pre-rename `TASKPANEL_*` environment variables, and the supervisor still reads a legacy `TASKPANEL_CLAIM_UNASSIGNED` key in the host config file; the new `MEERKAT_TASKPANEL_*` spelling wins when both are set.
+- **Migration.** Re-run `install.sh` to write the new paths. The previous npm bin alias for the MCP server is not retained — an existing MCP registration points at the server by path, so it keeps working — and a runtime pointer written under the former per-user directory is not read; the CLI writes a fresh one on first run.
 
 ## [1.0.0] - 2026-10-09
 
@@ -99,5 +105,5 @@ markdown migrator, and the full board HTTP API + SSE backend with the `web/` fro
   and release tree, runs `npm pack`, verifies the tarball's contents, and opens a **draft**
   GitHub Release. It previously did a packaging dry run only.
 
-[Unreleased]: https://github.com/tanyu216/task-panel/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/tanyu216/task-panel/releases/tag/v1.0.0
+[Unreleased]: https://github.com/tanyu216/meerkat-taskpanel/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/tanyu216/meerkat-taskpanel/releases/tag/v1.0.0

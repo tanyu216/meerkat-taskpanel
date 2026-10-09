@@ -76,16 +76,16 @@ describe("exporter — /metrics", () => {
       assert.match(response.headers.get("content-type"), /^text\/plain; version=0\.0\.4/);
 
       const text = await response.text();
-      assert.match(text, /^# TYPE task_panel_up gauge$/m);
-      assert.match(text, /^task_panel_up 1$/m);
-      assert.match(text, /^# TYPE task_panel_exporter_scrapes_total counter$/m);
-      assert.match(text, /^task_panel_exporter_scrapes_total 1$/m);
-      assert.match(text, /^task_panel_exporter_info\{version="[^"]+"\} 1$/m);
+      assert.match(text, /^# TYPE meerkat_taskpanel_up gauge$/m);
+      assert.match(text, /^meerkat_taskpanel_up 1$/m);
+      assert.match(text, /^# TYPE meerkat_taskpanel_exporter_scrapes_total counter$/m);
+      assert.match(text, /^meerkat_taskpanel_exporter_scrapes_total 1$/m);
+      assert.match(text, /^meerkat_taskpanel_exporter_info\{version="[^"]+"\} 1$/m);
 
       await fetch(`${url}/metrics`);
       const second = await (await fetch(`${url}/metrics`)).text();
-      assert.match(second, /^task_panel_exporter_scrapes_total 3$/m);
-      assert.doesNotMatch(text, /^task_panel_http_requests_total/m, "no traffic yet means no HTTP families");
+      assert.match(second, /^meerkat_taskpanel_exporter_scrapes_total 3$/m);
+      assert.doesNotMatch(text, /^meerkat_taskpanel_http_requests_total/m, "no traffic yet means no HTTP families");
     });
   });
 });
@@ -143,8 +143,8 @@ describe("exporter — /v1/observe and routing", () => {
       assert.deepEqual(await batch.json(), { accepted: 2, rejected: 0 });
 
       const text = await (await fetch(`${url}/metrics`)).text();
-      assert.match(text, /^task_panel_http_requests_total\{method="GET",route="\/api\/tasks",status="200"\} 2$/m);
-      assert.match(text, /^task_panel_http_requests_total\{method="GET",route="\/health",status="200"\} 1$/m);
+      assert.match(text, /^meerkat_taskpanel_http_requests_total\{method="GET",route="\/api\/tasks",status="200"\} 2$/m);
+      assert.match(text, /^meerkat_taskpanel_http_requests_total\{method="GET",route="\/health",status="200"\} 1$/m);
     });
   });
 
@@ -190,7 +190,7 @@ describe("exporter — OTLP push", () => {
         assert.ok(pushed, "expected at least one OTLP push");
         assert.equal(received[0].url, "/v1/metrics");
         const metrics = JSON.parse(received[0].body).resourceMetrics[0].scopeMetrics[0].metrics;
-        assert.ok(metrics.some((metric) => metric.name === "task_panel_http_requests_total"));
+        assert.ok(metrics.some((metric) => metric.name === "meerkat_taskpanel_http_requests_total"));
 
         const health = await getJson(`${url}/health`);
         assert.equal(health.body.otel.enabled, true);
@@ -226,7 +226,7 @@ describe("exporter — config and lifecycle", () => {
     const overridden = parseConfig({
       MONITORING_HOST: "0.0.0.0",
       MONITORING_PORT: "9199",
-      MONITORING_SERVICE_NAME: "task-panel-ops",
+      MONITORING_SERVICE_NAME: "meerkat-taskpanel-ops",
       MONITORING_SLO_WINDOW_MS: "60000",
       MONITORING_SLO_P95_LATENCY_MS: "150",
       MONITORING_OTLP_ENDPOINT: "http://collector:4318",
@@ -234,7 +234,7 @@ describe("exporter — config and lifecycle", () => {
     });
     assert.equal(overridden.host, "0.0.0.0");
     assert.equal(overridden.port, 9199);
-    assert.equal(overridden.serviceName, "task-panel-ops");
+    assert.equal(overridden.serviceName, "meerkat-taskpanel-ops");
     assert.equal(overridden.windowMs, 60_000);
     assert.equal(overridden.p95LatencyMs, 150);
     assert.equal(overridden.otlpEndpoint, "http://collector:4318/v1/metrics");

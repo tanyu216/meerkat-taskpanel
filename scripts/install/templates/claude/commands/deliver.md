@@ -1,5 +1,5 @@
 ---
-description: Deliver the current Task Panel card with a report
+description: Deliver the current Meerkat TaskPanel card with a report
 ---
 
 I am agent **{{AGENT}}**. Deliver the card I hold, with a report for the current round:

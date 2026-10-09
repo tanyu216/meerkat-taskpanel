@@ -17,8 +17,8 @@ This is a real implementation, not a placeholder. What it ships:
   and a manual `?after=` resync. Optimistic moves carry `if_version`, and a
   `409 VERSION_CONFLICT` reverts the change and shows a **visible** conflict
   panel — never a silent overwrite, never an automatic retry.
-- **Theme + language**: `localStorage` keys `taskpanel.theme` (`light` default,
-  three-state cycle light → dark → auto) and `taskpanel.lang` (`en` default).
+- **Theme + language**: `localStorage` keys `meerkat-taskpanel.theme` (`light` default,
+  three-state cycle light → dark → auto) and `meerkat-taskpanel.lang` (`en` default).
   `auto` is resolved entirely in CSS (`@media (prefers-color-scheme: dark)`);
   no script reads `matchMedia`.
 - **i18n**: the prototype catalogue (`src/i18n/catalogue.mjs`), plus a small

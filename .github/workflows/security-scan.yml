@@ -181,7 +181,7 @@ jobs:
           path: .
           format: spdx-json
           output-file: sbom.spdx.json
-          artifact-name: task-panel-sbom.spdx.json
+          artifact-name: meerkat-taskpanel-sbom.spdx.json
           upload-artifact: true
           upload-release-assets: false
 

@@ -17,17 +17,17 @@ import { SLO_TARGETS, SLO_WINDOW_TEXT, formatRatio, formatSeconds } from "./slo.
 import { parseYaml } from "./yaml.mjs";
 
 /** Where the rules file lives, relative to the repository root. */
-export const RULES_REL_PATH = "monitoring/prometheus/task-panel.rules.yml";
+export const RULES_REL_PATH = "monitoring/prometheus/meerkat-taskpanel.rules.yml";
 /** Where compose mounts it inside the Prometheus container. */
-export const RULES_PATH_IN_CONTAINER = "/etc/prometheus/rules/task-panel.rules.yml";
+export const RULES_PATH_IN_CONTAINER = "/etc/prometheus/rules/meerkat-taskpanel.rules.yml";
 /** The single group the rules live in. */
-export const RULES_GROUP_NAME = "task-panel-slo";
+export const RULES_GROUP_NAME = "meerkat-taskpanel-slo";
 
 /** Exactly the alerts that must exist, and nothing else. */
 export const REQUIRED_ALERTS = Object.freeze([
-  "TaskPanelAvailabilityBelowSLO",
-  "TaskPanelErrorRate5xxAboveBudget",
-  "TaskPanelP95LatencyAboveBudget",
+  "MeerkatTaskPanelAvailabilityBelowSLO",
+  "MeerkatTaskPanelErrorRate5xxAboveBudget",
+  "MeerkatTaskPanelP95LatencyAboveBudget",
 ]);
 
 /** A `for:` value: a duration such as `5m`. */
@@ -41,7 +41,7 @@ export const SEVERITIES = Object.freeze(["critical", "warning", "info"]);
  */
 export const ALERT_SPECS = Object.freeze([
   Object.freeze({
-    name: "TaskPanelAvailabilityBelowSLO",
+    name: "MeerkatTaskPanelAvailabilityBelowSLO",
     severity: "critical",
     for: "5m",
     metrics: [REQUEST_FAILURES_TOTAL, REQUEST_TOTAL],
@@ -49,7 +49,7 @@ export const ALERT_SPECS = Object.freeze([
     fragments: ["sum", "rate"],
   }),
   Object.freeze({
-    name: "TaskPanelErrorRate5xxAboveBudget",
+    name: "MeerkatTaskPanelErrorRate5xxAboveBudget",
     severity: "critical",
     for: "5m",
     metrics: [REQUEST_TOTAL],
@@ -57,7 +57,7 @@ export const ALERT_SPECS = Object.freeze([
     fragments: ['status=~"5.."'],
   }),
   Object.freeze({
-    name: "TaskPanelP95LatencyAboveBudget",
+    name: "MeerkatTaskPanelP95LatencyAboveBudget",
     severity: "warning",
     for: "10m",
     metrics: [`${REQUEST_DURATION_SECONDS}_bucket`],

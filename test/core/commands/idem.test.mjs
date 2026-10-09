@@ -1,6 +1,6 @@
 /**
  * The creation idempotency guard, at the service layer
- * (T-20261009-175500-idem-taskpanel).
+ * (T-20261009-175500-idem-meerkat-taskpanel).
  *
  * What "refuse and reuse" means here, precisely: `createTask` returns the
  * existing Task DTO, writes **no** row and appends **no** activity — the caller

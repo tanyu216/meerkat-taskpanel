@@ -1,6 +1,6 @@
 # Docs
 
-Documentation for Task Panel.
+Documentation for Meerkat TaskPanel.
 
 | Document | Contents |
 |---|---|
@@ -12,7 +12,7 @@ Documentation for Task Panel.
 | [contract.md](contract.md) | The API contract snapshot (routes + error codes + wire fields + MCP tools): what it freezes, the `--update` workflow, and the pre-push / pre-tag / CI gates. |
 | [scheduling.md](scheduling.md) | The two-layer poll/patrol model, the fire-only cost gate, the atomic-claim dispatch, the host-external supervisor, the three-host trigger differences, and why OpenClaw uses openclaw-team instead. |
 | [web-local-first.md](web-local-first.md) | The board frontend is loopback-only: why a remote browser gets 401 (no token injection) and what implementing it would take. |
-| [`../skills/task-panel/SKILL.md`](../skills/task-panel/SKILL.md) | The agent-facing skill definition. |
-| [`../skills/task-panel/references/cli.md`](../skills/task-panel/references/cli.md) | The `taskctl` command surface (M2, implemented). |
+| [`../skills/meerkat-taskpanel/SKILL.md`](../skills/meerkat-taskpanel/SKILL.md) | The agent-facing skill definition. |
+| [`../skills/meerkat-taskpanel/references/cli.md`](../skills/meerkat-taskpanel/references/cli.md) | The `taskctl` command surface (M2, implemented). |
 
 Start with the [README](../README.md) for what the project is and its current status.

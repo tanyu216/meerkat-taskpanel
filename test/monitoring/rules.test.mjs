@@ -41,14 +41,14 @@ describe("rules — the committed rules file", () => {
     const report = validateRules(await committedRules());
     assert.deepEqual(report.problems, []);
     assert.equal(report.ok, true);
-    assert.deepEqual([...report.groupNames], ["task-panel-slo"]);
+    assert.deepEqual([...report.groupNames], ["meerkat-taskpanel-slo"]);
   });
 
   it("pins exactly the three SLO alerts, their severities and their `for:` windows", async () => {
     assert.deepEqual(REQUIRED_ALERTS, [
-      "TaskPanelAvailabilityBelowSLO",
-      "TaskPanelErrorRate5xxAboveBudget",
-      "TaskPanelP95LatencyAboveBudget",
+      "MeerkatTaskPanelAvailabilityBelowSLO",
+      "MeerkatTaskPanelErrorRate5xxAboveBudget",
+      "MeerkatTaskPanelP95LatencyAboveBudget",
     ]);
 
     const report = validateRules(await committedRules());
@@ -56,26 +56,26 @@ describe("rules — the committed rules file", () => {
     assert.deepEqual(
       Object.fromEntries(Object.entries(report.alerts).map(([name, alert]) => [name, { for: alert.for, severity: alert.severity }])),
       {
-        TaskPanelAvailabilityBelowSLO: { for: "5m", severity: "critical" },
-        TaskPanelErrorRate5xxAboveBudget: { for: "5m", severity: "critical" },
-        TaskPanelP95LatencyAboveBudget: { for: "10m", severity: "warning" },
+        MeerkatTaskPanelAvailabilityBelowSLO: { for: "5m", severity: "critical" },
+        MeerkatTaskPanelErrorRate5xxAboveBudget: { for: "5m", severity: "critical" },
+        MeerkatTaskPanelP95LatencyAboveBudget: { for: "10m", severity: "warning" },
       },
     );
   });
 
   it("encodes the thresholds `/health` uses, over the shared 5m window", async () => {
     const doc = await committedRules();
-    const availability = alertNamed(doc, "TaskPanelAvailabilityBelowSLO").expr;
+    const availability = alertNamed(doc, "MeerkatTaskPanelAvailabilityBelowSLO").expr;
     assert.ok(availability.includes(REQUEST_FAILURES_TOTAL));
     assert.ok(availability.includes(REQUEST_TOTAL));
     assert.ok(availability.includes(formatRatio(1 - SLO_TARGETS.availabilityRatio)));
 
-    const errors = alertNamed(doc, "TaskPanelErrorRate5xxAboveBudget").expr;
+    const errors = alertNamed(doc, "MeerkatTaskPanelErrorRate5xxAboveBudget").expr;
     assert.ok(errors.includes(REQUEST_TOTAL));
     assert.ok(errors.includes('status=~"5.."'));
     assert.ok(errors.includes(formatRatio(SLO_TARGETS.errorRatio5xx)));
 
-    const latency = alertNamed(doc, "TaskPanelP95LatencyAboveBudget").expr;
+    const latency = alertNamed(doc, "MeerkatTaskPanelP95LatencyAboveBudget").expr;
     assert.ok(latency.includes(`${REQUEST_DURATION_SECONDS}_bucket`));
     assert.ok(latency.includes("histogram_quantile(0.95"));
     assert.ok(latency.includes(formatSeconds(SLO_TARGETS.p95LatencyMs)));
@@ -90,43 +90,43 @@ describe("rules — the committed rules file", () => {
 describe("rules — the validator", () => {
   it("reports a threshold that drifted away from SLO_TARGETS", async () => {
     const doc = await mutableRules();
-    const availability = alertNamed(doc, "TaskPanelAvailabilityBelowSLO");
+    const availability = alertNamed(doc, "MeerkatTaskPanelAvailabilityBelowSLO");
     availability.expr = availability.expr.replace("0.001", "0.01");
     const report = validateRules(doc);
     assert.equal(report.ok, false);
-    assert.match(report.problems.join("\n"), /TaskPanelAvailabilityBelowSLO: .*0\.001/);
+    assert.match(report.problems.join("\n"), /MeerkatTaskPanelAvailabilityBelowSLO: .*0\.001/);
   });
 
   it("reports a metric name that no longer exists in the registry", async () => {
     const doc = await mutableRules();
-    const errors = alertNamed(doc, "TaskPanelErrorRate5xxAboveBudget");
-    errors.expr = errors.expr.replaceAll(REQUEST_TOTAL, "task_panel_requests_huh");
+    const errors = alertNamed(doc, "MeerkatTaskPanelErrorRate5xxAboveBudget");
+    errors.expr = errors.expr.replaceAll(REQUEST_TOTAL, "meerkat_taskpanel_requests_huh");
     const report = validateRules(doc);
     assert.equal(report.ok, false);
-    assert.match(report.problems.join("\n"), /TaskPanelErrorRate5xxAboveBudget: .*task_panel_http_requests_total/);
+    assert.match(report.problems.join("\n"), /MeerkatTaskPanelErrorRate5xxAboveBudget: .*meerkat_taskpanel_http_requests_total/);
   });
 
   it("reports a missing, unexpected or malformed alert", async () => {
     const missing = await mutableRules();
-    missing.groups[0].rules = missing.groups[0].rules.filter((rule) => rule.alert !== "TaskPanelP95LatencyAboveBudget");
+    missing.groups[0].rules = missing.groups[0].rules.filter((rule) => rule.alert !== "MeerkatTaskPanelP95LatencyAboveBudget");
     const missingReport = validateRules(missing);
     assert.equal(missingReport.ok, false);
-    assert.match(missingReport.problems.join("\n"), /missing alert\(s\): TaskPanelP95LatencyAboveBudget/);
+    assert.match(missingReport.problems.join("\n"), /missing alert\(s\): MeerkatTaskPanelP95LatencyAboveBudget/);
 
     const extra = await mutableRules();
-    extra.groups[0].rules.push({ ...extra.groups[0].rules[0], alert: "TaskPanelMadeUp" });
+    extra.groups[0].rules.push({ ...extra.groups[0].rules[0], alert: "MeerkatTaskPanelMadeUp" });
     const extraReport = validateRules(extra);
     assert.equal(extraReport.ok, false);
-    assert.match(extraReport.problems.join("\n"), /unexpected alert\(s\): TaskPanelMadeUp/);
+    assert.match(extraReport.problems.join("\n"), /unexpected alert\(s\): MeerkatTaskPanelMadeUp/);
 
     const malformed = await mutableRules();
-    const availability = alertNamed(malformed, "TaskPanelAvailabilityBelowSLO");
+    const availability = alertNamed(malformed, "MeerkatTaskPanelAvailabilityBelowSLO");
     availability.for = "soon";
     availability.labels.severity = "very-loud";
     const malformedReport = validateRules(malformed);
     assert.equal(malformedReport.ok, false);
-    assert.match(malformedReport.problems.join("\n"), /TaskPanelAvailabilityBelowSLO: .*for/);
-    assert.match(malformedReport.problems.join("\n"), /TaskPanelAvailabilityBelowSLO: .*severity/);
+    assert.match(malformedReport.problems.join("\n"), /MeerkatTaskPanelAvailabilityBelowSLO: .*for/);
+    assert.match(malformedReport.problems.join("\n"), /MeerkatTaskPanelAvailabilityBelowSLO: .*severity/);
   });
 
   it("reports a document that is not a rule group at all", () => {

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# Task Panel installer.
+# Meerkat TaskPanel installer.
 #
 # Thin dispatcher: it parses the shared flags once and then runs
 # scripts/install/<host>.sh for each requested host, forwarding the options
-# through TASKPANEL_* environment variables.
+# through MEERKAT_TASKPANEL_* environment variables.
 #
 # Usage:
 #   install.sh [--target claude|openclaw|codex|pi|all] [--prefix <home>]
@@ -17,7 +17,7 @@
 #
 # It also asks (when stdin is a TTY and no flag was given) whether the supervisor
 # may claim **unassigned** cards, and persists the answer as
-# `<home>/<host>/task-panel.env` for the bundle hosts. Non-interactive runs
+# `<home>/<host>/meerkat-taskpanel.env` for the bundle hosts. Non-interactive runs
 # default to yes; `--claim-unassigned=no` / `--assignee-only` opt out.
 #
 # Before dispatching, it checks the runtime: Node >= 22 is required (the engine
@@ -51,7 +51,7 @@ usage() {
   cat <<'EOF'
 Usage: install.sh [options]
 
-Install the Task Panel skill into one or more agent hosts.
+Install the Meerkat TaskPanel skill into one or more agent hosts.
 
 Options:
   --target <host>   claude | openclaw | codex | pi | all   (default: all)
@@ -74,24 +74,24 @@ The check runs before anything is installed; a missing or older `node` is an
 error. Pass --skip-node-check to bypass it.
 
 Destinations:
-  claude     <home>/.claude/skills/task-panel
-  openclaw   <home>/.openclaw/skills/task-panel
-  codex      <home>/.codex/skills/task-panel
-  pi         <home>/.agents/skills/task-panel
+  claude     <home>/.claude/skills/meerkat-taskpanel
+  openclaw   <home>/.openclaw/skills/meerkat-taskpanel
+  codex      <home>/.codex/skills/meerkat-taskpanel
+  pi         <home>/.agents/skills/meerkat-taskpanel
 
-The claim policy is written to <home>/<host>/task-panel.env for the hosts that
+The claim policy is written to <home>/<host>/meerkat-taskpanel.env for the hosts that
 build a supervisor (claude, codex, pi); OpenClaw installs openclaw-team instead.
 
 Environment (set for each host installer):
-  TASKPANEL_TARGET_HOME  overrides $HOME
-  TASKPANEL_AGENT_NAME   agent identity (default: $USER)
-  TASKPANEL_NO_AUTOMATION "1" to skip the Codex claim trigger + scheduling
-  TASKPANEL_CLAIM_UNASSIGNED  "yes"/"no" default for the claim policy
-  TASKPANEL_LINK         symlink instead of copy
-  TASKPANEL_FORCE        overwrite an existing destination
-  TASKPANEL_DRY_RUN      print only, change nothing
-  TASKPANEL_MIN_NODE     required Node major (default 22)
-  TASKPANEL_SKIP_NODE_CHECK  "1" to skip the Node version check
+  MEERKAT_TASKPANEL_TARGET_HOME  overrides $HOME
+  MEERKAT_TASKPANEL_AGENT_NAME   agent identity (default: $USER)
+  MEERKAT_TASKPANEL_NO_AUTOMATION "1" to skip the Codex claim trigger + scheduling
+  MEERKAT_TASKPANEL_CLAIM_UNASSIGNED  "yes"/"no" default for the claim policy
+  MEERKAT_TASKPANEL_LINK         symlink instead of copy
+  MEERKAT_TASKPANEL_FORCE        overwrite an existing destination
+  MEERKAT_TASKPANEL_DRY_RUN      print only, change nothing
+  MEERKAT_TASKPANEL_MIN_NODE     required Node major (default 22)
+  MEERKAT_TASKPANEL_SKIP_NODE_CHECK  "1" to skip the Node version check
 EOF
 }
 
@@ -178,7 +178,9 @@ done
 # run (from scripts/install/_common.sh); doing it here first means one message appears
 # before any "install.sh: <host>" line, and --skip-node-check resolves in one place.
 # Only builtins are used, so a PATH with no node still reaches a clear message.
-SKIP_NODE_CHECK="${SKIP_NODE_CHECK:-${TASKPANEL_SKIP_NODE_CHECK:-}}"
+# legacy-name-compat: honour the pre-rename TASKPANEL_SKIP_NODE_CHECK too (this
+# read runs before scripts/install/_common.sh, which normalises the rest).
+SKIP_NODE_CHECK="${SKIP_NODE_CHECK:-${MEERKAT_TASKPANEL_SKIP_NODE_CHECK:-${TASKPANEL_SKIP_NODE_CHECK:-}}}"
 [ -f "$ROOT/scripts/install/_common.sh" ] || die "missing installer helper: $ROOT/scripts/install/_common.sh"
 . "$ROOT/scripts/install/_common.sh"
 if [ "$SKIP_NODE_CHECK" = "1" ]; then
@@ -224,15 +226,15 @@ IFS="$OLD_IFS"
 
 [ -n "$(echo "$HOSTS" | tr -d ' ')" ] || die "no targets selected"
 
-# --prefix wins; otherwise honour an inherited TASKPANEL_TARGET_HOME; else $HOME.
-TARGET_HOME="${PREFIX_HOME:-${TASKPANEL_TARGET_HOME:-$HOME}}"
-DRY_RUN="${DRY_RUN:-${TASKPANEL_DRY_RUN:-}}"
+# --prefix wins; otherwise honour an inherited MEERKAT_TASKPANEL_TARGET_HOME; else $HOME.
+TARGET_HOME="${PREFIX_HOME:-${MEERKAT_TASKPANEL_TARGET_HOME:-$HOME}}"
+DRY_RUN="${DRY_RUN:-${MEERKAT_TASKPANEL_DRY_RUN:-}}"
 
 # Resolve the "allow claiming unassigned tasks?" policy (per-host config default).
 # An explicit flag wins; else the environment; else ask on a TTY (default yes) —
 # and a dry run never blocks on a prompt. A bad value is a hard error, before any
 # host is dispatched, so a misspelt policy installs nothing.
-CLAIM_FLAG="${CLAIM_UNASSIGNED_FLAG:-${TASKPANEL_CLAIM_UNASSIGNED:-}}"
+CLAIM_FLAG="${CLAIM_UNASSIGNED_FLAG:-${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-}}"
 TTY=""
 if [ -z "$DRY_RUN" ] && [ -t 0 ]; then
   TTY="1"
@@ -260,14 +262,14 @@ FAIL $host — installer not found"
   fi
 
   echo "install.sh: $host"
-  if TASKPANEL_TARGET_HOME="$TARGET_HOME" \
-      TASKPANEL_AGENT_NAME="$AGENT_NAME" \
-      TASKPANEL_NO_AUTOMATION="$NO_AUTOMATION" \
-      TASKPANEL_CLAIM_UNASSIGNED="$CLAIM_UNASSIGNED" \
-      TASKPANEL_LINK="$LINK" \
-      TASKPANEL_FORCE="$FORCE" \
-      TASKPANEL_DRY_RUN="$DRY_RUN" \
-      TASKPANEL_SKIP_NODE_CHECK="1" \
+  if MEERKAT_TASKPANEL_TARGET_HOME="$TARGET_HOME" \
+      MEERKAT_TASKPANEL_AGENT_NAME="$AGENT_NAME" \
+      MEERKAT_TASKPANEL_NO_AUTOMATION="$NO_AUTOMATION" \
+      MEERKAT_TASKPANEL_CLAIM_UNASSIGNED="$CLAIM_UNASSIGNED" \
+      MEERKAT_TASKPANEL_LINK="$LINK" \
+      MEERKAT_TASKPANEL_FORCE="$FORCE" \
+      MEERKAT_TASKPANEL_DRY_RUN="$DRY_RUN" \
+      MEERKAT_TASKPANEL_SKIP_NODE_CHECK="1" \
       bash "$installer"; then
     summary="$summary
 OK   $host — $TARGET_HOME"

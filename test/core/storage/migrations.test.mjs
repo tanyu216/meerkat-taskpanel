@@ -30,7 +30,7 @@ after(cleanupTempDirs);
 
 /** A private migration dir so a test can add/alter files without touching the real set. */
 function stageMigrations(files) {
-  const dir = makeTempDir("taskpanel-migrations-");
+  const dir = makeTempDir("meerkat-taskpanel-migrations-");
   for (const [name, sql] of Object.entries(files)) writeFileSync(join(dir, name), sql, "utf8");
   return dir;
 }
@@ -201,12 +201,12 @@ describe("storage/migrations — failure modes", () => {
   });
 
   it("refuses two files claiming the same version, and an empty directory", async () => {
-    const dup = makeTempDir("taskpanel-dup-");
+    const dup = makeTempDir("meerkat-taskpanel-dup-");
     writeFileSync(join(dup, "0001_a.sql"), "SELECT 1;", "utf8");
     writeFileSync(join(dup, "0001_b.sql"), "SELECT 2;", "utf8");
     assert.throws(() => listMigrations({ dir: dup }), (err) => err.code === "VALIDATION_FAILED");
 
-    const empty = makeTempDir("taskpanel-empty-");
+    const empty = makeTempDir("meerkat-taskpanel-empty-");
     assert.deepEqual(listMigrations({ dir: empty }), []);
     const board = await createTempBoard({ migrate: false });
     try {
@@ -271,7 +271,7 @@ describe("storage/migrations — startup check", () => {
     try {
       applyMigrations(board.db, { dir });
       // Now pretend the build ships only 0001 (0002 was removed).
-      const trimmed = makeTempDir("taskpanel-trimmed-");
+      const trimmed = makeTempDir("meerkat-taskpanel-trimmed-");
       mkdirSync(trimmed, { recursive: true });
       writeFileSync(join(trimmed, "0001_first.sql"), TINY["0001_first.sql"], "utf8");
       assert.throws(() => assertSchemaCurrent(board.db, { dir: trimmed }), (err) => {

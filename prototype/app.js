@@ -1,5 +1,5 @@
 /* ============================================================================
-   TaskPanel v1 prototype — interaction layer
+   MeerkatTaskPanel v1 prototype — interaction layer
    ----------------------------------------------------------------------------
    jQuery (slim build) only. Every binding uses `$(...).on(...)` with `data-*`
    hooks; no bare document.querySelector / addEventListener anywhere.
@@ -22,7 +22,7 @@
   ];
 
   var PROJECT_PREFIX = {
-    TaskPanel: "TD",
+    MeerkatTaskPanel: "TD",
     Orchestrator: "ORC",
     "Site Refresh": "SR",
   };
@@ -35,8 +35,8 @@
   var MESSAGES = {
     en: {
       /* chrome */
-      "app.title": "TaskPanel — Board",
-      "app.brand": "TaskPanel",
+      "app.title": "MeerkatTaskPanel — Board",
+      "app.brand": "MeerkatTaskPanel",
       "app.tagline": "Agent Task Collaboration",
       "project.new": "New project…",
       "topbar.search.label": "Search tasks",
@@ -270,8 +270,8 @@
     },
     zh: {
       /* chrome */
-      "app.title": "TaskPanel — 看板",
-      "app.brand": "TaskPanel",
+      "app.title": "MeerkatTaskPanel — 看板",
+      "app.brand": "MeerkatTaskPanel",
       "app.tagline": "Agent 任务协作面板",
       "project.new": "新建项目…",
       "topbar.search.label": "搜索任务",
@@ -520,7 +520,7 @@
   };
 
   var state = {
-    project: "TaskPanel",
+    project: "MeerkatTaskPanel",
     view: "board",
     lang: "en",
     moveIdentifier: null,
@@ -941,9 +941,9 @@
   var THEME_MODES = ["light", "dark", "auto"];
 
   /* `data-theme` is the CSS hook: Light keeps the explicit light theme name
-     (`taskpanel`), and Auto gets a value of its own so the media query can
+     (`meerkat-taskpanel`), and Auto gets a value of its own so the media query can
      match it. */
-  var THEME_ATTR = { light: "taskpanel", dark: "dark", auto: "auto" };
+  var THEME_ATTR = { light: "meerkat-taskpanel", dark: "dark", auto: "auto" };
 
   /* One toast per mode; the cycle reports the mode it landed on. */
   var THEME_TOAST = {

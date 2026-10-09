@@ -6,7 +6,7 @@
 # `npm run verify:docker` invoke exactly this script, so a green local run and a green
 # CI run mean the same thing.
 #
-#   docker run --rm task-panel:verify bash docker/verify-in-container.sh
+#   docker run --rm meerkat-taskpanel:verify bash docker/verify-in-container.sh
 #   npm run verify:docker:container        # when already inside the image
 #
 # Each step prints a `== ... ==` header. Any failure exits non-zero immediately.

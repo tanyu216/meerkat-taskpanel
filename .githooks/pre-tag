@@ -1,5 +1,5 @@
 #!/bin/sh
-# Task Panel pre-tag gate.
+# Meerkat TaskPanel pre-tag gate.
 #
 #   sh .githooks/pre-tag v1.2.3
 #

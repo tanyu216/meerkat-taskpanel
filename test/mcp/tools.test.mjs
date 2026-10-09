@@ -413,7 +413,7 @@ describe("mcp/tools — failure matrix (every tool, and every stable code)", () 
 
 describe("mcp/tools — no board", () => {
   it("reports CLI_IO as a tool result, and leaves the protocol healthy", async () => {
-    const dir = makeTempDir("taskpanel-mcp-noboard-");
+    const dir = makeTempDir("meerkat-taskpanel-mcp-noboard-");
     const pointerPath = join(dir, "runtime.json");
     const deadUrl = await closedPortUrl();
     writeFileSync(pointerPath, JSON.stringify({ url: deadUrl, port: 0, pid: 999_999 }), "utf8");

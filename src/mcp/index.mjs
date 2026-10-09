@@ -1,5 +1,5 @@
 /**
- * Task Panel MCP server — the library entry (M3).
+ * Meerkat TaskPanel MCP server — the library entry (M3).
  *
  * A stdio MCP server that exposes the board's tool surface to an agent host.
  * It is a **thin proxy**: arguments are projected onto the taskd HTTP surface,

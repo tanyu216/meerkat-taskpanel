@@ -46,18 +46,18 @@ jobs:
       # stage alone so its `web/dist` can be pulled out; the full image below then
       # reuses those cached layers, so the frontend is compiled once.
       - name: Build the board frontend (webbuild stage)
-        run: docker build -f docker/Dockerfile --target webbuild -t task-panel:webbuild .
+        run: docker build -f docker/Dockerfile --target webbuild -t meerkat-taskpanel:webbuild .
 
       - name: Extract web/dist from the webbuild stage
         run: |
-          cid="$(docker create task-panel:webbuild)"
+          cid="$(docker create meerkat-taskpanel:webbuild)"
           docker cp "$cid:/app/web/dist" ./web-dist
           docker rm "$cid"
           test -f ./web-dist/index.html
           echo "web/dist: $(find ./web-dist -type f | wc -l) files"
 
       - name: Build the verification image (same tag as check.yml)
-        run: docker build -f docker/Dockerfile -t task-panel:verify .
+        run: docker build -f docker/Dockerfile -t meerkat-taskpanel:verify .
 
       - name: Build the release tree (dist/)
         run: |
@@ -90,9 +90,9 @@ jobs:
             inside { print }
           ' CHANGELOG.md > release-notes.md
           if [ ! -s release-notes.md ]; then
-            echo "Task Panel ${GITHUB_REF_NAME}" > release-notes.md
+            echo "Meerkat TaskPanel ${GITHUB_REF_NAME}" > release-notes.md
           fi
           gh release create "$GITHUB_REF_NAME" "${{ steps.pack.outputs.tarball }}" \
             --draft \
-            --title "Task Panel ${GITHUB_REF_NAME}" \
+            --title "Meerkat TaskPanel ${GITHUB_REF_NAME}" \
             --notes-file release-notes.md

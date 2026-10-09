@@ -2,7 +2,7 @@
 host: claude
 label: Claude Code
 installer: scripts/install/claude.sh
-target_dir: .claude/skills/task-panel
+target_dir: .claude/skills/meerkat-taskpanel
 skill_entry: SKILL.md
 wrapper: scripts/run.mjs
 # Distribution bundle this host installs from, and what the host's detector must report.

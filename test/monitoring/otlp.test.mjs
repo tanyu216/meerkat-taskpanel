@@ -24,10 +24,10 @@ import { Registry } from "../../monitoring/lib/registry.mjs";
 /** A registry carrying one gauge, one counter and one histogram. */
 function snapshotFixture() {
   const registry = new Registry();
-  registry.registerGauge("task_panel_up", "Up.").set({}, 1);
-  registry.registerCounter("task_panel_builds_total", "Builds.", ["result"]).inc({ result: "ok" }, 3);
+  registry.registerGauge("meerkat_taskpanel_up", "Up.").set({}, 1);
+  registry.registerCounter("meerkat_taskpanel_builds_total", "Builds.", ["result"]).inc({ result: "ok" }, 3);
   registry
-    .registerHistogram("task_panel_build_duration_seconds", "Build duration.", {
+    .registerHistogram("meerkat_taskpanel_build_duration_seconds", "Build duration.", {
       labelNames: ["result"],
       buckets: [0.5, 1],
     })
@@ -66,14 +66,14 @@ describe("otlp — payload mapping", () => {
 
   it("maps the snapshot onto resource / scope / metric data points", () => {
     const payload = toOtlpPayload(snapshotFixture(), {
-      serviceName: "task-panel",
+      serviceName: "meerkat-taskpanel",
       serviceVersion: "1.0.0",
       startTimeUnixNano: "0",
       timeUnixNano: "1000000000",
     });
 
     assert.deepEqual(payload.resourceMetrics[0].resource.attributes, [
-      { key: "service.name", value: { stringValue: "task-panel" } },
+      { key: "service.name", value: { stringValue: "meerkat-taskpanel" } },
       { key: "service.version", value: { stringValue: "1.0.0" } },
     ]);
 
@@ -81,7 +81,7 @@ describe("otlp — payload mapping", () => {
     assert.equal(scope.scope.name, SCOPE_NAME);
     assert.deepEqual(
       scope.metrics.map((metric) => metric.name),
-      ["task_panel_up", "task_panel_builds_total", "task_panel_build_duration_seconds"],
+      ["meerkat_taskpanel_up", "meerkat_taskpanel_builds_total", "meerkat_taskpanel_build_duration_seconds"],
     );
 
     const [up, builds, duration] = scope.metrics;
@@ -107,7 +107,7 @@ describe("otlp — payload mapping", () => {
 
   it("omits families that carry no series and defaults the service name", () => {
     const registry = new Registry();
-    registry.registerGauge("task_panel_up", "Up.");
+    registry.registerGauge("meerkat_taskpanel_up", "Up.");
     const payload = toOtlpPayload(registry.snapshot({ at: 0 }), { serviceVersion: "1.0.0" });
     assert.equal(payload.resourceMetrics[0].scopeMetrics[0].metrics.length, 0);
     assert.equal(payload.resourceMetrics[0].resource.attributes[0].value.stringValue, DEFAULT_SERVICE_NAME);
@@ -157,7 +157,7 @@ describe("otlp — exportMetrics", () => {
     const metrics = JSON.parse(seen[0].body).resourceMetrics[0].scopeMetrics[0].metrics;
     assert.deepEqual(
       metrics.map((metric) => metric.name),
-      ["task_panel_up", "task_panel_builds_total", "task_panel_build_duration_seconds"],
+      ["meerkat_taskpanel_up", "meerkat_taskpanel_builds_total", "meerkat_taskpanel_build_duration_seconds"],
     );
   });
 

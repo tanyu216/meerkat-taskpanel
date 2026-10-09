@@ -37,7 +37,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 const tempDirs = [];
 
-async function makeTempDir(prefix = "taskpanel-bundle-") {
+async function makeTempDir(prefix = "meerkat-taskpanel-bundle-") {
   const dir = await mkdtemp(join(tmpdir(), prefix));
   tempDirs.push(dir);
   return dir;
@@ -140,8 +140,8 @@ describe("bundle: detectBundle", () => {
 describe("bundle: skill resolution", () => {
   it("adds declared roots to the format defaults, keeping only existing directories", async () => {
     const dir = await makeTempDir();
-    await put(dir, "skills/task-panel/SKILL.md", skillMd());
-    await put(dir, "extra/task-panel/SKILL.md", skillMd());
+    await put(dir, "skills/meerkat-taskpanel/SKILL.md", skillMd());
+    await put(dir, "extra/meerkat-taskpanel/SKILL.md", skillMd());
 
     assert.deepEqual(resolveSkillRoots(dir, "claude", {}), ["skills"]);
     assert.deepEqual(resolveSkillRoots(dir, "claude", { skills: ["./skills", "extra"] }), ["skills", "extra"]);
@@ -167,7 +167,7 @@ describe("bundle: skill resolution", () => {
     assert.deepEqual(findSkills(children, "nope"), []);
   });
 
-  it("resolves the shipped bundles to a loadable task-panel skill", () => {
+  it("resolves the shipped bundles to a loadable meerkat-taskpanel skill", () => {
     for (const [host, meta] of Object.entries(HOST_BUNDLES)) {
       const info = inspectBundle(join(ROOT, meta.dir));
       const skill = info.skills.find((s) => s.name === SKILL_NAME);
@@ -185,7 +185,7 @@ describe("bundle: parseMarketplace", () => {
   it("parses the shipped marketplace and resolves every entry to a bundle with a skill", () => {
     const market = parseMarketplace(ROOT);
     assert.equal(market.ok, true, market.error);
-    assert.equal(market.name, "task-panel-marketplace");
+    assert.equal(market.name, "meerkat-taskpanel-marketplace");
     assert.ok(market.entries.length >= 1);
 
     for (const entry of market.entries) {
@@ -266,7 +266,7 @@ describe("profiles: bundle expectations", () => {
   });
 
   it("runProfiles asserts the bundle for each host (not just the skill copy)", async () => {
-    const home = await makeTempDir("taskpanel-home-");
+    const home = await makeTempDir("meerkat-taskpanel-home-");
     const result = await runProfiles({ home, quiet: true });
 
     assert.equal(result.ok, true, JSON.stringify(result.results.map((r) => r.error), null, 2));
@@ -290,7 +290,7 @@ describe("profiles: bundle expectations", () => {
   });
 
   it("--host narrows the run to the selected hosts", async () => {
-    const home = await makeTempDir("taskpanel-home-");
+    const home = await makeTempDir("meerkat-taskpanel-home-");
     const result = await runProfiles({ home, quiet: true, hosts: ["codex"] });
 
     assert.equal(result.ok, true);

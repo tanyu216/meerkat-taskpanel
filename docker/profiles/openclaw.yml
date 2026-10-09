@@ -2,7 +2,7 @@
 host: openclaw
 label: OpenClaw
 installer: scripts/install/openclaw.sh
-target_dir: .openclaw/skills/task-panel
+target_dir: .openclaw/skills/meerkat-taskpanel
 skill_entry: SKILL.md
 wrapper: scripts/run.mjs
 # Root-level native manifest (openclaw.plugin.json), so OpenClaw's detector classifies

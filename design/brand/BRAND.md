@@ -1,4 +1,4 @@
-# TaskPanel — Brand Layer v1
+# MeerkatTaskPanel — Brand Layer v1
 
 > **Token authority.** `tokens.css` in this directory is the single source of
 > truth. This document quotes it and adds the reasoning; where the two could
@@ -10,10 +10,10 @@
 
 ## 1. Positioning
 
-**English.** TaskPanel — a calm command surface for AI-agent teams: one
+**English.** MeerkatTaskPanel — a calm command surface for AI-agent teams: one
 glance to see every task, every agent, every handoff.
 
-**中文.** TaskPanel —— 为 AI Agent 团队打造的安静指挥面：一眼看清每个任务、每个
+**中文.** MeerkatTaskPanel —— 为 AI Agent 团队打造的安静指挥面：一眼看清每个任务、每个
 agent、每次交接。
 
 **Style.** *Quiet Precision / 安静精确* — a workhorse UI, not a marketing page.

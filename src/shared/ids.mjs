@@ -47,7 +47,7 @@ export function sessionId(taskId, owner, seg) {
 }
 
 /**
- * Project id → identifier prefix. `task-panel` → `TASK-PANEL`, `demo_x` → `DEMO-X`.
+ * Project id → identifier prefix. `meerkat-taskpanel` → `MEERKAT-TASKPANEL`, `demo_x` → `DEMO-X`.
  * @param {string} projectId
  */
 export function identifierPrefix(projectId) {

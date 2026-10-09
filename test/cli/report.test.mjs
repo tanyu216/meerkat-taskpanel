@@ -201,7 +201,7 @@ describe("cli/report — the parse and probe edges", () => {
     // probe is built to survive.
     assert.equal(typeof runSync(process.execPath, ["--version"]), "string", "a working binary answers");
     assert.equal(runSync(process.execPath, ["-e", "process.exit(3)"]), null, "a non-zero exit is no answer");
-    assert.equal(runSync("taskpanel-not-a-real-binary-xyz", ["--version"]), null, "a missing binary is no answer");
+    assert.equal(runSync("meerkat-taskpanel-not-a-real-binary-xyz", ["--version"]), null, "a missing binary is no answer");
   });
 
   it("falls back to the placeholder when git is missing entirely (the image case)", () => {

@@ -29,7 +29,7 @@ let taskd;
 let base;
 
 before(async () => {
-  const dir = mkdtempSync(join(tmpdir(), "taskpanel-sse-"));
+  const dir = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-sse-"));
   tempDirs.push(dir);
   taskd = await createTaskd({
     dataDir: dir,

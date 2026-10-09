@@ -25,7 +25,7 @@ const OTHER = `td_${"0f".repeat(32)}`;
 
 const tempDirs = [];
 function tempDir() {
-  const dir = mkdtempSync(join(tmpdir(), "taskpanel-cli-token-"));
+  const dir = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-cli-token-"));
   tempDirs.push(dir);
   return dir;
 }

@@ -67,7 +67,7 @@ Waking must be safe to repeat, or a re-run of a tick (or an overlapping cron
 line) double-starts work. Two guards:
 
 - **De-dup by card.** The supervisor keeps a small registry of running cards
-  (`--state`, default `<host-dir>/task-panel/supervisor.state.json`: card →
+  (`--state`, default `<host-dir>/meerkat-taskpanel/supervisor.state.json`: card →
   `{agent, pid, startedAt}`). A card already in the registry is never woken
   again; a card offered twice in one tick (the public pool, read by every agent)
   is claimed once.
@@ -172,12 +172,12 @@ command** — they never enable a daemon or run `crontab` for you:
 
 ```bash
 # macOS
-launchctl load ~/.claude/scheduling/launchd/com.taskpanel.poll.plist   # and .patrol.plist
+launchctl load ~/.claude/scheduling/launchd/com.meerkat-taskpanel.poll.plist   # and .patrol.plist
 # Linux (user units)
 mkdir -p ~/.config/systemd/user && cp ~/.claude/scheduling/systemd/* ~/.config/systemd/user/
-systemctl --user enable --now taskpanel-poll.timer taskpanel-patrol.timer
+systemctl --user enable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer
 # Anywhere
-crontab ~/.claude/scheduling/cron/taskpanel.cron
+crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 ```
 
 ### OpenClaw: do not build a supervisor
@@ -195,7 +195,7 @@ git clone https://github.com/tanyu216/openclaw-team && cd openclaw-team
 ./install.sh                # idempotent
 ```
 
-Task Panel is that framework's default board, and its claim and candidate
+Meerkat TaskPanel is that framework's default board, and its claim and candidate
 criteria are kept in lockstep with openclaw-team's poll — which is the point.
 
 ## Running `scripts/supervisor.mjs`
@@ -221,14 +221,14 @@ node scripts/supervisor.mjs --agent alice --dry-run --once            # plan onl
 | `--patrol-llm=yes\|no` | `no` | let patrol start an LLM turn on a stale card |
 | `--notify <cmd>` | — | run `<cmd>` with each patrol alert as JSON on stdin |
 | `--dry-run` | off | print intended actions; claim nothing, spawn nothing |
-| `--log <path>` | `<home>/<host-dir>/task-panel/supervisor.log` | where the tick log appends |
-| `--state <path>` | `<home>/<host-dir>/task-panel/supervisor.state.json` | the running registry |
-| `--config <path>` | `<home>/<host-dir>/task-panel.env` | host config the default is read from |
+| `--log <path>` | `<home>/<host-dir>/meerkat-taskpanel/supervisor.log` | where the tick log appends |
+| `--state <path>` | `<home>/<host-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry |
+| `--config <path>` | `<home>/<host-dir>/meerkat-taskpanel.env` | host config the default is read from |
 | `--home <path>` | `$HOME` | base for those defaults |
 
 **Fixed paths.** Logs and state always land at the paths in the table — a user
 who wants to know why a card did not start reads
-`~/.claude/task-panel/supervisor.log` (or `.codex/`, `.agents/`).
+`~/.claude/meerkat-taskpanel/supervisor.log` (or `.codex/`, `.agents/`).
 
 ## The claim-unassigned policy
 
@@ -245,12 +245,12 @@ Allow claiming unassigned tasks? [Y/n]
 and remembers the answer in the host config file:
 
 ```ini
-# <home>/<host-dir>/task-panel.env
-TASKPANEL_CLAIM_UNASSIGNED=yes
+# <home>/<host-dir>/meerkat-taskpanel.env
+MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes
 ```
 
 Precedence when the supervisor resolves it: `--claim-unassigned` flag →
-`$TASKPANEL_CLAIM_UNASSIGNED` → the config file → default `yes`. A non-interactive
+`$MEERKAT_TASKPANEL_CLAIM_UNASSIGNED` → the config file → default `yes`. A non-interactive
 install defaults to **yes**; `--claim-unassigned=no` / `--assignee-only`
 persist `no`.
 
@@ -294,7 +294,7 @@ not just the exit code:
 | Path | Asserted |
 |---|---|
 | `session-start.sh` (claude) | calls `issue candidates --assignee <agent>`, prints candidates + the eight rules, and is **non-fatal** — a failing or missing shim still exits 0 with a PATH-independent fallback |
-| `task-panel-claim.sh` (codex) | claims the first candidate (`issue move <ref> in_progress`) when free; **skips** when a held card is mine (identity matched under the board's NFKC/whitespace/case rule); still claims when the held card is someone else's; exits 0 on an empty pool; exits 1 when the shim is missing |
+| `meerkat-taskpanel-claim.sh` (codex) | claims the first candidate (`issue move <ref> in_progress`) when free; **skips** when a held card is mine (identity matched under the board's NFKC/whitespace/case rule); still claims when the held card is someone else's; exits 0 on an empty pool; exits 1 when the shim is missing |
 | `wake-claude.sh` | no prompt → exit 2; prompt → `claude -p <prompt>`; plus `--resume <sid>` when a session is given; **no** permission-bypass flag |
 | `wake-codex.sh` | no prompt → exit 2; prompt → `codex exec <prompt>` |
 | `wake-pi.sh` | no prompt → exit 2; prompt → `pi run <prompt>` |
@@ -315,8 +315,8 @@ its row above is the wake form alone.
 ## See also
 
 - [`install.md`](install.md) — the installer flags, including `--claim-unassigned`.
-- [`../skills/task-panel/references/practice-guides.md`](../skills/task-panel/references/practice-guides.md) —
+- [`../skills/meerkat-taskpanel/references/practice-guides.md`](../skills/meerkat-taskpanel/references/practice-guides.md) —
   the "Waking & patrol" section, for the agent-facing view.
-- [`../skills/task-panel/references/cli.md`](../skills/task-panel/references/cli.md) —
+- [`../skills/meerkat-taskpanel/references/cli.md`](../skills/meerkat-taskpanel/references/cli.md) —
   `issue candidates --include-unassigned`.
 - [openclaw-team](https://github.com/tanyu216/openclaw-team) — the OpenClaw supervisor.

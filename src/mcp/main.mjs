@@ -39,7 +39,7 @@ import { createMcpServer } from "./server.mjs";
 
 /** Printed to **stderr**, never stdout. */
 export const USAGE = [
-  "task-panel MCP server (stdio)",
+  "meerkat-taskpanel MCP server (stdio)",
   "",
   "usage: node src/mcp/main.mjs [--url <url>] [--token <token>]",
   "",
@@ -174,7 +174,7 @@ if (invokedDirectly) {
   // The runtime floor, before a byte of JSON-RPC is read. The message goes to
   // stderr (stdout is the JSON-RPC channel and must stay empty on a fatal start).
   if (!isSupportedNode(process.versions.node)) {
-    process.stderr.write(`${unsupportedNodeMessage(process.versions.node, { bin: "taskpanel-mcp" })}\n`);
+    process.stderr.write(`${unsupportedNodeMessage(process.versions.node, { bin: "meerkat-taskpanel-mcp" })}\n`);
     process.exit(CLI_EXIT.USAGE);
   }
   process.exit(await main());

@@ -23,7 +23,7 @@ let base;
 let identifier;
 
 before(async () => {
-  const dir = mkdtempSync(join(tmpdir(), "taskpanel-activities-"));
+  const dir = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-activities-"));
   tempDirs.push(dir);
   taskd = await createTaskd({ dataDir: dir, host: "127.0.0.1", port: 0, env: {} });
   base = taskd.url;

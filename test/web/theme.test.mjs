@@ -54,8 +54,8 @@ describe("web/theme — the three-state cycle", () => {
 
 describe("web/theme — storage keys, domains and defaults", () => {
   it("uses the two named keys", () => {
-    assert.equal(THEME_STORAGE_KEY, "taskpanel.theme");
-    assert.equal(LANG_STORAGE_KEY, "taskpanel.lang");
+    assert.equal(THEME_STORAGE_KEY, "meerkat-taskpanel.theme");
+    assert.equal(LANG_STORAGE_KEY, "meerkat-taskpanel.lang");
   });
 
   it("defaults to light / en with nothing persisted", () => {

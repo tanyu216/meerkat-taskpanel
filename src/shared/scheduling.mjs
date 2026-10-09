@@ -79,7 +79,7 @@ export function parseEnvFile(text) {
  * Precedence is **flag > environment > installer's host config file > default
  * on** — the operator's most explicit statement wins, and the installer's saved
  * choice is only a default. An unrecognised value is ignored (never an error):
- * a stray `TASKPANEL_CLAIM_UNASSIGNED=maybe` must not wedge the poll.
+ * a stray `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=maybe` must not wedge the poll.
  *
  * @param {{flag?: unknown, env?: unknown, file?: Record<string, string>|null}} [input]
  * @returns {boolean}
@@ -90,7 +90,12 @@ export function resolveClaimUnassigned(input = {}) {
   const fromEnv = parseYesNo(input.env);
   if (fromEnv !== null) return fromEnv;
   const file = input.file ?? null;
-  const fromFile = parseYesNo(file === null ? undefined : file.TASKPANEL_CLAIM_UNASSIGNED);
+  // legacy-name-compat: a host config written before the rename carries the old key.
+  const fromFile = parseYesNo(
+    file === null
+      ? undefined
+      : (file.MEERKAT_TASKPANEL_CLAIM_UNASSIGNED ?? file.TASKPANEL_CLAIM_UNASSIGNED),
+  );
   if (fromFile !== null) return fromFile;
   return true;
 }
@@ -294,7 +299,7 @@ export function buildHandoff(input) {
   if (input.sessionId) attribution.push(`--session-id ${input.sessionId}`);
   const where = card.target ? ` (workspace ${card.target})` : "";
   return [
-    `You have been woken by the Task Panel supervisor to work one card: ${card.identifier}${where}.`,
+    `You have been woken by the Meerkat TaskPanel supervisor to work one card: ${card.identifier}${where}.`,
     `Title: ${title}`,
     "",
     `Read it first:  taskctl issue get ${card.identifier} ${attribution.join(" ")}`,

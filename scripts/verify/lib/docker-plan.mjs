@@ -10,7 +10,7 @@
  */
 
 /** Image built by `verify:docker` and by CI. */
-const VERIFY_IMAGE = "task-panel:verify";
+const VERIFY_IMAGE = "meerkat-taskpanel:verify";
 
 /** Image built by `docker compose` for the deploy smoke test. */
 const COMPOSE_FILE = "docker/docker-compose.yml";

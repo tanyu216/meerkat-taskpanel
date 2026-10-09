@@ -2,7 +2,7 @@
 host: codex
 label: Codex
 installer: scripts/install/codex.sh
-target_dir: .codex/skills/task-panel
+target_dir: .codex/skills/meerkat-taskpanel
 skill_entry: SKILL.md
 wrapper: scripts/run.mjs
 # Codex reads .codex-plugin/plugin.json; OpenClaw also detects this marker as a

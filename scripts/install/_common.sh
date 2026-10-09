@@ -8,25 +8,42 @@
 #
 # Honours:
 #
-#   TASKPANEL_TARGET_HOME  base home directory (default: $HOME)
-#   TASKPANEL_AGENT_NAME   agent identity for the bundle (default: $USER)
-#   TASKPANEL_LINK         "1" to symlink instead of copy
-#   TASKPANEL_FORCE        "1" to overwrite an existing destination / managed key
-#   TASKPANEL_DRY_RUN      "1" to print what would happen and change nothing
-#   TASKPANEL_NO_AUTOMATION "1" to skip the Codex claim trigger
-#   TASKPANEL_MIN_NODE     required Node major (default: 22)
-#   TASKPANEL_SKIP_NODE_CHECK  "1" to skip the Node version check
+#   MEERKAT_TASKPANEL_TARGET_HOME  base home directory (default: $HOME)
+#   MEERKAT_TASKPANEL_AGENT_NAME   agent identity for the bundle (default: $USER)
+#   MEERKAT_TASKPANEL_LINK         "1" to symlink instead of copy
+#   MEERKAT_TASKPANEL_FORCE        "1" to overwrite an existing destination / managed key
+#   MEERKAT_TASKPANEL_DRY_RUN      "1" to print what would happen and change nothing
+#   MEERKAT_TASKPANEL_NO_AUTOMATION "1" to skip the Codex claim trigger
+#   MEERKAT_TASKPANEL_MIN_NODE     required Node major (default: 22)
+#   MEERKAT_TASKPANEL_SKIP_NODE_CHECK  "1" to skip the Node version check
 #
 # Everything is **idempotent**: re-running an installer with the same inputs leaves
 # the destination unchanged and exits 0. Existing files and configuration keys are
-# never clobbered unless `TASKPANEL_FORCE` is set.
+# never clobbered unless `MEERKAT_TASKPANEL_FORCE` is set.
 
 set -eu
+
+# legacy-name-compat: the pre-rename TASKPANEL_* variables are still honoured —
+# the rename to MEERKAT_TASKPANEL_* is a migration, and an existing profile or
+# wrapper script must keep working. The new name wins when both are set. Read
+# once, here, so every helper below sees a single spelling.
+MEERKAT_TASKPANEL_TARGET_HOME="${MEERKAT_TASKPANEL_TARGET_HOME:-${TASKPANEL_TARGET_HOME:-}}"
+MEERKAT_TASKPANEL_AGENT_NAME="${MEERKAT_TASKPANEL_AGENT_NAME:-${TASKPANEL_AGENT_NAME:-}}"
+MEERKAT_TASKPANEL_LINK="${MEERKAT_TASKPANEL_LINK:-${TASKPANEL_LINK:-}}"
+MEERKAT_TASKPANEL_FORCE="${MEERKAT_TASKPANEL_FORCE:-${TASKPANEL_FORCE:-}}"
+MEERKAT_TASKPANEL_DRY_RUN="${MEERKAT_TASKPANEL_DRY_RUN:-${TASKPANEL_DRY_RUN:-}}"
+MEERKAT_TASKPANEL_NO_AUTOMATION="${MEERKAT_TASKPANEL_NO_AUTOMATION:-${TASKPANEL_NO_AUTOMATION:-}}"
+MEERKAT_TASKPANEL_MIN_NODE="${MEERKAT_TASKPANEL_MIN_NODE:-${TASKPANEL_MIN_NODE:-}}"
+MEERKAT_TASKPANEL_SKIP_NODE_CHECK="${MEERKAT_TASKPANEL_SKIP_NODE_CHECK:-${TASKPANEL_SKIP_NODE_CHECK:-}}"
+MEERKAT_TASKPANEL_CLAIM_UNASSIGNED="${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-${TASKPANEL_CLAIM_UNASSIGNED:-}}"
+export MEERKAT_TASKPANEL_TARGET_HOME MEERKAT_TASKPANEL_AGENT_NAME MEERKAT_TASKPANEL_LINK \
+  MEERKAT_TASKPANEL_FORCE MEERKAT_TASKPANEL_DRY_RUN MEERKAT_TASKPANEL_NO_AUTOMATION \
+  MEERKAT_TASKPANEL_MIN_NODE MEERKAT_TASKPANEL_SKIP_NODE_CHECK MEERKAT_TASKPANEL_CLAIM_UNASSIGNED
 
 # is_int64 <value> — 0 when <value> is a non-negative integer that fits in a
 # signed 64-bit integer (the width bash's `[ … -lt … ]` test arithmetic uses),
 # 1 otherwise. Leading zeros are accepted ("007" is 7, "000" is 0). Both
-# TASKPANEL_MIN_NODE and the `node -v` major are checked through here so the
+# MEERKAT_TASKPANEL_MIN_NODE and the `node -v` major are checked through here so the
 # `-lt` comparison below can never overflow — an overflowed comparison errors
 # inside the `if`, reads as "false", and lets a too-old Node through.
 is_int64() {
@@ -59,12 +76,12 @@ is_int64() {
 # Uses only shell builtins and `command`, so it behaves the same on a bare PATH.
 # Returns 1 (0 when node is present and new enough, or the check is skipped).
 require_node() {
-  [ "${TASKPANEL_SKIP_NODE_CHECK:-}" = "1" ] && return 0
-  # D-R1: `:-` treats an *empty* TASKPANEL_MIN_NODE exactly like an unset one —
+  [ "${MEERKAT_TASKPANEL_SKIP_NODE_CHECK:-}" = "1" ] && return 0
+  # D-R1: `:-` treats an *empty* MEERKAT_TASKPANEL_MIN_NODE exactly like an unset one —
   # both fall back to the default 22 (shell convention; an empty env var is a
-  # normal way to say "default"). Use `${TASKPANEL_MIN_NODE-22}` plus a separate
+  # normal way to say "default"). Use `${MEERKAT_TASKPANEL_MIN_NODE-22}` plus a separate
   # empty check if a set-but-empty value ever needs distinct handling.
-  min="${TASKPANEL_MIN_NODE:-22}"
+  min="${MEERKAT_TASKPANEL_MIN_NODE:-22}"
 
   # D1a: the floor must be a non-negative integer that fits the comparison
   # width (64-bit). A bad value here — non-numeric, empty, or overflowing —
@@ -73,13 +90,13 @@ require_node() {
   # Validate it up front so a misspelt or overflowing env is a hard failure,
   # never a pass.
   if ! is_int64 "$min"; then
-    echo "TASKPANEL_MIN_NODE must be a non-negative integer up to 9223372036854775807 (got '${min:-<empty>}')." >&2
+    echo "MEERKAT_TASKPANEL_MIN_NODE must be a non-negative integer up to 9223372036854775807 (got '${min:-<empty>}')." >&2
     return 1
   fi
 
   if ! command -v node >/dev/null 2>&1; then
     echo "node: no 'node' on PATH." >&2
-    echo "Task Panel needs Node >= $min (the engine uses the built-in node:sqlite module)." >&2
+    echo "Meerkat TaskPanel needs Node >= $min (the engine uses the built-in node:sqlite module)." >&2
     echo "Install Node $min or newer, then re-run: https://nodejs.org/  (or 'nvm install $min')." >&2
     return 1
   fi
@@ -97,12 +114,12 @@ require_node() {
   # overflow the comparison and fail open exactly like a bad floor would.
   if ! is_int64 "$major"; then
     echo "node: could not read the version ('node -v' printed '${version:-<empty>}')." >&2
-    echo "Task Panel needs Node >= $min." >&2
+    echo "Meerkat TaskPanel needs Node >= $min." >&2
     return 1
   fi
 
   if [ "$major" -lt "$min" ]; then
-    echo "node: $version is too old — Task Panel needs Node >= $min." >&2
+    echo "node: $version is too old — Meerkat TaskPanel needs Node >= $min." >&2
     echo "The engine uses the built-in node:sqlite module (Node $min+)." >&2
     echo "Upgrade Node, then re-run: https://nodejs.org/  (or 'nvm install $min')." >&2
     return 1
@@ -115,16 +132,16 @@ require_node() {
 
 script_dir() { cd "$(dirname "$0")" && pwd; }
 repo_root() { cd "$(script_dir)/../.." && pwd; }
-target_home() { printf '%s\n' "${TASKPANEL_TARGET_HOME:-$HOME}"; }
+target_home() { printf '%s\n' "${MEERKAT_TASKPANEL_TARGET_HOME:-$HOME}"; }
 apply_helper() { printf '%s\n' "$(script_dir)/lib/apply.mjs"; }
 
 # agent_name — the identity written into the host bundle.
 #
-# `--agent-name` (TASKPANEL_AGENT_NAME) wins; the default is $USER, then $LOGNAME,
+# `--agent-name` (MEERKAT_TASKPANEL_AGENT_NAME) wins; the default is $USER, then $LOGNAME,
 # then a stable "agent" placeholder. The name is the board assignee: claiming a card
 # checks `assignee == actor`, so this is the name the agent must be assigned cards as.
 agent_name() {
-  local name="${TASKPANEL_AGENT_NAME:-}"
+  local name="${MEERKAT_TASKPANEL_AGENT_NAME:-}"
   [ -n "$name" ] || name="${USER:-}"
   [ -n "$name" ] || name="${LOGNAME:-}"
   [ -n "$name" ] || name="agent"
@@ -142,19 +159,19 @@ export_tp_env() {
   TP_AGENT="$(agent_name)"
   TP_REPO="$(repo_root)"
   TP_SHIM="$(target_home)/$host_dir/bin/taskctl"
-  TP_HOOK="$(target_home)/$host_dir/hooks/task-panel-session-start.sh"
-  TP_TRIGGER="$(target_home)/$host_dir/task-panel-claim.sh"
+  TP_HOOK="$(target_home)/$host_dir/hooks/meerkat-taskpanel-session-start.sh"
+  TP_TRIGGER="$(target_home)/$host_dir/meerkat-taskpanel-claim.sh"
   # The host-external supervisor: the scheduling units run it, and it reads the config
   # file written below. Log and state are fixed per host so a user always knows where
   # they land (documented in docs/scheduling.md).
   TP_HOST="$label"
   TP_SUPERVISOR="$(repo_root)/scripts/supervisor.mjs"
-  TP_LOG="$(target_home)/$host_dir/task-panel/supervisor.log"
-  TP_STATE="$(target_home)/$host_dir/task-panel/supervisor.state.json"
-  TP_ENV="$(target_home)/$host_dir/task-panel.env"
+  TP_LOG="$(target_home)/$host_dir/meerkat-taskpanel/supervisor.log"
+  TP_STATE="$(target_home)/$host_dir/meerkat-taskpanel/supervisor.state.json"
+  TP_ENV="$(target_home)/$host_dir/meerkat-taskpanel.env"
   TP_SCHED="$(target_home)/$host_dir/scheduling"
   TP_WAKE="$(target_home)/$host_dir/bin/wake-$label.sh"
-  TP_CLAIM_UNASSIGNED="${TASKPANEL_CLAIM_UNASSIGNED:-yes}"
+  TP_CLAIM_UNASSIGNED="${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-yes}"
   export TP_AGENT TP_REPO TP_SHIM TP_HOOK TP_TRIGGER
   export TP_HOST TP_SUPERVISOR TP_LOG TP_STATE TP_ENV TP_SCHED TP_WAKE TP_CLAIM_UNASSIGNED
 }
@@ -204,26 +221,26 @@ claim_unassigned_value() {
 # `systemctl` / `crontab` itself: enabling a daemon is the user's call, and a test or
 # `--dry-run` must have no side effects. Requires export_tp_env first.
 install_scheduling() {
-  emit_file "scheduling/launchd/com.taskpanel.poll.plist" "$TP_SCHED/launchd/com.taskpanel.poll.plist"
-  emit_file "scheduling/launchd/com.taskpanel.patrol.plist" "$TP_SCHED/launchd/com.taskpanel.patrol.plist"
-  emit_file "scheduling/systemd/taskpanel-poll.service" "$TP_SCHED/systemd/taskpanel-poll.service"
-  emit_file "scheduling/systemd/taskpanel-poll.timer" "$TP_SCHED/systemd/taskpanel-poll.timer"
-  emit_file "scheduling/systemd/taskpanel-patrol.service" "$TP_SCHED/systemd/taskpanel-patrol.service"
-  emit_file "scheduling/systemd/taskpanel-patrol.timer" "$TP_SCHED/systemd/taskpanel-patrol.timer"
-  emit_file "scheduling/cron/taskpanel.cron" "$TP_SCHED/cron/taskpanel.cron"
+  emit_file "scheduling/launchd/com.meerkat-taskpanel.poll.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.poll.plist"
+  emit_file "scheduling/launchd/com.meerkat-taskpanel.patrol.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.patrol.plist"
+  emit_file "scheduling/systemd/meerkat-taskpanel-poll.service" "$TP_SCHED/systemd/meerkat-taskpanel-poll.service"
+  emit_file "scheduling/systemd/meerkat-taskpanel-poll.timer" "$TP_SCHED/systemd/meerkat-taskpanel-poll.timer"
+  emit_file "scheduling/systemd/meerkat-taskpanel-patrol.service" "$TP_SCHED/systemd/meerkat-taskpanel-patrol.service"
+  emit_file "scheduling/systemd/meerkat-taskpanel-patrol.timer" "$TP_SCHED/systemd/meerkat-taskpanel-patrol.timer"
+  emit_file "scheduling/cron/meerkat-taskpanel.cron" "$TP_SCHED/cron/meerkat-taskpanel.cron"
   emit_file "$TP_HOST/wake-$TP_HOST.sh" "$TP_WAKE" --exec
 
   echo "$TP_HOST: scheduling units installed under $TP_SCHED"
   echo "$TP_HOST: to start the supervisor, load one of these (nothing is loaded for you):"
-  echo "  launchd:  launchctl load $TP_SCHED/launchd/com.taskpanel.poll.plist   # and .patrol.plist"
-  echo "  systemd:  mkdir -p ~/.config/systemd/user && cp $TP_SCHED/systemd/* ~/.config/systemd/user/ && systemctl --user enable --now taskpanel-poll.timer taskpanel-patrol.timer"
-  echo "  cron:     crontab $TP_SCHED/cron/taskpanel.cron"
+  echo "  launchd:  launchctl load $TP_SCHED/launchd/com.meerkat-taskpanel.poll.plist   # and .patrol.plist"
+  echo "  systemd:  mkdir -p ~/.config/systemd/user && cp $TP_SCHED/systemd/* ~/.config/systemd/user/ && systemctl --user enable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer"
+  echo "  cron:     crontab $TP_SCHED/cron/meerkat-taskpanel.cron"
 }
 
 # write_host_config — persist the claim policy the supervisor reads by default.
 # Requires export_tp_env first (TP_ENV, TP_CLAIM_UNASSIGNED).
 write_host_config() {
-  emit_file "host/task-panel.env" "$TP_ENV"
+  emit_file "host/meerkat-taskpanel.env" "$TP_ENV"
 }
 
 # ---------------------------------------------------------------------------
@@ -240,17 +257,17 @@ install_skill() {
   # Node floor first: nothing is copied onto a runtime that cannot run it.
   require_node || return 1
 
-  src="$(repo_root)/skills/task-panel"
+  src="$(repo_root)/skills/meerkat-taskpanel"
   target_home="$(target_home)"
-  dest="$target_home/$host_dir/skills/task-panel"
+  dest="$target_home/$host_dir/skills/meerkat-taskpanel"
 
   if [ ! -d "$src" ]; then
     echo "$label: skill source not found: $src" >&2
     return 1
   fi
 
-  if [ -n "${TASKPANEL_DRY_RUN:-}" ]; then
-    if [ -n "${TASKPANEL_LINK:-}" ]; then
+  if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
+    if [ -n "${MEERKAT_TASKPANEL_LINK:-}" ]; then
       echo "would link  $src -> $dest"
     else
       echo "would copy  $src -> $dest"
@@ -259,7 +276,7 @@ install_skill() {
   fi
 
   if [ -e "$dest" ] || [ -L "$dest" ]; then
-    if [ -z "${TASKPANEL_FORCE:-}" ]; then
+    if [ -z "${MEERKAT_TASKPANEL_FORCE:-}" ]; then
       # Idempotent: an existing skill is the desired end state, not an error. The
       # local edits are preserved (merge, never clobber); --force is the escape hatch.
       echo "$label: already installed: $dest (unchanged; re-run with --force to overwrite)"
@@ -270,7 +287,7 @@ install_skill() {
 
   mkdir -p "$(dirname "$dest")"
 
-  if [ -n "${TASKPANEL_LINK:-}" ]; then
+  if [ -n "${MEERKAT_TASKPANEL_LINK:-}" ]; then
     ln -s "$src" "$dest"
     echo "$label: linked  $dest"
   else
@@ -293,7 +310,7 @@ emit_file() {
   template="$(script_dir)/templates/$template_rel"
   [ -f "$template" ] || { echo "install: template not found: $template" >&2; return 1; }
 
-  if [ -n "${TASKPANEL_DRY_RUN:-}" ]; then
+  if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
     echo "would write $dest"
     return 0
   fi
@@ -301,7 +318,7 @@ emit_file() {
   # --force is the documented "overwrite an existing installation" escape hatch: it
   # must reach the emitted files too, or a changed --agent-name would silently no-op.
   force_flag=""
-  [ -n "${TASKPANEL_FORCE:-}" ] && force_flag="--force"
+  [ -n "${MEERKAT_TASKPANEL_FORCE:-}" ] && force_flag="--force"
 
   if [ -n "$exec_flag" ]; then
     node "$(apply_helper)" emit "$template" "$dest" --exec $force_flag
@@ -316,12 +333,12 @@ emit_file() {
 merge_settings() {
   settings_file="$1"
 
-  if [ -n "${TASKPANEL_DRY_RUN:-}" ]; then
+  if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
     echo "would merge $settings_file (env.TASKCTL_AGENT + SessionStart hook)"
     return 0
   fi
 
-  if [ -n "${TASKPANEL_FORCE:-}" ]; then
+  if [ -n "${MEERKAT_TASKPANEL_FORCE:-}" ]; then
     node "$(apply_helper)" merge-settings "$settings_file" --agent "$TP_AGENT" --hook "$TP_HOOK" --force
   else
     node "$(apply_helper)" merge-settings "$settings_file" --agent "$TP_AGENT" --hook "$TP_HOOK"
@@ -338,12 +355,12 @@ append_snippet() {
   template="$(script_dir)/templates/$template_rel"
   [ -f "$template" ] || { echo "install: template not found: $template" >&2; return 1; }
 
-  if [ -n "${TASKPANEL_DRY_RUN:-}" ]; then
+  if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
     echo "would update $file (append/replace $marker block)"
     return 0
   fi
 
-  if [ -n "${TASKPANEL_FORCE:-}" ]; then
+  if [ -n "${MEERKAT_TASKPANEL_FORCE:-}" ]; then
     node "$(apply_helper)" snippet "$file" "$template" --marker "$marker" --force
   else
     node "$(apply_helper)" snippet "$file" "$template" --marker "$marker"
@@ -351,10 +368,10 @@ append_snippet() {
 }
 
 # register_mcp <cli> <label>
-#   Register the stdio MCP server with the host CLI (`<cli> mcp add taskpanel -- node
+#   Register the stdio MCP server with the host CLI (`<cli> mcp add meerkat-taskpanel -- node
 #   <repo>/src/mcp/main.mjs`). Runs the CLI when it is on PATH; otherwise prints the
 #   exact command. The CLI is run with HOME (and, for codex, CODEX_HOME) pointed at the
-#   target home, so an isolated `--prefix` / `TASKPANEL_TARGET_HOME` install never
+#   target home, so an isolated `--prefix` / `MEERKAT_TASKPANEL_TARGET_HOME` install never
 #   touches the real host config. An "already exists" reply is success (idempotent).
 register_mcp() {
   cli="$1"
@@ -362,9 +379,9 @@ register_mcp() {
 
   repo="$(repo_root)"
   home="$(target_home)"
-  display="$cli mcp add taskpanel -- node $repo/src/mcp/main.mjs"
+  display="$cli mcp add meerkat-taskpanel -- node $repo/src/mcp/main.mjs"
 
-  if [ -n "${TASKPANEL_DRY_RUN:-}" ]; then
+  if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
     echo "would run  $display"
     return 0
   fi
@@ -380,21 +397,21 @@ register_mcp() {
   set +e
   if [ "$cli" = "codex" ]; then
     mkdir -p "$home/.codex"
-    out="$(HOME="$home" CODEX_HOME="$home/.codex" "$cli" mcp add taskpanel -- node "$repo/src/mcp/main.mjs" 2>&1)"
+    out="$(HOME="$home" CODEX_HOME="$home/.codex" "$cli" mcp add meerkat-taskpanel -- node "$repo/src/mcp/main.mjs" 2>&1)"
     status=$?
   else
-    out="$(HOME="$home" "$cli" mcp add taskpanel -- node "$repo/src/mcp/main.mjs" 2>&1)"
+    out="$(HOME="$home" "$cli" mcp add meerkat-taskpanel -- node "$repo/src/mcp/main.mjs" 2>&1)"
     status=$?
   fi
   set -e
 
   if [ "$status" -eq 0 ]; then
-    echo "$label: registered MCP server 'taskpanel'"
+    echo "$label: registered MCP server 'meerkat-taskpanel'"
     return 0
   fi
 
   if printf '%s' "$out" | grep -qi "already exists"; then
-    echo "$label: MCP server 'taskpanel' already registered"
+    echo "$label: MCP server 'meerkat-taskpanel' already registered"
     return 0
   fi
 

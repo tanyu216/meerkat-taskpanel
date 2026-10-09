@@ -1,5 +1,5 @@
 #!/bin/sh
-# Task Panel pre-push hook.
+# Meerkat TaskPanel pre-push hook.
 #
 # Two gates, both offline and Node-builtins-only:
 #

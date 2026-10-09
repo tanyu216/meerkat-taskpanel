@@ -17,16 +17,16 @@
  *     the names are not idiomatic OTel; the benefit is that they are unambiguous.
  *   - **The push never throws.** The receiver is external I/O: a refusal, a timeout or a
  *     DNS failure is reported as `{ok: false, code, error}` so the scraper keeps serving
- *     and `/health` keeps answering. An observability outage must not become a task-panel
+ *     and `/health` keeps answering. An observability outage must not become a meerkat-taskpanel
  *     outage.
  */
 
 import { MonitoringError } from "./errors.mjs";
 
 /** The instrumentation scope name reported to the collector. */
-export const SCOPE_NAME = "task-panel/monitoring";
+export const SCOPE_NAME = "meerkat-taskpanel/monitoring";
 /** `service.name` when the caller does not name one. */
-export const DEFAULT_SERVICE_NAME = "task-panel";
+export const DEFAULT_SERVICE_NAME = "meerkat-taskpanel";
 /** OTLP `aggregationTemporality`: 2 = cumulative. */
 export const CUMULATIVE = 2;
 /** The OTLP/HTTP metrics path. */

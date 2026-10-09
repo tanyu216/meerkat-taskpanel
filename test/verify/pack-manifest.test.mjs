@@ -33,7 +33,7 @@ after(async () => {
 });
 
 async function makeTempDir() {
-  const dir = await mkdtemp(join(tmpdir(), "taskpanel-pack-"));
+  const dir = await mkdtemp(join(tmpdir(), "meerkat-taskpanel-pack-"));
   tempDirs.push(dir);
   return dir;
 }
@@ -85,7 +85,7 @@ const FILES_WHITELIST = [
   "LICENSE",
 ];
 
-const PACKAGE_JSON = { name: "task-panel", version: "1.0.0", files: FILES_WHITELIST, private: true };
+const PACKAGE_JSON = { name: "meerkat-taskpanel", version: "1.0.0", files: FILES_WHITELIST, private: true };
 
 /** A tarball that satisfies every required path, using `package/` rooting. */
 function goodTarball(extra = []) {
@@ -105,7 +105,7 @@ function runCli(args) {
 /** Write a tarball to a temp dir and return its path. */
 async function writeTarball(buffer) {
   const dir = await makeTempDir();
-  const file = join(dir, "task-panel-1.0.0.tgz");
+  const file = join(dir, "meerkat-taskpanel-1.0.0.tgz");
   await writeFile(file, buffer);
   return file;
 }

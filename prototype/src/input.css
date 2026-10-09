@@ -1,5 +1,5 @@
 /* ============================================================================
-   TaskPanel v1 prototype — Tailwind CSS v4 entry point
+   MeerkatTaskPanel v1 prototype — Tailwind CSS v4 entry point
    ----------------------------------------------------------------------------
    Stack (CLOSED): Tailwind CSS + daisyUI + jQuery (slim). No other CSS/UI
    library, no CDN, no webfont.
@@ -20,7 +20,7 @@
 }
 
 @plugin "daisyui/theme" {
-  name: "taskpanel";
+  name: "meerkat-taskpanel";
   default: true;
   prefersdark: false;
   color-scheme: light;
@@ -312,7 +312,7 @@ html[data-theme="dark"] {
    system asks for dark, and nothing when it asks for light (the `:root`
    defaults already are light). The three states are:
 
-     Light  `<html data-theme="taskpanel">` — explicit, fixed
+     Light  `<html data-theme="meerkat-taskpanel">` — explicit, fixed
      Dark   `<html data-theme="dark">`      — explicit, fixed (never follows)
      Auto   `<html data-theme="auto">`      — this block decides by media query
 

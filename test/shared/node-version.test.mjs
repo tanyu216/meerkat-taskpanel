@@ -81,8 +81,8 @@ describe("unsupportedNodeMessage — the one message every entry prints", () => 
     assert.match(unsupportedNodeMessage(""), /found no version/);
   });
 
-  it("honours a custom minimum and defaults the bin to task-panel", () => {
-    assert.match(unsupportedNodeMessage("21.9.9"), /task-panel: Node 22 or newer is required/);
+  it("honours a custom minimum and defaults the bin to meerkat-taskpanel", () => {
+    assert.match(unsupportedNodeMessage("21.9.9"), /meerkat-taskpanel: Node 22 or newer is required/);
     assert.match(unsupportedNodeMessage("21.9.9", { min: 24 }), /Node 24 or newer is required/);
   });
 });

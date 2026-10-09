@@ -50,7 +50,7 @@ function cardText(overrides = {}, sections = {}) {
     priority: "medium",
     kind: "task",
     project: "demo",
-    target: "/tmp/task-panel-report-origin",
+    target: "/tmp/meerkat-taskpanel-report-origin",
     created_by: "elon",
     created_at: TS,
     ...overrides,

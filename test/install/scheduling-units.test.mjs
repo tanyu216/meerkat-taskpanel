@@ -21,7 +21,7 @@ import { after, describe, it } from "node:test";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 const tempDirs = [];
-function makeTempDir(prefix = "taskpanel-sched-") {
+function makeTempDir(prefix = "meerkat-taskpanel-sched-") {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   tempDirs.push(dir);
   return dir;
@@ -38,7 +38,7 @@ function makeFakeCli(binDir, name) {
 }
 
 function installEnv(home, bin) {
-  return { ...process.env, TASKPANEL_TARGET_HOME: home, PATH: `${bin}:${process.env.PATH}` };
+  return { ...process.env, MEERKAT_TASKPANEL_TARGET_HOME: home, PATH: `${bin}:${process.env.PATH}` };
 }
 
 function runInstall(args, env = {}) {
@@ -57,13 +57,13 @@ function isExecutable(path) {
 function scheduledPaths(home, hostDir, host) {
   const base = join(home, hostDir);
   return {
-    pollPlist: join(base, "scheduling", "launchd", "com.taskpanel.poll.plist"),
-    patrolPlist: join(base, "scheduling", "launchd", "com.taskpanel.patrol.plist"),
-    pollService: join(base, "scheduling", "systemd", "taskpanel-poll.service"),
-    pollTimer: join(base, "scheduling", "systemd", "taskpanel-poll.timer"),
-    patrolService: join(base, "scheduling", "systemd", "taskpanel-patrol.service"),
-    patrolTimer: join(base, "scheduling", "systemd", "taskpanel-patrol.timer"),
-    cron: join(base, "scheduling", "cron", "taskpanel.cron"),
+    pollPlist: join(base, "scheduling", "launchd", "com.meerkat-taskpanel.poll.plist"),
+    patrolPlist: join(base, "scheduling", "launchd", "com.meerkat-taskpanel.patrol.plist"),
+    pollService: join(base, "scheduling", "systemd", "meerkat-taskpanel-poll.service"),
+    pollTimer: join(base, "scheduling", "systemd", "meerkat-taskpanel-poll.timer"),
+    patrolService: join(base, "scheduling", "systemd", "meerkat-taskpanel-patrol.service"),
+    patrolTimer: join(base, "scheduling", "systemd", "meerkat-taskpanel-patrol.timer"),
+    cron: join(base, "scheduling", "cron", "meerkat-taskpanel.cron"),
     wake: join(base, "bin", `wake-${host}.sh`),
   };
 }
@@ -78,7 +78,7 @@ describe("install.sh: scheduling units", () => {
       { ...process.env, PATH: `${bin}:${process.env.PATH}` },
     );
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, /scheduling[\\/]launchd[\\/]com\.taskpanel\.poll\.plist/);
+    assert.match(run.stdout, /scheduling[\\/]launchd[\\/]com\.meerkat-taskpanel\.poll\.plist/);
     assert.equal(existsSync(join(home, ".claude")), false, "dry run must not write");
   });
 
@@ -94,7 +94,7 @@ describe("install.sh: scheduling units", () => {
       assert.ok(existsSync(path), `${name} missing at ${path}`);
     }
 
-    const logPath = join(home, ".claude", "task-panel", "supervisor.log");
+    const logPath = join(home, ".claude", "meerkat-taskpanel", "supervisor.log");
     const supervisorPath = join(ROOT, "scripts", "supervisor.mjs");
 
     // launchd — poll every 60s, patrol every 300s, both pointing at the supervisor.
@@ -151,7 +151,7 @@ describe("install.sh: scheduling units", () => {
     const paths = scheduledPaths(home, ".agents", "pi");
     assert.ok(existsSync(paths.wake), "wake-pi.sh missing");
     assert.ok(existsSync(paths.pollPlist), "pi scheduling units missing");
-    assert.ok(existsSync(join(home, ".agents", "task-panel.env")), "pi config missing");
+    assert.ok(existsSync(join(home, ".agents", "meerkat-taskpanel.env")), "pi config missing");
   });
 
   it("--no-automation skips every codex automation artefact", () => {
@@ -164,9 +164,9 @@ describe("install.sh: scheduling units", () => {
     );
     assert.equal(run.status, 0, run.stderr);
     assert.equal(existsSync(join(home, ".codex", "scheduling")), false);
-    assert.equal(existsSync(join(home, ".codex", "task-panel-claim.sh")), false);
+    assert.equal(existsSync(join(home, ".codex", "meerkat-taskpanel-claim.sh")), false);
     // The skill, AGENTS.md and shim are unaffected.
-    assert.ok(existsSync(join(home, ".codex", "skills", "task-panel", "SKILL.md")));
+    assert.ok(existsSync(join(home, ".codex", "skills", "meerkat-taskpanel", "SKILL.md")));
     assert.ok(existsSync(join(home, ".codex", "AGENTS.md")));
   });
 

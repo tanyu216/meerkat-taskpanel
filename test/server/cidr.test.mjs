@@ -156,7 +156,7 @@ describe("server/cidr — over a real socket, the list is enforced", () => {
     const { mkdtempSync, rmSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const dir = mkdtempSync(join(tmpdir(), "taskpanel-cidr-"));
+    const dir = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-cidr-"));
     const taskd = await createTaskd({ dataDir: dir, host: "127.0.0.1", port: 0, env: {}, allowCidrs: "10.0.0.0/8" });
     try {
       const response = await fetch(`${taskd.url}/api/v1/projects`);

@@ -53,7 +53,7 @@ const TASKD_VARS = [
 const tempDirs = [];
 
 /** A temp dir removed by `cleanupTempDirs()` in an `after` hook. */
-export function makeTempDir(prefix = "taskpanel-cli-") {
+export function makeTempDir(prefix = "meerkat-taskpanel-cli-") {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   tempDirs.push(dir);
   return dir;
@@ -71,7 +71,7 @@ export function cleanupTempDirs() {
   }
 }
 
-/** `process.env` with every task-panel variable stripped. */
+/** `process.env` with every meerkat-taskpanel variable stripped. */
 export function baseEnv() {
   const env = { ...process.env };
   for (const key of TASKD_VARS) delete env[key];

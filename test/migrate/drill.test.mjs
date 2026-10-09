@@ -100,8 +100,8 @@ describe("drill: dockerRunArgs", () => {
 
 describe("drill: shellLine", () => {
   it("quotes only the arguments that need it", () => {
-    const line = shellLine(["run", "--rm", "-v", "/a b:/cards:ro", "task-panel:verify"]);
-    assert.equal(line, `docker run --rm -v "/a b:/cards:ro" task-panel:verify`);
+    const line = shellLine(["run", "--rm", "-v", "/a b:/cards:ro", "meerkat-taskpanel:verify"]);
+    assert.equal(line, `docker run --rm -v "/a b:/cards:ro" meerkat-taskpanel:verify`);
   });
 
   it("escapes a double quote inside an argument", () => {

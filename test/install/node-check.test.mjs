@@ -2,7 +2,7 @@
  * `require_node` boundary, exercised through the real dispatcher.
  *
  * `install.sh` checks the runtime *before* dispatching any host installer (the
- * per-host runs then inherit `TASKPANEL_SKIP_NODE_CHECK=1`, so the one check that
+ * per-host runs then inherit `MEERKAT_TASKPANEL_SKIP_NODE_CHECK=1`, so the one check that
  * matters is the dispatcher's own). The check lives in
  * `scripts/install/_common.sh` and uses only shell builtins plus `command`, so the
  * honest way to test it is a fake `node` on an isolated `PATH` — a real child,
@@ -55,7 +55,7 @@ const REAL = Object.fromEntries(TOOLS.map((name) => [name, realTool(name)]));
  * should print, or `null` to leave `node` off the PATH entirely.
  */
 function makeFakeBin(nodeVersion) {
-  const dir = makeTempDir("taskpanel-fakebin-");
+  const dir = makeTempDir("meerkat-taskpanel-fakebin-");
   for (const name of TOOLS) symlinkSync(REAL[name], join(dir, name));
   if (nodeVersion !== null) {
     // Absolute shebang: the isolated PATH has no `env`, so the shim must name
@@ -67,14 +67,14 @@ function makeFakeBin(nodeVersion) {
 }
 
 function runInstall(fakeBin, { args = ["--target", "all", "--dry-run"], env = {} } = {}) {
-  const home = makeTempDir("taskpanel-install-home-");
+  const home = makeTempDir("meerkat-taskpanel-install-home-");
   return spawnSync(REAL.bash, [INSTALL, ...args], {
     cwd: ROOT,
     encoding: "utf8",
     env: {
       PATH: fakeBin,
       HOME: home,
-      TASKPANEL_TARGET_HOME: home,
+      MEERKAT_TASKPANEL_TARGET_HOME: home,
       ...env,
     },
   });
@@ -88,15 +88,15 @@ function runInstall(fakeBin, { args = ["--target", "all", "--dry-run"], env = {}
  * answers `-v`) is enough for both the refuse and the accept case.
  */
 function runHost(fakeBin, { env = {} } = {}) {
-  const home = makeTempDir("taskpanel-host-home-");
+  const home = makeTempDir("meerkat-taskpanel-host-home-");
   return spawnSync(REAL.bash, [HOST_INSTALLER], {
     cwd: ROOT,
     encoding: "utf8",
     env: {
       PATH: fakeBin,
       HOME: home,
-      TASKPANEL_TARGET_HOME: home,
-      TASKPANEL_DRY_RUN: "1",
+      MEERKAT_TASKPANEL_TARGET_HOME: home,
+      MEERKAT_TASKPANEL_DRY_RUN: "1",
       ...env,
     },
   });
@@ -127,26 +127,26 @@ describe("require_node — the dispatcher's runtime check", () => {
     assert.match(run.stdout, /== install summary ==/);
   });
 
-  it("rejects a non-numeric TASKPANEL_MIN_NODE instead of failing open (D1a)", () => {
-    const run = runInstall(makeFakeBin("v20.0.0"), { env: { TASKPANEL_MIN_NODE: "abc" } });
+  it("rejects a non-numeric MEERKAT_TASKPANEL_MIN_NODE instead of failing open (D1a)", () => {
+    const run = runInstall(makeFakeBin("v20.0.0"), { env: { MEERKAT_TASKPANEL_MIN_NODE: "abc" } });
     assert.equal(run.status, 2, run.stdout);
-    assert.match(run.stderr, /TASKPANEL_MIN_NODE/);
+    assert.match(run.stderr, /MEERKAT_TASKPANEL_MIN_NODE/);
   });
 
-  it("rejects an overflowing TASKPANEL_MIN_NODE instead of failing open (D1a-残)", () => {
-    const run = runInstall(makeFakeBin("v20.0.0"), { env: { TASKPANEL_MIN_NODE: "999999999999999999999" } });
+  it("rejects an overflowing MEERKAT_TASKPANEL_MIN_NODE instead of failing open (D1a-残)", () => {
+    const run = runInstall(makeFakeBin("v20.0.0"), { env: { MEERKAT_TASKPANEL_MIN_NODE: "999999999999999999999" } });
     assert.equal(run.status, 2, run.stdout);
-    assert.match(run.stderr, /TASKPANEL_MIN_NODE/);
+    assert.match(run.stderr, /MEERKAT_TASKPANEL_MIN_NODE/);
   });
 
-  it("rejects TASKPANEL_MIN_NODE just past INT64_MAX (2^63)", () => {
-    const run = runInstall(makeFakeBin("v20.0.0"), { env: { TASKPANEL_MIN_NODE: "9223372036854775808" } });
+  it("rejects MEERKAT_TASKPANEL_MIN_NODE just past INT64_MAX (2^63)", () => {
+    const run = runInstall(makeFakeBin("v20.0.0"), { env: { MEERKAT_TASKPANEL_MIN_NODE: "9223372036854775808" } });
     assert.equal(run.status, 2, run.stdout);
-    assert.match(run.stderr, /TASKPANEL_MIN_NODE/);
+    assert.match(run.stderr, /MEERKAT_TASKPANEL_MIN_NODE/);
   });
 
-  it("still compares correctly when TASKPANEL_MIN_NODE is exactly INT64_MAX", () => {
-    const run = runInstall(makeFakeBin("v20.0.0"), { env: { TASKPANEL_MIN_NODE: "9223372036854775807" } });
+  it("still compares correctly when MEERKAT_TASKPANEL_MIN_NODE is exactly INT64_MAX", () => {
+    const run = runInstall(makeFakeBin("v20.0.0"), { env: { MEERKAT_TASKPANEL_MIN_NODE: "9223372036854775807" } });
     assert.equal(run.status, 2, run.stdout);
     assert.match(run.stderr, /too old/);
   });
@@ -165,17 +165,17 @@ describe("require_node — the dispatcher's runtime check", () => {
     }
   });
 
-  it("honours a custom TASKPANEL_MIN_NODE=24 at the installer layer (D-R2)", () => {
-    const refused = runInstall(makeFakeBin("v23.0.0"), { env: { TASKPANEL_MIN_NODE: "24" } });
+  it("honours a custom MEERKAT_TASKPANEL_MIN_NODE=24 at the installer layer (D-R2)", () => {
+    const refused = runInstall(makeFakeBin("v23.0.0"), { env: { MEERKAT_TASKPANEL_MIN_NODE: "24" } });
     assert.equal(refused.status, 2, refused.stdout);
     assert.match(refused.stderr, /too old/);
-    const accepted = runInstall(makeFakeBin("v24.0.0"), { env: { TASKPANEL_MIN_NODE: "24" } });
+    const accepted = runInstall(makeFakeBin("v24.0.0"), { env: { MEERKAT_TASKPANEL_MIN_NODE: "24" } });
     assert.equal(accepted.status, 0, accepted.stderr);
     assert.match(accepted.stdout, /== install summary ==/);
   });
 
-  it("treats an empty TASKPANEL_MIN_NODE as the default floor (D-R1)", () => {
-    const run = runInstall(makeFakeBin("v22.0.0"), { env: { TASKPANEL_MIN_NODE: "" } });
+  it("treats an empty MEERKAT_TASKPANEL_MIN_NODE as the default floor (D-R1)", () => {
+    const run = runInstall(makeFakeBin("v22.0.0"), { env: { MEERKAT_TASKPANEL_MIN_NODE: "" } });
     assert.equal(run.status, 0, run.stderr);
     assert.match(run.stdout, /== install summary ==/);
   });
@@ -192,8 +192,8 @@ describe("require_node — the dispatcher's runtime check", () => {
     assert.match(run.stdout, /== install summary ==/);
   });
 
-  it("TASKPANEL_SKIP_NODE_CHECK=1 bypasses the check even with no node", () => {
-    const run = runInstall(makeFakeBin(null), { env: { TASKPANEL_SKIP_NODE_CHECK: "1" } });
+  it("MEERKAT_TASKPANEL_SKIP_NODE_CHECK=1 bypasses the check even with no node", () => {
+    const run = runInstall(makeFakeBin(null), { env: { MEERKAT_TASKPANEL_SKIP_NODE_CHECK: "1" } });
     assert.equal(run.status, 0, run.stderr);
     assert.match(run.stdout, /== install summary ==/);
   });

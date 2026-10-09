@@ -48,15 +48,15 @@ describe("shared/runtime-locator", () => {
     );
     assert.equal(
       resolveRuntimePointerPath({ platform: "darwin", home: "/home/tester", env: {} }),
-      "/home/tester/Library/Application Support/TaskPanel/runtime.json",
+      "/home/tester/Library/Application Support/MeerkatTaskPanel/runtime.json",
     );
     assert.equal(
       resolveRuntimePointerPath({ platform: "linux", home: "/home/tester", env: { XDG_STATE_HOME: "/xdg" } }),
-      "/xdg/task-panel/runtime.json",
+      "/xdg/meerkat-taskpanel/runtime.json",
     );
     assert.equal(
       resolveRuntimePointerPath({ platform: "linux", home: "/home/tester", env: {} }),
-      "/home/tester/.local/state/task-panel/runtime.json",
+      "/home/tester/.local/state/meerkat-taskpanel/runtime.json",
     );
   });
 });

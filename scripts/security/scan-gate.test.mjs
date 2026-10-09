@@ -58,7 +58,7 @@ after(async () => {
 
 /** A fresh temp dir, removed after the suite. */
 async function makeTempDir() {
-  const dir = await mkdtemp(join(tmpdir(), "taskpanel-scan-gate-"));
+  const dir = await mkdtemp(join(tmpdir(), "meerkat-taskpanel-scan-gate-"));
   tempDirs.push(dir);
   return dir;
 }

@@ -2,7 +2,7 @@
 
 The team's cards live as markdown files under `~/.openclaw/team/tasks/*.md`, with a
 project registry at `~/.openclaw/team/projects.json`. This document covers the
-**dry run** that proves TaskPanel can take them over losslessly, the **shadow
+**dry run** that proves MeerkatTaskPanel can take them over losslessly, the **shadow
 (read-only) mode** that can run indefinitely next to them, the **single-point
 switch** that would make the board authoritative, and the **rollback** that keeps
 markdown the authority until that switch is deliberate.
@@ -86,13 +86,13 @@ the report's `unmappable` and `warnings` lists instead.
 ## Shadow / read-only parallel mode
 
 This is the recommended steady state *before* any switch. Markdown stays the
-authority; the TaskPanel board is a **read-only replica** kept honest by running
+authority; the MeerkatTaskPanel board is a **read-only replica** kept honest by running
 the drill on a schedule (or on demand):
 
 | | |
 |---|---|
 | **Authority** | `~/.openclaw/team/tasks/*.md` + `projects.json` — only these are written by the team |
-| **Replica** | a TaskPanel board rebuilt by the drill; nobody writes to it |
+| **Replica** | a MeerkatTaskPanel board rebuilt by the drill; nobody writes to it |
 | **Compared** | the §4.8 fields (per-field parity), the five sections (`comments`, `sessions`, `reports`, `progress`, `acceptance`), `## Background` content, `parent` and `depends_on` edges, labels, and the project-level diff (`name`/`id`, `workspace_path`, git rules) |
 | **"Zero diff"** | `differences: []` — every field survived the round trip, every section count matched, every relation and label matched, the second import changed no rows (`idempotent: true`), and the report's `ok` is `true` (exit 0) |
 
@@ -183,7 +183,7 @@ that leaves the container.
 
 ## What a real switch would be
 
-A switch makes the TaskPanel `projects`/`tasks` tables the **single source of
+A switch makes the MeerkatTaskPanel `projects`/`tasks` tables the **single source of
 truth** and freezes the markdown as a read-only snapshot. It is a **single-point
 cutover window**: everything below happens once, while no agent is writing cards.
 
@@ -227,7 +227,7 @@ chmod a-w ~/.openclaw/team/projects.json
 
 **Freezing the registry.** `~/.openclaw/team/projects.json` is the *current*
 authority for project metadata (root/`workspace_path`, git rules, repos, guides).
-After the import, that metadata lives in the TaskPanel `projects` table
+After the import, that metadata lives in the MeerkatTaskPanel `projects` table
 (`workspace_path` + `meta_json`, per `ARCHITECTURE.md` §4.8 ④). Copy the file to a
 timestamped, read-only snapshot — it is the audit trail of where the metadata came
 from — and stop treating it as authoritative. From then on, **the `projects`
@@ -314,12 +314,12 @@ The drill has an in-container script and a host wrapper:
 npm run verify:migrate:container
 
 # or by hand
-docker build -f docker/Dockerfile -t task-panel:verify .
+docker build -f docker/Dockerfile -t meerkat-taskpanel:verify .
 docker run --rm \
   -v "$HOME/.openclaw/team/tasks:/cards:ro" \
   -v "$HOME/.openclaw/team/projects.json:/projects.json:ro" \
   -v "$PWD/.data/migrate-out:/out" \
-  task-panel:verify bash docker/migrate-in-container.sh
+  meerkat-taskpanel:verify bash docker/migrate-in-container.sh
 ```
 
 See `docs/docker.md` for the image and the full in-container suite

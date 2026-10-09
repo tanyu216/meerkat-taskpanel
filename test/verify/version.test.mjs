@@ -26,7 +26,7 @@ after(async () => {
 
 /** A fresh temp dir removed after the suite. */
 async function makeTree() {
-  const dir = await mkdtemp(join(tmpdir(), "taskpanel-version-"));
+  const dir = await mkdtemp(join(tmpdir(), "meerkat-taskpanel-version-"));
   tempDirs.push(dir);
   return dir;
 }
@@ -40,12 +40,12 @@ async function makeTree() {
  */
 function manifests(version) {
   return {
-    "package.json": { name: "task-panel", version, private: true },
-    "plugins/pi/package.json": { name: "task-panel-pi", version },
-    "plugins/claude/.claude-plugin/plugin.json": { name: "task-panel", version },
-    "plugins/codex/.codex-plugin/plugin.json": { name: "task-panel", version },
-    "plugins/openclaw/openclaw.plugin.json": { id: "task-panel", version },
-    ".claude-plugin/marketplace.json": { name: "task-panel-marketplace", metadata: { version } },
+    "package.json": { name: "meerkat-taskpanel", version, private: true },
+    "plugins/pi/package.json": { name: "meerkat-taskpanel-pi", version },
+    "plugins/claude/.claude-plugin/plugin.json": { name: "meerkat-taskpanel", version },
+    "plugins/codex/.codex-plugin/plugin.json": { name: "meerkat-taskpanel", version },
+    "plugins/openclaw/openclaw.plugin.json": { id: "meerkat-taskpanel", version },
+    ".claude-plugin/marketplace.json": { name: "meerkat-taskpanel-marketplace", metadata: { version } },
   };
 }
 
@@ -103,7 +103,7 @@ describe("version.mjs — validateVersions(base)", () => {
   it("fails, naming the file, when one manifest drifts", async () => {
     const dir = await makeTree();
     const files = manifests("1.0.0");
-    files[".claude-plugin/marketplace.json"] = { name: "task-panel-marketplace", metadata: { version: "0.9.9" } };
+    files[".claude-plugin/marketplace.json"] = { name: "meerkat-taskpanel-marketplace", metadata: { version: "0.9.9" } };
     await writeTree(dir, files);
 
     const result = await validateVersions(dir);
@@ -118,7 +118,7 @@ describe("version.mjs — validateVersions(base)", () => {
   it("fails when a nested field is missing (marketplace metadata.version)", async () => {
     const dir = await makeTree();
     const files = manifests("1.0.0");
-    files[".claude-plugin/marketplace.json"] = { name: "task-panel-marketplace", metadata: {} };
+    files[".claude-plugin/marketplace.json"] = { name: "meerkat-taskpanel-marketplace", metadata: {} };
     await writeTree(dir, files);
 
     const result = await validateVersions(dir);
@@ -131,7 +131,7 @@ describe("version.mjs — validateVersions(base)", () => {
   it("fails when a top-level version is missing", async () => {
     const dir = await makeTree();
     const files = manifests("1.0.0");
-    files["plugins/pi/package.json"] = { name: "task-panel-pi" };
+    files["plugins/pi/package.json"] = { name: "meerkat-taskpanel-pi" };
     await writeTree(dir, files);
 
     const result = await validateVersions(dir);
@@ -185,7 +185,7 @@ describe("version.mjs — the CLI", () => {
   it("exits 1 and prints the drift on a drifted tree", async () => {
     const dir = await makeTree();
     const files = manifests("2.0.0");
-    files["plugins/pi/package.json"] = { name: "task-panel-pi", version: "1.0.0" };
+    files["plugins/pi/package.json"] = { name: "meerkat-taskpanel-pi", version: "1.0.0" };
     await writeTree(dir, files);
     const result = runCli(["--base", dir]);
     assert.equal(result.status, 1);

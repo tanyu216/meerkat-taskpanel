@@ -1,4 +1,4 @@
-# Task Panel — containerized verification / deploy image.
+# Meerkat TaskPanel — containerized verification / deploy image.
 #
 # There are two build layers, and keeping them apart is the whole point of the stages:
 #
@@ -24,8 +24,8 @@
 # point (Terry, 2026-10-08: local verification runs isolated in a container, never on the
 # host).
 #
-# Build:  docker build -f docker/Dockerfile -t task-panel:verify .
-# Verify: docker run --rm task-panel:verify bash docker/verify-in-container.sh
+# Build:  docker build -f docker/Dockerfile -t meerkat-taskpanel:verify .
+# Verify: docker run --rm meerkat-taskpanel:verify bash docker/verify-in-container.sh
 
 # ── Stage 1: web build (build-time devDependencies only) ──────────────────────────────
 #

@@ -98,9 +98,9 @@ export function fixtureApi() {
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
   });
-  const projects = [mk("p1", "TaskPanel"), mk("p2", "Orchestrator")];
+  const projects = [mk("p1", "MeerkatTaskPanel"), mk("p2", "Orchestrator")];
   const orderDebug = [
-    { id: "p1", name: "TaskPanel", order: 1, total: 0.9, archived: false },
+    { id: "p1", name: "MeerkatTaskPanel", order: 1, total: 0.9, archived: false },
     { id: "p2", name: "Orchestrator", order: 2, total: 0.4, archived: false },
   ];
   // 12 cards, all in the default project (p1), covering the seven statuses.

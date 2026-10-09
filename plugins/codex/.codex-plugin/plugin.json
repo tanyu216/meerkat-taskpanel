@@ -1,11 +1,11 @@
 {
-  "name": "task-panel",
+  "name": "meerkat-taskpanel",
   "version": "1.0.0",
   "description": "Task management board for AI Agent teams.",
   "author": { "name": "tanyu216" },
   "license": "MIT",
-  "homepage": "https://github.com/tanyu216/task-panel",
-  "repository": "https://github.com/tanyu216/task-panel",
+  "homepage": "https://github.com/tanyu216/meerkat-taskpanel",
+  "repository": "https://github.com/tanyu216/meerkat-taskpanel",
   "keywords": ["task-management", "ai-agent", "kanban"],
   "skills": "./skills"
 }

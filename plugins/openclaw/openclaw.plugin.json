@@ -1,6 +1,6 @@
 {
-  "id": "task-panel",
-  "name": "Task Panel",
+  "id": "meerkat-taskpanel",
+  "name": "Meerkat TaskPanel",
   "version": "1.0.0",
   "description": "Task management board for AI Agent teams.",
   "categories": ["developer-tools"],

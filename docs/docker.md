@@ -36,7 +36,7 @@ and for driving `npm run verify:docker`, which only shells out to `docker`.)
 ## Build
 
 ```bash
-docker build -f docker/Dockerfile -t task-panel:verify .
+docker build -f docker/Dockerfile -t meerkat-taskpanel:verify .
 ```
 
 The build context is the repository root, trimmed by the root `.dockerignore` (no `.git`,
@@ -45,7 +45,7 @@ no `prototype/`, no `design/`, no `node_modules`). The image:
 - is based on `node:22-bookworm-slim`;
 - sets `TZ=Asia/Shanghai` — no `tzdata` package is installed, Node's bundled ICU supplies
   the zone. Verify with
-  `docker run --rm task-panel:verify node -e "console.log(new Date().toString())"`,
+  `docker run --rm meerkat-taskpanel:verify node -e "console.log(new Date().toString())"`,
   which should print a `CST` time;
 - sets `TASKD_HOST=0.0.0.0` and `TASKD_PORT=9527`;
 - runs as the non-root `node` user;
@@ -120,7 +120,7 @@ download-and-cache — no native build runs here.
 Confirm the F1-c guarantee after re-vendoring:
 
 ```bash
-docker build --network=none -t task-panel:verify -f docker/Dockerfile .
+docker build --network=none -t meerkat-taskpanel:verify -f docker/Dockerfile .
 ```
 
 `--network=none` must succeed; if it fails, a tarball the lockfile needs is missing from
@@ -149,7 +149,7 @@ Anything else returns `404 {"error":"not_found"}`.
 > it serves `/health` and nothing else, purely so the compose path (build → healthcheck →
 > teardown) can be exercised without starting a real board with real state. The **real**
 > HTTP surface now exists under `src/server/` (M6a) and is what the container suite starts
-> and drives: `docker run --rm task-panel:verify node src/server/main.mjs`, plus the
+> and drives: `docker run --rm meerkat-taskpanel:verify node src/server/main.mjs`, plus the
 > `test/server/*` integration cases that run inside `npm run verify:docker`. Pointing
 > `docker-compose.yml`'s `command` at `src/server/main.mjs` is a one-line deploy change
 > left for a follow-up card, because the compose healthcheck contract (`/health` says
@@ -167,8 +167,8 @@ npm run verify:docker
 
 This is the whole suite, host-side, in one command. It:
 
-1. builds `task-panel:verify` from `docker/Dockerfile`;
-2. runs `docker run --rm task-panel:verify bash docker/verify-in-container.sh`;
+1. builds `meerkat-taskpanel:verify` from `docker/Dockerfile`;
+2. runs `docker run --rm meerkat-taskpanel:verify bash docker/verify-in-container.sh`;
 3. brings the compose service up, polls `docker inspect` until the `/health`
    healthcheck reports `healthy` (60 s budget), then always tears down with
    `docker compose down -v` — teardown is in a `finally` block, so a failure does not
@@ -202,10 +202,10 @@ Each step prints an `== ... ==` header and the script aborts on the first failur
 
 | Host | `target_dir` | `installer` |
 |---|---|---|
-| `claude` | `.claude/skills/task-panel` | `scripts/install/claude.sh` |
-| `openclaw` | `.openclaw/skills/task-panel` | `scripts/install/openclaw.sh` |
-| `codex` | `.codex/skills/task-panel` | `scripts/install/codex.sh` |
-| `pi` | `.agents/skills/task-panel` | `scripts/install/pi.sh` |
+| `claude` | `.claude/skills/meerkat-taskpanel` | `scripts/install/claude.sh` |
+| `openclaw` | `.openclaw/skills/meerkat-taskpanel` | `scripts/install/openclaw.sh` |
+| `codex` | `.codex/skills/meerkat-taskpanel` | `scripts/install/codex.sh` |
+| `pi` | `.agents/skills/meerkat-taskpanel` | `scripts/install/pi.sh` |
 
 Each file has the same six keys: `host`, `label`, `installer`, `target_dir`,
 `skill_entry`, `wrapper`. They are read by a tiny flat-map parser
@@ -216,7 +216,7 @@ line number.
 `node scripts/verify/profiles.mjs` installs all four hosts and asserts, per host:
 
 - the skill directory exists at `<home>/<target_dir>`;
-- `SKILL.md` still carries `name: task-panel` in its frontmatter;
+- `SKILL.md` still carries `name: meerkat-taskpanel` in its frontmatter;
 - `node <dest>/scripts/run.mjs --version` prints the version from
   `src/shared/constants.mjs`.
 
@@ -229,14 +229,14 @@ a throwaway home:
 node scripts/verify/profiles.mjs --home "$(mktemp -d)"
 ```
 
-The default is `$TMPDIR/taskpanel-profiles-<pid>`, and the installer is driven through
-the same `TASKPANEL_TARGET_HOME` variable that `install.sh --prefix <dir>` sets — so the
+The default is `$TMPDIR/meerkat-taskpanel-profiles-<pid>`, and the installer is driven through
+the same `MEERKAT_TASKPANEL_TARGET_HOME` variable that `install.sh --prefix <dir>` sets — so the
 check is equivalent to a real install while touching only a temp directory. This is how
 the four-host matrix is verified on a machine that does not (and should not) have those
 hosts installed: the profile's `target_dir` and `installer` are exercised for real, and
 the installed skill is executed through its own wrapper.
 
-The verification installs with `--link` semantics (`TASKPANEL_LINK=1`), matching
+The verification installs with `--link` semantics (`MEERKAT_TASKPANEL_LINK=1`), matching
 `install.sh --link`. The skill's wrapper resolves the CLI relative to its own file
 location, so only a symlinked skill points back at this checkout; a copied skill has no
 `src/` next to it. See [Troubleshooting](#troubleshooting).
@@ -268,7 +268,7 @@ Everything that *installs*, *serves*, or *deploys* goes through Docker.
   (`fail-fast: false`, both legs run the full step list; **no `npm install`**: it only runs
   source, scripts and tests, which need no packages). It runs `node --test`, the coverage
   gate (`npm run test:coverage`) and the `scripts/verify/*` checkers;
-- `docker` — builds `task-panel:verify` exactly like the local command and runs the same
+- `docker` — builds `meerkat-taskpanel:verify` exactly like the local command and runs the same
   in-container script. This is the authoritative job, and the only one that touches the
   frontend: the `webbuild` stage installs `web/`'s devDependencies **offline** from the
   committed cache (`npm ci --offline`), so the CI build reaches no registry. There is
@@ -284,7 +284,7 @@ equivalent of each job.
 
 ```bash
 docker compose -f docker/docker-compose.yml down -v   # containers + anonymous volumes
-docker rmi task-panel:verify task-panel:local         # images
+docker rmi meerkat-taskpanel:verify meerkat-taskpanel:local         # images
 docker image prune                                    # dangling layers, if you want them gone
 ```
 
@@ -292,7 +292,7 @@ docker image prune                                    # dangling layers, if you 
 interrupted. To confirm nothing is left:
 
 ```bash
-docker ps -a --filter ancestor=task-panel:verify --filter ancestor=task-panel:local
+docker ps -a --filter ancestor=meerkat-taskpanel:verify --filter ancestor=meerkat-taskpanel:local
 ```
 
 ## Troubleshooting
@@ -334,7 +334,7 @@ lockfile.
 
 **`profiles: ... wrapper ... exit 1` / `Cannot find module .../src/cli/index.mjs`.**
 The skill was *copied* instead of linked, so the wrapper's relative path walked up out of
-the checkout. Install with `--link` (`install.sh --link`, or `TASKPANEL_LINK=1`), which
+the checkout. Install with `--link` (`install.sh --link`, or `MEERKAT_TASKPANEL_LINK=1`), which
 is what `scripts/verify/profiles.mjs` does.
 
 **Port 9527 is already in use on the host.**

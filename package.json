@@ -1,5 +1,5 @@
 {
-  "name": "task-panel",
+  "name": "meerkat-taskpanel",
   "version": "1.0.0",
   "type": "module",
   "workspaces": [
@@ -12,7 +12,7 @@
   },
   "bin": {
     "taskctl": "./src/cli/index.mjs",
-    "taskpanel-mcp": "./src/mcp/main.mjs"
+    "meerkat-taskpanel-mcp": "./src/mcp/main.mjs"
   },
   "engines": {
     "node": ">=22"
@@ -53,6 +53,6 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/tanyu216/task-panel.git"
+    "url": "https://github.com/tanyu216/meerkat-taskpanel.git"
   }
 }

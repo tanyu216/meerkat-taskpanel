@@ -32,13 +32,13 @@ import { MonitoringError } from "./errors.mjs";
 export const DEFAULT_DURATION_BUCKETS = Object.freeze([0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]);
 
 /** The exposition namespace; every metric name starts with it. */
-export const NAMESPACE = "task_panel";
+export const NAMESPACE = "meerkat_taskpanel";
 
-/** `task_panel_http_requests_total{method,route,status}` — every observation. */
+/** `meerkat_taskpanel_http_requests_total{method,route,status}` — every observation. */
 export const REQUEST_TOTAL = `${NAMESPACE}_http_requests_total`;
-/** `task_panel_http_failures_total{reason}` — availability failures only. */
+/** `meerkat_taskpanel_http_failures_total{reason}` — availability failures only. */
 export const REQUEST_FAILURES_TOTAL = `${NAMESPACE}_http_failures_total`;
-/** `task_panel_http_request_duration_seconds{method,route}` histogram. */
+/** `meerkat_taskpanel_http_request_duration_seconds{method,route}` histogram. */
 export const REQUEST_DURATION_SECONDS = `${NAMESPACE}_http_request_duration_seconds`;
 /** The failure reason used for an HTTP 5xx. */
 export const SERVER_ERROR_REASON = "http_5xx";

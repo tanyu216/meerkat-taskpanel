@@ -1,6 +1,6 @@
-# TaskPanel — v1 high-fidelity prototype
+# MeerkatTaskPanel — v1 high-fidelity prototype
 
-A static, self-contained HTML prototype of the TaskPanel board for an AI-agent
+A static, self-contained HTML prototype of the MeerkatTaskPanel board for an AI-agent
 team. It is the executable design baseline: tokens, block structure and interaction
 behaviour all come from `design-style-guide.md` + `design-spec.md` as amended by
 `design-spec-addendum-v1.1.md` (access model, top bar, i18n),
@@ -71,7 +71,7 @@ expose it to Tailwind only for the duration of the build:
 
 ```sh
 BUILD=/Users/tanyu/.openclaw/team/workspace/T-20261008-200429-taskboardproto/twbuild
-PROTO=/Users/tanyu/Documents/task-panel/prototype
+PROTO=/Users/tanyu/Documents/meerkat-taskpanel/prototype
 
 cd "$BUILD" && npm install            # tailwindcss, @tailwindcss/cli, daisyui, jquery
 
@@ -215,7 +215,7 @@ language switch, and the wrap is now kept as reviewed rather than re-tuned (DESI
 
 | File | State |
 |---|---|
-| `01-board-1512.png` | default board (TaskPanel project, 12 of 18 cards) |
+| `01-board-1512.png` | default board (MeerkatTaskPanel project, 12 of 18 cards) |
 | `02-board-wide.png` | full 7-column board at 2600px — status coverage proof |
 | `03-drawer-agent.png` | drawer for an agent task: session block + GFM description |
 | `04-drawer-human.png` | drawer for a human task |
@@ -344,7 +344,7 @@ every width tested.
 
 ## Who is on the board
 
-TaskPanel is a board for an AI-agent team, so the assignee pool is the team
+MeerkatTaskPanel is a board for an AI-agent team, so the assignee pool is the team
 itself: six agent roles — `elon` (openclaw), `jobs` / `linus` / `simons` (claude),
 `turing` (codex), `assistant` (pi) — plus the human owner `Terry`, who files every
 task (`data-reporter="Terry"` on all 18 cards). Cards show the platform badge **and**
@@ -355,7 +355,7 @@ assignee table in [BLOCKS.md](BLOCKS.md#assignee-model).
 ## Notes and known limits
 
 - **Project scoping.** The switcher and the sidebar filter the board by
-  `data-project`; TaskPanel (12 cards) is the default, so the default board shows
+  `data-project`; MeerkatTaskPanel (12 cards) is the default, so the default board shows
   12 of the 18 cards. All 18 are in the document, and `02-board-wide-2400.png` shows
   the full set — switch to a project with no cards to see the empty-column states.
 - **Comment lists are representative.** A card's `data-comments` number is the total

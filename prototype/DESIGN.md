@@ -1,4 +1,4 @@
-# TaskPanel — Design Specification (v1 prototype)
+# MeerkatTaskPanel — Design Specification (v1 prototype)
 
 > Implemented from `design-style-guide.md` (visual tokens — single source of truth)
 > and `design-spec.md` (structure, blocks, interactions, coverage), as amended by
@@ -6,7 +6,7 @@
 > `design-spec-addendum-v1.2.md` (sidebar-footer switches, access-model rewrite) and
 > `design-spec-v1.3.md` (footer split into three equal thirds; theme and language become
 > dialogs alongside settings), and then by **R3** — `design-spec.md` (brand re-skin,
-> Signal Bars mark, rename to TaskPanel) together with `design-spec-r3-addendum.md`
+> Signal Bars mark, rename to MeerkatTaskPanel) together with `design-spec-r3-addendum.md`
 > (daisyUI componentisation, the assignee/reporter controls, the two-column create
 > dialog and the Markdown editor).
 > Every value below is copied from those documents. **Nothing here is invented**;
@@ -205,12 +205,12 @@ Three states, cycled from the **sidebar footer** (the top bar carries no theme c
 
 | State | `<html>` attributes | Resolved by |
 |---|---|---|
-| **Light** (default) | `data-theme="taskpanel"` · `data-theme-mode="light"` | explicit — fixed |
+| **Light** (default) | `data-theme="meerkat-taskpanel"` · `data-theme-mode="light"` | explicit — fixed |
 | **Dark** | `data-theme="dark"` · `data-theme-mode="dark"` | explicit — fixed |
 | **Auto** | `data-theme="auto"` · `data-theme-mode="auto"` | `@media (prefers-color-scheme: dark)` |
 
 `data-theme-mode` is the machine-checkable state; `data-theme` is what the CSS reads.
-Light keeps the theme name `taskpanel`, so the no-JS document and the **no-record
+Light keeps the theme name `meerkat-taskpanel`, so the no-JS document and the **no-record
 default** are the same thing: **Light** — not "follow the system". Auto is the only
 state that follows the system, and the media query is the only thing that resolves it:
 `app.js` never reads `matchMedia` and never writes storage (§21). Picking Light or Dark
@@ -241,7 +241,7 @@ consequently declared inside `@layer utilities` **after** the daisyUI plugin, so
 theme < base < components < utilities ┊ daisyui.* < app components < tailwind utilities
 ```
 
-Two custom themes are registered: **`taskpanel`** (light, default) and **`dark`**.
+Two custom themes are registered: **`meerkat-taskpanel`** (light, default) and **`dark`**.
 Since R3 every daisyUI component class is the component's shell and the matching
 `td-*` rule is a **token override only** — see §18.2 for the full mapping.
 
@@ -287,7 +287,7 @@ and their token tables do not match. The rule applied here:
 | 17 | Type ladder | `11…24`, base 14, lh 1.5 / 1.35 | `12…24`, base 14, lh 1.5 / 1.3 | style guide (11px is badge-only) |
 | 18 | Spacing ladder | `4…48` | `4…40` | style guide |
 | 19 | Dark palette | not defined | §2.2 explicit values | design-spec §2.2 (the only non-invented source) |
-| 20 | daisyUI theme names | — | `taskpanel` / `taskpanel-dark` | `taskpanel` / **`dark`** — the spec mandates the attribute `data-theme="dark"`, and daisyUI keys its dark theme off `data-theme`, so the palette is registered under the name `dark` |
+| 20 | daisyUI theme names | — | `meerkat-taskpanel` / `meerkat-taskpanel-dark` | `meerkat-taskpanel` / **`dark`** — the spec mandates the attribute `data-theme="dark"`, and daisyUI keys its dark theme off `data-theme`, so the palette is registered under the name `dark` |
 | 21 | File layout | — | `assets/tw.css`, `assets/app.js`, `assets/vendor/…`, `src.css` | `tw.css`, `app.js`, `vendor/…`, `src/input.css` per the task card's deliverable list (see README "File map") |
 
 Both naming generations are still live in the stylesheet: `src/input.css` exposes
@@ -299,7 +299,7 @@ the style-guide short names (`--bg`, `--surface`, `--accent`, `--st-progress`, �
 
 ## 10. Team & identity model
 
-TaskPanel is a board for an **AI-agent team**, so the people on it are the team
+MeerkatTaskPanel is a board for an **AI-agent team**, so the people on it are the team
 that actually runs the work: six agent roles and the human owner. No invented
 personas, and no second identity vocabulary anywhere in the prototype.
 
@@ -739,7 +739,7 @@ governs the values.
 1. **The palette moved to the brand.** Every value in §2 is now reproduced from
    `design/brand/tokens.css`, and the two daisyUI theme blocks in `src/input.css` carry
    the brand's palette rather than Tailwind's defaults. The light daisyUI theme was
-   renamed `taskpanel` and `data-theme="dark"` is unchanged, so the attribute contract
+   renamed `meerkat-taskpanel` and `data-theme="dark"` is unchanged, so the attribute contract
    the app switches on never moved.
 2. **The status and priority ramps are dark-specific** (§7). Before R3 dark reused the
    light values; both ramps are now re-declared for `[data-theme="dark"]`.
@@ -756,7 +756,7 @@ governs the values.
    accent node stays the only lit element), and ships as `prototype/favicon.svg` with a
    `prefers-color-scheme` pair. The mark reads its fills from `--color-td-ink` and
    `--color-td-accent`, so there is one file for both themes, not two.
-6. **The rename.** The product name is now `TaskPanel` across `prototype/**` and
+6. **The rename.** The product name is now `MeerkatTaskPanel` across `prototype/**` and
    `design/brand/**` — the i18n catalogue, the identifier-prefix map, the daisyUI theme
    name, the brand documents and the brand poster, which was re-rasterised from the
    updated `render-poster.mjs` at its fixed 1600×2000. No colour value and no logo
@@ -980,10 +980,10 @@ With N = 3, the three factors rank and normalise as below (larger value ⇒ rank
 | Project      | A7 (7d) | A30 (30d) | Creation | s_A7  | s_A30 | s_C   | **total** | **rank** |
 |--------------|---------|-----------|----------|-------|-------|-------|-----------|----------|
 | Orchestrator | 20 (r1) | 55 (r1)   | newest (r3) | 1.000 | 1.000 | 0.333 | **0.867** | **1** |
-| TaskPanel    | 12 (r2) | 40 (r2)   | mid (r2)    | 0.667 | 0.667 | 0.667 | **0.667** | **2** |
+| MeerkatTaskPanel    | 12 (r2) | 40 (r2)   | mid (r2)    | 0.667 | 0.667 | 0.667 | **0.667** | **2** |
 | Site Refresh | 3 (r3)  | 25 (r3)   | oldest (r1) | 0.333 | 0.333 | 1.000 | **0.467** | **3** |
 
-⇒ **Demo display order = Orchestrator → TaskPanel → Site Refresh.** Note this differs from
+⇒ **Demo display order = Orchestrator → MeerkatTaskPanel → Site Refresh.** Note this differs from
 the creation-time intuition (Site Refresh is the oldest, so it wins the `C` factor — but
 that factor carries the smallest weight, so it still lands last); the ordering exists to
 show activity weighting in the UI. Sidebar task counts (12 / 4 / 2) are unrelated to the
@@ -998,8 +998,8 @@ Authority: `ARCHITECTURE §8` (client preferences). Two preferences live on the 
 
 | Key | Values | Default | Surface |
 |---|---|---|---|
-| `taskpanel.theme` | `light` \| `dark` \| `auto` | **`light`** | the sidebar footer's left cell |
-| `taskpanel.lang` | `en` \| `zh` | **`en`** | the sidebar footer's centre cell |
+| `meerkat-taskpanel.theme` | `light` \| `dark` \| `auto` | **`light`** | the sidebar footer's left cell |
+| `meerkat-taskpanel.lang` | `en` \| `zh` | **`en`** | the sidebar footer's centre cell |
 
 **Where they live.** Both are **stored in `localStorage` only — never on the server**. They
 do not travel in a request, they are not columns on any table, and they are not tied to an
@@ -1008,7 +1008,7 @@ whichever preference is in force, so nothing here can change what the service st
 
 **No record ⇒ `light`.** With no stored value the theme is **Light** — an explicit light
 theme, **not** "follow the system". The same rule gives the no-JS document its default
-(§7): `<html data-theme="taskpanel" data-theme-mode="light">`. Language likewise starts at
+(§7): `<html data-theme="meerkat-taskpanel" data-theme-mode="light">`. Language likewise starts at
 `en`.
 
 **Explicit beats auto.** Picking `light` or `dark` records a fixed choice and **disables

@@ -167,18 +167,18 @@ describe("registry — HTTP observations", () => {
     assert.equal(registry.has(REQUEST_DURATION_SECONDS), true);
 
     const text = registry.render();
-    assert.match(text, /^task_panel_http_requests_total\{method="GET",route="\/api\/tasks",status="200"\} 1$/m);
+    assert.match(text, /^meerkat_taskpanel_http_requests_total\{method="GET",route="\/api\/tasks",status="200"\} 1$/m);
     assert.match(
       text,
-      /^task_panel_http_request_duration_seconds_bucket\{method="GET",route="\/api\/tasks",le="0\.025"\} 1$/m,
+      /^meerkat_taskpanel_http_request_duration_seconds_bucket\{method="GET",route="\/api\/tasks",le="0\.025"\} 1$/m,
     );
     assert.match(
       text,
-      /^task_panel_http_request_duration_seconds_bucket\{method="GET",route="\/api\/tasks",le="\+Inf"\} 1$/m,
+      /^meerkat_taskpanel_http_request_duration_seconds_bucket\{method="GET",route="\/api\/tasks",le="\+Inf"\} 1$/m,
     );
-    assert.match(text, /^task_panel_http_request_duration_seconds_sum\{method="GET",route="\/api\/tasks"\} 0\.012$/m);
-    assert.match(text, /^task_panel_http_request_duration_seconds_count\{method="GET",route="\/api\/tasks"\} 1$/m);
-    assert.doesNotMatch(text, /^task_panel_http_failures_total/m, "a 2xx must not be counted as a failure");
+    assert.match(text, /^meerkat_taskpanel_http_request_duration_seconds_sum\{method="GET",route="\/api\/tasks"\} 0\.012$/m);
+    assert.match(text, /^meerkat_taskpanel_http_request_duration_seconds_count\{method="GET",route="\/api\/tasks"\} 1$/m);
+    assert.doesNotMatch(text, /^meerkat_taskpanel_http_failures_total/m, "a 2xx must not be counted as a failure");
   });
 
   it("counts a 5xx and a transport failure in failures_total with distinct reasons", () => {
@@ -187,16 +187,16 @@ describe("registry — HTTP observations", () => {
     registry.observeHttpRequest({ method: "GET", route: "/api/tasks", status: 200, durationMs: 3, failure: "timeout" });
 
     const text = registry.render();
-    assert.match(text, /^task_panel_http_failures_total\{reason="http_5xx"\} 1$/m);
-    assert.match(text, /^task_panel_http_failures_total\{reason="timeout"\} 1$/m);
+    assert.match(text, /^meerkat_taskpanel_http_failures_total\{reason="http_5xx"\} 1$/m);
+    assert.match(text, /^meerkat_taskpanel_http_failures_total\{reason="timeout"\} 1$/m);
   });
 
   it("does not count a 4xx as an availability failure", () => {
     const registry = new Registry();
     registry.observeHttpRequest({ method: "GET", route: "/api/missing", status: 404, durationMs: 1 });
     registry.observeHttpRequest({ method: "POST", route: "/api/tasks", status: 422, durationMs: 2 });
-    assert.doesNotMatch(registry.render(), /^task_panel_http_failures_total/m);
-    assert.match(registry.render(), /^task_panel_http_requests_total\{/m);
+    assert.doesNotMatch(registry.render(), /^meerkat_taskpanel_http_failures_total/m);
+    assert.match(registry.render(), /^meerkat_taskpanel_http_requests_total\{/m);
   });
 
   it("rejects a malformed observation", () => {
@@ -234,13 +234,13 @@ describe("registry — HTTP observations", () => {
 
   it("describes every family in snapshot() for the OTLP mapper", () => {
     const registry = new Registry();
-    registry.registerGauge("task_panel_up", "Up.").set({}, 1);
+    registry.registerGauge("meerkat_taskpanel_up", "Up.").set({}, 1);
     registry.observeHttpRequest(observation);
 
     const snapshot = registry.snapshot({ at: 123 });
     assert.equal(snapshot.generatedAt, 123);
 
-    const up = snapshot.metrics.find((metric) => metric.name === "task_panel_up");
+    const up = snapshot.metrics.find((metric) => metric.name === "meerkat_taskpanel_up");
     assert.equal(up.type, "gauge");
     assert.equal(up.series[0].value, 1);
 

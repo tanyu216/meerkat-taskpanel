@@ -4,7 +4,7 @@
  * The two bundle hosts now deploy more than a skill — MCP registration, host config,
  * slash commands (Claude) / a claim trigger (Codex), and a `taskctl` shim that pins the
  * agent identity. These tests pin that contract under an isolated home
- * (`TASKPANEL_TARGET_HOME`), and in particular the two "never clobber" rules the rest of
+ * (`MEERKAT_TASKPANEL_TARGET_HOME`), and in particular the two "never clobber" rules the rest of
  * the installer relies on:
  *
  *   - idempotent: re-running with the same inputs leaves every file byte-identical;
@@ -44,7 +44,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 const tempDirs = [];
 
-function makeTempDir(prefix = "taskpanel-hostbundle-") {
+function makeTempDir(prefix = "meerkat-taskpanel-hostbundle-") {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   tempDirs.push(dir);
   return dir;
@@ -101,7 +101,7 @@ function makeFakeCli(binDir, name) {
 function fakeCliEnv(home, bin, log, extra = {}) {
   return {
     ...process.env,
-    TASKPANEL_TARGET_HOME: home,
+    MEERKAT_TASKPANEL_TARGET_HOME: home,
     FAKE_LOG: log,
     PATH: `${bin}:${process.env.PATH}`,
     ...extra,
@@ -138,7 +138,7 @@ describe("host bundle: mergeSettings", () => {
         env: { OTHER: "keep-me" },
         hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "echo hi" }] }] },
       },
-      { agent: "alice", hookCommand: "/home/alice/.claude/hooks/task-panel-session-start.sh" },
+      { agent: "alice", hookCommand: "/home/alice/.claude/hooks/meerkat-taskpanel-session-start.sh" },
     );
 
     assert.equal(changed, true);
@@ -149,7 +149,7 @@ describe("host bundle: mergeSettings", () => {
     assert.equal(data.hooks.SessionStart.length, 1);
     assert.equal(
       data.hooks.SessionStart[0].hooks[0].command,
-      "/home/alice/.claude/hooks/task-panel-session-start.sh",
+      "/home/alice/.claude/hooks/meerkat-taskpanel-session-start.sh",
     );
   });
 
@@ -195,7 +195,7 @@ describe("host bundle: claude", () => {
     assert.equal(run.status, 0, run.stderr);
 
     // 1. skill
-    assert.ok(existsSync(join(home, ".claude", "skills", "task-panel", "SKILL.md")), "skill missing");
+    assert.ok(existsSync(join(home, ".claude", "skills", "meerkat-taskpanel", "SKILL.md")), "skill missing");
 
     // 2. settings.json — merged identity + SessionStart
     const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
@@ -203,10 +203,10 @@ describe("host bundle: claude", () => {
     const start = settings.hooks.SessionStart;
     assert.equal(start.length, 1);
     assert.equal(start[0].hooks[0].type, "command");
-    assert.ok(start[0].hooks[0].command.endsWith(".claude/hooks/task-panel-session-start.sh"));
+    assert.ok(start[0].hooks[0].command.endsWith(".claude/hooks/meerkat-taskpanel-session-start.sh"));
 
     // 3. hook script (executable, rendered, restates the eight rules)
-    const hook = join(home, ".claude", "hooks", "task-panel-session-start.sh");
+    const hook = join(home, ".claude", "hooks", "meerkat-taskpanel-session-start.sh");
     assert.ok(isExecutable(hook), "hook must be executable");
     const hookText = readFileSync(hook, "utf8");
     assert.match(hookText, /分给我的待领卡/);
@@ -230,7 +230,7 @@ describe("host bundle: claude", () => {
 
     // 6. MCP registration — the exact command, run against the isolated home
     const argvLine = readFileSync(log, "utf8").split("\n").find((l) => l.startsWith("argv:"));
-    assert.match(argvLine, /^argv: <mcp> <add> <taskpanel> <--> <node> <.*\/src\/mcp\/main\.mjs>$/);
+    assert.match(argvLine, /^argv: <mcp> <add> <meerkat-taskpanel> <--> <node> <.*\/src\/mcp\/main\.mjs>$/);
     assert.ok(readFileSync(log, "utf8").includes(`HOME=${home}`));
   });
 
@@ -328,7 +328,7 @@ describe("host bundle: codex", () => {
     assert.equal(run.status, 0, run.stderr);
 
     // 1. skill
-    assert.ok(existsSync(join(home, ".codex", "skills", "task-panel", "SKILL.md")), "skill missing");
+    assert.ok(existsSync(join(home, ".codex", "skills", "meerkat-taskpanel", "SKILL.md")), "skill missing");
 
     // 2. shim
     const shim = join(home, ".codex", "bin", "taskctl");
@@ -337,24 +337,24 @@ describe("host bundle: codex", () => {
 
     // 3. AGENTS.md — claim-first snippet appended with the identity rendered
     const agents = readFileSync(join(home, ".codex", "AGENTS.md"), "utf8");
-    assert.match(agents, /<!-- task-panel:begin -->/);
+    assert.match(agents, /<!-- meerkat-taskpanel:begin -->/);
     assert.match(agents, /You are agent \*\*alice\*\*/);
     assert.ok(agents.includes(`taskctl issue candidates --assignee alice`));
     assert.ok(agents.includes(join(home, ".codex", "bin", "taskctl")), "shim path must be rendered into AGENTS.md");
     assert.ok(!agents.includes("{{"), "template tokens must be rendered");
 
     // 4. claim trigger (executable, rendered, mentions the schedule)
-    const trigger = join(home, ".codex", "task-panel-claim.sh");
+    const trigger = join(home, ".codex", "meerkat-taskpanel-claim.sh");
     assert.ok(isExecutable(trigger), "trigger must be executable");
     const triggerText = readFileSync(trigger, "utf8");
     assert.match(triggerText, /name="\$\{TASKCTL_AGENT:-alice\}"/);
-    assert.ok(triggerText.includes(join(home, ".codex", "task-panel-claim.sh")), "trigger path must be rendered");
+    assert.ok(triggerText.includes(join(home, ".codex", "meerkat-taskpanel-claim.sh")), "trigger path must be rendered");
     assert.ok(!triggerText.includes("{{"), "template tokens must be rendered");
 
     // 5. MCP registration — the exact command with CODEX_HOME pointed at the isolated home
     const logText = readFileSync(log, "utf8");
     const argvLine = logText.split("\n").find((l) => l.startsWith("argv:"));
-    assert.match(argvLine, /^argv: <mcp> <add> <taskpanel> <--> <node> <.*\/src\/mcp\/main\.mjs>$/);
+    assert.match(argvLine, /^argv: <mcp> <add> <meerkat-taskpanel> <--> <node> <.*\/src\/mcp\/main\.mjs>$/);
     assert.ok(logText.includes(`CODEX_HOME=${join(home, ".codex")}`));
   });
 
@@ -368,8 +368,8 @@ describe("host bundle: codex", () => {
     );
     assert.equal(run.status, 0, run.stderr);
 
-    assert.equal(existsSync(join(home, ".codex", "task-panel-claim.sh")), false);
-    assert.ok(existsSync(join(home, ".codex", "skills", "task-panel", "SKILL.md")));
+    assert.equal(existsSync(join(home, ".codex", "meerkat-taskpanel-claim.sh")), false);
+    assert.ok(existsSync(join(home, ".codex", "skills", "meerkat-taskpanel", "SKILL.md")));
     assert.ok(existsSync(join(home, ".codex", "AGENTS.md")));
     assert.ok(existsSync(join(home, ".codex", "bin", "taskctl")));
   });
@@ -386,7 +386,7 @@ describe("host bundle: codex", () => {
 
     const agents = readFileSync(join(home, ".codex", "AGENTS.md"), "utf8");
     assert.ok(agents.startsWith("# My rules\n"), agents);
-    assert.match(agents, /<!-- task-panel:begin -->/);
+    assert.match(agents, /<!-- meerkat-taskpanel:begin -->/);
   });
 });
 
@@ -429,7 +429,7 @@ describe("host bundle: MCP registration", () => {
       ["--target", "claude", "--agent-name", "alice"],
       fakeCliEnv(home, bin, join(bin, "log"), {
         FAKE_EXIT: "1",
-        FAKE_STDOUT: "Error: MCP server 'taskpanel' already exists",
+        FAKE_STDOUT: "Error: MCP server 'meerkat-taskpanel' already exists",
       }),
     );
     assert.equal(run.status, 0, run.stderr);
@@ -445,12 +445,12 @@ describe("host bundle: MCP registration", () => {
       fakeCliEnv(home, bin, join(bin, "log"), { FAKE_EXIT: "1", FAKE_STDOUT: "something broke" }),
     );
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stderr, /claude mcp add taskpanel -- node .*src\/mcp\/main\.mjs/);
+    assert.match(run.stderr, /claude mcp add meerkat-taskpanel -- node .*src\/mcp\/main\.mjs/);
   });
 
   it("claude (when present) writes a real registration", { skip: !haveClaude }, () => {
     const home = makeTempDir();
-    const env = { ...process.env, TASKPANEL_TARGET_HOME: home };
+    const env = { ...process.env, MEERKAT_TASKPANEL_TARGET_HOME: home };
     delete env.CLAUDE_CONFIG_DIR;
 
     const run = runInstall(["--target", "claude", "--agent-name", "alice"], env);
@@ -458,7 +458,7 @@ describe("host bundle: MCP registration", () => {
 
     assert.ok(existsSync(join(home, ".claude.json")), "claude mcp add must write .claude.json");
     const config = readFileSync(join(home, ".claude.json"), "utf8");
-    assert.match(config, /taskpanel/);
+    assert.match(config, /meerkat-taskpanel/);
     assert.match(config, /src\/mcp\/main\.mjs/);
   });
 
@@ -466,12 +466,12 @@ describe("host bundle: MCP registration", () => {
     const home = makeTempDir();
     const run = runInstall(["--target", "codex", "--agent-name", "alice"], {
       ...process.env,
-      TASKPANEL_TARGET_HOME: home,
+      MEERKAT_TASKPANEL_TARGET_HOME: home,
     });
     assert.equal(run.status, 0, run.stderr);
 
     const config = readFileSync(join(home, ".codex", "config.toml"), "utf8");
-    assert.match(config, /\[mcp_servers\.taskpanel\]/);
+    assert.match(config, /\[mcp_servers\.meerkat-taskpanel\]/);
     assert.match(config, /src\/mcp\/main\.mjs/);
   });
 
@@ -479,19 +479,19 @@ describe("host bundle: MCP registration", () => {
     const home = makeTempDir();
     const run = runInstall(["--target", "claude", "--agent-name", "alice"], {
       ...process.env,
-      TASKPANEL_TARGET_HOME: home,
+      MEERKAT_TASKPANEL_TARGET_HOME: home,
     });
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, /claude mcp add taskpanel -- node .*src\/mcp\/main\.mjs/);
+    assert.match(run.stdout, /claude mcp add meerkat-taskpanel -- node .*src\/mcp\/main\.mjs/);
   });
 
   it("codex (when absent) prints the exact manual command instead", { skip: haveCodex }, () => {
     const home = makeTempDir();
     const run = runInstall(["--target", "codex", "--agent-name", "alice"], {
       ...process.env,
-      TASKPANEL_TARGET_HOME: home,
+      MEERKAT_TASKPANEL_TARGET_HOME: home,
     });
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, /codex mcp add taskpanel -- node .*src\/mcp\/main\.mjs/);
+    assert.match(run.stdout, /codex mcp add meerkat-taskpanel -- node .*src\/mcp\/main\.mjs/);
   });
 });

@@ -9,7 +9,7 @@
  * bundle does.
  *
  * The language is mirrored onto `<html lang>` by `applyLang()` (the one writer),
- * and the value is persisted under `taskpanel.lang` (F5). Default `en`.
+ * and the value is persisted under `meerkat-taskpanel.lang` (F5). Default `en`.
  */
 import { computed, ref } from "vue";
 

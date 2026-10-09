@@ -23,7 +23,7 @@ let taskd;
 let base;
 
 before(async () => {
-  const dir = mkdtempSync(join(tmpdir(), "taskpanel-static-"));
+  const dir = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-static-"));
   tempDirs.push(dir);
   web = join(dir, "dist");
   mkdirSync(join(web, "assets"), { recursive: true });
@@ -108,7 +108,7 @@ describe("server/static — serving over a real socket", () => {
 
 describe("server/static — a checkout with no build", () => {
   it("404s instead of failing, and says so on /meta", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "taskpanel-nobuild-"));
+    const dir = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-nobuild-"));
     tempDirs.push(dir);
     const bare = await createTaskd({
       dataDir: join(dir, "data"),

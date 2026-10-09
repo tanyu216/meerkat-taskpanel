@@ -310,7 +310,7 @@ describe("mcp/protocol — result normalisation", () => {
     // by the harness — no hand-built envelope is fed in.
     const session = createMcpSession({
       url: "http://127.0.0.1:1",
-      env: { TASKD_RUNTIME_POINTER: "/nonexistent/taskpanel-runtime.json", TASKD_NO_AUTOSTART: "1" },
+      env: { TASKD_RUNTIME_POINTER: "/nonexistent/meerkat-taskpanel-runtime.json", TASKD_NO_AUTOSTART: "1" },
     });
 
     const rpc = readToolResult(await session.request("tools/call", { name: "no_such_tool", arguments: {} }));

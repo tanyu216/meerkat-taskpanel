@@ -1,8 +1,8 @@
 ---
-description: Show the Task Panel board and my claimable cards
+description: Show the Meerkat TaskPanel board and my claimable cards
 ---
 
-I am working on the shared Task Panel board as agent **{{AGENT}}**. My identity is
+I am working on the shared Meerkat TaskPanel board as agent **{{AGENT}}**. My identity is
 preconfigured — `taskctl` calls carry `--agent {{AGENT}}` (via the shim at `{{SHIM}}`,
 with `TASKCTL_AGENT` as fallback).
 

@@ -85,9 +85,9 @@ Options:
   --patrol-llm=yes|no     Allow patrol to start an LLM turn (default: no).
   --notify <cmd>          Run <cmd> with each patrol alert as JSON on stdin.
   --dry-run               Print intended actions; claim nothing, spawn nothing.
-  --log <path>            Append log lines here (default: <home>/<host-dir>/task-panel/supervisor.log).
-  --state <path>          Running-registry file (default: <home>/<host-dir>/task-panel/supervisor.state.json).
-  --config <path>         Host config file to read the default from (default: <home>/<host-dir>/task-panel.env).
+  --log <path>            Append log lines here (default: <home>/<host-dir>/meerkat-taskpanel/supervisor.log).
+  --state <path>          Running-registry file (default: <home>/<host-dir>/meerkat-taskpanel/supervisor.state.json).
+  --config <path>         Host config file to read the default from (default: <home>/<host-dir>/meerkat-taskpanel.env).
   --home <path>           Home the defaults are resolved against (default: $HOME).
   --cli <path>            taskctl entry to read/claim through (default: <repo>/src/cli/index.mjs).
   -h, --help              Show this help
@@ -308,9 +308,9 @@ export function parseArgs(argv, env = process.env) {
   if (!(opts.host in HOST_DIRS)) throw new Error(`unknown host '${opts.host}' (expected claude|codex|pi)`);
 
   const hostDir = HOST_DIRS[opts.host];
-  opts.log ??= join(opts.home, hostDir, "task-panel", "supervisor.log");
-  opts.state ??= join(opts.home, hostDir, "task-panel", "supervisor.state.json");
-  opts.config ??= join(opts.home, hostDir, "task-panel.env");
+  opts.log ??= join(opts.home, hostDir, "meerkat-taskpanel", "supervisor.log");
+  opts.state ??= join(opts.home, hostDir, "meerkat-taskpanel", "supervisor.state.json");
+  opts.config ??= join(opts.home, hostDir, "meerkat-taskpanel.env");
   opts.cli ??= join(opts.repo, "src", "cli", "index.mjs");
   return opts;
 }
@@ -400,7 +400,8 @@ async function main(argv, env = process.env) {
   const configFile = readConfigFile(opts.config);
   const claimUnassigned = resolveClaimUnassigned({
     flag: opts.claimUnassigned,
-    env: env.TASKPANEL_CLAIM_UNASSIGNED,
+    // legacy-name-compat: accept the pre-rename env var too.
+    env: env.MEERKAT_TASKPANEL_CLAIM_UNASSIGNED ?? env.TASKPANEL_CLAIM_UNASSIGNED,
     file: configFile,
   });
   const config = { maxConcurrency: opts.maxConcurrency, claimUnassigned, patrolLlm: opts.patrolLlm, host: opts.host };

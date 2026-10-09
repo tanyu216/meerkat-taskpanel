@@ -1,6 +1,6 @@
 # Observability
 
-The minimum a task-panel deployment needs to be *watched*: one metrics endpoint, one
+The minimum a meerkat-taskpanel deployment needs to be *watched*: one metrics endpoint, one
 health verdict, one alerting-rules file and one wired OpenTelemetry export — all
 dependency-free, all runnable offline.
 
@@ -15,7 +15,7 @@ The whole stack is a **sidecar**. `monitoring/` never touches `src/core`, `src/s
 | Metrics model | `monitoring/lib/registry.mjs` | Counters / gauges / histograms and the Prometheus **text exposition format** |
 | Thresholds | `monitoring/lib/slo.mjs` | `SLO_TARGETS` — the single source of truth for every number below |
 | OTLP wiring | `monitoring/lib/otlp.mjs` | Maps a snapshot to OTLP/HTTP + JSON and pushes it |
-| Alert rules | `monitoring/prometheus/task-panel.rules.yml` | The committed Prometheus rules |
+| Alert rules | `monitoring/prometheus/meerkat-taskpanel.rules.yml` | The committed Prometheus rules |
 | Scrape config | `monitoring/prometheus/prometheus.yml` | Loads the rules, scrapes the sidecar every 15s |
 | Collector config | `monitoring/otel/collector.yml` | Receives OTLP on `:4318`, re-exposes it on `:8889` |
 | Stack | `docker/docker-compose.observability.yml` | Sidecar + Prometheus + collector as one overlay |
@@ -60,7 +60,7 @@ Those two upstream images (`prom/prometheus`, `otel/opentelemetry-collector-cont
   services. The `prometheus-data` volume is a **named** volume, so it survives `down` —
   the alerting history is not silently dropped. Add `-v` to remove it too.
 
-An observability outage is deliberately not a task-panel outage: if the OTLP receiver
+An observability outage is deliberately not a meerkat-taskpanel outage: if the OTLP receiver
 refuses, times out or disappears, the push is recorded as a failure (`otel.lastError`) and
 `/metrics` keeps serving. Only a real SLO breach makes `/health` answer non-2xx.
 
@@ -71,15 +71,15 @@ refuses, times out or disappears, the push is recorded as a failure (`otel.lastE
 The exposition format, `text/plain; version=0.0.4`:
 
 ```
-task_panel_http_requests_total{method="GET",route="/api/tasks",status="200"} 42
-task_panel_http_failures_total{reason="http_5xx"} 3
-task_panel_http_request_duration_seconds_bucket{method="GET",route="/api/tasks",le="0.3"} 40
-task_panel_up 1
+meerkat_taskpanel_http_requests_total{method="GET",route="/api/tasks",status="200"} 42
+meerkat_taskpanel_http_failures_total{reason="http_5xx"} 3
+meerkat_taskpanel_http_request_duration_seconds_bucket{method="GET",route="/api/tasks",le="0.3"} 40
+meerkat_taskpanel_up 1
 ```
 
 The standard families are created on the first observation, so a freshly started sidecar
-exposes only its own series (`task_panel_up`, `task_panel_exporter_info{version="…"}`,
-`task_panel_exporter_scrapes_total`). Output is deterministic: families render in
+exposes only its own series (`meerkat_taskpanel_up`, `meerkat_taskpanel_exporter_info{version="…"}`,
+`meerkat_taskpanel_exporter_scrapes_total`). Output is deterministic: families render in
 registration order and series sort within a family, so two scrapes of the same state are
 byte-identical.
 
@@ -135,13 +135,13 @@ healthcheck and the alert cannot disagree. It is an estimate, not an exact perce
 
 ## The alerting rules
 
-`monitoring/prometheus/task-panel.rules.yml`, group `task-panel-slo`:
+`monitoring/prometheus/meerkat-taskpanel.rules.yml`, group `meerkat-taskpanel-slo`:
 
 | Alert | Fires when | For | Severity |
 | --- | --- | --- | --- |
-| `TaskPanelAvailabilityBelowSLO` | failures / attempts over 5m > 0.001 | 5m | critical |
-| `TaskPanelErrorRate5xxAboveBudget` | 5xx / attempts over 5m > 0.001 | 5m | critical |
-| `TaskPanelP95LatencyAboveBudget` | `histogram_quantile(0.95, …)` > 0.3 | 10m | warning |
+| `MeerkatTaskPanelAvailabilityBelowSLO` | failures / attempts over 5m > 0.001 | 5m | critical |
+| `MeerkatTaskPanelErrorRate5xxAboveBudget` | 5xx / attempts over 5m > 0.001 | 5m | critical |
+| `MeerkatTaskPanelP95LatencyAboveBudget` | `histogram_quantile(0.95, …)` > 0.3 | 10m | warning |
 
 Two rules, not one, because availability counts *every* failure while the 5xx budget counts
 server errors only — a timeout storm and a 503 storm deserve different alerts.
@@ -171,7 +171,7 @@ and `_bucket` suffixes intact) so nothing has to be re-mapped when reading both 
 | --- | --- | --- |
 | `MONITORING_HOST` | `127.0.0.1` | Listen address (`0.0.0.0` inside a container) |
 | `MONITORING_PORT` | `9105` | Listen port |
-| `MONITORING_SERVICE_NAME` | `task-panel` | `service.name` on the OTLP resource |
+| `MONITORING_SERVICE_NAME` | `meerkat-taskpanel` | `service.name` on the OTLP resource |
 | `MONITORING_SLO_WINDOW_MS` | `300000` | The rolling window `/health` judges |
 | `MONITORING_SLO_P95_LATENCY_MS` | `300` | The p95 budget |
 | `MONITORING_OTLP_ENDPOINT` | *(unset)* | OTLP receiver; unset disables the push |

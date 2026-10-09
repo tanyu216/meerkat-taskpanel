@@ -38,7 +38,7 @@ export const REQUIRED = Object.freeze([
   "src/cli/index.mjs",
   "src/mcp/main.mjs",
   "src/server/main.mjs",
-  "skills/task-panel/SKILL.md",
+  "skills/meerkat-taskpanel/SKILL.md",
   "plugins/claude/.claude-plugin/plugin.json",
   "plugins/codex/.codex-plugin/plugin.json",
   "plugins/openclaw/openclaw.plugin.json",

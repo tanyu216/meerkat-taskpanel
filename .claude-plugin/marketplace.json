@@ -1,5 +1,5 @@
 {
-  "name": "task-panel-marketplace",
+  "name": "meerkat-taskpanel-marketplace",
   "owner": { "name": "tanyu216" },
   "metadata": {
     "description": "Task management board for AI Agent teams.",
@@ -7,7 +7,7 @@
   },
   "plugins": [
     {
-      "name": "task-panel",
+      "name": "meerkat-taskpanel",
       "source": "./plugins/claude",
       "description": "Task management board for AI Agent teams."
     }

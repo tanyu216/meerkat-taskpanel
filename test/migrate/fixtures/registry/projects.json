@@ -3,13 +3,13 @@
   "projects": {
     "demo": {
       "kind": "code",
-      "root": "/tmp/task-panel-migrate-fixture",
+      "root": "/tmp/meerkat-taskpanel-migrate-fixture",
       "root_git": true,
       "repos": [
         { "kind": "code", "rel_path": ".", "git": true, "remote": "", "url": "" }
       ],
       "notes": "Synthetic project used by the migration drill.",
-      "guides": ["/tmp/task-panel-migrate-fixture/README.md"],
+      "guides": ["/tmp/meerkat-taskpanel-migrate-fixture/README.md"],
       "default_git_rules": "explicit paths only",
       "registered_at": "2026-01-01"
     },

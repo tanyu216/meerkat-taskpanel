@@ -96,7 +96,7 @@ export const DOMAINS = Object.freeze({
   /** `html[data-theme-mode]` and the theme cell's mirrored state (B01/B03). */
   THEME_MODE: Object.freeze(["light", "dark", "auto"]),
   /** `html[data-theme]` — what the stylesheet reads. Note the different vocabulary. */
-  THEME_DOC: Object.freeze(["taskpanel", "dark", "auto"]),
+  THEME_DOC: Object.freeze(["meerkat-taskpanel", "dark", "auto"]),
   /** Toast kinds (B14). */
   TOAST_KIND: Object.freeze(["info", "success", "danger"]),
   /** Detail template slots (B09). */

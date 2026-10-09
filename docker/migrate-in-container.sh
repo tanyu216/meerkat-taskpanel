@@ -11,7 +11,7 @@
 #     -v "$HOME/.openclaw/team/tasks:/cards:ro" \
 #     -v "$HOME/.openclaw/team/projects.json:/projects.json:ro" \
 #     -v "$PWD/.data/migrate-out:/out" \
-#     task-panel:verify bash docker/migrate-in-container.sh
+#     meerkat-taskpanel:verify bash docker/migrate-in-container.sh
 #
 # Override the mount points (not the mounts themselves) with CARDS_DIR,
 # PROJECTS_FILE, OUT_DIR. Exit code is reconcile's own: 0 no differences ·

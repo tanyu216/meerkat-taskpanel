@@ -138,7 +138,7 @@ describe("contract/md-golden — the fixture set", () => {
       assert.match(name, /^[A-Z0-9-]+\.md$/, name);
       const text = readFileSync(join(FIXTURES, name), "utf8");
       assert.equal(text.includes("openclaw"), false, `${name} must not reference the team workspace`);
-      assert.equal(/\/Users\//.test(text.replace("/tmp/task-panel-fixture", "")), false, name);
+      assert.equal(/\/Users\//.test(text.replace("/tmp/meerkat-taskpanel-fixture", "")), false, name);
       // No real-person identifiers in fixture data: the synthetic actors are
       // `elon` (human), `linus`/`turing` (agents). `Terry`/`tanyu` are real and
       // must never appear in a public-repo card fixture.

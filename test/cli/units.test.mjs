@@ -92,7 +92,7 @@ describe("cli/index — the program, with injected streams", () => {
   });
 
   it("reports a runtime failure on the chosen stream, exit 1", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "taskpanel-unit-"));
+    const dir = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-unit-"));
     tempDirs.push(dir);
     const env = { TASKD_NO_AUTOSTART: "1", TASKD_DATA_DIR: dir, TASKD_RUNTIME_POINTER: join(dir, "runtime.json") };
 

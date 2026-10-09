@@ -25,7 +25,7 @@ export const TS_AFTER_ARCHIVE_WINDOW = "2026-10-15T00:01:00.000Z";
 const tempDirs = [];
 
 /** @param {string} [prefix] */
-export function makeTempDir(prefix = "taskpanel-") {
+export function makeTempDir(prefix = "meerkat-taskpanel-") {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   tempDirs.push(dir);
   return dir;
@@ -57,7 +57,7 @@ export function fixedClock(...stamps) {
  * @returns {Promise<{db: any, dir: string, dbPath: string, dataDir: string, close: () => void}>}
  */
 export async function createTempBoard(options = {}) {
-  const { migrate = true, prefix = "taskpanel-board-" } = options;
+  const { migrate = true, prefix = "meerkat-taskpanel-board-" } = options;
   const dir = makeTempDir(prefix);
   const dataDir = join(dir, "data");
   const dbPath = join(dataDir, "board.sqlite");

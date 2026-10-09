@@ -1,6 +1,6 @@
 # `monitoring/` — the observability sidecar
 
-The minimum observability surface for Task Panel: a metrics endpoint, a health verdict, a
+The minimum observability surface for Meerkat TaskPanel: a metrics endpoint, a health verdict, a
 committed alerting-rules file and an OpenTelemetry export — **zero runtime dependencies,
 runnable offline**.
 
@@ -21,7 +21,7 @@ monitoring/
 │   └── errors.mjs               # MonitoringError: every failure carries a code
 ├── prometheus/
 │   ├── prometheus.yml           # scrape config (15s) + rule_files
-│   └── task-panel.rules.yml     # the three SLO alerts
+│   └── meerkat-taskpanel.rules.yml     # the three SLO alerts
 └── otel/
     └── collector.yml            # OTLP/HTTP in on :4318, Prometheus out on :8889
 ```
@@ -42,7 +42,7 @@ the 0.1% 5xx budget and the 300 ms p95. Everything else is checked against it:
 
 - `/health` reports the verdict *and* the thresholds it used.
 - `lib/rules.mjs` derives the expected PromQL tokens from `SLO_TARGETS` and the registry's
-  metric names, then parses the committed `task-panel.rules.yml` and fails if any token
+  metric names, then parses the committed `meerkat-taskpanel.rules.yml` and fails if any token
   drifted. A relaxed target turns the rules file red until it is updated too.
 - `test/monitoring/rules.test.mjs` mutates a parsed copy of the rules to prove the
   validator actually catches drift, rather than merely agreeing with a file it just read.

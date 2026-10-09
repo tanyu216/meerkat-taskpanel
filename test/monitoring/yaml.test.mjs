@@ -36,7 +36,7 @@ describe("yaml — scalars, maps and sequences", () => {
   it("parses nested maps and typed scalars", () => {
     const doc = parseYaml(
       [
-        "name: task-panel",
+        "name: meerkat-taskpanel",
         "port: 9105",
         "ratio: 0.001",
         "enabled: true",
@@ -53,7 +53,7 @@ describe("yaml — scalars, maps and sequences", () => {
       ].join("\n"),
     );
     assert.deepEqual(doc, {
-      name: "task-panel",
+      name: "meerkat-taskpanel",
       port: 9105,
       ratio: 0.001,
       enabled: true,
@@ -71,25 +71,25 @@ describe("yaml — scalars, maps and sequences", () => {
     const doc = parseYaml(
       [
         "rule_files:",
-        "  - /etc/prometheus/rules/task-panel.rules.yml",
+        "  - /etc/prometheus/rules/meerkat-taskpanel.rules.yml",
         "scrape_configs:",
-        "  - job_name: task-panel",
+        "  - job_name: meerkat-taskpanel",
         "    static_configs:",
         "      - targets:",
         "          - taskd:9527",
         "          - monitoring:9105",
         "        labels:",
-        "          job: task-panel",
+        "          job: meerkat-taskpanel",
         "  - job_name: prometheus",
         "scrape_interval: 15s",
       ].join("\n"),
     );
     assert.deepEqual(doc, {
-      rule_files: ["/etc/prometheus/rules/task-panel.rules.yml"],
+      rule_files: ["/etc/prometheus/rules/meerkat-taskpanel.rules.yml"],
       scrape_configs: [
         {
-          job_name: "task-panel",
-          static_configs: [{ targets: ["taskd:9527", "monitoring:9105"], labels: { job: "task-panel" } }],
+          job_name: "meerkat-taskpanel",
+          static_configs: [{ targets: ["taskd:9527", "monitoring:9105"], labels: { job: "meerkat-taskpanel" } }],
         },
         { job_name: "prometheus" },
       ],

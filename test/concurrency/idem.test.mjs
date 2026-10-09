@@ -1,6 +1,6 @@
 /**
  * Creating the same key under contention
- * (T-20261009-175500-idem-taskpanel).
+ * (T-20261009-175500-idem-meerkat-taskpanel).
  *
  * The guard is a read-then-insert, which is a classic race; the partial unique
  * index is the arbiter. This file proves the *outcome* under real parallelism —

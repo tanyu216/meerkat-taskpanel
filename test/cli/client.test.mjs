@@ -30,7 +30,7 @@ after(() => {
   for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
 });
 const tempDir = () => {
-  const dir = mkdtempSync(join(tmpdir(), "taskpanel-client-"));
+  const dir = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-client-"));
   tempDirs.push(dir);
   return dir;
 };

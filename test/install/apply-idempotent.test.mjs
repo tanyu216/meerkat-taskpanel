@@ -22,7 +22,7 @@ import { cmdSnippet } from "../../scripts/install/lib/apply.mjs";
 
 const tempDirs = [];
 
-function makeTempDir(prefix = "taskpanel-apply-idem-") {
+function makeTempDir(prefix = "meerkat-taskpanel-apply-idem-") {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   tempDirs.push(dir);
   return dir;
@@ -40,13 +40,13 @@ function sha256(text) {
 /** Render a {{TOKEN}}-free snippet template so `cmdSnippet` needs no TP_* env. */
 function writeTemplate(dir) {
   const template = join(dir, "AGENTS.md.snippet");
-  writeFileSync(template, "You are agent **bob** on the shared Task Panel board.\n", "utf8");
+  writeFileSync(template, "You are agent **bob** on the shared Meerkat TaskPanel board.\n", "utf8");
   return template;
 }
 
 /** Run `apply.mjs snippet` against a temp file, optionally with --force. */
 function renderSnippet(file, template, { force = false } = {}) {
-  const argv = [file, template, "--marker", "task-panel"];
+  const argv = [file, template, "--marker", "meerkat-taskpanel"];
   if (force) argv.push("--force");
   return cmdSnippet(argv);
 }
@@ -104,15 +104,15 @@ describe("apply snippet --force is byte-idempotent (D3)", () => {
     const file = join(dir, "AGENTS.md");
     const template = writeTemplate(dir);
 
-    writeFileSync(file, "# Top\n<!-- task-panel:begin -->\nold body\n<!-- task-panel:end -->\n# Tail\n", "utf8");
+    writeFileSync(file, "# Top\n<!-- meerkat-taskpanel:begin -->\nold body\n<!-- meerkat-taskpanel:end -->\n# Tail\n", "utf8");
 
     renderSnippet(file, template, { force: true });
     const out = readFileSync(file, "utf8");
 
     assert.ok(out.startsWith("# Top\n"), out);
-    assert.ok(out.endsWith("<!-- task-panel:end -->\n# Tail\n"), out);
-    assert.equal((out.match(/<!-- task-panel:begin -->/g) ?? []).length, 1, "exactly one begin marker");
-    assert.equal((out.match(/<!-- task-panel:end -->/g) ?? []).length, 1, "exactly one end marker");
+    assert.ok(out.endsWith("<!-- meerkat-taskpanel:end -->\n# Tail\n"), out);
+    assert.equal((out.match(/<!-- meerkat-taskpanel:begin -->/g) ?? []).length, 1, "exactly one begin marker");
+    assert.equal((out.match(/<!-- meerkat-taskpanel:end -->/g) ?? []).length, 1, "exactly one end marker");
     assert.ok(!out.includes("old body"), "the old block body must be replaced");
 
     const hOnce = sha256(out);

@@ -1,0 +1,65 @@
+# Meerkat TaskPanel — SLO alerting rules.
+#
+# Loaded by Prometheus via `rule_files:` in monitoring/prometheus/prometheus.yml.
+#
+# The thresholds below are NOT independent: they mirror `SLO_TARGETS` in
+# monitoring/lib/slo.mjs, and `monitoring/lib/rules.mjs` parses this file and fails if any
+# token drifts (a relaxed target, a renamed metric, a changed `for:` window). Change the
+# target in the module first, then this file, or the test suite stays red.
+#
+#   availability  >= 99.9%   -> unavailability budget 0.001
+#   5xx rate      <= 0.1%    -> budget 0.001
+#   p95 latency   <= 300ms   -> 0.3s
+#
+# Availability counts every *failure* — a 5xx, or a transport-level timeout/abort the
+# sidecar recorded without a status — while the 5xx rule counts only server errors. That
+# is why there are two rules and not one.
+
+groups:
+  - name: meerkat-taskpanel-slo
+    rules:
+      - alert: MeerkatTaskPanelAvailabilityBelowSLO
+        # Unavailability = failures / attempts. `clamp_min(..., 1)` keeps the ratio at 0
+        # (instead of NaN) while a freshly started sidecar has no traffic yet.
+        expr: |
+          (
+            sum(rate(meerkat_taskpanel_http_failures_total[5m]))
+            /
+            clamp_min(sum(rate(meerkat_taskpanel_http_requests_total[5m])), 1)
+          ) > 0.001
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "meerkat-taskpanel availability is below 99.9%"
+          description: "More than 0.1% of observations in the last 5 minutes were failures. See docs/observability.md."
+
+      - alert: MeerkatTaskPanelErrorRate5xxAboveBudget
+        # The 5xx subset only: an outage that answers 503 is a different failure mode from
+        # one that times out, and the two deserve separate alerts.
+        expr: |
+          (
+            sum(rate(meerkat_taskpanel_http_requests_total{status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(meerkat_taskpanel_http_requests_total[5m])), 1)
+          ) > 0.001
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "meerkat-taskpanel 5xx error rate is above 0.1%"
+          description: "Server errors exceeded the 0.1% budget over the last 5 minutes. See docs/observability.md."
+
+      - alert: MeerkatTaskPanelP95LatencyAboveBudget
+        # Bucket-resolution p95, the same interpolation /health computes locally.
+        expr: |
+          histogram_quantile(0.95, sum by (le) (
+            rate(meerkat_taskpanel_http_request_duration_seconds_bucket[5m])
+          )) > 0.3
+        # Latency is noisy, so it must hold for longer before it pages anyone.
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "meerkat-taskpanel p95 latency is above 300ms"
+          description: "p95 request duration exceeded the 300ms budget for 10 minutes. See docs/observability.md."

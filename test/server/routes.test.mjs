@@ -25,7 +25,7 @@ let taskd;
 let base;
 
 before(async () => {
-  const dir = mkdtempSync(join(tmpdir(), "taskpanel-server-"));
+  const dir = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-server-"));
   tempDirs.push(dir);
   taskd = await createTaskd({ dataDir: dir, host: "127.0.0.1", port: 0, env: {} });
   base = taskd.url;
@@ -569,7 +569,7 @@ describe("server/routes — the authorization rejection, over a real socket", ()
     // `authorize` is injectable for exactly this reason: a test process cannot
     // genuinely arrive from a non-loopback address, so the *decision* is faked
     // while the delivery of its result goes over a real HTTP connection.
-    const dir = mkdtempSync(join(tmpdir(), "taskpanel-denied-"));
+    const dir = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-denied-"));
     tempDirs.push(dir);
     const denied = await createTaskd({
       dataDir: dir,

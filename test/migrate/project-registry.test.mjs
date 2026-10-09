@@ -27,10 +27,10 @@ describe("md/project-registry — parsing", () => {
     const demo = registry.resolve("demo");
     assert.equal(demo.id, "demo");
     assert.equal(demo.name, "demo");
-    assert.equal(demo.workspacePath, "/tmp/task-panel-migrate-fixture");
+    assert.equal(demo.workspacePath, "/tmp/meerkat-taskpanel-migrate-fixture");
     assert.equal(demo.meta.kind, "code");
     assert.equal(demo.meta.default_git_rules, "explicit paths only");
-    assert.deepEqual(demo.meta.guides, ["/tmp/task-panel-migrate-fixture/README.md"]);
+    assert.deepEqual(demo.meta.guides, ["/tmp/meerkat-taskpanel-migrate-fixture/README.md"]);
     assert.equal(demo.meta.registered_key, "demo");
     assert.equal(demo.meta.root, undefined, "root becomes workspacePath, not meta");
   });
@@ -83,11 +83,11 @@ describe("md/project-registry — parsing", () => {
   });
 
   it("matches names ignoring case and whitespace (§4.4 normalisation)", () => {
-    const registry = parseProjectRegistry('{ "projects": { "Task Panel": { "root": "/tmp/tp" } } }');
-    for (const spelling of ["Task Panel", "taskpanel", "TASK  PANEL", "  task panel  "]) {
+    const registry = parseProjectRegistry('{ "projects": { "Meerkat TaskPanel": { "root": "/tmp/tp" } } }');
+    for (const spelling of ["Meerkat TaskPanel", "meerkattaskpanel", "MEERKAT  TASKPANEL", "  meerkat taskpanel  "]) {
       assert.equal(registry.resolve(spelling)?.workspacePath, "/tmp/tp", spelling);
     }
-    assert.equal(normalizeProjectKey("Task Panel"), "taskpanel");
+    assert.equal(normalizeProjectKey("Meerkat TaskPanel"), "meerkattaskpanel");
   });
 
   it("reports duplicate normalised names and keeps the first", () => {

@@ -37,7 +37,7 @@ function cardText(overrides = {}, sections = {}) {
     priority: "medium",
     kind: "task",
     project: "demo",
-    target: "/tmp/task-panel-migrate-fixture",
+    target: "/tmp/meerkat-taskpanel-migrate-fixture",
     created_by: "elon",
     created_at: TS,
     ...overrides,
@@ -82,7 +82,7 @@ describe("md/import — project name → id resolution (§4.8 ④)", () => {
       assert.equal(stats.warnings.length, 0);
       const project = board.repos.projects.get("demo");
       assert.equal(project.name, "demo");
-      assert.equal(project.workspacePath, "/tmp/task-panel-migrate-fixture", "workspace path comes from the registry root");
+      assert.equal(project.workspacePath, "/tmp/meerkat-taskpanel-migrate-fixture", "workspace path comes from the registry root");
       assert.equal(project.meta.kind, "code");
       assert.equal(project.meta.default_git_rules, "explicit paths only");
     } finally {
@@ -379,7 +379,7 @@ describe("md/import — invariant refusals become warnings", () => {
 describe("md/import — target is project-level (M5 ruling)", () => {
   it("warns — but does not fail — when one project carries two targets", async () => {
     const board = await boardWithCards({
-      "A.md": cardText({ id: "DEMO-0001", target: "/tmp/task-panel-migrate-fixture" }),
+      "A.md": cardText({ id: "DEMO-0001", target: "/tmp/meerkat-taskpanel-migrate-fixture" }),
       "B.md": cardText({ id: "DEMO-0002", target: "/tmp/elsewhere" }),
     });
     try {
@@ -387,7 +387,7 @@ describe("md/import — target is project-level (M5 ruling)", () => {
       assert.equal(stats.tasks, 2, "both cards import; the mismatch is a warning");
       assert.equal(stats.warnings.length, 1);
       assert.match(stats.warnings[0], /two different targets/);
-      assert.equal(board.repos.projects.get("demo").workspacePath, "/tmp/task-panel-migrate-fixture");
+      assert.equal(board.repos.projects.get("demo").workspacePath, "/tmp/meerkat-taskpanel-migrate-fixture");
     } finally {
       board.close();
     }

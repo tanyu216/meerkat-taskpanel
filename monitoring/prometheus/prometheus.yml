@@ -1,4 +1,4 @@
-# Task Panel — Prometheus configuration.
+# Meerkat TaskPanel — Prometheus configuration.
 #
 # Mounted read-only at /etc/prometheus/prometheus.yml by
 # docker/docker-compose.observability.yml. There is nothing to edit at runtime: the scrape
@@ -12,7 +12,7 @@ global:
   evaluation_interval: 15s
 
 rule_files:
-  - /etc/prometheus/rules/task-panel.rules.yml
+  - /etc/prometheus/rules/meerkat-taskpanel.rules.yml
 
 scrape_configs:
   # The sidecar under test: /metrics is the Prometheus text exposition, /health the SLO

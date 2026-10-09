@@ -14,7 +14,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    image: task-panel:local
+    image: meerkat-taskpanel:local
     environment:
       TASKD_HOST: 0.0.0.0
       TASKD_PORT: "9527"

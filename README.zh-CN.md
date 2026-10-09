@@ -1,18 +1,18 @@
-# Task Panel
+# Meerkat TaskPanel
 
 **面向 AI Agent 团队的任务看板 —— Agent 干活，人只看进展。**
 
-## 为什么是 Task Panel
+## 为什么是 Meerkat TaskPanel
 
 Jira、Plane、Linear 共用同一种视角：工具是给人用的。人建卡、指派，AI 作为一个额外的执行者接过任务去干。人面向工具，工具为人而设。
 
-Task Panel 反过来。它是 **AI-Agent-first** 的：看板的第一视角是 AI Agent，人面向的是 Agent，而不是工具本身。项目与任务的创建、领取、心跳、进度上报、依赖与 epic 关系的搭建，乃至交付门禁，全部由 Agent 自己完成，全程无需人在环里。看板 UI 则刻意**只读** —— 它的存在，是让人一眼看清每个任务当前的状态、以及每个 epic 汇总到哪一步。没有人需要靠点按钮来建卡。
+Meerkat TaskPanel 反过来。它是 **AI-Agent-first** 的：看板的第一视角是 AI Agent，人面向的是 Agent，而不是工具本身。项目与任务的创建、领取、心跳、进度上报、依赖与 epic 关系的搭建，乃至交付门禁，全部由 Agent 自己完成，全程无需人在环里。看板 UI 则刻意**只读** —— 它的存在，是让人一眼看清每个任务当前的状态、以及每个 epic 汇总到哪一步。没有人需要靠点按钮来建卡。
 
 ## 它解决什么问题
 
 放任一群 AI Agent 自行运转，工作默认是一个**黑盒**。事后很难还原：一串任务如何在跨会话、跨 Agent 之间保持**连续**；用户的需求如何被**追溯**成实际工作；当时某个任务**为什么**那样决策。
 
-Task Panel 就是回答这些问题的记录：
+Meerkat TaskPanel 就是回答这些问题的记录：
 
 - **连续性。** 工作沉淀为持久的卡，以及只增不改的评论、报告与活动，而不是一次性的对话 —— 任务因此能跨越会话与 Agent 之间的交接而存活。
 - **可追溯。** 需求映射到卡，卡再映射到挂在它下面的报告与决策，一个诉求可以从「提出」一路追到「交付」。
@@ -22,7 +22,7 @@ Task Panel 就是回答这些问题的记录：
 
 ## 它是给谁用的
 
-Task Panel 是**为 AI Agent 团队而生**的任务看板。它的主题是 **Agent 之间的任务协作** —— 拆分工作、声明依赖、交接结果；而对围绕它们的人来说，它把这种协作变成**可可视化、可追溯**的东西，而不是锁在模型的上下文里。真正干这些事的机制 —— 只增不改的审计轨迹、一等公民的依赖与 epic 关系、可续接的会话 —— 正是下方[亮点](#亮点)所描述的。
+Meerkat TaskPanel 是**为 AI Agent 团队而生**的任务看板。它的主题是 **Agent 之间的任务协作** —— 拆分工作、声明依赖、交接结果；而对围绕它们的人来说，它把这种协作变成**可可视化、可追溯**的东西，而不是锁在模型的上下文里。真正干这些事的机制 —— 只增不改的审计轨迹、一等公民的依赖与 epic 关系、可续接的会话 —— 正是下方[亮点](#亮点)所描述的。
 
 > **状态：引擎已落地至 M6 —— 核心（M1）、CLI（M2）、stdio MCP server（M3），以及完整的
 > 看板后端与 `web/` 前端（M6）。**
@@ -53,7 +53,7 @@ Task Panel 是**为 AI Agent 团队而生**的任务看板。它的主题是 **A
    接入会说 MCP 的宿主，也可走本地 `taskd` HTTP API —— 并为 Claude Code、Codex、
    OpenClaw、pi 提供 skill/插件安装。MCP 面与门禁等价：`task_deliver` 是唯一能到达
    `in_review` 的工具。
-8. **设计上 provider-agnostic。** Task Panel 是 openclaw-team 框架的默认看板基座 —— 其
+8. **设计上 provider-agnostic。** Meerkat TaskPanel 是 openclaw-team 框架的默认看板基座 —— 其
    认领 / 候选判定与框架的 poll 保持同步，因此更换看板底座（Jira、Plane、Linear……）无需
    改动 Agent。访问由 token 与可选的 CIDR 白名单把关。
 9. **为长期运行的 Agent 集群而建。** 心跳为认领设定 10 分钟的新鲜期；认领对本人 30 分钟后
@@ -61,14 +61,14 @@ Task Panel 是**为 AI Agent 团队而生**的任务看板。它的主题是 **A
 10. **无死角的工作史，直接读成报表。** [它解决什么问题](#它解决什么问题)里那份只增不改的记录，
     实质上就是团队在 AI 工作环境中所做工作的完整历史 —— 无需任何人再单独记账。这份历史可直接
     读成**日报 / 周报 / 月报**及其**统计**，按**项目**、**类别（kind / labels）**、**负责人**、
-    **时间窗**等**任意维度**聚合，**指标可自定义**。统计**天然领域无关**：Task Panel 是面向
+    **时间窗**等**任意维度**聚合，**指标可自定义**。统计**天然领域无关**：Meerkat TaskPanel 是面向
     **各行各业**（研发 / 运营 / 市场 / 业务 / 策略……）的通用看板，随附的研发预设
     （需求 / 开发 / bug / 故障）只是其中**一种示例**，而非功能本身的形态。周期报表能力在 skill 侧，
-    见 [`references/reports.md`](skills/task-panel/references/reports.md)。
+    见 [`references/reports.md`](skills/meerkat-taskpanel/references/reports.md)。
 
 ## 架构
 
-Task Panel 是三层薄结构，依赖方向始终向内：`src/cli`、`src/mcp`、`src/server` 是入口，
+Meerkat TaskPanel 是三层薄结构，依赖方向始终向内：`src/cli`、`src/mcp`、`src/server` 是入口，
 `src/core` 持有领域模型、SQLite 存储与用例，`src/shared` 是它们共享的 DTO 与辅助函数。
 完整目录树见 [仓库结构](#仓库结构)；想为自己的宿主安装 skill/插件，见 [安装](#安装)。
 
@@ -83,7 +83,7 @@ Task Panel 是三层薄结构，依赖方向始终向内：`src/cli`、`src/mcp`
 ## 仓库结构
 
 ```text
-task-panel/
+meerkat-taskpanel/
 ├── README.md / README.zh-CN.md   # 文档（默认英文，中文镜像）
 ├── LICENSE / PRIVACY.md
 ├── package.json                  # 工作区根 + bin(taskctl) + scripts
@@ -96,7 +96,7 @@ task-panel/
 │   ├── server/                   #   本地 HTTP API + SSE
 │   └── shared/                   #   共享 DTO / 常量
 ├── web/                          # 看板前端（Vue 3 + Vite）→ web/dist（托管根）
-├── skills/task-panel/        # skill —— 单一事实源
+├── skills/meerkat-taskpanel/        # skill —— 单一事实源
 ├── plugins/                      # 每宿主一个分发单元（claude/codex/openclaw/pi）
 ├── design/                       # 品牌资产（+ assets/、prototype/ 占位；内容迁移待办）
 ├── scripts/                      # 构建 / 安装 / 同步 / 校验
@@ -135,10 +135,10 @@ skill 目录 —— 对 **Claude Code** 与 **Codex** 还会部署宿主 bundle 
 
 | 宿主 | `--target` | Skill 落点 | Bundle |
 |---|---|---|---|
-| Claude Code | `claude` | `~/.claude/skills/task-panel` | `plugins/claude/.claude-plugin/plugin.json` |
-| OpenClaw | `openclaw` | `~/.openclaw/skills/task-panel` | `plugins/openclaw/openclaw.plugin.json`（原生） |
-| Codex | `codex` | `~/.codex/skills/task-panel` | `plugins/codex/.codex-plugin/plugin.json` |
-| Pi / Agent Skills | `pi` | `~/.agents/skills/task-panel` | `plugins/pi/package.json` |
+| Claude Code | `claude` | `~/.claude/skills/meerkat-taskpanel` | `plugins/claude/.claude-plugin/plugin.json` |
+| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | `plugins/openclaw/openclaw.plugin.json`（原生） |
+| Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | `plugins/codex/.codex-plugin/plugin.json` |
+| Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | `plugins/pi/package.json` |
 
 OpenClaw 也可消费 Claude 格式的 bundle（`plugins/claude`），这是受支持的 skill-only
 路线；`plugins/openclaw/openclaw.plugin.json` 是*原生*清单 —— 两者的区别见
@@ -170,7 +170,7 @@ $0 的本地 CLI 扫描，**只有真正认领到卡**时才启动模型回合�
 
 `install.sh` 会写入各宿主的 launchd / systemd / cron 调度单元与唤醒脚本，并**打印**加载
 命令 —— 绝不替你启用守护进程。安装时还会问一次是否允许认领**未分配**的卡（默认允许），
-并把答案记到 `<宿主目录>/task-panel.env`。完整设计 —— 两层模型、仅触发才计费的成本闸门、
+并把答案记到 `<宿主目录>/meerkat-taskpanel.env`。完整设计 —— 两层模型、仅触发才计费的成本闸门、
 幂等唤醒、并发上限、失效兜底，以及三宿主触发差异 —— 见
 [`docs/scheduling.md`](docs/scheduling.md)。
 
@@ -188,7 +188,7 @@ OpenClaw 是唯一**由框架代你执行规则**的宿主，也是唯一**不�
    幂等的安装器，会搭起一支小型 Agent 团队（一名协调者 + 四名专家），自带派单、门禁与
    **调度（自动领取）**。
 3. **研发人员：直接开工** —— 若你是研发人员、只想尽快上手，可**直接安装 openclaw-team**，
-   免去手工拼装；它**默认**把 Task Panel 装成看板基座，开箱即用：
+   免去手工拼装；它**默认**把 Meerkat TaskPanel 装成看板基座，开箱即用：
 
    ```bash
    git clone https://github.com/tanyu216/openclaw-team
@@ -197,7 +197,7 @@ OpenClaw 是唯一**由框架代你执行规则**的宿主，也是唯一**不�
    ./install.sh                # 幂等安装
    ```
 
-Task Panel 是默认的任务提供方（传 `--no-task-panel` 可换用自家看板）；框架的 poll 与看板的
+Meerkat TaskPanel 是默认的任务提供方（传 `--no-meerkat-taskpanel` 可换用自家看板）；框架的 poll 与看板的
 `issue candidates` 在认领 / 候选判定上保持同步，这正是亮点 8 的意义。派单由调度器完成，
 因此八条规则由框架而非每个 Agent 各自落实 —— 这是与下方各宿主**并列的一条路线，而非唯一路线**：
 Claude Code、Codex 与 `pi` 都直接操作同一块看板。
@@ -216,14 +216,14 @@ Claude Code、Codex 与 `pi` 都直接操作同一块看板。
 ### Codex
 
 `install.sh --target codex --agent-name <名>` 会部署完整 bundle：向 `~/.codex/AGENTS.md` 追加
-claim-first 片段、写入可调度的认领触发脚本 `~/.codex/task-panel-claim.sh`（`--no-automation`
+claim-first 片段、写入可调度的认领触发脚本 `~/.codex/meerkat-taskpanel-claim.sh`（`--no-automation`
 跳过）、在 `codex` CLI 可用时注册 MCP server，并随包提供 `taskctl` 包装脚本。以同样方式操作
 看板，并用当前线程作为会话 id —— `--agent-platform codex --session-id "$CODEX_THREAD_ID"` ——
 做会话级归属。Codex **本身没有定时器**，因此规则 1 由[监督进程](#调度轮询与巡检)唤醒
 `codex exec` 回合（或使用 Codex 应用自动化）来驱动，随包的认领触发脚本作为最小后备。
 
 完整指南 —— 八条规则的展开、各宿主的安装与触发差异，以及一个最小示例 —— 在 skill 内：
-[`skills/task-panel/references/practice-guides.md`](skills/task-panel/references/practice-guides.md)。
+[`skills/meerkat-taskpanel/references/practice-guides.md`](skills/meerkat-taskpanel/references/practice-guides.md)。
 
 ## 开发
 

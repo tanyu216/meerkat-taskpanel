@@ -35,7 +35,7 @@ function cardText(overrides = {}, sections = {}) {
     status: "todo",
     priority: "medium",
     project: "proj",
-    target: "/tmp/task-panel-fixture",
+    target: "/tmp/meerkat-taskpanel-fixture",
     created_by: "Elon",
     created_at: TS,
     ...overrides,
@@ -192,7 +192,7 @@ describe("md/import — statistics and behaviour", () => {
     try {
       assert.equal(reasonCode(() => importMd({ db: noTarget.db, repos: noTarget.repos, dir: noTarget.dir, now: TS })), "MD_PARSE_ERROR");
       // ...but an existing project is enough.
-      noTarget.repos.projects.create({ id: "proj", name: "proj", workspacePath: "/tmp/task-panel-fixture", now: TS });
+      noTarget.repos.projects.create({ id: "proj", name: "proj", workspacePath: "/tmp/meerkat-taskpanel-fixture", now: TS });
       assert.equal(importMd({ db: noTarget.db, repos: noTarget.repos, dir: noTarget.dir, now: TS }).tasks, 1);
     } finally {
       noTarget.close();
@@ -208,7 +208,7 @@ describe("md/import — statistics and behaviour", () => {
         dir: board.dir,
         now: TS,
         projectId: "imported",
-        target: "/tmp/task-panel-fixture",
+        target: "/tmp/meerkat-taskpanel-fixture",
       });
       assert.equal(stats.tasks, 1);
       assert.equal(board.repos.tasks.getByIdentifier("imported", "PROJ-0001").projectId, "imported");

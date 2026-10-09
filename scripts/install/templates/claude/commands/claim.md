@@ -1,8 +1,8 @@
 ---
-description: Claim the next Task Panel card assigned to me
+description: Claim the next Meerkat TaskPanel card assigned to me
 ---
 
-I am agent **{{AGENT}}** on the shared Task Panel board. Claim first, and only what is mine:
+I am agent **{{AGENT}}** on the shared Meerkat TaskPanel board. Claim first, and only what is mine:
 
 1. Run `taskctl issue candidates --assignee {{AGENT}}` (read-only).
 2. If nothing is claimable, stop and say so.

@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="TaskPanel">
-  <title>TaskPanel</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="MeerkatTaskPanel">
+  <title>MeerkatTaskPanel</title>
   <!-- Signal Bars — renders the BRAND.md §5 geometry (viewBox 0 0 32 32) as a
        favicon. The mark is fixed; only the two fills follow the browser colour
        scheme, so the tab strip stays legible on a light or a dark ground. -->

@@ -59,7 +59,7 @@ const FROZEN_TOOLS = [
  * behind).
  */
 function boardlessEnv() {
-  const dir = makeTempDir("taskpanel-mcp-stdio-");
+  const dir = makeTempDir("meerkat-taskpanel-mcp-stdio-");
   return {
     TASKD_DATA_DIR: dir,
     TASKD_RUNTIME_POINTER: join(dir, "runtime.json"),
@@ -92,7 +92,7 @@ describe("mcp/stdio — a real session over pipes", () => {
       assert.equal(init.id, 1);
       assert.equal(init.result.protocolVersion, LATEST_PROTOCOL_VERSION);
       assert.deepEqual(Object.keys(init.result.capabilities), ["tools"]);
-      assert.equal(init.result.serverInfo.name, "task-panel");
+      assert.equal(init.result.serverInfo.name, "meerkat-taskpanel");
 
       mcp.notify("notifications/initialized");
       assert.equal(await mcp.silentFor(500), true, "a notification must produce no output at all");
@@ -219,7 +219,7 @@ describe("mcp/stdio — tools/call against a real board", () => {
   });
 
   it("reports a missing board as a tool failure, without breaking the session", async () => {
-    const dir = makeTempDir("taskpanel-mcp-dead-");
+    const dir = makeTempDir("meerkat-taskpanel-mcp-dead-");
     const mcp = await startMcp({
       env: {
         ...baseEnv(),

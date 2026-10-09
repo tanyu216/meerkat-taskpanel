@@ -1,6 +1,6 @@
 # Publishing
 
-How a Task Panel version is packaged and published across the five distribution
+How a Meerkat TaskPanel version is packaged and published across the five distribution
 surfaces: **npm**, **git + GitHub Release**, and the four host bundles (Claude Code
 marketplace, OpenClaw, Codex, Pi).
 
@@ -47,7 +47,7 @@ package, and it does run the `prepare` lifecycle script.
 
 **Not yet a live surface.** What gates a publish is registry state, not the manifest: the
 package **name** must be one you control and the **version** must not exist yet. The
-unscoped name `task-panel` is already taken on the public registry by an unrelated
+unscoped name `meerkat-taskpanel` is already taken on the public registry by an unrelated
 package, so a real `npm publish` is refused today and a release needs a name decision
 first — most likely a scope, which the `publishConfig.access` above already covers.
 
@@ -55,8 +55,8 @@ Self-check — dry-run only; nothing below uploads anything:
 
 ```bash
 npm pack --dry-run      # the exact file list, no tarball written
-npm pack                # write task-panel-<version>.tgz
-node scripts/release/pack-manifest.mjs task-panel-<version>.tgz   # ships the release, nothing else
+npm pack                # write meerkat-taskpanel-<version>.tgz
+node scripts/release/pack-manifest.mjs meerkat-taskpanel-<version>.tgz   # ships the release, nothing else
 npm publish --dry-run   # walks every publish gate, uploads nothing
 npm publish             # the real publish (Elon) — a release, not a check
 ```
@@ -120,17 +120,17 @@ The full story, and the `--update` workflow, is in [contract.md](contract.md).
 
 ## 4. Claude Code marketplace
 
-`.claude-plugin/marketplace.json` (marketplace name `task-panel-marketplace`) points its
-single plugin `task-panel` at `./plugins/claude`, whose `.claude-plugin/plugin.json`
+`.claude-plugin/marketplace.json` (marketplace name `meerkat-taskpanel-marketplace`) points its
+single plugin `meerkat-taskpanel` at `./plugins/claude`, whose `.claude-plugin/plugin.json`
 declares `"skills": "./skills"`.
 
 ```bash
 # consumer: register this repository as the marketplace, then install the plugin
 claude plugin marketplace add <path-or-git-url>
-claude plugin install task-panel@task-panel-marketplace -y
+claude plugin install meerkat-taskpanel@meerkat-taskpanel-marketplace -y
 
 # verify
-claude plugin list                  # → task-panel@task-panel-marketplace, enabled
+claude plugin list                  # → meerkat-taskpanel@meerkat-taskpanel-marketplace, enabled
 claude plugin validate <path>       # validates the plugin + marketplace manifests
 ```
 
@@ -151,7 +151,7 @@ OpenClaw has two routes, and they are not interchangeable:
 
 ```bash
 openclaw plugins install <path>/plugins/claude --force --accept-capabilities
-openclaw plugins inspect task-panel    # Format: bundle / Bundle format: claude / skills
+openclaw plugins inspect meerkat-taskpanel    # Format: bundle / Bundle format: claude / skills
 ```
 
 Equivalently, placing the skill in `~/.openclaw/skills/` (what `install.sh --target openclaw`
@@ -165,7 +165,7 @@ bundle.
 
 ```bash
 codex plugin marketplace add <path-or-git-url>
-codex plugin add task-panel@task-panel-marketplace
+codex plugin add meerkat-taskpanel@meerkat-taskpanel-marketplace
 
 # verify
 codex plugin list
@@ -188,7 +188,7 @@ pi list
 Every host bundle carries its own generated `skills/` copy (see
 [development.md](development.md#the-skill-is-generated-never-hand-edited)). A publish is
 only correct if `node scripts/sync-skills.mjs --check` is green — the generated copies and
-`skills/task-panel/` must be identical. Both are in the npm whitelist, so the tarball ships
+`skills/meerkat-taskpanel/` must be identical. Both are in the npm whitelist, so the tarball ships
 the source skill *and* the per-host copies.
 
 ## See also

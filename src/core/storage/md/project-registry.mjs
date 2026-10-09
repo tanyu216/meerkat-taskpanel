@@ -1,6 +1,6 @@
 /**
  * The team's project registry (`~/.openclaw/team/projects.json`) — the bridge
- * between a card's human-readable `project` name and the TaskPanel project id.
+ * between a card's human-readable `project` name and the MeerkatTaskPanel project id.
  *
  * ARCHITECTURE §4.8 ④: a card's `project:` is a **registered name** (a key in
  * the registry), not an id. Before M5 the migrator treated it as an id and
@@ -15,7 +15,7 @@
  *   { "<key>": { ... } }                    // a bare map
  *
  * An entry's id defaults to its key and its name to its id, so the common
- * `{ "TaskPanel": { root, kind, ... } }` resolves `TaskPanel` → `TaskPanel`. An
+ * `{ "MeerkatTaskPanel": { root, kind, ... } }` resolves `MeerkatTaskPanel` → `MeerkatTaskPanel`. An
  * explicit `id`/`name` overrides either. Everything else (kind, repos, guides,
  * default_git_rules, root_git, notes, registered_at, …) is carried verbatim into
  * `projects.meta_json` — the registry is the source, the board is the authority.

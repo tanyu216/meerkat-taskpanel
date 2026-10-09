@@ -33,7 +33,7 @@ import {
 import { DomainError } from "../../../src/shared/errors.mjs";
 
 const tempDirs = [];
-function tempDir(prefix = "taskpanel-driver-") {
+function tempDir(prefix = "meerkat-taskpanel-driver-") {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   tempDirs.push(dir);
   return dir;
@@ -235,15 +235,15 @@ describe("storage/paths", () => {
     const home = "/home/tester";
     assert.equal(
       resolveRuntimePointerPath({ platform: "darwin", home, env: {} }),
-      "/home/tester/Library/Application Support/TaskPanel/runtime.json",
+      "/home/tester/Library/Application Support/MeerkatTaskPanel/runtime.json",
     );
     assert.equal(
       resolveRuntimePointerPath({ platform: "linux", home, env: {} }),
-      "/home/tester/.local/state/task-panel/runtime.json",
+      "/home/tester/.local/state/meerkat-taskpanel/runtime.json",
     );
     assert.equal(
       resolveRuntimePointerPath({ platform: "linux", home, env: { XDG_STATE_HOME: "/xdg" } }),
-      "/xdg/task-panel/runtime.json",
+      "/xdg/meerkat-taskpanel/runtime.json",
     );
   });
 });

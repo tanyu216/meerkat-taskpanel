@@ -331,7 +331,7 @@ describe("mcp/units — a refusal never echoes a host path (M3fix D3)", () => {
   const asText = (payload) => JSON.stringify(payload);
 
   it("keeps TOKEN_FILE_CORRUPT free of the token file's absolute path", async () => {
-    const dir = makeTempDir("taskpanel-mcp-leak-");
+    const dir = makeTempDir("meerkat-taskpanel-mcp-leak-");
     writeFileSync(
       join(dir, "runtime.json"),
       JSON.stringify({ url: "http://127.0.0.1:1", tokenFile: join(dir, "corrupt.token") }),
@@ -353,7 +353,7 @@ describe("mcp/units — a refusal never echoes a host path (M3fix D3)", () => {
   });
 
   it("keeps the stale-pointer CLI_IO free of the pointer's absolute path", async () => {
-    const dir = makeTempDir("taskpanel-mcp-leak-");
+    const dir = makeTempDir("meerkat-taskpanel-mcp-leak-");
     const pointer = join(dir, "runtime.json");
     writeFileSync(pointer, JSON.stringify({ url: "http://127.0.0.1:1", port: 1, pid: 999999 }));
 

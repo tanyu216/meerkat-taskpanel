@@ -24,7 +24,7 @@ const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const ARTEFACTS = Object.freeze({
   compose: "docker/docker-compose.observability.yml",
   prometheus: "monitoring/prometheus/prometheus.yml",
-  rules: "monitoring/prometheus/task-panel.rules.yml",
+  rules: "monitoring/prometheus/meerkat-taskpanel.rules.yml",
   collector: "monitoring/otel/collector.yml",
   docs: "docs/observability.md",
   readme: "monitoring/README.md",
@@ -99,7 +99,7 @@ describe("observability artifacts — compose overlay", () => {
     const compose = await yaml(ARTEFACTS.compose);
 
     const monitoring = compose.services.monitoring;
-    assert.equal(monitoring.image, "task-panel:local");
+    assert.equal(monitoring.image, "meerkat-taskpanel:local");
     assert.ok(monitoring.command.includes("monitoring/exporter.mjs"));
     assert.ok(monitoring.ports.some((mapping) => mapping.endsWith(":9105")));
     assert.match(monitoring.healthcheck.test.join(" "), /\/health/);
@@ -108,7 +108,7 @@ describe("observability artifacts — compose overlay", () => {
     assert.match(prometheus.image, /^prom\/prometheus:v\d+\.\d+\.\d+$/);
     assert.ok(prometheus.ports.some((mapping) => mapping.endsWith(":9090")));
     assert.ok(
-      prometheus.volumes.some((volume) => volume.includes("../monitoring/prometheus/task-panel.rules.yml:") && volume.endsWith(":ro")),
+      prometheus.volumes.some((volume) => volume.includes("../monitoring/prometheus/meerkat-taskpanel.rules.yml:") && volume.endsWith(":ro")),
       "the rules file must be mounted read-only",
     );
     assert.ok(
@@ -127,7 +127,7 @@ describe("observability artifacts — Prometheus and collector config", () => {
   it("loads the rules and scrapes the sidecar every 15s", async () => {
     const prometheus = await yaml(ARTEFACTS.prometheus);
     assert.ok(
-      prometheus.rule_files.includes("/etc/prometheus/rules/task-panel.rules.yml"),
+      prometheus.rule_files.includes("/etc/prometheus/rules/meerkat-taskpanel.rules.yml"),
       "prometheus.yml must load the committed rules file",
     );
 
@@ -162,9 +162,9 @@ describe("observability artifacts — runbook and dependency policy", () => {
       "99.9%",
       "0.1%",
       "p95",
-      "TaskPanelAvailabilityBelowSLO",
-      "TaskPanelErrorRate5xxAboveBudget",
-      "TaskPanelP95LatencyAboveBudget",
+      "MeerkatTaskPanelAvailabilityBelowSLO",
+      "MeerkatTaskPanelErrorRate5xxAboveBudget",
+      "MeerkatTaskPanelP95LatencyAboveBudget",
       "docker/docker-compose.observability.yml",
       "OTEL_EXPORTER_OTLP_ENDPOINT",
       "MONITORING_PORT",
