@@ -38,6 +38,14 @@ export function createTasksRepository(db) {
   const selectByIdentifier = db.prepare(
     `SELECT ${SELECT_LIST} FROM tasks WHERE project_id = ? AND identifier = ?`,
   );
+  // The idempotency guard's read. Mirrors the partial index's predicate exactly
+  // (non-terminal only) so a key released by `done`/`canceled` is not reused
+  // here — the same rule in two places, deliberately (0009_task_idem.sql).
+  const selectByIdemActive = db.prepare(
+    `SELECT ${SELECT_LIST} FROM tasks
+      WHERE idem = ? AND status NOT IN ('done','canceled')
+      ORDER BY created_at ASC LIMIT 1`,
+  );
 
   /** @param {string} id */
   const requireTask = (id) => {
@@ -69,6 +77,16 @@ export function createTasksRepository(db) {
 
     getByIdentifier(projectId, identifier) {
       return taskFromRow(selectByIdentifier.get(projectId, identifier));
+    },
+
+    /**
+     * The non-terminal task holding `idem`, or `null`. This is the read half of
+     * the creation guard; the partial unique index is the write half, and the
+     * two must agree on "non-terminal only".
+     * @param {string} idem
+     */
+    findByIdemActive(idem) {
+      return taskFromRow(selectByIdemActive.get(idem));
     },
 
     /**

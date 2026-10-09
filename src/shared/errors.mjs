@@ -54,6 +54,13 @@ export const ERROR_CODES = Object.freeze({
   EXECUTION_STATE_CORRUPT: spec(500, "in_progress without claimed_by — state is corrupt."),
   ARCHIVE_NOT_TERMINAL: spec(409, "Only done/canceled tasks may be archived."),
 
+  // ---- Creation idempotency (T-20261009-175500-idem-taskpanel) ---------------
+  // Raised when the partial unique index is the one that refuses a write, i.e.
+  // a racing create lost. The create path catches this and converges onto the
+  // existing task, so a caller only ever sees it when the row genuinely cannot
+  // be found afterwards.
+  IDEM_EXISTS: spec(409, "A non-terminal task with the same idempotency key already exists."),
+
   // ---- Relations -------------------------------------------------------------
   SINGLE_PARENT_VIOLATION: spec(409, "A task may have at most one parent."),
   SELF_REFERENCE: spec(422, "A task cannot be related to itself."),
@@ -126,6 +133,7 @@ export const DB_RAISE_CODES = Object.freeze([
 
 /** Codes produced by mapping SQLite constraint failures (not `RAISE`). */
 export const SQL_CONSTRAINT_CODES = Object.freeze([
+  "IDEM_EXISTS",
   "SINGLE_PARENT_VIOLATION",
   "RELATION_DUPLICATE",
   "RELATION_DIRECTION_INVALID",

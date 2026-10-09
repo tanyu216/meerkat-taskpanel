@@ -159,8 +159,8 @@ export function insertTask(db, overrides = {}) {
     `INSERT INTO tasks(id, identifier, project_id, title, description, status, priority, kind,
                        labels, sort_order, assignee_kind, assignee_id, reporter_id, creator_kind, creator_id,
                        claimed_by, claimed_at, heartbeat_at, blocked_at, status_changed_at,
-                       archived_at, source_path, source_hash, version, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                       archived_at, source_path, source_hash, version, idem, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     row.id,
     row.identifier,
@@ -186,6 +186,7 @@ export function insertTask(db, overrides = {}) {
     row.source_path ?? null,
     row.source_hash ?? null,
     row.version ?? 1,
+    row.idem ?? null,
     row.created_at,
     row.updated_at,
   );

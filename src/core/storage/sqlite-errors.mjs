@@ -52,6 +52,11 @@ export const UNIQUE_KEY_CODES = Object.freeze([
   },
   { columns: ["tasks.project_id", "tasks.identifier"], code: "IDENTIFIER_CONFLICT" },
   { columns: ["tasks.project_id", "tasks.source_path"], code: "ID_CONFLICT" },
+  // The partial idempotency index (`ux_tasks_idem_active`, 0009): a loss here
+  // means another create committed the same key first, not that the input was
+  // malformed — see `commands/tasks.mjs#createTask`, which converges onto the
+  // existing row instead of surfacing this code.
+  { columns: ["tasks.idem"], code: "IDEM_EXISTS" },
   { columns: ["comments.task_id", "comments.source_seq"], code: "COMMENT_DUPLICATE" },
   {
     columns: ["agent_sessions.task_id", "agent_sessions.seg", "agent_sessions.owner"],

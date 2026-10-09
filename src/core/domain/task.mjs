@@ -13,6 +13,7 @@ import { ARCHIVE_AFTER_DAYS, HEARTBEAT_FRESH_MS, IDENTIFIER_PATTERN, LABEL_MAX_L
 import { DomainError } from "../../shared/errors.mjs";
 import { identifierPrefix } from "../../shared/ids.mjs";
 import { ACTOR_KINDS, DICT_KINDS, STATUSES, TASK_KINDS } from "./enums.mjs";
+import { normalizeIdem } from "./idem.mjs";
 import { parsePriority } from "./priority.mjs";
 import { isTerminalStatus } from "./status.mjs";
 
@@ -51,6 +52,7 @@ export const TASK_COLUMNS = Object.freeze([
   "report_waiver_reason",
   "report_waived_at",
   "version",
+  "idem",
   "created_at",
   "updated_at",
 ]);
@@ -307,6 +309,7 @@ export function normalizeTaskCreate(input, context) {
     reportWaiverReason: null,
     reportWaivedAt: null,
     version: 1,
+    idem: normalizeIdem(input.idem),
     createdAt: now,
     updatedAt: now,
   };
@@ -446,6 +449,7 @@ const CAMEL = {
   report_waiver_reason: "reportWaiverReason",
   report_waived_at: "reportWaivedAt",
   version: "version",
+  idem: "idem",
   created_at: "createdAt",
   updated_at: "updatedAt",
 };

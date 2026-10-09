@@ -25,6 +25,7 @@ const PLANNED = [
   "domain/status.mjs",
   "domain/priority.mjs",
   "domain/task.mjs",
+  "domain/idem.mjs",
   "domain/comment.mjs",
   "domain/relation.mjs",
   "domain/report.mjs",
