@@ -75,6 +75,29 @@ export function assertParentIsEpic(parentTask) {
 }
 
 /**
+ * Downgrading an epic that still has children would re-create the `task → task`
+ * parent edge `tr_rel_parent_epic` (0010) refuses to *insert*: the edge stays,
+ * only its source stops being an epic (D-DB-1). This is the service-level half
+ * of `tr_tasks_kind_downgrade` (0011) — the command reads the children (a
+ * repository concern) and hands them here so the decision stays a pure rule
+ * that raises the same `VALIDATION_FAILED` code the trigger does.
+ *
+ * @param {object} current a Task DTO
+ * @param {string} nextKind the patched kind
+ * @param {{id: number}[]} children `parent` edges with `source === current.id`
+ */
+export function assertEpicDowngradeAllowed(current, nextKind, children) {
+  if (current.kind !== TASK_KINDS[1]) return; // task → anything: no parent edge to orphan
+  if (nextKind === TASK_KINDS[1]) return; // epic → epic: a no-op, not a downgrade
+  if (children.length > 0) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: `task ${current.identifier ?? current.id} still has ${children.length} child card(s); an epic with children cannot be downgraded to ${nextKind}`,
+      details: { field: "kind", taskId: current.id, kind: nextKind, children: children.length },
+    });
+  }
+}
+
+/**
  * Ancestor ids of `taskId`, nearest first. Mirrors the recursive CTE the
  * database uses; `edges` is a list of `{source, target}` parent edges.
  *

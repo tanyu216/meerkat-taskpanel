@@ -209,6 +209,39 @@ describe("commands/tasks — create and update", () => {
   });
 });
 
+describe("commands/tasks — an epic with children cannot be downgraded", () => {
+  it("refuses the downgrade through the service and writes nothing", async () => {
+    await board(async ({ db, commands }) => {
+      const epic = commands.createTask({ projectId: "proj", title: "Epic", kind: "epic", actor: AGENT });
+      const child = commands.createTask({ projectId: "proj", title: "Child", actor: AGENT });
+      commands.addRelation({ type: "parent", source: epic.id, target: child.id, actor: AGENT });
+
+      const before = revision(db);
+      assert.throws(() => commands.updateTask({ id: epic.id, patch: { kind: "task" }, actor: AGENT }), (err) => {
+        assert.equal(err.code, "VALIDATION_FAILED");
+        assert.equal(err.http, 400);
+        assert.equal(err.details.field, "kind");
+        assert.equal(err.details.children, 1);
+        assert.match(err.message, /children/);
+        return true;
+      });
+      assert.equal(revision(db), before, "a refused downgrade changes nothing");
+      assert.equal(commands.getTask({ id: epic.id }).kind, "epic");
+    });
+  });
+
+  it("still lets a task upgrade to epic, and a childless epic downgrade", async () => {
+    await board(async ({ commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "Task", actor: AGENT });
+      const upgraded = commands.updateTask({ id: task.id, patch: { kind: "epic" }, actor: AGENT });
+      assert.equal(upgraded.kind, "epic");
+
+      const downgraded = commands.updateTask({ id: task.id, patch: { kind: "task" }, actor: AGENT });
+      assert.equal(downgraded.kind, "task", "no children, so the downgrade is free");
+    });
+  });
+});
+
 describe("commands/tasks — claim and heartbeat", () => {
   it("claims, reuses and refuses exactly as the policy says", async () => {
     await board(async ({ db, commands }) => {

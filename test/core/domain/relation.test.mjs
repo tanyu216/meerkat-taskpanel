@@ -8,6 +8,7 @@ import test, { describe, it } from "node:test";
 import { RELATION_CHAIN_MAX, RELATION_FANIN_MAX } from "../../../src/shared/constants.mjs";
 import {
   ancestorsOf,
+  assertEpicDowngradeAllowed,
   assertParentEdgeAllowed,
   assertParentIsEpic,
   chainDepthOf,
@@ -155,5 +156,28 @@ describe("domain/relation — shape rules", () => {
       return true;
     });
     assert.throws(() => assertParentIsEpic(null), (err) => err.code === "NOT_FOUND");
+  });
+});
+
+describe("domain/relation — epic downgrade", () => {
+  const epic = { id: "a", kind: "epic", identifier: "PROJ-0001" };
+  const child = { id: 1, source: "a", target: "b" };
+
+  it("passes epic → epic, task → anything, and a childless epic downgrade", () => {
+    assert.doesNotThrow(() => assertEpicDowngradeAllowed(epic, "epic", [child]));
+    assert.doesNotThrow(() => assertEpicDowngradeAllowed({ id: "a", kind: "task" }, "task", [child]));
+    assert.doesNotThrow(() => assertEpicDowngradeAllowed(epic, "task", []));
+  });
+
+  it("refuses an epic with children becoming a task, naming the card and the count", () => {
+    assert.throws(() => assertEpicDowngradeAllowed(epic, "task", [child]), (err) => {
+      assert.equal(err.code, "VALIDATION_FAILED");
+      assert.equal(err.http, 400);
+      assert.equal(err.details.field, "kind");
+      assert.equal(err.details.taskId, "a");
+      assert.equal(err.details.children, 1);
+      assert.match(err.message, /PROJ-0001/);
+      return true;
+    });
   });
 });

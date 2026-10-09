@@ -60,6 +60,28 @@ describe("cli/relation", () => {
     });
   });
 
+  it("refuses to downgrade the epic after a parent edge exists (D-DB-1)", async () => {
+    await board(async ({ run }) => {
+      const added = dataOf(
+        run(["relation", "add", "DEMO-0001", "--type", "parent", "--target", "DEMO-0002", "--json"]),
+      );
+      assert.equal(added.relation.type, "parent");
+
+      // The 5-command repro: project create → issue create --kind epic → issue
+      // create → relation add --type parent → issue update --kind task. Step 5
+      // must now be refused, not exit 0.
+      const downgrade = run(["issue", "update", "DEMO-0001", "--kind", "task", "--json"]);
+      assert.equal(downgrade.status, 1, "step 5 must be refused (not exit 0)");
+      assert.equal(errorOf(downgrade).code, "VALIDATION_FAILED");
+      assert.match(errorOf(downgrade).message, /children/);
+
+      // The parent edge is intact, and the epic kept its kind.
+      const listing = dataOf(run(["relation", "list", "DEMO-0001", "--json"]));
+      assert.equal(listing.children.length, 1);
+      assert.equal(dataOf(run(["issue", "get", "DEMO-0001", "--json"])).task.kind, "epic");
+    });
+  });
+
   it("adds the other two relation types and reports a duplicate", async () => {
     await board(async ({ run }) => {
       const blocks = dataOf(run(["relation", "add", "DEMO-0001", "--type", "blocks", "--target", "DEMO-0002", "--json"]));

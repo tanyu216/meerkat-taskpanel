@@ -24,6 +24,7 @@ import {
 import { assertTransition } from "../domain/status.mjs";
 import { hasIdemDiscriminator, idemKey, idemSource, normalizeIdem } from "../domain/idem.mjs";
 import { isArchivable, normalizeTaskCreate, normalizeTaskUpdate } from "../domain/task.mjs";
+import { assertEpicDowngradeAllowed } from "../domain/relation.mjs";
 import { normalizeLabelName } from "../domain/labels.mjs";
 import { normalizeName } from "../domain/dictionary.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
@@ -235,6 +236,13 @@ export function updateTask(ctx, input) {
           message: "nothing to update: pass a patch or an assignee/reporter",
           details: { allowed: ["title", "description", "priority", "kind", "labels", "assignee", "reporter"] },
         });
+      }
+
+      // Downgrading an epic that still has children would orphan a `task → task`
+      // parent edge. The DB trigger (0011) is the machine guarantee; this read is
+      // the friendly refusal that names the repair before the write is attempted.
+      if (patch.kind !== undefined) {
+        assertEpicDowngradeAllowed(current, patch.kind, ctx.repos.relations.listChildren(input.id));
       }
 
       const task = ctx.repos.tasks.updateCas({
