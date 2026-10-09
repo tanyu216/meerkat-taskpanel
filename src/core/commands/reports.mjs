@@ -48,6 +48,9 @@ export function writeReport(ctx, input) {
       const report = ctx.repos.reports.insert({
         ...prepared,
         taskId: task.id,
+        // An explicit origin: this is the delivery writer, and the gate must
+        // never have to guess that (0008).
+        origin: "delivery",
         seg: prepared.seg ?? input.seg ?? null,
         sessionId: prepared.sessionId ?? input.sessionId ?? null,
       });
@@ -135,6 +138,8 @@ export function deliver(ctx, input) {
       const report = ctx.repos.reports.insert({
         ...prepared,
         taskId: task.id,
+        // The delivery writer: this row is what the gate will accept (0008).
+        origin: "delivery",
         seg: prepared.seg ?? input.seg ?? null,
         sessionId: prepared.sessionId ?? input.sessionId ?? null,
       });

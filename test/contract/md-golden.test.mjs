@@ -145,6 +145,16 @@ describe("contract/md-golden — the fixture set", () => {
       assert.equal(/\b(Terry|tanyu|tanyu216)\b/i.test(text), false, `${name} carries a real-person identifier`);
       assert.ok(existsSync(join(GOLDEN, name)), `${name} has no golden`);
     }
+
+    // The goldens are committed too, so the guard must cover them: a real name
+    // that only ever reached a golden (never the source fixture) would still
+    // ship. Scan every golden file, not just the ones matching a fixture name.
+    const goldens = readdirSync(GOLDEN).filter((name) => name.endsWith(".md")).sort();
+    assert.ok(goldens.length >= FIXTURE_FILES.length, `expected goldens for every fixture, found ${goldens.length}`);
+    for (const name of goldens) {
+      const text = readFileSync(join(GOLDEN, name), "utf8");
+      assert.equal(/\b(Terry|tanyu|tanyu216)\b/i.test(text), false, `golden/${name} carries a real-person identifier`);
+    }
   });
 
   it("covers the cases the plan called out", () => {

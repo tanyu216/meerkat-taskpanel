@@ -1,9 +1,18 @@
 /**
- * The delivery gate: a report for the **current round**, or an audited waiver.
+ * The delivery gate: a **delivery** report for the **current round**, or an
+ * audited waiver.
  *
  * Moving a task to `in_review` requires a report for the current delivery round.
  * A report from an earlier round is not a report: if work came back for rework,
  * the previous conclusion is history, not evidence.
+ *
+ * "Delivery" is part of the requirement too (0008). The md importer writes a
+ * card's `## Report` — including a degraded narrative, or a structured report
+ * with no evidence — as a history row (`origin: "import"`). Such a row was never
+ * checked by `normalizeReportCreate`, so it proves nothing and must not open the
+ * gate. Only a row `writeReport`/`deliver` wrote (`origin: "delivery"`, whose
+ * acceptance/evidence are non-empty by construction) counts. The trigger in
+ * `0008_report_origin.sql` repeats exactly this rule.
  *
  * There is one other way through, added in M2 (F-B1) and deliberately narrow: a
  * waiver that names its round *and* carries a reason of at least
@@ -11,7 +20,7 @@
  * stamped on the task row and audited as a `report_waived` activity, so a
  * reviewer sees it. `--no-report --reason "<why>"` is the command.
  *
- * The same rules are a trigger in `0006_report_waiver.sql`, so they hold for a
+ * The same rules are a trigger in `0008_report_origin.sql`, so they hold for a
  * writer that bypasses this module. Two implementations, one meaning —
  * `test/contract/state-machine.test.mjs` and the command tests check they agree.
  *
@@ -119,9 +128,30 @@ export function assertWaiverRequest(input) {
 }
 
 /**
+ * Does this report count as a *delivery* — the only kind the gate accepts?
+ *
+ * A report's `origin` says who wrote it: `delivery` (via `writeReport`/`deliver`,
+ * content validated non-empty) or `import` (the md importer, writing history).
+ * A missing `origin` defaults to `delivery` for backwards compatibility with
+ * callers that pass `{round}` alone (`tasks.mjs` supplies the real `origin`).
+ *
+ * @param {unknown} report
+ * @returns {boolean}
+ */
+export function reportCountsAsDelivery(report) {
+  if (report === null || typeof report !== "object") return false;
+  const origin = report.origin ?? "delivery";
+  return origin === "delivery";
+}
+
+/**
  * Decide whether a move may proceed.
  *
- * @param {{task: {id: string, identifier?: string, deliveryRound: number}, reports: {round: number}[], to: string, waiver?: {round: number, reason: string}|null}} input
+ * Only *delivery* reports count (see `reportCountsAsDelivery`); imported history
+ * rows are ignored, so `existingRounds` is the rounds a delivery actually covers
+ * ("none" when nothing qualifies).
+ *
+ * @param {{task: {id: string, identifier?: string, deliveryRound: number}, reports: {round: number, origin?: string}[], to: string, waiver?: {round: number, reason: string}|null}} input
  * @returns {{ok: true, waived?: boolean}|{ok: false, reason: "REPORT_REQUIRED", round: number, existingRounds: number[], hint: object}}
  */
 export function checkDeliveryGate(input) {
@@ -130,7 +160,9 @@ export function checkDeliveryGate(input) {
   if (!requiresReport(to)) return { ok: true };
 
   const round = task.deliveryRound;
-  const rounds = (Array.isArray(reports) ? reports : []).map((report) => report.round);
+  const rounds = (Array.isArray(reports) ? reports : [])
+    .filter(reportCountsAsDelivery)
+    .map((report) => report.round);
   if (rounds.includes(round)) return { ok: true };
   if (waiverCovers(input.waiver, round)) return { ok: true, waived: true };
 

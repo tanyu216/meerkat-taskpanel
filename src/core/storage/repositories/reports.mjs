@@ -27,6 +27,10 @@ function toRow(report) {
     author_id: report.authorId,
     source_seq: report.sourceSeq ?? null,
     created_at: report.createdAt,
+    // Rows predating 0008 (and any prepared report that does not say) are a
+    // delivery — the column's own DEFAULT, restated so the repository never
+    // depends on it silently.
+    origin: report.origin ?? "delivery",
   };
 }
 
@@ -91,6 +95,23 @@ export function createReportsRepository(db) {
         .prepare("SELECT round FROM task_reports WHERE task_id = ? ORDER BY round ASC")
         .all(taskId)
         .map((row) => Number(row.round));
+    },
+
+    /**
+     * Every report row's round **and** origin — what the delivery gate needs.
+     *
+     * Deliberately unfiltered: the gate (domain) decides which origins count, so
+     * the importer's history rows stay visible to it rather than being hidden by
+     * the query. A caller that only wants delivery rounds filters on `origin`.
+     *
+     * @param {string} taskId
+     * @returns {{round: number, origin: string}[]}
+     */
+    listGateReports(taskId) {
+      return db
+        .prepare("SELECT round, origin FROM task_reports WHERE task_id = ? ORDER BY round ASC")
+        .all(taskId)
+        .map((row) => ({ round: Number(row.round), origin: String(row.origin) }));
     },
 
     /** @param {string} taskId */

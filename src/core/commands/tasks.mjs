@@ -337,7 +337,7 @@ export function moveStatus(ctx, input) {
         if (input.to === "in_review") {
           assertDeliveryGate({
             task: current,
-            reports: ctx.repos.reports.listRounds(current.id).map((round) => ({ round })),
+            reports: ctx.repos.reports.listGateReports(current.id),
             to: input.to,
           });
         }
@@ -346,7 +346,7 @@ export function moveStatus(ctx, input) {
         // disagree about whether this waiver is good enough.
         assertDeliveryGate({
           task: current,
-          reports: ctx.repos.reports.listRounds(current.id).map((round) => ({ round })),
+          reports: ctx.repos.reports.listGateReports(current.id),
           to: input.to,
           waiver,
         });
@@ -460,7 +460,7 @@ export function canMove(ctx, input) {
   }
   const verdict = checkDeliveryGate({
     task,
-    reports: ctx.repos.reports.listRounds(task.id).map((round) => ({ round })),
+    reports: ctx.repos.reports.listGateReports(task.id),
     to: input.to,
   });
   if (!verdict.ok) return verdict;

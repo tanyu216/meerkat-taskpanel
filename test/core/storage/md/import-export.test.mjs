@@ -138,7 +138,8 @@ describe("md/import — statistics and behaviour", () => {
     }
   });
 
-  it("refuses a card with no id, no title or an unknown status", async () => {
+  it("refuses a card with no id or no title, and skips one with an unknown status (B1)", async () => {
+    // `parseCard` itself still refuses — the direct assertions stay.
     assert.throws(() => parseCard(cardText({ id: '""' }), { file: "a.md" }), (err) => {
       assert.equal(err.code, "MD_PARSE_ERROR");
       assert.match(err.message, /needs an 'id'/);
@@ -146,9 +147,16 @@ describe("md/import — statistics and behaviour", () => {
     });
     assert.throws(() => parseCard(cardText({ title: '""' }), { file: "a.md" }), (err) => /needs a 'title'/.test(err.message));
 
+    // But through `importMd` a parse failure is now per-card: the card with the
+    // unknown status is skipped and recorded, not an abort that sinks the batch.
     const other = await boardWithCards({ "A.md": cardText({ status: "shipped" }) });
     try {
-      assert.equal(reasonCode(() => importMd({ db: other.db, repos: other.repos, dir: other.dir, now: TS })), "MD_PARSE_ERROR");
+      const stats = importMd({ db: other.db, repos: other.repos, dir: other.dir, now: TS });
+      assert.equal(stats.tasks, 0, "the card is not imported");
+      assert.equal(stats.parseSkipped.length, 1);
+      assert.equal(stats.parseSkipped[0].code, "MD_PARSE_ERROR");
+      assert.equal(countRows(other.db, "tasks"), 0, "nothing was written");
+      assert.match(stats.warnings[0], /could not be parsed \(MD_PARSE_ERROR\)/);
     } finally {
       other.close();
     }

@@ -39,6 +39,14 @@ export const COMMIT_SHA_PATTERN = /^[0-9a-f]{7,40}$/;
 /** Longest string kept when a payload has to be shrunk. */
 export const TRUNCATED_STRING_CHARS = 512;
 
+/**
+ * Who wrote a report row (0008). `delivery` is the gate's business — it is what
+ * `writeReport`/`deliver` write, and its content is validated non-empty by
+ * `normalizeReportCreate`. `import` is history: the md importer writes it (even
+ * for a degraded narrative), and the gate never counts it.
+ */
+export const REPORT_ORIGINS = Object.freeze(["delivery", "import"]);
+
 export const REPORT_COLUMNS = Object.freeze([
   "id",
   "task_id",
@@ -53,6 +61,7 @@ export const REPORT_COLUMNS = Object.freeze([
   "author_id",
   "source_seq",
   "created_at",
+  "origin",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -488,6 +497,7 @@ const CAMEL = {
   author_id: "authorId",
   source_seq: "sourceSeq",
   created_at: "createdAt",
+  origin: "origin",
 };
 
 /** @param {object} row */

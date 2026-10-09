@@ -15,6 +15,10 @@
  * does **not** run the delivery gate (it writes history, it does not deliver),
  * and a card that says `in_review` without a report is imported *with a
  * warning* rather than silently blessed.
+ *
+ * Every report row written here carries `origin='import'`, which is what keeps
+ * an imported narrative from satisfying the gate: the gate counts only
+ * `origin='delivery'` rows (0008).
  */
 
 import { readFileSync, readdirSync } from "node:fs";
@@ -199,6 +203,10 @@ export function importMd(input) {
     invariantViolations: [],
     projectSkippedCards: [],
     reportSkipped: [],
+    // Cards whose frontmatter could not be parsed at all. A parse failure is
+    // per-card: it is recorded here and the card is skipped, never an abort that
+    // sinks the whole batch (B1).
+    parseSkipped: [],
     // A historical narrative report is *imported* (degraded to conclusion-only);
     // it is listed for the reconcile report as informational, not a difference.
     reportNarrative: [],
@@ -222,11 +230,24 @@ export function importMd(input) {
         const path = join(dir, name);
         const text = readFileSync(path, "utf8");
         stats.files += 1;
+        // Per-card isolation (B1): a card whose frontmatter will not parse is
+        // skipped and recorded, not fatal. One bad card must not sink a whole
+        // board's migration. The parsers themselves still throw — that is what
+        // `parseCard`'s own callers and `check` rely on.
+        let card;
+        try {
+          card = parseCard(text, { file: basename(path) });
+        } catch (err) {
+          const code = isDomainError(err) ? err.code : "ERROR";
+          stats.parseSkipped.push({ file: name, code, reason: err.message });
+          stats.warnings.push(`${name}: the card could not be parsed (${code}) — skipped: ${err.message}`);
+          continue;
+        }
         parsed.push({
           file: name,
           rel: relative(dir, path) || name,
           hash: sha256Hex(text),
-          parsed: parseCard(text, { file: basename(path) }),
+          parsed: card,
         });
       }
 
@@ -479,7 +500,10 @@ export function importMd(input) {
           } else if (plan.tag === "report_incomplete") {
             stats.reportIncomplete.push({ file: entry.file, identifier: entry.task.identifier, round: plan.round });
           }
-          const stored = repos.reports.insert({ ...plan.prepared, taskId: task.id });
+          // Every imported report is history, never a delivery: tagged `import`
+          // (whether the strict path accepted it or the relaxed path degraded
+          // it), so the delivery gate does not count it (0008).
+          const stored = repos.reports.insert({ ...plan.prepared, taskId: task.id, origin: "import" });
           stats.reports += 1;
           entry.latestReport = stored;
         }
