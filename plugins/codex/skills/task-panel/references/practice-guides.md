@@ -145,6 +145,12 @@ script, and print the load command — they never enable a daemon for you. The
 installer also asks once whether the supervisor may claim **unassigned** cards
 (default yes) and remembers the answer in `<host>/task-panel.env`.
 
+A wake runs the worker **headlessly**, so it runs under a pre-declared tool
+allowlist / permission mode / sandbox and must **not** default to bypassing
+permissions (`--dangerously-skip-permissions` or equivalent); a bypass needs
+explicit written authorization, documented at the point of use — see
+[`docs/scheduling.md` §Headless permission boundary](../../../docs/scheduling.md#headless-permission-boundary).
+
 ## OpenClaw
 
 ### Install

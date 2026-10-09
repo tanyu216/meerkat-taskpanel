@@ -7,6 +7,11 @@
 # desktop app's own automation (intervalMinutes / quotaAware / model /
 # reasoningEffort) is an alternative wake path — see docs/scheduling.md.
 #
+# Headless permission boundary (docs/scheduling.md §Headless permission
+# boundary): this script must NOT default to bypassing permissions — no
+# approvals-and-sandbox bypass flag. Run under the non-interactive sandbox /
+# approval policy; a bypass needs explicit written authorization, documented here.
+#
 #   wake-codex.sh "<handoff>"
 set -eu
 

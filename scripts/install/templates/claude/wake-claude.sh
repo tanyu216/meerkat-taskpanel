@@ -13,6 +13,11 @@
 # The supervisor builds the handoff (bounded: card id, attribution flags, the
 # claim-first rules); it invokes this shape directly, and this script is the
 # reference you can edit if your Claude Code needs different flags.
+#
+# Headless permission boundary (docs/scheduling.md §Headless permission
+# boundary): this script must NOT default to bypassing permissions — no
+# `--dangerously-skip-permissions`. Run under --permission-mode/--allowedTools
+# (or a sandbox); a bypass needs explicit written authorization, documented here.
 set -eu
 
 prompt="${1:-}"

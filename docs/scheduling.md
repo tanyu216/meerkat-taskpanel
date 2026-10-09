@@ -122,6 +122,37 @@ timers** — their hooks fire only on session events. So the loop lives outside:
 The host is just a worker: the supervisor claims on the board, then starts the
 host's own headless entry point.
 
+## Headless permission boundary
+
+A wake is **non-interactive**: the supervisor starts the worker with no human at
+the keyboard to answer a prompt. An interactive host that stops to ask "may I run
+this?" has no one to answer, so the worker must run under a **pre-declared
+boundary** — a tool allowlist, a permission mode, or a sandbox — chosen up front
+rather than confirmed per call.
+
+The rule that follows from that is a **no-default-bypass** rule:
+
+- The supervisor and the generated wake scripts **must not** run workers with
+  permissions bypassed by default — no `claude --dangerously-skip-permissions`,
+  no Codex `--dangerously-bypass-approvals-and-sandbox` (or equivalent), on by
+  default. Neither the repo's `scripts/supervisor.mjs` nor the host wake glue
+  (`wake-claude.sh`, `wake-codex.sh`, `wake-pi.sh`) ships such a flag.
+- Turning a bypass **on** is a deliberate act that requires **explicit written
+  authorization** and must be **documented at the point of use** — in the wake
+  script or host config that carries it — so a reader can see the bypass, the
+  reason, and who authorized it. An undocumented bypass is a bug, not a config.
+- The recommended mechanism is a **narrow allowlist or sandbox**, not a blanket
+  bypass:
+  - **Claude Code** — `claude -p` with `--permission-mode` (e.g. `acceptEdits`
+    or `plan`) plus `--allowedTools` naming the tools the worker may use, or a
+    container / sandbox the turn runs inside.
+  - **Codex** — `codex exec` with its sandbox and approval-policy flags (the
+    non-interactive sandbox profile), rather than disabling approvals.
+
+Prefer running the worker in a container or sandbox whose filesystem and network
+reach are already bounded: for a `-p`/`exec` turn, the process boundary *is* the
+permission boundary, and it does not depend on a human catching a prompt.
+
 ## The three hosts: how each one is triggered
 
 Claude Code, Codex and Pi have no clock, and their wake surfaces differ. The

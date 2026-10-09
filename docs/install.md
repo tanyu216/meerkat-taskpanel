@@ -61,7 +61,9 @@ Claude Code, Codex and Pi have **no timers**, so the poll/patrol loop lives outs
 them: `install.sh` drops a set of scheduling units, a per-host wake-glue script, and
 a host config, then **prints the load command** — it never runs `launchctl`,
 `systemctl` or `crontab` for you. The design is in
-[`scheduling.md`](scheduling.md).
+[`scheduling.md`](scheduling.md); the wake scripts run workers headlessly, so
+they obey the no-default-permission-bypass boundary in
+[`scheduling.md §Headless permission boundary`](scheduling.md#headless-permission-boundary).
 
 | Artefact | Where | What |
 |---|---|---|
