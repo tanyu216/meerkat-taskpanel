@@ -18,8 +18,9 @@
  *
  * `--agent <name>` names the actor without claiming to be an agent platform, so
  * a human running `taskctl --agent Terry issue move …` is recorded as a human.
- * `$USER`/`LOGNAME` are reached only when nothing names an agent; they are the
- * human fallback and are never used to pass an agent's identity check.
+ * `$USER`/`LOGNAME` are the human fallback: they are reached only when nothing
+ * names an agent, so an agent that identifies itself is never recorded under the
+ * ambient OS user.
  *
  * Pure. It lives in `src/shared` (extracted from `src/cli`) so the MCP surface
  * reaches the same derivation without importing `src/cli`.
