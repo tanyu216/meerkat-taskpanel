@@ -20,7 +20,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { basename, join, relative } from "node:path";
 
-import { DomainError } from "../../../shared/errors.mjs";
+import { DomainError, isDomainError } from "../../../shared/errors.mjs";
 import { LABEL_PALETTE } from "../../../shared/constants.mjs";
 import { contentHash, newId, sha256Hex } from "../../../shared/ids.mjs";
 import { normalizeName } from "../../domain/dictionary.mjs";
@@ -31,6 +31,7 @@ import { parsePriority } from "../../domain/priority.mjs";
 import { identifierFor, normalizeLabels, normalizeTaskCreate } from "../../domain/task.mjs";
 import { transaction } from "../unit-of-work.mjs";
 import { parseFrontmatter } from "./frontmatter.mjs";
+import { checkRelationInvariants } from "./invariants-check.mjs";
 import { statusForImport } from "./legacy-status.mjs";
 import {
   parseAcceptanceBlock,
@@ -42,7 +43,16 @@ import {
   splitSections,
 } from "./sections.mjs";
 
-/** Frontmatter keys the importer understands; everything else is kept verbatim. */
+/**
+ * Frontmatter keys the importer understands; everything else is kept verbatim
+ * in `meta_json.legacy` and re-emitted on export.
+ *
+ * Deliberately absent (M5 ruling): `goal` and `review_of`. Both are named in
+ * ARCHITECTURE §4.8 as "原样保留" (kept verbatim) fields, but listing them here
+ * made the parser *recognise* them and then map them nowhere — so they were
+ * silently dropped, the exact loss the M5 drill exists to catch. Leaving them
+ * unknown keeps them under `meta_json.legacy`, which round-trips.
+ */
 export const KNOWN_CARD_KEYS = Object.freeze([
   "id",
   "title",
@@ -64,10 +74,31 @@ export const KNOWN_CARD_KEYS = Object.freeze([
   "blocked_at",
   "depends_on",
   "parent",
-  "review_of",
   "notify_leader",
-  "goal",
 ]);
+
+/**
+ * Resolve a card's `project:` value to a TaskPanel project id.
+ *
+ * §4.8 ④: the md value is a **registered name** (a key in `projects.json`), not
+ * an id. With a registry, look the name up (or the id, so an exported card —
+ * which carries the id — re-imports); without one, the historical behaviour of
+ * "the name is the id" is preserved.
+ *
+ * @param {unknown} rawName the card's `project`, or `--project`
+ * @param {object|null|undefined} registry a parsed project registry
+ * @returns {string|null}
+ */
+export function resolveProjectId(rawName, registry) {
+  if (rawName === null || rawName === undefined) return null;
+  const text = typeof rawName === "string" ? rawName.trim() : "";
+  if (text === "") return null;
+  if (registry !== null && registry !== undefined) {
+    const entry = registry.resolve(text);
+    if (entry !== null) return entry.id;
+  }
+  return text;
+}
 
 /** Keys that are stored in `meta_json` rather than in a column. */
 const META_KEYS = Object.freeze(["notify_leader"]);
@@ -95,10 +126,12 @@ function nullable(value) {
 }
 
 /**
- * @param {{db: object, repos: object, dir: string, projectId?: string, target?: string, now: string, check?: boolean, resume?: boolean, logger?: Function}} input
+ * @param {{db: object, repos: object, dir: string, projectId?: string, target?: string, now: string, check?: boolean, resume?: boolean, registry?: object|null, createProject?: boolean, logger?: Function}} input
  */
 export function importMd(input) {
   const { db, repos, dir, now, check = false, resume = false } = input;
+  const registry = input.registry ?? null;
+  const createProject = input.createProject === true;
   const stats = {
     files: 0,
     cards: 0,
@@ -112,7 +145,18 @@ export function importMd(input) {
     activities: 0,
     dictionaries: 0,
     labels: 0,
+    projectSkipped: 0,
     warnings: [],
+    // Notices are informational (a project was auto-created); warnings are
+    // problems. Keeping them apart is what lets "warnings.length === 0" keep
+    // meaning "a clean import" for existing callers.
+    notices: [],
+    // Structured findings the M5 reconcile report reads directly.
+    parentSkipped: [],
+    parentNotFound: [],
+    dependsUnresolved: [],
+    invariantViolations: [],
+    projectSkippedCards: [],
     check,
   };
 
@@ -137,33 +181,64 @@ export function importMd(input) {
         });
       }
 
-      // Pass 1: projects (a card may name a project no other card created).
-      const projectIds = new Map();
+      // Pass 1: resolve each card's project name → id, and gather the per-project
+      // plan (workspace path + registry metadata). A card whose project cannot be
+      // resolved is skipped with a warning — never a silently created project.
+      /** @type {Map<string, object>} */
+      const projectPlans = new Map();
       for (const entry of parsed) {
         const card = entry.parsed;
-        const projectId = card.project ?? input.projectId;
-        if (projectId === undefined || projectId === null || projectId === "") {
+        const rawName = card.project ?? input.projectId ?? null;
+        if (resolveProjectId(rawName, null) === null) {
           throw new DomainError("MD_PARSE_ERROR", {
             message: `${entry.file}: no 'project' in frontmatter and no --project given`,
             details: { file: entry.file, field: "project" },
           });
         }
-        card.projectId = projectId;
-        if (projectIds.has(projectId)) {
-          if (projectIds.get(projectId) !== card.target && card.target !== null) {
-            throw new DomainError("MD_PARSE_ERROR", {
-              message: `${entry.file}: project ${projectId} is used with two different targets (${projectIds.get(projectId)} and ${card.target})`,
-              details: { file: entry.file, project: projectId, field: "target" },
-            });
-          }
+
+        const resolution = resolveProjectPlan(rawName, { registry, createProject });
+        if (!resolution.ok) {
+          stats.projectSkipped += 1;
+          stats.projectSkippedCards.push({ file: entry.file, identifier: card.identifier, project: rawName });
+          stats.warnings.push(resolution.warning);
+          entry.projectSkipped = true;
           continue;
         }
-        projectIds.set(projectId, card.target ?? input.target ?? null);
+
+        card.projectId = resolution.projectId;
+        card.projectName = resolution.name;
+        card.projectMeta = resolution.meta;
+        card.projectWorkspace = resolution.workspacePath;
+        if (resolution.notice !== undefined) stats.notices.push(resolution.notice);
+
+        const target = card.target;
+        const existingPlan = projectPlans.get(resolution.projectId);
+        if (existingPlan === undefined) {
+          projectPlans.set(resolution.projectId, {
+            id: resolution.projectId,
+            name: resolution.name,
+            meta: resolution.meta,
+            source: resolution.source,
+            workspacePath: resolution.workspacePath ?? target ?? input.target ?? null,
+            targets: new Set(target === null || target === undefined ? [] : [target]),
+          });
+          continue;
+        }
+        if (target !== null && target !== undefined && !existingPlan.targets.has(target)) {
+          // `target` is a project-level workspace path (§4.8 ④ / M5 ruling): two
+          // different values for one project is a warning, not a hard failure.
+          existingPlan.targets.add(target);
+          stats.warnings.push(
+            `${entry.file}: project ${resolution.projectId} is used with two different targets ` +
+              `(${[...existingPlan.targets].join(" and ")}); target is project-level — using ${existingPlan.workspacePath}`,
+          );
+        }
       }
 
       // Pass 2: tasks.
       for (const entry of parsed) {
         const card = entry.parsed;
+        if (entry.projectSkipped === true) continue;
         const existing = findExisting(repos, card.projectId, entry.rel);
 
         if (existing !== null && existing.sourceHash === entry.hash) {
@@ -188,7 +263,7 @@ export function importMd(input) {
           continue;
         }
 
-        ensureProject(repos, card, projectIds.get(card.projectId), now);
+        ensureProject(repos, projectPlans.get(card.projectId), card, now, stats);
         const dictionary = resolveCardDictionaries(repos, card, now);
         stats.dictionaries += dictionary.writes;
         // Historical cards register their labels too, so the registry reflects an
@@ -232,34 +307,53 @@ export function importMd(input) {
       }
 
       // Pass 3: relations (every task exists by now).
-      const byIdentifier = new Map();
+      //
+      // `depends_on: [X]` means X must finish before this card, so the edge is
+      // `blocks` with **source = X (the blocker), target = this task** — the M5
+      // ruling, matching `domain/relation.mjs`'s direction convention and the
+      // export, which rebuilds `depends_on` from `listBlockerOf(task)`.
+      // Relations are looked up within the card's own project (never across).
+      const byKey = new Map();
       for (const entry of parsed) {
-        if (entry.task !== undefined) byIdentifier.set(entry.task.identifier, entry.task);
+        if (entry.task !== undefined) byKey.set(`${entry.task.projectId}\u0000${entry.task.identifier}`, entry.task);
       }
+      const lookup = (projectId, identifier) =>
+        byKey.get(`${projectId}\u0000${identifier}`) ?? repos.tasks.getByIdentifier(projectId, identifier);
+
       for (const entry of parsed) {
         if (entry.task === undefined || entry.skipped === true) continue;
         for (const dependency of entry.card.dependsOn) {
-          const blocker = byIdentifier.get(dependency) ?? repos.tasks.getByIdentifier(entry.card.projectId, dependency);
+          const blocker = lookup(entry.card.projectId, dependency);
           if (blocker === null || blocker === undefined) {
+            stats.dependsUnresolved.push({ file: entry.file, identifier: entry.task.identifier, dependsOn: dependency });
             stats.warnings.push(`${entry.file}: depends_on ${dependency} is not in this import`);
             continue;
           }
-          if (blocker.id === entry.task.id) continue;
-          repos.relations.insert({ type: "blocks", source: blocker.id, target: entry.task.id, now, origin: "md" });
-          stats.relations += 1;
+          if (blocker.id === entry.task.id) {
+            stats.dependsUnresolved.push({ file: entry.file, identifier: entry.task.identifier, dependsOn: dependency });
+            continue;
+          }
+          insertRelation(repos, { type: "blocks", source: blocker.id, target: entry.task.id, now, origin: "md" }, entry, stats, "depends_on");
         }
         if (entry.card.parent !== null) {
-          const parent = byIdentifier.get(entry.card.parent) ?? repos.tasks.getByIdentifier(entry.card.projectId, entry.card.parent);
+          const parent = lookup(entry.card.projectId, entry.card.parent);
           if (parent === null || parent === undefined) {
+            stats.parentNotFound.push({ file: entry.file, identifier: entry.task.identifier, parent: entry.card.parent });
             stats.warnings.push(`${entry.file}: parent ${entry.card.parent} is not in this import`);
           } else if (parent.kind !== "epic") {
-            throw new DomainError("MD_PARSE_ERROR", {
-              message: `${entry.file}: parent ${entry.card.parent} is a ${parent.kind}; only an epic can be a parent`,
-              details: { file: entry.file, field: "parent" },
+            // §4.8 ③ / M5 ruling: a non-epic parent is a WARN + SKIP, never a
+            // thrown MD_PARSE_ERROR — one bad card must not sink the batch.
+            stats.parentSkipped.push({
+              file: entry.file,
+              identifier: entry.task.identifier,
+              parent: entry.card.parent,
+              parentKind: parent.kind,
             });
+            stats.warnings.push(
+              `${entry.file}: parent ${entry.card.parent} is a ${parent.kind}; only an epic can be a parent — the parent link was skipped`,
+            );
           } else {
-            repos.relations.insert({ type: "parent", source: parent.id, target: entry.task.id, now, origin: "md" });
-            stats.relations += 1;
+            insertRelation(repos, { type: "parent", source: parent.id, target: entry.task.id, now, origin: "md" }, entry, stats, "parent");
           }
         }
       }
@@ -331,11 +425,112 @@ export function importMd(input) {
         }
       }
 
+      // Pass 5: independent DB-invariant validation. The triggers already refuse
+      // a bad edge at insert time (caught per-edge above); this re-derives the
+      // same six rules from what actually landed and records any violation as a
+      // warning item — never a silent drop (card Comments ②).
+      for (const violation of validateBoardInvariants(db)) {
+        stats.invariantViolations.push(violation);
+        stats.warnings.push(
+          `board invariant ${violation.reason} on ${violation.identifier ?? violation.source}: ${violation.detail}`,
+        );
+      }
+
       stats.cards = parsed.length;
       return stats;
     },
     { op: "md.import" },
   );
+}
+
+/**
+ * Resolve one card's `project:` through the registry.
+ *
+ * @param {string} rawName the card's `project` value (already known non-empty)
+ * @param {{registry: object|null, createProject: boolean}} options
+ * @returns {{ok: true, projectId: string, name: string, workspacePath: string|null, meta: object, source: string, notice?: string}|{ok: false, warning: string}}
+ */
+function resolveProjectPlan(rawName, { registry, createProject }) {
+  if (registry !== null && registry !== undefined) {
+    const entry = registry.resolve(rawName);
+    if (entry !== null) {
+      return {
+        ok: true,
+        projectId: entry.id,
+        name: entry.name,
+        workspacePath: entry.workspacePath,
+        meta: entry.meta,
+        source: "registry",
+      };
+    }
+    if (createProject) {
+      const id = String(rawName).trim();
+      return {
+        ok: true,
+        projectId: id,
+        name: id,
+        workspacePath: null,
+        meta: {},
+        source: "created",
+        notice: `created project ${JSON.stringify(id)}: not in the registry, and --create-project was given`,
+      };
+    }
+    return {
+      ok: false,
+      warning: `project ${JSON.stringify(rawName)} is not a registered project name — the card was skipped (pass --create-project to create it)`,
+    };
+  }
+
+  // No registry: historical behaviour — the name *is* the id.
+  const id = String(rawName).trim();
+  return { ok: true, projectId: id, name: id, workspacePath: null, meta: {}, source: "legacy" };
+}
+
+/**
+ * Insert one relation, turning any invariant refusal into a warning instead of
+ * an abort — a real card that violates an invariant must be reported, not lost.
+ *
+ * @param {object} repos
+ * @param {{type: string, source: string, target: string, now: string, origin: string}} edge
+ * @param {object} entry
+ * @param {object} stats
+ * @param {string} field
+ */
+function insertRelation(repos, edge, entry, stats, field) {
+  try {
+    repos.relations.insert(edge);
+    stats.relations += 1;
+  } catch (err) {
+    const code = isDomainError(err) ? err.code : "RELATION_REJECTED";
+    stats.invariantViolations.push({
+      reason: code,
+      field,
+      file: entry.file,
+      identifier: entry.task.identifier,
+      source: edge.source,
+      target: edge.target,
+      detail: err.message,
+    });
+    stats.warnings.push(
+      `${entry.file}: the ${field} link was rejected (${code}) — recorded as a warning: ${err.message}`,
+    );
+  }
+}
+
+/**
+ * Re-derive the six relation invariants from the board as it now stands.
+ * @param {object} db
+ */
+function validateBoardInvariants(db) {
+  const tasks = db
+    .prepare("SELECT id, identifier, project_id, kind FROM tasks")
+    .all()
+    .map((row) => ({ id: row.id, identifier: row.identifier, projectId: row.project_id, kind: row.kind }));
+  const relations = db
+    .prepare("SELECT relation_type, source_task_id, target_task_id FROM task_relations")
+    .all()
+    .map((row) => ({ type: row.relation_type, source: row.source_task_id, target: row.target_task_id }));
+  return checkRelationInvariants({ tasks, relations }).violations;
 }
 
 /** Parse one card file into the shape the rest of the importer wants. */
@@ -448,21 +643,39 @@ function findExisting(repos, projectId, rel) {
   return rows.find((task) => task.sourcePath === rel) ?? null;
 }
 
-function ensureProject(repos, card, target, now) {
-  if (repos.projects.get(card.projectId) !== null) return;
-  const workspacePath = card.target ?? target;
+/**
+ * Create the project row for a card's plan, if it is not there yet.
+ *
+ * The workspace path is the registry's `root` when there is one (the registry is
+ * the source of truth for project metadata; the board is the authority), and the
+ * card's `target` otherwise. A card with neither, naming a project that does not
+ * exist, is still a hard error: there is no path to anchor the task to.
+ *
+ * @param {object} repos
+ * @param {{id: string, name: string, meta: object, source: string, workspacePath: string|null}} plan
+ * @param {object} card
+ * @param {string} now
+ * @param {object} stats
+ */
+function ensureProject(repos, plan, card, now, stats) {
+  if (repos.projects.get(plan.id) !== null) return;
+  const workspacePath = plan.workspacePath ?? card.target ?? null;
   if (workspacePath === null || workspacePath === undefined) {
     throw new DomainError("MD_PARSE_ERROR", {
-      message: `card ${card.identifier} has no 'target' and project ${card.projectId} does not exist yet`,
-      details: { field: "target", project: card.projectId },
+      message: `card ${card.identifier} has no 'target' and project ${plan.id} does not exist yet`,
+      details: { field: "target", project: plan.id },
     });
   }
   repos.projects.create({
-    id: card.projectId,
-    name: card.projectId,
+    id: plan.id,
+    name: plan.name,
     workspacePath,
+    meta: plan.meta ?? {},
     now,
   });
+  if (plan.source === "legacy") {
+    stats.notices.push(`auto-created project ${plan.id} from a card's 'project' value (no --projects registry given)`);
+  }
 }
 
 /** Event-driven dictionary upsert for the two names a card carries. */

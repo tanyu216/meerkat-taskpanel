@@ -57,6 +57,8 @@ const PLANNED = [
   "storage/md/import.mjs",
   "storage/md/export.mjs",
   "storage/md/migrate-cli.mjs",
+  "storage/md/project-registry.mjs",
+  "storage/md/invariants-check.mjs",
   "storage/secrets/token-store.mjs",
   "storage/secrets/runtime-pointer.mjs",
   "commands/context.mjs",

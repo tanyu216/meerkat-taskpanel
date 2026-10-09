@@ -25,6 +25,7 @@ import { resolveDbPath } from "../paths.mjs";
 import { createRepositories } from "../repositories/index.mjs";
 import { exportMd } from "./export.mjs";
 import { importMd, parseCard } from "./import.mjs";
+import { loadProjectRegistry } from "./project-registry.mjs";
 import { readdirSync } from "node:fs";
 
 const USAGE = `Usage: node src/core/storage/md/migrate-cli.mjs <command> [options]
@@ -40,6 +41,10 @@ Options:
   --db <path>        database file (default: $TASKD_DB or <dataDir>/board.sqlite)
   --project <id>     restrict to (or default to) a project id
   --target <path>    workspace path to use when a card has none
+  --projects <path>  project registry (projects.json) — resolve a card's
+                     'project' NAME to its id; store root/git rules in meta_json
+  --create-project   create a project for a name the registry does not have
+                     (without it, an unresolved name is a warning and a skip)
   --resume           accept a card whose content changed since it was imported
   --json             machine-readable output
   -h, --help         this text`;
@@ -51,8 +56,8 @@ Options:
  */
 export function parseArgs(argv) {
   const options = { command: null, json: false, resume: false };
-  const takesValue = new Set(["--dir", "--out", "--db", "--project", "--target"]);
-  const flagOnly = new Set(["--json", "--resume", "--help", "-h", "--dry-run"]);
+  const takesValue = new Set(["--dir", "--out", "--db", "--project", "--target", "--projects"]);
+  const flagOnly = new Set(["--json", "--resume", "--help", "-h", "--dry-run", "--create-project"]);
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -69,6 +74,7 @@ export function parseArgs(argv) {
       if (arg === "--json") options.json = true;
       else if (arg === "--resume") options.resume = true;
       else if (arg === "--dry-run") options.dryRun = true;
+      else if (arg === "--create-project") options.createProject = true;
       else options.help = true;
       continue;
     }
@@ -137,6 +143,7 @@ export async function main(argv, io = {}) {
     switch (options.command) {
       case "import": {
         requireOption(options, "dir");
+        const registry = options.projects === undefined ? null : loadProjectRegistry(options.projects);
         const board = await openBoard(options);
         db = board.db;
         const repos = createRepositories(db);
@@ -146,6 +153,8 @@ export async function main(argv, io = {}) {
           dir: options.dir,
           now,
           resume: options.resume,
+          registry,
+          createProject: options.createProject === true,
           ...(options.project === undefined ? {} : { projectId: options.project }),
           ...(options.target === undefined ? {} : { target: options.target }),
         });
@@ -157,6 +166,7 @@ export async function main(argv, io = {}) {
               `  comments ${result.comments} · sessions ${result.sessions} · reports ${result.reports} · ` +
               `relations ${result.relations} · activities ${result.activities}\n`,
           );
+          for (const notice of result.notices) stdout(`  note: ${notice}\n`);
           for (const warning of result.warnings) stdout(`  warning: ${warning}\n`);
         }
         return 0;

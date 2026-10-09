@@ -138,7 +138,7 @@ describe("md/import — statistics and behaviour", () => {
     }
   });
 
-  it("refuses a card with no id, no title, an unknown status or two targets", async () => {
+  it("refuses a card with no id, no title or an unknown status", async () => {
     assert.throws(() => parseCard(cardText({ id: '""' }), { file: "a.md" }), (err) => {
       assert.equal(err.code, "MD_PARSE_ERROR");
       assert.match(err.message, /needs an 'id'/);
@@ -152,20 +152,23 @@ describe("md/import — statistics and behaviour", () => {
     } finally {
       other.close();
     }
+  });
 
-    const twoTargets = await boardWithCards({
+  it("warns — but does not fail — when one project carries two targets (M5 ruling)", async () => {
+    // `target` is a project-level workspace path: a disagreement is a warning,
+    // and the first value seen wins, so the batch is never sunk by one card.
+    const board = await boardWithCards({
       "A.md": cardText({ id: "PROJ-0001", target: "/tmp/a" }),
       "B.md": cardText({ id: "PROJ-0002", target: "/tmp/b" }),
     });
     try {
-      assert.equal(
-        reasonCode(() => importMd({ db: twoTargets.db, repos: twoTargets.repos, dir: twoTargets.dir, now: TS })),
-        "MD_PARSE_ERROR",
-        "one project cannot have two workspace paths",
-      );
-      assert.equal(countRows(twoTargets.db, "tasks"), 0, "a hard error leaves nothing behind");
+      const stats = importMd({ db: board.db, repos: board.repos, dir: board.dir, now: TS });
+      assert.equal(stats.tasks, 2);
+      assert.equal(stats.warnings.length, 1);
+      assert.match(stats.warnings[0], /two different targets/);
+      assert.equal(board.repos.projects.get("proj").workspacePath, "/tmp/a");
     } finally {
-      twoTargets.close();
+      board.close();
     }
   });
 
