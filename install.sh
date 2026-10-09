@@ -8,10 +8,16 @@
 #
 # Usage:
 #   install.sh [--target claude|openclaw|codex|pi|all] [--prefix <home>]
-#              [--link] [--force] [--dry-run] [-h|--help]
+#              [--link] [--force] [--dry-run] [--skip-node-check] [-h|--help]
 #
 # `--target` also accepts a comma-separated list (e.g. `--target claude,codex`).
 # Default target is "all".
+#
+# Before dispatching, it checks the runtime: Node >= 22 is required (the engine
+# uses the built-in `node:sqlite` module), and a missing or older `node` is a hard
+# error — so a machine that cannot run the board never gets a "successful" install.
+# The check lives in scripts/install/_common.sh so a direct per-host run is guarded
+# too; `--skip-node-check` bypasses it.
 #
 # The installer is deterministic and offline: it writes the skill into each host's
 # skill directory and nothing else. It never starts a host CLI, so it behaves the same
@@ -28,6 +34,7 @@ PREFIX_HOME=""
 LINK=""
 FORCE=""
 DRY_RUN=""
+SKIP_NODE_CHECK=""
 
 usage() {
   cat <<'EOF'
@@ -42,7 +49,12 @@ Options:
   --link            Symlink the skill instead of copying it
   --force           Overwrite an existing installation
   --dry-run         Print the destination paths and change nothing
+  --skip-node-check Do not require Node (bypass the >= 22 runtime check)
   -h, --help        Show this help
+
+Requires Node >= 22 (the engine uses the built-in node:sqlite module).
+The check runs before anything is installed; a missing or older `node` is an
+error. Pass --skip-node-check to bypass it.
 
 Destinations:
   claude     <home>/.claude/skills/task-panel
@@ -55,6 +67,8 @@ Environment (set for each host installer):
   TASKPANEL_LINK         symlink instead of copy
   TASKPANEL_FORCE        overwrite an existing destination
   TASKPANEL_DRY_RUN      print only, change nothing
+  TASKPANEL_MIN_NODE     required Node major (default 22)
+  TASKPANEL_SKIP_NODE_CHECK  "1" to skip the Node version check
 EOF
 }
 
@@ -95,6 +109,10 @@ while [ "$#" -gt 0 ]; do
       DRY_RUN="1"
       shift
       ;;
+    --skip-node-check)
+      SKIP_NODE_CHECK="1"
+      shift
+      ;;
     -h | --help)
       usage
       exit 0
@@ -106,6 +124,20 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
+
+# Runtime floor, before anything is dispatched. The same check the per-host scripts
+# run (from scripts/install/_common.sh); doing it here first means one message appears
+# before any "install.sh: <host>" line, and --skip-node-check resolves in one place.
+# Only builtins are used, so a PATH with no node still reaches a clear message.
+SKIP_NODE_CHECK="${SKIP_NODE_CHECK:-${TASKPANEL_SKIP_NODE_CHECK:-}}"
+[ -f "$ROOT/scripts/install/_common.sh" ] || die "missing installer helper: $ROOT/scripts/install/_common.sh"
+. "$ROOT/scripts/install/_common.sh"
+if [ "$SKIP_NODE_CHECK" = "1" ]; then
+  echo "install.sh: --skip-node-check — not checking the Node version"
+elif ! require_node; then
+  echo "install.sh: aborting (re-run with --skip-node-check to bypass this check)." >&2
+  exit 2
+fi
 
 # Normalize: split the target list on commas, drop blanks, keep first occurrences.
 [ -n "$TARGET" ] || TARGET="all"
@@ -169,6 +201,7 @@ FAIL $host — installer not found"
       TASKPANEL_LINK="$LINK" \
       TASKPANEL_FORCE="$FORCE" \
       TASKPANEL_DRY_RUN="$DRY_RUN" \
+      TASKPANEL_SKIP_NODE_CHECK="1" \
       bash "$installer"; then
     summary="$summary
 OK   $host — $TARGET_HOME"

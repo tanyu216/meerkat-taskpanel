@@ -105,6 +105,18 @@ task-panel/
 └── dist/                         # 构建产物（gitignored）
 ```
 
+## 环境要求
+
+- **Node >= 22** —— 运行时的最低要求。引擎通过内置的
+  [`node:sqlite`](https://nodejs.org/api/sqlite.html) 模块持久化到本地 SQLite 数据库，
+  该模块自 Node 22.x 起才提供。`install.sh` 会在**安装之前**检查，缺 `node` 或版本过低时
+  明确报错退出（`--skip-node-check` 可绕过）；`taskctl` / MCP 入口在过低运行时也会直接
+  拒绝启动，而不是延迟到某条命令中途才崩。
+- **运行时零依赖、无需网络** —— `src/` 下全部只用 Node 内置模块，完全离线可用。
+- **`web/` 仅构建期** —— 看板前端的 devDependencies（Vue 3 + Vite + Tailwind + daisyUI）
+  在构建前端时从随仓库提交的 `web/.vendor/npm-cache` 离线安装。交付产物是 `taskd` 所
+  提供的静态 `web/dist`；该工具链不会进入运行时。
+
 ## 安装
 
 ```bash
@@ -128,7 +140,8 @@ OpenClaw 也可消费 Claude 格式的 bundle（`plugins/claude`），这是受�
 [`docs/install.md`](docs/install.md#openclaw)。
 
 常用参数：`--prefix <home>`（覆盖目标 home）、`--link`（软链而非拷贝）、`--force`
-（覆盖已存在目标）、`--dry-run`（只打印落点，不做任何改动）。
+（覆盖已存在目标）、`--dry-run`（只打印落点，不做任何改动）、`--skip-node-check`
+（跳过 Node >= 22 检查）。
 
 ## 实践指南
 

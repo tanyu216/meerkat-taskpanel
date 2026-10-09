@@ -2,8 +2,11 @@
 /**
  * `taskctl` — the entry point (§M2).
  *
- * The whole program is four steps, in this order:
+ * The whole program is five steps, in this order:
  *
+ *   0. **preflight** — refuse a runtime older than Node 22 (see
+ *      `shared/node-version.mjs`), so a too-old Node fails here, loudly, rather
+ *      than deep inside a command when `node:sqlite` is finally imported;
  *   1. **parse** — `argv.mjs`, which refuses anything malformed as `CLI_USAGE`;
  *   2. **answer `--help` / `--version`** — before any board is contacted, so
  *      help works on a machine with no board and no data directory;
@@ -20,6 +23,7 @@ import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 import { CLI_EXIT } from "../shared/constants.mjs";
+import { isSupportedNode, unsupportedNodeMessage } from "../shared/node-version.mjs";
 import { redactText } from "../shared/redact.mjs";
 import { resolveActor } from "../shared/transport/actor.mjs";
 import { parseArgv } from "./argv.mjs";
@@ -172,6 +176,13 @@ export async function run(argv, io) {
 const invokedDirectly =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (invokedDirectly) {
+  // Step 0: the runtime floor. Exit 2 (the "cannot run as invoked" code, shared
+  // with `install.sh`) and one clear line — never a stack trace from node:sqlite.
+  if (!isSupportedNode(process.versions.node)) {
+    process.stderr.write(`${unsupportedNodeMessage(process.versions.node, { bin: "taskctl" })}\n`);
+    process.exit(CLI_EXIT.USAGE);
+  }
+
   const code = await run(process.argv.slice(2), {
     stdout: (text) => process.stdout.write(text),
     stderr: (text) => process.stderr.write(text),

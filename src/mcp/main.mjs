@@ -32,6 +32,7 @@
 import { pathToFileURL } from "node:url";
 
 import { CLI_EXIT } from "../shared/constants.mjs";
+import { isSupportedNode, unsupportedNodeMessage } from "../shared/node-version.mjs";
 import { createLineFramer } from "./protocol.mjs";
 import { invalidParams } from "./result.mjs";
 import { createMcpServer } from "./server.mjs";
@@ -170,5 +171,11 @@ export async function main(argv = process.argv.slice(2)) {
 // without starting a server — the same pattern `src/cli/index.mjs` uses.
 const invokedDirectly = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (invokedDirectly) {
+  // The runtime floor, before a byte of JSON-RPC is read. The message goes to
+  // stderr (stdout is the JSON-RPC channel and must stay empty on a fatal start).
+  if (!isSupportedNode(process.versions.node)) {
+    process.stderr.write(`${unsupportedNodeMessage(process.versions.node, { bin: "taskpanel-mcp" })}\n`);
+    process.exit(CLI_EXIT.USAGE);
+  }
   process.exit(await main());
 }

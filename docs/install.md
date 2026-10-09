@@ -42,7 +42,7 @@ The repository-root Claude marketplace `.claude-plugin/marketplace.json` points 
 
 ```text
 install.sh [--target claude|openclaw|codex|pi|all] [--prefix <home>]
-           [--link] [--force] [--dry-run] [-h|--help]
+           [--link] [--force] [--dry-run] [--skip-node-check] [-h|--help]
 ```
 
 | Flag | Effect |
@@ -52,6 +52,14 @@ install.sh [--target claude|openclaw|codex|pi|all] [--prefix <home>]
 | `--link` | Symlink the skill instead of copying it — edits to the repo take effect immediately. Recommended for a checkout. |
 | `--force` | Overwrite an existing installation. Without it, an existing destination is an error (so a re-run never silently clobbers local edits). |
 | `--dry-run` | Print the destination paths and change nothing. |
+| `--skip-node-check` | Skip the Node version check (see below). |
+
+Before dispatching, `install.sh` requires **Node >= 22** — the engine stores to SQLite
+through the built-in `node:sqlite` module, which the 22.x line is the first to ship. A
+missing or older `node` is a hard error (`exit 2`), so a machine that cannot run the board
+never gets a "successful" install; `--skip-node-check` bypasses the check. The same check
+runs from `scripts/install/_common.sh`, so a direct `scripts/install/<host>.sh` invocation
+is guarded too.
 
 `install.sh` is a thin dispatcher: it parses the flags once, then runs
 `scripts/install/<host>.sh` for each host and prints a per-host summary. It exits
@@ -255,6 +263,9 @@ Nothing is written outside those directories, and nothing is sent over the netwo
 
 ## Troubleshooting
 
+- **`no 'node' on PATH` / `Node vNN.x is too old`** — Task Panel needs **Node >= 22**
+  (the engine uses the built-in `node:sqlite` module). Install or upgrade Node and re-run;
+  `--skip-node-check` bypasses the check if you know what you are doing.
 - **`destination already exists`** — an install is already present. Re-run with
   `--force` to overwrite, or remove the directory first if you want to keep local edits.
 - **`skill source not found`** — run `install.sh` from this checkout (it resolves

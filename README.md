@@ -139,6 +139,21 @@ task-panel/
 └── dist/                         # build output (gitignored)
 ```
 
+## Requirements
+
+- **Node >= 22** — the runtime floor. The engine persists to a local SQLite database
+  through the built-in [`node:sqlite`](https://nodejs.org/api/sqlite.html) module, which
+  the 22.x line is the first to ship. `install.sh` checks this **before** installing and
+  fails loudly when `node` is missing or older (`--skip-node-check` bypasses it), and the
+  `taskctl` / MCP entry points refuse to start on an older runtime instead of failing
+  later, mid-command.
+- **Runtime zero-dependency, no network** — everything under `src/` uses Node builtins
+  only and works fully offline.
+- **`web/` is build-time only** — the board frontend's devDependencies (Vue 3 + Vite +
+  Tailwind + daisyUI) are installed offline from the committed `web/.vendor/npm-cache`
+  when the frontend is built. The shipped artefact is the static `web/dist` that `taskd`
+  serves; nothing from that toolchain reaches the runtime.
+
 ## Install
 
 ```bash
@@ -164,7 +179,7 @@ skill-only route; `plugins/openclaw/openclaw.plugin.json` is a *native* manifest
 
 Useful flags: `--prefix <home>` (override the target home), `--link` (symlink instead of
 copy), `--force` (overwrite an existing destination), `--dry-run` (print destinations and
-change nothing).
+change nothing), `--skip-node-check` (bypass the Node >= 22 check).
 
 ## Practice guide
 
