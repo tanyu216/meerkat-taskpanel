@@ -17,6 +17,13 @@ import { createProjectOpen, createTaskOpen, filtersOpen, setView, toggleFilters,
 const projects = computed(() => board.projects);
 const currentName = computed(() => board.projects.find((p) => p.id === board.currentProjectId)?.name ?? "—");
 
+// The view-toggle glyphs, matching the prototype's B02 tabs (board = bars,
+// list = rules). At ≤759px only these show — the label text is dropped.
+const viewIcons = {
+  board: "M4 5h4v14H4zM10 5h4v9h-4zM16 5h4v11h-4z",
+  list: "M4 6h16M4 12h16M4 18h16",
+};
+
 function switchProject(id) {
   if (id !== board.currentProjectId) selectProject(id);
 }
@@ -80,30 +87,36 @@ function switchProject(id) {
       {{ $t("filters.label") }}
     </button>
 
-    <div class="tabs tabs-box" data-view-toggle role="group" :aria-label="$t('topbar.view')">
+    <div class="tabs tabs-box td-tabs" data-view-toggle role="group" :aria-label="$t('topbar.view')">
       <button
         v-for="mode in ['board', 'list']"
         :key="mode"
         type="button"
-        class="tab"
+        class="tab td-tab"
         :data-view="mode"
         :aria-pressed="view === mode ? 'true' : 'false'"
         @click="setView(mode)"
       >
-        {{ $t(`topbar.view.${mode}`) }}
+        <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path :d="viewIcons[mode]" />
+        </svg>
+        <span class="td-view-toggle-label">{{ $t(`topbar.view.${mode}`) }}</span>
       </button>
     </div>
 
     <div class="td-topbar-actions">
       <span class="td-revision" data-revision>
         <span class="td-live-dot" :data-connection="board.connection" aria-hidden="true"></span>
-        <span data-i18n="topbar.live">{{ $t("topbar.live") }}</span>
+        <span class="td-revision-text" data-i18n="topbar.live">{{ $t("topbar.live") }}</span>
         <span class="td-mono" data-revision-label :title="$t('topbar.revision.title')">
-          rev <span data-revision-value>{{ board.revision }}</span>
+          <span class="td-revision-text">rev</span> <span data-revision-value>{{ board.revision }}</span>
         </span>
       </span>
-      <button type="button" class="btn btn-primary btn-sm" data-new-task :data-i18n="'topbar.newTask'" @click="createTaskOpen = true">
-        {{ $t("topbar.newTask") }}
+      <button type="button" class="btn btn-primary btn-sm gap-2" data-new-task :data-i18n="'topbar.newTask'" @click="createTaskOpen = true">
+        <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+        <span class="td-new-task-label">{{ $t("topbar.newTask") }}</span>
       </button>
     </div>
   </header>

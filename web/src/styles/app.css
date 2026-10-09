@@ -50,6 +50,26 @@ body {
 .td-muted { color: var(--brand-text-2); }
 .td-weak { color: var(--brand-text-3); }
 
+/* Line icons — the topbar's compact controls and the sidebar rail. One shape,
+   stroke `currentColor`, so a wrapper's colour is the icon's colour. */
+.td-icon,
+svg.td-side-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.td-icon-sm { width: 14px; height: 14px; }
+
+/* The rail chip: a nav/states `<svg>`, or a project row's letter monogram
+   `<span>` (which desktop hides — the row shows the full name instead). */
+.td-side-icon { flex: none; font-size: 10px; font-weight: 600; letter-spacing: 0.02em; }
+span.td-side-icon { display: none; }
+
 /* ------------------------------------------------------------------ shell */
 
 .td-shell {
@@ -66,20 +86,25 @@ body {
 .td-topbar {
   grid-area: topbar;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
+  min-width: 0;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
   border-bottom: var(--border) solid var(--brand-border);
   background: var(--brand-surface);
 }
+/* The view toggle is a daisyUI `tabs-box`, which is taller than the prototype's
+   32px control and would inflate the whole bar; cap it to the baseline height. */
+.td-topbar .tabs { height: 32px; min-height: 32px; }
+.td-topbar .tab { height: 100%; gap: var(--space-1); }
 
 .td-sidebar {
   grid-area: sidebar;
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  width: 232px;
+  width: 248px;
   padding: var(--space-3);
   overflow-y: auto;
   border-right: var(--border) solid var(--brand-border);
@@ -96,7 +121,7 @@ body {
 .td-brand-name { font-weight: var(--weight-semibold); }
 .td-brand-sub { font-size: var(--text-12); color: var(--brand-text-3); }
 
-.td-search { flex: 1 1 200px; max-width: 340px; }
+.td-search { flex: 1 1 200px; min-width: 0; max-width: 340px; }
 .td-input {
   width: 100%;
   padding: var(--space-1) var(--space-2);
@@ -417,11 +442,55 @@ body {
 
 /* ------------------------------------------------------------ responsive */
 
+/* ≤1023px — the sidebar collapses to an icon rail. Every text label is dropped
+   (so nothing can be clipped by the narrow box) and the rail keeps a glyph per
+   row: the nav/states `<svg>`, a project's letter monogram chip, an agent's
+   presence dot. Mirrors the prototype `tw.css` at the same breakpoint. */
 @media (max-width: 1023px) {
-  .td-sidebar { width: 64px; padding: var(--space-2) 4px; }
-  .td-sidebar .td-side-label, .td-sidebar .td-side-name, .td-sidebar .td-side-text,
-  .td-sidebar .td-project-count, .td-sidebar .td-order-score,
-  .td-sidebar .td-legend, .td-sidebar .td-agent-row .td-side-name { display: none; }
+  .td-sidebar { width: 64px; padding: var(--space-2) 4px; align-items: center; }
+  .td-sidebar .td-side-label,
+  .td-sidebar .td-side-text,
+  .td-sidebar .td-side-name,
+  .td-sidebar .td-count,
+  .td-sidebar .td-order-score,
+  .td-sidebar .td-legend,
+  .td-sidebar .td-agent-badge { display: none; }
+  .td-sidebar .td-side-item { justify-content: center; padding: 0; }
+  .td-sidebar .td-side-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 24px;
+    height: 24px;
+    color: var(--brand-text-2);
+    background: var(--brand-surface);
+    border: var(--border) solid var(--brand-border);
+    border-radius: var(--radius-field);
+  }
+  .td-sidebar .td-side-item[aria-current="page"] .td-side-icon {
+    color: var(--color-primary);
+    background: var(--brand-active);
+    border-color: transparent;
+  }
+  .td-sidebar .td-agent-row { justify-content: center; }
+}
+@media (max-width: 979px) {
+  .td-brand-name, .td-brand-sub { display: none; }
+}
+/* ≤779px — the bar is allowed to fold (the prototype opens its 760–779px band
+   for exactly this), so ≥780px it stays one row with the search shrinking as the
+   prototype's does. */
+@media (max-width: 779px) {
+  .td-topbar { flex-wrap: wrap; height: auto; }
+}
+/* ≤759px — the bar folds into glyphs: search takes a full row of its own
+   (order 10) and the remaining controls drop their labels. */
+@media (max-width: 759px) {
+  .td-search { order: 10; flex: 1 1 100%; max-width: none; }
+  .td-topbar .td-divider-v { display: none; }
+  .td-revision-text, .td-new-task-label, .td-view-toggle-label { display: none; }
+  .td-revision { padding: 0 var(--space-2); }
 }
 @media (max-width: 560px) {
   .td-sidebar { width: 56px; }

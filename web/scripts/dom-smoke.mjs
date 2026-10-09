@@ -66,6 +66,26 @@ function fixture(projectId, status, overrides = {}) {
   };
 }
 
+/** The agents/humans a card can be assigned to, with their platform dictionary. */
+const AGENT = {
+  claude: { id: "a1", display_name: "linus", kind: "agent" },
+  codex: { id: "a2", display_name: "jobs", kind: "agent" },
+  openclaw: { id: "a3", display_name: "elon", kind: "agent" },
+  pi: { id: "a4", display_name: "assistant", kind: "agent" },
+  human: { id: "h1", display_name: "Terry", kind: "human" },
+};
+
+/**
+ * Fixture data for the demo board.
+ *
+ * The board is a kanban over seven statuses, so the sample must put a card in
+ * **every** column — otherwise a column's visual (its dot, count, stripe) has no
+ * render to compare. Beyond that it deliberately covers the contract's
+ * dimensions: a human card beside the agent cards (B07 identity), all four agent
+ * platforms (B03 presence / B07 badge), five labels and five priorities. Counts
+ * here are fixture data, never asserted — the 99 browser-layer rules assert
+ * structure, not how many rows this function returns.
+ */
 export function fixtureApi() {
   const mk = (id, name) => ({
     id,
@@ -83,21 +103,34 @@ export function fixtureApi() {
     { id: "p1", name: "TaskPanel", order: 1, total: 0.9, archived: false },
     { id: "p2", name: "Orchestrator", order: 2, total: 0.4, archived: false },
   ];
+  // 12 cards, all in the default project (p1), covering the seven statuses.
   const tasks = [
-    fixture("p1", "todo", { identifier: "TD-1", title: "Wire the board", priority: "high" }),
-    fixture("p1", "in_progress", { identifier: "TD-2", title: "Fix the renderer", priority: "urgent", labels: ["bug", "ui"], assignee: { id: "a2", display_name: "jobs", kind: "agent" } }),
-    fixture("p1", "done", { identifier: "TD-3", title: "Ship it", priority: "low", labels: [], assignee: { id: "h1", display_name: "Terry", kind: "human" } }),
-    fixture("p1", "blocked", { identifier: "TD-4", title: "Waiting on review", priority: "none", assignee: { id: "a3", display_name: "elon", kind: "agent" } }),
+    fixture("p1", "backlog", { identifier: "TD-1", title: "Draft the onboarding copy", priority: "low", labels: ["design"], assignee: AGENT.pi }),
+    fixture("p1", "backlog", { identifier: "TD-2", title: "Collect the install survey", priority: "none", labels: [], assignee: AGENT.human }),
+    fixture("p1", "todo", { identifier: "TD-3", title: "Wire the board", priority: "high", labels: ["bug"], assignee: AGENT.claude }),
+    fixture("p1", "todo", { identifier: "TD-4", title: "Polish the empty states", priority: "medium", labels: ["ui"], assignee: AGENT.codex }),
+    fixture("p1", "in_progress", { identifier: "TD-5", title: "Fix the renderer", priority: "urgent", labels: ["bug", "ui"], assignee: AGENT.codex }),
+    fixture("p1", "in_progress", { identifier: "TD-6", title: "Profile the board scroll", priority: "high", labels: ["perf"], assignee: AGENT.claude }),
+    fixture("p1", "in_review", { identifier: "TD-7", title: "Audit the token store", priority: "medium", labels: ["security"], assignee: AGENT.openclaw }),
+    fixture("p1", "in_review", { identifier: "TD-8", title: "Redesign the sidebar rail", priority: "low", labels: ["design", "ui"], assignee: AGENT.pi }),
+    fixture("p1", "blocked", { identifier: "TD-9", title: "Waiting on review", priority: "high", labels: ["bug"], assignee: AGENT.claude }),
+    fixture("p1", "done", { identifier: "TD-10", title: "Ship the CLI", priority: "low", labels: [], assignee: AGENT.human }),
+    fixture("p1", "canceled", { identifier: "TD-11", title: "Drop the legacy importer", priority: "none", labels: ["perf"], assignee: AGENT.openclaw }),
+    fixture("p1", "done", { identifier: "TD-12", title: "Lock down the webhooks", priority: "medium", labels: ["security", "design"], assignee: AGENT.pi }),
   ];
   const entries = [
     { id: "a1", kind: "agent", display_name: "linus", normalized_name: "linus", platform: "claude" },
     { id: "a2", kind: "agent", display_name: "jobs", normalized_name: "jobs", platform: "codex" },
     { id: "a3", kind: "agent", display_name: "elon", normalized_name: "elon", platform: "openclaw" },
+    { id: "a4", kind: "agent", display_name: "assistant", normalized_name: "assistant", platform: "pi" },
     { id: "h1", kind: "human", display_name: "Terry", normalized_name: "terry", platform: null },
   ];
   const labels = [
     { id: "l1", project_id: "p1", norm: "bug", display_name: "bug", color: null },
     { id: "l2", project_id: "p1", norm: "ui", display_name: "ui", color: null },
+    { id: "l3", project_id: "p1", norm: "design", display_name: "design", color: null },
+    { id: "l4", project_id: "p1", norm: "perf", display_name: "perf", color: null },
+    { id: "l5", project_id: "p1", norm: "security", display_name: "security", color: null },
   ];
   return { projects, orderDebug, tasks, entries, labels };
 }

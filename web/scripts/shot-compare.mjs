@@ -141,6 +141,43 @@ function collectClipped() {
   return [...found].sort();
 }
 
+/**
+ * `collectClipped` scoped to one subtree, the root included. Used for the
+ * sidebar rail parity check: the prototype's rail clips nothing, so any clipped
+ * key the implementation's rail owns and the prototype's does not is a rail that
+ * is hiding text instead of dropping it.
+ */
+function collectClippedWithin(selector) {
+  const root = document.querySelector(selector);
+  if (!root) return [];
+  const found = new Set();
+  for (const el of [root, ...root.querySelectorAll("*")]) {
+    const cs = getComputedStyle(el);
+    if (cs.display === "none" || cs.visibility === "hidden") continue;
+    if (cs.overflowX === "visible" && cs.overflowY === "visible") continue;
+    if (el.clientWidth <= 2 || el.clientHeight <= 2) continue;
+    if (el.scrollWidth <= el.clientWidth + 1) continue;
+    const classes = Array.from(el.classList).slice(0, 2).join(".");
+    found.add(`${el.tagName.toLowerCase()}${classes ? `.${classes}` : ""}`);
+  }
+  return [...found].sort();
+}
+
+/**
+ * The two boxes O1/O3 are about: the top bar's height (a bar that has folded to
+ * more rows than the prototype) and the sidebar's width (the rail must be the
+ * same width as the prototype's). Runs in the page.
+ */
+function measureGeometry() {
+  const box = (selector) => {
+    const el = document.querySelector(selector);
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    return { width: Math.round(rect.width), height: Math.round(rect.height) };
+  };
+  return { topbar: box("[data-topbar]"), sidebar: box("[data-sidebar]") };
+}
+
 /** Attach the zero-error collectors every capture shares. */
 function watchErrors(page, sink) {
   page.on("console", (msg) => {
@@ -175,9 +212,11 @@ async function shootImplementation(browser, url, combo, width, outDir) {
     const overflow = await page.evaluate(measureOverflow);
     const state = await page.evaluate(readDocState);
     const clipped = await page.evaluate(collectClipped);
+    const geometry = await page.evaluate(measureGeometry);
+    const sidebarClipped = await page.evaluate(collectClippedWithin, "[data-sidebar]");
     const file = join(outDir, `impl-${combo.id}-${width}.png`);
     await page.screenshot({ path: file });
-    return { file, overflow, state, clipped, errors };
+    return { file, overflow, state, clipped, geometry, sidebarClipped, errors };
   } finally {
     await context.close();
   }
@@ -214,9 +253,11 @@ async function shootPrototype(browser, combo, width, outDir) {
     const overflow = await page.evaluate(measureOverflow);
     const state = await page.evaluate(readDocState);
     const clipped = await page.evaluate(collectClipped);
+    const geometry = await page.evaluate(measureGeometry);
+    const sidebarClipped = await page.evaluate(collectClippedWithin, "[data-sidebar]");
     const file = join(outDir, `proto-${combo.id}-${width}.png`);
     await page.screenshot({ path: file });
-    return { file, overflow, state, clipped, errors };
+    return { file, overflow, state, clipped, geometry, sidebarClipped, errors };
   } finally {
     await context.close();
   }
@@ -308,6 +349,7 @@ async function main(opts) {
   const captureErrors = { implementation: [], prototype: [] };
   const problems = [];
   const layoutDivergences = [];
+  const geometryParity = [];
 
   const { server, port } = await startServer();
   try {
@@ -339,6 +381,39 @@ async function main(opts) {
           if (implementationOnly.length || prototypeOnly.length) {
             layoutDivergences.push({ combination: combo.id, width, implementationOnly, prototypeOnly });
           }
+
+          // --- geometric parity (O1/O3) — gating, unlike the probe above ----
+          // The probe above reports *asymmetry* non-gating; these three compare
+          // the boxes the two observations are about and fail the run on a miss:
+          //   * the top bar may not have folded to more rows than the prototype
+          //     (O3) — a row costs ~30px, so an 8px ceiling catches a fold;
+          //   * the sidebar rail must be the prototype's width (O1);
+          //   * the sidebar must clip nothing the prototype does not — a rail
+          //     that hides text by clipping it rather than dropping it (O1).
+          const protoTopbar = prototypeShot.geometry.topbar?.height ?? null;
+          const implTopbar = implementationShot.geometry.topbar?.height ?? null;
+          const protoRail = prototypeShot.geometry.sidebar?.width ?? null;
+          const implRail = implementationShot.geometry.sidebar?.width ?? null;
+          const sidebarImplementationOnly = implementationShot.sidebarClipped.filter((s) => !prototypeShot.sidebarClipped.includes(s));
+
+          if (implTopbar !== null && protoTopbar !== null && implTopbar > protoTopbar + 8) {
+            problems.push(`${combo.id}@${width}: topbar folded — impl ${implTopbar}px > proto ${protoTopbar}px + 8px`);
+          }
+          if (implRail !== null && protoRail !== null && Math.abs(implRail - protoRail) > 2) {
+            problems.push(`${combo.id}@${width}: sidebar width ${implRail}px != proto ${protoRail}px (±2)`);
+          }
+          if (sidebarImplementationOnly.length) {
+            problems.push(`${combo.id}@${width}: sidebar clips content the prototype does not — ${sidebarImplementationOnly.join(", ")}`);
+          }
+
+          geometryParity.push({
+            combination: combo.id,
+            width,
+            topbarHeight: { implementation: implTopbar, prototype: protoTopbar },
+            sidebarWidth: { implementation: implRail, prototype: protoRail },
+            sidebarClipped: { implementation: implementationShot.sidebarClipped, prototype: prototypeShot.sidebarClipped },
+            sidebarImplementationOnly,
+          });
 
           matrix.push({
             combination: combo.id,
@@ -385,6 +460,7 @@ async function main(opts) {
     shots: matrix,
     captureErrors,
     layoutDivergences,
+    geometryParity,
     problems,
     machineCheck: machine && {
       rules: { total: machine.counts.rules, failed: machine.counts.failed, expected: BROWSER_LAYER_RULES.length },
@@ -429,6 +505,14 @@ function printSummary(report) {
       `  ${shot.combination}@${shot.width}  proto ${flag(shot.prototype.overflow)}  impl ${flag(shot.implementation.overflow)}` +
         `  (${shot.implementation.state.columns} cols, ${shot.implementation.state.cards} cards, data-theme-mode=${shot.implementation.state.themeMode}, lang=${shot.implementation.state.lang})`,
     );
+  }
+  console.log("");
+  console.log("── geometric parity (gating: topbar rows · rail width · rail clipping) ──");
+  for (const g of report.geometryParity) {
+    const t = `topbar ${g.topbarHeight.implementation}/${g.topbarHeight.prototype}`;
+    const r = `rail ${g.sidebarWidth.implementation}/${g.sidebarWidth.prototype}`;
+    const clip = g.sidebarImplementationOnly.length ? `  ✗ impl-only clipped: ${g.sidebarImplementationOnly.join(", ")}` : "";
+    console.log(`  ${g.combination}@${g.width}  ${t}  ${r} (impl/proto)${clip}`);
   }
   console.log("");
   console.log("── prototype ↔ implementation layout divergences ──────────");

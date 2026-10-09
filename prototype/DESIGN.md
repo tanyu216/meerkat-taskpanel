@@ -263,7 +263,7 @@ and their token tables do not match. The rule applied here:
 2. `design-style-guide.md` for **all visual values** — colour, type, spacing,
    radius, shadow, motion, component states, a11y (it is explicitly scoped to
    "本卡 = prototype/ v1 高保真原型" and frozen);
-3. `design-spec.md` for **structure and behaviour** — block inventory B01–B16,
+3. `design-spec.md` for **structure and behaviour** — block inventory B01–B25,
    `data-*` hooks, content requirements, interactions I1–I12, coverage §7, purity §8.
 
 | # | Item | design-style-guide.md | design-spec.md | Implemented |

@@ -13,15 +13,25 @@ import { computed, ref } from "vue";
 
 import { board, selectProject, STATUSES, PRIORITIES } from "../../stores/board.js";
 import { accessOpen, statesOpen, view, setView } from "../../stores/ui.js";
+import { initialsOf } from "../../lib/monogram.js";
 
 import SidebarFooter from "./SidebarFooter.vue";
 
 const nav = ["board", "list", "activity"];
 
+// The rail glyph of each view, matching the prototype's B03 nav icons: board =
+// three bars, list = three rules, activity = a clock.
+const navIcons = {
+  board: "M4 5h4v14H4zM10 5h4v9h-4zM16 5h4v11h-4z",
+  list: "M4 6h16M4 12h16M4 18h16",
+  activity: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 7v5l3 2",
+};
+
 const projects = computed(() =>
   board.projects.map((project, index) => ({
     id: project.id,
     name: project.name,
+    initials: initialsOf(project.name),
     count: board.currentProjectId === project.id ? board.tasks.length : null,
     rank: index + 1,
     score: board.orderDebug[project.id]?.total ?? 0,
@@ -68,10 +78,12 @@ function onNav(item) {
         class="td-side-item"
         :data-nav-item="item"
         :aria-current="view === item ? 'page' : undefined"
-        :data-i18n="`nav.${item}`"
         @click="onNav(item)"
       >
-        {{ $t(`nav.${item}`) }}
+        <svg class="td-side-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path :d="navIcons[item]" />
+        </svg>
+        <span class="td-side-text" :data-i18n="`nav.${item}`">{{ $t(`nav.${item}`) }}</span>
       </button>
     </nav>
 
@@ -90,9 +102,10 @@ function onNav(item) {
           :aria-current="project.id === board.currentProjectId ? 'page' : undefined"
           @click="selectProject(project.id)"
         >
+          <span class="td-side-icon td-mono" aria-hidden="true">{{ project.initials }}</span>
           <span class="td-side-name td-mono">{{ project.name }}</span>
           <span class="td-order-score td-mono" :title="scoreLabel(project)">{{ project.score }}</span>
-          <span v-if="project.count !== null" class="badge badge-sm td-mono">{{ project.count }}</span>
+          <span v-if="project.count !== null" class="badge badge-sm td-mono td-count">{{ project.count }}</span>
         </button>
       </div>
     </section>
@@ -101,8 +114,8 @@ function onNav(item) {
       <h2 class="td-side-label" data-i18n="sidebar.agents">{{ $t("sidebar.agents") }}</h2>
       <div data-agents-presence>
         <div v-for="agent in agents" :key="agent.platform" class="td-agent-row">
-          <span class="badge badge-xs td-mono" :data-agent-platform="agent.platform">{{ agent.platform }}</span>
-          <span class="td-side-name td-mono">{{ agent.handles.join(", ") }}</span>
+          <span class="badge badge-xs td-mono td-agent-badge" :data-agent-platform="agent.platform">{{ agent.platform }}</span>
+          <span class="td-side-name td-agent-text td-mono">{{ agent.handles.join(", ") }}</span>
           <span
             class="td-presence"
             :data-presence="agent.presence"
@@ -127,8 +140,11 @@ function onNav(item) {
       </div>
     </section>
 
-    <button type="button" class="td-side-item" data-states-open :data-i18n="'sidebar.states'" @click="statesOpen = true">
-      {{ $t("sidebar.states") }}
+    <button type="button" class="td-side-item" data-states-open @click="statesOpen = true">
+      <svg class="td-side-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M4 5h6v6H4zM14 5h6v3h-6zM4 15h6v4H4zM14 12h6v7h-6z" />
+      </svg>
+      <span class="td-side-text" :data-i18n="'sidebar.states'">{{ $t("sidebar.states") }}</span>
     </button>
 
     <SidebarFooter />

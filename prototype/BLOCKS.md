@@ -8,6 +8,14 @@ Counts in the current build, measured in the live DOM: **7 columns · 18 cards �
 15 agent-session · 11 attachments · 9 relations) · **252 `data-i18n*` hooks** in the
 shipped document · **198 catalogue keys, `en` and `zh` in exact parity.**
 
+**"35 blocks" means 35 *contract entries*, not 35 DOM blocks.** The DOM block
+inventory is **B01–B25** (25 entries; B20/B21 are retired and kept only as
+tombstones). The other ten are the cross-cutting **consistency items C01–C10** in
+`test/web/blocks.contract.mjs` — assertions that span many blocks (colour maps,
+layering, i18n parity) and therefore own no DOM element of their own. So
+**35 = B01–B25 (25) + C01–C10 (10)**; only the B-series appears as section
+headings below.
+
 ---
 
 ## B01 · App shell
