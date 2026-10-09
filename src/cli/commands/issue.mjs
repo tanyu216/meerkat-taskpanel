@@ -223,20 +223,31 @@ export const COMMANDS = [
   {
     name: "move",
     summary: "Move a task to another status (this is where the delivery gate bites).",
-    usage: 'issue move <id|identifier> <status> [--no-report --reason "<why>"]',
+    usage: 'issue move <id|identifier> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"]',
     positionals: [
       { name: "ref", summary: "Task id or identifier." },
       { name: "to", summary: "Target status." },
     ],
     flags: [
       { flag: "no-report", key: "noReport", as: "boolean", summary: "Waive the report for this round (needs --reason)." },
-      { flag: "reason", key: "reason", as: "string", value: "<why>", summary: "Why this delivery is audited without a report." },
+      { flag: "allow-steal", key: "allowSteal", as: "boolean", summary: "Claim a card assigned to somebody else (needs --reason; audited)." },
+      { flag: "reason", key: "reason", as: "string", value: "<why>", summary: "Why this move is audited (a report waiver or an --allow-steal)." },
     ],
     async run(ctx) {
+      const allowSteal = ctx.flags.allowSteal === true;
+      // A claim on somebody else's card is an audited exception, so it must say
+      // why. `8` matches `WAIVER_MIN_REASON_CHARS` in
+      // `src/core/domain/delivery-gate.mjs`; the service enforces it again.
+      if (allowSteal && (typeof ctx.flags.reason !== "string" || ctx.flags.reason.trim().length < 8)) {
+        throw usageError('issue move: --allow-steal needs --reason "<why>" (at least 8 characters)', {
+          fix: "say why the card is being taken from its assignee",
+        });
+      }
       const payload = await ctx.client.post(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/move`, {
         to: ctx.args.to,
         if_version: ctx.flags.ifVersion,
         no_report: ctx.flags.noReport === true,
+        allow_steal: allowSteal,
         reason: ctx.flags.reason,
       });
       const warnings = payload.task.report_waiver === null

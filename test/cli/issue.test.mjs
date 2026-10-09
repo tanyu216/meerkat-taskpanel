@@ -394,3 +394,70 @@ describe("cli/issue — candidates (the poll read)", () => {
     });
   });
 });
+
+describe("cli/issue — move enforces the assignee (T-20261009-230500)", () => {
+  const assignLinus = (run) =>
+    dataOf(run(["issue", "assign", "DEMO-0001", "--assignee", "Linus", "--json"]));
+
+  it("lets the assignee move their own card to in_progress", async () => {
+    await board(async ({ run }) => {
+      createIssue(run);
+      assignLinus(run);
+      const moved = dataOf(run(["issue", "move", "DEMO-0001", "in_progress", "--agent", "linus", "--json"]));
+      assert.equal(moved.task.status, "in_progress");
+      assert.equal(moved.task.claimed_by, "linus");
+    });
+  });
+
+  it("refuses a different actor with not_assignee (409)", async () => {
+    await board(async ({ run }) => {
+      createIssue(run);
+      assignLinus(run);
+      const refused = run(["issue", "move", "DEMO-0001", "in_progress", "--json"]);
+      assert.equal(refused.status, 1);
+      const error = JSON.parse(refused.stdout).error;
+      assert.equal(error.code, "not_assignee");
+      assert.equal(error.http, 409);
+      assert.match(error.hint.fix, /--allow-steal/);
+    });
+  });
+
+  it("takes it with --allow-steal --reason, and the takeover is readable", async () => {
+    await board(async ({ run }) => {
+      createIssue(run);
+      assignLinus(run);
+      const moved = dataOf(
+        run([
+          "issue", "move", "DEMO-0001", "in_progress",
+          "--allow-steal", "--reason", "linus is on another card",
+          "--agent", "elon", "--json",
+        ]),
+      );
+      assert.equal(moved.task.claimed_by, "elon");
+
+      const comments = dataOf(run(["comment", "list", "DEMO-0001", "--json"])).comments;
+      assert.equal(comments.length, 1);
+      assert.equal(comments[0].kind, "change");
+      assert.match(comments[0].body, /elon/);
+      assert.match(comments[0].body, /linus/);
+    });
+  });
+
+  it("refuses --allow-steal without a real reason, as a usage error (exit 2)", async () => {
+    await board(async ({ run }) => {
+      createIssue(run);
+      assignLinus(run);
+
+      const missing = run(["issue", "move", "DEMO-0001", "in_progress", "--allow-steal", "--json"]);
+      assert.equal(missing.status, 2);
+      assert.equal(JSON.parse(missing.stdout).error.code, "CLI_USAGE");
+
+      const short = run([
+        "issue", "move", "DEMO-0001", "in_progress",
+        "--allow-steal", "--reason", "short", "--json",
+      ]);
+      assert.equal(short.status, 2);
+      assert.match(JSON.parse(short.stdout).error.message, /--reason/);
+    });
+  });
+});
