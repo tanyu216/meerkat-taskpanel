@@ -83,6 +83,14 @@ export function registerTaskRoutes(router, surface) {
       reporterKind: body.reporter_kind,
       reporterId: body.reporter_id,
       forceCreate: body.force_create === true,
+      // Creation idempotency (see `domain/idem.mjs`). A key match returns the
+      // existing task with HTTP 200 — `task.id`/`identifier` *are* the answer —
+      // so a re-submitted create is a no-op, not a second card.
+      idem: body.idem,
+      allowDup: body.allow_dup === true,
+      reviewOf: body.review_of,
+      parent: body.parent,
+      target: body.target,
       actor,
     });
     return taskPayload(repos, task);

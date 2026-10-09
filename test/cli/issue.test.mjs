@@ -81,6 +81,21 @@ describe("cli/issue — create, list, get", () => {
       assert.equal(JSON.parse(missing.stdout).error.code, "NOT_FOUND");
     });
   });
+
+  it("re-uses the existing card for a repeated --idem, and --allow-dup overrides it", async () => {
+    await board(async ({ run }) => {
+      const first = createIssue(run, ["--idem", "k-cli-1"]);
+      const again = createIssue(run, ["--idem", "k-cli-1", "--title", "Retry"]);
+      assert.equal(again.task.id, first.task.id);
+      assert.equal(again.task.identifier, first.task.identifier);
+
+      const dup = createIssue(run, ["--idem", "k-cli-1", "--allow-dup"]);
+      assert.notEqual(dup.task.id, first.task.id);
+
+      const all = dataOf(run(["issue", "list", "--json"]));
+      assert.equal(all.tasks.length, 2, "the reuse wrote nothing; the dup added one");
+    });
+  });
 });
 
 describe("cli/issue — update, move, assign, archive", () => {

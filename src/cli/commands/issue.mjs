@@ -59,6 +59,11 @@ export const COMMANDS = [
       { flag: "reporter-kind", key: "reporterKind", as: "string", value: "<agent|human>" },
       { flag: "reporter-id", key: "reporterId", as: "string", value: "<id>" },
       { flag: "force-create", key: "forceCreate", as: "boolean", summary: "Skip dictionary fuzzy matching." },
+      { flag: "idem", key: "idem", as: "string", value: "<key>", summary: "Explicit idempotency key; a match re-uses the existing task." },
+      { flag: "allow-dup", key: "allowDup", as: "boolean", summary: "Bypass the idempotency guard and create a duplicate anyway." },
+      { flag: "target", key: "target", as: "string", value: "<t>", summary: "Idempotency key's target slot." },
+      { flag: "review-of", key: "reviewOf", as: "string", value: "<id>", summary: "Idempotency key's source slot (a card under review)." },
+      { flag: "parent", key: "parent", as: "string", value: "<id>", summary: "Idempotency key's source slot (a parent card)." },
     ],
     async run(ctx) {
       const flags = ctx.flags;
@@ -80,6 +85,11 @@ export const COMMANDS = [
         reporter_kind: flags.reporterKind,
         reporter_id: flags.reporterId,
         force_create: flags.forceCreate === true,
+        idem: flags.idem,
+        allow_dup: flags.allowDup === true,
+        target: flags.target,
+        review_of: flags.reviewOf,
+        parent: flags.parent,
       });
       return { data: payload, human: `created ${payload.task.identifier}  ${payload.task.title}` };
     },

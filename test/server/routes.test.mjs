@@ -643,3 +643,31 @@ describe("server/routes — task_create cannot enter a delivery state (M3fix D1)
     assert.equal(backlog.task.status, "backlog");
   });
 });
+
+// Also last, for the same reason as the block above: it adds a project and tasks
+// that the earlier global-list assertions must not see.
+describe("server/routes — creation idempotency (T-20261009-175500)", () => {
+  before(async () => {
+    dataOf(await call("POST", "/api/v1/projects", { id: "idem", name: "Idem", workspace_path: "/tmp/idem" }));
+  });
+
+  it("re-uses the existing task for a repeated idem key (HTTP 200, same id)", async () => {
+    const first = dataOf(await call("POST", "/api/v1/tasks", { project_id: "idem", title: "Ship it", idem: "k-http-1" }));
+    assert.equal(first.task.identifier, "IDEM-0001");
+
+    const again = await call("POST", "/api/v1/tasks", { project_id: "idem", title: "Ship it (retry)", idem: "k-http-1" });
+    assert.equal(again.status, 200, "a reuse is a success, not a conflict");
+    assert.equal(again.body.ok, true);
+    assert.equal(again.body.data.task.id, first.task.id);
+    assert.equal(again.body.data.task.identifier, "IDEM-0001");
+
+    const listed = dataOf(await call("GET", "/api/v1/tasks?project_id=idem"));
+    assert.equal(listed.tasks.length, 1, "no second row");
+  });
+
+  it("creates a second task when allow_dup is set", async () => {
+    const first = dataOf(await call("POST", "/api/v1/tasks", { project_id: "idem", title: "A", idem: "k-http-2" }));
+    const dup = dataOf(await call("POST", "/api/v1/tasks", { project_id: "idem", title: "B", idem: "k-http-2", allow_dup: true }));
+    assert.notEqual(dup.task.id, first.task.id);
+  });
+});
