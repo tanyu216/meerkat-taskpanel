@@ -81,9 +81,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="${GITHUB_REF_NAME#v}"
+          # The section for this version: from its `## [x.y.z]` heading up to the
+          # next heading or the trailing link-reference block.
           awk -v v="$version" '
             index($0, "## [" v "]") == 1 { inside = 1; next }
             inside && index($0, "## [") == 1 { exit }
+            inside && index($0, "[") == 1 { exit }
             inside { print }
           ' CHANGELOG.md > release-notes.md
           if [ ! -s release-notes.md ]; then
