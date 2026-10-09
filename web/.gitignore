@@ -1,6 +1,3 @@
 # Frontend build/runtime output — never committed.
 node_modules/
 dist/
-
-# Vendored offline npm cache (F1-c) is committed deliberately, not ignored.
-# Keep `web/.vendor/` tracked; do not add it here.

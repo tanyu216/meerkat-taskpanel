@@ -6,13 +6,15 @@
 - **The engine has no dependencies.** `src/**`, the scripts and every test use Node
   builtins only (`node:fs`, `node:path`, `node:test`, `node:child_process`, …).
 - **The board frontend (`web/`) has build-time devDependencies** — Vue 3, Vite,
-  Tailwind/daisyUI. They are resolved offline from a committed npm cache and never ship:
-  the hosted artefact is the static `web/dist`.
+  Tailwind/daisyUI. They are installed with a plain `npm ci` from the committed
+  `web/package-lock.json` in the image's `webbuild` stage. That stage — and only that
+  stage — needs network; the runtime image and all verification stay offline, and the
+  lockfile pins the build. They never ship: the hosted artefact is the static `web/dist`.
 
 > **Do not run `npm install` for the engine.** It needs no packages, no lockfile and no
 > network access; a root `node_modules/` is gitignored and unexpected. The only install is
-> `web/`'s, and it happens inside the image build from `web/.vendor/npm-cache`
-> (see [docker.md](docker.md)) — never into the repository root.
+> `web/`'s, and it happens inside the image build (`webbuild` stage, `npm ci`) —
+> never into the repository root.
 
 ## Layout
 
@@ -67,15 +69,17 @@ are **not** the same directory:
 | Release tree | skills + host plugins | `node scripts/build.mjs` | `dist/` — the npm **release tree**; never served |
 
 The web layer is the only part with dependencies. Vue/Vite/Tailwind/daisyUI are
-**build-time devDependencies**: they are resolved offline from the committed cache
-`web/.vendor/npm-cache` in the image's `webbuild` stage, and only the built `web/dist`
-crosses into the runtime image — no `node_modules` ships.
+**build-time devDependencies**: they are installed with a plain `npm ci` from the committed
+`web/package-lock.json` in the image's `webbuild` stage (**F1-g** — the only step that needs
+network), and only the built `web/dist` crosses into the runtime image — no `node_modules`
+ships. The lockfile is what makes the install reproducible; a strict-offline image build
+would require vendoring that cache (the rejected F1-c option).
 
 > `web/` is still a README placeholder; the workspace lands with **M6b**. Until then the
 > command above is the intended interface, not yet runnable, and the image's `webbuild`
 > stage is a guarded no-op that emits an empty `web/dist`.
 
-The offline, container-first path is the image build — see
+The container-first path is the image build — see
 [docker.md](docker.md#the-web-build-stage).
 
 ## The `taskd` HTTP surface (M6)

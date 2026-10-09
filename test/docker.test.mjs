@@ -462,14 +462,31 @@ describe("static: Dockerfile", () => {
     assert.match(text, /chown -R node:node/);
     assert.match(text, /EXPOSE 9527/);
     assert.match(text, /CMD \["node","src\/cli\/index\.mjs","--help"\]/);
-    // Offline/reproducible: the runtime stage installs nothing from a package
-    // manager, and the one build-time install — the `webbuild` stage's frontend
-    // devDependencies (ruling A, 2026-10-09) — must be `--offline` against the
-    // committed cache, so the image still builds with no network.
+    // F1-g (ruling, 2026-10-09): the `webbuild` stage is the ONE place the image build
+    // needs network, and it must use a plain `npm ci` from the committed lockfile — NOT
+    // `--offline` against a vendored cache (the rejected F1-c option). The runtime stage
+    // must install nothing from a package manager, so the whole verification path stays
+    // offline.
+    const runtimeStage = text.slice(text.lastIndexOf("FROM "));
+    assert.doesNotMatch(runtimeStage, /apt-get|apt install|yum|apk add|npm (ci|install)\b/);
     assert.doesNotMatch(text, /apt-get|apt install|yum|apk add|npm install\b/);
-    for (const line of text.match(/npm ci[^\n]*/g) ?? []) {
-      assert.match(line, /--offline/, `npm ci must read only the offline cache: ${line}`);
+
+    // Only instruction lines count — the Dockerfile comment documents the F1-c revert
+    // (`npm ci --offline …`), and that mention must not be mistaken for the live command.
+    const ciLines = text.match(/^\s*npm ci[^\n]*/gm) ?? [];
+    assert.ok(ciLines.length > 0, "expected the webbuild stage to run `npm ci`");
+    for (const line of ciLines) {
+      assert.doesNotMatch(line, /--offline/, `under F1-g the install is a plain (network) npm ci: ${line}`);
     }
+
+    // The network use must be documented in the Dockerfile comments, and tied to the
+    // lockfile that makes the build reproducible.
+    const comments = text
+      .split("\n")
+      .filter((l) => l.trimStart().startsWith("#"))
+      .join("\n");
+    assert.match(comments, /network/i, "the Dockerfile must document the webbuild stage's network use");
+    assert.match(comments, /lockfile|package-lock\.json/i, "the Dockerfile must point at the lockfile");
   });
 });
 

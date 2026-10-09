@@ -6,16 +6,23 @@
 #     (`src/core`, `src/cli`, `src/server`, `src/mcp`) has ZERO runtime dependencies:
 #     nothing is installed, nothing is fetched, so this stage builds offline and
 #     reproduces exactly on any machine.
-#   * webbuild (the first stage) — the `web/` board frontend, in one of two modes:
-#       - offline build: when BOTH `web/package.json` and the vendored cache
-#         (`web/.vendor/npm-cache`) are present, Vue 3 / Vite / Tailwind/daisyUI are
-#         installed from that cache alone (`npm ci --offline`) and `web/dist` is built.
-#       - skipped: when either is absent (the vendored cache is not committed), the
-#         frontend build is skipped with a one-line note and this stage emits an empty
-#         `web/dist` (see the caveat on the stage below) — a no-op for the static host,
-#         which probes for `index.html` and reports `available: false`.
-#     Either way nothing from this stage ships except `web/dist`; devDependencies and
-#     `node_modules` never cross into the runtime stage, and no network is ever reached.
+#   * webbuild (the first stage) — the `web/` board frontend, installed with a plain
+#     `npm ci` from the committed `web/package.json` + `web/package-lock.json` (F1-g) and
+#     built with Vite. **This is the one and only place the image build needs network:**
+#     `npm ci` restores exactly the locked dependency tree, so the build is reproducible
+#     from the lockfile alone. Nothing from this stage ships except `web/dist`;
+#     devDependencies and `node_modules` never cross into the runtime stage. When
+#     `web/package.json` is absent (no frontend workspace in this checkout) the frontend
+#     build is skipped with a one-line note and this stage emits an empty `web/dist` (see
+#     the caveat on the stage below) — a no-op for the static host, which probes for
+#     `index.html` and reports `available: false`.
+#
+# Network boundary (F1-g): the webbuild stage above may reach the network. The runtime
+# image and every verification step run by `docker/verify-in-container.sh` (the test suite,
+# `npm run check`, the host skill installs) stay fully offline. Reproducibility of the
+# frontend build is guaranteed by the committed lockfile, not by a vendored cache; a
+# strict-offline image build (no network even in the webbuild stage) would require
+# vendoring the npm cache — the rejected F1-c option.
 #
 # Nothing is installed with apt — no apt mirror is reachable at build time, which is the
 # point (Terry, 2026-10-08: local verification runs isolated in a container, never on the
@@ -24,11 +31,14 @@
 # Build:  docker build -f docker/Dockerfile -t task-panel:verify .
 # Verify: docker run --rm task-panel:verify bash docker/verify-in-container.sh
 
-# ── Stage 1: web build (build-time devDependencies only) ──────────────────────────────
+# ── Stage 1: web build (build-time devDependencies only; needs network) ────────────────
 #
-# `npm ci --offline` reads *only* the committed cache and hard-fails rather than silently
-# reaching the network. The machine proof of that is the build itself:
-#   docker build --network=none -f docker/Dockerfile -t task-panel:verify .
+# Plain `npm ci` against the committed lockfile (`web/package-lock.json`): it restores the
+# exact pinned tree, so the build reproduces from the lockfile alone. This is the ONLY step
+# in the whole image that needs the network — the runtime stage and everything
+# `docker/verify-in-container.sh` runs stay offline. (If a strict-offline image build is
+# ever required, revert this to `npm ci --offline --cache /app/web/.vendor/npm-cache` with a
+# committed `web/.vendor/npm-cache` — the rejected F1-c option.)
 FROM node:22-bookworm-slim AS webbuild
 
 WORKDIR /app
@@ -36,21 +46,16 @@ WORKDIR /app
 # Same trimmed context as the runtime stage (repository-root .dockerignore).
 COPY . .
 
-# The guard tests the thing the build actually needs, not just the manifest: the frontend
-# workspace (`web/package.json`, `web/package-lock.json`) has landed with M6b stage S2, but
-# the vendored offline cache (`web/.vendor/npm-cache/`) is not committed while the
-# offline-assembly decision is still open. Guarding on the manifest alone made an absent
-# cache fatal (`npm ci --offline` fails, and rightly so — it is the gate against a silent
-# network fetch). Guarding on manifest AND cache instead keeps both modes honest: a
-# complete checkout builds `web/dist` offline, an incomplete one skips with a note.
+# The frontend workspace (`web/package.json` + `web/package-lock.json`) is committed, so
+# the manifest alone is the guard: when it is absent there is nothing to build and the
+# stage skips with a note.
 #
 # The skip path still emits `/app/web/dist` because the runtime stage's
 # `COPY --from=webbuild /app/web/dist` needs a source. An empty `web/dist` is equivalent to
 # no `web/dist`: `createStaticHost` probes for `index.html` and reports `available: false`,
-# so the server 404s exactly as before. Note this guard is a directory-existence test, not
-# a completeness test: when the cache IS present but stale, `npm ci --offline` still fails
-# the build loudly — that remains the intended gate. If a later stage adopts root
-# `package.json` `workspaces: ["web"]`, these two commands are the line to revisit.
+# so the server 404s exactly as before. `npm ci` itself fails the build loudly if the
+# lockfile and manifest disagree — that remains the intended gate. If a later stage adopts
+# root `package.json` `workspaces: ["web"]`, the install command is the line to revisit.
 #
 # Caveat (known, not this stage's to fix): this guard only controls what *this* stage emits.
 # The runtime stage also runs `COPY . .`, and a directory COPY merges rather than replaces —
@@ -58,12 +63,12 @@ COPY . .
 # the image no matter which branch runs here. `web/dist/` is gitignored, so a clean checkout
 # and CI are unaffected, but a developer machine that ran the frontend build is. Excluding
 # `web/dist` in .dockerignore is the one-line fix if that non-determinism ever matters.
-RUN if [ -f web/package.json ] && [ -d web/.vendor/npm-cache ]; then \
-      echo "webbuild: building web/ offline from the vendored npm cache"; \
-      npm ci --offline --cache /app/web/.vendor/npm-cache --prefix /app/web \
+RUN if [ -f web/package.json ]; then \
+      echo "webbuild: building web/ from the committed lockfile (needs network)"; \
+      npm ci --prefix /app/web \
       && npm --prefix /app/web run build; \
     else \
-      echo "webbuild: web/package.json or web/.vendor/npm-cache absent — skipping the frontend build (web/dist stays empty)"; \
+      echo "webbuild: web/package.json absent — skipping the frontend build (web/dist stays empty)"; \
     fi \
  && mkdir -p /app/web/dist
 
