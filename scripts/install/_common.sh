@@ -38,6 +38,17 @@ require_node() {
   [ "${TASKPANEL_SKIP_NODE_CHECK:-}" = "1" ] && return 0
   min="${TASKPANEL_MIN_NODE:-22}"
 
+  # D1a: the floor must be a non-negative integer. A bad value here would make
+  # `[ "$major" -lt "$min" ]` below fail inside the `if`, which takes the false
+  # branch and lets a too-old Node through — a silent fail-open. Validate it up
+  # front so a misspelt env is a hard failure, never a pass.
+  case "$min" in
+    "" | *[!0-9]*)
+      echo "TASKPANEL_MIN_NODE must be a non-negative integer (got '${min:-<empty>}')." >&2
+      return 1
+      ;;
+  esac
+
   if ! command -v node >/dev/null 2>&1; then
     echo "node: no 'node' on PATH." >&2
     echo "Task Panel needs Node >= $min (the engine uses the built-in node:sqlite module)." >&2
@@ -46,6 +57,11 @@ require_node() {
   fi
 
   version="$(node -v 2>/dev/null || true)"
+  # D1b: a shim's `node -v` may pad its output. Strip leading/trailing
+  # whitespace (POSIX parameter expansion only — this function is builtin-only)
+  # so "  v22.0.0" parses instead of "could not read the version".
+  version="${version#"${version%%[![:space:]]*}"}"   # strip leading whitespace
+  version="${version%"${version##*[![:space:]]}"}"   # strip trailing whitespace
   major="${version#v}"   # v22.11.0 -> 22.11.0
   major="${major%%.*}"   # 22.11.0  -> 22
   case "$major" in

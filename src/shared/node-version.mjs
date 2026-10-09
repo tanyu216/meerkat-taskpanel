@@ -25,7 +25,11 @@ export const MIN_NODE_MAJOR = 22;
  * @returns {number|null} the major, or null when the string is not a version
  */
 export function nodeMajor(version) {
-  const match = /^v?(\d+)\./.exec(String(version));
+  // Accept a bare major ("22", "v22") as well as a dotted version ("22.0.0",
+  // "v22.11.0") so the runtime floor and the installer's `require_node`
+  // (`scripts/install/_common.sh`) agree on the same strings. The major still
+  // has to terminate at a dot or end-of-string, so "22garbage" is not a version.
+  const match = /^v?(\d+)(?:\.|$)/.exec(String(version));
   return match === null ? null : Number.parseInt(match[1], 10);
 }
 
