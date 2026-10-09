@@ -3,10 +3,10 @@
  * (`skills/task-panel/scripts/report.mjs`).
  *
  * These tests exercise the **pure functions only** — the report aggregator's
- * window math, label parsing, classification and markdown rendering. They must
- * never spawn a CLI, touch a database or reach the network (see the card's
- * run-discipline rule); every window is passed explicitly so nothing here
- * depends on the host time zone or on "now".
+ * window math, label parsing, grouping, preset metrics and markdown rendering.
+ * They must never spawn a CLI, touch a database or reach the network (see the
+ * card's run-discipline rule); every window is passed explicitly so nothing
+ * here depends on the host time zone or on "now".
  *
  * Node builtins only (`node:test`, `node:assert/strict`).
  */
@@ -18,7 +18,10 @@ import {
   ReportError,
   resolveWindow,
   labelValue,
-  classifyTask,
+  parseGroupBy,
+  groupOf,
+  matchesAssignee,
+  applyPreset,
   inWindow,
   aggregate,
   renderMarkdown,
@@ -33,6 +36,7 @@ function task(overrides = {}) {
     title: "a task",
     status: "done",
     kind: "task",
+    project_id: "proj",
     labels: [],
     assignee: { id: "a1", display_name: "linus", kind: "agent" },
     status_changed_at: "2026-10-05T10:00:00.000Z",
@@ -134,31 +138,72 @@ describe("labelValue", () => {
   });
 });
 
-describe("classifyTask", () => {
-  it("maps the category label onto the four buckets", () => {
-    assert.equal(classifyTask(task({ labels: ["category:req"] })), "requirement");
-    assert.equal(classifyTask(task({ labels: ["category:dev"] })), "development");
-    assert.equal(classifyTask(task({ labels: ["category:bug"] })), "bug");
+describe("parseGroupBy", () => {
+  it("accepts the fixed dimensions and label:<namespace>", () => {
+    for (const dimension of ["kind", "project", "assignee", "status"]) {
+      assert.deepEqual(parseGroupBy(dimension), { dimension, namespace: null });
+    }
+    assert.deepEqual(parseGroupBy("label:category"), { dimension: "label", namespace: "category" });
+    assert.deepEqual(parseGroupBy("Label:Area"), { dimension: "label", namespace: "Area" });
   });
 
-  it("treats a bug in production as an incident", () => {
-    assert.equal(
-      classifyTask(task({ labels: ["category:bug", "env:prod"] })),
-      "incident",
+  it("rejects an unknown dimension and a bare label: prefix", () => {
+    for (const bad of ["nope", "label:", "label:   ", "", undefined]) {
+      assert.throws(
+        () => parseGroupBy(bad),
+        (err) => err instanceof ReportError && err.code === "INVALID_GROUP_BY",
+        `expected ${JSON.stringify(bad)} to be rejected`,
+      );
+    }
+  });
+});
+
+describe("groupOf", () => {
+  it("buckets by the requested dimension", () => {
+    const t = task({ kind: "task", project_id: "proj", status: "done", labels: ["category:Req"] });
+    assert.equal(groupOf(t, "kind"), "task");
+    assert.equal(groupOf(t, "project"), "proj");
+    assert.equal(groupOf(t, "status"), "done");
+    assert.equal(groupOf(t, "assignee"), "linus");
+    assert.equal(groupOf(t, "label:category"), "req");
+  });
+
+  it("is case-insensitive, so a bucket does not split on spelling", () => {
+    assert.equal(groupOf(task({ kind: "TASK" }), "kind"), "task");
+    assert.equal(groupOf(task({ labels: ["Category:REQ"] }), "label:category"), "req");
+    assert.equal(groupOf(task({ assignee: { id: "a1", display_name: "Linus" } }), "assignee"), "linus");
+  });
+
+  it("returns null when the card carries no value for the dimension", () => {
+    assert.equal(groupOf(task({ project_id: null }), "project"), null);
+    assert.equal(groupOf(task({ project_id: "" }), "project"), null);
+    assert.equal(groupOf(task({ assignee: null }), "assignee"), null);
+    assert.equal(groupOf(task({ labels: ["area:cli"] }), "label:category"), null);
+    assert.equal(groupOf(task({ labels: [] }), "label:env"), null);
+    assert.equal(groupOf(task({ kind: null }), "kind"), null);
+    assert.equal(groupOf(null, "kind"), null);
+  });
+
+  it("throws on an unusable grouping spec", () => {
+    assert.throws(
+      () => groupOf(task(), "label:"),
+      (err) => err instanceof ReportError && err.code === "INVALID_GROUP_BY",
     );
-    // env:prod only matters together with category:bug.
-    assert.equal(classifyTask(task({ labels: ["category:dev", "env:prod"] })), "development");
+  });
+});
+
+describe("matchesAssignee", () => {
+  it("matches a display name or an id, case-insensitively", () => {
+    assert.equal(matchesAssignee(task(), "linus"), true);
+    assert.equal(matchesAssignee(task(), "LINUS"), true);
+    assert.equal(matchesAssignee(task(), "a1"), true);
   });
 
-  it("returns null for uncategorized cards and for epics", () => {
-    assert.equal(classifyTask(task({ labels: ["area:cli"] })), null);
-    assert.equal(classifyTask(task({ labels: [] })), null);
-    assert.equal(classifyTask(task({ labels: ["category:dev"], kind: "epic" })), null);
-    assert.equal(classifyTask(null), null);
-  });
-
-  it("is case-insensitive on both namespace and value", () => {
-    assert.equal(classifyTask(task({ labels: ["Category:BUG", "Env:Prod"] })), "incident");
+  it("accepts a bare-string assignee and ignores everyone else", () => {
+    assert.equal(matchesAssignee(task({ assignee: "elon" }), "elon"), true);
+    assert.equal(matchesAssignee(task(), "elon"), false);
+    assert.equal(matchesAssignee(task({ assignee: null }), "linus"), false);
+    assert.equal(matchesAssignee(task(), ""), false);
   });
 });
 
@@ -188,46 +233,125 @@ describe("inWindow", () => {
   });
 });
 
+describe("applyPreset", () => {
+  it("returns the software example as a frozen spec", () => {
+    const preset = applyPreset("software");
+    assert.equal(preset.name, "software");
+    assert.equal(preset.groupBy, "label:category");
+    assert.deepEqual(preset.excludeKinds, ["epic"]);
+    assert.deepEqual(
+      preset.metrics.map((metric) => metric.key),
+      ["requirements", "development", "bugs", "incidents"],
+    );
+    assert.ok(Object.isFrozen(preset));
+    // Same object each time — a preset is a constant, not a per-call value.
+    assert.equal(applyPreset("Software"), preset);
+  });
+
+  it("rejects an unknown preset", () => {
+    for (const bad of ["nope", "", undefined]) {
+      assert.throws(
+        () => applyPreset(bad),
+        (err) => err instanceof ReportError && err.code === "INVALID_PRESET",
+      );
+    }
+  });
+});
+
 describe("aggregate", () => {
   const tasks = [
-    task({ identifier: "PROJ-0001", labels: ["category:req"] }),
-    task({ identifier: "PROJ-0002", labels: ["category:dev"] }),
-    task({ identifier: "PROJ-0003", labels: ["category:bug"] }),
-    task({ identifier: "PROJ-0004", labels: ["category:bug", "env:prod"] }),
-    // Not counted: outside the window, not done, epic, or uncategorized.
-    task({ identifier: "PROJ-0005", labels: ["category:req"], status_changed_at: "2026-09-01T00:00:00.000Z" }),
-    task({ identifier: "PROJ-0006", labels: ["category:req"], status: "in_progress" }),
-    task({ identifier: "PROJ-0007", labels: ["category:dev"], kind: "epic" }),
-    task({ identifier: "PROJ-0008", labels: ["area:cli"] }),
+    task({ identifier: "PROJ-0001", kind: "task", labels: ["category:req"] }),
+    task({ identifier: "PROJ-0002", kind: "task", labels: ["category:dev"], project_id: "proj" }),
+    task({ identifier: "PROJ-0003", kind: "task", labels: ["category:bug"], project_id: "other" }),
+    // Not counted: outside the window, not done, epic, or with no group value.
+    task({ identifier: "PROJ-0004", labels: ["category:req"], status_changed_at: "2026-09-01T00:00:00.000Z" }),
+    task({ identifier: "PROJ-0005", labels: ["category:req"], status: "in_progress" }),
+    task({ identifier: "PROJ-0006", kind: "epic", labels: ["category:req"] }),
+    task({ identifier: "PROJ-0007", labels: ["area:cli"] }),
+    task({ identifier: "PROJ-0008", project_id: null, labels: ["category:dev"] }),
   ];
 
-  it("counts the four dimensions, the total and the completed list", () => {
+  it("groups by kind by default", () => {
     const summary = aggregate(tasks, window_());
+    // Every in-window card with a kind counts — the epics too: a plain kind
+    // breakdown describes the board, it does not judge what "work" is.
+    assert.equal(summary.groupBy, "kind");
+    assert.deepEqual(summary.counts, { epic: 1, task: 5 });
+    assert.equal(summary.total, 6);
+    assert.equal(summary.metrics, null);
+    assert.equal(summary.preset, null);
+  });
 
-    assert.deepEqual(summary.counts, {
-      requirements: 1,
-      development: 1,
-      bugs: 1,
-      incidents: 1,
-      total: 4,
-    });
+  it("groups by an arbitrary dimension: label:<ns>, project, assignee", () => {
+    const byCategory = aggregate(tasks, window_(), { groupBy: "label:category" });
+    assert.deepEqual(byCategory.counts, { req: 2, dev: 2, bug: 1 });
+    assert.equal(byCategory.total, 5);
+
+    const byProject = aggregate(tasks, window_(), { groupBy: "project" });
+    assert.deepEqual(byProject.counts, { proj: 4, other: 1 });
+
+    const byAssignee = aggregate(tasks, window_(), { groupBy: "assignee" });
+    assert.deepEqual(byAssignee.counts, { linus: 6 });
+  });
+
+  it("never counts a card that has no value for the grouping dimension", () => {
+    // PROJ-0008 has no project; PROJ-0007 carries no category label.
+    const byProject = aggregate(tasks, window_(), { groupBy: "project" });
+    assert.equal(byProject.total, 5);
+    assert.equal(byProject.items.some((item) => item.identifier === "PROJ-0008"), false);
+
+    const byCategory = aggregate(tasks, window_(), { groupBy: "label:category" });
+    assert.equal(byCategory.total, 5);
+    assert.equal(byCategory.items.some((item) => item.identifier === "PROJ-0007"), false);
+  });
+
+  it("applies the software preset: category grouping and the env:prod split", () => {
+    const preset = applyPreset("software");
+    const summary = aggregate(
+      [
+        ...tasks,
+        task({ identifier: "PROJ-0009", labels: ["category:bug", "env:prod"] }),
+        task({ identifier: "PROJ-0010", kind: "epic", labels: ["category:req"] }),
+      ],
+      window_(),
+      { preset },
+    );
+
+    assert.equal(summary.preset, "software");
+    assert.equal(summary.groupBy, "label:category"); // the preset supplies it
+    // The epic is excluded by the preset; PROJ-0004/0005/0007/0008 have no bucket.
+    assert.deepEqual(summary.counts, { req: 1, dev: 2, bug: 2 });
+    assert.deepEqual(
+      summary.metrics.map((metric) => [metric.key, metric.count]),
+      [
+        ["requirements", 1],
+        ["development", 2],
+        ["bugs", 1],
+        ["incidents", 1],
+      ],
+    );
+    assert.equal(summary.total, 5);
+
+    const prodBug = summary.items.find((item) => item.identifier === "PROJ-0009");
+    assert.equal(prodBug.metric, "incidents");
+    assert.equal(prodBug.group, "bug");
+  });
+
+  it("keeps each card once and carries its window, project and items", () => {
+    const summary = aggregate(tasks, window_({ project: "proj", assignee: "linus" }), { groupBy: "kind" });
+    assert.equal(summary.project, "proj");
+    assert.equal(summary.assignee, "linus");
     assert.equal(summary.window.startDate, "2026-10-01");
     assert.equal(summary.window.endDate, "2026-10-31");
+    assert.equal(summary.total, summary.items.length);
 
     const ids = summary.items.map((item) => item.identifier);
-    assert.deepEqual(ids, ["PROJ-0001", "PROJ-0002", "PROJ-0003", "PROJ-0004"]);
+    assert.deepEqual(ids, ["PROJ-0001", "PROJ-0002", "PROJ-0003", "PROJ-0006", "PROJ-0007", "PROJ-0008"]);
     for (const item of summary.items) {
       assert.equal(typeof item.title, "string");
       assert.equal(item.assignee, "linus");
-      assert.ok(item.category);
+      assert.ok(item.group);
     }
-    assert.equal(summary.items[3].category, "incident");
-  });
-
-  it("never counts uncategorized cards as a bucket, but keeps the window honest", () => {
-    const lonely = aggregate([task({ identifier: "PROJ-0009", labels: [] })], window_());
-    assert.equal(lonely.counts.total, 0);
-    assert.deepEqual(lonely.items, []);
   });
 
   it("accepts an explicit window and derives its date range", () => {
@@ -239,16 +363,20 @@ describe("aggregate", () => {
     assert.equal(summary.window.endDate, "2026-10-31");
   });
 
-  it("rejects a window that is missing or inverted", () => {
+  it("rejects a window that is missing or inverted, and an unusable group-by", () => {
     assert.throws(
       () => aggregate([task()], { start: "2026-10-05", end: "2026-10-01" }),
       (err) => err instanceof ReportError && err.code === "INVALID_WINDOW",
+    );
+    assert.throws(
+      () => aggregate([task()], window_(), { groupBy: "nope" }),
+      (err) => err instanceof ReportError && err.code === "INVALID_GROUP_BY",
     );
   });
 });
 
 describe("renderMarkdown", () => {
-  it("fills the placeholders with counts, dates and the completed cards", () => {
+  it("renders the five sections and the configurable metric counts", () => {
     const summary = aggregate(
       [
         task({ identifier: "PROJ-0001", title: "ship the thing", labels: ["category:req"] }),
@@ -260,37 +388,56 @@ describe("renderMarkdown", () => {
         }),
       ],
       window_({ period: "daily" }),
+      { preset: applyPreset("software") },
     );
     summary.generatedAt = "2026-10-09T12:00:00.000Z";
     summary.project = "proj";
 
     const md = renderMarkdown(summary);
 
-    assert.match(md, /Overview/);
-    assert.match(md, /Requirements handled/);
-    assert.match(md, /Development tasks completed/);
-    assert.match(md, /Bugs fixed/);
-    assert.match(md, /Production incidents/);
-    assert.match(md, /Key decisions & milestones/);
-    assert.match(md, /Risks & blockers/);
-    assert.match(md, /Next period plan/);
+    for (const heading of [
+      "## Overview",
+      "## Core metrics",
+      "## Key decisions & milestones",
+      "## Risks & blockers",
+      "## Next period plan",
+    ]) {
+      assert.ok(md.includes(heading), `missing ${heading}`);
+    }
 
-    assert.match(md, /2026-10-01/);
-    assert.match(md, /2026-10-31/);
+    // A daily report names its single UTC day, with no end date of its own.
+    assert.match(md, /2026-10-01 \(one UTC day\)/);
     assert.match(md, /2026-10-09T12:00:00.000Z/);
+    assert.match(md, /Requirements handled: 1/);
+    assert.match(md, /Production incidents: 1/);
     assert.match(md, /PROJ-0001/);
     assert.match(md, /ship the thing/);
-    assert.match(md, /PROJ-0002/);
     assert.match(md, /elon/);
-    assert.match(md, /Requirements handled[\s\S]*?\b1\b/);
 
     // Placeholders are resolved, never left in the output.
     assert.doesNotMatch(md, /\{\{[a-z_]+\}\}/);
   });
 
+  it("renders the plain grouping when no preset is applied", () => {
+    const summary = aggregate(
+      [task({ identifier: "PROJ-0001", kind: "task" }), task({ identifier: "PROJ-0002", kind: "epic" })],
+      window_({ period: "monthly" }),
+      { groupBy: "kind" },
+    );
+
+    const md = renderMarkdown(summary);
+    assert.match(md, /- `task`: 1/);
+    assert.match(md, /- `epic`: 1/);
+    assert.match(md, /Total completed: 2/);
+    // A multi-day window renders the range.
+    assert.match(md, /2026-10-01 → 2026-10-31/);
+    assert.doesNotMatch(md, /\{\{[a-z_]+\}\}/);
+  });
+
   it("renders an empty period without crashing", () => {
     const md = renderMarkdown(aggregate([], window_()));
-    assert.match(md, /Requirements handled/);
+    assert.match(md, /## Core metrics/);
+    assert.match(md, /_None\._/);
     assert.doesNotMatch(md, /\{\{[a-z_]+\}\}/);
   });
 });

@@ -51,8 +51,11 @@ taskctl --help
   task into `in_review` without a report** for the current round: the refusal prints the
   exact command that fixes it.
 - **Reporting on a period** — `node scripts/report.mjs --period daily|weekly|monthly`
-  builds a report (and its statistics) from the cards completed in the window, using the
-  templates under `references/templates/`. The counting rules live in
+  builds a daily/weekly/monthly report plus its statistics from the cards completed in
+  the window. `--group-by` picks the dimension (`kind` by default, or `project` /
+  `assignee` / `status` / `label:<namespace>`); `--preset <name>` adds named metrics —
+  the shipped `software` preset is one example, and the statistics are domain-agnostic.
+  The templates, the counting rules and how to define your own metrics live in
   [`references/reports.md`](references/reports.md).
 
 ## Reference

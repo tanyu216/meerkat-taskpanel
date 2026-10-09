@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
  * Periodic report generator for the Task Panel skill — daily / weekly / monthly
- * reports plus the aggregate counts that back them.
+ * reports plus the statistics that back them.
  *
  * Two layers live here on purpose:
  *
- *   1. **Pure helpers** (`resolveWindow`, `labelValue`, `classifyTask`,
- *      `inWindow`, `aggregate`, `renderMarkdown`) — no I/O, no clock reads
+ *   1. **Pure helpers** (`resolveWindow`, `labelValue`, `inWindow`, `groupOf`,
+ *      `applyPreset`, `aggregate`, `renderMarkdown`) — no I/O, no clock reads
  *      except a caller-overridable default. They are the unit-tested core; the
  *      same functions are what `node --test test/skill/report.test.mjs`
  *      exercises.
@@ -14,16 +14,24 @@
  *      it spawns `run.mjs` (the thin `taskctl` shim) in this directory, so the
  *      script stays runnable from any working directory.
  *
+ * The counting is deliberately **domain-agnostic**: cards are bucketed by a
+ * grouping dimension (`kind` by default, or `project` / `assignee` / `status` /
+ * `label:<namespace>`), and a *metric preset* only adds named, filtered counts.
+ * The one preset shipped here — `software` — is an **example**, not the
+ * capability: any team defines its own metrics by picking a grouping dimension
+ * and `namespace:value` label filters. Nothing in the aggregation assumes the
+ * cards describe software.
+ *
  * The data source is the existing `taskctl issue list --json` query; this file
  * adds **no** new backend query. Node builtins only, zero dependencies, no
  * network beyond the local loopback board that `taskctl` itself talks to.
  *
  * The reading conventions (which cards count, where "completion time" comes
- * from, what each label namespace means) are written down once in
- * `references/reports.md` §统计口径 — keep this file and that document aligned.
+ * from, what each label namespace means, how to define a metric) are written
+ * down once in `references/reports.md` §统计口径 — keep this file and that
+ * document aligned.
  *
  * @see ../references/reports.md
- * @see ../references/templates/daily.md
  */
 
 import { spawnSync } from "node:child_process";
@@ -35,13 +43,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 /** The periods this generator understands. */
 export const PERIODS = Object.freeze(["daily", "weekly", "monthly"]);
 
-/** The four report buckets, in reporting order. */
-export const CATEGORIES = Object.freeze([
-  "requirement",
-  "development",
-  "bug",
-  "incident",
-]);
+/** The fixed grouping dimensions; `label:<namespace>` is the fifth form. */
+export const GROUP_DIMENSIONS = Object.freeze(["kind", "project", "assignee", "status"]);
 
 /** Label namespaces the board convention reserves (see references/reports.md). */
 export const LABEL_NAMESPACES = Object.freeze({
@@ -51,19 +54,61 @@ export const LABEL_NAMESPACES = Object.freeze({
   SEV: "sev",
 });
 
-/** `category:` value → bucket. Anything else is uncategorized. */
-const CATEGORY_TAG = Object.freeze({
-  req: "requirement",
-  dev: "development",
-  bug: "bug",
-});
+/** Freeze a value and everything under it, so a preset cannot be mutated. */
+function deepFreeze(value) {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const child of Object.values(value)) deepFreeze(child);
+  }
+  return value;
+}
 
-/** Bucket → the plural key used in the summary's `counts`. */
-const COUNT_KEY = Object.freeze({
-  requirement: "requirements",
-  development: "development",
-  bug: "bugs",
-  incident: "incidents",
+/**
+ * Metric presets: one named, ready-made aggregation each.
+ *
+ * A preset bundles a default `groupBy`, the `kind`s it refuses to count, and a
+ * list of named metrics. A metric is a set of label filters — `where` clauses
+ * must all hold, `without` clauses must all fail — so the whole thing is data,
+ * not code: a new domain is a new entry here (or none at all, if the plain
+ * `--group-by` counts are enough).
+ *
+ * `software` is the shipped **example**. It is not special-cased anywhere:
+ * removing it would leave a fully working, purely generic generator.
+ */
+export const PRESETS = deepFreeze({
+  software: {
+    name: "software",
+    title: "Software delivery",
+    groupBy: "label:category",
+    // An epic is a container for other cards, not a unit of delivered work.
+    excludeKinds: ["epic"],
+    metrics: [
+      {
+        key: "requirements",
+        label: "Requirements handled",
+        where: [{ ns: "category", value: "req" }],
+      },
+      {
+        key: "development",
+        label: "Development tasks completed",
+        where: [{ ns: "category", value: "dev" }],
+      },
+      {
+        key: "bugs",
+        label: "Bugs fixed",
+        where: [{ ns: "category", value: "bug" }],
+        without: [{ ns: "env", value: "prod" }],
+      },
+      {
+        key: "incidents",
+        label: "Production incidents",
+        where: [
+          { ns: "category", value: "bug" },
+          { ns: "env", value: "prod" },
+        ],
+      },
+    ],
+  },
 });
 
 /** A stable, human title per period. */
@@ -75,6 +120,7 @@ const PERIOD_TITLE = Object.freeze({
 
 const DAY_MS = 86_400_000;
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+const LABEL_PREFIX = "label:";
 
 /**
  * A report-layer failure. Every rejection carries a stable `code`; callers bind
@@ -176,10 +222,9 @@ export function resolveWindow(period, dateStr) {
 /**
  * The value of a `<namespace>:<value>` label, if the card carries one.
  *
- * `labels` is the wire array of strings; naming is case-insensitive on both the
- * namespace and — for the caller's convenience — nothing else is normalised:
- * the value is returned as written (trimmed). The first match wins, so a card
- * that carries `category:bug` twice with different casing still resolves once.
+ * `labels` is the wire array of strings; the **namespace** is matched
+ * case-insensitively and must match in full — `categoryx:req` is *not* a
+ * `category:`. The value is returned as written (trimmed).
  *
  * @param {unknown} labels
  * @param {string} ns namespace without the colon, e.g. `"category"`
@@ -203,30 +248,42 @@ export function labelValue(labels, ns) {
 }
 
 /**
- * Which of the four report buckets a card belongs to, or `null` for a card the
- * report does not count.
+ * The display name of a wire assignee, or `null`.
  *
- * Driven by the `category:` label: `req` → requirement, `dev` → development,
- * `bug` → bug (or **incident** when the card also carries `env:prod`). An
- * `epic` is a container, not a unit of delivered work, so it never counts;
- * neither does an uncategorized card.
+ * @param {unknown} assignee an actor ref (`{id, display_name}`), a bare string, or nothing
+ * @returns {string|null}
+ */
+function assigneeName(assignee) {
+  if (assignee === null || assignee === undefined) return null;
+  if (typeof assignee === "string") return assignee.trim() === "" ? null : assignee;
+  if (typeof assignee !== "object") return null;
+  const name = assignee.display_name ?? assignee.displayName ?? assignee.id ?? null;
+  return name === null || name === undefined ? null : String(name);
+}
+
+/**
+ * Does this card belong to `name`?
+ *
+ * The report filters assignees **locally**, by display name *or* id, because
+ * the board's own `issue list` filter takes an opaque `--assignee-id` — a
+ * report reader should not have to look one up first. Matching is
+ * case-insensitive; a card with no assignee never matches.
  *
  * @param {object|null} task a wire-shaped task
- * @returns {"requirement"|"development"|"bug"|"incident"|null}
+ * @param {string} name an assignee display name or id
+ * @returns {boolean}
  */
-export function classifyTask(task) {
-  if (!task || typeof task !== "object") return null;
-  if (task.kind === "epic") return null;
-
-  const tag = (labelValue(task.labels, LABEL_NAMESPACES.CATEGORY) ?? "").toLowerCase();
-  const bucket = CATEGORY_TAG[tag];
-  if (!bucket) return null;
-
-  if (bucket === "bug") {
-    const env = (labelValue(task.labels, LABEL_NAMESPACES.ENV) ?? "").toLowerCase();
-    if (env === "prod") return "incident";
-  }
-  return bucket;
+export function matchesAssignee(task, name) {
+  const wanted = typeof name === "string" ? name.trim().toLowerCase() : "";
+  if (wanted === "" || !task || typeof task !== "object") return false;
+  const candidates = [];
+  const who = task.assignee;
+  if (typeof who === "string") candidates.push(who);
+  else if (who && typeof who === "object") candidates.push(who.display_name ?? who.displayName, who.id);
+  candidates.push(task.assignee_id ?? task.assigneeId);
+  return candidates.some(
+    (candidate) => candidate !== undefined && candidate !== null && String(candidate).trim().toLowerCase() === wanted,
+  );
 }
 
 /** Milliseconds for a Date / ISO string / epoch number, or `null` if unusable. */
@@ -243,13 +300,6 @@ function normalizeWindow(window) {
   const end = toTime(window.end);
   if (start === null || end === null || end <= start) return null;
   return { start, end };
-}
-
-/** The display name of a wire assignee, or `null`. */
-function assigneeName(assignee) {
-  if (assignee === null || assignee === undefined) return null;
-  if (typeof assignee === "string") return assignee;
-  return assignee.display_name ?? assignee.displayName ?? assignee.id ?? null;
 }
 
 /**
@@ -274,38 +324,179 @@ export function inWindow(task, window) {
 }
 
 /**
+ * Parse a grouping spec.
+ *
+ * Accepts one of `kind` / `project` / `assignee` / `status`, or
+ * `label:<namespace>` for any label namespace the team uses (`category`,
+ * `area`, `env`, `sev`, or one of its own).
+ *
+ * @param {string} spec
+ * @returns {{dimension: string, namespace: string|null}}
+ * @throws {ReportError} `INVALID_GROUP_BY`
+ */
+export function parseGroupBy(spec) {
+  const text = typeof spec === "string" ? spec.trim() : "";
+  if (text === "") {
+    throw new ReportError(
+      "INVALID_GROUP_BY",
+      `group-by must be one of ${GROUP_DIMENSIONS.join("|")} or label:<namespace>, got ${JSON.stringify(spec)}`,
+    );
+  }
+  const lower = text.toLowerCase();
+  if (lower.startsWith(LABEL_PREFIX)) {
+    const namespace = text.slice(LABEL_PREFIX.length).trim();
+    if (namespace === "") {
+      throw new ReportError("INVALID_GROUP_BY", "group-by label: needs a namespace, e.g. label:category");
+    }
+    return { dimension: "label", namespace };
+  }
+  if (!GROUP_DIMENSIONS.includes(lower)) {
+    throw new ReportError(
+      "INVALID_GROUP_BY",
+      `group-by must be one of ${GROUP_DIMENSIONS.join("|")} or label:<namespace>, got ${JSON.stringify(spec)}`,
+    );
+  }
+  return { dimension: lower, namespace: null };
+}
+
+/**
+ * A value as a grouping key: trimmed, lower-cased, empty → `null`.
+ *
+ * Buckets are case-insensitive on purpose — `Category:Req` and `category:req`
+ * are one bucket — so a report does not split on a label's spelling. The
+ * per-card list still shows the assignee's own display name.
+ *
+ * @param {unknown} value
+ * @returns {string|null}
+ */
+function groupKey(value) {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text === "" ? null : text.toLowerCase();
+}
+
+/** `groupOf` against an already-parsed spec (the hot path inside `aggregate`). */
+function groupFor(task, spec) {
+  if (!task || typeof task !== "object") return null;
+  switch (spec.dimension) {
+    case "kind":
+      return groupKey(task.kind);
+    case "project":
+      return groupKey(task.project_id ?? task.project ?? null);
+    case "assignee":
+      return groupKey(assigneeName(task.assignee));
+    case "status":
+      return groupKey(task.status);
+    case "label":
+      return groupKey(labelValue(task.labels, spec.namespace));
+    default:
+      return null;
+  }
+}
+
+/**
+ * The bucket a card falls into under one grouping dimension, or `null` when the
+ * card carries no value for it (an uncategorized card is not counted).
+ *
+ * @param {object|null} task a wire-shaped task
+ * @param {string} groupBy `kind` | `project` | `assignee` | `status` | `label:<ns>`
+ * @returns {string|null} the lower-cased bucket key, or `null`
+ * @throws {ReportError} `INVALID_GROUP_BY`
+ */
+export function groupOf(task, groupBy) {
+  return groupFor(task, parseGroupBy(groupBy));
+}
+
+/**
+ * Look up a metric preset by name.
+ *
+ * @param {string} name a preset name; `software` is the shipped example
+ * @returns {object} the frozen preset spec
+ * @throws {ReportError} `INVALID_PRESET`
+ */
+export function applyPreset(name) {
+  const key = typeof name === "string" ? name.trim().toLowerCase() : "";
+  if (!Object.prototype.hasOwnProperty.call(PRESETS, key)) {
+    throw new ReportError(
+      "INVALID_PRESET",
+      `unknown preset ${JSON.stringify(name)}; available: ${Object.keys(PRESETS).join(", ") || "(none)"}`,
+    );
+  }
+  return PRESETS[key];
+}
+
+/** Does `task` carry `ns:value`, case-insensitively? */
+function hasLabel(task, clause) {
+  const value = labelValue(task.labels, clause.ns);
+  return value !== null && value.trim().toLowerCase() === String(clause.value).trim().toLowerCase();
+}
+
+/** Every `where` clause holds and no `without` clause does. */
+function matchesMetric(task, metric) {
+  for (const clause of metric.where ?? []) {
+    if (!hasLabel(task, clause)) return false;
+  }
+  for (const clause of metric.without ?? []) {
+    if (hasLabel(task, clause)) return false;
+  }
+  return true;
+}
+
+/**
  * Aggregate the cards completed inside one window.
  *
- * Only cards that pass `inWindow` and `classifyTask` are counted, so the four
- * counts always sum to `counts.total`, and an uncategorized card is invisible
- * to the report rather than quietly landing in a bucket.
+ * Only cards that pass `inWindow` **and** carry a value for the grouping
+ * dimension are counted, so an uncategorized card is invisible to the report
+ * rather than quietly landing in a bucket. `counts` is a `bucket → count` map
+ * and `total` is the number of counted cards.
+ *
+ * A `preset` adds `metrics`: named counts from the preset's label filters,
+ * computed over the same in-window cards (after its `excludeKinds`). Filters
+ * may overlap — a card can fit two metrics — so metric counts need not sum to
+ * `total`; `total` counts every card once.
  *
  * @param {object[]} tasks wire-shaped tasks (as returned by `issue list --json`)
  * @param {object} window a `resolveWindow(...)` result, optionally carrying
- *   `project` / `generatedAt`; an explicit `{start, end}` also works
+ *   `project` / `assignee` / `generatedAt`; an explicit `{start, end}` works too
+ * @param {{groupBy?: string, preset?: object|null}} [options]
  * @returns {object} the summary that `renderMarkdown` consumes
- * @throws {ReportError} `INVALID_WINDOW`
+ * @throws {ReportError} `INVALID_WINDOW` | `INVALID_GROUP_BY`
  */
-export function aggregate(tasks, window) {
+export function aggregate(tasks, window, options = {}) {
   const w = normalizeWindow(window);
   if (w === null) {
     throw new ReportError("INVALID_WINDOW", "window must carry a finite start earlier than its end");
   }
 
-  const counts = { requirements: 0, development: 0, bugs: 0, incidents: 0, total: 0 };
+  const preset = options?.preset ?? null;
+  const groupBy = String((options?.groupBy ?? preset?.groupBy ?? "kind")).trim();
+  const spec = parseGroupBy(groupBy);
+  const excluded = new Set((preset?.excludeKinds ?? []).map((kind) => String(kind).toLowerCase()));
+
+  const counts = new Map();
+  const metricCounts = new Map((preset?.metrics ?? []).map((metric) => [metric.key, 0]));
   const items = [];
 
   for (const task of Array.isArray(tasks) ? tasks : []) {
     if (!inWindow(task, window)) continue;
-    const category = classifyTask(task);
-    if (category === null) continue;
-    counts[COUNT_KEY[category]] += 1;
-    counts.total += 1;
+    if (excluded.has(String(task.kind ?? "").toLowerCase())) continue;
+    const group = groupFor(task, spec);
+    if (group === null) continue; // uncategorized: outside every bucket
+    counts.set(group, (counts.get(group) ?? 0) + 1);
+
+    let metric = null;
+    for (const candidate of preset?.metrics ?? []) {
+      if (!matchesMetric(task, candidate)) continue;
+      metric = metric ?? candidate.key;
+      metricCounts.set(candidate.key, metricCounts.get(candidate.key) + 1);
+    }
+
     items.push({
       identifier: task.identifier ?? null,
       title: String(task.title ?? ""),
       assignee: assigneeName(task.assignee),
-      category,
+      group,
+      metric,
       completedAt: task.status_changed_at ?? task.statusChangedAt ?? null,
     });
   }
@@ -315,8 +506,12 @@ export function aggregate(tasks, window) {
   items.sort(
     (a, b) =>
       String(a.completedAt).localeCompare(String(b.completedAt)) ||
-      String(a.identifier).localeCompare(String(b.identifier)),
+      String(a.identifier).localeCompare(String(b.identifier)) ||
+      String(a.group).localeCompare(String(b.group)),
   );
+
+  const orderedCounts = {};
+  for (const key of [...counts.keys()].sort()) orderedCounts[key] = counts.get(key);
 
   const startDate = window.startDate ?? isoDate(new Date(w.start));
   const endDate = window.endDate ?? isoDate(new Date(w.end - DAY_MS));
@@ -324,6 +519,10 @@ export function aggregate(tasks, window) {
   return {
     period: window.period ?? null,
     project: window.project ?? null,
+    assignee: window.assignee ?? null,
+    groupBy,
+    preset: preset?.name ?? null,
+    presetTitle: preset?.title ?? null,
     generatedAt: window.generatedAt ?? new Date().toISOString(),
     window: {
       start: new Date(w.start).toISOString(),
@@ -331,19 +530,21 @@ export function aggregate(tasks, window) {
       startDate,
       endDate,
     },
-    counts,
+    counts: orderedCounts,
+    metrics: preset ? preset.metrics.map((m) => ({ key: m.key, label: m.label, count: metricCounts.get(m.key) })) : null,
+    total: items.length,
     items,
   };
 }
 
 /** One markdown bullet per card, or a `_None._` placeholder. */
-function sectionList(items) {
+function cardList(items, labelOf) {
   if (items.length === 0) return "_None._";
   return items
     .map((item) => {
       const who = item.assignee ? ` (@${item.assignee})` : "";
       const when = item.completedAt ? ` — ${String(item.completedAt).slice(0, 10)}` : "";
-      return `- ${item.identifier ?? "(no id)"} — ${item.title}${who}${when}`;
+      return `- ${labelOf(item)} · ${item.identifier ?? "(no id)"} — ${item.title}${who}${when}`;
     })
     .join("\n");
 }
@@ -351,55 +552,61 @@ function sectionList(items) {
 /**
  * Render a summary as the Markdown report the templates describe.
  *
- * The section order and headings mirror `references/templates/*.md`; every
- * `{{placeholder}}` is filled here, so the output is paste-ready. The three
- * human-authored sections (decisions, risks, plan) are left as a `> TODO:` the
- * author fills in — the generator cannot invent them.
+ * The section order and headings mirror the templates embedded in
+ * `references/reports.md` — Overview, Core metrics, Key decisions &
+ * milestones, Risks & blockers, Next period plan — and every `{{placeholder}}`
+ * is filled here, so the output is paste-ready. The three human-authored
+ * sections are left as a `> TODO:` the author fills in; the generator cannot
+ * invent them.
  *
  * @param {object} summary an `aggregate(...)` result
  * @returns {string}
  */
 export function renderMarkdown(summary) {
   const s = summary ?? {};
-  const counts = s.counts ?? {};
   const window = s.window ?? {};
-  const period = PERIOD_TITLE[s.period] ? s.period : "daily";
-  const title = PERIOD_TITLE[period];
+  const period = PERIODS.includes(s.period) ? s.period : "daily";
   const project = s.project ?? "(all projects)";
+  const groupBy = s.groupBy ?? "kind";
   const items = Array.isArray(s.items) ? s.items : [];
-  const of = (category) => items.filter((item) => item.category === category);
+  const metrics = Array.isArray(s.metrics) ? s.metrics : null;
+  const metricLabels = new Map((metrics ?? []).map((metric) => [metric.key, metric.label]));
+  const labelOf = (item) => (item.metric ? metricLabels.get(item.metric) ?? item.metric : `\`${item.group}\``);
+
+  const periodLine =
+    period === "daily"
+      ? `${window.startDate ?? "?"} (one UTC day)`
+      : `${window.startDate ?? "?"} → ${window.endDate ?? "?"}`;
 
   const lines = [
-    `# ${title} report — ${project}`,
+    `# ${PERIOD_TITLE[period]} report — ${project}`,
     "",
-    `- Period: ${window.startDate ?? "?"} → ${window.endDate ?? "?"}`,
+    `- Period: ${periodLine}`,
     `- Project: ${project}`,
-    `- Generated at: ${s.generatedAt ?? "?"}`,
-    "",
-    "## Overview",
-    "",
-    `- Total completed (categorized): ${counts.total ?? 0}`,
-    `- Requirements handled: ${counts.requirements ?? 0}`,
-    `- Development tasks completed: ${counts.development ?? 0}`,
-    `- Bugs fixed: ${counts.bugs ?? 0}`,
-    `- Production incidents: ${counts.incidents ?? 0}`,
-    "",
-    "## Requirements handled",
-    "",
-    sectionList(of("requirement")),
-    "",
-    "## Development tasks completed",
-    "",
-    sectionList(of("development")),
-    "",
-    "## Bugs fixed",
-    "",
-    sectionList(of("bug")),
-    "",
-    "## Production incidents",
-    "",
-    sectionList(of("incident")),
-    "",
+    `- Grouped by: ${groupBy}`,
+  ];
+  if (s.preset) lines.push(`- Preset: ${s.preset}`);
+  if (s.assignee) lines.push(`- Assignee: ${s.assignee}`);
+  lines.push(`- Generated at: ${s.generatedAt ?? "?"}`, "", "## Overview", "", `- Total completed: ${s.total ?? 0}`, "");
+  lines.push("> TODO: one or two sentences on how the period went.", "", "## Core metrics", "");
+
+  if (metrics) {
+    lines.push(`Preset \`${s.preset}\` · grouped by \`${groupBy}\`:`);
+    lines.push("");
+    for (const metric of metrics) lines.push(`- ${metric.label}: ${metric.count}`);
+  } else {
+    const keys = Object.keys(s.counts ?? {});
+    if (keys.length === 0) {
+      lines.push("_None._");
+    } else {
+      lines.push(`Grouped by \`${groupBy}\`:`);
+      lines.push("");
+      for (const key of keys) lines.push(`- \`${key}\`: ${s.counts[key]}`);
+    }
+  }
+
+  lines.push("", "### Completed cards", "", cardList(items, labelOf), "");
+  lines.push(
     "## Key decisions & milestones",
     "",
     "> TODO: summarise the decisions and milestones from this period.",
@@ -412,7 +619,7 @@ export function renderMarkdown(summary) {
     "",
     "> TODO: outline the plan for the next period.",
     "",
-  ];
+  );
 
   return lines.join("\n");
 }
@@ -428,23 +635,48 @@ Build a periodic report from the board's completed cards.
 Options:
   --period daily|weekly|monthly   Reporting window (default: daily).
   --date YYYY-MM-DD               Any day inside the window (default: today, UTC).
-  --project <id>                  Restrict to one project.
+  --project <id>                  Restrict to one project (board-side filter).
+  --assignee <name>               Restrict to one assignee (display name or id).
+  --group-by <spec>               kind | project | assignee | status | label:<ns>
+                                  (default: kind, or the preset's own grouping).
+  --preset <name>                 Metric preset to apply (available: software).
   --limit <n>                     Max cards to read from the board (default: 1000).
   --json                          Print {ok,data:{summary}} instead of Markdown.
   -h, --help                      Show this help.
 
 Exit codes: 0 ok · 1 runtime failure · 2 usage error.`;
 
+const USAGE_ERROR_CODES = new Set([
+  "INVALID_PERIOD",
+  "INVALID_DATE",
+  "INVALID_LIMIT",
+  "INVALID_GROUP_BY",
+  "INVALID_PRESET",
+  "UNKNOWN_ARGUMENT",
+]);
+
 /**
- * Parse the CLI flags. Supports `--k v` and `--k=v`.
+ * Parse the CLI flags. Supports `--k v` and `--k=v`. Value-free flags
+ * (`--json`) never consume the next token.
  *
  * @param {string[]} argv
  * @returns {{period: string, date: string|undefined, project: string|undefined,
+ *   assignee: string|undefined, groupBy: string|undefined, preset: string|undefined,
  *   limit: number, json: boolean, help: boolean}}
  * @throws {ReportError} `INVALID_LIMIT`
  */
 function parseArgs(argv) {
-  const opts = { period: "daily", date: undefined, project: undefined, limit: 1000, json: false, help: false };
+  const opts = {
+    period: "daily",
+    date: undefined,
+    project: undefined,
+    assignee: undefined,
+    groupBy: undefined,
+    preset: undefined,
+    limit: 1000,
+    json: false,
+    help: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     let flag = arg;
@@ -469,6 +701,15 @@ function parseArgs(argv) {
         break;
       case "--project":
         opts.project = value();
+        break;
+      case "--assignee":
+        opts.assignee = value();
+        break;
+      case "--group-by":
+        opts.groupBy = value();
+        break;
+      case "--preset":
+        opts.preset = value();
         break;
       case "--limit": {
         const n = Number(value());
@@ -544,6 +785,14 @@ function fetchTasks(opts) {
   return payload.data.tasks;
 }
 
+/** Resolve the preset and grouping *before* reading the board, so a typo fails fast. */
+function resolveConfig(opts) {
+  const preset = opts.preset === undefined ? null : applyPreset(opts.preset);
+  const groupBy = String(opts.groupBy ?? preset?.groupBy ?? "kind").trim();
+  parseGroupBy(groupBy); // validate now, not after a board read
+  return { preset, groupBy };
+}
+
 /** Write a failure to the agreed stream, then return the process exit code. */
 function reportFailure(err, json) {
   const isReportError = err instanceof ReportError;
@@ -556,9 +805,7 @@ function reportFailure(err, json) {
   }
   // Usage problems exit 2 (the CLI's own convention); everything else is a
   // runtime failure.
-  return code === "INVALID_PERIOD" || code === "INVALID_DATE" || code === "INVALID_LIMIT" || code === "UNKNOWN_ARGUMENT"
-    ? 2
-    : 1;
+  return USAGE_ERROR_CODES.has(code) ? 2 : 1;
 }
 
 /**
@@ -581,8 +828,15 @@ async function main(argv) {
   }
 
   try {
-    const window = { ...resolveWindow(opts.period, opts.date), project: opts.project ?? null };
-    const summary = aggregate(fetchTasks(opts), window);
+    const { preset, groupBy } = resolveConfig(opts);
+    const window = {
+      ...resolveWindow(opts.period, opts.date),
+      project: opts.project ?? null,
+      assignee: opts.assignee ?? null,
+    };
+    let tasks = fetchTasks(opts);
+    if (opts.assignee) tasks = tasks.filter((task) => matchesAssignee(task, opts.assignee));
+    const summary = aggregate(tasks, window, { groupBy, preset });
     if (opts.json) {
       process.stdout.write(`${JSON.stringify({ ok: true, data: { summary } }, null, 2)}\n`);
     } else {
