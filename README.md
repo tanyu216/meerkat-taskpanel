@@ -161,10 +161,14 @@ bash install.sh --target claude|openclaw|codex|pi|all
 ```
 
 Default target is `all`. The dispatcher forwards to `scripts/install/<host>.sh`, which
-installs the skill into each host's skill directory. The `Bundle` column is the per-host
-manifest that the host's own plugin system consumes — registering it needs that host's
-CLI, so `install.sh` only prints the command; see
-[`docs/install.md`](docs/install.md#per-host-steps) for the exact one per host.
+installs the skill into each host's skill directory — and, for **Claude Code** and
+**Codex**, the rest of the host bundle: MCP registration, the host config
+(`~/.claude/settings.json` / `~/.codex/AGENTS.md`), slash commands (Claude) or a claim
+trigger (Codex), and a `taskctl` shim that pins the agent identity. All bundle writes are
+merge-style and idempotent. The `Bundle` column is the per-host manifest that the host's
+own plugin system consumes — registering it needs that host's CLI, so `install.sh` only
+prints the command; see [`docs/install.md`](docs/install.md#per-host-steps) for the exact
+one per host.
 
 | Host | `--target` | Skill directory | Bundle |
 |---|---|---|---|
@@ -177,9 +181,11 @@ OpenClaw also consumes the Claude-format bundle (`plugins/claude`), which is the
 skill-only route; `plugins/openclaw/openclaw.plugin.json` is a *native* manifest — see
 [`docs/install.md`](docs/install.md#openclaw) for the distinction.
 
-Useful flags: `--prefix <home>` (override the target home), `--link` (symlink instead of
-copy), `--force` (overwrite an existing destination), `--dry-run` (print destinations and
-change nothing), `--skip-node-check` (bypass the Node >= 22 check).
+Useful flags: `--prefix <home>` (override the target home), `--agent-name <name>` (the
+agent's board identity, default `$USER` — must equal its assignee), `--no-automation`
+(skip the Codex claim trigger), `--link` (symlink instead of copy), `--force` (overwrite
+existing files and managed keys), `--dry-run` (preview every write and change nothing),
+`--skip-node-check` (bypass the Node >= 22 check).
 
 ## Practice guide
 
@@ -218,19 +224,25 @@ rather than by each agent.
 
 ### Claude Code
 
-Install the skill (or the marketplace plugin) per [Install](#install), then drive
-the board with `taskctl`, stamping each write with the host and session —
+`install.sh --target claude --agent-name <name>` deploys the whole bundle, not just the
+skill: it merges `~/.claude/settings.json` (adding `env.TASKCTL_AGENT` and a `SessionStart`
+hook that starts the board and lists your claimable cards), installs
+`~/.claude/commands/{board,claim,deliver}.md`, registers the MCP server when the `claude`
+CLI is on `PATH`, and ships a `taskctl` shim that injects `--agent <name>`. Then drive the
+board with `taskctl`, stamping each write with the host and session —
 `--agent-platform claude --session-id <id>` — so a card's trail points back at the
-conversation that did the work. Claude Code has **no auto-claim**: the claim in
-rule 1 has to be triggered by a hook, a slash command, or an external scheduler.
+conversation that did the work. Claude Code has **no auto-claim**: the claim in rule 1 has
+to be triggered by the SessionStart hook, a slash command, or an external scheduler.
 
 ### Codex
 
-Install to `~/.codex/skills/task-panel` (or `~/.agents/skills/task-panel`), then
-work the board the same way, using the running thread as the session id —
-`--agent-platform codex --session-id "$CODEX_THREAD_ID"` — for conversation-level
-attribution. Codex also has **no auto-claim**, so rule 1 needs a Codex automation
-(or an external scheduler) to fire it.
+`install.sh --target codex --agent-name <name>` deploys the whole bundle: it appends a
+claim-first snippet to `~/.codex/AGENTS.md`, writes the schedulable claim trigger
+`~/.codex/task-panel-claim.sh` (`--no-automation` skips it), registers the MCP server when
+the `codex` CLI is on `PATH`, and ships the `taskctl` shim. Work the board the same way,
+using the running thread as the session id — `--agent-platform codex --session-id
+"$CODEX_THREAD_ID"` — for conversation-level attribution. Codex has **no auto-claim** of
+its own, so rule 1 needs the claim trigger (or an external scheduler) to fire it.
 
 The full guide — the eight rules in detail, the per-host install and trigger
 differences, and a worked example — lives in the skill at

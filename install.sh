@@ -8,6 +8,7 @@
 #
 # Usage:
 #   install.sh [--target claude|openclaw|codex|pi|all] [--prefix <home>]
+#              [--agent-name <name>] [--no-automation]
 #              [--link] [--force] [--dry-run] [--skip-node-check] [-h|--help]
 #
 # `--target` also accepts a comma-separated list (e.g. `--target claude,codex`).
@@ -20,10 +21,11 @@
 # too; `--skip-node-check` bypasses it.
 #
 # The installer is deterministic and offline: it writes the skill into each host's
-# skill directory and nothing else. It never starts a host CLI, so it behaves the same
-# on a bare machine and inside the verification container. The per-host plugin/bundle
-# registration commands (which do need the host CLI) are listed in docs/install.md and
-# `install.sh` prints the relevant one as a next step.
+# skill directory. For the two bundle hosts (claude, codex) it also deploys the rest of
+# the bundle — MCP registration, host configuration, slash commands (Claude) and the
+# claim trigger (Codex) — merge-style and idempotently. When a host CLI is absent the
+# installer prints the exact registration command instead of failing, so it behaves the
+# same on a bare machine and inside the verification container.
 
 set -eu
 
@@ -31,6 +33,8 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 TARGET=""
 PREFIX_HOME=""
+AGENT_NAME=""
+NO_AUTOMATION=""
 LINK=""
 FORCE=""
 DRY_RUN=""
@@ -46,6 +50,8 @@ Options:
   --target <host>   claude | openclaw | codex | pi | all   (default: all)
                     A comma-separated list is also accepted (claude,codex).
   --prefix <home>   Install relative to <home> instead of $HOME
+  --agent-name <n>  Agent identity written into the host bundle (default: $USER)
+  --no-automation   Skip the Codex claim trigger script
   --link            Symlink the skill instead of copying it
   --force           Overwrite an existing installation
   --dry-run         Print the destination paths and change nothing
@@ -64,6 +70,8 @@ Destinations:
 
 Environment (set for each host installer):
   TASKPANEL_TARGET_HOME  overrides $HOME
+  TASKPANEL_AGENT_NAME   agent identity (default: $USER)
+  TASKPANEL_NO_AUTOMATION "1" to skip the Codex claim trigger
   TASKPANEL_LINK         symlink instead of copy
   TASKPANEL_FORCE        overwrite an existing destination
   TASKPANEL_DRY_RUN      print only, change nothing
@@ -95,6 +103,19 @@ while [ "$#" -gt 0 ]; do
       ;;
     --prefix=*)
       PREFIX_HOME="${1#*=}"
+      shift
+      ;;
+    --agent-name)
+      [ "$#" -ge 2 ] || die "--agent-name requires a value"
+      AGENT_NAME="$2"
+      shift 2
+      ;;
+    --agent-name=*)
+      AGENT_NAME="${1#*=}"
+      shift
+      ;;
+    --no-automation)
+      NO_AUTOMATION="1"
       shift
       ;;
     --link)
@@ -198,6 +219,8 @@ FAIL $host — installer not found"
 
   echo "install.sh: $host"
   if TASKPANEL_TARGET_HOME="$TARGET_HOME" \
+      TASKPANEL_AGENT_NAME="$AGENT_NAME" \
+      TASKPANEL_NO_AUTOMATION="$NO_AUTOMATION" \
       TASKPANEL_LINK="$LINK" \
       TASKPANEL_FORCE="$FORCE" \
       TASKPANEL_DRY_RUN="$DRY_RUN" \

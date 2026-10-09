@@ -2,15 +2,24 @@
 #
 # Shared implementation for the per-host installers (claude / openclaw / codex / pi).
 #
-# Each host script is a two-line stub that sources this file and calls `install_skill`
-# with its host directory. Honours:
+# Each host script sources this file and calls the pieces it needs. The two bundle
+# hosts (claude, codex) call `install_skill` plus the MCP / config / command / trigger
+# helpers below; the two skill-only hosts (openclaw, pi) call just `install_skill`.
+#
+# Honours:
 #
 #   TASKPANEL_TARGET_HOME  base home directory (default: $HOME)
+#   TASKPANEL_AGENT_NAME   agent identity for the bundle (default: $USER)
 #   TASKPANEL_LINK         "1" to symlink instead of copy
-#   TASKPANEL_FORCE        "1" to overwrite an existing destination
+#   TASKPANEL_FORCE        "1" to overwrite an existing destination / managed key
 #   TASKPANEL_DRY_RUN      "1" to print what would happen and change nothing
+#   TASKPANEL_NO_AUTOMATION "1" to skip the Codex claim trigger
 #   TASKPANEL_MIN_NODE     required Node major (default: 22)
 #   TASKPANEL_SKIP_NODE_CHECK  "1" to skip the Node version check
+#
+# Everything is **idempotent**: re-running an installer with the same inputs leaves
+# the destination unchanged and exits 0. Existing files and configuration keys are
+# never clobbered unless `TASKPANEL_FORCE` is set.
 
 set -eu
 
@@ -55,6 +64,47 @@ require_node() {
   fi
 }
 
+# ---------------------------------------------------------------------------
+# Shared context — resolved relative to the *host script* that sourced this file.
+# ---------------------------------------------------------------------------
+
+script_dir() { cd "$(dirname "$0")" && pwd; }
+repo_root() { cd "$(script_dir)/../.." && pwd; }
+target_home() { printf '%s\n' "${TASKPANEL_TARGET_HOME:-$HOME}"; }
+apply_helper() { printf '%s\n' "$(script_dir)/lib/apply.mjs"; }
+
+# agent_name — the identity written into the host bundle.
+#
+# `--agent-name` (TASKPANEL_AGENT_NAME) wins; the default is $USER, then $LOGNAME,
+# then a stable "agent" placeholder. The name is the board assignee: claiming a card
+# checks `assignee == actor`, so this is the name the agent must be assigned cards as.
+agent_name() {
+  local name="${TASKPANEL_AGENT_NAME:-}"
+  [ -n "$name" ] || name="${USER:-}"
+  [ -n "$name" ] || name="${LOGNAME:-}"
+  [ -n "$name" ] || name="agent"
+  printf '%s\n' "$name"
+}
+
+# export_tp_env <host_dir> — export the TP_* variables the template renderer reads.
+#
+# {{AGENT}} <- TP_AGENT, {{REPO}} <- TP_REPO, {{SHIM}} <- TP_SHIM, and so on. The
+# destinations are absolute under the target home so the hook / trigger / shim work
+# regardless of the caller's working directory.
+export_tp_env() {
+  host_dir="$1"
+  TP_AGENT="$(agent_name)"
+  TP_REPO="$(repo_root)"
+  TP_SHIM="$(target_home)/$host_dir/bin/taskctl"
+  TP_HOOK="$(target_home)/$host_dir/hooks/task-panel-session-start.sh"
+  TP_TRIGGER="$(target_home)/$host_dir/task-panel-claim.sh"
+  export TP_AGENT TP_REPO TP_SHIM TP_HOOK TP_TRIGGER
+}
+
+# ---------------------------------------------------------------------------
+# Skill copy
+# ---------------------------------------------------------------------------
+
 # install_skill <host_dir> <label>
 #   <host_dir>  dot-directory under the target home, e.g. ".claude"
 #   <label>     human-readable host name, e.g. "claude"
@@ -65,11 +115,8 @@ install_skill() {
   # Node floor first: nothing is copied onto a runtime that cannot run it.
   require_node || return 1
 
-  script_dir="$(cd "$(dirname "$0")" && pwd)"
-  repo_root="$(cd "$script_dir/../.." && pwd)"
-  src="$repo_root/skills/task-panel"
-
-  target_home="${TASKPANEL_TARGET_HOME:-$HOME}"
+  src="$(repo_root)/skills/task-panel"
+  target_home="$(target_home)"
   dest="$target_home/$host_dir/skills/task-panel"
 
   if [ ! -d "$src" ]; then
@@ -88,9 +135,10 @@ install_skill() {
 
   if [ -e "$dest" ] || [ -L "$dest" ]; then
     if [ -z "${TASKPANEL_FORCE:-}" ]; then
-      echo "$label: destination already exists: $dest" >&2
-      echo "$label: re-run with --force to overwrite it." >&2
-      return 1
+      # Idempotent: an existing skill is the desired end state, not an error. The
+      # local edits are preserved (merge, never clobber); --force is the escape hatch.
+      echo "$label: already installed: $dest (unchanged; re-run with --force to overwrite)"
+      return 0
     fi
     rm -rf "$dest"
   fi
@@ -104,4 +152,132 @@ install_skill() {
     cp -R "$src" "$dest"
     echo "$label: copied  $dest"
   fi
+}
+
+# ---------------------------------------------------------------------------
+# Bundle writing — templates, config merge, MCP registration
+# ---------------------------------------------------------------------------
+
+# emit_file <template_rel> <dest> [--exec]
+#   Render scripts/install/templates/<template_rel> into <dest>. Idempotent.
+emit_file() {
+  template_rel="$1"
+  dest="$2"
+  exec_flag="${3:-}"
+
+  template="$(script_dir)/templates/$template_rel"
+  [ -f "$template" ] || { echo "install: template not found: $template" >&2; return 1; }
+
+  if [ -n "${TASKPANEL_DRY_RUN:-}" ]; then
+    echo "would write $dest"
+    return 0
+  fi
+
+  # --force is the documented "overwrite an existing installation" escape hatch: it
+  # must reach the emitted files too, or a changed --agent-name would silently no-op.
+  force_flag=""
+  [ -n "${TASKPANEL_FORCE:-}" ] && force_flag="--force"
+
+  if [ -n "$exec_flag" ]; then
+    node "$(apply_helper)" emit "$template" "$dest" --exec $force_flag
+  else
+    node "$(apply_helper)" emit "$template" "$dest" $force_flag
+  fi
+}
+
+# merge_settings <settings_file>
+#   Merge env.TASKCTL_AGENT and the SessionStart hook into a Claude settings.json,
+#   preserving every other key. Requires TP_AGENT / TP_HOOK to be exported first.
+merge_settings() {
+  settings_file="$1"
+
+  if [ -n "${TASKPANEL_DRY_RUN:-}" ]; then
+    echo "would merge $settings_file (env.TASKCTL_AGENT + SessionStart hook)"
+    return 0
+  fi
+
+  if [ -n "${TASKPANEL_FORCE:-}" ]; then
+    node "$(apply_helper)" merge-settings "$settings_file" --agent "$TP_AGENT" --hook "$TP_HOOK" --force
+  else
+    node "$(apply_helper)" merge-settings "$settings_file" --agent "$TP_AGENT" --hook "$TP_HOOK"
+  fi
+}
+
+# append_snippet <file> <template_rel> <marker>
+#   Append a <!-- marker:begin -->…<!-- marker:end --> block (rendered) to <file>.
+append_snippet() {
+  file="$1"
+  template_rel="$2"
+  marker="$3"
+
+  template="$(script_dir)/templates/$template_rel"
+  [ -f "$template" ] || { echo "install: template not found: $template" >&2; return 1; }
+
+  if [ -n "${TASKPANEL_DRY_RUN:-}" ]; then
+    echo "would update $file (append/replace $marker block)"
+    return 0
+  fi
+
+  if [ -n "${TASKPANEL_FORCE:-}" ]; then
+    node "$(apply_helper)" snippet "$file" "$template" --marker "$marker" --force
+  else
+    node "$(apply_helper)" snippet "$file" "$template" --marker "$marker"
+  fi
+}
+
+# register_mcp <cli> <label>
+#   Register the stdio MCP server with the host CLI (`<cli> mcp add taskpanel -- node
+#   <repo>/src/mcp/main.mjs`). Runs the CLI when it is on PATH; otherwise prints the
+#   exact command. The CLI is run with HOME (and, for codex, CODEX_HOME) pointed at the
+#   target home, so an isolated `--prefix` / `TASKPANEL_TARGET_HOME` install never
+#   touches the real host config. An "already exists" reply is success (idempotent).
+register_mcp() {
+  cli="$1"
+  label="$2"
+
+  repo="$(repo_root)"
+  home="$(target_home)"
+  display="$cli mcp add taskpanel -- node $repo/src/mcp/main.mjs"
+
+  if [ -n "${TASKPANEL_DRY_RUN:-}" ]; then
+    echo "would run  $display"
+    return 0
+  fi
+
+  if ! command -v "$cli" >/dev/null 2>&1; then
+    echo "$label: '$cli' not on PATH — register MCP manually with:"
+    echo "  $display"
+    return 0
+  fi
+
+  out=""
+  status=0
+  set +e
+  if [ "$cli" = "codex" ]; then
+    mkdir -p "$home/.codex"
+    out="$(HOME="$home" CODEX_HOME="$home/.codex" "$cli" mcp add taskpanel -- node "$repo/src/mcp/main.mjs" 2>&1)"
+    status=$?
+  else
+    out="$(HOME="$home" "$cli" mcp add taskpanel -- node "$repo/src/mcp/main.mjs" 2>&1)"
+    status=$?
+  fi
+  set -e
+
+  if [ "$status" -eq 0 ]; then
+    echo "$label: registered MCP server 'taskpanel'"
+    return 0
+  fi
+
+  if printf '%s' "$out" | grep -qi "already exists"; then
+    echo "$label: MCP server 'taskpanel' already registered"
+    return 0
+  fi
+
+  # The CLI ran but did not register — report it honestly and give the manual command.
+  echo "$label: MCP registration did not complete; run it manually:" >&2
+  echo "  $display" >&2
+  if [ -n "$out" ]; then
+    printf '%s\n' "$out" | sed 's/^/    /' >&2
+  fi
+  return 0
 }

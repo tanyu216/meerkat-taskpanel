@@ -12,7 +12,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -55,15 +55,27 @@ describe("install.sh: targets", () => {
   });
 
   it("prints a per-host summary and exits non-zero when a host fails", () => {
+    // A target home whose parent is a regular file makes the skill copy fail with
+    // ENOTDIR — the honest "host failed" path: exit 1 and a FAIL summary line.
+    const block = join(makeTempDir(), "block");
+    writeFileSync(block, "not a directory", "utf8");
+    const home = join(block, "home");
+    const run = runInstall(["--target", "claude", "--prefix", home]);
+
+    assert.equal(run.status, 1);
+    assert.match(run.stdout, /== install summary ==/);
+    assert.match(run.stdout, /FAIL claude/);
+  });
+
+  it("re-running a completed install is idempotent, not a failure", () => {
     const home = makeTempDir();
     assert.equal(runInstall(["--target", "claude", "--prefix", home]).status, 0);
 
-    // Second run without --force must fail, name the destination, and say how to fix it.
     const again = runInstall(["--target", "claude", "--prefix", home]);
-    assert.equal(again.status, 1);
+    assert.equal(again.status, 0, again.stderr);
     assert.match(again.stdout, /== install summary ==/);
-    assert.match(again.stdout, /FAIL claude/);
-    assert.match(again.stderr, /--force/);
+    assert.match(again.stdout, /OK   claude/);
+    assert.match(again.stdout, /already installed/);
   });
 
   it("rejects an unknown --target with a usage error (exit 2)", () => {

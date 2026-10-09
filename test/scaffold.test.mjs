@@ -243,10 +243,14 @@ describe("install.sh", () => {
     assert.equal(existsSync(join(fakeHome, ".agents")), false, "dry run must not write");
   });
 
-  it("installs into a temp home and refuses to clobber an existing install", async () => {
+  it("installs into a temp home and re-installs idempotently", async () => {
     const fakeHome = await makeTempDir();
     const dest = join(fakeHome, ".claude", "skills", "task-panel");
+    // The direct host script now also registers MCP via the `claude` CLI when it is
+    // present; drop CLAUDE_CONFIG_DIR so that registration (and any test run on a
+    // machine that sets it) stays inside the isolated home.
     const env = { ...process.env, TASKPANEL_TARGET_HOME: fakeHome };
+    delete env.CLAUDE_CONFIG_DIR;
 
     const first = spawnSync("bash", [join(ROOT, "scripts/install/claude.sh")], {
       cwd: ROOT,
@@ -256,13 +260,15 @@ describe("install.sh", () => {
     assert.equal(first.status, 0, first.stderr);
     assert.ok(existsSync(join(dest, "SKILL.md")), "SKILL.md must be installed");
 
+    // Re-install without --force is now the desired end state, not an error: it keeps
+    // the existing install and reports it (merge, never clobber).
     const second = spawnSync("bash", [join(ROOT, "scripts/install/claude.sh")], {
       cwd: ROOT,
       encoding: "utf8",
       env,
     });
-    assert.equal(second.status, 1, "re-install without --force must fail");
-    assert.match(second.stderr, /already exists/);
+    assert.equal(second.status, 0, second.stderr);
+    assert.match(second.stdout, /already installed/);
 
     const forced = spawnSync("bash", [join(ROOT, "scripts/install/claude.sh")], {
       cwd: ROOT,

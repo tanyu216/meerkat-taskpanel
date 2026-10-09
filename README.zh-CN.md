@@ -124,8 +124,11 @@ bash install.sh --target claude|openclaw|codex|pi|all
 ```
 
 默认 target 为 `all`。分发器转发到 `scripts/install/<host>.sh`，把 skill 安装到各宿主的
-skill 目录。`Bundle` 列是该宿主自身插件系统消费的清单文件 —— 注册它需要对应宿主的 CLI，
-因此 `install.sh` 只打印命令，不代为执行；每个宿主的具体命令见
+skill 目录 —— 对 **Claude Code** 与 **Codex** 还会部署宿主 bundle 的其余部分：MCP 注册、
+宿主配置（`~/.claude/settings.json` / `~/.codex/AGENTS.md`）、slash 命令（Claude）或认领
+触发脚本（Codex），以及固定身份用的 `taskctl` 包装脚本。所有 bundle 写入均为**合并式且幂等**。
+`Bundle` 列是该宿主自身插件系统消费的清单文件 —— 注册它需要对应宿主的 CLI，因此
+`install.sh` 只打印命令，不代为执行；每个宿主的具体命令见
 [`docs/install.md`](docs/install.md#per-host-steps)。
 
 | 宿主 | `--target` | Skill 落点 | Bundle |
@@ -139,9 +142,10 @@ OpenClaw 也可消费 Claude 格式的 bundle（`plugins/claude`），这是受�
 路线；`plugins/openclaw/openclaw.plugin.json` 是*原生*清单 —— 两者的区别见
 [`docs/install.md`](docs/install.md#openclaw)。
 
-常用参数：`--prefix <home>`（覆盖目标 home）、`--link`（软链而非拷贝）、`--force`
-（覆盖已存在目标）、`--dry-run`（只打印落点，不做任何改动）、`--skip-node-check`
-（跳过 Node >= 22 检查）。
+常用参数：`--prefix <home>`（覆盖目标 home）、`--agent-name <名>`（该 Agent 在看板上的身份，
+默认 `$USER`，须与其 assignee 一致）、`--no-automation`（跳过 Codex 认领触发脚本）、
+`--link`（软链而非拷贝）、`--force`（覆盖既有文件与受管键）、`--dry-run`（预览每次写入、
+不做任何改动）、`--skip-node-check`（跳过 Node >= 22 检查）。
 
 ## 实践指南
 
@@ -172,16 +176,21 @@ Task Panel 是默认的任务提供方（传 `--no-task-panel` 可换用自家�
 
 ### Claude Code
 
-按[安装](#安装)装好 skill（或 marketplace 插件），随后用 `taskctl` 驱动看板，并在每次写入
-时带上宿主与会话 —— `--agent-platform claude --session-id <id>` —— 让卡的轨迹指回动手的
-那段对话。Claude Code **默认无自动领取**：规则 1 的认领须由 hook、slash 命令或外部调度触发。
+`install.sh --target claude --agent-name <名>` 会部署完整 bundle，而不只是 skill：合并写入
+`~/.claude/settings.json`（新增 `env.TASKCTL_AGENT` 与一个 `SessionStart` hook —— 启动看板并
+列出你的待领卡）、安装 `~/.claude/commands/{board,claim,deliver}.md`、在 `claude` CLI 可用时
+注册 MCP server，并随包提供注入 `--agent <名>` 的 `taskctl` 包装脚本。随后用 `taskctl` 驱动
+看板，并在每次写入时带上宿主与会话 —— `--agent-platform claude --session-id <id>` —— 让卡的
+轨迹指回动手的那段对话。Claude Code **默认无自动领取**：规则 1 的认领须由 SessionStart hook、
+slash 命令或外部调度触发。
 
 ### Codex
 
-装到 `~/.codex/skills/task-panel`（或 `~/.agents/skills/task-panel`），以同样方式操作看板，
-并用当前线程作为会话 id —— `--agent-platform codex --session-id "$CODEX_THREAD_ID"` ——
-做会话级归属。Codex 同样**默认无自动领取**，规则 1 需要一条 Codex automation（或外部调度）
-来触发。
+`install.sh --target codex --agent-name <名>` 会部署完整 bundle：向 `~/.codex/AGENTS.md` 追加
+claim-first 片段、写入可调度的认领触发脚本 `~/.codex/task-panel-claim.sh`（`--no-automation`
+跳过）、在 `codex` CLI 可用时注册 MCP server，并随包提供 `taskctl` 包装脚本。以同样方式操作
+看板，并用当前线程作为会话 id —— `--agent-platform codex --session-id "$CODEX_THREAD_ID"` ——
+做会话级归属。Codex 本身**默认无自动领取**，规则 1 需要认领触发脚本（或外部调度）来触发。
 
 完整指南 —— 八条规则的展开、各宿主的安装与触发差异，以及一个最小示例 —— 在 skill 内：
 [`skills/task-panel/references/practice-guides.md`](skills/task-panel/references/practice-guides.md)。
