@@ -11,9 +11,10 @@ them straight:
    host's own plugin system discover and enable the skill. This step needs the host CLI,
    so `install.sh` does **not** run it; it prints the command and you run it once.
 
-> **Status: core (M1), CLI (M2) and the MCP server (M3) have landed.** The skill is
-> discoverable and the `taskctl` commands it describes are implemented. The board
-> frontend and the full HTTP/SSE backend are still planned — see `CLAUDE.md`.
+> **Status: the engine has landed through M6.** The skill is discoverable, the `taskctl`
+> commands it describes are implemented, and the board backend (`src/server/`, HTTP + SSE)
+> plus the `web/` frontend are in place. See `CLAUDE.md` for what is still planned (the
+> Epic view and iteration management).
 
 ## Quick start
 

@@ -8,14 +8,17 @@ lifecycle, including the delivery gate, runs with no human in the loop. The boar
 deliberately **read-only**: it exists so a person can see, at a glance, where every task
 stands and how each epic is rolling up. Nobody files a card by clicking a button.
 
-> **Status: core (M1), CLI (M2) and MCP server (M3) have landed.**
+> **Status: the engine has landed through M6 — core (M1), CLI (M2), the stdio MCP server
+> (M3), and the full board backend plus the `web/` frontend (M6).**
 > `src/core/` holds the domain model, SQLite storage and migrations, use-cases and
-> `openBoard()`; `src/cli/` + `src/server/` provide the real `taskctl` command surface and a
-> minimal local `taskd` HTTP service the CLI auto-starts on loopback
+> `openBoard()`; `src/cli/` + `src/server/` provide the real `taskctl` command surface and
+> the local `taskd` HTTP service the CLI auto-starts on loopback
 > (`TASKD_NO_AUTOSTART=1` disables it); `src/mcp/` is a stdio MCP server exposing 18 tools as
-> a thin, gate-equivalent proxy to `taskd`. Still planned: the board frontend (`web/`) and
-> the full HTTP/SSE board backend. See `CLAUDE.md` / `docs/development.md`,
-> `src/mcp/README.md`, and the roadmap below.
+> a thin, gate-equivalent proxy to `taskd`; `src/server/` serves the full board HTTP API and
+> its SSE event stream; `web/` is the Vue 3 board frontend, built to `web/dist`, which
+> `taskd` serves as its hosted root. Still planned: the Epic view and iteration management
+> (see the roadmap). See `CLAUDE.md` / `docs/development.md`, `src/mcp/README.md`, and the
+> roadmap below.
 
 ## Highlights
 
@@ -83,7 +86,7 @@ task-panel/
 ├── web/                          # board frontend (Vue 3 + Vite) → web/dist (hosted root)
 ├── skills/task-panel/        # skill — single source of truth
 ├── plugins/                      # one dispatch unit per host (claude/codex/openclaw/pi)
-├── design/                       # product design artifacts (PRD / DESIGN / BLOCKS / prototype / assets)
+├── design/                       # brand assets (+ assets/ and prototype/ placeholders; migration pending)
 ├── scripts/                      # build / install / sync / verify
 ├── test/                         # contract + smoke tests
 ├── docs/                         # usage and development docs
@@ -97,14 +100,21 @@ bash install.sh --target claude|openclaw|codex|pi|all
 ```
 
 Default target is `all`. The dispatcher forwards to `scripts/install/<host>.sh`, which
-installs the skill into each host's skill directory:
+installs the skill into each host's skill directory. The `Bundle` column is the per-host
+manifest that the host's own plugin system consumes — registering it needs that host's
+CLI, so `install.sh` only prints the command; see
+[`docs/install.md`](docs/install.md#per-host-steps) for the exact one per host.
 
-| Host | Destination |
-|---|---|
-| `claude` | `~/.claude/skills/task-panel` |
-| `openclaw` | `~/.openclaw/skills/task-panel` |
-| `codex` | `~/.codex/skills/task-panel` |
-| `pi` | `~/.agents/skills/task-panel` |
+| Host | `--target` | Skill directory | Bundle |
+|---|---|---|---|
+| Claude Code | `claude` | `~/.claude/skills/task-panel` | `plugins/claude/.claude-plugin/plugin.json` |
+| OpenClaw | `openclaw` | `~/.openclaw/skills/task-panel` | `plugins/openclaw/openclaw.plugin.json` (native) |
+| Codex | `codex` | `~/.codex/skills/task-panel` | `plugins/codex/.codex-plugin/plugin.json` |
+| Pi / Agent Skills | `pi` | `~/.agents/skills/task-panel` | `plugins/pi/package.json` |
+
+OpenClaw also consumes the Claude-format bundle (`plugins/claude`), which is the supported
+skill-only route; `plugins/openclaw/openclaw.plugin.json` is a *native* manifest — see
+[`docs/install.md`](docs/install.md#openclaw) for the distinction.
 
 Useful flags: `--prefix <home>` (override the target home), `--link` (symlink instead of
 copy), `--force` (overwrite an existing destination), `--dry-run` (print destinations and
@@ -141,7 +151,7 @@ npm run check
 | M1 | `src/core`: domain model, SQLite repository, state machine, invariants *(landed)* |
 | M2 | `taskctl` command surface aligned with `task-interface v1`; minimal local `taskd` *(landed)* |
 | M3 | `src/mcp`: stdio MCP server — 18 tools, thin proxy to `taskd` *(landed)* |
-| M6 | Full board HTTP API + SSE backend, and the `web` board frontend |
+| M6 | Full board HTTP API + SSE backend (`src/server/`), and the `web` board frontend → `web/dist` *(landed)* |
 | **Epic view** | Visual view of epic hierarchy / progress / rollup — see an epic and how the statuses of its child cards aggregate *(planned)* |
 | **Iteration management** | Iteration (sprint) cycle management: group tasks into iterations, with in-iteration progress and capacity *(planned)* |
 

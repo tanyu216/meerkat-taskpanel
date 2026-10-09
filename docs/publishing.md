@@ -1,0 +1,152 @@
+# Publishing
+
+How a Task Panel version is packaged and published across the five distribution
+surfaces: **npm**, **git + GitHub Release**, and the four host bundles (Claude Code
+marketplace, OpenClaw, Codex, Pi).
+
+> **Scope.** This page documents the steps only. **The actual `push`, tag and release are
+> performed by Elon** — nothing here is run as part of writing this document, and CI does
+> not publish to npm. Treat the workflow files and manifests as the source of truth: this
+> page explains the *shape* of a release, not a copy of their contents.
+
+## 1. Version consistency
+
+A release version lives in **six files**, and all six must carry the same value:
+
+| # | File | Field |
+|---|---|---|
+| 1 | `package.json` | `version` |
+| 2 | `plugins/pi/package.json` | `version` |
+| 3 | `plugins/claude/.claude-plugin/plugin.json` | `version` |
+| 4 | `plugins/codex/.codex-plugin/plugin.json` | `version` |
+| 5 | `plugins/openclaw/openclaw.plugin.json` | `version` |
+| 6 | `.claude-plugin/marketplace.json` | `metadata.version` |
+
+`scripts/verify/version.mjs` checks that the six agree; it is wired into CI, so a drifting
+version fails the build rather than shipping. Run it locally before tagging:
+
+```bash
+node scripts/verify/version.mjs
+```
+
+Bump all six to the same value **in one commit**, then let CI confirm.
+
+## 2. npm
+
+The published tarball's contents are decided by the `files` whitelist in the root
+`package.json` — `src/`, `skills/`, `plugins/`, `scripts/`, `docs/`, `install.sh` and the
+two READMEs. `web/`, `dist/` and the test/CI directories are **not** in it (the hosted
+board is a separate build; see [development.md](development.md#two-build-layers-engine-and-web)).
+
+**Precondition.** `npm publish` refuses a `private` package (`EPRIVATE`). Confirm the root
+`package.json` is publishable before packing — `npm pack --dry-run` fails fast if it is not.
+
+```bash
+npm pack --dry-run          # inspect the exact file list, no tarball written
+npm pack                    # write task-panel-<version>.tgz
+npm publish                 # publish (Elon)
+```
+
+`npm pack` runs no lifecycle scripts and needs no `npm install`: the engine is runtime
+zero-dependency and works offline.
+
+## 3. Git tag + GitHub Release
+
+The release pipeline is **tag-driven**: `.github/workflows/release.yml` runs on
+`push` of a tag matching `v*`. It re-runs the checks, builds the release tree
+(`node scripts/build.mjs`) and performs a packaging run. It does **not** publish anywhere
+automatically — a release ends as a GitHub Release **draft** for a human to review and
+publish.
+
+The workflow file is authoritative for the exact steps and the Node version it pins; read
+it before cutting a release rather than relying on this summary.
+
+```bash
+# Run by Elon — not part of the document
+git tag v<version>          # must match the six version fields above
+git push origin v<version>  # triggers .github/workflows/release.yml
+```
+
+> Commits in this repository use explicit paths (`git commit -- <path>`), never a bare
+> `git commit -a`. Tags and pushes are destructive-ish and are Elon's to make.
+
+## 4. Claude Code marketplace
+
+`.claude-plugin/marketplace.json` (marketplace name `task-panel-marketplace`) points its
+single plugin `task-panel` at `./plugins/claude`, whose `.claude-plugin/plugin.json`
+declares `"skills": "./skills"`.
+
+```bash
+# consumer: register this repository as the marketplace, then install the plugin
+claude plugin marketplace add <path-or-git-url>
+claude plugin install task-panel@task-panel-marketplace -y
+
+# verify
+claude plugin list                  # → task-panel@task-panel-marketplace, enabled
+claude plugin validate <path>       # validates the plugin + marketplace manifests
+```
+
+The generated `plugins/claude/skills/` copy must match `skills/` — `npm run check:skills`
+fails CI on drift, so run `node scripts/sync-skills.mjs` after any skill edit.
+
+## 5. OpenClaw
+
+OpenClaw has two routes, and they are not interchangeable:
+
+- **Native manifest** — `plugins/openclaw/openclaw.plugin.json`. A *native* OpenClaw plugin
+  is an in-process runtime module: it must additionally ship `package.json#openclaw.extensions`
+  and an entry point that imports the OpenClaw plugin SDK. That SDK is a real runtime
+  dependency this zero-dependency project deliberately does not take, so `plugins/openclaw`
+  is a manifest only — OpenClaw's detector still classifies it as native, which is why the
+  repository verifies the *bundle* contract against `plugins/claude` instead.
+- **Bundle (the supported skill-only route)** — OpenClaw consumes the Claude-format bundle:
+
+```bash
+openclaw plugins install <path>/plugins/claude --force --accept-capabilities
+openclaw plugins inspect task-panel    # Format: bundle / Bundle format: claude / skills
+```
+
+Equivalently, placing the skill in `~/.openclaw/skills/` (what `install.sh --target openclaw`
+does) is enough for the skill to be found.
+
+## 6. Codex
+
+Codex reads the same repository-root marketplace manifest as Claude
+(`.claude-plugin/marketplace.json`) and the `plugins/codex/.codex-plugin/plugin.json`
+bundle.
+
+```bash
+codex plugin marketplace add <path-or-git-url>
+codex plugin add task-panel@task-panel-marketplace
+
+# verify
+codex plugin list
+```
+
+## 7. Pi / Agent Skills
+
+`plugins/pi/package.json` is the Pi package (`"files": ["skills"]`), and `plugins/pi/skills/`
+is the generated skill copy.
+
+```bash
+pi install <path>/plugins/pi
+
+# verify
+pi list
+```
+
+## 8. Skill wrappers ship with the bundle
+
+Every host bundle carries its own generated `skills/` copy (see
+[development.md](development.md#the-skill-is-generated-never-hand-edited)). A publish is
+only correct if `node scripts/sync-skills.mjs --check` is green — the generated copies and
+`skills/task-panel/` must be identical. Both are in the npm whitelist, so the tarball ships
+the source skill *and* the per-host copies.
+
+## See also
+
+- [install.md](install.md) — the per-host install and plugin-registration commands in full.
+- [development.md](development.md) — the two build layers, the offline policy and the
+  generated-skill rule.
+- [`../README.md`](../README.md) / [`../README.zh-CN.md`](../README.zh-CN.md) — status and
+  the four-host support matrix.

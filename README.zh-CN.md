@@ -7,12 +7,14 @@ epic 关系的搭建，乃至交付门禁，全部由 Agent 自己完成，全�
 刻意**只读**的 —— 它的存在，是让人一眼看清每个任务当前的状态、以及每个 epic 汇总到哪
 一步。没有人需要靠点按钮来建卡。
 
-> **状态：核心（M1）、CLI（M2）与 MCP server（M3）已落地。**
+> **状态：引擎已落地至 M6 —— 核心（M1）、CLI（M2）、stdio MCP server（M3），以及完整的
+> 看板后端与 `web/` 前端（M6）。**
 > `src/core/` 已包含领域模型、SQLite 存储与迁移、用例与 `openBoard()`；`src/cli/` +
-> `src/server/` 提供了真实的 `taskctl` 命令面，以及 CLI 会在回环地址上自动启动的最小
-> 本地 `taskd` HTTP 服务（`TASKD_NO_AUTOSTART=1` 可禁用）；`src/mcp/` 是 stdio MCP
-> server，暴露 18 个工具，作为通往 `taskd` 的、与交付门禁等价的薄代理。仍待实现：
-> 看板前端（`web/`）与完整的 HTTP/SSE 看板后端。详见 `CLAUDE.md` /
+> `src/server/` 提供了真实的 `taskctl` 命令面，以及 CLI 会在回环地址上自动启动的本地
+> `taskd` HTTP 服务（`TASKD_NO_AUTOSTART=1` 可禁用）；`src/mcp/` 是 stdio MCP server，
+> 暴露 18 个工具，作为通往 `taskd` 的、与交付门禁等价的薄代理；`src/server/` 提供完整的
+> 看板 HTTP API 及其 SSE 事件流；`web/` 是 Vue 3 看板前端，构建到 `web/dist`，由 `taskd`
+> 作为托管根对外提供。仍待实现：Epic 视图与迭代管理（见路线图）。详见 `CLAUDE.md` /
 > `docs/development.md`、`src/mcp/README.md`，各阶段见下方路线图。
 
 ## 亮点
@@ -72,7 +74,7 @@ task-panel/
 ├── web/                          # 看板前端（Vue 3 + Vite）→ web/dist（托管根）
 ├── skills/task-panel/        # skill —— 单一事实源
 ├── plugins/                      # 每宿主一个分发单元（claude/codex/openclaw/pi）
-├── design/                       # 产品设计物（PRD / DESIGN / BLOCKS / prototype / assets）
+├── design/                       # 品牌资产（+ assets/、prototype/ 占位；内容迁移待办）
 ├── scripts/                      # 构建 / 安装 / 同步 / 校验
 ├── test/                         # 契约 + 冒烟测试
 ├── docs/                         # 使用与开发文档
@@ -86,14 +88,20 @@ bash install.sh --target claude|openclaw|codex|pi|all
 ```
 
 默认 target 为 `all`。分发器转发到 `scripts/install/<host>.sh`，把 skill 安装到各宿主的
-skill 目录：
+skill 目录。`Bundle` 列是该宿主自身插件系统消费的清单文件 —— 注册它需要对应宿主的 CLI，
+因此 `install.sh` 只打印命令，不代为执行；每个宿主的具体命令见
+[`docs/install.md`](docs/install.md#per-host-steps)。
 
-| 宿主 | 落点 |
-|---|---|
-| `claude` | `~/.claude/skills/task-panel` |
-| `openclaw` | `~/.openclaw/skills/task-panel` |
-| `codex` | `~/.codex/skills/task-panel` |
-| `pi` | `~/.agents/skills/task-panel` |
+| 宿主 | `--target` | Skill 落点 | Bundle |
+|---|---|---|---|
+| Claude Code | `claude` | `~/.claude/skills/task-panel` | `plugins/claude/.claude-plugin/plugin.json` |
+| OpenClaw | `openclaw` | `~/.openclaw/skills/task-panel` | `plugins/openclaw/openclaw.plugin.json`（原生） |
+| Codex | `codex` | `~/.codex/skills/task-panel` | `plugins/codex/.codex-plugin/plugin.json` |
+| Pi / Agent Skills | `pi` | `~/.agents/skills/task-panel` | `plugins/pi/package.json` |
+
+OpenClaw 也可消费 Claude 格式的 bundle（`plugins/claude`），这是受支持的 skill-only
+路线；`plugins/openclaw/openclaw.plugin.json` 是*原生*清单 —— 两者的区别见
+[`docs/install.md`](docs/install.md#openclaw)。
 
 常用参数：`--prefix <home>`（覆盖目标 home）、`--link`（软链而非拷贝）、`--force`
 （覆盖已存在目标）、`--dry-run`（只打印落点，不做任何改动）。
@@ -125,7 +133,7 @@ npm run check
 | M1 | `src/core`：领域模型、SQLite 仓储、状态机、不变量（*已落地*） |
 | M2 | `taskctl` 命令面，对齐 `task-interface v1`；最小本地 `taskd`（*已落地*） |
 | M3 | `src/mcp`：stdio MCP server —— 18 个工具，`taskd` 的薄代理（*已落地*） |
-| M6 | 完整的看板 HTTP API + SSE 后端，以及 `web` 看板前端 |
+| M6 | 完整的看板 HTTP API + SSE 后端（`src/server/`），以及 `web` 看板前端 → `web/dist`（*已落地*） |
 | **Epic 视图** | epic 层级 / 进展 / rollup 的可视化视图 —— 查看 epic 及其子卡状态的聚合（*规划中*） |
 | **迭代管理** | 迭代（sprint）周期管理：任务归入迭代、迭代内进度与容量（*规划中*） |
 
