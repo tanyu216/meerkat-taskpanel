@@ -10,6 +10,11 @@
 #       - offline build: when BOTH `web/package.json` and the vendored cache
 #         (`web/.vendor/npm-cache`) are present, Vue 3 / Vite / Tailwind/daisyUI are
 #         installed from that cache alone (`npm ci --offline`) and `web/dist` is built.
+#         The cache is **linux/arm64-only** (it was populated by installing `web/`'s
+#         devDependencies inside this arm64 container), so `--offline` holds on an arm64
+#         host only: an x86_64 host/CI would fail the offline install with ENOTCACHED and
+#         needs either a networked install or an extra x64 slice added to the cache
+#         (~doubles it, still under the 120 MB budget).
 #       - skipped: when either is absent (the vendored cache is not committed), the
 #         frontend build is skipped with a one-line note and this stage emits an empty
 #         `web/dist` (see the caveat on the stage below) — a no-op for the static host,
