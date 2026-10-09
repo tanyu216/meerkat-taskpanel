@@ -464,7 +464,7 @@ describe("static: Dockerfile", () => {
     assert.match(text, /CMD \["node","src\/cli\/index\.mjs","--help"\]/);
   });
 
-  it("keeps the runtime stage install-free while the webbuild stage may run npm ci", async () => {
+  it("keeps the runtime stage install-free and the committed cache path offline", async () => {
     const text = await read("docker/Dockerfile");
 
     // The runtime stage (stage 2) installs nothing from a package manager. The
@@ -479,21 +479,42 @@ describe("static: Dockerfile", () => {
       "the runtime stage must install nothing from a package manager",
     );
 
-    // The webbuild stage (stage 1) may run `npm ci`, with or without `--offline`.
-    // Three-way guard (ruling O1, 2026-10-09): offline when a cache is provided,
-    // a networked `npm ci` otherwise (pinned by the committed `web/package-lock.json`),
-    // skip when `web/package.json` is absent.
-    const webbuildStage = text.slice(0, runtimeStart);
-    const npmCiLines = webbuildStage.match(/npm ci[^\n]*/g) ?? [];
-    assert.ok(npmCiLines.length > 0, "the webbuild stage should install the frontend deps with npm ci");
+    // F1-c (ruling O1, 2026-10-09): the repo COMMITS the offline npm cache, so a clean
+    // checkout's `webbuild` stage always takes the offline path — the image builds with
+    // NO network (`docker build --network=none` succeeds). If this ever goes missing the
+    // guarantee is gone, so assert the cache is actually present.
     assert.ok(
-      npmCiLines.some((line) => line.includes("--offline")),
-      "the guard must keep an offline npm ci branch for a provided cache",
+      existsSync(join(ROOT, "web", ".vendor", "npm-cache")),
+      "web/.vendor/npm-cache must be committed (F1-c: it is what makes the image build offline)",
     );
-    // A networked `npm ci` (no `--offline`) is allowed, but the Dockerfile comment must
-    // say so — the boundary is documented, not silent.
+
+    const webbuildStage = text.slice(0, runtimeStart);
+
+    // The guard keys on the committed cache directory and installs `--offline` from it —
+    // `--offline` hard-fails rather than silently reaching the registry.
+    assert.match(
+      webbuildStage,
+      /\[ -d web\/\.vendor\/npm-cache \]/,
+      "the guard must test for the committed cache directory",
+    );
+    const offlineLine = webbuildStage.match(/npm ci --offline --cache \/app\/web\/\.vendor\/npm-cache[^\n]*/);
+    assert.ok(offlineLine, "the cache-present branch must run `npm ci --offline` reading the committed cache");
+
+    // Any *other* `npm ci` is the no-cache fallback, which is networked — it can only run
+    // in a stripped checkout that deleted the committed cache. The Dockerfile comment must
+    // say so: the offline branch is the committed configuration, and the fallback is not.
+    const npmCiLines = webbuildStage.match(/npm ci[^\n]*/g) ?? [];
     if (npmCiLines.some((line) => !line.includes("--offline"))) {
-      assert.match(text, /network/i, "a networked npm ci (no --offline) must be documented in the Dockerfile comment");
+      assert.match(
+        text,
+        /network/i,
+        "a networked npm ci fallback (no --offline) must be documented in the Dockerfile comment",
+      );
+      assert.match(
+        text,
+        /stripped checkout/i,
+        "the Dockerfile comment must state the networked fallback is not the committed configuration",
+      );
     }
   });
 });

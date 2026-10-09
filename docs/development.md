@@ -67,17 +67,23 @@ are **not** the same directory:
 | Release tree | skills + host plugins | `node scripts/build.mjs` | `dist/` — the npm **release tree**; never served |
 
 The web layer is the only part with dependencies. Vue/Vite/Tailwind/daisyUI are
-**build-time devDependencies**: they are installed by the image's `webbuild` stage — offline
-when a cache is provided at `web/.vendor/npm-cache`, otherwise over the network pinned by
-the committed `web/package-lock.json` — and only the built `web/dist` crosses into the
-runtime image. No `node_modules` ships, and the runtime image itself installs nothing.
+**build-time devDependencies**: they are installed by the image's `webbuild` stage from the
+**committed npm cache** at `web/.vendor/npm-cache` (`npm ci --offline`), pinned by the
+committed `web/package-lock.json`, and only the built `web/dist` crosses into the runtime
+image. No `node_modules` ships, and the runtime image itself installs nothing.
+
+> The cache is a **generated artefact** (linux/arm64, produced inside the arm64 container),
+> not a source file. After any dependency bump in `web/package.json`, re-run the vendoring
+> step in [docker.md](docker.md#re-vendoring-the-npm-cache) and commit the refreshed cache
+> with the lockfile.
 
 > The `web/` workspace has landed with **M6b**. When `web/package.json` is absent from a
 > checkout the image's `webbuild` stage is a guarded no-op that emits an empty `web/dist`.
 
 The container-first path is the image build — see
-[docker.md](docker.md#the-web-build-stage). Runtime and verification are offline; only the
-image's frontend build stage may reach the network.
+[docker.md](docker.md#the-web-build-stage). Runtime, every verification step and the
+frontend build stage are all offline: with the cache committed, the image builds with **no
+network** (`docker build --network=none` succeeds).
 
 ## The `taskd` HTTP surface (M6)
 

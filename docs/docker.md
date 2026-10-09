@@ -17,9 +17,9 @@ small set of checks is still allowed on the host; see
 The **runtime image installs nothing**: the engine is dependency-free, so the final stage
 builds offline and there is no root lockfile to drift. The one exception is a separate
 `webbuild` stage that assembles the `web/` frontend — its build-time devDependencies are
-pinned by the committed `web/package-lock.json` and may be fetched over the network, and
-only the static `web/dist` crosses into the runtime image. See
-[The web build stage](#the-web-build-stage).
+pinned by the committed `web/package-lock.json` and restored **offline** from the npm cache
+committed at `web/.vendor/npm-cache`, and only the static `web/dist` crosses into the
+runtime image. See [The web build stage](#the-web-build-stage).
 
 ## Prerequisites
 
@@ -27,7 +27,7 @@ only the static `web/dist` crosses into the runtime image. See
 |---|---|
 | Docker Engine ≥ 20.10 | `docker version` must reach a daemon. Docker Desktop, colima and rootless Docker all work. |
 | Docker Compose v2 ≥ 2.4 | `docker compose` (space, not hyphen). Used for the deploy smoke test only. |
-| Network (first build only) | Pulling `node:22-bookworm-slim` and — when no npm cache is vendored — the `web/` devDependencies via `npm ci`. The runtime image and every verification step are offline. |
+| Network (first build only) | Pulling `node:22-bookworm-slim`. Nothing else: the `web/` devDependencies are restored from the committed cache with `npm ci --offline`, so the image build itself needs no network. The runtime image and every verification step are offline. |
 
 No Node install is required on the host to build or run the image — the image brings
 its own. (You *do* need Node on the host for the [host-allowed checks](#host-allowed-checks)
@@ -65,20 +65,24 @@ no `prototype/`, no `design/`, no `node_modules`). The image:
 
    | `web/package.json` | `web/.vendor/npm-cache` | Action |
    |---|---|---|
-   | present | present | `npm ci --offline --cache /app/web/.vendor/npm-cache` — offline, from the provided cache |
-   | present | absent | plain `npm ci` — **network**, pinned by the committed `web/package-lock.json` (the default in a clean checkout) |
+   | present | present | `npm ci --offline --cache /app/web/.vendor/npm-cache` — **offline**, from the committed cache. The path a clean checkout always takes. |
+   | present | absent | plain `npm ci` — networked, pinned by `web/package-lock.json`. Only a stripped checkout that deleted the committed cache lands here; it is **not** the committed configuration. |
    | absent | — | skip; `web/dist` stays empty |
 
    Every branch runs `mkdir -p /app/web/dist`, so the runtime stage's
    `COPY --from=webbuild /app/web/dist` always has a source. An empty `web/dist` is
    equivalent to none at all: `taskd` probes for `index.html` and 404s as before.
 
-   > **Boundary (honest).** The offline-assembly rule governs what the project *runs*, not
-   > the image's frontend build stage. Runtime and every verification step are fully
-   > offline; this one build stage may reach the network, pinned by the lockfile. A
-   > strictly-offline image build would require vendoring the cache at
-   > `web/.vendor/npm-cache` — **not currently committed**, so the `--offline` branch is
-   > only taken when such a cache is provided.
+   > **Boundary (F1-c, ruling O1, 2026-10-09).** The npm cache at `web/.vendor/npm-cache`
+   > **is committed**, so the image builds with **no network** — `docker build
+   > --network=none` succeeds. `npm ci --offline` hard-fails rather than silently reaching
+   > the registry if a tarball is missing, so the offline path cannot quietly degrade to
+   > the network. Runtime and every verification step are offline too. The cache is a
+   > **generated artefact** (linux/arm64, produced inside the arm64 container), not a
+   > hand-edited source: **after any `web/package.json` dependency bump, re-vendor it**
+   > (see [Re-vendoring the npm cache](#re-vendoring-the-npm-cache)) and commit the
+   > refreshed cache together with the lockfile. `web/package-lock.json` stays committed —
+   > it pins the dependency tree the cache is built from.
 2. **runtime** (`node:22-bookworm-slim`, the final stage) — the repository as-is, plus
    `COPY --from=webbuild /app/web/dist /app/web/dist`. This stage installs nothing and is
    unchanged by the frontend build mode. Nothing from the frontend toolchain ships: no
@@ -87,6 +91,40 @@ no `prototype/`, no `design/`, no `node_modules`). The image:
 The `web/` workspace has landed with M6b; its built `web/dist` is the hosted frontend root.
 When `web/package.json` is absent from a checkout the stage is a no-op that still emits an
 empty `/app/web/dist`, so the image keeps building and the runtime contract holds.
+
+## Re-vendoring the npm cache
+
+`web/.vendor/npm-cache` is the committed npm cache that makes the `webbuild` stage offline.
+It is the npm cache **of the arm64 linux container**, not of the host: it holds only the
+linux/arm64 optional binaries (`@rolldown/binding-linux-arm64-gnu`,
+`@tailwindcss/oxide-linux-arm64-gnu`, `lightningcss-linux-arm64-gnu`, …) — the packages the
+in-image `npm ci` actually needs — and no darwin/win32 variants. That is why the vendoring
+step runs **inside the container** and never against the host `web/node_modules`:
+
+```bash
+mkdir -p web/.vendor/npm-cache
+docker run --rm \
+  -v "$PWD/web/package.json:/src/package.json:ro" \
+  -v "$PWD/web/package-lock.json:/src/package-lock.json:ro" \
+  -v "$PWD/web/.vendor/npm-cache:/cache" -w /src node:22-bookworm-slim \
+  sh -c 'npm ci --cache /cache --ignore-scripts'
+```
+
+This installs the tree into the throwaway container (from `package.json` /
+`package-lock.json`, mounted read-only) and leaves only the cache tarballs in
+`web/.vendor/npm-cache` — the host `web/node_modules` is never touched. Re-run it whenever
+`web/package.json`/`web/package-lock.json` change, then commit the refreshed cache **with**
+the lockfile; they must move together. The `--ignore-scripts` flag keeps the step to a pure
+download-and-cache — no native build runs here.
+
+Confirm the F1-c guarantee after re-vendoring:
+
+```bash
+docker build --network=none -t task-panel:verify -f docker/Dockerfile .
+```
+
+`--network=none` must succeed; if it fails, a tarball the lockfile needs is missing from
+the cache.
 
 ## Run
 
@@ -230,9 +268,10 @@ Everything that *installs*, *serves*, or *deploys* goes through Docker.
   scripts and tests, which need no packages);
 - `docker` — builds `task-panel:verify` exactly like the local command and runs the same
   in-container script. This is the authoritative job, and the only one that touches the
-  frontend: the `webbuild` stage resolves `web/`'s devDependencies from the vendored cache.
-  There is deliberately no host-side frontend job, which would install packages on the
-  runner and violate the container-first rule.
+  frontend: the `webbuild` stage installs `web/`'s devDependencies **offline** from the
+  committed cache (`npm ci --offline`), so the CI build reaches no registry. There is
+  deliberately no host-side frontend job, which would install packages on the runner and
+  violate the container-first rule.
 
 Same tag, same command, same script as `npm run verify:docker` — locally green means
 CI green.
@@ -278,8 +317,16 @@ reaching out, it is a bug — the point of the container is that the suite runs 
 **The image build is slow every time.**
 Check the build context size. The root `.dockerignore` excludes `.git`, `prototype/`,
 `design/`, `node_modules/`, `.data/` and `coverage/`; a large context almost always means
-one of those got re-included. Nothing under `web/` is vendored, and `web/node_modules/`
-and `web/dist/` are gitignored, so a clean checkout's context stays small.
+one of those got re-included. The one thing under `web/` that *is* shipped is the committed
+npm cache at `web/.vendor/npm-cache` (linux-only, ~25 MB / ~100 files) — that is expected,
+not bloat. `web/node_modules/` and `web/dist/` are gitignored, so a clean checkout's context
+stays small.
+
+**The build fails with `npm error code EUSAGE`/`ENOTCACHED` under `npm ci --offline`.**
+A tarball the lockfile needs is missing from `web/.vendor/npm-cache` — usually because
+`web/package.json`/`web/package-lock.json` were bumped without re-vendoring. Re-run the
+[re-vendoring step](#re-vendoring-the-npm-cache) and commit the refreshed cache with the
+lockfile.
 
 **`profiles: ... wrapper ... exit 1` / `Cannot find module .../src/cli/index.mjs`.**
 The skill was *copied* instead of linked, so the wrapper's relative path walked up out of

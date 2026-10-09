@@ -6,18 +6,19 @@
 #     (`src/core`, `src/cli`, `src/server`, `src/mcp`) has ZERO runtime dependencies:
 #     nothing is installed, nothing is fetched, so this stage builds offline and
 #     reproduces exactly on any machine.
-#   * webbuild (the first stage) — the `web/` board frontend. This is the ONE stage that
-#     may reach the network. `web/package.json` and `web/package-lock.json` are committed
-#     and the lockfile pins every devDependency, so `npm ci` is deterministic whether it
-#     runs offline or over the network. Nothing from this stage ships except the static
-#     `web/dist`.
+#   * webbuild (the first stage) — the `web/` board frontend. Its build-time
+#     devDependencies (Vue/Vite/Tailwind/daisyUI) are pinned by the committed
+#     `web/package-lock.json`, and their tarballs are vendored in the npm cache committed
+#     at `web/.vendor/npm-cache`. The guard below therefore installs the frontend OFFLINE
+#     (`npm ci --offline`). Nothing from this stage ships except the static `web/dist`.
 #
-# Boundary (honest): runtime and every verification step stay OFFLINE. The offline-
-# assembly constraint applies to what the project *runs*, not to the image's frontend
-# build stage. A strictly-offline image build would require vendoring the npm cache at
-# `web/.vendor/npm-cache` (not currently committed); if that cache is present the guard
-# below takes the offline path automatically. The guard documents a networked `npm ci`
-# as an expected mode, so this comment names the network explicitly.
+# Boundary (F1-c, ruling O1, 2026-10-09): the image builds with NO NETWORK. Runtime and
+# every verification step are offline, and — because the cache is committed — so is the
+# frontend build stage: `npm ci --offline` hard-fails instead of reaching the registry if
+# the cache is incomplete, so `docker build --network=none` succeeds. The cache is a
+# GENERATED artefact (linux/arm64, produced inside the arm64 container): re-run the
+# vendoring step in `docs/docker.md` after any `web/package.json` dependency bump, and
+# commit the refreshed cache with the lockfile.
 #
 # Nothing is installed with apt — no apt mirror is reachable at build time, which is the
 # point (Terry, 2026-10-08: local verification runs isolated in a container, never on the
@@ -30,10 +31,11 @@
 #
 # Three-way guard over what this stage does:
 #   1. `web/package.json` AND `web/.vendor/npm-cache` present — build OFFLINE from the
-#      provided cache (`npm ci --offline`); `--offline` hard-fails rather than silently
-#      reaching the network.
-#   2. `web/package.json` present, no cache — a networked `npm ci`, pinned by the committed
-#      `web/package-lock.json` (the default in a clean checkout).
+#      committed cache (`npm ci --offline`); `--offline` hard-fails rather than silently
+#      reaching the network. This is the path a clean checkout always takes (F1-c).
+#   2. `web/package.json` present, cache absent — a networked `npm ci`, pinned by the
+#      committed `web/package-lock.json`. This branch only runs in a stripped checkout
+#      that deleted `web/.vendor/npm-cache`; it is NOT the committed configuration.
 #   3. `web/package.json` absent — skip and leave `web/dist` empty.
 # `mkdir -p /app/web/dist` always runs so the runtime stage's
 # `COPY --from=webbuild /app/web/dist` always has a source. An empty `web/dist` is
@@ -55,11 +57,11 @@ WORKDIR /app
 COPY . .
 
 RUN if [ -f web/package.json ] && [ -d web/.vendor/npm-cache ]; then \
-      echo "webbuild: building web/ offline from the provided npm cache"; \
+      echo "webbuild: building web/ offline from the committed npm cache (no network)"; \
       npm ci --offline --cache /app/web/.vendor/npm-cache --prefix /app/web \
       && npm --prefix /app/web run build; \
     elif [ -f web/package.json ]; then \
-      echo "webbuild: building web/ with a networked npm ci (pinned by web/package-lock.json)"; \
+      echo "webbuild: no committed cache found — falling back to a networked npm ci (pinned by web/package-lock.json)"; \
       npm ci --prefix /app/web \
       && npm --prefix /app/web run build; \
     else \
