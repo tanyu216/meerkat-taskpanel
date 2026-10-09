@@ -16,11 +16,9 @@ small set of checks is still allowed on the host; see
 
 The **runtime image installs nothing**: the engine is dependency-free, so the final stage
 builds offline and there is no root lockfile to drift. The one exception is a separate
-`webbuild` stage that assembles the `web/` frontend with a plain `npm ci` from the committed
-`web/package-lock.json` (**F1-g**). That stage — and only that stage — needs network; the
-runtime image and all verification stay offline, and the lockfile pins the install. Only the
-static `web/dist` crosses into the runtime image. See
-[The web build stage](#the-web-build-stage).
+`webbuild` stage that assembles the `web/` frontend — its build-time devDependencies come
+from a committed offline cache, and only the static `web/dist` crosses into the runtime
+image. See [The web build stage](#the-web-build-stage).
 
 ## Prerequisites
 
@@ -28,7 +26,7 @@ static `web/dist` crosses into the runtime image. See
 |---|---|
 | Docker Engine ≥ 20.10 | `docker version` must reach a daemon. Docker Desktop, colima and rootless Docker all work. |
 | Docker Compose v2 ≥ 2.4 | `docker compose` (space, not hyphen). Used for the deploy smoke test only. |
-| Network (build only) | The `webbuild` stage's `npm ci` (F1-g) and the first pull of `node:22-bookworm-slim`. Once the image is built, running and verifying it is fully offline. |
+| Network (first build only) | Pulling `node:22-bookworm-slim`. After that the image is cached and everything runs offline. |
 
 No Node install is required on the host to build or run the image — the image brings
 its own. (You *do* need Node on the host for the [host-allowed checks](#host-allowed-checks)
@@ -61,17 +59,15 @@ no `prototype/`, no `design/`, no `node_modules`). The image:
 `docker/Dockerfile` is multi-stage, because the repository has two build layers (see
 [development.md](development.md#two-build-layers-engine-and-web)):
 
-1. **`webbuild`** — `COPY . .`, then, once the frontend workspace exists, a plain
-   `npm ci --prefix /app/web` followed by the Vite build, producing `web/dist`. This is
-   **the only place the image build needs network** (F1-g); `npm ci` installs exactly the
-   tree pinned by the committed `web/package-lock.json`, so the build is reproducible from
-   the lockfile alone. (A strict-offline build — no network even here — would require
-   committing the npm cache and running `npm ci --offline --cache web/.vendor/npm-cache`;
-   that is the rejected F1-c option.)
+1. **`webbuild`** — `COPY . .`, then, once the frontend workspace exists,
+   `npm ci --offline --cache /app/web/.vendor/npm-cache` followed by the Vite build,
+   producing `web/dist`. `--offline` is deliberate: it reads the committed cache and
+   **hard-fails** instead of silently reaching the network. The machine proof is the build
+   itself:
+   `docker build --network=none -f docker/Dockerfile -t task-panel:verify .`.
 2. **runtime** (`node:22-bookworm-slim`, the final stage) — the repository as-is, plus
    `COPY --from=webbuild /app/web/dist /app/web/dist`. Nothing from the frontend toolchain
-   ships: no `node_modules`, no Vite. This stage installs nothing and, like the whole
-   in-container verification suite, needs no network.
+   ships: no `node_modules`, no Vite.
 
 > `web/` is still a README placeholder; the workspace lands with M6b. Until it does, the
 > `webbuild` stage is a guarded no-op that still emits an empty `/app/web/dist`, so the image
@@ -220,9 +216,9 @@ Everything that *installs*, *serves*, or *deploys* goes through Docker.
   scripts and tests, which need no packages);
 - `docker` — builds `task-panel:verify` exactly like the local command and runs the same
   in-container script. This is the authoritative job, and the only one that touches the
-  frontend: the `webbuild` stage runs `npm ci` (network is available on the runner for this
-  one step) against the committed lockfile. There is deliberately no host-side frontend
-  job, which would install packages on the runner and violate the container-first rule.
+  frontend: the `webbuild` stage resolves `web/`'s devDependencies from the vendored cache.
+  There is deliberately no host-side frontend job, which would install packages on the
+  runner and violate the container-first rule.
 
 Same tag, same command, same script as `npm run verify:docker` — locally green means
 CI green.
@@ -268,9 +264,9 @@ reaching out, it is a bug — the point of the container is that the suite runs 
 **The image build is slow every time.**
 Check the build context size. The root `.dockerignore` excludes `.git`, `prototype/`,
 `design/`, `node_modules/`, `.data/` and `coverage/`; a large context almost always means
-one of those got re-included. The frontend deps are no longer vendored, so `web/` adds only
-its sources and the lockfile — the build's network use is the `webbuild` stage's `npm ci`,
-not a large context.
+one of those got re-included. Once `web/` lands, `web/.vendor/npm-cache/` is a deliberate,
+expected part of the context — it is the offline frontend assembly — so the context grows
+by tens of MB on purpose.
 
 **`profiles: ... wrapper ... exit 1` / `Cannot find module .../src/cli/index.mjs`.**
 The skill was *copied* instead of linked, so the wrapper's relative path walked up out of
