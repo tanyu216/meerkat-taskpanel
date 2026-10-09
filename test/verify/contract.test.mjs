@@ -216,6 +216,22 @@ describe("contract.mjs — drift is caught (red → green)", () => {
     );
   });
 
+  it("fails against the repository's own snapshot when a route appears", async () => {
+    // The literal card scenario: the API gains a route and the committed snapshot
+    // is *not* updated. No temp file — this is the real one under version control.
+    const live = mutate(buildSnapshot(), (snapshot) => {
+      snapshot.routes.push({ method: "POST", path: "/api/v1/tasks/:ref/split" });
+      snapshot.routes.sort((a, b) => (a.path < b.path ? -1 : 1));
+    });
+
+    const result = await checkContract({ base: ROOT, snapshot: live });
+    assert.equal(result.ok, false, "the guard must go red");
+    assert.deepEqual(
+      result.changes.map((change) => `${change.kind} ${change.detail}`),
+      ["route_added POST /api/v1/tasks/:ref/split"],
+    );
+  });
+
   it("diffSnapshots is a pure verdict — equal input is ok, no changes", () => {
     const snapshot = buildSnapshot();
     assert.deepEqual(diffSnapshots(snapshot, snapshot), { ok: true, changes: [] });
