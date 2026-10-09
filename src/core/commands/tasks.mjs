@@ -11,7 +11,7 @@
  * is the same whether the refusal comes from here or from the trigger.
  */
 
-import { DomainError } from "../../shared/errors.mjs";
+import { DomainError, isDomainError } from "../../shared/errors.mjs";
 import { assertClaimable, decideClaim, explainLostClaim } from "../domain/claim.mjs";
 import {
   assertCreationGate,
@@ -20,6 +20,7 @@ import {
   checkDeliveryGate,
 } from "../domain/delivery-gate.mjs";
 import { assertTransition } from "../domain/status.mjs";
+import { hasIdemDiscriminator, idemKey, idemSource, normalizeIdem } from "../domain/idem.mjs";
 import { isArchivable, normalizeTaskCreate, normalizeTaskUpdate } from "../domain/task.mjs";
 import { normalizeLabelName } from "../domain/labels.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
@@ -29,7 +30,7 @@ import { resolveLabels } from "./labels.mjs";
 
 /**
  * @param {object} ctx
- * @param {{projectId: string, title: string, actor: object, assignee?: string, assigneeKind?: string, reporter?: string, reporterKind?: string, forceCreate?: boolean, [key: string]: unknown}} input
+ * @param {{projectId: string, title: string, actor: object, assignee?: string, assigneeKind?: string, reporter?: string, reporterKind?: string, forceCreate?: boolean, idem?: string, allowDup?: boolean, reviewOf?: string, parent?: string, target?: string, [key: string]: unknown}} input
  */
 export function createTask(ctx, input) {
   const actor = actorOf(input.actor);
@@ -68,6 +69,41 @@ export function createTask(ctx, input) {
       // cannot be a trigger: an INSERT trigger would abort an `in_review` import.
       assertCreationGate({ task: candidate, status: candidate.status });
 
+      // --- the mechanical idempotency guard --------------------------------
+      // The *main* gate is an LLM reading the existing non-terminal cards and
+      // deciding whether the intent is already covered (see `domain/idem.mjs`
+      // and `src/core/README.md`); this key only catches the mechanical
+      // duplicate a machine can prove. It is derived *before* the dictionary
+      // and label resolvers run, so a re-used create has no side effect at all.
+      const assigneeKey = String(input.assigneeId ?? input.assignee ?? "").trim();
+      const sourceKey = idemSource({
+        reviewOf: input.reviewOf ?? input.meta?.review_of,
+        parent: input.parent ?? input.meta?.parent,
+      });
+      const targetKey = String(input.target ?? input.meta?.target ?? "").trim();
+      const explicit = normalizeIdem(input.idem);
+      const derived = idemKey({
+        kind: input.kind ?? "task",
+        assignee: assigneeKey,
+        source: sourceKey,
+        target: targetKey,
+      });
+      // No discriminator and no explicit key ⇒ no guard: otherwise every generic
+      // card would derive `task |  |  | ` and refuse the next one.
+      const key =
+        explicit ??
+        (hasIdemDiscriminator({ assignee: assigneeKey, source: sourceKey, target: targetKey })
+          ? derived
+          : null);
+
+      if (input.allowDup !== true && key !== null) {
+        const existing = ctx.repos.tasks.findByIdemActive(key);
+        if (existing !== null) return existing;
+      }
+      // `--allow-dup` writes NULL: an unkeyed row can never collide, and it does
+      // not occupy the key for a later real create.
+      candidate.idem = input.allowDup === true ? null : key;
+
       const dictionaryAudit = [];
       if (input.assignee !== undefined && input.assignee !== null) {
         const resolved = resolveAssignment(ctx, {
@@ -105,7 +141,22 @@ export function createTask(ctx, input) {
         labelAudit = resolved.audit;
       }
 
-      const task = ctx.repos.tasks.insert(candidate);
+      let task;
+      try {
+        task = ctx.repos.tasks.insert(candidate);
+      } catch (err) {
+        // Lost a race: another connection committed the same key between the
+        // read above and this insert. The partial unique index is the final
+        // arbiter, so converge onto whatever it protected — but only for that
+        // one code. Anything else (and an `IDEM_EXISTS` with no row to show)
+        // is re-thrown untouched so a real failure is never swallowed.
+        if (key !== null && input.allowDup !== true && isDomainError(err) && err.code === "IDEM_EXISTS") {
+          const existing = ctx.repos.tasks.findByIdemActive(key);
+          if (existing !== null) return existing;
+        }
+        throw err;
+      }
+
       ctx.repos.activities.append({
         taskId: task.id,
         actorKind: actor.kind,
@@ -115,6 +166,7 @@ export function createTask(ctx, input) {
           identifier: task.identifier,
           status: task.status,
           priority: task.priority,
+          ...(task.idem === null ? {} : { idem: task.idem }),
           ...(dictionaryAudit.length > 0 ? { dictionaries: dictionaryAudit } : {}),
           ...(labelAudit.length > 0 ? { labels: labelAudit } : {}),
         },
