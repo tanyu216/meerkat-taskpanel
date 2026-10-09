@@ -824,10 +824,15 @@ describe("commands/tasks — listCandidates (poll read)", () => {
       db.prepare("UPDATE tasks SET heartbeat_at = ? WHERE id = ?").run(ago(-31 * 60 * 1000), staleSame.id);
 
       // Stale for anyone (>6h) and held by someone else — the recovery pool's
-      // other arm. The card is still *assigned* to linus.
+      // other arm. The card is still *assigned* to linus, but a stale takeover
+      // (only possible for an unassigned card via `claim`, so simulated here by
+      // rewriting the holder) left it with a different executor.
       const staleAny = linusTodo(commands, { title: "Stale, any holder", allowDup: true });
-      commands.claim({ id: staleAny.id, actor: HUMAN });
-      db.prepare("UPDATE tasks SET heartbeat_at = ? WHERE id = ?").run(ago(-7 * 60 * 60 * 1000), staleAny.id);
+      commands.claim({ id: staleAny.id, actor: AGENT });
+      db.prepare("UPDATE tasks SET claimed_by = 'Terry', heartbeat_at = ? WHERE id = ?").run(
+        ago(-7 * 60 * 60 * 1000),
+        staleAny.id,
+      );
 
       // A fresh heartbeat is not a candidate, even with stale: true.
       const fresh = linusTodo(commands, { title: "Fresh", allowDup: true });
@@ -845,5 +850,221 @@ describe("commands/tasks — listCandidates (poll read)", () => {
       );
       assert.ok(withStale.every((c) => c.status === "in_progress"), "recovery candidates report in_progress");
     }, { clock });
+  });
+});
+
+describe("commands/tasks — claim requires the actor to be the assignee (T-20261009-230500)", () => {
+  const assignedTo = (commands, name, extra = {}) =>
+    commands.createTask({
+      projectId: "proj",
+      title: `For ${name}`,
+      assignee: name,
+      assigneeKind: "agent",
+      actor: AGENT,
+      ...extra,
+    });
+
+  it("lets the assignee claim their own card (normalised: actor linus == assignee Linus)", async () => {
+    await board(async ({ commands }) => {
+      const task = assignedTo(commands, "Linus");
+      const claimed = commands.claim({ id: task.id, actor: AGENT });
+      assert.equal(claimed.stole, false);
+      assert.equal(claimed.task.status, "in_progress");
+      assert.equal(claimed.task.claimedBy, "linus");
+    });
+  });
+
+  it("refuses a different actor with not_assignee (409) and writes nothing", async () => {
+    await board(async ({ db, commands }) => {
+      const task = assignedTo(commands, "Linus");
+      const before = revision(db);
+      assert.throws(() => commands.claim({ id: task.id, actor: HUMAN }), (err) => {
+        assert.equal(err.code, "not_assignee");
+        assert.equal(err.http, 409);
+        assert.match(err.hint.fix, /--allow-steal/);
+        return true;
+      });
+      assert.equal(revision(db), before, "a refused claim changes nothing");
+      assert.equal(commands.getTask({ id: task.id }).status, "todo");
+    });
+  });
+
+  it("takes somebody else's card with allowSteal, leaving a readable change comment", async () => {
+    await board(async ({ commands }) => {
+      const task = assignedTo(commands, "Linus");
+      const claimed = commands.claim({
+        id: task.id,
+        actor: HUMAN,
+        allowSteal: true,
+        reason: "linus is unavailable, taking the card over",
+      });
+      assert.equal(claimed.stole, true);
+      assert.equal(claimed.task.claimedBy, "Terry");
+
+      const comments = commands.listComments({ taskId: task.id });
+      assert.equal(comments.length, 1);
+      assert.equal(comments[0].kind, "change");
+      assert.match(comments[0].body, /Linus/, "names the original assignee");
+      assert.match(comments[0].body, /Terry/, "names the new claimer");
+      assert.match(comments[0].body, /unavailable/, "carries the reason");
+    });
+  });
+
+  it("refuses allowSteal without a real reason, writing nothing", async () => {
+    await board(async ({ db, commands }) => {
+      const task = assignedTo(commands, "Linus");
+      const before = revision(db);
+      for (const reason of [undefined, "", "short"]) {
+        assert.throws(
+          () => commands.claim({ id: task.id, actor: HUMAN, allowSteal: true, reason }),
+          (err) => {
+            assert.equal(err.code, "VALIDATION_FAILED", JSON.stringify(reason));
+            assert.equal(err.details.field, "reason");
+            return true;
+          },
+        );
+      }
+      assert.equal(commands.getTask({ id: task.id }).status, "todo");
+      assert.equal(revision(db), before, "a refused steal changes nothing");
+    });
+  });
+
+  it("refuses an epic and a backlog card", async () => {
+    await board(async ({ commands }) => {
+      const epic = commands.createTask({
+        projectId: "proj",
+        title: "An epic",
+        kind: "epic",
+        assignee: "linus",
+        assigneeKind: "agent",
+        actor: AGENT,
+      });
+      assert.throws(
+        () => commands.claim({ id: epic.id, actor: AGENT }),
+        (err) => err.code === "not_claimable" && err.http === 409,
+      );
+
+      const backlog = commands.createTask({ projectId: "proj", title: "Later", status: "backlog", actor: AGENT });
+      assert.throws(
+        () => commands.claim({ id: backlog.id, actor: AGENT }),
+        (err) => err.code === "INVALID_TRANSITION",
+      );
+    });
+  });
+
+  it("only the holder may re-claim between 10 minutes and 6 hours", async () => {
+    await board(async ({ db, commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "Ship", actor: AGENT });
+      commands.claim({ id: task.id, actor: AGENT });
+
+      const fresh = (ms) => new Date(Date.now() - ms).toISOString();
+      db.prepare("UPDATE tasks SET heartbeat_at = ? WHERE id = ?").run(fresh(70 * 60 * 1000), task.id);
+
+      const again = commands.claim({ id: task.id, actor: AGENT });
+      assert.equal(again.reused, false, "a stale-for-holder claim is re-taken, not reused");
+      assert.equal(again.stole, false, "the holder keeps the lock, so it is not an audited steal");
+
+      // Rewind again and let somebody else try — inside the window they may not.
+      db.prepare("UPDATE tasks SET heartbeat_at = ? WHERE id = ?").run(fresh(70 * 60 * 1000), task.id);
+      assert.throws(() => commands.claim({ id: task.id, actor: HUMAN }), (err) => err.code === "EXECUTION_ACTIVE");
+    });
+  });
+
+  it("anybody may take a claim older than six hours, and it is audited", async () => {
+    await board(async ({ db, commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "Ship", actor: AGENT });
+      commands.claim({ id: task.id, actor: AGENT });
+      db.prepare("UPDATE tasks SET heartbeat_at = ? WHERE id = ?").run(
+        new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString(),
+        task.id,
+      );
+
+      const stolen = commands.claim({ id: task.id, actor: HUMAN });
+      assert.equal(stolen.stole, true);
+      assert.equal(stolen.task.claimedBy, "Terry");
+
+      const comments = commands.listComments({ taskId: task.id });
+      assert.equal(comments.length, 1, "the >6h takeover leaves a change comment");
+      assert.equal(comments[0].kind, "change");
+      assert.match(comments[0].body, /linus/, "names the previous holder");
+    });
+  });
+});
+
+describe("commands/tasks — move to in_progress is the claim path", () => {
+  it("stamps the claim and logs task_claimed for a todo card", async () => {
+    await board(async ({ db, commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "Ship", actor: AGENT });
+      const moved = commands.moveStatus({ id: task.id, to: "in_progress", actor: AGENT });
+      assert.equal(moved.status, "in_progress");
+      assert.equal(moved.claimedBy, "linus");
+      assert.match(moved.claimedAt, /^\d{4}-\d{2}-\d{2}T/);
+      assert.match(moved.heartbeatAt, /^\d{4}-\d{2}-\d{2}T/);
+      assert.deepEqual(activitiesFor(db, task.id), ["task_created", "task_claimed"]);
+    });
+  });
+
+  it("refuses moving somebody else's card to in_progress (not_assignee)", async () => {
+    await board(async ({ commands }) => {
+      const task = commands.createTask({
+        projectId: "proj",
+        title: "For Linus",
+        assignee: "Linus",
+        assigneeKind: "agent",
+        actor: AGENT,
+      });
+      assert.throws(() => commands.moveStatus({ id: task.id, to: "in_progress", actor: HUMAN }), (err) => {
+        assert.equal(err.code, "not_assignee");
+        assert.equal(err.http, 409);
+        return true;
+      });
+    });
+  });
+
+  it("honours allowSteal on the move and leaves a change comment", async () => {
+    await board(async ({ commands }) => {
+      const task = commands.createTask({
+        projectId: "proj",
+        title: "For Linus",
+        assignee: "Linus",
+        assigneeKind: "agent",
+        actor: AGENT,
+      });
+      const moved = commands.moveStatus({
+        id: task.id,
+        to: "in_progress",
+        actor: HUMAN,
+        allowSteal: true,
+        reason: "linus is on another card, taking this over",
+      });
+      assert.equal(moved.claimedBy, "Terry");
+      assert.equal(commands.listComments({ taskId: task.id }).length, 1);
+    });
+  });
+
+  it("leaves a rework untouched: in_review -> in_progress never re-checks the assignee", async () => {
+    await board(async ({ db, commands }) => {
+      const task = commands.createTask({
+        projectId: "proj",
+        title: "For Linus",
+        assignee: "Linus",
+        assigneeKind: "agent",
+        actor: AGENT,
+      });
+      commands.moveStatus({ id: task.id, to: "in_progress", actor: AGENT });
+      commands.deliver({ taskId: task.id, report: report(), actor: AGENT });
+
+      // A different actor sends it back for rework — the non-claim path keeps
+      // the existing execution lock and does not re-check the assignee.
+      const rework = commands.moveStatus({ id: task.id, to: "in_progress", actor: HUMAN });
+      assert.equal(rework.status, "in_progress");
+      assert.equal(rework.claimedBy, "linus", "a rework never drops the executor's lock");
+      assert.deepEqual(activitiesFor(db, task.id), [
+        "task_created",
+        "task_claimed",
+        "task_delivered",
+        "task_moved",
+      ]);
+    });
   });
 });

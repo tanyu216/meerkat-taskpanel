@@ -19,6 +19,7 @@ import {
   assertDeliveryGate,
   assertWaiverRequest,
   checkDeliveryGate,
+  WAIVER_MIN_REASON_CHARS,
 } from "../domain/delivery-gate.mjs";
 import { assertTransition } from "../domain/status.mjs";
 import { hasIdemDiscriminator, idemKey, idemSource, normalizeIdem } from "../domain/idem.mjs";
@@ -27,6 +28,7 @@ import { normalizeLabelName } from "../domain/labels.mjs";
 import { normalizeName } from "../domain/dictionary.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { actorOf } from "./context.mjs";
+import { addComment } from "./comments.mjs";
 import { resolveAssignment } from "./dictionary.mjs";
 import { resolveLabels } from "./labels.mjs";
 
@@ -260,10 +262,134 @@ export function updateTask(ctx, input) {
 }
 
 /**
+ * The injected assignee lookup for the claim policy: the dictionary entry that
+ * names the card's assignee, or `null` for an unassigned card (an open pool).
+ * @param {object} ctx
+ */
+function resolveAssigneeFor(ctx) {
+  return (task) => (task.assigneeId ? ctx.repos.dictionary.getById("assignee", task.assigneeId) : null);
+}
+
+/**
+ * An audited takeover needs a reason — the same rule (and the same minimum
+ * length) the report waiver uses, because the two are the same kind of thing:
+ * a documented exception a reviewer has to be able to read.
+ * @param {unknown} reason
+ * @returns {string} the trimmed reason
+ */
+function assertStealReason(reason) {
+  const text = typeof reason === "string" ? reason.trim() : "";
+  if (text.length < WAIVER_MIN_REASON_CHARS) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: `--allow-steal needs --reason with at least ${WAIVER_MIN_REASON_CHARS} characters`,
+      details: {
+        field: "reason",
+        received: typeof reason === "string" ? reason : null,
+        minLength: WAIVER_MIN_REASON_CHARS,
+      },
+      hint: { fix: 'e.g. --reason "linus is unavailable, taking the card over"' },
+    });
+  }
+  return text;
+}
+
+/** The `change` comment an audited takeover leaves behind (the readable trail). */
+function stealCommentBody(task, verdict, actor, reason) {
+  if (verdict.reclaim === true) {
+    return (
+      `Stale-claim takeover on ${task.identifier}: the previous holder ${verdict.stolenFrom} ` +
+      `left a claim without a heartbeat for more than 6 hours; ${actor.id} re-claimed it.`
+    );
+  }
+  return (
+    `Audited takeover on ${task.identifier}: the card was assigned to ${verdict.stolenFrom}; ` +
+    `${actor.id} claimed it with --allow-steal. Reason: ${reason}`
+  );
+}
+
+/**
+ * The one place a claim is performed: decide, CAS, audit. Shared by `claim` and
+ * by `moveStatus`'s `todo → in_progress` path, so "claim" means the same thing
+ * however it is reached.
+ *
+ * @param {object} ctx
+ * @param {{current: object, actor: {kind: string, id: string}, now: string, allowSteal?: boolean, reason?: string, ifVersion?: number}} input
+ * @returns {{task: object, reused: boolean, stole: boolean}}
+ */
+function performClaim(ctx, input) {
+  const { current, actor, now, allowSteal, reason, ifVersion } = input;
+  const resolveAssignee = resolveAssigneeFor(ctx);
+  const verdict = assertClaimable(current, {
+    actor: actor.id,
+    now,
+    allowSteal: allowSteal === true,
+    resolveAssignee,
+  });
+
+  if (verdict.action === "reuse") {
+    // A second claim by the same actor is not an error and not an event:
+    // returning the existing claim keeps agents from piling up activity rows.
+    return { task: current, reused: true, stole: false };
+  }
+
+  // `--allow-steal` must say why. A >6h reclaim is audited too but needs no
+  // reason: the staleness *is* the reason.
+  const auditedTakeover = verdict.steal === true && verdict.reclaim !== true;
+  const stealReason = auditedTakeover ? assertStealReason(reason) : null;
+
+  let task;
+  if (verdict.reclaim === true) {
+    // Re-claiming an in_progress card: the CAS must match status='in_progress'.
+    task = ctx.repos.tasks.stealStaleClaim({ id: current.id, ifVersion, actor: actor.id, now });
+  } else {
+    const result = ctx.repos.tasks.claimCas({ id: current.id, ifVersion, actor: actor.id, now });
+    if (!result.claimed) {
+      throw explainLostClaim({
+        before: current,
+        after: result.task,
+        actor: actor.id,
+        now,
+        ifVersion,
+        allowSteal: allowSteal === true,
+        resolveAssignee,
+      });
+    }
+    task = result.task;
+  }
+
+  ctx.repos.activities.append({
+    taskId: task.id,
+    actorKind: actor.kind,
+    actorId: actor.id,
+    event: "task_claimed",
+    changes: {
+      from: current.status,
+      to: task.status,
+      ...(verdict.steal === true ? { stoleFrom: verdict.stolenFrom } : {}),
+      ...(stealReason === null ? {} : { reason: stealReason }),
+    },
+    createdAt: now,
+  });
+
+  // An audited takeover is only trustworthy if it is readable: leave a `change`
+  // comment, which `issue comment list` / `comment list` shows.
+  if (verdict.steal === true) {
+    addComment(ctx, {
+      taskId: task.id,
+      kind: "change",
+      body: stealCommentBody(task, verdict, actor, stealReason),
+      actor,
+    });
+  }
+
+  return { task, reused: false, stole: verdict.steal === true };
+}
+
+/**
  * Claim a task, or reuse the claim this actor already holds.
  *
  * @param {object} ctx
- * @param {{id: string, actor: object, ifVersion?: number}} input
+ * @param {{id: string, actor: object, ifVersion?: number, allowSteal?: boolean, reason?: string}} input
  * @returns {{task: object, reused: boolean, stole: boolean}}
  */
 export function claim(ctx, input) {
@@ -277,44 +403,14 @@ export function claim(ctx, input) {
       if (current === null) {
         throw new DomainError("NOT_FOUND", { message: `no task ${input.id}`, details: { taskId: input.id } });
       }
-
-      const verdict = assertClaimable(current, { actor: actor.id, now });
-
-      if (verdict.action === "reuse") {
-        // A second claim by the same actor is not an error and not an event:
-        // returning the existing claim keeps agents from piling up activity rows.
-        return { task: current, reused: true, stole: false };
-      }
-
-      let task;
-      if (verdict.steal === true) {
-        task = ctx.repos.tasks.stealStaleClaim({ id: input.id, ifVersion: input.ifVersion, actor: actor.id, now });
-      } else {
-        const result = ctx.repos.tasks.claimCas({
-          id: input.id,
-          ifVersion: input.ifVersion,
-          actor: actor.id,
-          now,
-        });
-        if (!result.claimed) {
-          throw explainLostClaim({ before: current, after: result.task, actor: actor.id, now, ifVersion: input.ifVersion });
-        }
-        task = result.task;
-      }
-
-      ctx.repos.activities.append({
-        taskId: task.id,
-        actorKind: actor.kind,
-        actorId: actor.id,
-        event: "task_claimed",
-        changes: {
-          from: current.status,
-          to: task.status,
-          ...(verdict.steal === true ? { stoleFrom: current.claimedBy } : {}),
-        },
-        createdAt: now,
+      return performClaim(ctx, {
+        current,
+        actor,
+        now,
+        allowSteal: input.allowSteal,
+        reason: input.reason,
+        ifVersion: input.ifVersion,
       });
-      return { task, reused: false, stole: verdict.steal === true };
     },
     { op: "tasks.claim" },
   );
@@ -367,7 +463,7 @@ export function heartbeat(ctx, input) {
  * `task_moved`, so the card's history says what actually happened.
  *
  * @param {object} ctx
- * @param {{id: string, to: string, actor: object, ifVersion?: number, noReport?: boolean, reason?: string}} input
+ * @param {{id: string, to: string, actor: object, ifVersion?: number, noReport?: boolean, reason?: string, allowSteal?: boolean}} input
  */
 export function moveStatus(ctx, input) {
   const actor = actorOf(input.actor);
@@ -383,6 +479,22 @@ export function moveStatus(ctx, input) {
       }
 
       assertTransition(current.status, input.to);
+
+      // `todo → in_progress` **is** a claim (T-20261009-230500): it must respect
+      // the routing lock and stamp `claimed_by/claimed_at/heartbeat_at`, so the
+      // CLI (`issue move`), HTTP and MCP surfaces all mean the same thing. Every
+      // other entry into `in_progress` — a rework from `in_review`/`blocked` —
+      // keeps the existing claim untouched.
+      if (input.to === "in_progress" && current.status === "todo") {
+        return performClaim(ctx, {
+          current,
+          actor,
+          now,
+          allowSteal: input.allowSteal,
+          reason: input.reason,
+          ifVersion: input.ifVersion,
+        }).task;
+      }
 
       const waiver =
         waiverReason === null ? null : { round: current.deliveryRound, reason: waiverReason, at: now };
