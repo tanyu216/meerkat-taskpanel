@@ -9,6 +9,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **API contract snapshot.** `scripts/verify/contract.mjs` freezes the surface a client
+  binds to — routes, error codes, wire fields and MCP tool arguments — as the committed,
+  deterministic JSON at `test/fixtures/contract/api.snapshot.json`. It compares the live
+  surface against that snapshot and exits non-zero on drift; `--update` refreshes it. It
+  runs in `pre-push` (every push) and `pre-tag`, in `contract-gate.yml` (every branch
+  push / PR) and at tag time in `version-gate.yml`, and inside the container suite. See
+  [`docs/contract.md`](docs/contract.md).
 - **Scheduling & patrol.** A host-external supervisor (`scripts/supervisor.mjs`) runs the
   cheap 1-minute **poll** (a $0 candidate scan; an LLM turn starts only when a card is
   actually claimed) and the 5-minute **patrol** (escalate a stale claim; report an

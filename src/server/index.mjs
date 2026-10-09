@@ -67,6 +67,50 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const STAGE = "taskd";
 
 /**
+ * Endpoints the daemon answers **outside** the JSON router.
+ *
+ * Three things cannot wear the `{ok, data}` envelope: `/health` is a bare
+ * liveness probe the CLI's autostart polls before a token exists, `events` is an
+ * SSE stream that owns its response for as long as the client stays connected,
+ * and attachment content is raw bytes in and out. They are declared here, in the
+ * place that registers the rest of the surface, so the contract snapshot
+ * (`scripts/verify/contract.mjs`) sees them too rather than carrying its own
+ * copy of the list.
+ */
+export const OUT_OF_ROUTER_ENDPOINTS = Object.freeze([
+  { method: "GET", path: "/health" },
+  { method: "GET", path: "/meta" },
+  { method: "GET", path: "/api/v1/events" },
+  { method: "GET", path: "/api/v1/attachments/:id/content" },
+  { method: "PUT", path: "/api/v1/attachments/:id/content" },
+]);
+
+/**
+ * The JSON route table, registered in one place.
+ *
+ * `createTaskd` calls this with the live surface; the contract snapshot calls it
+ * with a stub to *enumerate* the routes (nothing runs the handlers at
+ * registration time). Both read the same list, so a route can never be added to
+ * the server without appearing in the snapshot — the drift guard is the shared
+ * function, not a convention.
+ *
+ * @param {ReturnType<typeof createRouter>} router
+ * @param {{board: object, token: string|null}} surface
+ */
+export function registerApiRoutes(router, surface) {
+  registerTokenRoutes(router, surface);
+  registerProjectRoutes(router, surface);
+  registerTaskRoutes(router, surface);
+  registerActivityRoutes(router, surface);
+  registerCommentRoutes(router, surface);
+  registerRelationRoutes(router, surface);
+  registerSessionRoutes(router, surface);
+  registerDictionaryRoutes(router, surface);
+  registerLabelRoutes(router, surface);
+  registerExportRoutes(router, surface);
+}
+
+/**
  * Who is calling. The CLI sends `X-Taskctl-Actor: {"kind":"agent","id":"linus"}`;
  * anything else is an anonymous local human, which is what `curl` is.
  *
@@ -188,16 +232,7 @@ export async function createTaskd(options = {}) {
     },
   }));
 
-  registerTokenRoutes(router, surface);
-  registerProjectRoutes(router, surface);
-  registerTaskRoutes(router, surface);
-  registerActivityRoutes(router, surface);
-  registerCommentRoutes(router, surface);
-  registerRelationRoutes(router, surface);
-  registerSessionRoutes(router, surface);
-  registerDictionaryRoutes(router, surface);
-  registerLabelRoutes(router, surface);
-  registerExportRoutes(router, surface);
+  registerApiRoutes(router, surface);
 
   const server = createServer((req, res) => {
     handle(req, res).catch((err) => {

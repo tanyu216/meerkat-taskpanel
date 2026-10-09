@@ -1,0 +1,736 @@
+{
+  "errors": [
+    {
+      "code": "ARCHIVE_NOT_TERMINAL",
+      "http": 409
+    },
+    {
+      "code": "CHAIN_TOO_LONG",
+      "http": 422
+    },
+    {
+      "code": "CLAIM_LOST",
+      "http": 409
+    },
+    {
+      "code": "CLI_IO",
+      "http": 400
+    },
+    {
+      "code": "CLI_USAGE",
+      "http": 400
+    },
+    {
+      "code": "COMMENT_APPEND_ONLY",
+      "http": 409
+    },
+    {
+      "code": "COMMENT_DUPLICATE",
+      "http": 409
+    },
+    {
+      "code": "CROSS_PROJECT_RELATION",
+      "http": 422
+    },
+    {
+      "code": "DICTIONARY_AMBIGUOUS",
+      "http": 409
+    },
+    {
+      "code": "DICTIONARY_CONFLICT",
+      "http": 409
+    },
+    {
+      "code": "DICTIONARY_ENTRY_IN_USE",
+      "http": 409
+    },
+    {
+      "code": "DICTIONARY_INVALID",
+      "http": 422
+    },
+    {
+      "code": "EXECUTION_ACTIVE",
+      "http": 409
+    },
+    {
+      "code": "EXECUTION_STATE_CORRUPT",
+      "http": 500
+    },
+    {
+      "code": "FANIN_TOO_HIGH",
+      "http": 422
+    },
+    {
+      "code": "IDEM_EXISTS",
+      "http": 409
+    },
+    {
+      "code": "IDENTIFIER_CONFLICT",
+      "http": 409
+    },
+    {
+      "code": "ID_CONFLICT",
+      "http": 409
+    },
+    {
+      "code": "INVALID_TRANSITION",
+      "http": 409
+    },
+    {
+      "code": "LABEL_CONFLICT",
+      "http": 409
+    },
+    {
+      "code": "MD_GROWTH_GUARD",
+      "http": 422
+    },
+    {
+      "code": "MD_PARSE_ERROR",
+      "http": 422
+    },
+    {
+      "code": "MIGRATION_CHECKSUM_MISMATCH",
+      "http": 500
+    },
+    {
+      "code": "NOT_FOUND",
+      "http": 404
+    },
+    {
+      "code": "RELATION_CYCLE",
+      "http": 422
+    },
+    {
+      "code": "RELATION_DIRECTION_INVALID",
+      "http": 422
+    },
+    {
+      "code": "RELATION_DUPLICATE",
+      "http": 409
+    },
+    {
+      "code": "RELATION_IMMUTABLE",
+      "http": 409
+    },
+    {
+      "code": "REPORT_APPEND_ONLY",
+      "http": 409
+    },
+    {
+      "code": "REPORT_INVALID",
+      "http": 422
+    },
+    {
+      "code": "REPORT_REQUIRED",
+      "http": 422
+    },
+    {
+      "code": "REPORT_ROUND_MISMATCH",
+      "http": 409
+    },
+    {
+      "code": "REPORT_TASK_MISMATCH",
+      "http": 409
+    },
+    {
+      "code": "REPORT_TOO_LARGE",
+      "http": 413
+    },
+    {
+      "code": "RUNTIME_POINTER_TOKEN_LEAK",
+      "http": 500
+    },
+    {
+      "code": "SCHEMA_MISMATCH",
+      "http": 500
+    },
+    {
+      "code": "SELF_REFERENCE",
+      "http": 422
+    },
+    {
+      "code": "SESSION_DUPLICATE",
+      "http": 409
+    },
+    {
+      "code": "SINGLE_PARENT_VIOLATION",
+      "http": 409
+    },
+    {
+      "code": "SOURCE_CHANGED",
+      "http": 409
+    },
+    {
+      "code": "SQLITE_UNAVAILABLE",
+      "http": 500
+    },
+    {
+      "code": "TERMINAL_STATE",
+      "http": 409
+    },
+    {
+      "code": "TOKEN_FILE_CORRUPT",
+      "http": 500
+    },
+    {
+      "code": "VALIDATION_FAILED",
+      "http": 400
+    },
+    {
+      "code": "VERSION_CONFLICT",
+      "http": 409
+    },
+    {
+      "code": "not_assignee",
+      "http": 409
+    },
+    {
+      "code": "not_claimable",
+      "http": 409
+    }
+  ],
+  "mcp_tools": [
+    {
+      "arguments": [
+        "limit",
+        "q"
+      ],
+      "name": "assignee_list",
+      "required": []
+    },
+    {
+      "arguments": [
+        "limit",
+        "project_id",
+        "q"
+      ],
+      "name": "label_list",
+      "required": []
+    },
+    {
+      "arguments": [
+        "include_archived"
+      ],
+      "name": "project_list",
+      "required": []
+    },
+    {
+      "arguments": [
+        "limit",
+        "q"
+      ],
+      "name": "reporter_list",
+      "required": []
+    },
+    {
+      "arguments": [
+        "ref",
+        "session_id",
+        "status"
+      ],
+      "name": "session_close",
+      "required": [
+        "ref",
+        "session_id"
+      ]
+    },
+    {
+      "arguments": [
+        "ref"
+      ],
+      "name": "session_list",
+      "required": [
+        "ref"
+      ]
+    },
+    {
+      "arguments": [
+        "backend",
+        "owner",
+        "phase",
+        "pid",
+        "ref",
+        "seg",
+        "session_id"
+      ],
+      "name": "session_set",
+      "required": [
+        "backend",
+        "ref",
+        "seg"
+      ]
+    },
+    {
+      "arguments": [
+        "body",
+        "kind",
+        "ref",
+        "refs"
+      ],
+      "name": "task_comment_add",
+      "required": [
+        "body",
+        "ref"
+      ]
+    },
+    {
+      "arguments": [
+        "after",
+        "kind",
+        "limit",
+        "ref"
+      ],
+      "name": "task_comment_list",
+      "required": [
+        "ref"
+      ]
+    },
+    {
+      "arguments": [
+        "acceptance",
+        "assignee",
+        "assignee_id",
+        "assignee_kind",
+        "description",
+        "force_create",
+        "kind",
+        "labels",
+        "meta",
+        "priority",
+        "project_id",
+        "reporter",
+        "reporter_id",
+        "reporter_kind",
+        "status",
+        "title"
+      ],
+      "name": "task_create",
+      "required": [
+        "project_id",
+        "title"
+      ]
+    },
+    {
+      "arguments": [
+        "if_version",
+        "no_report",
+        "reason",
+        "ref",
+        "report",
+        "seg",
+        "session_id"
+      ],
+      "name": "task_deliver",
+      "required": [
+        "ref"
+      ]
+    },
+    {
+      "arguments": [
+        "ref"
+      ],
+      "name": "task_get",
+      "required": [
+        "ref"
+      ]
+    },
+    {
+      "arguments": [
+        "assignee_id",
+        "include_archived",
+        "limit",
+        "project_id",
+        "status"
+      ],
+      "name": "task_list",
+      "required": []
+    },
+    {
+      "arguments": [
+        "if_version",
+        "ref",
+        "to"
+      ],
+      "name": "task_move",
+      "required": [
+        "ref",
+        "to"
+      ]
+    },
+    {
+      "arguments": [
+        "force",
+        "ref",
+        "target",
+        "type"
+      ],
+      "name": "task_relation_add",
+      "required": [
+        "ref",
+        "target",
+        "type"
+      ]
+    },
+    {
+      "arguments": [
+        "ref"
+      ],
+      "name": "task_relation_list",
+      "required": [
+        "ref"
+      ]
+    },
+    {
+      "arguments": [
+        "ref",
+        "relation_id"
+      ],
+      "name": "task_relation_remove",
+      "required": [
+        "ref",
+        "relation_id"
+      ]
+    },
+    {
+      "arguments": [
+        "acceptance",
+        "description",
+        "if_version",
+        "kind",
+        "labels",
+        "meta",
+        "priority",
+        "ref",
+        "title"
+      ],
+      "name": "task_update",
+      "required": [
+        "ref"
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/v1/assignees"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/attachments/:id/content"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/attachments/:id/content"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/events"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/export"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/labels"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/projects"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/projects/:id"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/projects/:id"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/projects/:id/readme"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/projects/:id/readme"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/projects/current"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/reporters"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tasks"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tasks"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tasks/:ref"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/tasks/:ref"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tasks/:ref/activities"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tasks/:ref/archive"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tasks/:ref/assign"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tasks/:ref/comments"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tasks/:ref/comments"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tasks/:ref/deliver"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tasks/:ref/move"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tasks/:ref/relations"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tasks/:ref/relations"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/tasks/:ref/relations/:relationId"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tasks/:ref/reports"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tasks/:ref/sessions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tasks/:ref/sessions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tasks/:ref/sessions/:sessionId/close"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tasks/candidates"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/token"
+    },
+    {
+      "method": "GET",
+      "path": "/health"
+    },
+    {
+      "method": "GET",
+      "path": "/meta"
+    }
+  ],
+  "schema_version": 1,
+  "wire": [
+    {
+      "fields": [
+        "actor_id",
+        "actor_kind",
+        "changes",
+        "created_at",
+        "event",
+        "id",
+        "revision",
+        "task_id"
+      ],
+      "shape": "activity"
+    },
+    {
+      "fields": [
+        "agent_session",
+        "author_id",
+        "author_kind",
+        "body",
+        "created_at",
+        "id",
+        "kind",
+        "refs",
+        "task_id",
+        "version"
+      ],
+      "shape": "comment"
+    },
+    {
+      "fields": [
+        "display_name",
+        "first_seen_at",
+        "id",
+        "kind",
+        "last_seen_at",
+        "normalized_name",
+        "platform",
+        "use_count"
+      ],
+      "shape": "dictionary_entry"
+    },
+    {
+      "fields": [
+        "archived_at",
+        "color",
+        "display_name",
+        "first_seen_at",
+        "id",
+        "last_seen_at",
+        "norm",
+        "project_id",
+        "use_count"
+      ],
+      "shape": "label"
+    },
+    {
+      "fields": [
+        "archived_at",
+        "created_at",
+        "id",
+        "labels",
+        "meta",
+        "name",
+        "readme",
+        "updated_at",
+        "workspace_path"
+      ],
+      "shape": "project"
+    },
+    {
+      "fields": [
+        "created_at",
+        "id",
+        "origin",
+        "source",
+        "target",
+        "type"
+      ],
+      "shape": "relation"
+    },
+    {
+      "fields": [
+        "acceptance",
+        "author_id",
+        "author_kind",
+        "conclusion",
+        "created_at",
+        "evidence",
+        "evidence_truncated",
+        "id",
+        "leftovers",
+        "round",
+        "seg",
+        "session_id",
+        "task_id"
+      ],
+      "shape": "report"
+    },
+    {
+      "fields": [
+        "backend",
+        "id",
+        "owner",
+        "phase",
+        "pid",
+        "seg",
+        "session_id",
+        "status",
+        "task_id",
+        "ts"
+      ],
+      "shape": "session"
+    },
+    {
+      "fields": [
+        "agent_session",
+        "archived_at",
+        "assignee",
+        "assignee_id",
+        "blocked_at",
+        "claimed_at",
+        "claimed_by",
+        "created_at",
+        "creator_id",
+        "creator_kind",
+        "delivery_round",
+        "description",
+        "heartbeat_at",
+        "id",
+        "identifier",
+        "kind",
+        "labels",
+        "meta",
+        "priority",
+        "project_id",
+        "report_latest_id",
+        "report_waiver",
+        "reporter",
+        "reporter_id",
+        "sort_order",
+        "source_path",
+        "status",
+        "status_changed_at",
+        "thread_id",
+        "thread_source",
+        "title",
+        "updated_at",
+        "version"
+      ],
+      "shape": "task"
+    },
+    {
+      "fields": [
+        "display_name",
+        "id",
+        "kind"
+      ],
+      "shape": "task.assignee"
+    },
+    {
+      "fields": [
+        "reason",
+        "round",
+        "waived_at"
+      ],
+      "shape": "task.report_waiver"
+    },
+    {
+      "fields": [
+        "display_name",
+        "id",
+        "kind"
+      ],
+      "shape": "task.reporter"
+    }
+  ]
+}

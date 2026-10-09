@@ -1,16 +1,25 @@
 #!/bin/sh
 # Task Panel pre-push hook.
 #
-# Every version tag being pushed (`refs/tags/vX.Y.Z`) must have a `## [X.Y.Z]`
-# section in CHANGELOG.md. Git supplies one line per ref on stdin:
+# Two gates, both offline and Node-builtins-only:
 #
-#   <local ref> <local sha> <remote ref> <remote sha>
+#   1. the API contract snapshot — the live surface (routes + error codes + wire
+#      fields + MCP tools) must match `test/fixtures/contract/api.snapshot.json`.
+#      A route rename, an error status change or a dropped wire field therefore
+#      has to be an explicit snapshot update (`scripts/verify/contract.mjs
+#      --update`), never a silent drift that ships to a client;
+#   2. every version tag being pushed (`refs/tags/vX.Y.Z`) must have a `## [X.Y.Z]`
+#      section in CHANGELOG.md. Git supplies one line per ref on stdin:
 #
-# This is the earliest hookable point for a tag: git has no native `pre-tag`
-# hook (a tag is a ref, not a commit), so the rule is enforced here on the way
-# out, by `.githooks/pre-tag` when run by hand, and authoritatively in CI
-# (`.github/workflows/version-gate.yml`). Offline, Node builtins only.
+#        <local ref> <local sha> <remote ref> <remote sha>
+#
+# The contract gate runs first and unconditionally — every push carries the API,
+# not only a tag. It does not read stdin, so the ref loop below still sees every
+# line. Git has no native `pre-tag` hook (a tag is a ref, not a commit), so the
+# changelog rule is also enforced by `.githooks/pre-tag` when run by hand and
+# authoritatively in CI (`.github/workflows/version-gate.yml`).
 status=0
+node scripts/verify/contract.mjs || status=1
 while read -r _local_ref _local_sha remote_ref _remote_sha; do
   case "$remote_ref" in
     refs/tags/v*)

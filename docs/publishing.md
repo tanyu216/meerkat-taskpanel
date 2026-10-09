@@ -108,6 +108,16 @@ runs the same checker against `${GITHUB_REF_NAME}`. It is a separate workflow on
 `.github/workflows/check.yml` is owned by a concurrent change and is deliberately not
 touched, so the release/version rule is carried by `version-gate.yml` instead.
 
+### 3.2 The API contract gate
+
+A tag must not freeze an API contract the committed snapshot does not describe. The
+same two hooks (`pre-push`, `pre-tag`) also run `scripts/verify/contract.mjs`, which
+compares the live surface — routes, error codes, wire fields and MCP tool arguments —
+against `test/fixtures/contract/api.snapshot.json`; a change to any of them without a
+snapshot update is a non-zero exit. `version-gate.yml` runs it at tag time, and
+`.github/workflows/contract-gate.yml` runs it on every branch push and pull request.
+The full story, and the `--update` workflow, is in [contract.md](contract.md).
+
 ## 4. Claude Code marketplace
 
 `.claude-plugin/marketplace.json` (marketplace name `task-panel-marketplace`) points its

@@ -30,3 +30,19 @@ jobs:
       # never published, so the job only needs `contents: read`.
       - name: Tag has a CHANGELOG entry
         run: node scripts/verify/changelog.mjs "${GITHUB_REF_NAME}"
+
+  # The tag-time contract gate: a tag must not freeze an API contract the
+  # snapshot does not describe. `contract-gate.yml` runs the same checker on every
+  # branch push and pull request; this job is the authoritative run at tag time,
+  # next to the changelog rule the tag is cut under.
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: API contract matches the snapshot
+        run: node scripts/verify/contract.mjs

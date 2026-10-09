@@ -46,7 +46,8 @@ task-panel/
 ├── docker/                 # containerised verify env: Dockerfile, docker-compose.yml, profiles/, serve-skeleton.mjs, verify-in-container.sh
 ├── test/                   # contract, core, concurrency, scaffold tests + fixtures
 ├── docs/                   # install.md, development.md, docker.md, README.md
-└── .github/workflows/      # CI: check.yml (host static + container jobs), release.yml
+└── .github/workflows/      # CI: check.yml (host static + container jobs), release.yml,
+                            #     version-gate.yml + contract-gate.yml (tag/contract gates)
 ```
 
 `dist/`, `.data/`, `node_modules/` and `coverage/` are build/runtime output — gitignored,
@@ -67,6 +68,7 @@ Mind the two different `dist` trees: `dist/` is the **npm release tree** that
 - `npm run check:skills` (`node scripts/sync-skills.mjs --check`) — assert generated skill copies match `skills/`.
 - `npm run build` (`node scripts/build.mjs`) — produce `dist/` (deletes and recreates it).
 - `npm run test:coverage` — `node --test` with an 80% line/branch/function floor on `src/core/**` + `src/shared/**`.
+- `node scripts/verify/contract.mjs` — the API contract snapshot (routes + error codes + wire fields + MCP tools); `--update` refreshes it, drift exits 1. Wired into `pre-push`/`pre-tag`, `contract-gate.yml`/`version-gate.yml` and the container suite; see `docs/contract.md`.
 - `node src/core/storage/md/migrate-cli.mjs check --dir <cards>` — md-card migration check (also `import` / `export`; exit 3 when `check` finds differences).
 - `bash install.sh --target claude|openclaw|codex|pi|all` — install the skill into each host's skill directory (flags: `--prefix`, `--link`, `--force`, `--dry-run`).
 - `taskctl` (`bin` → `src/cli/index.mjs`) — the CLI (`project`, `issue`, `comment`, `relation`, `session`, `report`, `export`, `token`, … groups; auto-starts the local `taskd`).

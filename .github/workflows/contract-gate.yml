@@ -1,0 +1,38 @@
+name: contract-gate
+
+# The API contract snapshot gate.
+#
+# `test/fixtures/contract/api.snapshot.json` freezes the surface a client binds
+# to — routes, error codes, wire fields and MCP tool arguments. This job fails
+# when the committed snapshot and the live surface disagree, so a route rename,
+# an error-status change or a dropped wire field is caught at pull-request time
+# instead of by a client after release.
+#
+# It lives in its own workflow on purpose: `.github/workflows/check.yml` is owned
+# by a concurrent change and must not be modified, the same reason
+# `version-gate.yml` carries the changelog rule in a workflow of its own. The
+# same checker also runs locally in `.githooks/pre-push` and `.githooks/pre-tag`.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Offline: the checker imports the surface modules directly and is Node
+      # builtins only — no `npm install`. It checks both that the snapshot still
+      # describes the live API and that the file is in the canonical
+      # (sorted-key, stable) form `--update` writes.
+      - name: API contract matches the snapshot
+        run: node scripts/verify/contract.mjs

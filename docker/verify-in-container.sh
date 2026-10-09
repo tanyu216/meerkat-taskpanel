@@ -30,6 +30,9 @@ npm run test:coverage
 step "npm run check"
 npm run check
 
+step "API contract snapshot (routes + error codes + wire fields)"
+node scripts/verify/contract.mjs
+
 step "install.sh --target all --dry-run"
 bash install.sh --target all --dry-run
 
