@@ -79,7 +79,8 @@ Options:
   --max-concurrency <n>   Max concurrently running workers (default: ${DEFAULT_MAX_CONCURRENCY}).
   --claim-unassigned=yes|no   Also claim unassigned cards (the public pool). Default: yes.
   --assignee-only         Alias for --claim-unassigned=no.
-  --once                  Run a single tick and exit (for tests / cron).
+  --once                  Run a single tick and exit (for tests / cron): the poll
+                          pass, or the patrol pass with --patrol-only.
   --patrol-only           With --once, run only the patrol pass.
   --patrol-llm=yes|no     Allow patrol to start an LLM turn (default: no).
   --notify <cmd>          Run <cmd> with each patrol alert as JSON on stdin.
@@ -441,21 +442,25 @@ async function main(argv, env = process.env) {
   }
 
   if (opts.once) {
-    // A single tick also runs patrol, so one cron line can drive both.
-    const read = opts.dryRun ? { ok: false } : readInProgress(opts, log);
-    const patrol = await runPatrolTick({
-      tasks: read.ok ? read.data.tasks ?? [] : [],
-      config,
-      spawnPatrol: async (alert) => {
-        if (opts.dryRun) return { ok: false };
-        const card = { identifier: alert.identifier };
-        return spawnWorkerReal(opts, config)({ identifier: alert.identifier, agent: alert.agent ?? opts.agents[0] }, card);
-      },
-      notify: opts.dryRun ? () => {} : notifyReal(opts, log),
-      now: () => new Date().toISOString(),
-      log,
-    });
-    log(`patrol: ${patrol.alerts.length} alert(s), ${patrol.spawns} LLM turn(s)`);
+    // Each scheduling unit drives exactly one layer: the poll line above, or the
+    // patrol pass here. Keeping them separate is the whole point of the two-layer
+    // design — a 1-minute poll must not sweep every in_progress card every minute.
+    if (opts.patrolOnly) {
+      const read = opts.dryRun ? { ok: false } : readInProgress(opts, log);
+      const patrol = await runPatrolTick({
+        tasks: read.ok ? read.data.tasks ?? [] : [],
+        config,
+        spawnPatrol: async (alert) => {
+          if (opts.dryRun) return { ok: false };
+          const card = { identifier: alert.identifier };
+          return spawnWorkerReal(opts, config)({ identifier: alert.identifier, agent: alert.agent ?? opts.agents[0] }, card);
+        },
+        notify: opts.dryRun ? () => {} : notifyReal(opts, log),
+        now: () => new Date().toISOString(),
+        log,
+      });
+      log(`patrol: ${patrol.alerts.length} alert(s), ${patrol.spawns} LLM turn(s)`);
+    }
     if (!opts.dryRun) saveRegistry(opts.state, registry);
     return failed > 0 ? 1 : 0;
   }
