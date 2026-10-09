@@ -14,6 +14,14 @@
 > 看板前端（`web/`）与完整的 HTTP/SSE 看板后端。详见 `CLAUDE.md` /
 > `docs/development.md`、`src/mcp/README.md`，各阶段见下方路线图。
 
+## 截图
+
+产品原型截图（看板前端的视觉基线）：
+
+![看板](prototype/screenshots/01-board-1512.png)
+
+![Agent 任务抽屉](prototype/screenshots/03-drawer-agent.png)
+
 ## 仓库结构
 
 ```text

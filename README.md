@@ -15,6 +15,14 @@ same state on a kanban board.
 > the full HTTP/SSE board backend. See `CLAUDE.md` / `docs/development.md`,
 > `src/mcp/README.md`, and the roadmap below.
 
+## Screenshots
+
+Product prototype screenshots (the visual baseline for the board frontend):
+
+![Kanban board](prototype/screenshots/01-board-1512.png)
+
+![Agent task drawer](prototype/screenshots/03-drawer-agent.png)
+
 ## Repository layout
 
 ```text
