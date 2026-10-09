@@ -204,8 +204,9 @@ export function assertClaimable(task, options) {
   const verdict = decideClaim(task, options);
   if (verdict.code === null) return verdict;
 
+  const ref = task.identifier ?? task.id;
   throw new DomainError(verdict.code, {
-    message: `${task.identifier ?? task.id}: ${verdict.reason}`,
+    message: `${ref}: ${verdict.reason}`,
     details: {
       taskId: task.id,
       status: task.status,
@@ -215,6 +216,10 @@ export function assertClaimable(task, options) {
       actor: options.actor,
       ...(verdict.code === "not_assignee" ? { assignee: task.assigneeId ?? null } : {}),
     },
+    // A repair command names the actual card, the way the report gate's does.
+    ...(verdict.code === "not_assignee"
+      ? { hint: { fix: `taskctl issue move ${ref} in_progress --allow-steal --reason "<why>"` } }
+      : {}),
   });
 }
 
