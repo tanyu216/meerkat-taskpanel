@@ -1,25 +1,42 @@
-# TaskPanel — Brand Layer v1
+# meerkat-taskpanel — Brand Layer v2
 
 > **Token authority.** `tokens.css` in this directory is the single source of
 > truth. This document quotes it and adds the reasoning; where the two could
 > ever disagree, `tokens.css` wins and this file is the bug.
-> Values are fixed by `brief.md` §2–§4, with three light-mode corrections
-> applied under §6 and listed in [WCAG AA verification](#wcag-aa-verification).
+> The palette is fixed by `brief.md` §5 as **frozen from v1** — no token was
+> added, removed, renamed or re-valued in v2, and no colour was introduced.
+> The three light-mode corrections carried forward from v1 are listed in
+> [WCAG AA verification](#wcag-aa-verification).
 
 ---
 
 ## 1. Positioning
 
-**English.** TaskPanel — a calm command surface for AI-agent teams: one
-glance to see every task, every agent, every handoff.
+**English.** meerkat-taskpanel — a sentinel watch for AI-agent teams: a mob of
+agents working in parallel, and one that is always on duty.
 
-**中文.** TaskPanel —— 为 AI Agent 团队打造的安静指挥面：一眼看清每个任务、每个
-agent、每次交接。
+**中文.** meerkat-taskpanel —— 为 AI Agent 团队打造的「哨卫式」任务面板：多
+agent 并行领卡（群），轮值巡检与告警（哨）。
 
 **Style.** *Quiet Precision / 安静精确* — a workhorse UI, not a marketing page.
 Restrained density. Whitespace carries the hierarchy. One primary line colour.
 Hairline borders. Zero ornamental surplus. If an element cannot justify the space
 it occupies, it is removed rather than styled.
+
+### 1.1 The brand narrative — why a meerkat
+
+Two habits of the species are, exactly, the two mechanisms of the product.
+
+| meerkat behaviour | product mechanism | visual landing |
+|---|---|---|
+| **Mobbing** — the group forages and digs together, with clear division of labour | many agents claiming cards and running concurrently | **a row of upright sentinels (the mob)** — many bodies, one posture |
+| **Sentry rotation** — one individual always stands erect on watch, rotating through the group, raising the alarm on danger | patrol, alerting, heartbeat, on-duty rotation | **the tallest one + one signal point above it (the sentinel on duty)** |
+
+The one-line version: **a mob at work, one always on watch.**
+中文：**一群 agent 并行干活，一个哨兵始终在岗。**
+
+`Sentinel Watch` is a deliberate evolution of v1, not a break from it — see
+[v2 change record](#v2-change-record).
 
 ---
 
@@ -28,7 +45,7 @@ it occupies, it is removed rather than styled.
 Every value below is reproduced from `tokens.css`. The token name in the left
 column is the canonical CSS custom property; daisyUI v5 also reads the
 `--color-*` aliases, which `tokens.css` defines alongside the v4 legacy names
-(`--p`, `--b1`, …).
+(`--p`, `--b1`, …). **The palette is unchanged from v1.**
 
 ### 2.1 Light — `:root`
 
@@ -88,7 +105,7 @@ column is the canonical CSS custom property; daisyUI v5 also reads the
 | low | `--brand-pri-low` | `#4779AD` ¹ |
 | none | `--brand-pri-none` | `#B8C0C5` ² |
 
-¹ corrected under `brief.md` §6 — see [§6.3](#63-applied-corrections).
+¹ corrected under the v1 brief's mechanical-adjustment clause — see [§6.3](#63-applied-corrections).
 ² held at the brief value, deliberately — see [§6.4](#64-owner-review-note).
 
 **Priority expression rule** (from the style guide):
@@ -202,46 +219,87 @@ card is defined by its hairline edge and its surface, not by depth.
 
 ---
 
-## 5. Logo — “Signal Bars”
+## 5. Logo — “Sentinel Watch”
 
-**Concept.** Three rounded columns stepping left-low to right-high — the board’s
-own progression, backlog → in progress → done. The tallest column is capped by a
-single dot: the completed node, the agent that delivered. Read together the mark
-is a rising signal: **task progression + live signal**. It is abstract enough to
-survive 16px, and it carries no letterform, so it needs no localisation.
+**Concept.** Three upright meerkats of a mob, standing left-low to right-high on
+one baseline. The tallest — the rightmost — is **the sentinel on duty**, and it
+carries the brand line colour. Above it, clear of the head, floats a single
+solid dot: **the watch signal**, an independent point rather than a cap, so it
+reads as *a signal being sent*, not as headgear. The whole mark is the v1
+skeleton — three rising forms and a node — re-read as a species: **same
+skeleton, new animal.**
 
-**Geometry** (viewBox `0 0 32 32`, absolute; fixed by `brief.md` §5).
+**Geometry** (viewBox `0 0 32 32`, absolute; fixed by `brief.md` §4). Ground
+baseline `y = 27`. No stroke, no gradient, no shadow; every shape is a circle or
+a rounded rectangle, so the mark reduces to one colour (the mono state).
 
-| element | x | y | w | h | rx | fill (light) | fill (dark) | fill (mono) |
-|---|---|---|---|---|---|---|---|---|
-| bar1 | 5 | 17 | 6 | 10 | 3 | `#14181B` | `#E6EDF0` | `currentColor` |
-| bar2 | 13 | 12 | 6 | 15 | 3 | `#14181B` | `#E6EDF0` | `currentColor` |
-| bar3 | 21 | 10 | 6 | 17 | 3 | `#0F7A73` | `#2AA79B` | `currentColor` |
-| node | cx 24 | cy 6 | r 2.75 | — | — | `#0F7A73` | `#2AA79B` | `currentColor` |
+*Sentinel parts — one per figure.*
 
-All three columns are bottom-aligned at `y = 27`. `rx = 3` is exactly half the
-6-unit width, so every column is a true capsule with fully round ends. No frame,
-no gradient, no shadow. The node sits 1.25 units clear of the tallest column, so
-the two never touch — that gap is what makes the dot read as separate and
-delivered rather than as a cap on the bar.
+| part | shape | parameters |
+|---|---|---|
+| body | rounded rect (capsule) | `width 5.2`, `rx 2.6`, base `y = 27` |
+| head | circle | `r 2.6`, `cy = top + 2.6` |
+| ear L | circle | `r 0.85`, `cy = top + 1.0`, `cx = cx − 1.9` |
+| ear R | circle | `r 0.85`, `cy = top + 1.0`, `cx = cx + 1.9` |
+
+`rx = 2.6` is exactly half the 5.2 body width, so each body is a true capsule.
+The head is concentric with the capsule's own rounded crown — the head circle
+and the body's top arc are the same semicircle — so the head defines the
+silhouette rather than adding a bulge.
+
+*Placement — left-low to right-high.*
+
+| # | cx | top | height (top→27) | fill (light) | fill (dark) | fill (mono) |
+|---|---|---|---|---|---|---|
+| 1 (shortest) | 7.2 | 17.6 | 9.4 | `#14181B` | `#E6EDF0` | `currentColor` |
+| 2 (middle) | 16.0 | 12.4 | 14.6 | `#14181B` | `#E6EDF0` | `currentColor` |
+| 3 (on duty, tallest) | 24.8 | 9.6 | 17.4 | `#0F7A73` | `#2AA79B` | `currentColor` |
+
+*Watch signal.*
+
+| part | cx | cy | r | fill (light) | fill (dark) | fill (mono) |
+|---|---|---|---|---|---|---|
+| watch dot | 24.8 | 5.2 | 1.7 | `#0F7A73` | `#2AA79B` | `currentColor` |
+
+Each figure occupies `cx ± 2.75` including its ears; adjacent centres are 8.8
+apart, so the three never touch (gap ≈ 3.3 units). The mark's full ink extent is
+`x ∈ [4.45, 27.55]`, `y ∈ [3.5, 27]` — margins of 4.45 left, 4.45 right, 3.5 top
+and 5 bottom inside the 32-unit box. The watch dot clears the tallest figure's
+crown by **2.7 units**, comfortably above the 1.5-unit floor that keeps the dot
+reading as a separate signal.
+
+**Size behaviour.** At 512/1024 the head and the small ears are legible and the
+row reads as standing meerkats. At 32 and 16 the ears fall below one pixel and
+the mark degrades, by design, to *three rising round-headed bars plus one dot* —
+the same small-size read as v1, so the favicon still holds. `brief.md` §4 permits
+an optical nudge to the ear radius or inset **only** if the small sizes blur into
+blobs; they do not (see `small-size-inspection.png` in the brand task workspace),
+so **no adjustment was applied and every value above is verbatim §4.**
 
 **Files.**
 
 | file | ground |
 |---|---|
-| `logo.svg` | light — ink columns, teal accent |
-| `logo-dark.svg` | dark — base-content columns, lifted teal |
+| `logo.svg` | light — mob in ink, the sentinel on duty and its signal in the brand line |
+| `logo-dark.svg` | dark — mob lifted to base-content, on-duty sentinel and signal in the dark brand line |
 | `logo-mono.svg` | single colour via `currentColor`, any surface |
+
+All three are **static SVG**: no `<script>`, no `on*` attributes, no
+`<foreignObject>`, no external references of any kind. The only URL in any of
+them is the SVG namespace. They render with scripting disabled.
 
 ---
 
 ## 6. WCAG AA verification
 
 Computed by `verify-contrast.mjs` out of the box — pure node, no dependencies,
-no install step — against the WCAG 2.1 relative-luminance definition. That script
-*is* the evidence: re-run it to reproduce every ratio below, and it rewrites its
-own `contrast.txt` transcript as it goes. **48 pairs checked — 46 PASS, 2 held by
-owner ruling** (see §6.5).
+no install step — against the WCAG 2.1 relative-luminance definition. That
+script *is* the evidence: re-run it to reproduce every ratio below, and it
+rewrites its own `contrast.txt` transcript as it goes. **48 pairs checked —
+46 PASS, 2 held by owner ruling** (see §6.5).
+
+Re-run unchanged for v2: because no colour moved, the audit reproduces every
+figure below exactly, including the three shipped corrections in §6.3.
 
 ### 6.1 Content on its own background — target ≥ 4.5:1
 
@@ -297,10 +355,11 @@ owner ruling** (see §6.5).
 
 ### 6.4 Applied corrections
 
-Three light-mode values failed the §6 target. `brief.md` §6 permits a mechanical
+Three light-mode values failed the §6 target. The v1 brief permits a mechanical
 correction that keeps the hue and moves only lightness; these are the smallest
 8-bit steps that clear **4.5:1 with a 0.05 margin** (so no value can round back
-below AA). Hue and HSL saturation are unchanged in all three.
+below AA). Hue and HSL saturation are unchanged in all three. **v2 carries them
+forward unchanged**, and re-running the auditor reproduces all three.
 
 | token | before | was | after | now | hue held |
 |---|---|---|---|---|---|
@@ -308,7 +367,7 @@ below AA). Hue and HSL saturation are unchanged in all three.
 | `--brand-st-progress` | `#B4690E` | 4.23:1 | `#AC640D` | 4.58:1 | 32.9° |
 | `--brand-pri-low` | `#4A7FB5` | 4.20:1 | `#4779AD` | 4.56:1 | 210.3° |
 
-`--brand-st-progress` sits inside the brief’s authorised amber family (30–45°).
+`--brand-st-progress` sits inside the brief's authorised amber family (30–45°).
 `--brand-st-backlog` and `--brand-pri-low` are grey-cyan and azure; the brief
 names hue families for teal and amber only, so for these two the instruction was
 read literally — hue and saturation exactly preserved, lightness alone moved.
@@ -324,7 +383,7 @@ Applying the §6 remedy to them lands both on `#697881` (4.56:1). The corrected
 3/255 in red, 1/255 in green and 3/255 in blue** — below the threshold of
 reliable discrimination. Darkening `canceled` and `none` would therefore
 collapse a three-step grey ladder (canceled → backlog → todo) into two
-indistinguishable steps, breaking the 7-state mapping that `brief.md` §2 fixes as
+indistinguishable steps, breaking the 7-state mapping that the brief fixes as
 *“one mapping each, never mixed”*. Two hard requirements conflict; the smaller
 one was escalated rather than resolved silently.
 
@@ -357,14 +416,43 @@ only**. When a canceled or none state must render as *text*, use `--brand-text-2
 (`#4A555E`) or `--brand-text-3` (`#7E8A91`) instead — never `#B8C0C5`.
 
 **Status:** ruling dated 2026-10-08, by Jobs (design owner). No further action open.
+Carried into v2 unchanged; the v2 remaster touched no colour.
 
 ---
 
-## 7. Delivery checklist
+## 7. v2 change record
+
+The remaster is **narrative and mark only**. Every token, ratio and typographic
+rule in this document is carried over from v1 untouched.
+
+| # | dimension | v1 | v2 |
+|---|---|---|---|
+| 1 | **Product name** | TaskPanel | **meerkat-taskpanel** |
+| 2 | **Positioning** | a calm command surface for AI-agent teams | **a sentinel watch for AI-agent teams** |
+| 3 | **Narrative** | glanceable command surface | **mobbing (parallel agents) + sentry rotation (patrol / alert / heartbeat)** |
+| 4 | **Mark name** | Signal Bars | **Sentinel Watch** |
+| 5 | **Mark reading** | three rising columns = board progression; the dot = the delivered node | three **upright meerkats** of a mob, left-low to right-high; the tallest is **on duty**; the dot = **the watch signal** |
+| 6 | **Mark skeleton** | three rising forms, bottom-aligned at `y=27`, plus a node above the tallest | **unchanged** — same three-form skeleton, same baseline, same "dot clear of the tallest" rule |
+| 7 | **Mark geometry** | `6`-wide capsule columns `rx=3` at `x=5/13/21`, node `r=2.75` at `(24,6)` | `5.2`-wide capsule bodies `rx=2.6` at `cx=7.2/16/24.8`, plus head `r=2.6` and ears `r=0.85`; watch dot `r=1.7` at `(24.8, 5.2)` |
+| 8 | **Small-size behaviour** | three rising bars + dot | three rising **round-headed** bars + dot (ears fall below 1px by 32px) |
+| 9 | **Palette** | teal `#0F7A73` / ink `#14181B` (+ dark lifts) | **unchanged** — same two roles, same values, no colour added |
+| 10 | **Typography / spacing / radius / motion** | see §3, §4 | **unchanged** |
+| 11 | **Design philosophy** | *Signal Order* | ***Vigil Order*** — see `brand-philosophy.md` |
+| 12 | **New asset** | — | `compare-v1-vs-meerkat.png` |
+
+**What did not change, on purpose.** The composition contract is preserved: three
+forms rising left-to-right on one baseline, the tallest carrying the brand line
+and a detached signal above it. Anyone who knew the v1 mark will recognise the
+v2 mark instantly; anyone new will read it as a row of animals on watch. That is
+the intended continuity — a rename and a species, not a new geometry.
+
+---
+
+## 8. Delivery checklist
 
 | file | what it is |
 |---|---|
-| `BRAND.md` | this document — positioning, palette, type, tokens, AA audit, logo spec |
+| `BRAND.md` | this document — positioning, palette, type, tokens, AA audit, logo spec, v2 change record |
 | `tokens.css` | the single source of truth — daisyUI v5 `--color-*` + v4 aliases + brand extensions |
 | `logo.svg` | brand mark, light duotone, transparent ground |
 | `logo-dark.svg` | the same mark for dark grounds, transparent |
@@ -372,25 +460,24 @@ only**. When a canceled or none state must render as *text*, use `--brand-text-2
 | `logo-512.png` / `logo-512-dark.png` | 512×512, transparent |
 | `logo-1024.png` / `logo-1024-dark.png` | 1024×1024, transparent |
 | `favicon-32.png` / `favicon-16.png` | favicon sizes, duotone on transparent |
-| `brand-philosophy.md` | canvas-design step ① — the *Signal Order* philosophy |
-| `brand-poster.png` | canvas-design step ② — 1600×2000 brand surface |
+| `brand-philosophy.md` | canvas-design step ① — the *Vigil Order* philosophy |
+| `brand-poster.png` | canvas-design step ② — 1600×2000 brand plate |
+| `compare-v1-vs-meerkat.png` | 1600×900 before/after — v1 Signal Bars vs v2 Sentinel Watch |
 | `DIFFERENCE-dashi.md` | side-by-side separation from dashi-taskboard |
 
-Evidence is reproducible rather than archived: the generators below live in the
-brand task workspace outside the repo, and re-running one regenerates its
-artefact on the spot — `node verify-contrast.mjs` rewrites its `contrast.txt`
-transcript, `render-logo.mjs` rewrites all four logo PNGs, `render-poster.mjs`
-rewrites `brand-poster.png`. No machine-local path is recorded here, so the
-scripts stay portable.
-
-| file | what it is |
-|---|---|
-| `verify-contrast.mjs` | the WCAG audit — pure node, no dependencies |
-| `contrast.txt` | its full terminal output |
-| `render-logo.mjs` | rasterises the mark to the four PNG sizes |
-| `render-poster.mjs` | lays out and rasterises `brand-poster.png` |
+Evidence is reproducible rather than archived: the generators live in the brand
+task workspace outside the repo, and re-running one regenerates its artefact on
+the spot — `render-logo.mjs` rewrites the three SVGs and all six logo PNGs,
+`render-poster.mjs` rewrites `brand-poster.png`, `render-compare.mjs` rewrites
+`compare-v1-vs-meerkat.png`, `verify-contrast.mjs` rewrites its `contrast.txt`
+transcript, and `verify-brand.mjs` re-asserts the mark's geometry and the
+static-SVG contract. No machine-local path is recorded here, so the scripts stay
+portable.
 
 **Notes**
 
 - §6.5 owner ruling: Option 1 accepted — `canceled` / `none` stay `#B8C0C5`, for
   non-text markers only.
+- The PNG rasters are produced with scripting disabled in the rendering browser,
+  which is also the evidence for the "visible with JS off" requirement: the
+  browser is given no JavaScript at all and still paints the mark.

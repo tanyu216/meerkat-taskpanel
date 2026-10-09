@@ -1,4 +1,4 @@
-# Signal Order
+# Vigil Order
 
 *A design philosophy in six movements.*
 
@@ -6,66 +6,77 @@
 
 **I. The premise.**
 
-Signal Order begins from a refusal: that clarity must be loud. It holds that the
-most legible thing on any surface is not the brightest mark but the most
-*earned* one — a mark that has survived subtraction. Where other movements add
-until meaning appears, Signal Order removes until only meaning remains. Its
-canvases are quiet not because they are empty but because everything inessential
-has been defeated. What is left reads as inevitable, which is the hardest
-condition to fake and the slowest to reach.
+Vigil Order begins from an inversion of the obvious. It refuses the assumption
+that watchfulness looks like alarm. It holds instead that the most trustworthy
+thing on any surface is the one that has been *holding still* the longest —
+a composition that has already absorbed every shock it might have shown, and
+chose to show none of them. Where a lesser discipline reaches for the flare, a
+Vigil Order sheet reaches for the interval. Its calm is not indifference; it is
+the visible residue of a long attention. The viewer is never told that they are
+safe. They are simply put in front of something that has clearly not looked
+away, and left to draw the conclusion.
 
-**II. Space as the first instrument.**
+**II. The small body, repeated.**
 
-Space is not leftover room; it is the primary carrier of hierarchy. A field of
-generous, deliberately uneven void teaches the eye where to rest and where to
-look, and it does so without a single word of instruction. Margins are measured,
-never eyeballed — the difference between a convincing margin and a nearly-right
-one is where amateur work always announces itself. Every edge, gutter and
-interval in a Signal Order composition is the residue of repeated refinement,
-aligned to a grid that the viewer is never shown and always feels.
+The movement's subject is the modest form — a short, unglamorous shape with no
+rhetoric in it at all: a rounded column, a dot, a single upright stroke. One of
+these is nothing. But the practitioners of Vigil Order are not interested in
+one. They are interested in the *order* that a small form creates when it is
+placed again and again at a measured interval, until the repetition itself
+becomes the subject and the individual mark surrenders to the field. The work
+lives in the spacing between marks, not in the marks. Set the interval by hand,
+tune it until the field breathes, and the same tiny body that read as a scratch
+alone will begin to read as a system — patient, legible, and quietly endless.
 
-**III. Repetition and the discipline of the mark.**
+**III. The one who stands.**
 
-Meaning is built by patient repetition: the same form, drawn again and again at
-varying weight, until the accumulation itself becomes the subject. A single
-vertical stroke is nothing; two hundred of them, precisely spaced and quietly
-modulated, become a reading — a signal field, an instrument's face. The
-practitioner must draw the field by hand-tuned interval, not by formula alone,
-so that the rhythm breathes without ever breaking cadence. This is the work of
-someone at the absolute top of their field: dense, systematic, and still
-somehow weightless.
+A field alone is a texture; a field with a signal is a statement. Vigil Order
+insists that within every repetition there is exactly one element elevated,
+loaded, and set apart — the individual that has risen out of the mass and is
+now doing the thing the mass depends on. It is never many. It is never loud. It
+is distinguished by the smallest available means: it is taller, it is coloured,
+it carries one mark above it, or it simply stands where no other mark stands.
+Everything about the composition should make the reader feel, without a word of
+explanation, that this one is *responsible* — and that the responsibility
+rotates. The elevated position is a duty, not a rank, and the work should imply
+its own succession.
 
-**IV. Colour as calibration, never decoration.**
+**IV. Space as the interval of attention.**
 
-Signal Order admits a severely limited palette — one line colour, one ink, one
-warm incident, and the neutral ground that holds them. Colour is treated the way
-a laboratory treats a reference standard: chosen once, measured, and then obeyed
-everywhere. The line colour appears sparingly enough that its arrival still
-means something. The warm accent is rationed to a single gesture per
-composition, and when it lands it should feel like an event. Anything chromatic
-that cannot justify its contrast ratio, its hue family, and its position in the
-hierarchy is removed without sentiment.
+Space in Vigil Order is not emptiness and not luxury; it is *duration*. A wide,
+evenly held margin is how the composition says that nothing here is urgent,
+because everything here has been checked. The movement is suspicious of density
+used as decoration and of air used as padding. Every gap is a measured decision,
+kept deliberately consistent so that the eye learns the cadence and can then
+trust it — and so that the single break in that cadence, when it finally
+arrives, carries the full weight of the exception. A Vigil Order surface must be
+legible to someone who has not been told what it means, and legible to someone
+looking at it from across a room, and it must survive being reproduced at the
+size of a fingernail. If it cannot be read when it is small, it was never
+restraint — only indecision.
 
-**V. Systematic typography and clinical reference marking.**
+**V. Colour as a signal, held in reserve.**
 
-Text is the last element admitted and the smallest. It arrives as annotation
-rather than argument: micro-labels, index numbers, coordinate strings, units,
-figure marks — the vocabulary of a diagram from an imaginary discipline, treating
-an invisible subject with the reverence usually reserved for observable
-phenomena. Type is set small, thin, and immaculately tracked; numerals are
-monospaced so columns of figures stand at attention. Never a paragraph. Never an
-explanation. The composition must be able to lose every word and still be
-understood, because if it cannot, the design has failed and the words have been
-asked to lie.
+The palette is one ink, one line, one warm incident, and a neutral ground that
+holds them without comment. Colour is not taste here; it is *state*. It is
+rationed the way a watch is rationed — most of the surface stands in the ink,
+carrying no chroma at all, precisely so that the moment the line colour appears,
+it reads as information rather than as decoration. The warm accent is the
+rarest thing in the discipline and appears, at most, once: it is the raised
+alarm, and a raised alarm that happens often is not one. Any value that cannot
+justify itself through contrast ratio, hierarchy, and necessity is removed
+without sentiment and without a replacement.
 
 **VI. The standard.**
 
-A Signal Order piece must look as though it consumed countless hours. Its
-intersections are exact, its optical alignments corrected where the grid lies,
-its hairlines consistent to a fraction of a millimetre, its negative space
-balanced with the care of a meditation practice. Nothing touches what it should
-not touch; nothing crowds an edge; no element overlaps another by accident. The
-result should be able to hang in a museum beside work that took months —
-restrained, precise, and quietly total — and it must appear, to anyone who
-looks twice, to be the product of painstaking attention from someone who has
-earned the right to be this quiet.
+A Vigil Order piece must look as though it cost countless hours, because in the
+hands of its best practitioners it did. Every repeated mark sits on its exact
+coordinate; every optical correction has been made where the grid lies and the
+eye knows better; every hairline is consistent to a fraction of a millimetre and
+every margin has been re-set a dozen times to find the one that holds. Nothing
+touches what it should not touch, nothing crowds an edge, nothing overlaps
+because of an accident. The result should be able to hang beside work that took
+months and not be the lesser object in the room — quiet, exact, and totally
+composed — and it must read, to anyone who looks twice, as the product of
+painstaking attention from someone at the absolute top of their field, who has
+earned the right to be this still.
