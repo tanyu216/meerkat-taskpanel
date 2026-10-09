@@ -49,7 +49,13 @@ const REPORT = {
  */
 async function openBoard() {
   const taskd = await startTaskd();
-  const session = createMcpSession({ url: taskd.url, token: taskd.token, env: baseEnv() });
+  // The seeded card is assigned to linus, and a claim now requires the actor to
+  // be the assignee; name this MCP agent `linus` so the workflow is its own.
+  const session = createMcpSession({
+    url: taskd.url,
+    token: taskd.token,
+    env: { ...baseEnv(), TASKCTL_AGENT: "linus" },
+  });
   return {
     taskd,
     session,

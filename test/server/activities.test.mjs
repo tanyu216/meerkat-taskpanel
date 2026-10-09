@@ -48,7 +48,7 @@ describe("server/routes — a task's audit trail", () => {
     const body = await get();
     assert.equal(body.ok, true);
     const events = body.data.activities;
-    assert.deepEqual(events.map((entry) => entry.event), ["task_created", "comment_added", "task_moved"]);
+    assert.deepEqual(events.map((entry) => entry.event), ["task_created", "comment_added", "task_claimed"]);
     assert.equal(body.data.task_id, taskd.board.repos.tasks.findByIdentifierAnyProject(identifier).id);
 
     const created = events[0];
@@ -66,7 +66,7 @@ describe("server/routes — a task's audit trail", () => {
 
     const after = (await get(`?after=${limited[0].revision}`)).data.activities;
     assert.equal(after.some((entry) => entry.event === "task_created"), false);
-    assert.deepEqual(after.map((entry) => entry.event), ["comment_added", "task_moved"]);
+    assert.deepEqual(after.map((entry) => entry.event), ["comment_added", "task_claimed"]);
   });
 
   it("404s an unknown task reference", async () => {

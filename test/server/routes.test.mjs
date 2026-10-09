@@ -161,8 +161,13 @@ describe("server/routes — tasks, the gate and deliver", () => {
     assert.equal(illegal.status, 409, JSON.stringify(illegal.body));
     assert.equal(illegal.body.error.code, "INVALID_TRANSITION");
 
-    // todo → in_progress is legal; in_progress → in_review then hits the gate.
-    dataOf(await call("POST", `/api/v1/tasks/${identifier}/move`, { to: "in_progress" }));
+    // todo → in_progress is a claim, so it must come from the assignee (linus);
+    // in_progress → in_review then hits the gate.
+    dataOf(
+      await call("POST", `/api/v1/tasks/${identifier}/move`, { to: "in_progress" }, {
+        "x-taskctl-actor": JSON.stringify({ kind: "agent", id: "linus" }),
+      }),
+    );
     const gated = await call("POST", `/api/v1/tasks/${identifier}/move`, { to: "in_review" });
     assert.equal(gated.status, 422, JSON.stringify(gated.body));
     assert.equal(gated.body.error.code, "REPORT_REQUIRED");
@@ -437,12 +442,18 @@ describe("server/routes — the edges a happy path never reaches", () => {
   });
 
   it("moves with if_version, and records seg/session on a delivered report", async () => {
-    dataOf(await call("POST", "/api/v1/tasks/DEMO-9001/move", { to: "todo" }));
-    const task = dataOf(await call("GET", "/api/v1/tasks/DEMO-9001")).task;
-    dataOf(await call("POST", "/api/v1/tasks/DEMO-9001/move", { to: "in_progress", if_version: task.version }));
+    // DEMO-9001 is an epic (a grouping card) and an epic may not be claimed, so
+    // the move/deliver path uses a plain card.
+    const movable = dataOf(await call("POST", "/api/v1/tasks", { project_id: "demo", title: "Movable" })).task;
+    dataOf(
+      await call("POST", `/api/v1/tasks/${movable.identifier}/move`, {
+        to: "in_progress",
+        if_version: movable.version,
+      }),
+    );
 
     const delivered = dataOf(
-      await call("POST", "/api/v1/tasks/DEMO-9001/deliver", {
+      await call("POST", `/api/v1/tasks/${movable.identifier}/deliver`, {
         report: {
           conclusion: "done",
           acceptance: [{ text: "a", status: "met" }],
@@ -719,5 +730,77 @@ describe("server/routes — candidates (the poll read)", () => {
     assert.equal(missing.status, 400, JSON.stringify(missing.body));
     assert.equal(missing.body.error.code, "VALIDATION_FAILED");
     assert.equal(missing.body.error.details.field, "assignee");
+  });
+});
+
+// Last, like the blocks above: it adds a project the earlier global reads must
+// not see.
+describe("server/routes — claim enforces the assignee (T-20261009-230500)", () => {
+  const asAgent = (id) => ({ "x-taskctl-actor": JSON.stringify({ kind: "agent", id }) });
+  const assignedCard = (title) =>
+    call("POST", "/api/v1/tasks", {
+      project_id: "claim",
+      title,
+      assignee: "linus",
+      assignee_kind: "agent",
+      allow_dup: true,
+    }).then(dataOf);
+
+  before(async () => {
+    dataOf(await call("POST", "/api/v1/projects", { id: "claim", name: "Claim", workspace_path: "/tmp/claim" }));
+  });
+
+  it("lets the assignee move their card to in_progress (200)", async () => {
+    const card = await assignedCard("For linus");
+    const moved = dataOf(
+      await call("POST", `/api/v1/tasks/${card.task.identifier}/move`, { to: "in_progress" }, asAgent("linus")),
+    );
+    assert.equal(moved.task.status, "in_progress");
+    assert.equal(moved.task.claimed_by, "linus");
+  });
+
+  it("refuses a different actor with 409 not_assignee", async () => {
+    const card = await assignedCard("For linus 2");
+    const refused = await call(
+      "POST",
+      `/api/v1/tasks/${card.task.identifier}/move`,
+      { to: "in_progress" },
+      asAgent("elon"),
+    );
+    assert.equal(refused.status, 409, JSON.stringify(refused.body));
+    assert.equal(refused.body.error.code, "not_assignee");
+    assert.match(refused.body.error.hint.fix, /--allow-steal/);
+  });
+
+  it("takes it with allow_steal, and the takeover is readable as a change comment", async () => {
+    const card = await assignedCard("For linus 3");
+    const moved = dataOf(
+      await call(
+        "POST",
+        `/api/v1/tasks/${card.task.identifier}/move`,
+        { to: "in_progress", allow_steal: true, reason: "linus is on another card" },
+        asAgent("elon"),
+      ),
+    );
+    assert.equal(moved.task.claimed_by, "elon");
+
+    const comments = dataOf(await call("GET", `/api/v1/tasks/${card.task.identifier}/comments`));
+    assert.equal(comments.comments.length, 1);
+    assert.equal(comments.comments[0].kind, "change");
+    assert.match(comments.comments[0].body, /linus/);
+    assert.match(comments.comments[0].body, /elon/);
+  });
+
+  it("refuses allow_steal without a reason", async () => {
+    const card = await assignedCard("For linus 4");
+    const refused = await call(
+      "POST",
+      `/api/v1/tasks/${card.task.identifier}/move`,
+      { to: "in_progress", allow_steal: true },
+      asAgent("elon"),
+    );
+    assert.equal(refused.status, 400, JSON.stringify(refused.body));
+    assert.equal(refused.body.error.code, "VALIDATION_FAILED");
+    assert.equal(refused.body.error.details.field, "reason");
   });
 });

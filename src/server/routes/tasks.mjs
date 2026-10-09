@@ -165,6 +165,9 @@ export function registerTaskRoutes(router, surface) {
       ifVersion: body.if_version,
       noReport: body.no_report === true,
       reason: body.reason,
+      // A `todo → in_progress` move is a claim; `allow_steal` is its audited
+      // override (T-20261009-230500). MCP deliberately does not expose it.
+      allowSteal: body.allow_steal === true,
       actor,
     });
     return { ...taskPayload(repos, task), status: task.status };
