@@ -36,5 +36,8 @@ bash install.sh --target all --dry-run
 step "skill install profiles (all four hosts, throwaway home)"
 node scripts/verify/profiles.mjs
 
+step "host runtime claim path (offline mock harness: hook / trigger / wake scripts)"
+node scripts/verify/host-runtime.mjs
+
 echo
 echo "== all container checks passed =="
