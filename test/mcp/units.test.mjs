@@ -53,8 +53,11 @@ describe("mcp/units — the actor MCP presents (G3)", () => {
     assert.equal(identity.actor.kind, "agent", "a host over stdio is never a human at a terminal");
     assert.equal(identity.actor.id, "linus");
 
-    // Each fallback in turn: agent → session id → clientInfo.name → "mcp".
-    assert.equal(mcpIdentity({ env: { TASKCTL_SESSION_ID: "sid" }, clientInfo: { name: "claude-code" } }).actor.id, "sid");
+    // Each fallback in turn: agent → clientInfo.name → "mcp". A session id is
+    // attribution, not a name, so it never wins the id (it stays in `session`).
+    const named = mcpIdentity({ env: { TASKCTL_SESSION_ID: "sid" }, clientInfo: { name: "claude-code" } });
+    assert.equal(named.actor.id, "claude-code");
+    assert.equal(named.session, "sid", "the session is still recorded as attribution");
     assert.equal(mcpIdentity({ env: {}, clientInfo: { name: "claude-code" } }).actor.id, "claude-code");
     assert.equal(mcpIdentity({ env: {} }).actor.id, MCP_DEFAULT_ACTOR_ID);
     assert.equal(mcpIdentity({ env: {}, clientInfo: {} }).actor.id, MCP_DEFAULT_ACTOR_ID, "an unnamed client is still no name");

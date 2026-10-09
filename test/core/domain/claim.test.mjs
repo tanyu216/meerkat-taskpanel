@@ -25,6 +25,8 @@ const FRESH = "2026-10-08T00:05:00.000Z"; // 5 minutes old
 const MID = "2026-10-07T23:00:00.000Z"; // 70 minutes old — past fresh, before 6h
 const VERY_STALE = "2026-10-07T12:00:00.000Z"; // 12h10m old — past the 6h window
 const AT_THE_EDGE = "2026-10-08T00:00:00.000Z"; // exactly HEARTBEAT_FRESH_MS old
+const AT_SIX_HOURS = "2026-10-07T18:10:00.000Z"; // exactly CLAIM_STALE_ANY_MS old
+const JUST_PAST_SIX_HOURS = "2026-10-07T18:09:59.999Z"; // 6h + 1ms old
 
 /** The dictionary entry `linus` — what `resolveAssignee` returns for the card. */
 const LINUS = { id: "dict-linus", displayName: "Linus", normalizedName: "linus", kind: "agent" };
@@ -47,6 +49,22 @@ describe("domain/claim — isAssignee", () => {
   it("treats an unassigned card as open to everyone", () => {
     assert.equal(isAssignee(task(), "anyone", resolveNone), true);
     assert.equal(isAssignee(task(), "anyone", null), true);
+  });
+
+  it("treats a dangling assignee reference (an id with no entry) as open to everyone", () => {
+    // `assigneeId` has a value but the dictionary has no such entry: there is no
+    // route to violate, so the card is an open pool rather than a lock-out.
+    assert.equal(isAssignee(task({ assigneeId: "dict-ghost" }), "anyone", resolveNone), true);
+    assert.equal(isAssignee(task({ assigneeId: "dict-ghost" }), "anyone", null), true);
+
+    // And the claim itself is allowed — a dangling route is no route to violate.
+    const verdict = decideClaim(task({ assigneeId: "dict-ghost" }), {
+      actor: "anyone",
+      now: NOW,
+      resolveAssignee: resolveNone,
+    });
+    assert.equal(verdict.action, CLAIM_ACTIONS.TAKE);
+    assert.equal(verdict.code, null);
   });
 
   it("matches the actor against the dictionary entry, normalised", () => {
@@ -178,6 +196,43 @@ describe("domain/claim — the in_progress windows", () => {
     assert.equal(verdict.steal, true);
     assert.equal(verdict.stolenFrom, "elon");
     assert.match(verdict.reason, /stale/);
+  });
+
+  it("pins the 6-hour boundary: inclusive for the holder-only window, then open", () => {
+    // Exactly CLAIM_STALE_ANY_MS old: still inside the holder-only window, so a
+    // non-holder is refused with EXECUTION_ACTIVE — not not_assignee.
+    const atEdge = decideClaim(held({ heartbeatAt: AT_SIX_HOURS }), {
+      actor: "linus",
+      now: NOW,
+      resolveAssignee: resolveNone,
+    });
+    assert.equal(atEdge.action, CLAIM_ACTIONS.CONFLICT, "the 6h window is inclusive at exactly CLAIM_STALE_ANY_MS");
+    assert.equal(atEdge.code, "EXECUTION_ACTIVE");
+
+    // One millisecond past it: the claim has rotted — anyone may take it.
+    const justPast = decideClaim(held({ heartbeatAt: JUST_PAST_SIX_HOURS }), {
+      actor: "linus",
+      now: NOW,
+      resolveAssignee: resolveNone,
+    });
+    assert.equal(justPast.action, CLAIM_ACTIONS.TAKE);
+    assert.equal(justPast.steal, true);
+    assert.equal(justPast.stolenFrom, "elon");
+  });
+
+  it("treats a holder with no heartbeat as a rotted claim anyone may take", () => {
+    // A card in_progress whose holder left no heartbeat at all: the claim is not
+    // a claim — the takeover is audited like any >6h rotted claim.
+    for (const heartbeatAt of [null, undefined, ""]) {
+      const verdict = decideClaim(held({ heartbeatAt }), {
+        actor: "linus",
+        now: NOW,
+        resolveAssignee: resolveNone,
+      });
+      assert.equal(verdict.action, CLAIM_ACTIONS.TAKE, `heartbeatAt=${String(heartbeatAt)}`);
+      assert.equal(verdict.steal, true, "no heartbeat ⇒ the claim is not a claim");
+      assert.equal(verdict.stolenFrom, "elon");
+    }
   });
 
   it("honours the freshness window the caller passes", () => {

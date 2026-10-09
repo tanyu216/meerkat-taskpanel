@@ -10,10 +10,16 @@
  *
  * The id is the interesting half, and it is resolved widest-name-first:
  *
- *   $TASKCTL_AGENT      what the host says this agent is called
- *   $TASKCTL_SESSION_ID the conversation it belongs to
- *   clientInfo.name     the name the client sent during `initialize`
- *   "mcp"               no name at all — better a stable placeholder than a throw
+ *   $TASKCTL_AGENT   what the host says this agent is called
+ *   clientInfo.name  the name the client sent during `initialize`
+ *   "mcp"            no name at all — better a stable placeholder than a throw
+ *
+ * `$TASKCTL_SESSION_ID` is deliberately **not** in that chain: it is
+ * attribution (which conversation a write came from), and rides along in the
+ * `session` field — the same split the CLI's `resolveActor` makes (§3.1,
+ * identity and attribution are separate). A session id is a conversation, not a
+ * name, so it never becomes the id (the old chain's bug: the session string
+ * became the id and never matched an assignee name).
  *
  * `clientInfo` is the fallback rather than the first choice on purpose: an env
  * var is set deliberately by whoever configured the host, while `clientInfo.name`
@@ -42,7 +48,7 @@ export function mcpIdentity(input = {}) {
   const env = input.env ?? process.env;
   const clientInfo = input.clientInfo ?? null;
 
-  const id = env.TASKCTL_AGENT ?? env.TASKCTL_SESSION_ID ?? clientInfo?.name ?? MCP_DEFAULT_ACTOR_ID;
+  const id = env.TASKCTL_AGENT ?? clientInfo?.name ?? MCP_DEFAULT_ACTOR_ID;
 
   return {
     actor: { kind: MCP_ACTOR_KIND, id: String(id) },

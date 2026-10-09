@@ -3,8 +3,9 @@
  *
  * The priority ladder is `--token` > `$TASKD_TOKEN` > pointer→tokenFile > none,
  * and "none" is legal on loopback. The second half of the contract — that the
- * token never appears in any output — is asserted end-to-end in
- * `test/cli/token-rotate.test.mjs`, where a real CLI process is on the wire.
+ * token never appears in any output — is asserted end-to-end in the
+ * `cli/token rotate — end to end (V10)` describe below, where a real CLI process
+ * is on the wire.
  */
 
 import assert from "node:assert/strict";

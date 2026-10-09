@@ -88,7 +88,14 @@ it does not create a row. Reads never write.
 `issue move <ref> in_progress` on a `todo` card **is** a claim: it takes the
 execution lock (`claimed_by` / `claimed_at` / `heartbeat_at`). A card has two
 roles — the **assignee** (who it is routed to) and its **claimer** (who is doing
-it now); normally they are the same person, and the claim is refused otherwise:
+it now); normally they are the same person. Who may claim:
+
+- **Unassigned** cards are an open pool: any actor may claim them.
+- An **epic** can never be claimed (`not_claimable`), and neither can `backlog`
+  — only `todo` is claimable.
+- A card routed to somebody else is refused on this **first claim** with
+  `not_assignee` — that code appears **only** on this `todo → in_progress`
+  path:
 
 ```console
 $ taskctl issue move PROJ-0007 in_progress
@@ -98,18 +105,27 @@ $ echo $?
 1
 ```
 
-- **Unassigned** cards are an open pool: any actor may claim them.
-- An **epic** can never be claimed (`not_claimable`), and neither can `backlog`
-  — only `todo` is claimable.
-- `--allow-steal --reason "<why>"` is the **audited** override: the reason must
-  be at least 8 characters, and the takeover is recorded as a `task_claimed`
-  activity **and** a `kind: change` comment naming the original assignee, the new
-  claimer and the reason (`comment list <ref>` shows it).
-- Re-claiming an `in_progress` card depends on the age of its heartbeat:
-  `≤ 10 min` it is live (the holder reuses it; anyone else gets `EXECUTION_ACTIVE`);
-  `10 min … 6 h` **only the holder** may re-claim it; past **6 h** anybody may
-  take it (also audited). A **rework** (`in_review`/`blocked → in_progress`) is
-  *not* a claim: it keeps the existing executor and their lock.
+- `--allow-steal --reason "<why>"` is the **audited** override of the routing
+  lock, valid on that first claim only: the reason must be at least 8
+  characters, and the takeover is recorded as a `task_claimed` activity **and** a
+  `kind: change` comment naming the original assignee, the new claimer and the
+  reason (`comment list <ref>` shows it).
+- Re-claiming an `in_progress` card is governed by the age of its heartbeat —
+  the boundary is `HEARTBEAT_FRESH_MS` (10 minutes):
+
+  | Heartbeat age | The holder | Anyone else |
+  |---|---|---|
+  | `≤ 10 min` (fresh) | reuses the claim (`reuse`, nothing reset) | refused — `EXECUTION_ACTIVE` |
+  | `10 min … 6 h` | re-claims it, resetting the lock | refused — `EXECUTION_ACTIVE` |
+  | `> 6 h`, or **no heartbeat at all** | may take it | may take it — an audited takeover |
+
+  While a claim is less than 6 hours old a non-holder is always refused with
+  `EXECUTION_ACTIVE` — never `not_assignee`, and `--allow-steal` does **not**
+  override it. Past 6 hours (or with no heartbeat at all) the claim has rotted
+  and **any** actor may take it, recorded as an audited takeover (the staleness
+  *is* the reason, so no `--reason` is needed). A **rework**
+  (`in_review`/`blocked → in_progress`) is *not* a claim: it keeps the existing
+  executor and their lock.
 
 ### The delivery gate
 
