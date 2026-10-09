@@ -367,6 +367,25 @@ node scripts/verify/host-cli.mjs --host openclaw
 This is a cross-check that the offline detection rules match what the real CLI does — it
 is supplementary, not the acceptance evidence.
 
+### The runtime claim path (offline mock harness)
+
+`profiles.mjs` proves the bundle *installed*; it never runs what the install generated.
+`scripts/verify/host-runtime.mjs` does — offline, with no host CLI and no board:
+
+```bash
+node scripts/verify/host-runtime.mjs            # all hosts; exit 0 only if every assert passes
+node scripts/verify/host-runtime.mjs --host claude
+```
+
+It installs into a throwaway prefix (never `$HOME`), replaces the generated `taskctl`
+shim with a canned one and puts fake `claude`/`codex`/`pi` executables on `PATH` — both
+record their argv — then drives the generated SessionStart hook, the Codex claim trigger
+and each `wake-<host>.sh`, asserting the **actual invocation** (exit code + argv +
+output), not just "it ran". This is the step that covers the claim path in CI, where the
+real CLIs are absent. The full matrix, the argv-vs-`wakeCommand()` cross-check and the
+per-host coverage boundary (Pi has no hook/trigger/shim) are in
+[`scheduling.md`](scheduling.md#verifying-the-generated-trigger--wake-glue).
+
 ## Isolated installs and testing
 
 Nothing is ever written outside the destination paths in the table above. To install

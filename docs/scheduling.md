@@ -274,6 +274,44 @@ patrol 300s ──▶ supervisor --patrol-only --once
                      unreadable       → report      (never silent)
 ```
 
+## Verifying the generated trigger / wake glue
+
+The installer *generates* the per-host claim entry points — the Claude SessionStart
+hook, the Codex claim trigger, and each `wake-<host>.sh`. `scripts/verify/profiles.mjs`
+only proves they *landed*; it never runs them. `scripts/verify/host-runtime.mjs` runs
+them, offline, in CI:
+
+```bash
+node scripts/verify/host-runtime.mjs            # all hosts; exit 0 only if every assert passes
+node scripts/verify/host-runtime.mjs --host codex
+```
+
+The harness installs into a throwaway prefix (never `$HOME`), then swaps in a **canned
+`taskctl` shim** (the board boundary) and fake `claude`/`codex`/`pi` executables (the
+wake boundary), both of which record their argv. It then asserts the actual invocation,
+not just the exit code:
+
+| Path | Asserted |
+|---|---|
+| `session-start.sh` (claude) | calls `issue candidates --assignee <agent>`, prints candidates + the eight rules, and is **non-fatal** — a failing or missing shim still exits 0 with a PATH-independent fallback |
+| `task-panel-claim.sh` (codex) | claims the first candidate (`issue move <ref> in_progress`) when free; **skips** when a held card is mine (identity matched under the board's NFKC/whitespace/case rule); still claims when the held card is someone else's; exits 0 on an empty pool; exits 1 when the shim is missing |
+| `wake-claude.sh` | no prompt → exit 2; prompt → `claude -p <prompt>`; plus `--resume <sid>` when a session is given; **no** permission-bypass flag |
+| `wake-codex.sh` | no prompt → exit 2; prompt → `codex exec <prompt>` |
+| `wake-pi.sh` | no prompt → exit 2; prompt → `pi run <prompt>` |
+
+The wake assertions compare the recorded argv against `wakeCommand()` (the same pure
+function `scripts/supervisor.mjs` dispatches through), so the generated script and the
+supervisor can't drift apart.
+
+**Coverage boundary (what this does *not* prove).** It pins the generated *shell glue*
+against mocks. It does not drive the real host CLIs (that is the supplementary
+`scripts/verify/host-cli.mjs`, which SKIPs when a CLI is absent) and it does not exercise
+the real board's claim semantics (`scripts/verify/install-e2e.sh` drives the real
+`taskctl`/`taskd`). Per host, only the forms the bundle actually ships are covered:
+Claude has a hook and no trigger, Codex has a trigger and no hook, and **Pi has neither a
+hook nor a trigger nor a shim** — only the external `wake-pi.sh` applies, which is why
+its row above is the wake form alone.
+
 ## See also
 
 - [`install.md`](install.md) — the installer flags, including `--claim-unassigned`.
