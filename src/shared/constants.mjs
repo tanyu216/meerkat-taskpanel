@@ -178,3 +178,69 @@ export const SESSION_ID_NAMESPACE = "4f3d9c2a-1b77-5e0c-9a4d-8f6e2b1c0d5a";
 export const IDENTIFIER_PAD = 4;
 /** Permissive identifier shape: legacy imported ids must keep working (F2). */
 export const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
+// ---------------------------------------------------------------------------
+// Access control (ARCHITECTURE §7, M6a)
+// ---------------------------------------------------------------------------
+
+/**
+ * Comma/space separated **CIDR allow-list** for non-loopback callers.
+ *
+ * Unset (the default) means "allow every address" — the board is local-first and
+ * welcomes the LAN. Setting it *tightens* the board: once the variable is
+ * present, only addresses inside one of its prefixes are served, and everything
+ * else is answered `403`. Loopback is always allowed, so an over-tight list
+ * cannot lock the owner out of their own machine.
+ */
+export const ALLOW_CIDRS_ENV = "TASKD_ALLOW_CIDRS";
+
+// ---------------------------------------------------------------------------
+// SSE event stream (ARCHITECTURE §4.3 / §5.4, M6a)
+// ---------------------------------------------------------------------------
+
+/** How often the stream sends a `: ping` comment so a dead peer is noticed. */
+export const SSE_HEARTBEAT_MS = 15_000;
+/** How often the stream polls `task_activities` for new increments. */
+export const SSE_POLL_MS = 500;
+/** The `retry:` hint an EventSource should honour after a dropped connection. */
+export const SSE_RETRY_MS = 3_000;
+/** At most this many activity rows are replayed for a `?after=<rev>` reconnect. */
+export const SSE_REPLAY_LIMIT = 500;
+/**
+ * Activity events that carry no board state (§4.3: "排除纯心跳").
+ *
+ * A heartbeat touches `heartbeat_at` and bumps the revision, but nothing a board
+ * renders changes, so it is filtered out of the stream. The row still exists in
+ * `task_activities` — this is a *projection* rule, not a storage one.
+ */
+export const SSE_NOISE_EVENTS = Object.freeze(["task_heartbeat"]);
+
+// ---------------------------------------------------------------------------
+// Static hosting (ARCHITECTURE §8, M6a)
+// ---------------------------------------------------------------------------
+
+/** Where a built frontend lives, relative to the repository root. Absent is fine. */
+export const STATIC_DIR_REL = "web/dist";
+/** `index.html` — the SPA shell a deep link falls back to. */
+export const STATIC_INDEX = "index.html";
+
+// ---------------------------------------------------------------------------
+// Attachments (ARCHITECTURE §5.1 / §13, M6a)
+// ---------------------------------------------------------------------------
+
+/** Content bytes live here, under the data directory; the row stays metadata. */
+export const ATTACHMENTS_DIRNAME = "attachments";
+/** Upper bound on an uploaded attachment body (8 MiB). */
+export const ATTACHMENT_MAX_BYTES = 8 * 1024 * 1024;
+
+// ---------------------------------------------------------------------------
+// Project ordering (ARCHITECTURE §4.6, M6a)
+// ---------------------------------------------------------------------------
+
+/**
+ * The PROJECTS list weight algorithm: recency-weighted activity plus age.
+ * `A7` (7-day activity) 0.50 · `A30` (30-day) 0.30 · `C` (created) 0.20.
+ */
+export const PROJECT_ORDER_WEIGHTS = Object.freeze({ a7: 0.5, a30: 0.3, created: 0.2 });
+/** The two activity windows, in days (§4.6). */
+export const PROJECT_ACTIVITY_WINDOW_DAYS = Object.freeze({ a7: 7, a30: 30 });

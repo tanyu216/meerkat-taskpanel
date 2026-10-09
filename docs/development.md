@@ -50,6 +50,47 @@ npm run build
 npm run check     # check:skills + verify + test
 ```
 
+## The `taskd` HTTP surface (M6)
+
+`src/server/` is the local service every other surface talks to. Start it with
+`node src/server/main.mjs`; `taskctl` starts it on demand.
+
+| Route (`/api/v1` unless noted) | Methods | Notes |
+|---|---|---|
+| `/health`, `/meta` | GET | liveness + version/capabilities; `/health` is unauthenticated |
+| `/projects`, `/projects/:id`, `/projects/current`, `/projects/:id/readme` | GET/POST/PATCH/PUT | `/projects` is ordered server-side (§4.6) |
+| `/tasks`, `/tasks/:ref` | GET/POST/PATCH | `:ref` is an identifier or a UUID |
+| `/tasks/:ref/move`, `/tasks/:ref/deliver`, `/tasks/:ref/assign`, `/tasks/:ref/archive` | POST | the delivery gate bites on `/move` and `/deliver` |
+| `/tasks/:ref/comments`, `/tasks/:ref/relations`, `/tasks/:ref/sessions`, `/tasks/:ref/activities`, `/tasks/:ref/reports` | GET/POST/DELETE | activities is the audit cursor read |
+| `/attachments/:id/content` | GET/PUT | raw bytes; not JSON — handled outside the router |
+| `/events` | GET (SSE) | `global_revision` increments; `?after=<rev>` replays |
+| `/assignees`, `/reporters`, `/labels` | GET | read-only by design (§4.4) |
+| `/token` | POST | rotate; loopback only |
+| `/` and everything else | GET/HEAD | built frontend from `web/dist`, when it exists |
+
+Beyond `/health`, every request is authorised before it is routed (§7):
+
+- a **loopback** caller is trusted — no token, never filtered by the allow-list;
+- a **remote** caller must be inside `TASKD_ALLOW_CIDRS` (when set; unset = allow
+  all) and must present the token, as `Authorization: Bearer <token>` or
+  `?token=<token>` (the query form exists for `EventSource`);
+- `POST /token` is refused (403) from anywhere but this machine.
+
+Security-relevant environment variables:
+
+| Variable | Meaning |
+|---|---|
+| `TASKD_HOST` / `TASKD_PORT` | bind address / port (defaults `0.0.0.0:9527`) |
+| `TASKD_ALLOW_CIDRS` | comma-separated CIDR allow-list for non-loopback callers; unset = allow all, malformed entries fail closed |
+| `TASKD_DATA_DIR` / `TASKD_DB` | data directory / database file |
+| `TASKD_TOKEN` | token a client presents (`--token` outranks it) |
+| `TASKD_LABEL_GC`, `TASKD_LABEL_TTL_DAYS` | label housekeeping (§4.4) |
+
+The access token is never echoed in a response and never logged. The SSE stream
+filters `task_heartbeat` out of the increments, because a pulse changes no board
+state (§4.3); the row still exists in `task_activities` and under
+`/tasks/:ref/activities`.
+
 ## The skill is generated, never hand-edited
 
 `skills/task-panel/` is the only place the skill is authored. `scripts/sync-skills.mjs`

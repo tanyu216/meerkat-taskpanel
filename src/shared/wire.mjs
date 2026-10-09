@@ -189,6 +189,27 @@ export function dictionaryEntryToWire(entry) {
   };
 }
 
+/**
+ * @param {object} activity a core Activity DTO (a `task_activities` row)
+ *
+ * The audit trail is the raw material both the board's SSE stream (§5.4) and the
+ * `GET /tasks/:id/activities` route hand out, so the projection is shared the
+ * same way every other DTO's is.
+ */
+export function activityToWire(activity) {
+  if (activity === null || activity === undefined) return null;
+  return {
+    id: activity.id,
+    task_id: activity.taskId ?? null,
+    actor_kind: activity.actorKind ?? null,
+    actor_id: activity.actorId ?? null,
+    event: activity.event,
+    changes: activity.changes ?? {},
+    revision: activity.revision,
+    created_at: activity.createdAt,
+  };
+}
+
 /** @param {object} label a core Label DTO */
 export function labelToWire(label) {
   if (label === null || label === undefined) return null;

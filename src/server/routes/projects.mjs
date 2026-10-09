@@ -5,10 +5,18 @@
  * `GET /api/v1/projects/current` is registered **before** `/:id` because routes
  * match in order — `current` is a literal, not an id.
  *
+ * `GET /api/v1/projects` is where §4.6 lives: the list is returned **already
+ * ordered** by the weight algorithm (activity over 7/30 days + creation age),
+ * because §8 says the frontend consumes the order and must not recompute it.
+ * The aggregation is a SQL join (`task_activities → tasks → project_id`) and
+ * the ranking itself is the pure `shared/project-order.mjs`.
+ *
  * Bodies are snake_case (§F-C1); the projection to and from the domain's
  * camelCase happens here and in `shared/wire.mjs`, nowhere else.
  */
 
+import { PROJECT_ACTIVITY_WINDOW_DAYS, SSE_NOISE_EVENTS } from "../../shared/constants.mjs";
+import { orderDebugEntry, rankProjects } from "../../shared/project-order.mjs";
 import { projectToWire } from "../../shared/wire.mjs";
 
 /** The shape a "no project owns this directory" answer has (§F-C3). */
@@ -30,11 +38,23 @@ export function syntheticLocalProject(workspacePath) {
 export function registerProjectRoutes(router, surface) {
   const { commands } = surface.board;
 
-  router.get("/api/v1/projects", ({ query }) => ({
-    projects: commands
-      .listProjects({ includeArchived: truthy(query.get("include_archived")) })
-      .map(projectToWire),
-  }));
+  router.get("/api/v1/projects", ({ query }) => {
+    const includeArchived = truthy(query.get("include_archived"));
+    const activity = activityByProject(surface.board, { now: new Date(surface.board.ctx.now()) });
+    const ranked = rankProjects(
+      commands.listProjects({ includeArchived }).map((project) => ({
+        ...project,
+        ...(activity.get(project.id) ?? EMPTY_ACTIVITY),
+      })),
+    );
+    return {
+      projects: ranked.map((item) => projectToWire(item.entry)),
+      // The escape hatch §4.6 asks for: on request, ship the three raw factors,
+      // their ranks and their normalised scores so the order can be reconciled
+      // by hand. Off by default — it is a diagnostic, not board state.
+      ...(truthy(query.get("order_debug")) ? { order_debug: ranked.map(orderDebugEntry) } : {}),
+    };
+  });
 
   router.post("/api/v1/projects", ({ body, actor }) => {
     const project = commands.createProject({
@@ -109,4 +129,51 @@ export function intOrUndefined(value) {
   if (value === null || value === undefined || value === "") return undefined;
   const parsed = Number.parseInt(String(value), 10);
   return Number.isInteger(parsed) ? parsed : undefined;
+}
+
+/** What a project with no activity in either window looks like (§4.6). */
+const EMPTY_ACTIVITY = Object.freeze({ a7: 0, a30: 0, lastActivityAt: null });
+
+/**
+ * Per-project activity counts for the §4.6 windows.
+ *
+ * "Activity" is the reproducible definition the architecture fixes: the number
+ * of `task_activities` rows in the window that belong to a task of the project,
+ * **excluding pure heartbeats** (they bump the revision but change no board
+ * state). Timestamps are ISO-8601 UTC, so a lexicographic `>=` is a
+ * chronological one and no date parsing is needed.
+ *
+ * Rows with no task (`project_created`, the label GC's own entries) do not
+ * belong to any project and are correctly absent from the join.
+ *
+ * @param {{db: object}} board
+ * @param {{now?: Date}} [options]
+ * @returns {Map<string, {a7: number, a30: number, lastActivityAt: string|null}>}
+ */
+export function activityByProject(board, options = {}) {
+  const now = options.now ?? new Date();
+  const since = (days) => new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
+  const noise = SSE_NOISE_EVENTS.map(() => "?").join(", ");
+  const rows = board.db
+    .prepare(
+      `SELECT t.project_id AS project_id,
+              SUM(CASE WHEN a.created_at >= ? THEN 1 ELSE 0 END) AS a7,
+              COUNT(*) AS a30,
+              MAX(a.created_at) AS last_activity
+         FROM task_activities a
+         JOIN tasks t ON t.id = a.task_id
+        WHERE a.event NOT IN (${noise}) AND a.created_at >= ?
+        GROUP BY t.project_id`,
+    )
+    .all(since(PROJECT_ACTIVITY_WINDOW_DAYS.a7), ...SSE_NOISE_EVENTS, since(PROJECT_ACTIVITY_WINDOW_DAYS.a30));
+
+  const out = new Map();
+  for (const row of rows) {
+    out.set(row.project_id, {
+      a7: Number(row.a7 ?? 0),
+      a30: Number(row.a30 ?? 0),
+      lastActivityAt: row.last_activity ?? null,
+    });
+  }
+  return out;
 }

@@ -110,6 +110,37 @@ export function readJsonBody(req, options = {}) {
   });
 }
 
+/**
+ * Read a request body as **bytes**.
+ *
+ * The JSON reader is the right default, but an attachment is not JSON: its
+ * content endpoint takes the raw body and must not try to parse it. Same bound,
+ * same refusal shape — a body over the limit is a readable 413, never a reset.
+ *
+ * @param {import('node:http').IncomingMessage} req
+ * @param {{maxBytes?: number}} [options]
+ * @returns {Promise<Buffer>}
+ */
+export function readRawBody(req, options = {}) {
+  const maxBytes = options.maxBytes ?? MAX_BODY_BYTES;
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on("data", (chunk) => {
+      if (size > maxBytes) return;
+      size += chunk.length;
+      if (size > maxBytes) {
+        chunks.length = 0;
+        reject(tooLarge(maxBytes));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
+
 /** A `VALIDATION_FAILED` carrying the status the router should answer with. */
 function badBody(message) {
   return withStatus(Object.assign(new Error(message), { code: "VALIDATION_FAILED", details: {} }), 400);

@@ -67,11 +67,15 @@ docker compose -f docker/docker-compose.yml down -v
 
 Anything else returns `404 {"error":"not_found"}`.
 
-> **M0 note.** `docker/serve-skeleton.mjs` is a deploy skeleton: it serves `/health` and
-> nothing else, purely so the compose path (build → healthcheck → teardown) can be
-> exercised before a server exists. **M6 replaces it** with the real HTTP surface under
-> `src/server/`; `docker-compose.yml` then points `command` there. It is not a business
-> implementation and should never grow board logic.
+> **M0 note (still true after M6a).** `docker/serve-skeleton.mjs` is a deploy skeleton:
+> it serves `/health` and nothing else, purely so the compose path (build → healthcheck →
+> teardown) can be exercised without starting a real board with real state. The **real**
+> HTTP surface now exists under `src/server/` (M6a) and is what the container suite starts
+> and drives: `docker run --rm task-panel:verify node src/server/main.mjs`, plus the
+> `test/server/*` integration cases that run inside `npm run verify:docker`. Pointing
+> `docker-compose.yml`'s `command` at `src/server/main.mjs` is a one-line deploy change
+> left for a follow-up card, because the compose healthcheck contract (`/health` says
+> ok) is shared by both servers and this milestone keeps it pinned as-is.
 
 The board's runtime state is bind-mounted from the repository (`../.data` →
 `/app/.data`), so `docker compose down -v` never destroys it. Only named volumes are
