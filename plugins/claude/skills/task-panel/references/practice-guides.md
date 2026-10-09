@@ -1,11 +1,11 @@
-# Practice guides — Claude Code & Codex
+# Practice guides — Claude Code, Codex & OpenClaw
 
 > **What this covers.** How to *operate* this skill well once it is installed into
-> **Claude Code** or **Codex** — the habits that keep a fleet of agents from
-> tripping over each other on one shared board. The commands themselves are in
-> [`cli.md`](cli.md); the periodic reports are in [`reports.md`](reports.md). This
-> file is the *practice*: eight rules every host shares, the two hosts'
-> install / trigger differences, and a minimal worked example.
+> a host — **Claude Code**, **Codex**, or **OpenClaw** — the habits that keep a
+> fleet of agents from tripping over each other on one shared board. The commands
+> themselves are in [`cli.md`](cli.md); the periodic reports are in
+> [`reports.md`](reports.md). This file is the *practice*: eight rules every host
+> shares, each host's install / trigger differences, and a minimal worked example.
 
 The rules are host-independent on purpose. A board driven from Claude Code, from
 Codex, or from any other host earns the same guarantees, because the guarantees
@@ -54,7 +54,7 @@ not touch it", not a "try anyway":
 | A `depends_on` blocker is not `done` | The work it waits on is unfinished; the candidates read already withholds it. |
 
 `issue candidates --assignee <me>` enforces the last two for you. When a card you
-*expected* is missing, `issue relation list <ref>` shows the blockers behind it.
+*expected* is missing, `relation list <ref>` shows the blockers behind it.
 
 ### 3. One card at a time
 
@@ -114,6 +114,36 @@ Every write can name the actor and the conversation behind it
 "which agent session did this", and it is what lets a resumed conversation
 re-attach to the same work instead of starting over. Always pass the session id.
 
+## OpenClaw
+
+### Install
+
+```bash
+# 1. skill → ~/.openclaw/skills/task-panel
+bash install.sh --target openclaw --link --force
+
+# 2. plugin — OpenClaw consumes the Claude-format bundle
+openclaw plugins install "$PWD/plugins/claude" --force --accept-capabilities
+openclaw plugins inspect task-panel                 # → task-panel, bundle format: claude
+```
+
+(`plugins/openclaw/openclaw.plugin.json` is a *native* manifest — a skill-only pack
+that installs through the bundle route above; the repo's `docs/install.md` §OpenClaw
+has the native-vs-bundle distinction.)
+
+### Tracing and triggering
+
+- **The rules are applied for you.** OpenClaw is the one host where claiming is not
+  the agent's job: the [openclaw-team](https://github.com/tanyu216/openclaw-team)
+  framework installs Task Panel by default and runs a per-agent poll that claims
+  `todo` / `stale` cards through the board's own criteria. §1–§3 and §7 happen
+  around the agent rather than by it.
+- **The session id still travels with every write.** Pass
+  `--agent-platform openclaw --session-id <id>` so a card's trail points back at the
+  session that did the work (§8); the framework keeps that id stable across resumes.
+- **No trigger to wire.** Unlike Claude Code and Codex there is no "there is no
+  auto-claim" caveat here — the framework owns the trigger.
+
 ## Claude Code
 
 ### Install
@@ -172,7 +202,13 @@ codex plugin list                                  # → task-panel
 ## A minimal worked example
 
 From the skill directory, the shortest complete loop (Claude Code shown; on Codex
-swap the actor flags for `--agent-platform codex --session-id "$CODEX_THREAD_ID"`):
+swap the actor flags for `--agent-platform codex --session-id "$CODEX_THREAD_ID"`).
+
+**Prerequisites for the placeholder names below.** `PROJ-0007` stands for a real
+card on *your* board and `linus` for the assignee it belongs to — substitute the
+identifier `issue candidates` prints for you. `$SESSION` is the host's session id
+(see your host's *Tracing and triggering* section): the Claude Code session id you
+launched with, or `$CODEX_THREAD_ID` on Codex.
 
 ```bash
 # 0. which project owns this directory?
