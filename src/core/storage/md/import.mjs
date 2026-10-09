@@ -157,6 +157,7 @@ export function importMd(input) {
     dependsUnresolved: [],
     invariantViolations: [],
     projectSkippedCards: [],
+    reportSkipped: [],
     check,
   };
 
@@ -391,16 +392,37 @@ export function importMd(input) {
 
         for (const report of card.reports) {
           if (repos.reports.latestForRound(task.id, report.round) !== null) continue;
-          const prepared = normalizeReportCreate(
-            {
-              conclusion: report.conclusion,
-              acceptance: report.acceptance,
-              evidence: report.evidence,
-              leftovers: report.leftovers,
-              author: report.author ?? { kind: "agent", id: report.authorId ?? "unknown" },
-            },
-            { taskRound: report.round, now: report.ts ?? now },
-          );
+          let prepared;
+          try {
+            prepared = normalizeReportCreate(
+              {
+                conclusion: report.conclusion,
+                acceptance: report.acceptance,
+                evidence: report.evidence,
+                leftovers: report.leftovers,
+                author: report.author ?? { kind: "agent", id: report.authorId ?? "unknown" },
+              },
+              { taskRound: report.round, now: report.ts ?? now },
+            );
+          } catch (err) {
+            // A historical card's `## Report` may predate the structured schema: a
+            // free-form narrative with no `- [status]` acceptance list and no
+            // evidence anchors. That is a mapping gap to *report*, not a reason to
+            // lose the whole card (M5 ruling: never a silent drop) — record it and
+            // keep importing. The reconcile drill lists each one as `report-invalid`.
+            const code = isDomainError(err) ? err.code : "REPORT_INVALID";
+            stats.reportSkipped.push({
+              file: entry.file,
+              identifier: entry.task.identifier,
+              round: report.round,
+              code,
+              reason: err.message,
+            });
+            stats.warnings.push(
+              `${entry.file}: the ## Report block (round ${report.round}) was not imported (${code}): ${err.message}`,
+            );
+            continue;
+          }
           const stored = repos.reports.insert({ ...prepared, taskId: task.id });
           stats.reports += 1;
           entry.latestReport = stored;

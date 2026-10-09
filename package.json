@@ -32,6 +32,7 @@
     "check": "npm run check:skills && npm run verify && npm test",
     "verify:docker": "node scripts/verify/docker.mjs",
     "verify:docker:container": "bash docker/verify-in-container.sh",
+    "verify:migrate:container": "node scripts/migrate/drill.mjs",
     "test:coverage": "node --test --test-reporter=tap --experimental-test-coverage --test-coverage-include='src/core/**' --test-coverage-include='src/shared/**' --test-coverage-include='src/cli/**' --test-coverage-include='src/server/**' --test-coverage-include='src/mcp/**' --test-coverage-lines=80 --test-coverage-branches=80 --test-coverage-functions=80"
   },
   "keywords": [

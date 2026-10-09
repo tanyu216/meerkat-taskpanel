@@ -231,6 +231,43 @@ describe("md/import — depends_on direction (M5 ruling)", () => {
   });
 });
 
+describe("md/import — an unrepresentable ## Report is reported, not fatal", () => {
+  it("imports the card, skips the report, and records it as a finding", async () => {
+    const board = await boardWithCards({
+      "A.md": cardText({ status: "in_review" }, { Report: "A free-form narrative with no structured acceptance list." }),
+    });
+    try {
+      const stats = importCards(board);
+      assert.equal(stats.tasks, 1, "the card itself still imports");
+      assert.equal(stats.reports, 0, "the unrepresentable report is not written");
+      assert.equal(stats.reportSkipped.length, 1);
+      assert.deepEqual(
+        { ...stats.reportSkipped[0], reason: undefined },
+        { file: "A.md", identifier: "DEMO-0001", round: 1, code: "REPORT_INVALID", reason: undefined },
+      );
+      assert.match(stats.warnings[0], /## Report block \(round 1\) was not imported \(REPORT_INVALID\)/);
+    } finally {
+      board.close();
+    }
+  });
+
+  it("stays idempotent: a second pass writes neither row nor report", async () => {
+    const board = await boardWithCards({
+      "A.md": cardText({ status: "in_review" }, { Report: "A free-form narrative with no structured acceptance list." }),
+    });
+    try {
+      importCards(board);
+      const second = importCards(board);
+      assert.equal(second.tasks, 0);
+      assert.equal(second.updated, 0);
+      assert.equal(second.reports, 0);
+      assert.equal(second.skipped, 1, "the card is recognised as already imported");
+    } finally {
+      board.close();
+    }
+  });
+});
+
 describe("md/import — invariant refusals become warnings", () => {
   it("catches a self-parenting epic per card and records the reason", async () => {
     const board = await boardWithCards({ "A.md": cardText({ id: "DEMO-0001", kind: "epic", parent: "DEMO-0001" }) });

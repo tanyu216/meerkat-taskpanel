@@ -497,6 +497,16 @@ function buildReport(context) {
       note: "the card names a project that is not in the registry — it was skipped (pass --create-project to create it)",
     });
   }
+  for (const skipped of stats1.reportSkipped ?? []) {
+    unmappable.push({
+      kind: "report-invalid",
+      card: skipped.identifier ?? null,
+      value: skipped.round,
+      note:
+        `the card's ## Report block was not imported (${skipped.code}); a historical report with no ` +
+        "structured acceptance list / evidence anchors is stored only in the markdown snapshot",
+    });
+  }
 
   // Emit a difference for each field/section/relation/label that drifted.
   for (const row of perField) {

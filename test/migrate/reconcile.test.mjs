@@ -7,7 +7,7 @@
  */
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
@@ -141,6 +141,50 @@ describe("migrate/reconcile — a lossy directory reports differences", () => {
   });
 });
 
+describe("migrate/reconcile — a narrative ## Report is a finding, not a crash", () => {
+  it("still produces a report and lists the item as report-invalid", async () => {
+    const dir = join(makeTempDir("reconcile-narrative-"), "cards");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "NARR-0001.md"),
+      [
+        "---",
+        "id: NARR-0001",
+        "title: A card with a narrative report",
+        "status: in_review",
+        "priority: medium",
+        "kind: task",
+        "project: demo",
+        "target: /tmp/task-panel-migrate-fixture",
+        "created_by: elon",
+        "created_at: 2026-01-01T00:00:00.000Z",
+        "---",
+        "## Background",
+        "",
+        "body",
+        "",
+        "## Acceptance",
+        "",
+        "- [ ] one",
+        "",
+        "## Report",
+        "",
+        "A free-form narrative that predates the structured report schema.",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const { code, report } = await run(["--dir", dir, "--projects", REGISTRY, "--now", "2026-01-10T00:00:00.000Z", "--json"]);
+    assert.equal(code, 3, "a dropped report is a difference, not a crash");
+    assert.equal(report.counts.imported, 1, "the card still imports");
+    assert.ok(
+      report.unmappable.some((item) => item.kind === "report-invalid" && item.card === "NARR-0001"),
+      `expected a report-invalid item, got ${JSON.stringify(report.unmappable)}`,
+    );
+    assert.equal(report.sections.reports.mismatching, 1, "the source report did not survive the round trip");
+  });
+});
+
 describe("migrate/reconcile — privacy: the report never carries card text", () => {
   it("contains identifiers and hashes, but no title or body", async () => {
     const { out } = await run(["--dir", CLEAN, "--projects", REGISTRY, "--now", "2026-01-10T00:00:00.000Z", "--json"]);
@@ -155,6 +199,33 @@ describe("migrate/reconcile — privacy: the report never carries card text", ()
     ]) {
       assert.equal(out.includes(secret), false, `the report leaked: ${secret}`);
     }
+  });
+
+  it("has a closed top-level schema: no field that could carry a card body", async () => {
+    const { report } = await run(["--dir", DIFF, "--projects", REGISTRY, "--now", "2026-01-10T00:00:00.000Z", "--json"]);
+
+    // The allow-list is the structural guarantee: a new key that could hold
+    // prose must be added here deliberately, not slip in unnoticed.
+    assert.deepEqual(Object.keys(report).sort(), [
+      "content",
+      "counts",
+      "differences",
+      "generatedAt",
+      "hashes",
+      "idempotent",
+      "labels",
+      "ok",
+      "perField",
+      "projects",
+      "relations",
+      "roundtripEquivalent",
+      "sections",
+      "source",
+      "total",
+      "unmappable",
+      "version",
+      "warnings",
+    ]);
   });
 });
 
