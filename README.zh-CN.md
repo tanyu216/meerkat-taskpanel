@@ -1,10 +1,11 @@
 # Task Panel
 
-**面向 AI Agent 团队的任务看板。**
+**面向 AI Agent 团队的任务看板 —— Agent 干活，人只看进展。**
 
-一个 local-first 的任务看板，为「AI Agent + 人」混合团队设计：Agent 认领任务（claim）、
-发送心跳（heartbeat）、上报进度（progress）、沿依赖树汇总结果（rollup），人类则在同一个
-看板上观察同一份状态。
+Task Panel 是 **AI-Agent-first** 的：项目与任务的创建、领取、心跳、进度上报、依赖与
+epic 关系的搭建，乃至交付门禁，全部由 Agent 自己完成，全程无需人在环里。看板 UI 则是
+刻意**只读**的 —— 它的存在，是让人一眼看清每个任务当前的状态、以及每个 epic 汇总到哪
+一步。没有人需要靠点按钮来建卡。
 
 > **状态：核心（M1）、CLI（M2）与 MCP server（M3）已落地。**
 > `src/core/` 已包含领域模型、SQLite 存储与迁移、用例与 `openBoard()`；`src/cli/` +
@@ -13,6 +14,37 @@
 > server，暴露 18 个工具，作为通往 `taskd` 的、与交付门禁等价的薄代理。仍待实现：
 > 看板前端（`web/`）与完整的 HTTP/SSE 看板后端。详见 `CLAUDE.md` /
 > `docs/development.md`、`src/mcp/README.md`，各阶段见下方路线图。
+
+## 亮点
+
+1. **Agent 干活，人只看。** 从项目与任务创建、领取、进度上报，到依赖、epic 与交付门禁，
+   整个生命周期都由 Agent 驱动；UI 只读 —— 人跟的是任务状态与 epic 汇总，而不是填表单
+   建卡。
+2. **有据可查的交付门禁。** 卡只有在拿到**当轮**报告时才能进入 `in_review`，这条规则同时
+   落在数据库与应用层。唯一的例外 —— 弃权（waiver）—— 必须写明理由，并记入审计轨迹。
+3. **依赖与 epic 是一等公民。** `depends_on` 链接构成 DAG：无依赖可并行、有依赖则等待；
+   父子链接把子树进展汇总（rollup）到所属 epic。
+4. **可续接的 Agent 会话。** 每个会话都有由 `task + owner + segment` 推导出的确定性 id；
+   重连即复用同一会话，不必为重建上下文白烧 token。
+5. **append-only 审计轨迹。** 评论、报告与活动只增不改、不可删除。看板不只是工作的视图，
+   它就是工作本身的记录。
+6. **local-first、运行时零依赖。** 唯一持久化是一个 SQLite 文件（Node 内置
+   `node:sqlite`）；引擎不依赖其它库，且完全可离线运行。
+7. **同一块看板，多个入口。** 可用 `taskctl` CLI 驱动，可经 stdio MCP server（18 个工具）
+   接入会说 MCP 的宿主，也可走本地 `taskd` HTTP API —— 并为 Claude Code、Codex、
+   OpenClaw、pi 提供 skill/插件安装。MCP 面与门禁等价：`task_deliver` 是唯一能到达
+   `in_review` 的工具。
+8. **设计上 provider-agnostic。** Task Panel 是 openclaw-team 框架的默认看板基座 —— 其
+   认领 / 候选判定与框架的 poll 保持同步，因此更换看板底座（Jira、Plane、Linear……）无需
+   改动 Agent。访问由 token 与可选的 CIDR 白名单把关。
+9. **为长期运行的 Agent 集群而建。** 心跳为认领设定 10 分钟的新鲜期；认领对本人 30 分钟后
+   失效、对所有人 6 小时后失效，因此崩溃的 Agent 不会把卡卡死。
+
+## 架构
+
+Task Panel 是三层薄结构，依赖方向始终向内：`src/cli`、`src/mcp`、`src/server` 是入口，
+`src/core` 持有领域模型、SQLite 存储与用例，`src/shared` 是它们共享的 DTO 与辅助函数。
+完整目录树见 [仓库结构](#仓库结构)；想为自己的宿主安装 skill/插件，见 [安装](#安装)。
 
 ## 截图
 
