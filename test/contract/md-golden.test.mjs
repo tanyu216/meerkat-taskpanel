@@ -139,6 +139,10 @@ describe("contract/md-golden — the fixture set", () => {
       const text = readFileSync(join(FIXTURES, name), "utf8");
       assert.equal(text.includes("openclaw"), false, `${name} must not reference the team workspace`);
       assert.equal(/\/Users\//.test(text.replace("/tmp/task-panel-fixture", "")), false, name);
+      // No real-person identifiers in fixture data: the synthetic actors are
+      // `elon` (human), `linus`/`turing` (agents). `Terry`/`tanyu` are real and
+      // must never appear in a public-repo card fixture.
+      assert.equal(/\b(Terry|tanyu|tanyu216)\b/i.test(text), false, `${name} carries a real-person identifier`);
       assert.ok(existsSync(join(GOLDEN, name)), `${name} has no golden`);
     }
   });
@@ -189,7 +193,7 @@ describe("contract/md-golden — import → export is byte-stable (V9)", () => {
     const foldedGolden = readFileSync(join(GOLDEN, "PROJ-0004.md"), "utf8");
     assert.match(folded, /review_notes: >/);
     assert.match(foldedGolden, /review_notes: \|/);
-    assert.match(foldedGolden, /Terry asked for the redaction to cover error stacks too, which the shared helper now does\./);
+    assert.match(foldedGolden, /elon asked for the redaction to cover error stacks too, which the shared helper now does\./);
 
     const scrambled = readFileSync(join(FIXTURES, "PROJ-0006.md"), "utf8");
     const scrambledGolden = readFileSync(join(GOLDEN, "PROJ-0006.md"), "utf8");
@@ -275,7 +279,7 @@ describe("contract/md-golden — the data that must survive", () => {
     const board = await importFixtures();
     try {
       const epic = board.repos.tasks.getByIdentifier("proj", "PROJ-0001");
-      assert.equal(epic.meta.legacy.git_rules, "branch: feat/m1-core\ncommit: explicit paths only\nreview: Elon\n");
+      assert.equal(epic.meta.legacy.git_rules, "branch: feat/m1-core\ncommit: explicit paths only\nreview: elon\n");
       assert.equal(epic.meta.notify_leader, "yes");
       assert.deepEqual(epic.meta.acceptance_legacy, [
         { text: "domain has no Node I/O", checked: true },

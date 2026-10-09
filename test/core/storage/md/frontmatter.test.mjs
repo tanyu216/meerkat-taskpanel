@@ -103,6 +103,24 @@ describe("md/frontmatter — parsing", () => {
     assert.equal(parseScalar("plain", fail), "plain");
     assert.throws(() => parseScalar("{a: 1}", fail), /not supported/);
   });
+
+  it("keeps a value that merely *starts* with '*' or '&', refusing only a bare token", () => {
+    const fail = (message) => {
+      throw new Error(message);
+    };
+    // Prose: markdown bold, an emphasis marker, an ampersand — all verbatim.
+    assert.equal(parseScalar("**只读**审计 与 迁移", fail), "**只读**审计 与 迁移");
+    assert.equal(parseScalar("*emphasis* and text", fail), "*emphasis* and text");
+    assert.equal(parseScalar("& more prose", fail), "& more prose");
+    // A bare alias/anchor token is still YAML syntax this subset refuses.
+    assert.throws(() => parseScalar("*alias", fail), /not supported/);
+    assert.throws(() => parseScalar("&anchor", fail), /not supported/);
+    assert.throws(() => parseScalar("{a: 1}", fail), /not supported/);
+
+    // And end to end: a real `git_rules` value that begins with `**` parses.
+    const { data } = parseFrontmatter(card("git_rules: **只读**审计 ~/.openclaw/team/**；禁破坏性 git"));
+    assert.equal(data.git_rules, "**只读**审计 ~/.openclaw/team/**；禁破坏性 git");
+  });
 });
 
 describe("md/frontmatter — serialisation", () => {

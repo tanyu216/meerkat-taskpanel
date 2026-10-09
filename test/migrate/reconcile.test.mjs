@@ -141,8 +141,8 @@ describe("migrate/reconcile — a lossy directory reports differences", () => {
   });
 });
 
-describe("migrate/reconcile — a narrative ## Report is a finding, not a crash", () => {
-  it("still produces a report and lists the item as report-invalid", async () => {
+describe("migrate/reconcile — a narrative ## Report is mapped, not a difference", () => {
+  it("imports it conclusion-only, round-trips it, and lists it as informational", async () => {
     const dir = join(makeTempDir("reconcile-narrative-"), "cards");
     mkdirSync(dir, { recursive: true });
     writeFileSync(
@@ -158,6 +158,8 @@ describe("migrate/reconcile — a narrative ## Report is a finding, not a crash"
         "target: /tmp/task-panel-migrate-fixture",
         "created_by: elon",
         "created_at: 2026-01-01T00:00:00.000Z",
+        "updated_at: 2026-01-01T00:00:00.000Z",
+        "status_changed_at: 2026-01-01T00:00:00.000Z",
         "---",
         "## Background",
         "",
@@ -175,13 +177,126 @@ describe("migrate/reconcile — a narrative ## Report is a finding, not a crash"
     );
 
     const { code, report } = await run(["--dir", dir, "--projects", REGISTRY, "--now", "2026-01-10T00:00:00.000Z", "--json"]);
-    assert.equal(code, 3, "a dropped report is a difference, not a crash");
-    assert.equal(report.counts.imported, 1, "the card still imports");
+    assert.equal(code, 0, "a narrative report round-trips — no difference");
+    assert.equal(report.counts.imported, 1, "the card imports");
+    assert.equal(report.sections.reports.mismatching, 0, "the source report survived the round trip");
     assert.ok(
-      report.unmappable.some((item) => item.kind === "report-invalid" && item.card === "NARR-0001"),
-      `expected a report-invalid item, got ${JSON.stringify(report.unmappable)}`,
+      report.unmappable.some((item) => item.kind === "report-narrative" && item.card === "NARR-0001"),
+      `expected an informational report-narrative item, got ${JSON.stringify(report.unmappable)}`,
     );
-    assert.equal(report.sections.reports.mismatching, 1, "the source report did not survive the round trip");
+    assert.equal(
+      report.unmappable.some((item) => item.kind === "report-invalid"),
+      false,
+      "a narrative is not a report-invalid skip",
+    );
+  });
+});
+
+describe("migrate/reconcile — a structured-but-incomplete ## Report is mapped, not a difference", () => {
+  it("imports it with acceptance and empty evidence, listing it as informational", async () => {
+    const dir = join(makeTempDir("reconcile-incomplete-"), "cards");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "INC-0001.md"),
+      [
+        "---",
+        "id: INC-0001",
+        "title: A card with an incomplete report",
+        "status: in_review",
+        "priority: medium",
+        "kind: task",
+        "project: demo",
+        "target: /tmp/task-panel-migrate-fixture",
+        "created_by: elon",
+        "created_at: 2026-01-01T00:00:00.000Z",
+        "updated_at: 2026-01-01T00:00:00.000Z",
+        "status_changed_at: 2026-01-01T00:00:00.000Z",
+        "---",
+        "## Background",
+        "",
+        "body",
+        "",
+        "## Acceptance",
+        "",
+        "- [ ] one",
+        "",
+        "## Report",
+        "",
+        "### R1 · 2026-01-03T00:00:00.000Z · linus",
+        "",
+        "Round one.",
+        "",
+        "### Acceptance 自检",
+        "",
+        "- [x] criterion one",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const { code, report } = await run(["--dir", dir, "--projects", REGISTRY, "--now", "2026-01-10T00:00:00.000Z", "--json"]);
+    assert.equal(code, 0, "an incomplete report round-trips — no difference");
+    assert.equal(report.counts.imported, 1, "the card imports");
+    assert.equal(report.idempotent, true);
+    assert.equal(report.sections.reports.mismatching, 0, "the source report survived the round trip");
+    assert.ok(
+      report.unmappable.some((item) => item.kind === "report-incomplete" && item.card === "INC-0001"),
+      `expected an informational report-incomplete item, got ${JSON.stringify(report.unmappable)}`,
+    );
+    assert.equal(
+      report.unmappable.some((item) => item.kind === "report-invalid" || item.kind === "report-narrative"),
+      false,
+      "an incomplete report is neither a narrative nor a report-invalid skip",
+    );
+  });
+});
+
+describe("migrate/reconcile — a non-ms card timestamp no longer aborts the run", () => {
+  it("round-trips a card whose ## Comments use second precision and a UTC offset", async () => {
+    // The latent bug segment 1 surfaced: a hand-written comment stamp without
+    // milliseconds reached the domain create-schema and threw out of the whole
+    // import. The importer now coerces it at the edge, so the drill completes.
+    const dir = join(makeTempDir("reconcile-ts-"), "cards");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "TS-0001.md"),
+      [
+        "---",
+        "id: TS-0001",
+        "title: A card with hand-written comment stamps",
+        "status: todo",
+        "priority: medium",
+        "kind: task",
+        "project: demo",
+        "target: /tmp/task-panel-migrate-fixture",
+        "created_by: elon",
+        "created_at: 2026-01-01T00:00:00.000Z",
+        "updated_at: 2026-01-01T00:00:00.000Z",
+        "status_changed_at: 2026-01-01T00:00:00.000Z",
+        "---",
+        "## Background",
+        "",
+        "body",
+        "",
+        "## Acceptance",
+        "",
+        "- [ ] one",
+        "",
+        "## Comments",
+        "",
+        "- 2026-10-08T14:03Z · change · elon — a Z stamp without milliseconds",
+        "- 2026-10-09T02:42+08:00 · confirm · linus — an offset stamp",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const { code, report } = await run(["--dir", dir, "--projects", REGISTRY, "--now", "2026-01-10T00:00:00.000Z", "--json"]);
+    assert.equal(code, 0, "the drill runs to completion — the stamps are coerced, not fatal");
+    assert.equal(report.counts.imported, 1, "the card imports");
+    assert.equal(report.idempotent, true);
+    assert.equal(report.roundtripEquivalent, true);
+    assert.equal(report.sections.comments.sourceTotal, 2, "the source comments are counted");
+    assert.equal(report.sections.comments.roundtripTotal, 2, "and both survive the round trip");
+    assert.equal(report.sections.comments.mismatching, 0, "the comment section count matches");
   });
 });
 

@@ -19,6 +19,7 @@ import {
   acceptanceFromJson,
   boundEvidence,
   evidenceFromJson,
+  normalizeImportedReport,
   normalizeReportCreate,
   reportFromRow,
   serializeAcceptance,
@@ -193,6 +194,54 @@ describe("domain/report — round", () => {
     });
     assert.equal(normalizeReportCreate(good({ round: 1 }), CONTEXT).round, 1);
     assert.equal(normalizeReportCreate(good(), { ...CONTEXT, taskRound: 3 }).round, 3);
+  });
+});
+
+describe("domain/report — normalizeImportedReport (the relaxed read path)", () => {
+  const narrative = {
+    conclusion: "A free-form narrative that predates the structured report schema.",
+    acceptance: [],
+    evidence: [],
+    author: { kind: "agent", id: "unknown" },
+  };
+
+  it("permits an empty acceptance and evidence, fabricating nothing", () => {
+    const report = normalizeImportedReport(narrative, CONTEXT);
+    assert.equal(report.conclusion, narrative.conclusion);
+    assert.deepEqual(report.acceptance, []);
+    assert.equal(report.acceptanceJson, "[]");
+    assert.equal(report.evidenceJson, "[]");
+    assert.deepEqual(report.evidence, { items: [], truncated: false, note: null });
+    assert.equal(report.truncated, false);
+    assert.equal(report.createdAt, NOW);
+    assert.equal(report.round, 1);
+  });
+
+  it("still validates types, the author and the round", () => {
+    assert.throws(() => normalizeImportedReport({ ...narrative, conclusion: "" }, CONTEXT), (err) => {
+      assert.equal(err.code, "REPORT_INVALID");
+      assert.deepEqual(err.details.issues, [{ path: "conclusion", message: "conclusion must be a non-empty string" }]);
+      return true;
+    });
+    assert.throws(
+      () => normalizeImportedReport({ ...narrative, author: { kind: "nope", id: "x" } }, CONTEXT),
+      (err) => err.code === "REPORT_INVALID",
+    );
+    assert.throws(() => normalizeImportedReport({ ...narrative, round: 2 }, CONTEXT), (err) => {
+      assert.equal(err.code, "REPORT_ROUND_MISMATCH");
+      return true;
+    });
+  });
+
+  it("does NOT weaken the gate: normalizeReportCreate still rejects the same payload", () => {
+    assert.throws(() => normalizeReportCreate(narrative, CONTEXT), (err) => {
+      assert.equal(err.code, "REPORT_INVALID");
+      assert.deepEqual(
+        err.details.issues.map((issue) => issue.path),
+        ["acceptance", "evidence"],
+      );
+      return true;
+    });
   });
 });
 

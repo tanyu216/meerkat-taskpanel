@@ -15,6 +15,7 @@ import {
   loadProjectRegistry,
   normalizeProjectKey,
   parseProjectRegistry,
+  resolveBuildinProject,
 } from "../../src/core/storage/md/project-registry.mjs";
 
 const REGISTRY = join(import.meta.dirname, "fixtures/registry/projects.json");
@@ -22,7 +23,7 @@ const REGISTRY = join(import.meta.dirname, "fixtures/registry/projects.json");
 describe("md/project-registry — parsing", () => {
   it("reads the team's { projects: { key: {...} } } shape", () => {
     const registry = parseProjectRegistry(readFileSync(REGISTRY, "utf8"), { file: "projects.json" });
-    assert.equal(registry.size, 2);
+    assert.equal(registry.size, 3, "two file entries + the buildin __team__");
     const demo = registry.resolve("demo");
     assert.equal(demo.id, "demo");
     assert.equal(demo.name, "demo");
@@ -36,8 +37,34 @@ describe("md/project-registry — parsing", () => {
 
   it("skips $-prefixed documentation keys", () => {
     const registry = parseProjectRegistry('{ "$schema_note": "x", "projects": { "a": {} } }');
-    assert.equal(registry.size, 1);
+    assert.equal(registry.size, 2, "the one file entry + the buildin __team__");
     assert.equal(registry.resolve("$schema_note"), null);
+  });
+
+  it("resolves the buildin __team__ project with no file entry", () => {
+    const registry = parseProjectRegistry('{ "projects": { "A": {} } }');
+    const team = registry.resolve("__team__");
+    assert.equal(team.id, "__team__");
+    assert.equal(team.name, "__team__");
+    assert.equal(team.workspacePath, "/__team__", "a synthetic absolute anchor, never a real home path");
+    assert.equal(team.meta.buildin, true);
+    assert.equal(team.meta.kind, "team");
+    assert.equal(registry.resolveById("__team__").id, "__team__", "resolvable by id too");
+    assert.ok(registry.entries.some((entry) => entry.id === "__team__"), "listed in entries");
+  });
+
+  it("lets a file entry named __team__ override the buildin", () => {
+    const registry = parseProjectRegistry('{ "projects": { "__team__": { "root": "/tmp/team-real" } } }');
+    const team = registry.resolve("__team__");
+    assert.equal(team.workspacePath, "/tmp/team-real", "the file is the authority");
+    assert.notEqual(team.meta.buildin, true);
+  });
+
+  it("exposes resolveBuildinProject for the no-registry-file path", () => {
+    assert.equal(resolveBuildinProject("__team__").id, "__team__");
+    assert.equal(resolveBuildinProject("__TEAM__").id, "__team__", "normalised");
+    assert.equal(resolveBuildinProject("nope"), null);
+    assert.equal(resolveBuildinProject(null), null);
   });
 
   it("accepts a bare name map, and workspace_path / workspacePath spellings", () => {

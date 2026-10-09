@@ -184,7 +184,14 @@ export function parseScalar(raw, fail) {
     if (!raw.endsWith("'") || raw.length < 2) fail("unterminated single-quoted value", { found: raw });
     return raw.slice(1, -1);
   }
-  if (raw.startsWith("{") || raw.startsWith("&") || raw.startsWith("*")) {
+  if (raw.startsWith("{")) {
+    fail("that value syntax is not supported — use a quoted JSON string", { found: raw });
+  }
+  // A bare `*alias` / `&anchor` token is YAML syntax this subset refuses, but a
+  // value that merely *starts* with `*` or `&` is ordinary prose — markdown
+  // bold or an ampersand — and must round-trip verbatim (a real card's
+  // `git_rules` began with `**只读**审计 …`). Refuse the token, keep the prose.
+  if (/^[*&][A-Za-z0-9_-]+$/.test(raw)) {
     fail("that value syntax is not supported — use a quoted JSON string", { found: raw });
   }
   return raw;

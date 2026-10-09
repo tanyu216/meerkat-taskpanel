@@ -23,16 +23,18 @@ import { basename, join, relative } from "node:path";
 import { DomainError, isDomainError } from "../../../shared/errors.mjs";
 import { LABEL_PALETTE } from "../../../shared/constants.mjs";
 import { contentHash, newId, sha256Hex } from "../../../shared/ids.mjs";
+import { ACCEPTANCE_STATUSES } from "../../domain/enums.mjs";
 import { normalizeName } from "../../domain/dictionary.mjs";
 import { labelDisplayName, nextColor, normalizeLabelName } from "../../domain/labels.mjs";
 import { normalizeCommentCreate } from "../../domain/comment.mjs";
-import { normalizeReportCreate } from "../../domain/report.mjs";
+import { normalizeImportedReport, normalizeReportCreate } from "../../domain/report.mjs";
 import { parsePriority } from "../../domain/priority.mjs";
-import { identifierFor, normalizeLabels, normalizeTaskCreate } from "../../domain/task.mjs";
+import { identifierFor, normalizeLabels, normalizeTaskCreate, toIsoMillis } from "../../domain/task.mjs";
 import { transaction } from "../unit-of-work.mjs";
 import { parseFrontmatter } from "./frontmatter.mjs";
 import { checkRelationInvariants } from "./invariants-check.mjs";
 import { statusForImport } from "./legacy-status.mjs";
+import { resolveBuildinProject } from "./project-registry.mjs";
 import {
   parseAcceptanceBlock,
   parseCommentsBlock,
@@ -96,8 +98,12 @@ export function resolveProjectId(rawName, registry) {
   if (registry !== null && registry !== undefined) {
     const entry = registry.resolve(text);
     if (entry !== null) return entry.id;
+    return text;
   }
-  return text;
+  // No registry file: buildin names (`__team__`) still resolve, everything else
+  // keeps the historical "the name is the id" behaviour.
+  const buildin = resolveBuildinProject(text);
+  return buildin === null ? text : buildin.id;
 }
 
 /** Keys that are stored in `meta_json` rather than in a column. */
@@ -123,6 +129,41 @@ function nullable(value) {
   if (value === undefined || value === null) return null;
   const text = typeof value === "string" ? value.trim() : value;
   return text === "" ? null : text;
+}
+
+/**
+ * Normalize a card-derived timestamp to the canonical ms-Z form, degrading to
+ * the import clock (`fallback`) when the value is missing or unparseable.
+ *
+ * The domain create-schemas (`normalizeCommentCreate`, the report gate, …)
+ * require the canonical 25-character ms-Z string, but real team cards carry
+ * hand-written timestamps without milliseconds and with a UTC offset —
+ * `2026-10-08T14:03Z`, `2026-10-09T02:42+08:00`. The coercion belongs *here*, at
+ * the import edge: the importer normalizes, the domain gate stays strict. A
+ * value that cannot be parsed at all is degraded to the fallback (never fatal),
+ * and every coercion/drop is recorded in `stats.notices` so the rewrite is
+ * visible rather than silent.
+ *
+ * @param {unknown} value the raw card timestamp
+ * @param {string} fallback the import clock (already canonical ms-Z)
+ * @param {object} [stats] the import stats, for the informational notice
+ * @param {string} [field] the source field, named in the notice
+ * @returns {string}
+ */
+function importTimestamp(value, fallback, stats, field = "timestamp") {
+  if (value === undefined || value === null || value === "") return fallback;
+  try {
+    const canonical = toIsoMillis(value);
+    if (canonical !== value && stats !== undefined) {
+      stats.notices.push(`coerced ${field} timestamp ${JSON.stringify(value)} to ${canonical}`);
+    }
+    return canonical;
+  } catch {
+    if (stats !== undefined) {
+      stats.notices.push(`dropped unparseable ${field} timestamp ${JSON.stringify(value)}; using the import clock`);
+    }
+    return fallback;
+  }
 }
 
 /**
@@ -158,6 +199,13 @@ export function importMd(input) {
     invariantViolations: [],
     projectSkippedCards: [],
     reportSkipped: [],
+    // A historical narrative report is *imported* (degraded to conclusion-only);
+    // it is listed for the reconcile report as informational, not a difference.
+    reportNarrative: [],
+    // A structured-but-incomplete historical report (acceptance items, no
+    // evidence block) is likewise *imported* degraded — acceptance kept,
+    // evidence empty — and listed informationally, never as a skip.
+    reportIncomplete: [],
     check,
   };
 
@@ -228,12 +276,30 @@ export function importMd(input) {
         if (target !== null && target !== undefined && !existingPlan.targets.has(target)) {
           // `target` is a project-level workspace path (§4.8 ④ / M5 ruling): two
           // different values for one project is a warning, not a hard failure.
+          // A **buildin** project (`__team__`) has no repo, so a card's `target`
+          // is a per-card artifact path, not a project-level path — every such
+          // card would otherwise raise a spurious warning, so the check is
+          // skipped by design (the value is still recorded for the drill).
           existingPlan.targets.add(target);
-          stats.warnings.push(
-            `${entry.file}: project ${resolution.projectId} is used with two different targets ` +
-              `(${[...existingPlan.targets].join(" and ")}); target is project-level — using ${existingPlan.workspacePath}`,
-          );
+          if (existingPlan.source !== "buildin") {
+            stats.warnings.push(
+              `${entry.file}: project ${resolution.projectId} is used with two different targets ` +
+                `(${[...existingPlan.targets].join(" and ")}); target is project-level — using ${existingPlan.workspacePath}`,
+            );
+          }
         }
+      }
+
+      // Pass 1.5: plan each card's report rows — the strict delivery gate first,
+      // then the relaxed historical path. Planning happens *before* the task is
+      // written so a degraded report's warning tag is part of the task's meta
+      // from the start; a post-hoc meta update would move `updated_at`.
+      for (const entry of parsed) {
+        if (entry.projectSkipped === true) continue;
+        entry.reportPlans = entry.parsed.reports.map((report) =>
+          planReportImport(report, importTimestamp(report.ts, now, stats, "report")),
+        );
+        mergeReportWarnings(entry.parsed, entry.reportPlans);
       }
 
       // Pass 2: tasks.
@@ -369,7 +435,7 @@ export function importMd(input) {
           repos.comments.append(
             normalizeCommentCreate(
               { body: comment.body, kind: comment.kind, author: comment.author, refs: comment.refs },
-              { now: comment.ts ?? now, id: newId(), taskId: task.id, sourceSeq: comment.sourceSeq },
+              { now: importTimestamp(comment.ts, now, stats, "comment"), id: newId(), taskId: task.id, sourceSeq: comment.sourceSeq },
             ),
           );
           stats.comments += 1;
@@ -385,45 +451,35 @@ export function importMd(input) {
             phase: session.phase === "" ? null : session.phase,
             pid: session.pid === "" ? null : Number(session.pid),
             status: ["running", "closed", "failed"].includes(session.status) ? session.status : "running",
-            ts: session.ts,
+            ts: importTimestamp(session.ts, now, stats, "session"),
           });
           stats.sessions += 1;
         }
 
-        for (const report of card.reports) {
-          if (repos.reports.latestForRound(task.id, report.round) !== null) continue;
-          let prepared;
-          try {
-            prepared = normalizeReportCreate(
-              {
-                conclusion: report.conclusion,
-                acceptance: report.acceptance,
-                evidence: report.evidence,
-                leftovers: report.leftovers,
-                author: report.author ?? { kind: "agent", id: report.authorId ?? "unknown" },
-              },
-              { taskRound: report.round, now: report.ts ?? now },
-            );
-          } catch (err) {
-            // A historical card's `## Report` may predate the structured schema: a
-            // free-form narrative with no `- [status]` acceptance list and no
-            // evidence anchors. That is a mapping gap to *report*, not a reason to
-            // lose the whole card (M5 ruling: never a silent drop) — record it and
-            // keep importing. The reconcile drill lists each one as `report-invalid`.
-            const code = isDomainError(err) ? err.code : "REPORT_INVALID";
+        for (const plan of entry.reportPlans) {
+          // A report the relaxed path also rejected is genuinely malformed
+          // (unknown status, bad anchor, round mismatch, oversized): it stays a
+          // skip, and the warning names the reason.
+          if (!plan.ok) {
             stats.reportSkipped.push({
               file: entry.file,
               identifier: entry.task.identifier,
-              round: report.round,
-              code,
-              reason: err.message,
+              round: plan.round,
+              code: plan.code,
+              reason: plan.reason,
             });
             stats.warnings.push(
-              `${entry.file}: the ## Report block (round ${report.round}) was not imported (${code}): ${err.message}`,
+              `${entry.file}: the ## Report block (round ${plan.round}) was not imported (${plan.code}): ${plan.reason}`,
             );
             continue;
           }
-          const stored = repos.reports.insert({ ...prepared, taskId: task.id });
+          if (repos.reports.latestForRound(task.id, plan.round) !== null) continue;
+          if (plan.tag === "report_narrative") {
+            stats.reportNarrative.push({ file: entry.file, identifier: entry.task.identifier, round: plan.round });
+          } else if (plan.tag === "report_incomplete") {
+            stats.reportIncomplete.push({ file: entry.file, identifier: entry.task.identifier, round: plan.round });
+          }
+          const stored = repos.reports.insert({ ...plan.prepared, taskId: task.id });
           stats.reports += 1;
           entry.latestReport = stored;
         }
@@ -436,7 +492,7 @@ export function importMd(input) {
             actorId: entry.task.creatorId ?? "md-import",
             event: "progress",
             changes: { line, seq: index },
-            createdAt: /^\d{4}-\d{2}-\d{2}T/.test(ts) ? ts : now,
+            createdAt: importTimestamp(ts, now, stats, "progress"),
           });
           stats.activities += 1;
         }
@@ -482,7 +538,7 @@ function resolveProjectPlan(rawName, { registry, createProject }) {
         name: entry.name,
         workspacePath: entry.workspacePath,
         meta: entry.meta,
-        source: "registry",
+        source: entry.meta?.buildin === true ? "buildin" : "registry",
       };
     }
     if (createProject) {
@@ -503,7 +559,19 @@ function resolveProjectPlan(rawName, { registry, createProject }) {
     };
   }
 
-  // No registry: historical behaviour — the name *is* the id.
+  // No registry file: buildin names still resolve to their synthetic plan; every
+  // other name keeps the historical "the name is the id" behaviour.
+  const buildin = resolveBuildinProject(rawName);
+  if (buildin !== null) {
+    return {
+      ok: true,
+      projectId: buildin.id,
+      name: buildin.name,
+      workspacePath: buildin.workspacePath,
+      meta: buildin.meta,
+      source: "buildin",
+    };
+  }
   const id = String(rawName).trim();
   return { ok: true, projectId: id, name: id, workspacePath: null, meta: {}, source: "legacy" };
 }
@@ -589,9 +657,26 @@ export function parseCard(text, { file }) {
     if (canonical !== undefined && meta[canonical] === undefined) meta[canonical] = data[key];
   }
 
-  const reports = sections.has("Report") ? parseReportBlock(sections.get("Report")) : [];
+  // Tolerated lines (prose in `## Acceptance`, a table row in a report's
+  // acceptance sub-block, a comment without a separator …) are collected here
+  // and surfaced on the card, so a lenient parse is still observable rather
+  // than silent.
+  const notices = [];
+  const acceptance = sections.has("Acceptance")
+    ? parseAcceptanceBlock(sections.get("Acceptance"), { notices, section: "Acceptance" })
+    : [];
+  const reports = sections.has("Report")
+    ? parseReportBlock(sections.get("Report"), { notices, section: "Report" })
+    : [];
   const reportMissingWarning =
     reports.length === 0 && (status === "in_review" || status === "done");
+  const reportNarrative = reports.some((report) => report.narrative === true);
+  const importWarnings = [];
+  if (reportMissingWarning) importWarnings.push("report_missing");
+  if (reportNarrative) importWarnings.push("report_narrative");
+  // A tolerated line parsed, but was not understood: record it so the lenient
+  // parse is visible in the persisted metadata, not just on the returned card.
+  if (notices.length > 0) importWarnings.push("parse_tolerated");
 
   return {
     identifier,
@@ -618,10 +703,10 @@ export function parseCard(text, { file }) {
     parent: typeof data.parent === "string" && data.parent.trim() !== "" ? data.parent : null,
     reviewOf: typeof data.review_of === "string" && data.review_of.trim() !== "" ? data.review_of : null,
     notifyLeader: nullable(meta.notify_leader),
-    acceptance: sections.has("Acceptance") ? parseAcceptanceBlock(sections.get("Acceptance")) : [],
+    acceptance,
     progress: sections.has("Progress") ? parseProgressBlock(sections.get("Progress")) : [],
     comments: sections.has("Comments")
-      ? parseCommentsBlock(sections.get("Comments")).map((comment, index) => ({
+      ? parseCommentsBlock(sections.get("Comments"), { notices, section: "Comments" }).map((comment, index) => ({
           ...comment,
           sourceSeq: index + 1,
           author: {
@@ -631,7 +716,9 @@ export function parseCard(text, { file }) {
           refs: [],
         }))
       : [],
-    sessions: sections.has("Sessions") ? parseSessionsBlock(sections.get("Sessions")) : [],
+    sessions: sections.has("Sessions")
+      ? parseSessionsBlock(sections.get("Sessions"), { notices, section: "Sessions" })
+      : [],
     reports: reports.map((report) => ({
       ...report,
       author: report.authorId === null ? null : { kind: authorKind(report.authorId), id: report.authorId },
@@ -640,12 +727,15 @@ export function parseCard(text, { file }) {
     reportMissingWarning,
     background: sections.has("Background") ? sections.get("Background") : extra,
     legacy,
+    // Tolerated lines — the card parsed, but not every line was understood.
+    notices,
     meta: {
       ...(legacyStatus === null ? {} : { legacy_status: legacyStatus }),
       ...(meta.notify_leader === undefined ? {} : { notify_leader: meta.notify_leader }),
       ...(Object.keys(legacy).length === 0 ? {} : { legacy }),
-      acceptance_legacy: parseAcceptanceChecklist(sections.get("Acceptance")),
-      ...(reportMissingWarning ? { import_warnings: ["report_missing"] } : {}),
+      // The checkbox state is kept as *legacy* metadata — never as a report.
+      acceptance_legacy: acceptance,
+      ...(importWarnings.length === 0 ? {} : { import_warnings: importWarnings }),
     },
     extra,
   };
@@ -655,9 +745,87 @@ function authorKind(authorId) {
   return /^(elon|terry|tanyu)$/i.test(String(authorId)) ? "human" : "agent";
 }
 
-/** The checkbox state is kept as *legacy* metadata — never as a report. */
-function parseAcceptanceChecklist(text) {
-  return text === undefined ? [] : parseAcceptanceBlock(text);
+/**
+ * Checkbox-style acceptance markers a hand-written report may carry where the
+ * schema wants a canonical status. A card's `## Report` can list `- [x] <item>`
+ * under a `### Acceptance` heading; the domain gate stays strict, so the alias
+ * lives here at the import edge, next to the timestamp coercion.
+ */
+const REPORT_STATUS_ALIASES = Object.freeze({ x: "met" });
+
+/**
+ * Coerce one report acceptance status onto the canonical set. An unknown status
+ * is returned untouched — a genuinely malformed report must still fail
+ * validation rather than be silently rewritten.
+ *
+ * @param {unknown} status
+ * @returns {unknown}
+ */
+function canonicalReportStatus(status) {
+  const key = String(status ?? "").trim().toLowerCase();
+  if (ACCEPTANCE_STATUSES.includes(key)) return key;
+  return REPORT_STATUS_ALIASES[key] ?? status;
+}
+
+/**
+ * Prepare one card report for insertion: the strict delivery gate first, the
+ * relaxed historical path second.
+ *
+ * A historical narrative (no acceptance list, no evidence anchor) is stored
+ * conclusion-only; a structured-but-incomplete report (acceptance items, no
+ * `evidence:` block) is stored with its acceptance items and empty evidence —
+ * nothing fabricated, and never dropped. The tag records which shape applied.
+ * A report the relaxed path also rejects is left for the caller to skip.
+ *
+ * @param {object} report a parsed report block
+ * @param {string} now the report's own (already canonical) timestamp
+ * @returns {{ok: true, prepared: object, tag: string|null, round: number}|{ok: false, code: string, reason: string, round: number}}
+ */
+function planReportImport(report, now) {
+  const round = report.round;
+  const input = {
+    conclusion: report.conclusion,
+    acceptance: report.acceptance.map((item) => ({ ...item, status: canonicalReportStatus(item.status) })),
+    evidence: report.evidence,
+    leftovers: report.leftovers,
+    author: report.author ?? { kind: "agent", id: report.authorId ?? "unknown" },
+  };
+  const context = { taskRound: round, now };
+  try {
+    return { ok: true, prepared: normalizeReportCreate(input, context), tag: null, round };
+  } catch {
+    /* fall through to the relaxed historical path */
+  }
+  try {
+    const prepared = normalizeImportedReport(input, context);
+    const tag =
+      report.acceptance.length === 0 && report.evidence.length === 0 ? "report_narrative" : "report_incomplete";
+    return { ok: true, prepared, tag, round };
+  } catch (err) {
+    return {
+      ok: false,
+      code: isDomainError(err) ? err.code : "REPORT_INVALID",
+      reason: err.message,
+      round,
+    };
+  }
+}
+
+/**
+ * Rebuild a card's `meta.import_warnings` from the planned reports, so the tag
+ * that reaches the stored task reflects the *actual* import outcome (a report
+ * that was skipped is not tagged as degraded).
+ *
+ * @param {object} card
+ * @param {object[]} plans
+ */
+function mergeReportWarnings(card, plans) {
+  const tags = [];
+  if (card.reportMissingWarning === true) tags.push("report_missing");
+  for (const plan of plans) if (plan.ok && plan.tag !== null) tags.push(plan.tag);
+  if (card.notices.length > 0) tags.push("parse_tolerated");
+  if (tags.length === 0) delete card.meta.import_warnings;
+  else card.meta.import_warnings = tags;
 }
 
 function findExisting(repos, projectId, rel) {

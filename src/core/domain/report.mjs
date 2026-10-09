@@ -66,11 +66,14 @@ export const REPORT_COLUMNS = Object.freeze([
  * once (an agent fixing a report should not need five round trips).
  *
  * @param {object} input
- * @param {{taskRound?: number, maxItems?: number, maxBytes?: number}} [context]
+ * @param {{taskRound?: number, maxItems?: number, maxBytes?: number, allowEmpty?: boolean}} [context]
+ *   `allowEmpty` relaxes *only* the "acceptance must have ≥1 criterion / evidence
+ *   ≥1 anchor" requirement — the historical-import path (fix ②). It never
+ *   relaxes a type or a size check, and the delivery gate never passes it.
  * @returns {{ok: boolean, issues: {path: string, message: string}[], report: object|null}}
  */
 export function validateReport(input, context = {}) {
-  const { maxItems = REPORT_MAX_ITEMS, maxBytes = REPORT_MAX_BYTES } = context;
+  const { maxItems = REPORT_MAX_ITEMS, maxBytes = REPORT_MAX_BYTES, allowEmpty = false } = context;
   /** @type {{path: string, message: string}[]} */
   const issues = [];
 
@@ -94,7 +97,7 @@ export function validateReport(input, context = {}) {
   if (!Array.isArray(acceptance)) {
     issues.push({ path: "acceptance", message: "acceptance must be an array" });
   } else if (acceptance.length === 0) {
-    issues.push({ path: "acceptance", message: "acceptance must list at least one criterion" });
+    if (!allowEmpty) issues.push({ path: "acceptance", message: "acceptance must list at least one criterion" });
   } else if (acceptance.length > maxItems) {
     issues.push({ path: "acceptance", message: `acceptance must have at most ${maxItems} items` });
   } else {
@@ -124,7 +127,7 @@ export function validateReport(input, context = {}) {
   if (!Array.isArray(evidence)) {
     issues.push({ path: "evidence", message: "evidence must be an array" });
   } else if (evidence.length === 0) {
-    issues.push({ path: "evidence", message: "evidence must contain at least one anchor" });
+    if (!allowEmpty) issues.push({ path: "evidence", message: "evidence must contain at least one anchor" });
   } else if (evidence.length > maxItems) {
     issues.push({ path: "evidence", message: `evidence must have at most ${maxItems} anchors` });
   } else {
@@ -406,6 +409,63 @@ export function normalizeReportCreate(input, context) {
     evidence: evidenceFromJson(evidenceJson),
     evidenceJson,
     truncated,
+    createdAt: now,
+  };
+}
+
+/**
+ * Validate and prepare a **historical** report for insertion, without the
+ * delivery gate's "acceptance and evidence must be non-empty" requirement.
+ *
+ * The gate (`normalizeReportCreate`) governs the delivery/migration path and
+ * stays strict — it is what stops an empty report from satisfying the gate. This
+ * path only *reads* an old card, so a free-form narrative with no structured
+ * acceptance list and no evidence anchor is stored as-is: acceptance `[]`,
+ * evidence `[]`, nothing fabricated. Every *type* and *size* check still runs,
+ * and the author and the round are validated exactly as the gate validates them.
+ *
+ * @param {object} input
+ * @param {{taskRound: number, now: string, maxBytes?: number, maxItems?: number}} context
+ * @throws {DomainError} REPORT_INVALID (with `details.issues`) / REPORT_ROUND_MISMATCH / REPORT_TOO_LARGE
+ */
+export function normalizeImportedReport(input, context) {
+  const { taskRound, now, maxBytes = REPORT_MAX_BYTES, maxItems = REPORT_MAX_ITEMS } = context;
+  assertIsoMillis(now, "now");
+
+  if (input !== null && typeof input === "object" && input.round !== undefined && input.round !== null) {
+    if (input.round !== taskRound) {
+      throw new DomainError("REPORT_ROUND_MISMATCH", {
+        message: `report round ${input.round} does not match the task's current delivery round ${taskRound}`,
+        details: { field: "round", received: input.round, taskRound },
+      });
+    }
+  }
+
+  const result = validateReport(input, { taskRound, maxBytes, maxItems, allowEmpty: true });
+  if (!result.ok) {
+    throw new DomainError("REPORT_INVALID", {
+      message: `imported report rejected: ${result.issues.map((i) => `${i.path}: ${i.message}`).join("; ")}`,
+      details: { issues: result.issues, taskRound },
+    });
+  }
+
+  const acceptanceJson = JSON.stringify(result.report.acceptance);
+  const evidenceJson = JSON.stringify(result.report.evidence);
+  if (utf8Bytes(acceptanceJson) + utf8Bytes(evidenceJson) > maxBytes) {
+    throw new DomainError("REPORT_TOO_LARGE", {
+      message: `report payload exceeds ${maxBytes} bytes`,
+      details: { maxBytes, acceptanceBytes: utf8Bytes(acceptanceJson) },
+    });
+  }
+
+  return {
+    ...result.report,
+    round: taskRound,
+    acceptance: result.report.acceptance,
+    acceptanceJson,
+    evidence: evidenceFromJson(evidenceJson),
+    evidenceJson,
+    truncated: false,
     createdAt: now,
   };
 }

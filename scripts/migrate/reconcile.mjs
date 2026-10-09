@@ -497,14 +497,39 @@ function buildReport(context) {
       note: "the card names a project that is not in the registry — it was skipped (pass --create-project to create it)",
     });
   }
+  for (const narrative of stats1.reportNarrative ?? []) {
+    // Informational only: the block *is* imported, but degraded to
+    // conclusion-only (no structured acceptance list / evidence anchors to map).
+    unmappable.push({
+      kind: "report-narrative",
+      card: narrative.identifier ?? null,
+      value: narrative.round,
+      note:
+        "the card's ## Report block is a historical free-form narrative — imported conclusion-only " +
+        "(acceptance/evidence left empty, nothing fabricated); the delivery gate is not weakened",
+    });
+  }
+  for (const incomplete of stats1.reportIncomplete ?? []) {
+    // Informational only: a structured-but-incomplete historical report — its
+    // acceptance items are kept, its evidence is imported empty (no `evidence:`
+    // block to map). Imported degraded, never dropped.
+    unmappable.push({
+      kind: "report-incomplete",
+      card: incomplete.identifier ?? null,
+      value: incomplete.round,
+      note:
+        "the card's ## Report carries acceptance items but no evidence block — imported with its " +
+        "acceptance and empty evidence (degraded, nothing fabricated); the delivery gate is not weakened",
+    });
+  }
   for (const skipped of stats1.reportSkipped ?? []) {
     unmappable.push({
       kind: "report-invalid",
       card: skipped.identifier ?? null,
       value: skipped.round,
       note:
-        `the card's ## Report block was not imported (${skipped.code}); a historical report with no ` +
-        "structured acceptance list / evidence anchors is stored only in the markdown snapshot",
+        `the card's ## Report block was not imported (${skipped.code}); it is malformed in a ` +
+        "non-incomplete way (an unknown acceptance status, a bad evidence anchor, oversized, or a round mismatch)",
     });
   }
 

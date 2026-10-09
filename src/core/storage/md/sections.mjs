@@ -100,19 +100,30 @@ export function joinSections(sections) {
 
 /**
  * `- [ ] text` / `- [x] text`.
+ *
+ * A card is not the schema. A real `## Acceptance` section can carry prose, a
+ * `>` annotation or an indented sub-bullet *next to* its checkboxes; aborting
+ * the whole card on one such line was the single biggest source of "could not
+ * be parsed" in the M5 drill (36 of 61 cards). So any non-checkbox, non-blank
+ * line is recorded as a **notice** and skipped — the checkboxes that are there
+ * are still kept, and nothing is dropped silently.
+ *
  * @param {string} text
+ * @param {{notices?: object[], section?: string}} [options] `notices`, when
+ *   given, collects `{section, line, text}` for every tolerated line.
  * @returns {{text: string, checked: boolean}[]}
  */
-export function parseAcceptanceBlock(text) {
+export function parseAcceptanceBlock(text, options = {}) {
+  const section = options.section ?? "Acceptance";
+  const notices = options.notices ?? null;
+  const lines = String(text).split("\n");
   const items = [];
-  for (const line of String(text).split("\n")) {
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
     const match = /^\s*-\s*\[( |x|X)\]\s*(.*)$/.exec(line);
     if (match === null) {
       if (line.trim() !== "") {
-        throw new DomainError("MD_PARSE_ERROR", {
-          message: `unreadable acceptance line: ${JSON.stringify(line)}`,
-          details: { section: "Acceptance", found: line },
-        });
+        if (notices !== null) notices.push({ section, line: i + 1, text: line.trim() });
       }
       continue;
     }
@@ -172,36 +183,44 @@ export function unescapeInline(text) {
 
 /**
  * `- <ts> · <kind> · <author> — <body>`
+ *
+ * The team's cards are hand-written, so a `## Comments` section can carry a
+ * line that is not a comment: a wrapped body continuation, a stray bullet, a
+ * table row. A malformed line is recorded as a notice and skipped; every
+ * well-formed comment is kept and the card is not aborted.
+ *
  * @param {string} text
+ * @param {{notices?: object[], section?: string}} [options]
  */
-export function parseCommentsBlock(text) {
+export function parseCommentsBlock(text, options = {}) {
+  const section = options.section ?? "Comments";
+  const notices = options.notices ?? null;
+  const lines = String(text).split("\n");
   const comments = [];
-  for (const line of String(text).split("\n")) {
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
     const trimmed = line.trim();
     if (trimmed === "") continue;
+    const notice = () => {
+      if (notices !== null) notices.push({ section, line: i + 1, text: trimmed });
+    };
     const match = /^-\s*(.*)$/.exec(trimmed);
     if (match === null) {
-      throw new DomainError("MD_PARSE_ERROR", {
-        message: `unreadable comment line: ${JSON.stringify(line)}`,
-        details: { section: "Comments", found: line },
-      });
+      notice();
+      continue;
     }
     const rest = match[1];
     const authorAt = rest.indexOf(AUTHOR_SEP);
     if (authorAt === -1) {
-      throw new DomainError("MD_PARSE_ERROR", {
-        message: `comment line has no ' — ' separator: ${JSON.stringify(line)}`,
-        details: { section: "Comments", found: line },
-      });
+      notice();
+      continue;
     }
     const head = rest.slice(0, authorAt);
     const body = rest.slice(authorAt + AUTHOR_SEP.length);
     const parts = head.split(FIELD_SEP);
     if (parts.length < 3) {
-      throw new DomainError("MD_PARSE_ERROR", {
-        message: `comment line needs '<ts> · <kind> · <author>': ${JSON.stringify(line)}`,
-        details: { section: "Comments", found: line },
-      });
+      notice();
+      continue;
     }
     comments.push({
       ts: parts[0].trim(),
@@ -228,45 +247,73 @@ const SESSION_FIELDS = ["seg", "owner", "backend", "id", "phase", "status", "pid
 
 /**
  * `- seg:x · owner:y · backend:z · id:<uuid> · phase:p · status:s · pid:n · <ts>`
+ *
+ * Tolerant like its siblings. A real card keeps the unedited template
+ * placeholder comment in `## Sessions` (11 of the M5 drill's cards did), and a
+ * hand-written card can carry a comment-shaped line where a session record was
+ * meant. A blank line, an HTML comment (single line or spanning several), or
+ * any line that is not a well-formed session record is recorded as a notice and
+ * skipped — one stray line never aborts the whole card, and nothing is dropped
+ * silently.
+ *
  * @param {string} text
+ * @param {{notices?: object[], section?: string}} [options] `notices`, when
+ *   given, collects `{section, line, text}` for every tolerated line.
  */
-export function parseSessionsBlock(text) {
+export function parseSessionsBlock(text, options = {}) {
+  const section = options.section ?? "Sessions";
+  const notices = options.notices ?? null;
   const sessions = [];
-  for (const line of String(text).split("\n")) {
+  const lines = String(text).split("\n");
+  let inComment = false;
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
     const trimmed = line.trim();
     if (trimmed === "") continue;
+    const notice = () => {
+      if (notices !== null) notices.push({ section, line: i + 1, text: trimmed });
+    };
+    // An HTML comment — the template placeholder, or a comment block that spans
+    // several lines — is not a session record.
+    if (inComment) {
+      if (trimmed.includes("-->")) inComment = false;
+      notice();
+      continue;
+    }
+    if (trimmed.startsWith("<!--")) {
+      if (!trimmed.includes("-->")) inComment = true;
+      notice();
+      continue;
+    }
     const match = /^-\s*(.*)$/.exec(trimmed);
     if (match === null) {
-      throw new DomainError("MD_PARSE_ERROR", {
-        message: `unreadable session line: ${JSON.stringify(line)}`,
-        details: { section: "Sessions", found: line },
-      });
+      notice();
+      continue;
     }
     const parts = match[1].split(FIELD_SEP);
     const last = parts.at(-1).trim();
     if (!/^\d{4}-\d{2}-\d{2}T/.test(last)) {
-      throw new DomainError("MD_PARSE_ERROR", {
-        message: `session line must end with a timestamp: ${JSON.stringify(line)}`,
-        details: { section: "Sessions", found: line },
-      });
+      notice();
+      continue;
     }
     const entry = { ts: last };
+    let wellFormed = true;
     for (const part of parts.slice(0, -1)) {
       const colon = part.indexOf(":");
       if (colon === -1) {
-        throw new DomainError("MD_PARSE_ERROR", {
-          message: `session field must be '<name>:<value>': ${JSON.stringify(part)}`,
-          details: { section: "Sessions", found: part },
-        });
+        wellFormed = false;
+        break;
       }
       const name = part.slice(0, colon).trim();
       if (!SESSION_FIELDS.includes(name)) {
-        throw new DomainError("MD_PARSE_ERROR", {
-          message: `unknown session field ${JSON.stringify(name)}`,
-          details: { section: "Sessions", allowed: SESSION_FIELDS },
-        });
+        wellFormed = false;
+        break;
       }
       entry[name] = part.slice(colon + 1).trim();
+    }
+    if (!wellFormed) {
+      notice();
+      continue;
     }
     for (const field of SESSION_FIELDS) if (entry[field] === undefined) entry[field] = "";
     sessions.push(entry);
@@ -304,15 +351,27 @@ const SUB_BLOCK = /^(acceptance|evidence|leftovers):\s*$/;
  * Parse the `## Report` section: either the single legacy body (round 1) or one
  * `### R<n> · <ts> · <author>` block per round.
  *
+ * The shapes inside a block are as unforgiving as the schema, but real cards
+ * are not: a report's acceptance sub-block can carry a markdown table row or a
+ * nested bullet, and an evidence sub-block can carry an anchor kind this reader
+ * does not know. Those lines are recorded as notices and skipped rather than
+ * aborting the whole card. A block with **no** acceptance items and **no**
+ * evidence anchors is flagged `narrative: true` so the importer can map a
+ * historical free-form report (fix ②) instead of rejecting it.
+ *
  * @param {string} text
+ * @param {{notices?: object[], section?: string}} [options]
  * @returns {object[]} one entry per round, in order
  */
-export function parseReportBlock(text) {
+export function parseReportBlock(text, options = {}) {
+  const notices = options.notices ?? null;
+  const section = options.section ?? "Report";
   const lines = String(text).split("\n");
   const blocks = [];
   let current = null;
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
     const heading = REPORT_HEADING.exec(line.trim());
     if (heading !== null) {
       if (current !== null) blocks.push(current);
@@ -323,22 +382,33 @@ export function parseReportBlock(text) {
       if (line.trim() === "") continue;
       current = { round: 1, ts: null, authorId: null, lines: [] };
     }
-    current.lines.push(line);
+    current.lines.push({ text: line, line: i + 1 });
   }
   if (current !== null) blocks.push(current);
 
-  return blocks.map((block) => parseReportBody(block));
+  return blocks.map((block) => parseReportBody(block, { notices, section }));
 }
 
-function parseReportBody(block) {
+function parseReportBody(block, options = {}) {
+  const notices = options.notices ?? null;
+  const section = options.section ?? "Report";
+  const blockNotices = [];
+  const record = (lineNo, raw) => {
+    const notice = { section, line: lineNo, text: String(raw).trim() };
+    blockNotices.push(notice);
+    if (notices !== null) notices.push(notice);
+  };
+
   const acceptance = [];
   const evidence = [];
   const conclusion = [];
   let leftovers = "";
   let mode = "conclusion";
 
-  for (const line of block.lines) {
-    const trimmed = line.trim();
+  for (const entry of block.lines) {
+    const text = typeof entry === "string" ? entry : entry.text;
+    const lineNo = typeof entry === "string" ? 0 : entry.line;
+    const trimmed = text.trim();
     if (SUB_BLOCK.test(trimmed)) {
       mode = SUB_BLOCK.exec(trimmed)[1];
       continue;
@@ -361,12 +431,7 @@ function parseReportBody(block) {
     if (mode === "acceptance") {
       const item = /^-\s*\[([a-z_]+)\]\s*(.*)$/.exec(trimmed);
       if (item === null) {
-        if (trimmed.startsWith("-")) {
-          throw new DomainError("MD_PARSE_ERROR", {
-            message: `acceptance items look like '- [met] text': ${JSON.stringify(trimmed)}`,
-            details: { section: "Report", found: trimmed },
-          });
-        }
+        record(lineNo, text);
         continue;
       }
       acceptance.push(splitNote(item[1], item[2]));
@@ -378,7 +443,11 @@ function parseReportBody(block) {
         leftovers += trimmed.slice("leftovers:".length).trim();
         continue;
       }
-      evidence.push(parseEvidenceLine(trimmed));
+      try {
+        evidence.push(parseEvidenceLine(trimmed));
+      } catch {
+        record(lineNo, text);
+      }
       continue;
     }
     if (mode === "leftovers") leftovers += `${leftovers === "" ? "" : "\n"}${trimmed}`;
@@ -392,6 +461,9 @@ function parseReportBody(block) {
     acceptance,
     evidence,
     leftovers: leftovers.trim() === "" ? null : leftovers.trim(),
+    // No structured fields at all → a historical free-form narrative (fix ②).
+    narrative: acceptance.length === 0 && evidence.length === 0,
+    notices: blockNotices,
   };
 }
 

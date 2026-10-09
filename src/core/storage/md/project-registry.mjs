@@ -56,6 +56,58 @@ function stringOrNull(value) {
 }
 
 /**
+ * The **buildin** projects: reserved names the board owns itself, so a card may
+ * name one without it appearing in the team's `projects.json`.
+ *
+ * `__team__` is the reserved team-internal project (PROTOCOL §②: a team chore
+ * is not a repository). It has no filesystem repo, so its `workspace_path` is a
+ * **synthetic absolute anchor** — it satisfies the `projects.workspace_path`
+ * CHECK (`LIKE '/%'`) and its UNIQUE constraint, and it is deliberately not a
+ * real home path (this repository is public). Do not hardcode a `/Users/…`
+ * path here.
+ *
+ * A file entry for the same key always wins: `parseProjectRegistry` only fills
+ * a buildin slot the file left empty.
+ */
+export const BUILDIN_PROJECTS = Object.freeze([
+  Object.freeze({
+    key: "__team__",
+    id: "__team__",
+    name: "__team__",
+    workspacePath: "/__team__",
+    meta: Object.freeze({
+      buildin: true,
+      kind: "team",
+      notes: "reserved team-internal project; no filesystem repo — the workspace path is a synthetic anchor",
+    }),
+    raw: Object.freeze({}),
+  }),
+]);
+
+/**
+ * Resolve a card's `project` against the buildin entries only.
+ *
+ * Used when there is no registry file at all, so buildin resolution works even
+ * without `--projects` (a `__team__` card must never be skipped as
+ * "unregistered" just because the team file is absent).
+ *
+ * @param {unknown} value a registered name or an id
+ * @returns {object|null}
+ */
+export function resolveBuildinProject(value) {
+  const key = normalizeProjectKey(value);
+  if (key !== "") {
+    for (const entry of BUILDIN_PROJECTS) {
+      if (normalizeProjectKey(entry.key) === key || normalizeProjectKey(entry.name) === key) return entry;
+    }
+  }
+  if (typeof value === "string") {
+    for (const entry of BUILDIN_PROJECTS) if (entry.id === value) return entry;
+  }
+  return null;
+}
+
+/**
  * Parse a registry file's text.
  *
  * @param {string} text
@@ -125,6 +177,17 @@ export function parseProjectRegistry(text, options = {}) {
     }
     if (!byId.has(id)) byId.set(id, entry);
     entries.push(entry);
+  }
+
+  // Buildin projects fill only the slots the file left empty, so a real entry
+  // named `__team__` (unlikely, but the file is the authority) overrides it.
+  for (const entry of BUILDIN_PROJECTS) {
+    for (const candidate of new Set([normalizeProjectKey(entry.key), normalizeProjectKey(entry.name)])) {
+      if (candidate === "") continue;
+      if (!byKey.has(candidate)) byKey.set(candidate, entry);
+    }
+    if (!byId.has(entry.id)) byId.set(entry.id, entry);
+    if (!entries.includes(entry)) entries.push(entry);
   }
 
   return {

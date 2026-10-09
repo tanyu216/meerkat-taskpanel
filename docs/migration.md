@@ -75,20 +75,29 @@ lines, so it is the cheap fingerprint of "the team's cards have not changed".
 The dry run is deliberately unforgiving, and the shapes it flags are worth
 knowing before reading its output as a verdict:
 
-- **`## Acceptance` is parsed as a strict checkbox list.** `parseCard` requires
-  every non-blank line in that section — and in a `## Report` acceptance
-  sub-block — to be `- [ ]` or `- [x]`. A prose line, a `>` annotation or an
-  indented sub-bullet aborts the card, and the card is reported by identifier
-  under `unparsable` and as a `parse:` difference. This is the single biggest
-  source of "could not be parsed" in a real card set.
-- **A historical `## Report` predates the structured schema.** The domain
-  validator requires a non-empty acceptance list and at least one evidence
-  anchor; a free-form narrative has neither. The importer records the block as
-  `report-invalid`, imports the rest of the card, and *does not* write a report
-  row — the markdown snapshot is what keeps the original text.
+- **`## Acceptance` is tolerant.** A real section carries prose, a `>`
+  annotation or an indented sub-bullet next to its checkboxes. Any non-checkbox,
+  non-blank line — in `## Acceptance`, in a `## Report` acceptance sub-block, or
+  in a `>`-prefixed note — is recorded as a **notice** and skipped; the
+  checkboxes that are there are still read, and the card is **not** aborted. A
+  `## Comments` line with no ` — ` separator (or a continuation line that is not
+  its own comment) is likewise skipped with a notice. A card lands under
+  `unparsable` only when it truly cannot be parsed: no `---` fence, no `id` or
+  `title`, or an unknown `status`.
+- **A historical `## Report` may be a free-form narrative.** The delivery gate
+  (`normalizeReportCreate`) requires a non-empty acceptance list and at least one
+  evidence anchor and **stays strict** — it governs delivery, not reading.
+  Importing is a separate, relaxed path: a narrative with neither is stored
+  conclusion-only (acceptance and evidence stay `[]`; nothing is fabricated), the
+  task carries `import_warnings: ["report_narrative"]`, and the reconcile lists
+  it as an informational `report-narrative` item — not a difference. A report
+  *malformed in a non-narrative way* (an acceptance list but an unreadable
+  evidence anchor, oversized, a round mismatch) is still reported as
+  `report-invalid` and not written.
 - **Cards may name an unregistered project.** A card's `project:` is a registry
   name; a name the registry lacks is warned and skipped (`project-unresolved`),
-  never silently created.
+  never silently created. The reserved team-internal project `__team__` is the
+  exception — it is **buildin** (see *The reserved `__team__` project* below).
 - **Everything else, where a card does import, round-trips.** Field, section,
   relation and label parity, plus idempotency, are the properties the drill
   actually measures — and they are what "zero diff" means.
@@ -96,6 +105,25 @@ knowing before reading its output as a verdict:
 None of these are fatal to the drill: it reports them and exits 3. They *are*
 fatal to the claim "the card set is ready to switch", so treat a non-zero diff
 list as the work queue, not as a failure of the tool.
+
+### The reserved `__team__` project
+
+`__team__` is the reserved **team-internal** project (PROTOCOL §②): a team chore
+that is not a repository. It is intentionally absent from `projects.json`, so the
+parser treats it as a **buildin** entry rather than an unregistered name:
+
+- it resolves in `parseProjectRegistry` (and, in `import.mjs`, even when no
+  `--projects` registry is given at all) without appearing in the team file;
+- a file entry named `__team__` still wins — the file is the authority;
+- its `workspace_path` is the **synthetic absolute anchor `/__team__`**, which
+  satisfies the `projects.workspace_path` NOT NULL / `LIKE '/%'` / UNIQUE
+  constraints without hardcoding any real home path (this repository is public);
+- its cards migrate as **ordinary tasks under the `__team__` project**. A
+  `__team__` card's `target` is a per-card artifact path, not a project-level
+  workspace path, so the "two different targets" warning is deliberately not
+  raised for a buildin project — every `__team__` card would otherwise produce
+  one. That difference is recorded in the report's `field-drift` list (the
+  project-level `target` cannot equal every card's task-level path).
 
 ### Privacy: what the report may contain
 
@@ -199,11 +227,11 @@ rollback is always available and is a data *export*, never a rewrite of history:
 | **Field drift the export cannot carry back** | `assignee_kind` has no export home in the card key order, so a card whose `assignee_kind` is not the default drifts on the round trip | Reported as `unmappable[kind=field-drift]`. Decide per §4.8 ① whether to add it to the export order or accept the drift before the switch |
 | **Status aliases** (`ready`→`todo`, `failed`→`canceled`) | the board stores the canonical word, so a raw byte comparison differs | Kept in `meta_json.legacy_status` and re-emitted on export; reported as `unmappable[kind=status-alias]` |
 | **Cards missing `## Report`** | a delivery gate needs a report for the current round; historical cards predate the gate | Importer warns (`unmappable[kind=missing-report]`) and still imports; `in_review`/`done` cards without a report are flagged, never silently blessed |
-| **A `## Report` that predates the structured schema** | a free-form narrative has no acceptance list and no evidence anchor, so the report validator rejects it | The block is reported (`unmappable[kind=report-invalid]`), the card still imports, and the markdown snapshot keeps the original text — decide before a switch whether historical reports need a format migration |
-| **A card the parser cannot read** | `## Acceptance` (and a report's acceptance sub-block) must be a strict checkbox list; prose or a sub-bullet aborts the card | Reported by identifier under `unparsable` and as a `parse:` difference; the drill keeps going, but a card that cannot be parsed is not reconciled |
+| **A `## Report` that predates the structured schema** | a free-form narrative has no acceptance list and no evidence anchor, so the strict report validator cannot accept it verbatim | The narrative is imported conclusion-only (acceptance/evidence empty, nothing fabricated) and listed (`unmappable[kind=report-narrative]`); a *non-narrative* malformation is still `unmappable[kind=report-invalid]`. The gate is not weakened — only the read path |
+| **A card the parser cannot read** | a real card can carry prose, a `>` note or a sub-bullet where a checkbox is expected | Those lines are recorded as notices and skipped; the card still parses. A genuinely unreadable card is reported under `unparsable` and as a `parse:` difference |
 | **Non-epic parent** | only an `epic` may be a parent (§4.8 ③) | The link is **skipped with a warning** and listed (`unmappable[kind=non-epic-parent]`) — never silently dropped |
 | **Invariant violations** (cycle / chain > 8 / fan-in > 8 / cross-project) | the DB triggers would refuse the edge | Refusals are caught per-edge, listed as `unmappable[kind=invariant-violation]`, and not lost |
-| **Unregistered project name** | a card's `project:` is a registry *name*, not an id | Resolved name → id; an unresolved name is **warned and skipped** — a project is created only with an explicit `--create-project` |
+| **Unregistered project name** | a card's `project:` is a registry *name*, not an id | Resolved name → id; an unresolved name is **warned and skipped** — a project is created only with an explicit `--create-project`. The reserved `__team__` is buildin and resolves without a registry entry |
 | **`target` used task-level when it is project-level** | two different `target`s for one project is ambiguous | The first value wins and a warning is raised; reported in the project-level diff |
 | **`notices` vs `warnings`** | an auto-created project is informational; a skipped card is a problem | Both are reported separately: `notices` never block, `warnings` are what a reviewer reads |
 

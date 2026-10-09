@@ -224,6 +224,99 @@ describe("md/import — statistics and behaviour", () => {
   });
 });
 
+describe("md/import — a non-ms card timestamp is normalized at the import edge", () => {
+  const MS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+  it("imports comments written with second precision and with a UTC offset", async () => {
+    // Real team cards carry hand-written timestamps without milliseconds and
+    // with an offset; the domain create-schema requires canonical ms-Z, so the
+    // importer must coerce them — a value-format quirk must not sink the run.
+    const board = await boardWithCards({
+      "PROJ-0001.md": cardText({}, {
+        Comments: [
+          "- 2026-10-08T14:03Z · change · elon — a Z comment without milliseconds",
+          "- 2026-10-09T02:42+08:00 · confirm · linus — an offset comment",
+        ].join("\n"),
+      }),
+    });
+    try {
+      const stats = importMd({ db: board.db, repos: board.repos, dir: board.dir, now: TS });
+      assert.equal(stats.tasks, 1, "the card imports — no whole-run abort");
+      assert.equal(stats.comments, 2, "the comment count is preserved");
+      assert.equal(stats.warnings.length, 0);
+      const task = board.repos.tasks.getByIdentifier("proj", "PROJ-0001");
+      const comments = board.repos.comments.list({ taskId: task.id });
+      assert.deepEqual(
+        comments.map((comment) => comment.createdAt),
+        ["2026-10-08T14:03:00.000Z", "2026-10-08T18:42:00.000Z"],
+        "the offset is applied and the value is canonical ms-Z",
+      );
+      for (const comment of comments) assert.match(comment.createdAt, MS);
+      assert.ok(
+        stats.notices.some((notice) => /coerced comment timestamp/.test(notice)),
+        "the coercions are recorded, not silent",
+      );
+    } finally {
+      board.close();
+    }
+  });
+
+  it("normalizes a non-ms ## Progress timestamp", async () => {
+    const board = await boardWithCards({
+      "PROJ-0001.md": cardText({}, { Progress: "- 2026-10-08T14:03Z started the work" }),
+    });
+    try {
+      const stats = importMd({ db: board.db, repos: board.repos, dir: board.dir, now: TS });
+      assert.equal(stats.activities, 1);
+      const task = board.repos.tasks.getByIdentifier("proj", "PROJ-0001");
+      const progress = board.repos.activities.list({ taskId: task.id }).filter((a) => a.event === "progress");
+      assert.equal(progress.length, 1);
+      assert.match(progress[0].createdAt, MS);
+      assert.equal(progress[0].createdAt, "2026-10-08T14:03:00.000Z");
+      assert.equal(progress[0].changes.line, "2026-10-08T14:03Z started the work", "the raw line is kept verbatim");
+    } finally {
+      board.close();
+    }
+  });
+
+  it("normalizes a non-ms ## Sessions timestamp", async () => {
+    const board = await boardWithCards({
+      "PROJ-0001.md": cardText({}, {
+        Sessions:
+          "- seg:seg1 · owner:linus · backend:claude · id:sess-1 · phase:x · status:running · pid: · 2026-10-08T14:03Z",
+      }),
+    });
+    try {
+      const stats = importMd({ db: board.db, repos: board.repos, dir: board.dir, now: TS });
+      assert.equal(stats.sessions, 1);
+      const task = board.repos.tasks.getByIdentifier("proj", "PROJ-0001");
+      const sessions = board.repos.sessions.listByTask(task.id);
+      assert.equal(sessions.length, 1);
+      assert.match(sessions[0].ts, MS);
+      assert.equal(sessions[0].ts, "2026-10-08T14:03:00.000Z");
+    } finally {
+      board.close();
+    }
+  });
+
+  it("degrades a truly unparseable timestamp to the import clock, recording a notice", async () => {
+    // `2026-13-40T99:00Z` is timestamp-shaped to the section parsers (it starts
+    // with a date) but is not a real date — it must not throw out of `new Date`.
+    const board = await boardWithCards({
+      "PROJ-0001.md": cardText({}, { Comments: "- 2026-13-40T99:00Z · note · linus — nonsense stamp" }),
+    });
+    try {
+      const stats = importMd({ db: board.db, repos: board.repos, dir: board.dir, now: TS });
+      assert.equal(stats.comments, 1, "the comment is still imported");
+      const task = board.repos.tasks.getByIdentifier("proj", "PROJ-0001");
+      assert.equal(board.repos.comments.list({ taskId: task.id })[0].createdAt, TS, "degraded to the import clock");
+      assert.ok(stats.notices.some((notice) => /dropped unparseable comment timestamp/.test(notice)));
+    } finally {
+      board.close();
+    }
+  });
+});
+
 describe("md/legacy-status", () => {
   it("maps the two v1 words and refuses anything else", () => {
     assert.deepEqual(statusForImport("ready"), { status: "todo", legacyStatus: "ready" });

@@ -231,21 +231,26 @@ describe("md/import — depends_on direction (M5 ruling)", () => {
   });
 });
 
-describe("md/import — an unrepresentable ## Report is reported, not fatal", () => {
-  it("imports the card, skips the report, and records it as a finding", async () => {
+describe("md/import — a historical narrative ## Report is mapped, not rejected", () => {
+  const NARRATIVE = "A free-form narrative with no structured acceptance list.";
+
+  it("imports the card and stores the narrative as a conclusion-only report", async () => {
     const board = await boardWithCards({
-      "A.md": cardText({ status: "in_review" }, { Report: "A free-form narrative with no structured acceptance list." }),
+      "A.md": cardText({ status: "in_review" }, { Report: NARRATIVE }),
     });
     try {
       const stats = importCards(board);
-      assert.equal(stats.tasks, 1, "the card itself still imports");
-      assert.equal(stats.reports, 0, "the unrepresentable report is not written");
-      assert.equal(stats.reportSkipped.length, 1);
-      assert.deepEqual(
-        { ...stats.reportSkipped[0], reason: undefined },
-        { file: "A.md", identifier: "DEMO-0001", round: 1, code: "REPORT_INVALID", reason: undefined },
-      );
-      assert.match(stats.warnings[0], /## Report block \(round 1\) was not imported \(REPORT_INVALID\)/);
+      assert.equal(stats.tasks, 1, "the card imports");
+      assert.equal(stats.reports, 1, "the narrative becomes one report row");
+      assert.equal(stats.reportSkipped.length, 0, "a narrative is not a report-invalid skip");
+      assert.deepEqual(stats.reportNarrative, [{ file: "A.md", identifier: "DEMO-0001", round: 1 }]);
+
+      const task = board.repos.tasks.getByIdentifier("demo", "DEMO-0001");
+      assert.deepEqual(task.meta.import_warnings, ["report_narrative"]);
+      const report = board.repos.reports.listByTask(task.id)[0];
+      assert.equal(report.conclusion, NARRATIVE);
+      assert.deepEqual(report.acceptance, [], "no structured field is fabricated");
+      assert.deepEqual(report.evidence.items, [], "no structured field is fabricated");
     } finally {
       board.close();
     }
@@ -253,7 +258,7 @@ describe("md/import — an unrepresentable ## Report is reported, not fatal", ()
 
   it("stays idempotent: a second pass writes neither row nor report", async () => {
     const board = await boardWithCards({
-      "A.md": cardText({ status: "in_review" }, { Report: "A free-form narrative with no structured acceptance list." }),
+      "A.md": cardText({ status: "in_review" }, { Report: NARRATIVE }),
     });
     try {
       importCards(board);
@@ -262,6 +267,93 @@ describe("md/import — an unrepresentable ## Report is reported, not fatal", ()
       assert.equal(second.updated, 0);
       assert.equal(second.reports, 0);
       assert.equal(second.skipped, 1, "the card is recognised as already imported");
+    } finally {
+      board.close();
+    }
+  });
+
+  it("imports a structured-but-incomplete report degraded — acceptance, no evidence", async () => {
+    // The M5 drill's class B: prose plus `- [x]` acceptance lines under a
+    // `### Acceptance` heading, and no `evidence:` block. The strict gate
+    // rejects it (it needs an anchor); the relaxed historical path stores it
+    // with its acceptance items and empty evidence — imported, degraded, tagged,
+    // and never dropped.
+    const board = await boardWithCards({
+      "A.md": cardText({ status: "in_review" }, {
+        Report: [
+          "### R1 · 2026-01-01T00:00:00.000Z · linus",
+          "",
+          "Round one.",
+          "",
+          "### Acceptance 自检",
+          "",
+          "- [x] criterion one",
+          "- [x] criterion two",
+        ].join("\n"),
+      }),
+    });
+    try {
+      const stats = importCards(board);
+      assert.equal(stats.tasks, 1, "the card imports");
+      assert.equal(stats.reports, 1, "the incomplete report is imported, not skipped");
+      assert.equal(stats.reportSkipped.length, 0);
+      assert.deepEqual(stats.reportIncomplete, [{ file: "A.md", identifier: "DEMO-0001", round: 1 }]);
+      assert.equal(stats.reportNarrative.length, 0, "acceptance is present, so it is not a narrative");
+
+      const task = board.repos.tasks.getByIdentifier("demo", "DEMO-0001");
+      assert.deepEqual(task.meta.import_warnings, ["report_incomplete"]);
+      const report = board.repos.reports.listByTask(task.id)[0];
+      assert.deepEqual(
+        report.acceptance,
+        [
+          { status: "met", text: "criterion one" },
+          { status: "met", text: "criterion two" },
+        ],
+        "the `- [x]` checkbox is mapped to the canonical status at the import edge",
+      );
+      assert.deepEqual(report.evidence.items, [], "no evidence is fabricated");
+
+      // Idempotent: a second pass writes neither row nor report.
+      const second = importCards(board);
+      assert.equal(second.reports, 0);
+      assert.equal(second.skipped, 1);
+    } finally {
+      board.close();
+    }
+  });
+
+  it("still skips a report that is malformed in a way the relaxed path cannot fix", async () => {
+    // Acceptance is present (so it is *not* a narrative), but the evidence anchor
+    // is present-and-invalid (a commit sha that is not hex): both the strict gate
+    // and the relaxed path reject it, so the block falls to reportSkipped — the
+    // fallback is not a blanket licence. (A truly *unknown* anchor kind is
+    // dropped by the tolerant parser instead, which leaves evidence empty and so
+    // imports the report as `report_incomplete`, not a skip.)
+    const board = await boardWithCards({
+      "A.md": cardText({ status: "in_review" }, {
+        Report: [
+          "### R1 · 2026-01-01T00:00:00.000Z · linus",
+          "",
+          "Round one.",
+          "",
+          "acceptance:",
+          "- [met] x",
+          "",
+          "evidence:",
+          "- commit zzz",
+        ].join("\n"),
+      }),
+    });
+    try {
+      const stats = importCards(board);
+      assert.equal(stats.tasks, 1);
+      assert.equal(stats.reports, 0, "the malformed report is not written");
+      assert.equal(stats.reportSkipped.length, 1);
+      assert.equal(stats.reportSkipped[0].code, "REPORT_INVALID");
+      assert.equal(stats.reportNarrative.length, 0);
+      assert.equal(stats.reportIncomplete.length, 0);
+      const task = board.repos.tasks.getByIdentifier("demo", "DEMO-0001");
+      assert.equal(task.meta.import_warnings, undefined, "a skipped report leaves no degraded tag");
     } finally {
       board.close();
     }
@@ -363,6 +455,190 @@ describe("md/migrate-cli — the new flags", () => {
         1,
         out,
       );
+    } finally {
+      board.close();
+    }
+  });
+});
+
+describe("md/import — the buildin __team__ project (PROTOCOL ②)", () => {
+  it("imports a __team__ card with no registry file at all", async () => {
+    const board = await boardWithCards({ "A.md": cardText({ project: "__team__", target: "/tmp/team-chore" }) });
+    try {
+      const stats = importMd({ db: board.db, repos: board.repos, dir: board.dir, now: TS });
+      assert.equal(stats.tasks, 1, "the card imports instead of being skipped as unregistered");
+      assert.equal(stats.projectSkipped, 0);
+      const project = board.repos.projects.get("__team__");
+      assert.equal(project.workspacePath, "/__team__", "the documented synthetic anchor");
+      assert.equal(project.meta.buildin, true);
+      assert.equal(project.meta.kind, "team");
+    } finally {
+      board.close();
+    }
+  });
+
+  it("imports with a registry that lacks __team__ — the buildin still resolves", async () => {
+    const board = await boardWithCards({ "A.md": cardText({ project: "__team__", target: "/tmp/team-chore" }) });
+    try {
+      const stats = importCards(board); // registry = demo/Widgets only
+      assert.equal(stats.tasks, 1);
+      assert.equal(stats.projectSkipped, 0);
+      assert.equal(board.repos.projects.get("__team__").workspacePath, "/__team__");
+    } finally {
+      board.close();
+    }
+  });
+
+  it("does not raise the two-targets warning flood for __team__ cards", async () => {
+    const board = await boardWithCards({
+      "A.md": cardText({ id: "DEMO-0001", project: "__team__", target: "/tmp/a.mjs" }),
+      "B.md": cardText({ id: "DEMO-0002", project: "__team__", target: "/tmp/b.mjs" }),
+    });
+    try {
+      const stats = importCards(board);
+      assert.equal(stats.tasks, 2, "both cards import");
+      assert.equal(
+        stats.warnings.filter((warning) => /two different targets/.test(warning)).length,
+        0,
+        "a buildin project's per-card targets are not a project-level disagreement",
+      );
+    } finally {
+      board.close();
+    }
+  });
+});
+
+describe("md/import — a tolerant parse is visible, not silent", () => {
+  it("imports a card whose ## Acceptance carries prose, recording a notice", async () => {
+    const card = cardText({}, { Acceptance: ["- [ ] one", "> a quote note", "prose here"].join("\n") });
+    const parsed = parseCard(card, { file: "A.md" });
+    assert.deepEqual(parsed.acceptance, [{ text: "one", checked: false }], "the checkbox survives");
+    assert.equal(parsed.notices.length, 2, "the quote note and the prose line");
+    assert.equal(parsed.notices[0].section, "Acceptance");
+    assert.deepEqual(parsed.meta.import_warnings, ["parse_tolerated"]);
+
+    const board = await boardWithCards({ "A.md": card });
+    try {
+      const stats = importCards(board);
+      assert.equal(stats.tasks, 1, "the card imports");
+      assert.equal(stats.warnings.length, 0, "tolerance is a notice, not a warning");
+      const task = board.repos.tasks.getByIdentifier("demo", "DEMO-0001");
+      assert.deepEqual(task.meta.import_warnings, ["parse_tolerated"]);
+      assert.deepEqual(task.meta.acceptance_legacy, [{ text: "one", checked: false }]);
+    } finally {
+      board.close();
+    }
+  });
+
+  it("parses and imports a card carrying all four M5 failure shapes at once", async () => {
+    const text = [
+      "---",
+      "id: DEMO-0001",
+      "title: Kitchen sink",
+      "status: in_review",
+      "priority: high",
+      "kind: task",
+      "project: __team__",
+      "target: /tmp/team-chore.mjs",
+      "created_by: elon",
+      "created_at: 2026-01-01T00:00:00.000Z",
+      "updated_at: 2026-01-01T00:00:00.000Z",
+      "status_changed_at: 2026-01-01T00:00:00.000Z",
+      'claimed_by: ""',
+      'claimed_at: ""',
+      'heartbeat_at: ""',
+      'blocked_at: ""',
+      // (frontmatter-value) a real git_rules value that begins with `**`.
+      "git_rules: **only** team scripts; git commit -- <explicit paths>",
+      "---",
+      "## Background",
+      "",
+      "text",
+      "",
+      "## Acceptance",
+      "",
+      "- [ ] one",
+      "> a quote note",
+      "- [x] two",
+      "  - a nested sub-bullet",
+      "a plain prose line",
+      "",
+      "## Progress",
+      "",
+      "## Comments",
+      "",
+      "- 2026-01-01T01:00:00.000Z · change · elon — a well-formed comment",
+      "a body continuation line with no separator",
+      "",
+      "## Sessions",
+      "",
+      "## Report",
+      "",
+      "**结论**：done.",
+      "",
+      "| # | need | done |",
+      "|---|---|---|",
+      "| 1 | one | yes |",
+    ].join("\n");
+
+    const card = parseCard(text, { file: "A.md" });
+    assert.deepEqual(card.acceptance.map((item) => item.text), ["one", "two"], "(acceptance-line)");
+    assert.equal(card.comments.length, 1, "(comment-separator) the well-formed comment survives");
+    assert.equal(card.reports.length, 1);
+    assert.equal(card.reports[0].narrative, true, "(report sub-block) the table is a narrative");
+    assert.equal(card.legacy.git_rules, "**only** team scripts; git commit -- <explicit paths>");
+    assert.ok(card.notices.length >= 4, "the tolerated lines are recorded");
+
+    const board = await boardWithCards({ "A.md": text });
+    try {
+      const stats = importCards(board); // the registry has no __team__ — buildin covers it
+      assert.equal(stats.tasks, 1, "the card imports");
+      assert.equal(stats.projectSkipped, 0, "(__team__) no unregistered-project skip");
+      assert.equal(stats.comments, 1);
+      assert.equal(stats.reports, 1, "the narrative report is stored");
+      assert.equal(stats.reportSkipped.length, 0);
+      assert.equal(board.repos.projects.get("__team__").workspacePath, "/__team__");
+      const task = board.repos.tasks.getByIdentifier("__team__", "DEMO-0001");
+      assert.deepEqual(task.meta.import_warnings, ["report_narrative", "parse_tolerated"]);
+    } finally {
+      board.close();
+    }
+  });
+
+  it("imports a card whose ## Sessions keeps the unedited placeholder comment", async () => {
+    // 11 of the M5 drill's cards kept the template placeholder verbatim; a
+    // non-conforming line used to abort the whole card.
+    const placeholder =
+      "<!-- 子会话关联（resume 依据）：每段一行 · 字段 seg/owner/backend/id/phase/status/pid -->";
+    const board = await boardWithCards({
+      "A.md": cardText({}, {
+        Sessions: [
+          placeholder,
+          "- seg:seg1 · owner:linus · backend:claude · id:sess-1 · phase:plan · status:closed · pid: · 2026-01-01T00:00:00.000Z",
+          "- 2026-10-09T15:52+08:00 · change · author=elon · a misplaced comment-shaped line",
+        ].join("\n"),
+      }),
+    });
+    try {
+      const stats = importCards(board);
+      assert.equal(stats.tasks, 1, "the card imports");
+      assert.equal(stats.sessions, 1, "only the real session is kept");
+      const task = board.repos.tasks.getByIdentifier("demo", "DEMO-0001");
+      assert.deepEqual(board.repos.sessions.listByTask(task.id).map((session) => session.seg), ["seg1"]);
+      assert.deepEqual(task.meta.import_warnings, ["parse_tolerated"], "the tolerated lines are recorded");
+    } finally {
+      board.close();
+    }
+  });
+
+  it("does not abort a card on a malformed `- seg:x` session line", async () => {
+    const board = await boardWithCards({ "A.md": cardText({}, { Sessions: "- seg:x" }) });
+    try {
+      const stats = importCards(board);
+      assert.equal(stats.tasks, 1, "the malformed line no longer sinks the card");
+      assert.equal(stats.sessions, 0);
+      const task = board.repos.tasks.getByIdentifier("demo", "DEMO-0001");
+      assert.deepEqual(task.meta.import_warnings, ["parse_tolerated"]);
     } finally {
       board.close();
     }

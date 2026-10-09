@@ -87,12 +87,32 @@ describe("md/sections — acceptance", () => {
     assert.deepEqual(parseAcceptanceBlock("- [X] shouty"), [{ text: "shouty", checked: true }]);
   });
 
-  it("refuses a line that is not a checkbox", () => {
-    assert.throws(() => parseAcceptanceBlock("- no checkbox"), (err) => {
-      assert.equal(err.code, "MD_PARSE_ERROR");
-      assert.equal(err.details.section, "Acceptance");
-      return true;
-    });
+  it("tolerates a line that is not a checkbox — and records a notice", () => {
+    const notices = [];
+    const items = parseAcceptanceBlock(
+      [
+        "- [ ] one",
+        "> 并行标注：needs a decision",
+        "- [x] two",
+        "  - a nested sub-bullet",
+        "",
+        "a plain prose line",
+      ].join("\n"),
+      { notices },
+    );
+    assert.deepEqual(items, [
+      { text: "one", checked: false },
+      { text: "two", checked: true },
+    ]);
+    assert.equal(notices.length, 3, "the quote note, the nested bullet and the prose");
+    assert.deepEqual(notices[0], { section: "Acceptance", line: 2, text: "> 并行标注：needs a decision" });
+    assert.equal(notices[1].line, 4);
+    assert.equal(notices[2].text, "a plain prose line");
+  });
+
+  it("keeps the checkbox items even when nothing else is parseable", () => {
+    assert.deepEqual(parseAcceptanceBlock("just prose\nand more"), []);
+    assert.deepEqual(parseAcceptanceBlock("- ordinary bullet"), []);
   });
 });
 
@@ -133,13 +153,26 @@ describe("md/sections — comments", () => {
     assert.deepEqual(parseCommentsBlock(""), []);
   });
 
-  it("refuses a line without the separators", () => {
-    for (const line of ["- not a comment", "- ts · kind"]) {
-      assert.throws(() => parseCommentsBlock(line), (err) => {
-        assert.equal(err.code, "MD_PARSE_ERROR");
-        return true;
-      });
-    }
+  it("tolerates a line without the separators — and records a notice", () => {
+    const notices = [];
+    const comments = parseCommentsBlock(
+      [
+        "- 2026-10-08T00:00:00.000Z · note · linus — kept",
+        "① a continuation line with no bullet and no separator",
+        "- 2026-10-08T00:00:00.000Z · note · linus",
+        "- ts · kind",
+      ].join("\n"),
+      { notices },
+    );
+    assert.deepEqual(comments, [
+      { ts: "2026-10-08T00:00:00.000Z", kind: "note", authorId: "linus", body: "kept" },
+    ]);
+    assert.equal(notices.length, 3);
+    assert.deepEqual(
+      notices.map((notice) => notice.line),
+      [2, 3, 4],
+    );
+    assert.equal(notices[0].section, "Comments");
   });
 
   it("escapes bodies onto one line and back", () => {
@@ -170,16 +203,71 @@ describe("md/sections — sessions", () => {
     assert.equal(renderSessionsBlock([sessions[0]]), `- seg:seg1 · owner:linus · backend:claude · id:32306ef3-a9ad-5453-b300-5f12642ac16f · phase:plan · status:closed · pid: · 2026-10-01T00:00:00.000Z`);
   });
 
-  it("refuses a session line without a timestamp or with an unknown field", () => {
-    assert.throws(() => parseSessionsBlock("- seg:seg1 · owner:linus"), (err) => /timestamp/.test(err.message));
-    assert.throws(() => parseSessionsBlock("- seg:seg1 · whatever:1 · 2026-10-01T00:00:00.000Z"), (err) => {
-      assert.match(err.message, /unknown session field/);
-      assert.deepEqual(err.details.allowed, ["seg", "owner", "backend", "id", "phase", "status", "pid"]);
-      return true;
-    });
-    assert.throws(() => parseSessionsBlock("- notakeyvalue · 2026-10-01T00:00:00.000Z"), (err) =>
-      /<name>:<value>/.test(err.message),
+  it("tolerates the template placeholder comment and keeps the real sessions", () => {
+    const notices = [];
+    const sessions = parseSessionsBlock(
+      [
+        "<!-- 子会话关联（resume 依据）：每段一行 · 字段 seg/owner/backend/id/phase/status/pid -->",
+        "- seg:seg1 · owner:linus · backend:claude · id:sess-1 · phase:plan · status:closed · pid: · 2026-10-01T00:00:00.000Z",
+      ].join("\n"),
+      { notices },
     );
+    assert.deepEqual(sessions.map((session) => session.seg), ["seg1"], "only the real session is kept");
+    assert.equal(notices.length, 1, "the placeholder is a notice, never an abort");
+    assert.deepEqual(notices[0], {
+      section: "Sessions",
+      line: 1,
+      text: "<!-- 子会话关联（resume 依据）：每段一行 · 字段 seg/owner/backend/id/phase/status/pid -->",
+    });
+  });
+
+  it("tolerates a comment-shaped line misplaced into ## Sessions", () => {
+    const notices = [];
+    const sessions = parseSessionsBlock(
+      [
+        "- 2026-10-09T15:52+08:00 · change · author=elon · a comment that is not a session record",
+        "- seg:seg1 · owner:linus · backend:claude · id:sess-1 · status:running · 2026-10-02T00:00:00.000Z",
+      ].join("\n"),
+      { notices },
+    );
+    assert.deepEqual(sessions.map((session) => session.seg), ["seg1"]);
+    assert.equal(notices.length, 1);
+    assert.equal(notices[0].line, 1);
+  });
+
+  it("no longer aborts a card on a malformed session line — it is skipped with a notice", () => {
+    const notices = [];
+    const sessions = parseSessionsBlock(
+      [
+        "- seg:seg1 · owner:linus", // no trailing timestamp
+        "- seg:seg2 · whatever:1 · 2026-10-01T00:00:00.000Z", // unknown field
+        "- notakeyvalue · 2026-10-01T00:00:00.000Z", // field without `<name>:<value>`
+        "plain prose with no bullet",
+        "- seg:seg3 · owner:linus · backend:claude · id:sess-3 · status:running · 2026-10-03T00:00:00.000Z",
+      ].join("\n"),
+      { notices },
+    );
+    assert.deepEqual(sessions.map((session) => session.seg), ["seg3"], "only the well-formed line survives");
+    assert.equal(notices.length, 4, "every tolerated line is recorded");
+    assert.deepEqual(
+      notices.map((notice) => notice.line),
+      [1, 2, 3, 4],
+    );
+    assert.equal(notices.every((notice) => notice.section === "Sessions"), true);
+  });
+
+  it("skips a multi-line HTML comment without losing the sessions around it", () => {
+    const notices = [];
+    const sessions = parseSessionsBlock(
+      [
+        "<!-- a comment block",
+        "that spans several lines -->",
+        "- seg:seg1 · owner:linus · backend:claude · id:sess-1 · status:running · 2026-10-01T00:00:00.000Z",
+      ].join("\n"),
+      { notices },
+    );
+    assert.deepEqual(sessions.map((session) => session.seg), ["seg1"]);
+    assert.equal(notices.length, 2);
   });
 });
 
@@ -192,6 +280,8 @@ describe("md/sections — report", () => {
     assert.equal(reports[0].conclusion, "Just a conclusion.\n\nMore of it.");
     assert.deepEqual(reports[0].acceptance, []);
     assert.equal(reports[0].leftovers, null);
+    assert.equal(reports[0].narrative, true, "no acceptance list and no evidence → a narrative");
+    assert.deepEqual(reports[0].notices, []);
   });
 
   it("parses one block per round, with acceptance, evidence and leftovers", () => {
@@ -260,27 +350,39 @@ describe("md/sections — report", () => {
         ],
         evidence: [{ kind: "commit", sha: "abc1234" }],
         leftovers: "one thing",
+        narrative: false,
+        notices: [],
       },
     ]);
   });
 
-  it("refuses evidence it cannot render or parse", () => {
-    assert.throws(
-      () => parseReportBlock("### R1 · t · a\n\nevidence:\n- screenshot x.png"),
-      (err) => {
-        assert.equal(err.code, "MD_PARSE_ERROR");
-        assert.match(err.message, /unknown evidence anchor/);
-        return true;
-      },
+  it("tolerates a report block it cannot fully parse — and records notices", () => {
+    const notices = [];
+    const reports = parseReportBlock(
+      [
+        "### R1 · t · a",
+        "",
+        "summary",
+        "",
+        "acceptance:",
+        "- [met] one",
+        "| col | col |",
+        "",
+        "evidence:",
+        "- screenshot foo.png",
+      ].join("\n"),
+      { notices },
     );
-    assert.throws(
-      () => parseReportBlock("### R1 · t · a\n\nevidence:\n- command node --test"),
-      (err) => /command anchors look like/.test(err.message),
-    );
-    assert.throws(
-      () => parseReportBlock("### R1 · t · a\n\nacceptance:\n- no brackets"),
-      (err) => /look like '- \[met\] text'/.test(err.message),
-    );
+    assert.deepEqual(reports[0].acceptance, [{ status: "met", text: "one" }]);
+    assert.deepEqual(reports[0].evidence, []);
+    assert.equal(reports[0].narrative, false, "an acceptance item was still read");
+    assert.equal(notices.length, 2);
+    assert.equal(notices[0].section, "Report");
+    assert.equal(notices[0].text, "| col | col |");
+    assert.equal(notices[1].text, "- screenshot foo.png");
+  });
+
+  it("still refuses evidence it cannot render (the renderer is not relaxed)", () => {
     assert.throws(
       () => renderReportBlock([{ round: 1, ts: "t", authorId: "a", conclusion: "x", acceptance: [], evidence: { items: [{ kind: "screenshot" }] }, leftovers: null }]),
       (err) => err.code === "REPORT_INVALID",
