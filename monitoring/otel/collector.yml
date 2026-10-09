@@ -1,0 +1,35 @@
+# Task Panel — OpenTelemetry Collector configuration.
+#
+# Mounted read-only at /etc/otelcol-contrib/config.yml by
+# docker/docker-compose.observability.yml. The collector closes the OTLP half of the
+# wiring: the sidecar pushes OTLP/HTTP+JSON to :4318, the collector batches it and
+# re-exposes it on :8889 in the Prometheus text format, so one scrape config can read both
+# the sidecar and anything else the collector receives.
+#
+# Nothing here talks to a vendor backend — the card's rule is no real external alert
+# channel, and an offline demo must not need one.
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        # OTLP/HTTP only: the sidecar speaks JSON over HTTP, and gRPC would pull in TLS
+        # and a port nothing here uses.
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Batching is what keeps an export loop from becoming one request per datapoint.
+  batch: {}
+
+exporters:
+  prometheus:
+    # Re-exposed for scraping, so the collector's own pipeline is observable in the same
+    # language as the sidecar.
+    endpoint: 0.0.0.0:8889
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]

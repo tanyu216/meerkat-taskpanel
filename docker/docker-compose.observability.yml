@@ -1,0 +1,75 @@
+# Task Panel — observability overlay.
+#
+#   docker compose -f docker/docker-compose.observability.yml up
+#
+# Adds three services on top of nothing: a metrics sidecar, Prometheus (scrape + alert
+# rules) and an OpenTelemetry Collector. It is an *overlay*, so it declares no
+# `docker/Dockerfile` of its own — `monitoring/` reuses the repository image, which already
+# contains the sidecar because the Dockerfile copies the working tree.
+#
+# Offline note: the sidecar and the rules are verifiable without any of this
+# (`node monitoring/exporter.mjs` plus the unit suite). The two upstream images below are
+# pinned on purpose — an unpinned `:latest` would make "reproducible" a claim rather than a
+# fact — but they are still *pulls*, so `docker compose up` needs the images present. See
+# docs/observability.md for the offline path.
+
+name: task-panel-observability
+
+services:
+  # The metrics source: /metrics (Prometheus text), /health (the SLO verdict) and
+  # /v1/observe (push ingest), zero dependencies, from the repository image.
+  monitoring:
+    image: task-panel:local
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: ["node", "monitoring/exporter.mjs"]
+    environment:
+      MONITORING_HOST: 0.0.0.0
+      MONITORING_PORT: "9105"
+      MONITORING_OTLP_ENDPOINT: http://otel-collector:4318
+    ports:
+      - "9105:9105"
+    healthcheck:
+      # The healthcheck reads /health, not /metrics: an SLO breach should surface as an
+      # unhealthy container, while a scrape never should.
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:9105/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # Scrapes the sidecar every 15s and evaluates the SLO rules on the same interval.
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    ports:
+      - "9090:9090"
+    volumes:
+      # Both files are mounted read-only: this container is a consumer of the committed
+      # configuration, never a writer of it.
+      - ../monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../monitoring/prometheus/task-panel.rules.yml:/etc/prometheus/rules/task-panel.rules.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - monitoring
+    restart: unless-stopped
+
+  # Receives what the sidecar pushes over OTLP/HTTP and re-exposes it for scraping.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.109.0
+    ports:
+      - "4318:4318"
+      - "8889:8889"
+    volumes:
+      - ../monitoring/otel/collector.yml:/etc/otelcol-contrib/config.yml:ro
+    environment:
+      # The sidecar already points here; set here too so an operator reading only compose
+      # can see both ends of the wire in one file.
+      MONITORING_OTLP_ENDPOINT: http://otel-collector:4318
+    restart: unless-stopped
+
+volumes:
+  # Prometheus' own TSDB: a named volume, so `down` does not silently drop the history the
+  # alerts are computed from.
+  prometheus-data:

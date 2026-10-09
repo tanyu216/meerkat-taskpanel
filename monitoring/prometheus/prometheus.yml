@@ -1,0 +1,28 @@
+# Task Panel — Prometheus configuration.
+#
+# Mounted read-only at /etc/prometheus/prometheus.yml by
+# docker/docker-compose.observability.yml. There is nothing to edit at runtime: the scrape
+# target and the rules path are the container-internal names the overlay creates.
+#
+# `15s` is the scrape interval the alerting rules are written against — the rules rate over
+# `[5m]`, so a window holds ~20 scrapes even if a couple of them are missed.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules/task-panel.rules.yml
+
+scrape_configs:
+  # The sidecar under test: /metrics is the Prometheus text exposition, /health the SLO
+  # verdict. Prometheus scrapes one, an operator curls the other.
+  - job_name: monitoring
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["monitoring:9105"]
+
+  # Prometheus scraping itself, so a broken rules file or a stalled evaluation is visible.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
