@@ -120,6 +120,12 @@ filters `task_heartbeat` out of the increments, because a pulse changes no board
 state (§4.3); the row still exists in `task_activities` and under
 `/tasks/:ref/activities`.
 
+> **The built board is loopback-only.** It injects no token, so a browser reaching
+> `taskd` from a non-loopback address is answered 401 across the board — a known
+> local-first limitation, not a defect. See
+> [web-local-first.md](web-local-first.md) for what works, the SSH-forward
+> workaround, and what a fix would require.
+
 ## The skill is generated, never hand-edited
 
 `skills/task-panel/` is the only place the skill is authored. `scripts/sync-skills.mjs`
