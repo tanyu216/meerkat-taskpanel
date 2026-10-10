@@ -39,6 +39,7 @@
     "verify": "node scripts/verify/manifests.mjs && node scripts/verify/skill.mjs && node scripts/verify/migrations.mjs",
     "verify:migrations": "node scripts/verify/migrations.mjs",
     "verify:changelog": "node scripts/verify/changelog.mjs",
+    "release:bump": "node scripts/release/bump.mjs",
     "test": "node --test",
     "check": "npm run check:skills && npm run verify && npm test",
     "verify:docker": "node scripts/verify/docker.mjs",

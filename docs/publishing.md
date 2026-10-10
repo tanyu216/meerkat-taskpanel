@@ -22,14 +22,44 @@ A release version lives in **six files**, and all six must carry the same value:
 | 5 | `plugins/openclaw/openclaw.plugin.json` | `version` |
 | 6 | `.claude-plugin/marketplace.json` | `metadata.version` |
 
-`scripts/verify/version.mjs` checks that the six agree; it is wired into CI, so a drifting
-version fails the build rather than shipping. Run it locally before tagging:
+**Bump them with one command.** Editing six files by hand is exactly how drift starts;
+`scripts/release/bump.mjs` moves all six at once:
+
+```bash
+node scripts/release/bump.mjs 1.1.0                    # or: npm run release:bump 1.1.0
+node scripts/release/bump.mjs 1.1.0 --changelog        # + an empty CHANGELOG scaffold
+node scripts/release/bump.mjs 1.1.0 --changelog --tag
+```
+
+It edits each manifest **in place**: the one version string token is spliced, so key order,
+indentation, inline objects and single-line arrays survive exactly as authored — no
+`JSON.parse`/`stringify` round trip, which would reformat the whole file. The target must be
+strict semver and strictly greater than the version the root `package.json` currently
+declares, and the six files are written **atomically**: every new body is staged to a temp
+file beside its target and only all-successful staging is renamed into place, so a failure
+leaves the tree byte-identical (nothing written, or everything already renamed restored).
+The list of six, and the JSON path to each version, is imported from `version.mjs` — the
+bumper and the checker cannot disagree about where the version lives. Bumping a tree that has
+already drifted is refused rather than quietly papered over.
+
+- `--changelog` inserts an **empty** Keep-a-Changelog scaffold (`### Added` / `### Changed` /
+  `### Fixed`, one placeholder bullet each) directly below `## [Unreleased]` and above the
+  newest release, and keeps the foot-of-file link references in step. It never invents an
+  entry — a version that already has a section is a refusal, not a duplicate.
+- `--tag` creates the local `v<x.y.z>` ref once the bump has landed and prints the exact
+  `git push` command. It never pushes (§3); the push stays Elon's.
+
+**Check it.** `scripts/verify/version.mjs` checks that the six agree; it is wired into CI, so
+a drifting version fails the build rather than shipping. Run it before tagging — and after
+the bump, as the proof the bump was complete:
 
 ```bash
 node scripts/verify/version.mjs
+node scripts/release/bump.mjs 1.1.0 && node scripts/verify/version.mjs   # bump, then prove it
 ```
 
-Bump all six to the same value **in one commit**, then let CI confirm.
+Then commit the six files (and the scaffold, once filled in) **in one commit**, and let CI
+confirm.
 
 ## 2. npm
 
