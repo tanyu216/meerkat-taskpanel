@@ -10,12 +10,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - **API contract snapshot.** `scripts/verify/contract.mjs` freezes the surface a client
-  binds to — routes, error codes, wire fields and MCP tool arguments — as the committed,
+  binds to — routes, error codes, the wire field names **and types**, and each MCP tool's
+  full `inputSchema` (`type`/`enum`/`items`/`anyOf`, recursively) — as the committed,
   deterministic JSON at `test/fixtures/contract/api.snapshot.json`. It compares the live
-  surface against that snapshot and exits non-zero on drift; `--update` refreshes it. It
-  runs in `pre-push` (every push) and `pre-tag`, in `contract-gate.yml` (every branch
-  push / PR) and at tag time in `version-gate.yml`, and inside the container suite. See
-  [`docs/contract.md`](docs/contract.md).
+  surface against that snapshot and exits non-zero on drift; `--update` refreshes it. A
+  changed argument **type or enum**, or a wire field whose type moved, now fails the gate
+  instead of slipping through. The snapshot's `schema_version` is **2**. It runs in
+  `pre-push` (every push) and `pre-tag`, in `contract-gate.yml` (every branch push / PR)
+  and at tag time in `version-gate.yml`, and inside the container suite. Route query/body
+  shapes are deliberately not frozen: there is no request schema to read them from, and a
+  test pins that premise. See [`docs/contract.md`](docs/contract.md).
 - **Scheduling & patrol.** A host-external supervisor (`scripts/supervisor.mjs`) runs the
   cheap 1-minute **poll** (a $0 candidate scan; an LLM turn starts only when a card is
   actually claimed) and the 5-minute **patrol** (escalate a stale claim; report an
@@ -39,6 +43,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Renamed to `meerkat-taskpanel`.** <!-- legacy-name-compat: quotes the former name to record the migration --> Every naming surface moved off the former `task-panel` / `TaskPanel` spellings — the npm package name and the MCP bin (`meerkat-taskpanel-mcp`), the skill source and its generated plugin copies (`skills/meerkat-taskpanel/`), the plugin + marketplace manifests, the installer environment variables (`MEERKAT_TASKPANEL_*`), the host config file (`<host>/meerkat-taskpanel.env`), the launchd / systemd / cron units, the per-user runtime directory (`Application Support/MeerkatTaskPanel/`, `~/.meerkat-taskpanel/`), the Docker image and compose project names, the Prometheus rules file and metric namespace, and the `web/` localStorage keys. The CLI keeps its name: `taskctl`.
 - **Backward compatibility.** The installer still accepts the pre-rename `TASKPANEL_*` environment variables, and the supervisor still reads a legacy `TASKPANEL_CLAIM_UNASSIGNED` key in the host config file; the new `MEERKAT_TASKPANEL_*` spelling wins when both are set.
 - **Migration.** Re-run `install.sh` to write the new paths. The previous npm bin alias for the MCP server is not retained — an existing MCP registration points at the server by path, so it keeps working — and a runtime pointer written under the former per-user directory is not read; the CLI writes a fresh one on first run.
+
+### Fixed
+
+- **`scripts/verify/install-e2e.sh` no longer fails its own claim.** The script acted as
+  `TASKCTL_AGENT="install-e2e"` but assigned its card to `install-e2e-bot`, and the claim
+  policy only lets the assignee claim a card — so the run died on `not_assignee` at
+  `issue move … in_progress`. Actor and assignee now come from one variable, so they cannot
+  drift apart again.
+- **The install + first-run end-to-end is now a step of
+  `docker/verify-in-container.sh`.** It had been a separate `docker run` in CI only, which
+  meant `npm run verify:docker` could be green while the CI `docker` job was red. Both
+  tracks now run the same script; the CI job's duplicate step is gone.
 
 ## [1.0.0] - 2026-10-09
 

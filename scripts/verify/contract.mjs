@@ -14,8 +14,11 @@
  *                       *and* the endpoints it serves outside it (`/health`,
  *                       `/meta`, the SSE stream, attachment bytes);
  *   * **errors**      — every `ERROR_CODES` code with the HTTP status it carries;
- *   * **wire**        — the field names every `*ToWire` projection emits;
- *   * **mcp_tools**   — the MCP tool names with their argument names.
+ *   * **wire**        — the name **and JSON type** of every field each `*ToWire`
+ *                       projection emits;
+ *   * **mcp_tools**   — every MCP tool's name and its `inputSchema` frozen down
+ *                       to the facets a caller binds to — `type`, `enum`, `items`,
+ *                       `anyOf`, `properties` and `required`, recursively.
  *
  * The snapshot is **deterministic**: keys are sorted at every level and every
  * list has an explicit sort order, so two runs on the same tree are byte-identical
@@ -29,8 +32,18 @@
  *
  * The routes come from `registerApiRoutes` — the same function `createTaskd`
  * calls — so a route cannot be added to the server without appearing here. The
- * error codes come from `ERROR_CODES`, the wire fields from the projections
- * themselves, the tools from `TOOLS`. Nothing is a second copy of a list.
+ * error codes come from `ERROR_CODES`, the wire field names *and types* from the
+ * projections themselves, the tools and their schemas from `TOOLS`. Nothing is a
+ * second copy of a list.
+ *
+ * A route's query and body are deliberately **not** frozen, because there is no
+ * schema to read them from: `createRouter` records `{method, pattern, handler}`
+ * and nothing else, and each handler reaches into `query.get(...)` / `body.…`
+ * ad hoc. Freezing them would mean hand-writing a table of parameters that the
+ * handlers do not consult — exactly the "second copy of a list" this file exists
+ * to refuse. `test/verify/contract.test.mjs` pins that premise, so the day a
+ * route grows a declared request schema the test says so and this file must
+ * start reading it.
  *
  * Deliberately **not** in the snapshot: error *messages* and *hints*, route
  * handler internals, and JSON-schema descriptions. Those are prose — they are
@@ -71,8 +84,11 @@ export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 /** The committed snapshot, relative to the tree root. */
 export const SNAPSHOT_FILE = "test/fixtures/contract/api.snapshot.json";
 
-/** Bumped only when the snapshot's own *schema* changes shape. */
-export const SCHEMA_VERSION = 1;
+/**
+ * Bumped only when the snapshot's own *schema* changes shape. (2 added the wire
+ * field types and the recursive MCP `inputSchema` facts.)
+ */
+export const SCHEMA_VERSION = 2;
 
 // ---------------------------------------------------------------------------
 // Collecting the live surface
@@ -121,71 +137,262 @@ export function collectErrors() {
 const PROBE_ACTOR_LOOKUP = () => ({ displayName: "probe", kind: "agent" });
 
 /**
- * A task with the two optional object fields populated, so projecting it emits
- * the nested shapes (`assignee`, `reporter`, `report_waiver`) as well as the
- * flat fields. Without these, the nested keys would come back `null` and their
- * field names would be missing from the snapshot.
+ * The wire probes: one subject per projection, with **every** field the
+ * projection reads populated with a value of the type that field carries.
+ *
+ * This is what makes a field's *type* observable. Each projection is called
+ * with one of these instead of `{}`: a `*ToWire` function always writes every
+ * field (using `null`/`[]` for what the subject lacks), so the *names* are the
+ * same either way — but an empty subject would make every value `null`, and a
+ * snapshot of "everything is null" freezes nothing. Populated, the emitted type
+ * is the one a client actually receives: `task.version` is a number,
+ * `task.labels` is an array, `task.title` is a string.
+ *
+ * If a projection starts reading a field the probe does not supply, that field
+ * reads back `null` in the snapshot — visible, which is the point.
+ */
+const PROBE_ACTIVITY = {
+  id: "probe",
+  taskId: "probe",
+  actorKind: "probe",
+  actorId: "probe",
+  event: "probe",
+  changes: { probe: true },
+  revision: 1,
+  createdAt: "probe",
+};
+
+const PROBE_COMMENT = {
+  id: "probe",
+  taskId: "probe",
+  body: "probe",
+  kind: "probe",
+  authorKind: "probe",
+  authorId: "probe",
+  agentSession: "probe",
+  refs: ["probe"],
+  version: 1,
+  createdAt: "probe",
+};
+
+const PROBE_DICTIONARY_ENTRY = {
+  id: "probe",
+  kind: "probe",
+  displayName: "probe",
+  normalizedName: "probe",
+  platform: "probe",
+  firstSeenAt: "probe",
+  lastSeenAt: "probe",
+  useCount: 1,
+};
+
+const PROBE_LABEL = {
+  id: "probe",
+  projectId: "probe",
+  norm: "probe",
+  displayName: "probe",
+  color: "probe",
+  useCount: 1,
+  firstSeenAt: "probe",
+  lastSeenAt: "probe",
+  archivedAt: "probe",
+};
+
+const PROBE_PROJECT = {
+  id: "probe",
+  name: "probe",
+  workspacePath: "probe",
+  labels: ["probe"],
+  meta: { probe: true },
+  readme: "probe",
+  archivedAt: "probe",
+  createdAt: "probe",
+  updatedAt: "probe",
+};
+
+const PROBE_RELATION = {
+  id: "probe",
+  type: "probe",
+  source: "probe",
+  target: "probe",
+  origin: "probe",
+  createdAt: "probe",
+};
+
+const PROBE_REPORT = {
+  id: "probe",
+  taskId: "probe",
+  round: 1,
+  seg: "probe",
+  sessionId: "probe",
+  conclusion: "probe",
+  acceptance: ["probe"],
+  evidence: ["probe"],
+  leftovers: "probe",
+  authorKind: "probe",
+  authorId: "probe",
+  createdAt: "probe",
+};
+
+const PROBE_SESSION = {
+  id: "probe",
+  taskId: "probe",
+  seg: "probe",
+  owner: "probe",
+  backend: "probe",
+  sessionId: "probe",
+  phase: "probe",
+  pid: 1,
+  status: "probe",
+  ts: "probe",
+};
+
+/**
+ * A task with every copy field populated — including the two optional object
+ * fields, so projecting it emits the nested shapes (`assignee`, `reporter`,
+ * `report_waiver`) as well as the flat ones. Without those, the nested shapes
+ * would come back `null` and their field names *and types* would be missing
+ * from the snapshot.
  */
 const PROBE_TASK = Object.freeze({
+  id: "probe",
+  identifier: "probe",
+  projectId: "probe",
+  title: "probe",
+  description: "probe",
+  status: "probe",
+  priority: "probe",
+  kind: "probe",
+  sortOrder: 1,
   assigneeId: "probe-assignee",
   reporterId: "probe-reporter",
+  creatorKind: "probe",
+  creatorId: "probe",
+  agentSession: "probe",
+  threadId: "probe",
+  threadSource: "probe",
+  claimedBy: "probe",
+  claimedAt: "probe",
+  heartbeatAt: "probe",
+  blockedAt: "probe",
+  statusChangedAt: "probe",
+  archivedAt: "probe",
+  sourcePath: "probe",
+  reportLatestId: "probe",
+  deliveryRound: 1,
+  version: 1,
+  createdAt: "probe",
+  updatedAt: "probe",
+  labels: ["probe"],
+  meta: { probe: true },
   reportWaiverRound: 1,
   reportWaiverReason: "probe",
-  reportWaivedAt: "probe-at",
+  reportWaivedAt: "probe",
 });
 
-/** Sorted own keys of a projected value. */
-function fieldsOf(value) {
-  return Object.keys(value ?? {}).sort();
+/** The JSON type of an emitted value — the alphabet a wire field type is drawn from. */
+function wireType(value) {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  return typeof value;
+}
+
+/** `{field: type}` for one projected object, keys sorted. */
+function fieldTypes(value) {
+  /** @type {Record<string, string>} */
+  const out = {};
+  for (const key of Object.keys(value ?? {}).sort()) out[key] = wireType(value[key]);
+  return out;
 }
 
 /**
- * The field names every wire projection emits, one entry per shape.
+ * The field names *and types* every wire projection emits, one entry per shape.
  *
- * Each projection is called with an empty (or probe) subject: a `*ToWire`
- * function always writes every field, using `null`/`[]` for what the subject
- * lacks, so the *keys* are the contract even when the values are placeholders.
+ * The type is read off a probe projection (see `PROBE_*` above): it is the type
+ * the field carries when the field is populated, so a projection that starts
+ * emitting a string where it emitted a number — or wraps a value in `String()`
+ * — moves the snapshot instead of slipping through.
  *
- * @returns {{shape: string, fields: string[]}[]}
+ * @returns {{shape: string, fields: Record<string, string>}[]}
  */
 export function collectWire() {
   const task = taskToWire(PROBE_TASK, { lookup: PROBE_ACTOR_LOOKUP });
   const shapes = {
-    activity: activityToWire({}),
-    comment: commentToWire({}),
-    dictionary_entry: dictionaryEntryToWire({}),
-    label: labelToWire({}),
-    project: projectToWire({}),
-    relation: relationToWire({}),
-    report: reportToWire({}),
-    session: sessionToWire({}),
+    activity: activityToWire(PROBE_ACTIVITY),
+    comment: commentToWire(PROBE_COMMENT),
+    dictionary_entry: dictionaryEntryToWire(PROBE_DICTIONARY_ENTRY),
+    label: labelToWire(PROBE_LABEL),
+    project: projectToWire(PROBE_PROJECT),
+    relation: relationToWire(PROBE_RELATION),
+    report: reportToWire(PROBE_REPORT),
+    session: sessionToWire(PROBE_SESSION),
     task,
   };
 
   const out = [];
-  for (const [shape, value] of Object.entries(shapes)) out.push({ shape, fields: fieldsOf(value) });
+  for (const [shape, value] of Object.entries(shapes)) out.push({ shape, fields: fieldTypes(value) });
   // The nested shapes are part of the same contract: a client reads
   // `assignee.display_name`, so that field is as frozen as `task.title`.
-  out.push({ shape: "task.assignee", fields: fieldsOf(task.assignee) });
-  out.push({ shape: "task.reporter", fields: fieldsOf(task.reporter) });
-  out.push({ shape: "task.report_waiver", fields: fieldsOf(task.report_waiver) });
+  out.push({ shape: "task.assignee", fields: fieldTypes(task.assignee) });
+  out.push({ shape: "task.reporter", fields: fieldTypes(task.reporter) });
+  out.push({ shape: "task.report_waiver", fields: fieldTypes(task.report_waiver) });
 
   return out.sort((a, b) => (a.shape < b.shape ? -1 : 1));
 }
 
 /**
- * The MCP tool surface: each tool's name, its argument names and which of them
- * are required. Descriptions and schemas are prose — excluded for the same
- * reason the error messages are.
+ * The contract facets of one JSON-Schema fragment, recursively: `type`,
+ * `enum`, `items`, `anyOf`, `properties` and `required` (plus
+ * `additionalProperties`, which says whether an object is closed).
  *
- * @returns {{name: string, arguments: string[], required: string[]}[]}
+ * Every list is sorted — `enum` and `required` alphabetically, `properties` by
+ * key, `anyOf` branches keep their declaration order (the order is stable in
+ * source and the branches are positional) — so two runs are byte-identical.
+ *
+ * `description` and every other prose key are dropped for the same reason the
+ * error messages are: they are wording, and freezing wording turns a copy edit
+ * into a snapshot chore. What a caller binds to — *is it a string, which values
+ * does it accept, is it an array and of what* — is what survives.
+ *
+ * @param {object|null|undefined} fragment
+ * @returns {object|null}
+ */
+export function canonicalSchema(fragment) {
+  if (fragment === null || typeof fragment !== "object") return null;
+  /** @type {Record<string, unknown>} */
+  const out = {};
+  if (fragment.type !== undefined) out.type = fragment.type;
+  if (fragment.additionalProperties !== undefined) out.additionalProperties = fragment.additionalProperties;
+  if (Array.isArray(fragment.enum)) out.enum = [...fragment.enum].sort();
+  if (fragment.items !== undefined) out.items = canonicalSchema(fragment.items);
+  if (Array.isArray(fragment.anyOf)) out.anyOf = fragment.anyOf.map(canonicalSchema);
+  if (fragment.properties !== undefined) {
+    /** @type {Record<string, unknown>} */
+    const properties = {};
+    for (const key of Object.keys(fragment.properties).sort()) {
+      properties[key] = canonicalSchema(fragment.properties[key]);
+    }
+    out.properties = properties;
+  }
+  if (Array.isArray(fragment.required)) out.required = [...fragment.required].sort();
+  return out;
+}
+
+/**
+ * The MCP tool surface: each tool's name and its frozen `inputSchema`.
+ *
+ * The schema is the whole contract of a tool call — not just *which* arguments
+ * exist but their `type`, the `enum` of values each accepts, and the `items` of
+ * an array — captured recursively by `canonicalSchema`. That subsumes the
+ * argument names and the required list the older snapshot kept separately, so
+ * there is one description of a tool's request, not three.
+ *
+ * @returns {{name: string, schema: object|null}[]}
  */
 export function collectMcpTools() {
-  return TOOLS.map((tool) => ({
-    name: tool.name,
-    arguments: Object.keys(tool.inputSchema?.properties ?? {}).sort(),
-    required: [...(tool.inputSchema?.required ?? [])].sort(),
-  })).sort((a, b) => (a.name < b.name ? -1 : 1));
+  return TOOLS.map((tool) => ({ name: tool.name, schema: canonicalSchema(tool.inputSchema) })).sort((a, b) =>
+    a.name < b.name ? -1 : 1,
+  );
 }
 
 /**
@@ -240,23 +447,73 @@ function onlyIn(a, b) {
   return [...a].filter((key) => !b.has(key)).sort();
 }
 
-/** Flatten `wire` to `shape.field` keys — a field is the unit a diff reports. */
-function wireKeys(wire) {
-  const keys = new Set();
+/** Flatten `wire` to `shape.field -> type` — a field is the unit a diff reports. */
+function wireFacets(wire) {
+  /** @type {Map<string, string>} */
+  const out = new Map();
   for (const entry of wire ?? []) {
-    for (const field of entry.fields ?? []) keys.add(`${entry.shape}.${field}`);
+    for (const [field, type] of Object.entries(entry.fields ?? {})) {
+      out.set(`${entry.shape}.${field}`, type);
+    }
   }
-  return keys;
+  return out;
 }
 
-/** One line per MCP tool: the tool and its argument list. */
-function toolKeys(tools) {
-  return new Set(
-    (tools ?? []).map(
-      (tool) =>
-        `${tool.name}(${(tool.arguments ?? []).join(", ")}) required[${(tool.required ?? []).join(", ")}]`,
-    ),
-  );
+/**
+ * Flatten one frozen schema to `path -> <json>` leaves, so a diff can name the
+ * exact facet that moved: `task_move.to.type`, `task_move.to.enum`,
+ * `task_list.status.anyOf[0].type`, `task_list.status.anyOf[1].items.type`.
+ *
+ * `properties` and `anyOf` are descended into (their names are part of the path);
+ * every other value is a leaf, serialised so an enum reads as `["a","b"]`.
+ */
+function flattenSchema(prefix, fragment, out) {
+  if (fragment === null || typeof fragment !== "object") {
+    out.set(prefix, JSON.stringify(fragment));
+    return;
+  }
+  for (const [key, value] of Object.entries(fragment)) {
+    if (key === "properties" && value !== null && typeof value === "object") {
+      for (const [property, sub] of Object.entries(value)) flattenSchema(`${prefix}.${property}`, sub, out);
+    } else if (key === "anyOf" && Array.isArray(value)) {
+      value.forEach((branch, index) => flattenSchema(`${prefix}[${index}]`, branch, out));
+    } else if (key === "items") {
+      flattenSchema(`${prefix}.items`, value, out);
+    } else {
+      out.set(`${prefix}.${key}`, JSON.stringify(value));
+    }
+  }
+}
+
+/**
+ * Every frozen facet of every tool, keyed `tool.path`. The tool name is part of
+ * the key so a facet is attributable without a second lookup.
+ */
+function schemaFacets(tools) {
+  /** @type {Map<string, string>} */
+  const out = new Map();
+  for (const tool of tools ?? []) {
+    /** @type {Map<string, string>} */
+    const flat = new Map();
+    flattenSchema(tool.name, tool.schema ?? {}, flat);
+    for (const [key, value] of flat) out.set(key, value);
+  }
+  return out;
+}
+
+/**
+ * Compare two facet maps and report every added, removed or changed leaf. A
+ * changed value (a type that moved, an enum that gained a value) is reported
+ * once as `changed`, not as an add plus a remove.
+ */
+function diffFacets(add, kinds, actual, expected) {
+  for (const key of [...new Set([...actual.keys(), ...expected.keys()])].sort()) {
+    const now = actual.get(key);
+    const before = expected.get(key);
+    if (now === undefined) add(kinds.removed, `${key} = ${before}`);
+    else if (before === undefined) add(kinds.added, `${key} = ${now}`);
+    else if (now !== before) add(kinds.changed, `${key}: ${before} -> ${now}`);
+  }
 }
 
 /**
@@ -288,15 +545,29 @@ export function diffSnapshots(actual, expected) {
   for (const key of onlyIn(actualErrors, expectedErrors)) add("error_added", key);
   for (const key of onlyIn(expectedErrors, actualErrors)) add("error_removed", key);
 
-  const expectedWire = wireKeys(expected?.wire);
-  const actualWire = wireKeys(actual?.wire);
-  for (const key of onlyIn(actualWire, expectedWire)) add("wire_field_added", key);
-  for (const key of onlyIn(expectedWire, actualWire)) add("wire_field_removed", key);
+  diffFacets(
+    add,
+    { added: "wire_field_added", removed: "wire_field_removed", changed: "wire_type_changed" },
+    wireFacets(actual?.wire),
+    wireFacets(expected?.wire),
+  );
 
-  const expectedTools = toolKeys(expected?.mcp_tools);
-  const actualTools = toolKeys(actual?.mcp_tools);
-  for (const key of onlyIn(actualTools, expectedTools)) add("mcp_tool_added", key);
-  for (const key of onlyIn(expectedTools, actualTools)) add("mcp_tool_removed", key);
+  // Tools first, by name: a tool appearing or disappearing is one line. Then the
+  // schema facets of the tools present on *both* sides — otherwise a new tool
+  // would report every one of its facets as an addition on top of the one line.
+  const expectedNames = new Set((expected?.mcp_tools ?? []).map((tool) => tool.name));
+  const actualNames = new Set((actual?.mcp_tools ?? []).map((tool) => tool.name));
+  for (const name of onlyIn(actualNames, expectedNames)) add("mcp_tool_added", name);
+  for (const name of onlyIn(expectedNames, actualNames)) add("mcp_tool_removed", name);
+
+  const shared = new Set([...actualNames].filter((name) => expectedNames.has(name)));
+  const keepShared = (tools) => (tools ?? []).filter((tool) => shared.has(tool.name));
+  diffFacets(
+    add,
+    { added: "mcp_schema_added", removed: "mcp_schema_removed", changed: "mcp_schema_changed" },
+    schemaFacets(keepShared(actual?.mcp_tools)),
+    schemaFacets(keepShared(expected?.mcp_tools)),
+  );
 
   return { ok: changes.length === 0, changes };
 }
@@ -388,12 +659,16 @@ export async function updateContract(options = {}) {
 
 /** A one-line summary of a snapshot's size, for the CLI's success output. */
 function describe(snapshot) {
-  const wireFields = (snapshot.wire ?? []).reduce((total, entry) => total + (entry.fields ?? []).length, 0);
+  const wireFields = (snapshot.wire ?? []).reduce(
+    (total, entry) => total + Object.keys(entry.fields ?? {}).length,
+    0,
+  );
   return (
     `${(snapshot.routes ?? []).length} routes, ` +
     `${(snapshot.errors ?? []).length} error codes, ` +
     `${wireFields} wire fields, ` +
-    `${(snapshot.mcp_tools ?? []).length} MCP tools`
+    `${(snapshot.mcp_tools ?? []).length} MCP tools ` +
+    `(${schemaFacets(snapshot.mcp_tools).size} schema facets)`
   );
 }
 

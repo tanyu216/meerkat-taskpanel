@@ -7,7 +7,7 @@ CI run the *same code*:
 | Hook | Enforces | Checker |
 |---|---|---|
 | `pre-commit` | SQL migrations are append-only: contiguous from `0001`, unique, an already-committed file neither edited nor deleted | `scripts/verify/migrations.mjs` |
-| `pre-push` | the API contract matches the committed snapshot (routes + error codes + wire fields); and every pushed `refs/tags/vX.Y.Z` has a `## [X.Y.Z]` section in `CHANGELOG.md` | `scripts/verify/contract.mjs`, `scripts/verify/changelog.mjs` |
+| `pre-push` | the API contract matches the committed snapshot (routes + error codes + wire field names **and types** + each MCP tool's `inputSchema`); and every pushed `refs/tags/vX.Y.Z` has a `## [X.Y.Z]` section in `CHANGELOG.md` | `scripts/verify/contract.mjs`, `scripts/verify/changelog.mjs` |
 | `pre-tag` | the same two rules as `pre-push`, run by hand *before* `git tag` | `scripts/verify/contract.mjs`, `scripts/verify/changelog.mjs` |
 
 The contract gate runs on **every** push, not only a tag: the API ships in every

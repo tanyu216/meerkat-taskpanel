@@ -67,8 +67,15 @@ thing.
   and the current release line. It runs `node --test`, the coverage gate, and the
   `scripts/verify/*` checkers.
 - The **`docker` job** is the authoritative one: it builds `meerkat-taskpanel:verify` and runs
-  `docker/verify-in-container.sh`, exactly as `npm run verify:docker` does. See
-  [docker.md](docker.md#ci).
+  `docker/verify-in-container.sh`, exactly as `npm run verify:docker` does — including the
+  install + first-run end-to-end, which is a step *inside* that script rather than a
+  separate CI-only `docker run`. (`verify:docker` then adds a local-only compose deploy
+  smoke test, which is strictly extra.)
+
+`verify:docker` is not a substitute for the **`check` job**, and does not reproduce two of
+its properties: the Node **22/24 matrix** (the image is Node 22 only, so a Node-24-only
+regression is invisible locally) and the standalone `scripts/verify/version.mjs` /
+`bash -n` host checkers. See [docker.md](docker.md#ci).
 
 The **coverage gate** is `npm run test:coverage`, the same script
 `docker/verify-in-container.sh` runs. The line/branch/function floors live **once**, in

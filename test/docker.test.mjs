@@ -576,7 +576,7 @@ describe("static: serve-skeleton", () => {
 });
 
 describe("static: verify-in-container.sh", () => {
-  it("is valid bash and runs the four verification steps", async () => {
+  it("is valid bash and runs the full verification step list", async () => {
     const path = join(ROOT, "docker", "verify-in-container.sh");
     assert.ok(existsSync(path), "docker/verify-in-container.sh must exist");
 
@@ -589,6 +589,115 @@ describe("static: verify-in-container.sh", () => {
     assert.match(text, /npm run check/);
     assert.match(text, /install\.sh --target all --dry-run/);
     assert.match(text, /scripts\/verify\/profiles\.mjs/);
+  });
+
+  it("runs the install + first-run end-to-end, so local and CI cover the same ground", async () => {
+    // The e2e used to be a separate `docker run` in CI only, which let
+    // `npm run verify:docker` be green while CI was red. It belongs to this script, on a
+    // line of its own (anchored, so a commented-out call does not satisfy the assertion).
+    const text = await read("docker/verify-in-container.sh");
+    assert.match(text, /^bash scripts\/verify\/install-e2e\.sh$/m);
+
+    // ...and the CI job must not duplicate it as a second command either.
+    const ci = await read(".github/workflows/check.yml");
+    assert.doesNotMatch(
+      ci,
+      /run: docker run --rm task-panel:verify bash scripts\/verify\/install-e2e\.sh/,
+      "the e2e must run via verify-in-container.sh, not as a separate CI step",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// static: install-e2e.sh identity
+//
+// The script used to act as one agent and assign the card to another, which the
+// claim policy (`src/core/domain/claim.mjs`) refuses with `not_assignee` — the
+// 061638 regression. One `AGENT_ID` must feed *both* the acting identity
+// (`TASKCTL_AGENT`) and the card's `--assignee`, so the two can never drift.
+// Every predicate is anchored to a whole, comment-free line, so neither a
+// commented-out nor a partial edit can satisfy or trip it.
+// ---------------------------------------------------------------------------
+
+/** Problem list for install-e2e.sh's identity wiring; `[]` means same-source. */
+function installE2eIdentityProblems(text) {
+  // A line whose first non-whitespace character is `#` is a comment: it can
+  // neither define nor use the identity, so drop it before matching.
+  const active = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "" && !line.startsWith("#"));
+
+  const problems = [];
+
+  const defs = active.filter((line) => line.startsWith("AGENT_ID="));
+  if (defs.length !== 1) {
+    problems.push(`expected exactly one AGENT_ID definition, found ${defs.length}`);
+  } else if (!/^AGENT_ID="[^"$]+"$/.test(defs[0])) {
+    problems.push(`AGENT_ID must be one literal, not a reference: ${defs[0]}`);
+  }
+
+  const exports = active.filter((line) => line.startsWith("export TASKCTL_AGENT="));
+  if (exports.length !== 1) {
+    problems.push(`expected exactly one TASKCTL_AGENT export, found ${exports.length}`);
+  } else if (exports[0] !== 'export TASKCTL_AGENT="$AGENT_ID"') {
+    problems.push(`TASKCTL_AGENT must come from $AGENT_ID: ${exports[0]}`);
+  }
+
+  // The card's assignee must be the *same* source, so a divergent hardcoded
+  // literal (`--assignee install-e2e`) is caught here — the mutation C case.
+  const assignees = active.filter((line) => /(^|\s)--assignee\b/.test(line));
+  if (assignees.length !== 1) {
+    problems.push(`expected exactly one --assignee, found ${assignees.length}`);
+  }
+  for (const line of assignees) {
+    if (!/^--assignee\s+"\$AGENT_ID"\)?"$/.test(line)) {
+      problems.push(`--assignee must take $AGENT_ID, got: ${line}`);
+    }
+  }
+
+  return problems;
+}
+
+describe("static: install-e2e.sh identity", () => {
+  it("acts as the same agent it assigns the card to (one AGENT_ID source)", async () => {
+    const text = await read("scripts/verify/install-e2e.sh");
+    assert.deepEqual(installE2eIdentityProblems(text), []);
+  });
+
+  it("ignores commented-out lines when judging same-source", () => {
+    const text = [
+      '# --assignee "install-e2e"',
+      "# export TASKCTL_AGENT=whatever",
+      'AGENT_ID="bot"',
+      'export TASKCTL_AGENT="$AGENT_ID"',
+      '--assignee "$AGENT_ID")"',
+    ].join("\n");
+    assert.deepEqual(installE2eIdentityProblems(text), []);
+  });
+
+  it("goes red when the assignee drifts back to its own literal (mutation C)", async () => {
+    const text = await read("scripts/verify/install-e2e.sh");
+    // If the script is already mutated on disk the replace is a no-op and the
+    // guard flags the file as-is — either way it must report the drift.
+    const mutated = text.replace(/--assignee\s+"\$AGENT_ID"\)?"/, '--assignee "install-e2e"');
+
+    const problems = installE2eIdentityProblems(mutated);
+    assert.ok(
+      problems.some((p) => p.includes("--assignee")),
+      `the guard must flag the divergent assignee, got: ${JSON.stringify(problems)}`,
+    );
+  });
+
+  it("goes red when the actor stops coming from AGENT_ID", async () => {
+    const text = await read("scripts/verify/install-e2e.sh");
+    const mutated = text.replace('export TASKCTL_AGENT="$AGENT_ID"', 'export TASKCTL_AGENT="install-e2e"');
+
+    const problems = installE2eIdentityProblems(mutated);
+    assert.ok(
+      problems.some((p) => p.includes("TASKCTL_AGENT")),
+      `the guard must flag the divergent actor, got: ${JSON.stringify(problems)}`,
+    );
   });
 });
 

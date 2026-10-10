@@ -63,6 +63,10 @@ jobs:
   # the only place the frontend gets built — the `webbuild` stage resolves `web/`'s
   # build-time devDependencies from the committed offline cache (`npm ci --offline`), not
   # from the network.
+  #
+  # The install + first-run end-to-end is a step *inside* `docker/verify-in-container.sh`,
+  # not a separate command here: when it lived only in this job, `npm run verify:docker`
+  # could be green while this job was red.
   docker:
     runs-on: ubuntu-latest
     steps:
@@ -73,9 +77,3 @@ jobs:
 
       - name: Run verification inside the container
         run: docker run --rm meerkat-taskpanel:verify bash docker/verify-in-container.sh
-
-      # Same image, same in-container command a developer runs, so a green CI run
-      # and a green local run mean the same thing: install the skill for all four
-      # hosts with a throwaway HOME, then drive the real CLI against a real taskd.
-      - name: Install + first-run end-to-end
-        run: docker run --rm meerkat-taskpanel:verify bash scripts/verify/install-e2e.sh

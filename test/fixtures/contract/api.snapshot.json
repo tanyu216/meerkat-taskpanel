@@ -191,222 +191,558 @@
   ],
   "mcp_tools": [
     {
-      "arguments": [
-        "limit",
-        "q"
-      ],
       "name": "assignee_list",
-      "required": []
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "type": "integer"
+          },
+          "q": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      }
     },
     {
-      "arguments": [
-        "limit",
-        "project_id",
-        "q"
-      ],
       "name": "label_list",
-      "required": []
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "type": "integer"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "q": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      }
     },
     {
-      "arguments": [
-        "include_archived"
-      ],
       "name": "project_list",
-      "required": []
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "include_archived": {
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "type": "object"
+      }
     },
     {
-      "arguments": [
-        "limit",
-        "q"
-      ],
       "name": "reporter_list",
-      "required": []
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "type": "integer"
+          },
+          "q": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      }
     },
     {
-      "arguments": [
-        "ref",
-        "session_id",
-        "status"
-      ],
       "name": "session_close",
-      "required": [
-        "ref",
-        "session_id"
-      ]
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "closed",
+              "failed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "session_id"
+        ],
+        "type": "object"
+      }
     },
     {
-      "arguments": [
-        "ref"
-      ],
       "name": "session_list",
-      "required": [
-        "ref"
-      ]
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "ref": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "type": "object"
+      }
     },
     {
-      "arguments": [
-        "backend",
-        "owner",
-        "phase",
-        "pid",
-        "ref",
-        "seg",
-        "session_id"
-      ],
       "name": "session_set",
-      "required": [
-        "backend",
-        "ref",
-        "seg"
-      ]
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "backend": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "pid": {
+            "type": "integer"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "seg": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "backend",
+          "ref",
+          "seg"
+        ],
+        "type": "object"
+      }
     },
     {
-      "arguments": [
-        "body",
-        "kind",
-        "ref",
-        "refs"
-      ],
       "name": "task_comment_add",
-      "required": [
-        "body",
-        "ref"
-      ]
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "change",
+              "confirm",
+              "decision",
+              "defect",
+              "discuss",
+              "note"
+            ],
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "body",
+          "ref"
+        ],
+        "type": "object"
+      }
     },
     {
-      "arguments": [
-        "after",
-        "kind",
-        "limit",
-        "ref"
-      ],
       "name": "task_comment_list",
-      "required": [
-        "ref"
-      ]
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "change",
+              "confirm",
+              "decision",
+              "defect",
+              "discuss",
+              "note"
+            ],
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "ref": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "type": "object"
+      }
     },
     {
-      "arguments": [
-        "acceptance",
-        "assignee",
-        "assignee_id",
-        "assignee_kind",
-        "description",
-        "force_create",
-        "kind",
-        "labels",
-        "meta",
-        "priority",
-        "project_id",
-        "reporter",
-        "reporter_id",
-        "reporter_kind",
-        "status",
-        "title"
-      ],
       "name": "task_create",
-      "required": [
-        "project_id",
-        "title"
-      ]
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "acceptance": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "assignee": {
+            "type": "string"
+          },
+          "assignee_id": {
+            "type": "string"
+          },
+          "assignee_kind": {
+            "enum": [
+              "agent",
+              "human"
+            ],
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "force_create": {
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "epic",
+              "task"
+            ],
+            "type": "string"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "meta": {
+            "type": "object"
+          },
+          "priority": {
+            "enum": [
+              "high",
+              "low",
+              "medium",
+              "urgent"
+            ],
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "reporter": {
+            "type": "string"
+          },
+          "reporter_id": {
+            "type": "string"
+          },
+          "reporter_kind": {
+            "enum": [
+              "agent",
+              "human"
+            ],
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "backlog",
+              "blocked",
+              "canceled",
+              "done",
+              "in_progress",
+              "in_review",
+              "todo"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "title"
+        ],
+        "type": "object"
+      }
     },
     {
-      "arguments": [
-        "if_version",
-        "no_report",
-        "reason",
-        "ref",
-        "report",
-        "seg",
-        "session_id"
-      ],
       "name": "task_deliver",
-      "required": [
-        "ref"
-      ]
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "if_version": {
+            "type": "integer"
+          },
+          "no_report": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "report": {
+            "type": "object"
+          },
+          "seg": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "type": "object"
+      }
     },
     {
-      "arguments": [
-        "ref"
-      ],
       "name": "task_get",
-      "required": [
-        "ref"
-      ]
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "ref": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "type": "object"
+      }
     },
     {
-      "arguments": [
-        "assignee_id",
-        "include_archived",
-        "limit",
-        "project_id",
-        "status"
-      ],
       "name": "task_list",
-      "required": []
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "assignee_id": {
+            "type": "string"
+          },
+          "include_archived": {
+            "type": "boolean"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "backlog",
+                  "blocked",
+                  "canceled",
+                  "done",
+                  "in_progress",
+                  "in_review",
+                  "todo"
+                ],
+                "type": "string"
+              },
+              {
+                "items": {
+                  "enum": [
+                    "backlog",
+                    "blocked",
+                    "canceled",
+                    "done",
+                    "in_progress",
+                    "in_review",
+                    "todo"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "required": [],
+        "type": "object"
+      }
     },
     {
-      "arguments": [
-        "if_version",
-        "ref",
-        "to"
-      ],
       "name": "task_move",
-      "required": [
-        "ref",
-        "to"
-      ]
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "if_version": {
+            "type": "integer"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "to": {
+            "enum": [
+              "backlog",
+              "blocked",
+              "canceled",
+              "done",
+              "in_progress",
+              "in_review",
+              "todo"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "to"
+        ],
+        "type": "object"
+      }
     },
     {
-      "arguments": [
-        "force",
-        "ref",
-        "target",
-        "type"
-      ],
       "name": "task_relation_add",
-      "required": [
-        "ref",
-        "target",
-        "type"
-      ]
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "force": {
+            "type": "boolean"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "blocks",
+              "parent",
+              "related"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "target",
+          "type"
+        ],
+        "type": "object"
+      }
     },
     {
-      "arguments": [
-        "ref"
-      ],
       "name": "task_relation_list",
-      "required": [
-        "ref"
-      ]
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "ref": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "type": "object"
+      }
     },
     {
-      "arguments": [
-        "ref",
-        "relation_id"
-      ],
       "name": "task_relation_remove",
-      "required": [
-        "ref",
-        "relation_id"
-      ]
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "relation_id": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ref",
+          "relation_id"
+        ],
+        "type": "object"
+      }
     },
     {
-      "arguments": [
-        "acceptance",
-        "description",
-        "if_version",
-        "kind",
-        "labels",
-        "meta",
-        "priority",
-        "ref",
-        "title"
-      ],
       "name": "task_update",
-      "required": [
-        "ref"
-      ]
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "acceptance": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "description": {
+            "type": "string"
+          },
+          "if_version": {
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "epic",
+              "task"
+            ],
+            "type": "string"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "meta": {
+            "type": "object"
+          },
+          "priority": {
+            "enum": [
+              "high",
+              "low",
+              "medium",
+              "urgent"
+            ],
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "type": "object"
+      }
     }
   ],
   "routes": [
@@ -555,181 +891,181 @@
       "path": "/meta"
     }
   ],
-  "schema_version": 1,
+  "schema_version": 2,
   "wire": [
     {
-      "fields": [
-        "actor_id",
-        "actor_kind",
-        "changes",
-        "created_at",
-        "event",
-        "id",
-        "revision",
-        "task_id"
-      ],
+      "fields": {
+        "actor_id": "string",
+        "actor_kind": "string",
+        "changes": "object",
+        "created_at": "string",
+        "event": "string",
+        "id": "string",
+        "revision": "number",
+        "task_id": "string"
+      },
       "shape": "activity"
     },
     {
-      "fields": [
-        "agent_session",
-        "author_id",
-        "author_kind",
-        "body",
-        "created_at",
-        "id",
-        "kind",
-        "refs",
-        "task_id",
-        "version"
-      ],
+      "fields": {
+        "agent_session": "string",
+        "author_id": "string",
+        "author_kind": "string",
+        "body": "string",
+        "created_at": "string",
+        "id": "string",
+        "kind": "string",
+        "refs": "array",
+        "task_id": "string",
+        "version": "number"
+      },
       "shape": "comment"
     },
     {
-      "fields": [
-        "display_name",
-        "first_seen_at",
-        "id",
-        "kind",
-        "last_seen_at",
-        "normalized_name",
-        "platform",
-        "use_count"
-      ],
+      "fields": {
+        "display_name": "string",
+        "first_seen_at": "string",
+        "id": "string",
+        "kind": "string",
+        "last_seen_at": "string",
+        "normalized_name": "string",
+        "platform": "string",
+        "use_count": "number"
+      },
       "shape": "dictionary_entry"
     },
     {
-      "fields": [
-        "archived_at",
-        "color",
-        "display_name",
-        "first_seen_at",
-        "id",
-        "last_seen_at",
-        "norm",
-        "project_id",
-        "use_count"
-      ],
+      "fields": {
+        "archived_at": "string",
+        "color": "string",
+        "display_name": "string",
+        "first_seen_at": "string",
+        "id": "string",
+        "last_seen_at": "string",
+        "norm": "string",
+        "project_id": "string",
+        "use_count": "number"
+      },
       "shape": "label"
     },
     {
-      "fields": [
-        "archived_at",
-        "created_at",
-        "id",
-        "labels",
-        "meta",
-        "name",
-        "readme",
-        "updated_at",
-        "workspace_path"
-      ],
+      "fields": {
+        "archived_at": "string",
+        "created_at": "string",
+        "id": "string",
+        "labels": "array",
+        "meta": "object",
+        "name": "string",
+        "readme": "string",
+        "updated_at": "string",
+        "workspace_path": "string"
+      },
       "shape": "project"
     },
     {
-      "fields": [
-        "created_at",
-        "id",
-        "origin",
-        "source",
-        "target",
-        "type"
-      ],
+      "fields": {
+        "created_at": "string",
+        "id": "string",
+        "origin": "string",
+        "source": "string",
+        "target": "string",
+        "type": "string"
+      },
       "shape": "relation"
     },
     {
-      "fields": [
-        "acceptance",
-        "author_id",
-        "author_kind",
-        "conclusion",
-        "created_at",
-        "evidence",
-        "evidence_truncated",
-        "id",
-        "leftovers",
-        "round",
-        "seg",
-        "session_id",
-        "task_id"
-      ],
+      "fields": {
+        "acceptance": "array",
+        "author_id": "string",
+        "author_kind": "string",
+        "conclusion": "string",
+        "created_at": "string",
+        "evidence": "array",
+        "evidence_truncated": "boolean",
+        "id": "string",
+        "leftovers": "string",
+        "round": "number",
+        "seg": "string",
+        "session_id": "string",
+        "task_id": "string"
+      },
       "shape": "report"
     },
     {
-      "fields": [
-        "backend",
-        "id",
-        "owner",
-        "phase",
-        "pid",
-        "seg",
-        "session_id",
-        "status",
-        "task_id",
-        "ts"
-      ],
+      "fields": {
+        "backend": "string",
+        "id": "string",
+        "owner": "string",
+        "phase": "string",
+        "pid": "number",
+        "seg": "string",
+        "session_id": "string",
+        "status": "string",
+        "task_id": "string",
+        "ts": "string"
+      },
       "shape": "session"
     },
     {
-      "fields": [
-        "agent_session",
-        "archived_at",
-        "assignee",
-        "assignee_id",
-        "blocked_at",
-        "claimed_at",
-        "claimed_by",
-        "created_at",
-        "creator_id",
-        "creator_kind",
-        "delivery_round",
-        "description",
-        "heartbeat_at",
-        "id",
-        "identifier",
-        "kind",
-        "labels",
-        "meta",
-        "priority",
-        "project_id",
-        "report_latest_id",
-        "report_waiver",
-        "reporter",
-        "reporter_id",
-        "sort_order",
-        "source_path",
-        "status",
-        "status_changed_at",
-        "thread_id",
-        "thread_source",
-        "title",
-        "updated_at",
-        "version"
-      ],
+      "fields": {
+        "agent_session": "string",
+        "archived_at": "string",
+        "assignee": "object",
+        "assignee_id": "string",
+        "blocked_at": "string",
+        "claimed_at": "string",
+        "claimed_by": "string",
+        "created_at": "string",
+        "creator_id": "string",
+        "creator_kind": "string",
+        "delivery_round": "number",
+        "description": "string",
+        "heartbeat_at": "string",
+        "id": "string",
+        "identifier": "string",
+        "kind": "string",
+        "labels": "array",
+        "meta": "object",
+        "priority": "string",
+        "project_id": "string",
+        "report_latest_id": "string",
+        "report_waiver": "object",
+        "reporter": "object",
+        "reporter_id": "string",
+        "sort_order": "number",
+        "source_path": "string",
+        "status": "string",
+        "status_changed_at": "string",
+        "thread_id": "string",
+        "thread_source": "string",
+        "title": "string",
+        "updated_at": "string",
+        "version": "number"
+      },
       "shape": "task"
     },
     {
-      "fields": [
-        "display_name",
-        "id",
-        "kind"
-      ],
+      "fields": {
+        "display_name": "string",
+        "id": "string",
+        "kind": "string"
+      },
       "shape": "task.assignee"
     },
     {
-      "fields": [
-        "reason",
-        "round",
-        "waived_at"
-      ],
+      "fields": {
+        "reason": "string",
+        "round": "number",
+        "waived_at": "string"
+      },
       "shape": "task.report_waiver"
     },
     {
-      "fields": [
-        "display_name",
-        "id",
-        "kind"
-      ],
+      "fields": {
+        "display_name": "string",
+        "id": "string",
+        "kind": "string"
+      },
       "shape": "task.reporter"
     }
   ]
