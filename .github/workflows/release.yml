@@ -2,9 +2,17 @@ name: release
 
 # A tag push (`v1.0.0`) is the release trigger. The job re-runs the same checks
 # as `check.yml`, then builds the frontend and the release tree, packages the
-# npm tarball, verifies the tarball's contents, and opens a **draft** GitHub
-# Release. Nothing is published anywhere automatically — a human promotes the
-# draft (npm publish / marketplace) from there.
+# npm tarball, verifies the tarball's contents, generates the SBOM, and opens a
+# **draft** GitHub Release carrying both artifacts.
+#
+# **Publishing is a human action, and this file has no path to it.** There is no
+# `npm publish`, no marketplace upload and no registry token here (decision D2=A):
+# the job stops at `gh release create --draft`, a human reviews the draft and
+# promotes it, and nothing in this workflow can publish — or be made to publish —
+# without an explicit edit a human has to make. The draft's asset list is closed
+# on purpose: the npm tarball plus `sbom.spdx.json`. SBOM generation is a required
+# step, not best-effort, so "a release draft with no SBOM" is not a state this
+# pipeline can reach (see `docs/publishing.md` §2.1 and §3).
 on:
   push:
     tags: ["v*"]
@@ -74,9 +82,33 @@ jobs:
       - name: Verify the tarball's contents
         run: node scripts/release/pack-manifest.mjs "${{ steps.pack.outputs.tarball }}"
 
-      # A DRAFT only. Promotion is a human decision; this workflow never
-      # publishes to the registry or a marketplace.
-      - name: Open the GitHub Release draft
+      # The SBOM is a release artifact, not a side effect: it is produced here, by
+      # the release pipeline, so the bill of materials describes exactly the tagged
+      # tree the tarball was packed from. Same tool and format as `security-scan.yml`
+      # (syft, SPDX JSON); that workflow also attaches an SBOM to the draft,
+      # best-effort, as a second pair of eyes. This step is the authoritative one and
+      # is deliberately **required**, not `continue-on-error`: if syft cannot run, the
+      # job fails and no draft is opened, which is what closes the "release published
+      # without an SBOM" gap (T-20261010-042400-depsec conformance note).
+      - name: Generate the SBOM (syft, SPDX JSON)
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: sbom.spdx.json
+          artifact-name: meerkat-taskpanel-sbom.spdx.json
+          upload-artifact: true
+          upload-release-assets: false
+
+      # Named, so a red run says which artifact is missing instead of leaving it to
+      # the release step's own `test -s` two steps later.
+      - name: The SBOM exists and is non-empty
+        run: test -s sbom.spdx.json
+
+      # A DRAFT only, and the last step: the workflow stops here. Promotion is a
+      # human decision — there is no publish path in this file, and no token that
+      # would let one run.
+      - name: Open the GitHub Release draft (tarball + SBOM)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -92,7 +124,12 @@ jobs:
           if [ ! -s release-notes.md ]; then
             echo "Meerkat TaskPanel ${GITHUB_REF_NAME}" > release-notes.md
           fi
-          gh release create "$GITHUB_REF_NAME" "${{ steps.pack.outputs.tarball }}" \
+          # Both release artifacts, always: the npm tarball and the SBOM. The list is
+          # closed — no wildcard, nothing else in the workspace is uploaded.
+          test -s sbom.spdx.json
+          gh release create "$GITHUB_REF_NAME" \
+            "${{ steps.pack.outputs.tarball }}" \
+            sbom.spdx.json \
             --draft \
             --title "Meerkat TaskPanel ${GITHUB_REF_NAME}" \
             --notes-file release-notes.md
