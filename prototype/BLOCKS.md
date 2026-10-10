@@ -31,7 +31,7 @@ headings below.
 | | |
 |---|---|
 | Root | `header[data-topbar]` |
-| Brand | `[data-brand]` → `.td-logo` (**Signal Bars**, `BRAND.md` §5) + `[data-i18n="app.brand"]` + `[data-i18n="app.tagline"]` |
+| Brand | `[data-brand]` → `.td-logo` (**Sentinel Watch**, `BRAND.md` §5) + `[data-i18n="app.brand"]` + `[data-i18n="app.tagline"]` |
 | Project switcher | `[data-project-switcher]` (`<details class="dropdown">`) · `[data-project-current]` · `[data-project-option="…"]` · `[data-project-new]` · `[data-project-switcher-icon]` |
 | Search | `[data-search]` → `[data-search-input]` |
 | Filters toggle | `[data-filter-toggle]` (`aria-pressed`, `aria-controls="td-filters"`) |
@@ -55,8 +55,10 @@ direct controls in the sidebar footer in **v1.4** (B03 · three-state theme cycl
 menu / B19). The bar holds no display-mode control of any kind — restated and re-checked in **R3**,
 which changed the brand mark in this bar but touched no control in it.
 
-**The brand glyph is the Signal Bars mark** (R3), not a generic icon: three capsules
-bottom-aligned at `y = 27` with a delivered node above the tallest. It is drawn inline at
+**The brand glyph is the Sentinel Watch mark** (R3; geometry remastered in the v2 brand
+round), not a generic icon: three upright meerkats of a mob on one baseline at `y = 27`,
+rising left-low to right-high, the tallest on duty and carrying the brand line, with one
+watch signal floating clear above it. It is drawn inline at
 18px, `aria-hidden`, on a `0 0 32 32` viewBox, and its two fills are
 `var(--color-td-ink)` and `var(--color-td-accent)` — so one element serves both themes.
 `favicon.svg` is the same geometry with a `prefers-color-scheme` pair.
@@ -256,9 +258,9 @@ column has no visible card) or `data-empty-kind="no-results"` (one per board,
 revealed when a filter matches nothing).
 
 **The large empty state carries the brand mark** (R3): `[data-empty-lg]` with
-`data-empty-kind="no-results"` opens on a 28px Signal Bars mark, which replaced the
-generic no-results glyph. Its two lead bars are `--color-td-ink-3` rather than
-`--color-td-ink`, so on an empty board the accent node is still the only lit element on
+`data-empty-kind="no-results"` opens on a 28px Sentinel Watch mark, which replaced the
+generic no-results glyph. Its two lead meerkats are `--color-td-ink-3` rather than
+`--color-td-ink`, so on an empty board the on-duty sentinel is still the only lit element on
 the surface.
 
 ## B13 · Loading state
@@ -683,7 +685,7 @@ the `· new` marker, exactly as B22 and B24 do, so R5 introduces no copy for eit
    `--status-color` / `--pri-color`, or takes its shell from daisyUI and its face
    from a token override. A scan for six-digit hex in `src/input.css` returns the
    token block and nothing else, and the only literals left in the markup are the
-   two `--color-td-*` references inside the Signal Bars mark and its favicon.
+   two `--color-td-*` references inside the Sentinel Watch mark and its favicon.
 9. **Every daisyUI component keeps its hook name.** An element may gain
    `badge` / `avatar` / `tabs` / `progress` / `toggle` / `select` classes, but the
    `data-*` attribute it answers to never moves — which is what let R3 re-shell

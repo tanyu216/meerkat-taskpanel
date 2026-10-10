@@ -1,26 +1,46 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="MeerkatTaskPanel">
   <title>MeerkatTaskPanel</title>
-  <!-- Signal Bars — renders the BRAND.md §5 geometry (viewBox 0 0 32 32) as a
-       favicon. The mark is fixed; only the two fills follow the browser colour
-       scheme, so the tab strip stays legible on a light or a dark ground. -->
+  <!-- Sentinel Watch — renders the BRAND.md §5 geometry (viewBox 0 0 32 32) as
+       a favicon, the same reading as design/brand/favicon-32.png. The mark is
+       fixed; only the two fills follow the browser colour scheme, so the tab
+       strip stays legible on a light or a dark ground. -->
   <style>
-    .bar {
+    .mob {
       fill: #14181b;
     }
-    .live {
+    .sentinel {
       fill: #0f7a73;
     }
     @media (prefers-color-scheme: dark) {
-      .bar {
+      .mob {
         fill: #e6edf0;
       }
-      .live {
+      .sentinel {
         fill: #2aa79b;
       }
     }
   </style>
-  <rect class="bar" x="5" y="17" width="6" height="10" rx="3" />
-  <rect class="bar" x="13" y="12" width="6" height="15" rx="3" />
-  <rect class="live" x="21" y="10" width="6" height="17" rx="3" />
-  <circle class="live" cx="24" cy="6" r="2.75" />
+  <!-- sentinel 1 · cx 7.2 · top 17.6 -->
+  <g class="mob">
+    <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6" />
+    <circle cx="7.2" cy="20.2" r="2.6" />
+    <circle cx="5.3" cy="18.6" r="0.85" />
+    <circle cx="9.1" cy="18.6" r="0.85" />
+  </g>
+  <!-- sentinel 2 · cx 16 · top 12.4 -->
+  <g class="mob">
+    <rect x="13.4" y="12.4" width="5.2" height="14.6" rx="2.6" />
+    <circle cx="16" cy="15" r="2.6" />
+    <circle cx="14.1" cy="13.4" r="0.85" />
+    <circle cx="17.9" cy="13.4" r="0.85" />
+  </g>
+  <!-- sentinel 3 (on duty, tallest) · cx 24.8 · top 9.6 -->
+  <g class="sentinel">
+    <rect x="22.2" y="9.6" width="5.2" height="17.4" rx="2.6" />
+    <circle cx="24.8" cy="12.2" r="2.6" />
+    <circle cx="22.9" cy="10.6" r="0.85" />
+    <circle cx="26.7" cy="10.6" r="0.85" />
+  </g>
+  <!-- watch signal — clear of the sentinel's crown by 2.7 -->
+  <circle class="sentinel" cx="24.8" cy="5.2" r="1.7" />
 </svg>

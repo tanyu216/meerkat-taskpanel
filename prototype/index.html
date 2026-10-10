@@ -18,14 +18,34 @@
            ================================================================ -->
       <header class="td-topbar" data-topbar>
         <a class="td-brand" href="#" data-brand>
-          <!-- Signal Bars — the brand mark, geometry fixed by BRAND.md §5.
-               bar1/bar2 read --color-td-ink, bar3 + node read --color-td-accent,
-               so the mark follows the active theme with no second file. -->
+          <!-- Sentinel Watch — the brand mark, geometry fixed by BRAND.md §5.
+               The two lead meerkats read --color-td-ink; the on-duty sentinel
+               and its watch signal read --color-td-accent, so the mark follows
+               the active theme with no second file. -->
           <svg class="td-logo" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-            <rect x="5" y="17" width="6" height="10" rx="3" fill="var(--color-td-ink)" />
-            <rect x="13" y="12" width="6" height="15" rx="3" fill="var(--color-td-ink)" />
-            <rect x="21" y="10" width="6" height="17" rx="3" fill="var(--color-td-accent)" />
-            <circle cx="24" cy="6" r="2.75" fill="var(--color-td-accent)" />
+            <!-- sentinel 1 · cx 7.2 · top 17.6 -->
+            <g fill="var(--color-td-ink)">
+              <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6" />
+              <circle cx="7.2" cy="20.2" r="2.6" />
+              <circle cx="5.3" cy="18.6" r="0.85" />
+              <circle cx="9.1" cy="18.6" r="0.85" />
+            </g>
+            <!-- sentinel 2 · cx 16 · top 12.4 -->
+            <g fill="var(--color-td-ink)">
+              <rect x="13.4" y="12.4" width="5.2" height="14.6" rx="2.6" />
+              <circle cx="16" cy="15" r="2.6" />
+              <circle cx="14.1" cy="13.4" r="0.85" />
+              <circle cx="17.9" cy="13.4" r="0.85" />
+            </g>
+            <!-- sentinel 3 (on duty, tallest) · cx 24.8 · top 9.6 -->
+            <g fill="var(--color-td-accent)">
+              <rect x="22.2" y="9.6" width="5.2" height="17.4" rx="2.6" />
+              <circle cx="24.8" cy="12.2" r="2.6" />
+              <circle cx="22.9" cy="10.6" r="0.85" />
+              <circle cx="26.7" cy="10.6" r="0.85" />
+            </g>
+            <!-- watch signal — clear of the sentinel's crown by 2.7 -->
+            <circle cx="24.8" cy="5.2" r="1.7" fill="var(--color-td-accent)" />
           </svg>
           <span class="td-brand-name" data-i18n="app.brand">MeerkatTaskPanel</span>
           <span class="td-brand-sub" data-i18n="app.tagline">Agent Task Collaboration</span>
@@ -458,12 +478,33 @@
 
         <!-- B12 · Empty state — no results -->
         <div class="td-empty td-empty-lg" data-empty data-empty-kind="no-results" hidden>
-          <!-- the brand mark stands in for the generic no-results glyph -->
+          <!-- the brand mark stands in for the generic no-results glyph. The two
+               lead meerkats drop to --color-td-ink-3 so the on-duty sentinel and
+               its watch signal stay the only lit elements on an empty board. -->
           <svg class="td-logo td-logo-lg" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-            <rect x="5" y="17" width="6" height="10" rx="3" fill="var(--color-td-ink-3)" />
-            <rect x="13" y="12" width="6" height="15" rx="3" fill="var(--color-td-ink-3)" />
-            <rect x="21" y="10" width="6" height="17" rx="3" fill="var(--color-td-accent)" />
-            <circle cx="24" cy="6" r="2.75" fill="var(--color-td-accent)" />
+            <!-- sentinel 1 · cx 7.2 · top 17.6 -->
+            <g fill="var(--color-td-ink-3)">
+              <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6" />
+              <circle cx="7.2" cy="20.2" r="2.6" />
+              <circle cx="5.3" cy="18.6" r="0.85" />
+              <circle cx="9.1" cy="18.6" r="0.85" />
+            </g>
+            <!-- sentinel 2 · cx 16 · top 12.4 -->
+            <g fill="var(--color-td-ink-3)">
+              <rect x="13.4" y="12.4" width="5.2" height="14.6" rx="2.6" />
+              <circle cx="16" cy="15" r="2.6" />
+              <circle cx="14.1" cy="13.4" r="0.85" />
+              <circle cx="17.9" cy="13.4" r="0.85" />
+            </g>
+            <!-- sentinel 3 (on duty, tallest) · cx 24.8 · top 9.6 -->
+            <g fill="var(--color-td-accent)">
+              <rect x="22.2" y="9.6" width="5.2" height="17.4" rx="2.6" />
+              <circle cx="24.8" cy="12.2" r="2.6" />
+              <circle cx="22.9" cy="10.6" r="0.85" />
+              <circle cx="26.7" cy="10.6" r="0.85" />
+            </g>
+            <!-- watch signal — clear of the sentinel's crown by 2.7 -->
+            <circle cx="24.8" cy="5.2" r="1.7" fill="var(--color-td-accent)" />
           </svg>
           <span class="td-empty-title" data-i18n="noResults.title">No tasks match your filters</span>
           <span class="td-empty-hint" data-i18n="noResults.hint">Adjust the search or clear the filters to see the full board.</span>

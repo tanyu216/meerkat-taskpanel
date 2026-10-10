@@ -6,7 +6,7 @@
 > `design-spec-addendum-v1.2.md` (sidebar-footer switches, access-model rewrite) and
 > `design-spec-v1.3.md` (footer split into three equal thirds; theme and language become
 > dialogs alongside settings), and then by **R3** — `design-spec.md` (brand re-skin,
-> Signal Bars mark, rename to MeerkatTaskPanel) together with `design-spec-r3-addendum.md`
+> the brand mark, rename to MeerkatTaskPanel) together with `design-spec-r3-addendum.md`
 > (daisyUI componentisation, the assignee/reporter controls, the two-column create
 > dialog and the Markdown editor).
 > Every value below is copied from those documents. **Nothing here is invented**;
@@ -37,10 +37,11 @@
   Icons are inline SVG, linear stroke 1.5.
 - Agents and humans are visually distinguishable without a second theme:
   dashed ring + semantic platform badge, same palette.
-- The mark is **Signal Bars** — three rising capsules and one delivered node, the
-  board's own progression. It is drawn from `design/brand/BRAND.md` §5, reads its
-  two fills from `--color-td-ink` and `--color-td-accent`, and appears in the top
-  bar, in the large empty state and as the favicon.
+- The mark is **Sentinel Watch** — three upright meerkats of a mob rising left-low
+  to right-high, the tallest on duty and carrying the brand line, with one watch
+  signal floating clear above it. It is drawn from `design/brand/BRAND.md` §5,
+  reads its two fills from `--color-td-ink` and `--color-td-accent`, and appears
+  in the top bar, in the large empty state and as the favicon.
 
 **Anti-patterns (a presence is a fail):** gradient buttons · full-screenshot pill
 radii · coloured section blocks · multiple accents · shadow-floating cards ·
@@ -751,11 +752,12 @@ governs the values.
    in brand success, `.td-select`'s inline caret is `%237E8A91` (`--color-td-ink-3`), and
    `--shadow-pop` / `--scrim` are `rgba(15,20,23,…)` per `BRAND.md` §4. A scan for any
    six-digit hex in `src/input.css` returns only the token block itself.
-5. **The mark.** Signal Bars (`BRAND.md` §5) replaces the four-square glyph in
-   `[data-brand]`, stands in the large empty state (32px, in `--color-td-ink-3` so the
-   accent node stays the only lit element), and ships as `prototype/favicon.svg` with a
-   `prefers-color-scheme` pair. The mark reads its fills from `--color-td-ink` and
-   `--color-td-accent`, so there is one file for both themes, not two.
+5. **The mark.** **Sentinel Watch** (`BRAND.md` §5) replaces the four-square glyph in
+   `[data-brand]`, stands in the large empty state (28px, in `--color-td-ink-3` so the
+   on-duty sentinel stays the only lit element), and ships as `prototype/favicon.svg`
+   with a `prefers-color-scheme` pair. The mark reads its fills from `--color-td-ink`
+   and `--color-td-accent`, so there is one file for both themes, not two. (The v2
+   brand round remastered the geometry — see `BRAND.md` §7.)
 6. **The rename.** The product name is now `MeerkatTaskPanel` across `prototype/**` and
    `design/brand/**` — the i18n catalogue, the identifier-prefix map, the daisyUI theme
    name, the brand documents and the brand poster, which was re-rasterised from the

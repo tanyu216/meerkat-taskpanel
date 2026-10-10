@@ -39,7 +39,7 @@ three footer dialogs are secondary surfaces and stay hidden until opened.
 | `tw.css` | **build output** (Tailwind + daisyUI compiled). Do not edit by hand. |
 | `src/input.css` | the Tailwind build entry: `@theme` tokens, daisyUI themes, app components |
 | `app.js` | the jQuery (slim) interaction layer — interactions I1–I12, plus R3's roster controls (I13) and Markdown editor (I14) |
-| `favicon.svg` | the Signal Bars mark as the tab icon (renders `BRAND.md` §5; `prefers-color-scheme` pair) |
+| `favicon.svg` | the Sentinel Watch mark as the tab icon (renders `BRAND.md` §5; `prefers-color-scheme` pair) |
 | `vendor/jquery.slim.min.js` | jQuery 3.7.1 **slim** build, vendored locally |
 | `vendor/markdown-lite.js` | the Markdown → HTML renderer behind the editor's preview pane, vendored locally |
 | `vendor/highlight-lite.js` | the source highlighter behind the editor's syntax colours, vendored locally |

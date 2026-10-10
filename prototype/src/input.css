@@ -524,7 +524,7 @@ html[data-theme="dark"] {
     fill: none;
   }
 
-  /* Signal Bars (BRAND.md §5). A solid mark, not a stroked icon, so it takes no
+  /* Sentinel Watch (BRAND.md §5). A solid mark, not a stroked icon, so it takes no
      stroke and reads its two fills from the theme tokens instead of currentColor.
      The top bar aligns on baselines, and an SVG has none — `align-self: center`
      keeps the mark optically centred against the wordmark without moving the

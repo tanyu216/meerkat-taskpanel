@@ -752,8 +752,8 @@ const BLOCKS = [
       {
         kind: "manual",
         note:
-          "The large empty state opens on a 28px Signal Bars mark whose two lead bars read " +
-          "`--color-td-ink-3`, so on an empty board the accent node is the only lit element.",
+          "The large empty state opens on a 28px Sentinel Watch mark whose two lead meerkats read " +
+          "`--color-td-ink-3`, so on an empty board the on-duty sentinel is the only lit element.",
       },
     ],
   },
@@ -1414,8 +1414,8 @@ const CONSISTENCY_ITEMS = [
         note:
           "Every component reads `--color-td-*` (directly, or through `--status-color` / " +
           "`--pri-color`), takes its shell from daisyUI and its face from a token override. The " +
-          "only literals left in markup are the two `--color-td-*` references inside the Signal " +
-          "Bars mark and its favicon.",
+          "only literals left in markup are the two `--color-td-*` references inside the Sentinel " +
+          "Watch mark and its favicon.",
       },
     ],
   },
