@@ -226,7 +226,7 @@ language switch, and the wrap is now kept as reviewed rather than re-tuned (DESI
 | `09-no-results.png` | no-results empty state |
 | `10-create-task-modal.png` | create-task modal |
 | `11…14-viewport-*.png` | 1240 / 980 / 760 / 500 |
-| `15-no-javascript.png` | the same document with both `<script>` tags removed — proof that the core structure survives without JavaScript (all 18 cards visible, because the project filter is the only thing JS removes) |
+| `15-no-javascript.png` | the same document with its `<script>` tags removed — proof that the core structure survives without JavaScript (all 18 cards visible, because the project filter is the only thing JS removes) |
 | `16-states-panel.png` | the states gallery: loading, empty column, no results, error and the three toast kinds in one frame |
 | `17-access-panel.png` | B19 access & token settings, token masked |
 | `18-access-token-revealed.png` | the same panel with the stand-in token revealed |
@@ -257,6 +257,20 @@ language switch, and the wrap is now kept as reviewed rather than re-tuned (DESI
 | `46-detail-label-new-chip.png` | **R5 fix** — a name the drawer's roster does not hold accepted into a new chip |
 | `47-detail-label-remove.png` | **R5 fix** — a chip's `×` pressed: the chip is gone, the row falls back to the remaining labels |
 | `48-detail-label-narrow-760.png` | **R5 fix** — the same control with the drawer full-width at 760px: no overflow |
+
+**Sentinel Watch recapture:** the whole set was re-shot onto the current build, because
+two changes had landed after the last capture pass and the frames still showed the
+product before them — the brand mark (the v2 **Sentinel Watch**, `BRAND.md` §5) and the
+naming (`TaskPanel` → `MeerkatTaskPanel` on the top bar, the project switcher, the
+sidebar, the drawer's Project row and the access panel's theme block). Frames that reach
+the R4/R5 surfaces also pick up what those rounds added and the last pass left stale —
+the create dialog's Labels field (`24`, `25`, `28`, `29`, `30`) and the `td-chip` fill
+(`06`). All **48** frames were recaptured at **device-scale-factor 2** with transitions
+disabled and no transient toast, through the real handlers; `22-lang-menu` is taken with
+the dropdown open over the default English board, its current choice `English` marked.
+Six frames (`38`–`42`, `44`) come out byte-identical — nothing they show had moved. The
+four drawer-label frames (`45`–`48`) previously carried a doubled pixel density from the
+older capture path; they are now at the set's own 2×.
 
 **R5 recapture:** the right column gained one field, so `10-create-task-modal`,
 `23-create-two-col` and `26-create-narrow-760` were re-shot, and six frames are new —
@@ -325,7 +339,7 @@ build. The remaining captures are the v1.1 files, kept as-is; where a v1.1 frame
 the sidebar footer, it still shows the retired `Local · localhost` readout (DESIGN.md
 §15).
 
-Captured with headless Chrome at device-scale-factor 1 with transitions disabled so
+Captured with headless Chrome at device-scale-factor 2 with transitions disabled so
 the frames are deterministic; `index.html` itself is untouched.
 
 The state shots are driven through the real handlers — the capture page appends a
