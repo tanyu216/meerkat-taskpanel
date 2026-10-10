@@ -602,7 +602,7 @@ describe("static: verify-in-container.sh", () => {
     const ci = await read(".github/workflows/check.yml");
     assert.doesNotMatch(
       ci,
-      /run: docker run --rm task-panel:verify bash scripts\/verify\/install-e2e\.sh/,
+      /run: docker run --rm meerkat-taskpanel:verify bash scripts\/verify\/install-e2e\.sh/,
       "the e2e must run via verify-in-container.sh, not as a separate CI step",
     );
   });
