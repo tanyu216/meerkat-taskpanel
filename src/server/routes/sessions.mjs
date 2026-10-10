@@ -7,7 +7,25 @@
  */
 
 import { sessionToWire } from "../../shared/wire.mjs";
+import { int, REQUEST, shape, str } from "../requests.mjs";
 import { resolveTask } from "./tasks.mjs";
+
+// Declared request schemas, frozen by the contract snapshot (`routes[].request`)
+// — see `src/server/requests.mjs` for the vocabulary.
+
+/** `POST /api/v1/tasks/:ref/sessions` — register (or resume) a conversation. */
+const REGISTER_BODY = shape({
+  seg: str(),
+  owner: str(),
+  backend: str(),
+  session_id: str(),
+  phase: str(),
+  pid: int(),
+  status: REQUEST.sessionStatus,
+});
+
+/** `POST /api/v1/tasks/:ref/sessions/:sessionId/close` — `status` defaults to `closed`. */
+const CLOSE_BODY = shape({ status: REQUEST.sessionStatus });
 
 /** @param {object} router @param {{board: object}} surface */
 export function registerSessionRoutes(router, surface) {
@@ -32,7 +50,7 @@ export function registerSessionRoutes(router, surface) {
       actor,
     });
     return { session: sessionToWire(registered) };
-  });
+  }, { body: REGISTER_BODY });
 
   router.post("/api/v1/tasks/:ref/sessions/:sessionId/close", ({ params, body, actor }) => {
     resolveTask(repos, params.ref);
@@ -42,5 +60,5 @@ export function registerSessionRoutes(router, surface) {
       actor,
     });
     return { session: sessionToWire(closed) };
-  });
+  }, { body: CLOSE_BODY });
 }

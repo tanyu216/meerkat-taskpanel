@@ -748,150 +748,910 @@
   "routes": [
     {
       "method": "GET",
-      "path": "/api/v1/assignees"
+      "path": "/api/v1/assignees",
+      "request": {
+        "body": null,
+        "query": {
+          "additionalProperties": true,
+          "properties": {
+            "limit": {
+              "type": "string"
+            },
+            "q": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      }
     },
     {
       "method": "GET",
-      "path": "/api/v1/attachments/:id/content"
+      "path": "/api/v1/attachments/:id/content",
+      "request": {
+        "body": null,
+        "query": null
+      }
     },
     {
       "method": "PUT",
-      "path": "/api/v1/attachments/:id/content"
+      "path": "/api/v1/attachments/:id/content",
+      "request": {
+        "body": null,
+        "query": null
+      }
     },
     {
       "method": "GET",
-      "path": "/api/v1/events"
+      "path": "/api/v1/events",
+      "request": {
+        "body": null,
+        "query": {
+          "additionalProperties": true,
+          "properties": {
+            "after": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      }
     },
     {
       "method": "POST",
-      "path": "/api/v1/export"
+      "path": "/api/v1/export",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "include_archived": {
+              "type": "boolean"
+            },
+            "project_id": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
     },
     {
       "method": "GET",
-      "path": "/api/v1/labels"
+      "path": "/api/v1/labels",
+      "request": {
+        "body": null,
+        "query": {
+          "additionalProperties": true,
+          "properties": {
+            "include_archived": {
+              "type": "string"
+            },
+            "limit": {
+              "type": "string"
+            },
+            "project_id": {
+              "type": "string"
+            },
+            "q": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      }
     },
     {
       "method": "GET",
-      "path": "/api/v1/projects"
+      "path": "/api/v1/projects",
+      "request": {
+        "body": null,
+        "query": {
+          "additionalProperties": true,
+          "properties": {
+            "include_archived": {
+              "type": "string"
+            },
+            "order_debug": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      }
     },
     {
       "method": "POST",
-      "path": "/api/v1/projects"
+      "path": "/api/v1/projects",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "meta": {
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            },
+            "readme": {
+              "type": "string"
+            },
+            "workspace_path": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
     },
     {
       "method": "GET",
-      "path": "/api/v1/projects/:id"
+      "path": "/api/v1/projects/:id",
+      "request": {
+        "body": null,
+        "query": null
+      }
     },
     {
       "method": "PATCH",
-      "path": "/api/v1/projects/:id"
+      "path": "/api/v1/projects/:id",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "meta": {
+              "type": "object"
+            },
+            "name": {
+              "type": "string"
+            },
+            "readme": {
+              "type": "string"
+            },
+            "workspace_path": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
     },
     {
       "method": "GET",
-      "path": "/api/v1/projects/:id/readme"
+      "path": "/api/v1/projects/:id/readme",
+      "request": {
+        "body": null,
+        "query": null
+      }
     },
     {
       "method": "PUT",
-      "path": "/api/v1/projects/:id/readme"
+      "path": "/api/v1/projects/:id/readme",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "readme": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
     },
     {
       "method": "GET",
-      "path": "/api/v1/projects/current"
+      "path": "/api/v1/projects/current",
+      "request": {
+        "body": null,
+        "query": {
+          "additionalProperties": true,
+          "properties": {
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      }
     },
     {
       "method": "GET",
-      "path": "/api/v1/reporters"
+      "path": "/api/v1/reporters",
+      "request": {
+        "body": null,
+        "query": {
+          "additionalProperties": true,
+          "properties": {
+            "limit": {
+              "type": "string"
+            },
+            "q": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      }
     },
     {
       "method": "GET",
-      "path": "/api/v1/tasks"
+      "path": "/api/v1/tasks",
+      "request": {
+        "body": null,
+        "query": {
+          "additionalProperties": true,
+          "properties": {
+            "assignee_id": {
+              "type": "string"
+            },
+            "include_archived": {
+              "type": "string"
+            },
+            "limit": {
+              "type": "string"
+            },
+            "offset": {
+              "type": "string"
+            },
+            "project_id": {
+              "type": "string"
+            },
+            "status": {
+              "items": {
+                "enum": [
+                  "backlog",
+                  "blocked",
+                  "canceled",
+                  "done",
+                  "in_progress",
+                  "in_review",
+                  "todo"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      }
     },
     {
       "method": "POST",
-      "path": "/api/v1/tasks"
+      "path": "/api/v1/tasks",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "allow_dup": {
+              "type": "boolean"
+            },
+            "assignee": {
+              "type": "string"
+            },
+            "assignee_id": {
+              "type": "string"
+            },
+            "assignee_kind": {
+              "enum": [
+                "agent",
+                "human"
+              ],
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "force_create": {
+              "type": "boolean"
+            },
+            "idem": {
+              "type": "string"
+            },
+            "identifier": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "epic",
+                "task"
+              ],
+              "type": "string"
+            },
+            "labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "meta": {
+              "type": "object"
+            },
+            "parent": {
+              "type": "string"
+            },
+            "priority": {
+              "enum": [
+                "high",
+                "low",
+                "medium",
+                "urgent"
+              ],
+              "type": "string"
+            },
+            "project_id": {
+              "type": "string"
+            },
+            "reporter": {
+              "type": "string"
+            },
+            "reporter_id": {
+              "type": "string"
+            },
+            "reporter_kind": {
+              "enum": [
+                "agent",
+                "human"
+              ],
+              "type": "string"
+            },
+            "review_of": {
+              "type": "string"
+            },
+            "source_path": {
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "backlog",
+                "blocked",
+                "canceled",
+                "done",
+                "in_progress",
+                "in_review",
+                "todo"
+              ],
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
     },
     {
       "method": "GET",
-      "path": "/api/v1/tasks/:ref"
+      "path": "/api/v1/tasks/:ref",
+      "request": {
+        "body": null,
+        "query": null
+      }
     },
     {
       "method": "PATCH",
-      "path": "/api/v1/tasks/:ref"
+      "path": "/api/v1/tasks/:ref",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "acceptance": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "assignee": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "force_create": {
+              "type": "boolean"
+            },
+            "if_version": {
+              "type": "integer"
+            },
+            "kind": {
+              "enum": [
+                "epic",
+                "task"
+              ],
+              "type": "string"
+            },
+            "labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "meta": {
+              "type": "object"
+            },
+            "priority": {
+              "enum": [
+                "high",
+                "low",
+                "medium",
+                "urgent"
+              ],
+              "type": "string"
+            },
+            "reporter": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
     },
     {
       "method": "GET",
-      "path": "/api/v1/tasks/:ref/activities"
+      "path": "/api/v1/tasks/:ref/activities",
+      "request": {
+        "body": null,
+        "query": {
+          "additionalProperties": true,
+          "properties": {
+            "after": {
+              "type": "string"
+            },
+            "limit": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      }
     },
     {
       "method": "POST",
-      "path": "/api/v1/tasks/:ref/archive"
+      "path": "/api/v1/tasks/:ref/archive",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "days": {
+              "type": "integer"
+            },
+            "if_version": {
+              "type": "integer"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
     },
     {
       "method": "POST",
-      "path": "/api/v1/tasks/:ref/assign"
+      "path": "/api/v1/tasks/:ref/assign",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "assignee": {
+              "type": "string"
+            },
+            "assignee_id": {
+              "type": "string"
+            },
+            "force_create": {
+              "type": "boolean"
+            },
+            "if_version": {
+              "type": "integer"
+            },
+            "reporter": {
+              "type": "string"
+            },
+            "reporter_id": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
     },
     {
       "method": "GET",
-      "path": "/api/v1/tasks/:ref/comments"
+      "path": "/api/v1/tasks/:ref/comments",
+      "request": {
+        "body": null,
+        "query": {
+          "additionalProperties": true,
+          "properties": {
+            "after": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "change",
+                "confirm",
+                "decision",
+                "defect",
+                "discuss",
+                "note"
+              ],
+              "type": "string"
+            },
+            "limit": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      }
     },
     {
       "method": "POST",
-      "path": "/api/v1/tasks/:ref/comments"
+      "path": "/api/v1/tasks/:ref/comments",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "agent_session": {
+              "type": "string"
+            },
+            "body": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "change",
+                "confirm",
+                "decision",
+                "defect",
+                "discuss",
+                "note"
+              ],
+              "type": "string"
+            },
+            "refs": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
     },
     {
       "method": "POST",
-      "path": "/api/v1/tasks/:ref/deliver"
+      "path": "/api/v1/tasks/:ref/deliver",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "if_version": {
+              "type": "integer"
+            },
+            "no_report": {
+              "type": "boolean"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "report": {
+              "additionalProperties": true,
+              "properties": {
+                "acceptance": {
+                  "items": {
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "conclusion": {
+                  "type": "string"
+                },
+                "evidence": {
+                  "items": {
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "leftovers": {
+                  "type": "string"
+                },
+                "seg": {
+                  "type": "string"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "seg": {
+              "type": "string"
+            },
+            "session_id": {
+              "type": "string"
+            },
+            "to": {
+              "enum": [
+                "backlog",
+                "blocked",
+                "canceled",
+                "done",
+                "in_progress",
+                "in_review",
+                "todo"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
     },
     {
       "method": "POST",
-      "path": "/api/v1/tasks/:ref/move"
+      "path": "/api/v1/tasks/:ref/move",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "allow_steal": {
+              "type": "boolean"
+            },
+            "if_version": {
+              "type": "integer"
+            },
+            "no_report": {
+              "type": "boolean"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "to": {
+              "enum": [
+                "backlog",
+                "blocked",
+                "canceled",
+                "done",
+                "in_progress",
+                "in_review",
+                "todo"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "to"
+          ],
+          "type": "object"
+        },
+        "query": null
+      }
     },
     {
       "method": "GET",
-      "path": "/api/v1/tasks/:ref/relations"
+      "path": "/api/v1/tasks/:ref/relations",
+      "request": {
+        "body": null,
+        "query": null
+      }
     },
     {
       "method": "POST",
-      "path": "/api/v1/tasks/:ref/relations"
+      "path": "/api/v1/tasks/:ref/relations",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "force": {
+              "type": "boolean"
+            },
+            "origin": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "blocks",
+                "parent",
+                "related"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
     },
     {
       "method": "DELETE",
-      "path": "/api/v1/tasks/:ref/relations/:relationId"
+      "path": "/api/v1/tasks/:ref/relations/:relationId",
+      "request": {
+        "body": null,
+        "query": null
+      }
     },
     {
       "method": "GET",
-      "path": "/api/v1/tasks/:ref/reports"
+      "path": "/api/v1/tasks/:ref/reports",
+      "request": {
+        "body": null,
+        "query": null
+      }
     },
     {
       "method": "GET",
-      "path": "/api/v1/tasks/:ref/sessions"
+      "path": "/api/v1/tasks/:ref/sessions",
+      "request": {
+        "body": null,
+        "query": null
+      }
     },
     {
       "method": "POST",
-      "path": "/api/v1/tasks/:ref/sessions"
+      "path": "/api/v1/tasks/:ref/sessions",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "backend": {
+              "type": "string"
+            },
+            "owner": {
+              "type": "string"
+            },
+            "phase": {
+              "type": "string"
+            },
+            "pid": {
+              "type": "integer"
+            },
+            "seg": {
+              "type": "string"
+            },
+            "session_id": {
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "closed",
+                "failed",
+                "running"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
     },
     {
       "method": "POST",
-      "path": "/api/v1/tasks/:ref/sessions/:sessionId/close"
+      "path": "/api/v1/tasks/:ref/sessions/:sessionId/close",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "status": {
+              "enum": [
+                "closed",
+                "failed",
+                "running"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
     },
     {
       "method": "GET",
-      "path": "/api/v1/tasks/candidates"
+      "path": "/api/v1/tasks/candidates",
+      "request": {
+        "body": null,
+        "query": {
+          "additionalProperties": true,
+          "properties": {
+            "assignee": {
+              "type": "string"
+            },
+            "include_unassigned": {
+              "type": "string"
+            },
+            "stale": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "assignee"
+          ],
+          "type": "object"
+        }
+      }
     },
     {
       "method": "POST",
-      "path": "/api/v1/token"
+      "path": "/api/v1/token",
+      "request": {
+        "body": null,
+        "query": null
+      }
     },
     {
       "method": "GET",
-      "path": "/health"
+      "path": "/health",
+      "request": {
+        "body": null,
+        "query": null
+      }
     },
     {
       "method": "GET",
-      "path": "/meta"
+      "path": "/meta",
+      "request": {
+        "body": null,
+        "query": null
+      }
     }
   ],
-  "schema_version": 2,
+  "schema_version": 3,
   "wire": [
     {
       "fields": {

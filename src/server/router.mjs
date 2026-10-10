@@ -10,6 +10,11 @@
  *     (`/api/v1/projects/:id`) and wins.
  *   * a handler's return value *is* the `data` half of the envelope. Handlers do
  *     not write to the response; one place does, uniformly.
+ *   * a route also carries a **declarative request schema** — `{query, body}`,
+ *     the shape the contract snapshot freezes (`scripts/verify/contract.mjs`,
+ *     `routes[].request`; `src/server/requests.mjs` owns the vocabulary). The
+ *     router stores the declaration and does nothing else with it: it is not a
+ *     validator, and handing it here changes no request's fate.
  */
 
 import { toErrorPayload } from "../shared/errors.mjs";
@@ -17,27 +22,42 @@ import { toErrorPayload } from "../shared/errors.mjs";
 /** Bodies are bounded so a runaway client cannot exhaust the service. */
 export const MAX_BODY_BYTES = 1024 * 1024;
 
+/**
+ * A route's request part, normalised so the key is always present.
+ *
+ * `null` means "this route declares no schema for that part" — either it reads
+ * nothing of that kind or, as with an attachment's raw bytes, the part is not
+ * JSON at all. A caller can therefore ask the same question of every route
+ * without a `?.`.
+ *
+ * @param {{query?: object|null, body?: object|null}|undefined} request
+ */
+function normalizeRequest(request) {
+  return { query: request?.query ?? null, body: request?.body ?? null };
+}
+
 /** @returns {{add: Function, get: Function, post: Function, patch: Function, put: Function, delete: Function, match: Function, routes: object[]}} */
 export function createRouter() {
   const routes = [];
 
-  const add = (method, pattern, handler) => {
+  const add = (method, pattern, handler, request) => {
     routes.push({
       method,
       pattern,
       segments: pattern.split("/").filter((segment) => segment !== ""),
       handler,
+      request: normalizeRequest(request),
     });
   };
 
   return {
     routes,
     add,
-    get: (pattern, handler) => add("GET", pattern, handler),
-    post: (pattern, handler) => add("POST", pattern, handler),
-    patch: (pattern, handler) => add("PATCH", pattern, handler),
-    put: (pattern, handler) => add("PUT", pattern, handler),
-    delete: (pattern, handler) => add("DELETE", pattern, handler),
+    get: (pattern, handler, request) => add("GET", pattern, handler, request),
+    post: (pattern, handler, request) => add("POST", pattern, handler, request),
+    patch: (pattern, handler, request) => add("PATCH", pattern, handler, request),
+    put: (pattern, handler, request) => add("PUT", pattern, handler, request),
+    delete: (pattern, handler, request) => add("DELETE", pattern, handler, request),
 
     /**
      * @param {string} method

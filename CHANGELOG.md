@@ -10,16 +10,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - **API contract snapshot.** `scripts/verify/contract.mjs` freezes the surface a client
-  binds to — routes, error codes, the wire field names **and types**, and each MCP tool's
-  full `inputSchema` (`type`/`enum`/`items`/`anyOf`, recursively) — as the committed,
-  deterministic JSON at `test/fixtures/contract/api.snapshot.json`. It compares the live
-  surface against that snapshot and exits non-zero on drift; `--update` refreshes it. A
-  changed argument **type or enum**, or a wire field whose type moved, now fails the gate
-  instead of slipping through. The snapshot's `schema_version` is **2**. It runs in
-  `pre-push` (every push) and `pre-tag`, in `contract-gate.yml` (every branch push / PR)
-  and at tag time in `version-gate.yml`, and inside the container suite. Route query/body
-  shapes are deliberately not frozen: there is no request schema to read them from, and a
-  test pins that premise. See [`docs/contract.md`](docs/contract.md).
+  binds to — routes and each route's **declared request shape** (`{query, body}`, down to
+  `type`/`enum`/`items`/`anyOf`, recursively), error codes, the wire field names **and
+  types**, and each MCP tool's full `inputSchema` — as the committed, deterministic JSON
+  at `test/fixtures/contract/api.snapshot.json`. It compares the live surface against that
+  snapshot and exits non-zero on drift; `--update` refreshes it. A changed argument **type
+  or enum**, a route request field retyped or dropped, or a wire field whose type moved,
+  now fails the gate instead of slipping through. The snapshot's `schema_version` is **3**.
+  It runs in `pre-push` (every push) and `pre-tag`, in `contract-gate.yml` (every branch
+  push / PR) and at tag time in `version-gate.yml`, and inside the container suite. The
+  route request schemas are declared (in `src/server/requests.mjs`, beside each route),
+  not enforced — the handlers read their requests as before. See
+  [`docs/contract.md`](docs/contract.md).
 - **Scheduling & patrol.** A host-external supervisor (`scripts/supervisor.mjs`) runs the
   cheap 1-minute **poll** (a $0 candidate scan; an LLM turn starts only when a card is
   actually claimed) and the 5-minute **patrol** (escalate a stale claim; report an

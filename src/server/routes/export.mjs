@@ -11,6 +11,11 @@
  */
 
 import { renderCard } from "../../core/index.mjs";
+import { bool, shape, str } from "../requests.mjs";
+
+// Declared request schema, frozen by the contract snapshot (`routes[].request`);
+// the vocabulary lives in `src/server/requests.mjs`.
+const EXPORT_BODY = shape({ project_id: str(), include_archived: bool() });
 
 /** @param {object} router @param {{board: object}} surface */
 export function registerExportRoutes(router, surface) {
@@ -29,5 +34,5 @@ export function registerExportRoutes(router, surface) {
         markdown: renderCard(task, { repos, project: repos.projects.get(task.projectId) }),
       })),
     };
-  });
+  }, { body: EXPORT_BODY });
 }

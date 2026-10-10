@@ -43,6 +43,7 @@ import {
 } from "../shared/constants.mjs";
 import { authorize } from "./auth.mjs";
 import { parseAllowList } from "./cidr.mjs";
+import { shape, str } from "./requests.mjs";
 import { createRouter, errorResponse, readJsonBody, sendJson } from "./router.mjs";
 import { registerActivityRoutes } from "./routes/activities.mjs";
 import { handleAttachmentContent } from "./routes/attachments.mjs";
@@ -78,11 +79,15 @@ export const STAGE = "taskd";
  * copy of the list.
  */
 export const OUT_OF_ROUTER_ENDPOINTS = Object.freeze([
-  { method: "GET", path: "/health" },
-  { method: "GET", path: "/meta" },
-  { method: "GET", path: "/api/v1/events" },
-  { method: "GET", path: "/api/v1/attachments/:id/content" },
-  { method: "PUT", path: "/api/v1/attachments/:id/content" },
+  { method: "GET", path: "/health", request: { query: null, body: null } },
+  { method: "GET", path: "/meta", request: { query: null, body: null } },
+  // `?after=<revision>` replays from a revision; the header `Last-Event-ID` is the
+  // same request fact (see `sse.mjs`), so it is named in prose, not in the schema.
+  { method: "GET", path: "/api/v1/events", request: { query: shape({ after: str() }), body: null } },
+  // Bytes in, bytes out: the content endpoints take no JSON request at all, which
+  // is exactly what a `null` schema says.
+  { method: "GET", path: "/api/v1/attachments/:id/content", request: { query: null, body: null } },
+  { method: "PUT", path: "/api/v1/attachments/:id/content", request: { query: null, body: null } },
 ]);
 
 /**

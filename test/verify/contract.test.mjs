@@ -11,10 +11,11 @@
  *
  *   2. **Would it actually catch a change?** A guard that never went red proves
  *      nothing, so the second block feeds `diffSnapshots` / `checkContract`
- *      *mutated* snapshots — a route added, an error status changed, a wire field
- *      dropped or **retyped**, an MCP argument's **type or enum** moved, a file
- *      re-ordered — and asserts the drift is reported. This is the red→green
- *      contract of the card, and it runs without editing `src/`.
+ *      *mutated* snapshots — a route added, a **route request field** retyped or
+ *      dropped or its enum widened, an error status changed, a wire field dropped
+ *      or retyped, an MCP argument's type or enum moved, a file re-ordered — and
+ *      asserts the drift is reported. This is the red→green contract of the card,
+ *      and it runs without editing `src/`.
  *
  * The committed snapshot is read from a temp tree in the drift cases, so the
  * suite never writes to the checkout.
@@ -28,6 +29,7 @@ import { dirname, join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
 import { TOOLS } from "../../src/mcp/registry.mjs";
+import { STATUSES } from "../../src/core/index.mjs";
 import { registerApiRoutes } from "../../src/server/index.mjs";
 import { createRouter } from "../../src/server/router.mjs";
 import { ERROR_CODES } from "../../src/shared/errors.mjs";
@@ -169,22 +171,56 @@ describe("contract.mjs — the committed snapshot describes this tree", () => {
     assert.equal(frozen.properties.z.description, undefined);
   });
 
-  it("has no route request schema to freeze — the premise the snapshot rests on", () => {
-    // The card asks for route `query`/`body` shapes frozen *if there is a schema
-    // source*. There is none: the router records `{method, pattern, handler}` and
-    // handlers read `query.get(...)` / `body.…` ad hoc. This test pins that fact —
-    // the day a route grows a declared request schema, it fails and the snapshot
-    // must start reading it.
+  it("freezes a declared request schema for every route — the premise the snapshot rests on", () => {
+    // The original freeze rested on the premise that routes had *no* schema
+    // source: `createRouter` recorded `{method, pattern, handler}` and every
+    // handler read `query.get(...)` / `body.…` ad hoc. The service layer now
+    // declares a request shape beside the handler, so the premise is inverted —
+    // this test pins the inversion in both directions: every route carries a
+    // declaration, and a route that reads nothing still says so explicitly rather
+    // than by omission.
     const router = createRouter();
     registerApiRoutes(router, { board: { commands: {}, repos: {} }, token: null });
     assert.ok(router.routes.length > 0);
     for (const route of router.routes) {
       assert.deepEqual(
         Object.keys(route).sort(),
-        ["handler", "method", "pattern", "segments"],
-        `${route.method} ${route.pattern} declares only a method, a path and a handler`,
+        ["handler", "method", "pattern", "request", "segments"],
+        `${route.method} ${route.pattern} declares its request alongside its handler`,
+      );
+      assert.deepEqual(
+        Object.keys(route.request).sort(),
+        ["body", "query"],
+        `${route.method} ${route.pattern} declares both request parts (\`null\` where it reads none)`,
       );
     }
+  });
+
+  it("freezes each route's request facets, the domain vocabulary and all", () => {
+    const routes = collectRoutes();
+    const find = (method, path) => routes.find((route) => route.method === method && route.path === path);
+
+    // A query filter is frozen down to the type of the value the transport hands
+    // the handler — a query string, or an array of them for a repeated param.
+    const list = find("GET", "/api/v1/tasks");
+    assert.equal(list.request.query.properties.limit.type, "string");
+    assert.equal(list.request.query.properties.status.type, "array");
+    assert.equal(list.request.body, null, "a GET declares no body");
+
+    // The status vocabulary is the domain's, not a literal copied beside the route.
+    const move = find("POST", "/api/v1/tasks/:ref/move");
+    assert.deepEqual(move.request.body.properties.to.enum, [...STATUSES].sort());
+    assert.deepEqual(move.request.body.required, ["to"]);
+    assert.equal(move.request.body.additionalProperties, true, "unknown fields are tolerated, and the schema says so");
+
+    // A route that reads nothing declares nothing — explicitly.
+    assert.deepEqual(find("POST", "/api/v1/token").request, { query: null, body: null });
+
+    // The out-of-router surface is frozen with the rest.
+    assert.equal(find("GET", "/api/v1/events").request.query.properties.after.type, "string");
+
+    // The canonical form is deterministic: same input, same bytes.
+    assert.deepEqual(collectRoutes(), collectRoutes());
   });
 });
 
@@ -220,6 +256,61 @@ describe("contract.mjs — drift is caught (red → green)", () => {
     assert.ok(
       result.changes.some((change) => change.kind === "route_removed" && change.detail === "POST /api/v1/tasks/:ref/deliver"),
       JSON.stringify(result.changes),
+    );
+  });
+
+  it("reports a route request field whose type changed", async () => {
+    const dir = await makeTree();
+    await writeSnapshot(dir, serializeSnapshot(buildSnapshot()));
+
+    const live = mutate(buildSnapshot(), (snapshot) => {
+      snapshot.routes.find((entry) => entry.path === "/api/v1/tasks/:ref/move").request.body.properties.if_version.type =
+        "string";
+    });
+
+    const result = await checkContract({ base: dir, snapshot: live });
+    assert.equal(result.ok, false);
+    assert.deepEqual(
+      result.changes.map((change) => `${change.kind} ${change.detail}`),
+      ['route_request_changed POST /api/v1/tasks/:ref/move.body.if_version.type: "integer" -> "string"'],
+    );
+  });
+
+  it("reports a route request field that was removed", async () => {
+    const dir = await makeTree();
+    await writeSnapshot(dir, serializeSnapshot(buildSnapshot()));
+
+    const live = mutate(buildSnapshot(), (snapshot) => {
+      delete snapshot.routes.find((entry) => entry.path === "/api/v1/labels").request.query.properties.q;
+    });
+
+    const result = await checkContract({ base: dir, snapshot: live });
+    assert.equal(result.ok, false);
+    assert.deepEqual(
+      result.changes.map((change) => `${change.kind} ${change.detail}`),
+      ['route_request_removed GET /api/v1/labels.query.q.type = "string"'],
+    );
+  });
+
+  it("reports a route request vocabulary that gained a member", async () => {
+    const dir = await makeTree();
+    await writeSnapshot(dir, serializeSnapshot(buildSnapshot()));
+
+    const live = mutate(buildSnapshot(), (snapshot) => {
+      // The literal card scenario again, this time on a route's request: the
+      // statuses a caller may *move to* gained one.
+      snapshot.routes
+        .find((entry) => entry.path === "/api/v1/tasks/:ref/move")
+        .request.body.properties.to.enum.push("shipped");
+    });
+
+    const result = await checkContract({ base: dir, snapshot: live });
+    assert.equal(result.ok, false);
+    assert.equal(result.changes.length, 1);
+    assert.equal(result.changes[0].kind, "route_request_changed");
+    assert.match(
+      result.changes[0].detail,
+      /^POST \/api\/v1\/tasks\/:ref\/move\.body\.to\.enum: \[.*\] -> \[.*"shipped".*\]$/,
     );
   });
 
@@ -432,6 +523,20 @@ describe("contract.mjs — the CLI", () => {
     const result = runCli(["--base", dir]);
     assert.equal(result.status, 1, "an enum change must fail the gate");
     assert.match(result.stderr, /\[mcp_schema_changed\] task_move\.to\.enum:/);
+  });
+
+  it("exits 1 when a route's request field moved under the snapshot", async () => {
+    // The card's red→green proof: change one route's request field in the source
+    // and the gate reports it and exits 1.
+    const dir = await makeTree();
+    const stale = mutate(buildSnapshot(), (snapshot) => {
+      snapshot.routes.find((entry) => entry.path === "/api/v1/tasks").request.query.properties.limit.type = "integer";
+    });
+    await writeSnapshot(dir, serializeSnapshot(stale));
+
+    const result = runCli(["--base", dir]);
+    assert.equal(result.status, 1, "a route request change must fail the gate");
+    assert.match(result.stderr, /\[route_request_changed\] GET \/api\/v1\/tasks\.query\.limit\.type: "integer" -> "string"/);
   });
 
   it("exits 2 when the snapshot is missing", async () => {

@@ -12,7 +12,9 @@
  *
  *   * **routes**      — every `METHOD /path` the daemon answers, the JSON router
  *                       *and* the endpoints it serves outside it (`/health`,
- *                       `/meta`, the SSE stream, attachment bytes);
+ *                       `/meta`, the SSE stream, attachment bytes), each with its
+ *                       **declared request schema** (`{query, body}`) frozen down
+ *                       to the same facets as a tool argument;
  *   * **errors**      — every `ERROR_CODES` code with the HTTP status it carries;
  *   * **wire**        — the name **and JSON type** of every field each `*ToWire`
  *                       projection emits;
@@ -33,17 +35,18 @@
  * The routes come from `registerApiRoutes` — the same function `createTaskd`
  * calls — so a route cannot be added to the server without appearing here. The
  * error codes come from `ERROR_CODES`, the wire field names *and types* from the
- * projections themselves, the tools and their schemas from `TOOLS`. Nothing is a
- * second copy of a list.
+ * projections themselves, the tools and their schemas from `TOOLS`, and a route's
+ * request shape from the declaration the registration itself carries
+ * (`src/server/requests.mjs`). Nothing is a second copy of a list.
  *
- * A route's query and body are deliberately **not** frozen, because there is no
- * schema to read them from: `createRouter` records `{method, pattern, handler}`
- * and nothing else, and each handler reaches into `query.get(...)` / `body.…`
- * ad hoc. Freezing them would mean hand-writing a table of parameters that the
- * handlers do not consult — exactly the "second copy of a list" this file exists
- * to refuse. `test/verify/contract.test.mjs` pins that premise, so the day a
- * route grows a declared request schema the test says so and this file must
- * start reading it.
+ * A route's request schema is **declared, not enforced** — the handlers still read
+ * `query.get(...)` / `body.…` and unknown fields are still ignored, which is why
+ * the declared objects are `additionalProperties: true`. What the snapshot freezes
+ * is the shape the route *promises*, so a field renamed in a declaration, a status
+ * vocabulary that moved, or a query filter that appeared shows up as drift the
+ * moment the source changes. `test/verify/contract.test.mjs` pins the premise that
+ * every route carries such a declaration, and the drift tests prove a changed
+ * field turns the gate red.
  *
  * Deliberately **not** in the snapshot: error *messages* and *hints*, route
  * handler internals, and JSON-schema descriptions. Those are prose — they are
@@ -85,10 +88,11 @@ export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const SNAPSHOT_FILE = "test/fixtures/contract/api.snapshot.json";
 
 /**
- * Bumped only when the snapshot's own *schema* changes shape. (2 added the wire
- * field types and the recursive MCP `inputSchema` facts.)
+ * Bumped only when the snapshot's own *schema* changes shape. (3 added each
+ * route's declared request `{query, body}`; 2 added the wire field types and the
+ * recursive MCP `inputSchema` facts.)
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 // ---------------------------------------------------------------------------
 // Collecting the live surface
@@ -101,22 +105,40 @@ function compareRoute(a, b) {
 }
 
 /**
- * Every `METHOD /path` the daemon answers.
+ * One route's declared request, canonicalised the way a tool's `inputSchema` is.
+ *
+ * A `null` side (no query, no body) survives as `null` — "this route declares no
+ * schema for that part" is a fact worth freezing too, not an absence to erase.
+ *
+ * @param {{query?: object|null, body?: object|null}|undefined} request
+ */
+function canonicalRequest(request) {
+  return { query: canonicalSchema(request?.query), body: canonicalSchema(request?.body) };
+}
+
+/**
+ * Every `METHOD /path` the daemon answers, with its declared request schema.
  *
  * The router routes are *enumerated* by registering them against a stub: the
- * `register*Routes` functions only push `{method, pattern, handler}` onto the
- * router, so nothing touches a database or a handler. The out-of-router
- * endpoints are declared next to that router in `src/server/index.mjs`.
+ * `register*Routes` functions only push `{method, pattern, handler, request}` onto
+ * the router, so nothing touches a database or a handler — the registration is
+ * the single source of the route *and* of its request shape. The out-of-router
+ * endpoints are declared next to that router in `src/server/index.mjs` and carry
+ * a request declaration of their own.
  *
- * @returns {{method: string, path: string}[]}
+ * @returns {{method: string, path: string, request: {query: object|null, body: object|null}}[]}
  */
 export function collectRoutes() {
   const router = createRouter();
   registerApiRoutes(router, { board: { commands: {}, repos: {} }, token: null });
 
-  const rows = router.routes.map((route) => ({ method: route.method, path: route.pattern }));
+  const rows = router.routes.map((route) => ({
+    method: route.method,
+    path: route.pattern,
+    request: canonicalRequest(route.request),
+  }));
   for (const endpoint of OUT_OF_ROUTER_ENDPOINTS) {
-    rows.push({ method: endpoint.method, path: endpoint.path });
+    rows.push({ method: endpoint.method, path: endpoint.path, request: canonicalRequest(endpoint.request) });
   }
   return rows.sort(compareRoute);
 }
@@ -502,6 +524,34 @@ function schemaFacets(tools) {
 }
 
 /**
+ * Every frozen facet of every route's declared request, keyed
+ * `METHOD /path.query.…` / `METHOD /path.body.…`. The route is part of the key so
+ * a facet is attributable without a second lookup, and the `query`/`body` split is
+ * in the path so a field that moves between them is a change, not a coincidence.
+ *
+ * A route with no declaration on a side contributes nothing — the route's
+ * appearance or disappearance is already reported as one `route_*` line, and the
+ * facets are diffed only for routes present on both sides.
+ */
+function routeRequestFacets(routes) {
+  /** @type {Map<string, string>} */
+  const out = new Map();
+  for (const route of routes ?? []) {
+    const prefix = `${route.method} ${route.path}`;
+    /** @type {Map<string, string>} */
+    const flat = new Map();
+    if (route.request?.query !== null && route.request?.query !== undefined) {
+      flattenSchema(`${prefix}.query`, route.request.query, flat);
+    }
+    if (route.request?.body !== null && route.request?.body !== undefined) {
+      flattenSchema(`${prefix}.body`, route.request.body, flat);
+    }
+    for (const [key, value] of flat) out.set(key, value);
+  }
+  return out;
+}
+
+/**
  * Compare two facet maps and report every added, removed or changed leaf. A
  * changed value (a type that moved, an enum that gained a value) is reported
  * once as `changed`, not as an add plus a remove.
@@ -538,6 +588,18 @@ export function diffSnapshots(actual, expected) {
   const actualRoutes = new Set((actual?.routes ?? []).map(routeKey));
   for (const key of onlyIn(actualRoutes, expectedRoutes)) add("route_added", key);
   for (const key of onlyIn(expectedRoutes, actualRoutes)) add("route_removed", key);
+
+  // Then the request shape of the routes present on *both* sides — the same
+  // reasoning as the MCP tools below: a new route reports one line, not one line
+  // per facet it happens to declare.
+  const sharedRoutes = new Set([...actualRoutes].filter((key) => expectedRoutes.has(key)));
+  const keepSharedRoutes = (routes) => (routes ?? []).filter((route) => sharedRoutes.has(routeKey(route)));
+  diffFacets(
+    add,
+    { added: "route_request_added", removed: "route_request_removed", changed: "route_request_changed" },
+    routeRequestFacets(keepSharedRoutes(actual?.routes)),
+    routeRequestFacets(keepSharedRoutes(expected?.routes)),
+  );
 
   const errorKey = (error) => `${error.code} (HTTP ${error.http})`;
   const expectedErrors = new Set((expected?.errors ?? []).map(errorKey));
@@ -664,7 +726,8 @@ function describe(snapshot) {
     0,
   );
   return (
-    `${(snapshot.routes ?? []).length} routes, ` +
+    `${(snapshot.routes ?? []).length} routes ` +
+    `(${routeRequestFacets(snapshot.routes).size} request facets), ` +
     `${(snapshot.errors ?? []).length} error codes, ` +
     `${wireFields} wire fields, ` +
     `${(snapshot.mcp_tools ?? []).length} MCP tools ` +

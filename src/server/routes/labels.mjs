@@ -8,7 +8,12 @@
  */
 
 import { labelToWire } from "../../shared/wire.mjs";
+import { shape, str } from "../requests.mjs";
 import { intOrUndefined, truthy } from "./projects.mjs";
+
+// Declared request schema, frozen by the contract snapshot (`routes[].request`);
+// the vocabulary lives in `src/server/requests.mjs`.
+const LIST_QUERY = shape({ project_id: str(), q: str(), limit: str(), include_archived: str() });
 
 /** @param {object} router @param {{board: object}} surface */
 export function registerLabelRoutes(router, surface) {
@@ -23,5 +28,5 @@ export function registerLabelRoutes(router, surface) {
         includeArchived: truthy(query.get("include_archived")),
       })
       .map(labelToWire),
-  }));
+  }), { query: LIST_QUERY });
 }

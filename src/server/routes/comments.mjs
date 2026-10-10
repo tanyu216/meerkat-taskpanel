@@ -5,8 +5,19 @@
  */
 
 import { commentToWire } from "../../shared/wire.mjs";
+import { arr, REQUEST, shape, str } from "../requests.mjs";
 import { intOrUndefined } from "./projects.mjs";
 import { resolveTask } from "./tasks.mjs";
+
+// Declared request schemas, frozen by the contract snapshot (`routes[].request`)
+// — see `src/server/requests.mjs` for the vocabulary and the "declared, not
+// enforced" stance.
+
+/** `GET /api/v1/tasks/:ref/comments` — a cursor read by `after`, filtered by kind. */
+const LIST_QUERY = shape({ kind: REQUEST.commentKind, limit: str(), after: str() });
+
+/** `POST /api/v1/tasks/:ref/comments` — append. `body` is the comment's text. */
+const CREATE_BODY = shape({ body: str(), kind: REQUEST.commentKind, refs: arr(str()), agent_session: str() });
 
 /** @param {object} router @param {{board: object}} surface */
 export function registerCommentRoutes(router, surface) {
@@ -24,7 +35,7 @@ export function registerCommentRoutes(router, surface) {
         })
         .map(commentToWire),
     };
-  });
+  }, { query: LIST_QUERY });
 
   router.post("/api/v1/tasks/:ref/comments", ({ params, body, actor, session }) => {
     const task = resolveTask(repos, params.ref);
@@ -37,5 +48,5 @@ export function registerCommentRoutes(router, surface) {
       actor,
     });
     return { comment: commentToWire(comment) };
-  });
+  }, { body: CREATE_BODY });
 }

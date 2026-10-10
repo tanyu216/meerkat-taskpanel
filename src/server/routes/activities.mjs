@@ -10,8 +10,16 @@
  */
 
 import { activityToWire } from "../../shared/wire.mjs";
+import { shape, str } from "../requests.mjs";
 import { intOrUndefined } from "./projects.mjs";
 import { resolveTask } from "./tasks.mjs";
+
+// Declared request schema, frozen by the contract snapshot (`routes[].request`);
+// the vocabulary lives in `src/server/requests.mjs`.
+//
+// `after` is a revision, and a revision arrives as a *string* because it is read
+// off the query string — the handler is what parses it.
+const LIST_QUERY = shape({ after: str(), limit: str() });
 
 /** @param {object} router @param {{board: object}} surface */
 export function registerActivityRoutes(router, surface) {
@@ -29,5 +37,5 @@ export function registerActivityRoutes(router, surface) {
         })
         .map(activityToWire),
     };
-  });
+  }, { query: LIST_QUERY });
 }

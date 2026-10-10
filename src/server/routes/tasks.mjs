@@ -18,7 +18,110 @@ import {
   taskToWire,
   waiversFromActivities,
 } from "../../shared/wire.mjs";
+import { arr, bool, int, obj, REQUEST, shape, str } from "../requests.mjs";
 import { intOrUndefined, truthy } from "./projects.mjs";
+
+// Declared request schemas — what the contract snapshot freezes
+// (`routes[].request`); `src/server/requests.mjs` owns the vocabulary and the
+// "declared, not enforced" stance. A field a handler reads but a declaration
+// omits would be invisible to the contract, so these are written from the
+// handler bodies below, field for field.
+
+/** `GET /api/v1/tasks` — the board read's filters. */
+const LIST_QUERY = shape({
+  project_id: str(),
+  status: REQUEST.statuses, // `?status=a&status=b` — a repeated query param
+  assignee_id: str(),
+  include_archived: str(),
+  limit: str(),
+  offset: str(),
+});
+
+/** `GET /api/v1/tasks/candidates` — `assignee` is the one field the route insists on. */
+const CANDIDATES_QUERY = shape({ assignee: str(), stale: str(), include_unassigned: str() }, ["assignee"]);
+
+/** `POST /api/v1/tasks` — the create body, every field the command is handed. */
+const CREATE_BODY = shape({
+  project_id: str(),
+  title: str(),
+  description: str(),
+  status: REQUEST.status,
+  priority: REQUEST.priority,
+  kind: REQUEST.taskKind,
+  labels: arr(str()),
+  meta: obj(),
+  identifier: str(),
+  source_path: str(),
+  assignee: str(),
+  assignee_id: str(),
+  assignee_kind: REQUEST.dictKind,
+  reporter: str(),
+  reporter_id: str(),
+  reporter_kind: REQUEST.dictKind,
+  force_create: bool(),
+  idem: str(),
+  allow_dup: bool(),
+  review_of: str(),
+  parent: str(),
+  target: str(),
+});
+
+/**
+ * `PATCH /api/v1/tasks/:ref` — a partial update.
+ *
+ * `status` is deliberately absent: the route **refuses** it (`INVALID_TRANSITION`,
+ * "use move or deliver"), and a declared shape lists what a route accepts, not
+ * what it recognises in order to reject.
+ */
+const PATCH_BODY = shape({
+  title: str(),
+  description: str(),
+  priority: REQUEST.priority,
+  kind: REQUEST.taskKind,
+  labels: arr(str()),
+  meta: obj(),
+  acceptance: arr(str()), // sugar over `meta.acceptance` (F-D1)
+  if_version: int(),
+  assignee: str(),
+  reporter: str(),
+  force_create: bool(),
+});
+
+/** `POST /api/v1/tasks/:ref/move` — the transition, plus the audited waiver (F-B1). */
+const MOVE_BODY = shape(
+  { to: REQUEST.status, if_version: int(), no_report: bool(), reason: str(), allow_steal: bool() },
+  ["to"],
+);
+
+/**
+ * `POST /api/v1/tasks/:ref/deliver` — the report, or the waiver that replaces it.
+ *
+ * `to` is declared (optional — the command defaults it to `in_review`) but the
+ * "a report *or* `no_report` + `reason`" rule is a conditional no `properties`
+ * map can state, so it stays where it is enforced: `deliver` itself.
+ */
+const DELIVER_BODY = shape({
+  to: REQUEST.status,
+  report: shape({ conclusion: str(), acceptance: arr(obj()), evidence: arr(obj()), leftovers: str(), seg: str() }),
+  if_version: int(),
+  no_report: bool(),
+  reason: str(),
+  seg: str(),
+  session_id: str(),
+});
+
+/** `POST /api/v1/tasks/:ref/assign` — `assign` is `update` with the dictionary in play. */
+const ASSIGN_BODY = shape({
+  assignee_id: str(),
+  reporter_id: str(),
+  assignee: str(),
+  reporter: str(),
+  if_version: int(),
+  force_create: bool(),
+});
+
+/** `POST /api/v1/tasks/:ref/archive` — a soft delete, optionally backdated. */
+const ARCHIVE_BODY = shape({ if_version: int(), days: int() });
 
 /**
  * `PROJ-0007` or a UUID — whichever the caller has.
@@ -62,7 +165,7 @@ export function registerTaskRoutes(router, surface) {
     };
     const lookup = lookupFor(repos);
     return { tasks: commands.listTasks(filter).map((task) => taskToWire(task, { lookup })) };
-  });
+  }, { query: LIST_QUERY });
 
   router.post("/api/v1/tasks", ({ body, actor }) => {
     const task = commands.createTask({
@@ -94,7 +197,7 @@ export function registerTaskRoutes(router, surface) {
       actor,
     });
     return taskPayload(repos, task);
-  });
+  }, { body: CREATE_BODY });
 
   // The poll's read: which claimable cards does `assignee` have? Registered
   // before `/api/v1/tasks/:ref` so the literal `candidates` segment wins over
@@ -115,7 +218,7 @@ export function registerTaskRoutes(router, surface) {
         includeUnassigned: truthy(query.get("include_unassigned")),
       }),
     };
-  });
+  }, { query: CANDIDATES_QUERY });
 
   router.get("/api/v1/tasks/:ref", ({ params }) => taskPayload(repos, resolveTask(repos, params.ref)));
 
@@ -159,7 +262,7 @@ export function registerTaskRoutes(router, surface) {
       actor,
     });
     return taskPayload(repos, task);
-  });
+  }, { body: PATCH_BODY });
 
   router.post("/api/v1/tasks/:ref/move", ({ params, body, actor }) => {
     const current = resolveTask(repos, params.ref);
@@ -175,7 +278,7 @@ export function registerTaskRoutes(router, surface) {
       actor,
     });
     return { ...taskPayload(repos, task), status: task.status };
-  });
+  }, { body: MOVE_BODY });
 
   router.post("/api/v1/tasks/:ref/deliver", ({ params, body, actor, session, seg }) => {
     const current = resolveTask(repos, params.ref);
@@ -198,7 +301,7 @@ export function registerTaskRoutes(router, surface) {
       status: result.task.status,
       waived: result.waived,
     };
-  });
+  }, { body: DELIVER_BODY });
 
   // `assign` is `update` with the dictionary in play. An id bypasses the
   // dictionary entirely (`patch`), a name goes through it (`assignee`/`reporter`)
@@ -218,7 +321,7 @@ export function registerTaskRoutes(router, surface) {
       actor,
     });
     return taskPayload(repos, task);
-  });
+  }, { body: ASSIGN_BODY });
 
   router.post("/api/v1/tasks/:ref/archive", ({ params, body, actor }) => {
     const current = resolveTask(repos, params.ref);
@@ -229,7 +332,7 @@ export function registerTaskRoutes(router, surface) {
       actor,
     });
     return taskPayload(repos, task);
-  });
+  }, { body: ARCHIVE_BODY });
 
   router.get("/api/v1/tasks/:ref/reports", ({ params }) => {
     const task = resolveTask(repos, params.ref);

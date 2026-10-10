@@ -18,6 +18,39 @@
 import { PROJECT_ACTIVITY_WINDOW_DAYS, SSE_NOISE_EVENTS } from "../../shared/constants.mjs";
 import { orderDebugEntry, rankProjects } from "../../shared/project-order.mjs";
 import { projectToWire } from "../../shared/wire.mjs";
+import { arr, obj, shape, str } from "../requests.mjs";
+
+// Declared request schemas — the shape the contract snapshot freezes
+// (`routes[].request`). See `src/server/requests.mjs` for the vocabulary and the
+// "declared, not enforced" stance.
+
+/** `GET /api/v1/projects` — the §4.6 list, with the diagnostic `order_debug` opt-in. */
+const LIST_QUERY = shape({ include_archived: str(), order_debug: str() });
+
+/** `POST /api/v1/projects`. */
+const CREATE_BODY = shape({
+  id: str(),
+  name: str(),
+  workspace_path: str(),
+  labels: arr(str()),
+  meta: obj(),
+  readme: str(),
+});
+
+/** `GET /api/v1/projects/current` — the directory to resolve to a project. */
+const CURRENT_QUERY = shape({ path: str() });
+
+/** `PATCH /api/v1/projects/:id` — a partial update (`meta` merges, F-C3's sibling rule). */
+const PATCH_BODY = shape({
+  name: str(),
+  workspace_path: str(),
+  labels: arr(str()),
+  readme: str(),
+  meta: obj(),
+});
+
+/** `PUT /api/v1/projects/:id/readme` — the whole document replaces whatever was there. */
+const README_BODY = shape({ readme: str() });
 
 /** The shape a "no project owns this directory" answer has (§F-C3). */
 export function syntheticLocalProject(workspacePath) {
@@ -54,7 +87,7 @@ export function registerProjectRoutes(router, surface) {
       // by hand. Off by default — it is a diagnostic, not board state.
       ...(truthy(query.get("order_debug")) ? { order_debug: ranked.map(orderDebugEntry) } : {}),
     };
-  });
+  }, { query: LIST_QUERY });
 
   router.post("/api/v1/projects", ({ body, actor }) => {
     const project = commands.createProject({
@@ -67,7 +100,7 @@ export function registerProjectRoutes(router, surface) {
       actor,
     });
     return { project: projectToWire(project) };
-  });
+  }, { body: CREATE_BODY });
 
   // "Which project is this directory part of?" — a read, so a miss must not
   // create anything. It answers with a synthetic `local` project and
@@ -84,7 +117,7 @@ export function registerProjectRoutes(router, surface) {
         note: "reads never create rows: run the command above if this directory should have a project",
       },
     };
-  });
+  }, { query: CURRENT_QUERY });
 
   router.get("/api/v1/projects/:id", ({ params }) => {
     const project = commands.getProject({ id: params.id });
@@ -107,7 +140,7 @@ export function registerProjectRoutes(router, surface) {
     }
     const project = commands.updateProject({ id: params.id, patch, actor });
     return { project: projectToWire(project) };
-  });
+  }, { body: PATCH_BODY });
 
   router.get("/api/v1/projects/:id/readme", ({ params }) => ({
     readme: commands.readmeGet({ id: params.id }),
@@ -116,7 +149,7 @@ export function registerProjectRoutes(router, surface) {
   router.put("/api/v1/projects/:id/readme", ({ params, body }) => {
     const project = commands.readmeSet({ id: params.id, readme: body.readme ?? null });
     return { project: projectToWire(project), readme: project.readme };
-  });
+  }, { body: README_BODY });
 }
 
 /** `?include_archived=1|true|yes` — query strings have no types, so be liberal. */

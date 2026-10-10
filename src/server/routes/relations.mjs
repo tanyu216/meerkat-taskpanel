@@ -4,7 +4,12 @@
  */
 
 import { relationToWire } from "../../shared/wire.mjs";
+import { bool, REQUEST, shape, str } from "../requests.mjs";
 import { resolveTask } from "./tasks.mjs";
+
+// Declared request schema, frozen by the contract snapshot (`routes[].request`);
+// the vocabulary lives in `src/server/requests.mjs`.
+const ADD_BODY = shape({ target: str(), type: REQUEST.relationType, force: bool(), origin: str() });
 
 /** @param {object} router @param {{board: object}} surface */
 export function registerRelationRoutes(router, surface) {
@@ -35,7 +40,7 @@ export function registerRelationRoutes(router, surface) {
       actor,
     });
     return { relation: relationToWire(relation) };
-  });
+  }, { body: ADD_BODY });
 
   router.delete("/api/v1/tasks/:ref/relations/:relationId", ({ params, actor }) => {
     resolveTask(repos, params.ref);
