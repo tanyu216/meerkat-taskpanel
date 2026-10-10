@@ -88,6 +88,61 @@ must carry such a declaration, and each one is checked down to its facets — an
 the drift tests retype, drop and widen a route request field and assert the gate
 goes red (exit 1) and back green.
 
+## The hole the snapshot leaves: is the declaration *true*?
+
+The snapshot freezes the declaration. It cannot tell whether the declaration is
+what the handler does — the declaration is a **second description** of the
+request, written beside the handler from it by hand, so the two can drift. A
+handler that starts reading `?stale=` while the declaration still lists only
+`?assignee=` ships a request field no client can see; a declared filter nothing
+reads ships a promise that does nothing. Neither moves the snapshot: the
+declaration did not change, only the handler did.
+
+`scripts/verify/route-request.mjs` closes that at the **mechanism** level rather
+than by re-auditing each handler. It reads every route's handler *source*
+(`Function.prototype.toString()` — no second copy of the route list, no
+line-number table), statically extracts the fields it reads
+
+- query: `query.get("x")` / `query.getAll("x")`;
+- body: `body.x`, `body["x"]`, `body[x]` over a literal loop, `const { x } = body`;
+
+and compares that set with the declared `properties`, in **both** directions:
+
+| Finding | What moved |
+|---|---|
+| `undeclared_read` | the handler reads a field the declaration omits — a caller sends what the frozen contract does not admit |
+| `unread_declaration` | the declaration names a field the handler never reads — the contract promises a filter that does nothing |
+| `unresolvable_read` | a read the lint cannot resolve (`body[key]` with a non-literal key, `{ ...body }`, `Object.keys(body)`, passing `body` on as a whole) |
+| `stale_refusal` | a documented "read only to be refused" entry that no longer applies |
+| `uncovered_endpoint` | an endpoint outside the JSON router that declares a request schema the lint cannot reach |
+
+`unresolvable_read` is a failure, not a shrug, and that is the point: a read the
+lint cannot see is exactly the read that could drift unnoticed, so the lint
+refuses to pass a route it cannot prove. A new read form is therefore a red gate
+and a two-line addition to the checker — never a silent hole.
+
+`PATCH /api/v1/tasks/:ref` is the one place a name-matching lint cannot be
+right: it reads `body.status` in order to throw `INVALID_TRANSITION`, and the
+declaration correctly omits it (a shape declares what a route *accepts*, not what
+it recognises in order to reject). That read lives in `REFUSED_READS` — an
+explicit, reasoned list, not a silent skip list — and every entry is itself
+checked, so a refusal whose field is also declared, whose handler stopped reading
+it, or whose route is gone is *itself* a finding. `GET /api/v1/events` is the
+mirror case on the other side: its reader is `revisionFromRequest` in
+`sse.mjs`, outside the router, so the endpoint is acknowledged in `OUT_OF_LINT`
+with that reason and the acknowledgement is checked too.
+
+`test/verify/route-request.test.mjs` is the red→green proof, and it never edits
+`src/`: the *live surface* must pass, and synthetic handlers — an undeclared
+read, an unread declaration, a computed key, a destructured read, a literal loop
+— must go red and then green. It also pins the surface's exemption count to
+exactly one, so a second one cannot be added quietly.
+
+```bash
+node scripts/verify/route-request.mjs          # lint the live surface; 0 or 1
+node scripts/verify/route-request.mjs --print  # per route, declared vs read
+```
+
 ## Commands
 
 ```bash
@@ -123,11 +178,11 @@ be regenerated with `--update`. (That is why the check is stronger than a
 
 | Door | What it runs |
 |---|---|
-| `.githooks/pre-push` | the contract check on **every** push (the API ships in every commit, not only a tag), then the tag↔CHANGELOG rule |
-| `.githooks/pre-tag` | the same two rules, by hand, *before* `git tag` |
-| `.github/workflows/contract-gate.yml` | the contract check on every branch push and pull request |
+| `.githooks/pre-push` | the contract check and the route-request lint on **every** push (the API ships in every commit, not only a tag), then the tag↔CHANGELOG rule |
+| `.githooks/pre-tag` | the same three rules, by hand, *before* `git tag` |
+| `.github/workflows/contract-gate.yml` | both API checks on every branch push and pull request |
 | `.github/workflows/version-gate.yml` | the contract check at tag time, next to the changelog gate |
-| `docker/verify-in-container.sh` | the contract check inside the full container suite (`npm run verify:docker`) |
+| `docker/verify-in-container.sh` | both API checks inside the full container suite (`npm run verify:docker`) |
 
 `check.yml` is owned by a concurrent change and is deliberately not touched, the
 same reason the changelog rule lives in `version-gate.yml`; `contract-gate.yml`
@@ -150,7 +205,16 @@ is the pull-request-time authority. See
    `route_request_*` lines name the exact facet (`task_move.to.enum`,
    `GET /api/v1/tasks.query.limit.type`, not just the tool or the route), so a
    widened status vocabulary reads as the one value that moved.
-3. If it is intended, refresh the snapshot and commit it **with** the change:
+3. Confirm the declaration still equals the handler's reads:
+
+   ```bash
+   node scripts/verify/route-request.mjs
+   ```
+
+   A field added to the handler but not to the declaration (or the reverse) is a
+   finding here. Fix the declaration beside the route; if the read is deliberate
+   and the field is *refused* rather than accepted, say so in `REFUSED_READS`.
+4. If it is intended, refresh the snapshot and commit it **with** the change:
 
    ```bash
    node scripts/verify/contract.mjs --update

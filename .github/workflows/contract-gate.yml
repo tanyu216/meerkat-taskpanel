@@ -1,17 +1,23 @@
 name: contract-gate
 
-# The API contract snapshot gate.
+# The API contract gates.
 #
 # `test/fixtures/contract/api.snapshot.json` freezes the surface a client binds
-# to — routes, error codes, wire fields and MCP tool arguments. This job fails
-# when the committed snapshot and the live surface disagree, so a route rename,
-# an error-status change or a dropped wire field is caught at pull-request time
-# instead of by a client after release.
+# to — routes, each route's declared request shape, error codes, wire fields and
+# MCP tool arguments. This job fails when the committed snapshot and the live
+# surface disagree, so a route rename, an error-status change or a dropped wire
+# field is caught at pull-request time instead of by a client after release.
+#
+# The second gate is the pairing half: `scripts/verify/route-request.mjs` proves
+# each route's *declared* request schema equals what its handler actually reads
+# (statically, from the handler source). The snapshot freezes the declaration;
+# this proves the declaration is true — a handler that starts reading a field the
+# declaration omits, or a declared filter nothing reads, fails here.
 #
 # It lives in its own workflow on purpose: `.github/workflows/check.yml` is owned
 # by a concurrent change and must not be modified, the same reason
-# `version-gate.yml` carries the changelog rule in a workflow of its own. The
-# same checker also runs locally in `.githooks/pre-push` and `.githooks/pre-tag`.
+# `version-gate.yml` carries the changelog rule in a workflow of its own. Both
+# checkers also run locally in `.githooks/pre-push` and `.githooks/pre-tag`.
 on:
   push:
     branches: ["**"]
@@ -36,3 +42,9 @@ jobs:
       # (sorted-key, stable) form `--update` writes.
       - name: API contract matches the snapshot
         run: node scripts/verify/contract.mjs
+
+      # The declaration the snapshot freezes must be the one the handler honours.
+      # Static and offline, like the checker above: it reads handler source, opens
+      # no database and starts no server.
+      - name: Route request schema matches what the handler reads
+        run: node scripts/verify/route-request.mjs

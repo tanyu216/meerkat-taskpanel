@@ -194,14 +194,15 @@ check belongs. Its steps, in order:
 | 2 | `npm run test:coverage` (the line/branch/function floors) |
 | 3 | `npm run check` (skill sync, manifests, skill definition, tests) |
 | 4 | `node scripts/verify/contract.mjs` (API contract snapshot) |
-| 5 | `bash install.sh --target all --dry-run` |
-| 6 | `node scripts/verify/profiles.mjs` (all four hosts, throwaway home) |
-| 7 | `node scripts/verify/host-runtime.mjs` (offline host-runtime harness) |
-| 8 | `bash scripts/verify/install-e2e.sh` (install + first-run end-to-end) |
+| 5 | `node scripts/verify/route-request.mjs` (declared request schema vs handler reads) |
+| 6 | `bash install.sh --target all --dry-run` |
+| 7 | `node scripts/verify/profiles.mjs` (all four hosts, throwaway home) |
+| 8 | `node scripts/verify/host-runtime.mjs` (offline host-runtime harness) |
+| 9 | `bash scripts/verify/install-e2e.sh` (install + first-run end-to-end) |
 
 Each step prints an `== ... ==` header and the script aborts on the first failure.
 
-> Steps 6 and 8 are the two that install into throwaway homes. Step 8 is the deepest —
+> Steps 7 and 9 are the two that install into throwaway homes. Step 9 is the deepest —
 > it also drives the real `taskctl` against a real `taskd` — and it is the reason
 > `npm run verify:docker` and the CI `docker` job can no longer disagree: it used to live
 > only in CI, as a separate `docker run` *after* this script, so the two tracks diverged

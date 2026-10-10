@@ -115,8 +115,11 @@ same two hooks (`pre-push`, `pre-tag`) also run `scripts/verify/contract.mjs`, w
 compares the live surface — routes and their declared request shapes, error codes, wire
 field names and types, and each MCP tool's `inputSchema` (type/enum/items) — against
 `test/fixtures/contract/api.snapshot.json`; a change to any of them without a
-snapshot update is a non-zero exit. `version-gate.yml` runs it at tag time, and
-`.github/workflows/contract-gate.yml` runs it on every branch push and pull request.
+snapshot update is a non-zero exit. Next to it, `scripts/verify/route-request.mjs`
+proves the declaration the snapshot freezes is the one the handler honours: it reads
+each route's handler source and compares the fields it reads against the declared
+`{query, body}`. `version-gate.yml` runs the snapshot check at tag time, and
+`.github/workflows/contract-gate.yml` runs both on every branch push and pull request.
 The full story, and the `--update` workflow, is in [contract.md](contract.md).
 
 ## 4. Claude Code marketplace

@@ -1,25 +1,29 @@
 #!/bin/sh
 # Meerkat TaskPanel pre-push hook.
 #
-# Two gates, both offline and Node-builtins-only:
+# Three gates, all offline and Node-builtins-only:
 #
 #   1. the API contract snapshot — the live surface (routes + error codes + wire
 #      fields + MCP tools) must match `test/fixtures/contract/api.snapshot.json`.
 #      A route rename, an error status change or a dropped wire field therefore
 #      has to be an explicit snapshot update (`scripts/verify/contract.mjs
 #      --update`), never a silent drift that ships to a client;
-#   2. every version tag being pushed (`refs/tags/vX.Y.Z`) must have a `## [X.Y.Z]`
+#   2. the route-request lint — every route's *declared* request schema must equal
+#      what its handler actually reads (`scripts/verify/route-request.mjs`). The
+#      snapshot freezes the declaration; this proves the declaration is true;
+#   3. every version tag being pushed (`refs/tags/vX.Y.Z`) must have a `## [X.Y.Z]`
 #      section in CHANGELOG.md. Git supplies one line per ref on stdin:
 #
 #        <local ref> <local sha> <remote ref> <remote sha>
 #
-# The contract gate runs first and unconditionally — every push carries the API,
-# not only a tag. It does not read stdin, so the ref loop below still sees every
-# line. Git has no native `pre-tag` hook (a tag is a ref, not a commit), so the
+# Both API gates run first and unconditionally — every push carries the API, not
+# only a tag. Neither reads stdin, so the ref loop below still sees every line.
+# Git has no native `pre-tag` hook (a tag is a ref, not a commit), so the
 # changelog rule is also enforced by `.githooks/pre-tag` when run by hand and
 # authoritatively in CI (`.github/workflows/version-gate.yml`).
 status=0
 node scripts/verify/contract.mjs || status=1
+node scripts/verify/route-request.mjs || status=1
 while read -r _local_ref _local_sha remote_ref _remote_sha; do
   case "$remote_ref" in
     refs/tags/v*)

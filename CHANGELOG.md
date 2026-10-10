@@ -22,6 +22,24 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   route request schemas are declared (in `src/server/requests.mjs`, beside each route),
   not enforced — the handlers read their requests as before. See
   [`docs/contract.md`](docs/contract.md).
+- **Route-request lint.** The snapshot freezes each route's *declared* request schema,
+  but nothing proved the declaration was what the handler actually reads — the
+  declaration is a second description of the request, and a handler that starts reading
+  a field the declaration omits (or a declared field nothing reads) does not move the
+  snapshot. `scripts/verify/route-request.mjs` closes that at the mechanism level: it
+  reads every route's handler **source**, statically extracts the query and body fields
+  it reads (`query.get("x")`, `body.x`, `body["x"]`, `body[x]` over a literal loop,
+  `const { x } = body`) and compares them against the declaration in both directions —
+  `undeclared_read`, `unread_declaration`, `unresolvable_read`, `stale_refusal`,
+  `uncovered_endpoint`. A read form it cannot resolve is a **failure**, not a shrug: the
+  lint refuses to pass a route it cannot prove, so a new form is a red gate rather than a
+  silent hole. The one read a name-matching lint cannot reconcile — `PATCH
+  /api/v1/tasks/:ref` reads `body.status` only to refuse it, and the declaration correctly
+  omits it — is an explicit, checked entry in `REFUSED_READS`; the entries go stale (and
+  go red) on their own if the field is declared, unread, or its route is gone.
+  `test/verify/route-request.test.mjs` is the red→green proof over synthetic handlers,
+  touching no `src/`. It runs in `pre-push`/`pre-tag`, in `contract-gate.yml`, and inside
+  the container suite.
 - **Scheduling & patrol.** A host-external supervisor (`scripts/supervisor.mjs`) runs the
   cheap 1-minute **poll** (a $0 candidate scan; an LLM turn starts only when a card is
   actually claimed) and the 5-minute **patrol** (escalate a stale claim; report an

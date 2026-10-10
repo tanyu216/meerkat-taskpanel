@@ -3,12 +3,15 @@
 #
 #   sh .githooks/pre-tag v1.2.3
 #
-# Two refusals, in order:
+# Three refusals, in order:
 #
 #   1. the API contract snapshot must match the live surface
 #      (`scripts/verify/contract.mjs`) — a tag must not freeze an API contract
 #      that the snapshot does not describe;
-#   2. the tag's `## [X.Y.Z]` section must be in CHANGELOG.md
+#   2. every route's declared request schema must equal what its handler reads
+#      (`scripts/verify/route-request.mjs`) — the snapshot freezes the
+#      declaration, so the declaration has to be true;
+#   3. the tag's `## [X.Y.Z]` section must be in CHANGELOG.md
 #      (`scripts/verify/changelog.mjs`), so the release draft ships documented.
 #
 # So the tag is never created in the first place. Git has no native `pre-tag`
@@ -16,11 +19,12 @@
 # are also enforced by `.githooks/pre-push` (everything leaving the machine) and
 # by CI (`.github/workflows/version-gate.yml`). See docs/publishing.md.
 #
-# Exit: 0 both gates pass (or the ref is not a version tag) · 1 a gate failed ·
+# Exit: 0 all gates pass (or the ref is not a version tag) · 1 a gate failed ·
 # 2 usage.
 if [ "$#" -lt 1 ]; then
   echo "usage: .githooks/pre-tag <vX.Y.Z>" >&2
   exit 2
 fi
 node scripts/verify/contract.mjs || exit 1
+node scripts/verify/route-request.mjs || exit 1
 exec node scripts/verify/changelog.mjs "$1"

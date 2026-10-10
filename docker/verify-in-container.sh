@@ -35,6 +35,9 @@ npm run check
 step "API contract snapshot (routes + route request shapes + error codes + wire fields)"
 node scripts/verify/contract.mjs
 
+step "route request lint (declared schema vs what the handler reads)"
+node scripts/verify/route-request.mjs
+
 step "install.sh --target all --dry-run"
 bash install.sh --target all --dry-run
 
