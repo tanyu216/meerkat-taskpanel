@@ -113,6 +113,13 @@ Every write can name the actor and the conversation behind it
 "which agent session did this", and it is what lets a resumed conversation
 re-attach to the same work instead of starting over. Always pass the session id.
 
+> **Stuck on a question for a human?** That is an `awaiting` move with an
+> `E1..E5` reason — `issue move <ref> awaiting --awaiting-reason E3` — not a
+> `blocked` and not a chat message. The card stays *running* while the person
+> answers, and the answer resumes the same attempt without starting a new
+> delivery round. The eight rules above still hold; see `cli.md` §The `awaiting`
+> state.
+
 ## Where a directory's project lives (目录归属)
 
 **The board holds no directories.** A board project carries no target directory: no
