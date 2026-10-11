@@ -211,7 +211,7 @@ claimed (the atomic claim is the single dispatch source) — and a **5-minute
 patrol** that escalates a claim whose heartbeat has gone stale and reports a
 heartbeat it cannot read (never silently). Claude Code and Codex have **no
 timers**, so the loop lives *outside* them and only the worker is woken
-(`claude -p`, `codex exec`, `pi run`).
+(`claude -p`, `codex exec`, `pi --print`).
 
 `install.sh` drops per-host launchd / systemd / cron units and a wake-glue
 script, and prints the exact load command — it never enables a daemon for you.
