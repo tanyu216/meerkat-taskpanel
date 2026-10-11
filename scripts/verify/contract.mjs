@@ -66,6 +66,7 @@ import { parseArgs } from "node:util";
 
 import { OUT_OF_ROUTER_ENDPOINTS, registerApiRoutes } from "../../src/server/index.mjs";
 import { createRouter } from "../../src/server/router.mjs";
+import { CONTRACT_SCHEMA_VERSION } from "../../src/shared/constants.mjs";
 import { ERROR_CODES } from "../../src/shared/errors.mjs";
 import {
   activityToWire,
@@ -89,8 +90,12 @@ export const SNAPSHOT_FILE = "test/fixtures/contract/api.snapshot.json";
  * Bumped only when the snapshot's own *schema* changes shape. (4 removed the
  * frozen tool-schemas section; 3 added each route's declared request
  * `{query, body}`; 2 added the wire field types.)
+ *
+ * The value itself lives in `src/shared/constants.mjs` — the runtime publishes
+ * the same number (`taskctl --version --json`) and a client's drift gate reads it
+ * from there, so the snapshot and the published number cannot disagree.
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = CONTRACT_SCHEMA_VERSION;
 
 // ---------------------------------------------------------------------------
 // Collecting the live surface

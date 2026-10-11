@@ -89,7 +89,7 @@ const GLOBAL_HELP = [
   { flag: "session-id", as: "string", value: "<id>", summary: "Agent session identifier." },
   { flag: "agent", as: "string", value: "<name>", summary: "Actor id recorded on writes." },
   { flag: "help", as: "boolean", short: "-h", summary: "Show help and exit." },
-  { flag: "version", as: "boolean", summary: "Print the version and exit." },
+  { flag: "version", as: "boolean", summary: "Print the version and exit (with --json: the version and the contract schema_version)." },
 ];
 
 function flagTable(specs) {

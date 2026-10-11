@@ -40,6 +40,25 @@ Bumping the snapshot's own layout (not a section) bumps `schema_version`. It is
 request shapes and **2** added the wire field types; **1** was the original
 routes/errors/wire-names snapshot.
 
+The number itself is `CONTRACT_SCHEMA_VERSION` in `src/shared/constants.mjs` — the
+generator **reads** it rather than keeping a second copy — and the runtime
+publishes the same value:
+
+```bash
+taskctl --version --json     # {"ok":true,"data":{"version":"1.0.0","schema_version":4}}
+```
+
+so a client can read the generation the provider actually speaks **at runtime**
+instead of hard-coding one, which is what an ACL adapter's drift gate needs: the
+structural leg (a field's presence and type, frozen in `wire`) catches a change
+that moved a field, and this number is the version leg beside it. It is answered
+before any board is contacted, so the negotiation does not depend on the board it
+is about. Note what the number does and does not track: it moves with the
+snapshot's own *layout*, not with every contract change — adding a route changes
+`routes` without moving it — so the structural leg remains the primary detector
+and this is the coarse generation marker beside it. The bare `taskctl --version`
+line is unchanged.
+
 ## What is deliberately *not* frozen
 
 Error **messages** and **hints**, route handler internals, and JSON-Schema

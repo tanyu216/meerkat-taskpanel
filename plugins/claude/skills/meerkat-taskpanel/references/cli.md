@@ -17,7 +17,17 @@ Global form, and the two flags that always work (they never contact a board):
 ```bash
 taskctl --help
 taskctl --version
+taskctl --version --json   # {"ok":true,"data":{"version":"1.0.0","schema_version":4}}
 ```
+
+`--version --json` is the **version leg**: it publishes the provider's contract
+`schema_version` — the generation of the API/wire contract this board speaks, the
+same number the contract snapshot freezes (`docs/contract.md`) — so a caller that
+has to detect contract drift can read the provider's own declaration instead of
+hard-coding one. It needs no board, so the check works even when the daemon is
+down. The number moves with the snapshot's own layout, not with every contract
+change: a new route does not move it, so treat it as a coarse generation marker,
+not a complete drift detector.
 
 ## Starting the board
 
@@ -40,6 +50,7 @@ never the token itself) so any shell in any directory finds the same board.
 | `--agent-platform <name>` | Host platform (`claude`, `codex`, …). Makes the actor an `agent`. |
 | `--session-id <id>` | Agent session identifier. Also makes the actor an `agent`. |
 | `--agent <name>` | Name the actor without claiming to be an agent platform. |
+| `--version` | Print the release version and exit. With `--json`, print `{"version", "schema_version"}` — the contract schema generation beside it. Never contacts a board. |
 | `-h`, `--help` | Help for the CLI, a group, or one command. |
 
 **Exit codes:** `0` success · `1` runtime failure (including the delivery gate) ·

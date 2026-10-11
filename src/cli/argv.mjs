@@ -44,7 +44,7 @@ export const GLOBAL_FLAGS = Object.freeze([
   { flag: "session-id", key: "sessionId", as: "string", value: "<id>", summary: "Agent session identifier." },
   { flag: "agent", key: "agent", as: "string", value: "<name>", summary: "Actor id recorded on writes." },
   { flag: "help", key: "help", as: "boolean", short: "-h", summary: "Show help for the command and exit." },
-  { flag: "version", key: "version", as: "boolean", summary: "Print the version and exit." },
+  { flag: "version", key: "version", as: "boolean", summary: "Print the version and exit (with --json: the version and the contract schema_version)." },
 ]);
 
 /** The short forms the tokenizer recognises. */

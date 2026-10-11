@@ -22,7 +22,7 @@
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
-import { CLI_EXIT } from "../shared/constants.mjs";
+import { CLI_EXIT, CONTRACT_SCHEMA_VERSION, VERSION } from "../shared/constants.mjs";
 import { isSupportedNode, unsupportedNodeMessage } from "../shared/node-version.mjs";
 import { redactText } from "../shared/redact.mjs";
 import { resolveActor } from "../shared/transport/actor.mjs";
@@ -107,6 +107,19 @@ export async function run(argv, io) {
   }
 
   if (parsed.version === true) {
+    // The version leg, in machine form: `--json` publishes the contract schema
+    // generation beside the release version, so a client's drift gate can read
+    // the number the provider actually speaks instead of hard-coding it. The
+    // bare line is unchanged — it is answered before any board, token or data
+    // directory, and a consumer that needs only the version must not pay for a
+    // board (nor fail when there is none).
+    if (json) {
+      renderResult(
+        { data: { version: VERSION, schema_version: CONTRACT_SCHEMA_VERSION }, human: "" },
+        { json, out, err },
+      );
+      return CLI_EXIT.OK;
+    }
     out(versionLine());
     return CLI_EXIT.OK;
   }
