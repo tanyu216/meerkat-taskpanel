@@ -10,6 +10,12 @@
  *   - the workflow has **no path to a publish** — no `npm publish`, no registry token
  *     (`NPM_TOKEN` / `NODE_AUTH_TOKEN` / `secrets.*`), no `registry-url`, no marketplace
  *     upload — and stops at `gh release create --draft`;
+ *   - the release step is the **only** `gh release` call in the file and its subcommand is
+ *     `create` (so `gh release edit|delete|upload …`, which can change or drop a draft's
+ *     state, turns red — a whitelist, not a blacklist of known-bad flags);
+ *   - that `gh release create` occurs **exactly once** and *every* occurrence carries
+ *     `--draft` with the closed asset list — a guard that reads only the first command
+ *     cannot see a second, non-draft one appended below it;
  *   - the draft's asset list is **closed**: the npm tarball plus `sbom.spdx.json`, with no
  *     wildcard and nothing else from the workspace;
  *   - the SBOM step is **required** (not `continue-on-error`) and asserted non-empty;
@@ -45,21 +51,33 @@ function code(text) {
 }
 
 /**
- * The `gh release create …` invocation, with backslash line-continuations folded into one
- * string. Returns null when the command is absent.
+ * Every `gh release <subcommand> …` invocation in `text`, with backslash line-continuations
+ * folded into one string, in file order. Returns `{ sub, command }` objects.
+ *
+ * Deliberately *all* occurrences, not the first: a guard that reads only the first command
+ * cannot see a second, non-draft `gh release create` appended below it (Turing R68 on
+ * T-20261010-204107 found exactly that hole). The callers below assert on the whole list —
+ * that it holds exactly one `create`, that every element is a `create`, and that every
+ * element carries `--draft` and the closed asset list.
  */
-function ghReleaseCommand(text) {
+function ghReleaseCommands(text) {
   const lines = text.split("\n");
-  const start = lines.findIndex((line) => /(^|\s)gh release create(\s|$)/.test(line.trim()));
-  if (start === -1) return null;
+  const out = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const match = /(^|\s)gh release (\S+)/.exec(lines[i].trim());
+    if (!match) continue;
 
-  const folded = [];
-  for (let i = start; i < lines.length; i += 1) {
-    const continues = /\\\s*$/.test(lines[i]);
-    folded.push(continues ? lines[i].replace(/\\\s*$/, "") : lines[i]);
-    if (!continues) break;
+    const folded = [];
+    let j = i;
+    for (; j < lines.length; j += 1) {
+      const continues = /\\\s*$/.test(lines[j]);
+      folded.push(continues ? lines[j].replace(/\\\s*$/, "") : lines[j]);
+      if (!continues) break;
+    }
+    i = j; // this command consumed the continuation lines; don't rescan them
+    out.push({ sub: match[2], command: folded.join(" ").trim() });
   }
-  return folded.join(" ").trim();
+  return out;
 }
 
 /** Quote-aware whitespace split: `"a b"` is one token, quotes are removed. */
@@ -161,18 +179,33 @@ describe("static: .github/workflows/release.yml", () => {
     }
   });
 
-  it("opens the release only as a draft, with a closed asset list", async () => {
-    const command = ghReleaseCommand(code(await read(WORKFLOW)));
-    assert.ok(command, "expected a `gh release create` invocation");
+  it("never runs a `gh release` subcommand other than `create`", async () => {
+    const commands = ghReleaseCommands(code(await read(WORKFLOW)));
+    assert.ok(commands.length > 0, "expected a `gh release` invocation");
 
-    const { flags, positional } = ghReleaseArgs(command);
-    assert.ok(flags.includes("--draft"), "the release must be created --draft");
-    assert.deepEqual(
-      positional,
-      ["$GITHUB_REF_NAME", "${{ steps.pack.outputs.tarball }}", "sbom.spdx.json"],
-      "assets are exactly the tag ref, the npm tarball and the SBOM — closed, no other workspace artifact",
-    );
-    assert.doesNotMatch(command, /\*/, "the asset list must not use a wildcard");
+    // Whitelist, so a state-changing subcommand the blacklist does not name — `gh release
+    // edit`, `delete`, `upload` — still turns red.
+    for (const { sub } of commands) {
+      assert.equal(sub, "create", `release.yml may only ever run \`gh release create\`; found \`gh release ${sub}\``);
+    }
+  });
+
+  it("opens the release only as a draft, with a closed asset list", async () => {
+    const creates = ghReleaseCommands(code(await read(WORKFLOW))).filter((c) => c.sub === "create");
+    assert.equal(creates.length, 1, "exactly one `gh release create` — a second is an unseen release path");
+
+    // Belt and braces with the count above: validate *every* occurrence, so a second
+    // command would have to satisfy the draft + closed-asset contract to go unnoticed.
+    for (const { command } of creates) {
+      const { flags, positional } = ghReleaseArgs(command);
+      assert.ok(flags.includes("--draft"), "the release must be created --draft");
+      assert.deepEqual(
+        positional,
+        ["$GITHUB_REF_NAME", "${{ steps.pack.outputs.tarball }}", "sbom.spdx.json"],
+        "assets are exactly the tag ref, the npm tarball and the SBOM — closed, no other workspace artifact",
+      );
+      assert.doesNotMatch(command, /\*/, "the asset list must not use a wildcard");
+    }
   });
 
   it("makes the SBOM a required step, produced here and asserted non-empty", async () => {
