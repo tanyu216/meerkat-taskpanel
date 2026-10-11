@@ -67,7 +67,6 @@ const FIELD_SPECS = Object.freeze([
   { field: "kind", home: "tasks.kind", get: (card) => card.kind },
   { field: "labels", home: "labels registry (normalised set)", get: (card) => labelSet(card.labels) },
   { field: "project", home: "projects.id (name → id)", get: (card) => card.projectId },
-  { field: "target", home: "projects.workspace_path (project-level)", get: (card) => card.target ?? card.projectWorkspace ?? null },
   { field: "assignee", home: "assignees dictionary", get: (card) => card.assignee },
   { field: "assignee_kind", home: "tasks.assignee_kind (NOT re-exported)", get: (card) => card.assigneeKind },
   { field: "created_by", home: "reporters dictionary + tasks.reporter_id", get: (card) => card.createdBy },
@@ -537,7 +536,7 @@ function buildReport(context) {
   for (const row of perField) {
     if (row.changed > 0) {
       differences.push(`perField:${row.field} changed on ${row.changed} card(s)`);
-      if (LEGACY_ONLY_FIELDS.includes(row.field) || row.field === "target" || row.field === "assignee_kind") {
+      if (LEGACY_ONLY_FIELDS.includes(row.field) || row.field === "assignee_kind") {
         unmappable.push({
           kind: "field-drift",
           field: row.field,
@@ -562,7 +561,7 @@ function buildReport(context) {
   if (unparsable.length > 0) differences.push(`parse: ${unparsable.length} card(s) could not be parsed`);
 
   // --- project-level diff -------------------------------------------------
-  const projects = projectDiffs({ db: db1, sourceCards, registry });
+  const projects = projectDiffs({ db: db1, sourceCards });
 
   // --- idempotency --------------------------------------------------------
   // "No new rows": re-importing the same directory may not add or change a row.
@@ -623,9 +622,9 @@ function buildReport(context) {
   return report;
 }
 
-/** @param {object} db @param {{card: object, identifier: string}[]} sourceCards @param {object|null} registry */
-function projectDiffs({ db, sourceCards, registry }) {
-  const rows = db.prepare("SELECT id, name, workspace_path, meta_json FROM projects ORDER BY id").all();
+/** @param {object} db @param {{card: object, identifier: string}[]} sourceCards */
+function projectDiffs({ db, sourceCards }) {
+  const rows = db.prepare("SELECT id, name, meta_json FROM projects ORDER BY id").all();
   const byProject = new Map();
   for (const entry of sourceCards) {
     const id = entry.card.projectId;
@@ -633,23 +632,21 @@ function projectDiffs({ db, sourceCards, registry }) {
     if (!byProject.has(id)) byProject.set(id, { names: new Set(), targets: new Set(), gitRules: 0 });
     const bucket = byProject.get(id);
     if (entry.card.project !== null) bucket.names.add(String(entry.card.project));
-    if (entry.card.target !== null && entry.card.target !== undefined) bucket.targets.add(entry.card.target);
+    // `target` is an opaque per-card value now (O3), listed for information —
+    // there is no project-owned directory to compare it against.
+    const target = legacy(entry.card, "target");
+    if (target !== null) bucket.targets.add(target);
     if (legacy(entry.card, "git_rules") !== null || entry.card.legacy?.git_rules !== undefined) bucket.gitRules += 1;
   }
 
   return rows.map((row) => {
     const bucket = byProject.get(row.id) ?? { names: new Set(), targets: new Set(), gitRules: 0 };
     const meta = safeJson(row.meta_json);
-    const entry = registry?.resolveById(row.id) ?? null;
-    const registryRoot = entry?.workspacePath ?? null;
     return {
       id: row.id,
       name: row.name,
-      workspacePath: row.workspace_path,
-      registryRoot,
       names: [...bucket.names].sort(),
       targets: [...bucket.targets].sort(),
-      matches: registryRoot === null ? true : registryRoot === row.workspace_path,
       gitRules: {
         cardsWithGitRules: bucket.gitRules,
         registryDefault: typeof meta.default_git_rules === "string" ? "present" : "absent",

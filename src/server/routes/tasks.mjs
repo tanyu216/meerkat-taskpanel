@@ -168,6 +168,10 @@ export function registerTaskRoutes(router, surface) {
   }, { query: LIST_QUERY });
 
   router.post("/api/v1/tasks", ({ body, actor }) => {
+    // `target` is the card's own value, carried in its meta (the board owns no
+    // project directory, so `target` is not a top-level create field). Folding
+    // it into `meta` keeps the field working and feeds the idempotency key.
+    const meta = body.target === undefined ? body.meta : { ...(body.meta ?? {}), target: body.target };
     const task = commands.createTask({
       projectId: body.project_id,
       title: body.title,
@@ -176,7 +180,7 @@ export function registerTaskRoutes(router, surface) {
       priority: body.priority,
       kind: body.kind,
       labels: body.labels,
-      meta: body.meta,
+      meta,
       identifier: body.identifier,
       sourcePath: body.source_path,
       assignee: body.assignee,
@@ -193,7 +197,6 @@ export function registerTaskRoutes(router, surface) {
       allowDup: body.allow_dup === true,
       reviewOf: body.review_of,
       parent: body.parent,
-      target: body.target,
       actor,
     });
     return taskPayload(repos, task);
