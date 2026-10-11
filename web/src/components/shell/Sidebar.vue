@@ -11,20 +11,25 @@
  */
 import { computed, ref } from "vue";
 
-import { board, selectProject, STATUSES, PRIORITIES } from "../../stores/board.js";
+import { board, selectProject, COLUMN_STATUSES, PRIORITIES, waitingCount } from "../../stores/board.js";
 import { accessOpen, statesOpen, view, setView } from "../../stores/ui.js";
 import { initialsOf } from "../../lib/monogram.js";
 
 import SidebarFooter from "./SidebarFooter.vue";
 
-const nav = ["board", "list", "activity"];
+// B03 · the nav items. M1 appends `waiting` after `board | list | activity` —
+// the deliberately-approved extension of the frozen `3` (design §10-C6), which
+// is why B03's `count [data-nav-item]` and `DOMAINS.NAV` move with it.
+const nav = ["board", "list", "activity", "waiting"];
 
 // The rail glyph of each view, matching the prototype's B03 nav icons: board =
-// three bars, list = three rules, activity = a clock.
+// three bars, list = three rules, activity = a clock, waiting = a speech mark
+// (the question this view answers).
 const navIcons = {
   board: "M4 5h4v14H4zM10 5h4v9h-4zM16 5h4v11h-4z",
   list: "M4 6h16M4 12h16M4 18h16",
   activity: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 7v5l3 2",
+  waiting: "M5 5h14v10H9l-4 4V5Z",
 };
 
 const projects = computed(() =>
@@ -63,8 +68,13 @@ const agents = computed(() => {
   return [...byPlatform.values()];
 });
 
+// The nav items that are real *views*. `activity` remains a destination this
+// build does not render (unchanged); `waiting` is a real writer — pressing it
+// switches the main area to the 「等你回复」view, which is what makes the item a
+// view rather than a decoration.
+const ROUTABLE = ["board", "list", "waiting"];
 function onNav(item) {
-  if (item === "board" || item === "list") setView(item);
+  if (ROUTABLE.includes(item)) setView(item);
 }
 </script>
 
@@ -84,6 +94,18 @@ function onNav(item) {
           <path :d="navIcons[item]" />
         </svg>
         <span class="td-side-text" :data-i18n="`nav.${item}`">{{ $t(`nav.${item}`) }}</span>
+        <!-- M1 · the count. `aria-live="polite"` so the number announcing itself
+             does not steal focus; at zero the pill is hidden but the nav item
+             stays clickable — a hidden zero and a disabled item are different
+             promises, and only the first is wanted (design §3.3). -->
+        <span
+          v-if="item === 'waiting'"
+          class="badge badge-sm td-mono td-count td-count-waiting"
+          data-nav-count="waiting"
+          aria-live="polite"
+          :hidden="waitingCount === 0"
+          :title="$t('waiting.count', waitingCount)"
+        >{{ waitingCount }}</span>
       </button>
     </nav>
 
@@ -131,8 +153,12 @@ function onNav(item) {
     <section>
       <h2 class="td-side-label" data-i18n="sidebar.legend">{{ $t("sidebar.legend") }}</h2>
       <div class="td-legend" data-legend>
+        <!-- One chip per **stage** status. `awaiting` is deliberately absent:
+             it is an overlay, not a stage and not a colour, so the legend —
+             which is a key to the stage colours — has nothing to add for it
+             (design §4, "no new hue"). -->
         <div class="td-legend-status" data-legend-status>
-          <span v-for="status in STATUSES" :key="status" class="td-legend-chip" :data-status="status">{{ $t(`status.${status}`) }}</span>
+          <span v-for="status in COLUMN_STATUSES" :key="status" class="td-legend-chip" :data-status="status">{{ $t(`status.${status}`) }}</span>
         </div>
         <div class="td-legend-priority" data-legend-priority>
           <span v-for="priority in PRIORITIES" :key="priority" class="td-legend-chip" :data-priority="priority">{{ $t(`priority.${priority}`) }}</span>

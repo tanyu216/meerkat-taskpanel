@@ -16,6 +16,7 @@ import { accessOpen, closeMoveMenu, createProjectOpen, createTaskOpen, moveMenu,
 import FiltersBar from "./components/board/FiltersBar.vue";
 import Board from "./components/board/Board.vue";
 import ListView from "./components/board/ListView.vue";
+import WaitingView from "./components/board/WaitingView.vue";
 import Sidebar from "./components/shell/Sidebar.vue";
 import TopBar from "./components/shell/TopBar.vue";
 import ToastRegion from "./components/shell/ToastRegion.vue";
@@ -71,6 +72,9 @@ onUnmounted(() => document.removeEventListener("keydown", onKeydown));
 
       <Board v-show="view === 'board'" />
       <ListView v-show="view === 'list'" />
+      <!-- M1 · the 「等你回复」view. A nav destination, not a third value of the
+           top bar's `board | list` toggle (that domain is frozen). -->
+      <WaitingView v-show="view === 'waiting'" />
 
       <div class="td-filters" style="border-bottom: 0">
         <button type="button" class="btn btn-ghost btn-xs" :title="$t('connection.resyncTitle')" @click="resync">

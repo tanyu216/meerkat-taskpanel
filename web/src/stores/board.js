@@ -23,12 +23,72 @@ import { createEventClient } from "../services/events.js";
 import { t } from "../i18n/index.js";
 import { pushStickyToast, pushToast } from "./ui.js";
 
-/** The seven board statuses, in board order (contract `DOMAINS.STATUS`). */
-export const STATUSES = Object.freeze(["backlog", "todo", "in_progress", "in_review", "blocked", "done", "canceled"]);
+/**
+ * The canonical statuses: the seven board stages, in board order, plus M1's
+ * `awaiting` overlay appended after them.
+ *
+ * `awaiting` is **not** an eighth column. It is an attention state a card wears
+ * while staying on its stage (`in_progress`), so it is deliberately *absent*
+ * from `COLUMN_STATUSES` below — the board still renders exactly seven columns,
+ * and the contract's `DOMAINS.STATUS` (which names the columns) is unchanged.
+ * The vocabulary is here because the move menu, the i18n labels and the waiting
+ * view all need to know the word.
+ */
+export const STATUSES = Object.freeze(["backlog", "todo", "in_progress", "in_review", "blocked", "done", "canceled", "awaiting"]);
+/** M1 — running, but parked on a human. */
+export const AWAITING = "awaiting";
+/** The seven *stage* statuses — the board's columns, and `[data-card]`'s `data-status`. */
+export const COLUMN_STATUSES = Object.freeze(STATUSES.filter((status) => status !== AWAITING));
 /** The five priorities (contract `DOMAINS.PRIORITY`). */
 export const PRIORITIES = Object.freeze(["urgent", "high", "medium", "low", "none"]);
 /** The human owner the "Assignee: Me" filter resolves to (the prototype's `ME`). */
 export const ME = "Terry";
+
+/**
+ * The card's **stage** — the status that names its column and its `data-status`.
+ *
+ * An `awaiting` card stays where it was (`in_progress`): the badge is an
+ * overlay, not a column transfer. Everything that reads "which column is this
+ * in" goes through here, so the two never disagree.
+ *
+ * @param {{status?: string}|null|undefined} task
+ */
+export function stageOf(task) {
+  return task?.status === AWAITING ? "in_progress" : (task?.status ?? null);
+}
+
+/** Is this card waiting on a human? @param {{status?: string}} [task] */
+export function isAwaiting(task) {
+  return task?.status === AWAITING;
+}
+
+/**
+ * The transitions the move menu may offer — a mirror of
+ * `src/core/domain/status.mjs#ALLOWED_TRANSITIONS`, which is the one fact
+ * source. The web mirrors it for the same reason it mirrors `DOMAINS.STATUS`:
+ * the UI must not *offer* a move the server will refuse, and M1's rule is that
+ * an `awaiting` card is offered no route to `in_review`, `done` or `blocked`
+ * (design §6/§8-13) — the delivery gate's UI half.
+ */
+export const ALLOWED_TRANSITIONS = Object.freeze({
+  backlog: Object.freeze(["todo", "canceled"]),
+  todo: Object.freeze(["backlog", "in_progress", "blocked", "canceled"]),
+  in_progress: Object.freeze(["in_review", "blocked", "todo", "canceled", AWAITING]),
+  awaiting: Object.freeze(["in_progress", "canceled"]),
+  in_review: Object.freeze(["done", "in_progress", "blocked"]),
+  blocked: Object.freeze(["todo", "in_progress", "in_review", "canceled"]),
+  done: Object.freeze([]),
+  canceled: Object.freeze([]),
+});
+
+/**
+ * The statuses a card in `status` may move to, in menu order.
+ * @param {string|undefined|null} status
+ * @returns {readonly string[]}
+ */
+export function allowedTargets(status) {
+  return ALLOWED_TRANSITIONS[status] ?? Object.freeze([]);
+}
 
 /** @type {Record<string, any>} */
 export const board = reactive({
@@ -49,6 +109,13 @@ export const board = reactive({
   drawerState: "closed",
   detail: null,
   conflict: null,
+  /**
+   * M1 — the 「等你回复」payload, per task id: the human comment that triggered
+   * the entry (design §2.2). The list endpoint does not carry comments, so the
+   * waiting view reads them; a card whose payload has not loaded yet renders
+   * its summary line as absent rather than as an invented one.
+   */
+  waitingPayload: {},
 });
 
 /* --------------------------------------------------------------- accessors */
@@ -102,10 +169,73 @@ export const visibleTasks = computed(() => {
 });
 
 export const columns = computed(() =>
-  STATUSES.map((status) => ({ status, tasks: visibleTasks.value.filter((task) => task.status === status) })),
+  COLUMN_STATUSES.map((status) => ({
+    status,
+    // Bucketed by **stage**, so an `awaiting` card is listed under
+    // `in_progress` — it never left its column (design §3.1/§8-08).
+    tasks: visibleTasks.value.filter((task) => stageOf(task) === status),
+  })),
 );
 
 export const totalVisible = computed(() => visibleTasks.value.length);
+
+/**
+ * The cards the 「等你回复」view shows, and the number its nav pill prints.
+ *
+ * One predicate for both (design §8-05): the view and the count read the same
+ * derivation, so they cannot disagree — and both are built on `visibleTasks`, so
+ * a card hidden by an active filter is in neither.
+ */
+export const waitingTasks = computed(() => visibleTasks.value.filter(isAwaiting));
+export const waitingCount = computed(() => waitingTasks.value.length);
+
+/**
+ * The first sentence of a payload comment — the text up to the first
+ * sentence-final punctuation (`。．.！!？?`) or the first newline, whichever
+ * comes first, punctuation included.
+ *
+ * Mirrors `src/core/domain/awaiting.mjs#firstSentence`; the web cannot import
+ * from `src/`, so the rule is restated here and asserted against a fixture
+ * rather than trusted to stay in step.
+ *
+ * @param {unknown} body
+ * @returns {string}
+ */
+export function firstSentence(body) {
+  const text = String(body ?? "");
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch === "\n" || "。．.！!？?".includes(ch)) return text.slice(0, i + 1).trim();
+  }
+  return text.trim();
+}
+
+/**
+ * Load the payload comment for every awaiting card of the current project.
+ *
+ * Read-only and idempotent: a card whose payload is already known is skipped,
+ * so a re-entrant call (the view is re-entered, the board re-syncs) does not
+ * re-fetch. A failure leaves that card's payload absent — never a fabricated
+ * summary — and is swallowed per card, because one unreadable comment must not
+ * blank the whole view.
+ */
+export async function loadWaitingPayloads() {
+  const pending = waitingTasks.value.filter((task) => board.waitingPayload[task.id] === undefined);
+  await Promise.all(
+    pending.map(async (task) => {
+      try {
+        const data = await api.taskComments(task.identifier, { limit: 50 });
+        const comments = data.comments ?? [];
+        // The payload is the *newest human* comment (design §2.2/§2.3): an agent
+        // comment written afterwards is commentary, not the question.
+        const payload = [...comments].reverse().find((comment) => comment.author_kind === "human") ?? null;
+        board.waitingPayload = { ...board.waitingPayload, [task.id]: payload };
+      } catch {
+        board.waitingPayload = { ...board.waitingPayload, [task.id]: null };
+      }
+    }),
+  );
+}
 
 export const activeFilterCount = computed(() => {
   const { search, assignee, priority, label } = board.filters;

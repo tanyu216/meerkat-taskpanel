@@ -57,6 +57,8 @@ function fixture(projectId, status, overrides = {}) {
     priority: overrides.priority ?? "medium",
     kind: "task",
     labels: overrides.labels ?? ["bug"],
+    // M1 — the `awaiting` entry category (`null` on every other card).
+    awaiting_reason: overrides.awaiting_reason ?? null,
     meta: {},
     assignee: overrides.assignee ?? { id: "a1", display_name: "linus", kind: "agent" },
     reporter: { id: "h1", display_name: "Terry", kind: "human" },
@@ -114,6 +116,10 @@ export function fixtureApi() {
     fixture("p1", "in_review", { identifier: "TD-7", title: "Audit the token store", priority: "medium", labels: ["security"], assignee: AGENT.openclaw }),
     fixture("p1", "in_review", { identifier: "TD-8", title: "Redesign the sidebar rail", priority: "low", labels: ["design", "ui"], assignee: AGENT.pi }),
     fixture("p1", "blocked", { identifier: "TD-9", title: "Waiting on review", priority: "high", labels: ["bug"], assignee: AGENT.claude }),
+    // M1 · the 「等你回复」card. Its status is the overlay, so it is *listed* under
+    // in_progress (the seventh column count does not change) and it wears the
+    // badge; `awaiting_reason` is the entry category the badge carries.
+    fixture("p1", "awaiting", { identifier: "TD-13", title: "Confirm the release scope before the cut", priority: "urgent", labels: ["design"], assignee: AGENT.claude, awaiting_reason: "E1" }),
     fixture("p1", "done", { identifier: "TD-10", title: "Ship the CLI", priority: "low", labels: [], assignee: AGENT.human }),
     fixture("p1", "canceled", { identifier: "TD-11", title: "Drop the legacy importer", priority: "none", labels: ["perf"], assignee: AGENT.openclaw }),
     fixture("p1", "done", { identifier: "TD-12", title: "Lock down the webhooks", priority: "medium", labels: ["security", "design"], assignee: AGENT.pi }),
@@ -132,7 +138,16 @@ export function fixtureApi() {
     { id: "l4", project_id: "p1", norm: "perf", display_name: "perf", color: null },
     { id: "l5", project_id: "p1", norm: "security", display_name: "security", color: null },
   ];
-  return { projects, orderDebug, tasks, entries, labels };
+  // M1 — the payload is the *human* comment that triggered the entry, read from
+  // the card's own history (design §2.2). Keyed by identifier; the visible card
+  // history is what the waiting view renders, so the fixture must serve it.
+  const comments = {
+    "TD-13": [
+      { id: "cm-1", task_id: "TD-13", kind: "note", author_kind: "agent", author_id: "linus", body: "我先把迁移写完了。", refs: [], created_at: "2026-10-12T00:01:00Z" },
+      { id: "cm-2", task_id: "TD-13", kind: "decision", author_kind: "human", author_id: "Terry", body: "范围确认：这一版不做第 8 列。后面还有一句不该出现在摘要里。", refs: [], created_at: "2026-10-12T00:02:00Z" },
+    ],
+  };
+  return { projects, orderDebug, tasks, entries, labels, comments };
 }
 
 export function startServer() {
@@ -156,6 +171,8 @@ export function startServer() {
       const projectId = url.searchParams.get("project_id");
       return ok({ tasks: data.tasks.filter((t) => !projectId || t.project_id === projectId) });
     }
+    const commentsFor = /^\/api\/v1\/tasks\/([^/]+)\/comments$/.exec(path);
+    if (commentsFor) return ok({ comments: data.comments[decodeURIComponent(commentsFor[1])] ?? [] });
     if (path.startsWith("/api/v1/tasks/")) return ok({ task: data.tasks[0], report_waivers: [] });
     if (path === "/api/v1/assignees" || path === "/api/v1/reporters") return ok({ entries: data.entries });
     if (path === "/api/v1/labels") return ok({ labels: data.labels });
@@ -371,13 +388,22 @@ export async function run() {
     await page.waitForTimeout(200);
     const drawerClosed = await page.evaluate(() => document.querySelector("[data-detail-drawer]")?.getAttribute("data-state"));
 
-    // The shared "Move to" menu: opened from a card's kebab, one row per status.
-    await page.evaluate(() => document.querySelector("[data-card-menu]")?.click());
+    // The shared "Move to" menu: opened from a card's kebab. Since M1 it offers
+    // the moves the state machine *allows* from that card's status — not the
+    // whole vocabulary — so the expected row count is read off the card the menu
+    // was opened on. (The table mirrors `web/src/stores/board.js`
+    // `ALLOWED_TRANSITIONS`, the way the counts above mirror the fixture.)
+    const MOVE_ROWS = { backlog: 2, todo: 4, in_progress: 5, awaiting: 2, in_review: 3, blocked: 4, done: 0, canceled: 0 };
+    const moveMenu = await page.evaluate(() => {
+      const kebab = document.querySelector("[data-card-menu]");
+      const card = kebab?.closest("[data-card]");
+      kebab?.click();
+      return { cardStatus: card?.getAttribute("data-status") ?? null };
+    });
     await page.waitForTimeout(120);
-    const moveMenu = await page.evaluate(() => ({
-      open: !!document.querySelector("[data-move-menu]"),
-      rows: document.querySelectorAll("[data-move-to]").length,
-    }));
+    moveMenu.open = await page.evaluate(() => !!document.querySelector("[data-move-menu]"));
+    moveMenu.rows = await page.evaluate(() => document.querySelectorAll("[data-move-to]").length);
+    moveMenu.expected = MOVE_ROWS[moveMenu.cardStatus];
     await page.keyboard.press("Escape");
     await page.waitForTimeout(120);
 
@@ -417,12 +443,124 @@ export async function run() {
       drawerOpened: drawerOpen.state === "open" && drawerOpen.title !== "",
       drawerClosed: drawerClosed === "closed",
       agentSessionHook: drawerOpen.agentSessionHook,
-      moveMenuOpened: moveMenu.open && moveMenu.rows === 7,
+      moveMenuOpened: moveMenu.open && moveMenu.rows === moveMenu.expected,
       themeCycleReturns: themeStart === themeEnd,
       themeRun,
       langZh: langAfterZh === "zh",
       langEn: langAfterEn === "en",
     };
+
+    // ---- M1 · the 「等你回复」surface ----------------------------------------
+    //
+    // The design's §8 list, evaluated where it has to be evaluated: in a browser,
+    // against computed style and live DOM. Everything here is a selector, a
+    // computed value or a text comparison — never "it looks right".
+    const m1 = await page.evaluate(() => {
+      const badge = document.querySelector("[data-card-waiting]");
+      const awaitingCard = document.querySelector('[data-card][data-identifier="TD-13"]');
+      const countPill = document.querySelector('[data-nav-count="waiting"]');
+      const rows = [...document.querySelectorAll("[data-waiting-card]")];
+      const summary = document.querySelector("[data-waiting-payload-summary]");
+      const details = document.querySelector("[data-waiting-payload-details]");
+      const full = document.querySelector("[data-waiting-payload-full]");
+      // Resolve the accent the same way the stylesheet does, so the comparison is
+      // value-to-value rather than hex-vs-rgb.
+      const probe = document.createElement("span");
+      probe.style.color = "var(--color-primary)";
+      document.body.appendChild(probe);
+      const accentColor = getComputedStyle(probe).color;
+      probe.remove();
+      return {
+        badges: document.querySelectorAll("[data-card-waiting]").length,
+        badgeReason: badge?.getAttribute("data-waiting-reason") ?? null,
+        badgeLabel: badge?.textContent?.trim() ?? null,
+        badgeColor: badge ? getComputedStyle(badge).color : null,
+        accentColor,
+        badgeAria: badge?.getAttribute("aria-label") ?? null,
+        cardStatus: awaitingCard?.getAttribute("data-status") ?? null,
+        badgeColumn: badge?.closest("[data-column]")?.getAttribute("data-status") ?? null,
+        columns: document.querySelectorAll("[data-column]").length,
+        cardsWithAwaitingStatus: document.querySelectorAll('[data-card][data-status="awaiting"]').length,
+        navItems: [...document.querySelectorAll("[data-nav-item]")].map((el) => el.getAttribute("data-nav-item")),
+        countText: countPill?.textContent?.trim() ?? null,
+        countHidden: countPill ? countPill.hasAttribute("hidden") : null,
+        rows: rows.length,
+        rowStatuses: rows.map((row) => row.getAttribute("data-status")),
+        summary: summary?.textContent?.trim() ?? null,
+        detailsTag: details?.tagName ?? null,
+        detailsOpen: details ? details.hasAttribute("open") : null,
+        full: full?.textContent?.trim() ?? null,
+        fullMaxWidth: full ? getComputedStyle(full).maxWidth : null,
+        fullWhiteSpace: full ? getComputedStyle(full).whiteSpace : null,
+        // §8-09(a): no freshness/claim affordance anywhere inside a card.
+        freshnessHooks: document.querySelectorAll(
+          "[data-card] [data-card-agent-stale], [data-card] [data-card-claimable], [data-card] [data-freshness], [data-card] [data-stale]",
+        ).length,
+      };
+    });
+
+    // §8-13 — the awaiting card's move menu must offer no route to in_review,
+    // done or blocked, and must offer canceled.
+    const awaitingMenu = await page.evaluate(() => {
+      const kebab = document.querySelector('[data-card][data-identifier="TD-13"] [data-card-menu]');
+      kebab?.click();
+      return null;
+    });
+    void awaitingMenu;
+    await page.waitForTimeout(120);
+    const awaitingMenuLabels = await page.evaluate(() =>
+      [...document.querySelectorAll("[data-move-to]")].map((el) => el.textContent.trim()),
+    );
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(80);
+
+    // §8-02/§8-03 — the nav item switches the view, and only the awaiting card
+    // count is loud. Clicking it is the writer check: a button that does nothing
+    // would leave the board on screen.
+    await page.click('[data-nav-item="waiting"]');
+    await page.waitForTimeout(150);
+    const waitingView = await page.evaluate(() => {
+      const section = document.querySelector("[data-waiting-view]");
+      const board = document.querySelector("[data-board]");
+      return {
+        current: document.querySelector('[data-nav-item="waiting"]')?.getAttribute("aria-current") ?? null,
+        viewVisible: section ? !section.hasAttribute("hidden") : false,
+        boardHidden: board ? board.hasAttribute("hidden") : false,
+        emptyShown: !!document.querySelector("[data-waiting-empty]"),
+      };
+    });
+    await page.click('[data-nav-item="board"]');
+    await page.waitForTimeout(120);
+
+    const FIRST_SENTENCE = "范围确认：这一版不做第 8 列。";
+    const m1Failures = [];
+    const check = (ok, message) => { if (!ok) m1Failures.push(message); };
+    check(m1.badges === 1, `[data-card-waiting] count ${m1.badges} !== 1`);
+    check(m1.badgeReason === "E1", `badge reason ${m1.badgeReason} !== E1`);
+    check(m1.badgeLabel === "Awaiting you", `badge label ${m1.badgeLabel}`);
+    check(m1.badgeColor === m1.accentColor, `badge colour ${m1.badgeColor} !== accent ${m1.accentColor}`);
+    check(m1.cardStatus !== "awaiting", `[data-card] must keep its stage, got ${m1.cardStatus}`);
+    check(m1.badgeColumn === "in_progress", `badge column ${m1.badgeColumn} !== in_progress`);
+    check(m1.columns === 7, `[data-column] count ${m1.columns} !== 7`);
+    check(m1.cardsWithAwaitingStatus === 0, "no card root may carry data-status=awaiting");
+    check(m1.navItems.length === 4 && m1.navItems.includes("waiting"), `nav items ${m1.navItems.join(",")}`);
+    check(m1.countText === "1", `count pill ${m1.countText} !== 1`);
+    check(m1.countHidden === false, "a non-zero count must not be hidden");
+    check(m1.rows === 1, `[data-waiting-card] count ${m1.rows} !== 1`);
+    check(m1.rowStatuses.every((s) => s === "awaiting"), `row statuses ${m1.rowStatuses.join(",")}`);
+    check(m1.summary === FIRST_SENTENCE, `summary ${JSON.stringify(m1.summary)}`);
+    check(m1.detailsTag === "DETAILS", `payload disclosure tag ${m1.detailsTag}`);
+    check(m1.detailsOpen === false, "the payload disclosure must be closed by default");
+    check((m1.full ?? "").includes("不该出现在摘要里"), "the full text must be the comment verbatim");
+    check(m1.fullWhiteSpace === "pre-wrap", `payload white-space ${m1.fullWhiteSpace}`);
+    check(m1.fullMaxWidth === "68ch", `payload max-width ${m1.fullMaxWidth}`);
+    check(m1.freshnessHooks === 0, "no freshness hook may exist inside a card");
+    check(!awaitingMenuLabels.some((label) => /In Review|Done|Blocked/i.test(label)), `awaiting menu offers ${awaitingMenuLabels.join("|")}`);
+    check(awaitingMenuLabels.some((label) => /Canceled/i.test(label)), "awaiting menu must offer Canceled");
+    check(waitingView.current === "page", "the waiting nav item must carry aria-current");
+    check(waitingView.viewVisible === true, "the waiting view must be visible");
+    check(waitingView.boardHidden === true, "the board must be hidden while the waiting view is up");
+    check(waitingView.emptyShown === false, "a non-empty view must not show the empty state");
 
     const results = [...boardResults, ...listResults, ...statesResults];
     const failures = results.filter((r) => !r.ok);
@@ -434,6 +572,8 @@ export async function run() {
       viewports,
       viewportFailures,
       interactions,
+      m1,
+      m1Failures,
       geometry,
       counts: { rules: results.length, failed: failures.length, ...geometry },
       fixtureTasks: data.tasks.length,
@@ -461,6 +601,12 @@ if (isEntryPoint) run().then(
       for (const failure of report.failures) console.log(`  ✗ ${failure.block} ${failure.kind} ${failure.selector ?? ""} — ${failure.detail}`);
       console.log(`viewports: ${report.viewports.map((v) => `${v.width}${v.ok ? "ok" : "OVERFLOW"}`).join(" ")}`);
       console.log(`interactions: ${JSON.stringify(report.interactions)}`);
+      if (report.m1Failures.length > 0) {
+        console.log(`M1 (awaiting) — ${report.m1Failures.length} failed:`);
+        for (const failure of report.m1Failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log("M1 (awaiting) — badge, view, count, payload and menu all pass");
+      }
     }
     const interactionOk =
       report.interactions.drawerOpened &&
@@ -475,6 +621,7 @@ if (isEntryPoint) run().then(
       report.consoleErrors.length === 0 &&
       report.pageErrors.length === 0 &&
       report.viewportFailures.length === 0 &&
+      report.m1Failures.length === 0 &&
       interactionOk;
     process.exit(ok ? 0 : 1);
   },

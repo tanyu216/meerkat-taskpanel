@@ -87,8 +87,13 @@ export const DOMAINS = Object.freeze({
   ASSIGNEE_KIND: Object.freeze(["human", "agent"]),
   /** The four agent platforms (B03/B07/B16/B22/C07). */
   PLATFORM: Object.freeze(["claude", "openclaw", "codex", "pi"]),
-  /** Sidebar navigation (B03). */
-  NAV: Object.freeze(["board", "list", "activity"]),
+  /**
+   * Sidebar navigation (B03). M1 appends `waiting` — the one deliberate
+   * extension of this frozen baseline, approved with B03's count together
+   * (design §10-C6): the 「等你回复」view needs a native, countable, non-column
+   * entry point, and the nav item is the only one there is.
+   */
+  NAV: Object.freeze(["board", "list", "activity", "waiting"]),
   /** Board / list view toggle (B02). */
   VIEW: Object.freeze(["board", "list"]),
   /** Language menu options (B03/B21). */
@@ -347,7 +352,8 @@ const BLOCKS = [
     states: [],
     rules: [
       { kind: "count", selector: "[data-sidebar]", equals: 1 },
-      { kind: "count", selector: "[data-nav-item]", equals: 3 },
+      // M1: 4 — `board | list | activity | waiting` (approved with DOMAINS.NAV).
+      { kind: "count", selector: "[data-nav-item]", equals: 4 },
       { kind: "count", selector: "[data-lang-option]", equals: 2 },
       { kind: "domain", selector: "[data-nav-item]", attribute: "data-nav-item", subset: DOMAINS.NAV },
       { kind: "domain", selector: "[data-presence]", attribute: "data-presence", subset: DOMAINS.PRESENCE },
