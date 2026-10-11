@@ -3,11 +3,10 @@
  *
  * A route registration carries a **declarative request schema** — the shape of
  * its `query` and its `body` — alongside its handler. It is JSON-Schema-shaped
- * on purpose: the contract snapshot already canonicalises every MCP tool's
- * `inputSchema` down to `type` / `enum` / `items` / `anyOf` / `properties` /
- * `required` / `additionalProperties` (`scripts/verify/contract.mjs`), so a route
- * request and a tool argument are described in one language and read the same way
- * in a diff.
+ * on purpose: the contract snapshot canonicalises it down to `type` / `enum` /
+ * `items` / `anyOf` / `properties` / `required` / `additionalProperties`
+ * (`scripts/verify/contract.mjs`), so a route request is described in one
+ * language and read the same way in a diff.
  *
  * ## What this is, and what it deliberately is not
  *

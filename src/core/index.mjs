@@ -3,8 +3,8 @@
  *
  * The engine of the board: the domain model, the SQLite storage layer, the
  * command surface and the bootstrap that wires them together. Surfaces (`cli/`,
- * `mcp/`, `server/`) are thin adapters over this module and import nothing else
- * from `src/core`.
+ * `server/`) are thin adapters over this module and import nothing else from
+ * `src/core`.
  *
  * `STAGE` is kept from the M0 scaffold — `test/scaffold.test.mjs` asserts the
  * scaffold constants still exist, and removing it would break a surface that

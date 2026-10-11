@@ -22,8 +22,8 @@
  * names an agent, so an agent that identifies itself is never recorded under the
  * ambient OS user.
  *
- * Pure. It lives in `src/shared` (extracted from `src/cli`) so the MCP surface
- * reaches the same derivation without importing `src/cli`.
+ * Pure. It lives in `src/shared` (extracted from `src/cli`) so the derivation
+ * sits below the CLI surface rather than inside it.
  */
 
 /**

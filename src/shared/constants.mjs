@@ -2,7 +2,7 @@
  * Shared constants for Meerkat TaskPanel.
  *
  * These are the single source of truth for names used across the CLI, the skill,
- * the plugin manifests and the future MCP/HTTP surfaces. Keep them in sync with
+ * the plugin manifests and the HTTP surface. Keep them in sync with
  * `package.json` (name/version) and `skills/meerkat-taskpanel/SKILL.md` (skill name).
  *
  * `src/core/**` imports its tunables from here (never from `process.env` in

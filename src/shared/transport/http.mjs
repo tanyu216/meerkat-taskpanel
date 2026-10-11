@@ -15,9 +15,9 @@
  * message never contains the token (it goes through `redactText` on the way out,
  * and the token is only ever put in a header).
  *
- * Shared (extracted from `src/cli/client/http.mjs`): this is the transport seam
- * both the CLI and the MCP surface sit on, so a gate refusal reaches an MCP
- * caller as *the same* `DomainError` the CLI sees — one error mapping, not two.
+ * Shared (extracted from `src/cli/client/http.mjs`): the transport seam to
+ * `taskd`, so a gate refusal reaches the caller as *the same* `DomainError` the
+ * domain raised — one error mapping, not two.
  */
 
 import { DomainError, ERROR_CODES, isDomainError } from "../errors.mjs";

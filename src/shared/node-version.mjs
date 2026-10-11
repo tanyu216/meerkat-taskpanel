@@ -5,9 +5,9 @@
  * `node:sqlite` module, which the 22.x line is the first to ship — so "this
  * process is Node >= 22" is a precondition, not a nicety. Without a check, an
  * older runtime fails the moment `node:sqlite` is first imported, deep inside a
- * command, with a stack that names neither the requirement nor the fix. Both
- * client entries (`src/cli`, `src/mcp`) therefore run one cheap preflight
- * against `process.versions.node` before doing anything else.
+ * command, with a stack that names neither the requirement nor the fix. The
+ * client entry (`src/cli`) therefore runs one cheap preflight against
+ * `process.versions.node` before doing anything else.
  *
  * This module is deliberately tiny and dependency-free — not even the `errors`
  * vocabulary — because it has to be *evaluable on the very runtime it rejects*:

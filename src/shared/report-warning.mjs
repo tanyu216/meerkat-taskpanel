@@ -4,8 +4,8 @@
  * `report template` fills in a document whose every line starts with `TODO:` so
  * that an unfilled template is obviously unfilled. Delivering one anyway is
  * legal — the gate asks whether a report exists for the round, not whether it is
- * good — but it deserves a warning, and both the CLI and the MCP server owe the
- * caller the same sentence.
+ * good — but it deserves a warning, and every surface owes the caller the same
+ * sentence.
  *
  * It lives in `shared` because both surfaces need it and neither may import the
  * other (plan G4). Pure: no `node:` specifiers.

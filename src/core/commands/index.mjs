@@ -1,5 +1,5 @@
 /**
- * The command surface — everything a surface (CLI, MCP, HTTP) is allowed to do.
+ * The command surface — everything a surface (CLI, HTTP) is allowed to do.
  *
  * Note what is *absent*: there is no `assignee add/remove/rename`. The
  * dictionary has no management API by design (§4.4); it grows when tasks are
