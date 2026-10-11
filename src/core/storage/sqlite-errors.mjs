@@ -66,7 +66,6 @@ export const UNIQUE_KEY_CODES = Object.freeze([
   { columns: ["assignees.normalized_name", "assignees.kind"], code: "DICTIONARY_CONFLICT" },
   { columns: ["reporters.normalized_name", "reporters.kind"], code: "DICTIONARY_CONFLICT" },
   { columns: ["labels.project_id", "labels.norm"], code: "LABEL_CONFLICT" },
-  { columns: ["projects.workspace_path"], code: "ID_CONFLICT" },
   { columns: ["projects.id"], code: "ID_CONFLICT" },
   { columns: ["tasks.id"], code: "ID_CONFLICT" },
   { columns: ["comments.id"], code: "ID_CONFLICT" },

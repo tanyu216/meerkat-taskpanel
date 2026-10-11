@@ -29,7 +29,6 @@ export function createCommands(ctx) {
     updateProject: (input) => projects.updateProject(ctx, input),
     getProject: (input) => projects.getProject(ctx, input),
     listProjects: (filter) => projects.listProjects(ctx, filter),
-    projectForPath: (input) => projects.projectForPath(ctx, input),
     readmeSet: (input) => projects.readmeSet(ctx, input),
     readmeGet: (input) => projects.readmeGet(ctx, input),
 
