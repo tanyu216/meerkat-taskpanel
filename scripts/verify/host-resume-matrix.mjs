@@ -33,8 +33,10 @@
  *     *recognition*; it has no resume dimension. Same isolation tricks are reused here
  *     (throwaway HOME, SKIP-on-absent), so the two are complementary and coexist.
  *   * src/shared/scheduling.mjs#wakeCommand — the production consumer. It emits
- *     `claude -p --resume <sid>` / `codex exec` / `pi run`; this matrix is the evidence that
- *     those flags are real in the CLI versions we pin.
+ *     `claude -p [--resume <sid>]` / `codex exec [resume <sid>]` /
+ *     `pi --print [--session <sid>]` (pi has no `run` subcommand — `--print` is its
+ *     headless entry); this matrix is the evidence that those flags are real in the CLI
+ *     versions we pin.
  *
  * EVIDENCE DISCIPLINE
  *   * Every probe runs in a throwaway HOME. Nothing touches the real ~/.claude, ~/.codex,
