@@ -80,13 +80,17 @@ if (argv.includes("list")) {
 }
 `;
 
-/** A fake host CLI: records {bin, argv} and exits 0 — the wake boundary. */
+/**
+ * A fake host CLI: records {bin, argv, cwd} and exits 0 — the wake boundary.
+ * `cwd` is recorded because it is now load-bearing: the wake glue must `cd` into
+ * the card's project target directory before it execs this.
+ */
 const FAKE_CLI = `#!/usr/bin/env node
-// Fake host CLI written by scripts/verify/host-runtime.mjs — records argv, exits 0.
+// Fake host CLI written by scripts/verify/host-runtime.mjs — records argv+cwd, exits 0.
 import { appendFileSync } from "node:fs";
 import { basename } from "node:path";
 if (process.env.FAKE_HOST_LOG) {
-  appendFileSync(process.env.FAKE_HOST_LOG, JSON.stringify({ bin: basename(process.argv[1]), argv: process.argv.slice(2) }) + "\\n");
+  appendFileSync(process.env.FAKE_HOST_LOG, JSON.stringify({ bin: basename(process.argv[1]), argv: process.argv.slice(2), cwd: process.cwd() }) + "\\n");
 }
 process.exit(0);
 `;
@@ -184,12 +188,24 @@ function installHost(host) {
 // Scenarios
 // ---------------------------------------------------------------------------
 
-/** Every wake script: the no-prompt guard, then the exact argv it hands the host CLI. */
+/** Every wake script: the no-prompt guard, the resolved working directory, then argv. */
 function checkWake(host) {
   const spec = HOSTS[host];
   const section = `wake (${host})`;
   const wakePath = join(ctx.home, spec.wake);
   const log = freshLog(`wake-${host}`);
+
+  // The map the glue resolves from: its own default (`../skills/…` beside the
+  // installed `bin/`), and a real directory to point the worker at.
+  const mapPath = join(ctx.home, spec.dir, "skills", "meerkat-taskpanel", "projects.json");
+  const target = join(ctx.tmp, `target-${host}`);
+  mkdirSync(target, { recursive: true });
+  const PROJECT = "TaskPanel";
+  const writeMap = (entries) => {
+    mkdirSync(dirname(mapPath), { recursive: true });
+    writeFileSync(mapPath, JSON.stringify({ projects: entries }, null, 2));
+  };
+  writeMap([{ project: PROJECT, local_path: target }]);
 
   check(section, `${spec.wake} installed and executable`, () => {
     if (!existsSync(wakePath)) return `missing ${wakePath}`;
@@ -208,10 +224,12 @@ function checkWake(host) {
     return null;
   }, "exit 2");
 
-  check(section, "prompt → exact argv matches wakeCommand()", () => {
+  check(section, "mapped project → exact argv matches wakeCommand(), run in the mapped directory", () => {
     const prompt = `do T-1 (agent ${AGENT})`;
     writeFileSync(log, "");
-    const res = run(["bash", wakePath, prompt], { env: { FAKE_HOST_LOG: log } });
+    // Only TP_PROJECT is set: the map path is the glue's own default, so this
+    // also proves the glue finds the map beside the skill it was installed with.
+    const res = run(["bash", wakePath, prompt], { env: { FAKE_HOST_LOG: log, TP_PROJECT: PROJECT } });
     if (res.status !== 0) return `exit ${res.status}; stderr=${JSON.stringify(res.stderr)}`;
     const calls = readJsonl(log);
     if (calls.length !== 1) return `want 1 host-CLI call, got ${calls.length}: ${JSON.stringify(calls)}`;
@@ -220,8 +238,41 @@ function checkWake(host) {
     if (JSON.stringify(calls[0].argv) !== JSON.stringify(want.args)) {
       return `argv ${JSON.stringify(calls[0].argv)} != wakeCommand().args ${JSON.stringify(want.args)}`;
     }
+    if (calls[0].cwd !== target) return `ran in ${calls[0].cwd}, expected the mapped ${target}`;
     return null;
-  }, `${spec.cli} ${wakeCommand({ host, prompt: "…" }).args.join(" ")}`);
+  }, `${spec.cli} ${wakeCommand({ host, prompt: "…" }).args.join(" ")} in the mapped directory`);
+
+  check(section, "unmapped project → exit 3, no worker started (no silent fallback)", () => {
+    writeFileSync(log, "");
+    const res = run(["bash", wakePath, "do T-1"], { env: { FAKE_HOST_LOG: log, TP_PROJECT: "ghost" } });
+    if (res.status !== 3) return `exit ${res.status} (want 3); stderr=${JSON.stringify(res.stderr)}`;
+    if (!/no local directory is registered for project ghost/.test(res.stderr)) {
+      return `stderr did not name the unresolvable project: ${JSON.stringify(res.stderr)}`;
+    }
+    const calls = readJsonl(log);
+    if (calls.length) return `started a worker anyway: ${JSON.stringify(calls)}`;
+    return null;
+  }, "exit 3");
+
+  check(section, "bad target directory (gone / not a directory) → exit 3, no worker started", () => {
+    const prompt = "do T-1";
+    writeFileSync(join(ctx.tmp, `file-${host}`), "a file, not a directory\n");
+    const probes = [
+      [join(ctx.tmp, "not-there"), /does not exist/],
+      [join(ctx.tmp, `file-${host}`), /is not a directory/],
+    ];
+    for (const [local_path, expected] of probes) {
+      writeMap([{ project: PROJECT, local_path }]);
+      writeFileSync(log, "");
+      const res = run(["bash", wakePath, prompt], { env: { FAKE_HOST_LOG: log, TP_PROJECT: PROJECT } });
+      if (res.status !== 3) return `${local_path}: exit ${res.status} (want 3); stderr=${JSON.stringify(res.stderr)}`;
+      if (!expected.test(res.stderr)) return `${local_path}: stderr did not match ${expected}: ${JSON.stringify(res.stderr)}`;
+      const calls = readJsonl(log);
+      if (calls.length) return `${local_path}: started a worker anyway: ${JSON.stringify(calls)}`;
+    }
+    writeMap([{ project: PROJECT, local_path: target }]);
+    return null;
+  }, "exit 3");
 
   check(section, "no permission-bypass flag in any executed command", () => {
     // Comment lines are dropped first: the scripts *document* the boundary by naming the

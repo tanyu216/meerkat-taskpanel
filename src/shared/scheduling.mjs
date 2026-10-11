@@ -300,6 +300,93 @@ export function wakeCommand(input = {}) {
 }
 
 /**
+ * What the supervisor actually spawns to wake a card — and *where*.
+ *
+ * The supervisor knows a card's board **project identity** and nothing about
+ * directories: the board holds none (O3). So the directory is not decided here.
+ * It is decided by the host's own wake glue, which reads the host-local
+ * `projects.json` and `cd`s into the card's project target directory before
+ * exec'ing the host CLI (R1).
+ *
+ * Three shapes follow from that, in the order an operator's intent wins:
+ *
+ *   * **an explicit wake command** (`--wake-command`) — the operator's own glue,
+ *     used verbatim: `<cmd> <handoff> [sid]`. It is the documented escape hatch
+ *     for a host this repo does not wire, so nothing here second-guesses it.
+ *   * **glue installed** — spawn `bash <glue> <handoff> [sid]`, handing the
+ *     project identity along in the environment (`TP_PROJECT`). The glue sets
+ *     the working directory; if it cannot, it refuses the wake and the card
+ *     stays unwoken rather than running in the wrong checkout.
+ *   * **no glue** — the supervisor falls back to the host CLI directly, pinned
+ *     to `cwd` (the `--repo` root) and flagged with an explicit `warning`: the
+ *     honest "no target directory was resolved for this wake" case, never a
+ *     silent one.
+ *
+ * @param {{
+ *   host: string,
+ *   prompt: string,
+ *   resumeSid?: string|null,
+ *   wakeCommand?: string|null,
+ *   gluePath?: string|null,
+ *   glueInstalled?: boolean,
+ *   project?: string|null,
+ *   projectsJson?: string|null,
+ *   nodePath?: string|null,
+ *   cwd?: string|null,
+ * }} input
+ * @returns {{command: string, args: string[], env: Record<string,string>, cwd: string|null, via: "glue"|"override"|"direct", warning?: string}}
+ */
+export function planWakeInvocation(input = {}) {
+  const prompt = String(input.prompt ?? "");
+  const resumeSid = input.resumeSid ?? null;
+  const cwd = input.cwd ?? null;
+
+  // The identity travels in the environment, not in argv: the glue's argv is a
+  // fixed `[handoff, sid?]` shape the host-resume matrix already pins.
+  const env = {};
+  if (input.project !== undefined && input.project !== null && String(input.project) !== "") {
+    env.TP_PROJECT = String(input.project);
+  }
+  if (input.projectsJson !== undefined && input.projectsJson !== null && String(input.projectsJson) !== "") {
+    env.TP_PROJECTS_JSON = String(input.projectsJson);
+  }
+  // The glue shell has to run a node to resolve the directory, and under cron /
+  // launchd `PATH` is minimal — so hand it the interpreter this supervisor is
+  // already running on rather than betting on `node` being findable.
+  if (input.nodePath !== undefined && input.nodePath !== null && String(input.nodePath) !== "") {
+    env.TP_NODE = String(input.nodePath);
+  }
+
+  // The operator's own wake command comes first: an explicit choice is never
+  // overridden by a default, and it is never second-guessed with a warning.
+  if (input.wakeCommand) {
+    const override = wakeCommand({ host: input.host, prompt, resumeSid, wakeCommand: input.wakeCommand });
+    return { ...override, env, cwd, via: "override" };
+  }
+
+  const glue = input.gluePath ?? null;
+  if (glue !== null && input.glueInstalled === true) {
+    return {
+      command: "bash",
+      args: [glue, prompt, ...(resumeSid === null ? [] : [String(resumeSid)])],
+      env,
+      cwd,
+      via: "glue",
+    };
+  }
+
+  return {
+    ...wakeCommand({ host: input.host, prompt, resumeSid }),
+    env,
+    cwd,
+    via: "direct",
+    warning:
+      `no wake glue at ${glue ?? "(unset)"} — the worker runs in ${cwd ?? "the supervisor's working directory"} ` +
+      "without a resolved project target directory",
+  };
+}
+
+/**
  * The fresh handoff handed to a woken worker — bounded so a wake never carries
  * an unbounded context. It names the card, the attribution flags every write
  * should carry, and the compliant next step (read, work, report).

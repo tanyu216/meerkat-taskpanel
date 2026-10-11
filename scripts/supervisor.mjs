@@ -14,8 +14,12 @@
  *   2. **claim** — for every planned wake, move the card to `in_progress` first.
  *      The board's CAS is the *only* dispatch: if the claim is refused, no
  *      worker is started. Waking is therefore idempotent and bounded.
- *   3. **wake** — start the host worker (`claude -p` / `codex exec` / `pi run`)
- *      with a fresh, bounded handoff, then record its pid in the state file.
+ *   3. **wake** — start the host worker with a fresh, bounded handoff, then
+ *      record its pid in the state file. The wake goes through the host's own
+ *      glue (`<host-dir>/bin/wake-<host>.sh`) when one is installed, so the
+ *      worker runs in the card's **project target directory**, resolved locally
+ *      by the glue from `projects.json` (R1). This process never resolves a
+ *      directory — it hands the project identity along and lets the host decide.
  *   4. **patrol** — a slower pass over `in_progress` cards: a heartbeat older
  *      than 30 minutes is escalated, and a heartbeat that cannot be read is
  *      *reported*, never silently dropped. No LLM turn by default.
@@ -32,7 +36,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -46,6 +50,7 @@ import {
   parseEnvFile,
   planPatrol,
   planTick,
+  planWakeInvocation,
   pruneRegistry,
   resolveClaimUnassigned,
   wakeCommand,
@@ -57,6 +62,7 @@ export {
   candidateArgs,
   planPatrol,
   planTick,
+  planWakeInvocation,
   pruneRegistry,
   resolveClaimUnassigned,
   wakeCommand,
@@ -90,6 +96,16 @@ Options:
   --config <path>         Host config file to read the default from (default: <home>/<host-dir>/meerkat-taskpanel.env).
   --home <path>           Home the defaults are resolved against (default: $HOME).
   --cli <path>            taskctl entry to read/claim through (default: <repo>/src/cli/index.mjs).
+  --glue <path>           Wake glue the worker is started through (default:
+                          <home>/<host-dir>/bin/wake-<host>.sh). The glue resolves
+                          the card's project target directory and runs the worker
+                          there; without it the worker runs in --repo.
+  --wake-command <cmd>    Your own wake command instead of the built-in host forms
+                          (the documented escape hatch for a host this repo does
+                          not wire). It is called as: <cmd> <handoff> [<sid>],
+                          and is handed TP_PROJECT / TP_PROJECTS_JSON / TP_NODE.
+  --projects-json <path>  Host-local project map handed to the glue (default:
+                          <home>/<host-dir>/skills/meerkat-taskpanel/projects.json).
   -h, --help              Show this help
 `;
 
@@ -249,6 +265,9 @@ export function parseArgs(argv, env = process.env) {
     config: null,
     home: env.HOME || env.USERPROFILE || homedir(),
     cli: null,
+    glue: null,
+    projectsJson: null,
+    wakeCommand: null,
     help: false,
   };
 
@@ -297,6 +316,12 @@ export function parseArgs(argv, env = process.env) {
     else if (arg.startsWith("--home=")) opts.home = resolve(arg.slice(7));
     else if (arg === "--cli") opts.cli = take("--cli");
     else if (arg.startsWith("--cli=")) opts.cli = arg.slice(6);
+    else if (arg === "--glue") opts.glue = take("--glue");
+    else if (arg.startsWith("--glue=")) opts.glue = arg.slice(7);
+    else if (arg === "--projects-json") opts.projectsJson = take("--projects-json");
+    else if (arg.startsWith("--projects-json=")) opts.projectsJson = arg.slice(16);
+    else if (arg === "--wake-command") opts.wakeCommand = take("--wake-command");
+    else if (arg.startsWith("--wake-command=")) opts.wakeCommand = arg.slice(15);
     else if (arg === "-h" || arg === "--help") opts.help = true;
     else throw new Error(`unknown option: ${arg}`);
   }
@@ -312,6 +337,11 @@ export function parseArgs(argv, env = process.env) {
   opts.state ??= join(opts.home, hostDir, "meerkat-taskpanel", "supervisor.state.json");
   opts.config ??= join(opts.home, hostDir, "meerkat-taskpanel.env");
   opts.cli ??= join(opts.repo, "src", "cli", "index.mjs");
+  // The two host-local artefacts a wake needs: the glue that owns the working
+  // directory, and the project map it resolves that directory from. Both live
+  // under the host's dot-directory, exactly where `install.sh` put them.
+  opts.glue ??= join(opts.home, hostDir, "bin", `wake-${opts.host}.sh`);
+  opts.projectsJson ??= join(opts.home, hostDir, "skills", "meerkat-taskpanel", "projects.json");
   return opts;
 }
 
@@ -343,14 +373,64 @@ function readConfigFile(path) {
   }
 }
 
-function spawnWorkerReal(opts, config) {
+/** An append fd for the log, or `null` when it cannot be opened. Never throws. */
+function openAppendFd(path) {
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    return openSync(path, "a");
+  } catch {
+    return null;
+  }
+}
+
+function spawnWorkerReal(opts, config, log) {
   return (action, card) => {
     const prompt = buildHandoff({ card: card ?? { identifier: action.identifier }, agent: action.agent, host: opts.host });
-    const cmd = wakeCommand({ host: opts.host, prompt, wakeCommand: config.wakeCommand ?? null });
+    const invocation = planWakeInvocation({
+      host: opts.host,
+      prompt,
+      wakeCommand: config.wakeCommand ?? null,
+      gluePath: opts.gluePath,
+      glueInstalled: opts.gluePath !== null && existsSync(opts.gluePath),
+      project: card?.project ?? null,
+      projectsJson: opts.projectsJson,
+      nodePath: process.execPath,
+      cwd: opts.repo,
+    });
+    if (invocation.warning) log(`wake ${action.identifier}: ${invocation.warning}`);
+
+    // The glue is a resolver, not a worker: it either resolves the card's target
+    // directory, `cd`s, and execs the host CLI — or it refuses and exits 3 with
+    // the reason on stderr. That reason has to reach a human, so a glue's stderr
+    // is appended to the supervisor log; a parent process here cannot see it
+    // otherwise (the child is detached), and a refused wake must never be silent.
+    // A directly-spawned host CLI keeps its output discarded: a long-running
+    // worker's chatter does not belong in the supervisor's log.
+    const stderrFd = invocation.via === "glue" ? openAppendFd(opts.log) : null;
+    const release = () => {
+      if (stderrFd === null) return;
+      try {
+        closeSync(stderrFd);
+      } catch {
+        // Closing twice, or after a failed open, must never take the tick down.
+      }
+    };
+
     return new Promise((resolveResult) => {
-      const child = spawn(cmd.command, cmd.args, { detached: true, stdio: "ignore" });
-      child.once("error", (err) => resolveResult({ ok: false, error: err.message }));
+      const child = spawn(invocation.command, invocation.args, {
+        detached: true,
+        stdio: ["ignore", "ignore", stderrFd ?? "ignore"],
+        // The identity rides in the environment so a glue (and the `wake-cwd`
+        // helper behind it) can resolve the card's target directory locally.
+        env: { ...process.env, ...invocation.env },
+        ...(invocation.cwd === null ? {} : { cwd: invocation.cwd }),
+      });
+      child.once("error", (err) => {
+        release();
+        resolveResult({ ok: false, error: err.message });
+      });
       child.once("spawn", () => {
+        release();
         child.unref();
         resolveResult({ ok: true, pid: child.pid });
       });
@@ -404,7 +484,15 @@ async function main(argv, env = process.env) {
     env: env.MEERKAT_TASKPANEL_CLAIM_UNASSIGNED ?? env.TASKPANEL_CLAIM_UNASSIGNED,
     file: configFile,
   });
-  const config = { maxConcurrency: opts.maxConcurrency, claimUnassigned, patrolLlm: opts.patrolLlm, host: opts.host };
+  const config = {
+    maxConcurrency: opts.maxConcurrency,
+    claimUnassigned,
+    patrolLlm: opts.patrolLlm,
+    host: opts.host,
+    // The escape hatch the docs promise (and the Pi glue points at): an operator
+    // who needs a wake form this repo does not ship supplies their own command.
+    wakeCommand: opts.wakeCommand,
+  };
 
   const registry = opts.dryRun
     ? { version: 1, running: {} }
@@ -427,12 +515,23 @@ async function main(argv, env = process.env) {
       const moved = runCli(opts, agent, ["issue", "move", identifier, "in_progress"]);
       return moved.ok ? { ok: true } : { ok: false, error: moved.error };
     },
-    spawnWorker: opts.dryRun ? async () => ({ ok: true, pid: null }) : spawnWorkerReal(opts, config),
+    spawnWorker: opts.dryRun ? async () => ({ ok: true, pid: null }) : spawnWorkerReal(opts, config, log),
     now: () => new Date().toISOString(),
     log,
   };
 
-  log(`tick: host=${opts.host} agents=${opts.agents.join(",")} claim_unassigned=${claimUnassigned ? "yes" : "no"}${opts.dryRun ? " (dry-run)" : ""}`);
+  // Say it up front, every tick: whether a wake can resolve a target directory.
+  // A missing glue is not fatal, but it must never be a surprise discovered only
+  // after a worker has already run somewhere unintended.
+  const gluePresent = opts.glue !== null && existsSync(opts.glue);
+  const wakeForm = opts.wakeCommand === null ? `glue=${gluePresent ? opts.glue : "none"}` : `wake_command=${opts.wakeCommand}`;
+  log(
+    `tick: host=${opts.host} agents=${opts.agents.join(",")} claim_unassigned=${claimUnassigned ? "yes" : "no"} ` +
+      `${wakeForm} projects_json=${opts.projectsJson}${opts.dryRun ? " (dry-run)" : ""}`,
+  );
+  if (!gluePresent && opts.wakeCommand === null && !opts.dryRun) {
+    log(`warning: no wake glue at ${opts.glue} — workers will run in ${opts.repo} without a project target directory`);
+  }
 
   let failed = 0;
 
@@ -454,7 +553,7 @@ async function main(argv, env = process.env) {
         spawnPatrol: async (alert) => {
           if (opts.dryRun) return { ok: false };
           const card = { identifier: alert.identifier };
-          return spawnWorkerReal(opts, config)({ identifier: alert.identifier, agent: alert.agent ?? opts.agents[0] }, card);
+          return spawnWorkerReal(opts, config, log)({ identifier: alert.identifier, agent: alert.agent ?? opts.agents[0] }, card);
         },
         notify: opts.dryRun ? () => {} : notifyReal(opts, log),
         now: () => new Date().toISOString(),

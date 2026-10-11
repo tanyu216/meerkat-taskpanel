@@ -4,8 +4,8 @@
  * Two halves, deliberately:
  *
  *   * the **pure decision** — `planTick` / `planPatrol` / `parseHeartbeat` /
- *     `resolveClaimUnassigned` / `buildHandoff` / `wakeCommand` — is asserted directly.
- *     No process, no clock, no filesystem.
+ *     `resolveClaimUnassigned` / `buildHandoff` / `wakeCommand` / `planWakeInvocation` —
+ *     is asserted directly. No process, no clock, no filesystem.
  *   * the **tick runner** — `runPollTick` / `runPatrolTick` — is driven with fully
  *     injected dependencies (candidate read, claim, worker spawn, clock, log), so the
  *     test can be a counter-proof rather than a smoke test: an *empty scan must call the
@@ -30,11 +30,12 @@ import {
   parseHeartbeat,
   planPatrol,
   planTick,
+  planWakeInvocation,
   pruneRegistry,
   resolveClaimUnassigned,
   wakeCommand,
 } from "../../src/shared/scheduling.mjs";
-import { runPatrolTick, runPollTick } from "../../scripts/supervisor.mjs";
+import { parseArgs, runPatrolTick, runPollTick } from "../../scripts/supervisor.mjs";
 
 /** A tiny collector standing in for a "spy" — records every call. */
 function spy(impl = () => undefined) {
@@ -291,6 +292,96 @@ describe("wakeCommand (pure)", () => {
 
     const resumed = wakeCommand({ host: "claude", prompt: "do T-1", resumeSid: "sid-9", wakeCommand: "my-wake.sh" });
     assert.deepEqual(resumed.args, ["do T-1", "--resume", "sid-9"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pure: planWakeInvocation — the glue owns the working directory (R1)
+// ---------------------------------------------------------------------------
+
+describe("planWakeInvocation (pure)", () => {
+  const GLUE = "/home/alice/.claude/bin/wake-claude.sh";
+  const MAP = "/home/alice/.claude/skills/meerkat-taskpanel/projects.json";
+
+  it("starts the host's wake glue when one is installed", () => {
+    const plan = planWakeInvocation({
+      host: "claude",
+      prompt: "do T-1",
+      gluePath: GLUE,
+      glueInstalled: true,
+      project: "TaskPanel",
+      projectsJson: MAP,
+      nodePath: "/usr/local/bin/node",
+      cwd: "/repo",
+    });
+    assert.equal(plan.via, "glue");
+    assert.equal(plan.command, "bash");
+    assert.deepEqual(plan.args, [GLUE, "do T-1"]);
+    // The glue gets everything it needs to resolve and run: the identity, the
+    // map, and a node it can trust (cron/launchd PATH is minimal).
+    assert.deepEqual(plan.env, {
+      TP_PROJECT: "TaskPanel",
+      TP_PROJECTS_JSON: MAP,
+      TP_NODE: "/usr/local/bin/node",
+    });
+    assert.equal(plan.cwd, "/repo");
+    assert.equal(plan.warning, undefined, "a glue means no warning");
+  });
+
+  it("passes a session id to the glue as its second argument", () => {
+    const plan = planWakeInvocation({
+      host: "codex",
+      prompt: "do T-1",
+      resumeSid: "sid-9",
+      gluePath: "/home/alice/.codex/bin/wake-codex.sh",
+      glueInstalled: true,
+      project: "TaskPanel",
+    });
+    assert.deepEqual(plan.args, ["/home/alice/.codex/bin/wake-codex.sh", "do T-1", "sid-9"]);
+  });
+
+  it("falls back to the host CLI — with an explicit warning — when no glue is installed", () => {
+    const plan = planWakeInvocation({
+      host: "claude",
+      prompt: "do T-1",
+      gluePath: GLUE,
+      glueInstalled: false,
+      project: "TaskPanel",
+      cwd: "/repo",
+    });
+    assert.equal(plan.via, "direct");
+    assert.equal(plan.command, "claude");
+    assert.deepEqual(plan.args, ["-p", "do T-1"]);
+    // The fallback is pinned to a known directory and says so out loud: a silent
+    // run in an arbitrary cwd is the bug this whole path exists to remove.
+    assert.equal(plan.cwd, "/repo");
+    assert.match(plan.warning, /no wake glue at .*wake-claude\.sh/);
+    assert.match(plan.warning, /\/repo/);
+    // The identity still travels, so a user-supplied glue can use it.
+    assert.equal(plan.env.TP_PROJECT, "TaskPanel");
+  });
+
+  it("honours an explicit --wake-command over everything, without warning", () => {
+    const plan = planWakeInvocation({
+      host: "claude",
+      prompt: "do T-1",
+      wakeCommand: "my-wake.sh",
+      // Even with a glue installed: an explicit choice is not overridden by a default.
+      gluePath: GLUE,
+      glueInstalled: true,
+      project: "TaskPanel",
+    });
+    assert.equal(plan.via, "override");
+    assert.equal(plan.command, "my-wake.sh");
+    assert.deepEqual(plan.args, ["do T-1"]);
+    assert.equal(plan.warning, undefined);
+    // The identity still travels, so an operator's glue can resolve it too.
+    assert.equal(plan.env.TP_PROJECT, "TaskPanel");
+  });
+
+  it("sends no project variables when the card carries no project identity", () => {
+    const plan = planWakeInvocation({ host: "claude", prompt: "do T-1", gluePath: GLUE, glueInstalled: true });
+    assert.deepEqual(plan.env, {});
   });
 });
 
@@ -558,6 +649,36 @@ describe("pruneRegistry (pure)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// parseArgs — the wake surface the glue decision is built from
+// ---------------------------------------------------------------------------
+
+describe("parseArgs — the wake surface", () => {
+  const ENV = { HOME: "/home/alice" };
+
+  it("defaults the glue and the project map under the host's dot-directory", () => {
+    const opts = parseArgs(["--host", "codex", "--once"], ENV);
+    assert.equal(opts.glue, "/home/alice/.codex/bin/wake-codex.sh");
+    assert.equal(opts.projectsJson, "/home/alice/.codex/skills/meerkat-taskpanel/projects.json");
+    assert.equal(opts.wakeCommand, null, "no override unless the operator asks for one");
+  });
+
+  it("accepts an explicit glue, map and wake command", () => {
+    const opts = parseArgs(
+      [
+        "--host", "pi",
+        "--glue", "/tmp/my-wake.sh",
+        "--projects-json=/tmp/map.json",
+        "--wake-command", "my-wake.sh",
+      ],
+      ENV,
+    );
+    assert.equal(opts.glue, "/tmp/my-wake.sh");
+    assert.equal(opts.projectsJson, "/tmp/map.json");
+    assert.equal(opts.wakeCommand, "my-wake.sh");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Wiring sanity: the exported runner lives in the repo
 // ---------------------------------------------------------------------------
 
@@ -578,7 +699,7 @@ describe("supervisor module", () => {
     // directory is *not* named "meerkat-taskpanel". Loading by URL proves the module is
     // importable in place; the export check proves it is the runner, not a stub.
     const mod = await import(SUPERVISOR_URL.href);
-    for (const name of ["runPollTick", "runPatrolTick", "parseArgs", "loadRegistry", "saveRegistry"]) {
+    for (const name of ["runPollTick", "runPatrolTick", "parseArgs", "loadRegistry", "saveRegistry", "planWakeInvocation"]) {
       assert.equal(typeof mod[name], "function", `missing export: ${name}`);
     }
   });
