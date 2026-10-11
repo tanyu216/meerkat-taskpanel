@@ -37,7 +37,7 @@ async function board(fn, { clock } = {}) {
     const repos = createRepositories(db);
     const ctx = createContext({ db, repos, ...(clock === undefined ? {} : { clock }) });
     const commands = createCommands(ctx);
-    commands.createProject({ id: "proj", name: "Project", workspacePath: "/tmp/ws", actor: HUMAN });
+    commands.createProject({ id: "proj", name: "Project", actor: HUMAN });
     return fn({ db, repos, ctx, commands });
   });
 }

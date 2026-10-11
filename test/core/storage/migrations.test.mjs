@@ -8,7 +8,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
@@ -24,7 +24,15 @@ import {
   normalizeSql,
 } from "../../../src/core/storage/migrations-runner.mjs";
 import { DomainError } from "../../../src/shared/errors.mjs";
-import { TS, cleanupTempDirs, createTempBoard, makeTempDir } from "../../helpers/sqlite-fixture.mjs";
+import {
+  TS,
+  TS2,
+  cleanupTempDirs,
+  createTempBoard,
+  insertTask,
+  makeTempDir,
+  revision,
+} from "../../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);
 
@@ -44,7 +52,7 @@ const TINY = {
 describe("storage/migrations — the shipped set", () => {
   it("reads the shipped migrations in version order with stable checksums", () => {
     const migrations = listMigrations();
-    assert.deepEqual(migrations.map((m) => m.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011"]);
+    assert.deepEqual(migrations.map((m) => m.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012"]);
     assert.deepEqual(migrations.map((m) => m.name), [
       "core_tables",
       "invariants",
@@ -57,6 +65,7 @@ describe("storage/migrations — the shipped set", () => {
       "task_idem",
       "parent_epic",
       "parent_kind_update",
+      "drop_project_workspace",
     ]);
     for (const migration of migrations) {
       assert.match(migration.checksum, /^[0-9a-f]{64}$/);
@@ -70,17 +79,17 @@ describe("storage/migrations — the shipped set", () => {
     const board = await createTempBoard({ migrate: false });
     try {
       const first = applyMigrations(board.db);
-      assert.deepEqual(first.applied.map((a) => a.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011"]);
+      assert.deepEqual(first.applied.map((a) => a.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012"]);
       assert.deepEqual(first.skipped, []);
       for (const entry of first.applied) assert.equal(typeof entry.ms, "number");
 
       const second = applyMigrations(board.db);
       assert.deepEqual(second.applied, [], "re-apply must be a no-op");
-      assert.deepEqual(second.skipped, ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011"]);
+      assert.deepEqual(second.skipped, ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012"]);
 
       const rows = board.db.prepare("SELECT version, checksum FROM schema_migrations ORDER BY version").all();
-      assert.equal(rows.length, 11, "one bookkeeping row per file");
-      assert.deepEqual([...appliedMigrations(board.db).keys()], ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011"]);
+      assert.equal(rows.length, 12, "one bookkeeping row per file");
+      assert.deepEqual([...appliedMigrations(board.db).keys()], ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012"]);
     } finally {
       board.close();
     }
@@ -123,7 +132,8 @@ describe("storage/migrations — the shipped set", () => {
       for (const column of ["id", "identifier", "version", "report_latest_id", "delivery_round", "idem"]) {
         assert.ok(columnsOf("tasks").includes(column), `tasks.${column}`);
       }
-      assert.ok(columnsOf("projects").includes("workspace_path"));
+      // The board owns no directory (0012): the column 0001 created is gone.
+      assert.equal(columnsOf("projects").includes("workspace_path"), false, "projects.workspace_path must be dropped by 0012");
       assert.ok(columnsOf("projects").includes("meta_json"));
 
       const strict = board.db
@@ -222,7 +232,7 @@ describe("storage/migrations — failure modes", () => {
 
   it("ships a default migrations dir that exists", () => {
     assert.match(defaultMigrationsDir(), /src\/core\/storage\/migrations$/);
-    assert.equal(listMigrations().length, 11);
+    assert.equal(listMigrations().length, 12);
   });
 });
 
@@ -235,8 +245,8 @@ describe("storage/migrations — startup check", () => {
         assert.ok(err instanceof DomainError);
         assert.equal(err.code, "SCHEMA_MISMATCH");
         assert.equal(err.http, 500);
-        assert.deepEqual(err.details.missing, ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011"]);
-        assert.deepEqual(err.details.expected, ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011"]);
+        assert.deepEqual(err.details.missing, ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012"]);
+        assert.deepEqual(err.details.expected, ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012"]);
         return true;
       });
 
@@ -245,7 +255,7 @@ describe("storage/migrations — startup check", () => {
         ok: true,
         missing: [],
         unknownApplied: [],
-        expected: ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011"],
+        expected: ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012"],
       });
 
       // A database that knows a migration this build does not ship.
@@ -279,6 +289,102 @@ describe("storage/migrations — startup check", () => {
         assert.deepEqual(err.details.unknownApplied, ["0002"]);
         return true;
       });
+    } finally {
+      board.close();
+    }
+  });
+});
+
+describe("storage/migrations — 0012 drops projects.workspace_path (O3)", () => {
+  /** The shipped set without 0012 — a board as the previous build left it. */
+  function before0012() {
+    const dir = makeTempDir("meerkat-taskpanel-pre0012-");
+    for (const name of readdirSync(defaultMigrationsDir()).filter((n) => n.endsWith(".sql") && !n.startsWith("0012"))) {
+      copyFileSync(join(defaultMigrationsDir(), name), join(dir, name));
+    }
+    return dir;
+  }
+
+  const columnsOf = (db) =>
+    db.prepare("SELECT name FROM pragma_table_info('projects')").all().map((r) => r.name);
+  const indexNames = (db) =>
+    db.prepare("SELECT name FROM pragma_index_list('projects')").all().map((r) => r.name);
+
+  it("carries an existing board across, keeping every row and its task links", async () => {
+    const board = await createTempBoard({ migrate: false });
+    try {
+      // A board from the previous build: the column is there, with its rows.
+      const old = applyMigrations(board.db, { dir: before0012() });
+      assert.equal(old.applied.at(-1).version, "0011");
+      assert.ok(columnsOf(board.db).includes("workspace_path"), "precondition: the old schema has the column");
+      assert.ok(indexNames(board.db).includes("ux_projects_workspace"), "precondition: the old schema has the index");
+
+      board.db
+        .prepare(
+          `INSERT INTO projects(id, name, workspace_path, next_task_number, labels, meta_json, readme, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run("legacy", "Legacy project", "/tmp/demo", 7, '["m1"]', '{"k":"v"}', "# notes", TS, TS);
+      insertTask(board.db, { id: "task-legacy", identifier: "LEGACY-0001", project_id: "legacy" });
+
+      // The upgrade is exactly one file, on top of what was already there.
+      const up = applyMigrations(board.db);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0012"]);
+      assert.deepEqual(up.skipped.slice(-2), ["0010", "0011"]);
+
+      // The column and its unique index are gone; the table is otherwise intact.
+      assert.equal(columnsOf(board.db).includes("workspace_path"), false, "projects.workspace_path must be gone");
+      assert.equal(indexNames(board.db).includes("ux_projects_workspace"), false, "the unique index must be gone");
+
+      // Every other value on the row survived (only the directory string is lost
+      // on purpose — it now lives on the skill side).
+      const row = board.db.prepare("SELECT * FROM projects WHERE id = 'legacy'").get();
+      assert.equal(row.name, "Legacy project");
+      assert.equal(Number(row.next_task_number), 7);
+      assert.equal(row.labels, '["m1"]');
+      assert.equal(row.meta_json, '{"k":"v"}');
+      assert.equal(row.readme, "# notes");
+      assert.equal(row.created_at, TS);
+      assert.equal(row.updated_at, TS);
+
+      // The task, and the link to its project, are untouched.
+      const task = board.db.prepare("SELECT project_id, identifier FROM tasks WHERE id = 'task-legacy'").get();
+      assert.equal(task.project_id, "legacy");
+      assert.equal(task.identifier, "LEGACY-0001");
+
+      assert.equal(board.db.prepare("PRAGMA integrity_check").get().integrity_check, "ok");
+      assert.deepEqual(board.db.prepare("PRAGMA foreign_key_check").all(), []);
+    } finally {
+      board.close();
+    }
+  });
+
+  it("re-leaves the projects update trigger naming only live columns", async () => {
+    const board = await createTempBoard(); // fully migrated
+    try {
+      const sql = board.db
+        .prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'tr_rev_projects_upd'")
+        .get().sql;
+      assert.match(sql, /AFTER UPDATE OF/);
+      assert.equal(sql.includes("workspace_path"), false, "the trigger must not name a dropped column");
+
+      // And it still does its job: a project update bumps the revision cursor.
+      board.db.prepare("INSERT INTO projects(id, name, created_at, updated_at) VALUES (?, ?, ?, ?)").run("p", "P", TS, TS);
+      const before = revision(board.db);
+      board.db.prepare("UPDATE projects SET name = ?, updated_at = ? WHERE id = 'p'").run("Q", TS2);
+      assert.equal(revision(board.db), before + 1, "the revision trigger must still fire");
+    } finally {
+      board.close();
+    }
+  });
+
+  it("is a no-op on a board that already dropped the column", async () => {
+    const board = await createTempBoard();
+    try {
+      const again = applyMigrations(board.db);
+      assert.deepEqual(again.applied, []);
+      assert.equal(again.skipped.includes("0012"), true);
+      assert.equal(columnsOf(board.db).includes("workspace_path"), false);
     } finally {
       board.close();
     }

@@ -47,7 +47,7 @@ function prepared(taskId, round, overrides = {}) {
 async function board(fn) {
   return withBoard(({ db }) => {
     const repos = createRepositories(db);
-    const project = repos.projects.create({ id: "proj", name: "Project", workspacePath: "/tmp/ws", now: TS });
+    const project = repos.projects.create({ id: "proj", name: "Project", now: TS });
     return fn({ db, repos, project });
   });
 }
@@ -63,14 +63,12 @@ function makeTask(repos, overrides = {}) {
 }
 
 describe("repositories/projects", () => {
-  it("creates, reads and patches a project, normalising the workspace path", async () => {
+  it("creates, reads and patches a project", async () => {
     await board(({ repos, project }) => {
       assert.equal(project.id, "proj");
-      assert.equal(project.workspacePath, "/tmp/ws");
       assert.equal(project.nextTaskNumber, 1);
       assert.deepEqual(project.meta, {});
       assert.equal(repos.projects.get("proj").name, "Project");
-      assert.equal(repos.projects.getByWorkspace("/tmp/ws").id, "proj");
       assert.deepEqual(repos.projects.list().map((p) => p.id), ["proj"]);
 
       const updated = repos.projects.update("proj", { name: "Renamed", meta: { git: "x" }, now: TS2 });
@@ -80,17 +78,13 @@ describe("repositories/projects", () => {
     });
   });
 
-  it("refuses a relative workspace path and duplicate paths", async () => {
+  it("refuses a duplicate id and an empty name", async () => {
     await board(({ repos }) => {
       assert.throws(
-        () => repos.projects.create({ id: "p2", name: "X", workspacePath: "relative", now: TS }),
-        (err) => err.code === "VALIDATION_FAILED",
-      );
-      assert.throws(
-        () => repos.projects.create({ id: "p3", name: "X", workspacePath: "/tmp/ws", now: TS }),
+        () => repos.projects.create({ id: "proj", name: "X", now: TS }),
         (err) => err.code === "ID_CONFLICT",
       );
-      assert.throws(() => repos.projects.create({ id: "p4", name: "", workspacePath: "/tmp/other", now: TS }), DomainError);
+      assert.throws(() => repos.projects.create({ id: "p4", name: "   ", now: TS }), DomainError);
       assert.throws(() => repos.projects.update("nope", { name: "x", now: TS }), (err) => err.code === "NOT_FOUND");
       assert.throws(() => repos.projects.update("proj", { now: TS }), (err) => /empty/.test(err.message));
     });
@@ -105,12 +99,11 @@ describe("repositories/projects", () => {
     });
   });
 
-  it("finds the project a path belongs to, deepest first", async () => {
-    await board(({ repos }) => {
-      repos.projects.create({ id: "nested", name: "Nested", workspacePath: "/tmp/ws/sub", now: TS });
-      assert.deepEqual(repos.projects.listForPath("/tmp/ws/sub/deep").map((p) => p.id), ["nested", "proj"]);
-      assert.deepEqual(repos.projects.listForPath("/tmp/ws-other").map((p) => p.id), []);
-      assert.deepEqual(repos.projects.listForPath("/tmp/ws").map((p) => p.id), ["proj"]);
+  it("stores no directory: the project row has no path-shaped field", async () => {
+    await board(({ db, project }) => {
+      assert.equal(Object.hasOwn(project, "workspacePath"), false);
+      const columns = db.prepare("SELECT name FROM pragma_table_info('projects')").all().map((r) => r.name);
+      assert.equal(columns.includes("workspace_path"), false, columns.join(","));
     });
   });
 

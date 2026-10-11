@@ -33,7 +33,7 @@ async function board(fn) {
     const repos = createRepositories(db);
     const ctx = createContext({ db, repos, clock: () => now, logger: (event) => logs.push(event) });
     const commands = createCommands(ctx);
-    commands.createProject({ id: "proj", name: "Project", workspacePath: "/tmp/ws", actor: HUMAN });
+    commands.createProject({ id: "proj", name: "Project", actor: HUMAN });
     return fn({ db, repos, ctx, commands, logs, at: (stamp) => { now = stamp; } });
   });
 }
@@ -120,7 +120,7 @@ describe("commands/labels — registration (F3-B / F5-B)", () => {
 
   it("assigns colours that do not repeat inside a project, but may across projects", async () => {
     await board(({ repos, commands }) => {
-      commands.createProject({ id: "other", name: "Other", workspacePath: "/tmp/other", actor: HUMAN });
+      commands.createProject({ id: "other", name: "Other", actor: HUMAN });
       commands.createTask({ projectId: "proj", title: "a", labels: ["one"], actor: AGENT });
       commands.createTask({ projectId: "proj", title: "b", labels: ["two"], actor: AGENT });
       commands.createTask({ projectId: "other", title: "c", labels: ["one"], actor: AGENT });
@@ -254,7 +254,7 @@ describe("commands/labels — the GC (F1 / F3 / F5)", () => {
 
   it("lists labels by use count, project and query", async () => {
     await board(({ commands }) => {
-      commands.createProject({ id: "other", name: "Other", workspacePath: "/tmp/other", actor: HUMAN });
+      commands.createProject({ id: "other", name: "Other", actor: HUMAN });
       commands.createTask({ projectId: "proj", title: "a", labels: ["alpha", "beta"], actor: AGENT });
       commands.createTask({ projectId: "proj", title: "b", labels: ["alpha"], actor: AGENT });
       commands.createTask({ projectId: "other", title: "c", labels: ["gamma"], actor: AGENT });

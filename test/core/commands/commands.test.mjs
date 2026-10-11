@@ -29,7 +29,7 @@ async function board(fn, { clock } = {}) {
     const repos = createRepositories(db);
     const ctx = createContext({ db, repos, ...(clock === undefined ? {} : { clock }) });
     const commands = createCommands(ctx);
-    commands.createProject({ id: "proj", name: "Project", workspacePath: "/tmp/ws", actor: HUMAN });
+    commands.createProject({ id: "proj", name: "Project", actor: HUMAN });
     return fn({ db, repos, ctx, commands });
   });
 }
@@ -157,7 +157,7 @@ describe("commands/relations", () => {
 
   it("refuses a second parent, a cycle and a cross-project edge", async () => {
     await board(({ commands }) => {
-      commands.createProject({ id: "other", name: "Other", workspacePath: "/tmp/other", actor: HUMAN });
+      commands.createProject({ id: "other", name: "Other", actor: HUMAN });
       const epic = commands.createTask({ projectId: "proj", title: "Epic", kind: "epic", actor: AGENT });
       const a = commands.createTask({ projectId: "proj", title: "A", kind: "epic", actor: AGENT });
       const b = commands.createTask({ projectId: "proj", title: "B", kind: "epic", actor: AGENT });
@@ -337,17 +337,15 @@ describe("commands — the project surface", () => {
     });
   });
 
-  it("finds the project for a directory", async () => {
+  it("exposes no directory lookup: a project is not bound to a path", async () => {
     await board(({ commands }) => {
-      commands.createProject({ id: "nested", name: "Nested", workspacePath: "/tmp/ws/sub", actor: HUMAN });
-      assert.equal(commands.projectForPath({ path: "/tmp/ws/sub/deep" }).id, "nested");
-      assert.equal(commands.projectForPath({ path: "/tmp/elsewhere" }), null);
+      assert.equal(Object.hasOwn(commands, "projectForPath"), false);
     });
   });
 
   it("reads a task by id or identifier, refusing an ambiguous identifier", async () => {
     await board(({ commands }) => {
-      commands.createProject({ id: "other", name: "Other", workspacePath: "/tmp/other", actor: HUMAN });
+      commands.createProject({ id: "other", name: "Other", actor: HUMAN });
       const task = commands.createTask({ projectId: "proj", title: "one", identifier: "SHARED-0001", actor: AGENT });
       assert.equal(commands.getTask({ id: task.id }).id, task.id);
       assert.equal(commands.getTaskByIdentifier({ identifier: "SHARED-0001" }).id, task.id);
