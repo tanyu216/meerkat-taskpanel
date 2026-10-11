@@ -1,5 +1,10 @@
 /**
- * Projects — the workspace anchor every task hangs off.
+ * Projects — the board's grouping of tasks.
+ *
+ * A project carries no directory: which local checkout it corresponds to is an
+ * agent-side question (the skill's `projects.json`), not a board column. This
+ * layer therefore stores a name, a label set, free-form meta and the identifier
+ * counter — nothing path-shaped.
  *
  * `allocateIdentifier` lives here because identifier allocation is a property of
  * the project row (`next_task_number`): taking it and using it must happen in
@@ -8,14 +13,13 @@
 
 import { DomainError } from "../../../shared/errors.mjs";
 import { newId } from "../../../shared/ids.mjs";
-import { identifierFor, normalizeWorkspacePath, assertIsoMillis } from "../../domain/task.mjs";
+import { identifierFor, assertIsoMillis } from "../../domain/task.mjs";
 import { mapSqliteError } from "../sqlite-errors.mjs";
 import { transaction } from "../unit-of-work.mjs";
 
 const CAMEL = {
   id: "id",
   name: "name",
-  workspace_path: "workspacePath",
   next_task_number: "nextTaskNumber",
   labels: "labels",
   meta_json: "meta",
@@ -49,10 +53,9 @@ function decodeJson(value, fallback) {
 /** @param {import('node:sqlite').DatabaseSync} db */
 export function createProjectsRepository(db) {
   const selectById = db.prepare("SELECT * FROM projects WHERE id = ?");
-  const selectByWorkspace = db.prepare("SELECT * FROM projects WHERE workspace_path = ?");
 
   return {
-    /** @param {{id?: string, name: string, workspacePath: string, labels?: unknown, meta?: object, readme?: string|null, now: string}} input */
+    /** @param {{id?: string, name: string, labels?: unknown, meta?: object, readme?: string|null, now: string}} input */
     create(input) {
       const now = input.now;
       assertIsoMillis(now, "now");
@@ -60,15 +63,13 @@ export function createProjectsRepository(db) {
       if (typeof input.name !== "string" || input.name.trim() === "") {
         throw new DomainError("VALIDATION_FAILED", { message: "project name is required", details: { field: "name" } });
       }
-      const workspacePath = normalizeWorkspacePath(input.workspacePath);
       try {
         db.prepare(
-          `INSERT INTO projects(id, name, workspace_path, next_task_number, labels, meta_json, readme, created_at, updated_at)
-           VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)`,
+          `INSERT INTO projects(id, name, next_task_number, labels, meta_json, readme, created_at, updated_at)
+           VALUES (?, ?, 1, ?, ?, ?, ?, ?)`,
         ).run(
           id,
           input.name.trim(),
-          workspacePath,
           JSON.stringify(input.labels ?? []),
           JSON.stringify(input.meta ?? {}),
           input.readme ?? null,
@@ -86,23 +87,6 @@ export function createProjectsRepository(db) {
       return projectFromRow(selectById.get(id));
     },
 
-    /** @param {string} workspacePath */
-    getByWorkspace(workspacePath) {
-      return projectFromRow(selectByWorkspace.get(workspacePath));
-    },
-
-    /**
-     * Projects whose workspace path is a prefix of `path` — how the CLI decides
-     * which project the current directory belongs to (§4.4, "自动归属").
-     * @param {string} path
-     */
-    listForPath(path) {
-      const rows = db
-        .prepare("SELECT * FROM projects ORDER BY length(workspace_path) DESC")
-        .all();
-      return rows.map(projectFromRow).filter((project) => path === project.workspacePath || path.startsWith(`${project.workspacePath}/`));
-    },
-
     /** @param {{includeArchived?: boolean}} [options] */
     list(options = {}) {
       const sql = options.includeArchived
@@ -113,7 +97,7 @@ export function createProjectsRepository(db) {
 
     /**
      * @param {string} id
-     * @param {{name?: string, workspacePath?: string, labels?: unknown, meta?: object, readme?: string|null, now: string}} patch
+     * @param {{name?: string, labels?: unknown, meta?: object, readme?: string|null, now: string}} patch
      */
     update(id, patch) {
       assertIsoMillis(patch.now, "now");
@@ -122,10 +106,6 @@ export function createProjectsRepository(db) {
       if (patch.name !== undefined) {
         sets.push("name = ?");
         values.push(patch.name);
-      }
-      if (patch.workspacePath !== undefined) {
-        sets.push("workspace_path = ?");
-        values.push(normalizeWorkspacePath(patch.workspacePath));
       }
       if (patch.labels !== undefined) {
         sets.push("labels = ?");

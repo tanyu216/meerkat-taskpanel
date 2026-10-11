@@ -135,18 +135,6 @@ export function assertNonEmptyString(value, field) {
   return value;
 }
 
-/** A project's workspace path is an absolute local path (ARCHITECTURE §4.4). */
-export function normalizeWorkspacePath(value, field = "workspacePath") {
-  assertNonEmptyString(value, field);
-  if (!value.startsWith("/")) {
-    throw new DomainError("VALIDATION_FAILED", {
-      message: `${field} must be an absolute path`,
-      details: { field, received: value },
-    });
-  }
-  return value.replace(/\/+$/, "") === "" ? "/" : value.replace(/\/+$/, "");
-}
-
 /** @param {unknown} value */
 export function isValidIdentifier(value) {
   return typeof value === "string" && IDENTIFIER_PATTERN.test(value);
