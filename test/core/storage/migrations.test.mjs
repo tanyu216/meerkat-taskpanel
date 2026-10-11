@@ -334,7 +334,9 @@ describe("storage/migrations — 0012 drops projects.workspace_path (O3)", () =>
 
       // The upgrade is exactly one file, on top of what was already there.
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0012"]);
+      // 0012 and everything after it — this board stopped before 0012, so the
+      // upgrade carries it to the head of the shipped set.
+      assert.deepEqual(up.applied.map((m) => m.version), ["0012", "0013"]);
       assert.deepEqual(up.skipped.slice(-2), ["0010", "0011"]);
 
       // The column and its unique index are gone; the table is otherwise intact.

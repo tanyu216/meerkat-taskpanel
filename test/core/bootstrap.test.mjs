@@ -116,12 +116,22 @@ describe("core/bootstrap — openBoard", () => {
     const { dataDir, pointerPath } = scratch();
     const dbPath = join(dataDir, "board.sqlite");
 
-    // A database an older build created: four migrations, not five.
+    // A database an older build created: the first four migrations, and nothing
+    // after them. A migration is allowed to assume its predecessors — the runner
+    // applies them contiguously — so a fixture that wants a *behind* board has to
+    // be a prefix, not a set with a hole in it.
     const older = makeTempDir("bootstrap-old-");
     const sources = join(dirname(fileURLToPath(import.meta.url)), "../../src/core/storage/migrations");
-    for (const name of readdirSync(sources).filter((n) => n.endsWith(".sql") && !n.startsWith("0005"))) {
+    const shipped = readdirSync(sources)
+      .filter((n) => n.endsWith(".sql"))
+      .map((n) => n.slice(0, 4))
+      .sort();
+    const firstFour = shipped.filter((version) => version < "0005");
+    for (const name of readdirSync(sources).filter((n) => n.endsWith(".sql") && n.slice(0, 4) < "0005")) {
       copyFileSync(join(sources, name), join(older, name));
     }
+    /** Everything this older build never applied — derived, never transcribed. */
+    const behind = shipped.filter((version) => !firstFour.includes(version));
     const db = await openDatabase({ path: dbPath });
     applyMigrations(db, { dir: older });
     closeDatabase(db);
@@ -134,7 +144,7 @@ describe("core/bootstrap — openBoard", () => {
     const stale = await openBoard({ dataDir, pointerPath, env: {}, readonly: true, allowStale: true });
     try {
       assert.equal(stale.schema.ok, false);
-      assert.deepEqual(stale.schema.missing, ["0005"]);
+      assert.deepEqual(stale.schema.missing, behind);
       assert.equal(stale.migration.applied.length, 0, "a read-only open never migrates");
       // The repositories would build statements against columns that do not
       // exist yet, so they name the real problem instead.
@@ -153,7 +163,7 @@ describe("core/bootstrap — openBoard", () => {
     // apply" — and says exactly which file it applied.
     const upgraded = await openBoard({ dataDir, pointerPath, env: {} });
     try {
-      assert.deepEqual(upgraded.migration.applied.map((m) => m.version), ["0005"]);
+      assert.deepEqual(upgraded.migration.applied.map((m) => m.version), behind);
       assert.equal(upgraded.schema.ok, true);
     } finally {
       upgraded.close();
