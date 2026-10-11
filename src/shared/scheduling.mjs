@@ -254,10 +254,21 @@ export function candidateArgs(agent, claimUnassigned) {
 }
 
 /**
- * The wake argv for a host. Claude and Codex have no timers, so the loop lives
- * outside them: a headless `claude -p` (with `--resume <sid>` when continuity is
- * known) or a `codex exec`. Pi's headless command is `pi run`; an explicit
- * `wakeCommand` override lets an installer or a user plug their own glue.
+ * The wake argv for a host. Claude, Codex and Pi have no timers, so the loop
+ * lives outside them, waking each host's own **headless** entry point — and,
+ * when a session id is known, that host's own **resume** form:
+ *
+ *   * **claude** — `claude -p <prompt>`; resume with `--resume <sid>`.
+ *   * **codex**  — `codex exec <prompt>`; resume the thread with
+ *     `codex exec resume <sid> <prompt>` (`codex exec resume [OPTIONS]
+ *     [SESSION_ID] [PROMPT]`).
+ *   * **pi**     — `pi --print <prompt>` (`--print` is pi's non-interactive
+ *     mode; pi has no `run` subcommand); resume a specific session with
+ *     `pi --print --session <sid> <prompt>` (`--session <path|id>`).
+ *
+ * These shapes are the ones verified against the real CLIs — the per-host
+ * capability matrix in `scripts/verify/host-resume-matrix.mjs`. An explicit
+ * `wakeCommand` override lets an installer or a user plug in their own glue.
  *
  * @param {{host?: string, prompt: string, resumeSid?: string|null, wakeCommand?: string|null}} input
  * @returns {{command: string, args: string[]}}
@@ -272,9 +283,13 @@ export function wakeCommand(input = {}) {
     case "claude":
       return { command: "claude", args: resumeSid ? ["-p", prompt, "--resume", String(resumeSid)] : ["-p", prompt] };
     case "codex":
-      return { command: "codex", args: ["exec", prompt] };
+      return resumeSid
+        ? { command: "codex", args: ["exec", "resume", String(resumeSid), prompt] }
+        : { command: "codex", args: ["exec", prompt] };
     case "pi":
-      return { command: "pi", args: ["run", prompt] };
+      return resumeSid
+        ? { command: "pi", args: ["--print", "--session", String(resumeSid), prompt] }
+        : { command: "pi", args: ["--print", prompt] };
     default:
       throw new DomainError("VALIDATION_FAILED", {
         message: `unknown host '${input.host}'`,
