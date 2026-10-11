@@ -165,8 +165,8 @@ describe("host bundle: claude", () => {
     const hook = join(home, ".claude", "hooks", "meerkat-taskpanel-session-start.sh");
     assert.ok(isExecutable(hook), "hook must be executable");
     const hookText = readFileSync(hook, "utf8");
-    assert.match(hookText, /分给我的待领卡/);
-    assert.match(hookText, /八条规矩/);
+    assert.match(hookText, /claimable for \$name/);
+    assert.match(hookText, /the eight rules/);
     assert.ok(!hookText.includes("{{"), "template tokens must be rendered");
 
     // 4. shim (executable, injects --agent)
