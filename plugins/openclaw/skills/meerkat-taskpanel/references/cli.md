@@ -54,20 +54,17 @@ an error message.
 
 | Command | Purpose |
 |---|---|
-| `project create --id <id> --name <n> --workspace-path <abs> [--meta k=v]… [--label <l>]… [--readme <text>]` | Create a project. The id becomes the identifier prefix (`demo` → `DEMO-0001`). |
-| `project update <id> [--name] [--workspace-path] [--meta k=v]… [--label]… [--readme]` | Update it. `--meta` **merges**. |
+| `project create --id <id> --name <n> [--meta k=v]… [--label <l>]… [--readme <text>]` | Create a project. The id becomes the identifier prefix (`demo` → `DEMO-0001`). |
+| `project update <id> [--name] [--meta k=v]… [--label]… [--readme]` | Update it. `--meta` **merges**. |
 | `project list [--include-archived]` | List projects. |
 | `project readme <id>` | Print the readme. |
 | `project readme <id> --set <text>` / `--file <path\|->` | Set it. |
 
-### `context`
-
-| Command | Purpose |
-|---|---|
-| `context current [--path <dir>]` | The project that owns this directory (default: cwd), by longest-prefix match. |
-
-A miss returns a **synthetic** `local` project with `matched: false` and a hint —
-it does not create a row. Reads never write.
+**A project carries no directory.** TaskPanel does no project-directory management:
+there is no `--workspace-path`, no `context` command, and no board-side field that
+names a project's target directory. The local map from a directory to a board
+project is the `projects.json` kept beside this skill — see
+[`projects-json.md`](projects-json.md).
 
 ### `issue`
 
