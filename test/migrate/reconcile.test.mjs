@@ -75,10 +75,15 @@ describe("migrate/reconcile — a clean directory reconciles with zero differenc
     assert.equal(report.relations.dependsOn.mismatching, 0);
     assert.equal(report.labels.mismatching, 0);
 
-    // project-level diff: the registry root is the workspace path
+    // project-level diff: no directory comparison — a project owns none (O3)
     assert.equal(report.projects.length, 1);
     assert.equal(report.projects[0].id, "demo");
-    assert.equal(report.projects[0].matches, true);
+    assert.equal(report.projects[0].workspacePath, undefined, "no workspace field on a project diff");
+    assert.deepEqual(
+      report.projects[0].targets,
+      ["/tmp/meerkat-taskpanel-migrate-fixture"],
+      "the cards' opaque targets, listed for information — never compared",
+    );
     assert.equal(report.projects[0].gitRules.registryDefault, "present");
 
     // hashes: one per card, plus a stable aggregate
@@ -97,7 +102,7 @@ describe("migrate/reconcile — a clean directory reconciles with zero differenc
     const { code, report } = await run(["--dir", CLEAN, "--now", "2026-01-10T00:00:00.000Z", "--json"]);
     assert.equal(code, 0, JSON.stringify(report?.differences));
     assert.equal(report.source.registryEntries, 0);
-    assert.equal(report.projects[0].registryRoot, null);
+    assert.deepEqual(report.projects[0].metaKeys, [], "no registry to carry metadata from");
   });
 });
 
@@ -116,7 +121,11 @@ describe("migrate/reconcile — a lossy directory reports differences", () => {
     const unresolved = report.unmappable.find((item) => item.kind === "project-unresolved");
     assert.equal(unresolved.value, "Missing");
     assert.equal(unresolved.card, "DIFF-0005");
-    assert.ok(report.warnings.some((warning) => /two different targets/.test(warning)));
+    assert.equal(
+      report.warnings.some((warning) => /target/.test(warning)),
+      false,
+      "targets are opaque per-card values now — never reconciled into a warning",
+    );
 
     // the skipped project never became a row
     assert.equal(report.counts.skippedProjects, 1);

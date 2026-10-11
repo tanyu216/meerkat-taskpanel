@@ -71,7 +71,7 @@ function snapshot(db) {
     collection.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
 
   return {
-    projects: rows("SELECT id, name, workspace_path, next_task_number, labels, meta_json FROM projects ORDER BY id"),
+    projects: rows("SELECT id, name, next_task_number, labels, meta_json FROM projects ORDER BY id"),
     tasks: rows("SELECT * FROM tasks ORDER BY identifier").map((task) => {
       const { id, source_path, source_hash, assignee_id, reporter_id, ...rest } = task;
       return { ...rest, assignee: byName(assignee_id), reporter: byName(reporter_id) };

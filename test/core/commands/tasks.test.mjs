@@ -782,13 +782,12 @@ describe("commands/tasks — listCandidates (poll read)", () => {
       assert.deepEqual(candidates.map((c) => c.identifier), [candidate.identifier]);
       assert.deepEqual(
         Object.keys(candidates[0]).sort(),
-        ["id", "identifier", "priority", "project", "reason", "sort", "status", "target", "title"],
-        "exactly the card's fields plus reason",
+        ["id", "identifier", "priority", "project", "reason", "sort", "status", "title"],
+        "exactly the card's fields plus reason — no `target`, the board owns no directory (O3)",
       );
       assert.equal(candidates[0].status, "todo", "the canonical status, never the ready alias");
       assert.equal(candidates[0].priority, "medium");
       assert.equal(candidates[0].project, "proj");
-      assert.equal(candidates[0].target, "/tmp/ws", "target is the project's workspace path");
       assert.equal(candidates[0].sort, 0);
       assert.equal(candidates[0].reason, "ready");
       assert.equal(revision(db), before, "the poll read writes nothing");
