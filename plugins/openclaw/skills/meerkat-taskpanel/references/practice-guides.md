@@ -113,6 +113,51 @@ Every write can name the actor and the conversation behind it
 "which agent session did this", and it is what lets a resumed conversation
 re-attach to the same work instead of starting over. Always pass the session id.
 
+## Where a directory's project lives (目录归属)
+
+**The board holds no directories.** A board project carries no target directory: no
+`workspace_path`, no `context current`, no registry `root` anchor. TaskPanel does no
+project-directory management, on purpose — so the answer to "which board project is
+this directory?" comes **only** from the `projects.json` kept **beside this skill**
+(next to `SKILL.md`):
+
+```json
+{
+  "projects": [
+    { "local_path": "/Users/you/code/meerkat-taskpanel", "project": "TaskPanel" }
+  ]
+}
+```
+
+A directory resolves to the entry whose `local_path` is that directory or an ancestor
+of it; the **longest** match wins. `local_path` is a local absolute path; `project` is
+the board project's **id** (preferred) or name. The file is **local and agent-side —
+it is never written into the board**, and it is not part of the skill's source. The
+full schema is in [`projects-json.md`](projects-json.md).
+
+**There is no fallback.** A project absent from `projects.json` has **no target
+directory** — the board cannot supply one. Do not invent, guess, or derive a
+directory, and do not go looking for one on the board. When a step needs the directory,
+stop and say:
+
+```text
+No local directory is registered for project <project>.
+Add an entry to projects.json beside this skill (references/projects-json.md);
+the board cannot supply one.
+```
+
+A directory that maps to nothing gets the same prompt. Work that needs no directory —
+claiming, moving, commenting, delivering (§1–§6) — is unaffected; a missing mapping is
+"no directory known", never "cannot work".
+
+Two boundaries this respects, on purpose:
+
+1. **TaskPanel does no project-directory management** — not a column, not a route, not
+   a command. A board project simply has no directory; directories are a local concern.
+2. **Whether you manage a project's source data with `meta` is your own call.**
+   TaskPanel does not prescribe it and does not advise it — and **this skill takes no
+   position either**. Use `meta`, or don't, by your own convention.
+
 ## Waking & patrol (唤醒与巡检)
 
 Rule 1 says *claim first*; it does not say *wait to be told*. Work starts when a
@@ -199,8 +244,10 @@ claude plugin list                                 # → meerkat-taskpanel, enab
 ### Tracing and triggering
 
 - **Session scoping is per-directory.** Claude Code loads the skill from the
-  project you are in, so run `node scripts/run.mjs context current` first to learn
-  which board project owns this directory (`cli.md` §`context`).
+  project you are in; to learn which board project a directory belongs to, look it up
+  in the `projects.json` beside this skill
+  ([§Where a directory's project lives](#where-a-directorys-project-lives)). The board
+  holds no directory, so there is nothing to ask it.
 - **Stamp every write with the host and session:** `--agent-platform claude
   --session-id <id>`. Use the id of the Claude Code session, so the card's trail
   points back at the conversation that did the work.
@@ -235,8 +282,9 @@ codex plugin list                                  # → meerkat-taskpanel
   **`CODEX_THREAD_ID`**; read it and use it as the session id, so a card's trail
   is attributable at the conversation level:
   `--agent-platform codex --session-id "$CODEX_THREAD_ID"`.
-- **Same claim-first order**, same board checks (§1). Resolve the project with
-  `context current` before creating or claiming anything.
+- **Same claim-first order**, same board checks (§1). Resolve a directory's project
+  from the `projects.json` beside this skill before creating or claiming anything
+  ([§Where a directory's project lives](#where-a-directorys-project-lives)).
 - **No timers of its own either.** Codex does not poll the board, so §1 is driven
   by the supervisor ([Waking & patrol](#waking--patrol-唤醒与巡检)) waking a
   `codex exec` turn, or by a Codex app automation
@@ -255,8 +303,8 @@ identifier `issue candidates` prints for you. `$SESSION` is the host's session i
 launched with, or `$CODEX_THREAD_ID` on Codex.
 
 ```bash
-# 0. which project owns this directory?
-node scripts/run.mjs context current
+# 0. which project owns this directory? — look it up in the projects.json beside
+#    this skill (references/projects-json.md); the board holds no directory
 
 # 1. claim-first: read the claimable set, then take exactly one
 node scripts/run.mjs issue candidates --assignee linus --agent-platform claude --session-id "$SESSION"
@@ -280,6 +328,7 @@ node scripts/run.mjs issue deliver PROJ-0007 --report-file - \
 
 - [`cli.md`](cli.md) — the command surface, the delivery gate, the `--json` contract.
 - [`reports.md`](reports.md) — daily / weekly / monthly reports and statistics.
+- [`projects-json.md`](projects-json.md) — the local directory ↔ board project map.
 - [`SKILL.md`](../SKILL.md) — the agent-facing entry point; §Claiming work restates
   rules 1–2 as a checklist.
 - [openclaw-team](https://github.com/tanyu216/openclaw-team) — the dispatcher that

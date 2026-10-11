@@ -68,7 +68,9 @@ per-host differences (Claude Code / Codex) and a worked example are in
 
 ## When to use it
 
-- **Finding the board** — `taskctl context current` says which project owns this directory.
+- **Finding the board** — the board holds no directories; look the directory up in the
+  `projects.json` kept beside this skill (see
+  [Configuring project directories](#configuring-project-directories)).
 - **Starting work** — `taskctl issue candidates --assignee <me>` to find your
   claimable cards, then `taskctl issue move <id> in_progress` (see
   [Claiming work](#claiming-work-claim-first)).
@@ -89,10 +91,53 @@ per-host differences (Claude Code / Codex) and a worked example are in
   The templates, the counting rules and how to define your own metrics live in
   [`references/reports.md`](references/reports.md).
 
+## Configuring project directories
+
+**The board holds no directories.** A board project carries no `workspace_path`, there is
+no `context` command, and the file importer names no directory anchor — by design:
+taskpanel does not manage project directories. The **local** map is a
+`projects.json` kept **beside this skill** (next to `SKILL.md`), and it is the only
+place that answers "which directory is this project working in".
+
+Add one entry per project — the **absolute** target directory and the **board project
+identity**:
+
+```json
+{
+  "projects": [
+    { "local_path": "/Users/you/code/meerkat-taskpanel", "project": "TaskPanel" }
+  ]
+}
+```
+
+`local_path` is the local checkout (an absolute path); `project` is the board project —
+its **id** (preferred) or name. A directory resolves to the entry whose `local_path` is
+that directory or an ancestor of it; when several match, the **longest** path wins.
+
+**There is no fallback.** A project absent from `projects.json` has **no target
+directory** — the board cannot supply one. Do not guess one: when a step needs the
+directory, stop and say
+
+```text
+No local directory is registered for project <project>.
+Add an entry to projects.json beside this skill (references/projects-json.md);
+the board cannot supply one.
+```
+
+Work that needs no directory (claiming, moving, commenting, delivering) is unaffected.
+The full schema, the resolution rule and the re-install behaviour are in
+[`references/projects-json.md`](references/projects-json.md).
+
+Two boundaries this respects, on purpose: **taskpanel does no project-directory
+management**, and **whether you manage a project's source data with `meta` is your own
+call** — taskpanel neither prescribes it nor advises it, and neither does this skill.
+
 ## Reference
 
 See [`references/cli.md`](references/cli.md) for the command surface, the delivery gate,
 the report template and the `--json` contract,
-[`references/reports.md`](references/reports.md) for periodic reports and statistics, and
+[`references/reports.md`](references/reports.md) for periodic reports and statistics,
+[`references/projects-json.md`](references/projects-json.md) for the local
+project ↔ board project map, and
 [`references/practice-guides.md`](references/practice-guides.md) for the claim-first
 practice guide (Claude Code / Codex best practices).
