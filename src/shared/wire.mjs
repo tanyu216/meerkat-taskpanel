@@ -117,7 +117,6 @@ export function projectToWire(project) {
   return {
     id: project.id,
     name: project.name,
-    workspace_path: project.workspacePath,
     labels: Array.isArray(project.labels) ? project.labels : [],
     meta: project.meta ?? {},
     readme: project.readme ?? null,
