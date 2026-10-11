@@ -1,8 +1,8 @@
 /**
  * The Node runtime floor, unit-tested at the pure-function boundary.
  *
- * `src/shared/node-version.mjs` is the single place both client entries
- * (`src/cli`, `src/mcp`) consult before doing anything else, and it must agree
+ * `src/shared/node-version.mjs` is the single place the client entry
+ * (`src/cli`) consults before doing anything else, and it must agree
  * with the installer's `require_node` (`scripts/install/_common.sh`) on which
  * version strings are accepted. This file pins every branch of that contract,
  * plus the `MIN_NODE_MAJOR ↔ package.json#engines.node` lock that keeps the

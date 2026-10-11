@@ -1,18 +1,17 @@
 /**
- * The client entry points refuse a too-old runtime, before anything else runs.
+ * The CLI entry point refuses a too-old runtime, before anything else runs.
  *
- * `src/cli/index.mjs` and `src/mcp/main.mjs` each run `isSupportedNode` as step
- * 0 and `process.exit(2)` with one stderr line when the runtime is below Node 22.
- * The trick is that the running process *is* the runtime, so the only honest way
- * to simulate an old Node is to spawn a real child and lie about
- * `process.versions.node` through a preload — mocking the process boundary, not
- * an internal function.
+ * `src/cli/index.mjs` runs `isSupportedNode` as step 0 and `process.exit(2)` with
+ * one stderr line when the runtime is below Node 22. The trick is that the
+ * running process *is* the runtime, so the only honest way to simulate an old
+ * Node is to spawn a real child and lie about `process.versions.node` through a
+ * preload — mocking the process boundary, not an internal function.
  *
  * Two invariants matter and are asserted here:
  *
- *   * the message names the right bin and the requirement (`taskctl` / `meerkat-taskpanel-mcp`);
- *   * stdout stays empty on the fatal path — for the MCP server stdout is the
- *     JSON-RPC channel, and a banner on it would wedge the host's session.
+ *   * the message names the right bin and the requirement (`taskctl`);
+ *   * stdout stays empty on the fatal path — the floor message is a complaint,
+ *     and stdout is the caller's channel for real results.
  */
 
 import assert from "node:assert/strict";
@@ -26,7 +25,6 @@ import test, { after, describe, it } from "node:test";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const NODE = process.execPath;
 const CLI_ENTRY = join(ROOT, "src/cli/index.mjs");
-const MCP_ENTRY = join(ROOT, "src/mcp/main.mjs");
 
 /** The version a too-old runtime reports. */
 const LOW_NODE = "21.99.9";
@@ -78,26 +76,6 @@ describe("CLI entry — the runtime floor", () => {
     });
     assert.equal(run.status, 0, run.stderr);
     assert.equal(run.stdout, "1.0.0\n");
-  });
-});
-
-describe("MCP entry — the runtime floor", () => {
-  it("refuses a too-old Node at stdin EOF: exit 2, empty JSON-RPC stdout", () => {
-    const run = runLowNode(MCP_ENTRY, []);
-    assert.equal(run.status, 2, run.stderr);
-    assert.match(run.stderr, /meerkat-taskpanel-mcp: Node 22 or newer/);
-    assert.equal(run.stdout, "", "stdout is the JSON-RPC channel and must stay empty on a fatal start");
-  });
-
-  it("exits 0 at stdin EOF on a supported Node", () => {
-    const run = spawnSync(NODE, [MCP_ENTRY], {
-      cwd: ROOT,
-      encoding: "utf8",
-      input: "",
-      env: { ...process.env, ...boardlessEnv() },
-    });
-    assert.equal(run.status, 0, run.stderr);
-    assert.equal(run.stdout, "", "no request, no response — a clean EOF is silent");
   });
 });
 

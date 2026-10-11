@@ -3,7 +3,7 @@
 # There are two build layers, and keeping them apart is the whole point of the stages:
 #
 #   * runtime (the final stage) — Node 22 plus the repository itself. The engine
-#     (`src/core`, `src/cli`, `src/server`, `src/mcp`) has ZERO runtime dependencies:
+#     (`src/core`, `src/cli`, `src/server`) has ZERO runtime dependencies:
 #     nothing is installed, nothing is fetched, so this stage builds offline and
 #     reproduces exactly on any machine.
 #   * webbuild (the first stage) — the `web/` board frontend. Its build-time

@@ -3,10 +3,9 @@
 #
 # Deploys the complete Codex bundle, not just the skill:
 #   1. skill              → ~/.codex/skills/meerkat-taskpanel
-#   2. MCP registration   → `codex mcp add meerkat-taskpanel -- node <repo>/src/mcp/main.mjs`
-#   3. claim-first snippet → merged into ~/.codex/AGENTS.md (identity + rules)
-#   4. claim trigger      → ~/.codex/meerkat-taskpanel-claim.sh (schedulable; --no-automation skips)
-#   5. scheduling         → ~/.codex/scheduling/{launchd,systemd,cron} + wake-codex.sh
+#   2. claim-first snippet → merged into ~/.codex/AGENTS.md (identity + rules)
+#   3. claim trigger      → ~/.codex/meerkat-taskpanel-claim.sh (schedulable; --no-automation skips)
+#   4. scheduling         → ~/.codex/scheduling/{launchd,systemd,cron} + wake-codex.sh
 #                           and the host config (~/.codex/meerkat-taskpanel.env)
 # plus the taskctl shim that injects --agent <name>. `--no-automation` skips the
 # claim trigger *and* the scheduling wiring — Codex has no hooks, so both are the
@@ -31,6 +30,3 @@ else
   install_scheduling
   write_host_config
 fi
-
-# MCP registration last, so a fresh install has everything else in place first.
-register_mcp "codex" "codex"

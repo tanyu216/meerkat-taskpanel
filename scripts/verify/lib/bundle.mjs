@@ -19,7 +19,7 @@
  *      -> a NATIVE plugin (skill-only packs cannot use this: see docs/install.md)
  *   2. `.codex-plugin/` | `.cursor-plugin/` | `.claude-plugin/` markers -> that bundle
  *   3. root `plugin.json` declaring the Agent Plugins `$schema` -> an Agent bundle
- *   4. the default Claude layout (`skills/`, `commands/`, `agents/`, `.mcp.json`, …)
+ *   4. the default Claude layout (`skills/`, `commands/`, `agents/`, …)
  *      -> a manifestless Claude bundle
  *
  * Everything here is synchronous and filesystem-only: no processes, no network.
@@ -55,7 +55,6 @@ export const CLAUDE_DEFAULT_ROOTS = [
   "commands",
   "agents",
   "output-styles",
-  ".mcp.json",
   ".lsp.json",
   "settings.json",
 ];

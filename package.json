@@ -11,8 +11,7 @@
     "access": "public"
   },
   "bin": {
-    "taskctl": "./src/cli/index.mjs",
-    "meerkat-taskpanel-mcp": "./src/mcp/main.mjs"
+    "taskctl": "./src/cli/index.mjs"
   },
   "engines": {
     "node": ">=22"
@@ -45,7 +44,7 @@
     "verify:docker": "node scripts/verify/docker.mjs",
     "verify:docker:container": "bash docker/verify-in-container.sh",
     "verify:migrate:container": "node scripts/migrate/drill.mjs",
-    "test:coverage": "node --test --test-reporter=tap --experimental-test-coverage --test-coverage-include='src/core/**' --test-coverage-include='src/shared/**' --test-coverage-include='src/cli/**' --test-coverage-include='src/server/**' --test-coverage-include='src/mcp/**' --test-coverage-lines=80 --test-coverage-branches=80 --test-coverage-functions=80"
+    "test:coverage": "node --test --test-reporter=tap --experimental-test-coverage --test-coverage-include='src/core/**' --test-coverage-include='src/shared/**' --test-coverage-include='src/cli/**' --test-coverage-include='src/server/**' --test-coverage-lines=80 --test-coverage-branches=80 --test-coverage-functions=80"
   },
   "keywords": [
     "task-management",
