@@ -14,11 +14,20 @@
  */
 import { computed } from "vue";
 
-import { platformOf, priorityOf, projectNameOf } from "../../stores/board.js";
+import { isAwaiting, platformOf, priorityOf, projectNameOf, stageOf } from "../../stores/board.js";
 import { openMoveMenu } from "../../stores/ui.js";
 
 const props = defineProps({ task: { type: Object, required: true }, dragging: { type: Boolean, default: false } });
 const emit = defineEmits(["open", "dragstart", "dragend"]);
+
+/**
+ * M1 — the card's `data-status` is its **stage**, not its state: an `awaiting`
+ * card stays in its column and keeps the stage stripe (design §3.1/§8-08), so
+ * the one-to-one "progress scan down a column" reading is unchanged. The
+ * attention rides the badge below, which is an *overlay* — never a move.
+ */
+const stage = computed(() => stageOf(props.task));
+const awaiting = computed(() => isAwaiting(props.task));
 
 const assigneeName = computed(() => props.task.assignee?.display_name ?? "");
 const assigneeKind = computed(() => props.task.assignee?.kind ?? "human");
@@ -48,7 +57,7 @@ function onMenu(event) {
     draggable="true"
     :data-identifier="task.identifier"
     :data-id="task.id"
-    :data-status="task.status"
+    :data-status="stage"
     :data-priority="priorityOf(task)"
     :data-project="projectNameOf(task.project_id)"
     :data-assignee="assigneeName"
@@ -73,6 +82,21 @@ function onMenu(event) {
 
     <div class="td-card-head">
       <span class="td-card-id td-mono" data-card-identifier>{{ task.identifier }}</span>
+      <!-- M1 · the attention badge. An overlay on the card, not a column
+           transfer: it rides the reason code as an *attribute* and the unified
+           label as its only text node, so the copy swaps with the language and
+           the badge never grows a vocabulary of its own (design §3.1). -->
+      <span
+        v-if="awaiting"
+        class="td-card-waiting"
+        data-card-waiting
+        :data-waiting-reason="task.awaiting_reason ?? ''"
+        role="status"
+        :aria-label="$t('waiting.aria.badge')"
+        :title="$t(`waiting.reason.${task.awaiting_reason}`)"
+      >
+        <span data-card-waiting-label>{{ $t("status.awaiting") }}</span>
+      </span>
       <button type="button" class="td-card-menu" data-card-menu aria-haspopup="menu" :aria-expanded="false" :aria-label="$t('card.move', task.identifier)" @click="onMenu">
         ⋯
       </button>

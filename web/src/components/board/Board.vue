@@ -10,13 +10,23 @@
  */
 import { computed, ref, watch } from "vue";
 
-import { board, columns, moveTask, openDetail, STATUSES, totalVisible } from "../../stores/board.js";
+import { allowedTargets, board, columns, moveTask, openDetail, totalVisible } from "../../stores/board.js";
 import { closeMoveMenu, moveMenu, openCreateTask, view } from "../../stores/ui.js";
 import Column from "./Column.vue";
 
 const dragging = ref(null);
 
-const moveRows = computed(() => STATUSES.map((status) => ({ status, current: moveMenu.value?.task?.status === status })));
+/**
+ * The move menu offers exactly the moves the state machine allows from the
+ * card's *own* status — never the whole vocabulary with the impossible ones
+ * included. M1's reason for tightening this: an `awaiting` card must be offered
+ * **no** route to `in_review`, `done` or `blocked` (design §6/§8-13), because
+ * offering a move the delivery gate will refuse is the UI half of bypassing it.
+ */
+const moveRows = computed(() => {
+  const status = moveMenu.value?.task?.status;
+  return allowedTargets(status).map((target) => ({ status: target, current: false }));
+});
 
 function onDragStart(task, event) {
   dragging.value = task.id;

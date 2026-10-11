@@ -8,10 +8,18 @@
  */
 import { computed, ref } from "vue";
 
-/** board ↔ list (mutually exclusive; `hidden` on the inactive one). */
+/**
+ * board ↔ list ↔ waiting (mutually exclusive; `hidden` on the inactive ones).
+ *
+ * `waiting` is M1's 「等你回复」view: a *nav* view, not a third value of the top
+ * bar's `board | list` toggle — that control's domain is frozen at two
+ * (`DOMAINS.VIEW`), and design §10-C6 puts the new surface on the sidebar nav
+ * precisely so it does not become one.
+ */
+const VIEWS = ["board", "list", "waiting"];
 export const view = ref("board");
 export function setView(next) {
-  if (next === "board" || next === "list") view.value = next;
+  if (VIEWS.includes(next)) view.value = next;
 }
 
 /** The filters bar starts open (`aria-pressed="true"`), matching B02. */
