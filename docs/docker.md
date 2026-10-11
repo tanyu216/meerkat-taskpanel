@@ -40,7 +40,7 @@ docker build -f docker/Dockerfile -t meerkat-taskpanel:verify .
 ```
 
 The build context is the repository root, trimmed by the root `.dockerignore` (no `.git`,
-no `prototype/`, no `design/`, no `node_modules`). The image:
+no `design/`, no `node_modules`). The image:
 
 - is based on `node:22-bookworm-slim`;
 - sets `TZ=Asia/Shanghai` — no `tzdata` package is installed, Node's bundled ICU supplies
@@ -262,7 +262,7 @@ host, because they are static or pure and touch nothing:
 - `node scripts/verify/manifests.mjs`, `node scripts/verify/skill.mjs`,
   `node scripts/sync-skills.mjs --check`;
 - `git` operations, file listing and inspection;
-- static rendering/screenshots of the design prototype under `prototype/`;
+- static rendering/screenshots of the design prototype under `design/prototype/`;
 - browser-rendered frontend checks — the DOM/selector contract assertions and the
   prototype-vs-implementation screenshots for `web/`. The image has no Chromium (installing
   it needs an apt mirror, i.e. network at build time), so these stay on the host, driving a
@@ -349,8 +349,8 @@ network at all (no installs, no external calls), so if something inside the cont
 reaching out, it is a bug — the point of the container is that the suite runs offline.
 
 **The image build is slow every time.**
-Check the build context size. The root `.dockerignore` excludes `.git`, `prototype/`,
-`design/`, `node_modules/`, `.data/` and `coverage/`; a large context almost always means
+Check the build context size. The root `.dockerignore` excludes `.git`, `design/`,
+`node_modules/`, `.data/` and `coverage/`; a large context almost always means
 one of those got re-included. The one thing under `web/` that *is* shipped is the committed
 npm cache at `web/.vendor/npm-cache` (linux-only, ~25 MB / ~100 files) — that is expected,
 not bloat. `web/node_modules/` and `web/dist/` are gitignored, so a clean checkout's context

@@ -2,7 +2,7 @@
  * Markdown + source highlighting (B23).
  *
  * The renderers are the prototype's own first-party vendored files
- * (`prototype/vendor/markdown-lite.js`, `highlight-lite.js`), copied here rather
+ * (`design/prototype/vendor/markdown-lite.js`, `highlight-lite.js`), copied here rather
  * than re-implemented so the preview and the highlight layer behave exactly as
  * the design baseline does. Both are dependency-free IIFEs that publish one
  * global and escape their own input — there is no DOMPurify, no markdown-it and

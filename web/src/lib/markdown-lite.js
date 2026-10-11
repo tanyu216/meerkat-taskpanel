@@ -2,7 +2,7 @@
    markdown-lite.js — a minimal, dependency-free Markdown → HTML renderer.
    ----------------------------------------------------------------------------
    Vendor provenance: written for this prototype and vendored as a local file.
-   It is loaded with a plain <script> tag from prototype/vendor/. Like every
+   It is loaded with a plain <script> tag from design/prototype/vendor/. Like every
    other vendor file here it makes no network request, reads no storage and
    ships no CDN reference — the prototype must render its preview offline.
 

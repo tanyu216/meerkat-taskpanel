@@ -5,16 +5,16 @@
  * rising meerkats (a capsule body, a concentric head circle and two mirrored
  * ears each) plus one floating watch dot, all inside `viewBox 0 0 32 32`. Until
  * now that contract lived only in prose notes, so a silent coordinate drift in
- * `prototype/index.html` or `prototype/favicon.svg` would pass the checks.
+ * `design/prototype/index.html` or `design/prototype/favicon.svg` would pass the checks.
  *
  * `BRAND.md` §5 is the **single authority**: every expected value below is
  * parsed out of its three tables (parts, placement, watch signal) — nothing is
  * hard-coded a second time — and the three rendered marks are then matched
  * against it shape by shape, number by number:
  *
- *   1. `prototype/index.html`   top bar     `.td-logo`
- *   2. `prototype/index.html`   empty state `.td-logo.td-logo-lg`
- *   3. `prototype/favicon.svg`  (light fills; the dark pair follows the scheme)
+ *   1. `design/prototype/index.html`   top bar     `.td-logo`
+ *   2. `design/prototype/index.html`   empty state `.td-logo.td-logo-lg`
+ *   3. `design/prototype/favicon.svg`  (light fills; the dark pair follows the scheme)
  *
  * **Functional subtrees are not geometry.** A `<defs>`/`<mask>` subtree draws
  * nothing: its rects and circles are knockout machinery (functional white shows,
@@ -38,7 +38,7 @@
  * deliberately mutated §5 prose) to the same comparison, so a guard that could
  * never go red fails here instead of passing forever.
  *
- * **Where this runs.** It needs `design/brand/BRAND.md` and `prototype/`, and
+ * **Where this runs.** It needs `design/brand/BRAND.md` and `design/prototype/`, and
  * `.dockerignore` excludes both from the image — so, like the prototype half of
  * `test/web/i18n.catalogue.test.mjs`, the suite self-skips (with a printed
  * reason) inside the container and guards where the sources exist: the CI `check`
@@ -56,7 +56,7 @@ import { describe, it } from "node:test";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 /** The §5 authority and the marks that must render it. */
-const SOURCES = ["design/brand/BRAND.md", "prototype/index.html", "prototype/favicon.svg"];
+const SOURCES = ["design/brand/BRAND.md", "design/prototype/index.html", "design/prototype/favicon.svg"];
 const MISSING = SOURCES.filter((rel) => !existsSync(resolve(ROOT, rel)));
 const HAS_SOURCES = MISSING.length === 0;
 
@@ -331,7 +331,7 @@ function drift(shapes, expected) {
   return out;
 }
 
-// ─── The guard (skips where design/ and prototype/ are absent) ──────────────
+// ─── The guard (skips where design/ and design/prototype/ are absent) ──────────────
 
 describe(
   "Sentinel Watch mark geometry == BRAND.md §5",
@@ -339,8 +339,8 @@ describe(
   () => {
     const read = (rel) => readFileSync(resolve(ROOT, rel), "utf8");
     const BRAND_MD = read("design/brand/BRAND.md");
-    const PROTOTYPE_HTML = read("prototype/index.html");
-    const FAVICON_SVG = read("prototype/favicon.svg");
+    const PROTOTYPE_HTML = read("design/prototype/index.html");
+    const FAVICON_SVG = read("design/prototype/favicon.svg");
 
     // §5 is the single authority: parse its three tables, never restate them.
     const start = BRAND_MD.indexOf("\n## 5.");
@@ -444,11 +444,11 @@ describe(
     assert.equal(
       INDEX_MARKS.length,
       2,
-      "prototype/index.html must carry exactly two `.td-logo` marks (top bar + empty state)",
+      "design/prototype/index.html must carry exactly two `.td-logo` marks (top bar + empty state)",
     );
 
     const FAV_STYLE = /<style>([\s\S]*?)<\/style>/.exec(FAVICON_SVG)?.[1] ?? "";
-    assert.ok(FAV_STYLE.includes("@media"), "prototype/favicon.svg must colour the mark by colour scheme");
+    assert.ok(FAV_STYLE.includes("@media"), "design/prototype/favicon.svg must colour the mark by colour scheme");
     const [FAV_LIGHT_CSS, FAV_DARK_CSS = ""] = FAV_STYLE.split("@media");
     assert.match(
       FAV_DARK_CSS,
@@ -505,13 +505,13 @@ describe(
     // ── Every rendered mark carries exactly that geometry ────────────────────
 
     describe("the rendered marks match it, value by value", () => {
-      it("prototype/index.html top bar `.td-logo`", () => {
+      it("design/prototype/index.html top bar `.td-logo`", () => {
         const shapes = shapesOf(INDEX_MARKS[0]).map((s) => ({ ...s }));
         assert.equal(shapes.length, EXPECTED_COUNT, "the top-bar mark must render every §5 shape");
         assert.deepEqual(drift(shapes, expectedShapes({ mob: TOKEN.ink, sentinel: TOKEN.accent })), []);
       });
 
-      it("prototype/index.html empty state `.td-logo-lg`", () => {
+      it("design/prototype/index.html empty state `.td-logo-lg`", () => {
         const shapes = shapesOf(INDEX_MARKS[1]).map((s) => ({ ...s }));
         assert.equal(shapes.length, EXPECTED_COUNT, "the empty-state mark must render every §5 shape");
         assert.deepEqual(drift(shapes, expectedShapes({ mob: TOKEN.ink3, sentinel: TOKEN.accent })), []);
@@ -535,7 +535,7 @@ describe(
         }
       });
 
-      it("prototype/favicon.svg — the shared geometry, light fills", () => {
+      it("design/prototype/favicon.svg — the shared geometry, light fills", () => {
         const shapes = shapesOf(FAVICON_SVG).map((s) => ({
           ...s,
           fill: s.cls === "sentinel" ? FAV_LIGHT.sentinel : FAV_LIGHT.mob,
@@ -544,7 +544,7 @@ describe(
         assert.deepEqual(drift(shapes, expectedShapes({ mob: FAV_LIGHT.mob, sentinel: FAV_LIGHT.sentinel })), []);
       });
 
-      it("prototype/favicon.svg — paints §5's light/dark duotone by colour scheme", () => {
+      it("design/prototype/favicon.svg — paints §5's light/dark duotone by colour scheme", () => {
         assert.equal(FAV_LIGHT.mob.toLowerCase(), FILL.light.mob.toLowerCase(), "favicon light mob fill != §5");
         assert.equal(FAV_LIGHT.sentinel.toLowerCase(), FILL.light.sentinel.toLowerCase(), "favicon light sentinel fill != §5");
         assert.equal(FAV_DARK.mob.toLowerCase(), FILL.dark.mob.toLowerCase(), "favicon dark mob fill != §5");
@@ -784,9 +784,9 @@ describe(
 
       describe("the three rendered marks cut it, value by value", () => {
         const surfaces = [
-          ["prototype/index.html top bar `.td-logo`", INDEX_MARKS[0]],
-          ["prototype/index.html empty state `.td-logo-lg`", INDEX_MARKS[1]],
-          ["prototype/favicon.svg", FAVICON_SVG],
+          ["design/prototype/index.html top bar `.td-logo`", INDEX_MARKS[0]],
+          ["design/prototype/index.html empty state `.td-logo-lg`", INDEX_MARKS[1]],
+          ["design/prototype/favicon.svg", FAVICON_SVG],
         ];
 
         for (const [label, svg] of surfaces) {
@@ -808,8 +808,8 @@ describe(
 
         it("gives both inline marks their own mask id", () => {
           const ids = maskDefIds(PROTOTYPE_HTML);
-          assert.equal(ids.length, INDEX_MARKS.length, `prototype/index.html must define one mask per mark (found ${ids.join(", ")})`);
-          assert.deepEqual(ids, [...new Set(ids)], `prototype/index.html reuses a <mask id>: ${ids.join(", ")}`);
+          assert.equal(ids.length, INDEX_MARKS.length, `design/prototype/index.html must define one mask per mark (found ${ids.join(", ")})`);
+          assert.deepEqual(ids, [...new Set(ids)], `design/prototype/index.html reuses a <mask id>: ${ids.join(", ")}`);
           for (const [i, svg] of INDEX_MARKS.entries()) {
             assert.ok(ids.includes(maskIdOf(svg)), `mark[${i}]'s group points at a mask the document never defines`);
           }
@@ -929,7 +929,7 @@ describe(
       /** Mutate the pristine mark textually and return the drift that mutation causes. */
       const mutate = (from, to) => audit(mutatedBy(from, to));
 
-      /** Sentinel 1's left ear circle, exactly as `prototype/index.html` writes it. */
+      /** Sentinel 1's left ear circle, exactly as `design/prototype/index.html` writes it. */
       const earL = (s) =>
         `<circle cx="${one(s.cx + EAR_L.cx.sign * EAR_L.cx.offset)}" cy="${one(s.top + EAR_L.cy.offset)}" r="${one(EAR_L.r)}" />`;
 

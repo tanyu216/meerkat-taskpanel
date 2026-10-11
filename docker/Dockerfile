@@ -79,8 +79,8 @@ ENV TASKD_PORT=9527
 
 WORKDIR /app
 
-# The build context is trimmed by the repository-root .dockerignore (no .git, no
-# prototype/, no design/, no node_modules).
+# The build context is trimmed by the repository-root .dockerignore (no .git,
+# no design/, no node_modules).
 COPY . .
 
 # The built frontend is the only thing the webbuild stage contributes: no devDependencies

@@ -108,9 +108,9 @@ for your host, start with [Install](#install).
 
 Product prototype screenshots (the visual baseline for the board frontend):
 
-![Kanban board](prototype/screenshots/01-board-1512.png)
+![Kanban board](design/prototype/screenshots/01-board-1512.png)
 
-![Agent task drawer](prototype/screenshots/03-drawer-agent.png)
+![Agent task drawer](design/prototype/screenshots/03-drawer-agent.png)
 
 ## Repository layout
 
@@ -129,7 +129,7 @@ meerkat-taskpanel/
 ├── web/                          # board frontend (Vue 3 + Vite) → web/dist (hosted root)
 ├── skills/meerkat-taskpanel/        # skill — single source of truth
 ├── plugins/                      # one dispatch unit per host (claude/codex/openclaw/pi)
-├── design/                       # brand assets (+ assets/ and prototype/ placeholders; migration pending)
+├── design/                       # design artifacts: DESIGN / BLOCKS, prototype/, brand/, assets/
 ├── scripts/                      # build / install / sync / verify
 ├── test/                         # contract + smoke tests
 ├── docs/                         # usage and development docs

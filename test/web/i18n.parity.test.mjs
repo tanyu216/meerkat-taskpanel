@@ -5,7 +5,7 @@
  *
  *   1. **The runtime copy is the contract copy.** `web/src/i18n/catalogue.mjs`
  *      is a byte-identical copy of `test/web/i18n.catalogue.mjs` (which is itself
- *      pinned to `prototype/app.js` by its own suite). Copying is unavoidable —
+ *      pinned to `design/prototype/app.js` by its own suite). Copying is unavoidable —
  *      `web/` may not import `test/` — so a test proves they still agree.
  *   2. **Every hook the app authors resolves.** Each static `data-i18n*="key"`
  *      and each static `t("key")` in `web/src/**` must resolve in the catalogue

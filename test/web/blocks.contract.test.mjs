@@ -1,7 +1,7 @@
 /**
  * The block contract's own test: it validates the **module**, not the DOM.
  *
- * `blocks.contract.mjs` transcribes `prototype/BLOCKS.md` (B01–B25 + the ten
+ * `blocks.contract.mjs` transcribes `design/BLOCKS.md` (B01–B25 + the ten
  * consistency items) into assertion data. Nothing here needs a browser or a build:
  * this suite must be green today, before `web/` exists, and it runs in the container
  * as part of the ordinary `node --test` pass. The assertions that need a live DOM live
@@ -11,7 +11,7 @@
  *
  * BLOCKS.md's header contradicts its own body and the shipped DOM. It claims
  * "**252** `data-i18n*` hooks" and "**198** catalogue keys"; measured against
- * `prototype/index.html` and `prototype/app.js`, the document carries **606**
+ * `design/prototype/index.html` and `design/prototype/app.js`, the document carries **606**
  * `data-i18n*` attributes (389 `data-i18n` + 144 `-arg` + 47 `-aria-label` +
  * 8 `-placeholder` + 18 `-title`) and the catalogue holds **214 keys per language**
  * (en = 214, zh = 214, exact parity — which is what the *body* says). Only the
@@ -95,7 +95,7 @@ describe("web/blocks.contract — module hygiene", () => {
   });
 
   it("is pure data + frozen exports", () => {
-    assert.equal(CONTRACT_SOURCE, "prototype/BLOCKS.md");
+    assert.equal(CONTRACT_SOURCE, "design/BLOCKS.md");
     for (const value of [
       SCOPES,
       BLOCK_CONTRACT,

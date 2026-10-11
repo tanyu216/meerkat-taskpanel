@@ -522,7 +522,7 @@ describe("static: Dockerfile", () => {
 describe("static: .dockerignore", () => {
   it("exists and trims the build context", async () => {
     const text = await read(".dockerignore");
-    for (const entry of [".git", "node_modules", "dist", ".data", "coverage", "*.tgz", "prototype", "design", ".DS_Store"]) {
+    for (const entry of [".git", "node_modules", "dist", ".data", "coverage", "*.tgz", "design", ".DS_Store"]) {
       assert.ok(
         text.split("\n").map((l) => l.trim()).includes(entry),
         `.dockerignore should contain ${entry}`,

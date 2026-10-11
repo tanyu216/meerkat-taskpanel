@@ -2,7 +2,7 @@
    highlight-lite.js — a minimal, dependency-free source highlighter.
    ----------------------------------------------------------------------------
    Vendor provenance: written for this prototype and vendored as a local file.
-   Loaded with a plain <script> tag from prototype/vendor/; no network, no
+   Loaded with a plain <script> tag from design/prototype/vendor/; no network, no
    storage, no CDN, no eval.
 
    Two surfaces, both pure functions returning HTML:

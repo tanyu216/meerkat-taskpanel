@@ -27,7 +27,7 @@
 | `plugins/<host>/` | Per-host manifests + generated `skills/` copies |
 | `scripts/` | Build, install, sync and verify scripts |
 | `test/` | Smoke / contract tests |
-| `design/` | Brand assets and placeholders; the PRD / DESIGN / BLOCKS migration and `prototype/` move are still pending (see `design/README.md`) |
+| `design/` | Product design artifacts — the DESIGN / BLOCKS documents, the interactive `prototype/`, brand assets and exported assets (see `design/README.md`) |
 | `docs/` | Usage and development documentation |
 
 Dependency direction: `core`, `cli` and `server` may import from `shared`;
