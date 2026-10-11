@@ -162,7 +162,7 @@ OpenClaw 也可消费 Claude 格式的 bundle（`plugins/claude`），这是受�
 $0 的本地 CLI 扫描，**只有真正认领到卡**时才启动模型回合（原子认领是唯一的派单源）；
 以及**每五分钟巡检** —— 对心跳过期的认领升级告警，并把**无法解析的心跳如实上报**
 （绝不静默）。Claude Code 与 Codex **本身没有定时器**，因此这个循环活在它们**之外**，
-被唤醒的只是 worker（`claude -p`、`codex exec`、`pi run`）。
+被唤醒的只是 worker（`claude -p`、`codex exec`、`pi --print`）。
 
 `install.sh` 会写入各宿主的 launchd / systemd / cron 调度单元与唤醒脚本，并**打印**加载
 命令 —— 绝不替你启用守护进程。安装时还会问一次是否允许认领**未分配**的卡（默认允许），
