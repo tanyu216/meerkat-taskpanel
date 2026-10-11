@@ -15,6 +15,19 @@ export const SKILL_NAME = "meerkat-taskpanel";
 export const PACKAGE_NAME = "meerkat-taskpanel";
 export const VERSION = "1.0.0";
 
+/**
+ * The board's **contract schema generation** — which generation of the API/wire
+ * contract this provider speaks, independent of the release `VERSION` above.
+ *
+ * This is the single source of truth for the number a *client* binds to: the
+ * contract snapshot freezes it as the committed snapshot's own `schema_version`
+ * (`scripts/verify/contract.mjs` reads it, it is not a second copy), and
+ * `taskctl --version --json` publishes it, so a consumer can read the provider's
+ * declared number **at runtime** instead of hard-coding one that silently drifts.
+ * Bump it when the snapshot's own layout changes shape — see `docs/contract.md`.
+ */
+export const CONTRACT_SCHEMA_VERSION = 4;
+
 // ---------------------------------------------------------------------------
 // Data directory & files (ARCHITECTURE §7.1, plan §2 F8)
 // ---------------------------------------------------------------------------

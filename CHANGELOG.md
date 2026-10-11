@@ -9,6 +9,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The contract `schema_version` is readable from the CLI — the version leg.**
+  A client could compare wire *fields* against the contract, but there was no way
+  to read the provider's declared contract **generation** at runtime: the number
+  existed only in the snapshot generator. `taskctl --version --json` now answers
+  `{"ok":true,"data":{"version":"1.0.0","schema_version":4}}`. The value is
+  `CONTRACT_SCHEMA_VERSION` in `src/shared/constants.mjs` — the snapshot generator
+  reads that constant instead of holding a second copy, so the published number
+  and the frozen snapshot cannot disagree — and the call contacts no board (nor a
+  token, nor a data directory), so a version negotiation does not depend on the
+  board it is about. The bare `taskctl --version` line is unchanged. The number
+  tracks the snapshot's own layout, not every contract change (a new route does
+  not move it), so it is the coarse generation marker beside the structural leg.
+  See [`docs/contract.md`](docs/contract.md).
 - **Project target directories: resolved locally, validated, never guessed.** A woken
   worker now runs in the card's **project target directory**, and the decision stays
   where the board's O3 rule put it — on the host. The supervisor hands the host's wake

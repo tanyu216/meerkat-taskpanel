@@ -21,7 +21,7 @@ import { COMMANDS as tokenCommands } from "../../src/cli/commands/token.mjs";
 import { allCommands, groups, registry } from "../../src/cli/commands/index.mjs";
 import { actorLabel, fields, orNone, table, taskLine } from "../../src/cli/output/human.mjs";
 import { commandSynopsis, flagSynopsis, commandUsage, groupUsage, topLevelUsage, versionLine } from "../../src/cli/usage.mjs";
-import { VERSION } from "../../src/shared/constants.mjs";
+import { CONTRACT_SCHEMA_VERSION, VERSION } from "../../src/shared/constants.mjs";
 
 const tempDirs = [];
 after(() => {
@@ -70,6 +70,22 @@ describe("cli/index — the program, with injected streams", () => {
     assert.equal(await run(["--version"], cap.io), 0);
     assert.equal(cap.out.join(""), `${VERSION}\n`);
     assert.deepEqual(cap.err, []);
+  });
+
+  it("publishes the contract schema_version on --version --json, board-free", async () => {
+    // The version leg a client's drift gate reads. No env, no pointer, no board:
+    // a version negotiation must not depend on the thing it is validating — and
+    // an env that would make a board call fail must prove the path never takes one.
+    const cap = capture();
+    const env = { TASKD_NO_AUTOSTART: "1", TASKD_DATA_DIR: "/nonexistent/board-nowhere" };
+    assert.equal(await run(["--version", "--json"], { ...cap.io, env }), 0);
+
+    const envelope = JSON.parse(cap.out.join(""));
+    assert.equal(envelope.ok, true);
+    assert.deepEqual(Object.keys(envelope.data).sort(), ["schema_version", "version"]);
+    assert.equal(envelope.data.version, VERSION);
+    assert.equal(envelope.data.schema_version, CONTRACT_SCHEMA_VERSION);
+    assert.deepEqual(cap.err, [], "the JSON document is the whole answer");
   });
 
   it("prints help for the whole CLI, a group and a command, all exit 0", async () => {
