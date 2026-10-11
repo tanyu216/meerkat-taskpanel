@@ -265,16 +265,32 @@ describe("wakeCommand (pure)", () => {
     assert.deepEqual(resumed.args, ["-p", "do T-1", "--resume", "sid-9"]);
   });
 
-  it("builds a codex exec wake", () => {
-    const cmd = wakeCommand({ host: "codex", prompt: "do T-1" });
-    assert.equal(cmd.command, "codex");
-    assert.deepEqual(cmd.args, ["exec", "do T-1"]);
+  it("builds a codex exec wake, resuming a thread when a session id is known", () => {
+    const fresh = wakeCommand({ host: "codex", prompt: "do T-1" });
+    assert.equal(fresh.command, "codex");
+    assert.deepEqual(fresh.args, ["exec", "do T-1"]);
+
+    const resumed = wakeCommand({ host: "codex", prompt: "do T-1", resumeSid: "sid-9" });
+    assert.deepEqual(resumed.args, ["exec", "resume", "sid-9", "do T-1"]);
   });
 
-  it("builds a pi wake and honours an explicit --wake-command override", () => {
-    assert.equal(wakeCommand({ host: "pi", prompt: "do T-1" }).command, "pi");
+  it("builds a pi wake (--print, no `run`), resuming a session when an id is known", () => {
+    const fresh = wakeCommand({ host: "pi", prompt: "do T-1" });
+    assert.equal(fresh.command, "pi");
+    assert.deepEqual(fresh.args, ["--print", "do T-1"]);
+    assert.ok(!fresh.args.includes("run"), "pi has no `run` subcommand — headless is `--print`");
+
+    const resumed = wakeCommand({ host: "pi", prompt: "do T-1", resumeSid: "sid-9" });
+    assert.deepEqual(resumed.args, ["--print", "--session", "sid-9", "do T-1"]);
+  });
+
+  it("honours an explicit --wake-command override, with and without a session id", () => {
     const overridden = wakeCommand({ host: "claude", prompt: "do T-1", wakeCommand: "my-wake.sh" });
     assert.equal(overridden.command, "my-wake.sh");
+    assert.deepEqual(overridden.args, ["do T-1"]);
+
+    const resumed = wakeCommand({ host: "claude", prompt: "do T-1", resumeSid: "sid-9", wakeCommand: "my-wake.sh" });
+    assert.deepEqual(resumed.args, ["do T-1", "--resume", "sid-9"]);
   });
 });
 
