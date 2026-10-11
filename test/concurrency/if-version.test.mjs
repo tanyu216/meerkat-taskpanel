@@ -29,7 +29,7 @@ async function boardWithTask() {
   const repos = createRepositories(board.db);
   const ctx = createContext({ db: board.db, repos, clock: () => TS });
   const commands = createCommands(ctx);
-  commands.createProject({ id: "proj", name: "P", workspacePath: "/tmp/ws" });
+  commands.createProject({ id: "proj", name: "P" });
   const task = commands.createTask({ projectId: "proj", title: "One", actor: AGENT });
   return { ...board, repos, ctx, commands, task };
 }

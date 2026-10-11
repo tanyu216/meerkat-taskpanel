@@ -29,7 +29,7 @@ before(async () => {
   base = taskd.url;
 
   const { commands } = taskd.board;
-  commands.createProject({ id: "proj", name: "P", workspacePath: "/tmp/p", actor: AGENT });
+  commands.createProject({ id: "proj", name: "P", actor: AGENT });
   const task = commands.createTask({ projectId: "proj", title: "audited", actor: AGENT });
   identifier = task.identifier;
   commands.addComment({ taskId: task.id, body: "first note", actor: AGENT });
