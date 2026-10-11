@@ -9,9 +9,11 @@
  *     Vue compiles a `data-*` attribute to a string key in the bundle, so a grep
  *     is a faithful proxy for "the hook survived the framework compile". The
  *     selectors used *only* by an `absent` rule are excluded — their whole point
- *     is that they do **not** appear. Individual attribute names are checked
- *     rather than whole selector strings, because Vue never emits a compound
- *     like `[data-column][data-status]` verbatim.
+ *     is that they do **not** appear — and the walk runs over
+ *     `implementationSelectors()`, so prototype-only blocks (B15, B18) are not
+ *     demanded either. Individual attribute names are checked rather than whole
+ *     selector strings, because Vue never emits a compound like
+ *     `[data-column][data-status]` verbatim.
  *   * the four authored-CSS **source** checks (C03/C04/C05/C08), run against
  *     `web/src/styles/*.css` — the files this repo authors — rather than the
  *     built stylesheet, which also carries Tailwind's and daisyUI's own output.
@@ -28,7 +30,12 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { describe, it } from "node:test";
 
-import { ALL_CONTRACT_ITEMS, AUXILIARY_HOOKS, DOMAINS, allSelectors, parseHookSelector } from "./blocks.contract.mjs";
+import {
+  DOMAINS,
+  IMPLEMENTED_CONTRACT_ITEMS,
+  implementationSelectors,
+  parseHookSelector,
+} from "./blocks.contract.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "../..");
@@ -66,11 +73,15 @@ function readBundle() {
 /**
  * Selectors that appear **only** in an `absent` rule: the contract requires them
  * to be missing, so the presence scan must not demand them.
+ *
+ * Walked over `IMPLEMENTED_CONTRACT_ITEMS`: this whole suite is an
+ * implementation-side check, so prototype-only blocks (B15, B18) contribute
+ * neither a "must exist" nor a "must not exist" here.
  */
 function absentOnlySelectors() {
   const mustExist = new Set();
   const mustNotExist = new Set();
-  for (const item of ALL_CONTRACT_ITEMS) {
+  for (const item of IMPLEMENTED_CONTRACT_ITEMS) {
     if (item.root !== null) mustExist.add(item.root);
     for (const selector of [...item.required, ...item.states]) mustExist.add(selector);
     for (const rule of item.rules) {
@@ -94,16 +105,14 @@ describe("web/blocks.bundle — the hook surface survives the build", { skip: SK
 
     const absentOnly = absentOnlySelectors();
     const names = new Set();
-    for (const selector of allSelectors()) {
+    // `implementationSelectors()` is the declared surface minus the
+    // prototype-only blocks and hooks: those are not supposed to be in the app,
+    // so demanding them here would contradict the contract.
+    for (const selector of implementationSelectors()) {
       if (absentOnly.has(selector)) continue;
       const parsed = parseHookSelector(selector);
       assert.ok(parsed, `${selector} does not parse`);
       for (const attribute of parsed.attributes) names.add(attribute.name);
-    }
-    // Auxiliary hooks are part of the surface too.
-    for (const hook of AUXILIARY_HOOKS) {
-      const parsed = parseHookSelector(hook.selector);
-      if (parsed) for (const attribute of parsed.attributes) names.add(attribute.name);
     }
 
     const missing = [...names].filter((name) => !bundle.includes(name)).sort();

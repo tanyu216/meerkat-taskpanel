@@ -5,8 +5,8 @@
  * fixture API, opens it in a headless Chromium, and reports
  *
  *   * every **console error** and **page error** (the acceptance bar is zero), and
- *   * the result of each `BROWSER_LAYER_RULES` assertion from
- *     `test/web/blocks.contract.mjs`, evaluated against the live DOM.
+ *   * the result of each dom-layer assertion from `test/web/blocks.contract.mjs`
+ *     (`EVALUATED_RULES`), evaluated against the live DOM.
  *
  * Playwright is a **host tool only** — it is deliberately NOT in `web/package.json`
  * (that would put it in the offline cache and the container image, and the image
@@ -29,11 +29,27 @@ import { createRequire } from "node:module";
 import { dirname, extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { BROWSER_LAYER_RULES } from "../../test/web/blocks.contract.mjs";
+import { BROWSER_LAYER_RULES, IMPLEMENTED_CONTRACT_ITEMS } from "../../test/web/blocks.contract.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB = resolve(HERE, "..");
 export const DIST = resolve(WEB, "dist");
+
+/**
+ * The DOM rules the **shipped** app is held to.
+ *
+ * `BROWSER_LAYER_RULES` is every dom-layer rule the contract declares, including
+ * the prototype-only blocks (B15 the legend, B18 the states gallery) — whose
+ * elements the app is not supposed to render, so asserting them against the page
+ * would contradict the contract. This is the filtered set this harness runs, and
+ * the set `web/scripts/shot-compare.mjs` reports as the expected rule count.
+ */
+export const EVALUATED_RULES = Object.freeze(
+  (() => {
+    const implemented = new Set(IMPLEMENTED_CONTRACT_ITEMS.map((item) => item.id));
+    return BROWSER_LAYER_RULES.filter((entry) => implemented.has(entry.block));
+  })(),
+);
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -341,21 +357,13 @@ export async function run() {
     await page.waitForSelector("[data-column]", { timeout: 8000 });
     await page.waitForTimeout(600);
 
-    const boardRules = BROWSER_LAYER_RULES.filter((e) => !e.rule.when || e.rule.when === "board view").map((e) => ({ block: e.block, rule: e.rule }));
-    const listRules = BROWSER_LAYER_RULES.filter((e) => e.rule.when === "list view").map((e) => ({ block: e.block, rule: e.rule }));
+    const boardRules = EVALUATED_RULES.filter((e) => !e.rule.when || e.rule.when === "board view").map((e) => ({ block: e.block, rule: e.rule }));
+    const listRules = EVALUATED_RULES.filter((e) => e.rule.when === "list view").map((e) => ({ block: e.block, rule: e.rule }));
 
     const boardResults = await page.evaluate(evaluateRules, boardRules);
     await page.click('[data-view="list"]');
     await page.waitForTimeout(200);
     const listResults = await page.evaluate(evaluateRules, listRules);
-
-    // The states showcase has its own precondition; open it, evaluate, close it.
-    const statesRules = BROWSER_LAYER_RULES.filter((e) => e.rule.when === "states showcase open").map((e) => ({ block: e.block, rule: e.rule }));
-    await page.evaluate(() => document.querySelector("[data-states-open]")?.click());
-    await page.waitForTimeout(150);
-    const statesResults = await page.evaluate(evaluateRules, statesRules);
-    await page.evaluate(() => document.querySelector("[data-states-close]")?.click());
-    await page.waitForTimeout(120);
 
     const geometry = await page.evaluate(() => {
       const de = document.documentElement;
@@ -562,7 +570,7 @@ export async function run() {
     check(waitingView.boardHidden === true, "the board must be hidden while the waiting view is up");
     check(waitingView.emptyShown === false, "a non-empty view must not show the empty state");
 
-    const results = [...boardResults, ...listResults, ...statesResults];
+    const results = [...boardResults, ...listResults];
     const failures = results.filter((r) => !r.ok);
     const viewportFailures = viewports.filter((v) => !v.ok);
     return {

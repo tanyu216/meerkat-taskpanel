@@ -59,8 +59,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { BROWSER_LAYER_RULES } from "../../test/web/blocks.contract.mjs";
-import { DIST, resolvePlaywright, run as runDomSmoke, startServer } from "./dom-smoke.mjs";
+import { DIST, EVALUATED_RULES, resolvePlaywright, run as runDomSmoke, startServer } from "./dom-smoke.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB = resolve(HERE, "..");
@@ -463,7 +462,7 @@ async function main(opts) {
     geometryParity,
     problems,
     machineCheck: machine && {
-      rules: { total: machine.counts.rules, failed: machine.counts.failed, expected: BROWSER_LAYER_RULES.length },
+      rules: { total: machine.counts.rules, failed: machine.counts.failed, expected: EVALUATED_RULES.length },
       consoleErrors: machine.consoleErrors,
       pageErrors: machine.pageErrors,
       ruleFailures: machine.failures,

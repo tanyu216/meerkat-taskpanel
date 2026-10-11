@@ -39,13 +39,16 @@ import {
   CONSISTENCY_CONTRACT,
   CONTRACT_SOURCE,
   DOMAINS,
+  IMPLEMENTED_CONTRACT_ITEMS,
   MANUAL_RULES,
+  PROTOTYPE_ONLY_STATUS,
   RULE_KINDS,
   SCOPES,
   SOURCE_CHECKS,
   SOURCE_LAYER_RULES,
   STALE_PROSE_COUNTS,
   allSelectors,
+  implementationSelectors,
   isHookSelector,
   parseHookSelector,
   validateContract,
@@ -98,12 +101,14 @@ describe("web/blocks.contract — module hygiene", () => {
       BLOCK_CONTRACT,
       CONSISTENCY_CONTRACT,
       ALL_CONTRACT_ITEMS,
+      IMPLEMENTED_CONTRACT_ITEMS,
       BROWSER_LAYER_RULES,
       SOURCE_LAYER_RULES,
       MANUAL_RULES,
       STALE_PROSE_COUNTS,
       AUXILIARY_HOOKS,
       allSelectors(),
+      implementationSelectors(),
     ]) {
       assert.ok(Object.isFrozen(value), "exported collections must be frozen");
     }
@@ -149,7 +154,7 @@ describe("web/blocks.contract — inventory completeness", () => {
       assert.equal(typeof item.title, "string");
       assert.ok(item.title.length > 0, `${item.id} needs a title`);
       assert.ok(SCOPES.includes(item.scope), `${item.id} scope ${item.scope}`);
-      assert.ok(["active", "retired"].includes(item.status), `${item.id} status`);
+      assert.ok(["active", PROTOTYPE_ONLY_STATUS, "retired"].includes(item.status), `${item.id} status`);
       assert.ok(Array.isArray(item.required) && Array.isArray(item.states) && Array.isArray(item.rules));
     }
   });
@@ -166,6 +171,74 @@ describe("web/blocks.contract — inventory completeness", () => {
         assert.ok(["absent", "manual"].includes(rule.kind), `${item.id} may only assert absence, not ${rule.kind}`);
       }
     }
+  });
+
+  it("transcribes the prototype-only blocks in full but holds them out of the implementation", () => {
+    const prototypeOnly = ALL_CONTRACT_ITEMS.filter((item) => item.status === PROTOTYPE_ONLY_STATUS);
+    // The design brief's ruling of 2026-10-12: the sidebar legend (B15) and the
+    // states gallery (B18) are demonstrations, not requirements.
+    assert.deepEqual(prototypeOnly.map((item) => item.id), ["B15", "B18"]);
+
+    for (const item of prototypeOnly) {
+      // Transcribed, not gutted: the baseline stays reviewable in one place …
+      assert.notEqual(item.root, null, `${item.id} keeps the root the prototype gives it`);
+      assert.ok(item.required.length > 0, `${item.id} keeps the hooks the prototype owns`);
+      assert.ok(item.rules.length > 0, `${item.id} keeps its assertions`);
+      assert.ok(item.scope !== "retired", `${item.id} is not retired — the prototype still holds it`);
+      // … and it is the *implementation* view that drops it.
+      assert.ok(!IMPLEMENTED_CONTRACT_ITEMS.includes(item), `${item.id} must not be in the implemented view`);
+    }
+
+    // The auxiliary table carries the same distinction for the one hook that
+    // belonged to B18 alone.
+    const prototypeOnlyHooks = AUXILIARY_HOOKS.filter((hook) => hook.status === PROTOTYPE_ONLY_STATUS);
+    assert.deepEqual(prototypeOnlyHooks.map((hook) => hook.selector), ["[data-states-overlay]"]);
+    assert.ok(
+      implementationSelectors().includes("[data-access-overlay]"),
+      "B19's scrim is shipped and must stay in the implementation surface",
+    );
+    for (const hook of prototypeOnlyHooks) {
+      assert.ok(!implementationSelectors().includes(hook.selector), `${hook.selector} is prototype-only`);
+      assert.ok(allSelectors().includes(hook.selector), `${hook.selector} must stay declared`);
+    }
+  });
+
+  it("derives the implementation surface as a strict subset of the declared one", () => {
+    const declared = allSelectors();
+    const implemented = implementationSelectors();
+    assert.ok(Object.isFrozen(implemented) && Array.isArray(implemented));
+    assert.deepEqual(implemented, [...implemented].sort(), "the implementation surface must be sorted");
+    assert.equal(new Set(implemented).size, implemented.length, "it must deduplicate");
+
+    for (const selector of implemented) {
+      assert.ok(declared.includes(selector), `${selector} is implemented but not declared`);
+    }
+    const removed = declared.filter((selector) => !implemented.includes(selector));
+    assert.ok(removed.length > 0, "the prototype-only removal must actually remove something");
+
+    // Each removed selector belonged to a prototype-only item …
+    const prototypeOnlySelectors = new Set();
+    for (const item of ALL_CONTRACT_ITEMS.filter((entry) => entry.status === PROTOTYPE_ONLY_STATUS)) {
+      for (const selector of [item.root, ...item.required, ...item.states]) if (selector) prototypeOnlySelectors.add(selector);
+      for (const rule of item.rules) {
+        for (const field of ["selector", "equalsSelector", "within"]) {
+          if (typeof rule[field] === "string") prototypeOnlySelectors.add(rule[field]);
+        }
+      }
+    }
+    for (const selector of removed) {
+      assert.ok(
+        prototypeOnlySelectors.has(selector) || selector === "[data-states-overlay]",
+        `${selector} left the implementation surface without a prototype-only owner`,
+      );
+    }
+
+    // … and a hook a *shipped* block also declares survives (B17 and the states
+    // gallery both carried the error state; only the gallery leaves).
+    assert.ok(declared.includes("[data-error-state]"));
+    assert.ok(implemented.includes("[data-error-state]"), "B17 keeps the error state in the implementation");
+    assert.ok(!implemented.includes("[data-legend]"), "B15's legend leaves");
+    assert.ok(!implemented.includes("[data-states-panel]"), "B18's gallery leaves");
   });
 
   it("gives the C-items no root and the global scope (they are cross-cutting)", () => {
@@ -433,13 +506,16 @@ describe("web/blocks.contract — the derived selector surface", () => {
         "CONSISTENCY_CONTRACT",
         "CONTRACT_SOURCE",
         "DOMAINS",
+        "IMPLEMENTED_CONTRACT_ITEMS",
         "MANUAL_RULES",
+        "PROTOTYPE_ONLY_STATUS",
         "RULE_KINDS",
         "SCOPES",
         "SOURCE_CHECKS",
         "SOURCE_LAYER_RULES",
         "STALE_PROSE_COUNTS",
         "allSelectors",
+        "implementationSelectors",
         "isHookSelector",
         "parseHookSelector",
         "validateContract",
