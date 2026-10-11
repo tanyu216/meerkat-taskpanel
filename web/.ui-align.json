@@ -1,0 +1,27 @@
+{
+  "manifests": "manifests",
+  "prototypeRoot": "../design/prototype",
+  "prototypePaths": { "*": "index.html" },
+  "devServer": {
+    "cmd": "node scripts/ui-align-serve.mjs --port {port}",
+    "cwd": ".",
+    "url": "http://127.0.0.1:{port}",
+    "readyPath": "/health",
+    "readyTimeoutMs": 30000
+  },
+  "implShellSelector": "#app",
+  "viewports": [1512, 1240, 980, 760, 430],
+  "height": 900,
+  "settleMs": 600,
+  "theme": "light",
+  "locale": "en",
+  "localeTag": "en",
+  "apply": {
+    "htmlAttributes": { "lang": "{localeTag}" },
+    "localStorage": {
+      "meerkat-taskpanel.theme": "{theme}",
+      "meerkat-taskpanel.lang": "{locale}"
+    }
+  },
+  "style": { "blocking": false }
+}
