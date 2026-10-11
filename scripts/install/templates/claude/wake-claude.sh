@@ -14,6 +14,18 @@
 # claim-first rules); it invokes this shape directly, and this script is the
 # reference you can edit if your Claude Code needs different flags.
 #
+# Working directory (R1): a worker must run in the *card's project target
+# directory*, and only this host-local glue can know it — the supervisor knows a
+# project identity and nothing about directories (the board holds none).
+#   TP_PROJECT       the card's board project identity (the supervisor sets it)
+#   TP_PROJECTS_JSON the local map; defaults to the one beside the installed skill
+#   TP_NODE          node to resolve with; defaults to `node` on PATH (the
+#                    supervisor passes its own interpreter, since cron/launchd
+#                    run with a minimal PATH)
+# The directory is resolved from that map and validated (absolute, exists, is a
+# directory). If it cannot be resolved this script **exits 3 without starting a
+# worker** — running a session in the wrong checkout is worse than not waking one.
+#
 # Headless permission boundary (docs/scheduling.md §Headless permission
 # boundary): this script must NOT default to bypassing permissions — no
 # `--dangerously-skip-permissions`. Run under --permission-mode/--allowedTools
@@ -27,6 +39,14 @@ if [ -z "$prompt" ]; then
   echo "wake-claude: a handoff prompt is required" >&2
   exit 2
 fi
+
+projects_json="${TP_PROJECTS_JSON:-$(dirname "$0")/../skills/meerkat-taskpanel/projects.json}"
+if ! cwd="$("${TP_NODE:-node}" "{{REPO}}/scripts/wake-cwd.mjs" --project "${TP_PROJECT:-}" --projects-json "$projects_json")"; then
+  echo "wake-claude: refusing to wake a worker without a target directory" >&2
+  exit 3
+fi
+cd "$cwd"
+echo "wake-claude: working directory $cwd" >&2
 
 if [ -n "$sid" ]; then
   exec claude -p "$prompt" --resume "$sid"

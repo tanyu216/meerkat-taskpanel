@@ -5,8 +5,13 @@
 # to this agent even when TASKCTL_AGENT is not present in the environment. The name
 # is fixed at install time (--agent-name, default $USER); TASKCTL_AGENT still wins
 # when it is set, so a session can override it deliberately.
+#
+# It also points `taskctl project dir` at the map beside this host's installed
+# skill, so the command resolves the same projects.json the wake glue uses —
+# `MEERKAT_TASKPANEL_PROJECTS_JSON` wins if a session sets it.
 set -u
 
 agent="${TASKCTL_AGENT:-{{AGENT}}}"
 export TASKCTL_AGENT="$agent"
+export MEERKAT_TASKPANEL_PROJECTS_JSON="${MEERKAT_TASKPANEL_PROJECTS_JSON:-$(dirname "$0")/../skills/meerkat-taskpanel/projects.json}"
 exec node "{{REPO}}/src/cli/index.mjs" --agent "$agent" "$@"
