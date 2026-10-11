@@ -312,7 +312,7 @@ function checkSessionStart() {
     for (let n = 1; n <= 8; n += 1) {
       if (!new RegExp(`(^|\\n)${n}\\.`).test(res.stdout)) return `missing rule ${n}`;
     }
-    if (!res.stdout.includes("八条规矩")) return "missing the rules header";
+    if (!res.stdout.includes("the eight rules")) return "missing the rules header";
     return null;
   }, "shim argv = issue candidates --assignee alice; rules 1–8 printed");
 

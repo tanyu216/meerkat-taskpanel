@@ -14,10 +14,10 @@ echo
 echo "== Meerkat TaskPanel =="
 
 if [ -x "$shim" ] && command -v node >/dev/null 2>&1; then
-  echo "-- 分给我的待领卡 (claimable for $name) --"
+  echo "-- claimable for $name --"
   "$shim" issue candidates --assignee "$name" 2>&1 || true
 else
-  echo "-- 分给我的待领卡 --"
+  echo "-- claimable for $name --"
   # PATH-independent fallback: the shim lives under the host home and is *not* on
   # PATH, so a bare `taskctl` here would be a command the user cannot run. Name
   # the shim by absolute path, and offer the repo CLI for the case where the shim
@@ -27,14 +27,14 @@ else
 fi
 
 echo
-echo "-- 八条规矩 --"
+echo "-- the eight rules --"
 cat <<'RULES'
-1. claim-first  — 先读 issue candidates --assignee <me>，再 issue move <ref> in_progress
-2. 只领该领的    — 别人的卡 / backlog / epic / 有未完成依赖的卡，都不碰
-3. 一次一张卡    — 同一时刻只 hold 一张
-4. 心跳保鲜      — 每 ≤10 分钟续心跳，别把卡挂 in_progress 闲置
-5. 交卡带报告    — 交付必须带报告（delivery gate），否则进不了 in_review
-6. 自审≠验收     — 最多到 in_review，done 由人验收
-7. 冲突不硬抢    — VERSION_CONFLICT / 过期先重读一次，别盲重试
-8. 可追溯        — 每次写都带会话 id
+1. claim-first — read `issue candidates --assignee <me>`, then take exactly one with `issue move <ref> in_progress`
+2. claim only what is yours — never someone else's card, a `backlog` card, an `epic`, or one with an unfinished `depends_on` blocker
+3. one card at a time — hold at most one claimed card
+4. keep the heartbeat fresh — renew it every ≤10 minutes; never leave a card idle in `in_progress`
+5. deliver with a report — the delivery gate refuses `in_review` without a report for the current round
+6. self-review is not acceptance — stop at `in_review`; a human accepts to `done`
+7. never preempt on conflict — on `VERSION_CONFLICT` or staleness re-read once, never blind-retry
+8. stay traceable — carry the session id on every write
 RULES
