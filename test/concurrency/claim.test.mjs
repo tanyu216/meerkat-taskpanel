@@ -101,7 +101,7 @@ describe("concurrency/claim — one winner", () => {
       const repos = createRepositories(board.db);
       const ctx = createContext({ db: board.db, repos, clock: () => TS });
       const commands = createCommands(ctx);
-      commands.createProject({ id: "proj", name: "P", workspacePath: "/tmp/ws" });
+      commands.createProject({ id: "proj", name: "P" });
       const task = commands.createTask({ projectId: "proj", title: "One", actor: { kind: "agent", id: "linus" } });
 
       commands.claim({ id: task.id, actor: { kind: "agent", id: "linus" } });
@@ -119,7 +119,7 @@ describe("concurrency/claim — one winner", () => {
       const repos = createRepositories(board.db);
       const ctx = createContext({ db: board.db, repos, clock: () => TS });
       const commands = createCommands(ctx);
-      commands.createProject({ id: "proj", name: "P", workspacePath: "/tmp/ws" });
+      commands.createProject({ id: "proj", name: "P" });
       const task = commands.createTask({ projectId: "proj", title: "One", actor: { kind: "agent", id: "linus" } });
 
       for (let i = 0; i < 200; i += 1) {

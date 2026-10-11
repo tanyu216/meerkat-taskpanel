@@ -30,7 +30,7 @@ before(async () => {
   base = taskd.url;
 
   const { commands, db } = taskd.board;
-  const create = (id, name) => commands.createProject({ id, name, workspacePath: `/tmp/${id}`, actor: AGENT });
+  const create = (id, name) => commands.createProject({ id, name, actor: AGENT });
   create("busy", "Busy");
   create("quiet", "Quiet");
   create("old", "Old");

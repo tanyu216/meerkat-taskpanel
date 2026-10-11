@@ -40,7 +40,7 @@ before(async () => {
     eventsHeartbeatMs: 50,
   });
   base = taskd.url;
-  taskd.board.commands.createProject({ id: "proj", name: "P", workspacePath: "/tmp/p", actor: AGENT });
+  taskd.board.commands.createProject({ id: "proj", name: "P", actor: AGENT });
 });
 
 after(async () => {

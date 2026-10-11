@@ -179,7 +179,7 @@ describe("server/index — the label GC timer (F1-C)", () => {
       assert.deepEqual(logs.filter((entry) => String(entry.event).startsWith("label_gc")), [], "a sweep that collects nothing is silent");
 
       const { commands, repos } = taskd.board;
-      commands.createProject({ id: "proj", name: "P", workspacePath: "/tmp/ws", actor: AGENT });
+      commands.createProject({ id: "proj", name: "P", actor: AGENT });
       const task = commands.createTask({ projectId: "proj", title: "a", labels: ["Temp"], actor: AGENT });
       commands.updateTask({ id: task.id, patch: { labels: [] }, actor: AGENT });
       assert.equal(repos.labels.getByNorm("proj", "temp").archivedAt, null);
@@ -205,7 +205,7 @@ describe("server/index — the label GC timer (F1-C)", () => {
     });
     try {
       const { commands, repos } = taskd.board;
-      commands.createProject({ id: "proj", name: "P", workspacePath: "/tmp/ws", actor: AGENT });
+      commands.createProject({ id: "proj", name: "P", actor: AGENT });
       const task = commands.createTask({ projectId: "proj", title: "a", labels: ["Timed"], actor: AGENT });
       commands.updateTask({ id: task.id, patch: { labels: [] }, actor: AGENT });
 
@@ -236,7 +236,7 @@ describe("server/index — the label GC timer (F1-C)", () => {
       assert.equal(taskd.labelGc.last, null, "not even the startup sweep ran");
 
       const { commands, repos } = taskd.board;
-      commands.createProject({ id: "proj", name: "P", workspacePath: "/tmp/ws", actor: AGENT });
+      commands.createProject({ id: "proj", name: "P", actor: AGENT });
       const task = commands.createTask({ projectId: "proj", title: "a", labels: ["Keep"], actor: AGENT });
       commands.updateTask({ id: task.id, patch: { labels: [] }, actor: AGENT });
       assert.equal(repos.labels.getByNorm("proj", "keep").archivedAt, null);

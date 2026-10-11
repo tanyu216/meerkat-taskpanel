@@ -34,7 +34,7 @@ before(async () => {
   base = taskd.url;
 
   const { commands, repos } = taskd.board;
-  commands.createProject({ id: "proj", name: "P", workspacePath: "/tmp/p", actor: AGENT });
+  commands.createProject({ id: "proj", name: "P", actor: AGENT });
   taskId = commands.createTask({ projectId: "proj", title: "with a file", actor: AGENT }).id;
   repos.attachments.insert({
     taskId,
