@@ -261,6 +261,20 @@ silhouette rather than adding a bulge.
 |---|---|---|---|---|---|---|
 | watch dot | 24.8 | 3.4 | 2.1 | `#0F7A73` | `#2AA79B` | `currentColor` |
 
+*Face — the eyes and mouth, one group per figure (candidate A «Pin · 克制»).*
+
+| face part | shape | parameters (relative to the head centre) |
+|---|---|---|
+| eye L | circle | `r 0.42`, `cx = cx − 0.80`, `cy = cy − 0.20` |
+| eye R | circle | `r 0.42`, `cx = cx + 0.80`, `cy = cy − 0.20` |
+| mouth | rounded rect | `width 0.72`, `height 0.20`, `rx 0.10`, `cy = cy + 0.95` |
+
+The face is **negative space only**: the eyes and mouth are holes cut out of the ink
+with an SVG `<mask>` (the mask's greys are functional luminance, not brand colours), so
+the mark still restores to one colour in the mono state and the outer silhouette never
+moves. The watch signal stays **outside** the mask, so the sentinel on duty and its dot
+are always solid.
+
 Each figure occupies `cx ± 3.6` including its ears; adjacent centres are 8.8
 apart, so the three never touch (gap ≈ 1.6 units). The mark's full ink extent is
 `x ∈ [3.6, 28.4]`, `y ∈ [1.3, 27]` — margins of 3.6 left, 3.6 right, 1.3 top and
@@ -268,20 +282,15 @@ apart, so the three never touch (gap ≈ 1.6 units). The mark's full ink extent 
 by **4.1 units**, comfortably above the 1.5-unit floor that keeps the dot reading
 as a separate signal.
 
-**Size behaviour.** At 512/1024 the head, the capsule body and the enlarged ears
-are legible, and the row reads as standing meerkats. The ears hold shape from
-**48px up**; by 32px they fall below one pixel, and the mark degrades, by design,
-to *three rising round-headed bars plus one dot*. At 16px the mark still reads as
-three round heads and a detached signal — the same small-size *reading* as v1,
-but the mark is no longer the same drawing: in the V2 mark-optimisation round
-exactly five parameters moved — ear `r` `0.85 → 1.2`, ear `cx ±` `1.9 → 2.4`,
-ear `cy = top +` `1.0 → 1.7`, watch dot `r` `1.7 → 2.1`, watch dot `cy`
-`5.2 → 3.4` — and nothing else. Two consequences are deliberate: the ears are
-large enough to read as ears from 48px up, and the watch signal now floats clear
-of the crown by **4.1 units** (v1: 2.7) at every size, so the "signal, never a
-cap" rule holds even where the mark is a handful of pixels. `brief.md` §4 permits
-an optical nudge to the ear radius or inset only if the small sizes blur into
-blobs; the V2 round exercised that allowance and these values are its result.
+**Size behaviour.** At 512/1024 the head, the capsule body, the enlarged ears and the
+face read clearly. The ears hold shape from **48px up**; the eyes and mouth are
+deliberately sub-pixel below that — the eye `r 0.42` is 0.63px at 48px and 0.42px at
+32px — so from **48–96px** the face is only just perceptible, and by **32px the knockout
+degenerates to the plain V2 silhouette**: the mark reads, by design, as *three rising
+round-headed bars plus one dot*. The face is declared stable **from 128px up** (eye
+`r 0.42` = 1.68px). The outer silhouette is unchanged — it is still the frozen V2
+geometry (five-parameter optical nudge, see §7) — and the watch signal stays clear of
+the crown by **4.1 units** at every size.
 
 **Files.**
 
@@ -446,6 +455,14 @@ rule in this document is carried over from v1 untouched.
 | 10 | **Typography / spacing / radius / motion** | see §3, §4 | **unchanged** |
 | 11 | **Design philosophy** | *Signal Order* | ***Vigil Order*** — see `brand-philosophy.md` |
 | 12 | **New asset** | — | `compare-v1-vs-meerkat.png` |
+
+**Face knockout — candidate A «Pin · 克制» (landed after the v2 remaster).** Rows 7
+and 8 above are the frozen V2 geometry and they did not move: the face was added on
+top of them as **negative-space knockout** (§5, *Face*) — one group of three shapes
+per figure (two eyes, one mouth), cut out of the ink by an SVG `<mask>`. The outer
+silhouette is unchanged, no colour was added (the mask's greys are functional
+luminance), the watch signal stays outside the mask, and the face is declared stable
+from 128px up, degenerating to the plain V2 silhouette by 32px (§5, *Size behaviour*).
 
 **What did not change, on purpose.** The composition contract is preserved: three
 forms rising left-to-right on one baseline, the tallest carrying the brand line
