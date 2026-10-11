@@ -43,7 +43,7 @@ describe("core/bootstrap — openBoard", () => {
       pointerUrl: undefined,
     });
     try {
-      assert.deepEqual(board.migration.applied.map((m) => m.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011"]);
+      assert.deepEqual(board.migration.applied.map((m) => m.version), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012"]);
       assert.equal(board.schema.ok, true);
       assert.match(board.version, /^\d+\.\d+\.\d+$/);
       assert.equal(board.dbPath, join(dataDir, "board.sqlite"));
@@ -78,7 +78,7 @@ describe("core/bootstrap — openBoard", () => {
       assert.deepEqual(readPointer({ path: pointerPath }), pointer);
 
       // And it is a working board.
-      const project = board.commands.createProject({ id: "proj", name: "P", workspacePath: "/tmp/ws" });
+      const project = board.commands.createProject({ id: "proj", name: "P" });
       assert.equal(project.id, "proj");
       const task = board.commands.createTask({ projectId: "proj", title: "One", actor: { kind: "agent", id: "linus" } });
       assert.equal(task.identifier, "PROJ-0001");
@@ -98,7 +98,7 @@ describe("core/bootstrap — openBoard", () => {
     const second = await openBoard({ dataDir, pointerPath, env: {} });
     try {
       assert.deepEqual(second.migration.applied, []);
-      assert.deepEqual(second.migration.skipped, ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011"]);
+      assert.deepEqual(second.migration.skipped, ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012"]);
       assert.equal(second.token.created, false);
       assert.equal(readFileSync(join(dataDir, "token"), "utf8").trim(), token, "the token survives a restart");
       assert.equal(second.schema.ok, true);
@@ -198,14 +198,14 @@ describe("core/bootstrap — openBoard", () => {
     }
 
     const writer = await openBoard({ dataDir, pointerPath, env: {} });
-    writer.commands.createProject({ id: "proj", name: "P", workspacePath: "/tmp/ws" });
+    writer.commands.createProject({ id: "proj", name: "P" });
     writer.close();
 
     const reader = await openBoard({ dataDir, pointerPath, env: {}, readonly: true });
     try {
       assert.equal(reader.token, null);
       assert.equal(reader.repos.projects.get("proj").name, "P");
-      assert.throws(() => reader.repos.projects.create({ id: "x", name: "X", workspacePath: "/tmp/x", now: TS }));
+      assert.throws(() => reader.repos.projects.create({ id: "x", name: "X", now: TS }));
     } finally {
       reader.close();
     }

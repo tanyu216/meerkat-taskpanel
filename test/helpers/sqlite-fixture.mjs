@@ -122,17 +122,13 @@ export function insertProject(db, overrides = {}) {
     updated_at: TS,
     ...overrides,
   };
-  // `workspace_path` is unique, so it defaults to something derived from the id
-  // rather than a constant — tests then only collide when they mean to.
-  row.workspace_path = overrides.workspace_path ?? `/tmp/workspace-${row.id}`;
   // Idempotent: most tests want "the project exists", not "create it exactly once".
   db.prepare(
-    `INSERT OR IGNORE INTO projects(id, name, workspace_path, next_task_number, labels, meta_json, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR IGNORE INTO projects(id, name, next_task_number, labels, meta_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     row.id,
     row.name,
-    row.workspace_path,
     row.next_task_number ?? 1,
     row.labels ?? "[]",
     row.meta_json ?? "{}",

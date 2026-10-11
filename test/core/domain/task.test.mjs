@@ -19,7 +19,6 @@ import {
   normalizeLabels,
   normalizeTaskCreate,
   normalizeTaskUpdate,
-  normalizeWorkspacePath,
   taskFromRow,
   taskToRow,
   toIsoMillis,
@@ -105,17 +104,6 @@ describe("domain/task — labels, paths, identifiers, timestamps", () => {
     assert.throws(() => normalizeLabels({ a: 1 }), (e) => e.details.field === "labels");
     assert.throws(() => normalizeLabels([1, "x".repeat(65)]), (e) => e.code === "VALIDATION_FAILED");
     assert.throws(() => normalizeLabels(Array.from({ length: 33 }, (_, i) => `l${i}`)), (e) => e.code === "VALIDATION_FAILED");
-  });
-
-  it("requires an absolute workspace path and strips trailing slashes", () => {
-    assert.equal(normalizeWorkspacePath("/Users/x/repo/"), "/Users/x/repo");
-    assert.equal(normalizeWorkspacePath("/"), "/");
-    assert.throws(() => normalizeWorkspacePath("relative/path"), (e) => {
-      assert.equal(e.code, "VALIDATION_FAILED");
-      assert.equal(e.details.field, "workspacePath");
-      return true;
-    });
-    assert.throws(() => normalizeWorkspacePath(""), DomainError);
   });
 
   it("builds and validates identifiers, keeping legacy ones importable", () => {
