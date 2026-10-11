@@ -333,9 +333,6 @@
             },
             "readme": {
               "type": "string"
-            },
-            "workspace_path": {
-              "type": "string"
             }
           },
           "required": [],
@@ -373,9 +370,6 @@
             },
             "readme": {
               "type": "string"
-            },
-            "workspace_path": {
-              "type": "string"
             }
           },
           "required": [],
@@ -407,23 +401,6 @@
           "type": "object"
         },
         "query": null
-      }
-    },
-    {
-      "method": "GET",
-      "path": "/api/v1/projects/current",
-      "request": {
-        "body": null,
-        "query": {
-          "additionalProperties": true,
-          "properties": {
-            "path": {
-              "type": "string"
-            }
-          },
-          "required": [],
-          "type": "object"
-        }
       }
     },
     {
@@ -1161,8 +1138,7 @@
         "meta": "object",
         "name": "string",
         "readme": "string",
-        "updated_at": "string",
-        "workspace_path": "string"
+        "updated_at": "string"
       },
       "shape": "project"
     },

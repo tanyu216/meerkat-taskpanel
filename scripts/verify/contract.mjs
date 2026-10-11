@@ -221,7 +221,6 @@ const PROBE_LABEL = {
 const PROBE_PROJECT = {
   id: "probe",
   name: "probe",
-  workspacePath: "probe",
   labels: ["probe"],
   meta: { probe: true },
   readme: "probe",
