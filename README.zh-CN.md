@@ -24,15 +24,14 @@ Meerkat TaskPanel 就是回答这些问题的记录：
 
 Meerkat TaskPanel 是**为 AI Agent 团队而生**的任务看板。它的主题是 **Agent 之间的任务协作** —— 拆分工作、声明依赖、交接结果；而对围绕它们的人来说，它把这种协作变成**可可视化、可追溯**的东西，而不是锁在模型的上下文里。真正干这些事的机制 —— 只增不改的审计轨迹、一等公民的依赖与 epic 关系、可续接的会话 —— 正是下方[亮点](#亮点)所描述的。
 
-> **状态：引擎已落地至 M6 —— 核心（M1）、CLI（M2）、stdio MCP server（M3），以及完整的
-> 看板后端与 `web/` 前端（M6）。**
+> **状态：引擎已落地至 M6 —— 核心（M1）、CLI（M2），以及完整的看板后端与 `web/` 前端（M6）。**
 > `src/core/` 已包含领域模型、SQLite 存储与迁移、用例与 `openBoard()`；`src/cli/` +
 > `src/server/` 提供了真实的 `taskctl` 命令面，以及 CLI 会在回环地址上自动启动的本地
-> `taskd` HTTP 服务（`TASKD_NO_AUTOSTART=1` 可禁用）；`src/mcp/` 是 stdio MCP server，
-> 暴露 18 个工具，作为通往 `taskd` 的、与交付门禁等价的薄代理；`src/server/` 提供完整的
-> 看板 HTTP API 及其 SSE 事件流；`web/` 是 Vue 3 看板前端，构建到 `web/dist`，由 `taskd`
-> 作为托管根对外提供。仍待实现：Epic 视图与迭代管理（见路线图）。详见 `CLAUDE.md` /
-> `docs/development.md`、`src/mcp/README.md`，各阶段见下方路线图。
+> `taskd` HTTP 服务（`TASKD_NO_AUTOSTART=1` 可禁用）；`src/server/` 提供完整的看板 HTTP API
+> 及其 SSE 事件流；`web/` 是 Vue 3 看板前端，构建到 `web/dist`，由 `taskd` 作为托管根对外
+> 提供。Agent 集成**仅走 skill**，即驱动 `taskctl` CLI（见
+> [`docs/install.md`](docs/install.md)）。仍待实现：Epic 视图与迭代管理（见路线图）。详见
+> `CLAUDE.md` / `docs/development.md`，各阶段见下方路线图。
 
 ## 亮点
 
@@ -49,10 +48,8 @@ Meerkat TaskPanel 是**为 AI Agent 团队而生**的任务看板。它的主题
    它就是工作本身的记录。
 6. **local-first、运行时零依赖。** 唯一持久化是一个 SQLite 文件（Node 内置
    `node:sqlite`）；引擎不依赖其它库，且完全可离线运行。
-7. **同一块看板，多个入口。** 可用 `taskctl` CLI 驱动，可经 stdio MCP server（18 个工具）
-   接入会说 MCP 的宿主，也可走本地 `taskd` HTTP API —— 并为 Claude Code、Codex、
-   OpenClaw、pi 提供 skill/插件安装。MCP 面与门禁等价：`task_deliver` 是唯一能到达
-   `in_review` 的工具。
+7. **同一块看板，多个入口。** 可用 `taskctl` CLI 驱动，也可走本地 `taskd` HTTP API ——
+   并为 Claude Code、Codex、OpenClaw、pi 提供 skill/插件安装。
 8. **设计上 provider-agnostic。** Meerkat TaskPanel 是 openclaw-team 框架的默认看板基座 —— 其
    认领 / 候选判定与框架的 poll 保持同步，因此更换看板底座（Jira、Plane、Linear……）无需
    改动 Agent。访问由 token 与可选的 CIDR 白名单把关。
@@ -68,7 +65,7 @@ Meerkat TaskPanel 是**为 AI Agent 团队而生**的任务看板。它的主题
 
 ## 架构
 
-Meerkat TaskPanel 是三层薄结构，依赖方向始终向内：`src/cli`、`src/mcp`、`src/server` 是入口，
+Meerkat TaskPanel 是三层薄结构，依赖方向始终向内：`src/cli`、`src/server` 是入口，
 `src/core` 持有领域模型、SQLite 存储与用例，`src/shared` 是它们共享的 DTO 与辅助函数。
 完整目录树见 [仓库结构](#仓库结构)；想为自己的宿主安装 skill/插件，见 [安装](#安装)。
 
@@ -92,7 +89,6 @@ meerkat-taskpanel/
 ├── src/                          # 工程源码
 │   ├── core/                     #   领域模型 / SQLite 仓储 / 状态机 / 不变量
 │   ├── cli/                      #   taskctl（CLI 出口）
-│   ├── mcp/                      #   MCP server（stdio）
 │   ├── server/                   #   本地 HTTP API + SSE
 │   └── shared/                   #   共享 DTO / 常量
 ├── web/                          # 看板前端（Vue 3 + Vite）→ web/dist（托管根）
@@ -110,7 +106,7 @@ meerkat-taskpanel/
 - **Node >= 22** —— 运行时的最低要求。引擎通过内置的
   [`node:sqlite`](https://nodejs.org/api/sqlite.html) 模块持久化到本地 SQLite 数据库，
   该模块自 Node 22.x 起才提供。`install.sh` 会在**安装之前**检查，缺 `node` 或版本过低时
-  明确报错退出（`--skip-node-check` 可绕过）；`taskctl` / MCP 入口在过低运行时也会直接
+  明确报错退出（`--skip-node-check` 可绕过）；`taskctl` 在过低运行时也会直接
   拒绝启动，而不是延迟到某条命令中途才崩。
 - **运行时零依赖、无需网络** —— `src/` 下全部只用 Node 内置模块，完全离线可用。
 - **`web/` 仅构建期** —— 看板前端的 devDependencies（Vue 3 + Vite + Tailwind + daisyUI）
@@ -124,7 +120,7 @@ bash install.sh --target claude|openclaw|codex|pi|all
 ```
 
 默认 target 为 `all`。分发器转发到 `scripts/install/<host>.sh`，把 skill 安装到各宿主的
-skill 目录 —— 对 **Claude Code** 与 **Codex** 还会部署宿主 bundle 的其余部分：MCP 注册、
+skill 目录 —— 对 **Claude Code** 与 **Codex** 还会部署宿主 bundle 的其余部分：
 宿主配置（`~/.claude/settings.json` / `~/.codex/AGENTS.md`）、slash 命令（Claude）或认领
 触发脚本（Codex），以及固定身份用的 `taskctl` 包装脚本。所有 bundle 写入均为**合并式且
 幂等**：重复安装**退出码为 0**，受管文件与配置键一律保留旧值，并打印
@@ -206,8 +202,8 @@ Claude Code、Codex 与 `pi` 都直接操作同一块看板。
 
 `install.sh --target claude --agent-name <名>` 会部署完整 bundle，而不只是 skill：合并写入
 `~/.claude/settings.json`（新增 `env.TASKCTL_AGENT` 与一个 `SessionStart` hook —— 启动看板并
-列出你的待领卡）、安装 `~/.claude/commands/{board,claim,deliver}.md`、在 `claude` CLI 可用时
-注册 MCP server，并随包提供注入 `--agent <名>` 的 `taskctl` 包装脚本。随后用 `taskctl` 驱动
+列出你的待领卡）、安装 `~/.claude/commands/{board,claim,deliver}.md`，并随包提供注入
+`--agent <名>` 的 `taskctl` 包装脚本。随后用 `taskctl` 驱动
 看板，并在每次写入时带上宿主与会话 —— `--agent-platform claude --session-id <id>` —— 让卡的
 轨迹指回动手的那段对话。Claude Code **本身没有定时器**，因此规则 1 的认领由外部驱动：
 [监督进程](#调度轮询与巡检)唤醒一个 `claude -p` 无头会话（用 `--resume <sid>` 续接同一会话），
@@ -217,7 +213,7 @@ Claude Code、Codex 与 `pi` 都直接操作同一块看板。
 
 `install.sh --target codex --agent-name <名>` 会部署完整 bundle：向 `~/.codex/AGENTS.md` 追加
 claim-first 片段、写入可调度的认领触发脚本 `~/.codex/meerkat-taskpanel-claim.sh`（`--no-automation`
-跳过）、在 `codex` CLI 可用时注册 MCP server，并随包提供 `taskctl` 包装脚本。以同样方式操作
+跳过），并随包提供 `taskctl` 包装脚本。以同样方式操作
 看板，并用当前线程作为会话 id —— `--agent-platform codex --session-id "$CODEX_THREAD_ID"` ——
 做会话级归属。Codex **本身没有定时器**，因此规则 1 由[监督进程](#调度轮询与巡检)唤醒
 `codex exec` 回合（或使用 Codex 应用自动化）来驱动，随包的认领触发脚本作为最小后备。
@@ -251,7 +247,6 @@ npm run check
 | **M0** | 脚手架：目录骨架、清单、同步 / 校验脚本、测试（*已落地*） |
 | M1 | `src/core`：领域模型、SQLite 仓储、状态机、不变量（*已落地*） |
 | M2 | `taskctl` 命令面，对齐 `task-interface v1`；最小本地 `taskd`（*已落地*） |
-| M3 | `src/mcp`：stdio MCP server —— 18 个工具，`taskd` 的薄代理（*已落地*） |
 | M6 | 完整的看板 HTTP API + SSE 后端（`src/server/`），以及 `web` 看板前端 → `web/dist`（*已落地*） |
 | **Epic 视图** | epic 层级 / 进展 / rollup 的可视化视图 —— 查看 epic 及其子卡状态的聚合（*规划中*） |
 | **迭代管理** | 迭代（sprint）周期管理：任务归入迭代、迭代内进度与容量（*规划中*） |

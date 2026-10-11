@@ -43,17 +43,17 @@ rather than something locked inside a model's context. The mechanisms that do th
 append-only audit trail, first-class dependency and epic edges, resumable sessions — are what
 the [Highlights](#highlights) below describe.
 
-> **Status: the engine has landed through M6 — core (M1), CLI (M2), the stdio MCP server
-> (M3), and the full board backend plus the `web/` frontend (M6).**
+> **Status: the engine has landed through M6 — core (M1), CLI (M2), and the full board
+> backend plus the `web/` frontend (M6).**
 > `src/core/` holds the domain model, SQLite storage and migrations, use-cases and
 > `openBoard()`; `src/cli/` + `src/server/` provide the real `taskctl` command surface and
 > the local `taskd` HTTP service the CLI auto-starts on loopback
-> (`TASKD_NO_AUTOSTART=1` disables it); `src/mcp/` is a stdio MCP server exposing 18 tools as
-> a thin, gate-equivalent proxy to `taskd`; `src/server/` serves the full board HTTP API and
+> (`TASKD_NO_AUTOSTART=1` disables it); `src/server/` serves the full board HTTP API and
 > its SSE event stream; `web/` is the Vue 3 board frontend, built to `web/dist`, which
-> `taskd` serves as its hosted root. Still planned: the Epic view and iteration management
-> (see the roadmap). See `CLAUDE.md` / `docs/development.md`, `src/mcp/README.md`, and the
-> roadmap below.
+> `taskd` serves as its hosted root. Agent integration is **skill-only**, driving the
+> `taskctl` CLI (see [`docs/install.md`](docs/install.md)). Still planned: the Epic
+> view and iteration management (see the roadmap). See `CLAUDE.md` /
+> `docs/development.md` and the roadmap below.
 
 ## Highlights
 
@@ -75,10 +75,8 @@ the [Highlights](#highlights) below describe.
 6. **Local-first, zero runtime dependencies.** A single SQLite file (Node's built-in
    `node:sqlite`) is the only persistence. The engine needs no other dependencies and works
    fully offline.
-7. **One board, many front doors.** Drive it from the `taskctl` CLI, from a stdio MCP server
-   (18 tools) for MCP-speaking hosts, or over the local `taskd` HTTP API — with skill/plugin
-   installers for Claude Code, Codex, OpenClaw and pi. The MCP surface is gate-equivalent:
-   `task_deliver` is the only tool that can reach `in_review`.
+7. **One board, many front doors.** Drive it from the `taskctl` CLI or over the local
+   `taskd` HTTP API — with skill/plugin installers for Claude Code, Codex, OpenClaw and pi.
 8. **Provider-agnostic by design.** Meerkat TaskPanel is the default board base for the
    openclaw-team framework — its claim and candidate criteria are kept in lockstep with the
    framework's poll, so the board can be swapped (Jira, Plane, Linear, …) without changing
@@ -101,7 +99,7 @@ the [Highlights](#highlights) below describe.
 ## Architecture
 
 Meerkat TaskPanel is three thin layers, with the dependency arrow always pointing inward:
-`src/cli`, `src/mcp` and `src/server` are the front doors, `src/core` owns the domain model,
+`src/cli` and `src/server` are the front doors, `src/core` owns the domain model,
 SQLite storage and the use-cases, and `src/shared` holds the DTOs and helpers they agree on.
 The full tree is in [Repository layout](#repository-layout); to install the skill or plugin
 for your host, start with [Install](#install).
@@ -126,7 +124,6 @@ meerkat-taskpanel/
 ├── src/                          # engineering source
 │   ├── core/                     #   domain model / SQLite repo / state machine / invariants
 │   ├── cli/                      #   taskctl (CLI entry)
-│   ├── mcp/                      #   MCP server (stdio)
 │   ├── server/                   #   local HTTP API + SSE
 │   └── shared/                   #   shared DTOs / constants
 ├── web/                          # board frontend (Vue 3 + Vite) → web/dist (hosted root)
@@ -145,7 +142,7 @@ meerkat-taskpanel/
   through the built-in [`node:sqlite`](https://nodejs.org/api/sqlite.html) module, which
   the 22.x line is the first to ship. `install.sh` checks this **before** installing and
   fails loudly when `node` is missing or older (`--skip-node-check` bypasses it), and the
-  `taskctl` / MCP entry points refuse to start on an older runtime instead of failing
+  `taskctl` refuses to start on an older runtime instead of failing
   later, mid-command.
 - **Runtime zero-dependency, no network** — everything under `src/` uses Node builtins
   only and works fully offline.
@@ -162,7 +159,7 @@ bash install.sh --target claude|openclaw|codex|pi|all
 
 Default target is `all`. The dispatcher forwards to `scripts/install/<host>.sh`, which
 installs the skill into each host's skill directory — and, for **Claude Code** and
-**Codex**, the rest of the host bundle: MCP registration, the host config
+**Codex**, the rest of the host bundle: the host config
 (`~/.claude/settings.json` / `~/.codex/AGENTS.md`), slash commands (Claude) or a claim
 trigger (Codex), and a `taskctl` shim that pins the agent identity. All bundle writes are
 merge-style and idempotent: a repeat install **exits 0**, keeps every managed file and
@@ -261,8 +258,8 @@ one** — Claude Code, Codex and `pi` each work the same board directly.
 `install.sh --target claude --agent-name <name>` deploys the whole bundle, not just the
 skill: it merges `~/.claude/settings.json` (adding `env.TASKCTL_AGENT` and a `SessionStart`
 hook that starts the board and lists your claimable cards), installs
-`~/.claude/commands/{board,claim,deliver}.md`, registers the MCP server when the `claude`
-CLI is on `PATH`, and ships a `taskctl` shim that injects `--agent <name>`. Then drive the
+`~/.claude/commands/{board,claim,deliver}.md`, and ships a `taskctl` shim that injects
+`--agent <name>`. Then drive the
 board with `taskctl`, stamping each write with the host and session —
 `--agent-platform claude --session-id <id>` — so a card's trail points back at the
 conversation that did the work. Claude Code has **no timers of its own**, so the claim in
@@ -274,8 +271,8 @@ SessionStart hook or a slash command.
 
 `install.sh --target codex --agent-name <name>` deploys the whole bundle: it appends a
 claim-first snippet to `~/.codex/AGENTS.md`, writes the schedulable claim trigger
-`~/.codex/meerkat-taskpanel-claim.sh` (`--no-automation` skips it), registers the MCP server when
-the `codex` CLI is on `PATH`, and ships the `taskctl` shim. Work the board the same way,
+`~/.codex/meerkat-taskpanel-claim.sh` (`--no-automation` skips it), and ships the
+`taskctl` shim. Work the board the same way,
 using the running thread as the session id — `--agent-platform codex --session-id
 "$CODEX_THREAD_ID"` — for conversation-level attribution. Codex has **no timers of its
 own**, so rule 1 is driven by the [supervisor](#scheduling-poll--patrol) waking a
@@ -316,7 +313,6 @@ npm run check
 | **M0** | Scaffold: layout, manifests, sync/verify scripts, tests *(landed)* |
 | M1 | `src/core`: domain model, SQLite repository, state machine, invariants *(landed)* |
 | M2 | `taskctl` command surface aligned with `task-interface v1`; minimal local `taskd` *(landed)* |
-| M3 | `src/mcp`: stdio MCP server — 18 tools, thin proxy to `taskd` *(landed)* |
 | M6 | Full board HTTP API + SSE backend (`src/server/`), and the `web` board frontend → `web/dist` *(landed)* |
 | **Epic view** | Visual view of epic hierarchy / progress / rollup — see an epic and how the statuses of its child cards aggregate *(planned)* |
 | **Iteration management** | Iteration (sprint) cycle management: group tasks into iterations, with in-iteration progress and capacity *(planned)* |

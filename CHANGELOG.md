@@ -11,12 +11,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **API contract snapshot.** `scripts/verify/contract.mjs` freezes the surface a client
   binds to — routes and each route's **declared request shape** (`{query, body}`, down to
-  `type`/`enum`/`items`/`anyOf`, recursively), error codes, the wire field names **and
-  types**, and each MCP tool's full `inputSchema` — as the committed, deterministic JSON
-  at `test/fixtures/contract/api.snapshot.json`. It compares the live surface against that
-  snapshot and exits non-zero on drift; `--update` refreshes it. A changed argument **type
-  or enum**, a route request field retyped or dropped, or a wire field whose type moved,
-  now fails the gate instead of slipping through. The snapshot's `schema_version` is **3**.
+  `type`/`enum`/`items`/`anyOf`, recursively), error codes, and the wire field names **and
+  types** — as the committed, deterministic JSON at
+  `test/fixtures/contract/api.snapshot.json`. It compares the live surface against that
+  snapshot and exits non-zero on drift; `--update` refreshes it. A route request field
+  retyped or dropped, or a wire field whose type moved, now fails the gate instead of
+  slipping through. The snapshot's `schema_version` is **4**.
   It runs in `pre-push` (every push) and `pre-tag`, in `contract-gate.yml` (every branch
   push / PR) and at tag time in `version-gate.yml`, and inside the container suite. The
   route request schemas are declared (in `src/server/requests.mjs`, beside each route),
@@ -60,9 +60,23 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- **Renamed to `meerkat-taskpanel`.** <!-- legacy-name-compat: quotes the former name to record the migration --> Every naming surface moved off the former `task-panel` / `TaskPanel` spellings — the npm package name and the MCP bin (`meerkat-taskpanel-mcp`), the skill source and its generated plugin copies (`skills/meerkat-taskpanel/`), the plugin + marketplace manifests, the installer environment variables (`MEERKAT_TASKPANEL_*`), the host config file (`<host>/meerkat-taskpanel.env`), the launchd / systemd / cron units, the per-user runtime directory (`Application Support/MeerkatTaskPanel/`, `~/.meerkat-taskpanel/`), the Docker image and compose project names, the Prometheus rules file and metric namespace, and the `web/` localStorage keys. The CLI keeps its name: `taskctl`.
+- **Renamed to `meerkat-taskpanel`.** <!-- legacy-name-compat: quotes the former name to record the migration --> Every naming surface moved off the former `task-panel` / `TaskPanel` spellings — the npm package name, the skill source and its generated plugin copies (`skills/meerkat-taskpanel/`), the plugin + marketplace manifests, the installer environment variables (`MEERKAT_TASKPANEL_*`), the host config file (`<host>/meerkat-taskpanel.env`), the launchd / systemd / cron units, the per-user runtime directory (`Application Support/MeerkatTaskPanel/`, `~/.meerkat-taskpanel/`), the Docker image and compose project names, the Prometheus rules file and metric namespace, and the `web/` localStorage keys. The CLI keeps its name: `taskctl`.
 - **Backward compatibility.** The installer still accepts the pre-rename `TASKPANEL_*` environment variables, and the supervisor still reads a legacy `TASKPANEL_CLAIM_UNASSIGNED` key in the host config file; the new `MEERKAT_TASKPANEL_*` spelling wins when both are set.
-- **Migration.** Re-run `install.sh` to write the new paths. The previous npm bin alias for the MCP server is not retained — an existing MCP registration points at the server by path, so it keeps working — and a runtime pointer written under the former per-user directory is not read; the CLI writes a fresh one on first run.
+- **Migration.** Re-run `install.sh` to write the new paths. A runtime pointer written under the former per-user directory is not read; the CLI writes a fresh one on first run.
+
+### Removed
+
+- **The MCP integration, entirely — agent integration is skill-only.** The stdio MCP
+  server (`src/mcp/**`: its 18 tools, protocol and `README.md`), the
+  `meerkat-taskpanel-mcp` bin, the installer's MCP registration (`register_mcp`, and the
+  `claude mcp add …` / `codex mcp add …` calls), the packaged entry point and the
+  MCP-specific coverage gate are removed. The API contract snapshot no longer carries a
+  `mcp_tools` section; that is a layout change, so its `schema_version` moves **3 → 4**.
+  **Migration:** a host left with an MCP registration should drop it —
+  `claude mcp remove meerkat-taskpanel`, `codex mcp remove meerkat-taskpanel`, or the
+  matching entry in OpenClaw's or Pi's MCP configuration. Nothing else changes: the skill
+  drives the `taskctl` CLI directly, and the board's HTTP API, delivery gate and SQL
+  schema are untouched, so an existing board needs no data migration.
 
 ### Fixed
 

@@ -11,15 +11,14 @@ same state on a kanban board. Persistence is a single SQLite database (Node's bu
 `node:sqlite`) — no external services. Node **>= 22**, **zero runtime dependencies**,
 MIT, public repo.
 
-**Status (honest):** **M1** (core engine), **M2** (the `taskctl` CLI + a minimal loopback
-`taskd`) and **M3** (the stdio MCP server) have landed. `src/core/` has the domain model,
-SQLite storage + migrations, use-cases and `openBoard()`; `src/cli/` is the real `taskctl`
-command surface and auto-starts the local `taskd` (`TASKD_NO_AUTOSTART=1` disables it);
-`src/server/` is that minimal loopback HTTP `taskd`; and `src/mcp/` is a real stdio MCP
-server — 18 frozen tools, a thin proxy to `taskd`, gate-equivalent (`task_deliver` is the
-only tool that reaches `in_review`; no dictionary-management tools). Still planned (M6):
-the full board HTTP API + SSE backend and the `web/` board frontend. See `src/mcp/README.md`
-and the roadmap in `README.md` / `README.zh-CN.md`.
+**Status (honest):** **M1** (core engine) and **M2** (the `taskctl` CLI + a minimal loopback
+`taskd`) have landed. `src/core/` has the domain model, SQLite storage + migrations,
+use-cases and `openBoard()`; `src/cli/` is the real `taskctl` command surface and
+auto-starts the local `taskd` (`TASKD_NO_AUTOSTART=1` disables it); `src/server/` is that
+minimal loopback HTTP `taskd`. The agent integration is **skill-only**, driving the
+`taskctl` CLI (see `docs/install.md`). Still planned (M6): the full board HTTP
+API + SSE backend and the `web/` board frontend. See the roadmap in `README.md` /
+`README.zh-CN.md`.
 
 ## Repository layout
 
@@ -34,7 +33,6 @@ meerkat-taskpanel/
 │   │   ├── commands/       #   use-cases
 │   │   └── bootstrap.mjs   #   openBoard()
 │   ├── cli/                # taskctl CLI (command surface; reaches taskd through shared/transport)
-│   ├── mcp/                # stdio MCP server (M3; 18 tools, thin proxy to taskd)
 │   ├── server/             # minimal loopback taskd (CLI auto-start); full HTTP API + SSE board backend = M6
 │   └── shared/             # DTOs, constants, errors, pure helpers + the taskd transport seam (shared/transport/**)
 ├── web/                    # board frontend (Vue 3 + Vite): build-time devDeps -> web/dist (README placeholder)
@@ -68,7 +66,7 @@ Mind the two different `dist` trees: `dist/` is the **npm release tree** that
 - `npm run check:skills` (`node scripts/sync-skills.mjs --check`) — assert generated skill copies match `skills/`.
 - `npm run build` (`node scripts/build.mjs`) — produce `dist/` (deletes and recreates it).
 - `npm run test:coverage` — `node --test` with an 80% line/branch/function floor on `src/core/**` + `src/shared/**`.
-- `node scripts/verify/contract.mjs` — the API contract snapshot (routes + each route's declared request shape + error codes + wire fields + MCP tools); `--update` refreshes it, drift exits 1. Wired into `pre-push`/`pre-tag`, `contract-gate.yml`/`version-gate.yml` and the container suite; see `docs/contract.md`.
+- `node scripts/verify/contract.mjs` — the API contract snapshot (routes + each route's declared request shape + error codes + wire fields); `--update` refreshes it, drift exits 1. Wired into `pre-push`/`pre-tag`, `contract-gate.yml`/`version-gate.yml` and the container suite; see `docs/contract.md`.
 - `node scripts/verify/route-request.mjs` — the route-request lint: for every route, the **declared** request schema must equal what its handler actually reads (static, from handler source; `--print` shows the table). Findings exit 1; a read the lint cannot resolve is a failure, not a pass. Wired into `pre-push`/`pre-tag`, `contract-gate.yml` and the container suite; see `docs/contract.md`.
 - `node src/core/storage/md/migrate-cli.mjs check --dir <cards>` — md-card migration check (also `import` / `export`; exit 3 when `check` finds differences).
 - `bash install.sh --target claude|openclaw|codex|pi|all` — install the skill into each host's skill directory (flags: `--prefix`, `--link`, `--force`, `--dry-run`).
@@ -77,23 +75,22 @@ Mind the two different `dist` trees: `dist/` is the **npm release tree** that
 ## Constraints / MUST-follow rules
 
 - **Verification runs inside Docker, not on the host.** Everything that *runs* — unit/integration/e2e tests, starting or serving the app, the CLI, host skill installs, plugin/bundle installs, migration rehearsals — must run in the container (`docker/`, `npm run verify:docker`, `docker/verify-in-container.sh`). Only pure static checks (lint/typecheck, `node --check`, text/static assertions, `git` operations) and prototype screenshots may run on the host.
-- **Runtime zero-dependency, no network.** The engine — `src/core/`, `src/cli/`, `src/server/`, `src/mcp/` — and every script and test use Node builtins only and work fully offline. Do not run `npm install` for them: there is no root lockfile and no `node_modules/` is expected.
+- **Runtime zero-dependency, no network.** The engine — `src/core/`, `src/cli/`, `src/server/` — and every script and test use Node builtins only and work fully offline. Do not run `npm install` for them: there is no root lockfile and no `node_modules/` is expected.
 - **`web/` is the one exception, and it is build-time only — and offline.** The board frontend (Vue 3 + Vite + Tailwind/daisyUI) has its own committed `web/package.json` + `web/package-lock.json` (the lockfile pins it) and is installed in the image's `webbuild` stage from the **committed npm cache** at `web/.vendor/npm-cache` (`npm ci --offline`). Because the cache is committed, the **image builds with no network** (`docker build --network=none` succeeds) and runtime + every verification step stay offline too. The cache is a **generated artefact** (linux/arm64, produced inside the arm64 container) — after any dependency bump, re-run the vendoring step in `docs/docker.md` and commit the refreshed cache alongside the lockfile. A three-way guard keeps the Dockerfile honest — cache present ⇒ `npm ci --offline`; no cache (a stripped checkout, never the committed configuration) ⇒ a documented networked `npm ci`; no `web/package.json` ⇒ skip and leave `web/dist` empty. Nothing from the toolchain reaches the runtime image — the hosted artefact is the static `web/dist` that `taskd` serves (`STATIC_DIR_REL`). Never install frontend deps into the repository root.
 - **The skill is generated, never hand-edited.** Author only under `skills/meerkat-taskpanel/`. After any edit run `node scripts/sync-skills.mjs`; `plugins/*/skills/` are generated copies that must stay identical (`--check` fails CI on drift).
 - **Single writer.** The design assumes one local service owns the SQLite file — avoid concurrent writers against the same database.
 - **Commit with explicit paths:** `git commit -- <path>` (never a bare `git commit -a`).
-- **Code style / layering:** `src/core/domain/` imports **no Node builtins**; dependency direction is `cli|mcp|server -> core -> shared` (nothing imports from `cli`/`mcp`/`server`; `shared` imports nothing from `src/`); every failure is a domain error with a code, never a bare `Error`.
+- **Code style / layering:** `src/core/domain/` imports **no Node builtins**; dependency direction is `cli|server -> core -> shared` (nothing imports from `cli`/`server`; `shared` imports nothing from `src/`); every failure is a domain error with a code, never a bare `Error`.
 
 ## Key invariants to remember
 
-- The **delivery gate** requires a report **for the current delivery round** before a card can move to `in_review`; a report from an earlier round is history, not evidence. It is enforced by a DB trigger *and* a domain check, tested against each other. There is one narrow escape hatch (**M2**, F-B1): a documented, audited waiver — `--no-report --reason "<why>"` (reason of at least 8 characters, mutually exclusive with `--report-file`, only valid on a move to `in_review`, recorded as a `report_waived` activity, valid only for the current delivery round). The normal, compliant path remains writing a report. The **MCP surface is stricter**: `task_move` carries no waiver, so `task_deliver` is the only tool that reaches `in_review`.
+- The **delivery gate** requires a report **for the current delivery round** before a card can move to `in_review`; a report from an earlier round is history, not evidence. It is enforced by a DB trigger *and* a domain check, tested against each other. There is one narrow escape hatch (**M2**, F-B1): a documented, audited waiver — `--no-report --reason "<why>"` (reason of at least 8 characters, mutually exclusive with `--report-file`, only valid on a move to `in_review`, recorded as a `report_waived` activity, valid only for the current delivery round). The normal, compliant path remains writing a report.
 - Invariants are pushed **down into the database** (triggers), not only enforced in the app layer; the trigger and the domain check are tested against each other under `test/contract/`.
 - The service model is **single-writer**: one local service owns the SQLite database.
 
 ## Docs to read next (do not re-paste)
 
 - `README.md` / `README.zh-CN.md` — what the project is, install, roadmap.
-- `src/mcp/README.md` — what the stdio MCP server owns (and refuses to own), the 18 tools, protocol decisions.
 - `docs/install.md` — `install.sh` flags, host destinations, uninstall.
 - `docs/development.md` — layout, Node requirement, commands, no-network/no-dependency policy.
 - `docs/docker.md` — why verification is containerised, build/run, profiles, troubleshooting.

@@ -20,7 +20,6 @@
 |---|---|
 | `src/core/` | Domain model, SQLite repository, state machine, invariants (M1) |
 | `src/cli/` | `taskctl` — the CLI entry point |
-| `src/mcp/` | Stdio MCP server (M3) |
 | `src/server/` | Local HTTP API + SSE for the board (M6) |
 | `src/shared/` | Shared DTOs, constants, small pure helpers |
 | `web/` | Vue 3 + Vite board frontend → `web/dist` (the hosted frontend root) |
@@ -31,8 +30,8 @@
 | `design/` | Brand assets and placeholders; the PRD / DESIGN / BLOCKS migration and `prototype/` move are still pending (see `design/README.md`) |
 | `docs/` | Usage and development documentation |
 
-Dependency direction: `core`, `cli`, `mcp` and `server` may import from `shared`;
-nothing imports from `cli`, `mcp` or `server`; `shared` imports nothing from `src/`.
+Dependency direction: `core`, `cli` and `server` may import from `shared`;
+nothing imports from `cli` or `server`; `shared` imports nothing from `src/`.
 
 ## Commands
 

@@ -4,8 +4,8 @@ The minimum a meerkat-taskpanel deployment needs to be *watched*: one metrics en
 health verdict, one alerting-rules file and one wired OpenTelemetry export — all
 dependency-free, all runnable offline.
 
-The whole stack is a **sidecar**. `monitoring/` never touches `src/core`, `src/server` or
-`src/mcp`, so no business semantic changed to make the board observable.
+The whole stack is a **sidecar**. `monitoring/` never touches `src/core` or `src/server`,
+so no business semantic changed to make the board observable.
 
 ## What runs
 
