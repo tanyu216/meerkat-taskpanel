@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sentinel Watch V2 — face candidates (read-only preview)</title>
+<style>
+  :root{--ink:#14181B;--ink3:#7E8A91;--ground:#F5F6F7;--line:#E6E8EB}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--ground);color:var(--ink);line-height:1.5;
+       font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+       max-width:1180px;margin:0 auto;padding:56px 32px 96px}
+  h1{font-size:28px;font-weight:700;letter-spacing:-.01em}
+  .sub{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--ink3);
+       margin-top:8px;letter-spacing:.03em}
+  .readonly{display:inline-block;margin-top:16px;padding:5px 10px;border:1px solid var(--line);
+       border-radius:3px;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--ink3);
+       letter-spacing:.08em;text-transform:uppercase;background:#fff}
+  section{margin-top:56px}
+  h2{font-size:17px;font-weight:700;display:flex;align-items:baseline;gap:10px}
+  h2 .n{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--ink3);font-weight:400}
+  .note{font-size:13px;color:#5A656C;margin-top:6px;max-width:70ch}
+  .row{display:flex;gap:28px;flex-wrap:wrap;margin-top:20px}
+  figure{display:flex;flex-direction:column;gap:8px}
+  .cell .bar{display:flex;align-items:center;gap:10px;height:44px;padding:0 14px;border-radius:4px;border:1px solid}
+  .cell .mark{display:inline-block;width:20px;height:20px}
+  .cell .wordmark{font-size:14px;font-weight:600;letter-spacing:-.01em}
+  .cell figcaption,.hero figcaption{font-size:12px;color:#5A656C}
+  .hero-row{display:flex;flex-direction:column;gap:36px;margin-top:20px}
+  .hero{align-items:flex-start}
+  .plate{width:512px;height:512px;display:flex;align-items:center;justify-content:center;
+         border:1px solid;border-radius:6px}
+  .hero-mark{display:block;width:352px;height:352px}
+  footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);font-size:12px;color:var(--ink3)}
+  footer code{font-family:ui-monospace,Menlo,monospace}
+</style>
+</head>
+<body>
+<h1>Sentinel Watch V2 — face candidates</h1>
+<div class="sub">meerkat-taskpanel · commit 0eb8480 · read-only preview · static SVG, no script, no external reference</div>
+<div class="readonly">Preview only — not wired to the app</div>
+
+
+  <section>
+    <h2><span class="n">01</span>Top bar (顶栏) · dark — mark at 20 px</h2>
+    <p class="note">The slot the mark actually occupies in a chrome bar. At 20 px the knockout is sub-pixel, so all three candidates read exactly as the plain V2 silhouette — the expected degeneration, not a defect.</p>
+    <div class="row">
+      <figure class="cell">
+        <div class="bar" style="background:#1F2A2E;border-color:#2A3439">
+          <span class="mark" style="color:#E6EDF0"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="100%" height="100%" role="img" aria-label="meerkat-taskpanel">
+  <title>meerkat-taskpanel</title>
+  <desc>Sentinel Watch — face candidate A «Pin · 克制». Three upright meerkats of a mob, left-low to right-high; the tallest stands on duty. Eyes and mouth are cut as negative-space knockout (dark state), so the mark still restores to one colour and the outer silhouette is unchanged.</desc>
+  <defs>
+    <mask id="face-knockout-a-topbar-dark" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+      <rect x="0" y="0" width="32" height="32" fill="#FFFFFF"/>
+      <g fill="#000000">
+      <!-- sentinel 1 · face -->
+      <circle cx="6.4" cy="20" r="0.42"/>
+      <circle cx="8" cy="20" r="0.42"/>
+      <rect x="6.84" y="21.05" width="0.72" height="0.2" rx="0.1"/>
+      <!-- sentinel 2 · face -->
+      <circle cx="15.2" cy="14.8" r="0.42"/>
+      <circle cx="16.8" cy="14.8" r="0.42"/>
+      <rect x="15.64" y="15.85" width="0.72" height="0.2" rx="0.1"/>
+      <!-- sentinel 3 · face -->
+      <circle cx="24" cy="12" r="0.42"/>
+      <circle cx="25.6" cy="12" r="0.42"/>
+      <rect x="24.44" y="13.05" width="0.72" height="0.2" rx="0.1"/>
+      </g>
+    </mask>
+  </defs>
+  <g mask="url(#face-knockout-a-topbar-dark)">
+    <!-- sentinel 1 · cx 7.2 · top 17.6 · h 9.4 · fill ink -->
+    <g fill="#E6EDF0">
+      <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6"/>
+      <circle cx="7.2" cy="20.2" r="2.6"/>
+      <circle cx="4.8" cy="19.3" r="1.2"/>
+      <circle cx="9.6" cy="19.3" r="1.2"/>
+    </g>
+    <!-- sentinel 2 · cx 16 · top 12.4 · h 14.6 · fill ink -->
+    <g fill="#E6EDF0">
+      <rect x="13.4" y="12.4" width="5.2" height="14.6" rx="2.6"/>
+      <circle cx="16" cy="15" r="2.6"/>
+      <circle cx="13.6" cy="14.1" r="1.2"/>
+      <circle cx="18.4" cy="14.1" r="1.2"/>
+    </g>
+    <!-- sentinel 3 · cx 24.8 · top 9.6 · h 17.4 · fill primary -->
+    <g fill="#2AA79B">
+      <rect x="22.2" y="9.6" width="5.2" height="17.4" rx="2.6"/>
+      <circle cx="24.8" cy="12.2" r="2.6"/>
+      <circle cx="22.4" cy="11.3" r="1.2"/>
+      <circle cx="27.2" cy="11.3" r="1.2"/>
+    </g>
+  </g>
+  <!-- watch signal — kept outside the mask, so the sentinel on duty stays solid -->
+  <circle cx="24.8" cy="3.4" r="2.1" fill="#2AA79B"/>
+</svg>
+</span>
+          <span class="wordmark" style="color:#E6EDF0">meerkat-taskpanel</span>
+        </div>
+        <figcaption><b>A</b> — Pin · 克制</figcaption>
+      </figure>
+      <figure class="cell">
+        <div class="bar" style="background:#1F2A2E;border-color:#2A3439">
+          <span class="mark" style="color:#E6EDF0"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="100%" height="100%" role="img" aria-label="meerkat-taskpanel">
+  <title>meerkat-taskpanel</title>
+  <desc>Sentinel Watch — face candidate B «Snout · 吻». Three upright meerkats of a mob, left-low to right-high; the tallest stands on duty. Eyes and mouth are cut as negative-space knockout (dark state), so the mark still restores to one colour and the outer silhouette is unchanged.</desc>
+  <defs>
+    <mask id="face-knockout-b-topbar-dark" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+      <rect x="0" y="0" width="32" height="32" fill="#FFFFFF"/>
+      <g fill="#000000">
+      <!-- sentinel 1 · face -->
+      <circle cx="6.34" cy="19.88" r="0.5"/>
+      <circle cx="8.06" cy="19.88" r="0.5"/>
+      <rect x="6.54" y="20.68" width="1.32" height="0.88" rx="0.44"/>
+      <!-- sentinel 2 · face -->
+      <circle cx="15.14" cy="14.68" r="0.5"/>
+      <circle cx="16.86" cy="14.68" r="0.5"/>
+      <rect x="15.34" y="15.48" width="1.32" height="0.88" rx="0.44"/>
+      <!-- sentinel 3 · face -->
+      <circle cx="23.94" cy="11.88" r="0.5"/>
+      <circle cx="25.66" cy="11.88" r="0.5"/>
+      <rect x="24.14" y="12.68" width="1.32" height="0.88" rx="0.44"/>
+      </g>
+    </mask>
+  </defs>
+  <g mask="url(#face-knockout-b-topbar-dark)">
+    <!-- sentinel 1 · cx 7.2 · top 17.6 · h 9.4 · fill ink -->
+    <g fill="#E6EDF0">
+      <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6"/>
+      <circle cx="7.2" cy="20.2" r="2.6"/>
+      <circle cx="4.8" cy="19.3" r="1.2"/>
+      <circle cx="9.6" cy="19.3" r="1.2"/>
+    </g>
+    <!-- sentinel 2 · cx 16 · top 12.4 · h 14.6 · fill ink -->
+    <g fill="#E6EDF0">
+      <rect x="13.4" y="12.4" width="5.2" height="14.6" rx="2.6"/>
+      <circle cx="16" cy="15" r="2.6"/>
+      <circle cx="13.6" cy="14.1" r="1.2"/>
+      <circle cx="18.4" cy="14.1" r="1.2"/>
+    </g>
+    <!-- sentinel 3 · cx 24.8 · top 9.6 · h 17.4 · fill primary -->
+    <g fill="#2AA79B">
+      <rect x="22.2" y="9.6" width="5.2" height="17.4" rx="2.6"/>
+      <circle cx="24.8" cy="12.2" r="2.6"/>
+      <circle cx="22.4" cy="11.3" r="1.2"/>
+      <circle cx="27.2" cy="11.3" r="1.2"/>
+    </g>
+  </g>
+  <!-- watch signal — kept outside the mask, so the sentinel on duty stays solid -->
+  <circle cx="24.8" cy="3.4" r="2.1" fill="#2AA79B"/>
+</svg>
+</span>
+          <span class="wordmark" style="color:#E6EDF0">meerkat-taskpanel</span>
+        </div>
+        <figcaption><b>B</b> — Snout · 吻</figcaption>
+      </figure>
+      <figure class="cell">
+        <div class="bar" style="background:#1F2A2E;border-color:#2A3439">
+          <span class="mark" style="color:#E6EDF0"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="100%" height="100%" role="img" aria-label="meerkat-taskpanel">
+  <title>meerkat-taskpanel</title>
+  <desc>Sentinel Watch — face candidate C «Wake · 醒目». Three upright meerkats of a mob, left-low to right-high; the tallest stands on duty. Eyes and mouth are cut as negative-space knockout (dark state), so the mark still restores to one colour and the outer silhouette is unchanged.</desc>
+  <defs>
+    <mask id="face-knockout-c-topbar-dark" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+      <rect x="0" y="0" width="32" height="32" fill="#FFFFFF"/>
+      <g fill="#000000">
+      <!-- sentinel 1 · face -->
+      <circle cx="6.3" cy="19.92" r="0.6"/>
+      <circle cx="8.1" cy="19.92" r="0.6"/>
+      <rect x="6.65" y="21.11" width="1.1" height="0.28" rx="0.14"/>
+      <!-- sentinel 2 · face -->
+      <circle cx="15.1" cy="14.72" r="0.6"/>
+      <circle cx="16.9" cy="14.72" r="0.6"/>
+      <rect x="15.45" y="15.91" width="1.1" height="0.28" rx="0.14"/>
+      <!-- sentinel 3 · face -->
+      <circle cx="23.9" cy="11.92" r="0.6"/>
+      <circle cx="25.7" cy="11.92" r="0.6"/>
+      <rect x="24.25" y="13.11" width="1.1" height="0.28" rx="0.14"/>
+      </g>
+    </mask>
+  </defs>
+  <g mask="url(#face-knockout-c-topbar-dark)">
+    <!-- sentinel 1 · cx 7.2 · top 17.6 · h 9.4 · fill ink -->
+    <g fill="#E6EDF0">
+      <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6"/>
+      <circle cx="7.2" cy="20.2" r="2.6"/>
+      <circle cx="4.8" cy="19.3" r="1.2"/>
+      <circle cx="9.6" cy="19.3" r="1.2"/>
+    </g>
+    <!-- sentinel 2 · cx 16 · top 12.4 · h 14.6 · fill ink -->
+    <g fill="#E6EDF0">
+      <rect x="13.4" y="12.4" width="5.2" height="14.6" rx="2.6"/>
+      <circle cx="16" cy="15" r="2.6"/>
+      <circle cx="13.6" cy="14.1" r="1.2"/>
+      <circle cx="18.4" cy="14.1" r="1.2"/>
+    </g>
+    <!-- sentinel 3 · cx 24.8 · top 9.6 · h 17.4 · fill primary -->
+    <g fill="#2AA79B">
+      <rect x="22.2" y="9.6" width="5.2" height="17.4" rx="2.6"/>
+      <circle cx="24.8" cy="12.2" r="2.6"/>
+      <circle cx="22.4" cy="11.3" r="1.2"/>
+      <circle cx="27.2" cy="11.3" r="1.2"/>
+    </g>
+  </g>
+  <!-- watch signal — kept outside the mask, so the sentinel on duty stays solid -->
+  <circle cx="24.8" cy="3.4" r="2.1" fill="#2AA79B"/>
+</svg>
+</span>
+          <span class="wordmark" style="color:#E6EDF0">meerkat-taskpanel</span>
+        </div>
+        <figcaption><b>C</b> — Wake · 醒目</figcaption>
+      </figure></div>
+  </section>
+
+
+  <section>
+    <h2><span class="n">02</span>Top bar (顶栏) · light — mark at 20 px</h2>
+    <p class="note">Same 20 px slot on a light ground. Identical reading: silhouette only.</p>
+    <div class="row">
+      <figure class="cell">
+        <div class="bar" style="background:#FFFFFF;border-color:#E6E8EB">
+          <span class="mark" style="color:#14181B"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="100%" height="100%" role="img" aria-label="meerkat-taskpanel">
+  <title>meerkat-taskpanel</title>
+  <desc>Sentinel Watch — face candidate A «Pin · 克制». Three upright meerkats of a mob, left-low to right-high; the tallest stands on duty. Eyes and mouth are cut as negative-space knockout (light state), so the mark still restores to one colour and the outer silhouette is unchanged.</desc>
+  <defs>
+    <mask id="face-knockout-a-topbar-light" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+      <rect x="0" y="0" width="32" height="32" fill="#FFFFFF"/>
+      <g fill="#000000">
+      <!-- sentinel 1 · face -->
+      <circle cx="6.4" cy="20" r="0.42"/>
+      <circle cx="8" cy="20" r="0.42"/>
+      <rect x="6.84" y="21.05" width="0.72" height="0.2" rx="0.1"/>
+      <!-- sentinel 2 · face -->
+      <circle cx="15.2" cy="14.8" r="0.42"/>
+      <circle cx="16.8" cy="14.8" r="0.42"/>
+      <rect x="15.64" y="15.85" width="0.72" height="0.2" rx="0.1"/>
+      <!-- sentinel 3 · face -->
+      <circle cx="24" cy="12" r="0.42"/>
+      <circle cx="25.6" cy="12" r="0.42"/>
+      <rect x="24.44" y="13.05" width="0.72" height="0.2" rx="0.1"/>
+      </g>
+    </mask>
+  </defs>
+  <g mask="url(#face-knockout-a-topbar-light)">
+    <!-- sentinel 1 · cx 7.2 · top 17.6 · h 9.4 · fill ink -->
+    <g fill="#14181B">
+      <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6"/>
+      <circle cx="7.2" cy="20.2" r="2.6"/>
+      <circle cx="4.8" cy="19.3" r="1.2"/>
+      <circle cx="9.6" cy="19.3" r="1.2"/>
+    </g>
+    <!-- sentinel 2 · cx 16 · top 12.4 · h 14.6 · fill ink -->
+    <g fill="#14181B">
+      <rect x="13.4" y="12.4" width="5.2" height="14.6" rx="2.6"/>
+      <circle cx="16" cy="15" r="2.6"/>
+      <circle cx="13.6" cy="14.1" r="1.2"/>
+      <circle cx="18.4" cy="14.1" r="1.2"/>
+    </g>
+    <!-- sentinel 3 · cx 24.8 · top 9.6 · h 17.4 · fill primary -->
+    <g fill="#0F7A73">
+      <rect x="22.2" y="9.6" width="5.2" height="17.4" rx="2.6"/>
+      <circle cx="24.8" cy="12.2" r="2.6"/>
+      <circle cx="22.4" cy="11.3" r="1.2"/>
+      <circle cx="27.2" cy="11.3" r="1.2"/>
+    </g>
+  </g>
+  <!-- watch signal — kept outside the mask, so the sentinel on duty stays solid -->
+  <circle cx="24.8" cy="3.4" r="2.1" fill="#0F7A73"/>
+</svg>
+</span>
+          <span class="wordmark" style="color:#14181B">meerkat-taskpanel</span>
+        </div>
+        <figcaption><b>A</b> — Pin · 克制</figcaption>
+      </figure>
+      <figure class="cell">
+        <div class="bar" style="background:#FFFFFF;border-color:#E6E8EB">
+          <span class="mark" style="color:#14181B"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="100%" height="100%" role="img" aria-label="meerkat-taskpanel">
+  <title>meerkat-taskpanel</title>
+  <desc>Sentinel Watch — face candidate B «Snout · 吻». Three upright meerkats of a mob, left-low to right-high; the tallest stands on duty. Eyes and mouth are cut as negative-space knockout (light state), so the mark still restores to one colour and the outer silhouette is unchanged.</desc>
+  <defs>
+    <mask id="face-knockout-b-topbar-light" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+      <rect x="0" y="0" width="32" height="32" fill="#FFFFFF"/>
+      <g fill="#000000">
+      <!-- sentinel 1 · face -->
+      <circle cx="6.34" cy="19.88" r="0.5"/>
+      <circle cx="8.06" cy="19.88" r="0.5"/>
+      <rect x="6.54" y="20.68" width="1.32" height="0.88" rx="0.44"/>
+      <!-- sentinel 2 · face -->
+      <circle cx="15.14" cy="14.68" r="0.5"/>
+      <circle cx="16.86" cy="14.68" r="0.5"/>
+      <rect x="15.34" y="15.48" width="1.32" height="0.88" rx="0.44"/>
+      <!-- sentinel 3 · face -->
+      <circle cx="23.94" cy="11.88" r="0.5"/>
+      <circle cx="25.66" cy="11.88" r="0.5"/>
+      <rect x="24.14" y="12.68" width="1.32" height="0.88" rx="0.44"/>
+      </g>
+    </mask>
+  </defs>
+  <g mask="url(#face-knockout-b-topbar-light)">
+    <!-- sentinel 1 · cx 7.2 · top 17.6 · h 9.4 · fill ink -->
+    <g fill="#14181B">
+      <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6"/>
+      <circle cx="7.2" cy="20.2" r="2.6"/>
+      <circle cx="4.8" cy="19.3" r="1.2"/>
+      <circle cx="9.6" cy="19.3" r="1.2"/>
+    </g>
+    <!-- sentinel 2 · cx 16 · top 12.4 · h 14.6 · fill ink -->
+    <g fill="#14181B">
+      <rect x="13.4" y="12.4" width="5.2" height="14.6" rx="2.6"/>
+      <circle cx="16" cy="15" r="2.6"/>
+      <circle cx="13.6" cy="14.1" r="1.2"/>
+      <circle cx="18.4" cy="14.1" r="1.2"/>
+    </g>
+    <!-- sentinel 3 · cx 24.8 · top 9.6 · h 17.4 · fill primary -->
+    <g fill="#0F7A73">
+      <rect x="22.2" y="9.6" width="5.2" height="17.4" rx="2.6"/>
+      <circle cx="24.8" cy="12.2" r="2.6"/>
+      <circle cx="22.4" cy="11.3" r="1.2"/>
+      <circle cx="27.2" cy="11.3" r="1.2"/>
+    </g>
+  </g>
+  <!-- watch signal — kept outside the mask, so the sentinel on duty stays solid -->
+  <circle cx="24.8" cy="3.4" r="2.1" fill="#0F7A73"/>
+</svg>
+</span>
+          <span class="wordmark" style="color:#14181B">meerkat-taskpanel</span>
+        </div>
+        <figcaption><b>B</b> — Snout · 吻</figcaption>
+      </figure>
+      <figure class="cell">
+        <div class="bar" style="background:#FFFFFF;border-color:#E6E8EB">
+          <span class="mark" style="color:#14181B"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="100%" height="100%" role="img" aria-label="meerkat-taskpanel">
+  <title>meerkat-taskpanel</title>
+  <desc>Sentinel Watch — face candidate C «Wake · 醒目». Three upright meerkats of a mob, left-low to right-high; the tallest stands on duty. Eyes and mouth are cut as negative-space knockout (light state), so the mark still restores to one colour and the outer silhouette is unchanged.</desc>
+  <defs>
+    <mask id="face-knockout-c-topbar-light" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+      <rect x="0" y="0" width="32" height="32" fill="#FFFFFF"/>
+      <g fill="#000000">
+      <!-- sentinel 1 · face -->
+      <circle cx="6.3" cy="19.92" r="0.6"/>
+      <circle cx="8.1" cy="19.92" r="0.6"/>
+      <rect x="6.65" y="21.11" width="1.1" height="0.28" rx="0.14"/>
+      <!-- sentinel 2 · face -->
+      <circle cx="15.1" cy="14.72" r="0.6"/>
+      <circle cx="16.9" cy="14.72" r="0.6"/>
+      <rect x="15.45" y="15.91" width="1.1" height="0.28" rx="0.14"/>
+      <!-- sentinel 3 · face -->
+      <circle cx="23.9" cy="11.92" r="0.6"/>
+      <circle cx="25.7" cy="11.92" r="0.6"/>
+      <rect x="24.25" y="13.11" width="1.1" height="0.28" rx="0.14"/>
+      </g>
+    </mask>
+  </defs>
+  <g mask="url(#face-knockout-c-topbar-light)">
+    <!-- sentinel 1 · cx 7.2 · top 17.6 · h 9.4 · fill ink -->
+    <g fill="#14181B">
+      <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6"/>
+      <circle cx="7.2" cy="20.2" r="2.6"/>
+      <circle cx="4.8" cy="19.3" r="1.2"/>
+      <circle cx="9.6" cy="19.3" r="1.2"/>
+    </g>
+    <!-- sentinel 2 · cx 16 · top 12.4 · h 14.6 · fill ink -->
+    <g fill="#14181B">
+      <rect x="13.4" y="12.4" width="5.2" height="14.6" rx="2.6"/>
+      <circle cx="16" cy="15" r="2.6"/>
+      <circle cx="13.6" cy="14.1" r="1.2"/>
+      <circle cx="18.4" cy="14.1" r="1.2"/>
+    </g>
+    <!-- sentinel 3 · cx 24.8 · top 9.6 · h 17.4 · fill primary -->
+    <g fill="#0F7A73">
+      <rect x="22.2" y="9.6" width="5.2" height="17.4" rx="2.6"/>
+      <circle cx="24.8" cy="12.2" r="2.6"/>
+      <circle cx="22.4" cy="11.3" r="1.2"/>
+      <circle cx="27.2" cy="11.3" r="1.2"/>
+    </g>
+  </g>
+  <!-- watch signal — kept outside the mask, so the sentinel on duty stays solid -->
+  <circle cx="24.8" cy="3.4" r="2.1" fill="#0F7A73"/>
+</svg>
+</span>
+          <span class="wordmark" style="color:#14181B">meerkat-taskpanel</span>
+        </div>
+        <figcaption><b>C</b> — Wake · 醒目</figcaption>
+      </figure></div>
+  </section>
+
+
+  <section>
+    <h2><span class="n">03</span>Empty state (空态) · light ground — mark at 512 px</h2>
+    <p class="note">The empty-state hero. This is where the face is meant to be read. Candidate A is the restrained solve (recommended first release); B is the mid-density option; C is the tension upper bound and is not recommended as the first release.</p>
+    <div class="row"></div><div class="hero-row">
+      <figure class="hero">
+        <div class="plate" style="background:#F5F6F7;border-color:#E6E8EB">
+          <span class="hero-mark" style="color:#14181B"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="100%" height="100%" role="img" aria-label="meerkat-taskpanel">
+  <title>meerkat-taskpanel</title>
+  <desc>Sentinel Watch — face candidate A «Pin · 克制». Three upright meerkats of a mob, left-low to right-high; the tallest stands on duty. Eyes and mouth are cut as negative-space knockout (light state), so the mark still restores to one colour and the outer silhouette is unchanged.</desc>
+  <defs>
+    <mask id="face-knockout-a-empty-light" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+      <rect x="0" y="0" width="32" height="32" fill="#FFFFFF"/>
+      <g fill="#000000">
+      <!-- sentinel 1 · face -->
+      <circle cx="6.4" cy="20" r="0.42"/>
+      <circle cx="8" cy="20" r="0.42"/>
+      <rect x="6.84" y="21.05" width="0.72" height="0.2" rx="0.1"/>
+      <!-- sentinel 2 · face -->
+      <circle cx="15.2" cy="14.8" r="0.42"/>
+      <circle cx="16.8" cy="14.8" r="0.42"/>
+      <rect x="15.64" y="15.85" width="0.72" height="0.2" rx="0.1"/>
+      <!-- sentinel 3 · face -->
+      <circle cx="24" cy="12" r="0.42"/>
+      <circle cx="25.6" cy="12" r="0.42"/>
+      <rect x="24.44" y="13.05" width="0.72" height="0.2" rx="0.1"/>
+      </g>
+    </mask>
+  </defs>
+  <g mask="url(#face-knockout-a-empty-light)">
+    <!-- sentinel 1 · cx 7.2 · top 17.6 · h 9.4 · fill ink -->
+    <g fill="#14181B">
+      <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6"/>
+      <circle cx="7.2" cy="20.2" r="2.6"/>
+      <circle cx="4.8" cy="19.3" r="1.2"/>
+      <circle cx="9.6" cy="19.3" r="1.2"/>
+    </g>
+    <!-- sentinel 2 · cx 16 · top 12.4 · h 14.6 · fill ink -->
+    <g fill="#14181B">
+      <rect x="13.4" y="12.4" width="5.2" height="14.6" rx="2.6"/>
+      <circle cx="16" cy="15" r="2.6"/>
+      <circle cx="13.6" cy="14.1" r="1.2"/>
+      <circle cx="18.4" cy="14.1" r="1.2"/>
+    </g>
+    <!-- sentinel 3 · cx 24.8 · top 9.6 · h 17.4 · fill primary -->
+    <g fill="#0F7A73">
+      <rect x="22.2" y="9.6" width="5.2" height="17.4" rx="2.6"/>
+      <circle cx="24.8" cy="12.2" r="2.6"/>
+      <circle cx="22.4" cy="11.3" r="1.2"/>
+      <circle cx="27.2" cy="11.3" r="1.2"/>
+    </g>
+  </g>
+  <!-- watch signal — kept outside the mask, so the sentinel on duty stays solid -->
+  <circle cx="24.8" cy="3.4" r="2.1" fill="#0F7A73"/>
+</svg>
+</span>
+        </div>
+        <figcaption><b>Candidate A — Pin · 克制</b><br><span>the restrained solve — fewest primitives, neutral mouth · recommended first release</span></figcaption>
+      </figure>
+      <figure class="hero">
+        <div class="plate" style="background:#F5F6F7;border-color:#E6E8EB">
+          <span class="hero-mark" style="color:#14181B"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="100%" height="100%" role="img" aria-label="meerkat-taskpanel">
+  <title>meerkat-taskpanel</title>
+  <desc>Sentinel Watch — face candidate B «Snout · 吻». Three upright meerkats of a mob, left-low to right-high; the tallest stands on duty. Eyes and mouth are cut as negative-space knockout (light state), so the mark still restores to one colour and the outer silhouette is unchanged.</desc>
+  <defs>
+    <mask id="face-knockout-b-empty-light" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+      <rect x="0" y="0" width="32" height="32" fill="#FFFFFF"/>
+      <g fill="#000000">
+      <!-- sentinel 1 · face -->
+      <circle cx="6.34" cy="19.88" r="0.5"/>
+      <circle cx="8.06" cy="19.88" r="0.5"/>
+      <rect x="6.54" y="20.68" width="1.32" height="0.88" rx="0.44"/>
+      <!-- sentinel 2 · face -->
+      <circle cx="15.14" cy="14.68" r="0.5"/>
+      <circle cx="16.86" cy="14.68" r="0.5"/>
+      <rect x="15.34" y="15.48" width="1.32" height="0.88" rx="0.44"/>
+      <!-- sentinel 3 · face -->
+      <circle cx="23.94" cy="11.88" r="0.5"/>
+      <circle cx="25.66" cy="11.88" r="0.5"/>
+      <rect x="24.14" y="12.68" width="1.32" height="0.88" rx="0.44"/>
+      </g>
+    </mask>
+  </defs>
+  <g mask="url(#face-knockout-b-empty-light)">
+    <!-- sentinel 1 · cx 7.2 · top 17.6 · h 9.4 · fill ink -->
+    <g fill="#14181B">
+      <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6"/>
+      <circle cx="7.2" cy="20.2" r="2.6"/>
+      <circle cx="4.8" cy="19.3" r="1.2"/>
+      <circle cx="9.6" cy="19.3" r="1.2"/>
+    </g>
+    <!-- sentinel 2 · cx 16 · top 12.4 · h 14.6 · fill ink -->
+    <g fill="#14181B">
+      <rect x="13.4" y="12.4" width="5.2" height="14.6" rx="2.6"/>
+      <circle cx="16" cy="15" r="2.6"/>
+      <circle cx="13.6" cy="14.1" r="1.2"/>
+      <circle cx="18.4" cy="14.1" r="1.2"/>
+    </g>
+    <!-- sentinel 3 · cx 24.8 · top 9.6 · h 17.4 · fill primary -->
+    <g fill="#0F7A73">
+      <rect x="22.2" y="9.6" width="5.2" height="17.4" rx="2.6"/>
+      <circle cx="24.8" cy="12.2" r="2.6"/>
+      <circle cx="22.4" cy="11.3" r="1.2"/>
+      <circle cx="27.2" cy="11.3" r="1.2"/>
+    </g>
+  </g>
+  <!-- watch signal — kept outside the mask, so the sentinel on duty stays solid -->
+  <circle cx="24.8" cy="3.4" r="2.1" fill="#0F7A73"/>
+</svg>
+</span>
+        </div>
+        <figcaption><b>Candidate B — Snout · 吻</b><br><span>mid density — larger eye, rounded snout · the most meerkat</span></figcaption>
+      </figure>
+      <figure class="hero">
+        <div class="plate" style="background:#F5F6F7;border-color:#E6E8EB">
+          <span class="hero-mark" style="color:#14181B"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="100%" height="100%" role="img" aria-label="meerkat-taskpanel">
+  <title>meerkat-taskpanel</title>
+  <desc>Sentinel Watch — face candidate C «Wake · 醒目». Three upright meerkats of a mob, left-low to right-high; the tallest stands on duty. Eyes and mouth are cut as negative-space knockout (light state), so the mark still restores to one colour and the outer silhouette is unchanged.</desc>
+  <defs>
+    <mask id="face-knockout-c-empty-light" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+      <rect x="0" y="0" width="32" height="32" fill="#FFFFFF"/>
+      <g fill="#000000">
+      <!-- sentinel 1 · face -->
+      <circle cx="6.3" cy="19.92" r="0.6"/>
+      <circle cx="8.1" cy="19.92" r="0.6"/>
+      <rect x="6.65" y="21.11" width="1.1" height="0.28" rx="0.14"/>
+      <!-- sentinel 2 · face -->
+      <circle cx="15.1" cy="14.72" r="0.6"/>
+      <circle cx="16.9" cy="14.72" r="0.6"/>
+      <rect x="15.45" y="15.91" width="1.1" height="0.28" rx="0.14"/>
+      <!-- sentinel 3 · face -->
+      <circle cx="23.9" cy="11.92" r="0.6"/>
+      <circle cx="25.7" cy="11.92" r="0.6"/>
+      <rect x="24.25" y="13.11" width="1.1" height="0.28" rx="0.14"/>
+      </g>
+    </mask>
+  </defs>
+  <g mask="url(#face-knockout-c-empty-light)">
+    <!-- sentinel 1 · cx 7.2 · top 17.6 · h 9.4 · fill ink -->
+    <g fill="#14181B">
+      <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6"/>
+      <circle cx="7.2" cy="20.2" r="2.6"/>
+      <circle cx="4.8" cy="19.3" r="1.2"/>
+      <circle cx="9.6" cy="19.3" r="1.2"/>
+    </g>
+    <!-- sentinel 2 · cx 16 · top 12.4 · h 14.6 · fill ink -->
+    <g fill="#14181B">
+      <rect x="13.4" y="12.4" width="5.2" height="14.6" rx="2.6"/>
+      <circle cx="16" cy="15" r="2.6"/>
+      <circle cx="13.6" cy="14.1" r="1.2"/>
+      <circle cx="18.4" cy="14.1" r="1.2"/>
+    </g>
+    <!-- sentinel 3 · cx 24.8 · top 9.6 · h 17.4 · fill primary -->
+    <g fill="#0F7A73">
+      <rect x="22.2" y="9.6" width="5.2" height="17.4" rx="2.6"/>
+      <circle cx="24.8" cy="12.2" r="2.6"/>
+      <circle cx="22.4" cy="11.3" r="1.2"/>
+      <circle cx="27.2" cy="11.3" r="1.2"/>
+    </g>
+  </g>
+  <!-- watch signal — kept outside the mask, so the sentinel on duty stays solid -->
+  <circle cx="24.8" cy="3.4" r="2.1" fill="#0F7A73"/>
+</svg>
+</span>
+        </div>
+        <figcaption><b>Candidate C — Wake · 醒目</b><br><span>tension upper bound — widest mouth, reads most cartoon · not recommended first</span></figcaption>
+      </figure></div>
+  </section>
+
+
+  <section>
+    <h2><span class="n">04</span>Empty state (空态) · dark ground — mark at 512 px</h2>
+    <p class="note">The same three, dark state. The on-duty sentinel and the watch signal take the dark brand line; the face stays negative space, so the mark still restores to one colour.</p>
+    <div class="row"></div><div class="hero-row">
+      <figure class="hero">
+        <div class="plate" style="background:#14181B;border-color:#2A3439">
+          <span class="hero-mark" style="color:#E6EDF0"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="100%" height="100%" role="img" aria-label="meerkat-taskpanel">
+  <title>meerkat-taskpanel</title>
+  <desc>Sentinel Watch — face candidate A «Pin · 克制». Three upright meerkats of a mob, left-low to right-high; the tallest stands on duty. Eyes and mouth are cut as negative-space knockout (dark state), so the mark still restores to one colour and the outer silhouette is unchanged.</desc>
+  <defs>
+    <mask id="face-knockout-a-empty-dark" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+      <rect x="0" y="0" width="32" height="32" fill="#FFFFFF"/>
+      <g fill="#000000">
+      <!-- sentinel 1 · face -->
+      <circle cx="6.4" cy="20" r="0.42"/>
+      <circle cx="8" cy="20" r="0.42"/>
+      <rect x="6.84" y="21.05" width="0.72" height="0.2" rx="0.1"/>
+      <!-- sentinel 2 · face -->
+      <circle cx="15.2" cy="14.8" r="0.42"/>
+      <circle cx="16.8" cy="14.8" r="0.42"/>
+      <rect x="15.64" y="15.85" width="0.72" height="0.2" rx="0.1"/>
+      <!-- sentinel 3 · face -->
+      <circle cx="24" cy="12" r="0.42"/>
+      <circle cx="25.6" cy="12" r="0.42"/>
+      <rect x="24.44" y="13.05" width="0.72" height="0.2" rx="0.1"/>
+      </g>
+    </mask>
+  </defs>
+  <g mask="url(#face-knockout-a-empty-dark)">
+    <!-- sentinel 1 · cx 7.2 · top 17.6 · h 9.4 · fill ink -->
+    <g fill="#E6EDF0">
+      <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6"/>
+      <circle cx="7.2" cy="20.2" r="2.6"/>
+      <circle cx="4.8" cy="19.3" r="1.2"/>
+      <circle cx="9.6" cy="19.3" r="1.2"/>
+    </g>
+    <!-- sentinel 2 · cx 16 · top 12.4 · h 14.6 · fill ink -->
+    <g fill="#E6EDF0">
+      <rect x="13.4" y="12.4" width="5.2" height="14.6" rx="2.6"/>
+      <circle cx="16" cy="15" r="2.6"/>
+      <circle cx="13.6" cy="14.1" r="1.2"/>
+      <circle cx="18.4" cy="14.1" r="1.2"/>
+    </g>
+    <!-- sentinel 3 · cx 24.8 · top 9.6 · h 17.4 · fill primary -->
+    <g fill="#2AA79B">
+      <rect x="22.2" y="9.6" width="5.2" height="17.4" rx="2.6"/>
+      <circle cx="24.8" cy="12.2" r="2.6"/>
+      <circle cx="22.4" cy="11.3" r="1.2"/>
+      <circle cx="27.2" cy="11.3" r="1.2"/>
+    </g>
+  </g>
+  <!-- watch signal — kept outside the mask, so the sentinel on duty stays solid -->
+  <circle cx="24.8" cy="3.4" r="2.1" fill="#2AA79B"/>
+</svg>
+</span>
+        </div>
+        <figcaption><b>Candidate A — Pin · 克制</b><br><span>the restrained solve — fewest primitives, neutral mouth · recommended first release</span></figcaption>
+      </figure>
+      <figure class="hero">
+        <div class="plate" style="background:#14181B;border-color:#2A3439">
+          <span class="hero-mark" style="color:#E6EDF0"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="100%" height="100%" role="img" aria-label="meerkat-taskpanel">
+  <title>meerkat-taskpanel</title>
+  <desc>Sentinel Watch — face candidate B «Snout · 吻». Three upright meerkats of a mob, left-low to right-high; the tallest stands on duty. Eyes and mouth are cut as negative-space knockout (dark state), so the mark still restores to one colour and the outer silhouette is unchanged.</desc>
+  <defs>
+    <mask id="face-knockout-b-empty-dark" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+      <rect x="0" y="0" width="32" height="32" fill="#FFFFFF"/>
+      <g fill="#000000">
+      <!-- sentinel 1 · face -->
+      <circle cx="6.34" cy="19.88" r="0.5"/>
+      <circle cx="8.06" cy="19.88" r="0.5"/>
+      <rect x="6.54" y="20.68" width="1.32" height="0.88" rx="0.44"/>
+      <!-- sentinel 2 · face -->
+      <circle cx="15.14" cy="14.68" r="0.5"/>
+      <circle cx="16.86" cy="14.68" r="0.5"/>
+      <rect x="15.34" y="15.48" width="1.32" height="0.88" rx="0.44"/>
+      <!-- sentinel 3 · face -->
+      <circle cx="23.94" cy="11.88" r="0.5"/>
+      <circle cx="25.66" cy="11.88" r="0.5"/>
+      <rect x="24.14" y="12.68" width="1.32" height="0.88" rx="0.44"/>
+      </g>
+    </mask>
+  </defs>
+  <g mask="url(#face-knockout-b-empty-dark)">
+    <!-- sentinel 1 · cx 7.2 · top 17.6 · h 9.4 · fill ink -->
+    <g fill="#E6EDF0">
+      <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6"/>
+      <circle cx="7.2" cy="20.2" r="2.6"/>
+      <circle cx="4.8" cy="19.3" r="1.2"/>
+      <circle cx="9.6" cy="19.3" r="1.2"/>
+    </g>
+    <!-- sentinel 2 · cx 16 · top 12.4 · h 14.6 · fill ink -->
+    <g fill="#E6EDF0">
+      <rect x="13.4" y="12.4" width="5.2" height="14.6" rx="2.6"/>
+      <circle cx="16" cy="15" r="2.6"/>
+      <circle cx="13.6" cy="14.1" r="1.2"/>
+      <circle cx="18.4" cy="14.1" r="1.2"/>
+    </g>
+    <!-- sentinel 3 · cx 24.8 · top 9.6 · h 17.4 · fill primary -->
+    <g fill="#2AA79B">
+      <rect x="22.2" y="9.6" width="5.2" height="17.4" rx="2.6"/>
+      <circle cx="24.8" cy="12.2" r="2.6"/>
+      <circle cx="22.4" cy="11.3" r="1.2"/>
+      <circle cx="27.2" cy="11.3" r="1.2"/>
+    </g>
+  </g>
+  <!-- watch signal — kept outside the mask, so the sentinel on duty stays solid -->
+  <circle cx="24.8" cy="3.4" r="2.1" fill="#2AA79B"/>
+</svg>
+</span>
+        </div>
+        <figcaption><b>Candidate B — Snout · 吻</b><br><span>mid density — larger eye, rounded snout · the most meerkat</span></figcaption>
+      </figure>
+      <figure class="hero">
+        <div class="plate" style="background:#14181B;border-color:#2A3439">
+          <span class="hero-mark" style="color:#E6EDF0"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="100%" height="100%" role="img" aria-label="meerkat-taskpanel">
+  <title>meerkat-taskpanel</title>
+  <desc>Sentinel Watch — face candidate C «Wake · 醒目». Three upright meerkats of a mob, left-low to right-high; the tallest stands on duty. Eyes and mouth are cut as negative-space knockout (dark state), so the mark still restores to one colour and the outer silhouette is unchanged.</desc>
+  <defs>
+    <mask id="face-knockout-c-empty-dark" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+      <rect x="0" y="0" width="32" height="32" fill="#FFFFFF"/>
+      <g fill="#000000">
+      <!-- sentinel 1 · face -->
+      <circle cx="6.3" cy="19.92" r="0.6"/>
+      <circle cx="8.1" cy="19.92" r="0.6"/>
+      <rect x="6.65" y="21.11" width="1.1" height="0.28" rx="0.14"/>
+      <!-- sentinel 2 · face -->
+      <circle cx="15.1" cy="14.72" r="0.6"/>
+      <circle cx="16.9" cy="14.72" r="0.6"/>
+      <rect x="15.45" y="15.91" width="1.1" height="0.28" rx="0.14"/>
+      <!-- sentinel 3 · face -->
+      <circle cx="23.9" cy="11.92" r="0.6"/>
+      <circle cx="25.7" cy="11.92" r="0.6"/>
+      <rect x="24.25" y="13.11" width="1.1" height="0.28" rx="0.14"/>
+      </g>
+    </mask>
+  </defs>
+  <g mask="url(#face-knockout-c-empty-dark)">
+    <!-- sentinel 1 · cx 7.2 · top 17.6 · h 9.4 · fill ink -->
+    <g fill="#E6EDF0">
+      <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6"/>
+      <circle cx="7.2" cy="20.2" r="2.6"/>
+      <circle cx="4.8" cy="19.3" r="1.2"/>
+      <circle cx="9.6" cy="19.3" r="1.2"/>
+    </g>
+    <!-- sentinel 2 · cx 16 · top 12.4 · h 14.6 · fill ink -->
+    <g fill="#E6EDF0">
+      <rect x="13.4" y="12.4" width="5.2" height="14.6" rx="2.6"/>
+      <circle cx="16" cy="15" r="2.6"/>
+      <circle cx="13.6" cy="14.1" r="1.2"/>
+      <circle cx="18.4" cy="14.1" r="1.2"/>
+    </g>
+    <!-- sentinel 3 · cx 24.8 · top 9.6 · h 17.4 · fill primary -->
+    <g fill="#2AA79B">
+      <rect x="22.2" y="9.6" width="5.2" height="17.4" rx="2.6"/>
+      <circle cx="24.8" cy="12.2" r="2.6"/>
+      <circle cx="22.4" cy="11.3" r="1.2"/>
+      <circle cx="27.2" cy="11.3" r="1.2"/>
+    </g>
+  </g>
+  <!-- watch signal — kept outside the mask, so the sentinel on duty stays solid -->
+  <circle cx="24.8" cy="3.4" r="2.1" fill="#2AA79B"/>
+</svg>
+</span>
+        </div>
+        <figcaption><b>Candidate C — Wake · 醒目</b><br><span>tension upper bound — widest mouth, reads most cartoon · not recommended first</span></figcaption>
+      </figure></div>
+  </section>
+
+<footer>
+  Deliverables in this directory: <code>compare.png</code> (candidate × size contact sheet),
+  <code>A-pin/ B-snout/ C-wake/</code> (SVG + <code>png/logo-{16,32,48,128,512}[-dark].png</code>),
+  <code>README.md</code>. Candidates only — the main line (<code>design/brand/logo*.svg</code>,
+  <code>prototype/index.html</code>) is untouched by this card.
+</footer>
+</body>
+</html>
