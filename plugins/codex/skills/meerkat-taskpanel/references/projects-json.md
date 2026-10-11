@@ -32,7 +32,7 @@ keys below.
 
 | Key | Type | Meaning |
 |---|---|---|
-| `local_path` | string | **Required.** The project's target directory: an **absolute** path to the local working copy. |
+| `local_path` | string | **Required, and checked.** The project's target directory: an **absolute** path that exists and is a directory (see [what is checked](#how-a-project-resolves-to-a-directory--and-what-is-checked)). |
 | `project` | string | **Required.** The **board project identity** — its **id** (preferred; the id is what `issue create --project <id>` takes) or its name. |
 
 Extra keys are **yours** — the skill reads the two above and ignores the rest, so
@@ -66,7 +66,37 @@ look the directory up here — and nowhere else:
 This is a convention of this file, not a board rule: the board is not consulted,
 because the board holds no directory information to consult.
 
-## Unregistered projects: no directory, no fallback
+## How a project resolves to a directory — and what is checked
+
+The other direction is what a **wake** needs: a card names a board project, and the
+worker for that card must run in that project's directory. The lookup runs the same
+way in reverse, and its result is **validated before it is used**:
+
+| Check | Fails when | Reported as |
+|---|---|---|
+| present | the entry has no `local_path` | `PROJECT_DIR_REQUIRED` |
+| absolute | `local_path` is a relative path | `PROJECT_DIR_NOT_ABSOLUTE` |
+| exists | nothing is at that path (a moved or deleted checkout) | `PROJECT_DIR_MISSING` |
+| is a directory | something is there, but it is a file | `PROJECT_DIR_NOT_A_DIRECTORY` |
+
+All four are failures, not warnings. **A worker is never started in an unvalidated
+directory**: running a session in the wrong checkout looks like work and is worse
+than doing nothing, because the writes land in a repository nobody asked about.
+
+Two command surfaces apply this rule, and they read the same file:
+
+- **`taskctl project dir <project>`** — prints the directory, or exits non-zero
+  with the question below. The local map path is `$MEERKAT_TASKPANEL_PROJECTS_JSON`
+  when a session sets it (an installed `taskctl` shim points it at the skill's own
+  copy), else the `projects.json` beside this skill.
+- **The wake glue** (`wake-<host>.sh`, the script the supervisor starts a worker
+  through) — resolves the card's project identity the same way and `cd`s into the
+  directory before starting the host CLI. It is handed the identity in
+  `TP_PROJECT` (and the map in `TP_PROJECTS_JSON`); if the directory cannot be
+  resolved it **refuses the wake and exits 3**, printing the same reason. There is
+  no fallback directory, on purpose.
+
+## Unregistered projects: no directory, no fallback — ask
 
 **Directory ownership is decided entirely by this file, and there is no fallback.**
 The board provides no directory information — there is no `workspace_path` on a
@@ -75,17 +105,18 @@ project, no `context current` command, and no registry `root` anchor. So:
 - A project **absent from `projects.json` has no target directory.** That is a
   complete answer, not a missing one.
 - The agent must **not invent, guess, or derive** a directory for it, and must not
-  look for one on the board. When a step needs the project's directory, it **stops**
-  and prints this prompt (substituting the real project and path):
+  look for one on the board. When a step needs the project's directory, it **stops
+  and asks the user** — it does not continue silently. Say (substituting the real
+  project, and what is wrong when an entry exists but is unusable):
 
   ```text
   No local directory is registered for project <project>.
-  Add an entry to projects.json beside this skill (references/projects-json.md);
-  the board cannot supply one.
+  Which directory does it work in? I will add it to projects.json beside this skill
+  (references/projects-json.md) — the board cannot supply one.
   ```
 
   If it is the *directory* that is unknown rather than the project — you are in a
-  checkout nothing maps — the same prompt applies with the path you are in.
+  checkout nothing maps — the same question applies with the path you are in.
 - Work that does **not** need a directory is unaffected: claiming, moving,
   commenting and delivering a card carry no directory, so they proceed as usual. A
   missing mapping means "no directory known", never "cannot work".

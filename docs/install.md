@@ -88,7 +88,7 @@ they obey the no-default-permission-bypass boundary in
 | launchd | `<host>/scheduling/launchd/com.meerkat-taskpanel.{poll,patrol}.plist` | `StartInterval` 60 / 300 |
 | systemd | `<host>/scheduling/systemd/meerkat-taskpanel-{poll,patrol}.{service,timer}` | 60s / 300s timers |
 | cron | `<host>/scheduling/cron/meerkat-taskpanel.cron` | `* * * * *` poll, `*/5 * * * *` patrol |
-| wake glue | `<host>/bin/wake-<host>.sh` | `claude -p` (+`--resume`), `codex exec`, `pi run` |
+| wake glue | `<host>/bin/wake-<host>.sh` | resolves the card's project target directory from the skill's `projects.json`, `cd`s there (refusing the wake if it cannot), then runs `claude -p` (+`--resume`), `codex exec`, or `pi --print` |
 | host config | `<host>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no` |
 | log (runtime) | `<host>/meerkat-taskpanel/supervisor.log` | the supervisor's tick log |
 | state (runtime) | `<host>/meerkat-taskpanel/supervisor.state.json` | the running registry |
@@ -380,10 +380,11 @@ node scripts/verify/host-runtime.mjs --host claude
 
 It installs into a throwaway prefix (never `$HOME`), replaces the generated `taskctl`
 shim with a canned one and puts fake `claude`/`codex`/`pi` executables on `PATH` — both
-record their argv — then drives the generated SessionStart hook, the Codex claim trigger
-and each `wake-<host>.sh`, asserting the **actual invocation** (exit code + argv +
-output), not just "it ran". This is the step that covers the claim path in CI, where the
-real CLIs are absent. The full matrix, the argv-vs-`wakeCommand()` cross-check and the
+record their argv and working directory — then drives the generated SessionStart hook, the
+Codex claim trigger and each `wake-<host>.sh`, asserting the **actual invocation** (exit
+code + argv + cwd + output), not just "it ran". This is the step that covers the claim
+path in CI, where the real CLIs are absent. The full matrix, the argv-vs-`wakeCommand()`
+cross-check, the resolved-working-directory assertions and the
 per-host coverage boundary (Pi has no hook/trigger/shim) are in
 [`scheduling.md`](scheduling.md#verifying-the-generated-trigger--wake-glue).
 
