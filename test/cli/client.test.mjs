@@ -111,7 +111,7 @@ describe("shared/transport/http — over a real board", () => {
       url,
       method: "POST",
       path: "/api/v1/projects",
-      body: { id: "c1", name: "C", workspace_path: tempDir() },
+      body: { id: "c1", name: "C" },
     });
     assert.equal(project.project.id, "c1");
     const task = await requestJson({

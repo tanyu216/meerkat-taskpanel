@@ -133,7 +133,7 @@ describe("cli/autostart — the one case that starts a daemon (F-E2)", () => {
       };
 
       // No --url and no board: the CLI has to start one.
-      const created = run(["project", "create", "--id", "demo", "--name", "Demo", "--workspace-path", dataDir, "--json"]);
+      const created = run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
       assert.equal(created.status, 0, `${created.stderr}\n${created.stdout}`);
       assert.equal(JSON.parse(created.stdout).data.project.id, "demo");
 

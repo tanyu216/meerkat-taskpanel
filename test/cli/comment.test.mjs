@@ -16,7 +16,7 @@ after(cleanupTempDirs);
 describe("cli/comment", () => {
   it("appends a comment and lists it back", async () => {
     await withCli(async ({ run, dataDir }) => {
-      run(["project", "create", "--id", "demo", "--name", "Demo", "--workspace-path", dataDir, "--json"]);
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
       run(["issue", "create", "--project", "demo", "--title", "T", "--json"]);
 
       const added = dataOf(run(["comment", "add", "DEMO-0001", "--body", "looks good", "--kind", "decision", "--json"]));
@@ -36,7 +36,7 @@ describe("cli/comment", () => {
 
   it("reads the body from stdin, and records the agent that wrote it", async () => {
     await withCli(async ({ run, dataDir }) => {
-      run(["project", "create", "--id", "demo", "--name", "Demo", "--workspace-path", dataDir, "--json"]);
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
       run(["issue", "create", "--project", "demo", "--title", "T", "--json"]);
 
       const added = dataOf(
@@ -56,7 +56,7 @@ describe("cli/comment", () => {
 
   it("refuses an unknown kind, and has no edit path", async () => {
     await withCli(async ({ run, dataDir }) => {
-      run(["project", "create", "--id", "demo", "--name", "Demo", "--workspace-path", dataDir, "--json"]);
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
       run(["issue", "create", "--project", "demo", "--title", "T", "--json"]);
 
       const bad = run(["comment", "add", "DEMO-0001", "--body", "x", "--kind", "nonsense", "--json"]);
@@ -73,7 +73,7 @@ describe("cli/comment", () => {
 describe("cli/comment — reading the body from a file", () => {
   it("reads --file from a real path, and refuses a body that is neither", async () => {
     await withCli(async ({ run, dataDir }) => {
-      run(["project", "create", "--id", "demo", "--name", "Demo", "--workspace-path", dataDir, "--json"]);
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
       run(["issue", "create", "--project", "demo", "--title", "T", "--json"]);
 
       const fs = await import("node:fs");

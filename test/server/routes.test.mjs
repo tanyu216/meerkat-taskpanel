@@ -84,12 +84,11 @@ describe("server/routes — projects", () => {
       await call("POST", "/api/v1/projects", {
         id: "demo",
         name: "Demo",
-        workspace_path: "/tmp/demo",
         meta: { team: "panel" },
       }),
     );
     assert.equal(created.project.id, "demo");
-    assert.equal(created.project.workspace_path, "/tmp/demo");
+    assert.equal(Object.hasOwn(created.project, "workspace_path"), false, "the board holds no directory");
     assert.deepEqual(created.project.meta, { team: "panel" });
 
     const listed = dataOf(await call("GET", "/api/v1/projects"));
@@ -106,16 +105,15 @@ describe("server/routes — projects", () => {
     assert.equal(one.project.readme, "# Demo\n");
   });
 
-  it("answers `current` with the owning project, or a synthetic local one", async () => {
-    const hit = dataOf(await call("GET", `/api/v1/projects/current?path=${encodeURIComponent("/tmp/demo/sub")}`));
-    assert.equal(hit.matched, true);
-    assert.equal(hit.project.id, "demo");
-
-    const miss = dataOf(await call("GET", `/api/v1/projects/current?path=${encodeURIComponent("/elsewhere")}`));
-    assert.equal(miss.matched, false);
-    assert.equal(miss.project.id, "local");
-    assert.equal(miss.project.workspace_path, "/elsewhere");
-    assert.match(miss.hint.create, /project create --id local/);
+  it("has no `current` endpoint — the directory resolver is gone (O3)", async () => {
+    // `/api/v1/projects/current` is no longer a route, so the request falls
+    // through to `/:id`. There is no project called `current`, and the old
+    // resolver answer (`matched` / `hint`) is gone.
+    const gone = await call("GET", `/api/v1/projects/current?path=${encodeURIComponent("/tmp/demo/sub")}`);
+    assert.equal(gone.status, 200);
+    const data = dataOf(gone);
+    assert.equal(data.project, null, "`current` reads as an unknown project id now");
+    assert.equal(Object.hasOwn(data, "matched"), false, "the resolver's shape is gone");
 
     // A read must not have created anything.
     const listed = dataOf(await call("GET", "/api/v1/projects"));
@@ -377,22 +375,21 @@ describe("server/routes — the edges a happy path never reaches", () => {
     assert.equal(dataOf(await call("GET", "/api/v1/projects?include_archived=1")).projects.length >= 1, true);
   });
 
-  it("patches a project's path, labels and readme, and 404s an unknown one", async () => {
+  it("patches a project's labels and readme, and 404s an unknown one", async () => {
     const patched = dataOf(
       await call("PATCH", "/api/v1/projects/demo", {
-        workspace_path: "/tmp/demo2",
         labels: ["a"],
         readme: "hello",
       }),
     );
-    assert.equal(patched.project.workspace_path, "/tmp/demo2");
     assert.deepEqual(patched.project.labels, ["a"]);
+    assert.equal(patched.project.readme, "hello");
 
     const missing = await call("PATCH", "/api/v1/projects/nope", { name: "X" });
     assert.equal(missing.status, 404);
     assert.equal(missing.body.error.code, "NOT_FOUND");
 
-    const conflict = await call("POST", "/api/v1/projects", { id: "demo", name: "Dup", workspace_path: "/tmp/demo3" });
+    const conflict = await call("POST", "/api/v1/projects", { id: "demo", name: "Dup" });
     assert.equal(conflict.status, 409);
     assert.equal(conflict.body.error.code, "ID_CONFLICT");
   });
@@ -627,7 +624,7 @@ describe("server/routes — a session registered from headers only", () => {
 // after them (M3fix D1).
 describe("server/routes — task_create cannot enter a delivery state (M3fix D1)", () => {
   before(async () => {
-    dataOf(await call("POST", "/api/v1/projects", { id: "cg", name: "Create Gate", workspace_path: "/tmp/cg" }));
+    dataOf(await call("POST", "/api/v1/projects", { id: "cg", name: "Create Gate" }));
   });
 
   it("refuses in_review/done exactly as a reportless move is refused", async () => {
@@ -659,7 +656,7 @@ describe("server/routes — task_create cannot enter a delivery state (M3fix D1)
 // that the earlier global-list assertions must not see.
 describe("server/routes — creation idempotency (T-20261009-175500)", () => {
   before(async () => {
-    dataOf(await call("POST", "/api/v1/projects", { id: "idem", name: "Idem", workspace_path: "/tmp/idem" }));
+    dataOf(await call("POST", "/api/v1/projects", { id: "idem", name: "Idem" }));
   });
 
   it("re-uses the existing task for a repeated idem key (HTTP 200, same id)", async () => {
@@ -687,7 +684,7 @@ describe("server/routes — creation idempotency (T-20261009-175500)", () => {
 // project and tasks that the earlier global-list assertions must not see.
 describe("server/routes — candidates (the poll read)", () => {
   it("lists claimable cards and excludes unmet deps and epics", async () => {
-    await call("POST", "/api/v1/projects", { id: "cand", name: "Cand", workspace_path: "/tmp/cand" });
+    await call("POST", "/api/v1/projects", { id: "cand", name: "Cand" });
 
     // `allow_dup` keeps the four cards distinct: they share one assignee, so the
     // creation idempotency key would otherwise converge them onto one card.
@@ -718,7 +715,9 @@ describe("server/routes — candidates (the poll read)", () => {
     );
     assert.equal(candidates.candidates[0].status, "todo");
     assert.equal(candidates.candidates[0].project, "cand");
-    assert.equal(candidates.candidates[0].target, "/tmp/cand");
+    // `target` no longer mirrors a project's directory (the board holds none);
+    // it stays in the projection but is empty for a card that carries none.
+    assert.equal(candidates.candidates[0].target, "");
     assert.equal(candidates.candidates[0].reason, "ready");
   });
 
@@ -747,7 +746,7 @@ describe("server/routes — claim enforces the assignee (T-20261009-230500)", ()
     }).then(dataOf);
 
   before(async () => {
-    dataOf(await call("POST", "/api/v1/projects", { id: "claim", name: "Claim", workspace_path: "/tmp/claim" }));
+    dataOf(await call("POST", "/api/v1/projects", { id: "claim", name: "Claim" }));
   });
 
   it("lets the assignee move their card to in_progress (200)", async () => {

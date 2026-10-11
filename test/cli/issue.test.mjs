@@ -15,7 +15,7 @@ after(cleanupTempDirs);
 /** A board with one project. */
 async function board(fn) {
   return withCli(async (ctx) => {
-    ctx.run(["project", "create", "--id", "demo", "--name", "Demo", "--workspace-path", ctx.dataDir, "--json"]);
+    ctx.run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
     return fn(ctx);
   });
 }
