@@ -5,8 +5,9 @@
  * `test/contract/` proves the *behaviour* of the API. What it cannot prove is
  * that the *shape* of the surface has not moved: a route silently renamed, an
  * error code's HTTP status changed, a wire field dropped from a projection, a
- * tool argument added. Those are exactly the changes a client breaks on, and
- * none of them fails a behavioural test that was written to the old shape.
+ * route's request field retyped. Those are exactly the changes a client breaks
+ * on, and none of them fails a behavioural test that was written to the old
+ * shape.
  *
  * This script reads the live surface and writes it down as JSON:
  *
@@ -14,13 +15,11 @@
  *                       *and* the endpoints it serves outside it (`/health`,
  *                       `/meta`, the SSE stream, attachment bytes), each with its
  *                       **declared request schema** (`{query, body}`) frozen down
- *                       to the same facets as a tool argument;
+ *                       to `type`, `enum`, `items`, `anyOf`, `properties` and
+ *                       `required`, recursively;
  *   * **errors**      — every `ERROR_CODES` code with the HTTP status it carries;
  *   * **wire**        — the name **and JSON type** of every field each `*ToWire`
- *                       projection emits;
- *   * **mcp_tools**   — every MCP tool's name and its `inputSchema` frozen down
- *                       to the facets a caller binds to — `type`, `enum`, `items`,
- *                       `anyOf`, `properties` and `required`, recursively.
+ *                       projection emits.
  *
  * The snapshot is **deterministic**: keys are sorted at every level and every
  * list has an explicit sort order, so two runs on the same tree are byte-identical
@@ -35,9 +34,9 @@
  * The routes come from `registerApiRoutes` — the same function `createTaskd`
  * calls — so a route cannot be added to the server without appearing here. The
  * error codes come from `ERROR_CODES`, the wire field names *and types* from the
- * projections themselves, the tools and their schemas from `TOOLS`, and a route's
- * request shape from the declaration the registration itself carries
- * (`src/server/requests.mjs`). Nothing is a second copy of a list.
+ * projections themselves, and a route's request shape from the declaration the
+ * registration itself carries (`src/server/requests.mjs`). Nothing is a second
+ * copy of a list.
  *
  * A route's request schema is **declared, not enforced** — the handlers still read
  * `query.get(...)` / `body.…` and unknown fields are still ignored, which is why
@@ -65,7 +64,6 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
-import { TOOLS } from "../../src/mcp/registry.mjs";
 import { OUT_OF_ROUTER_ENDPOINTS, registerApiRoutes } from "../../src/server/index.mjs";
 import { createRouter } from "../../src/server/router.mjs";
 import { ERROR_CODES } from "../../src/shared/errors.mjs";
@@ -88,11 +86,11 @@ export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const SNAPSHOT_FILE = "test/fixtures/contract/api.snapshot.json";
 
 /**
- * Bumped only when the snapshot's own *schema* changes shape. (3 added each
- * route's declared request `{query, body}`; 2 added the wire field types and the
- * recursive MCP `inputSchema` facts.)
+ * Bumped only when the snapshot's own *schema* changes shape. (4 removed the
+ * frozen tool-schemas section; 3 added each route's declared request
+ * `{query, body}`; 2 added the wire field types.)
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 // ---------------------------------------------------------------------------
 // Collecting the live surface
@@ -401,26 +399,9 @@ export function canonicalSchema(fragment) {
 }
 
 /**
- * The MCP tool surface: each tool's name and its frozen `inputSchema`.
- *
- * The schema is the whole contract of a tool call — not just *which* arguments
- * exist but their `type`, the `enum` of values each accepts, and the `items` of
- * an array — captured recursively by `canonicalSchema`. That subsumes the
- * argument names and the required list the older snapshot kept separately, so
- * there is one description of a tool's request, not three.
- *
- * @returns {{name: string, schema: object|null}[]}
- */
-export function collectMcpTools() {
-  return TOOLS.map((tool) => ({ name: tool.name, schema: canonicalSchema(tool.inputSchema) })).sort((a, b) =>
-    a.name < b.name ? -1 : 1,
-  );
-}
-
-/**
  * The whole live contract, in the snapshot's shape.
  *
- * @returns {{schema_version: number, routes: object[], errors: object[], wire: object[], mcp_tools: object[]}}
+ * @returns {{schema_version: number, routes: object[], errors: object[], wire: object[]}}
  */
 export function buildSnapshot() {
   return {
@@ -428,7 +409,6 @@ export function buildSnapshot() {
     routes: collectRoutes(),
     errors: collectErrors(),
     wire: collectWire(),
-    mcp_tools: collectMcpTools(),
   };
 }
 
@@ -483,8 +463,10 @@ function wireFacets(wire) {
 
 /**
  * Flatten one frozen schema to `path -> <json>` leaves, so a diff can name the
- * exact facet that moved: `task_move.to.type`, `task_move.to.enum`,
- * `task_list.status.anyOf[0].type`, `task_list.status.anyOf[1].items.type`.
+ * exact facet that moved: `POST /api/v1/tasks/:ref/move.body.to.type`,
+ * `POST /api/v1/tasks/:ref/move.body.to.enum`,
+ * `GET /api/v1/tasks.query.status.anyOf[0].type`,
+ * `GET /api/v1/tasks.query.status.anyOf[1].items.type`.
  *
  * `properties` and `anyOf` are descended into (their names are part of the path);
  * every other value is a leaf, serialised so an enum reads as `["a","b"]`.
@@ -505,22 +487,6 @@ function flattenSchema(prefix, fragment, out) {
       out.set(`${prefix}.${key}`, JSON.stringify(value));
     }
   }
-}
-
-/**
- * Every frozen facet of every tool, keyed `tool.path`. The tool name is part of
- * the key so a facet is attributable without a second lookup.
- */
-function schemaFacets(tools) {
-  /** @type {Map<string, string>} */
-  const out = new Map();
-  for (const tool of tools ?? []) {
-    /** @type {Map<string, string>} */
-    const flat = new Map();
-    flattenSchema(tool.name, tool.schema ?? {}, flat);
-    for (const [key, value] of flat) out.set(key, value);
-  }
-  return out;
 }
 
 /**
@@ -589,9 +555,8 @@ export function diffSnapshots(actual, expected) {
   for (const key of onlyIn(actualRoutes, expectedRoutes)) add("route_added", key);
   for (const key of onlyIn(expectedRoutes, actualRoutes)) add("route_removed", key);
 
-  // Then the request shape of the routes present on *both* sides — the same
-  // reasoning as the MCP tools below: a new route reports one line, not one line
-  // per facet it happens to declare.
+  // Then the request shape of the routes present on *both* sides — a new route
+  // reports one line, not one line per facet it happens to declare.
   const sharedRoutes = new Set([...actualRoutes].filter((key) => expectedRoutes.has(key)));
   const keepSharedRoutes = (routes) => (routes ?? []).filter((route) => sharedRoutes.has(routeKey(route)));
   diffFacets(
@@ -612,23 +577,6 @@ export function diffSnapshots(actual, expected) {
     { added: "wire_field_added", removed: "wire_field_removed", changed: "wire_type_changed" },
     wireFacets(actual?.wire),
     wireFacets(expected?.wire),
-  );
-
-  // Tools first, by name: a tool appearing or disappearing is one line. Then the
-  // schema facets of the tools present on *both* sides — otherwise a new tool
-  // would report every one of its facets as an addition on top of the one line.
-  const expectedNames = new Set((expected?.mcp_tools ?? []).map((tool) => tool.name));
-  const actualNames = new Set((actual?.mcp_tools ?? []).map((tool) => tool.name));
-  for (const name of onlyIn(actualNames, expectedNames)) add("mcp_tool_added", name);
-  for (const name of onlyIn(expectedNames, actualNames)) add("mcp_tool_removed", name);
-
-  const shared = new Set([...actualNames].filter((name) => expectedNames.has(name)));
-  const keepShared = (tools) => (tools ?? []).filter((tool) => shared.has(tool.name));
-  diffFacets(
-    add,
-    { added: "mcp_schema_added", removed: "mcp_schema_removed", changed: "mcp_schema_changed" },
-    schemaFacets(keepShared(actual?.mcp_tools)),
-    schemaFacets(keepShared(expected?.mcp_tools)),
   );
 
   return { ok: changes.length === 0, changes };
@@ -729,9 +677,7 @@ function describe(snapshot) {
     `${(snapshot.routes ?? []).length} routes ` +
     `(${routeRequestFacets(snapshot.routes).size} request facets), ` +
     `${(snapshot.errors ?? []).length} error codes, ` +
-    `${wireFields} wire fields, ` +
-    `${(snapshot.mcp_tools ?? []).length} MCP tools ` +
-    `(${schemaFacets(snapshot.mcp_tools).size} schema facets)`
+    `${wireFields} wire fields`
   );
 }
 

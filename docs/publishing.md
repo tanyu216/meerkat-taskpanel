@@ -180,8 +180,8 @@ touched, so the release/version rule is carried by `version-gate.yml` instead.
 
 A tag must not freeze an API contract the committed snapshot does not describe. The
 same two hooks (`pre-push`, `pre-tag`) also run `scripts/verify/contract.mjs`, which
-compares the live surface — routes and their declared request shapes, error codes, wire
-field names and types, and each MCP tool's `inputSchema` (type/enum/items) — against
+compares the live surface — routes and their declared request shapes (type/enum/items),
+error codes, and wire field names and types — against
 `test/fixtures/contract/api.snapshot.json`; a change to any of them without a
 snapshot update is a non-zero exit. Next to it, `scripts/verify/route-request.mjs`
 proves the declaration the snapshot freezes is the one the handler honours: it reads

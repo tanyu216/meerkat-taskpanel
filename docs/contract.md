@@ -2,8 +2,8 @@
 
 `test/contract/` proves the API *behaves*. It cannot prove the API *still looks
 the same*: a route quietly renamed, a route's request field dropped or retyped,
-an error code's HTTP status moved, a wire field dropped or retyped, an MCP
-argument added or its type or allowed values changed. Those are precisely the
+an error code's HTTP status moved, a wire field dropped or retyped, a request
+field added or its type or allowed values changed. Those are precisely the
 changes that break a client, and none of them fails a behavioural test that was
 written against the old shape.
 
@@ -19,16 +19,14 @@ by an explicit snapshot update; drift is a failure, not a warning.
 | `routes` | `registerApiRoutes` in `src/server/index.mjs` (the same function `createTaskd` calls), plus the endpoints served outside the JSON router (`/health`, `/meta`, `/api/v1/events`, attachment bytes) | `METHOD /path`, and the route's **declared request schema** (`{query, body}`) down to `type`, `enum`, `items`, `anyOf`, `properties`, `required` and `additionalProperties` — recursively |
 | `errors` | `ERROR_CODES` in `src/shared/errors.mjs` | the code and its HTTP status |
 | `wire` | every `*ToWire` projection in `src/shared/wire.mjs` | the name **and JSON type** of every field each shape emits, including the nested `task.assignee` / `task.reporter` / `task.report_waiver` |
-| `mcp_tools` | `TOOLS` in `src/mcp/registry.mjs` | each tool's name and its `inputSchema` down to `type`, `enum`, `items`, `anyOf`, `properties`, `required` and `additionalProperties` — recursively |
 
 Nothing is a second copy of a list. The routes are *enumerated* by registering
 them against a stub router (registration only records `{method, pattern, handler,
 request}` — no handler runs), the error codes are read from `ERROR_CODES`, the
-wire names and types from the projections themselves, the tools and their
-schemas from `TOOLS`, and each route's request shape from the declaration that
-same registration carries. A route therefore cannot be added to the server
-without appearing in the snapshot, nor can one of its request fields move
-without the snapshot saying so.
+wire names and types from the projections themselves, and each route's request
+shape from the declaration that same registration carries. A route therefore
+cannot be added to the server without appearing in the snapshot, nor can one of
+its request fields move without the snapshot saying so.
 
 The wire **type** is read off a probe projection: each `*ToWire` function is
 called with one subject that populates every field it reads, so the emitted type
@@ -38,9 +36,9 @@ string where it emitted a number moves the snapshot; an empty probe would have
 frozen "everything is `null`" and nothing more.
 
 Bumping the snapshot's own layout (not a section) bumps `schema_version`. It is
-**3** as of the route request shapes described below; **2** added the wire field
-types and the recursive MCP `inputSchema` facts; **1** was the original
-routes/errors/wire-names/MCP-arguments snapshot.
+**4** as of the route request shapes described below; **3** added the route
+request shapes and **2** added the wire field types; **1** was the original
+routes/errors/wire-names snapshot.
 
 ## What is deliberately *not* frozen
 
@@ -58,12 +56,11 @@ body}` — as a third argument (`src/server/requests.mjs` owns the vocabulary):
 router.post("/api/v1/tasks/:ref/move", handler, { body: MOVE_BODY });
 ```
 
-The snapshot freezes it exactly as it freezes a tool's `inputSchema`: each route
-gains `request.query` / `request.body`, canonicalised to `type`, `enum`, `items`,
-`anyOf`, `properties`, `required` and `additionalProperties`, and a facet of it
-can be diffed by name (`POST /api/v1/tasks/:ref/move.body.to.enum`). A `null`
-side is itself a fact worth freezing: *this* route takes no body, *that* one
-takes no query.
+The snapshot freezes it down to `type`, `enum`, `items`, `anyOf`, `properties`,
+`required` and `additionalProperties`: each route gains `request.query` /
+`request.body`, and a facet of it can be diffed by name
+(`POST /api/v1/tasks/:ref/move.body.to.enum`). A `null` side is itself a fact
+worth freezing: *this* route takes no body, *that* one takes no query.
 
 Three things follow, and the third is the point:
 
@@ -200,11 +197,10 @@ is the pull-request-time authority. See
    ```
 
    A `route_added` / `route_request_changed` / `error_removed` /
-   `wire_field_added` / `wire_type_changed` / `mcp_schema_changed` /
-   `mcp_tool_added` line is the change, spelt out. The `mcp_schema_*` and
-   `route_request_*` lines name the exact facet (`task_move.to.enum`,
-   `GET /api/v1/tasks.query.limit.type`, not just the tool or the route), so a
-   widened status vocabulary reads as the one value that moved.
+   `wire_field_added` / `wire_type_changed` line is the change, spelt out. The
+   `route_request_*` lines name the exact facet
+   (`GET /api/v1/tasks.query.limit.type`, not just the route), so a widened
+   status vocabulary reads as the one value that moved.
 3. Confirm the declaration still equals the handler's reads:
 
    ```bash
@@ -228,5 +224,4 @@ reached a client.
 
 - [`../src/core/README.md`](../src/core/README.md) — the domain rules the error
   codes name.
-- [`../src/mcp/README.md`](../src/mcp/README.md) — the 18-tool MCP surface.
 - [`publishing.md`](publishing.md) — the release flow the tag-time gates sit in.

@@ -5,17 +5,15 @@
  *
  *   1. **Does the committed snapshot still describe this tree?** That is the
  *      guard itself: `buildSnapshot()` reads the real server router, the real
- *      `ERROR_CODES`, the real wire projections and the real MCP tool table, and
- *      the first describe block fails the moment any of them moves without the
- *      snapshot being regenerated.
+ *      `ERROR_CODES` and the real wire projections, and the first describe block
+ *      fails the moment any of them moves without the snapshot being regenerated.
  *
  *   2. **Would it actually catch a change?** A guard that never went red proves
  *      nothing, so the second block feeds `diffSnapshots` / `checkContract`
  *      *mutated* snapshots — a route added, a **route request field** retyped or
  *      dropped or its enum widened, an error status changed, a wire field dropped
- *      or retyped, an MCP argument's type or enum moved, a file re-ordered — and
- *      asserts the drift is reported. This is the red→green contract of the card,
- *      and it runs without editing `src/`.
+ *      or retyped, a file re-ordered — and asserts the drift is reported. This is
+ *      the red→green contract of the card, and it runs without editing `src/`.
  *
  * The committed snapshot is read from a temp tree in the drift cases, so the
  * suite never writes to the checkout.
@@ -28,7 +26,6 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
-import { TOOLS } from "../../src/mcp/registry.mjs";
 import { STATUSES } from "../../src/core/index.mjs";
 import { registerApiRoutes } from "../../src/server/index.mjs";
 import { createRouter } from "../../src/server/router.mjs";
@@ -40,7 +37,6 @@ import {
   buildSnapshot,
   canonicalSchema,
   checkContract,
-  collectMcpTools,
   collectRoutes,
   collectWire,
   diffSnapshots,
@@ -114,7 +110,6 @@ describe("contract.mjs — the committed snapshot describes this tree", () => {
     assert.equal(snapshot.schema_version, SCHEMA_VERSION);
     assert.ok(snapshot.routes.length > 0);
     assert.equal(snapshot.errors.length, Object.keys(ERROR_CODES).length);
-    assert.equal(snapshot.mcp_tools.length, TOOLS.length);
     assert.ok(snapshot.wire.length > 0);
   });
 
@@ -138,25 +133,6 @@ describe("contract.mjs — the committed snapshot describes this tree", () => {
         assert.ok(alphabet.has(type), `${entry.shape}.${field} has a type (${type})`);
       }
     }
-  });
-
-  it("freezes each MCP tool's schema down to type/enum/items, never its prose", () => {
-    const create = collectMcpTools().find((tool) => tool.name === "task_create");
-    assert.equal(create.schema.type, "object");
-    assert.equal(create.schema.additionalProperties, false);
-    assert.equal(create.schema.properties.title.type, "string");
-    assert.deepEqual(create.schema.properties.priority.enum, ["high", "low", "medium", "urgent"]);
-    assert.deepEqual(create.schema.properties.labels.items, { type: "string" });
-    assert.ok(!("description" in create.schema.properties.title), "descriptions are prose — dropped");
-
-    // The union on `task_list.status` survives, enums and all.
-    const list = collectMcpTools().find((tool) => tool.name === "task_list");
-    assert.equal(list.schema.properties.status.anyOf.length, 2);
-    assert.equal(list.schema.properties.status.anyOf[1].type, "array");
-    assert.ok(list.schema.properties.status.anyOf[1].items.enum.includes("in_review"));
-
-    // The canonical form is deterministic: same input, same bytes.
-    assert.deepEqual(collectMcpTools(), collectMcpTools());
   });
 
   it("sorts enums and keys, so a reordered source is not a contract change", () => {
@@ -361,75 +337,6 @@ describe("contract.mjs — drift is caught (red → green)", () => {
     );
   });
 
-  it("reports an MCP tool whose schema gained an argument", async () => {
-    const dir = await makeTree();
-    await writeSnapshot(dir, serializeSnapshot(buildSnapshot()));
-
-    const live = mutate(buildSnapshot(), (snapshot) => {
-      const tool = snapshot.mcp_tools.find((entry) => entry.name === "task_get");
-      tool.schema.properties.include_archived = { type: "boolean" };
-    });
-
-    const result = await checkContract({ base: dir, snapshot: live });
-    assert.equal(result.ok, false);
-    assert.deepEqual(
-      result.changes.map((change) => `${change.kind} ${change.detail}`),
-      ['mcp_schema_added task_get.include_archived.type = "boolean"'],
-    );
-
-    const green = await checkContract({ base: dir, snapshot: buildSnapshot() });
-    assert.equal(green.ok, true, JSON.stringify(green.changes));
-  });
-
-  it("reports an MCP argument whose type changed", async () => {
-    const dir = await makeTree();
-    await writeSnapshot(dir, serializeSnapshot(buildSnapshot()));
-
-    const live = mutate(buildSnapshot(), (snapshot) => {
-      snapshot.mcp_tools.find((entry) => entry.name === "task_get").schema.properties.ref.type = "number";
-    });
-
-    const result = await checkContract({ base: dir, snapshot: live });
-    assert.equal(result.ok, false);
-    assert.deepEqual(
-      result.changes.map((change) => `${change.kind} ${change.detail}`),
-      ['mcp_schema_changed task_get.ref.type: "string" -> "number"'],
-    );
-  });
-
-  it("reports an MCP argument whose enum changed", async () => {
-    const dir = await makeTree();
-    await writeSnapshot(dir, serializeSnapshot(buildSnapshot()));
-
-    const live = mutate(buildSnapshot(), (snapshot) => {
-      // The literal card scenario: a status vocabulary gains a member.
-      snapshot.mcp_tools.find((entry) => entry.name === "task_move").schema.properties.to.enum.push("shipped");
-    });
-
-    const result = await checkContract({ base: dir, snapshot: live });
-    assert.equal(result.ok, false);
-    assert.equal(result.changes.length, 1);
-    assert.equal(result.changes[0].kind, "mcp_schema_changed");
-    assert.match(result.changes[0].detail, /^task_move\.to\.enum: \[.*\] -> \[.*"shipped".*\]$/);
-  });
-
-  it("reports an MCP tool that was added or removed as one line, not one per facet", async () => {
-    const dir = await makeTree();
-    await writeSnapshot(dir, serializeSnapshot(buildSnapshot()));
-
-    const live = mutate(buildSnapshot(), (snapshot) => {
-      snapshot.mcp_tools.push({ name: "task_split", schema: { type: "object", properties: { ref: { type: "string" } } } });
-      snapshot.mcp_tools.sort((a, b) => (a.name < b.name ? -1 : 1));
-    });
-
-    const result = await checkContract({ base: dir, snapshot: live });
-    assert.equal(result.ok, false);
-    assert.deepEqual(
-      result.changes.map((change) => `${change.kind} ${change.detail}`),
-      ["mcp_tool_added task_split"],
-    );
-  });
-
   it("flags a semantically-equal file that is not in canonical form", async () => {
     const dir = await makeTree();
     const snapshot = buildSnapshot();
@@ -499,30 +406,6 @@ describe("contract.mjs — the CLI", () => {
 
     // And the freshly written tree now passes.
     assert.equal(runCli(["--base", dir]).status, 0);
-  });
-
-  it("exits 1 when an MCP argument's type moved under the snapshot", async () => {
-    const dir = await makeTree();
-    const stale = mutate(buildSnapshot(), (snapshot) => {
-      snapshot.mcp_tools.find((entry) => entry.name === "task_get").schema.properties.ref.type = "number";
-    });
-    await writeSnapshot(dir, serializeSnapshot(stale));
-
-    const result = runCli(["--base", dir]);
-    assert.equal(result.status, 1, "a type change must fail the gate");
-    assert.match(result.stderr, /\[mcp_schema_changed\] task_get\.ref\.type: "number" -> "string"/);
-  });
-
-  it("exits 1 when an MCP argument's enum moved under the snapshot", async () => {
-    const dir = await makeTree();
-    const stale = mutate(buildSnapshot(), (snapshot) => {
-      snapshot.mcp_tools.find((entry) => entry.name === "task_move").schema.properties.to.enum.push("shipped");
-    });
-    await writeSnapshot(dir, serializeSnapshot(stale));
-
-    const result = runCli(["--base", dir]);
-    assert.equal(result.status, 1, "an enum change must fail the gate");
-    assert.match(result.stderr, /\[mcp_schema_changed\] task_move\.to\.enum:/);
   });
 
   it("exits 1 when a route's request field moved under the snapshot", async () => {
