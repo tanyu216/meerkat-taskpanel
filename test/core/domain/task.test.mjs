@@ -81,7 +81,7 @@ describe("domain/task — create", () => {
     assert.throws(() => create({ title: 42 }), (e) => e.details.field === "title");
     assert.throws(() => create({ status: "ready" }), (e) => {
       assert.equal(e.details.field, "status");
-      assert.deepEqual(e.details.allowed, ["backlog", "todo", "in_progress", "in_review", "blocked", "done", "canceled"]);
+      assert.deepEqual(e.details.allowed, ["backlog", "todo", "in_progress", "in_review", "blocked", "done", "canceled", "awaiting"]);
       return true;
     });
     assert.throws(() => create({ kind: "story" }), (e) => e.details.field === "kind");

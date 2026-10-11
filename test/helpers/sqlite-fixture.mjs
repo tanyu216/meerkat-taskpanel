@@ -151,14 +151,20 @@ export function insertTask(db, overrides = {}) {
     status_changed_at: TS,
     ...overrides,
   };
-  db.prepare(
-    `INSERT INTO tasks(id, identifier, project_id, title, description, status, priority, kind,
-                       labels, sort_order, assignee_kind, assignee_id, reporter_id, creator_kind, creator_id,
-                       claimed_by, claimed_at, heartbeat_at, blocked_at, status_changed_at,
-                       archived_at, source_path, source_hash, version, idem, created_at, updated_at,
-                       awaiting_reason)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
+  // `awaiting_reason` arrives with 0013, and the migration tests deliberately
+  // build boards that stop short of it — so the column is only named when this
+  // board actually has it. Asking the schema (rather than a flag the caller has
+  // to remember) is what keeps an insert from failing on a legacy board.
+  const columns = new Set(
+    db.prepare("SELECT name FROM pragma_table_info('tasks')").all().map((r) => r.name),
+  );
+  const baseColumns = [
+    "id", "identifier", "project_id", "title", "description", "status", "priority", "kind",
+    "labels", "sort_order", "assignee_kind", "assignee_id", "reporter_id", "creator_kind", "creator_id",
+    "claimed_by", "claimed_at", "heartbeat_at", "blocked_at", "status_changed_at",
+    "archived_at", "source_path", "source_hash", "version", "idem", "created_at", "updated_at",
+  ];
+  const values = [
     row.id,
     row.identifier,
     row.project_id,
@@ -186,8 +192,14 @@ export function insertTask(db, overrides = {}) {
     row.idem ?? null,
     row.created_at,
     row.updated_at,
-    row.awaiting_reason ?? null,
-  );
+  ];
+  if (columns.has("awaiting_reason")) {
+    baseColumns.push("awaiting_reason");
+    values.push(row.awaiting_reason ?? null);
+  }
+  db.prepare(
+    `INSERT INTO tasks(${baseColumns.join(", ")}) VALUES (${baseColumns.map(() => "?").join(", ")})`,
+  ).run(...values);
   return row.id;
 }
 

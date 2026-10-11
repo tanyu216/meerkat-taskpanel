@@ -257,17 +257,20 @@ describe("contract/state-machine — the `awaiting` invariants (M1)", () => {
   });
 
   it("reaches done only through in_review — exhaustively, over the whole graph", () => {
-    // Not a spot check: every status is expanded, and the reachable set is
-    // accumulated **without ever stepping through `in_review`**. `done` must
-    // never appear in it, for any starting point. This is the "no delivery
-    // without review" invariant stated as reachability rather than as a list of
-    // edges, so a future status cannot open a side door.
+    // Not a spot check: from every status, the whole reachable set is expanded
+    // **without ever stepping through `in_review`**, and `done` must never be in
+    // it. This is "no delivery without review" stated as reachability rather
+    // than as a list of edges, so a future status cannot open a side door.
+    //
+    // `in_review` itself is exempt from the start set — it *is* the review, and
+    // `in_review → done` is precisely the exit the invariant is built on.
     for (const start of STATUSES) {
+      if (start === "in_review") continue;
       const seen = new Set();
       const queue = [...allowedTargets(start)];
       while (queue.length > 0) {
         const next = queue.shift();
-        if (next === "in_review" || next === start || seen.has(next)) continue;
+        if (next === "in_review" || seen.has(next)) continue;
         seen.add(next);
         queue.push(...allowedTargets(next));
       }
