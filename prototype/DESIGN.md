@@ -39,9 +39,14 @@
   dashed ring + semantic platform badge, same palette.
 - The mark is **Sentinel Watch** — three upright meerkats of a mob rising left-low
   to right-high, the tallest on duty and carrying the brand line, with one watch
-  signal floating clear above it. It is drawn from `design/brand/BRAND.md` §5,
-  reads its two fills from `--color-td-ink` and `--color-td-accent`, and appears
-  in the top bar, in the large empty state and as the favicon.
+  signal floating clear above it. Its eyes and mouth are cut as **negative-space
+  knockout** (candidate A «Pin · 克制»), so the mark still restores to one colour in
+  the mono state and the outer silhouette never moves; the watch signal stays outside
+  the mask and is always solid. The face reads clearly from 128px up, is only just
+  perceptible at 48–96px, and degenerates to the plain V2 silhouette by 32px. It is
+  drawn from `design/brand/BRAND.md` §5, reads its two fills from `--color-td-ink`
+  and `--color-td-accent`, and appears in the top bar, in the large empty state and
+  as the favicon.
 
 **Anti-patterns (a presence is a fail):** gradient buttons · full-screenshot pill
 radii · coloured section blocks · multiple accents · shadow-floating cards ·

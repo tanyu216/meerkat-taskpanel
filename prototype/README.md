@@ -258,6 +258,25 @@ language switch, and the wrap is now kept as reviewed rather than re-tuned (DESI
 | `47-detail-label-remove.png` | **R5 fix** — a chip's `×` pressed: the chip is gone, the row falls back to the remaining labels |
 | `48-detail-label-narrow-760.png` | **R5 fix** — the same control with the drawer full-width at 760px: no overflow |
 
+**V2 logo A recapture (face knockout):** the Sentinel Watch mark gained the candidate-A
+«Pin · 克制» face — eyes and mouth cut as negative space by an inline `<mask>`, so the
+silhouette does not move and no colour is added. The mark sits in the top bar of nearly
+every frame, so **the whole set was recaptured** again; leaving a frame from before the
+change would show a product that no longer exists. All **48** frames were re-shot at the
+same geometry (device-scale-factor 2, viewports 1512×950 / 2600×1200 / 1240×900 / 980×900
+/ 760×900 / 500×900), with transitions disabled and no transient toast, through the real
+handlers, under the same frame names — **no frame was added or removed**. **33 frames
+moved.** The **15** that come out byte-identical are exactly the ones that never frame the
+top bar: the create-dialog clips (`10`, `23`, `26`, `39`–`42`, `44`), the drawer-label
+clips (`43`, `45`–`48`), the projects-list clip (`31`) and the footer close-up (`38`).
+Each moved frame differs inside the top-bar mark's own box and nowhere else — a 25 × 20
+device-pixel patch at `(29,48)` at 980px and wider, at `(21,40)` at 760px and below —
+with two explained exceptions: `09-no-results` also carries the 28px mark in the empty
+state, and `18-access-token-revealed` shows a token generated from `Date.now()`, so that
+one frame differs between any two runs. The face is sub-pixel at the favicon sizes, so
+`favicon-16`/`favicon-32` stay the plain V2 silhouette — as declared in `BRAND.md` §5,
+*Size behaviour*.
+
 **Sentinel Watch recapture:** the whole set was re-shot onto the current build, because
 two changes had landed after the last capture pass and the frames still showed the
 product before them — the brand mark (the v2 **Sentinel Watch**, `BRAND.md` §5) and the
