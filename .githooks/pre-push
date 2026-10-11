@@ -4,7 +4,7 @@
 # Three gates, all offline and Node-builtins-only:
 #
 #   1. the API contract snapshot — the live surface (routes + error codes + wire
-#      fields + MCP tools) must match `test/fixtures/contract/api.snapshot.json`.
+#      fields) must match `test/fixtures/contract/api.snapshot.json`.
 #      A route rename, an error status change or a dropped wire field therefore
 #      has to be an explicit snapshot update (`scripts/verify/contract.mjs
 #      --update`), never a silent drift that ships to a client;

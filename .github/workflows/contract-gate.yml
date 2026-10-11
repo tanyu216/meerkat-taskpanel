@@ -3,10 +3,10 @@ name: contract-gate
 # The API contract gates.
 #
 # `test/fixtures/contract/api.snapshot.json` freezes the surface a client binds
-# to — routes, each route's declared request shape, error codes, wire fields and
-# MCP tool arguments. This job fails when the committed snapshot and the live
-# surface disagree, so a route rename, an error-status change or a dropped wire
-# field is caught at pull-request time instead of by a client after release.
+# to — routes, each route's declared request shape, error codes and wire fields.
+# This job fails when the committed snapshot and the live surface disagree, so a
+# route rename, an error-status change or a dropped wire field is caught at
+# pull-request time instead of by a client after release.
 #
 # The second gate is the pairing half: `scripts/verify/route-request.mjs` proves
 # each route's *declared* request schema equals what its handler actually reads
