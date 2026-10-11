@@ -287,7 +287,8 @@ codex plugin list                                  # → meerkat-taskpanel
   ([§Where a directory's project lives](#where-a-directorys-project-lives)).
 - **No timers of its own either.** Codex does not poll the board, so §1 is driven
   by the supervisor ([Waking & patrol](#waking--patrol-唤醒与巡检)) waking a
-  `codex exec` turn, or by a Codex app automation
+  `codex exec` turn — resumed with `codex exec resume <sid>` when the thread id
+  is known — or by a Codex app automation
   (`intervalMinutes` / `quotaAware` / `model` / `reasoningEffort`). The bundled
   `~/.codex/meerkat-taskpanel-claim.sh` trigger remains the minimal fallback.
 

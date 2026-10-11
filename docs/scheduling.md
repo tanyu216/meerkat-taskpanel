@@ -105,8 +105,13 @@ commands to read and deliver it, and the attribution flags
 
 Continuity across wakes comes from the **board**, not the prompt: the card's
 comments, reports and session record are durable, so a resumed conversation can
-re-attach to the same work. Claude additionally resumes a specific session with
-`claude -p … --resume <sid>` when a session id is known.
+re-attach to the same work. When a session id is known, the wake adds the host's
+own resume form: Claude resumes with `claude -p … --resume <sid>`, Codex with
+`codex exec resume <sid> <prompt>`, and Pi with `pi --print --session <sid>
+<prompt>`. These are the forms verified against the real CLIs (see
+`scripts/verify/host-resume-matrix.mjs`). opencode is **not** a supported
+`--host`, and its resume form was **not verified** (its CLI was not installed) —
+nothing is promised about it here.
 
 ## Where the supervisor runs
 
@@ -162,9 +167,12 @@ registry) is identical.
 | Host | Wake command | Trigger / scheduling | Continuity |
 |---|---|---|---|
 | **Claude Code** | `claude -p "<handoff>"` (headless) | external: launchd / systemd / cron running `supervisor.mjs --once`, or the supervisor's own loop | `claude -p … --resume <sid>` — resume the session that owns the card |
-| **Codex** | `codex exec "<handoff>"` | external: the same units, or Codex app automation (`intervalMinutes`, `quotaAware`, `model`, `reasoningEffort`) | the running thread; carry `$CODEX_THREAD_ID` as `--session-id` |
-| **Pi** | `pi run "<handoff>"` | external units + `wake-pi.sh`; if pi has no headless entry point, use the in-session trigger and let the supervisor own only scan/claim/patrol | whatever session id pi exposes; passed through the handoff |
+| **Codex** | `codex exec "<handoff>"` | external: the same units, or Codex app automation (`intervalMinutes`, `quotaAware`, `model`, `reasoningEffort`) | resume the thread with `codex exec resume <sid> <prompt>`; carry `$CODEX_THREAD_ID` as `--session-id` |
+| **Pi** | `pi --print "<handoff>"` | external units + `wake-pi.sh` | resume with `pi --print --session <sid> <prompt>`; pass the session id through the handoff |
 | **OpenClaw** | *n/a — no self-scheduler* | install **openclaw-team**; its `poll`/`patrol` automations are this design | the framework keeps the id stable across resumes |
+
+(opencode is not a supported `--host`; its headless and resume forms were **not
+verified** — its CLI was not installed — so this table promises nothing about it.)
 
 Installers write per-host units under `<host-dir>/scheduling/{launchd,systemd,cron}`
 and the wake glue at `<host-dir>/bin/wake-<host>.sh`, then **print the load
@@ -296,12 +304,14 @@ not just the exit code:
 | `session-start.sh` (claude) | calls `issue candidates --assignee <agent>`, prints candidates + the eight rules, and is **non-fatal** — a failing or missing shim still exits 0 with a PATH-independent fallback |
 | `meerkat-taskpanel-claim.sh` (codex) | claims the first candidate (`issue move <ref> in_progress`) when free; **skips** when a held card is mine (identity matched under the board's NFKC/whitespace/case rule); still claims when the held card is someone else's; exits 0 on an empty pool; exits 1 when the shim is missing |
 | `wake-claude.sh` | no prompt → exit 2; prompt → `claude -p <prompt>`; plus `--resume <sid>` when a session is given; **no** permission-bypass flag |
-| `wake-codex.sh` | no prompt → exit 2; prompt → `codex exec <prompt>` |
-| `wake-pi.sh` | no prompt → exit 2; prompt → `pi run <prompt>` |
+| `wake-codex.sh` | no prompt → exit 2; prompt → `codex exec <prompt>`; plus `codex exec resume <sid> <prompt>` when a session is given; **no** permission-bypass flag |
+| `wake-pi.sh` | no prompt → exit 2; prompt → `pi --print <prompt>`; plus `pi --print --session <sid> <prompt>` when a session is given |
 
 The wake assertions compare the recorded argv against `wakeCommand()` (the same pure
 function `scripts/supervisor.mjs` dispatches through), so the generated script and the
-supervisor can't drift apart.
+supervisor can't drift apart. The harness drives each wake script with a prompt only; the
+**resume** branches (the `<sid>` column above) are asserted at the `wakeCommand()` level in
+`test/scheduling/`, not re-executed against a mock host CLI.
 
 **Coverage boundary (what this does *not* prove).** It pins the generated *shell glue*
 against mocks. It does not drive the real host CLIs (that is the supplementary
