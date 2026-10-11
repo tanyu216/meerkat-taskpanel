@@ -140,8 +140,11 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
         "INVALID_TRANSITION",
         "an awaiting card may not reach review",
       );
+      // The gate itself: `blocked → in_review` with no report for the round is
+      // still refused. (`in_review → done` is *acceptance* and needs no report —
+      // that is the exit the gate exists to protect, not one it blocks.)
       assert.equal(
-        reasonCode(() => board.db.prepare("UPDATE tasks SET status = 'done' WHERE id = 'reviewed'").run()),
+        reasonCode(() => board.db.prepare("UPDATE tasks SET status = 'in_review' WHERE id = 'paused'").run()),
         "REPORT_REQUIRED",
         "the delivery gate survived the rebuild",
       );
