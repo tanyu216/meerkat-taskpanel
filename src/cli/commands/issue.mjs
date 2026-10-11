@@ -61,7 +61,7 @@ export const COMMANDS = [
       { flag: "force-create", key: "forceCreate", as: "boolean", summary: "Skip dictionary fuzzy matching." },
       { flag: "idem", key: "idem", as: "string", value: "<key>", summary: "Explicit idempotency key; a match re-uses the existing task." },
       { flag: "allow-dup", key: "allowDup", as: "boolean", summary: "Bypass the idempotency guard and create a duplicate anyway." },
-      { flag: "target", key: "target", as: "string", value: "<t>", summary: "Idempotency key's target slot." },
+      { flag: "target", key: "target", as: "string", value: "<t>", summary: "The card's target — stored in its meta; also the idempotency key's target slot." },
       { flag: "review-of", key: "reviewOf", as: "string", value: "<id>", summary: "Idempotency key's source slot (a card under review)." },
       { flag: "parent", key: "parent", as: "string", value: "<id>", summary: "Idempotency key's source slot (a parent card)." },
     ],
@@ -69,6 +69,10 @@ export const COMMANDS = [
       const flags = ctx.flags;
       const meta = { ...(metaOf(flags) ?? {}) };
       if (flags.acceptance !== undefined) meta.acceptance = flags.acceptance;
+      // `--target` writes the card's own `target` into `meta` (the board owns no
+      // project directory, so `target` is not a top-level create field). The
+      // idempotency key reads it back from there.
+      if (flags.target !== undefined) meta.target = flags.target;
       const payload = await ctx.client.post("/api/v1/tasks", {
         project_id: flags.project,
         title: flags.title,
@@ -87,7 +91,6 @@ export const COMMANDS = [
         force_create: flags.forceCreate === true,
         idem: flags.idem,
         allow_dup: flags.allowDup === true,
-        target: flags.target,
         review_of: flags.reviewOf,
         parent: flags.parent,
       });
@@ -152,13 +155,12 @@ export const COMMANDS = [
         candidates.length === 0
           ? "no candidates"
           : table(
-              ["identifier", "status", "priority", "project", "target", "reason"],
+              ["identifier", "status", "priority", "project", "reason"],
               candidates.map((candidate) => [
                 candidate.identifier,
                 candidate.status,
                 candidate.priority,
                 candidate.project,
-                candidate.target,
                 candidate.reason,
               ]),
             );

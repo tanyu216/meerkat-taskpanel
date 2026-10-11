@@ -289,6 +289,9 @@ export function wakeCommand(input = {}) {
  * an unbounded context. It names the card, the attribution flags every write
  * should carry, and the compliant next step (read, work, report).
  *
+ * The handoff names no workspace (O3): a card carries no board-owned directory,
+ * so the wake must not hand one to the worker.
+ *
  * @param {{card?: object, agent: string, host: string, sessionId?: string|null}} input
  * @returns {string}
  */
@@ -297,9 +300,8 @@ export function buildHandoff(input) {
   const title = String(card.title ?? "").slice(0, 300);
   const attribution = [`--agent ${input.agent}`, `--agent-platform ${input.host}`];
   if (input.sessionId) attribution.push(`--session-id ${input.sessionId}`);
-  const where = card.target ? ` (workspace ${card.target})` : "";
   return [
-    `You have been woken by the Meerkat TaskPanel supervisor to work one card: ${card.identifier}${where}.`,
+    `You have been woken by the Meerkat TaskPanel supervisor to work one card: ${card.identifier}.`,
     `Title: ${title}`,
     "",
     `Read it first:  taskctl issue get ${card.identifier} ${attribution.join(" ")}`,

@@ -35,7 +35,7 @@ import { resolveLabels } from "./labels.mjs";
 
 /**
  * @param {object} ctx
- * @param {{projectId: string, title: string, actor: object, assignee?: string, assigneeKind?: string, reporter?: string, reporterKind?: string, forceCreate?: boolean, idem?: string, allowDup?: boolean, reviewOf?: string, parent?: string, target?: string, [key: string]: unknown}} input
+ * @param {{projectId: string, title: string, actor: object, assignee?: string, assigneeKind?: string, reporter?: string, reporterKind?: string, forceCreate?: boolean, idem?: string, allowDup?: boolean, reviewOf?: string, parent?: string, [key: string]: unknown}} input
  */
 export function createTask(ctx, input) {
   const actor = actorOf(input.actor);
@@ -85,7 +85,10 @@ export function createTask(ctx, input) {
         reviewOf: input.reviewOf ?? input.meta?.review_of,
         parent: input.parent ?? input.meta?.parent,
       });
-      const targetKey = String(input.target ?? input.meta?.target ?? "").trim();
+      // The card's own `target` — an opaque value now, carried in its meta. It is
+      // not a top-level create field: the board no longer owns a project
+      // directory, so there is nothing to derive it from.
+      const targetKey = String(input.meta?.target ?? "").trim();
       const explicit = normalizeIdem(input.idem);
       const derived = idemKey({
         kind: input.kind ?? "task",
@@ -669,12 +672,6 @@ export function listCandidates(ctx, input = {}) {
           .filter((task) => isAssignee(task) && staleReason(task, assignee, now) !== null)
       : [];
 
-  const projects = new Map();
-  const projectOf = (id) => {
-    if (!projects.has(id)) projects.set(id, ctx.repos.projects.get(id));
-    return projects.get(id);
-  };
-
   const found = [];
   for (const task of ready) {
     if (allBlockersDone(ctx, task.id)) found.push({ task, reason: "ready" });
@@ -698,7 +695,7 @@ export function listCandidates(ctx, input = {}) {
       (a.task.projectId ?? "").localeCompare(b.task.projectId ?? "") ||
       (a.task.identifier ?? "").localeCompare(b.task.identifier ?? ""),
   );
-  return found.map(({ task, reason }) => candidateOf(task, reason, projectOf(task.projectId)));
+  return found.map(({ task, reason }) => candidateOf(task, reason));
 }
 
 /**
@@ -758,11 +755,14 @@ function allBlockersDone(ctx, taskId) {
 /**
  * The candidate projection: exactly the card's fields, plus `reason` so the
  * poll can rank ready against recovery without re-deriving it.
+ *
+ * There is no `target` here (O3): a project owns no directory, so the board has
+ * no workspace to project onto a candidate. A dispatch consumer that needs a
+ * location resolves one from `project` against its own mapping.
  * @param {object} task
  * @param {string} reason
- * @param {object|null} project
  */
-function candidateOf(task, reason, project) {
+function candidateOf(task, reason) {
   return {
     id: task.id,
     identifier: task.identifier,
@@ -770,7 +770,6 @@ function candidateOf(task, reason, project) {
     status: task.status,
     priority: task.priority,
     project: task.projectId,
-    target: project?.workspacePath ?? "",
     sort: task.sortOrder ?? 0,
     reason,
   };

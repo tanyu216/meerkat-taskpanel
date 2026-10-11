@@ -58,6 +58,10 @@ import {
  * made the parser *recognise* them and then map them nowhere — so they were
  * silently dropped, the exact loss the M5 drill exists to catch. Leaving them
  * unknown keeps them under `meta_json.legacy`, which round-trips.
+ *
+ * `target` joins them (O3): the board owns no project directory, so `target` is
+ * no longer a mapped field — it is an opaque card value, kept verbatim in
+ * `meta_json.legacy` rather than derived from (or reconciled against) a project.
  */
 export const KNOWN_CARD_KEYS = Object.freeze([
   "id",
@@ -67,7 +71,6 @@ export const KNOWN_CARD_KEYS = Object.freeze([
   "kind",
   "labels",
   "project",
-  "target",
   "assignee",
   "assignee_kind",
   "created_by",
@@ -171,7 +174,7 @@ function importTimestamp(value, fallback, stats, field = "timestamp") {
 }
 
 /**
- * @param {{db: object, repos: object, dir: string, projectId?: string, target?: string, now: string, check?: boolean, resume?: boolean, registry?: object|null, createProject?: boolean, logger?: Function}} input
+ * @param {{db: object, repos: object, dir: string, projectId?: string, now: string, check?: boolean, resume?: boolean, registry?: object|null, createProject?: boolean, logger?: Function}} input
  */
 export function importMd(input) {
   const { db, repos, dir, now, check = false, resume = false } = input;
@@ -252,8 +255,10 @@ export function importMd(input) {
       }
 
       // Pass 1: resolve each card's project name → id, and gather the per-project
-      // plan (workspace path + registry metadata). A card whose project cannot be
-      // resolved is skipped with a warning — never a silently created project.
+      // plan (registry metadata). A card whose project cannot be resolved is
+      // skipped with a warning — never a silently created project. The card's
+      // `target` plays no part here: it is an opaque per-card value, not a
+      // project-level workspace path (O3).
       /** @type {Map<string, object>} */
       const projectPlans = new Map();
       for (const entry of parsed) {
@@ -278,36 +283,15 @@ export function importMd(input) {
         card.projectId = resolution.projectId;
         card.projectName = resolution.name;
         card.projectMeta = resolution.meta;
-        card.projectWorkspace = resolution.workspacePath;
         if (resolution.notice !== undefined) stats.notices.push(resolution.notice);
 
-        const target = card.target;
-        const existingPlan = projectPlans.get(resolution.projectId);
-        if (existingPlan === undefined) {
+        if (!projectPlans.has(resolution.projectId)) {
           projectPlans.set(resolution.projectId, {
             id: resolution.projectId,
             name: resolution.name,
             meta: resolution.meta,
             source: resolution.source,
-            workspacePath: resolution.workspacePath ?? target ?? input.target ?? null,
-            targets: new Set(target === null || target === undefined ? [] : [target]),
           });
-          continue;
-        }
-        if (target !== null && target !== undefined && !existingPlan.targets.has(target)) {
-          // `target` is a project-level workspace path (§4.8 ④ / M5 ruling): two
-          // different values for one project is a warning, not a hard failure.
-          // A **buildin** project (`__team__`) has no repo, so a card's `target`
-          // is a per-card artifact path, not a project-level path — every such
-          // card would otherwise raise a spurious warning, so the check is
-          // skipped by design (the value is still recorded for the drill).
-          existingPlan.targets.add(target);
-          if (existingPlan.source !== "buildin") {
-            stats.warnings.push(
-              `${entry.file}: project ${resolution.projectId} is used with two different targets ` +
-                `(${[...existingPlan.targets].join(" and ")}); target is project-level — using ${existingPlan.workspacePath}`,
-            );
-          }
         }
       }
 
@@ -351,7 +335,7 @@ export function importMd(input) {
           continue;
         }
 
-        ensureProject(repos, projectPlans.get(card.projectId), card, now, stats);
+        ensureProject(repos, projectPlans.get(card.projectId), now, stats);
         const dictionary = resolveCardDictionaries(repos, card, now);
         stats.dictionaries += dictionary.writes;
         // Historical cards register their labels too, so the registry reflects an
@@ -550,7 +534,7 @@ export function importMd(input) {
  *
  * @param {string} rawName the card's `project` value (already known non-empty)
  * @param {{registry: object|null, createProject: boolean}} options
- * @returns {{ok: true, projectId: string, name: string, workspacePath: string|null, meta: object, source: string, notice?: string}|{ok: false, warning: string}}
+ * @returns {{ok: true, projectId: string, name: string, meta: object, source: string, notice?: string}|{ok: false, warning: string}}
  */
 function resolveProjectPlan(rawName, { registry, createProject }) {
   if (registry !== null && registry !== undefined) {
@@ -560,7 +544,6 @@ function resolveProjectPlan(rawName, { registry, createProject }) {
         ok: true,
         projectId: entry.id,
         name: entry.name,
-        workspacePath: entry.workspacePath,
         meta: entry.meta,
         source: entry.meta?.buildin === true ? "buildin" : "registry",
       };
@@ -571,7 +554,6 @@ function resolveProjectPlan(rawName, { registry, createProject }) {
         ok: true,
         projectId: id,
         name: id,
-        workspacePath: null,
         meta: {},
         source: "created",
         notice: `created project ${JSON.stringify(id)}: not in the registry, and --create-project was given`,
@@ -583,21 +565,20 @@ function resolveProjectPlan(rawName, { registry, createProject }) {
     };
   }
 
-  // No registry file: buildin names still resolve to their synthetic plan; every
-  // other name keeps the historical "the name is the id" behaviour.
+  // No registry file: buildin names still resolve to their plan; every other
+  // name keeps the historical "the name is the id" behaviour.
   const buildin = resolveBuildinProject(rawName);
   if (buildin !== null) {
     return {
       ok: true,
       projectId: buildin.id,
       name: buildin.name,
-      workspacePath: buildin.workspacePath,
       meta: buildin.meta,
       source: "buildin",
     };
   }
   const id = String(rawName).trim();
-  return { ok: true, projectId: id, name: id, workspacePath: null, meta: {}, source: "legacy" };
+  return { ok: true, projectId: id, name: id, meta: {}, source: "legacy" };
 }
 
 /**
@@ -711,7 +692,6 @@ export function parseCard(text, { file }) {
     kind: data.kind === "epic" ? "epic" : "task",
     labels: normalizeLabels(data.labels ?? null),
     project: nullable(data.project),
-    target: typeof data.target === "string" && data.target.trim() !== "" ? data.target : null,
     assignee: nullable(data.assignee),
     assigneeKind: data.assignee_kind ?? "agent",
     reporter: nullable(data.created_by),
@@ -860,30 +840,21 @@ function findExisting(repos, projectId, rel) {
 /**
  * Create the project row for a card's plan, if it is not there yet.
  *
- * The workspace path is the registry's `root` when there is one (the registry is
- * the source of truth for project metadata; the board is the authority), and the
- * card's `target` otherwise. A card with neither, naming a project that does not
- * exist, is still a hard error: there is no path to anchor the task to.
+ * A project carries no directory (O3), so there is nothing to anchor a task to
+ * besides the project itself: a card naming a project that does not exist yet is
+ * created on the spot (registry metadata or the name alone), never refused for
+ * want of a workspace path.
  *
  * @param {object} repos
- * @param {{id: string, name: string, meta: object, source: string, workspacePath: string|null}} plan
- * @param {object} card
+ * @param {{id: string, name: string, meta: object, source: string}} plan
  * @param {string} now
  * @param {object} stats
  */
-function ensureProject(repos, plan, card, now, stats) {
+function ensureProject(repos, plan, now, stats) {
   if (repos.projects.get(plan.id) !== null) return;
-  const workspacePath = plan.workspacePath ?? card.target ?? null;
-  if (workspacePath === null || workspacePath === undefined) {
-    throw new DomainError("MD_PARSE_ERROR", {
-      message: `card ${card.identifier} has no 'target' and project ${plan.id} does not exist yet`,
-      details: { field: "target", project: plan.id },
-    });
-  }
   repos.projects.create({
     id: plan.id,
     name: plan.name,
-    workspacePath,
     meta: plan.meta ?? {},
     now,
   });

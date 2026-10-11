@@ -9,6 +9,11 @@
  *   * the legacy status word (`ready`/`failed`) — the author's own spelling;
  *   * unrecognised frontmatter keys, in their original order (`meta_json.legacy`).
  *
+ * `target` is one of those unrecognised keys (O3): the board owns no project
+ * directory, so an inbound `target:` is neither derived nor validated — it rides
+ * through `meta_json.legacy` and is re-emitted exactly as it came in. A card
+ * that never carried one exports without the key.
+ *
  * Rewriting a card may not grow it without bound: if the new text is more than
  * `MD_GROWTH_FACTOR` times the old one, the export refuses instead of writing
  * (`MD_GROWTH_GUARD`). That guard is the whole reason the frontmatter serialiser
@@ -32,7 +37,12 @@ import {
   splitProgressLine,
 } from "./sections.mjs";
 
-/** Frontmatter key order for an exported card. */
+/**
+ * Frontmatter key order for an exported card.
+ *
+ * `target` keeps its slot here so a card that carries one (via `meta_json.legacy`)
+ * is re-emitted in its historical position, right after `project`.
+ */
 export const CARD_KEY_ORDER = Object.freeze([
   "id",
   "title",
@@ -71,8 +81,7 @@ export function exportMd(input) {
 
   const files = [];
   for (const task of tasks) {
-    const project = repos.projects.get(task.projectId);
-    const content = renderCard(task, { repos, project });
+    const content = renderCard(task, { repos });
     const path = join(outDir, `${task.identifier}.md`);
 
     if (existsSync(path)) {
@@ -97,11 +106,11 @@ export function exportMd(input) {
  * Render one card.
  *
  * @param {object} task a Task DTO
- * @param {{repos: object, project: object|null}} context
+ * @param {{repos: object}} context
  * @returns {string}
  */
 export function renderCard(task, context) {
-  const { repos, project } = context;
+  const { repos } = context;
   const meta = decodeMeta(task);
   const legacyStatus = meta.legacy_status ?? null;
 
@@ -113,7 +122,6 @@ export function renderCard(task, context) {
     priority: task.priority,
     kind: task.kind,
     project: task.projectId,
-    target: project?.workspacePath ?? "",
     created_by: labelOf(repos, "reporter", task.reporterId) ?? task.creatorId ?? "",
     created_at: task.createdAt,
     updated_at: task.updatedAt,

@@ -31,7 +31,7 @@ export function registerExportRoutes(router, surface) {
       cards: tasks.map((task) => ({
         identifier: task.identifier,
         task_id: task.id,
-        markdown: renderCard(task, { repos, project: repos.projects.get(task.projectId) }),
+        markdown: renderCard(task, { repos }),
       })),
     };
   }, { body: EXPORT_BODY });

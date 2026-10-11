@@ -40,7 +40,6 @@ Options:
   --out <path>       directory to write cards into
   --db <path>        database file (default: $TASKD_DB or <dataDir>/board.sqlite)
   --project <id>     restrict to (or default to) a project id
-  --target <path>    workspace path to use when a card has none
   --projects <path>  project registry (projects.json) — resolve a card's
                      'project' NAME to its id; store root/git rules in meta_json
   --create-project   create a project for a name the registry does not have
@@ -56,7 +55,7 @@ Options:
  */
 export function parseArgs(argv) {
   const options = { command: null, json: false, resume: false };
-  const takesValue = new Set(["--dir", "--out", "--db", "--project", "--target", "--projects"]);
+  const takesValue = new Set(["--dir", "--out", "--db", "--project", "--projects"]);
   const flagOnly = new Set(["--json", "--resume", "--help", "-h", "--dry-run", "--create-project"]);
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -156,7 +155,6 @@ export async function main(argv, io = {}) {
           registry,
           createProject: options.createProject === true,
           ...(options.project === undefined ? {} : { projectId: options.project }),
-          ...(options.target === undefined ? {} : { target: options.target }),
         });
         if (options.json) stdout(`${JSON.stringify({ ok: true, db: board.path, ...result }, null, 2)}\n`);
         else {

@@ -17,8 +17,13 @@
  * An entry's id defaults to its key and its name to its id, so the common
  * `{ "MeerkatTaskPanel": { root, kind, ... } }` resolves `MeerkatTaskPanel` → `MeerkatTaskPanel`. An
  * explicit `id`/`name` overrides either. Everything else (kind, repos, guides,
- * default_git_rules, root_git, notes, registered_at, …) is carried verbatim into
- * `projects.meta_json` — the registry is the source, the board is the authority.
+ * default_git_rules, root, root_git, notes, registered_at, …) is carried
+ * verbatim into `projects.meta_json` — the registry is the source, the board is
+ * the authority.
+ *
+ * A registry `root`/`workspace_path`/`workspacePath` is **not** a directory
+ * anchor (O3): the board owns no project directory, so those keys are carried
+ * into `meta` like every other unrecognised field and never interpreted.
  *
  * Pure except for `loadProjectRegistry` (one read).
  */
@@ -27,9 +32,6 @@ import { readFileSync } from "node:fs";
 
 import { DomainError } from "../../../shared/errors.mjs";
 import { norm } from "../../../shared/norm.mjs";
-
-/** Keys a registry entry may carry, plus anything else, mapped into `meta`. */
-const WORKSPACE_KEYS = Object.freeze(["root", "workspace_path", "workspacePath"]);
 
 /**
  * The normalisation used for a project name — the same rule as labels,
@@ -60,11 +62,8 @@ function stringOrNull(value) {
  * name one without it appearing in the team's `projects.json`.
  *
  * `__team__` is the reserved team-internal project (PROTOCOL §②: a team chore
- * is not a repository). It has no filesystem repo, so its `workspace_path` is a
- * **synthetic absolute anchor** — it satisfies the `projects.workspace_path`
- * CHECK (`LIKE '/%'`) and its UNIQUE constraint, and it is deliberately not a
- * real home path (this repository is public). Do not hardcode a `/Users/…`
- * path here.
+ * is not a repository). It has no filesystem repo — and, since a project carries
+ * no directory at all (O3), there is no synthetic workspace anchor to invent.
  *
  * A file entry for the same key always wins: `parseProjectRegistry` only fills
  * a buildin slot the file left empty.
@@ -74,11 +73,10 @@ export const BUILDIN_PROJECTS = Object.freeze([
     key: "__team__",
     id: "__team__",
     name: "__team__",
-    workspacePath: "/__team__",
     meta: Object.freeze({
       buildin: true,
       kind: "team",
-      notes: "reserved team-internal project; no filesystem repo — the workspace path is a synthetic anchor",
+      notes: "reserved team-internal project; not a filesystem repository",
     }),
     raw: Object.freeze({}),
   }),
@@ -154,18 +152,15 @@ export function parseProjectRegistry(text, options = {}) {
     const record = raw !== null && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
     const id = stringOrNull(record.id) ?? key;
     const name = stringOrNull(record.name) ?? id;
-    const workspacePath = WORKSPACE_KEYS.map((field) => stringOrNull(record[field])).find(
-      (value) => value !== null,
-    ) ?? null;
 
     const meta = {};
     for (const [metaKey, metaValue] of Object.entries(record)) {
-      if (metaKey === "id" || metaKey === "name" || WORKSPACE_KEYS.includes(metaKey)) continue;
+      if (metaKey === "id" || metaKey === "name") continue;
       meta[metaKey] = metaValue;
     }
     meta.registered_key = key;
 
-    const entry = { key, id, name, workspacePath, meta, raw: record };
+    const entry = { key, id, name, meta, raw: record };
 
     for (const candidate of new Set([normalizeProjectKey(key), normalizeProjectKey(name)])) {
       if (candidate === "") continue;
