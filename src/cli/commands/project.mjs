@@ -1,19 +1,77 @@
 /**
- * `project create|update|list|readme` (A1/A6).
+ * `project create|update|list|dir|readme` (A1/A6).
  *
  * A project is the identifier scope: its id becomes the identifier prefix
  * (`demo` → `DEMO-0001`). `--meta k=v` is repeatable and merges.
  *
  * A project owns **no** working directory — the board holds no path for it.
  * Which local directory maps to which project is decided on the agent side (the
- * skill's local `projects.json`), never here.
+ * skill's local `projects.json`), never here. `project dir` is that lookup, and
+ * it is a *local read*: a project with no registered directory is a coded
+ * failure that asks the user which directory it should be, never a guess. The
+ * whole point is that a caller which needs a directory stops instead of
+ * continuing somewhere unintended.
  */
 
+import { resolve } from "node:path";
+
+import { DomainError } from "../../shared/errors.mjs";
+import { PROJECTS_JSON_ENV, parseProjectMap, resolveProjectDir } from "../../shared/project-dir.mjs";
+import { repoRoot } from "../../shared/runtime-locator.mjs";
 import { fields, table } from "../output/human.mjs";
 
 /** `--meta k=v` repeated, in order, as a plain object. */
 function metaOf(flags) {
   return flags.meta === undefined ? undefined : flags.meta;
+}
+
+/**
+ * Where this machine's map is, in the order a user expects: an explicit flag,
+ * then `$MEERKAT_TASKPANEL_PROJECTS_JSON` (what an installed shim points beside
+ * its own skill), else the one beside the skill in this checkout.
+ */
+function projectsJsonPath(env = {}, flag = null) {
+  if (typeof flag === "string" && flag.trim() !== "") return resolve(flag);
+  const override = env[PROJECTS_JSON_ENV];
+  if (typeof override === "string" && override.trim() !== "") return resolve(override);
+  return resolve(repoRoot(), "skills", "meerkat-taskpanel", "projects.json");
+}
+
+/**
+ * Resolve a project identity to the local directory it works in, or raise the
+ * documented "nothing is registered" failure.
+ *
+ * The board is asked first so an unknown *project* is a board error, not a map
+ * error: "no such project" and "this project has no directory yet" are different
+ * answers, and only the second one is a question for the user.
+ */
+function resolveDirFor(ctx, id) {
+  const file = projectsJsonPath(ctx.env ?? {}, ctx.flags?.projectsJson ?? null);
+  let text;
+  try {
+    text = ctx.readFile(file);
+  } catch (err) {
+    throw new DomainError("PROJECT_MAP_UNREADABLE", {
+      message: `cannot read the local project map at ${file} (${err?.code ?? "unreadable"}).`,
+      details: { file },
+      hint: { fix: `create ${file} beside the skill with an entry for ${id} — see references/projects-json.md` },
+    });
+  }
+
+  const map = parseProjectMap(text, { file });
+  if (!map.ok) throw new DomainError(map.code, { message: map.message, details: { file } });
+
+  const resolved = resolveProjectDir({ entries: map.entries, project: id, file });
+  if (!resolved.ok) {
+    throw new DomainError(resolved.code, {
+      message: resolved.message,
+      details: { project: id, file, ...(resolved.path ? { path: resolved.path } : {}) },
+      // The prompt is the point: the step stops and asks, it does not continue
+      // with a guessed directory (references/projects-json.md §Unregistered).
+      hint: { fix: `ask which local directory project ${id} works in, then add it to ${file} (references/projects-json.md)` },
+    });
+  }
+  return { dir: resolved.dir, file };
 }
 
 export const COMMANDS = [
@@ -80,6 +138,41 @@ export const COMMANDS = [
         ? "no projects"
         : table(["id", "name"], projects.map((p) => [p.id, p.name]));
       return { data: { projects }, human };
+    },
+  },
+
+  {
+    name: "dir",
+    summary: "Print the local directory a project works in (from projects.json).",
+    usage: "project dir <id> [--projects-json <path>]",
+    positionals: [{ name: "id", summary: "Project id (or the name registered in projects.json)." }],
+    flags: [
+      {
+        flag: "projects-json",
+        key: "projectsJson",
+        as: "string",
+        value: "<path>",
+        summary: "Project map to read (default: beside the skill, or $MEERKAT_TASKPANEL_PROJECTS_JSON).",
+      },
+    ],
+    async run(ctx) {
+      const id = ctx.args.id;
+      // Ask the board first, so "unknown project" (a typo, a project from another
+      // board) and "known project, no directory registered" (a question for the
+      // user) stay distinguishable answers. `GET /projects/:id` answers `null`
+      // for a miss rather than raising, so the check is on the payload.
+      const { project } = await ctx.client.get(`/api/v1/projects/${id}`);
+      if (project === null || project === undefined) {
+        throw new DomainError("NOT_FOUND", {
+          message: `no project ${id}`,
+          details: { project: id },
+        });
+      }
+      const { dir } = resolveDirFor(ctx, id);
+      return {
+        data: { project: id, dir },
+        human: dir,
+      };
     },
   },
 
