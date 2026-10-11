@@ -39,10 +39,16 @@ import {
 
 after(cleanupTempDirs);
 
-/** The shipped set without 0013 — a board as the previous build left it. */
+/**
+ * The shipped set **before** 0013 — a board as the previous build left it.
+ *
+ * Selected by version, not by name: `!n.startsWith("0013")` would have kept
+ * 0014, which runs *after* 0013 and so cannot belong to a board the previous
+ * build left behind. A pre-0013 board is 0001 … 0012, and nothing later.
+ */
 function before0013() {
   const dir = makeTempDir("meerkat-taskpanel-pre0013-");
-  for (const name of readdirSync(defaultMigrationsDir()).filter((n) => n.endsWith(".sql") && !n.startsWith("0013"))) {
+  for (const name of readdirSync(defaultMigrationsDir()).filter((n) => n.endsWith(".sql") && n.slice(0, 4) < "0013")) {
     copyFileSync(join(defaultMigrationsDir(), name), join(dir, name));
   }
   return dir;
@@ -50,30 +56,39 @@ function before0013() {
 
 const columnsOf = (db) => db.prepare("SELECT name FROM pragma_table_info('tasks')").all().map((r) => r.name);
 /**
- * The **named** indexes on `tasks`. `pragma_index_list` also reports SQLite's own
- * implicit index for the `TEXT` primary key (`sqlite_autoindex_tasks_1`); it is
- * present before and after the rebuild, is not ours to create, and would only
- * make the comparison below look like drift.
+ * The **named** indexes on `tasks`, each with the shape that makes it *itself* —
+ * its columns, its uniqueness, and whether it is partial.
+ *
+ * `pragma_index_list` also reports SQLite's own implicit index for the `TEXT`
+ * primary key (`sqlite_autoindex_tasks_1`); it is present before and after the
+ * rebuild, is not ours to create, and would only make the comparisons below look
+ * like drift.
+ *
+ * The shape is read, and not only the name: 0005's `ix_tasks_source` is
+ * *partial* (`WHERE source_path IS NOT NULL`), so an index restored under the
+ * right name with the wrong predicate would be a different index wearing the
+ * same label.
  */
-const indexNames = (db) =>
+const indexShapes = (db) =>
   db
-    .prepare("SELECT name FROM pragma_index_list('tasks')")
+    .prepare("SELECT name, \"unique\" AS uniq, partial AS part FROM pragma_index_list('tasks')")
     .all()
-    .map((r) => r.name)
-    .filter((name) => !name.startsWith("sqlite_autoindex"));
+    .filter((row) => !row.name.startsWith("sqlite_autoindex"))
+    .sort((a, b) => (a.name < b.name ? -1 : 1))
+    .map((row) => ({
+      name: row.name,
+      unique: Number(row.uniq),
+      partial: Number(row.part),
+      columns: db
+        .prepare("SELECT name FROM pragma_index_info(?)")
+        .all(row.name)
+        .map((column) => column.name),
+    }));
 const triggerNames = (db) =>
   db.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'tasks'").all().map((r) => r.name);
 const tasksSql = (db) => db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get().sql;
 
-/** Every index and trigger `tasks` must still have after the rebuild. */
-const EXPECTED_INDEXES = [
-  "ux_tasks_identifier",
-  "ux_tasks_source",
-  "ix_tasks_board",
-  "ix_tasks_assignee",
-  "ix_tasks_heartbeat",
-  "ux_tasks_idem_active",
-];
+/** Every trigger `tasks` must still have after the rebuild. */
 const EXPECTED_TRIGGERS = [
   "tr_tasks_terminal",
   "tr_tasks_transition",
@@ -108,10 +123,21 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
       const old = applyMigrations(board.db, { dir: before0013() });
       assert.equal(old.applied.at(-1).version, "0012");
       assert.equal(/awaiting/.test(tasksSql(board.db)), false, "precondition: the old CHECK has no `awaiting`");
+      // The index set the previous build left on `tasks` — all seven of them,
+      // 0005's partial `ix_tasks_source` among them. Step 3 compares against
+      // this, so an index the rebuild drops is a red test rather than a board
+      // that is quietly not the one a fresh install builds. (This is the exact
+      // index that went missing: 0013 re-created six of the seven, and 0014
+      // restores the seventh.)
+      const indexesBefore = indexShapes(board.db);
+      assert.ok(
+        indexesBefore.some((index) => index.name === "ix_tasks_source"),
+        "precondition: the previous build's board carries 0005's ix_tasks_source",
+      );
       seedLegacyBoard(board.db);
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0013"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014"]);
       assert.deepEqual(up.skipped.slice(-2), ["0011", "0012"]);
 
       // 1 — the enum: the new word is storable, the old ones still are, and an
@@ -166,8 +192,11 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
         "awaiting is entered from in_progress only",
       );
 
-      // 3 — nothing was rebuilt away.
-      assert.deepEqual(indexNames(board.db).sort(), EXPECTED_INDEXES.slice().sort());
+      // 3 — nothing was rebuilt away. The expected index set is the one read off
+      // the board the upgrade started from, not a list written out here: a
+      // hand-copied list is what let the missing index ship, and a rebuild that
+      // drops one now fails on this line.
+      assert.deepEqual(indexShapes(board.db), indexesBefore, "the rebuild must not add or drop an index");
       assert.deepEqual(triggerNames(board.db).sort(), EXPECTED_TRIGGERS.slice().sort());
       for (const name of EXPECTED_TRIGGERS) {
         const row = board.db.prepare("SELECT tbl_name, sql FROM sqlite_master WHERE type='trigger' AND name = ?").get(name);
@@ -253,6 +282,40 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
     } finally {
       before.close();
       after.close();
+    }
+  });
+
+  it("lands the upgrade on the index set a fresh board has — no index added, none lost", async () => {
+    // The rebuild's blind spot, and the reason this test exists: `tasks` is
+    // dropped and re-created, so an index the file forgets to name stops
+    // existing — no error, no violated constraint, just two boards that claim
+    // the same migration set and differ underneath. 0013 lost 0005's partial
+    // `ix_tasks_source` exactly that way; 0014 puts it back. The set is therefore
+    // *derived* from a board built before 0013 and compared twice: against the
+    // upgraded board (the rebuild returned everything it took) and against a
+    // fresh one (an upgrade and an install end in the same place — same names,
+    // same columns, same partiality).
+    const upgrade = await createTempBoard({ migrate: false });
+    const fresh = await createTempBoard();
+    try {
+      applyMigrations(upgrade.db, { dir: before0013() });
+      const before = indexShapes(upgrade.db);
+      assert.ok(
+        before.some((index) => index.name === "ix_tasks_source"),
+        "precondition: the previous build's board carries 0005's ix_tasks_source",
+      );
+
+      applyMigrations(upgrade.db);
+
+      assert.deepEqual(indexShapes(upgrade.db), before, "an upgrade must not add or lose an index");
+      assert.deepEqual(
+        indexShapes(fresh.db),
+        indexShapes(upgrade.db),
+        "an upgraded board and a fresh board must carry the same indexes",
+      );
+    } finally {
+      upgrade.close();
+      fresh.close();
     }
   });
 

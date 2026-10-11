@@ -15,6 +15,12 @@ Rules that are enforced, not just documented:
 * nothing here imports `cli/` or `server/` — the dependency direction is
   `cli|server → core → shared`;
 * every failure is a `DomainError` with a code, never a bare `Error`;
+* a table rebuild re-creates **every** index and trigger the dropped table had, so an
+  upgraded board and a fresh install end on the same schema. 0013's rebuild of `tasks`
+  lost 0005's `ix_tasks_source` and 0014 restores it (0014's header carries the index
+  count 0013's own header got wrong, since its text is frozen); the property is held by
+  `test/core/storage/migrations-0013.test.mjs`, which derives the expected set from the
+  board *before* 0013 instead of listing it;
 * the delivery gate is a database trigger *and* a domain check, and the two are
   tested against each other (`test/contract/`).
 
