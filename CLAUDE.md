@@ -86,6 +86,7 @@ Mind the two different `dist` trees: `dist/` is the **npm release tree** that
 
 - The **delivery gate** requires a report **for the current delivery round** before a card can move to `in_review`; a report from an earlier round is history, not evidence. It is enforced by a DB trigger *and* a domain check, tested against each other. There is one narrow escape hatch (**M2**, F-B1): a documented, audited waiver — `--no-report --reason "<why>"` (reason of at least 8 characters, mutually exclusive with `--report-file`, only valid on a move to `in_review`, recorded as a `report_waived` activity, valid only for the current delivery round). The normal, compliant path remains writing a report.
 - Invariants are pushed **down into the database** (triggers), not only enforced in the app layer; the trigger and the domain check are tested against each other under `test/contract/`.
+- The board holds **no project directory**: a project carries no `workspace_path`, there is no `context` command and no registry `root` anchor, and a card's `target` is an opaque per-card value (never derived from a project). The local map from a directory to a board project lives in a **`projects.json` beside the installed skill** (`skills/meerkat-taskpanel/references/projects-json.md`); whether a project's source data is managed with `meta` is the agent's own decision — taskpanel neither prescribes nor advises it, and neither does the skill.
 - The service model is **single-writer**: one local service owns the SQLite database.
 
 ## Docs to read next (do not re-paste)

@@ -54,6 +54,25 @@ and `~/.claude/bin/taskctl`. **Codex** writes `~/.codex/AGENTS.md` (a claim-firs
 `~/.codex/meerkat-taskpanel-claim.sh` (the schedulable trigger) and `~/.codex/bin/taskctl`.
 Both shims inject `--agent <name>` on every call, with `TASKCTL_AGENT` as the fallback.
 
+### The local `projects.json` (beside the skill)
+
+The board holds no project directories, so the local map from a **directory** to a
+**board project** is a `projects.json` created **inside the installed skill directory**,
+next to `SKILL.md` — `~/.claude/skills/meerkat-taskpanel/projects.json` for Claude Code,
+and the matching skill directory for each other host. The skill's own reference,
+[`projects-json.md`](../skills/meerkat-taskpanel/references/projects-json.md), documents
+the schema. `install.sh` ships **no** `projects.json` and never writes one: the file is
+yours to create and edit.
+
+**It is never overwritten.** A plain re-run leaves the whole existing skill directory
+untouched (an existing install is the desired end state), so a `projects.json` beside
+the skill survives every non-forced re-install — the same "merge, never clobber"
+rule as the rest of the install. The one exception is `--force`, which deletes and
+re-copies the skill directory: **back the file up before a forced re-install** (or
+re-create it afterwards). With `--link` the skill directory is a symlink into a
+checkout, so the file lands in `skills/meerkat-taskpanel/` there — keep it out of
+version control.
+
 ### Scheduling units (claude, codex, pi)
 
 Claude Code, Codex and Pi have **no timers**, so the poll/patrol loop lives outside
