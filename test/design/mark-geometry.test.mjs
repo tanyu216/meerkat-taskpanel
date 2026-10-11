@@ -25,8 +25,17 @@
  * nothing else; that whitelist is asserted from both sides, so a real bare
  * colour smuggled into a mask is still caught.
  *
- * The last block is the non-vacuity proof: it feeds deliberately mutated SVG to
- * the same comparison and asserts each drift is reported, so a guard that could
+ * **The face.** §5 carries a fourth table — the eyes and mouth candidate A cuts
+ * into each figure — and the guard owns it too. Being negative space, the face is
+ * invisible to `shapesOf()`, so it is read back out of the mask directly
+ * (`maskShapeList()`/`knockoutOf()`) and matched against §5's table, whose
+ * offsets are stated *relative to the head centre* and applied to the head
+ * circle's own centre: six eyes and three mouths on every one of the three
+ * surfaces. Beside the values it holds the knockout's `signal` semantics — the
+ * face inside the `<mask>`, the watch signal outside it and still solid, and the
+ * outer silhouette unmoved (the outline is still the same 13 shapes). Both
+ * blocks end in a non-vacuity proof that feeds deliberately mutated SVG (and
+ * deliberately mutated §5 prose) to the same comparison, so a guard that could
  * never go red fails here instead of passing forever.
  *
  * **Where this runs.** It needs `design/brand/BRAND.md` and `prototype/`, and
@@ -182,8 +191,10 @@ function paintedColors(svg) {
   return { visible, masked };
 }
 
-/** The functional greys a mask may use: white shows, black cuts the knockout. */
-const MASK_GREY = new Set(["#ffffff", "#000000"]);
+/** The functional greys a knockout is built from: white shows the mark, black cuts it. */
+const MASK_PLATE = "#ffffff";
+const MASK_CUT = "#000000";
+const MASK_GREY = new Set([MASK_PLATE, MASK_CUT]);
 
 /** Bare hex colours painted on the visible face — the only surface §5 forbids them. */
 const bareHexes = (svg) => paintedColors(svg).visible.flatMap((v) => v.match(/#[0-9a-fA-F]{3,8}\b/g) ?? []);
@@ -195,9 +206,94 @@ const maskSmuggling = (svg) => paintedColors(svg).masked.filter((v) => !MASK_GRE
 const KNOCKOUT_ID = "face-knockout-a";
 
 /**
- * The knockout's contents: one plate rect (functional white shows the mark) and
- * three groups of three face shapes (functional black cuts the negative space),
- * one group per sentinel — the ten elements of the landing card's mask.
+ * The raw inner XML of the `<mask id="<id>">` element, or `null` when the mark
+ * carries no such mask. The knockout's cutouts live here: a `<defs>`/`<mask>`
+ * subtree paints nothing of its own, so the face is *invisible* to `shapesOf()`
+ * and has to be read out of the mask text directly.
+ */
+function maskInner(svg, id) {
+  const at = svg.indexOf(`<mask id="${id}"`);
+  if (at === -1) return null;
+  const open = svg.indexOf(">", at);
+  if (open === -1) return null;
+  const close = svg.indexOf("</mask>", open + 1);
+  if (close === -1) return null;
+  return svg.slice(open + 1, close);
+}
+
+/** The id the mark's ink group points its `<mask>` at, or `null` when it has none. */
+const maskIdOf = (svg) => /<g[^>]*\bmask="url\(#([^)]+)\)"/.exec(svg)?.[1] ?? null;
+
+/** Every `<mask id="…">` defined in one document, in file order. */
+const maskDefIds = (svg) => [...svg.matchAll(/<mask\b[^>]*\bid="([^"]+)"/g)].map((m) => m[1]);
+
+/**
+ * The character span of the `<g mask="url(#<id>)">` element — the subtree the
+ * knockout is applied to. Everything rendered *outside* it is drawn solid, which
+ * is where the watch signal has to stay.
+ */
+function maskedGroupSpan(svg, id) {
+  const at = svg.indexOf(`mask="url(#${id})"`);
+  if (at === -1) return null;
+  const start = svg.lastIndexOf("<g", at);
+  if (start === -1) return null;
+  const re = /<(\/?)g\b[^>]*?(\/?)>/g;
+  re.lastIndex = start;
+  let depth = 0;
+  for (let m = re.exec(svg); m; m = re.exec(svg)) {
+    if (m[1] === "/") depth -= 1;
+    else if (m[2] !== "/") depth += 1;
+    if (depth === 0) return { start, end: m.index + m[0].length };
+  }
+  return null;
+}
+
+/**
+ * The shapes *inside* one `<mask>` subtree, in document order, each with the
+ * fill it inherits from the nearest ancestor `<g>`. The mirror image of
+ * `shapesOf()`, which deliberately skips this subtree — here the mask *is* the
+ * subject: its plate shows the mark through, its black group is the face.
+ */
+function maskShapeList(svg, id) {
+  const body = maskInner(svg, id);
+  if (body == null) return null;
+  const out = [];
+  const stack = [];
+  const re = /<(\/?)(g|rect|circle)\b([^>]*?)(\/?)>/g;
+  for (const m of body.matchAll(re)) {
+    const closing = m[1] === "/";
+    const name = m[2];
+    if (name === "g") {
+      if (closing) stack.pop();
+      else if (m[4] !== "/") stack.push(attrsOf(m[3] ?? ""));
+      continue;
+    }
+    if (closing) continue;
+    const attrs = attrsOf(m[3] ?? "");
+    const inherited = [...stack].reverse().map((g) => g.fill).find((v) => v != null) ?? null;
+    out.push({ tag: name, attrs, fill: attrs.fill ?? inherited });
+  }
+  return out;
+}
+
+/**
+ * The mask's two halves: the plate rect (functional white — the mark shows
+ * through it) and the cut shapes that follow (functional black — the negative
+ * space). `{ error }` stands in for a mask that is missing altogether.
+ */
+function knockoutOf(svg, id) {
+  const shapes = maskShapeList(svg, id);
+  if (shapes == null) return { error: `no <mask id="${id}">` };
+  return { plate: shapes[0], cuts: shapes.slice(1) };
+}
+
+/**
+ * A **synthetic** knockout: one plate rect (functional white shows the mark) and
+ * three groups of three face-like shapes (functional black cuts the negative
+ * space), one group per sentinel. Its numbers are deliberately *not* §5's — the
+ * point of the fixture is only that a `<defs>`/`<mask>` subtree must be
+ * invisible to the outline guard whatever it holds. The shipped mask's actual
+ * face values are asserted further down through `maskShapeList()`.
  */
 const faceKnockout = (plate) =>
   `<rect fill="${plate}" x="0" y="0" width="32" height="32"/>` +
@@ -206,8 +302,8 @@ const faceKnockout = (plate) =>
   `<g fill="#000000"><circle cx="23.8" cy="11.9" r="0.5"/><circle cx="25.8" cy="11.9" r="0.5"/><rect x="24" y="13.1" width="1.6" height="0.5" rx="0.25"/></g>`;
 
 /**
- * Candidate A with the §5 face knockout spliced in exactly as the landing card
- * will render it: a `<defs><mask>` over the mark, cut by the face shapes.
+ * A mark with that synthetic knockout spliced in, in the shape the shipped marks
+ * use: a `<defs><mask>` plus a `mask="url(#…)"` on the mark's group.
  */
 const withKnockout = (svg, plate = "#FFFFFF") =>
   svg.replace(
@@ -481,6 +577,338 @@ describe(
         assert.deepEqual(maskSmuggling(withKnockout(pristine, "#FFFFFF")), [], "functional white must pass");
         assert.deepEqual(maskSmuggling(withKnockout(pristine, "#000000")), [], "functional black must pass");
         assert.notDeepEqual(maskSmuggling(withKnockout(pristine, "#123456")), [], "a real bare colour must be caught");
+      });
+    });
+
+    // ── The face: §5's fourth table, cut into all three marks ────────────────
+
+    describe("Sentinel Watch face knockout == BRAND.md §5 Face table", () => {
+      // §5's face table, one group of three shapes per figure, with its
+      // parameters stated *relative to the head centre*. Every expected value
+      // below is derived from it — head centre + the stated offset — so nothing
+      // is restated by hand and a §5 edit follows through to every assertion.
+      const FACE = table(SEC5, "face", (h) => h[0] === "face part" && h[1] === "shape");
+      assert.deepEqual(
+        FACE.map((r) => r[0]),
+        ["eye L", "eye R", "mouth"],
+        "BRAND.md §5 face table must list eye L, eye R and mouth, in that order",
+      );
+      const FACE_ROW = new Map(FACE.map((r) => [r[0], r[2]]));
+      const faceRow = (part) => {
+        const cell = FACE_ROW.get(part);
+        assert.ok(cell, `BRAND.md §5 face table has no \`${part}\` row`);
+        return cell;
+      };
+
+      const EYE_L = {
+        r: num(faceRow("eye L"), "r"),
+        cx: relation(faceRow("eye L"), "cx"),
+        cy: relation(faceRow("eye L"), "cy"),
+      };
+      const EYE_R = {
+        r: num(faceRow("eye R"), "r"),
+        cx: relation(faceRow("eye R"), "cx"),
+        cy: relation(faceRow("eye R"), "cy"),
+      };
+      const MOUTH = {
+        width: num(faceRow("mouth"), "width"),
+        height: num(faceRow("mouth"), "height"),
+        rx: num(faceRow("mouth"), "rx"),
+        cy: relation(faceRow("mouth"), "cy"),
+      };
+
+      /** §5's viewBox, parsed from the geometry line — the plate must cover it. */
+      const VIEWBOX = (() => {
+        const m = /viewBox\s+`([^`]+)`/.exec(SEC5);
+        assert.ok(m, "BRAND.md §5: no `viewBox \\`…\\`` geometry line");
+        const v = m[1].trim().split(/\s+/).map(Number);
+        assert.equal(v.length, 4, `BRAND.md §5: the viewBox must be four numbers (got \`${m[1]}\`)`);
+        return { x: v[0], y: v[1], width: v[2], height: v[3] };
+      })();
+
+      /**
+       * The centre of one sentinel's head — the concentric head circle, and the
+       * origin §5 measures every face offset from.
+       */
+      const headCentre = (s) => ({ cx: s.cx, cy: one(s.top + HEAD.cy.offset) });
+
+      /** The three face shapes §5 cuts out of one sentinel, in the table's order. */
+      function expectedFace(s) {
+        const { cx: hx, cy: hy } = headCentre(s);
+        const eye = (part, e) => ({
+          part,
+          tag: "circle",
+          fill: MASK_CUT,
+          cx: one(hx + e.cx.sign * e.cx.offset),
+          cy: one(hy + e.cy.sign * e.cy.offset),
+          r: one(e.r),
+        });
+        return [
+          eye("eye L", EYE_L),
+          eye("eye R", EYE_R),
+          {
+            part: "mouth",
+            tag: "rect",
+            fill: MASK_CUT,
+            x: one(hx - MOUTH.width / 2),
+            y: one(hy + MOUTH.cy.sign * MOUTH.cy.offset - MOUTH.height / 2),
+            width: one(MOUTH.width),
+            height: one(MOUTH.height),
+            rx: one(MOUTH.rx),
+          },
+        ];
+      }
+
+      /** §5's whole face, in mask document order: eye L, eye R, mouth × 3 sentinels. */
+      const FACE_SHAPES = SENTINELS.flatMap((s) => expectedFace(s));
+      assert.equal(FACE_SHAPES.length, SENTINELS.length * 3, "§5 must describe three face shapes per sentinel");
+
+      /** Every way a mark's knockout face departs from §5 — `[]` is a match. */
+      function faceDrift(svg, id, expected) {
+        const k = knockoutOf(svg, id);
+        if (k.error) return [k.error];
+        const out = [];
+        if (k.plate.tag !== "rect") {
+          out.push(`the mask's plate is a <${k.plate.tag}>, not the full-bleed <rect>`);
+        } else {
+          for (const key of ["x", "y", "width", "height"]) {
+            if (!(key in k.plate.attrs)) out.push(`the mask's plate has no ${key}`);
+            else if (!close(k.plate.attrs[key], VIEWBOX[key]))
+              out.push(`the mask's plate ${key} ${k.plate.attrs[key]} != ${VIEWBOX[key]} (it must cover the viewBox)`);
+          }
+        }
+        if ((k.plate.fill ?? "").toLowerCase() !== MASK_PLATE) {
+          out.push(`the mask's plate fill ${JSON.stringify(k.plate.fill)} is not the functional white`);
+        }
+        if (k.cuts.length !== expected.length) out.push(`face shape count ${k.cuts.length} != ${expected.length}`);
+        expected.forEach((want, i) => {
+          const got = k.cuts[i];
+          if (!got) return;
+          const at = `face[${i}] (${want.part})`;
+          if (got.tag !== want.tag) out.push(`${at}.tag ${got.tag} != ${want.tag}`);
+          if ((got.fill ?? "").toLowerCase() !== want.fill) {
+            out.push(`${at}.fill ${JSON.stringify(got.fill)} != ${want.fill} (a knockout is functional black)`);
+          }
+          for (const key of GEOM_KEYS) {
+            if (!(key in want)) continue;
+            if (!(key in got.attrs)) out.push(`${at}.${key} missing`);
+            else if (!close(got.attrs[key], want[key])) out.push(`${at}.${key} ${got.attrs[key]} != ${want[key]}`);
+          }
+        });
+        return out;
+      }
+
+      /** Every way a mark breaks §5's rule that the watch signal stays outside. */
+      function signalDrift(svg, id) {
+        const span = maskedGroupSpan(svg, id);
+        if (!span) return [`no <g mask="url(#${id})"> — the face knockout is not applied to the mark`];
+        const out = [];
+        const outline = shapesOf(svg);
+        const inside = shapesOf(svg.slice(span.start, span.end));
+        const outside = shapesOf(svg.slice(0, span.start) + svg.slice(span.end));
+        if (outline.length - inside.length !== 1) {
+          out.push(
+            `${outline.length - inside.length} of ${outline.length} outline shapes sit outside the mask group; ` +
+              "the watch signal must be the only one",
+          );
+        }
+        if (outside.length === 1) {
+          const dot = outside[0];
+          if (dot.tag !== "circle") out.push(`the shape outside the mask group is a <${dot.tag}>, not the watch-signal circle`);
+          for (const [key, want] of [
+            ["cx", DOT.cx],
+            ["cy", DOT.cy],
+            ["r", DOT.r],
+          ]) {
+            if (!(key in dot.attrs)) out.push(`the watch signal has no ${key}`);
+            else if (!close(dot.attrs[key], want)) out.push(`the watch signal ${key} ${dot.attrs[key]} != ${want}`);
+          }
+        }
+        if (
+          (maskShapeList(svg, id) ?? []).some(
+            (s) =>
+              s.tag === "circle" &&
+              close(s.attrs.cx, DOT.cx) &&
+              close(s.attrs.cy, DOT.cy) &&
+              close(s.attrs.r, DOT.r),
+          )
+        ) {
+          out.push("the watch signal is inside the <mask> — it must stay outside it and always solid");
+        }
+        return out;
+      }
+
+      /** The rendered tag for one expected face shape, exactly as the marks write it. */
+      const faceTag = (w) =>
+        w.tag === "circle"
+          ? `<circle cx="${one(w.cx)}" cy="${one(w.cy)}" r="${one(w.r)}" />`
+          : `<rect x="${one(w.x)}" y="${one(w.y)}" width="${one(w.width)}" height="${one(w.height)}" rx="${one(w.rx)}" />`;
+
+      // ── §5 stands on its own here too ──────────────────────────────────────
+
+      describe("BRAND.md §5 — the face's own contract is internally sound", () => {
+        it("measures every face shape from the head centre", () => {
+          for (const [part, rel] of [
+            ["eye L cx", EYE_L.cx],
+            ["eye R cx", EYE_R.cx],
+            ["eye L cy", EYE_L.cy],
+            ["eye R cy", EYE_R.cy],
+            ["mouth cy", MOUTH.cy],
+          ]) {
+            assert.equal(rel.base, part.endsWith("cx") ? "cx" : "cy", `§5: ${part} must be measured from the head centre`);
+          }
+        });
+
+        it("mirrors the two eyes about the head centre", () => {
+          assert.equal(EYE_R.r, EYE_L.r, "§5: the two eyes must share a radius");
+          assert.deepEqual(
+            [EYE_L.cx.offset, EYE_L.cx.sign, EYE_R.cx.sign],
+            [EYE_R.cx.offset, -1, 1],
+            "§5: the eyes must be mirrored either side of the head centre",
+          );
+          assert.equal(EYE_L.cy.offset, EYE_R.cy.offset, "§5: the two eyes must sit at the same height");
+        });
+
+        it("hangs the mouth below the head centre as a rounded, wider-than-tall rect", () => {
+          assert.equal(MOUTH.cy.sign, 1, "§5: the mouth must sit *below* the head centre");
+          assert.ok(MOUTH.cy.offset > 0, "§5: the mouth's cy offset must be positive (downwards)");
+          assert.ok(MOUTH.width > MOUTH.height, "§5: the mouth must be wider than it is tall");
+          assert.ok(
+            MOUTH.rx > 0 && MOUTH.rx <= MOUTH.height / 2,
+            "§5: the mouth's rx must be a real corner, no more than half its height",
+          );
+        });
+      });
+
+      // ── All three rendered marks cut exactly that face ─────────────────────
+
+      describe("the three rendered marks cut it, value by value", () => {
+        const surfaces = [
+          ["prototype/index.html top bar `.td-logo`", INDEX_MARKS[0]],
+          ["prototype/index.html empty state `.td-logo-lg`", INDEX_MARKS[1]],
+          ["prototype/favicon.svg", FAVICON_SVG],
+        ];
+
+        for (const [label, svg] of surfaces) {
+          it(`${label} — the knockout is §5's face, shape for shape`, () => {
+            const id = maskIdOf(svg);
+            assert.ok(id, `${label}: the mark applies no \`<mask>\` — the face is not cut out at all`);
+            assert.ok(maskInner(svg, id) != null, `${label}: \`<mask id="${id}">\` is referenced but never defined`);
+            assert.deepEqual(faceDrift(svg, id, FACE_SHAPES), [], `${label}: the face drifts from BRAND.md §5`);
+          });
+
+          it(`${label} — the watch signal stays outside the mask`, () => {
+            assert.deepEqual(signalDrift(svg, maskIdOf(svg)), [], `${label}: the watch signal must stay outside the mask`);
+          });
+
+          it(`${label} — the face adds no visible shape, so the outline is still ${EXPECTED_COUNT}`, () => {
+            assert.equal(shapesOf(svg).length, EXPECTED_COUNT, `${label}: the face must be negative space, never paint`);
+          });
+        }
+
+        it("gives both inline marks their own mask id", () => {
+          const ids = maskDefIds(PROTOTYPE_HTML);
+          assert.equal(ids.length, INDEX_MARKS.length, `prototype/index.html must define one mask per mark (found ${ids.join(", ")})`);
+          assert.deepEqual(ids, [...new Set(ids)], `prototype/index.html reuses a <mask id>: ${ids.join(", ")}`);
+          for (const [i, svg] of INDEX_MARKS.entries()) {
+            assert.ok(ids.includes(maskIdOf(svg)), `mark[${i}]'s group points at a mask the document never defines`);
+          }
+        });
+      });
+
+      // ── The face guard is not vacuous either ───────────────────────────────
+
+      describe("the face guard can actually go red — and green again", () => {
+        const pristine = INDEX_MARKS[0];
+        const id = maskIdOf(pristine);
+
+        /** Mutate the pristine mark textually; fails loud if the mutation misses. */
+        const mutatedBy = (from, to) => {
+          const mutated = pristine.replace(from, to);
+          assert.notEqual(mutated, pristine, `the mutation ${from} → ${to} did not apply`);
+          return mutated;
+        };
+
+        it("passes on the pristine mark, so the oracle itself can be green", () => {
+          assert.deepEqual(faceDrift(pristine, id, FACE_SHAPES), []);
+          assert.deepEqual(signalDrift(pristine, id), []);
+        });
+
+        it("reports a drifted eye — sentinel 1's eye L slides off its §5 cx", () => {
+          const eye = FACE_SHAPES[0];
+          const d = faceDrift(mutatedBy(faceTag(eye), faceTag({ ...eye, cx: one(eye.cx + 0.1) })), id, FACE_SHAPES);
+          assert.ok(
+            d.some((m) => m.includes("eye L") && m.includes(".cx ")),
+            `eye-cx drift not reported: ${JSON.stringify(d)}`,
+          );
+        });
+
+        it("reports a fat eye — a radius that outgrows §5's", () => {
+          const eye = FACE_SHAPES[0];
+          const d = faceDrift(mutatedBy(faceTag(eye), faceTag({ ...eye, r: one(eye.r + 0.08) })), id, FACE_SHAPES);
+          assert.ok(
+            d.some((m) => m.includes("eye L") && m.includes(".r ")),
+            `eye-radius drift not reported: ${JSON.stringify(d)}`,
+          );
+        });
+
+        it("reports a widened mouth — one wider than §5's", () => {
+          const mouth = FACE_SHAPES[2];
+          const d = faceDrift(mutatedBy(faceTag(mouth), faceTag({ ...mouth, width: one(mouth.width + 0.18) })), id, FACE_SHAPES);
+          assert.ok(
+            d.some((m) => m.includes("mouth") && m.includes(".width ")),
+            `mouth-width drift not reported: ${JSON.stringify(d)}`,
+          );
+        });
+
+        it("reports a dropped mouth — one face shape short", () => {
+          const d = faceDrift(mutatedBy(faceTag(FACE_SHAPES[2]), ""), id, FACE_SHAPES);
+          assert.ok(d.some((m) => m.includes("shape count")), `dropped-mouth drift not reported: ${JSON.stringify(d)}`);
+        });
+
+        it("reports the knockout dropped altogether — the mask reference is gone", () => {
+          const stripped = mutatedBy(` mask="url(#${id})"`, "");
+          assert.equal(maskIdOf(stripped), null, "the mask reference must be gone");
+          assert.ok(
+            signalDrift(stripped, id).some((m) => m.includes("the face knockout is not applied")),
+            "a mark with no mask must be reported as un-knocked-out",
+          );
+        });
+
+        it("reports the watch signal moved inside the mask — the sentinel must stay solid", () => {
+          const dot = `<circle cx="${one(DOT.cx)}" cy="${one(DOT.cy)}" r="${one(DOT.r)}" fill="${TOKEN.accent}" />`;
+          const moved = pristine.replace(dot, "").replace("</mask>", `${dot}</mask>`);
+          assert.notEqual(moved, pristine, "the watch signal must be found and moved");
+          const d = signalDrift(moved, id);
+          assert.ok(
+            d.some((m) => m.includes("inside the <mask>")),
+            `masked watch signal not reported: ${JSON.stringify(d)}`,
+          );
+          assert.ok(
+            faceDrift(moved, id, FACE_SHAPES).some((m) => m.includes("shape count")),
+            "the dot inside the mask must also be caught as an extra face shape",
+          );
+        });
+
+        it("reports a face shape lifted out of the mask into the visible outline", () => {
+          const eye = faceTag(FACE_SHAPES[0]);
+          const escaped = pristine.replace(eye, "").replace("</defs>", `</defs>${eye}`);
+          assert.notEqual(escaped, pristine, "the eye must be found and lifted out");
+          assert.equal(
+            shapesOf(escaped).length,
+            EXPECTED_COUNT + 1,
+            "the lifted eye must now be a visible outline shape",
+          );
+          const d = signalDrift(escaped, id);
+          assert.ok(
+            d.some((m) => m.includes("outside the mask group")),
+            `escaped face shape not reported: ${JSON.stringify(d)}`,
+          );
+          assert.ok(
+            faceDrift(escaped, id, FACE_SHAPES).some((m) => m.includes("shape count")),
+            "the escaping eye must also be caught as a missing face shape",
+          );
+        });
       });
     });
 
