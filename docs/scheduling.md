@@ -98,10 +98,12 @@ an LLM turn by default — escalation is a notification, not a model call
 ## Continuity: a fresh handoff, not a resumed pile
 
 Every wake hands the worker a **bounded, fresh handoff** built by
-`buildHandoff()`: the card id and title, the workspace, the exact `taskctl`
-commands to read and deliver it, and the attribution flags
+`buildHandoff()`: the card id and title, the exact `taskctl` commands to read and
+deliver it, and the attribution flags
 `--agent <name> --agent-platform <host> --session-id <id>`. The handoff is capped
-(≈1–2 KB) so a wake never drags an unbounded context into the model.
+(≈1–2 KB) so a wake never drags an unbounded context into the model. It names no
+directory: the board holds none (O3), and the working directory is the host's
+business — see [Where a worker runs](#where-a-worker-runs).
 
 Continuity across wakes comes from the **board**, not the prompt: the card's
 comments, reports and session record are durable, so a resumed conversation can
@@ -112,6 +114,36 @@ own resume form: Claude resumes with `claude -p … --resume <sid>`, Codex with
 `scripts/verify/host-resume-matrix.mjs`). opencode is **not** a supported
 `--host`, and its resume form was **not verified** (its CLI was not installed) —
 nothing is promised about it here.
+
+## Where a worker runs
+
+A woken worker must run in the **target directory of the card's project** — the
+checkout the work is actually about. The board cannot say which directory that is
+(it holds no directories, O3), and neither can the supervisor: it knows a project
+**identity** and nothing else.
+
+So the directory is resolved **by the host, locally**, in the one piece of the chain
+that lives on the host: the wake glue.
+
+- The supervisor starts the worker *through* the glue
+  (`<host-dir>/bin/wake-<host>.sh`) when one is installed, handing it the card's
+  project identity in `TP_PROJECT` and the map path in `TP_PROJECTS_JSON`.
+- The glue resolves that identity against the host-local `projects.json` beside the
+  skill (`references/projects-json.md`), **validates** the result (absolute, exists,
+  is a directory), `cd`s into it, and only then execs the host CLI.
+- **If it cannot resolve, it refuses the wake** (exit 3, reason on stderr) and the
+  card stays unwoken. There is no fallback directory: a session that runs in the
+  wrong checkout produces confident, misplaced work, which is worse than no session.
+- With **no glue installed**, the supervisor falls back to the host CLI directly,
+  pins it to `--repo`, and logs an explicit warning that no target directory was
+  resolved. That fallback is visible on every tick — never silent.
+- An explicit **`--wake-command`** outranks both: an operator who supplies their
+  own wake command chose it deliberately, so it is used verbatim (and still handed
+  `TP_PROJECT` / `TP_PROJECTS_JSON` / `TP_NODE` if it wants them).
+
+The same map answers the interactive question: `taskctl project dir <project>`
+prints a project's registered directory, or exits non-zero asking which directory it
+should be, rather than continuing.
 
 ## Where the supervisor runs
 
@@ -174,6 +206,10 @@ registry) is identical.
 (opencode is not a supported `--host`; its headless and resume forms were **not
 verified** — its CLI was not installed — so this table promises nothing about it.)
 
+The wake command column is what the *host CLI* is called with. When the host's glue
+is installed, the supervisor starts **the glue** with that handoff and lets it set
+the working directory first — see [Where a worker runs](#where-a-worker-runs).
+
 Installers write per-host units under `<host-dir>/scheduling/{launchd,systemd,cron}`
 and the wake glue at `<host-dir>/bin/wake-<host>.sh`, then **print the load
 command** — they never enable a daemon or run `crontab` for you:
@@ -233,6 +269,9 @@ node scripts/supervisor.mjs --agent alice --dry-run --once            # plan onl
 | `--state <path>` | `<home>/<host-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry |
 | `--config <path>` | `<home>/<host-dir>/meerkat-taskpanel.env` | host config the default is read from |
 | `--home <path>` | `$HOME` | base for those defaults |
+| `--glue <path>` | `<home>/<host-dir>/bin/wake-<host>.sh` | the wake glue that resolves the project directory and starts the worker ([Where a worker runs](#where-a-worker-runs)) |
+| `--projects-json <path>` | `<home>/<host-dir>/skills/meerkat-taskpanel/projects.json` | the host-local map handed to the glue |
+| `--wake-command <cmd>` | — | your own wake command instead of the built-in host forms; called as `<cmd> <handoff> [<sid>]` |
 
 **Fixed paths.** Logs and state always land at the paths in the table — a user
 who wants to know why a card did not start reads
@@ -303,13 +342,15 @@ not just the exit code:
 |---|---|
 | `session-start.sh` (claude) | calls `issue candidates --assignee <agent>`, prints candidates + the eight rules, and is **non-fatal** — a failing or missing shim still exits 0 with a PATH-independent fallback |
 | `meerkat-taskpanel-claim.sh` (codex) | claims the first candidate (`issue move <ref> in_progress`) when free; **skips** when a held card is mine (identity matched under the board's NFKC/whitespace/case rule); still claims when the held card is someone else's; exits 0 on an empty pool; exits 1 when the shim is missing |
-| `wake-claude.sh` | no prompt → exit 2; prompt → `claude -p <prompt>`; plus `--resume <sid>` when a session is given; **no** permission-bypass flag |
-| `wake-codex.sh` | no prompt → exit 2; prompt → `codex exec <prompt>`; plus `codex exec resume <sid> <prompt>` when a session is given; **no** permission-bypass flag |
-| `wake-pi.sh` | no prompt → exit 2; prompt → `pi --print <prompt>`; plus `pi --print --session <sid> <prompt>` when a session is given |
+| `wake-claude.sh` | no prompt → exit 2; mapped project → `claude -p <prompt>` **run in the mapped directory**; plus `--resume <sid>` when a session is given; unmapped project / bad target directory → exit 3, no worker started; **no** permission-bypass flag |
+| `wake-codex.sh` | the same, with `codex exec <prompt>` (and `codex exec resume <sid> <prompt>`) |
+| `wake-pi.sh` | the same, with `pi --print <prompt>` (and `pi --print --session <sid> <prompt>`) |
 
 The wake assertions compare the recorded argv against `wakeCommand()` (the same pure
 function `scripts/supervisor.mjs` dispatches through), so the generated script and the
-supervisor can't drift apart. The harness drives each wake script with a prompt only; the
+supervisor can't drift apart — and they compare the **working directory** the mock host
+CLI was actually started in, so "a woken worker runs in its project's directory" is
+executed, not merely documented. The harness drives each wake script with a prompt only; the
 **resume** branches (the `<sid>` column above) are asserted at the `wakeCommand()` level in
 `test/scheduling/`, not re-executed against a mock host CLI.
 

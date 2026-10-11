@@ -57,6 +57,7 @@ an error message.
 | `project create --id <id> --name <n> [--meta k=v]… [--label <l>]… [--readme <text>]` | Create a project. The id becomes the identifier prefix (`demo` → `DEMO-0001`). |
 | `project update <id> [--name] [--meta k=v]… [--label]… [--readme]` | Update it. `--meta` **merges**. |
 | `project list [--include-archived]` | List projects. |
+| `project dir <id>` | Print the local directory the project works in, resolved from `projects.json` (`--projects-json <path>` or `$MEERKAT_TASKPANEL_PROJECTS_JSON` picks another map). Exits non-zero — asking which directory it should be — when none is registered, or when the registered path is relative, missing, or not a directory. |
 | `project readme <id>` | Print the readme. |
 | `project readme <id> --set <text>` / `--file <path\|->` | Set it. |
 
@@ -64,7 +65,10 @@ an error message.
 there is no `--workspace-path`, no `context` command, and no board-side field that
 names a project's target directory. The local map from a directory to a board
 project is the `projects.json` kept beside this skill — see
-[`projects-json.md`](projects-json.md).
+[`projects-json.md`](projects-json.md). `project dir` is that map's read side, and it
+is local: it resolves and validates the path, and **stops to ask** rather than
+guessing one. The wake glue resolves the same map to run a woken worker in the
+project's directory.
 
 ### `issue`
 

@@ -9,6 +9,32 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Project target directories: resolved locally, validated, never guessed.** A woken
+  worker now runs in the card's **project target directory**, and the decision stays
+  where the board's O3 rule put it — on the host. The supervisor hands the host's wake
+  glue (`<host-dir>/bin/wake-<host>.sh`) the card's board project identity in
+  `TP_PROJECT` and the map path in `TP_PROJECTS_JSON`; the glue resolves that identity
+  against the host-local `projects.json` (see
+  [`references/projects-json.md`](skills/meerkat-taskpanel/references/projects-json.md)),
+  **validates** the result (absolute, exists, is a directory), `cd`s, and only then
+  execs the host CLI. An unresolvable project — no entry at all, or a registered path
+  that is relative, missing, or a file — **refuses the wake** (exit 3, reason appended
+  to the supervisor log) rather than starting a session in the wrong checkout. With no
+  glue installed the supervisor falls back to the host CLI pinned to `--repo` and logs
+  an explicit warning on every tick, so the degraded case is never silent. The rule
+  itself is `src/shared/project-dir.mjs` (pure, filesystem injected) and
+  `scripts/wake-cwd.mjs` (the helper the glue calls); `src/shared/scheduling.mjs`
+  `planWakeInvocation()` is the pure decision, so the glue/direct/override choice and
+  the warning are asserted without spawning anything.
+- **`taskctl project dir <id>`** — print the local directory a project works in,
+  resolved from `projects.json`, or exit non-zero **asking which directory it should
+  be** instead of continuing without one. The board still holds no directory (O3);
+  this is the local map's read side, and the skill docs now say plainly that
+  `local_path` is required *and checked*, and that a project with no registered
+  directory is a question for the user — never a value to guess, invent, or derive.
+  A registered-but-unusable path (relative / missing / not a directory) fails the same
+  way, naming what is wrong.
+
 - **API contract snapshot.** `scripts/verify/contract.mjs` freezes the surface a client
   binds to — routes and each route's **declared request shape** (`{query, body}`, down to
   `type`/`enum`/`items`/`anyOf`, recursively), error codes, and the wire field names **and

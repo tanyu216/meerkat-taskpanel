@@ -135,20 +135,24 @@ the board project's **id** (preferred) or name. The file is **local and agent-si
 it is never written into the board**, and it is not part of the skill's source. The
 full schema is in [`projects-json.md`](projects-json.md).
 
-**There is no fallback.** A project absent from `projects.json` has **no target
+**There is no fallback — ask.** A project absent from `projects.json` has **no target
 directory** — the board cannot supply one. Do not invent, guess, or derive a
 directory, and do not go looking for one on the board. When a step needs the directory,
-stop and say:
+stop and **ask the user**, rather than continuing without an answer:
 
 ```text
 No local directory is registered for project <project>.
-Add an entry to projects.json beside this skill (references/projects-json.md);
-the board cannot supply one.
+Which directory does it work in? I will add it to projects.json beside this skill
+(references/projects-json.md) — the board cannot supply one.
 ```
 
-A directory that maps to nothing gets the same prompt. Work that needs no directory —
-claiming, moving, commenting, delivering (§1–§6) — is unaffected; a missing mapping is
-"no directory known", never "cannot work".
+`local_path` is required **and checked** (absolute, exists, is a directory): an entry
+that points nowhere — a moved checkout, a typo, a file — is as unusable as no entry,
+and gets the same question with what is wrong named. `taskctl project dir <project>` is
+the command form: it prints the directory, or exits non-zero asking rather than
+proceeding. A directory that maps to nothing gets the same prompt. Work that needs no
+directory — claiming, moving, commenting, delivering (§1–§6) — is unaffected; a missing
+mapping is "no directory known", never "cannot work".
 
 Two boundaries this respects, on purpose:
 
@@ -183,6 +187,11 @@ Three things that keep it honest:
   all; a live claim is invisible to the next scan.
 - **A broken heartbeat is never silent.** If patrol cannot read a heartbeat, it
   *reports* that instead of going quiet — the state that used to vanish.
+- **A woken worker runs in its project's directory — or is not woken at all.** The
+  wake goes through the host's own glue, which resolves the card's project against
+  this skill's `projects.json` and `cd`s there; a project with no usable directory
+  refuses the wake instead of running somewhere unintended
+  ([§Where a directory's project lives](#where-a-directorys-project-lives-目录归属)).
 
 Installers drop per-host scheduling units (launchd / systemd / cron) and a wake
 script, and print the load command — they never enable a daemon for you. The

@@ -114,15 +114,27 @@ identity**:
 its **id** (preferred) or name. A directory resolves to the entry whose `local_path` is
 that directory or an ancestor of it; when several match, the **longest** path wins.
 
-**There is no fallback.** A project absent from `projects.json` has **no target
-directory** — the board cannot supply one. Do not guess one: when a step needs the
-directory, stop and say
+`local_path` is **required, and it is checked**: it must be an absolute path that
+exists and *is* a directory. An entry that fails any of the three is as unusable as no
+entry at all — a stale path is a moved checkout, and a worker started there would be
+working the wrong repository.
+
+**Ask when there is no answer — never continue without one.** A project absent from
+`projects.json` has **no target directory**, and the board cannot supply one. Do not
+guess, and do not derive one. When a step needs the directory — a wake, or any command
+that must run *in* the project — stop and **ask the user which directory it is**:
 
 ```text
 No local directory is registered for project <project>.
-Add an entry to projects.json beside this skill (references/projects-json.md);
-the board cannot supply one.
+Which directory does it work in? I will add it to projects.json beside this skill
+(references/projects-json.md) — the board cannot supply one.
 ```
+
+The same prompt applies to a registered-but-unusable path, naming what is wrong
+(missing, relative, or not a directory). `taskctl project dir <project>` is the
+command form of this rule: it prints the resolved directory, or exits non-zero with
+that question instead of continuing. The **wake glue** uses the same map and the same
+rule, so a woken worker runs in the project's directory — or the wake is refused.
 
 Work that needs no directory (claiming, moving, commenting, delivering) is unaffected.
 The full schema, the resolution rule and the re-install behaviour are in
