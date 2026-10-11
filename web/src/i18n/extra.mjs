@@ -1,12 +1,21 @@
 /**
  * UI strings the prototype catalogue does not carry.
  *
- * `catalogue.mjs` is a byte-locked copy of the prototype's `MESSAGES` (214 keys,
- * en/zh in exact parity) and must not grow — the prototype has no network, so it
- * has no copy for a live-update conflict, a reconnect or a resync. Those states
- * are new in M6b, so their strings live here, in the same two languages and with
- * the same parity contract. `test/web/i18n.parity.test.mjs` checks this table
- * for the same en/zh key parity the catalogue promises.
+ * `catalogue.mjs` is a byte-locked copy of the prototype's `MESSAGES` (215 keys,
+ * en/zh in exact parity). It carries every string the prototype's own markup can
+ * render; the prototype has no network, so it has no copy for a live-update
+ * conflict, a reconnect or a resync. Those states are new in M6b, so their
+ * strings live here, in the same two languages and with the same parity contract.
+ * `test/web/i18n.parity.test.mjs` checks this table for the same en/zh key parity
+ * the catalogue promises, and that nothing here shadows a catalogue key.
+ *
+ * One M1 key deliberately lives on the other side: `nav.waiting` names the 4th
+ * nav item, which the prototype's own markup now authors (`design/prototype/
+ * index.html`, the B03 extension approved with `count [data-nav-item] 3→4`), and
+ * a prototype hook must resolve against the *catalogue* — see
+ * `i18n.catalogue.test.mjs`, "covers every translated hook". So it is in
+ * `catalogue.mjs`, not duplicated here. The rest of M1's `waiting.*` vocabulary
+ * has no prototype consumer and stays below.
  */
 export const EXTRA = {
   en: {
@@ -27,7 +36,6 @@ export const EXTRA = {
     // count key uses `%s` because the runtime fills positionally — `{n}` would
     // print itself (design §10-C2).
     "status.awaiting": "Awaiting you",
-    "nav.waiting": "Waiting on me",
     "waiting.count": "%s waiting on you",
     "waiting.empty": "Nothing is waiting on you",
     "waiting.payload.summary": "Waiting on your reply",
@@ -54,7 +62,6 @@ export const EXTRA = {
     "toast.relationNone": "无关联",
     "attach.placeholder": "无附件",
     "status.awaiting": "等你回复",
-    "nav.waiting": "等你回复",
     "waiting.count": "%s 件等你回复",
     "waiting.empty": "没有在等你回复的卡",
     "waiting.payload.summary": "等待你的回复",

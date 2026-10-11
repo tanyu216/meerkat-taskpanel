@@ -488,6 +488,19 @@ export async function run() {
       probe.remove();
       return {
         badges: document.querySelectorAll("[data-card-waiting]").length,
+        // §8-04 is a *per-card* rule ("every awaiting card renders exactly one
+        // [data-card-waiting], and it appears on no other card"). The view is
+        // co-mounted (design §3.2: a waiting row *is* the card component, and the
+        // inactive view is `hidden`, not unmounted), so the one awaiting card is
+        // legitimately on screen twice — once in its column, once as a row — and
+        // the meaningful counts are the board's and the per-card ones below.
+        boardBadges: document.querySelectorAll("[data-board] [data-card-waiting]").length,
+        cardsWithTwoBadges: [...document.querySelectorAll("[data-card]")].filter(
+          (card) => card.querySelectorAll("[data-card-waiting]").length > 1,
+        ).length,
+        strayBadges: [...document.querySelectorAll("[data-card-waiting]")].filter(
+          (node) => node.closest("[data-card]") === null,
+        ).length,
         badgeReason: badge?.getAttribute("data-waiting-reason") ?? null,
         badgeLabel: badge?.textContent?.trim() ?? null,
         badgeColor: badge ? getComputedStyle(badge).color : null,
@@ -508,6 +521,29 @@ export async function run() {
         full: full?.textContent?.trim() ?? null,
         fullMaxWidth: full ? getComputedStyle(full).maxWidth : null,
         fullWhiteSpace: full ? getComputedStyle(full).whiteSpace : null,
+        // §8-14 caps the payload at `max-width: 68ch`. A browser reports
+        // `maxWidth` as a resolved px length, never in `ch`, so the literal has to
+        // be resolved in the *element's own* font (font-size included) for the
+        // comparison to mean anything.
+        maxChPx: (() => {
+          if (!full) return null;
+          const cs = getComputedStyle(full);
+          const probe = document.createElement("span");
+          probe.style.position = "absolute";
+          probe.style.visibility = "hidden";
+          probe.style.whiteSpace = "pre";
+          probe.style.fontFamily = cs.fontFamily;
+          probe.style.fontSize = cs.fontSize;
+          probe.style.fontWeight = cs.fontWeight;
+          probe.style.fontStyle = cs.fontStyle;
+          probe.style.fontStretch = cs.fontStretch;
+          probe.style.letterSpacing = cs.letterSpacing;
+          probe.textContent = "0".repeat(68);
+          document.body.appendChild(probe);
+          const width = probe.getBoundingClientRect().width;
+          probe.remove();
+          return width;
+        })(),
         // §8-09(a): no freshness/claim affordance anywhere inside a card.
         freshnessHooks: document.querySelectorAll(
           "[data-card] [data-card-agent-stale], [data-card] [data-card-claimable], [data-card] [data-freshness], [data-card] [data-stale]",
@@ -551,7 +587,9 @@ export async function run() {
     const FIRST_SENTENCE = "范围确认：这一版不做第 8 列。";
     const m1Failures = [];
     const check = (ok, message) => { if (!ok) m1Failures.push(message); };
-    check(m1.badges === 1, `[data-card-waiting] count ${m1.badges} !== 1`);
+    check(m1.boardBadges === 1, `board [data-card-waiting] count ${m1.boardBadges} !== 1`);
+    check(m1.cardsWithTwoBadges === 0, "no single card may render two [data-card-waiting]");
+    check(m1.strayBadges === 0, "every [data-card-waiting] must sit inside a [data-card]");
     check(m1.badgeReason === "E1", `badge reason ${m1.badgeReason} !== E1`);
     check(m1.badgeLabel === "Awaiting you", `badge label ${m1.badgeLabel}`);
     check(m1.badgeColor === m1.accentColor, `badge colour ${m1.badgeColor} !== accent ${m1.accentColor}`);
@@ -569,7 +607,10 @@ export async function run() {
     check(m1.detailsOpen === false, "the payload disclosure must be closed by default");
     check((m1.full ?? "").includes("不该出现在摘要里"), "the full text must be the comment verbatim");
     check(m1.fullWhiteSpace === "pre-wrap", `payload white-space ${m1.fullWhiteSpace}`);
-    check(m1.fullMaxWidth === "68ch", `payload max-width ${m1.fullMaxWidth}`);
+    check(
+      m1.maxChPx !== null && Number.parseFloat(m1.fullMaxWidth) <= m1.maxChPx + 0.5,
+      `payload max-width ${m1.fullMaxWidth} exceeds 68ch (${m1.maxChPx}px at this font)`,
+    );
     check(m1.freshnessHooks === 0, "no freshness hook may exist inside a card");
     check(!awaitingMenuLabels.some((label) => /In Review|Done|Blocked/i.test(label)), `awaiting menu offers ${awaitingMenuLabels.join("|")}`);
     check(awaitingMenuLabels.some((label) => /Canceled/i.test(label)), "awaiting menu must offer Canceled");

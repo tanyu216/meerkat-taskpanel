@@ -783,11 +783,12 @@ const BLOCKS = [
       {
         kind: "manual",
         note:
-          "Documentation discrepancy: BLOCKS.md B12 writes the large empty state as " +
-          "`[data-empty-lg]`, but no such attribute exists — the shipped markup is " +
+          "The large empty state is the class `.td-empty-lg` on " +
+          "`[data-empty][data-empty-kind=\"no-results\"]` — there is no `data-empty-lg` " +
+          "attribute, and a class cannot appear in this contract. The shipped markup is " +
           "`<div class=\"td-empty td-empty-lg\" data-empty data-empty-kind=\"no-results\" hidden>`. " +
-          "The hook that names it is [data-empty][data-empty-kind=\"no-results\"]; `.td-empty-lg` " +
-          "is a class and therefore cannot appear in this contract.",
+          "(BLOCKS.md B12 used to write it as `[data-empty-lg]`; Elon's ruling ② held the doc " +
+          "wrong rather than the DOM, and B12 was corrected to the markup above.)",
       },
       {
         kind: "manual",

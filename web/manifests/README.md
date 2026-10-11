@@ -107,7 +107,7 @@ decisions that landed after M0 measured:
 
 | # | Block | Check | M0 draft | Here | Why |
 |---|---|---|---|---|---|
-| 1 | B03 | `[data-nav-item]` | `count 3` | `count 4` | M1 appended `waiting` (the 「等你回复」view). Adjudicated in-repo: `test/web/blocks.contract.mjs:125-132` (`DOMAINS.NAV`) and `:390` — "*M1 appends `waiting` — the one deliberate extension of this frozen baseline, approved with B03's count together (design §10-C6)*". The prototype side still has 3; do not "fix" either side. |
+| 1 | B03 | `[data-nav-item]` | `count 3` | `count 4` | M1 appended `waiting` (the 「等你回复」view). Adjudicated in-repo: `test/web/blocks.contract.mjs:125-132` (`DOMAINS.NAV`) and `:390` — "*M1 appends `waiting` — the one deliberate extension of this frozen baseline, approved with B03's count together (design §10-C6)*". The prototype side now has 4 too: `T-20261012-041728-2` added the 4th item to `design/prototype/index.html` plus its `nav.waiting` key (the card's ①). The two sides agree again. |
 | 2 | B03 | `[data-states-open]` | `count 1` | `count 0` (reverse) | B18 (states gallery) is `prototype-only` by Terry's 2026-10-12 ruling (`blocks.contract.mjs:74-80`, B18 manual rule `:960-968`): the shipped app renders no gallery and no `[data-states-open]` opener. `2aed9d8` removed it. Asserting the absence pins the ruling against regression. |
 
 Plus non-semantic edits: evidence paths re-pointed at `design/prototype/…`; `desc` strings
@@ -131,7 +131,7 @@ dropped:
 | **视觉/几何** — the hook is asserted present, the *shape* differs (SVG → glyph, `h2` → `span`, `dl` vs `div`, `hidden` wrapping, `aria-selected`) | B02 switcher icon · B06 progress `aria-hidden` · B06 column-name level · B07 agent avatar `hidden` · B07 `aria-selected` · B09 `[data-detail-props]` | `shot-compare.mjs` + human review (O7: structure + geometry, no pixel diff) — M2 |
 | **交互态** — only exists after a click (drawer `closing`, language menu open, aria-expanded) | B09 `closing` · B03 `[data-lang-menu]` structure & clipping risk | `shot-compare.mjs`, which drives the prototype and the app |
 | **数据驱动态** — needs a board state the fixture does not carry | B12 big empty state (Sentinel Watch mark) · B03 `[data-project-count]` on non-current rows · B09 attachment list & localized activity text | M2, with a fixture that renders the state; B12 is also out of Terry's ① scope |
-| **文档口径** — the row was a documentation defect, not a DOM fact | `[data-empty-lg]` (Elon ②), `BLOCKS.md`'s stale header counts (`blocks.contract.mjs` `STALE_PROSE_COUNTS`) | the doc fix, tracked on the M0 card |
+| **文档口径** — the row was a documentation defect, not a DOM fact | `[data-empty-lg]` (Elon ②), `BLOCKS.md`'s stale header counts (`blocks.contract.mjs` `STALE_PROSE_COUNTS`) | `[data-empty-lg]` doc fix landed in `T-20261012-041728-2` (BLOCKS.md B12 now describes the shipped markup); the `BLOCKS.md` header counts stay tracked on the M0 card |
 | **已登记为 `pending` 块** | B02 mark · B03 icon geometry · B03 footer visible text · B07 identity slot | the 4 `pending` blocks in `board.json` — SKIPped and printed by name |
 | **原型-实现有意分歧（已裁定）** | B03 nav `waiting` · B03 `[data-states-open]` | asserted here (reality), rationale in the two deltas above |
 
@@ -159,7 +159,7 @@ recorded here pending the written-deviation sign-off M0 asked for:
 | Surface | Where | Status |
 |---|---|---|
 | `.td-error` panel, `.td-conflict` panel, the board `resync` button, `[data-connection]` on the live dot | `App.vue`, `TopBar.vue` — M6b SSE integration | M0 §1 flagged these as 自创 G1 requiring Elon's approval; still owed |
-| `waiting` nav item + the 「等你回复」view (B05/B09 adjacent) | `Sidebar.vue`, `WaitingView.vue` | already adjudicated — `blocks.contract.mjs:125-132`, "approved with B03's count together" |
+| the 「等你回复」view surface (B05/B09 adjacent: the view root, its rows, the payload block, the count pill) | `WaitingView.vue`, `Sidebar.vue` | already adjudicated — `blocks.contract.mjs:125-132`, "approved with B03's count together". The `waiting` *nav item* is no longer a divergence: the prototype carries it as of `T-20261012-041728-2` |
 | No brand mark, text glyphs instead of the footer's three SVGs, no `.td-caret`, no `closing` state, attachment/activity placeholders | B02/B03/B09 | already ledgered as 4 `pending` blocks; M2's work list |
 
 ## 4. Why this is not (yet) a gate
