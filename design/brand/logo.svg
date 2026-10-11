@@ -1,11 +1,32 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="meerkat-taskpanel">
   <title>meerkat-taskpanel</title>
-  <desc>Sentinel Watch — three upright meerkats of a mob, left-low to right-high. The tallest stands on duty; the ears hold shape from 48px up, and the watch signal floats clear of the crown at every size.</desc>
+  <desc>Sentinel Watch — three upright meerkats of a mob, left-low to right-high. The tallest stands on duty; the ears hold shape from 48px up, and the watch signal floats clear of the crown at every size. Eyes and mouth are cut as negative space, so the mark holds at one colour and the silhouette never moves.</desc>
   <!--
        Sentinel Watch — light. Mob in ink, the sentinel on duty and its signal in
        the brand line. Transparent ground. Geometry per brief.md §4, with the V2
-       optical nudge (see BRAND.md §5).
+       optical nudge and the candidate-A «Pin · 克制» face knocked out of the ink
+       (see BRAND.md §5); the mask's greys are functional, not brand colours.
   -->
+  <defs>
+    <mask id="face-knockout-a" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+      <rect x="0" y="0" width="32" height="32" fill="#FFFFFF"/>
+      <g fill="#000000">
+      <!-- sentinel 1 · face -->
+      <circle cx="6.4" cy="20" r="0.42"/>
+      <circle cx="8" cy="20" r="0.42"/>
+      <rect x="6.84" y="21.05" width="0.72" height="0.2" rx="0.1"/>
+      <!-- sentinel 2 · face -->
+      <circle cx="15.2" cy="14.8" r="0.42"/>
+      <circle cx="16.8" cy="14.8" r="0.42"/>
+      <rect x="15.64" y="15.85" width="0.72" height="0.2" rx="0.1"/>
+      <!-- sentinel 3 · face -->
+      <circle cx="24" cy="12" r="0.42"/>
+      <circle cx="25.6" cy="12" r="0.42"/>
+      <rect x="24.44" y="13.05" width="0.72" height="0.2" rx="0.1"/>
+      </g>
+    </mask>
+  </defs>
+  <g mask="url(#face-knockout-a)">
     <!-- sentinel 1 · cx 7.2 · top 17.6 · h 9.4 -->
     <g fill="#14181B">
       <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6"/>
@@ -27,6 +48,7 @@
       <circle cx="22.4" cy="11.3" r="1.2"/>
       <circle cx="27.2" cy="11.3" r="1.2"/>
     </g>
-    <!-- watch signal — the sentinel on duty, clear of the head by 4.1 -->
-    <circle cx="24.8" cy="3.4" r="2.1" fill="#0F7A73"/>
+  </g>
+  <!-- watch signal — the sentinel on duty, clear of the head by 4.1, kept outside the face mask -->
+  <circle cx="24.8" cy="3.4" r="2.1" fill="#0F7A73"/>
 </svg>
