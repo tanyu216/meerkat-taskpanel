@@ -90,7 +90,7 @@ project's directory.
 | `issue candidates --assignee <name> [--stale] [--include-unassigned]` | The poll's read: claimable cards for an assignee (`todo`, non-`epic`, every `depends_on` done; `--stale` adds `in_progress` cards whose heartbeat expired; `--include-unassigned` adds the **public pool** — unassigned claimable cards — for a supervisor whose policy allows them). Read-only — claiming still goes through `issue move`/claim semantics. |
 | `issue get <id\|identifier>` | One task, plus `report_waivers[]`. |
 | `issue update <ref> [--title] [--description] [--priority] [--kind] [--label]… [--meta k=v]… [--acceptance <text>]…` | Patch. `--status` is refused here on purpose. |
-| `issue move <ref> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"]` | Move, subject to the delivery gate. A `todo → in_progress` move is a **claim**: only the card's assignee, unless `--allow-steal`. |
+| `issue move <ref> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"] [--awaiting-reason E1..E5]` | Move, subject to the delivery gate. A `todo → in_progress` move is a **claim**: only the card's assignee, unless `--allow-steal`. `--awaiting-reason` is **required** by a move to `awaiting` — see [The `awaiting` state](#the-awaiting-state--asking-a-human-a-question). |
 | `issue assign <ref> [--assignee <text>] [--assignee-id <id>] [--reporter <text>] [--force-create]` | Assign. |
 | `issue archive <ref> [--days <n>]` | Archive finished work (done/canceled; 7-day window by default). |
 | `issue deliver <ref> --report-file <file\|->` | **Write the report and move to `in_review`, in one transaction.** |
@@ -161,6 +161,69 @@ accepts without editing.
 The second line is the **audited waiver** (F-B1). It is not a bypass: the reason
 must be at least 8 characters, the waiver is stamped on the task row, and a
 `report_waived` activity is recorded — `issue get` shows it in `report_waivers[]`.
+
+### The `awaiting` state — asking a human a question
+
+A card that needs an answer from a person is **not** `blocked`, and not a chat
+message: it moves to `awaiting`, a **first-class status** (M1). The card is still
+*running* — it has stopped on a question — so `awaiting` is **not** terminal, and
+entering or leaving it **does not start a delivery round**. It is a pause inside
+the attempt, not a delivery coming back.
+
+**Entering it — one path, and it must name itself.** `in_progress → awaiting` is
+the **only** entry; no other status may reach `awaiting`. The move **requires**
+the reason flag:
+
+```bash
+taskctl issue move PROJ-0007 awaiting --awaiting-reason E3
+```
+
+Without it the CLI refuses the move as a **usage error** — exit `2` — before it
+sends anything to the board:
+
+```console
+$ taskctl issue move PROJ-0007 awaiting
+CLI_USAGE: issue move: `awaiting` needs --awaiting-reason <E1..E5>
+fix: E1 scope · E2 acceptance baseline · E3 design direction · E4 security · E5 architecture
+$ echo $?
+2
+```
+
+The service enforces the same rule behind the CLI: a move that reaches it without
+a usable reason is refused with `VALIDATION_FAILED` (`details.field` is
+`awaiting_reason`, `details.allowed` the vocabulary).
+
+**The vocabulary is `E1..E5`** — the *category* of question, never free text, so a
+board can group what is waiting on the human:
+
+| Code | The question is about |
+|---|---|
+| `E1` | scope |
+| `E2` | the acceptance baseline |
+| `E3` | design / aesthetic direction |
+| `E4` | security / data safety |
+| `E5` | architecture direction |
+
+Any other value — free text, an empty string, a missing flag — is refused. The set
+is `AWAITING_REASONS` in `src/core/domain/enums.mjs`, and nothing else defines it.
+
+**Leaving it — one way back, plus cancel.** `awaiting → in_progress` is the only
+way back into the work, and it means *a human replied*: it is a **resume of the
+same attempt, not a rework**, so the delivery round is not advanced and the report
+already written for the current round is untouched. `awaiting → canceled` is
+allowed (the human cancels). `awaiting → blocked` and `awaiting → in_review` /
+`done` are **forbidden** — the last is a delivery-gate bypass: it would reach
+`in_review` without the round's report.
+
+**The reason lives on the card.** Entering `awaiting` stamps `awaiting_reason`;
+**leaving clears it**, to `null`, in the same write as the status change — so the
+column is non-null *exactly* while the card is `awaiting`, and a resumed or
+canceled card never keeps a stale category. `--json` carries it on the task object
+beside `status` (see below).
+
+**Reading it.** `issue list --status awaiting` lists the cards parked on a human.
+The web board's **waiting** view is that same set, and each row carries the entry
+category as a badge (localized `waiting.reason.E1..E5`).
 
 ### `comment`
 
@@ -253,6 +316,7 @@ Wire names are `snake_case` (the card's vocabulary). A task looks like:
       "project_id": "proj",
       "title": "…",
       "status": "in_review",
+      "awaiting_reason": null,
       "priority": "high",
       "labels": [],
       "version": 4,
@@ -271,7 +335,8 @@ Wire names are `snake_case` (the card's vocabulary). A task looks like:
 
 An actor always carries `display_name` **and** `id`. `token_source` says which of
 the four token sources was used (`flag`, `env`, `file`, `none`) and never carries
-a value.
+a value. `awaiting_reason` is the card's entry category (`E1..E5`) while it is
+`awaiting`, and `null` at every other moment.
 
 Errors are the domain error verbatim:
 
