@@ -205,6 +205,18 @@
             </svg>
             <span class="td-side-text" data-i18n="nav.activity">Activity</span>
           </button>
+          <!-- B03 · the 4th nav item. C6 (approved by Terry 2026-10-12 00:47, confirmed
+               by Jobs) extends this frozen baseline: `count [data-nav-item]` 3→4 and
+               `DOMAINS.NAV` gains `waiting`. The view itself is a nav destination, not a
+               third value of the top bar's `board | list` toggle — that domain stays frozen.
+               The glyph is the same speech mark the implementation's `Sidebar.vue` uses
+               (the question this view answers); the copy comes from `nav.waiting`. -->
+          <button type="button" class="td-nav-item" data-nav-item="waiting">
+            <svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M5 5h14v10H9l-4 4V5Z" />
+            </svg>
+            <span class="td-side-text" data-i18n="nav.waiting">Waiting on me</span>
+          </button>
         </nav>
 
         <section>

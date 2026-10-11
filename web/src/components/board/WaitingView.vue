@@ -20,10 +20,9 @@
  * *wrapper* — the card inside keeps its stage (its column), which is what keeps
  * the board's "no eighth column" and "no repainted stripe" promises intact.
  */
-import { computed, onMounted, watch } from "vue";
+import { computed, watch } from "vue";
 
 import { board, firstSentence, loadWaitingPayloads, openDetail, waitingTasks } from "../../stores/board.js";
-import { view } from "../../stores/ui.js";
 
 import Card from "./Card.vue";
 
@@ -44,12 +43,24 @@ async function refresh() {
   await loadWaitingPayloads();
 }
 
-onMounted(refresh);
-// Re-entering the view (or the board re-syncing under it) picks up payloads for
-// cards that appeared since — the loader skips what it already knows.
-watch(view, (next) => {
-  if (next === "waiting") refresh();
-});
+/**
+ * The payloads load as soon as an awaiting card *exists*, not when the view is
+ * opened. Two triggers alone are not enough and both were tried:
+ *
+ *   * `onMounted` runs before the board has fetched its tasks, so the awaiting
+ *     set is still empty and nothing is ever requested;
+ *   * watching `view` fires only on a *change*, so an SSE re-sync that adds an
+ *     awaiting card while the board is on screen loads nothing — the case the
+ *     loader's own contract ("a re-entrant call does not re-fetch") assumed.
+ *
+ * Keying the watcher on the set of awaiting ids covers both, and is cheap: the
+ * loader skips every id it already knows, so a re-run over an unchanged set
+ * issues no request at all. `[data-waiting-payload-summary]` is therefore filled
+ * the moment the card is, whichever view is on screen (design §8-06).
+ */
+const awaitingIds = computed(() => waitingTasks.value.map((task) => task.id).join(","));
+
+watch(awaitingIds, refresh, { immediate: true });
 </script>
 
 <template>

@@ -263,8 +263,13 @@ combo control, many per task — see **B25**. The two relation controls are mark
 column has no visible card) or `data-empty-kind="no-results"` (one per board,
 revealed when a filter matches nothing).
 
-**The large empty state carries the brand mark** (R3): `[data-empty-lg]` with
-`data-empty-kind="no-results"` opens on a 28px Sentinel Watch mark, which replaced the
+**The large empty state carries the brand mark** (R3): the *large* variant is the class
+`.td-empty-lg` on `[data-empty][data-empty-kind="no-results"]` — there is no `data-empty-lg`
+attribute (the hook that names the state is the pair `[data-empty]` +
+`data-empty-kind="no-results"`, and a class cannot be a contract selector; see
+`test/web/blocks.contract.mjs` B12). The shipped markup is
+`<div class="td-empty td-empty-lg" data-empty data-empty-kind="no-results" hidden>`. It opens
+on a 28px Sentinel Watch mark, which replaced the
 generic no-results glyph. Its two lead meerkats are `--color-td-ink-3` rather than
 `--color-td-ink`, so on an empty board the on-duty sentinel is still the only lit element on
 the surface.
@@ -591,7 +596,7 @@ copy:
 | `data-i18n-title` | `title` |
 | `data-i18n-arg` | the `%s` value for any of the four above; it is resolved as a key first, so `column.add` + `status.todo` reads `Add task to To Do` / `在待办中新建任务` |
 
-The catalogue is the in-memory `MESSAGES` object at the top of `app.js` — **214 keys per
+The catalogue is the in-memory `MESSAGES` object at the top of `app.js` — **215 keys per
 language, mirrored 1:1** (verified by set equality, not by eye), never an external file.
 Copy `app.js` composes at runtime (toast sentences, list rows, card aria labels, the token
 mask) is keyed there too.

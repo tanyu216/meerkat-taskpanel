@@ -70,7 +70,7 @@
       "status": "delivered",
       "checks": [
         { "selector": "[data-sidebar]", "count": 1, "desc": "侧栏根" },
-        { "selector": "[data-nav-item]", "count": 4, "desc": "board / list / activity / waiting —— 第 4 项 waiting 是 M1 的有据扩展（blocks.contract.mjs:125-132 NAV 域 + :390，『approved with B03's count together』），原型侧仍是 3；见 manifests/README.md §3" },
+        { "selector": "[data-nav-item]", "count": 4, "desc": "board / list / activity / waiting —— 第 4 项 waiting 是 M1 的有据扩展（blocks.contract.mjs:125-132 NAV 域 + :390，『approved with B03's count together』）；原型侧同步为 4（T-20261012-041728-2 按 C6 补上第 4 项 + nav.waiting 键），两侧一致；见 manifests/README.md §3" },
         { "selector": "[data-project-list]", "count": 1, "desc": "项目列表宿主" },
         { "selector": "[data-project-list] [data-project]", "min": 1, "desc": "项目行（fixture 驱动）" },
         { "selector": "[data-order-rank]", "min": 1, "desc": "排序诊断：rank" },
