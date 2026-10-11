@@ -1,9 +1,11 @@
 /**
- * Step 11: `project` and `context` (A1/A6, V8).
+ * Step 11: `project` (A1, V8).
  *
- * Real CLI process, real board. The interesting half is `context current`, whose
- * miss must be a *read*: it returns a synthetic `local` project and creates
- * nothing.
+ * Real CLI process, real board. A project is created, listed, updated and its
+ * readme round-tripped. Since O3 the board holds **no directory** for a project:
+ * `--workspace-path` is gone, and there is no `context current` to resolve a
+ * working directory. Which local directory maps to which project is decided on
+ * the agent side (the skill's local `projects.json`).
  */
 
 import assert from "node:assert/strict";
@@ -15,13 +17,12 @@ after(cleanupTempDirs);
 
 describe("cli/project", () => {
   it("creates a project with metadata and labels, and lists it", async () => {
-    await withCli(async ({ run, dataDir }) => {
+    await withCli(async ({ run }) => {
       const created = dataOf(
         run([
           "project", "create",
           "--id", "demo",
           "--name", "Demo",
-          "--workspace-path", dataDir,
           "--meta", "team=panel",
           "--meta", "tier=1",
           "--label", "m2",
@@ -31,28 +32,34 @@ describe("cli/project", () => {
       assert.equal(created.project.id, "demo");
       assert.deepEqual(created.project.meta, { team: "panel", tier: "1" });
       assert.deepEqual(created.project.labels, ["m2"]);
-      assert.equal(created.project.workspace_path, dataDir);
+      assert.equal(
+        Object.hasOwn(created.project, "workspace_path"),
+        false,
+        "a project carries no directory",
+      );
 
       const listed = dataOf(run(["project", "list", "--json"]));
       assert.deepEqual(listed.projects.map((p) => p.id), ["demo"]);
+      assert.equal(Object.hasOwn(listed.projects[0], "workspace_path"), false);
     });
   });
 
-  it("refuses a relative workspace path (core validates, the CLI reports)", async () => {
+  it("no longer accepts --workspace-path (O3: the board holds no directory)", async () => {
     await withCli(async ({ run }) => {
       const result = run([
-        "project", "create", "--id", "bad", "--name", "Bad", "--workspace-path", "relative/path", "--json",
+        "project", "create", "--id", "demo", "--name", "Demo", "--workspace-path", "/tmp/demo", "--json",
       ]);
-      assert.equal(result.status, 1);
+      assert.equal(result.status, 2, "an unknown option is a usage error");
+      assert.equal(result.stderr, "");
       const envelope = JSON.parse(result.stdout);
-      assert.equal(envelope.error.code, "VALIDATION_FAILED");
-      assert.match(envelope.error.message, /absolute path/);
+      assert.equal(envelope.error.code, "CLI_USAGE");
+      assert.match(envelope.error.message, /unknown option --workspace-path/);
     });
   });
 
   it("updates a project, and refuses an update that changes nothing", async () => {
-    await withCli(async ({ run, dataDir }) => {
-      run(["project", "create", "--id", "demo", "--name", "Demo", "--workspace-path", dataDir, "--json"]);
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
       const updated = dataOf(run(["project", "update", "demo", "--name", "Renamed", "--meta", "k=v", "--json"]));
       assert.equal(updated.project.name, "Renamed");
       assert.deepEqual(updated.project.meta, { k: "v" });
@@ -65,7 +72,7 @@ describe("cli/project", () => {
 
   it("round-trips the readme through --set, --file and stdin", async () => {
     await withCli(async ({ run, dataDir }) => {
-      run(["project", "create", "--id", "demo", "--name", "Demo", "--workspace-path", dataDir, "--json"]);
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
 
       const empty = dataOf(run(["project", "readme", "demo", "--json"]));
       assert.equal(empty.readme, null);
@@ -89,50 +96,12 @@ describe("cli/project", () => {
   });
 });
 
-describe("cli/context", () => {
-  it("matches the current directory, an ancestor, and falls back to `local` without creating", async () => {
-    await withCli(async ({ run, dataDir }) => {
-      run(["project", "create", "--id", "demo", "--name", "Demo", "--workspace-path", `${dataDir}/ws`, "--json"]);
-
-      const exact = dataOf(run(["context", "current", "--path", `${dataDir}/ws`, "--json"]));
-      assert.equal(exact.matched, true);
-      assert.equal(exact.project.id, "demo");
-
-      const ancestor = run(["context", "current", "--path", `${dataDir}/ws/deep/sub`, "--json"]);
-      assert.equal(dataOf(ancestor).matched, true);
-
-      const miss = run(["context", "current", "--path", "/somewhere/else", "--json"]);
-      assert.equal(miss.status, 0, "a miss is not an error");
-      const data = dataOf(miss);
-      assert.equal(data.matched, false);
-      assert.equal(data.project.id, "local");
-      assert.equal(data.project.workspace_path, "/somewhere/else");
-      assert.match(data.hint.create, /project create --id local/);
-
-      // The miss must not have created anything.
-      const listed = dataOf(run(["project", "list", "--json"]));
-      assert.deepEqual(listed.projects.map((p) => p.id), ["demo"]);
-    });
-  });
-
-  it("defaults to the working directory, and prints something readable", async () => {
-    await withCli(async ({ run, dataDir }) => {
-      const fs = await import("node:fs");
-      fs.mkdirSync(`${dataDir}/ws`, { recursive: true });
-      run(["project", "create", "--id", "demo", "--name", "Demo", "--workspace-path", `${dataDir}/ws`, "--json"]);
-      const human = run(["context", "current"], { cwd: `${dataDir}/ws` });
-      assert.match(human.stdout, /project\s+demo/);
-      assert.match(human.stdout, /matched\s+true/);
-    });
-  });
-});
-
 describe("cli/project — the remaining flags", () => {
-  it("create carries labels and a readme; update carries path, labels and readme", async () => {
-    await withCli(async ({ run, dataDir }) => {
+  it("create carries labels and a readme; update carries labels and readme", async () => {
+    await withCli(async ({ run }) => {
       const created = dataOf(
         run([
-          "project", "create", "--id", "demo", "--name", "Demo", "--workspace-path", dataDir,
+          "project", "create", "--id", "demo", "--name", "Demo",
           "--label", "one", "--label", "two", "--readme", "# hi", "--json",
         ]),
       );
@@ -142,13 +111,11 @@ describe("cli/project — the remaining flags", () => {
       const updated = dataOf(
         run([
           "project", "update", "demo",
-          "--workspace-path", `${dataDir}/moved`,
           "--label", "three",
           "--readme", "# bye",
           "--json",
         ]),
       );
-      assert.equal(updated.project.workspace_path, `${dataDir}/moved`);
       assert.deepEqual(updated.project.labels, ["three"]);
       assert.equal(updated.project.readme, "# bye");
 
@@ -161,6 +128,14 @@ describe("cli/project — the remaining flags", () => {
       assert.equal(run(["project", "list"]).stdout.trim(), "no projects");
       assert.equal(dataOf(run(["project", "list", "--include-archived", "--json"])).projects.length, 0);
       assert.match(run(["project", "list"]).stdout, /no projects/);
+    });
+  });
+
+  it("has no `context` group to resolve a working directory", async () => {
+    await withCli(async ({ run }) => {
+      const result = run(["context", "current", "--json"]);
+      assert.equal(result.status, 2, "the group is gone, so this is a usage error");
+      assert.equal(JSON.parse(result.stdout).error.code, "CLI_USAGE");
     });
   });
 });

@@ -42,7 +42,6 @@ const PLANNED_CLI = [
   "output/human.mjs",
   "commands/index.mjs",
   "commands/project.mjs",
-  "commands/context.mjs",
   "commands/issue.mjs",
   "commands/report.mjs",
   "commands/comment.mjs",

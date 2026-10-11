@@ -112,7 +112,7 @@ describe("cli/commands — the registry", () => {
   it("names the card's groups, and no dictionary/label management command", () => {
     assert.deepEqual(
       groups.map((group) => group.name),
-      ["project", "context", "issue", "comment", "relation", "session", "assignees", "reporters", "labels", "report", "export", "token"],
+      ["project", "issue", "comment", "relation", "session", "assignees", "reporters", "labels", "report", "export", "token"],
     );
     for (const { group, command } of allCommands()) {
       assert.equal(

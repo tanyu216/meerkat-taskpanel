@@ -17,7 +17,7 @@ after(cleanupTempDirs);
 describe("cli/session", () => {
   it("registers a session, lists it, closes it", async () => {
     await withCli(async ({ run, dataDir }) => {
-      run(["project", "create", "--id", "demo", "--name", "Demo", "--workspace-path", dataDir, "--json"]);
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
       run(["issue", "create", "--project", "demo", "--title", "T", "--json"]);
 
       const registered = dataOf(
@@ -42,7 +42,7 @@ describe("cli/session", () => {
 
   it("derives the same session id from the identifier and from the uuid", async () => {
     await withCli(async ({ run, dataDir }) => {
-      run(["project", "create", "--id", "demo", "--name", "Demo", "--workspace-path", dataDir, "--json"]);
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
       const task = dataOf(run(["issue", "create", "--project", "demo", "--title", "T", "--json"])).task;
 
       const byIdentifier = dataOf(
@@ -59,7 +59,7 @@ describe("cli/session", () => {
 
   it("requires --seg and --backend", async () => {
     await withCli(async ({ run, dataDir }) => {
-      run(["project", "create", "--id", "demo", "--name", "Demo", "--workspace-path", dataDir, "--json"]);
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
       run(["issue", "create", "--project", "demo", "--title", "T", "--json"]);
       const missing = run(["session", "set", "DEMO-0001", "--seg", "s1"]);
       assert.equal(missing.status, 2);

@@ -26,7 +26,7 @@ after(cleanupTempDirs);
 
 async function boardWithTwo(fn) {
   return withCli(async (ctx) => {
-    ctx.run(["project", "create", "--id", "demo", "--name", "Demo", "--workspace-path", ctx.dataDir, "--json"]);
+    ctx.run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
     ctx.run(["issue", "create", "--project", "demo", "--title", "First", "--json"]);
     ctx.run(["issue", "create", "--project", "demo", "--title", "Second", "--json"]);
     return fn(ctx);
@@ -89,8 +89,8 @@ describe("cli/export", () => {
 
   it("limits the export to one project", async () => {
     await withCli(async ({ run, dataDir }) => {
-      run(["project", "create", "--id", "one", "--name", "One", "--workspace-path", `${dataDir}/one`, "--json"]);
-      run(["project", "create", "--id", "two", "--name", "Two", "--workspace-path", `${dataDir}/two`, "--json"]);
+      run(["project", "create", "--id", "one", "--name", "One", "--json"]);
+      run(["project", "create", "--id", "two", "--name", "Two", "--json"]);
       run(["issue", "create", "--project", "one", "--title", "Only", "--json"]);
       run(["issue", "create", "--project", "two", "--title", "Other", "--json"]);
 

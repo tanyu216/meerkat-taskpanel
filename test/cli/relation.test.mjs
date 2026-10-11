@@ -15,7 +15,7 @@ after(cleanupTempDirs);
 
 async function board(fn) {
   return withCli(async (ctx) => {
-    ctx.run(["project", "create", "--id", "demo", "--name", "Demo", "--workspace-path", ctx.dataDir, "--json"]);
+    ctx.run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
     ctx.run(["issue", "create", "--project", "demo", "--title", "Epic", "--kind", "epic", "--json"]);
     ctx.run(["issue", "create", "--project", "demo", "--title", "Child", "--json"]);
     return fn(ctx);

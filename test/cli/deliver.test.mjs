@@ -31,7 +31,7 @@ const REPORT = {
 /** A board with a project and one task sitting in `in_progress`, ready to deliver. */
 async function readyBoard(fn, { identifier = null } = {}) {
   return withCli(async (ctx) => {
-    ctx.run(["project", "create", "--id", "demo", "--name", "Demo", "--workspace-path", ctx.dataDir, "--json"]);
+    ctx.run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
     ctx.run(["issue", "create", "--project", "demo", "--title", "Ship M2", "--acceptance", "cli works", "--json"]);
     const ref = identifier ?? "DEMO-0001";
     ctx.run(["issue", "move", ref, "in_progress", "--json"]);

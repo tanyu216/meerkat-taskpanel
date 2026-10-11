@@ -113,8 +113,8 @@ describe("cli/wire — the JSON vocabulary", () => {
 
   it("projects the other entities with the same naming rule", () => {
     assert.deepEqual(
-      projectToWire({ id: "p", name: "P", workspacePath: "/tmp/p", labels: [], meta: {}, readme: null, archivedAt: null, createdAt: "t", updatedAt: "t" }),
-      { id: "p", name: "P", workspace_path: "/tmp/p", labels: [], meta: {}, readme: null, archived_at: null, created_at: "t", updated_at: "t" },
+      projectToWire({ id: "p", name: "P", labels: [], meta: {}, readme: null, archivedAt: null, createdAt: "t", updatedAt: "t" }),
+      { id: "p", name: "P", labels: [], meta: {}, readme: null, archived_at: null, created_at: "t", updated_at: "t" },
     );
     assert.equal(commentToWire({ id: "c", taskId: "t", body: "b", kind: "note", authorKind: "human", authorId: "e", refs: [], version: 1, createdAt: "t" }).author_kind, "human");
     assert.equal(relationToWire({ id: 1, type: "parent", source: "a", target: "b", origin: null, createdAt: "t" }).source, "a");
