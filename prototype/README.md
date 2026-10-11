@@ -272,6 +272,18 @@ Six frames (`38`–`42`, `44`) come out byte-identical — nothing they show had
 four drawer-label frames (`45`–`48`) previously carried a doubled pixel density from the
 older capture path; they are now at the set's own 2×.
 
+**V2 mark recapture:** the Sentinel Watch mark moved to its V2 geometry — five parameters,
+the ear radius / inset / height and the watch-dot radius / height (`BRAND.md` §5, §7) — and
+the mark sits in the top bar of nearly every frame, so **the whole set was recaptured**;
+leaving any frame from before the change would show a product that no longer exists. All
+**48** frames were re-shot at the same geometry (device-scale-factor 2, viewports 1512×950 /
+2600×1200 / 1240×900 / 980×900 / 760×900 / 500×900), with transitions disabled and no
+transient toast, through the real handlers, under the same frame names — **no frame was added
+or removed**. **33 frames moved.** The **15** that come out byte-identical are exactly the
+ones that never frame the top bar: the create-dialog clips (`10`, `23`, `26`, `39`–`42`,
+`44`), the drawer-label clips (`43`, `45`–`48`), the projects-list clip (`31`) and the footer
+close-up (`38`).
+
 **R5 recapture:** the right column gained one field, so `10-create-task-modal`,
 `23-create-two-col` and `26-create-narrow-760` were re-shot, and six frames are new —
 `39-create-label-dropdown`, `40-create-label-new-row`, `41-create-label-new-chip`,

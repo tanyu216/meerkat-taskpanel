@@ -57,9 +57,27 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `--assignee-only` work non-interactively.
 - **`issue candidates --include-unassigned`** — the poll read now optionally adds the
   unassigned public pool (the supervisor's `claim_unassigned` policy).
+- **Dark-ground logo favicons** — `design/brand/favicon-16-dark.png` and
+  `favicon-32-dark.png`, transparent, the Sentinel Watch mark lifted to the dark brand line.
+  The light favicons keep their role; the dark pair gives a dark tab strip a mark rendered
+  for its ground, and closes the gap left when only the light pair shipped.
 
 ### Changed
 
+- **The brand mark moved to V2 geometry (candidate B, "Mob").** The Sentinel Watch mark
+  (three upright meerkats of a mob + one watch dot) keeps its structure — same skeleton,
+  same `viewBox 0 0 32 32`, same `y = 27` baseline — and moved **exactly five parameters**:
+  ear `r` `0.85 → 1.2`, ear `cx ±` `1.9 → 2.4`, ear `cy = top +` `1.0 → 1.7`, watch dot
+  `r` `1.7 → 2.1`, watch dot `cy` `5.2 → 3.4`. The ears now hold shape from **48px up**
+  (below that they still fall under a pixel and the mark degrades to three round-headed
+  bars + a dot, as before), and the watch signal floats clear of the crown by **4.1 units**
+  (was 2.7) at every size, so the "signal, never a cap" rule holds even at 16px. Ink extent
+  is `x ∈ [3.6, 28.4]`, `y ∈ [1.3, 27]`. Every asset follows one geometry source:
+  `design/brand/logo.svg` / `-dark` / `-mono` and their PNG rasters, the two inline marks in
+  `prototype/index.html` (top bar + large empty state), and `prototype/favicon.svg`. The
+  mark's **name is unchanged** — still `Sentinel Watch`; "Mob" was the candidate's variant
+  label, not a brand name. No colour moved. The whole 48-frame `prototype/screenshots/` set
+  was recaptured, because the top-bar mark appears in nearly every frame.
 - **Renamed to `meerkat-taskpanel`.** <!-- legacy-name-compat: quotes the former name to record the migration --> Every naming surface moved off the former `task-panel` / `TaskPanel` spellings — the npm package name, the skill source and its generated plugin copies (`skills/meerkat-taskpanel/`), the plugin + marketplace manifests, the installer environment variables (`MEERKAT_TASKPANEL_*`), the host config file (`<host>/meerkat-taskpanel.env`), the launchd / systemd / cron units, the per-user runtime directory (`Application Support/MeerkatTaskPanel/`, `~/.meerkat-taskpanel/`), the Docker image and compose project names, the Prometheus rules file and metric namespace, and the `web/` localStorage keys. The CLI keeps its name: `taskctl`.
 - **Backward compatibility.** The installer still accepts the pre-rename `TASKPANEL_*` environment variables, and the supervisor still reads a legacy `TASKPANEL_CLAIM_UNASSIGNED` key in the host config file; the new `MEERKAT_TASKPANEL_*` spelling wins when both are set.
 - **Migration.** Re-run `install.sh` to write the new paths. A runtime pointer written under the former per-user directory is not read; the CLI writes a fresh one on first run.
