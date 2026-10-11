@@ -34,29 +34,56 @@
 --   * `PRAGMA foreign_key_check` and `PRAGMA integrity_check` are clean after.
 --
 -- ---------------------------------------------------------------------------
--- Why the rename comes first, and why `legacy_alter_table` is set
+-- How the rebuild is done, and why *this* order
 -- ---------------------------------------------------------------------------
 --
--- The order is `RENAME → CREATE → INSERT … SELECT → DROP`, not the other way
--- round. Rebuilt tables are named by their final name in the CREATE, which is
--- what keeps `CHECK (…)` parsing honest (`test/helpers/sql-parse.mjs` reads
--- `CREATE TABLE <name>` text, so a temporary name would hide `tasks.status`
--- from the contract test).
+-- `CREATE new → copy → DROP old → RENAME new to `tasks`` — the order SQLite's
+-- own ALTER TABLE documentation prescribes, and the only one that survives
+-- SQLite ≥ 3.25's rename semantics.
 --
--- That order needs `legacy_alter_table = ON` for exactly one reason: since
--- 3.25, `ALTER TABLE … RENAME TO` rewrites **references to the renamed table in
--- other tables**. `task_relations`, `comments`, `attachments`, `agent_sessions`
--- and `task_reports` all carry `REFERENCES tasks(id)`, and the default
--- behaviour would repoint every one of them at `tasks_awaiting_pre_0013` — which
--- the next statement drops. Legacy mode is the documented way to say "rename
--- this table only", and it is switched **off again** at the end of the file so
--- no later migration inherits it.
+-- The tempting alternative — rename `tasks` out of the way first, then create
+-- the new table under the final name — is **wrong here**, and wrong silently:
+-- since 3.25, `ALTER TABLE … RENAME TO` rewrites *references to the renamed
+-- table in other tables*. `task_relations`, `comments`, `attachments`,
+-- `agent_sessions` and `task_reports` all carry `REFERENCES tasks(id)`, so that
+-- rename would repoint every one of them at the scratch name, and dropping the
+-- scratch table would leave five tables whose parent does not exist. (Measured
+-- on this tree: the old order produced `no such table:
+-- main.tasks_awaiting_pre_0013` on the first write after migrating. That is why
+-- the order below is what it is.)
 --
--- The rename moves `tasks`'s triggers along with the table, so they are dropped
--- with the old table; each one is re-created below from its **last** shipped
--- definition (0001's revision pair, 0002's status guards, 0003's gate and round
--- bump, 0006's waiver columns, 0008's `origin = 'delivery'`, 0011's kind
--- downgrade) — verbatim bodies, so nothing about them moves by accident.
+-- In this order the *only* name that ever moves is the scratch one, and nothing
+-- references the scratch name — so no reference is rewritten and no child ends
+-- up pointing at a table that is about to disappear.
+--
+-- The order also needs foreign key enforcement **off** for its duration, which is
+-- what the marker line below asks the runner for: `DROP TABLE tasks` runs an
+-- implicit `DELETE` while five child tables reference it, and between that drop
+-- and the rename those children name a parent that is momentarily absent.
+-- `PRAGMA defer_foreign_keys` is *not* enough for that — it postpones
+-- enforcement, but the failure here is resolution, which reports `no such table`
+-- the instant the parent is missing, however brief the window (measured: an
+-- immediate `defer_foreign_keys`-only attempt failed with exactly that error).
+-- `PRAGMA foreign_keys` is a documented no-op inside a transaction, and a
+-- migration file always runs in one, which is why the request has to be made to
+-- the runner instead of issued here. It is put back whatever happens, so no later
+-- migration inherits a relaxed connection.
+--
+-- (The request itself is the single line immediately below this paragraph — it
+-- has to be a line of its own, and it is a comment to SQLite like any other.)
+--
+-- @foreign-keys: off
+--
+-- Dropping the old table takes `tasks`'s indexes and triggers with it, so both
+-- are re-created below: the 6 indexes verbatim, and the 10 triggers from their
+-- **last** shipped definitions (0001's revision pair, 0002's status guards,
+-- 0003's gate and round bump, 0006's waiver columns, 0008's
+-- `origin = 'delivery'`, 0011's kind downgrade) — verbatim bodies, so nothing
+-- about them moves by accident.
+--
+-- `test/helpers/sql-parse.mjs` follows the rename when it reads this file, so
+-- the contract tests see the *effective* schema: the widened `tasks.status`
+-- CHECK and `tasks.awaiting_reason`, not a scratch table that no longer exists.
 --
 -- ---------------------------------------------------------------------------
 -- What changes in the state machine
@@ -85,14 +112,38 @@
 --
 -- Append-only: 0001/0002/0003/0006/0008/0011 are never edited.
 
-PRAGMA legacy_alter_table = ON;
+-- ---------------------------------------------------------------------------
+-- The five triggers *outside* `tasks` that name it in their body
+-- ---------------------------------------------------------------------------
+--
+-- Dropping a table takes its own triggers with it, but it does nothing about the
+-- objects on **other** tables whose SQL mentions it — and SQLite re-reads and
+-- validates every object's text whenever it reparses the schema, which the
+-- rename below forces. A trigger on `task_relations` whose body says
+-- `SELECT project_id FROM tasks …` is therefore fatal the instant `tasks` is
+-- momentarily absent:
+--
+--   `error in trigger tr_rel_cross_project: no such table: main.tasks`
+--
+-- (Measured on this tree — the first version of this migration did not park
+-- them, and every board in the suite failed to migrate.)
+--
+-- These are the complete set: a trigger is either *on* `tasks` (and so goes with
+-- its table, re-created later in this file) or references `tasks` from one of
+-- the three clauses below. They are parked — not edited — and put back verbatim
+-- at the end of the file, so the guards they enforce are unbroken before and
+-- after; `test/core/storage/migrations-0013.test.mjs` exercises each one.
 
-ALTER TABLE tasks RENAME TO tasks_awaiting_pre_0013;
+DROP TRIGGER IF EXISTS tr_dict_assignees_delete;   -- 0004
+DROP TRIGGER IF EXISTS tr_dict_reporters_delete;   -- 0004
+DROP TRIGGER IF EXISTS tr_rel_cross_project;       -- 0002
+DROP TRIGGER IF EXISTS tr_rel_parent_guard;        -- 0002
+DROP TRIGGER IF EXISTS tr_rel_parent_epic;         -- 0010
 
--- The re-created `tasks`: the 0001 definition with `awaiting` in the status
--- CHECK, every column added by 0003/0005/0006/0009 listed in the physical order
--- those ALTERs produced, and the new M1 column at the end.
-CREATE TABLE tasks (
+-- The replacement table. Its scratch name is deliberate and short-lived: the
+-- rename at the end of the block below is what makes it `tasks`, and it is the
+-- only name this file ever moves.
+CREATE TABLE tasks_awaiting_v2 (
   id                      TEXT PRIMARY KEY,
   identifier              TEXT NOT NULL,
   project_id              TEXT NOT NULL REFERENCES projects(id),
@@ -138,7 +189,7 @@ CREATE TABLE tasks (
   CHECK (claimed_by IS NULL OR status <> 'backlog')
 ) STRICT;
 
-INSERT INTO tasks (
+INSERT INTO tasks_awaiting_v2 (
   id, identifier, project_id, title, description, status, priority, kind, labels,
   sort_order, assignee_kind, assignee_id, reporter_id, creator_kind, creator_id,
   agent_session, thread_id, thread_source, claimed_by, claimed_at, heartbeat_at,
@@ -153,11 +204,12 @@ SELECT
   blocked_at, status_changed_at, archived_at, source_path, source_hash, version,
   created_at, updated_at, report_latest_id, delivery_round, meta_json,
   report_waiver_round, report_waiver_reason, report_waived_at, idem
-FROM tasks_awaiting_pre_0013;
+FROM tasks;
 
-DROP TABLE tasks_awaiting_pre_0013;
-
-PRAGMA legacy_alter_table = OFF;
+-- The old table goes with its indexes and triggers; `tasks` comes back with the
+-- same rows and the widened CHECK.
+DROP TABLE tasks;
+ALTER TABLE tasks_awaiting_v2 RENAME TO tasks;
 
 -- ---------------------------------------------------------------------------
 -- Indexes (0001 + 0005 + 0009, verbatim names and shapes)
@@ -315,3 +367,79 @@ BEGIN UPDATE global_revision SET revision = revision + 1 WHERE singleton = 1; EN
 DROP TRIGGER IF EXISTS tr_rev_tasks_del;
 CREATE TRIGGER tr_rev_tasks_del AFTER DELETE ON tasks
 BEGIN UPDATE global_revision SET revision = revision + 1 WHERE singleton = 1; END;
+
+-- ---------------------------------------------------------------------------
+-- ...and the five parked guards, put back verbatim
+-- ---------------------------------------------------------------------------
+--
+-- Each body is the one its own migration last shipped: 0004's dictionary
+-- in-use guards and 0002's/0010's relation guards. Nothing about them changes
+-- here — `tasks` simply exists again, which is all they needed.
+
+CREATE TRIGGER tr_dict_assignees_delete BEFORE DELETE ON assignees
+WHEN EXISTS (SELECT 1 FROM tasks WHERE assignee_id = OLD.id)
+BEGIN
+  SELECT RAISE(ABORT, 'DICTIONARY_ENTRY_IN_USE');
+END;
+
+CREATE TRIGGER tr_dict_reporters_delete BEFORE DELETE ON reporters
+WHEN EXISTS (SELECT 1 FROM tasks WHERE reporter_id = OLD.id)
+BEGIN
+  SELECT RAISE(ABORT, 'DICTIONARY_ENTRY_IN_USE');
+END;
+
+CREATE TRIGGER tr_rel_cross_project BEFORE INSERT ON task_relations
+WHEN (SELECT project_id FROM tasks WHERE id = NEW.source_task_id) IS NOT NULL
+ AND (SELECT project_id FROM tasks WHERE id = NEW.target_task_id) IS NOT NULL
+ AND (SELECT project_id FROM tasks WHERE id = NEW.source_task_id)
+     IS NOT (SELECT project_id FROM tasks WHERE id = NEW.target_task_id)
+BEGIN
+  SELECT RAISE(ABORT, 'CROSS_PROJECT_RELATION');
+END;
+
+CREATE TRIGGER tr_rel_parent_guard BEFORE INSERT ON task_relations
+WHEN NEW.relation_type = 'parent'
+ AND NEW.source_task_id <> NEW.target_task_id
+ AND (SELECT project_id FROM tasks WHERE id = NEW.source_task_id)
+     IS (SELECT project_id FROM tasks WHERE id = NEW.target_task_id)
+BEGIN
+  SELECT CASE
+    WHEN EXISTS (
+      WITH RECURSIVE anc(id, depth) AS (
+        SELECT NEW.source_task_id, 0
+        UNION ALL
+        SELECT r.source_task_id, anc.depth + 1
+          FROM task_relations r JOIN anc ON r.target_task_id = anc.id
+         WHERE r.relation_type = 'parent' AND anc.depth < 64
+      )
+      SELECT 1 FROM anc WHERE anc.id = NEW.target_task_id
+    ) THEN RAISE(ABORT, 'RELATION_CYCLE')
+    -- depth of the new child = max(anc.depth) + 2 (the child, plus the parent);
+    -- the chain may not exceed 8 nodes.
+    WHEN EXISTS (
+      WITH RECURSIVE anc(id, depth) AS (
+        SELECT NEW.source_task_id, 0
+        UNION ALL
+        SELECT r.source_task_id, anc.depth + 1
+          FROM task_relations r JOIN anc ON r.target_task_id = anc.id
+         WHERE r.relation_type = 'parent' AND anc.depth < 64
+      )
+      SELECT 1 FROM anc WHERE anc.depth > 6
+    ) THEN RAISE(ABORT, 'CHAIN_TOO_LONG')
+    WHEN (SELECT COUNT(*) FROM task_relations
+           WHERE relation_type = 'parent' AND source_task_id = NEW.source_task_id) >= 8
+    THEN RAISE(ABORT, 'FANIN_TOO_HIGH')
+    ELSE NULL
+  END;
+END;
+
+CREATE TRIGGER tr_rel_parent_epic BEFORE INSERT ON task_relations
+WHEN NEW.relation_type = 'parent'
+ AND NEW.source_task_id <> NEW.target_task_id
+ AND (SELECT project_id FROM tasks WHERE id = NEW.source_task_id)
+     IS (SELECT project_id FROM tasks WHERE id = NEW.target_task_id)
+ AND (SELECT kind FROM tasks WHERE id = NEW.source_task_id) IS NOT NULL
+ AND (SELECT kind FROM tasks WHERE id = NEW.source_task_id) IS NOT 'epic'
+BEGIN
+  SELECT RAISE(ABORT, 'only an epic can be a parent');
+END;

@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 
 import { DomainError } from "../../shared/errors.mjs";
 import { MIGRATIONS_DIRNAME, MIGRATION_FILE_PATTERN } from "./schema.mjs";
+import { REQUIRED_PRAGMAS } from "./driver.mjs";
 import { mapSqliteError } from "./sqlite-errors.mjs";
 
 /** Where the shipped migrations live. */
@@ -36,6 +37,34 @@ export function normalizeSql(sql) {
 /** @param {string} sql */
 export function checksumFor(sql) {
   return createHash("sha256").update(normalizeSql(sql), "utf8").digest("hex");
+}
+
+/**
+ * A migration's explicit request to run with foreign key enforcement **off**,
+ * written as a line of its own:
+ *
+ *   `-- @foreign-keys: off`
+ *
+ * It exists for exactly one job: rebuilding a table. SQLite has no
+ * `ALTER TABLE … MODIFY`, so widening or replacing a `CHECK` constraint means
+ * create-new / copy / drop-old / rename-new, and SQLite's own documentation for
+ * that procedure begins "if foreign key constraints are enabled, disable them".
+ * The pragma has to be issued **before** the transaction — inside one it is a
+ * documented no-op — which a migration file cannot do for itself, because the
+ * runner wraps every file in `BEGIN IMMEDIATE`. This is that lever, and it is
+ * deliberately opt-in and textual: a migration that needs it says so on its
+ * face, and the runner restores the pinned pragma afterwards either way.
+ *
+ * The alternative — leaving enforcement on and hoping a deferred check covers it
+ * — does not work: `PRAGMA defer_foreign_keys` postpones *enforcement*, but the
+ * failure mode here is foreign key *resolution*, which reports `no such table`
+ * the moment a child table's parent is missing, however brief the window.
+ */
+const FOREIGN_KEYS_OFF = /^[ \t]*--[ \t]*@foreign-keys:[ \t]*off[ \t]*$/m;
+
+/** @param {string} sql */
+export function wantsForeignKeysOff(sql) {
+  return FOREIGN_KEYS_OFF.test(String(sql));
 }
 
 /**
@@ -173,6 +202,13 @@ export function applyMigrations(db, options = {}) {
     }
 
     const startedAt = Date.now();
+    // A rebuild migration asks for this (see `wantsForeignKeysOff`); the pragma
+    // is a no-op inside a transaction, so it has to be issued here — before the
+    // BEGIN — and put back afterwards, whether the file succeeds or not. The
+    // pinned value is the one the driver opened with, so the restore is to the
+    // same state the rest of the process expects.
+    const fkOff = wantsForeignKeysOff(migration.sql);
+    if (fkOff) db.exec(`PRAGMA foreign_keys = ${REQUIRED_PRAGMAS.foreign_keys === 1 ? 0 : 1}`);
     db.exec("BEGIN IMMEDIATE");
     try {
       db.exec(migration.sql);
@@ -189,6 +225,8 @@ export function applyMigrations(db, options = {}) {
         /* the statement failed hard enough that there is nothing to roll back */
       }
       throw mapSqliteError(err, { op: `apply ${migration.file}` });
+    } finally {
+      if (fkOff) db.exec(`PRAGMA foreign_keys = ${REQUIRED_PRAGMAS.foreign_keys}`);
     }
 
     applied.push({ version: migration.version, name: migration.name, ms: Date.now() - startedAt });

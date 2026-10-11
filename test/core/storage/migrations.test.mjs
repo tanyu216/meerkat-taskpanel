@@ -22,6 +22,7 @@ import {
   ensureMigrationsTable,
   listMigrations,
   normalizeSql,
+  wantsForeignKeysOff,
 } from "../../../src/core/storage/migrations-runner.mjs";
 import { DomainError } from "../../../src/shared/errors.mjs";
 import {
@@ -233,12 +234,15 @@ describe("storage/migrations — failure modes", () => {
 
   it("ships a default migrations dir that exists", () => {
     assert.match(defaultMigrationsDir(), /src\/core\/storage\/migrations$/);
-    assert.equal(listMigrations().length, 12);
+    assert.ok(listMigrations().length >= 12, `suspiciously few migrations: ${listMigrations().length}`);
   });
 });
 
 describe("storage/migrations — startup check", () => {
   it("is happy when current, and lists the gaps when behind (A3)", async () => {
+    // Derived, not transcribed: the shipped set moves with the migrations, and a
+    // hand-copied list only ever tells you that you forgot to update it.
+    const shipped = listMigrations().map((m) => m.version);
     const board = await createTempBoard({ migrate: false });
     try {
       ensureMigrationsTable(board.db);
@@ -246,8 +250,8 @@ describe("storage/migrations — startup check", () => {
         assert.ok(err instanceof DomainError);
         assert.equal(err.code, "SCHEMA_MISMATCH");
         assert.equal(err.http, 500);
-        assert.deepEqual(err.details.missing, ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012"]);
-        assert.deepEqual(err.details.expected, ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012"]);
+        assert.deepEqual(err.details.missing, shipped);
+        assert.deepEqual(err.details.expected, shipped);
         return true;
       });
 
@@ -256,7 +260,7 @@ describe("storage/migrations — startup check", () => {
         ok: true,
         missing: [],
         unknownApplied: [],
-        expected: ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012"],
+        expected: shipped,
       });
 
       // A database that knows a migration this build does not ship.
@@ -297,10 +301,10 @@ describe("storage/migrations — startup check", () => {
 });
 
 describe("storage/migrations — 0012 drops projects.workspace_path (O3)", () => {
-  /** The shipped set without 0012 — a board as the previous build left it. */
+  /** The shipped set **before** 0012 — a board as the previous build left it. */
   function before0012() {
     const dir = makeTempDir("meerkat-taskpanel-pre0012-");
-    for (const name of readdirSync(defaultMigrationsDir()).filter((n) => n.endsWith(".sql") && !n.startsWith("0012"))) {
+    for (const name of readdirSync(defaultMigrationsDir()).filter((n) => n.endsWith(".sql") && n.slice(0, 4) < "0012")) {
       copyFileSync(join(defaultMigrationsDir(), name), join(dir, name));
     }
     return dir;
@@ -386,6 +390,73 @@ describe("storage/migrations — 0012 drops projects.workspace_path (O3)", () =>
       assert.deepEqual(again.applied, []);
       assert.equal(again.skipped.includes("0012"), true);
       assert.equal(columnsOf(board.db).includes("workspace_path"), false);
+    } finally {
+      board.close();
+    }
+  });
+});
+
+describe("storage/migrations — the `-- @foreign-keys: off` request (0013's rebuild)", () => {
+  /** A parent table with a child that references it — the shape a rebuild disturbs. */
+  const REBUILD_FIXTURE = {
+    "0001_base.sql":
+      "CREATE TABLE parent(id TEXT PRIMARY KEY) STRICT;\n" +
+      "CREATE TABLE child(id TEXT PRIMARY KEY, pid TEXT NOT NULL REFERENCES parent(id)) STRICT;\n" +
+      "INSERT INTO parent(id) VALUES('p1');\n" +
+      "INSERT INTO child(id, pid) VALUES('c1','p1');",
+  };
+  /** create-new / copy / drop-old / rename-new — SQLite's documented rebuild. */
+  const REBUILD_BODY =
+    "CREATE TABLE parent_new(id TEXT PRIMARY KEY) STRICT;\n" +
+    "INSERT INTO parent_new(id) SELECT id FROM parent;\n" +
+    "DROP TABLE parent;\n" +
+    "ALTER TABLE parent_new RENAME TO parent;";
+
+  it("recognises the request, and only as a line of its own", () => {
+    assert.equal(wantsForeignKeysOff("-- @foreign-keys: off\nSELECT 1;"), true);
+    assert.equal(wantsForeignKeysOff("  -- @foreign-keys: off\nSELECT 1;"), true, "leading indent is fine");
+    assert.equal(wantsForeignKeysOff("-- @foreign-keys: on\nSELECT 1;"), false);
+    assert.equal(wantsForeignKeysOff("-- a note about -- @foreign-keys: off\nSELECT 1;"), false, "only a line of its own counts");
+    assert.equal(wantsForeignKeysOff("SELECT '-- @foreign-keys: off';"), false);
+  });
+
+  it("applies a rebuild with enforcement off, and puts the pragma back", async () => {
+    const dir = stageMigrations({ ...REBUILD_FIXTURE, "0002_rebuild.sql": `-- @foreign-keys: off\n${REBUILD_BODY}` });
+    const board = await createTempBoard({ migrate: false });
+    try {
+      const result = applyMigrations(board.db, { dir });
+      assert.deepEqual(result.applied.map((m) => m.version), ["0001", "0002"]);
+      assert.equal(Number(board.db.prepare("SELECT COUNT(*) n FROM parent").get().n), 1, "the row survived the rebuild");
+      assert.deepEqual(board.db.prepare("PRAGMA foreign_key_check").all(), []);
+      assert.equal(
+        Number(board.db.prepare("PRAGMA foreign_keys").get().foreign_keys),
+        1,
+        "the pinned pragma must be restored, whatever the migration asked for",
+      );
+    } finally {
+      board.close();
+    }
+  });
+
+  it("is the marker doing the work — the same rebuild without it is refused", async () => {
+    const dir = stageMigrations({ ...REBUILD_FIXTURE, "0002_rebuild.sql": REBUILD_BODY });
+    const board = await createTempBoard({ migrate: false });
+    try {
+      assert.throws(() => applyMigrations(board.db, { dir }));
+      // ...and the rollback is complete: the failing file left no version row.
+      assert.deepEqual([...appliedMigrations(board.db).keys()], ["0001"]);
+      assert.equal(Number(board.db.prepare("PRAGMA foreign_keys").get().foreign_keys), 1);
+    } finally {
+      board.close();
+    }
+  });
+
+  it("leaves the pragma untouched for a migration that does not ask", async () => {
+    const dir = stageMigrations({ ...REBUILD_FIXTURE, "0002_plain.sql": "CREATE TABLE extra(id TEXT PRIMARY KEY) STRICT;" });
+    const board = await createTempBoard({ migrate: false });
+    try {
+      applyMigrations(board.db, { dir });
+      assert.equal(Number(board.db.prepare("PRAGMA foreign_keys").get().foreign_keys), 1);
     } finally {
       board.close();
     }

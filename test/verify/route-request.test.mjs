@@ -336,10 +336,10 @@ describe("route-request.mjs — drift is caught (red → green)", () => {
     // the ones built from the domain's closed value sets.
     const result = checkRouteRequests(liveRouterRoutes());
     const move = liveRouterRoutes().find((entry) => routeKey(entry) === "POST /api/v1/tasks/:ref/move");
-    assert.deepEqual(declaredFields(move.request, "body"), ["allow_steal", "if_version", "no_report", "reason", "to"]);
+    assert.deepEqual(declaredFields(move.request, "body"), ["allow_steal", "awaiting_reason", "if_version", "no_report", "reason", "to"]);
     assert.ok(move.request.body.properties.to.enum.length > 0);
     assert.equal(result.ok, true);
-    assert.deepEqual(extractReads(move.handler).body, ["allow_steal", "if_version", "no_report", "reason", "to"]);
+    assert.deepEqual(extractReads(move.handler).body, ["allow_steal", "awaiting_reason", "if_version", "no_report", "reason", "to"]);
   });
 });
 
@@ -373,7 +373,7 @@ describe("route-request.mjs — the CLI", () => {
     const result = runCli(["--print"]);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /POST \/api\/v1\/tasks\/:ref\/move/);
-    assert.match(result.stdout, /declared \[allow_steal, if_version, no_report, reason, to\]/);
+    assert.match(result.stdout, /declared \[allow_steal, awaiting_reason, if_version, no_report, reason, to\]/);
     // The exemption is visible in the table, not hidden by it.
     assert.match(result.stdout, /status \(refused\)/);
   });

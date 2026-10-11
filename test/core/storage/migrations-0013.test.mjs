@@ -111,7 +111,24 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
         "NO_ERROR",
       );
       assert.equal(board.db.prepare("SELECT awaiting_reason FROM tasks WHERE id='running'").get().awaiting_reason, "E3");
-      assert.equal(reasonCode(() => board.db.prepare("UPDATE tasks SET status = 'nonsense' WHERE id = 'running'").run()), "VALIDATION_FAILED");
+      // A word the whitelist does not know is refused by the *trigger*, which is
+      // what 0002 documents: BEFORE triggers run first, so their reason code wins
+      // over the table's CHECK. The CHECK is the backstop for the INSERT path,
+      // asserted directly below.
+      assert.equal(reasonCode(() => board.db.prepare("UPDATE tasks SET status = 'nonsense' WHERE id = 'running'").run()), "INVALID_TRANSITION");
+      assert.equal(
+        reasonCode(() =>
+          board.db
+            .prepare(
+              `INSERT INTO tasks(id, identifier, project_id, title, status, created_at, updated_at)
+               VALUES ('t-check','CHECK-1','legacy','x','nonsense', ?, ?)`,
+            )
+            .run(TS, TS),
+        ),
+        "VALIDATION_FAILED",
+        "the widened CHECK still refuses a word the vocabulary does not have",
+      );
+      // ...and the reason code's own vocabulary, which no trigger shadows.
       assert.equal(reasonCode(() => board.db.prepare("UPDATE tasks SET awaiting_reason = 'E9' WHERE id = 'running'").run()), "VALIDATION_FAILED");
       assert.equal(reasonCode(() => board.db.prepare("UPDATE tasks SET awaiting_reason = 'free text' WHERE id = 'running'").run()), "VALIDATION_FAILED");
 
@@ -177,6 +194,54 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
     }
   });
 
+  it("moves exactly one trigger and nothing else — a rebuild is not a rewrite", async () => {
+    // The rebuild drops and re-creates 15 triggers because dropping `tasks`
+    // takes its own with it and parks the five that merely *name* `tasks` from
+    // other tables. Every one of them must come back byte-identical to the
+    // definition the history shipped, except the one this migration exists to
+    // change. A guard quietly rewritten during a rebuild is exactly the kind of
+    // loss this card is supposed to make impossible, so it is asserted by text.
+    // Whitespace and `IF NOT EXISTS` are not part of a guard's meaning, so they
+    // are normalised away rather than compared.
+    const squeeze = (s) =>
+      String(s)
+        .replace(/\s+/g, " ")
+        .replace(/CREATE\s+TRIGGER\s+IF\s+NOT\s+EXISTS\s+/i, "CREATE TRIGGER ")
+        .trim();
+    const triggersOf = (db) =>
+      Object.fromEntries(
+        db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'trigger'").all().map((r) => [r.name, squeeze(r.sql)]),
+      );
+
+    const before = await createTempBoard({ migrate: false });
+    const after = await createTempBoard();
+    try {
+      applyMigrations(before.db, { dir: before0013() });
+      const oldTriggers = triggersOf(before.db);
+      const newTriggers = triggersOf(after.db);
+
+      assert.deepEqual(
+        Object.keys(newTriggers).sort(),
+        Object.keys(oldTriggers).sort(),
+        "the rebuild must not add or lose a trigger",
+      );
+      // Two triggers may change, and both are intentional: the transition
+      // whitelist gains its `awaiting` clause, and the revision cursor's column
+      // domain gains `awaiting_reason` (a real content change a watching client
+      // has to see). Everything else must be identical.
+      const changed = Object.keys(oldTriggers).filter((name) => oldTriggers[name] !== newTriggers[name]).sort();
+      assert.deepEqual(changed, ["tr_rev_tasks_upd", "tr_tasks_transition"], "only these two may change");
+
+      // ...and the parked five really are the shipped guards, not lookalikes.
+      for (const name of ["tr_dict_assignees_delete", "tr_dict_reporters_delete", "tr_rel_cross_project", "tr_rel_parent_guard", "tr_rel_parent_epic"]) {
+        assert.equal(newTriggers[name], oldTriggers[name], `${name} must survive the rebuild verbatim`);
+      }
+    } finally {
+      before.close();
+      after.close();
+    }
+  });
+
   it("is a no-op on a board that is already at 0013", async () => {
     const board = await createTempBoard();
     try {
@@ -192,15 +257,32 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
     }
   });
 
-  it("leaves no trace of the intermediate table or of legacy_alter_table", async () => {
+  it("leaves no scratch table behind, and no deferred foreign keys", async () => {
     const board = await createTempBoard();
     try {
       const leftovers = board.db
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'tasks_%'")
         .all()
         .map((r) => r.name);
-      assert.deepEqual(leftovers, [], "the pre-0013 table must be gone, not orphaned");
-      assert.equal(Number(board.db.prepare("PRAGMA legacy_alter_table").get().legacy_alter_table), 0, "the pragma must be switched back off");
+      assert.deepEqual(leftovers, [], "the scratch table must be renamed away, not orphaned");
+      // The rebuild asks the runner for foreign keys off (see the marker in the
+      // file); the runner has to put the pinned pragma back, or every later write
+      // in this connection would run unchecked.
+      assert.equal(
+        Number(board.db.prepare("PRAGMA foreign_keys").get().foreign_keys),
+        1,
+        "foreign key enforcement must be back on after the rebuild",
+      );
+      // The rename must not have rewritten the children's REFERENCES clauses:
+      // they have to name `tasks`, which is the table that exists.
+      for (const child of ["task_relations", "comments", "attachments", "agent_sessions", "task_reports"]) {
+        const parents = board.db
+          .prepare(`SELECT "table" AS parent FROM pragma_foreign_key_list('${child}')`)
+          .all()
+          .map((r) => r.parent);
+        assert.equal(parents.includes("tasks"), true, `${child} must still reference tasks`);
+        assert.equal(parents.some((name) => name.startsWith("tasks_") && name !== "tasks"), false, `${child} references a scratch name`);
+      }
     } finally {
       board.close();
     }

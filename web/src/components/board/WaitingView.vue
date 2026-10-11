@@ -22,8 +22,7 @@
  */
 import { computed, onMounted, watch } from "vue";
 
-import { board, firstSentence, loadWaitingPayloads, waitingTasks } from "../../stores/board.js";
-import { openDetail } from "../../stores/board.js";
+import { board, firstSentence, loadWaitingPayloads, openDetail, waitingTasks } from "../../stores/board.js";
 import { view } from "../../stores/ui.js";
 
 import Card from "./Card.vue";

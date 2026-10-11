@@ -53,25 +53,17 @@ describe("contract/sql-parity — migration files", () => {
     });
   });
 
-  it("creates every declared table over the whole set, and invents none", () => {
+  it("creates every declared table exactly once over the whole set", () => {
+    // `tableNames` follows `ALTER TABLE … RENAME TO`, so a table rebuilt to
+    // widen a `CHECK` (SQLite has no `ALTER TABLE … MODIFY`) is reported once,
+    // under the name it ends up with — it is one table, not two.
     const created = tableNames(allSql).sort();
     assert.deepEqual(
       [...new Set(created)].sort(),
       [...TABLES].sort(),
       "SQL tables must equal schema.mjs TABLES (both directions)",
     );
-    // A table name may legitimately appear more than once: SQLite has no
-    // `ALTER TABLE … MODIFY`, so widening a `CHECK` constraint means rebuilding
-    // the table (`0013_awaiting_status.sql` re-creates `tasks` for exactly that
-    // reason). What is *not* allowed is a name that schema.mjs does not declare
-    // — that is the "a table appeared from nowhere" case this rule exists for.
-    const rebuilt = ["tasks"];
-    const duplicates = [...new Set(created.filter((name, i) => created.indexOf(name) !== i))].sort();
-    assert.deepEqual(
-      duplicates,
-      rebuilt,
-      "a table is created twice — only a documented CHECK-widening rebuild may do that",
-    );
+    assert.equal(created.length, new Set(created).size, "a table is created twice");
   });
 
   it("adds report_latest_id / delivery_round by ALTER, keeping migrations append-only", () => {
