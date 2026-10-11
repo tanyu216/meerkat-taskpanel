@@ -16,6 +16,15 @@
  *   2. `prototype/index.html`   empty state `.td-logo.td-logo-lg`
  *   3. `prototype/favicon.svg`  (light fills; the dark pair follows the scheme)
  *
+ * **Functional subtrees are not geometry.** A `<defs>`/`<mask>` subtree draws
+ * nothing: its rects and circles are knockout machinery (functional white shows,
+ * functional black cuts the negative space), so `shapesOf()` excludes them and
+ * the colour assertions read only the *drawing properties* of a visible surface —
+ * never a whole tag, which would misread `mask="url(#face-knockout-a)"`'s
+ * `#face` as a colour. A mask may use the functional white/black pair and
+ * nothing else; that whitelist is asserted from both sides, so a real bare
+ * colour smuggled into a mask is still caught.
+ *
  * The last block is the non-vacuity proof: it feeds deliberately mutated SVG to
  * the same comparison and asserts each drift is reported, so a guard that could
  * never go red fails here instead of passing forever.
@@ -98,28 +107,113 @@ function attrsOf(raw) {
 }
 
 /**
- * The shapes of one rendered mark, in document order. `fill` and `cls` resolve
- * to the element's own attribute or, failing that, the nearest ancestor `<g>`.
+ * A `<defs>`/`<mask>` subtree is functional, not rendered: a mask's rects and
+ * circles are knockout machinery (white shows, black cuts), so they carry no
+ * outline geometry and paint no visible surface of their own.
+ */
+const NON_RENDER = new Set(["defs", "mask"]);
+
+/**
+ * The shapes of one rendered mark, in document order — the **visible outline**
+ * only. Elements inside a `<defs>`/`<mask>` subtree are skipped, since a mask's
+ * cutouts are not part of the mark's geometry; `fill` and `cls` resolve to the
+ * element's own attribute or, failing that, the nearest ancestor `<g>`.
  */
 function shapesOf(svg) {
   const out = [];
   const stack = [];
-  const re = /<g\b([^>]*)>|<\/g>|<(rect|circle)\b([^>]*?)\/?>/g;
+  let hidden = 0; // > 0 ⇒ inside a <defs>/<mask> subtree: functional, not geometry
+  const re = /<(\/?)(defs|mask|g|rect|circle)\b([^>]*?)(\/?)>/g;
   for (const m of svg.matchAll(re)) {
-    if (m[0].startsWith("<g")) {
-      stack.push(attrsOf(m[1] ?? ""));
+    const closing = m[1] === "/";
+    const name = m[2];
+    if (NON_RENDER.has(name)) {
+      if (closing) hidden = Math.max(0, hidden - 1);
+      else if (m[4] !== "/") hidden += 1;
       continue;
     }
-    if (m[0] === "</g>") {
-      stack.pop();
+    if (name === "g") {
+      if (closing) stack.pop();
+      else stack.push(attrsOf(m[3] ?? ""));
       continue;
     }
+    if (hidden > 0) continue;
     const attrs = attrsOf(m[3] ?? "");
     const inherited = (key) => [...stack].reverse().map((g) => g[key]).find((v) => v != null) ?? null;
-    out.push({ tag: m[2], attrs, fill: attrs.fill ?? inherited("fill"), cls: attrs.class ?? inherited("class") });
+    out.push({ tag: name, attrs, fill: attrs.fill ?? inherited("fill"), cls: attrs.class ?? inherited("class") });
   }
   return out;
 }
+
+/** The SVG attributes that actually paint. */
+const COLOUR_PROPS = ["fill", "stroke", "stop-color", "color"];
+
+/**
+ * Every colour a mark paints, split by whether it sits in a non-rendering
+ * `<defs>`/`<mask>` subtree. Only drawing properties are read — never the whole
+ * tag text — so an id reference like `mask="url(#face-knockout-a)"` is not
+ * mistaken for a colour, and `style="…"` declarations are read as declarations.
+ */
+function paintedColors(svg) {
+  const visible = [];
+  const masked = [];
+  let hidden = 0;
+  const re = /<(\/?)([a-zA-Z][\w:-]*)([^>]*?)(\/?)>/g;
+  for (const m of svg.matchAll(re)) {
+    const closing = m[1] === "/";
+    const name = m[2].toLowerCase();
+    if (NON_RENDER.has(name)) {
+      if (closing) hidden = Math.max(0, hidden - 1);
+      else if (m[4] !== "/") hidden += 1;
+      continue;
+    }
+    if (closing) continue;
+    const attrs = attrsOf(m[3] ?? "");
+    const values = COLOUR_PROPS.filter((p) => attrs[p] != null).map((p) => attrs[p]);
+    for (const decl of (attrs.style ?? "").split(";")) {
+      const i = decl.indexOf(":");
+      if (i < 0) continue;
+      const prop = decl.slice(0, i).trim();
+      const value = decl.slice(i + 1).trim();
+      if (COLOUR_PROPS.includes(prop) && value) values.push(value);
+    }
+    for (const v of values) (hidden > 0 ? masked : visible).push(v);
+  }
+  return { visible, masked };
+}
+
+/** The functional greys a mask may use: white shows, black cuts the knockout. */
+const MASK_GREY = new Set(["#ffffff", "#000000"]);
+
+/** Bare hex colours painted on the visible face — the only surface §5 forbids them. */
+const bareHexes = (svg) => paintedColors(svg).visible.flatMap((v) => v.match(/#[0-9a-fA-F]{3,8}\b/g) ?? []);
+
+/** Colours smuggled into a mask beyond the functional white/black pair. */
+const maskSmuggling = (svg) => paintedColors(svg).masked.filter((v) => !MASK_GREY.has(v.toLowerCase()));
+
+/** The id of the §5 face knockout, as the landing card will name it. */
+const KNOCKOUT_ID = "face-knockout-a";
+
+/**
+ * The knockout's contents: one plate rect (functional white shows the mark) and
+ * three groups of three face shapes (functional black cuts the negative space),
+ * one group per sentinel — the ten elements of the landing card's mask.
+ */
+const faceKnockout = (plate) =>
+  `<rect fill="${plate}" x="0" y="0" width="32" height="32"/>` +
+  `<g fill="#000000"><circle cx="6.2" cy="19.9" r="0.5"/><circle cx="8.2" cy="19.9" r="0.5"/><rect x="6.4" y="21.1" width="1.6" height="0.5" rx="0.25"/></g>` +
+  `<g fill="#000000"><circle cx="15" cy="14.7" r="0.5"/><circle cx="17" cy="14.7" r="0.5"/><rect x="15.2" y="15.9" width="1.6" height="0.5" rx="0.25"/></g>` +
+  `<g fill="#000000"><circle cx="23.8" cy="11.9" r="0.5"/><circle cx="25.8" cy="11.9" r="0.5"/><rect x="24" y="13.1" width="1.6" height="0.5" rx="0.25"/></g>`;
+
+/**
+ * Candidate A with the §5 face knockout spliced in exactly as the landing card
+ * will render it: a `<defs><mask>` over the mark, cut by the face shapes.
+ */
+const withKnockout = (svg, plate = "#FFFFFF") =>
+  svg.replace(
+    /<svg\b([^>]*)>/,
+    `<svg$1 mask="url(#${KNOCKOUT_ID})"><defs><mask id="${KNOCKOUT_ID}">${faceKnockout(plate)}</mask></defs>`,
+  );
 
 const GEOM_KEYS = ["x", "y", "width", "height", "rx", "cx", "cy", "r"];
 const close = (a, b) => Math.abs(Number(a) - Number(b)) < 1e-9;
@@ -329,7 +423,16 @@ describe(
 
       it("both index.html marks paint only `--color-td-*` tokens (no bare hex)", () => {
         for (const [i, svg] of INDEX_MARKS.entries()) {
-          assert.deepEqual(svg.match(/#[0-9a-fA-F]{3,8}\b/g) ?? [], [], `mark[${i}] carries a bare hex colour`);
+          assert.deepEqual(
+            bareHexes(svg),
+            [],
+            `mark[${i}] paints a bare hex colour on a visible drawing surface`,
+          );
+          assert.deepEqual(
+            maskSmuggling(svg),
+            [],
+            `mark[${i}] paints a non-functional colour inside a <defs>/<mask> subtree`,
+          );
           for (const { fill } of shapesOf(svg)) {
             assert.ok(Object.values(TOKEN).includes(fill), `mark[${i}] paints a non-token fill ${JSON.stringify(fill)}`);
           }
@@ -353,6 +456,34 @@ describe(
       });
     });
 
+    // ── A mask is functional knockout, not outline geometry ──────────────────
+
+    describe("a <defs>/<mask> knockout stays invisible to the geometry guard", () => {
+      const pristine = INDEX_MARKS[0];
+      const want = expectedShapes({ mob: TOKEN.ink, sentinel: TOKEN.accent });
+
+      it("still renders exactly the §5 outline — the mask adds no shape", () => {
+        const masked = withKnockout(pristine);
+        assert.equal(shapesOf(masked).length, EXPECTED_COUNT, "mask cutouts must not count as rendered shapes");
+        assert.deepEqual(drift(shapesOf(masked), want), [], "the knockout must not move or repaint the outline");
+      });
+
+      it("does not read the mask's `url(#…)` reference as a hex colour", () => {
+        const masked = withKnockout(pristine);
+        assert.ok(
+          masked.includes(`mask="url(#${KNOCKOUT_ID})"`),
+          "the knockout fixture must actually carry the mask reference",
+        );
+        assert.deepEqual(bareHexes(masked), [], "`url(#face-knockout-a)` must not be scanned as a colour");
+      });
+
+      it("whitelists the mask's functional white/black — and nothing else", () => {
+        assert.deepEqual(maskSmuggling(withKnockout(pristine, "#FFFFFF")), [], "functional white must pass");
+        assert.deepEqual(maskSmuggling(withKnockout(pristine, "#000000")), [], "functional black must pass");
+        assert.notDeepEqual(maskSmuggling(withKnockout(pristine, "#123456")), [], "a real bare colour must be caught");
+      });
+    });
+
     // ── The guard is not vacuous ─────────────────────────────────────────────
 
     describe("the geometry guard can actually go red", () => {
@@ -360,12 +491,22 @@ describe(
       const want = expectedShapes({ mob: TOKEN.ink, sentinel: TOKEN.accent });
       const audit = (svg) => drift(shapesOf(svg), want);
 
-      /** Mutate the pristine mark textually and return the drift that mutation causes. */
-      const mutate = (from, to) => {
+      /** Mutate the pristine mark textually; fails loud if the mutation misses. */
+      const mutatedBy = (from, to) => {
         const mutated = pristine.replace(from, to);
         assert.notEqual(mutated, pristine, `the mutation ${from} → ${to} did not apply`);
-        return audit(mutated);
+        return mutated;
       };
+
+      /** Mutate the pristine mark textually and return the drift that mutation causes. */
+      const mutate = (from, to) => audit(mutatedBy(from, to));
+
+      /** Sentinel 1's left ear circle, exactly as `prototype/index.html` writes it. */
+      const earL = (s) =>
+        `<circle cx="${one(s.cx + EAR_L.cx.sign * EAR_L.cx.offset)}" cy="${one(s.top + EAR_L.cy.offset)}" r="${one(EAR_L.r)}" />`;
+
+      /** Sentinel 1's head circle — outline geometry, never a masked cutout. */
+      const head = (s) => `<circle cx="${one(s.cx)}" cy="${one(s.top + HEAD.cy.offset)}" r="${one(HEAD.r)}" />`;
 
       it("passes on the pristine mark, so the oracle itself can be green", () => {
         assert.deepEqual(audit(pristine), []);
@@ -410,8 +551,45 @@ describe(
       });
 
       it("reports a dropped shape", () => {
-        const d = mutate(/<circle[^>]*\/>/, "");
+        // The dropped shape must be one of the mark's own outline shapes: taking
+        // whichever `<circle>` comes first would, once a `<defs>`/`<mask>` knockout
+        // is present, silently delete a functional cutout instead — which rightly
+        // causes no drift, because a mask cutout is not outline geometry.
+        const dropped = mutatedBy(head(SENTINELS[0]), "");
+        assert.equal(shapesOf(dropped).length, EXPECTED_COUNT - 1, "the head must be gone from the outline");
+        const d = audit(dropped);
         assert.ok(d.some((m) => m.includes("shape count")), `dropped-shape drift not reported: ${JSON.stringify(d)}`);
+      });
+
+      // ── The mask awareness must not have blunted the guard ──────────────────
+
+      it("reports a deleted ear — 13 outline shapes → 12", () => {
+        const dropped = mutatedBy(earL(SENTINELS[0]), "");
+        assert.equal(shapesOf(dropped).length, EXPECTED_COUNT - 1, "the ear must be gone from the outline");
+        const d = audit(dropped);
+        assert.ok(d.some((m) => m.includes("shape count")), `deleted-ear drift not reported: ${JSON.stringify(d)}`);
+      });
+
+      it("reports a drifted ear — the outline moved", () => {
+        const earCx = one(SENTINELS[0].cx + EAR_L.cx.sign * EAR_L.cx.offset);
+        const d = mutate(`cx="${earCx}"`, `cx="${one(earCx + 0.2)}"`);
+        const hit = `${one(earCx + 0.2)} != ${one(earCx)}`;
+        assert.ok(
+          d.some((m) => m.includes(".cx ") && m.includes(hit)),
+          `ear-drift not reported: ${JSON.stringify(d)}`,
+        );
+      });
+
+      it("reports a bare hex smuggled onto the visible face", () => {
+        const hexed = mutatedBy(`fill="${TOKEN.ink}"`, `fill="#ff0000"`);
+        assert.notDeepEqual(bareHexes(hexed), [], "a bare hex on a visible surface must be caught");
+        assert.ok(audit(hexed).some((m) => m.includes(".fill ")), "the repaint must also drift the fill");
+      });
+
+      it("reports a non-functional colour smuggled into the mask", () => {
+        const smuggled = withKnockout(pristine, "#123456");
+        assert.notDeepEqual(maskSmuggling(smuggled), [], "a real colour hidden in a mask must be caught");
+        assert.deepEqual(bareHexes(smuggled), [], "the masked colour must not leak into the visible-surface scan");
       });
     });
   },
