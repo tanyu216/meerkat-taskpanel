@@ -12,7 +12,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { describe, it } from "node:test";
 
-import { SQL_ENUM_SETS } from "../../src/core/domain/enums.mjs";
+import { SQL_ENUM_SETS, STATUSES } from "../../src/core/domain/enums.mjs";
 import { REVISION_TABLES, TABLES, revisionTriggerNames } from "../../src/core/storage/schema.mjs";
 import { DB_RAISE_CODES, ERROR_CODES } from "../../src/shared/errors.mjs";
 import {
@@ -53,14 +53,25 @@ describe("contract/sql-parity — migration files", () => {
     });
   });
 
-  it("creates every declared table exactly once over the whole set", () => {
+  it("creates every declared table over the whole set, and invents none", () => {
     const created = tableNames(allSql).sort();
     assert.deepEqual(
       [...new Set(created)].sort(),
       [...TABLES].sort(),
       "SQL tables must equal schema.mjs TABLES (both directions)",
     );
-    assert.equal(created.length, new Set(created).size, "a table is created twice");
+    // A table name may legitimately appear more than once: SQLite has no
+    // `ALTER TABLE … MODIFY`, so widening a `CHECK` constraint means rebuilding
+    // the table (`0013_awaiting_status.sql` re-creates `tasks` for exactly that
+    // reason). What is *not* allowed is a name that schema.mjs does not declare
+    // — that is the "a table appeared from nowhere" case this rule exists for.
+    const rebuilt = ["tasks"];
+    const duplicates = [...new Set(created.filter((name, i) => created.indexOf(name) !== i))].sort();
+    assert.deepEqual(
+      duplicates,
+      rebuilt,
+      "a table is created twice — only a documented CHECK-widening rebuild may do that",
+    );
   });
 
   it("adds report_latest_id / delivery_round by ALTER, keeping migrations append-only", () => {
@@ -104,16 +115,13 @@ describe("contract/sql-parity — enums", () => {
   });
 
   it("rejects any status literal in SQL that the state machine does not know", () => {
-    const statusLiterals = new Set(checkInSets(allSql).get("tasks.status") ?? []);
-    assert.deepEqual([...statusLiterals].sort(), [
-      "backlog",
-      "blocked",
-      "canceled",
-      "done",
-      "in_progress",
-      "in_review",
-      "todo",
-    ]);
+    // Derived from the fact source rather than written out again: a literal that
+    // only one side knows is drift, and a hand-copied list cannot see it.
+    const statusLiterals = [...new Set(checkInSets(allSql).get("tasks.status") ?? [])].sort();
+    assert.deepEqual(statusLiterals, [...STATUSES].sort());
+    // The table is rebuilt by 0013, so the *effective* CHECK is the last one —
+    // and it must be the widened one, not 0001's seven.
+    assert.equal(statusLiterals.includes("awaiting"), true, "0013 must widen tasks.status");
   });
 });
 

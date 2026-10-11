@@ -12,7 +12,7 @@
 import { ARCHIVE_AFTER_DAYS, HEARTBEAT_FRESH_MS, IDENTIFIER_PATTERN, LABEL_MAX_LEN } from "../../shared/constants.mjs";
 import { DomainError } from "../../shared/errors.mjs";
 import { identifierPrefix } from "../../shared/ids.mjs";
-import { ACTOR_KINDS, DICT_KINDS, STATUSES, TASK_KINDS } from "./enums.mjs";
+import { ACTOR_KINDS, AWAITING_REASONS, DICT_KINDS, STATUS, STATUSES, TASK_KINDS } from "./enums.mjs";
 import { normalizeIdem } from "./idem.mjs";
 import { parsePriority } from "./priority.mjs";
 import { isTerminalStatus } from "./status.mjs";
@@ -55,6 +55,9 @@ export const TASK_COLUMNS = Object.freeze([
   "idem",
   "created_at",
   "updated_at",
+  // M1 — the `awaiting` entry category (design §2.1). NULL unless the card is
+  // waiting on a human.
+  "awaiting_reason",
 ]);
 
 const ISO_MILLIS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
@@ -245,6 +248,18 @@ export function normalizeTaskCreate(input, context) {
       details: { field: "status", received: status, allowed: STATUSES },
     });
   }
+  // M1 — `in_progress → awaiting` is the only way a card may *become* awaiting
+  // (design §2.1/§6), and the entry carries a payload: the human comment that
+  // asked the question. A brand-new card has neither, so creating one directly
+  // in that status would produce exactly the payload-less black box §2.1 calls a
+  // defect. Refused here rather than left as a second door into the state.
+  if (status === STATUS.AWAITING) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: "a task cannot be created awaiting — move it there from in_progress",
+      details: { field: "status", received: status, entry: `${STATUS.IN_PROGRESS} → ${STATUS.AWAITING}` },
+      hint: { fix: `create it in progress, then: taskctl issue move <ref> ${STATUS.AWAITING} --reason ${AWAITING_REASONS[0]}` },
+    });
+  }
 
   const kind = input.kind ?? "task";
   if (!TASK_KINDS.includes(kind)) {
@@ -296,6 +311,8 @@ export function normalizeTaskCreate(input, context) {
     reportWaiverRound: null,
     reportWaiverReason: null,
     reportWaivedAt: null,
+    // M1 — a new card is not waiting on anybody (see the create guard above).
+    awaitingReason: null,
     version: 1,
     idem: normalizeIdem(input.idem),
     createdAt: now,
@@ -440,6 +457,7 @@ const CAMEL = {
   idem: "idem",
   created_at: "createdAt",
   updated_at: "updatedAt",
+  awaiting_reason: "awaitingReason",
 };
 
 /**

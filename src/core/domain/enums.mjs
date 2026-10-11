@@ -9,7 +9,18 @@
  * This module is pure: no `node:` specifiers.
  */
 
-/** Canonical task statuses (F2 — the card's seven). */
+/**
+ * Canonical task statuses (F2 — the card's seven stage statuses, plus M1's
+ * first-class `awaiting` overlay).
+ *
+ * The **first seven are the board's stage statuses, in board order** — they are
+ * the column set, and `test/web/blocks.contract.mjs` freezes them as
+ * `DOMAINS.STATUS`. `awaiting` (M1) is deliberately appended *after* them: it is
+ * an **attention/overlay** state, not an eighth stage, so it must not appear as
+ * an eighth column. A card that enters `awaiting` stays on its stage visually
+ * (it is listed under `in_progress`); only the state machine and the human
+ * payload read the word "awaiting".
+ */
 export const STATUSES = Object.freeze([
   "backlog",
   "todo",
@@ -18,6 +29,7 @@ export const STATUSES = Object.freeze([
   "blocked",
   "done",
   "canceled",
+  "awaiting",
 ]);
 
 /** Named access to the canonical statuses. */
@@ -29,7 +41,27 @@ export const STATUS = Object.freeze({
   BLOCKED: "blocked",
   DONE: "done",
   CANCELED: "canceled",
+  AWAITING: "awaiting",
 });
+
+/**
+ * The **stage** statuses — every canonical status except the `awaiting` overlay.
+ * This is the board's column set; `awaiting` is never a member.
+ */
+export const STAGE_STATUSES = Object.freeze(STATUSES.filter((status) => status !== STATUS.AWAITING));
+
+/**
+ * Why a card needed a human (M1 · design §2.1). An **enumeration, never free
+ * text** — `E1..E5` is the whole vocabulary:
+ *
+ *   E1 scope change · E2 acceptance-baseline change · E3 design/aesthetic
+ *   direction · E4 security/data safety · E5 architecture direction.
+ *
+ * Entering `awaiting` must carry one of these (`awaiting_reason` on the task);
+ * the *payload* the human reads is still the triggering human comment — these
+ * codes name the category, they are not the question.
+ */
+export const AWAITING_REASONS = Object.freeze(["E1", "E2", "E3", "E4", "E5"]);
 
 /** Task priorities, least → most urgent. */
 export const PRIORITIES = Object.freeze(["low", "medium", "high", "urgent"]);
@@ -118,6 +150,7 @@ export const ACTIVITY_EVENTS = Object.freeze([
  */
 export const SQL_ENUM_SETS = Object.freeze({
   "tasks.status": STATUSES,
+  "tasks.awaiting_reason": AWAITING_REASONS,
   "tasks.priority": PRIORITIES,
   "tasks.kind": TASK_KINDS,
   "tasks.assignee_kind": DICT_KINDS,

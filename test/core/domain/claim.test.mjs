@@ -143,6 +143,33 @@ describe("domain/claim — decide", () => {
 describe("domain/claim — the in_progress windows", () => {
   const held = (overrides = {}) => task({ status: "in_progress", claimedBy: "elon", ...overrides });
 
+  // M1 · A1 — the takeover window is a property of `in_progress` and of nothing
+  // else. An `awaiting` card is *supposed* to have a stale heartbeat (nobody is
+  // running), so reading that age as "gone, up for grabs" would hand a card that
+  // is parked on a human to whichever agent scanned next.
+  it("never takes over an awaiting card, however stale its heartbeat (M1 · A1)", () => {
+    for (const heartbeatAt of [VERY_STALE, MID, FRESH, null]) {
+      const verdict = decideClaim(task({ status: "awaiting", claimedBy: "elon", heartbeatAt }), {
+        actor: "linus",
+        now: NOW,
+        resolveAssignee: resolveNone,
+        allowSteal: true,
+      });
+      assert.equal(verdict.action, CLAIM_ACTIONS.INVALID, `heartbeat ${heartbeatAt}`);
+      assert.equal(verdict.code, "INVALID_TRANSITION");
+      assert.equal(verdict.reclaim, undefined, "no takeover, not even an audited one");
+    }
+    // ...and the same inputs for an in_progress card *do* take over, so the
+    // status is what decided it.
+    const stale = decideClaim(held({ claimedBy: "elon", heartbeatAt: VERY_STALE }), {
+      actor: "linus",
+      now: NOW,
+      resolveAssignee: resolveNone,
+    });
+    assert.equal(stale.action, CLAIM_ACTIONS.TAKE);
+    assert.equal(stale.reclaim, true);
+  });
+
   it("reuses the same actor's fresh claim without resetting anything", () => {
     const row = held({ claimedBy: "linus", heartbeatAt: FRESH });
     const verdict = decideClaim(row, { actor: "linus", now: NOW, resolveAssignee: resolveNone });

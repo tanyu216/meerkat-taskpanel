@@ -155,8 +155,9 @@ export function insertTask(db, overrides = {}) {
     `INSERT INTO tasks(id, identifier, project_id, title, description, status, priority, kind,
                        labels, sort_order, assignee_kind, assignee_id, reporter_id, creator_kind, creator_id,
                        claimed_by, claimed_at, heartbeat_at, blocked_at, status_changed_at,
-                       archived_at, source_path, source_hash, version, idem, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                       archived_at, source_path, source_hash, version, idem, created_at, updated_at,
+                       awaiting_reason)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     row.id,
     row.identifier,
@@ -185,6 +186,45 @@ export function insertTask(db, overrides = {}) {
     row.idem ?? null,
     row.created_at,
     row.updated_at,
+    row.awaiting_reason ?? null,
+  );
+  return row.id;
+}
+
+/**
+ * Append a comment. `author_kind` is the field M1's resume rule reads, so it is
+ * a first-class override rather than something a test has to smuggle through
+ * `refs`.
+ *
+ * @param {any} db
+ * @param {{id?: string, task_id?: string, body?: string, kind?: string, author_kind?: string, author_id?: string, created_at?: string}} [overrides]
+ */
+export function insertComment(db, overrides = {}) {
+  const row = {
+    id: "c-1",
+    task_id: "task-1",
+    body: "a comment",
+    kind: "discuss",
+    author_kind: "agent",
+    author_id: "linus",
+    created_at: TS,
+    ...overrides,
+  };
+  db.prepare(
+    `INSERT INTO comments(id, task_id, body, kind, author_kind, author_id, agent_session, refs_json, source_seq, version, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    row.id,
+    row.task_id,
+    row.body,
+    row.kind,
+    row.author_kind,
+    row.author_id,
+    row.agent_session ?? null,
+    row.refs_json ?? "[]",
+    row.source_seq ?? null,
+    row.version ?? 1,
+    row.created_at,
   );
   return row.id;
 }

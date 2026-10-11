@@ -243,15 +243,27 @@ export function createTasksRepository(db) {
      * UPDATE as the status change. That is what makes the trigger's waiver
      * branch see them, and what keeps a waived delivery to one revision.
      *
-     * @param {{id: string, ifVersion?: number, to: string, now: string, reportLatestId?: number|null, waiver?: {round: number, reason: string}|null}} input
+     * `awaitingReason` (M1) does the same job for the `awaiting` entry category:
+     * entering `awaiting` stamps `E1..E5`, and **leaving** it clears the column
+     * in the same UPDATE. Clearing is not tidiness — a resumed or canceled card
+     * that kept a stale reason would make `issue get` claim it is still waiting
+     * on somebody, and the revision trigger would report a change that did not
+     * happen. The column is therefore written on every move, derived from the
+     * destination status, never left to the caller.
+     *
+     * @param {{id: string, ifVersion?: number, to: string, now: string, reportLatestId?: number|null, waiver?: {round: number, reason: string}|null, awaitingReason?: string|null}} input
      */
     moveCas(input) {
-      const { id, ifVersion, to, now, reportLatestId, waiver } = input;
+      const { id, ifVersion, to, now, reportLatestId, waiver, awaitingReason } = input;
       return transaction(
         db,
         () => {
           const sets = ["status = ?", "status_changed_at = ?", "version = version + 1", "updated_at = ?"];
           const values = [to, now, now];
+          // M1 — the reason column follows the status: set on entry, cleared on
+          // every exit (including a move that never touches `awaiting`).
+          sets.push("awaiting_reason = ?");
+          values.push(to === "awaiting" ? (awaitingReason ?? null) : null);
           if (to === "blocked") {
             sets.push("blocked_at = ?");
             values.push(now);

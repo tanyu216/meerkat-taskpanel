@@ -9,6 +9,7 @@
 
 export * from "./enums.mjs";
 export * from "./status.mjs";
+export * from "./awaiting.mjs";
 export * from "./priority.mjs";
 export * from "./task.mjs";
 export * from "./idem.mjs";

@@ -89,7 +89,7 @@ const PATCH_BODY = shape({
 
 /** `POST /api/v1/tasks/:ref/move` — the transition, plus the audited waiver (F-B1). */
 const MOVE_BODY = shape(
-  { to: REQUEST.status, if_version: int(), no_report: bool(), reason: str(), allow_steal: bool() },
+  { to: REQUEST.status, if_version: int(), no_report: bool(), reason: str(), allow_steal: bool(), awaiting_reason: str() },
   ["to"],
 );
 
@@ -278,6 +278,9 @@ export function registerTaskRoutes(router, surface) {
       // A `todo → in_progress` move is a claim; `allow_steal` is its audited
       // override (T-20261009-230500).
       allowSteal: body.allow_steal === true,
+      // M1 — the `awaiting` entry category (`E1..E5`), required only when the
+      // destination is `awaiting`; the command layer is what enforces that.
+      awaitingReason: body.awaiting_reason,
       actor,
     });
     return { ...taskPayload(repos, task), status: task.status };
