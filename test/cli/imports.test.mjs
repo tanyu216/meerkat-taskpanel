@@ -1,7 +1,7 @@
 /**
  * The layering rules, machine-enforced (V12).
  *
- * Three structural promises are only worth anything if they are checked rather
+ * Two structural promises are only worth anything if they are checked rather
  * than documented:
  *
  *   1. `src/cli/**` is an **HTTP client** — it must not reach into
@@ -10,10 +10,6 @@
  *      service the single writer, F-A1.)
  *   2. `src/server/**` must not import `src/cli/**` — the dependency direction
  *      is `cli|server -> core -> shared`, never sideways.
- *   3. `src/cli/**` and `src/mcp/**` must not import **each other**. The taskd
- *      transport seam they share (`client/http.mjs`, `runtime.mjs`, `token.mjs`,
- *      `actor.mjs`, `errors.mjs` and `client/autostart.mjs`) lives in
- *      `src/shared/transport/**`, so both reach it without a sideways edge.
  *
  * Every direction is asserted against the *source text*, so a violation is
  * caught even in a file nothing imports yet.
@@ -128,16 +124,6 @@ describe("cli/imports — the layering rules", () => {
     for (const file of filesUnder("src/cli")) {
       for (const specifier of importedSpecifiers(readSource(file))) {
         if (/(^|\/)server\//.test(specifier)) violations.push(`${file.slice(ROOT.length + 1)} imports ${specifier}`);
-      }
-    }
-    assert.deepEqual(violations, []);
-  });
-
-  it("src/cli does not import src/mcp — the two surfaces share only src/shared", () => {
-    const violations = [];
-    for (const file of filesUnder("src/cli")) {
-      for (const specifier of importedSpecifiers(readSource(file))) {
-        if (/(^|\/)mcp\//.test(specifier)) violations.push(`${file.slice(ROOT.length + 1)} imports ${specifier}`);
       }
     }
     assert.deepEqual(violations, []);

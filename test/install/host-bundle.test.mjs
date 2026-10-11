@@ -1,20 +1,17 @@
 /**
  * Host-bundle install contract: `install.sh --target claude` / `--target codex`.
  *
- * The two bundle hosts now deploy more than a skill — MCP registration, host config,
- * slash commands (Claude) / a claim trigger (Codex), and a `taskctl` shim that pins the
- * agent identity. These tests pin that contract under an isolated home
- * (`MEERKAT_TASKPANEL_TARGET_HOME`), and in particular the two "never clobber" rules the rest of
- * the installer relies on:
+ * The two bundle hosts deploy more than a skill — host config, slash commands
+ * (Claude) / a claim trigger (Codex), and a `taskctl` shim that pins the agent
+ * identity. These tests pin that contract under an isolated home
+ * (`MEERKAT_TASKPANEL_TARGET_HOME`), and in particular the two "never clobber"
+ * rules the rest of the installer relies on:
  *
  *   - idempotent: re-running with the same inputs leaves every file byte-identical;
  *   - merge-style: pre-existing settings.json / AGENTS.md content survives untouched.
  *
- * The MCP registration runs the host CLI (`claude mcp add …` / `codex mcp add …`). The
- * host CLIs are *not* guaranteed to be present (they are not in the verification image),
- * so the invocation contract is tested with fake CLIs on PATH — deterministic everywhere —
- * and the two "real CLI" branches (registration actually lands / the CLI is absent so the
- * exact manual command is printed) are each asserted only where they are reachable.
+ * The install needs no host CLI — it writes the whole bundle itself — so every
+ * case runs the same way on a bare machine and inside the verification image.
  *
  * Run with: node --test
  */
@@ -22,7 +19,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
-  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -62,48 +58,11 @@ function runInstall(args, env = {}) {
   });
 }
 
-/** Absolute path of a command on PATH, or null when absent. */
-function whichBin(name) {
-  const run = spawnSync("bash", ["-c", `command -v ${name}`], { encoding: "utf8" });
-  const path = run.stdout.trim();
-  return path ? path : null;
-}
-
-const haveClaude = whichBin("claude") !== null;
-const haveCodex = whichBin("codex") !== null;
-
-/**
- * Write an executable fake `<name>` CLI into `binDir` that records its argv plus the
- * HOME / CODEX_HOME it was invoked with to `$FAKE_LOG`, and exits `$FAKE_EXIT` (0 by
- * default) after printing `$FAKE_STDOUT` / `$FAKE_STDERR`. Used to pin the exact MCP
- * registration command without depending on a real host CLI being installed.
- */
-function makeFakeCli(binDir, name) {
-  const script = [
-    "#!/usr/bin/env bash",
-    "{",
-    "  printf 'argv:'; for a in \"$@\"; do printf ' <%s>' \"$a\"; done; printf '\\n'",
-    "  printf 'HOME=%s\\n' \"${HOME-}\"",
-    "  printf 'CODEX_HOME=%s\\n' \"${CODEX_HOME-}\"",
-    "} >> \"${FAKE_LOG:-/dev/null}\"",
-    "printf '%s\\n' \"${FAKE_STDOUT:-}\"",
-    "if [ -n \"${FAKE_STDERR:-}\" ]; then printf '%s\\n' \"$FAKE_STDERR\" >&2; fi",
-    "exit \"${FAKE_EXIT:-0}\"",
-    "",
-  ].join("\n");
-  const dest = join(binDir, name);
-  writeFileSync(dest, script, "utf8");
-  chmodSync(dest, 0o755);
-  return dest;
-}
-
-/** Env for an install that sees fake `claude`/`codex` on PATH and logs to `log`. */
-function fakeCliEnv(home, bin, log, extra = {}) {
+/** Env for an install into an isolated `home`, with any extra keys layered on. */
+function hostEnv(home, extra = {}) {
   return {
     ...process.env,
     MEERKAT_TASKPANEL_TARGET_HOME: home,
-    FAKE_LOG: log,
-    PATH: `${bin}:${process.env.PATH}`,
     ...extra,
   };
 }
@@ -185,13 +144,10 @@ describe("host bundle: mergeSettings", () => {
 // ---------------------------------------------------------------------------
 
 describe("host bundle: claude", () => {
-  it("deploys skill + settings + hook + shim + slash commands and registers MCP", () => {
+  it("deploys skill + settings + hook + shim + slash commands", () => {
     const home = makeTempDir();
-    const bin = makeTempDir();
-    const log = join(bin, "claude.log");
-    makeFakeCli(bin, "claude");
 
-    const run = runInstall(["--target", "claude", "--agent-name", "alice"], fakeCliEnv(home, bin, log));
+    const run = runInstall(["--target", "claude", "--agent-name", "alice"], hostEnv(home));
     assert.equal(run.status, 0, run.stderr);
 
     // 1. skill
@@ -227,11 +183,6 @@ describe("host bundle: claude", () => {
       assert.ok(existsSync(cmd), `${name}.md missing`);
       assert.ok(!readFileSync(cmd, "utf8").includes("{{"), `${name}.md has unrendered tokens`);
     }
-
-    // 6. MCP registration — the exact command, run against the isolated home
-    const argvLine = readFileSync(log, "utf8").split("\n").find((l) => l.startsWith("argv:"));
-    assert.match(argvLine, /^argv: <mcp> <add> <meerkat-taskpanel> <--> <node> <.*\/src\/mcp\/main\.mjs>$/);
-    assert.ok(readFileSync(log, "utf8").includes(`HOME=${home}`));
   });
 
   it("preserves pre-existing settings.json keys and hooks", () => {
@@ -251,12 +202,7 @@ describe("host bundle: claude", () => {
       "utf8",
     );
 
-    const bin = makeTempDir();
-    makeFakeCli(bin, "claude");
-    const run = runInstall(
-      ["--target", "claude", "--agent-name", "alice"],
-      fakeCliEnv(home, bin, join(bin, "log")),
-    );
+    const run = runInstall(["--target", "claude", "--agent-name", "alice"], hostEnv(home));
     assert.equal(run.status, 0, run.stderr);
 
     const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
@@ -269,15 +215,9 @@ describe("host bundle: claude", () => {
 
   it("--force updates the managed identity but leaves unrelated keys alone", () => {
     const home = makeTempDir();
-    const bin = makeTempDir();
-    makeFakeCli(bin, "claude");
-    const log = join(bin, "log");
 
-    assert.equal(runInstall(["--target", "claude", "--agent-name", "alice"], fakeCliEnv(home, bin, log)).status, 0);
-    const forced = runInstall(
-      ["--target", "claude", "--agent-name", "bob", "--force"],
-      fakeCliEnv(home, bin, log),
-    );
+    assert.equal(runInstall(["--target", "claude", "--agent-name", "alice"], hostEnv(home)).status, 0);
+    const forced = runInstall(["--target", "claude", "--agent-name", "bob", "--force"], hostEnv(home));
     assert.equal(forced.status, 0, forced.stderr);
 
     const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
@@ -288,9 +228,7 @@ describe("host bundle: claude", () => {
 
   it("defaults the agent name to $USER when --agent-name is omitted", () => {
     const home = makeTempDir();
-    const bin = makeTempDir();
-    makeFakeCli(bin, "claude");
-    const run = runInstall(["--target", "claude"], fakeCliEnv(home, bin, join(bin, "log")));
+    const run = runInstall(["--target", "claude"], hostEnv(home));
     assert.equal(run.status, 0, run.stderr);
 
     const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
@@ -299,9 +237,7 @@ describe("host bundle: claude", () => {
 
   it("the installed shim runs the real CLI and forwards --version", () => {
     const home = makeTempDir();
-    const bin = makeTempDir();
-    makeFakeCli(bin, "claude");
-    const run = runInstall(["--target", "claude", "--agent-name", "alice"], fakeCliEnv(home, bin, join(bin, "log")));
+    const run = runInstall(["--target", "claude", "--agent-name", "alice"], hostEnv(home));
     assert.equal(run.status, 0, run.stderr);
 
     const shim = join(home, ".claude", "bin", "taskctl");
@@ -318,13 +254,10 @@ describe("host bundle: claude", () => {
 // ---------------------------------------------------------------------------
 
 describe("host bundle: codex", () => {
-  it("deploys skill + shim + AGENTS.md snippet + trigger and registers MCP", () => {
+  it("deploys skill + shim + AGENTS.md snippet + trigger", () => {
     const home = makeTempDir();
-    const bin = makeTempDir();
-    const log = join(bin, "codex.log");
-    makeFakeCli(bin, "codex");
 
-    const run = runInstall(["--target", "codex", "--agent-name", "alice"], fakeCliEnv(home, bin, log));
+    const run = runInstall(["--target", "codex", "--agent-name", "alice"], hostEnv(home));
     assert.equal(run.status, 0, run.stderr);
 
     // 1. skill
@@ -350,21 +283,13 @@ describe("host bundle: codex", () => {
     assert.match(triggerText, /name="\$\{TASKCTL_AGENT:-alice\}"/);
     assert.ok(triggerText.includes(join(home, ".codex", "meerkat-taskpanel-claim.sh")), "trigger path must be rendered");
     assert.ok(!triggerText.includes("{{"), "template tokens must be rendered");
-
-    // 5. MCP registration — the exact command with CODEX_HOME pointed at the isolated home
-    const logText = readFileSync(log, "utf8");
-    const argvLine = logText.split("\n").find((l) => l.startsWith("argv:"));
-    assert.match(argvLine, /^argv: <mcp> <add> <meerkat-taskpanel> <--> <node> <.*\/src\/mcp\/main\.mjs>$/);
-    assert.ok(logText.includes(`CODEX_HOME=${join(home, ".codex")}`));
   });
 
   it("--no-automation skips the claim trigger but keeps the rest", () => {
     const home = makeTempDir();
-    const bin = makeTempDir();
-    makeFakeCli(bin, "codex");
     const run = runInstall(
       ["--target", "codex", "--agent-name", "alice", "--no-automation"],
-      fakeCliEnv(home, bin, join(bin, "log")),
+      hostEnv(home),
     );
     assert.equal(run.status, 0, run.stderr);
 
@@ -379,9 +304,7 @@ describe("host bundle: codex", () => {
     mkdirSync(join(home, ".codex"), { recursive: true });
     writeFileSync(join(home, ".codex", "AGENTS.md"), "# My rules\n\nAlways be kind.\n", "utf8");
 
-    const bin = makeTempDir();
-    makeFakeCli(bin, "codex");
-    const run = runInstall(["--target", "codex", "--agent-name", "alice"], fakeCliEnv(home, bin, join(bin, "log")));
+    const run = runInstall(["--target", "codex", "--agent-name", "alice"], hostEnv(home));
     assert.equal(run.status, 0, run.stderr);
 
     const agents = readFileSync(join(home, ".codex", "AGENTS.md"), "utf8");
@@ -397,10 +320,7 @@ describe("host bundle: codex", () => {
 describe("host bundle: idempotency", () => {
   it("re-running claude + codex leaves every installed file unchanged", () => {
     const home = makeTempDir();
-    const bin = makeTempDir();
-    makeFakeCli(bin, "claude");
-    makeFakeCli(bin, "codex");
-    const env = fakeCliEnv(home, bin, join(bin, "log"));
+    const env = hostEnv(home);
 
     const first = runInstall(["--target", "claude,codex", "--agent-name", "alice"], env);
     assert.equal(first.status, 0, first.stderr);
@@ -413,85 +333,5 @@ describe("host bundle: idempotency", () => {
     assert.match(again.stdout, /unchanged/);
 
     assert.deepEqual(snapshotTree(home), before, "a second install must change nothing");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// MCP registration reply modes + the two real-CLI branches
-// ---------------------------------------------------------------------------
-
-describe("host bundle: MCP registration", () => {
-  it("treats an 'already exists' reply from the host CLI as success", () => {
-    const home = makeTempDir();
-    const bin = makeTempDir();
-    makeFakeCli(bin, "claude");
-    const run = runInstall(
-      ["--target", "claude", "--agent-name", "alice"],
-      fakeCliEnv(home, bin, join(bin, "log"), {
-        FAKE_EXIT: "1",
-        FAKE_STDOUT: "Error: MCP server 'meerkat-taskpanel' already exists",
-      }),
-    );
-    assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, /already registered/);
-  });
-
-  it("prints the exact manual command when the host CLI fails for another reason", () => {
-    const home = makeTempDir();
-    const bin = makeTempDir();
-    makeFakeCli(bin, "claude");
-    const run = runInstall(
-      ["--target", "claude", "--agent-name", "alice"],
-      fakeCliEnv(home, bin, join(bin, "log"), { FAKE_EXIT: "1", FAKE_STDOUT: "something broke" }),
-    );
-    assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stderr, /claude mcp add meerkat-taskpanel -- node .*src\/mcp\/main\.mjs/);
-  });
-
-  it("claude (when present) writes a real registration", { skip: !haveClaude }, () => {
-    const home = makeTempDir();
-    const env = { ...process.env, MEERKAT_TASKPANEL_TARGET_HOME: home };
-    delete env.CLAUDE_CONFIG_DIR;
-
-    const run = runInstall(["--target", "claude", "--agent-name", "alice"], env);
-    assert.equal(run.status, 0, run.stderr);
-
-    assert.ok(existsSync(join(home, ".claude.json")), "claude mcp add must write .claude.json");
-    const config = readFileSync(join(home, ".claude.json"), "utf8");
-    assert.match(config, /meerkat-taskpanel/);
-    assert.match(config, /src\/mcp\/main\.mjs/);
-  });
-
-  it("codex (when present) writes a real registration", { skip: !haveCodex }, () => {
-    const home = makeTempDir();
-    const run = runInstall(["--target", "codex", "--agent-name", "alice"], {
-      ...process.env,
-      MEERKAT_TASKPANEL_TARGET_HOME: home,
-    });
-    assert.equal(run.status, 0, run.stderr);
-
-    const config = readFileSync(join(home, ".codex", "config.toml"), "utf8");
-    assert.match(config, /\[mcp_servers\.meerkat-taskpanel\]/);
-    assert.match(config, /src\/mcp\/main\.mjs/);
-  });
-
-  it("claude (when absent) prints the exact manual command instead", { skip: haveClaude }, () => {
-    const home = makeTempDir();
-    const run = runInstall(["--target", "claude", "--agent-name", "alice"], {
-      ...process.env,
-      MEERKAT_TASKPANEL_TARGET_HOME: home,
-    });
-    assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, /claude mcp add meerkat-taskpanel -- node .*src\/mcp\/main\.mjs/);
-  });
-
-  it("codex (when absent) prints the exact manual command instead", { skip: haveCodex }, () => {
-    const home = makeTempDir();
-    const run = runInstall(["--target", "codex", "--agent-name", "alice"], {
-      ...process.env,
-      MEERKAT_TASKPANEL_TARGET_HOME: home,
-    });
-    assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, /codex mcp add meerkat-taskpanel -- node .*src\/mcp\/main\.mjs/);
   });
 });

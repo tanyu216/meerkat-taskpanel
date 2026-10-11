@@ -3,12 +3,10 @@
 #
 # Deploys the complete Claude bundle, not just the skill:
 #   1. skill            → ~/.claude/skills/meerkat-taskpanel
-#   2. MCP registration → `claude mcp add meerkat-taskpanel -- node <repo>/src/mcp/main.mjs`
-#                         (runs the CLI when present; otherwise prints the command)
-#   3. settings.json    → merged: env.TASKCTL_AGENT + a SessionStart hook, preserving
+#   2. settings.json    → merged: env.TASKCTL_AGENT + a SessionStart hook, preserving
 #                         every other key and hook
-#   4. slash commands   → ~/.claude/commands/{board,claim,deliver}.md
-#   5. scheduling       → ~/.claude/scheduling/{launchd,systemd,cron} + wake-claude.sh
+#   3. slash commands   → ~/.claude/commands/{board,claim,deliver}.md
+#   4. scheduling       → ~/.claude/scheduling/{launchd,systemd,cron} + wake-claude.sh
 #                         and the host config (~/.claude/meerkat-taskpanel.env)
 # plus the reproducible hook script and the taskctl shim that injects --agent <name>.
 set -eu
@@ -34,6 +32,3 @@ emit_file "claude/commands/deliver.md" "$(target_home)/.claude/commands/deliver.
 # Code has no timers, so the loop lives outside it (see docs/scheduling.md).
 install_scheduling
 write_host_config
-
-# MCP registration last, so a fresh install has everything else in place first.
-register_mcp "claude" "claude"

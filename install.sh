@@ -28,10 +28,9 @@
 #
 # The installer is deterministic and offline: it writes the skill into each host's
 # skill directory. For the two bundle hosts (claude, codex) it also deploys the rest of
-# the bundle — MCP registration, host configuration, slash commands (Claude) and the
-# claim trigger (Codex) — merge-style and idempotently. When a host CLI is absent the
-# installer prints the exact registration command instead of failing, so it behaves the
-# same on a bare machine and inside the verification container.
+# the bundle — host configuration, slash commands (Claude) and the claim trigger
+# (Codex) — merge-style and idempotently. It needs no host CLI to do so, so it behaves
+# the same on a bare machine and inside the verification container.
 
 set -eu
 

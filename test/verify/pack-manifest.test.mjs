@@ -194,7 +194,7 @@ describe("pack-manifest — the CLI", () => {
     const result = runCli([file]);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /missing required files/);
-    assert.match(result.stderr, /src\/mcp\/main\.mjs/);
+    assert.match(result.stderr, /src\/server\/main\.mjs/);
   });
 
   it("exits 2 when the file is not a tarball", async () => {

@@ -185,17 +185,14 @@ describe("package manifest", () => {
     assert.ok(major >= 22, `engines.node must be >= 22, got ${range}`);
   });
 
-  it("exposes the MCP server as a bin too, ready to run", async () => {
-    // M3's stdio server is a *program*, not just a library: a host config or an
-    // installer has to be able to start it without knowing where it lives. So it
-    // is a bin, and a bin has to actually be runnable — which is three separate
-    // facts, all of them easy to lose and none of them visible from here without
-    // being written down.
+  it("exposes the CLI as a bin that is ready to run", async () => {
+    // `taskctl` is a *program*, not just a library: a host config or an installer
+    // has to be able to start it without knowing where it lives. So it is a bin,
+    // and a bin has to actually be runnable — two separate facts, both of them
+    // easy to lose and neither visible from here without being written down.
     const pkg = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8"));
 
-    assert.equal(pkg.bin["meerkat-taskpanel-mcp"], "./src/mcp/main.mjs");
-
-    const entry = join(ROOT, pkg.bin["meerkat-taskpanel-mcp"]);
+    const entry = join(ROOT, pkg.bin.taskctl);
     assert.ok(existsSync(entry), "bin target must exist");
     assert.match(readFileSync(entry, "utf8"), /^#!\/usr\/bin\/env node\n/, "a bin needs a shebang");
     assert.ok(
@@ -246,11 +243,7 @@ describe("install.sh", () => {
   it("installs into a temp home and re-installs idempotently", async () => {
     const fakeHome = await makeTempDir();
     const dest = join(fakeHome, ".claude", "skills", "meerkat-taskpanel");
-    // The direct host script now also registers MCP via the `claude` CLI when it is
-    // present; drop CLAUDE_CONFIG_DIR so that registration (and any test run on a
-    // machine that sets it) stays inside the isolated home.
     const env = { ...process.env, MEERKAT_TASKPANEL_TARGET_HOME: fakeHome };
-    delete env.CLAUDE_CONFIG_DIR;
 
     const first = spawnSync("bash", [join(ROOT, "scripts/install/claude.sh")], {
       cwd: ROOT,

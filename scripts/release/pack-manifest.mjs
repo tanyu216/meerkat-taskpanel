@@ -36,7 +36,6 @@ export const REQUIRED = Object.freeze([
   "README.zh-CN.md",
   "install.sh",
   "src/cli/index.mjs",
-  "src/mcp/main.mjs",
   "src/server/main.mjs",
   "skills/meerkat-taskpanel/SKILL.md",
   "plugins/claude/.claude-plugin/plugin.json",

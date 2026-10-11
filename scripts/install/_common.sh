@@ -3,7 +3,7 @@
 # Shared implementation for the per-host installers (claude / openclaw / codex / pi).
 #
 # Each host script sources this file and calls the pieces it needs. The two bundle
-# hosts (claude, codex) call `install_skill` plus the MCP / config / command / trigger
+# hosts (claude, codex) call `install_skill` plus the config / command / trigger
 # helpers below; the two skill-only hosts (openclaw, pi) call just `install_skill`.
 #
 # Honours:
@@ -297,7 +297,7 @@ install_skill() {
 }
 
 # ---------------------------------------------------------------------------
-# Bundle writing — templates, config merge, MCP registration
+# Bundle writing — templates, config merge
 # ---------------------------------------------------------------------------
 
 # emit_file <template_rel> <dest> [--exec]
@@ -365,61 +365,4 @@ append_snippet() {
   else
     node "$(apply_helper)" snippet "$file" "$template" --marker "$marker"
   fi
-}
-
-# register_mcp <cli> <label>
-#   Register the stdio MCP server with the host CLI (`<cli> mcp add meerkat-taskpanel -- node
-#   <repo>/src/mcp/main.mjs`). Runs the CLI when it is on PATH; otherwise prints the
-#   exact command. The CLI is run with HOME (and, for codex, CODEX_HOME) pointed at the
-#   target home, so an isolated `--prefix` / `MEERKAT_TASKPANEL_TARGET_HOME` install never
-#   touches the real host config. An "already exists" reply is success (idempotent).
-register_mcp() {
-  cli="$1"
-  label="$2"
-
-  repo="$(repo_root)"
-  home="$(target_home)"
-  display="$cli mcp add meerkat-taskpanel -- node $repo/src/mcp/main.mjs"
-
-  if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
-    echo "would run  $display"
-    return 0
-  fi
-
-  if ! command -v "$cli" >/dev/null 2>&1; then
-    echo "$label: '$cli' not on PATH — register MCP manually with:"
-    echo "  $display"
-    return 0
-  fi
-
-  out=""
-  status=0
-  set +e
-  if [ "$cli" = "codex" ]; then
-    mkdir -p "$home/.codex"
-    out="$(HOME="$home" CODEX_HOME="$home/.codex" "$cli" mcp add meerkat-taskpanel -- node "$repo/src/mcp/main.mjs" 2>&1)"
-    status=$?
-  else
-    out="$(HOME="$home" "$cli" mcp add meerkat-taskpanel -- node "$repo/src/mcp/main.mjs" 2>&1)"
-    status=$?
-  fi
-  set -e
-
-  if [ "$status" -eq 0 ]; then
-    echo "$label: registered MCP server 'meerkat-taskpanel'"
-    return 0
-  fi
-
-  if printf '%s' "$out" | grep -qi "already exists"; then
-    echo "$label: MCP server 'meerkat-taskpanel' already registered"
-    return 0
-  fi
-
-  # The CLI ran but did not register — report it honestly and give the manual command.
-  echo "$label: MCP registration did not complete; run it manually:" >&2
-  echo "  $display" >&2
-  if [ -n "$out" ]; then
-    printf '%s\n' "$out" | sed 's/^/    /' >&2
-  fi
-  return 0
 }
