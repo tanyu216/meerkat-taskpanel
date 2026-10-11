@@ -418,6 +418,19 @@ describe("renderMarkdown", () => {
     assert.doesNotMatch(md, /\{\{[a-z_]+\}\}/);
   });
 
+  it("always states the output-language rule in the header block", () => {
+    const md = renderMarkdown(aggregate([], window_({ period: "daily" })));
+
+    // One constant line, wording as implemented: the generator never translates,
+    // it records that the author's prose follows the current user's habit.
+    assert.match(md, /^- Output language: chosen to follow the current user's language habit\.$/m);
+    // It belongs to the header block, above the report's sections.
+    assert.ok(
+      md.indexOf("- Output language:") < md.indexOf("## Overview"),
+      "the output-language line must sit in the header block",
+    );
+  });
+
   it("renders the plain grouping when no preset is applied", () => {
     const summary = aggregate(
       [task({ identifier: "PROJ-0001", kind: "task" }), task({ identifier: "PROJ-0002", kind: "epic" })],

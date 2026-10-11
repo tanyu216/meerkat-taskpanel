@@ -3,7 +3,7 @@
 > **What this covers.** Daily / weekly / monthly reports over the board, and the
 > numbers that back them. This is the *period* report — a roll-up of the cards a
 > team finished in a window. It is **not** the per-task delivery report the
-> delivery gate asks for; that one is 《cli.md》§`report`.
+> delivery gate asks for; that one is `cli.md` §`report`.
 
 This one file is the whole capability, on purpose: the **report spec**, the
 **counting rules**, the **metric presets** and the **three templates** are all
@@ -15,11 +15,12 @@ task board for any team — software, operations, marketing, business, strategy 
 and so is this report. Nothing below assumes the cards describe software. The
 one preset that ships (`software`) is an **example** of a configuration, not the
 shape of the feature: metrics are named and grouped by *you*, through a grouping
-dimension plus `namespace:value` label filters (§统计口径›指标与预设).
+dimension plus `namespace:value` label filters, and their definitions live in
+§Measurement rules › Metrics and presets.
 
-## 报表规格
+## Report spec
 
-### 章节结构
+### Section structure
 
 Every periodic report — whatever the domain, whichever period — has the same
 five sections:
@@ -35,13 +36,13 @@ five sections:
 **Metric names and groups are configuration, not constants.** The shipped
 example calls its rows *Requirements handled*, *Development tasks completed*,
 *Bugs fixed* and *Production incidents*; another team's report calls them
-whatever its work is called. The generator never hard-codes a metric name — the
-labels come from the metric definitions in §统计口径›指标与预设, and with no
-preset the rows are simply the grouping-dimension values.
+whatever its work is called. The generator never hard-codes a metric name: the
+labels are the metric definitions of §Measurement rules › Metrics and presets,
+and with no preset the rows are simply the grouping-dimension values.
 
-### 占位符
+### Placeholders
 
-The templates in §模板 are filled from these placeholders; the generator
+The templates in §Templates are filled from these placeholders; the generator
 (`scripts/report.mjs`) fills every one of them, so its Markdown output and a
 hand-filled template have the same shape.
 
@@ -59,13 +60,13 @@ hand-filled template have the same shape.
 | `{{core_metrics}}` | The Core-metrics rows — one per metric label (preset) or per grouping value (no preset) |
 | `{{completed_cards}}` | One bullet per counted card, labelled by its group or metric |
 
-## 统计口径
+## Measurement rules
 
-### 数据源
+### Data source
 
 Everything comes from one existing read, `taskctl issue list --json` — this
 capability adds **no** new backend query. The generator calls it through the
-skill's own wrapper (see 《cli.md》§Starting the board), always with
+skill's own wrapper (see `cli.md` §Starting the board), always with
 `--include-archived`:
 
 ```bash
@@ -76,7 +77,7 @@ node scripts/run.mjs issue list --json --limit 1000 --include-archived [--projec
 terminal, so a monthly report that skipped the archive would silently drop work
 the team finished earlier in the month.
 
-### 完成时间窗
+### Completion window
 
 A card counts as **completed in the window** when **both** hold:
 
@@ -104,7 +105,7 @@ reader's own time zone does not move the boundary.
 `resolveWindow(period, date)` takes any day inside the window and returns the
 window that contains it, so `--date` may be any day of the week or month.
 
-### 分组维度
+### Grouping dimension
 
 A card's bucket comes from exactly one **grouping dimension**, chosen with
 `--group-by`:
@@ -135,7 +136,7 @@ carries no value for the chosen dimension is **uncategorized**: it is not
 counted, rather than being quietly folded into a bucket. Cards still print their
 assignee's own spelling in the per-card list.
 
-### 指标与预设
+### Metrics and presets
 
 A **metric** is a named count built from two things:
 
@@ -144,14 +145,15 @@ A **metric** is a named count built from two things:
    clauses that must not (`without`).
 
 That is the whole vocabulary. Nothing in it mentions software, so any team
-defines its own metrics without touching code — see §统计口径›自定义指标.
+defines its own metrics without touching code — see
+§Measurement rules › Custom metrics.
 
 A **preset** bundles a default grouping dimension, a set of excluded `kind`s,
 and a list of named metrics into one name you can pass as `--preset <name>`.
 This is the mechanism that keeps the shipped example from being a special case:
 a preset is *data*, and the generator treats every preset identically.
 
-#### 示例预设：`software`（研发）
+#### Example preset: `software` (development)
 
 The **one example preset** that ships today. It is a software team's reading of
 a generic board — useful as a worked example, not privileged in any way:
@@ -184,7 +186,7 @@ node scripts/report.mjs --period monthly --preset software
 `--preset software` implies `--group-by label:category`; pass `--group-by`
 explicitly to override the dimension while keeping the metrics.
 
-#### 自定义指标（运营 / 市场 / 业务 / …）
+#### Custom metrics (operations / marketing / business / …)
 
 **The statistics are not only for developers.** A report over a board of
 marketing campaigns, operations tickets or business requests is the same
@@ -208,9 +210,9 @@ To add a preset to the generator, add an entry to `PRESETS` in
 `where`, and optionally `without`). Until then, `--group-by` plus the reserved
 or team-defined label namespaces already cover the configurable cases.
 
-### 计数规则
+### Counting rules
 
-- A card must be `done` **and** completed inside the window (§完成时间窗).
+- A card must be `done` **and** completed inside the window (§Completion window).
 - It must carry a value for the grouping dimension; uncategorized cards are not
   counted.
 - If a preset is applied, its `excludeKinds` are dropped (for `software`, epics).
@@ -220,20 +222,20 @@ or team-defined label namespaces already cover the configurable cases.
   are disjoint.
 - Ordering is stable: cards are sorted by completion time, then identifier.
 
-## 与 taskctl 查询的对应
+## Mapping to taskctl queries
 
 | Need | Command |
 |---|---|
-| Raw cards (the data source) | `taskctl issue list --json [--project <id>] [--limit <n>] [--include-archived]` — 《cli.md》§`issue` |
-| One card's **delivery** report | `taskctl report template <id>` — 《cli.md》§`report` |
+| Raw cards (the data source) | `taskctl issue list --json [--project <id>] [--limit <n>] [--include-archived]` — `cli.md` §`issue` |
+| One card's **delivery** report | `taskctl report template <id>` — `cli.md` §`report` |
 | The period report | `node scripts/report.mjs …` (below) |
 
 Do not confuse the last two. `report template` prints the acceptance/evidence
-report a single card needs to pass the delivery gate (《cli.md》§The delivery
+report a single card needs to pass the delivery gate (`cli.md` §The delivery
 gate); the periodic report is a read-only aggregate of many cards and involves
 no gate.
 
-### 可复现命令
+### Reproducible commands
 
 Run from this skill's directory:
 
@@ -257,8 +259,8 @@ filter), `--assignee <name>` (local filter, by display name or id),
 `--group-by kind|project|assignee|status|label:<ns>`, `--preset <name>`,
 `--limit <n>` (default `1000`), `--json`, `-h`.
 
-Markdown is the default output and matches the templates' structure (§模板) with
-every placeholder filled. `--json` prints
+Markdown is the default output and matches the templates' structure (§Templates)
+with every placeholder filled. `--json` prints
 `{"ok":true,"data":{"summary":…}}`, whose `summary` carries `counts`, `metrics`
 (or `null`), `total`, the resolved `window`, and the completed-card list
 (`identifier`, `title`, `assignee`, `group`, `metric`, `completedAt`).
@@ -270,16 +272,16 @@ never the prose: `INVALID_PERIOD`, `INVALID_DATE`, `INVALID_LIMIT`,
 codes passed through unchanged. With `--json`, the same failure is printed as
 `{"ok":false,"error":{"code":…,"message":…}}`.
 
-## 模板
+## Templates
 
-Three templates, one file. They share the five sections of §报表规格›章节结构
-and differ only in window wording: **daily** is one UTC day, **weekly** is one
-ISO week (Monday through Sunday), **monthly** is one calendar month. The
-generator prints the same shape; these are the hand-fillable equivalents, and an
-author filling one by hand only has to replace the `TODO:` lines in the last
-three sections.
+Three templates, one file. They share the five sections of
+§Report spec › Section structure and differ only in window wording: **daily**
+is one UTC day, **weekly** is one ISO week (Monday through Sunday), **monthly**
+is one calendar month. The generator prints the same shape; these are the
+hand-fillable equivalents, and an author filling one by hand only has to replace
+the `TODO:` lines in the last three sections.
 
-### 日报 — daily（一个 UTC 日）
+### Daily report — daily (one UTC day)
 
 ````markdown
 # {{period_label}} report — {{project}}
@@ -291,6 +293,7 @@ three sections.
 - Period: {{period_start}} (one UTC day)
 - Project: {{project}}
 - Grouped by: {{group_by}}
+- Output language: chosen to follow the current user's language habit.
 - Generated at: {{generated_at}}
 
 ## Overview
@@ -321,7 +324,7 @@ was anything started or finished that the counts above do not capture?_
 - TODO: what tomorrow's report should be able to claim as done.
 ````
 
-### 周报 — weekly（一个 ISO 周，周一起）
+### Weekly report — weekly (one ISO week, starting Monday)
 
 ````markdown
 # {{period_label}} report — {{project}}
@@ -333,6 +336,7 @@ was anything started or finished that the counts above do not capture?_
 - Period: {{period_start}} → {{period_end}} (one ISO week, Monday–Sunday)
 - Project: {{project}}
 - Grouped by: {{group_by}}
+- Output language: chosen to follow the current user's language habit.
 - Generated at: {{generated_at}}
 
 ## Overview
@@ -363,7 +367,7 @@ or back-loaded, and does the total match what the team expected on Monday?_
 - TODO: the outcomes next week's report should be able to claim as done.
 ````
 
-### 月报 — monthly（一个自然月）
+### Monthly report — monthly (one calendar month)
 
 ````markdown
 # {{period_label}} report — {{project}}
@@ -376,6 +380,7 @@ or back-loaded, and does the total match what the team expected on Monday?_
 - Period: {{period_start}} → {{period_end}} (one calendar month)
 - Project: {{project}}
 - Grouped by: {{group_by}}
+- Output language: chosen to follow the current user's language habit.
 - Generated at: {{generated_at}}
 
 ## Overview
@@ -414,3 +419,10 @@ fixed list.
 When a preset or an assignee filter is in force, the generator adds a matching
 `- Preset: …` / `- Assignee: …` line to the header block; the templates above
 show the common unfiltered case, so they stay template-shaped.
+
+The `- Output language:` line is the exception: it stands in **every** header
+block, filtered or not, and it states the rule the author follows — **the report
+output language is chosen to follow the current user's language habit.** The
+generator emits this English skeleton verbatim and translates nothing: the line
+tells the author to write *their* prose, and the `TODO:` sections, in the
+language the reader habitually uses.

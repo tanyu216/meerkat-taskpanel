@@ -28,7 +28,7 @@
  *
  * The reading conventions (which cards count, where "completion time" comes
  * from, what each label namespace means, how to define a metric) are written
- * down once in `references/reports.md` §统计口径 — keep this file and that
+ * down once in `references/reports.md` §Measurement rules — keep this file and that
  * document aligned.
  *
  * @see ../references/reports.md
@@ -557,7 +557,10 @@ function cardList(items, labelOf) {
  * milestones, Risks & blockers, Next period plan — and every `{{placeholder}}`
  * is filled here, so the output is paste-ready. The three human-authored
  * sections are left as a `> TODO:` the author fills in; the generator cannot
- * invent them.
+ * invent them. The header block always carries the `- Output language:` line,
+ * which records the rule that the author writes that prose following the
+ * current user's language habit — the generator itself only emits this English
+ * skeleton (see `references/reports.md` §Templates).
  *
  * @param {object} summary an `aggregate(...)` result
  * @returns {string}
@@ -584,6 +587,7 @@ export function renderMarkdown(summary) {
     `- Period: ${periodLine}`,
     `- Project: ${project}`,
     `- Grouped by: ${groupBy}`,
+    "- Output language: chosen to follow the current user's language habit.",
   ];
   if (s.preset) lines.push(`- Preset: ${s.preset}`);
   if (s.assignee) lines.push(`- Assignee: ${s.assignee}`);
