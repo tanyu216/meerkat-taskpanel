@@ -1,0 +1,152 @@
+/**
+ * `taskctl project dir` — resolving a project to its local directory, and
+ * asking instead of guessing when there is none.
+ *
+ * The board holds no directory (O3). The answer lives in the host-local
+ * `projects.json` beside the skill, and the command is the CLI's door to it:
+ * a registered project prints its directory, an unregistered one **stops and
+ * asks the user** (a coded failure with an actionable hint) rather than
+ * continuing in some other checkout.
+ *
+ * Real CLI, real board, a temp map — the directory is passed in through
+ * `MEERKAT_TASKPANEL_PROJECTS_JSON`, exactly as an installed shim does.
+ */
+
+import assert from "node:assert/strict";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { after, describe, it } from "node:test";
+
+import { dataOf, errorOf, makeTempDir, withCli, cleanupTempDirs } from "./helpers/cli-harness.mjs";
+
+after(cleanupTempDirs);
+
+/** Write a map file into a fresh temp dir and return {map, dir}. */
+function writeMap(entries) {
+  const dir = makeTempDir("meerkat-taskpanel-map-");
+  const map = join(dir, "projects.json");
+  writeFileSync(map, JSON.stringify({ projects: entries }, null, 2));
+  return { map, dir };
+}
+
+/** A real directory under a fresh temp dir, usable as a target. */
+function makeTarget() {
+  const dir = join(makeTempDir("meerkat-taskpanel-target-"), "checkout");
+  mkdirSync(dir);
+  return dir;
+}
+
+describe("cli/project dir", () => {
+  it("prints the directory a registered project works in", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      const target = makeTarget();
+      const { map } = writeMap([{ project: "demo", local_path: target }]);
+
+      const result = run(["project", "dir", "demo", "--json"], { env: { MEERKAT_TASKPANEL_PROJECTS_JSON: map } });
+      assert.equal(result.status, 0, result.stderr);
+      const data = dataOf(result);
+      assert.equal(data.project, "demo");
+      assert.equal(data.dir, target);
+
+      const human = run(["project", "dir", "demo"], { env: { MEERKAT_TASKPANEL_PROJECTS_JSON: map } });
+      assert.equal(human.status, 0);
+      assert.equal(human.stdout, `${target}\n`, "human output is the directory itself");
+
+      // The flag is the explicit form, and it wins over the environment.
+      const flagged = run(["project", "dir", "demo", "--projects-json", map, "--json"], {
+        env: { MEERKAT_TASKPANEL_PROJECTS_JSON: join(makeTempDir(), "absent.json") },
+      });
+      assert.equal(flagged.status, 0, flagged.stderr);
+      assert.equal(dataOf(flagged).dir, target);
+    });
+  });
+
+  it("asks instead of guessing when no directory is registered (unmapped)", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      const { map } = writeMap([{ project: "somewhere-else", local_path: makeTarget() }]);
+
+      const result = run(["project", "dir", "demo", "--json"], { env: { MEERKAT_TASKPANEL_PROJECTS_JSON: map } });
+      assert.equal(result.status, 1, "an unresolved directory is a failure, never a silent success");
+      const error = errorOf(result);
+      assert.equal(error.code, "PROJECT_DIR_UNMAPPED");
+      assert.match(error.message, /no local directory is registered for project demo/);
+      assert.match(error.hint.fix, /ask which local directory project demo works in/);
+    });
+  });
+
+  it("refuses a relative, a missing and a non-directory target", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      const file = join(makeTarget(), "a-file");
+      writeFileSync(file, "not a directory\n");
+
+      const cases = [
+        ["relative/demo", "PROJECT_DIR_NOT_ABSOLUTE"],
+        ["/definitely/not/here", "PROJECT_DIR_MISSING"],
+        [file, "PROJECT_DIR_NOT_A_DIRECTORY"],
+      ];
+      for (const [local_path, code] of cases) {
+        const { map } = writeMap([{ project: "demo", local_path }]);
+        const result = run(["project", "dir", "demo", "--json"], { env: { MEERKAT_TASKPANEL_PROJECTS_JSON: map } });
+        assert.equal(result.status, 1, `${local_path} must fail`);
+        assert.equal(errorOf(result).code, code, `${local_path} must be ${code}`);
+      }
+    });
+  });
+
+  it("refuses an entry with no local_path at all", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      const { map } = writeMap([{ project: "demo" }]);
+      const result = run(["project", "dir", "demo", "--json"], { env: { MEERKAT_TASKPANEL_PROJECTS_JSON: map } });
+      assert.equal(result.status, 1);
+      assert.equal(errorOf(result).code, "PROJECT_DIR_REQUIRED");
+    });
+  });
+
+  it("reports a missing or malformed map as a coded failure", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+
+      const missing = run(["project", "dir", "demo", "--json"], {
+        env: { MEERKAT_TASKPANEL_PROJECTS_JSON: join(makeTempDir(), "projects.json") },
+      });
+      assert.equal(missing.status, 1);
+      assert.equal(errorOf(missing).code, "PROJECT_MAP_UNREADABLE");
+
+      const bad = makeTempDir();
+      writeFileSync(join(bad, "projects.json"), "{ not json");
+      const malformed = run(["project", "dir", "demo", "--json"], {
+        env: { MEERKAT_TASKPANEL_PROJECTS_JSON: join(bad, "projects.json") },
+      });
+      assert.equal(malformed.status, 1);
+      assert.equal(errorOf(malformed).code, "PROJECT_MAP_UNREADABLE");
+    });
+  });
+
+  it("defaults to the map beside this checkout's skill when the environment is silent", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      // Empty is "unset": the command falls back to the skill's own copy. The repo
+      // deliberately ships no projects.json, so this is the documented miss.
+      const result = run(["project", "dir", "demo", "--json"], {
+        env: { MEERKAT_TASKPANEL_PROJECTS_JSON: "" },
+      });
+      assert.equal(result.status, 1);
+      const error = errorOf(result);
+      assert.equal(error.code, "PROJECT_MAP_UNREADABLE");
+      assert.match(error.message, /skills[/\\]meerkat-taskpanel[/\\]projects\.json/);
+    });
+  });
+
+  it("still says 'no such project' when the board does not know the id", async () => {
+    await withCli(async ({ run }) => {
+      const { map } = writeMap([{ project: "ghost", local_path: makeTarget() }]);
+      const result = run(["project", "dir", "ghost", "--json"], { env: { MEERKAT_TASKPANEL_PROJECTS_JSON: map } });
+      assert.equal(result.status, 1, "a directory is not an excuse to invent a project");
+      assert.equal(errorOf(result).code, "NOT_FOUND");
+    });
+  });
+});

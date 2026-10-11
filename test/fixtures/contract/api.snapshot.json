@@ -97,6 +97,30 @@
       "http": 404
     },
     {
+      "code": "PROJECT_DIR_MISSING",
+      "http": 422
+    },
+    {
+      "code": "PROJECT_DIR_NOT_ABSOLUTE",
+      "http": 422
+    },
+    {
+      "code": "PROJECT_DIR_NOT_A_DIRECTORY",
+      "http": 422
+    },
+    {
+      "code": "PROJECT_DIR_REQUIRED",
+      "http": 422
+    },
+    {
+      "code": "PROJECT_DIR_UNMAPPED",
+      "http": 422
+    },
+    {
+      "code": "PROJECT_MAP_UNREADABLE",
+      "http": 422
+    },
+    {
       "code": "RELATION_CYCLE",
       "http": 422
     },

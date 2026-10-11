@@ -97,6 +97,19 @@ export const ERROR_CODES = Object.freeze({
   // is the registry's own `UNIQUE(project_id, norm)`.
   LABEL_CONFLICT: spec(409, "Label already exists in this project."),
 
+  // ---- Project directories (host-local map) ---------------------------------
+  // The board holds no directory (O3), so "which directory does this project
+  // work in?" is answered on the host, by `projects.json`, and *checked* before
+  // it is used. These codes say why a directory could not be used; every one of
+  // them stops the caller — the alternative is a worker running in the wrong
+  // checkout, which is worse than not starting one.
+  PROJECT_MAP_UNREADABLE: spec(422, "The local project map (projects.json) is missing or malformed."),
+  PROJECT_DIR_UNMAPPED: spec(422, "No local directory is registered for this project."),
+  PROJECT_DIR_REQUIRED: spec(422, "The project map entry carries no target directory."),
+  PROJECT_DIR_NOT_ABSOLUTE: spec(422, "The project target directory is not an absolute path."),
+  PROJECT_DIR_MISSING: spec(422, "The project target directory does not exist."),
+  PROJECT_DIR_NOT_A_DIRECTORY: spec(422, "The project target directory is not a directory."),
+
   // ---- Persistence / migrations ---------------------------------------------
   MIGRATION_CHECKSUM_MISMATCH: spec(500, "A migration file changed after it was applied; migrations are append-only."),
   SCHEMA_MISMATCH: spec(500, "Database schema is not at the expected migration version."),
@@ -178,6 +191,14 @@ export const JS_ONLY_CODES = Object.freeze([
   "SOURCE_CHANGED",
   "TOKEN_FILE_CORRUPT",
   "RUNTIME_POINTER_TOKEN_LEAK",
+  // Project directories: read from a host-local JSON file, never from a table,
+  // a trigger or a SQLite constraint.
+  "PROJECT_MAP_UNREADABLE",
+  "PROJECT_DIR_UNMAPPED",
+  "PROJECT_DIR_REQUIRED",
+  "PROJECT_DIR_NOT_ABSOLUTE",
+  "PROJECT_DIR_MISSING",
+  "PROJECT_DIR_NOT_A_DIRECTORY",
   // CLI-only: no database trigger and no SQLite constraint can raise these.
   "CLI_USAGE",
   "CLI_IO",
