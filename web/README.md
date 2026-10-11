@@ -56,6 +56,14 @@ npm -w web run preview  # serve the built artefact
   against the live DOM, checks console/page errors are zero, and checks the five
   viewports for horizontal overflow. It exits 2 ("skip") when no browser is
   available — which is the container's normal state.
+- `node ~/.openclaw/team/tools/ui-align/check.mjs --config web/.ui-align.json board` —
+  the **prototype ↔ implementation** check (host-only, same browser exception). It
+  boots the app from `scripts/ui-align-serve.mjs` (the fixture harness above) and the
+  prototype from its own static server, then asserts the manifest in
+  `manifests/board.json` at 1512/1240/980/760/430. Baseline at wiring: 12 blocks
+  (8 asserted, 4 `pending`), 102 assertions, 0 failures, 0 overflow, 0 console
+  errors, computed-style agreement 72.6% (non-blocking). `--strict` counts
+  `pending` blocks as failures. See `manifests/README.md`.
 
 The design prototype under `../design/prototype/` is the **read-only visual baseline
 contract**; it is never imported by, or copied into, this app.
