@@ -52,8 +52,8 @@ export const CREATION_GATE_STATUSES = Object.freeze([STATUS.IN_REVIEW, STATUS.DO
  * while a create is an INSERT — and the md importer, which deliberately *writes
  * history* rather than delivering, inserts `in_review`/`done` cards straight
  * into the table without going through the gate. So the guarantee lives one
- * layer up, in `createTask` — the single door every user-facing face (HTTP, CLI
- * and MCP) goes through, and a door the importer never uses.
+ * layer up, in `createTask` — the single door every user-facing face (HTTP and
+ * CLI) goes through, and a door the importer never uses.
  *
  * The refusal is deliberately the *same structured error* a reportless move to
  * `in_review` produces — `REPORT_REQUIRED`, the same `details` and the same

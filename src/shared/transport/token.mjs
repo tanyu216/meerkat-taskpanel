@@ -12,8 +12,9 @@
  * client must not import storage (see `test/cli/imports.test.mjs`); it is three
  * lines built from the same two constants core uses.
  *
- * Shared (extracted from `src/cli`) so both the CLI and the MCP surface resolve
- * the token the same way, with the same priority and the same corruption error.
+ * Shared (extracted from `src/cli`) so the token resolves the same way from every
+ * entry point that uses the seam, with the same priority and the same corruption
+ * error.
  */
 
 import { readFileSync } from "node:fs";
@@ -60,7 +61,7 @@ export function resolveToken(input = {}) {
     }
     const token = String(raw).trim();
     if (!isTokenShape(token)) {
-      // Path-free by policy (M3fix D3): this error is echoed to MCP clients, and
+      // Path-free by policy (M3fix D3): this error is surfaced to callers, and
       // a host absolute path is host-specific detail a caller cannot act on. The
       // file *name* is kept — it is what a human needs to fix it, and it names no
       // host.

@@ -67,7 +67,7 @@ export function createTask(ctx, input) {
       });
 
       // The gate's INSERT-shaped half (M3fix D1). `createTask` is the single
-      // door the HTTP, CLI and MCP faces all share; refusing here — before any
+      // door the HTTP and CLI faces share; refusing here — before any
       // row is written — makes `in_review`/`done` unreachable at creation the
       // same way a reportless `task_move` is refused. The md importer does not
       // call this use-case (it writes history directly), which is why the guard
@@ -490,7 +490,7 @@ export function moveStatus(ctx, input) {
 
       // `todo → in_progress` **is** a claim (T-20261009-230500): it must respect
       // the routing lock and stamp `claimed_by/claimed_at/heartbeat_at`, so the
-      // CLI (`issue move`), HTTP and MCP surfaces all mean the same thing. Every
+      // CLI (`issue move`) and HTTP surfaces mean the same thing. Every
       // other entry into `in_progress` — a rework from `in_review`/`blocked` —
       // keeps the existing claim untouched.
       if (input.to === "in_progress" && current.status === "todo") {

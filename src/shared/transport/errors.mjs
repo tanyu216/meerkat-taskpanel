@@ -11,8 +11,8 @@
  * reach a terminal or a log even if it got into a message.
  *
  * Shared (extracted from `src/cli`): the exit-code contract is a CLI notion, but
- * it sits here so the MCP edge can reuse the transport seam without reaching
- * into `src/cli`.
+ * it sits here so the transport seam can be reused whole without reaching into
+ * `src/cli`.
  */
 
 import { CLI_EXIT } from "../constants.mjs";

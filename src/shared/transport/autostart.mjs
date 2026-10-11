@@ -17,9 +17,9 @@
  * still points at the pid we just started (or a live one), its URL is the right
  * one to try.
  *
- * Shared (extracted from `src/cli/client/autostart.mjs`) so the MCP surface can
- * start the daemon the same way; the CLI's stdout-redirection guarantee is what
- * keeps a stdio MCP server's JSON-RPC stream clean.
+ * Shared (extracted from `src/cli/client/autostart.mjs`) so starting the daemon
+ * lives below the CLI rather than inside it; the CLI's stdout-redirection
+ * guarantee is what keeps a spawned daemon off the caller's stdout.
  */
 
 import { spawn } from "node:child_process";

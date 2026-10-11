@@ -14,8 +14,8 @@
  * believed after `/health` answers, and a dead address falls through to the
  * autostart path rather than producing a confusing connection error.
  *
- * Shared (extracted from `src/cli/runtime.mjs`) so both the CLI and the MCP
- * surface resolve the board identically.
+ * Shared (extracted from `src/cli/runtime.mjs`) so the board resolves identically
+ * from every entry point that uses the seam.
  */
 
 import { readFileSync } from "node:fs";
@@ -63,7 +63,7 @@ export async function ensureBoard(options = {}) {
 
   if (env[NO_AUTOSTART_ENV] === "1" || env[NO_AUTOSTART_ENV] === "true") {
     // The pointer's *path* is deliberately not echoed (M3fix D3): it is a host
-    // absolute path, and this refusal is echoed to MCP clients. The file name is
+    // absolute path, and this refusal is surfaced to callers. The file name is
     // kept, because that is what a human needs to fix it and it names no host.
     throw ioError(
       pointer === null

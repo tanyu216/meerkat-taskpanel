@@ -9,8 +9,8 @@
  * Every call carries the same three pieces of context, so no command has to
  * remember them: the token (if any), the actor, and the agent session/segment.
  *
- * Shared (extracted from `src/cli/client/index.mjs`) so the CLI and the MCP
- * surface build the same client over the same seam.
+ * Shared (extracted from `src/cli/client/index.mjs`) so the client is built over
+ * one seam, below the CLI surface rather than inside it.
  */
 
 import { requestJson, withQuery } from "./http.mjs";
