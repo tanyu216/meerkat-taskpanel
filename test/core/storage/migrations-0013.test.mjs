@@ -49,7 +49,18 @@ function before0013() {
 }
 
 const columnsOf = (db) => db.prepare("SELECT name FROM pragma_table_info('tasks')").all().map((r) => r.name);
-const indexNames = (db) => db.prepare("SELECT name FROM pragma_index_list('tasks')").all().map((r) => r.name);
+/**
+ * The **named** indexes on `tasks`. `pragma_index_list` also reports SQLite's own
+ * implicit index for the `TEXT` primary key (`sqlite_autoindex_tasks_1`); it is
+ * present before and after the rebuild, is not ours to create, and would only
+ * make the comparison below look like drift.
+ */
+const indexNames = (db) =>
+  db
+    .prepare("SELECT name FROM pragma_index_list('tasks')")
+    .all()
+    .map((r) => r.name)
+    .filter((name) => !name.startsWith("sqlite_autoindex"));
 const triggerNames = (db) =>
   db.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'tasks'").all().map((r) => r.name);
 const tasksSql = (db) => db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get().sql;
