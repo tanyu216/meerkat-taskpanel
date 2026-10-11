@@ -103,6 +103,28 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The brand mark gained its face — V2 logo landing, candidate A «Pin · 克制» — and the
+  silhouette does not move.** The Sentinel Watch mark keeps its frozen V2 geometry to the
+  byte — same `viewBox 0 0 32 32`, same `y = 27` baseline, same ink extent
+  `x ∈ [3.6, 28.4]`, `y ∈ [1.3, 27]`, all five V2 parameters untouched — and gains the
+  eyes and mouth as **negative-space knockout**: two eyes per figure (`r 0.42`,
+  `cx ∓ 0.80`, `cy − 0.20` measured from the head centre) and one mouth
+  (`0.72 × 0.20`, `rx 0.10`, `cy + 0.95`), cut out of the ink with an SVG `<mask>`.
+  Because the face is a hole rather than a second colour, the mark still restores to one
+  colour in the mono state, no palette value was added (the mask's greys are functional
+  luminance, not brand colours), and the **watch signal stays outside the mask**, so the
+  sentinel on duty and its dot are always solid. Declared size behaviour: the face reads
+  clearly **from 128px up**, is only just perceptible at **48–96px** (eye `r 0.42` =
+  0.63px at 48px), and by **32px the knockout degenerates to the plain V2 silhouette** —
+  so the 16/32 favicons keep the small-size reading they already had. One geometry source
+  as before: `design/brand/logo.svg` / `-dark` / `-mono` and their PNG rasters, the two
+  inline marks in `prototype/index.html` (distinct mask ids, `face-knockout-a-top` /
+  `face-knockout-a-lg`, because both share one document) and `prototype/favicon.svg`
+  (which keeps its `prefers-color-scheme` pair). `BRAND.md` §5 gains a **Face** table and
+  a rewritten *Size behaviour* paragraph; §7 records the landing. The whole 48-frame
+  `prototype/screenshots/` set was recaptured, because the top-bar mark appears in nearly
+  every frame: **15 frames are byte-identical** — exactly the ones that never frame the
+  top bar — and every moved frame differs only inside the mark's own box.
 - **The brand mark moved to V2 geometry (candidate B, "Mob").** The Sentinel Watch mark
   (three upright meerkats of a mob + one watch dot) keeps its structure — same skeleton,
   same `viewBox 0 0 32 32`, same `y = 27` baseline — and moved **exactly five parameters**:
