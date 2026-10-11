@@ -1,7 +1,7 @@
 /**
  * The prototype board catalogue, extracted verbatim as pure data.
  *
- * Source of truth: `prototype/app.js`, the `MESSAGES` object literal (lines
+ * Source of truth: `design/prototype/app.js`, the `MESSAGES` object literal (lines
  * 35-499 of that file: `en` at 36, `zh` at 271). Keys and strings below are
  * copied byte-for-byte — do not "improve" the copy, re-wrap the strings or
  * reorder the keys; the whole point of this module is that each shipped string
@@ -19,7 +19,7 @@
  *   `%s` placeholders  187 keys carry none, 8 carry one, 2 carry two — and the
  *                       histogram is identical for en and zh, key for key (no
  *                       prototype-only key carries a placeholder)
- *   data-i18n* hooks    606 in `prototype/index.html`:
+ *   data-i18n* hooks    606 in `design/prototype/index.html`:
  *                         389 `data-i18n=`
  *                         144 `data-i18n-arg=`
  *                          47 `data-i18n-aria-label=`
@@ -34,7 +34,7 @@
  * and the three `toast.sample.*` static samples that only the gallery rendered.
  * Terry's ruling of 2026-10-12: the legend and the gallery are **product-design
  * demonstrations, not functional requirements** — the shipped app renders
- * neither, so their vocabulary has no consumer. `prototype/**` is untouched (the
+ * neither, so their vocabulary has no consumer. `design/prototype/**` is untouched (the
  * design baseline keeps the blocks), and `test/web/i18n.catalogue.test.mjs` holds
  * the exclusion as an explicit, per-key list — every other prototype string must
  * still match byte-for-byte, and the list may not grow. (That suite names the
@@ -42,7 +42,7 @@
  * grader's greps for them over `web/` return nothing.)
  *
  * ---------------------------------------------------------------------------
- * Discrepancy to record: `prototype/BLOCKS.md` header is stale
+ * Discrepancy to record: `design/BLOCKS.md` header is stale
  * ---------------------------------------------------------------------------
  * Its header (lines 8-9) claims **252 `data-i18n*` hooks** and **198 catalogue
  * keys**. Both are wrong against the shipped files; measured above are 606 and
@@ -77,14 +77,14 @@
  * rather than left to trust. Do not edit one without the other.
  *
  * The `translate()` helper is a faithful port of the prototype's `text()`
- * (`prototype/app.js`, lines 538-550): active language, then English, then the
+ * (`design/prototype/app.js`, lines 538-550): active language, then English, then the
  * key itself, with `%s` filled positionally.
  */
 
 export const LANGUAGES = Object.freeze(["en", "zh"]);
 export const DEFAULT_LANGUAGE = "en";
 
-/* Verbatim from `prototype/app.js`. */
+/* Verbatim from `design/prototype/app.js`. */
 export const CATALOGUE = {
     en: {
       /* chrome */

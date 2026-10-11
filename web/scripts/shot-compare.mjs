@@ -1,7 +1,7 @@
 /**
  * Prototype ↔ implementation screenshot comparison (M6b · F3).
  *
- * Captures the **prototype** (`prototype/index.html`, opened over `file://`) and
+ * Captures the **prototype** (`design/prototype/index.html`, opened over `file://`) and
  * the **built implementation** (`web/dist`, served against the same fixture API
  * the DOM smoke uses) at identical viewport / theme / language, writes a
  * side-by-side sheet per combination, and re-runs the machine check in the same
@@ -33,7 +33,7 @@
  * `report.json`. `--strict` promotes it to a failure.
  *
  * ── Prototype driving ────────────────────────────────────────────────────────
- * `prototype/app.js` persists nothing: it boots at light/en from its own markup
+ * `design/prototype/app.js` persists nothing: it boots at light/en from its own markup
  * and switches by click. So the prototype is *driven* (a programmatic click on
  * `[data-theme-switch]` / `[data-lang-option]`, which is what its delegated
  * handlers listen for) — the implementation is *seeded* (its two `localStorage`
@@ -63,14 +63,14 @@ import { DIST, EVALUATED_RULES, resolvePlaywright, run as runDomSmoke, startServ
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB = resolve(HERE, "..");
-const PROTOTYPE = resolve(WEB, "../prototype/index.html");
+const PROTOTYPE = resolve(WEB, "../design/prototype/index.html");
 
 /** Review artefacts belong to the task workspace, never to the repository. */
 const DEFAULT_OUT = process.env.SHOT_OUT ?? "/Users/tanyu/.openclaw/team/workspace/T-20261009-034400-meerkat-taskpanel-m6b/shots";
 
 /** Every shot is a viewport (non-full-page) capture: the board is a fixed shell. */
 const HEIGHT = 950;
-/** Matches the prototype's own screenshot convention (`prototype/screenshots/*`). */
+/** Matches the prototype's own screenshot convention (`design/prototype/screenshots/*`). */
 const DEVICE_SCALE = 2;
 
 /** The five widths the acceptance names. */
@@ -295,7 +295,7 @@ function sheetHtml({ combo, width, prototypeName, implementationName, prototypeS
      <strong>no pixel diff</strong> (O7). Captured at ${width}×${HEIGHT} CSS px, deviceScaleFactor ${DEVICE_SCALE}, shown here at 1×.</p>
   <div class="cols">
     <figure>
-      <figcaption>Prototype <span class="src">prototype/index.html · file://</span></figcaption>
+      <figcaption>Prototype <span class="src">design/prototype/index.html · file://</span></figcaption>
       <img src="${prototypeName}" width="${width}" alt="prototype ${combo.id} ${width}">
     </figure>
     <figure>

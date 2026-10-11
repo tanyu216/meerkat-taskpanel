@@ -8,7 +8,7 @@ behaviour all come from `design-style-guide.md` + `design-spec.md` as amended by
 `design-spec-v1.3.md` (footer split into three equal thirds; theme and language become
 dialogs alongside settings), with
 every disagreement between the sources recorded in
-[DESIGN.md §9](DESIGN.md#9-reconciliation--where-the-two-source-documents-disagree) and
+[DESIGN.md §9](../DESIGN.md#9-reconciliation--where-the-two-source-documents-disagree) and
 every judgement call the addenda left open recorded in §14 (v1.1), §15 (v1.2) and
 §16 (v1.3).
 
@@ -20,7 +20,7 @@ no CDN, no webfont, no network call, no storage.**
 ## Open it
 
 ```sh
-open prototype/index.html      # plain file:// — no server, no build step needed
+open design/prototype/index.html      # plain file:// — no server, no build step needed
 ```
 
 `index.html` is complete without JavaScript: the top bar, sidebar, filters, all seven
@@ -43,8 +43,8 @@ three footer dialogs are secondary surfaces and stay hidden until opened.
 | `vendor/jquery.slim.min.js` | jQuery 3.7.1 **slim** build, vendored locally |
 | `vendor/markdown-lite.js` | the Markdown → HTML renderer behind the editor's preview pane, vendored locally |
 | `vendor/highlight-lite.js` | the source highlighter behind the editor's syntax colours, vendored locally |
-| `DESIGN.md` | the design specification: tokens, type, spacing, states, a11y, reconciliation, access model, i18n, R3, R4 |
-| `BLOCKS.md` | the block inventory B01–B25 with every `data-*` hook (B20 and B21 are the retired theme/language dialogs — see v1.4; B22 and B23 are R3's roster controls and Markdown editor; B24 is R4's Parent / Depends-on pair; B25 is R5's label control) |
+| `../DESIGN.md` | the design specification: tokens, type, spacing, states, a11y, reconciliation, access model, i18n, R3, R4 |
+| `../BLOCKS.md` | the block inventory B01–B25 with every `data-*` hook (B20 and B21 are the retired theme/language dialogs — see v1.4; B22 and B23 are R3's roster controls and Markdown editor; B24 is R4's Parent / Depends-on pair; B25 is R5's label control) |
 | `screenshots/` | capture set (board, wide board, drawer, dark, list, menu, filters, empty, language menu, access + token, Chinese, 5 viewports, the two-column create dialog, the split editor, assignee autocomplete, the Write-pane scroll proof, the Parent and Depends-on controls) |
 | `package.json` | declared devDependencies + `build:css` script |
 | `.gitignore` | keeps `node_modules/` out of the repository |
@@ -66,12 +66,12 @@ URLs in their own source and the purity gate rejects both (DESIGN.md §18.4).
 ## Build
 
 `tw.css` is generated from `src/input.css`. **`node_modules` must never live inside
-`prototype/`** — install the toolchain in the temporary build directory instead and
+`design/prototype/`** — install the toolchain in the temporary build directory instead and
 expose it to Tailwind only for the duration of the build:
 
 ```sh
 BUILD=/Users/tanyu/.openclaw/team/workspace/T-20261008-200429-taskboardproto/twbuild
-PROTO=/Users/tanyu/Documents/meerkat-taskpanel/prototype
+PROTO=/Users/tanyu/Documents/meerkat-taskpanel/design/prototype
 
 cd "$BUILD" && npm install            # tailwindcss, @tailwindcss/cli, daisyui, jquery
 
@@ -82,7 +82,7 @@ cd "$PROTO" && "$BUILD/node_modules/.bin/tailwindcss" -i src/input.css -o tw.css
 rm -f "$PROTO/node_modules"
 ```
 
-`prototype/package.json` also carries the canonical `npm run build:css` for a normal
+`design/prototype/package.json` also carries the canonical `npm run build:css` for a normal
 checkout where `node_modules` is allowed to sit next to the sources.
 
 Two `@source` directives limit class scanning to `index.html` and `app.js`
@@ -168,7 +168,7 @@ bundle: the vendored file contains **zero** transport references, and a vendored
 can only ever touch the DOM it was given.
 
 The same rule holds for the *words*, not just the code: the prose above is written
-without the banned identifiers so that a plain text scan of `prototype/**` comes back
+without the banned identifiers so that a plain text scan of `design/prototype/**` comes back
 empty on every one of them, including these documents.
 
 **The token panel is copy, not a credential.** `td_…` is generated in `app.js` from
@@ -376,7 +376,7 @@ the frames are deterministic; `index.html` itself is untouched.
 The state shots are driven through the real handlers — the capture page appends a
 line that triggers the same `data-*` hooks a click would, so what is captured is
 what the prototype actually does, not a hand-styled mock. (Those one-line capture
-scripts live in the temporary build directory, never in `prototype/`.)
+scripts live in the temporary build directory, never in `design/prototype/`.)
 
 **On the 430px case:** headless Chrome refuses a window narrower than ~500px, so the
 narrowest capture is 500px. That is the same CSS path — everything below 559px
@@ -394,8 +394,8 @@ itself: six agent roles — `elon` (openclaw), `jobs` / `linus` / `simons` (clau
 `turing` (codex), `assistant` (pi) — plus the human owner `Terry`, who files every
 task (`data-reporter="Terry"` on all 18 cards). Cards show the platform badge **and**
 the role handle; the drawer separates Assignee from Reporter; comments and activity
-use the same handles. See [DESIGN.md §10](DESIGN.md#10-team--identity-model) and the
-assignee table in [BLOCKS.md](BLOCKS.md#assignee-model).
+use the same handles. See [DESIGN.md §10](../DESIGN.md#10-team--identity-model) and the
+assignee table in [BLOCKS.md](../BLOCKS.md#assignee-model).
 
 ## Notes and known limits
 

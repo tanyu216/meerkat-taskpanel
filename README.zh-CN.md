@@ -73,9 +73,9 @@ Meerkat TaskPanel 是三层薄结构，依赖方向始终向内：`src/cli`、`s
 
 产品原型截图（看板前端的视觉基线）：
 
-![看板](prototype/screenshots/01-board-1512.png)
+![看板](design/prototype/screenshots/01-board-1512.png)
 
-![Agent 任务抽屉](prototype/screenshots/03-drawer-agent.png)
+![Agent 任务抽屉](design/prototype/screenshots/03-drawer-agent.png)
 
 ## 仓库结构
 
@@ -94,7 +94,7 @@ meerkat-taskpanel/
 ├── web/                          # 看板前端（Vue 3 + Vite）→ web/dist（托管根）
 ├── skills/meerkat-taskpanel/        # skill —— 单一事实源
 ├── plugins/                      # 每宿主一个分发单元（claude/codex/openclaw/pi）
-├── design/                       # 品牌资产（+ assets/、prototype/ 占位；内容迁移待办）
+├── design/                       # 设计文档：DESIGN / BLOCKS、prototype/、brand/、assets/
 ├── scripts/                      # 构建 / 安装 / 同步 / 校验
 ├── test/                         # 契约 + 冒烟测试
 ├── docs/                         # 使用与开发文档

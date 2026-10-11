@@ -38,8 +38,7 @@ meerkat-taskpanel/
 ├── web/                    # board frontend (Vue 3 + Vite): build-time devDeps -> web/dist (README placeholder)
 ├── skills/meerkat-taskpanel/      # the skill — single source of truth (author here)
 ├── plugins/{claude,codex,openclaw,pi}/  # per-host manifests + generated skills/ copies
-├── design/                 # brand assets, tokens; prototype/assets + PRD/DESIGN/BLOCKS are placeholders
-├── prototype/              # HTML + Tailwind/daisyUI prototype + screenshots (visual baseline)
+├── design/                 # design artifacts: DESIGN / BLOCKS, prototype/ (HTML + daisyUI), brand/, assets/
 ├── scripts/                # build, install/, sync-skills.mjs, verify/{manifests,skill,profiles,docker}
 ├── docker/                 # containerised verify env: Dockerfile, docker-compose.yml, profiles/, serve-skeleton.mjs, verify-in-container.sh
 ├── test/                   # contract, core, concurrency, scaffold tests + fixtures
@@ -50,8 +49,8 @@ meerkat-taskpanel/
 
 `dist/`, `.data/`, `node_modules/` and `coverage/` are build/runtime output — gitignored,
 never committed. Directories or files listed above but not present in a given checkout are
-planned, not implemented (e.g. `design/` has `brand/` only; there is no PRD/DESIGN/BLOCKS
-file yet; `web/` is still a README placeholder — its workspace lands with M6b).
+planned, not implemented (e.g. there is no `design/PRD.md` yet; `web/` is still a README
+placeholder — its workspace lands with M6b).
 
 Mind the two different `dist` trees: `dist/` is the **npm release tree** that
 `scripts/build.mjs` writes; the **hosted frontend root** is `web/dist`, the static build of

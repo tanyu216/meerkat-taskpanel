@@ -8,15 +8,15 @@
  *   1. **Internal parity** — `en` and `zh` have identical key sets, identical
  *      key order, no duplicate keys, no empty values, and the same `%s`
  *      placeholders key for key. This half runs everywhere, including the
- *      container image (which does not carry `prototype/`).
- *   2. **Against the prototype** — where `prototype/app.js` is present, the
+ *      container image (which does not carry `design/prototype/`).
+ *   2. **Against the prototype** — where `design/prototype/app.js` is present, the
  *      suite re-derives `MESSAGES` from that file and requires that the
  *      catalogue is that data minus exactly `PROTOTYPE_ONLY_KEYS` (the B15/B18
  *      demo vocabulary the ruling of 2026-10-12 drops from the implementation),
  *      entry line by entry line and key by key. The exclusions are an explicit
  *      closed list, so the real measured counts and every *shipped* string are
  *      still checked against the source rather than against a number written
- *      down here. `.dockerignore` excludes `prototype/`, so this half self-skips
+ *      down here. `.dockerignore` excludes `design/prototype/`, so this half self-skips
  *      in the image, following the "absent tool ⇒ SKIP, never FAIL" precedent
  *      from `scripts/verify/host-cli.mjs`.
  *   3. **Purity** — the data module imports nothing, touches no global and
@@ -46,7 +46,7 @@ import {
 
 const MODULE_PATH = fileURLToPath(new URL("./i18n.catalogue.mjs", import.meta.url));
 const ROOT = resolve(dirname(MODULE_PATH), "../..");
-const PROTOTYPE_APP = resolve(ROOT, "prototype/app.js");
+const PROTOTYPE_APP = resolve(ROOT, "design/prototype/app.js");
 const HAS_PROTOTYPE = existsSync(PROTOTYPE_APP);
 
 const MODULE_SOURCE = readFileSync(MODULE_PATH, "utf8");
@@ -163,11 +163,11 @@ function isPrototypeOnlyKey(key) {
   return PROTOTYPE_ONLY_KEYS.includes(key);
 }
 
-/** The prototype's `MESSAGES` literal text, as it stands in `prototype/app.js`. */
+/** The prototype's `MESSAGES` literal text, as it stands in `design/prototype/app.js`. */
 function prototypeLiteralText() {
   const source = readFileSync(PROTOTYPE_APP, "utf8");
   const at = source.indexOf("var MESSAGES = ");
-  assert.notEqual(at, -1, "prototype/app.js no longer declares MESSAGES");
+  assert.notEqual(at, -1, "design/prototype/app.js no longer declares MESSAGES");
   return objectLiteralAt(source, at + "var MESSAGES = ".length);
 }
 
@@ -186,7 +186,7 @@ function withoutPrototypeOnly(table) {
   return Object.fromEntries(Object.entries(table).filter(([key]) => !isPrototypeOnlyKey(key)));
 }
 
-/** Re-derives `MESSAGES` from `prototype/app.js` without executing the app. */
+/** Re-derives `MESSAGES` from `design/prototype/app.js` without executing the app. */
 function extractPrototypeCatalogue() {
   return new Function(`return ${prototypeLiteralText()};`)(); // eslint-disable-line no-new-func
 }
@@ -253,7 +253,7 @@ describe("catalogue parity", () => {
 
 /* --------------------------------------------------------- against prototype */
 
-describe("catalogue vs prototype", { skip: HAS_PROTOTYPE ? false : "prototype/ is not present" }, () => {
+describe("catalogue vs prototype", { skip: HAS_PROTOTYPE ? false : "design/prototype/ is not present" }, () => {
   it("carries the prototype's entries verbatim, minus the prototype-only keys", () => {
     // Whole literal equality is what this replaces: the catalogue is the
     // prototype's literal with exactly the prototype-only entries deleted, so
@@ -262,10 +262,10 @@ describe("catalogue vs prototype", { skip: HAS_PROTOTYPE ? false : "prototype/ i
     const theirs = entryLines(prototypeLiteralText()).filter((line) => !isPrototypeOnlyKey(keyOfEntry(line)));
     const ours = entryLines(moduleLiteral());
     assert.ok(theirs.length > 0, "the prototype literal yielded no entries — the scan is broken");
-    assert.deepEqual(ours, theirs, "a shipped entry no longer matches prototype/app.js byte for byte");
+    assert.deepEqual(ours, theirs, "a shipped entry no longer matches design/prototype/app.js byte for byte");
   });
 
-  it("deep-equals the catalogue re-derived from prototype/app.js, minus the prototype-only keys", (t) => {
+  it("deep-equals the catalogue re-derived from design/prototype/app.js, minus the prototype-only keys", (t) => {
     const expected = extractPrototypeCatalogue();
     t.diagnostic(
       `prototype MESSAGES re-derived: en ${Object.keys(expected.en).length} / ` +
@@ -303,12 +303,12 @@ describe("catalogue vs prototype", { skip: HAS_PROTOTYPE ? false : "prototype/ i
     }
   });
 
-  it("covers every translated hook in prototype/index.html", (t) => {
+  it("covers every translated hook in design/prototype/index.html", (t) => {
     // The catalogue is only "reusable" if the markup's hooks still resolve
     // against it — a key rename in the prototype would otherwise leave the
     // extraction looking complete.
-    const htmlPath = resolve(ROOT, "prototype/index.html");
-    if (!existsSync(htmlPath)) return t.skip("prototype/index.html is not present");
+    const htmlPath = resolve(ROOT, "design/prototype/index.html");
+    if (!existsSync(htmlPath)) return t.skip("design/prototype/index.html is not present");
     const html = readFileSync(htmlPath, "utf8");
 
     const valuesOf = (attribute) =>

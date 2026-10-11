@@ -1,16 +1,16 @@
 /**
  * The board's machine-checkable block contract.
  *
- * Transcribed **once, by hand** from `prototype/BLOCKS.md` (B01–B25 plus the ten
+ * Transcribed **once, by hand** from `design/BLOCKS.md` (B01–B25 plus the ten
  * "consistency items" C01–C10). This file is the single source of assertion data for
- * the frontend; `prototype/BLOCKS.md` remains the design's prose authority, it is
- * never parsed, and `prototype/**` is never edited from here.
+ * the frontend; `design/BLOCKS.md` remains the design's prose authority, it is
+ * never parsed, and `design/prototype/**` is never edited from here.
  *
  * ---------------------------------------------------------------------------
  * WHY THE ASSERTIONS NEVER QUOTE THE PROSE COUNTS (the header-count discrepancy)
  * ---------------------------------------------------------------------------
  * The BLOCKS.md *header* is stale; the *body* is authoritative. Measured against
- * `prototype/index.html` and `prototype/app.js` on 2026-10-09 (host-side static
+ * `design/prototype/index.html` and `design/prototype/app.js` on 2026-10-09 (host-side static
  * counting — no browser, no network):
  *
  *   header claims                             measured
@@ -60,7 +60,7 @@
  *
  *   active          part of the shipped implementation. Its hooks must exist in
  *                   the built app and its rules are evaluated against the page.
- *   prototype-only  transcribed from `prototype/BLOCKS.md` because the design
+ *   prototype-only  transcribed from `design/BLOCKS.md` because the design
  *                   baseline still holds it, but deliberately **not** part of
  *                   the implementation. Its `root`/`required`/`states`/`rules`
  *                   stay declared — the transcription remains complete and
@@ -74,7 +74,7 @@
  * Today `prototype-only` is B15 (the sidebar legend) and B18 (the states
  * gallery): Terry's ruling of 2026-10-12 — both are product-design
  * demonstrations rather than functional requirements, so the shipped app renders
- * neither and `prototype/**` keeps both. B03's own surface drops the
+ * neither and `design/prototype/**` keeps both. B03's own surface drops the
  * `[data-states-open]` opener that belonged to B18, and B17 (the error state)
  * leaves B18 for the board's real error surface rather than being dropped.
  *
@@ -91,7 +91,7 @@
  */
 
 /** Provenance, for reports. */
-export const CONTRACT_SOURCE = "prototype/BLOCKS.md";
+export const CONTRACT_SOURCE = "design/BLOCKS.md";
 
 /** Where a block lives. */
 export const SCOPES = Object.freeze([
@@ -107,7 +107,7 @@ export const SCOPES = Object.freeze([
 /**
  * A block that the design baseline keeps but the shipped implementation
  * deliberately does not render. Its metadata and rules stay declared (the
- * transcription of `prototype/BLOCKS.md` remains complete) while every
+ * transcription of `design/BLOCKS.md` remains complete) while every
  * *implementation-side* check skips it — see the module header.
  */
 export const PROTOTYPE_ONLY_STATUS = "prototype-only";
@@ -340,7 +340,7 @@ const BLOCKS = [
           "The right cluster — Revision + primary action as one flex item, `margin-left:auto`, " +
           "flush to the header's right padding edge, never split across the folded rows — is " +
           "named in BLOCKS.md only by the class `.td-topbar-actions`. No `data-topbar-actions` " +
-          "attribute exists in prototype/index.html, although the plan's geometry check assumes " +
+          "attribute exists in design/prototype/index.html, although the plan's geometry check assumes " +
           "one; the flush-right check is therefore a geometry assertion, not a hook assertion.",
       },
       {

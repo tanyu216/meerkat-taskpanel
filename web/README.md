@@ -57,5 +57,5 @@ npm -w web run preview  # serve the built artefact
   viewports for horizontal overflow. It exits 2 ("skip") when no browser is
   available — which is the container's normal state.
 
-The design prototype under `../prototype/` is the **read-only visual baseline
+The design prototype under `../design/prototype/` is the **read-only visual baseline
 contract**; it is never imported by, or copied into, this app.
