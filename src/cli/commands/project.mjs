@@ -1,9 +1,12 @@
 /**
  * `project create|update|list|readme` (A1/A6).
  *
- * A project is the workspace anchor: its id becomes the identifier prefix
- * (`demo` → `DEMO-0001`), and its `workspace_path` is what `context current`
- * matches a working directory against. `--meta k=v` is repeatable and merges.
+ * A project is the identifier scope: its id becomes the identifier prefix
+ * (`demo` → `DEMO-0001`). `--meta k=v` is repeatable and merges.
+ *
+ * A project owns **no** working directory — the board holds no path for it.
+ * Which local directory maps to which project is decided on the agent side (the
+ * skill's local `projects.json`), never here.
  */
 
 import { fields, table } from "../output/human.mjs";
@@ -17,12 +20,11 @@ export const COMMANDS = [
   {
     name: "create",
     summary: "Create a project.",
-    usage: "project create --id <id> --name <name> --workspace-path <abs> [--meta k=v]…",
+    usage: "project create --id <id> --name <name> [--meta k=v]…",
     positionals: [],
     flags: [
       { flag: "id", key: "id", as: "string", value: "<id>", required: true, summary: "Project id; also the identifier prefix." },
       { flag: "name", key: "name", as: "string", value: "<name>", required: true },
-      { flag: "workspace-path", key: "workspacePath", as: "string", value: "<abs>", required: true, summary: "Absolute path this project owns." },
       { flag: "meta", key: "meta", as: "kv", summary: "Repeatable key=value metadata." },
       { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true },
       { flag: "readme", key: "readme", as: "string", value: "<text>" },
@@ -31,26 +33,24 @@ export const COMMANDS = [
       const { project } = await ctx.client.post("/api/v1/projects", {
         id: ctx.flags.id,
         name: ctx.flags.name,
-        workspace_path: ctx.flags.workspacePath,
         labels: ctx.flags.labels,
         meta: metaOf(ctx.flags),
         readme: ctx.flags.readme,
       });
       return {
         data: { project },
-        human: `created project ${project.id}  ${project.name}  ${project.workspace_path}`,
+        human: `created project ${project.id}  ${project.name}`,
       };
     },
   },
 
   {
     name: "update",
-    summary: "Update a project's name, path, labels, metadata or readme.",
-    usage: "project update <id> [--name <name>] [--workspace-path <abs>] [--meta k=v]…",
+    summary: "Update a project's name, labels, metadata or readme.",
+    usage: "project update <id> [--name <name>] [--meta k=v]…",
     positionals: [{ name: "id", summary: "Project id." }],
     flags: [
       { flag: "name", key: "name", as: "string", value: "<name>" },
-      { flag: "workspace-path", key: "workspacePath", as: "string", value: "<abs>" },
       { flag: "meta", key: "meta", as: "kv" },
       { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true },
       { flag: "readme", key: "readme", as: "string", value: "<text>" },
@@ -58,7 +58,6 @@ export const COMMANDS = [
     async run(ctx) {
       const body = {};
       if (ctx.flags.name !== undefined) body.name = ctx.flags.name;
-      if (ctx.flags.workspacePath !== undefined) body.workspace_path = ctx.flags.workspacePath;
       if (ctx.flags.meta !== undefined) body.meta = ctx.flags.meta;
       if (ctx.flags.labels !== undefined) body.labels = ctx.flags.labels;
       if (ctx.flags.readme !== undefined) body.readme = ctx.flags.readme;
@@ -79,7 +78,7 @@ export const COMMANDS = [
       });
       const human = projects.length === 0
         ? "no projects"
-        : table(["id", "name", "workspace_path"], projects.map((p) => [p.id, p.name, p.workspace_path]));
+        : table(["id", "name"], projects.map((p) => [p.id, p.name]));
       return { data: { projects }, human };
     },
   },

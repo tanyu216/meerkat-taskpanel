@@ -6,8 +6,8 @@
  * readable in one screen. Two decisions worth naming:
  *
  *   * routes match **in registration order**, so a literal path
- *     (`/api/v1/projects/current`) is registered before a parameterised one
- *     (`/api/v1/projects/:id`) and wins.
+ *     (`/api/v1/tasks/candidates`) is registered before a parameterised one
+ *     (`/api/v1/tasks/:ref`) and wins.
  *   * a handler's return value *is* the `data` half of the envelope. Handlers do
  *     not write to the response; one place does, uniformly.
  *   * a route also carries a **declarative request schema** — `{query, body}`,

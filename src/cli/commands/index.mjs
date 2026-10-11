@@ -5,16 +5,15 @@
  * dispatches through it. Adding a command means adding an entry here and
  * nothing else, which is what keeps `--help` honest.
  *
- * The groups are the card's vocabulary (§A1): `project`, `context`, `issue`,
- * `comment`, `relation`, `session`, `assignees`, `reporters`, `report`,
- * `export`, `token`. Note what is *not* here: `assignees add`, `assignees rm`,
- * `assignees rename`. The dictionary has no management surface by design, so
- * those are not "not implemented" — they are not commands.
+ * The groups are the card's vocabulary (§A1): `project`, `issue`, `comment`,
+ * `relation`, `session`, `assignees`, `reporters`, `report`, `export`, `token`.
+ * Note what is *not* here: `assignees add`, `assignees rm`, `assignees rename`.
+ * The dictionary has no management surface by design, so those are not "not
+ * implemented" — they are not commands.
  */
 
 import { GLOBAL_FLAGS } from "../argv.mjs";
 import { COMMANDS as commentCommands } from "./comment.mjs";
-import { COMMANDS as contextCommands } from "./context.mjs";
 import { COMMANDS as dictCommands, REPORTER_COMMANDS } from "./dict.mjs";
 import { COMMANDS as exportCommands } from "./export.mjs";
 import { COMMANDS as issueCommands } from "./issue.mjs";
@@ -26,8 +25,7 @@ import { COMMANDS as sessionCommands } from "./session.mjs";
 import { COMMANDS as tokenCommands } from "./token.mjs";
 
 export const groups = Object.freeze([
-  { name: "project", summary: "Workspaces and their metadata.", commands: projectCommands },
-  { name: "context", summary: "Where am I?", commands: contextCommands },
+  { name: "project", summary: "Projects and their metadata.", commands: projectCommands },
   { name: "issue", summary: "Tasks: create, move, deliver.", commands: issueCommands },
   { name: "comment", summary: "The append-only discussion trail.", commands: commentCommands },
   { name: "relation", summary: "Parent/child, blocks, related.", commands: relationCommands },

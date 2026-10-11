@@ -1,9 +1,9 @@
 /**
- * Project routes: create, update, list, readme, and "which project owns this
- * working directory".
+ * Project routes: create, update, list, readme.
  *
- * `GET /api/v1/projects/current` is registered **before** `/:id` because routes
- * match in order — `current` is a literal, not an id.
+ * A project carries no working-directory information (O3): the board stores no
+ * path for it, and there is no "which directory is this?" endpoint. The mapping
+ * from a local directory to a project lives on the agent side.
  *
  * `GET /api/v1/projects` is where §4.6 lives: the list is returned **already
  * ordered** by the weight algorithm (activity over 7/30 days + creation age),
@@ -31,19 +31,14 @@ const LIST_QUERY = shape({ include_archived: str(), order_debug: str() });
 const CREATE_BODY = shape({
   id: str(),
   name: str(),
-  workspace_path: str(),
   labels: arr(str()),
   meta: obj(),
   readme: str(),
 });
 
-/** `GET /api/v1/projects/current` — the directory to resolve to a project. */
-const CURRENT_QUERY = shape({ path: str() });
-
 /** `PATCH /api/v1/projects/:id` — a partial update (`meta` merges, F-C3's sibling rule). */
 const PATCH_BODY = shape({
   name: str(),
-  workspace_path: str(),
   labels: arr(str()),
   readme: str(),
   meta: obj(),
@@ -51,21 +46,6 @@ const PATCH_BODY = shape({
 
 /** `PUT /api/v1/projects/:id/readme` — the whole document replaces whatever was there. */
 const README_BODY = shape({ readme: str() });
-
-/** The shape a "no project owns this directory" answer has (§F-C3). */
-export function syntheticLocalProject(workspacePath) {
-  return projectToWire({
-    id: "local",
-    name: "local",
-    workspacePath,
-    labels: [],
-    meta: {},
-    readme: null,
-    archivedAt: null,
-    createdAt: null,
-    updatedAt: null,
-  });
-}
 
 /** @param {object} router @param {{board: object}} surface */
 export function registerProjectRoutes(router, surface) {
@@ -93,7 +73,6 @@ export function registerProjectRoutes(router, surface) {
     const project = commands.createProject({
       id: body.id,
       name: body.name,
-      workspacePath: body.workspace_path,
       labels: body.labels,
       meta: body.meta,
       readme: body.readme,
@@ -101,23 +80,6 @@ export function registerProjectRoutes(router, surface) {
     });
     return { project: projectToWire(project) };
   }, { body: CREATE_BODY });
-
-  // "Which project is this directory part of?" — a read, so a miss must not
-  // create anything. It answers with a synthetic `local` project and
-  // `matched: false`, and says how to make it real.
-  router.get("/api/v1/projects/current", ({ query }) => {
-    const path = query.get("path") ?? "";
-    const project = commands.projectForPath({ path });
-    if (project !== null) return { project: projectToWire(project), matched: true, hint: null };
-    return {
-      project: syntheticLocalProject(path),
-      matched: false,
-      hint: {
-        create: `taskctl project create --id local --name local --workspace-path ${path}`,
-        note: "reads never create rows: run the command above if this directory should have a project",
-      },
-    };
-  }, { query: CURRENT_QUERY });
 
   router.get("/api/v1/projects/:id", ({ params }) => {
     const project = commands.getProject({ id: params.id });
@@ -127,7 +89,6 @@ export function registerProjectRoutes(router, surface) {
   router.patch("/api/v1/projects/:id", ({ params, body, actor }) => {
     const patch = {};
     if (body.name !== undefined) patch.name = body.name;
-    if (body.workspace_path !== undefined) patch.workspacePath = body.workspace_path;
     if (body.labels !== undefined) patch.labels = body.labels;
     if (body.readme !== undefined) patch.readme = body.readme;
     // `--meta k=v` merges, for the same reason it does on a task: a flag is a
