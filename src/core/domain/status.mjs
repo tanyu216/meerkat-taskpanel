@@ -13,6 +13,24 @@
  *   - Leaving `in_review` (to `in_progress` or `blocked`) starts a new delivery
  *     round (F3), so the previous round's report can no longer satisfy the gate.
  *
+ * M1 adds one first-class status, `awaiting` (the card is running but has asked
+ * a human — design §2/§6). Three properties of it are load-bearing and are
+ * asserted in `test/contract/state-machine.test.mjs`:
+ *
+ *   - **`in_progress → awaiting` is the only entry.** No other status may reach
+ *     it, so the badge's reason stays single-valued.
+ *   - **`awaiting → in_progress` is the only way back into the work** (a human
+ *     replied); `awaiting → canceled` is allowed (the human cancels);
+ *     `awaiting → blocked` and `awaiting → in_review | done` are **forbidden**.
+ *     The last one is a delivery-gate bypass: reaching `in_review` from
+ *     `awaiting` would skip the report for the current round, which the DB
+ *     trigger and this table both refuse.
+ *   - **`awaiting` is not terminal, and it does not start a delivery round.**
+ *     `awaiting → in_progress` is a *resume of the same attempt*, not a rework:
+ *     `ROUND_BUMPING_EXITS` only speaks about leaving `in_review` (F3), so the
+ *     round counter is untouched and the round's report, once written, still
+ *     counts. The card never left `in_progress` in the board's eyes.
+ *
  * Pure: no `node:` specifiers.
  */
 
@@ -26,7 +44,19 @@ import { STATUS, STATUSES } from "./enums.mjs";
 export const ALLOWED_TRANSITIONS = Object.freeze({
   [STATUS.BACKLOG]: Object.freeze([STATUS.TODO, STATUS.CANCELED]),
   [STATUS.TODO]: Object.freeze([STATUS.BACKLOG, STATUS.IN_PROGRESS, STATUS.BLOCKED, STATUS.CANCELED]),
-  [STATUS.IN_PROGRESS]: Object.freeze([STATUS.IN_REVIEW, STATUS.BLOCKED, STATUS.TODO, STATUS.CANCELED]),
+  [STATUS.IN_PROGRESS]: Object.freeze([
+    STATUS.IN_REVIEW,
+    STATUS.BLOCKED,
+    STATUS.TODO,
+    STATUS.CANCELED,
+    // M1 — the single entry into `awaiting` (design §2.1/§6).
+    STATUS.AWAITING,
+  ]),
+  // M1 — the overlay state. Its only exits are back into the work (the human
+  // replied) or out of it (the human canceled). `blocked`, `in_review` and
+  // `done` are absent on purpose: an `awaiting` card must not be able to reach
+  // `in_review` without the report the delivery gate demands.
+  [STATUS.AWAITING]: Object.freeze([STATUS.IN_PROGRESS, STATUS.CANCELED]),
   [STATUS.IN_REVIEW]: Object.freeze([STATUS.DONE, STATUS.IN_PROGRESS, STATUS.BLOCKED]),
   [STATUS.BLOCKED]: Object.freeze([STATUS.TODO, STATUS.IN_PROGRESS, STATUS.IN_REVIEW, STATUS.CANCELED]),
   [STATUS.DONE]: Object.freeze([]),
@@ -40,6 +70,14 @@ export const TERMINAL_STATUSES = Object.freeze([STATUS.DONE, STATUS.CANCELED]);
  * Exits from `in_review` that start a new delivery round (F3). Both of these
  * are "the delivery came back" — a rework and a blocker discovered at review
  * time. `in_review → done` is the delivery succeeding and does *not* bump.
+ *
+ * Membership is keyed on the **source** status: a round only ever starts when a
+ * card *leaves `in_review`*. So M1's `awaiting → in_progress` is not in this
+ * list and cannot be: `awaiting` is entered from `in_progress`, the round never
+ * ended, and resuming therefore keeps the same delivery round — and the report
+ * already written for it. Written down because "in_progress" appearing in the
+ * list makes the pair look like it might belong here; the `from` is what
+ * decides (asserted in `test/contract/state-machine.test.mjs`).
  */
 export const ROUND_BUMPING_EXITS = Object.freeze([STATUS.IN_PROGRESS, STATUS.BLOCKED]);
 

@@ -23,6 +23,7 @@ const PLANNED = [
   "bootstrap.mjs",
   "domain/enums.mjs",
   "domain/status.mjs",
+  "domain/awaiting.mjs",
   "domain/priority.mjs",
   "domain/task.mjs",
   "domain/idem.mjs",

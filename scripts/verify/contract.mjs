@@ -312,6 +312,10 @@ const PROBE_TASK = Object.freeze({
   reportWaiverRound: 1,
   reportWaiverReason: "probe",
   reportWaivedAt: "probe",
+  // M1 — populated, not left null: the point of the probe is that the type the
+  // field carries *when it has a value* is what the snapshot freezes. A null
+  // probe would freeze "null" and let a later string→number drift through.
+  awaitingReason: "probe",
 });
 
 /** The JSON type of an emitted value — the alphabet a wire field type is drawn from. */

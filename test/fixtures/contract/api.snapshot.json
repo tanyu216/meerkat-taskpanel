@@ -473,6 +473,7 @@
             "status": {
               "items": {
                 "enum": [
+                  "awaiting",
                   "backlog",
                   "blocked",
                   "canceled",
@@ -578,6 +579,7 @@
             },
             "status": {
               "enum": [
+                "awaiting",
                 "backlog",
                 "blocked",
                 "canceled",
@@ -864,6 +866,7 @@
             },
             "to": {
               "enum": [
+                "awaiting",
                 "backlog",
                 "blocked",
                 "canceled",
@@ -891,6 +894,9 @@
             "allow_steal": {
               "type": "boolean"
             },
+            "awaiting_reason": {
+              "type": "string"
+            },
             "if_version": {
               "type": "integer"
             },
@@ -902,6 +908,7 @@
             },
             "to": {
               "enum": [
+                "awaiting",
                 "backlog",
                 "blocked",
                 "canceled",
@@ -1216,6 +1223,7 @@
         "archived_at": "string",
         "assignee": "object",
         "assignee_id": "string",
+        "awaiting_reason": "string",
         "blocked_at": "string",
         "claimed_at": "string",
         "claimed_by": "string",

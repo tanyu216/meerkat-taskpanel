@@ -61,6 +61,10 @@ const COPY_TASK_FIELDS = Object.freeze({
   version: "version",
   created_at: "createdAt",
   updated_at: "updatedAt",
+  // M1 — the `awaiting` entry category. `null` unless the card is waiting on a
+  // human, so a client can read "is there a question, and of what kind" from
+  // one field.
+  awaiting_reason: "awaitingReason",
 });
 
 /**

@@ -1,10 +1,14 @@
 /**
  * Step 6: the state machine, down both paths.
  *
- * `domain/status.mjs` is the fact source and `0002_invariants.sql` re-encodes
- * it as a trigger. This test walks all 49 ordered pairs through the service
- * helper *and* through raw SQL, and requires the two verdicts to agree — so a
- * change to one without the other cannot pass.
+ * `domain/status.mjs` is the fact source and `0013_awaiting_status.sql`
+ * re-encodes it as a trigger (0002's, rebuilt with M1's `awaiting` clause). This
+ * test walks **every ordered pair** — `statuses²`, so 64 today and 81 the day a
+ * ninth status lands — through the service helper *and* through raw SQL, and
+ * requires the two verdicts to agree. No count is written out by hand: the pair
+ * set is derived from `STATUSES` and the whitelist total from the table itself,
+ * so adding a status extends the walk automatically instead of quietly leaving
+ * a stale `49` behind.
  *
  * Two conventions worth stating, because they are the only places where the DB
  * is deliberately more permissive than the JS:
@@ -14,18 +18,28 @@
  *     `assertTransition` still rejects it, because asking for it is a bug.
  *   * entering `in_review` is a *whitelist* question and a *gate* question. To
  *     isolate the whitelist, the DB pass seeds the report the gate wants.
+ *
+ * M1 adds the `awaiting` invariants below: one entry, one exit back into the
+ * work, no delivery-gate bypass, and "every road to `done` goes through
+ * `in_review`" as a graph property rather than a spot check.
  */
 
 import assert from "node:assert/strict";
 import test, { after, describe, it } from "node:test";
 
 import { STATUSES } from "../../src/core/domain/enums.mjs";
-import { ALLOWED_TRANSITIONS, canTransition, transitionReasonCode } from "../../src/core/domain/status.mjs";
+import { ALLOWED_TRANSITIONS, allowedTargets, canTransition, isTerminalStatus, transitionReasonCode } from "../../src/core/domain/status.mjs";
 import { cleanupTempDirs, insertProject, insertReport, insertTask, reasonCode, withBoard } from "../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);
 
 const PAIRS = STATUSES.flatMap((from) => STATUSES.map((to) => [from, to]));
+
+/** The whitelist, counted from the fact source — never a literal. */
+const WHITELISTED = Object.values(ALLOWED_TRANSITIONS).reduce((sum, list) => sum + list.length, 0);
+
+/** How many statuses the machine has. Written once, from `STATUSES`. */
+const STATUS_COUNT = STATUSES.length;
 
 /**
  * Prepare a board holding one task in `from`, plus (when the whitelist allows
@@ -53,15 +67,24 @@ const move = (db, taskId, to) =>
       .run(to, "2026-10-08T00:05:00.000Z", taskId),
   );
 
-describe("contract/state-machine — 49 pairs, two paths", () => {
-  it("the table has 7 statuses and 49 ordered pairs", () => {
-    assert.equal(STATUSES.length, 7);
-    assert.equal(PAIRS.length, 49);
-    assert.equal(
-      Object.values(ALLOWED_TRANSITIONS).reduce((sum, list) => sum + list.length, 0),
-      17,
-      "17 whitelisted pairs",
+describe("contract/state-machine — every pair, two paths", () => {
+  it("covers statuses² ordered pairs, with exactly one row per status", () => {
+    assert.equal(PAIRS.length, STATUS_COUNT ** 2, "every ordered pair is walked");
+    assert.deepEqual(
+      Object.keys(ALLOWED_TRANSITIONS).sort(),
+      [...STATUSES].sort(),
+      "the whitelist must have exactly one row per status",
     );
+    assert.equal(WHITELISTED < PAIRS.length, true, "the whitelist is a proper subset of the pairs");
+    for (const status of STATUSES) {
+      const targets = allowedTargets(status);
+      assert.equal(targets.includes(status), false, `${status} → ${status} must not be whitelisted`);
+      assert.equal(
+        targets.length === 0,
+        isTerminalStatus(status),
+        `${status}: a terminal status has no exit and a non-terminal one has at least one`,
+      );
+    }
   });
 
   it("every pair is allowed or rejected identically by JS and by SQL", async () => {
@@ -166,6 +189,117 @@ describe("contract/state-machine — delivery rounds (F3)", () => {
       assert.equal(move(db, "t", "blocked"), "NO_ERROR");
       assert.equal(db.prepare("SELECT delivery_round AS r FROM tasks WHERE id='t'").get().r, 2);
       assert.equal(db.prepare("SELECT blocked_at IS NULL AS n FROM tasks WHERE id='t'").get().n, 1);
+    });
+  });
+});
+
+describe("contract/state-machine — the `awaiting` invariants (M1)", () => {
+  it("has in_progress → awaiting as the only entry, down both paths", async () => {
+    await withBoard(({ db }) => {
+      const viaSql = [];
+      for (const from of STATUSES) {
+        if (from === "awaiting") continue; // a no-op is not an entry
+        const taskId = boardWith(db, from, "awaiting");
+        if (move(db, taskId, "awaiting") === "NO_ERROR") viaSql.push(from);
+      }
+      assert.deepEqual(viaSql, ["in_progress"], "the trigger must admit exactly one entry");
+      assert.deepEqual(
+        STATUSES.filter((from) => canTransition(from, "awaiting")),
+        ["in_progress"],
+        "and the service helper must agree",
+      );
+    });
+  });
+
+  it("has awaiting → in_progress as the only way back into the work", async () => {
+    await withBoard(({ db }) => {
+      const taskId = boardWith(db, "awaiting", "in_progress");
+      assert.equal(move(db, taskId, "in_progress"), "NO_ERROR");
+      assert.deepEqual(allowedTargets("awaiting"), ["in_progress", "canceled"]);
+    });
+  });
+
+  it("refuses awaiting → in_review / done / blocked — the delivery-gate bypass (M1)", async () => {
+    await withBoard(({ db }) => {
+      for (const to of ["in_review", "done", "blocked"]) {
+        // A report is seeded so the *only* thing that can refuse this is the
+        // whitelist: were the pair allowed, the gate would be satisfied and the
+        // move would succeed.
+        const id = `t_awaiting_${to}`;
+        insertProject(db, { id: `p-awaiting-${to}` });
+        insertTask(db, { id, identifier: `AWAIT-${to}`.toUpperCase(), project_id: `p-awaiting-${to}`, status: "awaiting" });
+        insertReport(db, { task_id: id, round: 1 });
+        assert.equal(move(db, id, to), "INVALID_TRANSITION", `awaiting → ${to} must be refused by the trigger`);
+        assert.equal(transitionReasonCode("awaiting", to), "INVALID_TRANSITION");
+        assert.equal(canTransition("awaiting", to), false);
+      }
+      // ...and the allowed exit really is allowed.
+      assert.equal(move(db, "t_awaiting_in_review", "canceled"), "NO_ERROR");
+    });
+  });
+
+  it("keeps awaiting non-terminal and done/canceled terminal, down both paths", async () => {
+    await withBoard(({ db }) => {
+      assert.equal(isTerminalStatus("awaiting"), false);
+      for (const to of STATUSES) {
+        if (to === "awaiting") continue;
+        const taskId = boardWith(db, "awaiting", to, "_term");
+        assert.notEqual(move(db, taskId, to), "TERMINAL_STATE", `awaiting → ${to} is not a terminal refusal`);
+      }
+      for (const terminal of ["done", "canceled"]) {
+        assert.equal(isTerminalStatus(terminal), true);
+        const id = `t_${terminal}_from_awaiting`;
+        insertProject(db, { id: `p-${terminal}-fa` });
+        insertTask(db, { id, identifier: `FA-${terminal}`.toUpperCase(), project_id: `p-${terminal}-fa`, status: terminal });
+        assert.equal(move(db, id, "awaiting"), "TERMINAL_STATE");
+      }
+    });
+  });
+
+  it("reaches done only through in_review — exhaustively, over the whole graph", () => {
+    // Not a spot check: every status is expanded, and the reachable set is
+    // accumulated **without ever stepping through `in_review`**. `done` must
+    // never appear in it, for any starting point. This is the "no delivery
+    // without review" invariant stated as reachability rather than as a list of
+    // edges, so a future status cannot open a side door.
+    for (const start of STATUSES) {
+      const seen = new Set();
+      const queue = [...allowedTargets(start)];
+      while (queue.length > 0) {
+        const next = queue.shift();
+        if (next === "in_review" || next === start || seen.has(next)) continue;
+        seen.add(next);
+        queue.push(...allowedTargets(next));
+      }
+      assert.equal(seen.has("done"), false, `${start} reaches done without passing in_review`);
+    }
+    // And the direct-predicate form, down both paths.
+    assert.deepEqual(
+      STATUSES.filter((from) => canTransition(from, "done")),
+      ["in_review"],
+    );
+  });
+
+  it("does not start a delivery round on awaiting → in_progress (M1)", async () => {
+    await withBoard(({ db }) => {
+      const id = "t_awaiting_round";
+      insertProject(db, { id: "p-awaiting-round" });
+      insertTask(db, { id, identifier: "AWAIT-ROUND", project_id: "p-awaiting-round", status: "in_progress" });
+      const round = () => db.prepare("SELECT delivery_round AS r FROM tasks WHERE id = ?").get(id).r;
+
+      assert.equal(round(), 1);
+      assert.equal(move(db, id, "awaiting"), "NO_ERROR");
+      assert.equal(round(), 1, "asking a human is not a new delivery attempt");
+      assert.equal(move(db, id, "in_progress"), "NO_ERROR");
+      assert.equal(round(), 1, "resuming continues the same round — the round's report still counts");
+
+      // The contrast that proves the counter is not simply stuck: leaving
+      // in_review is what bumps it (F3).
+      insertReport(db, { task_id: id, round: 1 });
+      assert.equal(move(db, id, "in_review"), "NO_ERROR");
+      assert.equal(round(), 1);
+      assert.equal(move(db, id, "in_progress"), "NO_ERROR");
+      assert.equal(round(), 2, "in_review → in_progress is the F3 bump");
     });
   });
 });

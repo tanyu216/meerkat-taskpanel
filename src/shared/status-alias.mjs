@@ -70,6 +70,9 @@ export function isCanonical(value) {
     value === "in_review" ||
     value === "blocked" ||
     value === "done" ||
-    value === "canceled"
+    value === "canceled" ||
+    // M1: `awaiting` is a canonical status like any other, so a card exported
+    // with it must round-trip rather than be rejected as an unknown word.
+    value === "awaiting"
   );
 }

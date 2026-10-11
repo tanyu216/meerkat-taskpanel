@@ -227,7 +227,9 @@ export const COMMANDS = [
   {
     name: "move",
     summary: "Move a task to another status (this is where the delivery gate bites).",
-    usage: 'issue move <id|identifier> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"]',
+    usage:
+      'issue move <id|identifier> <status> [--allow-steal --reason "<why>"] ' +
+      '[--no-report --reason "<why>"] [--awaiting-reason E1..E5]',
     positionals: [
       { name: "ref", summary: "Task id or identifier." },
       { name: "to", summary: "Target status." },
@@ -236,6 +238,13 @@ export const COMMANDS = [
       { flag: "no-report", key: "noReport", as: "boolean", summary: "Waive the report for this round (needs --reason)." },
       { flag: "allow-steal", key: "allowSteal", as: "boolean", summary: "Claim a card assigned to somebody else (needs --reason; audited)." },
       { flag: "reason", key: "reason", as: "string", value: "<why>", summary: "Why this move is audited (a report waiver or an --allow-steal)." },
+      {
+        flag: "awaiting-reason",
+        key: "awaitingReason",
+        as: "string",
+        value: "<E1..E5>",
+        summary: "Why this card needs a human — required by `issue move <ref> awaiting`.",
+      },
     ],
     async run(ctx) {
       const allowSteal = ctx.flags.allowSteal === true;
@@ -247,12 +256,21 @@ export const COMMANDS = [
           fix: "say why the card is being taken from its assignee",
         });
       }
+      // M1 — `awaiting` is the one move that must name the category of question
+      // (design §2.1). Refused here as a usage error so the operator gets the
+      // vocabulary; the service enforces the same rule with a domain error.
+      if (ctx.args.to === "awaiting" && typeof ctx.flags.awaitingReason !== "string") {
+        throw usageError("issue move: `awaiting` needs --awaiting-reason <E1..E5>", {
+          fix: "E1 scope · E2 acceptance baseline · E3 design direction · E4 security · E5 architecture",
+        });
+      }
       const payload = await ctx.client.post(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/move`, {
         to: ctx.args.to,
         if_version: ctx.flags.ifVersion,
         no_report: ctx.flags.noReport === true,
         allow_steal: allowSteal,
         reason: ctx.flags.reason,
+        awaiting_reason: ctx.flags.awaitingReason,
       });
       const warnings = payload.task.report_waiver === null
         ? []

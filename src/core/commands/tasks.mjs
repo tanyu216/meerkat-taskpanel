@@ -22,6 +22,8 @@ import {
   WAIVER_MIN_REASON_CHARS,
 } from "../domain/delivery-gate.mjs";
 import { assertTransition } from "../domain/status.mjs";
+import { assertAwaitingReason } from "../domain/awaiting.mjs";
+import { STATUS } from "../domain/enums.mjs";
 import { hasIdemDiscriminator, idemKey, idemSource, normalizeIdem } from "../domain/idem.mjs";
 import { isArchivable, normalizeTaskCreate, normalizeTaskUpdate } from "../domain/task.mjs";
 import { assertEpicDowngradeAllowed } from "../domain/relation.mjs";
@@ -474,12 +476,18 @@ export function heartbeat(ctx, input) {
  * `task_moved`, so the card's history says what actually happened.
  *
  * @param {object} ctx
- * @param {{id: string, to: string, actor: object, ifVersion?: number, noReport?: boolean, reason?: string, allowSteal?: boolean}} input
+ * @param {{id: string, to: string, actor: object, ifVersion?: number, noReport?: boolean, reason?: string, allowSteal?: boolean, awaitingReason?: string|null}} input
  */
 export function moveStatus(ctx, input) {
   const actor = actorOf(input.actor);
   const now = ctx.now();
   const waiverReason = input.noReport === true ? assertWaiverRequest({ noReport: true, reason: input.reason, to: input.to }) : null;
+  // M1 — entering `awaiting` must name *which* category of question it is
+  // (design §2.1: an enumeration, never free text). Validated here, before the
+  // transaction, so a missing reason is refused without having read the board;
+  // a move to any other status carries no reason (the column is cleared).
+  const awaitingReason =
+    input.to === STATUS.AWAITING ? assertAwaitingReason(input.awaitingReason) : null;
 
   return transaction(
     ctx.db,
@@ -535,6 +543,7 @@ export function moveStatus(ctx, input) {
         to: input.to,
         now,
         waiver,
+        awaitingReason,
       });
       ctx.repos.activities.append({
         taskId: task.id,
@@ -543,7 +552,14 @@ export function moveStatus(ctx, input) {
         event: waiver === null ? "task_moved" : "report_waived",
         changes:
           waiver === null
-            ? { from: current.status, to: task.status, deliveryRound: task.deliveryRound }
+            ? {
+                from: current.status,
+                to: task.status,
+                deliveryRound: task.deliveryRound,
+                // M1 — record the entry category alongside the move, so the
+                // card's history says *why* it stopped for a human.
+                ...(awaitingReason === null ? {} : { awaitingReason }),
+              }
             : {
                 from: current.status,
                 to: task.status,

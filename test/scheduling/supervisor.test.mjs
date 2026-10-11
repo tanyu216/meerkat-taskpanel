@@ -199,6 +199,53 @@ describe("planPatrol (pure)", () => {
     });
     assert.deepEqual(alerts, []);
   });
+
+  // M1 · A1 — an `awaiting` card has **no live session**, so its heartbeat is
+  // necessarily stale. Patrol must read "is a human payload outstanding?", never
+  // "how old is the heartbeat": escalating a card that is deliberately parked on
+  // a person would page somebody about a card that is working exactly as meant.
+  // The guard is structural — `planPatrol` only ever looks at `in_progress` — so
+  // this is a lock-in assertion, and the point of writing it down is that a
+  // future refactor which widens the status filter fails here.
+  describe("`awaiting` is decoupled from heartbeat freshness (M1 · A1)", () => {
+    const awaiting = (identifier, heartbeat_at) => ({ identifier, status: "awaiting", claimed_by: "linus", heartbeat_at });
+
+    it("never raises a stale alert for an awaiting card, however old the heartbeat", () => {
+      assert.deepEqual(planPatrol({ tasks: [awaiting("T-A", ago(31))], now }), []);
+      assert.deepEqual(planPatrol({ tasks: [awaiting("T-A", ago(60 * 24))], now }), [], "a day-old heartbeat is still not news");
+    });
+
+    it("never raises a heartbeat-unreadable alert either — the missing-heartbeat case", () => {
+      assert.deepEqual(planPatrol({ tasks: [awaiting("T-A", null)], now }), []);
+      assert.deepEqual(planPatrol({ tasks: [awaiting("T-A", "not-a-date")], now }), []);
+    });
+
+    it("leaves an awaiting card unescalated while an identical in_progress card *is* escalated", () => {
+      // The contrast is the assertion: same holder, same stale heartbeat, and the
+      // status is the only difference. This is what "awaiting + old heartbeat is
+      // not taken over; in_progress + old heartbeat is" means in the planner.
+      const stale = ago(31);
+      const alerts = planPatrol({
+        tasks: [
+          { identifier: "T-RUN", status: "in_progress", claimed_by: "linus", heartbeat_at: stale },
+          { identifier: "T-WAIT", status: "awaiting", claimed_by: "linus", heartbeat_at: stale },
+        ],
+        now,
+      });
+      assert.deepEqual(alerts.map((a) => a.identifier), ["T-RUN"]);
+      assert.equal(alerts[0].type, "stale");
+    });
+
+    it("keeps the awaiting card out of the dispatch pool as well as the alert list", () => {
+      // `planTick`'s candidates come from `issue candidates`, whose recovery pool
+      // is `status = in_progress` (commands/tasks.mjs) — so an awaiting card is
+      // never offered, and the runner's `issue move <id> in_progress` claim never
+      // fires for it. Asserted here as the tick's own property: an identifier the
+      // board does not offer cannot be woken, and offering one twice is a skip.
+      const actions = planTick({ candidates: [{ identifier: "T-RUN", agent: "linus" }], registry: EMPTY_REGISTRY(), config: BASE_CONFIG });
+      assert.deepEqual(actions.map((a) => a.identifier), ["T-RUN"], "only the running card is a candidate");
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

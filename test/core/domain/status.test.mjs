@@ -3,9 +3,9 @@
  *
  * The expected whitelist below is written out independently of
  * `domain/status.mjs` (literal pairs, not a re-export) so a typo in the module
- * is a red test rather than a self-fulfilling assertion. All 7 × 7 = 49 pairs
- * are walked — that count is asserted so a future status cannot sneak in
- * without extending the table.
+ * is a red test rather than a self-fulfilling assertion. Every ordered pair is
+ * walked — `statuses²`, derived, so a future status cannot sneak in without
+ * extending the table *and* cannot be added by editing a hard-coded count.
  */
 
 import assert from "node:assert/strict";
@@ -33,23 +33,33 @@ import { DomainError } from "../../../src/shared/errors.mjs";
 const EXPECTED_ALLOWED = {
   backlog: ["todo", "canceled"],
   todo: ["backlog", "in_progress", "blocked", "canceled"],
-  in_progress: ["in_review", "blocked", "todo", "canceled"],
+  // M1 — `awaiting` joins as the fifth exit from `in_progress`, and is its own
+  // row below. The card's conversion rules: entry only from `in_progress`;
+  // `→ canceled` allowed; `→ blocked` / `→ in_review` / `→ done` forbidden.
+  in_progress: ["in_review", "blocked", "todo", "canceled", "awaiting"],
+  awaiting: ["in_progress", "canceled"],
   in_review: ["done", "in_progress", "blocked"],
   blocked: ["todo", "in_progress", "in_review", "canceled"],
   done: [],
   canceled: [],
 };
 
+/** Every ordered pair, derived: `statuses²`. */
 const ALL_PAIRS = STATUSES.flatMap((from) => STATUSES.map((to) => [from, to]));
+/** The whitelisted pairs, counted from the independent table above. */
+const WHITELISTED = Object.values(EXPECTED_ALLOWED).reduce((sum, list) => sum + list.length, 0);
 
 describe("domain/status — the whitelist table", () => {
-  it("has exactly 7 statuses and therefore exactly 49 ordered pairs", () => {
-    assert.equal(STATUSES.length, 7);
-    assert.equal(ALL_PAIRS.length, 49);
+  it("covers every status exactly once, and walks every ordered pair", () => {
+    assert.deepEqual(
+      [...STATUSES].sort(),
+      Object.keys(EXPECTED_ALLOWED).sort(),
+      "the table below must name every status — no more, no fewer",
+    );
+    assert.equal(ALL_PAIRS.length, STATUSES.length ** 2);
   });
 
-  it("walks all 49 pairs against the F1 ruling", () => {
-    assert.equal(ALL_PAIRS.length, 49);
+  it("walks every pair against the F1 ruling", () => {
     for (const [from, to] of ALL_PAIRS) {
       const expected = EXPECTED_ALLOWED[from].includes(to);
       assert.equal(
@@ -124,7 +134,36 @@ describe("domain/status — rejection codes", () => {
       rejected += 1;
       assert.equal(reason, isTerminalStatus(from) ? "TERMINAL_STATE" : "INVALID_TRANSITION");
     }
-    assert.equal(rejected, 49 - 17, "49 pairs minus the 17 whitelisted ones");
+    assert.equal(rejected, STATUSES.length ** 2 - WHITELISTED, "every pair minus the whitelisted ones");
+  });
+
+  it("keeps `awaiting` a real exit with exactly two doors, and no gate bypass (M1)", () => {
+    // The card's three conversion rules, asserted against the independent table
+    // rather than against the module's own answer.
+    assert.deepEqual(allowedTargets("awaiting"), ["in_progress", "canceled"]);
+    assert.deepEqual(
+      STATUSES.filter((from) => canTransition(from, "awaiting")),
+      ["in_progress"],
+      "in_progress → awaiting is the only entry",
+    );
+    for (const forbidden of ["blocked", "in_review", "done"]) {
+      assert.equal(canTransition("awaiting", forbidden), false, `awaiting → ${forbidden} must stay forbidden`);
+    }
+    assert.equal(isTerminalStatus("awaiting"), false);
+    assert.equal(allowedTargets("awaiting").length > 0, true, "a non-terminal status must have an exit");
+    assert.deepEqual(TERMINAL_STATUSES.slice().sort(), ["canceled", "done"]);
+  });
+
+  it("does not start a delivery round on awaiting → in_progress (M1)", () => {
+    // The round is a property of *leaving `in_review`* (F3). `awaiting` is
+    // entered from `in_progress` and resumed back into it, so the card never
+    // left; the same round's report must therefore still count.
+    assert.equal(bumpsDeliveryRound("awaiting", "in_progress"), false);
+    assert.equal(ROUND_BUMPING_EXITS.includes("awaiting"), false);
+    assert.equal(ROUND_BUMPING_EXITS.includes("in_progress"), true, "only as an exit *from in_review*");
+    assert.equal(bumpsDeliveryRound("in_review", "in_progress"), true);
+    // and it is never an entry into the delivery-gated status either
+    assert.equal(requiresReport("awaiting"), false);
   });
 
   it("assertTransition returns the target or throws a DomainError with that code", () => {
