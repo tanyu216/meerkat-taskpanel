@@ -93,7 +93,7 @@ the drill on a schedule (or on demand):
 |---|---|
 | **Authority** | `~/.openclaw/team/tasks/*.md` + `projects.json` — only these are written by the team |
 | **Replica** | a MeerkatTaskPanel board rebuilt by the drill; nobody writes to it |
-| **Compared** | the §4.8 fields (per-field parity), the five sections (`comments`, `sessions`, `reports`, `progress`, `acceptance`), `## Background` content, `parent` and `depends_on` edges, labels, and the project-level diff (`name`/`id`, `workspace_path`, git rules) |
+| **Compared** | the §4.8 fields (per-field parity), the five sections (`comments`, `sessions`, `reports`, `progress`, `acceptance`), `## Background` content, `parent` and `depends_on` edges, labels, and the project-level diff (`name`/`id`, and the registry metadata carried in `meta_json`) |
 | **"Zero diff"** | `differences: []` — every field survived the round trip, every section count matched, every relation and label matched, the second import changed no rows (`idempotent: true`), and the report's `ok` is `true` (exit 0) |
 
 **Zero diff does not mean zero *unmappable* items.** Some items are *expected*
@@ -154,15 +154,14 @@ parser treats it as a **buildin** entry rather than an unregistered name:
 - it resolves in `parseProjectRegistry` (and, in `import.mjs`, even when no
   `--projects` registry is given at all) without appearing in the team file;
 - a file entry named `__team__` still wins — the file is the authority;
-- its `workspace_path` is the **synthetic absolute anchor `/__team__`**, which
-  satisfies the `projects.workspace_path` NOT NULL / `LIKE '/%'` / UNIQUE
-  constraints without hardcoding any real home path (this repository is public);
-- its cards migrate as **ordinary tasks under the `__team__` project**. A
-  `__team__` card's `target` is a per-card artifact path, not a project-level
-  workspace path, so the "two different targets" warning is deliberately not
-  raised for a buildin project — every `__team__` card would otherwise produce
-  one. That difference is recorded in the report's `field-drift` list (the
-  project-level `target` cannot equal every card's task-level path).
+- it carries **no directory**: a board project has no `workspace_path`, and a
+  registry `root`/`workspace_path` spelling is imported as plain project metadata
+  into `meta_json` — never a directory anchor. No home path is hardcoded (this
+  repository is public);
+- its cards migrate as **ordinary tasks under the `__team__` project**. A card's
+  `target` is an opaque per-card value kept verbatim in `meta_json.legacy` — the
+  board neither derives it from a project nor projects it onto one — so there is no
+  cross-card consistency warning to raise.
 
 ### Privacy: what the report may contain
 
@@ -226,13 +225,15 @@ chmod a-w ~/.openclaw/team/projects.json
 ```
 
 **Freezing the registry.** `~/.openclaw/team/projects.json` is the *current*
-authority for project metadata (root/`workspace_path`, git rules, repos, guides).
-After the import, that metadata lives in the MeerkatTaskPanel `projects` table
-(`workspace_path` + `meta_json`, per `ARCHITECTURE.md` §4.8 ④). Copy the file to a
-timestamped, read-only snapshot — it is the audit trail of where the metadata came
-from — and stop treating it as authoritative. From then on, **the `projects`
-table is the single source of truth**; the snapshot is kept only so the mapping
-can be reconstructed if anyone asks.
+authority for project metadata (git rules, repos, guides, and any `root` /
+`workspace_path` spellings the team kept there). After the import, that metadata
+lives in the MeerkatTaskPanel `projects` table's **`meta_json`** — the board keeps no
+directory column, and a registry `root`/`workspace_path` is imported as plain
+project metadata, never as a directory anchor. Copy the file to a timestamped,
+read-only snapshot — it is the audit trail of where the metadata came from — and
+stop treating it as authoritative. From then on, **the `projects` table is the
+single source of truth**; the snapshot is kept only so the mapping can be
+reconstructed if anyone asks.
 
 ## Rollback plan
 
@@ -271,7 +272,7 @@ rollback is always available and is a data *export*, never a rewrite of history:
 | **Non-epic parent** | only an `epic` may be a parent (§4.8 ③) | The link is **skipped with a warning** and listed (`unmappable[kind=non-epic-parent]`) — never silently dropped |
 | **Invariant violations** (cycle / chain > 8 / fan-in > 8 / cross-project) | the DB triggers would refuse the edge | Refusals are caught per-edge, listed as `unmappable[kind=invariant-violation]`, and not lost |
 | **Unregistered project name** | a card's `project:` is a registry *name*, not an id | Resolved name → id; an unresolved name is **warned and skipped** — a project is created only with an explicit `--create-project`. The reserved `__team__` is buildin and resolves without a registry entry |
-| **`target` used task-level when it is project-level** | two different `target`s for one project is ambiguous | The first value wins and a warning is raised; reported in the project-level diff |
+| **`target` is an opaque per-card value** | it is no longer a project-level directory, so nothing can validate it against anything | Imported cards keep their `target` verbatim (`meta_json.legacy`); new cards have none. The board derives and checks nothing — the mapping to a real directory is the skill-side `projects.json` |
 | **`notices` vs `warnings`** | an auto-created project is informational; a skipped card is a problem | Both are reported separately: `notices` never block, `warnings` are what a reviewer reads |
 
 **Notices vs warnings (the split).** The importer keeps two lists apart on

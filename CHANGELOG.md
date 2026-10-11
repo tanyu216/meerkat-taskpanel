@@ -66,6 +66,23 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+- **Project directories, from the board — the local map moves to the skill.** TaskPanel
+  no longer manages project directories at all. `project create` / `project update` no
+  longer take `--workspace-path` and `project list` no longer prints a `workspace_path`
+  column; the `context` command group (`context current`) and the
+  `GET /api/v1/projects/current` route are gone; the DB column `projects.workspace_path`
+  and its unique index are dropped by migration **`0012`** (existing rows are kept —
+  only their directory strings are discarded); and the markdown importer no longer treats
+  a registry `root`/`workspace_path` as a directory anchor. A card's `target` is no
+  longer derived from a project: it is an **opaque per-card value** preserved verbatim
+  through import/export (`meta_json.legacy`), so an existing card's `target` is not
+  silently dropped. This removes the **M5 invariant "one project, one target"**. The
+  local **directory ↔ board project** map now lives in a `projects.json` beside the
+  installed skill (schema: `skills/meerkat-taskpanel/references/projects-json.md`).
+  **Migration:** an existing board needs only the automatic `0012` migration; anything
+  that relied on `--workspace-path` or `context current` must move that mapping into the
+  skill-local `projects.json`.
+
 - **The MCP integration, entirely — agent integration is skill-only.** The stdio MCP
   server (`src/mcp/**`: its 18 tools, protocol and `README.md`), the
   `meerkat-taskpanel-mcp` bin, the installer's MCP registration (`register_mcp`, and the
