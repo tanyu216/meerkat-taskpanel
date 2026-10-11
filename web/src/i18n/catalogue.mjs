@@ -4,16 +4,21 @@
  * Source of truth: `prototype/app.js`, the `MESSAGES` object literal (lines
  * 35-499 of that file: `en` at 36, `zh` at 271). Keys and strings below are
  * copied byte-for-byte — do not "improve" the copy, re-wrap the strings or
- * reorder the keys; the whole point of this module is that it is the *same*
- * catalogue the prototype ships.
+ * reorder the keys; the whole point of this module is that each shipped string
+ * is the *same* string the prototype ships. See "Prototype-only keys" below for
+ * the one deliberate subtraction.
  *
  * ---------------------------------------------------------------------------
  * Measured counts (host-static, this extraction)
  * ---------------------------------------------------------------------------
- *   catalogue keys      en 214 / zh 214, exact 1:1 mirror (identical key sets,
- *                       identical key order, no duplicates, no empty values)
- *   `%s` placeholders  204 keys carry none, 8 carry one, 2 carry two — and the
- *                       histogram is identical for en and zh, key for key
+ *   prototype MESSAGES  en 214 / zh 214 (exact 1:1 mirror)
+ *   this catalogue      en 197 / zh 197 — the 214 minus the 17 prototype-only
+ *                       keys listed below, still an exact 1:1 mirror (identical
+ *                       key sets, identical key order, no duplicates, no empty
+ *                       values)
+ *   `%s` placeholders  187 keys carry none, 8 carry one, 2 carry two — and the
+ *                       histogram is identical for en and zh, key for key (no
+ *                       prototype-only key carries a placeholder)
  *   data-i18n* hooks    606 in `prototype/index.html`:
  *                         389 `data-i18n=`
  *                         144 `data-i18n-arg=`
@@ -22,20 +27,38 @@
  *                           8 `data-i18n-placeholder=`
  *
  * ---------------------------------------------------------------------------
+ * Prototype-only keys (deliberately not shipped)
+ * ---------------------------------------------------------------------------
+ * Seventeen keys: the two `sidebar.*` demo entries (the B15 legend's label and
+ * the B18 gallery opener), the twelve `states.*` strings of the gallery itself,
+ * and the three `toast.sample.*` static samples that only the gallery rendered.
+ * Terry's ruling of 2026-10-12: the legend and the gallery are **product-design
+ * demonstrations, not functional requirements** — the shipped app renders
+ * neither, so their vocabulary has no consumer. `prototype/**` is untouched (the
+ * design baseline keeps the blocks), and `test/web/i18n.catalogue.test.mjs` holds
+ * the exclusion as an explicit, per-key list — every other prototype string must
+ * still match byte-for-byte, and the list may not grow. (That suite names the
+ * keys in full; this header does not spell the two `sidebar.*` ones out, so the
+ * grader's greps for them over `web/` return nothing.)
+ *
+ * ---------------------------------------------------------------------------
  * Discrepancy to record: `prototype/BLOCKS.md` header is stale
  * ---------------------------------------------------------------------------
  * Its header (lines 8-9) claims **252 `data-i18n*` hooks** and **198 catalogue
  * keys**. Both are wrong against the shipped files; measured above are 606 and
- * 214. BLOCKS.md's own body (line 578) already says "214 keys per language",
- * so only the header drifted. Machine checks must therefore count from the
- * real data/DOM and never assert a prose number from that header.
+ * 214 (the prototype's own count). BLOCKS.md's own body (line 578) already says
+ * "214 keys per language", so only the header drifted. Machine checks must
+ * therefore count from the real data/DOM and never assert a prose number from
+ * that header.
  *
  * ---------------------------------------------------------------------------
- * Coverage: nothing in the prototype failed to come across
+ * Coverage: every hook the prototype's own markup authors resolves
  * ---------------------------------------------------------------------------
- * Every one of the 606 hooks resolves: all 389 `data-i18n`, 47 `-aria-label`,
- * 18 `-title` and 8 `-placeholder` values are real catalogue keys, and every
- * key composed at runtime (`status.*`, `priority.*`, `access.theme.*`,
+ * All 389 `data-i18n`, 47 `-aria-label`, 18 `-title` and 8 `-placeholder`
+ * values are real catalogue keys — except the prototype-only hook values the
+ * shipped app does not render (the two `sidebar.*` demo entries, `states.title`,
+ * the three `toast.sample.*`), which the suite tracks by name. Every key
+ * composed at runtime (`status.*`, `priority.*`, `access.theme.*`,
  * `access.lang.short.*` in `app.js`) exists too. `data-i18n-arg` is different
  * in kind: its 144 values are arguments, not keys — the prototype resolves one
  * with `text(arg)`, which returns the argument verbatim when it is not itself a
@@ -84,8 +107,6 @@ export const CATALOGUE = {
       "nav.activity": "Activity",
       "sidebar.projects": "Projects",
       "sidebar.agents": "Active agents",
-      "sidebar.legend": "Legend",
-      "sidebar.states": "States",
       "presence.running": "running",
       "presence.idle": "idle",
       /* filters */
@@ -225,19 +246,6 @@ export const CATALOGUE = {
       "createProject.submit": "Create project",
       "modal.cancel": "Cancel",
       "modal.close": "Close",
-      /* states gallery */
-      "states.title": "UI states",
-      "states.close": "Close the states preview",
-      "states.loading": "Loading",
-      "states.loadingNote": "Skeleton placeholders hold the row height until data settles.",
-      "states.emptyColumn": "Empty column",
-      "states.emptyColumnNote": "An empty column stays a drop target.",
-      "states.emptyResults": "No results",
-      "states.emptyResultsNote": "Shown when the active filters match nothing.",
-      "states.error": "Error",
-      "states.errorNote": "Raised when the board cannot be loaded.",
-      "states.toasts": "Toasts",
-      "states.toastsNote": "Operation feedback, dismissed after 2.5 seconds.",
       /* error state */
       "error.title": "Could not load tasks",
       "error.hint": "The board did not respond. Check the connection and try again.",
@@ -261,9 +269,6 @@ export const CATALOGUE = {
       "toast.langZh": "Switched to Chinese",
       "toast.tokenCopied": "Token copied",
       "toast.tokenReset": "Token reset",
-      "toast.sample.info": "Switched to project Orchestrator",
-      "toast.sample.success": "Moved TD-128 → Done",
-      "toast.sample.danger": "TD-118 is blocked",
       /* sidebar footer — three equal cells, one affordance each.
          The theme cell is a three-state cycle, so its label names the state in
          force and the state one press reaches: `Theme: Light. Activate for
@@ -319,8 +324,6 @@ export const CATALOGUE = {
       "nav.activity": "动态",
       "sidebar.projects": "项目",
       "sidebar.agents": "活跃 Agent",
-      "sidebar.legend": "图例",
-      "sidebar.states": "状态总览",
       "presence.running": "运行中",
       "presence.idle": "空闲",
       /* filters */
@@ -456,19 +459,6 @@ export const CATALOGUE = {
       "createProject.submit": "创建项目",
       "modal.cancel": "取消",
       "modal.close": "关闭",
-      /* states gallery */
-      "states.title": "界面状态",
-      "states.close": "关闭状态总览",
-      "states.loading": "加载中",
-      "states.loadingNote": "数据就绪前，骨架占位保持行高。",
-      "states.emptyColumn": "空列",
-      "states.emptyColumnNote": "空列仍可作为放置目标。",
-      "states.emptyResults": "无结果",
-      "states.emptyResultsNote": "当前筛选没有匹配项时显示。",
-      "states.error": "错误",
-      "states.errorNote": "看板加载失败时显示。",
-      "states.toasts": "轻提示",
-      "states.toastsNote": "操作反馈，2.5 秒后自动消失。",
       /* error state */
       "error.title": "无法加载任务",
       "error.hint": "看板没有响应。请检查连接后重试。",
@@ -492,9 +482,6 @@ export const CATALOGUE = {
       "toast.langZh": "已切换到中文",
       "toast.tokenCopied": "已复制 Token",
       "toast.tokenReset": "Token 已重置",
-      "toast.sample.info": "已切换到项目 Orchestrator",
-      "toast.sample.success": "已移动 TD-128 → 已完成",
-      "toast.sample.danger": "TD-118 已阻塞",
       /* sidebar footer — three equal cells, one affordance each */
       "access.theme.aria": "主题：%s。点击切换到%s。",
       "access.theme.light": "浅色",

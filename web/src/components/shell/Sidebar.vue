@@ -1,18 +1,24 @@
 <script setup>
 /**
- * B03 · Sidebar — nav, the server-ordered project list, agent presence, the
- * legend (B15) and the three-cell footer.
+ * B03 · Sidebar — nav, the server-ordered project list, agent presence and the
+ * three-cell footer.
  *
  * The project list renders exactly the order `/projects` computed and does no
  * sorting of its own (§4.6). Each row prints the diagnostic `total` the server
  * returns under `?order_debug=1` as `data-order-score` and its 1-based position
  * as `data-order-rank`; if the diagnostic field were ever missing the score
  * falls back to 0 for display only — the order is still the server's.
+ *
+ * The prototype's two review surfaces are deliberately absent here: B15 (the
+ * legend) and the States entry point that opened B18 (the states gallery) were
+ * product-design demonstrations, not requirements, so the shipped sidebar
+ * carries neither (see `test/web/blocks.contract.mjs`, where both blocks are
+ * `prototype-only`).
  */
 import { computed, ref } from "vue";
 
-import { board, selectProject, COLUMN_STATUSES, PRIORITIES, waitingCount } from "../../stores/board.js";
-import { accessOpen, statesOpen, view, setView } from "../../stores/ui.js";
+import { board, selectProject, waitingCount } from "../../stores/board.js";
+import { view, setView } from "../../stores/ui.js";
 import { initialsOf } from "../../lib/monogram.js";
 
 import SidebarFooter from "./SidebarFooter.vue";
@@ -148,30 +154,6 @@ function onNav(item) {
         </div>
       </div>
     </section>
-
-    <!-- B15 · Legend: one chip per status (7) and per priority (5). -->
-    <section>
-      <h2 class="td-side-label" data-i18n="sidebar.legend">{{ $t("sidebar.legend") }}</h2>
-      <div class="td-legend" data-legend>
-        <!-- One chip per **stage** status. `awaiting` is deliberately absent:
-             it is an overlay, not a stage and not a colour, so the legend —
-             which is a key to the stage colours — has nothing to add for it
-             (design §4, "no new hue"). -->
-        <div class="td-legend-status" data-legend-status>
-          <span v-for="status in COLUMN_STATUSES" :key="status" class="td-legend-chip" :data-status="status">{{ $t(`status.${status}`) }}</span>
-        </div>
-        <div class="td-legend-priority" data-legend-priority>
-          <span v-for="priority in PRIORITIES" :key="priority" class="td-legend-chip" :data-priority="priority">{{ $t(`priority.${priority}`) }}</span>
-        </div>
-      </div>
-    </section>
-
-    <button type="button" class="td-side-item" data-states-open @click="statesOpen = true">
-      <svg class="td-side-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-        <path d="M4 5h6v6H4zM14 5h6v3h-6zM4 15h6v4H4zM14 12h6v7h-6z" />
-      </svg>
-      <span class="td-side-text" :data-i18n="'sidebar.states'">{{ $t("sidebar.states") }}</span>
-    </button>
 
     <SidebarFooter />
   </aside>

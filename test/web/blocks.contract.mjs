@@ -44,12 +44,39 @@
  *   root      the block's anchoring `data-*` hook selector, or `null` when the block
  *             has no element of its own (the retired B20/B21, and the C-items)
  *   scope     one of `SCOPES` — where the block lives
- *   status    `active` | `retired` (B20/B21 were removed, not hidden)
+ *   status    `active` | `prototype-only` | `retired` — see below
  *   required  hooks the block owns; normally present in its markup. May be empty.
  *   states    hooks the block owns that are volatile (runtime-created or toggled), so
  *             they are part of the contract but may be absent at rest. May be empty.
  *   rules     the assertions, as data — see `RULE_KINDS` below. This is the ONLY
  *             place numbers live; nothing outside `rules` carries a count.
+ *
+ * ---------------------------------------------------------------------------
+ * PROTOTYPE-ONLY BLOCKS (`prototype-only`)
+ * ---------------------------------------------------------------------------
+ * Three statuses, and the difference between the last two is the difference
+ * between "the design shipped it and it left" and "the design showed it and the
+ * product never wanted it":
+ *
+ *   active          part of the shipped implementation. Its hooks must exist in
+ *                   the built app and its rules are evaluated against the page.
+ *   prototype-only  transcribed from `prototype/BLOCKS.md` because the design
+ *                   baseline still holds it, but deliberately **not** part of
+ *                   the implementation. Its `root`/`required`/`states`/`rules`
+ *                   stay declared — the transcription remains complete and
+ *                   reviewable — but the implementation-side checks ignore the
+ *                   block: `IMPLEMENTED_CONTRACT_ITEMS` and
+ *                   `implementationSelectors()` are the views the trusted-bundle
+ *                   literal scan (`blocks.bundle.test.mjs`) and the DOM harness
+ *                   (`web/scripts/dom-smoke.mjs`) consume.
+ *   retired         removed, and the contract asserts its *absence* (B20/B21).
+ *
+ * Today `prototype-only` is B15 (the sidebar legend) and B18 (the states
+ * gallery): Terry's ruling of 2026-10-12 — both are product-design
+ * demonstrations rather than functional requirements, so the shipped app renders
+ * neither and `prototype/**` keeps both. B03's own surface drops the
+ * `[data-states-open]` opener that belonged to B18, and B17 (the error state)
+ * leaves B18 for the board's real error surface rather than being dropped.
  *
  * Selectors are **semantic `data-*` hooks, never Tailwind classes and never
  * positional anchors** — BLOCKS.md's own rule. `parseHookSelector()` enforces the
@@ -68,14 +95,22 @@ export const CONTRACT_SOURCE = "prototype/BLOCKS.md";
 
 /** Where a block lives. */
 export const SCOPES = Object.freeze([
-  "shell", // chrome that is always on screen: top bar, sidebar, legend, toasts
-  "board", // the kanban + list + their filters and empty/loading states
+  "shell", // chrome that is always on screen: top bar, sidebar, toasts
+  "board", // the kanban + list + their filters, empty/loading and error states
   "detail", // the task detail drawer
   "create", // the two creation dialogs and the controls they embed
-  "review", // prototype review surfaces (states gallery, access panel, error state)
+  "review", // prototype review surfaces (states gallery, access panel)
   "global", // cross-cutting consistency items
   "retired", // removed blocks, kept in the inventory so their absence is asserted
 ]);
+
+/**
+ * A block that the design baseline keeps but the shipped implementation
+ * deliberately does not render. Its metadata and rules stay declared (the
+ * transcription of `prototype/BLOCKS.md` remains complete) while every
+ * *implementation-side* check skips it — see the module header.
+ */
+export const PROTOTYPE_ONLY_STATUS = "prototype-only";
 
 /** Enumerated value domains. Attribute values only — never multiplicities. */
 export const DOMAINS = Object.freeze({
@@ -338,7 +373,6 @@ const BLOCKS = [
       "[data-agents-presence]",
       "[data-agent-platform]",
       "[data-presence]",
-      "[data-states-open]",
       "[data-access-status]",
       "[data-theme-switch]",
       "[data-theme-icon]",
@@ -778,7 +812,8 @@ const BLOCKS = [
         note:
           "Three shimmer rows at the top of the list view. The rows themselves carry no hooks, " +
           "and the skeleton only exists while loading, so neither its presence nor its row count " +
-          "is asserted. The B18 showcase has its own [data-loading-state] demo.",
+          "is asserted. The prototype's own states gallery carried a second, static copy of this " +
+          "loading state ([data-loading-state]); that gallery is prototype-only and does not ship.",
       },
     ],
   },
@@ -804,9 +839,10 @@ const BLOCKS = [
       {
         kind: "manual",
         note:
-          "`role=\"status\"` + `aria-live=\"polite\"` on the region; auto-dismiss after 2.5s; the " +
-          "three kinds are also rendered statically inside B18 with `data-state=\"static\"`, so " +
-          "they are never auto-dismissed there.",
+          "`role=\"status\"` + `aria-live=\"polite\"` on the region; auto-dismiss after 2.5s. The " +
+          "prototype's states gallery also rendered the three kinds statically with " +
+          "`data-state=\"static\"`, so they were never auto-dismissed there; that gallery (B18) is " +
+          "prototype-only and does not ship.",
       },
     ],
   },
@@ -816,7 +852,7 @@ const BLOCKS = [
     title: "Legend",
     root: "[data-legend]",
     scope: "shell",
-    status: "active",
+    status: "prototype-only",
     required: ["[data-legend]", "[data-legend-status]", "[data-legend-priority]"],
     states: [],
     rules: [
@@ -828,7 +864,9 @@ const BLOCKS = [
           "priority (5, i.e. every DOMAINS.PRIORITY value). The chips carry no hooks — each " +
           "selector is a single host element — so this is a domain statement, not a countable " +
           "one. It sits at the bottom of the sidebar so every status and priority fits one " +
-          "screenshot.",
+          "screenshot. **Prototype-only**: Terry's 2026-10-12 ruling — the legend was a " +
+          "product-design demonstration rather than a requirement, so the shipped sidebar " +
+          "carries no legend and this block is not asserted against the app.",
       },
     ],
   },
@@ -867,7 +905,7 @@ const BLOCKS = [
     id: "B17",
     title: "Error state",
     root: "[data-error-state]",
-    scope: "review",
+    scope: "board",
     status: "active",
     required: ["[data-error-state]", "[data-error-retry]", "[data-i18n=\"error.title\"]", "[data-i18n=\"error.hint\"]"],
     states: [],
@@ -877,9 +915,13 @@ const BLOCKS = [
         kind: "manual",
         note:
           "`role=\"alert\"`, hidden by default, on the `--color-td-danger-soft` surface the style " +
-          "guide reserves for errors; Retry re-runs the real render pass and confirms with a " +
-          "success toast. It is demonstrated inside B18 rather than on the board, because the " +
-          "board only raises it when a load fails.",
+          "guide reserves for errors; Retry re-runs the real render pass. The prototype " +
+          "demonstrated it inside B18 rather than on the board, because the board only raises it " +
+          "when a load fails. **Relocated 2026-10-12** (the ruling that removed B15/B18): B18 was " +
+          "only the demonstration and is prototype-only now, but this error state is a real state " +
+          "of the board — so it moved to the board's own load-failure banner in " +
+          "`web/src/App.vue`, rendered `hidden` at rest. The \"exactly one `[data-error-state]` " +
+          "in the document\" invariant survives the gallery's removal rather than leaving with it.",
       },
     ],
   },
@@ -889,7 +931,7 @@ const BLOCKS = [
     title: "States showcase",
     root: "[data-states-panel]",
     scope: "review",
-    status: "active",
+    status: "prototype-only",
     required: [
       "[data-states-panel]",
       "[data-states-open]",
@@ -919,7 +961,11 @@ const BLOCKS = [
         note:
           "The gallery is a **prototype review surface** (Jobs' UI/UX pass): it puts every " +
           "non-default state in one frame. It adds no framework — a scrim, a panel and two " +
-          "handlers.",
+          "handlers. **Prototype-only** since Terry's 2026-10-12 ruling: a gallery of other " +
+          "blocks' states is a design demonstration, not a functional requirement, so the " +
+          "shipped app renders no gallery, no `[data-states-open]` opener in the sidebar and no " +
+          "`[data-states-*]` hooks at all. The one thing inside it that *was* a requirement — " +
+          "the error state (B17) — moved to the board's real surface instead of leaving with it.",
       },
       {
         kind: "manual",
@@ -1505,12 +1551,22 @@ export const STALE_PROSE_COUNTS = Object.freeze([
   }),
 ]);
 
-/** Hooks outside the numbered blocks (BLOCKS.md's "Auxiliary hooks" table). */
+/**
+ * Hooks outside the numbered blocks (BLOCKS.md's "Auxiliary hooks" table).
+ *
+ * A hook may carry `status: "prototype-only"` when it served a prototype-only
+ * block alone; like the blocks, it stays transcribed here and is skipped by the
+ * implementation-side checks.
+ */
 export const AUXILIARY_HOOKS = Object.freeze([
   Object.freeze({ selector: "[data-move-menu]", purpose: "the single shared \"Move to\" menu reused by every card (keyboard fallback for drag)" }),
   Object.freeze({ selector: "[data-move-to]", purpose: "one status row inside the move menu" }),
   Object.freeze({ selector: "[data-drop-placeholder]", purpose: "transient placeholder bar created during dragover" }),
-  Object.freeze({ selector: "[data-states-overlay]", purpose: "scrim behind B18" }),
+  Object.freeze({
+    selector: "[data-states-overlay]",
+    purpose: "scrim behind B18",
+    status: "prototype-only",
+  }),
   Object.freeze({ selector: "[data-access-overlay]", purpose: "scrim behind B19" }),
   Object.freeze({ selector: "[data-detail-slot-source]", purpose: "transient wrapper built while copying a detail template into the drawer" }),
   Object.freeze({ selector: "[data-label]", purpose: "one chip per card label" }),
@@ -1541,6 +1597,16 @@ export const CONSISTENCY_CONTRACT = Object.freeze(CONSISTENCY_ITEMS);
 
 /** Everything the contract asserts, numbered blocks first. */
 export const ALL_CONTRACT_ITEMS = Object.freeze([...BLOCKS, ...CONSISTENCY_ITEMS]);
+
+/**
+ * The items the **shipped** implementation answers for: everything that is not
+ * `prototype-only`. Retired blocks stay in (their absence is still asserted
+ * against the app); prototype-only blocks do not, because the app is not
+ * supposed to render them. This is the view the implementation-side checks use.
+ */
+export const IMPLEMENTED_CONTRACT_ITEMS = Object.freeze(
+  ALL_CONTRACT_ITEMS.filter((item) => item.status !== PROTOTYPE_ONLY_STATUS),
+);
 
 const ATTRIBUTE_RE = /^\[([a-zA-Z][a-zA-Z0-9_-]*)(?:=("[^"]*"|'[^']*'|[^[\]]*))?\]$/;
 
@@ -1623,14 +1689,17 @@ export const SOURCE_LAYER_RULES = collectRules(ALL_CONTRACT_ITEMS, SOURCE_LAYER)
 /** Rules recorded for the human review pass; never machine-checked. */
 export const MANUAL_RULES = collectRules(ALL_CONTRACT_ITEMS, MANUAL_LAYER);
 
-/** Every selector the contract declares, deduplicated and sorted. Pure. */
-export function allSelectors() {
+/**
+ * The walk both selector surfaces share: every selector an item set declares,
+ * plus the given auxiliary hooks, deduplicated and sorted.
+ */
+function selectorsOf(items, auxiliary) {
   const found = new Set();
   const add = (selector) => {
     if (typeof selector === "string" && selector.length > 0) found.add(selector);
   };
 
-  for (const item of ALL_CONTRACT_ITEMS) {
+  for (const item of items) {
     add(item.root);
     for (const selector of [...item.required, ...item.states]) add(selector);
     for (const rule of item.rules) {
@@ -1639,9 +1708,36 @@ export function allSelectors() {
       add(rule.within);
     }
   }
-  for (const hook of AUXILIARY_HOOKS) add(hook.selector);
+  for (const hook of auxiliary) add(hook.selector);
 
   return Object.freeze([...found].sort());
+}
+
+/**
+ * Every selector the contract declares, deduplicated and sorted. Pure.
+ *
+ * This is the *declared surface* — prototype-only blocks and hooks included, so
+ * the transcription stays reviewable in one place. The selectors the shipped app
+ * must actually carry are `implementationSelectors()` below.
+ */
+export function allSelectors() {
+  return selectorsOf(ALL_CONTRACT_ITEMS, AUXILIARY_HOOKS);
+}
+
+/**
+ * Every selector the **shipped** app answers for, deduplicated and sorted. Pure.
+ *
+ * The same walk over `IMPLEMENTED_CONTRACT_ITEMS` and over the auxiliary hooks
+ * that are not prototype-only. Note this is a positive walk, not a subtraction:
+ * a hook both a prototype-only block and a shipped one declare (the states
+ * gallery and B17 both carried `[data-error-state]`) stays, because the shipped
+ * block still asks for it.
+ */
+export function implementationSelectors() {
+  return selectorsOf(
+    IMPLEMENTED_CONTRACT_ITEMS,
+    AUXILIARY_HOOKS.filter((hook) => hook.status !== PROTOTYPE_ONLY_STATUS),
+  );
 }
 
 /**
@@ -1671,13 +1767,15 @@ export function validateContract() {
   for (const item of ALL_CONTRACT_ITEMS) {
     const at = item.id;
     if (!SCOPES.includes(item.scope)) problems.push(`${at}: unknown scope ${item.scope}`);
-    if (item.status !== "active" && item.status !== "retired") problems.push(`${at}: unknown status ${item.status}`);
+    if (!["active", PROTOTYPE_ONLY_STATUS, "retired"].includes(item.status)) {
+      problems.push(`${at}: unknown status ${item.status}`);
+    }
 
     if (item.root !== null && !isHookSelector(item.root)) {
       problems.push(`${at}: root is not a data-* hook selector: ${item.root}`);
     }
-    if (item.root === null && item.status === "active" && item.scope !== "global") {
-      problems.push(`${at}: an active non-global block must declare a root`);
+    if (item.root === null && item.status !== "retired" && item.scope !== "global") {
+      problems.push(`${at}: a shipping or prototype-only non-global block must declare a root`);
     }
     if (item.status === "retired" && item.root !== null) {
       problems.push(`${at}: a retired block must not declare a root`);

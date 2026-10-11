@@ -51,7 +51,8 @@ npm -w web run preview  # serve the built artefact
   CSS source checks against `web/dist`.
 - `node web/scripts/dom-smoke.mjs` — the **browser layer** (host-only; Playwright
   is resolved from an already-installed location, never added here). It serves the
-  built app against a fixture API, runs every `BROWSER_LAYER_RULES` assertion
+  built app against a fixture API, runs every dom-layer contract assertion
+  (`EVALUATED_RULES` — the contract's dom rules minus the prototype-only blocks)
   against the live DOM, checks console/page errors are zero, and checks the five
   viewports for horizontal overflow. It exits 2 ("skip") when no browser is
   available — which is the container's normal state.

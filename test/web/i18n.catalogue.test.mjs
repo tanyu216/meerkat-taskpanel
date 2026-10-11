@@ -10,12 +10,15 @@
  *      placeholders key for key. This half runs everywhere, including the
  *      container image (which does not carry `prototype/`).
  *   2. **Against the prototype** — where `prototype/app.js` is present, the
- *      suite re-derives `MESSAGES` from that file and requires a deep-equal
- *      match, so the real measured counts (and every string) are checked
- *      against the source rather than against a number written down here.
- *      `.dockerignore` excludes `prototype/`, so this half self-skips in the
- *      image, following the "absent tool ⇒ SKIP, never FAIL" precedent from
- *      `scripts/verify/host-cli.mjs`.
+ *      suite re-derives `MESSAGES` from that file and requires that the
+ *      catalogue is that data minus exactly `PROTOTYPE_ONLY_KEYS` (the B15/B18
+ *      demo vocabulary the ruling of 2026-10-12 drops from the implementation),
+ *      entry line by entry line and key by key. The exclusions are an explicit
+ *      closed list, so the real measured counts and every *shipped* string are
+ *      still checked against the source rather than against a number written
+ *      down here. `.dockerignore` excludes `prototype/`, so this half self-skips
+ *      in the image, following the "absent tool ⇒ SKIP, never FAIL" precedent
+ *      from `scripts/verify/host-cli.mjs`.
  *   3. **Purity** — the data module imports nothing, touches no global and
  *      cannot be mutated in place, so the frontend build and `node --test`
  *      can both consume it without ordering hazards.
@@ -124,13 +127,68 @@ function placeholders(value) {
   return [...value.matchAll(/%s/g)];
 }
 
-/** Re-derives `MESSAGES` from `prototype/app.js` without executing the app. */
-function extractPrototypeCatalogue() {
+/**
+ * The prototype's demo vocabulary the implementation deliberately does not ship.
+ *
+ * Terry's ruling of 2026-10-12: the sidebar legend (B15) and the states gallery
+ * (B18) are product-design demonstrations, not functional requirements, so the
+ * shipped app renders neither and their strings have no consumer. This is an
+ * explicit, closed list rather than a prefix rule, so the suite can prove both
+ * directions — every listed key really is a prototype key (the list cannot be
+ * padded to hide a real drift) and none of them is in the catalogue (the
+ * deletion really happened).
+ */
+const PROTOTYPE_ONLY_KEYS = Object.freeze([
+  "sidebar.legend",
+  "sidebar.states",
+  "states.title",
+  "states.close",
+  "states.loading",
+  "states.loadingNote",
+  "states.emptyColumn",
+  "states.emptyColumnNote",
+  "states.emptyResults",
+  "states.emptyResultsNote",
+  "states.error",
+  "states.errorNote",
+  "states.toasts",
+  "states.toastsNote",
+  "toast.sample.info",
+  "toast.sample.success",
+  "toast.sample.danger",
+]);
+
+/** Is this one of the prototype-only keys? */
+function isPrototypeOnlyKey(key) {
+  return PROTOTYPE_ONLY_KEYS.includes(key);
+}
+
+/** The prototype's `MESSAGES` literal text, as it stands in `prototype/app.js`. */
+function prototypeLiteralText() {
   const source = readFileSync(PROTOTYPE_APP, "utf8");
   const at = source.indexOf("var MESSAGES = ");
   assert.notEqual(at, -1, "prototype/app.js no longer declares MESSAGES");
-  const literal = objectLiteralAt(source, at + "var MESSAGES = ".length);
-  return new Function(`return ${literal};`)(); // eslint-disable-line no-new-func
+  return objectLiteralAt(source, at + "var MESSAGES = ".length);
+}
+
+/** The `"key": …` entry lines of a catalogue literal, in source order. */
+function entryLines(literal) {
+  return literal.split("\n").filter((line) => /^\s*"[^"]+"\s*:/.test(line));
+}
+
+/** The key an entry line declares. */
+function keyOfEntry(line) {
+  return /^\s*"([^"]+)"\s*:/.exec(line)[1];
+}
+
+/** A catalogue table with the prototype-only keys removed, order preserved. */
+function withoutPrototypeOnly(table) {
+  return Object.fromEntries(Object.entries(table).filter(([key]) => !isPrototypeOnlyKey(key)));
+}
+
+/** Re-derives `MESSAGES` from `prototype/app.js` without executing the app. */
+function extractPrototypeCatalogue() {
+  return new Function(`return ${prototypeLiteralText()};`)(); // eslint-disable-line no-new-func
 }
 
 /* ------------------------------------------------------------------- parity */
@@ -196,30 +254,52 @@ describe("catalogue parity", () => {
 /* --------------------------------------------------------- against prototype */
 
 describe("catalogue vs prototype", { skip: HAS_PROTOTYPE ? false : "prototype/ is not present" }, () => {
-  it("is byte-for-byte the prototype's MESSAGES literal", () => {
-    const source = readFileSync(PROTOTYPE_APP, "utf8");
-    const at = source.indexOf("var MESSAGES = ");
-    const literal = objectLiteralAt(source, at + "var MESSAGES = ".length);
-    assert.equal(moduleLiteral(), literal);
+  it("carries the prototype's entries verbatim, minus the prototype-only keys", () => {
+    // Whole literal equality is what this replaces: the catalogue is the
+    // prototype's literal with exactly the prototype-only entries deleted, so
+    // comparing entry lines key for key (order included) keeps the copy honest
+    // *per string* rather than only in aggregate.
+    const theirs = entryLines(prototypeLiteralText()).filter((line) => !isPrototypeOnlyKey(keyOfEntry(line)));
+    const ours = entryLines(moduleLiteral());
+    assert.ok(theirs.length > 0, "the prototype literal yielded no entries — the scan is broken");
+    assert.deepEqual(ours, theirs, "a shipped entry no longer matches prototype/app.js byte for byte");
   });
 
-  it("deep-equals the catalogue re-derived from prototype/app.js", (t) => {
+  it("deep-equals the catalogue re-derived from prototype/app.js, minus the prototype-only keys", (t) => {
     const expected = extractPrototypeCatalogue();
     t.diagnostic(
       `prototype MESSAGES re-derived: en ${Object.keys(expected.en).length} / ` +
-        `zh ${Object.keys(expected.zh).length}`,
+        `zh ${Object.keys(expected.zh).length} (of which ${PROTOTYPE_ONLY_KEYS.length} prototype-only)`,
     );
-    assert.deepEqual(CATALOGUE, expected);
+    assert.deepEqual(CATALOGUE, { en: withoutPrototypeOnly(expected.en), zh: withoutPrototypeOnly(expected.zh) });
   });
 
-  it("matches the prototype's real key count", () => {
+  it("matches the prototype's real key count minus the prototype-only keys", () => {
     const expected = extractPrototypeCatalogue();
     for (const lang of LANGUAGE_LIST) {
       assert.equal(
         Object.keys(CATALOGUE[lang]).length,
-        Object.keys(expected[lang]).length,
+        Object.keys(expected[lang]).length - PROTOTYPE_ONLY_KEYS.length,
         `${lang} key count drifted from the prototype`,
       );
+    }
+  });
+
+  it("keeps the prototype-only list closed and honest", () => {
+    // No duplicates, nothing folded in by accident …
+    assert.equal(new Set(PROTOTYPE_ONLY_KEYS).size, PROTOTYPE_ONLY_KEYS.length, "duplicate entry");
+    // … every listed key really is a prototype key in both languages (so the
+    // list cannot be padded with keys that never existed to mask a deletion) …
+    const expected = extractPrototypeCatalogue();
+    for (const key of PROTOTYPE_ONLY_KEYS) {
+      for (const lang of LANGUAGE_LIST) {
+        assert.ok(
+          Object.prototype.hasOwnProperty.call(expected[lang], key),
+          `${key} is listed as prototype-only but ${lang} does not declare it`,
+        );
+      }
+      // … and it really is absent from the shipped catalogue.
+      assert.equal(hasKey("en", key), false, `${key} is prototype-only but present in the catalogue`);
     }
   });
 
@@ -235,18 +315,27 @@ describe("catalogue vs prototype", { skip: HAS_PROTOTYPE ? false : "prototype/ i
       [...html.matchAll(new RegExp(`${attribute}="([^"]*)"`, "g"))].map((m) => m[1].trim());
 
     let hooks = 0;
+    const tolerated = new Set();
     for (const attribute of ["data-i18n", "data-i18n-aria-label", "data-i18n-title", "data-i18n-placeholder"]) {
       const values = valuesOf(attribute);
       hooks += values.length;
       const dangling = [...new Set(values)].filter((key) => !hasKey("en", key));
-      assert.deepEqual(dangling, [], `${attribute} names keys absent from the catalogue`);
+      // A hook whose key is gone is only acceptable when it is one of the
+      // prototype-only keys — anything else is a real dangling hook.
+      for (const key of dangling) {
+        assert.ok(isPrototypeOnlyKey(key), `${attribute} names a key neither shipped nor recorded prototype-only: ${key}`);
+        tolerated.add(key);
+      }
     }
+    t.diagnostic(
+      `measured data-i18n* hooks in index.html: ${hooks}; ` +
+        `${tolerated.size} of them resolve to prototype-only keys`,
+    );
 
     // `data-i18n-arg` values are arguments, not keys: the prototype resolves
     // them through `text(arg)` and lets a non-key fall through verbatim.
     const args = valuesOf("data-i18n-arg");
     hooks += args.length;
-    t.diagnostic(`measured data-i18n* hooks in index.html: ${hooks}`);
     assert.ok(hooks > 0, "no hooks found — a vacuous scan must fail");
     const passthrough = [...new Set(args)].filter((arg) => !hasKey("en", arg));
     for (const arg of passthrough) {

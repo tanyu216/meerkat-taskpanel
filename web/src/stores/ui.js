@@ -1,10 +1,9 @@
 /**
- * View + ephemeral UI state (B02 view toggle, B14 toasts, B18/B19 panels).
+ * View + ephemeral UI state (B02 view toggle, B14 toasts, B19 panel).
  *
  * Kept apart from the board data store: none of this is persisted or fetched,
  * and every piece is a plain `ref` the shell reads. Toasts auto-dismiss after
- * 2.5 s (the prototype's timing); the B18 showcase's three sample toasts are
- * authored markup with `data-state="static"` and are never dismissed here.
+ * 2.5 s (the prototype's timing).
  */
 import { computed, ref } from "vue";
 
@@ -29,8 +28,7 @@ export function toggleFilters() {
   return filtersOpen.value;
 }
 
-/** B18 states gallery and B19 access panel. */
-export const statesOpen = ref(false);
+/** B19 access panel. */
 export const accessOpen = ref(false);
 
 /** B10 create-task and B11 create-project modals. */
