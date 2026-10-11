@@ -56,11 +56,17 @@ menu / B19). The bar holds no display-mode control of any kind — restated and 
 which changed the brand mark in this bar but touched no control in it.
 
 **The brand glyph is the Sentinel Watch mark** (R3; geometry remastered in the v2 brand
-round), not a generic icon: three upright meerkats of a mob on one baseline at `y = 27`,
-rising left-low to right-high, the tallest on duty and carrying the brand line, with one
-watch signal floating clear above it. It is drawn inline at
+round, face knocked out in the v2 logo-A round), not a generic icon: three upright
+meerkats of a mob on one baseline at `y = 27`, rising left-low to right-high, the
+tallest on duty and carrying the brand line, with one watch signal floating clear above
+it. The eyes and mouth are cut as negative space by an inline `<mask>` (functional
+greys, not brand colours), which is why the mark still restores to one colour and the
+silhouette is unchanged; the watch signal sits outside the mask and is always solid.
+It is drawn inline at
 18px, `aria-hidden`, on a `0 0 32 32` viewBox, and its two fills are
 `var(--color-td-ink)` and `var(--color-td-accent)` — so one element serves both themes.
+Two `<mask>` ids are needed because both inline marks share one document
+(`face-knockout-a-top`, `face-knockout-a-lg`).
 `favicon.svg` is the same geometry with a `prefers-color-scheme` pair.
 
 ## B03 · Sidebar
