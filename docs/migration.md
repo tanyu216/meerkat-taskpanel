@@ -221,7 +221,7 @@ node scripts/migrate/reconcile.mjs \
 cp ~/.openclaw/team/projects.json ~/.openclaw/team/projects.json.frozen-$(date +%F)
 chmod a-w ~/.openclaw/team/projects.json
 
-# 5. Point the team at the board: agents now use `taskctl` / the MCP server,
+# 5. Point the team at the board: agents now use `taskctl`,
 #    never the markdown files.
 ```
 
@@ -324,3 +324,16 @@ docker run --rm \
 
 See `docs/docker.md` for the image and the full in-container suite
 (`docker/verify-in-container.sh`).
+
+## Separate migration: the MCP integration is gone
+
+Not about markdown cards, but recorded here with the other migrations: **the MCP
+integration has been removed — agent integration is skill-only.** The stdio MCP server
+(the `meerkat-taskpanel-mcp` bin, `src/mcp/**`), the installer's MCP registration and the
+API contract snapshot's tool section (which moves `schema_version` 3 → 4) are gone.
+
+A host left with a registration should drop it — `claude mcp remove meerkat-taskpanel`,
+`codex mcp remove meerkat-taskpanel`, or the matching entry in OpenClaw's or Pi's MCP
+configuration. Nothing else changes: the skill drives the `taskctl` CLI directly, and the
+board's HTTP API, CLI and delivery gate are untouched. So an existing board needs no data
+migration at all — this is a surface removal, not a schema change of the board itself.

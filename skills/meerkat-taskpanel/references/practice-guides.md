@@ -88,8 +88,7 @@ node scripts/run.mjs issue deliver <ref> --report-file -
 Leaving `in_review` (except to `done`) starts the next round, so last round's
 report is history, not evidence. The audited waiver (`--no-report --reason`) is an
 escape hatch for the rare case, not the normal path — see `cli.md` §The delivery
-gate. The MCP surface is stricter still: `task_deliver` is the only tool that
-reaches `in_review`.
+gate.
 
 ### 6. Self-review is not acceptance
 

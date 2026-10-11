@@ -4,8 +4,8 @@ How the project watches its own supply chain: what is scanned, what blocks, how 
 advisory is waived, and why an alert does not turn into a red build unless someone asks
 for it.
 
-The engine has **zero runtime dependencies** — `src/core`, `src/cli`, `src/server` and
-`src/mcp` import Node builtins and nothing else. So the supply chain that matters here is
+The engine has **zero runtime dependencies** — `src/core`, `src/cli` and `src/server`
+import Node builtins and nothing else. So the supply chain that matters here is
 the **build chain**: the `web/` board frontend's build-time devDependencies, pinned by the
 one committed lockfile, `web/package-lock.json`. That is what these scans look at, and it
 is why they stay useful even though the shippable artefact has no dependencies at all.

@@ -8,8 +8,8 @@ straight:
    host's skill directory by `install.sh`. This is deterministic, offline, and needs no
    host tooling. It is what makes the agent able to drive `taskctl`.
 2. **The host bundle** (Claude Code and Codex) — `install.sh --target claude|codex`
-   deploys the rest of the host's setup too, not just the skill: MCP registration, the
-   host config (`~/.claude/settings.json` / `~/.codex/AGENTS.md`), slash commands (Claude)
+   deploys the rest of the host's setup too, not just the skill: the host config
+   (`~/.claude/settings.json` / `~/.codex/AGENTS.md`), slash commands (Claude)
    or a claim trigger (Codex), and a `taskctl` shim that pins the agent identity. Writes
    are **merge-style and idempotent**: a repeat install **exits 0**, leaves every managed
    file and config key at its existing value, and prints a
@@ -50,10 +50,9 @@ The repository-root Claude marketplace `.claude-plugin/marketplace.json` points 
 The two bundle hosts write more than the skill. **Claude** additionally writes
 `~/.claude/settings.json` (merged `env.TASKCTL_AGENT` + a `SessionStart` hook),
 `~/.claude/hooks/meerkat-taskpanel-session-start.sh`, `~/.claude/commands/{board,claim,deliver}.md`
-and `~/.claude/bin/taskctl`; it also runs `claude mcp add …` when the CLI is on `PATH`.
-**Codex** writes `~/.codex/AGENTS.md` (a claim-first snippet), `~/.codex/meerkat-taskpanel-claim.sh`
-(the schedulable trigger) and `~/.codex/bin/taskctl`, and runs `codex mcp add …`. Both
-shims inject `--agent <name>` on every call, with `TASKCTL_AGENT` as the fallback.
+and `~/.claude/bin/taskctl`. **Codex** writes `~/.codex/AGENTS.md` (a claim-first snippet),
+`~/.codex/meerkat-taskpanel-claim.sh` (the schedulable trigger) and `~/.codex/bin/taskctl`.
+Both shims inject `--agent <name>` on every call, with `TASKCTL_AGENT` as the fallback.
 
 ### Scheduling units (claude, codex, pi)
 
@@ -176,7 +175,7 @@ bash install.sh --target all --prefix /tmp/tp-home     # isolated home (testing)
 ### Claude Code
 
 ```bash
-# 1. skill + host bundle (MCP registration, settings.json, slash commands, shim)
+# 1. skill + host bundle (settings.json, slash commands, shim)
 bash install.sh --target claude --link --agent-name alice
 
 # 2. plugin (registers the marketplace, then installs the plugin)
@@ -192,15 +191,12 @@ Step 1 writes, merge-style and idempotently: the skill, `~/.claude/settings.json
 (`env.TASKCTL_AGENT=alice` + a `SessionStart` hook that starts the board and lists
 claimable cards), `~/.claude/commands/{board,claim,deliver}.md`, the `taskctl` shim at
 `~/.claude/bin/taskctl`, and the scheduling set (`~/.claude/scheduling/*`, the
-`wake-claude.sh` glue and `~/.claude/meerkat-taskpanel.env`). It also runs
-`claude mcp add meerkat-taskpanel -- node <repo>/src/mcp/main.mjs` when the `claude` CLI is on
-`PATH` (otherwise it prints the exact command). Re-running is safe: existing
+`wake-claude.sh` glue and `~/.claude/meerkat-taskpanel.env`). Re-running is safe: existing
 `settings.json` keys and hooks are preserved, and `--force` is the only way to overwrite.
 
 Uninstall:
 
 ```bash
-claude mcp remove meerkat-taskpanel
 claude plugin uninstall meerkat-taskpanel@meerkat-taskpanel-marketplace
 claude plugin marketplace remove meerkat-taskpanel-marketplace
 rm -rf ~/.claude/skills/meerkat-taskpanel ~/.claude/commands/{board,claim,deliver}.md \
@@ -256,7 +252,7 @@ rm -rf ~/.openclaw/skills/meerkat-taskpanel
 ### Codex
 
 ```bash
-# 1. skill + host bundle (MCP registration, AGENTS.md snippet, claim trigger, shim)
+# 1. skill + host bundle (AGENTS.md snippet, claim trigger, shim)
 bash install.sh --target codex --link --agent-name alice
 
 # 2. plugin
@@ -271,17 +267,15 @@ Step 1 writes, merge-style and idempotently: the skill, a claim-first snippet ap
 `~/.codex/AGENTS.md` (existing content is preserved), the schedulable claim trigger
 `~/.codex/meerkat-taskpanel-claim.sh`, the `taskctl` shim at `~/.codex/bin/taskctl`, and the
 scheduling set (`~/.codex/scheduling/*`, the `wake-codex.sh` glue and
-`~/.codex/meerkat-taskpanel.env`). It also runs
-`codex mcp add meerkat-taskpanel -- node <repo>/src/mcp/main.mjs` when the `codex` CLI is on
-`PATH`. Codex has no hooks, so scheduling is the auto-claim mechanism — load one of the
-units (see [Scheduling units](#scheduling-units-claude-codex-pi)); the legacy trigger
-remains a minimal fallback you can schedule yourself. `--no-automation` skips the trigger
-*and* the scheduling set.
+`~/.codex/meerkat-taskpanel.env`). Codex has no hooks, so scheduling is the auto-claim
+mechanism — load one of the units (see
+[Scheduling units](#scheduling-units-claude-codex-pi)); the legacy trigger remains a
+minimal fallback you can schedule yourself. `--no-automation` skips the trigger *and* the
+scheduling set.
 
 Uninstall:
 
 ```bash
-codex mcp remove meerkat-taskpanel
 codex plugin remove meerkat-taskpanel
 codex plugin marketplace remove meerkat-taskpanel-marketplace
 rm -rf ~/.codex/skills/meerkat-taskpanel ~/.codex/meerkat-taskpanel-claim.sh ~/.codex/bin/taskctl \
@@ -313,25 +307,13 @@ pi remove "$PWD/plugins/pi"
 rm -rf ~/.agents/skills/meerkat-taskpanel ~/.agents/scheduling ~/.agents/bin/wake-pi.sh ~/.agents/meerkat-taskpanel.env
 ```
 
-## MCP (optional)
+## Agent integration: skill only
 
-The skill drives the `taskctl` CLI and needs no MCP server. If you prefer the boolean
-tool interface, M3 ships a stdio MCP server as the `meerkat-taskpanel-mcp` bin
-(`src/mcp/main.mjs`), a thin proxy to the same local `taskd`.
-
-For **Claude Code and Codex**, `install.sh` already runs the registration (when the host
-CLI is on `PATH`); on a machine without it, it prints the exact command instead:
-
-```bash
-# Claude Code (stdio)
-claude mcp add meerkat-taskpanel -- node "$PWD/src/mcp/main.mjs"
-
-# Codex
-codex mcp add meerkat-taskpanel -- node "$PWD/src/mcp/main.mjs"
-```
-
-For OpenClaw/Pi, add the same command to that host's MCP configuration. MCP is strictly
-additive — a host that cannot register MCP is fully functional through the skill.
+> **The MCP integration has been removed — agent integration is skill-only.** The stdio
+> MCP server and its `meerkat-taskpanel-mcp` bin are gone. A host left with an MCP
+> registration should drop it — `claude mcp remove meerkat-taskpanel`, `codex mcp remove
+> meerkat-taskpanel`, or the matching entry in OpenClaw's or Pi's MCP configuration. No
+> replacement is needed: the skill drives the `taskctl` CLI directly.
 
 ## Verifying the install
 
@@ -390,8 +372,7 @@ per-host coverage boundary (Pi has no hook/trigger/shim) are in
 
 Nothing is ever written outside the destination paths in the table above. To install
 without touching a real host home — for a test, or a CI assert — use a throwaway home.
-The bundle hosts write their config, commands and trigger into the same home, and MCP
-registration runs with `HOME` (and, for codex, `CODEX_HOME`) pointed there, so the whole
+The bundle hosts write their config, commands and trigger into the same home, so the whole
 bundle stays isolated:
 
 ```bash
