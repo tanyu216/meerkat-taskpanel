@@ -239,8 +239,8 @@ a rounded rectangle, so the mark reduces to one colour (the mono state).
 |---|---|---|
 | body | rounded rect (capsule) | `width 5.2`, `rx 2.6`, base `y = 27` |
 | head | circle | `r 2.6`, `cy = top + 2.6` |
-| ear L | circle | `r 0.85`, `cy = top + 1.0`, `cx = cx − 1.9` |
-| ear R | circle | `r 0.85`, `cy = top + 1.0`, `cx = cx + 1.9` |
+| ear L | circle | `r 1.2`, `cy = top + 1.7`, `cx = cx − 2.4` |
+| ear R | circle | `r 1.2`, `cy = top + 1.7`, `cx = cx + 2.4` |
 
 `rx = 2.6` is exactly half the 5.2 body width, so each body is a true capsule.
 The head is concentric with the capsule's own rounded crown — the head circle
@@ -259,22 +259,29 @@ silhouette rather than adding a bulge.
 
 | part | cx | cy | r | fill (light) | fill (dark) | fill (mono) |
 |---|---|---|---|---|---|---|
-| watch dot | 24.8 | 5.2 | 1.7 | `#0F7A73` | `#2AA79B` | `currentColor` |
+| watch dot | 24.8 | 3.4 | 2.1 | `#0F7A73` | `#2AA79B` | `currentColor` |
 
-Each figure occupies `cx ± 2.75` including its ears; adjacent centres are 8.8
-apart, so the three never touch (gap ≈ 3.3 units). The mark's full ink extent is
-`x ∈ [4.45, 27.55]`, `y ∈ [3.5, 27]` — margins of 4.45 left, 4.45 right, 3.5 top
-and 5 bottom inside the 32-unit box. The watch dot clears the tallest figure's
-crown by **2.7 units**, comfortably above the 1.5-unit floor that keeps the dot
-reading as a separate signal.
+Each figure occupies `cx ± 3.6` including its ears; adjacent centres are 8.8
+apart, so the three never touch (gap ≈ 1.6 units). The mark's full ink extent is
+`x ∈ [3.6, 28.4]`, `y ∈ [1.3, 27]` — margins of 3.6 left, 3.6 right, 1.3 top and
+5 bottom inside the 32-unit box. The watch dot clears the tallest figure's crown
+by **4.1 units**, comfortably above the 1.5-unit floor that keeps the dot reading
+as a separate signal.
 
-**Size behaviour.** At 512/1024 the head and the small ears are legible and the
-row reads as standing meerkats. At 32 and 16 the ears fall below one pixel and
-the mark degrades, by design, to *three rising round-headed bars plus one dot* —
-the same small-size read as v1, so the favicon still holds. `brief.md` §4 permits
-an optical nudge to the ear radius or inset **only** if the small sizes blur into
-blobs; they do not (see `small-size-inspection.png` in the brand task workspace),
-so **no adjustment was applied and every value above is verbatim §4.**
+**Size behaviour.** At 512/1024 the head, the capsule body and the enlarged ears
+are legible, and the row reads as standing meerkats. The ears hold shape from
+**48px up**; by 32px they fall below one pixel, and the mark degrades, by design,
+to *three rising round-headed bars plus one dot*. At 16px the mark still reads as
+three round heads and a detached signal — the same small-size *reading* as v1,
+but the mark is no longer the same drawing: in the V2 mark-optimisation round
+exactly five parameters moved — ear `r` `0.85 → 1.2`, ear `cx ±` `1.9 → 2.4`,
+ear `cy = top +` `1.0 → 1.7`, watch dot `r` `1.7 → 2.1`, watch dot `cy`
+`5.2 → 3.4` — and nothing else. Two consequences are deliberate: the ears are
+large enough to read as ears from 48px up, and the watch signal now floats clear
+of the crown by **4.1 units** (v1: 2.7) at every size, so the "signal, never a
+cap" rule holds even where the mark is a handful of pixels. `brief.md` §4 permits
+an optical nudge to the ear radius or inset only if the small sizes blur into
+blobs; the V2 round exercised that allowance and these values are its result.
 
 **Files.**
 
@@ -433,8 +440,8 @@ rule in this document is carried over from v1 untouched.
 | 4 | **Mark name** | Signal Bars | **Sentinel Watch** |
 | 5 | **Mark reading** | three rising columns = board progression; the dot = the delivered node | three **upright meerkats** of a mob, left-low to right-high; the tallest is **on duty**; the dot = **the watch signal** |
 | 6 | **Mark skeleton** | three rising forms, bottom-aligned at `y=27`, plus a node above the tallest | **unchanged** — same three-form skeleton, same baseline, same "dot clear of the tallest" rule |
-| 7 | **Mark geometry** | `6`-wide capsule columns `rx=3` at `x=5/13/21`, node `r=2.75` at `(24,6)` | `5.2`-wide capsule bodies `rx=2.6` at `cx=7.2/16/24.8`, plus head `r=2.6` and ears `r=0.85`; watch dot `r=1.7` at `(24.8, 5.2)` |
-| 8 | **Small-size behaviour** | three rising bars + dot | three rising **round-headed** bars + dot (ears fall below 1px by 32px) |
+| 7 | **Mark geometry** | `6`-wide capsule columns `rx=3` at `x=5/13/21`, node `r=2.75` at `(24,6)` | `5.2`-wide capsule bodies `rx=2.6` at `cx=7.2/16/24.8`, plus head `r=2.6` and ears `r=1.2`; watch dot `r=2.1` at `(24.8, 3.4)` |
+| 8 | **Small-size behaviour** | three rising bars + dot | three rising **round-headed** bars + dot (ears hold shape from 48px up; the watch dot floats clear of the crown by 4.1 units at every size) |
 | 9 | **Palette** | teal `#0F7A73` / ink `#14181B` (+ dark lifts) | **unchanged** — same two roles, same values, no colour added |
 | 10 | **Typography / spacing / radius / motion** | see §3, §4 | **unchanged** |
 | 11 | **Design philosophy** | *Signal Order* | ***Vigil Order*** — see `brand-philosophy.md` |
@@ -460,6 +467,7 @@ the intended continuity — a rename and a species, not a new geometry.
 | `logo-512.png` / `logo-512-dark.png` | 512×512, transparent |
 | `logo-1024.png` / `logo-1024-dark.png` | 1024×1024, transparent |
 | `favicon-32.png` / `favicon-16.png` | favicon sizes, duotone on transparent |
+| `favicon-16-dark.png` / `favicon-32-dark.png` | favicon sizes for dark grounds, transparent |
 | `brand-philosophy.md` | canvas-design step ① — the *Vigil Order* philosophy |
 | `brand-poster.png` | canvas-design step ② — 1600×2000 brand plate |
 | `compare-v1-vs-meerkat.png` | 1600×900 before/after — v1 Signal Bars vs v2 Sentinel Watch |
@@ -467,7 +475,7 @@ the intended continuity — a rename and a species, not a new geometry.
 
 Evidence is reproducible rather than archived: the generators live in the brand
 task workspace outside the repo, and re-running one regenerates its artefact on
-the spot — `render-logo.mjs` rewrites the three SVGs and all six logo PNGs,
+the spot — `render-logo.mjs` rewrites the three SVGs and all eight logo PNGs,
 `render-poster.mjs` rewrites `brand-poster.png`, `render-compare.mjs` rewrites
 `compare-v1-vs-meerkat.png`, `verify-contrast.mjs` rewrites its `contrast.txt`
 transcript, and `verify-brand.mjs` re-asserts the mark's geometry and the
