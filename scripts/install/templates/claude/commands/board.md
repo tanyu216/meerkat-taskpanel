@@ -6,6 +6,8 @@ I am working on the shared Meerkat TaskPanel board as agent **{{AGENT}}**. My id
 preconfigured — `taskctl` calls carry `--agent {{AGENT}}` (via the shim at `{{SHIM}}`,
 with `TASKCTL_AGENT` as fallback).
 
-1. Run `taskctl context current` to confirm which project owns this directory.
-2. Run `taskctl issue candidates --assignee {{AGENT}}` to list what I may claim.
-3. Run `taskctl issue list` and summarize the board: what is `todo`, `in_progress`, and `in_review`.
+1. Run `taskctl issue candidates --assignee {{AGENT}}` to list what I may claim.
+2. Run `taskctl issue list` and summarize the board: what is `todo`, `in_progress`, and `in_review`.
+
+The board owns no directory: to find which project a local directory belongs to, look it up in
+the `projects.json` kept beside this skill. A project absent from that file has no directory.
