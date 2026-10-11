@@ -711,13 +711,11 @@ describe("server/routes — candidates (the poll read)", () => {
     );
     assert.deepEqual(
       Object.keys(candidates.candidates[0]).sort(),
-      ["id", "identifier", "priority", "project", "reason", "sort", "status", "target", "title"],
+      ["id", "identifier", "priority", "project", "reason", "sort", "status", "title"],
+      "no `target` — the board owns no project directory (O3)",
     );
     assert.equal(candidates.candidates[0].status, "todo");
     assert.equal(candidates.candidates[0].project, "cand");
-    // `target` no longer mirrors a project's directory (the board holds none);
-    // it stays in the projection but is empty for a card that carries none.
-    assert.equal(candidates.candidates[0].target, "");
     assert.equal(candidates.candidates[0].reason, "ready");
   });
 

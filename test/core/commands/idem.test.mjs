@@ -105,12 +105,12 @@ describe("commands/idem — derived key", () => {
     });
   });
 
-  it("partakes of `target` and `review_of`, and lets review_of win over parent", async () => {
+  it("partakes of `meta.target` and `review_of`, and lets review_of win over parent", async () => {
     await board(async ({ db, commands }) => {
-      const byTarget = commands.createTask({ projectId: "proj", title: "T", target: "PROJ-9", actor: AGENT });
+      const byTarget = commands.createTask({ projectId: "proj", title: "T", meta: { target: "PROJ-9" }, actor: AGENT });
       assert.equal(byTarget.idem, "task |  |  | PROJ-9");
       assert.equal(
-        commands.createTask({ projectId: "proj", title: "T (retry)", target: "PROJ-9", actor: AGENT }).id,
+        commands.createTask({ projectId: "proj", title: "T (retry)", meta: { target: "PROJ-9" }, actor: AGENT }).id,
         byTarget.id,
       );
 

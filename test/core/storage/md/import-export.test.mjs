@@ -162,9 +162,11 @@ describe("md/import — statistics and behaviour", () => {
     }
   });
 
-  it("warns — but does not fail — when one project carries two targets (M5 ruling)", async () => {
-    // `target` is a project-level workspace path: a disagreement is a warning,
-    // and the first value seen wins, so the batch is never sunk by one card.
+  it("keeps a card's `target` verbatim through import and export (D1-A)", async () => {
+    // `target` is opaque now (O3): the board owns no project directory, so the
+    // value is neither derived nor reconciled — it rides in `meta_json.legacy`
+    // and is re-emitted unchanged. Two cards with different targets are simply
+    // two cards; there is no project-level value to disagree about.
     const board = await boardWithCards({
       "A.md": cardText({ id: "PROJ-0001", target: "/tmp/a" }),
       "B.md": cardText({ id: "PROJ-0002", target: "/tmp/b" }),
@@ -172,15 +174,24 @@ describe("md/import — statistics and behaviour", () => {
     try {
       const stats = importMd({ db: board.db, repos: board.repos, dir: board.dir, now: TS });
       assert.equal(stats.tasks, 2);
-      assert.equal(stats.warnings.length, 1);
-      assert.match(stats.warnings[0], /two different targets/);
-      assert.equal(board.repos.projects.get("proj").workspacePath, "/tmp/a");
+      assert.equal(stats.warnings.length, 0, "a per-card target is not a project-level disagreement");
+      assert.equal(
+        board.repos.tasks.getByIdentifier("proj", "PROJ-0001").meta.legacy.target,
+        "/tmp/a",
+        "kept as an opaque legacy key",
+      );
+
+      const out = join(makeTempDir("md-target-"), "cards");
+      exportMd({ repos: board.repos, outDir: out, now: TS });
+      assert.match(readFileSync(join(out, "PROJ-0001.md"), "utf8"), /^target: \/tmp\/a$/m);
+      assert.match(readFileSync(join(out, "PROJ-0002.md"), "utf8"), /^target: \/tmp\/b$/m);
     } finally {
       board.close();
     }
   });
 
-  it("needs a project id and a workspace path to build a board from nothing", async () => {
+  it("needs a project id, but no workspace path, to build a board from nothing", async () => {
+    // A card with no `project` and no `--project` is still a hard error.
     const board = await boardWithCards({ "A.md": cardText({ project: null }, {}).replace("project: null\n", "") });
     try {
       assert.equal(reasonCode(() => importMd({ db: board.db, repos: board.repos, dir: board.dir, now: TS })), "MD_PARSE_ERROR");
@@ -188,12 +199,13 @@ describe("md/import — statistics and behaviour", () => {
       board.close();
     }
 
+    // A missing `target` is not (O3): a project carries no directory, so the
+    // project is created from the card's `project` value alone.
     const noTarget = await boardWithCards({ "A.md": cardText({ target: null }).replace("target: null\n", "") });
     try {
-      assert.equal(reasonCode(() => importMd({ db: noTarget.db, repos: noTarget.repos, dir: noTarget.dir, now: TS })), "MD_PARSE_ERROR");
-      // ...but an existing project is enough.
-      noTarget.repos.projects.create({ id: "proj", name: "proj", workspacePath: "/tmp/meerkat-taskpanel-fixture", now: TS });
-      assert.equal(importMd({ db: noTarget.db, repos: noTarget.repos, dir: noTarget.dir, now: TS }).tasks, 1);
+      const stats = importMd({ db: noTarget.db, repos: noTarget.repos, dir: noTarget.dir, now: TS });
+      assert.equal(stats.tasks, 1);
+      assert.equal(noTarget.repos.projects.get("proj").name, "proj");
     } finally {
       noTarget.close();
     }
@@ -208,7 +220,6 @@ describe("md/import — statistics and behaviour", () => {
         dir: board.dir,
         now: TS,
         projectId: "imported",
-        target: "/tmp/meerkat-taskpanel-fixture",
       });
       assert.equal(stats.tasks, 1);
       assert.equal(board.repos.tasks.getByIdentifier("imported", "PROJ-0001").projectId, "imported");
@@ -346,7 +357,7 @@ describe("md/export — rendering", () => {
     try {
       const ctx = createContext({ db: board.db, repos, clock: () => TS });
       const commands = createCommands(ctx);
-      commands.createProject({ id: "proj", name: "P", workspacePath: "/tmp/ws", actor: { kind: "human", id: "T" } });
+      commands.createProject({ id: "proj", name: "P", actor: { kind: "human", id: "T" } });
       commands.createTask({ projectId: "proj", title: "One", actor: { kind: "agent", id: "linus" } });
       commands.createTask({ projectId: "proj", title: "Two", actor: { kind: "agent", id: "linus" } });
 
@@ -366,13 +377,10 @@ describe("md/export — rendering", () => {
     const board = await createTempBoard();
     const repos = createRepositories(board.db);
     try {
-      repos.projects.create({ id: "proj", name: "P", workspacePath: "/tmp/ws", now: TS });
+      repos.projects.create({ id: "proj", name: "P", now: TS });
       const ctx = createContext({ db: board.db, repos, clock: () => TS });
       createCommands(ctx).createTask({ projectId: "proj", title: "Bare", actor: { kind: "agent", id: "linus" } });
-      const card = renderCard(repos.tasks.getByIdentifier("proj", "PROJ-0001"), {
-        repos,
-        project: repos.projects.get("proj"),
-      });
+      const card = renderCard(repos.tasks.getByIdentifier("proj", "PROJ-0001"), { repos });
       for (const name of ["Background", "Acceptance", "Progress", "Comments", "Sessions", "Report"]) {
         assert.match(card, new RegExp(`^## ${name}$`, "m"), name);
       }

@@ -27,12 +27,14 @@ describe("md/project-registry — parsing", () => {
     const demo = registry.resolve("demo");
     assert.equal(demo.id, "demo");
     assert.equal(demo.name, "demo");
-    assert.equal(demo.workspacePath, "/tmp/meerkat-taskpanel-migrate-fixture");
     assert.equal(demo.meta.kind, "code");
     assert.equal(demo.meta.default_git_rules, "explicit paths only");
     assert.deepEqual(demo.meta.guides, ["/tmp/meerkat-taskpanel-migrate-fixture/README.md"]);
     assert.equal(demo.meta.registered_key, "demo");
-    assert.equal(demo.meta.root, undefined, "root becomes workspacePath, not meta");
+    // A registry `root` is ordinary metadata now (O3): carried verbatim into
+    // `meta`, never interpreted as a project directory.
+    assert.equal(demo.meta.root, "/tmp/meerkat-taskpanel-migrate-fixture");
+    assert.equal("workspacePath" in demo, false, "the registry resolves no workspace path");
   });
 
   it("skips $-prefixed documentation keys", () => {
@@ -46,9 +48,9 @@ describe("md/project-registry — parsing", () => {
     const team = registry.resolve("__team__");
     assert.equal(team.id, "__team__");
     assert.equal(team.name, "__team__");
-    assert.equal(team.workspacePath, "/__team__", "a synthetic absolute anchor, never a real home path");
     assert.equal(team.meta.buildin, true);
     assert.equal(team.meta.kind, "team");
+    assert.equal("workspacePath" in team, false, "a buildin project carries no synthetic workspace anchor (O3)");
     assert.equal(registry.resolveById("__team__").id, "__team__", "resolvable by id too");
     assert.ok(registry.entries.some((entry) => entry.id === "__team__"), "listed in entries");
   });
@@ -56,7 +58,7 @@ describe("md/project-registry — parsing", () => {
   it("lets a file entry named __team__ override the buildin", () => {
     const registry = parseProjectRegistry('{ "projects": { "__team__": { "root": "/tmp/team-real" } } }');
     const team = registry.resolve("__team__");
-    assert.equal(team.workspacePath, "/tmp/team-real", "the file is the authority");
+    assert.equal(team.meta.root, "/tmp/team-real", "the file is the authority; its root is carried verbatim");
     assert.notEqual(team.meta.buildin, true);
   });
 
@@ -67,12 +69,12 @@ describe("md/project-registry — parsing", () => {
     assert.equal(resolveBuildinProject(null), null);
   });
 
-  it("accepts a bare name map, and workspace_path / workspacePath spellings", () => {
+  it("accepts a bare name map, and carries workspace_path / workspacePath spellings into meta", () => {
     const registry = parseProjectRegistry(
       '{ "A": { "workspace_path": "/tmp/a" }, "B": { "workspacePath": "/tmp/b" } }',
     );
-    assert.equal(registry.resolve("A").workspacePath, "/tmp/a");
-    assert.equal(registry.resolve("B").workspacePath, "/tmp/b");
+    assert.equal(registry.resolve("A").meta.workspace_path, "/tmp/a");
+    assert.equal(registry.resolve("B").meta.workspacePath, "/tmp/b");
   });
 
   it("lets an explicit id/name override the key, and resolves both ways", () => {
@@ -85,7 +87,7 @@ describe("md/project-registry — parsing", () => {
   it("matches names ignoring case and whitespace (§4.4 normalisation)", () => {
     const registry = parseProjectRegistry('{ "projects": { "Meerkat TaskPanel": { "root": "/tmp/tp" } } }');
     for (const spelling of ["Meerkat TaskPanel", "meerkattaskpanel", "MEERKAT  TASKPANEL", "  meerkat taskpanel  "]) {
-      assert.equal(registry.resolve(spelling)?.workspacePath, "/tmp/tp", spelling);
+      assert.equal(registry.resolve(spelling)?.meta.root, "/tmp/tp", spelling);
     }
     assert.equal(normalizeProjectKey("Meerkat TaskPanel"), "meerkattaskpanel");
   });
@@ -93,7 +95,7 @@ describe("md/project-registry — parsing", () => {
   it("reports duplicate normalised names and keeps the first", () => {
     const registry = parseProjectRegistry('{ "projects": { "A": { "root": "/tmp/1" }, "a": { "root": "/tmp/2" } } }');
     assert.deepEqual(registry.duplicates, ["a"]);
-    assert.equal(registry.resolve("A").workspacePath, "/tmp/1");
+    assert.equal(registry.resolve("A").meta.root, "/tmp/1");
   });
 
   it("returns null on a miss instead of inventing an entry", () => {
@@ -117,7 +119,7 @@ describe("md/project-registry — loading", () => {
   it("loads the fixture file", () => {
     const registry = loadProjectRegistry(REGISTRY);
     assert.equal(registry.file, REGISTRY);
-    assert.equal(registry.resolve("Widgets").workspacePath, "/tmp/widgets-fixture");
+    assert.equal(registry.resolve("Widgets").meta.root, "/tmp/widgets-fixture");
   });
 
   it("turns an unreadable file into a DomainError, not an ENOENT stack", () => {

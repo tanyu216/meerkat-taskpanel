@@ -5,7 +5,8 @@
  *   2. `parent:` on a non-epic is a WARN + SKIP, never a thrown parse error;
  *   3. `depends_on` direction: source = blocker, type = blocks;
  *   4. invariant refusals become warnings, never a silent drop;
- *   5. `target` is project-level; two values are a warning.
+ *   5. `target` is an opaque per-card value — imported verbatim, never
+ *      reconciled against anything the project owns (O3).
  *
  * Fixtures are synthetic hand-written cards (F9); the registry is the one under
  * `test/migrate/fixtures/registry/`.
@@ -82,7 +83,8 @@ describe("md/import — project name → id resolution (§4.8 ④)", () => {
       assert.equal(stats.warnings.length, 0);
       const project = board.repos.projects.get("demo");
       assert.equal(project.name, "demo");
-      assert.equal(project.workspacePath, "/tmp/meerkat-taskpanel-migrate-fixture", "workspace path comes from the registry root");
+      assert.equal(project.workspacePath, undefined, "a project carries no directory (O3)");
+      assert.equal(project.meta.root, "/tmp/meerkat-taskpanel-migrate-fixture", "the registry root is metadata, not a directory anchor");
       assert.equal(project.meta.kind, "code");
       assert.equal(project.meta.default_git_rules, "explicit paths only");
     } finally {
@@ -376,18 +378,21 @@ describe("md/import — invariant refusals become warnings", () => {
   });
 });
 
-describe("md/import — target is project-level (M5 ruling)", () => {
-  it("warns — but does not fail — when one project carries two targets", async () => {
+describe("md/import — target is an opaque per-card value (O3)", () => {
+  it("imports cards with differing targets without reconciling them", async () => {
     const board = await boardWithCards({
       "A.md": cardText({ id: "DEMO-0001", target: "/tmp/meerkat-taskpanel-migrate-fixture" }),
       "B.md": cardText({ id: "DEMO-0002", target: "/tmp/elsewhere" }),
     });
     try {
       const stats = importCards(board);
-      assert.equal(stats.tasks, 2, "both cards import; the mismatch is a warning");
-      assert.equal(stats.warnings.length, 1);
-      assert.match(stats.warnings[0], /two different targets/);
-      assert.equal(board.repos.projects.get("demo").workspacePath, "/tmp/meerkat-taskpanel-migrate-fixture");
+      assert.equal(stats.tasks, 2, "both cards import");
+      assert.equal(stats.warnings.length, 0, "a per-card target is not a project-level disagreement");
+      assert.equal(
+        board.repos.tasks.getByIdentifier("demo", "DEMO-0001").meta.legacy.target,
+        "/tmp/meerkat-taskpanel-migrate-fixture",
+      );
+      assert.equal(board.repos.tasks.getByIdentifier("demo", "DEMO-0002").meta.legacy.target, "/tmp/elsewhere");
     } finally {
       board.close();
     }
@@ -415,9 +420,13 @@ describe("md/import — legacy fields stay verbatim (§4.8 ①)", () => {
     }
   });
 
-  it("parses a card whose goal/review_of are no longer 'known' keys", () => {
+  it("parses a card whose goal/review_of/target are no longer 'known' keys", () => {
     const card = parseCard(cardText({ goal: "g", review_of: "R" }), { file: "a.md" });
-    assert.deepEqual(card.legacy, { goal: "g", review_of: "R" });
+    assert.deepEqual(card.legacy, {
+      target: "/tmp/meerkat-taskpanel-migrate-fixture",
+      goal: "g",
+      review_of: "R",
+    });
   });
 });
 
@@ -469,9 +478,14 @@ describe("md/import — the buildin __team__ project (PROTOCOL ②)", () => {
       assert.equal(stats.tasks, 1, "the card imports instead of being skipped as unregistered");
       assert.equal(stats.projectSkipped, 0);
       const project = board.repos.projects.get("__team__");
-      assert.equal(project.workspacePath, "/__team__", "the documented synthetic anchor");
+      assert.equal(project.workspacePath, undefined, "no synthetic workspace anchor (O3)");
       assert.equal(project.meta.buildin, true);
       assert.equal(project.meta.kind, "team");
+      assert.equal(
+        board.repos.tasks.getByIdentifier("__team__", "DEMO-0001").meta.legacy.target,
+        "/tmp/team-chore",
+        "the card's own target rides through verbatim",
+      );
     } finally {
       board.close();
     }
@@ -483,13 +497,13 @@ describe("md/import — the buildin __team__ project (PROTOCOL ②)", () => {
       const stats = importCards(board); // registry = demo/Widgets only
       assert.equal(stats.tasks, 1);
       assert.equal(stats.projectSkipped, 0);
-      assert.equal(board.repos.projects.get("__team__").workspacePath, "/__team__");
+      assert.equal(board.repos.projects.get("__team__").meta.buildin, true);
     } finally {
       board.close();
     }
   });
 
-  it("does not raise the two-targets warning flood for __team__ cards", async () => {
+  it("imports two __team__ cards with differing targets, with no warning", async () => {
     const board = await boardWithCards({
       "A.md": cardText({ id: "DEMO-0001", project: "__team__", target: "/tmp/a.mjs" }),
       "B.md": cardText({ id: "DEMO-0002", project: "__team__", target: "/tmp/b.mjs" }),
@@ -497,11 +511,7 @@ describe("md/import — the buildin __team__ project (PROTOCOL ②)", () => {
     try {
       const stats = importCards(board);
       assert.equal(stats.tasks, 2, "both cards import");
-      assert.equal(
-        stats.warnings.filter((warning) => /two different targets/.test(warning)).length,
-        0,
-        "a buildin project's per-card targets are not a project-level disagreement",
-      );
+      assert.equal(stats.warnings.length, 0, "per-card targets are never reconciled against a project");
     } finally {
       board.close();
     }
@@ -597,7 +607,7 @@ describe("md/import — a tolerant parse is visible, not silent", () => {
       assert.equal(stats.comments, 1);
       assert.equal(stats.reports, 1, "the narrative report is stored");
       assert.equal(stats.reportSkipped.length, 0);
-      assert.equal(board.repos.projects.get("__team__").workspacePath, "/__team__");
+      assert.equal(board.repos.projects.get("__team__").meta.buildin, true);
       const task = board.repos.tasks.getByIdentifier("__team__", "DEMO-0001");
       assert.deepEqual(task.meta.import_warnings, ["report_narrative", "parse_tolerated"]);
     } finally {
