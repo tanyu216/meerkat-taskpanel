@@ -74,7 +74,7 @@ for host_dir in .claude .openclaw .codex .agents; do
 done
 
 step "taskctl project create"
-node "$CLI" project create --id demo --name "E2E Demo" --workspace-path "$(pwd)"
+node "$CLI" project create --id demo --name "E2E Demo"
 
 step "taskctl issue create"
 CREATE_JSON="$(node "$CLI" --json issue create \
