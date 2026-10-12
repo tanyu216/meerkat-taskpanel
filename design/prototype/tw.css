@@ -4199,6 +4199,40 @@ html[data-theme="dark"] .modal-box {
     color: var(--color-td-ink);
     text-decoration: underline;
   }
+  [data-assignee-item][data-assignee-active="true"] {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    height: 20px;
+    padding: 0 4px 0 6px;
+    border: 1px solid var(--color-td-line-strong);
+    border-radius: 999px;
+    background: var(--color-td-active);
+    color: var(--color-td-ink);
+  }
+  [data-assignee-clear] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    font-size: 10px;
+    line-height: 1;
+    color: var(--color-td-ink-3);
+    background: transparent;
+    cursor: pointer;
+  }
+  [data-assignee-clear]:hover {
+    color: var(--color-td-ink);
+    background: var(--color-td-hover);
+  }
+  [data-assignee-clear]:focus-visible {
+    outline: 2px solid var(--color-td-focus);
+    outline-offset: 1px;
+  }
   .td-presence {
     width: 6px;
     height: 6px;
