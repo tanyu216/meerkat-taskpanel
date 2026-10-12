@@ -229,6 +229,10 @@ const PROBE_PROJECT = {
   labels: ["probe"],
   meta: { probe: true },
   readme: "probe",
+  // Populated so the frozen type is `number` — the sidebar badge's field is an
+  // integer on every row the list route serves; only a projection with no count
+  // supplied (the local `taskctl project` read) emits `null`.
+  taskCount: 1,
   archivedAt: "probe",
   createdAt: "probe",
   updatedAt: "probe",

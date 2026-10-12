@@ -114,8 +114,14 @@ describe("cli/wire — the JSON vocabulary", () => {
   it("projects the other entities with the same naming rule", () => {
     assert.deepEqual(
       projectToWire({ id: "p", name: "P", labels: [], meta: {}, readme: null, archivedAt: null, createdAt: "t", updatedAt: "t" }),
-      { id: "p", name: "P", labels: [], meta: {}, readme: null, archived_at: null, created_at: "t", updated_at: "t" },
+      { id: "p", name: "P", labels: [], meta: {}, readme: null, task_count: null, archived_at: null, created_at: "t", updated_at: "t" },
     );
+
+    // The sidebar badge's number: served with the list, so it is `null` — not 0 —
+    // when the caller did not supply one. The projection counts nothing itself.
+    assert.equal(projectToWire({ id: "p", name: "P", taskCount: 4 }).task_count, 4);
+    assert.equal(projectToWire({ id: "p", name: "P", taskCount: 0 }).task_count, 0);
+    assert.equal(projectToWire({ id: "p", name: "P", taskCount: "4" }).task_count, null);
     assert.equal(commentToWire({ id: "c", taskId: "t", body: "b", kind: "note", authorKind: "human", authorId: "e", refs: [], version: 1, createdAt: "t" }).author_kind, "human");
     assert.equal(relationToWire({ id: 1, type: "parent", source: "a", target: "b", origin: null, createdAt: "t" }).source, "a");
     assert.equal(sessionToWire({ id: "s", taskId: "t", seg: "s1", owner: "linus", backend: "claude", sessionId: "x", status: "running", ts: "t" }).session_id, "x");
