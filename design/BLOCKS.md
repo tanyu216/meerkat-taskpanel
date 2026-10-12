@@ -242,6 +242,39 @@ to hold two values at once for the roster route), and the label control could no
 without either a second mode or a fourth kind of row. `applyFilters()` reads the set through
 one helper (`statusFilterValues()`), which is also what `resetFilters()` writes back to `all`.
 
+**R12 补充 — one control family, one line, and the overflow lives in the bar.** The bar is
+**one line at every tier by contract**: `[data-filters]` carries `flex-wrap: nowrap` and its
+children do not shrink (`flex: 0 0 auto`). This is a **written deviation from the prototype**
+(`design/fidelity-r12-supplement.md` §2.1), whose `.td-filters` is `flex-wrap: wrap` and
+therefore folds onto a second line at 430 — measured, and measured as exactly two lines.
+What holds the line instead is an **overflow strategy on the bar itself**: `overflow-x: auto`
+plus `min-width: 0`, so a narrow tier scrolls **inside** the bar rather than wrapping or
+pushing the document sideways. `[data-filter-count]` keeps `margin-left: auto`, so a tier
+that is wide enough pins the count to the bar's content-box right edge while an overflowing
+tier resolves the `auto` to zero and leaves the count in line after Clear — the prototype's
+own ≤979 behaviour, arrived at by the same rule. Four alternatives were evaluated and not
+adopted (keep `wrap`; let the controls shrink; hide the count on narrow tiers; `nowrap`
+without a scroller) — §2.1 records why each fails.
+
+The **metrics** stay the prototype's, measured at all six tiers and constant: the field
+family is **30px** tall with `12px`/`400` text, `6px` corners and `padding: 0 26px 0 8px`,
+including the caret (`14×14`, absolutely positioned, **7px** from the summary's border-box
+right edge — the declaration's `right: 6px` is measured against the padding box); `Clear` is
+a `btn-sm` at **28px**; the count is 18px of `12px` text. The gap between same-line controls
+is **8px** and the bar's own padding is **0** — the prototype's bar carries no padding
+because `.td-main` supplies it.
+
+**The status control is on the register, and its delivery is pending.** `[data-filter-status]`
+is the bar's third field control (R11 ①), so the family is four controls with one height —
+and the **order stays Assignee · Priority · Status · Label · Clear · count**, the order R11 ①
+fixed, stated in the machine-checkable form as **sibling combinators**
+(`[data-filter-priority] ~ [data-filter-label]`, and so on) rather than as positions at either
+end. The control's landing
+belongs to the status-filter card, not to R12: the contract **enumerates** it (the family never
+loses a member) while the machine checks that need it are marked `pending`, and the R12
+assertions are written to hold **without** it — the closed set gives `[data-filter-status]` an
+upper bound, so a bar that has not landed the third field control still passes.
+
 ## B05 · Board
 
 | | |
@@ -268,6 +301,30 @@ a board that measures 812px on its own — see `design/fidelity-r10.md` §2.1.2.
 
 Switching to the list (B08) hides the **state root**, not the board: the board-level empty is
 the root's other child, so hiding only `[data-board]` would leave it above the list.
+
+**R12 补充 — the seven columns are one height, and it is the board's height.** `[data-board]`
+aligns its children on the cross axis with **`align-items: stretch`**, and the chain that
+carries the height down is a pass-through at every link: the state root (`[data-board-view]`)
+is a column flex box, the board takes `flex: 1 1 auto` with `min-height: 0; min-width: 0`,
+and each `[data-column]` is a column flex box with `min-height: 0`. Nothing writes a height
+in pixels. The measured result (`design/fidelity-r12-supplement.md` §3.2) is that at every
+tier all seven columns share **one** height (spread 0px) and that height equals the board's
+**content-box** height (difference 0px) — 808px at 1512×950, 758px at 1512/1240/980×900,
+733px at 760, 695px at 430, and 558px at 1512×700. The height therefore **follows the
+viewport**: 900 → 700 moves the columns 758 → 558, pixel for pixel.
+
+The stretch is what makes them equal, which is why the contract also carries the **reverse**
+assertions: the shortest column is far **taller** than its own natural content (758px of box
+over 150px of header, progress and body at 1512×900), the column bodies are taller than
+zero, and every column still draws its cards. A "single common height" written into the
+stylesheet, or a set of columns allowed to collapse onto their content, would satisfy
+"equal" while breaking the thing equal is for.
+
+Scrolling stays exactly as the list of hooks above says it does: **`[data-column-body]` is
+the only vertical scroll container inside a column** (`overflow-y: auto`, one per column),
+and `[data-column]` itself must **not** scroll vertically (`overflow-y: visible`) — a column
+that scrolled its own frame would put the scrollbar outside the cards it scrolls. The board
+remains the document's only **horizontal** scroll container.
 
 ## B06 · Column
 
