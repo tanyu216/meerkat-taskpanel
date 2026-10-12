@@ -14,6 +14,7 @@
  */
 import { computed, ref } from "vue";
 
+import { resync } from "../../stores/board.js";
 import { accessOpen, pushToast } from "../../stores/ui.js";
 import { t } from "../../i18n/index.js";
 
@@ -93,6 +94,18 @@ function reset() {
       </div>
       <p class="td-state-note" data-i18n="access.token.generated">{{ $t("access.token.generated") }}</p>
       <p class="td-state-note" data-i18n="access.token.private">{{ $t("access.token.private") }}</p>
+    </section>
+
+    <!-- The transport's manual resync (`?after=` replay). It is an M6b addition
+         with no prototype counterpart, so it is a written deviation — and it
+         lives here rather than as a standing control on the board, which is
+         where a connection affordance belongs (surface-disposition.md #3). -->
+    <section class="td-state-block" data-connection-block>
+      <h3 data-i18n="connection.title">{{ $t("connection.title") }}</h3>
+      <p class="td-state-note" data-i18n="connection.hint">{{ $t("connection.hint") }}</p>
+      <button type="button" class="btn btn-ghost btn-sm" data-resync :title="$t('connection.resyncTitle')" @click="resync">
+        {{ $t("connection.resync") }}
+      </button>
     </section>
   </section>
 </template>

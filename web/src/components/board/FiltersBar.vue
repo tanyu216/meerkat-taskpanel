@@ -41,23 +41,23 @@ function chooseLabel(value) {
 </script>
 
 <template>
-  <div class="td-filters" data-filters :hidden="!filtersOpen" id="td-filters">
-    <label class="td-field" style="margin: 0">
+  <section class="td-filters" data-filters :hidden="!filtersOpen" id="td-filters">
+    <label class="td-field m-0">
       <span class="sr-only">{{ $t("filters.assignee") }}</span>
-      <select v-model="board.filters.assignee" class="td-select" data-filter-assignee :aria-label="$t('filters.assignee')">
+      <select v-model="board.filters.assignee" class="select select-sm td-select" data-filter-assignee :aria-label="$t('filters.assignee')">
         <option v-for="option in assigneeOptions" :key="option" :value="option">{{ $t(`filters.assignee.${option}`) }}</option>
       </select>
     </label>
 
-    <label class="td-field" style="margin: 0">
+    <label class="td-field m-0">
       <span class="sr-only">{{ $t("filters.priority") }}</span>
-      <select v-model="board.filters.priority" class="td-select" data-filter-priority :aria-label="$t('filters.priority')">
+      <select v-model="board.filters.priority" class="select select-sm td-select" data-filter-priority :aria-label="$t('filters.priority')">
         <option value="all">{{ $t("filters.priority.all") }}</option>
         <option v-for="priority in PRIORITIES" :key="priority" :value="priority">{{ $t(`filters.priority.${priority}`) }}</option>
       </select>
     </label>
 
-    <details class="td-details" data-filter-label :data-filter-label-value="board.filters.label">
+    <details class="td-details dropdown" data-filter-label :data-filter-label-value="board.filters.label">
       <summary class="td-select" data-filter-label-summary>{{ labelSummary }}</summary>
       <ul class="td-details-menu menu">
         <li>
@@ -78,5 +78,5 @@ function chooseLabel(value) {
     </button>
 
     <span class="td-filter-count" data-filter-count aria-live="polite">{{ countText }}</span>
-  </div>
+  </section>
 </template>
