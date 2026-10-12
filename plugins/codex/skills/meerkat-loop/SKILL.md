@@ -86,8 +86,10 @@ path, is in [`references/operation.md`](references/operation.md).
 
 **OpenClaw is deliberately excluded.** `install.sh --target openclaw` installs the board
 skill and nothing else: the [openclaw-team](https://github.com/tanyu216/openclaw-team)
-framework already ships `poll-<agent>` (every 1m) and `task-patrol` (every 5m), which are
-this same design. Installing both would be two supervisors racing one board.
+framework already ships a per-agent poll and a `task-patrol` — this same design.
+Installing both would be two supervisors racing one board. Its cadence is deliberately not
+repeated here: the framework's own `AUTOMATIONS.md` is the single source of truth for it,
+and a number copied into this file is a number that drifts.
 
 ## See also
 
