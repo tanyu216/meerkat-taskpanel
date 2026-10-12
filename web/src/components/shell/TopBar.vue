@@ -148,12 +148,17 @@ function switchProject(id) {
       {{ $t("filters.label") }}
     </button>
 
-    <div class="tabs tabs-box h-8 min-h-8" data-view-toggle role="group" :aria-label="$t('topbar.view')">
+    <!-- daisyUI's `tabs tabs-box` carries the shell; `td-tabs`/`td-tab` state the
+         brand well and the pressed tab. The buttons stay `aria-pressed` toggles,
+         which daisyUI's activation vocabulary (`.tab-active`, `[aria-selected]`,
+         `[aria-current]`) does not read — so the selected state is the rule in
+         app.css, not a daisyUI class (R6 ①, B02). -->
+    <div class="tabs tabs-box td-tabs" data-view-toggle role="group" :aria-label="$t('topbar.view')">
       <button
         v-for="mode in ['board', 'list']"
         :key="mode"
         type="button"
-        class="tab h-full gap-1"
+        class="tab td-tab"
         :data-view="mode"
         :aria-pressed="view === mode ? 'true' : 'false'"
         @click="setView(mode)"

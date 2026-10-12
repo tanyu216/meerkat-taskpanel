@@ -108,19 +108,24 @@ onBeforeUnmount(() => {
   <div class="grid grid-cols-3 mt-auto border-t border-t-(--brand-border)" data-access-status>
     <button
       type="button"
-      class="flex flex-col items-center gap-0.5 px-1 py-2 border-0 bg-transparent text-inherit cursor-pointer text-[11px] focus-visible:outline-2 focus-visible:outline-(--brand-focus-ring) focus-visible:-outline-offset-2"
+      class="td-access-cell"
       data-theme-switch
       :data-theme-mode="themeMode"
       :aria-label="themeAria"
       :title="themeAria"
       @click="cycleTheme"
     >
+      <!-- The glyph's visibility is the **presence** of `hidden`, not its value
+           (the prototype's own markup, and `svg[data-theme-icon][hidden]` in
+           app.css). Binding the attribute's value would put a literal
+           `hidden="false"` on the glyph in force — and that attribute matches
+           the rule too, which is how all three glyphs disappeared (R6 ⑦). -->
       <svg
         v-for="mode in modes"
         :key="mode"
         class="td-icon size-3.5"
         :data-theme-icon="mode"
-        :hidden="themeMode !== mode"
+        v-bind="themeMode === mode ? {} : { hidden: true }"
         viewBox="0 0 24 24"
         aria-hidden="true"
         focusable="false"
@@ -133,12 +138,12 @@ onBeforeUnmount(() => {
           <path d="M8 20h8M12 16v4" />
         </template>
       </svg>
-      <span data-side-text data-theme-label>{{ $t(`access.theme.${themeMode}`) }}</span>
+      <span class="td-side-text" data-side-text data-theme-label>{{ $t(`access.theme.${themeMode}`) }}</span>
     </button>
 
     <button
       type="button"
-      class="flex flex-col items-center gap-0.5 px-1 py-2 border-0 border-s border-s-(--brand-border) bg-transparent text-inherit cursor-pointer text-[11px] focus-visible:outline-2 focus-visible:outline-(--brand-focus-ring) focus-visible:-outline-offset-2"
+      class="td-access-cell"
       data-lang-select
       ref="langTrigger"
       aria-haspopup="menu"
@@ -150,15 +155,15 @@ onBeforeUnmount(() => {
       <svg class="td-icon size-3.5" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
         <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM3 12h18M12 3c2.5 2.6 3.8 5.7 3.8 9S14.5 18.4 12 21c-2.5-2.6-3.8-5.7-3.8-9S9.5 5.6 12 3Z" />
       </svg>
-      <span data-side-text data-lang-label>{{ $t(`access.lang.short.${lang}`) }}</span>
-      <svg class="td-icon size-3.5 shrink-0 text-(--brand-text-3)" data-caret viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <span class="td-side-text" data-side-text data-lang-label>{{ $t(`access.lang.short.${lang}`) }}</span>
+      <svg class="td-icon size-3.5 td-caret" data-caret viewBox="0 0 24 24" aria-hidden="true" focusable="false">
         <path d="M6 9.5 12 15.5 18 9.5" />
       </svg>
     </button>
 
     <button
       type="button"
-      class="flex flex-col items-center gap-0.5 px-1 py-2 border-0 border-s border-s-(--brand-border) bg-transparent text-inherit cursor-pointer text-[11px] focus-visible:outline-2 focus-visible:outline-(--brand-focus-ring) focus-visible:-outline-offset-2"
+      class="td-access-cell"
       data-access-open
       aria-haspopup="dialog"
       :aria-label="$t('access.open')"
@@ -191,8 +196,8 @@ onBeforeUnmount(() => {
         <li v-for="option in langs" :key="option">
           <button
             type="button"
-            class="flex w-full cursor-pointer items-center gap-2 border-0 rounded-[6px] bg-transparent px-2 py-1 text-left hover:bg-(--brand-hover)"
-            :class="lang === option ? 'text-primary font-medium' : 'text-(--brand-text)'"
+            class="flex w-full cursor-pointer items-center gap-2 border-0 rounded-[6px] px-2 py-1 text-left hover:bg-(--brand-hover)"
+            :class="lang === option ? 'bg-(--brand-accent-soft) text-(--brand-accent) font-medium' : 'bg-transparent text-(--brand-text)'"
             :data-lang-option="option"
             :lang="option === 'zh' ? 'zh-CN' : 'en'"
             :aria-pressed="lang === option ? 'true' : 'false'"
