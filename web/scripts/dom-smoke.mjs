@@ -1275,13 +1275,21 @@ export async function run() {
 
     // ①-2/C3 — and a *real* pointer click on an inert point closes it. This is
     // the half the panel used to swallow.
-    await openMember("[data-project-switcher] > summary");
+    //
+    // Every probe below asserts that its own "open" step actually opened: a
+    // member left open by the *previous* failing check would let the next
+    // assertion pass for the wrong reason — the toggle would close it and the
+    // probe would read "closed" without the rule under test doing anything (the
+    // mutation proof's M1 caught exactly that).
+    const reopenedForReal = await openMember("[data-project-switcher] > summary");
+    r9Check(reopenedForReal.switcherOpen === true, "the switcher did not open again for the real-pointer probe");
     await page.mouse.click(4, 4);
     await page.waitForTimeout(80);
     r9Check((await readDismiss()).open === 0, "the switcher stayed open after a real pointer click outside");
 
     // ①-3/C6 — Escape closes it.
-    await openMember("[data-project-switcher] > summary");
+    const reopenedForEscape = await openMember("[data-project-switcher] > summary");
+    r9Check(reopenedForEscape.switcherOpen === true, "the switcher did not open again for the Escape probe");
     await page.keyboard.press("Escape");
     await page.waitForTimeout(80);
     r9Check((await readDismiss()).open === 0, "Escape left the switcher open");
@@ -1292,7 +1300,8 @@ export async function run() {
     r9Check(labelOpened.labelOpen === true, "the label filter did not open");
     await clickSynthetic("[data-filter-count]");
     r9Check((await readDismiss()).open === 0, "the label filter stayed open after a synthetic outside click");
-    await openMember("[data-filter-label] > summary");
+    const labelAgain = await openMember("[data-filter-label] > summary");
+    r9Check(labelAgain.labelOpen === true, "the label filter did not open again for the Escape probe");
     await page.keyboard.press("Escape");
     await page.waitForTimeout(80);
     r9Check((await readDismiss()).open === 0, "Escape left the label filter open");

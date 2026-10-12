@@ -19,8 +19,9 @@
  */
 import { computed } from "vue";
 
+import { dismissMemberFrom } from "../../lib/light-dismiss.js";
 import { activeFilterCount, board, labelRoster, PRIORITIES, totalVisible } from "../../stores/board.js";
-import { dismissMemberFrom, filtersOpen, pushToast } from "../../stores/ui.js";
+import { filtersOpen, pushToast } from "../../stores/ui.js";
 import { t } from "../../i18n/index.js";
 
 const assigneeOptions = ["all", "me", "human", "agent"];

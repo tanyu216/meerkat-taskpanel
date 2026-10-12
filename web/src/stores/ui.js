@@ -47,21 +47,6 @@ export function toggleFilters() {
   return filtersOpen.value;
 }
 
-/**
- * Close the floating control a just-activated option lives in.
- *
- * The other half of R9's dismissal rule: the prototype closes the panel on the
- * *choice* as well as on the click outside (`design/prototype/app.js` — the
- * project option's handler clears `open` before it switches, the label option's
- * handler calls `closeLabelMenu()`), because choosing is what the panel was open
- * for. It cannot be derived from the `data-dismiss-on-outside` attribute — the
- * click is *inside* the member — so each option site says it once.
- *
- * @param {Event} event a click event from an option inside the member
- */
-export function dismissMemberFrom(event) {
-  (event?.currentTarget ?? event?.target)?.closest?.("[data-dismiss-on-outside]")?.removeAttribute("open");
-}
 
 /** B19 access panel. */
 export const accessOpen = ref(false);
