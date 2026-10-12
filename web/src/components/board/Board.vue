@@ -25,7 +25,7 @@
  */
 import { computed, ref, watch } from "vue";
 
-import { allowedTargets, board, columns, moveTask, openDetail, totalVisible } from "../../stores/board.js";
+import { allowedTargets, board, columns, moveTask, openDetail, totalVisible, writeStatusFilter } from "../../stores/board.js";
 import { closeMoveMenu, moveMenu, openCreateTask, view } from "../../stores/ui.js";
 import Column from "./Column.vue";
 
@@ -80,6 +80,10 @@ function clearFilters() {
   board.filters.search = "";
   board.filters.assignee = "all";
   board.filters.priority = "all";
+  // R11 ① — the no-results block's own Clear is the same reset the bar's is, so
+  // the status set goes back to `all` here too (the prototype's `resetFilters()`
+  // covers all four fields; this is that reset without the toast).
+  writeStatusFilter([]);
   board.filters.label = "all";
 }
 

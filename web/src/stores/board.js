@@ -45,6 +45,25 @@ export const PRIORITIES = Object.freeze(["urgent", "high", "medium", "low", "non
 export const ME = "Terry";
 
 /**
+ * R11 ① — the status filter's value domain, in board order.
+ *
+ * The seven **stage** statuses, and deliberately not `awaiting`: the M1 overlay
+ * is a state a card wears while staying on its stage, so it is not an eighth
+ * column and not an eighth choice. This is the same derivation `COLUMN_STATUSES`
+ * carries, so the menu's rows and the board's columns cannot disagree — the
+ * contract's "no magic numbers" (R1) holds by construction, the way the
+ * prototype's menu-as-domain does (`design/fidelity-r11.md` §2.1).
+ */
+export const STATUS_FILTER_KEYS = COLUMN_STATUSES;
+
+/**
+ * R13 — the assignee control's four **static** values (B04's own domain).
+ * Anything else the control holds is a *given name*, written on demand: see
+ * `writeAssigneeFilter()` and `namedAssignee()` below.
+ */
+export const ASSIGNEE_STATIC_VALUES = Object.freeze(["all", "me", "human", "agent"]);
+
+/**
  * The card's **stage** — the status that names its column and its `data-status`.
  *
  * An `awaiting` card stays where it was (`in_progress`): the badge is an
@@ -104,7 +123,7 @@ export const board = reactive({
   error: null,
   revision: 0,
   connection: "closed",
-  filters: { search: "", assignee: "all", priority: "all", label: "all" },
+  filters: { search: "", assignee: "all", priority: "all", status: "all", label: "all" },
   selectedRef: null,
   drawerState: "closed",
   detail: null,
@@ -145,6 +164,62 @@ export function priorityOf(task) {
 
 /* ----------------------------------------------------------- filtered board */
 
+/**
+ * R11 ① — the chosen statuses, in board order.
+ *
+ * `all` (and the empty string) is the un-filtered resting value, so the clause is
+ * skipped rather than special-cased. Any other value is the comma-joined
+ * selection, **restated in menu order on the way out** — one set is always one
+ * string however it was built, which is what the control's own attribute holds
+ * (`design/fidelity-r11.md` §2.1, `design/fidelity-r13.md` §2.8).
+ *
+ * @returns {string[]}
+ */
+export function statusFilterValues() {
+  const raw = board.filters.status || "all";
+  if (raw === "all") return [];
+  const chosen = String(raw).split(",");
+  return STATUS_FILTER_KEYS.filter((key) => chosen.includes(key));
+}
+
+/**
+ * R11 ① — the single writer of the status condition. `[]` writes `all` (the
+ * un-filtered state, the same thing a press on the menu's `all` row means).
+ *
+ * @param {readonly string[]} values
+ */
+export function writeStatusFilter(values) {
+  const chosen = STATUS_FILTER_KEYS.filter((key) => values.includes(key));
+  board.filters.status = chosen.length ? chosen.join(",") : "all";
+}
+
+/** The assignee control's current value, with `""`/`null` read as `all`. */
+export function assigneeFilterValue() {
+  const value = board.filters.assignee;
+  return value == null || value === "" ? "all" : String(value);
+}
+
+/**
+ * R13 — write the assignee condition. Apart from the four static values this
+ * accepts a **given name** (the roster's own names), which is what makes the
+ * roster press a narrowing as well as a route (`design/fidelity-r13.md` §2.2).
+ *
+ * @param {string} value
+ */
+export function writeAssigneeFilter(value) {
+  board.filters.assignee = value;
+}
+
+/**
+ * R13 — the given name the control states, or `null` when it holds one of the
+ * four static values. This is the **one** reading that drives both the named
+ * `<option>` and the bar's `x`, so the control and its removal affordance can
+ * never contradict each other (`design/fidelity-r13.md` §2.8).
+ */
+export const namedAssignee = computed(() =>
+  ASSIGNEE_STATIC_VALUES.includes(board.filters.assignee) ? null : board.filters.assignee,
+);
+
 function matchesSearch(task, needle) {
   if (needle === "") return true;
   const hay = [task.identifier, task.title, ...(task.labels ?? [])].join(" ").toLowerCase();
@@ -154,15 +229,31 @@ function matchesSearch(task, needle) {
 export const visibleTasks = computed(() => {
   const { search, assignee, priority, label } = board.filters;
   const needle = search.trim().toLowerCase();
+  const byStatus = statusFilterValues();
   return board.tasks.filter((task) => {
     if (!matchesSearch(task, needle)) return false;
+    /* R13 — `me` is the local human, the two *kinds* compare the assignee's kind,
+     * and everything else the control holds is a given name compared against the
+     * card's own assignee. Before R13 the third arm did not exist: a name matched
+     * nothing and every row came through, which is the defect Terry reported
+     * (`design/fidelity-r13.md` §2.6). */
     if (assignee !== "all") {
       const name = task.assignee?.display_name ?? "";
-      if (assignee === "me" && name !== ME) return false;
-      if (assignee === "human" && task.assignee?.kind !== "human") return false;
-      if (assignee === "agent" && task.assignee?.kind !== "agent") return false;
+      if (assignee === "me") {
+        if (name !== ME) return false;
+      } else if (assignee === "human" || assignee === "agent") {
+        if (task.assignee?.kind !== assignee) return false;
+      } else if (name !== assignee) {
+        return false;
+      }
     }
     if (priority !== "all" && priorityOf(task) !== priority) return false;
+    /* R11 ① — multiple choice is **OR** (a card passes when it is in *any* chosen
+     * status), and it is ANDed with the clauses above. The comparison is against
+     * the card's own **stage** — the value `[data-card][data-status]` carries —
+     * so the list after a roster route shows the same cards the board's
+     * `in_progress` / `in_review` columns show, M1's `awaiting` overlay included. */
+    if (byStatus.length && !byStatus.includes(stageOf(task))) return false;
     if (label !== "all" && !(task.labels ?? []).some((l) => l.toLowerCase() === label.toLowerCase())) return false;
     return true;
   });
@@ -238,8 +329,14 @@ export async function loadWaitingPayloads() {
 }
 
 export const activeFilterCount = computed(() => {
-  const { search, assignee, priority, label } = board.filters;
-  return [search.trim() !== "", assignee !== "all", priority !== "all", label !== "all"].filter(Boolean).length;
+  const { search, assignee, priority, status, label } = board.filters;
+  return [
+    search.trim() !== "",
+    assignee !== "all",
+    priority !== "all",
+    status !== "all",
+    label !== "all",
+  ].filter(Boolean).length;
 });
 
 /** The label roster, read off the dictionary plus what the cards already carry. */

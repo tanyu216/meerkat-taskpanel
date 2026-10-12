@@ -345,3 +345,74 @@ targets — whose 11 diffs are the ones the contract's §5.3 asks to put on scre
 from the `wrap → nowrap` / `visible → auto` declarations the round itself makes on
 `[data-filters]`, and `+1` from the `overflow` shorthand following them. **No existing target's
 diff count changed** except `filters`, where the four new rows *are* the round's decision.
+
+## 9. The R11/R13 additions — the status filter, the roster route and the named assignee
+(`T-20261013-014701-3`, 2026-10-13)
+
+Three blocks (`B03-r13`, `B04-r11`, `B04-r13`) and four `style.targets` entries
+(`r11-status-trigger`, `r11-roster-name`, `r13-assignee-item`, `r13-assignee-clear`), one set per
+item of the two contracts this round ports in one commit (`design/fidelity-r11.md` §2.1/§2.2 and
+`design/fidelity-r13.md` §2.1/§2.4/§2.9). `styleProps` needed nothing new: every property the four
+targets are read for is already in `.ui-align.json`'s list.
+
+**One existing block was retargeted, not loosened.** `B04-r9`'s three class-scoped checks
+(`.td-label-trigger` count, the `span` / `[data-filter-label-summary]` inside it, and
+`.td-label-trigger > .td-icon-sm`) were written when exactly one control wore the family shell.
+R11 ① §4.1 R4 puts the **status** control in the same `.td-label-trigger` shell — that shared
+shell *is* how the bar's four field controls stay one height — so "the document has one
+`.td-label-trigger`" stopped being true. The fact the three checks assert was never "one trigger in
+the document"; it was "the label control's trigger wears the shell, carries the value as plain
+text, and has its own caret". They are now stated over `[data-filter-label]`, the label control's
+own hook, and each still counts exactly 1. The same retarget was applied to `dom-smoke.mjs`'s R9
+probe for the same reason.
+
+| which fact | instrument |
+|---|---|
+| the status control is in the bar, has 8 rows (`all` + the seven first-class statuses) with the seven value-qualified rows in board order, joins the light-dismiss membership, and carries its value on its own `data-filter-status-value` | **this manifest** — `B04-r11`, the six-word vocabulary |
+| the roster's one-name-button-per-item structure, and that a roster item holds **no** second button (the `x` lives in the bar) | **this manifest** — `B03-r13`, plus `count … == 0` scoped to `[data-agents-presence]` for the `x` |
+| the named option is generated **on demand** (0 at rest) and the one `[data-assignee-clear]` is the assignee control's **adjacent sibling**, `hidden` at rest | **this manifest** — `B04-r13` |
+| the status domain equals the board's own (the seven columns' and the cards' `data-status` set), the named option's hook name is not B22's, the roster host clips nothing, one name button per item | **`test/web/blocks.contract.mjs`** — `order`/`domain` rules read off `DOMAINS.STATUS`, `computed` rules on `[data-agent-assignee]`/`[data-agent-text]`, evaluated by the same harness |
+| computed style, both sides, prototype as oracle | **`style.targets`** — the four new names; the diffs they add are the round's own decisions (the trigger 30→32px, the roster button's 18→21px line, the capsule item's inline box) |
+| the rest: the route's four steps and its AND semantics, the toggle-off, `x` clearing the assignee alone, the capsule's width neutrality (`clippedPx == 0` at every tier), the row-height delta, the U-6 correction (a first-in-row capsule bleeding 6px with its cap intact), and the eight status rows' OR | **the driven layer** — `web/scripts/dom-smoke.mjs`'s R11/R13 section, the only leg that can press a control and read the result |
+
+**Where R11/R13 stand** (`T-20261013-014701-3`, 2026-10-13):
+
+| | |
+|---|---|
+| blocks | 37 — all `delivered`, none `pending` |
+| assertions | 221 · failures **0** |
+| overflow / console | 0 failures at all five widths |
+| computed style | 46 of 1088 compared properties differ (95.8%) — **non-blocking** |
+
+**34 → 37 blocks / 200 → 221 assertions** (this lane's reading on the *unretargeted* manifest →
+this one: the three new blocks and their 21 checks minus the one class-scoped row the retarget
+replaced). The style count moved 32/952 → 46/1088: `+4` targets and `+14` diffs. **No existing
+target's diff count changed**, and the three `B04-r9` failures the unretargeted manifest produced
+against this round's code are gone.
+
+The 14 new diffs, registered rather than fixed (the contracts' §5.2 asks for the registration, and
+each is one of three known shapes):
+
+* `r11-status-trigger` **2** — `height 30→32px` and the hairline's `borderColor`. The first is the
+  **same approved deviation `r9-label-trigger` already carries** (the implementation's field family
+  is 32px on the 4px grid, the prototype's 30px); R11 §2.1 asks for the status control to wear that
+  family's shell, so it inherits the deviation by construction. The second is the R9 hairline
+  (`--brand-border-strong` vs the prototype's lighter line), also shared with `r9-label-trigger`.
+  **This is not `r9-label-trigger` counted twice**: that target is the *label* summary and this one
+  is the *status* summary — two different elements of the bar (the R12 note's warning is against
+  registering one element under two names, which this is not). The two readings coincide because
+  the two controls are deliberately one component.
+* `r11-roster-name` **7** and `r13-assignee-item` **5** — the roster row's **face**: `fontSize
+  12→14px`, `lineHeight 18→21px`, `letterSpacing -0.12→normal`, the ink's `color`/`borderColor`,
+  and the box those produce (`28×18 → 42×21`; the fixture's first roster name also differs —
+  the prototype's row starts at `jobs`, the implementation's at `linus`). R11 §5 B-7 states the
+  12px face, which the prototype gets from `.td-agent-row`; the implementation's roster row has
+  carried the base 14px since M2 and this round does **not** change it — the round's own
+  acceptance is the name's clickability, the capsule and the clipping, and the row's face is a
+  B03 question the card does not open. The target exposes it; it does not create it.
+* `r13-assignee-clear` **0** — the one target of the four that is fully aligned, because the `x`
+  is a static 14px glyph with no colour of its own at rest.
+
+The capsule itself has no target: at rest no `[data-assignee-item]` is active, and the width
+neutrality, the 999px bed, the accent ink and the U-6 correction are all measured live in
+`web/scripts/dom-smoke.mjs`'s R11/R13 section (where the capsule is actually on screen).
