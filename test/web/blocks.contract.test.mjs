@@ -11,10 +11,11 @@
  *
  * BLOCKS.md's header contradicts its own body and the shipped DOM. It claims
  * "**252** `data-i18n*` hooks" and "**198** catalogue keys"; measured against
- * `design/prototype/index.html` and `design/prototype/app.js`, the document carries **606**
- * `data-i18n*` attributes (389 `data-i18n` + 144 `-arg` + 47 `-aria-label` +
- * 8 `-placeholder` + 18 `-title`) and the catalogue holds **214 keys per language**
- * (en = 214, zh = 214, exact parity — which is what the *body* says). Only the
+ * `design/prototype/index.html` and `design/prototype/app.js`, the document carries **607**
+ * `data-i18n*` attributes (390 `data-i18n` + 144 `-arg` + 47 `-aria-label` +
+ * 8 `-placeholder` + 18 `-title`) and the prototype's `MESSAGES` holds **215 keys per
+ * language** (en = 215, zh = 215, exact parity — which is what the *body* says; the
+ * shipped extraction of it is 198, the prototype-only keys removed). Only the
  * "7 columns · 18 cards · 18 detail templates" line survives measurement. A contract
  * that quoted "252" or "198" would be wrong the day it was written, and one that
  * asserted "18 cards" would freeze a demo fixture into the spec. So every count in the
@@ -22,10 +23,18 @@
  * 2 views, 2 languages, 3 editor modes), a relation the rule kind expresses without a
  * number, or a `manual` note; the stale claims are exported as `STALE_PROSE_COUNTS` and
  * this suite proves none of them leaked into a rule.
+ *
+ * **Those recorded numbers are re-measured, never restated.** The counts in
+ * `STALE_PROSE_COUNTS` are claims about two files, so the suite reads those files and
+ * compares — see "the recorded counts are re-measured". The earlier form compared the
+ * records against a literal written beside them in this file, so when the prototype
+ * grew a hook and a key the record drifted with nothing to catch it (review D1 of
+ * 2da2a89: recorded 606/389/214 against a measured 607/390/215).
  */
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import test, { describe, it } from "node:test";
@@ -81,6 +90,89 @@ function declaredSelectors() {
   }
   for (const hook of AUXILIARY_HOOKS) out.push({ at: "AUXILIARY_HOOKS", selector: hook.selector });
   return out;
+}
+
+/* ------------------------------------------------ re-measuring the recorded counts */
+
+/**
+ * The two documents `STALE_PROSE_COUNTS` records numbers *about* — the only place its
+ * `measured` values can be checked against something other than themselves.
+ *
+ * `.dockerignore` excludes `design/`, so the tests that read them self-skip inside the
+ * container image ("absent tool ⇒ SKIP, never FAIL", as in `i18n.catalogue.test.mjs`)
+ * and run on every full checkout — which is where the CI `check` job measures them.
+ */
+const PROTOTYPE_INDEX = resolve(HERE, "../../design/prototype/index.html");
+const PROTOTYPE_APP = resolve(HERE, "../../design/prototype/app.js");
+const HAS_PROTOTYPE = existsSync(PROTOTYPE_INDEX) && existsSync(PROTOTYPE_APP);
+
+/** The five attributes that make up the document's `data-i18n*` hook surface. */
+const I18N_HOOK_ATTRIBUTES = [
+  "data-i18n",
+  "data-i18n-arg",
+  "data-i18n-aria-label",
+  "data-i18n-placeholder",
+  "data-i18n-title",
+];
+
+/**
+ * How many `attribute="…"` seats a document carries. The `="` is part of the match, so
+ * `data-i18n` never counts the `data-i18n-arg` seats beside it — the same scan the
+ * catalogue suite runs over the same file.
+ */
+function countHookSeats(html, attribute) {
+  return [...html.matchAll(new RegExp(`${attribute}="`, "g"))].length;
+}
+
+/**
+ * The `{ … }` literal starting at the first `{` at or after `from`, brace-matched.
+ * Mirrors the extractor in `i18n.catalogue.test.mjs`: string bodies and comments are
+ * stepped over, so a brace inside a translated string cannot end the literal early.
+ */
+function objectLiteralAt(source, from) {
+  const start = source.indexOf("{", from);
+  assert.notEqual(start, -1, "no object literal found at the requested offset");
+  let depth = 0;
+  for (let i = start; i < source.length; i++) {
+    const c = source[i];
+    if (c === '"' || c === "'") {
+      i += 1;
+      while (i < source.length && source[i] !== c) i += source[i] === "\\" ? 2 : 1;
+      continue;
+    }
+    if (c === "/" && source[i + 1] === "*") {
+      i = source.indexOf("*/", i + 2);
+      if (i === -1) break;
+      i += 1;
+      continue;
+    }
+    if (c === "/" && source[i + 1] === "/") {
+      i = source.indexOf("\n", i);
+      if (i === -1) break;
+      continue;
+    }
+    if (c === "{") depth += 1;
+    else if (c === "}" && --depth === 0) return source.slice(start, i + 1);
+  }
+  assert.fail("unterminated object literal");
+}
+
+/** The `en` / `zh` key counts of the prototype's `var MESSAGES = { … }` literal. */
+function messageKeyCounts(appSource) {
+  const marker = "var MESSAGES = ";
+  const at = appSource.indexOf(marker);
+  assert.notEqual(at, -1, "design/prototype/app.js no longer declares MESSAGES");
+  const literal = objectLiteralAt(appSource, at + marker.length);
+
+  const enAt = literal.search(/\n\s*en:\s*\{/);
+  const zhAt = literal.search(/\n\s*zh:\s*\{/);
+  assert.ok(enAt !== -1 && zhAt !== -1 && enAt < zhAt, "MESSAGES must declare en before zh");
+
+  const keyLines = (body) => [...body.matchAll(/^\s*"([^"]+)"\s*:/gm)].map((m) => m[1]);
+  const en = keyLines(literal.slice(enAt, zhAt));
+  const zh = keyLines(literal.slice(zhAt));
+  assert.ok(en.length > 0 && zh.length > 0, "the MESSAGES scan found no keys — it is broken");
+  return { en, zh };
 }
 
 describe("web/blocks.contract — module hygiene", () => {
@@ -432,6 +524,20 @@ describe("web/blocks.contract — the browser layer is a separate export", () =>
   });
 });
 
+/** The stale record whose claim matches `pattern`, or a failure naming the pattern. */
+function staleEntry(pattern) {
+  const entry = STALE_PROSE_COUNTS.find((record) => pattern.test(record.claim));
+  assert.ok(entry, `STALE_PROSE_COUNTS must record the claim matching ${pattern}`);
+  return entry;
+}
+
+/** The per-attribute numbers a hooks `detail` spells out (`390 \`data-i18n\` + …`). */
+function recordedBreakdown(detail) {
+  const parts = [...detail.matchAll(/(\d+)\s*`/g)].map((match) => Number(match[1]));
+  assert.ok(parts.length >= 2, `the hooks detail must break the total down: ${detail}`);
+  return parts;
+}
+
 describe("web/blocks.contract — the stale prose counts never became assertions", () => {
   it("documents the discrepancy rather than repeating it", () => {
     assert.ok(STALE_PROSE_COUNTS.length >= 2);
@@ -442,11 +548,9 @@ describe("web/blocks.contract — the stale prose counts never became assertions
     }
     const stale = STALE_PROSE_COUNTS.filter((entry) => entry.verdict === "stale");
     assert.ok(stale.length >= 2, "the i18n and catalogue counts are both stale");
-    assert.deepEqual(
-      stale.map((entry) => entry.measured),
-      [606, 214],
-      "the measured values are the ones in the module header",
-    );
+    // The recorded values themselves are *not* asserted here: they are claims about
+    // two files, so they are checked against those files below.
+    assert.ok(staleEntry(/data-i18n\*/) && staleEntry(/catalogue keys/), "both stale claims must be recorded");
   });
 
   it("does not quote a stale number in any rule", () => {
@@ -465,6 +569,75 @@ describe("web/blocks.contract — the stale prose counts never became assertions
       item.rules.flatMap((rule) => Object.values(rule).filter((value) => typeof value === "number")),
     );
     assert.ok(Math.max(...numbers) < Math.min(...staleNumbers), "no structural bound may reach the stale range");
+  });
+});
+
+/**
+ * The recorded counts are re-measured from the documents they describe.
+ *
+ * This is what keeps the record honest, and the reason it is not a `deepEqual`
+ * against a list of numbers written beside it: a literal in this file is the same
+ * source as the record it checks, so the two drift together and the suite stays
+ * green. Review D1 of 2da2a89 is exactly that — the record said 606/389/214 while the
+ * documents carried 607/390/215, and every assertion still passed. Here the numbers
+ * come only from `design/prototype/index.html` and `design/prototype/app.js`, so a
+ * document that grows a hook or a key fails the suite until the record follows.
+ */
+describe(
+  "web/blocks.contract — the recorded counts are re-measured against the documents",
+  { skip: HAS_PROTOTYPE ? false : "design/prototype/ is not present" },
+  () => {
+    it("counts the data-i18n* seats in design/prototype/index.html", (t) => {
+      const html = readFileSync(PROTOTYPE_INDEX, "utf8");
+      const measured = new Map(I18N_HOOK_ATTRIBUTES.map((attribute) => [attribute, countHookSeats(html, attribute)]));
+      const total = [...measured.values()].reduce((sum, count) => sum + count, 0);
+      t.diagnostic(`re-measured data-i18n* seats: ${total} (${[...measured].map(([a, n]) => `${n} ${a}`).join(" + ")})`);
+
+      const entry = staleEntry(/data-i18n\*/);
+      assert.equal(entry.measured, total, "the recorded hook total is not what the document carries");
+      // The breakdown is part of the record, so it is measured too: the recorded
+      // numbers must *be* the per-attribute counts, not merely sum to the same total
+      // — the half-updated "389 beside 606" is precisely the case that slips past a
+      // sum.
+      assert.deepEqual(
+        recordedBreakdown(entry.detail).sort((a, b) => a - b),
+        [...measured.values()].sort((a, b) => a - b),
+        `the recorded breakdown is not the document's: ${entry.detail}`,
+      );
+    });
+
+    it("counts the MESSAGES keys in design/prototype/app.js", (t) => {
+      const { en, zh } = messageKeyCounts(readFileSync(PROTOTYPE_APP, "utf8"));
+      t.diagnostic(`re-measured prototype MESSAGES keys: en ${en.length} / zh ${zh.length}`);
+
+      assert.deepEqual(en, zh, "the prototype's two languages must mirror key for key, in order");
+      assert.equal(staleEntry(/catalogue keys/).measured, en.length, "the recorded key count is not the prototype's");
+    });
+  },
+);
+
+/**
+ * The same record, checked with no document at all — the half that still runs in the
+ * container image, where `design/` is absent. It cannot see the documents, so it
+ * proves the two halves of each record agree with each other rather than with the
+ * files; the document-derived block above is what pins them to reality.
+ */
+describe("web/blocks.contract — the record is internally consistent without the documents", () => {
+  it("states a breakdown that adds up to the recorded hook total", () => {
+    const entry = staleEntry(/data-i18n\*/);
+    const parts = recordedBreakdown(entry.detail);
+    assert.equal(parts.reduce((sum, count) => sum + count, 0), entry.measured, "the stated breakdown no longer sums to the recorded total");
+  });
+
+  it("states a per-language key count equal to the recorded one", () => {
+    const entry = staleEntry(/catalogue keys/);
+    const stated = [...entry.detail.matchAll(/\ben = (\d+) and zh = (\d+)\b/g)];
+    assert.equal(stated.length, 1, `the keys detail must state both languages: ${entry.detail}`);
+    assert.deepEqual(
+      stated[0].slice(1).map(Number),
+      [entry.measured, entry.measured],
+      "the stated en/zh counts must be the recorded one",
+    );
   });
 });
 
