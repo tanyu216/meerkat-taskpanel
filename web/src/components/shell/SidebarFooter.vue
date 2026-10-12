@@ -173,37 +173,44 @@ onBeforeUnmount(() => {
   </div>
 
   <!-- The floating language menu: at the end of the document, outside the
-       sidebar's scroll container, and never wrapping its own trigger. -->
+       sidebar's scroll container, and never wrapping its own trigger. It is a
+       **menu**, so it carries a daisyUI `ul.menu` list with one `li` per option
+       — the same shell the other three floating menus use, and the one the
+       prototype spells out (`index.html:3305-3321`, DESIGN.md §"The language
+       menu is a menu"). The `li` hosts the button the list rows are struck
+       from; without it the options hang directly off the container. -->
   <Teleport to="body">
     <div
       ref="langMenu"
-      class="dropdown absolute z-[60] min-w-[148px] p-1 border border-(--brand-border) rounded-lg bg-(--brand-surface) [box-shadow:var(--shadow-pop)]"
+      class="dropdown absolute z-[60] border border-(--brand-border) rounded-lg bg-(--brand-surface) [box-shadow:var(--shadow-pop)]"
       data-lang-menu
       :style="menuStyle"
       :hidden="!langOpen"
     >
-      <button
-        v-for="option in langs"
-        :key="option"
-        type="button"
-        class="flex w-full cursor-pointer items-center gap-2 border-0 rounded-[6px] bg-transparent px-2 py-1 text-left hover:bg-(--brand-hover)"
-        :class="lang === option ? 'text-primary font-medium' : 'text-(--brand-text)'"
-        :data-lang-option="option"
-        :lang="option === 'zh' ? 'zh-CN' : 'en'"
-        :aria-pressed="lang === option ? 'true' : 'false'"
-        @click="chooseLang(option)"
-      >
-        <span class="flex-1 text-[13px]">{{ $t(`access.lang.${option}`) }}</span>
-        <svg
-          class="td-icon size-3.5"
-          :class="lang === option ? 'visible' : 'invisible'"
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-          focusable="false"
-        >
-          <path d="M5 13l4.5 4.5L19 7" />
-        </svg>
-      </button>
+      <ul class="menu min-w-[148px] p-1" :aria-label="$t('access.lang.group')">
+        <li v-for="option in langs" :key="option">
+          <button
+            type="button"
+            class="flex w-full cursor-pointer items-center gap-2 border-0 rounded-[6px] bg-transparent px-2 py-1 text-left hover:bg-(--brand-hover)"
+            :class="lang === option ? 'text-primary font-medium' : 'text-(--brand-text)'"
+            :data-lang-option="option"
+            :lang="option === 'zh' ? 'zh-CN' : 'en'"
+            :aria-pressed="lang === option ? 'true' : 'false'"
+            @click="chooseLang(option)"
+          >
+            <span class="flex-1 text-[13px]">{{ $t(`access.lang.${option}`) }}</span>
+            <svg
+              class="td-icon size-3.5"
+              :class="lang === option ? 'visible' : 'invisible'"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path d="M5 13l4.5 4.5L19 7" />
+            </svg>
+          </button>
+        </li>
+      </ul>
     </div>
   </Teleport>
 </template>

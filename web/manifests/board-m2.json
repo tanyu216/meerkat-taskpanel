@@ -746,25 +746,30 @@
     },
     {
       "id": "B03-lang-menu",
-      "name": "语言菜单 = 文档末尾浮动容器（刻意离开侧栏滚动容器，避免裁剪）",
-      "evidence": "design/prototype/index.html 文档末尾 `<div class=\"dropdown\" data-lang-menu hidden>`（不含触发器）；实现 SidebarFooter.vue `<details class=\"td-details\" data-lang-menu>`（触发器被包在里面，菜单留在侧栏内）",
+      "name": "语言菜单 = 文档末尾浮动容器（刻意离开侧栏滚动容器，避免裁剪），内容是 `.menu` 列表",
+      "evidence": "design/prototype/index.html 文档末尾 `<div class=\"dropdown\" data-lang-menu hidden>` 内 `<ul class=\"menu td-lang-menu\" data-i18n-aria-label=\"access.lang.group\">` + 两个 `<li>`（不含触发器）；实现 SidebarFooter.vue 同构：`div[data-lang-menu]` 内 `<ul class=\"menu min-w-[148px] p-1\">` + 两个 `<li>`，触发器留在 `[data-lang-select]`。设计依据 DESIGN.md「The language menu is a menu. `[data-lang-menu]` is a plain `.menu` list」；G1 裁定见 T-20261012-174913 report.md §G1",
       "status": "delivered",
       "checks": [
         {
           "selector": "div[data-lang-menu]",
           "count": 1,
-          "desc": "【M2 目标态】菜单容器是 `div`（实测：prototype=1，impl=0——impl 为 details）"
+          "desc": "菜单容器是 `div`（实测：prototype=1）"
         },
         {
           "scope": "[data-sidebar]",
           "selector": "[data-lang-menu]",
           "count": 0,
-          "desc": "【M2 目标态】菜单**不得**留在 `[data-sidebar]`（滚动容器）内 —— 原型 0，impl 1。这一条正是 M0 记的『低视口裁剪』风险的机检表达；裁剪本身仍需驱动式截图"
+          "desc": "菜单**不得**留在 `[data-sidebar]`（滚动容器）内 —— 原型 0。这一条正是 M0 记的『低视口裁剪』风险的机检表达；裁剪本身仍需驱动式截图"
         },
         {
-          "selector": "[data-lang-menu] > [data-lang-option]",
+          "selector": "[data-lang-menu] [data-lang-option]",
           "min": 2,
-          "desc": "菜单容器直接持有选项（原型：选项是菜单的子元素，触发器不在其中）"
+          "desc": "菜单容器内持有选项（原型：选项在 `ul.menu > li` 之下，故用后代组合）。原文为子代组合 `[data-lang-menu] > [data-lang-option]`，原型计数为 0、只有丢掉菜单壳的实现才为 2 —— 该断言把偏离写成了目标态，已于 G1 改写（T-20261012-174913 report.md §G1）"
+        },
+        {
+          "selector": "[data-lang-menu] > ul.menu > li",
+          "count": 2,
+          "desc": "【M2 目标态】菜单壳是 `.menu` 列表，一行一个 `li`（原型 2）"
         }
       ]
     },
@@ -823,37 +828,40 @@
     },
     {
       "id": "B09-m2",
-      "name": "抽屉三处弱化：附件行、活动流（本地化句 + 相对时间）、props 容器语义",
-      "evidence": "design/prototype/index.html `[data-detail-attachments]` 内 2 个 `.td-file` 行；`[data-detail-activity]` 内 4 个 `.td-activity` 行、每行含 `.td-activity-ts`（`title` + 相对时间）与 `data-i18n=\"activity.*\"` 句子；`[data-detail-props]` 为 `<div class=\"td-props\">`。实现 DetailDrawer.vue 只渲染 `attachments.none` 占位、活动流为 `actor · event` 原始串、props 为 `<dl>`",
-      "status": "pending",
+      "name": "抽屉弱化：附件区不留空占位、props 容器语义（数据驱动行已迁驱动层，见 drivenChecks）",
+      "evidence": "design/prototype/index.html `[data-detail-attachments]` 内 2 个附件行；`[data-detail-activity]` 内 4 个活动行、每行含相对时间（`title` + 相对时间）与 `data-i18n=\"activity.*\"` 句子；`[data-detail-props]` 为 `<div class=\"td-props\">`（原型 :2280）。实现 DetailDrawer.vue 同构：`div[data-detail-props]`（:156，注释写明保留 `div` 的决定）、附件行 `[data-attachment-row]`（:265）、活动行 `[data-activity-row]` + `[data-activity-ts]`（:296/:300）",
+      "status": "delivered",
       "checks": [
         {
           "scope": "[data-detail-attachments]",
           "selector": "[data-i18n=\"attachments.none\"]",
           "count": 0,
-          "desc": "【M2 目标态】附件区不得只留占位。原状：`*:not([data-i18n=…])` 形式**会被区块标题 `<h3>` 满足**（首轮实测 count=1 ⇒ 假绿），故改成本条 + 下一条的组合"
+          "desc": "【M2 目标态】附件区不得只留占位。原状：`*:not([data-i18n=…])` 形式**会被区块标题 `<h3>` 满足**（首轮实测 count=1 ⇒ 假绿），故改成这条；与它配对的那条（附件行在位）只在开抽屉 + 带附件的 fixture 下可观测，已移入 drivenChecks"
         },
+        {
+          "selector": "div[data-detail-props]",
+          "count": 1,
+          "desc": "【M2 目标态】props 容器回到原型的 `div`（实测：prototype=1）。实现即 `div[data-detail-props]`（DetailDrawer.vue:156，注释写明『prototype 是 `<div>`，非定义列表』的决定）；若日后改回 `<dl>`，须并入 §4 书面偏差清单送批（契约 §5 已记为待裁项）"
+        }
+      ],
+      "drivenChecks": [
         {
           "scope": "[data-detail-attachments]",
           "selector": "[data-attachment-row]",
           "min": 1,
-          "desc": "【M2 目标态】附件行在位（原型 `.td-file` 实测 2；impl 0）。⚠️ 类名非语义钩子 —— 建议 M2 同步把 `data-attachment-row` 立为钩子，本条届时换成属性选择器（契约 §4 已记）；⚠️ 需 fixture 带附件，否则该条只能停在 SKIP"
+          "desc": "附件行在位（原型 2 行；实现 DetailDrawer.vue:265）。本条与下面两条**只在开抽屉时存在**：ui-align 引擎只跑 rest 态且不能点击（工具 README §10），故达标仪器是**驱动层**，不是本清单 —— 由 `test/web/blocks.contract.mjs` B09 的四条 `when: \"drawer open\"` 规则承接（`:731` `[data-attachment-row]`、`:738` `[data-activity-row]`、`:745` `[data-activity-ts]`、`:752` 附件占位 `equals: 0`），经 `web/scripts/dom-smoke.mjs` 在开卡↔关抽屉之间求值，跑在 `npm test` 里。移除而非注解的依据见 T-20261012-174913 report.md §G2；引擎不读本数组，它在这里只为让缺口仍可数"
         },
         {
           "scope": "[data-detail-activity]",
           "selector": "[data-activity-ts]",
           "min": 1,
-          "desc": "【M2 目标态】活动行带相对时间节点（原型 4/4）。⚠️ 类名非语义钩子：建议 M2 同时把 `data-activity-ts` 立为钩子，本条届时换成属性选择器（契约 §4 已记）"
+          "desc": "活动行带相对时间节点（原型 4/4；实现 DetailDrawer.vue:300）—— 仪器同上：驱动层 `blocks.contract.mjs` B09 `when: \"drawer open\"`"
         },
         {
-          "selector": "[data-detail-activity] [data-activity-row]",
+          "scope": "[data-detail-activity]",
+          "selector": "[data-activity-row]",
           "min": 1,
-          "desc": "【M2 目标态】活动行渲染为行元素而非纯文本串（同上，建议升为 `data-activity-row`）"
-        },
-        {
-          "selector": "div[data-detail-props]",
-          "count": 1,
-          "desc": "【M2 目标态】props 容器回到原型的 `div`（实测：prototype=1，impl=0 —— impl 为 `<dl>`）。若 M2 决定保留 `<dl>` 的语义改良，须并入 §4 书面偏差清单送批（契约 §5 已记为待裁项）"
+          "desc": "活动行渲染为行元素而非纯文本串（实现 DetailDrawer.vue:296）—— 仪器同上：驱动层 `blocks.contract.mjs` B09 `when: \"drawer open\"`"
         }
       ]
     }
