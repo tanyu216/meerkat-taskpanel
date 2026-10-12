@@ -39,12 +39,12 @@ function onDrop(event) {
 
 <template>
   <section
-    class="flex max-h-full flex-[0_0_268px] flex-col border border-(--brand-border) rounded-lg bg-(--brand-sunken) data-[drag-over=true]:border-(--brand-border-strong)"
+    class="flex min-h-0 w-[300px] flex-[0_0_300px] flex-col border border-(--brand-border) rounded-lg p-2 bg-(--brand-sunken) data-[drag-over=true]:border-(--brand-border-strong)"
     data-column
     :data-status="column.status"
     :data-drag-over="dragOver ? 'true' : 'false'"
   >
-    <header class="flex items-center gap-2 p-2" data-column-header>
+    <header class="flex h-7 flex-none items-center gap-2 py-0 pr-0.5 pl-1" data-column-header>
       <span class="status td-status-dot" data-column-dot aria-hidden="true"></span>
       <!-- The column name is the heading of its column, so it is an `<h2>`, not
            a `<span>`: the outline of the board is seven headings, one per status
@@ -72,9 +72,9 @@ function onDrop(event) {
     <!-- daisyUI `progress`; `progress-xs` is the 4px bar the design uses. The bar
          is decoration — the count badge and `[data-column-count]` already state
          the number — so it is hidden from assistive technology. -->
-    <progress class="progress progress-xs mx-2 mb-2 h-1 accent-(--status-color)" data-column-progress aria-hidden="true" :value="count" :max="progressMax"></progress>
+    <progress class="progress progress-xs mb-2 h-1 accent-(--status-color)" data-column-progress aria-hidden="true" :value="count" :max="progressMax"></progress>
 
-    <div class="flex flex-col gap-2 overflow-y-auto px-2 pb-2" data-column-body @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
+    <div class="flex min-h-[120px] flex-col gap-2 mt-1 overflow-y-auto p-0.5" data-column-body @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
       <Card
         v-for="task in column.tasks"
         :key="task.id"
