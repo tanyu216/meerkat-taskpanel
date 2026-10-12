@@ -247,25 +247,31 @@
 
         <section>
           <h2 class="td-side-label" data-i18n="sidebar.agents">Active agents</h2>
+          <!-- R11 ② — every roster name is its own button. The row still reads as
+               one sentence (the separators are the same commas they were), but a
+               press on a name now routes to the list view with the two in-flight
+               statuses in force. The pressability hangs on
+               `[data-agent-assignee]`, never on a class, so the hook is what a
+               machine check reads and what the interaction layer binds. -->
           <div class="mt-2" data-agents-presence>
             <div class="td-agent-row" title="claude · jobs, linus, simons" data-agent-row="claude">
               <span class="badge badge-xs td-agent-badge" data-agent-platform="claude">claude</span>
-              <span class="td-side-name td-agent-text td-mono">jobs, linus, simons</span>
+              <span class="td-side-name td-agent-text td-mono"><button type="button" class="td-agent-assignee td-mono" data-agent-assignee="jobs" data-assignee="jobs" data-assignee-kind="agent">jobs</button>, <button type="button" class="td-agent-assignee td-mono" data-agent-assignee="linus" data-assignee="linus" data-assignee-kind="agent">linus</button>, <button type="button" class="td-agent-assignee td-mono" data-agent-assignee="simons" data-assignee="simons" data-assignee-kind="agent">simons</button></span>
               <span class="td-presence" data-presence="running" role="img" data-i18n-aria-label="presence.running" aria-label="running"></span>
             </div>
             <div class="td-agent-row" title="openclaw · elon">
               <span class="badge badge-xs td-agent-badge" data-agent-platform="openclaw">openclaw</span>
-              <span class="td-side-name td-agent-text td-mono">elon</span>
+              <span class="td-side-name td-agent-text td-mono"><button type="button" class="td-agent-assignee td-mono" data-agent-assignee="elon" data-assignee="elon" data-assignee-kind="agent">elon</button></span>
               <span class="td-presence" data-presence="running" role="img" data-i18n-aria-label="presence.running" aria-label="running"></span>
             </div>
             <div class="td-agent-row" title="codex · turing">
               <span class="badge badge-xs td-agent-badge" data-agent-platform="codex">codex</span>
-              <span class="td-side-name td-agent-text td-mono">turing</span>
+              <span class="td-side-name td-agent-text td-mono"><button type="button" class="td-agent-assignee td-mono" data-agent-assignee="turing" data-assignee="turing" data-assignee-kind="agent">turing</button></span>
               <span class="td-presence" data-presence="idle" role="img" data-i18n-aria-label="presence.idle" aria-label="idle"></span>
             </div>
             <div class="td-agent-row" title="pi · assistant">
               <span class="badge badge-xs td-agent-badge" data-agent-platform="pi">pi</span>
-              <span class="td-side-name td-agent-text td-mono">assistant</span>
+              <span class="td-side-name td-agent-text td-mono"><button type="button" class="td-agent-assignee td-mono" data-agent-assignee="assistant" data-assignee="assistant" data-assignee-kind="agent">assistant</button></span>
               <span class="td-presence" data-presence="running" role="img" data-i18n-aria-label="presence.running" aria-label="running"></span>
             </div>
           </div>
@@ -483,6 +489,43 @@
             <option value="low" data-i18n="filters.priority.low">Priority: Low</option>
             <option value="none" data-i18n="filters.priority.none">Priority: None</option>
           </select>
+
+          <!-- Status selector — the sibling of the label dropdown below, and the
+               only filter that takes more than one value: the two statuses a
+               card is actually being worked in, `in_progress` and `in_review`,
+               have to be nameable at once. The chosen set rides on
+               `data-filter-status-value` as a comma-joined subset of the seven
+               first-class status keys (or `all`, the un-filtered resting value),
+               so the trigger can state what is in force without being opened and
+               no status name is ever invented by the script. Pressing `all`
+               clears the set. `data-dismiss-on-outside` puts the control in the
+               same light-dismiss membership as the project switcher and the
+               label dropdown. -->
+          <details class="dropdown" data-filter-status data-filter-status-value="all" data-dismiss-on-outside>
+            <summary
+              class="btn btn-sm td-label-trigger"
+              role="button"
+              aria-haspopup="menu"
+              data-filter-status-summary
+              data-i18n-aria-label="filters.status"
+              aria-label="Status"
+            >
+              <span data-filter-status-text data-i18n="filters.status.all">Status: All</span>
+              <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M6 9.5 12 15.5 18 9.5" />
+              </svg>
+            </summary>
+            <ul class="dropdown-content menu td-label-menu td-status-menu">
+              <li><button type="button" data-filter-status-option data-status-value="all" aria-pressed="true" data-i18n="filters.status.all">Status: All</button></li>
+              <li><button type="button" data-filter-status-option data-status-value="backlog" data-status="backlog" aria-pressed="false"><span class="status td-status-dot" aria-hidden="true"></span><span data-i18n="status.backlog">Backlog</span></button></li>
+              <li><button type="button" data-filter-status-option data-status-value="todo" data-status="todo" aria-pressed="false"><span class="status td-status-dot" aria-hidden="true"></span><span data-i18n="status.todo">To Do</span></button></li>
+              <li><button type="button" data-filter-status-option data-status-value="in_progress" data-status="in_progress" aria-pressed="false"><span class="status td-status-dot" aria-hidden="true"></span><span data-i18n="status.in_progress">In Progress</span></button></li>
+              <li><button type="button" data-filter-status-option data-status-value="in_review" data-status="in_review" aria-pressed="false"><span class="status td-status-dot" aria-hidden="true"></span><span data-i18n="status.in_review">In Review</span></button></li>
+              <li><button type="button" data-filter-status-option data-status-value="blocked" data-status="blocked" aria-pressed="false"><span class="status td-status-dot" aria-hidden="true"></span><span data-i18n="status.blocked">Blocked</span></button></li>
+              <li><button type="button" data-filter-status-option data-status-value="done" data-status="done" aria-pressed="false"><span class="status td-status-dot" aria-hidden="true"></span><span data-i18n="status.done">Done</span></button></li>
+              <li><button type="button" data-filter-status-option data-status-value="canceled" data-status="canceled" aria-pressed="false"><span class="status td-status-dot" aria-hidden="true"></span><span data-i18n="status.canceled">Canceled</span></button></li>
+            </ul>
+          </details>
 
           <!-- Label selector — a daisyUI `dropdown` carrying a `menu`, one menu
                item per label, with the active choice echoed on the trigger. The

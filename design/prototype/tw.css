@@ -4176,6 +4176,20 @@ html[data-theme="dark"] .modal-box {
     font-size: 12px;
     color: var(--color-td-ink-2);
   }
+  .td-agent-assignee {
+    font-size: inherit;
+    font-weight: inherit;
+    line-height: inherit;
+    padding: 0;
+    color: inherit;
+    background: none;
+    border: 0;
+    cursor: pointer;
+  }
+  .td-agent-assignee:hover {
+    color: var(--color-td-ink);
+    text-decoration: underline;
+  }
   .td-presence {
     width: 6px;
     height: 6px;
@@ -5518,6 +5532,16 @@ html[data-theme="dark"] .modal-box {
     white-space: nowrap;
   }
   .td-label-menu [data-filter-label-option][aria-current="true"] {
+    color: var(--color-td-accent);
+    font-weight: 500;
+  }
+  .td-status-menu [data-filter-status-option] {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+  }
+  .td-status-menu [data-filter-status-option][aria-pressed="true"] {
     color: var(--color-td-accent);
     font-weight: 500;
   }
