@@ -33,24 +33,31 @@ async function submit() {
 </script>
 
 <template>
-  <div class="td-modal" data-create-project :hidden="!createProjectOpen" role="dialog" aria-modal="true" :aria-label="$t('createProject.title')">
-    <div class="td-modal-box" style="width: min(480px, 100%)">
+  <div
+    class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-6 bg-neutral/32"
+    data-create-project
+    :hidden="!createProjectOpen"
+    role="dialog"
+    aria-modal="true"
+    :aria-label="$t('createProject.title')"
+  >
+    <div class="w-[min(480px,100%)] border border-(--brand-border) rounded-lg bg-(--brand-surface) [box-shadow:var(--shadow-pop)]">
       <form data-create-project-form @submit.prevent="submit">
-        <header class="td-modal-head">
+        <header class="flex items-center justify-between px-4 py-3 border-b border-b-(--brand-border)">
           <h2 data-i18n="createProject.title">{{ $t("createProject.title") }}</h2>
-          <button type="button" class="td-card-menu" data-modal-close :aria-label="$t('modal.close')" @click="createProjectOpen = false">✕</button>
+          <button type="button" class="border-0 bg-transparent text-(--brand-text-3) cursor-pointer" data-modal-close :aria-label="$t('modal.close')" @click="createProjectOpen = false">✕</button>
         </header>
-        <div class="td-modal-body">
-          <label class="td-field">
+        <div class="p-4">
+          <label class="flex flex-col gap-1 mb-3">
             <span data-i18n="createProject.field.name">{{ $t("createProject.field.name") }}</span>
-            <input v-model="form.name" class="td-input" type="text" data-create-project-name />
+            <input v-model="form.name" class="input input-sm td-input w-full" type="text" data-create-project-name />
           </label>
-          <label class="td-field">
+          <label class="flex flex-col gap-1 mb-3">
             <span data-i18n="createProject.field.prefix">{{ $t("createProject.field.prefix") }}</span>
-            <input v-model="form.prefix" class="td-input td-mono" type="text" maxlength="4" data-create-project-prefix :placeholder="$t('createProject.field.prefixHint')" />
+            <input v-model="form.prefix" class="input input-sm td-input td-mono w-full" type="text" maxlength="4" data-create-project-prefix :placeholder="$t('createProject.field.prefixHint')" />
           </label>
         </div>
-        <footer class="td-modal-foot">
+        <footer class="flex justify-end gap-2 px-4 py-3 border-t border-t-(--brand-border)">
           <button type="button" class="btn btn-ghost btn-sm" @click="createProjectOpen = false">{{ $t("modal.cancel") }}</button>
           <button type="submit" class="btn btn-primary btn-sm" :disabled="!canSubmit">{{ $t("createProject.submit") }}</button>
         </footer>

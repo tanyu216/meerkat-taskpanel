@@ -30,8 +30,8 @@ function switchProject(id) {
 </script>
 
 <template>
-  <header class="td-topbar" data-topbar>
-    <a class="td-brand" href="#" data-brand @click.prevent>
+  <header class="[grid-area:topbar] flex flex-nowrap items-center min-w-0 gap-2 px-4 py-2 border-b border-b-(--brand-border) bg-(--brand-surface)" data-topbar>
+    <a class="inline-flex items-baseline gap-2 no-underline text-inherit" href="#" data-brand @click.prevent>
       <!-- Sentinel Watch — the brand mark, geometry fixed by BRAND.md §5 and
            transcribed from `design/prototype/index.html`'s `[data-brand]` mark.
            The two lead meerkats read `--brand-text` (the design's
@@ -40,7 +40,7 @@ function switchProject(id) {
            follows the active theme with no second file. The eyes and mouth are
            cut as negative space by the mask below; the watch signal stays
            outside it, so the sentinel on duty is always solid. -->
-      <svg class="td-logo" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+      <svg class="size-[18px] shrink-0 self-center" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
         <defs>
           <mask id="face-knockout-a-top" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
             <rect x="0" y="0" width="32" height="32" fill="#FFFFFF" />
@@ -86,19 +86,19 @@ function switchProject(id) {
         <!-- watch signal — clear of the sentinel's crown by 4.1, outside the mask -->
         <circle cx="24.8" cy="3.4" r="2.1" fill="var(--color-primary)" />
       </svg>
-      <span class="td-brand-name" data-i18n="app.brand">{{ $t("app.brand") }}</span>
-      <span class="td-brand-sub" data-i18n="app.tagline">{{ $t("app.tagline") }}</span>
+      <span class="font-semibold" data-brand-name data-i18n="app.brand">{{ $t("app.brand") }}</span>
+      <span class="text-[12px] text-(--brand-text-3)" data-brand-sub data-i18n="app.tagline">{{ $t("app.tagline") }}</span>
     </a>
 
-    <details class="td-details dropdown" data-project-switcher>
-      <summary class="btn btn-ghost btn-sm gap-2">
+    <details class="dropdown" data-project-switcher>
+      <summary class="btn btn-ghost btn-sm gap-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
         <!-- The switcher glyph is the prototype's stacked-plane SVG, not a text
              character: at 14px the glyph `▦` and the icon stop reading alike. -->
-        <svg class="td-icon td-icon-sm" data-project-switcher-icon viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <svg class="td-icon size-3.5" data-project-switcher-icon viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path d="M12 3 3 8l9 5 9-5-9-5ZM3 14l9 5 9-5" />
         </svg>
         <span class="td-mono" data-project-current>{{ currentName }}</span>
-        <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <svg class="td-icon size-3.5" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path d="M6 9.5 12 15.5 18 9.5" />
         </svg>
       </summary>
@@ -121,10 +121,10 @@ function switchProject(id) {
       </ul>
     </details>
 
-    <div class="td-search" data-search>
+    <div class="grow shrink basis-[200px] min-w-0 max-w-[340px]" data-search>
       <input
         v-model="board.filters.search"
-        class="td-input"
+        class="input input-sm td-input w-full"
         type="text"
         autocomplete="off"
         spellcheck="false"
@@ -148,36 +148,36 @@ function switchProject(id) {
       {{ $t("filters.label") }}
     </button>
 
-    <div class="tabs tabs-box td-tabs" data-view-toggle role="group" :aria-label="$t('topbar.view')">
+    <div class="tabs tabs-box h-8 min-h-8" data-view-toggle role="group" :aria-label="$t('topbar.view')">
       <button
         v-for="mode in ['board', 'list']"
         :key="mode"
         type="button"
-        class="tab td-tab"
+        class="tab h-full gap-1"
         :data-view="mode"
         :aria-pressed="view === mode ? 'true' : 'false'"
         @click="setView(mode)"
       >
-        <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <svg class="td-icon size-3.5" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path :d="viewIcons[mode]" />
         </svg>
-        <span class="td-view-toggle-label">{{ $t(`topbar.view.${mode}`) }}</span>
+        <span data-label-text>{{ $t(`topbar.view.${mode}`) }}</span>
       </button>
     </div>
 
-    <div class="td-topbar-actions">
-      <span class="td-revision" data-revision>
-        <span class="td-live-dot" :data-connection="board.connection" aria-hidden="true"></span>
-        <span class="td-revision-text" data-i18n="topbar.live">{{ $t("topbar.live") }}</span>
+    <div class="inline-flex items-center gap-2 ms-auto">
+      <span class="inline-flex items-center gap-1 text-[12px] text-(--brand-text-2)" data-revision>
+        <span class="size-2 rounded-[999px] bg-success data-[connection=closed]:bg-warning data-[connection=connecting]:bg-warning" :data-connection="board.connection" aria-hidden="true"></span>
+        <span data-label-text data-i18n="topbar.live">{{ $t("topbar.live") }}</span>
         <span class="td-mono" data-revision-label :title="$t('topbar.revision.title')">
-          <span class="td-revision-text">rev</span> <span data-revision-value>{{ board.revision }}</span>
+          <span data-label-text>rev</span> <span data-revision-value>{{ board.revision }}</span>
         </span>
       </span>
       <button type="button" class="btn btn-primary btn-sm gap-2" data-new-task :data-i18n="'topbar.newTask'" @click="createTaskOpen = true">
-        <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <svg class="td-icon size-3.5" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path d="M12 5v14M5 12h14" />
         </svg>
-        <span class="td-new-task-label">{{ $t("topbar.newTask") }}</span>
+        <span data-label-text>{{ $t("topbar.newTask") }}</span>
       </button>
     </div>
   </header>

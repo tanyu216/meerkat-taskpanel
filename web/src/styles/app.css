@@ -1,5 +1,5 @@
 /*
- * Board stylesheet entry (M6b).
+ * Board stylesheet entry (M6b · framework-converged in M3).
  *
  * Tailwind v4 + daisyUI arrive as Vite plugins; the brand layer is the copied
  * token file. Every colour in this file is a `var(--…)` reference — the six-digit
@@ -7,7 +7,44 @@
  * (C05). Status and priority colours are set by attribute rules on `[data-status]`
  * / `[data-priority]` (C03), so moving a card updates one attribute and the
  * stripe, dot and chips all follow.
+ *
+ * M3 — what is left below is a **whitelist**. Everything the board can say with a
+ * daisyUI component class or a Tailwind utility now says it in the template, and
+ * every purely semantic hook is a `data-*` attribute — the responsive layer
+ * selects `[data-side-name]`, `[data-nav-count]`, `[data-caret]`, … instead of a
+ * class (ui-align SOP §B4). A `.td-*` class survives only where it carries
+ * something daisyUI cannot express. The surviving set, one reason each:
+ *
+ *   colour maps      [data-status] / [data-priority] → the single var the stripe,
+ *                    dot, chip and glyph all read (C03).
+ *   .td-mono         monospace + tabular numerals: a C04 contract item, and the
+ *                    face is the brand token, not Tailwind's default stack.
+ *   .td-icon         the stroked line-icon shape every inline glyph shares.
+ *   .td-shell        the named grid areas (topbar / sidebar / main).
+ *   .td-sidebar      the named area + the ≤1023px icon rail (see the media block).
+ *   .td-card         the card box and its four state rules.
+ *   .td-card-stripe  \
+ *   .td-col-dot       | geometry whose colour is `var(--status-color)` /
+ *   .td-pri-glyph     | `var(--pri-color)` — the map daisyUI cannot read.
+ *   .td-card-waiting /
+ *   .td-drawer       the fixed drawer and its `data-state` slide.
+ *   .td-toast        the toast surface and its kind strip.
+ *   .td-details-menu the floating-menu shell shared by the three anchored menus
+ *                    (daisyUI's `menu` paints row padding the design overrides).
+ *   .td-combo-menu   the combobox popup, positioned from JS-measured geometry.
+ *   .td-gfm          the markdown preview surface — `v-html` output from
+ *                    `lib/markdown*.js`, not markup a template can class.
+ *   .td-md-panes /   the highlight-overlay editor: a `<pre>` painted behind a
+ *   .td-md-pane-*    transparent `<textarea>`, with the three modes as a CSS
+ *                    state machine. daisyUI has no component for it.
+ *   .td-md-text /    the two layers' shared metrics — they must break lines
+ *   .td-md-source /  identically, so both are stated once here rather than twice
+ *   .td-md-highlight in the template.
+ *
+ * `.td-mono` is deliberately *not* `@apply tabular-nums`: C04 asserts the literal
+ * declaration in an authored stylesheet, so the property is spelled out.
  */
+
 @import "tailwindcss";
 @import "./tokens.css";
 @plugin "daisyui";
@@ -48,43 +85,31 @@ body {
   color: var(--brand-text);
 }
 
+/* C04 · the identifier/metric face. The declaration is literal on purpose. */
 .td-mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
-.td-muted { color: var(--brand-text-2); }
-.td-weak { color: var(--brand-text-3); }
-
 /* Line icons — the topbar's compact controls and the sidebar rail. One shape,
-   stroke `currentColor`, so a wrapper's colour is the icon's colour. */
-.td-icon,
-svg.td-side-icon {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  fill: none;
-  stroke: currentColor;
+   stroke `currentColor`, so a wrapper's colour is the icon's colour. The size is
+   the template's (16px, or 14px on the compact controls): a utility in the class
+   list, so the two sizes are visible where they are chosen. */
+.td-icon {
+  @apply shrink-0 fill-none stroke-current;
   stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.td-icon-sm { width: 14px; height: 14px; }
 /* The three theme glyphs swap by attribute; the UA sheet's `[hidden]` is a plain
-   `display: none`, so it is stated here the way every other hidden face is. */
+   `display: none`, so it is stated here the way every other hidden face is. It
+   must beat the `size-*` utility the glyph carries, hence the attribute forms. */
 svg[data-theme-icon][hidden] { display: none; }
-/* The language trigger's disclosure caret: decoration only — the trigger is
-   already named by its own text — and the first thing to go when the footer
-   becomes a rail (see the ≤1023px block). */
-.td-caret { flex: none; color: var(--brand-text-3); }
-
-/* The rail chip: a nav/states `<svg>`, or a project row's letter monogram
-   `<span>` (which desktop hides — the row shows the full name instead). */
-.td-side-icon { flex: none; font-size: 10px; font-weight: 600; letter-spacing: 0.02em; }
-span.td-side-icon { display: none; }
 
 /* ------------------------------------------------------------------ shell */
 
+/* The three named areas are the shell's whole contract; daisyUI has no app-shell
+   component and Tailwind has no utility for `grid-template-areas`. */
 .td-shell {
   display: grid;
   grid-template-areas:
@@ -95,25 +120,7 @@ span.td-side-icon { display: none; }
   height: 100dvh;
   overflow: hidden;
 }
-
-.td-topbar {
-  grid-area: topbar;
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  min-width: 0;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  border-bottom: var(--border) solid var(--brand-border);
-  background: var(--brand-surface);
-}
-/* The view toggle is a daisyUI `tabs-box`, which is taller than the prototype's
-   32px control and would inflate the whole bar; cap it to the baseline height. */
-.td-topbar .tabs { height: 32px; min-height: 32px; }
-.td-topbar .tab { height: 100%; gap: var(--space-1); }
-
 .td-sidebar {
-  grid-area: sidebar;
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -124,401 +131,229 @@ span.td-side-icon { display: none; }
   background: var(--brand-sunken);
 }
 
-.td-main {
-  grid-area: main;
-  min-width: 0;
-  overflow: auto;
-}
+/* ------------------------------------------------- daisyUI shell overrides */
 
-.td-brand { display: inline-flex; align-items: baseline; gap: var(--space-2); text-decoration: none; color: inherit; }
-/* Sentinel Watch (BRAND.md §5). A solid mark, not a stroked icon, so it takes no
-   stroke and reads its two fills from the theme tokens instead of currentColor.
-   The top bar aligns on baselines and an SVG has none, so `align-self: center`
-   keeps the mark optically centred against the wordmark without moving the
-   wordmark/tagline baseline pair. */
-.td-logo { flex: none; width: 18px; height: 18px; align-self: center; }
-/* The empty state's mark: 28px (B12), free to align itself. */
-.td-logo-lg { width: 28px; height: 28px; align-self: auto; }
-.td-brand-name { font-weight: var(--weight-semibold); }
-.td-brand-sub { font-size: var(--text-12); color: var(--brand-text-3); }
-
-.td-search { flex: 1 1 200px; min-width: 0; max-width: 340px; }
+/* The prototype composes its form fields as `input input-sm td-input w-full` and
+   `select select-sm td-select`: daisyUI owns the field's structure (the inline
+   flex, the caret room, the logical-radius join), and the class below pins the
+   brand metrics daisyUI's own scale does not carry — 32px on the 4px grid, the
+   13px field face, the brand hairline. Everything the design says about a field
+   is therefore in one place, and the daisyUI class list says what the field *is*. */
 .td-input {
   width: 100%;
-  padding: var(--space-1) var(--space-2);
+  height: 32px;
+  padding: 0 var(--space-2);
+  font-size: var(--text-13);
+  color: var(--brand-text);
+  background: var(--brand-surface);
   border: var(--border) solid var(--brand-border-strong);
   border-radius: var(--radius-field);
-  background: var(--brand-surface);
-  color: var(--brand-text);
 }
-
-.td-topbar-actions { display: inline-flex; align-items: center; gap: var(--space-2); margin-left: auto; }
-.td-revision { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--text-12); color: var(--brand-text-2); }
-.td-live-dot { width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--color-success); }
-.td-live-dot[data-connection="closed"],
-.td-live-dot[data-connection="connecting"] { background: var(--color-warning); }
-
-.td-side-label { margin: 0 0 var(--space-2); font-size: var(--text-11); text-transform: uppercase; letter-spacing: 0.06em; color: var(--brand-text-3); }
-.td-side-item {
-  display: flex; align-items: center; gap: var(--space-2); width: 100%;
-  padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--radius-field);
-  background: transparent; color: inherit; text-align: left; cursor: pointer;
-}
-.td-side-item:hover { background: var(--brand-hover); }
-.td-side-item[aria-current="page"] { background: var(--brand-active); font-weight: var(--weight-medium); }
-.td-side-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.td-order-score { font-size: var(--text-11); color: var(--brand-text-3); }
-
-.td-agent-row { display: flex; align-items: center; gap: var(--space-2); padding: 2px 0; }
-.td-presence { width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--brand-text-4); margin-left: auto; }
-.td-presence[data-presence="running"] { background: var(--color-success); }
-.td-presence[data-presence="idle"] { background: var(--brand-text-4); }
-
-.td-access-status {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: auto;
-  border-top: var(--border) solid var(--brand-border);
-}
-.td-access-cell {
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  padding: var(--space-2) var(--space-1);
-  border: 0; border-inline-start: var(--border) solid var(--brand-border);
-  background: transparent; color: inherit; cursor: pointer; font-size: var(--text-11);
-}
-.td-access-cell:first-child { border-inline-start: 0; }
-.td-access-cell:focus-visible { outline: 2px solid var(--brand-focus-ring); outline-offset: -2px; }
-
-/* --------------------------------------------------------------- filters */
-
-.td-filters {
-  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  border-bottom: var(--border) solid var(--brand-border);
-  background: var(--brand-surface);
-}
-.td-filters[hidden] { display: none; }
 .td-select {
   padding: var(--space-1) var(--space-2);
+  color: var(--brand-text);
+  background: var(--brand-surface);
   border: var(--border) solid var(--brand-border-strong);
   border-radius: var(--radius-field);
-  background: var(--brand-surface); color: var(--brand-text);
 }
-.td-filter-count { margin-left: auto; font-size: var(--text-12); color: var(--brand-text-2); }
-
-/* The floating language menu. Same floating menu as the card's "Move to" list:
-   it is teleported to the end of the document and anchored to its trigger from
-   `SidebarFooter.vue`, because the sidebar is a scroll container and would clip
-   it. The chosen language is marked the way every other menu marks the current
-   item — accent copy plus a tick — so the state never rests on colour alone. */
-[data-lang-menu] {
-  z-index: 60;
-  min-width: 148px;
-  padding: var(--space-1);
-  border: var(--border) solid var(--brand-border);
-  border-radius: var(--radius-box);
-  background: var(--brand-surface);
-  box-shadow: var(--shadow-pop);
-}
-[data-lang-menu][hidden] { display: none; }
-.td-lang-option {
-  display: flex; align-items: center; gap: var(--space-2);
-  width: 100%; padding: var(--space-1) var(--space-2);
-  border: 0; border-radius: var(--radius-field);
-  background: transparent; color: var(--brand-text);
-  font: inherit; font-size: var(--text-13); text-align: left; cursor: pointer;
-}
-.td-lang-option:hover { background: var(--brand-hover); }
-.td-lang-option[aria-pressed="true"] { color: var(--color-primary); font-weight: var(--weight-medium); }
-.td-lang-name { flex: 1; }
-.td-lang-check { visibility: hidden; }
-.td-lang-option[aria-pressed="true"] .td-lang-check { visibility: visible; }
-.td-details { position: relative; }
-.td-details > summary { cursor: pointer; list-style: none; }
-.td-details > summary::-webkit-details-marker { display: none; }
-.td-details-menu {
-  position: absolute; z-index: 40; top: calc(100% + 4px); left: 0; min-width: 180px;
-  padding: var(--space-1); margin: 0; list-style: none;
-  border: var(--border) solid var(--brand-border); border-radius: var(--radius-box);
-  background: var(--brand-surface); box-shadow: var(--shadow-pop);
-}
-.td-details-menu button {
-  display: block; width: 100%; padding: var(--space-1) var(--space-2); text-align: left;
-  border: 0; border-radius: var(--radius-field); background: transparent; color: inherit; cursor: pointer;
-}
-.td-details-menu button:hover { background: var(--brand-hover); }
-.td-details-menu button[aria-current="true"] { background: var(--brand-active); }
-
-/* ------------------------------------------------------------------ board */
-
-.td-board {
-  display: flex; align-items: flex-start; gap: var(--space-3);
-  padding: var(--space-3); height: 100%;
-  overflow-x: auto; overflow-y: hidden;
-}
-.td-board[hidden], .td-list[hidden] { display: none; }
-
-.td-col {
-  display: flex; flex-direction: column; flex: 0 0 268px; max-height: 100%;
-  border: var(--border) solid var(--brand-border); border-radius: var(--radius-box);
-  background: var(--brand-sunken);
-}
-.td-col-header { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2); }
-.td-col-dot { width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--status-color, var(--brand-text-3)); }
-.td-col-name { font-weight: var(--weight-semibold); font-size: var(--text-12); color: var(--brand-text); white-space: nowrap; }
-.td-col-count { margin-left: auto; font-size: var(--text-12); color: var(--brand-text-2); }
-.td-col-add { border: 0; background: transparent; color: var(--brand-text-3); cursor: pointer; font-size: var(--text-14); }
-.td-col-progress { margin: 0 var(--space-2) var(--space-2); height: 4px; accent-color: var(--status-color); }
-.td-col[data-drag-over="true"] { border-color: var(--brand-border-strong); }
-.td-col-body { display: flex; flex-direction: column; gap: var(--space-2); padding: 0 var(--space-2) var(--space-2); overflow-y: auto; }
-
-.td-drop-placeholder { height: 6px; border-radius: var(--radius-full); background: var(--brand-border-strong); }
 
 /* ------------------------------------------------------------------- card */
 
 .td-card {
-  position: relative; display: flex; flex-direction: column; gap: var(--space-1);
+  @apply relative flex cursor-pointer flex-col gap-1 border border-(--brand-border) rounded-lg bg-(--brand-surface);
   padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
-  border: var(--border) solid var(--brand-border); border-radius: var(--radius-box);
-  background: var(--brand-surface); cursor: pointer;
 }
 .td-card:hover { background: var(--brand-hover); }
 .td-card[aria-selected="true"] { border-color: var(--color-primary); }
 .td-card[data-dragging="true"] { opacity: 0.5; }
 .td-card[data-done="true"], .td-card[data-canceled="true"] { opacity: 0.72; }
-.td-card-stripe { position: absolute; inset-inline-start: 0; top: 8px; bottom: 8px; width: 3px; border-radius: var(--radius-full); background: var(--status-color, var(--brand-text-4)); }
-.td-card-head { display: flex; align-items: center; gap: var(--space-2); }
-.td-card-id { font-family: var(--font-mono); font-size: var(--text-11); color: var(--brand-text-3); }
-.td-card-menu { margin-left: auto; border: 0; background: transparent; color: var(--brand-text-3); cursor: pointer; }
-.td-card-title { text-align: left; border: 0; background: transparent; color: inherit; font-size: var(--text-14); cursor: pointer; padding: 0; }
-.td-card-labels { display: flex; flex-wrap: wrap; gap: 4px; }
-.td-card-foot { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); }
-.td-card-foot-right { display: inline-flex; align-items: center; gap: var(--space-2); margin-left: auto; }
-.td-meta { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-11); color: var(--brand-text-3); }
-.td-avatar {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 20px; height: 20px; border-radius: var(--radius-full);
-  background: var(--brand-active); color: var(--brand-text-2);
-  font-size: var(--text-11); font-weight: var(--weight-medium);
-}
-.td-agent-badge { text-transform: none; }
-.td-agent-role { font-size: var(--text-11); color: var(--brand-text-3); }
-.td-chip {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 1px 6px; border-radius: var(--radius-selector);
-  border: var(--border) solid var(--brand-border); background: var(--brand-sunken);
-  font-size: var(--text-11); color: var(--brand-text-2);
-}
-.td-chip-remove { border: 0; background: transparent; color: var(--brand-text-3); cursor: pointer; line-height: 1; }
-.td-pri-glyph { width: 12px; height: 12px; fill: none; stroke: var(--pri-color, var(--brand-text-3)); stroke-width: 1.4; }
 
-/* ------------------------------------------------------ empty / loading */
-
-.td-empty {
-  display: flex; flex-direction: column; align-items: center; gap: var(--space-1);
-  padding: var(--space-4); text-align: center; color: var(--brand-text-3);
-  border: 1px dashed var(--brand-border-strong); border-radius: var(--radius-box);
+/* The stage stripe, the column dot and the priority glyph all read a colour the
+   `[data-status]` / `[data-priority]` maps above define; a daisyUI component
+   would have to be told the colour per state, which is the map's job. */
+.td-card-stripe {
+  @apply absolute start-0 rounded-[999px];
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  background: var(--status-color, var(--brand-text-4));
 }
-.td-empty[hidden] { display: none; }
-.td-empty-lg { padding: var(--space-8); }
-.td-empty-title { font-weight: var(--weight-medium); color: var(--brand-text-2); }
-.td-empty-hint { font-size: var(--text-12); }
-.td-skeleton { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); }
-.td-skeleton-row { height: 44px; border-radius: var(--radius-box); background: var(--brand-hover); animation: td-pulse 1.4s ease-in-out infinite; }
-@keyframes td-pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
-
-/* -------------------------------------------------------------- list view */
-
-.td-list { padding: var(--space-3); }
-.td-list-rows { display: flex; flex-direction: column; }
-.td-list-row {
-  display: grid; grid-template-columns: 92px minmax(0, 1fr) auto auto auto auto;
-  align-items: center; gap: var(--space-3);
-  padding: var(--space-2); border-bottom: var(--border) solid var(--brand-border);
-  background: transparent; border-inline: 0; border-top: 0; color: inherit; text-align: left; cursor: pointer;
+.td-col-dot {
+  @apply size-2 rounded-[999px];
+  background: var(--status-color, var(--brand-text-3));
 }
-.td-list-row:hover { background: var(--brand-hover); }
+.td-pri-glyph {
+  @apply size-3 fill-none;
+  stroke: var(--pri-color, var(--brand-text-3));
+  stroke-width: 1.4;
+}
+
+/* M1 · the attention badge — a pill overlaid on the card, never a column
+   transfer. Colour: the brand accent (`--color-primary` is the web layer's name
+   for the same teal the design calls `--color-td-accent`), so no colour literal
+   is introduced anywhere and no eighth `--brand-st-*` value exists. It takes over
+   the row's slack from the kebab, which then sits immediately to its right. */
+.td-card-waiting {
+  @apply inline-flex items-center rounded-[999px] whitespace-nowrap ms-auto;
+  height: 20px;
+  padding: 0 var(--space-2);
+  font-size: var(--text-11);
+  font-weight: var(--weight-medium);
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
+}
+[data-card]:has(.td-card-waiting) [data-card-menu] { margin-left: var(--space-1); }
 
 /* ----------------------------------------------------------------- drawer */
 
-.td-drawer-overlay { position: fixed; inset: 0; background: var(--color-neutral); opacity: 0.32; z-index: 50; }
-.td-drawer-overlay[hidden] { display: none; }
 .td-drawer {
-  position: fixed; inset-block: 0; inset-inline-end: 0; width: min(560px, 100vw); z-index: 60;
-  display: flex; flex-direction: column;
-  background: var(--brand-surface); border-inline-start: var(--border) solid var(--brand-border);
-  box-shadow: var(--shadow-pop); transform: translateX(100%);
+  @apply fixed end-0 z-[60] flex w-[min(560px,100vw)] flex-col bg-(--brand-surface) [box-shadow:var(--shadow-pop)];
+  inset-block: 0;
+  border-inline-start: var(--border) solid var(--brand-border);
+  transform: translateX(100%);
   transition: transform var(--dur-2) var(--ease-brand);
 }
 .td-drawer[data-state="open"] { transform: translateX(0); }
-.td-drawer-head { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-4); border-bottom: var(--border) solid var(--brand-border); }
-.td-drawer-body { flex: 1; overflow-y: auto; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); }
-.td-drawer-close { align-self: flex-end; border: 0; background: transparent; color: var(--brand-text-3); cursor: pointer; }
-.td-props { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: var(--space-1) var(--space-3); margin: 0; font-size: var(--text-13); align-items: center; }
-.td-prop-label { font-size: var(--text-12); color: var(--brand-text-3); }
-.td-prop-value {
-  display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0;
-  min-height: 28px; padding: 0 var(--space-1);
-  font-size: var(--text-13); color: var(--brand-text);
-}
+.td-drawer[hidden] { display: none; }
+
 /* The free-text controls inside a property value take the row's slack, so the
    input fills the track instead of shrinking to its placeholder. */
-.td-prop-value .td-combo { flex: 1 1 auto; min-width: 0; }
-.td-slot { border-top: var(--border) solid var(--brand-border); padding-top: var(--space-3); }
-.td-slot-title { margin: 0 0 var(--space-2); font-size: var(--text-13); font-weight: var(--weight-semibold); }
-.td-gfm { font-size: var(--text-14); line-height: var(--leading-body); }
-.td-gfm pre { padding: var(--space-3); border-radius: var(--radius-field); background: var(--brand-sunken); overflow-x: auto; }
-.td-gfm code { font-family: var(--font-mono); }
-.td-comment { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) 0; border-bottom: var(--border) solid var(--brand-border); }
-.td-comment-meta { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-12); color: var(--brand-text-3); }
-/* An attachment row: icon, name, and the size pushed to the row's end. */
-.td-file {
-  display: flex; align-items: center; gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  border: var(--border) solid var(--brand-border);
-  border-radius: var(--radius-field);
-  background: var(--brand-surface);
-}
-.td-file + .td-file { margin-top: var(--space-2); }
-.td-file-name { font-size: var(--text-12); font-weight: var(--weight-medium); color: var(--brand-text); }
-.td-file-size { margin-left: auto; font-family: var(--font-mono); font-size: var(--text-11); color: var(--brand-text-3); }
-/* An activity row: actor · sentence · relative time, the stamp pushed right. */
-.td-activity { display: flex; align-items: baseline; gap: var(--space-2); padding: 3px 0; font-size: var(--text-12); color: var(--brand-text-2); }
-.td-activity-ts {
-  margin-left: auto; font-family: var(--font-mono); font-size: var(--text-11);
-  color: var(--brand-text-3); white-space: nowrap;
-}
-.td-comment-form { display: flex; flex-direction: column; gap: var(--space-2); }
-.td-comment-input { min-height: 64px; padding: var(--space-2); border: var(--border) solid var(--brand-border-strong); border-radius: var(--radius-field); background: var(--brand-surface); color: var(--brand-text); resize: vertical; }
-
-/* ----------------------------------------------------------------- modals */
-
-.td-modal { position: fixed; inset: 0; z-index: 70; display: flex; align-items: flex-start; justify-content: center; padding: var(--space-6); overflow-y: auto; background: var(--color-neutral); background: color-mix(in srgb, var(--color-neutral) 32%, transparent); }
-.td-modal[hidden] { display: none; }
-.td-modal-box { width: min(960px, 100%); border: var(--border) solid var(--brand-border); border-radius: var(--radius-box); background: var(--brand-surface); box-shadow: var(--shadow-pop); }
-.td-modal-head { display: flex; align-items: center; justify-content: space-between; padding: var(--space-3) var(--space-4); border-bottom: var(--border) solid var(--brand-border); }
-.td-modal-body { padding: var(--space-4); }
-.td-modal-foot { display: flex; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: var(--border) solid var(--brand-border); }
-.td-create-two-col { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: var(--space-4); }
-@media (max-width: 760px) { .td-create-two-col { grid-template-columns: minmax(0, 1fr); } }
-.td-field { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-3); }
-.td-field label { font-size: var(--text-12); color: var(--brand-text-2); }
-.td-optional { color: var(--brand-text-3); font-size: var(--text-11); }
-
-/* --------------------------------------------------------- markdown editor */
-
-.td-md-editor { border: var(--border) solid var(--brand-border); border-radius: var(--radius-field); overflow: hidden; }
-.td-md-bar { display: flex; align-items: center; gap: var(--space-1); padding: var(--space-1); border-bottom: var(--border) solid var(--brand-border); background: var(--brand-sunken); }
-.td-md-toggle { border: 0; border-radius: var(--radius-selector); background: transparent; color: var(--brand-text-2); padding: 2px 8px; cursor: pointer; font-size: var(--text-12); }
-.td-md-toggle[aria-pressed="true"] { background: var(--brand-active); color: var(--brand-text); }
-.td-md-hint { margin-left: auto; font-size: var(--text-11); color: var(--brand-text-3); }
-.td-md-panes { display: grid; }
-.td-md-panes[data-md-mode="write"] { grid-template-columns: minmax(0, 1fr); }
-.td-md-panes[data-md-mode="preview"] { grid-template-columns: minmax(0, 1fr); }
-.td-md-panes[data-md-mode="split"] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-.td-md-panes[data-md-mode="write"] .td-md-pane-preview { display: none; }
-.td-md-panes[data-md-mode="preview"] .td-md-pane-write { display: none; }
-.td-md-pane-write { position: relative; }
-.td-md-text {
-  margin: 0; padding: var(--space-3);
-  font-family: var(--font-mono); font-size: var(--text-13); line-height: var(--leading-body);
-  white-space: pre-wrap; word-break: break-word; tab-size: 2;
-}
-.td-md-highlight { position: absolute; inset: 0; overflow: hidden; color: var(--brand-text); pointer-events: none; }
-.td-md-source { position: relative; width: 100%; min-height: 220px; border: 0; background: transparent; color: transparent; caret-color: var(--brand-text); resize: vertical; outline: none; }
-.td-md-source::selection { background: var(--brand-focus-ring); }
-.td-md-pane-preview { padding: var(--space-3); overflow: auto; border-inline-start: var(--border) solid var(--brand-border); }
-.td-md-panes[data-md-mode="preview"] .td-md-pane-preview { border-inline-start: 0; }
-.td-hl-heading { color: var(--color-primary); }
-.td-hl-code { color: var(--color-accent); }
-.td-hl-strong { font-weight: var(--weight-semibold); }
-.td-hl-em { font-style: italic; }
-.td-hl-link { color: var(--color-info); }
-.td-hl-quote { color: var(--brand-text-3); }
-.td-hl-list { color: var(--color-primary); }
-
-/* ------------------------------------------------------------------ combo */
-
-.td-combo { position: relative; }
-.td-combo input { width: 100%; padding: var(--space-1) var(--space-2); border: var(--border) solid var(--brand-border-strong); border-radius: var(--radius-field); background: var(--brand-surface); color: var(--brand-text); }
-.td-combo-menu {
-  position: absolute; z-index: 55; top: calc(100% + 4px); left: 0; right: 0; max-height: 220px; overflow-y: auto;
-  margin: 0; padding: var(--space-1); list-style: none;
-  border: var(--border) solid var(--brand-border); border-radius: var(--radius-box);
-  background: var(--brand-surface); box-shadow: var(--shadow-pop);
-}
-.td-combo[data-drop="up"] .td-combo-menu { top: auto; bottom: calc(100% + 4px); }
-.td-combo-menu[hidden] { display: none; }
-.td-combo-menu button {
-  display: flex; align-items: center; gap: var(--space-2); width: 100%;
-  padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--radius-field);
-  background: transparent; color: inherit; text-align: left; cursor: pointer;
-}
-.td-combo-menu button[aria-selected="true"] { background: var(--brand-active); }
-.td-combo-new { margin-left: auto; font-size: var(--text-11); color: var(--color-primary); }
-.td-combo-empty { padding: var(--space-2); color: var(--brand-text-3); font-size: var(--text-12); }
-.td-combo-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+[data-detail-props] [data-drop] { flex: 1 1 auto; min-width: 0; }
 
 /* ----------------------------------------------------------------- toasts */
 
-.td-toast-region { position: fixed; inset-block-end: var(--space-4); inset-inline-end: var(--space-4); z-index: 90; display: flex; flex-direction: column; gap: var(--space-2); }
 .td-toast {
-  display: flex; align-items: center; gap: var(--space-2);
-  padding: var(--space-2) var(--space-3); border-radius: var(--radius-box);
-  border: var(--border) solid var(--brand-border); background: var(--brand-surface);
-  box-shadow: var(--shadow-pop); font-size: var(--text-13);
+  @apply flex items-center gap-2 rounded-lg border border-(--brand-border) bg-(--brand-surface) [box-shadow:var(--shadow-pop)];
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-13);
 }
 .td-toast[data-toast-kind="success"] { border-inline-start: 3px solid var(--color-success); }
 .td-toast[data-toast-kind="danger"] { border-inline-start: 3px solid var(--color-error); }
 .td-toast[data-toast-kind="info"] { border-inline-start: 3px solid var(--color-info); }
 .td-toast[data-state="leaving"] { opacity: 0; transition: opacity 200ms; }
 
-/* ----------------------------------------------------------- panels (B18/19) */
+/* ------------------------------------------------------- floating menus */
 
-.td-panel-overlay { position: fixed; inset: 0; z-index: 80; background: color-mix(in srgb, var(--color-neutral) 40%, transparent); }
-.td-panel-overlay[hidden] { display: none; }
-.td-panel {
-  position: fixed; inset-block: 0; inset-inline-end: 0; z-index: 85; width: min(520px, 100vw);
-  overflow-y: auto; padding: var(--space-4);
-  background: var(--brand-surface); border-inline-start: var(--border) solid var(--brand-border);
+/* The project switcher, the label filter and the card's "Move to" list share one
+   anchored-menu shell. daisyUI's `menu` paints its own row padding and radius,
+   which the design's rows then have to fight, so the shell's own box and its one
+   row shape are stated once here. */
+.td-details-menu {
+  @apply absolute left-0 z-[40] min-w-[180px] list-none border border-(--brand-border) rounded-lg bg-(--brand-surface) [box-shadow:var(--shadow-pop)];
+  top: calc(100% + 4px);
+  padding: var(--space-1);
+  margin: 0;
 }
-.td-panel[data-state="closed"] { display: none; }
-.td-panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-3); }
-.td-state-block { margin-bottom: var(--space-4); }
-.td-state-note { font-size: var(--text-12); color: var(--brand-text-3); }
-
-/* ------------------------------------------------------------------ error */
-
-.td-error { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); padding: var(--space-4); margin: var(--space-4); border-radius: var(--radius-box); background: var(--color-error); background: color-mix(in srgb, var(--color-error) 12%, transparent); }
-.td-error[hidden] { display: none; }
-
-/* --------------------------------------------------------------- conflict */
-
-.td-conflict {
-  display: flex; flex-direction: column; gap: var(--space-2);
-  padding: var(--space-3) var(--space-4); margin: var(--space-3);
-  border: var(--border) solid var(--color-error); border-radius: var(--radius-box);
-  background: color-mix(in srgb, var(--color-error) 10%, transparent);
+.td-details-menu button {
+  @apply block w-full cursor-pointer border-0 bg-transparent text-left text-inherit;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-field);
 }
-.td-conflict-actions { display: flex; gap: var(--space-2); }
+.td-details-menu button:hover { background: var(--brand-hover); }
+.td-details-menu button[aria-current="true"] { background: var(--brand-active); }
+
+/* The combobox popup: `position: absolute` inside a `position: relative` root,
+   flipped above the field when there is no room below. */
+.td-combo-menu {
+  @apply absolute left-0 right-0 z-[55] list-none overflow-y-auto border border-(--brand-border) rounded-lg bg-(--brand-surface) [box-shadow:var(--shadow-pop)];
+  top: calc(100% + 4px);
+  max-height: 220px;
+  padding: var(--space-1);
+  margin: 0;
+}
+.td-combo-menu button {
+  @apply flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent text-left text-inherit;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-field);
+}
+.td-combo-menu button:hover { background: var(--brand-hover); }
+.td-combo-menu button[aria-selected="true"] { background: var(--brand-active); }
+[data-drop="up"] .td-combo-menu { top: auto; bottom: calc(100% + 4px); }
+
+/* ------------------------------------------------------- markdown surfaces */
+
+/* The GFM half of the preview: the prototype's `td-gfm` shape. `pre` and `code`
+   are produced by `lib/markdown-lite.js`, so they cannot carry a utility of their
+   own — the descendant rules are where the classes would have to go. */
+.td-gfm {
+  font-size: var(--text-14);
+  line-height: var(--leading-body);
+}
+.td-gfm pre {
+  padding: var(--space-3);
+  border-radius: var(--radius-field);
+  background: var(--brand-sunken);
+  overflow-x: auto;
+}
+.td-gfm code { font-family: var(--font-mono); }
+
+/* The three editor modes, one CSS state machine on `[data-md-mode]`. */
+.td-md-panes { display: grid; grid-template-columns: minmax(0, 1fr); }
+.td-md-panes[data-md-mode="split"] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.td-md-panes[data-md-mode="write"] .td-md-pane-preview { display: none; }
+.td-md-panes[data-md-mode="preview"] .td-md-pane-write { display: none; }
+.td-md-pane-preview {
+  @apply overflow-auto;
+  padding: var(--space-3);
+  border-inline-start: var(--border) solid var(--brand-border);
+}
+.td-md-panes[data-md-mode="preview"] .td-md-pane-preview { border-inline-start: 0; }
+
+/* The highlight layer is a `<pre>` in the same box as the `<textarea>`, so the
+   two break lines identically; a scroll handler keeps their offsets in step. */
+.td-md-text {
+  margin: 0;
+  padding: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-13);
+  line-height: var(--leading-body);
+  white-space: pre-wrap;
+  word-break: break-word;
+  tab-size: 2;
+}
+.td-md-highlight {
+  @apply absolute inset-0 overflow-hidden pointer-events-none text-(--brand-text);
+}
+.td-md-source {
+  @apply relative w-full border-0 bg-transparent text-transparent outline-none resize-y;
+  min-height: 220px;
+  caret-color: var(--brand-text);
+}
+.td-md-source::selection { background: var(--brand-focus-ring); }
+
+/* B13 · the loading row. daisyUI's `skeleton` is the shell; it shimmers a
+   background gradient, while the design's loading row is an opacity pulse — a
+   keyframe daisyUI does not have — so the row's own face is pinned here. */
+.td-skeleton-row {
+  height: 44px;
+  border-radius: var(--radius-box);
+  background: var(--brand-hover);
+  animation: td-pulse 1.4s ease-in-out infinite;
+}
+@keyframes td-pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
 
 /* ------------------------------------------------------------ responsive */
 
 /* ≤1023px — the sidebar collapses to an icon rail. Every text label is dropped
    (so nothing can be clipped by the narrow box) and the rail keeps a glyph per
    row: the nav `<svg>`, a project's letter monogram chip, an agent's presence
-   dot. Mirrors the prototype `tw.css` at the same breakpoint. */
+   dot. Mirrors the prototype `tw.css` at the same breakpoint. The selectors are
+   the rows' own `data-*` hooks: the labels carry no class of their own any more,
+   and a class list is the wrong thing for a check to depend on (SOP §B4). */
 @media (max-width: 1023px) {
   .td-sidebar { width: 64px; padding: var(--space-2) 4px; align-items: center; }
-  .td-sidebar .td-side-label,
-  .td-sidebar .td-side-text,
-  .td-sidebar .td-side-name,
-  .td-sidebar .td-count,
-  .td-sidebar .td-order-score,
-  .td-sidebar .td-agent-badge,
-  .td-sidebar .td-caret { display: none; }
-  .td-sidebar .td-side-item { justify-content: center; padding: 0; }
-  .td-sidebar .td-side-icon {
+  [data-sidebar] [data-side-label],
+  [data-sidebar] [data-side-text],
+  [data-sidebar] [data-side-name],
+  [data-sidebar] [data-side-count],
+  [data-sidebar] [data-side-score],
+  [data-sidebar] [data-agent-platform],
+  [data-sidebar] [data-caret],
+  [data-sidebar] [data-label-text] { display: none; }
+  [data-sidebar] [data-nav-item],
+  [data-sidebar] [data-project] { justify-content: center; padding: 0; }
+  [data-sidebar] [data-side-icon] {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -530,80 +365,29 @@ span.td-side-icon { display: none; }
     border: var(--border) solid var(--brand-border);
     border-radius: var(--radius-field);
   }
-  .td-sidebar .td-side-item[aria-current="page"] .td-side-icon {
+  [data-sidebar] [data-nav-item][aria-current="page"] [data-side-icon] {
     color: var(--color-primary);
     background: var(--brand-active);
     border-color: transparent;
   }
-  .td-sidebar .td-agent-row { justify-content: center; }
+  [data-sidebar] [data-agents-presence] > div { justify-content: center; }
 }
 @media (max-width: 979px) {
-  .td-brand-name, .td-brand-sub { display: none; }
+  [data-brand] [data-brand-name], [data-brand] [data-brand-sub] { display: none; }
 }
 /* ≤779px — the bar is allowed to fold (the prototype opens its 760–779px band
    for exactly this), so ≥780px it stays one row with the search shrinking as the
    prototype's does. */
 @media (max-width: 779px) {
-  .td-topbar { flex-wrap: wrap; height: auto; }
+  [data-topbar] { flex-wrap: wrap; height: auto; }
 }
 /* ≤759px — the bar folds into glyphs: search takes a full row of its own
    (order 10) and the remaining controls drop their labels. */
 @media (max-width: 759px) {
-  .td-search { order: 10; flex: 1 1 100%; max-width: none; }
-  .td-topbar .td-divider-v { display: none; }
-  .td-revision-text, .td-new-task-label, .td-view-toggle-label { display: none; }
-  .td-revision { padding: 0 var(--space-2); }
+  [data-search] { order: 10; flex: 1 1 100%; max-width: none; }
+  [data-topbar] [data-label-text] { display: none; }
+  [data-revision] { padding: 0 var(--space-2); }
 }
 @media (max-width: 560px) {
   .td-sidebar { width: 56px; }
-}
-
-/* ------------------------------------------------- M1 · the waiting surface */
-
-/* The attention badge — a pill overlaid on the card, never a column transfer.
-   Colour: the brand accent (`--color-primary` is the web layer's name for the
-   same teal the design calls `--color-td-accent`), so no colour literal is
-   introduced anywhere and no eighth `--brand-st-*` value exists. It takes over
-   the row's slack from the kebab, which then sits immediately to its right. */
-.td-card-waiting {
-  display: inline-flex; align-items: center;
-  height: 20px; padding: 0 var(--space-2);
-  border-radius: var(--radius-full);
-  font-size: var(--text-11); font-weight: var(--weight-medium);
-  color: var(--color-primary);
-  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
-  margin-left: auto; white-space: nowrap;
-}
-.td-card-head:has(.td-card-waiting) .td-card-menu { margin-left: var(--space-1); }
-
-/* The count pill is the one place the count is *loud*: filled accent, surface
-   text. Every other count on the board stays quiet, which is what makes this
-   one readable at a glance. */
-.td-count-waiting { background: var(--color-primary); color: var(--color-primary-content); }
-.td-count-waiting[hidden] { display: none; }
-
-/* The 「等你回复」view. Pinned rows lead; below them nothing about the card
-   changes — the row is a wrapper around the existing card component. */
-.td-waiting { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3); }
-.td-waiting[hidden] { display: none; }
-.td-waiting-list { display: flex; flex-direction: column; gap: var(--space-3); }
-.td-waiting-row {
-  display: flex; flex-direction: column; gap: var(--space-2);
-  padding: var(--space-3);
-  background: var(--brand-surface);
-  border: 1px solid var(--brand-border);
-  border-left: 2px solid var(--color-primary); /* the baseline quote device */
-  border-radius: var(--radius-box);
-}
-.td-waiting-row[data-waiting-pinned="true"] { order: -1; }
-
-.td-waiting-payload { display: flex; flex-direction: column; gap: var(--space-1); }
-.td-waiting-summary {
-  margin: 0; color: var(--brand-text-2); font-size: var(--text-14);
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-}
-.td-waiting-full {
-  max-width: 68ch; white-space: pre-wrap; overflow-wrap: anywhere;
-  color: var(--brand-text-3); font-size: var(--text-12);
 }

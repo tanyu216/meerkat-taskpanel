@@ -10,7 +10,7 @@ import { toasts } from "../../stores/ui.js";
 </script>
 
 <template>
-  <div class="td-toast-region" data-toast-region role="status" aria-live="polite">
+  <div class="fixed bottom-4 end-4 z-[90] flex flex-col gap-2" data-toast-region role="status" aria-live="polite">
     <template data-toast-template>
       <div class="td-toast" data-toast data-toast-kind="info">
         <span data-toast-text></span>

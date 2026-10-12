@@ -91,23 +91,24 @@ function onNav(item) {
         v-for="item in nav"
         :key="item"
         type="button"
-        class="td-side-item"
+        class="flex w-full cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent px-2 py-1 text-left text-inherit hover:bg-(--brand-hover) aria-[current=page]:bg-(--brand-active) aria-[current=page]:font-medium"
         :data-nav-item="item"
         :aria-current="view === item ? 'page' : undefined"
         @click="onNav(item)"
       >
-        <svg class="td-side-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <svg class="size-4" data-side-icon viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path :d="navIcons[item]" />
         </svg>
-        <span class="td-side-text" :data-i18n="`nav.${item}`">{{ $t(`nav.${item}`) }}</span>
+        <span data-side-text :data-i18n="`nav.${item}`">{{ $t(`nav.${item}`) }}</span>
         <!-- M1 · the count. `aria-live="polite"` so the number announcing itself
              does not steal focus; at zero the pill is hidden but the nav item
              stays clickable — a hidden zero and a disabled item are different
              promises, and only the first is wanted (design §3.3). -->
         <span
           v-if="item === 'waiting'"
-          class="badge badge-sm td-mono td-count td-count-waiting"
+          class="badge badge-sm td-mono bg-primary text-primary-content"
           data-nav-count="waiting"
+          data-side-count
           aria-live="polite"
           :hidden="waitingCount === 0"
           :title="$t('waiting.count', waitingCount)"
@@ -116,13 +117,13 @@ function onNav(item) {
     </nav>
 
     <section>
-      <h2 class="td-side-label" data-i18n="sidebar.projects">{{ $t("sidebar.projects") }}</h2>
+      <h2 class="m-0 mb-2 text-[11px] uppercase tracking-[0.06em] text-(--brand-text-3)" data-side-label data-i18n="sidebar.projects">{{ $t("sidebar.projects") }}</h2>
       <div data-project-list>
         <button
           v-for="project in projects"
           :key="project.id"
           type="button"
-          class="td-side-item"
+          class="flex w-full cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent px-2 py-1 text-left text-inherit hover:bg-(--brand-hover) aria-[current=page]:bg-(--brand-active) aria-[current=page]:font-medium"
           :data-project="project.name"
           :data-project-count="project.count ?? ''"
           :data-order-rank="project.rank"
@@ -130,22 +131,22 @@ function onNav(item) {
           :aria-current="project.id === board.currentProjectId ? 'page' : undefined"
           @click="selectProject(project.id)"
         >
-          <span class="td-side-icon td-mono" aria-hidden="true">{{ project.initials }}</span>
-          <span class="td-side-name td-mono">{{ project.name }}</span>
-          <span class="td-order-score td-mono" :title="scoreLabel(project)">{{ project.score }}</span>
-          <span v-if="project.count !== null" class="badge badge-sm td-mono td-count">{{ project.count }}</span>
+          <span class="td-mono" data-side-icon aria-hidden="true">{{ project.initials }}</span>
+          <span class="td-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap" data-side-name>{{ project.name }}</span>
+          <span class="td-mono text-[11px] text-(--brand-text-3)" data-side-score :title="scoreLabel(project)">{{ project.score }}</span>
+          <span v-if="project.count !== null" class="badge badge-sm td-mono" data-side-count>{{ project.count }}</span>
         </button>
       </div>
     </section>
 
     <section>
-      <h2 class="td-side-label" data-i18n="sidebar.agents">{{ $t("sidebar.agents") }}</h2>
+      <h2 class="m-0 mb-2 text-[11px] uppercase tracking-[0.06em] text-(--brand-text-3)" data-side-label data-i18n="sidebar.agents">{{ $t("sidebar.agents") }}</h2>
       <div data-agents-presence>
-        <div v-for="agent in agents" :key="agent.platform" class="td-agent-row">
-          <span class="badge badge-xs td-mono td-agent-badge" :data-agent-platform="agent.platform">{{ agent.platform }}</span>
-          <span class="td-side-name td-agent-text td-mono">{{ agent.handles.join(", ") }}</span>
+        <div v-for="agent in agents" :key="agent.platform" class="flex items-center gap-2 py-0.5">
+          <span class="badge badge-xs td-mono normal-case" :data-agent-platform="agent.platform">{{ agent.platform }}</span>
+          <span class="td-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap" data-side-name>{{ agent.handles.join(", ") }}</span>
           <span
-            class="td-presence"
+            class="size-2 rounded-[999px] bg-(--brand-text-4) ms-auto data-[presence=running]:bg-success data-[presence=idle]:bg-(--brand-text-4)"
             :data-presence="agent.presence"
             role="img"
             :aria-label="$t(`presence.${agent.presence}`)"

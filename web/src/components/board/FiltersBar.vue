@@ -41,15 +41,15 @@ function chooseLabel(value) {
 </script>
 
 <template>
-  <section class="td-filters" data-filters :hidden="!filtersOpen" id="td-filters">
-    <label class="td-field m-0">
+  <section class="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-b-(--brand-border) bg-(--brand-surface)" data-filters :hidden="!filtersOpen" id="td-filters">
+    <label class="flex flex-col gap-1 mb-3">
       <span class="sr-only">{{ $t("filters.assignee") }}</span>
       <select v-model="board.filters.assignee" class="select select-sm td-select" data-filter-assignee :aria-label="$t('filters.assignee')">
         <option v-for="option in assigneeOptions" :key="option" :value="option">{{ $t(`filters.assignee.${option}`) }}</option>
       </select>
     </label>
 
-    <label class="td-field m-0">
+    <label class="flex flex-col gap-1 mb-3">
       <span class="sr-only">{{ $t("filters.priority") }}</span>
       <select v-model="board.filters.priority" class="select select-sm td-select" data-filter-priority :aria-label="$t('filters.priority')">
         <option value="all">{{ $t("filters.priority.all") }}</option>
@@ -57,8 +57,8 @@ function chooseLabel(value) {
       </select>
     </label>
 
-    <details class="td-details dropdown" data-filter-label :data-filter-label-value="board.filters.label">
-      <summary class="td-select" data-filter-label-summary>{{ labelSummary }}</summary>
+    <details class="dropdown" data-filter-label :data-filter-label-value="board.filters.label">
+      <summary class="td-select cursor-pointer list-none [&::-webkit-details-marker]:hidden" data-filter-label-summary>{{ labelSummary }}</summary>
       <ul class="td-details-menu menu">
         <li>
           <button type="button" data-filter-label-option data-label-value="all" :aria-current="board.filters.label === 'all' ? 'true' : 'false'" @click="chooseLabel('all')">
@@ -77,6 +77,6 @@ function chooseLabel(value) {
       {{ $t("filters.clear") }}
     </button>
 
-    <span class="td-filter-count" data-filter-count aria-live="polite">{{ countText }}</span>
+    <span class="ms-auto text-[12px] text-(--brand-text-2)" data-filter-count aria-live="polite">{{ countText }}</span>
   </section>
 </template>
