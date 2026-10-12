@@ -112,10 +112,15 @@ const HAS_PROTOTYPE = existsSync(PROTOTYPE_INDEX) && existsSync(PROTOTYPE_APP);
  * mirrored"), the same quantity the `MESSAGES` scan measures, so it is held to the same
  * re-measurement as the two documents rather than trusted. Review R2-D1a of
  * `1bbc84f`: the README still said 214 when the documents carried 215, and nothing bit
- * because no assertion reached this file. `design/` is dropped from the image, so the
- * test that reads it self-skips in the container like the two above.
+ * because no assertion reached this file.
+ *
+ * Its absence guard is deliberately **its own** rather than folded into `HAS_PROTOTYPE`:
+ * `design/` is dropped from the image wholesale, so the two agree everywhere the
+ * container runs, and keeping them apart means a README that goes missing cannot also
+ * silence the two reads that do not need it.
  */
 const PROTOTYPE_README = resolve(HERE, "../../design/prototype/README.md");
+const HAS_PROTOTYPE_README = existsSync(PROTOTYPE_README);
 
 /** The five attributes that make up the document's `data-i18n*` hook surface. */
 const I18N_HOOK_ATTRIBUTES = [
@@ -643,7 +648,7 @@ describe(
 
     it(
       "states the prototype's MESSAGES count in design/prototype/README.md",
-      { skip: existsSync(PROTOTYPE_README) ? false : "design/prototype/README.md is not present" },
+      { skip: HAS_PROTOTYPE_README ? false : "design/prototype/README.md is not present" },
       (t) => {
         // The README's prose is a claim *about* `app.js`, so it is measured against
         // `app.js` — never against a number written beside it in this file. R2-D1a:
