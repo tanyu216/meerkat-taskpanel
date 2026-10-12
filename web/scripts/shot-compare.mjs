@@ -13,8 +13,9 @@
  * pixel equality is unattainable and a diff would only produce noise. What this
  * script asserts instead is machine-checkable and geometry-checkable:
  *
- *   * the browser-layer block-contract rules (99/99 — the same rules the DOM
- *     smoke drives, reused from `./dom-smoke.mjs`, not re-implemented),
+ *   * every browser-layer block-contract rule (the same rules the DOM smoke
+ *     drives, reused from `./dom-smoke.mjs`, not re-implemented; the count is
+ *     whatever the contract declares — the run prints it),
  *   * `console errors = 0` and `page errors = 0`,
  *   * `documentElement.scrollWidth <= clientWidth + 1` at every captured
  *     viewport, for both sides.
@@ -464,8 +465,8 @@ async function main(opts) {
   }
 
   // --- the machine check, re-run in this same pass ---------------------------
-  // `run()` is `dom-smoke.mjs`'s own entry point: the fixture server, the 99
-  // browser-layer rules, the error counters and the five-viewport overflow
+  // `run()` is `dom-smoke.mjs`'s own entry point: the fixture server, every
+  // browser-layer rule, the error counters and the five-viewport overflow
   // assertion, exactly what the acceptance names. Reused, never re-implemented.
   let machine = null;
   try {

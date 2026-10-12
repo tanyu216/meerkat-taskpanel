@@ -149,7 +149,7 @@ absent; it is recorded here instead:
 | B15 (legend) · B18 (states gallery) | **prototype-only** by Terry's 2026-10-12 ruling — the app renders neither |
 | B20 · B21 | **retired** in v1.4 — the contract asserts their absence; B02's reverse assertions cover the toggles |
 | B10 · B11 · B16 · B19 · B22 · B23 · B24 · B25 | out of scope (①); B16/B22/B25 surfaces are reached through the drawer, and B09 asserts the drawer's own hooks |
-| **C01–C10** (consistency items) | not page blocks. They live in `test/web/blocks.contract.mjs` (99 DOM rules + source/manual layers) and run under `npm test` — a different instrument, deliberately not duplicated here |
+| **C01–C10** (consistency items) | not page blocks. They live in `test/web/blocks.contract.mjs` (the DOM rules + source/manual layers) and run under `npm test` — a different instrument, deliberately not duplicated here |
 
 ## 3. Divergences the manifest cannot express (for the written record)
 
