@@ -270,3 +270,43 @@ reproduced exactly.
 
 The style leg is still **not** a gate (`--style-strict` is the switch), and the count moved
 45/186 → 64/558 because twelve targets are newly *measured*, not because fidelity dropped.
+
+## 7. The R10 additions — the board's own empty state, the drawer's saves, the fill
+(`T-20261012-230448-2`, 2026-10-13)
+
+Three blocks (`B05-r10`, `B09-r10`, `B10-r10`) and two `style.targets` entries were added, one
+per item of the R10 contract (`design/fidelity-r10.md`). The division of labour is unchanged:
+
+| which fact | instrument |
+|---|---|
+| structure and counts (the state root and its two members, the save region and its three field hooks, the stretched field) | **this manifest** |
+| computed style (the wrapper as a pass-through, the danger-coloured alert block) | **`style.targets`** — the two-sided leg, prototype as oracle |
+| which member is *painted* at one instant, that a real edit moves the save state (gates and back again, `assignee`/`reporter`/`labels`, the blank failure), and where the editor ends relative to its own row | **the driven layer** — `web/scripts/dom-smoke.mjs`'s R10 section, which opens a card, edits it and switches to a card-less project |
+
+Three facts the contract rows name are deliberately **not** bilateral targets, and the manifest
+records them instead: `[data-md-editor]` / `.td-md-panes` / `[data-md-source]`. The prototype
+mounts its create dialog on daisyUI's `.modal`, which has neither `hidden` nor `open`, so at rest
+the dialog is still **laid out** (`visibility: hidden`; measured `[data-md-editor]` = 616×514);
+the implementation closes it with `hidden` (`display: none`), so every computed
+`width`/`height`/`minWidth` inside it falls back to its declared value. Comparing those three
+would mostly be comparing "laid out" with "not laid out" — 9 of the 4/3/8 diffs it produced. What
+R10 ③ actually needs to lock is declarable and lives in the contract's `computed` rules
+(`test/web/blocks.contract.mjs`), evaluated by the same harness.
+
+**Where R10 stands** (`T-20261012-230448-2`, 2026-10-13):
+
+| | |
+|---|---|
+| blocks | 32 — all `delivered`, none `pending` |
+| assertions | 184 · failures **0** under `--strict` |
+| overflow / console | 0 failures at all five widths |
+| computed style | 47 of 775 compared properties differ (93.9%) — **non-blocking** |
+
+**29 → 32 blocks / 168 → 184 assertions** (the R9 lane's reading → this one: the three R10 blocks
+and their 16 checks). The style
+count moved 43/713 → 47/775: `+62` comparisons from the two new targets, and the two diffs on
+`r10-board-view` (the implementation's main area is 48px wider and its board 82px taller than the
+prototype's at 1512×950 — the board-wide root-font-size difference the manifest has always
+carried) plus one on `r10-detail-save-error` (the alert's soft half: the prototype names a flat
+`--color-td-danger-soft`, the implementation uses the app's existing 12% error mix, per R10's
+"no new token" rule).

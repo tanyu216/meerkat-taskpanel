@@ -106,7 +106,16 @@ async function submit() {
               <span data-i18n="createTask.field.title">{{ $t("createTask.field.title") }}</span>
               <input v-model="form.title" class="input input-sm td-input w-full" type="text" data-create-task-title :placeholder="$t('createTask.field.titleHint')" />
             </label>
-            <label class="flex flex-col gap-1 mb-3">
+            <!-- R10 ③ — this field is the one that fills the column: the title
+                 above it is content-height, the description takes the rest, and
+                 the editor takes the rest of *that* (the chain lives in
+                 `app.css`: `[data-create-two-col]` → `[data-create-left]` →
+                 `.td-field-grow` → `[data-md-editor]` → `.td-md-panes`). It is
+                 the column's **last** field, so it carries no bottom margin:
+                 that margin is what the a field-in-a-stack holds to separate it
+                 from the next one, and here it would be a band of empty box
+                 under the very editor the round is about. -->
+            <label class="td-field-grow flex flex-col gap-1">
               <span data-i18n="createTask.field.description">{{ $t("createTask.field.description") }}</span>
               <MarkdownEditor v-model="form.description" />
             </label>

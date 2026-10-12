@@ -15,7 +15,7 @@
  */
 import { computed, ref, watch } from "vue";
 
-import { board, addComment, closeDetail, labelRoster, platformOf, priorityOf, reporterRoster } from "../../stores/board.js";
+import { board, addComment, closeDetail, labelRoster, platformOf, priorityOf, reporterRoster, saveDetailField } from "../../stores/board.js";
 import { identifierText } from "../../lib/identifier.js";
 import { renderMarkdown } from "../../lib/markdown.js";
 import { activityLine, relativeTime } from "../../lib/activity.js";
@@ -100,6 +100,105 @@ const relationLinks = computed(() => {
 /** `data-status` on the status chip/prop falls back to a valid domain value at rest. */
 const statusValue = computed(() => status.value);
 
+/* ------------------------------------------------- R10 ② · detail auto-save */
+
+/**
+ * How long `saved` stays up before the state returns to `idle`. It is a reading
+ * beat, not a contract: the contract fixes the four states and that a commit
+ * leaves `idle`, never how long any of them lasts (`design/fidelity-r10.md`
+ * §5 C′7). The prototype's own demo beat is the same number.
+ */
+const SAVE_BEAT_MS = 420;
+
+const saveState = ref("idle");
+const saveError = computed(() => saveState.value === "error");
+
+/**
+ * The token decides which commit owns the state: a newer commit (or a failure
+ * decided locally) invalidates the one in flight, so a slow response can never
+ * overwrite the verdict of the edit that followed it. `savedTimer` is cleared on
+ * every commit for the same reason — `saved` is only left behind by the commit
+ * that actually reached it.
+ */
+let saveToken = 0;
+let savedTimer = null;
+
+/**
+ * What each field said when the drawer was opened. A commit is "the value
+ * moved", not "the field was touched": the drawer is opened, read and closed
+ * constantly and none of that is a write (contract ②-11).
+ */
+let saveBaseline = { assignee: "", reporter: "", labels: [] };
+
+/**
+ * `assignee` and `reporter` are committed on focus loss; `labels` on a chip
+ * arriving or leaving. A single-valued field that is blank after trimming is the
+ * one failure the drawer can decide on its own, with no server involved — and it
+ * is the only deterministic failure path a pure-frontend check can drive
+ * (contract §2.2). A blank that did **not** move the field is not a failure: an
+ * empty value left empty is a no-op, not an error.
+ */
+function commitField(field, raw) {
+  const value = String(raw ?? "").trim();
+  if (value === saveBaseline[field]) return;
+  if (value === "") return failSave();
+  void save(field, value);
+}
+
+/** The label set, which may legitimately be empty — so it has no failure path. */
+function commitLabels() {
+  const next = [...labelDraft.value];
+  if (sameSet(next, saveBaseline.labels)) return;
+  void save("labels", next);
+}
+
+async function save(field, value) {
+  const token = (saveToken += 1);
+  clearTimeout(savedTimer);
+  saveState.value = "saving";
+  try {
+    await saveDetailField(field, value);
+    if (token !== saveToken) return;
+    saveBaseline = { ...saveBaseline, [field]: field === "labels" ? [...value] : value };
+    saveState.value = "saved";
+    savedTimer = setTimeout(() => {
+      if (token === saveToken) saveState.value = "idle";
+    }, SAVE_BEAT_MS);
+  } catch {
+    if (token !== saveToken) return;
+    saveState.value = "error";
+  }
+}
+
+/** A local rejection is a verdict of its own: it takes the state and holds it. */
+function failSave() {
+  clearTimeout(savedTimer);
+  saveToken += 1;
+  saveState.value = "error";
+}
+
+/** Order-insensitive set equality — labels are a set, not a sequence. */
+function sameSet(a, b) {
+  const left = [...a].sort();
+  const right = [...b].sort();
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+/**
+ * Opening a card resets the state and takes that card's assignee and reporter as
+ * the baseline, so the first edit is measured against what the card actually
+ * said (`design/fidelity-r10.md` §2.2, "打开卡片即复位"). The drafts and the
+ * baseline are written in the same act, which is what makes a re-fill — setting
+ * the drafts from the newly opened task — not count as a commit: by the time the
+ * draft watchers below flush, the baseline already agrees with them.
+ */
+function resetSave() {
+  clearTimeout(savedTimer);
+  saveToken += 1;
+  saveState.value = "idle";
+  saveBaseline = { assignee: assigneeName.value, reporter: reporterName.value, labels: [...labelNames.value] };
+}
+
 // Keep the drafts in step with whichever task is open.
 watch(
   () => task.value?.id,
@@ -108,9 +207,17 @@ watch(
     reporterDraft.value = reporterName.value;
     labelDraft.value = [...labelNames.value];
     commentDraft.value = "";
+    resetSave();
   },
   { immediate: true },
 );
+
+// Accepting a roster row rewrites the draft — that is the `change` half of the
+// commit, and the blur half is the control's own `blur` event. Typing into a
+// field moves neither, so typing alone commits nothing (contract C-14).
+watch(assigneeDraft, () => commitField("assignee", assigneeDraft.value));
+watch(reporterDraft, () => commitField("reporter", reporterDraft.value));
+watch(labelDraft, () => commitLabels(), { deep: true });
 
 async function submitComment() {
   const body = commentDraft.value.trim();
@@ -178,6 +285,15 @@ function copyId() {
     </header>
 
     <div class="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
+      <!-- R10 ② — the drawer's save state, one region for all three editable
+           fields. `data-save-state` is the source of truth (`idle` ships, as the
+           resting state) and the alert below is its only visible half: hidden
+           unless the state is `error`, written in the same act so the attribute
+           and the block can never disagree (contract R5). The carrier is an
+           attribute, not a message — see `design/fidelity-r10.md` §2.2. -->
+      <span data-detail-save :data-save-state="saveState" hidden></span>
+      <span class="td-save-error" data-detail-save-error :hidden="!saveError" role="alert" data-i18n="detail.saveError">{{ $t("detail.saveError") }}</span>
+
       <!-- The property grid is the prototype's plain two-column `<div>` grid
            (`[data-detail-props]` is a `<div>` there), not a definition list: the
            rows pair a label with a *control* — buttons and comboboxes — which is
@@ -191,12 +307,13 @@ function copyId() {
         <div class="inline-flex min-h-7 min-w-0 items-center gap-1 px-1 text-[13px] text-(--brand-text)" data-detail-priority :data-priority="priority"><span data-detail-priority-label>{{ $t(`priority.${priority}`) }}</span></div>
 
         <span class="text-[12px] text-(--brand-text-3)">{{ $t("prop.assignee") }}</span>
-        <div class="flex min-h-7 min-w-0 items-center gap-1 px-1 text-[13px] text-(--brand-text)" data-detail-assignee>
+        <div class="flex min-h-7 min-w-0 items-center gap-1 px-1 text-[13px] text-(--brand-text)" data-detail-assignee data-detail-save-field="assignee">
           <span class="inline-flex size-5 items-center justify-center rounded-[999px] bg-(--brand-active) text-[11px] font-medium text-(--brand-text-2)" data-detail-assignee-avatar>{{ initial(assigneeName) }}</span>
           <span v-if="isAgent" data-detail-assignee-platform>{{ platform }}</span>
           <ComboField
             v-model="assigneeDraft"
             :options="peopleOptions"
+            seed
             hook-input="data-assignee-input"
             hook-label="data-detail-assignee-label"
             hook-menu="data-assignee-menu"
@@ -206,15 +323,17 @@ function copyId() {
             platform-attr="data-agent-platform"
             placeholder-key="combo.assigneePlaceholder"
             aria-key="prop.assignee"
+            @blur="(value) => commitField('assignee', value)"
           />
         </div>
 
         <span class="text-[12px] text-(--brand-text-3)">{{ $t("prop.reporter") }}</span>
-        <div class="flex min-h-7 min-w-0 items-center gap-1 px-1 text-[13px] text-(--brand-text)" data-detail-reporter>
+        <div class="flex min-h-7 min-w-0 items-center gap-1 px-1 text-[13px] text-(--brand-text)" data-detail-reporter data-detail-save-field="reporter">
           <span class="inline-flex size-5 items-center justify-center rounded-[999px] bg-(--brand-active) text-[11px] font-medium text-(--brand-text-2)" data-detail-reporter-avatar>{{ initial(reporterName) }}</span>
           <ComboField
             v-model="reporterDraft"
             :options="reporterOptions"
+            seed
             hook-input="data-reporter-input"
             hook-label="data-detail-reporter-label"
             hook-menu="data-reporter-menu"
@@ -222,6 +341,7 @@ function copyId() {
             hook-value="data-reporter-value"
             placeholder-key="combo.reporterPlaceholder"
             aria-key="prop.reporter"
+            @blur="(value) => commitField('reporter', value)"
           />
         </div>
 
@@ -239,7 +359,7 @@ function copyId() {
 
         <span class="text-[12px] text-(--brand-text-3)">{{ $t("prop.labels") }}</span>
         <div class="flex min-h-7 min-w-0 items-center gap-1 px-1 text-[13px] text-(--brand-text)">
-          <div data-detail-labels>
+          <div data-detail-labels data-detail-save-field="labels">
             <ComboField
               v-model="labelDraft"
               :options="labelOptions"

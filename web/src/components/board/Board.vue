@@ -7,6 +7,21 @@
  * menu (auxiliary hooks `[data-move-menu]` / `[data-move-to]`) that every card's
  * kebab opens — the keyboard fallback for dragging. The board is the document's
  * only horizontal scroll container.
+ *
+ * R10 ① — the view holds exactly one of two states, named by
+ * `[data-board-view][data-board-state]`: `data` (the board itself) or `empty`
+ * (the board-level no-results block). Both members are the state root's **direct
+ * children**, and the pair is made exclusive by a rule that reads the attribute
+ * (`app.css`), not by swapping one element at a time — so the resting document
+ * is already consistent. The condition is `shown === 0`, which covers both
+ * ways a board can be bare: a filter that matches nothing, and a project with
+ * no cards at all. The previous `total > 0 && shown === 0` covered only the
+ * first, so a genuinely empty project drew seven bare columns with the
+ * no-results block hidden behind them.
+ *
+ * The column-level empty (`data-empty-kind="column"`, one per bare column) is
+ * **not** a member: it states that one column is bare, and counting it at the
+ * view level would double it.
  */
 import { computed, ref, watch } from "vue";
 
@@ -15,6 +30,9 @@ import { closeMoveMenu, moveMenu, openCreateTask, view } from "../../stores/ui.j
 import Column from "./Column.vue";
 
 const dragging = ref(null);
+
+/** R10 ① — `empty ⇔ no card is visible`; `data` is therefore the resting state. */
+const boardState = computed(() => (totalVisible.value === 0 ? "empty" : "data"));
 
 /**
  * The move menu offers exactly the moves the state machine allows from the
@@ -71,28 +89,50 @@ watch(view, closeMoveMenu);
 </script>
 
 <template>
-  <div class="flex h-full items-start gap-3 overflow-x-auto overflow-y-hidden p-3" data-board :hidden="view !== 'board'">
-    <Column
-      v-for="column in columns"
-      :key="column.status"
-      :column="column"
-      :dragging="dragging"
-      @open="openCard"
-      @drop="onDrop"
-      @dragstart="onDragStart"
-      @dragend="onDragEnd"
-      @add="openCreateTask"
-    />
+  <!-- R10 ① — the board view's state root. Its two members are its own direct
+       children (`[data-board]` and the no-results block), and switching the view
+       away takes the **whole** root out — hiding only the board would strand the
+       board-level empty state above the list. -->
+  <div data-board-view :data-board-state="boardState" :hidden="view !== 'board'">
+    <div class="flex h-full items-start gap-3 overflow-x-auto overflow-y-hidden p-3" data-board :hidden="boardState === 'empty'">
+      <Column
+        v-for="column in columns"
+        :key="column.status"
+        :column="column"
+        :dragging="dragging"
+        @open="openCard"
+        @drop="onDrop"
+        @dragstart="onDragStart"
+        @dragend="onDragEnd"
+        @add="openCreateTask"
+      />
 
-    <!-- B12 · the large no-results empty state. It stays **in the document**
-         while the board has cards — `hidden`, exactly as the prototype states
-         it — so the hook and its Sentinel Watch mark exist at rest and only the
-         attribute changes when a filter empties the board. -->
+      <ul
+        v-if="moveMenu"
+        class="td-details-menu menu"
+        data-move-menu
+        :style="{ position: 'fixed', top: `${moveMenu.top}px`, left: `${moveMenu.left}px` }"
+      >
+        <li v-for="row in moveRows" :key="row.status">
+          <button type="button" data-move-to :aria-current="row.current ? 'true' : 'false'" @click="chooseMove(row)">
+            {{ $t(`status.${row.status}`) }}
+          </button>
+        </li>
+      </ul>
+    </div>
+
+    <!-- B12 · the large no-results empty state — the `empty` member. It stays
+         **in the document** while the board has cards (`hidden`, exactly as the
+         prototype states it), so the hook and its Sentinel Watch mark exist at
+         rest and only the attribute changes when the board empties. It is a
+         sibling of `[data-board]`, not a child: the board is the document's only
+         horizontal scroller, and a board-level state does not scroll with the
+         columns. -->
     <div
       class="flex flex-col items-center gap-1 p-10 text-center text-(--brand-text-3) border border-dashed border-(--brand-border-strong) rounded-lg"
       data-empty
       data-empty-kind="no-results"
-      :hidden="totalVisible !== 0"
+      :hidden="boardState !== 'empty'"
     >
       <!-- The brand mark stands in for a generic no-results glyph. Its two lead
            meerkats drop to `--brand-text-3` (the design's `--color-td-ink-3`) so
@@ -142,18 +182,5 @@ watch(view, closeMoveMenu);
       <span class="text-[12px]" data-i18n="noResults.hint">{{ $t("noResults.hint") }}</span>
       <button type="button" class="btn btn-outline btn-sm" @click="clearFilters">{{ $t("noResults.clear") }}</button>
     </div>
-
-    <ul
-      v-if="moveMenu"
-      class="td-details-menu menu"
-      data-move-menu
-      :style="{ position: 'fixed', top: `${moveMenu.top}px`, left: `${moveMenu.left}px` }"
-    >
-      <li v-for="row in moveRows" :key="row.status">
-        <button type="button" data-move-to :aria-current="row.current ? 'true' : 'false'" @click="chooseMove(row)">
-          {{ $t(`status.${row.status}`) }}
-        </button>
-      </li>
-    </ul>
   </div>
 </template>

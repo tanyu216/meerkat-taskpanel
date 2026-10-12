@@ -1451,6 +1451,293 @@ export async function run() {
     await page.click('[data-view="board"]');
     await page.waitForTimeout(120);
 
+    // ---- R10 · the board's own empty state, the drawer's saves, the fill -----
+    //
+    // Three of the round's facts a document probe cannot state: which of the two
+    // board members is *painted* at one instant (a relation between two elements,
+    // and one a parent's `display: none` does not change — contract §1 rule 4),
+    // that a live edit moves the drawer's save state (an event), and where the
+    // description's editor actually ends (geometry against its own row). They are
+    // measured here, next to the declarable rules the contract now carries.
+    const r10Failures = [];
+    const r10Check = (ok, message) => { if (!ok) r10Failures.push(message); };
+
+    await page.setViewportSize({ width: 1512, height: 950 });
+    await page.waitForTimeout(150);
+
+    /** The board view: its state, its two members, and what is drawn. */
+    const readBoardView = () =>
+      page.evaluate(() => {
+        const view = document.querySelector("[data-board-view]");
+        const board = document.querySelector("[data-board]");
+        const empty = document.querySelector('[data-empty][data-empty-kind="no-results"]');
+        const round = (n) => Math.round(n * 100) / 100;
+        const rect = (el) => (el ? el.getBoundingClientRect() : null);
+        const display = (el) => (el ? getComputedStyle(el).display : null);
+        const painted = (el) => (el ? el.getClientRects().length > 0 : false);
+        return {
+          state: view?.getAttribute("data-board-state") ?? null,
+          bothAreChildren: !!view && !!board && !!empty && board.parentElement === view && empty.parentElement === view,
+          emptyParentIsColumn: empty?.closest("[data-column-body]") !== null,
+          // `computed display` is the right instrument only for the two elements
+          // the state rule writes directly …
+          visibleMembers: [board, empty].filter((el) => el && getComputedStyle(el).display !== "none").length,
+          boardDisplay: display(board),
+          emptyDisplay: display(empty),
+          // … and for their descendants the drawn-box count is the only one that
+          // means anything (contract C′1).
+          paintedColumns: [...document.querySelectorAll("[data-board] [data-column]")].filter(painted).length,
+          viewHeight: round(rect(view)?.height ?? 0),
+          boardHeight: round(rect(board)?.height ?? 0),
+          mainHeight: round(rect(document.querySelector("main"))?.height ?? 0),
+          firstColumnHeight: round(rect(document.querySelector("[data-column]"))?.height ?? 0),
+          cards: document.querySelectorAll("[data-board] [data-card]").length,
+        };
+      });
+
+    const boardRest = await readBoardView();
+    r10Check(boardRest.state === "data", `at rest the board view is in state ${boardRest.state}`);
+    r10Check(boardRest.bothAreChildren, "the board and the no-results block must both be children of the view root");
+    r10Check(boardRest.emptyParentIsColumn === false, "the board-level no-results block sits inside a column body");
+    r10Check(boardRest.visibleMembers === 1, `at rest ${boardRest.visibleMembers} board members are visible, expected 1`);
+    r10Check(boardRest.boardDisplay === "flex" && boardRest.emptyDisplay === "none", `at rest the members are ${boardRest.boardDisplay}/${boardRest.emptyDisplay}`);
+    r10Check(boardRest.paintedColumns === 7, `at rest ${boardRest.paintedColumns} columns are drawn, expected 7`);
+    // The wrapper is a pass-through, not a box of its own height: the board still
+    // fills the main area. A block container here hands the board its content
+    // height instead — measured at 331.56px on the prototype, which is what the
+    // contract's R4 forbids (itself a regression, since the columns' own scrollers
+    // go with it).
+    r10Check(
+      Math.abs(boardRest.boardHeight - boardRest.viewHeight) <= 1 && Math.abs(boardRest.boardHeight - boardRest.mainHeight) <= 1,
+      `the view is ${boardRest.viewHeight}px and the board ${boardRest.boardHeight}px inside a ${boardRest.mainHeight}px main area`,
+    );
+    r10Check(
+      boardRest.boardHeight > boardRest.firstColumnHeight + 1,
+      `the board is ${boardRest.boardHeight}px and a column ${boardRest.firstColumnHeight}px — the board has collapsed to its content`,
+    );
+
+    // C-2/C-3 — a filter that matches nothing, then cleared. The state, the two
+    // members' visibility and the drawn columns are read as one record, because
+    // they are written as one.
+    await page.fill("[data-search-input]", "zzz-no-such-card");
+    await page.waitForTimeout(200);
+    const filteredOut = await readBoardView();
+    r10Check(filteredOut.state === "empty", `filtered to nothing: the state is ${filteredOut.state}`);
+    r10Check(filteredOut.visibleMembers === 1, `filtered to nothing: ${filteredOut.visibleMembers} members visible, expected 1`);
+    r10Check(filteredOut.boardDisplay === "none" && filteredOut.emptyDisplay === "flex", `filtered to nothing: the members are ${filteredOut.boardDisplay}/${filteredOut.emptyDisplay}`);
+    r10Check(filteredOut.paintedColumns === 0, `filtered to nothing: ${filteredOut.paintedColumns} columns are still drawn`);
+
+    await page.fill("[data-search-input]", "");
+    await page.waitForTimeout(200);
+    const cleared = await readBoardView();
+    r10Check(cleared.state === "data" && cleared.paintedColumns === 7 && cleared.visibleMembers === 1, `after clearing: ${cleared.state}/${cleared.paintedColumns}/${cleared.visibleMembers}`);
+
+    // Terry's own case: a project with **no cards at all**. The fixture's second
+    // project owns none, so this is the `total === 0` path the old condition
+    // missed — the seven bare columns with "No tasks" in each and the board-level
+    // empty state hidden behind them.
+    await page.click("[data-project-switcher] > summary");
+    await page.waitForTimeout(150);
+    await page.click('[data-project-option="Orchestrator"]');
+    await page.waitForTimeout(500);
+    const trulyEmpty = await readBoardView();
+    r10Check(trulyEmpty.cards === 0, `the empty project still draws ${trulyEmpty.cards} cards`);
+    r10Check(trulyEmpty.state === "empty", `an empty project leaves the board view in state ${trulyEmpty.state}`);
+    r10Check(trulyEmpty.visibleMembers === 1 && trulyEmpty.emptyDisplay === "flex", `an empty project shows ${trulyEmpty.visibleMembers} members (${trulyEmpty.emptyDisplay})`);
+    r10Check(trulyEmpty.paintedColumns === 0, `an empty project draws ${trulyEmpty.paintedColumns} columns`);
+
+    // …and back, so every check after this one runs on the populated board.
+    await page.click("[data-project-switcher] > summary");
+    await page.waitForTimeout(150);
+    await page.click('[data-project-option="MeerkatTaskPanel"]');
+    await page.waitForTimeout(500);
+    const restored = await readBoardView();
+    r10Check(restored.state === "data" && restored.paintedColumns === 7, `back on the populated project: ${restored.state}/${restored.paintedColumns}`);
+
+    // ② — the drawer's three editable fields commit as they change, through the
+    // contract's own C-table. Each step reads the state *and* the alert, because
+    // the two are one write and a check on either alone would miss a divergence
+    // (contract §8 R5).
+    const readSave = () =>
+      page.evaluate(() => {
+        const save = document.querySelector("[data-detail-save]");
+        const alert = document.querySelector("[data-detail-save-error]");
+        return {
+          state: save?.getAttribute("data-save-state") ?? null,
+          alertHidden: alert?.hasAttribute("hidden") ?? null,
+          alertDisplay: alert ? getComputedStyle(alert).display : null,
+          assigneeText: document.querySelector("[data-detail-assignee-label]")?.value ?? null,
+          chips: document.querySelectorAll("[data-detail-label-chip]").length,
+        };
+      });
+    /** The state after a commit: `saving` and `saved` both count as "left `idle`". */
+    const movedOffIdle = (save) => save.state === "saving" || save.state === "saved";
+    /** …and the alert is off in every state but `error`. */
+    const alertAgrees = (save) => (save.state === "error" ? save.alertHidden === false : save.alertHidden === true);
+
+    await page.click("[data-card]");
+    await page.waitForTimeout(300);
+    const drawerRest = await readSave();
+    r10Check(drawerRest.state === "idle", `opening a card leaves the save state at ${drawerRest.state}`);
+    r10Check(alertAgrees(drawerRest), `the alert is ${drawerRest.alertHidden} in state ${drawerRest.state}`);
+    r10Check(drawerRest.assigneeText !== "", "the assignee field does not show the card's assignee");
+
+    // C-14 — typing alone is not a commit: there is no focus loss and no choice.
+    await page.click("[data-detail-assignee-label]");
+    await page.fill("[data-detail-assignee-label]", "linus");
+    await page.waitForTimeout(150);
+    const typed = await readSave();
+    r10Check(typed.state === "idle", `typing into a field moved the save state to ${typed.state}`);
+
+    // C-6/C-7 — focus loss commits, and one settle returns it to `idle`.
+    await page.evaluate(() => document.querySelector("[data-detail-assignee-label]").blur());
+    await page.waitForTimeout(120);
+    const blurred = await readSave();
+    r10Check(movedOffIdle(blurred), `leaving an edited field left the save state at ${blurred.state}`);
+    r10Check(alertAgrees(blurred), `the alert is ${blurred.alertHidden} in state ${blurred.state}`);
+    await page.waitForTimeout(700);
+    const settled = await readSave();
+    r10Check(settled.state === "idle", `after one settle the save state is ${settled.state}`);
+    r10Check(alertAgrees(settled), `after one settle the alert is ${settled.alertHidden}`);
+
+    // C-8 — accepting a roster row is the other half of the single-valued commit.
+    // The option is addressed inside the drawer's own control: the create dialog
+    // ships the same `data-assignee-*` family (B22), so an unscoped lookup would
+    // be reading two controls.
+    await page.click("[data-detail-assignee-label]");
+    await page.fill("[data-detail-assignee-label]", "jobs");
+    await page.waitForTimeout(150);
+    await page.click('[data-detail-assignee] [data-assignee-option][data-assignee-value="jobs"]');
+    await page.waitForTimeout(120);
+    const accepted = await readSave();
+    r10Check(movedOffIdle(accepted), `accepting a roster row left the save state at ${accepted.state}`);
+    await page.waitForTimeout(700);
+
+    // C-9/C-10 — the label set commits on a chip arriving and on one leaving.
+    const chipsBefore = (await readSave()).chips;
+    await page.click("[data-detail-label-remove]");
+    await page.waitForTimeout(120);
+    const removed = await readSave();
+    r10Check(removed.chips === chipsBefore - 1, `removing a chip left ${removed.chips} of ${chipsBefore}`);
+    r10Check(movedOffIdle(removed), `removing a chip left the save state at ${removed.state}`);
+    await page.waitForTimeout(700);
+    await page.click("[data-detail-label-input]");
+    await page.fill("[data-detail-label-input]", "urgent-ux");
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(120);
+    const added = await readSave();
+    r10Check(added.chips === chipsBefore, `adding a chip left ${added.chips} of ${chipsBefore}`);
+    r10Check(movedOffIdle(added), `adding a chip left the save state at ${added.state}`);
+    await page.waitForTimeout(700);
+
+    // C-11/C-12 — the blank failure, and the recovery from it. An empty value is
+    // the one failure the drawer decides on its own, with no server in the path;
+    // it is held until the next commit, so the reader can see why the field did
+    // not take.
+    await page.click("[data-detail-assignee-label]");
+    await page.fill("[data-detail-assignee-label]", "   ");
+    await page.evaluate(() => document.querySelector("[data-detail-assignee-label]").blur());
+    await page.waitForTimeout(250);
+    const failed = await readSave();
+    r10Check(failed.state === "error", `a blanked field left the save state at ${failed.state}`);
+    r10Check(failed.alertHidden === false && failed.alertDisplay === "block", `the alert is ${failed.alertDisplay} in the error state`);
+    await page.waitForTimeout(500);
+    const stillFailed = await readSave();
+    r10Check(stillFailed.state === "error", `the error state did not hold until the next commit (${stillFailed.state})`);
+
+    await page.click("[data-detail-assignee-label]");
+    await page.fill("[data-detail-assignee-label]", "linus");
+    await page.evaluate(() => document.querySelector("[data-detail-assignee-label]").blur());
+    await page.waitForTimeout(120);
+    const recovered = await readSave();
+    r10Check(movedOffIdle(recovered) && recovered.alertHidden === true, `recovering left ${recovered.state}/${recovered.alertHidden}`);
+    await page.waitForTimeout(700);
+
+    // C-13 — the next card starts clean: the state is reset by the open, not
+    // carried over from the last edit.
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(250);
+    const otherCard = await page.evaluate(() => {
+      const cards = [...document.querySelectorAll("[data-card]")];
+      const target = cards.find((card) => card.getAttribute("data-identifier") !== "TD-1") ?? cards[0];
+      target.querySelector("[data-card-title]").click();
+      return target.getAttribute("data-identifier");
+    });
+    await page.waitForTimeout(400);
+    const reopened = await readSave();
+    r10Check(reopened.state === "idle" && reopened.alertHidden === true, `reopening on ${otherCard} left ${reopened.state}/${reopened.alertHidden}`);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(250);
+
+    // ③ — the description fills the column, measured as the relation it is. The
+    // editor's bottom lands exactly on the left column's content edge; the only
+    // space under it is the dialog's own padding. A fixed-height panes box put
+    // 240px between the two.
+    await page.click("[data-new-task]");
+    await page.waitForTimeout(300);
+    const fill = await page.evaluate(() => {
+      const round = (n) => Math.round(n * 100) / 100;
+      const rect = (selector) => document.querySelector(selector)?.getBoundingClientRect() ?? null;
+      const row = rect("[data-create-two-col]");
+      const left = rect("[data-create-left]");
+      const editor = rect("[data-md-editor]");
+      const panes = rect(".td-md-panes");
+      const source = rect("[data-md-source]");
+      const rowStyle = row ? getComputedStyle(document.querySelector("[data-create-two-col]")) : null;
+      return {
+        rowBottom: round(row?.bottom ?? 0),
+        rowPaddingBottom: round(Number.parseFloat(rowStyle?.paddingBottom ?? "0")),
+        leftBottom: round(left?.bottom ?? 0),
+        editorBottom: round(editor?.bottom ?? 0),
+        editorHeight: round(editor?.height ?? 0),
+        panesHeight: round(panes?.height ?? 0),
+        sourceHeight: round(source?.height ?? 0),
+        sourceScrolls: (() => {
+          const el = document.querySelector("[data-md-source]");
+          return el ? getComputedStyle(el).overflowY : null;
+        })(),
+      };
+    });
+    r10Check(
+      Math.abs(fill.editorBottom - fill.leftBottom) <= 1,
+      `the editor ends at ${fill.editorBottom}px and its column's content at ${fill.leftBottom}px`,
+    );
+    r10Check(
+      Math.abs(fill.rowBottom - fill.editorBottom - fill.rowPaddingBottom) <= 1,
+      `the only space under the editor is the dialog's ${fill.rowPaddingBottom}px padding, measured ${Math.round((fill.rowBottom - fill.editorBottom) * 100) / 100}px`,
+    );
+    // The panes used to be a fixed `clamp(280px, 46vh, 520px)` — 225px as built.
+    // Growing past 280 is what says the height now follows the row rather than
+    // the viewport; the floor keeps a single-column dialog usable.
+    r10Check(fill.panesHeight > 280, `the panes are ${fill.panesHeight}px tall, which the old viewport rule allowed them to exceed anyway`);
+    r10Check(Math.abs(fill.sourceHeight - fill.panesHeight) <= 1, `the write side is ${fill.sourceHeight}px inside ${fill.panesHeight}px panes`);
+    r10Check(fill.sourceScrolls === "auto", `the write side scrolls as ${fill.sourceScrolls}`);
+
+    // …and the same chain one breakpoint down, where there is no neighbour to
+    // stretch to: the panes' floor is what keeps the editor usable.
+    await page.setViewportSize({ width: 500, height: 900 });
+    await page.waitForTimeout(250);
+    const narrowFill = await page.evaluate(() => {
+      const round = (n) => Math.round(n * 100) / 100;
+      const editor = document.querySelector("[data-md-editor]")?.getBoundingClientRect();
+      const panes = document.querySelector(".td-md-panes")?.getBoundingClientRect();
+      const source = document.querySelector("[data-md-source]")?.getBoundingClientRect();
+      const de = document.documentElement;
+      return {
+        editorHeight: round(editor?.height ?? 0),
+        panesHeight: round(panes?.height ?? 0),
+        sourceHeight: round(source?.height ?? 0),
+        overflow: de.scrollWidth > de.clientWidth + 1,
+      };
+    });
+    r10Check(narrowFill.panesHeight >= 200, `the single-column panes fell to ${narrowFill.panesHeight}px`);
+    r10Check(narrowFill.sourceHeight <= narrowFill.panesHeight + 1, `the write side (${narrowFill.sourceHeight}px) overflows its ${narrowFill.panesHeight}px pane`);
+    r10Check(narrowFill.overflow === false, "the single-column dialog overflows horizontally");
+    await page.click("[data-create-task] [data-modal-close]");
+    await page.waitForTimeout(250);
+    await page.setViewportSize({ width: 1512, height: 950 });
+    await page.waitForTimeout(150);
+
     // --- five viewports, none may overflow horizontally -----------------------
     const viewports = [];
     for (const width of [1512, 1240, 980, 760, 500, 430]) {
@@ -1581,11 +1868,15 @@ export async function run() {
     await page.waitForTimeout(150);
     const waitingView = await page.evaluate(() => {
       const section = document.querySelector("[data-waiting-view]");
-      const board = document.querySelector("[data-board]");
+      // R10 ① — the board gives way **whole**, wrapper included: the view root is
+      // what carries `hidden` now, because hiding only the board would leave the
+      // board-level empty state floating above whichever view replaces it.
+      const boardView = document.querySelector("[data-board-view]");
       return {
         current: document.querySelector('[data-nav-item="waiting"]')?.getAttribute("aria-current") ?? null,
         viewVisible: section ? !section.hasAttribute("hidden") : false,
-        boardHidden: board ? board.hasAttribute("hidden") : false,
+        boardHidden: boardView ? boardView.hasAttribute("hidden") : false,
+        boardPainted: boardView ? boardView.getClientRects().length > 0 : false,
         emptyShown: !!document.querySelector("[data-waiting-empty]"),
       };
     });
@@ -1624,7 +1915,8 @@ export async function run() {
     check(awaitingMenuLabels.some((label) => /Canceled/i.test(label)), "awaiting menu must offer Canceled");
     check(waitingView.current === "page", "the waiting nav item must carry aria-current");
     check(waitingView.viewVisible === true, "the waiting view must be visible");
-    check(waitingView.boardHidden === true, "the board must be hidden while the waiting view is up");
+    check(waitingView.boardHidden === true, "the board view must be hidden while the waiting view is up");
+    check(waitingView.boardPainted === false, "the board view must not be painted while the waiting view is up");
     check(waitingView.emptyShown === false, "a non-empty view must not show the empty state");
 
     // The in-flight list rules are answered inside the r9 section's own window
@@ -1646,6 +1938,17 @@ export async function run() {
       r7: { failures: r7Failures, wide, rail: railBand, drawerHead: closeR7 },
       r8: { failures: r8Failures, headWide, headNarrow, identifiers, drawerIdentifier, dark, light },
       r9: { failures: r9Failures, register, controls, listEn, listZh, loadingRules: listLoadingRules.length },
+      r10: {
+        failures: r10Failures,
+        boardRest,
+        filteredOut,
+        cleared,
+        trulyEmpty,
+        restored,
+        drawerRest,
+        fill,
+        narrowFill,
+      },
       geometry,
       counts: { rules: results.length, failed: failures.length, ...geometry },
       fixtureTasks: data.tasks.length,
@@ -1703,6 +2006,12 @@ if (isEntryPoint) run().then(
       } else {
         console.log("R9 (fidelity) — one dismiss rule, one filter control and the list's two exclusive states all pass");
       }
+      if (report.r10.failures.length > 0) {
+        console.log(`R10 (fidelity) — ${report.r10.failures.length} failed:`);
+        for (const failure of report.r10.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log("R10 (fidelity) — the board's two states, the drawer's four save states and the description's fill all pass");
+      }
     }
     const interactionOk =
       report.interactions.drawerOpened &&
@@ -1722,6 +2031,7 @@ if (isEntryPoint) run().then(
       report.r7.failures.length === 0 &&
       report.r8.failures.length === 0 &&
       report.r9.failures.length === 0 &&
+      report.r10.failures.length === 0 &&
       interactionOk;
     process.exit(ok ? 0 : 1);
   },

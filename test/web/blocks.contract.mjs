@@ -151,6 +151,25 @@ export const DOMAINS = Object.freeze({
   /** Empty-state kinds (B12). */
   EMPTY_KIND: Object.freeze(["column", "no-results"]),
   /**
+   * The board view's two states (B05/B12, R10 ①). Exactly two, and they are
+   * mutually exclusive by rule: `data` shows the board, `empty` shows the
+   * board-level no-results block. The attribute is the single source of truth —
+   * both members' `hidden` follow from it in the same write, so they can never
+   * disagree (contract §8 R1/R2). The vocabulary is deliberately not the list's:
+   * a board has no `loading` state (F6), and a list has no `empty` one.
+   */
+  BOARD_STATE: Object.freeze(["data", "empty"]),
+  /**
+   * The detail drawer's save state (B09, R10 ②). Four values, one attribute:
+   * `idle` is the resting state (opening a card resets to it), `saving` and
+   * `saved` are the transient ones a commit passes through, and `error` is held
+   * until the next commit. `[data-detail-save-error]` is visible in exactly one
+   * of the four — written by the same act, never independently (contract §8 R5).
+   */
+  SAVE_STATE: Object.freeze(["idle", "saving", "saved", "error"]),
+  /** The drawer fields that save as they change (B09, R10 ②). */
+  SAVE_FIELD: Object.freeze(["assignee", "reporter", "labels"]),
+  /**
    * The list view's two states (B08/B13, R9 ③). Exactly two, and they are
    * mutually exclusive by rule: `loading` shows the skeleton, `data` shows the
    * rows. The attribute is the single source of truth — the skeleton's `hidden`
@@ -885,11 +904,54 @@ const BLOCKS = [
     root: "[data-board]",
     scope: "board",
     status: "active",
-    required: ["[data-column]"],
+    required: ["[data-column]", "[data-board-view]", "[data-board-state]"],
     states: [],
     rules: [
       { kind: "count", selector: "[data-board]", equals: 1, when: "board view" },
       { kind: "count", selector: "[data-column]", equals: 7, when: "board view" },
+      // R10 ① — the view holds one of two states and says which on its own root.
+      // Its two members are its own direct children (the board, and the
+      // board-level no-results block) and the exclusion is a rule on the
+      // attribute (`app.css`), so the resting document is already consistent —
+      // the same shape R9 ③ gave the list, for the same reason. The condition is
+      // `shown === 0`, which covers the filtered-to-nothing case **and** the
+      // genuinely empty project: the old `total > 0 && shown === 0` covered only
+      // the first, so a board with no cards drew its seven bare columns with the
+      // empty state hidden behind them (Terry's finding).
+      //
+      // `[data-empty][data-empty-kind="column"]` is **not** a member: it states
+      // that one column is bare, and a board-level tally would count the same
+      // fact twice. Direct parentage and the two-members-exactly-one-visible
+      // relation are measured in `web/scripts/dom-smoke.mjs` — the hook grammar
+      // has no child combinator.
+      { kind: "count", selector: "[data-board-view]", equals: 1, when: "board view" },
+      {
+        kind: "domain",
+        selector: "[data-board-view]",
+        attribute: "data-board-state",
+        subset: DOMAINS.BOARD_STATE,
+        when: "board view",
+      },
+      { kind: "count", selector: "[data-board]", within: "[data-board-view]", equals: 1, when: "board view" },
+      {
+        kind: "count",
+        selector: '[data-empty][data-empty-kind="no-results"]',
+        within: "[data-board-view]",
+        equals: 1,
+        when: "board view",
+      },
+      // …the `data` half: the board is on, the empty member is off — attribute
+      // and computed `display` read together, so a rule that said one and drew
+      // the other could not pass.
+      { kind: "count", selector: "[data-board-view][data-board-state]", equals: 1, when: "board view" },
+      { kind: "computed", probe: "[data-board]", property: "display", equals: "flex", when: "board view" },
+      {
+        kind: "computed",
+        probe: '[data-empty][data-empty-kind="no-results"]',
+        property: "display",
+        equals: "none",
+        when: "board view",
+      },
       {
         kind: "order",
         selector: "[data-column][data-status]",
@@ -1181,6 +1243,9 @@ const BLOCKS = [
       "[data-detail-templates]",
       "[data-detail-for]",
       "[data-slot]",
+      "[data-detail-save]",
+      "[data-detail-save-error]",
+      "[data-detail-save-field]",
     ],
     states: [
       "[data-detail-drawer][data-state=\"open\"]",
@@ -1197,6 +1262,45 @@ const BLOCKS = [
     rules: [
       { kind: "count", selector: "[data-detail-drawer]", equals: 1 },
       { kind: "count", selector: "[data-detail-overlay]", equals: 1 },
+      // R10 ② — the drawer's three editable fields save as they change, and the
+      // one region above them says what the save is doing. `data-save-state` is
+      // the source of truth (`idle` ships, as the resting state) and
+      // `[data-detail-save-error]` is its only visible half — an attribute
+      // carrier plus one `role="alert"` block, both written by the same act, so
+      // "the state says `error`" and "the block is on screen" can never disagree
+      // (contract §8 R5).
+      //
+      // What is *not* here: the triggers. Focus loss, a roster row being
+      // accepted and a chip arriving or leaving are events, and the relation
+      // "committing moves the attribute off `idle`" is measured between them in
+      // `web/scripts/dom-smoke.mjs` — a probe reads a document, it cannot press
+      // a key.
+      { kind: "count", selector: "[data-detail-save]", equals: 1 },
+      {
+        kind: "domain",
+        selector: "[data-detail-save]",
+        attribute: "data-save-state",
+        subset: DOMAINS.SAVE_STATE,
+      },
+      // …the resting state, before any card is even open: `idle`, with the
+      // alert off. Opening a card resets to exactly this.
+      { kind: "count", selector: "[data-detail-save][data-save-state=\"idle\"]", equals: 1 },
+      { kind: "count", selector: "[data-detail-save-error]", equals: 1 },
+      { kind: "count", selector: "[data-detail-save-error][role=\"alert\"]", equals: 1 },
+      { kind: "count", selector: "[data-detail-save-error][hidden]", equals: 1 },
+      { kind: "computed", probe: "[data-detail-save-error]", property: "display", equals: "none" },
+      { kind: "count", selector: "[data-detail-save-field]", equals: 3 },
+      {
+        kind: "domain",
+        selector: "[data-detail-save-field]",
+        attribute: "data-detail-save-field",
+        subset: DOMAINS.SAVE_FIELD,
+      },
+      // The hook rides the three rows that already exist — this round added an
+      // attribute, never a node (contract §4.3 note 2).
+      { kind: "count", selector: "[data-detail-assignee][data-detail-save-field=\"assignee\"]", equals: 1 },
+      { kind: "count", selector: "[data-detail-reporter][data-detail-save-field=\"reporter\"]", equals: 1 },
+      { kind: "count", selector: "[data-detail-labels][data-detail-save-field=\"labels\"]", equals: 1 },
       // R8 ③ — the drawer's identifier wears the same single-line guard as the
       // card's and the list row's (the cap itself is the render-layer slice), and
       // the drawer **root** carries the full identifier. The root's attribute is
@@ -1361,6 +1465,30 @@ const BLOCKS = [
       { kind: "count", selector: "[data-create-two-col]", equals: 1 },
       { kind: "count", selector: "[data-create-left]", equals: 1 },
       { kind: "count", selector: "[data-create-right]", equals: 1 },
+      // R10 ③ — the description fills the column it sits in, and the columns are
+      // the height of the taller one. The left column is the short one (the
+      // routing column carries eight fields), so it is the one that has to be
+      // told to stretch: left to its own content height it ended 240px above the
+      // dialog's last edge, with the editor stranded over a band of empty box.
+      //
+      // The stretch is declared, not inherited. A grid container's `align-items`
+      // computes to `normal` when nothing says otherwise, and `normal` behaves
+      // like `stretch` here — but "behaves like" is not "says", and the grid's
+      // default is the one thing a later `items-start` would silently reuse.
+      {
+        kind: "computed",
+        probe: "[data-create-two-col]",
+        property: "alignItems",
+        equals: "stretch",
+      },
+      { kind: "computed", probe: "[data-create-left]", property: "display", equals: "flex" },
+      { kind: "computed", probe: "[data-create-left]", property: "flexDirection", equals: "column" },
+      // The chain's next link: the field that fills the column is a column flex
+      // box *itself*. As a block container it would hand the editor nothing but
+      // its own line box, and the editor's `flex: 1 1 auto` would have no parent
+      // to resolve against — the second break in the chain, measured at 302px.
+      { kind: "computed", probe: ".td-field-grow", property: "display", equals: "flex" },
+      { kind: "computed", probe: ".td-field-grow", property: "flexDirection", equals: "column" },
       {
         kind: "manual",
         note:
@@ -1427,6 +1555,18 @@ const BLOCKS = [
         selector: "[data-empty][data-empty-kind=\"no-results\"]",
         max: 1,
         when: "board view",
+      },
+      // R10 ① — the two kinds are two different statements, and the board-level
+      // one is never the column-level one: the no-results block lives at the
+      // view level, outside the board's own horizontal scroller, so it is never
+      // inside a column body. That is what keeps it out of a per-column count
+      // and, in the other direction, keeps the seven "No tasks" blocks out of
+      // the board's two-state tally.
+      {
+        kind: "count",
+        selector: "[data-empty][data-empty-kind=\"no-results\"]",
+        within: "[data-column-body]",
+        equals: 0,
       },
       {
         kind: "manual",
@@ -1836,6 +1976,22 @@ const BLOCKS = [
       { kind: "count", selector: "[data-md-editor]", equals: 1 },
       { kind: "count", selector: "[data-md-toggle]", equals: 3 },
       { kind: "domain", selector: "[data-md-toggle]", attribute: "data-md-toggle", subset: DOMAINS.MD_MODE },
+      // R10 ③ — the editor's own end of the stretch chain, and the reason the
+      // round exists. The editor takes what the column leaves it, the panes take
+      // what the editor leaves *them*, and the panes' height has a floor rather
+      // than a viewport-driven ceiling: the old `clamp(280px, 46vh, 520px)` was
+      // a rule about the window, so the box could grow and the editing area could
+      // not, and the difference piled up under the editor.
+      { kind: "computed", probe: "[data-md-editor]", property: "display", equals: "flex" },
+      { kind: "computed", probe: "[data-md-editor]", property: "flexGrow", equals: "1" },
+      { kind: "computed", probe: "[data-md-editor]", property: "flexBasis", equals: "auto" },
+      { kind: "computed", probe: "[data-md-editor]", property: "flexDirection", equals: "column" },
+      { kind: "computed", probe: ".td-md-panes", property: "minHeight", equals: "200px" },
+      { kind: "computed", probe: ".td-md-panes", property: "flexGrow", equals: "1" },
+      // The write side takes the pane it is stacked in and scrolls itself once
+      // the text outgrows it — the same behaviour as before the round, now from
+      // a height that follows the pane instead of a fixed 220px.
+      { kind: "computed", probe: "[data-md-source]", property: "overflowY", equals: "auto" },
       {
         kind: "manual",
         note:

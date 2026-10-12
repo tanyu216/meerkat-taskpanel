@@ -40,10 +40,19 @@ const props = defineProps({
   placeholderKey: { type: String, default: "combo.assigneePlaceholder" },
   emptyKey: { type: String, default: "combo.empty" },
   ariaKey: { type: String, default: "" },
+  /**
+   * R10 ② — the input **carries** the field's value instead of holding an empty
+   * query. The drawer's two single-valued rows are the prototype's
+   * `value="linus"` inputs: the text in the box *is* the field, which is what
+   * makes "leaves the field with a different value" a question the input can
+   * answer on its own. The create dialog's fields are unseeded — they start
+   * empty because there is nothing to edit yet.
+   */
+  seed: { type: Boolean, default: false },
 });
-const emit = defineEmits(["update:modelValue"]);
+const emit = defineEmits(["update:modelValue", "blur"]);
 
-const query = ref("");
+const query = ref(props.seed ? (props.multi ? "" : String(props.modelValue ?? "")) : "");
 const open = ref(false);
 const active = ref(0);
 const inputEl = ref(null);
@@ -142,10 +151,34 @@ function removeChip(name) {
   );
 }
 
+/**
+ * The blur half of R10 ②'s commit: the drawer's single-valued fields save when
+ * the reader leaves one whose value moved. `mousedown.prevent` on the menu rows
+ * keeps the focus where it is while a row is being accepted, so this fires on a
+ * real departure and not on a choice.
+ */
+function onBlur() {
+  open.value = false;
+  emit("blur", query.value.trim());
+}
+
 function focus() {
   open.value = true;
   nextTick(() => inputEl.value?.focus());
 }
+
+/**
+ * A seeded field follows its value: accepting a roster row rewrites the model,
+ * and the box shows what was accepted rather than the query that found it. A
+ * multi-value control keeps an empty box — its values are the chips.
+ */
+watch(
+  () => props.modelValue,
+  (next) => {
+    if (!props.seed || open.value) return;
+    query.value = props.multi ? "" : String(next ?? "");
+  },
+);
 
 watch(
   () => props.options,
@@ -173,7 +206,7 @@ defineExpose({ focus });
       @input="onInput"
       @focus="onInput"
       @keydown="onKeydown"
-      @blur="open = false"
+      @blur="onBlur"
     />
 
     <ul v-show="open" v-bind="{ [hookMenu]: '' }" class="td-combo-menu" role="listbox">

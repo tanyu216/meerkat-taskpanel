@@ -419,6 +419,56 @@ export async function addComment(ref, body) {
   return data.comment;
 }
 
+/* ------------------------------------------------------- detail auto-save */
+
+/**
+ * R10 ② — persist one editable field of the card the drawer has open:
+ * `assignee`, `reporter` or `labels`.
+ *
+ * Optimistic in the same shape `moveTask` uses: the local record states the new
+ * value first (the drawer reads it back immediately), the PATCH carries
+ * `if_version` so a concurrent writer is detected rather than overwritten, and a
+ * rejection rolls the record back **before** re-throwing, so the caller's state
+ * machine lands on `error` with the board showing what is actually stored.
+ *
+ * The response is deliberately **not** read back as the record. `updateTask`
+ * records a `task_updated` activity, and the live stream already re-reads the
+ * task on every activity (`startEvents`), so the canonical form arrives by the
+ * path that owns it — whereas assigning the envelope here would let a payload
+ * that says nothing about this task overwrite the edit that was just made.
+ *
+ * @param {string} field one of `assignee` | `reporter` | `labels`
+ * @param {string|string[]} value the wire value (`assignee`/`reporter` are names)
+ */
+export async function saveDetailField(field, value) {
+  const task = board.detail?.task;
+  if (!task) return;
+
+  const before = field === "labels" ? { labels: task.labels ?? [] } : { [field]: task[field] ?? null };
+  const next =
+    field === "labels"
+      ? { labels: value }
+      : { [field]: { ...(task[field] ?? {}), display_name: value, kind: personKind(field, value) } };
+
+  patchTaskLocal(task.id, next);
+  try {
+    await api.patchTask(task.identifier, { [field]: value, if_version: task.version });
+  } catch (err) {
+    patchTaskLocal(task.id, before);
+    throw err;
+  }
+}
+
+/**
+ * The kind a re-assignment writes into the optimistic record. A named roster
+ * entry keeps its own kind; a name the board has never seen is `human`, the same
+ * default the combobox gives an unknown handle (B22) — no platform is invented.
+ */
+function personKind(field, name) {
+  if (field === "reporter") return "human";
+  return board.assignees.find((entry) => entry.display_name === name)?.kind ?? "human";
+}
+
 /* ------------------------------------------------------------------ detail */
 
 export async function openDetail(identifier) {

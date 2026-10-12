@@ -34,6 +34,11 @@ export const EXTRA = {
     "toast.resynced": "Board resynced",
     "toast.relationNone": "No relations",
     "attach.placeholder": "No attachments",
+    // R10 ② — the drawer's save failure. The prototype inlines this one string
+    // (its catalogue is mirrored byte for byte by `test/web/i18n.catalogue.mjs`),
+    // so it has no catalogue key to reuse: it lives here, like every other
+    // implementation-authored state, and reaches the block through `data-i18n`.
+    "detail.saveError": "Couldn’t save — try again.",
     // M1 · first-class `awaiting` and the 「等你回复」view (design §5). The
     // count key uses `%s` because the runtime fills positionally — `{n}` would
     // print itself (design §10-C2).
@@ -65,6 +70,7 @@ export const EXTRA = {
     "toast.resynced": "看板已补齐",
     "toast.relationNone": "无关联",
     "attach.placeholder": "无附件",
+    "detail.saveError": "保存失败 —— 请重试。",
     "status.awaiting": "等你回复",
     "waiting.count": "%s 件等你回复",
     "waiting.empty": "没有在等你回复的卡",
