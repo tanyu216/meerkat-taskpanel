@@ -205,7 +205,8 @@ them*.
 ### Scheduling: poll & patrol
 
 Claiming is not left to an agent's memory. A small **host-external supervisor**
-([`scripts/supervisor.mjs`](scripts/supervisor.mjs)) runs a cheap **1-minute poll**
+([`skills/meerkat-loop/`](skills/meerkat-loop/SKILL.md), whose execution body is
+[`scripts/supervisor.mjs`](scripts/supervisor.mjs)) runs a cheap **1-minute poll**
 — a $0 local CLI scan, where a model turn starts **only** when a card was actually
 claimed (the atomic claim is the single dispatch source) — and a **5-minute
 patrol** that escalates a claim whose heartbeat has gone stale and reports a
@@ -213,13 +214,17 @@ heartbeat it cannot read (never silently). Claude Code and Codex have **no
 timers**, so the loop lives *outside* them and only the worker is woken
 (`claude -p`, `codex exec`, `pi --print`).
 
-`install.sh` drops per-host launchd / systemd / cron units and a wake-glue
-script, and prints the exact load command — it never enables a daemon for you.
-The installer also asks once whether the supervisor may claim **unassigned**
-cards (default yes) and remembers the answer in
-`<host>/meerkat-taskpanel.env`. The full design — the two layers, the fire-only cost
-gate, idempotent wakes, the concurrency cap, the fail-safe, and the per-host
-trigger differences — is in [`docs/scheduling.md`](docs/scheduling.md).
+The loop ships as **its own skill** (`skills/meerkat-loop/`), and `install.sh` installs it
+for **claude, codex and pi only** — OpenClaw gets the board and nothing else, because the
+openclaw-team framework already runs an equivalent poll / patrol. Alongside the skill the
+installer drops per-host launchd / systemd / cron units and a wake-glue script, and prints
+the exact load command — it never enables a daemon for you. The installer also asks once
+whether the supervisor may claim **unassigned** cards (default yes) and remembers the
+answer in `<host>/meerkat-taskpanel.env`. The loop skill declares the board interface
+generation it requires (and its `scripts/board-check.mjs` enforces it against a board's own
+`--version --json`); the full design — the two layers, the fire-only cost gate, idempotent
+wakes, the concurrency cap, the fail-safe, and the per-host trigger differences — is in
+[`docs/scheduling.md`](docs/scheduling.md).
 
 ### OpenClaw
 
@@ -293,10 +298,10 @@ runtime.
 
 ```bash
 node --test                          # run the smoke / contract test suite
-node scripts/sync-skills.mjs         # skills/ → plugins/<host>/skills
-node scripts/sync-skills.mjs --check # verify generated skill copies are in sync
+node scripts/sync-skills.mjs         # the loop payload + skills/ → plugins/<target>/skills
+node scripts/sync-skills.mjs --check # verify the generated payload and copies are in sync
 node scripts/verify/manifests.mjs    # validate plugin manifests
-node scripts/verify/skill.mjs        # validate SKILL.md frontmatter
+node scripts/verify/skill.mjs        # validate the board skill's SKILL.md frontmatter
 node scripts/build.mjs               # produce dist/
 ```
 

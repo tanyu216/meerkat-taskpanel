@@ -158,15 +158,20 @@ OpenClaw 也可消费 Claude 格式的 bundle（`plugins/claude`），这是受�
 ### 调度：轮询与巡检
 
 认领不靠 Agent 的记忆。一个**宿主外部**的小型**监督进程**
-（[`scripts/supervisor.mjs`](scripts/supervisor.mjs)）运行两层：**每分钟轮询** —— 一次
+（独立 skill [`skills/meerkat-loop/`](skills/meerkat-loop/SKILL.md)，其执行体为
+[`scripts/supervisor.mjs`](scripts/supervisor.mjs)）运行两层：**每分钟轮询** —— 一次
 $0 的本地 CLI 扫描，**只有真正认领到卡**时才启动模型回合（原子认领是唯一的派单源）；
 以及**每五分钟巡检** —— 对心跳过期的认领升级告警，并把**无法解析的心跳如实上报**
 （绝不静默）。Claude Code 与 Codex **本身没有定时器**，因此这个循环活在它们**之外**，
 被唤醒的只是 worker（`claude -p`、`codex exec`、`pi --print`）。
 
-`install.sh` 会写入各宿主的 launchd / systemd / cron 调度单元与唤醒脚本，并**打印**加载
+这个循环本身也是一个 skill（`meerkat-loop`），并且 `install.sh` **只为 claude / codex / pi
+安装它**；OpenClaw 只拿到看板、不拿 loop —— openclaw-team 框架已自带等价实现。除 skill 之外，
+安装器还会写入各宿主的 launchd / systemd / cron 调度单元与唤醒脚本，并**打印**加载
 命令 —— 绝不替你启用守护进程。安装时还会问一次是否允许认领**未分配**的卡（默认允许），
-并把答案记到 `<宿主目录>/meerkat-taskpanel.env`。完整设计 —— 两层模型、仅触发才计费的成本闸门、
+并把答案记到 `<宿主目录>/meerkat-taskpanel.env`。loop skill 会声明它所需的 board
+`task-interface` 版本，并由 `scripts/board-check.mjs` 对着看板自己的 `--version --json` 强制执行；
+完整设计 —— 两层模型、仅触发才计费的成本闸门、
 幂等唤醒、并发上限、失效兜底，以及三宿主触发差异 —— 见
 [`docs/scheduling.md`](docs/scheduling.md)。
 
@@ -177,8 +182,9 @@ OpenClaw 是唯一**由框架代你执行规则**的宿主，也是唯一**不�
 [`docs/scheduling.md`](docs/scheduling.md) 描述的这套设计。因此 OpenClaw 这条路分三层，
 按你真正的需要取用：
 
-1. **只装看板基座** —— `install.sh --target openclaw` **只安装 skill**：看板及其规则，
-   不含任何把工作派发给 Agent 的调度。
+1. **只装看板基座** —— `install.sh --target openclaw` **只安装看板 skill**：看板及其规则，
+   不含 `meerkat-loop` skill，也不含任何把工作派发给 Agent 的调度（这是永久裁定，不是待补的缺口：
+   同一块看板上两个监督进程只会彼此抢卡）。
 2. **搭建 agents 团队** —— 要得到一支真正认领、干活的团队，请**依据自身情况**参考
    [**openclaw-team**](https://github.com/tanyu216/openclaw-team) 来搭建 —— 一个基于文件、
    幂等的安装器，会搭起一支小型 Agent 团队（一名协调者 + 四名专家），自带派单、门禁与
@@ -227,10 +233,10 @@ claim-first 片段、写入可调度的认领触发脚本 `~/.codex/meerkat-task
 
 ```bash
 node --test                          # 运行冒烟 / 契约测试
-node scripts/sync-skills.mjs         # skills/ → plugins/<host>/skills
-node scripts/sync-skills.mjs --check # 校验各宿主 skill 副本是否同步
+node scripts/sync-skills.mjs         # 生成 loop 载荷 + skills/ → plugins/<目标>/skills
+node scripts/sync-skills.mjs --check # 校验生成载荷与各宿主 skill 副本是否同步
 node scripts/verify/manifests.mjs    # 校验插件清单
-node scripts/verify/skill.mjs        # 校验 SKILL.md frontmatter
+node scripts/verify/skill.mjs        # 校验看板 skill 的 SKILL.md frontmatter
 node scripts/build.mjs               # 产出 dist/
 ```
 
