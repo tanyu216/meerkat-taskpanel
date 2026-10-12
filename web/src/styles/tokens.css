@@ -1,10 +1,20 @@
 /* ============================================================================
-   MeerkatTaskPanel — brand token layer v1
+   MeerkatTaskPanel — brand token layer v2
    ----------------------------------------------------------------------------
    Single source of truth for the brand layer.  Values are fixed by
    `brief.md` §2–§4; the three light-mode corrections in §6 are applied here and
    listed with before → after in `BRAND.md` → "WCAG AA verification".
    BRAND.md quotes these tokens, it does not restate conflicting values.
+
+   v2 (meerkat remaster) — the product is `meerkat-taskpanel` and the mark is
+   `Sentinel Watch`, replacing v1 `Signal Bars`.  This layer is carried over
+   from v1 UNCHANGED: no token was added, removed, renamed or re-valued, and no
+   colour was introduced.  The logo still uses two roles only — the brand line
+   and the ink — and the narrative moved, not the palette.  See `BRAND.md`
+   → "v2 change record".  (Web copy note: this file is `design/brand/tokens.css`
+   verbatim, plus the `html[data-theme="auto"]` block at the foot — the web
+   layer resolves the third theme state in CSS, which the design file does not
+   need.  E4, 2026-10-12.)
 
    Theme contract (daisyUI):
      light  →  :root

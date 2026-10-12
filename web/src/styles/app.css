@@ -24,9 +24,11 @@
  *   .td-sidebar      the named area + the ≤1023px icon rail (see the media block).
  *   .td-card         the card box and its four state rules.
  *   .td-card-stripe  \
- *   .td-col-dot       | geometry whose colour is `var(--status-color)` /
+ *   .td-status-dot    | geometry whose colour is `var(--status-color)` /
  *   .td-pri-glyph     | `var(--pri-color)` — the map daisyUI cannot read.
  *   .td-card-waiting /
+ *   .td-count        the count pill's brand face (20×18, mono numerals, hairline)
+ *                    on top of daisyUI's `badge badge-sm`, which owns the box.
  *   .td-drawer       the fixed drawer and its `data-state` slide.
  *   .td-toast        the toast surface and its kind strip.
  *   .td-details-menu the floating-menu shell shared by the three anchored menus
@@ -178,7 +180,11 @@ svg[data-theme-icon][hidden] { display: none; }
   width: 3px;
   background: var(--status-color, var(--brand-text-4));
 }
-.td-col-dot {
+/* The column's status dot: daisyUI's `status` owns the shape (`aspect-ratio:1`
+   + the selector radius) and this pins the brand's 8px and the mapped colour —
+   daisyUI's own `status` would paint `--color-base-content` at 20%, which says
+   nothing about the stage. */
+.td-status-dot {
   @apply size-2 rounded-[999px];
   background: var(--status-color, var(--brand-text-3));
 }
@@ -204,6 +210,25 @@ svg[data-theme-icon][hidden] { display: none; }
   border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
 }
 [data-card]:has(.td-card-waiting) [data-card-menu] { margin-left: var(--space-1); }
+
+/* The count pill — the column header's and the sidebar's counts. daisyUI's
+   `badge badge-sm` owns the box, the inline-flex centring and the shrink
+   behaviour; these are the brand's metrics on top: 20×18 on the 4px grid, the
+   mono face every number on the board shares, and the hairline edge. Ported
+   from the prototype's own `.td-count`
+   (`design/prototype/src/input.css:956-966`). */
+.td-count {
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--brand-text-3);
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  border-radius: 999px;
+}
 
 /* ----------------------------------------------------------------- drawer */
 
@@ -322,18 +347,25 @@ svg[data-theme-icon][hidden] { display: none; }
 }
 .td-md-source::selection { background: var(--brand-focus-ring); }
 
-/* B13 · the loading row. daisyUI's `skeleton` is the shell; it shimmers a
-   background gradient, while the design's loading row is an opacity pulse — a
-   keyframe daisyUI does not have — so the row's own face is pinned here. */
-.td-skeleton-row {
-  height: 44px;
-  border-radius: var(--radius-box);
-  background: var(--brand-hover);
-  animation: td-pulse 1.4s ease-in-out infinite;
-}
-@keyframes td-pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+/* B13 · the loading row is a daisyUI `skeleton` per cell, with no rule of its
+   own: the component owns the shimmer animation and the box, and the cells'
+   height/width are the template's inline styles, exactly as the prototype
+   states them (`design/prototype/index.html:2206-2211`). The hand-written
+   `.td-skeleton-row` + `td-pulse` pair this file used to carry is gone — it
+   re-stated an animation daisyUI already has (E3, 2026-10-12). */
 
 /* ------------------------------------------------------------ responsive */
+
+/* ≥1024px — the project row is `[name][count]`. The prefix monogram is a **rail
+   affordance only** (BLOCKS.md B03: "prefix monogram, rail only"; the prototype
+   hides it at full width — `design/prototype/src/input.css:945-951`), because
+   there the name already identifies the row and the extra cell is what pushed
+   it into an ellipsis. It stays in the DOM, so the rail's chip is the same
+   element with a different face. The nav rows keep their own glyph: that one is
+   the item's icon, not a stand-in for a hidden label. */
+@media (min-width: 1024px) {
+  [data-sidebar] [data-project] [data-side-icon] { display: none; }
+}
 
 /* ≤1023px — the sidebar collapses to an icon rail. Every text label is dropped
    (so nothing can be clipped by the narrow box) and the rail keeps a glyph per
@@ -347,7 +379,6 @@ svg[data-theme-icon][hidden] { display: none; }
   [data-sidebar] [data-side-text],
   [data-sidebar] [data-side-name],
   [data-sidebar] [data-side-count],
-  [data-sidebar] [data-side-score],
   [data-sidebar] [data-agent-platform],
   [data-sidebar] [data-caret],
   [data-sidebar] [data-label-text] { display: none; }

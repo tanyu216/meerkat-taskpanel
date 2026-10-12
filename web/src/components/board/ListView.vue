@@ -25,15 +25,34 @@ const rows = computed(() =>
     version: task.version,
   })),
 );
+
+// B13 · the loading skeleton's three rows and their six cell widths, taken
+// verbatim from the prototype (`index.html:2206-2211`): the identifier column,
+// the title (the one flexible track), then the four fixed-width trailing
+// columns. Only the title width varies row to row, which is what makes three
+// stacked rows read as a list rather than as one block repeated.
+const SKELETON_ROWS = [
+  ["48px", "60%", "64px", "80px", "56px", "40px"],
+  ["48px", "72%", "64px", "80px", "56px", "40px"],
+  ["48px", "52%", "64px", "80px", "56px", "40px"],
+];
 </script>
 
 <template>
   <div class="p-3" data-list :hidden="view !== 'list'">
-    <!-- B13 · loading skeleton (no hooks of its own; three shimmer rows). -->
+    <!-- B13 · loading skeleton (no hooks of its own; three shimmer rows). Each
+         cell is a daisyUI `skeleton`, which owns the shimmer and the box — the
+         widths are the inline metrics the prototype states, and the grid is the
+         same one the real rows use, so the placeholder stands in the list it
+         previews rather than approximating it. -->
     <div v-if="board.loading" class="flex flex-col gap-2 p-3" data-skeleton aria-hidden="true">
-      <div class="skeleton td-skeleton-row"></div>
-      <div class="skeleton td-skeleton-row"></div>
-      <div class="skeleton td-skeleton-row"></div>
+      <div
+        v-for="(cells, row) in SKELETON_ROWS"
+        :key="row"
+        class="grid grid-cols-[92px_minmax(0,1fr)_auto_auto_auto_auto] items-center gap-3 p-2"
+      >
+        <span v-for="(width, cell) in cells" :key="cell" class="skeleton" :style="{ height: '12px', width }"></span>
+      </div>
     </div>
 
     <template data-list-row-template>
