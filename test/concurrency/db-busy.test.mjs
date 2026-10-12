@@ -25,7 +25,7 @@
 
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
@@ -34,7 +34,8 @@ import { openDatabase } from "../../src/core/storage/driver.mjs";
 import { SQLITE_ERRCODE, mapSqliteError } from "../../src/core/storage/sqlite-errors.mjs";
 import { transaction } from "../../src/core/storage/unit-of-work.mjs";
 import { createTaskd } from "../../src/server/index.mjs";
-import { DB_BUSY_MAX_ATTEMPTS } from "../../src/shared/constants.mjs";
+import { attachmentContentPath } from "../../src/server/routes/attachments.mjs";
+import { ATTACHMENTS_DIRNAME, DB_BUSY_MAX_ATTEMPTS } from "../../src/shared/constants.mjs";
 import { ERROR_CODES } from "../../src/shared/errors.mjs";
 
 const tempDirs = [];
@@ -345,6 +346,84 @@ describe("concurrency/db-busy — the attachment content write (DEF-234655-R2)",
       assert.equal(response.status, 200, `expected the retry to win, got ${response.status}`);
       assert.equal((await response.json()).data.size, 5);
       assert.equal(taskd.board.repos.attachments.get(attachment.id).size, 5, "the row's size kept up");
+      holder.kill("SIGKILL");
+    } finally {
+      await taskd.close();
+    }
+  });
+
+  /**
+   * T-20261013-014304 — the write *order* on this path.
+   *
+   * A 503 was already the right answer here (R2); what was still wrong is what
+   * the refused request left behind. The handler wrote the bytes first and only
+   * then took the write lock, so contention past the retry budget answered 503
+   * *after* the payload had already replaced the stored file — orphan bytes, and
+   * a row whose `size` described a file that was no longer there. GET still
+   * served the truth (`stat`, not the row), so the damage was quiet: disk growth
+   * and a listing that lied.
+   *
+   * These two cases pin the invariant on both sides of the 503 — the disk and
+   * the row. They are deliberately not satisfiable by relaxing an assertion:
+   * the first requires the file to be *absent*, the second requires the old
+   * bytes to be *present* and byte-identical.
+   */
+  it("leaves no orphan bytes when the lock is held — the refused PUT writes nothing", async () => {
+    const taskd = await shortFuseBoard();
+    try {
+      const attachment = await boardWithAttachment(taskd);
+      const path = attachmentContentPath(taskd.board.dataDir, attachment.id);
+      const holder = await holdWriteLock(taskd.board.dbPath, 3_000);
+
+      const response = await putBytes(taskd, attachment.id);
+      assert.equal(response.status, 503, "contention is still a 503");
+
+      assert.equal(statSync(path, { throwIfNoEntry: false }), undefined, "no bytes were stored");
+      // Not even a staging file: a `.part` left behind would be the same leak
+      // wearing a different name.
+      assert.deepEqual(
+        readdirSync(join(taskd.board.dataDir, ATTACHMENTS_DIRNAME)),
+        [],
+        "and nothing was staged",
+      );
+      assert.equal(taskd.board.repos.attachments.get(attachment.id).size, 0, "the row did not move");
+
+      holder.kill("SIGKILL");
+    } finally {
+      await taskd.close();
+    }
+  });
+
+  it("keeps the bytes already stored when a contended overwrite is refused", async () => {
+    const taskd = await shortFuseBoard();
+    try {
+      const attachment = await boardWithAttachment(taskd);
+      const path = attachmentContentPath(taskd.board.dataDir, attachment.id);
+
+      const landed = await putBytes(taskd, attachment.id); // "hello" — 5 bytes
+      assert.equal(landed.status, 200);
+      assert.equal(readFileSync(path, "utf8"), "hello");
+
+      const holder = await holdWriteLock(taskd.board.dbPath, 3_000);
+      const refused = await fetch(`${taskd.url}/api/v1/attachments/${attachment.id}/content`, {
+        method: "PUT",
+        headers: { "content-type": "application/octet-stream" },
+        body: "a replacement that must never land",
+      });
+      assert.equal(refused.status, 503);
+
+      // The refused overwrite is the case the old order got wrong: the file had
+      // already been replaced when the lock was taken, so the stored bytes were
+      // the *new* ones while the row still said 5.
+      assert.equal(readFileSync(path, "utf8"), "hello", "the stored bytes survived verbatim");
+      assert.equal(statSync(path).size, 5);
+      assert.equal(taskd.board.repos.attachments.get(attachment.id).size, 5, "row and disk still agree");
+      assert.deepEqual(
+        readdirSync(join(taskd.board.dataDir, ATTACHMENTS_DIRNAME)),
+        [attachment.id],
+        "one file, no leftovers",
+      );
+
       holder.kill("SIGKILL");
     } finally {
       await taskd.close();
