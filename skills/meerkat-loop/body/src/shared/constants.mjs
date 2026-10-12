@@ -63,6 +63,14 @@ export const DB_FILENAME = "board.sqlite";
 export const TOKEN_FILENAME = "token";
 /** Log directory name inside the data directory. */
 export const LOGS_DIRNAME = "logs";
+/**
+ * The single-writer lock's file name inside the data directory (R1).
+ *
+ * One `taskd` owns a data directory: the lock makes a second instance a
+ * *refusal* rather than a race over the runtime pointer. See
+ * `src/core/storage/writer-lock.mjs`.
+ */
+export const WRITER_LOCK_FILENAME = "writer.lock";
 /** Default HTTP port (D10 — 4 digits, avoids common dev ports). */
 export const DEFAULT_PORT = 9527;
 /** Default listen host (ARCHITECTURE §7: welcome LAN access). */
@@ -74,6 +82,26 @@ export const DEFAULT_DAEMON_HOST = "127.0.0.1";
 export const AUTOSTART_TIMEOUT_MS = 5_000;
 /** How often it retries while waiting. */
 export const AUTOSTART_POLL_MS = 100;
+
+// ---------------------------------------------------------------------------
+// Write-path resilience (R2: lock contention is not a server error)
+// ---------------------------------------------------------------------------
+
+/**
+ * How many times an **outermost** transaction is attempted before lock
+ * contention is reported (`DB_BUSY`, HTTP 503) instead of retried.
+ *
+ * `busy_timeout` already waits 5s inside SQLite; these attempts are the margin
+ * past it, for the writer that holds the lock a little longer than that (a big
+ * migration, a slow trigger, a stalled disk). Three attempts is bounded and
+ * small: the worst case — every attempt waiting out the full `busy_timeout` —
+ * is a ~15s synchronous wait, which is the honest price of a single-threaded
+ * synchronous driver. A nested transaction is never retried: the connection
+ * already holds the write lock, so a savepoint cannot hit `SQLITE_BUSY`.
+ */
+export const DB_BUSY_MAX_ATTEMPTS = 3;
+/** Pause between attempts. Small: SQLite's own `busy_timeout` is the real wait. */
+export const DB_BUSY_BACKOFF_MS = 25;
 
 // ---------------------------------------------------------------------------
 // CLI exits (§F-C2: 0 ok | 1 runtime | 2 usage | 3 export --md --check differs)

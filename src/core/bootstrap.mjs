@@ -38,6 +38,7 @@ import { readRuntimePointer, writeRuntimePointer } from "./storage/secrets/runti
  *   url?: string,
  *   readonly?: boolean,
  *   allowStale?: boolean,
+ *   busyTimeoutMs?: number,
  *   logger?: Function,
  * }} [options]
  * @returns {Promise<object>}
@@ -61,7 +62,16 @@ export async function openBoard(options = {}) {
   const dbPath = resolveDbPath({ dataDir, dbPath: options.dbPath ?? null, env });
   ensureDir(dataDir);
 
-  const db = await openDatabase({ path: dbPath, readonly });
+  // `busyTimeoutMs` is an *override* of the pinned 5000ms (§4.3), not a new
+  // default: only a caller that says so gets a different lock wait. The tests
+  // that exercise lock contention use it to keep a 5s wait out of the suite.
+  const db = await openDatabase({
+    path: dbPath,
+    readonly,
+    ...(Number.isFinite(options.busyTimeoutMs)
+      ? { pragmas: { busy_timeout: Math.max(0, Math.trunc(options.busyTimeoutMs)) } }
+      : {}),
+  });
 
   let migration;
   let schema;

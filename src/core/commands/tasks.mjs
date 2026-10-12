@@ -12,7 +12,7 @@
  */
 
 import { DomainError, isDomainError } from "../../shared/errors.mjs";
-import { CLAIM_STALE_ANY_MS, CLAIM_STALE_SAME_MS } from "../../shared/constants.mjs";
+import { CLAIM_STALE_ANY_MS, CLAIM_STALE_SAME_MS, HEARTBEAT_FRESH_MS } from "../../shared/constants.mjs";
 import { assertClaimable, decideClaim, explainLostClaim } from "../domain/claim.mjs";
 import {
   assertCreationGate,
@@ -306,6 +306,31 @@ function assertStealReason(reason) {
   return text;
 }
 
+/**
+ * The staleness bound a takeover hands to the repository (R3).
+ *
+ * The verdict already decided *that* the claim may be taken; this says *how
+ * old* the heartbeat it is taking must be, so the predicate reaches SQL instead
+ * of living only here. `verdict.steal` distinguishes the two cases
+ * `decideClaim` folds into `reclaim`: a claim rotted past six hours (anybody may
+ * take it) versus one that merely went stale for its holder (only the holder
+ * may). Each bound is the threshold that verdict was decided on, one instant
+ * earlier — the same comparison `decideClaim` makes, now also made by the
+ * writer.
+ *
+ * @param {string} now @param {boolean} stolen
+ */
+function staleBound(now, stolen) {
+  const at = new Date(now).getTime();
+  if (!Number.isFinite(at)) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: `claim: 'now' is not a usable timestamp (${String(now)})`,
+      details: { field: "now", received: String(now) },
+    });
+  }
+  return new Date(at - (stolen ? CLAIM_STALE_ANY_MS : HEARTBEAT_FRESH_MS)).toISOString();
+}
+
 /** The `change` comment an audited takeover leaves behind (the readable trail). */
 function stealCommentBody(task, verdict, actor, reason) {
   if (verdict.reclaim === true) {
@@ -352,8 +377,16 @@ function performClaim(ctx, input) {
 
   let task;
   if (verdict.reclaim === true) {
-    // Re-claiming an in_progress card: the CAS must match status='in_progress'.
-    task = ctx.repos.tasks.stealStaleClaim({ id: current.id, ifVersion, actor: actor.id, now });
+    // Re-claiming an in_progress card: the CAS must match status='in_progress'
+    // *and* the heartbeat the verdict judged stale — the repository enforces the
+    // bound rather than trusting this call site (R3).
+    task = ctx.repos.tasks.stealStaleClaim({
+      id: current.id,
+      ifVersion,
+      actor: actor.id,
+      now,
+      staleBefore: staleBound(now, verdict.steal === true),
+    });
   } else {
     const result = ctx.repos.tasks.claimCas({ id: current.id, ifVersion, actor: actor.id, now });
     if (!result.claimed) {

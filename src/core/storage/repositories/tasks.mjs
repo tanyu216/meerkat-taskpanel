@@ -5,9 +5,21 @@
  * version it expects, and a 0-row result is turned into the *reason* it lost
  * (version conflict vs. claim lost vs. gone) by re-reading inside the same
  * transaction. That is I1/I3/D4 in one place.
+ *
+ * **Internal contract** (R3). These methods are the storage half of a use-case,
+ * not a public API: the domain decision that says *whether* a write is allowed
+ * lives in `src/core/domain/**`, the audit row that records it lives in
+ * `src/core/commands/**`, and a caller that invokes a `*Cas` directly gets the
+ * CAS without either. So nothing outside `src/core` may import this module —
+ * `src/cli/**` and `src/server/**` reach writes through `board.commands`, the
+ * layer that wraps them in one transaction with their domain checks and their
+ * activity row — and the `*Cas` methods are called only from
+ * `src/core/commands/**`. Both directions are asserted, not documented:
+ * `test/concurrency/repository-boundary.test.mjs`.
  */
 
 import { DomainError } from "../../../shared/errors.mjs";
+import { HEARTBEAT_FRESH_MS } from "../../../shared/constants.mjs";
 import { TASK_COLUMNS, taskFromRow, taskToRow } from "../../domain/task.mjs";
 import { mapSqliteError } from "../sqlite-errors.mjs";
 import { transaction } from "../unit-of-work.mjs";
@@ -299,14 +311,50 @@ export function createTasksRepository(db) {
     /**
      * Take over a task that is `in_progress` but whose claim went stale — the
      * one deliberate exception to "claims only start from todo".
+     *
+     * **The staleness predicate lives here** (R3). It used to live only in the
+     * command layer (`domain/claim.mjs`), which meant this bare method would
+     * happily steal a claim that had just been taken: two direct calls —
+     * `claimCas` then `stealStaleClaim` — wrote the row twice, and two
+     * `stealStaleClaim` calls stole from each other in sequence. Neither is
+     * reachable from the CLI or the HTTP surface, but "the only thing between a
+     * correct caller and a double write is etiquette" is not a guarantee.
+     *
+     * So the write states its own precondition, and it **clamps it**:
+     *
+     *   * `staleBefore` is mandatory — the instant before which a heartbeat
+     *     counts as stale. A caller that omits it gets a `VALIDATION_FAILED`,
+     *     not a permissive default.
+     *   * the effective bound is `min(staleBefore, now − HEARTBEAT_FRESH_MS)`.
+     *     That floor is the repository's own: a claim whose heartbeat is fresher
+     *     than the *fresh* window is never stealable, by anyone, however loose a
+     *     bound the caller passes. A caller may ask for something stricter; it
+     *     cannot ask for something looser. Without the clamp, a caller passing
+     *     `staleBefore = now` would make the guard vacuous again.
+     *
+     * The comparison goes through `julianday()` so it is an *instant* comparison
+     * rather than a string one — two ISO renderings of the same moment
+     * (`…:00Z` and `…:00.000Z`) must not order differently. It also means an
+     * unparseable timestamp yields `NULL`, the predicate is false, and the steal
+     * is refused: garbage is not evidence of staleness.
+     *
+     * After a takeover the heartbeat is `now`, so a second, unfreshened steal
+     * matches nothing and loses the CAS.
+     *
+     * @param {{id: string, ifVersion?: number, actor: string, now: string, staleBefore: string}} input
      */
     stealStaleClaim(input) {
-      const { id, ifVersion, actor, now } = input;
+      const { id, ifVersion, actor, now, staleBefore } = input;
+      const bound = stealBound({ now, staleBefore });
       return transaction(
         db,
         () => {
-          const where = ["id = ?", "status = 'in_progress'"];
-          const values = [id];
+          const where = [
+            "id = ?",
+            "status = 'in_progress'",
+            "(heartbeat_at IS NULL OR julianday(heartbeat_at) <= julianday(?))",
+          ];
+          const values = [id, bound];
           if (ifVersion !== undefined) {
             where.push("version = ?");
             values.push(ifVersion);
@@ -413,6 +461,35 @@ export function createTasksRepository(db) {
       );
     },
   };
+}
+
+/**
+ * The instant a heartbeat must be at or before for a steal to be allowed (R3).
+ *
+ * `staleBefore` is the caller's stated bound and is mandatory; the *fresh*
+ * window is the repository's own floor and clamps it. A caller can be stricter
+ * than the floor, never looser.
+ *
+ * @param {{now: string, staleBefore: string}} input
+ * @returns {string} a canonical ISO instant for `julianday()`
+ */
+function stealBound({ now, staleBefore }) {
+  if (typeof staleBefore !== "string" || staleBefore.trim() === "") {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: "stealStaleClaim: staleBefore is required — a steal must state the staleness bound it enforces",
+      details: { field: "staleBefore", op: "tasks.stealStaleClaim" },
+      hint: { fix: "pass the ISO instant before which a heartbeat counts as stale" },
+    });
+  }
+  const stated = new Date(staleBefore).getTime();
+  const at = new Date(now).getTime();
+  if (!Number.isFinite(stated) || !Number.isFinite(at)) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: "stealStaleClaim: now and staleBefore must be parseable timestamps",
+      details: { field: Number.isFinite(at) ? "staleBefore" : "now", now: String(now), staleBefore: String(staleBefore) },
+    });
+  }
+  return new Date(Math.min(stated, at - HEARTBEAT_FRESH_MS)).toISOString();
 }
 
 /**

@@ -164,6 +164,9 @@ describe("storage/sqlite-errors — constraint failures", () => {
         "RELATION_DIRECTION_INVALID",
         "VALIDATION_FAILED",
         "NOT_FOUND",
+        // R2: not a constraint, but the same mapper — a raw `SQLITE_BUSY` from
+        // either the lock or the commit lands here.
+        "DB_BUSY",
       ]),
     );
     const unreachable = SQL_CONSTRAINT_CODES.filter((code) => !reachable.has(code));

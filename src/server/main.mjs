@@ -2,16 +2,21 @@
 /**
  * The `taskd` executable — what the CLI spawns when no board is running.
  *
- * It is a thin wrapper over `createTaskd` that adds the three things only a real
+ * It is a thin wrapper over `createTaskd` that adds the four things only a real
  * daemon needs:
  *
- *   1. **the runtime pointer**, written *after* `listen` and with the port the
+ *   1. **the write lock** (R1), taken *before* the database is opened: one owner
+ *      per data directory, so a second daemon is refused instead of becoming a
+ *      second writer (`storage/writer-lock.mjs`);
+ *   2. **the runtime pointer**, written *after* `listen` and with the port the
  *      OS actually assigned. Writing it at startup is the classic bug: with
  *      `TASKD_PORT=0` the pointer would say `:0` and nothing could ever find the
  *      board;
- *   2. **signal handling**, so `SIGTERM` closes the connection and removes the
- *      pointer rather than leaving a stale one behind for the next `taskctl`;
- *   3. **the address on stdout**, so a human who started it by hand can see
+ *   3. **signal handling**, so `SIGTERM` closes the connection and removes the
+ *      pointer rather than leaving a stale one behind for the next `taskctl` —
+ *      and removes it *only while it still names this process* (R1), so an
+ *      exiting instance can never unplug a live one;
+ *   4. **the address on stdout**, so a human who started it by hand can see
  *      where it went.
  *
  * Started like any other module: `node src/server/main.mjs`.
@@ -19,7 +24,7 @@
 
 import { pathToFileURL } from "node:url";
 
-import { removeRuntimePointer, writeRuntimePointer } from "../core/index.mjs";
+import { acquireWriterLock, removeRuntimePointer, resolveDataDir, writeRuntimePointer } from "../core/index.mjs";
 import { DEFAULT_HOST, DEFAULT_PORT, HOST_ENV, PORT_ENV, VERSION } from "../shared/constants.mjs";
 import { createTaskd } from "./index.mjs";
 
@@ -40,13 +45,45 @@ export function portFromEnv(env) {
 
 export async function main(env = process.env, options = {}) {
   const { register = true } = options;
-  const taskd = await createTaskd({
-    host: env[HOST_ENV] ?? DEFAULT_HOST,
-    port: portFromEnv(env) ?? DEFAULT_PORT,
-    env,
-  });
 
-  const pointerOptions = { env };
+  // R1 — the write lock comes first: it must be held *before* a second
+  // connection to the same board can be opened. A refusal here is a clean
+  // `BOARD_ALREADY_RUNNING` (the caller prints it and exits non-zero), which is
+  // what turns "two daemons fight over the pointer" into "the second one never
+  // started".
+  const dataDir = resolveDataDir({ dataDir: options.dataDir ?? null, env });
+  const lock = acquireWriterLock(dataDir);
+
+  let taskd;
+  try {
+    taskd = await createTaskd({
+      host: env[HOST_ENV] ?? DEFAULT_HOST,
+      port: portFromEnv(env) ?? DEFAULT_PORT,
+      env,
+      ...(options.dataDir === undefined ? {} : { dataDir: options.dataDir }),
+    });
+  } catch (err) {
+    // Nothing is listening, so nothing may keep the lock.
+    lock.release();
+    throw err;
+  }
+
+  // The lock lives exactly as long as the board does. Wrapping `close` (rather
+  // than adding a step to `createShutdown`) keeps the two entry points — the
+  // signal handler and a library caller that closes the board itself — on one
+  // path, so there is no way to close a board and leave its lock behind.
+  const boardClose = taskd.close.bind(taskd);
+  taskd.close = async () => {
+    try {
+      await boardClose();
+    } finally {
+      lock.release();
+    }
+  };
+
+  // The pointer records `pid`, and the same `pid` is what lets the daemon remove
+  // *its own* pointer on exit and nobody else's (R1).
+  const pointerOptions = { env, pid: process.pid };
   const written = writeRuntimePointer(
     {
       url: taskd.url,
@@ -61,6 +98,7 @@ export async function main(env = process.env, options = {}) {
 
   process.stdout.write(`taskd ${VERSION} listening on ${taskd.url}\n`);
   process.stdout.write(`runtime pointer: ${written.path}\n`);
+  process.stdout.write(`write lock: ${lock.path}\n`);
 
   const shutdown = createShutdown({ taskd, pointerOptions });
   if (register) {
@@ -82,6 +120,10 @@ export async function main(env = process.env, options = {}) {
  * removes the pointer" is the promise the CLI's autostart depends on, and a
  * promise reachable only by signalling a live process is a promise nobody tests.
  * The injected `exit`/`write` make it a plain function.
+ *
+ * `pointerOptions` carries the daemon's `pid` (R1), so the removal is
+ * ownership-checked: this process removes the pointer while it still names this
+ * process and leaves a stranger's pointer alone.
  *
  * @param {{taskd: {close: Function}, pointerOptions: object, exit?: Function, write?: Function}} input
  * @returns {(signal: string) => Promise<void>}

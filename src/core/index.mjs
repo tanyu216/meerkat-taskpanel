@@ -29,6 +29,7 @@ export { closeDatabase, openDatabase, readPragmas, sqliteVersion } from "./stora
 export { createRepositories } from "./storage/repositories/index.mjs";
 export { currentRevision, recordActivity, transaction } from "./storage/unit-of-work.mjs";
 export { mapSqliteError } from "./storage/sqlite-errors.mjs";
+export { acquireWriterLock, isProcessAlive, writerLockPath } from "./storage/writer-lock.mjs";
 export { REVISION_TABLES, TABLES } from "./storage/schema.mjs";
 export {
   ensureDir,
