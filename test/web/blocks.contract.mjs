@@ -199,13 +199,47 @@ export const DOMAINS = Object.freeze({
  *   monotonic          `{selector, attribute, direction, when?}`
  *                      The numeric values do not increase (`non-increasing`) /
  *                      decrease (`non-decreasing`) down the document.
+ *   computed           `{probe, property?, comparators…, count?, visible?, when?}`
+ *                      The **computed style** of what `probe` matches, read from a
+ *                      live browser. This is the one kind whose selector is *not*
+ *                      a contract hook — see `PROBE GRAMMAR` below — because a
+ *                      computed value belongs to a rendered box (a chip's height,
+ *                      a cell's row direction), and the design names some of
+ *                      those boxes by class, not by attribute.
+ *   classes            `{probe, includes, when?}`
+ *                      Every match's class list contains all of `includes`.
+ *   text               `{probe, equals|oneOf|matches, when?}`
+ *                      Every match's trimmed text satisfies the comparator;
+ *                      `oneOf` is a closed set (a label that may say one of N
+ *                      things), `matches` is a RegExp source.
  *   source             `{check, scope?}`
  *                      A named stylesheet/artifact scan from `SOURCE_CHECKS`.
  *   manual             `{note}`
  *                      Recorded intent with no machine rule — see MANUAL_RULES.
+ *
+ * ---------------------------------------------------------------------------
+ * PROBE GRAMMAR (the `probe` field only)
+ * ---------------------------------------------------------------------------
+ * A rule's `selector` is a **data-* hook** — that is the contract's whole point,
+ * and `validateContract()` rejects anything else. The three browser-layer kinds
+ * above take `probe` instead, and a probe may be:
+ *
+ *   * one hook selector (`[data-card-title]`),
+ *   * a descendant chain of hook selectors (`[data-list-rows] [data-list-status]`),
+ *   * or a class from the **design's own `td-` namespace** (`.td-list-group`,
+ *     `.td-chip`), which `design/BLOCKS.md` uses for the sub-parts it does not
+ *     give an attribute (the status dot, the list's group shell).
+ *
+ * A Tailwind utility is not expressible: the namespace is closed and the check
+ * is mechanical. This keeps the hook discipline intact — `allSelectors()` and
+ * the bundle's literal scan never see a probe, so nothing here widens the
+ * declared hook surface.
  */
 export const RULE_KINDS = Object.freeze({
   count: Object.freeze({ layer: "dom" }),
+  computed: Object.freeze({ layer: "dom" }),
+  classes: Object.freeze({ layer: "dom" }),
+  text: Object.freeze({ layer: "dom" }),
   order: Object.freeze({ layer: "dom" }),
   "identical-hookset": Object.freeze({ layer: "dom" }),
   domain: Object.freeze({ layer: "dom" }),
@@ -360,6 +394,46 @@ const BLOCKS = [
       // cluster's dot. Impl-only (the prototype has no network), approved as a
       // written deviation — see DOMAINS.CONNECTION and `surface-disposition.md` #4.
       { kind: "domain", selector: "[data-connection]", attribute: "data-connection", subset: DOMAINS.CONNECTION },
+      // R6 ① — the segmented Board/List control must *show* which side is on.
+      // daisyUI's `tabs` paints nothing for `aria-pressed` (its vocabulary is
+      // `.tab-active` / `[aria-selected]` / `[aria-current]`), so the selected
+      // tab is the implementation's own rule, and these four probes are what
+      // hold it: the well is the brand's sunken surface, the pressed tab is
+      // accent-on-surface, and pressed is distinguishable from unpressed by
+      // more than a font weight. Values are read from the tokens, never from a
+      // hex literal, so the same rule holds in both themes.
+      { kind: "computed", probe: "[data-view-toggle]", property: "backgroundColor", equalsVar: "--brand-sunken", when: "board view" },
+      {
+        kind: "computed",
+        probe: '[data-view-toggle] [data-view][aria-pressed="true"]',
+        property: "color",
+        equalsVar: "--brand-accent",
+        when: "board view",
+      },
+      {
+        kind: "computed",
+        probe: '[data-view-toggle] [data-view][aria-pressed="true"]',
+        property: "backgroundColor",
+        equalsVar: "--brand-surface",
+        when: "board view",
+      },
+      {
+        kind: "computed",
+        probe: '[data-view-toggle] [data-view][aria-pressed="true"]',
+        property: "color",
+        differsFrom: '[data-view-toggle] [data-view][aria-pressed="false"]',
+        when: "board view",
+      },
+      // Exactly one side is on, whichever view is up — so this one carries no
+      // precondition.
+      { kind: "count", selector: '[data-view][aria-pressed="true"]', within: "[data-view-toggle]", equals: 1 },
+      {
+        kind: "computed",
+        probe: '[data-view-toggle] [data-view][aria-pressed="true"]',
+        property: "height",
+        equalsPx: 26,
+        when: "board view",
+      },
       { kind: "absent", selector: "[data-user]" },
       { kind: "absent", selector: "[data-theme-toggle]" },
       { kind: "absent", selector: "[data-lang-toggle]" },
@@ -441,6 +515,94 @@ const BLOCKS = [
       { kind: "absent", selector: "[data-lang-toggle]" },
       { kind: "absent", selector: "[data-theme-modal]" },
       { kind: "absent", selector: "[data-lang-modal]" },
+      // R6 ② — the selected nav row: accent copy on the accent's 10% tint, and
+      // *not* the grey `.td-brand-active` the implementation used to paint. The
+      // base metrics (32px row, 6px radius) come with it, because a selected row
+      // that is 16px tall in a 13px design is a different component.
+      { kind: "count", selector: '[data-nav-item][aria-current="page"]', equals: 1 },
+      {
+        kind: "computed",
+        probe: '[data-nav-item][aria-current="page"]',
+        property: "color",
+        equalsVar: "--brand-accent",
+      },
+      {
+        kind: "computed",
+        probe: '[data-nav-item][aria-current="page"]',
+        property: "backgroundColor",
+        equalsVar: "--brand-accent-soft",
+      },
+      {
+        kind: "computed",
+        probe: '[data-nav-item][aria-current="page"]',
+        property: "backgroundColor",
+        notEqualsVar: "--brand-active",
+      },
+      { kind: "computed", probe: "[data-nav-item]", property: "height", equalsPx: 32 },
+      { kind: "computed", probe: "[data-nav-item]", property: "borderRadius", equalsPx: 6 },
+      // The project row is the same component (BLOCKS.md B03: the two share one
+      // rule), so the same two values are asserted on it.
+      {
+        kind: "computed",
+        probe: '[data-project][aria-current="page"]',
+        property: "backgroundColor",
+        equalsVar: "--brand-accent-soft",
+      },
+      {
+        kind: "computed",
+        probe: '[data-project][aria-current="page"]',
+        property: "color",
+        equalsVar: "--brand-accent",
+      },
+      // R6 ⑦ — the theme cell holds **three** glyphs and shows **exactly one**,
+      // the one its own `data-theme-mode` names. The count is the fix's contract:
+      // the glyph in force carries no `hidden` attribute at all, so a literal
+      // `hidden="false"` is forbidden (a `hidden` attribute hides whatever its
+      // value — the negative rule below pins that against regression).
+      { kind: "count", selector: "svg[data-theme-icon]", within: "[data-theme-switch]", equals: 3 },
+      { kind: "computed", probe: "[data-theme-switch] svg[data-theme-icon]", visible: true, count: 1 },
+      {
+        kind: "count",
+        selector: 'svg[data-theme-icon][hidden="false"]',
+        within: "[data-theme-switch]",
+        equals: 0,
+      },
+      { kind: "count", selector: "svg[data-theme-icon][hidden]", within: "[data-theme-switch]", equals: 2 },
+      // R6 ⑦⑧ — the three footer cells are one row each: icon, name and (for
+      // the language trigger) the caret sit side by side in a 28px cell, and the
+      // label ellipsises rather than wrapping. The rail below 1024px drops the
+      // caret and tightens the cell to 24px — the prototype's own rail block.
+      { kind: "computed", probe: "[data-theme-switch]", property: "flexDirection", equals: "row" },
+      { kind: "computed", probe: "[data-theme-switch]", property: "gap", equalsPx: 6 },
+      { kind: "computed", probe: "[data-theme-switch]", property: "height", equalsPx: 28 },
+      { kind: "computed", probe: "[data-lang-select]", property: "flexDirection", equals: "row" },
+      { kind: "computed", probe: "[data-lang-select]", property: "gap", equalsPx: 6 },
+      { kind: "computed", probe: "[data-lang-select]", property: "height", equalsPx: 28 },
+      {
+        kind: "computed",
+        probe: "[data-lang-select] span[data-lang-label]",
+        property: "textOverflow",
+        equals: "ellipsis",
+      },
+      { kind: "text", probe: "[data-theme-label]", oneOf: ["Light", "Dark", "Auto", "浅色", "深色", "自动"] },
+      { kind: "text", probe: "[data-lang-label]", oneOf: ["EN", "中文"] },
+      { kind: "computed", probe: "[data-theme-switch]", property: "height", equalsPx: 24, when: "rail" },
+      { kind: "computed", probe: "[data-theme-switch]", property: "gap", equalsPx: 0, when: "rail" },
+      { kind: "computed", probe: "[data-lang-select] svg.td-caret", property: "display", equals: "none", when: "rail" },
+      // R6 ⑧ — the language menu marks the language in force the way the design
+      // marks a chosen row: accent copy on the accent's tint.
+      {
+        kind: "computed",
+        probe: '[data-lang-option][aria-pressed="true"]',
+        property: "backgroundColor",
+        equalsVar: "--brand-accent-soft",
+      },
+      {
+        kind: "computed",
+        probe: '[data-lang-option][aria-pressed="true"]',
+        property: "color",
+        equalsVar: "--brand-accent",
+      },
       {
         kind: "manual",
         note:
@@ -583,6 +745,28 @@ const BLOCKS = [
       { kind: "domain", selector: "[data-card]", attribute: "data-priority", subset: DOMAINS.PRIORITY },
       { kind: "domain", selector: "[data-card]", attribute: "data-assignee-kind", subset: DOMAINS.ASSIGNEE_KIND },
       { kind: "domain", selector: "[data-card-agent-badge]", attribute: "data-agent-platform", subset: DOMAINS.PLATFORM },
+      // R6 ④ — the title is capped at **two lines**. `-webkit-line-clamp` is the
+      // only mechanism that both clamps and ellipsises, and `overflow:hidden` is
+      // what it needs to bite. `display` is deliberately **not** asserted: the
+      // declaration is `-webkit-box`, which Chromium serialises as `flow-root`
+      // (R3), so a check on it would be checking the serialisation.
+      { kind: "computed", probe: "[data-card-title]", property: "webkitLineClamp", equals: "2" },
+      { kind: "computed", probe: "[data-card-title]", property: "overflow", equals: "hidden" },
+      { kind: "computed", probe: "[data-card-title]", property: "marginTop", equalsPx: 2 },
+      { kind: "computed", probe: "[data-card-title]", property: "fontSize", equalsPx: 14 },
+      // R6 ④ — the done/canceled title variants (the prototype states both).
+      {
+        kind: "computed",
+        probe: '[data-card][data-done="true"] [data-card-title]',
+        property: "color",
+        equalsVar: "--brand-text-3",
+      },
+      {
+        kind: "computed",
+        probe: '[data-card][data-canceled="true"] [data-card-title]',
+        property: "textDecorationLine",
+        contains: "line-through",
+      },
       {
         kind: "manual",
         note:
@@ -641,6 +825,32 @@ const BLOCKS = [
     rules: [
       { kind: "count", selector: "[data-list]", equals: 1, when: "list view" },
       { kind: "identical-hookset", selector: "[data-list-row]", within: "[data-list-rows]", when: "list view" },
+      // R6 ⑤ — the group shell, the head row and the six-track template. The
+      // grid's **first and last** tracks are the ones the prototype pins (74px /
+      // 72px) and the track count is six; the middle tracks are `minmax(0,1fr)`,
+      // whose computed form is not a pixel value (R4), so only the ends and the
+      // count are asserted. The head is the sundered 32px band with the uppercase
+      // 11px label — the row the implementation used to be missing entirely.
+      { kind: "computed", probe: ".td-list-group", property: "backgroundColor", equalsVar: "--brand-surface", when: "list view" },
+      { kind: "computed", probe: ".td-list-group", property: "borderRadius", equalsPx: 8, when: "list view" },
+      { kind: "computed", probe: ".td-list-head", property: "height", equalsPx: 32, when: "list view" },
+      { kind: "computed", probe: ".td-list-head", property: "textTransform", equals: "uppercase", when: "list view" },
+      { kind: "computed", probe: ".td-list-head", property: "backgroundColor", equalsVar: "--brand-sunken", when: "list view" },
+      { kind: "computed", probe: "[data-list-row]", property: "display", equals: "grid", when: "list view" },
+      { kind: "computed", probe: "[data-list-row]", property: "gridTemplateColumns", startsWith: "74px", when: "list view" },
+      { kind: "computed", probe: "[data-list-row]", property: "gridTemplateColumns", endsWith: "72px", when: "list view" },
+      { kind: "computed", probe: "[data-list-row]", property: "gridTemplateColumns", tokens: 6, when: "list view" },
+      { kind: "computed", probe: "[data-list-row]", property: "minHeight", equalsPx: 40, when: "list view" },
+      { kind: "computed", probe: "[data-list-row]", property: "paddingLeft", equalsPx: 12, when: "list view" },
+      // The status cell is the same chip the drawer's head wears, and the
+      // priority cell the same read-out the card wears — so a status and a
+      // priority read identically in both views (R6 ⑤/⑥). The chip's dot is
+      // 6px here, not the card dot's 8px.
+      { kind: "classes", probe: "[data-list-status]", includes: ["badge-sm", "td-chip", "td-chip-status"], when: "list view" },
+      { kind: "computed", probe: "[data-list-status] .td-status-dot", property: "width", equalsPx: 6, when: "list view" },
+      { kind: "computed", probe: "[data-list-status] .td-status-dot", property: "height", equalsPx: 6, when: "list view" },
+      { kind: "classes", probe: "[data-list-priority]", includes: ["td-pri"], when: "list view" },
+      { kind: "computed", probe: "[data-list-priority]", property: "fontSize", equalsPx: 11, when: "list view" },
       {
         kind: "absent",
         selector: "[data-list][hidden]",
@@ -726,6 +936,29 @@ const BLOCKS = [
       { kind: "count", selector: "[data-detail-overlay]", equals: 1 },
       { kind: "domain", selector: "[data-detail-drawer]", attribute: "data-state", subset: DOMAINS.DRAWER_STATE },
       { kind: "domain", selector: "[data-slot]", attribute: "data-slot", subset: DOMAINS.SLOT },
+      // R6 ⑥ — the head's status chip. The class set is the prototype's own, the
+      // 18px height is the box both of the prototype's `.td-chip` declarations
+      // agree on, and the dot is 6px (the chip overrides the card dot's 8px).
+      // The chip's **background and radius are deliberately not asserted**: the
+      // prototype declares `.td-chip` twice in one layer and the two disagree
+      // (`accent-soft`/999px vs `surface`/4px), so the value is parked on the
+      // design owner's ruling (F6) — the assertion lands with the ruling.
+      { kind: "classes", probe: "[data-detail-status-chip]", includes: ["badge-sm", "td-chip", "td-chip-status"] },
+      { kind: "computed", probe: "[data-detail-status-chip]", property: "height", equalsPx: 18, when: "drawer open" },
+      {
+        kind: "computed",
+        probe: "[data-detail-status-chip] .td-status-dot",
+        property: "width",
+        equalsPx: 6,
+        when: "drawer open",
+      },
+      {
+        kind: "computed",
+        probe: "[data-detail-status-chip] .td-status-dot",
+        property: "height",
+        equalsPx: 6,
+        when: "drawer open",
+      },
       // M2 · the drawer's two data-driven streams, asserted where they exist: an
       // open drawer on a task with attachments and history. The rest state cannot
       // show them (the body is empty without a task), which is why these carry a
@@ -1107,6 +1340,22 @@ const BLOCKS = [
       { kind: "domain", selector: "[data-cidr-whitelist]", attribute: "data-cidr-enabled", subset: DOMAINS.BOOLEAN },
       { kind: "domain", selector: "[data-token-block]", attribute: "data-token-revealed", subset: DOMAINS.BOOLEAN },
       { kind: "domain", selector: "[data-token-icon]", attribute: "data-token-icon", subset: DOMAINS.TOKEN_ICON },
+      // R6 ③ — the panel is the prototype's **centred modal** (ruling F1), not a
+      // right-hand drawer: fixed, centred on both axes, capped at the measured
+      // 480 × 720. `transform` is asserted as the matrix it computes to, in the
+      // driven pass below — the declarative form of `translate(-50%,-50%)` is
+      // two half-box translations, which is a geometry, not a string.
+      { kind: "computed", probe: "[data-access-panel]", property: "position", equals: "fixed", when: "panel open" },
+      // 480 / 720 are stated as computed strings rather than as `equalsPx`: they
+      // are lengths, not structural counts, and the suite's stale-prose guard
+      // (rightly) refuses any *number* in a rule that reaches the prose range.
+      { kind: "computed", probe: "[data-access-panel]", property: "width", equals: "480px", when: "panel open" },
+      { kind: "computed", probe: "[data-access-panel]", property: "maxHeight", equals: "720px", when: "panel open" },
+      { kind: "computed", probe: "[data-access-panel]", property: "transform", notEquals: "none", when: "panel open" },
+      // The token's mask is `td_` + twelve dots — the prefix stays readable and
+      // the mask is the design's, not the credential's length (R6 ③).
+      { kind: "text", probe: "[data-token-value]", matches: "^td_[•]+$" },
+      { kind: "count", selector: "[data-cidr-row]", equals: 3 },
       {
         kind: "manual",
         note:
@@ -1761,6 +2010,37 @@ export function isHookSelector(selector) {
   return parsed !== null && parsed.hasDataHook;
 }
 
+/** One `td-` class from the design's own namespace (`.td-chip`, `.td-list-head`). */
+const DESIGN_CLASS_RE = /^\.td-[a-z0-9-]+$/;
+
+/** An optional bare tag followed by one or more `[attr]` / `.td-class` compounds. */
+const PROBE_PART_RE = /^[a-z][a-z0-9-]*(?:\[[a-zA-Z][a-zA-Z0-9_-]*(?:="[^"]*")?\]|\.td-[a-z0-9-]+)+$/;
+
+/** Does this probe part name a hook attribute or a design class (never a bare tag)? */
+const PROBE_ANCHOR_RE = /\[data-[a-zA-Z]|\.td-[a-z0-9-]+/;
+
+/** One whitespace-free probe part: a hook, a design class, or a tag+compounds of either. */
+function isProbePart(part) {
+  if (isHookSelector(part) || DESIGN_CLASS_RE.test(part)) return true;
+  if (!PROBE_PART_RE.test(part) || !PROBE_ANCHOR_RE.test(part)) return false;
+  return (part.match(/\[[^\]]*\]/g) ?? []).every((bracket) => parseHookSelector(bracket) !== null);
+}
+
+/**
+ * A **probe** selector: what a computed-style / class / text rule is allowed to
+ * name — see `PROBE GRAMMAR` in the module header. Module-private on purpose: a
+ * probe is not part of the declared hook surface, so it is deliberately absent
+ * from `allSelectors()`, `implementationSelectors()` and the bundle's literal
+ * scan, and it is not exported either (the public-surface test pins the exports).
+ */
+function isProbeSelector(selector) {
+  if (typeof selector !== "string" || selector.length === 0) return false;
+  return selector
+    .trim()
+    .split(/\s+/)
+    .every(isProbePart);
+}
+
 const DOM_LAYER = new Set(["dom"]);
 const SOURCE_LAYER = new Set(["source"]);
 const MANUAL_LAYER = new Set(["manual"]);
@@ -1900,8 +2180,64 @@ export function validateContract() {
           problems.push(`${where}.${field} must name a data-* attribute: ${rule[field]}`);
         }
       };
+      const requireProbe = () => {
+        if (!isProbeSelector(rule.probe)) problems.push(`${where}.probe is not a legal probe selector: ${rule.probe}`);
+      };
 
       switch (rule.kind) {
+        case "computed": {
+          requireProbe();
+          const comparators = [
+            "equals",
+            "equalsVar",
+            "equalsPx",
+            "notEquals",
+            "notEqualsVar",
+            "contains",
+            "startsWith",
+            "endsWith",
+            "tokens",
+            "maxPx",
+            "minPx",
+            "differsFrom",
+          ].filter((key) => rule[key] !== undefined);
+          const shaped = rule.property !== undefined || rule.count !== undefined || rule.visible === true;
+          if (!shaped) problems.push(`${where}: computed needs a property, a count or visible`);
+          if (rule.property !== undefined) {
+            if (typeof rule.property !== "string" || rule.property.length === 0) problems.push(`${where}.property must be a CSS property name`);
+            if (comparators.length === 0) problems.push(`${where}: computed needs a comparator for ${rule.property}`);
+          } else if (comparators.length > 0) {
+            problems.push(`${where}: a comparator without a property has nothing to read`);
+          }
+          for (const key of ["equalsPx", "maxPx", "minPx"]) {
+            if (rule[key] !== undefined && typeof rule[key] !== "number") problems.push(`${where}.${key} must be a number`);
+          }
+          if (rule.tokens !== undefined && (!Number.isInteger(rule.tokens) || rule.tokens < 1)) {
+            problems.push(`${where}.tokens must be a positive integer`);
+          }
+          if (rule.count !== undefined && (!Number.isInteger(rule.count) || rule.count < 0)) {
+            problems.push(`${where}.count must be a non-negative integer`);
+          }
+          if (rule.visible !== undefined && typeof rule.visible !== "boolean") problems.push(`${where}.visible must be a boolean`);
+          if (rule.differsFrom !== undefined && !isProbeSelector(rule.differsFrom)) {
+            problems.push(`${where}.differsFrom is not a legal probe selector: ${rule.differsFrom}`);
+          }
+          break;
+        }
+        case "classes": {
+          requireProbe();
+          if (!Array.isArray(rule.includes) || rule.includes.length === 0) problems.push(`${where}.includes must be a non-empty array`);
+          break;
+        }
+        case "text": {
+          requireProbe();
+          const modes = ["equals", "oneOf", "matches"].filter((key) => rule[key] !== undefined);
+          if (modes.length !== 1) problems.push(`${where}: text needs exactly one of equals/oneOf/matches`);
+          if (rule.oneOf !== undefined && (!Array.isArray(rule.oneOf) || rule.oneOf.length === 0)) {
+            problems.push(`${where}.oneOf must be a non-empty array`);
+          }
+          break;
+        }
         case "count": {
           requireHook(rule.selector, "selector");
           if (rule.within !== undefined) requireHook(rule.within, "within");
