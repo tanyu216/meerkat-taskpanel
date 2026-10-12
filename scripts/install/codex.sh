@@ -1,19 +1,23 @@
 #!/usr/bin/env bash
 # Install the Meerkat TaskPanel bundle for Codex.
 #
-# Deploys the complete Codex bundle, not just the skill:
-#   1. skill              → ~/.codex/skills/meerkat-taskpanel
-#   2. claim-first snippet → merged into ~/.codex/AGENTS.md (identity + rules)
-#   3. claim trigger      → ~/.codex/meerkat-taskpanel-claim.sh (schedulable; --no-automation skips)
-#   4. scheduling         → ~/.codex/scheduling/{launchd,systemd,cron} + wake-codex.sh
-#                           and the host config (~/.codex/meerkat-taskpanel.env)
+# Deploys the complete Codex bundle, not just the board skill:
+#   1. board skill        → ~/.codex/skills/meerkat-taskpanel
+#   2. loop skill         → ~/.codex/skills/meerkat-loop (always a copy; --link is board-only)
+#   3. claim-first snippet → merged into ~/.codex/AGENTS.md (identity + rules)
+#   4. claim trigger      → ~/.codex/meerkat-taskpanel-claim.sh (schedulable; --no-automation skips)
+#   5. scheduling         → ~/.codex/scheduling/{launchd,systemd,cron}, the loop body in
+#                           ~/.codex/meerkat-taskpanel/, wake-codex.sh and the host config
+#                           (~/.codex/meerkat-taskpanel.env)
 # plus the taskctl shim that injects --agent <name>. `--no-automation` skips the
 # claim trigger *and* the scheduling wiring — Codex has no hooks, so both are the
-# automation, and the flag means "install none of it".
+# automation, and the flag means "install none of it". The loop *skill* is not
+# automation: it is the payload those units run, and it is always installed.
 set -eu
 . "$(cd "$(dirname "$0")" && pwd)/_common.sh"
 
 install_skill ".codex" "codex"
+install_loop_skill ".codex" "codex"
 
 export_tp_env ".codex" "codex"
 

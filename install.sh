@@ -31,6 +31,15 @@
 # the bundle — host configuration, slash commands (Claude) and the claim trigger
 # (Codex) — merge-style and idempotently. It needs no host CLI to do so, so it behaves
 # the same on a bare machine and inside the verification container.
+#
+# Two skills are distributed, and they do not go to the same hosts:
+#
+#   meerkat-taskpanel  the board                    → claude, codex, openclaw, pi
+#   meerkat-loop       the host-external supervisor  → claude, codex, pi  (never openclaw)
+#
+# OpenClaw is excluded from the loop on purpose: the openclaw-team framework already
+# ships an equivalent `poll` / `task-patrol`, so a second supervisor would only race the
+# first for the same cards. See scripts/install/openclaw.sh and docs/scheduling.md.
 
 set -eu
 
@@ -50,7 +59,7 @@ usage() {
   cat <<'EOF'
 Usage: install.sh [options]
 
-Install the Meerkat TaskPanel skill into one or more agent hosts.
+Install the Meerkat TaskPanel skills into one or more agent hosts.
 
 Options:
   --target <host>   claude | openclaw | codex | pi | all   (default: all)
@@ -62,7 +71,7 @@ Options:
                     May the supervisor claim unassigned cards? Persisted to the
                     host config; also asked interactively on a TTY (default yes).
   --assignee-only   Alias for --claim-unassigned=no (claim only my own cards)
-  --link            Symlink the skill instead of copying it
+  --link            Symlink the skill instead of copying it (board skill only)
   --force           Overwrite an existing installation
   --dry-run         Print the destination paths and change nothing
   --skip-node-check Do not require Node (bypass the >= 22 runtime check)
@@ -77,6 +86,18 @@ Destinations:
   openclaw   <home>/.openclaw/skills/meerkat-taskpanel
   codex      <home>/.codex/skills/meerkat-taskpanel
   pi         <home>/.agents/skills/meerkat-taskpanel
+
+Two skills, two distribution surfaces. The **board** skill goes to all four hosts. The
+**loop** skill (the host-external supervisor) goes to claude, codex and pi only:
+
+  claude     <home>/.claude/skills/meerkat-loop
+  codex      <home>/.codex/skills/meerkat-loop
+  pi         <home>/.agents/skills/meerkat-loop
+  openclaw   — none, on purpose: the openclaw-team framework's poll / task-patrol
+              automations already are this design (see docs/scheduling.md).
+
+The loop is always **copied**, never symlinked: --link names the board skill only, or a
+symlinked loop would put the checkout back into the load path the split removes.
 
 The claim policy is written to <home>/<host>/meerkat-taskpanel.env for the hosts that
 build a supervisor (claude, codex, pi); OpenClaw installs openclaw-team instead.
