@@ -38,9 +38,10 @@
  *   .td-list-head /  named after the prototype's own classes so the two sides
  *   .td-list-row     stay comparable, and the column template is one
  *                    declaration rather than six utilities.
- *   .td-access-cell / the sidebar footer's three cells (R6 ⑦⑧), and the
- *   .td-caret /      rail's two overrides.
- *   .td-side-text
+ *   .td-access-cell / the sidebar footer's three cells (R6 ⑦⑧) plus the rail's
+ *   .td-caret /      breakpoint split — equal thirds ≥1024, stacked rows ≤1023
+ *   .td-side-text    (R7 ③).
+
  *   .td-nav          the sidebar's two row containers — a column flex with the
  *                    design's 2px row rhythm (M2c ⑥).
  *   .td-access-panel the settings modal's centred geometry (R6 ③, ruling F1).
@@ -199,13 +200,17 @@ svg[data-token-icon][hidden] { display: none; }
 
 /* ------------------------------------------------- sidebar footer cells -- */
 
-/* B03 · the footer's three equal thirds. Each cell is one affordance, and the
+/* B03 · the footer's three equal thirds (≥1024px; the rail block below turns
+   them into three stacked rows — R7 ③). Each cell is one affordance, and the
    hairline on the inline start separates a cell from its neighbour without
    drawing a leading edge on the row (the first cell drops it). The cell is a
    **single row** — icon, name, caret side by side — because a third of the
    footer is ~74px and the language trigger needs all of it before the name
-   ellipsises (R6 ⑦⑧). */
+   ellipsises (R6 ⑦⑧). `align-items: stretch` is stated rather than left to the
+   grid/flex initial value: a grid container reports it as `normal`, and the
+   design's own rule spells `stretch` (R7 ③). */
 [data-access-status] {
+  align-items: stretch;
   padding: 8px 0 0;
   font-size: var(--text-12);
   color: var(--brand-text-2);
@@ -710,14 +715,27 @@ svg[data-token-icon][hidden] { display: none; }
     border-color: transparent;
   }
   [data-sidebar] [data-agents-presence] > div { justify-content: center; }
-  /* The rail keeps its three equal thirds and loses the labels, so each cell is
-     a centred 24px icon. The caret goes with them: a third of the rail cannot
-     hold a globe and a disclosure arrow side by side without overflowing
-     (R6 ⑦⑧ — the prototype's rail block, verbatim). */
+  /* R7 ③ — the rail cannot hold a third of three: the footer's one row of three
+     thirds becomes three stacked full-width rows, each a centred 24px icon, and
+     the separator turns with the layout — no neighbour is to the side any more,
+     so the hairline moves from the inline start of a cell to the block start of
+     the 2nd and 3rd rows (the first keeps none). The caret goes with the
+     labels: the rail cannot hold a globe and a disclosure arrow side by side
+     without overflowing. The **cell** stays a single row (R6 ⑦⑧) — only the
+     arrangement *between* cells changes. Mirrors the prototype's rail block
+     (`design/prototype/src/input.css` `@media (max-width: 1023px)`). */
+  [data-access-status] {
+    display: flex;
+    flex-direction: column;
+  }
   .td-access-cell {
     gap: 0;
     height: 24px;
     padding: 0;
+    border-inline-start: 0;
+  }
+  .td-access-cell + .td-access-cell {
+    border-block-start: 1px solid var(--brand-border);
   }
   .td-caret { display: none; }
 }

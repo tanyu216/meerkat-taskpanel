@@ -2,6 +2,13 @@
 /**
  * B03 · Sidebar footer — three equal cells: theme cycle, language menu, access.
  *
+ * Each cell carries the `data-access-cell` hook (R7 ③), so the footer's
+ * breakpoint split is addressable on the implementation side: ≥1024px the three
+ * sit side by side as equal thirds, ≤1023px (the rail) they stack into three
+ * full-width rows. The split lives in `app.css`'s rail media block; the markup
+ * is one DOM order — theme · language · settings — read left-to-right or
+ * top-to-bottom.
+ *
  * The theme cell is a **three-state cycle**, not a toggle, so it carries no
  * `aria-pressed`; the mode in force rides on `data-theme-mode` (mirrored onto
  * `<html>` by the one writer, `applyTheme`) and on the cell's own
@@ -109,6 +116,7 @@ onBeforeUnmount(() => {
     <button
       type="button"
       class="td-access-cell"
+      data-access-cell
       data-theme-switch
       :data-theme-mode="themeMode"
       :aria-label="themeAria"
@@ -144,6 +152,7 @@ onBeforeUnmount(() => {
     <button
       type="button"
       class="td-access-cell"
+      data-access-cell
       data-lang-select
       ref="langTrigger"
       aria-haspopup="menu"
@@ -164,6 +173,7 @@ onBeforeUnmount(() => {
     <button
       type="button"
       class="td-access-cell"
+      data-access-cell
       data-access-open
       aria-haspopup="dialog"
       :aria-label="$t('access.open')"

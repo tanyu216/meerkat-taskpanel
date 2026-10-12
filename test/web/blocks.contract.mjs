@@ -477,6 +477,7 @@ const BLOCKS = [
       "[data-agent-platform]",
       "[data-presence]",
       "[data-access-status]",
+      "[data-access-cell]",
       "[data-theme-switch]",
       "[data-theme-icon]",
       "[data-theme-label]",
@@ -502,12 +503,12 @@ const BLOCKS = [
         within: "[data-project-list]",
       },
       // Every project row is filled: `[data-project-count]` is the project's task
-      // count, served by `/projects` as `task_count` (BLOCKS.md §Projects). A row
-      // whose count is unknown renders the attribute empty — which is exactly the
-      // 1/3-row state Terry found — so the rule is "no empty one may exist". The
-      // DOM layer has no per-element non-empty rule; `absent` on an exact-value
-      // selector is the idiomatic substitute.
-      { kind: "absent", selector: '[data-project-count=""]', within: "[data-project-list]" },
+      // count, served by `/projects` as `task_count` (BLOCKS.md §Projects), and
+      // since R7 ② the hook names the **number** — the pill — rather than the row.
+      // "Filled" is therefore no longer checkable as an empty-value `absent` (the
+      // attribute is a count, never `""`); the invariant lives in the R7 ② group
+      // below as "at most one pill per row" plus the probe rules, which fail if a
+      // row's count does not render at all.
       { kind: "sequence", selector: "[data-order-rank]", attribute: "data-order-rank", from: 1, step: 1 },
       { kind: "monotonic", selector: "[data-order-score]", attribute: "data-order-score", direction: "non-increasing" },
       { kind: "absent", selector: "[data-user]" },
@@ -603,12 +604,147 @@ const BLOCKS = [
         property: "color",
         equalsVar: "--brand-accent",
       },
+
+      /* ---- R7 ① · the nav glyphs (`design/fidelity-r7.md` §2.1) ------------
+         `svg.td-icon` is both the probe and the assertion: drop the class and
+         the probe matches nothing, so the count and every computed rule fail
+         together. The glyph carries **no `data-side-icon`** — that hook is the
+         project monogram's, and the rail's chip rule matched the nav glyphs
+         because they wore it (a 24px bordered grey tile where the prototype
+         draws a bare 16px stroke). N1/N4. */
+      // A `count … equals: 0`, not an `absent`: the hook is *scoped* out, not
+      // retired — the project monogram still carries `data-side-icon` — and the
+      // bundle's retired-hook scan reads a valueless `absent` selector as "this
+      // attribute must be gone from the app entirely".
+      { kind: "count", selector: "[data-side-icon]", within: "[data-nav]", equals: 0 },
+      { kind: "computed", probe: "[data-nav] [data-nav-item] svg.td-icon", count: 4 },
+      { kind: "computed", probe: "[data-nav] [data-nav-item] svg.td-icon", property: "fill", equals: "none" },
+      { kind: "computed", probe: "[data-nav] [data-nav-item] svg.td-icon", property: "strokeWidth", equals: "1.5px" },
+      { kind: "computed", probe: "[data-nav] [data-nav-item] svg.td-icon", property: "strokeLinecap", equals: "round" },
+      { kind: "computed", probe: "[data-nav] [data-nav-item] svg.td-icon", property: "strokeLinejoin", equals: "round" },
+      { kind: "computed", probe: "[data-nav] [data-nav-item] svg.td-icon", property: "stroke", notEquals: "none" },
+      { kind: "computed", probe: "[data-nav] [data-nav-item] svg.td-icon", property: "width", equalsPx: 16 },
+      { kind: "computed", probe: "[data-nav] [data-nav-item] svg.td-icon", property: "height", equalsPx: 16 },
+      // N2/N3 — the rail's chip face must not reach the nav glyph.
+      {
+        kind: "computed",
+        probe: "[data-nav] [data-nav-item] svg.td-icon",
+        property: "borderTopWidth",
+        equals: "0px",
+        when: "rail",
+      },
+      {
+        kind: "computed",
+        probe: "[data-nav] [data-nav-item] svg.td-icon",
+        property: "backgroundImage",
+        equals: "none",
+        when: "rail",
+      },
+      {
+        kind: "computed",
+        probe: "[data-nav] [data-nav-item] svg.td-icon",
+        property: "backgroundColor",
+        equals: "rgba(0, 0, 0, 0)",
+        when: "rail",
+      },
+
+      /* ---- R7 ② · the project count pill (§2.2) ---------------------------
+         The hook names the **number element**, not the row: it sits on the pill
+         (N5/N6), the pill wears the brand's `.td-count` face (N7) and the
+         element in the DOM is the span (the `span[data-project-count]` count
+         plus the one-pill-per-row cap make "the hook is a span" checkable
+         without a tagName probe). `width` is a *min*: the pill is
+         `min-width:20px` and a two-digit count is legitimately wider. */
+      // Scoped to `button[data-project]`, not `[data-project]`: a *card* carries
+      // `data-project` too (B07's scalar), so the bare hook is not the row. The
+      // row is the button (BLOCKS.md B03), and the pill sits inside it. `max` and
+      // not `min`…`max`: the contract lets a row with an unknown count (`null`)
+      // render **no** pill at all — "`0` renders, unknown does not" — so only the
+      // upper bound is the row's to keep.
+      { kind: "count", selector: "button[data-project-count]", within: "[data-project-list]", equals: 0 },
+      { kind: "count", selector: "[data-project-count]", within: "button[data-project]", max: 1 },
+      { kind: "count", selector: "span[data-project-count]", within: "[data-project-list]", min: 1 },
+      { kind: "classes", probe: "[data-project] [data-project-count]", includes: ["badge", "badge-sm", "td-count"] },
+      { kind: "text", probe: "[data-project] [data-project-count]", matches: "^\\d+$" },
+      { kind: "computed", probe: "[data-project] [data-project-count]", property: "minWidth", equalsPx: 20 },
+      { kind: "computed", probe: "[data-project] [data-project-count]", property: "width", minPx: 20 },
+      { kind: "computed", probe: "[data-project] [data-project-count]", property: "height", equalsPx: 18 },
+      { kind: "computed", probe: "[data-project] [data-project-count]", property: "borderRadius", equals: "999px" },
+      { kind: "computed", probe: "[data-project] [data-project-count]", property: "fontSize", equals: "11px" },
+      { kind: "computed", probe: "[data-project] [data-project-count]", property: "fontFamily", contains: "mono" },
+      { kind: "computed", probe: "[data-project] [data-project-count]", property: "borderTopWidth", equals: "1px" },
+      {
+        kind: "computed",
+        probe: "[data-project] [data-project-count]",
+        property: "backgroundColor",
+        equalsVar: "--brand-surface",
+      },
+      // N8 — the rail hides the count (the `.td-count` hide rule, kept).
+      { kind: "computed", probe: "[data-project] [data-project-count]", property: "display", equals: "none", when: "rail" },
+
+      /* ---- R7 ③ · the footer splits at 1024 (§2.3) ------------------------
+         ≥1024: one row of three equal thirds (a grid with three tracks).
+         ≤1023: three stacked rows — `display:flex` + `column`, so the
+         *container* is what changes; the **cell** stays a single row (R6 ⑦⑧),
+         which is why `flexDirection: row` is asserted on the cell in both
+         bands. Per the contract, `grid-template-columns` is deliberately NOT
+         asserted in the rail band (it returns the specified value on a
+         non-grid box) — `display` and `flexDirection` are the signals. */
+      { kind: "count", selector: "[data-access-status]", equals: 1 },
+      { kind: "count", selector: "button[data-access-cell]", within: "[data-access-status]", equals: 3 },
+      { kind: "count", selector: "[data-theme-switch]", within: "[data-access-status]", equals: 1 },
+      { kind: "count", selector: "[data-lang-select]", within: "[data-access-status]", equals: 1 },
+      { kind: "count", selector: "[data-access-open]", within: "[data-access-status]", equals: 1 },
+      { kind: "computed", probe: "[data-access-status]", property: "display", equals: "grid" },
+      { kind: "computed", probe: "[data-access-status]", property: "gridTemplateColumns", tokens: 3 },
+      { kind: "computed", probe: "[data-access-status]", property: "alignItems", equals: "stretch" },
+      { kind: "computed", probe: "[data-access-cell]", property: "flexDirection", equals: "row" },
+      { kind: "computed", probe: "[data-access-cell]", property: "justifyContent", equals: "center" },
+      { kind: "computed", probe: "[data-access-cell]", property: "gap", equalsPx: 6 },
+      { kind: "computed", probe: "[data-access-cell]", property: "height", equalsPx: 28 },
+      { kind: "computed", probe: "[data-access-cell]", property: "paddingLeft", equalsPx: 2 },
+      { kind: "computed", probe: "[data-access-cell]", property: "textAlign", equals: "center" },
+      // The separator: a vertical hairline at ≥1024 (the first cell drops it),
+      // turning into a horizontal one on the 2nd/3rd rail rows (N11/N12/N12b).
+      { kind: "computed", probe: "[data-theme-switch]", property: "borderInlineStartWidth", equals: "0px" },
+      { kind: "computed", probe: "[data-lang-select]", property: "borderInlineStartWidth", equals: "1px" },
+      { kind: "computed", probe: "[data-access-open]", property: "borderInlineStartWidth", equals: "1px" },
+      { kind: "computed", probe: "[data-access-cell]", property: "borderBlockStartWidth", equals: "0px" },
+      { kind: "computed", probe: "[data-access-status]", property: "display", equals: "flex", when: "rail" },
+      { kind: "computed", probe: "[data-access-status]", property: "flexDirection", equals: "column", when: "rail" },
+      { kind: "computed", probe: "[data-access-cell]", property: "flexDirection", equals: "row", when: "rail" },
+      { kind: "computed", probe: "[data-access-cell]", property: "gap", equalsPx: 0, when: "rail" },
+      { kind: "computed", probe: "[data-access-cell]", property: "height", equalsPx: 24, when: "rail" },
+      { kind: "computed", probe: "[data-access-cell]", property: "paddingLeft", equalsPx: 0, when: "rail" },
+      { kind: "computed", probe: "[data-access-cell]", property: "borderInlineStartWidth", equals: "0px", when: "rail" },
+      { kind: "computed", probe: "[data-theme-switch]", property: "borderBlockStartWidth", equals: "0px", when: "rail" },
+      { kind: "computed", probe: "[data-lang-select]", property: "borderBlockStartWidth", equals: "1px", when: "rail" },
+      { kind: "computed", probe: "[data-access-open]", property: "borderBlockStartWidth", equals: "1px", when: "rail" },
+      // N13/N13b — the caret is the first thing the rail drops, and it is on
+      // screen at full width.
+      { kind: "computed", probe: "[data-access-cell] svg.td-icon", property: "width", equalsPx: 14, visible: true },
+      { kind: "computed", probe: "[data-access-cell] svg.td-icon", property: "height", equalsPx: 14, visible: true },
+      { kind: "computed", probe: "[data-access-cell] svg.td-icon", property: "fill", equals: "none", visible: true },
+      // The glyph is 14px in *both* bands — the rail's "24px" is its row height,
+      // never the glyph.
+      {
+        kind: "computed",
+        probe: "[data-access-cell] svg.td-icon",
+        property: "width",
+        equalsPx: 14,
+        visible: true,
+        when: "rail",
+      },
+      { kind: "computed", probe: "[data-lang-select] svg.td-caret", property: "display", notEquals: "none" },
       {
         kind: "manual",
         note:
-          "Footer controls are three equal thirds (`display:grid; repeat(3, minmax(0,1fr))`), " +
-          "each a block button with `.td-access-cell` (a class, not a hook) and a hairline on " +
-          "the inline start; cells are keyboard reachable with `:focus-visible` rings.",
+          "Footer controls are three equal thirds at ≥1024px (`display:grid; " +
+          "repeat(3, minmax(0,1fr))`) and three stacked rows at ≤1023px — each a " +
+          "block button carrying the `[data-access-cell]` hook (R7 ③) and a " +
+          "hairline that turns with the layout (inline start at full width, " +
+          "block start on the 2nd/3rd rail rows); cells are keyboard reachable " +
+          "with `:focus-visible` rings.",
       },
       {
         kind: "manual",
@@ -995,6 +1131,47 @@ const BLOCKS = [
         kind: "identical-hookset",
         selector: "[data-detail-for]",
         within: "[data-detail-templates]",
+      },
+      /* ---- R7 ④ · the close button lives in the head's top row (§2.4) -----
+         The button shares its flex row with the identifier and the chip,
+         levels with it and sits at that row's inline end. Its glyph is an
+         `svg.td-icon` (✕), not a text character. The *relations* — same
+         parent, centre lines level, flush with the row's right edge, above the
+         title — need `parentElement`/`getBoundingClientRect` and are measured
+         in `web/scripts/dom-smoke.mjs`; what is declarable here is the glyph
+         and the pushed-right box. */
+      { kind: "computed", probe: "[data-detail-close] svg.td-icon", count: 1, when: "drawer open" },
+      {
+        kind: "computed",
+        probe: "[data-detail-close] svg.td-icon",
+        property: "fill",
+        equals: "none",
+        when: "drawer open",
+      },
+      {
+        kind: "computed",
+        probe: "[data-detail-close] svg.td-icon",
+        property: "strokeWidth",
+        equals: "1.5px",
+        when: "drawer open",
+      },
+      // `margin-inline-start` resolves `auto` to the used px value (R7-2), so
+      // the declarable half of "pushed right" is "greater than zero".
+      {
+        kind: "computed",
+        probe: "[data-detail-close]",
+        property: "marginInlineStart",
+        minPx: 1,
+        when: "drawer open",
+      },
+      {
+        kind: "manual",
+        note:
+          "[data-detail-close] shares its parent with [data-detail-identifier] " +
+          "(same flex row, `flex-direction: row`), is level with it on the " +
+          "centre line, sits flush with the row's inline end, and stands " +
+          "**above** [data-detail-title] — the prototype's head order (R7 ④, " +
+          "`design/fidelity-r7.md` §2.4).",
       },
       {
         kind: "manual",

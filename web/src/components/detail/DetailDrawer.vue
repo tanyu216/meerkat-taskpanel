@@ -137,6 +137,11 @@ function copyId() {
     aria-modal="true"
   >
     <header class="flex flex-col gap-1 p-4 border-b border-b-(--brand-border)">
+      <!-- R7 ④ — identifier, chip and the close button share one flex row, with
+           the close pushed to its inline end (`ml-auto`). It used to be the
+           header's third line, *below* the title: the prototype puts it in the
+           top row, level with the identifier, and behind an `svg.td-icon` ✕
+           rather than a text glyph. -->
       <div class="flex items-center gap-2">
         <span class="td-mono" data-detail-identifier>{{ identifier }}</span>
         <!-- The status chip is a dot **and** a word (B09/§2.4: colour is never
@@ -146,9 +151,19 @@ function copyId() {
           <span class="td-status-dot" aria-hidden="true"></span>
           <span data-detail-status-chip-label>{{ $t(`status.${statusValue}`) }}</span>
         </span>
+        <button
+          type="button"
+          class="ml-auto shrink-0 border-0 bg-transparent text-(--brand-text-3) cursor-pointer"
+          data-detail-close
+          :aria-label="$t('drawer.close')"
+          @click="closeDetail"
+        >
+          <svg class="td-icon size-4" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6 6l12 12M18 6 6 18" />
+          </svg>
+        </button>
       </div>
       <h2 data-detail-title>{{ title }}</h2>
-      <button type="button" class="self-end border-0 bg-transparent text-(--brand-text-3) cursor-pointer" data-detail-close :aria-label="$t('drawer.close')" @click="closeDetail">✕</button>
     </header>
 
     <div class="flex flex-1 flex-col gap-4 overflow-y-auto p-4">

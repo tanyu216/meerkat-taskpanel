@@ -236,6 +236,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The sidebar's glyphs, count pills, footer split and the drawer's close button match the
+  prototype.** Four findings from the 2026-10-12 sidebar review. The nav glyphs had lost the
+  brand's stroked line-icon face (`.td-icon`) and wore the project monogram's `data-side-icon`
+  hook instead, so at the ≤1023px rail the chip rule painted them as 24px bordered grey tiles
+  where the prototype draws a bare 16px stroke; each project row's count was a daisyUI
+  `badge-sm` box (34.45×20, 4px radius) rather than the brand's `.td-count` pill (20×18,
+  fully rounded), and its `data-project-count` hook sat on the row button rather than on the
+  number; the footer is now **one row of three equal thirds at ≥1024px and three stacked
+  rows below it** — each cell a `[data-access-cell]` button, with the hairline turning from
+  the cells' inline start to the stacked rows' block start — matching the prototype's own
+  breakpoint split; and the task drawer's close button moved out of a line of its own *under*
+  the title into the identifier's top row, pushed to that row's inline end and drawn as an
+  `svg.td-icon` ✕ instead of a text character.
 - **The board's selection surfaces are painted again, and the theme cell shows a glyph.**
   Eight fidelity findings from a design review, each one a place where the board rendered
   *something* where the prototype renders *that thing*: the Board/List switch had no visible

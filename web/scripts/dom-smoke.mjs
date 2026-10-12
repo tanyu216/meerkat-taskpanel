@@ -536,11 +536,36 @@ export async function run() {
       const drawer = document.querySelector("[data-detail-drawer]");
       const title = document.querySelector("[data-detail-title]")?.textContent?.trim() ?? "";
       const session = document.querySelector("[data-detail-agent-session]");
+      // R7 ④ — the close button's *relations*: same flex row as the identifier,
+      // level with it on the centre line, flush with that row's inline end and
+      // above the title. `getComputedStyle().marginInlineStart` cannot be
+      // asserted as `auto` (the browser resolves it to the used px value,
+      // R7-2), so the "pushed right" half is measured as geometry.
+      const close = document.querySelector("[data-detail-close]");
+      const identifier = document.querySelector("[data-detail-identifier]");
+      const titleEl = document.querySelector("[data-detail-title]");
+      const row = close?.parentElement ?? null;
+      const closeRect = close?.getBoundingClientRect() ?? null;
+      const identRect = identifier?.getBoundingClientRect() ?? null;
+      const rowRect = row?.getBoundingClientRect() ?? null;
+      const centreY = (rect) => (rect.top + rect.bottom) / 2;
+      const glyph = close?.querySelector("svg.td-icon") ?? null;
       return {
         state: drawer?.getAttribute("data-state") ?? null,
         hidden: drawer?.hasAttribute("hidden") ?? true,
         title,
         agentSessionHook: session !== null,
+        r7: {
+          sameParent: close !== null && identifier !== null && close.parentElement === identifier.parentElement,
+          rowDirection: row ? getComputedStyle(row).flexDirection : null,
+          rowDisplay: row ? getComputedStyle(row).display : null,
+          centerDelta: closeRect && identRect ? Math.abs(centreY(closeRect) - centreY(identRect)) : null,
+          rightDelta: closeRect && rowRect ? Math.abs(rowRect.right - closeRect.right) : null,
+          closeTop: closeRect?.top ?? null,
+          titleTop: titleEl?.getBoundingClientRect().top ?? null,
+          path: glyph?.querySelector("path")?.getAttribute("d") ?? null,
+          glyphWidth: glyph ? glyph.getBoundingClientRect().width : null,
+        },
       };
     });
 
@@ -744,9 +769,86 @@ export async function run() {
     r6Check(listDetail.firstTopBorder === 0, `the first list row draws a ${listDetail.firstTopBorder}px top border, expected none`);
     r6Check(listDetail.laterTopBorder === 1, `the second list row draws a ${listDetail.laterTopBorder}px top border, expected 1`);
 
+    // ---- R7 · the footer's breakpoint split and the drawer's head -----------
+    //
+    // ③'s contract is a *relation between cells* — three tops that coincide at
+    // ≥1024 and march down 24px at a time below it, three lefts that spread or
+    // stack, three widths that are equal thirds or the container's own width.
+    // A per-element rule cannot state any of those, so they are measured here,
+    // at both bands, exactly as the contract's §7 B-table describes them
+    // (R7 ③; the ③ revision of 2026-10-12 21:19 made the split a breakpoint
+    // one — the wide band keeps the single row, the rail stacks).
+    const r7Failures = [];
+    const r7Check = (ok, message) => { if (!ok) r7Failures.push(message); };
+    const nearlyEqual = (values, tolerance = 1) => Math.max(...values) - Math.min(...values) <= tolerance;
+    const strictlyIncreasing = (values, step = null) =>
+      values.every((value, i) => i === 0 || (step === null ? value > values[i - 1] : Math.abs(value - values[i - 1] - step) <= 1));
+
+    const measureFooter = async (width) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.waitForTimeout(150);
+      return page.evaluate(() => {
+        const box = document.querySelector("[data-access-status]");
+        const cells = [...document.querySelectorAll("[data-access-status] [data-access-cell]")];
+        const rects = cells.map((el) => el.getBoundingClientRect());
+        const round = (n) => Math.round(n * 100) / 100;
+        const style = getComputedStyle(box);
+        const boxRect = box.getBoundingClientRect();
+        return {
+          band: window.innerWidth >= 1024 ? "wide" : "rail",
+          display: style.display,
+          flexDirection: style.flexDirection,
+          height: round(boxRect.height),
+          contentWidth: round(
+            boxRect.width - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight)
+              - Number.parseFloat(style.borderLeftWidth) - Number.parseFloat(style.borderRightWidth),
+          ),
+          // The DOM order the contract fixes: theme → language → settings, read
+          // left-to-right at full width and top-to-bottom in the rail.
+          order: cells.map((el) => (el.hasAttribute("data-theme-switch") ? "theme"
+            : el.hasAttribute("data-lang-select") ? "language" : "settings")),
+          cellDirection: cells.map((el) => getComputedStyle(el).flexDirection),
+          tops: rects.map((r) => round(r.top)),
+          lefts: rects.map((r) => round(r.left)),
+          widths: rects.map((r) => round(r.width)),
+        };
+      });
+    };
+
+    const wide = await measureFooter(1512);
+    const railBand = await measureFooter(980);
+
+    r7Check(wide.order.join(",") === "theme,language,settings", `wide footer order ${wide.order.join(",")}`);
+    r7Check(railBand.order.join(",") === "theme,language,settings", `rail footer order ${railBand.order.join(",")}`);
+    r7Check(wide.display === "grid", `wide footer display ${wide.display}, expected grid`);
+    r7Check(new Set(wide.tops).size === 1, `wide footer cells' tops ${wide.tops.join(",")} are not all equal`);
+    r7Check(strictlyIncreasing(wide.lefts), `wide footer cells' lefts ${wide.lefts.join(",")} do not increase`);
+    r7Check(nearlyEqual(wide.widths), `wide footer cell widths ${wide.widths.join(",")} are not equal thirds`);
+    r7Check(Math.abs(wide.height - 37) <= 1, `wide footer height ${wide.height}, expected 37`);
+    r7Check(wide.cellDirection.every((d) => d === "row"), `wide footer cells are not single rows: ${wide.cellDirection.join(",")}`);
+    r7Check(railBand.display === "flex" && railBand.flexDirection === "column", `rail footer is ${railBand.display}/${railBand.flexDirection}, expected flex/column`);
+    r7Check(new Set(railBand.tops).size === 3, `rail footer cells' tops ${railBand.tops.join(",")} are not three distinct rows`);
+    r7Check(strictlyIncreasing(railBand.tops, 24), `rail footer rows ${railBand.tops.join(",")} are not 24px apart`);
+    r7Check(nearlyEqual(railBand.lefts), `rail footer cells' lefts ${railBand.lefts.join(",")} are not equal`);
+    r7Check(
+      railBand.widths.every((w) => Math.abs(w - railBand.contentWidth) <= 1),
+      `rail footer cell widths ${railBand.widths.join(",")} != the container's content width ${railBand.contentWidth}`,
+    );
+    r7Check(Math.abs(railBand.height - 81) <= 1, `rail footer height ${railBand.height}, expected 81`);
+    r7Check(railBand.cellDirection.every((d) => d === "row"), `rail footer cells are not single rows: ${railBand.cellDirection.join(",")}`);
+
+    // ④ — the relations the declarable probe vocabulary cannot express.
+    const closeR7 = drawerOpen.r7;
+    r7Check(closeR7.sameParent === true, "the close button is not in the identifier's row");
+    r7Check(closeR7.rowDirection === "row", `the close button's row is ${closeR7.rowDirection}, expected row`);
+    r7Check(closeR7.centerDelta !== null && closeR7.centerDelta <= 2, `the close button is ${closeR7.centerDelta}px off the identifier's centre line`);
+    r7Check(closeR7.rightDelta !== null && closeR7.rightDelta <= 2, `the close button is ${closeR7.rightDelta}px off its row's right edge`);
+    r7Check(closeR7.closeTop !== null && closeR7.titleTop !== null && closeR7.closeTop < closeR7.titleTop, "the close button is not above the title");
+    r7Check(closeR7.path === "M6 6l12 12M18 6 6 18", `the close glyph's path is ${JSON.stringify(closeR7.path)}`);
+
     // --- five viewports, none may overflow horizontally -----------------------
     const viewports = [];
-    for (const width of [1512, 1240, 980, 760, 500]) {
+    for (const width of [1512, 1240, 980, 760, 500, 430]) {
       await page.setViewportSize({ width, height: 900 });
       await page.waitForTimeout(120);
       const overflow = await page.evaluate(() => {
@@ -933,6 +1035,7 @@ export async function run() {
       m1,
       m1Failures,
       r6: { failures: r6Failures, themeSweep, titleGeometry, listDetail, panel: panelGeometry, rail },
+      r7: { failures: r7Failures, wide, rail: railBand, drawerHead: closeR7 },
       geometry,
       counts: { rules: results.length, failed: failures.length, ...geometry },
       fixtureTasks: data.tasks.length,
@@ -972,6 +1075,12 @@ if (isEntryPoint) run().then(
       } else {
         console.log("R6 (fidelity) — theme glyphs, title clamp, list geometry and the settings modal all pass");
       }
+      if (report.r7.failures.length > 0) {
+        console.log(`R7 (fidelity) — ${report.r7.failures.length} failed:`);
+        for (const failure of report.r7.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log("R7 (fidelity) — nav glyphs, count pills, the footer's breakpoint split and the drawer head all pass");
+      }
     }
     const interactionOk =
       report.interactions.drawerOpened &&
@@ -988,6 +1097,7 @@ if (isEntryPoint) run().then(
       report.viewportFailures.length === 0 &&
       report.m1Failures.length === 0 &&
       report.r6.failures.length === 0 &&
+      report.r7.failures.length === 0 &&
       interactionOk;
     process.exit(ok ? 0 : 1);
   },
