@@ -10,7 +10,7 @@
  */
 import { onMounted, onUnmounted } from "vue";
 
-import { initBoard, reloadConflict, board, closeDetail, resync } from "./stores/board.js";
+import { initBoard, reloadConflict, board, closeDetail } from "./stores/board.js";
 import { accessOpen, closeMoveMenu, createProjectOpen, createTaskOpen, moveMenu, view } from "./stores/ui.js";
 
 import FiltersBar from "./components/board/FiltersBar.vue";
@@ -61,8 +61,12 @@ onUnmounted(() => document.removeEventListener("keydown", onKeydown));
         <button type="button" class="btn btn-outline btn-sm" data-error-retry data-i18n="error.retry" @click="initBoard">{{ $t("error.retry") }}</button>
       </div>
 
-      <!-- Visible conflict prompt (F4): the change was reverted, not applied. -->
-      <div v-if="board.conflict" class="td-conflict" role="alert">
+      <!-- Visible conflict prompt (F4): the change was reverted, not applied.
+           There is no prototype counterpart — the prototype has no concurrent
+           writers — so it is a written deviation (surface-disposition.md #2),
+           and `data-conflict` is the semantic hook that makes it machine-visible
+           rather than a class name only. -->
+      <div v-if="board.conflict" class="td-conflict" data-conflict role="alert" :data-conflict-identifier="board.conflict.identifier">
         <strong>{{ $t("conflict.title") }}</strong>
         <span class="td-empty-hint">{{ $t("conflict.hint") }}</span>
         <span class="td-mono td-weak">{{ board.conflict.identifier }}</span>
@@ -78,11 +82,11 @@ onUnmounted(() => document.removeEventListener("keydown", onKeydown));
            top bar's `board | list` toggle (that domain is frozen). -->
       <WaitingView v-show="view === 'waiting'" />
 
-      <div class="td-filters" style="border-bottom: 0">
-        <button type="button" class="btn btn-ghost btn-xs" :title="$t('connection.resyncTitle')" @click="resync">
-          {{ $t("connection.resync") }}
-        </button>
-      </div>
+      <!-- The manual `?after=` resync used to sit here as a lone button in a
+           second `.td-filters` strip. The prototype has no such row, and the
+           control belongs to the transport, not to the board: it now lives in
+           the access panel (B19), beside the other connection settings. The
+           function is unchanged — it is only off the main path. -->
     </main>
 
     <DetailDrawer />
