@@ -387,24 +387,28 @@ top bar, the sidebar or anywhere else. §10 still governs who a task is *assigne
 that is a different question from who is *viewing*, and the two no longer share a
 component.
 
-What replaced the sidebar identity block is a **row of controls**, not a reachability
+What replaced the sidebar identity block is a **stack of controls**, not a reachability
 readout. Review round v1.2 moved the display switches out of the bar and into the footer;
 v1.3 split the row into three equal thirds; v1.4 made each third act directly — a switch,
-a dropdown and an icon button, no dialog between the press and the result:
+a dropdown and an icon button, no dialog between the press and the result. **R7 stacked
+the three into one full-width row each** (2026-10-12) — the thirds are gone; the three
+controls, their order and their directness are not (§23):
 
 | Surface | Content |
 |---|---|
 | Top bar, right end | `[data-revision]` · `[data-new-task]` |
-| Sidebar footer `[data-access-status]` | three equal cells, one affordance each — `[data-theme-switch]` (inline three-state theme cycle) · `[data-lang-select]` (language dropdown) · `[data-access-open]` (icon-only settings) |
+| Sidebar footer `[data-access-status]` | three stacked rows, one affordance each — `[data-theme-switch]` (inline three-state theme cycle) · `[data-lang-select]` (language dropdown) · `[data-access-open]` (icon-only settings) |
 
-**Three equal thirds, each centred.** The footer is `display: grid` with
-`grid-template-columns: repeat(3, minmax(0, 1fr))` and `align-items: stretch`, so the
-three cells are each exactly one third of the sidebar column. Every cell is a
-`.td-access-cell` block button that fills its third, with icon and label centred on both
-axes (`display: flex; align-items: center; justify-content: center; gap: 6px;
-text-align: center`), a hairline `border-inline-start` between neighbours and a
-`:focus-visible` accent ring. The theme cell and the language trigger **state the value in
-force** — the theme's name (`Light` / `Dark` / `Auto`, 浅色 / 深色 / 自动) beside a sun, moon or display glyph, the
+**Three stacked full-width rows, each lead-aligned (R7).** The footer is `display: flex`
+with `flex-direction: column`, so every `[data-access-cell]` block button owns a
+full-width row of the sidebar column — top to bottom: theme · language · settings. A row is
+`display: flex; align-items: center; justify-content: flex-start; gap: 8px;
+text-align: start`, so the glyph leads and the label follows it, with a hairline
+`border-block-start` on the row's block start separating it from the row above (the first
+row carries none) and a `:focus-visible` accent ring. A row is **one line inside** — icon,
+label and, on the language row, the caret side by side — because R6 ⑦⑧ fixed exactly
+that; R7 changed only the container. The theme cell and the language trigger **state the
+value in force** — the theme's name (`Light` / `Dark` / `Auto`, 浅色 / 深色 / 自动) beside a sun, moon or display glyph, the
 language's short name (`EN` / `中文`) beside a globe and a caret — written by the same
 `applyTheme()` / `applyLanguageOptions()` functions the press and the pick call. The
 settings cell shows nothing but a gear: it has no visible label at all, and its accessible
@@ -412,7 +416,7 @@ name comes from `access.open`, the key the panel always used. `[data-theme-toggl
 `[data-lang-toggle]` remain **deleted**, not hidden — what replaced them in v1.4 is a
 switch *inside* the theme cell rather than a switch beside it.
 
-**Each third acts directly (v1.4).** The theme cell **is** the control: `[data-theme-switch]`
+**Each row acts directly (v1.4).** The theme cell **is** the control: `[data-theme-switch]`
 is a three-state cycle whose press walks `html[data-theme-mode]` `light → dark → auto` (and
 back to `light`), swapping `html[data-theme]`, the glyph and the name in the same pass and
 reporting a toast. It is a cycle, not a toggle, so it carries no `aria-pressed`: the state
@@ -430,10 +434,10 @@ drew them are deleted outright, so the old model is not reachable from any selec
 bind address is stated *inside* B19 instead, as prose, where it can name the value the
 board actually binds.
 
-The footer stays three equal thirds down to the smallest width; below 1024px the sidebar
-is a rail, so the labels drop out with the rest of the sidebar text and each third becomes
-a centred 14px glyph. Three glyphs fit the 64px rail (56px under 560px) with no horizontal
-overflow at any width, and the row itself never wraps.
+The footer keeps its three rows down to the smallest width; below 1024px the sidebar is a
+rail, so the labels drop out with the rest of the sidebar text and each row becomes a
+centred 14px glyph on a 24px line. Three glyphs stack in the 64px rail (56px under 560px)
+with no horizontal overflow at any width, and no row ever wraps its own contents.
 
 **B19 · Access & token settings** — `[data-access-open]` opens `[data-access-panel]`,
 hidden by default and dismissed with `Esc`, the scrim (`[data-access-overlay]`) or
@@ -514,7 +518,7 @@ clipboard, no credential or endpoint of any kind, and no persistence across relo
 ## 13. i18n
 
 **English is the default** (`<html lang="en">`). The `中文` option in the **language menu**
-(the dropdown behind the middle footer cell) switches to Chinese and back; the active
+(the dropdown behind the middle footer row) switches to Chinese and back; the active
 option carries `aria-pressed`, the trigger always shows the language in force, the options
 name their own language (`English` / `中文`) in *both* catalogues, and the menu carries an
 `aria-label` from the catalogue.
@@ -673,6 +677,11 @@ worth recording.
    would have broken the "three equal thirds" requirement, so the row never wraps.
    `minmax(0, 1fr)` (rather than a bare `1fr`) keeps a long label from pushing a cell
    wider than its third.
+
+   **（已于 R7 变更）** — the equal-thirds requirement recorded here was **replaced by
+   R7's three stacked rows**; the round is kept as written above (it is the record of what
+   v1.3 asked for and why), but its "the row never wraps" consequence no longer holds. See
+   **§23** for the change and its reasons.
 
 Recaptured for this round: `01-board-1512` (the footer's three cells), `11-viewport-1240`,
 `13-viewport-760` (the rail's three icon cells), `05-dark-theme`, `19-board-zh`,
@@ -1018,8 +1027,8 @@ Authority: `ARCHITECTURE §8` (client preferences). Two preferences live on the 
 
 | Key | Values | Default | Surface |
 |---|---|---|---|
-| `meerkat-taskpanel.theme` | `light` \| `dark` \| `auto` | **`light`** | the sidebar footer's left cell |
-| `meerkat-taskpanel.lang` | `en` \| `zh` | **`en`** | the sidebar footer's centre cell |
+| `meerkat-taskpanel.theme` | `light` \| `dark` \| `auto` | **`light`** | the sidebar footer's top row |
+| `meerkat-taskpanel.lang` | `en` \| `zh` | **`en`** | the sidebar footer's middle row |
 
 **Where they live.** Both are **stored in `localStorage` only — never on the server**. They
 do not travel in a request, they are not columns on any table, and they are not tied to an
@@ -1050,7 +1059,7 @@ light-by-default rule above.
 and no script decides the colours — a reader with JavaScript off still sees the right
 choices, because the no-JS document ships Light.
 
-**Recaptured and checked.** The left footer cell gained its third state, so `05-dark-theme`
+**Recaptured and checked.** The top footer row gained its third state, so `05-dark-theme`
 was re-shot with the cell in `Dark`, and six frames are new: `33-theme-light-1512`,
 `34-theme-dark-1512`, the `Auto` pair `35-theme-auto-darkos-1512` /
 `36-theme-auto-lightos-1512`, and `37-theme-footer-760` with its crop. The `Auto` pair is
@@ -1157,3 +1166,102 @@ drawer showed the same two, and the form reset to no chips and an empty input); 
 console errors; no page-level horizontal overflow at 1512 / 1240 / 980 / 760 / 430 px and
 no overflow inside the create dialog at any of them; and 7 columns × 18 cards with every
 pre-existing hook are intact.
+
+---
+
+## 23. Review round R7 — the footer stacks, and three fidelity alignments
+
+Terry's 2026-10-12 20:59 sidebar review raised three findings and added a fourth at 21:06
+(a drawer-header finding). One of the four is a **design change** — the footer layout — and
+it is the only one that moves the prototype; the other three are **alignment findings**
+where the prototype is already the correct side. The structural contract for all four is
+`design/fidelity-r7.md` (the §⑨.1 "Before" document; the implementation and verification
+cards are separate).
+
+### 23.1 The footer stacks (the design change)
+
+**What changed.** The sidebar footer `[data-access-status]` was **one row of three equal
+thirds** (v1.3, kept through v1.4). It is now **three stacked full-width rows**, top to
+bottom: theme · language · settings. The container goes from
+`display: grid; grid-template-columns: repeat(3, minmax(0, 1fr))` to
+`display: flex; flex-direction: column`, each `[data-access-cell]` becomes a full-width row
+with its glyph at the **inline start** and its label beside it (`justify-content:
+flex-start`, `gap: 8px`, `padding: 0 8px`), and the separator turns with the layout: from a
+vertical `border-inline-start` between neighbours to a horizontal `border-block-start` on
+the 2nd and 3rd rows (the first row has none). A new hook, `[data-access-cell]`, names the
+three rows so the contract can address them without counting children.
+
+**Why.** A third of the sidebar footer is ~74px at 1512px. Nothing legible fits three
+labelled controls in 74px each: the language trigger alone needs a globe, a name and a
+disclosure caret. Stacking gives each control the full column width, which is what the
+label — the thing that makes the control readable without a hover — actually needs. The
+order is unchanged (theme → language → settings), so nothing has to be relearned.
+
+**Constraints the change carries.**
+
+1. **A row stays one line inside.** Each `[data-access-cell]` is still
+   `display: flex; flex-direction: row` — icon, label and caret side by side. R6 ⑦⑧ fixed
+   that and R7 does not undo it; the change is between rows, never within one. The two are
+   orthogonal and the contract asserts them separately.
+2. **The rail keeps the stack.** Below 1024px each row narrows to a centred 24px glyph on a
+   24px line with the label and the caret gone, exactly as the thirds did before — the rail
+   simply stacks them instead of placing them side by side, and the footer's own top rule
+   spans what it spanned before (the footer is content-width in the rail, both before and
+   after).
+3. **No new token.** The separator reuses `--color-td-line`, the token the vertical hairline
+   already used.
+4. **The footer is taller.** +28px on the desktop column (3×28px rows) and 81px in the rail
+   (3×24px rows). Measured with no page-level horizontal overflow at
+   1512 / 1240 / 980 / 760 / 430 in both themes.
+
+The §12 "current state" passages are rewritten to the stacked description; the v1.3 round
+(§16, judgement call 3) keeps its record with a "（已于 R7 变更）" note pointing here, since
+its "the row never wraps" consequence is the thing R7 reversed.
+
+### 23.2 The three alignment findings (no prototype change)
+
+These are recorded here because they change what the **implementation** must look like, not
+what the prototype is. In each case the prototype was already correct, so the prototype's
+markup and CSS are untouched by R7.
+
+1. **The nav glyphs lost their icon face.** The four `[data-nav-item]` glyphs are stroked
+   line icons (`.td-icon`: `fill: none`, `stroke: currentColor`, `stroke-width: 1.5`,
+   round caps and joins, 16×16). The implementation gave them a size utility but not the
+   face, so they render as solid black shapes — and carried the `data-side-icon` hook that
+   belongs to the project **monogram**, which the rail's chip rule then matched, boxing the
+   nav glyph in a 24px chip at ≤1023px. The prototype's nav glyphs are bare 16px icons; the
+   monogram is the only chip. This is a misapplied-class finding, not an icon-design one:
+   the four path strings are byte-identical on both sides.
+2. **The project count lost its brand face.** The count pill is
+   `badge badge-sm td-count` on a `<span>` **inside** the project row, carrying
+   `data-project-count` on the pill itself — the hook names the number, not the row. The
+   implementation put the hook on the row `<button>` and dressed the pill in
+   `badge badge-sm td-mono`, so the pill measures 34.45×20 with a 4px radius instead of the
+   brand's 20×18 with a full radius. The count semantics are unchanged and stay the
+   prototype's: a finite number — `0` included — renders the pill; `null` renders none
+   rather than a fabricated zero (§20.1).
+3. **The drawer's close button fell out of the header's top row.** In the prototype
+   `[data-detail-close]` sits **inside** the header's first row, beside
+   `[data-detail-identifier]` and the status chip, pushed to the row's end, and its glyph is
+   `svg.td-icon` (the ✕ path `M6 6l12 12M18 6 6 18`). The implementation made it a third
+   child of the `flex-col` header with `self-end`, so it lands **below** the title at the
+   bottom-right, and its glyph is a text `✕`. The fix is structural: back into the row,
+   aligned to its end, with the icon glyph. One measurement caveat is recorded in the
+   contract: the same-row check must use centre-line coincidence and the row's right edge,
+   because the row's two boxes differ in height (their `top`s differ by 7px in the
+   prototype itself) and because `margin-inline-start: auto` computes to its used pixel
+   value, never to the literal `auto`.
+
+### 23.3 Recaptured and checked
+
+Ten prototype frames — 1512 / 1240 / 980 / 760 / 430 × light and dark — are captured for
+this round as the **baseline** (`design/fidelity-r7.md` §6 records the口径; the files live
+in the card's workspace, not in the repository). The theme is driven through the footer's
+own `[data-theme-switch]`, so the capture exercises the control it photographs.
+
+**Checked and clean.** Zero console errors and zero page errors in the prototype at every
+captured width and theme; no page-level horizontal overflow in any of the ten frames
+(`scrollWidth ≤ clientWidth + 1`); the three footer rows measure strictly increasing tops
+28px apart on the desktop column and 24px apart in the rail; `count [data-nav-item]` stays
+4; 7 columns × 18 cards intact. The implementation-side comparison is the verification
+card's to run, per the same口径.

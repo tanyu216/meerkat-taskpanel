@@ -78,15 +78,23 @@ Two `<mask>` ids are needed because both inline marks share one document
 | Projects | `[data-project-list]` → `[data-project="…"]` (`aria-current="page"`) → `.td-side-icon` (prefix monogram, rail only) + `[data-project-count]`; each item carries `[data-order-score]` + `[data-order-rank]` (see below) |
 | Agents | `[data-agents-presence]` → **one row per platform**: `[data-agent-platform="claude\|openclaw\|codex\|pi"]` + `[data-presence="running\|idle"]` |
 | States preview | `[data-states-open]` — sidebar footer control, opens **B18** |
-| Footer controls | `[data-access-status]` — **three equal thirds** (`display: grid`, `repeat(3, minmax(0, 1fr))`), each cell a `.td-access-cell` block button with its icon and label centred, separated by a hairline on the inline start |
+| Footer controls | `[data-access-status]` — **three stacked full-width rows** (R7), top to bottom: theme · language · settings. Each row is a `[data-access-cell]` block button (`.td-access-cell`) with its icon and label at the **inline start**, and a hairline on its **block start** separates it from the row above (the first row carries none) |
 
-The three cells, left to right, and what each one does (**review round v1.4**):
+The three rows were **one row of three equal thirds** from v1.3 to R6; R7 (2026-10-12)
+stacked them so each control owns a full-width row and its label has the width to read.
+Top to bottom, and what each one does:
 
-| Cell | Hook | What the cell shows | Affordance |
+| Row | Hook | What the cell shows | Affordance |
 |---|---|---|---|
-| Theme (left) | `[data-theme-switch]` → `[data-theme-icon="light" \| "dark" \| "auto"]` + `[data-theme-label]` | the theme in force — `Light`/`Dark`/`Auto` (浅色/深色/自动) | **three-state cycle** — one press walks Light → Dark → Auto → Light, no dialog |
+| Theme (top) | `[data-theme-switch]` → `[data-theme-icon="light" \| "dark" \| "auto"]` + `[data-theme-label]` | the theme in force — `Light`/`Dark`/`Auto` (浅色/深色/自动) | **three-state cycle** — one press walks Light → Dark → Auto → Light, no dialog |
 | Language (middle) | `[data-lang-select]` + `[data-lang-label]` + `.td-caret` | the language in force — `EN`/`中文` | **dropdown menu** → `[data-lang-menu]` → `[data-lang-option="en" \| "zh"]` |
-| Settings (right) | `[data-access-open]` | nothing but the gear glyph | opens **B19** `[data-access-panel]` |
+| Settings (bottom) | `[data-access-open]` | nothing but the gear glyph | opens **B19** `[data-access-panel]` |
+
+**A row is one line inside; the stack is what changed.** Each `[data-access-cell]` is
+still `display: flex; flex-direction: row` — icon, label and (on the language row) the
+caret sit side by side, which is what R6 ⑦⑧ fixed. R7 changed the **container** from
+`repeat(3, minmax(0, 1fr))` to `column`, so the three rows follow one another down the
+sidebar. The two are orthogonal: a row may never wrap its own contents.
 
 **The theme cell is a three-state cycle, not a switch.** One press walks the modes in
 order — `light → dark → auto`, then back to `light` — and the machine-checkable state is
@@ -132,12 +140,12 @@ bind-address status is shown anywhere in the chrome; the bind address is stated 
 B19 instead. The assignee model further down this file is a separate concern and is
 unchanged.
 
-At the ≤1023px rail the three thirds hold (the row is never allowed to wrap) and the
-labels drop out with the rest of the sidebar text, so each cell is a centred 24px icon:
-three 14px glyphs still fit the 64px rail (56px under 560px) without horizontal overflow.
-The `.td-caret` goes with the labels — a third of the rail cannot hold a globe and a
-disclosure arrow side by side — and the language menu still opens from the remaining
-globe, floating over the board rather than inside the 64px column.
+At the ≤1023px rail the stack holds and each row narrows to a **centred 24px icon**: the
+labels drop out with the rest of the sidebar text, so the three rows are three glyphs
+stacked in the 64px rail (56px under 560px) with no horizontal overflow. The `.td-caret`
+goes with the labels — 64px cannot hold a globe and a disclosure arrow side by side — and
+the language menu still opens from the remaining globe, floating over the board rather
+than inside the 64px column.
 
 **The `PROJECTS` list is ordered by activity, not alphabetically or by creation.** Items
 render in the order the **server** computed — a weighted rank over 7-day and 30-day
