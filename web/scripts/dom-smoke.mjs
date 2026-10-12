@@ -75,7 +75,7 @@ function fixture(projectId, status, overrides = {}) {
     labels: overrides.labels ?? ["bug"],
     // M1 — the `awaiting` entry category (`null` on every other card).
     awaiting_reason: overrides.awaiting_reason ?? null,
-    meta: {},
+    meta: overrides.meta ?? {},
     assignee: overrides.assignee ?? { id: "a1", display_name: "linus", kind: "agent" },
     reporter: { id: "h1", display_name: "Terry", kind: "human" },
     version: 1,
@@ -123,7 +123,24 @@ export function fixtureApi() {
   ];
   // 12 cards, all in the default project (p1), covering the seven statuses.
   const tasks = [
-    fixture("p1", "backlog", { identifier: "TD-1", title: "Draft the onboarding copy", priority: "low", labels: ["design"], assignee: AGENT.pi }),
+    // TD-1 is the card the drawer opens on in the interaction pass, so it is the
+    // one that carries attachments — the same shape the prototype's sampled card
+    // has (two rows). `meta.attachment_count` states the same number the list
+    // shows, so the card badge and the drawer cannot disagree.
+    fixture("p1", "backlog", {
+      identifier: "TD-1",
+      title: "Draft the onboarding copy",
+      priority: "low",
+      labels: ["design"],
+      assignee: AGENT.pi,
+      meta: {
+        attachment_count: 2,
+        attachments: [
+          { filename: "board-keyboard-spec.md", size: 12 * 1024 },
+          { filename: "focus-order-record.png", size: 248 * 1024 },
+        ],
+      },
+    }),
     fixture("p1", "backlog", { identifier: "TD-2", title: "Collect the install survey", priority: "none", labels: [], assignee: AGENT.human }),
     fixture("p1", "todo", { identifier: "TD-3", title: "Wire the board", priority: "high", labels: ["bug"], assignee: AGENT.claude }),
     fixture("p1", "todo", { identifier: "TD-4", title: "Polish the empty states", priority: "medium", labels: ["ui"], assignee: AGENT.codex }),
@@ -163,7 +180,16 @@ export function fixtureApi() {
       { id: "cm-2", task_id: "TD-13", kind: "decision", author_kind: "human", author_id: "Terry", body: "范围确认：这一版不做第 8 列。后面还有一句不该出现在摘要里。", refs: [], created_at: "2026-10-12T00:02:00Z" },
     ],
   };
-  return { projects, orderDebug, tasks, entries, labels, comments };
+  // M2 — the audit trail the drawer's activity stream renders (B09). One row per
+  // sentence the catalogue names plus the move's own `from → to` line, so both
+  // rungs of the relative-time ladder (`…h ago` and `…d ago`) are exercised.
+  const activities = [
+    { id: "act-1", task_id: "TD-1", actor_kind: "human", actor_id: "Terry", event: "task_created", changes: {}, revision: 1, created_at: "2026-10-09T08:00:00Z" },
+    { id: "act-2", task_id: "TD-1", actor_kind: "agent", actor_id: "jobs", event: "task_claimed", changes: {}, revision: 2, created_at: "2026-10-10T08:00:00Z" },
+    { id: "act-3", task_id: "TD-1", actor_kind: "human", actor_id: "Terry", event: "task_moved", changes: { from: "backlog", to: "todo" }, revision: 3, created_at: "2026-10-11T08:00:00Z" },
+    { id: "act-4", task_id: "TD-1", actor_kind: "agent", actor_id: "jobs", event: "comment_added", changes: {}, revision: 4, created_at: "2026-10-12T02:00:00Z" },
+  ];
+  return { projects, orderDebug, tasks, entries, labels, comments, activities };
 }
 
 /**
@@ -197,6 +223,8 @@ export function startServer({ port = 0 } = {}) {
     }
     const commentsFor = /^\/api\/v1\/tasks\/([^/]+)\/comments$/.exec(path);
     if (commentsFor) return ok({ comments: data.comments[decodeURIComponent(commentsFor[1])] ?? [] });
+    const activitiesFor = /^\/api\/v1\/tasks\/([^/]+)\/activities$/.exec(path);
+    if (activitiesFor) return ok({ task_id: decodeURIComponent(activitiesFor[1]), activities: data.activities });
     if (path.startsWith("/api/v1/tasks/")) return ok({ task: data.tasks[0], report_waivers: [] });
     if (path === "/api/v1/assignees" || path === "/api/v1/reporters") return ok({ entries: data.entries });
     if (path === "/api/v1/labels") return ok({ labels: data.labels });
@@ -400,6 +428,16 @@ export async function run() {
         agentSessionHook: session !== null,
       };
     });
+
+    // The contract rules whose precondition is the *open drawer* — its attachment
+    // and activity rows are projected from the task on screen, so they exist here
+    // and nowhere else. Evaluated between the open and the Escape.
+    const drawerRules = EVALUATED_RULES.filter((entry) => entry.rule.when === "drawer open").map((entry) => ({
+      block: entry.block,
+      rule: entry.rule,
+    }));
+    const drawerResults = await page.evaluate(evaluateRules, drawerRules);
+
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
     const drawerClosed = await page.evaluate(() => document.querySelector("[data-detail-drawer]")?.getAttribute("data-state"));
@@ -434,8 +472,9 @@ export async function run() {
     const themeEnd = themeRun.at(-1);
 
     // Language: switch to zh, assert <html lang>, then back to en. The options
-    // live inside a `<details>` that would otherwise have to be opened for a
-    // hit-test, so the handler is invoked directly (the binding is the same).
+    // live inside a floating menu (M2: a `div[data-lang-menu]`, teleported out of
+    // the sidebar's scroll container) that would otherwise have to be opened for
+    // a hit-test, so the handler is invoked directly (the binding is the same).
     await page.evaluate(() => document.querySelector('[data-lang-option="zh"]')?.click());
     await page.waitForTimeout(150);
     const langAfterZh = await page.evaluate(() => document.documentElement.getAttribute("lang"));
@@ -619,7 +658,7 @@ export async function run() {
     check(waitingView.boardHidden === true, "the board must be hidden while the waiting view is up");
     check(waitingView.emptyShown === false, "a non-empty view must not show the empty state");
 
-    const results = [...boardResults, ...listResults];
+    const results = [...boardResults, ...listResults, ...drawerResults];
     const failures = results.filter((r) => !r.ok);
     const viewportFailures = viewports.filter((v) => !v.ok);
     return {
