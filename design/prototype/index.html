@@ -270,30 +270,32 @@
                name into the assignee control (whose domain gains the name), so
                the route is a narrowing too, and the pressed name wears the
                selected capsule. Each name is therefore wrapped in a
-               `[data-assignee-item]` that holds two *siblings* — the name button
-               and its `[data-assignee-clear]` `x` (a nested button is illegal).
-               The `x` is static markup at rest, hidden until the name is the one
-               in force, so a reader without the script gets the whole roster and
-               no selection. -->
+               `[data-assignee-item]`; the item is the capsule's shell and the
+               name button is its only child, so the shell sits *around* the name
+               and the row's one line gains no width (`padding` and an equal
+               negative `margin-inline` cancel). The capsule has no `x` of its
+               own: the removal affordance is one control in the bar, next to the
+               assignee select, because the roster row has no room to spend (see
+               `fidelity-r13.md` §3). -->
           <div class="mt-2" data-agents-presence>
             <div class="td-agent-row" title="claude · jobs, linus, simons" data-agent-row="claude">
               <span class="badge badge-xs td-agent-badge" data-agent-platform="claude">claude</span>
-              <span class="td-side-name td-agent-text td-mono"><span class="td-assignee-item" data-assignee-item="jobs"><button type="button" class="td-agent-assignee td-mono" data-agent-assignee="jobs" data-assignee="jobs" data-assignee-kind="agent" aria-pressed="false">jobs</button><button type="button" class="td-assignee-clear" data-assignee-clear="jobs" hidden data-i18n-aria-label="assignee.clear" aria-label="Remove assignee filter">✕</button></span>, <span class="td-assignee-item" data-assignee-item="linus"><button type="button" class="td-agent-assignee td-mono" data-agent-assignee="linus" data-assignee="linus" data-assignee-kind="agent" aria-pressed="false">linus</button><button type="button" class="td-assignee-clear" data-assignee-clear="linus" hidden data-i18n-aria-label="assignee.clear" aria-label="Remove assignee filter">✕</button></span>, <span class="td-assignee-item" data-assignee-item="simons"><button type="button" class="td-agent-assignee td-mono" data-agent-assignee="simons" data-assignee="simons" data-assignee-kind="agent" aria-pressed="false">simons</button><button type="button" class="td-assignee-clear" data-assignee-clear="simons" hidden data-i18n-aria-label="assignee.clear" aria-label="Remove assignee filter">✕</button></span></span>
+              <span class="td-side-name td-agent-text td-mono"><span class="td-assignee-item" data-assignee-item="jobs"><button type="button" class="td-agent-assignee td-mono" data-agent-assignee="jobs" data-assignee="jobs" data-assignee-kind="agent" aria-pressed="false">jobs</button></span>, <span class="td-assignee-item" data-assignee-item="linus"><button type="button" class="td-agent-assignee td-mono" data-agent-assignee="linus" data-assignee="linus" data-assignee-kind="agent" aria-pressed="false">linus</button></span>, <span class="td-assignee-item" data-assignee-item="simons"><button type="button" class="td-agent-assignee td-mono" data-agent-assignee="simons" data-assignee="simons" data-assignee-kind="agent" aria-pressed="false">simons</button></span></span>
               <span class="td-presence" data-presence="running" role="img" data-i18n-aria-label="presence.running" aria-label="running"></span>
             </div>
             <div class="td-agent-row" title="openclaw · elon">
               <span class="badge badge-xs td-agent-badge" data-agent-platform="openclaw">openclaw</span>
-              <span class="td-side-name td-agent-text td-mono"><span class="td-assignee-item" data-assignee-item="elon"><button type="button" class="td-agent-assignee td-mono" data-agent-assignee="elon" data-assignee="elon" data-assignee-kind="agent" aria-pressed="false">elon</button><button type="button" class="td-assignee-clear" data-assignee-clear="elon" hidden data-i18n-aria-label="assignee.clear" aria-label="Remove assignee filter">✕</button></span></span>
+              <span class="td-side-name td-agent-text td-mono"><span class="td-assignee-item" data-assignee-item="elon"><button type="button" class="td-agent-assignee td-mono" data-agent-assignee="elon" data-assignee="elon" data-assignee-kind="agent" aria-pressed="false">elon</button></span></span>
               <span class="td-presence" data-presence="running" role="img" data-i18n-aria-label="presence.running" aria-label="running"></span>
             </div>
             <div class="td-agent-row" title="codex · turing">
               <span class="badge badge-xs td-agent-badge" data-agent-platform="codex">codex</span>
-              <span class="td-side-name td-agent-text td-mono"><span class="td-assignee-item" data-assignee-item="turing"><button type="button" class="td-agent-assignee td-mono" data-agent-assignee="turing" data-assignee="turing" data-assignee-kind="agent" aria-pressed="false">turing</button><button type="button" class="td-assignee-clear" data-assignee-clear="turing" hidden data-i18n-aria-label="assignee.clear" aria-label="Remove assignee filter">✕</button></span></span>
+              <span class="td-side-name td-agent-text td-mono"><span class="td-assignee-item" data-assignee-item="turing"><button type="button" class="td-agent-assignee td-mono" data-agent-assignee="turing" data-assignee="turing" data-assignee-kind="agent" aria-pressed="false">turing</button></span></span>
               <span class="td-presence" data-presence="idle" role="img" data-i18n-aria-label="presence.idle" aria-label="idle"></span>
             </div>
             <div class="td-agent-row" title="pi · assistant">
               <span class="badge badge-xs td-agent-badge" data-agent-platform="pi">pi</span>
-              <span class="td-side-name td-agent-text td-mono"><span class="td-assignee-item" data-assignee-item="assistant"><button type="button" class="td-agent-assignee td-mono" data-agent-assignee="assistant" data-assignee="assistant" data-assignee-kind="agent" aria-pressed="false">assistant</button><button type="button" class="td-assignee-clear" data-assignee-clear="assistant" hidden data-i18n-aria-label="assignee.clear" aria-label="Remove assignee filter">✕</button></span></span>
+              <span class="td-side-name td-agent-text td-mono"><span class="td-assignee-item" data-assignee-item="assistant"><button type="button" class="td-agent-assignee td-mono" data-agent-assignee="assistant" data-assignee="assistant" data-assignee-kind="agent" aria-pressed="false">assistant</button></span></span>
               <span class="td-presence" data-presence="running" role="img" data-i18n-aria-label="presence.running" aria-label="running"></span>
             </div>
           </div>
@@ -501,6 +503,17 @@
             <option value="human" data-i18n="filters.assignee.human">Assignee: Human</option>
             <option value="agent" data-i18n="filters.assignee.agent">Assignee: Agent</option>
           </select>
+          <!-- R13 — the assignee condition's removal affordance, as the sibling
+               of the control it clears. A given name has no home in the static
+               domain above, so the select grows a name on demand; this `x` is
+               what takes that name back out — and only that one. It is static
+               markup, `hidden` at rest, and it appears only while the select
+               states a name (never for `all` / `me` / `human` / `agent`, which
+               the select's own `all` row already undoes). It sits here rather
+               than inside the roster's capsule: the roster row is one line with
+               no width to spare, and a shell that bleeds over its own row is
+               width-neutral only while it stays a shell. -->
+          <button type="button" class="td-assignee-clear" data-assignee-clear hidden data-i18n-aria-label="assignee.clear" aria-label="Remove assignee filter">✕</button>
 
           <label class="td-sr" for="td-filter-priority" data-i18n="filters.priority">Priority</label>
           <select class="select select-sm td-select" id="td-filter-priority" data-filter-priority>
