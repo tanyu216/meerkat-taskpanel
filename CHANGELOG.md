@@ -236,6 +236,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The sidebar's per-project count is served, not guessed.** `[data-project-count]` — the
+  badge on every project row, `12 / 4 / 2` in the prototype — was read from the *current*
+  project's task list, so only the open project had a number and the other rows rendered an
+  empty one (1/3 rows). `GET /api/v1/projects` (and `/projects/:id`) now returns
+  `task_count` per project — its total number of tasks, every status and archived included,
+  `0` for a project with none — and the sidebar renders that value; the row count is
+  independent of the §4.6 ordering and of which project is open.
+
+
 - **`scripts/verify/install-e2e.sh` no longer fails its own claim.** The script acted as
   `TASKCTL_AGENT="install-e2e"` but assigned its card to `install-e2e-bot`, and the claim
   policy only lets the assignee claim a card — so the run died on `not_assignee` at

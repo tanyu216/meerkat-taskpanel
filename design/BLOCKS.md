@@ -150,6 +150,13 @@ deliberately different from creation order so the weighting is visible. Consiste
 are contiguous from `1` and scores are non-increasing down the list; `[data-project-count]`
 (12 / 4 / 2) is independent of the ordering and unchanged.
 
+**`[data-project-count]` is the project's task count**, served by `/projects` as `task_count`
+(every status, archived included; a project with no tasks reports `0`). It is *not* the
+`[data-order-score]` next to it and not the `order_debug` activity counts: those measure
+events in a trailing window, which is a different question with a different answer. The
+field is also independent of which project is open — it is per **row**, not per current
+project, so every row is filled at all times.
+
 ## B04 · Filters bar
 
 | | |
