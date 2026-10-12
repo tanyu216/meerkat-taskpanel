@@ -10,6 +10,11 @@
       "name": "meerkat-taskpanel",
       "source": "./plugins/claude",
       "description": "Task management board for AI Agent teams."
+    },
+    {
+      "name": "meerkat-loop",
+      "source": "./plugins/loop",
+      "description": "The host-external supervisor loop for Meerkat TaskPanel boards (claude / codex / pi only)."
     }
   ]
 }

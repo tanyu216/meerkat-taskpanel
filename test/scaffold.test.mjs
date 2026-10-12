@@ -18,7 +18,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { after, describe, it } from "node:test";
 
-import { compareDirs, listFiles, resolveSkillSource, syncSkills } from "../scripts/sync-skills.mjs";
+import { SKILL_BUNDLES, SKILL_HOSTS, compareDirs, listFiles, resolveSkillSource, skillTargets, syncSkills } from "../scripts/sync-skills.mjs";
 import { MANIFESTS, validateManifests } from "../scripts/verify/manifests.mjs";
 import { validateSkill } from "../scripts/verify/skill.mjs";
 import { VERSION } from "../src/shared/constants.mjs";
@@ -41,8 +41,10 @@ after(async () => {
 });
 
 describe("plugin manifests", () => {
-  it("all four host manifests + the marketplace manifest parse and carry required keys", async () => {
-    assert.equal(MANIFESTS.length, 5);
+  it("all four host manifests + the loop bundle + the marketplace parse and carry required keys", async () => {
+    // 4 board host bundles + the loop skill's 2 manifests (Claude-format plugin + Pi
+    // package) + the marketplace.
+    assert.equal(MANIFESTS.length, 7);
 
     const report = await validateManifests(ROOT);
     const failures = report.results.filter((r) => !r.ok);
@@ -90,21 +92,49 @@ describe("skill sync", () => {
     assert.deepEqual(files, sorted, "listFiles output must be sorted");
   });
 
-  it("syncSkills({check:true}) reports every host in sync", async () => {
+  it("syncSkills({check:true}) reports every generated copy in sync", async () => {
     const report = await syncSkills({ root: ROOT, check: true });
 
-    for (const host of report.hosts) {
+    for (const result of report.results) {
       assert.equal(
-        host.equal,
+        result.equal,
         true,
-        `plugins/${host.host}/skills is out of sync — run \`node scripts/sync-skills.mjs\``,
+        `plugins/${result.target}/skills/${result.skill} is out of sync — run \`node scripts/sync-skills.mjs\``,
       );
-      assert.deepEqual(host.missing, []);
-      assert.deepEqual(host.extra, []);
-      assert.deepEqual(host.differing, []);
+      assert.deepEqual(result.missing, []);
+      assert.deepEqual(result.extra, []);
+      assert.deepEqual(result.differing, []);
     }
 
     assert.equal(report.ok, true);
+  });
+
+  it("distributes the board to four hosts and the loop to claude/codex/pi only", () => {
+    // The split's whole point: the distribution surface follows the responsibility.
+    // OpenClaw runs the openclaw-team framework's own poll/patrol, so a second supervisor
+    // there would only race the first for the same cards (ruling O3).
+    assert.deepEqual(SKILL_HOSTS["meerkat-taskpanel"], ["claude", "codex", "openclaw", "pi"]);
+    assert.deepEqual(SKILL_HOSTS["meerkat-loop"], ["claude", "codex", "pi"]);
+    assert.equal(SKILL_HOSTS["meerkat-loop"].includes("openclaw"), false);
+
+    // A `bundle` target is not a host: it exists so the marketplace can list the loop as
+    // its own plugin, sourced at a directory that exposes the loop skill and nothing else.
+    assert.deepEqual(SKILL_BUNDLES["meerkat-loop"], ["loop"]);
+
+    const rows = skillTargets();
+    assert.deepEqual(
+      rows.map((row) => `${row.skill}→${row.target}`),
+      [
+        "meerkat-taskpanel→claude",
+        "meerkat-taskpanel→codex",
+        "meerkat-taskpanel→openclaw",
+        "meerkat-taskpanel→pi",
+        "meerkat-loop→claude",
+        "meerkat-loop→codex",
+        "meerkat-loop→pi",
+        "meerkat-loop→loop",
+      ],
+    );
   });
 
   it("compareDirs detects changed, missing and extra files in a temp copy", async () => {

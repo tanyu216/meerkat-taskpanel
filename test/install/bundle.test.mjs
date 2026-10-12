@@ -31,6 +31,7 @@ import {
   resolveSkillRoots,
 } from "../../scripts/verify/lib/bundle.mjs";
 import { PROFILE_HOSTS, loadProfiles, runProfiles } from "../../scripts/verify/lib/profiles.mjs";
+import { LOOP_SKILL_NAME } from "../../scripts/sync-loop.mjs";
 import { SKILL_NAME } from "../../src/shared/constants.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -193,6 +194,39 @@ describe("bundle: parseMarketplace", () => {
       assert.ok(entry.format, `${entry.name}: source must be a recognized bundle`);
       assert.ok(entry.skills >= 1, `${entry.name}: bundle must expose a skill`);
     }
+  });
+
+  it("lists both skills as plugins, each sourced at a bundle that exposes its own", () => {
+    // The marketplace is the per-skill distribution surface: `meerkat-taskpanel` and
+    // `meerkat-loop` are installable separately, so each entry's source must resolve to a
+    // bundle carrying *its* skill — and the loop's own bundle must carry nothing else, or
+    // installing `meerkat-loop` alone would quietly bring the board with it.
+    const market = parseMarketplace(ROOT);
+    assert.equal(market.ok, true, market.error);
+
+    const expected = [
+      { name: SKILL_NAME, skill: SKILL_NAME, dir: "plugins/claude" },
+      { name: LOOP_SKILL_NAME, skill: LOOP_SKILL_NAME, dir: "plugins/loop" },
+    ];
+    assert.deepEqual(
+      market.entries.map((entry) => entry.name),
+      expected.map((entry) => entry.name),
+    );
+
+    for (const [index, want] of expected.entries()) {
+      const entry = market.entries[index];
+      assert.equal(entry.dir, want.dir, `${want.name}: source directory`);
+      const names = inspectBundle(join(ROOT, entry.dir)).skills.map((skill) => skill.name);
+      assert.ok(names.includes(want.skill), `${want.name}: ${entry.dir} must expose ${want.skill}`);
+    }
+
+    // The loop bundle is loop-only. The board's bundle additionally carries the loop's copy
+    // (`plugins/claude/skills/meerkat-loop/`) — that is the claude/codex/pi distribution
+    // ②, not a second marketplace plugin — but the reverse must not hold.
+    assert.deepEqual(
+      inspectBundle(join(ROOT, "plugins/loop")).skills.map((skill) => skill.name),
+      [LOOP_SKILL_NAME],
+    );
   });
 
   it("fails when a source directory is missing", async () => {
