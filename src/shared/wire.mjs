@@ -124,6 +124,12 @@ export function projectToWire(project) {
     labels: Array.isArray(project.labels) ? project.labels : [],
     meta: project.meta ?? {},
     readme: project.readme ?? null,
+    // The sidebar badge's number (design/BLOCKS.md §Projects): the project's
+    // **total** task count, served with the list and independent of the order.
+    // `null` when the caller did not supply it — this projection counts nothing
+    // itself, so a local `taskctl project` read (no board query behind it)
+    // reports "not asked for" rather than a fabricated 0.
+    task_count: Number.isInteger(project.taskCount) ? project.taskCount : null,
     archived_at: project.archivedAt ?? null,
     created_at: project.createdAt ?? null,
     updated_at: project.updatedAt ?? null,

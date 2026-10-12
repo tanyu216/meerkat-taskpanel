@@ -11,6 +11,10 @@
  * The aggregation is a SQL join (`task_activities → tasks → project_id`) and
  * the ranking itself is the pure `shared/project-order.mjs`.
  *
+ * Each entry also carries `taskCount` → `task_count`, the sidebar badge's
+ * number. It is a plain `COUNT(*)` over the project's tasks and, unlike the
+ * activity factors, is **independent of the order** — see `taskCountByProject`.
+ *
  * Bodies are snake_case (§F-C1); the projection to and from the domain's
  * camelCase happens here and in `shared/wire.mjs`, nowhere else.
  */
@@ -54,10 +58,14 @@ export function registerProjectRoutes(router, surface) {
   router.get("/api/v1/projects", ({ query }) => {
     const includeArchived = truthy(query.get("include_archived"));
     const activity = activityByProject(surface.board, { now: new Date(surface.board.ctx.now()) });
+    const taskCounts = taskCountByProject(surface.board);
     const ranked = rankProjects(
       commands.listProjects({ includeArchived }).map((project) => ({
         ...project,
         ...(activity.get(project.id) ?? EMPTY_ACTIVITY),
+        // The badge's number rides along with the entry so `projectToWire` can
+        // project it without reaching for the database (it stays pure).
+        taskCount: taskCounts.get(project.id) ?? 0,
       })),
     );
     return {
@@ -83,7 +91,11 @@ export function registerProjectRoutes(router, surface) {
 
   router.get("/api/v1/projects/:id", ({ params }) => {
     const project = commands.getProject({ id: params.id });
-    return { project: projectToWire(project) };
+    if (project === null || project === undefined) return { project: null };
+    // Same badge number as the list route, so the single-project wire and the
+    // list entry cannot disagree about how many tasks the project owns.
+    const counts = taskCountByProject(surface.board, params.id);
+    return { project: projectToWire({ ...project, taskCount: counts.get(project.id) ?? 0 }) };
   });
 
   router.patch("/api/v1/projects/:id", ({ params, body, actor }) => {
@@ -169,5 +181,30 @@ export function activityByProject(board, options = {}) {
       lastActivityAt: row.last_activity ?? null,
     });
   }
+  return out;
+}
+
+/**
+ * Per-project **task counts** — what the sidebar badge prints.
+ *
+ * This is deliberately *not* a ranking input and deliberately not the activity
+ * count above: §4.6 orders by trailing-window activity, while the badge is the
+ * project's **total** number of tasks (every status, archived included, and
+ * whatever order the list happens to be in). A project with no tasks is simply
+ * absent from the map — the caller defaults it to `0` rather than inventing a
+ * row here.
+ *
+ * @param {{db: object}} board
+ * @param {string} [projectId] restrict to one project (the single-project route)
+ * @returns {Map<string, number>} project id → task count
+ */
+export function taskCountByProject(board, projectId) {
+  const where = projectId === undefined ? "" : " WHERE project_id = ?";
+  const rows = board.db
+    .prepare(`SELECT project_id, COUNT(*) AS n FROM tasks${where} GROUP BY project_id`)
+    .all(...(projectId === undefined ? [] : [projectId]));
+
+  const out = new Map();
+  for (const row of rows) out.set(row.project_id, Number(row.n ?? 0));
   return out;
 }
