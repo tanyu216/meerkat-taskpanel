@@ -2,9 +2,17 @@
 #
 # Shared implementation for the per-host installers (claude / openclaw / codex / pi).
 #
-# Each host script sources this file and calls the pieces it needs. The two bundle
-# hosts (claude, codex) call `install_skill` plus the config / command / trigger
-# helpers below; the two skill-only hosts (openclaw, pi) call just `install_skill`.
+# Two skills are distributed, and each host takes the ones that fit it:
+#
+#   * `meerkat-taskpanel` — the board. Every host installs it (`install_skill`).
+#   * `meerkat-loop` — the host-external supervisor. claude, codex and pi install it
+#     (`install_loop_skill` + `install_scheduling`); **OpenClaw does not**, because the
+#     openclaw-team framework already ships `poll-<agent>` / `task-patrol`, which is the
+#     same design — see `scripts/install/openclaw.sh` and docs/scheduling.md.
+#
+# Each host script sources this file and calls the pieces it needs. The two bundle hosts
+# (claude, codex) add the config / command / trigger helpers below; the two skill-only
+# hosts (openclaw, pi) do not (pi still takes the loop, OpenClaw takes neither).
 #
 # Honours:
 #
@@ -135,6 +143,20 @@ repo_root() { cd "$(script_dir)/../.." && pwd; }
 target_home() { printf '%s\n' "${MEERKAT_TASKPANEL_TARGET_HOME:-$HOME}"; }
 apply_helper() { printf '%s\n' "$(script_dir)/lib/apply.mjs"; }
 
+# loop_src — the loop skill's source, which owns the loop body and the loop's templates.
+#
+# The loop is a skill of its own (skills/meerkat-loop/): its execution body and the units /
+# wake / config templates it is deployed with are *generated* into it from this repository's
+# scripts/, src/shared/ and scripts/install/templates/, and guarded by
+# `node scripts/sync-skills.mjs --check`. The installer reads them from there rather than
+# from this repository's own scripts/ — so what is deployed is exactly what was distributed
+# and verified, not a second reading of the same inputs.
+loop_src() { printf '%s\n' "$(repo_root)/skills/meerkat-loop"; }
+
+# board_skill_name / loop_skill_name — the two skills this installer distributes.
+board_skill_name() { printf '%s\n' "meerkat-taskpanel"; }
+loop_skill_name() { printf '%s\n' "meerkat-loop"; }
+
 # agent_name — the identity written into the host bundle.
 #
 # `--agent-name` (MEERKAT_TASKPANEL_AGENT_NAME) wins; the default is $USER, then $LOGNAME,
@@ -232,14 +254,17 @@ claim_unassigned_value() {
 # The body now lives in the host, and the units name that copy:
 #
 #   <home>/<host-dir>/meerkat-taskpanel/scripts/supervisor.mjs   the executor
-#   <home>/<host-dir>/meerkat-taskpanel/src/shared/*.mjs         its imports
+#   <home>/<host-dir>/meerkat-taskpanel/scripts/wake-cwd.mjs     the glue's resolver
+#   <home>/<host-dir>/meerkat-taskpanel/src/shared/*.mjs         their imports
 #
-# The `scripts/` + `src/shared/` shape is load-bearing, not decoration:
-# `supervisor.mjs` imports `../src/shared/scheduling.mjs`, so a copy of that one file
-# would resolve a relative import to nothing and the unit would die at load. The set
-# below is the transitive closure of that import — scheduling.mjs → constants.mjs,
-# errors.mjs → redact.mjs — and `test/install/scheduling-units.test.mjs` runs the copy
-# so a missing member fails the suite instead of the 3am tick.
+# The `scripts/` + `src/shared/` shape is load-bearing, not decoration: the body's
+# modules import each other relatively (`../src/shared/scheduling.mjs`), so a copy of
+# one file would resolve a relative import to nothing and the unit would die at load.
+# The set to copy is **not** restated here — it is read from the loop skill's generated
+# `body/manifest.txt`, which is the closure itself (computed from the two entry points'
+# imports by `scripts/sync-loop.mjs` and guarded by `--check`). One source, so a new
+# import in the body cannot leave bash — or the test that proves the copy is closed —
+# silently behind.
 #
 # The board engine the executor drives (`taskctl`) still lives in the checkout: the
 # host config records where, so a host-installed executor still finds it. Moving the
@@ -248,15 +273,18 @@ claim_unassigned_value() {
 #
 # Merge-never-clobber like every other installed artefact: a member whose content
 # already matches is left untouched; a differing one is left alone without `--force`.
+# `--dry-run` says which of the two it would be, so drift is reportable without writing.
 install_loop_body() {
-  for rel in \
-    scripts/supervisor.mjs \
-    src/shared/scheduling.mjs \
-    src/shared/constants.mjs \
-    src/shared/errors.mjs \
-    src/shared/redact.mjs
-  do
-    src="$(repo_root)/$rel"
+  manifest="$(loop_src)/body/manifest.txt"
+  if [ ! -f "$manifest" ]; then
+    echo "$TP_HOST: loop body manifest not found: $manifest" >&2
+    echo "$TP_HOST: run 'node scripts/sync-skills.mjs' in the checkout and retry." >&2
+    return 1
+  fi
+
+  while read -r rel; do
+    [ -n "$rel" ] || continue
+    src="$(loop_src)/body/$rel"
     dest="$TP_LOOP/$rel"
 
     if [ ! -f "$src" ]; then
@@ -264,42 +292,53 @@ install_loop_body() {
       return 1
     fi
 
-    if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
-      echo "would copy  $src -> $dest"
+    if [ -f "$dest" ] && cmp -s "$src" "$dest"; then
+      if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
+        echo "would keep  $dest (already current)"
+      fi
       continue
     fi
 
-    if [ -f "$dest" ]; then
-      if cmp -s "$src" "$dest"; then
-        continue
+    if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
+      if [ -f "$dest" ]; then
+        echo "would refresh $dest (differs from the loop skill — --force applies it)"
+      else
+        echo "would copy  $src -> $dest"
       fi
-      if [ -z "${MEERKAT_TASKPANEL_FORCE:-}" ]; then
-        echo "$TP_HOST: loop body kept: $dest (differs from this checkout — re-run with --force to refresh)"
-        continue
-      fi
+      continue
+    fi
+
+    if [ -f "$dest" ] && [ -z "${MEERKAT_TASKPANEL_FORCE:-}" ]; then
+      echo "$TP_HOST: loop body kept: $dest (differs from the loop skill — re-run with --force to refresh)"
+      continue
     fi
 
     mkdir -p "$(dirname "$dest")"
     cp "$src" "$dest"
     echo "$TP_HOST: copied  $dest"
-  done
+  done < "$manifest"
 }
 
 # install_scheduling — drop the loop body, the poll/patrol units and the per-host wake
 # glue, then print the exact command that loads them. The installer never runs
 # `launchctl` / `systemctl` / `crontab` itself: enabling a daemon is the user's call,
 # and a test or `--dry-run` must have no side effects. Requires export_tp_env first.
+#
+# Every template here comes from the **loop** skill (`emit_loop_file`), not from this
+# installer's own templates: the units, the wake glues and the host config are the loop's
+# payload, and deploying the copy the loop skill distributes is what keeps "what shipped"
+# and "what was verified" the same bytes.
 install_scheduling() {
   install_loop_body
 
-  emit_file "scheduling/launchd/com.meerkat-taskpanel.poll.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.poll.plist"
-  emit_file "scheduling/launchd/com.meerkat-taskpanel.patrol.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.patrol.plist"
-  emit_file "scheduling/systemd/meerkat-taskpanel-poll.service" "$TP_SCHED/systemd/meerkat-taskpanel-poll.service"
-  emit_file "scheduling/systemd/meerkat-taskpanel-poll.timer" "$TP_SCHED/systemd/meerkat-taskpanel-poll.timer"
-  emit_file "scheduling/systemd/meerkat-taskpanel-patrol.service" "$TP_SCHED/systemd/meerkat-taskpanel-patrol.service"
-  emit_file "scheduling/systemd/meerkat-taskpanel-patrol.timer" "$TP_SCHED/systemd/meerkat-taskpanel-patrol.timer"
-  emit_file "scheduling/cron/meerkat-taskpanel.cron" "$TP_SCHED/cron/meerkat-taskpanel.cron"
-  emit_file "$TP_HOST/wake-$TP_HOST.sh" "$TP_WAKE" --exec
+  emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.poll.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.poll.plist"
+  emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.patrol.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.patrol.plist"
+  emit_loop_file "scheduling/systemd/meerkat-taskpanel-poll.service" "$TP_SCHED/systemd/meerkat-taskpanel-poll.service"
+  emit_loop_file "scheduling/systemd/meerkat-taskpanel-poll.timer" "$TP_SCHED/systemd/meerkat-taskpanel-poll.timer"
+  emit_loop_file "scheduling/systemd/meerkat-taskpanel-patrol.service" "$TP_SCHED/systemd/meerkat-taskpanel-patrol.service"
+  emit_loop_file "scheduling/systemd/meerkat-taskpanel-patrol.timer" "$TP_SCHED/systemd/meerkat-taskpanel-patrol.timer"
+  emit_loop_file "scheduling/cron/meerkat-taskpanel.cron" "$TP_SCHED/cron/meerkat-taskpanel.cron"
+  emit_loop_file "$TP_HOST/wake-$TP_HOST.sh" "$TP_WAKE" --exec
 
   echo "$TP_HOST: scheduling units installed under $TP_SCHED"
   echo "$TP_HOST: to start the supervisor, load one of these (nothing is loaded for you):"
@@ -336,9 +375,10 @@ ensure_env_key() {
 
 # write_host_config — persist the claim policy the supervisor reads by default, and the
 # location of the board engine a host-installed executor drives. Requires export_tp_env
-# first (TP_ENV, TP_CLAIM_UNASSIGNED, TP_REPO).
+# first (TP_ENV, TP_CLAIM_UNASSIGNED, TP_REPO). The template belongs to the loop skill:
+# the supervisor is what reads it.
 write_host_config() {
-  emit_file "host/meerkat-taskpanel.env" "$TP_ENV"
+  emit_loop_file "host/meerkat-taskpanel.env" "$TP_ENV"
   ensure_env_key "MEERKAT_TASKPANEL_REPO" "$TP_REPO"
 }
 
@@ -346,19 +386,29 @@ write_host_config() {
 # Skill copy
 # ---------------------------------------------------------------------------
 
-# install_skill <host_dir> <label>
-#   <host_dir>  dot-directory under the target home, e.g. ".claude"
-#   <label>     human-readable host name, e.g. "claude"
+# install_skill <host_dir> <label> [skill] [copy-only]
+#   <host_dir>   dot-directory under the target home, e.g. ".claude"
+#   <label>      human-readable host name, e.g. "claude"
+#   <skill>      skill directory name under skills/ (default: the board skill)
+#   <copy-only>  "copy" to refuse `--link` for this skill (the loop uses it)
 install_skill() {
   host_dir="$1"
   label="$2"
+  skill="${3:-$(board_skill_name)}"
+  mode="${4:-}"
 
   # Node floor first: nothing is copied onto a runtime that cannot run it.
   require_node || return 1
 
-  src="$(repo_root)/skills/meerkat-taskpanel"
+  src="$(repo_root)/skills/$skill"
   target_home="$(target_home)"
-  dest="$target_home/$host_dir/skills/meerkat-taskpanel"
+  dest="$target_home/$host_dir/skills/$skill"
+
+  # `--link` names the **board** skill only (O6). The loop must always be a real copy:
+  # a symlinked loop would put the checkout back in the load path of the very thing the
+  # split exists to make independent of it.
+  link="${MEERKAT_TASKPANEL_LINK:-}"
+  [ "$mode" = "copy" ] && link=""
 
   if [ ! -d "$src" ]; then
     echo "$label: skill source not found: $src" >&2
@@ -366,7 +416,7 @@ install_skill() {
   fi
 
   if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
-    if [ -n "${MEERKAT_TASKPANEL_LINK:-}" ]; then
+    if [ -n "$link" ]; then
       echo "would link  $src -> $dest"
     else
       echo "would copy  $src -> $dest"
@@ -386,7 +436,7 @@ install_skill() {
 
   mkdir -p "$(dirname "$dest")"
 
-  if [ -n "${MEERKAT_TASKPANEL_LINK:-}" ]; then
+  if [ -n "$link" ]; then
     ln -s "$src" "$dest"
     echo "$label: linked  $dest"
   else
@@ -395,18 +445,27 @@ install_skill() {
   fi
 }
 
+# install_loop_skill <host_dir> <label>
+#   The loop skill, for the hosts that run an external supervisor. Always a copy (O6);
+#   OpenClaw never calls this — its framework already ships an equivalent supervisor, so
+#   a second one would only race the first for the same cards.
+install_loop_skill() {
+  install_skill "$1" "$2" "$(loop_skill_name)" copy
+}
+
 # ---------------------------------------------------------------------------
 # Bundle writing — templates, config merge
 # ---------------------------------------------------------------------------
 
-# emit_file <template_rel> <dest> [--exec]
-#   Render scripts/install/templates/<template_rel> into <dest>. Idempotent.
-emit_file() {
-  template_rel="$1"
-  dest="$2"
-  exec_flag="${3:-}"
+# emit_from <templates_root> <template_rel> <dest> [--exec]
+#   Render <templates_root>/<template_rel> into <dest>. Idempotent.
+emit_from() {
+  templates_root="$1"
+  template_rel="$2"
+  dest="$3"
+  exec_flag="${4:-}"
 
-  template="$(script_dir)/templates/$template_rel"
+  template="$templates_root/$template_rel"
   [ -f "$template" ] || { echo "install: template not found: $template" >&2; return 1; }
 
   if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
@@ -425,6 +484,19 @@ emit_file() {
     node "$(apply_helper)" emit "$template" "$dest" $force_flag
   fi
 }
+
+# emit_file <template_rel> <dest> [--exec]
+#   Render this installer's own template (scripts/install/templates/<rel>) into <dest>.
+#   These are the **board** templates: the host's session-start hook and slash commands,
+#   the Codex trigger and AGENTS.md snippet, the taskctl shims.
+emit_file() { emit_from "$(script_dir)/templates" "$@"; }
+
+# emit_loop_file <template_rel> <dest> [--exec]
+#   Render the **loop** skill's template (skills/meerkat-loop/templates/<rel>) into <dest>:
+#   the scheduling units, the wake glues and the host config. Same relative layout as the
+#   installer's own (host/wake-claude.sh, scheduling/cron/…), so a call site reads the same
+#   either way — the difference is which skill owns the file.
+emit_loop_file() { emit_from "$(loop_src)/templates" "$@"; }
 
 # merge_settings <settings_file>
 #   Merge env.TASKCTL_AGENT and the SessionStart hook into a Claude settings.json,

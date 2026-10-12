@@ -12,7 +12,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -79,14 +79,19 @@ function unitPaths(home, hostDir, host) {
   return all;
 }
 
-/** The loop execution body `install.sh` copies into the host, as repo-relative paths. */
-const LOOP_BODY = [
-  "scripts/supervisor.mjs",
-  "src/shared/scheduling.mjs",
-  "src/shared/constants.mjs",
-  "src/shared/errors.mjs",
-  "src/shared/redact.mjs",
-];
+/**
+ * The loop execution body `install.sh` copies into the host, as repo-relative paths.
+ *
+ * Read from the loop skill's **generated** `body/manifest.txt` rather than restated here:
+ * the manifest *is* the closure (computed from the body's imports by `scripts/sync-loop.mjs`
+ * and guarded by `sync-skills --check`), so a member the installer copies but this test
+ * does not know about — or the reverse — is impossible.
+ */
+const LOOP_SKILL = join(ROOT, "skills", "meerkat-loop");
+const LOOP_BODY = readFileSync(join(LOOP_SKILL, "body", "manifest.txt"), "utf8")
+  .split("\n")
+  .map((line) => line.trim())
+  .filter(Boolean);
 
 /** Every relative module specifier a source text imports, `import` or `export … from`. */
 function relativeImports(text) {
@@ -190,7 +195,7 @@ describe("install.sh: scheduling units", () => {
     assert.ok(!copy.startsWith(ROOT + sep), "the copied executor must not live in the checkout");
     assert.equal(
       readFileSync(copy, "utf8"),
-      readFileSync(join(ROOT, "scripts", "supervisor.mjs"), "utf8"),
+      readFileSync(join(LOOP_SKILL, "body", "scripts", "supervisor.mjs"), "utf8"),
       "the copy must be the executor itself, not a stub",
     );
 
@@ -208,6 +213,26 @@ describe("install.sh: scheduling units", () => {
         assert.ok(existsSync(target), `${rel} imports ${spec}, absent from the copy (${target})`);
       }
     }
+
+    // The body the installer copies is the loop skill's payload, byte for byte — the
+    // units run what the loop skill distributes, not a second reading of scripts/.
+    for (const rel of LOOP_BODY) {
+      assert.equal(
+        readFileSync(join(loopDir, rel), "utf8"),
+        readFileSync(join(LOOP_SKILL, "body", rel), "utf8"),
+        `${rel} must be the loop skill's copy`,
+      );
+    }
+
+    // And the wake glue resolves the card's directory through the **host-local**
+    // resolver, not through the checkout it was installed from: `{{LOOP}}/scripts/
+    // wake-cwd.mjs`, never `{{REPO}}/scripts/wake-cwd.mjs`. Both files exist because the
+    // body carries them; this asserts the glue names the one that survives a move.
+    const wake = readFileSync(join(home, ".claude", "bin", "wake-claude.sh"), "utf8");
+    assert.ok(
+      wake.includes(join(loopDir, "scripts", "wake-cwd.mjs")),
+      "the wake glue must resolve through the host-local wake-cwd.mjs",
+    );
 
     // And it loads: importing the *host copy* resolves that whole graph for real, from
     // the copy's own location — the assertion the relative-import walk above can only
@@ -304,5 +329,97 @@ describe("install.sh: scheduling units", () => {
     const again = runInstall(["--target", "claude", "--agent-name", "alice"], env);
     assert.equal(again.status, 0, again.stderr);
     assert.equal(readFileSync(paths.pollPlist, "utf8"), before);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The loop skill: installed by the three hosts that can be woken, never by OpenClaw
+//
+// The loop is a skill of its own (T-20261012-163500-loopdecouple-b), distributed to
+// claude / codex / pi. OpenClaw is excluded **permanently** (ruling O3): the
+// openclaw-team framework already ships `poll-<agent>` / `task-patrol`, which is the same
+// design, and two supervisors on one board would only race each other for the same cards.
+// ---------------------------------------------------------------------------
+
+/** Hosts the installer must place the loop skill in, and the dot-directory each uses. */
+const LOOP_HOSTS = [
+  ["claude", ".claude"],
+  ["codex", ".codex"],
+  ["pi", ".agents"],
+];
+
+describe("install.sh: the loop skill's distribution", () => {
+  for (const [host, hostDir] of LOOP_HOSTS) {
+    it(`installs the meerkat-loop skill for ${host}`, () => {
+      const home = makeTempDir();
+      const bin = makeTempDir();
+      makeFakeCli(bin, host);
+      const run = runInstall(["--target", host], installEnv(home, bin));
+      assert.equal(run.status, 0, run.stderr);
+
+      const dest = join(home, hostDir, "skills", "meerkat-loop");
+      assert.ok(existsSync(join(dest, "SKILL.md")), `${host}: the loop skill's SKILL.md must land`);
+      assert.ok(existsSync(join(dest, "body", "manifest.txt")), `${host}: the loop payload must land`);
+      assert.ok(
+        existsSync(join(dest, "templates", "scheduling", "cron", "meerkat-taskpanel.cron")),
+        `${host}: the loop templates must land`,
+      );
+    });
+  }
+
+  it("never installs the meerkat-loop skill for openclaw", () => {
+    const home = makeTempDir();
+    const run = runInstall(["--target", "openclaw", "--prefix", home]);
+    assert.equal(run.status, 0, run.stderr);
+
+    // The board skill does land — this is an exclusion of the *loop*, not of OpenClaw.
+    assert.ok(
+      existsSync(join(home, ".openclaw", "skills", "meerkat-taskpanel", "SKILL.md")),
+      "openclaw must still get the board skill",
+    );
+    assert.equal(
+      existsSync(join(home, ".openclaw", "skills", "meerkat-loop")),
+      false,
+      "openclaw must not receive the loop skill (O3: the framework is its supervisor)",
+    );
+    assert.equal(existsSync(join(home, ".openclaw", "scheduling")), false);
+    assert.equal(existsSync(join(home, ".openclaw", "meerkat-taskpanel")), false);
+  });
+
+  it("copies the loop skill even under --link, which names the board skill only", () => {
+    const home = makeTempDir();
+    const bin = makeTempDir();
+    makeFakeCli(bin, "claude");
+    const run = runInstall(["--target", "claude", "--link"], installEnv(home, bin));
+    assert.equal(run.status, 0, run.stderr);
+
+    const board = join(home, ".claude", "skills", "meerkat-taskpanel");
+    const loop = join(home, ".claude", "skills", "meerkat-loop");
+
+    // The board skill is the one --link names: a symlink, because the docs recommend it
+    // for a checkout (the wrapper resolves the CLI relative to itself).
+    assert.ok(lstatSync(board).isSymbolicLink(), "--link must symlink the board skill");
+
+    // The loop must be a real directory. A symlinked body would put the checkout back
+    // into the load path of the very thing the split exists to make independent of it.
+    assert.ok(lstatSync(loop).isDirectory(), "--link must NOT symlink the loop skill");
+    assert.equal(lstatSync(loop).isSymbolicLink(), false);
+    assert.ok(existsSync(join(loop, "body", "scripts", "supervisor.mjs")));
+  });
+
+  it("--dry-run announces the loop skill and writes nothing", () => {
+    const home = makeTempDir();
+    const bin = makeTempDir();
+    makeFakeCli(bin, "claude");
+    const run = runInstall(
+      ["--target", "claude", "--prefix", home, "--dry-run"],
+      { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+    );
+    assert.equal(run.status, 0, run.stderr);
+    assert.ok(
+      run.stdout.includes(join(home, ".claude", "skills", "meerkat-loop")),
+      "the dry run must preview the loop skill's destination",
+    );
+    assert.equal(existsSync(join(home, ".claude")), false, "a dry run must not write");
   });
 });

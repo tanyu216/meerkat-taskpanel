@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
 # Install the Meerkat TaskPanel bundle for Claude Code.
 #
-# Deploys the complete Claude bundle, not just the skill:
-#   1. skill            → ~/.claude/skills/meerkat-taskpanel
-#   2. settings.json    → merged: env.TASKCTL_AGENT + a SessionStart hook, preserving
+# Deploys the complete Claude bundle, not just the board skill:
+#   1. board skill      → ~/.claude/skills/meerkat-taskpanel
+#   2. loop skill       → ~/.claude/skills/meerkat-loop (always a copy; --link is board-only)
+#   3. settings.json    → merged: env.TASKCTL_AGENT + a SessionStart hook, preserving
 #                         every other key and hook
-#   3. slash commands   → ~/.claude/commands/{board,claim,deliver}.md
-#   4. scheduling       → ~/.claude/scheduling/{launchd,systemd,cron} + wake-claude.sh
-#                         and the host config (~/.claude/meerkat-taskpanel.env)
+#   4. slash commands   → ~/.claude/commands/{board,claim,deliver}.md
+#   5. scheduling       → ~/.claude/scheduling/{launchd,systemd,cron}, the loop body in
+#                         ~/.claude/meerkat-taskpanel/, wake-claude.sh and the host config
+#                         (~/.claude/meerkat-taskpanel.env)
 # plus the reproducible hook script and the taskctl shim that injects --agent <name>.
 set -eu
 . "$(cd "$(dirname "$0")" && pwd)/_common.sh"
 
 install_skill ".claude" "claude"
+install_loop_skill ".claude" "claude"
 
 export_tp_env ".claude" "claude"
 
