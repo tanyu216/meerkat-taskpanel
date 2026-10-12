@@ -277,6 +277,63 @@
       "access.token.reset": "Reset token",
       "access.token.generated": "Generated randomly at install time.",
       "access.token.private": "Keep it private — do not share publicly.",
+      /* R12x · the Activity view (B26). The design's catalogue moves in here so the
+         page carries one dictionary, not two: every key below is the design's own copy
+         (`design/activity/DESIGN-activity.md` §9.2), byte for byte. Names that already
+         existed above — `nav.*`, `status.*`, `drawer.*`, `time.hoursAgo` / `time.daysAgo`
+         — are reused and deliberately not repeated. `activity.created` / `claimed` /
+         `commented` are left as they are: they serve B09's stream and read as whole
+         sentences, which is not this feed's shape. */
+      "time.minutesAgo": "%sm ago",
+      "activity.title": "Activity",
+      "activity.subtitle": "What happened, and what is waiting for you.",
+      "activity.navCount": "%s unread",
+      "activity.open": "Open %s",
+      "activity.markRead": "Mark all read",
+      "activity.unread": "New since your last visit",
+      "activity.burstCount": "%s changes folded",
+      "activity.more": "Load older",
+      "activity.day.today": "Today",
+      "activity.day.yesterday": "Yesterday",
+      "activity.filter.actor.label": "Actor",
+      "activity.filter.actor.all": "Anyone",
+      "activity.filter.actor.human": "Humans",
+      "activity.filter.actor.agent": "Agents",
+      "activity.filter.event.label": "Event",
+      "activity.filter.event.all": "All events",
+      "activity.filter.event.status": "Status",
+      "activity.filter.event.comment": "Comments",
+      "activity.filter.event.delivery": "Delivery",
+      "activity.filter.task.label": "Task",
+      "activity.filter.task.all": "All tasks",
+      "activity.filter.reset": "Reset",
+      "activity.filter.count": "%s entries",
+      "activity.verb.created": "created",
+      "activity.verb.claimed": "claimed",
+      "activity.verb.status": "moved",
+      "activity.verb.commented": "commented on",
+      "activity.verb.delivered": "reported on",
+      "activity.verb.attached": "attached a file to",
+      "activity.verb.linked": "linked",
+      "activity.verb.label": "labelled",
+      "activity.verb.assignee": "reassigned",
+      "activity.verb.updated": "updated",
+      "activity.detail.changes": "Changes",
+      "activity.detail.status": "Status",
+      "activity.detail.labels": "Labels",
+      "activity.detail.assignee": "Assignee",
+      "activity.detail.attachment": "Attachment",
+      "activity.detail.relation": "Relation",
+      "activity.detail.comment": "Comment",
+      "activity.detail.delivery": "Delivery",
+      "activity.detail.created": "Created",
+      "activity.detail.claimed": "Claim",
+      "activity.detail.reason": "Reason",
+      "activity.empty.project.title": "Nothing has happened yet",
+      "activity.empty.project.hint": "Create a task, or wait for an agent to claim one — the first entry appears here.",
+      "activity.empty.filter.title": "No activity matches these filters",
+      "activity.empty.filter.hint": "Widen the filters to see the full log.",
+      "activity.empty.filter.reset": "Reset filters",
     },
     zh: {
       /* chrome */
@@ -515,6 +572,57 @@
       "access.token.reset": "重置 Token",
       "access.token.generated": "安装时随机生成。",
       "access.token.private": "请妥善保管，不要公开分享。",
+      /* R12x · Activity 视图（B26）的词典，与上方 en 逐键对应。 */
+      "time.minutesAgo": "%s 分钟前",
+      "activity.title": "动态",
+      "activity.subtitle": "发生了什么，以及什么在等你。",
+      "activity.navCount": "%s 条未读",
+      "activity.open": "打开 %s",
+      "activity.markRead": "全部标为已读",
+      "activity.unread": "自上次查看后",
+      "activity.burstCount": "已折叠 %s 项变更",
+      "activity.more": "加载更早",
+      "activity.day.today": "今天",
+      "activity.day.yesterday": "昨天",
+      "activity.filter.actor.label": "操作者",
+      "activity.filter.actor.all": "任何人",
+      "activity.filter.actor.human": "人类",
+      "activity.filter.actor.agent": "智能体",
+      "activity.filter.event.label": "事件",
+      "activity.filter.event.all": "全部事件",
+      "activity.filter.event.status": "状态",
+      "activity.filter.event.comment": "评论",
+      "activity.filter.event.delivery": "交付",
+      "activity.filter.task.label": "任务",
+      "activity.filter.task.all": "全部任务",
+      "activity.filter.reset": "重置",
+      "activity.filter.count": "%s 条动态",
+      "activity.verb.created": "创建了",
+      "activity.verb.claimed": "认领了",
+      "activity.verb.status": "移动到",
+      "activity.verb.commented": "评论了",
+      "activity.verb.delivered": "提交了交付报告",
+      "activity.verb.attached": "添加了附件到",
+      "activity.verb.linked": "关联了",
+      "activity.verb.label": "更新了标签",
+      "activity.verb.assignee": "改派了",
+      "activity.verb.updated": "更新了",
+      "activity.detail.changes": "变更",
+      "activity.detail.status": "状态",
+      "activity.detail.labels": "标签",
+      "activity.detail.assignee": "负责人",
+      "activity.detail.attachment": "附件",
+      "activity.detail.relation": "关联",
+      "activity.detail.comment": "评论",
+      "activity.detail.delivery": "交付",
+      "activity.detail.created": "创建",
+      "activity.detail.claimed": "认领",
+      "activity.detail.reason": "原因",
+      "activity.empty.project.title": "这个项目还没有发生过什么",
+      "activity.empty.project.hint": "新建一个任务，或等智能体认领——第一条动态会出现在这里。",
+      "activity.empty.filter.title": "没有动态符合这些筛选",
+      "activity.empty.filter.hint": "放宽筛选即可看到完整记录。",
+      "activity.empty.filter.reset": "重置筛选",
     },
   };
 
@@ -1017,6 +1125,14 @@
     detailCommit(field, !value);
   }
 
+  /* R12x — whether the board area's filter bar belongs on screen: the board and
+     the list are the two views it narrows, and the top bar's toggle is what says
+     whether it is open while either of them is current. */
+  function boardAreaShowsBar() {
+    if (state.view !== "board" && state.view !== "list") return false;
+    return $("[data-filter-toggle]").attr("aria-pressed") === "true";
+  }
+
   function setView(view) {
     state.view = view;
 
@@ -1026,6 +1142,20 @@
     $("[data-board-view]").prop("hidden", view !== "board");
     $("[data-list]").prop("hidden", view !== "list");
 
+    /* R12x — the sidebar's four destinations are four views, not two views and
+       two stand-ins. `[data-activity-view]` is B26; the fourth root (`waiting`)
+       is the next sibling to land, and both are toggled from here already so a
+       nav press needs no branch of its own. */
+    $("[data-activity-view]").prop("hidden", view !== "activity");
+    $("[data-waiting-view]").prop("hidden", view !== "waiting");
+
+    /* R12x — the filter bar belongs to the board area: it narrows cards, and the
+       activity feed is narrowed by its own three controls, so above the feed it
+       would be a row of controls that changes nothing. It stands down on the two
+       destinations that are not the board area and comes back on the toggle's own
+       state, which is what keeps the top bar's button honest. */
+    $("[data-filters]").prop("hidden", !boardAreaShowsBar());
+
     $("[data-view-toggle] [data-view]").each(function () {
       var $button = $(this);
       $button.attr(
@@ -1034,11 +1164,13 @@
       );
     });
 
+    /* R12x — exactly one nav item is current, out of the sidebar's four and not
+       the toggle's two: what the reader pressed is what reads as current. The
+       scope stays `[data-nav]`, because the project rows below carry the same
+       attribute for the current project. */
     $("[data-nav-item]").each(function () {
       var $item = $(this);
-      var name = $item.attr("data-nav-item");
-      if (name !== "board" && name !== "list") return;
-      if (name === view) {
+      if ($item.attr("data-nav-item") === view) {
         $item.attr("aria-current", "page");
       } else {
         $item.removeAttr("aria-current");
@@ -1269,6 +1401,12 @@
     }
 
     renderToken();
+
+    /* R12x — the feed's computed copy rides the same pass: the elapsed-time
+       cells and the fixed date headings are words, and the entry count is a
+       sentence around a number. */
+    refreshActivityCopy();
+
     applyFilters();
   }
 
@@ -2479,6 +2617,308 @@
     });
   }
 
+  /* =========================================================== R12x · activity */
+
+  /* B26, the Activity view, inside the shipped board. The design lives in
+     `design/activity/` as its own page and its own evidence; what this section
+     carries is the same view with the same hooks, the same admission rules and
+     the same numbers. Exactly two things are this file's rather than the design
+     page's: the copy is read from `MESSAGES` (one dictionary for the whole
+     document, R-3), and a row's "open" path lands on the board's own B09 detail
+     surface instead of on a stand-in shell.
+
+     The feed is measured from one fixed instant rather than from the wall clock: a
+     page reading `Date.now()` would render a different board every morning, and
+     no capture of it would be reproducible. 09:51Z sits nine minutes after the
+     newest entry. */
+  var ACTIVITY_NOW = Date.parse("2026-10-13T09:51:00Z");
+  var ACTIVITY_DAY_MS = 86400000;
+
+  /* Which events each of the three event-filter values addresses. Everything
+     else is the backdrop: the control answers "what changed state / what was
+     said / what was delivered" and nothing more, so the rest reads under All
+     alone — the rule design/activity/DESIGN-activity.md §3.4 fixes. */
+  var ACTIVITY_EVENT_GROUPS = {
+    status: "status",
+    comment: "comment",
+    delivery: "delivery",
+  };
+
+  var activity = {
+    filters: { actor: "all", event: "all", task: "all" },
+    page: 1,
+    unread: 0,
+    shown: 0,
+  };
+
+  function activityRows() {
+    return $("[data-activity-row]");
+  }
+
+  function activityPageOf($row) {
+    return Number(
+      $row.closest("[data-activity-day]").attr("data-activity-page") || 1
+    );
+  }
+
+  /* Each `[data-activity-at]` already carries the exact instant on its
+     `datetime` and the full stamp on its `title`; the cell the reader sees is
+     the short form, recomputed here rather than frozen in the markup, so a
+     language switch re-words it. */
+  function activityTime(iso) {
+    var ms = Date.parse(iso);
+    if (isNaN(ms)) return "";
+    var mins = Math.max(0, Math.round((ACTIVITY_NOW - ms) / 60000));
+    if (mins < 1) return text("time.minutesAgo", 1);
+    if (mins < 60) return text("time.minutesAgo", mins);
+    var hours = Math.round(mins / 60);
+    if (hours < 24) return text("time.hoursAgo", hours);
+    return text("time.daysAgo", Math.round((ACTIVITY_NOW - ms) / ACTIVITY_DAY_MS));
+  }
+
+  /* The feed's two oldest day headings are fixed dates rather than Today /
+     Yesterday: there is no sentence to translate, only a date to localise, so
+     it is formatted by the platform. An engine without `Intl` keeps the English
+     date already in the markup — degraded, never blank. */
+  function activityDayLabels() {
+    $('[data-activity-day-kind="absolute"] time').each(function () {
+      var $el = $(this);
+      var ms = Date.parse($el.attr("datetime") + "T12:00:00Z");
+      if (isNaN(ms)) return;
+      try {
+        $el.text(
+          new Intl.DateTimeFormat(state.lang === "zh" ? "zh-CN" : "en-US", {
+            weekday: "long",
+            month: "short",
+            day: "numeric",
+          }).format(new Date(ms))
+        );
+      } catch (err) {
+        /* keep the markup's own English date */
+      }
+    });
+  }
+
+  /* Copy this view computes rather than reads: the elapsed-time cells, the
+     fixed date headings, the entry count and the unread pill. Called on every language
+     change, so one pass re-words the whole feed. */
+  function refreshActivityCopy() {
+    $("[data-activity-at]").each(function () {
+      var $el = $(this);
+      $el.text(activityTime($el.attr("datetime")));
+    });
+    activityDayLabels();
+    applyActivityFilters();
+  }
+
+  function activityMatches($row) {
+    var f = activity.filters;
+    if (f.actor !== "all" && $row.attr("data-assignee-kind") !== f.actor) return false;
+    if (f.event !== "all" && $row.attr("data-activity-group") !== ACTIVITY_EVENT_GROUPS[f.event]) return false;
+    if (f.task !== "all" && $row.attr("data-task") !== f.task) return false;
+    return true;
+  }
+
+  function applyActivityFilters() {
+    var shown = 0;
+    var unread = 0;
+
+    activityRows().each(function () {
+      var $row = $(this);
+      var ok = activityPageOf($row) <= activity.page && activityMatches($row);
+      if (ok) {
+        shown += 1;
+        if ($row.is("[data-activity-unread]")) unread += 1;
+      }
+      $row.attr("hidden", ok ? null : "hidden");
+    });
+
+    /* A day group with nothing left in it goes too — an empty Today heading
+       reads as a fault, not as an empty day. */
+    $("[data-activity-day]").each(function () {
+      var $day = $(this);
+      var revealed = Number($day.attr("data-activity-page") || 1) <= activity.page;
+      var any = $day.find("[data-activity-row]").filter(function () {
+        return activityMatches($(this));
+      }).length;
+      $day.attr("hidden", revealed && any > 0 ? null : "hidden");
+    });
+
+    activity.shown = shown;
+    applyActivityUnread(unread);
+    applyActivityEmptiness(shown);
+  }
+
+  function applyActivityEmptiness(shown) {
+    var admissible = activityRows().length;
+
+    $('[data-activity-empty][data-activity-empty-kind="project"]').attr(
+      "hidden",
+      admissible === 0 ? null : "hidden"
+    );
+    $('[data-activity-empty][data-activity-empty-kind="filter"]').attr(
+      "hidden",
+      admissible > 0 && shown === 0 ? null : "hidden"
+    );
+
+    var $count = $("[data-activity-filter-count]");
+    $count.attr("data-i18n-arg", String(shown));
+    $count.text(text("activity.filter.count", shown));
+
+    refreshActivityFoot();
+  }
+
+  /* Load older is offered only when there is both another page and a log to
+     extend. A project with no events at all has nothing older to load, and a
+     button promising otherwise is the same lie the nav item used to tell. Under
+     a filter that matches nothing the button stays: the match may be sitting on
+     the page that has not been unfolded. */
+  function refreshActivityFoot() {
+    var more =
+      $('[data-activity-day][data-activity-page="' + (activity.page + 1) + '"]')
+        .length > 0;
+    $(".td-activity-foot").attr(
+      "hidden",
+      more && activityRows().length > 0 ? null : "hidden"
+    );
+  }
+
+  function readActivityFilters() {
+    $("[data-activity-filter]").each(function () {
+      var $el = $(this);
+      var name = $el.attr("data-activity-filter");
+      if (activity.filters[name] !== undefined) activity.filters[name] = $el.val();
+    });
+  }
+
+  function syncActivityControls() {
+    ["actor", "event", "task"].forEach(function (name) {
+      $('[data-activity-filter="' + name + '"]').val(activity.filters[name]);
+    });
+  }
+
+  function resetActivityFilters() {
+    activity.filters = { actor: "all", event: "all", task: "all" };
+    syncActivityControls();
+    writeActivityHash();
+    applyActivityFilters();
+  }
+
+  /* The chosen filters ride in the URL, so the narrowed log is shareable and a
+     reload does not lose it. The path is `#/activity`, which cannot collide with
+     the task links' own `#/task/…`. */
+  function writeActivityHash() {
+    var parts = [];
+    ["actor", "event", "task"].forEach(function (name) {
+      if (activity.filters[name] !== "all") {
+        parts.push(name + "=" + encodeURIComponent(activity.filters[name]));
+      }
+    });
+    var hash = "#/activity" + (parts.length ? "?" + parts.join("&") : "");
+    if (window.location.hash === hash) return;
+    try {
+      window.history.replaceState(null, "", hash);
+    } catch (err) {
+      window.location.hash = hash;
+    }
+  }
+
+  function readActivityHash() {
+    var hash = window.location.hash || "";
+    if (hash.indexOf("#/activity") !== 0) return;
+    var qs = hash.indexOf("?") === -1 ? "" : hash.slice(hash.indexOf("?") + 1);
+    if (!qs) return;
+    qs.split("&").forEach(function (pair) {
+      var bits = pair.split("=");
+      var name = decodeURIComponent(bits[0]);
+      var value = decodeURIComponent(bits[1] || "");
+      if (activity.filters[name] !== undefined && value) {
+        activity.filters[name] = value;
+      }
+    });
+  }
+
+  /* One number, one meaning: the unread rows the reader can currently see. The
+     sidebar pill, the boundary in the feed and the boundary's own counter all
+     read it, so the three cannot disagree — and when a filter hides the new
+     rows, all three say so by going away rather than by showing a number with
+     nothing under it. At zero the pill is hidden, the rule `waiting` follows. */
+  function applyActivityUnread(unread) {
+    activity.unread = unread;
+
+    var $pill = $('[data-nav-count="activity"]');
+    if ($pill.length) {
+      $pill.text(String(unread));
+      $pill.attr("data-i18n-arg", String(unread));
+      $pill.attr("aria-label", text("activity.navCount", unread));
+      $pill.attr("hidden", unread === 0 ? "hidden" : null);
+    }
+
+    var $divider = $("[data-activity-unread-divider]");
+    if ($divider.length) {
+      $divider.attr("hidden", unread === 0 ? "hidden" : null);
+      $divider.find("[data-activity-unread-count]").text(String(unread));
+    }
+  }
+
+  function markActivityRead() {
+    activityRows().removeAttr("data-activity-unread");
+    applyActivityFilters();
+  }
+
+  function loadOlderActivity() {
+    var next = activity.page + 1;
+    if (!$('[data-activity-day][data-activity-page="' + next + '"]').length) {
+      return false;
+    }
+    activity.page = next;
+    applyActivityFilters();
+    return true;
+  }
+
+  /* A row's task, found the way the rest of the document finds a task: by the
+     internal id the row's own href carries, and by the human identifier when
+     that id is not on this board. */
+  function activityCard($row) {
+    var href = $row.find("[data-activity-task]").attr("href") || "";
+    var internal = href.indexOf("#/task/") === 0 ? href.slice("#/task/".length) : "";
+    var $card = internal ? $('[data-card][data-id="' + internal + '"]') : $();
+    if (!$card.length) {
+      $card = $('[data-card][data-identifier="' + $row.attr("data-task") + '"]');
+    }
+    return $card.first();
+  }
+
+  /* The row body is the pointer affordance and `[data-activity-open]` its
+     keyboard twin; both land on the board's own detail surface, so a feed row
+     opens the same B09 a card does. A press on the task's own address or on the
+     disclosure is left alone — neither is a request for this drawer. */
+  function openActivityRow($row) {
+    if (!$row || !$row.length) return false;
+    var $card = activityCard($row);
+    if (!$card.length) return false;
+    openDetail($card);
+    return true;
+  }
+
+  function activityFocusableRows() {
+    return $("[data-activity-open]").filter(function () {
+      return !$(this).closest("[hidden]").length;
+    });
+  }
+
+  function moveActivityFocus(delta, from) {
+    var $focusable = activityFocusableRows();
+    if (!$focusable.length) return false;
+    var index = $focusable.index(from);
+    if (index === -1) index = delta > 0 ? -1 : 0;
+    var next = index + delta;
+    if (next < 0) next = $focusable.length - 1;
+    if (next >= $focusable.length) next = 0;
+    $focusable.eq(next).trigger("focus");
+    return true;
+  }
+
   /* =========================================================== bindings === */
 
   $(function () {
@@ -2490,21 +2930,59 @@
       setView($(this).attr("data-view"));
     });
 
+    /* R12x — one rule for all four destinations. The stand-in that answered
+       `activity` and `waiting` with a revision toast is gone: a press that
+       reports a number instead of opening the view it names is the defect the
+       round exists to remove. */
     $("[data-nav]").on("click", "[data-nav-item]", function () {
-      var name = $(this).attr("data-nav-item");
-      if (name === "board" || name === "list") {
-        setView(name);
-        return;
-      }
-      var $count = $("[data-filter-count]");
-      toast(
-        text("toast.activity") +
-          " " +
-          $("[data-revision-value]").text() +
-          " · " +
-          $count.text(),
-        "info"
+      setView($(this).attr("data-nav-item"));
+    });
+
+    /* B26 · the activity feed ---------------------------------------------- */
+    $("[data-activity-filter]").on("change", function () {
+      readActivityFilters();
+      writeActivityHash();
+      applyActivityFilters();
+    });
+
+    $("[data-activity-filter-reset], [data-activity-empty-reset]").on(
+      "click",
+      resetActivityFilters
+    );
+
+    $("[data-activity-mark-read]").on("click", markActivityRead);
+    $("[data-activity-more]").on("click", loadOlderActivity);
+
+    $("[data-activity-line]").on("click", function (event) {
+      if ($(event.target).closest("a, button, details, summary").length) return;
+      openActivityRow($(this).closest("[data-activity-row]"));
+    });
+
+    $("[data-activity-open]").on("click", function () {
+      openActivityRow($(this).closest("[data-activity-row]"));
+    });
+
+    /* The identifier and the title are a route back to the board, not a second
+       way into the drawer: the anchor stays a real anchor for a reader without the
+       script, and with it the press returns to the board and lands on the task. */
+    $("[data-activity-feed]").on("click", "[data-activity-task]", function (event) {
+      var $card = activityCard($(this).closest("[data-activity-row]"));
+      if (!$card.length) return;
+      event.preventDefault();
+      setView("board");
+      openDetail($card);
+    });
+
+    /* `j` / `k` walk the visible rows' own buttons, so the feed is usable
+       without a pointer. Typing in a control is never a navigation. */
+    $(document).on("keydown", function (event) {
+      if (event.key !== "j" && event.key !== "k") return;
+      if ($(event.target).is("input, textarea, select")) return;
+      var moved = moveActivityFocus(
+        event.key === "j" ? 1 : -1,
+        $(event.target).closest("[data-activity-open]")
       );
+      if (moved) event.preventDefault();
     });
 
     /* B04 · filters -------------------------------------------------------- */
@@ -2581,7 +3059,9 @@
       var $button = $(this);
       var open = $button.attr("aria-pressed") !== "true";
       $button.attr("aria-pressed", String(open));
-      $("[data-filters]").prop("hidden", !open);
+      /* R12x — the press is remembered either way, but the bar itself only shows
+         where it narrows something (see `boardAreaShowsBar()`). */
+      $("[data-filters]").prop("hidden", !boardAreaShowsBar());
     });
 
     /* I8 · project switching ---------------------------------------------- */
@@ -3244,6 +3724,12 @@
     /* The static menus are already in the document, so the first paint needs
        no rebuild — only the editor's two panes, which are derived. */
     renderMarkdown($("[data-md-editor]"));
+
+    /* The activity feed's filters can be carried in by the URL, and the
+       controls have to start on whatever they carried in. Both run before the
+       first `applyLang`, which is what draws the feed's first pass. */
+    readActivityHash();
+    syncActivityControls();
 
     /* The stand-in token is minted once per load, then rendered masked. */
     state.token.value = newToken();

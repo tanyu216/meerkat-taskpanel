@@ -207,6 +207,19 @@
               <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 7v5l3 2" />
             </svg>
             <span class="td-side-text" data-i18n="nav.activity">Activity</span>
+            <!-- B03 extension (R12x): the destination carries its own unread count.
+                 It is the count `waiting`'s pill already follows — the same `.badge.td-count`
+                 shell, and the same "at zero the pill is gone" rule. All three places that
+                 read the number (this pill, the feed's boundary, the boundary's count)
+                 read the one number the script keeps. -->
+            <span
+              class="badge badge-sm td-count"
+              data-nav-count="activity"
+              data-i18n-aria-label="activity.navCount"
+              data-i18n-arg="4"
+              aria-label="4 unread"
+              >4</span
+            >
           </button>
           <!-- B03 · the 4th nav item. C6 (approved by Terry 2026-10-12 00:47, confirmed
                by Jobs) extends this frozen baseline: `count [data-nav-item]` 3→4 and
@@ -2317,6 +2330,634 @@
               <span data-i18n="list.columns.revision">Revision</span>
             </div>
             <div data-list-rows></div>
+          </div>
+        </section>
+
+        <!-- =================================================================
+             B26 · Activity view
+
+             Verbatim from `design/activity/prototype.html`'s `[data-activity-view]`
+             section — same hooks, same order, same copy (design-spec R-1). Only two
+             things are this file's own: the root ships `hidden`, because the document's
+             no-script default view is the board (R-5), and it is the third sibling of
+             the main column beside `[data-board-view]` and `[data-list]`.
+             Contract: DESIGN.md §29 · BLOCKS.md B26 · design/activity/DESIGN-activity.md §10.
+             ============================================================== -->
+        <section class="td-activity-view" data-activity-view hidden>
+          <header class="td-activity-head">
+            <div class="td-activity-head-text">
+              <h1 class="td-activity-title" data-activity-title data-i18n="activity.title">Activity</h1>
+              <p class="td-activity-sub" data-i18n="activity.subtitle">What happened, and what is waiting for you.</p>
+            </div>
+            <div class="td-activity-head-actions">
+              <button type="button" class="btn btn-ghost btn-sm" data-activity-mark-read data-i18n="activity.markRead">Mark all read</button>
+            </div>
+          </header>
+
+          <!-- B26.1 · header + filters -->
+          <div class="td-filters" data-activity-filters>
+            <label class="td-sr" for="td-activity-filter-actor" data-i18n="activity.filter.actor.label">Actor</label>
+            <select class="select select-sm td-select" id="td-activity-filter-actor" data-activity-filter="actor">
+              <option value="all" data-i18n="activity.filter.actor.all">Anyone</option>
+              <option value="human" data-i18n="activity.filter.actor.human">Humans</option>
+              <option value="agent" data-i18n="activity.filter.actor.agent">Agents</option>
+            </select>
+
+            <label class="td-sr" for="td-activity-filter-event" data-i18n="activity.filter.event.label">Event</label>
+            <select class="select select-sm td-select" id="td-activity-filter-event" data-activity-filter="event">
+              <option value="all" data-i18n="activity.filter.event.all">All events</option>
+              <option value="status" data-i18n="activity.filter.event.status">Status</option>
+              <option value="comment" data-i18n="activity.filter.event.comment">Comments</option>
+              <option value="delivery" data-i18n="activity.filter.event.delivery">Delivery</option>
+            </select>
+
+            <label class="td-sr" for="td-activity-filter-task" data-i18n="activity.filter.task.label">Task</label>
+            <select class="select select-sm td-select" id="td-activity-filter-task" data-activity-filter="task">
+              <option value="all" data-i18n="activity.filter.task.all">All tasks</option>
+              <option value="TD-134">TD-134</option>
+              <option value="TD-133">TD-133</option>
+              <option value="TD-129">TD-129</option>
+              <option value="TD-128">TD-128</option>
+              <option value="TD-127">TD-127</option>
+              <option value="TD-126">TD-126</option>
+              <option value="TD-123">TD-123</option>
+              <option value="TD-118">TD-118</option>
+              <option value="PROJ-0007">PROJ-0007</option>
+            </select>
+
+            <button type="button" class="btn btn-ghost btn-sm" data-activity-filter-reset data-i18n="activity.filter.reset">Reset</button>
+            <span class="td-filter-count" data-activity-filter-count aria-live="polite" data-i18n="activity.filter.count" data-i18n-arg="15">15 entries</span>
+          </div>
+
+          <!-- B26.2 · feed. Every row is in the markup, not in a template:
+               with the script off a reader still gets day groups, rows, task
+               identifiers, elapsed-time text and the native <details>. -->
+          <div class="td-activity-feed" data-activity-feed>
+
+            <!-- ------------------------------------------------ Today --- -->
+            <section class="td-activity-day" data-activity-day data-day="2026-10-13">
+              <h2 class="td-activity-day-label" data-activity-day-label data-i18n="activity.day.today">Today</h2>
+              <ol class="td-activity-rows">
+
+                <li class="td-activity-row" data-activity-row data-activity-unread data-actor="Terry" data-assignee-kind="human" data-event="comment" data-activity-group="comment" data-task="TD-134" data-at="2026-10-13T09:42:00Z">
+                  <div class="td-activity-line" data-activity-line>
+                    <span class="td-activity-tick" aria-hidden="true"></span>
+                    <span class="td-activity-actor td-mono" data-activity-actor data-assignee-kind="human">Terry</span>
+                    <span class="td-activity-sentence" data-activity-sentence data-i18n="activity.verb.commented">commented on</span>
+                    <a class="td-activity-task" data-activity-task href="#/task/td_01HQ9B3C8D5E7FGH">
+                      <span class="td-activity-task-id td-mono" data-activity-task-id>TD-134</span>
+                      <span class="td-activity-task-title" data-activity-task-title>Cache task list responses per project</span>
+                    </a>
+                    <time class="td-activity-at td-mono" data-activity-at datetime="2026-10-13T09:42:00Z" title="2026-10-13 09:42" data-i18n="time.minutesAgo" data-i18n-arg="9">9m ago</time>
+                    <button type="button" class="td-iconbtn td-activity-open" data-activity-open data-i18n-aria-label="activity.open" data-i18n-arg="TD-134" aria-label="Open TD-134">
+                      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+                    </button>
+                  <details class="td-activity-detail" data-activity-detail>
+                      <summary><span data-i18n="activity.detail.changes">Changes</span></summary>
+                      <ul class="td-activity-changes">
+                        <li class="td-activity-change" data-activity-change="comment">
+                          <span class="td-activity-change-field" data-i18n="activity.detail.comment">Comment</span>
+                          <span class="td-activity-change-value">Should the cache key include the label filter? Worth a test.</span>
+                        </li>
+                      </ul>
+                    </details>
+
+                  </div>
+                </li>
+
+                <li class="td-activity-row" data-activity-row data-activity-unread data-actor="elon" data-assignee-kind="agent" data-event="delivery" data-activity-group="delivery" data-task="TD-129" data-at="2026-10-13T09:31:00Z">
+                  <div class="td-activity-line" data-activity-line>
+                    <span class="td-activity-tick" aria-hidden="true"></span>
+                    <span class="td-activity-actor td-mono" data-activity-actor data-assignee-kind="agent">elon</span>
+                    <span class="td-activity-sentence" data-activity-sentence data-i18n="activity.verb.delivered">reported on</span>
+                    <a class="td-activity-task" data-activity-task href="#/task/td_01HQ8ZM4K2Q1XTV">
+                      <span class="td-activity-task-id td-mono" data-activity-task-id>TD-129</span>
+                      <span class="td-activity-task-title" data-activity-task-title>Audit dependency licences for vendored assets</span>
+                    </a>
+                    <time class="td-activity-at td-mono" data-activity-at datetime="2026-10-13T09:31:00Z" title="2026-10-13 09:31" data-i18n="time.minutesAgo" data-i18n-arg="20">20m ago</time>
+                    <button type="button" class="td-iconbtn td-activity-open" data-activity-open data-i18n-aria-label="activity.open" data-i18n-arg="TD-129" aria-label="Open TD-129">
+                      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+                    </button>
+                  <details class="td-activity-detail" data-activity-detail>
+                      <summary><span data-i18n="activity.detail.changes">Changes</span></summary>
+                      <ul class="td-activity-changes">
+                        <li class="td-activity-change" data-activity-change="delivery">
+                          <span class="td-activity-change-field" data-i18n="activity.detail.delivery">Delivery</span>
+                          <span class="td-activity-change-value">Round 2 · 3 licences flagged, 1 vendored path still unverified.</span>
+                        </li>
+                      </ul>
+                    </details>
+
+                  </div>
+                </li>
+
+                <li class="td-activity-row" data-activity-row data-activity-unread data-actor="jobs" data-assignee-kind="agent" data-event="status" data-activity-group="status" data-task="TD-128" data-at="2026-10-13T09:12:00Z">
+                  <div class="td-activity-line" data-activity-line>
+                    <span class="td-activity-tick" aria-hidden="true"></span>
+                    <span class="td-activity-actor td-mono" data-activity-actor data-assignee-kind="agent">jobs</span>
+                    <span class="td-activity-sentence" data-activity-sentence data-i18n="activity.verb.status">moved</span>
+                    <a class="td-activity-task" data-activity-task href="#/task/td_01HQ8ZC4M2K7V9P">
+                      <span class="td-activity-task-id td-mono" data-activity-task-id>TD-128</span>
+                      <span class="td-activity-task-title" data-activity-task-title>Wire keyboard navigation across board columns</span>
+                    </a>
+                    <time class="td-activity-at td-mono" data-activity-at datetime="2026-10-13T09:12:00Z" title="2026-10-13 09:12" data-i18n="time.minutesAgo" data-i18n-arg="39">39m ago</time>
+                    <button type="button" class="td-iconbtn td-activity-open" data-activity-open data-i18n-aria-label="activity.open" data-i18n-arg="TD-128" aria-label="Open TD-128">
+                      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+                    </button>
+                  <details class="td-activity-detail" data-activity-detail>
+                      <summary><span data-i18n="activity.detail.changes">Changes</span></summary>
+                      <ul class="td-activity-changes">
+                        <li class="td-activity-change" data-activity-change="status">
+                          <span class="td-activity-change-field" data-i18n="activity.detail.status">Status</span>
+                          <span class="td-activity-change-value td-mono td-activity-transition">
+                            <span class="status td-status-dot" data-status="in_progress" aria-hidden="true"></span>
+                            <span data-i18n="status.in_progress">In Progress</span>
+                            <span aria-hidden="true">→</span>
+                            <span class="status td-status-dot" data-status="in_review" aria-hidden="true"></span>
+                            <span data-i18n="status.in_review">In Review</span>
+                          </span>
+                        </li>
+                      </ul>
+                    </details>
+
+                  </div>
+                </li>
+
+                <li class="td-activity-row" data-activity-row data-activity-unread data-actor="linus" data-assignee-kind="agent" data-event="attachment" data-activity-group="meta" data-task="TD-118" data-at="2026-10-13T08:58:00Z">
+                  <div class="td-activity-line" data-activity-line>
+                    <span class="td-activity-tick" aria-hidden="true"></span>
+                    <span class="td-activity-actor td-mono" data-activity-actor data-assignee-kind="agent">linus</span>
+                    <span class="td-activity-sentence" data-activity-sentence data-i18n="activity.verb.attached">attached a file to</span>
+                    <a class="td-activity-task" data-activity-task href="#/task/td_01HQ6X0Z8A2B4CFH">
+                      <span class="td-activity-task-id td-mono" data-activity-task-id>TD-118</span>
+                      <span class="td-activity-task-title" data-activity-task-title>Migrate attachments to object storage</span>
+                    </a>
+                    <time class="td-activity-at td-mono" data-activity-at datetime="2026-10-13T08:58:00Z" title="2026-10-13 08:58" data-i18n="time.minutesAgo" data-i18n-arg="53">53m ago</time>
+                    <button type="button" class="td-iconbtn td-activity-open" data-activity-open data-i18n-aria-label="activity.open" data-i18n-arg="TD-118" aria-label="Open TD-118">
+                      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+                    </button>
+                  <details class="td-activity-detail" data-activity-detail>
+                      <summary><span data-i18n="activity.detail.changes">Changes</span></summary>
+                      <ul class="td-activity-changes">
+                        <li class="td-activity-change" data-activity-change="attachment">
+                          <span class="td-activity-change-field" data-i18n="activity.detail.attachment">Attachment</span>
+                          <span class="td-activity-change-value td-mono">+ collect-log.txt (14 kB)</span>
+                        </li>
+                      </ul>
+                    </details>
+
+                  </div>
+                </li>
+
+                <!-- B26.3 · the unread boundary. It sits inside the day
+                     group that holds the boundary — here Today — directly
+                     after the last unread row, so the rule is "everything
+                     above this line is new" without an anchor that could
+                     drift away from the rows it describes. -->
+                <li class="td-activity-unread-divider" data-activity-unread-divider>
+                  <span class="td-activity-unread-rule" aria-hidden="true"></span>
+                  <span class="td-activity-unread-text" data-i18n="activity.unread">New since your last visit</span>
+                  <span class="badge badge-sm td-activity-unread-count" data-activity-unread-count>4</span>
+                  <span class="td-activity-unread-rule" aria-hidden="true"></span>
+                </li>
+
+                <!-- B26.4 · burst. Same actor, same task, same event family,
+                     four events inside a five-minute window (08:41→08:44),
+                     folded to one lighter line. The summary count is the
+                     number of rows the <details> holds. -->
+                <li class="td-activity-row" data-activity-row data-activity-burst data-actor="jobs" data-assignee-kind="agent" data-event="meta" data-activity-group="meta" data-task="TD-123" data-at="2026-10-13T08:44:00Z">
+                  <div class="td-activity-line" data-activity-line>
+                    <span class="td-activity-tick" aria-hidden="true"></span>
+                    <span class="td-activity-actor td-mono" data-activity-actor data-assignee-kind="agent">jobs</span>
+                    <span class="td-activity-sentence" data-activity-sentence data-i18n="activity.verb.updated">updated</span>
+                    <a class="td-activity-task" data-activity-task href="#/task/td_01HQ7Y1A9B3C5DIL">
+                      <span class="td-activity-task-id td-mono" data-activity-task-id>TD-123</span>
+                      <span class="td-activity-task-title" data-activity-task-title>Resolve duplication in timeline events</span>
+                    </a>
+                    <span class="badge td-activity-burst-count" data-activity-burst-count="4" data-i18n-aria-label="activity.burstCount" data-i18n-arg="4" aria-label="4 changes folded">×4</span>
+                    <time class="td-activity-at td-mono" data-activity-at datetime="2026-10-13T08:44:00Z" title="2026-10-13 08:41 – 08:44" data-i18n="time.hoursAgo" data-i18n-arg="1">1h ago</time>
+                    <button type="button" class="td-iconbtn td-activity-open" data-activity-open data-i18n-aria-label="activity.open" data-i18n-arg="TD-123" aria-label="Open TD-123">
+                      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+                    </button>
+                  <details class="td-activity-detail" data-activity-detail>
+                      <summary><span data-activity-burst-count-label data-i18n="activity.burstCount" data-i18n-arg="4">4 changes folded</span></summary>
+                      <ul class="td-activity-changes">
+                        <li class="td-activity-change" data-activity-change="assignee" data-activity-burst-item data-at="2026-10-13T08:41:00Z">
+                          <span class="td-activity-change-field" data-i18n="activity.detail.assignee">Assignee</span>
+                          <span class="td-activity-change-value td-mono">elon → jobs</span>
+                        </li>
+                        <li class="td-activity-change" data-activity-change="label" data-activity-burst-item data-at="2026-10-13T08:42:00Z">
+                          <span class="td-activity-change-field" data-i18n="activity.detail.labels">Labels</span>
+                          <span class="td-activity-change-value"><span class="badge td-chip td-chip-label">+ design</span></span>
+                        </li>
+                        <li class="td-activity-change" data-activity-change="label" data-activity-burst-item data-at="2026-10-13T08:44:00Z">
+                          <span class="td-activity-change-field" data-i18n="activity.detail.labels">Labels</span>
+                          <span class="td-activity-change-value"><span class="badge td-chip td-chip-label">+ prototype</span></span>
+                        </li>
+                        <li class="td-activity-change" data-activity-change="status" data-activity-burst-item data-at="2026-10-13T08:44:00Z">
+                          <span class="td-activity-change-field" data-i18n="activity.detail.status">Status</span>
+                          <span class="td-activity-change-value td-mono td-activity-transition">
+                            <span class="status td-status-dot" data-status="todo" aria-hidden="true"></span>
+                            <span data-i18n="status.todo">To Do</span>
+                            <span aria-hidden="true">→</span>
+                            <span class="status td-status-dot" data-status="in_progress" aria-hidden="true"></span>
+                            <span data-i18n="status.in_progress">In Progress</span>
+                          </span>
+                        </li>
+                      </ul>
+                    </details>
+
+                  </div>
+                </li>
+
+                <li class="td-activity-row" data-activity-row data-actor="turing" data-assignee-kind="agent" data-event="relation" data-activity-group="meta" data-task="TD-128" data-at="2026-10-13T08:20:00Z">
+                  <div class="td-activity-line" data-activity-line>
+                    <span class="td-activity-tick" aria-hidden="true"></span>
+                    <span class="td-activity-actor td-mono" data-activity-actor data-assignee-kind="agent">turing</span>
+                    <span class="td-activity-sentence" data-activity-sentence data-i18n="activity.verb.linked">linked</span>
+                    <a class="td-activity-task" data-activity-task href="#/task/td_01HQ8ZC4M2K7V9P">
+                      <span class="td-activity-task-id td-mono" data-activity-task-id>TD-128</span>
+                      <span class="td-activity-task-title" data-activity-task-title>Wire keyboard navigation across board columns</span>
+                    </a>
+                    <time class="td-activity-at td-mono" data-activity-at datetime="2026-10-13T08:20:00Z" title="2026-10-13 08:20" data-i18n="time.hoursAgo" data-i18n-arg="1">1h ago</time>
+                    <button type="button" class="td-iconbtn td-activity-open" data-activity-open data-i18n-aria-label="activity.open" data-i18n-arg="TD-128" aria-label="Open TD-128">
+                      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+                    </button>
+                  <details class="td-activity-detail" data-activity-detail>
+                      <summary><span data-i18n="activity.detail.changes">Changes</span></summary>
+                      <ul class="td-activity-changes">
+                        <li class="td-activity-change" data-activity-change="relation">
+                          <span class="td-activity-change-field" data-i18n="activity.detail.relation">Relation</span>
+                          <span class="td-activity-change-value td-mono">+ depends on TD-127</span>
+                        </li>
+                      </ul>
+                    </details>
+
+                  </div>
+                </li>
+
+                <li class="td-activity-row" data-activity-row data-actor="Terry" data-assignee-kind="human" data-event="status" data-activity-group="status" data-task="PROJ-0007" data-at="2026-10-13T07:55:00Z">
+                  <div class="td-activity-line" data-activity-line>
+                    <span class="td-activity-tick" aria-hidden="true"></span>
+                    <span class="td-activity-actor td-mono" data-activity-actor data-assignee-kind="human">Terry</span>
+                    <span class="td-activity-sentence" data-activity-sentence data-i18n="activity.verb.status">moved</span>
+                    <a class="td-activity-task" data-activity-task href="#/task/td_01HQ8ZM4K2P7RQY">
+                      <span class="td-activity-task-id td-mono" data-activity-task-id>PROJ-0007</span>
+                      <span class="td-activity-task-title" data-activity-task-title>Add bulk status change to board selection</span>
+                    </a>
+                    <time class="td-activity-at td-mono" data-activity-at datetime="2026-10-13T07:55:00Z" title="2026-10-13 07:55" data-i18n="time.hoursAgo" data-i18n-arg="2">2h ago</time>
+                    <button type="button" class="td-iconbtn td-activity-open" data-activity-open data-i18n-aria-label="activity.open" data-i18n-arg="PROJ-0007" aria-label="Open PROJ-0007">
+                      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+                    </button>
+                  <details class="td-activity-detail" data-activity-detail>
+                      <summary><span data-i18n="activity.detail.changes">Changes</span></summary>
+                      <ul class="td-activity-changes">
+                        <li class="td-activity-change" data-activity-change="status">
+                          <span class="td-activity-change-field" data-i18n="activity.detail.status">Status</span>
+                          <span class="td-activity-change-value td-mono td-activity-transition">
+                            <span class="status td-status-dot" data-status="in_review" aria-hidden="true"></span>
+                            <span data-i18n="status.in_review">In Review</span>
+                            <span aria-hidden="true">→</span>
+                            <span class="status td-status-dot" data-status="blocked" aria-hidden="true"></span>
+                            <span data-i18n="status.blocked">Blocked</span>
+                          </span>
+                        </li>
+                        <li class="td-activity-change" data-activity-change="status">
+                          <span class="td-activity-change-field" data-i18n="activity.detail.reason">Reason</span>
+                          <span class="td-activity-change-value">Brand assets are still unplaced.</span>
+                        </li>
+                      </ul>
+                    </details>
+
+                  </div>
+                </li>
+
+              </ol>
+            </section>
+
+            <!-- -------------------------------------------- Yesterday --- -->
+            <section class="td-activity-day" data-activity-day data-day="2026-10-12">
+              <h2 class="td-activity-day-label" data-activity-day-label data-i18n="activity.day.yesterday">Yesterday</h2>
+              <ol class="td-activity-rows">
+
+                <li class="td-activity-row" data-activity-row data-actor="jobs" data-assignee-kind="agent" data-event="delivery" data-activity-group="delivery" data-task="TD-133" data-at="2026-10-12T22:41:00Z">
+                  <div class="td-activity-line" data-activity-line>
+                    <span class="td-activity-tick" aria-hidden="true"></span>
+                    <span class="td-activity-actor td-mono" data-activity-actor data-assignee-kind="agent">jobs</span>
+                    <span class="td-activity-sentence" data-activity-sentence data-i18n="activity.verb.delivered">reported on</span>
+                    <a class="td-activity-task" data-activity-task href="#/task/td_01HQ9A2B7C4D6EFG">
+                      <span class="td-activity-task-id td-mono" data-activity-task-id>TD-133</span>
+                      <span class="td-activity-task-title" data-activity-task-title>Expose task version in the edit response</span>
+                    </a>
+                    <time class="td-activity-at td-mono" data-activity-at datetime="2026-10-12T22:41:00Z" title="2026-10-12 22:41" data-i18n="time.hoursAgo" data-i18n-arg="11">11h ago</time>
+                    <button type="button" class="td-iconbtn td-activity-open" data-activity-open data-i18n-aria-label="activity.open" data-i18n-arg="TD-133" aria-label="Open TD-133">
+                      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+                    </button>
+                  <details class="td-activity-detail" data-activity-detail>
+                      <summary><span data-i18n="activity.detail.changes">Changes</span></summary>
+                      <ul class="td-activity-changes">
+                        <li class="td-activity-change" data-activity-change="delivery">
+                          <span class="td-activity-change-field" data-i18n="activity.detail.delivery">Delivery</span>
+                          <span class="td-activity-change-value">Round 1 · version now echoed on every edit.</span>
+                        </li>
+                      </ul>
+                    </details>
+
+                  </div>
+                </li>
+
+                <li class="td-activity-row" data-activity-row data-actor="Terry" data-assignee-kind="human" data-event="status" data-activity-group="status" data-task="TD-127" data-at="2026-10-12T21:19:00Z">
+                  <div class="td-activity-line" data-activity-line>
+                    <span class="td-activity-tick" aria-hidden="true"></span>
+                    <span class="td-activity-actor td-mono" data-activity-actor data-assignee-kind="human">Terry</span>
+                    <span class="td-activity-sentence" data-activity-sentence data-i18n="activity.verb.status">moved</span>
+                    <a class="td-activity-task" data-activity-task href="#/task/td_01HQ7Y1A9B3C5DHM">
+                      <span class="td-activity-task-id td-mono" data-activity-task-id>TD-127</span>
+                      <span class="td-activity-task-title" data-activity-task-title>Implement the revision stream</span>
+                    </a>
+                    <time class="td-activity-at td-mono" data-activity-at datetime="2026-10-12T21:19:00Z" title="2026-10-12 21:19" data-i18n="time.hoursAgo" data-i18n-arg="12">12h ago</time>
+                    <button type="button" class="td-iconbtn td-activity-open" data-activity-open data-i18n-aria-label="activity.open" data-i18n-arg="TD-127" aria-label="Open TD-127">
+                      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+                    </button>
+                  <details class="td-activity-detail" data-activity-detail>
+                      <summary><span data-i18n="activity.detail.changes">Changes</span></summary>
+                      <ul class="td-activity-changes">
+                        <li class="td-activity-change" data-activity-change="status">
+                          <span class="td-activity-change-field" data-i18n="activity.detail.status">Status</span>
+                          <span class="td-activity-change-value td-mono td-activity-transition">
+                            <span class="status td-status-dot" data-status="in_review" aria-hidden="true"></span>
+                            <span data-i18n="status.in_review">In Review</span>
+                            <span aria-hidden="true">→</span>
+                            <span class="status td-status-dot" data-status="done" aria-hidden="true"></span>
+                            <span data-i18n="status.done">Done</span>
+                          </span>
+                        </li>
+                      </ul>
+                    </details>
+
+                  </div>
+                </li>
+
+                <!-- created + the same author's claim, one line: §3.1 folds a
+                     self-claim into the creation it immediately follows. -->
+                <li class="td-activity-row" data-activity-row data-actor="elon" data-assignee-kind="agent" data-event="created" data-activity-group="meta" data-task="TD-134" data-at="2026-10-12T20:02:00Z">
+                  <div class="td-activity-line" data-activity-line>
+                    <span class="td-activity-tick" aria-hidden="true"></span>
+                    <span class="td-activity-actor td-mono" data-activity-actor data-assignee-kind="agent">elon</span>
+                    <span class="td-activity-sentence" data-activity-sentence data-i18n="activity.verb.created">created</span>
+                    <a class="td-activity-task" data-activity-task href="#/task/td_01HQ9B3C8D5E7FGH">
+                      <span class="td-activity-task-id td-mono" data-activity-task-id>TD-134</span>
+                      <span class="td-activity-task-title" data-activity-task-title>Cache task list responses per project</span>
+                    </a>
+                    <time class="td-activity-at td-mono" data-activity-at datetime="2026-10-12T20:02:00Z" title="2026-10-12 20:02" data-i18n="time.hoursAgo" data-i18n-arg="13">13h ago</time>
+                    <button type="button" class="td-iconbtn td-activity-open" data-activity-open data-i18n-aria-label="activity.open" data-i18n-arg="TD-134" aria-label="Open TD-134">
+                      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+                    </button>
+                  <details class="td-activity-detail" data-activity-detail>
+                      <summary><span data-i18n="activity.detail.changes">Changes</span></summary>
+                      <ul class="td-activity-changes">
+                        <li class="td-activity-change" data-activity-change="created">
+                          <span class="td-activity-change-field" data-i18n="activity.detail.created">Created</span>
+                          <span class="td-activity-change-value">Priority High · no labels.</span>
+                        </li>
+                        <li class="td-activity-change" data-activity-change="claimed">
+                          <span class="td-activity-change-field" data-i18n="activity.detail.claimed">Claim</span>
+                          <span class="td-activity-change-value">Claimed by the author 40s later — folded into this line.</span>
+                        </li>
+                      </ul>
+                    </details>
+
+                  </div>
+                </li>
+
+                <li class="td-activity-row" data-activity-row data-actor="elon" data-assignee-kind="agent" data-event="assignee" data-activity-group="meta" data-task="TD-123" data-at="2026-10-12T18:47:00Z">
+                  <div class="td-activity-line" data-activity-line>
+                    <span class="td-activity-tick" aria-hidden="true"></span>
+                    <span class="td-activity-actor td-mono" data-activity-actor data-assignee-kind="agent">elon</span>
+                    <span class="td-activity-sentence" data-activity-sentence data-i18n="activity.verb.assignee">reassigned</span>
+                    <a class="td-activity-task" data-activity-task href="#/task/td_01HQ7Y1A9B3C5DIL">
+                      <span class="td-activity-task-id td-mono" data-activity-task-id>TD-123</span>
+                      <span class="td-activity-task-title" data-activity-task-title>Resolve duplication in timeline events</span>
+                    </a>
+                    <time class="td-activity-at td-mono" data-activity-at datetime="2026-10-12T18:47:00Z" title="2026-10-12 18:47" data-i18n="time.hoursAgo" data-i18n-arg="15">15h ago</time>
+                    <button type="button" class="td-iconbtn td-activity-open" data-activity-open data-i18n-aria-label="activity.open" data-i18n-arg="TD-123" aria-label="Open TD-123">
+                      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+                    </button>
+                  <details class="td-activity-detail" data-activity-detail>
+                      <summary><span data-i18n="activity.detail.changes">Changes</span></summary>
+                      <ul class="td-activity-changes">
+                        <li class="td-activity-change" data-activity-change="assignee">
+                          <span class="td-activity-change-field" data-i18n="activity.detail.assignee">Assignee</span>
+                          <span class="td-activity-change-value td-mono">elon → jobs</span>
+                        </li>
+                      </ul>
+                    </details>
+
+                  </div>
+                </li>
+
+                <li class="td-activity-row" data-activity-row data-actor="linus" data-assignee-kind="agent" data-event="comment" data-activity-group="comment" data-task="TD-133" data-at="2026-10-12T14:30:00Z">
+                  <div class="td-activity-line" data-activity-line>
+                    <span class="td-activity-tick" aria-hidden="true"></span>
+                    <span class="td-activity-actor td-mono" data-activity-actor data-assignee-kind="agent">linus</span>
+                    <span class="td-activity-sentence" data-activity-sentence data-i18n="activity.verb.commented">commented on</span>
+                    <a class="td-activity-task" data-activity-task href="#/task/td_01HQ9A2B7C4D6EFG">
+                      <span class="td-activity-task-id td-mono" data-activity-task-id>TD-133</span>
+                      <span class="td-activity-task-title" data-activity-task-title>Expose task version in the edit response</span>
+                    </a>
+                    <time class="td-activity-at td-mono" data-activity-at datetime="2026-10-12T14:30:00Z" title="2026-10-12 14:30" data-i18n="time.daysAgo" data-i18n-arg="1">1d ago</time>
+                    <button type="button" class="td-iconbtn td-activity-open" data-activity-open data-i18n-aria-label="activity.open" data-i18n-arg="TD-133" aria-label="Open TD-133">
+                      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+                    </button>
+                  <details class="td-activity-detail" data-activity-detail>
+                      <summary><span data-i18n="activity.detail.changes">Changes</span></summary>
+                      <ul class="td-activity-changes">
+                        <li class="td-activity-change" data-activity-change="comment">
+                          <span class="td-activity-change-field" data-i18n="activity.detail.comment">Comment</span>
+                          <span class="td-activity-change-value">Does the version survive a concurrent edit? Adding a test.</span>
+                        </li>
+                      </ul>
+                    </details>
+
+                  </div>
+                </li>
+
+              </ol>
+            </section>
+
+            <!-- ----------------------------------------------- Oct 10 --- -->
+            <section class="td-activity-day" data-activity-day data-day="2026-10-10">
+              <h2 class="td-activity-day-label" data-activity-day-label data-activity-day-kind="absolute"><time datetime="2026-10-10">Saturday, Oct 10</time></h2>
+              <ol class="td-activity-rows">
+
+                <li class="td-activity-row" data-activity-row data-actor="turing" data-assignee-kind="agent" data-event="label" data-activity-group="meta" data-task="TD-129" data-at="2026-10-10T16:30:00Z">
+                  <div class="td-activity-line" data-activity-line>
+                    <span class="td-activity-tick" aria-hidden="true"></span>
+                    <span class="td-activity-actor td-mono" data-activity-actor data-assignee-kind="agent">turing</span>
+                    <span class="td-activity-sentence" data-activity-sentence data-i18n="activity.verb.label">labelled</span>
+                    <a class="td-activity-task" data-activity-task href="#/task/td_01HQ8ZM4K2Q1XTV">
+                      <span class="td-activity-task-id td-mono" data-activity-task-id>TD-129</span>
+                      <span class="td-activity-task-title" data-activity-task-title>Audit dependency licences for vendored assets</span>
+                    </a>
+                    <time class="td-activity-at td-mono" data-activity-at datetime="2026-10-10T16:30:00Z" title="2026-10-10 16:30" data-i18n="time.daysAgo" data-i18n-arg="3">3d ago</time>
+                    <button type="button" class="td-iconbtn td-activity-open" data-activity-open data-i18n-aria-label="activity.open" data-i18n-arg="TD-129" aria-label="Open TD-129">
+                      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+                    </button>
+                  <details class="td-activity-detail" data-activity-detail>
+                      <summary><span data-i18n="activity.detail.changes">Changes</span></summary>
+                      <ul class="td-activity-changes">
+                        <li class="td-activity-change" data-activity-change="label">
+                          <span class="td-activity-change-field" data-i18n="activity.detail.labels">Labels</span>
+                          <span class="td-activity-change-value"><span class="badge td-chip td-chip-label">+ realtime</span></span>
+                        </li>
+                      </ul>
+                    </details>
+
+                  </div>
+                </li>
+
+                <li class="td-activity-row" data-activity-row data-actor="Terry" data-assignee-kind="human" data-event="status" data-activity-group="status" data-task="TD-126" data-at="2026-10-10T14:05:00Z">
+                  <div class="td-activity-line" data-activity-line>
+                    <span class="td-activity-tick" aria-hidden="true"></span>
+                    <span class="td-activity-actor td-mono" data-activity-actor data-assignee-kind="human">Terry</span>
+                    <span class="td-activity-sentence" data-activity-sentence data-i18n="activity.verb.status">moved</span>
+                    <a class="td-activity-task" data-activity-task href="#/task/td_01HQ7Y1A9B3C5DJM">
+                      <span class="td-activity-task-id td-mono" data-activity-task-id>TD-126</span>
+                      <span class="td-activity-task-title" data-activity-task-title>Skeleton loading for list view</span>
+                    </a>
+                    <time class="td-activity-at td-mono" data-activity-at datetime="2026-10-10T14:05:00Z" title="2026-10-10 14:05" data-i18n="time.daysAgo" data-i18n-arg="3">3d ago</time>
+                    <button type="button" class="td-iconbtn td-activity-open" data-activity-open data-i18n-aria-label="activity.open" data-i18n-arg="TD-126" aria-label="Open TD-126">
+                      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+                    </button>
+                  <details class="td-activity-detail" data-activity-detail>
+                      <summary><span data-i18n="activity.detail.changes">Changes</span></summary>
+                      <ul class="td-activity-changes">
+                        <li class="td-activity-change" data-activity-change="status">
+                          <span class="td-activity-change-field" data-i18n="activity.detail.status">Status</span>
+                          <span class="td-activity-change-value td-mono td-activity-transition">
+                            <span class="status td-status-dot" data-status="todo" aria-hidden="true"></span>
+                            <span data-i18n="status.todo">To Do</span>
+                            <span aria-hidden="true">→</span>
+                            <span class="status td-status-dot" data-status="in_progress" aria-hidden="true"></span>
+                            <span data-i18n="status.in_progress">In Progress</span>
+                          </span>
+                        </li>
+                      </ul>
+                    </details>
+
+                  </div>
+                </li>
+
+                <li class="td-activity-row" data-activity-row data-actor="jobs" data-assignee-kind="agent" data-event="created" data-activity-group="meta" data-task="TD-126" data-at="2026-10-10T09:12:00Z">
+                  <div class="td-activity-line" data-activity-line>
+                    <span class="td-activity-tick" aria-hidden="true"></span>
+                    <span class="td-activity-actor td-mono" data-activity-actor data-assignee-kind="agent">jobs</span>
+                    <span class="td-activity-sentence" data-activity-sentence data-i18n="activity.verb.created">created</span>
+                    <a class="td-activity-task" data-activity-task href="#/task/td_01HQ7Y1A9B3C5DJM">
+                      <span class="td-activity-task-id td-mono" data-activity-task-id>TD-126</span>
+                      <span class="td-activity-task-title" data-activity-task-title>Skeleton loading for list view</span>
+                    </a>
+                    <time class="td-activity-at td-mono" data-activity-at datetime="2026-10-10T09:12:00Z" title="2026-10-10 09:12" data-i18n="time.daysAgo" data-i18n-arg="3">3d ago</time>
+                    <button type="button" class="td-iconbtn td-activity-open" data-activity-open data-i18n-aria-label="activity.open" data-i18n-arg="TD-126" aria-label="Open TD-126">
+                      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+                    </button>
+                  <details class="td-activity-detail" data-activity-detail>
+                      <summary><span data-i18n="activity.detail.changes">Changes</span></summary>
+                      <ul class="td-activity-changes">
+                        <li class="td-activity-change" data-activity-change="created">
+                          <span class="td-activity-change-field" data-i18n="activity.detail.created">Created</span>
+                          <span class="td-activity-change-value">Priority Medium · labels prototype, ui.</span>
+                        </li>
+                      </ul>
+                    </details>
+
+                  </div>
+                </li>
+
+              </ol>
+            </section>
+
+            <!-- ----------------------------------------------- Oct 08 ---
+                 B26.6 · the second page. `Load older` reveals it; nothing is
+                 fetched and the button goes away once the page is spent. -->
+            <section class="td-activity-day" data-activity-day data-day="2026-10-08" data-activity-page="2" hidden>
+              <h2 class="td-activity-day-label" data-activity-day-label data-activity-day-kind="absolute"><time datetime="2026-10-08">Thursday, Oct 8</time></h2>
+              <ol class="td-activity-rows">
+
+                <li class="td-activity-row" data-activity-row data-actor="elon" data-assignee-kind="agent" data-event="created" data-activity-group="meta" data-task="TD-118" data-at="2026-10-08T17:44:00Z">
+                  <div class="td-activity-line" data-activity-line>
+                    <span class="td-activity-tick" aria-hidden="true"></span>
+                    <span class="td-activity-actor td-mono" data-activity-actor data-assignee-kind="agent">elon</span>
+                    <span class="td-activity-sentence" data-activity-sentence data-i18n="activity.verb.created">created</span>
+                    <a class="td-activity-task" data-activity-task href="#/task/td_01HQ6X0Z8A2B4CFH">
+                      <span class="td-activity-task-id td-mono" data-activity-task-id>TD-118</span>
+                      <span class="td-activity-task-title" data-activity-task-title>Migrate attachments to object storage</span>
+                    </a>
+                    <time class="td-activity-at td-mono" data-activity-at datetime="2026-10-08T17:44:00Z" title="2026-10-08 17:44" data-i18n="time.daysAgo" data-i18n-arg="5">5d ago</time>
+                    <button type="button" class="td-iconbtn td-activity-open" data-activity-open data-i18n-aria-label="activity.open" data-i18n-arg="TD-118" aria-label="Open TD-118">
+                      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+                    </button>
+                  <details class="td-activity-detail" data-activity-detail>
+                      <summary><span data-i18n="activity.detail.changes">Changes</span></summary>
+                      <ul class="td-activity-changes">
+                        <li class="td-activity-change" data-activity-change="created">
+                          <span class="td-activity-change-field" data-i18n="activity.detail.created">Created</span>
+                          <span class="td-activity-change-value">Priority Low · labels infra.</span>
+                        </li>
+                      </ul>
+                    </details>
+
+                  </div>
+                </li>
+
+                <li class="td-activity-row" data-activity-row data-actor="Terry" data-assignee-kind="human" data-event="created" data-activity-group="meta" data-task="PROJ-0007" data-at="2026-10-08T11:20:00Z">
+                  <div class="td-activity-line" data-activity-line>
+                    <span class="td-activity-tick" aria-hidden="true"></span>
+                    <span class="td-activity-actor td-mono" data-activity-actor data-assignee-kind="human">Terry</span>
+                    <span class="td-activity-sentence" data-activity-sentence data-i18n="activity.verb.created">created</span>
+                    <a class="td-activity-task" data-activity-task href="#/task/td_01HQ8ZM4K2P7RQY">
+                      <span class="td-activity-task-id td-mono" data-activity-task-id>PROJ-0007</span>
+                      <span class="td-activity-task-title" data-activity-task-title>Add bulk status change to board selection</span>
+                    </a>
+                    <time class="td-activity-at td-mono" data-activity-at datetime="2026-10-08T11:20:00Z" title="2026-10-08 11:20" data-i18n="time.daysAgo" data-i18n-arg="5">5d ago</time>
+                    <button type="button" class="td-iconbtn td-activity-open" data-activity-open data-i18n-aria-label="activity.open" data-i18n-arg="PROJ-0007" aria-label="Open PROJ-0007">
+                      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+                    </button>
+                  <details class="td-activity-detail" data-activity-detail>
+                      <summary><span data-i18n="activity.detail.changes">Changes</span></summary>
+                      <ul class="td-activity-changes">
+                        <li class="td-activity-change" data-activity-change="created">
+                          <span class="td-activity-change-field" data-i18n="activity.detail.created">Created</span>
+                          <span class="td-activity-change-value">Priority Urgent · labels ux, board.</span>
+                        </li>
+                      </ul>
+                    </details>
+
+                  </div>
+                </li>
+
+              </ol>
+            </section>
+
+            <!-- B26.5 · the two empty states. Both ship hidden: the static
+                 document is the "something happened" reading, and the script
+                 is what swaps them in. -->
+            <div class="td-empty td-empty-lg td-activity-empty" data-activity-empty data-activity-empty-kind="project" hidden>
+              <span class="td-empty-title" data-i18n="activity.empty.project.title">Nothing has happened yet</span>
+              <span class="td-empty-hint" data-i18n="activity.empty.project.hint">Create a task, or wait for an agent to claim one — the first entry appears here.</span>
+            </div>
+
+            <div class="td-empty td-activity-empty" data-activity-empty data-activity-empty-kind="filter" hidden>
+              <span class="td-empty-title" data-i18n="activity.empty.filter.title">No activity matches these filters</span>
+              <span class="td-empty-hint" data-i18n="activity.empty.filter.hint">Widen the filters to see the full log.</span>
+              <button type="button" class="btn btn-outline btn-sm" data-activity-empty-reset data-i18n="activity.empty.filter.reset">Reset filters</button>
+            </div>
+
+          </div>
+
+          <!-- B26.6 · Load older -->
+          <div class="td-activity-foot">
+            <button type="button" class="btn btn-ghost btn-sm" data-activity-more data-i18n="activity.more">Load older</button>
           </div>
         </section>
       </main>

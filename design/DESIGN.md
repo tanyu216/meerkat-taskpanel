@@ -1834,3 +1834,142 @@ still painted and now carries `.td-id-full`. Zero console errors, zero page erro
 rounds. **Nothing else moved**: the prototype's i18n seats are 622 before and after and its
 `MESSAGES` tables hold 224 keys each on both sides, and the rebuilt `tw.css` is 89 bytes
 longer with exactly one added class selector — `.td-id-full`.
+
+---
+
+## 29. Review round R12x — the Activity view lands in the board
+
+Terry's 2026-10-13 request, in one sentence: the design the previous round produced for the
+sidebar's **Activity** should be in `index.html` — the press should enter it, instead of
+answering with a toast. The previous round had built the view as a page of its own
+(`design/activity/prototype.html` with its own script, its own catalogue and its own machine
+check) and stopped there, because the block inventory defined four blocks and no fifth
+surface. This round is the integration, and it is the round where the two stand-ins in the
+sidebar — `activity` and `waiting` — stop being stand-ins: the chapter below is the
+integration of the first. The second (`waiting`, **B27**) is deliberately **not** here; the
+routing it needs is, so it lands as a root and nothing else.
+
+The design itself is unchanged and was not re-opened: `design/activity/DESIGN-activity.md`
+is still its contract (admission rules, levels, folding, density, empty states, the 132
+assertions), and `design/activity/prototype.html` stays in the repository as the design
+source and as the round's own evidence page. What moved is where the board *reads* it from.
+
+### 29.1 What integration means here, and what it deliberately is not
+
+| | |
+|---|---|
+| Structure | `[data-activity-view]` is copied **verbatim** from the design page's own section — same hooks, same order, same copy, same row data. Retyping is where a hook drifts, so the block was spliced from the source rather than rewritten |
+| Placement | third child of `main.td-main`, beside `[data-board-view]` and `[data-list]`; it ships **`hidden`**, so the no-script default view stays the board |
+| Routing | `setView()` takes four values; the nav's click handler hands it every `[data-nav-item]`, and the branch that answered `activity`/`waiting` with a revision toast is **deleted** |
+| Copy | read from `app.js`'s `MESSAGES`, the document's one catalogue. The design page's own `[data-activity-i18n]` carrier is **not** carried over — two dictionaries in one document drift page by page |
+| Styles | the design page's scoped `<style>` block moves into `src/input.css`, unchanged in value and in selector, and `tw.css` is rebuilt |
+| A row's drawer | it lands on the board's own **B09**, on the task the row names. The design page's stand-in drawer was exactly that — a stand-in for a page with no board behind it |
+| The design page | untouched and still green: `node design/activity/check-activity.mjs` reports 132/132 after the rebuild |
+
+The activity view's *behaviour* comes over with it — the three controls, the count, the
+unread boundary, the fold, `Load older`, the address bar — because a view whose controls do
+nothing would be the same defect in a new costume. The one rule that changed hands is the
+drawer: the design page opened a shell filled from the feed, and the board opens the drawer
+it already has.
+
+**The round's own name.** It is written `R12x` and not `R13` because it is the integration
+of R11/R12's sibling round rather than a new numbered review round: the numbered sequence
+belongs to the fidelity contracts (`design/fidelity-rN.md`), and this round's contract is
+this chapter plus the card's own probe (`verify/probe.mjs` in the card workspace), because
+its write surface is closed to a new document under `design/`.
+
+### 29.2 The four destinations, and the one number that rides one of them
+
+The sidebar has carried four `[data-nav-item]` buttons since C6, but only two of them did
+anything: the handler switched `board` and `list` and answered `activity` and `waiting` with
+`toast.activity` — the revision and the filter count, in a toast. Terry's phrase for the
+result is the round's whole reason. The fix is one rule instead of two branches:
+
+| | |
+|---|---|
+| `setView(view)` | toggles four roots — `[data-board-view]`, `[data-list]`, `[data-activity-view]`, `[data-waiting-view]` — and writes `aria-current="page"` on the nav item whose name equals the view, clearing it off the others |
+| Scope | `[data-nav]` only. The **project rows** carry `aria-current="page"` too, for the current project, so "exactly one" is a property of the nav and not of the document |
+| `[data-nav-count="activity"]` | the feed's unread count, in B03's existing `.badge.td-count` shell; `hidden` at zero, the rule the `waiting` pill already follows |
+| The top bar's toggle | still exactly `board | list`, still frozen. It is a *layout* control for the board area; the sidebar's is a four-way destination list. They are different controls and R12x does not touch the first |
+| The board's filter bar | stands down on the two destinations that are not the board area, and comes back on the toggle's own state when either returns. It narrows cards, and a feed narrowed by its own three controls does not want a second row of controls above it that changes nothing — the defect this round exists to remove, in a new place |
+
+`[data-waiting-view]` does not exist yet, so a press on `waiting` moves the current-item mark
+and shows no view body — the one visible seam the two-segment plan leaves, closed by B27.
+Routing it now rather than later is deliberate: the round that adds the root then adds no
+routing at all, and the rule "every nav item routes" is true in one place instead of two.
+
+### 29.3 What the count means, and why there is only one of it
+
+The pill, the boundary in the feed and the boundary's own counter are the same number — the
+unread rows the reader can currently *see*. One writer (`applyActivityUnread`) feeds all
+three, so they cannot disagree, and a filter that hides the new rows takes all three off
+screen together rather than leaving a number pointing at nothing. At zero the pill is
+`hidden` — the rule B03 already had for `waiting`, applied to the second destination that
+has a count. `Mark all read` clears the flag on every row and re-runs the pass; nothing is
+persisted anywhere, which is what the design decided (DESIGN-activity.md §17 leaves
+"local or server-side" open for the implementation card).
+
+### 29.4 The price, stated rather than discovered
+
+Two costs, both known before the work started and both recorded here:
+
+- **The `test/web/` mirror.** `test/web/i18n.catalogue.mjs` mirrors the prototype's
+  `MESSAGES` byte for byte, and `test/web/blocks.contract.mjs` counts the document's hooks.
+  The catalogue grows by 50 names per language and the document by 127 `data-i18n*` seats, so
+  those mirrors are **now behind** — the same mechanism R11's status filter produced. This
+  round's write surface is `design/**`; `test/**` is closed to it, so the mirror update and
+  the implementation change land together in the implementing card.
+- **One dead key.** `toast.activity` was written for the stand-in and nothing else read it.
+  It is left in the catalogue rather than deleted: removing a key is a change to a mirrored
+  surface, and it belongs with the same pass. It is named here so the next reader does not
+  have to diff the catalogue to find it.
+
+### 29.5 Checked
+
+`verify/probe.mjs` (the card's workspace, not the repository) drives a real Chromium over a
+loopback server, once against a pristine copy of `design/prototype` at the round's base and
+once against the integrated build. The "before" side is measured, not inferred: clicking
+Activity there leaves `aria-current` on `board`, raises a toast, and the document holds zero
+`[data-activity-row]`. The "after" side is **48/48**: the view opens with a real box and its
+rows, board and list both stand down, exactly one nav item is current and it is the one
+pressed, `board`/`list`/`activity` are mutually exclusive, the board's own filter bar stands
+down with the board and comes back with it, neither nav press raises a toast node any more,
+`waiting` routes and lands nowhere (B27 pending), and the top bar's toggle is still exactly
+two values. With **JavaScript disabled** the view is present, complete and
+merely `hidden`: 17 rows, 4 day groups, 17 identifiers, 17 stamps, 17 native `<details>`,
+zero templates, and the default view is still the board. The feed's own rules hold — every
+row inside exactly one day group, day headings and row instants both newest-first, each row's
+visible stamp equal to its own instant, and one burst folding four items. Every `data-i18n*` key the view asks for resolves in **both**
+catalogues, the two catalogues hold the same names, and switching language moves the title,
+the day heading and the accessible name of the row buttons (`动态` / `今天`). The controls
+work: `actor = Agents` narrows the feed to agents only, the count sentence becomes the number
+of rows still standing, the address becomes `#/activity?actor=agent`, Reset restores the
+feed, and `Mark all read` takes the boundary *and* the sidebar pill to zero together. A row's
+open button lands on B09 with `data-identifier="TD-134"` and the drawer's own activity
+section filled. **Zero console errors and zero page errors** on both sides, and no page-level
+sideways overflow at 1512 / 1240 / 980 / 760 / 430.
+
+The moved stylesheet block declares **no custom property** and **no colour literal**, and
+every `var(--…)` it reads already resolves in `tw.css` — so the token set is unchanged, in
+the strong sense: not only no new hue, but no reference to a token that does not exist. The
+rebuilt `tw.css` grows by **7478 bytes** across **349 added lines and zero removed**, of
+which one class selector is not the round's own: **`.absolute`**, emitted because
+`data-activity-day-kind="absolute"` is a hook *value* in the document and the scanner reads
+prose and attributes alike. It is the round's one scanner artefact and it is named here
+rather than silently kept; three others — `.relative`, `.link` and `.steps` — were caught by
+the rebuild-and-review-the-diff rule the prototype's README prescribes, and reworded away.
+The design page's own check still reports **132/132**.
+
+### 29.6 Rejected alternatives
+
+| Alternative | Why not |
+|---|---|
+| Keep the toast for `waiting`, route only `activity` | Leaves the second dead control Terry's request names, and makes the handler two rules where one does |
+| Merge Activity and Waiting into one surface | Decided against by the design round: they answer different questions (a ledger of what happened vs. a list of what is on your side) and Terry's request keeps two entries |
+| Give the view a second catalogue of its own (`[data-activity-i18n]`) | Two dictionaries in one document is the failure R-3 names: the page-local one silently falls behind the shared one, and a language switch translates one surface and not the next |
+| Load `design/activity/activity.js` beside `app.js` | Two interaction layers binding one document: the drawer, the language pass and Escape would each be owned twice |
+| Ship the view hidden and reachable by URL only | That is very nearly what the round replaces; the ask is a destination that a reader can press |
+| Reuse the design page's stand-in drawer for a row | The board has a real B09 with the task's description, comments and session; opening a shell instead would be a regression *introduced* by the integration |
+| Port the styles as Tailwind utilities in the markup | `tw.css` is a static `@source` build and the design's values are already tokens; semantic `.td-activity-*` classes keep the view's geometry reviewable in one block and add no utility the class scanner has to guess at |
+| Build `[data-waiting-view]` in the same pass | Two single-writer segments of one file; the design for B27 (rows, reasons, the "since" column) was not settled when this round closed |
+| Delete `toast.activity` while here | A mirrored surface; the deletion belongs with the mirror update in the implementing card |
