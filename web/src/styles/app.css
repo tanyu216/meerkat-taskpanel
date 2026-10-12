@@ -327,6 +327,27 @@ svg[data-token-icon][hidden] { display: none; }
 
 /* ------------------------------------------------- daisyUI shell overrides */
 
+/* R12 — the design's own visually-hidden text: a 1×1 clipped box that is still
+   *painted* (`getClientRects()` is not empty), which is why the filters bar's
+   "visible child" count has to exclude it by name rather than by geometry
+   (`design/fidelity-r12-supplement.md` §1.2 rule 6). The filters bar's two
+   `<select>`s are named by `.td-sr` label **siblings** — the prototype's own
+   shape — instead of by wrapper boxes, so the bar's direct children are its
+   control row and nothing else. The declaration is the prototype's
+   `design/prototype/src/input.css` `.td-sr`, verbatim; it is written here rather
+   than aliased to Tailwind's `sr-only` so the two documents name the same thing. */
+.td-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* The prototype composes its form fields as `input input-sm td-input w-full` and
    `select select-sm td-select`: daisyUI owns the field's structure (the inline
    flex, the caret room, the logical-radius join), and the class below pins the
@@ -343,12 +364,27 @@ svg[data-token-icon][hidden] { display: none; }
   border: var(--border) solid var(--brand-border-strong);
   border-radius: var(--radius-field);
 }
+/* R12 — `width: auto` is the prototype's own declaration (its
+   `design/prototype/src/input.css` `.td-select`), and it is load-bearing the
+   moment the two `<select>`s become the filters bar's **direct** children:
+   daisyUI's `.select` sizes itself
+   `clamp(3rem, 20rem, 100%)`, so with no other width of its own a select in a
+   1216px row resolves to the 20rem cap — 320px, three and a half times the 108px
+   the prototype measures. Inside the old wrapper `<label>` that cap never
+   showed, because the label's fit-content width was the percentage's containing
+   block. The companion `.td-select.w-full` is the prototype's too: this file is
+   **unlayered** and Tailwind's utilities are not, so `width: auto` here would
+   otherwise outrank the `w-full` the create dialog's three selects carry. */
 .td-select {
+  width: auto;
   padding: var(--space-1) var(--space-2);
   color: var(--brand-text);
   background: var(--brand-surface);
   border: var(--border) solid var(--brand-border-strong);
   border-radius: var(--radius-field);
+}
+.td-select.w-full {
+  width: 100%;
 }
 /* R9 ② — the label filter's trigger **is** a field of that family, not a
    lookalike: the same height, the same 12px/400 ink face on the surface, the

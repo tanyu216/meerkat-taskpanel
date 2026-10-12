@@ -310,3 +310,38 @@ prototype's at 1512×950 — the board-wide root-font-size difference the manife
 carried) plus one on `r10-detail-save-error` (the alert's soft half: the prototype names a flat
 `--color-td-danger-soft`, the implementation uses the app's existing 12% error mix, per R10's
 "no new token" rule).
+
+## 8. The R12 additions — the bar's single line, and the seven-column equal-height chain
+(`T-20261013-023722`, 2026-10-13)
+
+Two blocks (`B04-r12`, `B05-r12`) and three `style.targets` entries (`r12-select`, `r12-count`,
+`r12-column`), one per item of the R12 contract (`design/fidelity-r12-supplement.md`). The
+division of labour is the contract's own R-6, and it is drawn by **what each instrument can
+express**, not by subject (R-6a):
+
+| which fact | instrument |
+|---|---|
+| the closed set of filter controls, each family member's count, and their relative order | **this manifest** — the six-word vocabulary (`selector`/`scope`/`count`/`min`/`max`/`nonEmpty`), with order written as a general-sibling `~` so a missing status control does not break it (R-3) |
+| one element's declared values (`flexWrap: nowrap`, the bar's `overflow-x`/`min-width` and zero padding, the board's `alignItems: stretch`, the column's own `overflow-y`) | **`test/web/blocks.contract.mjs`** `computed` rules, evaluated by the same harness |
+| computed style, both sides, prototype as oracle | **`style.targets`** — with the three new names (`flexWrap`, `overflowX`, `overflowY`) added to `.ui-align.json`'s `styleProps`, without which the R12 rows would compare nothing and say nothing (the contract's R-6b / U-3) |
+| row count, visibility, the four field heights, the count's geometric right-edge pin, the bar's own scrollable slack at 430 — and **all** of the board geometry (spread, column-vs-content-box, viewport follow, natural content, scroller counts) | **the driven layer** — `web/scripts/dom-smoke.mjs`'s R12 section, the only leg that can compare two elements or read a line's centres |
+
+`[data-filter-label] > summary` is **not** a new target: it is already `r9-label-trigger` (the same
+element), and registering it twice would count one difference twice.
+
+**Where R12 stands** (`T-20261013-023722`, 2026-10-13):
+
+| | |
+|---|---|
+| blocks | 34 — all `delivered`, none `pending` |
+| assertions | 200 · failures **0** under `--strict` |
+| overflow / console | 0 failures at all five widths |
+| computed style | 33 of 952 compared properties differ (96.5%) — **non-blocking** |
+
+**32 → 34 blocks / 184 → 200 assertions** (this lane's base reading → this one: the two R12 blocks
+and their 16 checks). The style count moved 18/775 → 33/952: `+16` comparisons from the three new
+targets — whose 11 diffs are the ones the contract's §5.3 asks to put on screen (`.td-select`
+30→32px and 109→91px, the count's 58→46px and its mono-face, the column's 758→756px) — `+3`
+from the `wrap → nowrap` / `visible → auto` declarations the round itself makes on
+`[data-filters]`, and `+1` from the `overflow` shorthand following them. **No existing target's
+diff count changed** except `filters`, where the four new rows *are* the round's decision.
