@@ -70,6 +70,13 @@ svg.td-side-icon {
   stroke-linejoin: round;
 }
 .td-icon-sm { width: 14px; height: 14px; }
+/* The three theme glyphs swap by attribute; the UA sheet's `[hidden]` is a plain
+   `display: none`, so it is stated here the way every other hidden face is. */
+svg[data-theme-icon][hidden] { display: none; }
+/* The language trigger's disclosure caret: decoration only — the trigger is
+   already named by its own text — and the first thing to go when the footer
+   becomes a rail (see the ≤1023px block). */
+.td-caret { flex: none; color: var(--brand-text-3); }
 
 /* The rail chip: a nav/states `<svg>`, or a project row's letter monogram
    `<span>` (which desktop hides — the row shows the full name instead). */
@@ -124,6 +131,14 @@ span.td-side-icon { display: none; }
 }
 
 .td-brand { display: inline-flex; align-items: baseline; gap: var(--space-2); text-decoration: none; color: inherit; }
+/* Sentinel Watch (BRAND.md §5). A solid mark, not a stroked icon, so it takes no
+   stroke and reads its two fills from the theme tokens instead of currentColor.
+   The top bar aligns on baselines and an SVG has none, so `align-self: center`
+   keeps the mark optically centred against the wordmark without moving the
+   wordmark/tagline baseline pair. */
+.td-logo { flex: none; width: 18px; height: 18px; align-self: center; }
+/* The empty state's mark: 28px (B12), free to align itself. */
+.td-logo-lg { width: 28px; height: 28px; align-self: auto; }
 .td-brand-name { font-weight: var(--weight-semibold); }
 .td-brand-sub { font-size: var(--text-12); color: var(--brand-text-3); }
 
@@ -190,6 +205,34 @@ span.td-side-icon { display: none; }
   background: var(--brand-surface); color: var(--brand-text);
 }
 .td-filter-count { margin-left: auto; font-size: var(--text-12); color: var(--brand-text-2); }
+
+/* The floating language menu. Same floating menu as the card's "Move to" list:
+   it is teleported to the end of the document and anchored to its trigger from
+   `SidebarFooter.vue`, because the sidebar is a scroll container and would clip
+   it. The chosen language is marked the way every other menu marks the current
+   item — accent copy plus a tick — so the state never rests on colour alone. */
+[data-lang-menu] {
+  z-index: 60;
+  min-width: 148px;
+  padding: var(--space-1);
+  border: var(--border) solid var(--brand-border);
+  border-radius: var(--radius-box);
+  background: var(--brand-surface);
+  box-shadow: var(--shadow-pop);
+}
+[data-lang-menu][hidden] { display: none; }
+.td-lang-option {
+  display: flex; align-items: center; gap: var(--space-2);
+  width: 100%; padding: var(--space-1) var(--space-2);
+  border: 0; border-radius: var(--radius-field);
+  background: transparent; color: var(--brand-text);
+  font: inherit; font-size: var(--text-13); text-align: left; cursor: pointer;
+}
+.td-lang-option:hover { background: var(--brand-hover); }
+.td-lang-option[aria-pressed="true"] { color: var(--color-primary); font-weight: var(--weight-medium); }
+.td-lang-name { flex: 1; }
+.td-lang-check { visibility: hidden; }
+.td-lang-option[aria-pressed="true"] .td-lang-check { visibility: visible; }
 .td-details { position: relative; }
 .td-details > summary { cursor: pointer; list-style: none; }
 .td-details > summary::-webkit-details-marker { display: none; }
@@ -222,7 +265,7 @@ span.td-side-icon { display: none; }
 }
 .td-col-header { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2); }
 .td-col-dot { width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--status-color, var(--brand-text-3)); }
-.td-col-name { font-weight: var(--weight-medium); font-size: var(--text-13); }
+.td-col-name { font-weight: var(--weight-semibold); font-size: var(--text-12); color: var(--brand-text); white-space: nowrap; }
 .td-col-count { margin-left: auto; font-size: var(--text-12); color: var(--brand-text-2); }
 .td-col-add { border: 0; background: transparent; color: var(--brand-text-3); cursor: pointer; font-size: var(--text-14); }
 .td-col-progress { margin: 0 var(--space-2) var(--space-2); height: 4px; accent-color: var(--status-color); }
@@ -311,9 +354,16 @@ span.td-side-icon { display: none; }
 .td-drawer-head { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-4); border-bottom: var(--border) solid var(--brand-border); }
 .td-drawer-body { flex: 1; overflow-y: auto; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); }
 .td-drawer-close { align-self: flex-end; border: 0; background: transparent; color: var(--brand-text-3); cursor: pointer; }
-.td-props { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: var(--space-1) var(--space-3); margin: 0; font-size: var(--text-13); }
-.td-props dt { color: var(--brand-text-3); }
-.td-props dd { margin: 0; }
+.td-props { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: var(--space-1) var(--space-3); margin: 0; font-size: var(--text-13); align-items: center; }
+.td-prop-label { font-size: var(--text-12); color: var(--brand-text-3); }
+.td-prop-value {
+  display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0;
+  min-height: 28px; padding: 0 var(--space-1);
+  font-size: var(--text-13); color: var(--brand-text);
+}
+/* The free-text controls inside a property value take the row's slack, so the
+   input fills the track instead of shrinking to its placeholder. */
+.td-prop-value .td-combo { flex: 1 1 auto; min-width: 0; }
 .td-slot { border-top: var(--border) solid var(--brand-border); padding-top: var(--space-3); }
 .td-slot-title { margin: 0 0 var(--space-2); font-size: var(--text-13); font-weight: var(--weight-semibold); }
 .td-gfm { font-size: var(--text-14); line-height: var(--leading-body); }
@@ -321,6 +371,23 @@ span.td-side-icon { display: none; }
 .td-gfm code { font-family: var(--font-mono); }
 .td-comment { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) 0; border-bottom: var(--border) solid var(--brand-border); }
 .td-comment-meta { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-12); color: var(--brand-text-3); }
+/* An attachment row: icon, name, and the size pushed to the row's end. */
+.td-file {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: var(--border) solid var(--brand-border);
+  border-radius: var(--radius-field);
+  background: var(--brand-surface);
+}
+.td-file + .td-file { margin-top: var(--space-2); }
+.td-file-name { font-size: var(--text-12); font-weight: var(--weight-medium); color: var(--brand-text); }
+.td-file-size { margin-left: auto; font-family: var(--font-mono); font-size: var(--text-11); color: var(--brand-text-3); }
+/* An activity row: actor · sentence · relative time, the stamp pushed right. */
+.td-activity { display: flex; align-items: baseline; gap: var(--space-2); padding: 3px 0; font-size: var(--text-12); color: var(--brand-text-2); }
+.td-activity-ts {
+  margin-left: auto; font-family: var(--font-mono); font-size: var(--text-11);
+  color: var(--brand-text-3); white-space: nowrap;
+}
 .td-comment-form { display: flex; flex-direction: column; gap: var(--space-2); }
 .td-comment-input { min-height: 64px; padding: var(--space-2); border: var(--border) solid var(--brand-border-strong); border-radius: var(--radius-field); background: var(--brand-surface); color: var(--brand-text); resize: vertical; }
 
@@ -448,7 +515,8 @@ span.td-side-icon { display: none; }
   .td-sidebar .td-side-name,
   .td-sidebar .td-count,
   .td-sidebar .td-order-score,
-  .td-sidebar .td-agent-badge { display: none; }
+  .td-sidebar .td-agent-badge,
+  .td-sidebar .td-caret { display: none; }
   .td-sidebar .td-side-item { justify-content: center; padding: 0; }
   .td-sidebar .td-side-icon {
     display: inline-flex;
