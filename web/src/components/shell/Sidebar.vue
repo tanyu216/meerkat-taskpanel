@@ -4,10 +4,12 @@
  * three-cell footer.
  *
  * The project list renders exactly the order `/projects` computed and does no
- * sorting of its own (§4.6). Each row prints the diagnostic `total` the server
- * returns under `?order_debug=1` as `data-order-score` and its 1-based position
- * as `data-order-rank`; if the diagnostic field were ever missing the score
- * falls back to 0 for display only — the order is still the server's.
+ * sorting of its own (§4.6). Each row carries the diagnostic `total` the server
+ * returns under `?order_debug=1` as its `data-order-score` **attribute** and its
+ * 1-based position as `data-order-rank`. The score is a review diagnostic, not
+ * copy, so it is never painted — the prototype's row has the attribute and no
+ * text either (E2b, 2026-10-12). A painted score also cost the row real width
+ * and ellipsised the project name; as an attribute it costs no layout at all.
  *
  * The prototype's two review surfaces are deliberately absent here: B15 (the
  * legend) and the States entry point that opened B18 (the states gallery) were
@@ -48,10 +50,6 @@ const projects = computed(() =>
     score: board.orderDebug[project.id]?.total ?? 0,
   })),
 );
-
-function scoreLabel(project) {
-  return board.orderDebug[project.id] ? String(project.score) : "";
-}
 
 // Presence is derived from the board's own data: an agent is "running" while it
 // holds a task in progress or review, "idle" otherwise.
@@ -131,9 +129,11 @@ function onNav(item) {
           :aria-current="project.id === board.currentProjectId ? 'page' : undefined"
           @click="selectProject(project.id)"
         >
+          <!-- The prefix monogram is the rail's stand-in for the name, so it is
+               desktop-hidden and rail-visible — one element, two faces
+               (BLOCKS.md B03: "prefix monogram, rail only"). -->
           <span class="td-mono" data-side-icon aria-hidden="true">{{ project.initials }}</span>
           <span class="td-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap" data-side-name>{{ project.name }}</span>
-          <span class="td-mono text-[11px] text-(--brand-text-3)" data-side-score :title="scoreLabel(project)">{{ project.score }}</span>
           <span v-if="project.count !== null" class="badge badge-sm td-mono" data-side-count>{{ project.count }}</span>
         </button>
       </div>

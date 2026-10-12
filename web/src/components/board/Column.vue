@@ -45,12 +45,12 @@ function onDrop(event) {
     :data-drag-over="dragOver ? 'true' : 'false'"
   >
     <header class="flex items-center gap-2 p-2" data-column-header>
-      <span class="td-col-dot" data-column-dot aria-hidden="true"></span>
+      <span class="status td-status-dot" data-column-dot aria-hidden="true"></span>
       <!-- The column name is the heading of its column, so it is an `<h2>`, not
            a `<span>`: the outline of the board is seven headings, one per status
            (B06). `data-column-name` is unchanged, so the hook set stays put. -->
       <h2 class="font-semibold text-[12px] whitespace-nowrap text-(--brand-text)" data-column-name>{{ $t(`status.${column.status}`) }}</h2>
-      <span class="td-mono ms-auto text-[12px] text-(--brand-text-2)" data-column-count>{{ count }}</span>
+      <span class="badge badge-sm td-count ms-auto" data-column-count>{{ count }}</span>
       <button type="button" class="border-0 bg-transparent text-(--brand-text-3) cursor-pointer text-[14px]" data-column-add :aria-label="$t('column.add', $t(`status.${column.status}`))" :title="$t('column.add', $t(`status.${column.status}`))" @click="emit('add', column.status)">
         ＋
       </button>
