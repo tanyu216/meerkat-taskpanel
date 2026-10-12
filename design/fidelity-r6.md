@@ -3,6 +3,7 @@
 > 卡：`T-20261012-192813`（R6 保真契约）· 只产契约，不写实现。
 > 契约唯一事实源：`design/prototype/index.html` + `design/prototype/tw.css` + `design/BLOCKS.md`（B01–B25）。
 > 期望值一律取自**原型**；实现的核对一律**实读复核**。
+> **seg2 增量（2026-10-12）**：§8（项⑦）写入根因链并订正断言点；§9（项⑧）补 seg2 实测确认；派生行（§0 / §1 R5 / §10 / §11 / §13 F5）同步订正。
 
 ## 0. 结论摘要（≤14 行）
 
@@ -14,8 +15,8 @@
 - 项④ 实现标题无截断；原型 `-webkit-line-clamp:2` + `overflow:hidden`，实测长标题被**裁到 2 行**（`scrollHeight 94 > clientHeight 38`）。
 - 项⑤ 实现无分组壳、无组头、列模板与行部件齐偏（status 是裸 `span`、priority 无 `.td-pri`）。
 - 项⑥ 实现只有 daisyUI `badge`，**无 status dot**；**且原型自身 `[data-detail-status-chip]` 的实测色/圆角与 spec 所记不符**（见 §7 修订 R1）。
-- 项⑦ 实现壳为 `flex-col`（竖排）⇒ 观感折行；**原型 DOM 层 3 个 `svg[data-theme-icon]` 齐全、同刻 1 个可见**，故「无图标」在 DOM 层不可复现（视觉层未实测，见 §8 F5）。
-- 项⑧ 实现壳为 `flex-col`；caret 走 `data-caret` 而无 `.td-caret` 类 ⇒ 原型的 rail 隐藏规则不按类名生效（改由 `[data-sidebar] [data-caret]` 兜底）。
+- 项⑦ 实现壳为 `flex-col`（竖排）⇒ 观感折行；**且「无对应图标」在 DOM 层可复现**——实现用 `:hidden` 布尔绑定 ⇒ 活动图标也带**字面** `hidden="false"` 属性，命中 `svg[data-theme-icon][hidden]{display:none}` ⇒ **可见图标数 = 0**（根因已定位，见 §8；F5 已由 Elon 改判为真缺陷）。
+- 项⑧ 实现壳为 `flex-col`；caret 走 `data-caret` 而无 `.td-caret` 类 ⇒ 原型的 rail 隐藏规则不按类名生效（改由 `[data-sidebar] [data-caret]` 兜底）；seg2 实测 1440px 三子元素 top 各异 ⇒ 三行（见 §9）。
 - 共通**根因三缺口**：实现侧无 `--brand-accent` / `--brand-accent-soft` token、无 `.td-chip` / `.td-chip-status` 规则、无 `.td-access-cell` / `.td-caret` / `.td-side-text` 类（token 缺口见 §1）。
 - 结论：`design/BLOCKS.md` 主体**无需改动**（§12）；`CHANGELOG.md` **不加**条目；落档仅本文件。
 
@@ -30,12 +31,13 @@
 2. 「实现位点」= 实读 `web/src/**` 后的选择器；凡未在浏览器里实测的实现态，标注「未实测」。
 3. token 名沿用原型 `--color-td-*` / `--r-*`；实现侧 brand token 名以 `web/src/styles/tokens.css` 为准。
 
-**「实读复核」对本 spec 的修订（4 条，均以浏览器实测为准）**：
+**「实读复核」对本 spec 的修订（5 条，均以浏览器实测为准）**：
 
 - **R1（项⑥，最重要）**：原型 `[data-detail-status-chip]` 实测为**青底药丸**——`bg=accent-soft` / `radius=999px` / `padding=2px 4px 2px 8px` / `font-size=12px` / `fg=ink`。spec §2.6 所记（`bg=surface` / `11px` / `radius=--r-sm` / `fg=ink-2`）是 tw.css 中**较早**那对 `.td-chip` + `.td-chip-status` 的值；同名 `.td-chip` 在 `@layer utilities` 内**被再声明一次且更靠后**，级联胜者为后者（CSSOM `matchedCSSRules` 逐条证实）。这意味着**原型自相矛盾**，与 BLOCKS.md 无关。凡「surface / 11px 小 chip」的期望，须由设计 owner 裁一次（见 §13 F6）。
 - **R2（项③）**：原型 `[data-access-panel]` 实测 `width = 480px`（`min(480px, calc(100vw - 32px))`）、`max-height = 720px`。spec §2.3 记的 `min(920px,…)` / `760px` 来自 `.td-states-panel, .td-access-panel` 的**共享规则**，面板自身随后把两条都收窄了。落地建议若照 spec 修成 920px，反而会**偏离原型**。
 - **R3（项④）**：原型 `[data-card-title]` 的 `display` 声明是 `-webkit-box`，但 Chromium `getComputedStyle().display` **返回 `flow-root`**（legacy 值的序列化）。故机检**不得断言 `display`**，改断言 `-webkit-line-clamp` + `overflow` + 几何（见 §5）。
 - **R4（项⑤）**：`grid-template-columns` 的 computed 值是**已解析的 used 值**（1512 档实测 `74px 648px 108px 132px 96px 72px`），不是声明的 `minmax(0,1fr)` 字面串。机检须按「首/尾列 + 列数」或按容器宽换算断言（见 §6）。
+- **R5（项⑦，seg2 真渲染实测 · 2026-10-12）**：⑦ 的「无对应图标」在 DOM 层**可复现**（可见图标数=0），根因 = `:hidden` 布尔绑定 + `web/src/styles/app.css` 的 `svg[data-theme-icon][hidden]{display:none}` presence-based 规则（详见 §8 根因订正）。原「DOM 层不可复现」标注**作废**；F5 已由 Elon 改判为**真缺陷**（随 M5 修复，非本卡）。
 
 **共用 token 冻结值（原型 light；§2.9 口径）**：`accent`#0f7a73 · `accent-soft`rgba(15,122,115,.1) · `surface`#ffffff · `sunken`#f5f6f7 · `hover`#f0f2f3 · `line`#e6e8eb · `ink`#14181b · `ink-2`#4a555e · `ink-3`#7e8a91。radius：`--r-sm`4px · `--r-md`6px · `--r-lg`8px。status（7）：backlog#6c777e · todo#5a6b75 · in_progress#ac640d · in_review#6e56cf · blocked#c0392b · done#187a4c · canceled#b8c0c5。
 
@@ -331,7 +333,14 @@
 
 ## 8. 项⑦ 主题切换格（B03 sidebar footer）
 
-*证据：原型实测（1512 + 980 两档；980 落 ≤1023px rail）。*
+*证据：原型实测（1512 + 980 两档；980 落 ≤1023px rail）＋ **seg2 实现侧真实渲染实测**（headless Chromium，1440 / 980，light / en，载入构建产物 `web/dist`；`pageerror` 为空，`console` 仅缺 fixture API 的 404）。*
+
+**根因订正（seg2 真渲染实测 · 2026-10-12）**：Terry 报「浅色/深色切换没有对应图标」**在 DOM 层可复现**，根因已定位（**推翻**本文件原「DOM 层不可复现」标注；F5 已由 Elon 改判为**真缺陷**，随 M5 修复）：
+
+- `web/src/styles/app.css`（选择器 `svg[data-theme-icon][hidden]`）规则 `{ display: none; }` —— **键控「属性存在」，与属性值无关**。
+- `web/src/components/shell/SidebarFooter.vue`（`[data-theme-switch] svg[data-theme-icon]`）用 `:hidden="themeMode !== mode"`；Vue 的特殊布尔属性白名单**不含 `hidden`** ⇒ `:hidden="false"` 落笔为**字面属性 `hidden="false"`**（属性仍存在，而非被移除）。
+- 实测表征：`data-theme-mode="light"` 时 light 图标落 `hidden="false"`、dark/auto 落 `hidden="true"` ⇒ **三图标全命中隐藏规则 ⇒ 可见图标数 = 0**（`getComputedStyle` 全 `display:none`；`removeAttribute("hidden")` 后立即 `display:block`、宽 14px）。
+- 原型为何正确：原型 `index.html` 的 `[data-theme-switch]` 静态 HTML 中 light 图标**不写** `hidden`、dark/auto 写**裸 `hidden`**，配 `tw.css` 的 `[hidden]{display:none !important}` ⇒ 恰 1 个可见。**原型契约 = 可见性由 `data-theme-icon` 的「属性存在性」驱动、活动图标不带该属性。**
 
 **块契约表**
 
@@ -341,7 +350,7 @@
 | 根选择器 | `[data-theme-switch]`（原型 `button.td-access-cell[data-theme-switch][data-theme-mode]`） |
 | 状态选择器 | `[data-theme-switch][data-theme-mode="light\|dark\|auto"]`；图标 `[data-theme-icon="light\|dark\|auto"]`（同刻仅 1 个可见，另 2 个 `[hidden]`）；标签 `[data-theme-label]` |
 | 期望计算样式-壳 | `display:flex` · `flex-direction:row` · `align-items:center` · `justify-content:center` · gap **6px** · height **28px** · `padding:0 2px` · **`width:100%`** · font **12px**/500 · fg `--color-td-ink-2`#4a555e · bg transparent · `border:0` · `border-inline-start:1px solid --color-td-line`（`.td-access-cell:first-child` 时该边为 `0`） · radius `--r-sm`4px |
-| 期望计算样式-图标 | `svg.td-icon.td-icon-sm` 14×14 · `stroke:currentColor` · `stroke-width:1.5` · 非当前态 `[hidden]` ⇒ `display:none` |
+| 期望计算样式-图标 | `svg.td-icon.td-icon-sm` 14×14 · `stroke:currentColor` · `stroke-width:1.5` · `stroke-linecap:round` · `stroke-linejoin:round` · `fill:none`；**非当前态以「带 `[hidden]` 属性」表达 ⇒ `display:none`；当前态「不带该属性」⇒ 可见**（presence-based，非 value-based） |
 | 期望计算样式-标签 | `span.td-side-text`：`min-width:0` · `overflow:hidden` · `text-overflow:ellipsis` · `white-space:nowrap` |
 | 期望计算样式-hover / focus | hover：fg `--color-td-ink` · bg `--color-td-hover`#f0f2f3；`:focus-visible`：`outline:2px solid --color-td-accent` · `outline-offset:-2px` |
 | 期望计算样式-rail（≤1023px） | `.td-access-cell{gap:0; height:24px; padding:0}` · 文本标签 `display:none` |
@@ -351,13 +360,15 @@
 
 | # | 偏离点 | 实现位点（文件:选择器） | 行为差异 | 归类 |
 |---|---|---|---|---|
-| 1 | 壳竖排（`flex-col`） | `web/src/components/shell/SidebarFooter.vue:[data-theme-switch]` | `flex flex-col items-center gap-0.5 px-1 py-2` ⇒ 图标与标签**上下堆叠**；原型 `flex-direction:row` gap 6px height 28px | 缺 |
+| 1 | 壳竖排（`flex-col`） | `web/src/components/shell/SidebarFooter.vue:[data-theme-switch]` | `flex flex-col items-center gap-0.5 px-1 py-2` ⇒ 图标与标签**上下堆叠**（1440 实测 `flex-direction:column` · `gap:2px` · `height:64.5px`）；原型 `flex-direction:row` gap 6px height 28px | 缺 |
 | 2 | 缺 `.td-access-cell` 类 | `web/src/components/shell/SidebarFooter.vue:[data-theme-switch]` | 无 28px 高 / gap 6px / `border-inline-start` 分隔线 / hover bg / focus outline / `--r-sm` | 缺 |
-| 3 | 字号与内距 | 同上 | 实现 `text-[11px]`（原型 12px）、`px-1 py-2`（原型 `padding:0 2px`）、`gap-0.5` = 2px（原型 6px） | 口径 |
-| 4 | 标签用 `data-side-text`（无 `.td-side-text` 类） | `web/src/components/shell/SidebarFooter.vue:[data-theme-switch] span[data-theme-label]` | 原型的省略号 / nowrap 规则不按类名生效；实现靠 rail 媒体查询 `display:none`，**不是省略** | 口径 |
-| 5 | **DOM 层 3 个图标与原型同构** | `web/src/components/shell/SidebarFooter.vue:[data-theme-switch] svg[data-theme-icon]` | `v-for="mode in modes" :hidden="themeMode !== mode"` ⇒ 3 个 `svg[data-theme-icon]` 均在 DOM，同刻 1 个可见（另有 `web/src/styles/app.css:svg[data-theme-icon][hidden]{display:none}` 兜底）⇒ Elon 转述的「实现报无对应图标」在 **DOM 层不可复现** | 对齐 |
-| 6 | `data-theme-mode` 镜像 | `web/src/components/shell/SidebarFooter.vue:[data-theme-switch][data-theme-mode]` | 实现同步输出 `data-theme-mode` ⇒ 与原型同构 | 对齐 |
-| 7 | rail 档格指标缺 | `web/src/styles/app.css` | 无 `.td-access-cell{gap:0;height:24px;padding:0}` 等价规则（壳未用该类） | 缺 |
+| 3 | 标签用 `data-side-text`（无 `.td-side-text` 类） | `web/src/components/shell/SidebarFooter.vue:[data-theme-switch] span[data-theme-label]` | 原型的省略号 / nowrap 规则不按类名生效；实现靠 rail 媒体查询 `display:none`，**不是省略** | 口径 |
+| 4 | **图标可见性缺陷（根因已定位）** | `web/src/components/shell/SidebarFooter.vue:[data-theme-switch] svg[data-theme-icon]` + `web/src/styles/app.css:svg[data-theme-icon][hidden]` | `:hidden` 布尔绑定 ⇒ 活动图标也带**字面** `hidden="false"` 属性 ⇒ 三图标全 `display:none`、**可见图标数=0**（seg2 实测：图标计数=3 / 可见计数=0 / 字面 `[hidden="false"]` 计数=1 / `:not([hidden])` 计数=0）⇒ Terry 的「无对应图标」在 DOM 层**可复现**，非误报 | 缺 |
+| 5 | rail 档格指标缺 | `web/src/styles/app.css`（`@media (max-width:1023px)`） | 无 `.td-access-cell{gap:0;height:24px;padding:0}` 等价规则（壳未用该类）；980 实测 cell `height:30px`（原型 24px） | 缺 |
+| 6 | 字号与内距 | 同上 | 实现 `text-[11px]`（原型 12px）、`px-1 py-2`（原型 `padding:0 2px`）、`gap-0.5` = 2px（原型 6px） | 口径 |
+| 7 | `data-theme-mode` 镜像 | `web/src/components/shell/SidebarFooter.vue:[data-theme-switch][data-theme-mode]` | 实现同步输出 `data-theme-mode` ⇒ 与原型同构 | 对齐 |
+
+> 行 6 / 7 为 **seg1 既有行（保留）**：spec §2.7 未复列，但均为实读 / 实测事实，行 6 直接进入修复卡。
 
 **落地建议表**
 
@@ -366,7 +377,7 @@
 | 1 | 壳改横排并加 `td-access-cell` 类（或等价 `flex flex-row items-center justify-center gap-[6px] h-7 px-0.5 text-[12px]`） | `web/src/components/shell/SidebarFooter.vue:[data-theme-switch]` | 值与原型逐项一致 |
 | 2 | 标签改 `td-side-text` 类（保留 `data-side-text`） | 同上 `span[data-theme-label]` | 省略号 / nowrap 生效 |
 | 3 | rail（≤1023px）补 `.td-access-cell{gap:0;height:24px;padding:0}` | `web/src/styles/app.css` | 与原型 rail 块逐值一致 |
-| 4 | 浏览器实测复核「图标是否可见」并记录结论 | —（浏览器） | 见 F5：DOM 层已证 3 个图标在；**视觉层本卡未实测** |
+| 4 | **修可见性机制**：把 `:hidden="themeMode !== mode"` 改为 `v-show="themeMode === mode"`（或条件 `v-bind="themeMode === mode ? {} : { hidden: '' }"`）；**勿**用 `:hidden` 布尔绑定 | `web/src/components/shell/SidebarFooter.vue:[data-theme-switch] svg[data-theme-icon]` | 抗 Vue「非特殊布尔属性」行为；保留 presence-based CSS（`svg[data-theme-icon][hidden]{display:none}`）|
 
 **本项机检断言点表**
 
@@ -374,16 +385,24 @@
 |---|---|---|---|
 | 1 | `count [data-theme-switch]` | `1` | blocks.contract |
 | 2 | `count [data-theme-switch] svg[data-theme-icon]` | `3` | dom-smoke |
-| 3 | `count [data-theme-switch] svg[data-theme-icon]:not([hidden])` | `1` | dom-smoke |
-| 4 | `[data-theme-switch]` computed `flex-direction` | `row` | dom-smoke |
-| 5 | `[data-theme-switch]` computed `gap` | `6px` | dom-smoke |
-| 6 | `[data-theme-switch]` computed `height` | `28px` | dom-smoke |
-| 7 | `[data-theme-label]` 文本 | ∈ en `{Light, Dark, Auto}` / zh `{浅色, 深色, 自动}` | dom-smoke |
-| 8 | 视口 980 `[data-theme-switch]` computed `height` / `gap` | `24px` / `0px`（rail） | dom-smoke |
+| 3 | 第 2 条中 computed `display !== none` 者（**可见图标**）计数 | `1` | dom-smoke |
+| 4 | 可见图标 `data-theme-icon` | `===` 宿主 cell 的 `data-theme-mode` | dom-smoke |
+| 5 | 可见图标 bounding box 宽 | `> 0`（原型 14px） | dom-smoke |
+| 6 | `count [data-theme-switch] svg[data-theme-icon][hidden="false"]` | `0`（**负向**：不得以字面 `false` 表达显示） | dom-smoke |
+| 7 | `[data-theme-switch]` computed `flex-direction` | `row` | dom-smoke |
+| 8 | `[data-theme-switch]` computed `gap` | `6px` | dom-smoke |
+| 9 | `[data-theme-switch]` computed `height` | `28px` | dom-smoke |
+| 10 | `[data-theme-label]` 文本 | ∈ en `{Light, Dark, Auto}` / zh `{浅色, 深色, 自动}` | dom-smoke |
+| 11 | 视口 980（rail）`[data-theme-switch]` computed `height` / `gap` | `24px` / `0px` | dom-smoke |
+
+> ⚠️ **作废（R5）**：原第 3 条 `count [data-theme-switch] svg[data-theme-icon]:not([hidden]) = 1` **作废** —— 实现下三图标**皆带** `[hidden]`（活动图标为字面 `hidden="false"`），该断言在本实现恒 FAIL（seg2 实测 `:not([hidden])` 计数 = 0）。可见性一律以「computed `display !== none` 计数 = 1」为准（本表第 3 条）。
+> 第 6 条为 seg2 新增负向断言（防回归：不得把「显示」表达为字面 `hidden="false"`）；第 11 条为 **seg1 既有行（保留）**（rail 档指标，spec §2.7 未复列）。
 
 ## 9. 项⑧ 语言切换格（B03 sidebar footer）
 
 *证据：原型实测（1512 + 980 两档）；菜单选中态取自 `[data-lang-option][aria-pressed="true"]`。*
+
+**seg2 真渲染实测确认（2026-10-12）**：1440px 展开态下 globe / `[data-lang-label]` / `[data-caret]` 三者 bounding box top **各不相同**（实测 831.5 / 847.5 / 866，相邻差 +16 / +18.5 ⇒ **三行**）⇒ 偏离 #1「竖排折行」为真；原型为**单行横排**（`.td-access-cell` `flex-direction:row` gap 6px height 28px）。980 rail 实测 `[data-caret]` computed `display:none`（由 `[data-sidebar] [data-caret]` 承担，非原型 `.td-caret`）。
 
 **块契约表**
 
@@ -458,7 +477,7 @@
 | 12 | ⑧ | `[data-lang-select]` | 有 `aria-haspopup="menu"` |
 | 13 | ⑦⑧ | `[data-access-status]` 直接子格 | `3`（三等分） |
 
-**B. `dom-smoke` 类（计算样式，28 条）**
+**B. `dom-smoke` 类（计算样式，29 条）**
 
 | # | 项 | 选择器 → 属性 | 期望 |
 |---|---|---|---|
@@ -487,15 +506,17 @@
 | 23 | ⑥ | `[data-detail-status-chip] .td-status-dot` → 宽/高 | 6px / 6px |
 | 24 | ⑥ | `[data-detail-status-chip]` → `height` | `18px` |
 | 25 | ⑦ | `[data-theme-switch]` → `flex-direction` / `gap` / `height` | row / 6px / 28px |
-| 26 | ⑦ | `count svg[data-theme-icon]` 与 `:not([hidden])` | `3` / `1` |
-| 27 | ⑧ | `[data-lang-select]` → `flex-direction` / `gap`；子序 | row / 6px / `svg→label→caret` |
-| 28 | ⑧ | `[data-lang-option][aria-pressed="true"]` → `background-color` / `.td-lang-check` `visibility` | accent-soft / visible |
+| 26 | ⑦ | `count svg[data-theme-icon]` / 其中 computed `display≠none`（可见）计数 / 可见图标 `data-theme-icon` vs 宿主 cell `data-theme-mode` / 可见图标 bbox 宽 | `3` / `1` / 一致 / `>0` |
+| 27 | ⑦ | **负向**：`count svg[data-theme-icon][hidden="false"]` | `0` |
+| 28 | ⑧ | `[data-lang-select]` → `flex-direction` / `gap`；子序 | row / 6px / `svg→label→caret` |
+| 29 | ⑧ | `[data-lang-option][aria-pressed="true"]` → `background-color` / `.td-lang-check` `visibility` | accent-soft / visible |
 
-**C. 三条「不得断言」的负向注记**
+**C. 四条「不得断言」的负向注记**
 
 1. `[data-card-title]` computed `display` —— Chromium 把 legacy `-webkit-box` 序列化为 `flow-root`（R3）。
 2. `[data-list-row]` computed `grid-template-columns` 的**字面串** —— computed 返回 used 像素值（R4）。
 3. `[data-detail-status-chip]` 的 `background-color` / `border-radius` —— **在 R1 裁定前**不得固定（原型自相矛盾）。
+4. `count [data-theme-switch] svg[data-theme-icon]:not([hidden])` —— **作废**（R5）：实现下三图标**皆带** `[hidden]`（活动图标为字面 `hidden="false"`，seg2 实测 `:not([hidden])` 计数 = 0）⇒ 该断言在本实现恒 FAIL；可见性一律改断言 computed `display != none` 的计数（B 表第 26 条）。
 
 ## 11. 截图对比口径
 
@@ -513,7 +534,8 @@
   - ⑧ 语言格两态（en / zh 触发）+ 菜单展开一张 + 980 rail（caret 应消失）一张。
 - **对比方式**：原型与 Vue **同视口 / 同主题 / 同语言**并排人工比对；**不做像素 diff**（结构 + 几何 + 人工，沿用 O7 裁决）。
 - **硬门**：`console` / `pageerror` 为 `[]`；五档均无横向溢出。
-- **本契约的实测基线**：原型在 Chromium / 1512 与 980 / light / en 下的 computed style（本次载入 `console`+`pageerror` 均为 `[]`）；本卡**未产出截图**，故 ⑦ 的「图标是否可见」等**视觉层结论标注「未实测」**。
+- **本契约的实测基线**：原型在 Chromium / 1512 与 980 / light / en 下的 computed style（本次载入 `console`+`pageerror` 均为 `[]`）；**seg2 另加实现侧实测**（构建产物 `web/dist`，headless Chromium / 1440 与 980 / light / en，`pageerror` 为空）——⑦ 的「可见图标数=0」与 ⑧ 的「三行 top 各异」即由此得证，属 **DOM / computed style 层结论**，非截图。
+- **本卡未产出截图**（无并排图像附件）：凡结论均以 DOM / computed style 机检为准；截图仅作修复卡的并排人工比对（口径见上）。
 
 ## 12. 文档同步判定
 
@@ -523,7 +545,7 @@
 - **`CHANGELOG.md`**：**不加条目**。本卡只产契约，无产品行为变化。
 - **`design/fidelity-r6.md`**：本文件，新文档。
   - **索引登记**：`design/README.md` 是 `design/` 的**目录说明**（列出 `PRD.md` / `DESIGN.md` / `BLOCKS.md` / `prototype/` / `assets/`），并未逐份登记设计文档，故按本卡**硬写面（只写 `design/fidelity-r6.md` 一个文件）不登记**；是否把本文件加入该说明，留待 Elon / 修复卡裁定。
-- **本卡写入面复核**：仅新增 `design/fidelity-r6.md`；未改 `design/BLOCKS.md`、未改 `design/prototype/**`、未改 `web/src/**`、未改 `test/**`。
+- **本卡写入面复核**：seg1 新增 `design/fidelity-r6.md`；**seg2 增量仅改本文件**（§0 / §1 R5 / §8 / §9 / §10 / §11 / §13 F5 及本节）；未改 `design/BLOCKS.md`、未改 `design/prototype/**`、未改 `web/src/**`、未改 `test/**`。
 
 ## 13. 口径红线与未覆盖项
 
@@ -531,7 +553,7 @@
 
 1. **禁用行号**：一律「文件:选择器」；跨文档引用只用「文档名 §小节」或 selector。
 2. **禁止只写「不一致」**：③⑤⑥⑦⑧ 均已逐块枚举（选择器 + 差异 + 归类）。
-3. **期望值以原型实测为准**：凡 spec 所记与实测冲突处，以实测落 `block 契约表`，并把冲突记入 偏离表（归类 `口径`）——本卡共 4 处（R1–R4）。
+3. **期望值以原型实测为准**：凡 spec 所记与实测冲突处，以实测落 `block 契约表`，并把冲突记入 偏离表（归类 `口径`）——本卡共 **5 处**（R1–R4 ＋ seg2 的 **R5**，后者把实现侧「无对应图标」由「不可复现」订正为**真缺陷**）。
 4. **不改 `BLOCKS.md` 主体、不改 `web/src`、不改测试**。
 5. **未实测项显式标注**：不得把推测写成结论。
 
@@ -543,5 +565,5 @@
 | **F2** | ③ CIDR 只读（ruling O6，无读写路由） | 实现 `readonly disabled`、无 `[data-cidr-add]` / `[data-cidr-remove]` | 批准为书面偏差，不造死按钮 |
 | **F3** | accent token 缺口 | 实现无 `--brand-accent` / `--brand-accent-soft`；影响 ①②⑥⑧ | 批准增补（light + dark），修复卡同步 `DESIGN.md` |
 | **F4** | ⑤ list 列模板 `92px → 74px` 等值对齐 | 实现 `[92px, 1fr, auto×4]` / `gap-3` / `p-2`；原型 6 轨定宽 | 按原型对齐；若因响应式保留现状 ⇒ 书面偏差 |
-| **F5** | ⑦「实现报无对应图标」 | DOM 层**不可复现**：实现与原型均有 3 个 `svg[data-theme-icon]`、同刻 1 个可见 | 浏览器视觉实测后按实判：可见 ⇒ 误报；不可见 ⇒ 另开缺陷卡 |
+| **F5（已裁定）** | ⑦「实现报无对应图标」 | **DOM 层可复现**（seg2 实测，推翻原判）：`:hidden` 布尔绑定 ＋ `app.css` 的 `svg[data-theme-icon][hidden]` presence-based 规则 ⇒ 三图标全 `display:none`、**可见计数=0** | **已由 Elon 于 2026-10-12 改判为真缺陷**，随 M5 修复（改 `v-show` / 条件 `v-bind`）；本卡只给断言点（§8 表），不改实现 |
 | **F6（新增）** | ⑥（及 ⑤ 的 list chip）原型 `.td-chip` **同名重复声明**，实测落在青底药丸一套 | 实测：`bg=accent-soft` / `radius=999px` / `12px` / `padding:2px 4px 2px 8px`；spec 记的 surface / 11px / 4px 一套被级联覆盖、实际不生效 | 请设计 owner 二选一后固定：**(a)** 认实测药丸口径（则 ⑥ 的 chip 取 accent-soft / 999px / 12px）；**(b)** 认 spec 的 rounded-rect 口径（则需同时修正原型的重复声明，并说明原型现状即为缺陷）。**裁定前不得固定 ⑥ 的 bg/radius 断言** |
