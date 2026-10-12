@@ -2147,9 +2147,17 @@ is that boundary: a press on `jobs` should reduce the list to *jobs's work that 
 the pressed name should look chosen, and a press on its `✕` should take the name back out
 without disturbing anything else.
 
-The round adds **no block**. The roster is **B03**, the control is **B04**, the view it lands on
-is **B08**, and the name-scoped value is a fifth class of value in a control that already
-exists. The executable contract is `design/fidelity-r13.md`.
+The round adds **no block**. The roster is **B03**, the control and the `✕` are **B04**, the view
+it lands on is **B08**, and the name-scoped value is a fifth class of value in a control that
+already exists. The executable contract is `design/fidelity-r13.md`.
+
+**The round was revised once.** Its first pass drew the `✕` inside the roster's capsule and gave
+the capsule a border, a fixed height and a 2px gap. When its own measurements came back the
+capsule was 20px wider than the flat name it replaced, and the row's single line — 143px of a
+144px host — ellipsized the last name by 19px. The revision makes the capsule **width-neutral**
+and moves the one removal affordance out of the row and beside the control it clears (§31.3,
+§31.4). The rejected first pass is in §31.6, and the revision's own new cost — the bed's outer
+cap is clipped by the host's `overflow: hidden` — is recorded rather than papered over (§31.5).
 
 ### 31.1 A name is a narrowing *and* a route, and one press does both
 
@@ -2169,7 +2177,7 @@ Pressing the name **already in force** is the capsule's own close, not a fresh r
 the name out and leaves the status set and the view alone — the ordinary toggle semantics of an
 `aria-pressed` button, and the same move the `✕` makes.
 
-### 31.2 One truth (the control), two things rendered from it (the control's options and the roster's capsules)
+### 31.2 One truth (the control), and everything else rendered from it
 
 The value lives where it always lived — on the native `<select>` that is `[data-filter-assignee]`
 — and the round is careful not to give it a second home. A JS variable or a stored preference
@@ -2179,104 +2187,137 @@ What the round does add is that a name is **not in the document**. The four stat
 the two *kinds* (`human`, `agent`), the local human (`me`) and the un-filtered resting value
 (`all`); a roster name is none of those. So the named option is **generated when it is needed
 and removed when the control leaves it**, at most one at a time, always inside the control
-itself — and `renderAssigneeFilter()` is the single writer of both halves:
+itself — and `renderAssigneeFilter()` is the single writer of every half:
 
 | It reads | It writes |
 |---|---|
 | `[data-filter-assignee]`.value | the control's own named option (added when the value is a name, removed when it is not) |
-| | every `[data-assignee-item]`: `data-assignee-active` (`"true"` for the name in force), the name button's `aria-pressed`, and the `✕`'s `hidden` |
+| | every `[data-assignee-item]`: `data-assignee-active` (`"true"` for the name in force) and the name button's `aria-pressed` |
+| | the one `[data-assignee-clear]` beside the control: `hidden` — true unless the value is a **given name** |
 
-Because the capsule is *derived* rather than *toggled*, every path that changes the value ends in
-the same restatement — a press on a name, a press on the `✕`, a press on the name already in
-force, a human using the native `<select>`, and `resetFilters()` — and the roster cannot state a
-name the control is not showing. Measured: after a press, exactly **one** item is active and
-exactly **one** named option exists; after the `✕`, zero and zero; switching names leaves one of
-each, with the old name's option gone.
+Because the capsule and the `✕` are *derived* rather than *toggled*, every path that changes the
+value ends in the same restatement — a press on a name, a press on the `✕`, a press on the name
+already in force, a human using the native `<select>`, and `resetFilters()` — and the roster
+cannot state a name the control is not showing. Measured: after a press, exactly **one** item is
+active, exactly **one** named option exists and the `✕` is shown; after the `✕`, zero, zero and
+hidden; switching names leaves one of each, with the old name's option gone.
 
 The round also opens the assignee filter to a value the *board* did not previously produce. The
 **matching rule is the card's own attribute** (`data-assignee`) — the field the drawer already
 shows and the cards already carry — so the control adds no second source for who a card belongs
 to, and `me` / `human` / `agent` keep their R11 meanings.
 
-### 31.3 The capsule is a shell around the name, and it costs no new token
+The named option is `[data-assignee-filter-option]`, deliberately **not** `[data-assignee-option]`:
+B22 already owns that hook on the dialogs' assignee menus (14 bare seats), and the roster control
+binds it **document-wide**, so a seat of that name would be answered by the wrong control. Measured
+after the rename: 14 seats, all of them inside `[data-assignee-menu]`, and none of this round's
+elements in that selector.
 
-A selected roster name wears a **capsule**: a 20px pill with a `1px --color-td-line-strong`
-edge, a `999px` radius, the `--color-td-active` bed, a `2px` gap and a 14px `✕` at its end. The
-shell sits on a **wrapper** (`[data-assignee-item]`) that holds the name button and the `✕` as
-**siblings** — a nested `<button>` is illegal, and the wrapper is what makes two controls one
-item. Putting the shell on the wrapper rather than on the name button is deliberate: the face
-stays exactly the text it was, in the same `.td-mono` at the same size, so the *press target* and
-the *reading* are both unchanged and only the surrounding state is new.
+### 31.3 The capsule is a bed around the name, and it spends no width and no new token
 
-The wrapper is also what keeps the row still. The capsule is shorter than the row and the row's
-height is fixed, so selecting a name moves nothing: measured, all four `[data-agent-row]` heights
-are identical before and after a press (**delta 0**). R11's resting face — no shell, no border,
-no padding — is untouched, because the capsule's rules are scoped to
-`[data-assignee-active="true"]`; at rest the wrapper is an inline span and the row reads exactly
-as R11 left it.
+A selected roster name wears a **capsule** — and the capsule's defining property is that it is
+**width-neutral**. Its padding is `0 6px` and its inline margin is `-6px`: the six pixels it adds
+on each side are taken straight back, so the item's advance along the row's one line is exactly
+what it was at rest. That is not a detail of taste; it is the round's contract, because the row
+it lives in has 143 of its 144px spent and the flat name already fits by one pixel. Measured with
+the capsule on, at **all five tiers**: zero clipped pixels on every roster row, i.e. **no name is
+ever ellipsized**. The bed is `border-radius: 999px` filled with `--color-td-accent-soft`, and
+the name inside it takes `--color-td-accent`, so the capsule reads as one accent mark drawn from
+two tokens that already existed.
 
-The `✕` is static markup that is `hidden` until the name is in force, which is what makes the
-script-off document honest: a reader without the script gets all six names and **no** selection,
-so every `✕` is legitimately hidden. Both the `✕` and the name are real `<button>`s, so
-`Enter`/`Space` and the `:focus-visible` rings come from the element, not from a key handler —
-measured, the name takes R11's ring and the `✕` takes `--color-td-focus`.
+There is **no border and no fixed height**: the item stays an inline box on the row's line, and
+the shell is a bed rather than a frame. The price of that is that the bed's *box* is 6px wider
+than the text on each side, and the bed therefore bleeds — over the comma that follows, or past
+the row's first character. Where the bleed leaves the host it is clipped: `.td-side-name` carries
+`overflow: hidden` (that is the rule R8's ellipsis is built on), so a name that **starts** its host
+shows a bed with a flat outer edge while a name in the middle or at the end shows both round
+caps. Measured: `clipL = 6px` for the four first-in-host names, `clipL = clipR = 0px` for the
+other two. Nothing about the text moves, and nothing is hidden — the contract's own indicator
+(`clippedPx`) is 0 everywhere — but the asymmetry is real and is recorded as an open item
+(`design/fidelity-r13.md` §8 U-6) rather than silently smoothed.
 
-**No token and no colour was added.** The capsule and the `✕` read only `--color-td-*` values
-that already existed, the glyph is text (`✕`, no image, no icon font), and the declared `:root`
-registry in the rebuilt stylesheet is **byte-identical** to the base — 205 declarations, none
-added, removed or reworded. The rebuild adds **34 lines and removes none**, and every one of them
-is a rule the round meant to write.
+The shell sits on a **wrapper** (`[data-assignee-item]`) rather than on the name button, and the
+wrapper holds exactly one child. Putting the bed on the wrapper is deliberate: the face stays
+exactly the text it was, in the same `.td-mono` at the same size, so the *press target* and the
+*reading* are both unchanged and only the surrounding state is new. The wrapper is also what keeps
+the row still: measured, all four `[data-agent-row]` heights are identical before and after a
+press (**delta 0**). R11's resting face — no shell, no border, no padding — is untouched, because
+the capsule's rules are scoped to `[data-assignee-active="true"]`; at rest the wrapper is a bare
+inline span and the row reads exactly as R11 left it.
 
-### 31.4 The `✕` takes the name out and touches nothing else
+**No token and no colour was added.** The bed, the name's colour and the `✕` read only
+`--color-td-*` values that already existed, the glyph is text (`✕`, no image, no icon font), and
+the declared `:root` registry in the rebuilt stylesheet is **byte-identical** to the base — 205
+declarations, none added, removed or reworded. The rebuild replaces 8 lines with 6 and adds no
+class selector the round did not mean to write.
+
+### 31.4 The `✕` lives beside the control, and takes the name out of it
+
+The removal affordance is **one** `[data-assignee-clear]` — a compact `✕` whose static markup
+sits immediately after the assignee `<select>` in B04. It is there rather than in the roster
+because the roster row has no room to spend: the row is one line with 1px of slack, and any
+second button inside it could only elide a name. The button's own semantics are the request's:
+**only a given name has one**. `all` is the select's own first row and `me` / `human` / `agent`
+are rows of the select, so none of the four needs a second way out — the `✕` is `hidden` for all
+of them and appears only while the control states a name.
 
 Terry's request is precise — the `✕` should remove *the assignee condition* — and the round
 treats the rest of the bar as out of scope: no view switch, no status change (the two in-flight
 statuses stay in force), no priority, label or search change, no menu opened or closed, and no
-toast. The event is stopped at the button, so a press on it can never fall through to the
-wrapper and be read as a press on the name — which would re-route instead of clearing.
+toast. The event is stopped at the button. Pressing the name **already in force** is the same
+move, and the two paths are one line of code apart by design.
+
+The `✕` is static markup that is `hidden` at rest, which is what makes the script-off document
+honest: a reader without the script gets all six names and **no** selection, so the button is
+legitimately hidden. It is a real `<button>`, so `Enter`/`Space` and the `:focus-visible` ring
+come from the element, not from a key handler — measured, it takes `--color-td-focus`.
 
 What that leaves is a filter bar that can say *Status: In Progress +1* and *Assignee: All* after
 a press that never left the list view, and a roster with no capsule — the frame the round's
 capture set calls "cleared". Reset still lives on `Clear` alone and needs no new branch: the
-control is set back to `all`, and the roster and the options follow from the same restatement
-that already runs on every filter pass.
+control is set back to `all`, and the roster, the options and the `✕` follow from the same
+restatement that already runs on every filter pass.
 
 ### 31.5 Checked
 
 Measured in a real browser against the prototype, over a loopback static server, at 1512×950 in
-both languages unless stated. The round's own contract runs **45 assertions — A (structure),
-B (geometry / computed style) and C (interaction) — and all 45 pass**; the script-off pass is
+both languages unless stated. The round's own contract runs **55 assertions — A (structure),
+B (geometry / computed style) and C (interaction) — and all 55 pass**; the script-off pass is
 run separately and the same structure assertions hold with scripting disabled.
 
-- **Structure.** Six `[data-assignee-item]`, each with exactly one name button and one `✕` keyed
-  to its own name; at rest every item is inactive and every `✕` is hidden and unpainted; the
-  control holds **four** static options and **zero** named ones. With scripting off: six items,
-  all six names readable, six `✕` hidden, four static options.
-- **Geometry.** The selected item computes to `border-radius: 999px`, `border-top-width: 1px`,
-  `display: inline-flex`; a resting item has **0px** of border. No row moves (delta 0 on all
-  four). The document does not scroll sideways at any of the five tiers
-  (1512/1240/980/760/430), and below 1024 — where the row's text is hidden whole — the items go
-  with it: not visible at 980, 760 or 430, visible at 1240 and 1512.
+- **Structure.** Six `[data-assignee-item]`, each with exactly one name button and **no** `✕`;
+  at rest every item is inactive; the document holds exactly **one** `[data-assignee-clear]`, in
+  the filter bar, `hidden` and unpainted; the control holds **four** static options and **zero**
+  named ones. With scripting off: six items, all six names readable, the one `✕` present and
+  hidden, four static options.
+- **Geometry.** The selected item computes to `border-radius: 999px`, `padding-inline: 6px`,
+  `margin-inline: -6px`, the resolved `--color-td-accent-soft` bed and the resolved
+  `--color-td-accent` name, with **0px** of border; a resting item has 0px of border too. No row
+  moves (delta 0 on all four). **No roster row is clipped at any of the five tiers** (1512 /
+  1240 / 980 / 760 / 430), with the capsule on. The document does not scroll sideways at any of
+  them, and below 1024 — where the row's text is hidden whole — the items go with it: not visible
+  at 980, 760 or 430, visible at 1240 and 1512.
 - **Interaction.** A press on `jobs` lands on the list with `data-filter-status-value` =
   `in_progress,in_review` and the control on `jobs`, and the list shows **exactly the cards the
   script independently computes** for that pair (1 of 12 in the demo project); exactly one
-  capsule is active and its `✕` is shown; the `✕` returns the control to `all`, drops the named
-  option, restores the roster, keeps the status set and stays in the list; switching to `linus`
-  leaves exactly one capsule and exactly one named option; a second press on it clears; and
-  `Enter` on either focused button reproduces the two presses. Zero console errors, zero page
-  errors, and no toast from either press.
-- **The round's one measured cost.** The capsule is **20px wider** than the flat name it
-  replaces (the claude row's line goes 143px → 163px) while its single-line host is 144px, so at
-  1512 the row's last name is ellipsized by **19px**. §3.2's contract protects the row's *height*
-  and says nothing about its width; the round implements the specified numbers and records the
-  measurement as an open item (`design/fidelity-r13.md` §8 U-3) rather than choosing a remedy.
-- **Hook ownership.** `[data-assignee-option]` was **already taken** by B22's dialog menus (14
-  seats, bare attributes). The round keeps the specified hook name, scopes every read to the
-  control it means, and adds no seat to B22's (measured 14 before and after); the collision is
-  recorded in `fidelity-r13.md` §8 U-1.
+  capsule is active and the bar's `✕` is shown; the `✕` returns the control to `all`, drops the
+  named option, restores the roster, hides itself again, keeps the status set and stays in the
+  list; switching to `linus` leaves exactly one capsule and exactly one named option; a second
+  press on it clears; and `Enter` on either focused button reproduces the two presses. Zero
+  console errors, zero page errors, and no toast from either press.
+- **The revision's measured cost.** The width-neutral bed buys the row's line its width back and
+  pays for it with a bleed the host clips: the four names that begin their row show a bed whose
+  outer cap is cut (6px), the two that do not show both caps. No text is moved and no name is
+  elided — `clippedPx` is 0 at every tier — but the asymmetry is a real frame, so it is recorded
+  as an open item (`design/fidelity-r13.md` §8 U-6) rather than left to be discovered.
+- **Hook ownership.** `[data-assignee-option]` belongs to B22's dialog menus (14 seats, bare
+  attributes) and the roster control binds it document-wide; this round's named option is
+  therefore `[data-assignee-filter-option]`. Measured after the rename: 14 B22 seats, all inside
+  `[data-assignee-menu]`, and none of the round's elements in that selector.
 - **One new i18n seat.** The `✕` needs an accessible name and no existing key reads as "remove
   the assignee filter", so the round adds exactly one — `assignee.clear` — which is what moves
-  the catalogue by one in each language and the markup's `aria-label` hooks by six.
+  the catalogue by one in each language (281 in both, mirrored) and the markup's `aria-label`
+  hooks from 72 to 73.
 
 ### 31.6 Rejected alternatives
 
@@ -2288,6 +2329,8 @@ run separately and the same structure assertions hold with scripting disabled.
 | Leave the name out of the filter and keep R11's route-only press | That is the defect: the list would show everyone's in-flight work under a name's heading |
 | Clear the status set along with the name when the `✕` is pressed | The request is explicit — the `✕` removes *the assignee condition*. Dropping the status set too would silently widen the list, which is the opposite of what the surface just promised |
 | Put the `✕` inside the name button (one control, two targets) | Nested `<button>` is illegal HTML, and a single button cannot both re-route and clear |
-| Always render the `✕` and hide it with a class | The script-off document must be honest without the script; a `hidden` attribute on static markup gives a reader with no script a roster with no selection, rather than six stray crosses |
+| **Carry the `✕` inline, inside the roster's capsule** (the round's first pass) | The row's single line is 143px of a 144px host. The capsule's own padding already spends 12px, and a 14px button inside it makes the line 163px — the last name is ellipsized by 19px and the round's own indicator fails. Widening the sidebar, narrowing the padding or overlaying the `✕` on the name all trade a reading or a target for the mark; the honest move is to put the removal affordance where the room is, beside the control whose value it clears |
+| Always render the `✕` and hide it with a class | The script-off document must be honest without the script; a `hidden` attribute on static markup gives a reader with no script a roster with no selection, rather than a stray cross |
 | Store the chosen name on the element and read it back instead of reading the control | It would be a second truth beside the control's value, and the first thing to drift when `Clear` resets the control |
-| Give the capsule an accent bed, like a primary action | The accent is the brand line and belongs to primary actions; a selected filter is a state, not a call to action, and the round's contract forbids a new hue |
+| Give the capsule an accent bed, like a primary action | The accent is the brand line and belongs to primary actions; a selected filter is a state, not a call to action — the round uses only the accent's *soft* tint and its ink, both existing tokens |
+| Make the capsule a bordered 20px pill, as the first pass drew it | A border and a fixed height make a *shell*, and a shell has to be wide enough to look like one; the bed plus the cancelled padding is the only form that adds the mark without adding the width |

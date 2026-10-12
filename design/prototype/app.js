@@ -973,39 +973,52 @@
   }
 
   /* The single writer of the assignee control's *restatement*: the roster's
-     capsule. It reads the control's value — the one truth (B04) — and every
-     `[data-assignee-item]` follows from it in the same pass: the name in force
-     wears `data-assignee-active="true"` and shows its `x`, the other five are
-     restored. So the capsule and the control cannot contradict each other, and
-     a restatement of the roster is the same move whatever changed the value —
-     a press on a name, the `x`, the control itself, or `resetFilters()`.
+     capsule and the one removal affordance. It reads the control's value — the
+     one truth (B04) — and both follow from it in the same pass: the name in
+     force wears `data-assignee-active="true"`, the other five are restored, and
+     the `x` appears only while the value is a *given name*. So the capsule, the
+     `x` and the control cannot contradict each other, and a restatement is the
+     same move whatever changed the value — a press on a name, the `x`, the
+     control itself, or `resetFilters()`.
      It also reconciles the *options*: a name that is not in force is not in the
-     document, so the control can never offer a name the roster is not showing. */
+     document, so the control can never offer a name the roster is not showing.
+     The hook is `[data-assignee-filter-option]`, not `[data-assignee-option]`:
+     that name is B22's (the dialogs' assignee menus, 14 bare seats) and the
+     roster control binds it document-wide, so a seat here would be answered by
+     that control instead of by nothing. */
   function renderAssigneeFilter() {
     var value = assigneeFilterValue();
     var named =
       ASSIGNEE_STATIC_VALUES.indexOf(value) === -1 ? value : null;
     var $select = $("[data-filter-assignee]");
 
-    $select.find("[data-assignee-option]").each(function () {
-      if ($(this).attr("data-assignee-option") !== named) $(this).remove();
+    $select.find("[data-assignee-filter-option]").each(function () {
+      if ($(this).attr("data-assignee-filter-option") !== named) $(this).remove();
     });
 
-    if (named && !$select.find('[data-assignee-option="' + named + '"]').length) {
+    if (
+      named &&
+      !$select.find('[data-assignee-filter-option="' + named + '"]').length
+    ) {
       $("<option>")
-        .attr("data-assignee-option", named)
+        .attr("data-assignee-filter-option", named)
         .attr("value", named)
         .text(named)
         .appendTo($select)
         .prop("selected", true);
     }
 
+    /* The `x` is for a *given name* and for nothing else: `all` is the
+       un-filtered state (the select's own first row) and the three kinds are
+       rows of the select, so neither needs a second way out. A name is the only
+       value the select did not ship with. */
+    $("[data-assignee-clear]").prop("hidden", named === null);
+
     $("[data-assignee-item]").each(function () {
       var $item = $(this);
       var active = $item.attr("data-assignee-item") === value;
       $item.attr("data-assignee-active", String(active));
       $item.find("[data-agent-assignee]").attr("aria-pressed", String(active));
-      $item.find("[data-assignee-clear]").prop("hidden", !active);
     });
   }
 
@@ -1015,9 +1028,9 @@
   function writeAssigneeFilter(value) {
     var $select = $("[data-filter-assignee]");
     if (ASSIGNEE_STATIC_VALUES.indexOf(value) === -1) {
-      $select.find("[data-assignee-option]").remove();
+      $select.find("[data-assignee-filter-option]").remove();
       $("<option>")
-        .attr("data-assignee-option", value)
+        .attr("data-assignee-filter-option", value)
         .attr("value", value)
         .text(value)
         .appendTo($select);
@@ -3187,7 +3200,7 @@
         var name = $(this).attr("data-assignee");
         /* A press on the name already in force is the capsule's own close, not
            a re-route: it removes the assignee condition and nothing else —
-           status and view stay, which is what the `x` below does too. */
+           status and view stay, which is what the bar's `x` does too. */
         if (assigneeFilterValue() === name) {
           writeAssigneeFilter("all");
           applyFilters();
@@ -3200,11 +3213,13 @@
       }
     );
 
-    /* R13 ④ — the capsule's `x` removes the assignee condition *alone*: no
-       view switch, no status change, no priority/label/search change, no menu,
-       no toast. It stops the event rather than let the roster item see it, so
-       the press can never fall through to the name's own route in ②. */
-    $("[data-agents-presence]").on(
+    /* R13 ④ — the `x` beside the assignee select removes the assignee condition
+       *alone*: no view switch, no status change, no priority/label/search
+       change, no menu, no toast. It lives in the bar, next to the control whose
+       value it takes back — the roster's capsule has no room for it, and the
+       value it clears is the control's, not a row's. The event stops rather than
+       travels, so a press here can never reach a roster name behind the bar. */
+    $("[data-filters]").on(
       "click",
       "[data-assignee-clear]",
       function (event) {
