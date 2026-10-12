@@ -490,6 +490,35 @@ export async function run() {
     });
     page.on("pageerror", (err) => pageErrors.push(String(err)));
 
+    /**
+     * R9 ③ — the harness, not the app, is what lingers on a list read.
+     *
+     * The two list states are exclusive at every instant, which is only
+     * observable *while* the read is in flight. The fixture API answers in a
+     * couple of milliseconds, so the harness holds the request open with its own
+     * route handler and samples inside the window. Nothing in `web/src` is slowed
+     * down for the check, and the contract fixes the two states, never their
+     * duration (`design/fidelity-r9.md` §5 C′5).
+     */
+    let tasksDelayMs = 0;
+    await page.route("**/api/v1/tasks*", async (route) => {
+      if (tasksDelayMs > 0) await new Promise((resolveDelay) => setTimeout(resolveDelay, tasksDelayMs));
+      await route.continue();
+    });
+
+    /**
+     * Enter the list view and wait for its read to land. Every `when: "list
+     * view"` rule is about the `data` state — a sampling that landed inside the
+     * `loading` window would read "nothing matches" for the row rules, which
+     * says nothing about the app (R9 ③).
+     */
+    const waitForListSettled = () =>
+      page.waitForFunction(
+        () => document.querySelector("[data-list]")?.getAttribute("data-list-state") === "data",
+        null,
+        { timeout: 10_000 },
+      );
+
     await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector("[data-column]", { timeout: 8000 });
     await page.waitForTimeout(600);
@@ -498,10 +527,14 @@ export async function run() {
     const listRules = EVALUATED_RULES.filter((e) => e.rule.when === "list view").map((e) => ({ block: e.block, rule: e.rule }));
     const railRules = EVALUATED_RULES.filter((e) => e.rule.when === "rail").map((e) => ({ block: e.block, rule: e.rule }));
     const panelRules = EVALUATED_RULES.filter((e) => e.rule.when === "panel open").map((e) => ({ block: e.block, rule: e.rule }));
+    // The `loading` half of R9 ③ — evaluated in its own section below, with the
+    // read held open.
+    const listLoadingRules = EVALUATED_RULES.filter((e) => e.rule.when === "list loading").map((e) => ({ block: e.block, rule: e.rule }));
 
     const boardResults = await page.evaluate(evaluateRules, boardRules);
     await page.click('[data-view="list"]');
-    await page.waitForTimeout(200);
+    await waitForListSettled();
+    await page.waitForTimeout(120);
     const listResults = await page.evaluate(evaluateRules, listRules);
     // The list's own geometry that a per-element rule cannot state: one dot per
     // status chip, and a rule *between* rows (the first draws no top edge).
@@ -998,7 +1031,8 @@ export async function run() {
     await page.setViewportSize({ width: 1512, height: 950 });
     await page.waitForTimeout(150);
     await page.click('[data-view="list"]');
-    await page.waitForTimeout(200);
+    await waitForListSettled();
+    await page.waitForTimeout(120);
     const headWide = await measureListHead();
 
     const R8_COLUMNS = [
@@ -1182,6 +1216,232 @@ export async function run() {
     await page.click("[data-create-task] [data-modal-close]");
     await page.waitForTimeout(200);
 
+    // ---- R9 · one dismiss rule, one filter control, two list states ----------
+    //
+    // The three facts the declarable vocabulary cannot state: *which half of the
+    // list is on screen at one instant* (a relation between two elements), *three
+    // controls' heights against each other* (again a relation), and *where a
+    // floating control went after a real pointer click* (a sequence). Everything
+    // else this round adds is a rule the contract now carries.
+    const r9Failures = [];
+    const r9Check = (ok, message) => { if (!ok) r9Failures.push(message); };
+
+    await page.setViewportSize({ width: 1512, height: 950 });
+    await page.waitForTimeout(150);
+
+    /** Both dismiss members, read as one record. */
+    const readDismiss = () =>
+      page.evaluate(() => {
+        const members = [...document.querySelectorAll("[data-dismiss-on-outside]")];
+        return {
+          members: members.length,
+          allDropdowns: members.every((el) => el.tagName === "DETAILS" && el.classList.contains("dropdown")),
+          named: members.filter((el) => el.hasAttribute("data-project-switcher") || el.hasAttribute("data-filter-label")).length,
+          open: document.querySelectorAll("[data-dismiss-on-outside][open]").length,
+          switcherOpen: document.querySelector("[data-project-switcher]")?.hasAttribute("open") ?? null,
+          labelOpen: document.querySelector("[data-filter-label]")?.hasAttribute("open") ?? null,
+        };
+      });
+
+    /** Open a member by its own trigger and report the whole register. */
+    const openMember = async (trigger) => {
+      await page.click(trigger);
+      await page.waitForTimeout(90);
+      return readDismiss();
+    };
+
+    /** A click the page cannot intercept — the contract's `synthetic` (§1 R3). */
+    const clickSynthetic = async (selector) => {
+      await page.evaluate((sel) => document.querySelector(sel)?.dispatchEvent(new MouseEvent("click", { bubbles: true })), selector);
+      await page.waitForTimeout(80);
+    };
+
+    // A1/A3 — the register: both members are daisyUI dropdowns, and membership is
+    // the attribute itself, so the count is a floor rather than "exactly two".
+    const register = await readDismiss();
+    r9Check(register.members >= 2, `${register.members} dismiss member(s), expected at least 2`);
+    r9Check(register.allDropdowns, "a [data-dismiss-on-outside] is not a `details.dropdown`");
+    r9Check(register.named === 2, `the register no longer holds both named members (${register.named})`);
+
+    // ①-1/C1 — the switcher opens from its own `<summary>`.
+    const switcherOpened = await openMember("[data-project-switcher] > summary");
+    r9Check(switcherOpened.switcherOpen === true, "the project switcher did not open");
+
+    // ①-1/C2 — a click elsewhere closes it (dispatched, so the panel's own
+    // coverage of the bar cannot decide the outcome — the handler is what is
+    // under test here).
+    await clickSynthetic("[data-filter-count]");
+    r9Check((await readDismiss()).open === 0, "the switcher stayed open after a synthetic outside click");
+
+    // ①-2/C3 — and a *real* pointer click on an inert point closes it. This is
+    // the half the panel used to swallow.
+    await openMember("[data-project-switcher] > summary");
+    await page.mouse.click(4, 4);
+    await page.waitForTimeout(80);
+    r9Check((await readDismiss()).open === 0, "the switcher stayed open after a real pointer click outside");
+
+    // ①-3/C6 — Escape closes it.
+    await openMember("[data-project-switcher] > summary");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(80);
+    r9Check((await readDismiss()).open === 0, "Escape left the switcher open");
+
+    // ②-1/②-2/C4 — the label filter answers the *same* rule: it is the second
+    // member, not a second implementation.
+    const labelOpened = await openMember("[data-filter-label] > summary");
+    r9Check(labelOpened.labelOpen === true, "the label filter did not open");
+    await clickSynthetic("[data-filter-count]");
+    r9Check((await readDismiss()).open === 0, "the label filter stayed open after a synthetic outside click");
+    await openMember("[data-filter-label] > summary");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(80);
+    r9Check((await readDismiss()).open === 0, "Escape left the label filter open");
+
+    // ①-4/②-3/C5 — one at a time. The second trigger's click is dispatched for
+    // the same reason as above: the first member's own panel covers the bar
+    // while it is open (that coverage is exactly what Terry hit in the *unfixed*
+    // state, and the fix is the dismissal, not the geometry).
+    await openMember("[data-project-switcher] > summary");
+    await clickSynthetic("[data-filter-label] > summary");
+    const both = await readDismiss();
+    r9Check(both.open <= 1, `${both.open} dismiss members are open at once`);
+    r9Check(both.labelOpen === true && both.switcherOpen === false, "opening the label filter did not take the switcher down");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(80);
+
+    // The dismissal's other half, which the contract's five assertions do not
+    // name but the prototype's own option handlers do: choosing is what the panel
+    // was open for, so the panel closes with the choice (`design/prototype/app.js`
+    // — the project option clears `open`, the label option calls
+    // `closeLabelMenu()`). Both clicks land on the *first* option, which is the
+    // state the fixture is already in, so the board is left as it was found.
+    await openMember("[data-filter-label] > summary");
+    await page.click("[data-filter-label-option]");
+    await page.waitForTimeout(90);
+    r9Check((await readDismiss()).labelOpen === false, "choosing a label left the menu open");
+    await openMember("[data-project-switcher] > summary");
+    await page.click('[data-project-option="MeerkatTaskPanel"]');
+    await page.waitForTimeout(120);
+    r9Check((await readDismiss()).switcherOpen === false, "choosing a project left the switcher open");
+
+    // §5 B3 — the relation the round is about: three controls, one height. An
+    // absolute figure is the prototype's platform value; *equal* is the fact
+    // Terry read as "not the same component" when it was 30 / 30 / 28.
+    // B11 — the caret lives in the room the right padding reserves: 14px, 6px
+    // from the trigger's padding box (7px from its border box, §1 R9-1), centred
+    // on the trigger's own centre line.
+    const controls = await page.evaluate(() => {
+      const box = (selector) => {
+        const el = document.querySelector(selector);
+        return el ? el.getBoundingClientRect() : null;
+      };
+      const round = (n) => Math.round(n * 100) / 100;
+      const height = (selector) => {
+        const rect = box(selector);
+        return rect ? round(rect.height) : null;
+      };
+      const trigger = document.querySelector(".td-label-trigger");
+      const triggerRect = box(".td-label-trigger");
+      const caretRect = box(".td-label-trigger .td-icon-sm");
+      const assigneeRect = box("[data-filter-assignee]");
+      return {
+        assignee: height("[data-filter-assignee]"),
+        priority: height("[data-filter-priority]"),
+        label: height(".td-label-trigger"),
+        // How far the label control is off the selects' own line — the second
+        // half of "排版未对齐": the two selects' wrappers used to carry a stray
+        // bottom margin that floated them 6px above the row's centre.
+        lineOffset: triggerRect && assigneeRect ? round(Math.abs(triggerRect.top - assigneeRect.top)) : null,
+        carets: document.querySelectorAll(".td-label-trigger .td-icon-sm").length,
+        caret: caretRect && triggerRect ? {
+          width: round(caretRect.width),
+          height: round(caretRect.height),
+          fromPaddingBoxRight: round(triggerRect.right - Number.parseFloat(getComputedStyle(trigger).borderRightWidth) - caretRect.right),
+          fromBorderBoxRight: round(triggerRect.right - caretRect.right),
+          centreDelta: round(Math.abs((caretRect.top + caretRect.bottom) / 2 - (triggerRect.top + triggerRect.bottom) / 2)),
+        } : null,
+      };
+    });
+    r9Check(
+      controls.assignee !== null && controls.assignee === controls.priority && controls.assignee === controls.label,
+      `the three filter controls are ${controls.assignee}/${controls.priority}/${controls.label}px tall — they must be equal`,
+    );
+    r9Check(controls.lineOffset !== null && controls.lineOffset <= 1, `the label control is ${controls.lineOffset}px off the selects' line`);
+    r9Check(controls.carets === 1, `${controls.carets} carets inside the trigger, expected 1`);
+    r9Check(controls.caret !== null && controls.caret.width === 14 && controls.caret.height === 14, `the caret is ${controls.caret?.width}×${controls.caret?.height}, expected 14×14`);
+    r9Check(controls.caret?.fromPaddingBoxRight === 6, `the caret sits ${controls.caret?.fromPaddingBoxRight}px from the padding box, expected 6`);
+    r9Check(controls.caret?.fromBorderBoxRight === 7, `the caret sits ${controls.caret?.fromBorderBoxRight}px from the border box, expected 7`);
+    r9Check(controls.caret?.centreDelta <= 1, `the caret is ${controls.caret?.centreDelta}px off the trigger's centre line`);
+
+    // ③ — the two states, sampled from inside the read. `[data-skeleton]` and
+    // `[data-list-rows]` are counted *as the pair they are*: at every instant
+    // exactly one of them is on screen (B9, contract C′4 — the state and the
+    // skeleton's `hidden` are one write, so they are read as one).
+    const readListPair = () =>
+      page.evaluate(() => {
+        const list = document.querySelector("[data-list]");
+        const skeleton = document.querySelector("[data-skeleton]");
+        const rows = document.querySelector("[data-list-rows]");
+        const display = (el) => (el ? getComputedStyle(el).display : null);
+        return {
+          state: list?.getAttribute("data-list-state") ?? null,
+          skeletonHidden: skeleton?.hasAttribute("hidden") ?? null,
+          skeletonDisplay: display(skeleton),
+          rowsDisplay: display(rows),
+          rowChildren: rows ? rows.children.length : null,
+          visiblePair: [skeleton, rows].filter((el) => el && getComputedStyle(el).display !== "none").length,
+        };
+      });
+
+    await page.click('[data-view="board"]');
+    await page.waitForTimeout(120);
+
+    const runListStates = async (label) => {
+      tasksDelayMs = 1200;
+      await page.click('[data-view="list"]');
+      await page.waitForTimeout(180);
+      const loading = await readListPair();
+      const loadingResults = await page.evaluate(evaluateRules, listLoadingRules);
+      tasksDelayMs = 0;
+      await waitForListSettled();
+      await page.waitForTimeout(120);
+      const settled = await readListPair();
+      return { label, loading, loadingResults, settled };
+    };
+
+    const listEn = await runListStates("en");
+    r9Check(listEn.loading.state === "loading", `in flight: data-list-state is ${listEn.loading.state}`);
+    r9Check(listEn.loading.skeletonHidden === false && listEn.loading.skeletonDisplay === "block", "in flight: the skeleton is not the visible half");
+    r9Check(listEn.loading.rowsDisplay === "none", `in flight: the rows' host is ${listEn.loading.rowsDisplay}`);
+    r9Check(listEn.loading.rowChildren === 0, `in flight: the rows' host holds ${listEn.loading.rowChildren} child(ren), expected none`);
+    r9Check(listEn.loading.visiblePair === 1, `in flight: ${listEn.loading.visiblePair} halves are visible, expected 1`);
+    r9Check(listEn.settled.state === "data", `settled: data-list-state is ${listEn.settled.state}`);
+    r9Check(listEn.settled.skeletonHidden === true && listEn.settled.skeletonDisplay === "none", "settled: the skeleton is not the hidden half");
+    r9Check(listEn.settled.rowsDisplay === "block", `settled: the rows' host is ${listEn.settled.rowsDisplay}`);
+    r9Check(listEn.settled.rowChildren >= 1, `settled: the rows' host holds ${listEn.settled.rowChildren} child(ren), expected at least one`);
+    r9Check(listEn.settled.visiblePair === 1, `settled: ${listEn.settled.visiblePair} halves are visible, expected 1`);
+
+    // C9 — the copy changes with the language; the state machine does not.
+    await page.evaluate(() => document.querySelector('[data-lang-option="zh"]')?.click());
+    await page.waitForTimeout(150);
+    await page.click('[data-view="board"]');
+    await page.waitForTimeout(120);
+    const listZh = await runListStates("zh");
+    r9Check(listZh.loading.state === "loading" && listZh.loading.visiblePair === 1, "zh: the in-flight state is not the loading half alone");
+    r9Check(listZh.settled.state === "data" && listZh.settled.visiblePair === 1, "zh: the settled state is not the data half alone");
+    r9Check(listZh.settled.rowChildren >= 1, "zh: the settled list has no rows");
+    // …and the contract's own `when: "list loading"` rules. The English run's
+    // records join `results` below, so they are counted and gated with every
+    // other rule; the Chinese run's are checked here, where the second window
+    // lives.
+    for (const failure of listZh.loadingResults.filter((record) => !record.ok)) {
+      r9Check(false, `zh · loading rule ${failure.block} ${failure.kind} ${failure.selector ?? failure.probe} — ${failure.detail}`);
+    }
+    await page.evaluate(() => document.querySelector('[data-lang-option="en"]')?.click());
+    await page.waitForTimeout(150);
+    await page.click('[data-view="board"]');
+    await page.waitForTimeout(120);
+
     // --- five viewports, none may overflow horizontally -----------------------
     const viewports = [];
     for (const width of [1512, 1240, 980, 760, 500, 430]) {
@@ -1358,7 +1618,10 @@ export async function run() {
     check(waitingView.boardHidden === true, "the board must be hidden while the waiting view is up");
     check(waitingView.emptyShown === false, "a non-empty view must not show the empty state");
 
-    const results = [...boardResults, ...listResults, ...railResults, ...panelResults, ...drawerResults];
+    // The in-flight list rules are answered inside the r9 section's own window
+    // (the read is held open there), so their records are folded in here and
+    // every declared rule is counted exactly once.
+    const results = [...boardResults, ...listResults, ...railResults, ...panelResults, ...drawerResults, ...listEn.loadingResults];
     const failures = results.filter((r) => !r.ok);
     const viewportFailures = viewports.filter((v) => !v.ok);
     return {
@@ -1373,6 +1636,7 @@ export async function run() {
       r6: { failures: r6Failures, themeSweep, titleGeometry, listDetail, panel: panelGeometry, rail },
       r7: { failures: r7Failures, wide, rail: railBand, drawerHead: closeR7 },
       r8: { failures: r8Failures, headWide, headNarrow, identifiers, drawerIdentifier, dark, light },
+      r9: { failures: r9Failures, register, controls, listEn, listZh, loadingRules: listLoadingRules.length },
       geometry,
       counts: { rules: results.length, failed: failures.length, ...geometry },
       fixtureTasks: data.tasks.length,
@@ -1424,6 +1688,12 @@ if (isEntryPoint) run().then(
       } else {
         console.log("R8 (fidelity) — the six-column head, the dark dialog's three layers and the identifier's cap all pass");
       }
+      if (report.r9.failures.length > 0) {
+        console.log(`R9 (fidelity) — ${report.r9.failures.length} failed:`);
+        for (const failure of report.r9.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log("R9 (fidelity) — one dismiss rule, one filter control and the list's two exclusive states all pass");
+      }
     }
     const interactionOk =
       report.interactions.drawerOpened &&
@@ -1442,6 +1712,7 @@ if (isEntryPoint) run().then(
       report.r6.failures.length === 0 &&
       report.r7.failures.length === 0 &&
       report.r8.failures.length === 0 &&
+      report.r9.failures.length === 0 &&
       interactionOk;
     process.exit(ok ? 0 : 1);
   },

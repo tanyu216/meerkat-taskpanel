@@ -236,6 +236,38 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **One light-dismiss rule for the floating controls, the label filter aligned to its two
+  selects, and the list's two states made exclusive.** Three findings from Terry's
+  2026-10-12 review of the board.
+  The top bar's project switcher never closed by itself: there was no outside-click path at
+  all, so an open switcher stayed up until its own list was clicked — and since its floating
+  panel covers the filters bar, it also swallowed the next click on the label control. Every
+  floating control now joins **one** document-level rule by carrying `data-dismiss-on-outside`:
+  a click outside closes each open member, opening one closes its siblings, and Escape takes
+  them all down. Membership is the attribute — no class name, no selector list — so a third
+  control joins the rule with no code change, and the rule is stated once, in `App.vue`.
+  The label filter wore the `.td-select` class but not its metrics: 14px text in a 31px box
+  against the two selects' 12px in 32px, and the two selects floated 6px *above* the row's
+  centre line because their wrappers carried a stray `mb-3` from a stacked form. The trigger
+  now wears the field's shell (`.td-label-trigger`: the family's 32px, the 12px/400 ink face,
+  the 14px caret parked at `right 6px` in the room the right padding reserves), the chosen
+  value renders as plain text, and the stray margin is gone — all four controls in the bar
+  sit on one line. The control stays a `<details>` dropdown rather than becoming a third
+  `<select>`: its shape is seventeen choices plus a chosen-value readout.
+  The list view rendered its skeleton and its rows at the same time — the render filled the
+  rows and never took the skeleton down — so "Loading tasks" sat above twelve live rows.
+  `[data-list]` now carries `data-list-state` (`loading` | `data`), that state is a **rule**
+  in `app.css` rather than a per-element swap, and entering the view is one read: `loading`
+  until it returns, `data` after. Both groups stay resident (the data group keeps its
+  six-column head), so the pair is exclusive at every instant, including at rest, before any
+  script runs.
+  Machine checks: the block contract gains the declarable half (the dismiss register and its
+  membership floor, the trigger's metrics and flattened value, the two states with each half's
+  `display` and the skeleton's `hidden`), the manifest three R9 blocks and five `r9-*`
+  computed-style targets, and the DOM harness an R9 section for the three relations a probe
+  cannot state — which half of the list is on screen at one instant, three controls' heights
+  against each other, and where a floating control went after a real pointer click — holding
+  the fixture's own list read open so the in-flight state can be sampled. Rules 245 → 276.
 - **The task list's columns line up under headings, the create dialog separates from its
   background in the dark, and an identifier renders at most eight characters plus `…`.**
   Three findings from the 2026-10-12 review of the list and the create dialog.

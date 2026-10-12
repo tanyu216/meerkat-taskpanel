@@ -152,6 +152,14 @@ body {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+/* The design's small glyph size (14px). Most call sites carry the matching
+   `size-3.5` utility instead, which is why this rule was missing; the label
+   trigger's caret needs a *class* there, because it is positioned absolutely
+   and the contract names it (`.td-label-trigger > .td-icon-sm`, R9 ②/§5 B11). */
+.td-icon-sm {
+  width: 14px;
+  height: 14px;
+}
 /* The three theme glyphs swap by attribute; the UA sheet's `[hidden]` is a plain
    `display: none`, so it is stated here the way every other hidden face is. It
    must beat the `size-*` utility the glyph carries, hence the attribute forms.
@@ -339,6 +347,55 @@ svg[data-token-icon][hidden] { display: none; }
   border: var(--border) solid var(--brand-border-strong);
   border-radius: var(--radius-field);
 }
+/* R9 ② — the label filter's trigger **is** a field of that family, not a
+   lookalike: the same height, the same 12px/400 ink face on the surface, the
+   same hairline and radius, and the 14px caret parked at `right 6px` — the
+   padding on the right is the room the caret sits in, which is what makes the
+   three controls in the bar read as one row of one component.
+
+   The prototype's `.td-select` is 30px tall and the implementation's field
+   family is 32px on the 4px grid (`.td-input` / `.td-select` above, M2c ①). The
+   round's own subject is the *relation* — three controls at one height, which
+   Terry read as "not the same component" at 30 / 30 / 28 — so the trigger takes
+   the family's 32px rather than the prototype's absolute, which would leave it
+   2px short of its own neighbours. `design/fidelity-r9.md` §5 B1 states the
+   prototype's 30px; B3 (the relation) is the half that survives the port. */
+.td-label-trigger {
+  position: relative;
+  height: var(--space-7);
+  min-height: var(--space-7);
+  padding: 0 26px 0 var(--space-2);
+  gap: 6px;
+  font-size: var(--text-12);
+  font-weight: var(--weight-regular);
+  color: var(--brand-text);
+  background-color: var(--brand-surface);
+  border: var(--border) solid var(--brand-border-strong);
+  border-radius: var(--radius-field);
+}
+/* The caret is the inline `<svg>` the markup carries, positioned the way
+   `.td-select` positions its own (6px from the padding box, centred on it). */
+.td-label-trigger > .td-icon-sm {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+/* The chosen value reads as plain text inside the trigger, the way a `<select>`
+   shows its own — no chip, no pill, no coloured ground. Scoped to this one
+   trigger on purpose: the card, the drawer and the dialogs keep whatever they
+   put a label in. */
+.td-label-trigger [data-filter-label-summary] {
+  border: 0;
+  background-color: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: var(--text-12);
+  font-weight: var(--weight-regular);
+  color: inherit;
+}
+/* No hover rule of its own: the two `<select>`s beside it carry none, and a
+   third colour on hover is the same "not one component" reading in miniature. */
 
 /* ------------------------------------------------------------------- card */
 
@@ -490,6 +547,25 @@ svg[data-token-icon][hidden] { display: none; }
   border: 1px solid var(--brand-border);
   border-radius: var(--radius-box);
   overflow: hidden;
+}
+/* R9 ③ — the list is in one of two states, never both. `data-list-state` on
+   `[data-list]` is the single source of truth: the half the state does not name
+   is taken out of the flow, so the skeleton can never sit above live rows
+   (Terry's finding) and the data group's six-column head cannot band a list that
+   has not loaded.
+
+   Written as a rule on the **state** rather than as a per-element swap because
+   the resting document satisfies it too, before any script runs — a pair of
+   independent `v-if`s swaps elements and promises nothing about the document
+   (contract R6). `[data-list-rows]` is named directly as well as through its
+   group: hiding only the group would leave the rows' own `display` a non-none
+   value for anything counting visible halves. */
+[data-list][data-list-state="loading"] [data-list-rows],
+[data-list][data-list-state="loading"] .td-list-group:not([data-skeleton]) {
+  display: none;
+}
+[data-list][data-list-state="data"] [data-skeleton] {
+  display: none;
 }
 /* R8 ② — the head and the rows share **one** column template. The template (the
    track list, the `gap` and the inline padding) is the row's contract, so it is

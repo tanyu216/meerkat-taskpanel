@@ -150,6 +150,13 @@ export const DOMAINS = Object.freeze({
   PRESENCE: Object.freeze(["running", "idle"]),
   /** Empty-state kinds (B12). */
   EMPTY_KIND: Object.freeze(["column", "no-results"]),
+  /**
+   * The list view's two states (B08/B13, R9 ③). Exactly two, and they are
+   * mutually exclusive by rule: `loading` shows the skeleton, `data` shows the
+   * rows. The attribute is the single source of truth — the skeleton's `hidden`
+   * is written in the same act, so the two can never disagree (contract §8 R5).
+   */
+  LIST_STATE: Object.freeze(["loading", "data"]),
   /** Detail drawer states (B09). */
   DRAWER_STATE: Object.freeze(["closed", "open", "closing"]),
   /** Overlay panel states (B18/B19). */
@@ -428,6 +435,21 @@ const BLOCKS = [
       // Exactly one side is on, whichever view is up — so this one carries no
       // precondition.
       { kind: "count", selector: '[data-view][aria-pressed="true"]', within: "[data-view-toggle]", equals: 1 },
+      // R9 ① — the switcher joins the one light-dismiss rule by **carrying the
+      // attribute**, not by being named in a handler. Membership is the attribute
+      // and nothing else (no class name, no selector list), so the membership
+      // count below is a *floor*: a third floating control joins by taking the
+      // attribute, with no code change and no edit here
+      // (`design/fidelity-r9.md` §2.1, §8 R1/R2).
+      { kind: "count", selector: "[data-project-switcher][data-dismiss-on-outside]", equals: 1 },
+      { kind: "count", selector: "[data-dismiss-on-outside]", min: 2 },
+      { kind: "count", selector: "details[data-dismiss-on-outside]", min: 2 },
+      // Every member is a daisyUI `dropdown` — the shell the floating panel and
+      // its anchored placement come from. (That a member is a `<details>` is the
+      // pair of counts above; the *trigger* being its `<summary>` is asserted by
+      // the manifest's driver-free leg, since a combinator cannot be written as a
+      // hook selector.)
+      { kind: "classes", probe: "[data-dismiss-on-outside]", includes: ["dropdown"] },
       {
         kind: "computed",
         probe: '[data-view-toggle] [data-view][aria-pressed="true"]',
@@ -798,12 +820,54 @@ const BLOCKS = [
       { kind: "count", selector: "[data-filters]", equals: 1 },
       { kind: "count", selector: "[data-filter-clear]", min: 1, max: 1 },
       { kind: "identical-hookset", selector: "[data-filter-label-option]" },
+      // R9 ② — the label control is the third member of the field family, not a
+      // lookalike. `.td-label-trigger` wears the `.td-select` shell, so the three
+      // controls in the bar compute to one height and one text treatment — the
+      // half of Terry's finding a per-element rule can state. The *relation*
+      // (`.td-label-trigger`, `[data-filter-assignee]` and `[data-filter-priority]`
+      // at one height, and the caret centred on the trigger) is measured in the
+      // driver layer, where two elements can be compared with each other.
+      //
+      // The height is stated as 32px, **not** the contract's 30px: that figure is
+      // the *prototype's* platform value, and the implementation's field family is
+      // 32px on the 4px grid (`.td-input` / `.td-select`, M2c ①). Writing 30 here
+      // would leave the trigger 2px short of the two controls it is being aligned
+      // with — the opposite of the finding. `design/fidelity-r9.md` §5 B1 is the
+      // prototype's absolute; §5 B3, the relation, is the half that ports.
+      { kind: "count", selector: "[data-filter-label][data-dismiss-on-outside]", equals: 1 },
+      { kind: "computed", probe: ".td-label-trigger", property: "height", equalsPx: 32 },
+      { kind: "computed", probe: ".td-label-trigger", property: "minHeight", equalsPx: 32 },
+      { kind: "computed", probe: ".td-label-trigger", property: "fontSize", equalsPx: 12 },
+      { kind: "computed", probe: ".td-label-trigger", property: "fontWeight", equals: "400" },
+      { kind: "computed", probe: ".td-label-trigger", property: "color", equalsVar: "--brand-text" },
+      { kind: "computed", probe: ".td-label-trigger", property: "paddingRight", equalsPx: 26 },
+      { kind: "computed", probe: ".td-label-trigger", property: "paddingLeft", equalsPx: 8 },
+      // The caret is the trigger's own glyph, absolutely positioned in the room
+      // the right padding reserves. 14px is the design's small icon size; the
+      // 6px offset is stated against the padding box here (the border box reads
+      // 7px — contract §1, the R9-1 correction, so neither number alone is the
+      // whole assertion).
+      { kind: "computed", probe: ".td-label-trigger .td-icon-sm", property: "width", equalsPx: 14 },
+      { kind: "computed", probe: ".td-label-trigger .td-icon-sm", property: "height", equalsPx: 14 },
+      { kind: "computed", probe: ".td-label-trigger .td-icon-sm", property: "position", equals: "absolute" },
+      { kind: "computed", probe: ".td-label-trigger .td-icon-sm", property: "display", equals: "block" },
+      // The value renders as **flat text**: the hook name is unchanged and still
+      // restates `data-filter-label-value`, but nothing decorates it into a chip
+      // any more (R9 ②). The flattening is scoped to this trigger — the card's,
+      // the drawer's and the dialogs' own label treatments are untouched.
+      { kind: "computed", probe: "[data-filter-label-summary]", property: "borderTopWidth", equals: "0px" },
+      { kind: "computed", probe: "[data-filter-label-summary]", property: "backgroundColor", equals: "rgba(0, 0, 0, 0)" },
+      { kind: "computed", probe: "[data-filter-label-summary]", property: "borderRadius", notEquals: "999px" },
+      { kind: "computed", probe: "[data-filter-label-summary]", property: "fontSize", equalsPx: 12 },
+      { kind: "computed", probe: "[data-filter-label-summary]", property: "fontWeight", equals: "400" },
       {
         kind: "manual",
         note:
           "The label selector is a `<details>` dropdown, not a `<select>`: the chosen value " +
           "lives on `data-filter-label-value` and is restated on [data-filter-label-summary]. " +
-          "Its option count is roster-derived (every label plus one \"all\" row) and is not asserted.",
+          "Its option count is roster-derived (every label plus one \"all\" row) and is not asserted. " +
+          "R9 ② evaluated replacing it with a third `<select>` (design/fidelity-r9.md §2.2 fork B2) " +
+          "and did not adopt it: the control's shape is seventeen choices plus a chosen-value readout.",
       },
       {
         kind: "manual",
@@ -968,6 +1032,31 @@ const BLOCKS = [
     rules: [
       { kind: "count", selector: "[data-list]", equals: 1, when: "list view" },
       { kind: "identical-hookset", selector: "[data-list-row]", within: "[data-list-rows]", when: "list view" },
+      // R9 ③ — the list is in one of two states and says which, on its root. The
+      // two halves are made mutually exclusive by a **rule on that attribute**
+      // (`app.css`), not by swapping one element at a time, so the resting
+      // document already satisfies it — with the script off, the skeleton is the
+      // one that carries `hidden` and the rows are the visible half (contract
+      // §2.3, §8 R5/R6). That the pair is never *both* visible is a relation
+      // between two elements, so the driver layer counts it.
+      { kind: "count", selector: "[data-list][data-list-state]", equals: 1, when: "list view" },
+      { kind: "domain", selector: "[data-list]", attribute: "data-list-state", subset: DOMAINS.LIST_STATE, when: "list view" },
+      // …the `data` half: the skeleton is the hidden one, and the rows are on.
+      { kind: "count", selector: "[data-skeleton][hidden]", equals: 1, when: "list view" },
+      { kind: "computed", probe: "[data-skeleton]", property: "display", equals: "none", when: "list view" },
+      { kind: "computed", probe: "[data-list-rows]", property: "display", equals: "block", when: "list view" },
+      // …and the `loading` half, evaluated while a read is in flight: the
+      // skeleton is the only thing on, and the rows' host holds **no** row to
+      // read. `when: "list loading"` is the driver layer holding the request
+      // open — a probe cannot say "at that moment".
+      { kind: "count", selector: "[data-skeleton][hidden]", equals: 0, when: "list loading" },
+      // Scoped to the rows' host on purpose: the document also holds the row
+      // *template* (`template[data-list-row-template]`), whose child carries the
+      // hook and is a document match — a bare `[data-list-row]` count would be
+      // reading the template, not the list.
+      { kind: "count", selector: "[data-list-row]", within: "[data-list-rows]", equals: 0, when: "list loading" },
+      { kind: "computed", probe: "[data-skeleton]", property: "display", equals: "block", when: "list loading" },
+      { kind: "computed", probe: "[data-list-rows]", property: "display", equals: "none", when: "list loading" },
       // R6 ⑤ — the group shell, the head row and the six-track template. The
       // grid's **first and last** tracks are the ones the prototype pins (74px /
       // 72px) and the track count is six; the middle tracks are `minmax(0,1fr)`,
@@ -1367,13 +1456,21 @@ const BLOCKS = [
     required: [],
     states: ["[data-skeleton]"],
     rules: [
+      // R9 ③ — the skeleton is the `loading` state's **only** carrier, and it is
+      // resident: the group is not unmounted when the read returns, it is hidden
+      // — by the `hidden` attribute the block's own state writes and by the rule
+      // on `[data-list][data-list-state="data"]` in `app.css`. That is what makes
+      // the two states exclusive even for a document that has not run a read.
+      { kind: "count", selector: "[data-skeleton]", equals: 1 },
       {
         kind: "manual",
         note:
-          "Three shimmer rows at the top of the list view. The rows themselves carry no hooks, " +
-          "and the skeleton only exists while loading, so neither its presence nor its row count " +
-          "is asserted. The prototype's own states gallery carried a second, static copy of this " +
-          "loading state ([data-loading-state]); that gallery is prototype-only and does not ship.",
+          "Three shimmer rows inside the skeleton group. The rows themselves carry no hooks, so " +
+          "their count is not asserted; the group's *presence* and its single caption span are " +
+          "(the caption's row-span rule is B08's `.td-list-head > :only-child`). The prototype's " +
+          "own states gallery carried a second, static copy of this loading state " +
+          "([data-loading-state]); that gallery is prototype-only and does not ship, which is why " +
+          "the count above is one and not two.",
       },
     ],
   },

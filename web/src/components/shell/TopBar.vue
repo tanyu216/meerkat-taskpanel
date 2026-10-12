@@ -12,7 +12,7 @@
 import { computed } from "vue";
 
 import { board, selectProject } from "../../stores/board.js";
-import { createProjectOpen, createTaskOpen, filtersOpen, setView, toggleFilters, view } from "../../stores/ui.js";
+import { createProjectOpen, createTaskOpen, dismissMemberFrom, filtersOpen, setView, toggleFilters, view } from "../../stores/ui.js";
 
 const projects = computed(() => board.projects);
 const currentName = computed(() => board.projects.find((p) => p.id === board.currentProjectId)?.name ?? "—");
@@ -24,7 +24,10 @@ const viewIcons = {
   list: "M4 6h16M4 12h16M4 18h16",
 };
 
-function switchProject(id) {
+/** Choosing a project is what the panel was open for, so it closes with the choice
+ *  — the prototype's own handler clears `open` before it switches. */
+function switchProject(id, event) {
+  dismissMemberFrom(event);
   if (id !== board.currentProjectId) selectProject(id);
 }
 </script>
@@ -90,7 +93,12 @@ function switchProject(id) {
       <span class="text-[12px] text-(--brand-text-3)" data-brand-sub data-i18n="app.tagline">{{ $t("app.tagline") }}</span>
     </a>
 
-    <details class="dropdown" data-project-switcher>
+    <!-- R9 ① — the switcher takes the light-dismiss rule by carrying the
+         attribute, not by being named in a handler: it closes on a click outside
+         and on Escape, and opening it closes the other member (the label
+         filter). Its floating panel used to stay up and intercept the very next
+         click, which is what Terry saw as "must click the list itself to close". -->
+    <details class="dropdown" data-project-switcher data-dismiss-on-outside>
       <summary class="btn btn-ghost btn-sm gap-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
         <!-- The switcher glyph is the prototype's stacked-plane SVG, not a text
              character: at 14px the glyph `▦` and the icon stop reading alike. -->
@@ -108,7 +116,7 @@ function switchProject(id) {
             type="button"
             :data-project-option="project.name"
             :aria-current="project.id === board.currentProjectId ? 'true' : 'false'"
-            @click="switchProject(project.id)"
+            @click="switchProject(project.id, $event)"
           >
             <span class="td-mono">{{ project.name }}</span>
           </button>
