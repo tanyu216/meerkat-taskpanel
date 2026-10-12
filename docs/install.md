@@ -265,7 +265,7 @@ Bundle capabilities: skills
 > **No supervisor for OpenClaw.** Unlike the other three hosts, OpenClaw gets **no**
 > scheduling unit and **no `meerkat-loop` skill**: it already has a scheduler in the
 > [openclaw-team](https://github.com/tanyu216/openclaw-team) framework, whose
-> `poll-<agent>` and `task-patrol` automations *are* the design in
+> per-agent poll and `task-patrol` automations *are* the design in
 > [`scheduling.md`](scheduling.md). `install.sh --target openclaw` writes the board skill
 > only — install that framework instead. The exclusion is permanent, not a gap: two
 > supervisors on one board would only race each other for the same cards.

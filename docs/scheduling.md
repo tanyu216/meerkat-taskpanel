@@ -12,8 +12,8 @@ install it, and OpenClaw deliberately does not (see
 [OpenClaw: do not build a supervisor](#openclaw-do-not-build-a-supervisor)).
 
 This is the design the OpenClaw host already ships as
-[openclaw-team](https://github.com/tanyu216/openclaw-team) (`poll-<agent>` and
-`task-patrol`); this document is the host-agnostic statement of it, plus what
+[openclaw-team](https://github.com/tanyu216/openclaw-team) — a per-agent poll and a
+`task-patrol`; this document is the host-agnostic statement of it, plus what
 Claude Code, Codex and Pi add on top.
 
 ## The two layers
@@ -287,8 +287,10 @@ crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 
 OpenClaw is the one host with a scheduler of its own. The
 [openclaw-team](https://github.com/tanyu216/openclaw-team) framework already
-implements exactly this pattern — `poll-<agent>` (`every 1m + trigger`) for the
-expensive-free scan and `task-patrol` (`every 5m + trigger`) for the stale pass.
+implements exactly this pattern — a per-agent poll (its schedule *is* the trigger,
+so an idle tick costs nothing) for the scan and a `task-patrol` for the stale pass.
+Neither framework cadence is repeated here; the framework's `AUTOMATIONS.md` is the
+single source of truth for it.
 `install.sh --target openclaw` therefore installs the **board skill only**: no
 `meerkat-loop` skill, no scheduler, no wake glue, no host config — permanently, by
 ruling, not as a gap to be filled later. Two supervisors on one board would only race
