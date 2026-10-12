@@ -1036,6 +1036,55 @@ html[data-theme="dark"] .modal-box {
     text-decoration: underline;
   }
 
+  /* R13 — the roster item the control's value names wears the selected capsule.
+     The item is the wrapper, not the name button: the shell (border, bed, the
+     pill radius) sits *around* the name, so the face stays the text it was and
+     the press target stays the name. At rest there is no shell at all — the
+     item is an inline span and the row reads exactly as R11 left it. The capsule
+     is 20px tall inside a 28px row, so selecting a name cannot move the row and
+     the four platform rows keep their one height. */
+  [data-assignee-item][data-assignee-active="true"] {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    height: 20px;
+    padding: 0 4px 0 6px;
+    border: 1px solid var(--color-td-line-strong);
+    border-radius: 999px;
+    background: var(--color-td-active);
+    color: var(--color-td-ink);
+  }
+
+  /* R13 — the capsule's `x`. Static markup that is `hidden` until the name is
+     the one in force — and `[hidden]` is `display: none !important` in the
+     preflight, so the resting state is the attribute's, not this rule's. The
+     glyph is text: no image, no icon font, no new token. */
+  [data-assignee-clear] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    font-size: 10px;
+    line-height: 1;
+    color: var(--color-td-ink-3);
+    background: transparent;
+    cursor: pointer;
+  }
+
+  [data-assignee-clear]:hover {
+    color: var(--color-td-ink);
+    background: var(--color-td-hover);
+  }
+
+  [data-assignee-clear]:focus-visible {
+    outline: 2px solid var(--color-td-focus);
+    outline-offset: 1px;
+  }
+
   .td-presence {
     width: 6px;
     height: 6px;

@@ -92,7 +92,7 @@ label selector opens (one of the two is open at a time).
 | Root | `aside[data-sidebar]` |
 | Nav | `[data-nav]` → `[data-nav-item="board" \| "list" \| "activity" \| "waiting"]` (`aria-current="page"`, exactly one at a time, and the scope is `[data-nav]` — the project rows below carry the same attribute for the current project) |
 | Projects | `[data-project-list]` → `[data-project="…"]` (`aria-current="page"`) → `.td-side-icon` (prefix monogram, rail only) + `[data-project-count]`; each item carries `[data-order-score]` + `[data-order-rank]` (see below) |
-| Agents | `[data-agents-presence]` → **one row per platform**: `[data-agent-platform="claude\|openclaw\|codex\|pi"]` + `[data-presence="running\|idle"]`; each name in the row is a `[data-agent-assignee]` **button** (R11 — see below) |
+| Agents | `[data-agents-presence]` → **one row per platform**: `[data-agent-platform="claude\|openclaw\|codex\|pi"]` + `[data-presence="running\|idle"]`; each name in the row is a **`[data-assignee-item]`** holding a `[data-agent-assignee]` **button** and its `[data-assignee-clear]` sibling (R11 — see below; R13 adds the item, the `✕` and the selected capsule) |
 | States preview | `[data-states-open]` — sidebar footer control, opens **B18** |
 | Footer controls | `[data-access-status]` — **one row of three equal thirds at ≥1024px, three stacked full-width rows at ≤1023px** (R7, revised 2026-10-12 21:19): theme · language · settings. Each cell is a `[data-access-cell]` block button (`.td-access-cell`); in the row a vertical hairline on its **inline start** separates it from its neighbour (the first cell carries none), and in the stack a horizontal hairline on its **block start** separates it from the cell above (the first row carries none) |
 
@@ -109,6 +109,38 @@ replaced — no shell, no border, no padding — with the pointer and a hover un
 only affordance; `Enter`/`Space` and the `:focus-visible` ring come from it being a real
 `<button>`. In the ≤1023px rail the whole `.td-agent-text` span is hidden, so the buttons go
 with it.
+
+**R13 — the name is a narrowing as well as a route, and the name in force wears a capsule.**
+R11 wrote the name into no filter because the assignee control's domain held no given name
+(B04); R13 extends that domain, so a press on a name now narrows *and* routes: the list view,
+the two in-flight statuses, and the name itself (B04), then one filter pass — the two
+conditions are ANDed exactly as any two fields of the bar are. The roster's own structure
+changes shape to carry the selected state: each name is now a **`[data-assignee-item]`**
+wrapper holding **two sibling buttons** — the name (`[data-agent-assignee]`, which also
+carries `data-assignee` + `data-assignee-kind` and its own `aria-pressed`) and its
+**`[data-assignee-clear]`** `✕` (a nested `<button>` is illegal, hence siblings). The `✕` is
+**static markup at rest, `hidden`** — a reader without the script gets the whole roster and no
+selection — and it is keyed to its own name (`data-assignee-clear` == the item's
+`data-assignee-item`). The commas are still the same static text between the items, so the row
+still reads as one sentence.
+
+The item the control's value names takes **`data-assignee-active="true"`** and wears the
+**capsule** — 20px tall, `1px` `--color-td-line-strong` edge, `999px` radius, `--color-td-active`
+bed, `2px` gap and a 14px `✕` at its end. The shell is on the **wrapper**, not on the name
+button: the face stays the text it was and the press target stays the name. The capsule is
+shorter than the row and the row's height is fixed, so selecting a name moves no row (measured
+0px on all four). `renderAssigneeFilter()` is the single writer of both the capsule and the
+control's options — it reads the control's value and every item follows in the same pass, so
+the roster and the control cannot contradict each other (B04; DESIGN.md §31.2).
+
+**R13 — the `✕` removes the assignee condition alone.** No view switch, no status change, no
+priority/label/search change, no menu open or close, no toast; the event is stopped at the
+button so it can never fall through to the name's own route. Pressing the name **already in
+force** is the same move (the capsule's own close), which is the ordinary toggle semantics of
+an `aria-pressed` button. The R11 face is unchanged — no shell, no border, no padding at rest
+— and both buttons take `:focus-visible` rings and answer `Enter`/`Space` by being real
+buttons. In the ≤1023px rail the whole `.td-agent-text` span is hidden, the items go with it,
+and that is the round's narrow-tier contract (measured at 980 / 760 / 430: not visible).
 
 **R12x ① — all four destinations route, and the count rides the one that has one.** Until
 this round the nav's click handler answered `activity` and `waiting` with a revision toast
@@ -221,7 +253,7 @@ project, so every row is filled at all times.
 | | |
 |---|---|
 | Root | `section#td-filters[data-filters]` |
-| Controls | `[data-filter-assignee]` (all/me/human/agent) · `[data-filter-priority]` (all/urgent/high/medium/low/none) · `[data-filter-status]` (all + the seven statuses, R11) · `[data-filter-label]` (all + 16 labels) |
+| Controls | `[data-filter-assignee]` (all/me/human/agent + a given name on demand, R13) · `[data-filter-priority]` (all/urgent/high/medium/low/none) · `[data-filter-status]` (all + the seven statuses, R11) · `[data-filter-label]` (all + 16 labels) |
 | Label selector | `[data-filter-label]` on a `<details class="dropdown" data-dismiss-on-outside>`; the chosen value lives on `data-filter-label-value`, the trigger states it via `[data-filter-label-summary]`, and the menu holds `[data-filter-label-option]` × 17, each with `data-label-value` and `aria-current` on the chosen one |
 | Status selector | `[data-filter-status]` on its own `<details class="dropdown" data-dismiss-on-outside>`; the chosen set lives on `data-filter-status-value` (`all`, or a comma-joined subset of the seven keys), the trigger states it via `[data-filter-status-summary]` → `[data-filter-status-text]`, and the menu holds `[data-filter-status-option]` × 8, each with `data-status-value` and its own `aria-pressed` (R11) |
 | Actions | `[data-filter-clear]` · `[data-filter-count]` (`aria-live="polite"`) |
@@ -266,6 +298,28 @@ height), and takes the same `data-dismiss-on-outside` rule. What it adds is a **
 to hold two values at once for the roster route), and the label control could not host it
 without either a second mode or a fourth kind of row. `applyFilters()` reads the set through
 one helper (`statusFilterValues()`), which is also what `resetFilters()` writes back to `all`.
+
+**R13 — the assignee control's domain gains a given name, on demand.** The four values the
+document ships (`all | me | human | agent`, the *kinds* and the un-filtered resting value) are
+unchanged and still static; what the round adds is a fifth **class** of value: a given name
+(`jobs`, `elon`, …). A name is not in the document, so it is written into the control **when
+it is needed and taken out when the control leaves it**:
+
+| | |
+|---|---|
+| Value | the control's own form value — `all` · `me` · `human` · `agent`, or a given name |
+| Named option | **one at a time, at most** — `[data-filter-assignee] [data-assignee-option="<name>"]`, `value` and copy both the name, generated by `renderAssigneeFilter()` and removed when the control's value is no longer that name |
+| Static options | the four above stay in the markup and are **never** removed (measured: 4 at rest, 4 while a name is in force) |
+| Semantics | `me` → `data-assignee` == the local human; `human`/`agent` → `data-assignee-kind`; a name → `data-assignee` — the attribute the card already carries and the drawer already shows, so the control adds no second source for who a card belongs to |
+| Stacking | **AND** against the other filters, like assignee/priority/label — and with the status set R11's roster route writes, so a name press means *this person's work that is in flight* |
+| Capsule | **not here** — the native `<select>` carries the value only; the selected state is drawn on the roster (B03) |
+| Single writer | `renderAssigneeFilter()` reads the control's value and derives the roster's capsules *and* the control's own options from it, so neither can state a name the other is not showing |
+
+`[data-assignee-option]` is **not this round's alone**: B22 (R3) already owns that hook on the
+dialogs' assignee menus (a bare attribute, the name in `data-assignee-value`). Every reader of
+it is therefore **scoped** — `[data-filter-assignee]` here, `[data-assignee-menu]` there — and
+R13 adds no seat to B22's (measured 14 before and after). `design/fidelity-r13.md` §8 U-1
+records the collision for the round that may want to rename it.
 
 **R12 补充 — one control family, one line, and the overflow lives in the bar.** The bar is
 **one line at every tier by contract**: `[data-filters]` carries `flex-wrap: nowrap` and its

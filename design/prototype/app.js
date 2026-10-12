@@ -66,6 +66,9 @@
       "filters.assignee.me": "Assignee: Me",
       "filters.assignee.human": "Assignee: Human",
       "filters.assignee.agent": "Assignee: Agent",
+      /* R13 — the one new seat: the accessible name of the roster capsule's `x`.
+         It says what the press removes, because the glyph alone does not. */
+      "assignee.clear": "Remove assignee filter",
       "filters.priority": "Priority",
       "filters.priority.all": "Priority: All",
       "filters.priority.urgent": "Priority: Urgent",
@@ -378,6 +381,7 @@
       "filters.assignee.me": "负责人：我",
       "filters.assignee.human": "负责人：人类",
       "filters.assignee.agent": "负责人：Agent",
+      "assignee.clear": "移除负责人筛选",
       "filters.priority": "优先级",
       "filters.priority.all": "优先级：全部",
       "filters.priority.urgent": "优先级：紧急",
@@ -956,13 +960,80 @@
     $("[data-filter-status]").removeAttr("open");
   }
 
+  /* R13 — the assignee control's domain is `all | me | human | agent` (B04) and
+     these four are the options the document ships. Anything else in the control
+     is a *given name*, and a given name is not in the document: it is written
+     into the control on demand, so the control can state the name the roster
+     capsule is wearing, and taken out again when the control leaves it. */
+  var ASSIGNEE_STATIC_VALUES = ["all", "me", "human", "agent"];
+
+  function assigneeFilterValue() {
+    var value = $("[data-filter-assignee]").val();
+    return value == null || value === "" ? "all" : String(value);
+  }
+
+  /* The single writer of the assignee control's *restatement*: the roster's
+     capsule. It reads the control's value — the one truth (B04) — and every
+     `[data-assignee-item]` follows from it in the same pass: the name in force
+     wears `data-assignee-active="true"` and shows its `x`, the other five are
+     restored. So the capsule and the control cannot contradict each other, and
+     a restatement of the roster is the same move whatever changed the value —
+     a press on a name, the `x`, the control itself, or `resetFilters()`.
+     It also reconciles the *options*: a name that is not in force is not in the
+     document, so the control can never offer a name the roster is not showing. */
+  function renderAssigneeFilter() {
+    var value = assigneeFilterValue();
+    var named =
+      ASSIGNEE_STATIC_VALUES.indexOf(value) === -1 ? value : null;
+    var $select = $("[data-filter-assignee]");
+
+    $select.find("[data-assignee-option]").each(function () {
+      if ($(this).attr("data-assignee-option") !== named) $(this).remove();
+    });
+
+    if (named && !$select.find('[data-assignee-option="' + named + '"]').length) {
+      $("<option>")
+        .attr("data-assignee-option", named)
+        .attr("value", named)
+        .text(named)
+        .appendTo($select)
+        .prop("selected", true);
+    }
+
+    $("[data-assignee-item]").each(function () {
+      var $item = $(this);
+      var active = $item.attr("data-assignee-item") === value;
+      $item.attr("data-assignee-active", String(active));
+      $item.find("[data-agent-assignee]").attr("aria-pressed", String(active));
+      $item.find("[data-assignee-clear]").prop("hidden", !active);
+    });
+  }
+
+  /* Writes a given name (or one of the four static values) into the control and
+     restates the roster. The option has to exist before the value can select
+     it, which is why the write is one call and not two. */
+  function writeAssigneeFilter(value) {
+    var $select = $("[data-filter-assignee]");
+    if (ASSIGNEE_STATIC_VALUES.indexOf(value) === -1) {
+      $select.find("[data-assignee-option]").remove();
+      $("<option>")
+        .attr("data-assignee-option", value)
+        .attr("value", value)
+        .text(value)
+        .appendTo($select);
+    }
+    $select.val(value);
+    renderAssigneeFilter();
+  }
+
   /* I6 / I8 · one filter pass drives cards, column counts and the count readout */
   function applyFilters() {
     renderLabelFilter();
     renderStatusFilter();
+    renderAssigneeFilter();
 
     var query = $.trim(String($("[data-search-input]").val() || "")).toLowerCase();
-    var byAssignee = $("[data-filter-assignee]").val();
+    var byAssignee = assigneeFilterValue();
     var byPriority = $("[data-filter-priority]").val();
     var byLabel = labelFilterValue();
     var byStatus = statusFilterValues();
@@ -994,11 +1065,18 @@
         ok = haystack.indexOf(query) !== -1;
       }
 
+      /* R13 ③ — the third arm is the given name: `me` is the local human, the
+         two *kinds* compare `data-assignee-kind`, and everything else in the
+         control is a name and compares `data-assignee` — the same attribute the
+         card already carries and the drawer already shows, so the control adds
+         no second source for who a card belongs to. */
       if (ok && byAssignee !== "all") {
         ok =
           byAssignee === "me"
             ? attr($card, "assignee") === ME
-            : attr($card, "assignee-kind") === byAssignee;
+            : byAssignee === "human" || byAssignee === "agent"
+              ? attr($card, "assignee-kind") === byAssignee
+              : attr($card, "assignee") === byAssignee;
       }
 
       if (ok && byPriority !== "all") {
@@ -3094,16 +3172,45 @@
       }
     );
 
-    /* I19 · R11 ② — a roster name is a route, not a narrowing on the name: the
-       assignee filter's domain is `all|me|human|agent` and carries no given name
-       (B04), so the press sets the status set to the two in-flight statuses and
-       switches to the list view, and the name itself is written into no filter. */
+    /* I19 · R11 ② · R13 — a roster name is a route *and* a narrowing. R11 made
+       the press switch to the list view with the two in-flight statuses in force
+       and wrote the name into no filter, because the assignee control's domain
+       (`all|me|human|agent`, B04) held no given name. R13 extends that domain
+       (a name is written into the control on demand) — so the press now does
+       both, in this order: the view, the status set, the name, one filter pass.
+       The two conditions are one narrowing and are ANDed, exactly as any two
+       fields of the bar are. */
     $("[data-agents-presence]").on(
       "click",
       "[data-agent-assignee]",
       function () {
+        var name = $(this).attr("data-assignee");
+        /* A press on the name already in force is the capsule's own close, not
+           a re-route: it removes the assignee condition and nothing else —
+           status and view stay, which is what the `x` below does too. */
+        if (assigneeFilterValue() === name) {
+          writeAssigneeFilter("all");
+          applyFilters();
+          return;
+        }
         setView("list");
         writeStatusFilter(["in_progress", "in_review"]);
+        writeAssigneeFilter(name);
+        applyFilters();
+      }
+    );
+
+    /* R13 ④ — the capsule's `x` removes the assignee condition *alone*: no
+       view switch, no status change, no priority/label/search change, no menu,
+       no toast. It stops the event rather than let the roster item see it, so
+       the press can never fall through to the name's own route in ②. */
+    $("[data-agents-presence]").on(
+      "click",
+      "[data-assignee-clear]",
+      function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        writeAssigneeFilter("all");
         applyFilters();
       }
     );
