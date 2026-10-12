@@ -334,6 +334,16 @@
       "activity.empty.filter.title": "No activity matches these filters",
       "activity.empty.filter.hint": "Widen the filters to see the full log.",
       "activity.empty.filter.reset": "Reset filters",
+      /* R12x · the Waiting view (B27). `waiting.title` is deliberately the same
+         words as `nav.waiting`: the destination and the heading are one name.
+         The reason chips read as the *state of the item*, not as an action, which
+         is what keeps them short in both languages. */
+      "waiting.title": "Waiting on me",
+      "waiting.count": "%s waiting on you",
+      "waiting.reason.question": "Question",
+      "waiting.reason.blocked": "Blocked",
+      "waiting.open": "Open %s",
+      "waiting.empty": "Nothing is waiting on you",
     },
     zh: {
       /* chrome */
@@ -623,6 +633,14 @@
       "activity.empty.filter.title": "没有动态符合这些筛选",
       "activity.empty.filter.hint": "放宽筛选即可看到完整记录。",
       "activity.empty.filter.reset": "重置筛选",
+      /* R12x · B27 的词典，与上方 en 逐键对应。两条 reason 用状态词而非动词短语：
+         `已阻塞` 与 `status.blocked` 是同一个词。 */
+      "waiting.title": "等你回复",
+      "waiting.count": "%s 项等你回复",
+      "waiting.reason.question": "待回答",
+      "waiting.reason.blocked": "已阻塞",
+      "waiting.open": "打开 %s",
+      "waiting.empty": "没有等你处理的事",
     },
   };
 
@@ -2919,6 +2937,27 @@
     return true;
   }
 
+  /* B27 · the waiting queue --------------------------------------------- */
+
+  /* A waiting row names its task by the human identifier rather than by an
+     internal id: the queue is what the reader owes, and the identifier is what
+     the board, the drawer and the row all call that task. The route out is the
+     board's own B09 — the same surface a card and a feed row open — because
+     the queue is a way *into* the task, never a second task page. */
+  function waitingCard($item) {
+    var identifier = $item.attr("data-task");
+    if (!identifier) return $();
+    return $('[data-card][data-identifier="' + identifier + '"]').first();
+  }
+
+  function openWaitingItem($item) {
+    if (!$item || !$item.length) return false;
+    var $card = waitingCard($item);
+    if (!$card.length) return false;
+    openDetail($card);
+    return true;
+  }
+
   /* =========================================================== bindings === */
 
   $(function () {
@@ -2960,6 +2999,19 @@
 
     $("[data-activity-open]").on("click", function () {
       openActivityRow($(this).closest("[data-activity-row]"));
+    });
+
+    /* B27 · the waiting queue. The row body is the pointer affordance and
+       `[data-waiting-open]` its keyboard twin — the same pair B26's rows are.
+       A queue whose only live part is a 24px glyph would be the defect this
+       round exists to remove, one view over. */
+    $("[data-waiting-list]").on("click", "[data-waiting-item]", function (event) {
+      if ($(event.target).closest("button").length) return;
+      openWaitingItem($(this));
+    });
+
+    $("[data-waiting-open]").on("click", function () {
+      openWaitingItem($(this).closest("[data-waiting-item]"));
     });
 
     /* The identifier and the title are a route back to the board, not a second

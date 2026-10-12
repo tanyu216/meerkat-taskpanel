@@ -17,3 +17,7 @@ them is `design/DESIGN.md` §29.
 
 The two `nojs` frames are a pair on purpose: the first is the shipped state, the second is the
 same bytes with one attribute moved. Nothing else differs between them.
+
+The round's **second half** — the Waiting view, B27 — has its own set beside this one, at
+`design/assets/r12x-waiting/`. It is the same round and the same geometry; it is a separate
+directory only so that each set's README keeps describing exactly the frames it names.

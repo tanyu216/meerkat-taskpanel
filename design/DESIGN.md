@@ -1839,6 +1839,15 @@ longer with exactly one added class selector — `.td-id-full`.
 
 ## 29. Review round R12x — the Activity view lands in the board
 
+> **Amendment (later the same round).** This chapter was written while B27 was still pending,
+> and three of its sentences say so: the closing of the introduction ("deliberately **not**
+> here"), the last paragraph of §29.2 ("`[data-waiting-view]` does not exist yet … the one
+> visible seam the two-segment plan leaves"), and the parenthetical in §29.5 ("`waiting`
+> routes and lands nowhere (B27 pending)"). The third segment of the round closed the seam
+> and **§30** below is that work. The chapter is left as it was written rather than rewritten:
+> it is the record of what the integration round knew when it landed, and the two together are
+> the round.
+
 Terry's 2026-10-13 request, in one sentence: the design the previous round produced for the
 sidebar's **Activity** should be in `index.html` — the press should enter it, instead of
 answering with a toast. The previous round had built the view as a page of its own
@@ -1971,5 +1980,159 @@ The design page's own check still reports **132/132**.
 | Ship the view hidden and reachable by URL only | That is very nearly what the round replaces; the ask is a destination that a reader can press |
 | Reuse the design page's stand-in drawer for a row | The board has a real B09 with the task's description, comments and session; opening a shell instead would be a regression *introduced* by the integration |
 | Port the styles as Tailwind utilities in the markup | `tw.css` is a static `@source` build and the design's values are already tokens; semantic `.td-activity-*` classes keep the view's geometry reviewable in one block and add no utility the class scanner has to guess at |
-| Build `[data-waiting-view]` in the same pass | Two single-writer segments of one file; the design for B27 (rows, reasons, the "since" column) was not settled when this round closed |
+| Build `[data-waiting-view]` in the same pass | Two single-writer segments of one file; the design for B27 (rows, reasons, the "since" column) was not settled when this round closed — it was settled before the round ended, and §30 is that segment |
 | Delete `toast.activity` while here | A mirrored surface; the deletion belongs with the mirror update in the implementing card |
+
+## 30. Review round R12x, second half — the Waiting view lands in the board
+
+This is the other half of §29's round, and the answer to the seam §29.2 named. Terry's request
+carried two names: `Activity` and the waiting entry, and from the moment routing landed, a
+press on **Waiting on me** moved the sidebar's current-item mark and left the main column
+empty — the same defect the round exists to remove, in the one place the round had not yet
+reached. This chapter lands `[data-waiting-view]` (**B27**), and settles what the round's
+design ruling (design-spec **R-4**, Jobs) had fixed only in outline: what the queue holds, how
+a row reads, what the two reason kinds are, and what is on screen when nothing is owed.
+
+### 30.1 What the queue is, and the one thing it is not
+
+`Activity` and `Waiting on me` stand next to each other in the sidebar and are **not two views
+of one thing**:
+
+| | Activity (B26) | Waiting on me (B27) |
+|---|---|---|
+| Question it answers | what happened | what is owed *by me* |
+| Holds | every event the design's allow-list admits | only the items whose ball is in the reader's court |
+| Order | newest first — a chronology | oldest wait first — a queue |
+| Reads as | a ledger you scan for recent change | a queue you work from the overdue end |
+| Ends | a family of controls: filters, fold, paging, unread boundary | one press per row: into the task |
+
+The ruling that keeps them apart is Elon's (card comment, 2026-10-12 19:04: *two independent
+entries, not merged*), and Terry's own request implies it — both names are named, and both are
+to be fixed. Two roots, two questions: a merge would answer neither well.
+
+### 30.2 The rows, and why the wait is the sort key
+
+A waiting row is B26's row by *measurement*, not by class: the same 30px line, the same 12px
+actor, the same 11px identifier and stamp, the same 10px gutter, the same 24px opener — spelled
+in its own family (`.td-waiting-*`) so that either view can move without dragging the other.
+
+One difference is deliberate: **there is no tick rail**. B26's rail exists to say "unread" or
+"a folded burst", and every item in this queue is unread by definition, so the rail would be a
+mark that means nothing — decoration on the one line that has least room for it. What carries
+the kind here is the reason chip, which is a fact.
+
+**Why oldest first.** The queue's whole value is that its overdue end is visible. A chronology
+reads newest first because "what happened" is a question about now; a queue read the same way
+hides the item that has waited five days behind the one that arrived a minute ago — which is
+the failure a queue exists to prevent. So the list runs oldest → newest, and the row that has
+waited longest is the first thing the reader meets. (`Rejected: newest first, for symmetry
+with the feed` — see §30.6.)
+
+Three things the rows state, and how:
+
+| | |
+|---|---|
+| The wait | `[data-waiting-since]` carries the instant on `datetime`, the row carries it again on `data-since`, and the visible text is that instant read the way the feed reads one. The three `time.*` keys are reused rather than restated, and in the shipped document the text already equals what the page would compute — so the script has nothing to recompute here, and a reader without it sees the same sentence |
+| The identifier | `[data-waiting-task]` renders at most eight characters plus `…`, whole value on `title` — R8 ③'s rule, the one B07's cards and B08's rows follow. Waiting is the first surface that can *prove* the rule without a script: `PROJ-0007` is the board's only identifier longer than eight characters, so its cell reads `PROJ-000…` in the markup itself |
+| The open press | `[data-waiting-open]` is the keyboard affordance and the row body its pointer twin, and both land on the board's own **B09** for the task the row names. The queue is a way *into* a task, never a second task page |
+
+### 30.3 The two kinds, and how a colour reaches the chip without a new hue
+
+`data-waiting-reason-kind` is the whole domain, and it has two values:
+
+| Kind | What it means | Its dot |
+|---|---|---|
+| `question` | someone asked, and the answer is yours — a delivery waiting on a verdict reads this way | `--color-td-st-review`, through `--status-color` |
+| `blocked` | the task cannot move without you | `--color-td-st-blocked`, through `--status-color` |
+
+Two, because the ruling fixes two: a third kind is a change to the ruling, not an addition to a
+list. The chip is read from the row's own attribute — one attribute → one custom property, the
+rule the `[data-status]` and `[data-priority]` bindings already follow — so the component that
+draws the dot never names a colour, and both kinds read a *status* token because the reason
+**is** the task's own state. The declared token registry is byte-identical to the round's base;
+no hue enters the sheet.
+
+The header states the queue's size — `[data-waiting-count]` is `waiting.count` around a number
+— and its heading is `waiting.title`, byte-identical to `nav.waiting`: the destination pressed
+and the heading over the list are one string per language, so a rename lands in one place.
+
+**The sidebar gets no second pill.** Activity carries `[data-nav-count]` because that view's
+number is *not* the length of what is on screen — the feed filters, folds and pages. A queue's
+number is exactly its length, and the header already says it; a pill two inches to the left
+would restate one sentence twice, which is the decoration R12x took off the nav rather than a
+second one.
+
+### 30.4 The empty state
+
+`[data-waiting-empty]` ships in the document and `hidden`, as B26's two empties do, so a reader
+without the script still gets a complete view. When nothing is owed the design's answer is one
+line where the queue stood — centred in the view and capped in width, because a dashed rule
+stretched across 1300px is the shape of a drop target, not the shape of an answer — and the
+header's tally stands down with the queue, since "0 waiting on you" above "Nothing is waiting on
+you" is one sentence printed twice.
+
+The prototype cannot reach that state: nothing in this queue filters, and the seeded board has
+five items. Its frame is therefore driven by the capture script moving one attribute — the same
+arrangement the activity design's own empty-state frames used, and the same disclosure.
+
+### 30.5 Checked
+
+`verify/probe-waiting.mjs` (the card's workspace, not the repository) drives a real Chromium
+over a loopback server, once against a pristine copy of `design/prototype` at the round's base
+(`94b5c28`) and once against this build. The **before** side is measured, not inferred — **9/9**
+— and it is the seam itself: no `[data-waiting-view]` in the document at all, the press *does*
+move the current-item mark (routing landed in the previous segment), and every view root is
+`hidden` afterwards, so the main column is left with nothing. The **after** side is **46/46**:
+
+- **Routing.** The view opens with a real box (1216 × 854 at 1512), the other three roots all
+  stand down, and exactly one nav item is current and it is the one pressed — everywhere in
+  `[data-nav]`, checked after each of the four presses. Board, list and activity each take the
+  mark back from waiting, and waiting takes it back again from activity.
+- **No toast.** Two presses on `waiting` add no child to `[data-toast-region]`: the branch that
+  answered this name with a revision is gone.
+- **The header.** `waiting.title` and the sidebar's own text for the destination are the same
+  words, the tally reads `5 waiting on you` and equals the rows under it, and it sits beside the
+  heading on the same line.
+- **The queue.** The first row's own button opens B09 with `data-identifier="TD-118"` and the
+  drawer's activity section filled; a different row's *body* opens the same surface on its own
+  task; the identifier rule holds (`PROJ-000…` on screen, `PROJ-0007` on `title`, every
+  short identifier verbatim); the reason domain is exactly `question | blocked` with both copies
+  present; each of the five stamps equals the instant it carries read by the page's own rule;
+  the waits run non-decreasing down the list; and all five rows name a task the board carries,
+  so no opener is a dead press.
+- **Scripting off.** Five items in the document, the list's own count equal to the source count,
+  **zero templates**, and all six fields present on all five rows; the first row still reads as
+  a sentence (`elon Blocked TD-118 Migrate attachments to object storage 5d ago`); the tally is
+  the static sentence it ships; the default view is still the board.
+- **One dictionary.** The view asks for **9** catalogue names, every one resolves in both
+  catalogues, the two catalogues hold the same names, three of the nine are the reused `time.*`
+  keys, and there is no second carrier. Switching to `zh` re-words the heading, the tally, the
+  reason chips, the stamps and the accessible name of the openers (`等你回复` / `5 项等你回复` /
+  `已阻塞` / `5 天前` / `打开 TD-118`), with no raw key left on screen.
+- **Tokens.** The waiting rules declare no custom property, carry no colour literal, and every
+  `var(--…)` they read already resolves in `tw.css`; the declared token registry is
+  byte-identical to the base commit.
+- **Width and errors.** No page-level sideways overflow at 1512 / 1240 / 980 / 760 / 430 and no
+  element escaping the viewport, the title keeps a real width at every band (the row moves the
+  identifier and its title to a second line below 761px rather than crushing them), and **zero
+  console errors and zero page errors** on both sides.
+
+The round's own activity probe is re-run against this build and is **48/48**, unchanged: the
+waiting block was added beside B26's, and B26's rules and hooks are untouched. The rebuilt
+`tw.css` grows by **185 added lines and zero removed**, every selector of which belongs to the
+two families the round added (no scanner artefact this time). The capture set is
+`design/assets/r12x-waiting/` — 8 frames (1512 / 1240 / 980 / 760 / 430, `zh`, the empty state,
+and the script-off frame), with the two attribute-moved frames disclosed in its README.
+
+### 30.6 Rejected alternatives
+
+| Alternative | Why not |
+|---|---|
+| Merge Waiting into Activity | The ruling keeps two entries and Terry's request names two; the two answer different questions (§30.1), and a merged surface would have to be both a chronology and a queue — which means one of the two readings is wrong for half its rows |
+| Read the queue newest first, like the feed | Symmetry with B26 is worth less than the queue working: the oldest wait is the one at risk, and the top of the list is the only place a reader reliably looks |
+| Give each row a second line with the reason as a sentence | The 30px line is the family's density target (B26 §7), and the reason is one of two values — a chip says it in 60px, a sentence costs every row a second line |
+| Copy B26's tick rail | It would be a mark that encodes nothing (§30.2). Every row here is unread, and there is no burst |
+| Put the tally in the sidebar as a second `[data-nav-count]` | It would restate, on the other side of the screen, the sentence the header already carries — Activity's pill earns its place because its number is not the length of what is on screen |
+| Make the row's task an anchor back to the board, the way `[data-activity-task]` is | That anchor exists in B26 because the feed is a log you follow up on; here the reader is already being asked to act, so the row opens the task in place, and a second route would make the queue leave the view it belongs to |
+| Add a third kind for "a delivery waiting on a verdict" | The ruling's domain is two, and `question` already reads that way (the answer is the reader's). A third kind is a change to the ruling, not an addition |
+| Give `waiting` its own filter bar, as the feed has | A queue of what is owed is not something to narrow: the count of it is the point, and a filter would let a reader hide the overdue item — the failure the ordering exists to prevent |

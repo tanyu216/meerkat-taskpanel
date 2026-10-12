@@ -527,6 +527,18 @@ html[data-theme="dark"] .modal-box {
     --pri-color: var(--color-td-pri-none);
   }
 
+  /* R12x — the same rule for B27's reason chip: the kind of wait is an
+     attribute, its colour is a variable, and the component that draws the dot
+     never names a colour. Both kinds read a status token, because the reason
+     *is* the task's own state — a block, or a delivery waiting on an answer —
+     so no hue enters the sheet that was not already in it. */
+  [data-waiting-reason-kind="question"] {
+    --status-color: var(--color-td-st-review);
+  }
+  [data-waiting-reason-kind="blocked"] {
+    --status-color: var(--color-td-st-blocked);
+  }
+
   /* --- atoms ----------------------------------------------------------- */
   .td-sr {
     position: absolute;
@@ -3992,6 +4004,230 @@ html[data-theme="dark"] .modal-box {
     }
     .td-activity-change-field {
       width: 56px;
+    }
+  }
+
+  /* R12x · B27 — the Waiting view's own rules. Its row shell is B26's by
+     measurement, not by class: the same 30px line, the same 12px/11px type,
+     the same 10px gutter — spelled in this family's own names (`.td-waiting-*`)
+     so either view can move without dragging the other. Every value below is an
+     existing token: no new hue, no new radius, no new duration.
+
+     One deliberate difference from B26's rows: **no tick**. That rail exists to
+     say "unread" or "a folded burst", and every item in this queue is unread by
+     definition, so the rail would carry no information. What carries the kind
+     here is the reason chip. */
+  .td-waiting-view {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    gap: 12px;
+    min-height: 0;
+  }
+
+  /* --- B27.2 header ------------------------------------------------- */
+  .td-waiting-head {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+  .td-waiting-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--color-td-ink);
+  }
+  /* The tally rides the header's far end and reads as a count, not as an
+     action — the neutral pill B26 gives a folded burst, for the same reason:
+     a number about what is below it, not something to press. */
+  .td-waiting-count {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    margin-left: auto;
+    height: 18px;
+    padding: 0 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-td-ink-2);
+    background-color: var(--color-td-sunken);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-full);
+  }
+  .td-waiting-count[hidden] {
+    display: none;
+  }
+
+  /* --- B27.1 the queue ---------------------------------------------- */
+  /* The box hugs its rows and only scrolls once they outgrow the view: a queue
+     of five items inside 850px of border reads as an empty panel, not as a
+     list. `flex: 0 1 auto` + `min-height: 0` is what makes it both hug and
+     shrink — with `overflow-y` doing the rest when the queue is long. */
+  .td-waiting-list {
+    display: flex;
+    flex: 0 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    list-style: none;
+    background-color: var(--color-td-surface);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-md);
+  }
+  /* Only one of the queue and the empty state is ever on screen, so each of
+     the two takes its box out of the layout when hidden. `.td-empty`'s own
+     `display` would otherwise out-rank the attribute. */
+  .td-waiting-list[hidden] {
+    display: none;
+  }
+  .td-waiting-item {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    height: 30px;
+    padding: 0 10px;
+    cursor: pointer;
+    border-top: 1px solid var(--color-td-line);
+  }
+  /* the box's own edge is the rule above the first row */
+  .td-waiting-item:first-child {
+    border-top: 0;
+  }
+  .td-waiting-item:hover {
+    background-color: var(--color-td-hover);
+  }
+  .td-waiting-actor {
+    flex: none;
+    width: 76px;
+    overflow: hidden;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-td-ink);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .td-waiting-actor[data-assignee-kind="agent"] {
+    color: var(--color-td-ink-2);
+  }
+  /* The reason chip: what kind of wait this is. Its dot is coloured through
+     the one-attribute → one-custom-property rule the `[data-waiting-reason-kind]`
+     bindings above state, so this component never names a colour. */
+  .td-waiting-reason {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 4px;
+    height: 18px;
+    padding: 0 6px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1;
+    color: var(--color-td-ink-2);
+    background-color: var(--color-td-sunken);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-sm);
+  }
+  .td-waiting-reason::before {
+    content: "";
+    flex: none;
+    width: 6px;
+    height: 6px;
+    background-color: var(--status-color);
+    border-radius: var(--r-full);
+  }
+  /* The identifier and its title travel together — one cell that grows, the
+     shape B26's own row gives the pair — so the narrow band can move them to a
+     second line in one piece instead of crushing the title to nothing. */
+  .td-waiting-task-cell {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .td-waiting-task {
+    flex: none;
+    font-size: 11px;
+    color: var(--color-td-ink-3);
+  }
+  .td-waiting-task-title {
+    display: -webkit-box;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 12px;
+    color: var(--color-td-ink);
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+  .td-waiting-since {
+    flex: none;
+    width: 56px;
+    font-size: 11px;
+    color: var(--color-td-ink-3);
+    text-align: right;
+  }
+  .td-waiting-open {
+    flex: none;
+    width: 24px;
+    height: 24px;
+  }
+
+  /* --- B27.3 the empty state --------------------------------------- */
+  /* `margin: auto` centres it in the view when the queue is gone — the same
+     answer B26 gives an empty feed: one line pinned to the top of a tall box
+     reads as a fault, not as an answer. It is capped and centred horizontally
+     because here it is the only box in the main area: a dashed rule stretched
+     across 1300px is the shape of a drop target, not the shape of an answer. */
+  .td-waiting-empty {
+    flex: none;
+    align-self: center;
+    width: 100%;
+    max-width: 420px;
+    margin: auto 0;
+  }
+  .td-waiting-empty[hidden] {
+    display: none;
+  }
+
+  /* --- narrow band --------------------------------------------------
+     Below 761px the row keeps its first line (who, what kind, how long, the
+     way in) and moves the identifier and its title to a second line rather
+     than squeezing the title away — the same trade B26 makes, at the same
+     breakpoint, for the same reason. */
+  @media (max-width: 760px) {
+    .td-waiting-item {
+      height: auto;
+      min-height: 30px;
+      flex-wrap: wrap;
+      padding: 6px 10px;
+      row-gap: 2px;
+    }
+    .td-waiting-actor {
+      order: 1;
+      width: auto;
+    }
+    .td-waiting-reason {
+      order: 2;
+    }
+    .td-waiting-since {
+      order: 3;
+      width: auto;
+      margin-left: auto;
+    }
+    .td-waiting-open {
+      order: 4;
+    }
+    .td-waiting-task-cell {
+      order: 5;
+      flex-basis: 100%;
     }
   }
 }

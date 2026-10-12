@@ -5,9 +5,9 @@ Tailwind class names are never part of the contract, and no anchor is positional
 
 Counts in the current build, measured in the live DOM: **7 columns · 18 cards ·
 18 detail templates** (`[data-slot]`: 18 description · 18 activity · 16 comments ·
-15 agent-session · 11 attachments · 9 relations) · **605 `data-i18n*` hooks** in the
-shipped document (512 `data-i18n` plus 93 `placeholder` / `aria-label` / `title`
-variants) · **274 catalogue keys, `en` and `zh` in exact parity.**
+15 agent-session · 11 attachments · 9 relations) · **623 `data-i18n*` hooks** in the
+shipped document (525 `data-i18n` plus 98 `placeholder` / `aria-label` / `title`
+variants) · **280 catalogue keys, `en` and `zh` in exact parity.**
 
 **"35 blocks" means 35 *contract entries*, not 35 DOM blocks.** The DOM block
 inventory is **B01–B25** (25 entries; B20/B21 are retired and kept only as
@@ -16,6 +16,13 @@ tombstones). The other ten are the cross-cutting **consistency items C01–C10**
 layering, i18n parity) and therefore own no DOM element of their own. So
 **35 = B01–B25 (25) + C01–C10 (10)**; only the B-series appears as section
 headings below.
+
+**R12x added two more — B26 (Activity) and B27 (Waiting)** — and both appear as sections
+below. They are **not** in the contract's transcription yet: `test/web/blocks.contract.mjs`
+still stops at B25, which is the same mirror cost this round's catalogue growth carries, and
+`test/**` is not this round's write surface. Until that pass lands, this file carries **27
+B-series headings against the contract's 25**; the body of this file is authoritative, and
+the mismatch is stated here rather than left to be discovered.
 
 ---
 
@@ -114,8 +121,11 @@ unread rows, so the pill, the feed's boundary and the boundary's own count read 
 and at zero the pill goes away — the rule the `waiting` pill already follows. The top bar's
 `[data-view-toggle] [data-view]` stays exactly `board | list` and is untouched: the two are
 different controls, and only the sidebar's is a four-way destination list. The fourth view
-(`waiting`, B27) is the next sibling to land; `setView()` already routes to it, so that round
-adds a root and no routing.
+(`waiting`, **B27**) landed in the round's third segment as a root and nothing else: the
+routing was already here, so the view cost no branch. `waiting` carries **no**
+`[data-nav-count]` — the count rides `activity` alone, because that view's number is not the
+length of what is on screen (the feed filters and folds), while a queue's would merely
+restate the tally its own header already carries (B27 / DESIGN.md §30.3).
 
 The three cells were **one row of three equal thirds** from v1.3 to R6; R7 (2026-10-12)
 stacked them at every width, and the same evening's revision put the row back above the
@@ -954,6 +964,94 @@ check reads off the moved block rather than off this prose.
 
 ---
 
+## B27 · Waiting view (R12x)
+
+The sidebar's fourth destination, and the view it opens. Terry's 2026-10-13 request named it
+in the same breath as Activity — `修复 awaiting on me 的入口` — and it was the same defect: a
+nav name that reported a number instead of opening a view. It is also the seam B26's round
+left standing: from the moment routing landed, a press on `Waiting on me` moved the sidebar's
+current-item mark and left the main column empty. Authority: the round's design ruling
+(design-spec **R-4**, Jobs, 2026-10-13); narrative: DESIGN.md **§30**.
+
+**It is not a second Activity.** Activity (B26) is the project's ledger — every admitted
+event, newest first, everything. Waiting is the reader's own queue: only the items whose ball
+is in *their* court, and only by how long they have been waiting. Two destinations, two
+roots, two questions; the ruling that keeps them apart is Elon's (card comment, 2026-10-12
+19:04) and the reasoning is DESIGN.md §30.1.
+
+| | |
+|---|---|
+| Root | `[data-waiting-view]` — fourth child of `main.td-main`, beside `[data-board-view]`, `[data-list]` and `[data-activity-view]`; ships **`hidden`**, because the no-script default view is the board |
+| B27.2 header | `[data-waiting-head]` → `[data-waiting-title]` (`waiting.title`, byte-identical to `nav.waiting`) + `[data-waiting-count]` (`waiting.count`, `%s` template) |
+| B27.1 the queue | `[data-waiting-list]` → `[data-waiting-item]` → `[data-waiting-actor]` / `[data-waiting-reason]` / `[data-waiting-task]` + `[data-waiting-task-title]` / `[data-waiting-since]` / `[data-waiting-open]` |
+| B27.3 empty state | `[data-waiting-empty]`; ships `hidden` |
+
+**Five rows, ordered by the wait.** The queue runs oldest first, so the top row is the item
+that has waited longest and the list reads as an overdue-first inbox. B26's feed is the
+reverse — a chronology — and the reversal is deliberate: a queue read newest-first hides the
+item that has waited five days behind the one that arrived a minute ago, which is the failure
+a queue exists to prevent. `[data-waiting-since]` carries the instant on `datetime`, the row
+carries it again on `data-since`, and the visible text is that instant read the way the feed
+reads one — the same three `time.*` keys, and in the shipped document the text already equals
+what the page would compute.
+
+**The queue is static markup, not a render.** 5 rows, each one's actor, kind, identifier,
+title, stamp and opener present in the document — 0 `<template>` inside the view. With the
+script off the queue is complete and merely `hidden`, and the header's tally is the static
+sentence it ships. This is the property R-5 states and the check measures twice: once against
+the source, once in a context with JavaScript disabled.
+
+**The identifier rule is shared, not restated.** `[data-waiting-task]` renders at most eight
+characters plus `…` with the whole value on `title` — R8 ③, the rule B07's cards and B08's
+rows follow. Waiting is the first surface that *proves* it without a script: `PROJ-0007` is
+the board's only identifier longer than eight characters, so its cell reads `PROJ-000…` in
+the markup itself.
+
+**The reason chip is a two-value attribute.** `[data-waiting-reason]` carries
+`data-waiting-reason-kind="question" | "blocked"` and reads its copy from
+`waiting.reason.question` / `waiting.reason.blocked`; those two are the whole domain. Its dot
+is coloured the way every other dot on this board is coloured — an attribute rule sets
+`--status-color` (`[data-waiting-reason-kind]`, declared beside the `[data-status]` and
+`[data-priority]` bindings in `src/input.css`) and the component reads the variable, so no
+component names a colour. Both kinds read a status token, because the reason *is* the task's
+state: a block, or a delivery waiting on an answer.
+
+**A row opens B09.** `[data-waiting-open]` is the keyboard affordance and the row body its
+pointer twin, and both land on the board's own detail surface for the task the row names —
+found by the identifier the row carries. The queue is a way *into* a task, never a second
+task page; there is no second drawer, and no anchor back to the board.
+
+**Zero new hues.** The view's rules live in `src/input.css` beside B26's. They declare no
+custom property of their own, carry no colour literal, and every `var(--…)` they read already
+resolves in `tw.css` — the token registry is byte-identical to the round's base.
+
+**B27's own consistency items.**
+
+1. **Every item carries the identical hook set** — actor, reason (+ kind), identifier, title,
+   stamp, opener — and nothing else: the queue has no filter, no paging and no folding, so a
+   row is never a special case.
+2. **A row states only the instant it carries**: `[data-waiting-since]`'s `datetime` equals
+   the row's `data-since`, and its visible text is that same instant.
+3. **One time vocabulary**: the stamp reads `time.minutesAgo` / `time.hoursAgo` /
+   `time.daysAgo` — B26's three keys, reused, with no waiting-specific time copy.
+4. **One name per destination**: `waiting.title` and `nav.waiting` are byte-identical, so the
+   heading over the list and the name pressed in the sidebar cannot drift apart.
+5. **Two reason kinds, both present**: the domain is `question | blocked` and the shipped
+   queue carries both.
+
+**Auxiliary hooks** (implementation detail, not part of the block contract), the full
+`data-waiting-*` set the document carries — 14 names, no more:
+`[data-waiting-view]` · `[data-waiting-head]` · `[data-waiting-title]` ·
+`[data-waiting-count]` · `[data-waiting-list]` · `[data-waiting-item]` ·
+`[data-waiting-actor]` · `[data-waiting-reason]` / `[data-waiting-reason-kind]` ·
+`[data-waiting-task]` · `[data-waiting-task-title]` · `[data-waiting-since]` ·
+`[data-waiting-open]` · `[data-waiting-empty]`. Each row also carries two carriers outside
+the family: `data-task` (the task's human identifier — the same name B26's rows use) and
+`data-since` (the row's own instant), plus `data-assignee-kind` on the actor, which is the
+board's one identity model (B03 / consistency item 7).
+
+---
+
 ## Floating controls — the light-dismiss rule (R9)
 
 Not a block: a rule two blocks share, so it sits here beside the other cross-cutting
@@ -1032,6 +1130,7 @@ not declared — it is read off the cards' `data-reporter` at first pass, which 
 | `data-label-value` / `data-detail-label-value` | the name a label option **and** a label chip carry (B25), in the create dialog and the drawer respectively; `[data-label-remove]` / `[data-detail-label-remove]` drops the chip |
 | `[data-combo-new]` | marks the generated row that offers a name the roster does not hold yet |
 | `[data-activity-*]` | **B26**'s own family — its 35 hooks are listed in that block's section rather than repeated here |
+| `[data-waiting-*]` | **B27**'s own family — its 14 hooks are listed in that block's section rather than repeated here |
 | `[data-nav-count]` | on B03's `activity` nav item: the unread count, `hidden` at zero (R12x — see B03) |
 
 ---
@@ -1050,10 +1149,16 @@ copy:
 | `data-i18n-title` | `title` |
 | `data-i18n-arg` | the `%s` value for any of the four above; it is resolved as a key first, so `column.add` + `status.todo` reads `Add task to To Do` / `在待办中新建任务` |
 
-The catalogue is the in-memory `MESSAGES` object at the top of `app.js` — **274 keys per
+The catalogue is the in-memory `MESSAGES` object at the top of `app.js` — **280 keys per
 language, mirrored 1:1** (verified by set equality, not by eye), never an external file.
 Copy `app.js` composes at runtime (toast sentences, list rows, card aria labels, the token
 mask) is keyed there too.
+
+**B27 brought 6 more (R12x)** — `waiting.title` · `waiting.count` · `waiting.reason.question`
+· `waiting.reason.blocked` · `waiting.open` · `waiting.empty` — and they are the whole of what
+the waiting view reads, apart from the three `time.*` keys it reuses from B26's own round.
+`waiting.title` is deliberately the same words as `nav.waiting`: one name for the destination
+and the heading over the list.
 
 **B26 brought 50 of those names in (R12x)** — 49 `activity.*` plus `time.minutesAgo` — and
 they are the only catalogue the activity view reads: `design/activity/prototype.html`'s
