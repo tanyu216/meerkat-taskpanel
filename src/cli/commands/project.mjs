@@ -81,7 +81,7 @@ export const COMMANDS = [
     usage: "project create --id <id> --name <name> [--meta k=v]…",
     positionals: [],
     flags: [
-      { flag: "id", key: "id", as: "string", value: "<id>", required: true, summary: "Project id; also the identifier prefix." },
+      { flag: "id", key: "id", as: "string", value: "<id>", required: true, summary: "Project id; also the identifier prefix (must be unique across projects after normalization)." },
       { flag: "name", key: "name", as: "string", value: "<name>", required: true },
       { flag: "meta", key: "meta", as: "kv", summary: "Repeatable key=value metadata." },
       { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true },
