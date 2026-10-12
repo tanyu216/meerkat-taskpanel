@@ -325,6 +325,92 @@ svg[data-token-icon][hidden] { display: none; }
   background: var(--brand-sunken);
 }
 
+/* ------------------------------------------------- R11 ② · R13 · roster ----- */
+
+/* R11 ② — the roster names are buttons, because a press on one routes to the
+   list view and narrows by that name. The face is exactly the text it replaces —
+   no shell, no border, no padding — so the row still reads as one sentence; the
+   affordance is the pointer and an underline on hover. Family and numerals come
+   from `.td-mono`, which the markup carries on each button, so nothing here
+   restates a face. */
+.td-agent-assignee {
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  padding: 0;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.td-agent-assignee:hover {
+  color: var(--brand-text);
+  text-decoration: underline;
+}
+
+/* R13 ③ — the selected item wears the capsule. The item is the **wrapper**, not
+   the name button, so the shell sits *around* the name and the face stays the
+   text it was. The shell is **width-neutral**: the 6px it adds on each side is
+   taken straight back by an equal negative inline margin, so the row's one line
+   measures exactly what it measured at rest and no name is ever elided — the bed
+   simply bleeds 6px over the comma that follows, or over the row's own left edge.
+   Nothing here changes the row's height: the item stays an inline box. At rest
+   there is no shell at all. */
+[data-assignee-item][data-assignee-active="true"] {
+  padding: 0 6px;
+  margin-inline: -6px;
+  border-radius: 999px;
+  background: var(--brand-accent-soft);
+}
+/* The name in force takes the brand line's own colour; the bed above is that hue
+   at ~10%, so the capsule reads as one accent mark and no colour is introduced.
+   The rule outranks `.td-agent-assignee:hover` on specificity, so the selected
+   name keeps the accent while the pointer is over it. */
+[data-assignee-item][data-assignee-active="true"] [data-agent-assignee] {
+  color: var(--brand-accent);
+}
+
+/* R13 ③ · U-6 correction (`design/fidelity-r13.md` §8 U-6). The prototype's
+   roster name host carries `overflow: hidden` (the project row's ellipsis rule),
+   and the width-neutral capsule's 6px left bleed is *outside* that padding box —
+   so on every first-in-row name the host sheared the capsule's left cap off,
+   leaving a flat-edged pill. The implementation corrects it: the roster's text
+   host clips nothing, so the capsule is a whole pill on every name. The ellipsis
+   the project row needs stays where it belongs — on `[data-project]`'s own name
+   cell, which keeps its utilities. */
+[data-agent-row] [data-agent-text] {
+  overflow: visible;
+}
+
+/* R13 ④ — the `x` that clears a given-name assignee filter, the sibling of the
+   select it lives beside (B04). Static markup, `hidden` until the select states a
+   *name* — and `[hidden]` is `display: none !important` in the preflight, so the
+   resting state is the attribute's, not this rule's. The glyph is text: no image,
+   no icon font, no new token. */
+.td-assignee-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--brand-text-3);
+  background: transparent;
+  cursor: pointer;
+}
+.td-assignee-clear:hover {
+  color: var(--brand-text);
+  background: var(--brand-hover);
+}
+.td-assignee-clear:focus-visible {
+  outline: 2px solid var(--brand-focus-ring);
+  outline-offset: 1px;
+}
+
 /* ------------------------------------------------- daisyUI shell overrides */
 
 /* R12 — the design's own visually-hidden text: a 1×1 clipped box that is still
@@ -893,6 +979,23 @@ html[data-theme="dark"] [data-create-project-panel] {
 }
 .td-details-menu button:hover { background: var(--brand-hover); }
 .td-details-menu button[aria-current="true"] { background: var(--brand-active); }
+
+/* R11 ① — the status menu's rows: the status's own 8px dot plus its name on one
+   line. Multiple choice states itself on `aria-pressed` (every row writes it,
+   chosen or not), which the label menu's single-choice `aria-current` cannot
+   express — the two vocabularies coexist and do not borrow from each other. The
+   shell stays `.td-details-menu`; only the row shape and the chosen colour are
+   this round's. */
+.td-status-menu button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+.td-status-menu button[aria-pressed="true"] {
+  color: var(--brand-accent);
+  font-weight: var(--weight-medium);
+}
 
 /* The combobox popup: `position: absolute` inside a `position: relative` root,
    flipped above the field when there is no room below. */
