@@ -88,6 +88,17 @@ value below is reproduced from it; from R3 that file wins any disagreement.
 | `--color-td-success` | `#187A4C` | success / done |
 | `--color-td-focus` | `rgba(15,122,115,0.35)` | keyboard focus halo |
 
+**Web-layer names for the accent pair (R6, 2026-10-12).** The board's stylesheet
+(`web/src/styles/tokens.css`) carries the accent under a name of its own —
+`--brand-accent` and `--brand-accent-soft` — in addition to daisyUI's
+`--color-primary`. Same values as the two rows above (`#0F7A73` /
+`rgba(15,122,115,0.10)`; dark `#2AA79B` / `rgba(42,167,155,0.10)`), and
+deliberately a second name: `--color-primary` says *this is the primary action*,
+while a **selection** — the pressed view tab, the current nav row, a status chip —
+is not an action. Before R6 the board had no accent token at all, so every
+selection was painted with the grey `--brand-active`; the four surfaces that read
+the accent now read this pair.
+
 ### 2.3 Status — 7 values, one mapping, never mixed
 
 | status | token | value | label | expression |
