@@ -17,6 +17,8 @@ import { computed, ref, watch } from "vue";
 
 import { board, addComment, closeDetail, labelRoster, platformOf, priorityOf, reporterRoster } from "../../stores/board.js";
 import { renderMarkdown } from "../../lib/markdown.js";
+import { activityLine, relativeTime } from "../../lib/activity.js";
+import { attachmentRows } from "../../lib/attachments.js";
 import { pushToast } from "../../stores/ui.js";
 import { t } from "../../i18n/index.js";
 
@@ -47,6 +49,28 @@ const initial = (name) => (name ? name.charAt(0).toUpperCase() : "?");
 const comments = computed(() => detail.value?.comments ?? []);
 const activities = computed(() => detail.value?.activities ?? []);
 const labelNames = computed(() => task.value?.labels ?? []);
+
+/**
+ * The attachment rows come from the task's own `meta` bucket — the same place
+ * `[data-card-attachment-count]` reads its count. With no task open there is
+ * nothing to list *and* nothing to say about it, so the section renders neither
+ * rows nor the "no attachments" state.
+ */
+const attachments = computed(() => attachmentRows(task.value?.meta));
+
+/**
+ * The activity rows: actor + a localised sentence + a relative timestamp whose
+ * `title` carries the absolute one. `event` is the core's vocabulary, so an
+ * event without a catalogue sentence reads as its own name (see `lib/activity.js`).
+ */
+const activityRows = computed(() =>
+  activities.value.map((row) => ({
+    id: row.id,
+    actor: row.actor_id ?? "—",
+    line: activityLine(row),
+    stamp: relativeTime(row.created_at),
+  })),
+);
 
 const session = computed(() => {
   const sessions = detail.value?.sessions ?? [];
@@ -124,15 +148,20 @@ function copyId() {
     </header>
 
     <div class="td-drawer-body">
-      <dl class="td-props" data-detail-props>
-        <dt>{{ $t("prop.status") }}</dt>
-        <dd data-detail-status :data-status="statusValue"><span data-detail-status-label>{{ $t(`status.${statusValue}`) }}</span></dd>
+      <!-- The property grid is the prototype's plain two-column `<div>` grid
+           (`[data-detail-props]` is a `<div>` there), not a definition list: the
+           rows pair a label with a *control* — buttons and comboboxes — which is
+           not what `<dt>/<dd>` describe. Labels and values are therefore spans
+           and divs, and the stylesheet selects them by class. -->
+      <div class="td-props" data-detail-props>
+        <span class="td-prop-label">{{ $t("prop.status") }}</span>
+        <div class="td-prop-value" data-detail-status :data-status="statusValue"><span data-detail-status-label>{{ $t(`status.${statusValue}`) }}</span></div>
 
-        <dt>{{ $t("prop.priority") }}</dt>
-        <dd data-detail-priority :data-priority="priority"><span data-detail-priority-label>{{ $t(`priority.${priority}`) }}</span></dd>
+        <span class="td-prop-label">{{ $t("prop.priority") }}</span>
+        <div class="td-prop-value" data-detail-priority :data-priority="priority"><span data-detail-priority-label>{{ $t(`priority.${priority}`) }}</span></div>
 
-        <dt>{{ $t("prop.assignee") }}</dt>
-        <dd data-detail-assignee>
+        <span class="td-prop-label">{{ $t("prop.assignee") }}</span>
+        <div class="td-prop-value" data-detail-assignee>
           <span class="td-avatar" data-detail-assignee-avatar>{{ initial(assigneeName) }}</span>
           <span v-if="isAgent" data-detail-assignee-platform>{{ platform }}</span>
           <ComboField
@@ -148,10 +177,10 @@ function copyId() {
             placeholder-key="combo.assigneePlaceholder"
             aria-key="prop.assignee"
           />
-        </dd>
+        </div>
 
-        <dt>{{ $t("prop.reporter") }}</dt>
-        <dd data-detail-reporter>
+        <span class="td-prop-label">{{ $t("prop.reporter") }}</span>
+        <div class="td-prop-value" data-detail-reporter>
           <span class="td-avatar" data-detail-reporter-avatar>{{ initial(reporterName) }}</span>
           <ComboField
             v-model="reporterDraft"
@@ -164,22 +193,22 @@ function copyId() {
             placeholder-key="combo.reporterPlaceholder"
             aria-key="prop.reporter"
           />
-        </dd>
+        </div>
 
-        <dt>{{ $t("prop.project") }}</dt>
-        <dd data-detail-project><span data-detail-project-label>{{ projectLabel }}</span></dd>
+        <span class="td-prop-label">{{ $t("prop.project") }}</span>
+        <div class="td-prop-value" data-detail-project><span data-detail-project-label>{{ projectLabel }}</span></div>
 
-        <dt>{{ $t("prop.id") }}</dt>
-        <dd>
+        <span class="td-prop-label">{{ $t("prop.id") }}</span>
+        <div class="td-prop-value">
           <span class="td-mono" data-detail-id>{{ idText }}</span>
           <button type="button" class="td-card-menu" data-detail-id-copy :data-copy-value="idText" :aria-label="$t('toast.copied')" @click="copyId">⧉</button>
-        </dd>
+        </div>
 
-        <dt>{{ $t("prop.version") }}</dt>
-        <dd class="td-mono" data-detail-version>{{ versionText }}</dd>
+        <span class="td-prop-label">{{ $t("prop.version") }}</span>
+        <div class="td-prop-value td-mono" data-detail-version>{{ versionText }}</div>
 
-        <dt>{{ $t("prop.labels") }}</dt>
-        <dd>
+        <span class="td-prop-label">{{ $t("prop.labels") }}</span>
+        <div class="td-prop-value">
           <div data-detail-labels>
             <ComboField
               v-model="labelDraft"
@@ -198,8 +227,8 @@ function copyId() {
               aria-key="prop.labels"
             />
           </div>
-        </dd>
-      </dl>
+        </div>
+      </div>
 
       <section class="td-slot" data-detail-description>
         <h3 class="td-slot-title">{{ $t("drawer.description") }}</h3>
@@ -230,7 +259,17 @@ function copyId() {
 
       <section class="td-slot" data-detail-attachments>
         <h3 class="td-slot-title">{{ $t("drawer.attachments") }}</h3>
-        <p class="td-state-note" data-i18n="attachments.none">{{ $t("attachments.none") }}</p>
+        <!-- The prototype's rows: a file icon, the name, and the size pushed to
+             the row's end. `attachments.none` is the state of a task that has no
+             attachments — never the state of a drawer with no task in it. -->
+        <div v-for="file in attachments" :key="file.name" class="td-file" data-attachment-row>
+          <svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M14 3v5h5M7 3h7l5 5v13H7z" />
+          </svg>
+          <span class="td-file-name" data-attachment-name>{{ file.name }}</span>
+          <span class="td-file-size" data-attachment-size>{{ file.size }}</span>
+        </div>
+        <p v-if="task && attachments.length === 0" class="td-state-note" data-i18n="attachments.none">{{ $t("attachments.none") }}</p>
       </section>
 
       <section class="td-slot" data-detail-comments>
@@ -250,11 +289,16 @@ function copyId() {
 
       <section class="td-slot" data-detail-activity>
         <h3 class="td-slot-title">{{ $t("drawer.activity") }}</h3>
-        <ul style="margin: 0; padding-left: 16px">
-          <li v-for="activity in activities" :key="activity.id">
-            <span class="td-mono">{{ activity.actor_id ?? "—" }}</span> · {{ activity.event }}
-          </li>
-        </ul>
+        <!-- Each row is actor · sentence · relative time. The sentence is a
+             catalogue key where the prototype names the event, the prototype's
+             mono `status: from → to` line for a move, and the event's own name
+             otherwise. The timestamp's `title` carries the absolute stamp. -->
+        <div v-for="row in activityRows" :key="row.id" class="td-activity" data-activity-row>
+          <span class="td-activity-actor td-mono" data-activity-actor>{{ row.actor }}</span>
+          <span v-if="row.line.sentence" :data-i18n="`activity.${row.line.sentence}`">{{ $t(`activity.${row.line.sentence}`) }}</span>
+          <span v-else class="td-mono">{{ row.line.text }}</span>
+          <span v-if="row.stamp" class="td-activity-ts" data-activity-ts :title="row.stamp.absolute">{{ $t(row.stamp.key, row.stamp.arg) }}</span>
+        </div>
       </section>
     </div>
 
