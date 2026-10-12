@@ -4200,15 +4200,13 @@ html[data-theme="dark"] .modal-box {
     text-decoration: underline;
   }
   [data-assignee-item][data-assignee-active="true"] {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    height: 20px;
-    padding: 0 4px 0 6px;
-    border: 1px solid var(--color-td-line-strong);
+    padding: 0 6px;
+    margin-inline: -6px;
     border-radius: 999px;
-    background: var(--color-td-active);
-    color: var(--color-td-ink);
+    background: var(--color-td-accent-soft);
+  }
+  [data-assignee-item][data-assignee-active="true"] [data-agent-assignee] {
+    color: var(--color-td-accent);
   }
   [data-assignee-clear] {
     display: inline-flex;
