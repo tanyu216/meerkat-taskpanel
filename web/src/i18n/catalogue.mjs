@@ -2,7 +2,7 @@
  * The prototype board catalogue, extracted verbatim as pure data.
  *
  * Source of truth: `design/prototype/app.js`, the `MESSAGES` object literal (lines
- * 35-501 of that file: `en` at 36, `zh` at 272). Keys and strings below are
+ * 35-511 of that file: `en` at 36, `zh` at 277). Keys and strings below are
  * copied byte-for-byte — do not "improve" the copy, re-wrap the strings or
  * reorder the keys; the whole point of this module is that each shipped string
  * is the *same* string the prototype ships. See "Prototype-only keys" below for
@@ -11,16 +11,16 @@
  * ---------------------------------------------------------------------------
  * Measured counts (host-static, this extraction)
  * ---------------------------------------------------------------------------
- *   prototype MESSAGES  en 215 / zh 215 (exact 1:1 mirror)
- *   this catalogue      en 198 / zh 198 — the 215 minus the 17 prototype-only
+ *   prototype MESSAGES  en 220 / zh 220 (exact 1:1 mirror)
+ *   this catalogue      en 203 / zh 203 — the 220 minus the 17 prototype-only
  *                       keys listed below, still an exact 1:1 mirror (identical
  *                       key sets, identical key order, no duplicates, no empty
  *                       values)
- *   `%s` placeholders  188 keys carry none, 8 carry one, 2 carry two — and the
+ *   `%s` placeholders  193 keys carry none, 8 carry one, 2 carry two — and the
  *                       histogram is identical for en and zh, key for key (no
  *                       prototype-only key carries a placeholder)
- *   data-i18n* hooks    607 in `design/prototype/index.html`:
- *                         390 `data-i18n=`
+ *   data-i18n* hooks    612 in `design/prototype/index.html`:
+ *                         395 `data-i18n=`
  *                         144 `data-i18n-arg=`
  *                          47 `data-i18n-aria-label=`
  *                          18 `data-i18n-title=`
@@ -45,16 +45,16 @@
  * Discrepancy to record: `design/BLOCKS.md` header is stale
  * ---------------------------------------------------------------------------
  * Its header (lines 8-9) claims **252 `data-i18n*` hooks** and **198 catalogue
- * keys**. Both are wrong against the shipped files; measured above are 607 and
- * 215 (the prototype's own count). BLOCKS.md's own body already says
- * "215 keys per language", so only the header drifted. Machine checks must
+ * keys**. Both are wrong against the shipped files; measured above are 612 and
+ * 220 (the prototype's own count). BLOCKS.md's own body already says
+ * "220 keys per language", so only the header drifted. Machine checks must
  * therefore count from the real data/DOM and never assert a prose number from
  * that header.
  *
  * ---------------------------------------------------------------------------
  * Coverage: every hook the prototype's own markup authors resolves
  * ---------------------------------------------------------------------------
- * All 390 `data-i18n`, 47 `-aria-label`, 18 `-title` and 8 `-placeholder`
+ * All 395 `data-i18n`, 47 `-aria-label`, 18 `-title` and 8 `-placeholder`
  * values are real catalogue keys — except the prototype-only hook values the
  * shipped app does not render (the two `sidebar.*` demo entries, `states.title`,
  * the three `toast.sample.*`), which the suite tracks by name. Every key
@@ -159,6 +159,11 @@ export const CATALOGUE = {
       "list.label": "Task list",
       "list.loading": "Loading tasks",
       "list.columns.identifier": "ID",
+      "list.columns.title": "Title",
+      "list.columns.status": "Status",
+      "list.columns.assignee": "Assignee",
+      "list.columns.priority": "Priority",
+      "list.columns.revision": "Revision",
       "list.emptyRow": "No task in this project",
       /* detail drawer */
       "drawer.properties": "Properties",
@@ -377,6 +382,11 @@ export const CATALOGUE = {
       "list.label": "任务列表",
       "list.loading": "正在加载任务",
       "list.columns.identifier": "ID",
+      "list.columns.title": "标题",
+      "list.columns.status": "状态",
+      "list.columns.assignee": "负责人",
+      "list.columns.priority": "优先级",
+      "list.columns.revision": "版本",
       "list.emptyRow": "该项目暂无任务",
       /* detail drawer */
       "drawer.properties": "属性",

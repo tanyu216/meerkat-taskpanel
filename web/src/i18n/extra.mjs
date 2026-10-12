@@ -1,7 +1,7 @@
 /**
  * UI strings the prototype catalogue does not carry.
  *
- * `catalogue.mjs` is a byte-locked copy of the prototype's `MESSAGES` (215 keys,
+ * `catalogue.mjs` is a byte-locked copy of the prototype's `MESSAGES` (220 keys,
  * en/zh in exact parity). It carries every string the prototype's own markup can
  * render; the prototype has no network, so it has no copy for a live-update
  * conflict, a reconnect or a resync. Those states are new in M6b, so their

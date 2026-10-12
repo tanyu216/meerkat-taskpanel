@@ -12,14 +12,15 @@
  * The BLOCKS.md *header* is stale; the *body* is authoritative. Measured against
  * `design/prototype/index.html` and `design/prototype/app.js` (host-side static
  * counting — no browser, no network), re-measured 2026-10-12 after the prototype grew
- * its fourth nav item and the `nav.waiting` key:
+ * its fourth nav item, the `nav.waiting` key and R8's six-column list header (five
+ * `list.columns.*` keys, one `data-i18n` seat each):
  *
  *   header claims                             measured
- *   252 `data-i18n*` hooks in the document     607 (390 `data-i18n` + 144 `-arg`
+ *   252 `data-i18n*` hooks in the document     612 (395 `data-i18n` + 144 `-arg`
  *                                                  + 47 `-aria-label` + 8 `-placeholder`
  *                                                  + 18 `-title`)
- *   198 catalogue keys                         en = 215, zh = 215 (exact parity;
- *                                              the body's "215 keys per language,
+ *   198 catalogue keys                         en = 220, zh = 220 (exact parity;
+ *                                              the body's "220 keys per language,
  *                                              mirrored 1:1" is the correct number)
  *   7 columns · 18 cards · 18 templates        7 / 18 / 18 — the one header line that
  *                                              does agree with the DOM
@@ -2044,14 +2045,14 @@ const CONSISTENCY_ITEMS = [
 export const STALE_PROSE_COUNTS = Object.freeze([
   Object.freeze({
     claim: "252 `data-i18n*` hooks",
-    measured: 607,
-    detail: "390 `data-i18n` + 144 `-arg` + 47 `-aria-label` + 8 `-placeholder` + 18 `-title`",
+    measured: 612,
+    detail: "395 `data-i18n` + 144 `-arg` + 47 `-aria-label` + 8 `-placeholder` + 18 `-title`",
     verdict: "stale",
   }),
   Object.freeze({
     claim: "198 catalogue keys",
-    measured: 215,
-    detail: "en = 215 and zh = 215, mirrored 1:1 — the prototype `MESSAGES` count the body states; the shipped extraction drops the 17 prototype-only keys, so it ships 198",
+    measured: 220,
+    detail: "en = 220 and zh = 220, mirrored 1:1 — the prototype `MESSAGES` count the body states; the shipped extraction drops the 17 prototype-only keys, so it ships 203",
     verdict: "stale",
   }),
   Object.freeze({
