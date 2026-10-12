@@ -194,16 +194,21 @@ onBeforeUnmount(() => {
     >
       <ul class="menu min-w-[148px] p-1" :aria-label="$t('access.lang.group')">
         <li v-for="option in langs" :key="option">
+          <!-- M2c ⑤ — the row's metrics are the prototype's `.menu li > button`
+               (`design/prototype/src/input.css`): a 13px/400 line in a 28px row
+               with `0 8px` of inline padding and the `--r-sm` radius. The design
+               marks the current language with colour and the tick, never with
+               weight, so the selected row keeps the same 400 as its sibling. -->
           <button
             type="button"
-            class="flex w-full cursor-pointer items-center gap-2 border-0 rounded-[6px] px-2 py-1 text-left hover:bg-(--brand-hover)"
-            :class="lang === option ? 'bg-(--brand-accent-soft) text-(--brand-accent) font-medium' : 'bg-transparent text-(--brand-text)'"
+            class="flex w-full min-h-7 cursor-pointer items-center gap-2 border-0 rounded-[4px] px-2 py-0 text-left text-[13px] hover:bg-(--brand-hover)"
+            :class="lang === option ? 'bg-(--brand-accent-soft) text-(--brand-accent)' : 'bg-transparent text-(--brand-text)'"
             :data-lang-option="option"
             :lang="option === 'zh' ? 'zh-CN' : 'en'"
             :aria-pressed="lang === option ? 'true' : 'false'"
             @click="chooseLang(option)"
           >
-            <span class="flex-1 text-[13px]">{{ $t(`access.lang.${option}`) }}</span>
+            <span class="flex-1">{{ $t(`access.lang.${option}`) }}</span>
             <svg
               class="td-icon size-3.5"
               :class="lang === option ? 'visible' : 'invisible'"
