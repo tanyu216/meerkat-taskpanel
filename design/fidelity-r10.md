@@ -198,7 +198,7 @@
 | | |
 |---|---|
 | 块 | **B10 · Create-task modal**（两列）+ **B23 · Markdown editor**（被拉伸的那个组件） |
-| 弹窗根 | `dialog[data-create-task]` → `.td-modal-box`（`max-height: calc(100vh - 48px)` + `overflow-y: auto`，R4 原样保留） |
+| 弹窗根 | `[data-create-task]`（fixed 覆盖层，`inset-0` + `overflow-y: auto` + `p-6`）→ `[data-create-task-panel]`（面板；**实现侧无 `.td-modal-box`** —— R4 的视口上限改由覆盖层自身滚动表达，见 §9.2） |
 | 两列 | `.td-two-col`（`grid-template-columns: minmax(0,1.6fr) minmax(0,1fr)`）→ `[data-create-left]` / `[data-create-right]` |
 | 拉伸链 | `.td-two-col{align-items:stretch}` → `.td-col-left`（列 flex）→ `.td-field-grow{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}` → `.td-md-editor{flex:1 1 auto}` → `.td-md-panes{flex:1 1 auto;min-height:200px}` |
 | 描述控件 | `[data-create-task-description]` = `[data-md-source]`（`height:100%` + `overflow-y:auto`，**不变**） |
@@ -211,8 +211,8 @@
 | ③-3 | `.td-md-panes` 固定 `clamp(280px, 46vh, 520px)` ⇒ 437px | `flex: 1 1 auto; min-height: 200px` ⇒ **502px**（> 280px） | 缺 |
 | ③-4 | `.td-field-grow` 是块容器，`flex: 1 1 auto` 对子元素无效 | `display: flex; flex-direction: column` ⇒ `[data-md-editor]` 的 `flex` 可解析 | 缺 |
 | ③-5 | 写侧 `.td-md-source` 437px + 自滚动 | 502px + `overflow-y: auto`（**手感不变**） | **一致（回归门）** |
-| ③-6 | `.td-modal-box` 1512×950 无内部溢出（799/799） | 799/799 | **一致（回归门）** |
-| ③-7 | 760×900：`.td-two-col` 单列、编辑器 399px | 单列、399px（**窄屏不强制撑满**） | **一致（回归门）** |
+| ③-6 | 弹窗视口上限（R4）：实现以覆盖层 `[data-create-task]` 自身滚动表达（无 `.td-modal-box`） | 1120×800 覆盖层竖向溢出 **实读 `0px`**（原型 `.td-modal-box` 记 49px 内部滚动；1512×950 未单独复测） | **实现侧等价（回归门）；差异见 §9.2** |
+| ③-7 | 760×900：`.td-two-col` 单列、编辑器 399px | 单列、399px（**窄屏不强制撑满**） | **一致（回归门）**；实现现测 760 双列（裁定 (b) 要求修正，见 §9.3） |
 | ③-8 | 工作区垂直滚动 `scrollWidth <= clientWidth + 1` | 同 | **一致（回归门）** |
 
 ### 2.3.1 偏离设计初稿之二：`.td-field-grow` 必须是列 flex 容器
@@ -272,7 +272,7 @@
 | 20 | ③ | B23 | 编辑器填充 | `.td-md-editor` 的 `flex` | `1 1 auto` | `<flex>` 默认（`0 1 auto`） | 缺 |
 | 21 | ③ | B23 | 面板高度 | `.td-md-panes` 的 `height` / `min-height` | 无固定 `height`；`min-height: 200px`；实测 502px | `clamp(280px, 46vh, 520px)` = 437px | 缺 |
 | 22 | ③ | B23 | 写侧自滚动 | `[data-md-source]` 的 `height` / `overflow-y` | `100%` / `auto` | 同 | **一致（回归门）** |
-| 23 | ③ | B10 | 弹窗视口上限 | `.td-modal-box` 的 `max-height` / `overflow-y` | `calc(100vh - 48px)` / `auto`（R4） | 同 | **一致（回归门）** |
+| 23 | ③ | B10 | 弹窗视口上限 | 覆盖层 `[data-create-task]` 的 `overflow-y`（**实现侧无 `.td-modal-box`**，见 §9.2） | `auto`；1120×800 溢出 `0px` | 同 | **实现侧等价（回归门）** |
 | 24 | ③ | B10 | 窄屏边界 | `.td-two-col` @760 的 `grid-template-columns` | 单列（`710px`） | 同 | **一致（回归门）** |
 | 25 | ③ | B23 | 窄屏地板 | `.td-md-editor` height @760×900 | `≥ 200px`（实测 399px） | 399px | **一致（回归门）** |
 
@@ -336,19 +336,19 @@
 
 | # | selector | 断言 | 期望 |
 |---|---|---|---|
-| B-1 | `[data-board]`（data 态，1512×950） | rect.height / `.td-main` rect.height / 首个 `[data-column]` rect.height | `812px` / `894px` / `808px`（**与改前相同** —— 透传层回归门，§2.1.2） |
+| B-1 | `[data-board-view]` = `[data-board]`（data 态，1512×950） | rect.height / `.td-main` rect.height / 首个 `[data-column]` rect.height | **实现侧 `894px` / `894px` / `808px`**（**与改前相同** —— 透传层回归门，§2.1.2；原型记 812，口径差与 `[data-filters]` 归属见 §9.1） |
 | B-2 | `[data-board-view][data-board-state="empty"]` | `[data-board]` 的 `hidden` / `display` | **有** / `none` |
 | B-3 | `[data-board-view][data-board-state="empty"]` | `[data-empty][data-empty-kind="no-results"]` 的 `hidden` / `display` | **无** / `flex` |
 | B-4 | `[data-board-view][data-board-state="data"]` | 同上两成员 | `[data-board]` **无**/`flex`；no-results **有**/`none` |
 | B-5 | `[data-list][data-list-state="data"]` 时 `[data-board-view]` | `getClientRects().length` | `0`（list 态下 board 视图整体退出绘制） |
 | B-6 | `.td-two-col`（1512×950，弹窗开启且过渡落定） | `align-items` | `stretch` |
 | B-6a | `[data-md-editor]` rect.bottom 与 `.td-two-col` rect.bottom 之差 | 空隙 | `≤ 8px`（实测 `0px`；**不得**改用 `[data-create-left]` 作参照，§2.3.2） |
-| B-7 | `.td-modal-box`（1120×800） | `scrollHeight - clientHeight` | **与改前相同（49px）** —— 见 §2.3.2：这是 R4 的盖上+自滚设计，不是本轮的失败 |
+| B-7 | `[data-create-task]` 覆盖层（1120×800） | `scrollHeight - clientHeight` | **实现侧 `0px`**（R4 的「盖上视口上限 + 自己滚」由覆盖层 `overflow-y: auto` 表达，**无 `.td-modal-box`**；原型记 49px 内部滚动 —— 见 §9.2） |
 | B-8 | `.td-md-panes`（1512×950） | 计算 `height` | `> 280px`（实测 `502px`；证明随可用高度增长而非旧固定值） |
 | B-9 | `.td-md-panes` | `min-height` | `200px` |
 | B-10 | `.td-md-editor` | `flex-grow` / `flex-basis` | `1` / `auto` |
 | B-11 | `[data-md-source]` | `height` / `overflow-y` | `100%` / `auto`（写侧自滚动不变，回归门） |
-| B-12 | `.td-two-col`（760×900） | `grid-template-columns` 的轨道数 | `1`；`.td-md-editor` height `≥ 200px` |
+| B-12 | `.td-two-col`（760×900） | `grid-template-columns` 的轨道数 | `1`（**裁定 (b)：对齐基线「≤760 单列」**；实现现测 2，需 impl 修正 —— 见 §9.3）；`.td-md-editor` height `≥ 200px` |
 | B-13 | 页面（1512 / 1120 / 760） | `scrollWidth <= clientWidth + 1` | 全 `true` |
 | B-14 | `[data-detail-save-error]`（非 `error` 态） | `display` | `none` |
 
@@ -461,3 +461,60 @@
 | F5 | 截图集重拍 | 见 §4.3 注记 7 / `design/prototype/README.md` 截图段的 R10 声明。 |
 | F6 | board 的 `loading` 态 | 本轮 board 只有 `empty` / `data` 两态（Terry 只报了空态）。若后续要给 board 加载骨架，应**扩展** `data-board-state` 的取值集，而不是另起一个属性。 |
 | F7 | `total === 0` 的可达性 | 原型的三个项目**各自都有卡片**（13 / 5 / 3），所以「真·空 board」在 UI 上不可达；探针以「摘掉全部 `[data-card]` 后触发真实过滤 pass」的方式驱动同一段代码（§6 探针的 `boardTrulyEmpty` 步骤）。契约的判据 `empty ⇔ shown === 0` 已把 `total === 0` 作为其子集覆盖。 |
+
+---
+
+## 9. 回写裁定：实现侧期望值（2026-10-13 · R10 验证 §4 三条口径差）
+
+> **来源**：R10 独立验证卡 `T-20261012-230448-3`（PASS）§4；裁定卡 `T-20261013-012017`。
+> **口径**：以下为 **实现侧（`web/**` @ `5383ef1`）实测** 的期望值；原型侧记录（§2 各表、§2.3.2）保留为历史，不据此判实现 FAIL。度量来自验证卡 lane B 结构探针（`workspace/T-20261012-230448-3/review/evidence/laneB/probe-structure.json`，真实浏览器 `getBoundingClientRect` / `getComputedStyle`）。
+> **优先级**：本节优先于 §5 旧期望值；§5 对应行（B-1 / B-7 / B-12）已就地更新。
+
+### 9.1 项① board 绝对高：812（原型）→ **894（实现侧）**
+
+| 量 | 原型（§2.1 探针） | **实现侧（实测）** |
+|---|---|---|
+| `[data-board-view]` rect.height | （无该元素） | **894px** |
+| `[data-board]` rect.height（data 态，1512×950） | 812px | **894px** |
+| `.td-main` rect.height | 894px | **894px** |
+| 首个 `[data-column]` rect.height | 808px | **808px** |
+| `.td-main` 竖直溢出 | 0 | **49px** |
+
+- **期望值（实现侧）**：`[data-board-view]` = `[data-board]` = `.td-main` = **894px**（透传层：`[data-board-view]{height:100%}` 对 `main` 解析），首列 **808px**。
+- **`[data-filters]` 归属**：过滤条（实测 **49px**）**是 `main` 的子级、与 board 同层**；`[data-board-view]{height:100%}` 取满 `main`(894) 后，`main` 内容高 = 894 + 49 ⇒ **竖直溢出 49px**。原型侧过滤条为 30px 且 board 只占 812，故原型无此溢出。
+- **非 R10 引入**：`app.css` 记该 board 高 **894「before/after 一致」**（`verify/probe-*.json`）⇒ 回归门（`[data-board-view]` 不改 board 几何）在实现侧**成立**；49px 溢出为**预先存在**（验证卡已核实）。
+- **声明形式适配宿主**：契约 R4 红线写「`[data-board-view]` 必须是 `[data-main]` 的 flex 透传层」；实现侧 `main` 是 grid item（非 flex 列），故等价实现为 `height:100%`（`app.css` 注明「同一意图的等价声明」）。透传**意图**不变，声明形式适配宿主布局。
+- **落地**：§5 **B-1** 期望值由 `812 / 894 / 808` 改为 **`894 / 894 / 808`**（实现侧）；原型值 812 仅存于 §2.1 探针表。
+
+### 9.2 项② `.td-modal-box`：实现未采用 → **等价覆盖层**
+
+| 原型（R4 表达） | **实现侧（实测）** |
+|---|---|
+| `dialog[data-create-task]` → `.td-modal-box`（`max-height: calc(100vh-48px)` + `overflow-y:auto`） | `[data-create-task]`（`fixed inset-0 overflow-y-auto p-6`，承载 `role="dialog"`/`aria-modal`）→ `[data-create-task-panel]`（面板，**无 `max-height`**） |
+| `.td-modal-box` scrollHeight/clientHeight（1120×800）= 799/750 ⇒ **49px 内部滚动** | 覆盖层 `[data-create-task]` 竖向溢出（1120×800）= **0px**（等价物「装得下」，非 49px 内部滚动） |
+
+- **期望值（实现侧）**：R4 的「盖上视口上限 + 自己滚」由 **`[data-create-task]` 覆盖层自身的 `overflow-y:auto`** 表达；**不要求**实现有 `.td-modal-box`。1120×800 覆盖层溢出 **0px**。
+- **未复测项（如实标注）**：覆盖层 1512×950 的溢出量未单独复测（原型侧该视口为 799/799 无溢出）。
+- **落地**：§5 **B-7** 换写为对 `[data-create-task]` 覆盖层的断言（期望 `0px`）；§2.3 落点行「弹窗根」（原 `.td-modal-box`）更正为 `[data-create-task]` / `[data-create-task-panel]`（③-6 / §4.1 行 23 同步）。
+- **全局口径**：本契约 §2–§4 中凡以 `.td-modal-box` 描述 **实现侧落点** 者，一律以本节等价 selector 为准；§2.1/§2.3.2 探针里 `.td-modal-box` 的数值（799/750 等）**保留**，仅作原型侧历史，不再作为实现侧断言。
+
+### 9.3 项③ 760 断点：**裁定 (b) — 对齐基线，≤760 单列**
+
+- **基线意图（既有文档，非本轮新造）**：`design/DESIGN.md` §18.5 明写「tracks … stack at **≤760px**, which is its own media query rather than the shell's 759px one, **because the dialog has to be single-column *at* 760**」；`design/prototype/**` 用原生 `@media (max-width:760px)`（包含式）⇒ 原型 **760 单列**。契约 §2.3 ③-7 / §5 B-12 记「760 单列」与之同源。
+- **实现侧现状（实测）**：`CreateTaskModal.vue` 用 Tailwind v4 `max-[760px]:grid-cols-1` ⇒ 编译为 `@media (width < 760px)`（**排他式**）⇒ **760 双列、759 单列**（探针：@760×900 轨道 = 2「407.375px 254.625px」；@759×900 = 1「677px」）。
+- **裁定**：**(b) 对齐基线** —— 基线意图明确且经推理（弹窗有自己的查询、比 shell 早 1px 折叠），原型（本轮设计载体）已实现；实现侧的排他式是 Tailwind v4 移植产物、非设计决策。**保持契约「≤760 单列」不变**，由实现侧修正。
+- **为何不取 (a)**：(a) 需把契约改为「≤759 单列」并同步 `DESIGN.md` §18.5 与**原型**（`design/prototype/**` 的媒体查询），即改三处、且使原型与设计文档互相矛盾；(b) 只改实现一处，原型/文档/契约三者保持一致 —— 最小改动即最大一致。
+- **修正落点（供 impl 卡，本轮不写实现）**：单列应为**默认**、双列只在 **≥761px** 生效，等价 Tailwind 写法 `grid-cols-1 min-[761px]:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]`（或等价包含式）；保留 `minmax(0, …)` 防横向溢出。
+- **预期**：修正后 @760×900 轨道数 = **1**（§5 B-12 期望 `1` 保持）；`.td-md-editor` 高度随之从 @760 的 **499px**（双列态）回到单列口径（原型 399px 量级）。当前 §5 B-12 与验证探针在 760 会红 —— 那是**待 impl 修正**的偏差，非契约错误。
+
+### 9.4 文档同步判定（§⑫）
+
+| 文档 | 是否改动 | 理由 |
+|---|---|---|
+| `design/fidelity-r10.md` | **已改** | 本节 + §5 B-1/B-7/B-12 + §2.3 弹窗根/③-6/③-7 + §4.1 行 23 |
+| `design/BLOCKS.md` | **不改（有意）** | BLOCKS.md 描述的是**原型**侧块结构（B10 的 `dialog[data-create-task] → .td-modal-box`）；原型确实用 `.td-modal-box`，改它会破坏 原型↔BLOCKS 一致性。实现侧等价物由本契约 §9.2 承载。 |
+| `design/DESIGN.md` | **不改（有意）** | §18.5 的「dialog 在 ≤760 单列」与裁定 (b) **一致**（基线意图正是 (b) 的依据）；§18.5 的 `.td-modal-box` 属设计/原型侧表达。 |
+| `design/prototype/**` | **不改（有意）** | 原型媒体查询已是包含式（≤760 单列），符合裁定 (b)。 |
+| `web/**` / `test/**` / `src/**` | **不改（红线）** | 本轮只改契约；760 修正由 Elon 另派 impl 卡。 |
+
+**结论**：三条口径差已逐条给出实现侧期望值并回写；项①③ 为**契约/实现口径对齐**，项③ 裁定 **(b)、需另派 impl 卡**（Linus）；本卡不写实现。
