@@ -236,6 +236,22 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The board's selection surfaces are painted again, and the theme cell shows a glyph.**
+  Eight fidelity findings from a design review, each one a place where the board rendered
+  *something* where the prototype renders *that thing*: the Board/List switch had no visible
+  selected state at all (the control states its choice with `aria-pressed`, which daisyUI's
+  tab vocabulary does not read) and the current sidebar row — nav or project — was grey
+  rather than the brand accent; the Access dialog was a right-hand drawer instead of the
+  prototype's centred modal, and its token mask leaked the first six characters of the
+  stand-in; a card title could wrap to any number of lines; the list view had no column
+  head, no group shell and no status dot, and its row grid did not match the design's six
+  tracks; the drawer's status chip had lost its dot (colour alone is not a signal); the
+  sidebar's theme cell rendered **no glyph whatever** — the attribute binding that was meant
+  to hide two of the three glyphs wrote a literal `hidden="false"`, and a `hidden` attribute
+  hides by its *presence*, so all three were hidden; and both footer cells stacked their icon
+  above their label instead of sitting on one row. The web layer also gained the accent
+  tokens it never had (`--brand-accent` / `--brand-accent-soft`) — before this, the board had
+  no way to paint a *selection* as anything but grey.
 - **The sidebar's per-project count is served, not guessed.** `[data-project-count]` — the
   badge on every project row, `12 / 4 / 2` in the prototype — was read from the *current*
   project's task list, so only the open project had a number and the other rows rendered an
