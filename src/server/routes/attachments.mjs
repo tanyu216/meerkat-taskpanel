@@ -17,6 +17,7 @@ import { createReadStream } from "node:fs";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { transaction } from "../../core/index.mjs";
 import { ATTACHMENTS_DIRNAME, ATTACHMENT_MAX_BYTES } from "../../shared/constants.mjs";
 import { DomainError } from "../../shared/errors.mjs";
 import { errorResponse, readRawBody, sendJson } from "../router.mjs";
@@ -61,7 +62,16 @@ export async function handleAttachmentContent(req, res, board, id) {
       // Keep the row's `size` honest so a listing can render it without a stat.
       // This is a write like any other: the trigger bumps `global_revision`, so
       // the SSE stream sees it.
-      board.db.prepare("UPDATE attachments SET size = ? WHERE id = ?").run(body.length, id);
+      //
+      // It is also a write like any other in *how it fails* (R2). Since it sits
+      // outside the router, a bare `.run()` would let `SQLITE_BUSY` escape
+      // unmapped and the handler's own catch would render it as a 500
+      // `VALIDATION_FAILED`. One transaction boundary and the repository's
+      // `mapSqliteError` put it back on the shared path: contention is retried a
+      // bounded number of times, then reported as `DB_BUSY` (503 + `Retry-After`).
+      transaction(board.db, () => board.repos.attachments.setSize(id, body.length), {
+        op: "attachments.setSize",
+      });
       sendJson(res, 200, { ok: true, data: { attachment_id: id, size: body.length, stored: true } });
       return;
     }
