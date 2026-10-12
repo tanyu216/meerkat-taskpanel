@@ -161,19 +161,26 @@ recorded here pending the written-deviation sign-off M0 asked for:
 |---|---|---|
 | `.td-error` panel, `.td-conflict` panel, the board `resync` button, `[data-connection]` on the live dot | `App.vue`, `TopBar.vue` — M6b SSE integration | M0 §1 flagged these as 自创 G1 requiring Elon's approval; still owed |
 | the 「等你回复」view surface (B05/B09 adjacent: the view root, its rows, the payload block, the count pill) | `WaitingView.vue`, `Sidebar.vue` | already adjudicated — `blocks.contract.mjs:125-132`, "approved with B03's count together". The `waiting` *nav item* is no longer a divergence: the prototype carries it as of `T-20261012-041728-2` |
-| No brand mark, text glyphs instead of the footer's three SVGs, no `.td-caret`, no `closing` state, attachment/activity placeholders | B02/B03/B09 | already ledgered as 4 `pending` blocks; M2's work list |
+| No brand mark, text glyphs instead of the footer's three SVGs, no `.td-caret`, no `closing` state, attachment/activity placeholders | B02/B03/B09 | **closed** — M2 (`T-20261012-165126`) landed the mark, the three SVG glyphs, the caret and the `closing` state and flipped those four blocks in `board-m2.json`; the attachment/activity rows landed as driver-asserted rows (see §5). The M1 record `board.json` keeps them `pending` on purpose — it is the M1 snapshot, not a live ledger |
+| A visible order-score span on every sidebar project row (`.td-order-score` / `[data-side-score]`) | `Sidebar.vue` | **removed** in M2b (`T-20261012-174913-2`, E2b): the score is the prototype's `data-order-score` **attribute** and is never painted. The desktop prefix monogram (`[data-side-icon]`) was hidden at the same time — BLOCKS.md B03 says "prefix monogram, **rail only**", and the extra cell was what ellipsised the project name |
 
-## 4. Why this is not (yet) a gate
+## 4. Why `board.json` is not a gate
 
-`--strict` is deliberately **not** wired into `npm run check` / CI in this card:
+`board.json` above is the **M1 record** and stays as it was measured, including its four
+`pending` blocks — they exist there to be *visible*, not to pass, and `--strict` against it
+would be the wrong reading of a snapshot.
 
-- 4 blocks are `pending` by construction — they exist to be *visible*, not to pass;
-- the style leg is non-blocking, and 51 of 186 style assertions currently differ;
-- the check needs a host browser, and CI's authoritative job is the container one.
+`board-m2.json` is the live manifest: no `pending` blocks, 0 failures under both the default
+and `--strict` runs (§5). It is still **not** wired into `npm run check` / CI, for the reason
+that has not changed:
 
-The flip is one flag (`--strict`) plus, if the style leg should gate, `--style-strict`. Both
-become meaningful when M2 closes the pending blocks. Until then this manifest's job is to
-make every block *countable*: 12 blocks, 8 asserted, 4 named at every run.
+- the check needs a **host browser**, and CI's authoritative job is the container one — the
+  image carries no Chromium on purpose (`docs/docker.md` §"Host-allowed checks");
+- the style leg remains non-blocking (`style.blocking: false`), so `--style-strict` is the
+  second switch if the style leg should ever gate.
+
+Wiring `--strict` into a host-run CI job is therefore a one-line change to the workflow, ready
+whenever the owner wants a red/green gate rather than the current reported count.
 
 ## 5. The M2 manifest (`board-m2.json`) — added 2026-10-12
 
@@ -186,30 +193,38 @@ superset (`m2.derivedFrom`).
 
 The ten blocks M2 closed are flipped `pending → delivered` in this copy (the tool's own
 workflow: a `pending` block is SKIPped, so it would otherwise keep its assertions out of the
-**default** run — flipping is what makes the default run guard them). Only `B09-m2` is still
-`pending`; see the table below.
+**default** run — flipping is what makes the default run guard them). The eleventh,
+`B09-m2`, was flipped in M2b (see below) — **no block is `pending` any more**.
 
 ```bash
 node ~/.openclaw/team/tools/ui-align/check.mjs --config web/.ui-align.json board-m2 --no-style           # rest state
 node ~/.openclaw/team/tools/ui-align/check.mjs --config web/.ui-align.json board-m2 --strict --no-style  # M2 target state
 ```
 
-**Where it stands after M2** (`T-20261012-165126`):
+**Where it stands after M2b** (`T-20261012-174913-2`, 2026-10-12):
 
 | | |
 |---|---|
-| blocks | 19 — 8 delivered plus M2's 11 target blocks |
-| assertions under `--strict` | 124 |
-| failures | **3**, all in `B09-m2` |
+| blocks | 19 — all `delivered`, none `pending` |
+| assertions | 122 under both the default and `--strict` runs |
+| failures | **0** in both |
 | overflow / console | 0 failures at all five widths |
 
-The three remaining failures are the drawer's **data-driven rows** —
-`[data-detail-attachments] .td-file`, `[data-detail-activity] .td-activity`, `.td-activity-ts`.
-They exist only while a task is open, and this engine evaluates the rest state only: it
-cannot click (its README §10 draws the same boundary), and the board's no-task drawer body
-legitimately holds no rows. They are therefore asserted where they *are* observable — the
-driven browser pass in `test/web/blocks.contract.mjs` (`when: "drawer open"`, evaluated by
-`web/scripts/dom-smoke.mjs` between opening a card and closing the drawer, under `npm test`),
-with the corresponding hooks (`[data-attachment-row]`, `[data-activity-row]`,
-`[data-activity-ts]`) declared in B09. Recording them here rather than deleting them keeps
-the gap countable: `--strict` names them at every run.
+The count moved 124 → 122: **−3 +1**. `B09-m2`'s three data-driven row checks were removed
+(see `drivenChecks` in the manifest and §5 of `T-20261012-174913`'s report), and
+`B03-lang-menu` gained one (`[data-lang-menu] > ul.menu > li`).
+
+**`B09-m2`: why the three came out.** `[data-detail-attachments] [data-attachment-row]`,
+`[data-detail-activity] [data-activity-ts]` and `[data-detail-activity] [data-activity-row]`
+exist only while a task is open, and this engine evaluates the rest state only: it cannot
+click (its README §10 draws the same boundary), and the board's no-task drawer body
+legitimately holds no rows. So they were **permanently red here** — the `rc=1` they forced
+said "the tool cannot click", not "M2 did not land", which is the wrong thing for a gate to
+say. Their instrument is the driven layer, and it already carries a stronger version of each:
+`test/web/blocks.contract.mjs` B09's four `when: "drawer open"` rules (`[data-attachment-row]`,
+`[data-activity-row]`, `[data-activity-ts]`, and the attachments placeholder `equals: 0`),
+evaluated by `web/scripts/dom-smoke.mjs` between opening a card and closing the drawer, under
+`npm test`. They were therefore moved out of `checks` and into the engine-ignored
+`drivenChecks` array, so the gap stays countable without being reported as a failure. The
+block's two remaining checks are statically decidable and the implementation meets both, so
+the block flipped `pending → delivered` and `--strict` now reports the truth: 0.
