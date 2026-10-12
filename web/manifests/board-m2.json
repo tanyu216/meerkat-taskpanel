@@ -117,6 +117,18 @@
       {
         "name": "r10-detail-save-error",
         "selector": "[data-detail-save-error]"
+      },
+      {
+        "name": "r12-select",
+        "selector": ".td-select"
+      },
+      {
+        "name": "r12-count",
+        "selector": "[data-filter-count]"
+      },
+      {
+        "name": "r12-column",
+        "selector": "[data-column]"
       }
     ]
   },
@@ -1364,6 +1376,111 @@
           "desc": "两列容器仍在（R8 口径未动）"
         }
       ]
+    },
+    {
+      "id": "B04-r12",
+      "name": "R12 — filters 条：控件族闭集 + 相对顺序 + 单行口径的可表达半",
+      "evidence": "design/fidelity-r12-supplement.md §2/§5 A 组；design/BLOCKS.md §B04（R12 补充）",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "[data-filters]",
+          "count": 1,
+          "desc": "过滤条根唯一"
+        },
+        {
+          "scope": "[data-filters]",
+          "selector": "[data-filter-assignee]",
+          "count": 1
+        },
+        {
+          "scope": "[data-filters]",
+          "selector": "[data-filter-priority]",
+          "count": 1
+        },
+        {
+          "scope": "[data-filters]",
+          "selector": "[data-filter-label]",
+          "count": 1
+        },
+        {
+          "scope": "[data-filters]",
+          "selector": "[data-filter-clear]",
+          "count": 1,
+          "desc": "文档唯一 clear 钩子（B04 既有口径）"
+        },
+        {
+          "scope": "[data-filters]",
+          "selector": "[data-filter-count]",
+          "count": 1
+        },
+        {
+          "scope": "[data-filters]",
+          "selector": "[data-filter-status]",
+          "max": 1,
+          "desc": "状态控件在册；缺席（E1-2 未落地）不计失败 —— R-3"
+        },
+        {
+          "scope": "[data-filters]",
+          "selector": "[data-filter-assignee] ~ [data-filter-priority]",
+          "count": 1,
+          "desc": "顺序 Assignee → Priority（用 ~ 表达，不依赖位置索引）"
+        },
+        {
+          "scope": "[data-filters]",
+          "selector": "[data-filter-priority] ~ [data-filter-label]",
+          "count": 1,
+          "desc": "顺序 Priority →(Status)→ Label；status 缺席时同样成立"
+        },
+        {
+          "scope": "[data-filters]",
+          "selector": "[data-filter-label] ~ [data-filter-clear]",
+          "count": 1,
+          "desc": "顺序 Label → Clear"
+        },
+        {
+          "scope": "[data-filters]",
+          "selector": "[data-filter-clear] ~ [data-filter-count]",
+          "count": 1,
+          "desc": "顺序 Clear → count"
+        }
+      ]
+    },
+    {
+      "id": "B05-r12",
+      "name": "R12 — board 列等高/视口自适应：结构半（几何由驱动层把守）",
+      "evidence": "design/fidelity-r12-supplement.md §3/§5 B 组；design/BLOCKS.md §B05（R12 补充）",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "[data-board]",
+          "count": 1,
+          "desc": "板根唯一"
+        },
+        {
+          "selector": "[data-board-view] > [data-board]",
+          "count": 1,
+          "desc": "板是二态根的直接子级（R10 ①）"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-column]",
+          "count": 7,
+          "desc": "恰好 7 列（scope 到板内，避开文档片段）"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-column][data-status]",
+          "count": 7,
+          "desc": "每列带 data-status"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-column-body]",
+          "count": 7,
+          "desc": "每列一个列体 = 列内唯一纵滚容器（B5/B9）"
+        }
+      ]
     }
   ],
   "m2": {
@@ -1415,6 +1532,25 @@
         "[data-md-editor] / .td-md-panes / [data-md-source]": "原型把创建弹窗挂在 daisyUI `.modal` 上（无 `hidden`、无 `open`）：静止态它**仍参与布局**（`visibility: hidden`），实测 `[data-md-editor]` = 616×514；实现用 `hidden`（`display:none`）关闭，其内部一切 computed `width`/`height`/`minWidth` 都退回声明值（`auto`/`0px`）。三者的双侧比对因此在多数属性上比的是「布局 vs 未布局」而不是保真度（实测 4/3/8 项差异里 9 项属此类），故不进 `style.targets`。R10 ③ 真正要锁的几条（拉伸链的 `display`/`flexDirection`/`flex-grow`/`flex-basis`、`.td-md-panes` 的 `min-height: 200px`）是可声明的，落在 `test/web/blocks.contract.mjs` 的 `computed` 规则里、由 `dom-smoke` 求值；几何关系（编辑器底边贴列内容底边、写侧填满面板）在驱动层 R10 段。"
       },
       "note": "R10 三项（Terry 2026-10-12）：① board 视图二态 ② 抽屉三字段自动保存 ③ 描述占满可用区域。结构/计数在本清单；几何与「恰一可见」「提交使状态离开 idle」「编辑器底边贴到列内容底边」在驱动层 web/scripts/dom-smoke.mjs 的 R10 段；computed style 腿新增两个目标（原型的 `[data-board-view]` 与 `[data-detail-save-error]`）。契约 §5 把 B 类绑在 `ui-align board-m2 --strict` 上，故 B 类里可声明的那几条同时落在 test/web/blocks.contract.mjs 的 computed 规则里（由 dom-smoke 求值）。"
+    },
+    "r12Additions": {
+      "card": "T-20261013-023722 (R12 fix, 2026-10-13)",
+      "contract": "design/fidelity-r12-supplement.md",
+      "blocks": [
+        "B04-r12",
+        "B05-r12"
+      ],
+      "styleTargets": [
+        "r12-select",
+        "r12-count",
+        "r12-column"
+      ],
+      "stylePropsAdded": [
+        "flexWrap",
+        "overflowX",
+        "overflowY"
+      ],
+      "note": "R12 两处口径（Terry 2026-10-12 / Elon 权威 Acceptance ①②）：① filters 条恒一行——`flex-wrap: nowrap` + 栏自身 `overflow-x: auto` + `min-width: 0`（契约 §2.1，R-2；430 档原型折行是**已批准书面偏差**）；② `[data-board]` 的 7 列等高且列高 == board 内容盒高（契约 §3.1，R-4），由 015627（03d8918）的 `items-stretch` + 直通链交付，本轮实测 spread 0px / delta 0px。**A 腿只承载清单六词可表达的那半**（在册族计数 + 用 `~` 表达的相对顺序，R-6a/附録 A）；行数、可见性、四控件等高、count 贴右缘、430 档栏内可滚余量、以及 B 组全部几何，只能由驱动层 web/scripts/dom-smoke.mjs 的 R12 段判定（附録 B）。**C 腿新增三个 style 目标**，并把 `flexWrap`/`overflowX`/`overflowY` 补进 `web/.ui-align.json` 的 `styleProps` —— 不加则 A3/A4 的 C 腿会静默不比较（R-6b / 未决 U-3）；C 腿非阻塞（`design/fidelity-r12-supplement.md` §5.3）。`[data-filter-label] > summary` 未新增目标：它已是既有的 `r9-label-trigger`（同一元素），重复登记只会把同一处差异数两遍。"
     }
   }
 }
