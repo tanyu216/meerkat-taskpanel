@@ -53,7 +53,7 @@ function chooseLabel(value, event) {
 </script>
 
 <template>
-  <section class="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-b-(--brand-border) bg-(--brand-surface)" data-filters :hidden="!filtersOpen" id="td-filters">
+  <section class="flex min-w-0 flex-wrap items-center gap-2" data-filters :hidden="!filtersOpen" id="td-filters">
     <!-- R9 ② — the two selects' wrappers carried a stray `mb-3` from a stacked
          form: with the row's `items-center` that 12px margin made each wrapper
          44px tall, so the two selects floated 6px **above** the row's centre

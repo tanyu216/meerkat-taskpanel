@@ -628,19 +628,19 @@ svg[data-token-icon][hidden] { display: none; }
    a property of the document rather than of the script's last write — the same
    shape R9 ③ gave the list, and for the same reason.
 
-   The root is a column flex box with `height: 100%` rather than the prototype's
-   `flex: 1 1 auto`. The prototype's `[data-main]` is a flex column and its board
-   resolves `flex: 1 1 auto` against it; this app's `main` is a plain grid item
-   whose children are block-level, so the same declaration here would be inert
-   and the board's own `height: 100%` would resolve against an auto-height parent
-   — the collapse the contract's §2.1.2 measured (board 812px → 331.56px).
-   `height: 100%` states the same intent against the layout that actually exists,
-   and the board's geometry is bit-identical to shipping it as `main`'s own child
-   (measured: 894px before and after, `verify/probe-*.json`). */
+   T-20261013-015627 — the root resolves `flex: 1 1 auto` against `main`, exactly
+   as the prototype's `[data-board-view]` resolves it against `.td-main`. Until
+   this card that declaration **was** inert here: `main` was a plain grid item
+   whose children were block-level, so the view had to state `height: 100%` or
+   collapse to its content (the 812px → 331.56px the contract's §2.1.2 measured).
+   `main` is now the prototype's own column flex box — it carries the design's
+   content inset (`20px 24px`, DESIGN §4) and a 12px row gap — so the flex item
+   is the statement that fits the layout, and `height: 100%` would instead have
+   resolved against main's content box *and* overflow it by the filter row. */
 [data-board-view] {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
 }
