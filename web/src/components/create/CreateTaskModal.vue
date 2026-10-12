@@ -100,7 +100,14 @@ async function submit() {
           <button type="button" class="border-0 bg-transparent text-(--brand-text-3) cursor-pointer" data-modal-close :aria-label="$t('modal.close')" @click="createTaskOpen = false">✕</button>
         </header>
 
-        <div class="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-4 p-4 max-[760px]:grid-cols-1" data-create-two-col>
+        <!-- Single track by default, the pair only *above* 760px — the boundary
+             is inclusive on the narrow side. Tailwind v4 compiles `max-[760px]:`
+             to `@media (width < 760px)`, which is exclusive and left 760px
+             two-column; DESIGN.md §18.5 wants the dialog single-column *at* 760,
+             matching the prototype's own `@media (max-width: 760px)`. The
+             `minmax(0, …)` pair is kept: it is what stops a long value or the
+             editor from pushing the dialog past its box. -->
+        <div class="grid grid-cols-1 min-[761px]:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-4 p-4" data-create-two-col>
           <div data-create-left>
             <label class="flex flex-col gap-1 mb-3">
               <span data-i18n="createTask.field.title">{{ $t("createTask.field.title") }}</span>
