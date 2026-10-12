@@ -9,6 +9,34 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The host-external supervisor is a skill of its own: `meerkat-loop`.** The loop was an
+  implicit side effect of installing the board; it is now a self-contained, separately
+  distributed skill (`skills/meerkat-loop/`) carrying the execution body, the unit / wake /
+  host-config templates and an operator reference. It is distributed to **claude, codex and
+  pi**, and **never to OpenClaw** — permanently, by ruling: the openclaw-team framework
+  already ships `poll-<agent>` / `task-patrol`, which is the same design, and two
+  supervisors on one board would only race each other for the same cards. The board skill
+  still goes to all four hosts, so `sync-skills.mjs` now models two skills with two
+  distribution surfaces (plus a `plugins/loop` bundle target, so the marketplace can list
+  the loop as its own plugin: `.claude-plugin/marketplace.json` now lists
+  `meerkat-taskpanel` → `./plugins/claude` and `meerkat-loop` → `./plugins/loop`).
+  The loop skill **declares the board interface generation it requires** —
+  `task-interface v1`, the surface the board first shipped in release 1.0.0 — and its
+  `scripts/board-check.mjs` enforces that against the board's own `taskctl --version --json`
+  answer, exiting 3 rather than guessing when the board is too old or cannot be asked.
+  Board and loop **version independently** (a `board` and a `loop` group in
+  `scripts/verify/version.mjs`, and `scripts/release/bump.mjs --group loop`): the first split
+  ships one linked version, but nothing holds them together after that.
+- **The loop payload is generated and guarded, not hand-copied.** `scripts/sync-loop.mjs`
+  computes the transitive import closure of `scripts/supervisor.mjs` and
+  `scripts/wake-cwd.mjs` and writes it into the skill as `body/manifest.txt` — the list the
+  installer copies and the test suite checks the copy against, so the closure is declared
+  once instead of restated in bash, in a test and in a host's tree. `templates/` mirrors the
+  loop-side files under `scripts/install/templates/`, and the installer now renders the
+  units, the wake glues and the host config **from the loop skill** rather than from a
+  second reading of `scripts/`. `node scripts/sync-skills.mjs --check` (and CI) covers both
+  directions, so editing the supervisor without regenerating is a red build.
+
 - **The contract `schema_version` is readable from the CLI — the version leg.**
   A client could compare wire *fields* against the contract, but there was no way
   to read the provider's declared contract **generation** at runtime: the number
@@ -103,6 +131,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The wake glue resolves the card's project directory through the host, not the checkout.**
+  The generated `wake-<host>.sh` templates called `{{REPO}}/scripts/wake-cwd.mjs` — a
+  checkout path baked into a host-installed file, which is exactly the coupling the split
+  exists to remove. They now call the host-local `{{LOOP}}/scripts/wake-cwd.mjs`, which
+  travels with the loop body, so a moved, renamed or deleted checkout no longer breaks a
+  wake. `scripts/wake-cwd.mjs`, `src/shared/project-dir.mjs` and
+  `src/shared/runtime-locator.mjs` join the body closure for that reason (the shared modules
+  themselves stay where the CLI imports them; the skill holds a generated copy).
+- **`install.sh --link` names the board skill only.** The loop is always copied: a
+  symlinked execution body would put the checkout back into the load path the split removes.
+  The installer also installs the loop skill itself (`<host>/skills/meerkat-loop/`) for
+  claude / codex / pi, and the board skill for OpenClaw — and the board skill's references
+  no longer link up into the repository root (`../../../docs/…` dangles everywhere a skill
+  is *installed*; they link out by absolute URL now, and `test/skill/loop.test.mjs` asserts
+  it).
 - **The brand mark gained its face — V2 logo landing, candidate A «Pin · 克制» — and the
   silhouette does not move.** The Sentinel Watch mark keeps its frozen V2 geometry to the
   byte — same `viewBox 0 0 32 32`, same `y = 27` baseline, same ink extent

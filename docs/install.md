@@ -1,12 +1,22 @@
 # Installation
 
-Meerkat TaskPanel ships as an **Agent Skill** (`skills/meerkat-taskpanel/`) plus one distribution
-bundle per host (`plugins/`). There are three layers, and it is worth keeping them
-straight:
+Meerkat TaskPanel ships as **two Agent Skills** plus one distribution bundle per
+host (`plugins/`):
 
-1. **The skill** — `SKILL.md` + `references/` + a wrapper, copied (or symlinked) into the
-   host's skill directory by `install.sh`. This is deterministic, offline, and needs no
-   host tooling. It is what makes the agent able to drive `taskctl`.
+- **`meerkat-taskpanel`** (`skills/meerkat-taskpanel/`) — the board. Installed for all four
+  hosts.
+- **`meerkat-loop`** (`skills/meerkat-loop/`) — the host-external supervisor that keeps a
+  board moving when no agent is looking. Installed for **claude, codex and pi only**;
+  OpenClaw gets the board on its own, because the openclaw-team framework already runs an
+  equivalent poll / patrol (see [`scheduling.md`](scheduling.md#openclaw-do-not-build-a-supervisor)).
+
+There are three layers, and it is worth keeping them straight:
+
+1. **The skills** — `SKILL.md` + `references/` + a wrapper, copied (or, for the board
+   skill, symlinked) into the host's skill directory by `install.sh`. This is
+   deterministic, offline, and needs no host tooling. The board skill is what makes the
+   agent able to drive `taskctl`; the loop skill carries the supervisor's execution body
+   and the templates the units are rendered from.
 2. **The host bundle** (Claude Code and Codex) — `install.sh --target claude|codex`
    deploys the rest of the host's setup too, not just the skill: the host config
    (`~/.claude/settings.json` / `~/.codex/AGENTS.md`), slash commands (Claude)
@@ -17,7 +27,10 @@ straight:
    overwrite. See [Idempotence](#idempotence-re-running-and-force).
 3. **The plugin/bundle** — the per-host manifest under `plugins/<host>/` that lets the
    host's own plugin system discover and enable the skill. This step needs the host CLI,
-   so `install.sh` does **not** run it; it prints the command and you run it once.
+   so `install.sh` does **not** run it; it prints the command and you run it once. The
+   marketplace lists two plugins — `meerkat-taskpanel` (sourced at `plugins/claude`) and
+   `meerkat-loop` (sourced at `plugins/loop`, which carries the loop skill and nothing
+   else, so it can be installed on its own).
 
 > **Status: the engine has landed through M6.** The skill is discoverable, the `taskctl`
 > commands it describes are implemented, and the board backend (`src/server/`, HTTP + SSE)
@@ -37,15 +50,20 @@ match the assignee the board uses for it; it defaults to `$USER`.
 
 ## Where things land
 
-| Host | `--target` | Skill destination | Bundle |
-|---|---|---|---|
-| Claude Code | `claude` | `~/.claude/skills/meerkat-taskpanel` | `plugins/claude` (`.claude-plugin/plugin.json`) |
-| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | `plugins/openclaw` (native `openclaw.plugin.json`) |
-| Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | `plugins/codex` (`.codex-plugin/plugin.json`) |
-| Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | `plugins/pi` (`package.json`) |
+| Host | `--target` | Board skill | Loop skill | Bundle |
+|---|---|---|---|---|
+| Claude Code | `claude` | `~/.claude/skills/meerkat-taskpanel` | `~/.claude/skills/meerkat-loop` | `plugins/claude` (`.claude-plugin/plugin.json`) |
+| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | **none** — see [OpenClaw](scheduling.md#openclaw-do-not-build-a-supervisor) | `plugins/openclaw` (native `openclaw.plugin.json`) |
+| Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | `~/.codex/skills/meerkat-loop` | `plugins/codex` (`.codex-plugin/plugin.json`) |
+| Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | `~/.agents/skills/meerkat-loop` | `plugins/pi` (`package.json`) |
 
-The repository-root Claude marketplace `.claude-plugin/marketplace.json` points at
-`./plugins/claude`; Codex reads the same marketplace manifest.
+The repository-root Claude marketplace `.claude-plugin/marketplace.json` lists
+`./plugins/claude` (the board) and `./plugins/loop` (the loop); Codex reads the same
+marketplace manifest.
+
+`--link` applies to the **board** skill only. The loop is always copied: a symlinked
+execution body would put the checkout back into the load path of the very thing the split
+exists to make independent of it (`skills/meerkat-loop/body/`).
 
 The two bundle hosts write more than the skill. **Claude** additionally writes
 `~/.claude/settings.json` (merged `env.TASKCTL_AGENT` + a `SessionStart` hook),
@@ -77,17 +95,18 @@ version control.
 
 | Artefact | Where | What |
 |---|---|---|
-| loop body | `<host>/meerkat-taskpanel/scripts/supervisor.mjs` + `<host>/meerkat-taskpanel/src/shared/*.mjs` | a **copy** of the executor and the `src/shared/` modules it imports — what the units run, so a loaded unit survives this checkout being moved, renamed or removed (see [`scheduling.md §The loop body is installed, not referenced`](scheduling.md#the-loop-body-is-installed-not-referenced)) |
+| loop skill | `<host>/skills/meerkat-loop/` | the loop as a skill: its `SKILL.md`, the generated execution body (`body/`), the unit/wake/config templates it is deployed with, and the board-interface gate (`scripts/board-check.mjs`). Always **copied**, never symlinked |
+| loop body | `<host>/meerkat-taskpanel/scripts/supervisor.mjs` + `.../scripts/wake-cwd.mjs` + `.../src/shared/*.mjs` | a **copy** of the executor, the glue's directory resolver and the modules they import — what the units run, so a loaded unit survives this checkout being moved, renamed or removed (see [`scheduling.md §The loop body is installed, not referenced`](scheduling.md#the-loop-body-is-installed-not-referenced)). The exact file list is the loop skill's generated `body/manifest.txt` |
 | launchd | `<host>/scheduling/launchd/com.meerkat-taskpanel.{poll,patrol}.plist` | `StartInterval` 60 / 300 |
 | systemd | `<host>/scheduling/systemd/meerkat-taskpanel-{poll,patrol}.{service,timer}` | 60s / 300s timers |
 | cron | `<host>/scheduling/cron/meerkat-taskpanel.cron` | `* * * * *` poll, `*/5 * * * *` patrol |
-| wake glue | `<host>/bin/wake-<host>.sh` | resolves the card's project target directory from the skill's `projects.json`, `cd`s there (refusing the wake if it cannot), then runs `claude -p` (+`--resume`), `codex exec`, or `pi --print` |
+| wake glue | `<host>/bin/wake-<host>.sh` | resolves the card's project target directory from the board skill's `projects.json` via the host-local `meerkat-taskpanel/scripts/wake-cwd.mjs`, `cd`s there (refusing the wake if it cannot), then runs `claude -p` (+`--resume`), `codex exec`, or `pi --print` |
 | host config | `<host>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no` + `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives) |
 | log (runtime) | `<host>/meerkat-taskpanel/supervisor.log` | the supervisor's tick log |
 | state (runtime) | `<host>/meerkat-taskpanel/supervisor.state.json` | the running registry |
 
-`<host>` is `~/.claude`, `~/.codex` or `~/.agents`. **OpenClaw gets none of these** —
-it installs the skill only and uses the
+`<host>` is `~/.claude`, `~/.codex` or `~/.agents`. **OpenClaw gets none of these, and no
+`meerkat-loop` skill** — it installs the board skill only and uses the
 [openclaw-team](https://github.com/tanyu216/openclaw-team) framework's own
 `poll`/`patrol` instead (see [`scheduling.md`](scheduling.md#openclaw-do-not-build-a-supervisor)).
 
@@ -138,7 +157,7 @@ install.sh [--target claude|openclaw|codex|pi|all] [--prefix <home>]
 | `--no-automation` | Skip **all** Codex automation — the claim trigger *and* the scheduling units (Claude/OpenClaw/Pi are unaffected). |
 | `--claim-unassigned=yes\|no` | May the supervisor claim **unassigned** cards (the public pool)? Persisted to `<home>/<host>/meerkat-taskpanel.env`; overrides the interactive answer. Default `yes`. |
 | `--assignee-only` | Alias for `--claim-unassigned=no`. |
-| `--link` | Symlink the skill instead of copying it — edits to the repo take effect immediately. Recommended for a checkout. |
+| `--link` | Symlink the **board** skill instead of copying it — edits to the repo take effect immediately. Recommended for a checkout. The `meerkat-loop` skill is always copied, because the loop's whole point is that its execution body does not live in a checkout. |
 | `--force` | The **only** way to overwrite. Without it, an existing destination is left untouched (merge, never clobber) and the installer prints a `left unchanged — use --force to overwrite` notice, so a re-run is safe, idempotent, and exits 0. With it, managed files and managed config keys are re-rendered from the current flags. |
 | `--dry-run` | Print every path that would be written/changed and change nothing. |
 | `--skip-node-check` | Skip the Node version check (see below). |
@@ -212,9 +231,11 @@ claimable cards), `~/.claude/commands/{board,claim,deliver}.md`, the `taskctl` s
 Uninstall:
 
 ```bash
+claude plugin uninstall meerkat-loop@meerkat-taskpanel-marketplace   # if you installed it
 claude plugin uninstall meerkat-taskpanel@meerkat-taskpanel-marketplace
 claude plugin marketplace remove meerkat-taskpanel-marketplace
-rm -rf ~/.claude/skills/meerkat-taskpanel ~/.claude/commands/{board,claim,deliver}.md \
+rm -rf ~/.claude/skills/meerkat-taskpanel ~/.claude/skills/meerkat-loop \
+       ~/.claude/commands/{board,claim,deliver}.md \
        ~/.claude/hooks/meerkat-taskpanel-session-start.sh ~/.claude/bin/taskctl \
        ~/.claude/bin/wake-claude.sh \
        ~/.claude/scheduling ~/.claude/meerkat-taskpanel.env ~/.claude/meerkat-taskpanel
@@ -242,11 +263,12 @@ Bundle capabilities: skills
 ```
 
 > **No supervisor for OpenClaw.** Unlike the other three hosts, OpenClaw gets **no**
-> scheduling unit: it already has a scheduler in the
+> scheduling unit and **no `meerkat-loop` skill**: it already has a scheduler in the
 > [openclaw-team](https://github.com/tanyu216/openclaw-team) framework, whose
 > `poll-<agent>` and `task-patrol` automations *are* the design in
-> [`scheduling.md`](scheduling.md). `install.sh --target openclaw` writes the skill
-> only — install that framework instead.
+> [`scheduling.md`](scheduling.md). `install.sh --target openclaw` writes the board skill
+> only — install that framework instead. The exclusion is permanent, not a gap: two
+> supervisors on one board would only race each other for the same cards.
 
 > **Native vs bundle.** `plugins/openclaw/openclaw.plugin.json` is a *native* OpenClaw
 > manifest. A native plugin is an in-process runtime module and must ship
@@ -293,7 +315,8 @@ Uninstall:
 ```bash
 codex plugin remove meerkat-taskpanel
 codex plugin marketplace remove meerkat-taskpanel-marketplace
-rm -rf ~/.codex/skills/meerkat-taskpanel ~/.codex/meerkat-taskpanel-claim.sh ~/.codex/bin/taskctl \
+rm -rf ~/.codex/skills/meerkat-taskpanel ~/.codex/skills/meerkat-loop \
+       ~/.codex/meerkat-taskpanel-claim.sh ~/.codex/bin/taskctl \
        ~/.codex/bin/wake-codex.sh \
        ~/.codex/scheduling ~/.codex/meerkat-taskpanel.env ~/.codex/meerkat-taskpanel
 ```
@@ -319,7 +342,8 @@ Uninstall:
 
 ```bash
 pi remove "$PWD/plugins/pi"
-rm -rf ~/.agents/skills/meerkat-taskpanel ~/.agents/scheduling ~/.agents/bin/wake-pi.sh ~/.agents/meerkat-taskpanel.env
+rm -rf ~/.agents/skills/meerkat-taskpanel ~/.agents/skills/meerkat-loop \
+       ~/.agents/scheduling ~/.agents/bin/wake-pi.sh ~/.agents/meerkat-taskpanel.env
 ```
 
 ## Agent integration: skill only
@@ -406,14 +430,14 @@ HOME=/tmp/tp-home CODEX_HOME=/tmp/tp-home/.codex codex plugin marketplace add "$
 
 ## Uninstalling
 
-Each host's section above lists the plugin/bundle removal command. The skill itself is
-removed by deleting its destination:
+Each host's section above lists the plugin/bundle removal command. The skills themselves
+are removed by deleting their destinations:
 
 ```bash
-rm -rf ~/.claude/skills/meerkat-taskpanel      # claude
-rm -rf ~/.openclaw/skills/meerkat-taskpanel    # openclaw
-rm -rf ~/.codex/skills/meerkat-taskpanel       # codex
-rm -rf ~/.agents/skills/meerkat-taskpanel      # pi
+rm -rf ~/.claude/skills/meerkat-taskpanel ~/.claude/skills/meerkat-loop      # claude
+rm -rf ~/.openclaw/skills/meerkat-taskpanel                                  # openclaw (no loop)
+rm -rf ~/.codex/skills/meerkat-taskpanel ~/.codex/skills/meerkat-loop        # codex
+rm -rf ~/.agents/skills/meerkat-taskpanel ~/.agents/skills/meerkat-loop      # pi
 ```
 
 Nothing is written outside those directories, and nothing is sent over the network — see

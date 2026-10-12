@@ -11,7 +11,11 @@ marketplace, OpenClaw, Codex, Pi).
 
 ## 1. Version consistency
 
-A release version lives in **six files**, and all six must carry the same value:
+Two components are shipped and they version **independently** (ruling O4): the **board** and
+the **loop**. Each component's manifests must agree with each other; the two components are
+not compared with one another.
+
+**Board** — six files, root `package.json` canonical:
 
 | # | File | Field |
 |---|---|---|
@@ -22,25 +26,39 @@ A release version lives in **six files**, and all six must carry the same value:
 | 5 | `plugins/openclaw/openclaw.plugin.json` | `version` |
 | 6 | `.claude-plugin/marketplace.json` | `metadata.version` |
 
-**Bump them with one command.** Editing six files by hand is exactly how drift starts;
-`scripts/release/bump.mjs` moves all six at once:
+**Loop** — two files, its own plugin manifest canonical:
+
+| # | File | Field |
+|---|---|---|
+| 1 | `plugins/loop/.claude-plugin/plugin.json` | `version` |
+| 2 | `plugins/loop/package.json` | `version` |
+
+**Bump them with one command, one group at a time.** Editing these files by hand is exactly
+how drift starts; `scripts/release/bump.mjs` moves a whole group at once:
 
 ```bash
 node scripts/release/bump.mjs 1.1.0                    # or: npm run release:bump 1.1.0
 node scripts/release/bump.mjs 1.1.0 --changelog        # + an empty CHANGELOG scaffold
 node scripts/release/bump.mjs 1.1.0 --changelog --tag
+
+node scripts/release/bump.mjs 1.2.0 --group loop       # the loop alone
 ```
+
+`--changelog` and `--tag` belong to a **board release** and are refused with
+`--group loop`: a release is tagged, a component bump is not. If the loop needs a version
+the board never had, that is `--group loop` and nothing else — the first split shipped one
+linked version, by ruling (O7), but nothing keeps them together after that.
 
 It edits each manifest **in place**: the one version string token is spliced, so key order,
 indentation, inline objects and single-line arrays survive exactly as authored — no
 `JSON.parse`/`stringify` round trip, which would reformat the whole file. The target must be
-strict semver and strictly greater than the version the root `package.json` currently
-declares, and the six files are written **atomically**: every new body is staged to a temp
+strict semver and strictly greater than the version the group's canonical manifest currently
+declares, and the group's files are written **atomically**: every new body is staged to a temp
 file beside its target and only all-successful staging is renamed into place, so a failure
 leaves the tree byte-identical (nothing written, or everything already renamed restored).
-The list of six, and the JSON path to each version, is imported from `version.mjs` — the
-bumper and the checker cannot disagree about where the version lives. Bumping a tree that has
-already drifted is refused rather than quietly papered over.
+The groups, the files and the JSON path to each version are imported from `version.mjs` — the
+bumper and the checker cannot disagree about where a version lives. Bumping a group whose own
+files have already drifted is refused rather than quietly papered over.
 
 - `--changelog` inserts an **empty** Keep-a-Changelog scaffold (`### Added` / `### Changed` /
   `### Fixed`, one placeholder bullet each) directly below `## [Unreleased]` and above the
@@ -49,12 +67,13 @@ already drifted is refused rather than quietly papered over.
 - `--tag` creates the local `v<x.y.z>` ref once the bump has landed and prints the exact
   `git push` command. It never pushes (§3); the push stays Elon's.
 
-**Check it.** `scripts/verify/version.mjs` checks that the six agree; it is wired into CI, so
-a drifting version fails the build rather than shipping. Run it before tagging — and after
-the bump, as the proof the bump was complete:
+**Check it.** `scripts/verify/version.mjs` checks each group against its own canonical entry;
+it is wired into CI, so a version drifting inside a group fails the build rather than
+shipping. Run it before tagging — and after the bump, as the proof the bump was complete:
 
 ```bash
-node scripts/verify/version.mjs
+node scripts/verify/version.mjs                  # both groups
+node scripts/verify/version.mjs --group loop     # narrow to one
 node scripts/release/bump.mjs 1.1.0 && node scripts/verify/version.mjs   # bump, then prove it
 ```
 
@@ -244,22 +263,34 @@ git merge-base --is-ancestor "$(git rev-parse v1.2.3^{commit})" origin/main \
 
 ## 4. Claude Code marketplace
 
-`.claude-plugin/marketplace.json` (marketplace name `meerkat-taskpanel-marketplace`) points its
-single plugin `meerkat-taskpanel` at `./plugins/claude`, whose `.claude-plugin/plugin.json`
-declares `"skills": "./skills"`.
+`.claude-plugin/marketplace.json` (marketplace name `meerkat-taskpanel-marketplace`) lists
+**two plugins**, one per skill:
+
+| Plugin | Source | Carries |
+|---|---|---|
+| `meerkat-taskpanel` | `./plugins/claude` | the board skill |
+| `meerkat-loop` | `./plugins/loop` | the loop skill, and nothing else |
+
+They are separate entries on purpose: a single source directory carrying both skills could
+not be installed for the loop alone, and the loop is installed for `claude` / `codex` / `pi`
+only — never for OpenClaw, which runs the openclaw-team framework's own supervisor instead.
 
 ```bash
-# consumer: register this repository as the marketplace, then install the plugin
+# consumer: register this repository as the marketplace, then install what you need
 claude plugin marketplace add <path-or-git-url>
 claude plugin install meerkat-taskpanel@meerkat-taskpanel-marketplace -y
+claude plugin install meerkat-loop@meerkat-taskpanel-marketplace -y    # on claude/codex/pi
 
 # verify
-claude plugin list                  # → meerkat-taskpanel@meerkat-taskpanel-marketplace, enabled
+claude plugin list                  # → both plugins, enabled
 claude plugin validate <path>       # validates the plugin + marketplace manifests
 ```
 
-The generated `plugins/claude/skills/` copy must match `skills/` — `npm run check:skills`
-fails CI on drift, so run `node scripts/sync-skills.mjs` after any skill edit.
+The generated plugin copies must match `skills/` — `npm run check:skills` fails CI on drift,
+so run `node scripts/sync-skills.mjs` after any skill edit. That one command also regenerates
+the loop skill's **payload** (`skills/meerkat-loop/{body,templates}/`), which is generated
+from `scripts/supervisor.mjs`, `scripts/wake-cwd.mjs`, `src/shared/` and
+`scripts/install/templates/`; `--check` guards both directions.
 
 ## 5. OpenClaw
 
@@ -297,11 +328,14 @@ codex plugin list
 
 ## 7. Pi / Agent Skills
 
-`plugins/pi/package.json` is the Pi package (`"files": ["skills"]`), and `plugins/pi/skills/`
-is the generated skill copy.
+`plugins/pi/package.json` is the board's Pi package (`"files": ["skills"]`), and
+`plugins/pi/skills/` is the generated skill copy. The loop has its own package on the same
+pattern — `plugins/loop/package.json` with `plugins/loop/skills/meerkat-loop/` — so a Pi
+host can install either component on its own.
 
 ```bash
-pi install <path>/plugins/pi
+pi install <path>/plugins/pi        # the board
+pi install <path>/plugins/loop      # the loop (claude/codex/pi hosts only)
 
 # verify
 pi list
@@ -311,9 +345,11 @@ pi list
 
 Every host bundle carries its own generated `skills/` copy (see
 [development.md](development.md#the-skill-is-generated-never-hand-edited)). A publish is
-only correct if `node scripts/sync-skills.mjs --check` is green — the generated copies and
-`skills/meerkat-taskpanel/` must be identical. Both are in the npm whitelist, so the tarball ships
-the source skill *and* the per-host copies.
+only correct if `node scripts/sync-skills.mjs --check` is green — for each skill, the
+generated copies and the source under `skills/<skill>/` must be identical, and the loop
+skill's generated payload must match the repository modules it is generated from. Both
+skills are in the npm whitelist, so the tarball ships the source skills *and* the per-host
+copies.
 
 ## See also
 

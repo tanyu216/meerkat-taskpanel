@@ -3,8 +3,13 @@
 How a board gets worked **continuously** when the host that does the work has no
 clock: the cheap scan, the atomic claim, the wake, and the slow patrol that
 catches what the scan misses. The supervisor that runs the loop lives **outside**
-the host — `scripts/supervisor.mjs`, which `install.sh` copies into the host — and
-the host is only ever the worker that gets woken.
+the host — `scripts/supervisor.mjs`, which `install.sh` copies into the host out of
+the **[`meerkat-loop`](../skills/meerkat-loop/SKILL.md) skill** — and the host is only
+ever the worker that gets woken.
+
+The loop is a skill of its own, and it is distributed as one: `claude`, `codex` and `pi`
+install it, and OpenClaw deliberately does not (see
+[OpenClaw: do not build a supervisor](#openclaw-do-not-build-a-supervisor)).
 
 This is the design the OpenClaw host already ships as
 [openclaw-team](https://github.com/tanyu216/openclaw-team) (`poll-<agent>` and
@@ -153,7 +158,7 @@ timers** — their hooks fire only on session events. So the loop lives outside:
 | Option | Shape |
 |---|---|
 | `scripts/supervisor.mjs` (this repo) | standalone; `--once` for cron/launchd/systemd, or its own interval loop |
-| the host-installed copy | what `install.sh` deploys: the body is copied under `<host-dir>/meerkat-taskpanel/`, and the scheduling units name *that* path |
+| the host-installed copy | what `install.sh` deploys, out of the [`meerkat-loop`](../skills/meerkat-loop/SKILL.md) skill: the body is copied under `<host-dir>/meerkat-taskpanel/`, and the scheduling units name *that* path |
 | the local `taskd` process | a natural home for the same loop in a future milestone |
 | [openclaw-team](https://github.com/tanyu216/openclaw-team) | on OpenClaw, the framework *is* the supervisor |
 
@@ -168,7 +173,8 @@ this checkout:
 ```text
 <home>/<host-dir>/meerkat-taskpanel/
 ├── scripts/supervisor.mjs        the executor the units run
-├── src/shared/{scheduling,constants,errors,redact}.mjs
+├── scripts/wake-cwd.mjs          what the wake glue calls to resolve a card's directory
+├── src/shared/*.mjs              the modules those two import
 ├── supervisor.log                runtime
 └── supervisor.state.json         runtime
 ```
@@ -176,23 +182,37 @@ this checkout:
 The `scripts/` + `src/shared/` shape is load-bearing: `supervisor.mjs` imports
 `../src/shared/scheduling.mjs`, and that module in turn imports `constants.mjs` and
 `errors.mjs` (which imports `redact.mjs`). One file alone would leave a relative import
-resolving to nothing, so the transitive closure travels with it. The installer refreshes
-a differing copy only with `--force` (merge, never clobber — the same contract as every
-other installed artefact).
+resolving to nothing, so the transitive closure travels with it.
 
-What that buys: a unit a user has already **loaded** names no checkout path, so moving,
-renaming or removing the checkout no longer invalidates it — and pointing the loop at a
-new location is a re-run of `install.sh`, with no `launchctl` / `systemctl` / `crontab`
-reload.
+**The list is not restated anywhere.** `scripts/sync-loop.mjs` computes the closure from
+the body's two entry points (`scripts/supervisor.mjs` and `scripts/wake-cwd.mjs`) and
+writes it into the loop skill as `body/manifest.txt`; the installer copies exactly what
+that manifest lists, and `test/install/scheduling-units.test.mjs` proves the same list is
+closed under its own imports. So the loop skill's payload is generated and guarded
+(`node scripts/sync-skills.mjs --check`), and a new import cannot leave the installer, the
+test, or a host's copy silently behind. The installer refreshes a differing copy only with
+`--force` (merge, never clobber — the same contract as every other installed artefact),
+and `--dry-run` reports which members would be refreshed.
+
+The units, the wake glues and the host config are rendered from the **loop skill's own
+templates** (`skills/meerkat-loop/templates/…`), not from a second copy under
+`scripts/install/templates/` — the installer deploys what the loop distributes.
+
+What that buys: a unit a user has already **loaded** names no checkout path, and the wake
+glue resolves the card's directory through the host-local `scripts/wake-cwd.mjs` rather
+than the checkout's — so moving, renaming or removing the checkout does not invalidate
+either. Pointing the loop at a new location is a re-run of `install.sh`, with no
+`launchctl` / `systemctl` / `crontab` reload.
 
 What it does not buy (yet): the **board engine** still lives in the checkout. The copied
-executor drives `taskctl`, and the shim that names it (`<host-dir>/bin/taskctl`) and the
-wake glue's project resolver (`scripts/wake-cwd.mjs`) are checkout-resident, so a moved
-checkout still needs `install.sh` re-run (or `--force`) for those to follow. The host
-config records where the board is — `MEERKAT_TASKPANEL_REPO` in
-`<host-dir>/meerkat-taskpanel.env` — which is what lets a host-installed executor find
-its CLI at all. The half of the split that remains is tracked as its own work (the
-`meerkat-loop` skill).
+executor drives `taskctl`, and the shim that names it (`<host-dir>/bin/taskctl`) is
+checkout-resident, so a moved checkout still needs `install.sh` re-run (or `--force`) for
+that to follow. The host config records where the board is — `MEERKAT_TASKPANEL_REPO` in
+`<host-dir>/meerkat-taskpanel.env` — which is what lets a host-installed executor find its
+CLI at all. That one remaining dependency is named rather than hidden: the loop skill's
+`references/operation.md` §"What the loop still needs from a checkout" is where it is
+recorded, and the loop's interface requirement on the board (which release/interface
+generation it drives) is declared in its `SKILL.md`.
 
 ## Headless permission boundary
 
@@ -245,6 +265,10 @@ The wake command column is what the *host CLI* is called with. When the host's g
 is installed, the supervisor starts **the glue** with that handoff and lets it set
 the working directory first — see [Where a worker runs](#where-a-worker-runs).
 
+Installers also install the **loop skill** itself, at `<host-dir>/skills/meerkat-loop/` —
+the payload the units and glues are rendered from, and the operator's documentation for
+running the loop. It is always a copy: `--link` names the board skill only.
+
 Installers write per-host units under `<host-dir>/scheduling/{launchd,systemd,cron}`
 and the wake glue at `<host-dir>/bin/wake-<host>.sh`, then **print the load
 command** — they never enable a daemon or run `crontab` for you:
@@ -265,8 +289,11 @@ OpenClaw is the one host with a scheduler of its own. The
 [openclaw-team](https://github.com/tanyu216/openclaw-team) framework already
 implements exactly this pattern — `poll-<agent>` (`every 1m + trigger`) for the
 expensive-free scan and `task-patrol` (`every 5m + trigger`) for the stale pass.
-`install.sh --target openclaw` therefore installs the **skill only**: no
-scheduler, no wake glue, no host config. Point OpenClaw at the framework instead:
+`install.sh --target openclaw` therefore installs the **board skill only**: no
+`meerkat-loop` skill, no scheduler, no wake glue, no host config — permanently, by
+ruling, not as a gap to be filled later. Two supervisors on one board would only race
+each other for the same cards, and the board's claim is atomic, so the race is bounded
+but the second supervisor is pure waste. Point OpenClaw at the framework instead:
 
 ```bash
 git clone https://github.com/tanyu216/openclaw-team && cd openclaw-team
@@ -277,13 +304,18 @@ git clone https://github.com/tanyu216/openclaw-team && cd openclaw-team
 Meerkat TaskPanel is that framework's default board, and its claim and candidate
 criteria are kept in lockstep with openclaw-team's poll — which is the point.
 
-## Running `scripts/supervisor.mjs`
+## Running the supervisor
 
 ```bash
-node scripts/supervisor.mjs --host claude --agent alice --once        # one tick
+node scripts/supervisor.mjs --host claude --agent alice --once        # one tick, in the checkout
 node scripts/supervisor.mjs --agent alice,bob --host codex            # loop
 node scripts/supervisor.mjs --agent alice --dry-run --once            # plan only
+
+node ~/.claude/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --once   # the installed copy
 ```
+
+The flags are the same either way; the installed copy is what a loaded unit names, and it
+takes the board's location from `MEERKAT_TASKPANEL_REPO` in the host config.
 
 | Flag | Default | Meaning |
 |---|---|---|
@@ -401,6 +433,10 @@ its row above is the wake form alone.
 ## See also
 
 - [`install.md`](install.md) — the installer flags, including `--claim-unassigned`.
+- [`../skills/meerkat-loop/SKILL.md`](../skills/meerkat-loop/SKILL.md) — the loop as the
+  skill it is distributed as, and the board interface generation it requires;
+  [`references/operation.md`](../skills/meerkat-loop/references/operation.md) is the
+  operator's view.
 - [`../skills/meerkat-taskpanel/references/practice-guides.md`](../skills/meerkat-taskpanel/references/practice-guides.md) —
   the "Waking & patrol" section, for the agent-facing view.
 - [`../skills/meerkat-taskpanel/references/cli.md`](../skills/meerkat-taskpanel/references/cli.md) —

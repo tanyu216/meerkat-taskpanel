@@ -37,10 +37,10 @@ nothing imports from `cli` or `server`; `shared` imports nothing from `src/`.
 
 ```bash
 node --test                          # smoke / contract test suite
-node scripts/sync-skills.mjs         # skills/ → plugins/<host>/skills (regenerate)
-node scripts/sync-skills.mjs --check # verify the generated copies are in sync
-node scripts/verify/manifests.mjs    # validate the host + marketplace manifests
-node scripts/verify/skill.mjs        # validate SKILL.md frontmatter
+node scripts/sync-skills.mjs         # regenerate the loop payload + every plugin skill copy
+node scripts/sync-skills.mjs --check # verify both are in sync
+node scripts/verify/manifests.mjs    # validate the host + loop + marketplace manifests
+node scripts/verify/skill.mjs        # validate the board skill's SKILL.md frontmatter
 node scripts/build.mjs               # produce dist/ — the npm release tree (not web/dist)
 ```
 
@@ -159,27 +159,51 @@ state (§4.3); the row still exists in `task_activities` and under
 > [web-local-first.md](web-local-first.md) for what works, the SSH-forward
 > workaround, and what a fix would require.
 
-## The skill is generated, never hand-edited
+## The skills are generated, never hand-edited
 
-`skills/meerkat-taskpanel/` is the only place the skill is authored. `scripts/sync-skills.mjs`
-copies it into `plugins/claude/skills/`, `plugins/codex/skills/`, `plugins/openclaw/skills/`
-and `plugins/pi/skills/`. Those copies are generated artifacts and are committed so that
-each host directory is self-contained — but they must always match the source.
+There are two skills, and `scripts/sync-skills.mjs` owns the whole generated surface
+around them (it delegates the payload half to `scripts/sync-loop.mjs`):
 
-**After editing anything under `skills/`, run:**
+| Skill | Authored in | Generated into |
+|---|---|---|
+| `meerkat-taskpanel` (the board) | `skills/meerkat-taskpanel/` | `plugins/{claude,codex,openclaw,pi}/skills/meerkat-taskpanel/` |
+| `meerkat-loop` (the supervisor) | `skills/meerkat-loop/` — `SKILL.md`, `references/`, `scripts/board-check.mjs` | its own `body/` + `templates/`, then `plugins/{claude,codex,pi}/skills/meerkat-loop/` **and** `plugins/loop/skills/meerkat-loop/` |
+
+The loop's `body/` and `templates/` are generated *from this repository*: `body/` is the
+transitive import closure of `scripts/supervisor.mjs` and `scripts/wake-cwd.mjs` (written out
+as `body/manifest.txt`, the list the installer copies), and `templates/` mirrors the
+loop-side files under `scripts/install/templates/`. That direction matters — the shared
+modules in `src/shared/` are **not** moved into the skill; they stay where the CLI imports
+them, and the skill's copy is generated and guarded. OpenClaw never receives the loop copy,
+by ruling: its framework already ships an equivalent supervisor.
+
+Those copies are generated artifacts and are committed so that each host directory is
+self-contained — but they must always match their sources.
+
+**After editing anything under `skills/`, `scripts/supervisor.mjs`, `scripts/wake-cwd.mjs`,
+`src/shared/`, or `scripts/install/templates/`, run:**
 
 ```bash
 node scripts/sync-skills.mjs
 ```
 
-CI runs `node scripts/sync-skills.mjs --check` and fails if a generated copy has drifted.
-The same reasoning applies to `dist/`: build output is never edited by hand and is
+CI runs `node scripts/sync-skills.mjs --check` and fails if a generated payload or copy has
+drifted. The same reasoning applies to `dist/`: build output is never edited by hand and is
 gitignored.
+
+**One more rule for the skills, because they are distributed rather than read in place:** a
+link inside `skills/**` must resolve wherever the skill is *installed*, not where it was
+authored. The plugin bundles carry `skills/<name>/` and nothing above it, so a
+`../../../docs/…` link dangles in every install — link out by absolute URL instead.
+`test/skill/loop.test.mjs` asserts no link climbs out of the skill tree.
 
 ## Build output
 
 `node scripts/build.mjs` deletes and recreates `dist/`, writes a `dist/web/.gitkeep`
-placeholder, and syncs the skill into `dist/plugins/<host>/`. `dist/` is gitignored, and
+placeholder, and syncs every skill into `dist/plugins/<target>/skills/`. It verifies the
+loop payload is current (`sync-loop --check`) rather than regenerating it: a build must not
+rewrite the source tree, so a stale payload is a red build instead of a silent divergence.
+`dist/` is gitignored, and
 **it is the npm release tree — not the hosted frontend.** The `dist/web/` placeholder is
 left over from the M0 scaffold; the real board frontend builds to `web/dist` (see
 [Two build layers](#two-build-layers-engine-and-web)).
