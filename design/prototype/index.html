@@ -2337,7 +2337,11 @@
     >
       <header class="td-drawer-head">
         <div class="flex items-center gap-2">
-          <span class="td-mono text-xs text-td-ink-3 td-id" data-detail-identifier title="TD-128">TD-128</span>
+          <!-- R12 — the drawer's head is the one identifier that is NOT capped:
+               it shows the whole id verbatim, so it adds `.td-id-full` to the
+               shared `.td-id` (the single line stays, the width limit lifts).
+               B07's cards and B08's rows keep R8's eight-character cap. -->
+          <span class="td-mono text-xs text-td-ink-3 td-id td-id-full" data-detail-identifier title="TD-128">TD-128</span>
           <span class="badge badge-sm td-chip td-chip-status" data-detail-status-chip data-status="todo">
             <span class="status td-status-dot" aria-hidden="true"></span>
             <span data-detail-status-chip-label data-i18n="status.todo">To Do</span>
