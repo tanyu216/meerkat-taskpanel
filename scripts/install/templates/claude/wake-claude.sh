@@ -41,7 +41,7 @@ if [ -z "$prompt" ]; then
 fi
 
 projects_json="${TP_PROJECTS_JSON:-$(dirname "$0")/../skills/meerkat-taskpanel/projects.json}"
-if ! cwd="$("${TP_NODE:-node}" "{{REPO}}/scripts/wake-cwd.mjs" --project "${TP_PROJECT:-}" --projects-json "$projects_json")"; then
+if ! cwd="$("${TP_NODE:-node}" "{{LOOP}}/scripts/wake-cwd.mjs" --project "${TP_PROJECT:-}" --projects-json "$projects_json")"; then
   echo "wake-claude: refusing to wake a worker without a target directory" >&2
   exit 3
 fi

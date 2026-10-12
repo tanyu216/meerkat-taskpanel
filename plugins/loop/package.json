@@ -1,0 +1,9 @@
+{
+  "name": "meerkat-loop-pi",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The host-external supervisor loop for Meerkat TaskPanel boards (Pi / Agent Skills package).",
+  "license": "MIT",
+  "type": "module",
+  "files": ["skills"]
+}

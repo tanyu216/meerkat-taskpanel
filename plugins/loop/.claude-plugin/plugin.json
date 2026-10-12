@@ -1,0 +1,11 @@
+{
+  "name": "meerkat-loop",
+  "version": "1.0.0",
+  "description": "The host-external supervisor loop for Meerkat TaskPanel boards — the 1-minute scan, the atomic claim, the wake and the 5-minute patrol.",
+  "author": { "name": "tanyu216" },
+  "license": "MIT",
+  "homepage": "https://github.com/tanyu216/meerkat-taskpanel",
+  "repository": "https://github.com/tanyu216/meerkat-taskpanel",
+  "keywords": ["task-management", "ai-agent", "scheduling", "supervisor"],
+  "skills": "./skills"
+}
