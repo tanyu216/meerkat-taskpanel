@@ -78,23 +78,26 @@ Two `<mask>` ids are needed because both inline marks share one document
 | Projects | `[data-project-list]` → `[data-project="…"]` (`aria-current="page"`) → `.td-side-icon` (prefix monogram, rail only) + `[data-project-count]`; each item carries `[data-order-score]` + `[data-order-rank]` (see below) |
 | Agents | `[data-agents-presence]` → **one row per platform**: `[data-agent-platform="claude\|openclaw\|codex\|pi"]` + `[data-presence="running\|idle"]` |
 | States preview | `[data-states-open]` — sidebar footer control, opens **B18** |
-| Footer controls | `[data-access-status]` — **three stacked full-width rows** (R7), top to bottom: theme · language · settings. Each row is a `[data-access-cell]` block button (`.td-access-cell`) with its icon and label at the **inline start**, and a hairline on its **block start** separates it from the row above (the first row carries none) |
+| Footer controls | `[data-access-status]` — **one row of three equal thirds at ≥1024px, three stacked full-width rows at ≤1023px** (R7, revised 2026-10-12 21:19): theme · language · settings. Each cell is a `[data-access-cell]` block button (`.td-access-cell`); in the row a vertical hairline on its **inline start** separates it from its neighbour (the first cell carries none), and in the stack a horizontal hairline on its **block start** separates it from the cell above (the first row carries none) |
 
-The three rows were **one row of three equal thirds** from v1.3 to R6; R7 (2026-10-12)
-stacked them so each control owns a full-width row and its label has the width to read.
-Top to bottom, and what each one does:
+The three cells were **one row of three equal thirds** from v1.3 to R6; R7 (2026-10-12)
+stacked them at every width, and the same evening's revision put the row back above the
+breakpoint and kept the stack for the rail — where a third of 64px is far too narrow for a
+label. In **both** bands the order is the same, and so is what each cell does:
 
-| Row | Hook | What the cell shows | Affordance |
+| Cell | Hook | What the cell shows | Affordance |
 |---|---|---|---|
-| Theme (top) | `[data-theme-switch]` → `[data-theme-icon="light" \| "dark" \| "auto"]` + `[data-theme-label]` | the theme in force — `Light`/`Dark`/`Auto` (浅色/深色/自动) | **three-state cycle** — one press walks Light → Dark → Auto → Light, no dialog |
-| Language (middle) | `[data-lang-select]` + `[data-lang-label]` + `.td-caret` | the language in force — `EN`/`中文` | **dropdown menu** → `[data-lang-menu]` → `[data-lang-option="en" \| "zh"]` |
-| Settings (bottom) | `[data-access-open]` | nothing but the gear glyph | opens **B19** `[data-access-panel]` |
+| Theme | `[data-theme-switch]` → `[data-theme-icon="light" \| "dark" \| "auto"]` + `[data-theme-label]` | the theme in force — `Light`/`Dark`/`Auto` (浅色/深色/自动) | **three-state cycle** — one press walks Light → Dark → Auto → Light, no dialog |
+| Language | `[data-lang-select]` + `[data-lang-label]` + `.td-caret` | the language in force — `EN`/`中文` | **dropdown menu** → `[data-lang-menu]` → `[data-lang-option="en" \| "zh"]` |
+| Settings | `[data-access-open]` | nothing but the gear glyph | opens **B19** `[data-access-panel]` |
 
-**A row is one line inside; the stack is what changed.** Each `[data-access-cell]` is
-still `display: flex; flex-direction: row` — icon, label and (on the language row) the
-caret sit side by side, which is what R6 ⑦⑧ fixed. R7 changed the **container** from
-`repeat(3, minmax(0, 1fr))` to `column`, so the three rows follow one another down the
-sidebar. The two are orthogonal: a row may never wrap its own contents.
+**A cell is one line inside at both bands; only the arrangement between cells changes.**
+Each `[data-access-cell]` is `display: flex; flex-direction: row` — icon, label and (on the
+language cell) the caret sit side by side, which is what R6 ⑦⑧ fixed. **≥1024px** the
+container is `display: grid; grid-template-columns: repeat(3, minmax(0, 1fr))`, so the three
+cells share one row (left→right); **≤1023px** it is `display: flex; flex-direction: column`,
+so they follow one another down the rail (top→bottom). The two are orthogonal: a cell may
+never wrap its own contents.
 
 **The theme cell is a three-state cycle, not a switch.** One press walks the modes in
 order — `light → dark → auto`, then back to `light` — and the machine-checkable state is
@@ -140,12 +143,13 @@ bind-address status is shown anywhere in the chrome; the bind address is stated 
 B19 instead. The assignee model further down this file is a separate concern and is
 unchanged.
 
-At the ≤1023px rail the stack holds and each row narrows to a **centred 24px icon**: the
-labels drop out with the rest of the sidebar text, so the three rows are three glyphs
-stacked in the 64px rail (56px under 560px) with no horizontal overflow. The `.td-caret`
-goes with the labels — 64px cannot hold a globe and a disclosure arrow side by side — and
-the language menu still opens from the remaining globe, floating over the board rather
-than inside the 64px column.
+At the ≤1023px rail the footer stops being a row and **becomes** the stack, each cell
+narrowing to a **centred 14px glyph on a 24px line**: the labels drop out with the rest of
+the sidebar text, so the three cells are three glyphs stacked in the 64px rail (56px under
+560px) with no horizontal overflow. The `.td-caret` goes with the labels — 64px cannot hold
+a globe and a disclosure arrow side by side — and the language menu still opens from the
+remaining globe, floating over the board rather than inside the 64px column. Above the
+breakpoint the thirds hold the labels, which is why the stack is the rail's alone.
 
 **The `PROJECTS` list is ordered by activity, not alphabetically or by creation.** Items
 render in the order the **server** computed — a weighted rank over 7-day and 30-day

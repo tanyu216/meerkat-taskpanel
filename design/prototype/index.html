@@ -359,19 +359,25 @@
           <span class="td-side-text" data-i18n="sidebar.states">States</span>
         </button>
 
-        <!-- Sidebar footer: three stacked full-width rows (R7, 2026-10-12), one
-             affordance each, top to bottom — theme · language · settings. The
-             three were equal thirds in one row (v1.3/v1.4); R7 stacked them so
-             each control owns its row and its label has the width to read. Each
-             cell is direct: the theme cell cycles on press, the language cell is
-             a dropdown, the settings cell is an icon-only button. The theme cell
-             and the language trigger still state the value in force, so the
-             current mode is readable without opening anything. Display only:
-             nothing here reports reachability, and the bind address lives in
-             the settings panel rather than as standing status copy. -->
+        <!-- Sidebar footer: one row of three equal thirds on the desktop column
+             (≥1024px) — theme (left) · language (centre) · settings (right) — and
+             three stacked full-width rows in the rail (≤1023px), top to bottom in
+             the same order. This is the v1.3/v1.4 row, with R7's stacked form
+             scoped back to the rail (Terry, 2026-10-12 21:19): a third of the
+             desktop column is ~74px, which is not enough for a label to read, and
+             a third of the 64px rail is narrower still — so the row is the
+             desktop form and the stacked form is the rail's. Only the arrangement
+             *between* cells changes; each cell is one line inside at both widths.
+             Each cell is direct: the theme cell cycles on press, the language
+             cell is a dropdown, the settings cell is an icon-only button. The
+             theme cell and the language trigger still state the value in force,
+             so the current mode is readable without opening anything. Display
+             only: nothing here reports reachability, and the bind address lives
+             in the settings panel rather than as standing status copy. -->
         <div class="td-access-status" data-access-status>
-          <!-- Top row · theme — a three-state cycle, not an entry to a dialog:
-               one press walks Light → Dark → Auto → Light. Glyph, name,
+          <!-- Left · theme (top row in the rail) — a three-state cycle, not an
+               entry to a dialog: one press walks Light → Dark → Auto → Light.
+               Glyph, name,
                `data-theme-mode` and the label that names the state one press
                reaches are all written by applyTheme(), so button and document
                cannot disagree. `Auto` follows the system through a CSS media
@@ -403,10 +409,11 @@
             <span class="td-side-text" data-theme-label>Light</span>
           </button>
 
-          <!-- Middle row · language — a dropdown, not a dialog: the trigger
-               states the language in force and carries the caret, the menu holds
-               one option per language. The list is data, so a third language is
-               a new `<li>` and a new dictionary entry, nothing else. -->
+          <!-- Centre · language (middle row in the rail) — a dropdown, not a
+               dialog: the trigger states the language in force and carries the
+               caret, the menu holds one option per language. The list is data, so
+               a third language is a new `<li>` and a new dictionary entry,
+               nothing else. -->
           <button
             type="button"
             class="td-access-cell"
@@ -429,8 +436,9 @@
             </svg>
           </button>
 
-          <!-- Bottom row · settings — icon only: the accessible name says what
-               it opens and no visible "Settings" text sits beside the gear. -->
+          <!-- Right · settings (bottom row in the rail) — icon only: the
+               accessible name says what it opens and no visible "Settings" text
+               sits beside the gear. -->
           <button
             type="button"
             class="td-access-cell"
