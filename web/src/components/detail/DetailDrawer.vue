@@ -125,7 +125,7 @@ function copyId() {
 </script>
 
 <template>
-  <div class="td-drawer-overlay" data-detail-overlay :data-state="board.drawerState" :hidden="!open" @click="closeDetail"></div>
+  <div class="fixed inset-0 z-50 bg-neutral opacity-32" data-detail-overlay :data-state="board.drawerState" :hidden="!open" @click="closeDetail"></div>
 
   <aside
     class="td-drawer"
@@ -136,33 +136,33 @@ function copyId() {
     role="dialog"
     aria-modal="true"
   >
-    <header class="td-drawer-head">
-      <div style="display: flex; align-items: center; gap: 8px">
+    <header class="flex flex-col gap-1 p-4 border-b border-b-(--brand-border)">
+      <div class="flex items-center gap-2">
         <span class="td-mono" data-detail-identifier>{{ identifier }}</span>
         <span class="badge" data-detail-status-chip :data-status="statusValue">
           <span data-detail-status-chip-label>{{ $t(`status.${statusValue}`) }}</span>
         </span>
       </div>
       <h2 data-detail-title>{{ title }}</h2>
-      <button type="button" class="td-drawer-close" data-detail-close :aria-label="$t('drawer.close')" @click="closeDetail">✕</button>
+      <button type="button" class="self-end border-0 bg-transparent text-(--brand-text-3) cursor-pointer" data-detail-close :aria-label="$t('drawer.close')" @click="closeDetail">✕</button>
     </header>
 
-    <div class="td-drawer-body">
+    <div class="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
       <!-- The property grid is the prototype's plain two-column `<div>` grid
            (`[data-detail-props]` is a `<div>` there), not a definition list: the
            rows pair a label with a *control* — buttons and comboboxes — which is
            not what `<dt>/<dd>` describe. Labels and values are therefore spans
            and divs, and the stylesheet selects them by class. -->
-      <div class="td-props" data-detail-props>
-        <span class="td-prop-label">{{ $t("prop.status") }}</span>
-        <div class="td-prop-value" data-detail-status :data-status="statusValue"><span data-detail-status-label>{{ $t(`status.${statusValue}`) }}</span></div>
+      <div class="m-0 grid grid-cols-[96px_minmax(0,1fr)] items-center gap-x-3 gap-y-1 text-[13px]" data-detail-props>
+        <span class="text-[12px] text-(--brand-text-3)">{{ $t("prop.status") }}</span>
+        <div class="inline-flex min-h-7 min-w-0 items-center gap-1 px-1 text-[13px] text-(--brand-text)" data-detail-status :data-status="statusValue"><span data-detail-status-label>{{ $t(`status.${statusValue}`) }}</span></div>
 
-        <span class="td-prop-label">{{ $t("prop.priority") }}</span>
-        <div class="td-prop-value" data-detail-priority :data-priority="priority"><span data-detail-priority-label>{{ $t(`priority.${priority}`) }}</span></div>
+        <span class="text-[12px] text-(--brand-text-3)">{{ $t("prop.priority") }}</span>
+        <div class="inline-flex min-h-7 min-w-0 items-center gap-1 px-1 text-[13px] text-(--brand-text)" data-detail-priority :data-priority="priority"><span data-detail-priority-label>{{ $t(`priority.${priority}`) }}</span></div>
 
-        <span class="td-prop-label">{{ $t("prop.assignee") }}</span>
-        <div class="td-prop-value" data-detail-assignee>
-          <span class="td-avatar" data-detail-assignee-avatar>{{ initial(assigneeName) }}</span>
+        <span class="text-[12px] text-(--brand-text-3)">{{ $t("prop.assignee") }}</span>
+        <div class="flex min-h-7 min-w-0 items-center gap-1 px-1 text-[13px] text-(--brand-text)" data-detail-assignee>
+          <span class="inline-flex size-5 items-center justify-center rounded-[999px] bg-(--brand-active) text-[11px] font-medium text-(--brand-text-2)" data-detail-assignee-avatar>{{ initial(assigneeName) }}</span>
           <span v-if="isAgent" data-detail-assignee-platform>{{ platform }}</span>
           <ComboField
             v-model="assigneeDraft"
@@ -179,9 +179,9 @@ function copyId() {
           />
         </div>
 
-        <span class="td-prop-label">{{ $t("prop.reporter") }}</span>
-        <div class="td-prop-value" data-detail-reporter>
-          <span class="td-avatar" data-detail-reporter-avatar>{{ initial(reporterName) }}</span>
+        <span class="text-[12px] text-(--brand-text-3)">{{ $t("prop.reporter") }}</span>
+        <div class="flex min-h-7 min-w-0 items-center gap-1 px-1 text-[13px] text-(--brand-text)" data-detail-reporter>
+          <span class="inline-flex size-5 items-center justify-center rounded-[999px] bg-(--brand-active) text-[11px] font-medium text-(--brand-text-2)" data-detail-reporter-avatar>{{ initial(reporterName) }}</span>
           <ComboField
             v-model="reporterDraft"
             :options="reporterOptions"
@@ -195,20 +195,20 @@ function copyId() {
           />
         </div>
 
-        <span class="td-prop-label">{{ $t("prop.project") }}</span>
-        <div class="td-prop-value" data-detail-project><span data-detail-project-label>{{ projectLabel }}</span></div>
+        <span class="text-[12px] text-(--brand-text-3)">{{ $t("prop.project") }}</span>
+        <div class="inline-flex min-h-7 min-w-0 items-center gap-1 px-1 text-[13px] text-(--brand-text)" data-detail-project><span data-detail-project-label>{{ projectLabel }}</span></div>
 
-        <span class="td-prop-label">{{ $t("prop.id") }}</span>
-        <div class="td-prop-value">
+        <span class="text-[12px] text-(--brand-text-3)">{{ $t("prop.id") }}</span>
+        <div class="inline-flex min-h-7 min-w-0 items-center gap-1 px-1 text-[13px] text-(--brand-text)">
           <span class="td-mono" data-detail-id>{{ idText }}</span>
-          <button type="button" class="td-card-menu" data-detail-id-copy :data-copy-value="idText" :aria-label="$t('toast.copied')" @click="copyId">⧉</button>
+          <button type="button" class="border-0 bg-transparent text-(--brand-text-3) cursor-pointer" data-detail-id-copy :data-copy-value="idText" :aria-label="$t('toast.copied')" @click="copyId">⧉</button>
         </div>
 
-        <span class="td-prop-label">{{ $t("prop.version") }}</span>
-        <div class="td-prop-value td-mono" data-detail-version>{{ versionText }}</div>
+        <span class="text-[12px] text-(--brand-text-3)">{{ $t("prop.version") }}</span>
+        <div class="td-mono inline-flex min-h-7 min-w-0 items-center gap-1 px-1 text-[13px] text-(--brand-text)" data-detail-version>{{ versionText }}</div>
 
-        <span class="td-prop-label">{{ $t("prop.labels") }}</span>
-        <div class="td-prop-value">
+        <span class="text-[12px] text-(--brand-text-3)">{{ $t("prop.labels") }}</span>
+        <div class="flex min-h-7 min-w-0 items-center gap-1 px-1 text-[13px] text-(--brand-text)">
           <div data-detail-labels>
             <ComboField
               v-model="labelDraft"
@@ -230,24 +230,24 @@ function copyId() {
         </div>
       </div>
 
-      <section class="td-slot" data-detail-description>
-        <h3 class="td-slot-title">{{ $t("drawer.description") }}</h3>
+      <section class="border-t border-t-(--brand-border) pt-3" data-detail-description>
+        <h3 class="m-0 mb-2 text-[13px] font-semibold">{{ $t("drawer.description") }}</h3>
         <div v-if="descriptionHtml" class="td-gfm" v-html="descriptionHtml"></div>
-        <p v-else class="td-state-note" data-i18n="description.none">{{ $t("description.none") }}</p>
+        <p v-else class="text-[12px] text-(--brand-text-3)" data-i18n="description.none">{{ $t("description.none") }}</p>
       </section>
 
-      <section class="td-slot" data-detail-relations>
-        <h3 class="td-slot-title">{{ $t("drawer.relations") }}</h3>
-        <ul v-if="relationLinks.length" style="margin: 0; padding-left: 16px">
+      <section class="border-t border-t-(--brand-border) pt-3" data-detail-relations>
+        <h3 class="m-0 mb-2 text-[13px] font-semibold">{{ $t("drawer.relations") }}</h3>
+        <ul v-if="relationLinks.length" class="m-0 pl-4">
           <li v-for="link in relationLinks" :key="link.key">
             <a href="#" class="td-mono" data-relation-link @click.prevent>{{ link.type }} · {{ link.label }}</a>
           </li>
         </ul>
-        <p v-else class="td-state-note" data-i18n="relations.none">{{ $t("relations.none") }}</p>
+        <p v-else class="text-[12px] text-(--brand-text-3)" data-i18n="relations.none">{{ $t("relations.none") }}</p>
       </section>
 
-      <section class="td-slot" data-detail-agent-session :hidden="!isAgent">
-        <h3 class="td-slot-title">{{ $t("drawer.session") }}</h3>
+      <section class="border-t border-t-(--brand-border) pt-3" data-detail-agent-session :hidden="!isAgent">
+        <h3 class="m-0 mb-2 text-[13px] font-semibold">{{ $t("drawer.session") }}</h3>
         <div data-detail-agent-session-body>
           <div data-agent-session>
             <p>{{ $t("session.id") }}: <span class="td-mono" data-agent-session-id>{{ session?.session_id ?? "—" }}</span></p>
@@ -257,47 +257,47 @@ function copyId() {
         </div>
       </section>
 
-      <section class="td-slot" data-detail-attachments>
-        <h3 class="td-slot-title">{{ $t("drawer.attachments") }}</h3>
+      <section class="border-t border-t-(--brand-border) pt-3" data-detail-attachments>
+        <h3 class="m-0 mb-2 text-[13px] font-semibold">{{ $t("drawer.attachments") }}</h3>
         <!-- The prototype's rows: a file icon, the name, and the size pushed to
              the row's end. `attachments.none` is the state of a task that has no
              attachments — never the state of a drawer with no task in it. -->
-        <div v-for="file in attachments" :key="file.name" class="td-file" data-attachment-row>
-          <svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <div v-for="file in attachments" :key="file.name" class="flex items-center gap-2 border border-(--brand-border) rounded-[6px] bg-(--brand-surface) px-2 py-1 [&+&]:mt-2" data-attachment-row>
+          <svg class="td-icon size-4" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path d="M14 3v5h5M7 3h7l5 5v13H7z" />
           </svg>
-          <span class="td-file-name" data-attachment-name>{{ file.name }}</span>
-          <span class="td-file-size" data-attachment-size>{{ file.size }}</span>
+          <span class="text-[12px] font-medium text-(--brand-text)" data-attachment-name>{{ file.name }}</span>
+          <span class="td-mono ms-auto text-[11px] text-(--brand-text-3)" data-attachment-size>{{ file.size }}</span>
         </div>
-        <p v-if="task && attachments.length === 0" class="td-state-note" data-i18n="attachments.none">{{ $t("attachments.none") }}</p>
+        <p v-if="task && attachments.length === 0" class="text-[12px] text-(--brand-text-3)" data-i18n="attachments.none">{{ $t("attachments.none") }}</p>
       </section>
 
-      <section class="td-slot" data-detail-comments>
-        <h3 class="td-slot-title">{{ $t("drawer.comments") }}</h3>
-        <article v-for="comment in comments" :key="comment.id" class="td-comment">
-          <div class="td-comment-meta">
+      <section class="border-t border-t-(--brand-border) pt-3" data-detail-comments>
+        <h3 class="m-0 mb-2 text-[13px] font-semibold">{{ $t("drawer.comments") }}</h3>
+        <article v-for="comment in comments" :key="comment.id" class="flex flex-col gap-1 py-2 border-b border-b-(--brand-border)">
+          <div class="flex items-center gap-2 text-[12px] text-(--brand-text-3)">
             <span>{{ comment.author_id ?? comment.author?.display_name ?? "—" }}</span>
             <span>{{ $t(`comment.${comment.author_kind ?? 'human'}`) }}</span>
           </div>
           <p>{{ comment.body }}</p>
         </article>
         <form data-comment-form @submit.prevent="submitComment">
-          <textarea v-model="commentDraft" class="td-comment-input" data-comment-input :placeholder="$t('drawer.commentPlaceholder')"></textarea>
+          <textarea v-model="commentDraft" class="min-h-16 w-full resize-y rounded-[6px] border border-(--brand-border-strong) bg-(--brand-surface) p-2 text-(--brand-text)" data-comment-input :placeholder="$t('drawer.commentPlaceholder')"></textarea>
           <button type="submit" class="btn btn-primary btn-sm" data-comment-submit>{{ $t("drawer.submit") }}</button>
         </form>
       </section>
 
-      <section class="td-slot" data-detail-activity>
-        <h3 class="td-slot-title">{{ $t("drawer.activity") }}</h3>
+      <section class="border-t border-t-(--brand-border) pt-3" data-detail-activity>
+        <h3 class="m-0 mb-2 text-[13px] font-semibold">{{ $t("drawer.activity") }}</h3>
         <!-- Each row is actor · sentence · relative time. The sentence is a
              catalogue key where the prototype names the event, the prototype's
              mono `status: from → to` line for a move, and the event's own name
              otherwise. The timestamp's `title` carries the absolute stamp. -->
-        <div v-for="row in activityRows" :key="row.id" class="td-activity" data-activity-row>
+        <div v-for="row in activityRows" :key="row.id" class="flex items-baseline gap-2 py-[3px] text-[12px] text-(--brand-text-2)" data-activity-row>
           <span class="td-activity-actor td-mono" data-activity-actor>{{ row.actor }}</span>
           <span v-if="row.line.sentence" :data-i18n="`activity.${row.line.sentence}`">{{ $t(`activity.${row.line.sentence}`) }}</span>
           <span v-else class="td-mono">{{ row.line.text }}</span>
-          <span v-if="row.stamp" class="td-activity-ts" data-activity-ts :title="row.stamp.absolute">{{ $t(row.stamp.key, row.stamp.arg) }}</span>
+          <span v-if="row.stamp" class="td-mono ms-auto whitespace-nowrap text-[11px] text-(--brand-text-3)" data-activity-ts :title="row.stamp.absolute">{{ $t(row.stamp.key, row.stamp.arg) }}</span>
         </div>
       </section>
     </div>

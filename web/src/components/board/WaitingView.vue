@@ -64,25 +64,25 @@ watch(awaitingIds, refresh, { immediate: true });
 </script>
 
 <template>
-  <section id="td-waiting" class="td-waiting" data-waiting-view>
-    <div class="td-waiting-list" data-waiting-list>
+  <section id="td-waiting" class="flex flex-col gap-3 p-3" data-waiting-view>
+    <div class="flex flex-col gap-3" data-waiting-list>
       <!-- Pinned first: an awaiting row is what blocks a machine, so it leads
            the view (§3.5). The row is a wrapper — the card itself is untouched. -->
       <article
         v-for="task in waitingTasks"
         :key="task.id"
-        class="td-waiting-row"
+        class="flex flex-col gap-2 p-3 border border-(--brand-border) rounded-lg bg-(--brand-surface) border-s-2 border-s-primary data-[waiting-pinned=true]:order-[-1]"
         data-waiting-card
         data-waiting-pinned="true"
         data-status="awaiting"
       >
         <Card :task="task" @open="openDetail(task.identifier)" />
 
-        <div class="td-waiting-payload" data-waiting-payload>
-          <p class="td-waiting-summary" data-waiting-payload-summary>{{ summaryOf(task) }}</p>
+        <div class="flex flex-col gap-1" data-waiting-payload>
+          <p class="m-0 line-clamp-2 text-[14px] text-(--brand-text-2)" data-waiting-payload-summary>{{ summaryOf(task) }}</p>
           <details data-waiting-payload-details>
             <summary>{{ $t("waiting.payload.expand") }}</summary>
-            <div class="td-waiting-full" data-waiting-payload-full>{{ payloadOf(task)?.body ?? "" }}</div>
+            <div class="max-w-[68ch] whitespace-pre-wrap [overflow-wrap:anywhere] text-[12px] text-(--brand-text-3)" data-waiting-payload-full>{{ payloadOf(task)?.body ?? "" }}</div>
           </details>
         </div>
       </article>
@@ -91,8 +91,8 @@ watch(awaitingIds, refresh, { immediate: true });
     <!-- The existing empty-state component (B12: `.td-empty .td-empty-lg`),
          with M1's own hook. Deliberately *not* `[data-empty]`: that hook is the
          board's, and B12 allows exactly one no-results state per board view. -->
-    <div v-if="isEmpty" class="td-empty td-empty-lg" data-waiting-empty>
-      <span class="td-empty-title">{{ $t("waiting.empty") }}</span>
+    <div v-if="isEmpty" class="flex flex-col items-center gap-1 p-10 text-center text-(--brand-text-3) border border-dashed border-(--brand-border-strong) rounded-lg" data-waiting-empty>
+      <span class="font-medium text-(--brand-text-2)">{{ $t("waiting.empty") }}</span>
     </div>
   </section>
 </template>

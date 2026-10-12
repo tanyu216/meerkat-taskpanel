@@ -41,8 +41,25 @@
     );
   }
 
+  /* M3 · the token face is a Tailwind utility, not a `.td-hl-*` class. The
+     tokens this file emits are its own; a token with no face of its own (a
+     fence line, a list marker, a JSON key) keeps the span but carries no class,
+     exactly as the retired `.td-hl-*` sheet styled nothing for them. */
+  var FACE = {
+    heading: "text-primary",
+    code: "text-accent",
+    strong: "font-semibold",
+    em: "italic",
+    link: "text-info",
+  };
+
   function span(kind, text) {
-    return '<span class="td-hl-' + kind + '">' + escapeHtml(text) + "</span>";
+    var cls = FACE[kind];
+    return (
+      "<span" + (cls ? ' class="' + cls + '"' : "") + ">" +
+      escapeHtml(text) +
+      "</span>"
+    );
   }
 
   /* A single left-to-right pass driven by one alternation. Each rule is

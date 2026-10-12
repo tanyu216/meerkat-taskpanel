@@ -80,35 +80,42 @@ async function submit() {
 </script>
 
 <template>
-  <div class="td-modal" data-create-task :hidden="!createTaskOpen" role="dialog" aria-modal="true" :aria-label="$t('createTask.title')">
-    <div class="td-modal-box">
+  <div
+    class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-6 bg-neutral/32"
+    data-create-task
+    :hidden="!createTaskOpen"
+    role="dialog"
+    aria-modal="true"
+    :aria-label="$t('createTask.title')"
+  >
+    <div class="w-[min(960px,100%)] border border-(--brand-border) rounded-lg bg-(--brand-surface) [box-shadow:var(--shadow-pop)]">
       <form data-create-task-form @submit.prevent="submit">
-        <header class="td-modal-head">
+        <header class="flex items-center justify-between px-4 py-3 border-b border-b-(--brand-border)">
           <h2 data-i18n="createTask.title">{{ $t("createTask.title") }}</h2>
-          <button type="button" class="td-card-menu" data-modal-close :aria-label="$t('modal.close')" @click="createTaskOpen = false">✕</button>
+          <button type="button" class="border-0 bg-transparent text-(--brand-text-3) cursor-pointer" data-modal-close :aria-label="$t('modal.close')" @click="createTaskOpen = false">✕</button>
         </header>
 
-        <div class="td-modal-body td-create-two-col" data-create-two-col>
+        <div class="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-4 p-4 max-[760px]:grid-cols-1" data-create-two-col>
           <div data-create-left>
-            <label class="td-field">
+            <label class="flex flex-col gap-1 mb-3">
               <span data-i18n="createTask.field.title">{{ $t("createTask.field.title") }}</span>
-              <input v-model="form.title" class="td-input" type="text" data-create-task-title :placeholder="$t('createTask.field.titleHint')" />
+              <input v-model="form.title" class="input input-sm td-input w-full" type="text" data-create-task-title :placeholder="$t('createTask.field.titleHint')" />
             </label>
-            <label class="td-field">
+            <label class="flex flex-col gap-1 mb-3">
               <span data-i18n="createTask.field.description">{{ $t("createTask.field.description") }}</span>
               <MarkdownEditor v-model="form.description" />
             </label>
           </div>
 
           <div data-create-right>
-            <label class="td-field">
+            <label class="flex flex-col gap-1 mb-3">
               <span data-i18n="createTask.field.priority">{{ $t("createTask.field.priority") }}</span>
-              <select v-model="form.priority" class="td-select" data-create-task-priority>
+              <select v-model="form.priority" class="select select-sm td-select w-full" data-create-task-priority>
                 <option v-for="priority in PRIORITIES" :key="priority" :value="priority">{{ $t(`priority.${priority}`) }}</option>
               </select>
             </label>
 
-            <label class="td-field">
+            <label class="flex flex-col gap-1 mb-3">
               <span data-i18n="createTask.field.assignee">{{ $t("createTask.field.assignee") }}</span>
               <ComboField
                 v-model="form.assignee"
@@ -124,21 +131,21 @@ async function submit() {
               />
             </label>
 
-            <label class="td-field">
+            <label class="flex flex-col gap-1 mb-3">
               <span data-i18n="createTask.field.project">{{ $t("createTask.field.project") }}</span>
-              <select v-model="form.project_id" class="td-select" data-create-task-project>
+              <select v-model="form.project_id" class="select select-sm td-select w-full" data-create-task-project>
                 <option v-for="project in board.projects" :key="project.id" :value="project.id">{{ project.name }}</option>
               </select>
             </label>
 
-            <label class="td-field">
+            <label class="flex flex-col gap-1 mb-3">
               <span data-i18n="createTask.field.status">{{ $t("createTask.field.status") }}</span>
-              <select v-model="form.status" class="td-select" data-create-task-status>
+              <select v-model="form.status" class="select select-sm td-select w-full" data-create-task-status>
                 <option v-for="status in createStatuses" :key="status" :value="status">{{ $t(`status.${status}`) }}</option>
               </select>
             </label>
 
-            <label class="td-field">
+            <label class="flex flex-col gap-1 mb-3">
               <span data-i18n="createTask.field.reporter">{{ $t("createTask.field.reporter") }}</span>
               <ComboField
                 v-model="form.reporter"
@@ -152,7 +159,7 @@ async function submit() {
               />
             </label>
 
-            <div class="td-field" data-create-task-labels>
+            <div class="flex flex-col gap-1 mb-3" data-create-task-labels>
               <span data-i18n="createTask.field.labels">{{ $t("createTask.field.labels") }}</span>
               <ComboField
                 v-model="form.labels"
@@ -170,12 +177,12 @@ async function submit() {
                 empty-key="combo.noLabels"
                 aria-key="createTask.field.labels"
               />
-              <span class="td-optional" data-i18n="createTask.field.labelsHint">{{ $t("createTask.field.labelsHint") }}</span>
+              <span class="text-[11px] text-(--brand-text-3)" data-optional data-i18n="createTask.field.labelsHint">{{ $t("createTask.field.labelsHint") }}</span>
             </div>
 
-            <div class="td-field" data-create-task-parent>
-              <span>{{ $t("createTask.field.parent") }} <span class="td-optional">{{ $t("createTask.optional") }}</span></span>
-              <div style="display: flex; gap: 4px">
+            <div class="flex flex-col gap-1 mb-3" data-create-task-parent>
+              <span>{{ $t("createTask.field.parent") }} <span class="text-[11px] text-(--brand-text-3)" data-optional>{{ $t("createTask.optional") }}</span></span>
+              <div class="flex gap-1">
                 <ComboField
                   v-model="form.parent"
                   :options="parentOptions"
@@ -193,8 +200,8 @@ async function submit() {
               </div>
             </div>
 
-            <div class="td-field" data-create-task-depends>
-              <span>{{ $t("createTask.field.depends") }} <span class="td-optional">{{ $t("createTask.optional") }}</span></span>
+            <div class="flex flex-col gap-1 mb-3" data-create-task-depends>
+              <span>{{ $t("createTask.field.depends") }} <span class="text-[11px] text-(--brand-text-3)" data-optional>{{ $t("createTask.optional") }}</span></span>
               <ComboField
                 v-model="form.depends"
                 :options="dependsOptions"
@@ -218,7 +225,7 @@ async function submit() {
           </div>
         </div>
 
-        <footer class="td-modal-foot">
+        <footer class="flex justify-end gap-2 px-4 py-3 border-t border-t-(--brand-border)">
           <button type="button" class="btn btn-ghost btn-sm" @click="createTaskOpen = false">{{ $t("modal.cancel") }}</button>
           <button type="submit" class="btn btn-primary btn-sm" :disabled="!canSubmit" data-i18n="createTask.submit">{{ $t("createTask.submit") }}</button>
         </footer>

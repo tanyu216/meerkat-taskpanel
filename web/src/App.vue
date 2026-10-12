@@ -46,7 +46,7 @@ onUnmounted(() => document.removeEventListener("keydown", onKeydown));
     <TopBar />
     <Sidebar />
 
-    <main class="td-main">
+    <main class="[grid-area:main] min-w-0 overflow-auto">
       <FiltersBar />
 
       <!-- B17 · the document's single error state — a load failure. The contract
@@ -55,9 +55,14 @@ onUnmounted(() => document.removeEventListener("keydown", onKeydown));
            demonstration and is gone, so the invariant now rides on the real
            surface. Rendered `hidden` at rest, exactly as the prototype states
            the state, so the one element is always the one element. -->
-      <div class="td-error" data-error-state role="alert" :hidden="!board.error">
-        <span class="td-empty-title" data-i18n="error.title">{{ $t("error.title") }}</span>
-        <span class="td-empty-hint" data-i18n="error.hint">{{ $t("error.hint") }}</span>
+      <div
+        class="flex flex-col items-start gap-2 p-4 m-4 rounded-lg bg-error/12"
+        data-error-state
+        role="alert"
+        :hidden="!board.error"
+      >
+        <span class="font-medium text-(--brand-text-2)" data-i18n="error.title">{{ $t("error.title") }}</span>
+        <span class="text-[12px]" data-i18n="error.hint">{{ $t("error.hint") }}</span>
         <button type="button" class="btn btn-outline btn-sm" data-error-retry data-i18n="error.retry" @click="initBoard">{{ $t("error.retry") }}</button>
       </div>
 
@@ -66,11 +71,17 @@ onUnmounted(() => document.removeEventListener("keydown", onKeydown));
            writers — so it is a written deviation (surface-disposition.md #2),
            and `data-conflict` is the semantic hook that makes it machine-visible
            rather than a class name only. -->
-      <div v-if="board.conflict" class="td-conflict" data-conflict role="alert" :data-conflict-identifier="board.conflict.identifier">
+      <div
+        v-if="board.conflict"
+        class="flex flex-col gap-2 px-4 py-3 m-3 border border-error rounded-lg bg-error/10"
+        data-conflict
+        role="alert"
+        :data-conflict-identifier="board.conflict.identifier"
+      >
         <strong>{{ $t("conflict.title") }}</strong>
-        <span class="td-empty-hint">{{ $t("conflict.hint") }}</span>
-        <span class="td-mono td-weak">{{ board.conflict.identifier }}</span>
-        <div class="td-conflict-actions">
+        <span class="text-[12px]">{{ $t("conflict.hint") }}</span>
+        <span class="td-mono text-(--brand-text-3)">{{ board.conflict.identifier }}</span>
+        <div class="flex gap-2">
           <button type="button" class="btn btn-primary btn-sm" @click="reloadConflict">{{ $t("conflict.reload") }}</button>
           <button type="button" class="btn btn-ghost btn-sm" @click="board.conflict = null">{{ $t("conflict.dismiss") }}</button>
         </div>

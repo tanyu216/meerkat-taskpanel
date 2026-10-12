@@ -83,8 +83,8 @@ function onMenu(event) {
   >
     <span class="td-card-stripe" data-card-stripe aria-hidden="true"></span>
 
-    <div class="td-card-head">
-      <span class="td-card-id td-mono" data-card-identifier>{{ task.identifier }}</span>
+    <div class="flex items-center gap-2">
+      <span class="td-mono text-[11px] text-(--brand-text-3)" data-card-identifier>{{ task.identifier }}</span>
       <!-- M1 · the attention badge. An overlay on the card, not a column
            transfer: it rides the reason code as an *attribute* and the unified
            label as its only text node, so the copy swaps with the language and
@@ -100,18 +100,18 @@ function onMenu(event) {
       >
         <span data-card-waiting-label>{{ $t("status.awaiting") }}</span>
       </span>
-      <button type="button" class="td-card-menu" data-card-menu aria-haspopup="menu" :aria-expanded="false" :aria-label="$t('card.move', task.identifier)" @click="onMenu">
+      <button type="button" class="ms-auto border-0 bg-transparent text-(--brand-text-3) cursor-pointer" data-card-menu aria-haspopup="menu" :aria-expanded="false" :aria-label="$t('card.move', task.identifier)" @click="onMenu">
         ⋯
       </button>
     </div>
 
-    <button type="button" class="td-card-title" data-card-title>{{ task.title }}</button>
+    <button type="button" class="p-0 text-left text-[14px] border-0 bg-transparent text-inherit cursor-pointer" data-card-title>{{ task.title }}</button>
 
-    <div class="td-card-labels" data-card-labels>
-      <span v-for="label in labels" :key="label" class="td-chip" data-label>{{ label }}</span>
+    <div class="flex flex-wrap gap-1" data-card-labels>
+      <span v-for="label in labels" :key="label" class="inline-flex items-center gap-1 px-1.5 py-px rounded-[4px] border border-(--brand-border) bg-(--brand-sunken) text-[11px] text-(--brand-text-2)" data-label>{{ label }}</span>
     </div>
 
-    <div class="td-card-foot">
+    <div class="flex items-center gap-2 mt-1">
       <span class="td-pri" data-card-priority role="img" :aria-label="$t('prop.priorityValue', $t(`priority.${priorityOf(task)}`))" :title="$t(`priority.${priorityOf(task)}`)">
         <svg class="td-pri-glyph" viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7" rx="1" /></svg>
       </span>
@@ -121,19 +121,19 @@ function onMenu(event) {
            human card keeps it visible. `hidden` on the wrapper, never on the
            `[data-card-assignee]` element itself, so the hook is always present. -->
       <span class="avatar" :hidden="isAgent">
-        <span class="td-avatar" data-card-assignee :title="assigneeName">{{ monogram }}</span>
+        <span class="inline-flex items-center justify-center size-5 rounded-[999px] bg-(--brand-active) text-(--brand-text-2) text-[11px] font-medium" data-card-assignee :title="assigneeName">{{ monogram }}</span>
       </span>
-      <span class="badge badge-xs td-agent-badge" data-card-agent-badge :data-agent-platform="isAgent ? platform : undefined" :hidden="!isAgent">{{ isAgent ? platform : "" }}</span>
-      <span v-if="isAgent" class="td-agent-role td-mono" data-card-agent-role>{{ assigneeName }}</span>
+      <span class="badge badge-xs normal-case" data-card-agent-badge :data-agent-platform="isAgent ? platform : undefined" :hidden="!isAgent">{{ isAgent ? platform : "" }}</span>
+      <span v-if="isAgent" class="td-mono text-[11px] text-(--brand-text-3)" data-card-agent-role>{{ assigneeName }}</span>
 
-      <div class="td-card-foot-right">
-        <span class="td-meta" data-card-relations :hidden="!hasRelations">
+      <div class="inline-flex items-center gap-2 ms-auto">
+        <span class="inline-flex items-center gap-1 text-[11px] text-(--brand-text-3)" data-card-relations :hidden="!hasRelations">
           <span data-relation-parent>{{ relationsParent }}</span>
           <span data-relation-blocks>{{ relationsBlocks }}</span>
           <span data-relation-related>{{ relationsRelated }}</span>
         </span>
-        <span class="td-meta" data-card-comment-count :hidden="commentCount === 0">{{ commentCount }}</span>
-        <span class="td-meta" data-card-attachment-count :hidden="attachmentCount === 0">{{ attachmentCount }}</span>
+        <span class="inline-flex items-center gap-1 text-[11px] text-(--brand-text-3)" data-card-comment-count :hidden="commentCount === 0">{{ commentCount }}</span>
+        <span class="inline-flex items-center gap-1 text-[11px] text-(--brand-text-3)" data-card-attachment-count :hidden="attachmentCount === 0">{{ attachmentCount }}</span>
       </div>
     </div>
   </article>

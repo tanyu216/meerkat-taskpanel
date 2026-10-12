@@ -28,12 +28,12 @@ const rows = computed(() =>
 </script>
 
 <template>
-  <div class="td-list" data-list :hidden="view !== 'list'">
+  <div class="p-3" data-list :hidden="view !== 'list'">
     <!-- B13 · loading skeleton (no hooks of its own; three shimmer rows). -->
-    <div v-if="board.loading" class="td-skeleton" data-skeleton aria-hidden="true">
-      <div class="td-skeleton-row"></div>
-      <div class="td-skeleton-row"></div>
-      <div class="td-skeleton-row"></div>
+    <div v-if="board.loading" class="flex flex-col gap-2 p-3" data-skeleton aria-hidden="true">
+      <div class="skeleton td-skeleton-row"></div>
+      <div class="skeleton td-skeleton-row"></div>
+      <div class="skeleton td-skeleton-row"></div>
     </div>
 
     <template data-list-row-template>
@@ -47,12 +47,12 @@ const rows = computed(() =>
       </button>
     </template>
 
-    <div class="td-list-rows" data-list-rows>
+    <div class="flex flex-col" data-list-rows>
       <button
         v-for="row in rows"
         :key="row.id"
         type="button"
-        class="td-list-row"
+        class="grid cursor-pointer grid-cols-[92px_minmax(0,1fr)_auto_auto_auto_auto] items-center gap-3 p-2 border-0 border-b border-b-(--brand-border) bg-transparent text-left text-inherit hover:bg-(--brand-hover)"
         data-list-row
         :data-identifier="row.identifier"
         :aria-selected="board.selectedRef === row.identifier ? 'true' : 'false'"
@@ -69,6 +69,10 @@ const rows = computed(() =>
       </button>
     </div>
 
-    <p v-if="!board.loading && rows.length === 0" class="td-empty" data-i18n="list.emptyRow">{{ $t("list.emptyRow") }}</p>
+    <p
+      v-if="!board.loading && rows.length === 0"
+      class="flex flex-col items-center gap-1 p-4 text-center text-(--brand-text-3) border border-dashed border-(--brand-border-strong) rounded-lg"
+      data-i18n="list.emptyRow"
+    >{{ $t("list.emptyRow") }}</p>
   </div>
 </template>

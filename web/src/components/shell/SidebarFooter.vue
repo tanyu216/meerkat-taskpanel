@@ -105,10 +105,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="td-access-status" data-access-status>
+  <div class="grid grid-cols-3 mt-auto border-t border-t-(--brand-border)" data-access-status>
     <button
       type="button"
-      class="td-access-cell"
+      class="flex flex-col items-center gap-0.5 px-1 py-2 border-0 bg-transparent text-inherit cursor-pointer text-[11px] focus-visible:outline-2 focus-visible:outline-(--brand-focus-ring) focus-visible:-outline-offset-2"
       data-theme-switch
       :data-theme-mode="themeMode"
       :aria-label="themeAria"
@@ -118,7 +118,7 @@ onBeforeUnmount(() => {
       <svg
         v-for="mode in modes"
         :key="mode"
-        class="td-icon td-icon-sm"
+        class="td-icon size-3.5"
         :data-theme-icon="mode"
         :hidden="themeMode !== mode"
         viewBox="0 0 24 24"
@@ -133,12 +133,12 @@ onBeforeUnmount(() => {
           <path d="M8 20h8M12 16v4" />
         </template>
       </svg>
-      <span class="td-side-text" data-theme-label>{{ $t(`access.theme.${themeMode}`) }}</span>
+      <span data-side-text data-theme-label>{{ $t(`access.theme.${themeMode}`) }}</span>
     </button>
 
     <button
       type="button"
-      class="td-access-cell"
+      class="flex flex-col items-center gap-0.5 px-1 py-2 border-0 border-s border-s-(--brand-border) bg-transparent text-inherit cursor-pointer text-[11px] focus-visible:outline-2 focus-visible:outline-(--brand-focus-ring) focus-visible:-outline-offset-2"
       data-lang-select
       ref="langTrigger"
       aria-haspopup="menu"
@@ -147,25 +147,25 @@ onBeforeUnmount(() => {
       :title="$t('access.lang.open')"
       @click="toggleLang"
     >
-      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <svg class="td-icon size-3.5" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
         <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM3 12h18M12 3c2.5 2.6 3.8 5.7 3.8 9S14.5 18.4 12 21c-2.5-2.6-3.8-5.7-3.8-9S9.5 5.6 12 3Z" />
       </svg>
-      <span class="td-side-text" data-lang-label>{{ $t(`access.lang.short.${lang}`) }}</span>
-      <svg class="td-caret td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <span data-side-text data-lang-label>{{ $t(`access.lang.short.${lang}`) }}</span>
+      <svg class="td-icon size-3.5 shrink-0 text-(--brand-text-3)" data-caret viewBox="0 0 24 24" aria-hidden="true" focusable="false">
         <path d="M6 9.5 12 15.5 18 9.5" />
       </svg>
     </button>
 
     <button
       type="button"
-      class="td-access-cell"
+      class="flex flex-col items-center gap-0.5 px-1 py-2 border-0 border-s border-s-(--brand-border) bg-transparent text-inherit cursor-pointer text-[11px] focus-visible:outline-2 focus-visible:outline-(--brand-focus-ring) focus-visible:-outline-offset-2"
       data-access-open
       aria-haspopup="dialog"
       :aria-label="$t('access.open')"
       :title="$t('access.open')"
       @click="accessOpen = true"
     >
-      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <svg class="td-icon size-3.5" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
         <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
         <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" />
       </svg>
@@ -175,19 +175,32 @@ onBeforeUnmount(() => {
   <!-- The floating language menu: at the end of the document, outside the
        sidebar's scroll container, and never wrapping its own trigger. -->
   <Teleport to="body">
-    <div ref="langMenu" class="dropdown" data-lang-menu :style="menuStyle" :hidden="!langOpen">
+    <div
+      ref="langMenu"
+      class="dropdown absolute z-[60] min-w-[148px] p-1 border border-(--brand-border) rounded-lg bg-(--brand-surface) [box-shadow:var(--shadow-pop)]"
+      data-lang-menu
+      :style="menuStyle"
+      :hidden="!langOpen"
+    >
       <button
         v-for="option in langs"
         :key="option"
         type="button"
-        class="td-menu-item td-lang-option"
+        class="flex w-full cursor-pointer items-center gap-2 border-0 rounded-[6px] bg-transparent px-2 py-1 text-left hover:bg-(--brand-hover)"
+        :class="lang === option ? 'text-primary font-medium' : 'text-(--brand-text)'"
         :data-lang-option="option"
         :lang="option === 'zh' ? 'zh-CN' : 'en'"
         :aria-pressed="lang === option ? 'true' : 'false'"
         @click="chooseLang(option)"
       >
-        <span class="td-lang-name">{{ $t(`access.lang.${option}`) }}</span>
-        <svg class="td-lang-check td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <span class="flex-1 text-[13px]">{{ $t(`access.lang.${option}`) }}</span>
+        <svg
+          class="td-icon size-3.5"
+          :class="lang === option ? 'visible' : 'invisible'"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          focusable="false"
+        >
           <path d="M5 13l4.5 4.5L19 7" />
         </svg>
       </button>

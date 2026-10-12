@@ -71,7 +71,7 @@ watch(view, closeMoveMenu);
 </script>
 
 <template>
-  <div class="td-board" data-board :hidden="view !== 'board'">
+  <div class="flex h-full items-start gap-3 overflow-x-auto overflow-y-hidden p-3" data-board :hidden="view !== 'board'">
     <Column
       v-for="column in columns"
       :key="column.status"
@@ -88,13 +88,18 @@ watch(view, closeMoveMenu);
          while the board has cards — `hidden`, exactly as the prototype states
          it — so the hook and its Sentinel Watch mark exist at rest and only the
          attribute changes when a filter empties the board. -->
-    <div class="td-empty td-empty-lg" data-empty data-empty-kind="no-results" :hidden="totalVisible !== 0">
+    <div
+      class="flex flex-col items-center gap-1 p-10 text-center text-(--brand-text-3) border border-dashed border-(--brand-border-strong) rounded-lg"
+      data-empty
+      data-empty-kind="no-results"
+      :hidden="totalVisible !== 0"
+    >
       <!-- The brand mark stands in for a generic no-results glyph. Its two lead
            meerkats drop to `--brand-text-3` (the design's `--color-td-ink-3`) so
            the on-duty sentinel and its watch signal stay the only lit elements
            on an empty board. Its own face-mask id keeps the document's mask ids
            unique — the top bar's mark is rendered at the same time. -->
-      <svg class="td-logo td-logo-lg" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+      <svg class="size-7 shrink-0" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
         <defs>
           <mask id="face-knockout-a-lg" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
             <rect x="0" y="0" width="32" height="32" fill="#FFFFFF" />
@@ -133,8 +138,8 @@ watch(view, closeMoveMenu);
         </g>
         <circle cx="24.8" cy="3.4" r="2.1" fill="var(--color-primary)" />
       </svg>
-      <span class="td-empty-title" data-i18n="noResults.title">{{ $t("noResults.title") }}</span>
-      <span class="td-empty-hint" data-i18n="noResults.hint">{{ $t("noResults.hint") }}</span>
+      <span class="font-medium text-(--brand-text-2)" data-i18n="noResults.title">{{ $t("noResults.title") }}</span>
+      <span class="text-[12px]" data-i18n="noResults.hint">{{ $t("noResults.hint") }}</span>
       <button type="button" class="btn btn-outline btn-sm" @click="clearFilters">{{ $t("noResults.clear") }}</button>
     </div>
 

@@ -48,24 +48,24 @@ watch(mode, () => {
 </script>
 
 <template>
-  <div class="td-md-editor" data-md-editor>
-    <div class="td-md-bar" role="group" :aria-label="$t('md.label')">
+  <div class="overflow-hidden border border-(--brand-border) rounded-[6px]" data-md-editor>
+    <div class="flex items-center gap-1 p-1 border-b border-b-(--brand-border) bg-(--brand-sunken)" role="group" :aria-label="$t('md.label')">
       <button
         v-for="value in modes"
         :key="value"
         type="button"
-        class="td-md-toggle"
+        class="cursor-pointer rounded-[4px] border-0 px-2 py-0.5 text-[12px] aria-[pressed=true]:bg-(--brand-active) aria-[pressed=true]:text-(--brand-text) text-(--brand-text-2) bg-transparent"
         :data-md-toggle="value"
         :aria-pressed="mode === value ? 'true' : 'false'"
         @click="mode = value"
       >
         {{ $t(`md.${value}`) }}
       </button>
-      <span class="td-md-hint" data-i18n="md.hint">{{ $t("md.hint") }}</span>
+      <span class="ms-auto text-[11px] text-(--brand-text-3)" data-i18n="md.hint">{{ $t("md.hint") }}</span>
     </div>
 
     <div class="td-md-panes" :data-md-mode="mode">
-      <div class="td-md-pane-write">
+      <div class="td-md-pane-write relative">
         <pre ref="highlightEl" class="td-md-text td-md-highlight" data-md-highlight aria-hidden="true" v-html="highlightHtml"></pre>
         <textarea
           ref="source"

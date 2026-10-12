@@ -158,12 +158,12 @@ defineExpose({ focus });
 </script>
 
 <template>
-  <div class="td-combo" :data-drop="dropUp ? 'up' : 'down'">
+  <div class="relative" :data-drop="dropUp ? 'up' : 'down'">
     <input
       ref="inputEl"
       v-model="query"
       type="text"
-      class="td-combo-input"
+      class="w-full border border-(--brand-border-strong) rounded-[6px] bg-(--brand-surface) px-2 py-1 text-(--brand-text)"
       autocomplete="off"
       spellcheck="false"
       v-bind="inputHooks"
@@ -179,8 +179,8 @@ defineExpose({ focus });
     <ul v-show="open" v-bind="{ [hookMenu]: '' }" class="td-combo-menu" role="listbox">
       <li v-if="results.isNew">
         <button type="button" v-bind="optionHooks({ name: query.trim() }, true)" :aria-selected="active === 0 ? 'true' : 'false'" @mousedown.prevent="accept({ __new: true })">
-          <span class="td-combo-title">{{ query.trim() }}</span>
-          <span class="td-combo-new">{{ $t("combo.new") }}</span>
+          <span class="flex-1 overflow-hidden text-ellipsis">{{ query.trim() }}</span>
+          <span class="ms-auto text-[11px] text-primary">{{ $t("combo.new") }}</span>
         </button>
       </li>
       <li v-for="(entry, index) in results.entries" :key="entry.name">
@@ -192,19 +192,24 @@ defineExpose({ focus });
           @mousedown.prevent="accept(entry)"
         >
           <span v-if="taskMode" class="td-mono">{{ entry.identifier ?? entry.name }}</span>
-          <span class="td-combo-title">{{ taskMode ? entry.title : entry.name }}</span>
+          <span class="flex-1 overflow-hidden text-ellipsis">{{ taskMode ? entry.title : entry.name }}</span>
         </button>
       </li>
-      <li v-if="!results.isNew && results.entries.length === 0" class="td-combo-empty">{{ $t(emptyKey) }}</li>
+      <li v-if="!results.isNew && results.entries.length === 0" class="p-2 text-[12px] text-(--brand-text-3)">{{ $t(emptyKey) }}</li>
     </ul>
 
-    <div v-if="multi && hookChips" v-bind="{ [hookChips]: '' }" class="td-combo-chips">
-      <span v-for="name in chosen" :key="name" class="td-chip" v-bind="hookChip ? { [hookChip]: '', ...(hookChipValue ? { [hookChipValue]: name } : {}) } : {}">
+    <div v-if="multi && hookChips" v-bind="{ [hookChips]: '' }" class="mt-1 flex flex-wrap gap-1">
+      <span
+        v-for="name in chosen"
+        :key="name"
+        class="inline-flex items-center gap-1 px-1.5 py-px rounded-[4px] border border-(--brand-border) bg-(--brand-sunken) text-[11px] text-(--brand-text-2)"
+        v-bind="hookChip ? { [hookChip]: '', ...(hookChipValue ? { [hookChipValue]: name } : {}) } : {}"
+      >
         {{ name }}
         <button
           v-if="hookChipRemove"
           type="button"
-          class="td-chip-remove"
+          class="border-0 bg-transparent text-(--brand-text-3) cursor-pointer leading-none"
           v-bind="{ [hookChipRemove]: '' }"
           :aria-label="`Clear ${name}`"
           :title="$t('combo.clear')"

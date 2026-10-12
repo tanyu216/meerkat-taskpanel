@@ -38,15 +38,20 @@ function onDrop(event) {
 </script>
 
 <template>
-  <section class="td-col" data-column :data-status="column.status" :data-drag-over="dragOver ? 'true' : 'false'">
-    <header class="td-col-header" data-column-header>
+  <section
+    class="flex max-h-full flex-[0_0_268px] flex-col border border-(--brand-border) rounded-lg bg-(--brand-sunken) data-[drag-over=true]:border-(--brand-border-strong)"
+    data-column
+    :data-status="column.status"
+    :data-drag-over="dragOver ? 'true' : 'false'"
+  >
+    <header class="flex items-center gap-2 p-2" data-column-header>
       <span class="td-col-dot" data-column-dot aria-hidden="true"></span>
       <!-- The column name is the heading of its column, so it is an `<h2>`, not
            a `<span>`: the outline of the board is seven headings, one per status
            (B06). `data-column-name` is unchanged, so the hook set stays put. -->
-      <h2 class="td-col-name" data-column-name>{{ $t(`status.${column.status}`) }}</h2>
-      <span class="td-col-count td-mono" data-column-count>{{ count }}</span>
-      <button type="button" class="td-col-add" data-column-add :aria-label="$t('column.add', $t(`status.${column.status}`))" :title="$t('column.add', $t(`status.${column.status}`))" @click="emit('add', column.status)">
+      <h2 class="font-semibold text-[12px] whitespace-nowrap text-(--brand-text)" data-column-name>{{ $t(`status.${column.status}`) }}</h2>
+      <span class="td-mono ms-auto text-[12px] text-(--brand-text-2)" data-column-count>{{ count }}</span>
+      <button type="button" class="border-0 bg-transparent text-(--brand-text-3) cursor-pointer text-[14px]" data-column-add :aria-label="$t('column.add', $t(`status.${column.status}`))" :title="$t('column.add', $t(`status.${column.status}`))" @click="emit('add', column.status)">
         ＋
       </button>
     </header>
@@ -54,9 +59,9 @@ function onDrop(event) {
     <!-- daisyUI `progress`; `progress-xs` is the 4px bar the design uses. The bar
          is decoration — the count badge and `[data-column-count]` already state
          the number — so it is hidden from assistive technology. -->
-    <progress class="progress progress-xs td-col-progress" data-column-progress aria-hidden="true" :value="count" :max="progressMax"></progress>
+    <progress class="progress progress-xs mx-2 mb-2 h-1 accent-(--status-color)" data-column-progress aria-hidden="true" :value="count" :max="progressMax"></progress>
 
-    <div class="td-col-body" data-column-body @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
+    <div class="flex flex-col gap-2 overflow-y-auto px-2 pb-2" data-column-body @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
       <Card
         v-for="task in column.tasks"
         :key="task.id"
@@ -67,15 +72,20 @@ function onDrop(event) {
         @dragend="emit('dragend')"
       />
 
-      <div v-if="count === 0" class="td-empty" data-empty data-empty-kind="column">
-        <span class="td-empty-title" data-i18n="column.empty.title">{{ $t("column.empty.title") }}</span>
-        <span class="td-empty-hint" data-i18n="column.empty.hint" :data-i18n-arg="`status.${column.status}`">
+      <div
+        v-if="count === 0"
+        class="flex flex-col items-center gap-1 p-4 text-center text-(--brand-text-3) border border-dashed border-(--brand-border-strong) rounded-lg"
+        data-empty
+        data-empty-kind="column"
+      >
+        <span class="font-medium text-(--brand-text-2)" data-i18n="column.empty.title">{{ $t("column.empty.title") }}</span>
+        <span class="text-[12px]" data-i18n="column.empty.hint" :data-i18n-arg="`status.${column.status}`">
           {{ $t("column.empty.hint", $t(`status.${column.status}`)) }}
         </span>
         <button type="button" class="btn btn-outline btn-xs" @click="emit('add', column.status)">{{ $t("column.empty.add") }}</button>
       </div>
 
-      <div v-if="dragOver" class="td-drop-placeholder" data-drop-placeholder></div>
+      <div v-if="dragOver" class="h-1.5 rounded-[999px] bg-(--brand-border-strong)" data-drop-placeholder></div>
     </div>
   </section>
 </template>
