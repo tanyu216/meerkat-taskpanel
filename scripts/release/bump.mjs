@@ -48,7 +48,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 import { findVersionEntry } from "../verify/changelog.mjs";
-import { VERSION_SOURCES, validateVersions } from "../verify/version.mjs";
+import { LOOP_VERSION_SOURCES, VERSION_SOURCES, validateVersions } from "../verify/version.mjs";
 
 /** Repository root, resolved from this file (`scripts/release/`). */
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -57,23 +57,46 @@ export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const CHANGELOG_FILE = "CHANGELOG.md";
 
 /**
- * The six version carriers, derived from the checker's declaration so the two
- * agree by construction. `keys` is the JSON path to the version value, which is
- * how the in-place splice finds the one token to replace (the marketplace hides
- * its version under `metadata`).
+ * Collapse a checker source list into a bumper source list: `keys` is the JSON path to
+ * the version value, which is how the in-place splice finds the one token to replace (the
+ * marketplace hides its version under `metadata`).
  *
- * @type {ReadonlyArray<{label: string, path: string, keys: string[], canonical: boolean}>}
+ * @param {typeof VERSION_SOURCES} sources
+ * @returns {ReadonlyArray<{label: string, path: string, keys: string[], canonical: boolean}>}
  */
-export const SOURCES = Object.freeze(
-  VERSION_SOURCES.map((source) =>
-    Object.freeze({
-      label: source.label,
-      path: source.path,
-      keys: Object.freeze(source.field.split(".")),
-      canonical: source.canonical === true,
-    }),
-  ),
-);
+const toBumpSources = (sources) =>
+  Object.freeze(
+    sources.map((source) =>
+      Object.freeze({
+        label: source.label,
+        path: source.path,
+        keys: Object.freeze(source.field.split(".")),
+        canonical: source.canonical === true,
+      }),
+    ),
+  );
+
+/** The board's six carriers, derived from the checker's declaration so the two agree by
+ * construction. */
+export const SOURCES = toBumpSources(VERSION_SOURCES);
+
+/** The loop's carriers. The board and the loop version independently (O4), so a bump
+ * names the group it moves — see {@link BUMP_GROUPS}. */
+export const LOOP_SOURCES = toBumpSources(LOOP_VERSION_SOURCES);
+
+/**
+ * The version groups this bumper can move, keyed by the `--group` value.
+ *
+ * Each group carries both halves of the same declaration: `sources` (the splice targets,
+ * with the JSON key path) and `checkers` (the same files as the *checker* sees them, with
+ * the `pick` that reads the version out). Deriving both from the checker's export means a
+ * group can never be bumped against a different set of files than it is validated against,
+ * and bumping the loop never asks the board's manifests to agree with the loop's.
+ */
+export const BUMP_GROUPS = Object.freeze({
+  board: Object.freeze({ sources: SOURCES, checkers: VERSION_SOURCES }),
+  loop: Object.freeze({ sources: LOOP_SOURCES, checkers: LOOP_VERSION_SOURCES }),
+});
 
 /**
  * Strict semver — the official grammar, so `1.2.3`, `1.2.3-rc.1` and
@@ -268,17 +291,23 @@ function localDate(date) {
 }
 
 /**
- * Read a tree and work out the six in-place edits that would move it to
+ * Read a tree and work out the in-place edits that would move one version group to
  * `version`. Writes nothing; on any problem returns `{ok: false}` with a `code`
  * the CLI maps to an exit status.
  *
- * @param {{version: string, base?: string, sources?: typeof SOURCES}} options
+ * @param {{version: string, base?: string, group?: string}} options
  * @returns {Promise<
- *   | {ok: true, version: string, previous: string, entries: {path: string, label: string, absolute: string, before: string, after: string}[]}
+ *   | {ok: true, version: string, previous: string, group: string, entries: {path: string, label: string, absolute: string, before: string, after: string}[]}
  *   | {ok: false, code: string, error: string}
  * >}
  */
-export async function planBump({ version, base = ROOT, sources = SOURCES }) {
+export async function planBump({ version, base = ROOT, group = "board" }) {
+  const selected = BUMP_GROUPS[group];
+  if (selected === undefined) {
+    return { ok: false, code: "unknown-group", error: `unknown version group '${group}'` };
+  }
+  const { sources, checkers } = selected;
+
   const target = parseSemver(version);
   if (target === null) {
     return {
@@ -289,9 +318,10 @@ export async function planBump({ version, base = ROOT, sources = SOURCES }) {
   }
 
   // One read pass that both establishes the current version and proves the tree
-  // is not already drifted: bumping six files onto a seventh value would quietly
-  // bury the drift instead of resolving it.
-  const checked = await validateVersions(base);
+  // is not already drifted: bumping a group's manifests onto an extra value would
+  // quietly bury the drift instead of resolving it. The check is scoped to the group
+  // being bumped, so the board and the loop cannot hold each other back (O4).
+  const checked = await validateVersions(base, checkers);
   if (!checked.ok) {
     return {
       ok: false,
@@ -359,7 +389,7 @@ export async function planBump({ version, base = ROOT, sources = SOURCES }) {
     }
   }
 
-  return { ok: true, version: target.raw, previous: current.raw, entries };
+  return { ok: true, version: target.raw, previous: current.raw, group, entries };
 }
 
 /**
@@ -545,22 +575,42 @@ export async function applyWrites(entries, { io } = {}) {
 const WRITE_CODES = new Set(["stage-failed", "commit-failed", "tag-failed"]);
 
 /**
- * Bump the six manifests — and optionally the changelog and a git tag — in one
+ * Bump one version group's manifests — and optionally the changelog and a git tag — in one
  * call. Plan, then apply: no write happens until every write is known to be
  * possible.
  *
- * @param {{version: string, base?: string, changelog?: boolean, tag?: boolean, date?: string,
- *          io?: Parameters<typeof applyWrites>[1]["io"], run?: typeof spawnSync}} [options]
- * @returns {Promise<{ok: true, version: string, previous: string,
+ * `group` selects which carriers move: `board` (the default, root `package.json` canonical)
+ * or `loop` (the loop bundle). The two are released independently (O4), so a bump moves
+ * exactly one of them and validates only that one. `--changelog` and `--tag` are board-side
+ * concepts — a release, not a component bump — so they are refused with `group: "loop"`.
+ *
+ * @param {{version: string, base?: string, group?: string, changelog?: boolean, tag?: boolean,
+ *          date?: string, io?: Parameters<typeof applyWrites>[1]["io"], run?: typeof spawnSync}} [options]
+ * @returns {Promise<{ok: true, version: string, previous: string, group: string,
  *   entries: {path: string, label: string, absolute: string, before: string, after: string}[],
  *   changelog: {path: string, label: string, absolute: string, before: string, after: string}|null,
  *   tagged: string|null, date: string|null}
  *   | {ok: false, code: string, error: string, entries?: unknown[]}>}
  */
 export async function runBump(options = {}) {
-  const { version, base = ROOT, changelog = false, tag = false, date, io, run = spawnSync } = options;
+  const { version, base = ROOT, group = "board", changelog = false, tag = false, date, io, run = spawnSync } = options;
 
-  const planned = await planBump({ version, base });
+  if (BUMP_GROUPS[group] === undefined) {
+    return {
+      ok: false,
+      code: "unknown-group",
+      error: `unknown version group '${group}' (expected ${Object.keys(BUMP_GROUPS).join(", ")})`,
+    };
+  }
+  if (group !== "board" && (changelog || tag)) {
+    return {
+      ok: false,
+      code: "invalid-combination",
+      error: `--changelog / --tag belong to a release of the board, not to a '${group}' bump`,
+    };
+  }
+
+  const planned = await planBump({ version, base, group });
   if (!planned.ok) return planned;
 
   const entries = [...planned.entries];
@@ -595,6 +645,7 @@ export async function runBump(options = {}) {
     ok: true,
     version: planned.version,
     previous: planned.previous,
+    group,
     entries,
     changelog: changelogEntry,
     tagged,
@@ -609,9 +660,13 @@ export async function runBump(options = {}) {
 const USAGE = `Usage: node scripts/release/bump.mjs <x.y.z> [options]
 
   <x.y.z>        the new version (strict semver; must be greater than the current one)
-  --changelog    also insert an empty Keep-a-Changelog scaffold section
-  --tag          also create the git tag v<x.y.z> after the bump (never pushed)
+  --group <name> which component to bump: ${Object.keys(BUMP_GROUPS).join(" | ")} (default: board)
+  --changelog    also insert an empty Keep-a-Changelog scaffold section (board only)
+  --tag          also create the git tag v<x.y.z> after the bump (never pushed; board only)
   --base <dir>   bump a tree rooted at <dir> (default: this checkout)
+
+The board and the loop version independently (O4), so a bump moves one group at a time;
+--changelog and --tag belong to a board release and are refused with --group loop.
 
 Exit: 0 ok · 1 refused · 2 usage · 3 a write or tag failed
 `;
@@ -622,6 +677,7 @@ async function main(argv) {
     options: {
       changelog: { type: "boolean", default: false },
       tag: { type: "boolean", default: false },
+      group: { type: "string" },
       base: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
@@ -633,7 +689,11 @@ async function main(argv) {
     return 0;
   }
   if (positionals.length !== 1) {
-    process.stderr.write(`bump: usage: node scripts/release/bump.mjs <x.y.z> [--changelog] [--tag] [--base <dir>]\n`);
+    process.stderr.write(`bump: usage: node scripts/release/bump.mjs <x.y.z> [--group <name>] [--changelog] [--tag] [--base <dir>]\n`);
+    return 2;
+  }
+  if (values.group !== undefined && BUMP_GROUPS[values.group] === undefined) {
+    process.stderr.write(`bump: unknown --group '${values.group}' (expected ${Object.keys(BUMP_GROUPS).join(", ")})\n`);
     return 2;
   }
 
@@ -641,6 +701,7 @@ async function main(argv) {
   const result = await runBump({
     version: positionals[0],
     base,
+    group: values.group ?? "board",
     changelog: values.changelog,
     tag: values.tag,
   });
@@ -656,7 +717,7 @@ async function main(argv) {
     return WRITE_CODES.has(result.code) ? 3 : 1;
   }
 
-  process.stdout.write(`bump: ${result.previous} → ${result.version}\n`);
+  process.stdout.write(`bump: ${result.previous} → ${result.version} (${result.group})\n`);
   for (const entry of result.entries) {
     if (entry.label === "changelog") continue;
     process.stdout.write(`  ${entry.path}\n`);
@@ -668,7 +729,7 @@ async function main(argv) {
     process.stdout.write(`tag: created ${result.tagged} (not pushed)\n`);
     process.stdout.write(`push: git push origin ${result.tagged}\n`);
   }
-  process.stdout.write(`bump: OK — ${result.entries.length - (result.changelog === null ? 0 : 1)} manifests now at ${result.version}\n`);
+  process.stdout.write(`bump: OK — ${result.entries.length - (result.changelog === null ? 0 : 1)} ${result.group} manifests now at ${result.version}\n`);
   return 0;
 }
 

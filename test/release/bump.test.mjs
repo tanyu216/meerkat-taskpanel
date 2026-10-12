@@ -19,7 +19,9 @@ import { dirname, join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
 import {
+  BUMP_GROUPS,
   CHANGELOG_FILE,
+  LOOP_SOURCES,
   ROOT,
   SOURCES,
   applyWrites,
@@ -105,8 +107,21 @@ function manifests(version) {
   };
 }
 
-/** Every manifest path, in reporting order. */
+/** Every board manifest path, in reporting order. */
 const PATHS = Object.keys(manifests("0.0.0"));
+
+/**
+ * A tree carrying **both** version groups, which is what `node scripts/verify/version.mjs`
+ * requires to go green: each group is checked against its own canonical entry, so a tree
+ * missing the loop's manifests is a broken tree (exit 2), not a passing one.
+ *
+ * @param {string} version the board version
+ * @param {string} [loopVersion] the loop version (defaults to the board's)
+ * @returns {Record<string, string>}
+ */
+function fullTree(version, loopVersion = version) {
+  return { ...manifests(version), ...loopManifests(loopVersion) };
+}
 
 /** Write a `path → bytes` map into `dir`. */
 async function writeTree(dir, files) {
@@ -162,6 +177,145 @@ describe("bump.mjs — declarations", () => {
   it("names the JSON path for the nested marketplace version", () => {
     const marketplace = SOURCES.find((source) => source.path === ".claude-plugin/marketplace.json");
     assert.deepEqual([...marketplace.keys], ["metadata", "version"]);
+  });
+
+  it("carries the loop's two manifests as a group of their own", () => {
+    assert.equal(LOOP_SOURCES.length, 2);
+    assert.equal(LOOP_SOURCES[0].path, "plugins/loop/.claude-plugin/plugin.json");
+    assert.equal(LOOP_SOURCES[0].canonical, true);
+    assert.deepEqual(
+      LOOP_SOURCES.map((source) => source.path),
+      ["plugins/loop/.claude-plugin/plugin.json", "plugins/loop/package.json"],
+    );
+
+    // Both halves of the group come from one declaration, so a group can never be bumped
+    // against a different set of files than it is validated against.
+    assert.deepEqual(Object.keys(BUMP_GROUPS), ["board", "loop"]);
+    assert.equal(BUMP_GROUPS.board.sources, SOURCES);
+    assert.equal(BUMP_GROUPS.loop.sources, LOOP_SOURCES);
+    assert.equal(BUMP_GROUPS.loop.checkers.length, 2);
+    assert.ok(BUMP_GROUPS.loop.checkers.every((source) => typeof source.pick === "function"));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The loop group: independent of the board's version (ruling O4)
+// ---------------------------------------------------------------------------
+
+/**
+ * The loop's two manifests, as literal text — the same mixed formatting the shipped
+ * files use, so the in-place splice is exercised on the real shape.
+ *
+ * @param {string} version
+ * @returns {Record<string, string>}
+ */
+function loopManifests(version) {
+  return {
+    "plugins/loop/.claude-plugin/plugin.json": `{
+  "name": "meerkat-loop",
+  "version": "${version}",
+  "description": "The host-external supervisor loop.",
+  "author": { "name": "tanyu216" },
+  "keywords": ["scheduling", "supervisor"],
+  "skills": "./skills"
+}
+`,
+    "plugins/loop/package.json": `{
+  "name": "meerkat-loop-pi",
+  "version": "${version}",
+  "private": true,
+  "type": "module",
+  "files": ["skills"]
+}
+`,
+  };
+}
+
+/** Every loop manifest path, in reporting order. */
+const LOOP_PATHS = Object.keys(loopManifests("0.0.0"));
+
+describe("bump.mjs — the loop group", () => {
+  it("plans only the loop's manifests when asked for that group", async () => {
+    const dir = await makeTree();
+    const files = { ...manifests("1.0.0"), ...loopManifests("1.0.0") };
+    await writeTree(dir, files);
+
+    const planned = await planBump({ version: "1.1.0", base: dir, group: "loop" });
+    assert.equal(planned.ok, true, planned.error);
+    assert.equal(planned.group, "loop");
+    assert.equal(planned.previous, "1.0.0");
+    assert.deepEqual(
+      planned.entries.map((entry) => entry.path),
+      ["plugins/loop/.claude-plugin/plugin.json", "plugins/loop/package.json"],
+    );
+
+    // The board's manifests are untouched by a loop bump: that is the whole point of
+    // versioning the two components independently.
+    const applied = await runBump({ version: "1.1.0", base: dir, group: "loop" });
+    assert.equal(applied.ok, true, applied.error);
+    assert.equal(JSON.parse(await readFile(join(dir, "package.json"), "utf8")).version, "1.0.0");
+    assert.equal(
+      JSON.parse(await readFile(join(dir, "plugins/loop/package.json"), "utf8")).version,
+      "1.1.0",
+    );
+  });
+
+  it("does not require the board group to be consistent", async () => {
+    // A loop bump validates *its own* group. A drifted board is the board's problem —
+    // `node scripts/verify/version.mjs` reports it — and must not block a loop release.
+    const dir = await makeTree();
+    const files = { ...manifests("1.0.0"), ...loopManifests("1.0.0") };
+    files["plugins/pi/package.json"] = files["plugins/pi/package.json"].replace('"version": "1.0.0"', '"version": "0.9.0"');
+    await writeTree(dir, files);
+
+    const planned = await planBump({ version: "1.1.0", base: dir, group: "loop" });
+    assert.equal(planned.ok, true, planned.error);
+
+    const board = await planBump({ version: "1.1.0", base: dir });
+    assert.equal(board.ok, false);
+    assert.equal(board.code, "drift");
+  });
+
+  it("still refuses a drifted *loop* group", async () => {
+    const dir = await makeTree();
+    const files = { ...manifests("1.0.0"), ...loopManifests("1.0.0") };
+    files["plugins/loop/package.json"] = files["plugins/loop/package.json"].replace('"1.0.0"', '"0.9.0"');
+    await writeTree(dir, files);
+
+    const planned = await planBump({ version: "1.1.0", base: dir, group: "loop" });
+    assert.equal(planned.ok, false);
+    assert.equal(planned.code, "drift");
+    assert.match(planned.error, /plugins\/loop\/package\.json/);
+  });
+
+  it("refuses --changelog / --tag with the loop group, and an unknown group outright", async () => {
+    const dir = await makeTree();
+    await writeTree(dir, { ...manifests("1.0.0"), ...loopManifests("1.0.0") });
+
+    for (const option of [{ changelog: true }, { tag: true }]) {
+      const refused = await runBump({ version: "1.1.0", base: dir, group: "loop", ...option });
+      assert.equal(refused.ok, false);
+      assert.equal(refused.code, "invalid-combination");
+      assert.match(refused.error, /belong to a release of the board/);
+    }
+
+    const unknown = await runBump({ version: "1.1.0", base: dir, group: "nope" });
+    assert.equal(unknown.ok, false);
+    assert.equal(unknown.code, "unknown-group");
+  });
+
+  it("exits 1 from the CLI on a loop-group drift, and 2 on an unknown group", async () => {
+    const dir = await makeTree();
+    const files = { ...manifests("1.0.0"), ...loopManifests("1.0.0") };
+    files["plugins/loop/package.json"] = files["plugins/loop/package.json"].replace('"1.0.0"', '"0.9.0"');
+    await writeTree(dir, files);
+
+    const drifted = run(BUMP, ["1.1.0", "--group", "loop", "--base", dir]);
+    assert.equal(drifted.status, 1, drifted.stderr);
+
+    const unknown = run(BUMP, ["1.1.0", "--group", "nope"]);
+    assert.equal(unknown.status, 2);
+    assert.match(unknown.stderr, /unknown --group 'nope'/);
   });
 });
 
@@ -497,7 +651,7 @@ describe("bump.mjs — atomicity", () => {
 describe("bump.mjs — runBump", () => {
   it("bumps the six manifests and satisfies version.mjs afterwards", async () => {
     const dir = await makeTree();
-    await writeTree(dir, manifests("1.0.0"));
+    await writeTree(dir, fullTree("1.0.0"));
 
     const result = await runBump({ version: "1.1.0", base: dir });
     assert.equal(result.ok, true, result.error);
@@ -505,10 +659,13 @@ describe("bump.mjs — runBump", () => {
     assert.equal(result.version, "1.1.0");
     assert.equal(result.entries.length, 6);
 
-    // "串联绿": the checker the repo trusts now passes on the bumped tree.
+    // "串联绿": the checker the repo trusts now passes on the bumped tree — the board group
+    // at the new version, the loop group untouched at the old one, both internally
+    // consistent. Which is what independent versioning looks like.
     const checked = run(VERSION_CHECK, ["--base", dir]);
     assert.equal(checked.status, 0, checked.stderr);
-    assert.match(checked.stdout, /all 6 manifests agree on 1\.1\.0/);
+    assert.match(checked.stdout, /all 6 board manifests agree on 1\.1\.0/);
+    assert.match(checked.stdout, /all 2 loop manifests agree on 1\.0\.0/);
   });
 
   it("bumps this repository's own manifests, byte for byte", async () => {
@@ -518,7 +675,7 @@ describe("bump.mjs — runBump", () => {
     // manifests use.
     const dir = await makeTree();
     const files = {};
-    for (const rel of [...PATHS, CHANGELOG_FILE]) files[rel] = await readFile(join(ROOT, rel), "utf8");
+    for (const rel of [...PATHS, ...LOOP_PATHS, CHANGELOG_FILE]) files[rel] = await readFile(join(ROOT, rel), "utf8");
     await writeTree(dir, files);
 
     const current = parseSemver(JSON.parse(files["package.json"]).version);
@@ -537,13 +694,13 @@ describe("bump.mjs — runBump", () => {
 
     const checked = run(VERSION_CHECK, ["--base", dir]);
     assert.equal(checked.status, 0, checked.stderr);
-    assert.match(checked.stdout, new RegExp(`all 6 manifests agree on ${target.replace(/\./g, "\\.")}`));
+    assert.match(checked.stdout, new RegExp(`all 6 board manifests agree on ${target.replace(/\./g, "\\.")}`));
     assert.equal(run(CHANGELOG_CHECK, [`v${target}`, "--base", dir]).status, 0);
   });
 
   it("takes a prerelease target when it is a real step forward", async () => {
     const dir = await makeTree();
-    await writeTree(dir, manifests("1.0.0"));
+    await writeTree(dir, fullTree("1.0.0"));
     const result = await runBump({ version: "1.1.0-rc.1", base: dir });
     assert.equal(result.ok, true, result.error);
     const checked = run(VERSION_CHECK, ["--base", dir]);
@@ -637,12 +794,12 @@ describe("bump.mjs — runBump", () => {
 describe("bump.mjs — the CLI", () => {
   it("bumps a tree and prints the new version", async () => {
     const dir = await makeTree();
-    await writeTree(dir, manifests("1.0.0"));
+    await writeTree(dir, fullTree("1.0.0"));
 
     const result = run(BUMP, ["1.1.0", "--base", dir]);
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /bump: 1\.0\.0 → 1\.1\.0/);
-    assert.match(result.stdout, /6 manifests now at 1\.1\.0/);
+    assert.match(result.stdout, /bump: 1\.0\.0 → 1\.1\.0 \(board\)/);
+    assert.match(result.stdout, /6 board manifests now at 1\.1\.0/);
     assert.equal(run(VERSION_CHECK, ["--base", dir]).status, 0);
   });
 
@@ -670,7 +827,7 @@ describe("bump.mjs — the CLI", () => {
 
   it("exits 3 when the tag fails, after the bump has landed", async () => {
     const dir = await makeTree();
-    await writeTree(dir, manifests("1.0.0"));
+    await writeTree(dir, fullTree("1.0.0"));
 
     // The temp tree is not a git repository (and the verify image has no git), so
     // the tag step cannot succeed — the point is the exit code and that the files
@@ -679,6 +836,6 @@ describe("bump.mjs — the CLI", () => {
     assert.equal(result.status, 3, `stdout: ${result.stdout}\nstderr: ${result.stderr}`);
     assert.match(result.stderr, /git tag v1\.1\.0 failed/);
     assert.match(result.stderr, /git checkout --/);
-    assert.equal(run(VERSION_CHECK, ["--base", dir]).status, 0, "the six manifests were written");
+    assert.equal(run(VERSION_CHECK, ["--base", dir]).status, 0, "the six board manifests were written");
   });
 });

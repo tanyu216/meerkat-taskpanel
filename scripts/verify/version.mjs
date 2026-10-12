@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 /**
- * The release version is declared in exactly one place — the root
- * `package.json` `version` — and mirrored, unchanged, into every shipped
- * manifest:
+ * Every shipped bundle declares the version of the thing it ships, and the bundles of
+ * *one* component must agree with each other. There are two components, and they version
+ * **independently** (ruling O4): the board and the loop are released on their own
+ * schedules, coupled only by the interface the loop declares it needs.
  *
+ *   board (canonical: the root `package.json`)
  *   1. package.json                                    (the source of truth)
  *   2. plugins/pi/package.json
  *   3. plugins/claude/.claude-plugin/plugin.json
@@ -11,14 +13,24 @@
  *   5. plugins/openclaw/openclaw.plugin.json
  *   6. .claude-plugin/marketplace.json  → metadata.version
  *
- * Every host reads *its own* manifest to decide what version it installed, so a
- * drift here ships a release that calls itself two different things. This script
- * reads all six, compares them against the root `package.json`, prints any
- * offending file and exits non-zero on drift — wired into CI so the mistake is
- * caught at pull-request time rather than at tag time.
+ *   loop (canonical: its own Claude-format plugin manifest)
+ *   7. plugins/loop/.claude-plugin/plugin.json
+ *   8. plugins/loop/package.json
  *
- *   node scripts/verify/version.mjs            # check; exit 0 iff all six agree
- *   node scripts/verify/version.mjs --print    # print the canonical version
+ * Every host reads *its own* manifest to decide what version it installed, so a
+ * drift inside a group ships a release that calls itself two different things. This
+ * script reads every carrier, checks each group against its own canonical entry, prints
+ * any offending file and exits non-zero on drift — wired into CI so the mistake is caught
+ * at pull-request time rather than at tag time.
+ *
+ * The groups are checked separately on purpose: forcing the loop to equal the board would
+ * make O4 unenforceable. At the first split the two values happen to be equal (O7 — one
+ * linked release); after that, a loop-only bump must go green here.
+ *
+ *   node scripts/verify/version.mjs                # check both groups
+ *   node scripts/verify/version.mjs --group loop   # check one group
+ *   node scripts/verify/version.mjs --print        # print the board version
+ *   node scripts/verify/version.mjs --print --group loop
  *   node scripts/verify/version.mjs --base <dir>   # check a tree rooted at <dir>
  *
  * Node builtins only; no network, no dependencies.
@@ -33,8 +45,8 @@ import { parseArgs } from "node:util";
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 /**
- * The six manifests that must agree, in reporting order. The first entry is the
- * canonical one: every other entry must equal it.
+ * The board's six manifests, in reporting order. The first entry is the canonical
+ * one: every other entry in the group must equal it.
  *
  * `field` names the property that carries the version (so the diagnostic for the
  * marketplace, whose version hides under `metadata`, says so).
@@ -49,6 +61,40 @@ export const VERSION_SOURCES = Object.freeze([
   { label: "openclaw", path: "plugins/openclaw/openclaw.plugin.json", field: "version", pick: (doc) => doc.version },
   { label: "marketplace", path: ".claude-plugin/marketplace.json", field: "metadata.version", pick: (doc) => doc.metadata?.version },
 ]);
+
+/**
+ * The loop's version carriers. The Claude-format plugin manifest is canonical — it is
+ * the one the marketplace resolves `meerkat-loop` to; the Pi package mirrors it.
+ *
+ * @type {typeof VERSION_SOURCES}
+ */
+export const LOOP_VERSION_SOURCES = Object.freeze([
+  { label: "loop", path: "plugins/loop/.claude-plugin/plugin.json", field: "version", canonical: true, pick: (doc) => doc.version },
+  { label: "loop-pi", path: "plugins/loop/package.json", field: "version", pick: (doc) => doc.version },
+]);
+
+/**
+ * The version groups, in reporting order. Each is checked independently; the board group
+ * is first so `--print` and the release tooling keep reading the board's version.
+ *
+ * @type {ReadonlyArray<{name: string, sources: typeof VERSION_SOURCES}>}
+ */
+export const VERSION_GROUPS = Object.freeze([
+  { name: "board", sources: VERSION_SOURCES },
+  { name: "loop", sources: LOOP_VERSION_SOURCES },
+]);
+
+/** The group a bare invocation or a bare `--print` refers to. */
+export const DEFAULT_GROUP = "board";
+
+/**
+ * Look up a group by name.
+ * @param {string} name
+ * @returns {{name: string, sources: typeof VERSION_SOURCES}|null}
+ */
+export function versionGroup(name = DEFAULT_GROUP) {
+  return VERSION_GROUPS.find((group) => group.name === name) ?? null;
+}
 
 /**
  * Read one manifest and pull its version out.
@@ -85,49 +131,67 @@ async function readSource(source, base) {
 }
 
 /**
- * Validate that all six manifests carry the same version as the root
- * `package.json`.
+ * Validate that every manifest of one version group carries the same version as that
+ * group's canonical entry.
  *
  * Never throws for a bad tree: a missing file, malformed JSON or a missing field
  * all come back as `{ok: false, error}` so the test suite can construct broken
  * trees and assert on them.
  *
  * @param {string} [base] repository root (defaults to this checkout)
+ * @param {typeof VERSION_SOURCES} [sources] the group to check (defaults to the board's)
  * @returns {Promise<{ok: boolean, kind?: "drift"|"read", version?: string, sources?: {label: string, path: string, version: string}[], error?: string}>}
  */
-export async function validateVersions(base = ROOT) {
+export async function validateVersions(base = ROOT, sources = VERSION_SOURCES) {
   /** @type {{label: string, path: string, version: string}[]} */
-  const sources = [];
-  for (const source of VERSION_SOURCES) {
+  const found = [];
+  for (const source of sources) {
     const result = await readSource(source, base);
-    if (!result.ok) return { ok: false, kind: "read", sources, error: result.error };
-    sources.push({ label: source.label, path: source.path, version: result.version });
+    if (!result.ok) return { ok: false, kind: "read", sources: found, error: result.error };
+    found.push({ label: source.label, path: source.path, version: result.version });
   }
 
-  const canonical = sources[0].version;
-  const drifted = sources.filter((entry) => entry.version !== canonical);
+  const canonical = found[0].version;
+  const drifted = found.filter((entry) => entry.version !== canonical);
   if (drifted.length > 0) {
     const lines = drifted.map((entry) => `  ${entry.path} (${entry.label}) is ${entry.version}, expected ${canonical}`);
     return {
       ok: false,
       kind: "drift",
       version: canonical,
-      sources,
-      error: `version drift against ${VERSION_SOURCES[0].path} (${canonical}):\n${lines.join("\n")}`,
+      sources: found,
+      error: `version drift against ${sources[0].path} (${canonical}):\n${lines.join("\n")}`,
     };
   }
 
-  return { ok: true, version: canonical, sources };
+  return { ok: true, version: canonical, sources: found };
 }
 
 /**
- * The canonical version, read from the root `package.json` alone.
+ * Validate every version group. Each group is independent: a drifted loop must not be
+ * reported as a drifted board, and neither group's numbers are compared with the other's.
  *
  * @param {string} [base]
- * @returns {Promise<string|null>} `null` when the root manifest is unreadable
+ * @param {typeof VERSION_GROUPS} [groups]
+ * @returns {Promise<{ok: boolean, results: Array<{name: string, sources: typeof VERSION_SOURCES, result: Awaited<ReturnType<typeof validateVersions>>}>}>}
  */
-export async function currentVersion(base = ROOT) {
-  const result = await readSource(VERSION_SOURCES[0], base);
+export async function validateVersionGroups(base = ROOT, groups = VERSION_GROUPS) {
+  const results = [];
+  for (const group of groups) {
+    results.push({ name: group.name, sources: group.sources, result: await validateVersions(base, group.sources) });
+  }
+  return { ok: results.every((entry) => entry.result.ok), results };
+}
+
+/**
+ * The canonical version of a group, read from that group's canonical manifest alone.
+ *
+ * @param {string} [base]
+ * @param {typeof VERSION_SOURCES} [sources]
+ * @returns {Promise<string|null>} `null` when the canonical manifest is unreadable
+ */
+export async function currentVersion(base = ROOT, sources = VERSION_SOURCES) {
+  const result = await readSource(sources[0], base);
   return result.ok ? result.version : null;
 }
 
@@ -137,45 +201,68 @@ async function main(argv) {
     options: {
       print: { type: "boolean", default: false },
       base: { type: "string" },
+      group: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
     allowPositionals: false,
   });
 
+  const groupNames = VERSION_GROUPS.map((group) => group.name);
+
   if (values.help) {
     process.stdout.write(
-      "Usage: node scripts/verify/version.mjs [--print] [--base <dir>]\n\n" +
-        "  --print        print the canonical version (root package.json) and exit\n" +
-        "  --base <dir>   check a tree rooted at <dir> (default: this checkout)\n",
+      "Usage: node scripts/verify/version.mjs [--print] [--group <name>] [--base <dir>]\n\n" +
+        "  --print        print a group's canonical version and exit (default: board)\n" +
+        `  --group <name> check one group only (${groupNames.join(", ")}; default: all)\n` +
+        "  --base <dir>   check a tree rooted at <dir> (default: this checkout)\n\n" +
+        "The groups version independently: the board (root package.json is canonical) and\n" +
+        "the loop (plugins/loop/.claude-plugin/plugin.json is canonical).\n",
     );
     return 0;
   }
 
   const base = values.base === undefined ? ROOT : resolve(values.base);
 
+  let groups = VERSION_GROUPS;
+  if (values.group !== undefined) {
+    const selected = versionGroup(values.group);
+    if (selected === null) {
+      process.stderr.write(`version: unknown --group '${values.group}' (expected ${groupNames.join(", ")})\n`);
+      return 2;
+    }
+    groups = [selected];
+  }
+
   if (values.print) {
-    const version = await currentVersion(base);
+    const sources = groups[0].sources;
+    const version = await currentVersion(base, sources);
     if (version === null) {
-      process.stderr.write(`version: cannot read ${join(base, VERSION_SOURCES[0].path)}\n`);
+      process.stderr.write(`version: cannot read ${join(base, sources[0].path)}\n`);
       return 2;
     }
     process.stdout.write(`${version}\n`);
     return 0;
   }
 
-  const result = await validateVersions(base);
-  if (!result.ok) {
-    process.stderr.write(`version: FAILED — ${result.error}\n`);
-    // A missing/malformed manifest (2) reads differently from drift (1): the
-    // first is a broken tree, the second a version that was not kept in sync.
-    return result.kind === "read" ? 2 : 1;
+  let status = 0;
+  for (const { name, result } of (await validateVersionGroups(base, groups)).results) {
+    if (!result.ok) {
+      process.stderr.write(`version: FAILED (${name}) — ${result.error}\n`);
+      // A missing/malformed manifest (2) reads differently from drift (1): the
+      // first is a broken tree, the second a version that was not kept in sync.
+      if (result.kind === "read") status = 2;
+      else if (status === 0) status = 1;
+      continue;
+    }
+    for (const entry of result.sources) {
+      process.stdout.write(`  ${entry.version}  ${entry.path}  (${entry.label})\n`);
+    }
+    process.stdout.write(
+      `version: OK — all ${result.sources.length} ${name} manifests agree on ${result.version}\n`,
+    );
   }
 
-  for (const entry of result.sources) {
-    process.stdout.write(`  ${entry.version}  ${entry.path}  (${entry.label})\n`);
-  }
-  process.stdout.write(`version: OK — all ${result.sources.length} manifests agree on ${result.version}\n`);
-  return 0;
+  return status;
 }
 
 // Guarded so the module can be imported by the test suite without side effects.
