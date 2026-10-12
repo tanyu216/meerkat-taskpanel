@@ -310,11 +310,14 @@ svg[data-token-icon][hidden] { display: none; }
   overflow: hidden;
 }
 /* M2c ① — the sidebar's box is the design's `16px 12px`, stated with the 4px
-   grid's two tokens rather than one uniform 12px. */
+   grid's two tokens rather than one uniform 12px.
+   F3 — the row rhythm between the sidebar's sections is the prototype's
+   `gap: 20px` (`.td-sidebar`), the ladder's `--space-5`, not the 16px the box
+   had been carrying (16px is its *inline* padding, a different axis). */
 .td-sidebar {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-5);
   width: 248px;
   padding: var(--space-4) var(--space-3);
   overflow-y: auto;
@@ -399,9 +402,79 @@ svg[data-token-icon][hidden] { display: none; }
 
 /* ------------------------------------------------------------------- card */
 
+/* F4 · F10 — the compact icon button (`.td-iconbtn`), transcribed from
+   `design/prototype/src/input.css` and worn by the two controls that had been a
+   text glyph or a text button instead: the column header's `+` (F4) and the top
+   bar's filters toggle (F10 — its `Filter` word is what made the bar's row of
+   controls 32px too wide to fit a phone-width line, so the bar folded to three
+   rows where the prototype folds to two). Transparent at rest with an ink-2
+   glyph, `--r-md` radius, and the prototype's hover/pressed faces. The glyph is
+   supplied by `.td-icon` (+ `.td-icon-sm` for the 14px cut). */
+.td-iconbtn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  color: var(--brand-text-2);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-field);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-1) var(--ease-brand),
+    color var(--dur-1) var(--ease-brand),
+    border-color var(--dur-1) var(--ease-brand);
+}
+.td-iconbtn:hover { color: var(--brand-text); background: var(--brand-hover); border-color: var(--brand-border); }
+.td-iconbtn:active,
+.td-iconbtn[aria-pressed="true"] { background: var(--brand-active); }
+
+/* The column header's add control, exactly as the prototype composes it: the
+   same `.td-iconbtn` box, pinned down to 24×24 and given the 2px of clearance
+   the count pill does not take (`.td-col-add`). */
+.td-col-add {
+  width: 24px;
+  height: 24px;
+  margin-left: 2px;
+}
+
+/* F7 — the card's own box and rhythm are the prototype's `.td-card`: a **block**
+   (its children stack in normal flow and carry their own top margins, which is
+   also what keeps `[data-card-title]`'s `min-width` resolving to the block value
+   rather than a flex item's `auto` — F9), `padding: 8px 10px 8px 13px` and the
+   design's `--r-md` radius (the card is a button/input-class surface, `6px`, not
+   the panel's `8px` the daisyUI `rounded-lg` was pulling). The 13px on the inline
+   start is the 10px the other three sides take plus the 3px stripe that hangs
+   into it. */
 .td-card {
-  @apply relative flex cursor-pointer flex-col gap-1 border border-(--brand-border) rounded-lg bg-(--brand-surface);
-  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  @apply relative cursor-pointer border border-(--brand-border) bg-(--brand-surface);
+  padding: 8px 10px 8px 13px;
+  border-radius: var(--radius-field);
+}
+
+/* The card's three bands, each with the prototype's own top margin. They are
+   `.td-card-*` classes rather than a flex column's `gap` because the gaps are
+   *not* equal (2 / 6 / 8) and a single gap cannot state three of them. */
+.td-card-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+}
+.td-card-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.td-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  min-width: 0;
 }
 .td-card:hover { background: var(--brand-hover); }
 .td-card[aria-selected="true"] { border-color: var(--color-primary); }
@@ -986,18 +1059,31 @@ html[data-theme="dark"] [data-create-project-panel] {
 }
 /* ≤779px — the bar is allowed to fold (the prototype opens its 760–779px band
    for exactly this), so ≥780px it stays one row with the search shrinking as the
-   prototype's does. */
+   prototype's does. The bar's own box turns with it: the prototype's base box is
+   `padding: 0 12px`, and this band is where it becomes `padding: 8px` with an
+   8px `row-gap` (F2 — the prototype states three boxes, one per band). */
 @media (max-width: 779px) {
   /* The folded bar is taller than the 56px track, so the shell lets its first
      row grow in exactly this band — the prototype's own 760–779 rule. */
   .td-shell { grid-template-rows: auto minmax(0, 1fr); }
-  [data-topbar] { flex-wrap: wrap; height: auto; }
+  [data-topbar] {
+    flex-wrap: wrap;
+    height: auto;
+    padding: var(--space-2);
+    row-gap: var(--space-2);
+  }
 }
 /* ≤759px — the bar folds into glyphs: search takes a full row of its own
    (order 10) and the remaining controls drop their labels. */
 @media (max-width: 759px) {
   [data-search] { order: 10; flex: 1 1 100%; max-width: none; }
   [data-topbar] [data-label-text] { display: none; }
+  /* The prototype's two tighter rules here: a 6px gap, and the switcher's leading
+     glyph dropped (the name is the control at this width). Both are the
+     prototype's own ≤759 rules; without the second the bar's first row misses a
+     phone-width line by ~22px and folds to a third row (F10). */
+  [data-topbar] { gap: 6px; }
+  [data-topbar] [data-project-switcher-icon] { display: none; }
   [data-revision] { padding: 0 var(--space-2); }
   /* The list keeps the essentials: identity, title, revision. The three middle
      tracks are dropped rather than squeezed — six tracks need ~566px of room a

@@ -55,8 +55,17 @@ function onDrop(event) {
            order and spacing (`design/prototype/index.html` `[data-column-header]`).
            `ms-auto` had parked the pair on the right since M1. -->
       <span class="badge badge-sm td-count" data-column-count>{{ count }}</span>
-      <button type="button" class="border-0 bg-transparent text-(--brand-text-3) cursor-pointer text-[14px]" data-column-add :aria-label="$t('column.add', $t(`status.${column.status}`))" :title="$t('column.add', $t(`status.${column.status}`))" @click="emit('add', column.status)">
-        ＋
+      <!-- F4 — the control is the prototype's `button.td-iconbtn.td-col-add`: a
+           24×24 icon button holding a stroked `svg.td-icon` plus glyph, 2px clear
+           of the count pill. It had been a bare text `＋` in the 14px UI face,
+           which is a different object (a glyph in the type scale, not a button in
+           the icon set) and the one header cell whose metrics were not the
+           design's. `.td-col-add` states the box; `.td-icon`/`.td-icon-sm` are the
+           same brand pair the nav glyphs wear. -->
+      <button type="button" class="td-iconbtn td-col-add" data-column-add :aria-label="$t('column.add', $t(`status.${column.status}`))" :title="$t('column.add', $t(`status.${column.status}`))" @click="emit('add', column.status)">
+        <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
       </button>
     </header>
 

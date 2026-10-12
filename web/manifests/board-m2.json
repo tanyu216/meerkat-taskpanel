@@ -1071,8 +1071,8 @@
         },
         {
           "selector": ".td-list-head",
-          "min": 1,
-          "desc": "R6 ⑤：组头行（32px / uppercase / 11px / sunken 底）"
+          "count": 2,
+          "desc": "R6 ⑤：组头行（32px / uppercase / 11px / sunken 底）。F12：锚回原型真实组数 2 —— 每个 `.td-list-group` 各一个组头（骨架组一行 caption、数据组六列头），原型与实现两侧实测均为 2；M2c ⑦ 已把同族的 `.td-list-group` 收到 `count: 2`，本条是其伴生项（原为 `min: 1` 兜底）"
         },
         {
           "selector": "[data-list-row].td-list-row",

@@ -346,6 +346,88 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   breakpoint split; and the task drawer's close button moved out of a line of its own *under*
   the title into the identifier's top row, pushed to that row's inline end and drawn as an
   `svg.td-icon` ✕ instead of a text character.
+- **The board's base type, the sidebar's row rhythm, the top bar at 980px, the column
+  count's place and the list's resident skeleton were five measured departures from the
+  prototype.** Five fidelity findings from the running board, each one a computed-style
+  value the board reported differently from `design/prototype/index.html`.
+  The app set no base font size, so every inheriting surface rendered at the browser's
+  16px where the prototype's `body` states 14px / 1.5 — the sidebar read a size too
+  large, and the type in the bar, the sidebar, the board, the cards and the list was off
+  by the same factor. The declaration now sits on `body`, exactly where the prototype
+  puts it, so `rem` stays anchored to the 16px root and every rem-based utility keeps the
+  value the prototype computes with. Two geometry examples that travel beside it are
+  their own root causes and were fixed in the same pass: the shell's first track is the
+  design's `--shell-topbar` (56px) rather than `auto`, which had been sizing the bar from
+  whatever its content happened to be (49px at ≥780); and `.td-sidebar` keeps the
+  design's `16px 12px` box rather than one uniform 12px.
+  Both sidebar row lists are the prototype's `.td-nav` box verbatim — a column flex with
+  the design's 2px row rhythm. It is not cosmetic: as a *block* child a row button
+  resolves `min-width: auto` to `0px`, which was the whole computed-style divergence; as
+  a flex item it stays `auto`, which is what the prototype reports.
+  The top bar stopped clipping at 980px: `flex-none` on the right cluster is the
+  prototype's own declaration for it (`.td-topbar-actions`), and without it the cluster
+  was the only shrinkable item besides the search, so the two split the shortfall — the
+  cluster kept its box while its content (revision + New task) spilled 12px past the
+  shell's right edge, which `overflow: hidden` then clipped. That clipping was the one
+  implementation-only entry `shot-compare --strict` reported at 980px. The search is the
+  item the bar is designed to give slack to, so it now absorbs the whole shortfall.
+  The column header's count sat at the column's far edge (`ms-auto`), where the
+  prototype reads `[dot][name][count][+]` with no auto margin anywhere; the count now
+  follows the name.
+  The language menu's option rows were a 14px/500 line in a 4px-padded, 6px-rounded box
+  against the prototype's 13px/400 line in a 28px row with `0 8px` of inline padding and
+  the `--r-sm` radius. The size now lives on the row rather than on the label span, and
+  the selected row keeps the same 400 as its sibling: the design marks the current
+  language with colour and the tick, never with weight.
+  The list view rendered its skeleton group only while loading, so the rest state held
+  one `.td-list-group` where the prototype holds two (the skeleton group is resident in
+  the prototype's markup and in its rendered rest state). The group is resident again,
+  and the manifest's anchor for it moves from `min: 1` to the prototype's real `count: 2`.
+  Machine checks: the manifest's `.td-list-group` anchor, the computed-style diff, and a
+  20-frame prototype ↔ implementation matrix with no horizontal overflow and no console
+  error. `design/**` is untouched — every one of the five is the implementation moving to
+  the frozen prototype, not a design change.
+- **The top bar's box and its narrow band, the sidebar's section rhythm, the column's add
+  button, the card's box and rhythm, and two review-tool calibers now match the
+  prototype.** The M2c round's out-of-scope findings, taken one at a time against
+  `design/prototype/index.html`.
+  The top bar's inner spacing is the prototype's `.td-topbar` box — which is **three**
+  boxes, one per band: `0 12px` at ≥780px, `8px` with an 8px `row-gap` in the 760–779px
+  band, and the same `8px` with a 6px `gap` below that. The bar had carried one flat
+  `8px / 16px`, so its block padding was pure divergence at ≥780 (it is 56px through the
+  shell grid's own topbar track, not through its padding, and the content is centred by
+  `items-center` already) and its inline padding was 8px too wide in every band. The
+  sidebar's section gap is the prototype's `20px`, not the `16px` that is its *inline
+  padding*, a different axis.
+  The narrow band is where the bar folds, and it folded into **three** rows where the
+  prototype folds into two: the bar's own inline padding, plus a `Filter` word that
+  cost its first row 31px, put that row past a phone-width line. Both controls that the
+  prototype draws as a compact icon button are now one — a new `.td-iconbtn` (the
+  prototype's own class and box: 32 × 32, transparent with an ink-2 glyph, the `--r-md`
+  radius and the design's hover/pressed faces) — worn by the top bar's filters toggle
+  (funnel-lines `svg.td-icon`, the word's name moved to the `aria-label` it already
+  carried) and, at the prototype's 24 × 24 with 2px of clearance, by the column header's
+  add control (`.td-iconbtn.td-col-add`).
+  The card is a **block** again, not a flex column with one `gap`: its three bands carry
+  the prototype's own top margins (2 / 6 / 8px, which a single gap cannot state), its
+  padding is `8px 10px 8px 13px` (the 13px is the 10px the other sides take plus the 3px
+  stripe that hangs into it) and its radius is the design's `--r-md` 6px for
+  button/input/card rather than the panel's 8px `rounded-lg` was pulling. The block model
+  is also what puts the title's `min-width` back on the block's `0px`, where the flex
+  item's `auto` had put it.
+  Two review-tool calibers were wrong: `web/scripts/shot-compare.mjs` captured `500px` as
+  its narrowest tier, a width no other surface in the repo names, so the `430` the
+  acceptance actually reviews had never been captured at all; and the list's
+  `.td-list-head` anchor sat at `min: 1` where both sides have 2 (one per
+  `.td-list-group`), the companion of the `.td-list-group` anchor M2c had already taken
+  to `count: 2`.
+  The block contract also gained the row-level **floor** under the project count pill:
+  after a retired assertion went, the R7 ② family stated only "at most one pill per row",
+  so a row that lost its pill while its siblings kept theirs was invisible.
+  Machine checks: `ui-align board-m2 --strict`, `shot-compare --strict`,
+  `node --test "test/web/**/*.test.mjs"` and the DOM smoke, plus the 20-frame matrix.
+  `design/**` is untouched — every change is the implementation moving to the frozen
+  prototype.
 - **The board's selection surfaces are painted again, and the theme cell shows a glyph.**
   Eight fidelity findings from a design review, each one a place where the board rendered
   *something* where the prototype renders *that thing*: the Board/List switch had no visible
