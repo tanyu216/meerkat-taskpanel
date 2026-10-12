@@ -74,8 +74,16 @@ const HEIGHT = 950;
 /** Matches the prototype's own screenshot convention (`design/prototype/screenshots/*`). */
 const DEVICE_SCALE = 2;
 
-/** The five widths the acceptance names. */
-const VIEWPORTS = Object.freeze([1512, 1240, 980, 760, 500]);
+/**
+ * The five widths the acceptance names — `1512 / 1240 / 980 / 760 / 430`, the
+ * same five `web/.ui-align.json`'s `viewports` and the review matrix use.
+ *
+ * The fifth was `500`, one tier the tool had invented: no other surface in the
+ * repo names it, so the narrowest band the acceptance actually reviews (`430`,
+ * and with it the ≤559 rules it is the boundary of) had never been captured by
+ * this script at all.
+ */
+const VIEWPORTS = Object.freeze([1512, 1240, 980, 760, 430]);
 
 /** The prototype's own cycle order — its `data-theme-mode` starts at `light`. */
 const PROTOTYPE_THEME_CYCLE = Object.freeze(["light", "dark", "auto"]);

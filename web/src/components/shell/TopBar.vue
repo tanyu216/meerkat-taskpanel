@@ -34,7 +34,14 @@ function switchProject(id, event) {
 </script>
 
 <template>
-  <header class="[grid-area:topbar] flex flex-nowrap items-center min-w-0 gap-2 px-4 py-2 border-b border-b-(--brand-border) bg-(--brand-surface)" data-topbar>
+  <header class="[grid-area:topbar] flex flex-nowrap items-center min-w-0 gap-2 px-3 py-0 border-b border-b-(--brand-border) bg-(--brand-surface)" data-topbar>
+    <!-- F2 — the bar's inner spacing is the prototype's `.td-topbar` box:
+         `padding: 0 12px`, no block padding. The bar is 56px through the shell
+         grid's own topbar track (`--shell-topbar`, stated on `.td-shell`), not
+         through its padding, so the vertical pair was pure divergence — the
+         content was already centred by `items-center`, and `py-2` only narrowed
+         the room the search may shrink into (where the 980/430 fold is decided).
+         The inline 12px is one step in from the 16px (`px-4`) it carried. -->
     <a class="inline-flex items-baseline gap-2 no-underline text-inherit" href="#" data-brand @click.prevent>
       <!-- Sentinel Watch — the brand mark, geometry fixed by BRAND.md §5 and
            transcribed from `design/prototype/index.html`'s `[data-brand]` mark.
@@ -144,9 +151,15 @@ function switchProject(id, event) {
       />
     </div>
 
+    <!-- F10 — the prototype's filters toggle is a `td-iconbtn` holding the
+         funnel-lines glyph (`.td-icon`), at every width; this was a text button
+         reading "Filters". The word cost 31px of the bar's first row, which is
+         what pushed that row past a phone-width line — the bar then folded to
+         three rows where the prototype folds to two (`shot-compare`'s 430 tier).
+         The `aria-label` carries the same name the word did. -->
     <button
       type="button"
-      class="btn btn-ghost btn-sm"
+      class="td-iconbtn"
       data-filter-toggle
       :aria-pressed="filtersOpen ? 'true' : 'false'"
       aria-controls="td-filters"
@@ -154,7 +167,9 @@ function switchProject(id, event) {
       :data-i18n-aria-label="'topbar.filters'"
       @click="toggleFilters"
     >
-      {{ $t("filters.label") }}
+      <svg class="td-icon size-4" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M4 6h16M7 12h10M10 18h4" />
+      </svg>
     </button>
 
     <!-- daisyUI's `tabs tabs-box` carries the shell; `td-tabs`/`td-tab` state the

@@ -699,12 +699,32 @@ const BLOCKS = [
          `min-width:20px` and a two-digit count is legitimately wider. */
       // Scoped to `button[data-project]`, not `[data-project]`: a *card* carries
       // `data-project` too (B07's scalar), so the bare hook is not the row. The
-      // row is the button (BLOCKS.md B03), and the pill sits inside it. `max` and
-      // not `min`…`max`: the contract lets a row with an unknown count (`null`)
-      // render **no** pill at all — "`0` renders, unknown does not" — so only the
-      // upper bound is the row's to keep.
+      // row is the button (BLOCKS.md B03), and the pill sits inside it.
+      //
+      // The two bounds below are the row's **floor and cap**, and both are the
+      // row's to keep. The floor is the one R7's verification found missing: after
+      // the retired assertion went, the family stated only "at most one pill per
+      // row", so a row that lost its pill while its siblings kept theirs was
+      // invisible — the list-level floor (one pill *somewhere* in the list) and
+      // the probe rules both need only one row to be intact. The relation §7 A4
+      // states is `count([data-project-count]) == count(button[data-project])`
+      // modulo unknown rows, and a per-row `min` is how this contract expresses a
+      // per-row floor.
+      //
+      // The `null` escape (R7 §2.2, "`0` renders, unknown does not") is discharged
+      // **upstream, not in the DOM**, and that is the one thing to know about this
+      // bound: a row whose count is unknown and a row that lost its pill are the
+      // same document — `v-if` renders no element either way, so no selector can
+      // tell them apart. What makes the floor safe is that the board cannot
+      // produce the unknown case: `task_count` is always an integer (`projects.mjs`
+      // answers `taskCounts.get(id) ?? 0`, and `/projects` is the only producer),
+      // so every row the board renders is a row that must carry its number. The
+      // *wire* still permits `null` (`shared/wire.mjs`), so if a null ever becomes
+      // reachable the row will have to say so with a hook of its own before this
+      // rule can be conditional again. Stated, not assumed.
       { kind: "count", selector: "button[data-project-count]", within: "[data-project-list]", equals: 0 },
       { kind: "count", selector: "[data-project-count]", within: "button[data-project]", max: 1 },
+      { kind: "count", selector: "[data-project-count]", within: "button[data-project]", min: 1 },
       { kind: "count", selector: "span[data-project-count]", within: "[data-project-list]", min: 1 },
       { kind: "classes", probe: "[data-project] [data-project-count]", includes: ["badge", "badge-sm", "td-count"] },
       { kind: "text", probe: "[data-project] [data-project-count]", matches: "^\\d+$" },

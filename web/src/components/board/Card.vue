@@ -84,7 +84,7 @@ function onMenu(event) {
   >
     <span class="td-card-stripe" data-card-stripe aria-hidden="true"></span>
 
-    <div class="flex items-center gap-2">
+    <div class="td-card-top">
       <!-- R8 ③ — the same cap, the same function and the same pair of values as
            the list's row and the drawer's head: the text is the display value,
            `title` the full identifier, and the card root's `data-identifier`
@@ -119,11 +119,11 @@ function onMenu(event) {
          clipped by are stated together. -->
     <button type="button" class="td-card-title" data-card-title>{{ task.title }}</button>
 
-    <div class="flex flex-wrap gap-1" data-card-labels>
+    <div class="td-card-labels" data-card-labels>
       <span v-for="label in labels" :key="label" class="inline-flex items-center gap-1 px-1.5 py-px rounded-[4px] border border-(--brand-border) bg-(--brand-sunken) text-[11px] text-(--brand-text-2)" data-label>{{ label }}</span>
     </div>
 
-    <div class="flex items-center gap-2 mt-1">
+    <div class="td-card-foot">
       <span class="td-pri" data-card-priority role="img" :aria-label="$t('prop.priorityValue', $t(`priority.${priorityOf(task)}`))" :title="$t(`priority.${priorityOf(task)}`)">
         <svg class="td-pri-glyph" viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7" rx="1" /></svg>
       </span>
