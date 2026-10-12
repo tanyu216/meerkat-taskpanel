@@ -75,21 +75,14 @@ version control.
 
 ### Scheduling units (claude, codex, pi)
 
-Claude Code, Codex and Pi have **no timers**, so the poll/patrol loop lives outside
-them: `install.sh` drops a set of scheduling units, a per-host wake-glue script, and
-a host config, then **prints the load command** — it never runs `launchctl`,
-`systemctl` or `crontab` for you. The design is in
-[`scheduling.md`](scheduling.md); the wake scripts run workers headlessly, so
-they obey the no-default-permission-bypass boundary in
-[`scheduling.md §Headless permission boundary`](scheduling.md#headless-permission-boundary).
-
 | Artefact | Where | What |
 |---|---|---|
+| loop body | `<host>/meerkat-taskpanel/scripts/supervisor.mjs` + `<host>/meerkat-taskpanel/src/shared/*.mjs` | a **copy** of the executor and the `src/shared/` modules it imports — what the units run, so a loaded unit survives this checkout being moved, renamed or removed (see [`scheduling.md §The loop body is installed, not referenced`](scheduling.md#the-loop-body-is-installed-not-referenced)) |
 | launchd | `<host>/scheduling/launchd/com.meerkat-taskpanel.{poll,patrol}.plist` | `StartInterval` 60 / 300 |
 | systemd | `<host>/scheduling/systemd/meerkat-taskpanel-{poll,patrol}.{service,timer}` | 60s / 300s timers |
 | cron | `<host>/scheduling/cron/meerkat-taskpanel.cron` | `* * * * *` poll, `*/5 * * * *` patrol |
 | wake glue | `<host>/bin/wake-<host>.sh` | resolves the card's project target directory from the skill's `projects.json`, `cd`s there (refusing the wake if it cannot), then runs `claude -p` (+`--resume`), `codex exec`, or `pi --print` |
-| host config | `<host>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no` |
+| host config | `<host>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no` + `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives) |
 | log (runtime) | `<host>/meerkat-taskpanel/supervisor.log` | the supervisor's tick log |
 | state (runtime) | `<host>/meerkat-taskpanel/supervisor.state.json` | the running registry |
 
@@ -123,7 +116,10 @@ The answer is persisted to `<host>/meerkat-taskpanel.env` as
 explicit `--claim-unassigned` flag or `$MEERKAT_TASKPANEL_CLAIM_UNASSIGNED` overrides it).
 Non-interactive installs default to **yes**; `--claim-unassigned=no` /
 `--assignee-only` persist `no`. The file is merge-style: a re-run without
-`--force` keeps the existing value.
+`--force` keeps the existing value, and it also records where the board engine
+lives (`MEERKAT_TASKPANEL_REPO=<checkout>`) — a key the installer adds when it is
+missing, so an install made before that key existed still learns it (see
+[`scheduling.md §The loop body is installed, not referenced`](scheduling.md#the-loop-body-is-installed-not-referenced)).
 
 ## install.sh reference
 
