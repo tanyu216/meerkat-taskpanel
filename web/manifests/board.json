@@ -106,7 +106,7 @@
       "evidence": "design/prototype/index.html:418-432（仅 gear SVG + data-i18n-aria-label）；实现 SidebarFooter.vue:80 <span class=\"td-side-text\">",
       "status": "pending",
       "checks": [
-        { "scope": "[data-access-open]", "selector": ".td-side-text", "count": 0, "desc": "近似机检 + 人工复核（双轨）：语料表只能表达『计数为 0』，读作『设置格内不得有可见文字』；.td-side-text 只用于定位被检查对象，不作样式依赖（ui-align §4 / Elon §7 裁定③）" }
+        { "scope": "[data-access-open]", "selector": "[data-side-text]", "count": 0, "desc": "近似机检 + 人工复核（双轨）：语料表只能表达『计数为 0』，读作『设置格内不得有可见文字』；.td-side-text 只用于定位被检查对象，不作样式依赖（ui-align §4 / Elon §7 裁定③）" }
       ]
     },
     {

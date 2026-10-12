@@ -118,8 +118,22 @@ const readDocState = () => ({
 });
 
 /**
- * Every element whose own content is wider than the box that clips it, keyed by
- * `tag.firstClass.secondClass` and deduplicated. Runs in the page.
+ * A stable name for one element: `tag[data-hook]` where it has a `data-*`
+ * attribute, else `tag.firstClass.secondClass`.
+ *
+ * The probe prefers the element's own hook because the alignment SOP already
+ * requires checks to key on `data-*` rather than on a class (ui-align SOP §B4),
+ * and M3 moved the board's surfaces onto hooks. Naming by class made this list
+ * churn on a refactor that changed no layout at all: the same board box printed
+ * as `div.td-board` before and `div.flex.h-full` after.
+ *
+ * Both collectors below inline this as `nameOf` rather than calling a helper,
+ * because Playwright ships a `page.evaluate`d function on its own: anything it
+ * closes over outside its own body does not exist in the page.
+ */
+/**
+ * Every element whose own content is wider than the box that clips it, named by
+ * `nameOf` and deduplicated.
  *
  * Boxes 2px or smaller are dropped: that is the visually-hidden-text idiom
  * (`sr-only` here, `td-sr` in the prototype), which is intentional and whose
@@ -127,6 +141,15 @@ const readDocState = () => ({
  * by geometry, not by name.
  */
 function collectClipped() {
+  const nameOf = (el) => {
+    const tag = el.tagName.toLowerCase();
+    const hook = Array.from(el.attributes)
+      .map((attr) => attr.name)
+      .find((name) => name.startsWith("data-"));
+    if (hook) return `${tag}[${hook}]`;
+    const classes = Array.from(el.classList).slice(0, 2).join(".");
+    return `${tag}${classes ? `.${classes}` : ""}`;
+  };
   const found = new Set();
   for (const el of document.querySelectorAll("*")) {
     const cs = getComputedStyle(el);
@@ -134,8 +157,7 @@ function collectClipped() {
     if (cs.overflowX === "visible" && cs.overflowY === "visible") continue;
     if (el.clientWidth <= 2 || el.clientHeight <= 2) continue;
     if (el.scrollWidth <= el.clientWidth + 1) continue;
-    const classes = Array.from(el.classList).slice(0, 2).join(".");
-    found.add(`${el.tagName.toLowerCase()}${classes ? `.${classes}` : ""}`);
+    found.add(nameOf(el));
   }
   return [...found].sort();
 }
@@ -147,6 +169,15 @@ function collectClipped() {
  * is hiding text instead of dropping it.
  */
 function collectClippedWithin(selector) {
+  const nameOf = (el) => {
+    const tag = el.tagName.toLowerCase();
+    const hook = Array.from(el.attributes)
+      .map((attr) => attr.name)
+      .find((name) => name.startsWith("data-"));
+    if (hook) return `${tag}[${hook}]`;
+    const classes = Array.from(el.classList).slice(0, 2).join(".");
+    return `${tag}${classes ? `.${classes}` : ""}`;
+  };
   const root = document.querySelector(selector);
   if (!root) return [];
   const found = new Set();
@@ -156,8 +187,7 @@ function collectClippedWithin(selector) {
     if (cs.overflowX === "visible" && cs.overflowY === "visible") continue;
     if (el.clientWidth <= 2 || el.clientHeight <= 2) continue;
     if (el.scrollWidth <= el.clientWidth + 1) continue;
-    const classes = Array.from(el.classList).slice(0, 2).join(".");
-    found.add(`${el.tagName.toLowerCase()}${classes ? `.${classes}` : ""}`);
+    found.add(nameOf(el));
   }
   return [...found].sort();
 }

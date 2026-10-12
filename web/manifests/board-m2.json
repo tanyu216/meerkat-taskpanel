@@ -306,7 +306,7 @@
       "checks": [
         {
           "scope": "[data-access-open]",
-          "selector": ".td-side-text",
+          "selector": "[data-side-text]",
           "count": 0,
           "desc": "近似机检 + 人工复核（双轨）：语料表只能表达『计数为 0』，读作『设置格内不得有可见文字』；.td-side-text 只用于定位被检查对象，不作样式依赖（ui-align §4 / Elon §7 裁定③）"
         }
@@ -738,7 +738,7 @@
       "checks": [
         {
           "scope": "[data-lang-menu]",
-          "selector": "svg.td-caret",
+          "selector": "svg[data-caret]",
           "count": 0,
           "desc": "【M2 目标态】caret 属于触发器而不是菜单容器 —— 落地后 caret 在 `[data-lang-select]` 内、`[data-lang-menu]` 内为 0（原型实测：`[data-lang-menu]` 内 0）"
         }
@@ -835,18 +835,18 @@
         },
         {
           "scope": "[data-detail-attachments]",
-          "selector": ".td-file",
+          "selector": "[data-attachment-row]",
           "min": 1,
           "desc": "【M2 目标态】附件行在位（原型 `.td-file` 实测 2；impl 0）。⚠️ 类名非语义钩子 —— 建议 M2 同步把 `data-attachment-row` 立为钩子，本条届时换成属性选择器（契约 §4 已记）；⚠️ 需 fixture 带附件，否则该条只能停在 SKIP"
         },
         {
           "scope": "[data-detail-activity]",
-          "selector": ".td-activity-ts",
+          "selector": "[data-activity-ts]",
           "min": 1,
           "desc": "【M2 目标态】活动行带相对时间节点（原型 4/4）。⚠️ 类名非语义钩子：建议 M2 同时把 `data-activity-ts` 立为钩子，本条届时换成属性选择器（契约 §4 已记）"
         },
         {
-          "selector": "[data-detail-activity] .td-activity",
+          "selector": "[data-detail-activity] [data-activity-row]",
           "min": 1,
           "desc": "【M2 目标态】活动行渲染为行元素而非纯文本串（同上，建议升为 `data-activity-row`）"
         },
