@@ -101,25 +101,35 @@ const AGENT = {
  * render to compare. Beyond that it deliberately covers the contract's
  * dimensions: a human card beside the agent cards (B07 identity), all four agent
  * platforms (B03 presence / B07 badge), five labels and five priorities. Counts
- * here are fixture data, never asserted — the 99 browser-layer rules assert
+ * here are fixture data, never asserted — the browser-layer rules assert
  * structure, not how many rows this function returns.
  */
 export function fixtureApi() {
-  const mk = (id, name) => ({
+  // `task_count` is the sidebar badge's wire field (`/projects` → `projectToWire`).
+  // It is fixture data and deliberately **not** derived from the `tasks` array
+  // below — those all belong to p1, which is exactly the condition the old client
+  // bug needed: a row's count must come from the project, not from whichever task
+  // list the client happens to be holding. p2 and p3 own no fixture task at all
+  // and still print 4 and 2.
+  const mk = (id, name, taskCount) => ({
     id,
     name,
     workspace_path: `/w/${id}`,
     labels: [],
     meta: {},
     readme: null,
+    task_count: taskCount,
     archived_at: null,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
   });
-  const projects = [mk("p1", "MeerkatTaskPanel"), mk("p2", "Orchestrator")];
+  // The prototype sidebar's three rows and their counts (12 / 4 / 2) — three, so
+  // the "every row is filled" rule has the prototype's own 3/3 shape to assert.
+  const projects = [mk("p1", "MeerkatTaskPanel", 12), mk("p2", "Orchestrator", 4), mk("p3", "Site Refresh", 2)];
   const orderDebug = [
     { id: "p1", name: "MeerkatTaskPanel", order: 1, total: 0.9, archived: false },
     { id: "p2", name: "Orchestrator", order: 2, total: 0.4, archived: false },
+    { id: "p3", name: "Site Refresh", order: 3, total: 0.2, archived: false },
   ];
   // 12 cards, all in the default project (p1), covering the seven statuses.
   const tasks = [
