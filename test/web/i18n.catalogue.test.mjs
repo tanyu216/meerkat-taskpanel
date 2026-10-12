@@ -26,8 +26,8 @@
  * Counts are REPORTED, not hardcoded: `node --test` prints the measured en/zh
  * key counts via `t.diagnostic`. See the module header for the recorded
  * numbers and for the `BLOCKS.md` header discrepancy (claims 252 hooks / 198
- * keys; measured 607 hooks and 215 prototype `MESSAGES` keys, of which this
- * catalogue ships the 198 that are not prototype-only).
+ * keys; measured 612 hooks and 220 prototype `MESSAGES` keys, of which this
+ * catalogue ships the 203 that are not prototype-only).
  */
 
 import assert from "node:assert/strict";
