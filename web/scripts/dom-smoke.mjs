@@ -298,9 +298,44 @@ export function resolvePlaywright() {
 export function evaluateRules(rules) {
   const doc = document;
   const withinAll = (within) => (within ? Array.from(doc.querySelectorAll(within)) : [doc]);
+  /**
+   * Resolve a custom property to a concrete value by letting the browser do it:
+   * a colour probe painted with `var(--x)` reads back as the same string the
+   * comparison side computes to, so a token check never compares a hex against
+   * an `rgb()` (the trick the M1 checks below use for the accent).
+   */
+  const resolveVar = (name) => {
+    const probe = doc.createElement("span");
+    probe.style.cssText = "position:absolute;visibility:hidden;";
+    probe.style.color = `var(${name})`;
+    doc.body.appendChild(probe);
+    const value = getComputedStyle(probe).color;
+    probe.remove();
+    return value;
+  };
+  const px = (value) => Number.parseFloat(value);
+  /**
+   * Count the tracks of a computed `grid-template-columns`. Splitting on
+   * whitespace is wrong: a track may be `minmax(0px, 1fr)`, which contains a
+   * space of its own. Only top-level separators count.
+   */
+  const trackCount = (value) => {
+    let depth = 0;
+    let count = 0;
+    let inToken = false;
+    for (const char of value.trim()) {
+      if (char === "(") depth += 1;
+      else if (char === ")") depth -= 1;
+      if (/\s/.test(char) && depth === 0) {
+        if (inToken) count += 1;
+        inToken = false;
+      } else inToken = true;
+    }
+    return inToken ? count + 1 : count;
+  };
   const out = [];
   for (const { block, rule } of rules) {
-    const record = { block, kind: rule.kind, selector: rule.selector ?? null, within: rule.within ?? null, ok: true, detail: "" };
+    const record = { block, kind: rule.kind, selector: rule.selector ?? null, probe: rule.probe ?? null, within: rule.within ?? null, ok: true, detail: "" };
     try {
       switch (rule.kind) {
         case "count": {
@@ -361,6 +396,62 @@ export function evaluateRules(rules) {
           }
           break;
         }
+        // The browser layer's three probe kinds (see `PROBE GRAMMAR` in
+        // blocks.contract.mjs): a computed value, a class set and a text value,
+        // each read off whatever `rule.probe` matches.
+        case "computed": {
+          let nodes = Array.from(doc.querySelectorAll(rule.probe));
+          if (rule.visible === true) nodes = nodes.filter((el) => getComputedStyle(el).display !== "none");
+          if (nodes.length === 0) { record.ok = false; record.detail = `nothing matches ${rule.probe}`; break; }
+          if (rule.count !== undefined && nodes.length !== rule.count) {
+            record.ok = false;
+            record.detail = `count ${nodes.length} != ${rule.count}`;
+            break;
+          }
+          if (rule.property === undefined) break;
+          const expected = rule.equalsVar !== undefined ? resolveVar(rule.equalsVar)
+            : rule.notEqualsVar !== undefined ? resolveVar(rule.notEqualsVar)
+            : undefined;
+          for (const node of nodes) {
+            const actual = getComputedStyle(node)[rule.property];
+            const fail = (why) => { record.ok = false; record.detail = `${rule.property} = ${actual} ${why}`; };
+            if (rule.equals !== undefined && actual !== rule.equals) { fail(`!= ${rule.equals}`); break; }
+            if (rule.equalsVar !== undefined && actual !== expected) { fail(`!= var(${rule.equalsVar}) = ${expected}`); break; }
+            if (rule.notEquals !== undefined && actual === rule.notEquals) { fail(`== ${rule.notEquals}`); break; }
+            if (rule.notEqualsVar !== undefined && actual === expected) { fail(`== var(${rule.notEqualsVar}) = ${expected}`); break; }
+            if (rule.contains !== undefined && !actual.includes(rule.contains)) { fail(`does not contain ${rule.contains}`); break; }
+            if (rule.startsWith !== undefined && !actual.startsWith(rule.startsWith)) { fail(`does not start with ${rule.startsWith}`); break; }
+            if (rule.endsWith !== undefined && !actual.endsWith(rule.endsWith)) { fail(`does not end with ${rule.endsWith}`); break; }
+            if (rule.tokens !== undefined && trackCount(actual) !== rule.tokens) { fail(`is not ${rule.tokens} tracks`); break; }
+            if (rule.equalsPx !== undefined && Math.abs(px(actual) - rule.equalsPx) > 0.5) { fail(`!= ${rule.equalsPx}px`); break; }
+            if (rule.maxPx !== undefined && px(actual) > rule.maxPx) { fail(`> ${rule.maxPx}px`); break; }
+            if (rule.minPx !== undefined && px(actual) < rule.minPx) { fail(`< ${rule.minPx}px`); break; }
+            if (rule.differsFrom !== undefined) {
+              const other = doc.querySelector(rule.differsFrom);
+              if (!other || getComputedStyle(other)[rule.property] === actual) { fail(`is not distinguishable from ${rule.differsFrom}`); break; }
+            }
+          }
+          break;
+        }
+        case "classes": {
+          const nodes = Array.from(doc.querySelectorAll(rule.probe));
+          if (nodes.length === 0) { record.ok = false; record.detail = `nothing matches ${rule.probe}`; break; }
+          const missing = new Set();
+          for (const node of nodes) for (const name of rule.includes) if (!node.classList.contains(name)) missing.add(name);
+          if (missing.size > 0) { record.ok = false; record.detail = `class list is missing ${[...missing].join(", ")}`; }
+          break;
+        }
+        case "text": {
+          const nodes = Array.from(doc.querySelectorAll(rule.probe));
+          if (nodes.length === 0) { record.ok = false; record.detail = `nothing matches ${rule.probe}`; break; }
+          for (const node of nodes) {
+            const value = (node.textContent ?? "").trim();
+            if (rule.equals !== undefined && value !== rule.equals) { record.ok = false; record.detail = `${JSON.stringify(value)} != ${JSON.stringify(rule.equals)}`; break; }
+            if (rule.oneOf !== undefined && !rule.oneOf.includes(value)) { record.ok = false; record.detail = `${JSON.stringify(value)} is not one of ${rule.oneOf.join(" | ")}`; break; }
+            if (rule.matches !== undefined && !new RegExp(rule.matches).test(value)) { record.ok = false; record.detail = `${JSON.stringify(value)} does not match /${rule.matches}/`; break; }
+          }
+          break;
+        }
         default:
           record.detail = "not a dom rule";
       }
@@ -405,11 +496,25 @@ export async function run() {
 
     const boardRules = EVALUATED_RULES.filter((e) => !e.rule.when || e.rule.when === "board view").map((e) => ({ block: e.block, rule: e.rule }));
     const listRules = EVALUATED_RULES.filter((e) => e.rule.when === "list view").map((e) => ({ block: e.block, rule: e.rule }));
+    const railRules = EVALUATED_RULES.filter((e) => e.rule.when === "rail").map((e) => ({ block: e.block, rule: e.rule }));
+    const panelRules = EVALUATED_RULES.filter((e) => e.rule.when === "panel open").map((e) => ({ block: e.block, rule: e.rule }));
 
     const boardResults = await page.evaluate(evaluateRules, boardRules);
     await page.click('[data-view="list"]');
     await page.waitForTimeout(200);
     const listResults = await page.evaluate(evaluateRules, listRules);
+    // The list's own geometry that a per-element rule cannot state: one dot per
+    // status chip, and a rule *between* rows (the first draws no top edge).
+    const listDetail = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll("[data-list-rows] [data-list-row]")];
+      const topBorders = rows.map((row) => parseFloat(getComputedStyle(row).borderTopWidth));
+      return {
+        rows: rows.length,
+        dotsPerChip: [...document.querySelectorAll("[data-list-status]")].map((cell) => cell.querySelectorAll(".td-status-dot").length),
+        firstTopBorder: topBorders.at(0) ?? null,
+        laterTopBorder: topBorders.at(1) ?? null,
+      };
+    });
 
     const geometry = await page.evaluate(() => {
       const de = document.documentElement;
@@ -491,6 +596,153 @@ export async function run() {
     await page.evaluate(() => document.querySelector('[data-lang-option="en"]')?.click());
     await page.waitForTimeout(150);
     const langAfterEn = await page.evaluate(() => document.documentElement.getAttribute("lang"));
+
+    // ---- R6 · the eight findings, checked in the browser ---------------------
+    //
+    // Three of the contract's checks are relations rather than values — which
+    // glyph is visible *versus which mode the cell names*, whether the panel's
+    // transform actually centres it, and whether a long title really stops at
+    // two lines. They are measured here, in the live page, next to the
+    // declarative rules above.
+    const r6Failures = [];
+    const r6Check = (ok, message) => { if (!ok) r6Failures.push(message); };
+
+    // ⑦ — sweep the three-state cycle: the visible glyph must be the one the
+    // cell's own `data-theme-mode` names, at every stop.
+    const themeSweep = [];
+    for (let i = 0; i < 3; i++) {
+      await page.click("[data-theme-switch]");
+      await page.waitForTimeout(80);
+      themeSweep.push(await page.evaluate(() => {
+        const cell = document.querySelector("[data-theme-switch]");
+        const icons = [...cell.querySelectorAll("svg[data-theme-icon]")];
+        const visible = icons.filter((el) => getComputedStyle(el).display !== "none");
+        return {
+          mode: cell.getAttribute("data-theme-mode"),
+          icons: icons.length,
+          visible: visible.map((el) => el.getAttribute("data-theme-icon")),
+          visibleWidth: visible[0] ? visible[0].getBoundingClientRect().width : 0,
+          literalFalse: cell.querySelectorAll('svg[data-theme-icon][hidden="false"]').length,
+        };
+      }));
+    }
+    for (const stop of themeSweep) {
+      r6Check(stop.icons === 3, `theme cell holds ${stop.icons} glyphs, expected 3`);
+      r6Check(stop.visible.length === 1, `mode ${stop.mode}: ${stop.visible.length} glyphs visible, expected 1`);
+      r6Check(stop.visible[0] === stop.mode, `mode ${stop.mode}: the visible glyph is ${stop.visible.join(",")}`);
+      r6Check(stop.visibleWidth > 0, `mode ${stop.mode}: the visible glyph has no width`);
+      r6Check(stop.literalFalse === 0, `mode ${stop.mode}: ${stop.literalFalse} glyph(s) carry a literal hidden="false"`);
+    }
+
+    // ④ — a title longer than two lines is clipped to exactly two, and the
+    // button fills the card's content box (the design's `width:100%`).
+    const titleGeometry = await page.evaluate(() => {
+      const title = document.querySelector("[data-card-title]");
+      const card = title.closest("[data-card]");
+      const original = title.textContent;
+      title.textContent = "A deliberately long card title that has to wrap ".repeat(6).trim();
+      const lineHeight = Number.parseFloat(getComputedStyle(title).lineHeight);
+      const cardStyle = getComputedStyle(card);
+      const contentWidth = card.getBoundingClientRect().width
+        - Number.parseFloat(cardStyle.paddingLeft) - Number.parseFloat(cardStyle.paddingRight)
+        - Number.parseFloat(cardStyle.borderLeftWidth) - Number.parseFloat(cardStyle.borderRightWidth);
+      const measured = {
+        clientHeight: title.clientHeight,
+        scrollHeight: title.scrollHeight,
+        lineHeight,
+        width: title.getBoundingClientRect().width,
+        contentWidth,
+      };
+      title.textContent = original;
+      return measured;
+    });
+    r6Check(titleGeometry.scrollHeight > titleGeometry.clientHeight, "a long title is not clipped vertically");
+    r6Check(
+      Math.abs(titleGeometry.clientHeight - 2 * titleGeometry.lineHeight) <= 1,
+      `a long title is ${titleGeometry.clientHeight}px tall, expected two lines (${2 * titleGeometry.lineHeight}px)`,
+    );
+    r6Check(
+      Math.abs(titleGeometry.width - titleGeometry.contentWidth) <= 1,
+      `the title is ${titleGeometry.width}px wide, the card's content box is ${titleGeometry.contentWidth}px`,
+    );
+
+    // ⑦⑧ — the rail (≤1023px): the declarative rules above carry the cell's own
+    // metrics; this is where they are evaluated.
+    await page.setViewportSize({ width: 980, height: 900 });
+    await page.waitForTimeout(150);
+    const railResults = await page.evaluate(evaluateRules, railRules);
+    const rail = await page.evaluate(() => {
+      const caret = document.querySelector("[data-lang-select] svg.td-caret");
+      return {
+        caretDisplay: caret ? getComputedStyle(caret).display : null,
+        labelDisplay: (() => {
+          const label = document.querySelector("[data-lang-label]");
+          return label ? getComputedStyle(label).display : null;
+        })(),
+      };
+    });
+    r6Check(rail.caretDisplay === "none", `at 980px the caret's display is ${rail.caretDisplay}, expected none`);
+    r6Check(rail.labelDisplay === "none", `at 980px the footer label's display is ${rail.labelDisplay}, expected none`);
+
+    // ③ — the settings dialog is the prototype's centred modal: open it at the
+    // measured viewport and check the geometry, then close it again.
+    await page.setViewportSize({ width: 1512, height: 950 });
+    await page.waitForTimeout(150);
+    await page.click("[data-access-open]");
+    await page.waitForTimeout(200);
+    const panelResults = await page.evaluate(evaluateRules, panelRules);
+    const panelGeometry = await page.evaluate(() => {
+      const panel = document.querySelector("[data-access-panel]");
+      const box = panel.getBoundingClientRect();
+      const labelledby = panel.getAttribute("aria-labelledby");
+      return {
+        transform: getComputedStyle(panel).transform,
+        box: { width: box.width, height: box.height, left: box.left, top: box.top },
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        labelledby,
+        labelledbyTarget: labelledby !== null && document.getElementById(labelledby) !== null,
+        state: panel.getAttribute("data-state"),
+        cidrRows: document.querySelectorAll("[data-cidr-row]").length,
+        tokenMask: (document.querySelector("[data-token-value]")?.textContent ?? "").trim(),
+        tokenIconsVisible: [...document.querySelectorAll("svg[data-token-icon]")]
+          .filter((el) => getComputedStyle(el).display !== "none")
+          .map((el) => el.getAttribute("data-token-icon")),
+      };
+    });
+    const matrix = /matrix\(([^)]+)\)/.exec(panelGeometry.transform);
+    const shift = matrix ? matrix[1].split(",").map((n) => Number.parseFloat(n.trim())) : null;
+    r6Check(panelGeometry.state === "open", `the settings panel opened with data-state=${panelGeometry.state}`);
+    r6Check(shift !== null, `the settings panel's transform is ${panelGeometry.transform}, not a matrix`);
+    if (shift !== null) {
+      r6Check(
+        Math.abs(shift[4] + panelGeometry.box.width / 2) <= 1,
+        `the settings panel is not centred horizontally (translateX ${shift[4]} for width ${panelGeometry.box.width})`,
+      );
+      r6Check(
+        Math.abs(shift[5] + panelGeometry.box.height / 2) <= 1,
+        `the settings panel is not centred vertically (translateY ${shift[5]} for height ${panelGeometry.box.height})`,
+      );
+    }
+    r6Check(panelGeometry.labelledbyTarget, `the panel's aria-labelledby="${panelGeometry.labelledby}" has no target`);
+    r6Check(panelGeometry.cidrRows === 3, `the CIDR list has ${panelGeometry.cidrRows} rows, expected 3`);
+    r6Check(/^td_•+$/.test(panelGeometry.tokenMask), `the token mask is ${JSON.stringify(panelGeometry.tokenMask)}`);
+    r6Check(
+      panelGeometry.tokenIconsVisible.length === 1,
+      `${panelGeometry.tokenIconsVisible.length} token glyphs visible, expected 1`,
+    );
+    await page.click("[data-access-close]");
+    await page.waitForTimeout(200);
+    const panelClosed = await page.evaluate(() => ({
+      state: document.querySelector("[data-access-panel]")?.getAttribute("data-state"),
+      hidden: document.querySelector("[data-access-panel]")?.hasAttribute("hidden"),
+    }));
+    r6Check(panelClosed.state === "closed" && panelClosed.hidden === true, "the settings panel did not close");
+
+    // ⑤ — the list's own relations: one dot per status chip, and a rule that runs
+    // *between* rows (the first row draws no top edge).
+    for (const dots of listDetail.dotsPerChip) r6Check(dots === 1, `a list status chip holds ${dots} status dots, expected 1`);
+    r6Check(listDetail.firstTopBorder === 0, `the first list row draws a ${listDetail.firstTopBorder}px top border, expected none`);
+    r6Check(listDetail.laterTopBorder === 1, `the second list row draws a ${listDetail.laterTopBorder}px top border, expected 1`);
 
     // --- five viewports, none may overflow horizontally -----------------------
     const viewports = [];
@@ -668,7 +920,7 @@ export async function run() {
     check(waitingView.boardHidden === true, "the board must be hidden while the waiting view is up");
     check(waitingView.emptyShown === false, "a non-empty view must not show the empty state");
 
-    const results = [...boardResults, ...listResults, ...drawerResults];
+    const results = [...boardResults, ...listResults, ...railResults, ...panelResults, ...drawerResults];
     const failures = results.filter((r) => !r.ok);
     const viewportFailures = viewports.filter((v) => !v.ok);
     return {
@@ -680,6 +932,7 @@ export async function run() {
       interactions,
       m1,
       m1Failures,
+      r6: { failures: r6Failures, themeSweep, titleGeometry, listDetail, panel: panelGeometry, rail },
       geometry,
       counts: { rules: results.length, failed: failures.length, ...geometry },
       fixtureTasks: data.tasks.length,
@@ -704,7 +957,7 @@ if (isEntryPoint) run().then(
       console.log(`columns=${report.geometry.columns} cards=${report.geometry.cards} rules=${report.counts.rules} failed=${report.counts.failed}`);
       console.log(`console errors=${report.consoleErrors.length} page errors=${report.pageErrors.length}`);
       for (const error of [...report.consoleErrors, ...report.pageErrors]) console.log(`  ! ${error}`);
-      for (const failure of report.failures) console.log(`  ✗ ${failure.block} ${failure.kind} ${failure.selector ?? ""} — ${failure.detail}`);
+      for (const failure of report.failures) console.log(`  ✗ ${failure.block} ${failure.kind} ${failure.selector ?? failure.probe ?? ""} — ${failure.detail}`);
       console.log(`viewports: ${report.viewports.map((v) => `${v.width}${v.ok ? "ok" : "OVERFLOW"}`).join(" ")}`);
       console.log(`interactions: ${JSON.stringify(report.interactions)}`);
       if (report.m1Failures.length > 0) {
@@ -712,6 +965,12 @@ if (isEntryPoint) run().then(
         for (const failure of report.m1Failures) console.log(`  ✗ ${failure}`);
       } else {
         console.log("M1 (awaiting) — badge, view, count, payload and menu all pass");
+      }
+      if (report.r6.failures.length > 0) {
+        console.log(`R6 (fidelity) — ${report.r6.failures.length} failed:`);
+        for (const failure of report.r6.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log("R6 (fidelity) — theme glyphs, title clamp, list geometry and the settings modal all pass");
       }
     }
     const interactionOk =
@@ -728,6 +987,7 @@ if (isEntryPoint) run().then(
       report.pageErrors.length === 0 &&
       report.viewportFailures.length === 0 &&
       report.m1Failures.length === 0 &&
+      report.r6.failures.length === 0 &&
       interactionOk;
     process.exit(ok ? 0 : 1);
   },
