@@ -204,6 +204,18 @@ them*.
 
 ### Scheduling: poll & patrol
 
+**In short:** the loop is a **supervisor that runs outside the host**. It scans
+the board **every minute** and wakes a worker **only when a card was actually
+claimed** ($0 on an empty tick); every **five minutes** it patrols for claims
+whose heartbeat has gone stale. Claude Code and Codex have **no timers of their
+own**, so the loop sits *outside* them and only ever wakes the worker
+(`claude -p`, `codex exec`, `pi --print`). **To turn it on,** run
+`install.sh --target claude|codex|pi`: it installs the `meerkat-loop` skill and
+drops that host's launchd / systemd / cron units, then **prints the load
+command** — it never starts a daemon for you (it also asks once whether the
+supervisor may claim **unassigned** cards, default yes). OpenClaw needs no loop:
+its framework already carries one.
+
 Claiming is not left to an agent's memory. A small **host-external supervisor**
 ([`skills/meerkat-loop/`](skills/meerkat-loop/SKILL.md), whose execution body is
 [`scripts/supervisor.mjs`](scripts/supervisor.mjs)) runs a cheap **1-minute poll**
@@ -240,6 +252,11 @@ OpenClaw path has three distinct layers; take the one you actually need:
    [**openclaw-team**](https://github.com/tanyu216/openclaw-team), a file-based,
    idempotent installer that stands up a small agent team (one coordinator plus
    four specialists) with dispatch, gates and **scheduling (auto-claim)**.
+   Read it as a **reference, not a universal fit**: openclaw-team is built
+   **around a software R&D team's scenario** (one coordinator plus four
+   specialists) and is **not a general-purpose solution, nor one that suits every
+   team** — a non-R&D team should treat it as a **starting point** for building its
+   own, or **adjust the role duties** to fit.
 3. **Developers: start right here** — if you are a developer who just wants to get
    going, install openclaw-team directly and skip the manual assembly; it installs
    Meerkat TaskPanel as the board base **by default**, so it works out of the box:
