@@ -994,7 +994,9 @@ With N = 3, the three factors rank and normalise as below (larger value ⇒ rank
 the creation-time intuition (Site Refresh is the oldest, so it wins the `C` factor — but
 that factor carries the smallest weight, so it still lands last); the ordering exists to
 show activity weighting in the UI. Sidebar task counts (12 / 4 / 2) are unrelated to the
-ranking and stay fixed.
+ranking and stay fixed — they are the project's **total** task count, served by `/projects`
+as `task_count` (every status, archived included; `0` when the project has none), which is
+what `[data-project-count]` renders on every row.
 
 ---
 
