@@ -170,7 +170,17 @@ function switchProject(id) {
       </button>
     </div>
 
-    <div class="inline-flex items-center gap-2 ms-auto">
+    <!-- M2c ② — `flex-none` is the prototype's own declaration for this cluster
+         (`design/prototype/src/input.css`: `.td-topbar-actions { … flex: none;
+         min-width: 0; margin-left: auto }`). Without it the cluster is the only
+         *shrinkable* item besides the search, so at 980px the two split the
+         shortfall: the cluster kept its box but its content (revision + New task)
+         spilled 12px past the shell, which `overflow: hidden` then clipped — the
+         one implementation-only entry `shot-compare --strict` reported. The
+         search is the item the bar is designed to give slack to
+         (`flex: 1 1 160px; min-width: 0` in the prototype), so the cluster now
+         holds its natural width and the search absorbs the whole shortfall. -->
+    <div class="inline-flex flex-none items-center gap-2 ms-auto">
       <span class="inline-flex items-center gap-1 text-[12px] text-(--brand-text-2)" data-revision>
         <span class="size-2 rounded-[999px] bg-success data-[connection=closed]:bg-warning data-[connection=connecting]:bg-warning" :data-connection="board.connection" aria-hidden="true"></span>
         <span data-label-text data-i18n="topbar.live">{{ $t("topbar.live") }}</span>
