@@ -5,6 +5,10 @@
       "http": 409
     },
     {
+      "code": "BOARD_ALREADY_RUNNING",
+      "http": 409
+    },
+    {
       "code": "CHAIN_TOO_LONG",
       "http": 422
     },
@@ -31,6 +35,10 @@
     {
       "code": "CROSS_PROJECT_RELATION",
       "http": 422
+    },
+    {
+      "code": "DB_BUSY",
+      "http": 503
     },
     {
       "code": "DICTIONARY_AMBIGUOUS",

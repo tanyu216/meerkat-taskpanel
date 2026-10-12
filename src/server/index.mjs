@@ -157,6 +157,7 @@ function headerOf(req, name) {
  *   staticDir?: string|null, // where `web/dist` lives; null = repo default, false = off
  *   eventsPollMs?: number,   // SSE poll period (tests shrink it)
  *   eventsHeartbeatMs?: number,
+ *   busyTimeoutMs?: number,  // override the pinned 5000ms lock wait (tests)
  * }} [options]
  * @returns {Promise<{server: import('node:http').Server, url: string, port: number, host: string, board: object, token: string, close: () => Promise<void>}>}
  */
@@ -190,6 +191,7 @@ export async function createTaskd(options = {}) {
     ...(logger === undefined ? {} : { logger }),
     ...(options.clock === undefined ? {} : { clock: options.clock }),
     ...(options.idFactory === undefined ? {} : { idFactory: options.idFactory }),
+    ...(options.busyTimeoutMs === undefined ? {} : { busyTimeoutMs: options.busyTimeoutMs }),
   });
 
   // The label GC (F1-C): one sweep now, then on a timer. `taskd` is the single
@@ -252,8 +254,8 @@ export async function createTaskd(options = {}) {
         }
         return;
       }
-      const { status, payload } = errorResponse(err);
-      sendJson(res, status, payload);
+      const { status, payload, headers } = errorResponse(err);
+      sendJson(res, status, payload, headers);
     });
   });
 

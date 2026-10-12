@@ -6,6 +6,16 @@
  * and that promise is enforced, not documented: the serialised payload is
  * scanned for a token before it is written, and a match is a hard
  * `RUNTIME_POINTER_TOKEN_LEAK`.
+ *
+ * R1 — *who may remove it*. The pointer is one file for the whole machine (or,
+ * under `TASKD_RUNTIME_POINTER`, one per board), so a naive `unlink` on exit lets
+ * a process that never owned it delete a live board's address: the running
+ * instance goes unreachable and the next `taskctl` starts a second daemon. The
+ * rule is therefore the same one `autostart.mjs#waitForPointer` already applies
+ * when it *reads* a pointer — "a pointer naming another pid is not mine" — and
+ * `removeRuntimePointer` now honours it: pass the `pid` you wrote and the file
+ * is only removed while it still names you. With no `pid` the caller is saying
+ * it owns the file outright, which is what the tests want.
  */
 
 import {
@@ -140,9 +150,34 @@ export function readRuntimePointer(options = {}) {
   }
 }
 
-/** Remove the pointer (used on shutdown, and by tests). Idempotent. */
+/**
+ * Remove the pointer (used on shutdown, and by tests). Idempotent.
+ *
+ * With `pid`, the file is removed **only while it still names that pid** — a
+ * pointer that now belongs to a different (live) instance is left alone and the
+ * answer is `false`. That is the R1 rule: an exiting process cleans up after
+ * itself and never unplugs somebody else's board. A pointer that is missing,
+ * unreadable, or carries no `pid` is removed: there is nobody to protect.
+ *
+ * @param {{platform?: string, env?: NodeJS.ProcessEnv, home?: string, path?: string, pid?: number}} [options]
+ * @returns {boolean} whether the pointer is gone afterwards
+ */
 export function removeRuntimePointer(options = {}) {
   const path = options.path ?? resolveRuntimePointerPath(options);
+  if (options.pid !== undefined) {
+    const current = readRawPointer(path);
+    if (current !== null && current.pid !== undefined && current.pid !== options.pid) return false;
+  }
   rmSync(path, { force: true });
   return true;
+}
+
+/** The file's contents as an object, or `null` when unreadable/not one. */
+function readRawPointer(path) {
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8"));
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }

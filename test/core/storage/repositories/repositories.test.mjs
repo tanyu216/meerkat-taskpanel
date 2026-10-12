@@ -26,6 +26,12 @@ import {
 
 after(cleanupTempDirs);
 
+/**
+ * R3: an hour and a minute before `TS2` — inside the "rotted" band (>10 min)
+ * but not past the six-hour one, which is where a holder-reclaim lives.
+ */
+const STALE_CLAIM_AT = "2026-10-07T23:00:00.000Z";
+
 /** A board with one project and one todo task, plus the repositories. */
 /** A report payload ready for `reports.insert`, for the given round. */
 function prepared(taskId, round, overrides = {}) {
@@ -238,8 +244,13 @@ describe("repositories/tasks", () => {
   it("takes over a stale claim and pulses a heartbeat only for the holder", async () => {
     await board(({ repos }) => {
       const task = makeTask(repos);
-      repos.tasks.claimCas({ id: task.id, actor: "linus", now: TS });
-      const stolen = repos.tasks.stealStaleClaim({ id: task.id, actor: "elon", now: TS2 });
+      // The claim's heartbeat has to be genuinely stale for a steal to be
+      // allowed at all (R3): the repository refuses to take a claim whose
+      // heartbeat is inside the fresh window, however the caller phrases the
+      // bound. `STALE_CLAIM_AT` is over an hour before TS2 — past the fresh
+      // window (10 min), inside the rotted one (6 h).
+      repos.tasks.claimCas({ id: task.id, actor: "linus", now: STALE_CLAIM_AT });
+      const stolen = repos.tasks.stealStaleClaim({ id: task.id, actor: "elon", now: TS2, staleBefore: TS2 });
       assert.equal(stolen.claimedBy, "elon");
 
       const pulsed = repos.tasks.setHeartbeat({ id: task.id, actor: "elon", now: TS2 });

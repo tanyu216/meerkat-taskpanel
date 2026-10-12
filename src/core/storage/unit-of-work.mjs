@@ -2,11 +2,20 @@
  * Transaction boundary, revision cursor and the activity trail.
  *
  * One write command = one transaction (ARCHITECTURE §4.3). These helpers are
- * deliberately small: `transaction()` never retries and never swallows — it
- * rolls back and re-raises as a `DomainError`, and every command in
+ * deliberately small: `transaction()` rolls back and re-raises as a
+ * `DomainError` rather than swallowing anything, and every command in
  * `src/core/commands` is built on it.
+ *
+ * R2 — the one thing it *does* retry is lock contention. `SQLITE_BUSY` after
+ * `busy_timeout` means the transaction rolled back and changed nothing, so the
+ * whole transaction is safe to run again; it is attempted a bounded number of
+ * times (see `DB_BUSY_MAX_ATTEMPTS`) and only when it is the outermost one,
+ * because a nested savepoint already holds the connection's write lock and
+ * cannot hit `SQLITE_BUSY` at all. Past the budget the failure surfaces as
+ * `DB_BUSY` (503 + `Retry-After`), never as a generic 500.
  */
 
+import { DB_BUSY_BACKOFF_MS, DB_BUSY_MAX_ATTEMPTS } from "../../shared/constants.mjs";
 import { DomainError } from "../../shared/errors.mjs";
 import { mapSqliteError } from "./sqlite-errors.mjs";
 import { GLOBAL_REVISION_SINGLETON } from "./schema.mjs";
@@ -27,28 +36,97 @@ export function inTransaction(db) {
  * @template T
  * @param {import('node:sqlite').DatabaseSync} db
  * @param {() => T} fn
- * @param {{op?: string}} [options]
+ * @param {{op?: string, attempts?: number}} [options] `attempts` overrides the
+ *   retry budget (tests use 1 to observe a single attempt).
  * @returns {T}
+ * @throws {DomainError} `DB_BUSY` when contention outlives the retry budget
  */
 export function transaction(db, fn, options = {}) {
   const nested = inTransaction(db);
-  const name = nested ? `sp_${Math.abs(hashString(options.op ?? "tx"))}` : null;
-  if (nested) db.exec(`SAVEPOINT ${name}`);
-  else db.exec("BEGIN IMMEDIATE");
+  if (nested) return runNested(db, fn, options);
 
+  const attempts = Math.max(1, options.attempts ?? DB_BUSY_MAX_ATTEMPTS);
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return runOutermost(db, fn, options);
+    } catch (err) {
+      const mapped = mapSqliteError(err, options.op === undefined ? {} : { op: options.op });
+      if (mapped.code !== "DB_BUSY" || attempt >= attempts) throw mapped;
+      // The rollback already happened; wait a beat and take the lock again.
+      sleepSync(DB_BUSY_BACKOFF_MS * attempt);
+    }
+  }
+}
+
+/**
+ * One attempt at the outermost transaction. `BEGIN IMMEDIATE` is what actually
+ * takes the write lock, so it is inside the same try as the body: a `SQLITE_BUSY`
+ * out of either is the same "nothing happened" answer.
+ *
+ * @template T
+ * @param {import('node:sqlite').DatabaseSync} db
+ * @param {() => T} fn
+ * @param {{op?: string}} options
+ * @returns {T}
+ */
+function runOutermost(db, fn, options) {
+  db.exec("BEGIN IMMEDIATE");
   try {
     const result = fn();
-    db.exec(nested ? `RELEASE ${name}` : "COMMIT");
+    db.exec("COMMIT");
     return result;
   } catch (err) {
     try {
-      db.exec(nested ? `ROLLBACK TO ${name}` : "ROLLBACK");
-      if (nested) db.exec(`RELEASE ${name}`);
+      db.exec("ROLLBACK");
     } catch {
       /* the transaction is already gone — the original error is what matters */
     }
     throw mapSqliteError(err, options.op === undefined ? {} : { op: options.op });
   }
+}
+
+/**
+ * One attempt at a nested (savepoint) transaction. Never retried, never
+ * mapped twice: `mapSqliteError` passes a `DomainError` through untouched.
+ *
+ * @template T
+ * @param {import('node:sqlite').DatabaseSync} db
+ * @param {() => T} fn
+ * @param {{op?: string}} options
+ * @returns {T}
+ */
+function runNested(db, fn, options) {
+  const name = `sp_${Math.abs(hashString(options.op ?? "tx"))}`;
+  db.exec(`SAVEPOINT ${name}`);
+  try {
+    const result = fn();
+    db.exec(`RELEASE ${name}`);
+    return result;
+  } catch (err) {
+    try {
+      db.exec(`ROLLBACK TO ${name}`);
+      db.exec(`RELEASE ${name}`);
+    } catch {
+      /* the transaction is already gone — the original error is what matters */
+    }
+    throw mapSqliteError(err, options.op === undefined ? {} : { op: options.op });
+  }
+}
+
+/**
+ * Sleep without yielding the event loop.
+ *
+ * The driver is synchronous (`node:sqlite`'s `DatabaseSync`), so the retry has
+ * to be too — an `await` here would make every command async and let another
+ * request interleave inside a transaction. `Atomics.wait` on a scratch buffer is
+ * the standard synchronous sleep and needs no dependency.
+ *
+ * @param {number} ms
+ */
+function sleepSync(ms) {
+  const wait = Math.max(0, Math.trunc(ms));
+  if (wait === 0) return;
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, wait);
 }
 
 /** Current value of the global SSE/incremental cursor. */

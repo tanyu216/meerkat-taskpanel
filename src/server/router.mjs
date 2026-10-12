@@ -183,28 +183,48 @@ export function withStatus(err, status) {
 }
 
 /**
- * Turn anything thrown into `{status, payload}`.
+ * Turn anything thrown into `{status, payload, headers}`.
  *
  * A `DomainError` carries its own status (that is what the `http` column of
  * `ERROR_CODES` is for), and the payload is `toErrorPayload(err)` verbatim — the
  * body a client sees is the same document `--json` prints.
+ *
+ * `headers` carries the response headers the *status* implies. Right now that is
+ * one rule: a `DB_BUSY` (503) is contention the caller can retry, and it says so
+ * with a `Retry-After` instead of leaving a client to guess (R2).
  *
  * @param {unknown} err
  */
 export function errorResponse(err) {
   const payload = toErrorPayload(err);
   const status = Number(err?.httpStatus ?? payload.http ?? 500);
-  return { status: status >= 400 && status < 600 ? status : 500, payload: { ok: false, error: payload } };
+  const resolved = status >= 400 && status < 600 ? status : 500;
+  return {
+    status: resolved,
+    payload: { ok: false, error: payload },
+    headers: retryHeaders(payload),
+  };
 }
 
-/** @param {import('node:http').ServerResponse} res @param {number} status @param {unknown} payload */
-export function sendJson(res, status, payload) {
+/** The headers a given error payload implies (empty for every ordinary failure). */
+function retryHeaders(payload) {
+  if (payload.code !== "DB_BUSY") return {};
+  const seconds = Number(payload.hint?.retryAfterSeconds);
+  return { "retry-after": String(Number.isFinite(seconds) && seconds > 0 ? seconds : 1) };
+}
+
+/**
+ * @param {import('node:http').ServerResponse} res @param {number} status
+ * @param {unknown} payload @param {Record<string,string>} [headers]
+ */
+export function sendJson(res, status, payload, headers = {}) {
   const body = `${JSON.stringify(payload)}\n`;
   res.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
     "content-length": Buffer.byteLength(body),
     // This is a local API for local tools; nothing should cache a board read.
     "cache-control": "no-store",
+    ...headers,
   });
   res.end(body);
 }

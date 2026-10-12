@@ -20,6 +20,12 @@ import { redactText } from "../../shared/redact.mjs";
 
 /** SQLite extended result codes we care about. */
 export const SQLITE_ERRCODE = Object.freeze({
+  // `SQLITE_BUSY` (5): the write lock is held elsewhere and `busy_timeout` ran
+  // out. `SQLITE_LOCKED` (6) is the same *class* of answer — "the database is
+  // not available right now, the write did not happen" — so it maps the same
+  // way. Both are contention, never a caller error (R2).
+  BUSY: 5,
+  LOCKED: 6,
   CHECK: 275,
   FOREIGNKEY: 787,
   NOTNULL: 1299,
@@ -27,6 +33,9 @@ export const SQLITE_ERRCODE = Object.freeze({
   TRIGGER: 1811,
   UNIQUE: 2067,
 });
+
+/** The two lock-contention codes, as a set the retry loop can ask about. */
+export const SQLITE_BUSY_ERRCODES = new Set([SQLITE_ERRCODE.BUSY, SQLITE_ERRCODE.LOCKED]);
 
 /** Codes a trigger is allowed to raise (mirrors `DB_RAISE_CODES`). */
 export const RAISED_CODES = new Set(DB_RAISE_CODES);
@@ -159,6 +168,18 @@ export function mapSqliteError(err, context = {}) {
   const message = redactText(err.message);
   const errcode = err.errcode;
   const details = { ...context, sqlite: { errcode, message } };
+
+  if (SQLITE_BUSY_ERRCODES.has(errcode)) {
+    // Contention, not a defect: the transaction rolled back and changed
+    // nothing, so the write may be repeated. Callers retry within a bounded
+    // budget (`unit-of-work.mjs`); past it, this is what they report — a 503
+    // with a `Retry-After`, never the 500 a `VALIDATION_FAILED` used to be.
+    return new DomainError("DB_BUSY", {
+      message: "the database is locked by another writer; the write was not applied",
+      details,
+      cause: err,
+    });
+  }
 
   if (errcode === SQLITE_ERRCODE.TRIGGER) {
     // RAISE(ABORT,'CODE') — the message is the reason code.

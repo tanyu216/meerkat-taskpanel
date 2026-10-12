@@ -111,9 +111,21 @@ export const ERROR_CODES = Object.freeze({
   PROJECT_DIR_NOT_A_DIRECTORY: spec(422, "The project target directory is not a directory."),
 
   // ---- Persistence / migrations ---------------------------------------------
+  // `DB_BUSY` (R2): SQLite's `SQLITE_BUSY`/`SQLITE_LOCKED` after a bounded
+  // retry budget. It is *contention*, not a defect: the write is safe to repeat,
+  // which is why it is a 503 with `Retry-After` and not the 500 a generic
+  // `VALIDATION_FAILED` would produce.
+  DB_BUSY: spec(503, "The database is locked by another writer; the write was not applied — retry.", {
+    retryAfterSeconds: 1,
+  }),
   MIGRATION_CHECKSUM_MISMATCH: spec(500, "A migration file changed after it was applied; migrations are append-only."),
   SCHEMA_MISMATCH: spec(500, "Database schema is not at the expected migration version."),
   SQLITE_UNAVAILABLE: spec(500, "node:sqlite is unavailable in this Node runtime."),
+  // R1: one `taskd` owns a data directory. A second instance is refused rather
+  // than allowed to fight over the runtime pointer.
+  BOARD_ALREADY_RUNNING: spec(409, "Another taskd already owns this data directory.", {
+    fix: "stop the running taskd (SIGTERM), or point TASKD_DATA_DIR at another directory",
+  }),
   VALIDATION_FAILED: spec(400, "Input failed validation."),
   ID_CONFLICT: spec(409, "Record already exists."),
   IDENTIFIER_CONFLICT: spec(409, "Identifier already exists in this project."),
@@ -154,7 +166,7 @@ export const DB_RAISE_CODES = Object.freeze([
   "DICTIONARY_ENTRY_IN_USE",
 ]);
 
-/** Codes produced by mapping SQLite constraint failures (not `RAISE`). */
+/** Codes produced by mapping SQLite failures (constraints, and lock contention). */
 export const SQL_CONSTRAINT_CODES = Object.freeze([
   "IDEM_EXISTS",
   "SINGLE_PARENT_VIOLATION",
@@ -166,6 +178,9 @@ export const SQL_CONSTRAINT_CODES = Object.freeze([
   "SESSION_DUPLICATE",
   "DICTIONARY_CONFLICT",
   "LABEL_CONFLICT",
+  // Not a constraint failure, but the same seam: `mapSqliteError` turns
+  // `SQLITE_BUSY`/`SQLITE_LOCKED` into it (see `storage/sqlite-errors.mjs`).
+  "DB_BUSY",
   "VALIDATION_FAILED",
   "NOT_FOUND",
 ]);
@@ -191,6 +206,8 @@ export const JS_ONLY_CODES = Object.freeze([
   "SOURCE_CHANGED",
   "TOKEN_FILE_CORRUPT",
   "RUNTIME_POINTER_TOKEN_LEAK",
+  // The single-writer guard: raised in JS, before any database is opened.
+  "BOARD_ALREADY_RUNNING",
   // Project directories: read from a host-local JSON file, never from a table,
   // a trigger or a SQLite constraint.
   "PROJECT_MAP_UNREADABLE",

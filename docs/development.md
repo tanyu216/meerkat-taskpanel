@@ -148,6 +148,51 @@ Security-relevant environment variables:
 | `TASKD_TOKEN` | token a client presents (`--token` outranks it) |
 | `TASKD_LABEL_GC`, `TASKD_LABEL_TTL_DAYS` | label housekeeping (§4.4) |
 
+### One writer per data directory
+
+The single-writer model is enforced, not assumed (R1). On startup the daemon
+takes `<dataDir>/writer.lock` with `O_EXCL` **before** it opens the database; a
+second `taskd` on the same `TASKD_DATA_DIR` is refused with
+`BOARD_ALREADY_RUNNING` (HTTP 409 in the payload; the program prints the message
+and exits non-zero). The refusal names the pid that holds the lock.
+
+Two operator-facing consequences:
+
+- **A crashed daemon needs no cleanup.** A lock whose `pid` is gone is a fossil:
+  the next start logs `writer_lock_stale`, removes it and carries on. Only a
+  *live* holder blocks a start. (`SIGKILL` therefore costs nothing but the lock
+  file.)
+- **The runtime pointer belongs to its owner.** A process removes the pointer
+  only while the file still names its own pid, so an exiting instance can never
+  unplug a live board. That is the rule `taskctl` already applies when *reading*
+  a pointer, now applied when deleting one.
+
+If you see `BOARD_ALREADY_RUNNING` and believe no board is running, stop the
+named pid first; if that process is gone, the stale lock is removed
+automatically on the next start (or by hand: `rm <dataDir>/writer.lock`).
+
+### Lock contention is a 503, not a 500
+
+Writes take the SQLite write lock for the length of one transaction. When
+another writer holds it past `busy_timeout` (5s), the request is **retried** a
+bounded number of times (see `DB_BUSY_MAX_ATTEMPTS` in `src/shared/constants.mjs`)
+and, if it still cannot get in, answered with:
+
+```
+503 DB_BUSY   Retry-After: 1
+```
+
+The write changed nothing, so the retry is safe. This replaced a
+`VALIDATION_FAILED`/500: "the server is broken" was the wrong thing to tell a
+client about a lock that clears on its own. An operation that holds the write
+lock for longer than `busy_timeout × attempts` (a large migration, a stalled
+disk) will make online writes retry and then fail with `DB_BUSY`; the honest
+fix is to shorten the hold, not to raise the timeout.
+
+> `busy_timeout` is pinned at 5000ms per connection. The tests that exercise
+> contention pass `busyTimeoutMs` to `createTaskd`/`openBoard` to shorten it,
+> which is also the only supported way to override the pin.
+
 The access token is never echoed in a response and never logged. The SSE stream
 filters `task_heartbeat` out of the increments, because a pulse changes no board
 state (§4.3); the row still exists in `task_activities` and under

@@ -41,6 +41,7 @@ const PLANNED = [
   "storage/schema.mjs",
   "storage/sqlite-errors.mjs",
   "storage/unit-of-work.mjs",
+  "storage/writer-lock.mjs",
   "storage/migrations-runner.mjs",
   "storage/repositories/projects.mjs",
   "storage/repositories/tasks.mjs",

@@ -93,8 +93,8 @@ export async function handleAttachmentContent(req, res, board, id) {
       }
       return;
     }
-    const { status, payload } = errorResponse(err);
-    sendJson(res, status, payload);
+    const { status, payload, headers } = errorResponse(err);
+    sendJson(res, status, payload, headers);
   }
 }
 
