@@ -1780,8 +1780,10 @@ export async function run() {
     // reason the split is drawn this way rather than by subject.
     //
     // Every check names its contract id, so the mapping from §5 to this section
-    // is one line per assertion. `ALL_TIERS` is the contract's own five, and B4
-    // adds the 1512×700 adapt tier.
+    // is one line per assertion. `ALL_TIERS` is the contract's own five at 900,
+    // extended with the §5.0 target viewport `ELON_WIDE` (1512×950) so the
+    // "≥1512×950" relation is a routine machine check rather than a hand
+    // measurement (U-4 / D-7); B4 adds the 1512×700 adapt tier.
     const r12Failures = [];
     const r12Check = (ok, message) => { if (!ok) r12Failures.push(message); };
 
@@ -1934,12 +1936,29 @@ export async function run() {
       return out;
     });
 
-    /** The contract's `ALL_TIERS` (all five) and `WIDE_TIERS` (no bar overflow). */
-    const R12_TIERS = [1512, 1240, 980, 760, 430];
+    /**
+     * The contract's `ALL_TIERS` (all five, each at 900) **plus** the §5.0 target
+     * viewport `ELON_WIDE` (1512×950) — every tier carries its own height, so the
+     * 950 stop is judged by the same relational assertions (§3.2) as the 900 ones.
+     * `WIDE_TIERS` (no bar overflow ⇒ A7 applies) is still the three widths with
+     * free room for the count's `margin-left: auto`; the 1512×950 tier is wide, so
+     * it is covered too.
+     */
+    const R12_TIERS = [
+      { width: 1512, height: 900 },
+      { width: 1240, height: 900 },
+      { width: 980, height: 900 },
+      { width: 760, height: 900 },
+      { width: 430, height: 900 },
+      { width: 1512, height: 950 },
+    ];
     const R12_WIDE = [1512, 1240, 980];
     const r12Heights = {};
-    for (const width of R12_TIERS) {
-      await page.setViewportSize({ width, height: 900 });
+    /** Each tier's own readings, keyed `WxH`, kept as the ② evidence trail. */
+    const r12Tiers = {};
+    for (const { width, height } of R12_TIERS) {
+      const tier = `${width}x${height}`;
+      await page.setViewportSize({ width, height });
       await page.waitForTimeout(140);
       const m = await measureR12();
       const f = m.filters;
@@ -1948,65 +1967,72 @@ export async function run() {
       // A2 / A9 — the bar is one flex line, at every tier including 430. The
       // prototype wraps at 430; that wrap is the defect Terry reported and the
       // one direction this round overrides (Elon ②, R-2).
-      r12Check(f.rows === 1, `A2/A9 @${width}: the filters bar draws ${f.rows} rows, expected 1 (centres ${f.centers.join(", ")})`);
+      r12Check(f.rows === 1, `A2/A9 @${tier}: the filters bar draws ${f.rows} rows, expected 1 (centres ${f.centers.join(", ")})`);
       // A3 — the direction the wrap rule reads (the values are also declared as
       // computed rules; this is the same three read in the round's own pass).
-      r12Check(f.flexWrap === "nowrap" && f.flexDirection === "row" && f.alignItems === "center", `A3 @${width}: the bar is ${f.flexWrap}/${f.flexDirection}/${f.alignItems}`);
+      r12Check(f.flexWrap === "nowrap" && f.flexDirection === "row" && f.alignItems === "center", `A3 @${tier}: the bar is ${f.flexWrap}/${f.flexDirection}/${f.alignItems}`);
       // A4 — the overflow policy is in place…
-      r12Check(["auto", "scroll"].includes(f.overflowX) && f.minWidth === "0px", `A4 @${width}: the bar's overflow policy is ${f.overflowX}/${f.minWidth}`);
+      r12Check(["auto", "scroll"].includes(f.overflowX) && f.minWidth === "0px", `A4 @${tier}: the bar's overflow policy is ${f.overflowX}/${f.minWidth}`);
       // …and at 430 it is actually doing something: the row has slack to scroll
       // *inside the bar*, while the document still has none (A8/B7 — the two
       // inequalities are the pair that rules out alternative (d)).
       if (width === 430) {
-        r12Check(f.scrolls, `A4 @430: the bar has no scrollable slack (scrollWidth ${f.scrollWidth} = clientWidth ${f.clientWidth})`);
+        r12Check(f.scrolls, `A4 @${tier}: the bar has no scrollable slack (scrollWidth ${f.scrollWidth} = clientWidth ${f.clientWidth})`);
       }
-      r12Check(m.docOverflow <= 0, `A8/B7 @${width}: the document overflows horizontally by ${m.docOverflow}px`);
+      r12Check(m.docOverflow <= 0, `A8/B7 @${tier}: the document overflows horizontally by ${m.docOverflow}px`);
       // A5 — one height across the field family. The absolute is per side (the
       // prototype's 30px, this build's 32px on the 4px grid, R9 ②); the relation
       // is what ports, and it is measured over the members that are present.
-      r12Check(new Set(f.familyHeights).size === 1, `A5 @${width}: the field family is ${JSON.stringify(f.familyHeights)}, not one height`);
+      r12Check(new Set(f.familyHeights).size === 1, `A5 @${tier}: the field family is ${JSON.stringify(f.familyHeights)}, not one height`);
       // A6 — the 8px rhythm and the bar's own zero padding.
-      r12Check(f.gap === "8px", `A6 @${width}: the bar's gap is ${f.gap}`);
-      r12Check(f.padding.every((p) => p === "0px"), `A6 @${width}: the bar's padding is ${f.padding.join("/")}`);
+      r12Check(f.gap === "8px", `A6 @${tier}: the bar's gap is ${f.gap}`);
+      r12Check(f.padding.every((p) => p === "0px"), `A6 @${tier}: the bar's padding is ${f.padding.join("/")}`);
       for (const g of f.gaps) {
         if (g.endsAtCount || !g.sameLine) continue;
-        r12Check(Math.abs(g.gap - 8) <= 0.5, `A6 @${width}: the gap ${g.pair} is ${g.gap}px, expected 8px`);
+        r12Check(Math.abs(g.gap - 8) <= 0.5, `A6 @${tier}: the gap ${g.pair} is ${g.gap}px, expected 8px`);
       }
       // A7 — the count ends on the bar's **content** edge, in the tiers where the
       // row still has free space for `margin-left: auto` to resolve into (the
       // contract's U-5: below that, `auto` is 0 and the count follows Clear).
       if (R12_WIDE.includes(width)) {
-        r12Check(f.countRight !== null && Math.abs(f.contentRight - f.countRight) <= 1, `A7 @${width}: the count ends ${f.countRight === null ? "nowhere" : Math.round((f.contentRight - f.countRight) * 100) / 100}px from the bar's content edge`);
+        r12Check(f.countRight !== null && Math.abs(f.contentRight - f.countRight) <= 1, `A7 @${tier}: the count ends ${f.countRight === null ? "nowhere" : Math.round((f.contentRight - f.countRight) * 100) / 100}px from the bar's content edge`);
       }
       // A11 — a narrow tier may not buy its single line by hiding controls.
       if (width === 430) {
-        r12Check(f.countPainted && f.clearPainted, `A11 @430: count/clear painted = ${f.countPainted}/${f.clearPainted}`);
+        r12Check(f.countPainted && f.clearPainted, `A11 @${tier}: count/clear painted = ${f.countPainted}/${f.clearPainted}`);
       }
       // A1/A10 — nothing outside the closed set is drawn in the bar.
-      r12Check(f.strays.length === 0, `A1/A10 @${width}: the bar draws controls outside the closed set — ${f.strays.join(", ")}`);
+      r12Check(f.strays.length === 0, `A1/A10 @${tier}: the bar draws controls outside the closed set — ${f.strays.join(", ")}`);
 
       // B1 — the explicit cross-axis alignment. `items-start` here is exactly the
       // defect the round names: columns then take their own content height.
-      r12Check(b.alignItems === "stretch", `B1 @${width}: [data-board] aligns its columns with ${b.alignItems}`);
+      r12Check(b.alignItems === "stretch", `B1 @${tier}: [data-board] aligns its columns with ${b.alignItems}`);
+      // B6 — the count is constant at seven columns, at every tier. The equal
+      // heights above are only meaningful over *these* seven boxes, so the count
+      // is asserted here beside them (the A leg owns the `data-status` order).
+      r12Check(b.columns.length === 7, `B6 @${tier}: the board draws ${b.columns.length} columns, expected 7`);
       // B2/B3 — seven equal heights, each equal to the board's **content** box.
-      r12Check(b.spread <= 1, `B2 @${width}: the column heights spread ${b.spread}px (${b.heights.join(", ")})`);
-      r12Check(b.offContent <= 1, `B3 @${width}: the tallest column differs from the board's ${b.contentH}px content box by ${b.offContent}px`);
+      r12Check(b.spread <= 1, `B2 @${tier}: the column heights spread ${b.spread}px (${b.heights.join(", ")})`);
+      r12Check(b.offContent <= 1, `B3 @${tier}: the tallest column differs from the board's ${b.contentH}px content box by ${b.offContent}px`);
       // B5/B9 — the column is not its own scroller; the body is, and it is the
       // only one inside the column.
-      r12Check(b.columns.every((c) => c.overflowY !== "auto" && c.overflowY !== "scroll"), `B5 @${width}: a column is its own vertical scroller — ${b.columns.map((c) => c.overflowY).join(", ")}`);
-      r12Check(b.columns.every((c) => c.bodyOverflowY === "auto"), `B5 @${width}: the column bodies scroll as ${b.columns.map((c) => c.bodyOverflowY).join(", ")}`);
-      r12Check(b.columns.every((c) => c.scrollers === 1), `B9 @${width}: vertical scrollers per column = ${b.columns.map((c) => c.scrollers).join(", ")}`);
+      r12Check(b.columns.every((c) => c.overflowY !== "auto" && c.overflowY !== "scroll"), `B5 @${tier}: a column is its own vertical scroller — ${b.columns.map((c) => c.overflowY).join(", ")}`);
+      r12Check(b.columns.every((c) => c.bodyOverflowY === "auto"), `B5 @${tier}: the column bodies scroll as ${b.columns.map((c) => c.bodyOverflowY).join(", ")}`);
+      r12Check(b.columns.every((c) => c.scrollers === 1), `B9 @${tier}: vertical scrollers per column = ${b.columns.map((c) => c.scrollers).join(", ")}`);
       // B8 — reverse: the equal heights are not "every column collapsed to its
       // content". At least the shortest column's box must exceed the tallest
       // natural content height.
       const shortest = Math.min(...b.heights);
       const tallestNatural = Math.max(...b.columns.map((c) => c.natural));
-      r12Check(shortest > tallestNatural, `B8 @${width}: the shortest column (${shortest}px) is not taller than the tallest natural content (${tallestNatural}px)`);
+      r12Check(shortest > tallestNatural, `B8 @${tier}: the shortest column (${shortest}px) is not taller than the tallest natural content (${tallestNatural}px)`);
       // B10 — reverse: the column body has height and the cards are drawn.
-      r12Check(b.columns.every((c) => c.bodyHeight > 0), `B10 @${width}: a column body has height ${b.columns.map((c) => c.bodyHeight).join(", ")}`);
-      r12Check(b.columns.every((c) => c.cards >= 1), `B10 @${width}: a column shows ${b.columns.map((c) => c.cards).join(", ")} cards`);
+      r12Check(b.columns.every((c) => c.bodyHeight > 0), `B10 @${tier}: a column body has height ${b.columns.map((c) => c.bodyHeight).join(", ")}`);
+      r12Check(b.columns.every((c) => c.cards >= 1), `B10 @${tier}: a column shows ${b.columns.map((c) => c.cards).join(", ")} cards`);
 
-      if (width === 1512) r12Heights[width] = b.heights[0];
+      // B4's baseline is the **1512×900** tier only — the 950 stop must not
+      // overwrite it, or the adapt delta would compare 950 against 700.
+      if (width === 1512 && height === 900) r12Heights[width] = b.heights[0];
+      r12Tiers[tier] = { rows: f.rows, columns: b.columns.length, contentH: b.contentH, heights: b.heights, spread: b.spread, offContent: b.offContent, docOverflow: m.docOverflow };
     }
 
     // B4 — the equal-height chain follows the **viewport**, pixel for pixel: the
@@ -2017,7 +2043,7 @@ export async function run() {
     const adapt = await measureR12();
     r12Check(adapt.board.spread <= 1 && adapt.board.offContent <= 1, `B4 @1512x700: the columns spread ${adapt.board.spread}px and differ from the board by ${adapt.board.offContent}px`);
     const moved = r12Heights[1512] - adapt.board.heights[0];
-    r12Check(Math.abs(moved - 200) <= 1, `B4 @1512: the column height moved ${Math.round(moved * 100) / 100}px when the viewport height moved 200px`);
+    r12Check(Math.abs(moved - 200) <= 1, `B4 @1512x900→700: the column height moved ${Math.round(moved * 100) / 100}px when the viewport height moved 200px`);
     await page.setViewportSize({ width: 1512, height: 950 });
     await page.waitForTimeout(150);
 
@@ -2232,7 +2258,13 @@ export async function run() {
         fill,
         narrowFill,
       },
-      r12: { failures: r12Failures, tiers: R12_TIERS, adaptHeight: adapt.board.heights[0], heights: r12Heights },
+      r12: {
+        failures: r12Failures,
+        tiers: R12_TIERS.map((t) => `${t.width}x${t.height}`),
+        tierGeometry: r12Tiers,
+        adaptHeight: adapt.board.heights[0],
+        heights: r12Heights,
+      },
       geometry,
       counts: { rules: results.length, failed: failures.length, ...geometry },
       fixtureTasks: data.tasks.length,
@@ -2300,7 +2332,7 @@ if (isEntryPoint) run().then(
         console.log(`R12 (fidelity) — ${report.r12.failures.length} failed:`);
         for (const failure of report.r12.failures) console.log(`  ✗ ${failure}`);
       } else {
-        console.log(`R12 (fidelity) — the filters bar's one line at ${report.r12.tiers.join("/")} and the board's equal-height chain (columns ${report.r12.heights[1512]}px @900 → ${report.r12.adaptHeight}px @700) all pass`);
+        console.log(`R12 (fidelity) — the filters bar's one line at ${report.r12.tiers.join("/")} and the board's equal-height chain (columns ${report.r12.heights[1512]}px @1512x900 → ${report.r12.adaptHeight}px @1512x700, ${report.r12.tierGeometry["1512x950"]?.heights[0]}px @1512x950) all pass`);
       }
     }
     const interactionOk =
