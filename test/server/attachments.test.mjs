@@ -12,7 +12,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after, before, describe, it } from "node:test";
@@ -97,6 +97,34 @@ describe("attachments — content over HTTP", () => {
     // The PUT kept the metadata row honest, so a listing can show a size.
     assert.equal(theAttachment().size, payload.length);
     assert.equal(theAttachment().contentType, "text/plain", "the row's own type is untouched");
+  });
+
+  /**
+   * A second PUT replaces what is stored (T-20261013-014304). It is the case the
+   * write order lives or dies by: the new bytes arrive as a staging file and
+   * *swap* into place, so the attachment path is only ever replaced whole — an
+   * overwrite is never a truncate-then-write, and the row follows the disk.
+   */
+  it("replaces the stored bytes on a second PUT", async () => {
+    const attachment = theAttachment();
+    const first = Buffer.from("first\n");
+    const second = Buffer.from("a second, longer payload\n");
+    const path = join(dataDir, "attachments", attachment.id);
+
+    const one = await fetch(`${base}/api/v1/attachments/${attachment.id}/content`, { method: "PUT", body: first });
+    assert.equal(one.status, 200);
+    assert.equal(statSync(path).size, first.length);
+
+    const two = await fetch(`${base}/api/v1/attachments/${attachment.id}/content`, { method: "PUT", body: second });
+    assert.equal(two.status, 200);
+    assert.equal((await two.json()).data.size, second.length);
+    assert.equal(statSync(path).size, second.length, "the file was replaced, not appended to");
+    assert.deepEqual(readFileSync(path), second);
+    assert.equal(theAttachment().size, second.length, "and the row kept up");
+
+    const get = await fetch(`${base}/api/v1/attachments/${attachment.id}/content`);
+    assert.equal(get.status, 200);
+    assert.deepEqual(Buffer.from(await get.arrayBuffer()), second);
   });
 
   it("404s an attachment id that does not exist, and one that is not a safe path", async () => {
