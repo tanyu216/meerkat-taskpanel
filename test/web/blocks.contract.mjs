@@ -1483,8 +1483,31 @@ const BLOCKS = [
       // the drawer **root** carries the full identifier. The root's attribute is
       // the only read-back of identity: the rendered text is a display value, so
       // nothing may resolve a task from it (`design/fidelity-r8.md` §9 R5).
-      { kind: "classes", probe: "[data-detail-identifier]", includes: ["td-id"] },
+      //
+      // R12 — the drawer head is the one render point that shows the id **whole**
+      // (`design/fidelity-r12.md` §2.1/§2.2): it keeps `.td-id` (the single-line
+      // guard, whose box and baseline the two views still share) and **adds** the
+      // variant `.td-id-full`, which withdraws the width cap. Both classes, on
+      // this one element — the variant is an addition, never a replacement.
+      { kind: "classes", probe: "[data-detail-identifier]", includes: ["td-id", "td-id-full"] },
       { kind: "computed", probe: "[data-detail-identifier]", property: "whiteSpace", equals: "nowrap" },
+      // R12 — and the head's text carries no ellipsis, whatever card is open.
+      // This is the **card-agnostic** half of "逐字完整显示": a rule cannot choose
+      // which card the drawer pass opens (it must be the attachment-carrying one,
+      // whose id is short), so the *specific* over-cap sample — `PROJ-0007`
+      // rendering whole while its own card still shows `PROJ-000…` — is measured
+      // where the press can be aimed, in `web/scripts/dom-smoke.mjs`'s R12-id
+      // section. What this rule adds is the negative that holds for every card:
+      // the head never renders the truncation marker at all.
+      { kind: "text", probe: "[data-detail-identifier]", matches: "^[^…]+$", when: "drawer open" },
+      // …and the variant is scoped to that one element. A probe can name the
+      // `td-` class the design owns, so the absence is written as an exact count
+      // rather than a valueless `absent` (which would demand the class be gone
+      // from the whole bundle): one match in board view and one in list view is
+      // the drawer head and nothing else — a card or a list row wearing it would
+      // make two. This is contract §5 A6′ («不得外溢»), the reverse of A6 above.
+      { kind: "computed", probe: ".td-id-full", count: 1 },
+      { kind: "computed", probe: ".td-id-full", count: 1, when: "list view" },
       // The root carries the attribute (the value it carries *is* the assertion,
       // and a value is a relation — `dom-smoke.mjs` compares it against the head's
       // `title` and against the card's own `data-identifier`).

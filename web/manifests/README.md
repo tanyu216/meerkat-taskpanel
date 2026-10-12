@@ -416,3 +416,70 @@ each is one of three known shapes):
 The capsule itself has no target: at rest no `[data-assignee-item]` is active, and the width
 neutrality, the 999px bed, the accent ink and the U-6 correction are all measured live in
 `web/scripts/dom-smoke.mjs`'s R11/R13 section (where the capsule is actually on screen).
+
+## 10. The R12 (identifier) additions — the drawer head shows the whole id
+(`T-20261013-033933`, 2026-10-13)
+
+**Three `style.targets` entries and one `styleProps` name.** The contract is
+`design/fidelity-r12.md` (card `T-20261013-023310`, frozen at `7ac4d3a`; independent verification
+`T-20261013-024952` PASS) and this card is its product implementation. Note the **number collision**:
+the supplement's round (`design/fidelity-r12-supplement.md`, card `T-20261013-023722`) is also
+called R12 — its §0 records that it took the *supplement* filename because `fidelity-r12.md` was
+already held by the contract this card implements. The two rounds therefore share the `r12-` target
+prefix; every target **name** is unique, so nothing is counted twice.
+
+| which fact | instrument |
+|---|---|
+| the drawer head's width cap is withdrawn and the card's / list row's is not, read **bilaterally** (prototype as oracle) | **`style.targets`** — `r12-drawer-id-text` (`[data-detail-identifier]`) and the two reverse anchors `r12-card-id-clamp` (`[data-card-identifier]`) / `r12-list-id-clamp` (`[data-list-identifier]`) |
+| the head's text is the **whole** id (`PROJ-0007`, not `PROJ-000…`), it wears `td-id` **and** `td-id-full`, and the variant does not spill onto a card or a row | **the driven layer** — `web/scripts/dom-smoke.mjs`'s `R12-id` section, which presses the over-cap card and reads the *same* task's two render points (a relation between two elements, which R-6a sends here) |
+| one element wears `.td-id-full` (board view and list view), the drawer head keeps `.td-id`, and the open head's text carries no ellipsis whatever card is open | **`test/web/blocks.contract.mjs`** — a `classes` rule, two count-only `computed` probes and one `text` rule (`when: "drawer open"`); `blocks` in this manifest stays **empty** on purpose (one fact, one mechanism) |
+
+**`styleProps` needed one new name: `textOverflow`.** All three targets are read for
+`text-overflow` (the variant's third declaration), and without the name the property is silently not
+compared — the same lesson R12-supplement wrote down as R-6b / U-3.
+
+**Where it stands** (`T-20261013-033933`, 2026-10-13):
+
+| | |
+|---|---|
+| blocks | 37 — unchanged, none pending |
+| assertions | 221 · failures **0** under `--strict` |
+| overflow / console | 0 failures at all five widths |
+| computed style | **55 of 1190** compared properties differ (95.4%) — **non-blocking** |
+
+**1088 → 1190 comparisons** (`+102`) and **46 → 55 diffs** (`+9`). The arithmetic is exact and worth
+spelling out because it is the round's own claim to not having disturbed anything:
+
+* `+70` comparisons and `+9` diffs come from the **two** new targets that resolve on both sides
+  (`r12-drawer-id-text` 35 properties, 8 diffs; `r12-card-id-clamp` 35 properties, 1 diff). The
+  third, `r12-list-id-clamp`, is **missing on the prototype side** ⇒ the tool's "no obligation"
+  path: it is listed, skipped, and contributes **0 comparisons and 0 diffs** (`lib/style.mjs`).
+* `+32` comparisons and **0** diffs come from `textOverflow`: one more compared property on each of
+  the 32 pre-existing targets. **No existing target's diff count moved** — the 46 pre-existing diffs
+  sum to exactly the 46 §9 recorded.
+
+The nine new diffs, registered rather than fixed, are of two known shapes — and neither is this
+round's to fix:
+
+* `r12-drawer-id-text` **8** — `width`/`height`/`minWidth` (`43×18 → 0×0`) and
+  `fontSize`/`lineHeight`/`letterSpacing`/`color`/`borderColor`. This is the **open-vs-closed**
+  shape §7 already excluded `[data-md-editor]` for: the prototype's closed drawer is still *laid
+  out* (its seed `TD-128` measures 43×18), while the implementation toggles the drawer with `hidden`
+  (`display: none`, C06), so every layout and inherited-type property reads the declaration instead
+  of the box. **The four properties R12 is about agree on both sides** — `maxWidth: none`,
+  `overflow: visible`, `textOverflow: clip`, `whiteSpace: nowrap` appear in **no** diff row — which
+  is why registering the element is still worth doing even though its box is not comparable. The
+  type-face difference (`12px` vs the drawer's inherited `14px`) predates this round; R12 §8 R2
+  forbids touching anything but the cap, so it is exposed, not created.
+* `r12-card-id-clamp` **1** — `width` only (`59.59 → 26.5px`). Both sides clamp to a **finite px**
+  value (the contract's C′1: `9ch` resolves to px, never the literal string); the widths differ
+  because the prototype's first card carries a nine-character id and the implementation's fixture
+  first card does not. This is the same board-wide content/size difference the manifest has always
+  carried.
+
+`r12-drawer-id-text`'s box being `0×0` is worth one more sentence, because it is the reason the
+contract binds item ② to **both** instruments: a bilateral computed-style comparison cannot see the
+drawer head's *text*, and a `0×0` box cannot see its *cap*. The cap's two halves are covered by the
+properties that survive `display: none` (this target) and by the driven layer, which opens the
+drawer for real and reads the head's `maxWidth`/`overflow`/`textOverflow` **and** its text off the
+same live element.
