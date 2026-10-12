@@ -32,14 +32,75 @@ function switchProject(id) {
 <template>
   <header class="td-topbar" data-topbar>
     <a class="td-brand" href="#" data-brand @click.prevent>
+      <!-- Sentinel Watch — the brand mark, geometry fixed by BRAND.md §5 and
+           transcribed from `design/prototype/index.html`'s `[data-brand]` mark.
+           The two lead meerkats read `--brand-text` (the design's
+           `--color-td-ink`), the on-duty sentinel and its watch signal read
+           `--color-primary` (the design's `--color-td-accent`), so the mark
+           follows the active theme with no second file. The eyes and mouth are
+           cut as negative space by the mask below; the watch signal stays
+           outside it, so the sentinel on duty is always solid. -->
+      <svg class="td-logo" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+        <defs>
+          <mask id="face-knockout-a-top" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+            <rect x="0" y="0" width="32" height="32" fill="#FFFFFF" />
+            <g fill="#000000">
+              <!-- sentinel 1 · face -->
+              <circle cx="6.4" cy="20" r="0.42" />
+              <circle cx="8" cy="20" r="0.42" />
+              <rect x="6.84" y="21.05" width="0.72" height="0.2" rx="0.1" />
+              <!-- sentinel 2 · face -->
+              <circle cx="15.2" cy="14.8" r="0.42" />
+              <circle cx="16.8" cy="14.8" r="0.42" />
+              <rect x="15.64" y="15.85" width="0.72" height="0.2" rx="0.1" />
+              <!-- sentinel 3 · face -->
+              <circle cx="24" cy="12" r="0.42" />
+              <circle cx="25.6" cy="12" r="0.42" />
+              <rect x="24.44" y="13.05" width="0.72" height="0.2" rx="0.1" />
+            </g>
+          </mask>
+        </defs>
+        <g mask="url(#face-knockout-a-top)">
+          <!-- sentinel 1 · cx 7.2 · top 17.6 -->
+          <g fill="var(--brand-text)">
+            <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6" />
+            <circle cx="7.2" cy="20.2" r="2.6" />
+            <circle cx="4.8" cy="19.3" r="1.2" />
+            <circle cx="9.6" cy="19.3" r="1.2" />
+          </g>
+          <!-- sentinel 2 · cx 16 · top 12.4 -->
+          <g fill="var(--brand-text)">
+            <rect x="13.4" y="12.4" width="5.2" height="14.6" rx="2.6" />
+            <circle cx="16" cy="15" r="2.6" />
+            <circle cx="13.6" cy="14.1" r="1.2" />
+            <circle cx="18.4" cy="14.1" r="1.2" />
+          </g>
+          <!-- sentinel 3 (on duty, tallest) · cx 24.8 · top 9.6 -->
+          <g fill="var(--color-primary)">
+            <rect x="22.2" y="9.6" width="5.2" height="17.4" rx="2.6" />
+            <circle cx="24.8" cy="12.2" r="2.6" />
+            <circle cx="22.4" cy="11.3" r="1.2" />
+            <circle cx="27.2" cy="11.3" r="1.2" />
+          </g>
+        </g>
+        <!-- watch signal — clear of the sentinel's crown by 4.1, outside the mask -->
+        <circle cx="24.8" cy="3.4" r="2.1" fill="var(--color-primary)" />
+      </svg>
       <span class="td-brand-name" data-i18n="app.brand">{{ $t("app.brand") }}</span>
       <span class="td-brand-sub" data-i18n="app.tagline">{{ $t("app.tagline") }}</span>
     </a>
 
     <details class="td-details dropdown" data-project-switcher>
       <summary class="btn btn-ghost btn-sm gap-2">
-        <span data-project-switcher-icon aria-hidden="true">▦</span>
+        <!-- The switcher glyph is the prototype's stacked-plane SVG, not a text
+             character: at 14px the glyph `▦` and the icon stop reading alike. -->
+        <svg class="td-icon td-icon-sm" data-project-switcher-icon viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M12 3 3 8l9 5 9-5-9-5ZM3 14l9 5 9-5" />
+        </svg>
         <span class="td-mono" data-project-current>{{ currentName }}</span>
+        <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M6 9.5 12 15.5 18 9.5" />
+        </svg>
       </summary>
       <ul class="td-details-menu menu">
         <li v-for="project in projects" :key="project.id">

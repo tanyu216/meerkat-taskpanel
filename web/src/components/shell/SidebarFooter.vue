@@ -5,17 +5,28 @@
  * The theme cell is a **three-state cycle**, not a toggle, so it carries no
  * `aria-pressed`; the mode in force rides on `data-theme-mode` (mirrored onto
  * `<html>` by the one writer, `applyTheme`) and on the cell's own
- * `data-theme-mode`. The language menu is a `<details>` so it degrades without
- * script; its two options are `[data-lang-option]`.
+ * `data-theme-mode`. Its three glyphs are inline SVGs (`data-theme-icon`), not
+ * text characters, so the sun/moon/display family reads as one stroke set.
+ *
+ * The language cell is a **trigger plus a floating menu**, not a `<details>`:
+ * the trigger states the language in force (globe + label + `.td-caret`) and the
+ * menu holds one option per language. The menu is teleported to the end of the
+ * document rather than left inside the sidebar, because the sidebar is a scroll
+ * container and would clip it — the same reason the card's "Move to" menu
+ * floats. Options stay in the DOM while the menu is closed (`hidden`, not
+ * `v-if`), so a programmatic click reaches them exactly as it did inside the
+ * `<details>` that used to wrap them.
+ *
+ * The settings cell is **icon only**: its accessible name says what it opens and
+ * no visible text sits beside the gear (BLOCKS.md B03, verbatim).
  */
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 
 import { applyLang, lang, nextLang, t } from "../../i18n/index.js";
 import { applyTheme, nextTheme, readTheme } from "../../stores/prefs.js";
 import { accessOpen, pushToast } from "../../stores/ui.js";
 
 const themeMode = ref(readTheme());
-const icons = { light: "☀", dark: "☾", auto: "◐" };
 const modes = ["light", "dark", "auto"];
 const langs = ["en", "zh"];
 
@@ -29,11 +40,68 @@ function cycleTheme() {
   pushToast(t(themeToast[themeMode.value]), "info");
 }
 
+/* --------------------------------------------------------- language menu -- */
+
+const langOpen = ref(false);
+const langTrigger = ref(null);
+const langMenu = ref(null);
+const menuStyle = ref({});
+
+/**
+ * Anchor the floating menu to the trigger, **above** it: the cell is the bottom
+ * row of the sidebar, so opening downwards would leave the viewport. Reading the
+ * distance from the viewport's bottom edge avoids measuring the menu's own
+ * height, which is only known after it renders.
+ */
+function positionMenu() {
+  const rect = langTrigger.value?.getBoundingClientRect();
+  if (!rect) return;
+  const width = langMenu.value?.offsetWidth || 148;
+  const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+  menuStyle.value = { position: "fixed", left: `${left}px`, bottom: `${Math.max(8, window.innerHeight - rect.top + 6)}px` };
+}
+
+function toggleLang() {
+  langOpen.value = !langOpen.value;
+  if (langOpen.value) positionMenu();
+}
+function closeLang() {
+  langOpen.value = false;
+}
+
 function chooseLang(value) {
+  closeLang();
   if (value === lang.value) return;
   applyLang(value);
   pushToast(t(value === "zh" ? "toast.langZh" : "toast.langEn"), "info");
 }
+
+/** Close on a click outside — `pointerdown`, so the click that opens it cannot close it. */
+function onPointerDown(event) {
+  if (!langOpen.value) return;
+  const target = event.target;
+  if (langMenu.value?.contains(target) || langTrigger.value?.contains(target)) return;
+  closeLang();
+}
+/** Escape closes the menu before it reaches the shell's overlay handler. */
+function onKeydown(event) {
+  if (event.key === "Escape" && langOpen.value) closeLang();
+}
+/** The menu is anchored to a box that has moved, so it closes rather than follows. */
+function onViewportChange() {
+  if (langOpen.value) closeLang();
+}
+
+onMounted(() => {
+  document.addEventListener("pointerdown", onPointerDown);
+  document.addEventListener("keydown", onKeydown);
+  window.addEventListener("resize", onViewportChange);
+});
+onBeforeUnmount(() => {
+  document.removeEventListener("pointerdown", onPointerDown);
+  document.removeEventListener("keydown", onKeydown);
+  window.removeEventListener("resize", onViewportChange);
+});
 </script>
 
 <template>
@@ -47,25 +115,46 @@ function chooseLang(value) {
       :title="themeAria"
       @click="cycleTheme"
     >
-      <span v-for="mode in modes" :key="mode" :data-theme-icon="mode" :hidden="themeMode !== mode" aria-hidden="true">
-        {{ icons[mode] }}
-      </span>
+      <svg
+        v-for="mode in modes"
+        :key="mode"
+        class="td-icon td-icon-sm"
+        :data-theme-icon="mode"
+        :hidden="themeMode !== mode"
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path v-if="mode === 'light'" d="M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10ZM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+        <path v-else-if="mode === 'dark'" d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" />
+        <!-- Auto reads as "the system decides": a display, the same stroke family as the sun and the moon. -->
+        <template v-else>
+          <rect x="3" y="4" width="18" height="12" rx="2" />
+          <path d="M8 20h8M12 16v4" />
+        </template>
+      </svg>
       <span class="td-side-text" data-theme-label>{{ $t(`access.theme.${themeMode}`) }}</span>
     </button>
 
-    <details class="td-details" data-lang-menu>
-      <summary class="td-access-cell" data-lang-select aria-haspopup="menu" :aria-label="$t('access.lang.open')">
-        <span aria-hidden="true">⌘</span>
-        <span class="td-side-text" data-lang-label>{{ $t(`access.lang.short.${lang}`) }}</span>
-      </summary>
-      <ul class="td-details-menu menu">
-        <li v-for="option in langs" :key="option">
-          <button type="button" :data-lang-option="option" :aria-current="lang === option ? 'true' : 'false'" @click="chooseLang(option)">
-            {{ $t(`access.lang.${option}`) }}
-          </button>
-        </li>
-      </ul>
-    </details>
+    <button
+      type="button"
+      class="td-access-cell"
+      data-lang-select
+      ref="langTrigger"
+      aria-haspopup="menu"
+      :aria-expanded="langOpen ? 'true' : 'false'"
+      :aria-label="$t('access.lang.open')"
+      :title="$t('access.lang.open')"
+      @click="toggleLang"
+    >
+      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM3 12h18M12 3c2.5 2.6 3.8 5.7 3.8 9S14.5 18.4 12 21c-2.5-2.6-3.8-5.7-3.8-9S9.5 5.6 12 3Z" />
+      </svg>
+      <span class="td-side-text" data-lang-label>{{ $t(`access.lang.short.${lang}`) }}</span>
+      <svg class="td-caret td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M6 9.5 12 15.5 18 9.5" />
+      </svg>
+    </button>
 
     <button
       type="button"
@@ -76,8 +165,32 @@ function chooseLang(value) {
       :title="$t('access.open')"
       @click="accessOpen = true"
     >
-      <span aria-hidden="true">⚙</span>
-      <span class="td-side-text">{{ $t("access.title") }}</span>
+      <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" />
+      </svg>
     </button>
   </div>
+
+  <!-- The floating language menu: at the end of the document, outside the
+       sidebar's scroll container, and never wrapping its own trigger. -->
+  <Teleport to="body">
+    <div ref="langMenu" class="dropdown" data-lang-menu :style="menuStyle" :hidden="!langOpen">
+      <button
+        v-for="option in langs"
+        :key="option"
+        type="button"
+        class="td-menu-item td-lang-option"
+        :data-lang-option="option"
+        :lang="option === 'zh' ? 'zh-CN' : 'en'"
+        :aria-pressed="lang === option ? 'true' : 'false'"
+        @click="chooseLang(option)"
+      >
+        <span class="td-lang-name">{{ $t(`access.lang.${option}`) }}</span>
+        <svg class="td-lang-check td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M5 13l4.5 4.5L19 7" />
+        </svg>
+      </button>
+    </div>
+  </Teleport>
 </template>
