@@ -157,6 +157,15 @@ export const DOMAINS = Object.freeze({
   TOKEN_ICON: Object.freeze(["hidden", "shown"]),
   /** Boolean-valued state attributes (B19). */
   BOOLEAN: Object.freeze(["true", "false"]),
+  /**
+   * The live stream's state on the top bar's dot (B02). **Impl-only**: the
+   * attribute has no prototype counterpart (the prototype has no network), so
+   * this is the one domain whose authority is `web/src/services/events.js`
+   * rather than the design. Approved as a written deviation
+   * (`surface-disposition.md` #4): an attribute-level addition to an element the
+   * prototype already has, never a new node.
+   */
+  CONNECTION: Object.freeze(["connecting", "open", "closed"]),
 });
 
 /**
@@ -301,6 +310,20 @@ const BLOCKS = [
           "`.td-shell` layout is `grid-template-areas: \"topbar topbar\" / \"sidebar main\"` — " +
           "CSS geometry on a class, not a hook.",
       },
+      {
+        kind: "manual",
+        note:
+          "M2 wrote down the four surfaces the app carries and the prototype does not " +
+          "(`surface-disposition.md`, approved as written deviations): the load-failure panel " +
+          "(B17, relocated from the prototype's states gallery to the board's real error " +
+          "surface), the optimistic-write conflict prompt (no prototype counterpart — the " +
+          "prototype has no concurrent writers — now carrying `data-conflict` so it is at least " +
+          "machine-visible), the live stream's state on the revision dot (B02's " +
+          "`data-connection`, an attribute-level addition to an element the prototype has), and " +
+          "the manual `?after=` resync, which left the board's main path for the access panel " +
+          "on the same ruling. None of the four is blessed as a block: they are recorded, not " +
+          "asserted into existence.",
+      },
     ],
   },
 
@@ -333,6 +356,10 @@ const BLOCKS = [
       { kind: "count", selector: "[data-new-task]", equals: 1 },
       { kind: "count", selector: "[data-view]", equals: 2 },
       { kind: "domain", selector: "[data-view]", attribute: "data-view", subset: DOMAINS.VIEW },
+      // M2 · the live stream's state rides `data-connection` on the revision
+      // cluster's dot. Impl-only (the prototype has no network), approved as a
+      // written deviation — see DOMAINS.CONNECTION and `surface-disposition.md` #4.
+      { kind: "domain", selector: "[data-connection]", attribute: "data-connection", subset: DOMAINS.CONNECTION },
       { kind: "absent", selector: "[data-user]" },
       { kind: "absent", selector: "[data-theme-toggle]" },
       { kind: "absent", selector: "[data-lang-toggle]" },
@@ -564,6 +591,15 @@ const BLOCKS = [
           "`:focus-within` and `aria-selected=\"true\"` are ARIA/CSS, not hooks. The root carries " +
           "the HTML attribute `draggable=\"true\"`.",
       },
+      // M2 · `aria-selected` used to be the literal `false` on every card. It now
+      // reports the board's own selection, which is only observable with a card
+      // open — hence the driven precondition, alongside the row rules in B09.
+      {
+        kind: "count",
+        selector: "[data-card][aria-selected=\"true\"]",
+        equals: 1,
+        when: "drawer open",
+      },
       {
         kind: "manual",
         note:
@@ -666,12 +702,55 @@ const BLOCKS = [
       "[data-detail-for]",
       "[data-slot]",
     ],
-    states: ["[data-detail-drawer][data-state=\"open\"]", "[data-detail-drawer][data-state=\"closing\"]"],
+    states: [
+      "[data-detail-drawer][data-state=\"open\"]",
+      "[data-detail-drawer][data-state=\"closing\"]",
+      // M2 · data-driven rows. They exist only while a task is open, so they are
+      // asserted in the driven pass (`when: "drawer open"`) below.
+      "[data-attachment-row]",
+      "[data-attachment-name]",
+      "[data-attachment-size]",
+      "[data-activity-row]",
+      "[data-activity-actor]",
+      "[data-activity-ts]",
+    ],
     rules: [
       { kind: "count", selector: "[data-detail-drawer]", equals: 1 },
       { kind: "count", selector: "[data-detail-overlay]", equals: 1 },
       { kind: "domain", selector: "[data-detail-drawer]", attribute: "data-state", subset: DOMAINS.DRAWER_STATE },
       { kind: "domain", selector: "[data-slot]", attribute: "data-slot", subset: DOMAINS.SLOT },
+      // M2 · the drawer's two data-driven streams, asserted where they exist: an
+      // open drawer on a task with attachments and history. The rest state cannot
+      // show them (the body is empty without a task), which is why these carry a
+      // driven precondition rather than riding the default pass.
+      {
+        kind: "count",
+        selector: "[data-attachment-row]",
+        within: "[data-detail-attachments]",
+        min: 1,
+        when: "drawer open",
+      },
+      {
+        kind: "count",
+        selector: "[data-activity-row]",
+        within: "[data-detail-activity]",
+        min: 1,
+        when: "drawer open",
+      },
+      {
+        kind: "count",
+        selector: "[data-activity-ts]",
+        within: "[data-detail-activity]",
+        min: 1,
+        when: "drawer open",
+      },
+      {
+        kind: "count",
+        selector: "[data-i18n=\"attachments.none\"]",
+        within: "[data-detail-attachments]",
+        equals: 0,
+        when: "drawer open",
+      },
       {
         kind: "identical-hookset",
         selector: "[data-detail-for]",
@@ -1467,10 +1546,12 @@ const CONSISTENCY_ITEMS = [
       {
         kind: "manual",
         note:
-          "Every component reads `--color-td-*` (directly, or through `--status-color` / " +
-          "`--pri-color`), takes its shell from daisyUI and its face from a token override. The " +
-          "only literals left in markup are the two `--color-td-*` references inside the Sentinel " +
-          "Watch mark and its favicon.",
+          "Every component reads a token (directly, or through `--status-color` / `--pri-color`), " +
+          "takes its shell from daisyUI and its face from a token override. The app's token names " +
+          "are the web layer's (`--brand-*` for the design's `--color-td-*` inks, lines and " +
+          "surfaces; `--color-primary` for `--color-td-accent`), and the Sentinel Watch mark " +
+          "spells that mapping out in its own two fills — no colour literal enters markup, and " +
+          "the mark's own geometry carries none either.",
       },
     ],
   },
