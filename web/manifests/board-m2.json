@@ -145,6 +145,34 @@
       {
         "name": "r13-assignee-clear",
         "selector": "[data-assignee-clear]"
+      },
+      {
+        "name": "b26-activity-view",
+        "selector": "[data-activity-view]"
+      },
+      {
+        "name": "b26-activity-title",
+        "selector": "[data-activity-title]"
+      },
+      {
+        "name": "b26-activity-filters",
+        "selector": "[data-activity-filters]"
+      },
+      {
+        "name": "b26-activity-feed",
+        "selector": "[data-activity-feed]"
+      },
+      {
+        "name": "b27-waiting-view",
+        "selector": "[data-waiting-view]"
+      },
+      {
+        "name": "b27-waiting-item",
+        "selector": "[data-waiting-item]"
+      },
+      {
+        "name": "b27-waiting-reason",
+        "selector": "[data-waiting-item] [data-waiting-reason]"
       }
     ]
   },
@@ -1638,6 +1666,190 @@
           "selector": "[data-column-body]",
           "count": 7,
           "desc": "每列一个列体 = 列内唯一纵滚容器（B5/B9）"
+        }
+      ]
+    },
+    {
+      "id": "B26",
+      "name": "R12x · B26 Activity 视图 — 静止态结构（驱动半在 dom-smoke 的 B26 段）",
+      "evidence": "design/BLOCKS.md B26；design/activity/DESIGN-activity.md §4/§6/§8/§11；design/DESIGN.md §29.1",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "[data-activity-view]",
+          "count": 1,
+          "desc": "视图根唯一（第四个目的地在侧的第三项）"
+        },
+        {
+          "selector": "[data-activity-view][hidden]",
+          "count": 1,
+          "desc": "静止随文档隐藏：无脚本默认视图仍是 board（R-5）"
+        },
+        {
+          "selector": "[data-activity-title]",
+          "count": 1,
+          "desc": "头部标题唯一"
+        },
+        {
+          "selector": "[data-activity-mark-read]",
+          "count": 1,
+          "desc": "一键已读唯一"
+        },
+        {
+          "selector": "[data-activity-filters]",
+          "count": 1,
+          "desc": "筛选条唯一"
+        },
+        {
+          "scope": "[data-activity-view]",
+          "selector": "[data-activity-filter]",
+          "count": 3,
+          "desc": "三档筛选（actor | event | task）"
+        },
+        {
+          "selector": "[data-activity-filter-count]",
+          "count": 1,
+          "desc": "计数句唯一（aria-live）"
+        },
+        {
+          "selector": "[data-activity-filter-reset]",
+          "count": 1,
+          "desc": "重置唯一"
+        },
+        {
+          "selector": "[data-activity-feed]",
+          "count": 1,
+          "desc": "feed 唯一"
+        },
+        {
+          "selector": "[data-activity-empty]",
+          "count": 2,
+          "desc": "两个空态**常驻**（project / filter），互斥由 hidden 承担 —— 只有 v-if 会让两态在触发前不可观测"
+        },
+        {
+          "scope": "[data-activity-empty][data-activity-empty-kind=\"filter\"]",
+          "selector": "[data-activity-empty-reset]",
+          "count": 1,
+          "desc": "筛选空态自带重置按钮"
+        },
+        {
+          "scope": "[data-activity-view]",
+          "selector": "[data-activity-i18n]",
+          "count": 0,
+          "desc": "无第二套字典载体（R-3：一份 MESSAGES）"
+        },
+        {
+          "selector": "[data-activity-more]",
+          "count": 1,
+          "desc": "`Load older` 在位（是否显现由驱动层判）"
+        },
+        {
+          "scope": "[data-activity-view]",
+          "selector": "[data-activity-day]",
+          "count": 0,
+          "desc": "静止**无行**：账本在视图进入时才被读取（一卡一次回读后合并），这是实现的既知形态而非契约退让"
+        },
+        {
+          "selector": "[data-nav-count=\"activity\"]",
+          "count": 1,
+          "desc": "侧栏活动计数胶囊（B03 扩展）"
+        }
+      ]
+    },
+    {
+      "id": "B27",
+      "name": "R12x · B27 Waiting 队列 — 静止态结构（驱动半在 dom-smoke 的 M1·B27 段）",
+      "evidence": "design/BLOCKS.md B27；design/DESIGN.md §30；design/assets/r12x-waiting/**",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "[data-waiting-view]",
+          "count": 1,
+          "desc": "队列根唯一（第四个目的地）"
+        },
+        {
+          "selector": "[data-waiting-view][hidden]",
+          "count": 1,
+          "desc": "静止随文档隐藏：无脚本默认视图仍是 board（R-5）"
+        },
+        {
+          "selector": "[data-waiting-head]",
+          "count": 1,
+          "desc": "头部唯一"
+        },
+        {
+          "selector": "[data-waiting-title]",
+          "count": 1,
+          "desc": "标题唯一（与 nav.waiting 同一句话，§30.3）"
+        },
+        {
+          "scope": "[data-waiting-head]",
+          "selector": "[data-waiting-count]",
+          "count": 1,
+          "desc": "计数在头部内（空队列时随 hidden 退场）"
+        },
+        {
+          "selector": "[data-waiting-list]",
+          "count": 1,
+          "desc": "队列容器唯一"
+        },
+        {
+          "selector": "[data-waiting-item]",
+          "min": 1,
+          "desc": "至少一条（fixture 的 awaiting 卡恒在）：行数由数据决定，不冻结"
+        },
+        {
+          "scope": "[data-waiting-item]",
+          "selector": "[data-waiting-actor]",
+          "count": 1,
+          "desc": "每行恰一个 actor（谁在等你）"
+        },
+        {
+          "scope": "[data-waiting-item]",
+          "selector": "[data-waiting-reason]",
+          "count": 1,
+          "desc": "每行恰一个 reason 芯片"
+        },
+        {
+          "scope": "[data-waiting-item]",
+          "selector": "[data-waiting-reason][data-waiting-reason-kind]",
+          "count": 1,
+          "desc": "芯片带二值 kind（question | blocked）"
+        },
+        {
+          "scope": "[data-waiting-item]",
+          "selector": "[data-waiting-task]",
+          "count": 1,
+          "desc": "每行恰一个标识符（≤8 字符 + …，全文在 title）"
+        },
+        {
+          "scope": "[data-waiting-item]",
+          "selector": "[data-waiting-task-title]",
+          "count": 1,
+          "desc": "每行恰一个标题"
+        },
+        {
+          "scope": "[data-waiting-item]",
+          "selector": "[data-waiting-since]",
+          "count": 1,
+          "desc": "每行恰一个时刻（datetime 与行 data-since 同值，驱动层判）"
+        },
+        {
+          "scope": "[data-waiting-item]",
+          "selector": "[data-waiting-open]",
+          "count": 1,
+          "desc": "每行恰一个打开按钮（B09 落点）"
+        },
+        {
+          "scope": "[data-waiting-item]",
+          "selector": "[data-waiting-item]",
+          "count": 0,
+          "desc": "行不嵌套行"
+        },
+        {
+          "selector": "[data-waiting-empty]",
+          "count": 1,
+          "desc": "空态常驻（hidden 承担互斥）"
         }
       ]
     }

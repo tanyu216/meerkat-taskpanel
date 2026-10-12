@@ -850,6 +850,666 @@ svg[data-token-icon][hidden] { display: none; }
    `:only-child`, so this reaches the skeleton and nothing else. */
 .td-list-head > :only-child { grid-column: 1 / -1; }
 
+/* ------------------------------------------------------- activity view -- */
+
+/* B26.1 — the filter bar's three `<select>`s wear the field family's caret as an
+   inline glyph. The prototype states the caret as a `background-image` on
+   `.td-select`; this stylesheet may not repeat that data-URI's hex (C08: a
+   six-digit hex lives only in the token block) and a native `<select>` cannot
+   hold a child, so the control sits in a positioning box with the glyph beside
+   it — the division `.td-label-trigger` already uses one row down in the shell.
+   The box adds no geometry of its own: the select keeps its own box. */
+.td-select-caret {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.td-select-caret > .td-icon-sm {
+  position: absolute;
+  inset-inline-end: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--brand-text-3);
+  pointer-events: none;
+}
+
+/* R12x · B26 — the Activity view's own rules. Every value is an existing token:
+   no new hue, no new radius, no new duration — the token set is byte-identical
+   before and after, and each `var(--…)` below already resolves in the product
+   token layer.
+
+   `.td-activity-*` is this view's family; B09's drawer stream owns the shorter
+   `.td-activity` / `.td-activity-ts` names and is untouched by this round. */
+.td-activity-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  gap: 12px;
+  min-height: 0;
+}
+
+/* --- B26.1 header + filters ------------------------------------- */
+.td-activity-head {
+  display: flex;
+  flex: none;
+  align-items: flex-end;
+  gap: 12px;
+  min-width: 0;
+}
+.td-activity-head-text {
+  min-width: 0;
+}
+.td-activity-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--brand-text);
+}
+.td-activity-sub {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--brand-text-3);
+}
+.td-activity-head-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* --- B26.2 feed -------------------------------------------------- */
+.td-activity-feed {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  background-color: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  border-radius: var(--radius-field);
+}
+.td-activity-day {
+  flex: none;
+}
+.td-activity-day-label {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--brand-text-3);
+  background-color: var(--brand-sunken);
+  border-bottom: 1px solid var(--brand-border);
+}
+.td-activity-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.td-activity-row {
+  position: relative;
+  border-top: 1px solid var(--brand-border);
+}
+.td-activity-row[hidden] {
+  display: none;
+}
+.td-activity-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px;
+  cursor: pointer;
+}
+.td-activity-line:hover {
+  background-color: var(--brand-hover);
+}
+.td-activity-tick {
+  flex: none;
+  width: 2px;
+  height: 14px;
+  background-color: var(--brand-text-4);
+  border-radius: var(--radius-full);
+}
+.td-activity-row[data-activity-unread] .td-activity-tick {
+  background-color: var(--brand-accent);
+}
+/* A burst row is deliberately lighter than the events it folds: the
+   rail drops to the hairline colour and the count carries the weight. */
+.td-activity-row[data-activity-burst] .td-activity-tick {
+  background-color: var(--brand-border-strong);
+}
+.td-activity-actor {
+  flex: none;
+  width: 76px;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--brand-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.td-activity-actor[data-assignee-kind="agent"] {
+  color: var(--brand-text-2);
+}
+.td-activity-sentence {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--brand-text-2);
+  white-space: nowrap;
+}
+.td-activity-transition {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--brand-text-2);
+}
+.td-activity-transition .td-status-dot {
+  width: 6px;
+  height: 6px;
+}
+.td-activity-task {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.td-activity-task-id {
+  flex: none;
+  font-size: 11px;
+  color: var(--brand-text-3);
+}
+.td-activity-task:hover .td-activity-task-id {
+  color: var(--brand-accent);
+  text-decoration: underline;
+}
+/* The baseline one-line clamp — the same treatment C4 gives a card
+   title. Deliberately NOT `text-overflow: ellipsis`. */
+.td-activity-task-title {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--brand-text);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+.td-activity-at {
+  flex: none;
+  width: 56px;
+  font-size: 11px;
+  color: var(--brand-text-3);
+  text-align: right;
+}
+.td-activity-open {
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+
+/* --- B26.4 burst ------------------------------------------------ */
+.td-activity-burst-count {
+  flex: none;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--brand-text-2);
+  background-color: var(--brand-sunken);
+  border: 1px solid var(--brand-border);
+  border-radius: var(--radius-full);
+}
+
+/* --- B26.2 L3 detail (native <details>, usable with JS off) ------
+   The disclosure is a native <details> and its <summary> is one more
+   item on the 30px line, so a *collapsed* row costs exactly 30px —
+   the density target of §7, which a second line under every row
+   would halve. Its body is positioned against the row, so opening it
+   never reflows the feed: the change list is a panel attached to the
+   row that opened it, not a second line inside every row. */
+.td-activity-detail {
+  flex: none;
+}
+.td-activity-detail > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--brand-text-3);
+  white-space: nowrap;
+  cursor: pointer;
+  list-style: none;
+}
+.td-activity-detail > summary::-webkit-details-marker {
+  display: none;
+}
+.td-activity-detail > summary::before {
+  content: "▸";
+  font-size: 9px;
+}
+.td-activity-detail[open] > summary::before {
+  content: "▾";
+}
+.td-activity-detail > summary:hover {
+  color: var(--brand-text);
+}
+.td-activity-changes {
+  position: absolute;
+  top: 100%;
+  right: 10px;
+  left: 104px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 6px 10px;
+  list-style: none;
+  font-size: 11px;
+  color: var(--brand-text-2);
+  background-color: var(--brand-surface);
+  border: 1px solid var(--brand-border-strong);
+  border-radius: var(--radius-field);
+  box-shadow: var(--shadow-pop);
+}
+/* Chromium keeps a closed <details>' content in the layout tree, so
+   the panel is taken out of layout explicitly instead of being left
+   to the UA — otherwise a collapsed row still contributes the panel's
+   box to the page's geometry. */
+.td-activity-detail:not([open]) > .td-activity-changes {
+  display: none;
+}
+.td-activity-change {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.td-activity-change-field {
+  flex: none;
+  width: 72px;
+  color: var(--brand-text-3);
+}
+.td-activity-change-value {
+  min-width: 0;
+}
+
+/* --- B26.3 unread divider --------------------------------------- */
+.td-activity-unread-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px;
+  background-color: var(--brand-accent-soft);
+}
+.td-activity-unread-divider[hidden] {
+  display: none;
+}
+.td-activity-unread-rule {
+  flex: 1 1 auto;
+  height: 1px;
+  background-color: var(--brand-accent);
+  opacity: 0.45;
+}
+.td-activity-unread-text {
+  flex: none;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--brand-accent);
+}
+/* The divider's own pill, not `.td-count`: `.td-count` is taken out of
+   the flow at ≤1023px for the sake of the 64px sidebar rail, and this
+   one lives in the main area where there is room for it. */
+.td-activity-unread-count {
+  flex: none;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--brand-accent);
+  background-color: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  border-radius: var(--radius-full);
+}
+
+/* --- B26.5 / B26.6 --------------------------------------------- */
+/* `margin: auto` centres the block in the feed when it is the only
+   thing left standing — a 12-line explanation pinned to the top of a
+   600px empty card reads as a rendering failure, not as an answer. */
+.td-activity-empty {
+  flex: none;
+  margin: auto 12px;
+}
+.td-activity-empty[hidden] {
+  display: none;
+}
+.td-activity-foot {
+  display: flex;
+  flex: none;
+  justify-content: center;
+}
+.td-activity-foot[hidden] {
+  display: none;
+}
+.td-activity-day[hidden] {
+  display: none;
+}
+
+/* The unread pill rides on B03's existing `.badge`/`.td-count`, whose
+   `display` would otherwise out-rank the `hidden` attribute. Zero
+   hides the pill; the rule `waiting` already follows. */
+[data-nav-count][hidden] {
+  display: none;
+}
+
+/* --- narrow band -------------------------------------------------
+   Six fields on one 30px line need roughly 560px of track. Below
+   761px the line keeps its fields and stacks the task onto a second
+   line instead of truncating the title to nothing — the one place
+   this design trades the 30px rhythm for legibility. */
+@media (max-width: 760px) {
+  .td-activity-line {
+    height: auto;
+    min-height: 30px;
+    flex-wrap: wrap;
+    padding: 6px 10px;
+    row-gap: 2px;
+  }
+  .td-activity-actor {
+    order: 1;
+    width: auto;
+  }
+  .td-activity-tick {
+    order: 0;
+  }
+  .td-activity-sentence {
+    order: 2;
+  }
+  .td-activity-burst-count {
+    order: 3;
+  }
+  .td-activity-at {
+    order: 3;
+    width: auto;
+    margin-left: auto;
+  }
+  .td-activity-open {
+    order: 4;
+  }
+  .td-activity-detail {
+    order: 5;
+  }
+  .td-activity-task {
+    order: 6;
+    flex-basis: 100%;
+    padding-left: 10px;
+  }
+  .td-activity-changes {
+    left: 18px;
+  }
+  .td-activity-change-field {
+    width: 56px;
+  }
+}
+
+/* ---- waiting view ---- */
+
+/* R12x — the same rule for B27's reason chip: the kind of wait is an
+   attribute, its colour is a variable, and the component that draws the dot
+   never names a colour. Both kinds read a status token, because the reason
+   *is* the task's own state — a block, or a delivery waiting on an answer —
+   so no hue enters the sheet that was not already in it. */
+[data-waiting-reason-kind="question"] {
+  --status-color: var(--brand-st-review);
+}
+[data-waiting-reason-kind="blocked"] {
+  --status-color: var(--brand-st-blocked);
+}
+
+/* R12x · B27 — the Waiting view's own rules. Its row shell is B26's by
+   measurement, not by class: the same 30px line, the same 12px/11px type,
+   the same 10px gutter — spelled in this family's own names (`.td-waiting-*`)
+   so either view can move without dragging the other. Every value below is an
+   existing token: no new hue, no new radius, no new duration.
+
+   One deliberate difference from B26's rows: **no tick**. That rail exists to
+   say "unread" or "a folded burst", and every item in this queue is unread by
+   definition, so the rail would carry no information. What carries the kind
+   here is the reason chip. */
+.td-waiting-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  gap: 12px;
+  min-height: 0;
+}
+
+/* --- B27.2 header ------------------------------------------------- */
+.td-waiting-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.td-waiting-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--brand-text);
+}
+/* The tally rides the header's far end and reads as a count, not as an
+   action — the neutral pill B26 gives a folded burst, for the same reason:
+   a number about what is below it, not something to press. */
+.td-waiting-count {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  margin-left: auto;
+  height: 18px;
+  padding: 0 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--brand-text-2);
+  background-color: var(--brand-sunken);
+  border: 1px solid var(--brand-border);
+  border-radius: var(--radius-full);
+}
+.td-waiting-count[hidden] {
+  display: none;
+}
+
+/* --- B27.1 the queue ---------------------------------------------- */
+/* The box hugs its rows and only scrolls once they outgrow the view: a queue
+   of five items inside 850px of border reads as an empty panel, not as a
+   list. `flex: 0 1 auto` + `min-height: 0` is what makes it both hug and
+   shrink — with `overflow-y` doing the rest when the queue is long. */
+.td-waiting-list {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  list-style: none;
+  background-color: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  border-radius: var(--radius-field);
+}
+/* Only one of the queue and the empty state is ever on screen, so each of
+   the two takes its box out of the layout when hidden. `.td-empty`'s own
+   `display` would otherwise out-rank the attribute. */
+.td-waiting-list[hidden] {
+  display: none;
+}
+.td-waiting-item {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px;
+  cursor: pointer;
+  border-top: 1px solid var(--brand-border);
+}
+/* the box's own edge is the rule above the first row */
+.td-waiting-item:first-child {
+  border-top: 0;
+}
+.td-waiting-item:hover {
+  background-color: var(--brand-hover);
+}
+.td-waiting-actor {
+  flex: none;
+  width: 76px;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--brand-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.td-waiting-actor[data-assignee-kind="agent"] {
+  color: var(--brand-text-2);
+}
+/* The reason chip: what kind of wait this is. Its dot is coloured through
+   the one-attribute → one-custom-property rule the `[data-waiting-reason-kind]`
+   bindings at the top of this section state — declared beside the
+   `[data-status]` bindings in this file — so this component never names a
+   colour. */
+.td-waiting-reason {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--brand-text-2);
+  background-color: var(--brand-sunken);
+  border: 1px solid var(--brand-border);
+  border-radius: var(--radius-selector);
+}
+.td-waiting-reason::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  background-color: var(--status-color);
+  border-radius: var(--radius-full);
+}
+/* The identifier and its title travel together — one cell that grows, the
+   shape B26's own row gives the pair — so the narrow band can move them to a
+   second line in one piece instead of crushing the title to nothing. */
+.td-waiting-task-cell {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.td-waiting-task {
+  flex: none;
+  font-size: 11px;
+  color: var(--brand-text-3);
+}
+.td-waiting-task-title {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--brand-text);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+.td-waiting-since {
+  flex: none;
+  width: 56px;
+  font-size: 11px;
+  color: var(--brand-text-3);
+  text-align: right;
+}
+.td-waiting-open {
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+
+/* --- B27.3 the empty state --------------------------------------- */
+/* `margin: auto` centres it in the view when the queue is gone — the same
+   answer B26 gives an empty feed: one line pinned to the top of a tall box
+   reads as a fault, not as an answer. It is capped and centred horizontally
+   because here it is the only box in the main area: a dashed rule stretched
+   across 1300px is the shape of a drop target, not the shape of an answer. */
+.td-waiting-empty {
+  flex: none;
+  align-self: center;
+  width: 100%;
+  max-width: 420px;
+  margin: auto 0;
+}
+.td-waiting-empty[hidden] {
+  display: none;
+}
+
+/* --- narrow band --------------------------------------------------
+   Below 761px the row keeps its first line (who, what kind, how long, the
+   way in) and moves the identifier and its title to a second line rather
+   than squeezing the title away — the same trade B26 makes, at the same
+   breakpoint, for the same reason. */
+@media (max-width: 760px) {
+  .td-waiting-item {
+    height: auto;
+    min-height: 30px;
+    flex-wrap: wrap;
+    padding: 6px 10px;
+    row-gap: 2px;
+  }
+  .td-waiting-actor {
+    order: 1;
+    width: auto;
+  }
+  .td-waiting-reason {
+    order: 2;
+  }
+  .td-waiting-since {
+    order: 3;
+    width: auto;
+    margin-left: auto;
+  }
+  .td-waiting-open {
+    order: 4;
+  }
+  .td-waiting-task-cell {
+    order: 5;
+    flex-basis: 100%;
+  }
+}
+
 /* ------------------------------------------------------- dialog dark edge -- */
 
 /* R8 ① — in the dark the create dialogs' panel edge is the **strong** hairline.

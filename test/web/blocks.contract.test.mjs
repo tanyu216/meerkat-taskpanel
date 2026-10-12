@@ -67,7 +67,10 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const MODULE_PATH = resolve(HERE, "blocks.contract.mjs");
 
 /** The inventory BLOCKS.md defines: 25 numbered blocks plus 10 consistency items. */
-const EXPECTED_BLOCK_IDS = Array.from({ length: 25 }, (_, i) => `B${String(i + 1).padStart(2, "0")}`);
+// R12x adds B26 (the Activity view) and B27 (the Waiting view): the inventory
+// grows by two, exactly as C6 grew the nav domain, and the series stays
+// continuous with no gap or duplicate.
+const EXPECTED_BLOCK_IDS = Array.from({ length: 27 }, (_, i) => `B${String(i + 1).padStart(2, "0")}`);
 const EXPECTED_CONSISTENCY_IDS = Array.from({ length: 10 }, (_, i) => `C${String(i + 1).padStart(2, "0")}`);
 
 /** The three kinds the plan names, plus the vocabulary this contract adds around them. */

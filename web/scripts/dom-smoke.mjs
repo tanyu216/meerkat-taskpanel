@@ -64,7 +64,11 @@ const MIME = {
 
 function fixture(projectId, status, overrides = {}) {
   return {
-    id: overrides.id ?? `td_${projectId}_${status}`,
+    // The internal id is derived from the **identifier**, not from project+status:
+    // two cards share a status, and an id they also shared would make every
+    // `task_id` lookup in the fixture ambiguous (the activity ledger resolves each
+    // row's task through that id, so a collision silently mislabels rows).
+    id: overrides.id ?? `td_${(overrides.identifier ?? "TD-1").replace(/[^A-Za-z0-9]/g, "_")}`,
     identifier: overrides.identifier ?? "TD-1",
     project_id: projectId,
     title: overrides.title ?? `Task in ${status}`,
@@ -190,14 +194,47 @@ export function fixtureApi() {
       { id: "cm-2", task_id: "TD-13", kind: "decision", author_kind: "human", author_id: "Terry", body: "范围确认：这一版不做第 8 列。后面还有一句不该出现在摘要里。", refs: [], created_at: "2026-10-12T00:02:00Z" },
     ],
   };
-  // M2 — the audit trail the drawer's activity stream renders (B09). One row per
+  // M2 — the audit trail the drawer's activity stream renders (B09): one row per
   // sentence the catalogue names plus the move's own `from → to` line, so both
   // rungs of the relative-time ladder (`…h ago` and `…d ago`) are exercised.
+  //
+  // R12x · B26 — the same array is the Activity feed's raw material, so it also
+  // covers what that view's rules need: several calendar days, both actor kinds,
+  // one burst (three field edits by one actor on one card inside five minutes),
+  // two rows of pure noise that must **not** be admitted, and a fifth day beyond
+  // the first page of day groups so `Load older` has something to unfold.
+  //
+  // Stamps are relative to the run's own clock, not fixed: the feed groups by
+  // *local calendar day* and heads those days `Today` / `Yesterday`, so a fixture
+  // pinned to a date would silently change meaning tomorrow.
+  const minutes = (n) => new Date(Date.now() - n * 60_000).toISOString();
   const activities = [
-    { id: "act-1", task_id: "TD-1", actor_kind: "human", actor_id: "Terry", event: "task_created", changes: {}, revision: 1, created_at: "2026-10-09T08:00:00Z" },
-    { id: "act-2", task_id: "TD-1", actor_kind: "agent", actor_id: "jobs", event: "task_claimed", changes: {}, revision: 2, created_at: "2026-10-10T08:00:00Z" },
-    { id: "act-3", task_id: "TD-1", actor_kind: "human", actor_id: "Terry", event: "task_moved", changes: { from: "backlog", to: "todo" }, revision: 3, created_at: "2026-10-11T08:00:00Z" },
-    { id: "act-4", task_id: "TD-1", actor_kind: "agent", actor_id: "jobs", event: "comment_added", changes: {}, revision: 4, created_at: "2026-10-12T02:00:00Z" },
+    // TD-1 · the drawer's stream (B09) — untouched, one row per sentence.
+    { id: "act-1", task_id: "td_TD_1", actor_kind: "human", actor_id: "Terry", event: "task_created", changes: { identifier: "TD-1", status: "backlog" }, revision: 1, created_at: minutes(30 * 60) },
+    { id: "act-2", task_id: "td_TD_1", actor_kind: "agent", actor_id: "jobs", event: "task_claimed", changes: { from: "backlog", to: "backlog" }, revision: 2, created_at: minutes(26 * 60) },
+    { id: "act-3", task_id: "td_TD_1", actor_kind: "human", actor_id: "Terry", event: "task_moved", changes: { from: "backlog", to: "todo" }, revision: 3, created_at: minutes(8 * 60) },
+    { id: "act-4", task_id: "td_TD_1", actor_kind: "agent", actor_id: "jobs", event: "comment_added", changes: { commentId: "cm-1", kind: "discuss" }, revision: 4, created_at: minutes(4 * 60) },
+    // Today — one row per admitted family, plus the burst and the two noise rows.
+    { id: "act-5", task_id: "td_TD_7", actor_kind: "human", actor_id: "Terry", event: "comment_added", changes: { commentId: "cm-2", kind: "decision" }, revision: 5, created_at: minutes(12) },
+    { id: "act-6", task_id: "td_TD_13", actor_kind: "human", actor_id: "Terry", event: "comment_added", changes: { commentId: "cm-3", kind: "decision" }, revision: 6, created_at: minutes(25) },
+    { id: "act-7", task_id: "td_TD_5", actor_kind: "agent", actor_id: "jobs", event: "task_delivered", changes: { from: "in_progress", to: "in_review", round: 2, reportId: "rp-2", deliveryRound: 2 }, revision: 7, created_at: minutes(40) },
+    { id: "act-8", task_id: "td_TD_3", actor_kind: "agent", actor_id: "linus", event: "task_moved", changes: { from: "todo", to: "in_progress", deliveryRound: 1 }, revision: 8, created_at: minutes(90) },
+    // The burst: one actor, one card, three field edits inside five minutes.
+    { id: "act-9", task_id: "td_TD_6", actor_kind: "agent", actor_id: "jobs", event: "task_updated", changes: { fields: ["assignee"], dictionaries: [{ dictionary: "assignee", id: "a2", displayName: "jobs", action: "existing" }] }, revision: 9, created_at: minutes(200) },
+    { id: "act-10", task_id: "td_TD_6", actor_kind: "agent", actor_id: "jobs", event: "task_updated", changes: { fields: ["labels"], labels: [{ norm: "perf", displayName: "perf", color: null, action: "existing" }] }, revision: 10, created_at: minutes(202) },
+    { id: "act-11", task_id: "td_TD_6", actor_kind: "agent", actor_id: "jobs", event: "task_updated", changes: { fields: ["priority"] }, revision: 11, created_at: minutes(203) },
+    // Noise: a heartbeat and a session registration. Neither may reach the feed.
+    { id: "act-noise-1", task_id: "td_TD_5", actor_kind: "agent", actor_id: "jobs", event: "task_heartbeat", changes: {}, revision: 12, created_at: minutes(5) },
+    { id: "act-noise-2", task_id: "td_TD_5", actor_kind: "agent", actor_id: "jobs", event: "session_registered", changes: { sessionId: "s-1" }, revision: 13, created_at: minutes(6) },
+    // Yesterday and older — the feed's other day groups.
+    { id: "act-12", task_id: "td_TD_8", actor_kind: "agent", actor_id: "elon", event: "task_created", changes: { identifier: "TD-8", status: "in_review" }, revision: 14, created_at: minutes(25 * 60) },
+    { id: "act-13", task_id: "td_TD_9", actor_kind: "agent", actor_id: "elon", event: "relation_added", changes: { relationId: "rel-1", type: "depends_on", source: "td_TD_9", target: "td_TD_8" }, revision: 15, created_at: minutes(27 * 60) },
+    { id: "act-14", task_id: "td_TD_11", actor_kind: "human", actor_id: "Terry", event: "task_moved", changes: { from: "done", to: "canceled" }, revision: 16, created_at: minutes(30 * 60) },
+    { id: "act-15", task_id: "td_TD_4", actor_kind: "agent", actor_id: "linus", event: "task_claimed", changes: { from: "todo", to: "in_progress" }, revision: 17, created_at: minutes(52 * 60) },
+    { id: "act-16", task_id: "td_TD_12", actor_kind: "human", actor_id: "Terry", event: "report_waived", changes: { from: "in_review", to: "done", round: 1, reason: "evidence attached to the card" }, revision: 18, created_at: minutes(56 * 60) },
+    { id: "act-17", task_id: "td_TD_2", actor_kind: "agent", actor_id: "jobs", event: "task_updated", changes: { fields: ["title"] }, revision: 19, created_at: minutes(58 * 60) },
+    // Beyond the first page of day groups (three days), so `Load older` unfolds.
+    { id: "act-18", task_id: "td_TD_10", actor_kind: "human", actor_id: "Terry", event: "task_created", changes: { identifier: "TD-10", status: "done" }, revision: 20, created_at: minutes(120 * 60) },
   ];
   return { projects, orderDebug, tasks, entries, labels, comments, activities };
 }
@@ -234,8 +271,26 @@ export function startServer({ port = 0 } = {}) {
     const commentsFor = /^\/api\/v1\/tasks\/([^/]+)\/comments$/.exec(path);
     if (commentsFor) return ok({ comments: data.comments[decodeURIComponent(commentsFor[1])] ?? [] });
     const activitiesFor = /^\/api\/v1\/tasks\/([^/]+)\/activities$/.exec(path);
-    if (activitiesFor) return ok({ task_id: decodeURIComponent(activitiesFor[1]), activities: data.activities });
-    if (path.startsWith("/api/v1/tasks/")) return ok({ task: data.tasks[0], report_waivers: [] });
+    if (activitiesFor) {
+      // Scoped to the card, like the real route: the Activity view reads one card
+      // at a time and merges, so a fixture that answered every request with the
+      // whole trail would make the ledger look right for the wrong reason.
+      const ref = decodeURIComponent(activitiesFor[1]);
+      const task = data.tasks.find((entry) => entry.identifier === ref || entry.id === ref);
+      return ok({
+        task_id: task?.id ?? ref,
+        activities: data.activities.filter((activity) => activity.task_id === task?.id),
+      });
+    }
+    if (path.startsWith("/api/v1/tasks/")) {
+      // Resolve the card like the real route does. Answering every ref with the
+      // first fixture card made the drawer *look* right while naming the wrong
+      // task — the Activity view's rows land on this surface, so the ref has to
+      // resolve for "the row opened the card it names" to mean anything.
+      const ref = decodeURIComponent(path.slice("/api/v1/tasks/".length).split("/")[0]);
+      const task = data.tasks.find((entry) => entry.identifier === ref || entry.id === ref) ?? data.tasks[0];
+      return ok({ task, report_waivers: [] });
+    }
     if (path === "/api/v1/assignees" || path === "/api/v1/reporters") return ok({ entries: data.entries });
     if (path === "/api/v1/labels") return ok({ labels: data.labels });
     if (path.startsWith("/api/v1/")) return ok({});
@@ -530,6 +585,13 @@ export async function run() {
     // The `loading` half of R9 ③ — evaluated in its own section below, with the
     // read held open.
     const listLoadingRules = EVALUATED_RULES.filter((e) => e.rule.when === "list loading").map((e) => ({ block: e.block, rule: e.rule }));
+    // R12x · B26 — the feed's rules are evaluated with the view **open**, in that
+    // section below: at rest the ledger has not been read yet, so a row count
+    // taken here would measure an empty feed rather than the contract.
+    const activityRules = EVALUATED_RULES.filter((e) => e.rule.when === "activity view").map((e) => ({ block: e.block, rule: e.rule }));
+    // R12x · B27 — the queue's rules are read with *that* view open, in the M1
+    // section below (the two views are mutually exclusive, so it cannot be both).
+    const waitingRules = EVALUATED_RULES.filter((e) => e.rule.when === "waiting view").map((e) => ({ block: e.block, rule: e.rule }));
 
     const boardResults = await page.evaluate(evaluateRules, boardRules);
     await page.click('[data-view="list"]');
@@ -2429,19 +2491,18 @@ export async function run() {
     await page.waitForTimeout(150);
 
 
-    // ---- M1 · the 「等你回复」surface ----------------------------------------
+    // ---- M1 · R12x · B27 — the 「等你回复」queue -------------------------------
     //
-    // The design's §8 list, evaluated where it has to be evaluated: in a browser,
+    // The block's own list, evaluated where it has to be evaluated: in a browser,
     // against computed style and live DOM. Everything here is a selector, a
-    // computed value or a text comparison — never "it looks right".
+    // computed value or a text comparison — never "it looks right". The badge
+    // half is M1's (the board still wears it); the queue half is B27's.
     const m1 = await page.evaluate(() => {
       const badge = document.querySelector("[data-card-waiting]");
       const awaitingCard = document.querySelector('[data-card][data-identifier="TD-13"]');
       const countPill = document.querySelector('[data-nav-count="waiting"]');
-      const rows = [...document.querySelectorAll("[data-waiting-card]")];
-      const summary = document.querySelector("[data-waiting-payload-summary]");
-      const details = document.querySelector("[data-waiting-payload-details]");
-      const full = document.querySelector("[data-waiting-payload-full]");
+      const rows = [...document.querySelectorAll("[data-waiting-item]")];
+      const item = rows[0] ?? null;
       // Resolve the accent the same way the stylesheet does, so the comparison is
       // value-to-value rather than hex-vs-rgb.
       const probe = document.createElement("span");
@@ -2477,36 +2538,25 @@ export async function run() {
         countText: countPill?.textContent?.trim() ?? null,
         countHidden: countPill ? countPill.hasAttribute("hidden") : null,
         rows: rows.length,
-        rowStatuses: rows.map((row) => row.getAttribute("data-status")),
-        summary: summary?.textContent?.trim() ?? null,
-        detailsTag: details?.tagName ?? null,
-        detailsOpen: details ? details.hasAttribute("open") : null,
-        full: full?.textContent?.trim() ?? null,
-        fullMaxWidth: full ? getComputedStyle(full).maxWidth : null,
-        fullWhiteSpace: full ? getComputedStyle(full).whiteSpace : null,
-        // §8-14 caps the payload at `max-width: 68ch`. A browser reports
-        // `maxWidth` as a resolved px length, never in `ch`, so the literal has to
-        // be resolved in the *element's own* font (font-size included) for the
-        // comparison to mean anything.
-        maxChPx: (() => {
-          if (!full) return null;
-          const cs = getComputedStyle(full);
-          const probe = document.createElement("span");
-          probe.style.position = "absolute";
-          probe.style.visibility = "hidden";
-          probe.style.whiteSpace = "pre";
-          probe.style.fontFamily = cs.fontFamily;
-          probe.style.fontSize = cs.fontSize;
-          probe.style.fontWeight = cs.fontWeight;
-          probe.style.fontStyle = cs.fontStyle;
-          probe.style.fontStretch = cs.fontStretch;
-          probe.style.letterSpacing = cs.letterSpacing;
-          probe.textContent = "0".repeat(68);
-          document.body.appendChild(probe);
-          const width = probe.getBoundingClientRect().width;
-          probe.remove();
-          return width;
-        })(),
+        // B27.1 — the six fields a row owes, read off the one row this fixture
+        // has: actor (+ kind), reason (+ kind), identifier (with the whole value
+        // on `title`), title, the stamp, the opener.
+        itemTask: item?.getAttribute("data-task") ?? null,
+        itemSince: item?.getAttribute("data-since") ?? null,
+        actor: item?.querySelector("[data-waiting-actor]")?.textContent?.trim() ?? null,
+        actorKind: item?.querySelector("[data-waiting-actor]")?.getAttribute("data-assignee-kind") ?? null,
+        reason: item?.querySelector("[data-waiting-reason]")?.textContent?.trim() ?? null,
+        reasonKind: item?.querySelector("[data-waiting-reason]")?.getAttribute("data-waiting-reason-kind") ?? null,
+        task: item?.querySelector("[data-waiting-task]")?.textContent?.trim() ?? null,
+        taskTitleAttr: item?.querySelector("[data-waiting-task]")?.getAttribute("title") ?? null,
+        taskTitle: item?.querySelector("[data-waiting-task-title]")?.textContent?.trim() ?? null,
+        sinceDatetime: item?.querySelector("[data-waiting-since]")?.getAttribute("datetime") ?? null,
+        sinceText: item?.querySelector("[data-waiting-since]")?.textContent?.trim() ?? null,
+        openLabel: item?.querySelector("[data-waiting-open]")?.getAttribute("aria-label") ?? null,
+        // B27.2 — the head's name and its tally.
+        headTitle: document.querySelector("[data-waiting-title]")?.textContent?.trim() ?? null,
+        headCount: document.querySelector("[data-waiting-count]")?.textContent?.trim() ?? null,
+        headCountHidden: document.querySelector("[data-waiting-count]")?.hasAttribute("hidden") ?? null,
         // §8-09(a): no freshness/claim affordance anywhere inside a card.
         freshnessHooks: document.querySelectorAll(
           "[data-card] [data-card-agent-stale], [data-card] [data-card-claimable], [data-card] [data-freshness], [data-card] [data-stale]",
@@ -2545,13 +2595,19 @@ export async function run() {
         viewVisible: section ? !section.hasAttribute("hidden") : false,
         boardHidden: boardView ? boardView.hasAttribute("hidden") : false,
         boardPainted: boardView ? boardView.getClientRects().length > 0 : false,
-        emptyShown: !!document.querySelector("[data-waiting-empty]"),
+        // B27.3 — the empty state is *resident*: "shown" means the attribute is
+        // off, not that the node exists.
+        emptyShown: document.querySelector("[data-waiting-empty]")?.hasAttribute("hidden") === false,
+        // §29.2 — the board's filter bar stands down here too.
+        filtersPainted: (document.querySelector("[data-filters]")?.getClientRects().length ?? 0) > 0,
       };
     });
+    // The contract's own B27 rules, read while the queue is on screen.
+    const waitingResults = await page.evaluate(evaluateRules, waitingRules);
     await page.click('[data-nav-item="board"]');
     await page.waitForTimeout(120);
 
-    const FIRST_SENTENCE = "范围确认：这一版不做第 8 列。";
+    const AWAITING_COMMENT_AT = "2026-10-12T00:02:00Z";
     const m1Failures = [];
     const check = (ok, message) => { if (!ok) m1Failures.push(message); };
     check(m1.boardBadges === 1, `board [data-card-waiting] count ${m1.boardBadges} !== 1`);
@@ -2567,30 +2623,479 @@ export async function run() {
     check(m1.navItems.length === 4 && m1.navItems.includes("waiting"), `nav items ${m1.navItems.join(",")}`);
     check(m1.countText === "1", `count pill ${m1.countText} !== 1`);
     check(m1.countHidden === false, "a non-zero count must not be hidden");
-    check(m1.rows === 1, `[data-waiting-card] count ${m1.rows} !== 1`);
-    check(m1.rowStatuses.every((s) => s === "awaiting"), `row statuses ${m1.rowStatuses.join(",")}`);
-    check(m1.summary === FIRST_SENTENCE, `summary ${JSON.stringify(m1.summary)}`);
-    check(m1.detailsTag === "DETAILS", `payload disclosure tag ${m1.detailsTag}`);
-    check(m1.detailsOpen === false, "the payload disclosure must be closed by default");
-    check((m1.full ?? "").includes("不该出现在摘要里"), "the full text must be the comment verbatim");
-    check(m1.fullWhiteSpace === "pre-wrap", `payload white-space ${m1.fullWhiteSpace}`);
-    check(
-      m1.maxChPx !== null && Number.parseFloat(m1.fullMaxWidth) <= m1.maxChPx + 0.5,
-      `payload max-width ${m1.fullMaxWidth} exceeds 68ch (${m1.maxChPx}px at this font)`,
-    );
     check(m1.freshnessHooks === 0, "no freshness hook may exist inside a card");
     check(!awaitingMenuLabels.some((label) => /In Review|Done|Blocked/i.test(label)), `awaiting menu offers ${awaitingMenuLabels.join("|")}`);
     check(awaitingMenuLabels.some((label) => /Canceled/i.test(label)), "awaiting menu must offer Canceled");
+
+    // B27 — the queue. One row per awaiting card, the six fields it owes, the
+    // stamp it carries stated twice (attribute + `datetime`), and the head's own
+    // name and tally.
+    check(m1.rows === 1, `[data-waiting-item] count ${m1.rows} !== 1`);
+    check(m1.itemTask === "TD-13", `the row names ${m1.itemTask}, expected TD-13`);
+    check(m1.actor === "linus" && m1.actorKind === "agent", `actor ${m1.actor} (${m1.actorKind}) — the card's assignee waits`);
+    check(m1.reason === "Question" && m1.reasonKind === "question", `reason ${m1.reason} (${m1.reasonKind})`);
+    check(m1.task === "TD-13" && m1.taskTitleAttr === "TD-13", `task cell ${m1.task} / title ${m1.taskTitleAttr}`);
+    check(m1.taskTitle === "Confirm the release scope before the cut", `task title ${m1.taskTitle}`);
+    check(m1.itemSince === AWAITING_COMMENT_AT, `the row's since ${m1.itemSince} !== the triggering comment ${AWAITING_COMMENT_AT}`);
+    check(m1.sinceDatetime === m1.itemSince, `stamp datetime ${m1.sinceDatetime} !== the row's own ${m1.itemSince}`);
+    check(/^\d+[dhm] ago$/.test(m1.sinceText ?? ""), `stamp text ${m1.sinceText}`);
+    check((m1.openLabel ?? "").startsWith("Open "), `opener aria-label ${m1.openLabel}`);
+    check(m1.headTitle === "Waiting on me", `head title ${m1.headTitle}`);
+    check(m1.headCount === "1 waiting on you", `head count ${m1.headCount}`);
+    check(m1.headCountHidden === false, "a non-empty queue must show its tally");
     check(waitingView.current === "page", "the waiting nav item must carry aria-current");
     check(waitingView.viewVisible === true, "the waiting view must be visible");
     check(waitingView.boardHidden === true, "the board view must be hidden while the waiting view is up");
     check(waitingView.boardPainted === false, "the board view must not be painted while the waiting view is up");
     check(waitingView.emptyShown === false, "a non-empty view must not show the empty state");
+    check(waitingView.filtersPainted === false, "the board's filter bar must stand down on the queue");
 
     // The in-flight list rules are answered inside the r9 section's own window
     // (the read is held open there), so their records are folded in here and
     // every declared rule is counted exactly once.
-    const results = [...boardResults, ...listResults, ...railResults, ...panelResults, ...drawerResults, ...listEn.loadingResults];
+    // ---- R12x · B26 — the Activity view ---------------------------------------
+    //
+    // Authority: `design/activity/DESIGN-activity.md` §3 admission / §4 levels /
+    // §5 folding / §6 interaction / §8 empty states, block contract
+    // `design/BLOCKS.md` B26. These are the rules only a live DOM can answer —
+    // routing, the count, the three filters, the fold's window, the boundary, the
+    // keyboard and the drawer the rows land on. The static half of B26 lives in
+    // the contract (`test/web/blocks.contract.mjs`).
+    const b26Failures = [];
+    const b26Check = (ok, message) => { if (!ok) b26Failures.push(message); };
+
+    /** BLOCKS.md B26's closed vocabulary — the 35 names, no more (sorted). */
+    const B26_HOOK_NAMES = [
+      "actor", "at", "burst", "burst-count", "burst-count-label", "burst-item", "change", "day", "day-kind",
+      "day-label", "detail", "empty", "empty-kind", "empty-reset", "feed", "filter", "filter-count",
+      "filter-reset", "filters", "group", "line", "mark-read", "more", "open", "page", "row", "sentence",
+      "task", "task-id", "task-title", "title", "unread", "unread-count", "unread-divider", "view",
+    ];
+
+    // A press on a nav item used to answer with a toast; nothing may raise one now.
+    const toastSeatsBefore = await page.evaluate(() => document.querySelectorAll("[data-toast-region] > *").length);
+    await page.click('[data-nav-item="activity"]');
+    await page.waitForTimeout(300);
+
+    // The contract's own B26 rules, read here and nowhere else: the view is open
+    // and the ledger has been read.
+    const activityResults = await page.evaluate(evaluateRules, activityRules);
+
+    const b26Rest = await page.evaluate(() => {
+      const root = document.querySelector("[data-activity-view]");
+      const rows = [...root.querySelectorAll("[data-activity-row]")];
+      const days = [...root.querySelectorAll("[data-activity-day]")];
+      const stampOf = (day) => day.querySelectorAll("[data-activity-row]").length;
+      const within = (node) => {
+        const owner = node.closest("[data-activity-day]");
+        return owner !== null && days.includes(owner) ? 1 : 0;
+      };
+      const countText = root.querySelector("[data-activity-filter-count]")?.textContent?.trim() ?? "";
+      const pill = document.querySelector('[data-nav-count="activity"]');
+      return {
+        rootHidden: root.hasAttribute("hidden"),
+        rootPainted: root.getClientRects().length > 0,
+        navCurrents: [...document.querySelectorAll("[data-nav] [data-nav-item][aria-current='page']")].map((el) => el.getAttribute("data-nav-item")),
+        boardHidden: document.querySelector("[data-board-view]")?.hasAttribute("hidden") ?? null,
+        listHidden: document.querySelector("[data-list]")?.hasAttribute("hidden") ?? null,
+        // The other three views must stand down *visibly*. The board and the list
+        // state it on the `hidden` attribute; the waiting view is `v-show`n, so
+        // for it (and for all three) the reading that cannot be faked is "paints
+        // nothing".
+        waitingHidden: document.querySelector("[data-waiting-view]")?.hasAttribute("hidden") ?? null,
+        waitingPainted: (document.querySelector("[data-waiting-view]")?.getClientRects().length ?? 0) > 0,
+        boardPainted: (document.querySelector("[data-board-view]")?.getClientRects().length ?? 0) > 0,
+        listPainted: (document.querySelector("[data-list]")?.getClientRects().length ?? 0) > 0,
+        dayCount: days.length,
+        dayKeys: days.map((day) => day.getAttribute("data-day")),
+        dayKinds: days.map((day) => day.getAttribute("data-activity-day-kind")),
+        dayRowCounts: days.map(stampOf),
+        rowsOwnedByOneDay: rows.map(within),
+        rowAts: rows.map((row) => row.getAttribute("data-at")),
+        stampMatches: rows.map((row) => row.querySelector("[data-activity-at]")?.getAttribute("datetime") === row.getAttribute("data-at")),
+        rowEvents: rows.map((row) => row.getAttribute("data-event")),
+        rowTasks: rows.map((row) => row.getAttribute("data-task")),
+        invisibleRows: rows.filter((row) => row.hasAttribute("hidden")).length,
+        // C02's sibling invariant, in the form this view can hold it: two row
+        // hooks are per-row state (`data-activity-unread` / `data-activity-burst`),
+        // so uniformity is stated over the six *fields* every row must carry.
+        incompleteRows: rows.filter(
+          (row) =>
+            row.querySelectorAll(":scope [data-activity-line] > [data-activity-actor]").length !== 1 ||
+            row.querySelectorAll(":scope [data-activity-sentence]").length !== 1 ||
+            row.querySelectorAll(":scope [data-activity-task]").length !== 1 ||
+            row.querySelectorAll(":scope [data-activity-task-id]").length !== 1 ||
+            row.querySelectorAll(":scope [data-activity-task-title]").length !== 1 ||
+            row.querySelectorAll(":scope [data-activity-at]").length !== 1 ||
+            row.querySelectorAll(":scope [data-activity-open]").length !== 1 ||
+            row.querySelectorAll(":scope [data-activity-detail]").length !== 1,
+        ).length,
+        dayPages: days.map((day) => day.getAttribute("data-activity-page")),
+        linesOutsideRows: root.querySelectorAll("[data-activity-line]").length - rows.length,
+        // §29.2 — the board's filter bar narrows cards, so it stands down with the
+        // board area and comes back with it.
+        filtersHidden: document.querySelector("[data-filters]")?.hasAttribute("hidden") ?? null,
+        filtersPainted: (document.querySelector("[data-filters]")?.getClientRects().length ?? 0) > 0,
+        // BLOCKS.md B26 fixes the view's `data-activity-*` vocabulary at 35 names
+        // and says "no more": the closed list is what keeps two rounds from
+        // inventing parallel hooks for one fact.
+        hookNames: [...new Set([...root.outerHTML.matchAll(/data-activity-([a-z-]+)/g)].map((match) => match[1]))].sort(),
+        countSentence: countText,
+        countArg: root.querySelector("[data-activity-filter-count]")?.getAttribute("data-i18n-arg") ?? null,
+        pillText: pill?.textContent?.trim() ?? null,
+        pillHidden: pill?.hasAttribute("hidden") ?? null,
+        unreadRows: rows.filter((row) => row.hasAttribute("data-activity-unread")).length,
+        dividers: root.querySelectorAll("[data-activity-unread-divider]").length,
+        dividerCount: root.querySelector("[data-activity-unread-count]")?.textContent?.trim() ?? null,
+        dividerDay: root.querySelector("[data-activity-unread-divider]")?.closest("[data-activity-day]")?.getAttribute("data-day") ?? null,
+        emptyShown: [...root.querySelectorAll("[data-activity-empty]")].filter((el) => !el.hasAttribute("hidden")).map((el) => el.getAttribute("data-activity-empty-kind")),
+        projectEmptyPresent: root.querySelectorAll('[data-activity-empty][data-activity-empty-kind="project"]').length,
+        filterEmptyReset: root.querySelectorAll('[data-activity-empty][data-activity-empty-kind="filter"] [data-activity-empty-reset]').length,
+        footHidden: root.querySelector(".td-activity-foot")?.hasAttribute("hidden") ?? null,
+        morePresent: root.querySelectorAll("[data-activity-more]").length,
+        lineHeight: (() => {
+          const line = root.querySelector("[data-activity-row] [data-activity-line]");
+          return line ? getComputedStyle(line).height : null;
+        })(),
+        detailTags: [...root.querySelectorAll("[data-activity-detail]")].map((el) => el.tagName),
+        toastSeats: document.querySelectorAll("[data-toast-region] > *").length,
+      };
+    });
+
+    // §5 — the fold: one row for a run of edits, its count equal to the members it
+    // holds, and every member inside the five-minute window.
+    const b26Burst = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll("[data-activity-row][data-activity-burst]")];
+      const row = rows[0];
+      if (!row) return { rows: 0 };
+      const members = [...row.querySelectorAll("[data-activity-burst-item]")];
+      const at = new Date(row.getAttribute("data-at")).getTime();
+      const badge = row.querySelector("[data-activity-burst-count]");
+      return {
+        rows: rows.length,
+        label: badge?.textContent?.trim() ?? null,
+        value: badge?.getAttribute("data-activity-burst-count") ?? null,
+        labelCount: row.querySelector("[data-activity-burst-count-label]")?.textContent?.trim() ?? null,
+        members: members.length,
+        memberSpanMs: members.length === 0 ? null : Math.max(...members.map((member) => Math.abs(new Date(member.getAttribute("data-at")).getTime() - at))),
+        memberActors: [...new Set(members.map((member) => member.closest("[data-activity-row]").getAttribute("data-actor")))],
+        memberTask: members[0]?.closest("[data-activity-row]")?.getAttribute("data-task") ?? null,
+        rowActor: row.getAttribute("data-actor"),
+        rowTask: row.getAttribute("data-task"),
+        rowGroup: row.getAttribute("data-activity-group"),
+        memberKinds: members.map((member) => member.getAttribute("data-activity-change")),
+      };
+    });
+
+    // §4 L3 — opening a row's detail must not reflow the feed: the panel is
+    // attached to the row, not laid out under it.
+    const b26Detail = await page.evaluate(async () => {
+      const root = document.querySelector("[data-activity-view]");
+      const feed = root.querySelector("[data-activity-feed]");
+      const row = [...root.querySelectorAll("[data-activity-row]")].find((el) => el.querySelector("[data-activity-change]"));
+      const before = { scroll: feed.scrollHeight, body: document.documentElement.scrollHeight };
+      row.querySelector("[data-activity-detail]")?.setAttribute("open", "");
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const panel = row.querySelector(".td-activity-changes");
+      const after = { scroll: feed.scrollHeight, body: document.documentElement.scrollHeight };
+      const style = panel ? getComputedStyle(panel) : null;
+      const out = {
+        lines: row.querySelectorAll("[data-activity-change]").length,
+        position: style?.position ?? null,
+        display: style?.display ?? null,
+        reflowedFeed: after.scroll !== before.scroll,
+        reflowedBody: after.body !== before.body,
+        negativeLeft: panel ? panel.getBoundingClientRect().left < 0 : null,
+      };
+      row.querySelector("[data-activity-detail]")?.removeAttribute("open");
+      return out;
+    });
+
+    // §6 — the three filters narrow, the count follows the rows, and the address
+    // bar shadows the three of them.
+    const b26Filters = await page.evaluate(async () => {
+      const set = async (slot, value) => {
+        const select = document.querySelector(`[data-activity-filter="${slot}"]`);
+        select.value = value;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        await new Promise((resolve) => setTimeout(resolve, 60));
+      };
+      const read = () => {
+        const root = document.querySelector("[data-activity-view]");
+        const rows = [...root.querySelectorAll("[data-activity-row]")].filter((row) => !row.hasAttribute("hidden"));
+        return {
+          rows: rows.length,
+          kinds: [...new Set(rows.map((row) => row.getAttribute("data-assignee-kind")))],
+          groups: [...new Set(rows.map((row) => row.getAttribute("data-activity-group")))],
+          tasks: [...new Set(rows.map((row) => row.getAttribute("data-task")))],
+          count: root.querySelector("[data-activity-filter-count]")?.textContent?.trim() ?? "",
+          hash: globalThis.location.hash,
+          empty: [...root.querySelectorAll("[data-activity-empty]")].filter((el) => !el.hasAttribute("hidden")).map((el) => el.getAttribute("data-activity-empty-kind")),
+          dayCount: root.querySelectorAll("[data-activity-day]").length,
+        };
+      };
+      const out = { before: read() };
+      await set("actor", "agent");
+      out.agent = read();
+      await set("event", "delivery");
+      out.agentDelivery = read();
+      await set("actor", "all");
+      await set("event", "all");
+      await set("task", "TD-6");
+      out.task = read();
+      await set("task", "all");
+      // A filter that matches nothing: a task with no delivery of its own.
+      await set("event", "delivery");
+      await set("task", "TD-7");
+      out.emptyMatch = read();
+      // The empty state's own button is the way back.
+      document.querySelector('[data-activity-empty][data-activity-empty-kind="filter"] [data-activity-empty-reset]')?.click();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      out.afterReset = read();
+      return out;
+    });
+
+    // §6 — `j` / `k` walk the visible rows' open buttons. The presses go through
+    // the real keyboard (not a synthetic event on `document`), so the walk starts
+    // from the element the browser actually has focused — which is what the
+    // handler reads.
+    await page.evaluate(() => document.activeElement?.blur?.());
+    await page.keyboard.press("j");
+    await page.waitForTimeout(80);
+    const keyFirst = await page.evaluate(() => ({
+      open: document.activeElement?.getAttribute("data-activity-open") ?? null,
+      label: document.activeElement?.getAttribute("aria-label") ?? null,
+    }));
+    await page.keyboard.press("j");
+    await page.waitForTimeout(80);
+    const keySecond = await page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? null);
+    await page.keyboard.press("k");
+    await page.waitForTimeout(80);
+    const keyBack = await page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? null);
+    const b26Keys = {
+      first: keyFirst.open,
+      firstLabel: keyFirst.label,
+      second: keySecond,
+      back: keyBack,
+      wrappable: keyFirst.label !== null && keySecond !== null && keyFirst.label !== keySecond && keyFirst.label === keyBack,
+    };
+
+    // §6 — one number, three readers: the pill, the boundary and its count.
+    const b26Read = await page.evaluate(async () => {
+      const root = document.querySelector("[data-activity-view]");
+      const read = () => ({
+        unreadRows: root.querySelectorAll("[data-activity-row][data-activity-unread]").length,
+        dividers: root.querySelectorAll("[data-activity-unread-divider]").length,
+        dividerCount: root.querySelector("[data-activity-unread-count]")?.textContent?.trim() ?? null,
+        pillHidden: document.querySelector('[data-nav-count="activity"]')?.hasAttribute("hidden") ?? null,
+        pillText: document.querySelector('[data-nav-count="activity"]')?.textContent?.trim() ?? null,
+        count: root.querySelector("[data-activity-filter-count]")?.textContent?.trim() ?? "",
+      });
+      const before = read();
+      root.querySelector("[data-activity-mark-read]")?.click();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      return { before, after: read() };
+    });
+
+    // B26.6 — `Load older` unfolds the next page of day groups and retires.
+    const b26Older = await page.evaluate(async () => {
+      const root = document.querySelector("[data-activity-view]");
+      const foot = root.querySelector(".td-activity-foot");
+      const read = () => ({
+        days: root.querySelectorAll("[data-activity-day]").length,
+        rows: root.querySelectorAll("[data-activity-row]").length,
+        footHidden: foot.hasAttribute("hidden"),
+        pages: [...root.querySelectorAll("[data-activity-day]")].map((day) => day.getAttribute("data-activity-page")),
+      });
+      const before = read();
+      root.querySelector("[data-activity-more]")?.click();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      return { before, after: read() };
+    });
+
+    // §6 — a row opens the board's own drawer (B09), and the task link routes
+    // back to the board with the same task open.
+    const b26Drawer = await page.evaluate(async () => {
+      const root = document.querySelector("[data-activity-view]");
+      const row = root.querySelector("[data-activity-row]");
+      const identifier = row.getAttribute("data-task");
+      row.querySelector("[data-activity-open]")?.click();
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const drawer = document.querySelector("[data-detail-drawer]");
+      const opened = {
+        state: drawer?.getAttribute("data-state") ?? null,
+        identifier: drawer?.getAttribute("data-identifier") ?? null,
+        rows: root.querySelectorAll("[data-activity-row]").length,
+      };
+      return { identifier, opened };
+    });
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+    const b26Link = await page.evaluate(() => {
+      const root = document.querySelector("[data-activity-view]");
+      const link = root.querySelector("[data-activity-task]");
+      const href = link.getAttribute("href");
+      link.click();
+      return { href };
+    });
+    await page.waitForTimeout(250);
+    const b26AfterLink = await page.evaluate(() => ({
+      view: document.querySelector("[data-board-view]")?.hasAttribute("hidden") === false ? "board" : "other",
+      drawerState: document.querySelector("[data-detail-drawer]")?.getAttribute("data-state") ?? null,
+      identifier: document.querySelector("[data-detail-drawer]")?.getAttribute("data-identifier") ?? null,
+    }));
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+
+    // The link routed away from the feed; the geometry sweep below is the feed's,
+    // so step back into it.
+    await page.click('[data-nav-item="activity"]');
+    await page.waitForTimeout(200);
+
+    // §7 / §9 — no sideways overflow with the feed open, at the five review tiers.
+    const b26ViewportFailures = [];
+    for (const width of [1512, 1240, 980, 760, 430]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.waitForTimeout(180);
+      const overflow = await page.evaluate(() => {
+        const de = document.documentElement;
+        return { scrollWidth: de.scrollWidth, clientWidth: de.clientWidth };
+      });
+      if (overflow.scrollWidth > overflow.clientWidth + 1) {
+        b26ViewportFailures.push(`activity view overflows at ${width}: ${overflow.scrollWidth} > ${overflow.clientWidth}`);
+      }
+    }
+    await page.setViewportSize({ width: 1512, height: 900 });
+    await page.waitForTimeout(150);
+
+    // §9.1 — the view's copy comes from the one catalogue, and a language switch
+    // translates it (no bare key may survive anywhere in the view).
+    await page.evaluate(() => document.querySelector('[data-lang-option="zh"]')?.click());
+    await page.waitForTimeout(200);
+    const b26Zh = await page.evaluate(() => {
+      const root = document.querySelector("[data-activity-view]");
+      return {
+        title: root.querySelector("[data-activity-title]")?.textContent?.trim() ?? null,
+        day: root.querySelector("[data-activity-day-label]")?.textContent?.trim() ?? null,
+        openLabel: root.querySelector("[data-activity-open]")?.getAttribute("aria-label") ?? null,
+        keyText: [...root.querySelectorAll("[data-i18n]")].filter((el) => el.textContent.trim() === el.getAttribute("data-i18n")).length,
+      };
+    });
+    await page.evaluate(() => document.querySelector('[data-lang-option="en"]')?.click());
+    await page.waitForTimeout(200);
+    const b26En = await page.evaluate(() => {
+      const root = document.querySelector("[data-activity-view]");
+      return {
+        title: root.querySelector("[data-activity-title]")?.textContent?.trim() ?? null,
+        openLabel: root.querySelector("[data-activity-open]")?.getAttribute("aria-label") ?? null,
+      };
+    });
+
+    const noiseEvents = ["task_heartbeat", "session_registered", "session_closed", "progress", "label_gc", "dictionary_upsert"];
+    b26Check(b26Rest.rootHidden === false, "the activity view must not be hidden after its nav press");
+    b26Check(b26Rest.rootPainted === true, "the activity view must be painted");
+    b26Check(b26Rest.navCurrents.length === 1 && b26Rest.navCurrents[0] === "activity", `nav current ${b26Rest.navCurrents.join(",")}`);
+    b26Check(
+      b26Rest.boardHidden === true && b26Rest.listHidden === true && !b26Rest.boardPainted && !b26Rest.listPainted && !b26Rest.waitingPainted,
+      `board/list/waiting must all stand down (painted ${b26Rest.boardPainted}/${b26Rest.listPainted}/${b26Rest.waitingPainted})`,
+    );
+    b26Check(b26Rest.toastSeats === toastSeatsBefore, "the nav press must not raise a toast");
+    b26Check(b26Rest.dayCount >= 3, `day groups ${b26Rest.dayCount} < 3`);
+    b26Check(b26Rest.dayKeys.every((key, index) => index === 0 || key < b26Rest.dayKeys[index - 1]), `day keys not strictly decreasing: ${b26Rest.dayKeys.join(",")}`);
+    b26Check(b26Rest.rowAts.every((at, index) => index === 0 || at <= b26Rest.rowAts[index - 1]), "rows must be newest-first in document order");
+    b26Check(b26Rest.rowsOwnedByOneDay.every((count) => count === 1), "every row must sit inside exactly one day group");
+    b26Check(b26Rest.stampMatches.every(Boolean), "each row's visible stamp must equal its own data-at");
+    b26Check(b26Rest.detailTags.every((tag) => tag === "DETAILS"), "the row detail must be a native <details>");
+    b26Check(b26Rest.rowEvents.every((event) => !noiseEvents.includes(event)), `noise reached the feed: ${b26Rest.rowEvents.join(",")}`);
+    b26Check(b26Rest.invisibleRows === 0, `${b26Rest.invisibleRows} rows are hidden without a filter`);
+    b26Check(b26Rest.incompleteRows === 0, `${b26Rest.incompleteRows} rows are missing one of their six fields`);
+    b26Check(b26Rest.linesOutsideRows === 0, `${b26Rest.linesOutsideRows} [data-activity-line] nodes sit outside a row`);
+    b26Check(b26Rest.dayPages.every((page) => Number(page) === 1), `day pages before \`Load older\`: ${b26Rest.dayPages.join(",")}`);
+    b26Check(
+      JSON.stringify(b26Rest.hookNames) === JSON.stringify(B26_HOOK_NAMES),
+      `the view's data-activity-* vocabulary drifted: ${b26Rest.hookNames.filter((n) => !B26_HOOK_NAMES.includes(n)).join(",") || "—"} extra, ${B26_HOOK_NAMES.filter((n) => !b26Rest.hookNames.includes(n)).join(",") || "—"} missing`,
+    );
+    b26Check(b26Rest.filtersHidden === true && !b26Rest.filtersPainted, "the board's filter bar must stand down on the feed");
+    b26Check(b26Rest.countSentence === `${b26Rest.dayRowCounts.reduce((sum, n) => sum + n, 0)} entries`, `count sentence ${b26Rest.countSentence}`);
+    b26Check(b26Rest.countArg === String(b26Rest.dayRowCounts.reduce((sum, n) => sum + n, 0)), `count arg ${b26Rest.countArg}`);
+    b26Check(b26Rest.pillText === String(b26Rest.unreadRows), `pill ${b26Rest.pillText} !== unread rows ${b26Rest.unreadRows}`);
+    b26Check(b26Rest.pillHidden === false, "a non-zero unread count must not be hidden");
+    b26Check(b26Rest.dividers === 1, `unread dividers ${b26Rest.dividers} !== 1`);
+    b26Check(b26Rest.dividerCount === b26Rest.pillText, `divider count ${b26Rest.dividerCount} !== pill ${b26Rest.pillText}`);
+    b26Check(b26Rest.emptyShown.length === 0, `an empty state is showing on a full ledger: ${b26Rest.emptyShown.join(",")}`);
+    b26Check(b26Rest.projectEmptyPresent === 1 && b26Rest.filterEmptyReset === 1, "both empty states must exist, the filter one holding its reset");
+    b26Check(b26Rest.morePresent === 1, "`Load older` must exist");
+    b26Check(b26Rest.footHidden === false, "`Load older` must be offered while a page is unread");
+    b26Check(b26Rest.lineHeight === "30px", `row height ${b26Rest.lineHeight} !== 30px`);
+    b26Check(b26Burst.rows === 1, `burst rows ${b26Burst.rows} !== 1`);
+    b26Check(b26Burst.label === `×${b26Burst.members}`, `burst label ${b26Burst.label} vs ${b26Burst.members} members`);
+    b26Check(b26Burst.value === String(b26Burst.members), `burst attribute ${b26Burst.value} vs ${b26Burst.members} members`);
+    b26Check((b26Burst.labelCount ?? "").startsWith(String(b26Burst.members)), `burst summary ${b26Burst.labelCount}`);
+    b26Check(b26Burst.members >= 2, `a burst must fold at least two rows, got ${b26Burst.members}`);
+    b26Check(b26Burst.memberSpanMs !== null && b26Burst.memberSpanMs <= 5 * 60_000, `burst window ${b26Burst.memberSpanMs}ms exceeds five minutes`);
+    b26Check(b26Burst.memberTask === b26Burst.rowTask && b26Burst.memberActors.every((actor) => actor === b26Burst.rowActor), "a burst may only fold one actor's edits on one task");
+    b26Check(b26Burst.rowGroup === "meta", `a folded row's group must be meta, got ${b26Burst.rowGroup}`);
+    b26Check(b26Detail.lines >= 1, "an opened row must show its changes");
+    b26Check(b26Detail.position === "absolute", `the change panel must be positioned, got ${b26Detail.position}`);
+    b26Check(b26Detail.display !== "none", "an opened panel must be displayed");
+    b26Check(b26Detail.reflowedFeed === false && b26Detail.reflowedBody === false, "opening a row must not reflow the feed");
+    b26Check(b26Filters.agent.rows > 0 && b26Filters.agent.kinds.length === 1 && b26Filters.agent.kinds[0] === "agent", `actor=agent left ${b26Filters.agent.kinds.join(",")}`);
+    b26Check(b26Filters.agent.count === `${b26Filters.agent.rows} entries`, `actor=agent count ${b26Filters.agent.count} for ${b26Filters.agent.rows} rows`);
+    b26Check(b26Filters.agent.hash === "#/activity?actor=agent", `actor=agent hash ${b26Filters.agent.hash}`);
+    b26Check(b26Filters.agentDelivery.groups.join(",") === "delivery", `agent+delivery groups ${b26Filters.agentDelivery.groups.join(",")}`);
+    b26Check(b26Filters.task.tasks.length === 1 && b26Filters.task.tasks[0] === "TD-6", `task=TD-6 left ${b26Filters.task.tasks.join(",")}`);
+    b26Check(b26Filters.emptyMatch.rows === 0, `the empty filter left ${b26Filters.emptyMatch.rows} rows`);
+    b26Check(b26Filters.emptyMatch.empty.join(",") === "filter", `empty kind ${b26Filters.emptyMatch.empty.join(",")}`);
+    b26Check(b26Filters.emptyMatch.dayCount === 0, "a filter that matches nothing must paint no day group");
+    b26Check(b26Filters.afterReset.rows === b26Filters.before.rows, `reset restored ${b26Filters.afterReset.rows} of ${b26Filters.before.rows}`);
+    b26Check(b26Filters.afterReset.hash === "#/activity", `reset must clear the hash, got ${b26Filters.afterReset.hash}`);
+    b26Check(b26Keys.wrappable === true, `j/k focus walk: first=${b26Keys.first} second=${b26Keys.second} back=${b26Keys.back}`);
+    b26Check((b26Keys.firstLabel ?? "").startsWith("Open "), `row button aria-label ${b26Keys.firstLabel}`);
+    b26Check(b26Read.before.unreadRows > 0 && b26Read.before.dividers === 1, "a fresh reader must see one boundary over the new rows");
+    b26Check(b26Read.after.unreadRows === 0 && b26Read.after.dividers === 0, "`Mark all read` must take the boundary down");
+    b26Check(b26Read.after.pillHidden === true, "`Mark all read` must hide the zero pill");
+    b26Check(b26Read.after.count === b26Read.before.count, "`Mark all read` must not remove a row");
+    b26Check(b26Older.after.days > b26Older.before.days || b26Older.after.footHidden === true, "`Load older` must unfold a day or retire");
+    b26Check(b26Older.after.footHidden === true, "`Load older` must retire once the ledger is exhausted");
+    b26Check(b26Older.after.rows > b26Older.before.rows, "`Load older` must reveal rows");
+    b26Check(
+      b26Older.after.pages.includes("2") && b26Older.after.pages.some((page, index) => index > 0 && Number(page) > Number(b26Older.before.pages[index] ?? 1)),
+      `\`Load older\` must mark the unfolded days page 2, got ${b26Older.after.pages.join(",")}`,
+    );
+    b26Check(b26Drawer.opened.state === "open", `a row must open the drawer, state ${b26Drawer.opened.state}`);
+    b26Check(b26Drawer.opened.identifier === b26Drawer.identifier, `drawer shows ${b26Drawer.opened.identifier}, row names ${b26Drawer.identifier}`);
+    b26Check(b26Link.href === `#/task/${b26Drawer.identifier}`, `task anchor href ${b26Link.href}`);
+    b26Check(b26AfterLink.view === "board" && b26AfterLink.drawerState === "open" && b26AfterLink.identifier === b26Drawer.identifier, "the task link must route back to the board with that task open");
+    b26Check(b26ViewportFailures.length === 0, b26ViewportFailures.join("; "));
+    b26Check(b26Zh.title === "动态" && b26Zh.day === "今天", `zh copy ${b26Zh.title} / ${b26Zh.day}`);
+    b26Check((b26Zh.openLabel ?? "").startsWith("打开 "), `zh open label ${b26Zh.openLabel}`);
+    b26Check(b26Zh.keyText === 0, `${b26Zh.keyText} elements render their own key`);
+    b26Check(b26En.title === "Activity", `en copy after the cycle ${b26En.title}`);
+    b26Check((b26En.openLabel ?? "").startsWith("Open "), `en open label ${b26En.openLabel}`);
+    await page.click('[data-nav-item="board"]');
+    await page.waitForTimeout(120);
+    const b26Back = await page.evaluate(() => {
+      const bar = document.querySelector("[data-filters]");
+      return {
+        filtersHidden: bar?.hasAttribute("hidden") ?? null,
+        filtersPainted: (bar?.getClientRects().length ?? 0) > 0,
+        activityHidden: document.querySelector("[data-activity-view]")?.hasAttribute("hidden") ?? null,
+        boardPainted: (document.querySelector("[data-board-view]")?.getClientRects().length ?? 0) > 0,
+      };
+    });
+    b26Check(b26Back.filtersHidden === false && b26Back.filtersPainted, "the filter bar must come back with the board");
+    b26Check(b26Back.activityHidden === true && b26Back.boardPainted === true, "the board must come back and the feed stand down");
+
+    const results = [
+      ...boardResults,
+      ...listResults,
+      ...railResults,
+      ...panelResults,
+      ...drawerResults,
+      ...listEn.loadingResults,
+      ...activityResults,
+      ...waitingResults,
+    ];
     const failures = results.filter((r) => !r.ok);
     const viewportFailures = viewports.filter((v) => !v.ok);
     return {
@@ -2625,6 +3130,16 @@ export async function run() {
         heights: r12Heights,
       },
       r11: { failures: r11Failures },
+      b26: {
+        failures: b26Failures,
+        rest: b26Rest,
+        burst: b26Burst,
+        filters: b26Filters,
+        read: b26Read,
+        older: b26Older,
+        keys: b26Keys,
+        viewportFailures: b26ViewportFailures,
+      },
       geometry,
       counts: { rules: results.length, failed: failures.length, ...geometry },
       fixtureTasks: data.tasks.length,
@@ -2653,10 +3168,10 @@ if (isEntryPoint) run().then(
       console.log(`viewports: ${report.viewports.map((v) => `${v.width}${v.ok ? "ok" : "OVERFLOW"}`).join(" ")}`);
       console.log(`interactions: ${JSON.stringify(report.interactions)}`);
       if (report.m1Failures.length > 0) {
-        console.log(`M1 (awaiting) — ${report.m1Failures.length} failed:`);
+        console.log(`M1 · B27 (waiting) — ${report.m1Failures.length} failed:`);
         for (const failure of report.m1Failures) console.log(`  ✗ ${failure}`);
       } else {
-        console.log("M1 (awaiting) — badge, view, count, payload and menu all pass");
+        console.log("M1 · B27 (waiting) — the board badge, the queue's six fields, the tally, the filter bar's stand-down and the move menu all pass");
       }
       if (report.r6.failures.length > 0) {
         console.log(`R6 (fidelity) — ${report.r6.failures.length} failed:`);
@@ -2700,6 +3215,16 @@ if (isEntryPoint) run().then(
       } else {
         console.log("R11/R13 (fidelity) — the status filter, the roster route, the named assignee, the width-neutral capsule and the bar's `x` all pass");
       }
+      if (report.b26.failures.length > 0) {
+        console.log(`R12x · B26 (activity) — ${report.b26.failures.length} failed:`);
+        for (const failure of report.b26.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log(
+          `R12x · B26 (activity) — routing, ${report.b26.rest.dayCount} day groups / ${report.b26.rest.dayRowCounts.reduce((sum, n) => sum + n, 0)} rows, ` +
+            `the burst's ${report.b26.burst.members}-member window, the three filters, the single unread boundary (${report.b26.read.before.dividerCount}), ` +
+            "`Load older`, `j`/`k` and the row's drawer all pass",
+        );
+      }
     }
     const interactionOk =
       report.interactions.drawerOpened &&
@@ -2722,6 +3247,7 @@ if (isEntryPoint) run().then(
       report.r10.failures.length === 0 &&
       report.r12.failures.length === 0 &&
       report.r11.failures.length === 0 &&
+      report.b26.failures.length === 0 &&
       interactionOk;
     process.exit(ok ? 0 : 1);
   },

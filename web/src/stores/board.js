@@ -603,6 +603,24 @@ export function closeDetail() {
 
 let client = null;
 
+/**
+ * R12x · B26 — the stream's other consumer.
+ *
+ * The activity view's ledger wants every event the board already receives, and
+ * this is the seam that gives it them without a second connection and without a
+ * cycle between the two stores: `board` owns the transport, and any store that
+ * wants the tail subscribes here (see `stores/activity.js`).
+ *
+ * @type {Set<(activity: object) => void>}
+ */
+const streamListeners = new Set();
+
+/** Subscribe to the live activity tail. Returns the unsubscribe. */
+export function onActivityStream(listener) {
+  streamListeners.add(listener);
+  return () => streamListeners.delete(listener);
+}
+
 export function startEvents() {
   if (client) return client;
   client = createEventClient({
@@ -611,6 +629,7 @@ export function startEvents() {
     },
     onActivity: (activity, revision) => {
       board.revision = Math.max(board.revision, revision);
+      for (const listener of streamListeners) listener(activity);
       const target = activity?.task_id;
       if (typeof target === "string" && target !== "") {
         refreshTask(target);

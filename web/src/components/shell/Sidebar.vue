@@ -27,6 +27,7 @@ import {
   writeAssigneeFilter,
   writeStatusFilter,
 } from "../../stores/board.js";
+import { unreadCount as activityUnreadCount } from "../../stores/activity.js";
 import { view, setView } from "../../stores/ui.js";
 import { initialsOf } from "../../lib/monogram.js";
 
@@ -83,11 +84,12 @@ const agents = computed(() => {
   return [...byPlatform.values()];
 });
 
-// The nav items that are real *views*. `activity` remains a destination this
-// build does not render (unchanged); `waiting` is a real writer — pressing it
-// switches the main area to the 「等你回复」view, which is what makes the item a
-// view rather than a decoration.
-const ROUTABLE = ["board", "list", "waiting"];
+// The nav items that are real *views*. All four route now: R12x closed the last
+// two stand-ins — `activity` opens the project's ledger (B26) and `waiting` the
+// 「等你回复」view — so the rule "every nav item routes" holds in one place
+// instead of two (DESIGN.md §29.2), and there is no name left that answers with a
+// toast.
+const ROUTABLE = ["board", "list", "activity", "waiting"];
 function onNav(item) {
   if (ROUTABLE.includes(item)) setView(item);
 }
@@ -144,7 +146,12 @@ function onAssignee(name) {
         <!-- M1 · the count. `aria-live="polite"` so the number announcing itself
              does not steal focus; at zero the pill is hidden but the nav item
              stays clickable — a hidden zero and a disabled item are different
-             promises, and only the first is wanted (design §3.3). -->
+             promises, and only the first is wanted (design §3.3).
+
+             R12x · B26 — `activity` carries the same pill, over the ledger's own
+             unread count, and follows the same zero rule. The two numbers come
+             from two different questions (what is new to me vs. what is on my
+             side), so the two items keep two pills. -->
         <span
           v-if="item === 'waiting'"
           class="badge badge-sm td-mono bg-primary text-primary-content"
@@ -154,6 +161,15 @@ function onAssignee(name) {
           :hidden="waitingCount === 0"
           :title="$t('waiting.count', waitingCount)"
         >{{ waitingCount }}</span>
+        <span
+          v-else-if="item === 'activity'"
+          class="badge badge-sm td-mono bg-primary text-primary-content"
+          data-nav-count="activity"
+          data-side-count
+          aria-live="polite"
+          :hidden="activityUnreadCount === 0"
+          :title="$t('activity.navCount', activityUnreadCount)"
+        >{{ activityUnreadCount }}</span>
       </button>
     </nav>
 

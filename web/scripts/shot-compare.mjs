@@ -99,6 +99,11 @@ const COMBINATIONS = Object.freeze([
   Object.freeze({ id: "light-en", theme: "light", lang: "en", viewports: VIEWPORTS }),
   Object.freeze({ id: "dark-en", theme: "dark", lang: "en", viewports: Object.freeze([1512]) }),
   Object.freeze({ id: "light-zh", theme: "light", lang: "zh", viewports: Object.freeze([1512]) }),
+  // R12x · B26 / B27 — the two new destinations have states of their own: each is
+  // reached by a press, on both sides, so the pair captures that view rather than
+  // the board behind it.
+  Object.freeze({ id: "light-en-activity", theme: "light", lang: "en", view: "activity", viewports: VIEWPORTS }),
+  Object.freeze({ id: "light-en-waiting", theme: "light", lang: "en", view: "waiting", viewports: VIEWPORTS }),
 ]);
 
 /**
@@ -283,6 +288,14 @@ async function shootImplementation(browser, url, combo, width, outDir) {
     await page.goto(url, { waitUntil: "domcontentloaded" });
     await page.waitForSelector("[data-column]", { timeout: 20_000 });
     await page.waitForTimeout(700); // settle the SSE-connected revision + fonts
+    // Both new destinations are entered by the same press on the same nav item,
+    // and the row that appears is what says the view landed (the feed is read
+    // when its view is entered; the queue's rows come with the board's tasks).
+    if (combo.view === "activity" || combo.view === "waiting") {
+      await page.click(`[data-nav-item="${combo.view}"]`);
+      await page.waitForSelector(combo.view === "activity" ? "[data-activity-row]" : "[data-waiting-item]", { timeout: 20_000 });
+      await page.waitForTimeout(400);
+    }
 
     const overflow = await page.evaluate(measureOverflow);
     const state = await page.evaluate(readDocState);
@@ -324,6 +337,15 @@ async function shootPrototype(browser, combo, width, outDir) {
     // 200ms). Wait it out so the shot shows the settled board, not the notice —
     // the implementation, seeded before paint, shows no toast at all.
     await page.waitForTimeout(3300);
+
+    // R12x · B26 / B27 — the same press the implementation side makes, so the
+    // pair is one state: `setView(view)` is what puts the view on screen. The
+    // press is programmatic because the nav item is inside the sidebar's own
+    // scroll container, which is not always laid out at these widths.
+    if (combo.view === "activity" || combo.view === "waiting") {
+      await page.evaluate((view) => document.querySelector(`[data-nav-item="${view}"]`)?.click(), combo.view);
+      await page.waitForTimeout(400);
+    }
 
     const overflow = await page.evaluate(measureOverflow);
     const state = await page.evaluate(readDocState);
