@@ -129,6 +129,22 @@
       {
         "name": "r12-column",
         "selector": "[data-column]"
+      },
+      {
+        "name": "r11-status-trigger",
+        "selector": "[data-filter-status-summary]"
+      },
+      {
+        "name": "r11-roster-name",
+        "selector": "[data-agent-assignee]"
+      },
+      {
+        "name": "r13-assignee-item",
+        "selector": "[data-assignee-item]"
+      },
+      {
+        "name": "r13-assignee-clear",
+        "selector": "[data-assignee-clear]"
       }
     ]
   },
@@ -1199,26 +1215,26 @@
           "desc": "label 过滤器与切换器同一条 dismiss 规则（属性即成员资格）"
         },
         {
-          "selector": ".td-label-trigger",
+          "selector": "[data-filter-label] > summary.td-label-trigger",
           "count": 1,
-          "desc": "触发器穿 `.td-select` 的壳（高度/字面/边框/圆角一处声明）"
+          "desc": "触发器穿 `.td-select` 的壳（高度/字面/边框/圆角一处声明）—— R11 ① 起状态控件共用同一件壳，故按控件自己的钩子收窄"
         },
         {
-          "scope": ".td-label-trigger",
+          "scope": "[data-filter-label]",
           "selector": "span",
           "count": 1,
           "desc": "值渲染为唯一一个纯文本 span —— 没有 chip/胶囊装饰（钩子名不变）"
         },
         {
-          "scope": ".td-label-trigger",
+          "scope": "[data-filter-label]",
           "selector": "[data-filter-label-summary]",
           "count": 1,
           "desc": "值仍由 `[data-filter-label-summary]` 承载（契约 A9：钩子名未变）"
         },
         {
-          "selector": ".td-label-trigger > .td-icon-sm",
+          "selector": "[data-filter-label] > summary > .td-icon-sm",
           "count": 1,
-          "desc": "caret 是触发器自己的 14px 字形，由 `.td-label-trigger > .td-icon-sm` 绝对定位（right 6px，内边距盒）"
+          "desc": "caret 是触发器自己的 14px 字形，绝对定位（right 6px，内边距盒）—— 同上，按控件钩子收窄"
         },
         {
           "selector": "[data-filter-label-option]",
@@ -1447,6 +1463,149 @@
       ]
     },
     {
+      "id": "B03-r13",
+      "name": "R11 ② · R13 — 名册名：路由 + 按名收窄，名是项里的唯一一个按钮；胶囊壳挂在**项**上",
+      "evidence": "design/fidelity-r11.md §2.2、design/fidelity-r13.md §2.1/§2.9；web/src/components/shell/Sidebar.vue（`[data-agent-row]` → `[data-agent-text]` → `[data-assignee-item]` → 一个 `[data-agent-assignee]`）；胶囊与 U-6 修正的样式在 web/src/styles/app.css。数目是数据（board 的名册有几行），只设下限；胶囊只在具名时存在，其几何由驱动层实测（R13 §5.2 B1/B3/B6）",
+      "status": "delivered",
+      "checks": [
+        {
+          "scope": "[data-agents-presence]",
+          "selector": "[data-agent-row]",
+          "min": 1,
+          "desc": "名册至少一行"
+        },
+        {
+          "scope": "[data-agents-presence]",
+          "selector": "[data-assignee-item]",
+          "min": 1,
+          "desc": "每个名字一个项（胶囊的壳）"
+        },
+        {
+          "scope": "[data-agents-presence]",
+          "selector": "[data-agent-assignee]",
+          "min": 1,
+          "desc": "名字是真 `<button>`，可点击性挂在 data 钩子上（R7 口径）"
+        },
+        {
+          "scope": "[data-assignee-item]",
+          "selector": "[data-agent-assignee]",
+          "count": 1,
+          "desc": "每项恰一个名按钮"
+        },
+        {
+          "scope": "[data-agents-presence]",
+          "selector": "[data-assignee-clear]",
+          "count": 0,
+          "desc": "项内**没有**第二个按钮：唯一的 `x` 在筛选条（R13 §2.1 / N8）"
+        },
+        {
+          "scope": "[data-agents-presence]",
+          "selector": "[data-assignee-item][data-assignee-active=\"true\"]",
+          "count": 0,
+          "desc": "静止无名在选（胶囊只在具名值时存在）"
+        },
+        {
+          "scope": "[data-agents-presence]",
+          "selector": "[data-agent-text]",
+          "min": 1,
+          "desc": "名册行的单行宿主在册（U-6 修正的落点：[data-agent-row] [data-agent-text] 不裁）"
+        }
+      ]
+    },
+    {
+      "id": "B04-r11",
+      "name": "R11 ① — 状态筛选：域 = 一等 7 status（读菜单，不写第二张常量表），8 行、`all` 打头",
+      "evidence": "design/fidelity-r11.md §2.1/§2.4；web/src/components/board/FiltersBar.vue（`details[data-filter-status]` + `[data-filter-status-summary]`/`[data-filter-status-text]` + 8 行 `[data-filter-status-option]`）；域由 web/src/stores/board.js 的 STATUS_FILTER_KEYS（= COLUMN_STATUSES）派生",
+      "status": "delivered",
+      "checks": [
+        {
+          "scope": "[data-filters]",
+          "selector": "[data-filter-status]",
+          "count": 1,
+          "desc": "状态控件在册（R-3 的「缺席不计失败」已随本卡落地而收紧为等值）"
+        },
+        {
+          "scope": "[data-filter-status]",
+          "selector": "[data-filter-status-summary]",
+          "count": 1,
+          "desc": "触发是 `<summary>`，值由 `[data-filter-status-text]` 承载"
+        },
+        {
+          "scope": "[data-filter-status]",
+          "selector": "[data-filter-status-text]",
+          "count": 1
+        },
+        {
+          "selector": "[data-filter-status-option]",
+          "count": 8,
+          "desc": "8 行 = `all` + 一等 7 status（值域对齐板列，禁魔数）"
+        },
+        {
+          "selector": "[data-filter-status-option][data-status]",
+          "count": 7,
+          "desc": "7 个非 `all` 行各带 `data-status`（色彩管道 + 与列/卡的取值集合等式）"
+        },
+        {
+          "selector": "[data-filter-status-option][data-status-value=\"all\"]",
+          "count": 1,
+          "desc": "`all` 行恰一行"
+        },
+        {
+          "scope": "[data-filters]",
+          "selector": "[data-filter-status][data-dismiss-on-outside]",
+          "count": 1,
+          "desc": "状态控件靠属性入伙同一条 light-dismiss（成员制，无新分支）"
+        },
+        {
+          "selector": "[data-filter-status][data-filter-status-value]",
+          "count": 1,
+          "desc": "取值载体在控件自身上（单一真相 = 控件的值；该属性的取值在驱动层判——`all` 或逗号连接的 7 值子集）"
+        }
+      ]
+    },
+    {
+      "id": "B04-r13",
+      "name": "R13 — assignee 具名：控件值域按需扩一个名字，`x` 是控件的紧邻兄弟",
+      "evidence": "design/fidelity-r13.md §2.4/§2.9/§3.4；web/src/components/board/FiltersBar.vue（`[data-filter-assignee]` 内按需 `<option data-assignee-filter-option>` + 其后的 `button[data-assignee-clear][hidden]`）；勾子名 `[data-assignee-filter-option]` 与 B22 的 `[data-assignee-option]` 不同名（R12 红线）",
+      "status": "delivered",
+      "checks": [
+        {
+          "scope": "[data-filters]",
+          "selector": "[data-filter-assignee]",
+          "count": 1
+        },
+        {
+          "scope": "[data-filter-assignee]",
+          "selector": "option",
+          "min": 4,
+          "desc": "四个静态行（all | me | human | agent）在位"
+        },
+        {
+          "scope": "[data-filter-assignee]",
+          "selector": "[data-assignee-filter-option]",
+          "count": 0,
+          "desc": "静止无名：具名 option 由值按需生成（至多一个）"
+        },
+        {
+          "scope": "[data-filters]",
+          "selector": "[data-assignee-clear]",
+          "count": 1,
+          "desc": "文档唯一 `x`，落在筛选条内"
+        },
+        {
+          "scope": "[data-filters]",
+          "selector": "[data-filter-assignee] + [data-assignee-clear]",
+          "count": 1,
+          "desc": "`x` 是 assignee 控件的**紧邻兄弟**（JS-off 结构完整的唯一来源）"
+        },
+        {
+          "selector": "[data-assignee-clear][hidden]",
+          "count": 1,
+          "desc": "静止带 `hidden` 属性 —— 隐藏由 preflight 的 `[hidden]` 承担，不由 `display` 声明"
+        }
+      ]
+    },
+    {
       "id": "B05-r12",
       "name": "R12 — board 列等高/视口自适应：结构半（几何由驱动层把守）",
       "evidence": "design/fidelity-r12-supplement.md §3/§5 B 组；design/BLOCKS.md §B05（R12 补充）",
@@ -1551,6 +1710,26 @@
         "overflowY"
       ],
       "note": "R12 两处口径（Terry 2026-10-12 / Elon 权威 Acceptance ①②）：① filters 条恒一行——`flex-wrap: nowrap` + 栏自身 `overflow-x: auto` + `min-width: 0`（契约 §2.1，R-2；430 档原型折行是**已批准书面偏差**）；② `[data-board]` 的 7 列等高且列高 == board 内容盒高（契约 §3.1，R-4），由 015627（03d8918）的 `items-stretch` + 直通链交付，本轮实测 spread 0px / delta 0px。**A 腿只承载清单六词可表达的那半**（在册族计数 + 用 `~` 表达的相对顺序，R-6a/附録 A）；行数、可见性、四控件等高、count 贴右缘、430 档栏内可滚余量、以及 B 组全部几何，只能由驱动层 web/scripts/dom-smoke.mjs 的 R12 段判定（附録 B）。**C 腿新增三个 style 目标**，并把 `flexWrap`/`overflowX`/`overflowY` 补进 `web/.ui-align.json` 的 `styleProps` —— 不加则 A3/A4 的 C 腿会静默不比较（R-6b / 未决 U-3）；C 腿非阻塞（`design/fidelity-r12-supplement.md` §5.3）。`[data-filter-label] > summary` 未新增目标：它已是既有的 `r9-label-trigger`（同一元素），重复登记只会把同一处差异数两遍。"
+    },
+    "r11Additions": {
+      "card": "T-20261013-014701-3 (R11 ①/② + R13 implementation, 2026-10-13)",
+      "contract": "design/fidelity-r11.md + design/fidelity-r13.md",
+      "blocks": [
+        "B03-r13",
+        "B04-r11",
+        "B04-r13"
+      ],
+      "styleTargets": [
+        "r11-status-trigger",
+        "r11-roster-name",
+        "r13-assignee-item",
+        "r13-assignee-clear"
+      ],
+      "stylePropsAdded": [],
+      "checksRetargeted": [
+        "B04-r9 的三条类名锚（`.td-label-trigger` 计数 / 其内 `span` 与 `[data-filter-label-summary]` / `> .td-icon-sm`）改按控件自己的钩子 `[data-filter-label]` 收窄"
+      ],
+      "note": "R11 两项（Terry：① list 的「状态」筛选 ② Active agents 的 Assignee 可点 ⇒ 路由）与 R13 的扩写（同一按名收窄 + 具名胶囊 + 筛选条里的 `x`）。**A 腿三条块**：状态控件的域与 8 行（B04-r11）、名册项与名按钮的结构（B03-r13）、具名 option 与 `x` 的兄弟关系（B04-r13）。**C 腿四个 style 目标**（状态触发、名册名、胶囊项、`x`）—— `styleProps` 无需新增，四个目标要看的属性都已在册；C 腿非阻塞。**B04-r9 的三条类名锚按控件钩子收窄**：R11 §4.1 R4 要求状态控件复用 `.td-label-trigger` 这件壳（bar 四控件同高的口径就是它），于是「文档里只有一个 `.td-label-trigger`」不再成立——原断言想说的是「label 触发器的壳与 caret」，不是「文档只有一个触发器」，故改按 `[data-filter-label]` 收窄，事实不变而不再被同一族的新成员误伤。行数、`clippedPx == 0`、胶囊的宽度中性、名册左帽的 U-6 修正、以及 R11/R13 的全部交互（路由四步、切换关闭、`x` 只清 assignee），只能由驱动层 web/scripts/dom-smoke.mjs 的 R11/R13 段判定。"
     }
   }
 }

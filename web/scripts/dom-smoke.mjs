@@ -1333,12 +1333,19 @@ export async function run() {
     await page.waitForTimeout(120);
     r9Check((await readDismiss()).switcherOpen === false, "choosing a project left the switcher open");
 
-    // §5 B3 — the relation the round is about: three controls, one height. An
-    // absolute figure is the prototype's platform value; *equal* is the fact
-    // Terry read as "not the same component" when it was 30 / 30 / 28.
+    // §5 B3 — the relation the round is about: the field family's controls, one
+    // height. An absolute figure is the prototype's platform value; *equal* is
+    // the fact Terry read as "not the same component" when it was 30 / 30 / 28.
     // B11 — the caret lives in the room the right padding reserves: 14px, 6px
     // from the trigger's padding box (7px from its border box, §1 R9-1), centred
     // on the trigger's own centre line.
+    //
+    // R11 ① — the status control is the fourth member of that family and wears
+    // the same `.td-label-trigger` shell, so this probe is stated over the
+    // **label control's own hook** rather than over the class: a class-scoped
+    // caret count now sees two, and the fact R9 asserted was always "the label
+    // trigger has one caret", not "the document has one trigger". The family's
+    // heights gain the status member, which is what R11's §5 A3 asks for.
     const controls = await page.evaluate(() => {
       const box = (selector) => {
         const el = document.querySelector(selector);
@@ -1349,19 +1356,20 @@ export async function run() {
         const rect = box(selector);
         return rect ? round(rect.height) : null;
       };
-      const trigger = document.querySelector(".td-label-trigger");
-      const triggerRect = box(".td-label-trigger");
-      const caretRect = box(".td-label-trigger .td-icon-sm");
+      const trigger = document.querySelector("[data-filter-label] > summary");
+      const triggerRect = box("[data-filter-label] > summary");
+      const caretRect = box("[data-filter-label] .td-icon-sm");
       const assigneeRect = box("[data-filter-assignee]");
       return {
         assignee: height("[data-filter-assignee]"),
         priority: height("[data-filter-priority]"),
-        label: height(".td-label-trigger"),
+        status: height("[data-filter-status] > summary"),
+        label: height("[data-filter-label] > summary"),
         // How far the label control is off the selects' own line — the second
         // half of "排版未对齐": the two selects' wrappers used to carry a stray
         // bottom margin that floated them 6px above the row's centre.
         lineOffset: triggerRect && assigneeRect ? round(Math.abs(triggerRect.top - assigneeRect.top)) : null,
-        carets: document.querySelectorAll(".td-label-trigger .td-icon-sm").length,
+        carets: document.querySelectorAll("[data-filter-label] .td-icon-sm").length,
         caret: caretRect && triggerRect ? {
           width: round(caretRect.width),
           height: round(caretRect.height),
@@ -1372,8 +1380,11 @@ export async function run() {
       };
     });
     r9Check(
-      controls.assignee !== null && controls.assignee === controls.priority && controls.assignee === controls.label,
-      `the three filter controls are ${controls.assignee}/${controls.priority}/${controls.label}px tall — they must be equal`,
+      controls.assignee !== null &&
+        controls.assignee === controls.priority &&
+        controls.assignee === controls.status &&
+        controls.assignee === controls.label,
+      `the four filter controls are ${controls.assignee}/${controls.priority}/${controls.status}/${controls.label}px tall — they must be equal`,
     );
     r9Check(controls.lineOffset !== null && controls.lineOffset <= 1, `the label control is ${controls.lineOffset}px off the selects' line`);
     r9Check(controls.carets === 1, `${controls.carets} carets inside the trigger, expected 1`);
@@ -2070,6 +2081,354 @@ export async function run() {
       langEn: langAfterEn === "en",
     };
 
+    /* ---- R11 ①/② · R13 — the status filter, the roster route and the assignee
+       constraint ---------------------------------------------------------------
+       The design contracts' machine checks, ported to the shipped app: R11 §5
+       (the status control's domain/order/OR-and-AND semantics, the roster names
+       that route) and R13 §5 (the named assignee, the width-neutral capsule, the
+       bar's `x`). Every assertion is a **data hook + attribute** or a computed
+       value — never a class name (R11 §5 C′9, R13 §5.4).
+
+       Two families of the contracts' rows are deliberately not asserted:
+       the JS-off rows (R11 A4.x / A8 / C-12) — a Vue SPA has no SSR, the written
+       deviation the block contract already records (C06) — and R11's C-6 ("the
+       press writes the name into no filter"), which R13 §2.2 replaces with the
+       opposite: the press narrows as well as routes. */
+    const r11Failures = [];
+    const r11Check = (ok, message) => { if (!ok) r11Failures.push(message); };
+
+    await page.setViewportSize({ width: 1512, height: 950 });
+    await page.waitForTimeout(120);
+    await page.click('[data-nav-item="board"]');
+    if (await page.evaluate(() => document.querySelector("[data-filters]")?.hasAttribute("hidden") === true)) {
+      await page.click("[data-filter-toggle]");
+      await page.waitForTimeout(120);
+    }
+
+    const readR11 = () => page.evaluate(() => {
+      const painted = (el) => !!el && el.getClientRects().length > 0;
+      const attr = (el, name) => (el ? el.getAttribute(name) : null);
+      const items = [...document.querySelectorAll("[data-assignee-item]")];
+      const bar = document.querySelector("[data-filters]");
+      const childHook = (el) => {
+        for (const hook of ["data-filter-assignee", "data-assignee-clear", "data-filter-priority",
+          "data-filter-status", "data-filter-label", "data-filter-clear", "data-filter-count"]) {
+          if (el.hasAttribute(hook)) return hook;
+        }
+        return el.tagName.toLowerCase();
+      };
+      const statusRaw = attr(document.querySelector("[data-filter-status]"), "data-filter-status-value") ?? "all";
+      // The board's own cards, not the document's: the waiting view renders the
+      // same `<Card>` for the awaiting task, so `[data-card]` alone counts it
+      // twice (M1's overlay is one card in two surfaces).
+      const boardCards = [...document.querySelectorAll("[data-board] [data-card]")];
+      const statusSet = statusRaw === "all" ? [] : statusRaw.split(",");
+      const name = document.querySelector("[data-filter-assignee]")?.value ?? "all";
+      const cardMatches = (el) => {
+        const cardName = attr(el, "data-assignee") ?? "";
+        const kind = attr(el, "data-assignee-kind");
+        const okName = name === "all" ? true
+          : name === "me" ? cardName === "Terry"
+          : name === "human" || name === "agent" ? kind === name
+          : cardName === name;
+        const okStatus = statusSet.length === 0 ? true : statusSet.includes(attr(el, "data-status"));
+        return okName && okStatus;
+      };
+      return {
+        statusCount: document.querySelectorAll("[data-filter-status]").length,
+        statusValue: statusRaw,
+        statusText: document.querySelector("[data-filter-status-text]")?.textContent.trim() ?? null,
+        optionValues: [...document.querySelectorAll("[data-filter-status-option]")].map((el) => attr(el, "data-status-value")),
+        pressedOptions: [...document.querySelectorAll("[data-filter-status-option]")]
+          .filter((el) => attr(el, "aria-pressed") === "true").map((el) => attr(el, "data-status-value")),
+        optionDots: document.querySelectorAll("[data-filter-status-option][data-status] .td-status-dot").length,
+        columnStatuses: [...new Set([...document.querySelectorAll("[data-column][data-status]")].map((el) => attr(el, "data-status")))].sort(),
+        cardStatuses: [...new Set(boardCards.map((el) => attr(el, "data-status")))].sort(),
+        visibleCardStatuses: boardCards.filter(painted).map((el) => attr(el, "data-status")),
+        statusDismiss: !!document.querySelector("[data-filter-status][data-dismiss-on-outside]"),
+        dismissCount: document.querySelectorAll("[data-dismiss-on-outside]").length,
+        barOrder: bar ? [...bar.children].filter((el) => painted(el) && !el.classList.contains("td-sr")).map(childHook) : [],
+        itemNames: items.map((el) => attr(el, "data-assignee-item")),
+        nameButtonTags: [...new Set([...document.querySelectorAll("[data-agent-assignee]")].map((el) => el.tagName))],
+        buttonsPerItem: items.map((el) => el.querySelectorAll("[data-agent-assignee]").length),
+        clearsPerItem: items.map((el) => el.querySelectorAll("[data-assignee-clear]").length),
+        activeItems: items.filter((el) => attr(el, "data-assignee-active") === "true").map((el) => attr(el, "data-assignee-item")),
+        pressedNames: [...document.querySelectorAll("[data-agent-assignee]")]
+          .filter((el) => attr(el, "aria-pressed") === "true").map((el) => attr(el, "data-assignee")),
+        clearCount: document.querySelectorAll("[data-assignee-clear]").length,
+        clearHidden: attr(document.querySelector("[data-assignee-clear]"), "hidden") !== null,
+        clearPainted: painted(document.querySelector("[data-assignee-clear]")),
+        clearInsideBar: !!document.querySelector("[data-filters] [data-assignee-clear]"),
+        clearIsSibling: (() => {
+          const clear = document.querySelector("[data-assignee-clear]");
+          const control = document.querySelector("[data-filter-assignee]");
+          return !!clear && !!control && control.nextElementSibling === clear;
+        })(),
+        clearGlyph: document.querySelector("[data-assignee-clear]")?.textContent.trim() ?? null,
+        assigneeValue: name,
+        staticOptions: [...document.querySelectorAll("[data-filter-assignee] option")]
+          .filter((el) => !el.hasAttribute("data-assignee-filter-option")).length,
+        namedOptionValues: [...document.querySelectorAll("[data-filter-assignee] [data-assignee-filter-option]")]
+          .map((el) => attr(el, "data-assignee-filter-option")),
+        b22Options: document.querySelectorAll("[data-assignee-option]").length,
+        b22InMenu: [...document.querySelectorAll("[data-assignee-option]")].filter((el) => el.closest("[data-assignee-menu]")).length,
+        countText: document.querySelector("[data-filter-count]")?.textContent.trim() ?? null,
+        toastChildren: document.querySelector("[data-toast-region]")?.children.length ?? 0,
+        listState: attr(document.querySelector("[data-list]"), "data-list-state"),
+        listRowCount: document.querySelectorAll("[data-list-rows] [data-list-row]").length,
+        listRowStatuses: [...document.querySelectorAll("[data-list-rows] [data-list-status]")].map((el) => attr(el, "data-status")),
+        viewCurrent: attr(document.querySelector('[data-nav-item][aria-current="page"]'), "data-nav-item"),
+        listPressed: attr(document.querySelector('[data-view="list"]'), "aria-pressed"),
+        boardHidden: document.querySelector("[data-board-view]")?.hasAttribute("hidden") ?? null,
+        expectedRows: boardCards.filter(cardMatches).length,
+        expectedIds: boardCards.filter(cardMatches).map((el) => `${attr(el, "data-identifier")}/${attr(el, "data-assignee")}/${attr(el, "data-status")}`),
+        listIds: [...document.querySelectorAll("[data-list-rows] [data-list-row]")].map((el) => attr(el.querySelector("[data-list-identifier]"), "title") ?? el.textContent.trim()),
+        columns: document.querySelectorAll("[data-column]").length,
+      };
+    });
+
+    /** The roster's geometry: width-neutrality, the capsule and the row heights. */
+    const measureRoster = () => page.evaluate(() => {
+      const round = (n) => Math.round(n * 100) / 100;
+      const hosts = [...document.querySelectorAll("[data-agent-row] [data-agent-text]")];
+      const active = document.querySelector('[data-assignee-item][data-assignee-active="true"]');
+      const activeName = active?.querySelector("[data-agent-assignee]") ?? null;
+      const host = active?.closest("[data-agent-row] [data-agent-text]") ?? null;
+      const firstHost = hosts[0] ?? null;
+      const firstItem = firstHost?.querySelector("[data-assignee-item]") ?? null;
+      const cs = active ? getComputedStyle(active) : null;
+      const nameCs = activeName ? getComputedStyle(activeName) : null;
+      const hostCs = host ? getComputedStyle(host) : null;
+      return {
+        rows: hosts.map((el) => ({ clip: el.scrollWidth - el.clientWidth, overflow: getComputedStyle(el).overflowX })),
+        rowHeights: [...document.querySelectorAll("[data-agent-row]")].map((el) => round(el.getBoundingClientRect().height)),
+        activeCount: document.querySelectorAll('[data-assignee-item][data-assignee-active="true"]').length,
+        capsule: cs ? {
+          radius: cs.borderTopLeftRadius,
+          paddingLeft: cs.paddingLeft,
+          paddingRight: cs.paddingRight,
+          marginLeft: cs.marginLeft,
+          marginRight: cs.marginRight,
+          background: cs.backgroundColor,
+          borderTopWidth: cs.borderTopWidth,
+        } : null,
+        nameColor: nameCs?.color ?? null,
+        hostOverflow: hostCs?.overflowX ?? null,
+        // U-6 — how far the **active** bed bleeds past its own host's padding
+        // box, and whether it is the row's first name (the one the prototype
+        // sheared 6px off). A positive bleed on a first-in-row item is the 6px
+        // the host's `overflow: hidden` would have clipped.
+        activeBleed: host && active ? round(host.getBoundingClientRect().left + Number.parseFloat(getComputedStyle(host).paddingLeft) - active.getBoundingClientRect().left) : null,
+        activeIsFirst: !!(host && active && host.querySelector("[data-assignee-item]") === active),
+        activePainted: !!active && active.getClientRects().length > 0,
+        firstItemPainted: !!firstItem && firstItem.getClientRects().length > 0,
+        accent: getComputedStyle(document.documentElement).getPropertyValue("--brand-accent").trim(),
+        accentSoft: getComputedStyle(document.documentElement).getPropertyValue("--brand-accent-soft").trim(),
+      };
+    });
+
+    const restR11 = await readR11();
+    const restRoster = await measureRoster();
+    const R11_KEYS = ["backlog", "todo", "in_progress", "in_review", "blocked", "done", "canceled"];
+
+    // A · structure (R11 §5.1 A1–A3′, R13 §5 A1–A3, R2.1)
+    r11Check(restR11.statusCount === 1, `[data-filter-status] count ${restR11.statusCount} !== 1`);
+    r11Check(restR11.statusValue === "all", `resting status value ${restR11.statusValue} !== all`);
+    r11Check(restR11.statusText === "Status: All", `resting status text ${JSON.stringify(restR11.statusText)}`);
+    r11Check(restR11.optionValues.length === 8, `[data-filter-status-option] count ${restR11.optionValues.length} !== 8`);
+    r11Check(restR11.optionValues[0] === "all", `the first status row must be \`all\`, got ${restR11.optionValues[0]}`);
+    r11Check(
+      JSON.stringify(restR11.optionValues.slice(1).sort()) === JSON.stringify([...R11_KEYS].sort()),
+      `status option values ${restR11.optionValues.slice(1).join(",")} !== the seven first-class statuses`,
+    );
+    // A2′ — the domain is the board's own: the menu's seven keys, the seven
+    // columns and the cards' own `data-status` are one set. This is the
+    // "no magic numbers" check the design states as a set equality.
+    r11Check(
+      JSON.stringify(restR11.columnStatuses) === JSON.stringify([...R11_KEYS].sort()),
+      `[data-column][data-status] ${restR11.columnStatuses.join(",")} !== the seven statuses`,
+    );
+    r11Check(
+      restR11.cardStatuses.every((value) => R11_KEYS.includes(value)),
+      `[data-card][data-status] carries ${restR11.cardStatuses.join(",")}`,
+    );
+    r11Check(restR11.optionDots === 7, `${restR11.optionDots} status dots, expected 7 (one per non-\`all\` row)`);
+    r11Check(restR11.pressedOptions.length === 1 && restR11.pressedOptions[0] === "all", `at rest aria-pressed=${restR11.pressedOptions.join(",")}`);
+    r11Check(restR11.statusDismiss === true, "[data-filter-status] must join the light-dismiss membership");
+    r11Check(
+      JSON.stringify(restR11.barOrder) === JSON.stringify(["data-filter-assignee", "data-filter-priority", "data-filter-status", "data-filter-label", "data-filter-clear", "data-filter-count"]),
+      `bar order ${restR11.barOrder.join(" · ")}`,
+    );
+    // R13 A1/A2 — the roster items, one name button each, no `x` inside.
+    r11Check(restR11.itemNames.length > 0, "the roster renders no [data-assignee-item]");
+    r11Check(restR11.itemNames.length === new Set(restR11.itemNames).size, `duplicate roster names ${restR11.itemNames.join(",")}`);
+    r11Check(restR11.buttonsPerItem.every((n) => n === 1), `name buttons per item ${restR11.buttonsPerItem.join(",")}`);
+    r11Check(restR11.clearsPerItem.every((n) => n === 0), `the roster must hold no [data-assignee-clear]: ${restR11.clearsPerItem.join(",")}`);
+    r11Check(restR11.nameButtonTags.length === 1 && restR11.nameButtonTags[0] === "BUTTON", `roster names are ${restR11.nameButtonTags.join(",")}, expected BUTTON`);
+    r11Check(restR11.activeItems.length === 0, `at rest ${restR11.activeItems.length} roster items are active`);
+    // R13 A2.2/A4.4 — exactly one `x`, inside the bar, the control's sibling, hidden.
+    r11Check(restR11.clearCount === 1, `[data-assignee-clear] count ${restR11.clearCount} !== 1`);
+    r11Check(restR11.clearInsideBar === true, "the `x` must live inside [data-filters]");
+    r11Check(restR11.clearIsSibling === true, "the `x` must be [data-filter-assignee]'s next sibling");
+    r11Check(restR11.clearHidden === true && restR11.clearPainted === false, "the `x` must be hidden and unpainted at rest");
+    r11Check(restR11.clearGlyph === "✕", `the \`x\` glyph is ${JSON.stringify(restR11.clearGlyph)}`);
+    // R13 A3/R2.1 — the control's four static rows, no named option at rest, and
+    // B22's bare seats untouched by this round's hook.
+    r11Check(restR11.staticOptions === 4, `static assignee options ${restR11.staticOptions} !== 4`);
+    r11Check(restR11.namedOptionValues.length === 0, `at rest ${restR11.namedOptionValues.length} named options exist`);
+    r11Check(restR11.assigneeValue === "all", `resting assignee value ${restR11.assigneeValue} !== all`);
+    r11Check(restR11.b22Options === restR11.b22InMenu, `[data-assignee-option] ${restR11.b22Options} seats, ${restR11.b22InMenu} inside [data-assignee-menu]`);
+
+    // C · interaction (R11 §5.3 C-1…C-5, R13 §5.3 C1–C5)
+    const openStatusMenu = async () => {
+      const open = await page.evaluate(() => document.querySelector("[data-filter-status]")?.hasAttribute("open") ?? false);
+      if (!open) {
+        await page.click("[data-filter-status] > summary");
+        await page.waitForTimeout(90);
+      }
+    };
+    const closeFloating = async () => {
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(90);
+    };
+    const pressStatus = async (key) => {
+      await openStatusMenu();
+      await page.click(`[data-filter-status-option][data-status-value="${key}"]`);
+      await page.waitForTimeout(120);
+    };
+
+    // C-2 — one status: the set is exactly that status, and the cards follow.
+    await pressStatus("in_review");
+    const r11Solo = await readR11();
+    r11Check(r11Solo.statusValue === "in_review", `after In Review the value is ${r11Solo.statusValue}`);
+    r11Check(r11Solo.statusText === "Status: In Review", `single-status text ${JSON.stringify(r11Solo.statusText)}`);
+    r11Check(r11Solo.visibleCardStatuses.length > 0 && r11Solo.visibleCardStatuses.every((s) => s === "in_review"), `visible card statuses ${r11Solo.visibleCardStatuses.join(",")}`);
+    r11Check(/^showing \d+ of \d+$/.test(r11Solo.countText ?? ""), `the count must take the filtered form, got ${JSON.stringify(r11Solo.countText)}`);
+
+    // C-3 — a second status joins it: OR, stated in menu order.
+    await pressStatus("in_progress");
+    const r11Or = await readR11();
+    r11Check(r11Or.statusValue === "in_progress,in_review", `OR value ${r11Or.statusValue} (menu order: in_progress first)`);
+    r11Check(r11Or.statusText === "Status: In Progress +1", `multi-status text ${JSON.stringify(r11Or.statusText)}`);
+    r11Check(
+      r11Or.visibleCardStatuses.length > 0 && r11Or.visibleCardStatuses.every((s) => s === "in_progress" || s === "in_review"),
+      `OR visible statuses ${[...new Set(r11Or.visibleCardStatuses)].join(",")}`,
+    );
+
+    // C-4 — `all` clears the set.
+    await pressStatus("all");
+    const r11All = await readR11();
+    r11Check(r11All.statusValue === "all", `after All the value is ${r11All.statusValue}`);
+    r11Check(r11All.pressedOptions.length === 1 && r11All.pressedOptions[0] === "all", `after All aria-pressed=${r11All.pressedOptions.join(",")}`);
+
+    // Roster route — press a name and read the four facts (R11 C-5 + R13 C1).
+    const rosterNames = restR11.itemNames;
+    const [firstName, secondName] = rosterNames;
+    r11Check(rosterNames.length >= 2, `the fixture must offer two roster names, got ${rosterNames.length}`);
+    await page.click(`[data-agent-assignee="${firstName}"]`);
+    await page.waitForTimeout(400); // the list view reads on entry
+    const r11Route = await readR11();
+    r11Check(r11Route.viewCurrent === "list", `the route left the view on ${r11Route.viewCurrent}`);
+    r11Check(r11Route.listPressed === "true", `[data-view="list"] aria-pressed=${r11Route.listPressed}`);
+    r11Check(r11Route.statusValue === "in_progress,in_review", `the route wrote status ${r11Route.statusValue}`);
+    r11Check(r11Route.assigneeValue === firstName, `the route wrote assignee ${r11Route.assigneeValue}, expected ${firstName}`);
+    r11Check(r11Route.activeItems.length === 1 && r11Route.activeItems[0] === firstName, `active roster items ${r11Route.activeItems.join(",")}`);
+    r11Check(r11Route.pressedNames.length === 1 && r11Route.pressedNames[0] === firstName, `pressed names ${r11Route.pressedNames.join(",")}`);
+    r11Check(r11Route.namedOptionValues.length === 1 && r11Route.namedOptionValues[0] === firstName, `named options ${r11Route.namedOptionValues.join(",")}`);
+    r11Check(r11Route.clearHidden === false && r11Route.clearPainted === true, "the `x` must appear with a named assignee");
+    r11Check(r11Route.b22Options === restR11.b22Options, `B22's seat count moved ${restR11.b22Options} → ${r11Route.b22Options}`);
+    r11Check(r11Route.listState === "data", `the list settled on ${r11Route.listState}`);
+    r11Check(r11Route.listRowCount === r11Route.expectedRows, `list shows ${r11Route.listRowCount} rows (${r11Route.listIds.join(" | ")}), ${r11Route.expectedRows} expected (${r11Route.expectedIds.join(" | ")})`);
+    r11Check(r11Route.listRowCount > 0, "the route narrowed to nothing");
+    // R11 §5 C-5 — every routed row is in flight. The list's chip states the
+    // card's **raw** status, and M1's `awaiting` is an overlay a card wears while
+    // it stays on `in_progress` (the board renders it in that column, and the
+    // filter matches it there) — so `awaiting` is the third member of the "in
+    // flight" set here, not an escape hatch. On the prototype, where the overlay
+    // does not exist, the set is the contract's two.
+    r11Check(
+      r11Route.listRowStatuses.every((s) => s === "in_progress" || s === "in_review" || s === "awaiting"),
+      `routed rows carry statuses ${[...new Set(r11Route.listRowStatuses)].join(",")}`,
+    );
+
+    // R13 §5.2 — the capsule's geometry and its width neutrality, measured with
+    // **this** name in force. `firstName` is a row's first name, which is the
+    // position U-6 is about: the bed's 6px left bleed is the part a clipping host
+    // would shear off.
+    const r11Capsule = await measureRoster();
+    r11Check(r11Capsule.activeCount === 1, `${r11Capsule.activeCount} capsules are active`);
+    r11Check(r11Capsule.capsule?.radius === "999px", `capsule radius ${r11Capsule.capsule?.radius}`);
+    r11Check(r11Capsule.capsule?.paddingLeft === "6px" && r11Capsule.capsule?.paddingRight === "6px", `capsule padding ${r11Capsule.capsule?.paddingLeft}/${r11Capsule.capsule?.paddingRight}`);
+    r11Check(r11Capsule.capsule?.marginLeft === "-6px" && r11Capsule.capsule?.marginRight === "-6px", `capsule inline margin ${r11Capsule.capsule?.marginLeft}/${r11Capsule.capsule?.marginRight}`);
+    r11Check(r11Capsule.capsule?.borderTopWidth === "0px", `the capsule is a bed, not a shell (border ${r11Capsule.capsule?.borderTopWidth})`);
+    r11Check(r11Capsule.capsule?.background === "rgba(15, 122, 115, 0.1)", `capsule ground ${r11Capsule.capsule?.background}, expected the accent-soft token`);
+    r11Check(r11Capsule.nameColor === "rgb(15, 122, 115)", `the selected name's colour ${r11Capsule.nameColor}, expected the accent token`);
+    // B6 — width neutrality: no roster row's single-line host is elided.
+    r11Check(r11Capsule.rows.every((r) => r.clip === 0), `roster clip ${r11Capsule.rows.map((r) => r.clip).join(",")} — the capsule must cost no width`);
+    // B3 — the row heights do not move.
+    r11Check(
+      JSON.stringify(r11Capsule.rowHeights) === JSON.stringify(restRoster.rowHeights),
+      `roster row heights moved ${restRoster.rowHeights.join(",")} → ${r11Capsule.rowHeights.join(",")}`,
+    );
+    // U-6 — the correction: the host clips nothing, and the bed really does
+    // bleed its 6px past the host's content edge with its cap intact.
+    r11Check(r11Capsule.hostOverflow === "visible", `the roster text host overflow is ${r11Capsule.hostOverflow}, expected visible (R13 §8 U-6)`);
+    r11Check(
+      r11Capsule.activeIsFirst === true && r11Capsule.activeBleed !== null && r11Capsule.activeBleed >= 5 && r11Capsule.activePainted,
+      `the first-in-row capsule bleeds ${r11Capsule.activeBleed}px (first=${r11Capsule.activeIsFirst}, painted=${r11Capsule.activePainted})`,
+    );
+    r11Check(restRoster.rows.every((r) => r.clip === 0), `at rest the roster clips ${restRoster.rows.map((r) => r.clip).join(",")}`);
+
+    // R13 C4 — switching names moves the capsule, never doubles it.
+    if (secondName) {
+      await page.click(`[data-agent-assignee="${secondName}"]`);
+      await page.waitForTimeout(300);
+      const r11Switch = await readR11();
+      r11Check(r11Switch.activeItems.length === 1 && r11Switch.activeItems[0] === secondName, `switched active ${r11Switch.activeItems.join(",")}`);
+      r11Check(r11Switch.namedOptionValues.length === 1 && r11Switch.namedOptionValues[0] === secondName, `switched named option ${r11Switch.namedOptionValues.join(",")}`);
+      r11Check(r11Switch.assigneeValue === secondName, `switched value ${r11Switch.assigneeValue}`);
+      r11Check(r11Switch.statusValue === "in_progress,in_review", `switching names moved the status set to ${r11Switch.statusValue}`);
+
+      // R13 C3 — the `x` clears the assignee and nothing else.
+      const beforeX = await readR11();
+      await page.click("[data-assignee-clear]");
+      await page.waitForTimeout(150);
+      const afterX = await readR11();
+      r11Check(afterX.assigneeValue === "all", `after \`x\` the assignee is ${afterX.assigneeValue}`);
+      r11Check(afterX.namedOptionValues.length === 0, `after \`x\` ${afterX.namedOptionValues.length} named options remain`);
+      r11Check(afterX.activeItems.length === 0, `after \`x\` ${afterX.activeItems.length} roster items stay active`);
+      r11Check(afterX.clearHidden === true && afterX.clearPainted === false, "after `x` the control must hide again");
+      r11Check(afterX.statusValue === beforeX.statusValue, `\`x\` moved the status set ${beforeX.statusValue} → ${afterX.statusValue}`);
+      r11Check(afterX.viewCurrent === "list", `\`x\` switched the view to ${afterX.viewCurrent}`);
+      r11Check(afterX.toastChildren === beforeX.toastChildren, "`x` must not raise a toast");
+      r11Check(
+        afterX.countText === beforeX.countText || afterX.listRowCount >= beforeX.listRowCount,
+        "clearing the assignee must widen (or hold) the row set, never narrow it",
+      );
+    }
+
+    // R13 C5 — pressing the name in force again is the capsule's own close: the
+    // assignee goes, the view and the status set stay.
+    await page.click(`[data-agent-assignee="${firstName}"]`);
+    await page.waitForTimeout(300);
+    const r11Reopen = await readR11();
+    r11Check(r11Reopen.assigneeValue === firstName, `re-route wrote ${r11Reopen.assigneeValue}`);
+    const statusBeforeToggle = r11Reopen.statusValue;
+    await page.click(`[data-agent-assignee="${firstName}"]`);
+    await page.waitForTimeout(200);
+    const r11Toggle = await readR11();
+    r11Check(r11Toggle.assigneeValue === "all", `the toggle left the assignee on ${r11Toggle.assigneeValue}`);
+    r11Check(r11Toggle.activeItems.length === 0, `the toggle left ${r11Toggle.activeItems.length} active items`);
+    r11Check(r11Toggle.statusValue === statusBeforeToggle, `the toggle moved the status set ${statusBeforeToggle} → ${r11Toggle.statusValue}`);
+    r11Check(r11Toggle.viewCurrent === "list", `the toggle switched the view to ${r11Toggle.viewCurrent}`);
+    r11Check(r11Toggle.clearHidden === true, "the toggle must hide the `x`");
+    await closeFloating();
+
+    // Base state again, so the sections after this one read the resting board.
+    await page.click("[data-nav-item='board']");
+    await page.waitForTimeout(150);
+
+
     // ---- M1 · the 「等你回复」surface ----------------------------------------
     //
     // The design's §8 list, evaluated where it has to be evaluated: in a browser,
@@ -2265,6 +2624,7 @@ export async function run() {
         adaptHeight: adapt.board.heights[0],
         heights: r12Heights,
       },
+      r11: { failures: r11Failures },
       geometry,
       counts: { rules: results.length, failed: failures.length, ...geometry },
       fixtureTasks: data.tasks.length,
@@ -2334,6 +2694,12 @@ if (isEntryPoint) run().then(
       } else {
         console.log(`R12 (fidelity) — the filters bar's one line at ${report.r12.tiers.join("/")} and the board's equal-height chain (columns ${report.r12.heights[1512]}px @1512x900 → ${report.r12.adaptHeight}px @1512x700, ${report.r12.tierGeometry["1512x950"]?.heights[0]}px @1512x950) all pass`);
       }
+      if (report.r11.failures.length > 0) {
+        console.log(`R11/R13 (fidelity) — ${report.r11.failures.length} failed:`);
+        for (const failure of report.r11.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log("R11/R13 (fidelity) — the status filter, the roster route, the named assignee, the width-neutral capsule and the bar's `x` all pass");
+      }
     }
     const interactionOk =
       report.interactions.drawerOpened &&
@@ -2355,6 +2721,7 @@ if (isEntryPoint) run().then(
       report.r9.failures.length === 0 &&
       report.r10.failures.length === 0 &&
       report.r12.failures.length === 0 &&
+      report.r11.failures.length === 0 &&
       interactionOk;
     process.exit(ok ? 0 : 1);
   },

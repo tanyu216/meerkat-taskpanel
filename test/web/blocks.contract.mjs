@@ -558,6 +558,40 @@ const BLOCKS = [
       { kind: "absent", selector: "[data-lang-toggle]" },
       { kind: "absent", selector: "[data-theme-modal]" },
       { kind: "absent", selector: "[data-lang-modal]" },
+
+      /* ---- R11 ② · R13 · the roster names (design/fidelity-r11.md §2.2,
+         design/fidelity-r13.md §2.1) ---------------------------------------
+         Each name is a real `<button>` carrying `[data-agent-assignee]`, wrapped
+         by exactly one `[data-assignee-item]` — the capsule's shell. A press
+         routes to the list view *and* narrows by the name (R13 §2.2), so the
+         press is a writer, and the button is the control: no `role`, no
+         `tabindex`, no key handler. The item holds **no** second button, and in
+         particular no `[data-assignee-clear]` — that one lives in the bar beside
+         the control whose value it clears (R13 §2.1). The counts are data (how
+         many agents the board's roster has), never a frozen number; only the
+         one-name-button-per-item relation is stated.
+         The capsule itself is **width-neutral** and only exists while a name is
+         in force, so its geometry is measured live in `web/scripts/dom-smoke.mjs`
+         (R13 §5.2 B1/B3/B6) rather than as a resting computed rule. */
+      { kind: "count", selector: "[data-agent-assignee]", min: 1 },
+      { kind: "count", selector: "[data-agent-assignee]", within: "[data-agents-presence]", min: 1 },
+      { kind: "count", selector: "[data-assignee-item]", within: "[data-agents-presence]", min: 1 },
+      { kind: "count", selector: "[data-agent-assignee]", within: "[data-assignee-item]", min: 1 },
+      // No clear button inside a roster item: the one `x` lives in the bar (B04).
+      { kind: "count", selector: "[data-assignee-clear]", within: "[data-agents-presence]", equals: 0 },
+      { kind: "identical-hookset", selector: "[data-assignee-item]", within: "[data-agents-presence]" },
+      { kind: "identical-hookset", selector: "[data-agent-assignee]", within: "[data-agents-presence]" },
+      { kind: "domain", selector: "[data-agent-assignee]", attribute: "data-assignee-kind", subset: DOMAINS.ASSIGNEE_KIND },
+      // The face is the text it replaces: no shell, no border, no padding.
+      { kind: "computed", probe: "[data-agent-assignee]", property: "paddingLeft", equalsPx: 0 },
+      { kind: "computed", probe: "[data-agent-assignee]", property: "borderTopWidth", equals: "0px" },
+      { kind: "computed", probe: "[data-agent-assignee]", property: "backgroundColor", equals: "rgba(0, 0, 0, 0)" },
+      // R13 §8 U-6 — the roster's text host clips nothing, so the width-neutral
+      // capsule's 6px left bleed is not sheared off. The project row's own name
+      // cell keeps its ellipsis; this correction is scoped to the agent row
+      // (`app.css` `[data-agent-row] [data-agent-text]`), and `[data-agent-text]`
+      // is the roster's host alone.
+      { kind: "computed", probe: "[data-agent-text]", property: "overflowX", equals: "visible" },
       // R6 ② — the selected nav row: accent copy on the accent's 10% tint, and
       // *not* the grey `.td-brand-active` the implementation used to paint. The
       // base metrics (32px row, 6px radius) come with it, because a selected row
@@ -922,6 +956,58 @@ const BLOCKS = [
       { kind: "computed", probe: "[data-filters]", property: "paddingRight", equalsPx: 0 },
       { kind: "computed", probe: "[data-filters]", property: "paddingBottom", equalsPx: 0 },
       { kind: "computed", probe: "[data-filters]", property: "paddingLeft", equalsPx: 0 },
+
+      /* ---- R11 ① · the status filter (design/fidelity-r11.md §2.1) --------
+         The control's value domain is the seven first-class statuses plus the
+         resting `all`, and the menu is where that domain lives — the rule reads
+         the rows rather than a second list in script, which is the contract's
+         "no magic numbers" (R1). The order is the board's own (DESIGN.md §2.3),
+         so the menu and the seven columns cannot disagree. The value attribute,
+         the eight `aria-pressed` rows and the trigger's copy are one write in the
+         implementation's single writer, so a document that states one set and
+         paints another cannot pass. */
+      { kind: "count", selector: "[data-filter-status]", equals: 1 },
+      { kind: "count", selector: "[data-filter-status-option]", equals: 8 },
+      {
+        kind: "order",
+        selector: "[data-filter-status-option][data-status]",
+        attribute: "data-status-value",
+        equals: DOMAINS.STATUS,
+      },
+      {
+        kind: "domain",
+        selector: "[data-filter-status-option][data-status]",
+        attribute: "data-status-value",
+        subset: DOMAINS.STATUS,
+      },
+      { kind: "count", selector: "[data-filter-status][data-dismiss-on-outside]", equals: 1 },
+      { kind: "computed", probe: "[data-filter-status-summary]", property: "height", equalsPx: 32 },
+      { kind: "text", probe: "[data-filter-status-text]", oneOf: ["Status: All", "状态：全部"] },
+
+      /* ---- R13 · the named assignee and its `x` --------------------------
+         The control's four static rows are the document's (B04's own domain);
+         a *given name* is written on demand and removed with the value, so at
+         rest there is no `[data-assignee-filter-option]` at all and the one
+         `[data-assignee-clear]` sits beside the control it clears, `hidden`.
+         The hook is **not** B22's `[data-assignee-option]` (14 bare seats in the
+         dialogs) — R13 §2.9; the B22 block keeps its own rules over that name. */
+      { kind: "count", selector: "[data-assignee-filter-option]", equals: 0 },
+      { kind: "count", selector: "[data-assignee-clear]", equals: 1 },
+      { kind: "count", selector: "[data-assignee-clear]", within: "[data-filters]", equals: 1 },
+      { kind: "count", selector: "[data-assignee-clear]", within: "[data-agents-presence]", equals: 0 },
+      { kind: "computed", probe: "[data-assignee-clear]", property: "display", equals: "none" },
+      { kind: "computed", probe: "[data-filter-assignee]", property: "height", equalsPx: 32 },
+      {
+        kind: "manual",
+        note:
+          "The assignee control's `<select>` holds four static rows (`all | me | human | agent`) " +
+          "plus, on demand, exactly one given name carrying `[data-assignee-filter-option]`. A " +
+          "named option's `value` is the name and its copy is the name — the roster's own names " +
+          "are data, never catalogue keys. Neither the option count nor the selected value is a " +
+          "resting figure, so the rule above pins only the resting state; the live behaviour " +
+          "(writing the name, the capsule, the `x`) is measured in `web/scripts/dom-smoke.mjs`'s " +
+          "R11/R13 section (design/fidelity-r13.md §5.3 C1–C5).",
+      },
       {
         kind: "manual",
         note:

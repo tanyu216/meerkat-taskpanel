@@ -19,7 +19,14 @@
  */
 import { computed, ref } from "vue";
 
-import { board, selectProject, waitingCount } from "../../stores/board.js";
+import {
+  assigneeFilterValue,
+  board,
+  selectProject,
+  waitingCount,
+  writeAssigneeFilter,
+  writeStatusFilter,
+} from "../../stores/board.js";
 import { view, setView } from "../../stores/ui.js";
 import { initialsOf } from "../../lib/monogram.js";
 
@@ -83,6 +90,32 @@ const agents = computed(() => {
 const ROUTABLE = ["board", "list", "waiting"];
 function onNav(item) {
   if (ROUTABLE.includes(item)) setView(item);
+}
+
+/**
+ * R11 ② · R13 — a roster name is a route **and** a narrowing.
+ *
+ * Pressing a name does three things in this order: the view goes to `list`, the
+ * status set becomes the two in-flight statuses, and the name is written into the
+ * assignee control — the two conditions are ANDed, exactly as any two fields of
+ * the bar are (`design/fidelity-r13.md` §2.2). R11 wrote the name into no filter
+ * because the control's domain held no given name; R13 extends that domain, so
+ * the press narrows as well as routes.
+ *
+ * A press on the name **already in force** is the capsule's own close, not a
+ * re-route: it removes the assignee condition and nothing else — the view and the
+ * status set stay, which is what the bar's `x` does too (§2.3).
+ *
+ * @param {string} name
+ */
+function onAssignee(name) {
+  if (assigneeFilterValue() === name) {
+    writeAssigneeFilter("all");
+    return;
+  }
+  setView("list");
+  writeStatusFilter(["in_progress", "in_review"]);
+  writeAssigneeFilter(name);
 }
 </script>
 
@@ -162,9 +195,37 @@ function onNav(item) {
     <section>
       <h2 class="m-0 mb-2 text-[11px] uppercase tracking-[0.06em] text-(--brand-text-3)" data-side-label data-i18n="sidebar.agents">{{ $t("sidebar.agents") }}</h2>
       <div data-agents-presence>
-        <div v-for="agent in agents" :key="agent.platform" class="flex items-center gap-2 py-0.5">
+        <div v-for="agent in agents" :key="agent.platform" class="flex items-center gap-2 py-0.5" :data-agent-row="agent.platform">
           <span class="badge badge-xs td-mono normal-case" :data-agent-platform="agent.platform">{{ agent.platform }}</span>
-          <span class="td-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap" data-side-name>{{ agent.handles.join(", ") }}</span>
+          <!-- R11 ② · R13 — the row's text is the names themselves, each a real
+               `<button>` inside its own `[data-assignee-item]` wrapper, with the
+               commas left as static text between them: the row still reads as one
+               sentence. The wrapper is the capsule's shell (never the button), so
+               the name's face stays the text it replaces. The host drops the
+               project row's `overflow-hidden`/`text-ellipsis` on purpose — the
+               capsule is **width-neutral** (6px padding cancelled by −6px inline
+               margin), so its left cap bleeds 6px past the row's edge, and a
+               clipped host would shear it off (R13 §8 U-6, corrected here). -->
+          <span class="td-mono flex-1 whitespace-nowrap" data-side-name data-agent-text>
+            <template v-for="(handle, index) in agent.handles" :key="handle">
+              <span v-if="index > 0">, </span>
+              <span
+                class="td-assignee-item"
+                :data-assignee-item="handle"
+                :data-assignee-active="assigneeFilterValue() === handle ? 'true' : 'false'"
+              >
+                <button
+                  type="button"
+                  class="td-agent-assignee td-mono"
+                  :data-agent-assignee="handle"
+                  :data-assignee="handle"
+                  data-assignee-kind="agent"
+                  :aria-pressed="assigneeFilterValue() === handle ? 'true' : 'false'"
+                  @click="onAssignee(handle)"
+                >{{ handle }}</button>
+              </span>
+            </template>
+          </span>
           <span
             class="size-2 rounded-[999px] bg-(--brand-text-4) ms-auto data-[presence=running]:bg-success data-[presence=idle]:bg-(--brand-text-4)"
             :data-presence="agent.presence"
