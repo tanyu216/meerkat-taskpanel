@@ -216,6 +216,13 @@ element with a zero maximum is a dividing error.
 | Identity slot | human card → monogram avatar visible, badge and role empty+hidden. Agent card → avatar hidden but still carrying the monogram, `[data-card-agent-badge]` **and** `[data-card-agent-role]` visible, so every card states both the platform and the role name. |
 | States | default · `:hover` · `:focus-within` · `aria-selected="true"` · `data-dragging="true"` · `data-done="true"` · `data-canceled="true"` |
 
+**R8 — the identifier is capped.** `[data-card-identifier]` renders **at most eight
+characters plus an ellipsis**: the display value is `len > 8 ? slice(0, 8) + "…" : id`,
+computed by `identifierText()` in the render layer, and the element carries the **full**
+id on `title` plus the shared `.td-id` class (single line: `nowrap` + overflow
+ellipsis). The card root's `data-identifier` keeps the full id — never the display
+value — so every lookup by attribute is unaffected. Same rule as B08 / B09.
+
 ## B08 · List view
 
 | | |
@@ -228,6 +235,37 @@ element with a zero maximum is a dividing error.
 Rows are projected from the cards that survive the active filters, so board and
 list can never disagree.
 
+**R8 — the header names every column, and shares the row's template.** The header
+(`.td-list-head`) is a **6-track grid** carrying the same column template, gap and
+inline padding as `.td-list-row` — one shared declaration, so the header cannot drift
+from the rows it labels. The six columns, in track order, are:
+
+| # | Column | Header hook | Row cell | Track | ≤759px |
+|---|---|---|---|---|---|
+| 1 | ID | `list.columns.identifier` | `[data-list-identifier]` | `74px` | visible |
+| 2 | Title | `list.columns.title` | `[data-list-title]` | `minmax(0, 1fr)` | visible |
+| 3 | Status | `list.columns.status` | `[data-list-status]` | `108px` | hidden |
+| 4 | Assignee | `list.columns.assignee` | `[data-list-assignee]` | `132px` | hidden |
+| 5 | Priority | `list.columns.priority` | `[data-list-priority]` | `96px` | hidden |
+| 6 | Revision | `list.columns.revision` | `[data-list-revision]` | `72px` | visible |
+
+The middle three carry `td-hide-sm` **on both sides** — the same class, the same
+`@media (max-width: 759px)` rule, which narrows header and row together to
+`64px minmax(0, 1fr) 84px`. The loading header (B13) is **not** a column row: it keeps
+its single caption span, which spans the whole template (`grid-column: 1 / -1`) so it
+cannot be squeezed into the 74px first track.
+
+The row's `[data-list-identifier]` carries the R8 cap too: display = eight characters
+plus an ellipsis, `title` = the full id, and the row root's `data-identifier` = the
+full id.
+
+## B13 note — the loading header
+
+`[data-skeleton] .td-list-head` is a `.td-list-head` (so it is a 6-track grid under
+R8's shared rule) with exactly **one** child, and that child spans all tracks. A header
+with one cell is a caption, not a column row; anything that adds labels there breaks
+the distinction.
+
 ## B09 · Task detail drawer
 
 | | |
@@ -238,6 +276,14 @@ list can never disagree.
 | Properties | `[data-detail-props]` → status `[data-detail-status]` / `[data-detail-status-label]` · priority `[data-detail-priority]` / `[data-detail-priority-label]` · assignee `[data-detail-assignee]` / `[data-detail-assignee-avatar]` / `[data-detail-assignee-label]` (**an input**, see B22) / `[data-detail-assignee-platform]` (platform badge, hidden for the human owner) · **reporter** `[data-detail-reporter]` / `[data-detail-reporter-avatar]` / `[data-detail-reporter-label]` (an editable control — see B22) · project `[data-detail-project]` / `[data-detail-project-label]` · **labels** `[data-detail-labels]` (editable label combo — see B25) · internal id `[data-detail-id]` + `[data-detail-id-copy]` (`data-copy-value`) · `[data-detail-version]` |
 | Body | `[data-detail-description]` (rendered GFM) · `[data-detail-relations]` → `[data-relation-link]` · `[data-detail-agent-session]` → `[data-detail-agent-session-body]` → `[data-agent-session]` · `[data-detail-attachments]` · `[data-detail-comments]` · `[data-comment-form]` → `[data-comment-input]`, `[data-comment-submit]` · `[data-detail-activity]` |
 | Source | `template[data-detail-for="TD-…"]` holds one `[data-slot="description \| relations \| agent-session \| attachments \| comments \| activity"]` per card, wrapped by `[data-detail-templates]` |
+
+**R8 — the head identifier is capped, and the drawer root carries the full id.**
+`[data-detail-identifier]` follows the same rule as B07 / B08: display = at most eight
+characters plus an ellipsis, `title` = the full id, class `.td-id`. Because the
+**rendered text is now a display value, not an identity**, the drawer root carries the
+full id on `data-identifier` (`aside[data-detail-drawer][data-identifier]`) and anything
+that needs to resolve the drawer's task must read that attribute — never the span's
+`textContent`. `[data-detail-id]` (the internal `td_…` id) is untouched.
 
 ## B10 · Create-task modal — two columns
 
@@ -270,6 +316,26 @@ the label control — `[data-label-input]`, the `[data-label-chips]` chips and t
 The assignee is no longer a `<select>`; see B22. Labels are a field as of R5 — the same
 combo control, many per task — see **B25**. The two relation controls are marked
 **Optional** and leave the task creatable when empty; see B24.
+
+**R8 — in the dark the dialog separates on all three layers.** On a `#0f1417` canvas
+the panel (`bg .td-modal-box` = `--color-td-surface` `#161b1e`) is only marginally
+lighter than the canvas, so the dialog read as part of its own backdrop. Three scoped
+overrides fix it, and **only in the dark**:
+
+| Layer | Light (unchanged) | Dark |
+|---|---|---|
+| Veil — the `dialog.modal` itself (`background-color: var(--scrim)`) | `rgba(15, 20, 23, 0.32)` | **`rgba(0, 0, 0, 0.55)`** |
+| Panel edge — `.modal-box` `border-color` | `--color-td-line` `#e6e8eb` | **`--color-td-line-strong` `#313b41`** |
+| Panel elevation — `.modal-box` `box-shadow` | `--shadow-pop` (canvas-tinted) | **`0 16px 40px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.5)`** |
+
+The panel's own surface colour is **not** changed, and neither is anything in the
+light. `.td-modal-box` inherits `.modal-box`, so **B11** (create-project) gets the same
+treatment from the same rules. The drawer's `.td-scrim` reads the same `--scrim`, so the
+drawer veil deepens with the modal's — one token, every veil.
+
+> The implementation mirrors this with a `--brand-scrim` token; see `design/fidelity-r8.md`
+> §2.1, which also records that the implementation's light veil is a *pre-existing*
+> different value and must not be churned by this round.
 
 ## B11 · Create-project modal
 
@@ -615,7 +681,7 @@ copy:
 | `data-i18n-title` | `title` |
 | `data-i18n-arg` | the `%s` value for any of the four above; it is resolved as a key first, so `column.add` + `status.todo` reads `Add task to To Do` / `在待办中新建任务` |
 
-The catalogue is the in-memory `MESSAGES` object at the top of `app.js` — **215 keys per
+The catalogue is the in-memory `MESSAGES` object at the top of `app.js` — **220 keys per
 language, mirrored 1:1** (verified by set equality, not by eye), never an external file.
 Copy `app.js` composes at runtime (toast sentences, list rows, card aria labels, the token
 mask) is keyed there too.
@@ -689,6 +755,17 @@ separate keys.
 
 The label field reuses `createTask.optional` for its `Optional` chip and `combo.new` for
 the `· new` marker, exactly as B22 and B24 do, so R5 introduces no copy for either.
+
+**R8 adds five keys**, all mirrored:
+
+| Keys | Where |
+|---|---|
+| `list.columns.title` · `list.columns.status` · `list.columns.assignee` · `list.columns.priority` · `list.columns.revision` | the list header's five new column labels (B08) — `Title` / `标题` · `Status` / `状态` · `Assignee` / `负责人` · `Priority` / `优先级` · `Revision` / `版本` — completing the set `list.columns.identifier` opened |
+
+They name **columns**, so they live under the same `list.columns.*` family as the one
+key the header already had; nothing else in the catalogue moves. The header reads them
+with the ordinary `data-i18n` hook, so a language switch re-labels all six columns in
+place like every other surface.
 
 ---
 

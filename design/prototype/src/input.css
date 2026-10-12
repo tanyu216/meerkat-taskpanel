@@ -302,6 +302,12 @@ html[data-theme="dark"] {
   --color-td-pri-medium: #e8a93a;
   --color-td-pri-low: #7ea6f0;
   --color-td-pri-none: #7c868c;
+
+  /* R8 ① — the dark veil and the panel's elevation. In the light these keep
+     the `:root` values; the dark canvas is dark enough that a shadow tinted
+     from it is invisible, so the veil deepens and the shadow goes black. */
+  --scrim: rgba(0, 0, 0, 0.55);
+  --shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
 /* ---------------------------------------------------------------------------
@@ -383,6 +389,26 @@ html[data-theme="dark"] {
     --color-warning-content: #0f1417;
     --color-error: #f0796e;
     --color-error-content: #0f1417;
+
+    /* R8 ① — the dark veil and the panel's elevation. In the light these keep
+       the `:root` values; the dark canvas is dark enough that a shadow tinted
+       from it is invisible, so the veil deepens and the shadow goes black. */
+    --scrim: rgba(0, 0, 0, 0.55);
+    --shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* R8 ① — in the dark the panel's edge is the strong hairline. `--color-td-line`
+   (#1f262a) sits almost on the canvas (#0f1417) and the panel surface
+   (#161b1e), so the dialog has no readable edge; `-strong` (#313b41) gives it
+   one. Light keeps `--color-td-line` — this rule never fires there. */
+html[data-theme="dark"] .modal-box {
+  border-color: var(--color-td-line-strong);
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme="auto"] .modal-box {
+    border-color: var(--color-td-line-strong);
   }
 }
 
@@ -1639,13 +1665,19 @@ html[data-theme="dark"] {
     overflow: hidden;
   }
 
+  /* R8 ② — the header and the rows share one column template, so the header
+     can never drift from the data it labels. */
+  .td-list-head,
+  .td-list-row {
+    grid-template-columns: 74px minmax(0, 1fr) 108px 132px 96px 72px;
+    gap: 12px;
+    padding: 0 12px;
+  }
+
   .td-list-row {
     display: grid;
-    grid-template-columns: 74px minmax(0, 1fr) 108px 132px 96px 72px;
     align-items: center;
-    gap: 12px;
     min-height: 40px;
-    padding: 0 12px;
     border-top: 1px solid var(--color-td-line);
     cursor: pointer;
     transition: background-color var(--dur-hover) var(--ease);
@@ -1660,10 +1692,9 @@ html[data-theme="dark"] {
   }
 
   .td-list-head {
-    display: flex;
+    display: grid;
     align-items: center;
     height: 32px;
-    padding: 0 12px;
     font-size: 11px;
     font-weight: 500;
     letter-spacing: 0.06em;
@@ -1671,6 +1702,13 @@ html[data-theme="dark"] {
     color: var(--color-td-ink-3);
     background-color: var(--color-td-sunken);
     border-bottom: 1px solid var(--color-td-line);
+  }
+
+  /* R8 ② — the loading caption is not a column label; it spans the whole
+     template so the single-span header reads exactly as it did before the
+     header became a grid. The six-label header has no `:only-child`. */
+  .td-list-head > :only-child {
+    grid-column: 1 / -1;
   }
 
   .td-list-head .td-list-row {
@@ -1681,7 +1719,8 @@ html[data-theme="dark"] {
   }
 
   /* keep cells at their natural width instead of stretching across the grid */
-  .td-list-row > * {
+  .td-list-row > *,
+  .td-list-head > * {
     justify-self: start;
     min-width: 0;
   }
@@ -3354,11 +3393,13 @@ html[data-theme="dark"] {
       grid-template-columns: minmax(0, 1fr);
     }
 
+    .td-list-head,
     .td-list-row {
       grid-template-columns: 64px minmax(0, 1fr) 84px;
     }
 
-    .td-list-row > .td-hide-sm {
+    .td-list-row > .td-hide-sm,
+    .td-list-head > .td-hide-sm {
       display: none;
     }
   }
@@ -3369,6 +3410,19 @@ html[data-theme="dark"] {
     .td-sidebar {
       padding: 12px 6px;
     }
+  }
+
+  /* R8 ③ — an identifier shows at most eight characters plus an ellipsis. The
+     render layer does the cutting; this keeps it on one line whatever the
+     face's advance width turns out to be, and is the reason the string never
+     wraps even at the narrow end. */
+  .td-id {
+    display: inline-block;
+    max-width: 9ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
   }
 
   /* Declared last so it wins any same-specificity tie with another app class
