@@ -100,6 +100,14 @@
   --brand-text-3: #7e8a91;            /* auxiliary / placeholder             */
   --brand-text-4: #b8c0c5;            /* disabled / weakest                  */
   --brand-focus-ring: rgba(15, 122, 115, 0.35);
+  /* The design layer's `--color-td-accent` / `--color-td-accent-soft` under the
+     brand's own names (R6 F3). `--color-primary` carries the same teal, but a
+     *selection* is not a *primary action*: the view toggle, the nav row and the
+     status chip all read the accent, so the accent gets a name of its own
+     instead of borrowing the button colour. Values are the design layer's,
+     verbatim (`design/DESIGN.md` §2.2). */
+  --brand-accent: #0f7a73;
+  --brand-accent-soft: rgba(15, 122, 115, 0.1);
 
   /* ---- status colours — 7 states, one mapping each ---------------------- */
   --brand-st-backlog: #6c777e;        /* §6 correction of #7e8a91 → 4.59:1   */
@@ -208,6 +216,8 @@
   --brand-text-3: #7c868c;
   --brand-text-4: #5a646a;
   --brand-focus-ring: rgba(42, 167, 155, 0.4);
+  --brand-accent: #2aa79b;            /* = --color-primary, dark (R6 F3)     */
+  --brand-accent-soft: rgba(42, 167, 155, 0.1);
 
   /* ---- status colours --------------------------------------------------- */
   --brand-st-backlog: #8b969c;
@@ -273,6 +283,8 @@
     --brand-text-3: #7c868c;
     --brand-text-4: #5a646a;
     --brand-focus-ring: rgba(42, 167, 155, 0.4);
+    --brand-accent: #2aa79b;
+    --brand-accent-soft: rgba(42, 167, 155, 0.1);
 
     --brand-st-backlog: #8b969c;
     --brand-st-todo: #9ba7ae;

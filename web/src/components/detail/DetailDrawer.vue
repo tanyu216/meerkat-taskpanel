@@ -139,7 +139,11 @@ function copyId() {
     <header class="flex flex-col gap-1 p-4 border-b border-b-(--brand-border)">
       <div class="flex items-center gap-2">
         <span class="td-mono" data-detail-identifier>{{ identifier }}</span>
-        <span class="badge" data-detail-status-chip :data-status="statusValue">
+        <!-- The status chip is a dot **and** a word (B09/§2.4: colour is never
+             the only signal). daisyUI's `badge-sm` owns the box, `td-chip` the
+             brand's metrics, `td-chip-status` the 6px dot. -->
+        <span class="badge badge-sm td-chip td-chip-status" data-detail-status-chip :data-status="statusValue">
+          <span class="td-status-dot" aria-hidden="true"></span>
           <span data-detail-status-chip-label>{{ $t(`status.${statusValue}`) }}</span>
         </span>
       </div>

@@ -105,7 +105,10 @@ function onMenu(event) {
       </button>
     </div>
 
-    <button type="button" class="p-0 text-left text-[14px] border-0 bg-transparent text-inherit cursor-pointer" data-card-title>{{ task.title }}</button>
+    <!-- Two lines, then an ellipsis (R6 ④). The clamp lives in `.td-card-title`
+         with the rest of the title's metrics, so the button and the box it is
+         clipped by are stated together. -->
+    <button type="button" class="td-card-title" data-card-title>{{ task.title }}</button>
 
     <div class="flex flex-wrap gap-1" data-card-labels>
       <span v-for="label in labels" :key="label" class="inline-flex items-center gap-1 px-1.5 py-px rounded-[4px] border border-(--brand-border) bg-(--brand-sunken) text-[11px] text-(--brand-text-2)" data-label>{{ label }}</span>
