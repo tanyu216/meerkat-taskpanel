@@ -41,6 +41,54 @@
       {
         "name": "card",
         "selector": "[data-card]"
+      },
+      {
+        "name": "r6-view-toggle",
+        "selector": "[data-view-toggle]"
+      },
+      {
+        "name": "r6-view-selected",
+        "selector": "[data-view][aria-pressed=\"true\"]"
+      },
+      {
+        "name": "r6-nav-selected",
+        "selector": "[data-nav-item][aria-current=\"page\"]"
+      },
+      {
+        "name": "r6-project-selected",
+        "selector": "[data-project][aria-current=\"page\"]"
+      },
+      {
+        "name": "r6-theme-cell",
+        "selector": "[data-theme-switch]"
+      },
+      {
+        "name": "r6-lang-cell",
+        "selector": "[data-lang-select]"
+      },
+      {
+        "name": "r6-lang-option-selected",
+        "selector": "[data-lang-option][aria-pressed=\"true\"]"
+      },
+      {
+        "name": "r6-card-title",
+        "selector": "[data-card-title]"
+      },
+      {
+        "name": "r6-list-group",
+        "selector": ".td-list-group"
+      },
+      {
+        "name": "r6-list-head",
+        "selector": ".td-list-head"
+      },
+      {
+        "name": "r6-status-chip",
+        "selector": "[data-detail-status-chip]"
+      },
+      {
+        "name": "r6-access-panel",
+        "selector": "[data-access-panel]"
       }
     ]
   },
@@ -864,6 +912,212 @@
           "desc": "活动行渲染为行元素而非纯文本串（实现 DetailDrawer.vue:296）—— 仪器同上：驱动层 `blocks.contract.mjs` B09 `when: \"drawer open\"`"
         }
       ]
+    },
+    {
+      "id": "B02-r6",
+      "name": "R6 ① — board/list 切换的选中态：壳类 + 选中一键（类名与计数可机检；配色由 computed style 腿比对）",
+      "evidence": "design/prototype/index.html `div.tabs.tabs-box.td-tabs[data-view-toggle]` → 两个 `button.tab.td-tab[data-view]`（aria-pressed 选中态）；实现 TopBar.vue 同构。契约 design/fidelity-r6.md §2（B02）",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "[data-view-toggle].td-tabs",
+          "count": 1,
+          "desc": "R6 ①：容器恢复 `.td-tabs` 壳（sunken 底 / line 边 / 6px 圆角，原型同款类名）"
+        },
+        {
+          "selector": "[data-view].td-tab",
+          "count": 2,
+          "desc": "R6 ①：两个按钮都是 `.td-tab`（26px 高 / 12px 字 / 4px 圆角的载体）"
+        },
+        {
+          "selector": "[data-view-toggle] [data-view][aria-pressed=\"true\"]",
+          "count": 1,
+          "desc": "R6 ①：任一时刻恰好一键为选中 —— 选中态的 accent 文字 + surface 底由 computed style 腿比对（style.targets）"
+        }
+      ]
+    },
+    {
+      "id": "B03-r6-nav",
+      "name": "R6 ② — sidebar 选中项：nav 与项目行各一（配色由 computed style 腿比对）",
+      "evidence": "design/prototype/index.html `button.td-nav-item[data-nav-item][aria-current=\"page\"]` / `button.td-side-item[data-project][aria-current=\"page\"]`（共用一条 accent 规则）；实现 Sidebar.vue 同构。契约 design/fidelity-r6.md §3（B03）",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "[data-nav-item][aria-current=\"page\"]",
+          "count": 1,
+          "desc": "R6 ②：nav 恰一项选中；accent 文字 + accent-soft 底（且非灰 `--brand-active`）由 computed style 腿比对"
+        },
+        {
+          "selector": "[data-project][aria-current=\"page\"]",
+          "count": 1,
+          "desc": "R6 ②：项目行同款（原型两条规则共用）"
+        }
+      ]
+    },
+    {
+      "id": "B03-r6-footer",
+      "name": "R6 ⑦⑧ — 页脚三格：`.td-access-cell` 壳、caret、标签、三个主题字形只显一个",
+      "evidence": "design/prototype/index.html:374-433 三个 `button.td-access-cell` + 3×`svg[data-theme-icon]` + `svg.td-caret` + `span.td-side-text`；实现 SidebarFooter.vue 同构。契约 §8/§9（B03 footer）",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "[data-theme-switch].td-access-cell",
+          "count": 1,
+          "desc": "R6 ⑦：主题格用 `.td-access-cell` 壳（28px 高 / gap 6px / 横排 / inline-start 分隔线）"
+        },
+        {
+          "selector": "[data-lang-select].td-access-cell",
+          "count": 1,
+          "desc": "R6 ⑧：语言格同上"
+        },
+        {
+          "selector": "[data-access-open].td-access-cell",
+          "count": 1,
+          "desc": "R6 ⑧：设置格同上（icon only，无可见文字）"
+        },
+        {
+          "selector": "[data-lang-select] svg.td-caret",
+          "count": 1,
+          "desc": "R6 ⑧：caret 走 `.td-caret` 类名（原型 rail 的 `.td-caret{display:none}` 因此可生效）"
+        },
+        {
+          "selector": "[data-theme-switch] .td-side-text",
+          "count": 1,
+          "desc": "R6 ⑦：主题标签走 `.td-side-text`（nowrap + ellipsis）"
+        },
+        {
+          "selector": "[data-lang-select] .td-side-text",
+          "count": 1,
+          "desc": "R6 ⑧：语言标签同上"
+        },
+        {
+          "selector": "[data-theme-switch] svg[data-theme-icon]",
+          "count": 3,
+          "desc": "R6 ⑦：三字形齐备（sun/moon/display）"
+        },
+        {
+          "selector": "[data-theme-switch] svg[data-theme-icon]:not([hidden])",
+          "count": 1,
+          "desc": "R6 ⑦（结构面）：活动字形**不带** `hidden` 属性 —— 原型的 presence-based 契约。契约 §8 曾把这条标为作废，因为缺陷期三字形**皆带** `hidden`（活动的是字面 `hidden=\"false\"`）；修复后它重新成立，这里作为**原型同构**断言保留，可见性的**语义**断言仍以 computed display 计数为准（blocks.contract 的 `visible: true`，R5）"
+        },
+        {
+          "selector": "[data-theme-switch] svg[data-theme-icon][hidden=\"false\"]",
+          "count": 0,
+          "desc": "R6 ⑦（负向）：不得用字面 `hidden=\"false\"` 表达「显示」—— 属性存在即隐藏，与值无关"
+        }
+      ]
+    },
+    {
+      "id": "B07-r6",
+      "name": "R6 ④ — 卡片标题两行截断（类名载体；clamp/overflow 由 computed style 腿比对）",
+      "evidence": "design/prototype/index.html `button.td-card-title[data-card-title]`；`.td-card[data-done|canceled=\"true\"] .td-card-title` 两条变体。契约 §5（B07）",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "[data-card-title].td-card-title",
+          "min": 1,
+          "desc": "R6 ④：标题元素恢复 `.td-card-title`（`-webkit-line-clamp:2` + `overflow:hidden` 的载体）"
+        },
+        {
+          "selector": "[data-card][data-done=\"true\"] [data-card-title]",
+          "min": 1,
+          "desc": "R6 ④：done 变体的挂载点存在（原型 `.td-card[data-done=\"true\"] .td-card-title{color:ink-3}`；实现侧此前只有卡片级 opacity，无标题规则）"
+        },
+        {
+          "selector": "[data-card][data-canceled=\"true\"] [data-card-title]",
+          "min": 1,
+          "desc": "R6 ④：canceled 变体的挂载点存在（ink-3 + line-through）"
+        }
+      ]
+    },
+    {
+      "id": "B08-r6",
+      "name": "R6 ⑤ — list 视图：分组壳 + 组头 + 六轨行；status 走 chip、priority 走 `.td-pri`",
+      "evidence": "design/prototype/index.html:2199-2235 `section.td-list[data-list]` → `.td-list-group` → `.td-list-head` + `[data-list-rows]`；行模板 :3347-3364 `div.td-list-row` + `span.badge.badge-sm.td-chip.td-chip-status` + `span.td-pri`。契约 §6（B08）",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": ".td-list-group",
+          "min": 1,
+          "desc": "R6 ⑤：分组壳（surface 底 / line 边 / 8px 圆角）。原型 rest 态有 2 个（骨架组常驻），实现只在 loading 时有骨架组 ⇒ 用 min 而非 count"
+        },
+        {
+          "selector": ".td-list-head",
+          "min": 1,
+          "desc": "R6 ⑤：组头行（32px / uppercase / 11px / sunken 底）"
+        },
+        {
+          "selector": "[data-list-row].td-list-row",
+          "min": 1,
+          "desc": "R6 ⑤：行用 `.td-list-row`（六轨 74px…72px / min-height 40 / gap 12 / padding 0 12px）"
+        },
+        {
+          "selector": "[data-list-status].td-chip.td-chip-status",
+          "min": 1,
+          "desc": "R6 ⑤⑥：status 单元格改用 chip（与抽屉头同一套）"
+        },
+        {
+          "selector": "[data-list-status] .td-status-dot",
+          "min": 1,
+          "desc": "R6 ⑤：chip 内的 status dot（每格 1 个由驱动层钉住）"
+        },
+        {
+          "selector": "[data-list-priority].td-pri",
+          "min": 1,
+          "desc": "R6 ⑤：priority 改用 `.td-pri`（与卡片同一读法，颜色来自继承的 `--pri-color`）"
+        }
+      ]
+    },
+    {
+      "id": "B09-r6",
+      "name": "R6 ⑥ — 抽屉 status badge：类集 + status dot（bg/radius 待 F6 裁定，不在此固定）",
+      "evidence": "design/prototype/index.html:2257 `span.badge.badge-sm.td-chip.td-chip-status[data-detail-status-chip]` 内含 `span.status.td-status-dot`；实现 DetailDrawer.vue 同构。契约 §7（B09）",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "[data-detail-status-chip].badge-sm.td-chip.td-chip-status",
+          "count": 1,
+          "desc": "R6 ⑥：类集与原型一致（badge-sm / td-chip / td-chip-status）。**bg 与 radius 不在本清单固定**（F6：原型同一 layer 内 `.td-chip` 重复声明、两套值冲突，待设计 owner 二选一）"
+        },
+        {
+          "selector": "[data-detail-status-chip] .td-status-dot",
+          "count": 1,
+          "desc": "R6 ⑥：chip 内恰 1 个 status dot（6×6，由驱动层钉住尺寸）"
+        }
+      ]
+    },
+    {
+      "id": "B19-r6",
+      "name": "R6 ③ — Access 弹窗：`.td-access-panel` 居中模态（几何由 computed style 腿比对）",
+      "evidence": "design/prototype/index.html:3103-3123 `section.td-access-panel[data-access-panel][role=dialog][aria-modal][aria-labelledby=\"td-access-title\"]`，`h2#td-access-title`；几何 = `min(480px, 100vw-32px)` / `min(88vh,720px)` / `translate(-50%,-50%)`（契约 §4 R2 实测，非 spec 的 920px）。实现 AccessPanel.vue 同构",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "[data-access-panel].td-access-panel",
+          "count": 1,
+          "desc": "R6 ③：面板挂 `.td-access-panel` —— 居中模态几何的载体（ruling F1）"
+        },
+        {
+          "selector": "[data-access-panel][aria-labelledby=\"td-access-title\"]",
+          "count": 1,
+          "desc": "R6 ③：面板以 `aria-labelledby` 命名（原型口径；实现原为 `aria-label`）"
+        },
+        {
+          "selector": "h2#td-access-title",
+          "count": 1,
+          "desc": "R6 ③：标题节点带 `id=\"td-access-title\"`，命名目标存在（`#id` 只作 aria 指向，不作样式钩子 —— C05）"
+        },
+        {
+          "selector": "[data-token-value]",
+          "nonEmpty": true,
+          "desc": "R6 ③：token 读数非空；掩码口径 `td_` + 12 `•` 由驱动层钉住"
+        },
+        {
+          "selector": "[data-cidr-row]",
+          "count": 3,
+          "desc": "R6 ③：CIDR 三行（第三行为原型/BLOCKS 的 `203.0.113.0/24`）"
+        }
+      ]
     }
   ],
   "m2": {
@@ -881,6 +1135,20 @@
       "B06-kind",
       "B09-m2"
     ],
+    "r6Additions": {
+      "card": "T-20261012-192813-2 (M5, 2026-10-12)",
+      "contract": "design/fidelity-r6.md",
+      "blocks": [
+        "B02-r6",
+        "B03-r6-nav",
+        "B03-r6-footer",
+        "B07-r6",
+        "B08-r6",
+        "B09-r6",
+        "B19-r6"
+      ],
+      "note": "七个 R6 块按 Terry 八项反馈逐项补断言。类名/结构/计数在本清单；computed style（accent 配色、clamp、行几何、模态居中）由 style.targets 腿双侧比对；需要交互/注入的那几条（三态循环下可见字形 === data-theme-mode、长标题两行几何、弹窗 transform 矩阵、掩码文本）在驱动层 web/scripts/dom-smoke.mjs 的 R6 段。"
+    },
     "corrections": {
       "C1": "M0 row corrected",
       "C2": "scope rationale corrected"

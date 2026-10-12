@@ -228,3 +228,45 @@ evaluated by `web/scripts/dom-smoke.mjs` between opening a card and closing the 
 `drivenChecks` array, so the gap stays countable without being reported as a failure. The
 block's two remaining checks are statically decidable and the implementation meets both, so
 the block flipped `pending → delivered` and `--strict` now reports the truth: 0.
+
+## 6. The R6 additions — Terry's eight fidelity findings (`T-20261012-192813-2`, 2026-10-12)
+
+Seven blocks (`B02-r6`, `B03-r6-nav`, `B03-r6-footer`, `B07-r6`, `B08-r6`, `B09-r6`,
+`B19-r6`) and twelve `style.targets` entries were added, one per finding of the R6 contract
+(`design/fidelity-r6.md`). The division of labour is the same the manifest has always had:
+
+| which fact | instrument |
+|---|---|
+| class names, element counts, structure | **this manifest** (`[data-view-toggle].td-tabs`, `.td-list-head`, `[data-detail-status-chip].td-chip…`) |
+| computed style (the accent pair on the pressed tab and the current nav row, the title's clamp, the list's row grid, the chip's own face) | **`style.targets`** — the two-sided leg, prototype as oracle |
+| anything needing a click or an injected value (the visible theme glyph *versus* `data-theme-mode` across the three-state cycle, a long title's two-line geometry, the modal's translate matrix, the token mask's text) | **the driven layer** — `test/web/blocks.contract.mjs` rules with `when: "rail"` / `"panel open"` / `"drawer open"`, plus the `R6` section of `web/scripts/dom-smoke.mjs` |
+
+Run (unchanged):
+
+```bash
+node ~/.openclaw/team/tools/ui-align/check.mjs --config web/.ui-align.json board-m2
+```
+
+**Where R6 stands** (`T-20261012-192813-2`, 2026-10-12):
+
+| | |
+|---|---|
+| blocks | 26 — all `delivered`, none `pending` |
+| assertions | 152 · failures **0** |
+| overflow / console | 0 failures at all five widths |
+| computed style | 64 of 558 compared properties differ (88.5%) — **non-blocking** (`style.blocking: false`) |
+
+The twelve new targets are the R6 surfaces, and the two that matter most came out
+**fully aligned, property for property**: `[data-view][aria-pressed="true"]` (accent copy on
+the surface, 26px, 4px, 12px/500 — the pressed tab the implementation used to paint
+identically to the unpressed one) and `[data-theme-switch]` / `[data-lang-select]` (the
+28px single-row cells). `.td-list-head` also matches. The residual diffs on the new targets
+are the board-wide ones the manifest already carried, not R6 regressions: the root
+font-size (prototype `14px` vs implementation `16px`), and the card/list geometry that
+follows from the two sides having different card widths. The chip target reports only
+`width`/`minWidth` as different (`57.0625px` vs `fit-content`) — its height, padding, font,
+colour, background, border and radius all agree, which is the R1 "measured pill" face
+reproduced exactly.
+
+The style leg is still **not** a gate (`--style-strict` is the switch), and the count moved
+45/186 → 64/558 because twelve targets are newly *measured*, not because fidelity dropped.
