@@ -22,7 +22,7 @@
  * Run with: node scripts/install/lib/apply.mjs <subcommand> ...
  */
 
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -354,8 +354,35 @@ function main() {
   return 0;
 }
 
+/**
+ * Canonical (symlink-free) form of a path, for the self-dispatch guard below.
+ *
+ * Both sides of the comparison must be in the *same* form. `argv[1]` is the path as
+ * invoked and may still carry symlinks — `script_dir()` in `_common.sh` prints the
+ * logical path (`cd … && pwd`), and on macOS `/tmp` is itself a symlink to
+ * `/private/tmp` — while Node reports `import.meta.url` for the already-resolved
+ * module. Comparing one form against the other made the guard silently false whenever
+ * this file was reached through a symlink: `main()` never ran, so every subcommand
+ * became a no-op that still exited 0 and printed nothing (T-20261012-175712).
+ *
+ * `realpathSync` resolves relative paths against the cwd, exactly like `resolve`, so
+ * the relative-invocation case is unaffected. A path that cannot be resolved (it does
+ * not exist) falls back to `resolve` — that can only make the guard under-fire, never
+ * fire for a different file.
+ *
+ * @param {string} path
+ * @returns {string}
+ */
+function canonicalPath(path) {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
 // Only run when executed directly, so tests can import the functions above.
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && canonicalPath(process.argv[1]) === canonicalPath(fileURLToPath(import.meta.url))) {
   process.exit(main());
 }
 
