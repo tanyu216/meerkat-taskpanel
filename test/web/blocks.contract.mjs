@@ -899,6 +899,29 @@ const BLOCKS = [
       { kind: "computed", probe: "[data-filter-label-summary]", property: "borderRadius", notEquals: "999px" },
       { kind: "computed", probe: "[data-filter-label-summary]", property: "fontSize", equalsPx: 12 },
       { kind: "computed", probe: "[data-filter-label-summary]", property: "fontWeight", equals: "400" },
+      // R12 — the bar is **one line, always** (design/fidelity-r12-supplement.md
+      // §2, rulings R-2/R-9). `nowrap` is the direction the round approves as a
+      // written deviation from the prototype (which wraps at 430); the overflow
+      // policy beside it is what keeps that deviation from becoming a page-level
+      // horizontal scrollbar — the same (d) alternative §2.1 rules out when it is
+      // missing. The three values are read off one element, so a bar that went
+      // back to `wrap`, or that was narrowed without its own scroller, cannot
+      // pass on the half the other rule states.
+      { kind: "computed", probe: "[data-filters]", property: "flexWrap", equals: "nowrap" },
+      { kind: "computed", probe: "[data-filters]", property: "flexDirection", equals: "row" },
+      { kind: "computed", probe: "[data-filters]", property: "alignItems", equals: "center" },
+      { kind: "computed", probe: "[data-filters]", property: "overflowX", equals: "auto" },
+      { kind: "computed", probe: "[data-filters]", property: "minWidth", equalsPx: 0 },
+      // …and the family's rhythm, which the wrap direction does not touch: the
+      // 8px gap and the bar's own *zero* padding. The prototype gives the bar no
+      // padding at all (the content inset belongs to `.td-main`, and to `main`
+      // here since T-20261013-015627), so the bar's box height is the tallest
+      // control's — that relation is what a padded bar would break.
+      { kind: "computed", probe: "[data-filters]", property: "gap", equalsPx: 8 },
+      { kind: "computed", probe: "[data-filters]", property: "paddingTop", equalsPx: 0 },
+      { kind: "computed", probe: "[data-filters]", property: "paddingRight", equalsPx: 0 },
+      { kind: "computed", probe: "[data-filters]", property: "paddingBottom", equalsPx: 0 },
+      { kind: "computed", probe: "[data-filters]", property: "paddingLeft", equalsPx: 0 },
       {
         kind: "manual",
         note:
@@ -907,6 +930,16 @@ const BLOCKS = [
           "Its option count is roster-derived (every label plus one \"all\" row) and is not asserted. " +
           "R9 ② evaluated replacing it with a third `<select>` (design/fidelity-r9.md §2.2 fork B2) " +
           "and did not adopt it: the control's shape is seventeen choices plus a chosen-value readout.",
+      },
+      {
+        kind: "manual",
+        note:
+          "R12 — the halves of the bar's contract a declaration cannot state live in " +
+          "web/scripts/dom-smoke.mjs's R12 section: the row count (one line at every tier, " +
+          "including 430), the four field controls' equal height, the count's geometric " +
+          "right-edge pin, the closed set of painted controls, and — at 430 — that the bar " +
+          "has scrollable slack of its own while the document still has none " +
+          "(design/fidelity-r12-supplement.md §5.1 A2/A5/A7/A10/A11, §5.4).",
       },
       {
         kind: "manual",
@@ -979,9 +1012,47 @@ const BLOCKS = [
         equals: DOMAINS.STATUS,
         when: "board view",
       },
+      // R12 — the equal-height chain (design/fidelity-r12-supplement.md §3.1,
+      // ruling R-4). `stretch` is the **explicit** declaration, not the initial
+      // value left to `normal`: it is what makes seven columns take the board's
+      // content height instead of their own, and it is the one thing an
+      // `items-start` would silently reuse. Three of the four links are stated
+      // here — the board's cross-axis alignment, the column as a column flex box,
+      // and the column body as the column's only vertical scroller — because each
+      // is a declaration on one element, which is all a computed probe can read.
+      //
+      // The *relations* the chain produces (seven equal heights, each equal to
+      // the board's content box, both following the viewport) are two-element
+      // comparisons with no rule of their own; they are measured in
+      // `web/scripts/dom-smoke.mjs`'s R12 section (§5.2 B2/B3/B4).
+      { kind: "computed", probe: "[data-board]", property: "alignItems", equals: "stretch", when: "board view" },
+      { kind: "computed", probe: "[data-board]", property: "gap", equalsPx: 16, when: "board view" },
+      { kind: "computed", probe: "[data-board]", property: "overflowX", equals: "auto", when: "board view" },
+      { kind: "computed", probe: "[data-board]", property: "overflowY", equals: "hidden", when: "board view" },
+      { kind: "computed", probe: "[data-board]", property: "minWidth", equalsPx: 0, when: "board view" },
+      { kind: "computed", probe: "[data-board]", property: "minHeight", equalsPx: 0, when: "board view" },
+      { kind: "computed", probe: "[data-board]", property: "paddingTop", equalsPx: 0, when: "board view" },
+      { kind: "computed", probe: "[data-board]", property: "paddingBottom", equalsPx: 4, when: "board view" },
+      { kind: "computed", probe: "[data-column]", property: "display", equals: "flex", when: "board view" },
+      { kind: "computed", probe: "[data-column]", property: "flexDirection", equals: "column", when: "board view" },
+      { kind: "computed", probe: "[data-column]", property: "minHeight", equalsPx: 0, when: "board view" },
+      // B5/B9 — the column is **not** its own vertical scroller; the scrolling
+      // happens inside it. A scrollbar on the column's own outer box is the
+      // defect this pair pins, and it is stated from both ends: the column may
+      // not compute to either scrolling value, and the body must compute to one.
+      { kind: "computed", probe: "[data-column]", property: "overflowY", notEquals: "auto", when: "board view" },
+      { kind: "computed", probe: "[data-column]", property: "overflowY", notEquals: "scroll", when: "board view" },
+      { kind: "computed", probe: "[data-column-body]", property: "overflowY", equals: "auto", when: "board view" },
+      { kind: "computed", probe: "[data-column-body]", property: "minHeight", equalsPx: 120, when: "board view" },
       {
         kind: "manual",
-        note: "[data-board] is the document's only horizontal scroll container (CSS, not a hook).",
+        note:
+          "R12 — [data-board] is the **page-level** horizontal scroller: it is the box " +
+          "whose 2196px row would otherwise widen the document, and the document stays " +
+          "overflow-free at every tier because it scrolls instead. Since R12 the filters bar " +
+          "carries a scroller of its own (one line, §2.1), but that one is contained in a " +
+          "32px row and never reaches the page. Both facts are CSS, not hooks; the page-level " +
+          "half is what `web/manifests/board-m2.json`'s `overflowTargets` measures as a gate.",
       },
     ],
   },

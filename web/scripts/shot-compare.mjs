@@ -31,7 +31,10 @@
  *
  * That probe is **non-gating by default** — the acceptance bar is the three
  * checks above — but it is printed under its own heading and recorded in
- * `report.json`. `--strict` promotes it to a failure.
+ * `report.json`. `--strict` promotes it to a failure, with one declared
+ * exception list (`APPROVED_DIVERGENCES`) for asymmetries a design round has
+ * already ruled on in writing; those are filed separately, still printed and
+ * still recorded, never silently dropped.
  *
  * ── Prototype driving ────────────────────────────────────────────────────────
  * `design/prototype/app.js` persists nothing: it boots at light/en from its own markup
@@ -97,6 +100,40 @@ const COMBINATIONS = Object.freeze([
   Object.freeze({ id: "dark-en", theme: "dark", lang: "en", viewports: Object.freeze([1512]) }),
   Object.freeze({ id: "light-zh", theme: "light", lang: "zh", viewports: Object.freeze([1512]) }),
 ]);
+
+/**
+ * Asymmetries the design has **already ruled on, in writing**.
+ *
+ * The divergence probe below reports any clipping key one side owns and the other
+ * does not, on the reasoning that whatever *both* sides clip is shared intent —
+ * which is why the board's own horizontal scroller never appears here (the
+ * prototype has one too). `--strict` fails the run on the rest.
+ *
+ * R12 is the one case where the two sides are *required* to differ: the contract
+ * rules the filters bar to be one line at every tier with its own overflow policy
+ * (`design/fidelity-r12-supplement.md` §2.1, ruling R-2 / Elon's ②, card
+ * `T-20261013-023722`), against a prototype that wraps that row at 430. The bar
+ * therefore clips its own row on the implementation side only, at 430 only — and
+ * the contract's A4 asserts precisely that (`[data-filters].scrollWidth >
+ * clientWidth`, with the document still free of horizontal overflow).
+ *
+ * This is a **declared exception, not a mute**. It names one selector and one
+ * width; it cites the ruling; a match is still recorded in `report.json` under
+ * `approvedDivergences` and printed by `printSummary`; and everything it does not
+ * name — including the same selector at any other width — still fails `--strict`.
+ */
+const APPROVED_DIVERGENCES = Object.freeze([
+  Object.freeze({
+    width: 430,
+    selector: "section[data-filters]",
+    ruling: "design/fidelity-r12-supplement.md §2.1 (d) / R-2 — the bar is one line with its own scroller (card T-20261013-023722)",
+  }),
+]);
+
+/** Is this implementation-only clipping key one the design has ruled on? */
+function isApprovedDivergence(width, key) {
+  return APPROVED_DIVERGENCES.some((entry) => entry.width === width && entry.selector === key);
+}
 
 /* ------------------------------------------------------------------ helpers */
 
@@ -387,6 +424,7 @@ async function main(opts) {
   const captureErrors = { implementation: [], prototype: [] };
   const problems = [];
   const layoutDivergences = [];
+  const approvedDivergences = [];
   const geometryParity = [];
 
   const { server, port } = await startServer();
@@ -416,8 +454,14 @@ async function main(opts) {
           const implementationClipped = new Set(implementationShot.clipped);
           const implementationOnly = implementationShot.clipped.filter((s) => !prototypeClipped.has(s));
           const prototypeOnly = prototypeShot.clipped.filter((s) => !implementationClipped.has(s));
-          if (implementationOnly.length || prototypeOnly.length) {
-            layoutDivergences.push({ combination: combo.id, width, implementationOnly, prototypeOnly });
+          // …and the asymmetry the design has already ruled on is filed apart
+          // (see APPROVED_DIVERGENCES): it is still recorded and printed, it
+          // just does not fail `--strict`. Everything unnamed does.
+          const approved = implementationOnly.filter((key) => isApprovedDivergence(width, key));
+          const unapprovedImplementationOnly = implementationOnly.filter((key) => !isApprovedDivergence(width, key));
+          if (approved.length) approvedDivergences.push({ combination: combo.id, width, implementationOnly: approved });
+          if (unapprovedImplementationOnly.length || prototypeOnly.length) {
+            layoutDivergences.push({ combination: combo.id, width, implementationOnly: unapprovedImplementationOnly, prototypeOnly });
           }
 
           // --- geometric parity (O1/O3) — gating, unlike the probe above ----
@@ -498,6 +542,7 @@ async function main(opts) {
     shots: matrix,
     captureErrors,
     layoutDivergences,
+    approvedDivergences,
     geometryParity,
     problems,
     machineCheck: machine && {
@@ -562,6 +607,16 @@ function printSummary(report) {
       for (const key of d.prototypeOnly) console.log(`  ✗ ${d.combination}@${d.width}  prototype only:       ${key}`);
     }
     console.log("  (non-gating: the acceptance bar is the three checks above. `--strict` fails on these.)");
+  }
+  if (report.approvedDivergences.length) {
+    console.log("");
+    console.log("── declared deviations (recorded, not gated) ──────────────");
+    for (const d of report.approvedDivergences) {
+      for (const key of d.implementationOnly) {
+        const entry = APPROVED_DIVERGENCES.find((a) => a.width === d.width && a.selector === key);
+        console.log(`  · ${d.combination}@${d.width}  implementation only: ${key} — ${entry?.ruling ?? "declared"}`);
+      }
+    }
   }
   console.log("");
   console.log("── capture-time errors ───────────────────────────────────");
