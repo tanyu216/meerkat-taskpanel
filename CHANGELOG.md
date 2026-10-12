@@ -142,6 +142,23 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Renamed to `meerkat-taskpanel`.** <!-- legacy-name-compat: quotes the former name to record the migration --> Every naming surface moved off the former `task-panel` / `TaskPanel` spellings — the npm package name, the skill source and its generated plugin copies (`skills/meerkat-taskpanel/`), the plugin + marketplace manifests, the installer environment variables (`MEERKAT_TASKPANEL_*`), the host config file (`<host>/meerkat-taskpanel.env`), the launchd / systemd / cron units, the per-user runtime directory (`Application Support/MeerkatTaskPanel/`, `~/.meerkat-taskpanel/`), the Docker image and compose project names, the Prometheus rules file and metric namespace, and the `web/` localStorage keys. The CLI keeps its name: `taskctl`.
 - **Backward compatibility.** The installer still accepts the pre-rename `TASKPANEL_*` environment variables, and the supervisor still reads a legacy `TASKPANEL_CLAIM_UNASSIGNED` key in the host config file; the new `MEERKAT_TASKPANEL_*` spelling wins when both are set.
 - **Migration.** Re-run `install.sh` to write the new paths. A runtime pointer written under the former per-user directory is not read; the CLI writes a fresh one on first run.
+- **The loop body is installed into the host, so a loaded scheduling unit no longer names
+  this checkout.** `install.sh` used to render its launchd / systemd / cron units with the
+  checkout's absolute `scripts/supervisor.mjs`, so moving, renaming or deleting the
+  checkout left every loaded unit pointing at a file that was gone — the loop died with the
+  directory, and reviving it meant reinstalling *and* reloading the unit. The installer now
+  **copies** the executor and the `src/shared/` modules it imports
+  (`scheduling.mjs` → `constants.mjs`, `errors.mjs` → `redact.mjs`) into
+  `<host-dir>/meerkat-taskpanel/`, preserving the `scripts/` + `src/shared/` shape those
+  relative imports need, and the units name that copy: `{{SUPERVISOR}}` keeps its meaning
+  and changes only its value. Re-pointing the loop after a move is a re-run of `install.sh`
+  with no `launchctl` / `systemctl` / `crontab` reload. Because the copied executor has no
+  board beside it, the host config now also records where the board engine it drives lives
+  (`MEERKAT_TASKPANEL_REPO`), which the supervisor falls back to when its own location holds
+  no `src/cli/index.mjs` — a key the installer adds to a pre-existing config file, since a
+  differing config is otherwise never rewritten without `--force`. The board engine itself,
+  the `taskctl` shim and the wake glue's project resolver stay checkout-resident; that
+  remaining half of the split is its own card.
 
 ### Removed
 

@@ -3,8 +3,8 @@
 How a board gets worked **continuously** when the host that does the work has no
 clock: the cheap scan, the atomic claim, the wake, and the slow patrol that
 catches what the scan misses. The supervisor that runs the loop lives **outside**
-the host — `scripts/supervisor.mjs` — and the host is only ever the worker that
-gets woken.
+the host — `scripts/supervisor.mjs`, which `install.sh` copies into the host — and
+the host is only ever the worker that gets woken.
 
 This is the design the OpenClaw host already ships as
 [openclaw-team](https://github.com/tanyu216/openclaw-team) (`poll-<agent>` and
@@ -153,11 +153,46 @@ timers** — their hooks fire only on session events. So the loop lives outside:
 | Option | Shape |
 |---|---|
 | `scripts/supervisor.mjs` (this repo) | standalone; `--once` for cron/launchd/systemd, or its own interval loop |
+| the host-installed copy | what `install.sh` deploys: the body is copied under `<host-dir>/meerkat-taskpanel/`, and the scheduling units name *that* path |
 | the local `taskd` process | a natural home for the same loop in a future milestone |
 | [openclaw-team](https://github.com/tanyu216/openclaw-team) | on OpenClaw, the framework *is* the supervisor |
 
 The host is just a worker: the supervisor claims on the board, then starts the
 host's own headless entry point.
+
+### The loop body is installed, not referenced
+
+`install.sh` **copies** the executor into the host rather than pointing a unit at
+this checkout:
+
+```text
+<home>/<host-dir>/meerkat-taskpanel/
+├── scripts/supervisor.mjs        the executor the units run
+├── src/shared/{scheduling,constants,errors,redact}.mjs
+├── supervisor.log                runtime
+└── supervisor.state.json         runtime
+```
+
+The `scripts/` + `src/shared/` shape is load-bearing: `supervisor.mjs` imports
+`../src/shared/scheduling.mjs`, and that module in turn imports `constants.mjs` and
+`errors.mjs` (which imports `redact.mjs`). One file alone would leave a relative import
+resolving to nothing, so the transitive closure travels with it. The installer refreshes
+a differing copy only with `--force` (merge, never clobber — the same contract as every
+other installed artefact).
+
+What that buys: a unit a user has already **loaded** names no checkout path, so moving,
+renaming or removing the checkout no longer invalidates it — and pointing the loop at a
+new location is a re-run of `install.sh`, with no `launchctl` / `systemctl` / `crontab`
+reload.
+
+What it does not buy (yet): the **board engine** still lives in the checkout. The copied
+executor drives `taskctl`, and the shim that names it (`<host-dir>/bin/taskctl`) and the
+wake glue's project resolver (`scripts/wake-cwd.mjs`) are checkout-resident, so a moved
+checkout still needs `install.sh` re-run (or `--force`) for those to follow. The host
+config records where the board is — `MEERKAT_TASKPANEL_REPO` in
+`<host-dir>/meerkat-taskpanel.env` — which is what lets a host-installed executor find
+its CLI at all. The half of the split that remains is tracked as its own work (the
+`meerkat-loop` skill).
 
 ## Headless permission boundary
 
@@ -254,7 +289,7 @@ node scripts/supervisor.mjs --agent alice --dry-run --once            # plan onl
 |---|---|---|
 | `--agent <name>` | `$TASKCTL_AGENT` → `$USER` | agent(s) to work for; repeatable / comma-separated |
 | `--host claude\|codex\|pi` | `claude` | which worker to wake |
-| `--repo <path>` | this checkout | repository root |
+| `--repo <path>` | this checkout — or, for a host-installed copy, the `MEERKAT_TASKPANEL_REPO` in the host config | repository root: what `--cli` is resolved from, and the fallback working directory |
 | `--poll-interval <sec>` | `60` | loop cadence for the poll layer |
 | `--patrol-interval <sec>` | `300` | loop cadence for the patrol layer |
 | `--max-concurrency <n>` | `8` | cap on simultaneously running workers |
@@ -267,7 +302,7 @@ node scripts/supervisor.mjs --agent alice --dry-run --once            # plan onl
 | `--dry-run` | off | print intended actions; claim nothing, spawn nothing |
 | `--log <path>` | `<home>/<host-dir>/meerkat-taskpanel/supervisor.log` | where the tick log appends |
 | `--state <path>` | `<home>/<host-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry |
-| `--config <path>` | `<home>/<host-dir>/meerkat-taskpanel.env` | host config the default is read from |
+| `--config <path>` | `<home>/<host-dir>/meerkat-taskpanel.env` | host config: the claim default, and (for a host copy) `MEERKAT_TASKPANEL_REPO` |
 | `--home <path>` | `$HOME` | base for those defaults |
 | `--glue <path>` | `<home>/<host-dir>/bin/wake-<host>.sh` | the wake glue that resolves the project directory and starts the worker ([Where a worker runs](#where-a-worker-runs)) |
 | `--projects-json <path>` | `<home>/<host-dir>/skills/meerkat-taskpanel/projects.json` | the host-local map handed to the glue |
