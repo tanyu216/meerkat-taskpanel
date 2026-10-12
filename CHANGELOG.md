@@ -202,6 +202,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `docker/verify-in-container.sh`.** It had been a separate `docker run` in CI only, which
   meant `npm run verify:docker` could be green while the CI `docker` job was red. Both
   tracks now run the same script; the CI job's duplicate step is gone.
+- **A symlinked install path no longer turns the host-bundle writer into a silent no-op.**
+  `scripts/install/lib/apply.mjs` decides whether it was executed or imported by comparing
+  `process.argv[1]` — the path *as invoked* — against its own `import.meta.url`, which Node
+  has already resolved. Reached through a symlink the two never matched, so the guard was
+  silently false: `emit` / `snippet` / `merge-settings` wrote nothing and the helper still
+  exited 0 with no output. `script_dir()` (`cd "$(dirname "$0")" && pwd`) prints the logical
+  path, and on macOS `/tmp` is itself a symlink to `/private/tmp`, so an install tree under
+  `/tmp` — or any symlinked checkout — hit it on every file. Both sides are now resolved
+  with `realpathSync` before the comparison, and `test/install/apply-guard.test.mjs` pins the
+  direct, symlinked and imported states.
 
 ## [1.0.0] - 2026-10-09
 
