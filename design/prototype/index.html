@@ -76,7 +76,10 @@
 
         <span class="td-divider-v" aria-hidden="true"></span>
 
-        <details class="dropdown" data-project-switcher>
+        <!-- R9 ① — `data-dismiss-on-outside` is the one hook every floating
+             control carries when a press elsewhere has to take it away; the
+             label selector in the filters bar carries the same attribute. -->
+        <details class="dropdown" data-project-switcher data-dismiss-on-outside>
           <summary class="btn btn-ghost gap-2">
             <svg class="td-icon td-icon-sm" data-project-switcher-icon viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M12 3 3 8l9 5 9-5-9-5ZM3 14l9 5 9-5" />
@@ -482,11 +485,14 @@
           </select>
 
           <!-- Label selector — a daisyUI `dropdown` carrying a `menu`, one menu
-               item per label, with the active choice echoed as a `badge` on the
-               trigger. The chosen value lives on the element that owns the
+               item per label, with the active choice echoed on the trigger. The
+               chosen value lives on the element that owns the
                `[data-filter-label]` hook, so the contract is unchanged while the
-               control is no longer a native <select>. -->
-          <details class="dropdown" data-filter-label data-filter-label-value="all">
+               control is no longer a native <select>. R9 ② — the trigger states
+               that value as plain text at the `.td-select` metrics, and the
+               control takes the same `data-dismiss-on-outside` rule the project
+               switcher takes. -->
+          <details class="dropdown" data-filter-label data-filter-label-value="all" data-dismiss-on-outside>
             <summary
               class="btn btn-sm td-label-trigger"
               role="button"
@@ -2209,9 +2215,13 @@
         <!-- =================================================================
              B08 · List view (mutually exclusive with the board)
              ============================================================== -->
-        <section class="td-list" data-list hidden data-i18n-aria-label="list.label" aria-label="Task list">
-          <!-- B13 · Loading state -->
-          <div class="td-list-group" data-skeleton>
+        <section class="td-list" data-list data-list-state="data" hidden data-i18n-aria-label="list.label" aria-label="Task list">
+          <!-- B13 · Loading state — R9 ③: the list is in exactly one of two
+               states, and `data-list-state` on the section says which. The
+               skeleton ships hidden because `data` is the resting state; the
+               rows group below is its mirror. Both are drawn, never both at
+               once — see `[data-list-state]` in src/input.css. -->
+          <div class="td-list-group" data-skeleton hidden>
             <div class="td-list-head">
               <span data-i18n="list.loading">Loading tasks</span>
             </div>

@@ -38,7 +38,7 @@ three footer dialogs are secondary surfaces and stay hidden until opened.
 | `index.html` | the prototype — every block as static HTML with `data-*` hooks |
 | `tw.css` | **build output** (Tailwind + daisyUI compiled). Do not edit by hand. |
 | `src/input.css` | the Tailwind build entry: `@theme` tokens, daisyUI themes, app components |
-| `app.js` | the jQuery (slim) interaction layer — interactions I1–I12, plus R3's roster controls (I13) and Markdown editor (I14) |
+| `app.js` | the jQuery (slim) interaction layer — interactions I1–I12, plus R3's roster controls (I13) and Markdown editor (I14), R5's label control (I15) and R9's light-dismiss rule (I16) |
 | `favicon.svg` | the Sentinel Watch mark as the tab icon (renders `BRAND.md` §5; `prefers-color-scheme` pair) |
 | `vendor/jquery.slim.min.js` | jQuery 3.7.1 **slim** build, vendored locally |
 | `vendor/markdown-lite.js` | the Markdown → HTML renderer behind the editor's preview pane, vendored locally |
@@ -87,7 +87,9 @@ checkout where `node_modules` is allowed to sit next to the sources.
 
 Two `@source` directives limit class scanning to `index.html` and `app.js`
 (`@import "tailwindcss" source(none)` disables auto-detection, so nothing else on
-disk can leak classes into the bundle). Current output: **139 KB**.
+disk can leak classes into the bundle). Current output: **188 KB** (`tw.css` = 192093
+bytes after the R9 rebuild; the figure this line carried before said 139 KB and had been
+stale for some rounds — it is a measurement, so it is stated as one).
 
 **The scan reads comments, not just markup.** A candidate is any token that *looks* like a
 class name anywhere in those two files, prose and comments included — a bare `stack` in an
@@ -131,7 +133,9 @@ the style guide's token blocks in `src/input.css` are unlayered. Two consequence
 | — | Error retry | `Retry` inside the error state | `[data-error-retry]` |
 | — | Access & token settings | **B19** — bottom footer row, `Esc` / scrim / close to dismiss | `[data-access-open]` → `[data-access-panel]` |
 | — | Token reveal / copy / reset | buttons in the token block | `[data-token-reveal]`, `[data-token-copy]`, `[data-token-reset]` |
-| — | Label filter (R3) | the filter bar's dropdown; writes `data-filter-label-value`, restates the trigger badge, re-filters | `[data-filter-label]` → `[data-filter-label-option]` → `[data-filter-label-summary]` |
+| — | Label filter (R3) | the filter bar's dropdown; writes `data-filter-label-value`, restates the trigger (flat text, R9), re-filters | `[data-filter-label]` → `[data-filter-label-option]` → `[data-filter-label-summary]` |
+| I16 | Light dismiss (R9) | a press outside a member, or `Esc`, closes it; opening one member closes the other | `[data-dismiss-on-outside]` — on `[data-project-switcher]` (B02) and `[data-filter-label]` (B04) |
+| — | List load (R9) | opening the list view enters `loading`, then settles to `data` — one state on screen at a time | `[data-list]` → `data-list-state` → `[data-skeleton]` / `[data-list-rows]` |
 | — | Allow-list switch (R3) | the access panel's toggle; states and dims, nothing else | `[data-cidr-switch]` → `[data-cidr-whitelist]` |
 | I13 | Assignee / reporter (R3) | Roster autocomplete — fuzzy match on input, `↑↓`/`Enter`/`Esc`/`Tab`, free text upserts | `[data-assignee-input]` / `[data-reporter-input]` → `[data-assignee-menu]` / `[data-reporter-menu]` → `[data-assignee-option]` / `[data-reporter-option]` |
 | I14 | Markdown editor (R3) | Mode tabs set `data-md-mode`; every keystroke repaints the highlight layer and the preview | `[data-md-editor]` → `[data-md-toggle]`, `[data-md-source]`, `[data-md-highlight]`, `[data-md-preview]` |
@@ -141,6 +145,25 @@ The footer's three rows act directly — none of them opens a dialog except the 
 gear, which opens B19. `Esc` closes whatever is open: the drawer, the states showcase, the
 access panel, the card's "Move to" menu and the language menu. The two floating menus also
 close on any press outside themselves and their trigger.
+
+**R9 named that last rule and widened it.** The two `<details class="dropdown">` in the
+shell — the top bar's project switcher and the filters bar's label selector — carry
+`data-dismiss-on-outside`, and one document-level handler owns them: a press whose target
+is not a descendant of a member closes every member that is open, `Esc` does the same, and
+opening one closes the other so the two menus never overlap. Membership is the attribute,
+never a class name or a hook list (I16 above). The switcher had no outside-press rule at
+all before R9, which is why it stayed open over the filters bar and swallowed presses meant
+for the controls underneath. The roster menus and the card menus are not members: they
+float from a trigger that is not a `<details>` and keep their own rules.
+
+**The list view is a timeline (R9).** `[data-list]` carries `data-list-state="loading" |
+"data"` and shows exactly one of two groups: the skeleton (`[data-skeleton]`) or the rows
+(`[data-list-rows]`). The document ships in `data` — the skeleton is `hidden` — and opening
+the list view enters `loading` and settles to `data` a beat later, so both states are
+reachable by hand and the loading state is a real frame rather than a test hook. A
+capture of the list view must therefore **wait out the settle** (the R9 probe waits
+900ms); a shutter taken on the switch catches the skeletons, which is the point of the
+state but not what `06-list-view` is a picture of.
 
 Mutations that change board state (move, comment, create) also advance the
 `rev` counter in the top bar — the prototype's stand-in for the concurrent-write
@@ -202,7 +225,7 @@ looking at it (DESIGN.md §12).
 | Activity | 4+ entries per task (created / claimed / status change / commented) |
 | Attachments | ≥2 per sampled task |
 | Empty states | empty column + no-results |
-| Loading | 3 shimmer rows in the list view |
+| Loading | 3 shimmer rows in the list view, in the list's `loading` state — mutually exclusive with the rows (R9) |
 | Themes | three states cycled from the footer — **Light** (default) → **Dark** → **Auto** (follows `prefers-color-scheme`, CSS-only) → Light; no-record default is Light, not the system preference |
 | Language | English (default) + Chinese via the language dropdown — 220 key pairs, mirrored |
 | List columns | six labelled columns — ID · Title · Status · Assignee · Priority · Revision — with the header sharing the row's grid template; the middle three hide at ≤759px (R8) |
@@ -301,6 +324,18 @@ state, and `18-access-token-revealed` shows a token generated from `Date.now()`,
 one frame differs between any two runs. The face is sub-pixel at the favicon sizes, so
 `favicon-16`/`favicon-32` stay the plain V2 silhouette — as declared in `BRAND.md` §5,
 *Size behaviour*.
+
+**R9 — the set is not yet recaptured, and these frames are the ones that show it.** R9
+changed three things this set photographs: every frame that includes the filters bar now
+shows the label trigger as plain text at the selects' metrics instead of a pill (that is
+all of the full-board and full-list frames), `06-list-view` now shows the settled list
+where the frame before it showed the skeleton *and* the rows at once, and no frame shows
+the R9 dismiss behaviour, which is a timing rather than a still. The frames have
+deliberately been left exactly as they are rather than half-refreshed: a partial pass
+would leave the set claiming a build it no longer matches. The R9 interaction evidence
+lives in `design/fidelity-r9.md` §6 (the card's workspace, not the repository), and a
+recapture pass belongs with whoever next touches the filter bar — note that the list
+frame *must* wait out the new load beat (see *The list view is a timeline*, above).
 
 **Sentinel Watch recapture:** the whole set was re-shot onto the current build, because
 two changes had landed after the last capture pass and the frames still showed the
