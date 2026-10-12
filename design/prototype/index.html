@@ -2960,6 +2960,148 @@
             <button type="button" class="btn btn-ghost btn-sm" data-activity-more data-i18n="activity.more">Load older</button>
           </div>
         </section>
+
+        <!-- =================================================================
+             B27 · Waiting on me
+
+             The sidebar's fourth destination, and the view it opens. Terry's
+             2026-10-13 request named it in the same breath as Activity: the
+             `Waiting on me` nav item was the same kind of stand-in — a press
+             that reported a number. It is NOT Activity's twin: Activity is the
+             project's ledger of what happened (newest first, everything), and
+             this is the reader's own queue of what is still owed BY them
+             (longest wait first, nothing else). Two destinations, two roots,
+             two questions — DESIGN.md §30, BLOCKS.md B27.
+
+             Every row is static markup: with the script off the list is whole
+             and merely `hidden` (the document's no-script default view is the
+             board). The root is the fourth child of `main.td-main`, beside
+             `[data-board-view]`, `[data-list]` and `[data-activity-view]`.
+             ============================================================== -->
+        <section class="td-waiting-view" data-waiting-view hidden>
+          <header class="td-waiting-head" data-waiting-head>
+            <h1 class="td-waiting-title" data-waiting-title data-i18n="waiting.title">Waiting on me</h1>
+            <!-- B27.2 · the tally. The one number this view keeps: how many
+                 things are owed to the reader. Kept honest by hand in this
+                 document (nothing here filters), and stated as `waiting.count`
+                 so a language switch re-words the sentence around it. -->
+            <span class="td-waiting-count" data-waiting-count data-i18n="waiting.count" data-i18n-arg="5">5 waiting on you</span>
+          </header>
+
+          <!-- B27.1 · the queue. Ordered by how long each item has been
+               waiting — the top row is the one that has waited longest, and
+               the block sits there until it is answered. That is the whole
+               difference from B26's feed, which is a chronology read newest
+               first: a reader scanning for "what is owed by me" needs the
+               overdue end of the list, not the fresh end. -->
+          <ul class="td-waiting-list" data-waiting-list>
+
+            <li
+              class="td-waiting-item"
+              data-waiting-item
+              data-task="TD-118"
+              data-since="2026-10-08T19:03:00Z"
+            >
+              <span class="td-waiting-actor td-mono" data-waiting-actor data-assignee-kind="agent">elon</span>
+              <span class="td-waiting-reason" data-waiting-reason data-waiting-reason-kind="blocked" data-i18n="waiting.reason.blocked">Blocked</span>
+              <span class="td-waiting-task-cell">
+                <span class="td-waiting-task td-mono" data-waiting-task title="TD-118">TD-118</span>
+                <span class="td-waiting-task-title" data-waiting-task-title>Migrate attachments to object storage</span>
+              </span>
+              <time class="td-waiting-since td-mono" data-waiting-since datetime="2026-10-08T19:03:00Z" title="2026-10-08 19:03" data-i18n="time.daysAgo" data-i18n-arg="5">5d ago</time>
+              <button type="button" class="td-iconbtn td-waiting-open" data-waiting-open data-i18n-aria-label="waiting.open" data-i18n-arg="TD-118" aria-label="Open TD-118">
+                <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+              </button>
+            </li>
+
+            <li
+              class="td-waiting-item"
+              data-waiting-item
+              data-task="TD-123"
+              data-since="2026-10-11T07:12:00Z"
+            >
+              <span class="td-waiting-actor td-mono" data-waiting-actor data-assignee-kind="agent">linus</span>
+              <span class="td-waiting-reason" data-waiting-reason data-waiting-reason-kind="blocked" data-i18n="waiting.reason.blocked">Blocked</span>
+              <span class="td-waiting-task-cell">
+                <span class="td-waiting-task td-mono" data-waiting-task title="TD-123">TD-123</span>
+                <span class="td-waiting-task-title" data-waiting-task-title>Resolve duplication in timeline events</span>
+              </span>
+              <time class="td-waiting-since td-mono" data-waiting-since datetime="2026-10-11T07:12:00Z" title="2026-10-11 07:12" data-i18n="time.daysAgo" data-i18n-arg="2">2d ago</time>
+              <button type="button" class="td-iconbtn td-waiting-open" data-waiting-open data-i18n-aria-label="waiting.open" data-i18n-arg="TD-123" aria-label="Open TD-123">
+                <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+              </button>
+            </li>
+
+            <li
+              class="td-waiting-item"
+              data-waiting-item
+              data-task="TD-124"
+              data-since="2026-10-12T15:05:00Z"
+            >
+              <span class="td-waiting-actor td-mono" data-waiting-actor data-assignee-kind="agent">elon</span>
+              <span class="td-waiting-reason" data-waiting-reason data-waiting-reason-kind="question" data-i18n="waiting.reason.question">Question</span>
+              <span class="td-waiting-task-cell">
+                <span class="td-waiting-task td-mono" data-waiting-task title="TD-124">TD-124</span>
+                <span class="td-waiting-task-title" data-waiting-task-title>Add agent session provenance block</span>
+              </span>
+              <time class="td-waiting-since td-mono" data-waiting-since datetime="2026-10-12T15:05:00Z" title="2026-10-12 15:05" data-i18n="time.hoursAgo" data-i18n-arg="19">19h ago</time>
+              <button type="button" class="td-iconbtn td-waiting-open" data-waiting-open data-i18n-aria-label="waiting.open" data-i18n-arg="TD-124" aria-label="Open TD-124">
+                <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+              </button>
+            </li>
+
+            <li
+              class="td-waiting-item"
+              data-waiting-item
+              data-task="TD-121"
+              data-since="2026-10-13T08:20:00Z"
+            >
+              <span class="td-waiting-actor td-mono" data-waiting-actor data-assignee-kind="agent">jobs</span>
+              <span class="td-waiting-reason" data-waiting-reason data-waiting-reason-kind="question" data-i18n="waiting.reason.question">Question</span>
+              <span class="td-waiting-task-cell">
+                <span class="td-waiting-task td-mono" data-waiting-task title="TD-121">TD-121</span>
+                <span class="td-waiting-task-title" data-waiting-task-title>Normalise priority colour tokens</span>
+              </span>
+              <time class="td-waiting-since td-mono" data-waiting-since datetime="2026-10-13T08:20:00Z" title="2026-10-13 08:20" data-i18n="time.hoursAgo" data-i18n-arg="2">2h ago</time>
+              <button type="button" class="td-iconbtn td-waiting-open" data-waiting-open data-i18n-aria-label="waiting.open" data-i18n-arg="TD-121" aria-label="Open TD-121">
+                <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+              </button>
+            </li>
+
+            <!-- The ninth character is the one the identifier rule takes away:
+                 `PROJ-0007` is the board's only identifier longer than eight
+                 characters, so its cell reads `PROJ-000…` and the whole value
+                 stays on `title` — the same rule B07's cards and B08's rows
+                 follow (R8 ③), and the one row that proves it without a script. -->
+            <li
+              class="td-waiting-item"
+              data-waiting-item
+              data-task="PROJ-0007"
+              data-since="2026-10-13T09:10:00Z"
+            >
+              <span class="td-waiting-actor td-mono" data-waiting-actor data-assignee-kind="agent">elon</span>
+              <span class="td-waiting-reason" data-waiting-reason data-waiting-reason-kind="question" data-i18n="waiting.reason.question">Question</span>
+              <span class="td-waiting-task-cell">
+                <span class="td-waiting-task td-mono" data-waiting-task title="PROJ-0007">PROJ-000…</span>
+                <span class="td-waiting-task-title" data-waiting-task-title>Add bulk status change to board selection</span>
+              </span>
+              <time class="td-waiting-since td-mono" data-waiting-since datetime="2026-10-13T09:10:00Z" title="2026-10-13 09:10" data-i18n="time.minutesAgo" data-i18n-arg="41">41m ago</time>
+              <button type="button" class="td-iconbtn td-waiting-open" data-waiting-open data-i18n-aria-label="waiting.open" data-i18n-arg="PROJ-0007" aria-label="Open PROJ-0007">
+                <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+              </button>
+            </li>
+
+          </ul>
+
+          <!-- B27.3 · the empty state. Ships `hidden`: the document's static
+               reading is the five rows above. It stands where the queue stands
+               when nothing is owed; at that point the header's tally goes too
+               (a "0 waiting on you" beside "Nothing is waiting on you" is the
+               same sentence twice) — see DESIGN.md §30. -->
+          <div class="td-empty td-waiting-empty" data-waiting-empty hidden>
+            <span class="td-empty-title" data-i18n="waiting.empty">Nothing is waiting on you</span>
+          </div>
+        </section>
       </main>
     </div>
 

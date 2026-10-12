@@ -89,10 +89,10 @@ checkout where `node_modules` is allowed to sit next to the sources.
 
 Two `@source` directives limit class scanning to `index.html` and `app.js`
 (`@import "tailwindcss" source(none)` disables auto-detection, so nothing else on
-disk can leak classes into the bundle). Current output: **197 KB** (`tw.css` = 200850
-bytes after the R12x rebuild; the figure this line carried before that said 193372 after R12,
-and 139 KB before that and had been stale for some rounds — it is a measurement, so it is
-stated as one).
+disk can leak classes into the bundle). Current output: **200 KB** (`tw.css` = 204768
+bytes after the R12x rebuild; the figure this line carried before that said 200850 when the
+round's first half landed, 193372 after R12, and 139 KB before that and had been stale for
+some rounds — it is a measurement, so it is stated as one).
 
 **The scan reads comments, not just markup.** A candidate is any token that *looks* like a
 class name anywhere in those two files, prose and comments included — a bare `stack` in an
@@ -270,8 +270,9 @@ looking at it (DESIGN.md §12).
 | Drawer identifier | the detail drawer's head shows the card's **whole** id — no slice, no width limit — while the cards and the list rows keep eight characters plus an ellipsis (R12) |
 | Status filter | the bar's Status control holds any subset of the seven first-class statuses at once (OR inside the field), and every Active-agents name routes to the list view with `in_progress,in_review` preset (R11) |
 | Themes | three states cycled from the footer — **Light** (default) → **Dark** → **Auto** (follows `prefers-color-scheme`, CSS-only) → Light; no-record default is Light, not the system preference |
-| Language | English (default) + Chinese via the language dropdown — 274 key pairs, mirrored |
+| Language | English (default) + Chinese via the language dropdown — 280 key pairs, mirrored |
 | Activity | the sidebar's third destination opens a real view (R12x): 17 rows over 4 day groups, one folded burst, an unread boundary that reads the same number as the sidebar pill, three narrowing controls, `Load older`, and two empty states — all of it static markup |
+| Waiting | the sidebar's fourth destination opens a real queue (R12x): 5 items ordered by how long each has waited, two reason kinds (`question` / `blocked`), a count in its heading, no filters, and an empty state — all of it static markup |
 | List columns | six labelled columns — ID · Title · Status · Assignee · Priority · Revision — with the header sharing the row's grid template; the middle three hide at ≤759px (R8) |
 | Access model | B19 access & token panel: binds `0.0.0.0`, CIDR whitelist, token required from outside localhost; no user / account / sign-in element anywhere |
 | Footer | one row of three equal thirds at ≥1024px, three stacked full-width rows at ≤1023px (R7, revised) — theme · language · settings — a three-state theme cycle, a dropdown and an icon-only button |

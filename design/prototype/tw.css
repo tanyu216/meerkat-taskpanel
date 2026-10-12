@@ -3803,6 +3803,12 @@ html[data-theme="dark"] .modal-box {
   [data-priority="none"] {
     --pri-color: var(--color-td-pri-none);
   }
+  [data-waiting-reason-kind="question"] {
+    --status-color: var(--color-td-st-review);
+  }
+  [data-waiting-reason-kind="blocked"] {
+    --status-color: var(--color-td-st-blocked);
+  }
   .td-sr {
     position: absolute;
     width: 1px;
@@ -6465,6 +6471,185 @@ html[data-theme="dark"] .modal-box {
     }
     .td-activity-change-field {
       width: 56px;
+    }
+  }
+  .td-waiting-view {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    gap: 12px;
+    min-height: 0;
+  }
+  .td-waiting-head {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+  .td-waiting-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--color-td-ink);
+  }
+  .td-waiting-count {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    margin-left: auto;
+    height: 18px;
+    padding: 0 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-td-ink-2);
+    background-color: var(--color-td-sunken);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-full);
+  }
+  .td-waiting-count[hidden] {
+    display: none;
+  }
+  .td-waiting-list {
+    display: flex;
+    flex: 0 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    list-style: none;
+    background-color: var(--color-td-surface);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-md);
+  }
+  .td-waiting-list[hidden] {
+    display: none;
+  }
+  .td-waiting-item {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    height: 30px;
+    padding: 0 10px;
+    cursor: pointer;
+    border-top: 1px solid var(--color-td-line);
+  }
+  .td-waiting-item:first-child {
+    border-top: 0;
+  }
+  .td-waiting-item:hover {
+    background-color: var(--color-td-hover);
+  }
+  .td-waiting-actor {
+    flex: none;
+    width: 76px;
+    overflow: hidden;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-td-ink);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .td-waiting-actor[data-assignee-kind="agent"] {
+    color: var(--color-td-ink-2);
+  }
+  .td-waiting-reason {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 4px;
+    height: 18px;
+    padding: 0 6px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1;
+    color: var(--color-td-ink-2);
+    background-color: var(--color-td-sunken);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-sm);
+  }
+  .td-waiting-reason::before {
+    content: "";
+    flex: none;
+    width: 6px;
+    height: 6px;
+    background-color: var(--status-color);
+    border-radius: var(--r-full);
+  }
+  .td-waiting-task-cell {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .td-waiting-task {
+    flex: none;
+    font-size: 11px;
+    color: var(--color-td-ink-3);
+  }
+  .td-waiting-task-title {
+    display: -webkit-box;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 12px;
+    color: var(--color-td-ink);
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+  .td-waiting-since {
+    flex: none;
+    width: 56px;
+    font-size: 11px;
+    color: var(--color-td-ink-3);
+    text-align: right;
+  }
+  .td-waiting-open {
+    flex: none;
+    width: 24px;
+    height: 24px;
+  }
+  .td-waiting-empty {
+    flex: none;
+    align-self: center;
+    width: 100%;
+    max-width: 420px;
+    margin: auto 0;
+  }
+  .td-waiting-empty[hidden] {
+    display: none;
+  }
+  @media (max-width: 760px) {
+    .td-waiting-item {
+      height: auto;
+      min-height: 30px;
+      flex-wrap: wrap;
+      padding: 6px 10px;
+      row-gap: 2px;
+    }
+    .td-waiting-actor {
+      order: 1;
+      width: auto;
+    }
+    .td-waiting-reason {
+      order: 2;
+    }
+    .td-waiting-since {
+      order: 3;
+      width: auto;
+      margin-left: auto;
+    }
+    .td-waiting-open {
+      order: 4;
+    }
+    .td-waiting-task-cell {
+      order: 5;
+      flex-basis: 100%;
     }
   }
 }
