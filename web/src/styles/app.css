@@ -548,6 +548,35 @@ svg[data-token-icon][hidden] { display: none; }
   border-radius: var(--radius-box);
   overflow: hidden;
 }
+/* R10 ① — the board view holds exactly one of two states, named by
+   `data-board-state` on `[data-board-view]`, and the pair it chooses between is
+   its own two direct children: `[data-board]` (`data`) and the board-level
+   no-results block (`empty`). Both rules read the attribute, so the exclusion is
+   a property of the document rather than of the script's last write — the same
+   shape R9 ③ gave the list, and for the same reason.
+
+   The root is a column flex box with `height: 100%` rather than the prototype's
+   `flex: 1 1 auto`. The prototype's `[data-main]` is a flex column and its board
+   resolves `flex: 1 1 auto` against it; this app's `main` is a plain grid item
+   whose children are block-level, so the same declaration here would be inert
+   and the board's own `height: 100%` would resolve against an auto-height parent
+   — the collapse the contract's §2.1.2 measured (board 812px → 331.56px).
+   `height: 100%` states the same intent against the layout that actually exists,
+   and the board's geometry is bit-identical to shipping it as `main`'s own child
+   (measured: 894px before and after, `verify/probe-*.json`). */
+[data-board-view] {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+[data-board-view][data-board-state="empty"] [data-board],
+[data-board-view][data-board-state="data"] [data-empty][data-empty-kind="no-results"] {
+  display: none;
+}
+
 /* R9 ③ — the list is in one of two states, never both. `data-list-state` on
    `[data-list]` is the single source of truth: the half the state does not name
    is taken out of the flow, so the skeleton can never sit above live rows
@@ -667,6 +696,25 @@ html[data-theme="dark"] [data-create-project-panel] {
    input fills the track instead of shrinking to its placeholder. */
 [data-detail-props] [data-drop] { flex: 1 1 auto; min-width: 0; }
 
+/* R10 ② — the only visible half of the drawer's save state. It is shown exactly
+   when `[data-detail-save]` says `error`, and it is hidden otherwise — the
+   attribute and this block's `hidden` are written in the same act, so they can
+   never disagree (contract R5). Existing tokens only: the danger pair is the one
+   the rest of the shell already uses. */
+.td-save-error {
+  display: block;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-field);
+  /* the soft half is the same 12% the board's own error surface wears — no new
+     token, no new value */
+  background-color: color-mix(in oklab, var(--color-error) 12%, transparent);
+  color: var(--color-error);
+  font-size: 12px;
+}
+.td-save-error[hidden] { display: none; }
+
 /* ------------------------------------------------------- access settings -- */
 
 /* B19 · the settings dialog is the prototype's **centred modal**, not a right-hand
@@ -772,8 +820,49 @@ html[data-theme="dark"] [data-create-project-panel] {
 }
 .td-gfm code { font-family: var(--font-mono); }
 
-/* The three editor modes, one CSS state machine on `[data-md-mode]`. */
-.td-md-panes { display: grid; grid-template-columns: minmax(0, 1fr); }
+/* R10 ③ — the description fills the column it sits in.
+   The chain runs one way only: the two-column grid stretches its tracks, each
+   track is a column flex box, the description's own field fills that box, the
+   editor fills the field and the panes fill the editor. Every link has to be a
+   flex container for the next one's `flex: 1 1 auto` to resolve — a single block
+   container in the middle hands its child the content height and nothing more,
+   which is exactly how the editor ended up 240px above the dialog's footer with
+   an empty band beneath it (measured; `verify/probe-before.json`).
+   The height comes from the **row**, never from the viewport: the panes' old
+   `clamp(280px, 46vh, 520px)` was a viewport rule, so the box could grow and the
+   editing area could not. `min-height: 200px` is the floor that keeps a short
+   viewport usable; `.td-modal-box` keeps R4's viewport cap and its own scroller. */
+[data-create-two-col] { align-items: stretch; }
+[data-create-left],
+[data-create-right] {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.td-field-grow {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+[data-md-editor] {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* The three editor modes, one CSS state machine on `[data-md-mode]`. The panes
+   also carry the last two links of the R10 ③ chain above — `flex: 1 1 auto` (they
+   take what the editor leaves them) and the `min-height` floor — stated in this
+   one declaration rather than a second block, so the box and its mode rules can
+   never be read apart. */
+.td-md-panes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  flex: 1 1 auto;
+  min-height: 200px;
+}
 .td-md-panes[data-md-mode="split"] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .td-md-panes[data-md-mode="write"] .td-md-pane-preview { display: none; }
 .td-md-panes[data-md-mode="preview"] .td-md-pane-write { display: none; }
@@ -801,7 +890,14 @@ html[data-theme="dark"] [data-create-project-panel] {
 }
 .td-md-source {
   @apply relative w-full border-0 bg-transparent text-transparent outline-none resize-y;
-  min-height: 220px;
+  /* R10 ③ — the write side takes the pane it is stacked in, and scrolls itself
+     once the text outgrows it. `height: 100%` resolves against the pane, which
+     has a definite height from the chain above; the floor belongs to the panes
+     (`.td-md-panes`, 200px) and is deliberately **not** restated here, so the two
+     cannot disagree and clip each other. */
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
   caret-color: var(--brand-text);
 }
 .td-md-source::selection { background: var(--brand-focus-ring); }

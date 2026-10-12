@@ -109,6 +109,14 @@
       {
         "name": "r9-list-rows",
         "selector": "[data-list-rows]"
+      },
+      {
+        "name": "r10-board-view",
+        "selector": "[data-board-view]"
+      },
+      {
+        "name": "r10-detail-save-error",
+        "selector": "[data-detail-save-error]"
       }
     ]
   },
@@ -1246,6 +1254,116 @@
           "desc": "加载文案仍是单 span（R8 ② 的 `grid-column: 1 / -1` 载体）"
         }
       ]
+    },
+    {
+      "id": "B05-r10",
+      "name": "R10 ① — board 视图二态：状态根 + 两个直接子级成员（静止态 `data`；互斥与「恰一可见」由 `app.css` 读属性的规则 + 驱动层把守）",
+      "evidence": "design/fidelity-r10.md §2.1；web/src/components/board/Board.vue（`[data-board-view]` 包住 `[data-board]` 与板级 no-results，二者即它的两个直接子级）+ web/src/styles/app.css `[data-board-view]` 透传层与两条互斥规则",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "[data-board-view][data-board-state]",
+          "count": 1,
+          "desc": "态由根上的属性承载，不靠逐元素 swap"
+        },
+        {
+          "selector": "[data-board-view][data-board-state=\"data\"]",
+          "count": 1,
+          "desc": "静止态（脚本未跑 / 文档默认）即 `data`（契约 R2）"
+        },
+        {
+          "scope": "[data-board-view]",
+          "selector": "[data-board]",
+          "count": 1,
+          "desc": "`data` 态成员：板本体（板自身一字未改）"
+        },
+        {
+          "scope": "[data-board-view]",
+          "selector": "[data-empty][data-empty-kind=\"no-results\"]",
+          "count": 1,
+          "desc": "`empty` 态成员：板级大空态"
+        },
+        {
+          "scope": "[data-column-body]",
+          "selector": "[data-empty][data-empty-kind=\"no-results\"]",
+          "count": 0,
+          "desc": "反查（C′2）：板级空态不在任何列身内 —— 列内空态是另一件事，不是板级状态的成员；「直接子级」「两成员恰一可见」「真·空项目」三条关系在驱动层 `web/scripts/dom-smoke.mjs` 的 R10 段（hook 语法无子代组合子）"
+        }
+      ]
+    },
+    {
+      "id": "B09-r10",
+      "name": "R10 ② — 抽屉保存状态区：属性载体 + 唯一可见半（`role=\"alert\"`）+ 三个字段钩子",
+      "evidence": "design/fidelity-r10.md §2.2；web/src/components/detail/DetailDrawer.vue（`[data-detail-save]` / `[data-detail-save-error]` / 三个 `data-detail-save-field`）+ web/src/styles/app.css `.td-save-error`",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "[data-detail-save][data-save-state]",
+          "count": 1,
+          "desc": "态由属性承载（与 `data-list-state` 同一手法）"
+        },
+        {
+          "selector": "[data-detail-save][data-save-state=\"idle\"]",
+          "count": 1,
+          "desc": "静止态 = `idle`（打开卡片即复位）"
+        },
+        {
+          "selector": "[data-detail-save-error][role=\"alert\"]",
+          "count": 1,
+          "desc": "失败反馈只有一块，且是 `role=\"alert\"`"
+        },
+        {
+          "selector": "[data-detail-save-error][hidden]",
+          "count": 1,
+          "desc": "静止态带 `hidden` —— 属性与可见半由同一次写入决定（契约 R5）"
+        },
+        {
+          "selector": "[data-detail-save-field]",
+          "count": 3,
+          "desc": "三个可编辑字段钩子（取值域由 `blocks.contract` 的 domain 断言把守）"
+        },
+        {
+          "selector": "[data-detail-assignee][data-detail-save-field=\"assignee\"]",
+          "count": 1,
+          "desc": "钩子骑在既有行根上 —— 本轮加属性，不加节点"
+        },
+        {
+          "selector": "[data-detail-reporter][data-detail-save-field=\"reporter\"]",
+          "count": 1,
+          "desc": "同上"
+        },
+        {
+          "selector": "[data-detail-labels][data-detail-save-field=\"labels\"]",
+          "count": 1,
+          "desc": "同上"
+        }
+      ]
+    },
+    {
+      "id": "B10-r10",
+      "name": "R10 ③ — description 拉伸链（字段环节 + 两列交叉轴；编辑器与面板的几何由 computed style 腿与驱动层把守）",
+      "evidence": "design/fidelity-r10.md §2.3；web/src/components/create/CreateTaskModal.vue（描述字段挂 `.td-field-grow`）+ web/src/styles/app.css 的 `[data-create-two-col]` / `[data-create-left]` / `.td-field-grow` / `[data-md-editor]` / `.td-md-panes` 五处声明",
+      "status": "delivered",
+      "checks": [
+        {
+          "scope": "[data-create-left]",
+          "selector": ".td-field-grow",
+          "count": 1,
+          "desc": "左列里恰一个字段承担拉伸（标题字段是内容高度）"
+        },
+        {
+          "scope": "[data-create-left]",
+          "selector": "[data-md-editor]",
+          "count": 1,
+          "desc": "编辑器在拉伸字段内（`.td-md-panes` 是它的下一环）"
+        },
+        {
+          "scope": "[data-create-task]",
+          "selector": "[data-create-two-col]",
+          "count": 1,
+          "desc": "两列容器仍在（R8 口径未动）"
+        }
+      ]
     }
   ],
   "m2": {
@@ -1280,6 +1398,23 @@
     "corrections": {
       "C1": "M0 row corrected",
       "C2": "scope rationale corrected"
+    },
+    "r10Additions": {
+      "card": "T-20261012-230448-2 (R10 implementation, 2026-10-13)",
+      "contract": "design/fidelity-r10.md",
+      "blocks": [
+        "B05-r10",
+        "B09-r10",
+        "B10-r10"
+      ],
+      "styleTargets": [
+        "r10-board-view",
+        "r10-detail-save-error"
+      ],
+      "styleTargetsNotAdded": {
+        "[data-md-editor] / .td-md-panes / [data-md-source]": "原型把创建弹窗挂在 daisyUI `.modal` 上（无 `hidden`、无 `open`）：静止态它**仍参与布局**（`visibility: hidden`），实测 `[data-md-editor]` = 616×514；实现用 `hidden`（`display:none`）关闭，其内部一切 computed `width`/`height`/`minWidth` 都退回声明值（`auto`/`0px`）。三者的双侧比对因此在多数属性上比的是「布局 vs 未布局」而不是保真度（实测 4/3/8 项差异里 9 项属此类），故不进 `style.targets`。R10 ③ 真正要锁的几条（拉伸链的 `display`/`flexDirection`/`flex-grow`/`flex-basis`、`.td-md-panes` 的 `min-height: 200px`）是可声明的，落在 `test/web/blocks.contract.mjs` 的 `computed` 规则里、由 `dom-smoke` 求值；几何关系（编辑器底边贴列内容底边、写侧填满面板）在驱动层 R10 段。"
+      },
+      "note": "R10 三项（Terry 2026-10-12）：① board 视图二态 ② 抽屉三字段自动保存 ③ 描述占满可用区域。结构/计数在本清单；几何与「恰一可见」「提交使状态离开 idle」「编辑器底边贴到列内容底边」在驱动层 web/scripts/dom-smoke.mjs 的 R10 段；computed style 腿新增两个目标（原型的 `[data-board-view]` 与 `[data-detail-save-error]`）。契约 §5 把 B 类绑在 `ui-align board-m2 --strict` 上，故 B 类里可声明的那几条同时落在 test/web/blocks.contract.mjs 的 computed 规则里（由 dom-smoke 求值）。"
     }
   }
 }

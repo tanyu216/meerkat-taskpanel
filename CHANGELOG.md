@@ -268,6 +268,44 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   cannot state — which half of the list is on screen at one instant, three controls' heights
   against each other, and where a floating control went after a real pointer click — holding
   the fixture's own list read open so the in-flight state can be sampled. Rules 245 → 276.
+- **An empty board shows its empty state instead of seven bare columns, the task drawer saves
+  its assignee / reporter / labels as they change, and the create dialog's description fills
+  the column it sits in.** Three findings from Terry's 2026-10-12 review of the running board.
+  The board view had no state of its own: the no-results block was shown only for a filter that
+  matched nothing (`total > 0 && shown === 0`), so a project with **no cards at all** drew its
+  seven bare columns with "No tasks match your filters" hidden behind them. The view now has a
+  state root of its own — `[data-board-view][data-board-state]` (`data` | `empty`), the same
+  shape the list's `loading | data` got in R9 — whose two members are its own two direct
+  children, made exclusive by a **rule on the attribute** rather than by swapping elements, so
+  the resting document is already consistent. The condition is now `shown === 0`, which covers
+  the filtered case and the genuinely empty project alike.
+  The detail drawer's assignee, reporter and label controls had no save path at all — the three
+  fields were rendered, read and then thrown away. They now commit as they change: a
+  single-valued field on focus loss (or when a roster row is accepted), the label set when a
+  chip arrives or leaves; an empty value is the one failure the drawer decides on its own. One
+  region above them says what the save is doing — `[data-detail-save][data-save-state]`
+  (`idle` | `saving` | `saved` | `error`), with `[data-detail-save-error]` (`role="alert"`) as
+  its only visible half, written by the same act so the attribute and the block can never
+  disagree. The write is real (`PATCH /tasks/:ref`, `if_version`, optimistic local state with a
+  rollback on rejection), not a state machine that reports success without saving. The two
+  single-valued boxes are **seeded** with the field's value — the prototype's own
+  `value="linus"` — which is what lets "left the field with a different value" be answered by
+  the input itself.
+  The create dialog's description stopped 240px short of the dialog's last edge: the two-column
+  grid stretched its tracks but nothing inside the left track filled them, because the field
+  wrapper was a **block** container (so the editor's `flex: 1 1 auto` had no parent to resolve
+  against) and the panes carried a fixed `clamp(280px, 46vh, 520px)` — a rule about the window,
+  not about the row. The chain is now explicit end to end: the grid stretches, each track is a
+  column flex box, `.td-field-grow` is the field that fills, the editor fills that and the panes
+  fill the editor, with a `min-height: 200px` floor instead of a viewport ceiling. Measured at
+  1512×950: the space under the editor 240.5px → 16px, which is now exactly the dialog's own
+  padding.
+  Machine checks: the block contract gains the board's state domain and the four save states
+  (plus the walk of the stretch chain's own computed style), the manifest three R10 blocks and
+  two `r10-*` targets, and the DOM harness an R10 section for what a document probe cannot state
+  — which of the board's two members is *painted* at one instant (including the empty project,
+  reached by switching to one), that a real edit moves the save state off `idle` and that the
+  alert follows it, and where the editor actually ends relative to its own row. Rules 276 → 308.
 - **The task list's columns line up under headings, the create dialog separates from its
   background in the dark, and an identifier renders at most eight characters plus `…`.**
   Three findings from the 2026-10-12 review of the list and the create dialog.
