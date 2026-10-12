@@ -55,7 +55,7 @@ const rows = computed(() =>
         class="td-list-row"
         data-list-row
         :data-identifier="row.identifier"
-        :aria-selected="false"
+        :aria-selected="board.selectedRef === row.identifier ? 'true' : 'false'"
         @click="openDetail(row.identifier)"
       >
         <span class="td-mono" data-list-identifier>{{ row.identifier }}</span>
