@@ -530,6 +530,17 @@
           <span class="td-filter-count" data-filter-count aria-live="polite" data-i18n="filters.count.initial">12 tasks</span>
         </section>
 
+        <!-- R10 ① — the board view holds exactly one of two states, and
+             `data-board-state` on this root says which. `data` is the resting
+             state, so the no-results block ships hidden and the board ships
+             visible; the two are its direct children, and `src/input.css` reads
+             the attribute so they can never share the screen — not even with
+             the script off. The column-level empty below is a different thing
+             and is deliberately outside this count. The block between this line
+             and its closing comment keeps the indentation it had before the
+             wrapper existed: the wrapper is a two-line change, and re-indenting
+             a 1,600-line region would bury it. -->
+        <div data-board-view data-board-state="data">
         <!-- B12 · Empty state — no results -->
         <div class="td-empty td-empty-lg" data-empty data-empty-kind="no-results" hidden>
           <!-- the brand mark stands in for the generic no-results glyph. The two
@@ -2211,6 +2222,8 @@
             </div>
           </section>
         </div>
+        </div>
+        <!-- /data-board-view -->
 
         <!-- =================================================================
              B08 · List view (mutually exclusive with the board)
@@ -2303,6 +2316,15 @@
       </header>
 
       <div class="td-drawer-body">
+        <!-- R10 ② — the drawer's save state, one region for all three editable
+             fields. `data-save-state` is the source of truth (`idle` ships,
+             as the resting state) and the alert below is its only visible
+             half: it is hidden unless the state is `error`. No `data-i18n` hook
+             here on purpose — the prototype's catalogue is mirrored byte for
+             byte by test/web/i18n.catalogue.mjs, which this round may not
+             touch, so the fallback string is inlined as the no-JS floor. -->
+        <span data-detail-save data-save-state="idle" hidden></span>
+        <span class="td-save-error" data-detail-save-error hidden role="alert">Couldn’t save — try again.</span>
         <section class="td-section">
           <h3 class="td-section-title" data-i18n="drawer.properties">Properties</h3>
           <div class="td-props" data-detail-props>
@@ -2328,7 +2350,7 @@
             <span class="td-prop-label" data-i18n="prop.assignee">Assignee</span>
             <!-- Re-assignment happens here, so this is an assignee control too:
                  free text with the same fuzzy roster as the create dialog. -->
-            <div class="td-prop-value td-prop-combo" data-detail-assignee data-assignee-kind="agent">
+            <div class="td-prop-value td-prop-combo" data-detail-assignee data-detail-save-field="assignee" data-assignee-kind="agent">
               <span class="avatar"><span class="td-avatar" data-detail-assignee-avatar data-assignee-kind="agent">LI</span></span>
               <div class="td-combo td-combo-inline">
                 <input
@@ -2362,7 +2384,7 @@
             </div>
 
             <span class="td-prop-label" data-i18n="prop.reporter">Reporter</span>
-            <div class="td-prop-value td-prop-combo" data-detail-reporter>
+            <div class="td-prop-value td-prop-combo" data-detail-reporter data-detail-save-field="reporter">
               <span class="avatar"><span class="td-avatar" data-detail-reporter-avatar>T</span></span>
               <div class="td-combo td-combo-inline">
                 <input
@@ -2400,7 +2422,7 @@
                  each accepted label a removable chip. There is no management
                  entry: labels grow only by being used. -->
             <span class="td-prop-label" data-i18n="prop.labels">Labels</span>
-            <div class="td-prop-value td-prop-combo" data-detail-labels>
+            <div class="td-prop-value td-prop-combo" data-detail-labels data-detail-save-field="labels">
               <div class="td-combo td-combo-inline">
                 <div class="td-chips" data-detail-label-chips>
                   <span class="badge td-chip" data-detail-label-chip data-detail-label-value="a11y" title="a11y">

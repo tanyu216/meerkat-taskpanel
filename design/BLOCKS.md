@@ -207,9 +207,28 @@ trigger renders its value flat.
 
 | | |
 |---|---|
-| Root | `div[data-board]` |
+| State root | `div[data-board-view][data-board-state="data" \| "empty"]` — the board view, and the parent of the two state blocks |
+| Root | `div[data-board]` — a **direct child** of the state root, and its `data`-state member |
 | Children | exactly 7 × `[data-column]`, in the fixed order `backlog, todo, in_progress, in_review, blocked, done, canceled` |
 | Scroll | the only horizontal scroll container in the document |
+
+**R10 ① — the board view is two states, one of them on screen.** The board's own emptiness
+is a state of the **view**, not of a column: `[data-board-view]` owns `data-board-state`
+(`data` at rest, `empty` when no card survives the filters) and the two members are its
+direct children — `[data-board]` itself, and `[data-empty][data-empty-kind="no-results"]`
+(B12). `setBoardState()` is the single writer and sets the attribute and both `hidden` props
+in one call, so the attribute and the markup can never disagree; two rules in
+`src/input.css` read the attribute, so the pair is mutually exclusive in the shipped document
+with the script off. The contract is `design/fidelity-r10.md` §2.1, and the idiom is R9's
+list state (B08/B13) applied to the board — same shape, different root, different values.
+
+The state root is also a **flex pass-through** (`display: flex; flex-direction: column;
+flex: 1 1 auto`), not a plain block: `[data-main]` is a column flex container and the board's
+`flex: 1 1 auto` can only resolve against a flex parent. A block wrapper measures 331.56px for
+a board that measures 812px on its own — see `design/fidelity-r10.md` §2.1.2.
+
+Switching to the list (B08) hides the **state root**, not the board: the board-level empty is
+the root's other child, so hiding only `[data-board]` would leave it above the list.
 
 ## B06 · Column
 
@@ -300,6 +319,7 @@ the distinction.
 | Root | `aside[data-detail-drawer][data-state="closed\|open\|closing"]` (`role="dialog"`, `aria-modal="true"`) |
 | Scrim | `[data-detail-overlay][data-state]` |
 | Head | `[data-detail-identifier]` · `[data-detail-title]` · `[data-detail-status-chip]` → `[data-detail-status-chip-label]` · `[data-detail-close]` |
+| Save state (R10) | `[data-detail-save][data-save-state="idle \| saving \| saved \| error"]` (attribute carrier, `hidden`, no copy of its own) · `[data-detail-save-error][role="alert"]` (its only visible half) |
 | Properties | `[data-detail-props]` → status `[data-detail-status]` / `[data-detail-status-label]` · priority `[data-detail-priority]` / `[data-detail-priority-label]` · assignee `[data-detail-assignee]` / `[data-detail-assignee-avatar]` / `[data-detail-assignee-label]` (**an input**, see B22) / `[data-detail-assignee-platform]` (platform badge, hidden for the human owner) · **reporter** `[data-detail-reporter]` / `[data-detail-reporter-avatar]` / `[data-detail-reporter-label]` (an editable control — see B22) · project `[data-detail-project]` / `[data-detail-project-label]` · **labels** `[data-detail-labels]` (editable label combo — see B25) · internal id `[data-detail-id]` + `[data-detail-id-copy]` (`data-copy-value`) · `[data-detail-version]` |
 | Body | `[data-detail-description]` (rendered GFM) · `[data-detail-relations]` → `[data-relation-link]` · `[data-detail-agent-session]` → `[data-detail-agent-session-body]` → `[data-agent-session]` · `[data-detail-attachments]` · `[data-detail-comments]` · `[data-comment-form]` → `[data-comment-input]`, `[data-comment-submit]` · `[data-detail-activity]` |
 | Source | `template[data-detail-for="TD-…"]` holds one `[data-slot="description \| relations \| agent-session \| attachments \| comments \| activity"]` per card, wrapped by `[data-detail-templates]` |
@@ -311,6 +331,32 @@ characters plus an ellipsis, `title` = the full id, class `.td-id`. Because the
 full id on `data-identifier` (`aside[data-detail-drawer][data-identifier]`) and anything
 that needs to resolve the drawer's task must read that attribute — never the span's
 `textContent`. `[data-detail-id]` (the internal `td_…` id) is untouched.
+
+**R10 ② — the three editable rows save as they change.** The drawer's Properties grid holds
+the three fields Terry reported: assignee (B22), reporter (B22) and labels (B25). Each row
+root carries `data-detail-save-field` (`assignee` / `reporter` / `labels`), and each commits
+on the gesture it already had — focus leaving a single-valued field whose value moved, a
+roster row accepted, a label chip added or dropped — into **one** state region for all three.
+
+| | |
+|---|---|
+| State | `[data-detail-save]` · `data-save-state` ∈ `idle` \| `saving` \| `saved` \| `error` (`idle` at rest) |
+| Feedback | `[data-detail-save-error]` — `role="alert"`, `hidden` in every state but `error` |
+| Fields | `[data-detail-assignee][data-detail-save-field="assignee"]` · `[data-detail-reporter][data-detail-save-field="reporter"]` · `[data-detail-labels][data-detail-save-field="labels"]` |
+| Commit points | `[data-detail-assignee-label]` / `[data-reporter-option]` … — the controls' **existing** hooks, unchanged |
+| Failure | a single-valued field empty after trimming (the prototype's one deterministic failure; there is no backend) |
+
+Three properties worth naming: **typing is not a commit** (a field whose value did not move
+when focus left it is left alone — opening, reading and closing a card is not a write);
+**one settle sequence serves all three** (a commit arriving mid-sequence folds into it), and
+**opening a card resets it** (the baseline is that card's value at open, and the state returns
+to `idle`, so a drawer never wears the previous card's verdict). `setDetailSaveState()` is the
+single writer of both the attribute and the alert's `hidden`, so the two cannot disagree.
+Contract: `design/fidelity-r10.md` §2.2.
+
+The alert's copy is **inlined**, with no `data-i18n` hook — `test/web/i18n.catalogue.mjs`
+mirrors the prototype's `MESSAGES` byte for byte and this round may not touch `test/**`; see
+`design/fidelity-r10.md` §7. The implementation decides the translation.
 
 ## B10 · Create-task modal — two columns
 
@@ -344,6 +390,33 @@ The assignee is no longer a `<select>`; see B22. Labels are a field as of R5 —
 combo control, many per task — see **B25**. The two relation controls are marked
 **Optional** and leave the task creatable when empty; see B24.
 
+**R10 ③ — the left column is stretched, so the description fills it.** The description used
+to stop at its own content height while the routing column ran on, leaving a band of empty
+dialog under the editor. Five links carry the fill, and breaking any one of them puts the
+band back:
+
+| Link | Rule |
+|---|---|
+| 1 · the two tracks | `.td-two-col{align-items: stretch}` |
+| 2 · the left column | `.td-col-left` is already a column flex container |
+| 3 · the growing field | `.td-field-grow{display:flex; flex-direction:column; flex:1 1 auto; min-height:0}` |
+| 4 · the editor | `.td-md-editor{flex: 1 1 auto}` |
+| 5 · the panes | `.td-md-panes{flex: 1 1 auto; min-height: 200px}` — **no fixed height** |
+
+Link 3 is the one the round's first draft missed: `.td-field-grow` was a **block** container,
+so the editor's `flex: 1 1 auto` had no flex parent to resolve against and fell back to its
+content height — which is why fixing only 1 / 4 / 5 still measured a 302px gap. Links 1 and 5
+are equally load-bearing: `align-items: start` leaves the left column content-sized, and the
+`clamp(280px, 46vh, 520px)` that R4 put on `.td-md-panes` is a **viewport** rule, so a taller
+dialog could never give the editing area any of the difference.
+
+`.td-modal-box` keeps R4's `max-height: calc(100vh - 48px)` and its own scroller — the dialog
+still caps against the viewport and scrolls internally rather than running off the screen, and
+at ≤760px the tracks stack so the panes are bounded rather than stretched. Measured at
+1512×950: the editor's bottom edge lands on the column's (0px gap) and `.td-md-panes` is
+502px; the board's own geometry and the box's 1120×800 overflow are both unchanged. Contract:
+`design/fidelity-r10.md` §2.3.
+
 **R8 — in the dark the dialog separates on all three layers.** On a `#0f1417` canvas
 the panel (`bg .td-modal-box` = `--color-td-surface` `#161b1e`) is only marginally
 lighter than the canvas, so the dialog read as part of its own backdrop. Three scoped
@@ -374,6 +447,16 @@ drawer veil deepens with the modal's — one token, every veil.
 `[data-empty]` with `data-empty-kind="column"` (one per column, revealed when the
 column has no visible card) or `data-empty-kind="no-results"` (one per board,
 revealed when a filter matches nothing).
+
+**R10 ① — the two kinds are not states of the same thing.** `no-results` is the **empty
+state of the board view**: it is a direct child of `[data-board-view]` (B05), revealed when
+`[data-board-view]` reads `data-board-state="empty"`, which is exactly when no card survives
+the filters. `column` says *that column is bare* and lives inside its `[data-column]` body;
+there are seven of them and they are **never** counted in a board-level tally — a board-level
+tally that counted both would count the same emptiness twice. The condition is now
+`shown === 0`, which covers a genuinely empty project (`total === 0`) as well as a filter
+that matches nothing; before R10 it was `total > 0 && shown === 0`, so a project with no
+cards kept this block hidden and drew seven bare columns in its place.
 
 **The large empty state carries the brand mark** (R3): the *large* variant is the class
 `.td-empty-lg` on `[data-empty][data-empty-kind="no-results"]` — there is no `data-empty-lg`
@@ -572,9 +655,17 @@ elements in the editor whose geometry must agree — everything else follows fro
 **R4 — both panes scroll, and the highlight layer follows.** The edit side `.td-md-source`
 carries an explicit `height: 100%` beside `overflow-y: auto`, so overflowing source scrolls
 the way the preview always did; with scripting off the textarea keeps that native scroller
-and the layout is unchanged. `.td-md-panes` is `clamp(280px, 46vh, 520px)` — a markedly
-taller editing area than R3's fixed 230px, still bounded so the dialog scrolls rather than
-runs off the screen.
+and the layout is unchanged. `.td-md-panes` was `clamp(280px, 46vh, 520px)` — a markedly
+taller editing area than R3's fixed 230px.
+
+**R10 ③ — the height is no longer a viewport rule.** That `clamp` was the block's second
+half: a height written in `vh` cannot follow the *dialog's* growth, so a taller box left the
+difference under the editor. `.td-md-panes` is now `flex: 1 1 auto` with `min-height: 200px`
+— a floor, not a ceiling — and its parents (`.td-field-grow`, `.td-md-editor`) take
+`flex: 1 1 auto` so the editor reaches the bottom of the column it sits in. `.td-md-source`
+keeps `height: 100%` and its own scroller, so the writing hand feels exactly as it did.
+Below 760px the tracks stack and the panes keep a bounded height under the same floor.
+Measured at 1512×950: panes 437px → **502px**; see B10's R10 table for the five-link chain.
 
 The scroll binding is **direct**, not delegated: `scroll` does not bubble, so R3's
 `$(editor).on("scroll", "[data-md-source]", …)` never fired and the highlight `<pre>` stayed
@@ -728,6 +819,10 @@ not declared — it is read off the cards' `data-reporter` at first pass, which 
 | `[data-filter-label-summary]` | the label dropdown's trigger text, restated from `data-filter-label-value`; rendered flat (R9 — see B04) |
 | `[data-dismiss-on-outside]` | on a `<details class="dropdown">`: a press outside it, or `Esc`, closes it (R9 — see *Floating controls*) |
 | `data-list-state` | on `[data-list]`: `loading` \| `data`, the list's two mutually exclusive states (R9 — see B08/B13) |
+| `data-board-state` | on `[data-board-view]`: `data` \| `empty`, the **board view's** two mutually exclusive states — the R9 list idiom applied to the board (R10 — see B05/B12) |
+| `[data-detail-save]` · `data-save-state` | in the drawer: `idle` \| `saving` \| `saved` \| `error` for the three auto-saving fields; an attribute carrier with no copy of its own (R10 — see B09) |
+| `[data-detail-save-error]` | the visible half of that state: `role="alert"`, `hidden` in every state but `error` (R10 — see B09) |
+| `data-detail-save-field` | on each editable row root: `assignee` \| `reporter` \| `labels`, so a state can be attributed to a row without a second lookup (R10 — see B09) |
 | `[data-column-progress]` | the occupancy bar under each column head |
 | `[data-cidr-enabled]` | the allow-list section's on/off state, written by `[data-cidr-switch]` |
 | `data-assignee-value` / `data-reporter-value` | the name a roster option carries, read by `comboAccept()` |

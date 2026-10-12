@@ -1223,6 +1223,33 @@ html[data-theme="dark"] .modal-box {
   }
 
   /* --- board / columns ------------------------------------------------- */
+  /* R10 ① — the board view holds exactly one of two states, named by
+     `data-board-state`, and the pair it chooses between is its own two
+     children: the board itself (`data`) and the board-level no-results block
+     (`empty`). Both rules below read the attribute, so the mutual exclusion is
+     a property of the document rather than of the script's last write — with
+     scripting off the shipped `data` state is already the consistent one.
+     The column-level "No tasks" empty is not a member: it lives inside a
+     column, states that one column is bare, and would be counted twice by a
+     board-level tally. */
+  /* The wrapper is a pass-through for `[data-main]`'s column flex: the board
+     carries `flex: 1 1 auto` and can only resolve it against a flex parent, so
+     the wrapper has to be one too. Measured (`verify/wrapper-experiment2.mjs`,
+     1512×950): wrapper block ⇒ board 331.56px; wrapper `flex: 1 1 auto` ⇒ board
+     812px, identical to shipping the board as `[data-main]`'s own child. */
+  [data-board-view] {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  [data-board-view][data-board-state="empty"] [data-board],
+  [data-board-view][data-board-state="data"] [data-empty][data-empty-kind="no-results"] {
+    display: none;
+  }
+
   .td-board {
     display: flex;
     gap: var(--col-gap);
@@ -1803,6 +1830,20 @@ html[data-theme="dark"] .modal-box {
     padding: 16px 20px 24px;
     overflow-y: auto;
     scrollbar-width: thin;
+  }
+
+  /* R10 ② — the only visible half of the drawer's save state, shown when
+     `[data-detail-save]` says `error` and hidden otherwise. Existing tokens
+     only: the danger pair is the same one the rest of the shell already uses. */
+  .td-save-error {
+    display: block;
+    margin-bottom: 12px;
+    padding: 8px 10px;
+    border: 1px solid var(--color-td-danger);
+    border-radius: var(--r-md);
+    background-color: var(--color-td-danger-soft);
+    color: var(--color-td-danger);
+    font-size: 12px;
   }
 
   .td-drawer-foot {
@@ -2780,12 +2821,15 @@ html[data-theme="dark"] .modal-box {
   }
 
   /* Left column dominant: the description editor gets the wider track, the
-     routing fields keep a comfortable fixed-feeling one. */
+     routing fields keep a comfortable fixed-feeling one. R10 ③ — the columns
+     stretch: the left one is the short one (the routing column carries more
+     fields), and letting it end at its own content height is what left the
+     description stranded above a band of empty box. */
   .td-two-col {
     display: grid;
     grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
     gap: 24px;
-    align-items: start;
+    align-items: stretch;
     margin-top: 12px;
   }
 
@@ -2797,8 +2841,15 @@ html[data-theme="dark"] .modal-box {
     min-width: 0;
   }
 
-  /* the editor takes whatever height the right column's fields leave */
+  /* The editor takes whatever height the right column's fields leave. R10 ③ —
+     this has to be a column flex container for that to reach the editor: the
+     item below only resolves its own `flex: 1 1 auto` against a flex parent,
+     and as a block container this one would hand it the label's line box and
+     nothing more. The label keeps its own `margin-bottom` for the 4px gap, so
+     the flex context adds no spacing of its own. */
   .td-field-grow {
+    display: flex;
+    flex-direction: column;
     flex: 1 1 auto;
     min-height: 0;
   }
@@ -3046,6 +3097,9 @@ html[data-theme="dark"] .modal-box {
   .td-md-editor {
     display: flex;
     flex-direction: column;
+    /* R10 ③ — the last link in the stretch chain: two-col stretches the left
+       column, `.td-field-grow` fills it, and this fills that. */
+    flex: 1 1 auto;
     min-height: 0;
     border: 1px solid var(--color-td-line);
     border-radius: var(--r-md);
@@ -3085,11 +3139,14 @@ html[data-theme="dark"] .modal-box {
   .td-md-panes {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    min-height: 0;
-    /* R4 — a markedly taller editing area than R3's fixed 230px, but still
-       bounded: it grows with the viewport up to a ceiling so the dialog keeps
-       an internal scroll instead of running off the screen. */
-    height: clamp(280px, 46vh, 520px);
+    /* R10 ③ — no fixed height any more. R4 bounded the editing area with
+       `clamp(280px, 46vh, 520px)`, which is a viewport rule: the box could grow
+       and the panes could not, so the difference piled up under the editor.
+       The panes now take what the stretched editor leaves them, bounded from
+       below by a floor so a short viewport still shows a usable editor
+       (`.td-modal-box` keeps the viewport cap and its own scroller, R4). */
+    flex: 1 1 auto;
+    min-height: 200px;
   }
 
   .td-md-pane {
@@ -3361,8 +3418,11 @@ html[data-theme="dark"] .modal-box {
       padding: 16px;
     }
 
-    /* single column now, so the editor can be a little shorter and the dialog
-       still fits a phone-height window */
+    /* Single column now, so the editor can be a little shorter and the dialog
+       still fits a phone-height window. The two columns are stacked in one
+       track, so there is no neighbouring height to stretch to and the panes
+       are bounded rather than stretched — the R10 ③ base rule's `min-height`
+       is the floor under this ceiling. */
     .td-md-panes {
       height: clamp(220px, 40vh, 360px);
     }
