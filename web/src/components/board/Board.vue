@@ -94,7 +94,7 @@ watch(view, closeMoveMenu);
        away takes the **whole** root out — hiding only the board would strand the
        board-level empty state above the list. -->
   <div data-board-view :data-board-state="boardState" :hidden="view !== 'board'">
-    <div class="flex h-full items-start gap-3 overflow-x-auto overflow-y-hidden p-3" data-board :hidden="boardState === 'empty'">
+    <div class="flex min-h-0 min-w-0 flex-1 items-stretch gap-4 overflow-x-auto overflow-y-hidden pb-1" data-board :hidden="boardState === 'empty'">
       <Column
         v-for="column in columns"
         :key="column.status"

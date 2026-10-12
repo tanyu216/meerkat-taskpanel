@@ -64,7 +64,7 @@ onUnmounted(() => {
     <TopBar />
     <Sidebar />
 
-    <main class="[grid-area:main] min-w-0 overflow-auto">
+    <main class="[grid-area:main] flex min-h-0 min-w-0 flex-col gap-3 overflow-auto py-5 px-6 max-[980px]:p-4">
       <FiltersBar />
 
       <!-- B17 · the document's single error state — a load failure. The contract

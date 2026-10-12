@@ -1490,6 +1490,20 @@ export async function run() {
           viewHeight: round(rect(view)?.height ?? 0),
           boardHeight: round(rect(board)?.height ?? 0),
           mainHeight: round(rect(document.querySelector("main"))?.height ?? 0),
+          // T-20261013-015627 — the height `main` actually leaves for the view.
+          // `main` now carries the design's own content inset (DESIGN §4
+          // "Content padding 20px 24px"), so the view fills main's **content
+          // box minus the filter row and the row gap**, not main's border box.
+          mainInner: (() => {
+            const m = document.querySelector("main");
+            if (!m) return 0;
+            const cs = getComputedStyle(m);
+            const f = document.querySelector("[data-filters]");
+            const filtersH = f && getComputedStyle(f).display !== "none" ? rect(f).height : 0;
+            const gap = filtersH > 0 ? parseFloat(cs.rowGap) || 0 : 0;
+            return round(m.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - filtersH - gap);
+          })(),
+          mainScrollH: (() => { const m = document.querySelector("main"); return m ? m.scrollHeight : 0; })(),
           firstColumnHeight: round(rect(document.querySelector("[data-column]"))?.height ?? 0),
           cards: document.querySelectorAll("[data-board] [data-card]").length,
         };
@@ -1502,14 +1516,29 @@ export async function run() {
     r10Check(boardRest.visibleMembers === 1, `at rest ${boardRest.visibleMembers} board members are visible, expected 1`);
     r10Check(boardRest.boardDisplay === "flex" && boardRest.emptyDisplay === "none", `at rest the members are ${boardRest.boardDisplay}/${boardRest.emptyDisplay}`);
     r10Check(boardRest.paintedColumns === 7, `at rest ${boardRest.paintedColumns} columns are drawn, expected 7`);
-    // The wrapper is a pass-through, not a box of its own height: the board still
-    // fills the main area. A block container here hands the board its content
-    // height instead — measured at 331.56px on the prototype, which is what the
-    // contract's R4 forbids (itself a regression, since the columns' own scrollers
-    // go with it).
+    // The wrapper is a pass-through, not a box of its own height: the board
+    // fills the view and the view takes the space `main` leaves for it. A block
+    // container here hands the board its content height instead — measured at
+    // 331.56px on the prototype, which is what the contract's R4 forbids (itself
+    // a regression, since the columns' own scrollers go with it).
+    //
+    // T-20261013-015627 — the second clause used to read `board ≈ main`, which
+    // held only because `main` had **no** content inset and the board therefore
+    // overflowed it by the filter row's height (the board's bottom 49px hung
+    // below main's box at rest, and `main` scrolled). `main` now states the
+    // design's own `20px 24px` (DESIGN §4), so the box that the view fills is
+    // main's content box **less the filter row and the row gap** — the same
+    // relation stated against the layout that now exists.
     r10Check(
-      Math.abs(boardRest.boardHeight - boardRest.viewHeight) <= 1 && Math.abs(boardRest.boardHeight - boardRest.mainHeight) <= 1,
-      `the view is ${boardRest.viewHeight}px and the board ${boardRest.boardHeight}px inside a ${boardRest.mainHeight}px main area`,
+      Math.abs(boardRest.boardHeight - boardRest.viewHeight) <= 1 && Math.abs(boardRest.viewHeight - boardRest.mainInner) <= 1,
+      `the view is ${boardRest.viewHeight}px and the board ${boardRest.boardHeight}px, filling the ${boardRest.mainInner}px the ${boardRest.mainHeight}px main leaves`,
+    );
+    // …and the column of blocks fits: main must not scroll at rest. Before the
+    // inset moved to main the board's own bottom sat below main's box, so main
+    // was a scroller whose last 49px were only reachable by scrolling.
+    r10Check(
+      boardRest.mainScrollH <= boardRest.mainHeight + 1,
+      `main scrolls at rest: content ${boardRest.mainScrollH}px in a ${boardRest.mainHeight}px box`,
     );
     r10Check(
       boardRest.boardHeight > boardRest.firstColumnHeight + 1,
