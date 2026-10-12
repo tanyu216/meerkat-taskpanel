@@ -242,7 +242,17 @@
 
 ## 5. 机检断言清单（供实现卡「During」直接落测）
 
-**禁行号锚**；每条只写「selector → 断言 → 期望」。A 类可落在 `test/web/blocks.contract.mjs` 的既有 rule kinds；B 类可落在 `web/scripts/dom-smoke.mjs` 的 computed / 几何 probe；C 类可落在任何驱动层。**本轮不改 `test/**`**，此表是给实现卡与验证卡的待办。
+**禁行号锚**；每条只写「selector → 断言 → 期望」。
+
+**落点（三类各一处，均属实现卡范围，本轮不改）**
+
+| 类 | 落点 | 判据 |
+|---|---|---|
+| A · 结构 | `test/web/blocks.contract.mjs`（既有 rule kinds）+ `web/manifests/board-m2.json` 的 `blocks` | 节点计数 / 存在性 / 钩子集 |
+| B · 计算样式与几何 | `web/manifests/board-m2.json` 的 `style.targets`，由 `ui-align board-m2 --strict` 执行（R6/R8 的 `r6-*` / `r8-*` 行即在此）；细粒度几何可另落 `web/scripts/dom-smoke.mjs` | `getComputedStyle` / `getBoundingClientRect` 的实测值 |
+| C · 交互 | 驱动层（`web/scripts/dom-smoke.mjs` 或截图/探针脚本） | 真实事件驱动的状态变化 |
+
+实现卡的 Acceptance 把 B 类绑在 **`ui-align board-m2 --strict` 0 失败**上，所以 §5 B 的每一行都应成为 `board-m2.json` 里的一条 target（新增行按既有 `rN-*` 命名惯例，例如 `r9-label-trigger` / `r9-list-skeleton`），而不是只写在脚本里。
 
 ### A. 结构类（`blocks.contract`）
 
@@ -324,7 +334,7 @@
 
 **硬门（两轮皆通过）**：`console` = 0、`pageerror` = 0。
 
-**实现侧证据口径**：本契约对实现侧的断言一律标「实读」，**未**构建 `web/dist` 实测；实现卡的「During」应把 §5 的 A/B/C 三类落成真正的机检（`test/web/**` 与 `web/scripts/dom-smoke.mjs`），验证卡（Turing）独立复跑同一张表。
+**实现侧证据口径**：本契约对实现侧的断言一律标「实读」，**未**构建 `web/dist` 实测；实现卡的「During」应把 §5 的 A/B/C 三类落成真正的机检（`test/web/blocks.contract.mjs` · `web/manifests/board-m2.json` + `ui-align board-m2 --strict` · 驱动层），验证卡（Turing）独立复跑同一张表。
 
 ---
 
