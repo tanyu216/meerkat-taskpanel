@@ -157,6 +157,14 @@ OpenClaw 也可消费 Claude 格式的 bundle（`plugins/claude`），这是受�
 
 ### 调度：轮询与巡检
 
+**简言之**：这个循环是一个**活在宿主之外**的**监督进程**。它**每分钟**扫描看板，**只有真正
+认领到卡**时才唤醒 worker（空转一次 $0）；**每五分钟**巡检一次，对心跳过期的认领告警。
+Claude Code 与 Codex **本身没有定时器**，因此循环活在它们**之外**，只负责唤醒 worker
+（`claude -p`、`codex exec`、`pi --print`）。**启用方式**：运行
+`install.sh --target claude|codex|pi` —— 它会安装 `meerkat-loop` skill、投放该宿主的
+launchd / systemd / cron 单元，并**打印加载命令**（绝不替你启动守护进程；安装时还会问一次
+是否允许认领**未分配**的卡，默认允许）。OpenClaw 无需这套循环：框架已自带一个。
+
 认领不靠 Agent 的记忆。一个**宿主外部**的小型**监督进程**
 （独立 skill [`skills/meerkat-loop/`](skills/meerkat-loop/SKILL.md)，其执行体为
 [`scripts/supervisor.mjs`](scripts/supervisor.mjs)）运行两层：**每分钟轮询** —— 一次
@@ -188,7 +196,9 @@ OpenClaw 是唯一**由框架代你执行规则**的宿主，也是唯一**不�
 2. **搭建 agents 团队** —— 要得到一支真正认领、干活的团队，请**依据自身情况**参考
    [**openclaw-team**](https://github.com/tanyu216/openclaw-team) 来搭建 —— 一个基于文件、
    幂等的安装器，会搭起一支小型 Agent 团队（一名协调者 + 四名专家），自带派单、门禁与
-   **调度（自动领取）**。
+   **调度（自动领取）**。请把它当**参考、而非通用方案**：openclaw-team 是**围绕软件研发团队
+   场景**构建的（一名协调者 + 四名专家），**并非通用方案，也不适用于所有团队** —— 非研发
+   团队应把它当作搭建自家团队的**起点**，或**据此调整角色职责**。
 3. **研发人员：直接开工** —— 若你是研发人员、只想尽快上手，可**直接安装 openclaw-team**，
    免去手工拼装；它**默认**把 Meerkat TaskPanel 装成看板基座，开箱即用：
 
