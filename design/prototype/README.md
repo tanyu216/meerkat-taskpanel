@@ -38,7 +38,7 @@ three footer dialogs are secondary surfaces and stay hidden until opened.
 | `index.html` | the prototype — every block as static HTML with `data-*` hooks |
 | `tw.css` | **build output** (Tailwind + daisyUI compiled). Do not edit by hand. |
 | `src/input.css` | the Tailwind build entry: `@theme` tokens, daisyUI themes, app components |
-| `app.js` | the jQuery (slim) interaction layer — interactions I1–I12, plus R3's roster controls (I13) and Markdown editor (I14), R5's label control (I15) and R9's light-dismiss rule (I16) |
+| `app.js` | the jQuery (slim) interaction layer — interactions I1–I12, plus R3's roster controls (I13) and Markdown editor (I14), R5's label control (I15), R9's light-dismiss rule (I16), and R10's board empty state (I17) and drawer auto-save (I18) |
 | `favicon.svg` | the Sentinel Watch mark as the tab icon (renders `BRAND.md` §5; `prefers-color-scheme` pair) |
 | `vendor/jquery.slim.min.js` | jQuery 3.7.1 **slim** build, vendored locally |
 | `vendor/markdown-lite.js` | the Markdown → HTML renderer behind the editor's preview pane, vendored locally |
@@ -87,8 +87,8 @@ checkout where `node_modules` is allowed to sit next to the sources.
 
 Two `@source` directives limit class scanning to `index.html` and `app.js`
 (`@import "tailwindcss" source(none)` disables auto-detection, so nothing else on
-disk can leak classes into the bundle). Current output: **188 KB** (`tw.css` = 192093
-bytes after the R9 rebuild; the figure this line carried before said 139 KB and had been
+disk can leak classes into the bundle). Current output: **188 KB** (`tw.css` = 192724
+bytes after the R10 rebuild; the figure this line carried before said 139 KB and had been
 stale for some rounds — it is a measurement, so it is stated as one).
 
 **The scan reads comments, not just markup.** A candidate is any token that *looks* like a
@@ -98,6 +98,16 @@ HTML comment is enough for the toolchain to emit daisyUI's whole `.stack` compon
 succeeds and the page is unchanged. So after editing `index.html` or `app.js` — comments
 included — rebuild `tw.css` and **review the diff**, preferring prose ("stacked form") over
 a bare component name.
+
+**R10 measured two more of these, and both were caught by the diff review.** The round's
+first draft of the comments contained the bare words `steps` (in "the board view steps
+aside") and `blur` (describing the field's focus-loss trigger); the rebuild emitted
+daisyUI's `.steps` component (~4.9 KB) and Tailwind's `.blur` utility for them. Rewording
+both — "gives way", "focus loss" — took the bundle back down. Net for R10: **+631 bytes**,
+and the only class selector the round adds is `.td-save-error`, which is a rule, not an
+accident. The `blur` one is the sharper lesson: the *event name* is a legitimate token to
+have in the code, so a round that binds a focus-loss handler has to expect the utility to
+appear unless the binding uses the bubbling event's own name.
 
 ### One cascade detail worth knowing
 
@@ -140,6 +150,8 @@ the style guide's token blocks in `src/input.css` are unlayered. Two consequence
 | I13 | Assignee / reporter (R3) | Roster autocomplete — fuzzy match on input, `↑↓`/`Enter`/`Esc`/`Tab`, free text upserts | `[data-assignee-input]` / `[data-reporter-input]` → `[data-assignee-menu]` / `[data-reporter-menu]` → `[data-assignee-option]` / `[data-reporter-option]` |
 | I14 | Markdown editor (R3) | Mode tabs set `data-md-mode`; every keystroke repaints the highlight layer and the preview | `[data-md-editor]` → `[data-md-toggle]`, `[data-md-source]`, `[data-md-highlight]`, `[data-md-preview]` |
 | I15 | Labels (R5) | The roster control used many times at once — fuzzy match, free text creates by use, case/whitespace-insensitive, removable chips. One control, two placements: the create dialog and the drawer's Labels row are both editable | `[data-label-input]` → `[data-label-menu]` → `[data-label-option]` · `[data-label-chips]` → `[data-label-chip]` → `[data-label-remove]` · `[data-detail-label-input]` → `[data-detail-label-menu]` → `[data-detail-label-option]` · `[data-detail-label-chips]` → `[data-detail-label-chip]` → `[data-detail-label-remove]` |
+| I17 | Board empty state (R10) | the board view shows its empty state instead of bare columns whenever no card survives the filters — including a project that holds none at all | `[data-board-view]` → `data-board-state` → `[data-board]` / `[data-empty][data-empty-kind="no-results"]` |
+| I18 | Drawer auto-save (R10) | the drawer's assignee, reporter and labels commit as they change — focus loss with a moved value, an accepted roster row, a label chip added or dropped — and report through one state region | `[data-detail-save]` → `data-save-state` · `[data-detail-save-error]` · `[data-detail-save-field]` on `[data-detail-assignee]` / `[data-detail-reporter]` / `[data-detail-labels]` |
 
 The footer's three rows act directly — none of them opens a dialog except the settings
 gear, which opens B19. `Esc` closes whatever is open: the drawer, the states showcase, the
@@ -164,6 +176,27 @@ reachable by hand and the loading state is a real frame rather than a test hook.
 capture of the list view must therefore **wait out the settle** (the R9 probe waits
 900ms); a shutter taken on the switch catches the skeletons, which is the point of the
 state but not what `06-list-view` is a picture of.
+
+**The board view is the same shape, one level up (R10, I17).** `[data-board-view]` carries
+`data-board-state="data" | "empty"` and shows exactly one of its two children: the board
+itself, or the board-level no-results block. The document ships in `data` — the empty block
+is `hidden` — and the state flips to `empty` whenever no card survives the filters, which is
+also what a project with no cards looks like. Two CSS rules read the attribute, so the pair
+is mutually exclusive in the shipped markup with the script off, exactly as the list's pair
+is. The column-level "No tasks" block is **not** a member: seven of them live inside the
+seven columns and say only that a column is bare. Switching to the list hides the **state
+root**, not the board child — otherwise the board's empty state would sit above the list.
+
+**The drawer's three editable fields save as they change (R10, I18).** `[data-detail-save]`
+carries `data-save-state="idle" | "saving" | "saved" | "error"`, and `[data-detail-save-error]`
+(`role="alert"`) is its only visible half — hidden in every state but `error`. A field whose
+value did not move when focus left it is not a write; one settle sequence serves all three,
+so quick successive edits fold into one; opening a card resets the state to `idle` and
+re-baselines the comparison. The prototype has no backend, so the failure path is the one it
+can demonstrate deterministically: a single-valued field that is empty after trimming. The
+alert's copy is inlined with no `data-i18n` hook — `test/web/i18n.catalogue.mjs` mirrors the
+prototype's `MESSAGES` byte for byte and this round may not touch `test/**`; the implementing
+card owns the translation.
 
 Mutations that change board state (move, comment, create) also advance the
 `rev` counter in the top bar — the prototype's stand-in for the concurrent-write
@@ -224,8 +257,9 @@ looking at it (DESIGN.md §12).
 | Comments | human author, agent author and a `decision`-styled comment |
 | Activity | 4+ entries per task (created / claimed / status change / commented) |
 | Attachments | ≥2 per sampled task |
-| Empty states | empty column + no-results |
+| Empty states | empty column + no-results — and since R10 the board-level no-results block is the board view's `empty` state, mutually exclusive with the board itself (a project with no cards shows it too) |
 | Loading | 3 shimmer rows in the list view, in the list's `loading` state — mutually exclusive with the rows (R9) |
+| Drawer saves | assignee / reporter / labels commit as they change; one `data-save-state` region and a `role="alert"` failure block (R10) |
 | Themes | three states cycled from the footer — **Light** (default) → **Dark** → **Auto** (follows `prefers-color-scheme`, CSS-only) → Light; no-record default is Light, not the system preference |
 | Language | English (default) + Chinese via the language dropdown — 220 key pairs, mirrored |
 | List columns | six labelled columns — ID · Title · Status · Assignee · Priority · Revision — with the header sharing the row's grid template; the middle three hide at ≤759px (R8) |
@@ -256,6 +290,18 @@ by `identifierText()`, with the full id on `title` — so a nine-character id li
 `PROJ-0007` reads `PROJ-000…` while the DOM keeps the whole value on the attribute.
 `design/fidelity-r8.md` is the contract; `DESIGN.md` §24 and `BLOCKS.md` B07/B08/B09/B10
 carry the prose.
+
+**R10 — the board's empty state, drawer saves and a description that fills.** Three more
+from 2026-10-12, all three design changes the prototype had no rule for. (1) The board view
+gained the list's two-state shape: `[data-board-view]` holds `data-board-state`, and only
+one of its two children — the board or the no-results block — is ever on screen, including
+when the project holds no cards at all. (2) The drawer's assignee, reporter and labels rows
+commit as they change into one state region (`idle` / `saving` / `saved` / `error`), with a
+`role="alert"` block as the only visible half. (3) The create dialog's description fills the
+column it sits in: `align-items: stretch` on the two tracks, a column flex context on
+`.td-field-grow`, and `.td-md-panes` grown from a fixed viewport `clamp` to `flex: 1 1 auto;
+min-height: 200px`. `design/fidelity-r10.md` is the contract; `DESIGN.md` §26 and `BLOCKS.md`
+B05/B09/B10/B12/B23 carry the prose.
 
 ---
 
@@ -336,6 +382,18 @@ would leave the set claiming a build it no longer matches. The R9 interaction ev
 lives in `design/fidelity-r9.md` §6 (the card's workspace, not the repository), and a
 recapture pass belongs with whoever next touches the filter bar — note that the list
 frame *must* wait out the new load beat (see *The list view is a timeline*, above).
+
+**R10 — the set is still not recaptured, and R10 widens the same gap.** Three more changes
+are visible in frames that exist: every frame that shows the create dialog now shows the
+description filling its column (the R4/R5 recaptures shot it stopping short), and the
+drawer frames now carry the save-state region — which is `hidden` at rest, so `03-drawer-*`
+are unaffected until a field is actually edited. No frame shows the board's empty state,
+because no captured frame is of an empty board; the R10 contract's own frames
+(`r10-*-board-empty-total0.png` etc.) live in the card's workspace, not here. Per the R9
+paragraph above, the set is left whole rather than half-refreshed, and the recapture pass
+belongs with whoever next touches either surface — the create-dialog frames have now been
+stale through two rounds, which is the reason to fold them into the next pass rather than
+defer again.
 
 **Sentinel Watch recapture:** the whole set was re-shot onto the current build, because
 two changes had landed after the last capture pass and the frames still showed the

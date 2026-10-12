@@ -540,6 +540,14 @@
     /* R9 ③ — the list view's load is timed rather than instant, so both of its
        states are reachable from the interface and not only from a test hook. */
     listTimer: null,
+    /* R10 ② — the detail drawer's save state. `detailSaved` is the value each
+       field was last committed with (seeded when the drawer opens), which is
+       what makes leaving a field untouched a no-op rather than a save; the
+       timer is the single settle sequence all three fields share. */
+    detailSaved: { assignee: "", reporter: "" },
+    detailSaveState: "idle",
+    detailSaveFailed: false,
+    detailSaveTimer: null,
     /* Token panel state. Value and reveal flag live in memory for the lifetime
        of the page and are written back to nothing. */
     token: { value: "", revealed: false },
@@ -802,10 +810,15 @@
         : text("filters.count.filtered", shown, total)
     );
 
-    $('[data-empty][data-empty-kind="no-results"]').prop(
-      "hidden",
-      !(total > 0 && shown === 0)
-    );
+    /* R10 ① — the board view is in one of two states and says which. The old
+       condition only ever admitted the filtered-to-nothing case (`total > 0 &&
+       shown === 0`), so a genuinely empty project hid the no-results block and
+       drew the seven bare columns instead. `shown === 0` covers both: it is the
+       filtered case, and it is also the only way `total === 0` can present.
+       Attribute and both `hidden` props are one write, exactly like
+       `setListState` below, so they can never disagree. */
+    setBoardState(shown === 0 ? "empty" : "data");
+
 
     if (state.view === "list") renderList();
   }
@@ -834,10 +847,83 @@
     $("[data-list] [data-skeleton]").prop("hidden", next !== "loading");
   }
 
+  /* R10 ① — the board view's two states, written the same way the list's are:
+     the attribute names the state and the two members' `hidden` props follow
+     from it in the same call. `empty` is the board-level no-results block,
+     `data` is the board itself. The column-level "No tasks" empty inside a
+     column is not a member — it belongs to that column, not to the view. */
+  function setBoardState(next) {
+    $("[data-board-view]").attr("data-board-state", next);
+    $("[data-board]").prop("hidden", next === "empty");
+    $('[data-empty][data-empty-kind="no-results"]').prop("hidden", next !== "empty");
+  }
+
+  /* ------------------------------------------------- R10 ② · drawer saves -- */
+
+  /* How long the two transient states are held. The prototype has no backend,
+     so the delay is what makes `saving` and `saved` reachable from the
+     interface; the contract only requires that the four states exist, that the
+     attribute and the alert agree, and that a commit moves the state off
+     `idle`. */
+  var DETAIL_SAVE_MS = 420;
+
+  function setDetailSaveState(next) {
+    state.detailSaveState = next;
+    $("[data-detail-save]").attr("data-save-state", next);
+    /* the alert is the state's only visible half, and the attribute is the only
+       thing that decides it — the two are one write, never two */
+    $("[data-detail-save-error]").prop("hidden", next !== "error");
+  }
+
+  /* One settle sequence serves all three fields. A commit that arrives while
+     one is running does not start a second: it folds into the running one by
+     moving the outcome it will land on, so three quick edits produce one save
+     and the last one's verdict, not three overlapping saves. */
+  function detailCommit(field, failed) {
+    state.detailSaveFailed = !!failed;
+
+    if (state.detailSaveState === "saving") return;
+
+    window.clearTimeout(state.detailSaveTimer);
+    setDetailSaveState("saving");
+
+    state.detailSaveTimer = window.setTimeout(function () {
+      if (state.detailSaveFailed) {
+        /* an error is held until the next commit, so the reader has time to
+           see why the field did not take */
+        setDetailSaveState("error");
+        return;
+      }
+      setDetailSaveState("saved");
+      state.detailSaveTimer = window.setTimeout(function () {
+        setDetailSaveState("idle");
+      }, DETAIL_SAVE_MS);
+    }, DETAIL_SAVE_MS);
+  }
+
+  /* The two single-valued fields commit when focus leaves them, and when a
+     roster row is accepted — `comboAccept` triggers `change` for both the
+     picker and the free-text path, so one handler covers the accept and one
+     covers the focus loss. A field whose value did not move is left alone: the
+     drawer is opened, read and closed constantly, and none of that is a write.
+     A single-valued field that is empty after trimming is the failure the
+     prototype demonstrates — the one deterministic path to `error` that needs
+     no backend. Labels cannot fail this way: the set is allowed to be empty,
+     so its commit is always taken. */
+  function detailFieldCommit($input, field) {
+    var value = $.trim(String($input.val() || ""));
+    if (value === state.detailSaved[field]) return;
+    state.detailSaved[field] = value;
+    detailCommit(field, !value);
+  }
+
   function setView(view) {
     state.view = view;
 
-    $("[data-board]").prop("hidden", view !== "board");
+    /* R10 ① — the whole board view gives way, wrapper included: the
+       board-level empty state is its other child, so hiding only the board
+       would leave "No tasks match your filters" floating above the list. */
+    $("[data-board-view]").prop("hidden", view !== "board");
     $("[data-list]").prop("hidden", view !== "list");
 
     $("[data-view-toggle] [data-view]").each(function () {
@@ -1321,6 +1407,15 @@
       .find("[data-detail-reporter-avatar]")
       .text(monogram(reporter))
       .attr("title", reporter);
+
+    /* R10 ② — opening a card is the baseline the drawer's three editable
+       fields are measured against, and it starts clean: these are the values
+       a commit would have to differ from, and a drawer that still wore the
+       previous card's verdict would be reporting on the wrong card. */
+    state.detailSaved = { assignee: data.assignee, reporter: reporter };
+    state.detailSaveFailed = false;
+    window.clearTimeout(state.detailSaveTimer);
+    setDetailSaveState("idle");
 
     $drawer.find("[data-detail-project-label]").text(data.project);
 
@@ -2628,6 +2723,53 @@
       }
       $input.trigger("change");
     });
+
+    /* ---------------------------------------- R10 ② · drawer auto-save ---- */
+
+    /* The drawer's three editable fields commit as they are changed: the two
+       single-valued ones when the reader leaves a field whose value moved (or
+       accepts a roster row, which is the `change` half), and the label set
+       whenever a chip arrives or is dropped. Both of the label paths already
+       end in `change` on `[data-detail-label-input]` — the chip removal above
+       and `comboAccept` — so one handler covers them and there is no second
+       registration to drift.
+
+       The focus-loss trigger is bound as `focusout`, its bubbling form, rather
+       than as the non-bubbling `focus`-loss event of the same meaning: this is
+       a delegated binding on the drawer, so it needs an event that reaches the
+       drawer, and `focusout` is that event natively rather than by a library's
+       remapping. */
+    $("[data-detail-drawer]").on(
+      "focusout",
+      "[data-detail-assignee-label], [data-detail-reporter-label]",
+      function () {
+        var $input = $(this);
+        detailFieldCommit(
+          $input,
+          $input.is("[data-detail-assignee-label]") ? "assignee" : "reporter"
+        );
+      }
+    );
+
+    $("[data-detail-drawer]").on(
+      "change",
+      "[data-detail-assignee-label], [data-detail-reporter-label]",
+      function () {
+        var $input = $(this);
+        detailFieldCommit(
+          $input,
+          $input.is("[data-detail-assignee-label]") ? "assignee" : "reporter"
+        );
+      }
+    );
+
+    $("[data-detail-drawer]").on(
+      "change",
+      "[data-detail-label-input]",
+      function () {
+        detailCommit("labels", false);
+      }
+    );
 
     /* ----------------------------------------- I14 · Markdown editor ----- */
 

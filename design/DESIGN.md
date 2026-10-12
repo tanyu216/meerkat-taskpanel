@@ -1520,3 +1520,138 @@ each, and `[data-skeleton]` and `[data-list-rows]` are mutually exclusive in bot
 (at rest and mid-load). Zero console errors, zero page errors. No token was added or
 changed: `.td-label-trigger` and the list states are expressed with the tokens that were
 already in force.
+
+---
+
+## 26. Review round R10 — the board’s own empty state, drawer saves, and a description that fills
+
+Three findings filed by Terry against the live board on 2026-10-12 23:04. All three are
+rendering/interaction defects rather than new features, so this round adds **no block**:
+each one lands inside an existing entry (B05/B12 · B09/B22/B25 · B10/B23). The executable
+contract is `design/fidelity-r10.md`; the block inventory carries the per-block changes.
+
+### 26.1 The board view is two states, and only one of them is on screen (item ①)
+
+The board had no view-level state at all. `[data-board]` and the no-results `[data-empty]`
+were siblings under `[data-main]`, and the only rule relating them lived in
+`applyFilters()` as `total > 0 && shown === 0` — a condition that describes *filtered to
+nothing* and silently excludes *nothing to filter*. So a board whose project holds no cards
+kept the no-results block `hidden` and drew its seven columns instead, each showing its own
+"no tasks" body; and in the filtered case it showed both, the global empty state above a
+full board.
+
+The fix is the one R9 established for the list, applied to the board: a **state root**
+`[data-board-view]` owns the state (`data-board-state`), the two members are its **direct
+children**, and the state is written in one call (`setBoardState`) that sets the attribute
+and both `hidden` props together. The condition becomes `shown === 0`, which **subsumes**
+`total === 0` rather than sitting beside it. Two rules in `src/input.css` read the attribute,
+so the mutual exclusion holds in the shipped markup with the script off.
+
+| | R9 — the list | R10 — the board |
+|---|---|---|
+| State root | `[data-list]` | `[data-board-view]` |
+| Attribute | `data-list-state` | `data-board-state` |
+| Values | `loading` \| `data` | `empty` \| `data` |
+| Members | `[data-skeleton]` · `[data-list-rows]` | `[data-board]` · `[data-empty][data-empty-kind="no-results"]` |
+| Rests at | `data` | `data` |
+
+**The column-level empty is not a member.** `[data-empty][data-empty-kind="column"]` (seven
+of them, one per column) says *that column is bare*; the board-level block says *this view
+has nothing to show*. Only the latter is a state of the view, and a board-level tally that
+included both would count the same emptiness twice.
+
+**The state root has to be a flex pass-through, not a block.** The wrapper was first
+specified as `display: block`. Measured, that is not a neutral wrapper: `[data-main]` is a
+column flex container and `.td-board` carries `flex: 1 1 auto`, which can only be resolved
+against a flex parent — behind a block wrapper the board falls back to its content height
+(812px → 331.56px, with the columns losing their internal scrollers). The root therefore
+takes `display: flex; flex-direction: column; flex: 1 1 auto` and passes the growth inward,
+which measures **identically to shipping the board as `[data-main]`'s own child**. The
+experiment is `verify/wrapper-experiment2.mjs`; the numbers are in `fidelity-r10.md` §2.1.2.
+
+### 26.2 The drawer’s three editable fields save as they change (item ②)
+
+`renderDetail()` filled `[data-detail-assignee-label]`, `[data-detail-reporter-label]` and
+the label chips, and that was the end of it: nothing in the drawer listened for a commit, so
+editing any of the three changed the control and nothing else — no state, no feedback, no
+way for the reader to tell an edit from a no-op.
+
+The three fields now commit **as they change**, with one state region for all of them:
+`[data-detail-save]` carries `data-save-state` (`idle` \| `saving` \| `saved` \| `error`) and
+`[data-detail-save-error]` (`role="alert"`) is its only visible half. The commit points are
+the ones the controls already had:
+
+| Field | Commits when | Hook |
+|---|---|---|
+| Assignee | focus leaves the input and the value moved, or a roster row is accepted | `[data-detail-assignee-label]` · `[data-assignee-option]` |
+| Reporter | same rule | `[data-detail-reporter-label]` · `[data-reporter-option]` |
+| Labels | a chip arrives or is dropped | `[data-detail-label-option]` · `[data-detail-label-remove]` |
+
+The field names travel on the rows themselves (`data-detail-save-field`), so a reader can
+tell which row a state belongs to without a second lookup. Three deliberate properties:
+
+- **Typing is not a commit.** A field whose value did not move when focus left it is left
+  alone — the drawer is opened, read and closed constantly, and none of that is a write.
+- **One settle sequence serves all three.** A commit arriving while one is running folds
+  into it rather than starting a second, so three quick edits produce one save and the last
+  edit's verdict.
+- **Opening a card resets it.** The baseline each field is compared against is the card's
+  value at open, and the state returns to `idle` — an open drawer never wears the previous
+  card's verdict.
+
+The failure path is a **deterministic client-side check**, because the prototype has no
+backend: a single-valued field that is empty after trimming fails, and the state holds at
+`error` until the next commit. Labels cannot fail this way — the set is allowed to be empty.
+Implementation-side failures (a 409, a dropped connection) reuse the same state machine; the
+contract anchors on the attribute and the alert, not on what made the save fail.
+
+**The error string is inline, and that is a deliberate boundary.**
+`test/web/i18n.catalogue.mjs` is a byte-for-byte mirror of the prototype's `MESSAGES` table,
+and `i18n.catalogue.test.mjs` checks both the entries and that every `data-i18n` hook
+resolves against the catalogue. This round may not touch `test/**`, so a new key or a new
+hook would turn that suite red on the host; the string is inlined as the no-JS fallback and
+the translation is the implementing card's call (see `fidelity-r10.md` §7).
+
+### 26.3 The description fills the column it sits in (item ③)
+
+The create dialog's description stopped short of the bottom of its own column. Three links
+were broken, and fixing any two of them changes nothing:
+
+1. `.td-two-col` used `align-items: start`, so the left column ended at its own content
+   height while the routing column (which carries more fields) ran on. → `stretch`.
+2. `.td-field-grow` was a **block** container, so `.td-md-editor`'s `flex: 1 1 auto` had no
+   flex parent to resolve against and the editor fell back to its content height. →
+   `display: flex; flex-direction: column`.
+3. `.td-md-panes` had a fixed `height: clamp(280px, 46vh, 520px)` — a **viewport** rule. The
+   dialog could grow with its content; the editing area could not, so the difference piled up
+   under it. → `flex: 1 1 auto; min-height: 200px`.
+
+At 1512×950 the editor's bottom edge now lands on the column's (`65px` of slack → `0`), and
+the panes measure `502px` against the old fixed `437px`. Below 760 the two tracks stack, so
+there is no neighbouring height to stretch to and the panes keep a bounded height with the
+base rule's `200px` as the floor.
+
+**R4's cap survives.** `.td-modal-box` keeps `max-height: calc(100vh - 48px)` and its own
+scroller. At 1120×800 that box scrolls internally by **49px, before and after** — the
+routing column's natural height, not the description's. This is worth stating plainly
+because the round's first draft asked for "no internal overflow at 1120×800": that assertion
+is false in **both** states, so it could never have separated them, and holding it would have
+meant deleting R4's viewport cap. It is replaced by a regression gate — the overflow is
+unchanged — and the same is true of the draft's other height assertion, which compared the
+editor against `[data-create-left]` (an element that is content-sized in both layouts, so
+the difference is 0 either way). Both replacements are recorded in `fidelity-r10.md` §2.3.2
+rather than quietly dropped.
+
+### 26.4 Checked
+
+Every selector-level assertion in `design/fidelity-r10.md` §5 is measured against the
+prototype in a real browser, before and after, at 1512×950 / 1120×800 / 760×900. Before: a
+genuinely empty board painted **7** columns and hid the no-results block; a filtered-to-empty
+board painted **2** blocks at once; the drawer had no commit path and no feedback whatsoever;
+and the description left **65px** of blank column under it. After: the board paints exactly
+one member in both paths, the drawer reports `saving` → `saved` → `idle` on a change and
+`error` on an empty single-valued field, and the description reaches the bottom of its column
+with the board's own geometry unchanged (812px, page overflow 0). Zero console errors, zero
+page errors. No token was added or changed: the error block uses the existing
+`--color-td-danger` / `--color-td-danger-soft` pair, and the stretch chain introduces no
+value of its own.
