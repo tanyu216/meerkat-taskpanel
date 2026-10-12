@@ -359,16 +359,18 @@
           <span class="td-side-text" data-i18n="sidebar.states">States</span>
         </button>
 
-        <!-- Sidebar footer: three equal thirds (v1.4), one affordance each —
-             theme (left) · language (centre) · settings (right). Each cell is
-             direct: the theme cell cycles on press, the language cell is a
-             dropdown, the settings cell is an icon-only button. The theme cell
+        <!-- Sidebar footer: three stacked full-width rows (R7, 2026-10-12), one
+             affordance each, top to bottom — theme · language · settings. The
+             three were equal thirds in one row (v1.3/v1.4); R7 stacked them so
+             each control owns its row and its label has the width to read. Each
+             cell is direct: the theme cell cycles on press, the language cell is
+             a dropdown, the settings cell is an icon-only button. The theme cell
              and the language trigger still state the value in force, so the
              current mode is readable without opening anything. Display only:
              nothing here reports reachability, and the bind address lives in
              the settings panel rather than as standing status copy. -->
         <div class="td-access-status" data-access-status>
-          <!-- Left · theme — a three-state cycle, not an entry to a dialog:
+          <!-- Top row · theme — a three-state cycle, not an entry to a dialog:
                one press walks Light → Dark → Auto → Light. Glyph, name,
                `data-theme-mode` and the label that names the state one press
                reaches are all written by applyTheme(), so button and document
@@ -378,6 +380,7 @@
           <button
             type="button"
             class="td-access-cell"
+            data-access-cell
             data-theme-switch
             data-theme-mode="light"
             aria-label="Theme: Light. Activate for Dark."
@@ -400,13 +403,14 @@
             <span class="td-side-text" data-theme-label>Light</span>
           </button>
 
-          <!-- Centre · language — a dropdown, not a dialog: the trigger states
-               the language in force and carries the caret, the menu holds one
-               option per language. The list is data, so a third language is a
-               new `<li>` and a new dictionary entry, nothing else. -->
+          <!-- Middle row · language — a dropdown, not a dialog: the trigger
+               states the language in force and carries the caret, the menu holds
+               one option per language. The list is data, so a third language is
+               a new `<li>` and a new dictionary entry, nothing else. -->
           <button
             type="button"
             class="td-access-cell"
+            data-access-cell
             data-lang-select
             aria-haspopup="menu"
             aria-expanded="false"
@@ -425,11 +429,12 @@
             </svg>
           </button>
 
-          <!-- Right · settings — icon only: the accessible name says what it
-               opens and no visible "Settings" text sits beside the gear. -->
+          <!-- Bottom row · settings — icon only: the accessible name says what
+               it opens and no visible "Settings" text sits beside the gear. -->
           <button
             type="button"
             class="td-access-cell"
+            data-access-cell
             data-access-open
             aria-haspopup="dialog"
             data-i18n-aria-label="access.open"

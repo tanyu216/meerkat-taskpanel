@@ -3332,6 +3332,15 @@
       }
     }
   }
+  @layer daisyui.l1.l2.l3 {
+    .mask {
+      display: inline-block;
+      vertical-align: middle;
+      mask-size: contain;
+      mask-repeat: no-repeat;
+      mask-position: center;
+    }
+  }
   .block {
     display: block;
   }
@@ -3355,6 +3364,9 @@
   }
   .w-full {
     width: 100%;
+  }
+  .grow {
+    flex-grow: 1;
   }
   @layer daisyui.l1.l2.l3 {
     .menu .dropdown:focus-within .menu-dropdown-toggle:after {
@@ -4165,9 +4177,8 @@ html[data-theme="dark"] {
     background-color: var(--color-td-ink-4);
   }
   .td-access-status {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    align-items: stretch;
+    display: flex;
+    flex-direction: column;
     margin-top: 8px;
     padding: 8px 0 0;
     font-size: 12px;
@@ -4177,24 +4188,23 @@ html[data-theme="dark"] {
   .td-access-cell {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 6px;
+    justify-content: flex-start;
+    gap: 8px;
     width: 100%;
     height: 28px;
-    padding: 0 2px;
+    padding: 0 8px;
     font-size: 12px;
     font-weight: 500;
     color: var(--color-td-ink-2);
-    text-align: center;
+    text-align: start;
     background: transparent;
     border: 0;
-    border-inline-start: 1px solid var(--color-td-line);
     border-radius: var(--r-sm);
     cursor: pointer;
     transition: background-color var(--dur-hover) var(--ease), color var(--dur-hover) var(--ease);
   }
-  .td-access-cell:first-child {
-    border-inline-start: 0;
+  .td-access-cell + .td-access-cell {
+    border-block-start: 1px solid var(--color-td-line);
   }
   .td-access-cell:hover {
     color: var(--color-td-ink);
@@ -5886,6 +5896,7 @@ html[data-theme="dark"] {
       padding: 8px 0 0;
     }
     .td-access-cell {
+      justify-content: center;
       gap: 0;
       height: 24px;
       padding: 0;

@@ -24,7 +24,7 @@ open design/prototype/index.html      # plain file:// — no server, no build st
 ```
 
 `index.html` is complete without JavaScript: the top bar, sidebar, filters, all seven
-columns, all eighteen cards, the legend and the **three footer cells** (theme · language ·
+columns, all eighteen cards, the legend and the **three footer rows** (theme · language ·
 settings) are static markup, with the default theme and language already named in their
 cells. The drawer, the states gallery, the create-task / create-project modals and the
 three footer dialogs are secondary surfaces and stay hidden until opened.
@@ -116,12 +116,12 @@ the style guide's token blocks in `src/input.css` are unlayered. Two consequence
 | I8 | Switch project | project switcher or sidebar list | `[data-project-option]`, `[data-project]` |
 | I9 | Create a task | `New task` or a column `+` (prefills that status) | `[data-new-task]`, `[data-column-add]` |
 | I10 | Create a project | switcher → `New project…` | `[data-project-new]` |
-| I11 | Theme cycle — Light / Dark / Auto | **left footer cell** — one press walks the three states, no dialog | `[data-theme-switch]` → `[data-theme-mode]` |
+| I11 | Theme cycle — Light / Dark / Auto | **top footer row** — one press walks the three states, no dialog | `[data-theme-switch]` → `[data-theme-mode]` |
 | I12 | Toast feedback | every mutation | `[data-toast-region]`, `[data-toast]` |
-| — | Language switch | **middle footer cell** — dropdown; `Esc` / a press outside closes it | `[data-lang-select]` → `[data-lang-menu]` → `[data-lang-option]` |
+| — | Language switch | **middle footer row** — dropdown; `Esc` / a press outside closes it | `[data-lang-select]` → `[data-lang-menu]` → `[data-lang-option]` |
 | — | States gallery | sidebar footer button, `Esc` / scrim / close to dismiss | `[data-states-open]` → `[data-states-panel]` |
 | — | Error retry | `Retry` inside the error state | `[data-error-retry]` |
-| — | Access & token settings | **B19** — right footer cell, `Esc` / scrim / close to dismiss | `[data-access-open]` → `[data-access-panel]` |
+| — | Access & token settings | **B19** — bottom footer row, `Esc` / scrim / close to dismiss | `[data-access-open]` → `[data-access-panel]` |
 | — | Token reveal / copy / reset | buttons in the token block | `[data-token-reveal]`, `[data-token-copy]`, `[data-token-reset]` |
 | — | Label filter (R3) | the filter bar's dropdown; writes `data-filter-label-value`, restates the trigger badge, re-filters | `[data-filter-label]` → `[data-filter-label-option]` → `[data-filter-label-summary]` |
 | — | Allow-list switch (R3) | the access panel's toggle; states and dims, nothing else | `[data-cidr-switch]` → `[data-cidr-whitelist]` |
@@ -129,7 +129,7 @@ the style guide's token blocks in `src/input.css` are unlayered. Two consequence
 | I14 | Markdown editor (R3) | Mode tabs set `data-md-mode`; every keystroke repaints the highlight layer and the preview | `[data-md-editor]` → `[data-md-toggle]`, `[data-md-source]`, `[data-md-highlight]`, `[data-md-preview]` |
 | I15 | Labels (R5) | The roster control used many times at once — fuzzy match, free text creates by use, case/whitespace-insensitive, removable chips. One control, two placements: the create dialog and the drawer's Labels row are both editable | `[data-label-input]` → `[data-label-menu]` → `[data-label-option]` · `[data-label-chips]` → `[data-label-chip]` → `[data-label-remove]` · `[data-detail-label-input]` → `[data-detail-label-menu]` → `[data-detail-label-option]` · `[data-detail-label-chips]` → `[data-detail-label-chip]` → `[data-detail-label-remove]` |
 
-The footer's three cells act directly — none of them opens a dialog except the settings
+The footer's three rows act directly — none of them opens a dialog except the settings
 gear, which opens B19. `Esc` closes whatever is open: the drawer, the states showcase, the
 access panel, the card's "Move to" menu and the language menu. The two floating menus also
 close on any press outside themselves and their trigger.
@@ -198,13 +198,13 @@ looking at it (DESIGN.md §12).
 | Themes | three states cycled from the footer — **Light** (default) → **Dark** → **Auto** (follows `prefers-color-scheme`, CSS-only) → Light; no-record default is Light, not the system preference |
 | Language | English (default) + Chinese via the language dropdown — 215 key pairs, mirrored |
 | Access model | B19 access & token panel: binds `0.0.0.0`, CIDR whitelist, token required from outside localhost; no user / account / sign-in element anywhere |
-| Footer | three equal thirds — theme · language · settings — a three-state theme cycle, a dropdown and an icon-only button |
+| Footer | three stacked full-width rows (R7) — theme · language · settings — a three-state theme cycle, a dropdown and an icon-only button |
 | Viewports | 1512 / 1240 / 980 / 760 / 500 — no page-level horizontal overflow |
 
 The board is the only horizontal scroll container; `html`, `body` and `main` never
 scroll sideways. Below 1023px the sidebar collapses to an icon rail — where the three
-footer cells keep their equal thirds and drop their labels, leaving three centred icons —
-and below 760px the top bar wraps and the drawer goes full width. Between **760 and
+footer rows keep their stack and drop their labels, leaving three centred icons one above
+the other — and below 760px the top bar wraps and the drawer goes full width. Between **760 and
 779px** the top bar also wraps: that band was sized around a bar that still held the
 language switch, and the wrap is now kept as reviewed rather than re-tuned (DESIGN.md
 §14, §15).
