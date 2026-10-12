@@ -50,7 +50,11 @@ function onDrop(event) {
            a `<span>`: the outline of the board is seven headings, one per status
            (B06). `data-column-name` is unchanged, so the hook set stays put. -->
       <h2 class="font-semibold text-[12px] whitespace-nowrap text-(--brand-text)" data-column-name>{{ $t(`status.${column.status}`) }}</h2>
-      <span class="badge badge-sm td-count ms-auto" data-column-count>{{ count }}</span>
+      <!-- M2c ③ — the count sits **beside the name**, not pushed to the column's
+           far edge: the header is `[dot][name][count][+]`, the prototype's own
+           order and spacing (`design/prototype/index.html` `[data-column-header]`).
+           `ms-auto` had parked the pair on the right since M1. -->
+      <span class="badge badge-sm td-count" data-column-count>{{ count }}</span>
       <button type="button" class="border-0 bg-transparent text-(--brand-text-3) cursor-pointer text-[14px]" data-column-add :aria-label="$t('column.add', $t(`status.${column.status}`))" :title="$t('column.add', $t(`status.${column.status}`))" @click="emit('add', column.status)">
         ＋
       </button>
