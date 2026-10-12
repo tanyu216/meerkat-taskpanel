@@ -14,7 +14,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   distributed skill (`skills/meerkat-loop/`) carrying the execution body, the unit / wake /
   host-config templates and an operator reference. It is distributed to **claude, codex and
   pi**, and **never to OpenClaw** — permanently, by ruling: the openclaw-team framework
-  already ships `poll-<agent>` / `task-patrol`, which is the same design, and two
+  already ships a per-agent poll / a `task-patrol`, which is the same design, and two
   supervisors on one board would only race each other for the same cards. The board skill
   still goes to all four hosts, so `sync-skills.mjs` now models two skills with two
   distribution surfaces (plus a `plugins/loop` bundle target, so the marketplace can list
