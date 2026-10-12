@@ -88,7 +88,7 @@ function onNav(item) {
 
 <template>
   <aside class="td-sidebar" data-sidebar>
-    <nav data-nav :aria-label="$t('nav.label')">
+    <nav class="td-nav" data-nav :aria-label="$t('nav.label')">
       <button
         v-for="item in nav"
         :key="item"
@@ -120,7 +120,7 @@ function onNav(item) {
 
     <section>
       <h2 class="m-0 mb-2 text-[11px] uppercase tracking-[0.06em] text-(--brand-text-3)" data-side-label data-i18n="sidebar.projects">{{ $t("sidebar.projects") }}</h2>
-      <div data-project-list>
+      <div class="td-nav" data-project-list>
         <button
           v-for="project in projects"
           :key="project.id"
