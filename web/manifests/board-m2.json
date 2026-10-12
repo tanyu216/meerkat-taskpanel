@@ -1,0 +1,881 @@
+{
+  "page": "board-m2",
+  "name": "Board — M2 逐块保真契约（主路径 8 块 + M2 目标态块；冻结于 HEAD ec97acde506c）",
+  "route": "/",
+  "widths": [
+    1512,
+    1240,
+    980,
+    760,
+    430
+  ],
+  "height": 900,
+  "overflowTargets": [
+    {
+      "selector": "html",
+      "desc": "文档根 — 五档一律不得横向溢出（B05 的 [data-board] 是唯一横滚容器）"
+    }
+  ],
+  "style": {
+    "targets": [
+      {
+        "name": "topbar",
+        "selector": "[data-topbar]"
+      },
+      {
+        "name": "sidebar",
+        "selector": "[data-sidebar]"
+      },
+      {
+        "name": "sidebar-footer",
+        "selector": "[data-access-status]"
+      },
+      {
+        "name": "filters",
+        "selector": "[data-filters]"
+      },
+      {
+        "name": "board",
+        "selector": "[data-board]"
+      },
+      {
+        "name": "card",
+        "selector": "[data-card]"
+      }
+    ]
+  },
+  "blocks": [
+    {
+      "id": "B01",
+      "name": "App shell",
+      "evidence": "design/prototype/index.html:15 <div class=\"td-shell\" data-app-shell>; 原型 blob 97918198ca57",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "[data-app-shell]",
+          "count": 1,
+          "desc": "壳根在位"
+        },
+        {
+          "selector": "html[data-theme]",
+          "count": 1,
+          "desc": "主题挂在文档元素（B03 的 writer 唯一写）"
+        },
+        {
+          "selector": "html[data-theme-mode]",
+          "count": 1,
+          "desc": "机器可检模式旁挂（light|dark|auto）"
+        }
+      ]
+    },
+    {
+      "id": "B02",
+      "name": "Top bar",
+      "evidence": "design/prototype/index.html:19-176; 见 gap-matrix §2",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "[data-topbar]",
+          "count": 1,
+          "desc": "顶栏根"
+        },
+        {
+          "selector": "[data-brand]",
+          "count": 1,
+          "desc": "品牌块"
+        },
+        {
+          "selector": "[data-project-switcher]",
+          "count": 1,
+          "desc": "项目切换器"
+        },
+        {
+          "selector": "[data-project-current]",
+          "count": 1,
+          "desc": "当前项目读数"
+        },
+        {
+          "selector": "[data-project-option]",
+          "min": 1,
+          "desc": "项目选项（fixture 驱动，不写死）"
+        },
+        {
+          "selector": "[data-project-new]",
+          "count": 1,
+          "desc": "新建项目入口"
+        },
+        {
+          "selector": "[data-project-switcher-icon]",
+          "count": 1,
+          "desc": "切换器图标（原型为 SVG，实现为字形 —— 归 B03-icons 同类的 G1 待跟项）"
+        },
+        {
+          "selector": "[data-search-input]",
+          "count": 1,
+          "desc": "搜索框"
+        },
+        {
+          "selector": "[data-filter-toggle]",
+          "count": 1,
+          "desc": "过滤器开关（aria-pressed + aria-controls=td-filters）"
+        },
+        {
+          "selector": "[data-view-toggle]",
+          "count": 1,
+          "desc": "视图切换组（取值域 board|list 由 blocks.contract 的 domain 断言把守）"
+        },
+        {
+          "selector": "[data-view]",
+          "count": 2,
+          "desc": "board / list 两档"
+        },
+        {
+          "selector": "[data-revision]",
+          "count": 1,
+          "desc": "版本读数簇"
+        },
+        {
+          "selector": "[data-revision-value]",
+          "nonEmpty": true,
+          "desc": "rev 值非空"
+        },
+        {
+          "selector": "[data-new-task]",
+          "count": 1,
+          "desc": "主操作按钮"
+        },
+        {
+          "selector": "[data-user]",
+          "count": 0,
+          "desc": "反向断言：顶栏无用户/账户元素（v1.1 移除）"
+        },
+        {
+          "selector": "[data-theme-toggle]",
+          "count": 0,
+          "desc": "反向断言：v1.2 起顶栏无主题开关"
+        },
+        {
+          "selector": "[data-lang-toggle]",
+          "count": 0,
+          "desc": "反向断言：v1.2 起顶栏无语言开关"
+        }
+      ]
+    },
+    {
+      "id": "B02-mark",
+      "name": "品牌 mark（Sentinel Watch，B02 的 .td-logo）— 实现未落地，且原型仍在改（lane T-20261012-002049）",
+      "evidence": "design/prototype/index.html:27-78 <svg class=\"td-logo\" viewBox=\"0 0 32 32\">（V2 几何，BRAND.md §5）；实现侧 web/src/** 全文 0 命中 td-logo（实测 2026-10-12 仍有 0 命中）",
+      "status": "delivered",
+      "checks": [
+        {
+          "scope": "[data-brand]",
+          "selector": "svg",
+          "count": 1,
+          "desc": "品牌块内的 Sentinel Watch mark（选择器不含类名）"
+        }
+      ]
+    },
+    {
+      "id": "B03",
+      "name": "Sidebar",
+      "evidence": "design/prototype/index.html:188-433（footer 三项 358-433）；见 gap-matrix §3",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "[data-sidebar]",
+          "count": 1,
+          "desc": "侧栏根"
+        },
+        {
+          "selector": "[data-nav-item]",
+          "count": 4,
+          "desc": "board / list / activity / waiting —— 第 4 项 waiting 是 M1 的有据扩展（blocks.contract.mjs:125-132 NAV 域 + :390，『approved with B03's count together』）；原型侧同步为 4（T-20261012-041728-2 按 C6 补上第 4 项 + nav.waiting 键），两侧一致；见 manifests/README.md §3"
+        },
+        {
+          "selector": "[data-project-list]",
+          "count": 1,
+          "desc": "项目列表宿主"
+        },
+        {
+          "selector": "[data-project-list] [data-project]",
+          "min": 1,
+          "desc": "项目行（fixture 驱动）"
+        },
+        {
+          "selector": "[data-order-rank]",
+          "min": 1,
+          "desc": "排序诊断：rank"
+        },
+        {
+          "selector": "[data-order-score]",
+          "min": 1,
+          "desc": "排序诊断：score（/projects?order_debug=1）"
+        },
+        {
+          "selector": "[data-agents-presence]",
+          "count": 1,
+          "desc": "平台存在感宿主"
+        },
+        {
+          "selector": "[data-agents-presence] [data-presence]",
+          "min": 1,
+          "desc": "running / idle 行"
+        },
+        {
+          "selector": "[data-states-open]",
+          "count": 0,
+          "desc": "反向断言：B18 状态陈列室为 prototype-only（Terry 2026-10-12 裁定，blocks.contract.mjs:74-80 / B18 manual :960-968），实现侧无该入口 —— 与原型有意分歧"
+        },
+        {
+          "selector": "[data-access-status]",
+          "count": 1,
+          "desc": "页脚三等分容器"
+        },
+        {
+          "selector": "[data-theme-switch]",
+          "count": 1,
+          "desc": "主题三态循环（无 aria-pressed）"
+        },
+        {
+          "selector": "[data-theme-switch] [data-theme-icon]",
+          "count": 3,
+          "desc": "light / dark / auto 三字形（取值域由 blocks.contract domain 断言把守）"
+        },
+        {
+          "selector": "[data-theme-label]",
+          "nonEmpty": true,
+          "desc": "当前态文案非空"
+        },
+        {
+          "selector": "[data-lang-select]",
+          "count": 1,
+          "desc": "语言触发器"
+        },
+        {
+          "selector": "[data-lang-label]",
+          "nonEmpty": true,
+          "desc": "当前语言非空（EN / 中文）"
+        },
+        {
+          "selector": "[data-lang-option]",
+          "count": 2,
+          "desc": "en / zh 两项"
+        },
+        {
+          "selector": "[data-access-open]",
+          "count": 1,
+          "desc": "设置入口"
+        },
+        {
+          "selector": "[data-theme-modal]",
+          "count": 0,
+          "desc": "反向断言：v1.4 删掉的主题弹窗"
+        },
+        {
+          "selector": "[data-lang-modal]",
+          "count": 0,
+          "desc": "反向断言：v1.4 删掉的语言弹窗"
+        }
+      ]
+    },
+    {
+      "id": "B03-icons",
+      "name": "页脚三格的图标几何（主题 sun/moon/display SVG、语言 globe + caret）— 实现改为文本字形，无 caret",
+      "evidence": "design/prototype/index.html:374/377/382 <svg data-theme-icon>；:406-413 globe <svg> + <svg class=\"td-caret\">；实现 SidebarFooter.vue:50-52 文本字形、:58 无 caret",
+      "status": "delivered",
+      "checks": [
+        {
+          "scope": "[data-theme-switch]",
+          "selector": "svg[data-theme-icon]",
+          "count": 3,
+          "desc": "三个主题字形为 SVG"
+        },
+        {
+          "scope": "[data-lang-select]",
+          "selector": "svg",
+          "count": 2,
+          "desc": "语言触发器 = globe + caret 两个 SVG"
+        }
+      ]
+    },
+    {
+      "id": "B03-footer-text",
+      "name": "设置格无可见文字（BLOCKS.md B03 明文）— 实现渲染出可见 'Access'",
+      "evidence": "design/prototype/index.html:418-432（仅 gear SVG + data-i18n-aria-label）；实现 SidebarFooter.vue:80 <span class=\"td-side-text\">",
+      "status": "delivered",
+      "checks": [
+        {
+          "scope": "[data-access-open]",
+          "selector": ".td-side-text",
+          "count": 0,
+          "desc": "近似机检 + 人工复核（双轨）：语料表只能表达『计数为 0』，读作『设置格内不得有可见文字』；.td-side-text 只用于定位被检查对象，不作样式依赖（ui-align §4 / Elon §7 裁定③）"
+        }
+      ]
+    },
+    {
+      "id": "B04",
+      "name": "Filters bar",
+      "evidence": "design/prototype/index.html:440-499；见 gap-matrix §4",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "#td-filters[data-filters]",
+          "count": 1,
+          "desc": "过滤条根（id 供 aria-controls 指向）"
+        },
+        {
+          "selector": "[data-filter-assignee]",
+          "count": 1,
+          "desc": "assignee 过滤"
+        },
+        {
+          "selector": "[data-filter-priority]",
+          "count": 1,
+          "desc": "priority 过滤"
+        },
+        {
+          "selector": "[data-filter-label]",
+          "count": 1,
+          "desc": "label 下拉（data-filter-label-value 承载所选）"
+        },
+        {
+          "selector": "[data-filter-label-summary]",
+          "nonEmpty": true,
+          "desc": "触发器复述所选值"
+        },
+        {
+          "selector": "[data-filter-label-option]",
+          "min": 1,
+          "desc": "选项数由 roster 派生（原型 17 = all + 16）"
+        },
+        {
+          "selector": "[data-filter-clear]",
+          "count": 1,
+          "desc": "文档唯一 clear 钩子"
+        },
+        {
+          "selector": "[data-filter-count]",
+          "nonEmpty": true,
+          "desc": "计数（aria-live=polite）"
+        }
+      ]
+    },
+    {
+      "id": "B05",
+      "name": "Board",
+      "evidence": "design/prototype/index.html:562（7 列 564/839/1103/1370/1634/1818/2083；注意 :2429/:3365 是 <pre><code> 文档片段，必须 scope）；见 gap-matrix §5",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "[data-board]",
+          "count": 1,
+          "desc": "板根"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-column]",
+          "count": 7,
+          "desc": "恰好 7 列（scope 到板内，避开文档片段）"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-column][data-status]",
+          "min": 7,
+          "desc": "每列带 data-status"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-empty][data-empty-kind=\"no-results\"]",
+          "max": 1,
+          "desc": "板级 no-results 空态（至多一个）"
+        },
+        {
+          "selector": "[data-move-menu]",
+          "max": 1,
+          "desc": "共享 Move to 菜单（关闭时 0）"
+        }
+      ]
+    },
+    {
+      "id": "B06",
+      "name": "Column",
+      "evidence": "design/prototype/index.html:564-583（空态 830 起）；见 gap-matrix §6",
+      "status": "delivered",
+      "checks": [
+        {
+          "scope": "[data-board]",
+          "selector": "[data-column-header]",
+          "count": 7,
+          "desc": "每列一个 header"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-column-dot]",
+          "count": 7,
+          "desc": "状态点"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-column-name]",
+          "count": 7,
+          "desc": "列名"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-column-count]",
+          "count": 7,
+          "desc": "计数徽标"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-column-add]",
+          "count": 7,
+          "desc": "列内新建"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-column-body]",
+          "count": 7,
+          "desc": "放置区"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-column-progress]",
+          "count": 7,
+          "desc": "占板比进度条（value 可见数 / max 板可见总数，非 0）"
+        },
+        {
+          "selector": "[data-empty][data-empty-kind=\"column\"]",
+          "max": 7,
+          "desc": "空列空态（空列数驱动）"
+        }
+      ]
+    },
+    {
+      "id": "B07",
+      "name": "Card",
+      "evidence": "design/prototype/index.html:585 起（18 实例）；见 gap-matrix §7",
+      "status": "delivered",
+      "checks": [
+        {
+          "scope": "[data-board]",
+          "selector": "[data-card]",
+          "min": 1,
+          "desc": "卡根（fixture 驱动，不写死 18）"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-card-stripe]",
+          "min": 1,
+          "desc": "状态色条"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-card-identifier]",
+          "min": 1,
+          "desc": "人类可读 id"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-card-title]",
+          "min": 1,
+          "desc": "标题（真 <button>）"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-card-labels]",
+          "min": 1,
+          "desc": "标签槽"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-card-priority]",
+          "min": 1,
+          "desc": "优先级字形"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-card-assignee]",
+          "min": 1,
+          "desc": "负责人 monogram"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-card-agent-badge]",
+          "min": 1,
+          "desc": "平台徽标（human 卡为空+隐藏，元素仍在）"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-card-comment-count]",
+          "min": 1,
+          "desc": "评论数"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-card-attachment-count]",
+          "min": 1,
+          "desc": "附件数"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-card-relations]",
+          "min": 1,
+          "desc": "关系计数簇"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-card-menu]",
+          "min": 1,
+          "desc": "卡菜单（Move to 触发器）"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-card][draggable=\"true\"]",
+          "min": 1,
+          "desc": "卡可拖拽"
+        }
+      ]
+    },
+    {
+      "id": "B07-identity",
+      "name": "卡身份槽：agent 卡隐藏 avatar（保留 monogram）— human 卡的 agent-role 行经实测修正为『两侧一致无该元素』",
+      "evidence": "design/prototype/index.html card root `data-assignee-kind=\"agent\"` + `<span class=\"avatar\" hidden><span class=\"td-avatar\" data-card-assignee …>`（实测 15/15 agent 卡）；实现 Card.vue 的 avatar 无 hidden 包裹。见 fidelity-contract.md §5-C1",
+      "status": "delivered",
+      "checks": [
+        {
+          "scope": "[data-card][data-assignee-kind=\"agent\"]",
+          "selector": "[data-card-agent-role]",
+          "min": 1,
+          "desc": "agent 卡上角色钩子存在（现况已满足）"
+        },
+        {
+          "scope": "[data-card][data-assignee-kind=\"agent\"]",
+          "selector": "[hidden] [data-card-assignee]",
+          "min": 1,
+          "desc": "【M2 目标态】agent 卡的 monogram 必须仍在 DOM 内、但被 hidden 祖先包裹 —— 原型 15/15，实现 0/18。选择器只用属性 [hidden]，不依赖 .avatar 类名（实测：prototype=15，impl=0）。M0 原行『human 卡保留空的 agent-role，目标 min 1』经实测证伪（原型该组合 = 0），已删（M0 row corrected）"
+        },
+        {
+          "scope": "[data-card][data-assignee-kind=\"human\"]",
+          "selector": "[hidden] [data-card-assignee]",
+          "count": 0,
+          "desc": "human 卡的 monogram 可见（无 hidden 祖先）—— 原型 0/3，实现 0，反向钉住"
+        }
+      ]
+    },
+    {
+      "id": "B09",
+      "name": "Task detail drawer",
+      "evidence": "design/prototype/index.html:2232-2561 + templates 3356-3358；见 gap-matrix §8。抽屉需交互才『可见』，但壳与槽在关闭态即在文档内 ⇒ 静态断言成立（实测 2026-10-12：29/29 条在 rest 态命中）",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "[data-detail-drawer]",
+          "count": 1,
+          "desc": "抽屉根（role=dialog, aria-modal=true）"
+        },
+        {
+          "selector": "[data-detail-overlay]",
+          "count": 1,
+          "desc": "遮罩"
+        },
+        {
+          "selector": "[data-detail-identifier]",
+          "count": 1,
+          "desc": "头部 id"
+        },
+        {
+          "selector": "[data-detail-title]",
+          "count": 1,
+          "desc": "头部标题"
+        },
+        {
+          "selector": "[data-detail-status-chip]",
+          "count": 1,
+          "desc": "状态 chip"
+        },
+        {
+          "selector": "[data-detail-close]",
+          "count": 1,
+          "desc": "关闭按钮"
+        },
+        {
+          "selector": "[data-detail-props]",
+          "count": 1,
+          "desc": "属性栅格"
+        },
+        {
+          "selector": "[data-detail-assignee]",
+          "count": 1,
+          "desc": "负责人属性"
+        },
+        {
+          "selector": "[data-detail-assignee-label]",
+          "count": 1,
+          "desc": "负责人输入（B22：label 即 input）"
+        },
+        {
+          "selector": "[data-detail-reporter]",
+          "count": 1,
+          "desc": "报告人属性"
+        },
+        {
+          "selector": "[data-detail-reporter-label]",
+          "count": 1,
+          "desc": "报告人输入"
+        },
+        {
+          "selector": "[data-detail-project]",
+          "count": 1,
+          "desc": "项目属性"
+        },
+        {
+          "selector": "[data-detail-labels]",
+          "count": 1,
+          "desc": "标签属性（B25 可编辑控件）"
+        },
+        {
+          "selector": "[data-detail-id]",
+          "count": 1,
+          "desc": "内部 id"
+        },
+        {
+          "selector": "[data-detail-id-copy]",
+          "count": 1,
+          "desc": "复制按钮（data-copy-value）"
+        },
+        {
+          "selector": "[data-detail-version]",
+          "count": 1,
+          "desc": "版本"
+        },
+        {
+          "selector": "[data-detail-description]",
+          "count": 1,
+          "desc": "描述（GFM）"
+        },
+        {
+          "selector": "[data-detail-relations]",
+          "count": 1,
+          "desc": "关系区"
+        },
+        {
+          "selector": "[data-detail-agent-session]",
+          "count": 1,
+          "desc": "agent 会话区（B16）"
+        },
+        {
+          "selector": "[data-detail-agent-session-body]",
+          "count": 1,
+          "desc": "会话体"
+        },
+        {
+          "selector": "[data-agent-session]",
+          "count": 1,
+          "desc": "会话块"
+        },
+        {
+          "selector": "[data-detail-attachments]",
+          "count": 1,
+          "desc": "附件区（内容为 none 占位 —— 弱化项见 README §3）"
+        },
+        {
+          "selector": "[data-detail-comments]",
+          "count": 1,
+          "desc": "评论区"
+        },
+        {
+          "selector": "[data-comment-form]",
+          "count": 1,
+          "desc": "评论表单"
+        },
+        {
+          "selector": "[data-comment-input]",
+          "count": 1,
+          "desc": "评论输入"
+        },
+        {
+          "selector": "[data-comment-submit]",
+          "count": 1,
+          "desc": "提交按钮"
+        },
+        {
+          "selector": "[data-detail-activity]",
+          "count": 1,
+          "desc": "活动流（渲染原始串 —— 弱化项见 README §3）"
+        },
+        {
+          "selector": "[data-detail-templates]",
+          "count": 1,
+          "desc": "惰性槽模板宿主"
+        },
+        {
+          "selector": "[data-slot]",
+          "min": 6,
+          "desc": "六类槽（description/relations/agent-session/attachments/comments/activity）"
+        }
+      ]
+    },
+    {
+      "id": "B02-icon",
+      "name": "项目切换器图标 = SVG（原型 `svg.td-project-switcher-icon`；实现为字形 ▦）",
+      "evidence": "design/prototype/index.html `[data-project-switcher]` 内 `<svg class=\"td-icon\" data-project-switcher-icon>`；实现 TopBar.vue 为 `<span data-project-switcher-icon>▦</span>`",
+      "status": "delivered",
+      "checks": [
+        {
+          "scope": "[data-project-switcher]",
+          "selector": "svg[data-project-switcher-icon]",
+          "count": 1,
+          "desc": "【M2 目标态】图标元素是 SVG（实测：prototype=1，impl=0）。元素种类可机检；路径几何不可 ⇒ 见契约截图位点"
+        }
+      ]
+    },
+    {
+      "id": "B03-icons-caret",
+      "name": "语言触发器 = globe + `.td-caret` 两个 SVG",
+      "evidence": "design/prototype/index.html `[data-lang-select]` 内 globe `<svg>` + `<svg class=\"td-caret td-icon td-icon-sm\">`；实现 SidebarFooter.vue 用文本 ⌘、无 caret",
+      "status": "delivered",
+      "checks": [
+        {
+          "scope": "[data-lang-menu]",
+          "selector": "svg.td-caret",
+          "count": 0,
+          "desc": "【M2 目标态】caret 属于触发器而不是菜单容器 —— 落地后 caret 在 `[data-lang-select]` 内、`[data-lang-menu]` 内为 0（原型实测：`[data-lang-menu]` 内 0）"
+        }
+      ]
+    },
+    {
+      "id": "B03-lang-menu",
+      "name": "语言菜单 = 文档末尾浮动容器（刻意离开侧栏滚动容器，避免裁剪）",
+      "evidence": "design/prototype/index.html 文档末尾 `<div class=\"dropdown\" data-lang-menu hidden>`（不含触发器）；实现 SidebarFooter.vue `<details class=\"td-details\" data-lang-menu>`（触发器被包在里面，菜单留在侧栏内）",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "div[data-lang-menu]",
+          "count": 1,
+          "desc": "【M2 目标态】菜单容器是 `div`（实测：prototype=1，impl=0——impl 为 details）"
+        },
+        {
+          "scope": "[data-sidebar]",
+          "selector": "[data-lang-menu]",
+          "count": 0,
+          "desc": "【M2 目标态】菜单**不得**留在 `[data-sidebar]`（滚动容器）内 —— 原型 0，impl 1。这一条正是 M0 记的『低视口裁剪』风险的机检表达；裁剪本身仍需驱动式截图"
+        },
+        {
+          "selector": "[data-lang-menu] > [data-lang-option]",
+          "min": 2,
+          "desc": "菜单容器直接持有选项（原型：选项是菜单的子元素，触发器不在其中）"
+        }
+      ]
+    },
+    {
+      "id": "B03-footer-text-free",
+      "name": "设置格无可见文字 —— 不依赖类名的表达（与 B03-footer-text 双轨）",
+      "evidence": "设计/prototype/index.html `[data-access-open]` 内仅 1 个 `<svg aria-hidden=\"true\">`、0 个 `<span>`（实测）；实现 SidebarFooter.vue 有 `<span class=\"td-side-text\">{{ $t(\"access.title\") }}</span>`",
+      "status": "delivered",
+      "checks": [
+        {
+          "scope": "[data-access-open]",
+          "selector": "span",
+          "count": 0,
+          "desc": "【M2 目标态】设置格内不得有 `span`（实测：prototype=0，impl=**2** —— gear 字形 span + 可见文字 span）。比 M1 的 `.td-side-text` 更稳（不绑类名），且顺带钉住 gear 也必须是 SVG；『可见性』本身仍是 CSS/渲染事实 ⇒ 双轨（机检 + 人工/截图）"
+        }
+      ]
+    },
+    {
+      "id": "B05-empty-lg",
+      "name": "大空态（B12）：带 Sentinel Watch mark；`[data-empty-lg]` 属性两侧皆无",
+      "evidence": "design/prototype/index.html `<div class=\"td-empty td-empty-lg\" data-empty data-empty-kind=\"no-results\" hidden>` 内 `<svg class=\"td-logo td-logo-lg\" viewBox=\"0 0 32 32\">`；实现 Board.vue 的空态只有标题/提示/按钮，无 mark",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "[data-empty-lg]",
+          "count": 0,
+          "desc": "口径钉住：`[data-empty-lg]` 属性**两侧皆无**（原型 0，impl 0）—— 沿用 Elon ②『改文档』，契约只引用 `[data-empty][data-empty-kind]`"
+        },
+        {
+          "scope": "[data-empty][data-empty-kind=\"no-results\"]",
+          "selector": "svg[viewBox=\"0 0 32 32\"]",
+          "min": 1,
+          "desc": "【M2 目标态】no-results 大空态带 32×32 的 mark（原型该空态内 svg=1）。注意：原型把该空态放在 `[data-board]` **之外**、实现放在其**内**，故本条不 scope 到 `[data-board]`。⚠️ 首轮实测该 scope **未命中**（fixture 12 卡、无过滤 ⇒ 空态未渲染）⇒ 必须先**驱动到空态**才能评该条"
+        }
+      ]
+    },
+    {
+      "id": "B06-kind",
+      "name": "列名层级 `<h2>`、进度条装饰性 `aria-hidden`",
+      "evidence": "design/prototype/index.html `<h2 class=\"td-col-name\" data-column-name>` ×7、`<progress class=\"progress progress-xs td-col-progress\" data-column-progress aria-hidden=\"true\">` ×7；实现 Column.vue 为 `<span data-column-name>`、`<progress data-column-progress>` 无 aria-hidden",
+      "status": "delivered",
+      "checks": [
+        {
+          "scope": "[data-board]",
+          "selector": "h2[data-column-name]",
+          "count": 7,
+          "desc": "【M2 目标态】列名是 `<h2>`（实测：prototype=7，impl=0）。块级标签可机检；字体几何不可 ⇒ 截图位点"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "progress[data-column-progress][aria-hidden=\"true\"]",
+          "count": 7,
+          "desc": "【M2 目标态】装饰性进度条带 aria-hidden（实测：prototype=7，impl=0）"
+        }
+      ]
+    },
+    {
+      "id": "B09-m2",
+      "name": "抽屉三处弱化：附件行、活动流（本地化句 + 相对时间）、props 容器语义",
+      "evidence": "design/prototype/index.html `[data-detail-attachments]` 内 2 个 `.td-file` 行；`[data-detail-activity]` 内 4 个 `.td-activity` 行、每行含 `.td-activity-ts`（`title` + 相对时间）与 `data-i18n=\"activity.*\"` 句子；`[data-detail-props]` 为 `<div class=\"td-props\">`。实现 DetailDrawer.vue 只渲染 `attachments.none` 占位、活动流为 `actor · event` 原始串、props 为 `<dl>`",
+      "status": "pending",
+      "checks": [
+        {
+          "scope": "[data-detail-attachments]",
+          "selector": "[data-i18n=\"attachments.none\"]",
+          "count": 0,
+          "desc": "【M2 目标态】附件区不得只留占位。原状：`*:not([data-i18n=…])` 形式**会被区块标题 `<h3>` 满足**（首轮实测 count=1 ⇒ 假绿），故改成本条 + 下一条的组合"
+        },
+        {
+          "scope": "[data-detail-attachments]",
+          "selector": ".td-file",
+          "min": 1,
+          "desc": "【M2 目标态】附件行在位（原型 `.td-file` 实测 2；impl 0）。⚠️ 类名非语义钩子 —— 建议 M2 同步把 `data-attachment-row` 立为钩子，本条届时换成属性选择器（契约 §4 已记）；⚠️ 需 fixture 带附件，否则该条只能停在 SKIP"
+        },
+        {
+          "scope": "[data-detail-activity]",
+          "selector": ".td-activity-ts",
+          "min": 1,
+          "desc": "【M2 目标态】活动行带相对时间节点（原型 4/4）。⚠️ 类名非语义钩子：建议 M2 同时把 `data-activity-ts` 立为钩子，本条届时换成属性选择器（契约 §4 已记）"
+        },
+        {
+          "selector": "[data-detail-activity] .td-activity",
+          "min": 1,
+          "desc": "【M2 目标态】活动行渲染为行元素而非纯文本串（同上，建议升为 `data-activity-row`）"
+        },
+        {
+          "selector": "div[data-detail-props]",
+          "count": 1,
+          "desc": "【M2 目标态】props 容器回到原型的 `div`（实测：prototype=1，impl=0 —— impl 为 `<dl>`）。若 M2 决定保留 `<dl>` 的语义改良，须并入 §4 书面偏差清单送批（契约 §5 已记为待裁项）"
+        }
+      ]
+    }
+  ],
+  "m2": {
+    "frozenHead": "ec97acde506c7367dec3d14cbd765667ef69d6b3",
+    "prototypeBlob": "458ab08d5074b750fd63feb05cf828dd68cc85c2",
+    "framesAggregateSha256": "fba476450f2a7d729d1a373a37ba68cf6f04091cde77a2b9f10123f44db5e4e8",
+    "derivedFrom": "web/manifests/board.json (M1 baseline, 12 blocks) — 只增不减；新增块与修正见 fidelity-contract.md §5",
+    "oracleProbe": "proto-probe.json (逐条目标态选择器在当前原型的实测命中数)",
+    "additions": [
+      "B02-icon",
+      "B03-icons-caret",
+      "B03-lang-menu",
+      "B03-footer-text-free",
+      "B05-empty-lg",
+      "B06-kind",
+      "B09-m2"
+    ],
+    "corrections": {
+      "C1": "M0 row corrected",
+      "C2": "scope rationale corrected"
+    }
+  }
+}
