@@ -18,6 +18,7 @@ import { accessOpen, closeMoveMenu, createProjectOpen, createTaskOpen, moveMenu,
 import FiltersBar from "./components/board/FiltersBar.vue";
 import Board from "./components/board/Board.vue";
 import ListView from "./components/board/ListView.vue";
+import ActivityView from "./components/board/ActivityView.vue";
 import WaitingView from "./components/board/WaitingView.vue";
 import Sidebar from "./components/shell/Sidebar.vue";
 import TopBar from "./components/shell/TopBar.vue";
@@ -107,6 +108,10 @@ onUnmounted(() => {
 
       <Board v-show="view === 'board'" />
       <ListView v-show="view === 'list'" />
+      <!-- R12x · B26 — the project's ledger. The sidebar's third destination,
+           beside the board and the list, and a nav view rather than a third value
+           of the top bar's frozen `board | list` toggle (DESIGN.md §29.2). -->
+      <ActivityView v-show="view === 'activity'" />
       <!-- M1 · the 「等你回复」view. A nav destination, not a third value of the
            top bar's `board | list` toggle (that domain is frozen). -->
       <WaitingView v-show="view === 'waiting'" />
