@@ -71,6 +71,20 @@ function readBundle() {
 }
 
 /**
+ * Does this selector name its attributes *without* a value — `[data-x]` rather
+ * than `[data-x="y"]`?
+ *
+ * The distinction decides what an `absent` rule means. A bare hook forbids the
+ * attribute outright; a value-qualified one forbids a **value** of an attribute
+ * the block requires (`[data-project-count=""]` — no project row may carry an
+ * empty count), which says nothing about whether the hook may exist.
+ */
+function isValuelessSelector(selector) {
+  const parsed = parseHookSelector(selector);
+  return parsed !== null && parsed.attributes.every((attribute) => attribute.value === null);
+}
+
+/**
  * Selectors that appear **only** in an `absent` rule: the contract requires them
  * to be missing, so the presence scan must not demand them.
  *
@@ -86,7 +100,7 @@ function absentOnlySelectors() {
     for (const selector of [...item.required, ...item.states]) mustExist.add(selector);
     for (const rule of item.rules) {
       if (rule.kind === "absent") {
-        if (typeof rule.selector === "string") mustNotExist.add(rule.selector);
+        if (typeof rule.selector === "string" && isValuelessSelector(rule.selector)) mustNotExist.add(rule.selector);
         if (typeof rule.within === "string") mustExist.add(rule.within);
       } else {
         for (const field of ["selector", "equalsSelector", "within"]) {

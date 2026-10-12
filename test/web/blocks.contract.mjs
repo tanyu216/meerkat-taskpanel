@@ -427,6 +427,13 @@ const BLOCKS = [
         selector: "[data-project]",
         within: "[data-project-list]",
       },
+      // Every project row is filled: `[data-project-count]` is the project's task
+      // count, served by `/projects` as `task_count` (BLOCKS.md §Projects). A row
+      // whose count is unknown renders the attribute empty — which is exactly the
+      // 1/3-row state Terry found — so the rule is "no empty one may exist". The
+      // DOM layer has no per-element non-empty rule; `absent` on an exact-value
+      // selector is the idiomatic substitute.
+      { kind: "absent", selector: '[data-project-count=""]', within: "[data-project-list]" },
       { kind: "sequence", selector: "[data-order-rank]", attribute: "data-order-rank", from: 1, step: 1 },
       { kind: "monotonic", selector: "[data-order-score]", attribute: "data-order-score", direction: "non-increasing" },
       { kind: "absent", selector: "[data-user]" },
@@ -1698,6 +1705,8 @@ const ATTRIBUTE_RE = /^\[([a-zA-Z][a-zA-Z0-9_-]*)(?:=("[^"]*"|'[^']*'|[^[\]]*))?
  * Parse a contract selector. Pure. Returns `null` for anything that is not an optional
  * bare tag followed by one or more attribute compounds — which is what makes
  * Tailwind classes (`.p-4`), ids (`#board`) and descendant combinators unrepresentable.
+ * Quoted values may be empty (`[data-project-count=""]`), which asserts the attribute
+ * is *present but valueless* — see the `quoted` branch below.
  *
  * @param {string} selector
  * @returns {{selector: string, tag: string|null, attributes: {name: string, value: string|null}[], dataAttributes: string[], hasDataHook: boolean}|null}
@@ -1722,10 +1731,14 @@ export function parseHookSelector(selector) {
     if (!match) return null;
     let value = null;
     if (match[2] !== undefined) {
-      value = match[2].length >= 2 && (match[2][0] === "\"" || match[2][0] === "'")
-        ? match[2].slice(1, -1)
-        : match[2];
-      if (value.length === 0) return null;
+      const quoted = match[2].length >= 2 && (match[2][0] === "\"" || match[2][0] === "'");
+      value = quoted ? match[2].slice(1, -1) : match[2];
+      // An *unquoted* empty value (`[data-x=]`) stays a syntax error. A **quoted**
+      // one (`[data-x=""]`) is legal, and deliberately so: it is the only way the
+      // grammar can ask "does this element carry the attribute *empty*?" — which
+      // is how a rule asserts a value is present on every element (B03's
+      // `[data-project-count=""]`), since `[data-x]` alone also matches filled ones.
+      if (!quoted && value.length === 0) return null;
     }
     attributes.push({ name: match[1], value });
     rest = rest.slice(end + 1);
