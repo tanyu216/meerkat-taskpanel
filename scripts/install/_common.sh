@@ -164,16 +164,22 @@ export_tp_env() {
   # The host-external supervisor: the scheduling units run it, and it reads the config
   # file written below. Log and state are fixed per host so a user always knows where
   # they land (documented in docs/scheduling.md).
+  #
+  # The executor the units name is a **host-local copy**, not this checkout's own file:
+  # `install_scheduling` copies the loop body into `$TP_LOOP` (see `install_loop_body`),
+  # so a unit a user has already loaded keeps working after the checkout is moved,
+  # renamed or removed — and never has to be reloaded for that.
   TP_HOST="$label"
-  TP_SUPERVISOR="$(repo_root)/scripts/supervisor.mjs"
-  TP_LOG="$(target_home)/$host_dir/meerkat-taskpanel/supervisor.log"
-  TP_STATE="$(target_home)/$host_dir/meerkat-taskpanel/supervisor.state.json"
+  TP_LOOP="$(target_home)/$host_dir/meerkat-taskpanel"
+  TP_SUPERVISOR="$TP_LOOP/scripts/supervisor.mjs"
+  TP_LOG="$TP_LOOP/supervisor.log"
+  TP_STATE="$TP_LOOP/supervisor.state.json"
   TP_ENV="$(target_home)/$host_dir/meerkat-taskpanel.env"
   TP_SCHED="$(target_home)/$host_dir/scheduling"
   TP_WAKE="$(target_home)/$host_dir/bin/wake-$label.sh"
   TP_CLAIM_UNASSIGNED="${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-yes}"
   export TP_AGENT TP_REPO TP_SHIM TP_HOOK TP_TRIGGER
-  export TP_HOST TP_SUPERVISOR TP_LOG TP_STATE TP_ENV TP_SCHED TP_WAKE TP_CLAIM_UNASSIGNED
+  export TP_HOST TP_LOOP TP_SUPERVISOR TP_LOG TP_STATE TP_ENV TP_SCHED TP_WAKE TP_CLAIM_UNASSIGNED
 }
 
 # claim_unassigned_value <flag> <interactive> — decide the "allow claiming unassigned
@@ -216,11 +222,76 @@ claim_unassigned_value() {
   printf 'yes\n'
 }
 
-# install_scheduling — drop the poll/patrol units and the per-host wake glue, then
-# print the exact command that loads them. The installer never runs `launchctl` /
-# `systemctl` / `crontab` itself: enabling a daemon is the user's call, and a test or
-# `--dry-run` must have no side effects. Requires export_tp_env first.
+# install_loop_body — copy the loop execution body into the host. Requires
+# export_tp_env first (TP_LOOP, TP_HOST).
+#
+# The scheduling units run whatever path `TP_SUPERVISOR` names. When that path was
+# this checkout's own `scripts/supervisor.mjs`, moving, renaming or deleting the
+# checkout left every loaded unit pointing at a file that was gone: the loop died
+# with the directory, and reviving it meant reinstalling *and* reloading the unit.
+# The body now lives in the host, and the units name that copy:
+#
+#   <home>/<host-dir>/meerkat-taskpanel/scripts/supervisor.mjs   the executor
+#   <home>/<host-dir>/meerkat-taskpanel/src/shared/*.mjs         its imports
+#
+# The `scripts/` + `src/shared/` shape is load-bearing, not decoration:
+# `supervisor.mjs` imports `../src/shared/scheduling.mjs`, so a copy of that one file
+# would resolve a relative import to nothing and the unit would die at load. The set
+# below is the transitive closure of that import — scheduling.mjs → constants.mjs,
+# errors.mjs → redact.mjs — and `test/install/scheduling-units.test.mjs` runs the copy
+# so a missing member fails the suite instead of the 3am tick.
+#
+# The board engine the executor drives (`taskctl`) still lives in the checkout: the
+# host config records where, so a host-installed executor still finds it. Moving the
+# checkout is then a re-run of `install.sh` away — no unit reload, because the unit
+# never named the checkout in the first place.
+#
+# Merge-never-clobber like every other installed artefact: a member whose content
+# already matches is left untouched; a differing one is left alone without `--force`.
+install_loop_body() {
+  for rel in \
+    scripts/supervisor.mjs \
+    src/shared/scheduling.mjs \
+    src/shared/constants.mjs \
+    src/shared/errors.mjs \
+    src/shared/redact.mjs
+  do
+    src="$(repo_root)/$rel"
+    dest="$TP_LOOP/$rel"
+
+    if [ ! -f "$src" ]; then
+      echo "$TP_HOST: loop source not found: $src" >&2
+      return 1
+    fi
+
+    if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
+      echo "would copy  $src -> $dest"
+      continue
+    fi
+
+    if [ -f "$dest" ]; then
+      if cmp -s "$src" "$dest"; then
+        continue
+      fi
+      if [ -z "${MEERKAT_TASKPANEL_FORCE:-}" ]; then
+        echo "$TP_HOST: loop body kept: $dest (differs from this checkout — re-run with --force to refresh)"
+        continue
+      fi
+    fi
+
+    mkdir -p "$(dirname "$dest")"
+    cp "$src" "$dest"
+    echo "$TP_HOST: copied  $dest"
+  done
+}
+
+# install_scheduling — drop the loop body, the poll/patrol units and the per-host wake
+# glue, then print the exact command that loads them. The installer never runs
+# `launchctl` / `systemctl` / `crontab` itself: enabling a daemon is the user's call,
+# and a test or `--dry-run` must have no side effects. Requires export_tp_env first.
 install_scheduling() {
+  install_loop_body
+
   emit_file "scheduling/launchd/com.meerkat-taskpanel.poll.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.poll.plist"
   emit_file "scheduling/launchd/com.meerkat-taskpanel.patrol.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.patrol.plist"
   emit_file "scheduling/systemd/meerkat-taskpanel-poll.service" "$TP_SCHED/systemd/meerkat-taskpanel-poll.service"
@@ -237,10 +308,38 @@ install_scheduling() {
   echo "  cron:     crontab $TP_SCHED/cron/meerkat-taskpanel.cron"
 }
 
-# write_host_config — persist the claim policy the supervisor reads by default.
-# Requires export_tp_env first (TP_ENV, TP_CLAIM_UNASSIGNED).
+# ensure_env_key <key> <value> — add a KEY=value line to the host config when the key
+# is missing, and never touch one that is already there. That is the same
+# merge-not-clobber contract `merge_settings` follows for `env.TASKCTL_AGENT`: adding
+# a key the file lacks is not a clobber. Requires TP_ENV, TP_HOST.
+#
+# It exists because the config is written once and then left alone — a differing file
+# is skipped without `--force` — so without this an install that predates a key would
+# never learn it, and a host-installed executor would have no way to find the board
+# engine it drives.
+ensure_env_key() {
+  key="$1"
+  value="$2"
+
+  if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
+    echo "would ensure $key in $TP_ENV"
+    return 0
+  fi
+
+  if [ -f "$TP_ENV" ] && grep -q "^${key}=" "$TP_ENV"; then
+    return 0
+  fi
+
+  printf '%s=%s\n' "$key" "$value" >> "$TP_ENV"
+  echo "$TP_HOST: recorded $key in $TP_ENV"
+}
+
+# write_host_config — persist the claim policy the supervisor reads by default, and the
+# location of the board engine a host-installed executor drives. Requires export_tp_env
+# first (TP_ENV, TP_CLAIM_UNASSIGNED, TP_REPO).
 write_host_config() {
   emit_file "host/meerkat-taskpanel.env" "$TP_ENV"
+  ensure_env_key "MEERKAT_TASKPANEL_REPO" "$TP_REPO"
 }
 
 # ---------------------------------------------------------------------------

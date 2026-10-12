@@ -28,6 +28,13 @@
  * is the I/O half. That split is what lets `test/scheduling/supervisor.test.mjs`
  * prove "an empty scan spawns nothing" with an injected spy instead of a board.
  *
+ * It also runs from a **host-installed copy**: `install.sh` copies this file and the
+ * `src/shared/` modules it imports into `<host-dir>/meerkat-taskpanel/`, and the
+ * scheduling units name that copy, so a loaded unit survives the checkout being moved.
+ * The copy has no board beside it, so it takes the checkout's location from the host
+ * config — see `defaultRepo`. The relative imports above are why the copy keeps this
+ * file's `scripts/` + `src/shared/` shape instead of being flattened.
+ *
  * Usage:
  *   node scripts/supervisor.mjs --host claude --agent alice [--once]
  *   node scripts/supervisor.mjs --agent alice,bob --poll-interval 60 --patrol-interval 300
@@ -79,7 +86,8 @@ Options:
   --agent <name>          Agent(s) to work for. Repeatable / comma-separated.
                           Default: $TASKCTL_AGENT, then $USER.
   --host claude|codex|pi  Which worker to wake (default: claude).
-  --repo <path>           Repository root (default: this checkout).
+  --repo <path>           Repository root (default: this checkout; a host-installed
+                          copy takes it from --config instead — see MEERKAT_TASKPANEL_REPO).
   --poll-interval <sec>   Poll cadence in loop mode (default: ${DEFAULT_POLL_SECONDS}).
   --patrol-interval <sec> Patrol cadence in loop mode (default: ${DEFAULT_PATROL_SECONDS}).
   --max-concurrency <n>   Max concurrently running workers (default: ${DEFAULT_MAX_CONCURRENCY}).
@@ -93,7 +101,9 @@ Options:
   --dry-run               Print intended actions; claim nothing, spawn nothing.
   --log <path>            Append log lines here (default: <home>/<host-dir>/meerkat-taskpanel/supervisor.log).
   --state <path>          Running-registry file (default: <home>/<host-dir>/meerkat-taskpanel/supervisor.state.json).
-  --config <path>         Host config file to read the default from (default: <home>/<host-dir>/meerkat-taskpanel.env).
+  --config <path>         Host config file to read the claim default — and, for a
+                          host-installed copy, MEERKAT_TASKPANEL_REPO — from
+                          (default: <home>/<host-dir>/meerkat-taskpanel.env).
   --home <path>           Home the defaults are resolved against (default: $HOME).
   --cli <path>            taskctl entry to read/claim through (default: <repo>/src/cli/index.mjs).
   --glue <path>           Wake glue the worker is started through (default:
@@ -245,12 +255,41 @@ export function saveRegistry(path, registry) {
 // Argument parsing
 // ---------------------------------------------------------------------------
 
+/**
+ * The checkout whose `taskctl` this supervisor drives, for a run that was not told.
+ *
+ * There are two places a supervisor can run from, and they need different answers:
+ *
+ *   * **from the checkout** (`node scripts/supervisor.mjs`, the documented dev run
+ *     and every test) — the board sits beside the executor, so the relative answer is
+ *     the right one and nothing else is consulted. This branch is why a dev run never
+ *     depends on the machine's host config.
+ *   * **from the host** — `install.sh` copies the loop body under
+ *     `<host-dir>/meerkat-taskpanel/` so a loaded scheduling unit survives the
+ *     checkout moving. That copy has no board of its own, so it falls back to the
+ *     location the installer recorded in the host config (`MEERKAT_TASKPANEL_REPO`).
+ *
+ * An unreadable or key-less config falls back to the executor's own location, which
+ * is what a copy written by an older installer has — the tick still runs, and
+ * re-running `install.sh` records the path.
+ *
+ * @param {string | null} configPath the host config file to consult
+ * @param {string} [beside] the executor's own directory — injectable so the
+ *   host-installed branch is testable without a second checkout on disk
+ * @returns {string} an absolute directory
+ */
+export function defaultRepo(configPath, beside = resolve(dirname(fileURLToPath(import.meta.url)), "..")) {
+  if (existsSync(join(beside, "src", "cli", "index.mjs"))) return beside;
+  const recorded = configPath === null ? null : readConfigFile(configPath).MEERKAT_TASKPANEL_REPO;
+  return recorded ? resolve(recorded) : beside;
+}
+
 /** @param {string[]} argv */
 export function parseArgs(argv, env = process.env) {
   const opts = {
     agents: [],
     host: "claude",
-    repo: resolve(dirname(fileURLToPath(import.meta.url)), ".."),
+    repo: null,   // resolved below: --repo, else defaultRepo()
     pollInterval: DEFAULT_POLL_SECONDS,
     patrolInterval: DEFAULT_PATROL_SECONDS,
     maxConcurrency: DEFAULT_MAX_CONCURRENCY,
@@ -336,6 +375,7 @@ export function parseArgs(argv, env = process.env) {
   opts.log ??= join(opts.home, hostDir, "meerkat-taskpanel", "supervisor.log");
   opts.state ??= join(opts.home, hostDir, "meerkat-taskpanel", "supervisor.state.json");
   opts.config ??= join(opts.home, hostDir, "meerkat-taskpanel.env");
+  opts.repo ??= defaultRepo(opts.config);
   opts.cli ??= join(opts.repo, "src", "cli", "index.mjs");
   // The two host-local artefacts a wake needs: the glue that owns the working
   // directory, and the project map it resolves that directory from. Both live
