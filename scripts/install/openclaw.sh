@@ -2,9 +2,11 @@
 # Install the Meerkat TaskPanel skill for OpenClaw: ~/.openclaw/skills/meerkat-taskpanel
 #
 # OpenClaw deliberately gets **no** supervisor and **no** scheduling unit: the
-# openclaw-team framework already ships `poll-<agent>` (every 1m + trigger) and
-# `task-patrol` (every 5m), which are exactly this design. OpenClaw host users
-# install that framework instead; see docs/scheduling.md and docs/install.md.
+# openclaw-team framework already ships a per-agent poll and a `task-patrol`, which
+# are exactly this design. Its cadence is deliberately not repeated here: the
+# framework's own AUTOMATIONS.md is the single source of truth for it, and a number
+# copied into this file is a number that drifts. OpenClaw host users install that
+# framework instead; see docs/scheduling.md and docs/install.md.
 #
 # That is why this script calls neither `install_loop_skill` nor `install_scheduling`:
 # there is no `~/.openclaw/skills/meerkat-loop` and no `~/.openclaw/scheduling`, on
