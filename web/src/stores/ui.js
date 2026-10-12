@@ -21,11 +21,46 @@ export function setView(next) {
   if (VIEWS.includes(next)) view.value = next;
 }
 
+/**
+ * B08/B13 · the list view's two states — `loading` (the skeleton alone) and
+ * `data` (the rows alone).
+ *
+ * They are stated on `[data-list]` and made mutually exclusive by a **rule** on
+ * that attribute (`app.css`), never by swapping elements one at a time: a state
+ * rule also holds for the document at rest, which a `v-if` on each half cannot
+ * promise (R9 ③, contract R6). The resting value is `data` — a document that has
+ * not run a read yet shows the rows' group, exactly as the prototype's own
+ * resting document does.
+ *
+ * `data` is the only value the writer sets after a read; a view switch sets
+ * `loading` first (see `ListView.vue`).
+ */
+export const listState = ref("data");
+export function setListState(next) {
+  if (next === "loading" || next === "data") listState.value = next;
+}
+
 /** The filters bar starts open (`aria-pressed="true"`), matching B02. */
 export const filtersOpen = ref(true);
 export function toggleFilters() {
   filtersOpen.value = !filtersOpen.value;
   return filtersOpen.value;
+}
+
+/**
+ * Close the floating control a just-activated option lives in.
+ *
+ * The other half of R9's dismissal rule: the prototype closes the panel on the
+ * *choice* as well as on the click outside (`design/prototype/app.js` — the
+ * project option's handler clears `open` before it switches, the label option's
+ * handler calls `closeLabelMenu()`), because choosing is what the panel was open
+ * for. It cannot be derived from the `data-dismiss-on-outside` attribute — the
+ * click is *inside* the member — so each option site says it once.
+ *
+ * @param {Event} event a click event from an option inside the member
+ */
+export function dismissMemberFrom(event) {
+  (event?.currentTarget ?? event?.target)?.closest?.("[data-dismiss-on-outside]")?.removeAttribute("open");
 }
 
 /** B19 access panel. */

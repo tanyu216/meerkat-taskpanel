@@ -89,6 +89,26 @@
       {
         "name": "r6-access-panel",
         "selector": "[data-access-panel]"
+      },
+      {
+        "name": "r9-label-trigger",
+        "selector": ".td-label-trigger"
+      },
+      {
+        "name": "r9-label-summary",
+        "selector": "[data-filter-label-summary]"
+      },
+      {
+        "name": "r9-label-caret",
+        "selector": ".td-label-trigger > .td-icon-sm"
+      },
+      {
+        "name": "r9-list-skeleton",
+        "selector": "[data-skeleton]"
+      },
+      {
+        "name": "r9-list-rows",
+        "selector": "[data-list-rows]"
       }
     ]
   },
@@ -1116,6 +1136,114 @@
           "selector": "[data-cidr-row]",
           "count": 3,
           "desc": "R6 ③：CIDR 三行（第三行为原型/BLOCKS 的 `203.0.113.0/24`）"
+        }
+      ]
+    },
+    {
+      "id": "B02-r9",
+      "name": "R9 ① — 项目下拉的 light-dismiss：成员资格 = `data-dismiss-on-outside` 属性本身（不看类名、不看清单）",
+      "evidence": "design/fidelity-r9.md §2.1；web/src/components/shell/TopBar.vue `details.dropdown[data-project-switcher][data-dismiss-on-outside]`；规则单一实现在 web/src/App.vue（document 级 click + Escape 分支）。成员数只设下限：第三个浮层控件带上属性即入册（§8 R2）",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "[data-project-switcher][data-dismiss-on-outside]",
+          "count": 1,
+          "desc": "切换器入册（属性在元素上，不在 handler 的名字清单里）"
+        },
+        {
+          "selector": "[data-dismiss-on-outside]",
+          "min": 2,
+          "desc": "成员 ≥ 2（切换器 + label 过滤器）—— 下限而非等值（契约 A3）"
+        },
+        {
+          "selector": "details[data-dismiss-on-outside]",
+          "min": 2,
+          "desc": "每个成员都是 `<details class=\"dropdown\">`：触发即 `<summary>`，浏览器自身的 toggle 是唯一开关路径"
+        },
+        {
+          "selector": "[data-project-switcher] > summary",
+          "count": 1,
+          "desc": "触发是 `<summary>` 本身，没有第二个按钮（组合子在 contract hook 语法里写不出，故落在此处）"
+        }
+      ]
+    },
+    {
+      "id": "B04-r9",
+      "name": "R9 ② — label 控件与 Priority/Assignee 同一件壳：`.td-label-trigger` + 纯文本值 + 定位 caret",
+      "evidence": "design/fidelity-r9.md §2.2；web/src/components/board/FiltersBar.vue `details[data-filter-label]` → `summary.btn.btn-sm.td-label-trigger`（`[data-filter-label-summary]` 为纯文本 span + `.td-icon-sm` caret）；度量在 web/src/styles/app.css `.td-label-trigger`",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "[data-filter-label][data-dismiss-on-outside]",
+          "count": 1,
+          "desc": "label 过滤器与切换器同一条 dismiss 规则（属性即成员资格）"
+        },
+        {
+          "selector": ".td-label-trigger",
+          "count": 1,
+          "desc": "触发器穿 `.td-select` 的壳（高度/字面/边框/圆角一处声明）"
+        },
+        {
+          "scope": ".td-label-trigger",
+          "selector": "span",
+          "count": 1,
+          "desc": "值渲染为唯一一个纯文本 span —— 没有 chip/胶囊装饰（钩子名不变）"
+        },
+        {
+          "scope": ".td-label-trigger",
+          "selector": "[data-filter-label-summary]",
+          "count": 1,
+          "desc": "值仍由 `[data-filter-label-summary]` 承载（契约 A9：钩子名未变）"
+        },
+        {
+          "selector": ".td-label-trigger > .td-icon-sm",
+          "count": 1,
+          "desc": "caret 是触发器自己的 14px 字形，由 `.td-label-trigger > .td-icon-sm` 绝对定位（right 6px，内边距盒）"
+        },
+        {
+          "selector": "[data-filter-label-option]",
+          "min": 1,
+          "desc": "选项数由 roster 派生（原型 17 = all + 16；fixture 6 = all + 5）—— 不写死（契约 A10 的原型绝对值不适用于实现侧 roster）"
+        }
+      ]
+    },
+    {
+      "id": "B08-r9",
+      "name": "R9 ③ — 列表 loading↔data 二态互斥（`data-list-state`，静止态 = `data`）",
+      "evidence": "design/fidelity-r9.md §2.3；web/src/components/board/ListView.vue（`[data-list]` 的 `data-list-state`、常驻骨架组的 `hidden`、行只在 data 态渲染）+ web/src/styles/app.css 两条状态规则",
+      "status": "delivered",
+      "checks": [
+        {
+          "selector": "[data-list][data-list-state]",
+          "count": 1,
+          "desc": "态由属性承载，不靠逐元素 swap"
+        },
+        {
+          "selector": "[data-list][data-list-state=\"data\"]",
+          "count": 1,
+          "desc": "静止态（脚本未跑 / 文档默认）即 `data`（契约 R6）"
+        },
+        {
+          "selector": "[data-list][data-list-state=\"data\"] [data-skeleton][hidden]",
+          "count": 1,
+          "desc": "data 态下骨架带 `hidden` —— 属性与态同一次写入（契约 R5）"
+        },
+        {
+          "selector": "[data-list][data-list-state=\"loading\"] [data-list-row]",
+          "count": 0,
+          "desc": "loading 态下没有任何行（反查用；静止文档为 data 态，故此处恒真，真正的同时刻采样在驱动层）"
+        },
+        {
+          "scope": "[data-list]",
+          "selector": ".td-list-group",
+          "count": 2,
+          "desc": "两个组常驻（骨架组 + 数据组），态只决定谁可见 —— R6 ⑤/M2c ⑦ 的组数不变"
+        },
+        {
+          "scope": "[data-skeleton]",
+          "selector": ".td-list-head > span",
+          "count": 1,
+          "desc": "加载文案仍是单 span（R8 ② 的 `grid-column: 1 / -1` 载体）"
         }
       ]
     }

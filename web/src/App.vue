@@ -5,8 +5,9 @@
  * The two-area grid (`.td-shell`: topbar across, sidebar beside main), plus the
  * one instance of each overlay the board owns: the detail drawer (B09), the two
  * create dialogs (B10/B11), the access panel (B19) and the toast region (B14).
- * It wires the board store up on mount and owns the document-level Escape, which
- * closes whichever overlay is on top.
+ * It wires the board store up on mount and owns the two document-level rules:
+ * the Escape that closes whichever overlay is on top, and R9's **light dismiss**
+ * for floating controls.
  */
 import { onMounted, onUnmounted } from "vue";
 
@@ -25,8 +26,48 @@ import CreateTaskModal from "./components/create/CreateTaskModal.vue";
 import CreateProjectModal from "./components/create/CreateProjectModal.vue";
 import AccessPanel from "./components/review/AccessPanel.vue";
 
+/**
+ * R9 ①/② — **one** light-dismiss rule for every floating control.
+ *
+ * Membership is the `data-dismiss-on-outside` **attribute** and nothing else: no
+ * class name, no selector list, no per-control handler. The project switcher and
+ * the label filter are today's two members (both `<details class="dropdown">`);
+ * a third one joins the rule by carrying the attribute, with no code change here
+ * (`design/fidelity-r9.md` §8 R1/R2).
+ *
+ * Two behaviours, both from the contract's §2.1:
+ *
+ *   * a click that lands **outside** every member closes all open members — the
+ *     finding Terry filed: the switcher's floating panel used to stay up and
+ *     swallow the next click;
+ *   * a click on a **closed** member's own `<summary>` closes the *other*
+ *     members first, so only one is ever open. The guard matters: at dispatch
+ *     time the `<details>` has not toggled yet, so an already-open member is on
+ *     its way *closed* and must be left alone (`.removeAttr("open")` on it would
+ *     be a no-op, but treating it as the newcomer would take its siblings down
+ *     for nothing).
+ */
+function closeMembers(keep) {
+  for (const el of document.querySelectorAll("[data-dismiss-on-outside][open]")) {
+    if (el !== keep) el.removeAttribute("open");
+  }
+}
+
+function onDocumentClick(event) {
+  const target = event.target instanceof Element ? event.target : null;
+  const member = target?.closest("[data-dismiss-on-outside]") ?? null;
+  if (!member) return closeMembers(null);
+  const summary = target.closest("summary");
+  if (summary && summary.parentElement === member && !member.hasAttribute("open")) closeMembers(member);
+}
+
 function onKeydown(event) {
   if (event.key !== "Escape") return;
+  // The floating controls are the lightest layer, so Escape takes them down
+  // alongside whichever overlay is on top — as the prototype's own Escape branch
+  // does (`design/prototype/app.js`, the Escape arm: it clears every member and
+  // then closes the detail/states/access surfaces).
+  closeMembers(null);
   if (moveMenu.value) return closeMoveMenu();
   if (createTaskOpen.value) return (createTaskOpen.value = false);
   if (createProjectOpen.value) return (createProjectOpen.value = false);
@@ -36,9 +77,13 @@ function onKeydown(event) {
 
 onMounted(() => {
   document.addEventListener("keydown", onKeydown);
+  document.addEventListener("click", onDocumentClick);
   initBoard();
 });
-onUnmounted(() => document.removeEventListener("keydown", onKeydown));
+onUnmounted(() => {
+  document.removeEventListener("keydown", onKeydown);
+  document.removeEventListener("click", onDocumentClick);
+});
 </script>
 
 <template>
