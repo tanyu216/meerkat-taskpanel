@@ -18,9 +18,11 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 
 import {
   DEFAULT_MAX_CONCURRENCY,
@@ -35,7 +37,7 @@ import {
   resolveClaimUnassigned,
   wakeCommand,
 } from "../../src/shared/scheduling.mjs";
-import { parseArgs, runPatrolTick, runPollTick } from "../../scripts/supervisor.mjs";
+import { defaultRepo, parseArgs, runPatrolTick, runPollTick } from "../../scripts/supervisor.mjs";
 
 /** A tiny collector standing in for a "spy" — records every call. */
 function spy(impl = () => undefined) {
@@ -722,6 +724,57 @@ describe("parseArgs — the wake surface", () => {
     assert.equal(opts.glue, "/tmp/my-wake.sh");
     assert.equal(opts.projectsJson, "/tmp/map.json");
     assert.equal(opts.wakeCommand, "my-wake.sh");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// defaultRepo — where a run that was not told finds the board it drives
+// (T-20261012-163500-loopdecouple-c: the executor is also installed as a host copy)
+// ---------------------------------------------------------------------------
+
+describe("defaultRepo — the board a supervisor drives", () => {
+  const tempDirs = [];
+  function tempDir(prefix) {
+    const dir = mkdtempSync(join(tmpdir(), prefix));
+    tempDirs.push(dir);
+    return dir;
+  }
+  after(() => {
+    for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+  });
+
+  const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+
+  it("answers with the board beside the executor, and never reads the host config", () => {
+    // The checkout's own supervisor is the documented dev run, so it stays hermetic:
+    // a stale MEERKAT_TASKPANEL_REPO on the machine cannot redirect it.
+    const config = join(tempDir("meerkat-defaultrepo-"), "meerkat-taskpanel.env");
+    writeFileSync(config, "MEERKAT_TASKPANEL_REPO=/somewhere/else\n", "utf8");
+    assert.equal(defaultRepo(config, REPO), REPO);
+  });
+
+  it("reads the recorded checkout for a host copy that has no board beside it", () => {
+    // install.sh copies the loop body under <host-dir>/meerkat-taskpanel/, where
+    // `src/cli/index.mjs` does not exist; the host config is then the only place the
+    // copied executor can learn where the `taskctl` it drives lives.
+    const dir = tempDir("meerkat-defaultrepo-host-");
+    const config = join(dir, "meerkat-taskpanel.env");
+    writeFileSync(config, "MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no\nMEERKAT_TASKPANEL_REPO=/checkout/board\n", "utf8");
+    assert.equal(defaultRepo(config, join(dir, "meerkat-taskpanel")), "/checkout/board");
+  });
+
+  it("falls back to the executor's own directory when nothing is recorded", () => {
+    // A copy written by an installer that predates the key: the tick still resolves a
+    // directory rather than throwing, and re-running install.sh records the path.
+    const beside = join(tempDir("meerkat-defaultrepo-bare-"), "meerkat-taskpanel");
+    assert.equal(defaultRepo(join(beside, "no-such.env"), beside), beside);
+  });
+
+  it("lets --repo override both, with --cli following it", () => {
+    assert.equal(parseArgs(["--host", "codex", "--once"], { HOME: "/home/alice" }).repo, REPO);
+    const opts = parseArgs(["--host", "codex", "--once", "--repo", "/tmp/board"], { HOME: "/home/alice" });
+    assert.equal(opts.repo, "/tmp/board");
+    assert.equal(opts.cli, "/tmp/board/src/cli/index.mjs");
   });
 });
 

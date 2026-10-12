@@ -14,8 +14,8 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join, resolve, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { after, describe, it } from "node:test";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -68,6 +68,35 @@ function scheduledPaths(home, hostDir, host) {
   };
 }
 
+/**
+ * The scheduling *units* proper — the files a user loads into launchd / systemd /
+ * crontab. The wake glue is deliberately excluded: the supervisor runs it, not the
+ * scheduler, and it is not part of "the unit names no checkout path".
+ */
+function unitPaths(home, hostDir, host) {
+  const all = scheduledPaths(home, hostDir, host);
+  delete all.wake;
+  return all;
+}
+
+/** The loop execution body `install.sh` copies into the host, as repo-relative paths. */
+const LOOP_BODY = [
+  "scripts/supervisor.mjs",
+  "src/shared/scheduling.mjs",
+  "src/shared/constants.mjs",
+  "src/shared/errors.mjs",
+  "src/shared/redact.mjs",
+];
+
+/** Every relative module specifier a source text imports, `import` or `export … from`. */
+function relativeImports(text) {
+  const out = [];
+  for (const re of [/from\s+["'](\.[^"']+)["']/g, /import\s*\(\s*["'](\.[^"']+)["']\s*\)/g]) {
+    for (const match of text.matchAll(re)) out.push(match[1]);
+  }
+  return out;
+}
+
 describe("install.sh: scheduling units", () => {
   it("--dry-run previews the destinations and writes nothing", () => {
     const home = makeTempDir();
@@ -94,14 +123,18 @@ describe("install.sh: scheduling units", () => {
       assert.ok(existsSync(path), `${name} missing at ${path}`);
     }
 
-    const logPath = join(home, ".claude", "meerkat-taskpanel", "supervisor.log");
-    const supervisorPath = join(ROOT, "scripts", "supervisor.mjs");
+    const loopDir = join(home, ".claude", "meerkat-taskpanel");
+    const logPath = join(loopDir, "supervisor.log");
+    // The executor a unit names is the **host's** copy, never the checkout's own file:
+    // a unit the user has already loaded has to keep working after the checkout is
+    // moved, renamed or removed (T-20261012-163500-loopdecouple-c).
+    const supervisorPath = join(loopDir, "scripts", "supervisor.mjs");
 
     // launchd — poll every 60s, patrol every 300s, both pointing at the supervisor.
     const pollPlist = readFileSync(paths.pollPlist, "utf8");
     assert.match(pollPlist, /<key>StartInterval<\/key>\s*<integer>60<\/integer>/);
     assert.ok(pollPlist.includes("--once"), "the poll unit runs a single tick");
-    assert.ok(pollPlist.includes(supervisorPath), "the poll unit names the supervisor");
+    assert.ok(pollPlist.includes(supervisorPath), "the poll unit names the host's supervisor copy");
     assert.ok(pollPlist.includes(logPath), "the fixed log path must be rendered in");
 
     const patrolPlist = readFileSync(paths.patrolPlist, "utf8");
@@ -120,6 +153,16 @@ describe("install.sh: scheduling units", () => {
     assert.match(cron, /^\*\/5 \* \* \* \*/m);
     assert.ok(cron.includes(supervisorPath));
 
+    // No unit names the checkout. Before the host-local copy every unit carried the
+    // absolute `<checkout>/scripts/supervisor.mjs`, which is exactly what made moving
+    // the checkout fatal for a loaded unit — so this assertion is the red→green record
+    // of the change rather than a restatement of the one above.
+    for (const [name, path] of Object.entries(unitPaths(home, ".claude", "claude"))) {
+      const body = readFileSync(path, "utf8");
+      assert.ok(!body.includes(ROOT), `${name} must not name the checkout (${ROOT})`);
+      assert.ok(!body.includes("{{"), `${name} must be fully rendered`);
+    }
+
     // wake glue — headless claude with resume support.
     assert.ok(isExecutable(paths.wake), "wake glue must be executable");
     const wake = readFileSync(paths.wake, "utf8");
@@ -129,6 +172,85 @@ describe("install.sh: scheduling units", () => {
 
     // The exact load command is printed, not run.
     assert.match(run.stdout + run.stderr, /launchctl|systemctl|crontab/);
+  });
+
+  it("copies the loop body into the host, so a loaded unit outlives the checkout", async () => {
+    const home = makeTempDir();
+    const bin = makeTempDir();
+    makeFakeCli(bin, "claude");
+    const run = runInstall(["--target", "claude", "--agent-name", "alice"], installEnv(home, bin));
+    assert.equal(run.status, 0, run.stderr);
+
+    const loopDir = join(home, ".claude", "meerkat-taskpanel");
+    const copy = join(loopDir, "scripts", "supervisor.mjs");
+
+    // The path the unit names is inside the host and outside the checkout, and the
+    // file is really there: deleting the checkout cannot take this path away.
+    assert.ok(existsSync(copy), `the unit names ${copy}, which must exist`);
+    assert.ok(!copy.startsWith(ROOT + sep), "the copied executor must not live in the checkout");
+    assert.equal(
+      readFileSync(copy, "utf8"),
+      readFileSync(join(ROOT, "scripts", "supervisor.mjs"), "utf8"),
+      "the copy must be the executor itself, not a stub",
+    );
+
+    // The module graph is closed under the copy. `supervisor.mjs` imports
+    // `../src/shared/scheduling.mjs`, so the `scripts/` + `src/shared/` shape has to
+    // travel with it — one file alone would leave a dangling relative import and the
+    // unit would die at load. Every relative import inside the copy resolves inside
+    // the copy, so loading the body needs nothing from the checkout.
+    for (const rel of LOOP_BODY) {
+      assert.ok(existsSync(join(loopDir, rel)), `loop body member missing: ${rel}`);
+    }
+    for (const rel of LOOP_BODY) {
+      for (const spec of relativeImports(readFileSync(join(loopDir, rel), "utf8"))) {
+        const target = resolve(dirname(join(loopDir, rel)), spec);
+        assert.ok(existsSync(target), `${rel} imports ${spec}, absent from the copy (${target})`);
+      }
+    }
+
+    // And it loads: importing the *host copy* resolves that whole graph for real, from
+    // the copy's own location — the assertion the relative-import walk above can only
+    // approximate. It also proves the executor the unit names is a working module, not
+    // a file that merely exists.
+    const installed = await import(pathToFileURL(copy).href);
+    assert.equal(typeof installed.defaultRepo, "function", "the copy must expose the runner surface");
+
+    // The board engine stays in the checkout, so the copied executor — which has no
+    // `src/cli/index.mjs` beside it — reads the location the installer recorded in the
+    // host config. `defaultRepo` with no second argument uses the copy's own directory,
+    // so this is the question the installed unit actually asks at tick time.
+    const configPath = join(home, ".claude", "meerkat-taskpanel.env");
+    assert.ok(
+      readFileSync(configPath, "utf8").includes(`MEERKAT_TASKPANEL_REPO=${ROOT}`),
+      "the host config must record where the board engine lives",
+    );
+    assert.equal(installed.defaultRepo(configPath), ROOT);
+  });
+
+  it("leaves a hand-edited loop body alone unless --force, and refreshes it with it", () => {
+    const home = makeTempDir();
+    const bin = makeTempDir();
+    makeFakeCli(bin, "claude");
+    const env = installEnv(home, bin);
+    assert.equal(runInstall(["--target", "claude", "--agent-name", "alice"], env).status, 0);
+
+    const copy = join(home, ".claude", "meerkat-taskpanel", "scripts", "supervisor.mjs");
+    writeFileSync(copy, "// locally patched\n", "utf8");
+
+    // merge-never-clobber: the differing copy is kept, and the run still succeeds.
+    const again = runInstall(["--target", "claude", "--agent-name", "alice"], env);
+    assert.equal(again.status, 0, again.stderr);
+    assert.equal(readFileSync(copy, "utf8"), "// locally patched\n", "a re-run must not clobber it");
+
+    // --force is the documented escape hatch, and it restores the executor.
+    const forced = runInstall(["--target", "claude", "--agent-name", "alice", "--force"], env);
+    assert.equal(forced.status, 0, forced.stderr);
+    assert.equal(
+      readFileSync(copy, "utf8"),
+      readFileSync(join(ROOT, "scripts", "supervisor.mjs"), "utf8"),
+      "--force must refresh the loop body",
+    );
   });
 
   it("installs codex wake glue driving `codex exec`", () => {
