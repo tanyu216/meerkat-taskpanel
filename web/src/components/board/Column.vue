@@ -41,14 +41,20 @@ function onDrop(event) {
   <section class="td-col" data-column :data-status="column.status" :data-drag-over="dragOver ? 'true' : 'false'">
     <header class="td-col-header" data-column-header>
       <span class="td-col-dot" data-column-dot aria-hidden="true"></span>
-      <span class="td-col-name" data-column-name>{{ $t(`status.${column.status}`) }}</span>
+      <!-- The column name is the heading of its column, so it is an `<h2>`, not
+           a `<span>`: the outline of the board is seven headings, one per status
+           (B06). `data-column-name` is unchanged, so the hook set stays put. -->
+      <h2 class="td-col-name" data-column-name>{{ $t(`status.${column.status}`) }}</h2>
       <span class="td-col-count td-mono" data-column-count>{{ count }}</span>
       <button type="button" class="td-col-add" data-column-add :aria-label="$t('column.add', $t(`status.${column.status}`))" :title="$t('column.add', $t(`status.${column.status}`))" @click="emit('add', column.status)">
         ＋
       </button>
     </header>
 
-    <progress class="td-col-progress" data-column-progress :value="count" :max="progressMax"></progress>
+    <!-- daisyUI `progress`; `progress-xs` is the 4px bar the design uses. The bar
+         is decoration — the count badge and `[data-column-count]` already state
+         the number — so it is hidden from assistive technology. -->
+    <progress class="progress progress-xs td-col-progress" data-column-progress aria-hidden="true" :value="count" :max="progressMax"></progress>
 
     <div class="td-col-body" data-column-body @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
       <Card

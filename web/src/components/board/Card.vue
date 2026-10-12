@@ -14,11 +14,14 @@
  */
 import { computed } from "vue";
 
-import { isAwaiting, platformOf, priorityOf, projectNameOf, stageOf } from "../../stores/board.js";
+import { board, isAwaiting, platformOf, priorityOf, projectNameOf, stageOf } from "../../stores/board.js";
 import { openMoveMenu } from "../../stores/ui.js";
 
 const props = defineProps({ task: { type: Object, required: true }, dragging: { type: Boolean, default: false } });
 const emit = defineEmits(["open", "dragstart", "dragend"]);
+
+/** The card the board has selected, so `aria-selected` reports the truth. */
+const selected = computed(() => board.selectedRef === props.task.identifier);
 
 /**
  * M1 — the card's `data-status` is its **stage**, not its state: an `awaiting`
@@ -73,7 +76,7 @@ function onMenu(event) {
     :data-done="task.status === 'done' ? 'true' : 'false'"
     :data-canceled="task.status === 'canceled' ? 'true' : 'false'"
     :data-dragging="dragging ? 'true' : 'false'"
-    :aria-selected="false"
+    :aria-selected="selected ? 'true' : 'false'"
     @click="emit('open', task)"
     @dragstart="emit('dragstart', task, $event)"
     @dragend="emit('dragend')"
@@ -113,7 +116,13 @@ function onMenu(event) {
         <svg class="td-pri-glyph" viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7" rx="1" /></svg>
       </span>
 
-      <span class="td-avatar" data-card-assignee :title="assigneeName">{{ monogram }}</span>
+      <!-- Identity: an agent card hides the avatar but keeps the monogram in the
+           DOM (the platform badge and the role name already say who it is); a
+           human card keeps it visible. `hidden` on the wrapper, never on the
+           `[data-card-assignee]` element itself, so the hook is always present. -->
+      <span class="avatar" :hidden="isAgent">
+        <span class="td-avatar" data-card-assignee :title="assigneeName">{{ monogram }}</span>
+      </span>
       <span class="badge badge-xs td-agent-badge" data-card-agent-badge :data-agent-platform="isAgent ? platform : undefined" :hidden="!isAgent">{{ isAgent ? platform : "" }}</span>
       <span v-if="isAgent" class="td-agent-role td-mono" data-card-agent-role>{{ assigneeName }}</span>
 
