@@ -77,6 +77,32 @@ export function createAttachmentsRepository(db) {
       return attachmentFromRow(db.prepare("SELECT * FROM attachments WHERE id = ?").get(id));
     },
 
+    /**
+     * The one write the content endpoint performs: keep `size` honest.
+     *
+     * It goes through the same map as every other write (R2) — `SQLITE_BUSY`
+     * from a competing writer becomes `DB_BUSY` (503 + `Retry-After`) rather
+     * than an unmapped failure a caller would see as a 500 — and the caller
+     * wraps it in `transaction()` so contention is retried within a bounded
+     * budget before it is reported.
+     *
+     * @param {string} id
+     * @param {number} size
+     */
+    setSize(id, size) {
+      if (!Number.isInteger(size) || size < 0) {
+        throw new DomainError("VALIDATION_FAILED", {
+          message: "attachment size must be a non-negative integer",
+          details: { field: "size", received: size },
+        });
+      }
+      try {
+        db.prepare("UPDATE attachments SET size = ? WHERE id = ?").run(size, id);
+      } catch (err) {
+        throw mapSqliteError(err, { op: "attachments.setSize", table: "attachments" });
+      }
+    },
+
     /** @param {string} taskId */
     listByTask(taskId) {
       return db

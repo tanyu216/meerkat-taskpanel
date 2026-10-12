@@ -276,3 +276,78 @@ describe("concurrency/db-busy — end to end, a real held lock", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// DEF-234655-R2 — the attachment write path had a bare `.run()`
+// ---------------------------------------------------------------------------
+
+/**
+ * `PUT /api/v1/attachments/:id/content` is handled *outside* the router, so the
+ * R2 mapping every other route inherited did not reach it: `SQLITE_BUSY` escaped
+ * unmapped and this route's own catch rendered it as a **500
+ * `VALIDATION_FAILED`** (the audit's residual). The write now takes the same
+ * transaction boundary and repository map as every command, so contention is a
+ * **503 `DB_BUSY` + `Retry-After`** like everywhere else.
+ */
+describe("concurrency/db-busy — the attachment content write (DEF-234655-R2)", () => {
+  async function boardWithAttachment(taskd) {
+    const actor = { kind: "agent", id: "linus" };
+    const { commands, repos } = taskd.board;
+    commands.createProject({ id: "proj", name: "P", actor });
+    const task = commands.createTask({ projectId: "proj", title: "with a file", actor });
+    return repos.attachments.insert({
+      taskId: task.id,
+      filename: "x.bin",
+      contentType: "application/octet-stream",
+      createdAt: new Date().toISOString(),
+      kind: "attachment",
+    });
+  }
+
+  const putBytes = (taskd, id) =>
+    fetch(`${taskd.url}/api/v1/attachments/${id}/content`, {
+      method: "PUT",
+      headers: { "content-type": "application/octet-stream" },
+      body: "hello",
+    });
+
+  it("answers 503 + Retry-After + DB_BUSY, not the old 500 VALIDATION_FAILED", async () => {
+    const taskd = await shortFuseBoard();
+    try {
+      const attachment = await boardWithAttachment(taskd);
+      const holder = await holdWriteLock(taskd.board.dbPath, 3_000);
+
+      const response = await putBytes(taskd, attachment.id);
+      const body = await response.json();
+
+      assert.equal(response.status, 503, "contention on this path is a 503 too");
+      assert.equal(body.error.code, "DB_BUSY");
+      assert.equal(body.error.http, 503);
+      assert.equal(response.headers.get("retry-after"), "1");
+      // The audit's exact symptom, asserted absent.
+      assert.notEqual(body.error.code, "VALIDATION_FAILED");
+      assert.notEqual(response.status, 500);
+
+      holder.kill("SIGKILL");
+    } finally {
+      await taskd.close();
+    }
+  });
+
+  it("lands the same write once the holder lets go", async () => {
+    const taskd = await shortFuseBoard();
+    try {
+      const attachment = await boardWithAttachment(taskd);
+      // Longer than one `busy_timeout` (100ms), shorter than the whole budget —
+      // so an attempt loses and a later one wins.
+      const holder = await holdWriteLock(taskd.board.dbPath, 250);
+      const response = await putBytes(taskd, attachment.id);
+      assert.equal(response.status, 200, `expected the retry to win, got ${response.status}`);
+      assert.equal((await response.json()).data.size, 5);
+      assert.equal(taskd.board.repos.attachments.get(attachment.id).size, 5, "the row's size kept up");
+      holder.kill("SIGKILL");
+    } finally {
+      await taskd.close();
+    }
+  });
+});

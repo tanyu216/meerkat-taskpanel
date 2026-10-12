@@ -597,6 +597,14 @@ describe("repositories/sessions and attachments and activities", () => {
       assert.equal(attachment.filename, "shot.png");
       assert.equal(repos.attachments.listByTask(task.id).length, 1);
       assert.equal(repos.attachments.get(attachment.id).size, 1234);
+      // The content endpoint's one write: `size` stays honest, and a nonsense
+      // size is refused before it reaches SQL.
+      repos.attachments.setSize(attachment.id, 42);
+      assert.equal(repos.attachments.get(attachment.id).size, 42);
+      for (const size of [-1, 1.5, "42", null]) {
+        assert.throws(() => repos.attachments.setSize(attachment.id, size), (err) => err.code === "VALIDATION_FAILED", String(size));
+      }
+      assert.equal(repos.attachments.get(attachment.id).size, 42, "a refused size changed nothing");
       assert.throws(() => repos.attachments.insert({ taskId: task.id, filename: "", createdAt: TS }), (err) => err.code === "VALIDATION_FAILED");
       assert.throws(() => repos.attachments.insert({ taskId: task.id, filename: "x", kind: "embed", createdAt: TS }), (err) => err.code === "VALIDATION_FAILED");
       assert.throws(() => repos.attachments.insert({ taskId: task.id, filename: "x", size: -1, createdAt: TS }), (err) => err.code === "VALIDATION_FAILED");
