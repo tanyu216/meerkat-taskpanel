@@ -98,7 +98,13 @@ function onNav(item) {
         :aria-current="view === item ? 'page' : undefined"
         @click="onNav(item)"
       >
-        <svg class="size-4" data-side-icon viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <!-- R7 ① — the nav glyph wears the brand's stroked face (`td-icon`:
+             `fill:none` / `stroke:currentColor` / 1.5px round), not daisyUI's
+             box. It carries **no `data-side-icon`**: that hook is the project
+             monogram's rail chip (below), and a nav glyph wearing it was hit by
+             the rail chip rule — a 24px bordered grey tile where the prototype
+             draws a bare 16px glyph. -->
+        <svg class="td-icon size-4" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path :d="navIcons[item]" />
         </svg>
         <span data-side-text :data-i18n="`nav.${item}`">{{ $t(`nav.${item}`) }}</span>
@@ -127,7 +133,6 @@ function onNav(item) {
           type="button"
           class="flex h-8 w-full cursor-pointer items-center gap-2 rounded-[6px] border border-transparent bg-transparent px-2 text-left text-[13px] font-medium text-(--brand-text-2) hover:bg-(--brand-hover) hover:text-(--brand-text) aria-[current=page]:bg-(--brand-accent-soft) aria-[current=page]:text-(--brand-accent)"
           :data-project="project.name"
-          :data-project-count="project.count ?? ''"
           :data-order-rank="project.rank"
           :data-order-score="project.score"
           :aria-current="project.id === board.currentProjectId ? 'page' : undefined"
@@ -138,7 +143,18 @@ function onNav(item) {
                (BLOCKS.md B03: "prefix monogram, rail only"). -->
           <span class="td-mono" data-side-icon aria-hidden="true">{{ project.initials }}</span>
           <span class="td-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap" data-side-name>{{ project.name }}</span>
-          <span v-if="project.count !== null" class="badge badge-sm td-mono" data-side-count>{{ project.count }}</span>
+          <!-- R7 ② — the count is the brand's `.td-count` pill and it *is* the
+               `data-project-count` element (the prototype puts the hook on the
+               number, not on the row). The row keeps `data-side-count`, the
+               rail's hide hook, and no longer carries `data-project-count` at
+               all — so the hook names the number and only the number. `0`
+               renders, an unknown count (`null`) does not. -->
+          <span
+            v-if="project.count !== null"
+            class="badge badge-sm td-count"
+            :data-project-count="project.count"
+            data-side-count
+          >{{ project.count }}</span>
         </button>
       </div>
     </section>
