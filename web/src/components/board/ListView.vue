@@ -56,8 +56,15 @@ const SKELETON_HIDE = [false, false, true, true, true, false];
          the real list, so the placeholder stands in the list it previews rather
          than approximating it. Each cell is a daisyUI `skeleton`, which owns the
          shimmer and the box; the widths are the inline metrics the prototype
-         states. -->
-    <div v-if="board.loading" class="td-list-group" data-skeleton aria-hidden="true">
+         states.
+
+         M2c ⑦ — the group is **resident**, not `v-if="board.loading"`. The
+         prototype's list view holds two `.td-list-group` at rest (this one and
+         the data group); rendering it only while loading left the rest state one
+         group short, which is why the machine check had to hedge with `min: 1`.
+         The group is now the second thing the list view always renders, so the
+         check asserts the prototype's real count. -->
+    <div class="td-list-group" data-skeleton aria-hidden="true">
       <div class="td-list-head">
         <span>{{ $t("list.loading") }}</span>
       </div>

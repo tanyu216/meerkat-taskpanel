@@ -1038,8 +1038,8 @@
       "checks": [
         {
           "selector": ".td-list-group",
-          "min": 1,
-          "desc": "R6 ⑤：分组壳（surface 底 / line 边 / 8px 圆角）。原型 rest 态有 2 个（骨架组常驻），实现只在 loading 时有骨架组 ⇒ 用 min 而非 count"
+          "count": 2,
+          "desc": "R6 ⑤：分组壳（surface 底 / line 边 / 8px 圆角）。原型 rest 态 2 个（骨架组常驻 + 数据组）；M2c ⑦ 让骨架组常驻后实现同为 2 ⇒ 锚回原型真实组数（原为 min:1 兜底）"
         },
         {
           "selector": ".td-list-head",
