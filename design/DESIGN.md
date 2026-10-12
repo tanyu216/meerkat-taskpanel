@@ -30,7 +30,9 @@
 - Exactly **one accent** (teal `#0F7A73`). Every other colour is a semantic signal
   (status / priority / risk) and never decoration.
 - Hairline 1px borders on white surfaces. **Cards carry zero shadow**; only
-  overlays (dropdown, modal, drawer, toast) use the single `--shadow-pop`.
+  overlays (dropdown, modal, drawer, toast) use the single `--shadow-pop`, whose
+  **dark variant is overridden** so the elevation stays visible on a dark canvas
+  (§24).
 - Identifiers, times and counts are tabular monospace — vertical alignment is the
   "precision" cue.
 - No gradients, no illustration-style empty states, no large radii, no emoji icons.
@@ -244,6 +246,15 @@ once inside `@media (prefers-color-scheme: dark)` for `html[data-theme="auto"]` 
 daisyUI's generated dark tokens repeated in the same block). **The two must be edited
 together.** Both live outside every cascade layer — unlayered declarations outrank
 layered ones — so they beat the `:root` block and daisyUI's `@layer base` output.
+
+**R8 — the veil, the edge and the elevation are theme-scoped too.** The dark block
+carries three overrides the light one does not need, all in the same pair of blocks:
+`--scrim` deepens to `rgba(0, 0, 0, 0.55)` (the light `rgba(15, 20, 23, 0.32)` cannot
+push a `#0f1417` canvas back), `--shadow-pop` becomes a black double shadow (a shadow
+tinted from the canvas is invisible *on* the canvas), and the dialog panel's edge reads
+`--color-td-line-strong` instead of `--color-td-line` (`#1f262a` sits almost exactly on
+both the canvas and the panel surface, so the dialog had no readable edge). The light
+values are untouched. See §24.
 
 ---
 
@@ -1332,3 +1343,97 @@ candidate class names, comments included: a bare `stack` in an HTML comment made
 toolchain emit daisyUI's `.stack` component (+2242 bytes, +49 selectors) with no element to
 match. Wording the comment as "stacked form" removes it. Any edit to `index.html` /
 `app.js` comments must therefore be followed by a `tw.css` rebuild **and** a diff review.
+
+---
+
+## 24. Review round R8 — the list's header, the dark dialog, the identifier's cap
+
+Three findings from Terry (2026-10-12 21:11). All three are **design changes**, not
+implementation drift: the prototype had no rule for any of them, which is exactly why
+the implementation did not either. `design/fidelity-r8.md` is the machine-checkable
+contract; this section is the prose. Screenshot口径 and the assertion list live there.
+
+### 24.1 The dark dialog separates on three layers, not one
+
+The 2026-10-12 sighting — "in dark mode the create-task dialog is indistinguishable
+from the background" — is not a weak scrim. Measured on the prototype before the round,
+**all three** of the dialog's separation devices were inert in the dark:
+
+| Layer | What was wrong |
+|---|---|
+| Veil | `--scrim` was declared once in `:root` (`rgba(15, 20, 23, 0.32)`) and never re-declared for the dark ⇒ the dark veil was **byte-identical** to the light one |
+| Panel edge | `.modal-box` used `--color-td-line` (`#1f262a`), which sits almost exactly on both the canvas (`#0f1417`) and the panel surface (`#161b1e`) |
+| Elevation | `--shadow-pop` is tinted `rgba(15, 20, 23, ·)` — the canvas colour — so the shadow vanished into the canvas it was supposed to lift off |
+
+The fix is scoped to the dark and touches only those three (§7 has the token table):
+`--scrim` → `rgba(0, 0, 0, 0.55)`, the panel edge → `--color-td-line-strong` (`#313b41`),
+`--shadow-pop` → a black double shadow. The panel's **surface colour is deliberately
+unchanged** — that value is a global token and moving it would move every surface on the
+site. `.td-modal-box` inherits `.modal-box`, so **B11**'s create-project dialog gets the
+same treatment from the same rules, and the drawer's `.td-scrim` reads the same
+`--scrim`, so every veil in the app deepens together. Light is untouched: measured
+before and after, the light veil, edge and shadow are byte-identical.
+
+### 24.2 The list header is the rows' own template
+
+The list read as "not a table" for a structural reason: `.td-list-head` was
+`display: flex` holding a **single** label (`list.columns.identifier`), while
+`.td-list-row` was a **6-track grid**. The header therefore had no column widths at all —
+it could not align to the rows even in principle.
+
+R8 makes the header `grid` and gives header and rows **one shared declaration**
+(`grid-template-columns` / `gap` / `padding`), so drift is structurally impossible rather
+than merely absent. All six columns are now named — ID · Title · Status · Assignee ·
+Priority · Revision — matching the six row cells one-for-one, in track order. The
+three middle columns carry `td-hide-sm` on **both** sides, so the same
+`@media (max-width: 759px)` rule narrows header and rows together to three tracks.
+
+Two consequential details, both recorded in the contract: the header's
+`grid-template-columns` computed value **resolves to pixels** and varies with the
+viewport (`74px 648px …` at 1512, `74px 96px …` at 760, `64px 144px 84px` at 430), so the
+machine-checkable signal is **header-equals-row**, never a literal; and the **loading**
+header (B13) is a caption, not a column row — it keeps its single span, which now spans
+the whole template so it cannot be squeezed into the 74px first track.
+
+### 24.3 An identifier renders at most eight characters plus `…`
+
+Real identifiers run from six characters (`TD-128`) to nine (`PROJ-0007`), so the cap has
+a genuine trigger, not a hypothetical one. The ruling:
+
+- **What is shown** — the identifier's own first **eight** characters, with `…` appended
+  when it was longer. Not a hard cut: two long ids must not become visually identical.
+- **How** — a **render-layer character slice** (`len > 8 ? slice(0, 8) + "…" : id`), not
+  a CSS width. `max-width: 9ch` is a *width* — it depends on the face's advance width and
+  on letter-spacing, and cannot promise "exactly eight characters". A `ch` cap is kept
+  as a **single-line guard** (`.td-id`: `nowrap` + overflow ellipsis), never as the
+  truncation mechanism itself.
+- **What is preserved** — the full id stays on `title` (hover) and on the row / card /
+  drawer root's `data-identifier`. The visible text is a *display value*; identity never
+  travels in it.
+
+That last point has a consequence the round had to fix, and it is written into the
+contract as a regression rule: the drawer's comment handler used to read the identifier
+**out of the span's text** to find its card. A nine-character id would have broken it.
+It now reads `[data-detail-drawer]`'s `data-identifier`, and the drawer root gained that
+attribute. Any future code that resolves an entity must read the attribute, never the
+rendered text.
+
+The five new column labels the header needs land in the catalogue as
+`list.columns.title` / `status` / `assignee` / `priority` / `revision` (en + zh), taking
+the prototype's mirrored set from 215 to **220** keys — see §13.
+
+### 24.4 Recaptured and checked
+
+Ten prototype frames — 1512 / 1240 / 980 / 760 / 430 × light and dark — are captured for
+this round as the **baseline** (`design/fidelity-r8.md` §6 records the口径; the files
+live in the card's workspace, not in the repository), each in two states: the list view
+and the create-task dialog open. The theme is driven through the prototype's own
+`[data-theme-switch]`, so the capture exercises the control it photographs.
+
+**Checked and clean.** Zero console errors and zero page errors; no page-level horizontal
+overflow at any of the five widths (`scrollWidth === clientWidth`); 49 of 49 selector-level
+assertions pass, including every light-mode regression gate. The measured dark values are
+`rgba(0, 0, 0, 0.55)` (veil) / `rgb(49, 59, 65)` (edge) / `rgba(0, 0, 0, 0.6) 0 16px
+40px` (elevation); the header's columns string equals the rows' at all three measured
+bands; and the nine-character sample renders `PROJ-000…` in all three identifier
+positions while `TD-128` renders untouched.

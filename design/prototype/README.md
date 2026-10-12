@@ -195,7 +195,7 @@ looking at it (DESIGN.md §12).
 | 7 statuses | 7 columns, ≥1 card each, plus the legend |
 | 5 priorities | every level appears on a card, plus the legend |
 | Ownership | 11 human cards + 7 agent cards across claude / openclaw / codex / pi |
-| Dual id | human identifier on the card (mono) + internal `td_…` id in the drawer (copyable) |
+| Dual id | human identifier on the card (mono, capped at eight characters + `…` with the full id on `title` — R8) + internal `td_…` id in the drawer (copyable) |
 | Concurrency | `v3`-style version in the drawer + `rev 128` with a live pulse in the top bar |
 | Relations | `↑` parent / `→|` blocks / `🔗`-shaped related counters on cards, spelled out in the drawer |
 | Comments | human author, agent author and a `decision`-styled comment |
@@ -204,7 +204,8 @@ looking at it (DESIGN.md §12).
 | Empty states | empty column + no-results |
 | Loading | 3 shimmer rows in the list view |
 | Themes | three states cycled from the footer — **Light** (default) → **Dark** → **Auto** (follows `prefers-color-scheme`, CSS-only) → Light; no-record default is Light, not the system preference |
-| Language | English (default) + Chinese via the language dropdown — 215 key pairs, mirrored |
+| Language | English (default) + Chinese via the language dropdown — 220 key pairs, mirrored |
+| List columns | six labelled columns — ID · Title · Status · Assignee · Priority · Revision — with the header sharing the row's grid template; the middle three hide at ≤759px (R8) |
 | Access model | B19 access & token panel: binds `0.0.0.0`, CIDR whitelist, token required from outside localhost; no user / account / sign-in element anywhere |
 | Footer | one row of three equal thirds at ≥1024px, three stacked full-width rows at ≤1023px (R7, revised) — theme · language · settings — a three-state theme cycle, a dropdown and an icon-only button |
 | Viewports | 1512 / 1240 / 980 / 760 / 500 — no page-level horizontal overflow |
@@ -216,6 +217,22 @@ icons — and below 760px the top bar wraps and the drawer goes full width. Betw
 779px** the top bar also wraps: that band was sized around a bar that still held the
 language switch, and the wrap is now kept as reviewed rather than re-tuned (DESIGN.md
 §14, §15).
+
+**R8 — the dark dialog, the list header and the identifier's cap.** Three findings from
+2026-10-12, all three **design changes** (the prototype had no rule for any of them),
+all three now in the prototype. (1) In the dark the create-task dialog separates on
+three layers at once: `--scrim` deepens to `rgba(0, 0, 0, 0.55)`, the panel's edge reads
+`--color-td-line-strong`, and `--shadow-pop` is overridden to a black double shadow.
+Light is untouched, and because `.td-modal-box` inherits `.modal-box` the
+create-project dialog gets the same treatment from the same rules. (2) The list header
+is a six-track grid sharing `.td-list-row`'s template, so all six columns are labelled
+(ID · Title · Status · Assignee · Priority · Revision) and the header can never drift
+from the rows it labels; the three middle columns hide at ≤759px on **both** sides.
+(3) An identifier renders **at most eight characters plus `…`**, cut in the render layer
+by `identifierText()`, with the full id on `title` — so a nine-character id like
+`PROJ-0007` reads `PROJ-000…` while the DOM keeps the whole value on the attribute.
+`design/fidelity-r8.md` is the contract; `DESIGN.md` §24 and `BLOCKS.md` B07/B08/B09/B10
+carry the prose.
 
 ---
 

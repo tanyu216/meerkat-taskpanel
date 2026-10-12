@@ -108,6 +108,11 @@
       "list.label": "Task list",
       "list.loading": "Loading tasks",
       "list.columns.identifier": "ID",
+      "list.columns.title": "Title",
+      "list.columns.status": "Status",
+      "list.columns.assignee": "Assignee",
+      "list.columns.priority": "Priority",
+      "list.columns.revision": "Revision",
       "list.emptyRow": "No task in this project",
       /* detail drawer */
       "drawer.properties": "Properties",
@@ -344,6 +349,11 @@
       "list.label": "任务列表",
       "list.loading": "正在加载任务",
       "list.columns.identifier": "ID",
+      "list.columns.title": "标题",
+      "list.columns.status": "状态",
+      "list.columns.assignee": "负责人",
+      "list.columns.priority": "优先级",
+      "list.columns.revision": "版本",
       "list.emptyRow": "该项目暂无任务",
       /* detail drawer */
       "drawer.properties": "属性",
@@ -581,6 +591,14 @@
   function numeric(id) {
     var n = String(id).replace(/[^0-9]/g, "");
     return n ? parseInt(n, 10) : 0;
+  }
+
+  /* R8 ③ — an identifier shows at most its first eight characters plus an
+     ellipsis. The whole value stays readable on `title`, and on the row's
+     `data-identifier`. */
+  function identifierText(value) {
+    var id = String(value || "");
+    return id.length > 8 ? id.slice(0, 8) + "…" : id;
   }
 
   /* ------------------------------------------------------- I12 · toast ---- */
@@ -843,8 +861,12 @@
       var status = attr($card, "status");
       var priority = attr($card, "priority");
 
-      $row.attr("data-identifier", attr($card, "identifier"));
-      $row.find("[data-list-identifier]").text(attr($card, "identifier"));
+      var identifier = attr($card, "identifier");
+      $row.attr("data-identifier", identifier);
+      $row
+        .find("[data-list-identifier]")
+        .text(identifierText(identifier))
+        .attr("title", identifier);
       $row.find("[data-list-title]").text($card.find("[data-card-title]").text());
       $row
         .find("[data-list-status]")
@@ -1208,9 +1230,13 @@
     };
 
     var $drawer = $("[data-detail-drawer]");
+    $drawer.attr("data-identifier", data.identifier);
 
     /* head + property grid -------------------------------------------------- */
-    $drawer.find("[data-detail-identifier]").text(data.identifier);
+    $drawer
+      .find("[data-detail-identifier]")
+      .text(identifierText(data.identifier))
+      .attr("title", data.identifier);
     $drawer
       .find("[data-detail-title]")
       .text($card.find("[data-card-title]").text() || data.identifier);
@@ -1570,9 +1596,9 @@
     $card.append(
       $('<div class="td-card-top"></div>')
         .append(
-          $('<span class="td-card-id" data-card-identifier></span>').text(
-            task.identifier
-          )
+          $('<span class="td-card-id td-id" data-card-identifier></span>')
+            .text(identifierText(task.identifier))
+            .attr("title", task.identifier)
         )
         .append($menu)
     );
@@ -2683,7 +2709,7 @@
       $("[data-detail-comments]").prepend($comment);
       $input.val("");
 
-      var identifier = $("[data-detail-identifier]").text();
+      var identifier = $("[data-detail-drawer]").attr("data-identifier");
       var $card = $('[data-card][data-identifier="' + identifier + '"]');
       if ($card.length) {
         var count = parseInt(attr($card, "comments"), 10) + 1;
