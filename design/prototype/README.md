@@ -87,8 +87,8 @@ checkout where `node_modules` is allowed to sit next to the sources.
 
 Two `@source` directives limit class scanning to `index.html` and `app.js`
 (`@import "tailwindcss" source(none)` disables auto-detection, so nothing else on
-disk can leak classes into the bundle). Current output: **189 KB** (`tw.css` = 193283
-bytes after the R11 rebuild; the figure this line carried before said 139 KB and had been
+disk can leak classes into the bundle). Current output: **189 KB** (`tw.css` = 193372
+bytes after the R12 rebuild; the figure this line carried before said 139 KB and had been
 stale for some rounds — it is a measurement, so it is stated as one).
 
 **The scan reads comments, not just markup.** A candidate is any token that *looks* like a
@@ -263,6 +263,7 @@ looking at it (DESIGN.md §12).
 | Empty states | empty column + no-results — and since R10 the board-level no-results block is the board view's `empty` state, mutually exclusive with the board itself (a project with no cards shows it too) |
 | Loading | 3 shimmer rows in the list view, in the list's `loading` state — mutually exclusive with the rows (R9) |
 | Drawer saves | assignee / reporter / labels commit as they change; one `data-save-state` region and a `role="alert"` failure block (R10) |
+| Drawer identifier | the detail drawer's head shows the card's **whole** id — no slice, no width limit — while the cards and the list rows keep eight characters plus an ellipsis (R12) |
 | Status filter | the bar's Status control holds any subset of the seven first-class statuses at once (OR inside the field), and every Active-agents name routes to the list view with `in_progress,in_review` preset (R11) |
 | Themes | three states cycled from the footer — **Light** (default) → **Dark** → **Auto** (follows `prefers-color-scheme`, CSS-only) → Light; no-record default is Light, not the system preference |
 | Language | English (default) + Chinese via the language dropdown — 224 key pairs, mirrored |
@@ -319,6 +320,19 @@ view and presets the status set to `in_progress,in_review`. It is a **route, not
 the name**: the assignee filter's domain is `all|me|human|agent` and holds no given name.
 `design/fidelity-r11.md` is the contract; `DESIGN.md` §27 and `BLOCKS.md` B03/B04/B08 carry
 the prose.
+
+**R12 — the drawer's head shows the whole id, and nothing else moves.** One request:
+the identifier in the detail drawer should read `TD-20261012-222353`, not `TD-20261…`. The
+cap R8 put on identifiers has two halves — the render-layer slice (`identifierText()`) and
+`.td-id`'s `max-width: 9ch` — and lifting only the slice leaves the *width* clipping the id,
+so both are released on **one element**: `openDetail()` writes the card's `data-identifier`
+verbatim, and the head span adds **`.td-id-full`** beside `.td-id` (`max-width: none;
+overflow: visible; text-overflow: clip`) while `.td-id` keeps the single line. The cards
+(B07) and the list rows (B08) keep R8 exactly as it was, `identifierText()` stays for those
+two paths, and the drawer root's `data-identifier` — the only thing identity is read from —
+is unchanged. Zero new hooks, zero new i18n keys, zero new tokens; the rebuilt `tw.css` gains
+exactly one class selector. `design/fidelity-r12.md` is the contract; `DESIGN.md` §28 and
+`BLOCKS.md` B07/B08/B09 carry the prose.
 
 ---
 
@@ -423,6 +437,16 @@ unchanged to the eye; no frame shows the status menu open, the set preset to
 left whole rather than half-refreshed, and the filters bar has now been stale through three
 rounds — the recapture belongs with whoever next touches it, and it can no longer be
 deferred without the set claiming a bar the build does not have.
+
+**R12 — the drawer frames are unaffected, and that is the measurement, not a hope.** Each of
+the three drawer stills was inspected: `03-drawer-agent.png` and `20-drawer-zh.png` open on
+`TD-131`, `04-drawer-human.png` on `TD-122` — all **six characters**, so the head reads the
+same characters before and after, and the change is invisible at that length in either
+build. What the set therefore *cannot* show is
+the round's own subject: a head with an id longer than eight characters. That evidence is a
+measurement rather than a still (an 18-character id renders 65.02px wide before and 127.89px
+after, in `design/fidelity-r12.md` §5 A3′/B-7). The set is again left whole; the drawer
+frames join the filters bar in the recapture that is already owed.
 
 **Sentinel Watch recapture:** the whole set was re-shot onto the current build, because
 two changes had landed after the last capture pass and the frames still showed the

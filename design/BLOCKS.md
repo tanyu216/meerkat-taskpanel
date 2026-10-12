@@ -298,7 +298,12 @@ characters plus an ellipsis**: the display value is `len > 8 ? slice(0, 8) + "�
 computed by `identifierText()` in the render layer, and the element carries the **full**
 id on `title` plus the shared `.td-id` class (single line: `nowrap` + overflow
 ellipsis). The card root's `data-identifier` keeps the full id — never the display
-value — so every lookup by attribute is unaffected. Same rule as B08 / B09.
+value — so every lookup by attribute is unaffected. Same rule as B08.
+
+**R12 leaves this card path alone.** The round that shows the whole id in the drawer's
+head (see **B09**) explicitly does **not** touch B07: the static markup's own abbreviated
+text, the generated card's `identifierText()` call, the `title` and the `.td-id` cap all
+stay as R8 fixed them. `[data-card-identifier]` must never carry `.td-id-full`.
 
 ## B08 · List view
 
@@ -344,6 +349,10 @@ The row's `[data-list-identifier]` carries the R8 cap too: display = eight chara
 plus an ellipsis, `title` = the full id, and the row root's `data-identifier` = the
 full id.
 
+**R12 leaves this row path alone** — the same sentence B07 carries: `renderList()` is
+unchanged, the row's identifier keeps the cap, and `[data-list-identifier]` must never
+carry `.td-id-full`. Only B09's head identifier opts out.
+
 **R9 — the list is in one of two states, and says which.** `data-list-state` on the root is
 the single source of truth: `loading` shows B13's skeleton and an empty `[data-list-rows]`,
 `data` shows the rows and hides the skeleton. The two are never on screen together, and the
@@ -365,19 +374,26 @@ the distinction.
 |---|---|
 | Root | `aside[data-detail-drawer][data-state="closed\|open\|closing"]` (`role="dialog"`, `aria-modal="true"`) |
 | Scrim | `[data-detail-overlay][data-state]` |
-| Head | `[data-detail-identifier]` · `[data-detail-title]` · `[data-detail-status-chip]` → `[data-detail-status-chip-label]` · `[data-detail-close]` |
+| Head | `[data-detail-identifier]` (**R12**: the whole id, carrying `.td-id-full`) · `[data-detail-title]` · `[data-detail-status-chip]` → `[data-detail-status-chip-label]` · `[data-detail-close]` |
 | Save state (R10) | `[data-detail-save][data-save-state="idle \| saving \| saved \| error"]` (attribute carrier, `hidden`, no copy of its own) · `[data-detail-save-error][role="alert"]` (its only visible half) |
 | Properties | `[data-detail-props]` → status `[data-detail-status]` / `[data-detail-status-label]` · priority `[data-detail-priority]` / `[data-detail-priority-label]` · assignee `[data-detail-assignee]` / `[data-detail-assignee-avatar]` / `[data-detail-assignee-label]` (**an input**, see B22) / `[data-detail-assignee-platform]` (platform badge, hidden for the human owner) · **reporter** `[data-detail-reporter]` / `[data-detail-reporter-avatar]` / `[data-detail-reporter-label]` (an editable control — see B22) · project `[data-detail-project]` / `[data-detail-project-label]` · **labels** `[data-detail-labels]` (editable label combo — see B25) · internal id `[data-detail-id]` + `[data-detail-id-copy]` (`data-copy-value`) · `[data-detail-version]` |
 | Body | `[data-detail-description]` (rendered GFM) · `[data-detail-relations]` → `[data-relation-link]` · `[data-detail-agent-session]` → `[data-detail-agent-session-body]` → `[data-agent-session]` · `[data-detail-attachments]` · `[data-detail-comments]` · `[data-comment-form]` → `[data-comment-input]`, `[data-comment-submit]` · `[data-detail-activity]` |
 | Source | `template[data-detail-for="TD-…"]` holds one `[data-slot="description \| relations \| agent-session \| attachments \| comments \| activity"]` per card, wrapped by `[data-detail-templates]` |
 
-**R8 — the head identifier is capped, and the drawer root carries the full id.**
-`[data-detail-identifier]` follows the same rule as B07 / B08: display = at most eight
-characters plus an ellipsis, `title` = the full id, class `.td-id`. Because the
-**rendered text is now a display value, not an identity**, the drawer root carries the
-full id on `data-identifier` (`aside[data-detail-drawer][data-identifier]`) and anything
-that needs to resolve the drawer's task must read that attribute — never the span's
-`textContent`. `[data-detail-id]` (the internal `td_…` id) is untouched.
+**R12 — the head identifier is the whole id, uncapped.** `[data-detail-identifier]` shows
+the card's **complete** identifier, verbatim: no character slice (the render path writes the
+card's own `data-identifier`; `identifierText()` is **not** called for this element) and no
+width limit — the span carries **`.td-id-full`** alongside `.td-id`, and that variant rule
+lifts the cap (`max-width: none; overflow: visible; text-overflow: clip`) while `.td-id`
+keeps the single line. `title` stays the full id. This is the **one** identifier render point
+that is not capped: **B07**'s cards and **B08**'s rows keep R8's eight characters plus an
+ellipsis, and neither may carry `.td-id-full`.
+
+**R8's other half still stands — identity never lives in the text.** The drawer root carries
+the full id on `data-identifier` (`aside[data-detail-drawer][data-identifier]`), and anything
+that resolves the drawer's task must read that attribute rather than the span's `textContent`.
+The rule does not lapse now that the text happens to be complete: the text is a display value,
+the attribute is the identity. `[data-detail-id]` (the internal `td_…` id) is untouched.
 
 **R10 ② — the three editable rows save as they change.** The drawer's Properties grid holds
 the three fields Terry reported: assignee (B22), reporter (B22) and labels (B25). Each row

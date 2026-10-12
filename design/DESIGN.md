@@ -1752,3 +1752,85 @@ off the control, its eight rows and all six names are still painted, because eve
 them is static markup. Zero console errors, zero page errors, both rounds. **No token and no
 colour was added**: the dots use the existing `--color-td-st-*` values through the existing
 `[data-status]` mapping, and the trigger reuses `.td-label-trigger` rather than a new one.
+
+## 28. Review round R12 — the drawer's identifier shows the whole id
+
+One request from Terry, and it is narrow: in the task detail drawer, the identifier should
+read as the whole id — `TD-20261012-222353`, not `TD-20261…`. The cards and the list rows
+are to keep what R8 gave them. The round therefore adds **no block, no hook and no i18n
+key**; it removes one function call from one render path and adds one named exception to
+one rule. The executable contract is `design/fidelity-r12.md`.
+
+### 28.1 The cap lives in two places, and lifting one of them is not enough
+
+R8 ③ split the truncation deliberately: the **character slice** (`identifierText()`) is what
+decides *how many characters*, and `.td-id`'s `max-width: 9ch` is only a **single-line
+guard** — a width, which the style guide says explicitly cannot promise a character count.
+That split is why "just print the whole string" does not satisfy this request. Printing the
+whole string stops the *slice*, but the span still wears `.td-id`, so an id longer than the
+guard is **clipped by width** and the ellipsis returns — the reader sees a longer
+abbreviation, not the id. Measured: with the slice removed and only `.td-id` in force, an
+18-character id renders **65.02px wide** and its own `scrollWidth` (128) exceeds its
+`clientWidth` (65). So the round changes both halves, on that one element:
+
+| | |
+|---|---|
+| Text | `[data-detail-identifier]` is written from the card's own `data-identifier`, verbatim — the `identifierText()` call is removed from `openDetail()` |
+| Width | the span adds **`.td-id-full`** beside `.td-id`: `max-width: none; overflow: visible; text-overflow: clip` |
+| Unchanged | `title` = the full id; the drawer root's `data-identifier` = the full id; `[data-detail-id]` (the internal `td_…`) is not touched |
+
+`.td-id` itself is untouched, because it is **shared** — B07's cards and B08's rows are
+exactly where an eight-character abbreviation is wanted, and an abbreviation is what the
+list's 74px ID column is designed around. The exception is carried by the element that
+needs it, so the rule and its exception are both visible where they apply.
+
+Two smaller things worth writing down. `identifierText()` **stays**: two render points still
+call it (the card markup generated for a move, and `renderList()`), and an exception in the
+drawer is not a reason to delete the rule. And the **identity rule does not lapse**: R8 made
+the drawer's head a *display value* and moved identity to `[data-detail-drawer]`'s
+`data-identifier`; the text now happens to be complete, but code that resolves the drawer's
+task still reads the attribute, never the text.
+
+### 28.2 What the uncapped head costs, measured
+
+Nothing at the bands the board ships. The head renders the same width (63.95px) at 1512,
+1240, 980, 760 and 500, no page overflows, and with an 18-character id swapped in it grows
+to **127.89px** — still inside the drawer at every one of those bands. The rounded
+half-hundredth is worth naming: `9ch` computes to **65.0215px** at the head's 12px face but
+**59.603px** on a card, because `ch` follows the font size. That is the concrete reason the
+contract asserts "a finite width" for the capped elements and `none` for the uncapped one,
+rather than comparing against the string `9ch`.
+
+The head is also a flex item (its parent is a `flex items-center gap-2` row), so
+`inline-block` blockifies: computed `display` is `block` in every one of those bands. The
+declaration and the measurement disagree, and the measurement is what the contract records.
+
+### 28.3 Rejected alternatives
+
+| Alternative | Why not |
+|---|---|
+| Drop `max-width` from `.td-id` itself | `.td-id` is shared with B07's cards and B08's rows; the request explicitly keeps their cap |
+| Print the whole id and leave `.td-id` alone | The slice stops, the clip does not — an 18-character id still renders 65.02px wide (measured) |
+| Special-case the drawer with an inline `style="max-width:none"` | An exception with no name: invisible in the stylesheet, unreviewable, and it cannot be asserted as a class in the manifest |
+| Show the full id only on hover / in a tooltip | `title` already does that; the request is about the value being *readable*, not about a second way to find it |
+| Truncate with a middle ellipsis (`TD-202…2353`) | Invents a second display format and a second rule; the drawer is the one place with room to show the id as it is |
+| Let the head wrap onto a second line | An id is one unbroken token; wrapping splits an indivisible string, which reads worse than the width it saves |
+| Make the head a horizontally scrollable box | "Fully visible" would become "fully reachable", which is a different promise; it also adds a scroll region to a two-line header |
+| Give the head a copy button | The drawer's internal id row already has `[data-detail-id-copy]`; a second copy control for a value that is now fully on screen is chrome |
+
+### 28.4 Checked
+
+Measured in a real browser against the prototype, before and after, at 1512×950 and across
+five widths. Before, opening the nine-character card `PROJ-0007` printed `PROJ-000…` in the
+head — the same abbreviation the card and the list row showed — and an eighteen-character id
+was clipped to 65.02px. After, the head reads `PROJ-0007` with computed `max-width: none`,
+`text-overflow: clip` and `white-space: nowrap`, and the eighteen-character id measures
+127.89px inside the drawer at every band. The reverse holds exactly: `[data-card-identifier]`
+still reads `PROJ-000…` under a finite `max-width` (59.603px, ellipsis) and
+`[data-list-identifier]` likewise (65.0215px), and neither element carries `.td-id-full`;
+`title` and the drawer root's `data-identifier` were already the full id and did not move.
+A six-character id is unchanged on both sides. With scripting off, the head's static seed is
+still painted and now carries `.td-id-full`. Zero console errors, zero page errors, both
+rounds. **Nothing else moved**: the prototype's i18n seats are 622 before and after and its
+`MESSAGES` tables hold 224 keys each on both sides, and the rebuilt `tw.css` is 89 bytes
+longer with exactly one added class selector — `.td-id-full`.

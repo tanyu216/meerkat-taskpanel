@@ -6105,6 +6105,11 @@ html[data-theme="dark"] .modal-box {
     white-space: nowrap;
     vertical-align: bottom;
   }
+  .td-id-full {
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+  }
   .td-mono {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;

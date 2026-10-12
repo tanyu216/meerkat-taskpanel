@@ -3563,7 +3563,9 @@ html[data-theme="dark"] .modal-box {
   /* R8 ③ — an identifier shows at most eight characters plus an ellipsis. The
      render layer does the cutting; this keeps it on one line whatever the
      face's advance width turns out to be, and is the reason the string never
-     wraps even at the narrow end. */
+     wraps even at the narrow end.
+     Exception (R12) — B09's drawer head shows the whole id and opts out of the
+     width limit with `.td-id-full` below; `.td-id` itself is unchanged. */
   .td-id {
     display: inline-block;
     max-width: 9ch;
@@ -3571,6 +3573,16 @@ html[data-theme="dark"] .modal-box {
     text-overflow: ellipsis;
     white-space: nowrap;
     vertical-align: bottom;
+  }
+
+  /* R12 — the drawer head's identifier, uncapped. Declared right after `.td-id`
+     at the same layer so it wins the same-specificity tie on an element that
+     carries both. An id is one unbroken token, so `nowrap` (inherited) cannot
+     hide anything: dropping the limit is what makes the whole value visible. */
+  .td-id-full {
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
   }
 
   /* Declared last so it wins any same-specificity tie with another app class
