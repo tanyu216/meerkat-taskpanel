@@ -45,7 +45,11 @@ const projects = computed(() =>
     id: project.id,
     name: project.name,
     initials: initialsOf(project.name),
-    count: board.currentProjectId === project.id ? board.tasks.length : null,
+    // The badge is the project's **total** task count, served by `/projects`
+    // (`task_count`). It is deliberately not derived from `board.tasks` — that
+    // array holds only the *current* project's tasks, so reading `.length` here
+    // filled one row in three (Terry's fidelity finding, 2026-10-12).
+    count: project.task_count ?? null,
     rank: index + 1,
     score: board.orderDebug[project.id]?.total ?? 0,
   })),
