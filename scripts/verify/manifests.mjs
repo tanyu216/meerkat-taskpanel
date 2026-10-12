@@ -7,6 +7,10 @@
  *   plugins/codex/.codex-plugin/plugin.json
  *   plugins/openclaw/openclaw.plugin.json      (root-level, no dot-directory)
  *   plugins/pi/package.json
+ * plus the loop skill's own bundle — the marketplace's second plugin, which ships the
+ * loop and nothing else, so it can be installed on its own:
+ *   plugins/loop/.claude-plugin/plugin.json
+ *   plugins/loop/package.json
  * plus the repository-root Claude marketplace: .claude-plugin/marketplace.json
  *
  * Exits non-zero with a readable message on the first failure. Node builtins only.
@@ -67,6 +71,34 @@ export const MANIFESTS = [
   {
     label: "pi",
     path: "plugins/pi/package.json",
+    required: [
+      "name",
+      "version",
+      "private",
+      "description",
+      "license",
+      "type",
+      "files",
+    ],
+  },
+  {
+    label: "loop",
+    path: "plugins/loop/.claude-plugin/plugin.json",
+    required: [
+      "name",
+      "version",
+      "description",
+      "author",
+      "license",
+      "homepage",
+      "repository",
+      "keywords",
+      "skills",
+    ],
+  },
+  {
+    label: "loop-pi",
+    path: "plugins/loop/package.json",
     required: [
       "name",
       "version",
