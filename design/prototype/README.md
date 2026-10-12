@@ -89,6 +89,14 @@ Two `@source` directives limit class scanning to `index.html` and `app.js`
 (`@import "tailwindcss" source(none)` disables auto-detection, so nothing else on
 disk can leak classes into the bundle). Current output: **139 KB**.
 
+**The scan reads comments, not just markup.** A candidate is any token that *looks* like a
+class name anywhere in those two files, prose and comments included — a bare `stack` in an
+HTML comment is enough for the toolchain to emit daisyUI's whole `.stack` component
+(measured: +2242 bytes, +49 selectors, no element to match). It is silent: the build
+succeeds and the page is unchanged. So after editing `index.html` or `app.js` — comments
+included — rebuild `tw.css` and **review the diff**, preferring prose ("stacked form") over
+a bare component name.
+
 ### One cascade detail worth knowing
 
 daisyUI 5 emits its component CSS into nested sub-layers of `@layer utilities`, and
@@ -198,13 +206,13 @@ looking at it (DESIGN.md §12).
 | Themes | three states cycled from the footer — **Light** (default) → **Dark** → **Auto** (follows `prefers-color-scheme`, CSS-only) → Light; no-record default is Light, not the system preference |
 | Language | English (default) + Chinese via the language dropdown — 215 key pairs, mirrored |
 | Access model | B19 access & token panel: binds `0.0.0.0`, CIDR whitelist, token required from outside localhost; no user / account / sign-in element anywhere |
-| Footer | three stacked full-width rows (R7) — theme · language · settings — a three-state theme cycle, a dropdown and an icon-only button |
+| Footer | one row of three equal thirds at ≥1024px, three stacked full-width rows at ≤1023px (R7, revised) — theme · language · settings — a three-state theme cycle, a dropdown and an icon-only button |
 | Viewports | 1512 / 1240 / 980 / 760 / 500 — no page-level horizontal overflow |
 
 The board is the only horizontal scroll container; `html`, `body` and `main` never
-scroll sideways. Below 1023px the sidebar collapses to an icon rail — where the three
-footer rows keep their stack and drop their labels, leaving three centred icons one above
-the other — and below 760px the top bar wraps and the drawer goes full width. Between **760 and
+scroll sideways. Below 1023px the sidebar collapses to an icon rail — and there the footer
+becomes a stack: the three cells drop their labels and sit one above the other as centred
+icons — and below 760px the top bar wraps and the drawer goes full width. Between **760 and
 779px** the top bar also wraps: that band was sized around a bar that still held the
 language switch, and the wrap is now kept as reviewed rather than re-tuned (DESIGN.md
 §14, §15).

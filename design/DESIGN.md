@@ -390,25 +390,32 @@ component.
 What replaced the sidebar identity block is a **stack of controls**, not a reachability
 readout. Review round v1.2 moved the display switches out of the bar and into the footer;
 v1.3 split the row into three equal thirds; v1.4 made each third act directly — a switch,
-a dropdown and an icon button, no dialog between the press and the result. **R7 stacked
-the three into one full-width row each** (2026-10-12) — the thirds are gone; the three
-controls, their order and their directness are not (§23):
+a dropdown and an icon button, no dialog between the press and the result. **R7**
+(2026-10-12) briefly stacked the three into one full-width row each at *every* width; the
+**21:19 revision scoped that stack to the rail**, so the footer is again **one row of three
+equal thirds on the desktop column and a stack only at ≤1023px**. The three controls, their
+order and their directness never changed (§23):
 
 | Surface | Content |
 |---|---|
 | Top bar, right end | `[data-revision]` · `[data-new-task]` |
-| Sidebar footer `[data-access-status]` | three stacked rows, one affordance each — `[data-theme-switch]` (inline three-state theme cycle) · `[data-lang-select]` (language dropdown) · `[data-access-open]` (icon-only settings) |
+| Sidebar footer `[data-access-status]` | three cells, one affordance each — `[data-theme-switch]` (inline three-state theme cycle) · `[data-lang-select]` (language dropdown) · `[data-access-open]` (icon-only settings). **≥1024px**: one row, left→right. **≤1023px**: three stacked rows, top→bottom |
 
-**Three stacked full-width rows, each lead-aligned (R7).** The footer is `display: flex`
-with `flex-direction: column`, so every `[data-access-cell]` block button owns a
-full-width row of the sidebar column — top to bottom: theme · language · settings. A row is
-`display: flex; align-items: center; justify-content: flex-start; gap: 8px;
-text-align: start`, so the glyph leads and the label follows it, with a hairline
-`border-block-start` on the row's block start separating it from the row above (the first
-row carries none) and a `:focus-visible` accent ring. A row is **one line inside** — icon,
-label and, on the language row, the caret side by side — because R6 ⑦⑧ fixed exactly
-that; R7 changed only the container. The theme cell and the language trigger **state the
-value in force** — the theme's name (`Light` / `Dark` / `Auto`, 浅色 / 深色 / 自动) beside a sun, moon or display glyph, the
+**One row of three equal thirds at ≥1024px, three stacked rows below (R7, revised
+2026-10-12 21:19).** The footer is `display: grid` with
+`grid-template-columns: repeat(3, minmax(0, 1fr))` and `align-items: stretch`, so each
+`[data-access-cell]` block button owns an equal third of the sidebar column — left to
+right: theme · language · settings. A cell is `display: flex; align-items: center;
+justify-content: center; gap: 6px; text-align: center`, so glyph and label sit centred in
+the third, with a vertical hairline `border-inline-start` separating a cell from its
+neighbour (the first cell carries none) and a `:focus-visible` accent ring. At ≤1023px the
+container becomes `display: flex; flex-direction: column`: each cell is then a full-width
+row with `justify-content: center`, `gap: 0`, `height: 24px` and no padding, and the
+separator turns with the layout — a horizontal `border-block-start` on the 2nd and 3rd
+cells. A cell is **one line inside at both widths** — icon, label and, on the language
+cell, the caret side by side — because R6 ⑦⑧ fixed exactly that; R7 and its revision
+changed only the arrangement *between* cells. The theme cell and the language trigger
+**state the value in force** — the theme's name (`Light` / `Dark` / `Auto`, 浅色 / 深色 / 自动) beside a sun, moon or display glyph, the
 language's short name (`EN` / `中文`) beside a globe and a caret — written by the same
 `applyTheme()` / `applyLanguageOptions()` functions the press and the pick call. The
 settings cell shows nothing but a gear: it has no visible label at all, and its accessible
@@ -434,10 +441,11 @@ drew them are deleted outright, so the old model is not reachable from any selec
 bind address is stated *inside* B19 instead, as prose, where it can name the value the
 board actually binds.
 
-The footer keeps its three rows down to the smallest width; below 1024px the sidebar is a
-rail, so the labels drop out with the rest of the sidebar text and each row becomes a
-centred 14px glyph on a 24px line. Three glyphs stack in the 64px rail (56px under 560px)
-with no horizontal overflow at any width, and no row ever wraps its own contents.
+Below 1024px the sidebar is a rail, so the labels drop out with the rest of the sidebar
+text and each cell becomes a centred 14px glyph on a 24px line. A third of the 64px rail
+(56px under 560px) cannot hold a labelled control, so there the footer stops being a row
+and **stacks**: three 24px rows, top to bottom in the same order. Glyphs stack in the rail
+with no horizontal overflow at any width, and no cell ever wraps its own contents.
 
 **B19 · Access & token settings** — `[data-access-open]` opens `[data-access-panel]`,
 hidden by default and dismissed with `Esc`, the scrim (`[data-access-overlay]`) or
@@ -518,7 +526,7 @@ clipboard, no credential or endpoint of any kind, and no persistence across relo
 ## 13. i18n
 
 **English is the default** (`<html lang="en">`). The `中文` option in the **language menu**
-(the dropdown behind the middle footer row) switches to Chinese and back; the active
+(the dropdown behind the footer's language cell) switches to Chinese and back; the active
 option carries `aria-pressed`, the trigger always shows the language in force, the options
 name their own language (`English` / `中文`) in *both* catalogues, and the menu carries an
 `aria-label` from the catalogue.
@@ -613,7 +621,10 @@ All three are in, with four judgement calls worth recording:
    too narrow for a horizontal `EN` / `中文` pair, so at ≤1023px the three controls stack
    and the pair itself turns vertical. This is a layout accommodation for the existing
    rail, not a new token or a new component: the rail's own geometry is unchanged and no
-   width overflows.
+   width overflows. **This breakpoint discipline is exactly what the footer carries again
+   after R7's revision** (§23) — R7 removed it for one round, and the 21:19 revision put it
+   back; the phrasing here ("the three controls stack") describes v1.2's segmented pair,
+   while R7's contribution is that the rail's stacked cells became centred 24px icon rows.
 2. **The language pair keeps its markup, with reduced chrome in the footer.** In the bar
    it sat in a bordered `.td-seg`; in the footer the container's background and border are
    dropped and its buttons come down to the 24px of the icon buttons beside it, so the
@@ -678,10 +689,14 @@ worth recording.
    `minmax(0, 1fr)` (rather than a bare `1fr`) keeps a long label from pushing a cell
    wider than its third.
 
-   **（已于 R7 变更）** — the equal-thirds requirement recorded here was **replaced by
-   R7's three stacked rows**; the round is kept as written above (it is the record of what
-   v1.3 asked for and why), but its "the row never wraps" consequence no longer holds. See
-   **§23** for the change and its reasons.
+   **（经 R7 修订后回正）** — R7 briefly **replaced** this equal-thirds requirement with
+   three stacked rows at *every* width; the 2026-10-12 21:19 revision **put the thirds
+   back at ≥1024px** and kept the stack for the ≤1023px rail only. So this judgement call
+   holds again on the desktop column (including `minmax(0, 1fr)` and its reason), while its
+   "the row never wraps" consequence is now true **only above the breakpoint**, and the
+   paragraph's "the cells keep their thirds" is **no longer the rail's behaviour** — the
+   rail stacks. The round is kept as written above because it is the record of what v1.3
+   asked for and why. See **§23** for the change, the revision and their reasons.
 
 Recaptured for this round: `01-board-1512` (the footer's three cells), `11-viewport-1240`,
 `13-viewport-760` (the rail's three icon cells), `05-dark-theme`, `19-board-zh`,
@@ -1027,8 +1042,8 @@ Authority: `ARCHITECTURE §8` (client preferences). Two preferences live on the 
 
 | Key | Values | Default | Surface |
 |---|---|---|---|
-| `meerkat-taskpanel.theme` | `light` \| `dark` \| `auto` | **`light`** | the sidebar footer's top row |
-| `meerkat-taskpanel.lang` | `en` \| `zh` | **`en`** | the sidebar footer's middle row |
+| `meerkat-taskpanel.theme` | `light` \| `dark` \| `auto` | **`light`** | the sidebar footer's theme cell (1st: left in the row, top in the rail) |
+| `meerkat-taskpanel.lang` | `en` \| `zh` | **`en`** | the sidebar footer's language cell (2nd: centre in the row, middle in the rail) |
 
 **Where they live.** Both are **stored in `localStorage` only — never on the server**. They
 do not travel in a request, they are not columns on any table, and they are not tied to an
@@ -1169,7 +1184,7 @@ pre-existing hook are intact.
 
 ---
 
-## 23. Review round R7 — the footer stacks, and three fidelity alignments
+## 23. Review round R7 — the footer's layout, and three fidelity alignments
 
 Terry's 2026-10-12 20:59 sidebar review raised three findings and added a fourth at 21:06
 (a drawer-header finding). One of the four is a **design change** — the footer layout — and
@@ -1178,43 +1193,70 @@ where the prototype is already the correct side. The structural contract for all
 `design/fidelity-r7.md` (the §⑨.1 "Before" document; the implementation and verification
 cards are separate).
 
-### 23.1 The footer stacks (the design change)
+**The design change was revised the same evening** (Terry, 2026-10-12 21:19): R7 stacked
+the footer at *every* width, and the revision scopes the stack to the rail — the desktop
+column is back on one row of three equal thirds. §23.1 records both, because the round's
+own record is the reason the revision exists.
 
-**What changed.** The sidebar footer `[data-access-status]` was **one row of three equal
-thirds** (v1.3, kept through v1.4). It is now **three stacked full-width rows**, top to
-bottom: theme · language · settings. The container goes from
-`display: grid; grid-template-columns: repeat(3, minmax(0, 1fr))` to
-`display: flex; flex-direction: column`, each `[data-access-cell]` becomes a full-width row
-with its glyph at the **inline start** and its label beside it (`justify-content:
-flex-start`, `gap: 8px`, `padding: 0 8px`), and the separator turns with the layout: from a
-vertical `border-inline-start` between neighbours to a horizontal `border-block-start` on
-the 2nd and 3rd rows (the first row has none). A new hook, `[data-access-cell]`, names the
-three rows so the contract can address them without counting children.
+### 23.1 The footer layout (the design change)
 
-**Why.** A third of the sidebar footer is ~74px at 1512px. Nothing legible fits three
-labelled controls in 74px each: the language trigger alone needs a globe, a name and a
-disclosure caret. Stacking gives each control the full column width, which is what the
-label — the thing that makes the control readable without a hover — actually needs. The
-order is unchanged (theme → language → settings), so nothing has to be relearned.
+#### 23.1.1 What R7 landed — and what the 21:19 revision changed
 
-**Constraints the change carries.**
+The sidebar footer `[data-access-status]` was **one row of three equal thirds** (v1.3, kept
+through v1.4). R7 turned it into **three stacked full-width rows**, top to bottom: theme ·
+language · settings — container `display: grid; grid-template-columns: repeat(3, minmax(0,
+1fr))` → `display: flex; flex-direction: column`, each `[data-access-cell]` a full-width row
+with its glyph at the **inline start** (`justify-content: flex-start`, `gap: 8px`,
+`padding: 0 8px`), and the separator turned from a vertical `border-inline-start` between
+neighbours to a horizontal `border-block-start` on the 2nd and 3rd rows. A new hook,
+`[data-access-cell]`, names the three cells so the contract can address them without
+counting children — *that* part stands.
 
-1. **A row stays one line inside.** Each `[data-access-cell]` is still
+**The revision keeps the hook and the cell count, and moves the stacking behind the
+breakpoint.** Landing state:
+
+| | R7 as landed (2026-10-12, superseded) | After the revision (2026-10-12 21:19) |
+|---|---|---|
+| Container, all widths | `display: flex; flex-direction: column` | **≥1024px**: `display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch` · **≤1023px**: `display: flex; flex-direction: column` |
+| Cell, ≥1024px | `justify-content: flex-start` · `gap: 8px` · `padding: 0 8px` · `text-align: start` | `justify-content: center` · `gap: 6px` · `padding: 0 2px` · `text-align: center` (a third of the column, centred) |
+| Cell, ≤1023px | `justify-content: center` · `gap: 0` · `height: 24px` · `padding: 0` | unchanged |
+| Separator | horizontal `border-block-start` on the 2nd/3rd rows, all widths | **≥1024px**: vertical `border-inline-start` on the 2nd/3rd cells (first cell none) · **≤1023px**: horizontal `border-block-start` |
+
+Nothing else in R7's change is revised: `[data-access-cell]`, the three hooks inside the
+cells, the DOM order and the cell count are all as R7 landed them.
+
+#### 23.1.2 Why the stack exists — and why it is the rail's only
+
+A third of the sidebar column is ~74px at 1512px. Nothing legible fits three labelled
+controls in 74px each: the language trigger alone needs a globe, a name and a disclosure
+caret. But **that arithmetic is what makes the stack the rail's answer, not the desktop's**:
+below 1024px the sidebar is a 64px (56px under 560px) rail, and a third of *that* is
+narrower still — so the rail must stack, while the desktop column can afford the row it had
+since v1.3, where the thirds were already accepted as legible for these three short labels
+(`Light`, `EN`, a gear). R7 generalised the rail's accommodation to every width; the
+revision un-generalises it. The order is unchanged (theme → language → settings) in both
+bands, so nothing has to be relearned either way.
+
+#### 23.1.3 Constraints the layout carries
+
+1. **A cell stays one line inside, at both widths.** Each `[data-access-cell]` is
    `display: flex; flex-direction: row` — icon, label and caret side by side. R6 ⑦⑧ fixed
-   that and R7 does not undo it; the change is between rows, never within one. The two are
-   orthogonal and the contract asserts them separately.
-2. **The rail keeps the stack.** Below 1024px each row narrows to a centred 24px glyph on a
-   24px line with the label and the caret gone, exactly as the thirds did before — the rail
-   simply stacks them instead of placing them side by side, and the footer's own top rule
-   spans what it spanned before (the footer is content-width in the rail, both before and
-   after).
-3. **No new token.** The separator reuses `--color-td-line`, the token the vertical hairline
-   already used.
-4. **The footer is taller.** +28px on the desktop column (3×28px rows) and 81px in the rail
-   (3×24px rows). Measured with no page-level horizontal overflow at
-   1512 / 1240 / 980 / 760 / 430 in both themes.
+   that and neither R7 nor its revision undoes it; the change is between cells, never within
+   one. The two are orthogonal and the contract asserts them separately.
+2. **The rail's cell geometry is the thing R7 got right there.** Below 1024px each cell
+   narrows to a centred 14px glyph on a 24px line with the label and the caret gone — the
+   rail stacks them rather than placing them side by side, and the footer's own top rule
+   spans what it spanned before (the footer is content-width in the rail, before and after).
+3. **No new token.** Both separator orientations reuse `--color-td-line`.
+4. **Height is band-dependent.** The desktop column is back to **37px** (one 28px cell +
+   8px `padding-top` + 1px rule) — the v1.4 height, so §23's original "+28px on the desktop
+   column" no longer holds. The rail is **81px** (3×24px + 8px + 1px), which is the design
+   change's standing cost. Measured with no page-level horizontal overflow at
+   1512 / 1240 / 1024 / 980 / 760 / 430 / 1023 in both themes.
+5. **The breakpoint is `1023/1024`, with no grey band.** Measured: 1024px is the row, 1023px
+   is the stack.
 
-The §12 "current state" passages are rewritten to the stacked description; the v1.3 round
+The §12 "current state" passages are rewritten to the band-split description; the v1.3 round
 (§16, judgement call 3) keeps its record with a "（已于 R7 变更）" note pointing here, since
 its "the row never wraps" consequence is the thing R7 reversed.
 
@@ -1265,3 +1307,28 @@ captured width and theme; no page-level horizontal overflow in any of the ten fr
 28px apart on the desktop column and 24px apart in the rail; `count [data-nav-item]` stays
 4; 7 columns × 18 cards intact. The implementation-side comparison is the verification
 card's to run, per the same口径.
+
+> **Superseded for the footer.** The rows/steps quoted above describe R7 as landed (stacked
+> at every width). After the 21:19 revision the desktop column is a row again: the three
+> cells share one `top` and their `left`s step by a third; only the rail keeps 24px-apart
+> tops. The **revision's** ten frames live in `T-20261012-212138`'s workspace.
+
+### 23.4 The revision, recaptured and checked
+
+The revision was recaptured the same way — 10 frames (5 viewports × light/dark) plus two
+**breakpoint-boundary** probes at 1024 and 1023, which are measured but not photographed.
+The theme is again driven through `[data-theme-switch]`.
+
+**Checked and clean.** Zero console errors and zero page errors; no page-level horizontal
+overflow in any band or theme (`scrollWidth ≤ clientWidth + 1`); `count [data-nav-item]`
+stays 4; 7 columns × 18 cards; the footer's three cells report `display: grid` with three
+tracks of ~74.33px and **one shared `top`** at 1512 / 1240 / 1024, and `display: flex;
+flex-direction: column` with tops 24px apart at 1023 / 980 / 760 / 430; `.td-caret` is
+visible in the wide band and hidden in the rail; `svg.td-icon` measures 14×14 in both
+bands (`fill: none`, `stroke-width: 1.5px`).
+
+**A build trap the revision surfaced.** Tailwind v4 scans the *whole* source file for
+candidate class names, comments included: a bare `stack` in an HTML comment made the
+toolchain emit daisyUI's `.stack` component (+2242 bytes, +49 selectors) with no element to
+match. Wording the comment as "stacked form" removes it. Any edit to `index.html` /
+`app.js` comments must therefore be followed by a `tw.css` rebuild **and** a diff review.

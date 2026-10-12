@@ -991,19 +991,24 @@ html[data-theme="dark"] {
     background-color: var(--color-td-ink-4);
   }
 
-  /* Footer controls — the sidebar footer holds three stacked full-width rows
-     (R7, 2026-10-12), one affordance each, top to bottom: theme · language ·
-     settings. v1.3/v1.4 put the three side by side as equal thirds; a third of
-     the sidebar is ~74px, which is not enough for a label to read, so R7 stacks
-     them. Each cell is still **one row inside** — icon, name, caret side by
-     side (R6 ⑦⑧) — and the separator hairline is turned with the layout: from
-     the inline start of a column to the block start of a row. The theme cell
-     and the language trigger state the value in force; the settings cell is
-     icon only. Nothing here reports reachability: the bind address lives inside
-     the settings dialog. */
+  /* Footer controls — the sidebar footer holds three equal thirds in one row on
+     the desktop column (≥1024px), one affordance each, left to right: theme ·
+     language · settings. The stack is the **rail's** accommodation, not a
+     desktop layout: R7 (2026-10-12) stacked the three at every width, and the
+     2026-10-12 21:19 revision scoped the stack to the rail (≤1023px) and put
+     the desktop column back on one row. So the wide form below is the base rule
+     and the stacked form lives in the ≤1023px block with the rest of the rail.
+     Each cell is **one row inside** at both widths — icon, name, caret side by
+     side (R6 ⑦⑧); only the arrangement *between* cells changes. The separator
+     hairline turns with that arrangement: the inline start of a neighbour in the
+     row, the block start of a neighbour in the stack. The theme cell and the
+     language trigger state the value in force; the settings cell is icon only.
+     Nothing here reports reachability: the bind address lives inside the
+     settings dialog. */
   .td-access-status {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
     margin-top: 8px;
     padding: 8px 0 0;
     font-size: 12px;
@@ -1011,26 +1016,27 @@ html[data-theme="dark"] {
     border-top: 1px solid var(--color-td-line);
   }
 
-  /* One full-width row each: icon at the inline start, label beside it, the
-     caret last on the language row. The hairline between neighbours is now a
-     row separator on the block start — with the cells stacked there is no
-     neighbour to the side. The padding is what keeps a row's hover face off
-     the sidebar's edge; the border box still spans the footer, so the row
-     rules line up with the footer's own top rule. */
+  /* One third each: icon + label centred in the cell on both axes. The hairline
+     on the inline start separates a cell from its neighbour without drawing a
+     leading edge on the row. The padding is what keeps a cell's hover face off
+     its neighbour's hairline; 2px, not 4: a third of the footer is ~74px, and
+     the language trigger's globe + name + caret need every one of them before
+     the name ellipsises. */
   .td-access-cell {
     display: flex;
     align-items: center;
-    justify-content: flex-start;
-    gap: 8px;
+    justify-content: center;
+    gap: 6px;
     width: 100%;
     height: 28px;
-    padding: 0 8px;
+    padding: 0 2px;
     font-size: 12px;
     font-weight: 500;
     color: var(--color-td-ink-2);
-    text-align: start;
+    text-align: center;
     background: transparent;
     border: 0;
+    border-inline-start: 1px solid var(--color-td-line);
     border-radius: var(--r-sm);
     cursor: pointer;
     transition:
@@ -1038,8 +1044,8 @@ html[data-theme="dark"] {
       color var(--dur-hover) var(--ease);
   }
 
-  .td-access-cell + .td-access-cell {
-    border-block-start: 1px solid var(--color-td-line);
+  .td-access-cell:first-child {
+    border-inline-start: 0;
   }
 
   .td-access-cell:hover {
@@ -3193,11 +3199,16 @@ html[data-theme="dark"] {
       padding: 0;
     }
 
-    /* the rail is 64px (56px under 560px): the footer keeps its three stacked
-       rows and loses the labels, so each row is a centred 24px icon. The caret
-       goes with them — 64px cannot hold a globe and a disclosure arrow side by
-       side without overflowing. */
+    /* the rail is 64px (56px under 560px): a third of it cannot hold a label, so
+       the footer's one row of three thirds becomes three stacked full-width rows
+       and loses the labels, each row a centred 24px icon. The caret goes with
+       them — the rail cannot hold a globe and a disclosure arrow side by side
+       without overflowing. The separator turns with the layout: no neighbour is
+       to the side any more, so the hairline moves from the inline start of a cell
+       to the block start of the 2nd and 3rd rows (the first row keeps none). */
     .td-access-status {
+      display: flex;
+      flex-direction: column;
       padding: 8px 0 0;
     }
 
@@ -3206,6 +3217,11 @@ html[data-theme="dark"] {
       gap: 0;
       height: 24px;
       padding: 0;
+      border-inline-start: 0;
+    }
+
+    .td-access-cell + .td-access-cell {
+      border-block-start: 1px solid var(--color-td-line);
     }
 
     .td-caret {
