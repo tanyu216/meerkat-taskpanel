@@ -22,7 +22,8 @@ Two consequences worth stating plainly:
 
 Do not confuse it with the **team registry** at
 `~/.openclaw/team/projects.json`. That one is a dispatcher's project registry, a
-different file at a different layer (see [`docs/migration.md`](../../../docs/migration.md)).
+different file at a different layer (see
+[migration.md](https://github.com/tanyu216/meerkat-taskpanel/blob/main/docs/migration.md)).
 This document is only about the copy **beside the installed skill**.
 
 ## Schema
@@ -134,7 +135,8 @@ project, no `context current` command, and no registry `root` anchor. So:
 ## Installing, re-installing and `--force`
 
 `projects.json` sits **inside** the installed skill directory, so its fate is the
-skill directory's fate ([`docs/install.md`](../../../docs/install.md)):
+skill directory's fate
+([install.md](https://github.com/tanyu216/meerkat-taskpanel/blob/main/docs/install.md)):
 
 - **A plain re-run leaves it alone.** `install.sh` treats an existing skill
   directory as the desired end state (merge, never clobber) and re-running is a

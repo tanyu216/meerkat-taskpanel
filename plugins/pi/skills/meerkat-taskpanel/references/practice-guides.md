@@ -172,10 +172,15 @@ Two boundaries this respects, on purpose:
 ## Waking & patrol (唤醒与巡检)
 
 Rule 1 says *claim first*; it does not say *wait to be told*. Work starts when a
-small **host-external supervisor** ([`scripts/supervisor.mjs`](../../../scripts/supervisor.mjs))
-finds claimable cards and wakes a worker for one. Nothing inside an agent does
-the polling — see the full design in
-[`docs/scheduling.md`](../../../docs/scheduling.md).
+small **host-external supervisor** finds claimable cards and wakes a worker for
+one. Nothing inside an agent does the polling.
+
+That supervisor is **not part of this skill**. It ships as its own skill,
+[`meerkat-loop`](https://github.com/tanyu216/meerkat-taskpanel/blob/main/skills/meerkat-loop/SKILL.md)
+— its execution body is installed under `<host>/meerkat-taskpanel/`, and its
+`references/operation.md` is the operator's view of install, paths, flags and the
+headless permission boundary. The host-agnostic design is at
+[scheduling.md](https://github.com/tanyu216/meerkat-taskpanel/blob/main/docs/scheduling.md).
 
 Two layers, kept apart:
 
@@ -205,11 +210,15 @@ script, and print the load command — they never enable a daemon for you. The
 installer also asks once whether the supervisor may claim **unassigned** cards
 (default yes) and remembers the answer in `<host>/meerkat-taskpanel.env`.
 
+They install the loop for **claude, codex and pi only**. OpenClaw is excluded on
+purpose — the openclaw-team framework already runs an equivalent poll / patrol, and a
+second supervisor would only race the first.
+
 A wake runs the worker **headlessly**, so it runs under a pre-declared tool
 allowlist / permission mode / sandbox and must **not** default to bypassing
 permissions (`--dangerously-skip-permissions` or equivalent); a bypass needs
 explicit written authorization, documented at the point of use — see
-[`docs/scheduling.md` §Headless permission boundary](../../../docs/scheduling.md#headless-permission-boundary).
+[scheduling.md §Headless permission boundary](https://github.com/tanyu216/meerkat-taskpanel/blob/main/docs/scheduling.md#headless-permission-boundary).
 
 ## OpenClaw
 
@@ -239,9 +248,10 @@ has the native-vs-bundle distinction.)
   `--agent-platform openclaw --session-id <id>` so a card's trail points back at the
   session that did the work (§8); the framework keeps that id stable across resumes.
 - **No supervisor to build.** OpenClaw is the one host that installs **no**
-  scheduler of its own: `install.sh --target openclaw` writes the skill only, and
-  the [openclaw-team](https://github.com/tanyu216/openclaw-team) framework's
-  `poll` / `patrol` automations *are* the [Waking & patrol](#waking--patrol-唤醒与巡检)
+  scheduler of its own: `install.sh --target openclaw` writes this skill only — not
+  the `meerkat-loop` skill, not a scheduling unit — and the
+  [openclaw-team](https://github.com/tanyu216/openclaw-team) framework's `poll` /
+  `patrol` automations *are* the [Waking & patrol](#waking--patrol-唤醒与巡检)
   design. Install that framework instead of wiring anything by hand.
 
 ## Claude Code
@@ -273,9 +283,10 @@ claude plugin list                                 # → meerkat-taskpanel, enab
 - **No timers of its own — the loop lives outside.** Claude Code hooks fire only
   on session events, so the claim in §1 is driven by the supervisor
   ([Waking & patrol](#waking--patrol-唤醒与巡检)): a launchd / systemd / cron unit
-  runs `scripts/supervisor.mjs`, which wakes a headless `claude -p` session
-  (`--resume <sid>` to continue one). `install.sh` drops the units and the
-  `wake-claude.sh` glue and prints the load command.
+  runs the **host-installed** copy of the loop's `scripts/supervisor.mjs`, which wakes a
+  headless `claude -p` session (`--resume <sid>` to continue one). `install.sh` installs
+  the `meerkat-loop` skill, drops the units and the `wake-claude.sh` glue, and prints the
+  load command.
 
 ## Codex
 
