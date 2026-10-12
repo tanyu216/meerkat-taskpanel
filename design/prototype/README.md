@@ -38,7 +38,7 @@ three footer dialogs are secondary surfaces and stay hidden until opened.
 | `index.html` | the prototype — every block as static HTML with `data-*` hooks |
 | `tw.css` | **build output** (Tailwind + daisyUI compiled). Do not edit by hand. |
 | `src/input.css` | the Tailwind build entry: `@theme` tokens, daisyUI themes, app components |
-| `app.js` | the jQuery (slim) interaction layer — interactions I1–I12, plus R3's roster controls (I13) and Markdown editor (I14), R5's label control (I15), R9's light-dismiss rule (I16), and R10's board empty state (I17) and drawer auto-save (I18) |
+| `app.js` | the jQuery (slim) interaction layer — interactions I1–I12, plus R3's roster controls (I13) and Markdown editor (I14), R5's label control (I15), R9's light-dismiss rule (I16), R10's board empty state (I17) and drawer auto-save (I18), and R11's status filter (I19) and roster route (I20) |
 | `favicon.svg` | the Sentinel Watch mark as the tab icon (renders `BRAND.md` §5; `prefers-color-scheme` pair) |
 | `vendor/jquery.slim.min.js` | jQuery 3.7.1 **slim** build, vendored locally |
 | `vendor/markdown-lite.js` | the Markdown → HTML renderer behind the editor's preview pane, vendored locally |
@@ -87,8 +87,8 @@ checkout where `node_modules` is allowed to sit next to the sources.
 
 Two `@source` directives limit class scanning to `index.html` and `app.js`
 (`@import "tailwindcss" source(none)` disables auto-detection, so nothing else on
-disk can leak classes into the bundle). Current output: **188 KB** (`tw.css` = 192724
-bytes after the R10 rebuild; the figure this line carried before said 139 KB and had been
+disk can leak classes into the bundle). Current output: **189 KB** (`tw.css` = 193283
+bytes after the R11 rebuild; the figure this line carried before said 139 KB and had been
 stale for some rounds — it is a measurement, so it is stated as one).
 
 **The scan reads comments, not just markup.** A candidate is any token that *looks* like a
@@ -152,20 +152,23 @@ the style guide's token blocks in `src/input.css` are unlayered. Two consequence
 | I15 | Labels (R5) | The roster control used many times at once — fuzzy match, free text creates by use, case/whitespace-insensitive, removable chips. One control, two placements: the create dialog and the drawer's Labels row are both editable | `[data-label-input]` → `[data-label-menu]` → `[data-label-option]` · `[data-label-chips]` → `[data-label-chip]` → `[data-label-remove]` · `[data-detail-label-input]` → `[data-detail-label-menu]` → `[data-detail-label-option]` · `[data-detail-label-chips]` → `[data-detail-label-chip]` → `[data-detail-label-remove]` |
 | I17 | Board empty state (R10) | the board view shows its empty state instead of bare columns whenever no card survives the filters — including a project that holds none at all | `[data-board-view]` → `data-board-state` → `[data-board]` / `[data-empty][data-empty-kind="no-results"]` |
 | I18 | Drawer auto-save (R10) | the drawer's assignee, reporter and labels commit as they change — focus loss with a moved value, an accepted roster row, a label chip added or dropped — and report through one state region | `[data-detail-save]` → `data-save-state` · `[data-detail-save-error]` · `[data-detail-save-field]` on `[data-detail-assignee]` / `[data-detail-reporter]` / `[data-detail-labels]` |
+| I19 | Status filter (R11) | the bar's second dropdown and its only multi-select: a press toggles one of the seven first-class statuses in or out of the set, `all` clears it, and the pass re-runs. The chosen set is OR inside the field, AND against the other filters | `[data-filter-status]` → `data-filter-status-value` → `[data-filter-status-summary]` / `[data-filter-status-text]` · `[data-filter-status-option]` → `data-status-value` |
+| I20 | Roster route (R11) | a press on a name in Active agents switches to the list view and presets the status set to `in_progress,in_review`. It is a **route, not a filter on the name** — the assignee filter has no given name in its domain | `[data-agents-presence]` → `[data-agent-assignee]` → `setView("list")` + `data-filter-status-value` |
 
 The footer's three rows act directly — none of them opens a dialog except the settings
 gear, which opens B19. `Esc` closes whatever is open: the drawer, the states showcase, the
 access panel, the card's "Move to" menu and the language menu. The two floating menus also
 close on any press outside themselves and their trigger.
 
-**R9 named that last rule and widened it.** The two `<details class="dropdown">` in the
-shell — the top bar's project switcher and the filters bar's label selector — carry
+**R9 named that last rule and widened it.** The shell's `<details class="dropdown">` — the
+top bar's project switcher, and the filters bar's label and status selectors — carry
 `data-dismiss-on-outside`, and one document-level handler owns them: a press whose target
 is not a descendant of a member closes every member that is open, `Esc` does the same, and
-opening one closes the other so the two menus never overlap. Membership is the attribute,
-never a class name or a hook list (I16 above). The switcher had no outside-press rule at
-all before R9, which is why it stayed open over the filters bar and swallowed presses meant
-for the controls underneath. The roster menus and the card menus are not members: they
+opening one closes the others so no two menus overlap. Membership is the attribute, never a
+class name or a hook list (I16 above) — which is why R11's status dropdown joined by
+carrying the attribute and adding no branch at all. The switcher had no outside-press rule
+at all before R9, which is why it stayed open over the filters bar and swallowed presses
+meant for the controls underneath. The roster menus and the card menus are not members: they
 float from a trigger that is not a `<details>` and keep their own rules.
 
 **The list view is a timeline (R9).** `[data-list]` carries `data-list-state="loading" |
@@ -260,8 +263,9 @@ looking at it (DESIGN.md §12).
 | Empty states | empty column + no-results — and since R10 the board-level no-results block is the board view's `empty` state, mutually exclusive with the board itself (a project with no cards shows it too) |
 | Loading | 3 shimmer rows in the list view, in the list's `loading` state — mutually exclusive with the rows (R9) |
 | Drawer saves | assignee / reporter / labels commit as they change; one `data-save-state` region and a `role="alert"` failure block (R10) |
+| Status filter | the bar's Status control holds any subset of the seven first-class statuses at once (OR inside the field), and every Active-agents name routes to the list view with `in_progress,in_review` preset (R11) |
 | Themes | three states cycled from the footer — **Light** (default) → **Dark** → **Auto** (follows `prefers-color-scheme`, CSS-only) → Light; no-record default is Light, not the system preference |
-| Language | English (default) + Chinese via the language dropdown — 220 key pairs, mirrored |
+| Language | English (default) + Chinese via the language dropdown — 224 key pairs, mirrored |
 | List columns | six labelled columns — ID · Title · Status · Assignee · Priority · Revision — with the header sharing the row's grid template; the middle three hide at ≤759px (R8) |
 | Access model | B19 access & token panel: binds `0.0.0.0`, CIDR whitelist, token required from outside localhost; no user / account / sign-in element anywhere |
 | Footer | one row of three equal thirds at ≥1024px, three stacked full-width rows at ≤1023px (R7, revised) — theme · language · settings — a three-state theme cycle, a dropdown and an icon-only button |
@@ -302,6 +306,19 @@ column it sits in: `align-items: stretch` on the two tracks, a column flex conte
 `.td-field-grow`, and `.td-md-panes` grown from a fixed viewport `clamp` to `flex: 1 1 auto;
 min-height: 200px`. `design/fidelity-r10.md` is the contract; `DESIGN.md` §26 and `BLOCKS.md`
 B05/B09/B10/B12/B23 carry the prose.
+
+**R11 — the status filter, and the roster names that route to it.** Two requests from
+2026-10-13, both about reaching the work in flight. (1) The filters bar gained **Status** —
+a `<details class="dropdown">` sibling of the label selector, and the bar's only
+**multi-select**: the chosen set rides on `data-filter-status-value` as a comma-joined subset
+of the seven first-class status keys (`all` = un-filtered), the trigger reads
+`Status: All` / `Status: <Label>` / `Status: <first> +<n-1>`, and each menu row is the 8px
+status dot plus the status label. Multiple choice is OR inside the field. (2) Every name in
+**Active agents** is now its own `<button data-agent-assignee>`; a press switches to the list
+view and presets the status set to `in_progress,in_review`. It is a **route, not a filter on
+the name**: the assignee filter's domain is `all|me|human|agent` and holds no given name.
+`design/fidelity-r11.md` is the contract; `DESIGN.md` §27 and `BLOCKS.md` B03/B04/B08 carry
+the prose.
 
 ---
 
@@ -394,6 +411,18 @@ paragraph above, the set is left whole rather than half-refreshed, and the recap
 belongs with whoever next touches either surface — the create-dialog frames have now been
 stale through two rounds, which is the reason to fold them into the next pass rather than
 defer again.
+
+**R11 — the set is still not recaptured, and R11 adds one more surface to it.** Every frame
+that shows the filters bar now shows a fourth control where there were three — the Status
+dropdown between Priority and Label — which is the same set of full-board and full-list
+frames R9 already flagged. The sidebar frames (`31` and the full-board frames) now show the
+Active agents names as buttons, but the face is the text it replaced, so the stills are
+unchanged to the eye; no frame shows the status menu open, the set preset to
+`in_progress,in_review`, or the list a roster route lands on. Those four states are in
+`design/fidelity-r11.md` §6 (the card's workspace, not the repository). The set is again
+left whole rather than half-refreshed, and the filters bar has now been stale through three
+rounds — the recapture belongs with whoever next touches it, and it can no longer be
+deferred without the set claiming a bar the build does not have.
 
 **Sentinel Watch recapture:** the whole set was re-shot onto the current build, because
 two changes had landed after the last capture pass and the frames still showed the

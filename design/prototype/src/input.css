@@ -1002,6 +1002,28 @@ html[data-theme="dark"] .modal-box {
     color: var(--color-td-ink-2);
   }
 
+  /* R11 ② — the roster names are buttons, because a press on one routes to the
+     list view. The face is exactly the text it replaces — no shell, no border,
+     no padding — so the row still reads as one sentence; the affordance is the
+     pointer and an underline that appears on hover. The family and the numerals
+     come from `.td-mono`, which the markup carries on each button, so nothing
+     here restates a face. */
+  .td-agent-assignee {
+    font-size: inherit;
+    font-weight: inherit;
+    line-height: inherit;
+    padding: 0;
+    color: inherit;
+    background: none;
+    border: 0;
+    cursor: pointer;
+  }
+
+  .td-agent-assignee:hover {
+    color: var(--color-td-ink);
+    text-decoration: underline;
+  }
+
   .td-presence {
     width: 6px;
     height: 6px;
@@ -2747,6 +2769,26 @@ html[data-theme="dark"] .modal-box {
 
   /* the active row states itself with a tick, as the card's move menu does */
   .td-label-menu [data-filter-label-option][aria-current="true"] {
+    color: var(--color-td-accent);
+    font-weight: 500;
+  }
+
+  /* --- R11 · status dropdown (daisyUI `dropdown` + `menu`) -------------- */
+  /* The status control is the sibling of the label dropdown, so it wears that
+     menu's own shell (`.td-label-menu`) and adds only what its rows need. A row
+     is the status's 8px dot plus its name on one line — the dot carries the
+     colour and the name carries the state, the rule DESIGN.md §2.3 states for
+     the column heads and the chips. Multiple choice states itself on
+     `aria-pressed` (every row writes it, chosen or not), which is what the
+     label menu's single-choice `aria-current` cannot express. */
+  .td-status-menu [data-filter-status-option] {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+  }
+
+  .td-status-menu [data-filter-status-option][aria-pressed="true"] {
     color: var(--color-td-accent);
     font-weight: 500;
   }

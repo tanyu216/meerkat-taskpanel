@@ -84,9 +84,23 @@ label selector opens (one of the two is open at a time).
 | Root | `aside[data-sidebar]` |
 | Nav | `[data-nav]` → `[data-nav-item="board" \| "list" \| "activity"]` (`aria-current="page"`) |
 | Projects | `[data-project-list]` → `[data-project="…"]` (`aria-current="page"`) → `.td-side-icon` (prefix monogram, rail only) + `[data-project-count]`; each item carries `[data-order-score]` + `[data-order-rank]` (see below) |
-| Agents | `[data-agents-presence]` → **one row per platform**: `[data-agent-platform="claude\|openclaw\|codex\|pi"]` + `[data-presence="running\|idle"]` |
+| Agents | `[data-agents-presence]` → **one row per platform**: `[data-agent-platform="claude\|openclaw\|codex\|pi"]` + `[data-presence="running\|idle"]`; each name in the row is a `[data-agent-assignee]` **button** (R11 — see below) |
 | States preview | `[data-states-open]` — sidebar footer control, opens **B18** |
 | Footer controls | `[data-access-status]` — **one row of three equal thirds at ≥1024px, three stacked full-width rows at ≤1023px** (R7, revised 2026-10-12 21:19): theme · language · settings. Each cell is a `[data-access-cell]` block button (`.td-access-cell`); in the row a vertical hairline on its **inline start** separates it from its neighbour (the first cell carries none), and in the stack a horizontal hairline on its **block start** separates it from the cell above (the first row carries none) |
+
+**R11 ② — a roster name is a route.** The `.td-agent-text` span used to hold the row's names
+as one string of text; it now holds one `<button>` per name (`[data-agent-assignee="jobs"]`,
+carrying `data-assignee` + `data-assignee-kind="agent"` as well), with the commas left as the
+static text between them, so the row still reads as one sentence. The pressability hangs on
+`[data-agent-assignee]`, never on a class — the hook is what binds and what a machine check
+reads. A press switches to the **list** view (B08), writes `{"in_progress","in_review"}` into
+the status filter (B04), and runs one filter pass. **It does not narrow by the name**: the
+assignee filter's domain is `all | me | human | agent` and holds no given name, so extending
+it is a separate requirement (`design/fidelity-r11.md` §边界). The face is the text it
+replaced — no shell, no border, no padding — with the pointer and a hover underline as the
+only affordance; `Enter`/`Space` and the `:focus-visible` ring come from it being a real
+`<button>`. In the ≤1023px rail the whole `.td-agent-text` span is hidden, so the buttons go
+with it.
 
 The three cells were **one row of three equal thirds** from v1.3 to R6; R7 (2026-10-12)
 stacked them at every width, and the same evening's revision put the row back above the
@@ -182,9 +196,14 @@ project, so every row is filled at all times.
 | | |
 |---|---|
 | Root | `section#td-filters[data-filters]` |
-| Controls | `[data-filter-assignee]` (all/me/human/agent) · `[data-filter-priority]` (all/urgent/high/medium/low/none) · `[data-filter-label]` (all + 16 labels) |
+| Controls | `[data-filter-assignee]` (all/me/human/agent) · `[data-filter-priority]` (all/urgent/high/medium/low/none) · `[data-filter-status]` (all + the seven statuses, R11) · `[data-filter-label]` (all + 16 labels) |
 | Label selector | `[data-filter-label]` on a `<details class="dropdown" data-dismiss-on-outside>`; the chosen value lives on `data-filter-label-value`, the trigger states it via `[data-filter-label-summary]`, and the menu holds `[data-filter-label-option]` × 17, each with `data-label-value` and `aria-current` on the chosen one |
+| Status selector | `[data-filter-status]` on its own `<details class="dropdown" data-dismiss-on-outside>`; the chosen set lives on `data-filter-status-value` (`all`, or a comma-joined subset of the seven keys), the trigger states it via `[data-filter-status-summary]` → `[data-filter-status-text]`, and the menu holds `[data-filter-status-option]` × 8, each with `data-status-value` and its own `aria-pressed` (R11) |
 | Actions | `[data-filter-clear]` · `[data-filter-count]` (`aria-live="polite"`) |
+
+**The bar's order is the fields' order: Assignee · Priority · Status · Label · Clear ·
+count.** Status sits immediately after Priority because the two are the card's own
+first-class scalars; Label is the list-valued one and follows (R11).
 
 **The label selector is a dropdown, not a `<select>`** (R3). Its hook name did not move:
 `[data-filter-label]` is still the element the interaction layer reads, but it now reads
@@ -202,6 +221,26 @@ caret background-image sits. The `<details>` takes `data-dismiss-on-outside`, th
 B02's switcher takes. The scoping is deliberate: `.td-chip-label` is untouched, so the
 label chips on cards, in the drawer and in the dialogs are still pills — only this one
 trigger renders its value flat.
+
+**R11 ① — the status selector is the second dropdown, and the only multi-select.** It is the
+same `<details class="dropdown">` family as the label control, wears the same `.td-label-menu`
+shell and the same `.td-label-trigger` metrics (so the bar still computes to one control
+height), and takes the same `data-dismiss-on-outside` rule. What it adds is a **set**:
+
+| | |
+|---|---|
+| Value | `data-filter-status-value` — `"all"` (un-filtered, the resting value) **or** a comma-joined subset of the seven first-class keys, in `DESIGN.md` §2.3 order |
+| Domain | the seven keys, **never anything else** — the script reads them out of `[data-filter-status-option]`, so the menu is the single source and an eighth status is one more row |
+| Semantics | **OR** inside the field (a card passes when its status is any chosen one); **AND** against the other filters, like assignee/priority/label |
+| Rows | `[data-filter-status-option]` × 8 — `all` first, then the seven keys; each row is the 8px status dot (`--status-color`, via the existing `[data-status="…"]` plumbing) plus the `status.<key>` label |
+| Chosen row | `aria-pressed="true"` — every row writes it, chosen or not, because a set has no single active one; the chosen rows also take the accent copy |
+| Trigger | `[data-filter-status-summary]` (the `<summary>`) → `[data-filter-status-text]` reads `Status: All` / `Status: <Label>` / `Status: <first> +<n-1>`, restated from the value on every filter pass |
+| Pressing `all` | clears the set — the value returns to `"all"` and every row's `aria-pressed` follows in the same write |
+
+`assignee` and `priority` are the two native `<select>`s; `status` could not be one (it has
+to hold two values at once for the roster route), and the label control could not host it
+without either a second mode or a fourth kind of row. `applyFilters()` reads the set through
+one helper (`statusFilterValues()`), which is also what `resetFilters()` writes back to `all`.
 
 ## B05 · Board
 
@@ -272,6 +311,14 @@ value — so every lookup by attribute is unaffected. Same rule as B08 / B09.
 
 Rows are projected from the cards that survive the active filters, so board and
 list can never disagree.
+
+**R11 ② — this is where a roster name lands.** A press on `[data-agent-assignee]` (B03)
+switches to this view and writes `{"in_progress","in_review"}` into the status filter, so the
+rows that appear are the projection of the cards those filters leave — which is the same
+projection as ever, only reached by a second route. Nothing here changes: `renderList()` is
+still the only writer of `[data-list-rows]`, and the rows still carry `[data-list-status]`
+with the card's own status. The `loading` → `data` timeline (B13) is unchanged and still runs
+on entry; the filter pass that follows lands the rows in the same tick.
 
 **R8 — the header names every column, and shares the row's template.** The header
 (`.td-list-head`) is a **6-track grid** carrying the same column template, gap and
@@ -766,7 +813,7 @@ dropdown joins by carrying the attribute.
 | | |
 |---|---|
 | Hook | `[data-dismiss-on-outside]` — no class name is part of this rule |
-| Members | `[data-project-switcher]` (B02) · `[data-filter-label]` (B04) |
+| Members | `[data-project-switcher]` (B02) · `[data-filter-label]` (B04) · `[data-filter-status]` (B04, R11) |
 | Outside press | a press whose target is not a descendant closes every member that is `[open]` |
 | `Esc` | closes every member that is `[open]`, alongside the drawer, the states showcase and the access panel |
 | Single open | opening a member closes the other; the two menus never overlap |
@@ -817,6 +864,10 @@ not declared — it is read off the cards' `data-reporter` at first pass, which 
 | `[data-detail-slot-source]` | transient wrapper jQuery builds while copying a template into the drawer |
 | `[data-label="…"]` | one chip per card label |
 | `[data-filter-label-summary]` | the label dropdown's trigger text, restated from `data-filter-label-value`; rendered flat (R9 — see B04) |
+| `data-filter-status-value` | on `[data-filter-status]`: `"all"` or a comma-joined subset of the seven first-class status keys — the one place the status selection is written (R11 — see B04) |
+| `[data-filter-status-summary]` → `[data-filter-status-text]` | the status dropdown's trigger and its mutable text leaf; the text is restated from `data-filter-status-value` and reads `Status: All` / `Status: <Label>` / `Status: <first> +<n-1>` (R11 — see B04) |
+| `[data-filter-status-option]` + `data-status-value` | one menu row per status (`all` first, then the seven keys); the rows are also the filter's value domain, which the script reads rather than restating (R11 — see B04) |
+| `[data-agent-assignee]` | on each roster name's `<button>` in B03 (with `data-assignee` + `data-assignee-kind`): pressing it routes to the list view with the two in-flight statuses preset (R11 — see B03) |
 | `[data-dismiss-on-outside]` | on a `<details class="dropdown">`: a press outside it, or `Esc`, closes it (R9 — see *Floating controls*) |
 | `data-list-state` | on `[data-list]`: `loading` \| `data`, the list's two mutually exclusive states (R9 — see B08/B13) |
 | `data-board-state` | on `[data-board-view]`: `data` \| `empty`, the **board view's** two mutually exclusive states — the R9 list idiom applied to the board (R10 — see B05/B12) |

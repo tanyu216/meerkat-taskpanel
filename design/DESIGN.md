@@ -1655,3 +1655,100 @@ with the board's own geometry unchanged (812px, page overflow 0). Zero console e
 page errors. No token was added or changed: the error block uses the existing
 `--color-td-danger` / `--color-td-danger-soft` pair, and the stretch chain introduces no
 value of its own.
+
+---
+
+## 27. Review round R11 — the status filter, and the roster names that route to it
+
+Two requests from Terry, both about *reaching the work that is in flight*. ① The filters bar
+could narrow by assignee, priority and label, but not by status — the one first-class field
+a reader actually sorts by. ② The sidebar's "Active agents" roster was a readout: the names
+were text, so seeing that `jobs` was running told you nothing you could act on. The round
+adds one control and makes the roster a set of routes. No block is added: the control is a
+fourth member of **B04**, the routes live in **B03**, and the view they open is **B08**.
+The executable contract is `design/fidelity-r11.md`.
+
+### 27.1 The status filter is a multi-select, and it is the label control's sibling
+
+The tempting shape is a third native `<select>`. It was evaluated and rejected: request ②
+needs `in_progress` **and** `in_review` in force at once, and a single-choice control cannot
+say that. `<select multiple>` is the other obvious one, and it is rejected too — it is a
+list box, not a dropdown: it has no trigger that can state the current value without being
+opened, and it cannot be made to look like the three controls it sits beside.
+
+So the control is a `<details class="dropdown">` carrying a `menu` — the same family as
+`[data-filter-label]`, and flattened to the same `.td-select` metrics by R9 ②, which is why
+the bar still reads as one row of one component. It adds exactly one idea: the chosen set
+rides on **`data-filter-status-value`** as a comma-joined subset of the seven first-class
+status keys, or `all` when nothing is chosen.
+
+| | |
+|---|---|
+| Value | `"all"` (un-filtered, the resting value) or a comma-joined subset of the seven keys |
+| Semantics | multiple choice is **OR** — a card passes when its status is *any* chosen one; `all` (or empty) filters nothing |
+| Rows | `all` + the seven keys in `DESIGN.md` §2.3 order, each `[data-filter-status-option]` with `data-status-value` and its own `aria-pressed` |
+| Dot | 8px, `--status-color` through the existing `[data-status="…"]` plumbing — the key is written once and the colour follows |
+| Dismissal | `data-dismiss-on-outside` — the third member of R9's light-dismiss rule, so `Esc` and an outside press close it with no new branch |
+
+The value domain is the **menu itself**: the script reads the seven keys out of
+`[data-filter-status-option]` rather than repeating the list. An eighth status is therefore
+one more row and nothing else — no script edit, no second place to forget — and the script
+can never name a status the document does not carry. Measured, the option values equal the
+seven `data-status` values the columns and the cards already use, which is the round's
+machine check for "no magic number".
+
+`in_progress` and `in_review` are worth naming precisely, because they are the two the
+roster route selects: `in_progress` is work an agent has claimed and is running now;
+`in_review` is work that has left the agent's hands and is waiting on a reviewer. They are
+the only two that mean *in flight* — `blocked` has stopped, `done` and `canceled` are over,
+`backlog` and `todo` have not started.
+
+### 27.2 A roster name is a route, not a narrowing on the name
+
+Every name in `[data-agents-presence]` is now its own `<button data-agent-assignee>`; the
+row still reads as one sentence, separators and all. A press does three things, in this
+order: switch to the **list** view, write `{"in_progress","in_review"}` into the status
+control, and run one filter pass. The list then shows exactly the work in flight, and the
+filter bar states why.
+
+**What a press deliberately does not do is filter by the name.** The assignee filter's
+domain is `all | me | human | agent` — `me` is the local human, `human`/`agent` are the two
+*kinds* — and it carries no given name. Narrowing to `jobs` would mean extending that
+domain, which is a different requirement (a name-scoped filter is a query, not a route) and
+is recorded as a boundary in `fidelity-r11.md` rather than smuggled into this round. The
+frame that proves it is the one after the press: *Status: In Progress +1*, *Assignee: All*.
+
+The name is also the button's accessible name, and the button sits inside the row's text, so
+keyboard reach, `Enter`/`Space` and the `:focus-visible` ring all come from the element
+being a real `<button>` — no `role`, no key handler, no `tabindex`. The face is the text it
+replaced, with the pointer and a hover underline as the only affordance: the sidebar is a
+readout first, and a roster that looked like a toolbar of buttons would fight the numbers
+beside it.
+
+### 27.3 Rejected alternatives
+
+| Alternative | Why not |
+|---|---|
+| A third native `<select>` for status | Single choice only — cannot hold `in_progress` **and** `in_review`, which is exactly what request ② needs |
+| `<select multiple>` | Not a dropdown: no trigger that states the set, no room in a 30px bar of one-line controls |
+| One `<select>` per status (seven of them) | Seven controls for one field; the bar would stop being a bar |
+| A chip row of seven toggle buttons in the bar | Every status permanently on screen, and the bar's height becomes a function of the status count |
+| Routing by *writing the name into the assignee filter* | The domain has no given name (`all/me/human/agent`); extending it is a separate requirement, and the route's meaning is "what is in flight", not "what is jobs's" |
+| Filtering on the **platform** the roster row names (`claude`, `openclaw`, …) | The row names a platform and lists names; the press is on a *name*, and a platform-scoped route is a different control that was not asked for |
+| Reusing the label control verbatim (single choice) | The label menu states its choice with `aria-current`, which cannot express a set; multiple choice needs `aria-pressed` on every row |
+
+### 27.4 Checked
+
+Measured in a real browser against the prototype, before and after, at 1512×950, in both
+languages. Before, the document carried **no** status control and **no** clickable name;
+after, the bar holds `[data-filter-status]` resting on `all` with the trigger reading
+`Status: All`, its menu holds exactly **eight** rows whose values are the seven first-class
+keys plus `all`, and the four field controls in the bar compute to **one** height (30px).
+Pressing `jobs` lands on the list with `data-filter-status-value="in_progress,in_review"`,
+both rows `aria-pressed="true"` and every list row carrying one of only those two statuses;
+pressing `In Review` alone leaves the `in_review` cards and nothing else, with the count
+reading the *filtered* caliber; `Clear` returns all four filters to `all`. With scripting
+off the control, its eight rows and all six names are still painted, because every one of
+them is static markup. Zero console errors, zero page errors, both rounds. **No token and no
+colour was added**: the dots use the existing `--color-td-st-*` values through the existing
+`[data-status]` mapping, and the trigger reuses `.td-label-trigger` rather than a new one.

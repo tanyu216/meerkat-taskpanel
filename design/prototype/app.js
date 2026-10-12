@@ -76,6 +76,10 @@
       "filters.labelLabel": "Label",
       "filters.label.all": "Label: All",
       "filters.labelOption": "Label: %s",
+      "filters.status": "Status",
+      "filters.status.all": "Status: All",
+      "filters.statusOption": "Status: %s",
+      "filters.statusMore": "+%s",
       "filters.clear": "Clear",
       "filters.count.initial": "12 tasks",
       "filters.count.one": "1 task",
@@ -317,6 +321,10 @@
       "filters.labelLabel": "标签",
       "filters.label.all": "标签：全部",
       "filters.labelOption": "标签：%s",
+      "filters.status": "状态",
+      "filters.status.all": "状态：全部",
+      "filters.statusOption": "状态：%s",
+      "filters.statusMore": "+%s",
       "filters.clear": "清除",
       "filters.count.initial": "12 个任务",
       "filters.count.one": "1 个任务",
@@ -743,14 +751,94 @@
     $("[data-filter-label]").removeAttr("open");
   }
 
+  /* R11 ① — the status filter's value domain is the menu itself. Reading the
+     seven first-class status keys out of `[data-filter-status-option]` rather
+     than repeating the list in script is what keeps the script from ever naming
+     a status the document does not carry: an eighth status is one more row, and
+     nothing else changes. */
+  function statusOptionValues() {
+    return $("[data-filter-status] [data-filter-status-option]")
+      .map(function () {
+        return $(this).attr("data-status-value");
+      })
+      .get()
+      .filter(function (value) {
+        return value && value !== "all";
+      });
+  }
+
+  /* `all` — the resting value — means the filter is off. Any other value is the
+     comma-joined selection, restated in menu order on the way out, so one set is
+     always one string however it was built. */
+  function statusFilterValues() {
+    var raw =
+      $("[data-filter-status]").attr("data-filter-status-value") || "all";
+    if (raw === "all") return [];
+    var chosen = String(raw).split(",");
+    return statusOptionValues().filter(function (key) {
+      return chosen.indexOf(key) !== -1;
+    });
+  }
+
+  /* The single writer of the status control: the value attribute, the
+     `aria-pressed` of all eight rows and the trigger's own copy are decided in
+     one move, so the control can never state a set its rows disagree with. Run
+     from every filter pass the way `renderLabelFilter()` is, so a language
+     switch restates it for free. */
+  function renderStatusFilter() {
+    var values = statusFilterValues();
+
+    $("[data-filter-status-option]").each(function () {
+      var $option = $(this);
+      var value = $option.attr("data-status-value");
+      $option.attr(
+        "aria-pressed",
+        String(value === "all" ? !values.length : values.indexOf(value) !== -1)
+      );
+    });
+
+    if (values.length === 1) {
+      $("[data-filter-status-text]").text(
+        text("filters.statusOption", statusLabel(values[0]))
+      );
+    } else if (values.length > 1) {
+      $("[data-filter-status-text]").text(
+        text("filters.statusOption", statusLabel(values[0])) +
+          " " +
+          text("filters.statusMore", values.length - 1)
+      );
+    } else {
+      $("[data-filter-status-text]").text(text("filters.status.all"));
+    }
+  }
+
+  /* Replaces the whole selection; `[]` is the un-filtered `all`. The set is
+     written in menu order, so `in_progress` always precedes `in_review`. */
+  function writeStatusFilter(values) {
+    var chosen = statusOptionValues().filter(function (key) {
+      return values.indexOf(key) !== -1;
+    });
+    $("[data-filter-status]").attr(
+      "data-filter-status-value",
+      chosen.length ? chosen.join(",") : "all"
+    );
+    renderStatusFilter();
+  }
+
+  function closeStatusMenu() {
+    $("[data-filter-status]").removeAttr("open");
+  }
+
   /* I6 / I8 · one filter pass drives cards, column counts and the count readout */
   function applyFilters() {
     renderLabelFilter();
+    renderStatusFilter();
 
     var query = $.trim(String($("[data-search-input]").val() || "")).toLowerCase();
     var byAssignee = $("[data-filter-assignee]").val();
     var byPriority = $("[data-filter-priority]").val();
     var byLabel = labelFilterValue();
+    var byStatus = statusFilterValues();
 
     var total = 0;
     var shown = 0;
@@ -796,6 +884,13 @@
           -1;
       }
 
+      /* R11 ① — multiple choice is OR: a card passes when its status is *any*
+         of the chosen ones. An empty selection is `all`, so the clause is
+         skipped rather than special-cased. */
+      if (ok && byStatus.length) {
+        ok = byStatus.indexOf(attr($card, "status")) !== -1;
+      }
+
       $card.prop("hidden", !ok);
       if (ok) shown++;
     });
@@ -829,6 +924,10 @@
     $("[data-filter-priority]").val("all");
     $("[data-filter-label]").attr("data-filter-label-value", "all");
     closeLabelMenu();
+    /* R11 ① — `[]` writes `all` and clears every row's `aria-pressed`, which is
+       the same single move a press on the `all` row makes. */
+    writeStatusFilter([]);
+    closeStatusMenu();
     applyFilters();
   }
 
@@ -2433,6 +2532,46 @@
       resetFilters();
       toast(text("toast.filtersCleared"), "info");
     });
+
+    /* the status dropdown: a press toggles one status in or out of the chosen
+       set and re-runs the filter pass. `all` is not a toggle — it clears. The
+       rows restate themselves from the single writer, so the menu, the trigger
+       and the value attribute move together. */
+    $("[data-filter-status]").on(
+      "click",
+      "[data-filter-status-option]",
+      function () {
+        var value = $(this).attr("data-status-value");
+        var values = statusFilterValues();
+        if (value === "all") {
+          writeStatusFilter([]);
+        } else {
+          writeStatusFilter(
+            values.indexOf(value) === -1
+              ? values.concat([value])
+              : values.filter(function (key) {
+                  return key !== value;
+                })
+          );
+        }
+        closeStatusMenu();
+        applyFilters();
+      }
+    );
+
+    /* I19 · R11 ② — a roster name is a route, not a narrowing on the name: the
+       assignee filter's domain is `all|me|human|agent` and carries no given name
+       (B04), so the press sets the status set to the two in-flight statuses and
+       switches to the list view, and the name itself is written into no filter. */
+    $("[data-agents-presence]").on(
+      "click",
+      "[data-agent-assignee]",
+      function () {
+        setView("list");
+        writeStatusFilter(["in_progress", "in_review"]);
+        applyFilters();
+      }
+    );
     $("[data-filter-toggle]").on("click", function () {
       var $button = $(this);
       var open = $button.attr("aria-pressed") !== "true";
