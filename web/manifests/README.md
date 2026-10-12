@@ -9,6 +9,7 @@ project is wired by writing exactly two things and changing no tool line.
 |---|---|
 | `../.ui-align.json` | the project config — prototype root, dev server, the bilateral theme/locale agreement |
 | `board.json` | the page manifest — the board main path, **full block list** (unimplemented blocks carried as `pending`) |
+| `board-m2.json` | the M2 manifest — the same main path plus M2's target-state blocks; see §5 |
 | `../scripts/ui-align-serve.mjs` | the implementation leg: the fixture harness on a port the engine names |
 
 ## 1. Run it
@@ -173,3 +174,42 @@ recorded here pending the written-deviation sign-off M0 asked for:
 The flip is one flag (`--strict`) plus, if the style leg should gate, `--style-strict`. Both
 become meaningful when M2 closes the pending blocks. Until then this manifest's job is to
 make every block *countable*: 12 blocks, 8 asserted, 4 named at every run.
+
+## 5. The M2 manifest (`board-m2.json`) — added 2026-10-12
+
+`board.json` above is the M1 record and is left exactly as it was. `board-m2.json` is the
+**M2** manifest, frozen by the upstream contract card (`T-20261012-165120`,
+`fidelity-contract.md` + `manifests/board-m2.json`, HEAD `ec97acde506c`) and copied in
+byte-for-byte apart from the ten `status` flips noted below: same 8-block main path, plus
+the target-state blocks M2 owes. Nothing of M1's check list was dropped — the M2 file is a
+superset (`m2.derivedFrom`).
+
+The ten blocks M2 closed are flipped `pending → delivered` in this copy (the tool's own
+workflow: a `pending` block is SKIPped, so it would otherwise keep its assertions out of the
+**default** run — flipping is what makes the default run guard them). Only `B09-m2` is still
+`pending`; see the table below.
+
+```bash
+node ~/.openclaw/team/tools/ui-align/check.mjs --config web/.ui-align.json board-m2 --no-style           # rest state
+node ~/.openclaw/team/tools/ui-align/check.mjs --config web/.ui-align.json board-m2 --strict --no-style  # M2 target state
+```
+
+**Where it stands after M2** (`T-20261012-165126`):
+
+| | |
+|---|---|
+| blocks | 19 — 8 delivered plus M2's 11 target blocks |
+| assertions under `--strict` | 124 |
+| failures | **3**, all in `B09-m2` |
+| overflow / console | 0 failures at all five widths |
+
+The three remaining failures are the drawer's **data-driven rows** —
+`[data-detail-attachments] .td-file`, `[data-detail-activity] .td-activity`, `.td-activity-ts`.
+They exist only while a task is open, and this engine evaluates the rest state only: it
+cannot click (its README §10 draws the same boundary), and the board's no-task drawer body
+legitimately holds no rows. They are therefore asserted where they *are* observable — the
+driven browser pass in `test/web/blocks.contract.mjs` (`when: "drawer open"`, evaluated by
+`web/scripts/dom-smoke.mjs` between opening a card and closing the drawer, under `npm test`),
+with the corresponding hooks (`[data-attachment-row]`, `[data-activity-row]`,
+`[data-activity-ts]`) declared in B09. Recording them here rather than deleting them keeps
+the gap countable: `--strict` names them at every run.
