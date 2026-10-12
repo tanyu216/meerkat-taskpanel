@@ -10,15 +10,16 @@
  * WHY THE ASSERTIONS NEVER QUOTE THE PROSE COUNTS (the header-count discrepancy)
  * ---------------------------------------------------------------------------
  * The BLOCKS.md *header* is stale; the *body* is authoritative. Measured against
- * `design/prototype/index.html` and `design/prototype/app.js` on 2026-10-09 (host-side static
- * counting — no browser, no network):
+ * `design/prototype/index.html` and `design/prototype/app.js` (host-side static
+ * counting — no browser, no network), re-measured 2026-10-12 after the prototype grew
+ * its fourth nav item and the `nav.waiting` key:
  *
  *   header claims                             measured
- *   252 `data-i18n*` hooks in the document     606 (389 `data-i18n` + 144 `-arg`
+ *   252 `data-i18n*` hooks in the document     607 (390 `data-i18n` + 144 `-arg`
  *                                                  + 47 `-aria-label` + 8 `-placeholder`
  *                                                  + 18 `-title`)
- *   198 catalogue keys                         en = 214, zh = 214 (exact parity;
- *                                              the body's "214 keys per language,
+ *   198 catalogue keys                         en = 215, zh = 215 (exact parity;
+ *                                              the body's "215 keys per language,
  *                                              mirrored 1:1" is the correct number)
  *   7 columns · 18 cards · 18 templates        7 / 18 / 18 — the one header line that
  *                                              does agree with the DOM
@@ -33,7 +34,8 @@
  * roster rows or inert seed rows the demo happens to ship) are never assertions.
  *
  * The stale claims are also exported as data (`STALE_PROSE_COUNTS`) so the test suite
- * can prove none of them leaked into a rule.
+ * can prove none of them leaked into a rule — and re-measures every recorded number
+ * against the two documents rather than against a copy of itself.
  *
  * ---------------------------------------------------------------------------
  * SHAPE
@@ -1528,14 +1530,14 @@ const CONSISTENCY_ITEMS = [
 export const STALE_PROSE_COUNTS = Object.freeze([
   Object.freeze({
     claim: "252 `data-i18n*` hooks",
-    measured: 606,
-    detail: "389 `data-i18n` + 144 `-arg` + 47 `-aria-label` + 8 `-placeholder` + 18 `-title`",
+    measured: 607,
+    detail: "390 `data-i18n` + 144 `-arg` + 47 `-aria-label` + 8 `-placeholder` + 18 `-title`",
     verdict: "stale",
   }),
   Object.freeze({
     claim: "198 catalogue keys",
-    measured: 214,
-    detail: "en = 214 and zh = 214, mirrored 1:1 (the body's number is the correct one)",
+    measured: 215,
+    detail: "en = 215 and zh = 215, mirrored 1:1 — the prototype `MESSAGES` count the body states; the shipped extraction drops the 17 prototype-only keys, so it ships 198",
     verdict: "stale",
   }),
   Object.freeze({
