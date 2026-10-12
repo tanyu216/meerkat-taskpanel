@@ -26,8 +26,10 @@ open design/prototype/index.html      # plain file:// — no server, no build st
 `index.html` is complete without JavaScript: the top bar, sidebar, filters, all seven
 columns, all eighteen cards, the legend and the **three footer rows** (theme · language ·
 settings) are static markup, with the default theme and language already named in their
-cells. The drawer, the states gallery, the create-task / create-project modals and the
-three footer dialogs are secondary surfaces and stay hidden until opened.
+cells. The activity view (B26) is the same: complete in the markup, hidden until the
+sidebar's Activity item is pressed. The drawer, the states gallery, the create-task /
+create-project modals and the three footer dialogs are secondary surfaces and stay hidden
+until opened.
 
 ---
 
@@ -38,13 +40,13 @@ three footer dialogs are secondary surfaces and stay hidden until opened.
 | `index.html` | the prototype — every block as static HTML with `data-*` hooks |
 | `tw.css` | **build output** (Tailwind + daisyUI compiled). Do not edit by hand. |
 | `src/input.css` | the Tailwind build entry: `@theme` tokens, daisyUI themes, app components |
-| `app.js` | the jQuery (slim) interaction layer — interactions I1–I12, plus R3's roster controls (I13) and Markdown editor (I14), R5's label control (I15), R9's light-dismiss rule (I16), R10's board empty state (I17) and drawer auto-save (I18), and R11's status filter (I19) and roster route (I20) |
+| `app.js` | the jQuery (slim) interaction layer — interactions I1–I12, plus R3's roster controls (I13) and Markdown editor (I14), R5's label control (I15), R9's light-dismiss rule (I16), R10's board empty state (I17) and drawer auto-save (I18), R11's status filter (I19) and roster route (I20), and R12x's activity feed (I21) |
 | `favicon.svg` | the Sentinel Watch mark as the tab icon (renders `BRAND.md` §5; `prefers-color-scheme` pair) |
 | `vendor/jquery.slim.min.js` | jQuery 3.7.1 **slim** build, vendored locally |
 | `vendor/markdown-lite.js` | the Markdown → HTML renderer behind the editor's preview pane, vendored locally |
 | `vendor/highlight-lite.js` | the source highlighter behind the editor's syntax colours, vendored locally |
 | `../DESIGN.md` | the design specification: tokens, type, spacing, states, a11y, reconciliation, access model, i18n, R3, R4 |
-| `../BLOCKS.md` | the block inventory B01–B25 with every `data-*` hook (B20 and B21 are the retired theme/language dialogs — see v1.4; B22 and B23 are R3's roster controls and Markdown editor; B24 is R4's Parent / Depends-on pair; B25 is R5's label control) |
+| `../BLOCKS.md` | the block inventory B01–B26 with every `data-*` hook (B20 and B21 are the retired theme/language dialogs — see v1.4; B22 and B23 are R3's roster controls and Markdown editor; B24 is R4's Parent / Depends-on pair; B25 is R5's label control; B26 is R12x's Activity view) |
 | `screenshots/` | capture set (board, wide board, drawer, dark, list, menu, filters, empty, language menu, access + token, Chinese, 5 viewports, the two-column create dialog, the split editor, assignee autocomplete, the Write-pane scroll proof, the Parent and Depends-on controls) |
 | `package.json` | declared devDependencies + `build:css` script |
 | `.gitignore` | keeps `node_modules/` out of the repository |
@@ -87,9 +89,10 @@ checkout where `node_modules` is allowed to sit next to the sources.
 
 Two `@source` directives limit class scanning to `index.html` and `app.js`
 (`@import "tailwindcss" source(none)` disables auto-detection, so nothing else on
-disk can leak classes into the bundle). Current output: **189 KB** (`tw.css` = 193372
-bytes after the R12 rebuild; the figure this line carried before said 139 KB and had been
-stale for some rounds — it is a measurement, so it is stated as one).
+disk can leak classes into the bundle). Current output: **197 KB** (`tw.css` = 200850
+bytes after the R12x rebuild; the figure this line carried before that said 193372 after R12,
+and 139 KB before that and had been stale for some rounds — it is a measurement, so it is
+stated as one).
 
 **The scan reads comments, not just markup.** A candidate is any token that *looks* like a
 class name anywhere in those two files, prose and comments included — a bare `stack` in an
@@ -154,6 +157,7 @@ the style guide's token blocks in `src/input.css` are unlayered. Two consequence
 | I18 | Drawer auto-save (R10) | the drawer's assignee, reporter and labels commit as they change — focus loss with a moved value, an accepted roster row, a label chip added or dropped — and report through one state region | `[data-detail-save]` → `data-save-state` · `[data-detail-save-error]` · `[data-detail-save-field]` on `[data-detail-assignee]` / `[data-detail-reporter]` / `[data-detail-labels]` |
 | I19 | Status filter (R11) | the bar's second dropdown and its only multi-select: a press toggles one of the seven first-class statuses in or out of the set, `all` clears it, and the pass re-runs. The chosen set is OR inside the field, AND against the other filters | `[data-filter-status]` → `data-filter-status-value` → `[data-filter-status-summary]` / `[data-filter-status-text]` · `[data-filter-status-option]` → `data-status-value` |
 | I20 | Roster route (R11) | a press on a name in Active agents switches to the list view and presets the status set to `in_progress,in_review`. It is a **route, not a filter on the name** — the assignee filter has no given name in its domain | `[data-agents-presence]` → `[data-agent-assignee]` → `setView("list")` + `data-filter-status-value` |
+| I21 | Activity view (R12x) | the sidebar's third destination opens B26 — a press routes through `setView()`, the feed narrows from three controls, the unread number is shared by the sidebar pill and the feed boundary, `Mark all read` clears it, a row's open button lands on B09, and `j`/`k` walk the visible rows | `[data-nav-item="activity"]` → `[data-activity-view]` · `[data-activity-filter]` · `[data-activity-mark-read]` · `[data-activity-open]` · `[data-activity-more]` |
 
 The footer's three rows act directly — none of them opens a dialog except the settings
 gear, which opens B19. `Esc` closes whatever is open: the drawer, the states showcase, the
@@ -266,7 +270,8 @@ looking at it (DESIGN.md §12).
 | Drawer identifier | the detail drawer's head shows the card's **whole** id — no slice, no width limit — while the cards and the list rows keep eight characters plus an ellipsis (R12) |
 | Status filter | the bar's Status control holds any subset of the seven first-class statuses at once (OR inside the field), and every Active-agents name routes to the list view with `in_progress,in_review` preset (R11) |
 | Themes | three states cycled from the footer — **Light** (default) → **Dark** → **Auto** (follows `prefers-color-scheme`, CSS-only) → Light; no-record default is Light, not the system preference |
-| Language | English (default) + Chinese via the language dropdown — 224 key pairs, mirrored |
+| Language | English (default) + Chinese via the language dropdown — 274 key pairs, mirrored |
+| Activity | the sidebar's third destination opens a real view (R12x): 17 rows over 4 day groups, one folded burst, an unread boundary that reads the same number as the sidebar pill, three narrowing controls, `Load older`, and two empty states — all of it static markup |
 | List columns | six labelled columns — ID · Title · Status · Assignee · Priority · Revision — with the header sharing the row's grid template; the middle three hide at ≤759px (R8) |
 | Access model | B19 access & token panel: binds `0.0.0.0`, CIDR whitelist, token required from outside localhost; no user / account / sign-in element anywhere |
 | Footer | one row of three equal thirds at ≥1024px, three stacked full-width rows at ≤1023px (R7, revised) — theme · language · settings — a three-state theme cycle, a dropdown and an icon-only button |
@@ -333,6 +338,25 @@ two paths, and the drawer root's `data-identifier` — the only thing identity i
 is unchanged. Zero new hooks, zero new i18n keys, zero new tokens; the rebuilt `tw.css` gains
 exactly one class selector. `design/fidelity-r12.md` is the contract; `DESIGN.md` §28 and
 `BLOCKS.md` B07/B08/B09 carry the prose.
+
+**R12x — the Activity view moves into the board.** One request from Terry: the sidebar's
+Activity should open the view the previous round designed, instead of answering with a
+toast. The view itself is unchanged and its own page stays (`design/activity/`, still 132
+assertions green); what this round does is put it *in* `index.html` — `[data-activity-view]`
+as the third child of `main.td-main`, spliced **verbatim** from that page's own section,
+its styles moved into `src/input.css`, and its copy read from `MESSAGES` rather than from a
+second catalogue. `setView()` takes four values, every `[data-nav-item]` routes through it,
+and the branch that answered `activity` and `waiting` with a revision toast is gone — which
+is the round's whole point: two of the sidebar's four names led nowhere. A row's open
+button lands on the board's own B09, not on the design page's stand-in. `DESIGN.md` §29 is
+the prose and `BLOCKS.md` B26 the block. Two costs are named rather than discovered:
+`test/web/`'s catalogue and hook mirrors are now behind by 50 names and 127 seats (the
+same mechanism R11 produced, owned by the implementing card), and `toast.activity` is now
+a dead key, left in place because deleting it is a change to a mirrored surface. The
+rebuilt `tw.css` gains 349 lines and loses none; one added class selector is not the
+round's own — `.absolute`, emitted because `data-activity-day-kind="absolute"` is a hook
+value the scanner reads. Three others (`.relative`, `.link`, `.steps`) were caught by the
+rebuild-and-review-the-diff rule above and reworded away.
 
 ---
 
@@ -578,8 +602,11 @@ assignee table in [BLOCKS.md](../BLOCKS.md#assignee-model).
   count; the drawer renders a sample of the thread rather than the whole count.
 - **The drawer's session block is read-only.** `Resume` is wired to a toast — the
   prototype has no transport to resume anything with, by design.
-- **The activity nav item** reports the current revision and task count instead of
-  opening a fifth surface, which the block inventory does not define.
+- **The activity view is a design integration, not the product's own feed.** R12x moved
+  `design/activity/` into the board, which is why the block inventory now carries B26; the
+  feed's numbers are still the design's sample and its clock is a fixed instant, not
+  `Date.now()`, so a capture is reproducible. The **Waiting on me** item routes (B03) but
+  opens nothing yet — its view (B27) is the next round's.
 - **The states gallery is a review surface, not a product screen.** It exists so every
   non-default state (loading, empty column, no results, error, three toast kinds) can
   be inspected and captured in one frame. It is opened from the sidebar footer and is

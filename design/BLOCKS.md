@@ -5,8 +5,9 @@ Tailwind class names are never part of the contract, and no anchor is positional
 
 Counts in the current build, measured in the live DOM: **7 columns · 18 cards ·
 18 detail templates** (`[data-slot]`: 18 description · 18 activity · 16 comments ·
-15 agent-session · 11 attachments · 9 relations) · **252 `data-i18n*` hooks** in the
-shipped document · **198 catalogue keys, `en` and `zh` in exact parity.**
+15 agent-session · 11 attachments · 9 relations) · **605 `data-i18n*` hooks** in the
+shipped document (512 `data-i18n` plus 93 `placeholder` / `aria-label` / `title`
+variants) · **274 catalogue keys, `en` and `zh` in exact parity.**
 
 **"35 blocks" means 35 *contract entries*, not 35 DOM blocks.** The DOM block
 inventory is **B01–B25** (25 entries; B20/B21 are retired and kept only as
@@ -82,7 +83,7 @@ label selector opens (one of the two is open at a time).
 | | |
 |---|---|
 | Root | `aside[data-sidebar]` |
-| Nav | `[data-nav]` → `[data-nav-item="board" \| "list" \| "activity"]` (`aria-current="page"`) |
+| Nav | `[data-nav]` → `[data-nav-item="board" \| "list" \| "activity" \| "waiting"]` (`aria-current="page"`, exactly one at a time, and the scope is `[data-nav]` — the project rows below carry the same attribute for the current project) |
 | Projects | `[data-project-list]` → `[data-project="…"]` (`aria-current="page"`) → `.td-side-icon` (prefix monogram, rail only) + `[data-project-count]`; each item carries `[data-order-score]` + `[data-order-rank]` (see below) |
 | Agents | `[data-agents-presence]` → **one row per platform**: `[data-agent-platform="claude\|openclaw\|codex\|pi"]` + `[data-presence="running\|idle"]`; each name in the row is a `[data-agent-assignee]` **button** (R11 — see below) |
 | States preview | `[data-states-open]` — sidebar footer control, opens **B18** |
@@ -101,6 +102,20 @@ replaced — no shell, no border, no padding — with the pointer and a hover un
 only affordance; `Enter`/`Space` and the `:focus-visible` ring come from it being a real
 `<button>`. In the ≤1023px rail the whole `.td-agent-text` span is hidden, so the buttons go
 with it.
+
+**R12x ① — all four destinations route, and the count rides the one that has one.** Until
+this round the nav's click handler answered `activity` and `waiting` with a revision toast
+and switched no view, so two of the four names led nowhere — the defect Terry's 2026-10-13
+request names. The handler now hands **every** `[data-nav-item]` to `setView()`, which
+toggles four view roots and writes `aria-current="page"` on the pressed one and nowhere else.
+`[data-nav-item="activity"]` also carries **`[data-nav-count="activity"]`**, the unread
+count in B03's existing `.badge.td-count` shell: the number is the feed's current visible
+unread rows, so the pill, the feed's boundary and the boundary's own count read one value,
+and at zero the pill goes away — the rule the `waiting` pill already follows. The top bar's
+`[data-view-toggle] [data-view]` stays exactly `board | list` and is untouched: the two are
+different controls, and only the sidebar's is a four-way destination list. The fourth view
+(`waiting`, B27) is the next sibling to land; `setView()` already routes to it, so that round
+adds a root and no routing.
 
 The three cells were **one row of three equal thirds** from v1.3 to R6; R7 (2026-10-12)
 stacked them at every width, and the same evening's revision put the row back above the
@@ -875,6 +890,70 @@ unused labels is a **backend** concern (DESIGN.md §22.4) and has no UI here.
 
 ---
 
+## B26 · Activity view (R12x)
+
+The sidebar's third destination, and the view it opens. Terry's 2026-10-13 request: the
+`Activity` nav item was a **stand-in** — a press reported the revision in a toast and no
+view existed — and the ask was to make the press enter the design `design/activity/`
+already carried. Authority: `design/activity/DESIGN-activity.md` (the design's own contract,
+§10 block list / §11 consistency items / §3 admission rules); narrative: DESIGN.md **§29**.
+The structure below is that design's, moved in **verbatim** — same hooks, same order, same
+copy. Its own page stays in the repository as the design source and as its own evidence.
+
+| | |
+|---|---|
+| Root | `[data-activity-view]` — third child of `main.td-main`, beside `[data-board-view]` and `[data-list]`; ships **`hidden`**, because the no-script default view is the board |
+| B26.1 header + controls | `[data-activity-title]` · `[data-activity-mark-read]` (the header's own title and subtitle carry `data-i18n` hooks only, no `data-activity-*` of their own) · `[data-activity-filters]` → `[data-activity-filter="actor" \| "event" \| "task"]` + `[data-activity-filter-reset]` + `[data-activity-filter-count]` (`aria-live="polite"`) |
+| B26.2 feed | `[data-activity-feed]` → `[data-activity-day]` → `[data-activity-row]` → `[data-activity-actor]` / `[data-activity-sentence]` / `[data-activity-task]` / `[data-activity-at]` / `[data-activity-detail]` |
+| B26.3 unread boundary | `[data-activity-unread-divider]` + `[data-activity-unread-count]`; the same press that clears it is `[data-activity-mark-read]` |
+| B26.4 burst | `[data-activity-burst]` + `[data-activity-burst-count]` (`×N`) + one `[data-activity-burst-item]` per folded event |
+| B26.5 empty states | `[data-activity-empty][data-activity-empty-kind="project" \| "filter"]`; the filter one holds `[data-activity-empty-reset]`. Both ship `hidden` |
+| B26.6 Load older | `[data-activity-more]` — unfolds the next `[data-activity-day][data-activity-page]`, then retires |
+
+**The feed is static markup, not a render.** 17 rows across 4 day groups, each row's
+identifier, stamp and native `<details>` present in the document — 0 `<template>` inside the
+view. With the script off the view is complete and merely `hidden`; the script is what
+narrows, folds and counts. This is the property R-5 states and the check measures twice:
+once against the source, once in a context with JavaScript disabled.
+
+**One dictionary.** The view's copy lives in `app.js`'s `MESSAGES` like every other
+surface's — `design/activity/prototype.html`'s page-local catalogue is **not** carried over
+(R-3). 50 names are new to the catalogue (49 `activity.*` plus `time.minutesAgo`); the ones
+the document already held — `nav.*`, `status.*`, `drawer.*`, `time.hoursAgo`/`time.daysAgo`
+— are reused and not redefined. `activity.created` / `claimed` / `commented` stay as they
+were: they serve B09's own stream and read as whole sentences.
+
+**A row opens B09.** `[data-activity-line]` is the pointer affordance and
+`[data-activity-open]` its keyboard twin, and both land on the board's own detail surface
+for the task the row names — found by the internal id the row's own link carries, or by the
+identifier when that id is not on this board. The `[data-activity-task]` anchor stays a real
+link for a reader without the script; with it, the press returns to the board view and lands
+on the same task. Neither path is B26's own shell — the design's `design/activity/` page
+carries a stand-in drawer, and that stand-in is deliberately not what the board gets.
+
+**Zero new hues.** The view's rules moved from the design page's scoped `<style>` block into
+`src/input.css` (R-7). They declare no custom property of their own and carry no colour
+literal, and every `var(--…)` they read already resolves in `tw.css` — three properties the
+check reads off the moved block rather than off this prose.
+
+**Auxiliary hooks** (implementation detail, not part of the block contract), the full
+`data-activity-*` set the document carries — 35 names, no more:
+`[data-activity-view]` · `[data-activity-title]` · `[data-activity-mark-read]` ·
+`[data-activity-filters]` · `[data-activity-filter]` · `[data-activity-filter-reset]` ·
+`[data-activity-filter-count]` · `[data-activity-feed]` · `[data-activity-day]` ·
+`[data-activity-day-label]` · `[data-activity-day-kind]` · `[data-activity-page]` ·
+`[data-activity-row]` · `[data-activity-line]` · `[data-activity-actor]` ·
+`[data-activity-sentence]` · `[data-activity-task]` · `[data-activity-task-id]` ·
+`[data-activity-task-title]` · `[data-activity-at]` · `[data-activity-open]` ·
+`[data-activity-detail]` · `[data-activity-change]` · `[data-activity-unread]` ·
+`[data-activity-unread-divider]` · `[data-activity-unread-count]` · `[data-activity-burst]` ·
+`[data-activity-burst-count]` · `[data-activity-burst-count-label]` ·
+`[data-activity-burst-item]` · `[data-activity-group]` ·
+`[data-activity-empty]` / `[data-activity-empty-kind]` / `[data-activity-empty-reset]` ·
+`[data-activity-more]`.
+
+---
+
 ## Floating controls — the light-dismiss rule (R9)
 
 Not a block: a rule two blocks share, so it sits here beside the other cross-cutting
@@ -952,6 +1031,8 @@ not declared — it is read off the cards' `data-reporter` at first pass, which 
 | `data-assignee-value` / `data-reporter-value` | the name a roster option carries, read by `comboAccept()` |
 | `data-label-value` / `data-detail-label-value` | the name a label option **and** a label chip carry (B25), in the create dialog and the drawer respectively; `[data-label-remove]` / `[data-detail-label-remove]` drops the chip |
 | `[data-combo-new]` | marks the generated row that offers a name the roster does not hold yet |
+| `[data-activity-*]` | **B26**'s own family — its 35 hooks are listed in that block's section rather than repeated here |
+| `[data-nav-count]` | on B03's `activity` nav item: the unread count, `hidden` at zero (R12x — see B03) |
 
 ---
 
@@ -969,10 +1050,20 @@ copy:
 | `data-i18n-title` | `title` |
 | `data-i18n-arg` | the `%s` value for any of the four above; it is resolved as a key first, so `column.add` + `status.todo` reads `Add task to To Do` / `在待办中新建任务` |
 
-The catalogue is the in-memory `MESSAGES` object at the top of `app.js` — **220 keys per
+The catalogue is the in-memory `MESSAGES` object at the top of `app.js` — **274 keys per
 language, mirrored 1:1** (verified by set equality, not by eye), never an external file.
 Copy `app.js` composes at runtime (toast sentences, list rows, card aria labels, the token
 mask) is keyed there too.
+
+**B26 brought 50 of those names in (R12x)** — 49 `activity.*` plus `time.minutesAgo` — and
+they are the only catalogue the activity view reads: `design/activity/prototype.html`'s
+page-local `<script type="application/json" data-activity-i18n>` carrier is **not** part of
+the board's document (R-3 — one mechanism per document, or the two drift page by page).
+Names the document already held (`nav.*`, `status.*`, `drawer.*`, `time.hoursAgo`,
+`time.daysAgo`) are reused rather than restated. The three B09 keys that look adjacent —
+`activity.created` / `activity.claimed` / `activity.commented` — keep their sentences: they
+serve the drawer's own stream, and the feed reads its verbs from the new `activity.verb.*`
+family instead.
 
 Every string the v1.4 footer introduces is in that catalogue:
 

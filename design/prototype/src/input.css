@@ -3597,4 +3597,401 @@ html[data-theme="dark"] .modal-box {
   input[type="text"]::-webkit-search-cancel-button {
     display: none;
   }
+  /* R12x · B26 — the Activity view's own rules, moved in from the design page
+     (`design/activity/prototype.html`) so the shipped board and the design page
+     paint the view from one sheet instead of two. Every value is an existing token:
+     no new hue, no new radius, no new duration — the token set is byte-identical
+     before and after, and each `var(--…)` below already resolves in `tw.css`.
+
+     `.td-activity-*` is this view's family; B09's drawer stream owns the shorter
+     `.td-activity` / `.td-activity-ts` names and is untouched by this round. */
+  .td-activity-view {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    gap: 12px;
+    min-height: 0;
+  }
+
+  /* --- B26.1 header + filters ------------------------------------- */
+  .td-activity-head {
+    display: flex;
+    flex: none;
+    align-items: flex-end;
+    gap: 12px;
+    min-width: 0;
+  }
+  .td-activity-head-text {
+    min-width: 0;
+  }
+  .td-activity-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--color-td-ink);
+  }
+  .td-activity-sub {
+    margin: 2px 0 0;
+    font-size: 12px;
+    color: var(--color-td-ink-3);
+  }
+  .td-activity-head-actions {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+
+  /* --- B26.2 feed -------------------------------------------------- */
+  .td-activity-feed {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    background-color: var(--color-td-surface);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-md);
+  }
+  .td-activity-day {
+    flex: none;
+  }
+  .td-activity-day-label {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    margin: 0;
+    padding: 5px 10px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-td-ink-3);
+    background-color: var(--color-td-sunken);
+    border-bottom: 1px solid var(--color-td-line);
+  }
+  .td-activity-rows {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .td-activity-row {
+    position: relative;
+    border-top: 1px solid var(--color-td-line);
+  }
+  .td-activity-row[hidden] {
+    display: none;
+  }
+  .td-activity-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 30px;
+    padding: 0 10px;
+    cursor: pointer;
+  }
+  .td-activity-line:hover {
+    background-color: var(--color-td-hover);
+  }
+  .td-activity-tick {
+    flex: none;
+    width: 2px;
+    height: 14px;
+    background-color: var(--color-td-ink-4);
+    border-radius: var(--r-full);
+  }
+  .td-activity-row[data-activity-unread] .td-activity-tick {
+    background-color: var(--color-td-accent);
+  }
+  /* A burst row is deliberately lighter than the events it folds: the
+     rail drops to the hairline colour and the count carries the weight. */
+  .td-activity-row[data-activity-burst] .td-activity-tick {
+    background-color: var(--color-td-line-strong);
+  }
+  .td-activity-actor {
+    flex: none;
+    width: 76px;
+    overflow: hidden;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-td-ink);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .td-activity-actor[data-assignee-kind="agent"] {
+    color: var(--color-td-ink-2);
+  }
+  .td-activity-sentence {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--color-td-ink-2);
+    white-space: nowrap;
+  }
+  .td-activity-transition {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--color-td-ink-2);
+  }
+  .td-activity-transition .td-status-dot {
+    width: 6px;
+    height: 6px;
+  }
+  .td-activity-task {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    color: inherit;
+    text-decoration: none;
+  }
+  .td-activity-task-id {
+    flex: none;
+    font-size: 11px;
+    color: var(--color-td-ink-3);
+  }
+  .td-activity-task:hover .td-activity-task-id {
+    color: var(--color-td-accent);
+    text-decoration: underline;
+  }
+  /* The baseline one-line clamp — the same treatment C4 gives a card
+     title. Deliberately NOT `text-overflow: ellipsis`. */
+  .td-activity-task-title {
+    display: -webkit-box;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 12px;
+    color: var(--color-td-ink);
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+  .td-activity-at {
+    flex: none;
+    width: 56px;
+    font-size: 11px;
+    color: var(--color-td-ink-3);
+    text-align: right;
+  }
+  .td-activity-open {
+    flex: none;
+    width: 24px;
+    height: 24px;
+  }
+
+  /* --- B26.4 burst ------------------------------------------------ */
+  .td-activity-burst-count {
+    flex: none;
+    min-width: 20px;
+    height: 18px;
+    padding: 0 5px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-td-ink-2);
+    background-color: var(--color-td-sunken);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-full);
+  }
+
+  /* --- B26.2 L3 detail (native <details>, usable with JS off) ------
+     The disclosure is a native <details> and its <summary> is one more
+     item on the 30px line, so a *collapsed* row costs exactly 30px —
+     the density target of §7, which a second line under every row
+     would halve. Its body is positioned against the row, so opening it
+     never reflows the feed: the change list is a panel attached to the
+     row that opened it, not a second line inside every row. */
+  .td-activity-detail {
+    flex: none;
+  }
+  .td-activity-detail > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 11px;
+    color: var(--color-td-ink-3);
+    white-space: nowrap;
+    cursor: pointer;
+    list-style: none;
+  }
+  .td-activity-detail > summary::-webkit-details-marker {
+    display: none;
+  }
+  .td-activity-detail > summary::before {
+    content: "▸";
+    font-size: 9px;
+  }
+  .td-activity-detail[open] > summary::before {
+    content: "▾";
+  }
+  .td-activity-detail > summary:hover {
+    color: var(--color-td-ink);
+  }
+  .td-activity-changes {
+    position: absolute;
+    top: 100%;
+    right: 10px;
+    left: 104px;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin: 0;
+    padding: 6px 10px;
+    list-style: none;
+    font-size: 11px;
+    color: var(--color-td-ink-2);
+    background-color: var(--color-td-surface);
+    border: 1px solid var(--color-td-line-strong);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-pop);
+  }
+  /* Chromium keeps a closed <details>' content in the layout tree, so
+     the panel is taken out of layout explicitly instead of being left
+     to the UA — otherwise a collapsed row still contributes the panel's
+     box to the page's geometry. */
+  .td-activity-detail:not([open]) > .td-activity-changes {
+    display: none;
+  }
+  .td-activity-change {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .td-activity-change-field {
+    flex: none;
+    width: 72px;
+    color: var(--color-td-ink-3);
+  }
+  .td-activity-change-value {
+    min-width: 0;
+  }
+
+  /* --- B26.3 unread divider --------------------------------------- */
+  .td-activity-unread-divider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 10px;
+    background-color: var(--color-td-accent-soft);
+  }
+  .td-activity-unread-divider[hidden] {
+    display: none;
+  }
+  .td-activity-unread-rule {
+    flex: 1 1 auto;
+    height: 1px;
+    background-color: var(--color-td-accent);
+    opacity: 0.45;
+  }
+  .td-activity-unread-text {
+    flex: none;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--color-td-accent);
+  }
+  /* The divider's own pill, not `.td-count`: `.td-count` is taken out of
+     the flow at ≤1023px for the sake of the 64px sidebar rail, and this
+     one lives in the main area where there is room for it. */
+  .td-activity-unread-count {
+    flex: none;
+    min-width: 20px;
+    height: 18px;
+    padding: 0 5px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-td-accent);
+    background-color: var(--color-td-surface);
+    border: 1px solid var(--color-td-line);
+    border-radius: var(--r-full);
+  }
+
+  /* --- B26.5 / B26.6 --------------------------------------------- */
+  /* `margin: auto` centres the block in the feed when it is the only
+     thing left standing — a 12-line explanation pinned to the top of a
+     600px empty card reads as a rendering failure, not as an answer. */
+  .td-activity-empty {
+    flex: none;
+    margin: auto 12px;
+  }
+  .td-activity-empty[hidden] {
+    display: none;
+  }
+  .td-activity-foot {
+    display: flex;
+    flex: none;
+    justify-content: center;
+  }
+  .td-activity-foot[hidden] {
+    display: none;
+  }
+  .td-activity-day[hidden] {
+    display: none;
+  }
+
+  /* The unread pill rides on B03's existing `.badge`/`.td-count`, whose
+     `display` would otherwise out-rank the `hidden` attribute. Zero
+     hides the pill; the rule `waiting` already follows. */
+  [data-nav-count][hidden] {
+    display: none;
+  }
+
+  /* --- narrow band -------------------------------------------------
+     Six fields on one 30px line need roughly 560px of track. Below
+     761px the line keeps its fields and stacks the task onto a second
+     line instead of truncating the title to nothing — the one place
+     this design trades the 30px rhythm for legibility. */
+  @media (max-width: 760px) {
+    .td-activity-line {
+      height: auto;
+      min-height: 30px;
+      flex-wrap: wrap;
+      padding: 6px 10px;
+      row-gap: 2px;
+    }
+    .td-activity-actor {
+      order: 1;
+      width: auto;
+    }
+    .td-activity-tick {
+      order: 0;
+    }
+    .td-activity-sentence {
+      order: 2;
+    }
+    .td-activity-burst-count {
+      order: 3;
+    }
+    .td-activity-at {
+      order: 3;
+      width: auto;
+      margin-left: auto;
+    }
+    .td-activity-open {
+      order: 4;
+    }
+    .td-activity-detail {
+      order: 5;
+    }
+    .td-activity-task {
+      order: 6;
+      flex-basis: 100%;
+      padding-left: 10px;
+    }
+    .td-activity-changes {
+      left: 18px;
+    }
+    .td-activity-change-field {
+      width: 56px;
+    }
+  }
 }
