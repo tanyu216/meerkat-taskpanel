@@ -41,6 +41,8 @@
  *   .td-access-cell / the sidebar footer's three cells (R6 ⑦⑧), and the
  *   .td-caret /      rail's two overrides.
  *   .td-side-text
+ *   .td-nav          the sidebar's two row containers — a column flex with the
+ *                    design's 2px row rhythm (M2c ⑥).
  *   .td-access-panel the settings modal's centred geometry (R6 ③, ruling F1).
  *   .td-pri          the priority read-out's colour + face — the same
  *                    `var(--pri-color)` map, shared by the card and the list.
@@ -103,6 +105,14 @@ body {
   margin: 0;
   background: var(--brand-bg);
   color: var(--brand-text);
+  /* M2c ① — the prototype's base type. The design states it on `body`, not on
+     `html` (`design/prototype/src/input.css`, the `@layer base` block): 14px is
+     the size the whole board inherits, and *rem* stays anchored to the 16px root
+     so every rem-based utility (`--spacing`, `text-sm`, the daisyUI faces) keeps
+     the value the prototype computes with. Moving it to `html` would scale the
+     entire 4px grid by 0.875 and break the geometry it is meant to fix. */
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 /* C04 · the identifier/metric face. The declaration is literal on purpose. */
@@ -133,6 +143,17 @@ body {
    glyphs vanished). */
 svg[data-theme-icon][hidden],
 svg[data-token-icon][hidden] { display: none; }
+
+/* B03 · the sidebar's two row lists (nav, projects) are the prototype's `.td-nav`
+   box, verbatim: a column flex with a 2px row rhythm. It is a rule and not three
+   utilities because it is also the reason each row reports the prototype's
+   `min-width: auto` — as a *block* child a button resolves `auto` to `0px`,
+   which is the whole M2c ⑥ divergence; as a flex item it stays `auto`. */
+.td-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 
 /* --------------------------------------------------- segmented view toggle */
 
@@ -237,23 +258,32 @@ svg[data-token-icon][hidden] { display: none; }
 /* ------------------------------------------------------------------ shell */
 
 /* The three named areas are the shell's whole contract; daisyUI has no app-shell
-   component and Tailwind has no utility for `grid-template-areas`. */
+   component and Tailwind has no utility for `grid-template-areas`.
+
+   M2c ① — the top bar's track is the design's `--shell-topbar` (56px), not
+   `auto`. `auto` sized the row from whatever the bar's content happened to be
+   (49px at ≥780), which is the `topbar 高度 49 vs 56` the card's item ① names;
+   the bar's own padding is a separate value and could never reach 56 on its own.
+   The band that lets the bar fold (≤779) restores `auto` below, exactly as the
+   prototype's 760–779 rule does. */
 .td-shell {
   display: grid;
   grid-template-areas:
     "topbar topbar"
     "sidebar main";
   grid-template-columns: auto minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: 56px minmax(0, 1fr);
   height: 100dvh;
   overflow: hidden;
 }
+/* M2c ① — the sidebar's box is the design's `16px 12px`, stated with the 4px
+   grid's two tokens rather than one uniform 12px. */
 .td-sidebar {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
   width: 248px;
-  padding: var(--space-3);
+  padding: var(--space-4) var(--space-3);
   overflow-y: auto;
   border-right: var(--border) solid var(--brand-border);
   background: var(--brand-sunken);
@@ -698,6 +728,9 @@ svg[data-token-icon][hidden] { display: none; }
    for exactly this), so ≥780px it stays one row with the search shrinking as the
    prototype's does. */
 @media (max-width: 779px) {
+  /* The folded bar is taller than the 56px track, so the shell lets its first
+     row grow in exactly this band — the prototype's own 760–779 rule. */
+  .td-shell { grid-template-rows: auto minmax(0, 1fr); }
   [data-topbar] { flex-wrap: wrap; height: auto; }
 }
 /* ≤759px — the bar folds into glyphs: search takes a full row of its own
