@@ -16,6 +16,7 @@
 import { computed, ref, watch } from "vue";
 
 import { board, addComment, closeDetail, labelRoster, platformOf, priorityOf, reporterRoster } from "../../stores/board.js";
+import { identifierText } from "../../lib/identifier.js";
 import { renderMarkdown } from "../../lib/markdown.js";
 import { activityLine, relativeTime } from "../../lib/activity.js";
 import { attachmentRows } from "../../lib/attachments.js";
@@ -125,11 +126,16 @@ function copyId() {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-50 bg-neutral opacity-32" data-detail-overlay :data-state="board.drawerState" :hidden="!open" @click="closeDetail"></div>
+  <!-- R8 ① — the veil is the shared scrim token, not its own alpha: the create
+       dialogs wear it too, so every veil in the app deepens together in the dark
+       (`design/fidelity-r8.md` §2.1). Its **light** appearance is byte-identical
+       to what `bg-neutral` + `opacity-32` composited to. -->
+  <div class="fixed inset-0 z-50 bg-(--brand-scrim)" data-detail-overlay :data-state="board.drawerState" :hidden="!open" @click="closeDetail"></div>
 
   <aside
     class="td-drawer"
     data-detail-drawer
+    :data-identifier="identifier"
     :data-state="board.drawerState"
     :hidden="!open"
     :aria-hidden="open ? 'false' : 'true'"
@@ -143,7 +149,12 @@ function copyId() {
            top row, level with the identifier, and behind an `svg.td-icon` ✕
            rather than a text glyph. -->
       <div class="flex items-center gap-2">
-        <span class="td-mono" data-detail-identifier>{{ identifier }}</span>
+        <!-- R8 ③ — the text is capped, the `title` and the drawer root's
+             `data-identifier` carry the full value. The root's attribute is the
+             one thing that may be read back to resolve the task: the rendered
+             text is a display value, and a nine-character id would not survive a
+             round trip through it. -->
+        <span class="td-mono td-id" data-detail-identifier :title="identifier">{{ identifierText(identifier) }}</span>
         <!-- The status chip is a dot **and** a word (B09/§2.4: colour is never
              the only signal). daisyUI's `badge-sm` owns the box, `td-chip` the
              brand's metrics, `td-chip-status` the 6px dot. -->

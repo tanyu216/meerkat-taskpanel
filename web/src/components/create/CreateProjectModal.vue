@@ -34,14 +34,17 @@ async function submit() {
 
 <template>
   <div
-    class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-6 bg-neutral/32"
+    class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-6 bg-(--brand-scrim)"
     data-create-project
     :hidden="!createProjectOpen"
     role="dialog"
     aria-modal="true"
     :aria-label="$t('createProject.title')"
   >
-    <div class="w-[min(480px,100%)] border border-(--brand-border) rounded-lg bg-(--brand-surface) [box-shadow:var(--shadow-pop)]">
+    <!-- R8 ① — same scrim token, same panel hook and same dark edge as the
+         create-task dialog: B11 shares B10's geometry, so it shares its
+         separation devices (see `CreateTaskModal.vue` and `app.css`). -->
+    <div class="w-[min(480px,100%)] border border-(--brand-border) rounded-lg bg-(--brand-surface) [box-shadow:var(--shadow-pop)]" data-create-project-panel>
       <form data-create-project-form @submit.prevent="submit">
         <header class="flex items-center justify-between px-4 py-3 border-b border-b-(--brand-border)">
           <h2 data-i18n="createProject.title">{{ $t("createProject.title") }}</h2>

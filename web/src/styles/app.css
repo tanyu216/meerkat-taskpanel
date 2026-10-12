@@ -34,6 +34,9 @@
  *                    the accent pair is declared here rather than borrowed.
  *   .td-chip         the status chip's measured face (R6 ⑥) — `badge-sm`
  *                    owns the box, this states the brand's metrics on top.
+ *   .td-id           the identifier's single-line guard (R8 ③) — the cap itself
+ *                    is a character slice in the render layer, which is why this
+ *                    is a `max-width` fallback and not the mechanism.
  *   .td-list-group / the list view's group shell, head row and grid (R6 ⑤);
  *   .td-list-head /  named after the prototype's own classes so the two sides
  *   .td-list-row     stay comparable, and the column template is one
@@ -120,6 +123,23 @@ body {
 .td-mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+}
+
+/* R8 ③ — the identifier's single-line guard, worn wherever an identifier is
+   rendered (the list's rows, the cards, the drawer's head). It is **not** the
+   cap: the cap is a character slice in the render layer
+   (`web/src/lib/identifier.js`), because `max-width` is a *width* — it depends on
+   the face's advance width and its letter-spacing, so `9ch` cannot promise
+   "eight characters" (measured in the prototype it resolves to 65.02px). This
+   class is the belt to that braces: whatever the string, it never wraps and never
+   spills out of its track. */
+.td-id {
+  display: inline-block;
+  max-width: 9ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
 }
 
 /* Line icons — the topbar's compact controls and the sidebar rail. One shape,
@@ -471,31 +491,50 @@ svg[data-token-icon][hidden] { display: none; }
   border-radius: var(--radius-box);
   overflow: hidden;
 }
+/* R8 ② — the head and the rows share **one** column template. The template (the
+   track list, the `gap` and the inline padding) is the row's contract, so it is
+   declared once for both and never restated: the head used to be a `flex` box
+   holding a single label while the rows were a six-track grid, which is why only
+   the identifier had a heading and none of the widths matched a column. Writing
+   the tracks in a second declaration is the defect even when the numbers agree
+   (`design/fidelity-r8.md` §9 R2), so a reader comparing the two elements is
+   comparing one rule. */
+.td-list-head,
+.td-list-row {
+  grid-template-columns: 74px minmax(0, 1fr) 108px 132px 96px 72px;
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+}
 .td-list-row {
   display: grid;
-  grid-template-columns: 74px minmax(0, 1fr) 108px 132px 96px 72px;
   align-items: center;
-  gap: var(--space-3);
   min-height: 40px;
-  padding: 0 var(--space-3);
   border-top: 1px solid var(--brand-border);
   cursor: pointer;
   transition: background-color var(--dur-1) var(--ease-brand);
+  /* R8 ② — the row fills the group. The prototype's row is a `div` and stretches
+     on its own; the implementation's is a `button`, which is shrink-to-fit, so
+     its `1fr` track was resolved against the row's own ~736px content width
+     while the head's was resolved against the group's 1238px — the head and the
+     rows were on the *same* template declaration and still landed in different
+     places, which is exactly the "rows do not line up" half of Terry's finding.
+     Pinning the box is the one thing a `button` needs that a `div` does not. */
+  width: 100%;
 }
 .td-list-row:hover { background-color: var(--brand-hover); }
 /* The rule runs *between* rows, so the first one draws no top edge. */
 .td-list-row:first-child { border-top: 0; }
 /* Cells keep their natural width instead of stretching across the grid; the
    title is the one track that is asked to fill. */
-.td-list-row > * { justify-self: start; min-width: 0; }
+.td-list-row > *,
+.td-list-head > * { justify-self: start; min-width: 0; }
 .td-list-row > [data-list-title] { justify-self: stretch; }
 .td-list-row.is-skeleton { cursor: default; }
 .td-list-row.is-skeleton:hover { background-color: transparent; }
 .td-list-head {
-  display: flex;
+  display: grid;
   align-items: center;
   height: 32px;
-  padding: 0 var(--space-3);
   font-size: var(--text-11);
   font-weight: var(--weight-medium);
   letter-spacing: 0.06em;
@@ -503,6 +542,37 @@ svg[data-token-icon][hidden] { display: none; }
   color: var(--brand-text-3);
   background-color: var(--brand-sunken);
   border-bottom: 1px solid var(--brand-border);
+}
+/* R8 ② — the loading caption (B13) is a caption, not a column row: it keeps its
+   single span and spans the whole template. Inside the first track it would wrap
+   — the caption is 97px against a 74px track, which is the opposite of the
+   "visually unchanged" the design intends. A six-label head has no
+   `:only-child`, so this reaches the skeleton and nothing else. */
+.td-list-head > :only-child { grid-column: 1 / -1; }
+
+/* ------------------------------------------------------- dialog dark edge -- */
+
+/* R8 ① — in the dark the create dialogs' panel edge is the **strong** hairline.
+   `--brand-border` (`#1f262a`) sits on both the canvas (`#0f1417`) and the panel
+   surface (`#161b1e`), so the panel has no readable edge there; `-strong`
+   (`#313b41`) gives it one. The panel's *surface* is deliberately untouched —
+   this is the edge, not the face — and the light never reaches this rule, so
+   `--brand-border` still draws it there. Both dialogs share the geometry
+   (B11 rides B10's `.modal-box`), so both are named. Specificity is not the
+   load-bearing part: `app.css` is unlayered and Tailwind's utilities are not, so
+   this beats the `border-(--brand-border)` utility whoever is more specific. */
+html[data-theme="dark"] [data-create-task-panel],
+html[data-theme="dark"] [data-create-project-panel] {
+  border-color: var(--brand-border-strong);
+}
+
+/* The `auto` theme resolves to the dark palette by media query alone (F5), so the
+   rule is restated for it — the same twin the token layer carries. */
+@media (prefers-color-scheme: dark) {
+  html[data-theme="auto"] [data-create-task-panel],
+  html[data-theme="auto"] [data-create-project-panel] {
+    border-color: var(--brand-border-strong);
+  }
 }
 
 /* ----------------------------------------------------------------- drawer */
@@ -760,9 +830,14 @@ svg[data-token-icon][hidden] { display: none; }
   /* The list keeps the essentials: identity, title, revision. The three middle
      tracks are dropped rather than squeezed — six tracks need ~566px of room a
      phone-width pane does not have, and page-level horizontal overflow is
-     forbidden at every width (R6 ⑤, the prototype's own ≤759 rule). */
+     forbidden at every width (R6 ⑤, the prototype's own ≤759 rule). The head
+     narrows with the rows (R8 ②): a head that kept all six tracks here would put
+     its four trailing labels under the wrong columns — the defect the six-column
+     head exists to remove, one breakpoint down. */
+  .td-list-head,
   .td-list-row { grid-template-columns: 64px minmax(0, 1fr) 84px; }
-  .td-list-row > .td-hide-sm { display: none; }
+  .td-list-row > .td-hide-sm,
+  .td-list-head > .td-hide-sm { display: none; }
 }
 @media (max-width: 560px) {
   .td-sidebar { width: 56px; }

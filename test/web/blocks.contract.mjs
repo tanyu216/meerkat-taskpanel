@@ -889,6 +889,12 @@ const BLOCKS = [
       // (R3), so a check on it would be checking the serialisation.
       { kind: "computed", probe: "[data-card-title]", property: "webkitLineClamp", equals: "2" },
       { kind: "computed", probe: "[data-card-title]", property: "overflow", equals: "hidden" },
+      // R8 ③ — the card's identifier wears the single-line guard. The cap itself
+      // is a render-layer character slice (`web/src/lib/identifier.js`), so what
+      // is declarable here is the guard's class and its one-line behaviour; the
+      // text/title pair is a relation and is measured in `dom-smoke.mjs`.
+      { kind: "classes", probe: "[data-card-identifier]", includes: ["td-id"] },
+      { kind: "computed", probe: "[data-card-identifier]", property: "whiteSpace", equals: "nowrap" },
       { kind: "computed", probe: "[data-card-title]", property: "marginTop", equalsPx: 2 },
       { kind: "computed", probe: "[data-card-title]", property: "fontSize", equalsPx: 14 },
       // R6 ④ — the done/canceled title variants (the prototype states both).
@@ -973,6 +979,37 @@ const BLOCKS = [
       { kind: "computed", probe: ".td-list-head", property: "height", equalsPx: 32, when: "list view" },
       { kind: "computed", probe: ".td-list-head", property: "textTransform", equals: "uppercase", when: "list view" },
       { kind: "computed", probe: ".td-list-head", property: "backgroundColor", equalsVar: "--brand-sunken", when: "list view" },
+      // R8 ② — the head is the rows' template. It used to be a `flex` box with a
+      // single label while the rows were a six-track grid, so five columns had no
+      // heading and no width in the head could line up with a column. The head is
+      // now a grid on the rows' own tracks (same ends, same track count, same
+      // `gap`, same inline padding), and it names all six columns.
+      //
+      // Per the contract's own R8-1 correction, the template is never asserted as
+      // the literal `74px minmax(0, 1fr) …`: the computed form resolves `minmax`
+      // to pixels and moves with the viewport. The ends (74px / 72px), the track
+      // count and `gap`/`padding` are what is checkable — and they are the same
+      // three things the row's own rules above already pin, which is what makes
+      // the two sides comparable.
+      { kind: "computed", probe: ".td-list-head", property: "display", equals: "grid", when: "list view" },
+      { kind: "computed", probe: ".td-list-head", property: "gridTemplateColumns", startsWith: "74px", when: "list view" },
+      { kind: "computed", probe: ".td-list-head", property: "gridTemplateColumns", endsWith: "72px", when: "list view" },
+      { kind: "computed", probe: ".td-list-head", property: "gridTemplateColumns", tokens: 6, when: "list view" },
+      { kind: "computed", probe: ".td-list-head", property: "gap", equalsPx: 12, when: "list view" },
+      { kind: "computed", probe: ".td-list-head", property: "paddingLeft", equalsPx: 12, when: "list view" },
+      // A head per group — the resident skeleton group's and the data group's —
+      // and exactly three of the six labels carry the hide class the row cells
+      // carry, so the ≤759px rule reaches both sides of the same column.
+      { kind: "computed", probe: ".td-list-head", count: 2, when: "list view" },
+      { kind: "computed", probe: ".td-list-head .td-hide-sm", count: 3, when: "list view" },
+      // The head's *text* is never its i18n key (the failure a "render the key"
+      // regression would produce). Which key each of the six seats carries, in
+      // order, and the loading caption's single span, are relations a probe
+      // cannot index — `dom-smoke.mjs` reads them.
+      { kind: "text", probe: ".td-list-head", matches: "^(?!list\\.)\\S", when: "list view" },
+      // R8 ③ — the row's identifier wears the single-line guard too.
+      { kind: "classes", probe: "[data-list-identifier]", includes: ["td-id"], when: "list view" },
+      { kind: "computed", probe: "[data-list-identifier]", property: "whiteSpace", equals: "nowrap", when: "list view" },
       { kind: "computed", probe: "[data-list-row]", property: "display", equals: "grid", when: "list view" },
       { kind: "computed", probe: "[data-list-row]", property: "gridTemplateColumns", startsWith: "74px", when: "list view" },
       { kind: "computed", probe: "[data-list-row]", property: "gridTemplateColumns", endsWith: "72px", when: "list view" },
@@ -1071,6 +1108,17 @@ const BLOCKS = [
     rules: [
       { kind: "count", selector: "[data-detail-drawer]", equals: 1 },
       { kind: "count", selector: "[data-detail-overlay]", equals: 1 },
+      // R8 ③ — the drawer's identifier wears the same single-line guard as the
+      // card's and the list row's (the cap itself is the render-layer slice), and
+      // the drawer **root** carries the full identifier. The root's attribute is
+      // the only read-back of identity: the rendered text is a display value, so
+      // nothing may resolve a task from it (`design/fidelity-r8.md` §9 R5).
+      { kind: "classes", probe: "[data-detail-identifier]", includes: ["td-id"] },
+      { kind: "computed", probe: "[data-detail-identifier]", property: "whiteSpace", equals: "nowrap" },
+      // The root carries the attribute (the value it carries *is* the assertion,
+      // and a value is a relation — `dom-smoke.mjs` compares it against the head's
+      // `title` and against the card's own `data-identifier`).
+      { kind: "count", selector: "[data-detail-drawer][data-identifier]", equals: 1 },
       { kind: "domain", selector: "[data-detail-drawer]", attribute: "data-state", subset: DOMAINS.DRAWER_STATE },
       { kind: "domain", selector: "[data-slot]", attribute: "data-slot", subset: DOMAINS.SLOT },
       // R6 ⑥ — the head's status chip. The class set is the prototype's own, the
@@ -1214,6 +1262,13 @@ const BLOCKS = [
     states: [],
     rules: [
       { kind: "count", selector: "[data-create-task]", equals: 1 },
+      // R8 ① — the panel has a hook of its own. Until this round the only way to
+      // address it was a positional anchor (`[data-create-task] > div`), which the
+      // contract's selector grammar forbids, so the dialog's edge, elevation and
+      // surface could not be asserted at all (the contract's R8-3 correction).
+      // Its dark edge (`--brand-border-strong`) and its scrim are measured in
+      // `dom-smoke.mjs`, where the theme can actually be set.
+      { kind: "count", selector: "[data-create-task-panel]", equals: 1 },
       { kind: "count", selector: "[data-create-two-col]", equals: 1 },
       { kind: "count", selector: "[data-create-left]", equals: 1 },
       { kind: "count", selector: "[data-create-right]", equals: 1 },
@@ -1253,7 +1308,12 @@ const BLOCKS = [
       "[data-modal-close]",
     ],
     states: [],
-    rules: [{ kind: "count", selector: "[data-create-project]", equals: 1 }],
+    rules: [
+      { kind: "count", selector: "[data-create-project]", equals: 1 },
+      // R8 ① — B11 rides B10's panel geometry, so it rides its hook too: the dark
+      // edge rule in `app.css` names both panels, and the scrim token is shared.
+      { kind: "count", selector: "[data-create-project-panel]", equals: 1 },
+    ],
   },
 
   {

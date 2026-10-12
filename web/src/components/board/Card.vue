@@ -14,6 +14,7 @@
  */
 import { computed } from "vue";
 
+import { identifierText } from "../../lib/identifier.js";
 import { board, isAwaiting, platformOf, priorityOf, projectNameOf, stageOf } from "../../stores/board.js";
 import { openMoveMenu } from "../../stores/ui.js";
 
@@ -84,7 +85,15 @@ function onMenu(event) {
     <span class="td-card-stripe" data-card-stripe aria-hidden="true"></span>
 
     <div class="flex items-center gap-2">
-      <span class="td-mono text-[11px] text-(--brand-text-3)" data-card-identifier>{{ task.identifier }}</span>
+      <!-- R8 ③ — the same cap, the same function and the same pair of values as
+           the list's row and the drawer's head: the text is the display value,
+           `title` the full identifier, and the card root's `data-identifier`
+           (above) the full value lookups use. -->
+      <span
+        class="td-mono td-id text-[11px] text-(--brand-text-3)"
+        data-card-identifier
+        :title="task.identifier"
+      >{{ identifierText(task.identifier) }}</span>
       <!-- M1 · the attention badge. An overlay on the card, not a column
            transfer: it rides the reason code as an *attribute* and the unified
            label as its only text node, so the copy swaps with the language and

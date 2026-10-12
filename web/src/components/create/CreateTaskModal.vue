@@ -81,14 +81,19 @@ async function submit() {
 
 <template>
   <div
-    class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-6 bg-neutral/32"
+    class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-6 bg-(--brand-scrim)"
     data-create-task
     :hidden="!createTaskOpen"
     role="dialog"
     aria-modal="true"
     :aria-label="$t('createTask.title')"
   >
-    <div class="w-[min(960px,100%)] border border-(--brand-border) rounded-lg bg-(--brand-surface) [box-shadow:var(--shadow-pop)]">
+    <!-- R8 ① — the panel carries a hook of its own (`data-create-task-panel`),
+         so a machine check can address the edge, the shadow and the surface
+         without a positional anchor (`[data-create-task] > div` is a position,
+         which the contract's own selector grammar forbids). Its dark edge is the
+         strong hairline; see the `dialog dark edge` rule in `app.css`. -->
+    <div class="w-[min(960px,100%)] border border-(--brand-border) rounded-lg bg-(--brand-surface) [box-shadow:var(--shadow-pop)]" data-create-task-panel>
       <form data-create-task-form @submit.prevent="submit">
         <header class="flex items-center justify-between px-4 py-3 border-b border-b-(--brand-border)">
           <h2 data-i18n="createTask.title">{{ $t("createTask.title") }}</h2>
