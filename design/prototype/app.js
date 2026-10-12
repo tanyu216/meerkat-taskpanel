@@ -537,6 +537,9 @@
     lang: "en",
     moveIdentifier: null,
     searchTimer: null,
+    /* R9 ③ — the list view's load is timed rather than instant, so both of its
+       states are reachable from the interface and not only from a test hook. */
+    listTimer: null,
     /* Token panel state. Value and reveal flag live in memory for the lifetime
        of the page and are written back to nothing. */
     token: { value: "", revealed: false },
@@ -818,6 +821,19 @@
 
   /* -------------------------------------------------------- I7 · views ---- */
 
+  /* R9 ③ — the list holds one of two states and says which on this attribute.
+     `loading` shows the skeleton and an empty rows host; `data` is its mirror.
+     The two are written together so the attribute and the markup can never
+     disagree, and `src/input.css` reads the attribute to keep the states from
+     sharing the screen. The load is timed rather than instant, so both states
+     are reachable from the interface and not only from a test hook. */
+  var LIST_LOAD_MS = 450;
+
+  function setListState(next) {
+    $("[data-list]").attr("data-list-state", next);
+    $("[data-list] [data-skeleton]").prop("hidden", next !== "loading");
+  }
+
   function setView(view) {
     state.view = view;
 
@@ -843,7 +859,16 @@
       }
     });
 
-    if (view === "list") renderList();
+    /* R9 ③ — opening the list is a fetch: the skeleton holds the row heights
+       first and the rows replace it when the data lands. The delay is what makes
+       both states reachable from the interface, and it is the timeline the
+       original complaint described. Re-entering the view reloads; a filter pass
+       over rows already on screen does not (it calls `renderList` direct). */
+    window.clearTimeout(state.listTimer);
+    if (view === "list") {
+      setListState("loading");
+      state.listTimer = window.setTimeout(renderList, LIST_LOAD_MS);
+    }
   }
 
   /* List rows are derived from the cards that survived the current filters. */
@@ -892,6 +917,9 @@
         )
       );
     }
+
+    /* the rows are on screen, so the skeleton goes — and the attribute says so */
+    setListState("data");
   }
 
   /* ------------------------------------------------------- i18n · switch -- */
@@ -2342,6 +2370,9 @@
       if (event.key === "Escape" || event.key === "Esc") {
         closeMoveMenu();
         closeLangMenu();
+        /* R9 ① — the same hook decides who answers Escape: every dropdown that
+           took the light-dismiss rule closes on it too */
+        $("[data-dismiss-on-outside]").removeAttr("open");
         closeDetail();
         closeStates();
         closeAccess();
@@ -2463,6 +2494,27 @@
         closeLabelMenu();
       }
       if (!$(event.target).closest(".td-combo").length) closeCombos();
+    });
+
+    /* R9 ① — one rule for every floating control that has to give way when the
+       press lands somewhere else. Membership is the hook, not a class or a
+       list: the project switcher and the label selector carry it today, and a
+       third dropdown joins by carrying the attribute and nothing else.
+       `closest` is measured against the target, so a press on a control's own
+       `<summary>` or inside its menu counts as inside it and leaves it alone. */
+    $(document).on("click", function (event) {
+      if (!$(event.target).closest("[data-dismiss-on-outside]").length) {
+        $("[data-dismiss-on-outside][open]").removeAttr("open");
+      }
+    });
+
+    /* …and only one of them is open at a time. At dispatch time the `<details>`
+       has not toggled yet, so an already-open one is on its way *closed* and
+       must not take its sibling down with it. */
+    $(document).on("click", "[data-dismiss-on-outside] > summary", function () {
+      var $self = $(this).closest("[data-dismiss-on-outside]");
+      if ($self.attr("open") !== undefined) return;
+      $("[data-dismiss-on-outside][open]").not($self).removeAttr("open");
     });
 
     /* ------------------------------------ I13 · assignee / reporter ------ */

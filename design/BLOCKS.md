@@ -32,7 +32,7 @@ headings below.
 |---|---|
 | Root | `header[data-topbar]` |
 | Brand | `[data-brand]` → `.td-logo` (**Sentinel Watch**, `BRAND.md` §5) + `[data-i18n="app.brand"]` + `[data-i18n="app.tagline"]` |
-| Project switcher | `[data-project-switcher]` (`<details class="dropdown">`) · `[data-project-current]` · `[data-project-option="…"]` · `[data-project-new]` · `[data-project-switcher-icon]` |
+| Project switcher | `[data-project-switcher]` (`<details class="dropdown" data-dismiss-on-outside>`) · `[data-project-current]` · `[data-project-option="…"]` · `[data-project-new]` · `[data-project-switcher-icon]` |
 | Search | `[data-search]` → `[data-search-input]` |
 | Filters toggle | `[data-filter-toggle]` (`aria-pressed`, `aria-controls="td-filters"`) |
 | View toggle | `[data-view-toggle]` → `[data-view="board" \| "list"]` (`aria-pressed`) |
@@ -68,6 +68,14 @@ It is drawn inline at
 Two `<mask>` ids are needed because both inline marks share one document
 (`face-knockout-a-top`, `face-knockout-a-lg`).
 `favicon.svg` is the same geometry with a `prefers-color-scheme` pair.
+
+**R9 — the switcher gives way when the press lands elsewhere.** `[data-project-switcher]`
+carries `data-dismiss-on-outside`, the one hook that means "a press outside me closes me"
+(see *Floating controls* below). Before R9 it was a `<details class="dropdown">` with no
+outside-press rule at all: once opened it stayed open until its own `<summary>` was pressed
+again, and because its menu floats over the filters bar it also swallowed presses meant for
+the controls underneath. It now closes on a press anywhere else, on `Esc`, and when the
+label selector opens (one of the two is open at a time).
 
 ## B03 · Sidebar
 
@@ -175,7 +183,7 @@ project, so every row is filled at all times.
 |---|---|
 | Root | `section#td-filters[data-filters]` |
 | Controls | `[data-filter-assignee]` (all/me/human/agent) · `[data-filter-priority]` (all/urgent/high/medium/low/none) · `[data-filter-label]` (all + 16 labels) |
-| Label selector | `[data-filter-label]` on a `<details class="dropdown">`; the chosen value lives on `data-filter-label-value`, the trigger states it via `[data-filter-label-summary]`, and the menu holds `[data-filter-label-option]` × 17, each with `data-label-value` and `aria-current` on the chosen one |
+| Label selector | `[data-filter-label]` on a `<details class="dropdown" data-dismiss-on-outside>`; the chosen value lives on `data-filter-label-value`, the trigger states it via `[data-filter-label-summary]`, and the menu holds `[data-filter-label-option]` × 17, each with `data-label-value` and `aria-current` on the chosen one |
 | Actions | `[data-filter-clear]` · `[data-filter-count]` (`aria-live="polite"`) |
 
 **The label selector is a dropdown, not a `<select>`** (R3). Its hook name did not move:
@@ -183,6 +191,17 @@ project, so every row is filled at all times.
 an attribute rather than a form value, because the addendum names this control
 specifically — it is the one filter with seventeen choices and it has to show which one is
 in force without being opened.
+
+**R9 — it is one control family with the two selects beside it.** The trigger state
+`[data-filter-label-summary]` used to be a label chip (`badge td-chip td-chip-label`: a
+bordered, accent-tinted pill) sitting inside a 28px/500 shell. It is now **plain text at the
+`.td-select` metrics** — 30px tall (the same height as `[data-filter-assignee]` and
+`[data-filter-priority]`, so the three controls share one baseline and one shell), 12px/400
+in `--color-td-ink`, with the 14px caret parked at `right 6px` exactly where the selects'
+caret background-image sits. The `<details>` takes `data-dismiss-on-outside`, the same hook
+B02's switcher takes. The scoping is deliberate: `.td-chip-label` is untouched, so the
+label chips on cards, in the drawer and in the dialogs are still pills — only this one
+trigger renders its value flat.
 
 ## B05 · Board
 
@@ -227,7 +246,7 @@ value — so every lookup by attribute is unaffected. Same rule as B08 / B09.
 
 | | |
 |---|---|
-| Root | `section[data-list]` — mutually exclusive with `[data-board]` |
+| Root | `section[data-list][data-list-state="loading" \| "data"]` — mutually exclusive with `[data-board]` |
 | Hooks | `[data-list-rows]` (host) · `[data-list-row]` (`data-identifier`) |
 | Row parts | `[data-list-identifier]` · `[data-list-title]` · `[data-list-status]` → `[data-list-status-label]` · `[data-list-assignee]` (role handle) · `[data-list-priority]` → `[data-list-priority-label]` · `[data-list-revision]` |
 | Template | `template[data-list-row-template]` |
@@ -258,6 +277,14 @@ cannot be squeezed into the 74px first track.
 The row's `[data-list-identifier]` carries the R8 cap too: display = eight characters
 plus an ellipsis, `title` = the full id, and the row root's `data-identifier` = the
 full id.
+
+**R9 — the list is in one of two states, and says which.** `data-list-state` on the root is
+the single source of truth: `loading` shows B13's skeleton and an empty `[data-list-rows]`,
+`data` shows the rows and hides the skeleton. The two are never on screen together, and the
+rule is written on the attribute rather than swapped per element, so it holds for the markup
+as shipped as well as after the interaction layer has run. `data` is the resting state in
+the document (the skeleton ships `hidden`), and opening the view is a fetch: the skeleton
+holds the row heights first, the rows replace it when the data lands. See **B13**.
 
 ## B13 note — the loading header
 
@@ -361,8 +388,26 @@ the surface.
 
 ## B13 · Loading state
 
-`[data-skeleton]` — three shimmer rows at the top of the list view. (The showcase in
-B18 has its own `[data-loading-state]` demo.)
+| | |
+|---|---|
+| Root | `[data-skeleton]` — a `.td-list-group` holding the caption row plus three shimmer rows |
+| State | visible only while `[data-list]` reads `data-list-state="loading"`; `hidden` in the `data` state |
+| Caption | `[data-i18n="list.loading"]` (`Loading tasks` / `正在加载任务`) over a one-cell `.td-list-head` |
+
+**R9 ③ — the loading state and the data state are mutually exclusive.** `[data-list-rows]`
+and `[data-skeleton]` are the two halves: exactly one of them is in the flow at any moment
+(the rule is on `[data-list][data-list-state]`, so the states cannot share the screen even
+if one of them is written to the DOM first). Before R9 they were both visible at once — the
+skeleton was never taken down when `renderList()` filled the rows — which is the defect this
+round's ③ named.
+
+**Loading is a timeline here, not a still.** The prototype's list view enters `loading` when
+the view is opened and settles to `data` a beat later, so both states are reachable from the
+interface itself and a capture can catch either. A recapture of `06-list-view` must wait for
+the settle (the probe in `design/fidelity-r9.md` §6 waits 900ms).
+
+(The showcase in B18 has its own `[data-loading-state]` demo — a static, card-level copy
+that is not this state and carries no `[data-skeleton]`.)
 
 ## B14 · Toast region
 
@@ -619,6 +664,28 @@ unused labels is a **backend** concern (DESIGN.md §22.4) and has no UI here.
 
 ---
 
+## Floating controls — the light-dismiss rule (R9)
+
+Not a block: a rule two blocks share, so it sits here beside the other cross-cutting
+sections rather than inside either. One attribute, one handler, one Escape branch — a
+`<details class="dropdown">` that has to give way when the press lands somewhere else
+carries **`data-dismiss-on-outside`**; nothing else about it is special, so a third
+dropdown joins by carrying the attribute.
+
+| | |
+|---|---|
+| Hook | `[data-dismiss-on-outside]` — no class name is part of this rule |
+| Members | `[data-project-switcher]` (B02) · `[data-filter-label]` (B04) |
+| Outside press | a press whose target is not a descendant closes every member that is `[open]` |
+| `Esc` | closes every member that is `[open]`, alongside the drawer, the states showcase and the access panel |
+| Single open | opening a member closes the other; the two menus never overlap |
+| Untouched | the floating card menus (`[data-move-menu]`, `[data-card-menu]`), the language menu (B03), and the B22/B24/B25 roster menus keep their own dismiss rules — they float from a trigger that is not a `<details>`, so they are not members of this rule |
+
+`<summary>` is the trigger: a press on it is *inside* its own `<details>`, which is what
+keeps the toggle working while everything else closes.
+
+---
+
 ## Assignee model
 
 The board belongs to an AI-agent team, so the assignee pool is the six agent roles
@@ -658,7 +725,9 @@ not declared — it is read off the cards' `data-reporter` at first pass, which 
 | `template[data-toast-template]` / `template[data-list-row-template]` / `template[data-detail-for]` | inert markup sources for the interaction layer |
 | `[data-detail-slot-source]` | transient wrapper jQuery builds while copying a template into the drawer |
 | `[data-label="…"]` | one chip per card label |
-| `[data-filter-label-summary]` | the badge on the label dropdown's trigger, restated from `data-filter-label-value` |
+| `[data-filter-label-summary]` | the label dropdown's trigger text, restated from `data-filter-label-value`; rendered flat (R9 — see B04) |
+| `[data-dismiss-on-outside]` | on a `<details class="dropdown">`: a press outside it, or `Esc`, closes it (R9 — see *Floating controls*) |
+| `data-list-state` | on `[data-list]`: `loading` \| `data`, the list's two mutually exclusive states (R9 — see B08/B13) |
 | `[data-column-progress]` | the occupancy bar under each column head |
 | `[data-cidr-enabled]` | the allow-list section's on/off state, written by `[data-cidr-switch]` |
 | `data-assignee-value` / `data-reporter-value` | the name a roster option carries, read by `comboAccept()` |

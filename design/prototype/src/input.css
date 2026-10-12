@@ -1665,6 +1665,22 @@ html[data-theme="dark"] .modal-box {
     overflow: hidden;
   }
 
+  /* R9 ③ — the list is in one of two states, never both. `data-list-state` on
+     `[data-list]` is the single source of truth: the group the state does not
+     name is taken out of the flow, so a skeleton can never sit above live rows.
+     Written as a state rule rather than a per-element `hidden` swap because it
+     also holds with the script off, and because the counterpart of the *data*
+     group is the whole group — header included, which is where the second
+     "ID / Title / …" band would otherwise come from. */
+  [data-list][data-list-state="loading"] [data-list-rows],
+  [data-list][data-list-state="loading"] .td-list-group:not([data-skeleton]) {
+    display: none;
+  }
+
+  [data-list][data-list-state="data"] [data-skeleton] {
+    display: none;
+  }
+
   /* R8 ② — the header and the rows share one column template, so the header
      can never drift from the data it labels. */
   .td-list-head,
@@ -2620,18 +2636,48 @@ html[data-theme="dark"] .modal-box {
     color: var(--color-td-danger);
   }
 
-  /* --- R3 · label dropdown (daisyUI `dropdown` + `menu` + `badge`) ------ */
-  /* The trigger is a daisyUI `btn` carrying the chosen label as a `badge`, so
-     the filter bar still states its own state without being opened. */
+  /* --- R3 · label dropdown (daisyUI `dropdown` + `menu`) ---------------- */
+  /* R9 ② — the trigger wears the `.td-select` shell exactly: same 30px height
+     and min-height, same 12px/400 text, same ink, and the same 14px caret
+     parked at `right 6px`. The right padding is the room that caret sits in,
+     so the three controls in the bar read as one row of one component. */
   .td-label-trigger {
-    height: 28px;
-    padding: 0 8px;
+    position: relative;
+    height: 30px;
+    min-height: 30px;
+    padding: 0 26px 0 8px;
     gap: 6px;
-    font-weight: 500;
-    color: var(--color-td-ink-2);
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--color-td-ink);
     background-color: var(--color-td-surface);
     border: 1px solid var(--color-td-line);
     border-radius: var(--r-md);
+  }
+
+  /* the caret is the inline `<svg>` the markup already carries, positioned the
+     way `.td-select` positions its background-image */
+  .td-label-trigger > .td-icon-sm {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  /* R9 ② — the value reads as plain text inside the trigger, matching what a
+     `<select>` shows. Scoped to this one trigger on purpose: `.td-chip-label`
+     still draws every label chip on a card, in the drawer and in the dialogs,
+     and is not touched. */
+  .td-label-trigger [data-filter-label-summary] {
+    border: 0;
+    background-color: transparent;
+    padding: 0;
+    border-radius: 0;
+    height: auto;
+    min-height: 0;
+    font-size: 12px;
+    font-weight: 400;
+    color: inherit;
   }
 
   .td-label-trigger:hover {

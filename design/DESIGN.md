@@ -825,7 +825,7 @@ override only. The rule is the addendum's: use the component, keep the brand.
 | surface | daisyUI | where |
 |---|---|---|
 | view toggle (Board / List) | `tabs tabs-box` + `tab` | top bar, `.td-tabs` / `.td-tab` |
-| label filter | `dropdown` + `menu` + `badge` | filters bar, `.td-label-trigger` / `.td-label-menu` |
+| label filter | `dropdown` + `menu` (R9: the value is flat text, not a `badge`) | filters bar, `.td-label-trigger` / `.td-label-menu` |
 | assignee / priority filters | `select select-sm` | filters bar, `.td-select` |
 | create-dialog fields | `select select-sm` | Priority / Project / Status |
 | label chips, decision chips | `badge badge-sm` | cards, comments, drawer, list |
@@ -1437,3 +1437,86 @@ assertions pass, including every light-mode regression gate. The measured dark v
 40px` (elevation); the header's columns string equals the rows' at all three measured
 bands; and the nine-character sample renders `PROJ-000…` in all three identifier
 positions while `TD-128` renders untouched.
+
+---
+
+## 25. Review round R9 — one dismiss rule, one filter control, two list states
+
+Three findings filed by Terry against the live board on 2026-10-12 22:47. All three are
+interaction/rendering defects rather than new features, so this round adds **no block**:
+each one lands inside an existing entry (B02 · B04 · B08/B13). The executable contract is
+`design/fidelity-r9.md`; the block inventory carries the per-block changes.
+
+### 25.1 A press outside closes a floating control (items ① and ②①)
+
+The two `<details class="dropdown">` controls in the shell behaved differently from each
+other and from everything else on the page. The project switcher (B02) had no
+outside-press rule at all — `app.js` closed it only when one of its own options was
+chosen — so it stayed open until its `<summary>` was pressed again; because its menu
+floats over the filters bar, it also swallowed presses aimed at the controls beneath it.
+The label selector (B04) closed, but through a handler that named it by hook, so the rule
+was a property of that one element rather than of a kind.
+
+Both now carry **`data-dismiss-on-outside`**, and one document-level handler owns the
+behaviour: a press whose target is not a descendant of a member closes every member that
+is `[open]`, `Esc` closes them alongside the drawer and the two panels, and opening one
+member closes the other so the two menus can never overlap. Membership is the attribute
+and nothing else — no class name, no hook list — so a third dropdown joins by carrying it.
+The B22/B24/B25 roster menus and the floating card menus are deliberately **not** members:
+they float from a trigger that is not a `<details>`, and they keep their own dismiss rules.
+
+**Not a new pattern, a named one.** `<details>` already gives the open/closed state and the
+`<summary>` toggle for free; R9 only gives the state a second way out, and gives that exit
+a name the contract can point at.
+
+### 25.2 The label selector is one control family with the two selects (item ②②)
+
+The label filter's trigger read as a different kind of thing from `Assignee:` and
+`Priority:` beside it, and it was: a 28px shell holding a **label chip** — a bordered,
+accent-tinted, fully-rounded pill (`badge td-chip td-chip-label`) — where the selects are
+30px of plain 12px text with a caret.
+
+R9 flattens the value to text and matches the shell: 30px tall like the two selects (one
+baseline, one height), 12px/400 in `--color-td-ink`, and the same 14px caret parked at
+`right 6px`. The scoping is the point — the flattening is pinned to
+`.td-label-trigger [data-filter-label-summary]` and **`.td-chip-label` is untouched**, so
+the chips on cards, in the drawer and in the two dialogs are still pills. The `<details>`
+markup, the `[data-filter-label]` / `[data-filter-label-value]` / `[data-filter-label-summary]`
+/ `[data-filter-label-option]` hooks and the seventeen options are all unchanged.
+
+The design question behind it — whether to abandon the dropdown for a native `<select>` —
+was considered and rejected: the addendum names this control specifically (it is the one
+filter with seventeen choices, and it has to state its value without being opened), and a
+`<select>` cannot hold that shape. Recorded as an evaluated alternative, not a decision.
+
+### 25.3 The list is in one of two states (item ③)
+
+The list view rendered the loading skeleton **and** the data rows at the same time. The
+cause was a missing transition rather than a missing state: `renderList()` filled
+`[data-list-rows]` and never took `[data-skeleton]` down, so the document's static loading
+markup stayed on screen above the data it was supposed to hold the place for.
+
+`[data-list]` now carries **`data-list-state="loading" | "data"`**, the two halves are
+`[data-skeleton]` and `[data-list-rows]`, and the rule is written on the attribute:
+the group the state does not name is out of the flow. Writing it as a state rule rather
+than as a per-element `hidden` swap means the mutual exclusion survives the markup as
+shipped, not only once the script has run — and it takes the data group's column header
+with it, so the loading state is the caption and the shimmer rows and nothing else.
+
+`data` is the resting state (the skeleton ships `hidden`). Opening the view is a fetch:
+the prototype enters `loading` when the view is opened and settles to `data` a beat later,
+so both states are reachable from the interface itself — and so a recapture of the list
+frame has to wait for the settle, which `design/fidelity-r9.md` §6 states.
+
+### 25.4 Checked
+
+The selector-level assertions in `design/fidelity-r9.md` §5 are measured against the
+prototype in a real browser, before and after. Before: the switcher stayed open through a
+synthetic *and* a real outside press, two dropdowns were open at once, `Esc` closed
+neither, `.td-label-trigger` was 28px/500 against the selects' 30px/400, the trigger's
+value was a 999px pill, and `[data-skeleton]` and `[data-list-rows]` were both in the flow.
+After: every one of those reads the other way, the three filter controls measure 30px
+each, and `[data-skeleton]` and `[data-list-rows]` are mutually exclusive in both states
+(at rest and mid-load). Zero console errors, zero page errors. No token was added or
+changed: `.td-label-trigger` and the list states are expressed with the tokens that were
+already in force.
