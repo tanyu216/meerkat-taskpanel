@@ -11,8 +11,9 @@
  */
 import { computed } from "vue";
 
+import { dismissMemberFrom } from "../../lib/light-dismiss.js";
 import { board, selectProject } from "../../stores/board.js";
-import { createProjectOpen, createTaskOpen, dismissMemberFrom, filtersOpen, setView, toggleFilters, view } from "../../stores/ui.js";
+import { createProjectOpen, createTaskOpen, filtersOpen, setView, toggleFilters, view } from "../../stores/ui.js";
 
 const projects = computed(() => board.projects);
 const currentName = computed(() => board.projects.find((p) => p.id === board.currentProjectId)?.name ?? "—");

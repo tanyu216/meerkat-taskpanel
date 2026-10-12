@@ -11,6 +11,7 @@
  */
 import { onMounted, onUnmounted } from "vue";
 
+import { closeFloatingControls, installLightDismiss } from "./lib/light-dismiss.js";
 import { initBoard, reloadConflict, board, closeDetail } from "./stores/board.js";
 import { accessOpen, closeMoveMenu, createProjectOpen, createTaskOpen, moveMenu, view } from "./stores/ui.js";
 
@@ -27,47 +28,17 @@ import CreateProjectModal from "./components/create/CreateProjectModal.vue";
 import AccessPanel from "./components/review/AccessPanel.vue";
 
 /**
- * R9 ①/② — **one** light-dismiss rule for every floating control.
- *
- * Membership is the `data-dismiss-on-outside` **attribute** and nothing else: no
- * class name, no selector list, no per-control handler. The project switcher and
- * the label filter are today's two members (both `<details class="dropdown">`);
- * a third one joins the rule by carrying the attribute, with no code change here
- * (`design/fidelity-r9.md` §8 R1/R2).
- *
- * Two behaviours, both from the contract's §2.1:
- *
- *   * a click that lands **outside** every member closes all open members — the
- *     finding Terry filed: the switcher's floating panel used to stay up and
- *     swallow the next click;
- *   * a click on a **closed** member's own `<summary>` closes the *other*
- *     members first, so only one is ever open. The guard matters: at dispatch
- *     time the `<details>` has not toggled yet, so an already-open member is on
- *     its way *closed* and must be left alone (`.removeAttr("open")` on it would
- *     be a no-op, but treating it as the newcomer would take its siblings down
- *     for nothing).
+ * R9 ①/② — the light-dismiss rule lives in `lib/light-dismiss.js`; the shell only
+ * wires it into the lifecycle it already owns. The Escape branch **appends** to
+ * the one `keydown` binding rather than registering a second: the floating
+ * controls are the lightest layer, so they go down alongside whichever overlay is
+ * on top, exactly as the prototype's own Escape arm does
+ * (`design/prototype/app.js`: clear every member, then close the
+ * detail / states / access surfaces).
  */
-function closeMembers(keep) {
-  for (const el of document.querySelectorAll("[data-dismiss-on-outside][open]")) {
-    if (el !== keep) el.removeAttribute("open");
-  }
-}
-
-function onDocumentClick(event) {
-  const target = event.target instanceof Element ? event.target : null;
-  const member = target?.closest("[data-dismiss-on-outside]") ?? null;
-  if (!member) return closeMembers(null);
-  const summary = target.closest("summary");
-  if (summary && summary.parentElement === member && !member.hasAttribute("open")) closeMembers(member);
-}
-
 function onKeydown(event) {
   if (event.key !== "Escape") return;
-  // The floating controls are the lightest layer, so Escape takes them down
-  // alongside whichever overlay is on top — as the prototype's own Escape branch
-  // does (`design/prototype/app.js`, the Escape arm: it clears every member and
-  // then closes the detail/states/access surfaces).
-  closeMembers(null);
+  closeFloatingControls(document);
   if (moveMenu.value) return closeMoveMenu();
   if (createTaskOpen.value) return (createTaskOpen.value = false);
   if (createProjectOpen.value) return (createProjectOpen.value = false);
@@ -75,14 +46,16 @@ function onKeydown(event) {
   if (board.drawerState === "open") return closeDetail();
 }
 
+let uninstallLightDismiss = () => {};
+
 onMounted(() => {
   document.addEventListener("keydown", onKeydown);
-  document.addEventListener("click", onDocumentClick);
+  uninstallLightDismiss = installLightDismiss(document);
   initBoard();
 });
 onUnmounted(() => {
   document.removeEventListener("keydown", onKeydown);
-  document.removeEventListener("click", onDocumentClick);
+  uninstallLightDismiss();
 });
 </script>
 
