@@ -565,6 +565,80 @@ describe("web/board — filtered board (visible branches)", () => {
     assert.deepEqual(visibleTasks.value.map((t) => t.identifier), ["TD-1"]);
   });
 
+  it("filters by a given assignee name, and only that name", async () => {
+    // R13 — the defect Terry reported: before the named branch existed, handing
+    // the control a name matched nothing in the if-chain, so *every* row came
+    // through. `me` / `human` / `agent` are unchanged; the fourth arm is the
+    // name, compared against the card's own `data-assignee`.
+    const { board, visibleTasks } = await freshBoard();
+    board.tasks = tasks;
+    board.filters.assignee = "elon";
+    assert.deepEqual(visibleTasks.value.map((t) => t.identifier), ["TD-2"]);
+    board.filters.assignee = "Terry";
+    assert.deepEqual(visibleTasks.value.map((t) => t.identifier), ["TD-1"]);
+    board.filters.assignee = "nobody";
+    assert.deepEqual(visibleTasks.value.map((t) => t.identifier), []);
+    board.filters.assignee = "all";
+    assert.equal(visibleTasks.value.length, 3);
+  });
+
+  it("filters by a status set, OR within the set and AND with the rest", async () => {
+    // R11 ① — multiple choice is OR; the set is ANDed with the other clauses.
+    const { board, visibleTasks, statusFilterValues, writeStatusFilter } = await freshBoard();
+    board.tasks = tasks;
+    writeStatusFilter(["todo"]);
+    assert.deepEqual(visibleTasks.value.map((t) => t.identifier), ["TD-1", "TD-3"]);
+    writeStatusFilter(["todo", "done"]);
+    assert.deepEqual(visibleTasks.value.map((t) => t.identifier), ["TD-1", "TD-2", "TD-3"]);
+    board.filters.search = "infra";
+    assert.deepEqual(visibleTasks.value.map((t) => t.identifier), ["TD-2"]);
+    // …and the written value is the selection, restated in board order.
+    writeStatusFilter(["done", "todo"]);
+    assert.equal(board.filters.status, "todo,done");
+    assert.deepEqual(statusFilterValues(), ["todo", "done"]);
+    writeStatusFilter([]);
+    assert.equal(board.filters.status, "all");
+    assert.deepEqual(statusFilterValues(), []);
+  });
+
+  it("reads a card's stage for the status clause, so an awaiting card is in flight", async () => {
+    // M1 — `awaiting` is an overlay on `in_progress`, so the filter compares the
+    // card's own stage (what `[data-card][data-status]` carries), not the raw
+    // state, and the list a roster route produces shows the same cards the
+    // board's in-progress column does.
+    const { board, visibleTasks, writeStatusFilter } = await freshBoard();
+    board.tasks = [
+      { id: "1", identifier: "TD-1", title: "Parked", status: "awaiting", priority: "high", labels: [], assignee: { display_name: "linus", kind: "agent" } },
+      { id: "2", identifier: "TD-2", title: "Todo", status: "todo", priority: "high", labels: [], assignee: { display_name: "linus", kind: "agent" } },
+    ];
+    writeStatusFilter(["in_progress", "in_review"]);
+    assert.deepEqual(visibleTasks.value.map((t) => t.identifier), ["TD-1"]);
+  });
+
+  it("counts the status set as one active filter and clears it with the rest", async () => {
+    const { board, activeFilterCount, writeStatusFilter } = await freshBoard();
+    assert.equal(activeFilterCount.value, 0);
+    writeStatusFilter(["in_progress", "in_review"]);
+    assert.equal(activeFilterCount.value, 1);
+    board.filters.assignee = "jobs";
+    assert.equal(activeFilterCount.value, 2);
+  });
+
+  it("reads a named assignee off the control's value, and only a name", async () => {
+    // R13 §2.8 — the one reading that drives both the generated option and the
+    // bar's `x`: the four static values are `null`, anything else is the name.
+    const { board, namedAssignee, writeAssigneeFilter, assigneeFilterValue } = await freshBoard();
+    assert.equal(namedAssignee.value, null);
+    assert.equal(assigneeFilterValue(), "all");
+    writeAssigneeFilter("jobs");
+    assert.equal(namedAssignee.value, "jobs");
+    assert.equal(assigneeFilterValue(), "jobs");
+    writeAssigneeFilter("agent");
+    assert.equal(namedAssignee.value, null);
+    writeAssigneeFilter("");
+    assert.equal(assigneeFilterValue(), "all");
+  });
+
   it("treats a missing or unknown priority as 'none'", async () => {
     const { board, visibleTasks, priorityOf } = await freshBoard();
     board.tasks = tasks;
