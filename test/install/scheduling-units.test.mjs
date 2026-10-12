@@ -337,7 +337,7 @@ describe("install.sh: scheduling units", () => {
 //
 // The loop is a skill of its own (T-20261012-163500-loopdecouple-b), distributed to
 // claude / codex / pi. OpenClaw is excluded **permanently** (ruling O3): the
-// openclaw-team framework already ships `poll-<agent>` / `task-patrol`, which is the same
+// openclaw-team framework already ships a per-agent poll and a `task-patrol` — the same
 // design, and two supervisors on one board would only race each other for the same cards.
 // ---------------------------------------------------------------------------
 

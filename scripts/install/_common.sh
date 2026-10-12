@@ -7,8 +7,9 @@
 #   * `meerkat-taskpanel` — the board. Every host installs it (`install_skill`).
 #   * `meerkat-loop` — the host-external supervisor. claude, codex and pi install it
 #     (`install_loop_skill` + `install_scheduling`); **OpenClaw does not**, because the
-#     openclaw-team framework already ships `poll-<agent>` / `task-patrol`, which is the
-#     same design — see `scripts/install/openclaw.sh` and docs/scheduling.md.
+#     openclaw-team framework already ships a per-agent poll and a `task-patrol`, which
+#     is the same design (its cadence is the framework's own AUTOMATIONS.md, not a
+#     number restated here) — see `scripts/install/openclaw.sh` and docs/scheduling.md.
 #
 # Each host script sources this file and calls the pieces it needs. The two bundle hosts
 # (claude, codex) add the config / command / trigger helpers below; the two skill-only
