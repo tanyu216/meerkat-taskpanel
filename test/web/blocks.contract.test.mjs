@@ -106,6 +106,17 @@ const PROTOTYPE_INDEX = resolve(HERE, "../../design/prototype/index.html");
 const PROTOTYPE_APP = resolve(HERE, "../../design/prototype/app.js");
 const HAS_PROTOTYPE = existsSync(PROTOTYPE_INDEX) && existsSync(PROTOTYPE_APP);
 
+/**
+ * `design/prototype/README.md` — the third document, and the one whose prose quotes a
+ * count of its own. Its Coverage table states the language count ("N key pairs,
+ * mirrored"), the same quantity the `MESSAGES` scan measures, so it is held to the same
+ * re-measurement as the two documents rather than trusted. Review R2-D1a of
+ * `1bbc84f`: the README still said 214 when the documents carried 215, and nothing bit
+ * because no assertion reached this file. `design/` is dropped from the image, so the
+ * test that reads it self-skips in the container like the two above.
+ */
+const PROTOTYPE_README = resolve(HERE, "../../design/prototype/README.md");
+
 /** The five attributes that make up the document's `data-i18n*` hook surface. */
 const I18N_HOOK_ATTRIBUTES = [
   "data-i18n",
@@ -173,6 +184,21 @@ function messageKeyCounts(appSource) {
   const zh = keyLines(literal.slice(zhAt));
   assert.ok(en.length > 0 && zh.length > 0, "the MESSAGES scan found no keys — it is broken");
   return { en, zh };
+}
+
+/**
+ * The key-pair count `design/prototype/README.md` states in prose. Exactly one such
+ * claim must exist: a second one (or a rewording that drops the phrase) would leave the
+ * README half-checked, so the scan fails loudly rather than quietly measuring nothing.
+ */
+function readmeKeyPairClaim(readme) {
+  const claims = [...readme.matchAll(/(\d+)\s+key pairs?\b/g)];
+  assert.equal(
+    claims.length,
+    1,
+    `design/prototype/README.md must state exactly one key-pair count, found ${claims.length}`,
+  );
+  return Number(claims[0][1]);
 }
 
 describe("web/blocks.contract — module hygiene", () => {
@@ -580,8 +606,9 @@ describe("web/blocks.contract — the stale prose counts never became assertions
  * source as the record it checks, so the two drift together and the suite stays
  * green. Review D1 of 2da2a89 is exactly that — the record said 606/389/214 while the
  * documents carried 607/390/215, and every assertion still passed. Here the numbers
- * come only from `design/prototype/index.html` and `design/prototype/app.js`, so a
- * document that grows a hook or a key fails the suite until the record follows.
+ * come only from `design/prototype/index.html`, `design/prototype/app.js` and
+ * `design/prototype/README.md`, so a document that grows a hook or a key — or a README
+ * that quotes the wrong one — fails the suite until the record follows.
  */
 describe(
   "web/blocks.contract — the recorded counts are re-measured against the documents",
@@ -613,6 +640,26 @@ describe(
       assert.deepEqual(en, zh, "the prototype's two languages must mirror key for key, in order");
       assert.equal(staleEntry(/catalogue keys/).measured, en.length, "the recorded key count is not the prototype's");
     });
+
+    it(
+      "states the prototype's MESSAGES count in design/prototype/README.md",
+      { skip: existsSync(PROTOTYPE_README) ? false : "design/prototype/README.md is not present" },
+      (t) => {
+        // The README's prose is a claim *about* `app.js`, so it is measured against
+        // `app.js` — never against a number written beside it in this file. R2-D1a:
+        // the Coverage table said 214 key pairs while `MESSAGES` held 215, and the
+        // stale value survived a fix that only reached the `test/web/` records.
+        const claim = readmeKeyPairClaim(readFileSync(PROTOTYPE_README, "utf8"));
+        const { en } = messageKeyCounts(readFileSync(PROTOTYPE_APP, "utf8"));
+        t.diagnostic(`re-measured README's key-pair claim: ${claim} (design/prototype/app.js carries ${en.length})`);
+
+        assert.equal(
+          claim,
+          en.length,
+          "design/prototype/README.md's prose count is not the prototype's — the README has drifted",
+        );
+      },
+    );
   },
 );
 
