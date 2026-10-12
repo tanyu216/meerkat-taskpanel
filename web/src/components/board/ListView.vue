@@ -19,6 +19,7 @@
  */
 import { computed } from "vue";
 
+import { identifierText } from "../../lib/identifier.js";
 import { board, openDetail, priorityOf, visibleTasks } from "../../stores/board.js";
 import { view } from "../../stores/ui.js";
 
@@ -81,7 +82,7 @@ const SKELETON_HIDE = [false, false, true, true, true, false];
 
     <template data-list-row-template>
       <button type="button" class="td-list-row" data-list-row>
-        <span class="td-mono text-[12px] text-(--brand-text-3)" data-list-identifier></span>
+        <span class="td-mono td-id text-[12px] text-(--brand-text-3)" data-list-identifier></span>
         <span class="truncate text-[14px]" data-list-title></span>
         <span class="badge badge-sm td-chip td-chip-status td-hide-sm" data-list-status>
           <span class="td-status-dot" aria-hidden="true"></span>
@@ -99,8 +100,20 @@ const SKELETON_HIDE = [false, false, true, true, true, false];
     </template>
 
     <div class="td-list-group">
+      <!-- R8 ② — the head names all six columns, in the rows' own track order,
+           and the three middle labels are the ones the ≤759px rule drops on both
+           sides (`td-hide-sm`). Before this the head held one label — the
+           identifier — while the rows were a six-track grid, so five columns had
+           no heading and none of the head had a width to line up with. The
+           template itself is shared with `.td-list-row` in `app.css`, so the head
+           and the rows cannot drift. -->
       <div class="td-list-head">
-        <span>{{ $t("list.columns.identifier") }}</span>
+        <span data-i18n="list.columns.identifier">{{ $t("list.columns.identifier") }}</span>
+        <span data-i18n="list.columns.title">{{ $t("list.columns.title") }}</span>
+        <span class="td-hide-sm" data-i18n="list.columns.status">{{ $t("list.columns.status") }}</span>
+        <span class="td-hide-sm" data-i18n="list.columns.assignee">{{ $t("list.columns.assignee") }}</span>
+        <span class="td-hide-sm" data-i18n="list.columns.priority">{{ $t("list.columns.priority") }}</span>
+        <span data-i18n="list.columns.revision">{{ $t("list.columns.revision") }}</span>
       </div>
       <div data-list-rows>
         <button
@@ -113,7 +126,17 @@ const SKELETON_HIDE = [false, false, true, true, true, false];
           :aria-selected="board.selectedRef === row.identifier ? 'true' : 'false'"
           @click="openDetail(row.identifier)"
         >
-          <span class="td-mono text-[12px] text-(--brand-text-3)" data-list-identifier>{{ row.identifier }}</span>
+          <!-- R8 ③ — the text is the capped display value, the `title` is the
+               full identifier, and both come from the same `row.identifier`: the
+               cap is a character slice (`lib/identifier.js`), never a width. The
+               full value also stays on the row's `data-identifier`, which is what
+               every lookup resolves an entity from — nothing reads this text
+               back. -->
+          <span
+            class="td-mono td-id text-[12px] text-(--brand-text-3)"
+            data-list-identifier
+            :title="row.identifier"
+          >{{ identifierText(row.identifier) }}</span>
           <span class="truncate text-[14px]" data-list-title>{{ row.title }}</span>
           <span class="badge badge-sm td-chip td-chip-status td-hide-sm" data-list-status :data-status="row.status">
             <span class="td-status-dot" aria-hidden="true"></span>

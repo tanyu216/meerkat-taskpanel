@@ -108,6 +108,15 @@
      verbatim (`design/DESIGN.md` §2.2). */
   --brand-accent: #0f7a73;
   --brand-accent-soft: rgba(15, 122, 115, 0.1);
+  /* R8 ① — the veil behind the create dialogs and the drawer. The light value is
+     the one those surfaces have always carried, written out as the same
+     `color-mix` the `bg-neutral/32` utility compiles to (`--color-neutral` at
+     32%), so promoting it to a token changes nothing here. It is a token at all
+     because the dark needs a *different* one: a veil tinted from
+     `--color-neutral` (`#2a3236` in the dark) is lighter than the canvas
+     (`#0f1417`), so it lifts the background towards the panel instead of
+     separating the two. Dark re-states it below. */
+  --brand-scrim: color-mix(in oklab, var(--color-neutral) 32%, transparent);
 
   /* ---- status colours — 7 states, one mapping each ---------------------- */
   --brand-st-backlog: #6c777e;        /* §6 correction of #7e8a91 → 4.59:1   */
@@ -234,6 +243,16 @@
   --brand-pri-medium: #e8a93a;
   --brand-pri-low: #7ea6f0;
   --brand-pri-none: #7c868c;
+
+  /* R8 ① — the dark veil and the panel's elevation. Both are correct as written
+     in `:root` and both are inert in the dark: `--brand-scrim` resolves from
+     `--color-neutral`, which is *lighter* than the canvas here, so the veil
+     lifted the background instead of dimming it; and `--shadow-pop` is tinted
+     with the canvas colour, so the panel cast a shadow the colour of the
+     surface it is meant to lift off. The light values are right for the light
+     and are not touched. */
+  --brand-scrim: rgba(0, 0, 0, 0.55);
+  --shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
 /* ------------------------------------------------- auto (follow system) ---- */
@@ -299,5 +318,11 @@
     --brand-pri-medium: #e8a93a;
     --brand-pri-low: #7ea6f0;
     --brand-pri-none: #7c868c;
+
+    /* R8 ① — the dark veil and the panel's elevation, restated for the auto
+       theme (`[data-theme="auto"]` under a dark system preference) exactly as
+       the block above restates them for `[data-theme="dark"]`. */
+    --brand-scrim: rgba(0, 0, 0, 0.55);
+    --shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.5);
   }
 }

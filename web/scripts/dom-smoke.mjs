@@ -846,6 +846,342 @@ export async function run() {
     r7Check(closeR7.closeTop !== null && closeR7.titleTop !== null && closeR7.closeTop < closeR7.titleTop, "the close button is not above the title");
     r7Check(closeR7.path === "M6 6l12 12M18 6 6 18", `the close glyph's path is ${JSON.stringify(closeR7.path)}`);
 
+    // ---- R8 · the list's head, the dark dialog and the identifier's cap -----
+    //
+    // Three of R8's facts cannot be stated as per-element rules at all: the six
+    // head labels are an *ordered list of keys* (a probe cannot index), the
+    // head's template is only meaningful **compared with the row's** (R8-1: the
+    // computed form resolves `minmax` to pixels and moves with the viewport, so
+    // only the two strings' equality is checkable), and the whole of ① lives in
+    // the dark, which a rule cannot switch to. They are measured here, next to
+    // the declarable rules the contract now carries for the rest.
+    const r8Failures = [];
+    const r8Check = (ok, message) => { if (!ok) r8Failures.push(message); };
+    const within = (values, tolerance = 1) => Math.max(...values) - Math.min(...values) <= tolerance;
+
+    /** The `data-theme-switch` cell is the only theme writer; drive it to `target`. */
+    const setThemeMode = async (target) => {
+      for (let i = 0; i < 4; i++) {
+        const mode = await page.evaluate(() => document.documentElement.getAttribute("data-theme-mode"));
+        if (mode === target) return mode;
+        await page.click("[data-theme-switch]");
+        await page.waitForTimeout(90);
+      }
+      return page.evaluate(() => document.documentElement.getAttribute("data-theme-mode"));
+    };
+
+    /** The head's own measurements, plus the row's for the comparisons. */
+    const measureListHead = () =>
+      page.evaluate(() => {
+        const heads = [...document.querySelectorAll(".td-list-head")];
+        const real = heads.find((head) => head.closest("[data-skeleton]") === null) ?? null;
+        const skeleton = heads.find((head) => head.closest("[data-skeleton]") !== null) ?? null;
+        const row = document.querySelector("[data-list-rows] .td-list-row");
+        const visible = (el) => getComputedStyle(el).display !== "none";
+        const cells = real ? [...real.children] : [];
+        const cs = (el, property) => (el ? getComputedStyle(el)[property] : null);
+        // Only the cells the current breakpoint shows: a `display: none` cell has
+        // no box, and its 0 left would be compared against a real one.
+        const lefts = (el) => (el ? [...el.children].filter(visible).map((cell) => Math.round(cell.getBoundingClientRect().left * 100) / 100) : null);
+        return {
+          heads: heads.length,
+          cells: cells.length,
+          i18n: cells.map((cell) => cell.getAttribute("data-i18n")),
+          text: cells.map((cell) => (cell.textContent ?? "").trim()),
+          hideSm: cells.map((cell) => cell.classList.contains("td-hide-sm")),
+          visibleCells: cells.filter(visible).length,
+          justify: cells.map((cell) => getComputedStyle(cell).justifySelf),
+          headLefts: lefts(real),
+          rowLefts: lefts(row),
+          skeletonCells: skeleton ? skeleton.children.length : null,
+          skeletonColumn: skeleton?.firstElementChild ? getComputedStyle(skeleton.firstElementChild).gridColumn : null,
+          head: {
+            template: cs(real, "gridTemplateColumns"),
+            gap: cs(real, "gap"),
+            padding: cs(real, "paddingLeft"),
+          },
+          row: {
+            template: cs(row, "gridTemplateColumns"),
+            gap: cs(row, "gap"),
+            padding: cs(row, "paddingLeft"),
+            visibleCells: row ? [...row.children].filter(visible).length : null,
+          },
+        };
+      });
+
+    // ③ — every identifier render point, with the root that carries the full
+    // value. The list is read through the contract's own selector for that render
+    // point (`[data-list-rows] [data-list-identifier]`): the row **template** in
+    // the document carries the same hook and no value, by design.
+    const readIdentifiers = () =>
+      page.evaluate(() => {
+        const roots = {
+          "[data-card-identifier]": "[data-card]",
+          "[data-list-rows] [data-list-identifier]": "[data-list-row]",
+          "[data-detail-identifier]": "[data-detail-drawer]",
+        };
+        const out = {};
+        for (const [selector, rootSelector] of Object.entries(roots)) {
+          out[selector] = [...document.querySelectorAll(selector)].map((el) => ({
+            text: (el.textContent ?? "").trim(),
+            title: el.getAttribute("title"),
+            whiteSpace: getComputedStyle(el).whiteSpace,
+            hasIdClass: el.classList.contains("td-id"),
+            root: el.closest(rootSelector)?.getAttribute("data-identifier") ?? null,
+          }));
+        }
+        return out;
+      });
+
+    // ① — the three separation layers, read in whichever theme is in force, with
+    // the two token references resolved live so nothing is compared against a
+    // literal the stylesheet could legitimately change. The veils' relative
+    // luminance is composited over each theme's own canvas in a 1×1 canvas, so a
+    // serialization the harness cannot parse (`oklab(…)`, say) is still compared
+    // as a colour: "does it dim?" is a question about pixels, not about strings.
+    const readDialog = () =>
+      page.evaluate(() => {
+        const dialog = document.querySelector("[data-create-task]");
+        const panel = document.querySelector("[data-create-task-panel]");
+        const overlay = document.querySelector("[data-detail-overlay]");
+        const probe = document.createElement("span");
+        probe.style.cssText = "position:absolute;visibility:hidden;";
+        document.body.appendChild(probe);
+        probe.style.backgroundColor = "color-mix(in oklab, var(--color-neutral) 32%, transparent)";
+        const neutralMix = getComputedStyle(probe).backgroundColor;
+        probe.style.backgroundColor = "";
+        probe.style.color = "var(--brand-border)";
+        const borderToken = getComputedStyle(probe).color;
+        probe.style.color = "";
+        probe.style.backgroundColor = "var(--brand-bg)";
+        const canvasColor = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+
+        /** WCAG relative luminance of `veil` composited over `backdrop`. */
+        const luminanceOver = (veil, backdrop) => {
+          const ctx = document.createElement("canvas").getContext("2d");
+          ctx.canvas.width = 1;
+          ctx.canvas.height = 1;
+          ctx.fillStyle = backdrop;
+          ctx.fillRect(0, 0, 1, 1);
+          ctx.fillStyle = veil;
+          ctx.fillRect(0, 0, 1, 1);
+          const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+          const lin = (channel) => {
+            const s = channel / 255;
+            return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+          };
+          return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+        };
+
+        const scrim = getComputedStyle(dialog).backgroundColor;
+        return {
+          themeMode: document.documentElement.getAttribute("data-theme-mode"),
+          themeAttr: document.documentElement.getAttribute("data-theme"),
+          scrim,
+          neutralMix,
+          overlay: getComputedStyle(overlay).backgroundColor,
+          panelBorder: getComputedStyle(panel).borderTopColor,
+          borderToken,
+          panelShadow: getComputedStyle(panel).boxShadow,
+          panelBackground: getComputedStyle(panel).backgroundColor,
+          // What the veil does where it is actually painted: over this theme's
+          // canvas ...
+          veiledCanvasLuminance: luminanceOver(scrim, canvasColor),
+          bareCanvasLuminance: luminanceOver(canvasColor, canvasColor),
+          // ... and the veil's own lightness, taken over a constant backdrop so
+          // the two themes' veils can be compared with each other (N4).
+          veilLuminance: luminanceOver(scrim, "#ffffff"),
+        };
+      });
+
+    await page.setViewportSize({ width: 1512, height: 950 });
+    await page.waitForTimeout(150);
+    await page.click('[data-view="list"]');
+    await page.waitForTimeout(200);
+    const headWide = await measureListHead();
+
+    const R8_COLUMNS = [
+      "list.columns.identifier",
+      "list.columns.title",
+      "list.columns.status",
+      "list.columns.assignee",
+      "list.columns.priority",
+      "list.columns.revision",
+    ];
+    r8Check(headWide.heads === 2, `${headWide.heads} list heads, expected 2 (the resident skeleton group's and the data group's)`);
+    r8Check(headWide.cells === 6, `the head holds ${headWide.cells} cells, expected 6`);
+    r8Check(
+      JSON.stringify(headWide.i18n) === JSON.stringify(R8_COLUMNS),
+      `the head's i18n seats are ${JSON.stringify(headWide.i18n)}, expected ${JSON.stringify(R8_COLUMNS)}`,
+    );
+    // N2 — a seat renders its label, never the key it resolves through.
+    for (const [index, text] of headWide.text.entries()) {
+      r8Check(text.length > 0 && !text.startsWith("list."), `head cell ${index + 1} renders ${JSON.stringify(text)}`);
+    }
+    // A3/A4 — the hide class is on the middle three and only the middle three,
+    // and it is the same class the row's cells carry, so one ≤759px rule reaches
+    // both sides of the column.
+    r8Check(
+      JSON.stringify(headWide.hideSm) === JSON.stringify([false, false, true, true, true, false]),
+      `the head's hide classes are ${JSON.stringify(headWide.hideSm)}`,
+    );
+    r8Check(headWide.skeletonCells === 1, `the loading head holds ${headWide.skeletonCells} span(s), expected 1`);
+    r8Check(
+      headWide.skeletonColumn === "1 / -1",
+      `the loading caption's grid-column is ${headWide.skeletonColumn}, expected 1 / -1`,
+    );
+    // N3 — every cell starts at its track's start, as the row's cells do.
+    r8Check(
+      headWide.justify.every((value) => value === "start"),
+      `the head's cells are not all start-aligned: ${headWide.justify.join(",")}`,
+    );
+    // R8-1 — the head and the row share one template, asserted as the two
+    // strings' equality, never as the literal `74px minmax(0, 1fr) …` the
+    // computed form resolves away.
+    r8Check(
+      headWide.head.template === headWide.row.template && headWide.head.template !== null,
+      `the head's template ${headWide.head.template} != the row's ${headWide.row.template}`,
+    );
+    r8Check(headWide.head.gap === headWide.row.gap, `the head's gap ${headWide.head.gap} != the row's ${headWide.row.gap}`);
+    r8Check(headWide.head.padding === headWide.row.padding, `the head's padding ${headWide.head.padding} != the row's ${headWide.row.padding}`);
+    r8Check(headWide.visibleCells === 6, `${headWide.visibleCells} head cells visible at 1512px, expected 6`);
+    // The template being *the same declaration* is not the same as the columns
+    // landing in the same place: a row whose own box is narrower than the group's
+    // resolves its `1fr` against its own width and drifts, with equal templates
+    // throughout. Compare the columns' edges.
+    r8Check(
+      headWide.headLefts !== null &&
+        headWide.rowLefts !== null &&
+        headWide.headLefts.length === headWide.rowLefts.length &&
+        headWide.headLefts.every((left, index) => Math.abs(left - headWide.rowLefts[index]) <= 1),
+      `the head's columns start at ${JSON.stringify(headWide.headLefts)} but the row's at ${JSON.stringify(headWide.rowLefts)}`,
+    );
+
+    // The same three relations one breakpoint down: the heads narrow with the
+    // rows instead of keeping six tracks over three-track rows.
+    await page.setViewportSize({ width: 430, height: 950 });
+    await page.waitForTimeout(200);
+    const headNarrow = await measureListHead();
+    r8Check(headNarrow.head.template === headNarrow.row.template, `at 430px the head's template ${headNarrow.head.template} != the row's ${headNarrow.row.template}`);
+    r8Check(headNarrow.visibleCells === 3, `${headNarrow.visibleCells} head cells visible at 430px, expected 3`);
+    r8Check(
+      headNarrow.visibleCells === headNarrow.row.visibleCells,
+      `at 430px the head shows ${headNarrow.visibleCells} cells and the row ${headNarrow.row.visibleCells} — they must match`,
+    );
+    // N5 — and the columns the breakpoint keeps land on the same edges there too.
+    r8Check(
+      headNarrow.headLefts !== null &&
+        headNarrow.rowLefts !== null &&
+        headNarrow.headLefts.length === headNarrow.rowLefts.length &&
+        headNarrow.headLefts.every((left, index) => Math.abs(left - headNarrow.rowLefts[index]) <= 1),
+      `at 430px the visible columns start at ${JSON.stringify(headNarrow.headLefts)} (head) / ${JSON.stringify(headNarrow.rowLefts)} (row)`,
+    );
+
+    await page.setViewportSize({ width: 1512, height: 950 });
+    await page.waitForTimeout(150);
+
+    // ③ — the cap, the full value beside it, and the roots that carry it.
+    const identifiers = await readIdentifiers();
+    for (const [selector, entries] of Object.entries(identifiers)) {
+      r8Check(entries.length > 0, `${selector} matched nothing`);
+      for (const entry of entries) {
+        const expected = (entry.title ?? "").length > 8 ? `${(entry.title ?? "").slice(0, 8)}…` : entry.title;
+        r8Check(entry.hasIdClass, `${selector} ${JSON.stringify(entry.title)} does not wear .td-id`);
+        r8Check(entry.whiteSpace === "nowrap", `${selector} white-space is ${entry.whiteSpace}, expected nowrap`);
+        r8Check(typeof entry.title === "string" && entry.title.length > 0, `${selector} carries no title`);
+        r8Check(entry.text === expected, `${selector} renders ${JSON.stringify(entry.text)}, expected ${JSON.stringify(expected)}`);
+        r8Check(entry.text.length <= 9, `${selector} renders ${entry.text.length} characters`);
+        // N4/B21-B23 — the root keeps the whole value, and the rendered text may
+        // never be the thing read back (it is the truncated form whenever the id
+        // is long enough to be truncated at all).
+        r8Check(entry.root === entry.title, `${selector}: the root's data-identifier ${JSON.stringify(entry.root)} != the title ${JSON.stringify(entry.title)}`);
+      }
+    }
+    // A 6-character id is not truncated and gains no ellipsis (the fixture's ids
+    // are all short, so every one of them is a below-the-cap sample; the cap's own
+    // trigger — a 9-character id — is covered by `test/web/identifier.test.mjs`,
+    // which can construct one without touching the shared fixture).
+    for (const entry of identifiers["[data-card-identifier]"]) {
+      if ((entry.title ?? "").length <= 8) r8Check(entry.text === entry.title, `a ${entry.title.length}-character id was altered: ${JSON.stringify(entry.text)}`);
+    }
+
+    // The drawer's root is the one all three readings above could not reach while
+    // it was shut: open it and compare the head's pair against the root's value.
+    await page.click('[data-view="board"]');
+    await page.waitForTimeout(120);
+    await page.click("[data-card]");
+    await page.waitForTimeout(250);
+    const drawerIdentifier = await page.evaluate(() => {
+      const el = document.querySelector("[data-detail-identifier]");
+      const root = document.querySelector("[data-detail-drawer]");
+      const card = document.querySelector(`[data-card][data-identifier="${root?.getAttribute("data-identifier")}"]`);
+      return {
+        text: (el?.textContent ?? "").trim(),
+        title: el?.getAttribute("title") ?? null,
+        root: root?.getAttribute("data-identifier") ?? null,
+        rootFindsTheCard: card !== null && card !== undefined,
+      };
+    });
+    r8Check(drawerIdentifier.root === drawerIdentifier.title, `the drawer root's identifier ${JSON.stringify(drawerIdentifier.root)} != the head's title ${JSON.stringify(drawerIdentifier.title)}`);
+    r8Check(drawerIdentifier.root !== null && drawerIdentifier.root.length > 0, "the drawer root carries no data-identifier");
+    r8Check(drawerIdentifier.rootFindsTheCard, `[data-card][data-identifier="${drawerIdentifier.root}"] matches no card`);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+
+    // ① — the dark. The switch is the only writer, so the section drives it to
+    // `dark`, measures, then drives it back to `light` for the regression half.
+    const reachedDark = await setThemeMode("dark");
+    r8Check(reachedDark === "dark", `the theme switch reached ${reachedDark}, expected dark`);
+    await page.click("[data-new-task]");
+    await page.waitForTimeout(250);
+    const dark = await readDialog();
+    r8Check(dark.themeAttr === "dark", `the document's data-theme is ${dark.themeAttr} in the dark stop`);
+    // B1/B8 — the veil, and the shared token behind it.
+    r8Check(dark.scrim === "rgba(0, 0, 0, 0.55)", `the dark scrim is ${dark.scrim}, expected rgba(0, 0, 0, 0.55)`);
+    r8Check(dark.overlay === dark.scrim, `the drawer's veil ${dark.overlay} != the dialog's scrim ${dark.scrim} — they share one token`);
+    // B3 — the panel's edge is the strong hairline in the dark.
+    r8Check(dark.panelBorder === "rgb(49, 59, 65)", `the dark panel's border is ${dark.panelBorder}, expected rgb(49, 59, 65)`);
+    // B5 — the elevation is visible, i.e. black rather than canvas-tinted.
+    r8Check(dark.panelShadow.includes("rgba(0, 0, 0, 0.6)"), `the dark panel's shadow is ${dark.panelShadow}, expected it to contain rgba(0, 0, 0, 0.6)`);
+    // B7/N3 — the *surface* is not what changed.
+    r8Check(dark.panelBackground === "rgb(22, 27, 30)", `the dark panel's surface is ${dark.panelBackground}, expected rgb(22, 27, 30)`);
+    // N4 — the dark veil **dims** where the light one **lifts**: each is
+    // composited over its own theme's canvas and compared. This is the machine
+    // form of Terry's finding — before the round the two veils were byte-equal,
+    // so the dark one could only lift (its `--color-neutral` is lighter than the
+    // dark canvas).
+    r8Check(
+      dark.veiledCanvasLuminance < dark.bareCanvasLuminance,
+      `the dark veil lifts its canvas (${dark.veiledCanvasLuminance} vs ${dark.bareCanvasLuminance})`,
+    );
+
+    await page.click("[data-create-task] [data-modal-close]");
+    await page.waitForTimeout(200);
+    const reachedLight = await setThemeMode("light");
+    r8Check(reachedLight === "light", `the theme switch reached ${reachedLight}, expected light`);
+    await page.click("[data-new-task]");
+    await page.waitForTimeout(250);
+    const light = await readDialog();
+    r8Check(light.themeAttr === "meerkat-taskpanel", `the document's data-theme is ${light.themeAttr} in the light stop`);
+    // B2/C4 — the light veil is byte-identical to the one the dialogs carried
+    // before the round (`bg-neutral/32`, i.e. `--color-neutral` at 32%). It is
+    // deliberately **not** compared against the prototype's `rgba(15, 20, 23,
+    // 0.32)`: the two sides differ there and this round does not change it.
+    r8Check(light.scrim === light.neutralMix, `the light scrim ${light.scrim} != the pre-round bg-neutral/32 value ${light.neutralMix}`);
+    // B4 — the light edge is still the ordinary hairline, not the strong one.
+    r8Check(light.panelBorder === light.borderToken, `the light panel's border ${light.panelBorder} != var(--brand-border) ${light.borderToken}`);
+    // B6 — and the elevation is the light one.
+    r8Check(!light.panelShadow.includes("rgba(0, 0, 0, 0.6)"), `the light panel's shadow carries the dark value: ${light.panelShadow}`);
+    // N4 — the two veils are no longer the same colour: before the round they
+    // were byte-equal, which is why the dark one could only lift its canvas.
+    r8Check(
+      dark.veilLuminance < light.veilLuminance,
+      `the dark veil's luminance ${dark.veilLuminance} is not below the light veil's ${light.veilLuminance}`,
+    );
+    await page.click("[data-create-task] [data-modal-close]");
+    await page.waitForTimeout(200);
+
     // --- five viewports, none may overflow horizontally -----------------------
     const viewports = [];
     for (const width of [1512, 1240, 980, 760, 500, 430]) {
@@ -1036,6 +1372,7 @@ export async function run() {
       m1Failures,
       r6: { failures: r6Failures, themeSweep, titleGeometry, listDetail, panel: panelGeometry, rail },
       r7: { failures: r7Failures, wide, rail: railBand, drawerHead: closeR7 },
+      r8: { failures: r8Failures, headWide, headNarrow, identifiers, drawerIdentifier, dark, light },
       geometry,
       counts: { rules: results.length, failed: failures.length, ...geometry },
       fixtureTasks: data.tasks.length,
@@ -1081,6 +1418,12 @@ if (isEntryPoint) run().then(
       } else {
         console.log("R7 (fidelity) — nav glyphs, count pills, the footer's breakpoint split and the drawer head all pass");
       }
+      if (report.r8.failures.length > 0) {
+        console.log(`R8 (fidelity) — ${report.r8.failures.length} failed:`);
+        for (const failure of report.r8.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log("R8 (fidelity) — the six-column head, the dark dialog's three layers and the identifier's cap all pass");
+      }
     }
     const interactionOk =
       report.interactions.drawerOpened &&
@@ -1098,6 +1441,7 @@ if (isEntryPoint) run().then(
       report.m1Failures.length === 0 &&
       report.r6.failures.length === 0 &&
       report.r7.failures.length === 0 &&
+      report.r8.failures.length === 0 &&
       interactionOk;
     process.exit(ok ? 0 : 1);
   },

@@ -236,6 +236,33 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The task list's columns line up under headings, the create dialog separates from its
+  background in the dark, and an identifier renders at most eight characters plus `…`.**
+  Three findings from the 2026-10-12 review of the list and the create dialog.
+  The list's header held one label — the identifier — while its rows were a six-track grid,
+  so five columns had no heading and the head had no column widths at all; head and rows now
+  share **one** template declaration and all six columns are named (ID · Title · Status ·
+  Assignee · Priority · Revision), with the middle three dropping, on both sides, at the same
+  breakpoint. Sharing the declaration was not enough on its own: the row is a `button`, which
+  is shrink-to-fit, so its flexible track resolved against the row's own width rather than
+  the group's and the columns drifted — 735px of a 1238px box — which the row's `width: 100%`
+  pins, and which the machine check now measures as matching column edges at two viewports.
+  The create dialog separated from its background on none of its three devices in the dark:
+  the veil resolved from `--color-neutral`, which is *lighter* than the dark canvas, so it
+  lifted the background instead of dimming it; the panel's edge used a hairline that sits on
+  both the canvas and the panel surface; and the panel's shadow was tinted with the canvas
+  colour, so the elevation vanished into the surface it should lift off. `--brand-scrim`
+  (new; light keeps the exact value the dialogs already composited to), the strong hairline
+  and a dark `--shadow-pop` fix all three, and the light is byte-identical — measured, not
+  assumed. The dialog's panel also gained a hook of its own (`[data-create-task-panel]` /
+  `[data-create-project-panel]`), because until now the only way to address it was a
+  positional anchor. An identifier now renders at most its first eight characters plus an
+  ellipsis at all three of its render points (the list's rows, the cards, the drawer's head);
+  the cut is a character slice in the render layer, never a CSS width — `max-width: 9ch`
+  depends on the face's advance width and its letter-spacing and cannot promise a character
+  count. The full value stays on the element's `title` and on the row / card / drawer root's
+  `data-identifier`, which is the only thing identity is ever read back from; a new
+  `.td-id` class is the single-line guard, not the cap.
 - **The sidebar's glyphs, count pills, footer split and the drawer's close button match the
   prototype.** Four findings from the 2026-10-12 sidebar review. The nav glyphs had lost the
   brand's stroked line-icon face (`.td-icon`) and wore the project monogram's `data-side-icon`
