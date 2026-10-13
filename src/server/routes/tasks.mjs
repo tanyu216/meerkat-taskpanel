@@ -27,7 +27,13 @@ import { intOrUndefined, truthy } from "./projects.mjs";
 // omits would be invisible to the contract, so these are written from the
 // handler bodies below, field for field.
 
-/** `GET /api/v1/tasks` — the board read's filters. */
+/**
+ * `GET /api/v1/tasks` — the board read's filters.
+ *
+ * `order` selects between the existing `board` order and the opt-in `weight`
+ * order; `order_debug` asks for the weight order's per-card projection (and, by
+ * asking, selects that order). Both are the C-WEIGHT-1 contract's §7.1 surface.
+ */
 const LIST_QUERY = shape({
   project_id: str(),
   status: REQUEST.statuses, // `?status=a&status=b` — a repeated query param
@@ -35,10 +41,15 @@ const LIST_QUERY = shape({
   include_archived: str(),
   limit: str(),
   offset: str(),
+  order: str(),
+  order_debug: str(),
 });
 
 /** `GET /api/v1/tasks/candidates` — `assignee` is the one field the route insists on. */
-const CANDIDATES_QUERY = shape({ assignee: str(), stale: str(), include_unassigned: str() }, ["assignee"]);
+const CANDIDATES_QUERY = shape(
+  { assignee: str(), stale: str(), include_unassigned: str(), order: str(), order_debug: str() },
+  ["assignee"],
+);
 
 /** `POST /api/v1/tasks` — the create body, every field the command is handed. */
 const CREATE_BODY = shape({
@@ -164,7 +175,17 @@ export function registerTaskRoutes(router, surface) {
       ...(intOrUndefined(query.get("offset")) === undefined ? {} : { offset: intOrUndefined(query.get("offset")) }),
     };
     const lookup = lookupFor(repos);
-    return { tasks: commands.listTasks(filter).map((task) => taskToWire(task, { lookup })) };
+    const { tasks, orderDebug } = commands.listOrderedTasks({
+      ...filter,
+      order: query.get("order") ?? undefined,
+      orderDebug: truthy(query.get("order_debug")),
+    });
+    return {
+      tasks: tasks.map((task) => taskToWire(task, { lookup })),
+      // Only present when asked for: the diagnostic is opt-in, and an always-on
+      // re-derivation of every card's score would be paid by every board poll.
+      ...(orderDebug === null ? {} : { order_debug: orderDebug }),
+    };
   }, { query: LIST_QUERY });
 
   router.post("/api/v1/tasks", ({ body, actor }) => {
@@ -214,13 +235,14 @@ export function registerTaskRoutes(router, surface) {
         hint: { fix: "GET /api/v1/tasks/candidates?assignee=<name>" },
       });
     }
-    return {
-      candidates: commands.listCandidates({
-        assignee: assignee.trim(),
-        stale: truthy(query.get("stale")),
-        includeUnassigned: truthy(query.get("include_unassigned")),
-      }),
-    };
+    const { candidates, orderDebug } = commands.listOrderedCandidates({
+      assignee: assignee.trim(),
+      stale: truthy(query.get("stale")),
+      includeUnassigned: truthy(query.get("include_unassigned")),
+      order: query.get("order") ?? undefined,
+      orderDebug: truthy(query.get("order_debug")),
+    });
+    return { candidates, ...(orderDebug === null ? {} : { order_debug: orderDebug }) };
   }, { query: CANDIDATES_QUERY });
 
   router.get("/api/v1/tasks/:ref", ({ params }) => taskPayload(repos, resolveTask(repos, params.ref)));

@@ -41,7 +41,10 @@ export function createCommands(ctx) {
     canMove: (input) => tasks.canMove(ctx, input),
     archive: (input) => tasks.archive(ctx, input),
     listTasks: (filter) => tasks.listTasks(ctx, filter),
+    // The same two reads, carrying their `order_debug` projection (C-WEIGHT-1).
+    listOrderedTasks: (filter) => tasks.listOrderedTasks(ctx, filter),
     listCandidates: (input) => tasks.listCandidates(ctx, input),
+    listOrderedCandidates: (input) => tasks.listOrderedCandidates(ctx, input),
     getTask: (input) => ctx.repos.tasks.get(input.id ?? input.taskId),
     getTaskByIdentifier: (input) => ctx.repos.tasks.findByIdentifierAnyProject(input.identifier),
 
