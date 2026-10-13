@@ -17,9 +17,12 @@
  * error.
  *
  * The `pointer` this reads is the one board resolution produced
- * (`runtime.mjs#readPointer`, data-directory fallback included, R1) — the token
- * therefore always belongs to the board `/health` answered for, not to whatever
- * happens to hold the machine-wide slot.
+ * (`runtime.mjs#readPointer`, data-directory fallback included, R1) — a data
+ * directory's own board is reached with *its* token, never with the machine-wide
+ * slot's. Resolution happens before the board is known (the CLI resolves the
+ * token first so that a failure can still report `token_source`), so a board
+ * this process starts for itself is covered by the loopback exemption rather
+ * than by this file.
  */
 
 import { readFileSync } from "node:fs";
