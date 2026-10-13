@@ -27,7 +27,7 @@ import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { AUTOSTART_POLL_MS, AUTOSTART_TIMEOUT_MS, LOGS_DIRNAME } from "../constants.mjs";
+import { AUTOSTART_POLL_MS, AUTOSTART_TIMEOUT_MS, LOGS_DIRNAME, RUNTIME_POINTER_ENV } from "../constants.mjs";
 import { resolveDataDir } from "../runtime-locator.mjs";
 import { ioError } from "./errors.mjs";
 
@@ -89,7 +89,13 @@ export async function spawnTaskd(options) {
     child = spawnFn(process.execPath, [serverEntry()], {
       detached: true,
       stdio: ["ignore", fd, fd],
-      env,
+      // The child resolves its own pointer from the environment, so a caller
+      // that named a path has to hand it over: otherwise this parent polls the
+      // caller's file while the daemon writes the machine-wide one — a wait that
+      // cannot end, and an isolated board reaching into a live board's address.
+      // The caller's path wins over whatever the environment already said,
+      // because the caller's path is the one this function will wait on.
+      env: { ...env, [RUNTIME_POINTER_ENV]: pointerPath },
     });
   } catch (err) {
     closeSync(fd);
