@@ -209,11 +209,16 @@ const SKELETON_HIDE = [false, false, true, true, true, false];
             <span class="td-mono text-[12px] text-(--brand-text-3)" data-list-revision>{{ row.version }}</span>
           </button>
 
-          <p
-            v-if="!board.loading && rows.length === 0"
-            class="flex flex-col items-center gap-1 p-4 text-center text-(--brand-text-3) border border-dashed border-(--brand-border-strong) rounded-lg"
-            data-i18n="list.emptyRow"
-          >{{ $t("list.emptyRow") }}</p>
+          <!-- B08 · no rows. The prototype appends exactly this pair into
+               `[data-list-rows]` when the filter leaves nothing
+               (`design/prototype/app.js` `renderList()`: a `.td-empty` holding
+               one `.td-empty-title`), so the list's own empty state is the same
+               object as every other one rather than a `<p>` with its own
+               utility stack. The hook moves onto the title, where the
+               prototype carries it. -->
+          <div v-if="!board.loading && rows.length === 0" class="td-empty">
+            <span class="td-empty-title" data-i18n="list.emptyRow">{{ $t("list.emptyRow") }}</span>
+          </div>
         </template>
       </div>
     </div>

@@ -85,17 +85,30 @@ function onDrop(event) {
         @dragend="emit('dragend')"
       />
 
+      <!-- B12 · the column-level empty state. The design's face
+           (`.td-empty` + `.td-empty-title` / `.td-empty-hint`, `app.css`) and the
+           design's own **residency**: the prototype ships one of these per column
+           in the markup and `hidden`s it while the column has cards, so the
+           resting document already holds all seven (B12 is explicit that they are
+           never counted in the board-level tally — they are the *column's* state).
+           `v-if` made the block unobservable at rest, which is the one thing the
+           two-state rounds (R9/R10/B26.5) settled everywhere else.
+
+           The Add button is `btn-sm`, the size the prototype's `[data-column-add]`
+           wears in this block (28px); it is deliberately **not** given that hook
+           — the header's button already carries it, once per column, and the
+           manifest counts exactly seven of them (`web/manifests/board.json` B06). -->
       <div
-        v-if="count === 0"
-        class="flex flex-col items-center gap-1 p-4 text-center text-(--brand-text-3) border border-dashed border-(--brand-border-strong) rounded-lg"
+        class="td-empty"
         data-empty
         data-empty-kind="column"
+        :hidden="count > 0"
       >
-        <span class="font-medium text-(--brand-text-2)" data-i18n="column.empty.title">{{ $t("column.empty.title") }}</span>
-        <span class="text-[12px]" data-i18n="column.empty.hint" :data-i18n-arg="`status.${column.status}`">
+        <span class="td-empty-title" data-i18n="column.empty.title">{{ $t("column.empty.title") }}</span>
+        <span class="td-empty-hint" data-i18n="column.empty.hint" :data-i18n-arg="`status.${column.status}`">
           {{ $t("column.empty.hint", $t(`status.${column.status}`)) }}
         </span>
-        <button type="button" class="btn btn-outline btn-xs" @click="emit('add', column.status)">{{ $t("column.empty.add") }}</button>
+        <button type="button" class="btn btn-outline btn-sm" @click="emit('add', column.status)">{{ $t("column.empty.add") }}</button>
       </div>
 
       <div v-if="dragOver" class="h-1.5 rounded-[999px] bg-(--brand-border-strong)" data-drop-placeholder></div>

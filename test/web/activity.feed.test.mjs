@@ -410,4 +410,35 @@ describe("B26 · the store's address-bar shadow", () => {
     store.activity.seenAt = null;
     board.tasks = [];
   });
+
+  /**
+   * §8 — "a ledger that has not been read yet is not a finding" (T-20261013-160505).
+   *
+   * `buildFeed` sees only the entries it was handed, so a project whose ledger has
+   * simply not been read derives the *same* `emptyKind` as a project that has never
+   * had an event. The view is not allowed to say the second when it only knows the
+   * first: `projectEmpty` is the store's pair — the derivation *and* the read.
+   */
+  it("does not call a ledger that has not been read empty", async () => {
+    const store = await import("../../web/src/stores/activity.js");
+    const { board } = await import("../../web/src/stores/board.js");
+    board.tasks = [{ id: "td_1", identifier: "TD-1", title: "Draft the onboarding copy", project_id: "p1" }];
+
+    store.resetActivity();
+    assert.equal(store.activity.loaded, false, "nothing has been read yet");
+    assert.equal(store.feed.value.emptyKind, "project", "the raw derivation cannot tell the two apart …");
+    assert.equal(store.projectEmpty.value, false, "… which is exactly why the view reads this instead");
+
+    // A read that lands with nothing to show is the finding: nothing has happened.
+    store.activity.loaded = true;
+    assert.equal(store.projectEmpty.value, true);
+
+    // A read that lands with an admitted row is not.
+    store.absorb(wire("live-2", "comment_added", { created_at: at(1) }));
+    assert.equal(store.feed.value.emptyKind, null);
+    assert.equal(store.projectEmpty.value, false);
+
+    store.resetActivity();
+    board.tasks = [];
+  });
 });

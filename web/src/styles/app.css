@@ -58,6 +58,12 @@
  *   .td-details-menu the floating-menu shell shared by the three anchored menus
  *                    (daisyUI's `menu` paints row padding the design overrides).
  *   .td-combo-menu   the combobox popup, positioned from JS-measured geometry.
+ *   .td-empty /      the states family (B12 · B13 · B17 · B26.5 · B27.3): one
+ *   .td-empty-title  empty face over the six non-result surfaces, with `-lg`
+ *   .td-empty-hint   restating its children's type. Its own section below.
+ *   .td-empty-lg /
+ *   .td-error
+
  *   .td-gfm          the markdown preview surface — `v-html` output from
  *                    `lib/markdown*.js`, not markup a template can class.
  *   .td-md-panes /   the highlight-overlay editor: a `<pre>` painted behind a
@@ -1789,6 +1795,76 @@ html[data-theme="dark"] [data-create-project-panel] {
   caret-color: var(--brand-text);
 }
 .td-md-source::selection { background: var(--brand-focus-ring); }
+
+/* ------------------------------------------- the empty / error family
+   T-20261013-160505 — one face, six surfaces. Ported from
+   `design/prototype/src/input.css` (`.td-empty` · `.td-empty-title` ·
+   `.td-empty-hint` · `.td-empty-lg` · `.td-error`), with this repo's tokens in
+   place of the design layer's `--color-td-*` names. The surfaces:
+
+     B12  `[data-empty][data-empty-kind="column"]`     a bare column
+     B12  `[data-empty][data-empty-kind="no-results"]` the board, `-lg`
+     B08  `[data-list-rows] > .td-empty`               the list, no rows
+     B26.5 `[data-activity-empty][…="project"]`        `-lg` · `[…="filter"]`
+     B27.3 `[data-waiting-empty]`                      the queue
+     B17  `[data-error-state]`                         load failure, `.td-error`
+
+   **Why a class family and not six utility stacks** — which is what the five
+   empty surfaces had grown into. The numbers are the design's, not Tailwind's:
+   gap `8px` (`gap-1` is 4px), padding `16px 12px` (`p-4` is 16px all round),
+   radius `6px` — the design's `--r-md`, this repo's `--radius-field`
+   (`rounded-lg` is 8px) — and `-lg` **restates its children's type** (14px/12px
+   over 12px/11px), a parent→child relation a utility list cannot carry without
+   repeating it at every call site. `.td-list-group` / `.td-list-head` /
+   `.td-list-row` are classes for the same reason: named after the prototype's
+   own names, so the two sides stay comparable.
+
+   The two halves of the family are `--brand-text-2` (title) over
+   `--brand-text-3` (hint), the hairline is `--brand-border-strong` (the design's
+   `--color-td-line-strong`). `.td-error` adds only the centred stack, its own
+   hairline and the icon's colour — daisyUI's `--color-error`, the identical
+   `#c0392b` the prototype's danger glyph reads, so no colour literal enters this
+   file (C08). Its *surface* stays the template's `bg-error/12`, R10's registered
+   deviation from the design's flat `--color-td-danger-soft`. */
+.td-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-3);
+  color: var(--brand-text-3);
+  text-align: center;
+  border: 1px dashed var(--brand-border-strong);
+  border-radius: var(--radius-field);
+  background-color: transparent;
+}
+.td-empty-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--brand-text-2);
+}
+.td-empty-hint {
+  font-size: 11px;
+  color: var(--brand-text-3);
+}
+.td-empty-lg {
+  gap: var(--space-3);
+  padding: var(--space-8) var(--space-6);
+}
+.td-empty-lg .td-empty-title { font-size: 14px; }
+.td-empty-lg .td-empty-hint { font-size: 12px; }
+.td-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-3);
+  color: var(--brand-text-2);
+  text-align: center;
+  border: 1px solid var(--brand-border);
+  border-radius: var(--radius-field);
+}
+.td-error > .td-icon { color: var(--color-error); }
 
 /* B13 · the loading row is a daisyUI `skeleton` per cell, with no rule of its
    own: the component owns the shimmer animation and the box, and the cells'

@@ -87,6 +87,20 @@ export const feed = computed(() =>
 /** The unread rows the reader can currently see — one number, three readers (§6). */
 export const unreadCount = computed(() => feed.value.unreadCount);
 
+/**
+ * §8 — the project-level empty state, and the one word the raw derivation cannot
+ * supply on its own: *has anything ever happened here?* `buildFeed` sees only the
+ * entries it was handed, so until the first read lands every project looks
+ * admissible-empty — which is how a ledger that had simply not been read yet came
+ * to announce itself with the answer for a project that never had an event. The
+ * view asks for the pair: the derivation says nothing is admissible, **and** the
+ * ledger has been read (`activity.loaded`, the same flag that makes the read
+ * memoised per project). Before that the view shows neither empty state — a
+ * ledger that has not been read is not a finding, and the design's own static
+ * document is explicit that both ship `hidden` (§8).
+ */
+export const projectEmpty = computed(() => feed.value.emptyKind === "project" && activity.loaded);
+
 /** Write one of the three filters. The domain is fixed, so an unknown value is refused. */
 export function writeActivityFilter(name, value) {
   if (name === "actor" && ACTOR_VALUES.includes(value)) activity.filters.actor = value;
