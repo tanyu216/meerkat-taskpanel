@@ -6,7 +6,9 @@
  * same string for the same card), so the separator and the field order are
  * pinned literally here rather than described.
  *
- * L1 reading: `PROTOCOL §㉙` + `guides/task-interface §14`.
+ * Spec: the product's own — the rule is `src/core/README.md` § "Creation
+ * idempotency"; the machine guarantee is the partial unique index
+ * `ux_tasks_idem_active` (`src/core/storage/migrations/0009_task_idem.sql`).
  */
 
 import assert from "node:assert/strict";

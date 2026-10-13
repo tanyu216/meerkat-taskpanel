@@ -147,7 +147,7 @@ list as the work queue, not as a failure of the tool.
 
 ### The reserved `__team__` project
 
-`__team__` is the reserved **team-internal** project (PROTOCOL §②): a team chore
+`__team__` is the reserved **team-internal** project: a team chore
 that is not a repository. It is intentionally absent from `projects.json`, so the
 parser treats it as a **buildin** entry rather than an unregistered name:
 
