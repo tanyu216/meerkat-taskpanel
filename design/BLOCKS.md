@@ -6,7 +6,7 @@ Tailwind class names are never part of the contract, and no anchor is positional
 Counts in the current build, measured in the live DOM: **7 columns · 18 cards ·
 18 detail templates** (`[data-slot]`: 18 description · 18 activity · 16 comments ·
 15 agent-session · 11 attachments · 9 relations) · **625 `data-i18n*` hooks** in the
-shipped document (526 `data-i18n` plus 99 `placeholder` / `aria-label` / `title`
+shipped document (521 `data-i18n` plus 104 `placeholder` / `aria-label` / `title`
 variants) · **280 catalogue keys, `en` and `zh` in exact parity.**
 
 **"35 blocks" means 35 *contract entries*, not 35 DOM blocks.** The DOM block
@@ -257,7 +257,9 @@ project, so every row is filled at all times.
 | | |
 |---|---|
 | Root | `section#td-filters[data-filters]` |
-| Controls | `[data-filter-assignee]` (all/me/human/agent + a given name on demand, R13 — the removal path for the name is this control's own `all` row) · `[data-filter-priority]` (all/urgent/high/medium/low/none) · `[data-filter-status]` (all + the seven statuses, R11) · `[data-filter-label]` (all + 16 labels) |
+| Controls | `[data-filter-assignee]` (all/me/human/agent + a given name on demand, R13 — the removal path for the name is this control's own `all` row) · `[data-filter-priority]` (all/urgent/high/medium/low/none) · `[data-filter-status]` (all + the seven statuses, R11) · `[data-filter-label]` (all + 16 labels) — **all four are `dropdown` panels, R15 ②** |
+| Assignee selector | `[data-filter-assignee]` on a `<details class="dropdown" data-dismiss-on-outside>`; the chosen value lives on `data-filter-assignee-value`, the trigger states it via `[data-filter-assignee-text]`, and the menu holds `[data-assignee-filter-option]` × 4 (all/me/human/agent) plus at most one given name (R13), `aria-current` on the chosen one |
+| Priority selector | `[data-filter-priority]` on its own `<details class="dropdown" data-dismiss-on-outside>`; the chosen value lives on `data-filter-priority-value`, the trigger states it via `[data-filter-priority-text]`, and the menu holds `[data-filter-priority-option]` × 6 (all + the five priorities), each with `data-priority-value` and `data-priority` (the dot's own binding), `aria-current` on the chosen one |
 | Label selector | `[data-filter-label]` on a `<details class="dropdown" data-dismiss-on-outside>`; the chosen value lives on `data-filter-label-value`, the trigger states it via `[data-filter-label-summary]`, and the menu holds `[data-filter-label-option]` × 17, each with `data-label-value` and `aria-current` on the chosen one |
 | Status selector | `[data-filter-status]` on its own `<details class="dropdown" data-dismiss-on-outside>`; the chosen set lives on `data-filter-status-value` (`all`, or a comma-joined subset of the seven keys), the trigger states it via `[data-filter-status-summary]` → `[data-filter-status-text]`, and the menu holds `[data-filter-status-option]` × 8, each with `data-status-value` and its own `aria-pressed` (R11) |
 | Actions | `[data-filter-clear]` · `[data-filter-count]` (`aria-live="polite"`) |
@@ -272,16 +274,20 @@ an attribute rather than a form value, because the addendum names this control
 specifically — it is the one filter with seventeen choices and it has to show which one is
 in force without being opened.
 
-**R9 — it is one control family with the two selects beside it.** The trigger state
-`[data-filter-label-summary]` used to be a label chip (`badge td-chip td-chip-label`: a
-bordered, accent-tinted pill) sitting inside a 28px/500 shell. It is now **plain text at the
-`.td-select` metrics** — 30px tall (the same height as `[data-filter-assignee]` and
-`[data-filter-priority]`, so the three controls share one baseline and one shell), 12px/400
-in `--color-td-ink`, with the 14px caret parked at `right 6px` exactly where the selects'
-caret background-image sits. The `<details>` takes `data-dismiss-on-outside`, the same hook
-B02's switcher takes. The scoping is deliberate: `.td-chip-label` is untouched, so the
-label chips on cards, in the drawer and in the dialogs are still pills — only this one
-trigger renders its value flat.
+**R9 — one control family, one shell.** The trigger state `[data-filter-label-summary]` used
+to be a label chip (`badge td-chip td-chip-label`: a bordered, accent-tinted pill) sitting
+inside a 28px/500 shell. Since R9 it is **plain text at the field's metrics** — 30px tall,
+12px/400 in `--color-td-ink`, with the 14px caret parked at `right 6px`. The `<details>`
+takes `data-dismiss-on-outside`, the same hook B02's switcher takes. The scoping is
+deliberate: `.td-chip-label` is untouched, so the label chips on cards, in the drawer and in
+the dialogs are still pills — only this one trigger renders its value flat.
+**R15 ② sharpened the reading of that rule**: when R9 was written the family was "this
+trigger *and the two `<select>`s beside it*", and the trigger's metrics were justified as
+"the `.td-select` metrics". With the last two `<select>`s converted (R15 ②), the family is
+**seven triggers and no `<select>` at all**, so the shell is `.td-label-trigger`'s own: the
+measurement that matters is no longer "the trigger matches the selects" but **"all seven
+compute identically to each other"** (`design/fidelity-r15.md` §3 B2), and the bar is one
+row of one component by construction rather than by agreement with a control of another kind.
 
 **R11 ① — the status selector is the second dropdown, and the only multi-select.** It is the
 same `<details class="dropdown">` family as the label control, wears the same `.td-label-menu`
@@ -298,11 +304,23 @@ height), and takes the same `data-dismiss-on-outside` rule. What it adds is a **
 | Trigger | `[data-filter-status-summary]` (the `<summary>`) → `[data-filter-status-text]` reads `Status: All` / `Status: <Label>` / `Status: <first> +<n-1>`, restated from the value on every filter pass |
 | Pressing `all` | clears the set — the value returns to `"all"` and every row's `aria-pressed` follows in the same write |
 
-`assignee` and `priority` are the two native `<select>`s; `status` could not be one (it has
+**R15 ② — `status` was never the odd one out; it was the first.** The bar used to hold two
+kinds of control — two native `<select>`s (`assignee`, `priority`) and two dropdowns
+(`status`, `label`) — and the sentence that stood here read "`assignee` and `priority` are the
+two native `<select>`s; `status` could not be one". The second half was right (`status` has
 to hold more than one value at once — the set is the field's own multi-valued nature, and R11
-also composed it with a roster press), and the label control could not host it
-without either a second mode or a fourth kind of row. `applyFilters()` reads the set through
-one helper (`statusFilterValues()`), which is also what `resetFilters()` writes back to `all`.
+also composed it with a roster press), and so was the label control's reason for not being a
+`<select>` (seventeen choices and a chosen-value readout). What the round corrects is the
+first half: `assignee` and `priority` had **no** reason to be `<select>`s, and being the only
+two made the bar read as two components in one row. All four are `<details class="dropdown"
+data-dismiss-on-outside">` now, with the chosen value on a `-value` attribute, the trigger
+stating it through its own `-text`/`-summary` seat, and the rows carrying `aria-current` (the
+single-choice controls) or `aria-pressed` (the status set).
+
+`applyFilters()` reads the status set through one helper (`statusFilterValues()`), which is
+also what `resetFilters()` writes back to `all`; the other three controls get the same
+treatment (`assigneeFilterValue()`, `priorityFilterValue()`, `labelFilterValue()`), and
+`resetFilters()` writes all four back to their `all` row in one pass.
 
 **R13 — the assignee control's domain gains a given name, on demand.** The four values the
 document ships (`all | me | human | agent`, the *kinds* and the un-filtered resting value) are
@@ -312,12 +330,12 @@ it is needed and taken out when the control leaves it**:
 
 | | |
 |---|---|
-| Value | the control's own form value — `all` · `me` · `human` · `agent`, or a given name |
-| Named option | **one at a time, at most** — `[data-filter-assignee] [data-assignee-filter-option="<name>"]`, `value` and copy both the name, generated by `renderAssigneeFilter()` and removed when the control's value is no longer that name |
-| Static options | the four above stay in the markup and are **never** removed (measured: 4 at rest, 4 while a name is in force) |
+| Value | the control's own value attribute — `all` · `me` · `human` · `agent`, or a given name |
+| Named row | **one at a time, at most** — `[data-filter-assignee] [data-assignee-filter-option="<name>"]`, hook value and copy both the name, generated by `renderAssigneeFilter()` and removed when the control's value is no longer that name |
+| Static rows | the four above stay in the markup and are **never** removed (measured: 4 at rest, 4 while a name is in force; R15 ② kept both the hook and its value-in-the-attribute carrier, and moved the element from an `<option>` to a `menu` row `button`) |
 | Semantics | `me` → `data-assignee` == the local human; `human`/`agent` → `data-assignee-kind`; a name → `data-assignee` — the attribute the card already carries and the drawer already shows, so the control adds no second source for who a card belongs to |
 | Stacking | **AND** against the other filters, like assignee/priority/label |
-| Capsule | **not here** — the native `<select>` carries the value only; the selected state is drawn on the roster (B03) |
+| Capsule | **not here** — the control's trigger carries the value as plain text only; the selected state is drawn on the roster (B03) |
 | Clear | **the control's own `all` row, and nothing else** (R13 修订 · 决定甲): a roster press *is* this control's own selection, so the row that selects a name and the row that leaves it are the same control and no second affordance is needed. R13 seg2's sibling `[data-assignee-clear]` — static markup, `hidden` at rest, shown only while the value is a given name — is **withdrawn** with its three rules, its delegated press handler and its key; no element, rule or handler in the shipped prototype carries the hook (it survives only in the comments and documents that record the withdrawal) |
 | Single writer | `renderAssigneeFilter()` reads the control's value and derives the roster's capsules *and* the control's own options from it, so the two can never state different things |
 
@@ -980,7 +998,8 @@ copy. Its own page stays in the repository as the design source and as its own e
 | | |
 |---|---|
 | Root | `[data-activity-view]` — third child of `main.td-main`, beside `[data-board-view]` and `[data-list]`; ships **`hidden`**, because the no-script default view is the board |
-| B26.1 header + controls | `[data-activity-title]` · `[data-activity-mark-read]` (the header's own title and subtitle carry `data-i18n` hooks only, no `data-activity-*` of their own) · `[data-activity-filters]` → `[data-activity-filter="actor" \| "event" \| "task"]` + `[data-filter-clear]` + `[data-activity-filter-count]` (`aria-live="polite"`) |
+| B26.1 header + controls | `[data-activity-title]` · `[data-activity-mark-read]` (the header's own title and subtitle carry `data-i18n` hooks only, no `data-activity-*` of their own) · `[data-activity-filters]` (a `section`, named `filters.label`, R15 ①) → `[data-activity-filter="actor" \| "event" \| "task"]` (**each a `<details class="dropdown" data-dismiss-on-outside>`**, R15 ①) + `[data-filter-clear]` (R15 ③) + `[data-activity-filter-count]` (`aria-live="polite"`) |
+| B26.1a one activity control | `[data-activity-filter="…"]` on a `<details class="dropdown" data-dismiss-on-outside>`; the chosen value lives on `data-activity-filter-value`, the trigger states it via `[data-activity-filter-text]`, and the menu holds `[data-activity-filter-option]` × N, each with `data-activity-value` and `aria-current` on the chosen one |
 | B26.2 feed | `[data-activity-feed]` → `[data-activity-day]` → `[data-activity-row]` → `[data-activity-actor]` / `[data-activity-sentence]` / `[data-activity-task]` / `[data-activity-at]` / `[data-activity-detail]` |
 | B26.3 unread boundary | `[data-activity-unread-divider]` + `[data-activity-unread-count]`; the same press that clears it is `[data-activity-mark-read]` |
 | B26.4 burst | `[data-activity-burst]` + `[data-activity-burst-count]` (`×N`) + one `[data-activity-burst-item]` per folded event |
@@ -1013,25 +1032,40 @@ carries a stand-in drawer, and that stand-in is deliberately not what the board 
 literal, and every `var(--…)` they read already resolves in `tw.css` — three properties the
 check reads off the moved block rather than off this prose.
 
-**R15 ① — B26's filter bar is B04's bar.** Terry's 2026-10-13 second request
-(`T-20261013-165112`) was that the Activity page's three filters read as the board/list
-bar's own control family, and the round's ruling is that they **are** it, in every
-machine-visible respect. Measured on the prototype (`design/fidelity-r15.md` §3): the bar
-is a **named `section.td-filters` landmark** — the same element kind, the same
-`filters.label` accessible name, the same `flex` shell (`align-items: center`,
-`flex-wrap: wrap`, `gap: 8px`) — whose direct children are its control row and its tail;
-each control is a `select.select.select-sm.td-select` whose `.td-sr` label is a **sibling**
-seat (`for=` / `id=`); and each control's field shell computes **byte-identically** to the
-board's own two selects (`height: 30px`, `padding: 0 26px 0 8px`, `border-radius: 6px`,
-`12px/400`, caret at `right 6px`). The three domains stay B26's (`actor` · `event` ·
-`task`) and the bar keeps its own count (`[data-activity-filter-count]`, `aria-live`);
-what the round changes is the bar's container (a `div` → the board's named `section`) and
-nothing about the controls' copy. The implementation's divergence — a `span.td-select-caret`
-wrapper per control, invented because the app sheet may not carry the prototype's caret
-data-URI — is registered in `design/fidelity-r15.md` §4 as R15-B01, with the selector-level
-target for the implementation card.
+**R15 ① — B26's filter bar is B04's bar, control for control.** Terry's 2026-10-13 second
+request (`T-20261013-165112`) was that the Activity page's three filters read as the
+board/list bar's own control family, and the round's ruling (Elon, 口径 B) is that they
+**are** it — the same component, not a lookalike. Measured on the prototype
+(`design/fidelity-r15.md` §3): the bar is a **named `section.td-filters` landmark** — the
+same element kind, the same `filters.label` accessible name, the same `flex` shell — whose
+direct children are its control row and its tail; and each of the three controls is a
+**`<details class="dropdown" data-dismiss-on-outside>`** whose `<summary class="btn btn-sm
+td-label-trigger">` states the chosen value as plain text and whose `dropdown-content menu`
+holds the rows — the four board controls' own shape, drawn by the same rules.
 
-**R15 ② — the bar's clear control is B04's Clear, hook and key.** `[data-activity-filter-reset]`
+What the round changed, in full:
+
+| | before | after |
+|---|---|---|
+| container | `div.td-filters` | `section.td-filters` + `filters.label` (the board's own landmark) |
+| control | `select.select.select-sm.td-select` ×3 (with a `.td-sr` label sibling) | `details.dropdown[data-dismiss-on-outside]` ×3 (with a named `summary` trigger) |
+| value | the form value (`$el.val()`) | `data-activity-filter-value` on the control |
+| trigger copy | the browser's own selected option | `[data-activity-filter-text]`, restated from the chosen row |
+| rows | the select's `<option>`s | `[data-activity-filter-option]` + `data-activity-value`, `aria-current` on the chosen one |
+| clear | `[data-activity-filter-reset]` / `Reset` | `[data-filter-clear]` / `Clear` (R15 ③) |
+
+The three domains are B26's own and unchanged (`actor` · `event` · `task`, with the same
+row counts 3 / 4 / 10 and the same copy), the bar keeps its own count
+(`[data-activity-filter-count]`, `aria-live="polite"`), and the feed's URL contract is
+unchanged (`#/activity?actor=…`). The aux hook family grows by exactly two names — the
+trigger seat and the row seat — and the round retires one (`[data-activity-filter-reset]`,
+R15 ②). The implementation's divergence — each control wrapped in a `span.td-select-caret`
+carrying an inline caret `svg`, invented because the app sheet may not carry the prototype's
+caret data-URI, and with no counterpart on the board's controls — is registered in
+`design/fidelity-r15.md` §4 as R15-B01, with the selector-level target for the
+implementation card.
+
+**R15 ③ — the bar's clear control is B04's Clear, hook and key.** `[data-activity-filter-reset]`
 and `activity.filter.reset` are **withdrawn**: the bar carries `[data-filter-clear]` with
 `data-i18n="filters.clear"`, the hook and the key the board/list bar's Clear has carried all
 along, in the same tail position (Clear · count) and the same `btn btn-ghost btn-sm` shell.
@@ -1041,11 +1075,17 @@ control family, two bars. The filter-empty state's own inline `[data-activity-em
 (B26.5) is a different affordance in a different place and is **not** touched.
 
 **Auxiliary hooks** (implementation detail, not part of the block contract), the full
-`data-activity-*` set the document carries — 34 names, no more (R15 ② retired
+`data-activity-*` set the document carries — **39 names, no more**, measured off the shipped
+document (R15 ① added the five the dropdown conversion needs —
+`[data-activity-filter-summary]` (the trigger seat), `[data-activity-filter-text]` (the
+trigger's value seat, the board's `-text` shape), `[data-activity-filter-option]` (a menu
+row), `[data-activity-filter-value]` (the control's value carrier, the board's
+`-value` shape), and `[data-activity-value]` (a row's own value) — and R15 ③ retired one,
 `[data-activity-filter-reset]`; `[data-filter-clear]` is B04's hook, not this family's):
 `[data-activity-view]` · `[data-activity-title]` · `[data-activity-mark-read]` ·
-`[data-activity-filters]` · `[data-activity-filter]` ·
-`[data-activity-filter-count]` · `[data-activity-feed]` · `[data-activity-day]` ·
+`[data-activity-filters]` · `[data-activity-filter]` · `[data-activity-filter-summary]` ·
+`[data-activity-filter-text]` · `[data-activity-filter-option]` · `[data-activity-filter-value]` ·
+`[data-activity-value]` · `[data-activity-filter-count]` · `[data-activity-feed]` · `[data-activity-day]` ·
 `[data-activity-day-label]` · `[data-activity-day-kind]` · `[data-activity-page]` ·
 `[data-activity-row]` · `[data-activity-line]` · `[data-activity-actor]` ·
 `[data-activity-sentence]` · `[data-activity-task]` · `[data-activity-task-id]` ·
@@ -1077,11 +1117,11 @@ roots, two questions; the ruling that keeps them apart is Elon's (card comment, 
 | | |
 |---|---|
 | Root | `[data-waiting-view]` — fourth child of `main.td-main`, beside `[data-board-view]`, `[data-list]` and `[data-activity-view]`; ships **`hidden`**, because the no-script default view is the board |
-| B27.2 header | `[data-waiting-head]` → `[data-waiting-title]` (`waiting.title`, byte-identical to `nav.waiting`) + the description (`waiting.subtitle`, R15 ③ — a `data-i18n` seat only, no `data-waiting-*` of its own) + `[data-waiting-count]` (`waiting.count`, `%s` template) |
+| B27.2 header | `[data-waiting-head]` → `[data-waiting-title]` (`waiting.title`, byte-identical to `nav.waiting`) + the description (`waiting.subtitle`, R15 ④ — a `data-i18n` seat only, no `data-waiting-*` of its own) + `[data-waiting-count]` (`waiting.count`, `%s` template) |
 | B27.1 the queue | `[data-waiting-list]` → `[data-waiting-item]` → `[data-waiting-actor]` / `[data-waiting-reason]` / `[data-waiting-task]` + `[data-waiting-task-title]` / `[data-waiting-since]` / `[data-waiting-open]` |
 | B27.3 empty state | `[data-waiting-empty]`; ships `hidden` |
 
-**R15 ③ — the header states what the view is, not only its name.** Terry's 2026-10-13 third
+**R15 ④ — the header states what the view is, not only its name.** Terry's 2026-10-13 third
 request (`T-20261013-165112`) was that `Waiting on me` learn the two-line head B26 already
 had. The header is now a **text block plus the tally**: `.td-waiting-head-text` holds the
 title over a one-line description, and `[data-waiting-count]` keeps its `margin-left: auto`
