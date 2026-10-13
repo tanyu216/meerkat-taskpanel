@@ -45,8 +45,8 @@ carried the board's constraints. Split apart:
 `--link` applies to the **board** skill only. The loop is always copied: a symlinked body
 would reintroduce exactly the checkout dependency this split removes.
 
-Nothing is loaded for you. The installer prints the command; loading a daemon is the
-operator's call:
+Nothing is loaded for you **unless you ask**. The installer prints the command, and loading
+a daemon is the operator's call:
 
 ```bash
 # macOS
@@ -57,6 +57,13 @@ systemctl --user enable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-pat
 # Anywhere
 crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 ```
+
+Asking is one flag — `install.sh --supervisor=enable` (alias `--enable-supervisor`;
+per host with `--supervisor-hosts claude,codex,pi`, one mechanism with
+`--scheduler auto|launchd|systemd|cron`), with `--supervisor=disable` and
+`--supervisor=status` as the same entry point, and `MEERKAT_TASKPANEL_SUPERVISOR` for
+non-interactive callers. On a TTY with no flag it asks once and defaults to **no**;
+without a request it still only prints the commands above.
 
 **A loaded unit names no checkout.** That is the point of the host-local body: the units
 name `<host>/meerkat-taskpanel/scripts/supervisor.mjs`, so moving, renaming or deleting

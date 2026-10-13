@@ -81,8 +81,11 @@ bash install.sh --target all        # claude, codex, pi — and openclaw, which 
 
 The installer copies this skill into the host's skill directory, copies the execution
 body into `<host>/meerkat-taskpanel/`, renders the units and the wake glue, and prints the
-one command that loads a unit — it never enables a daemon for you. Full detail, with every
-path, is in [`references/operation.md`](references/operation.md).
+one command that loads a unit — it never enables a daemon for you **unless you ask**:
+`install.sh --supervisor=enable` (per host: `--supervisor-hosts claude,codex,pi`,
+`--supervisor=disable` / `status`) is the opt-in path that runs that load, and it is
+never a silent default. Full detail, with every path, is in
+[`references/operation.md`](references/operation.md).
 
 **OpenClaw is deliberately excluded.** `install.sh --target openclaw` installs the board
 skill and nothing else: the [openclaw-team](https://github.com/tanyu216/openclaw-team)

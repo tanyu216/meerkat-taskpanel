@@ -183,12 +183,11 @@ and an LLM turn still starts only when a claim succeeded (see
 The exact per-OS commands, their failure modes, and the `loginctl enable-linger` caveat are
 in [`scheduling.md §Enabling the supervisor (opt-in)`](scheduling.md#enabling-the-supervisor-opt-in).
 
-> **Not yet wired.** This section states the enable contract; the installer-side
-> implementation (`scripts/install/_common.sh` and the per-host
-> `scripts/install/<host>.sh` pass-through of `MEERKAT_TASKPANEL_SUPERVISOR`) — and the
-> matching `skills/meerkat-loop/SKILL.md` / `references/operation.md` wording — land in the
-> follow-on implementation change. Until then the **manual** commands above are the only
-> working path.
+An enable that the OS refuses — a `launchctl bootstrap` with no GUI session, a
+`systemctl --user` with no D-Bus — is **reported, not disguised**: the install prints
+`supervisor: not enabled (…)` with the reason and the exact command to run by hand, and
+still exits 0, because the host's skills are installed either way and an OS-level refusal
+is not something `--force` fixes.
 
 
 ### The taskd guard (keepalive, always enabled)
