@@ -73,15 +73,26 @@ onUnmounted(() => {
            demonstrated inside B18 (the states gallery), which was a design
            demonstration and is gone, so the invariant now rides on the real
            surface. Rendered `hidden` at rest, exactly as the prototype states
-           the state, so the one element is always the one element. -->
-      <div
-        class="flex flex-col items-start gap-2 p-4 m-4 rounded-lg bg-error/12"
-        data-error-state
-        role="alert"
-        :hidden="!board.error"
-      >
-        <span class="font-medium text-(--brand-text-2)" data-i18n="error.title">{{ $t("error.title") }}</span>
-        <span class="text-[12px]" data-i18n="error.hint">{{ $t("error.hint") }}</span>
+           the state, so the one element is always the one element.
+
+           Its face is the design's `.td-error`: the danger-coloured glyph over
+           the centred title/hint/Retry stack, one hairline and `--r-md`. It had
+           been a left-aligned, border-less `m-4` box whose title and hint were
+           14px/12px — the *large* empty state's type — so the surface the design
+           reserves for a failure read like a card of body copy. The surface
+           colour stays this app's `bg-error/12` (R10's registered deviation from
+           the design's flat danger-soft) and the separation from the filter bar
+           stays `main`'s own 12px row gap, which is why the box carries no
+           margin of its own. -->
+      <div class="td-error bg-error/12" data-error-state role="alert" :hidden="!board.error">
+        <!-- the glyph the design puts on this surface (`.td-error > .td-icon`),
+             coloured from daisyUI's `--color-error` — the same `#c0392b` the
+             prototype's danger icon reads, with no literal in either file. -->
+        <svg class="td-icon size-5" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M12 4 3 20h18L12 4ZM12 10v4M12 17h.01" />
+        </svg>
+        <span class="td-empty-title" data-i18n="error.title">{{ $t("error.title") }}</span>
+        <span class="td-empty-hint" data-i18n="error.hint">{{ $t("error.hint") }}</span>
         <button type="button" class="btn btn-outline btn-sm" data-error-retry data-i18n="error.retry" @click="initBoard">{{ $t("error.retry") }}</button>
       </div>
 
