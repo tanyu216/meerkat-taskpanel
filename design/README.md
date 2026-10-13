@@ -8,9 +8,16 @@ design/
 ├── PRD.md          # product requirements            (not present)
 ├── DESIGN.md       # design decisions
 ├── BLOCKS.md       # block inventory
+├── contracts/      # standalone interface contracts (a topic's single source of truth)
 ├── prototype/      # interactive prototype
 └── assets/         # screenshots / illustrations / logo
 ```
+
+`contracts/` holds **topic-scoped** contracts that do not belong to a numbered fidelity
+round — each is the single written source of truth for one interface question, written so
+an implementation card can build it and an independent verification card can check it.
+The first one is `contracts/project-prefix-binding.md` (the create-project prefix field and
+the card-number prefix).
 
 ## Status
 

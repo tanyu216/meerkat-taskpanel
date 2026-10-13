@@ -710,6 +710,11 @@ drawer veil deepens with the modal's — one token, every veil.
 `dialog[data-create-project]` → `form[data-create-project-form]` →
 `[data-create-project-name]` · `[data-create-project-prefix]` · `[data-modal-close]`.
 
+> **前缀绑定（口径 = `design/contracts/project-prefix-binding.md`）**：`[data-create-project-prefix]`
+> 是**该项目卡号前缀**的 oracle——原型把它 `required` + `maxlength="4"`，提交时存入
+> `PROJECT_PREFIX[name]`，`nextIdentifier()` 据此编号。服务端侧的唯一口径（`meta.prefix` 规范化后
+> 存为项目前缀、铸号读它、缺省回退 `identifierPrefix(id)`）与机检断言清单见该契约。
+
 ## B12 · Empty states
 
 `[data-empty]` with `data-empty-kind="column"` (one per column, revealed when the
