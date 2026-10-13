@@ -532,6 +532,42 @@ describe("web/board — loads", () => {
     await refreshTask("TD-1"); // resolves, does not throw
     assert.equal(board.tasks[0].version, 3);
   });
+
+  /**
+   * R10 ① / T-20261013-160505 — "no card is visible" and "this board is empty" are
+   * two different statements, and only the second one may show the view's
+   * no-results block. Before the fix the board view read the count alone, so
+   * **every cold paint** announced "No tasks match your filters" — with a
+   * Clear-filters button — until the cards arrived.
+   */
+  it("does not call a board empty before it has read one, and withdraws the reading on a project switch", async () => {
+    const { board, boardEmpty, loadTasks, selectProject } = await freshBoard();
+    board.currentProjectId = "p1";
+
+    assert.equal(board.loaded, false, "nothing has been read");
+    assert.equal(boardEmpty.value, false, "0 visible cards is not yet a finding");
+
+    // A read that lands with nothing in it is the finding.
+    const calls = installFetch({ "GET /api/v1/tasks": () => ok({ tasks: [] }) });
+    await loadTasks();
+    assert.equal(calls.length, 1);
+    assert.equal(board.loaded, true);
+    assert.equal(boardEmpty.value, true);
+
+    // …and a switch to another project withdraws it until *that* project's read
+    // lands: one project's reading never describes another.
+    await selectProject("p2");
+    assert.equal(board.loaded, true, "the second project's read landed too");
+    assert.equal(boardEmpty.value, true, "it is empty because it was read, not because nothing was");
+
+    // A failed read is not a reading: the error surface speaks, the board does not
+    // claim emptiness on top of it.
+    board.loaded = false;
+    installFetch({ "GET /api/v1/tasks": () => failure(500, "INTERNAL", "boom") });
+    await assert.rejects(() => loadTasks());
+    assert.equal(board.loaded, false);
+    assert.equal(boardEmpty.value, false);
+  });
 });
 
 /* ------------------------------------------------------------------ filters */

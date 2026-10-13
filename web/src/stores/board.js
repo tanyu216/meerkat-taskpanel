@@ -120,6 +120,13 @@ export const board = reactive({
   reporters: [],
   labels: [],
   loading: false,
+  /**
+   * Has a task read for the **current** project landed? `loading` says a read is
+   * in flight; this says one has finished, which is the only thing that lets the
+   * board view claim its `empty` state (see `boardEmpty`). Cleared when the
+   * project changes, so one project's reading never describes another.
+   */
+  loaded: false,
   error: null,
   revision: 0,
   connection: "closed",
@@ -271,6 +278,25 @@ export const columns = computed(() =>
 export const totalVisible = computed(() => visibleTasks.value.length);
 
 /**
+ * R10 ① / T-20261013-160505 — whether the board view is in its `empty` state,
+ * and the one word a visible count cannot supply on its own: *has the board been
+ * read yet?* `visibleTasks` projects whatever is in hand, so before the current
+ * project's first read lands every board looks bare — and the view answered that
+ * with the board-level no-results block ("No tasks match your filters" over a
+ * Clear-filters button) on **every cold paint**, until the cards arrived.
+ *
+ * The design's own resting document settles which reading is the right one: it
+ * ships `data-board-state="data"` with the no-results block `hidden`
+ * (`design/prototype/index.html`, R10 ①) and only ever says `empty` from
+ * `applyFilters()`, i.e. *after* it has read the cards. `empty` is a finding about
+ * a board, never a statement made before there is one — so this reads the count
+ * through `board.loaded`. A **failed** read is not a reading either (the B17
+ * banner carries it and `loaded` stays false), and the list's own no-rows block
+ * has gated on the same idea since M1 (`!board.loading`, `ListView.vue`).
+ */
+export const boardEmpty = computed(() => board.loaded && totalVisible.value === 0);
+
+/**
  * The cards the 「等你回复」view shows, and the number its nav pill prints.
  *
  * One predicate for both (design §8-05): the view and the count read the same
@@ -409,6 +435,10 @@ export async function loadTasks() {
   try {
     const data = await api.tasks({ project_id: board.currentProjectId, include_archived: 0, limit: 500 });
     board.tasks = data.tasks ?? [];
+    // The read landed, so the board may now say what it read — including "nothing"
+    // (see `boardEmpty`). A throw skips this on purpose: a failed read is not a
+    // reading, and the shell's error surface carries it instead.
+    board.loaded = true;
     board.error = null;
   } finally {
     board.loading = false;
@@ -445,6 +475,9 @@ export async function selectProject(projectId) {
   board.selectedRef = null;
   board.drawerState = "closed";
   board.detail = null;
+  /** one project's reading never describes another — the view holds `data` until
+   *  this project's own read lands (see `boardEmpty`). */
+  board.loaded = false;
   await loadTasks();
 }
 
