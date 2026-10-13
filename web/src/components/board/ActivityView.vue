@@ -16,6 +16,9 @@
  *     is its keyboard twin, carrying the accessible name (`Open TD-134`). They
  *     sit on the row's first level and never nest: a row that were itself a
  *     button would make the task link inside it a nested interactive element (§6).
+ *     The identifier's own anchor, `[data-activity-task]`, is the third way in —
+ *     and (F2) it opens the same drawer **in place**, leaving the view on the
+ *     feed: the three all do the one thing, so nothing about a row navigates.
  *   * **The detail is a native `<details>`.** It costs one item on the 30px line,
  *     and its panel is positioned against the row, so opening a row never
  *     reflows the feed (§4 L3).
@@ -49,7 +52,6 @@ import {
   writeActivityFilter,
 } from "../../stores/activity.js";
 import { board, openDetail } from "../../stores/board.js";
-import { navigate } from "../../stores/route.js";
 import { pushToast, view } from "../../stores/ui.js";
 
 /**
@@ -123,15 +125,21 @@ function onLine(event, item) {
 }
 
 /**
- * §6 — the task anchor is a real link for a reader without the script; with it,
- * the press returns to the board and lands on the same task.
+ * §6 / F2 — the task anchor is a real link for a reader without the script; with
+ * it, the press opens the same detail surface **in place** and the view stays the
+ * activity view. The identifier and the title are the row's own second way into
+ * the drawer the row body already opens (a pointer may aim at either), not a
+ * route back to the board.
  *
- * R16 §4.5 — the view change goes through `navigate()`, so the address follows
- * the view onto `/board` instead of being left behind on the feed's address.
+ * Nothing is written to the address, and that is the §4.4 reading: the anchor's
+ * own `#/task/<id>` href is the drawer's slot for a deep link, but the feed's
+ * `/activity?…` address — and the filters it carries — belongs to the view, and
+ * this press does not change the view. `preventDefault` is what keeps the browser
+ * from following that href; the row body's press writes nothing either, so the
+ * two ways in are now the same way in.
  */
 function onTask(event, item) {
   event.preventDefault();
-  navigate("board");
   openDetail(item.identifier);
 }
 
