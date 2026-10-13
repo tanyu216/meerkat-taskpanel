@@ -114,7 +114,7 @@ with it.
 R11 wrote the name into no filter because the assignee control's domain held no given name
 (B04); R13 extends that domain, so a press on a name narrows as well as routes.
 **(R13 修订 · Terry 2026-10-13 · 决定甲 supersedes the route half: the press is now *only* the
-name — one `writeAssigneeFilter()` and one `applyFilters()`, no `setView("list")`, no status
+name — one `writeAssigneeFilter()` and one `applyFilters()`, no `mirrorView("list")`, no status
 set. See the paragraph after the capsule below.)** The roster's own structure
 changes shape to carry the selected state: each name is now a **`[data-assignee-item]`**
 wrapper holding **one** button — the name (`[data-agent-assignee]`, which also carries
@@ -149,7 +149,7 @@ the round's narrow-tier contract (measured at 980 / 760 / 430: not visible).
 **R12x ① — all four destinations route, and the count rides the one that has one.** Until
 this round the nav's click handler answered `activity` and `waiting` with a revision toast
 and switched no view, so two of the four names led nowhere — the defect Terry's 2026-10-13
-request names. The handler now hands **every** `[data-nav-item]` to `setView()`, which
+request names. The handler now hands **every** `[data-nav-item]` to `mirrorView()`, which
 toggles four view roots and writes `aria-current="page"` on the pressed one and nowhere else.
 `[data-nav-item="activity"]` also carries **`[data-nav-count="activity"]`**, the unread
 count in B03's existing `.badge.td-count` shell: the number is the feed's current visible
@@ -165,7 +165,7 @@ restate the tally its own header already carries (B27 / DESIGN.md §30.3).
 
 **R16 — the same press now also writes the address.** The four destinations got URLs
 (`/board`, `/list`, `/activity`, `/waiting`, with `/` normalised to `/board`), so the handler
-above goes through `navigate()` rather than `setView()`: one press changes the view **and**
+above goes through `navigate()` rather than `mirrorView()`: one press changes the view **and**
 pushes that view's address, which is what makes a deep link, a refresh and the back button mean
 anything. Nothing structural moves — the hook, the four roots, the `aria-current` rule and the
 top bar's two-value toggle are exactly as this entry describes; the address layer lives in the
