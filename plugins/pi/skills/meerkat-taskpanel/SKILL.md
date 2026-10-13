@@ -146,7 +146,10 @@ call** — taskpanel neither prescribes it nor advises it, and neither does this
 
 ## Reference
 
-See [`references/cli.md`](references/cli.md) for the command surface, the delivery gate,
+See [`references/card-schema.md`](references/card-schema.md) for the **card format** — every
+frontmatter key and every body section, i.e. what `taskctl export` writes and the md migrator
+reads back,
+[`references/cli.md`](references/cli.md) for the command surface, the delivery gate,
 the report template and the `--json` contract,
 [`references/reports.md`](references/reports.md) for periodic reports and statistics,
 [`references/projects-json.md`](references/projects-json.md) for the local
