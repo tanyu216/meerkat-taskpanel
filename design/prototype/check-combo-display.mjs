@@ -64,13 +64,25 @@ const twCss = readFileSync(TW_CSS_PATH, "utf8");
 
 /* --------------------------------------------------- the one truncation */
 
-/* The rule, restated here from `app.js:identifierText` — length ≤ 8 verbatim,
-   longer → its first eight characters plus an ellipsis. The check states it
-   independently so it is a claim about the artefact, not a copy of it. */
+/* The rule, restated here from `app.js:identifierText` — length ≤ 10 verbatim,
+   longer → its first ten characters plus an ellipsis. The check states it
+   independently so it is a claim about the artefact, not a copy of it.
+
+   Ten characters is the global cap (T-20261014-001418, operator Terry
+   2026-10-14): the same value B07's cards, B08's rows and the dialog's own
+   rows and chips take, all from the one function. */
+const LIMIT = 10;
 const cap = (value) => {
   const id = String(value || "");
-  return id.length > 8 ? id.slice(0, 8) + "…" : id;
+  return id.length > LIMIT ? id.slice(0, LIMIT) + "…" : id;
 };
+
+/* The two samples the spec names, kept as data so both suites can name them:
+   one identifier past the cap (`INVENTORY-0042`, fourteen characters → its
+   first ten plus the ellipsis) and one inside the cap but longer than the old
+   eight (`PROJ-0007`, nine characters → verbatim). */
+const SAMPLE_OVER = { value: "INVENTORY-0042", shown: "INVENTORY-…" };
+const SAMPLE_INSIDE = { value: "PROJ-0007", shown: "PROJ-0007" };
 
 /* ------------------------------------------------------ tiny tag parser */
 
@@ -168,11 +180,27 @@ for (const marker of ["parent", "depends"]) {
     rows.length > 0 && wrong.length === 0,
     `${rows.length} row(s)${wrong.length ? " · wrong: " + wrong.slice(0, 3).map((r) => `${r.value}→${r.idText}`).join(", ") : ""}`,
   );
-  const overCap = rows.filter((r) => String(r.value).length > 8);
+  const overCap = rows.filter((r) => String(r.value).length > LIMIT);
   check(
     `S3.${marker}a the seed carries an over-cap identifier (the truncation is exercised)`,
     overCap.length >= 1,
     overCap.map((r) => `${r.value}→${r.idText}`).join(", ") || "none",
+  );
+  /* The two samples the spec names, asserted by name rather than by luck: at
+     least one row must show a past-the-cap identifier cut to ten characters
+     plus the ellipsis, and at least one must show a nine-character identifier
+     — past the *old* eight — come through whole. */
+  const truncSample = rows.find((r) => r.value === SAMPLE_OVER.value);
+  check(
+    `S3.${marker}c the seed's ${SAMPLE_OVER.value} sample is cut to ten characters plus an ellipsis`,
+    !!truncSample && truncSample.idText === cap(SAMPLE_OVER.value) && truncSample.idText === SAMPLE_OVER.shown,
+    truncSample ? `${truncSample.value} (${truncSample.value.length}) → ${truncSample.idText}` : `${SAMPLE_OVER.value} absent`,
+  );
+  const insideSample = rows.find((r) => r.value === SAMPLE_INSIDE.value);
+  check(
+    `S3.${marker}d the seed's ${SAMPLE_INSIDE.value} sample (nine characters) comes through whole`,
+    !!insideSample && insideSample.idText === SAMPLE_INSIDE.shown && !insideSample.idText.includes("…"),
+    insideSample ? `${insideSample.value} (${insideSample.value.length}) → ${insideSample.idText}` : `${SAMPLE_INSIDE.value} absent`,
   );
   /* 48 characters is a floor, not a measurement: at the 980px viewport a 45
      character title is already clipped, so anything at or past 48 cannot fit.
@@ -288,12 +316,13 @@ for (const marker of ["parent", "depends"]) {
 /* --- A8 · one truncation in the document, and the chip uses it --------- */
 
 {
-  const sites = [...js.matchAll(/slice\(\s*0\s*,\s*8\s*\)/g)].length;
-  const inIdentifierText = !!functionSource(js, "identifierText") && /slice\(\s*0\s*,\s*8\s*\)/.test(functionSource(js, "identifierText"));
+  const sites = [...js.matchAll(/slice\(\s*0\s*,\s*10\s*\)/g)].length;
+  const inIdentifierText = !!functionSource(js, "identifierText") && /slice\(\s*0\s*,\s*10\s*\)/.test(functionSource(js, "identifierText"));
+  const stale = [...js.matchAll(/slice\(\s*0\s*,\s*8\s*\)/g)].length;
   check(
-    "A8.1 app.js carries exactly one `slice(0, 8)` and it is identifierText's",
-    sites === 1 && inIdentifierText,
-    `${sites} site(s), inside identifierText: ${inIdentifierText}`,
+    "A8.1 app.js carries exactly one `slice(0, 10)` and it is identifierText's",
+    sites === 1 && inIdentifierText && stale === 0,
+    `${sites} site(s) at the cap, ${stale} at the old eight, inside identifierText: ${inIdentifierText}`,
   );
   const optionFn = functionSource(js, "comboOptionMarkup");
   const chipFn = functionSource(js, "addComboChip");
@@ -441,28 +470,67 @@ async function renderSuite() {
     check("R0.2 no console or page errors on the way in", consoleErrors.length === 0 && pageErrors.length === 0, [...consoleErrors, ...pageErrors].slice(0, 2).join(" | "));
 
     /* -- A2 · the option rows ------------------------------------------- */
-    await page.evaluate(EXPAND, "[data-parent-input]");
+
+    /* The board's own longest identifier is nine characters (`PROJ-0007`), so
+       at a ten-character cap no *shipped* card is capped, and an assertion that
+       can only ever see short ids would be vacuous. The suite therefore widens
+       the first card the Parent roster offers to the spec's fourteen-character
+       sample. `taskCandidates()` reads `[data-card]` lazily on focus, so the
+       value travels the real roster → `comboOptionMarkup` path — what is the
+       suite's is the input identifier, never the rendering, the rules or the
+       cap. The shipped seed carries the same sample in both menus (S3.*). */
+    const widened = await page.evaluate((sample) => {
+      const open = (sel) => {
+        const input = document.querySelector(sel);
+        input.focus();
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      };
+      open("[data-parent-input]");
+      /* A *short* row, so the board's own nine-character `PROJ-0007` stays in
+         the roster and both sides of the cap stay observable at once. */
+      const short = [...document.querySelectorAll("[data-parent-option]")].find(
+        (b) => (b.getAttribute("data-parent-value") || "").length <= 8,
+      );
+      if (!short) return null;
+      const from = short.getAttribute("data-parent-value");
+      const card = document.querySelector(`[data-card][data-identifier="${from}"]`);
+      if (!card) return null;
+      card.setAttribute("data-identifier", sample.value);
+      open("[data-parent-input]");
+      return { from, to: sample.value };
+    }, SAMPLE_OVER);
+    check(
+      "A2.-1 an over-cap identifier reaches the menu through the real roster",
+      !!widened && widened.to === SAMPLE_OVER.value && widened.from !== widened.to,
+      widened ? `${widened.from} → ${widened.to}` : "no card to widen — the cap could not be exercised",
+    );
     await page.waitForTimeout(150);
     const rows = await page.evaluate(READ_ROWS, "parent");
     check("A2.0 the Parent menu renders rows", rows.length > 0, `${rows.length} row(s)`);
 
-    const malformed = rows.filter((r) => !/^.{0,8}(…)?$/u.test(r.id || ""));
+    const malformed = rows.filter((r) => !/^.{0,10}(…)?$/u.test(r.id || ""));
     check(
-      "A2.1 every Parent option's identifier is at most 8 characters plus an ellipsis",
+      "A2.1 every Parent option's identifier is at most 10 characters plus an ellipsis",
       malformed.length === 0,
       malformed.length ? malformed.map((r) => `${r.value}→${r.id}`).join(", ") : `${rows.length} row(s) checked`,
     );
-    const overCap = rows.filter((r) => String(r.value).length > 8);
+    const overCap = rows.filter((r) => String(r.value).length > LIMIT);
     const shortFromCap = overCap.filter((r) => r.id !== cap(r.value));
     check(
-      "A2.2 every over-cap identifier is exactly its first eight characters plus an ellipsis",
+      "A2.2 every over-cap identifier is exactly its first ten characters plus an ellipsis",
       overCap.length > 0 && shortFromCap.length === 0,
       overCap.length
         ? `${overCap.length} over-cap row(s): ${overCap.map((r) => `${r.value}→${r.id}`).join(", ")}`
         : "no over-cap identifier in the roster — the cap is not exercised",
     );
-    const short = rows.filter((r) => String(r.value).length <= 8 && r.id !== r.value);
-    check("A2.3 a short identifier renders verbatim", short.length === 0, short.map((r) => `${r.value}→${r.id}`).join(", ") || "none altered");
+    const insideSample = rows.find((r) => r.value === SAMPLE_INSIDE.value);
+    check(
+      `A2.3 a nine-character identifier (${SAMPLE_INSIDE.value}) comes through whole — the cap is ten, not eight`,
+      !!insideSample && insideSample.id === SAMPLE_INSIDE.shown,
+      insideSample ? `${insideSample.value} → ${insideSample.id}` : `${SAMPLE_INSIDE.value} not in the roster`,
+    );
+    const short = rows.filter((r) => String(r.value).length <= LIMIT && r.id !== r.value);
+    check("A2.3b every in-cap identifier renders verbatim", short.length === 0, short.map((r) => `${r.value}→${r.id}`).join(", ") || "none altered");
     const titleLost = rows.filter((r) => r.titleText && r.titleAttr !== r.titleText);
     check("A2.4 each row's tooltip still carries the whole title", titleLost.length === 0, titleLost.length ? titleLost.map((r) => r.value).join(", ") : `${rows.length} row(s)`);
 
@@ -525,8 +593,8 @@ async function renderSuite() {
 
     check("A4.1 accepting a Parent row leaves exactly one chip", chosen.chipCount === 1, `${chosen.chipCount} chip(s)`);
     check(
-      "A4.2 the chip's identifier is the capped one (≤ 9 characters, ellipsis when over-cap)",
-      chosen.mono !== null && chosen.mono.length <= 9 && (String(pick.value).length <= 8 ? chosen.mono === pick.value : chosen.mono.endsWith("…") && chosen.mono === cap(pick.value)),
+      "A4.2 the chip's identifier is the capped one (≤ 11 characters, ellipsis when over-cap)",
+      chosen.mono !== null && chosen.mono.length <= LIMIT + 1 && (String(pick.value).length <= LIMIT ? chosen.mono === pick.value : chosen.mono.endsWith("…") && chosen.mono === cap(pick.value)),
       `${pick.value} → ${JSON.stringify(chosen.mono)}`,
     );
     check(
@@ -573,14 +641,24 @@ async function renderSuite() {
     );
 
     /* -- A6 · depends-on, same rule ------------------------------------- */
+    /* One row from each side of the cap, so the multi-select has to show both
+       readings the single-select showed: a capped chip and a whole one. The
+       second value must differ from the first — accepting an option hides it
+       from the menu, and a pair that collapsed to one value would throw inside
+       the page instead of failing an assertion. */
+    const dependsInside =
+      rows.find((r) => r.value === SAMPLE_INSIDE.value && r.value !== pick.value)?.value ??
+      rows.find((r) => r.value !== pick.value)?.value ??
+      pick.value;
     await page.evaluate(EXPAND, "[data-depends-input]");
     await page.waitForTimeout(120);
-    const depends = await page.evaluate(() => {
-      const opts = [...document.querySelectorAll("[data-depends-option]")];
-      const first = opts[0].getAttribute("data-depends-value");
-      const second = opts[1].getAttribute("data-depends-value");
-      opts[0].click();
-      [...document.querySelectorAll("[data-depends-option]")].find((o) => o.getAttribute("data-depends-value") === second).click();
+    const depends = await page.evaluate((pair) => {
+      const click = (value) =>
+        [...document.querySelectorAll("[data-depends-option]")]
+          .find((o) => o.getAttribute("data-depends-value") === value)
+          .click();
+      click(pair[0]);
+      click(pair[1]);
       const read = () =>
         [...document.querySelectorAll("[data-depends-chip]")].map((chip) => {
           const mono = chip.querySelector(".td-mono");
@@ -595,15 +673,17 @@ async function renderSuite() {
         });
       const two = read();
       document.querySelector("[data-depends-remove]").click();
-      return { two, one: read(), second, first };
-    });
+      return { two, one: read() };
+    }, [pick.value, dependsInside]);
 
     check("A6.1 two accepted prerequisites make two chips", depends.two.length === 2, `${depends.two.length} chip(s)`);
-    const badMono = depends.two.filter((c) => !/^.{0,8}(…)?$/u.test(c.mono || "") || c.mono !== cap(c.value));
+    const badMono = depends.two.filter((c) => !/^.{0,10}(…)?$/u.test(c.mono || "") || c.mono !== cap(c.value));
+    const capped = depends.two.filter((c) => String(c.value).length > LIMIT && c.mono.endsWith("…"));
+    const whole = depends.two.filter((c) => String(c.value).length <= LIMIT && c.mono === c.value);
     check(
-      "A6.2 every depends chip's identifier wears the same cap as an option row",
-      badMono.length === 0,
-      depends.two.map((c) => `${c.value}→${c.mono}`).join(", "),
+      "A6.2 every depends chip's identifier wears the same cap as an option row — one cut, one whole",
+      badMono.length === 0 && capped.length >= 1 && whole.length >= 1,
+      depends.two.map((c) => `${c.value}(${String(c.value).length})→${c.mono}`).join(", "),
     );
     const noTitle = depends.two.filter((c) => !c.hasTitle || c.titleText !== c.titleAttr);
     check(
@@ -751,6 +831,28 @@ async function shots() {
       document.querySelector("[data-parent-input]").dispatchEvent(new Event("input", { bubbles: true }));
       document.querySelector("[data-parent-option]").click();
     }),
+  });
+  /* The cap itself, which the shipped board cannot show: its longest identifier
+     is nine characters, so nothing it carries is cut at ten. One card takes the
+     spec's fourteen-character sample and the menu is read the way a reader reads
+     it — same viewport, theme and language as the rest. */
+  await shoot("combo-06-over-cap-980.png", {
+    viewport: { width: 980, height: 900 },
+    act: (p) =>
+      p.evaluate((sample) => {
+        const open = () => {
+          const input = document.querySelector("[data-parent-input]");
+          input.focus();
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+        };
+        open();
+        const short = [...document.querySelectorAll("[data-parent-option]")].find(
+          (b) => (b.getAttribute("data-parent-value") || "").length <= 8,
+        );
+        const card = short && document.querySelector(`[data-card][data-identifier="${short.getAttribute("data-parent-value")}"]`);
+        if (card) card.setAttribute("data-identifier", sample);
+        open();
+      }, SAMPLE_OVER.value),
   });
 
   await browser.close();
