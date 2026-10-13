@@ -239,7 +239,7 @@ pid is not a working board. When the unit is loaded but nothing answers, install
 and names the log to read:
 
 ```text
-taskd guard: loaded (com.meerkat-taskpanel.taskd, pid …); /health did not answer within 5000ms — read <dataDir>/logs/taskd.log
+taskd guard: loaded (com.meerkat-taskpanel.taskd, pid …); /health did not answer within 10000ms — read <dataDir>/logs/taskd.log
 ```
 
 Neither line fails the install. The unit names the **absolute** node that ran the install,

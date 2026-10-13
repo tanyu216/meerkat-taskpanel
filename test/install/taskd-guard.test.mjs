@@ -42,6 +42,7 @@ import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 
 import {
+  READY_TIMEOUT_MS,
   TASKD_LABEL,
   TASKD_TEMPLATE_FILES,
   TASKD_UNIT,
@@ -58,6 +59,7 @@ import {
   waitForHealth,
 } from "../../scripts/install/lib/taskd-guard.mjs";
 import { render } from "../../scripts/install/lib/apply.mjs";
+import { AUTOSTART_TIMEOUT_MS } from "../../src/shared/constants.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const TEMPLATES = join(ROOT, "scripts", "install", "templates");
@@ -499,6 +501,15 @@ describe("taskd guard: what makes the unit live", () => {
 describe("taskd guard: readiness", () => {
   const pointer = (over = {}) => ({ url: "http://127.0.0.1:9527", pid: FAKE_PID, dataDir: "/data", ...over });
 
+  it("waits longer than the CLI's lazy start, on purpose", () => {
+    // Not a style preference. `AUTOSTART_TIMEOUT_MS` bounds a *call*; this bounds the last
+    // step of an *install*, and the two errors are not symmetric — a healthy board that is
+    // merely slow must not be reported the same way as the crash loop this gate exists to
+    // expose. A first spawn under load was measured at ~5.5s during this card's own
+    // real-machine run, which is exactly the budget that would have misreported it.
+    assert.ok(READY_TIMEOUT_MS > AUTOSTART_TIMEOUT_MS, `${READY_TIMEOUT_MS} must exceed ${AUTOSTART_TIMEOUT_MS}`);
+  });
+
   it("a pointer is ours when the pid and the data directory agree", () => {
     assert.equal(isOurBoard(pointer(), { pid: FAKE_PID, dataDir: "/data" }), true);
     // A *different* pid is a different board: the stale pointer the old daemon left, or
@@ -622,6 +633,8 @@ describe("install.sh: the taskd guard", () => {
     // has already died (the exit-127 loop), and the old report called that `enabled`.
     // With nothing writing a pointer, no board can answer /health — so the honest line
     // is `loaded`, with the log to read, and `enabled` must not appear at all.
+    // This walks the whole budget (`READY_TIMEOUT_MS`), which is the point: the wait is
+    // what makes the difference between the two lines observable.
     const prefix = makeTempDir();
     const dataDir = makeTempDir();
     const bin = fakeManagerBin();
@@ -630,7 +643,7 @@ describe("install.sh: the taskd guard", () => {
     const run = runGuardInstall(prefix, env);
     assert.equal(run.status, 0, `${run.stderr}\n${run.stdout}`);
     assert.match(run.stdout, new RegExp(`taskd guard: loaded \\(${TASKD_LABEL}, pid ${FAKE_PID}\\)`));
-    assert.match(run.stdout, /\/health did not answer within \d+ms — read .*logs[/\\]taskd\.log/);
+    assert.match(run.stdout, new RegExp(`/health did not answer within ${READY_TIMEOUT_MS}ms — read .*logs[/\\\\]taskd\\.log`));
     assert.doesNotMatch(run.stdout, /taskd guard: enabled/);
     // Still a real load, and still the undo commands: the unit *is* installed.
     assert.equal(countLoads(bin), 1);
