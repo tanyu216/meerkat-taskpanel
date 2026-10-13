@@ -2374,8 +2374,14 @@
             </div>
           </header>
 
-          <!-- B26.1 · header + filters -->
-          <div class="td-filters" data-activity-filters>
+          <!-- B26.1 · header + filters. R15 ① — the bar is the **same control
+               container** as B04's on the board/list, in the document tree as
+               well as in the cascade: a named `section.td-filters` landmark
+               whose direct children are its control row (the three selects) and
+               its tail (Clear · count), with each control's `.td-sr` label as a
+               sibling seat (`for=` / `id=`). The board bar's own shape, hook for
+               hook; `filters.label` is reused, so the round adds no key here. -->
+          <section class="td-filters" data-activity-filters data-i18n-aria-label="filters.label" aria-label="Filters">
             <label class="td-sr" for="td-activity-filter-actor" data-i18n="activity.filter.actor.label">Actor</label>
             <select class="select select-sm td-select" id="td-activity-filter-actor" data-activity-filter="actor">
               <option value="all" data-i18n="activity.filter.actor.all">Anyone</option>
@@ -2405,9 +2411,15 @@
               <option value="PROJ-0007">PROJ-0007</option>
             </select>
 
-            <button type="button" class="btn btn-ghost btn-sm" data-activity-filter-reset data-i18n="activity.filter.reset">Reset</button>
+            <!-- R15 ② — the clear control is B04's own: `[data-filter-clear]` and
+                 `filters.clear`, the hook and the key the board/list bar's Clear
+                 carries, wearing the same `btn btn-ghost btn-sm` shell. It sits
+                 in the same tail position (Clear · count) as its board twin; the
+                 script tells the two apart by the bar the press came from, not by
+                 a second hook name. `activity.filter.reset` retired with it. -->
+            <button type="button" class="btn btn-ghost btn-sm" data-filter-clear data-i18n="filters.clear">Clear</button>
             <span class="td-filter-count" data-activity-filter-count aria-live="polite" data-i18n="activity.filter.count" data-i18n-arg="15">15 entries</span>
-          </div>
+          </section>
 
           <!-- B26.2 · feed. Every row is in the markup, not in a template:
                with the script off a reader still gets day groups, rows, task
@@ -3000,7 +3012,19 @@
              ============================================================== -->
         <section class="td-waiting-view" data-waiting-view hidden>
           <header class="td-waiting-head" data-waiting-head>
-            <h1 class="td-waiting-title" data-waiting-title data-i18n="waiting.title">Waiting on me</h1>
+            <!-- R15 ③ — the header states *what* the view is, not only its name:
+                 a title plus a one-line description, the two-line text block
+                 B26's own header carries (`.td-activity-head-text` +
+                 `.td-activity-sub`, measured 16px/600 over 12px ink-3). This
+                 view spells it in its own family names (`.td-waiting-head-text`
+                 / `.td-waiting-sub`) so either header can move without dragging
+                 the other — B27's rule for every rule this view owns. The
+                 description carries a `data-i18n` hook only, no `data-waiting-*`
+                 of its own, exactly as Activity's does (B26.1). -->
+            <div class="td-waiting-head-text">
+              <h1 class="td-waiting-title" data-waiting-title data-i18n="waiting.title">Waiting on me</h1>
+              <p class="td-waiting-sub" data-i18n="waiting.subtitle">Everything waiting on your answer, oldest first.</p>
+            </div>
             <!-- B27.2 · the tally. The one number this view keeps: how many
                  things are owed to the reader. Kept honest by hand in this
                  document (nothing here filters), and stated as `waiting.count`

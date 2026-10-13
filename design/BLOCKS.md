@@ -5,8 +5,8 @@ Tailwind class names are never part of the contract, and no anchor is positional
 
 Counts in the current build, measured in the live DOM: **7 columns · 18 cards ·
 18 detail templates** (`[data-slot]`: 18 description · 18 activity · 16 comments ·
-15 agent-session · 11 attachments · 9 relations) · **623 `data-i18n*` hooks** in the
-shipped document (525 `data-i18n` plus 98 `placeholder` / `aria-label` / `title`
+15 agent-session · 11 attachments · 9 relations) · **625 `data-i18n*` hooks** in the
+shipped document (526 `data-i18n` plus 99 `placeholder` / `aria-label` / `title`
 variants) · **280 catalogue keys, `en` and `zh` in exact parity.**
 
 **"35 blocks" means 35 *contract entries*, not 35 DOM blocks.** The DOM block
@@ -980,7 +980,7 @@ copy. Its own page stays in the repository as the design source and as its own e
 | | |
 |---|---|
 | Root | `[data-activity-view]` — third child of `main.td-main`, beside `[data-board-view]` and `[data-list]`; ships **`hidden`**, because the no-script default view is the board |
-| B26.1 header + controls | `[data-activity-title]` · `[data-activity-mark-read]` (the header's own title and subtitle carry `data-i18n` hooks only, no `data-activity-*` of their own) · `[data-activity-filters]` → `[data-activity-filter="actor" \| "event" \| "task"]` + `[data-activity-filter-reset]` + `[data-activity-filter-count]` (`aria-live="polite"`) |
+| B26.1 header + controls | `[data-activity-title]` · `[data-activity-mark-read]` (the header's own title and subtitle carry `data-i18n` hooks only, no `data-activity-*` of their own) · `[data-activity-filters]` → `[data-activity-filter="actor" \| "event" \| "task"]` + `[data-filter-clear]` + `[data-activity-filter-count]` (`aria-live="polite"`) |
 | B26.2 feed | `[data-activity-feed]` → `[data-activity-day]` → `[data-activity-row]` → `[data-activity-actor]` / `[data-activity-sentence]` / `[data-activity-task]` / `[data-activity-at]` / `[data-activity-detail]` |
 | B26.3 unread boundary | `[data-activity-unread-divider]` + `[data-activity-unread-count]`; the same press that clears it is `[data-activity-mark-read]` |
 | B26.4 burst | `[data-activity-burst]` + `[data-activity-burst-count]` (`×N`) + one `[data-activity-burst-item]` per folded event |
@@ -1013,10 +1013,38 @@ carries a stand-in drawer, and that stand-in is deliberately not what the board 
 literal, and every `var(--…)` they read already resolves in `tw.css` — three properties the
 check reads off the moved block rather than off this prose.
 
+**R15 ① — B26's filter bar is B04's bar.** Terry's 2026-10-13 second request
+(`T-20261013-165112`) was that the Activity page's three filters read as the board/list
+bar's own control family, and the round's ruling is that they **are** it, in every
+machine-visible respect. Measured on the prototype (`design/fidelity-r15.md` §3): the bar
+is a **named `section.td-filters` landmark** — the same element kind, the same
+`filters.label` accessible name, the same `flex` shell (`align-items: center`,
+`flex-wrap: wrap`, `gap: 8px`) — whose direct children are its control row and its tail;
+each control is a `select.select.select-sm.td-select` whose `.td-sr` label is a **sibling**
+seat (`for=` / `id=`); and each control's field shell computes **byte-identically** to the
+board's own two selects (`height: 30px`, `padding: 0 26px 0 8px`, `border-radius: 6px`,
+`12px/400`, caret at `right 6px`). The three domains stay B26's (`actor` · `event` ·
+`task`) and the bar keeps its own count (`[data-activity-filter-count]`, `aria-live`);
+what the round changes is the bar's container (a `div` → the board's named `section`) and
+nothing about the controls' copy. The implementation's divergence — a `span.td-select-caret`
+wrapper per control, invented because the app sheet may not carry the prototype's caret
+data-URI — is registered in `design/fidelity-r15.md` §4 as R15-B01, with the selector-level
+target for the implementation card.
+
+**R15 ② — the bar's clear control is B04's Clear, hook and key.** `[data-activity-filter-reset]`
+and `activity.filter.reset` are **withdrawn**: the bar carries `[data-filter-clear]` with
+`data-i18n="filters.clear"`, the hook and the key the board/list bar's Clear has carried all
+along, in the same tail position (Clear · count) and the same `btn btn-ghost btn-sm` shell.
+The prototype tells the two presses apart **by the bar the press came from**
+(`[data-activity-filters]` is the activity bar's own root), not by a second hook name — one
+control family, two bars. The filter-empty state's own inline `[data-activity-empty-reset]`
+(B26.5) is a different affordance in a different place and is **not** touched.
+
 **Auxiliary hooks** (implementation detail, not part of the block contract), the full
-`data-activity-*` set the document carries — 35 names, no more:
+`data-activity-*` set the document carries — 34 names, no more (R15 ② retired
+`[data-activity-filter-reset]`; `[data-filter-clear]` is B04's hook, not this family's):
 `[data-activity-view]` · `[data-activity-title]` · `[data-activity-mark-read]` ·
-`[data-activity-filters]` · `[data-activity-filter]` · `[data-activity-filter-reset]` ·
+`[data-activity-filters]` · `[data-activity-filter]` ·
 `[data-activity-filter-count]` · `[data-activity-feed]` · `[data-activity-day]` ·
 `[data-activity-day-label]` · `[data-activity-day-kind]` · `[data-activity-page]` ·
 `[data-activity-row]` · `[data-activity-line]` · `[data-activity-actor]` ·
@@ -1049,9 +1077,25 @@ roots, two questions; the ruling that keeps them apart is Elon's (card comment, 
 | | |
 |---|---|
 | Root | `[data-waiting-view]` — fourth child of `main.td-main`, beside `[data-board-view]`, `[data-list]` and `[data-activity-view]`; ships **`hidden`**, because the no-script default view is the board |
-| B27.2 header | `[data-waiting-head]` → `[data-waiting-title]` (`waiting.title`, byte-identical to `nav.waiting`) + `[data-waiting-count]` (`waiting.count`, `%s` template) |
+| B27.2 header | `[data-waiting-head]` → `[data-waiting-title]` (`waiting.title`, byte-identical to `nav.waiting`) + the description (`waiting.subtitle`, R15 ③ — a `data-i18n` seat only, no `data-waiting-*` of its own) + `[data-waiting-count]` (`waiting.count`, `%s` template) |
 | B27.1 the queue | `[data-waiting-list]` → `[data-waiting-item]` → `[data-waiting-actor]` / `[data-waiting-reason]` / `[data-waiting-task]` + `[data-waiting-task-title]` / `[data-waiting-since]` / `[data-waiting-open]` |
 | B27.3 empty state | `[data-waiting-empty]`; ships `hidden` |
+
+**R15 ③ — the header states what the view is, not only its name.** Terry's 2026-10-13 third
+request (`T-20261013-165112`) was that `Waiting on me` learn the two-line head B26 already
+had. The header is now a **text block plus the tally**: `.td-waiting-head-text` holds the
+title over a one-line description, and `[data-waiting-count]` keeps its `margin-left: auto`
+seat at the far end. The description is the round's one new string — `waiting.subtitle`
+(`"Everything waiting on your answer, oldest first."` / `"所有等你答复的事项，最久的排在最前。"`)
+— and it says the queue's own two properties and nothing else: whose court the ball is in,
+and that the longest wait reads first (B27's ordering rule, restated in the header so a
+reader knows it without counting rows). It carries a `data-i18n` hook **only**, no
+`data-waiting-*` of its own, exactly as B26's own subtitle does (B26.1) — so the view's
+auxiliary hook set stays at its 14 names. The block computes **identically** to B26's
+(`design/fidelity-r15.md` §3: `12px`, `--color-td-ink-3`, `margin-top: 2px`, and the title
+above it unchanged at `16px`/`600`), and it is spelled in this view's own family names
+(`.td-waiting-head-text` / `.td-waiting-sub`) per B27's rule that either header may move
+without dragging the other.
 
 **Five rows, ordered by the wait.** The queue runs oldest first, so the top row is the item
 that has waited longest and the list reads as an overdue-first inbox. B26's feed is the
