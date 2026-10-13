@@ -11,8 +11,8 @@
  * ---------------------------------------------------------------------------
  * Measured counts (host-static, re-extracted for R12x · T-20261013-014701-7)
  * ---------------------------------------------------------------------------
- *   prototype MESSAGES  en 281 / zh 281 (exact 1:1 mirror)
- *   this catalogue      en 264 / zh 264 — the 281 minus the 17 prototype-only
+ *   prototype MESSAGES  en 280 / zh 280 (exact 1:1 mirror)
+ *   this catalogue      en 263 / zh 263 — the 280 minus the 17 prototype-only
  *                       keys listed below, still an exact 1:1 mirror (identical
  *                       key sets, identical key order, no duplicates, no empty
  *                       values)
@@ -50,7 +50,7 @@
  * Discrepancy to record: `design/BLOCKS.md` header is stale
  * ---------------------------------------------------------------------------
  * Its header claims **252 `data-i18n*` hooks** and **198 catalogue keys**. Both
- * are wrong against the shipped files; measured above are 817 and 281 (the
+ * are wrong against the shipped files; measured above are 817 and 280 (the
  * prototype's own count). BLOCKS.md's own body already says "220 keys per
  * language", so only the header drifted — and each round's own additions widen
  * the gap. Machine checks must therefore count from the real data/DOM and never
@@ -122,7 +122,6 @@ export const CATALOGUE = {
       "filters.assignee.me": "Assignee: Me",
       "filters.assignee.human": "Assignee: Human",
       "filters.assignee.agent": "Assignee: Agent",
-      "assignee.clear": "Remove assignee filter",
       "filters.priority": "Priority",
       "filters.priority.all": "Priority: All",
       "filters.priority.urgent": "Priority: Urgent",
@@ -324,7 +323,6 @@ export const CATALOGUE = {
       "activity.filter.event.delivery": "Delivery",
       "activity.filter.task.label": "Task",
       "activity.filter.task.all": "All tasks",
-      "activity.filter.reset": "Reset",
       "activity.filter.count": "%s entries",
       "activity.verb.created": "created",
       "activity.verb.claimed": "claimed",
@@ -353,6 +351,7 @@ export const CATALOGUE = {
       "activity.empty.filter.hint": "Widen the filters to see the full log.",
       "activity.empty.filter.reset": "Reset filters",
       "waiting.title": "Waiting on me",
+      "waiting.subtitle": "Everything waiting on your answer, oldest first.",
       "waiting.count": "%s waiting on you",
       "waiting.reason.question": "Question",
       "waiting.reason.blocked": "Blocked",
@@ -388,7 +387,6 @@ export const CATALOGUE = {
       "filters.assignee.me": "负责人：我",
       "filters.assignee.human": "负责人：人类",
       "filters.assignee.agent": "负责人：Agent",
-      "assignee.clear": "移除负责人筛选",
       "filters.priority": "优先级",
       "filters.priority.all": "优先级：全部",
       "filters.priority.urgent": "优先级：紧急",
@@ -590,7 +588,6 @@ export const CATALOGUE = {
       "activity.filter.event.delivery": "交付",
       "activity.filter.task.label": "任务",
       "activity.filter.task.all": "全部任务",
-      "activity.filter.reset": "重置",
       "activity.filter.count": "%s 条动态",
       "activity.verb.created": "创建了",
       "activity.verb.claimed": "认领了",
@@ -619,6 +616,7 @@ export const CATALOGUE = {
       "activity.empty.filter.hint": "放宽筛选即可看到完整记录。",
       "activity.empty.filter.reset": "重置筛选",
       "waiting.title": "等你回复",
+      "waiting.subtitle": "所有等你答复的事项，最久的排在最前。",
       "waiting.count": "%s 项等你回复",
       "waiting.reason.question": "待回答",
       "waiting.reason.blocked": "已阻塞",
