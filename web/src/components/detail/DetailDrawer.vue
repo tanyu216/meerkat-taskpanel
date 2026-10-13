@@ -16,7 +16,6 @@
 import { computed, ref, watch } from "vue";
 
 import { board, addComment, closeDetail, labelRoster, platformOf, priorityOf, reporterRoster, saveDetailField } from "../../stores/board.js";
-import { identifierText } from "../../lib/identifier.js";
 import { renderMarkdown } from "../../lib/markdown.js";
 import { activityLine, relativeTime } from "../../lib/activity.js";
 import { attachmentRows } from "../../lib/attachments.js";
@@ -256,12 +255,16 @@ function copyId() {
            top row, level with the identifier, and behind an `svg.td-icon` ✕
            rather than a text glyph. -->
       <div class="flex items-center gap-2">
-        <!-- R8 ③ — the text is capped, the `title` and the drawer root's
-             `data-identifier` carry the full value. The root's attribute is the
-             one thing that may be read back to resolve the task: the rendered
-             text is a display value, and a nine-character id would not survive a
-             round trip through it. -->
-        <span class="td-mono td-id" data-detail-identifier :title="identifier">{{ identifierText(identifier) }}</span>
+        <!-- R8 ③ / R12 — the `title` and the drawer root's `data-identifier`
+             carry the full value, and since R12 so does the text itself: the head
+             shows the identifier **verbatim** (`design/fidelity-r12.md` §2.1),
+             which is why it wears `.td-id-full` beside `.td-id` — the variant
+             lifts the `9ch` width cap that would otherwise re-clip a long id
+             (§2.2). The root's attribute is still the one thing that may be read
+             back to resolve the task: the rendered text is a display value, and
+             its being the whole id now is a coincidence of this round, not a
+             licence to parse it (R8 §2.3, restated in R12 §2.1). -->
+        <span class="td-mono td-id td-id-full" data-detail-identifier :title="identifier">{{ identifier }}</span>
         <!-- The status chip is a dot **and** a word (B09/§2.4: colour is never
              the only signal). daisyUI's `badge-sm` owns the box, `td-chip` the
              brand's metrics, `td-chip-status` the 6px dot. -->

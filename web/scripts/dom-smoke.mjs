@@ -155,7 +155,14 @@ export function fixtureApi() {
         ],
       },
     }),
-    fixture("p1", "backlog", { identifier: "TD-2", title: "Collect the install survey", priority: "none", labels: [], assignee: AGENT.human }),
+    // R12 — the one **over-cap** identifier. Eight is the render layer's slice
+    // threshold (`web/src/lib/identifier.js`), so a nine-character id is the
+    // smallest sample that exercises it: the card and the list row still show
+    // `PROJ-000…`, and the drawer head is the render point that must show
+    // `PROJ-0007` whole (`design/fidelity-r12.md` §5 A1/A4). The value is the
+    // contract's own anchor sample, so the driven assertions and the contract's
+    // table name the same string.
+    fixture("p1", "backlog", { identifier: "PROJ-0007", title: "Collect the install survey", priority: "none", labels: [], assignee: AGENT.human }),
     fixture("p1", "todo", { identifier: "TD-3", title: "Wire the board", priority: "high", labels: ["bug"], assignee: AGENT.claude }),
     fixture("p1", "todo", { identifier: "TD-4", title: "Polish the empty states", priority: "medium", labels: ["ui"], assignee: AGENT.codex }),
     fixture("p1", "in_progress", { identifier: "TD-5", title: "Fix the renderer", priority: "urgent", labels: ["bug", "ui"], assignee: AGENT.codex }),
@@ -282,11 +289,18 @@ export function startServer({ port = 0 } = {}) {
         activities: data.activities.filter((activity) => activity.task_id === task?.id),
       });
     }
+    // Resolve the task the caller actually asked for (by identifier or by id)
+    // rather than always the first one. Answering every ref with the first
+    // fixture card made the drawer *look* right while naming the wrong task —
+    // the Activity view's rows land on this surface, so the ref has to resolve
+    // for "the row opened the card it names" to mean anything — and the R12
+    // drawer head has to be compared against the card that was pressed
+    // (`design/fidelity-r12.md` §5 C-1): "one id renders whole in the drawer and
+    // clamped on the card" is a relation between the *same* task's two render
+    // points, which needs both ends to resolve to it. The `/comments` and
+    // `/activities` sub-paths are matched above and never reach here; a sub-path
+    // that does keeps the old shape.
     if (path.startsWith("/api/v1/tasks/")) {
-      // Resolve the card like the real route does. Answering every ref with the
-      // first fixture card made the drawer *look* right while naming the wrong
-      // task — the Activity view's rows land on this surface, so the ref has to
-      // resolve for "the row opened the card it names" to mean anything.
       const ref = decodeURIComponent(path.slice("/api/v1/tasks/".length).split("/")[0]);
       const task = data.tasks.find((entry) => entry.identifier === ref || entry.id === ref) ?? data.tasks[0];
       return ok({ task, report_waivers: [] });
@@ -1224,6 +1238,135 @@ export async function run() {
     r8Check(drawerIdentifier.rootFindsTheCard, `[data-card][data-identifier="${drawerIdentifier.root}"] matches no card`);
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
+
+    // ---- R12 · the drawer's head shows the whole identifier ------------------
+    // The contract's §5 A1–A3′ / A4–A6″ and C-1–C-4, driven through real events.
+    // `PROJ-0007` is the fixture's one **over-cap** id (nine characters, above the
+    // render layer's eight-character slice), so it is the sample that tells the
+    // two render points apart: the drawer head must show it whole, while the card
+    // and the list row must still show `PROJ-000…`. This section is the reverse
+    // half's home because a class list and a rendered string are things a probe
+    // reads, but "the head and the card disagree about the *same* id" is a
+    // relation between two elements — which is exactly what R-6a sends here.
+    const r12IdFailures = [];
+    const r12IdCheck = (ok, message) => { if (!ok) r12IdFailures.push(message); };
+    const LONG_ID = "PROJ-0007";
+    const CLAMPED = "PROJ-000…";
+
+    /** Open `identifier`'s card by a real press, then read the head whole. */
+    const openCardAndReadHead = async (identifier) => {
+      await page.click(`[data-card][data-identifier="${identifier}"]`);
+      await page.waitForTimeout(250);
+      return page.evaluate(() => {
+        const head = document.querySelector("[data-detail-identifier]");
+        const root = document.querySelector("[data-detail-drawer]");
+        const cs = head ? getComputedStyle(head) : null;
+        return {
+          state: root?.getAttribute("data-state") ?? null,
+          text: (head?.textContent ?? "").trim(),
+          title: head?.getAttribute("title") ?? null,
+          rootIdentifier: root?.getAttribute("data-identifier") ?? null,
+          classes: head ? [...head.classList] : [],
+          maxWidth: cs?.maxWidth ?? null,
+          overflow: cs?.overflow ?? null,
+          textOverflow: cs?.textOverflow ?? null,
+          whiteSpace: cs?.whiteSpace ?? null,
+        };
+      });
+    };
+
+    // C-1 / A1 — a real press on the over-cap card, and the head renders it whole.
+    const longHead = await openCardAndReadHead(LONG_ID);
+    r12IdCheck(longHead.state === "open", `the drawer's data-state is ${JSON.stringify(longHead.state)}, expected "open"`);
+    r12IdCheck(longHead.text === LONG_ID, `the head renders ${JSON.stringify(longHead.text)}, expected the whole id ${JSON.stringify(LONG_ID)}`);
+    r12IdCheck(!longHead.text.includes("…"), `the head still renders an ellipsis: ${JSON.stringify(longHead.text)}`);
+    r12IdCheck(longHead.text.length === LONG_ID.length, `the head renders ${longHead.text.length} characters, expected ${LONG_ID.length} (no slice)`);
+    // A4′ — the attribute pair was already the full id; R12 must not have moved it.
+    r12IdCheck(longHead.title === LONG_ID, `the head's title is ${JSON.stringify(longHead.title)}, expected ${JSON.stringify(LONG_ID)}`);
+    r12IdCheck(longHead.rootIdentifier === LONG_ID, `the drawer root's data-identifier is ${JSON.stringify(longHead.rootIdentifier)}, expected ${JSON.stringify(LONG_ID)}`);
+    // A6 — the variant is an **addition**: both classes ride the one element.
+    r12IdCheck(longHead.classes.includes("td-id"), `the head's class list ${JSON.stringify(longHead.classes)} lost .td-id`);
+    r12IdCheck(longHead.classes.includes("td-id-full"), `the head's class list ${JSON.stringify(longHead.classes)} is missing .td-id-full`);
+    // A2 — the cap is withdrawn, and only the cap (the single-line guard stays).
+    r12IdCheck(longHead.maxWidth === "none", `the head's max-width is ${longHead.maxWidth}, expected none`);
+    r12IdCheck(longHead.overflow === "visible", `the head's overflow is ${longHead.overflow}, expected visible`);
+    r12IdCheck(longHead.textOverflow === "clip", `the head's text-overflow is ${longHead.textOverflow}, expected clip`);
+    r12IdCheck(longHead.whiteSpace === "nowrap", `the head's white-space is ${longHead.whiteSpace}, expected nowrap`);
+
+    // A3′ / C-4 — the length diagnostic: Terry's own length (18 characters) must
+    // not be clipped either. Swapped in at runtime so the fixture needs no such
+    // card, measured on the instant, then restored before the next assertion.
+    const longDiagnostic = await page.evaluate(() => {
+      const head = document.querySelector("[data-detail-identifier]");
+      const original = head.textContent;
+      head.textContent = "TD-20261012-222353";
+      const read = { scrollWidth: head.scrollWidth, clientWidth: head.clientWidth };
+      head.textContent = original;
+      return { ...read, restored: (head.textContent ?? "").trim() };
+    });
+    r12IdCheck(
+      longDiagnostic.scrollWidth <= longDiagnostic.clientWidth + 1,
+      `an 18-character id is still clipped: scrollWidth ${longDiagnostic.scrollWidth} > clientWidth ${longDiagnostic.clientWidth}`,
+    );
+    r12IdCheck(longDiagnostic.restored === LONG_ID, `the length diagnostic did not restore the head: ${JSON.stringify(longDiagnostic.restored)}`);
+
+    // A6′ — the variant does not spill, read while the drawer is open (the one
+    // moment it is on screen): no card and no list row may wear it.
+    const spill = await page.evaluate(() => {
+      const cardEl = document.querySelector('[data-card][data-identifier="PROJ-0007"] [data-card-identifier]');
+      return {
+        cards: document.querySelectorAll("[data-card-identifier].td-id-full").length,
+        rows: document.querySelectorAll("[data-list-rows] [data-list-identifier].td-id-full").length,
+        fullClass: document.querySelectorAll(".td-id-full").length,
+        cardText: cardEl ? (cardEl.textContent ?? "").trim() : null,
+        cardMax: cardEl ? getComputedStyle(cardEl).maxWidth : null,
+      };
+    });
+    r12IdCheck(spill.cards === 0, `${spill.cards} card identifiers wear .td-id-full, expected 0`);
+    r12IdCheck(spill.rows === 0, `${spill.rows} list identifiers wear .td-id-full, expected 0`);
+    r12IdCheck(spill.fullClass === 1, `${spill.fullClass} elements wear .td-id-full, expected exactly the drawer head`);
+    // A4 — the over-cap card still shows eight characters and an ellipsis, and
+    // still carries a finite width cap (`9ch` resolves to px — C′1: never assert
+    // the string `9ch`).
+    r12IdCheck(spill.cardText === CLAMPED, `the over-cap card renders ${JSON.stringify(spill.cardText)}, expected ${JSON.stringify(CLAMPED)}`);
+    r12IdCheck(
+      spill.cardMax !== null && spill.cardMax !== "none" && /px$/.test(spill.cardMax),
+      `the card identifier's max-width is ${spill.cardMax}, expected a finite px value`,
+    );
+
+    // A6″ / C-2 — a short id is not a regression: six characters, below the cap,
+    // render verbatim and gain no ellipsis.
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+    const shortHead = await openCardAndReadHead("TD-1");
+    r12IdCheck(shortHead.state === "open", `the drawer's data-state is ${JSON.stringify(shortHead.state)} for the short-id card`);
+    r12IdCheck(shortHead.text === "TD-1", `a short id renders ${JSON.stringify(shortHead.text)}, expected "TD-1"`);
+    r12IdCheck(!shortHead.text.includes("…"), `a short id gained an ellipsis: ${JSON.stringify(shortHead.text)}`);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+
+    // C-3 — the list row is the reverse anchor in the other view too.
+    await page.click('[data-view="list"]');
+    await page.waitForTimeout(200);
+    const listRead = await page.evaluate(() => {
+      const row = document.querySelector('[data-list-rows] [data-list-row][data-identifier="PROJ-0007"]');
+      const el = row ? row.querySelector("[data-list-identifier]") : null;
+      return {
+        found: row !== null,
+        text: el ? (el.textContent ?? "").trim() : null,
+        hasFull: el ? el.classList.contains("td-id-full") : null,
+        max: el ? getComputedStyle(el).maxWidth : null,
+      };
+    });
+    r12IdCheck(listRead.found, "the over-cap card has no list row to reverse-assert against");
+    r12IdCheck(listRead.text === CLAMPED, `the over-cap list row renders ${JSON.stringify(listRead.text)}, expected ${JSON.stringify(CLAMPED)}`);
+    r12IdCheck(listRead.hasFull === false, "a list row wears .td-id-full");
+    r12IdCheck(
+      listRead.max !== null && listRead.max !== "none" && /px$/.test(listRead.max),
+      `the list identifier's max-width is ${listRead.max}, expected a finite px value`,
+    );
+    await page.click('[data-view="board"]');
+    await page.waitForTimeout(150);
 
     // ① — the dark. The switch is the only writer, so the section drives it to
     // `dark`, measures, then drives it back to `light` for the regression half.
@@ -3140,6 +3283,7 @@ export async function run() {
         keys: b26Keys,
         viewportFailures: b26ViewportFailures,
       },
+      r12Id: { failures: r12IdFailures, longId: LONG_ID, clamped: CLAMPED, longHead, spill, listRead },
       geometry,
       counts: { rules: results.length, failed: failures.length, ...geometry },
       fixtureTasks: data.tasks.length,
@@ -3225,6 +3369,12 @@ if (isEntryPoint) run().then(
             "`Load older`, `j`/`k` and the row's drawer all pass",
         );
       }
+      if (report.r12Id.failures.length > 0) {
+        console.log(`R12-id (fidelity) — ${report.r12Id.failures.length} failed:`);
+        for (const failure of report.r12Id.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log(`R12-id (fidelity) — the drawer head shows ${report.r12Id.longId} whole while the card and the list row still show ${report.r12Id.clamped}, and .td-id-full does not spill (${report.r12Id.spill.fullClass} match, cards ${report.r12Id.spill.cards}, rows ${report.r12Id.spill.rows})`);
+      }
     }
     const interactionOk =
       report.interactions.drawerOpened &&
@@ -3248,6 +3398,7 @@ if (isEntryPoint) run().then(
       report.r12.failures.length === 0 &&
       report.r11.failures.length === 0 &&
       report.b26.failures.length === 0 &&
+      report.r12Id.failures.length === 0 &&
       interactionOk;
     process.exit(ok ? 0 : 1);
   },

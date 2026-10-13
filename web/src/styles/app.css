@@ -132,7 +132,10 @@ body {
    the face's advance width and its letter-spacing, so `9ch` cannot promise
    "eight characters" (measured in the prototype it resolves to 65.02px). This
    class is the belt to that braces: whatever the string, it never wraps and never
-   spills out of its track. */
+   spills out of its track.
+   R12 — the drawer's head is the one render point that shows the id **whole**;
+   it opts out of the width cap by *also* wearing `.td-id-full` (below), which
+   withdraws only the cap. Nothing above changes for the cards and the list rows. */
 .td-id {
   display: inline-block;
   max-width: 9ch;
@@ -140,6 +143,19 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   vertical-align: bottom;
+}
+
+/* R12 — the variant that lifts the width cap, for the one render point that
+   shows the id verbatim (`design/fidelity-r12.md` §2.2). It **co-exists** with
+   `.td-id` rather than replacing it: `.td-id` still owns the single line and the
+   baseline, and this class withdraws exactly one thing — the `9ch` limit that
+   would re-clip a long id after the render layer stopped slicing it. The cap is
+   left on `.td-id` itself because B07's cards and B08's list rows share it and
+   keep it (the density-first scan surfaces, R8's ruling). */
+.td-id-full {
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 /* Line icons — the topbar's compact controls and the sidebar rail. One shape,

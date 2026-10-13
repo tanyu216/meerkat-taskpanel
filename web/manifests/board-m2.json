@@ -173,6 +173,18 @@
       {
         "name": "b27-waiting-reason",
         "selector": "[data-waiting-item] [data-waiting-reason]"
+      },
+      {
+        "name": "r12-drawer-id-text",
+        "selector": "[data-detail-identifier]"
+      },
+      {
+        "name": "r12-card-id-clamp",
+        "selector": "[data-card-identifier]"
+      },
+      {
+        "name": "r12-list-id-clamp",
+        "selector": "[data-list-identifier]"
       }
     ]
   },
@@ -1922,6 +1934,20 @@
         "overflowY"
       ],
       "note": "R12 两处口径（Terry 2026-10-12 / Elon 权威 Acceptance ①②）：① filters 条恒一行——`flex-wrap: nowrap` + 栏自身 `overflow-x: auto` + `min-width: 0`（契约 §2.1，R-2；430 档原型折行是**已批准书面偏差**）；② `[data-board]` 的 7 列等高且列高 == board 内容盒高（契约 §3.1，R-4），由 015627（03d8918）的 `items-stretch` + 直通链交付，本轮实测 spread 0px / delta 0px。**A 腿只承载清单六词可表达的那半**（在册族计数 + 用 `~` 表达的相对顺序，R-6a/附録 A）；行数、可见性、四控件等高、count 贴右缘、430 档栏内可滚余量、以及 B 组全部几何，只能由驱动层 web/scripts/dom-smoke.mjs 的 R12 段判定（附録 B）。**C 腿新增三个 style 目标**，并把 `flexWrap`/`overflowX`/`overflowY` 补进 `web/.ui-align.json` 的 `styleProps` —— 不加则 A3/A4 的 C 腿会静默不比较（R-6b / 未决 U-3）；C 腿非阻塞（`design/fidelity-r12-supplement.md` §5.3）。`[data-filter-label] > summary` 未新增目标：它已是既有的 `r9-label-trigger`（同一元素），重复登记只会把同一处差异数两遍。"
+    },
+    "r12IdentifierAdditions": {
+      "card": "T-20261013-033933 (R12 product implementation, 2026-10-13)",
+      "contract": "design/fidelity-r12.md",
+      "blocks": [],
+      "styleTargets": [
+        "r12-drawer-id-text",
+        "r12-card-id-clamp",
+        "r12-list-id-clamp"
+      ],
+      "stylePropsAdded": [
+        "textOverflow"
+      ],
+      "note": "R12 的**产品实现**（契约 `design/fidelity-r12.md`，冻结于 7ac4d3a）：B09 详情抽屉头部 `[data-detail-identifier]` 逐字显示完整 id（去切片 + 追加变体类 `.td-id-full`，`max-width: none / overflow: visible / text-overflow: clip`），B07 卡片 / B08 列表行**逐字不动**（仍是「8 字符 + …」）。**本清单只承载「双边 computed 值」那半**：抽屉头去上限、卡片与列表仍带宽度上限（反向门）。文本完整性（抽屉头文本 == 完整 id）与类不外溢是**结构/驱动**事实，落在 `test/web/blocks.contract.mjs`（`[data-detail-identifier]` 的 class 集含 `td-id` + `td-id-full`；`.td-id-full` 计数恰 1，board / list 两视图各一条 —— 反向断言）与驱动层 `web/scripts/dom-smoke.mjs` 的 R12-id 段；`blocks` 因此为**空**（本轮不给清单增块，同一处事实不在两套机制里数两遍，R-6a 的分工照旧）。**`styleProps` 本轮新增 `textOverflow`**：三个目标都要看 `text-overflow`，不加则该属性静默不比较（与 R12-supplement 的 R-6b / U-3 同一条教训）。命名沿用既有 `rN-*`：`r12-drawer-id-text` 是抽屉头、`r12-card-id-clamp` / `r12-list-id-clamp` 是两处反向锚。`r12-` 前缀与 R12-supplement（`r12-select`/`r12-count`/`r12-column`）同号——两轮都叫 R12（补充契约 §0 编号说明），目标名各自唯一，互不覆盖。**`r12-list-id-clamp` 在原型侧缺失 ⇒ 工具按「原型没有的东西不构成还原义务」跳过**（`lib/style.mjs` 表头第三条口径），故它**零断言、零差异**，它的反向事实由驱动层在 list 视图里判定。"
     },
     "r11Additions": {
       "card": "T-20261013-014701-3 (R11 ①/② + R13 implementation, 2026-10-13)",
