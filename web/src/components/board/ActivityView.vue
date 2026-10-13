@@ -434,13 +434,21 @@ onUnmounted(() => {
            match, and the resting document carries both — which is what makes the
            pair machine-checkable and is the same two-state reading B05/B12 use.
 
+           R17 — each opens on the same brand mark B12 draws on an empty board,
+           at the empty states' own `td-logo-lg` size, and both now wear the
+           `-lg` box (the design's R17 revision puts both on B12's footing: gap
+           12px, padding 40px 24px, title 14px, hint 12px — the size split the
+           two variants used to carry is gone). The two are still told apart by
+           their **copy and their button**, not by their size: the project one
+           carries title + hint and **no control** (there is no filter in effect
+           to clear, so a "reset" there would point at a filter that does not
+           exist), the filter one adds `[data-activity-empty-reset]`.
+
            Each wears the design's own class list, byte for byte: `td-empty
-           td-empty-lg td-activity-empty` for the project variant (the `-lg` split
-           is the design's — `design/activity/DESIGN-activity.md` §8 draws the two
-           as different sizes), `td-empty td-activity-empty` for the filter one.
-           The utilities they carried instead had drifted from `.td-empty` on
-           four of its properties, and the `-lg` variant's 40px/24px block is not
-           reachable from `p-4` at all. See `.td-empty` in `app.css`.
+           td-empty-lg td-activity-empty` for both. The utilities they carried
+           instead had drifted from `.td-empty` on four of its properties, and
+           the `-lg` variant's 40px/24px block is not reachable from `p-4` at
+           all. See `.td-empty` in `app.css`.
 
            The project variant reads the store's `projectEmpty` rather than the
            derivation's `emptyKind` alone, so "nothing admissible" only becomes
@@ -452,16 +460,102 @@ onUnmounted(() => {
         data-activity-empty-kind="project"
         :hidden="!projectEmpty"
       >
+        <!-- The brand mark stands in for a generic empty glyph. Its two lead
+             meerkats drop to `--brand-text-3` (the design's `--color-td-ink-3`)
+             so the on-duty sentinel and its watch signal stay the only lit
+             elements on the surface. Its own face-mask id keeps the document's
+             mask ids unique — the board's empty state and the top bar's mark are
+             resident at the same time. -->
+        <svg class="td-logo td-logo-lg" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <defs>
+            <mask id="face-knockout-b-lg" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+              <rect x="0" y="0" width="32" height="32" fill="#FFFFFF" />
+              <g fill="#000000">
+                <circle cx="6.4" cy="20" r="0.42" />
+                <circle cx="8" cy="20" r="0.42" />
+                <rect x="6.84" y="21.05" width="0.72" height="0.2" rx="0.1" />
+                <circle cx="15.2" cy="14.8" r="0.42" />
+                <circle cx="16.8" cy="14.8" r="0.42" />
+                <rect x="15.64" y="15.85" width="0.72" height="0.2" rx="0.1" />
+                <circle cx="24" cy="12" r="0.42" />
+                <circle cx="25.6" cy="12" r="0.42" />
+                <rect x="24.44" y="13.05" width="0.72" height="0.2" rx="0.1" />
+              </g>
+            </mask>
+          </defs>
+          <g mask="url(#face-knockout-b-lg)">
+            <g fill="var(--brand-text-3)">
+              <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6" />
+              <circle cx="7.2" cy="20.2" r="2.6" />
+              <circle cx="4.8" cy="19.3" r="1.2" />
+              <circle cx="9.6" cy="19.3" r="1.2" />
+            </g>
+            <g fill="var(--brand-text-3)">
+              <rect x="13.4" y="12.4" width="5.2" height="14.6" rx="2.6" />
+              <circle cx="16" cy="15" r="2.6" />
+              <circle cx="13.6" cy="14.1" r="1.2" />
+              <circle cx="18.4" cy="14.1" r="1.2" />
+            </g>
+            <g fill="var(--color-primary)">
+              <rect x="22.2" y="9.6" width="5.2" height="17.4" rx="2.6" />
+              <circle cx="24.8" cy="12.2" r="2.6" />
+              <circle cx="22.4" cy="11.3" r="1.2" />
+              <circle cx="27.2" cy="11.3" r="1.2" />
+            </g>
+          </g>
+          <circle cx="24.8" cy="3.4" r="2.1" fill="var(--color-primary)" />
+        </svg>
         <span class="td-empty-title" data-i18n="activity.empty.project.title">{{ $t("activity.empty.project.title") }}</span>
         <span class="td-empty-hint" data-i18n="activity.empty.project.hint">{{ $t("activity.empty.project.hint") }}</span>
       </div>
 
       <div
-        class="td-empty td-activity-empty"
+        class="td-empty td-empty-lg td-activity-empty"
         data-activity-empty
         data-activity-empty-kind="filter"
         :hidden="feed.emptyKind !== 'filter'"
       >
+        <!-- Same mark, its own mask id (this block is resident beside the
+             project one, so the two cannot share `face-knockout-b-lg`). -->
+        <svg class="td-logo td-logo-lg" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <defs>
+            <mask id="face-knockout-c-lg" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+              <rect x="0" y="0" width="32" height="32" fill="#FFFFFF" />
+              <g fill="#000000">
+                <circle cx="6.4" cy="20" r="0.42" />
+                <circle cx="8" cy="20" r="0.42" />
+                <rect x="6.84" y="21.05" width="0.72" height="0.2" rx="0.1" />
+                <circle cx="15.2" cy="14.8" r="0.42" />
+                <circle cx="16.8" cy="14.8" r="0.42" />
+                <rect x="15.64" y="15.85" width="0.72" height="0.2" rx="0.1" />
+                <circle cx="24" cy="12" r="0.42" />
+                <circle cx="25.6" cy="12" r="0.42" />
+                <rect x="24.44" y="13.05" width="0.72" height="0.2" rx="0.1" />
+              </g>
+            </mask>
+          </defs>
+          <g mask="url(#face-knockout-c-lg)">
+            <g fill="var(--brand-text-3)">
+              <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6" />
+              <circle cx="7.2" cy="20.2" r="2.6" />
+              <circle cx="4.8" cy="19.3" r="1.2" />
+              <circle cx="9.6" cy="19.3" r="1.2" />
+            </g>
+            <g fill="var(--brand-text-3)">
+              <rect x="13.4" y="12.4" width="5.2" height="14.6" rx="2.6" />
+              <circle cx="16" cy="15" r="2.6" />
+              <circle cx="13.6" cy="14.1" r="1.2" />
+              <circle cx="18.4" cy="14.1" r="1.2" />
+            </g>
+            <g fill="var(--color-primary)">
+              <rect x="22.2" y="9.6" width="5.2" height="17.4" rx="2.6" />
+              <circle cx="24.8" cy="12.2" r="2.6" />
+              <circle cx="22.4" cy="11.3" r="1.2" />
+              <circle cx="27.2" cy="11.3" r="1.2" />
+            </g>
+          </g>
+          <circle cx="24.8" cy="3.4" r="2.1" fill="var(--color-primary)" />
+        </svg>
         <span class="td-empty-title" data-i18n="activity.empty.filter.title">{{ $t("activity.empty.filter.title") }}</span>
         <span class="td-empty-hint" data-i18n="activity.empty.filter.hint">{{ $t("activity.empty.filter.hint") }}</span>
         <button
