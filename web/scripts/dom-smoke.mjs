@@ -24,8 +24,9 @@
 
 import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import { dirname, extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -3933,6 +3934,212 @@ export async function run() {
     const r16AfterAnchor = await readAddress();
     r16Check(r16Anchor && r16AfterAnchor.pathname === "/board" && r16AfterAnchor.hash === "", `the task anchor left the address at ${r16AfterAnchor.pathname}${r16AfterAnchor.hash}`);
 
+    // ---- M7 · C-PREFIX-1 — a refused create is visible (T-20261014-042811) ---
+    //
+    // The round's own question, one layer above the wire: when `POST /api/v1/projects`
+    // answers 400 or 409, does the reader see anything at all? Until this leg's
+    // subject was written `CreateProjectModal.submit()` had **no `catch`**, so the
+    // dialog simply sat there and the only trace was a rejected promise in the
+    // console — the contract's §9 C4/C6 rows were green while the UI was silent
+    // (§6 M7: 失败可见 / 弹窗留守 / 无成功 toast / 无落库; the copy is
+    // implementation-side by §7.5, so nothing here reads the words).
+    //
+    // This is the harness's one section that drives the **real** board instead of
+    // the fixture. The two refusals it turns on are rules of
+    // `src/core/commands/projects.mjs` — a prefix that normalizes away, and one
+    // another project already numbers its cards with — so a fixture taught to
+    // refuse them would be a second copy of the rule under test. A real `taskd`
+    // boots on an ephemeral port over a throwaway data dir, seeded with the one
+    // project that owns the effective prefix `DEMO` (the CLI carrier of §9 C4),
+    // and the built app is driven the way a reader drives it: switcher → New
+    // project → type → submit.
+    const m7Failures = [];
+    const m7Check = (ok, message) => { if (!ok) m7Failures.push(message); };
+    const m7 = { cases: {}, statuses: [], consoleErrors: [], pageErrors: [], appConsoleErrors: [] };
+    let m7Context = null;
+    let m7Taskd = null;
+    let m7Dir = null;
+    try {
+      const { createTaskd } = await import("../../src/server/index.mjs");
+      m7Dir = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-m7-"));
+      m7Taskd = await createTaskd({ dataDir: m7Dir, host: "127.0.0.1", port: 0, env: {} });
+
+      const m7Seed = await fetch(`${m7Taskd.url}/api/v1/projects`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: "demo", name: "From the CLI" }),
+      });
+      m7Check(m7Seed.status === 200 || m7Seed.status === 201, `the seed project (--id demo) failed: ${m7Seed.status}`);
+
+      /** The board's projects, by name — what "no project may land" is read against. */
+      const m7Projects = async () => {
+        const envelope = await (await fetch(`${m7Taskd.url}/api/v1/projects`)).json();
+        return envelope.data.projects.map((project) => project.name);
+      };
+
+      m7Context = await browser.newContext();
+      const m7Page = await m7Context.newPage();
+      m7Page.on("console", (msg) => { if (msg.type() === "error") m7.consoleErrors.push(msg.text()); });
+      m7Page.on("pageerror", (error) => m7.pageErrors.push(String(error)));
+      m7Page.on("response", (response) => {
+        if (response.request().method() === "POST" && response.url().endsWith("/api/v1/projects")) m7.statuses.push(response.status());
+      });
+
+      await m7Page.goto(m7Taskd.url, { waitUntil: "load" });
+      await m7Page.waitForSelector("[data-project-switcher]", { timeout: 15_000 });
+      await m7Page.waitForTimeout(400);
+
+      /**
+       * The live toasts — never the inert `<template data-toast-template>`'s own
+       * child, which is a real node in the tree (Vue appends it) and carries a
+       * `data-toast` of its own.
+       */
+      const m7Toasts = () =>
+        m7Page.evaluate(() =>
+          [...document.querySelectorAll("[data-toast-region] [data-toast]")]
+            .filter((el) => !el.closest("[data-toast-template]"))
+            .map((el) => ({
+              kind: el.getAttribute("data-toast-kind"),
+              text: el.querySelector("[data-toast-text]")?.textContent?.trim() ?? "",
+              painted: el.getBoundingClientRect().width > 0,
+            })),
+        );
+
+      const m7DialogOpen = () =>
+        m7Page.evaluate(() => document.querySelector("[data-create-project]")?.hasAttribute("hidden") === false);
+
+      /** Open the dialog the way a reader does: the switcher's menu, then New project. */
+      const m7OpenDialog = async () => {
+        await m7Page.$eval("[data-project-switcher]", (el) => { el.open = true; });
+        await m7Page.$eval("[data-project-new]", (el) => el.click());
+        await m7Page.waitForTimeout(200);
+      };
+
+      /** Type into both fields — an `input` event per field, which is what `v-model` listens for. */
+      const m7Fill = (name, prefix) =>
+        m7Page.evaluate(
+          ([nextName, nextPrefix]) => {
+            for (const [selector, value] of [["[data-create-project-name]", nextName], ["[data-create-project-prefix]", nextPrefix]]) {
+              const field = document.querySelector(selector);
+              field.value = value;
+              field.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+          },
+          [name, prefix],
+        );
+
+      // The in-page press: `page.click` waits for actionability, and the submit
+      // button is `:disabled` until both fields hold text (`canSubmit`, §7.3).
+      const m7Submit = () => m7Page.$eval("[data-create-project-form] button[type=submit]", (el) => el.click());
+
+      /** Nothing on screen before the next case, so no case reads a stale toast. */
+      const m7Quiet = () =>
+        m7Page.waitForFunction(
+          () => [...document.querySelectorAll("[data-toast-region] [data-toast]")].filter((el) => !el.closest("[data-toast-template]")).length === 0,
+          null,
+          { timeout: 8_000 },
+        );
+
+      const m7Holds = async (kind) => {
+        try {
+          await m7Page.waitForSelector(`[data-toast-region] [data-toast][data-toast-kind="${kind}"]`, { state: "visible", timeout: 4_000 });
+          return true;
+        } catch {
+          return false;
+        }
+      };
+
+      /** One refusal, start to finish; returns what the reader was left looking at. */
+      const m7Refusal = async (key, name, prefix) => {
+        await m7Quiet();
+        // A refusal leaves the dialog up, so only the first attempt opens it: the
+        // rest are the repair-and-try-again pass a reader makes.
+        if (!(await m7DialogOpen())) await m7OpenDialog();
+        m7Check(await m7DialogOpen(), `${key} — the dialog must be up before the submit`);
+        const before = await m7Projects();
+        await m7Fill(name, prefix);
+        await m7Submit();
+        const shown = await m7Holds("danger");
+        const seen = { shown, toasts: await m7Toasts(), dialogOpen: await m7DialogOpen(), projects: await m7Projects(), before };
+        m7.cases[key] = seen;
+        m7Check(shown, `${key} — the refusal must raise a danger toast (saw ${JSON.stringify(seen.toasts)}, wire ${m7.statuses.join(",")})`);
+        m7Check(
+          seen.toasts.length === 1 && seen.toasts[0].kind === "danger" && seen.toasts[0].painted && seen.toasts[0].text !== "",
+          `${key} — exactly one painted danger toast (saw ${JSON.stringify(seen.toasts)})`,
+        );
+        m7Check(!seen.toasts.some((toast) => toast.kind === "success"), `${key} — a refused create must not announce success`);
+        m7Check(seen.dialogOpen, `${key} — the dialog must stay up holding what was typed`);
+        m7Check(
+          JSON.stringify(seen.projects) === JSON.stringify(seen.before),
+          `${key} — the refusal must land no project (${seen.before.join(",")} → ${seen.projects.join(",")})`,
+        );
+        return seen;
+      };
+
+      // ① a prefix that normalizes to nothing — §9 C6, M4.
+      const m7Empty = await m7Refusal("emptyPrefix", "Zombie", "####");
+
+      // ② a prefix another project already numbers its cards with — §9 C4, M5.
+      //    Same status as ①, different repair: the two must not read alike.
+      const m7Taken = await m7Refusal("takenPrefix", "From the UI", "demo");
+      m7Check(
+        m7Empty.toasts[0] !== undefined && m7Taken.toasts[0] !== undefined && m7Empty.toasts[0].text !== m7Taken.toasts[0].text,
+        "the two 400s must not share one sentence — different causes, different repairs",
+      );
+
+      // ③ the control: the same dialog, still up, holding a prefix nobody claims.
+      //    Without it, "no success toast" above would be satisfied by a dead dialog.
+      await m7Quiet();
+      m7Check(await m7DialogOpen(), "the control — the dialog the two refusals left up is the one that creates");
+      await m7Fill("Fresh", "zz");
+      await m7Submit();
+      const m7Created = await m7Holds("success");
+      const m7CreatedToasts = await m7Toasts();
+      m7.cases.control = { shown: m7Created, toasts: m7CreatedToasts, dialogClosed: !(await m7DialogOpen()), projects: await m7Projects() };
+      m7Check(m7Created, `the control — a prefix nobody holds must still create (saw ${JSON.stringify(m7CreatedToasts)})`);
+      m7Check(m7CreatedToasts.length === 1 && m7CreatedToasts[0].kind === "success", `the control — one success toast and nothing else (saw ${JSON.stringify(m7CreatedToasts)})`);
+      m7Check(m7.cases.control.dialogClosed, "the control — a created project closes the dialog");
+      m7Check(m7.cases.control.projects.includes("Fresh"), `the control — the new project is on the board (${m7.cases.control.projects.join(",")})`);
+
+      // ④ a 409. This dialog never sends an `id` (§4 M1), so the wire's own
+      //    `ID_CONFLICT` is unreachable from the form; the harness answers one
+      //    POST with the envelope `src/server` emits for it (whose shape
+      //    `test/server/project-prefix-binding.test.mjs` C5 pins) to show the
+      //    catch is about *failure*, not about the 400 it was written for.
+      await m7Page.route("**/api/v1/projects", async (route) => {
+        if (route.request().method() !== "POST") return route.continue();
+        await route.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: false, error: { code: "ID_CONFLICT", message: "project id already exists", http: 409 } }),
+        });
+      });
+      try {
+        await m7Refusal("conflict", "Same id", "qq");
+      } finally {
+        await m7Page.unroute("**/api/v1/projects");
+      }
+
+      m7Check(m7.statuses.join(",") === "400,400,200,409", `the four submits must be answered 400,400,200,409 in that order (saw ${m7.statuses.join(",")})`);
+
+      // The app's own console, with the browser's resource notices set aside: a
+      // non-2xx response is logged by Chromium itself ("Failed to load resource:
+      // … 400"), and two of these cases ask for exactly that. What must not appear
+      // is the app leaving the reader nothing — before the catch existed this list
+      // held Vue's `ApiError: …`, the refused create's only trace.
+      const m7Notices = m7.consoleErrors.filter((text) => text.startsWith("Failed to load resource"));
+      m7.appConsoleErrors = m7.consoleErrors.filter((text) => !text.startsWith("Failed to load resource"));
+      m7.resourceNotices = m7Notices.length;
+      m7Check(m7.appConsoleErrors.length === 0, `the refusal must reach the reader, not the console: ${m7.appConsoleErrors.join(" | ")}`);
+      m7Check(m7.pageErrors.length === 0, `no uncaught exception: ${m7.pageErrors.join(" | ")}`);
+    } catch (err) {
+      m7Failures.push(`the real-board leg could not run: ${err.message}`);
+    } finally {
+      if (m7Context) await m7Context.close();
+      if (m7Taskd) await m7Taskd.close();
+      if (m7Dir) rmSync(m7Dir, { recursive: true, force: true });
+    }
+
     const results = [
       ...boardResults,
       ...listResults,
@@ -3989,6 +4196,14 @@ export async function run() {
         viewportFailures: b26ViewportFailures,
       },
       r12Id: { failures: r12IdFailures, longId: LONG_ID, clamped: CLAMPED, longHead, spill, listRead },
+      m7: {
+        failures: m7Failures,
+        cases: m7.cases,
+        statuses: m7.statuses,
+        appConsoleErrors: m7.appConsoleErrors,
+        pageErrors: m7.pageErrors,
+        resourceNotices: m7.resourceNotices ?? 0,
+      },
       r16: {
         failures: r16Failures,
         routes: r16Routes,
@@ -4100,6 +4315,15 @@ if (isEntryPoint) run().then(
       } else {
         console.log(`R12-id (fidelity) — the drawer head and the card / list row both show ${report.r12Id.longId} whole under the ten-character cap, and .td-id-full does not spill (${report.r12Id.spill.fullClass} match, cards ${report.r12Id.spill.cards}, rows ${report.r12Id.spill.rows})`);
       }
+      if (report.m7.failures.length > 0) {
+        console.log(`M7 · C-PREFIX-1 (create-project refusal) — ${report.m7.failures.length} failed:`);
+        for (const failure of report.m7.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log(
+          `M7 · C-PREFIX-1 (create-project refusal) — on a real board, \`####\` and a taken prefix each raise one visible danger toast ` +
+            `with the dialog held open and no project written (wire ${report.m7.statuses.join(",")}), a free prefix still creates, and the synthetic 409 lands in the same catch`,
+        );
+      }
       if (report.r16.failures.length > 0) {
         console.log(`R16 (routing) — ${report.r16.failures.length} failed:`);
         for (const failure of report.r16.failures) console.log(`  ✗ ${failure}`);
@@ -4136,6 +4360,7 @@ if (isEntryPoint) run().then(
       report.r11.failures.length === 0 &&
       report.b26.failures.length === 0 &&
       report.r12Id.failures.length === 0 &&
+      report.m7.failures.length === 0 &&
       report.r16.failures.length === 0 &&
       interactionOk;
     process.exit(ok ? 0 : 1);
