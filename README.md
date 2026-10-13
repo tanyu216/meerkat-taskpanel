@@ -194,7 +194,9 @@ Installing the skill is one line; working the board well is a set of habits.
 Every host shares the same **eight rules**: **claim first** (read
 `issue candidates --assignee <me>`, then `issue move <ref> in_progress`); claim
 only what is yours (not somebody else's card, not an unreleased `backlog` card,
-not an `epic`, and not a card whose `depends_on` blockers are unfinished); **one
+not an `epic`, not a deployment card (`kind: deploy` — the poll never offers one,
+it is dispatched explicitly), and not a card whose `depends_on` blockers are
+unfinished); **one
 card at a time**; keep a **fresh heartbeat** (the board treats a claim as live for
 10 minutes); **deliver with a report** (the delivery gate); **self-review is not
 acceptance** (an agent reaches `in_review`, a human accepts to `done`); **never

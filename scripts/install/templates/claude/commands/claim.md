@@ -9,4 +9,5 @@ I am agent **{{AGENT}}** on the shared Meerkat TaskPanel board. Claim first, and
 3. Otherwise take exactly one: `taskctl issue move <ref> in_progress`.
 
 Do not claim a card that is assigned to someone else, still in `backlog`, an `epic`,
-or blocked by an unfinished `depends_on` relation. Hold one card at a time.
+a deployment card (`kind: deploy`), or blocked by an unfinished `depends_on`
+relation. Hold one card at a time.

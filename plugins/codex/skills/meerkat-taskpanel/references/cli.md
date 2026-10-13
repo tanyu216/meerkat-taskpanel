@@ -87,7 +87,7 @@ project's directory.
 |---|---|
 | `issue create --project <id> --title <t> [--acceptance <text>]… [--assignee <text>] [--reporter <text>] …` | Create a task. |
 | `issue list [--project] [--status <s>]… [--assignee-id] [--limit] [--include-archived]` | List tasks. |
-| `issue candidates --assignee <name> [--stale] [--include-unassigned]` | The poll's read: claimable cards for an assignee (`todo`, non-`epic`, every `depends_on` done; `--stale` adds `in_progress` cards whose heartbeat expired; `--include-unassigned` adds the **public pool** — unassigned claimable cards — for a supervisor whose policy allows them). Read-only — claiming still goes through `issue move`/claim semantics. |
+| `issue candidates --assignee <name> [--stale] [--include-unassigned]` | The poll's read: claimable cards for an assignee (`todo`, **auto-claimable** — not an `epic`, not a `deploy` —, every `depends_on` done; `--stale` adds `in_progress` cards whose heartbeat expired; `--include-unassigned` adds the **public pool** — unassigned claimable cards — for a supervisor whose policy allows them). Read-only — claiming still goes through `issue move`/claim semantics. |
 | `issue get <id\|identifier>` | One task, plus `report_waivers[]`. |
 | `issue update <ref> [--title] [--description] [--priority] [--kind] [--label]… [--meta k=v]… [--acceptance <text>]…` | Patch. `--status` is refused here on purpose. |
 | `issue move <ref> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"] [--awaiting-reason E1..E5]` | Move, subject to the delivery gate. A `todo → in_progress` move is a **claim**: only the card's assignee, unless `--allow-steal`. `--awaiting-reason` is **required** by a move to `awaiting` — see [The `awaiting` state](#the-awaiting-state--asking-a-human-a-question). |
@@ -105,6 +105,9 @@ it now); normally they are the same person. Who may claim:
 - **Unassigned** cards are an open pool: any actor may claim them.
 - An **epic** can never be claimed (`not_claimable`), and neither can `backlog`
   — only `todo` is claimable.
+- A **`deploy`** card *can* be claimed — but `issue candidates` never offers one,
+  so it is only reachable by an explicit dispatch (see
+  [Deployment cards](#deployment-cards-never-auto-claimed)).
 - A card routed to somebody else is refused on this **first claim** with
   `not_assignee` — that code appears **only** on this `todo → in_progress`
   path:
@@ -138,6 +141,33 @@ $ echo $?
   *is* the reason, so no `--reason` is needed). A **rework**
   (`in_review`/`blocked → in_progress`) is *not* a claim: it keeps the existing
   executor and their lock.
+
+### Deployment cards: never auto-claimed
+
+A **deployment card** — work that runs against a live instance rather than in the
+repository (rebuilding `dist`, restarting `taskd`, a full `install.sh` run) — is
+marked with `--kind deploy`:
+
+```console
+$ taskctl issue create --project PROJ --title "Rebuild dist and restart taskd" --kind deploy
+```
+
+`issue candidates` **never offers a `deploy` card**, in any of its three pools
+(assigned, public pool, stale recovery): the poll's read is what an agent claims
+from without a human in the loop, and a deployment card is high-impact and needs
+the instance to be in the right state, so it is dispatched explicitly instead.
+The marker is the same mechanism `epic` uses (`kind`), but **only half** of it:
+
+| | `epic` | `deploy` |
+|---|---|---|
+| In `issue candidates` | never | never |
+| Claimable at all | no — `not_claimable` | **yes**, by an explicit dispatch |
+
+So a `deploy` card is claimed exactly like any other card — `issue move <ref>
+in_progress`, by its assignee (or `--allow-steal`) — it just will not be picked
+up on its own. When a card you expected is missing from your candidates and you
+believe it is deployment work, check `issue get <ref>`: a `kind: deploy` card is
+the reason it is not there.
 
 ### The delivery gate
 

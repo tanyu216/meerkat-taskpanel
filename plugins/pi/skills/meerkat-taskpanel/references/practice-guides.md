@@ -31,7 +31,8 @@ node scripts/run.mjs issue move <ref> in_progress       # take exactly one
 ```
 
 `issue candidates` is **read-only** (`cli.md` §`issue`): it lists the cards this
-assignee *may* claim — `todo`, not an `epic`, every `depends_on` already `done`.
+assignee *may* claim — `todo`, not an `epic`, not a `deploy`, every `depends_on`
+already `done`.
 Picking one and moving it to `in_progress` is the claim; from that moment the
 card is yours and the board shows it as live.
 
@@ -51,10 +52,14 @@ not touch it", not a "try anyway":
 | Assigned to somebody else | The board refuses a claim by a different actor (§1). |
 | Sitting in `backlog` | Unauthorised — `backlog` has not been released for work; only the dispatcher (or a human) moves it to `todo`. |
 | An `epic` | An epic is a container, not a unit of work; its leaf children are what gets claimed. `issue candidates` excludes epics. |
+| A **deployment card** (`kind: deploy`) | Deployment work runs against a live instance, so it is dispatched explicitly by a human or the leader; the candidates read never offers one. |
 | A `depends_on` blocker is not `done` | The work it waits on is unfinished; the candidates read already withholds it. |
 
-`issue candidates --assignee <me>` enforces the last two for you. When a card you
-*expected* is missing, `relation list <ref>` shows the blockers behind it.
+`issue candidates --assignee <me>` enforces the last three for you. When a card
+you *expected* is missing, `relation list <ref>` shows the blockers behind it —
+and `issue get <ref>` shows whether it is a deployment card, which is the other
+reason it will not appear. A `deploy` card is still claimable when it is
+dispatched to you: wait for the dispatch rather than looking for it yourself.
 
 ### 3. One card at a time
 

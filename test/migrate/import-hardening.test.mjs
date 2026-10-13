@@ -176,6 +176,24 @@ describe("md/import — parent handling (§4.8 ③, M5 ruling)", () => {
     }
   });
 
+  it("imports a `deploy` card as a deployment card, not as a plain task", async () => {
+    // T-20261013-232004: `deploy` is a first-class kind, so the importer has to
+    // carry it through. A card flattened to `task` on import would come back into
+    // the poll's read and be claimed automatically — the exact thing the marker
+    // exists to prevent.
+    const board = await boardWithCards({
+      "DEPLOY.md": cardText({ kind: "deploy" }),
+      "PLAIN.md": cardText({ id: "DEMO-0002", kind: "task" }),
+    });
+    try {
+      importCards(board);
+      assert.equal(board.repos.tasks.getByIdentifier("demo", "DEMO-0001").kind, "deploy");
+      assert.equal(board.repos.tasks.getByIdentifier("demo", "DEMO-0002").kind, "task");
+    } finally {
+      board.close();
+    }
+  });
+
   it("records a missing parent as a warning, not a crash", async () => {
     const board = await boardWithCards({ "A.md": cardText({ parent: "DEMO-9999" }) });
     try {
