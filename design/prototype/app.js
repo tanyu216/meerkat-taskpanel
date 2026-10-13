@@ -66,9 +66,10 @@
       "filters.assignee.me": "Assignee: Me",
       "filters.assignee.human": "Assignee: Human",
       "filters.assignee.agent": "Assignee: Agent",
-      /* R13 — the one new seat: the accessible name of the roster capsule's `x`.
-         It says what the press removes, because the glyph alone does not. */
-      "assignee.clear": "Remove assignee filter",
+      /* R13 修订（Terry 2026-10-13 · 决定甲）— `assignee.clear` is withdrawn with
+         the `✕` it named: the removal path is the control's own `Assignee: All`
+         row, which already has a seat of its own (`filters.assignee.all`), so the
+         round adds no key and gives one back (281 → 280 in both languages). */
       "filters.priority": "Priority",
       "filters.priority.all": "Priority: All",
       "filters.priority.urgent": "Priority: Urgent",
@@ -381,7 +382,6 @@
       "filters.assignee.me": "负责人：我",
       "filters.assignee.human": "负责人：人类",
       "filters.assignee.agent": "负责人：Agent",
-      "assignee.clear": "移除负责人筛选",
       "filters.priority": "优先级",
       "filters.priority.all": "优先级：全部",
       "filters.priority.urgent": "优先级：紧急",
@@ -973,15 +973,17 @@
   }
 
   /* The single writer of the assignee control's *restatement*: the roster's
-     capsule and the one removal affordance. It reads the control's value — the
-     one truth (B04) — and both follow from it in the same pass: the name in
-     force wears `data-assignee-active="true"`, the other five are restored, and
-     the `x` appears only while the value is a *given name*. So the capsule, the
-     `x` and the control cannot contradict each other, and a restatement is the
-     same move whatever changed the value — a press on a name, the `x`, the
-     control itself, or `resetFilters()`.
+     capsule, and the name the control itself is stating. It reads the control's
+     value — the one truth (B04) — and the capsule follows from it in the same
+     pass: the name in force wears `data-assignee-active="true"` and the other
+     five are restored. So the capsule and the control cannot contradict each
+     other, and a restatement is the same move whatever changed the value — a
+     press on a name, the control itself, or `resetFilters()`.
      It also reconciles the *options*: a name that is not in force is not in the
-     document, so the control can never offer a name the roster is not showing.
+     document, so the control can never offer a name the roster is not showing —
+     and, with the `✕` withdrawn (R13 修订, 决定甲), the option set *is* the whole
+     removal affordance: a given name is one more `option` while it is in force,
+     and leaving it is choosing another row of the same select.
      The hook is `[data-assignee-filter-option]`, not `[data-assignee-option]`:
      that name is B22's (the dialogs' assignee menus, 14 bare seats) and the
      roster control binds it document-wide, so a seat here would be answered by
@@ -1007,12 +1009,6 @@
         .appendTo($select)
         .prop("selected", true);
     }
-
-    /* The `x` is for a *given name* and for nothing else: `all` is the
-       un-filtered state (the select's own first row) and the three kinds are
-       rows of the select, so neither needs a second way out. A name is the only
-       value the select did not ship with. */
-    $("[data-assignee-clear]").prop("hidden", named === null);
 
     $("[data-assignee-item]").each(function () {
       var $item = $(this);
@@ -3185,50 +3181,27 @@
       }
     );
 
-    /* I19 · R11 ② · R13 — a roster name is a route *and* a narrowing. R11 made
-       the press switch to the list view with the two in-flight statuses in force
-       and wrote the name into no filter, because the assignee control's domain
-       (`all|me|human|agent`, B04) held no given name. R13 extends that domain
-       (a name is written into the control on demand) — so the press now does
-       both, in this order: the view, the status set, the name, one filter pass.
-       The two conditions are one narrowing and are ANDed, exactly as any two
-       fields of the bar are. */
+    /* I19 · R11 ② · R13 · R13 修订（Terry 2026-10-13 · 决定甲）— a roster name is
+       the assignee value and nothing else. R11 made the press switch to the list
+       view with the two in-flight statuses in force and wrote the name into no
+       filter, because the assignee control's domain (`all|me|human|agent`, B04)
+       held no given name. R13 extended that domain (a name is written into the
+       control on demand) and kept the route. 甲 keeps the domain extension and
+       drops the route: the press is exactly the move of choosing that name in
+       the bar's dropdown, so it is the name plus one filter pass — the view and
+       the status set are not touched, and no `✕` appears.
+       Repeating the press on the name already in force changes nothing: a
+       dropdown does not close itself when the value it already states is picked
+       again. The one removal path is the control's own `Assignee: All` row. */
     $("[data-agents-presence]").on(
       "click",
       "[data-agent-assignee]",
       function () {
-        var name = $(this).attr("data-assignee");
-        /* A press on the name already in force is the capsule's own close, not
-           a re-route: it removes the assignee condition and nothing else —
-           status and view stay, which is what the bar's `x` does too. */
-        if (assigneeFilterValue() === name) {
-          writeAssigneeFilter("all");
-          applyFilters();
-          return;
-        }
-        setView("list");
-        writeStatusFilter(["in_progress", "in_review"]);
-        writeAssigneeFilter(name);
+        writeAssigneeFilter($(this).attr("data-assignee"));
         applyFilters();
       }
     );
 
-    /* R13 ④ — the `x` beside the assignee select removes the assignee condition
-       *alone*: no view switch, no status change, no priority/label/search
-       change, no menu, no toast. It lives in the bar, next to the control whose
-       value it takes back — the roster's capsule has no room for it, and the
-       value it clears is the control's, not a row's. The event stops rather than
-       travels, so a press here can never reach a roster name behind the bar. */
-    $("[data-filters]").on(
-      "click",
-      "[data-assignee-clear]",
-      function (event) {
-        event.preventDefault();
-        event.stopPropagation();
-        writeAssigneeFilter("all");
-        applyFilters();
-      }
-    );
     $("[data-filter-toggle]").on("click", function () {
       var $button = $(this);
       var open = $button.attr("aria-pressed") !== "true";
