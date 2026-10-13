@@ -163,6 +163,18 @@ routing was already here, so the view cost no branch. `waiting` carries **no**
 length of what is on screen (the feed filters and folds), while a queue's would merely
 restate the tally its own header already carries (B27 / DESIGN.md §30.3).
 
+**R16 — the same press now also writes the address.** The four destinations got URLs
+(`/board`, `/list`, `/activity`, `/waiting`, with `/` normalised to `/board`), so the handler
+above goes through `navigate()` rather than `setView()`: one press changes the view **and**
+pushes that view's address, which is what makes a deep link, a refresh and the back button mean
+anything. Nothing structural moves — the hook, the four roots, the `aria-current` rule and the
+top bar's two-value toggle are exactly as this entry describes; the address layer lives in the
+product shell, and `design/prototype/` has none (measured: a prototype nav press leaves the
+address untouched). The activity feed's filters move with it, from `#/activity?…` to
+`/activity?…` — the old shape is still **read** and redirected to the new one, so an existing
+link keeps working — leaving the fragment to the drawer's `#/task/<id>`. Narrative: DESIGN.md
+**§32**; executable contract: `design/fidelity-r16.md`.
+
 The three cells were **one row of three equal thirds** from v1.3 to R6; R7 (2026-10-12)
 stacked them at every width, and the same evening's revision put the row back above the
 breakpoint and kept the stack for the rail — where a third of 64px is far too narrow for a
