@@ -25,14 +25,19 @@
  */
 import { computed, ref, watch } from "vue";
 
-import { allowedTargets, board, columns, moveTask, openDetail, totalVisible, writeStatusFilter } from "../../stores/board.js";
+import { allowedTargets, board, boardEmpty, columns, moveTask, openDetail, writeStatusFilter } from "../../stores/board.js";
 import { closeMoveMenu, moveMenu, openCreateTask, view } from "../../stores/ui.js";
 import Column from "./Column.vue";
 
 const dragging = ref(null);
 
-/** R10 ① — `empty ⇔ no card is visible`; `data` is therefore the resting state. */
-const boardState = computed(() => (totalVisible.value === 0 ? "empty" : "data"));
+/**
+ * R10 ① — the view's two states. `empty ⇔ no card is visible`, read through the
+ * store's `boardEmpty`, which also asks whether this project has been read: a
+ * board that has not been read is not an empty board, and the count alone cannot
+ * tell the two apart (T-20261013-160505 — see that derivation's note).
+ */
+const boardState = computed(() => (boardEmpty.value ? "empty" : "data"));
 
 /**
  * The move menu offers exactly the moves the state machine allows from the
