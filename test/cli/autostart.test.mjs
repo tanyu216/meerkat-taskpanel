@@ -12,11 +12,12 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
 import { waitForPointer, spawnTaskd } from "../../src/shared/transport/autostart.mjs";
+import { ensureBoard } from "../../src/shared/transport/runtime.mjs";
 import { resolveRuntimePointerPath } from "../../src/shared/runtime-locator.mjs";
 import {
   baseEnv,
@@ -136,6 +137,81 @@ describe("cli/autostart — the pointer is only believed after /health", () => {
       "a pointer naming somebody else's pid is not ours",
     );
     assert.notEqual(await waitForPointer({ pointerPath, timeoutMs: 80, pollMs: 20, pid: 999999 }), null);
+  });
+});
+
+describe("cli/autostart — a guarded board is reused, never doubled (T-20261013-213717-3)", () => {
+  // The OS-level `taskd` keepalive (docs/scheduling.md § The taskd guard) leaves a
+  // *healthy* runtime pointer behind. The CLI must therefore treat it like any other
+  // running board: reuse it, and never start a second server against the same data
+  // directory — the write lock (R1) makes a second one lose, but losing is still a
+  // spawned process and a restart the operator did not ask for.
+  /** The environment the CLI would run with, aimed at one board. */
+  function boardEnv(board, extra = {}) {
+    return {
+      ...baseEnv(),
+      TASKD_DATA_DIR: board.dataDir,
+      TASKD_RUNTIME_POINTER: board.pointerPath,
+      TASKD_PORT: "0",
+      TASKD_HOST: "127.0.0.1",
+      TASKD_NO_AUTOSTART: "",
+      ...extra,
+    };
+  }
+
+  it("reuses the pointer a running board left behind, and spawns nothing", async () => {
+    // A real `taskd` stands in for the guarded one: same program the unit runs, same
+    // pointer, same write lock. It is *not* this process's child in production, which
+    // is why the pid in the pointer belongs to somebody else here too.
+    const board = await startTaskd();
+    try {
+      const resolved = await ensureBoard({ env: boardEnv(board), pointerPath: board.pointerPath });
+      assert.equal(resolved.autostarted, false, "a healthy pointer is reused, not re-started");
+      assert.equal(resolved.url, board.url.replace(/\/+$/, ""));
+      assert.equal(readJsonFile(board.pointerPath).pid, board.pid, "still the same server");
+
+      // Nothing spawned means no second log writer: the lazy start creates this file
+      // before it spawns, so its absence is the honest evidence.
+      const boardLog = join(board.dataDir, "logs", "taskd.log");
+      const before = existsSync(boardLog) ? readFileSync(boardLog, "utf8").length : 0;
+      const again = await ensureBoard({ env: boardEnv(board), pointerPath: board.pointerPath });
+      assert.equal(again.autostarted, false);
+      assert.equal(existsSync(boardLog) ? readFileSync(boardLog, "utf8").length : 0, before);
+    } finally {
+      await board.close();
+    }
+  });
+
+  it("falls back to the lazy start once the guarded board is gone", async () => {
+    const board = await startTaskd();
+    const { dataDir, pointerPath, url } = board;
+    const deadUrl = url.replace(/\/+$/, "");
+
+    // SIGKILL: the supervisor's own case. Nothing cleans up, so the pointer survives
+    // pointing at a process that is gone — the state the guard is *not* there to fix,
+    // because the guard itself is what stopped.
+    const exited = new Promise((resolve) => board.child.once("exit", resolve));
+    board.child.kill("SIGKILL");
+    await exited;
+    assert.equal(existsSync(pointerPath), true, "SIGKILL leaves the pointer behind");
+
+    const started = await ensureBoard({ env: boardEnv(board), pointerPath, waitMs: 20_000 });
+    try {
+      assert.equal(started.autostarted, true, "a pointer that does not answer is not believed");
+      const pointer = readJsonFile(pointerPath);
+      assert.notEqual(pointer.pid, board.pid, "a fresh server, not the dead one");
+      assert.notEqual(pointer.url.replace(/\/+$/, ""), deadUrl);
+    } finally {
+      // `ensureBoard` spawned this one, so stopping it is this case's job.
+      const pid = readJsonFile(pointerPath)?.pid;
+      if (typeof pid === "number") {
+        try {
+          process.kill(pid, "SIGTERM");
+        } catch {
+          /* already gone */
+        }
+      }
+    }
   });
 });
 

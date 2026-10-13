@@ -46,11 +46,15 @@ after(() => {
   for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
 });
 
+// The taskd keepalive guard is skipped here (its own cases live in
+// `taskd-guard.test.mjs`): an install loads a real OS unit, and these cases are
+// about the host bundle, not the guard. `MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE` is
+// the contract's test-only bypass.
 function runInstall(args, env = {}) {
   return spawnSync("bash", [join(ROOT, "install.sh"), ...args], {
     cwd: ROOT,
     encoding: "utf8",
-    env: { ...process.env, ...env },
+    env: { ...process.env, MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1", ...env },
   });
 }
 
