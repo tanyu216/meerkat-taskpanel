@@ -752,13 +752,15 @@
     return n ? parseInt(n, 10) : 0;
   }
 
-  /* R8 ③ — an identifier shows at most its first eight characters plus an
+  /* R8 ③ — an identifier shows at most its first ten characters plus an
      ellipsis. The whole value stays readable on `title`, and on the row's
      `data-identifier`. R12 exempts the drawer's head, which renders the id
-     verbatim (see `openDetail()`); B07's cards and B08's rows keep this cap. */
+     verbatim (see `openDetail()`); B07's cards and B08's rows keep this cap.
+     The cap is global: the create dialog's Parent/Depends rows and chips take
+     the same value from this one function (T-20261014-001418). */
   function identifierText(value) {
     var id = String(value || "");
-    return id.length > 8 ? id.slice(0, 8) + "…" : id;
+    return id.length > 10 ? id.slice(0, 10) + "…" : id;
   }
 
   /* ------------------------------------------------------- I12 · toast ---- */
@@ -1773,7 +1775,7 @@
 
     /* head + property grid -------------------------------------------------- */
     /* R12 — the head shows the card's whole id: this is the one identifier
-       render point that is not capped (B07/B08 keep R8's eight characters plus
+       render point that is not capped (B07/B08 keep R8's ten characters plus
        an ellipsis), which is why `.td-id-full` rides on the span. The root's
        `data-identifier` above already carries the same value. */
     $drawer

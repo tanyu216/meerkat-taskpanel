@@ -1,7 +1,7 @@
 # UI 保真契约 · R8 — Terry 三项列表/弹窗反馈（Before 契约）
 
 > 卡：`T-20261012-211516` · 日期 2026-10-12 · 范围「R8：Terry 三项 taskpanel UI 反馈」· 定位「§⑨.1 Before = 结构契约」。
-> 来源：Terry 2026-10-12 21:11 三项反馈 —— ① 深色「创建任务」弹窗与背景分不清；② 任务列表缺列标题（仅 ID 有）+ 数据行未对齐；③ 任务 ID 省略截断，最多 8 字符。父伞卡 `T-20261012-165652`。
+> 来源：Terry 2026-10-12 21:11 三项反馈 —— ① 深色「创建任务」弹窗与背景分不清；② 任务列表缺列标题（仅 ID 有）+ 数据行未对齐；③ 任务 ID 省略截断，最多 8 字符（**当轮口径；2026-10-14 修订为 10 字符，见 §0**）。父伞卡 `T-20261012-165652`。
 > 契约唯一事实源：`design/prototype/index.html` + `design/prototype/src/input.css` + `design/prototype/tw.css` + `design/BLOCKS.md`（B01–B25）。
 > 「期望计算样式」一律取自**原型在真实浏览器中的 computed style 实测**；实现侧一律**实读源码**（本轮**未**到场实测 `web/dist`，凡未实测处均已标注）。
 > 关系卡：实现卡（`web/**` 镜像改动）与验证卡由 Elon 派发；**本卡只产契约与原型改动，不含实现代码**。
@@ -13,9 +13,10 @@
 - **三项都是设计变更**（原型侧同样缺口径，不是「实现偏离原型」）：本轮**无「无设计变更」项**（§3 逐项说明）。
 - ① 的根因**不是单点**：深色下**三层同时失分离** —— 遮罩（原型 `--scrim` 只在 `:root` 定义、深色沿用 ⇒ 不压暗）、面板边框（`--color-td-line` #1f262a 贴着画布 #0f1417 与面板面 #161b1e）、面板阴影（`--shadow-pop` 的色相取自画布色 ⇒ 深色下高度不可见）。**浅色三者不变**。
 - ② 的根因是**列头与行不同源**：`.td-list-head` 是 `display:flex` 且只含 1 个 `list.columns.identifier` label，而行是 **6 轨 grid** ⇒ 除 ID 外全列无标题，且列头没有任何列宽可与行对齐。**列头升级为与行同一份 6 轨模板**，列集合与行 cell **一一对应**（§2.2 列全 6 列）。
-- ③ 的口径 = **「8 字符 + …」**：ID 本体最多 **8** 字符，超出追加省略号；**机制是渲染层字符切片**（`display = len > 8 ? slice(0,8) + "…" : full`），不用 CSS 宽度近似（`max-width` 是宽度行为、随字体漂移，无法保证「恰好 8 字符」）；`title` 保留**全 ID**，行根 / 抽屉根的 `data-identifier` 也保留全 ID。配套 `.td-id` 类只做**单行**兜底。
-- ③ 有**真实触发样本**：真实 ID 长度 6（`TD-128`）～9（`PROJ-0007`）⇒ 9 字符 ID 确实存在，不是假想边界。原型已注入 `PROJ-0007` 作为可见样本。
-- 契约实测订正 3 条（§1 R8-1 / R8-2 / R8-3）：`minmax(0, 1fr)` 的 computed 值被解析成像素；`max-width: 9ch` **不得**用来断言「8 字符」；实现侧弹窗面板**当前无可机检钩子**。
+- ③ 的口径 = **「10 字符 + …」**：ID 本体最多 **10** 字符，超出追加省略号；**机制是渲染层字符切片**（`display = len > 10 ? slice(0,10) + "…" : full`），不用 CSS 宽度近似（`max-width` 是宽度行为、随字体漂移，无法保证「恰好 10 字符」）；`title` 保留**全 ID**，行根 / 抽屉根的 `data-identifier` 也保留全 ID。配套 `.td-id` 类只做**单行**兜底。
+  - **2026-10-14 修订（operator Terry · `T-20261014-001418`）**：上限由 8 → **10**，并在 `design/prototype/app.js:identifierText()` 一处落地；本文所有口径/期望值已按 10 改写，凡**标注为实测/基线**的表格仍是 8 字符口径下的**当轮记录**（当时 `PROJ-0007` 会截断，现在不截断）。触发样本随之改为弹窗 seed 的 `INVENTORY-0042`（14 字符 ⇒ `INVENTORY-…`）。
+- ③ 有**真实触发样本**：真实 ID 长度 6（`TD-128`）～9（`PROJ-0007`）。**8 字符口径下** 9 字符 ID 即触发（当轮原型已注入 `PROJ-0007` 作为可见样本）；**10 字符口径下**看板自身不再有超限 ID，触发样本改为弹窗 Parent/Depends 菜单 seed 里的 `INVENTORY-0042`。
+- 契约实测订正 3 条（§1 R8-1 / R8-2 / R8-3）：`minmax(0, 1fr)` 的 computed 值被解析成像素；`max-width: 9ch` **不得**用来断言「10 字符」；实现侧弹窗面板**当前无可机检钩子**。
 - 三项均有 selector 级机检断言（§7 A/B 两类），供实现卡「During」直接落测。**§7 C 列出 4 条「不得断言」**。
 
 ---
@@ -36,7 +37,7 @@
 **实测对本契约的订正（3 条）**：
 
 - **R8-1（项②，关键）**：**不得**用字面 `74px minmax(0, 1fr) 108px 132px 96px 72px` 断言列头/行的 `grid-template-columns`。computed 层会把 `minmax(0, 1fr)` **解析成用后像素**，且**随视口变化**：原型实测 1512 档 `74px 648px 108px 132px 96px 72px`、760 档 `74px 96px 108px 132px 96px 72px`、430 档 `64px 144px 84px`。可机检的信号是 **`.td-list-head` 的该字符串与 `.td-list-row` 的该字符串逐字相等**（两侧各自解析，解析规则相同 ⇒ 相等仍成立）。
-- **R8-2（项③，关键）**：**不得**用 `.td-id` 的 `max-width: 9ch` 断言「至多 8 字符」。`ch` 是**宽度**单位，落在字体度量上：原型实测该元素 computed `max-width` = **`65.0215px`**（≈ 7.22px/ch），而字距（`.td-mono` 带 `letter-spacing: -0.01em`）、字体回退或合成字形都会让「9ch 恰好装下 9 个字形」不再成立。可机检的「8 字符」信号**只有** DOM 文本本身（`textContent`）。`.td-id` 只断言**单行**（`white-space: nowrap`）与兜底存在性。
+- **R8-2（项③，关键）**：**不得**用 `.td-id` 的 `max-width: 9ch` 断言「至多 10 字符」。`ch` 是**宽度**单位，落在字体度量上：原型实测该元素 computed `max-width` = **`65.0215px`**（≈ 7.22px/ch），而字距（`.td-mono` 带 `letter-spacing: -0.01em`）、字体回退或合成字形都会让「9ch 恰好装下 9 个字形」不再成立。可机检的「10 字符」信号**只有** DOM 文本本身（`textContent`）。`.td-id` 只断言**单行**（`white-space: nowrap`）与兜底存在性。
 - **R8-3（项①，实现侧）**：实现侧弹窗面板**当前既无 data-* 钩子也无类名**，只能以 `[data-create-task] > div` 定位 —— 那是**位置锚**，与 BLOCKS.md 的「禁位置锚」相悖。本契约把 `[data-create-task-panel]` 列为实现侧的**必补钩子**（原型侧对应 `.modal-box`），否则 ① 的实现侧断言无处可落。
 
 **共用 token 实测值（原型）**：
@@ -251,7 +252,7 @@
 
 ---
 
-### 2.3 项③ `B07/B08/B09.identifier-clamp` — 任务 ID 上限「8 字符 + …」
+### 2.3 项③ `B07/B08/B09.identifier-clamp` — 任务 ID 上限「10 字符 + …」
 
 *证据：原型 1512 档 light 实测（`tools/selfcheck.json`）；三处渲染点的 selector 逐条列于下表。*
 
@@ -265,17 +266,17 @@
 | 唯一 selector（抽屉） | `[data-detail-identifier]` |
 | data-* 钩子 | 上述三个**读**钩子不变；行根 `[data-list-row][data-identifier]` 与抽屉根 `[data-detail-drawer][data-identifier]` 继续携带**全 ID** |
 | 兜底类 | `.td-id`（`display: inline-block; max-width: 9ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom`） |
-| 口径 | **「8 字符 + …」**：`display = full.length > 8 ? full.slice(0, 8) + "…" : full` |
+| 口径 | **「10 字符 + …」**：`display = full.length > 10 ? full.slice(0, 10) + "…" : full` |
 
 **机制（裁定，勿改）**
 
 | 项 | 裁定 | 理由 |
 |---|---|---|
-| 显示口径 | **8 字符 + 省略号**（本体 ≤8，超出再加 `…`） | 硬切会让两个长 ID 视觉同名；省略号是通用截断信号 |
-| 截断机制 | **渲染层字符切片**（`String.prototype.slice`） | `max-width` 是**宽度**行为，随字体 / 字距漂移，无法保证「恰好 8 字符」；字符切片确定、可机检（R8-2） |
+| 显示口径 | **10 字符 + 省略号**（本体 ≤10，超出再加 `…`） | 硬切会让两个长 ID 视觉同名；省略号是通用截断信号 |
+| 截断机制 | **渲染层字符切片**（`String.prototype.slice`） | `max-width` 是**宽度**行为，随字体 / 字距漂移，无法保证「恰好 10 字符」；字符切片确定、可机检（R8-2） |
 | `.td-id` 的角色 | **单行兜底**（`nowrap` + 溢出省略），**不是**截断机制本身 | 双保险：即便某个渲染路径漏切片，也不会折行 |
 | 全 ID 的可读性 | `title` = 全 ID（悬浮）；行根 / 抽屉根的 `data-identifier` = 全 ID | 复制、a11y、测试取全值不因截断而受损 |
-| **不做** | JS 之外的第二处巨型文案；不截断组合框的 `.td-combo-id` | 三处渲染点之外的面不在本轮范围 |
+| **不做** | JS 之外的第二处巨型文案；不截断组合框的 `.td-combo-id`（**2026-10-14 起作废**：`T-20261014-001418` 把选项行与 chip 也接到了同一个 `identifierText()`） | 三处渲染点之外的面不在本轮范围 |
 
 **期望值（三处一致）**
 
@@ -283,12 +284,12 @@
 |---|---|---|
 | `[data-list-identifier]` / `[data-card-identifier]` / `[data-detail-identifier]` | `white-space` | `nowrap` |
 | 同上 | `title` | **=== 全 ID**（非空、非截断值） |
-| 同上 | `textContent` | `full.length <= 8 ? full : full.slice(0, 8) + "…"` |
-| 同上 | `textContent.length` | `<= 9` |
+| 同上 | `textContent` | `full.length <= 10 ? full : full.slice(0, 10) + "…"` |
+| 同上 | `textContent.length` | `<= 11` |
 | 同上 | 类集 | 含 `.td-id` |
 | `[data-list-row]` | `data-identifier` | 全 ID（非截断值） |
 | `[data-detail-drawer]` | `data-identifier` | 全 ID（**本轮新增**；改动前该属性不存在，见 §5） |
-| 9 字符样本 `PROJ-0007` | `textContent` | `PROJ-000…`（8 字符 + `…`） |
+| 9 字符样本 `PROJ-0007` | `textContent` | `PROJ-0007`（**10 字符口径下不截断**；8 字符口径下为 `PROJ-000…`） |
 | 6 字符 ID（如 `TD-128`） | `textContent` | `TD-128`（**不截断**、不加省略号） |
 
 **「到场复现」—— 改动前实测（`tools/baseline.json`）**
@@ -303,7 +304,7 @@
 | 三处 ID 元素的 `font-family` | `"JetBrains Mono", ui-monospace, …` | **等宽面**（这是 `ch` 单位可用的前提，也是 R8-2 仍不足以断言的对照） |
 | `[data-detail-drawer]` `data-identifier` | `null` | 抽屉根**不带**全 ID ⇒ 切片后必须有别的全值来源（见下） |
 
-⇒ **Terry 所见成立且必要**：原型侧同样没有任何截断口径；而真实 ID 有 9 字符样本（`PROJ-0007`），8 字符上限确有触发场景。
+⇒ **Terry 所见成立且必要**：原型侧同样没有任何截断口径；真实 ID 有 9 字符样本（`PROJ-0007`），**当轮 8 字符上限**确有触发场景（10 字符口径下该样本不再截断，触发改由弹窗 seed 的 `INVENTORY-0042` 承担）。
 
 **实现偏离表**
 
@@ -320,7 +321,7 @@
 
 | # | 建议 | 作用位点 | 备注 |
 |---|---|---|---|
-| 1 | 加一个纯函数算出显示值（`len > 8 ? slice(0,8) + "…" : value`），三处渲染点共用 | `web/src/**`（组件或 shared helper） | 复用同一实现，避免三处各写一遍 |
+| 1 | 加一个纯函数算出显示值（`len > 10 ? slice(0,10) + "…" : value`），三处渲染点共用 | `web/src/**`（组件或 shared helper） | 复用同一实现，避免三处各写一遍 |
 | 2 | 三处渲染点：文本 = 该函数结果；`title` = 全 ID | `ListView.vue`:`[data-list-identifier]` · `Card.vue`:`[data-card-identifier]` · `DetailDrawer.vue`:`[data-detail-identifier]` | `title` 与文本必须来自**同一个**全 ID 变量 |
 | 3 | 三处加 `.td-id`（或等价工具类组合） | `web/src/styles/app.css` | 期望 computed：`white-space: nowrap`、`max-width: 9ch` |
 | 4 | 三个钩子的**读**语义不动 | 同上 | 无代码读回（偏离表 #6），故无迁移负担 |
@@ -329,7 +330,7 @@
 
 | # | 断言 | 期望 |
 |---|---|---|
-| N1 | 三处 ID 的 `textContent` 长度 | `<= 9`（且等于 `rule(title)`） |
+| N1 | 三处 ID 的 `textContent` 长度 | `<= 11`（且等于 `rule(title)`） |
 | N2 | 三处 ID 的 `title` | 非空，且 `=== ` 该条目的全 ID |
 | N3 | 6 字符 ID 的 `textContent` | 与 `title` **逐字相等**（不因上限而误截） |
 | N4 | `[data-list-row]` / `[data-card]` / `[data-detail-drawer]` 的 `data-identifier` | 全 ID（**不得**等于截断值） |
@@ -483,9 +484,9 @@ ID 的 DOM 文本自本轮起是**截断值**，因此凡是**从该文本反查
 | B14 | `[data-skeleton] .td-list-head > :only-child` | `grid-column` | `1 / -1` |
 | B15 | `[data-list-identifier]` / `[data-card-identifier]` / `[data-detail-identifier]` | `white-space` | `nowrap` |
 | B16 | 同上 | `title` | `=== ` 该条目的**全 ID** |
-| B17 | 同上 | `textContent` | `=== title.length > 8 ? title.slice(0,8) + "…" : title` |
-| B18 | 同上 | `textContent.length` | `<= 9` |
-| B19 | `[data-card-identifier]`（9 字符样本） | `textContent` | `PROJ-000…`（8 字符 + `…`）；`title` = `PROJ-0007` |
+| B17 | 同上 | `textContent` | `=== title.length > 10 ? title.slice(0,10) + "…" : title` |
+| B18 | 同上 | `textContent.length` | `<= 11` |
+| B19 | `[data-card-identifier]`（9 字符样本） | `textContent` | `=== PROJ-0007`（**10 字符口径下不截断**）；`title` = `PROJ-0007` |
 | B20 | 任一 6 字符 ID（如 `TD-128`） | `textContent` | `=== title`（**不截断**） |
 | B21 | `[data-list-row]` | `data-identifier` | 全 ID（≠ `textContent`，当它被截断时） |
 | B22 | `[data-detail-drawer]` | `data-identifier` | `=== ` 抽屉 ID 的全值 |
@@ -497,7 +498,7 @@ ID 的 DOM 文本自本轮起是**截断值**，因此凡是**从该文本反查
 | # | 不得断言 | 原因 |
 |---|---|---|
 | C1 | `.td-list-head` 的 `grid-template-columns` **字面**等于 `74px minmax(0, 1fr) …` | computed 会把 `minmax(0,1fr)` 解成像素（实测 `74px 96px 108px 132px 96px 72px`）。只断**两侧字符串相等**（R8-1） |
-| C2 | 用 `.td-id` 的 `max-width: 9ch` 证明「至多 8 字符」 | `ch` 是宽度单位、随字体与 `letter-spacing` 漂移；「8 字符」只由 `textContent` 断言（R8-2） |
+| C2 | 用 `.td-id` 的 `max-width: 9ch` 证明「至多 10 字符」 | `ch` 是宽度单位、随字体与 `letter-spacing` 漂移；「10 字符」只由 `textContent` 断言（R8-2） |
 | C3 | `title` 出现在 CSS 层，或 `title` 的字面值出现在样式表 | `title` 是 DOM 属性，不是样式 |
 | C4 | 浅色遮罩等于原型的 `rgba(15, 20, 23, 0.32)` | 实现浅色现值是 `bg-neutral/32`（`rgba(31,42,46,0.32)`）；本轮**不**改浅色（§4.3 注记 6）。实现侧只断「浅色与本轮前**逐字相同**」 |
 | C5 | `.td-list-head > *` 的 `grid-template-columns` 单独存在于列头 | 共享模板是同一条规则；拆成两条即违反「同源」的机制 |
@@ -522,7 +523,7 @@ ID 的 DOM 文本自本轮起是**截断值**，因此凡是**从该文本反查
 
 | # | 红线 |
 |---|---|
-| R1 | 三处 ID 的**显示值**只能由「8 字符 + `…`」规则产生；不得为个别样本特判。 |
+| R1 | 三处 ID 的**显示值**只能由「10 字符 + `…`」规则产生；不得为个别样本特判。 |
 | R2 | 列头与行必须**共用同一份**列模板声明；把轨宽写两遍即违反本契约的机制（即便当下数值相等）。 |
 | R3 | 浅色遮罩 / 面板边 / 面板影**不得**随本轮的深色覆写而改变。 |
 | R4 | `title` 与 DOM 文本必须出自**同一**全 ID 变量；不得让两者各自计算（会成为下一处漂移）。 |
@@ -534,6 +535,6 @@ ID 的 DOM 文本自本轮起是**截断值**，因此凡是**从该文本反查
 |---|---|---|
 | F1 | `[data-access-overlay]`（`bg-neutral/40`）与 `[data-detail-overlay]`（`bg-neutral opacity-32`）的 alpha 不统一 | 原型侧三面共用一个 `--scrim`；实现侧三个 alpha。本轮只把弹窗遮罩列为**硬性**，其余为**一致项建议**（§2.1 落地建议 2）。统一它们的浅色外观会改动未被 Terry 反馈的面 ⇒ 留给后续卡。 |
 | F2 | 实现侧卡片 ID 用工具类（`td-mono text-[11px]`）而**不带** `.td-card-id` | 原型用 `.td-card-id`。这是一个**改动前既有**的类名差异，且不影响本轮断言（`.td-id` 独立成立）⇒ 不在本轮 |
-| F3 | 「8 字符」对**中英混排 / 不同字体**的稳定性 | 本轮只保证 CJK 无关的 ASCII ID（真实 ID 皆为 `PREFIX-数字`）。若未来出现非 ASCII 前缀，需重新裁定（`slice` 按 UTF-16 码元计数）。 |
-| F4 | 组合框（`.td-combo-id`）与 toast 里的 ID | 不截断（§2.3 机制表「不做」）；若 Terry 后续反馈菜单里也需要上限，另开卡。 |
+| F3 | 「10 字符」对**中英混排 / 不同字体**的稳定性 | 本轮只保证 CJK 无关的 ASCII ID（真实 ID 皆为 `PREFIX-数字`）。若未来出现非 ASCII 前缀，需重新裁定（`slice` 按 UTF-16 码元计数）。 |
+| F4 | 组合框（`.td-combo-id`）与 toast 里的 ID | **已被取代（2026-10-14 · `T-20261014-001418`）**：Terry 反馈菜单选项行也要上限 ⇒ 组合框的选项行与 chip **现在走同一个 `identifierText()`**（`.td-combo-id` 不再是不截断的例外）；toast 里的 ID 仍不在范围内。 |
 | F5 | `design/prototype/src/input.css` 的 `.td-chip` 类名碰撞 | 独立的设计编辑，**不得**夹带进 R8 增量（§4.3 注记 4）。 |
