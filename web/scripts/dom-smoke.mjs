@@ -116,9 +116,17 @@ export function fixtureApi() {
   // bug needed: a row's count must come from the project, not from whichever task
   // list the client happens to be holding. p2 and p3 own no fixture task at all
   // and still print 4 and 2.
-  const mk = (id, name, taskCount) => ({
+  const mk = (id, name, taskCount, prefix) => ({
     id,
     name,
+    // C-RAIL-1 — the rail chip's wire field. `/projects` serves the project's
+    // **effective prefix** (`projectToWire`), and the sidebar renders it
+    // verbatim; the three values below are the prototype's own seed chips
+    // (ORC / TD / SR, `design/prototype/app.js` `PROJECT_PREFIX`), which is what
+    // the server would serve for these three projects. Without the field the
+    // chip renders empty — the fixture has to carry it, exactly as the real
+    // route does.
+    prefix,
     workspace_path: `/w/${id}`,
     labels: [],
     meta: {},
@@ -130,7 +138,11 @@ export function fixtureApi() {
   });
   // The prototype sidebar's three rows and their counts (12 / 4 / 2) — three, so
   // the "every row is filled" rule has the prototype's own 3/3 shape to assert.
-  const projects = [mk("p1", "MeerkatTaskPanel", 12), mk("p2", "Orchestrator", 4), mk("p3", "Site Refresh", 2)];
+  const projects = [
+    mk("p1", "MeerkatTaskPanel", 12, "TD"),
+    mk("p2", "Orchestrator", 4, "ORC"),
+    mk("p3", "Site Refresh", 2, "SR"),
+  ];
   const orderDebug = [
     { id: "p1", name: "MeerkatTaskPanel", order: 1, total: 0.9, archived: false },
     { id: "p2", name: "Orchestrator", order: 2, total: 0.4, archived: false },
@@ -818,6 +830,78 @@ export async function run() {
     });
     r6Check(rail.caretDisplay === "none", `at 980px the caret's display is ${rail.caretDisplay}, expected none`);
     r6Check(rail.labelDisplay === "none", `at 980px the footer label's display is ${rail.labelDisplay}, expected none`);
+
+    // C-RAIL-1 — the rail chip is the project's **effective prefix**, and this is
+    // the one viewport where it is visible, so the ruling's core assertion (D1)
+    // is measured here: the chip of the project the board is showing must be the
+    // token its cards are numbered with. Everything below is read off the live
+    // DOM and compared **relationally** — no fixture chip value is written down
+    // as an expectation, because the chip's source is the wire, not this file.
+    const railChips = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll("[data-project-list] [data-project]")];
+      return {
+        rows: rows.map((row) => {
+          const chip = row.querySelector("[data-side-icon]");
+          return {
+            project: row.getAttribute("data-project"),
+            current: row.getAttribute("aria-current") === "page",
+            chip: chip ? chip.textContent : null,
+            display: chip ? getComputedStyle(chip).display : null,
+          };
+        }),
+        // The board shows the *current* project's cards, so their identifiers
+        // carry that project's prefix — which is what the rail chip must repeat.
+        // An identifier is `<PREFIX>-<serial>`, and a prefix may itself contain
+        // `-`, so the serial is the last segment.
+        identifiers: [...document.querySelectorAll("[data-card]")]
+          .map((card) => card.getAttribute("data-identifier"))
+          .filter(Boolean),
+      };
+    });
+    const chipRows = railChips.rows;
+    r6Check(chipRows.length > 0, "the rail lists no project rows");
+    r6Check(
+      chipRows.every((row) => row.chip !== null),
+      `a project row carries no [data-side-icon] chip (${chipRows.map((r) => r.project).join(", ")})`,
+    );
+    r6Check(
+      chipRows.every((row) => (row.chip ?? "").length > 0),
+      `a rail chip is empty (${chipRows.map((r) => `${r.project}=${JSON.stringify(r.chip)}`).join(", ")})`,
+    );
+    r6Check(
+      chipRows.every((row) => row.display !== "none"),
+      `a rail chip is hidden at 980px: ${chipRows.map((r) => `${r.project}=${r.display}`).join(", ")}`,
+    );
+    const currentRow = chipRows.find((row) => row.current);
+    r6Check(currentRow !== undefined, "no project row is marked aria-current=page");
+    // D1 — the chip must be the token the current project's cards are **numbered
+    // with**. Anchored on the card the interaction pass opens (`TD-1`) rather
+    // than on "every card agrees": the fixture deliberately keeps one off-prefix
+    // card in the same project (`PROJ-0007`, the R12 long-identifier anchor) and
+    // its identifiers are hand-written, so unanimity is not a property of this
+    // data — the *link* between chip and identifier is what C-RAIL-1 rules on.
+    const anchorIdentifier = "TD-1";
+    const anchor = railChips.identifiers.find((identifier) => identifier === anchorIdentifier);
+    const seenPrefixes = [...new Set(railChips.identifiers.map((id) => id.slice(0, id.lastIndexOf("-"))))];
+    r6Check(anchor !== undefined, `the fixture's anchor card ${anchorIdentifier} is not on the board`);
+    r6Check(
+      anchor !== undefined && currentRow !== undefined && anchor.startsWith(`${currentRow.chip}-`),
+      `the current project's rail chip is ${JSON.stringify(currentRow?.chip)} but its anchor card is numbered ${anchor} (board prefixes: ${seenPrefixes.join(", ")}) — C-RAIL-1 D1`,
+    );
+
+    // B03 "prefix monogram, **rail only**": the same span is hidden again at full
+    // width, where the name identifies the row (C-RAIL-1 §8 D3).
+    await page.setViewportSize({ width: 1512, height: 900 });
+    await page.waitForTimeout(150);
+    const wideChipDisplay = await page.evaluate(() =>
+      [...document.querySelectorAll("[data-project-list] [data-side-icon]")].map((el) => getComputedStyle(el).display),
+    );
+    r6Check(
+      wideChipDisplay.length > 0 && wideChipDisplay.every((display) => display === "none"),
+      `at 1512px the rail chips are ${wideChipDisplay.join(",")}, expected none (B03: rail only)`,
+    );
+    await page.setViewportSize({ width: 980, height: 900 });
+    await page.waitForTimeout(150);
 
     // ③ — the settings dialog is the prototype's centred modal: open it at the
     // measured viewport and check the geometry, then close it again.
