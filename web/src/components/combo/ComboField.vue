@@ -16,6 +16,7 @@
 import { computed, nextTick, ref, watch } from "vue";
 
 import { comboOptions, createRoster } from "../../lib/combo.js";
+import { identifierText } from "../../lib/identifier.js";
 import { t } from "../../i18n/index.js";
 
 const props = defineProps({
@@ -59,9 +60,36 @@ const inputEl = ref(null);
 
 const roster = computed(() => createRoster(props.options));
 
-const chosen = computed(() => (props.multi ? (Array.isArray(props.modelValue) ? props.modelValue : []) : []));
+/**
+ * The values this control holds, as a list — the roster control's single name
+ * or the multi control's set. It is also the chip list, and the two are the
+ * same thing on purpose: a chip is the value, not a decoration beside it.
+ */
+const values = computed(() => {
+  if (props.multi) return Array.isArray(props.modelValue) ? props.modelValue : [];
+  const value = String(props.modelValue ?? "");
+  return value === "" ? [] : [value];
+});
+
+/**
+ * What the menu must leave out: the values already taken. Only a control that
+ * *shows* its values as chips can dedupe by them — for a free-text single
+ * control (assignee, reporter) the box itself holds the value and the roster
+ * still offers it, which is the behaviour those two fields have always had.
+ */
+const chosen = computed(() => (props.multi || props.hookChips ? values.value : []));
 
 const results = computed(() => comboOptions({ roster: roster.value, query: query.value, freeText: props.freeText, chosen: chosen.value }));
+
+/**
+ * The title a chip shows beside the identifier (T-20261014-001418 ②). A
+ * relation chip names its task the way an option row does — identifier, then
+ * title — and resolves both against the same roster the row came from. The
+ * whole title also rides the chip's `title`, so nothing is lost to the ellipsis.
+ */
+function chipTitle(value) {
+  return String(roster.value.get(value)?.title ?? "");
+}
 
 const inputHooks = computed(() => ({ [props.hookInput]: "", ...(props.hookLabel ? { [props.hookLabel]: "" } : {}) }));
 
@@ -143,12 +171,20 @@ const rowsForEnter = computed(() => {
   return rows.concat(results.value.entries);
 });
 
+/**
+ * Removing a chip drops that value: one of many for a multi control, the
+ * control's **only** value for a single-valued relation field — the parent's
+ * chip carries the whole of what the field holds, so its ✕ empties the field.
+ */
 function removeChip(name) {
-  if (!props.multi) return;
-  emit(
-    "update:modelValue",
-    chosen.value.filter((item) => item !== name),
-  );
+  if (props.multi) {
+    emit(
+      "update:modelValue",
+      values.value.filter((item) => item !== name),
+    );
+    return;
+  }
+  if (props.hookChipRemove) emit("update:modelValue", "");
 }
 
 /**
@@ -165,6 +201,17 @@ function onBlur() {
 function focus() {
   open.value = true;
   nextTick(() => inputEl.value?.focus());
+}
+
+/**
+ * The field's own way out, for the relation controls whose chip carries the
+ * value: the clear affordance beside the box empties the **box** as well as the
+ * value, so no half-typed query outlives the choice it was looking for
+ * (T-20261014-001418 ②, design §3.5). It never re-opens the menu.
+ */
+function clear() {
+  query.value = "";
+  open.value = false;
 }
 
 /**
@@ -187,11 +234,46 @@ watch(
   },
 );
 
-defineExpose({ focus });
+defineExpose({ focus, clear });
 </script>
 
 <template>
   <div class="relative" :data-drop="dropUp ? 'up' : 'down'">
+    <!-- The accepted values read as chips *above* the field, which is where the
+         prototype puts `.td-chips` for all four controls that carry them (the
+         parent, depends-on, the create dialog's labels and the drawer's). Each
+         chip is the value: a relation chip names its task exactly as the option
+         row did — the identifier under the same `identifierText` cap, then the
+         title — and keeps the whole title on `title` (T-20261014-001418 ①/②). -->
+    <div v-if="hookChips" v-bind="{ [hookChips]: '' }" class="td-chips">
+      <span
+        v-for="name in values"
+        :key="name"
+        class="inline-flex items-center gap-1 px-1.5 py-px rounded-[4px] border border-(--brand-border) bg-(--brand-sunken) text-[11px] text-(--brand-text-2)"
+        v-bind="hookChip ? { [hookChip]: '', ...(hookChipValue ? { [hookChipValue]: name } : {}) } : {}"
+        :title="chipTitle(name) || name"
+      >
+        <!-- The identifier holds its width and the title gives: the prototype's
+             `.td-chip .td-mono { flex: 0 0 auto }` / `.td-chip .td-combo-title`,
+             spelled here because this chip states its box in utilities rather
+             than wearing `.td-chip` (as it has since it landed). -->
+        <span v-if="taskMode" class="td-mono shrink-0">{{ identifierText(name) }}</span>
+        <template v-else>{{ name }}</template>
+        <span v-if="taskMode && chipTitle(name)" class="td-combo-title">{{ chipTitle(name) }}</span>
+        <button
+          v-if="hookChipRemove"
+          type="button"
+          class="border-0 bg-transparent text-(--brand-text-3) cursor-pointer leading-none"
+          v-bind="{ [hookChipRemove]: '' }"
+          :aria-label="`Clear ${name}`"
+          :title="$t('combo.clear')"
+          @click="removeChip(name)"
+        >
+          ✕
+        </button>
+      </span>
+    </div>
+
     <input
       ref="inputEl"
       v-model="query"
@@ -224,33 +306,19 @@ defineExpose({ focus });
           :title="entry.title ?? entry.name"
           @mousedown.prevent="accept(entry)"
         >
-          <span v-if="taskMode" class="td-mono">{{ entry.identifier ?? entry.name }}</span>
-          <span class="flex-1 overflow-hidden text-ellipsis">{{ taskMode ? entry.title : entry.name }}</span>
+          <!-- A task row: identifier first under the one cap the board's
+               identifiers share (`lib/identifier.js`), then the title, which is
+               the half that gives — single line, `…` when it does not fit. The
+               two classes are the prototype's own (`td-combo-id` /
+               `td-combo-title`), and the whole title stays on the row's
+               `title` (T-20261014-001418 ①). -->
+          <span v-if="taskMode" class="td-mono td-combo-id">{{ identifierText(entry.identifier ?? entry.name) }}</span>
+          <span v-if="taskMode" class="td-combo-title">{{ entry.title }}</span>
+          <span v-else class="flex-1 overflow-hidden text-ellipsis">{{ entry.name }}</span>
         </button>
       </li>
       <li v-if="!results.isNew && results.entries.length === 0" class="p-2 text-[12px] text-(--brand-text-3)">{{ $t(emptyKey) }}</li>
     </ul>
 
-    <div v-if="multi && hookChips" v-bind="{ [hookChips]: '' }" class="mt-1 flex flex-wrap gap-1">
-      <span
-        v-for="name in chosen"
-        :key="name"
-        class="inline-flex items-center gap-1 px-1.5 py-px rounded-[4px] border border-(--brand-border) bg-(--brand-sunken) text-[11px] text-(--brand-text-2)"
-        v-bind="hookChip ? { [hookChip]: '', ...(hookChipValue ? { [hookChipValue]: name } : {}) } : {}"
-      >
-        {{ name }}
-        <button
-          v-if="hookChipRemove"
-          type="button"
-          class="border-0 bg-transparent text-(--brand-text-3) cursor-pointer leading-none"
-          v-bind="{ [hookChipRemove]: '' }"
-          :aria-label="`Clear ${name}`"
-          :title="$t('combo.clear')"
-          @click="removeChip(name)"
-        >
-          ✕
-        </button>
-      </span>
-    </div>
   </div>
 </template>
