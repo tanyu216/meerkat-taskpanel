@@ -3093,6 +3093,15 @@ html[data-theme="dark"] .modal-box {
     display: inline-flex;
   }
 
+  /* The parent field hands its display to the chip it accepted, so its input
+     goes empty and the rule above would hide the clear button while there is
+     still something to clear. The chip is the value: a control showing one
+     keeps its way out of it. Scoped to the parent hook, so no other control
+     grows a button it was not given. */
+  .td-combo:has([data-parent-chip]) .td-combo-clear {
+    display: inline-flex;
+  }
+
   .td-combo-clear:hover {
     color: var(--color-td-ink);
     background-color: var(--color-td-hover);
@@ -3111,6 +3120,10 @@ html[data-theme="dark"] .modal-box {
     display: flex;
     align-items: baseline;
     gap: 8px;
+    /* a flex item's automatic minimum is its min-content, which for a nowrap
+       title is the whole title — without this the row cannot shrink and the
+       ellipsis below never gets to fire */
+    min-width: 0;
     width: 100%;
     font-size: 13px;
     text-align: start;
@@ -3123,6 +3136,7 @@ html[data-theme="dark"] .modal-box {
   }
 
   .td-combo-title {
+    flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -3151,6 +3165,21 @@ html[data-theme="dark"] .modal-box {
     background-color: var(--color-td-accent-soft);
     border: 1px solid var(--color-td-line);
     border-radius: 999px;
+  }
+
+  /* A relation chip now names its task the way an option row does — identifier,
+     then title — so the two halves need the same contract inside the chip: the
+     identifier holds its width, the title is the half that gives. Scoped to
+     `.td-chip` so the menu's own row rules above keep their box. */
+  .td-chip .td-mono {
+    flex: 0 0 auto;
+  }
+
+  .td-chip .td-combo-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .td-chip-remove {

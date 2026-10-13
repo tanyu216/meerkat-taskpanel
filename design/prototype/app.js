@@ -2040,7 +2040,9 @@
     $form
       .find("[data-parent-input], [data-depends-input], [data-label-input]")
       .val("");
-    $form.find("[data-depends-chips], [data-label-chips]").empty();
+    $form
+      .find("[data-parent-chips], [data-depends-chips], [data-label-chips]")
+      .empty();
     $form
       .find("[data-parent-menu], [data-depends-menu], [data-label-menu]")
       .empty();
@@ -2469,7 +2471,11 @@
       kindAttr: "",
     },
     /* Parent — one task, single select. `freeText: false` because a relation
-       can only point at a task that already exists. */
+       can only point at a task that already exists. It carries the chips half
+       of the relation control even though it never holds more than one: the
+       chosen task has to be *visible* in the field (Terry, 2026-10-14), and
+       the chip is the one shape this document already uses to say "this task,
+       by identifier and title, with a way out of it". */
     parent: {
       roster: taskRoster,
       input: "[data-parent-input]",
@@ -2479,6 +2485,9 @@
       valueAttr: "data-parent-value",
       kindAttr: "",
       freeText: false,
+      chips: "[data-parent-chips]",
+      chipAttr: "data-parent-chip",
+      removeAttr: "data-parent-remove",
       emptyKey: "combo.noTasks",
     },
     /* Depends on — many tasks, each accepted row becomes a chip. UI only: no
@@ -2571,11 +2580,16 @@
       .attr(config.valueAttr, entry.name)
       .attr("aria-selected", "false");
 
-    /* A task row: identifier first, then the title it carries. */
+    /* A task row: identifier first, then the title it carries. The identifier
+       wears the same cap a card and a list row wear — `identifierText`, the
+       one truncation in this document — while the row's `title` keeps the
+       whole value readable. */
     if (entry.identifier) {
       $option
         .append(
-          $("<span class='td-mono td-combo-id'></span>").text(entry.identifier)
+          $("<span class='td-mono td-combo-id'></span>").text(
+            identifierText(entry.identifier)
+          )
         )
         .append($("<span class='td-combo-title'></span>").text(entry.title));
       if (entry.title) $option.attr("title", entry.title);
@@ -2683,24 +2697,31 @@
   }
 
   /* Turns an accepted row into a chip in the multi control. A relation chip
-     states the task's identifier in mono and carries the task's title as its
-     tooltip; a label chip states the label's display name. */
+     states the task's identifier in mono — capped by `identifierText`, exactly
+     as a card or an option row does — and then the task's title, truncated by
+     `.td-chip .td-combo-title`; the whole title stays on the chip's `title`. A
+     label chip states the label's display name and is not an identifier, so it
+     carries neither the cap nor a title span. */
   function addComboChip($input, config, value, title) {
     var $remove = $("<button type='button' class='td-chip-remove'></button>")
       .attr(config.removeAttr, "")
       .attr("aria-label", text("combo.clear") + " " + value)
       .attr("title", text("combo.clear"))
       .append($(ICON_CLOSE));
-    var $text =
-      config.chipMono === false
-        ? $("<span></span>").text(value)
-        : $("<span class='td-mono'></span>").text(value);
+    var isIdentifier = config.chipMono !== false;
+    var $text = isIdentifier
+      ? $("<span class='td-mono'></span>").text(identifierText(value))
+      : $("<span></span>").text(value);
     var $chip = $("<span class='badge td-chip'></span>")
       .attr(config.chipAttr, "")
       .attr(config.valueAttr, value)
       .attr("title", title || value)
-      .append($text)
-      .append($remove);
+      .append($text);
+
+    if (isIdentifier && title) {
+      $chip.append($("<span class='td-combo-title'></span>").text(title));
+    }
+    $chip.append($remove);
 
     $input.closest(".td-combo").find(config.chips).append($chip);
   }
@@ -2732,7 +2753,19 @@
         $input.trigger("change");
         return;
       }
-      $input.val(value);
+      /* A single-select relation has no roster and no second choice: accepting
+         a row replaces whatever the field held. The chip is emptied first so
+         the control never shows two parents, and the input is emptied after
+         because the chip now carries the display — the field keeps its own
+         clear ✕ through that chip (see `.td-combo-clear`). */
+      $input.closest(".td-combo").find(config.chips).empty();
+      addComboChip(
+        $input,
+        config,
+        value,
+        $.trim(String($row.find(".td-combo-title").text() || ""))
+      );
+      $input.val("");
       closeCombos();
       $input.trigger("change");
       return;
@@ -3608,13 +3641,31 @@
        remove a prerequisite chip. Both are inside `.td-combo`, so the outside-
        click pass leaves their menu alone. */
     $("[data-create-task-parent]").on("click", "[data-parent-clear]", function () {
-      $(this)
-        .closest("[data-create-task-parent]")
+      var $scope = $(this).closest("[data-create-task-parent]");
+      /* one selection, one way out of it: the clear button drops the chip as
+         well as any half-typed query, so "clear" means the same thing whether
+         the field is showing a chip or a search string */
+      $scope.find("[data-parent-chips]").empty();
+      $scope
         .find("[data-parent-input]")
         .val("")
         .trigger("change");
       /* clearing is a dismissal, not a fresh search — do not reopen the menu */
       closeCombos();
+    });
+
+    /* dropping the parent's chip is the same act as the clear button, from the
+       chip instead of the field — the mirror of the depends-on removal below */
+    $("[data-create-task-parent]").on("click", "[data-parent-remove]", function () {
+      var $scope = $(this).closest("[data-create-task-parent]");
+      var $input = $scope.find("[data-parent-input]");
+      $(this).closest("[data-parent-chip]").remove();
+      /* a single select shuts its menu on accept, so this is normally a no-op;
+         if it is somehow open, put the row back among the offers */
+      if (!$scope.find("[data-parent-menu]").prop("hidden")) {
+        renderCombo($input, COMBO.parent);
+      }
+      $input.trigger("change");
     });
 
     $("[data-create-task-depends]").on(
