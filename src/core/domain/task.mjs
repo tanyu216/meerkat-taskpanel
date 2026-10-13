@@ -145,11 +145,33 @@ export function isValidIdentifier(value) {
 
 /** `PROJ-0007` for project `proj` and serial 7. */
 export function identifierFor(projectId, serial) {
-  const prefix = identifierPrefix(projectId);
+  return identifierForPrefix(identifierPrefix(projectId), serial, projectId);
+}
+
+/**
+ * `DEMO-X-0007` for the **effective prefix** `DEMO-X` and serial 7.
+ *
+ * The identifier shape is the same one `identifierFor` mints; what differs is
+ * where the prefix comes from. `identifierFor` takes it from a project *id*
+ * (the legacy path — an id that is also the prefix source), this one takes it
+ * from the prefix a project *carries* (`projectPrefix`), so a project created
+ * with an explicit prefix numbers its cards with it.
+ *
+ * The empty-prefix guard is the same guard, and it is load-bearing on both
+ * paths: a project whose effective prefix resolves to nothing may not mint an
+ * identifier at all, which is what stops an unusable project from handing out
+ * `-0001` (C-PREFIX-1 M3's fallback path depends on this staying put).
+ *
+ * @param {string} prefix an already-effective prefix (see `projectPrefix`)
+ * @param {number} serial 1-based
+ * @param {string} [origin] what the refusal names — the project id, when the
+ *   caller has one, so the message still points at a row the user can look up
+ */
+export function identifierForPrefix(prefix, serial, origin = prefix) {
   if (prefix === "") {
     throw new DomainError("VALIDATION_FAILED", {
-      message: `project id ${JSON.stringify(projectId)} has no usable identifier prefix`,
-      details: { field: "projectId", received: projectId },
+      message: `project id ${JSON.stringify(origin)} has no usable identifier prefix`,
+      details: { field: "projectId", received: origin },
     });
   }
   return `${prefix}-${String(serial).padStart(4, "0")}`;
