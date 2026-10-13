@@ -6,12 +6,21 @@ artefact is static; nothing here reaches the runtime image except `web/dist`.
 
 This is a real implementation, not a placeholder. What it ships:
 
-- **The board** (B01–B19, B22–B25 of the block contract): seven status columns,
+- **The board** (B01–B19, B22–B27 of the block contract): seven status columns,
   cards with drag-to-change-status plus a shared keyboard "Move to" menu, a task
   detail drawer with sanitised Markdown and comments, filters/search, a two-column
   create-task dialog (Markdown editor on the left, eight routing fields on the
   right), comboboxes with prefix → contains → subsequence matching and a `· new`
   row, and label chips.
+- **The sidebar's four destinations** (B26 = Activity, B27 = Waiting): the ledger is
+  the project's *what happened* — admitted events only, newest first, grouped by day,
+  a burst of one actor's edits folded into one row, an unread boundary over a
+  browser-local read cursor, three filters whose address rides the hash, and two
+  honest empty states. It is read one card at a time (`GET /tasks/:ref/activities`,
+  merged) because M6a has no project-wide activities route, and the SSE tail keeps it
+  current between reads. The queue is its opposite number: the items whose ball is in
+  the *reader's* court, oldest first, one 30px row each (actor · reason chip ·
+  identifier + title · how long · open), and a head whose tally is the same number.
 - **Live updates (SSE)**: one `EventSource` on `/api/v1/events`, keyed by
   `global_revision`; incremental per-task refresh; reconnect with `Last-Event-ID`
   and a manual `?after=` resync. Optimistic moves carry `if_version`, and a

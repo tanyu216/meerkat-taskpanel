@@ -42,11 +42,14 @@ export const EXTRA = {
     // M1 · first-class `awaiting` and the 「等你回复」view (design §5). The
     // count key uses `%s` because the runtime fills positionally — `{n}` would
     // print itself (design §10-C2).
+    //
+    // `waiting.count` / `waiting.empty` (and the two `waiting.payload.*` keys,
+    // whose only consumer was M1's inline payload) moved out in R12x
+    // (`T-20261013-014701-7`): the shipped 「等你回复」view is now B27, whose copy
+    // lives in the prototype catalogue, and `extra.mjs` may not shadow a
+    // catalogue key. `status.awaiting`, the badge's own `waiting.aria.badge` and
+    // the five `waiting.reason.E*` categories stay — the card still wears them.
     "status.awaiting": "Awaiting you",
-    "waiting.count": "%s waiting on you",
-    "waiting.empty": "Nothing is waiting on you",
-    "waiting.payload.summary": "Waiting on your reply",
-    "waiting.payload.expand": "Show the full question",
     "waiting.aria.badge": "Awaiting your reply",
     "waiting.reason.E1": "Change of scope",
     "waiting.reason.E2": "Change of the acceptance baseline",
@@ -72,10 +75,6 @@ export const EXTRA = {
     "attach.placeholder": "无附件",
     "detail.saveError": "保存失败 —— 请重试。",
     "status.awaiting": "等你回复",
-    "waiting.count": "%s 件等你回复",
-    "waiting.empty": "没有在等你回复的卡",
-    "waiting.payload.summary": "等待你的回复",
-    "waiting.payload.expand": "展开完整问题",
     "waiting.aria.badge": "等待你的回复",
     "waiting.reason.E1": "范围变更",
     "waiting.reason.E2": "验收基线变更",

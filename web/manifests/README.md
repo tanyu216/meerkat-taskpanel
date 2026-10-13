@@ -416,3 +416,72 @@ each is one of three known shapes):
 The capsule itself has no target: at rest no `[data-assignee-item]` is active, and the width
 neutrality, the 999px bed, the accent ink and the U-6 correction are all measured live in
 `web/scripts/dom-smoke.mjs`'s R11/R13 section (where the capsule is actually on screen).
+
+## 10. The R12x additions — the Activity view and the Waiting queue
+(`T-20261013-014701-7`, 2026-10-13)
+
+Two blocks (`B26`, `B27`) and seven `style.targets` entries (`b26-activity-view`,
+`b26-activity-title`, `b26-activity-filters`, `b26-activity-feed`, `b27-waiting-view`,
+`b27-waiting-item`, `b27-waiting-item [data-waiting-reason]`). `styleProps` needed nothing new.
+
+**Why the blocks assert the *rest* state only.** `board-m2` measures one page at rest and has no
+way to press a control (the schema's six-word vocabulary has no step primitive — §4). The feed is
+read when its view is entered, so at rest `[data-activity-view]` is `hidden` and holds **no rows**,
+on the implementation side only: the prototype's baseline document ships its seventeen rows as
+static markup (its no-script floor), while the shipped app derives them from the ledger it reads on
+entry. `B26` therefore asserts what both sides hold at rest — the view root and its header, the
+three-slot filter bar, the two **resident** empty states, `Load older`, the absence of a second
+dictionary carrier, and the `activity` count pill — plus the one deliberate difference as a stated
+fact rather than a gap: `count [data-activity-day] == 0` at rest. A block that demanded rows here
+would be asserting the fixture, not the contract. `B27`'s queue *does* hold a row at rest (the
+fixture's awaiting card is on the board from the first paint), so its checks state the **relation**
+— one row, one of each of the six fields, no nested row — and never a row count.
+
+**The reason chip is scoped, and that mattered.** The first `b27-waiting-reason` target was
+`[data-waiting-reason]` — which the **board's badge** also carries (the awaiting badge wears
+`data-waiting-reason="E1"`). The target therefore compared the prototype's queue chip against the
+implementation's *badge*, and reported 13 property differences that were really one selector
+problem. Scoped to `[data-waiting-item] [data-waiting-reason]` its 40 compared properties agree on
+every one. The same lesson as `B04-r9`'s retarget in §9, one round on: a hook that names a fact
+(here, "this card is awaiting *why*") is not automatically a unique element.
+
+Everything that needs a view *open* is in the driven layer: `web/scripts/dom-smoke.mjs`'s
+`R12x · B26` section (+31 contract rules under `when: "activity view"`) and its `M1 · B27` section
+(+15 under `when: "waiting view"`) cover routing, the day groups and their newest-first order, the
+six fields a row owes in both views, the burst's five-minute window, the three filters and the count
+sentence, the single unread boundary and the pill, `Load older` and the day pages, `j`/`k`, both
+views' drawers, the language switch, the queue's oldest-first order, and no sideways overflow at the
+five review tiers.
+
+**One implementation fix came out of the pairing.** The prototype stands the board's filter bar
+down on the two destinations that are not the board area (`boardAreaShowsBar()`,
+`design/DESIGN.md` §29.2); the shipped shell bound the bar to the filters toggle alone. The
+activity pair's 430 shot reported `section[data-filters]` clipped on the implementation side only
+— a bar that narrows *cards*, drawn above a feed it cannot narrow. `[data-filters]` now follows the
+same `boardArea` derivation, and the divergence is gone on both the activity pair and the waiting
+view.
+
+**Where R12x stands** (`T-20261013-014701-7`, 2026-10-13):
+
+| | |
+|---|---|
+| blocks | 39 — all `delivered`, none `pending` |
+| assertions | 252 · failures **0** |
+| overflow / console | 0 failures at all five widths |
+| computed style | 46 of 1326 compared properties differ (96.5%) — **non-blocking** |
+
+**37 → 39 blocks / 221 → 252 assertions** (two new blocks, 15 + 16 checks). The style count moved
+46/1088 → 46/1326: **+7 targets, +238 compared properties, +0 diffs** — the seven new targets agree
+on every property the list carries, because at rest both sides hide the same two views (`0×0` boxes
+on both). `null`/`0` boxes are recorded rather than treated as a pass: the geometry those targets
+would have with a view **open** is measured in `shot-compare.mjs`'s two pairs (all five widths,
+both sides driven to the same view by the same press) and in the dom-smoke sections.
+
+**`shot-compare.mjs` gained two combinations**: `light-en-activity` and `light-en-waiting` at the
+same five widths, each driving *both* sides into its view (`setView(view)` on the prototype, the nav
+press on the implementation) so the pair is one state. Their gating halves are green (topbar rows,
+rail width, rail clipping), the layout-divergence probe reports `none`, and the only declared
+deviation the matrix still carries is the board-view 430 rule the R12 pair already names
+(`section[data-filters]` — the bar is one line with its own scroller, `T-20261013-023722`).
+Console/page errors: 0 on both sides.
+

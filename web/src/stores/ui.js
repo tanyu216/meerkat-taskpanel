@@ -8,14 +8,16 @@
 import { computed, ref } from "vue";
 
 /**
- * board ↔ list ↔ waiting (mutually exclusive; `hidden` on the inactive ones).
+ * board ↔ list ↔ activity ↔ waiting (mutually exclusive; `hidden` on the inactive
+ * ones).
  *
- * `waiting` is M1's 「等你回复」view: a *nav* view, not a third value of the top
- * bar's `board | list` toggle — that control's domain is frozen at two
- * (`DOMAINS.VIEW`), and design §10-C6 puts the new surface on the sidebar nav
- * precisely so it does not become one.
+ * `activity` (R12x · B26) and `waiting` (M1) are both *nav* views, not further
+ * values of the top bar's `board | list` toggle — that control's domain is
+ * frozen at two (`DOMAINS.VIEW`), and `design/DESIGN.md` §29.2 puts the new
+ * surfaces on the sidebar's four-way destination list precisely so they do not
+ * become values of it.
  */
-const VIEWS = ["board", "list", "waiting"];
+const VIEWS = ["board", "list", "activity", "waiting"];
 export const view = ref("board");
 export function setView(next) {
   if (VIEWS.includes(next)) view.value = next;
@@ -39,6 +41,18 @@ export const listState = ref("data");
 export function setListState(next) {
   if (next === "loading" || next === "data") listState.value = next;
 }
+
+/**
+ * R12x · §29.2 — does the **board area** show its filter bar?
+ *
+ * The bar narrows *cards*, and the two destinations that are not the board area
+ * (the activity ledger, the waiting queue) are narrowed by their own controls —
+ * a second row of card filters above them would change nothing, which is the
+ * defect the round exists to remove. The prototype states this as
+ * `boardAreaShowsBar()` (`design/prototype/app.js`), and it is what the bar's own
+ * visibility is bound to here.
+ */
+export const boardArea = computed(() => view.value === "board" || view.value === "list");
 
 /** The filters bar starts open (`aria-pressed="true"`), matching B02. */
 export const filtersOpen = ref(true);

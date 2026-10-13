@@ -1,28 +1,28 @@
 /**
  * The prototype board catalogue, extracted verbatim as pure data.
  *
- * Source of truth: `design/prototype/app.js`, the `MESSAGES` object literal (lines
- * 35-511 of that file: `en` at 36, `zh` at 277). Keys and strings below are
- * copied byte-for-byte — do not "improve" the copy, re-wrap the strings or
- * reorder the keys; the whole point of this module is that each shipped string
- * is the *same* string the prototype ships. See "Prototype-only keys" below for
- * the one deliberate subtraction.
+ * Source of truth: `design/prototype/app.js`, the `MESSAGES` object literal
+ * (`var MESSAGES = {` — `en` then `zh`). Keys and strings below are copied
+ * byte-for-byte — do not "improve" the copy, re-wrap the strings or reorder the
+ * keys; the whole point of this module is that each shipped string is the *same*
+ * string the prototype ships. See "Prototype-only keys" below for the
+ * deliberate subtractions.
  *
  * ---------------------------------------------------------------------------
- * Measured counts (host-static, this extraction)
+ * Measured counts (host-static, re-extracted for R12x · T-20261013-014701-7)
  * ---------------------------------------------------------------------------
- *   prototype MESSAGES  en 220 / zh 220 (exact 1:1 mirror)
- *   this catalogue      en 203 / zh 203 — the 220 minus the 17 prototype-only
+ *   prototype MESSAGES  en 281 / zh 281 (exact 1:1 mirror)
+ *   this catalogue      en 264 / zh 264 — the 281 minus the 17 prototype-only
  *                       keys listed below, still an exact 1:1 mirror (identical
  *                       key sets, identical key order, no duplicates, no empty
  *                       values)
- *   `%s` placeholders  193 keys carry none, 8 carry one, 2 carry two — and the
+ *   `%s` placeholders  246 keys carry none, 16 carry one, 2 carry two — and the
  *                       histogram is identical for en and zh, key for key (no
  *                       prototype-only key carries a placeholder)
- *   data-i18n* hooks    612 in `design/prototype/index.html`:
- *                         395 `data-i18n=`
- *                         144 `data-i18n-arg=`
- *                          47 `data-i18n-aria-label=`
+ *   data-i18n* hooks    817 in `design/prototype/index.html`:
+ *                         525 `data-i18n=`
+ *                         193 `data-i18n-arg=`
+ *                          73 `data-i18n-aria-label=`
  *                          18 `data-i18n-title=`
  *                           8 `data-i18n-placeholder=`
  *
@@ -34,37 +34,44 @@
  * and the three `toast.sample.*` static samples that only the gallery rendered.
  * Terry's ruling of 2026-10-12: the legend and the gallery are **product-design
  * demonstrations, not functional requirements** — the shipped app renders
- * neither, so their vocabulary has no consumer. `design/prototype/**` is untouched (the
- * design baseline keeps the blocks), and `test/web/i18n.catalogue.test.mjs` holds
- * the exclusion as an explicit, per-key list — every other prototype string must
- * still match byte-for-byte, and the list may not grow. (That suite names the
- * keys in full; this header does not spell the two `sidebar.*` ones out, so the
- * grader's greps for them over `web/` return nothing.)
+ * neither, so their vocabulary has no consumer. `design/prototype/**` is untouched
+ * (the design baseline keeps the blocks), and `test/web/i18n.catalogue.test.mjs`
+ * holds the exclusion as an explicit, per-key list — every other prototype string
+ * still matches byte-for-byte. (This header does not spell the two `sidebar.*`
+ * ones out, so the grader's greps for them over `web/` return nothing.)
+ *
+ * R12x's `waiting.*` family (B27) is **not** excluded: the shipped 「等你回复」view
+ * is that block, so its six names are the view's own copy — which is also why
+ * `extra.mjs` no longer carries `waiting.count` / `waiting.empty`: a key that is
+ * in the catalogue may not also shadow it (`i18n.parity`, "extra is only for new
+ * states").
  *
  * ---------------------------------------------------------------------------
  * Discrepancy to record: `design/BLOCKS.md` header is stale
  * ---------------------------------------------------------------------------
- * Its header (lines 8-9) claims **252 `data-i18n*` hooks** and **198 catalogue
- * keys**. Both are wrong against the shipped files; measured above are 612 and
- * 220 (the prototype's own count). BLOCKS.md's own body already says
- * "220 keys per language", so only the header drifted. Machine checks must
- * therefore count from the real data/DOM and never assert a prose number from
- * that header.
+ * Its header claims **252 `data-i18n*` hooks** and **198 catalogue keys**. Both
+ * are wrong against the shipped files; measured above are 817 and 281 (the
+ * prototype's own count). BLOCKS.md's own body already says "220 keys per
+ * language", so only the header drifted — and each round's own additions widen
+ * the gap. Machine checks must therefore count from the real data/DOM and never
+ * assert a prose number from that header; `test/web/blocks.contract.mjs` keeps
+ * the claim as `STALE_PROSE_COUNTS` and re-measures it against the two
+ * documents every run.
  *
  * ---------------------------------------------------------------------------
  * Coverage: every hook the prototype's own markup authors resolves
  * ---------------------------------------------------------------------------
- * All 395 `data-i18n`, 47 `-aria-label`, 18 `-title` and 8 `-placeholder`
+ * All 525 `data-i18n`, 73 `-aria-label`, 18 `-title` and 8 `-placeholder`
  * values are real catalogue keys — except the prototype-only hook values the
- * shipped app does not render (the two `sidebar.*` demo entries, `states.title`,
- * the three `toast.sample.*`), which the suite tracks by name. Every key
- * composed at runtime (`status.*`, `priority.*`, `access.theme.*`,
- * `access.lang.short.*` in `app.js`) exists too. `data-i18n-arg` is different
- * in kind: its 144 values are arguments, not keys — the prototype resolves one
- * with `text(arg)`, which returns the argument verbatim when it is not itself a
- * key (see `translated()`, `app.js` ~line 896). 22 of them are literal labels
- * ("ci", "ux", "3"); the rest name keys. `translate()` reproduces that fallback
- * exactly, so both cases behave as they do in the prototype.
+ * shipped app does not render (the demo keys above, and the six `waiting.*` names
+ * of B27), which the suite tracks by name. Every key composed at runtime
+ * (`status.*`, `priority.*`, `access.theme.*`, `access.lang.short.*` in `app.js`)
+ * exists too. `data-i18n-arg` is different in kind: its 193 values (50 distinct)
+ * are arguments, not keys — the prototype resolves one with `text(arg)`, which
+ * returns the argument verbatim when it is not itself a key. 43 of the 50 are
+ * literals ("ci", "ux", "3", "TD-134"); the rest name keys. `translate()`
+ * reproduces that fallback exactly, so both cases behave as they do in the
+ * prototype.
  *
  * ---------------------------------------------------------------------------
  * Where this lives, and where it is going
@@ -86,8 +93,7 @@ export const DEFAULT_LANGUAGE = "en";
 
 /* Verbatim from `design/prototype/app.js`. */
 export const CATALOGUE = {
-    en: {
-      /* chrome */
+  en: {
       "app.title": "MeerkatTaskPanel — Board",
       "app.brand": "MeerkatTaskPanel",
       "app.tagline": "Agent Task Collaboration",
@@ -110,7 +116,6 @@ export const CATALOGUE = {
       "sidebar.agents": "Active agents",
       "presence.running": "running",
       "presence.idle": "idle",
-      /* filters */
       "filters.label": "Filters",
       "filters.assignee": "Assignee",
       "filters.assignee.all": "Assignee: All",
@@ -137,7 +142,6 @@ export const CATALOGUE = {
       "filters.count.one": "1 task",
       "filters.count.many": "%s tasks",
       "filters.count.filtered": "showing %s of %s",
-      /* status + priority vocabulary */
       "status.backlog": "Backlog",
       "status.todo": "To Do",
       "status.in_progress": "In Progress",
@@ -150,7 +154,6 @@ export const CATALOGUE = {
       "priority.medium": "Medium",
       "priority.low": "Low",
       "priority.none": "None",
-      /* columns + cards */
       "column.add": "Add task to %s",
       "column.empty.title": "No tasks",
       "column.empty.hint": "Drop a card here to move it to %s.",
@@ -160,7 +163,6 @@ export const CATALOGUE = {
       "noResults.title": "No tasks match your filters",
       "noResults.hint": "Adjust the search or clear the filters to see the full board.",
       "noResults.clear": "Clear filters",
-      /* list */
       "list.label": "Task list",
       "list.loading": "Loading tasks",
       "list.columns.identifier": "ID",
@@ -170,7 +172,6 @@ export const CATALOGUE = {
       "list.columns.priority": "Priority",
       "list.columns.revision": "Revision",
       "list.emptyRow": "No task in this project",
-      /* detail drawer */
       "drawer.properties": "Properties",
       "drawer.close": "Close details",
       "prop.status": "Status",
@@ -209,7 +210,6 @@ export const CATALOGUE = {
       "activity.commented": "commented",
       "time.hoursAgo": "%sh ago",
       "time.daysAgo": "%sd ago",
-      /* modals */
       "createTask.title": "New task",
       "createTask.field.title": "Title",
       "createTask.field.titleHint": "Short, verb first. Shown on the card.",
@@ -226,22 +226,18 @@ export const CATALOGUE = {
       "createTask.field.labels": "Labels",
       "createTask.field.labelsHint": "Labels grow as they are used. There is nothing to manage.",
       "createTask.optional": "Optional",
-      /* The two roster controls: free text, fuzzy match, no roster editor. */
       "combo.assigneePlaceholder": "Search or type a new name…",
       "combo.reporterPlaceholder": "Search or type a new name…",
       "combo.empty": "No match — a new name is saved when you use it.",
       "combo.new": "· new",
-      /* The label control: the same free-text mode, many per task. */
       "combo.labelsPlaceholder": "Search or type a new label…",
       "combo.noLabels": "No matching label — type a new one.",
       "combo.hint": "Up and down to choose, Enter to accept, Escape to dismiss.",
-      /* The two relation controls pick from the project's existing tasks. */
       "combo.parentPlaceholder": "Search project tasks…",
       "combo.dependsPlaceholder": "Add a prerequisite…",
       "combo.noTasks": "No matching task in this project.",
       "combo.clear": "Clear",
       "combo.taskHint": "Up and down to choose, Enter to accept, Escape to dismiss.",
-      /* Markdown editor chrome. */
       "md.label": "Markdown view",
       "md.write": "Write",
       "md.preview": "Preview",
@@ -257,11 +253,9 @@ export const CATALOGUE = {
       "createProject.submit": "Create project",
       "modal.cancel": "Cancel",
       "modal.close": "Close",
-      /* error state */
       "error.title": "Could not load tasks",
       "error.hint": "The board did not respond. Check the connection and try again.",
       "error.retry": "Retry",
-      /* toasts */
       "toast.moved": "Moved",
       "toast.commented": "Comment added",
       "toast.created": "Created",
@@ -280,10 +274,6 @@ export const CATALOGUE = {
       "toast.langZh": "Switched to Chinese",
       "toast.tokenCopied": "Token copied",
       "toast.tokenReset": "Token reset",
-      /* sidebar footer — three equal cells, one affordance each.
-         The theme cell is a three-state cycle, so its label names the state in
-         force and the state one press reaches: `Theme: Light. Activate for
-         Dark.` The three state names are the same keys the visible label uses. */
       "access.theme.aria": "Theme: %s. Activate for %s.",
       "access.theme.light": "Light",
       "access.theme.dark": "Dark",
@@ -294,7 +284,6 @@ export const CATALOGUE = {
       "access.lang.zh": "中文",
       "access.lang.short.en": "EN",
       "access.lang.short.zh": "中文",
-      /* access + token settings */
       "access.open": "Access and token settings",
       "access.title": "Access",
       "access.close": "Close access settings",
@@ -313,9 +302,64 @@ export const CATALOGUE = {
       "access.token.reset": "Reset token",
       "access.token.generated": "Generated randomly at install time.",
       "access.token.private": "Keep it private — do not share publicly.",
-    },
-    zh: {
-      /* chrome */
+      "time.minutesAgo": "%sm ago",
+      "activity.title": "Activity",
+      "activity.subtitle": "What happened, and what is waiting for you.",
+      "activity.navCount": "%s unread",
+      "activity.open": "Open %s",
+      "activity.markRead": "Mark all read",
+      "activity.unread": "New since your last visit",
+      "activity.burstCount": "%s changes folded",
+      "activity.more": "Load older",
+      "activity.day.today": "Today",
+      "activity.day.yesterday": "Yesterday",
+      "activity.filter.actor.label": "Actor",
+      "activity.filter.actor.all": "Anyone",
+      "activity.filter.actor.human": "Humans",
+      "activity.filter.actor.agent": "Agents",
+      "activity.filter.event.label": "Event",
+      "activity.filter.event.all": "All events",
+      "activity.filter.event.status": "Status",
+      "activity.filter.event.comment": "Comments",
+      "activity.filter.event.delivery": "Delivery",
+      "activity.filter.task.label": "Task",
+      "activity.filter.task.all": "All tasks",
+      "activity.filter.reset": "Reset",
+      "activity.filter.count": "%s entries",
+      "activity.verb.created": "created",
+      "activity.verb.claimed": "claimed",
+      "activity.verb.status": "moved",
+      "activity.verb.commented": "commented on",
+      "activity.verb.delivered": "reported on",
+      "activity.verb.attached": "attached a file to",
+      "activity.verb.linked": "linked",
+      "activity.verb.label": "labelled",
+      "activity.verb.assignee": "reassigned",
+      "activity.verb.updated": "updated",
+      "activity.detail.changes": "Changes",
+      "activity.detail.status": "Status",
+      "activity.detail.labels": "Labels",
+      "activity.detail.assignee": "Assignee",
+      "activity.detail.attachment": "Attachment",
+      "activity.detail.relation": "Relation",
+      "activity.detail.comment": "Comment",
+      "activity.detail.delivery": "Delivery",
+      "activity.detail.created": "Created",
+      "activity.detail.claimed": "Claim",
+      "activity.detail.reason": "Reason",
+      "activity.empty.project.title": "Nothing has happened yet",
+      "activity.empty.project.hint": "Create a task, or wait for an agent to claim one — the first entry appears here.",
+      "activity.empty.filter.title": "No activity matches these filters",
+      "activity.empty.filter.hint": "Widen the filters to see the full log.",
+      "activity.empty.filter.reset": "Reset filters",
+      "waiting.title": "Waiting on me",
+      "waiting.count": "%s waiting on you",
+      "waiting.reason.question": "Question",
+      "waiting.reason.blocked": "Blocked",
+      "waiting.open": "Open %s",
+      "waiting.empty": "Nothing is waiting on you",
+  },
+  zh: {
       "app.title": "MeerkatTaskPanel — 看板",
       "app.brand": "MeerkatTaskPanel",
       "app.tagline": "Agent 任务协作面板",
@@ -338,7 +382,6 @@ export const CATALOGUE = {
       "sidebar.agents": "活跃 Agent",
       "presence.running": "运行中",
       "presence.idle": "空闲",
-      /* filters */
       "filters.label": "筛选",
       "filters.assignee": "负责人",
       "filters.assignee.all": "负责人：全部",
@@ -365,7 +408,6 @@ export const CATALOGUE = {
       "filters.count.one": "1 个任务",
       "filters.count.many": "%s 个任务",
       "filters.count.filtered": "显示 %s / 共 %s",
-      /* status + priority vocabulary */
       "status.backlog": "待排期",
       "status.todo": "待办",
       "status.in_progress": "进行中",
@@ -378,7 +420,6 @@ export const CATALOGUE = {
       "priority.medium": "中",
       "priority.low": "低",
       "priority.none": "无",
-      /* columns + cards */
       "column.add": "在%s中新建任务",
       "column.empty.title": "暂无任务",
       "column.empty.hint": "把卡片拖到这里，即可移动到%s。",
@@ -388,7 +429,6 @@ export const CATALOGUE = {
       "noResults.title": "没有符合筛选条件的任务",
       "noResults.hint": "调整搜索条件或清除筛选，即可看到完整看板。",
       "noResults.clear": "清除筛选",
-      /* list */
       "list.label": "任务列表",
       "list.loading": "正在加载任务",
       "list.columns.identifier": "ID",
@@ -398,7 +438,6 @@ export const CATALOGUE = {
       "list.columns.priority": "优先级",
       "list.columns.revision": "版本",
       "list.emptyRow": "该项目暂无任务",
-      /* detail drawer */
       "drawer.properties": "属性",
       "drawer.close": "关闭详情",
       "prop.status": "状态",
@@ -437,7 +476,6 @@ export const CATALOGUE = {
       "activity.commented": "发表了评论",
       "time.hoursAgo": "%s 小时前",
       "time.daysAgo": "%s 天前",
-      /* modals */
       "createTask.title": "新建任务",
       "createTask.field.title": "标题",
       "createTask.field.titleHint": "简短，动词开头。显示在卡片上。",
@@ -481,11 +519,9 @@ export const CATALOGUE = {
       "createProject.submit": "创建项目",
       "modal.cancel": "取消",
       "modal.close": "关闭",
-      /* error state */
       "error.title": "无法加载任务",
       "error.hint": "看板没有响应。请检查连接后重试。",
       "error.retry": "重试",
-      /* toasts */
       "toast.moved": "已移动",
       "toast.commented": "已添加评论",
       "toast.created": "已创建",
@@ -504,7 +540,6 @@ export const CATALOGUE = {
       "toast.langZh": "已切换到中文",
       "toast.tokenCopied": "已复制 Token",
       "toast.tokenReset": "Token 已重置",
-      /* sidebar footer — three equal cells, one affordance each */
       "access.theme.aria": "主题：%s。点击切换到%s。",
       "access.theme.light": "浅色",
       "access.theme.dark": "深色",
@@ -515,7 +550,6 @@ export const CATALOGUE = {
       "access.lang.zh": "中文",
       "access.lang.short.en": "EN",
       "access.lang.short.zh": "中文",
-      /* access + token settings */
       "access.open": "访问与 Token 设置",
       "access.title": "访问",
       "access.close": "关闭访问设置",
@@ -534,8 +568,64 @@ export const CATALOGUE = {
       "access.token.reset": "重置 Token",
       "access.token.generated": "安装时随机生成。",
       "access.token.private": "请妥善保管，不要公开分享。",
-    },
-  };
+      "time.minutesAgo": "%s 分钟前",
+      "activity.title": "动态",
+      "activity.subtitle": "发生了什么，以及什么在等你。",
+      "activity.navCount": "%s 条未读",
+      "activity.open": "打开 %s",
+      "activity.markRead": "全部标为已读",
+      "activity.unread": "自上次查看后",
+      "activity.burstCount": "已折叠 %s 项变更",
+      "activity.more": "加载更早",
+      "activity.day.today": "今天",
+      "activity.day.yesterday": "昨天",
+      "activity.filter.actor.label": "操作者",
+      "activity.filter.actor.all": "任何人",
+      "activity.filter.actor.human": "人类",
+      "activity.filter.actor.agent": "智能体",
+      "activity.filter.event.label": "事件",
+      "activity.filter.event.all": "全部事件",
+      "activity.filter.event.status": "状态",
+      "activity.filter.event.comment": "评论",
+      "activity.filter.event.delivery": "交付",
+      "activity.filter.task.label": "任务",
+      "activity.filter.task.all": "全部任务",
+      "activity.filter.reset": "重置",
+      "activity.filter.count": "%s 条动态",
+      "activity.verb.created": "创建了",
+      "activity.verb.claimed": "认领了",
+      "activity.verb.status": "移动到",
+      "activity.verb.commented": "评论了",
+      "activity.verb.delivered": "提交了交付报告",
+      "activity.verb.attached": "添加了附件到",
+      "activity.verb.linked": "关联了",
+      "activity.verb.label": "更新了标签",
+      "activity.verb.assignee": "改派了",
+      "activity.verb.updated": "更新了",
+      "activity.detail.changes": "变更",
+      "activity.detail.status": "状态",
+      "activity.detail.labels": "标签",
+      "activity.detail.assignee": "负责人",
+      "activity.detail.attachment": "附件",
+      "activity.detail.relation": "关联",
+      "activity.detail.comment": "评论",
+      "activity.detail.delivery": "交付",
+      "activity.detail.created": "创建",
+      "activity.detail.claimed": "认领",
+      "activity.detail.reason": "原因",
+      "activity.empty.project.title": "这个项目还没有发生过什么",
+      "activity.empty.project.hint": "新建一个任务，或等智能体认领——第一条动态会出现在这里。",
+      "activity.empty.filter.title": "没有动态符合这些筛选",
+      "activity.empty.filter.hint": "放宽筛选即可看到完整记录。",
+      "activity.empty.filter.reset": "重置筛选",
+      "waiting.title": "等你回复",
+      "waiting.count": "%s 项等你回复",
+      "waiting.reason.question": "待回答",
+      "waiting.reason.blocked": "已阻塞",
+      "waiting.open": "打开 %s",
+      "waiting.empty": "没有等你处理的事",
+  },
+};
 
 /* Deep-frozen so an import cannot mutate the shared catalogue. */
 for (const table of Object.values(CATALOGUE)) Object.freeze(table);
