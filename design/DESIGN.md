@@ -2144,38 +2144,50 @@ force, and the round said explicitly what it did **not** do — it did not filte
 because the assignee control's domain (`all | me | human | agent`, §27.1) carried no given name,
 and narrowing to a name was recorded as a boundary rather than smuggled in. Terry's next request
 is that boundary: a press on `jobs` should reduce the list to *jobs's work that is in flight*,
-the pressed name should look chosen, and a press on its `✕` should take the name back out
-without disturbing anything else.
+the pressed name should look chosen, and the name should be removable without disturbing
+anything else.
 
-The round adds **no block**. The roster is **B03**, the control and the `✕` are **B04**, the view
-it lands on is **B08**, and the name-scoped value is a fifth class of value in a control that
-already exists. The executable contract is `design/fidelity-r13.md`.
+The round adds **no block**. The roster is **B03** and the control is **B04**; the view it lands
+on is **B08**, and the name-scoped value is a fifth class of value in a control that already
+exists. The executable contract is `design/fidelity-r13.md`.
 
-**The round was revised once.** Its first pass drew the `✕` inside the roster's capsule and gave
+**The round was revised twice.** Its first pass drew the `✕` inside the roster's capsule and gave
 the capsule a border, a fixed height and a 2px gap. When its own measurements came back the
 capsule was 20px wider than the flat name it replaced, and the row's single line — 143px of a
-144px host — ellipsized the last name by 19px. The revision makes the capsule **width-neutral**
-and moves the one removal affordance out of the row and beside the control it clears (§31.3,
-§31.4). The rejected first pass is in §31.6, and the revision's own new cost — the bed's outer
-cap is clipped by the host's `overflow: hidden` — is recorded rather than papered over (§31.5).
+144px host — ellipsized the last name by 19px. The second pass made the capsule
+**width-neutral** and moved the one removal affordance out of the row and beside the control it
+cleared (§31.3). Its own new cost — the bed's outer cap is clipped by the host's
+`overflow: hidden` — was recorded rather than papered over (§31.5).
 
-### 31.1 A name is a narrowing *and* a route, and one press does both
+**The third pass withdrew the `✕` again** (Terry, 2026-10-13, decision **甲**, §31.1/§31.4). A
+press on a name is the dropdown's own selection, so the control that states a name is the control
+that leaves it, and a second affordance beside it was answering a question the select already
+answers with its own `all` row. The same decision dropped the **route** half of the press: the
+view and the status set are no longer touched. What survives from the round is the domain
+extension off `all | me | human | agent` and the width-neutral capsule. `design/fidelity-r13.md`
+§10 is the revision record.
 
-The press is four steps in a fixed order: switch to the **list** view (R11), write
-`{"in_progress","in_review"}` into the status control (R11), write the **name** into the
-assignee control (R13), and run one filter pass. The first two are R11's and are untouched; the
-third is the round. What the reader gets is the intersection — a name press means *this
-person's work that is in flight*, and the filter bar states both halves:
-*Status: In Progress +1*, *Assignee: jobs*.
+### 31.1 A name is the assignee value, and one press sets it
 
-The two conditions are **ANDed**, like any two fields of the bar. That is the whole reason the
-round is small: the assignee control already ANDs against the status set, so a name-scoped
-route needed a value in that control and nothing else — no new control, no second filter bar, no
-special case inside `applyFilters()` beyond one more arm in the assignee clause.
+The press is two steps: write the **name** into the assignee control, and run one filter pass.
+That is all. It is *exactly* the move of choosing that name in the bar's dropdown — a given name
+is a fifth class of value in a control that already exists, and reaching it from the roster is a
+shortcut to the same selection, not a second interaction with its own consequences.
+R11's route is **withdrawn**: the view is not switched to the list and no status set is written,
+so a press made on the board stays on the board, and *Status: All* stays *Status: All*.
 
-Pressing the name **already in force** is the capsule's own close, not a fresh route: it takes
-the name out and leaves the status set and the view alone — the ordinary toggle semantics of an
-`aria-pressed` button, and the same move the `✕` makes.
+The control ANDs against whatever the other fields already hold, so what the reader gets is
+*this person's work, under the filters that were already in force* — the round is small for the
+same reason it always was: the assignee control already ANDs, so a name-scoped filter needed a
+value in that control and nothing else — no new control, no second filter bar, no special case
+inside `applyFilters()` beyond one more arm in the assignee clause.
+
+Pressing the name **already in force** is a **no-op**, not a close: a dropdown does not clear
+itself when the value it already states is picked again, and a press that *is* the dropdown's own
+selection has to behave like one. The single removal path is the control's own **`Assignee:
+All`** row.
+
+*(Both withdrawn halves are alternatives in §31.6: keeping R11's route, and keeping the `✕`.)*
 
 ### 31.2 One truth (the control), and everything else rendered from it
 
@@ -2193,14 +2205,13 @@ itself — and `renderAssigneeFilter()` is the single writer of every half:
 |---|---|
 | `[data-filter-assignee]`.value | the control's own named option (added when the value is a name, removed when it is not) |
 | | every `[data-assignee-item]`: `data-assignee-active` (`"true"` for the name in force) and the name button's `aria-pressed` |
-| | the one `[data-assignee-clear]` beside the control: `hidden` — true unless the value is a **given name** |
 
-Because the capsule and the `✕` are *derived* rather than *toggled*, every path that changes the
-value ends in the same restatement — a press on a name, a press on the `✕`, a press on the name
-already in force, a human using the native `<select>`, and `resetFilters()` — and the roster
-cannot state a name the control is not showing. Measured: after a press, exactly **one** item is
-active, exactly **one** named option exists and the `✕` is shown; after the `✕`, zero, zero and
-hidden; switching names leaves one of each, with the old name's option gone.
+Because the capsule is *derived* rather than *toggled*, every path that changes the value ends in
+the same restatement — a press on a name, a press on the name already in force, a human using the
+native `<select>`, and `resetFilters()` — and the roster cannot state a name the control is not
+showing. Measured: after a press, exactly **one** item is active and exactly **one** named option
+exists; after the control returns to `all`, zero and zero; switching names leaves one of each,
+with the old name's option gone.
 
 The round also opens the assignee filter to a value the *board* did not previously produce. The
 **matching rule is the card's own attribute** (`data-assignee`) — the field the drawer already
@@ -2245,51 +2256,50 @@ press (**delta 0**). R11's resting face — no shell, no border, no padding — 
 the capsule's rules are scoped to `[data-assignee-active="true"]`; at rest the wrapper is a bare
 inline span and the row reads exactly as R11 left it.
 
-**No token and no colour was added.** The bed, the name's colour and the `✕` read only
-`--color-td-*` values that already existed, the glyph is text (`✕`, no image, no icon font), and
-the declared `:root` registry in the rebuilt stylesheet is **byte-identical** to the base — 205
-declarations, none added, removed or reworded. The rebuild replaces 8 lines with 6 and adds no
-class selector the round did not mean to write.
+**No token and no colour was added.** The bed and the name's colour read only `--color-td-*`
+values that already existed, and the declared `:root` registry in the rebuilt stylesheet is
+**byte-identical** to the base — none added, removed or reworded. The second pass's rebuild
+replaced 8 lines with 6 and added no class selector the round did not mean to write. The third
+pass's rebuild removes **23 lines and adds none** — the three `[data-assignee-clear]` rules and
+nothing else — so the comment scan emitted no new class either, and the `:root` registry is
+again byte-identical (measured, §31.5).
 
-### 31.4 The `✕` lives beside the control, and takes the name out of it
+### 31.4 There is no `✕`: the control's own `all` row is the removal path
 
-The removal affordance is **one** `[data-assignee-clear]` — a compact `✕` whose static markup
-sits immediately after the assignee `<select>` in B04. It is there rather than in the roster
-because the roster row has no room to spend: the row is one line with 1px of slack, and any
-second button inside it could only elide a name. The button's own semantics are the request's:
-**only a given name has one**. `all` is the select's own first row and `me` / `human` / `agent`
-are rows of the select, so none of the four needs a second way out — the `✕` is `hidden` for all
-of them and appears only while the control states a name.
+The removal affordance is the **`Assignee: All` row of the assignee control itself**. A roster
+press is that control's own selection, so the row that selects a name and the row that leaves it
+are the same control — and a second control beside it would be two answers to one question, the
+second of them redundant with a row the reader can already see. R13's second pass put a compact
+`✕` there (because the roster row had no room to spend: one line with 1px of slack, and any
+second button inside it could only elide a name); **that control is withdrawn** — its markup, its
+three rules in `src/input.css`, its delegated press handler in `app.js` and its `assignee.clear`
+key all go, so no element, no rule and no handler in the shipped prototype carries the hook —
+it survives only in the comments and documents that record the withdrawal.
 
-Terry's request is precise — the `✕` should remove *the assignee condition* — and the round
-treats the rest of the bar as out of scope: no view switch, no status change (the two in-flight
-statuses stay in force), no priority, label or search change, no menu opened or closed, and no
-toast. The event is stopped at the button. Pressing the name **already in force** is the same
-move, and the two paths are one line of code apart by design.
+What the withdrawal buys is that a press has **one** consequence and the keyboard has no dead
+stop: the roster name, the `all` row and the native `<select>` are one path, and there is no
+third state to tab into. What it costs is recorded, not hidden: the value a press writes is not
+always immediately visible, because the press no longer switches the view (§31.5).
 
-The `✕` is static markup that is `hidden` at rest, which is what makes the script-off document
-honest: a reader without the script gets all six names and **no** selection, so the button is
-legitimately hidden. It is a real `<button>`, so `Enter`/`Space` and the `:focus-visible` ring
-come from the element, not from a key handler — measured, it takes `--color-td-focus`.
-
-What that leaves is a filter bar that can say *Status: In Progress +1* and *Assignee: All* after
-a press that never left the list view, and a roster with no capsule — the frame the round's
-capture set calls "cleared". Reset still lives on `Clear` alone and needs no new branch: the
-control is set back to `all`, and the roster, the options and the `✕` follow from the same
-restatement that already runs on every filter pass.
+`Clear` still resets the bar and needs no new branch: the control is set back to `all`, and the
+roster and the options follow from the same restatement that already runs on every filter pass.
 
 ### 31.5 Checked
 
-Measured in a real browser against the prototype, over a loopback static server, at 1512×950 in
-both languages unless stated. The round's own contract runs **55 assertions — A (structure),
-B (geometry / computed style) and C (interaction) — and all 55 pass**; the script-off pass is
-run separately and the same structure assertions hold with scripting disabled.
+Measured in a real browser against the prototype, over a loopback static server, in both
+languages unless stated. The round's second-pass contract ran **55 assertions — A (structure),
+B (geometry / computed style) and C (interaction) — and all 55 passed**; the third pass re-runs
+the same three legs at 1512 / 1240 / 980 / 760 / 430 × English + Chinese and its re-cut suite is
+**200 assertions, all passing**, each with the pre-change reading recorded beside it so the
+before/after pair is one row (`design/fidelity-r13.md` §10). The script-off pass is run
+separately and the same structure assertions hold with scripting disabled.
 
-- **Structure.** Six `[data-assignee-item]`, each with exactly one name button and **no** `✕`;
-  at rest every item is inactive; the document holds exactly **one** `[data-assignee-clear]`, in
-  the filter bar, `hidden` and unpainted; the control holds **four** static options and **zero**
-  named ones. With scripting off: six items, all six names readable, the one `✕` present and
-  hidden, four static options.
+- **Structure (third pass).** Six `[data-assignee-item]`, each with exactly one name button; at
+  rest every item is inactive; the document holds **zero** `[data-assignee-clear]` — with
+  scripting on **and** with it off — and **zero** elements carrying
+  `data-i18n-aria-label="assignee.clear"`; the control holds **four** static options and, at
+  rest, **zero** named ones. The second pass's readings (one `✕` in the bar, `hidden`; six items
+  under script-off with the `✕` present) are superseded.
 - **Geometry.** The selected item computes to `border-radius: 999px`, `padding-inline: 6px`,
   `margin-inline: -6px`, the resolved `--color-td-accent-soft` bed and the resolved
   `--color-td-accent` name, with **0px** of border; a resting item has 0px of border too. No row
@@ -2297,27 +2307,39 @@ run separately and the same structure assertions hold with scripting disabled.
   1240 / 980 / 760 / 430), with the capsule on. The document does not scroll sideways at any of
   them, and below 1024 — where the row's text is hidden whole — the items go with it: not visible
   at 980, 760 or 430, visible at 1240 and 1512.
-- **Interaction.** A press on `jobs` lands on the list with `data-filter-status-value` =
-  `in_progress,in_review` and the control on `jobs`, and the list shows **exactly the cards the
-  script independently computes** for that pair (1 of 12 in the demo project); exactly one
-  capsule is active and the bar's `✕` is shown; the `✕` returns the control to `all`, drops the
-  named option, restores the roster, hides itself again, keeps the status set and stays in the
-  list; switching to `linus` leaves exactly one capsule and exactly one named option; a second
-  press on it clears; and `Enter` on either focused button reproduces the two presses. Zero
-  console errors, zero page errors, and no toast from either press.
-- **The revision's measured cost.** The width-neutral bed buys the row's line its width back and
-  pays for it with a bleed the host clips: the four names that begin their row show a bed whose
-  outer cap is cut (6px), the two that do not show both caps. No text is moved and no name is
-  elided — `clippedPx` is 0 at every tier — but the asymmetry is a real frame, so it is recorded
-  as an open item (`design/fidelity-r13.md` §8 U-6) rather than left to be discovered.
+- **Interaction (third pass).** A press on `jobs` leaves the control on `jobs` and changes
+  *nothing else*: the current destination is the same before and after, `data-filter-status-value`
+  stays `all`, and no `✕` exists to appear. A second press on `jobs` is a no-op — the value is
+  still `jobs`, not `all`. Choosing `Assignee: All` in the control itself clears the capsule
+  (`data-assignee-active="false"`, `aria-pressed="false"`) — the removal path is the control's
+  own row. Across every click path the harness could reach (both roster names, the select, the
+  bar, the board, the four nav items, both view buttons, the filter toggle and `body`), the
+  `[data-assignee-clear]` count is **0**. Zero console errors, zero page errors, no toast.
+  *(The second pass's readings — the press landing on the list, the two in-flight statuses, the
+  `✕` shown and then clicked — are in `design/fidelity-r13.md` §5/§6 and are superseded.)*
+- **The width-neutral bed's cost stands.** It buys the row's line its width back and pays for it
+  with a bleed the host clips: the four names that begin their row show a bed whose outer cap is
+  cut (6px), the two that do not show both caps. No text is moved and no name is elided —
+  `clippedPx` is 0 at every tier — but the asymmetry is a real frame, so it stays an open item
+  (`design/fidelity-r13.md` §8 U-6).
+- **The third pass's measured cost — the value can be written where it cannot be seen.** Because
+  the press no longer switches the view, a press made while the **Activity** or **Waiting**
+  destination is current writes the assignee value but leaves the bar where that destination put
+  it: **hidden**. Measured at 1512 (`fidelity-r13.md` §10, evidence `D5:1512-en`): before the
+  revision the same press landed on the list view with the bar shown (`barHidden: false`, view
+  `list`); after it the view is still `activity` and the bar is still hidden while the value is
+  `jobs`. That is decision 甲's own consequence — the round records it rather than "fixing" it by
+  switching the view it was told not to switch (`fidelity-r13.md` §10 O-2).
 - **Hook ownership.** `[data-assignee-option]` belongs to B22's dialog menus (14 seats, bare
   attributes) and the roster control binds it document-wide; this round's named option is
   therefore `[data-assignee-filter-option]`. Measured after the rename: 14 B22 seats, all inside
   `[data-assignee-menu]`, and none of the round's elements in that selector.
-- **One new i18n seat.** The `✕` needs an accessible name and no existing key reads as "remove
-  the assignee filter", so the round adds exactly one — `assignee.clear` — which is what moves
-  the catalogue by one in each language (281 in both, mirrored) and the markup's `aria-label`
-  hooks from 72 to 73.
+- **i18n is a net −1, not a spend.** The second pass's `✕` needed an accessible name and no
+  existing key read as "remove the assignee filter", so it added exactly one — `assignee.clear`,
+  which moved the catalogue to 281 in both languages and the markup's `data-i18n-aria-label`
+  hooks from 72 to 73. The third pass **withdraws that key**: the catalogue returns to **280** in
+  each language, mirrored, and the `aria-label` hooks to **72** — the R12 baseline restored. The
+  round adds no key at all.
 
 ### 31.6 Rejected alternatives
 
@@ -2329,6 +2351,8 @@ run separately and the same structure assertions hold with scripting disabled.
 | Leave the name out of the filter and keep R11's route-only press | That is the defect: the list would show everyone's in-flight work under a name's heading |
 | Clear the status set along with the name when the `✕` is pressed | The request is explicit — the `✕` removes *the assignee condition*. Dropping the status set too would silently widen the list, which is the opposite of what the surface just promised |
 | Put the `✕` inside the name button (one control, two targets) | Nested `<button>` is illegal HTML, and a single button cannot both re-route and clear |
+| **Keep the `✕` beside the control** (the second pass, withdrawn by 甲 in the third) | It is a second answer to a question the select already answers: `Assignee: All` is a row of the same control, always present, already translated (`filters.assignee.all`) and already reachable by keyboard. Keeping the `✕` means keeping a control that exists only while the value is a name — a third state to discover, a key to maintain, three CSS rules, a delegated handler and a second exit from a state that has one. The press is *the dropdown's own selection*, so the removal path belongs to the dropdown |
+| **Keep R11's route as well as the name write** (withdrawn by 甲 in the third pass) | The route conflated two questions — *whose work* and *which view* — into one press, so picking a person also moved the reader and silently rewrote the status set. `in_progress,in_review` is a judgement the reader did not make, and it survived the press invisibly: the bar stated *Status: In Progress +1* as if the reader had asked for it. The name write is the request; the route is an extra |
 | **Carry the `✕` inline, inside the roster's capsule** (the round's first pass) | The row's single line is 143px of a 144px host. The capsule's own padding already spends 12px, and a 14px button inside it makes the line 163px — the last name is ellipsized by 19px and the round's own indicator fails. Widening the sidebar, narrowing the padding or overlaying the `✕` on the name all trade a reading or a target for the mark; the honest move is to put the removal affordance where the room is, beside the control whose value it clears |
 | Always render the `✕` and hide it with a class | The script-off document must be honest without the script; a `hidden` attribute on static markup gives a reader with no script a roster with no selection, rather than a stray cross |
 | Store the chosen name on the element and read it back instead of reading the control | It would be a second truth beside the control's value, and the first thing to drift when `Clear` resets the control |

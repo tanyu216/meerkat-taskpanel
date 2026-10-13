@@ -40,7 +40,7 @@ until opened.
 | `index.html` | the prototype — every block as static HTML with `data-*` hooks |
 | `tw.css` | **build output** (Tailwind + daisyUI compiled). Do not edit by hand. |
 | `src/input.css` | the Tailwind build entry: `@theme` tokens, daisyUI themes, app components |
-| `app.js` | the jQuery (slim) interaction layer — interactions I1–I12, plus R3's roster controls (I13) and Markdown editor (I14), R5's label control (I15), R9's light-dismiss rule (I16), R10's board empty state (I17) and drawer auto-save (I18), R11's status filter (I19) and roster route (I20), R12x's activity feed (I21), and R13's assignee narrowing with its clear (I20, I22) |
+| `app.js` | the jQuery (slim) interaction layer — interactions I1–I12, plus R3's roster controls (I13) and Markdown editor (I14), R5's label control (I15), R9's light-dismiss rule (I16), R10's board empty state (I17) and drawer auto-save (I18), R11's status filter (I19), R12x's activity feed (I21), and R13's assignee narrowing (I20 — **R13 修订 withdrew I22 and the clear it named**) |
 | `favicon.svg` | the Sentinel Watch mark as the tab icon (renders `BRAND.md` §5; `prefers-color-scheme` pair) |
 | `vendor/jquery.slim.min.js` | jQuery 3.7.1 **slim** build, vendored locally |
 | `vendor/markdown-lite.js` | the Markdown → HTML renderer behind the editor's preview pane, vendored locally |
@@ -89,13 +89,16 @@ checkout where `node_modules` is allowed to sit next to the sources.
 
 Two `@source` directives limit class scanning to `index.html` and `app.js`
 (`@import "tailwindcss" source(none)` disables auto-detection, so nothing else on
-disk can leak classes into the bundle). Current output: **201 KB** (`tw.css` = 205606
-bytes after the R13 rebuild — the R13 round is net −27 bytes on the 205633 R12x left,
-because the capsule gave up its border, its fixed height and its inline `x` for a bed, a
-radius and an equal-and-opposite pair of inline margins. The figure this line carried before
-that said 204768 after R12x, 200850 when that round's first half landed, 193372 after R12,
-and 139 KB before that and had been stale for some rounds — it is a measurement, so it is
-stated as one).
+disk can leak classes into the bundle). Current output: **201 KB** (`tw.css` = 205057
+bytes after the R13 修订 rebuild — 决定甲 withdrew the `✕` beside the assignee control and
+its three rules, so the round is **−549 bytes / −23 lines / +0 lines** against the 205606
+seg2 left; the rebuild diff was read line by line and holds nothing but those three rules,
+so the comment scan emitted no new class. Before that the R13 seg2 rebuild was net −27
+bytes on the 205633 R12x left, because the capsule gave up its border, its fixed height and
+its inline `x` for a bed, a radius and an equal-and-opposite pair of inline margins. The
+figure this line carried before that said 204768 after R12x, 200850 when that round's first
+half landed, 193372 after R12, and 139 KB before that and had been stale for some rounds —
+it is a measurement, so it is stated as one).
 
 **The scan reads comments, not just markup.** A candidate is any token that *looks* like a
 class name anywhere in those two files, prose and comments included — a bare `stack` in an
@@ -159,9 +162,9 @@ the style guide's token blocks in `src/input.css` are unlayered. Two consequence
 | I17 | Board empty state (R10) | the board view shows its empty state instead of bare columns whenever no card survives the filters — including a project that holds none at all | `[data-board-view]` → `data-board-state` → `[data-board]` / `[data-empty][data-empty-kind="no-results"]` |
 | I18 | Drawer auto-save (R10) | the drawer's assignee, reporter and labels commit as they change — focus loss with a moved value, an accepted roster row, a label chip added or dropped — and report through one state region | `[data-detail-save]` → `data-save-state` · `[data-detail-save-error]` · `[data-detail-save-field]` on `[data-detail-assignee]` / `[data-detail-reporter]` / `[data-detail-labels]` |
 | I19 | Status filter (R11) | the bar's second dropdown and its only multi-select: a press toggles one of the seven first-class statuses in or out of the set, `all` clears it, and the pass re-runs. The chosen set is OR inside the field, AND against the other filters | `[data-filter-status]` → `data-filter-status-value` → `[data-filter-status-summary]` / `[data-filter-status-text]` · `[data-filter-status-option]` → `data-status-value` |
-| I20 | Roster route (R11, extended by R13) | a press on a name in Active agents switches to the list view, presets the status set to `in_progress,in_review` **and** writes the name into the assignee control — R11's route is a narrowing too, and the two conditions are ANDed. The name in force wears a capsule, and a second press on it removes the assignee condition alone | `[data-agents-presence]` → `[data-agent-assignee]` → `setView("list")` + `data-filter-status-value` + `[data-filter-assignee]` (value) + `[data-assignee-item]` → `data-assignee-active` |
+| I20 | Roster assignee pick (R11 ②, rewritten by R13 修订) | a press on a name in Active agents writes that name into the assignee control — **exactly** the move of choosing it in the bar's dropdown, and nothing else: no view switch, no status write, no menu, no toast, no `✕`. The name in force wears a capsule; pressing it again changes nothing (a dropdown does not close itself on a repeat pick), so the one removal path is the control's own `Assignee: All` row | `[data-agents-presence]` → `[data-agent-assignee]` → `[data-filter-assignee]` (value) + one `applyFilters()` + `[data-assignee-item]` → `data-assignee-active` |
 | I21 | Activity view (R12x) | the sidebar's third destination opens B26 — a press routes through `setView()`, the feed narrows from three controls, the unread number is shared by the sidebar pill and the feed boundary, `Mark all read` clears it, a row's open button lands on B09, and `j`/`k` walk the visible rows | `[data-nav-item="activity"]` → `[data-activity-view]` · `[data-activity-filter]` · `[data-activity-mark-read]` · `[data-activity-open]` · `[data-activity-more]` |
-| I22 | Assignee clear (R13) | the one control that takes a *given name* back out of the assignee filter: it is the select's next sibling in the bar, `hidden` unless the select's value is a name, and it clears that name and nothing else — no view switch, no status change, no menu, no toast | `[data-filter-assignee]` → `[data-assignee-clear]` · `[data-assignee-filter-option]` (the name the select grows on demand) · `[data-assignee-item]` → `data-assignee-active` |
+**I22 is withdrawn.** R13's *Assignee clear* was the `✕` beside the assignee control that took a given name back out of the filter; **R13 修订 (Terry 2026-10-13, 决定甲)** removed the control, its three rules and its key, so the row is gone from this table rather than left dangling. What it used to do — clear a given name and nothing else — is now the assignee control's own `Assignee: All` row, which already had a seat (`filters.assignee.all`). The name the select grows on demand (`[data-assignee-filter-option]`) and the capsule (`[data-assignee-item]` → `data-assignee-active`) both survive, and both moved into **I20**.
 
 The footer's three rows act directly — none of them opens a dialog except the settings
 gear, which opens B19. `Esc` closes whatever is open: the drawer, the states showcase, the
@@ -272,12 +275,12 @@ looking at it (DESIGN.md §12).
 | Loading | 3 shimmer rows in the list view, in the list's `loading` state — mutually exclusive with the rows (R9) |
 | Drawer saves | assignee / reporter / labels commit as they change; one `data-save-state` region and a `role="alert"` failure block (R10) |
 | Drawer identifier | the detail drawer's head shows the card's **whole** id — no slice, no width limit — while the cards and the list rows keep eight characters plus an ellipsis (R12) |
-| Status filter | the bar's Status control holds any subset of the seven first-class statuses at once (OR inside the field), and every Active-agents name routes to the list view with `in_progress,in_review` preset (R11) |
+| Status filter | the bar's Status control holds any subset of the seven first-class statuses at once, OR inside the field and ANDed against every other filter (R11) |
 | Assignee filter | the Assignee control's domain gains a **given name** on demand — the name is written into the select (as an `[data-assignee-filter-option]`) when an Active-agents name is pressed, and taken out again when the control leaves it (R13) |
 | Assignee capsule | the roster item the control's value names wears a **width-neutral** accent capsule — `padding: 0 6px` cancelled by `margin-inline: -6px` — so no row's one line is elided at any viewport (R13) |
-| Assignee clear | one `x` beside the Assignee control, `hidden` unless the control states a given name; a press clears that name and only that name — view, status and every other field are untouched (R13) |
+| Assignee removal | **the control's own `Assignee: All` row, and nothing else.** A roster press is the dropdown's own selection, so it neither routes the view nor writes a status, and no second control exists to undo it (R13 修订 · 决定甲) |
 | Themes | three states cycled from the footer — **Light** (default) → **Dark** → **Auto** (follows `prefers-color-scheme`, CSS-only) → Light; no-record default is Light, not the system preference |
-| Language | English (default) + Chinese via the language dropdown — 281 key pairs, mirrored |
+| Language | English (default) + Chinese via the language dropdown — 280 key pairs, mirrored |
 | Activity | the sidebar's third destination opens a real view (R12x): 17 rows over 4 day groups, one folded burst, an unread boundary that reads the same number as the sidebar pill, three narrowing controls, `Load older`, and two empty states — all of it static markup |
 | Waiting | the sidebar's fourth destination opens a real queue (R12x): 5 items ordered by how long each has waited, two reason kinds (`question` / `blocked`), a count in its heading, no filters, and an empty state — all of it static markup |
 | List columns | six labelled columns — ID · Title · Status · Assignee · Priority · Revision — with the header sharing the row's grid template; the middle three hide at ≤759px (R8) |
@@ -331,7 +334,9 @@ status dot plus the status label. Multiple choice is OR inside the field. (2) Ev
 **Active agents** is now its own `<button data-agent-assignee>`; a press switches to the list
 view and presets the status set to `in_progress,in_review`. As R11 left it, that was a
 **route, not a filter on the name**: the assignee filter's domain is `all|me|human|agent` and
-holds no given name. **R13 extends that domain** — the press now narrows as well (see below).
+holds no given name. **R13 extends that domain** — the press narrows as well (see below).
+*(The route half of this paragraph is superseded: **R13 修订** drops it and keeps only the
+domain extension — see the R13 修订 block below.)*
 `design/fidelity-r11.md` is the contract; `DESIGN.md` §27 and `BLOCKS.md` B03/B04/B08 carry
 the prose.
 
@@ -382,12 +387,42 @@ ANDed like any two fields of the bar. (3) The item in force wears a **width-neut
 capsule: `padding: 0 6px` is cancelled by `margin-inline: -6px`, so the row's one line gains
 no width and no name is elided at any of the five tiers. (4) The capsule's old inline `x` is
 **gone** — the roster row is 143 of its 144px and a second button in it could only elide a
-name — and the removal affordance is one `[data-assignee-clear]` in the bar, the assignee
-select's own sibling, `hidden` unless the select states a given name. Pressing it clears the
-name and nothing else. A second press on the name in force is the same move. Zero new tokens
-(the two colours are existing ones); one new i18n key (`assignee.clear`).
+name — and the removal affordance became one control in the bar, the assignee select's own
+sibling. Zero new tokens (the two colours are existing ones); one new i18n key
+(`assignee.clear`) at the time.
 `design/fidelity-r13.md` is the contract; `DESIGN.md` §31 and `BLOCKS.md` B03/B04 carry the
 prose.
+
+**R13 修订 — the press is the dropdown's own selection, and the `✕` is withdrawn.**
+Terry, 2026-10-13, decision **甲**: pressing an Active-agents name **only** picks that name
+in the assignee filter. It is the same move as choosing it in the bar's dropdown, so nothing
+else follows from it — the view is not switched to the list, the status set is not written,
+no priority/label/search/project changes, no menu opens, no toast appears. Steps (1) and (3)
+of R13 above stand unchanged, and so does step (2)'s domain extension; what falls is the
+route half of step (2) and the *replacement* R13 seg2 put in for the capsule's inline `x`:
+the bar's own `[data-assignee-clear]`, its three rules in `src/input.css`, its delegated
+press handler in `app.js` and its `assignee.clear` key are all **withdrawn**, and the
+selector now appears in no element, no rule and no handler of the shipped prototype (it survives
+only in the comments that record the withdrawal, and in the same documents this paragraph is in).
+The one removal path is the control's
+own **`Assignee: All`** row. A second press on the name already in force is now a **no-op**
+rather than R13's clear-the-name toggle: a dropdown does not close itself when the value it
+already states is picked again, and 「等同下拉选择」 is read literally.
+
+The i18n accounting is a **net −1**: `assignee.clear` goes, so `MESSAGES` is **280** keys in
+each language (281 → 280) and `index.html`'s `data-i18n-aria-label` seats are **72** (73 →
+72, the `✕` having been the only seat of that key). The round adds **no** key and takes
+exactly one — which is the R12 baseline restored, not a budget spent.
+
+One cost is accounted for rather than fixed: because the press no longer switches the view,
+a press made while the Activity or Waiting destination is current writes the assignee value
+but leaves the filter bar where that destination put it — **hidden**, so the new value is
+not immediately visible. Measured on both sides of the change at 1512 (evidence
+`D5:1512-en`): before, the press lands on the list view with the bar shown; after, the view
+stays `activity` and the bar stays hidden while the value is `jobs`. That is 甲's own
+consequence, recorded and not "fixed" — see `fidelity-r13.md` §10 O-2.
+`design/fidelity-r13.md` §10 is the revision record; `DESIGN.md` §31.6 lists the rejected
+alternative.
 
 ---
 
@@ -488,7 +523,9 @@ frames R9 already flagged. The sidebar frames (`31` and the full-board frames) n
 Active agents names as buttons, but the face is the text it replaced, so the stills are
 unchanged to the eye; no frame shows the status menu open, the set preset to
 `in_progress,in_review`, or the list a roster route lands on. Those four states are in
-`design/fidelity-r11.md` §6 (the card's workspace, not the repository). The set is again
+`design/fidelity-r11.md` §6 (the card's workspace, not the repository). *(R13 修订 makes the
+last of them unreachable — a roster press no longer routes to a list — and the capsule it
+wears is a fifth state this note predates.)* The set is again
 left whole rather than half-refreshed, and the filters bar has now been stale through three
 rounds — the recapture belongs with whoever next touches it, and it can no longer be
 deferred without the set claiming a bar the build does not have.
