@@ -2372,3 +2372,182 @@ separately and the same structure assertions hold with scripting disabled.
 | Store the chosen name on the element and read it back instead of reading the control | It would be a second truth beside the control's value, and the first thing to drift when `Clear` resets the control |
 | Give the capsule an accent bed, like a primary action | The accent is the brand line and belongs to primary actions; a selected filter is a state, not a call to action — the round uses only the accent's *soft* tint and its ink, both existing tokens |
 | Make the capsule a bordered 20px pill, as the first pass drew it | A border and a fixed height make a *shell*, and a shell has to be wide enough to look like one; the bed plus the cancelled padding is the only form that adds the mark without adding the width |
+
+## 32. Review round R16 — the four views get addresses (URL routing)
+
+谭玉's 2026-10-13 request (webchat), carried as epic `T-20261013-183505` (requirement **D**):
+each of the board's four views should be reachable **by its own URL** — deep-linkable, survivable
+across a refresh, usable with the browser's back and forward buttons — and the bare entry point
+should land on the board. Until now the four destinations (B03's nav, B26, B27) were switched by
+`web/src/stores/ui.js`'s `view = ref("board")` plus `setView()`, and **nothing outside the tab
+knew which view was open**: no `pushState`, no `popstate`, no address at all. The one exception
+was the activity feed's own filter state, which `web/src/stores/activity.js` has mirrored onto
+`location.hash` as `#/activity?actor=agent` since R12x (B26, `DESIGN-activity.md` §6).
+
+**The round adds no block.** The four view roots, the sidebar's four-way destination list, the
+nav's `aria-current="page"` rule, the top bar's two-value toggle and the filter bar's ownership
+of the board area all exist and are unchanged (B02, B03, B26, B27). R16 adds an **address layer
+above them**, in the product shell — and, measured in a real browser, nothing in
+`design/prototype/` moves at all: the prototype has **no URL layer** (a nav press changes the
+view and leaves the address untouched, `history.length` unchanged; only a filter press writes,
+with `replaceState`). Routing is not a new surface, so this round has **zero prototype
+changes** — the executable contract, the route table, the assertion list and the raw probe
+output are `design/fidelity-r16.md`.
+
+**Authority.** The shape below is the leader's ruling of 2026-10-13 10:46Z (card
+`T-20261013-183505-2`): path routing with **no server change**, the four views on independent
+addresses (`/list` is one of them), view changes `pushState` / filter narrowing `replaceState`,
+toasts and the drawer outside history, the **old `#/activity?…` address read and redirected**
+rather than broken, and the drawer's `#/task/<id>` **left as a hash**. The contract's
+first draft had chosen to drop the old form; the ruling supersedes it, and
+`design/fidelity-r16.md` §4.8/§11 maps every clause to its rule.
+
+### 32.1 Path, not hash — because the server already owns the fallback
+
+The candidates were a real path (`/board`) or a fragment (`/#/board`). The deciding fact was
+measured rather than argued: **the static host already falls back**, so path routing needs **no
+server change at all** (`src/server/static.mjs`: an unknown path with *no* file extension is
+answered with `index.html`; a missing *asset* — an extension — stays a real 404;
+`src/server/index.mjs` tries static hosting for GET/HEAD before the JSON 404, and never for
+`/api/**`). All of `/`, `/board`, `/list`, `/activity`, `/waiting`, `/activity?actor=agent`,
+`/board/` and `/index.html` answer `200 text/html` — the shell — while `/assets/gone.js` and
+`/api/v1/nope` stay `404` JSON, and the shell is served `no-cache` so a deep link never gets
+yesterday's contract. The frontend is already mounted at the origin root (`web/vite.config.js`:
+`base: "/"`), so asset URLs are absolute and any route depth works.
+
+The fragment, by contrast, is **already spoken for**: it is where the feed's links carry the
+drawer's card (`#/task/<id>`), and B26's own rule was that the filter address must not pollute
+it. A hash scheme would put two formulas in one slot. Path routing gives the filters a real
+query string and leaves the fragment to the drawer.
+
+### 32.2 The route table
+
+Five addresses, and three ways in that are not routes but still have to land somewhere:
+
+| Address | View | Sidebar current (`[data-nav-item]`) | Top bar toggle (`[data-view]`) |
+|---|---|---|---|
+| `/` → normalised to `/board` | board | `board` | `board` |
+| `/board` | board | `board` | `board` |
+| `/list` | list | `list` | `list` |
+| `/activity` (＋ `?actor&event&task`) | activity | `activity` | neither pressed |
+| `/waiting` | waiting | `waiting` | neither pressed |
+
+`/` and `/index.html` are aliases of `/board`; a matched route with a trailing slash is
+normalised to its canonical form; **any other path** — `/nope`, `/borad` — resolves to `/board`;
+and an **old feed address** (`/#/activity?actor=agent`) is read and redirected to its query form
+(§32.4). The table is matched exactly and case-sensitively, and it is the complete route set: the
+card form the static host's own comment names (`/board/PROJ-0001`) is **not** a route this round,
+but adding one later means adding a row, not a rule (§32.6).
+
+The normalisations are `replaceState`s: they rewrite the address without leaving a history entry,
+so a redirect never traps the back button. An unknown path is **not** an error surface — the
+server answers 200 for any extensionless path, so "no such route" can only be expressed in the
+frontend, and a new surface would contradict §32.5's "no visual change". The cost is stated
+rather than hidden: a hand-typed address is silently corrected.
+
+### 32.3 The address is the truth: two writers, one reader
+
+The view stops being something the interface sets and becomes something the **address** decides.
+That gives exactly three places that may touch the current route:
+
+- **`navigate(view)` — a view change — uses `pushState`.** Every entry point goes through it:
+  the sidebar's nav press, the top bar's toggle, the feed row's own "return to the board and open
+  this card" anchor, and — if the roster's press keeps its route half, which R13's decision 甲
+  withdrew from the design text while the implementation and `dom-smoke` still carry it — the
+  roster name. A press whose target address is *already* the current address writes nothing
+  (the same idempotence the feed's filter writer has had since R12x).
+- **`replaceActivityQuery()` — a filter change — uses `replaceState`,** and replaces only the
+  query, preserving the path and the fragment verbatim.
+- **`applyLocation(location)` — the reader — never writes**, and is shared by the two events that
+  mean "an address arrived": the first load (a deep link, a refresh) and `popstate` (back and
+  forward). One code path, so a deep link and a back press cannot drift apart.
+
+`history.state` carries nothing: the address is the whole truth, and a state payload would be a
+second source able to disagree with it. The consequence worth stating in one line: **back and
+forward undo view changes and never undo filter changes** — which is exactly the rule the feed's
+`replaceState` already followed, now generalised to the whole shell.
+
+Two things the address cannot do, said plainly: **a deep link is JavaScript-only** (all five
+addresses are served the *same* `index.html` bytes, so the script-off document still shows the
+board and nothing else), and the **unknown-path rule exists only because the server always says
+200** — there is no server-side 404 for a bad route to lean on.
+
+### 32.4 The activity filters move from the fragment to the query — the fragment stays the drawer's
+
+R12x mirrored the feed's three filters onto `#/activity?actor=agent`, with `replaceState` so the
+back button kept meaning "the view before". R16 **merges that address into the query**:
+`/activity?actor=agent`. The payload's four rules are unchanged — the same three slots in the
+same order (`actor` → `event` → `task`), `all` never written, the entire query omitted when all
+three are at rest, and a value outside a slot's domain refused rather than written. What changes
+is the carrier, and two consequences:
+
+- An **absent** slot, the value `all`, and an out-of-domain value all mean the same thing — "no
+  condition in this slot". Entering `/activity` (by link, refresh or a back press) therefore
+  states the filters **completely**: what the address does not name is `all`. "A refresh does not
+  lose the filters" and "a back press does not leave stale ones" are the same rule.
+- The **old `#/activity?…` form keeps working** — read, then redirected (Elon's ruling,
+  2026-10-13 10:46Z). The canonical address is the query form, but a link in the old shape still
+  lands where it meant to: when the path is an **alias** (`/` or `/index.html` — the only paths
+  today's app could have written the hash on) and the fragment is the feed's address, the reader
+  takes the fragment as the payload, enters the activity view and **replaces** the address with
+  `/activity?…`. The fragment is *consumed* by that redirect; the write path never produces the
+  old shape again. One parser serves both carriers (`readActivityQuery`); the old form is a second
+  *carrier*, never a second set of domain rules.
+
+The **drawer's** fragment is untouched by all of this. `#/task/<id>` is what it was: a real anchor
+for a reader without the script, and the key a feed row uses to find its card. The ruling keeps it
+a hash — the drawer is not one of the four views and the minimal change is to leave it alone —
+and promoting it to a path (or giving it history semantics, so a back press closes the drawer) is
+a later optional upgrade, not this card (§32.6).
+
+### 32.5 What routing does not change
+
+Everything below is the reason this round can be a contract with no prototype diff; each one is
+an existing rule the address layer must not weaken, and each has a machine check in
+`design/fidelity-r16.md` §6.
+
+- **The script-off document.** All five addresses are the same static shell, so a reader without
+  the script still sees the board and only the board. Deep links are a JavaScript capability, and
+  this round does not pretend otherwise.
+- **The sidebar highlight.** Inside `[data-nav]`, exactly one `[data-nav-item]` carries
+  `aria-current="page"`, and it is the current route's. The project rows below reuse the same
+  attribute name for the *current project* and keep their own owner.
+- **The top bar's toggle.** `[data-view="board"|"list"]` says what the **board area** is showing,
+  not which page the reader is on: on `/activity` and `/waiting` both are `false` (measured on
+  the prototype: pressing the sidebar into activity leaves `board=false list=false`).
+- **The filter bar.** It still belongs to the board area alone (`boardArea`), so it stands down on
+  the feed and the queue exactly as it did before.
+- **No new query namespace.** The activity view's three slots are the only ones this round reads
+  or writes. Card filters and the search box stay out of the address, and the theme and language
+  preferences stay browser-local (§21) — they are never address slots. The prototype's
+  `?theme=`/`?lang=` switches belong to `design/activity/activity.js` and are explicitly not
+  product design (`DESIGN-activity.md`).
+
+### 32.6 Boundaries and open items
+
+**Boundaries.** No implementation in this card (`web/**`, `test/**`, `src/**` untouched — the
+work lands as `T-20261013-183505-3` and is verified by `T-20261013-183505-4`). No card-level
+route. No drawer address. No card-filter or search slots. No preference slots. No new surface —
+no error page, no toast, no loading state — because the round exists to add an address layer, not
+a screen.
+
+**Open items** (for the leader to rule on, not for this round to absorb):
+
+1. **`/board/<ref>`** — the card form `src/server/static.mjs` names in its own comment. The table
+   is closed this round and extendable later without changing a rule.
+2. **The drawer in the address** — the natural consequence of today's rule is that opening a card
+   from a feed row pushes `/board` while the drawer stays open and out of the address, so a back
+   press returns the *view* to the feed with the drawer still standing. That is honest and
+   recorded, not fixed: giving the drawer history semantics is its own contract.
+3. **Card filters and the search box in the address** — today only the feed can say "this link is
+   my view"; extending that changes what shareable means and needs a second slot decision.
+4. **The drawer in the address, promoted** — ruled out for this card: the ruling keeps
+   `#/task/<id>` a hash and registers the upgrade (a path, or history semantics) as a later
+   optional step.
+5. **The roster press's route half** (§32.3): the implementation and `dom-smoke` still write the
+   view and the two in-flight statuses, the design text withdrew both in R13's decision 甲, and
+   the prototype measured with 甲. Whichever way it is ruled, the press must not change the view
+   without writing the address.
+
+The **legacy `#/activity?…` read** was an open item in the contract's first draft and is now
+**ruled**: the old form is read and redirected (§32.4). The remaining four items above are open.
