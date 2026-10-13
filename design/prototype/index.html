@@ -3081,11 +3081,113 @@
                  document is the "something happened" reading, and the script
                  is what swaps them in. -->
             <div class="td-empty td-empty-lg td-activity-empty" data-activity-empty data-activity-empty-kind="project" hidden>
+              <!-- The empty state opens on the same brand mark B12 draws on an empty
+                   board: the two lead meerkats sit at --color-td-ink-3 so the on-duty
+                   sentinel and its watch signal stay the only lit elements on the
+                   surface. Its own face mask id keeps the document's mask ids unique.
+              -->
+              <svg class="td-logo td-logo-lg" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+                <defs>
+                  <mask id="face-knockout-b-lg" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+                    <rect x="0" y="0" width="32" height="32" fill="#FFFFFF" />
+                    <g fill="#000000">
+                      <!-- sentinel 1 · face -->
+                      <circle cx="6.4" cy="20" r="0.42" />
+                      <circle cx="8" cy="20" r="0.42" />
+                      <rect x="6.84" y="21.05" width="0.72" height="0.2" rx="0.1" />
+                      <!-- sentinel 2 · face -->
+                      <circle cx="15.2" cy="14.8" r="0.42" />
+                      <circle cx="16.8" cy="14.8" r="0.42" />
+                      <rect x="15.64" y="15.85" width="0.72" height="0.2" rx="0.1" />
+                      <!-- sentinel 3 · face -->
+                      <circle cx="24" cy="12" r="0.42" />
+                      <circle cx="25.6" cy="12" r="0.42" />
+                      <rect x="24.44" y="13.05" width="0.72" height="0.2" rx="0.1" />
+                    </g>
+                  </mask>
+                </defs>
+                <g mask="url(#face-knockout-b-lg)">
+                  <!-- sentinel 1 · cx 7.2 · top 17.6 -->
+                  <g fill="var(--color-td-ink-3)">
+                    <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6" />
+                    <circle cx="7.2" cy="20.2" r="2.6" />
+                    <circle cx="4.8" cy="19.3" r="1.2" />
+                    <circle cx="9.6" cy="19.3" r="1.2" />
+                  </g>
+                  <!-- sentinel 2 · cx 16 · top 12.4 -->
+                  <g fill="var(--color-td-ink-3)">
+                    <rect x="13.4" y="12.4" width="5.2" height="14.6" rx="2.6" />
+                    <circle cx="16" cy="15" r="2.6" />
+                    <circle cx="13.6" cy="14.1" r="1.2" />
+                    <circle cx="18.4" cy="14.1" r="1.2" />
+                  </g>
+                  <!-- sentinel 3 (on duty, tallest) · cx 24.8 · top 9.6 -->
+                  <g fill="var(--color-td-accent)">
+                    <rect x="22.2" y="9.6" width="5.2" height="17.4" rx="2.6" />
+                    <circle cx="24.8" cy="12.2" r="2.6" />
+                    <circle cx="22.4" cy="11.3" r="1.2" />
+                    <circle cx="27.2" cy="11.3" r="1.2" />
+                  </g>
+                </g>
+                <!-- watch signal — clear of the sentinel's crown by 4.1, outside the mask -->
+                <circle cx="24.8" cy="3.4" r="2.1" fill="var(--color-td-accent)" />
+              </svg>
               <span class="td-empty-title" data-i18n="activity.empty.project.title">Nothing has happened yet</span>
               <span class="td-empty-hint" data-i18n="activity.empty.project.hint">Create a task, or wait for an agent to claim one — the first entry appears here.</span>
             </div>
 
-            <div class="td-empty td-activity-empty" data-activity-empty data-activity-empty-kind="filter" hidden>
+            <div class="td-empty td-empty-lg td-activity-empty" data-activity-empty data-activity-empty-kind="filter" hidden>
+              <!-- The empty state opens on the same brand mark B12 draws on an empty
+                   board: the two lead meerkats sit at --color-td-ink-3 so the on-duty
+                   sentinel and its watch signal stay the only lit elements on the
+                   surface. Its own face mask id keeps the document's mask ids unique.
+              -->
+              <svg class="td-logo td-logo-lg" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+                <defs>
+                  <mask id="face-knockout-c-lg" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+                    <rect x="0" y="0" width="32" height="32" fill="#FFFFFF" />
+                    <g fill="#000000">
+                      <!-- sentinel 1 · face -->
+                      <circle cx="6.4" cy="20" r="0.42" />
+                      <circle cx="8" cy="20" r="0.42" />
+                      <rect x="6.84" y="21.05" width="0.72" height="0.2" rx="0.1" />
+                      <!-- sentinel 2 · face -->
+                      <circle cx="15.2" cy="14.8" r="0.42" />
+                      <circle cx="16.8" cy="14.8" r="0.42" />
+                      <rect x="15.64" y="15.85" width="0.72" height="0.2" rx="0.1" />
+                      <!-- sentinel 3 · face -->
+                      <circle cx="24" cy="12" r="0.42" />
+                      <circle cx="25.6" cy="12" r="0.42" />
+                      <rect x="24.44" y="13.05" width="0.72" height="0.2" rx="0.1" />
+                    </g>
+                  </mask>
+                </defs>
+                <g mask="url(#face-knockout-c-lg)">
+                  <!-- sentinel 1 · cx 7.2 · top 17.6 -->
+                  <g fill="var(--color-td-ink-3)">
+                    <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6" />
+                    <circle cx="7.2" cy="20.2" r="2.6" />
+                    <circle cx="4.8" cy="19.3" r="1.2" />
+                    <circle cx="9.6" cy="19.3" r="1.2" />
+                  </g>
+                  <!-- sentinel 2 · cx 16 · top 12.4 -->
+                  <g fill="var(--color-td-ink-3)">
+                    <rect x="13.4" y="12.4" width="5.2" height="14.6" rx="2.6" />
+                    <circle cx="16" cy="15" r="2.6" />
+                    <circle cx="13.6" cy="14.1" r="1.2" />
+                    <circle cx="18.4" cy="14.1" r="1.2" />
+                  </g>
+                  <!-- sentinel 3 (on duty, tallest) · cx 24.8 · top 9.6 -->
+                  <g fill="var(--color-td-accent)">
+                    <rect x="22.2" y="9.6" width="5.2" height="17.4" rx="2.6" />
+                    <circle cx="24.8" cy="12.2" r="2.6" />
+                    <circle cx="22.4" cy="11.3" r="1.2" />
+                    <circle cx="27.2" cy="11.3" r="1.2" />
+                  </g>
+                </g>
+                <!-- watch signal — clear of the sentinel's crown by 4.1, outside the mask -->
+                <circle cx="24.8" cy="3.4" r="2.1" fill="var(--color-td-accent)" />
+              </svg>
               <span class="td-empty-title" data-i18n="activity.empty.filter.title">No activity matches these filters</span>
               <span class="td-empty-hint" data-i18n="activity.empty.filter.hint">Widen the filters to see the full log.</span>
               <button type="button" class="btn btn-outline btn-sm" data-activity-empty-reset data-i18n="activity.empty.filter.reset">Reset filters</button>
@@ -3248,8 +3350,59 @@
                when nothing is owed; at that point the header's tally goes too
                (a "0 waiting on you" beside "Nothing is waiting on you" is the
                same sentence twice) — see DESIGN.md §30. -->
-          <div class="td-empty td-waiting-empty" data-waiting-empty hidden>
+          <div class="td-empty td-empty-lg td-waiting-empty" data-waiting-empty hidden>
+            <!-- B27.3 opens on the same brand mark B12 draws on an empty board: the
+                 two lead meerkats sit at --color-td-ink-3 so the on-duty sentinel and
+                 its watch signal stay the only lit elements on the surface. Its own
+                 face mask id keeps the document's mask ids unique. -->
+            <svg class="td-logo td-logo-lg" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+              <defs>
+                <mask id="face-knockout-d-lg" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+                  <rect x="0" y="0" width="32" height="32" fill="#FFFFFF" />
+                  <g fill="#000000">
+                    <!-- sentinel 1 · face -->
+                    <circle cx="6.4" cy="20" r="0.42" />
+                    <circle cx="8" cy="20" r="0.42" />
+                    <rect x="6.84" y="21.05" width="0.72" height="0.2" rx="0.1" />
+                    <!-- sentinel 2 · face -->
+                    <circle cx="15.2" cy="14.8" r="0.42" />
+                    <circle cx="16.8" cy="14.8" r="0.42" />
+                    <rect x="15.64" y="15.85" width="0.72" height="0.2" rx="0.1" />
+                    <!-- sentinel 3 · face -->
+                    <circle cx="24" cy="12" r="0.42" />
+                    <circle cx="25.6" cy="12" r="0.42" />
+                    <rect x="24.44" y="13.05" width="0.72" height="0.2" rx="0.1" />
+                  </g>
+                </mask>
+              </defs>
+              <g mask="url(#face-knockout-d-lg)">
+                <!-- sentinel 1 · cx 7.2 · top 17.6 -->
+                <g fill="var(--color-td-ink-3)">
+                  <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6" />
+                  <circle cx="7.2" cy="20.2" r="2.6" />
+                  <circle cx="4.8" cy="19.3" r="1.2" />
+                  <circle cx="9.6" cy="19.3" r="1.2" />
+                </g>
+                <!-- sentinel 2 · cx 16 · top 12.4 -->
+                <g fill="var(--color-td-ink-3)">
+                  <rect x="13.4" y="12.4" width="5.2" height="14.6" rx="2.6" />
+                  <circle cx="16" cy="15" r="2.6" />
+                  <circle cx="13.6" cy="14.1" r="1.2" />
+                  <circle cx="18.4" cy="14.1" r="1.2" />
+                </g>
+                <!-- sentinel 3 (on duty, tallest) · cx 24.8 · top 9.6 -->
+                <g fill="var(--color-td-accent)">
+                  <rect x="22.2" y="9.6" width="5.2" height="17.4" rx="2.6" />
+                  <circle cx="24.8" cy="12.2" r="2.6" />
+                  <circle cx="22.4" cy="11.3" r="1.2" />
+                  <circle cx="27.2" cy="11.3" r="1.2" />
+                </g>
+              </g>
+              <!-- watch signal — clear of the sentinel's crown by 4.1, outside the mask -->
+              <circle cx="24.8" cy="3.4" r="2.1" fill="var(--color-td-accent)" />
+            </svg>
             <span class="td-empty-title" data-i18n="waiting.empty">Nothing is waiting on you</span>
+            <span class="td-empty-hint" data-i18n="waiting.empty.hint">Blocked, in-review and handed-off tasks land here.</span>
           </div>
         </section>
       </main>

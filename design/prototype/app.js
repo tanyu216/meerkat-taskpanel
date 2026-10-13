@@ -348,6 +348,12 @@
       "waiting.reason.blocked": "Blocked",
       "waiting.open": "Open %s",
       "waiting.empty": "Nothing is waiting on you",
+      /* The second line the state was missing: B12's empty states read as a
+         title plus a hint, and one line alone says what is not there without
+         saying what would be. It names the three reasons the queue collects
+         (blocked / in review / handed off) and stops — there is nothing to
+         press here, so it promises no button. */
+      "waiting.empty.hint": "Blocked, in-review and handed-off tasks land here.",
     },
     zh: {
       /* chrome */
@@ -645,6 +651,10 @@
       "waiting.reason.blocked": "已阻塞",
       "waiting.open": "打开 %s",
       "waiting.empty": "没有等你处理的事",
+      /* B12 的空态是「标题 + 提示」两段式；这一态原本只有一行。第二行只说明
+         队列会收进哪三类事项（阻塞 / 待复核 / 已交接），不提按钮 —— 这里没有
+         可按的东西。 */
+      "waiting.empty.hint": "被阻塞、待复核或已交接的任务会出现在这里。",
     },
   };
 
