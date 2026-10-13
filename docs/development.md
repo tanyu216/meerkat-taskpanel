@@ -156,16 +156,31 @@ second `taskd` on the same `TASKD_DATA_DIR` is refused with
 `BOARD_ALREADY_RUNNING` (HTTP 409 in the payload; the program prints the message
 and exits non-zero). The refusal names the pid that holds the lock.
 
-Two operator-facing consequences:
+Three operator-facing consequences:
 
 - **A crashed daemon needs no cleanup.** A lock whose `pid` is gone is a fossil:
   the next start logs `writer_lock_stale`, removes it and carries on. Only a
   *live* holder blocks a start. (`SIGKILL` therefore costs nothing but the lock
   file.)
-- **The runtime pointer belongs to its owner.** A process removes the pointer
-  only while the file still names its own pid, so an exiting instance can never
-  unplug a live board. That is the rule `taskctl` already applies when *reading*
-  a pointer, now applied when deleting one.
+- **The runtime pointer belongs to its owner, and the owner is the
+  `(pid, dataDir)` pair.** Both halves are load-bearing: a process removes the
+  pointer only while the file still names its own pid *and* its own data
+  directory, so an exiting instance can never unplug a live board — not one
+  behind another pid, and not one behind another data directory wearing the same
+  pid. The write side obeys the same pair: a board whose data directory is not
+  the sitting board's does not displace it, and is addressed beside its own data
+  directory instead, at `<dataDir>/runtime.json`.
+- **The reader falls back to that same file.** `taskctl` finds its board as
+  *explicit `--url`* → *a healthy runtime pointer* → *lazy start*. The pointer
+  step reads the machine-wide slot first, and only when the slot is absent or
+  unreadable, or names a **different** board's data directory, is
+  `<dataDir>/runtime.json` preferred over it — which is what keeps a board that
+  has been pushed off the slot reachable while it runs. A pointer path the caller
+  *named* (`TASKD_RUNTIME_POINTER`) is obeyed verbatim, on the reading side as on
+  the writing one. And if the fallback file turns out to be a fossil (a board
+  killed before it could remove it), the slot's board is believed *when it
+  answers* before anything is spawned, so the lazy start cannot take a live
+  board's address away from it.
 
 If you see `BOARD_ALREADY_RUNNING` and believe no board is running, stop the
 named pid first; if that process is gone, the stale lock is removed

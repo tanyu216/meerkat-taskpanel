@@ -96,11 +96,17 @@ function namesAnotherBoard(pointer, dataDir) {
  * `null` when the fallback does not apply.
  *
  * It applies when the machine-wide slot does **not** name this board: either the
- * slot is empty, or it names another board (a different data directory). A
- * pointer that names nobody — no `dataDir`, or a file that will not parse —
- * cannot claim to be this board either, so the local file wins; that is the same
- * "a pointer with no owner protects nobody" rule the write side and
- * `removeRuntimePointer` apply.
+ * slot is absent or unreadable, or it names another board (a different data
+ * directory).
+ *
+ * A pointer that parses but carries no usable `dataDir` — absent, empty or blank
+ * — is **not** one of those cases: it is unowned, yet the slot's address still
+ * stands and nothing falls back to the local file. The write side answers the
+ * same unowned pointer the other way round — `liveForeignHolder` sees nobody to
+ * protect and takes the slot, `removeRuntimePointer` removes it — so "a pointer
+ * with no owner protects nobody" is a rule about *overwriting*, not about which
+ * address a reader believes. The read and write sides are not symmetric here, and
+ * the rule must not be carried across.
  *
  * @param {{env: NodeJS.ProcessEnv, dataDir: string|null, incumbent: object|null}} input
  * @returns {object|null}
