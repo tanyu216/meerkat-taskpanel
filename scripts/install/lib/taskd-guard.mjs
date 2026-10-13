@@ -460,10 +460,12 @@ export async function installGuard(options = {}) {
   // enabled.
   const healthWaitMs = options.healthWaitMs ?? READY_TIMEOUT_MS;
   const readiness = await waitForHealth({
-    // The machine-wide pointer, and the address a board falls back to when
-    // another live board already holds that slot (`runtime-pointer.mjs`). Our
-    // unit is one of those two; asking only the first would call a healthy
-    // second board unready.
+    // Two candidates, because a board has two addresses and either can be its own:
+    // the pointer this install resolved (the operator's `TASKD_RUNTIME_POINTER` when
+    // set, else the machine-wide one), and the file beside its data directory — where
+    // a board is addressed when another live board already holds the machine-wide slot
+    // (`runtime-pointer.mjs`). Asking only the first would call a healthy second board
+    // unready.
     pointers: [paths.pointerFile, join(paths.dataDir, RUNTIME_FILENAME)],
     dataDir: paths.dataDir,
     pid: report.pid,
