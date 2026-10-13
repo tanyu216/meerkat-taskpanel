@@ -140,26 +140,81 @@ export function readPointer({ env = process.env, path, dataDir = null, platform,
 }
 
 /**
+ * Does this pointer name an address that answers `/health`?
+ * @param {object|null} pointer
+ * @returns {Promise<boolean>}
+ */
+async function answers(pointer) {
+  return pointer !== null && typeof pointer.url === "string" && (await probeHealth(pointer.url));
+}
+
+/**
+ * The machine-wide slot, when it answers and this invocation may still consult
+ * it: it did not *name* a path, and the preferred pointer did not come from the
+ * slot itself.
+ *
+ * It is a candidate because the data-directory fallback can be a fossil — a
+ * board killed before it could remove the file beside its own data directory.
+ * Autostarting over that fossil would spawn a daemon that takes the slot's
+ * address away from the live board holding it: the spawn handoff *names* that
+ * path (`spawnTaskd`), so the write side's "never displace a live board" rule
+ * does not apply to the daemon this process starts. A board that answers at the
+ * slot is therefore believed before anything is spawned.
+ *
+ * @param {{env: NodeJS.ProcessEnv, pointerPath: string|undefined, preferred: object|null, platform?: string, home?: string}} input
+ * @returns {Promise<object|null>}
+ */
+async function answeredSlotPointer({ env, pointerPath, preferred, platform, home }) {
+  // A *named* path (the option, or `TASKD_RUNTIME_POINTER`) means the namespace
+  // is the caller's and the machine-wide slot is not this invocation's to reach
+  // into; and when `preferred` *is* the slot's own pointer, it has already
+  // answered no. Either way there is nothing to add.
+  if (pointerPath !== undefined) return null;
+  const slotPath = resolveRuntimePointerPath({ env, platform, home });
+  if (preferred !== null && preferred.path === slotPath) return null;
+
+  const slot = readPointer({ env, path: slotPath });
+  return slot !== null && (await answers(slot)) ? slot : null;
+}
+
+/**
  * Resolve the board to talk to, starting one if needed.
  *
- * The pointer step is `readPointer`'s — data-directory fallback included — so
- * the token the CLI resolved from the same call belongs to the board that
- * answers here.
+ * The pointer step is `readPointer`'s — data-directory fallback included — with
+ * the machine-wide slot as a second candidate before anything is spawned (see
+ * `answeredSlotPointer`). The token the CLI resolved from the same call belongs
+ * to this invocation's board rather than to the slot's; a board this process
+ * starts itself is on loopback, where no token is required at all
+ * (`server/auth.mjs`).
  *
- * @param {{url?: string|null, env?: NodeJS.ProcessEnv, pointerPath?: string, waitMs?: number}} [options]
+ * @param {{url?: string|null, env?: NodeJS.ProcessEnv, pointerPath?: string, waitMs?: number, platform?: string, home?: string}} [options]
+ *   `platform`/`home` mean the same thing they do to `resolveRuntimePointerPath`
+ *   — they are how a test pins the machine-wide slot somewhere harmless.
  * @returns {Promise<{url: string, autostarted: boolean, pointer: object|null}>}
  * @throws {DomainError} CLI_IO when there is no board and none may be started
  */
 export async function ensureBoard(options = {}) {
-  const { url = null, env = process.env, pointerPath, waitMs = AUTOSTART_TIMEOUT_MS } = options;
+  const {
+    url = null,
+    env = process.env,
+    pointerPath,
+    waitMs = AUTOSTART_TIMEOUT_MS,
+    platform,
+    home,
+  } = options;
 
   if (typeof url === "string" && url.trim() !== "") {
     return { url: url.replace(/\/+$/, ""), autostarted: false, pointer: null };
   }
 
-  const pointer = readPointer(pointerPath === undefined ? { env } : { env, path: pointerPath });
-  if (pointer !== null && typeof pointer.url === "string" && (await probeHealth(pointer.url))) {
+  const pointer = readPointer(pointerPath === undefined ? { env, platform, home } : { env, path: pointerPath });
+  if (await answers(pointer)) {
     return { url: pointer.url.replace(/\/+$/, ""), autostarted: false, pointer };
+  }
+
+  const slot = await answeredSlotPointer({ env, pointerPath, preferred: pointer, platform, home });
+  if (slot !== null) {
+    return { url: slot.url.replace(/\/+$/, ""), autostarted: false, pointer: slot };
   }
 
   if (env[NO_AUTOSTART_ENV] === "1" || env[NO_AUTOSTART_ENV] === "true") {
@@ -181,7 +236,7 @@ export async function ensureBoard(options = {}) {
 
   const started = await spawnTaskd({
     env,
-    pointerPath: pointerPath ?? resolveRuntimePointerPath({ env }),
+    pointerPath: pointerPath ?? resolveRuntimePointerPath({ env, platform, home }),
     waitMs,
   });
   return { url: started.url.replace(/\/+$/, ""), autostarted: true, pointer: started.pointer };

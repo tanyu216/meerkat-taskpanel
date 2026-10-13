@@ -22,11 +22,11 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
-import { readPointer } from "../../src/shared/transport/runtime.mjs";
+import { ensureBoard, readPointer } from "../../src/shared/transport/runtime.mjs";
 import { resolveRuntimePointerPath } from "../../src/shared/runtime-locator.mjs";
 import {
   baseEnv,
@@ -148,6 +148,21 @@ describe("cli/pointer-fallback — the pointer the reader believes", () => {
 });
 
 describe("cli/pointer-fallback — a real board pushed off the slot", () => {
+  it("resolves the slot's pointer only once when that is all there is", async () => {
+    const home = makeTempDir();
+    const dataDir = makeTempDir();
+    const dead = await closedPortUrl();
+    writePointerAt(slotPath(home), { url: dead, dataDir: other.dataDir, pid: other.pid });
+
+    // Nothing beside this data directory, so the slot pointer *is* the preferred
+    // one: a second candidate reading the same file would be the same question
+    // asked twice, and the refusal is the ordinary one.
+    await assert.rejects(
+      () => ensureBoard({ env: { TASKD_DATA_DIR: dataDir, TASKD_NO_AUTOSTART: "1" }, home }),
+      (err) => err.code === "CLI_IO" && /not answering/.test(err.message),
+    );
+  });
+
   it("reaches it through the CLI with nothing but TASKD_DATA_DIR", async () => {
     const home = makeTempDir();
     const otherDir = makeTempDir();
@@ -193,6 +208,46 @@ describe("cli/pointer-fallback — a real board pushed off the slot", () => {
       );
     } finally {
       await board.close();
+    }
+  });
+
+  it("believes the slot's live board rather than spawning over a fossil", async () => {
+    const home = makeTempDir();
+    const dataDir = makeTempDir();
+    const slot = slotPath(home);
+    const dead = await closedPortUrl();
+    const live = await startTaskd(); // another board: its own data directory, its own address
+    try {
+      // The fallback file is a *fossil*: a board killed before it could remove
+      // the address beside its own data directory. The slot's board, meanwhile,
+      // is up and answering.
+      writePointerAt(join(dataDir, "runtime.json"), {
+        url: dead,
+        host: "127.0.0.1",
+        port: Number(new URL(dead).port),
+        dataDir,
+        pid: 999_001,
+      });
+      writePointerAt(slot, live.pointer);
+      const slotBefore = readFileSync(slot, "utf8");
+
+      const created = runCli(
+        ["project", "create", "--id", "slot-board", "--name", "SLOT-BOARD", "--json"],
+        { url: live.url, dataDir: live.dataDir },
+      );
+      assert.equal(created.status, 0, created.stderr);
+
+      // `TASKD_NO_AUTOSTART=1` (the harness default) makes this sharp: believing
+      // the fossil would fail the invocation, and spawning a board for it would
+      // hand the spawn a *named* pointer path — the machine-wide one — so that
+      // daemon would take the live board's address away (the write side's "never
+      // displace a live board" rule does not reach a daemon this process starts).
+      const listed = runCli(["project", "list", "--json"], { dataDir, noUrl: true, env: slotChildEnv(home) });
+      assert.equal(listed.status, 0, `a reachable board must be believed\n${listed.stdout}${listed.stderr}`);
+      assert.deepEqual(JSON.parse(listed.stdout).data.projects.map((p) => p.id), ["slot-board"]);
+      assert.equal(readFileSync(slot, "utf8"), slotBefore, "the live board keeps its address, byte for byte");
+    } finally {
+      await live.close();
     }
   });
 });
