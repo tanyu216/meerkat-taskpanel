@@ -131,9 +131,16 @@ watch(view, closeMoveMenu);
          rest and only the attribute changes when the board empties. It is a
          sibling of `[data-board]`, not a child: the board is the document's only
          horizontal scroller, and a board-level state does not scroll with the
-         columns. -->
+         columns.
+
+         Its face is the design's own `.td-empty .td-empty-lg` — the pair the
+         prototype ships (`design/prototype/index.html`, B12) and the pair the
+         contract's B12 note names, rather than the six utilities this block
+         carried (which drifted: `gap-1`'s 4px over the design's 12px, `p-10`'s
+         40px all round over 40px 24px, `rounded-lg`'s 8px over `--r-md`'s 6px).
+         See `.td-empty` in `app.css`. -->
     <div
-      class="flex flex-col items-center gap-1 p-10 text-center text-(--brand-text-3) border border-dashed border-(--brand-border-strong) rounded-lg"
+      class="td-empty td-empty-lg"
       data-empty
       data-empty-kind="no-results"
       :hidden="boardState !== 'empty'"
@@ -182,8 +189,8 @@ watch(view, closeMoveMenu);
         </g>
         <circle cx="24.8" cy="3.4" r="2.1" fill="var(--color-primary)" />
       </svg>
-      <span class="font-medium text-(--brand-text-2)" data-i18n="noResults.title">{{ $t("noResults.title") }}</span>
-      <span class="text-[12px]" data-i18n="noResults.hint">{{ $t("noResults.hint") }}</span>
+      <span class="td-empty-title" data-i18n="noResults.title">{{ $t("noResults.title") }}</span>
+      <span class="td-empty-hint" data-i18n="noResults.hint">{{ $t("noResults.hint") }}</span>
       <button type="button" class="btn btn-outline btn-sm" @click="clearFilters">{{ $t("noResults.clear") }}</button>
     </div>
   </div>

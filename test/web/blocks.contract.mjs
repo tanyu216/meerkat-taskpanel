@@ -1753,6 +1753,41 @@ const BLOCKS = [
         within: "[data-column-body]",
         equals: 0,
       },
+      /* T-20261013-160505 — the family's own face, and the residency the design
+       * states in markup. The six non-result surfaces (this block's two, B08's
+       * no-rows row, B17's error, B26.5's two and B27.3's one) had grown into five
+       * hand-rolled utility stacks that each drifted from the design's `.td-empty`
+       * by the same four properties: `gap-1`'s 4px over 8px, `p-4`'s even 16px over
+       * `16px 12px`, `rounded-lg`'s 8px over `--r-md`'s 6px, and a title/hint
+       * whose sizes are the design's 12px/11px (or 14px/12px under `-lg`, a
+       * parent→child relation no utility list can carry). The family now lives once
+       * in `app.css`; these rules are what keeps it from being re-flattened into
+       * utilities one surface at a time. A `computed` probe reads the *declared*
+       * value, so it holds for a block that is `hidden` at rest — which every one
+       * of the six is. */
+      { kind: "classes", probe: "[data-empty][data-empty-kind=\"column\"]", includes: ["td-empty"] },
+      { kind: "classes", probe: "[data-empty][data-empty-kind=\"no-results\"]", includes: ["td-empty", "td-empty-lg"] },
+      { kind: "computed", probe: "[data-empty][data-empty-kind=\"column\"]", property: "gap", equalsPx: 8 },
+      { kind: "computed", probe: "[data-empty][data-empty-kind=\"column\"]", property: "paddingTop", equalsPx: 16 },
+      { kind: "computed", probe: "[data-empty][data-empty-kind=\"column\"]", property: "paddingRight", equalsPx: 12 },
+      { kind: "computed", probe: "[data-empty][data-empty-kind=\"column\"]", property: "borderRadius", equalsPx: 6 },
+      { kind: "computed", probe: "[data-empty][data-empty-kind=\"column\"]", property: "borderTopStyle", equals: "dashed" },
+      { kind: "computed", probe: "[data-empty][data-empty-kind=\"column\"]", property: "textAlign", equals: "center" },
+      { kind: "computed", probe: "[data-empty][data-empty-kind=\"column\"] .td-empty-title", property: "fontSize", equalsPx: 12 },
+      { kind: "computed", probe: "[data-empty][data-empty-kind=\"column\"] .td-empty-hint", property: "fontSize", equalsPx: 11 },
+      { kind: "computed", probe: "[data-empty][data-empty-kind=\"no-results\"]", property: "paddingTop", equalsPx: 40 },
+      { kind: "computed", probe: "[data-empty][data-empty-kind=\"no-results\"]", property: "paddingRight", equalsPx: 24 },
+      { kind: "computed", probe: "[data-empty][data-empty-kind=\"no-results\"] .td-empty-title", property: "fontSize", equalsPx: 14 },
+      { kind: "computed", probe: "[data-empty][data-empty-kind=\"no-results\"] .td-empty-hint", property: "fontSize", equalsPx: 12 },
+      /* The seven column-level empties are **resident** — one per column body,
+       * `hidden` while the column has cards — exactly as the prototype ships them
+       * (`design/prototype/index.html`, B12: seven, all `hidden` at rest) and as
+       * every other state member of this app is (B26.5 asserts its own `count: 2`
+       * for the same reason). A `v-if` made the block unobservable at rest, which
+       * is what the two-state rounds settled *against* — and R10 ① is explicit
+       * that these seven are **never** counted in the board-level tally, so their
+       * presence costs the board-level pair nothing. */
+      { kind: "count", selector: "[data-empty][data-empty-kind=\"column\"]", equals: 7 },
       {
         kind: "manual",
         note:
@@ -1761,7 +1796,10 @@ const BLOCKS = [
           "attribute, and a class cannot appear in this contract. The shipped markup is " +
           "`<div class=\"td-empty td-empty-lg\" data-empty data-empty-kind=\"no-results\" hidden>`. " +
           "(BLOCKS.md B12 used to write it as `[data-empty-lg]`; Elon's ruling ② held the doc " +
-          "wrong rather than the DOM, and B12 was corrected to the markup above.)",
+          "wrong rather than the DOM, and B12 was corrected to the markup above.) The " +
+          "`classes` rule above now holds the shipped implementation to that exact pair — " +
+          "until T-20261013-160505 it carried six utilities instead and the class never " +
+          "appeared in the app at all.",
       },
       {
         kind: "manual",
@@ -1893,6 +1931,30 @@ const BLOCKS = [
     states: [],
     rules: [
       { kind: "count", selector: "[data-error-state]", min: 1, max: 1 },
+      /* T-20261013-160505 — the surface's own face. The design puts the
+       * danger-coloured glyph over a **centred** title/hint/Retry stack on one
+       * hairline (`design/prototype/src/input.css` `.td-error`, and the B18 demo
+       * the block was measured from). The shipped banner was a left-aligned,
+       * border-less `m-4` box whose title and hint were 14px/12px — the *large*
+       * empty state's type — so the surface the style guide reserves for a failure
+       * read like a card of body copy. Its background stays this app's `bg-error/12`
+       * (R10's registered deviation from the design's flat `--color-td-danger-soft`
+       * — the `computed` leg names no colour, on purpose); the icon's colour is
+       * daisyUI's `--color-error`, the identical `#c0392b` the prototype's glyph
+       * reads, so no literal enters either stylesheet (C08). */
+      { kind: "classes", probe: "[data-error-state]", includes: ["td-error"] },
+      { kind: "computed", probe: "[data-error-state]", property: "alignItems", equals: "center" },
+      { kind: "computed", probe: "[data-error-state]", property: "borderTopWidth", equalsPx: 1 },
+      { kind: "computed", probe: "[data-error-state]", property: "borderRadius", equalsPx: 6 },
+      { kind: "computed", probe: "[data-error-state] .td-empty-title", property: "fontSize", equalsPx: 12 },
+      { kind: "computed", probe: "[data-error-state] .td-empty-hint", property: "fontSize", equalsPx: 11 },
+      {
+        kind: "computed",
+        probe: "[data-error-state] svg.td-icon",
+        property: "color",
+        equalsVar: "--color-error",
+        count: 1,
+      },
       {
         kind: "manual",
         note:
@@ -2377,6 +2439,19 @@ const BLOCKS = [
        * point — a `v-if` would make each state unobservable until it fired. */
       { kind: "count", selector: "[data-activity-empty]", equals: 2 },
       { kind: "domain", selector: "[data-activity-empty]", attribute: "data-activity-empty-kind", subset: DOMAINS.ACTIVITY_EMPTY },
+      /* T-20261013-160505 — the pair's own face, byte for byte the design's:
+       * `design/activity/prototype.html`'s project variant wears
+       * `td-empty td-empty-lg td-activity-empty` and the filter one
+       * `td-empty td-activity-empty` (`DESIGN-activity.md` §8 draws the two as
+       * different sizes — the `-lg` split is the design's, not an implementation
+       * choice). The utilities they carried instead matched `.td-empty` on four
+       * of its properties but not on its box: `p-4` cannot express the `-lg`
+       * variant's 40px/24px, and `gap-1`/`rounded-lg` are 4px/8px where the
+       * design states 12px/6px. */
+      { kind: "classes", probe: "[data-activity-empty][data-activity-empty-kind=\"project\"]", includes: ["td-empty", "td-empty-lg", "td-activity-empty"] },
+      { kind: "classes", probe: "[data-activity-empty][data-activity-empty-kind=\"filter\"]", includes: ["td-empty", "td-activity-empty"] },
+      { kind: "computed", probe: "[data-activity-empty][data-activity-empty-kind=\"project\"]", property: "paddingTop", equalsPx: 40 },
+      { kind: "computed", probe: "[data-activity-empty][data-activity-empty-kind=\"filter\"]", property: "paddingTop", equalsPx: 16 },
       { kind: "count", selector: "[data-activity-empty-reset]", within: "[data-activity-empty-kind=\"filter\"]", equals: 1 },
       /* R-3 / §9.1 — **one dictionary**. The design page carried its own
        * `[data-activity-i18n]` catalogue; the shipped view reads the app's, so the
@@ -2455,6 +2530,23 @@ const BLOCKS = [
       { kind: "count", selector: "[data-waiting-count]", equals: 1 },
       { kind: "count", selector: "[data-waiting-list]", equals: 1 },
       { kind: "count", selector: "[data-waiting-empty]", equals: 1 },
+      /* T-20261013-160505 — the empty state's face. This one is the plainest of
+       * the six: its markup already wore the design's own pair (`td-empty` +
+       * `td-empty-title`, with `.td-waiting-empty` capping and centring it, all
+       * three ported in R12x) while `app.css` had no `.td-empty` rule at all, so
+       * the shim classes resolved to nothing and the queue's empty state was the
+       * only one of the six with **no box** — no padding, no hairline, no centred
+       * line, at the default ink. The family is what it was written against, so
+       * these rules assert the box, not the markup. */
+      { kind: "classes", probe: "[data-waiting-empty]", includes: ["td-empty", "td-waiting-empty"] },
+      { kind: "classes", probe: "[data-waiting-empty] [data-i18n=\"waiting.empty\"]", includes: ["td-empty-title"] },
+      { kind: "computed", probe: "[data-waiting-empty]", property: "gap", equalsPx: 8 },
+      { kind: "computed", probe: "[data-waiting-empty]", property: "paddingTop", equalsPx: 16 },
+      { kind: "computed", probe: "[data-waiting-empty]", property: "borderTopWidth", equalsPx: 1 },
+      { kind: "computed", probe: "[data-waiting-empty]", property: "borderTopStyle", equals: "dashed" },
+      { kind: "computed", probe: "[data-waiting-empty]", property: "borderRadius", equalsPx: 6 },
+      { kind: "computed", probe: "[data-waiting-empty] .td-empty-title", property: "fontSize", equalsPx: 12 },
+      { kind: "computed", probe: "[data-waiting-empty] .td-empty-title", property: "fontWeight", equals: "500" },
       /* §30.2 — one name per destination: the heading over the queue and the
        * sidebar's nav item carry the *same* string, so they cannot drift. */
       { kind: "count", selector: "[data-waiting-count]", within: "[data-waiting-head]", equals: 1 },
