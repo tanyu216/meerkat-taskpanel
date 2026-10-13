@@ -247,7 +247,9 @@ rm ~/.config/systemd/user/meerkat-taskpanel-taskd.service
 ```
 
 **Internal bypasses** (not user options): `--no-automation` skips the guard along with
-its other automation targets (see its row in the flag table below); `--dry-run`
+its other automation targets (see its row in the flag table below), and its environment
+form `MEERKAT_TASKPANEL_NO_AUTOMATION=1` — the variable `install.sh` sets for each host
+installer — skips exactly the same things; `--dry-run`
 writes and loads nothing and reports `taskd guard: skipped (dry-run)`;
 `MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE=1` skips the guard and is **for tests only**.
 
@@ -291,6 +293,7 @@ install.sh [--target claude|openclaw|codex|pi|all] [--prefix <home>]
 | `--prefix <home>` | Install relative to `<home>` instead of `$HOME`. |
 | `--agent-name <name>` | The agent's identity on the board, written into the claude/codex bundle (default `$USER`). Must equal the board assignee for the agent to claim cards. |
 | `--no-automation` | Skip **all** Codex automation — the claim trigger *and* the scheduling units — **and** the `taskd` keepalive guard; the Claude/OpenClaw/Pi skill bundles are otherwise unaffected. |
+| `MEERKAT_TASKPANEL_NO_AUTOMATION=1` | The environment form of the `--no-automation` bypass — `install.sh` sets exactly this variable for each host installer, and `scripts/install/_common.sh` reads it, so a direct installer run honours it too. Internal bypass, not a user option. |
 | `--claim-unassigned=yes\|no` | May the supervisor claim **unassigned** cards (the public pool)? Persisted to `<home>/<host>/meerkat-taskpanel.env`; overrides the interactive answer. Default `yes`. |
 | `--assignee-only` | Alias for `--claim-unassigned=no`. |
 | `--supervisor=enable\|disable\|status` | Opt-in control of the supervisor **daemon** (the units above): `enable` loads/enables it, `disable` unloads/removes it, `status` prints the per-host load state and changes nothing. Off by default — a plain install still only *prints* the load command. Aliases: `--enable-supervisor`, `--disable-supervisor`, `--supervisor-status`. See [Enabling the supervisor (opt-in)](#enabling-the-supervisor-opt-in). |
@@ -305,7 +308,8 @@ install.sh [--target claude|openclaw|codex|pi|all] [--prefix <home>]
 **The `taskd` guard is always enabled and has no user flag.** Every install writes
 the `taskd` keepalive unit and loads it — there is no switch to turn it on and no prompt
 to answer (see [The taskd guard](#the-taskd-guard-keepalive-always-enabled)). The
-bypasses are `--no-automation`, `--dry-run`, and — **for tests only** —
+bypasses are `--no-automation` (or its environment form
+`MEERKAT_TASKPANEL_NO_AUTOMATION=1`), `--dry-run`, and — **for tests only** —
 `MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE=1`. This is the one exception to "write the unit,
 print the load command, never start a daemon"; the `meerkat-loop` units keep that rule.
 
@@ -455,8 +459,8 @@ scheduling set (`~/.codex/scheduling/*`, the `wake-codex.sh` glue and
 `~/.codex/meerkat-taskpanel.env`). Codex has no hooks, so scheduling is the auto-claim
 mechanism — load one of the units (see
 [Scheduling units](#scheduling-units-claude-codex-pi)); the legacy trigger remains a
-minimal fallback you can schedule yourself. `--no-automation` skips the trigger *and* the
-scheduling set.
+minimal fallback you can schedule yourself. `--no-automation` (or its environment form
+`MEERKAT_TASKPANEL_NO_AUTOMATION=1`) skips the trigger *and* the scheduling set.
 
 Uninstall:
 
