@@ -283,6 +283,11 @@ systemctl --user enable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-pat
 crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 ```
 
+That is the **manual** path, and it is all a plain install does. Loading is a separate,
+explicit act: the opt-in switch is [`--supervisor=enable`](#enabling-the-supervisor-opt-in)
+below, and it is the one thing that makes an installer load a unit or run `crontab` for you
+— see the exception stated there.
+
 ### OpenClaw: do not build a supervisor
 
 OpenClaw is the one host with a scheduler of its own. The
@@ -305,6 +310,201 @@ git clone https://github.com/tanyu216/openclaw-team && cd openclaw-team
 
 Meerkat TaskPanel is that framework's default board, and its claim and candidate
 criteria are kept in lockstep with openclaw-team's poll — which is the point.
+
+## Enabling the supervisor (opt-in)
+
+Everything above describes units the installer **writes and never loads**. The enable
+capability adds one deliberate act on top: `install.sh --supervisor=enable` (alias
+`--enable-supervisor`) performs the per-OS load below. Without it, behaviour is unchanged —
+the manual commands in the section above are still the whole story.
+
+That is the single exception to the rule, stated once and pointed at rather than repeated:
+**an installer never loads a unit or runs `crontab` for you — unless you ask.** Asking is
+always explicit (the flag, `MEERKAT_TASKPANEL_SUPERVISOR=enable`, or answering **yes** to
+the one-time TTY question, whose default is **N**): enabling is never a silent default, and
+a plain `install.sh` still only prints the load command. The flag surface, the TTY question
+and the env var are documented once in
+[`install.md §Enabling the supervisor (opt-in)`](install.md#enabling-the-supervisor-opt-in);
+this section is the per-OS detail, the failure modes, and what an enabled daemon runs.
+
+The switch is `--supervisor=enable|disable|status` with
+`--supervisor-hosts claude,codex,pi` (which hosts; default: the loop hosts in `--target`)
+and `--scheduler auto|launchd|systemd|cron` (which mechanism; default `auto`). On
+`--target all`, `--supervisor=enable` enables **claude, codex and pi** — and only those
+(see [OpenClaw stays excluded](#openclaw-stays-excluded)).
+
+Per-OS commands below are written for the Claude install (`~/.claude`); for Codex and Pi
+substitute `~/.codex` / `~/.agents` for the host directory and `codex` / `pi` for
+`--host`. `<agent>` is the `--agent-name` from the install (default `$USER`), and
+`<uid>` is `id -u`.
+
+### macOS — launchd
+
+The installer already wrote both units
+(`<host-dir>/scheduling/launchd/com.meerkat-taskpanel.{poll,patrol}.plist`); enabling means
+bootstrapping them, one per unit:
+
+```bash
+launchctl bootstrap gui/$(id -u) ~/.claude/scheduling/launchd/com.meerkat-taskpanel.poll.plist
+launchctl bootstrap gui/$(id -u) ~/.claude/scheduling/launchd/com.meerkat-taskpanel.patrol.plist
+```
+
+`launchctl bootstrap gui/$(id -u)` is the modern, persistent form (the job survives a
+reboot). Where `bootstrap` is unavailable (older macOS), the legacy fallback is
+`launchctl load -w <plist>` (`-w` = persist across reboot).
+
+**Disable** — by label, both units:
+
+```bash
+launchctl bootout gui/$(id -u)/com.meerkat-taskpanel.<agent>.claude.poll
+launchctl bootout gui/$(id -u)/com.meerkat-taskpanel.<agent>.claude.patrol
+```
+
+(legacy fallback: `launchctl unload -w <plist>`).
+
+**Status**:
+
+```bash
+launchctl print gui/$(id -u)/com.meerkat-taskpanel.<agent>.claude.poll
+```
+
+Exit 0 with a `state =` line ⇒ loaded; `Could not find service …` ⇒ not loaded. Repeat for
+`patrol`.
+
+**Failure modes.**
+
+| Symptom | Meaning | What the enable path does |
+|---|---|---|
+| `Bootstrap failed: 5: Input/output error` | no Aqua/GUI session — an SSH-only or headless launchd context | reports it and tells you to retry from a GUI login session (or use `launchctl load -w`). It does **not** claim success |
+| `Bootstrap failed: 37: … already bootstrapped` (legacy: `service already loaded`) | already loaded | **idempotent success** — reports `already enabled`, exit 0 |
+| `Could not find service` on disable | not loaded | **idempotent no-op** — reports `already disabled`, exit 0 |
+
+### Linux — systemd `--user`
+
+A `--user` unit has to be copied **and** reloaded before it can be enabled — the ordering
+is load-bearing:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp ~/.claude/scheduling/systemd/* ~/.config/systemd/user/
+systemctl --user daemon-reload
+```
+
+**Enable / disable / status:**
+
+```bash
+systemctl --user enable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer
+systemctl --user disable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer
+systemctl --user is-enabled meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer   # add is-active for "running now"
+```
+
+**The headless caveat: lingering.** A `systemd --user` manager is torn down when the user's
+last session ends, so without lingering the "enabled" units stop the moment the login
+session closes — the background supervisor then **silently does nothing**. To run truly
+headless, while logged out, lingering must be on:
+
+```bash
+loginctl enable-linger "$USER"
+```
+
+The enable path therefore **warns when linger is off**; turn it on if the supervisor is
+meant to survive logout. The warning appears in the enable report on Linux hosts.
+
+**Failure modes.**
+
+| Symptom | Meaning | What the enable path does |
+|---|---|---|
+| `Failed to connect to bus: …` | no user D-Bus / no `systemd --user` (containers, WSL without systemd, non-systemd distros) | reports it and recommends `--scheduler=cron` |
+| unit not found | the `cp` was skipped, or `daemon-reload` never ran | names both steps |
+
+### Anywhere — cron
+
+Cron is the cross-platform fallback — any OS, and the only option where launchd and systemd
+are absent. The generated `~/.claude/scheduling/cron/meerkat-taskpanel.cron` is the
+*content*; enabling installs it into your crontab **wrapped in a managed marker block**, so
+it is idempotent and cleanly removable:
+
+```cron
+# >>> meerkat-taskpanel (~/.claude) >>>
+* * * * * /usr/bin/env node ~/.claude/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --once --log ~/.claude/meerkat-taskpanel/supervisor.log --state ~/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1
+*/5 * * * * /usr/bin/env node ~/.claude/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --patrol-only --once --log ~/.claude/meerkat-taskpanel/supervisor.log --state ~/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1
+# <<< meerkat-taskpanel (~/.claude) <<<
+```
+
+(The manual path above — `crontab <file>` — drops the same two lines in *without* a marker
+block; the enable path is the one that wraps them. The `(~/.claude)` in the marker is the
+host directory, so the three hosts get three independent blocks.)
+
+- **Enable** reads `crontab -l`, strips any existing `meerkat-taskpanel (~/.claude)` block,
+  appends the fresh one, and writes it back with `crontab -`. Re-enabling **replaces**,
+  never duplicates — the marker block *is* the idempotency key, because cron has no other
+  machine-readable "enabled" state.
+- **Disable** does the same but only strips; no block ⇒ no-op.
+- **Status** is `crontab -l | sed -n '/>>> meerkat-taskpanel (~/.claude) >>>/,/<<< meerkat-taskpanel (~/.claude) <<</p'`.
+
+**Failure modes.**
+
+| Symptom | Meaning | What happens |
+|---|---|---|
+| `no crontab for <user>` (`crontab -l` exits 1) | no crontab yet | treated as empty — the enable does not abort |
+| the cron daemon is not running | nothing fires | the block is written but never runs; stated, not hidden |
+| macOS TCC | a job touching a protected path is silently blocked | the cron / `node` binary needs Full Disk Access — a caveat, not an error |
+| the machine sleeps | cron has no run-at-load | a tick is simply missed; the 60s poll recovers on the next tick |
+
+### What an enabled supervisor runs
+
+An enabled unit is just a clock: it runs the supervisor, and the supervisor claims and
+wakes. Enabling does **not** change the worker's permission boundary, which is documented
+in full at [Headless permission boundary](#headless-permission-boundary) — nothing here
+loosens it: the generated wake glues ship **no** bypass flag by default, and turning one on
+still needs the written authorization, documented at the point of use, that section
+describes.
+
+- **Identity and parameters.** The units start the supervisor with `--agent <agent>`
+  (`--agent-name`, default `$USER`), `--host <h>`, `--once` per tick, the default
+  `--max-concurrency 8`, and the claim policy read from `<host-dir>/meerkat-taskpanel.env`.
+  The supervisor then starts the wake glue (`<host-dir>/bin/wake-<host>.sh`), which runs the
+  host's headless entry point non-interactively: `claude -p "<handoff>" [--resume <sid>]` /
+  `codex exec "<handoff>"` / `pi --print "<handoff>"`.
+- **Logs.** `<host-dir>/meerkat-taskpanel/supervisor.log` (the supervisor's `--log`). The
+  unit's own stdout/stderr go to the **same** file — launchd `StandardOutPath` /
+  `StandardErrorPath`, systemd `append:{{LOG}}`, and cron `>/dev/null 2>&1` because `--log`
+  already writes it.
+- **State.** `<host-dir>/meerkat-taskpanel/supervisor.state.json` — the running registry.
+- **Working directory.** A woken worker still `cd`s to the card's project directory,
+  resolved by the wake glue from the host-local `projects.json`; enabling changes nothing
+  here (see [Where a worker runs](#where-a-worker-runs)).
+
+### One mechanism per host, and the cost gate
+
+- **One scheduler per host.** `--scheduler` picks exactly one. To move a host from, say,
+  cron to launchd, disable the first: the enable path may do disable-then-enable, but it
+  never leaves two loaded. Two loaded units for one host only race each other for the same
+  cards.
+- **The cost gate does not change.** Enabling adds the 1-minute scan and nothing else — it
+  is **not** an always-on LLM, and it does not alter the cost model. An empty tick is one
+  local `taskctl issue candidates` read (**$0**), and an LLM turn starts **only when a
+  claim succeeded**; patrol stays LLM-free by default (`--patrol-llm=no`). See
+  [The cost gate: a turn starts only on fire](#the-cost-gate-a-turn-starts-only-on-fire).
+- **Disable and status** are part of the same entry point: `--supervisor=disable` unloads /
+  removes, `--supervisor=status` prints the per-host load state and changes nothing
+  (per-OS forms above).
+
+### OpenClaw stays excluded
+
+The new switch does not change the [OpenClaw
+ruling](#openclaw-do-not-build-a-supervisor). `--target openclaw` still installs the
+**board skill only** — no `meerkat-loop` skill, no units, no glue, so nothing to enable.
+`--target all --supervisor=enable` **skips** openclaw: the enable action applies only to
+`{claude,codex,pi}`. `--supervisor-hosts openclaw` is **rejected** (reason on stderr, exit
+2).
+
+> **Not yet wired.** This section states the enable contract; the installer-side
+> implementation (`scripts/install/_common.sh` and the per-host
+> `scripts/install/<host>.sh` pass-through of `MEERKAT_TASKPANEL_SUPERVISOR`) — and the
+> matching `skills/meerkat-loop/SKILL.md` / `references/operation.md` wording — land in the
+> follow-on implementation change. Until then the **manual** commands above are the only
+> working path.
 
 ## Running the supervisor
 
@@ -434,7 +634,8 @@ its row above is the wake form alone.
 
 ## See also
 
-- [`install.md`](install.md) — the installer flags, including `--claim-unassigned`.
+- [`install.md`](install.md) — the installer flags, including `--claim-unassigned` and the
+  opt-in `--supervisor=enable|disable|status`.
 - [`../skills/meerkat-loop/SKILL.md`](../skills/meerkat-loop/SKILL.md) — the loop as the
   skill it is distributed as, and the board interface generation it requires;
   [`references/operation.md`](../skills/meerkat-loop/references/operation.md) is the
