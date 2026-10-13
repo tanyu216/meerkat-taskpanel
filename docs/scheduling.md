@@ -391,13 +391,17 @@ taskd guard: enabled (com.meerkat-taskpanel.taskd, pid …)
 the job. A loaded unit gets a pid within milliseconds of a spawn that may then die, which
 is exactly how a `PATH`-broken unit could report `enabled (…, pid 17388)` while the log
 filled with `env: node: No such file or directory`. So after loading, the install waits
-(`AUTOSTART_TIMEOUT_MS`, the same budget the CLI's lazy start uses) for the runtime
-pointer to name this unit's board *and* for that address to answer `/health` — the same
-`probeHealth` the CLI trusts. A unit that is loaded but not serving is reported as such,
-with the log to read:
+for the runtime pointer to name this unit's board *and* for that address to answer
+`/health` — the same `probeHealth` the CLI trusts.
+
+The budget is `READY_TIMEOUT_MS` (10s), deliberately **twice** the CLI's
+`AUTOSTART_TIMEOUT_MS`: that one bounds a *call*, this one the last step of an *install*,
+and the two mistakes are not symmetric — a slow but healthy board reported `not ready`
+reads exactly like the crash loop this gate exists to expose. A unit that is loaded but
+not serving is reported as such, with the log to read:
 
 ```text
-taskd guard: loaded (com.meerkat-taskpanel.taskd, pid 17388); /health did not answer within 5000ms — read <dataDir>/logs/taskd.log
+taskd guard: loaded (com.meerkat-taskpanel.taskd, pid 17388); /health did not answer within 10000ms — read <dataDir>/logs/taskd.log
 ```
 
 Neither line fails the install (the host skills are installed either way), but only the

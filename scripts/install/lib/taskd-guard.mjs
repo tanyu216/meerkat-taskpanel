@@ -66,7 +66,6 @@ import { fileURLToPath } from "node:url";
 import { render, writeFileIdempotent } from "./apply.mjs";
 import {
   AUTOSTART_POLL_MS,
-  AUTOSTART_TIMEOUT_MS,
   DATA_DIR_ENV,
   LOG_FILENAME,
   LOGS_DIRNAME,
@@ -86,6 +85,22 @@ export const TASKD_TEMPLATE_FILES = Object.freeze({
   launchd: "taskd/launchd/com.meerkat-taskpanel.taskd.plist",
   systemd: "taskd/systemd/meerkat-taskpanel-taskd.service",
 });
+
+/**
+ * How long the install waits for the newly loaded board to answer `/health`.
+ *
+ * **Twice** the CLI's `AUTOSTART_TIMEOUT_MS`, on purpose. That constant bounds a *call*
+ * — a client that waits longer than five seconds has failed its caller. This one bounds
+ * the last step of an *install*, where the only costs are bounded patience and a louder
+ * message, and the two failures are not symmetric: a board that is merely slow would be
+ * reported `loaded … /health did not answer`, which reads exactly like the crash loop
+ * this gate exists to expose. That is not hypothetical — during this card's own
+ * real-machine run (T-20261014-052428) a first spawn after `launchctl bootstrap` took
+ * ~5.5s under host load, while every isolated measurement of the same start is ~140ms.
+ * A false alarm on a healthy install is the worse outcome, so the budget is the one that
+ * tolerates it and the honest report survives for boards that are really dead.
+ */
+export const READY_TIMEOUT_MS = 10_000;
 
 /** This checkout's root, from `<root>/scripts/install/lib/`. */
 function repoRoot() {
@@ -443,7 +458,7 @@ export async function installGuard(options = {}) {
   // is a second question, and the one an operator actually cares about — so it is
   // asked, over the same `/health` the CLI trusts, before anything is called
   // enabled.
-  const healthWaitMs = options.healthWaitMs ?? AUTOSTART_TIMEOUT_MS;
+  const healthWaitMs = options.healthWaitMs ?? READY_TIMEOUT_MS;
   const readiness = await waitForHealth({
     // The machine-wide pointer, and the address a board falls back to when
     // another live board already holds that slot (`runtime-pointer.mjs`). Our
@@ -520,7 +535,7 @@ export async function waitForHealth(options) {
     pointers,
     dataDir = null,
     pid = null,
-    timeoutMs = AUTOSTART_TIMEOUT_MS,
+    timeoutMs = READY_TIMEOUT_MS,
     pollMs = AUTOSTART_POLL_MS,
     probe = probeHealth,
     readPointerFn = readPointer,
