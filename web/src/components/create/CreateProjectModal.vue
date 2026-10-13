@@ -11,10 +11,15 @@
  * be a second, weaker normalization (it cannot fold or trim) that only ever
  * agrees with the server by accident. Both fields are required, so an empty
  * prefix never reaches the network.
+ *
+ * A refusal is answered, never swallowed (C-PREFIX-1 M7): the server's own
+ * refusals — a prefix that normalizes away, one already taken, a conflict — are
+ * what `submit()` reports back to the reader, in the app's words, with the
+ * dialog still open.
  */
 import { computed, reactive, watch } from "vue";
 
-import { api } from "../../services/api.js";
+import { ApiError, api } from "../../services/api.js";
 import { loadProjects, selectProject } from "../../stores/board.js";
 import { createProjectOpen, pushToast } from "../../stores/ui.js";
 import { t } from "../../i18n/index.js";
@@ -29,13 +34,39 @@ watch(createProjectOpen, (open) => {
   }
 });
 
+/**
+ * The copy a refused create answers with (C-PREFIX-1 M7).
+ *
+ * The wire's own message is English and technical (`project prefix "####" has no
+ * usable identifier prefix`), so the dialog speaks the app's vocabulary instead.
+ * The two 400s are told apart by the refusal's **declared field**, not by its
+ * message: a prefix that normalizes away to nothing (M4) and one another project
+ * already numbers its cards with (M5) need different repairs from the reader,
+ * and neither is what a 409 or an unreachable board means.
+ */
+function refusalText(err) {
+  const declared = err instanceof ApiError && err.code === "VALIDATION_FAILED" && err.details?.field === "meta.prefix";
+  if (!declared) return t("toast.projectCreateFailed");
+  return err.details.conflictProjectId === undefined ? t("toast.projectPrefixUnusable") : t("toast.projectPrefixTaken");
+}
+
 async function submit() {
   if (!canSubmit.value) return;
-  const data = await api.createProject({ name: form.name.trim(), meta: { prefix: form.prefix.trim() } });
-  await loadProjects();
-  if (data?.project?.id) await selectProject(data.project.id);
-  pushToast(t("toast.projectCreated"), "success");
-  createProjectOpen.value = false;
+  try {
+    const data = await api.createProject({ name: form.name.trim(), meta: { prefix: form.prefix.trim() } });
+    await loadProjects();
+    if (data?.project?.id) await selectProject(data.project.id);
+    pushToast(t("toast.projectCreated"), "success");
+    createProjectOpen.value = false;
+  } catch (err) {
+    // M7 — a refusal is **visible**, and the dialog stays up holding what was
+    // typed so the reader repairs the prefix and submits again; the success path
+    // above is the only one that closes the dialog or announces a project. The
+    // catch covers the reload as well, on purpose: nothing in this flow may end
+    // in silence. Only the request can say *why* it was refused, though, so the
+    // prefix-specific wording is reserved for the codes that carry a reason.
+    pushToast(refusalText(err), "danger");
+  }
 }
 </script>
 
