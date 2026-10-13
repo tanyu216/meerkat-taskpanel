@@ -11,7 +11,7 @@
  * The dialog is always in the document and toggled by `hidden`, so the contract's
  * single `[data-create-task]` holds whether it is open or not.
  */
-import { computed, reactive, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 
 import { board, assigneeRoster, createTask, labelRoster, reporterRoster, PRIORITIES, taskRoster } from "../../stores/board.js";
 import { createTaskOpen, createTaskStatus } from "../../stores/ui.js";
@@ -39,10 +39,25 @@ const form = reactive({
 const peopleOptions = computed(() => board.assignees.map((entry) => ({ name: entry.display_name, kind: entry.kind, platform: entry.platform })));
 const reporterOptions = computed(() => reporterRoster.value.map((name) => ({ name })));
 const labelOptions = computed(() => labelRoster.value.map((name) => ({ name })));
-const parentOptions = computed(() => taskRoster.value.filter((entry) => entry.identifier !== form.parent));
-const dependsOptions = computed(() => taskRoster.value.filter((entry) => !form.depends.includes(entry.identifier)));
+/**
+ * Both relation fields are offered the **whole** roster, not the roster minus
+ * what is already chosen. The control drops the chosen entries from the menu on
+ * its own (they are its chips), which is what lets a chip name its task by
+ * identifier *and* title: the title is read back from the roster the row came
+ * from, and a pre-filtered list would have removed exactly that row
+ * (T-20261014-001418 ②).
+ */
+const relationOptions = taskRoster;
 
 const canSubmit = computed(() => form.title.trim() !== "" && form.project_id);
+
+/** The parent field, so its clear ✕ can empty the box with the value. */
+const parentField = ref(null);
+
+function clearParent() {
+  form.parent = "";
+  parentField.value?.clear();
+}
 
 function reset() {
   form.title = "";
@@ -203,21 +218,29 @@ async function submit() {
 
             <div class="flex flex-col gap-1 mb-3" data-create-task-parent>
               <span>{{ $t("createTask.field.parent") }} <span class="text-[11px] text-(--brand-text-3)" data-optional>{{ $t("createTask.optional") }}</span></span>
-              <div class="flex gap-1">
+              <!-- The chip row the control renders sits above the box, so the
+                   clear ✕ is levelled with the box (`items-end`) rather than
+                   stretched over the chips (B24, T-20261014-001418 ②). -->
+              <div class="flex items-end gap-1">
                 <ComboField
+                  ref="parentField"
                   v-model="form.parent"
-                  :options="parentOptions"
+                  :options="relationOptions"
                   :free-text="false"
                   task-mode
                   hook-input="data-parent-input"
                   hook-menu="data-parent-menu"
                   hook-option="data-parent-option"
                   hook-value="data-parent-value"
+                  hook-chips="data-parent-chips"
+                  hook-chip="data-parent-chip"
+                  hook-chip-value="data-parent-value"
+                  hook-chip-remove="data-parent-remove"
                   placeholder-key="combo.parentPlaceholder"
                   empty-key="combo.noTasks"
                   aria-key="createTask.field.parent"
                 />
-                <button type="button" class="btn btn-ghost btn-sm" data-parent-clear :aria-label="$t('combo.clear')" @click="form.parent = ''">✕</button>
+                <button type="button" class="btn btn-ghost btn-sm" data-parent-clear :aria-label="$t('combo.clear')" @click="clearParent">✕</button>
               </div>
             </div>
 
@@ -225,7 +248,7 @@ async function submit() {
               <span>{{ $t("createTask.field.depends") }} <span class="text-[11px] text-(--brand-text-3)" data-optional>{{ $t("createTask.optional") }}</span></span>
               <ComboField
                 v-model="form.depends"
-                :options="dependsOptions"
+                :options="relationOptions"
                 :free-text="false"
                 multi
                 task-mode

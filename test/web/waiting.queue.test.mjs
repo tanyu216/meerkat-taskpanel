@@ -105,10 +105,10 @@ describe("B27 · the queue", () => {
     assert.deepEqual(rows.map((row) => row.id), ["a", "b"]);
   });
 
-  it("projects the six fields a row owes, with the identifier capped at eight characters", () => {
-    const [row] = waitingRows([card("1", "PROJ-0007", { title: "Long id" })], {}, NOW);
-    assert.equal(row.identifier, "PROJ-0007", "the row keeps the whole value for its `title`");
-    assert.equal(row.display, "PROJ-000…", "the cell is the capped value");
+  it("projects the six fields a row owes, with the identifier capped at ten characters", () => {
+    const [row] = waitingRows([card("1", "INVENTORY-0042", { title: "Long id" })], {}, NOW);
+    assert.equal(row.identifier, "INVENTORY-0042", "the row keeps the whole value for its `title`");
+    assert.equal(row.display, "INVENTORY-…", "the cell is the capped value");
     assert.equal(row.title, "Long id");
     assert.equal(row.actor, "linus");
     assert.equal(row.actorKind, "agent");
@@ -119,6 +119,10 @@ describe("B27 · the queue", () => {
   it("keeps a short identifier verbatim and survives an empty queue", () => {
     const [row] = waitingRows([card("1", "TD-1")], {}, NOW);
     assert.equal(row.display, "TD-1");
+    // Nine characters is *inside* the ten-character cap (it was above the old
+    // eight): the row shows the id whole, with no ellipsis.
+    const [nine] = waitingRows([card("2", "PROJ-0007")], {}, NOW);
+    assert.equal(nine.display, "PROJ-0007");
     assert.deepEqual(waitingRows([], {}, NOW), []);
     assert.deepEqual(waitingRows(undefined, {}, NOW), []);
   });

@@ -58,6 +58,11 @@
  *   .td-details-menu the floating-menu shell shared by the three anchored menus
  *                    (daisyUI's `menu` paints row padding the design overrides).
  *   .td-combo-menu   the combobox popup, positioned from JS-measured geometry.
+ *   .td-chips /      the accepted values, read as chips (B24/B25): the row, and
+ *   .td-combo-id /   the one-line contract of a relation row and of a chip — the
+ *   .td-combo-title  identifier holds its width, the title is the half that
+ *                    gives. Named after the prototype's own classes so the two
+ *                    sides stay comparable (T-20261014-001418 ①/②).
  *   .td-empty /      the states family (B12 · B13 · B17 · B26.5 · B27.3): one
  *   .td-empty-title  empty face over the six non-result surfaces, with `-lg`
  *   .td-empty-hint   restating its children's type. Its own section below.
@@ -1692,6 +1697,48 @@ html[data-theme="dark"] [data-create-project-panel] {
 .td-combo-menu button:hover { background: var(--brand-hover); }
 .td-combo-menu button[aria-selected="true"] { background: var(--brand-active); }
 [data-drop="up"] .td-combo-menu { top: auto; bottom: calc(100% + 4px); }
+
+/* One task per row: identifier first, title trailing. The row keeps the
+   popup's box and re-states only its type and cross-axis alignment, which is
+   the prototype's own split — the people/label rows above keep the generic
+   `button` rule. `min-width: 0` on the row is what lets the title shrink at
+   all: a flex item's automatic minimum is its min-content, and for a nowrap
+   title that is the whole title (T-20261014-001418 ①). */
+.td-combo-menu [data-parent-option],
+.td-combo-menu [data-depends-option] {
+  align-items: baseline;
+  min-width: 0;
+  font-size: var(--text-13);
+  text-align: start;
+}
+
+/* The identifier half — the board's one cap is a character slice in the render
+   layer (`lib/identifier.js`); this is its width guard, so an unclamped string
+   would still stay on one line and out of the title's track. */
+.td-combo-id {
+  flex: none;
+  font-size: var(--text-12);
+  color: var(--brand-text-3);
+}
+
+/* The half that gives: one line, `…` when the title does not fit. */
+.td-combo-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The accepted values as chips, above the field. An empty row takes no space —
+   the control is drawn once and its chips arrive by use. */
+.td-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
+}
+.td-chips:empty { display: none; }
 
 /* ------------------------------------------------------- markdown surfaces */
 

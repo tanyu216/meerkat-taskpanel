@@ -2,14 +2,16 @@
  * `identifierText` — the identifier's display value (R8 ③).
  *
  * The rule is fixed by `design/fidelity-r8.md` §2.3: an identifier renders at
- * most **eight characters plus `…`**, and a shorter one renders verbatim with no
- * ellipsis. Three render points use it — the list's rows, the cards and the
- * drawer's head — which is why it is one function rather than three slices.
+ * most **ten characters plus `…`**, and a shorter one renders verbatim with no
+ * ellipsis. Every render point uses it — the cards, the list's rows, the
+ * waiting queue's rows and the create dialog's two relation fields (their option
+ * rows *and* the chips they accept) — which is why it is one function rather
+ * than five slices.
  *
- * The cap's *trigger* is a nine-character id (`PROJ-0007`), and this suite is the
- * only place one can be constructed: the browser harness runs against a shared
- * fixture whose ids are all short, and the contract forbids special-casing a
- * sample in the render path, so the boundary is pinned here instead.
+ * The cap is **ten** since T-20261014-001418 (Terry, 2026-10-14; it was eight).
+ * The widening is the point of `PROJ-0007` below: nine characters used to
+ * truncate and must now come through whole, so a regression to eight fails
+ * here rather than silently on the board.
  *
  * `design/fidelity-r8.md` §1 R8-2 is why the assertions are about *characters*
  * and never about a width: `.td-id`'s `max-width: 9ch` is a width, it depends on
@@ -32,27 +34,35 @@ describe("web/lib/identifier — identifierText", () => {
 
   it("leaves an identifier exactly at the cap alone", () => {
     assert.equal(identifierText("TD-12888"), "TD-12888");
-    assert.equal(identifierText("12345678"), "12345678");
-    assert.equal(IDENTIFIER_LIMIT, 8);
+    assert.equal(identifierText("1234567890"), "1234567890");
+    assert.equal(identifierText("TD-1234567"), "TD-1234567");
+    assert.equal(IDENTIFIER_LIMIT, 10);
   });
 
-  it("truncates the ninth character onward and appends one ellipsis", () => {
-    assert.equal(identifierText("PROJ-0007"), "PROJ-000…");
-    assert.equal(identifierText("PROJ-00071"), "PROJ-000…");
-    assert.equal(identifierText("TD-20261012-222353"), "TD-20261…");
+  it("leaves the nine-character id the old cap used to cut whole", () => {
+    // The board's own longest identifier. Under the old cap this was
+    // `PROJ-000…`; the widened cap must show it verbatim.
+    assert.equal(identifierText("PROJ-0007"), "PROJ-0007");
+    assert.equal(identifierText("PROJ-00071"), "PROJ-00071");
   });
 
-  it("counts characters, not widths — the result is always at most nine code units", () => {
-    for (const value of ["TD-1", "TD-128", "12345678", "PROJ-0007", "TD-20261012-222353"]) {
-      assert.ok(identifierText(value).length <= 9, `${value} rendered ${identifierText(value).length} characters`);
+  it("truncates the eleventh character onward and appends one ellipsis", () => {
+    assert.equal(identifierText("ABCDEFGHIJK"), "ABCDEFGHIJ…");
+    assert.equal(identifierText("INVENTORY-0042"), "INVENTORY-…");
+    assert.equal(identifierText("TD-20261012-222353"), "TD-2026101…");
+  });
+
+  it("counts characters, not widths — the result is always at most eleven code units", () => {
+    for (const value of ["TD-1", "TD-128", "1234567890", "PROJ-0007", "INVENTORY-0042", "TD-20261012-222353"]) {
+      assert.ok(identifierText(value).length <= 11, `${value} rendered ${identifierText(value).length} characters`);
     }
   });
 
-  it("is the same function for every value: the first eight characters plus the ellipsis", () => {
-    // The single expression the three render points rely on, stated once — a
+  it("is the same function for every value: the first ten characters plus the ellipsis", () => {
+    // The single expression every render point relies on, stated once — a
     // special case for any particular sample would show up here.
-    for (const value of ["PROJ-0007", "PROJ-00071", "ABCDEFGHI", "abcdefghijkl"]) {
-      assert.equal(identifierText(value), `${value.slice(0, 8)}…`);
+    for (const value of ["INVENTORY-0042", "TD-20261012-222353", "ABCDEFGHIJK", "abcdefghijkl"]) {
+      assert.equal(identifierText(value), `${value.slice(0, 10)}…`);
     }
   });
 
