@@ -23,9 +23,10 @@
  *     boundary's count all read one derivation, so they cannot disagree, and a
  *     filter that hides the new rows takes all three off screen together (§6).
  *   * **The address bar shadows the filters.** The three controls write
- *     `#/activity?actor=…&event=…&task=…` through `replaceState`, so a narrowed
- *     feed is shareable and survives a reload — and never touches `#/task/<id>`,
- *     which is the drawer's own path back to the board (§6).
+ *     `/activity?actor=…&event=…&task=…` through `replaceState` (R16 §4.4 moved
+ *     the payload from the fragment to the query), so a narrowed feed is
+ *     shareable and survives a reload — and never touches `#/task/<id>`, which is
+ *     the drawer's own path back to the board (§6).
  *   * **`j` / `k` walk the rows.** The keyboard's route through the feed, over
  *     the same `[data-activity-open]` buttons the row already has, standing down
  *     while the reader is typing in a field (§6).
@@ -42,13 +43,13 @@ import {
   loadOlder,
   markAllRead,
   projectEmpty,
-  readActivityHash,
+  replaceActivityQuery,
   resetActivityFilters,
   unreadCount,
   writeActivityFilter,
-  writeActivityHash,
 } from "../../stores/activity.js";
 import { board, openDetail } from "../../stores/board.js";
+import { navigate } from "../../stores/route.js";
 import { pushToast, view } from "../../stores/ui.js";
 
 /**
@@ -124,10 +125,13 @@ function onLine(event, item) {
 /**
  * §6 — the task anchor is a real link for a reader without the script; with it,
  * the press returns to the board and lands on the same task.
+ *
+ * R16 §4.5 — the view change goes through `navigate()`, so the address follows
+ * the view onto `/board` instead of being left behind on the feed's address.
  */
 function onTask(event, item) {
   event.preventDefault();
-  view.value = "board";
+  navigate("board");
   openDetail(item.identifier);
 }
 
@@ -140,14 +144,14 @@ function chooseFilter(slot, value, event) {
 
 function onFilter(slot, value) {
   writeActivityFilter(slot, value);
-  writeActivityHash();
+  replaceActivityQuery();
 }
 
 /** The filter-empty state's own button: the three slots back to `all`, no toast
  *  (it is a way out of an empty feed, not a command the reader gave the bar). */
 function onReset() {
   resetActivityFilters();
-  writeActivityHash();
+  replaceActivityQuery();
 }
 
 /**
@@ -160,7 +164,7 @@ function onReset() {
  */
 function onClear() {
   resetActivityFilters();
-  writeActivityHash();
+  replaceActivityQuery();
   pushToast(t("toast.filtersCleared"), "info");
 }
 
@@ -217,12 +221,10 @@ watch(
 );
 
 onMounted(() => {
-  // §6 — a `#/activity` address is a link *into* the view, so opening it enters
-  // the feed as well as restoring its three filters: a shared link and a reload
-  // both land where the reader left off. Any other address (the drawer's
-  // `#/task/<id>`, an empty hash) leaves the default view alone.
-  if ((globalThis.location?.hash ?? "").startsWith("#/activity")) view.value = "activity";
-  readActivityHash();
+  // R16 §4.5 — this view no longer reads the address. "A `/activity` address is a
+  // link into the feed" is a rule about *the shell's* boot, so the router owns it
+  // (`stores/route.js` → `applyLocation()`, run by `App.vue`) — one owner for all
+  // four views instead of a branch per view, and the same path a back press takes.
   globalThis.document?.addEventListener("keydown", onKeydown);
 });
 onUnmounted(() => {

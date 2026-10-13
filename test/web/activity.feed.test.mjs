@@ -359,38 +359,37 @@ describe("B26 · the change lines a row unfolds", () => {
 });
 
 describe("B26 · the store's address-bar shadow", () => {
-  it("writes only the narrowing slots, in slot order", async () => {
-    const store = await import("../../web/src/stores/activity.js");
-    assert.equal(store.activityHash({ actor: "all", event: "all", task: "all" }), "#/activity");
-    assert.equal(store.activityHash({ actor: "agent", event: "all", task: "all" }), "#/activity?actor=agent");
-    assert.equal(store.activityHash({ actor: "all", event: "delivery", task: "TD-6" }), "#/activity?event=delivery&task=TD-6");
-    assert.equal(store.activityHash({ actor: "agent", event: "status", task: "TD-1" }), "#/activity?actor=agent&event=status&task=TD-1");
-  });
-
-  it("reads a shared link back into the filters and leaves other addresses alone", async () => {
-    const store = await import("../../web/src/stores/activity.js");
-    store.resetActivityFilters();
-    assert.equal(store.readActivityHash("#/task/TD-1"), false, "the drawer's own path is not the feed's");
-    assert.equal(store.readActivityHash("#/activity?actor=agent&event=status&task=TD-1"), true);
-    assert.deepEqual({ ...store.activity.filters }, { actor: "agent", event: "status", task: "TD-1" });
-    store.resetActivityFilters();
-    assert.equal(store.readActivityHash("#/activity?actor=nonsense"), false, "an out-of-domain value is not written");
-    assert.deepEqual({ ...store.activity.filters }, { actor: "all", event: "all", task: "all" });
-  });
-
-  it("uses `replaceState` (so the back button still means 'the view before') and only when the address changes", async () => {
+  it("uses `replaceState`, preserving the path and the fragment, and only when the address changes", async () => {
     const store = await import("../../web/src/stores/activity.js");
     store.resetActivityFilters();
     const calls = [];
-    const location = { hash: "#/activity" };
+    // R16 §4.4 — the payload moved from the fragment to the query, and the
+    // drawer's `#/task/<id>` is now the thing the writer must carry through
+    // untouched rather than the thing it wrote.
+    const location = { pathname: "/activity", search: "", hash: "#/task/TD-1" };
     const history = { replaceState: (...args) => calls.push(args) };
-    store.writeActivityHash(location, history);
-    assert.equal(calls.length, 0, "the resting address is already the resting hash");
+    store.replaceActivityQuery(location, history);
+    assert.equal(calls.length, 0, "the resting address is already the resting query");
     store.writeActivityFilter("actor", "agent");
-    store.writeActivityHash(location, history);
+    store.replaceActivityQuery(location, history);
     assert.equal(calls.length, 1);
-    assert.equal(calls[0][2], "#/activity?actor=agent");
+    assert.deepEqual(calls[0], [null, "", "/activity?actor=agent#/task/TD-1"]);
     store.resetActivityFilters();
+  });
+
+  it("lands the filters exactly as the address states them", async () => {
+    const store = await import("../../web/src/stores/activity.js");
+    store.applyActivityQuery("?actor=agent&event=status&task=TD-1");
+    assert.deepEqual({ ...store.activity.filters }, { actor: "agent", event: "status", task: "TD-1" });
+    assert.equal(store.applyActivityQuery("?actor=nonsense"), false, "an out-of-domain value is no condition");
+    assert.deepEqual({ ...store.activity.filters }, { actor: "all", event: "all", task: "all" });
+    store.writeActivityFilter("actor", "agent");
+    store.applyActivityQuery("");
+    assert.deepEqual(
+      { ...store.activity.filters },
+      { actor: "all", event: "all", task: "all" },
+      "a slot the address does not name is `all` — the address is the truth for this slot group",
+    );
   });
 
   it("absorbs a streamed row once and moves the read cursor past the ledger", async () => {

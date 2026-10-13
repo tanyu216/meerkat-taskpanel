@@ -27,7 +27,8 @@ import {
   writeAssigneeFilter,
 } from "../../stores/board.js";
 import { unreadCount as activityUnreadCount } from "../../stores/activity.js";
-import { view, setView } from "../../stores/ui.js";
+import { navigate } from "../../stores/route.js";
+import { view } from "../../stores/ui.js";
 import { initialsOf } from "../../lib/monogram.js";
 
 import SidebarFooter from "./SidebarFooter.vue";
@@ -88,9 +89,14 @@ const agents = computed(() => {
 // 「等你回复」view — so the rule "every nav item routes" holds in one place
 // instead of two (DESIGN.md §29.2), and there is no name left that answers with a
 // toast.
+//
+// R16 §4.5 — the press goes through `navigate()` rather than writing the view
+// directly: the address is what decides the view now, and a press that changed
+// the view without moving the address would be exactly the stale address bar the
+// round exists to remove.
 const ROUTABLE = ["board", "list", "activity", "waiting"];
 function onNav(item) {
-  if (ROUTABLE.includes(item)) setView(item);
+  if (ROUTABLE.includes(item)) navigate(item);
 }
 
 /**

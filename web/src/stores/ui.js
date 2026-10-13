@@ -7,6 +7,8 @@
  */
 import { computed, ref } from "vue";
 
+import { VIEWS } from "../lib/route.js";
+
 /**
  * board ↔ list ↔ activity ↔ waiting (mutually exclusive; `hidden` on the inactive
  * ones).
@@ -16,10 +18,26 @@ import { computed, ref } from "vue";
  * frozen at two (`DOMAINS.VIEW`), and `design/DESIGN.md` §29.2 puts the new
  * surfaces on the sidebar's four-way destination list precisely so they do not
  * become values of it.
+ *
+ * R16 (DESIGN.md §32.3) — this ref is now a **mirror of the address**, not the
+ * thing the interface sets: the view a reader is on is decided by
+ * `location.pathname` and by nothing else. It is written in exactly one place,
+ * `mirrorView` below, and only by the router (`stores/route.js`) — the address
+ * reader `applyLocation()` on boot and on `popstate`. A component that wants to
+ * change the view calls `navigate(view)` from that module instead, which writes
+ * the address first and lets the reader move the mirror.
  */
-const VIEWS = ["board", "list", "activity", "waiting"];
 export const view = ref("board");
-export function setView(next) {
+
+/**
+ * The mirror writer — **the router's own**, never a component's.
+ *
+ * It sets the ref without touching the address (that is the reader's rule: it
+ * never writes history), so calling it from anywhere but `stores/route.js` would
+ * put the view and the address bar out of step, which is the defect the round
+ * exists to remove.
+ */
+export function mirrorView(next) {
   if (VIEWS.includes(next)) view.value = next;
 }
 
