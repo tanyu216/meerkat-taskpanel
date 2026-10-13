@@ -274,20 +274,25 @@ describe("taskd guard: rendering", () => {
     assert.equal(runGuardInstall(prefix, env).status, 0);
     const loadsAfterInstall = countLoads(bin);
 
+    // Drift the unit *this platform loads* — the plist on macOS, the systemd unit on
+    // Linux. The other one is written but never loaded, so it cannot make this case pass.
     const paths = guardPaths({ prefix, env });
-    writeFileSync(paths.launchdUnit, "<plist/>\n", "utf8");
+    const unitPath = activeUnit(paths);
+    const drift = PLATFORM === "darwin" ? "<plist/>\n" : "# drifted\n";
+    const restored = PLATFORM === "darwin" ? /KeepAlive/ : /Restart=always/;
+    writeFileSync(unitPath, drift, "utf8");
 
     // Merge, never clobber — and do *not* load what this run did not write: a stale
     // unit is typically a previous install pointing at a checkout that has moved.
     const stale = runGuardInstall(prefix, env);
     assert.equal(stale.status, 0, stale.stderr);
-    assert.equal(readFileSync(paths.launchdUnit, "utf8"), "<plist/>\n", "merge, never clobber");
+    assert.equal(readFileSync(unitPath, "utf8"), drift, "merge, never clobber");
     assert.match(stale.stdout, /taskd guard: not loaded — .*re-run with --force/);
     assert.equal(countLoads(bin), loadsAfterInstall, "a unit this run did not write is not loaded");
 
     const forced = runGuardInstall(prefix, env, ["--force"]);
     assert.equal(forced.status, 0, forced.stderr);
-    assert.match(readFileSync(paths.launchdUnit, "utf8"), /KeepAlive/, "--force refreshes the unit");
+    assert.match(readFileSync(unitPath, "utf8"), restored, "--force refreshes the unit");
     // The supervisor already holds the job, so the refreshed unit is *not* re-loaded —
     // what matters is that the install is back to reporting the guard as live.
     assert.doesNotMatch(forced.stdout, /not loaded/);
@@ -496,6 +501,11 @@ function fakeManagerBin() {
 function countLoads(bin) {
   const lines = readFileSync(bin.log, "utf8").split("\n").filter(Boolean);
   return lines.filter((line) => /launchctl (bootstrap|load)|systemctl --user enable/.test(line)).length;
+}
+
+/** The unit this platform actually loads — the plist on macOS, the systemd unit on Linux. */
+function activeUnit(paths) {
+  return PLATFORM === "darwin" ? paths.launchdUnit : paths.systemdUnit;
 }
 
 /** The one line this platform's plan runs to load the unit. */
