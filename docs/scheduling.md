@@ -338,9 +338,11 @@ rm ~/.config/systemd/user/meerkat-taskpanel-taskd.service
 
 Three **internal** bypasses exist; none is a user option:
 
-- `--no-automation` — **skips the guard too**, semantically consistent with its other
-  targets (the Codex claim trigger and the scheduling units). It is an advanced install
-  flag, not a switch for the guard alone.
+- `--no-automation`, or its environment form `MEERKAT_TASKPANEL_NO_AUTOMATION=1` (the
+  variable `install.sh` sets for each host installer) — **skips the guard too**,
+  semantically consistent with its other targets (the Codex claim trigger and the
+  scheduling units). It is one bypass with two spellings, an advanced install bypass
+  rather than a switch for the guard alone.
 - `--dry-run` — writes and loads nothing; the report line becomes
   `taskd guard: skipped (dry-run)`.
 - `MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE=1` — **for tests only**; skips the guard so a
