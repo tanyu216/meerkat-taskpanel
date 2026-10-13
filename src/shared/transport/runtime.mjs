@@ -9,6 +9,14 @@
  *   2. the runtime pointer — if it names a board that answers `/health`, use it;
  *   3. otherwise start one (`TASKD_NO_AUTOSTART=1` forbids this).
  *
+ * Step 2 has two halves, because a board is not always the one holding the
+ * machine-wide slot (R1, `core/storage/secrets/runtime-pointer.mjs`): a board
+ * whose data directory is *not* the sitting board's is addressed beside its own
+ * data directory, at `<dataDir>/runtime.json`. Writing that file is only half of
+ * the rule — until the reader below consulted it, the board that had just been
+ * pushed off the slot was unreachable while it ran, and `taskctl` in *its* data
+ * directory answered from (or failed on) the other board's address.
+ *
  * A *stale* pointer is the interesting case: a pointer whose process died is
  * indistinguishable from a live one until you knock. So the pointer is only
  * believed after `/health` answers, and a dead address falls through to the
@@ -19,31 +27,124 @@
  */
 
 import { readFileSync } from "node:fs";
-import { basename } from "node:path";
+import { basename, join, resolve } from "node:path";
 
-import { AUTOSTART_TIMEOUT_MS, NO_AUTOSTART_ENV } from "../constants.mjs";
-import { resolveRuntimePointerPath } from "../runtime-locator.mjs";
+import {
+  AUTOSTART_TIMEOUT_MS,
+  NO_AUTOSTART_ENV,
+  RUNTIME_FILENAME,
+  RUNTIME_POINTER_ENV,
+} from "../constants.mjs";
+import { resolveDataDir, resolveRuntimePointerPath } from "../runtime-locator.mjs";
 import { ioError } from "./errors.mjs";
 import { probeHealth, spawnTaskd } from "./autostart.mjs";
 
 export { probeHealth };
 
-/** The pointer as written by `taskd`; `null` when there is none or it is junk. */
-export function readPointer({ env = process.env, path } = {}) {
-  const file = path ?? resolveRuntimePointerPath({ env });
+/** A non-empty string, with the whitespace-only case treated as absent. */
+function hasText(value) {
+  return typeof value === "string" && value.trim() !== "";
+}
+
+/**
+ * The file a board is addressed at when the machine-wide slot is somebody
+ * else's — beside its own `token` and `writer.lock` (§7.1).
+ *
+ * The write side's twin is
+ * `core/storage/secrets/runtime-pointer.mjs#runtimePointerPathForDataDir`, and
+ * the arithmetic is repeated here rather than imported for the same reason
+ * `token.mjs` rebuilds the token shape: the client must not reach into
+ * `src/core/storage` (see `test/cli/imports.test.mjs`). Built from the one
+ * `RUNTIME_FILENAME` constant, so the two cannot drift apart silently.
+ *
+ * @param {string} dataDir
+ * @returns {string} absolute file path
+ */
+function dataDirPointerPath(dataDir) {
+  return join(resolve(dataDir), RUNTIME_FILENAME);
+}
+
+/** The pointer file at exactly this path; `null` when it is missing or junk. */
+function readPointerFile(path) {
   try {
-    const parsed = JSON.parse(readFileSync(file, "utf8"));
+    const parsed = JSON.parse(readFileSync(path, "utf8"));
     // An array is an object; it is also not a pointer.
     return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
-      ? { ...parsed, path: file }
+      ? { ...parsed, path }
       : null;
   } catch {
     return null;
   }
 }
 
+/** The path the caller *named*, or `null` when the machine-wide slot is in play. */
+function namedPointerPath({ env, path, platform, home }) {
+  // An explicit `path` is obeyed as given — including a relative one, which is
+  // how the callers (and the tests) have always handed it over.
+  if (typeof path === "string") return path;
+  return hasText(env[RUNTIME_POINTER_ENV]) ? resolveRuntimePointerPath({ env, platform, home }) : null;
+}
+
+/** Does this pointer name a board whose data directory is not `dataDir`? */
+function namesAnotherBoard(pointer, dataDir) {
+  const named = pointer.dataDir;
+  return hasText(named) && resolve(named) !== resolve(dataDir);
+}
+
+/**
+ * The pointer this client's *own* board wrote beside its data directory, or
+ * `null` when the fallback does not apply.
+ *
+ * It applies when the machine-wide slot does **not** name this board: either the
+ * slot is empty, or it names another board (a different data directory). A
+ * pointer that names nobody — no `dataDir`, or a file that will not parse —
+ * cannot claim to be this board either, so the local file wins; that is the same
+ * "a pointer with no owner protects nobody" rule the write side and
+ * `removeRuntimePointer` apply.
+ *
+ * @param {{env: NodeJS.ProcessEnv, dataDir: string|null, incumbent: object|null}} input
+ * @returns {object|null}
+ */
+function ownBoardPointer({ env, dataDir, incumbent }) {
+  // `dataDir` is the caller's own board; with none named, this is exactly the
+  // directory `ensureBoard` would start a board for (`spawnTaskd` resolves it
+  // the same way), so the reader and the writer of this path agree.
+  const own = resolveDataDir({ dataDir, env });
+  if (incumbent !== null && !namesAnotherBoard(incumbent, own)) return null;
+
+  const local = readPointerFile(dataDirPointerPath(own));
+  return hasText(local?.url) ? local : null;
+}
+
+/**
+ * The pointer to believe (R1, read side).
+ *
+ * A *named* path — an explicit `path`, or `TASKD_RUNTIME_POINTER` — is obeyed
+ * verbatim, exactly as the write side obeys it: the caller has already chosen
+ * the board's namespace.
+ *
+ * Otherwise the machine-wide slot is read, and when it does not name this
+ * caller's board, the data directory's own `runtime.json` is preferred over it
+ * (`ownBoardPointer` above). `dataDir` defaults to the caller's resolved data
+ * directory — `$TASKD_DATA_DIR` or `<repo>/.data`.
+ *
+ * @param {{env?: NodeJS.ProcessEnv, path?: string, dataDir?: string|null, platform?: string, home?: string}} [options]
+ * @returns {object|null} the pointer, with the file it came from under `path`
+ */
+export function readPointer({ env = process.env, path, dataDir = null, platform, home } = {}) {
+  const named = namedPointerPath({ env, path, platform, home });
+  const file = named ?? resolveRuntimePointerPath({ env, platform, home });
+  const pointer = readPointerFile(file);
+  if (named !== null) return pointer;
+  return ownBoardPointer({ env, dataDir, incumbent: pointer }) ?? pointer;
+}
+
 /**
  * Resolve the board to talk to, starting one if needed.
+ *
+ * The pointer step is `readPointer`'s — data-directory fallback included — so
+ * the token the CLI resolved from the same call belongs to the board that
+ * answers here.
  *
  * @param {{url?: string|null, env?: NodeJS.ProcessEnv, pointerPath?: string, waitMs?: number}} [options]
  * @returns {Promise<{url: string, autostarted: boolean, pointer: object|null}>}
