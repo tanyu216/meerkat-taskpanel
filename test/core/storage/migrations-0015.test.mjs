@@ -1,0 +1,311 @@
+/**
+ * 0015 — `deploy` becomes a task kind, across an existing board.
+ *
+ * The migration's job is to widen **one** `CHECK` and move nothing else, so
+ * "nothing else moved" is the property under test — the same standard
+ * `test/core/storage/migrations-0013.test.mjs` holds 0013 to, applied to the
+ * rebuild that ships after it:
+ *
+ *   * `deploy` is storable and round-trips; `task` and `epic` still are; a word
+ *     outside the vocabulary is still refused by the table's `CHECK`;
+ *   * every row, every column (0013's `awaiting_reason` included) and every
+ *     foreign key pointing at `tasks` survives;
+ *   * **all seven** indexes come back — the set an upgraded board carries is the
+ *     set a fresh board has, which is the trap that produced 0014;
+ *   * every trigger comes back byte-identical to the definition a pre-0015 board
+ *     carries: this migration widens a `CHECK`, it does not move a rule. (0013's
+ *     equivalent assertion allows two changed triggers, because 0013 *did* move
+ *     the transition whitelist and the revision cursor. Here the expected set of
+ *     changed triggers is empty, which is the stronger claim.)
+ */
+
+import assert from "node:assert/strict";
+import { copyFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import test, { after, describe, it } from "node:test";
+
+import { applyMigrations, defaultMigrationsDir } from "../../../src/core/storage/migrations-runner.mjs";
+import {
+  TS,
+  TS2,
+  cleanupTempDirs,
+  createTempBoard,
+  insertTask,
+  makeTempDir,
+  reasonCode,
+} from "../../helpers/sqlite-fixture.mjs";
+
+after(cleanupTempDirs);
+
+/** The shipped set **before** 0015 — a board as the previous build left it. */
+function before0015() {
+  const dir = makeTempDir("meerkat-taskpanel-pre0015-");
+  for (const name of readdirSync(defaultMigrationsDir()).filter((n) => n.endsWith(".sql") && n.slice(0, 4) < "0015")) {
+    copyFileSync(join(defaultMigrationsDir(), name), join(dir, name));
+  }
+  return dir;
+}
+
+const columnsOf = (db) => db.prepare("SELECT name FROM pragma_table_info('tasks')").all().map((r) => r.name);
+const tasksSql = (db) => db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get().sql;
+
+/**
+ * The **named** indexes on `tasks`, each with the shape that makes it itself —
+ * name, columns, uniqueness, partiality. 0005's `ix_tasks_source` is the one
+ * 0013's rebuild lost, so it is the first thing this comparison will catch if
+ * 0015 repeats the mistake.
+ */
+const indexShapes = (db) =>
+  db
+    .prepare("SELECT name, \"unique\" AS uniq, partial AS part FROM pragma_index_list('tasks')")
+    .all()
+    .filter((row) => !row.name.startsWith("sqlite_autoindex"))
+    .sort((a, b) => (a.name < b.name ? -1 : 1))
+    .map((row) => ({
+      name: row.name,
+      unique: Number(row.uniq),
+      partial: Number(row.part),
+      columns: db.prepare("SELECT name FROM pragma_index_info(?)").all(row.name).map((c) => c.name),
+    }));
+
+/** Every trigger's text, whitespace-normalised (whitespace is not meaning). */
+const triggersOf = (db) =>
+  Object.fromEntries(
+    db
+      .prepare("SELECT name, sql FROM sqlite_master WHERE type = 'trigger'")
+      .all()
+      .map((r) => [r.name, String(r.sql).replace(/\s+/g, " ").replace(/CREATE TRIGGER IF NOT EXISTS /i, "CREATE TRIGGER ").trim()]),
+  );
+
+/** Build the "previous build" board with rows the migration must not lose. */
+function seedLegacyBoard(db) {
+  db.prepare(
+    `INSERT INTO projects(id, name, next_task_number, labels, meta_json, readme, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run("legacy", "Legacy project", 7, '["m1"]', '{"k":"v"}', "# notes", TS, TS);
+  insertTask(db, { id: "running", identifier: "LEGACY-0001", project_id: "legacy", status: "in_progress" });
+  insertTask(db, { id: "paused", identifier: "LEGACY-0002", project_id: "legacy", status: "awaiting", awaiting_reason: "E3" });
+  insertTask(db, { id: "epic", identifier: "LEGACY-0003", project_id: "legacy", kind: "epic" });
+  db.prepare(
+    "INSERT INTO comments(id, task_id, body, kind, author_kind, author_id, refs_json, version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  ).run("c1", "running", "hello", "note", "human", "terry", "[]", 1, TS);
+}
+
+describe("storage/migrations — 0015 makes `deploy` a task kind (T-20261013-232004)", () => {
+  it("carries an existing board across the rebuild, widening the kind enum", async () => {
+    const board = await createTempBoard({ migrate: false });
+    try {
+      const old = applyMigrations(board.db, { dir: before0015() });
+      assert.equal(old.applied.at(-1).version, "0014");
+      assert.equal(/deploy/.test(tasksSql(board.db)), false, "precondition: the old CHECK has no `deploy`");
+      const indexesBefore = indexShapes(board.db);
+      assert.ok(
+        indexesBefore.some((index) => index.name === "ix_tasks_source"),
+        "precondition: the previous build's board carries 0005's ix_tasks_source",
+      );
+      seedLegacyBoard(board.db);
+
+      const up = applyMigrations(board.db);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0015"]);
+      assert.deepEqual(up.skipped.slice(-2), ["0013", "0014"]);
+
+      // 1 — the enum: the new word is storable, the old ones still are (they are
+      // the rows seeded above), and a word the vocabulary does not have is still
+      // refused. No trigger shadows `kind` except 0011's epic-downgrade guard,
+      // which fires only on an epic *leaving* `epic`.
+      assert.match(tasksSql(board.db), /'deploy'/, "the rebuilt CHECK must name `deploy`");
+      assert.equal(
+        reasonCode(() => board.db.prepare("UPDATE tasks SET kind = 'deploy' WHERE id = 'running'").run()),
+        "NO_ERROR",
+        "a card can become a deployment card",
+      );
+      assert.equal(board.db.prepare("SELECT kind FROM tasks WHERE id = 'running'").get().kind, "deploy");
+      assert.equal(
+        reasonCode(() =>
+          board.db
+            .prepare(
+              `INSERT INTO tasks(id, identifier, project_id, title, status, kind, created_at, updated_at)
+               VALUES ('t-check','CHECK-1','legacy','x','todo','nonsense', ?, ?)`,
+            )
+            .run(TS, TS),
+        ),
+        "VALIDATION_FAILED",
+        "the widened CHECK still refuses a kind the vocabulary does not have",
+      );
+
+      // 2 — the guards a rebuild could have dropped are all still armed. Note
+      // `running` is a `deploy` card by now: the marker is a read-time exclusion
+      // (`domain/claim.mjs`), not a state-machine rule, so its transitions are
+      // exactly a task's.
+      assert.equal(
+        reasonCode(() => board.db.prepare("UPDATE tasks SET status = 'in_review' WHERE id = 'running'").run()),
+        "REPORT_REQUIRED",
+        "the delivery gate survived the rebuild",
+      );
+      assert.equal(
+        reasonCode(() => board.db.prepare("UPDATE tasks SET status = 'in_review' WHERE id = 'paused'").run()),
+        "INVALID_TRANSITION",
+        "an awaiting card may not reach review (0013's whitelist survived)",
+      );
+      assert.equal(
+        reasonCode(() => board.db.prepare("UPDATE tasks SET status = 'in_progress' WHERE id = 'paused'").run()),
+        "NO_ERROR",
+        "awaiting may still resume",
+      );
+      assert.equal(
+        reasonCode(() => board.db.prepare("UPDATE tasks SET kind = 'task' WHERE id = 'epic'").run()),
+        "NO_ERROR",
+        "an epic with no children may be downgraded (0011's guard survived)",
+      );
+      // A `deploy` card is a leaf like any other task: the parent guard still
+      // demands an `epic` of a parent, so the new kind buys no new edge.
+      assert.equal(
+        reasonCode(() =>
+          board.db
+            .prepare(
+              "INSERT INTO task_relations(relation_type, source_task_id, target_task_id, created_at) VALUES ('parent','running','epic', ?)",
+            )
+            .run(TS),
+        ),
+        "VALIDATION_FAILED",
+        "only an epic can be a parent, `deploy` included",
+      );
+
+      // 3 — nothing was rebuilt away. The expected index set is the one read off
+      // the board the upgrade started from, not a list written out here.
+      assert.deepEqual(indexShapes(board.db), indexesBefore, "the rebuild must not add or drop an index");
+      assert.equal(indexesBefore.length, 7, "the previous build's board carries all seven indexes");
+
+      // 4 — every row, every other column, and every foreign key survived.
+      for (const column of ["id", "identifier", "title", "delivery_round", "idem", "meta_json", "report_waiver_reason", "awaiting_reason"]) {
+        assert.ok(columnsOf(board.db).includes(column), `tasks.${column} must survive the rebuild`);
+      }
+      const legacy = board.db.prepare("SELECT * FROM projects WHERE id = 'legacy'").get();
+      assert.equal(legacy.name, "Legacy project");
+      assert.equal(Number(legacy.next_task_number), 7);
+      assert.equal(legacy.meta_json, '{"k":"v"}');
+      assert.equal(
+        board.db.prepare("SELECT awaiting_reason FROM tasks WHERE id = 'paused'").get().awaiting_reason,
+        "E3",
+        "0013's awaiting_reason is copied, not dropped",
+      );
+      assert.equal(board.db.prepare("SELECT body FROM comments WHERE id = 'c1'").get().body, "hello");
+      assert.equal(
+        board.db.prepare("SELECT COUNT(*) n FROM pragma_foreign_key_list('comments') WHERE \"table\" = 'tasks'").get().n,
+        1,
+        "comments must still reference the rebuilt tasks table, not the old one",
+      );
+      assert.equal(
+        reasonCode(() =>
+          board.db
+            .prepare(
+              "INSERT INTO comments(id, task_id, body, kind, author_kind, author_id, refs_json, version, created_at) VALUES ('orphan','no-such-task','x','note','agent','a','[]',1,?)",
+            )
+            .run(TS),
+        ),
+        "NOT_FOUND",
+        "the foreign key still has teeth after the rebuild",
+      );
+
+      assert.equal(board.db.prepare("PRAGMA integrity_check").get().integrity_check, "ok");
+      assert.deepEqual(board.db.prepare("PRAGMA foreign_key_check").all(), []);
+    } finally {
+      board.close();
+    }
+  });
+
+  it("moves no trigger at all — a rebuild is not a rewrite", async () => {
+    // The rebuild drops `tasks` (taking its triggers) and re-creates them from
+    // 0013's text. 0013 itself moved two of them on purpose (the transition
+    // whitelist and the revision cursor's column domain); 0015 moves **none**, so
+    // the expected set of changed triggers is empty. A guard quietly rewritten
+    // during a rebuild is exactly the loss this assertion makes impossible.
+    const before = await createTempBoard({ migrate: false });
+    const after = await createTempBoard();
+    try {
+      applyMigrations(before.db, { dir: before0015() });
+      const oldTriggers = triggersOf(before.db);
+      const newTriggers = triggersOf(after.db);
+
+      assert.deepEqual(
+        Object.keys(newTriggers).sort(),
+        Object.keys(oldTriggers).sort(),
+        "the rebuild must not add or lose a trigger",
+      );
+      const changed = Object.keys(oldTriggers).filter((name) => oldTriggers[name] !== newTriggers[name]).sort();
+      assert.deepEqual(changed, [], "0015 must change no trigger — it widens a CHECK");
+
+      for (const name of ["tr_dict_assignees_delete", "tr_dict_reporters_delete", "tr_rel_cross_project", "tr_rel_parent_guard", "tr_rel_parent_epic"]) {
+        assert.equal(newTriggers[name], oldTriggers[name], `${name} must survive the rebuild verbatim`);
+      }
+    } finally {
+      before.close();
+      after.close();
+    }
+  });
+
+  it("lands the upgrade on the index set a fresh board has — no index added, none lost", async () => {
+    const upgrade = await createTempBoard({ migrate: false });
+    const fresh = await createTempBoard();
+    try {
+      applyMigrations(upgrade.db, { dir: before0015() });
+      const before = indexShapes(upgrade.db);
+
+      applyMigrations(upgrade.db);
+
+      assert.deepEqual(indexShapes(upgrade.db), before, "an upgrade must not add or lose an index");
+      assert.deepEqual(
+        indexShapes(fresh.db),
+        indexShapes(upgrade.db),
+        "an upgraded board and a fresh board must carry the same indexes",
+      );
+    } finally {
+      upgrade.close();
+      fresh.close();
+    }
+  });
+
+  it("is a no-op on a board that is already at 0015", async () => {
+    const board = await createTempBoard();
+    try {
+      const again = applyMigrations(board.db);
+      assert.deepEqual(again.applied, []);
+      assert.equal(again.skipped.includes("0015"), true);
+      assert.match(tasksSql(board.db), /'deploy'/);
+      assert.equal(board.db.prepare("PRAGMA integrity_check").get().integrity_check, "ok");
+      assert.deepEqual(board.db.prepare("PRAGMA foreign_key_check").all(), []);
+    } finally {
+      board.close();
+    }
+  });
+
+  it("leaves no scratch table behind, and no deferred foreign keys", async () => {
+    const board = await createTempBoard();
+    try {
+      const leftovers = board.db
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'tasks_%'")
+        .all()
+        .map((r) => r.name);
+      assert.deepEqual(leftovers, [], "the scratch table must be renamed away, not orphaned");
+      assert.equal(
+        Number(board.db.prepare("PRAGMA foreign_keys").get().foreign_keys),
+        1,
+        "foreign key enforcement must be back on after the rebuild",
+      );
+      for (const child of ["task_relations", "comments", "attachments", "agent_sessions", "task_reports"]) {
+        const parents = board.db
+          .prepare(`SELECT "table" AS parent FROM pragma_foreign_key_list('${child}')`)
+          .all()
+          .map((r) => r.parent);
+        assert.equal(parents.includes("tasks"), true, `${child} must still reference tasks`);
+        assert.equal(
+          parents.some((name) => name.startsWith("tasks_") && name !== "tasks"),
+          false,
+          `${child} references a scratch name`,
+        );
+      }
+    } finally {
+      board.close();
+    }
+  });
+});

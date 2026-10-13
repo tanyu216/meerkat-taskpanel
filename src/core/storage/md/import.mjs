@@ -27,7 +27,7 @@ import { basename, join, relative } from "node:path";
 import { DomainError, isDomainError } from "../../../shared/errors.mjs";
 import { LABEL_PALETTE } from "../../../shared/constants.mjs";
 import { contentHash, newId, sha256Hex } from "../../../shared/ids.mjs";
-import { ACCEPTANCE_STATUSES } from "../../domain/enums.mjs";
+import { ACCEPTANCE_STATUSES, TASK_KINDS } from "../../domain/enums.mjs";
 import { normalizeName } from "../../domain/dictionary.mjs";
 import { labelDisplayName, nextColor, normalizeLabelName } from "../../domain/labels.mjs";
 import { normalizeCommentCreate } from "../../domain/comment.mjs";
@@ -689,7 +689,11 @@ export function parseCard(text, { file }) {
     status,
     legacyStatus,
     priority: parsePriority(data.priority ?? null),
-    kind: data.kind === "epic" ? "epic" : "task",
+    // Any kind the vocabulary knows survives the round trip (`deploy` included);
+    // an absent or unknown value falls back to the default rather than throwing,
+    // because the importer's contract is lenient — `normalizeTaskCreate` is what
+    // refuses a genuinely unknown kind a caller supplied.
+    kind: TASK_KINDS.includes(data.kind) ? data.kind : "task",
     labels: normalizeLabels(data.labels ?? null),
     project: nullable(data.project),
     assignee: nullable(data.assignee),

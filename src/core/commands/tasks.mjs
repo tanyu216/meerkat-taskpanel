@@ -13,7 +13,7 @@
 
 import { DomainError, isDomainError } from "../../shared/errors.mjs";
 import { CLAIM_STALE_ANY_MS, CLAIM_STALE_SAME_MS, HEARTBEAT_FRESH_MS } from "../../shared/constants.mjs";
-import { assertClaimable, decideClaim, explainLostClaim } from "../domain/claim.mjs";
+import { assertClaimable, decideClaim, explainLostClaim, isAutoClaimableKind } from "../domain/claim.mjs";
 import {
   assertCreationGate,
   assertDeliveryGate,
@@ -678,15 +678,23 @@ export function listTasks(ctx, filter = {}) {
  * criteria so a provider swap changes nothing on the framework side.
  *
  * A candidate is:
- *   * `ready` — `todo`, assigned to `assignee`, not an `epic`, and every
- *     `blocks` edge pointing at it (its `depends_on`) is `done`;
- *   * `unassigned` — with `includeUnassigned: true`, a `todo`, non-`epic`,
+ *   * `ready` — `todo`, assigned to `assignee`, **auto-claimable** (not an
+ *     `epic`, not a `deploy`), and every `blocks` edge pointing at it (its
+ *     `depends_on`) is `done`;
+ *   * `unassigned` — with `includeUnassigned: true`, a `todo`, auto-claimable,
  *     `depends_on`-done card with no assignee: the public pool any actor may
  *     claim (see `domain/claim.mjs#isAssignee`). This is the read a supervisor
  *     uses when its policy is "claim unassigned tasks too";
  *   * with `stale: true`, `in_progress` whose heartbeat is stale — the same
  *     holder after 30 minutes (`stale_same`) or anyone after 6 hours
  *     (`stale_any`) — the recovery pool.
+ *
+ * **Deployment cards are withheld** (T-20261013-232004): a `kind: deploy` card
+ * runs against a live instance, so it is dispatched explicitly rather than
+ * picked up by a poll. This read — the poll's read — never offers one, in any of
+ * the three pools. The card stays claimable: the exclusion is
+ * `domain/claim.mjs#AUTO_CLAIM_EXCLUDED_KINDS`, a *read* rule, and the claim
+ * gate deliberately does not refuse `deploy` (unlike `epic`, which it does).
  *
  * Read-only: the returned rows are *never* claimed here; claiming still goes
  * through `claim` (and its steal/reuse semantics). The assignee is resolved the
@@ -707,12 +715,16 @@ export function listCandidates(ctx, input = {}) {
   if (ids.length === 0 && !includeUnassigned) return [];
 
   const now = ctx.now();
-  const isAssignee = (task) => task.kind !== "epic" && ids.includes(task.assigneeId);
+  const isAssignee = (task) => isAutoClaimableKind(task.kind) && ids.includes(task.assigneeId);
   const ready = ctx.repos.tasks.list({ status: "todo" }).filter(isAssignee);
   const pool = includeUnassigned
     ? ctx.repos.tasks
         .list({ status: "todo" })
-        .filter((task) => task.kind !== "epic" && (task.assigneeId === null || task.assigneeId === undefined || task.assigneeId === ""))
+        .filter(
+          (task) =>
+            isAutoClaimableKind(task.kind) &&
+            (task.assigneeId === null || task.assigneeId === undefined || task.assigneeId === ""),
+        )
     : [];
   const stale =
     input.stale === true

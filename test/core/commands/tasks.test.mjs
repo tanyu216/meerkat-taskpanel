@@ -829,6 +829,45 @@ describe("commands/tasks — listCandidates (poll read)", () => {
     });
   });
 
+  it("excludes deployment cards from every pool — but an explicit dispatch still claims one", async () => {
+    // T-20261013-232004: a `kind: deploy` card runs against a live instance, so
+    // the poll's read must never offer one. The marker is a *read* exclusion, not
+    // a claim gate: Elon still dispatches the card, and the move takes it.
+    await board(async ({ db, commands }) => {
+      const deploy = commands.createTask({ projectId: "proj", title: "Rebuild dist", kind: "deploy", assignee: "linus", assigneeKind: "agent", actor: AGENT });
+      const plain = linusTodo(commands, { title: "Ordinary card", allowDup: true });
+      // ...and a deployment card in the *pool* and in the *recovery* pool too:
+      // the exclusion has to hold in all three arms, not only the ready one.
+      const pooledDeploy = commands.createTask({ projectId: "proj", title: "Pooled deploy", kind: "deploy", actor: AGENT });
+      const recoveredDeploy = commands.createTask({ projectId: "proj", title: "Running deploy", kind: "deploy", assignee: "linus", assigneeKind: "agent", actor: AGENT, allowDup: true });
+      commands.claim({ id: recoveredDeploy.id, actor: AGENT });
+      db.prepare("UPDATE tasks SET heartbeat_at = ? WHERE id = ?").run("2026-01-01T00:00:00.000Z", recoveredDeploy.id);
+      // The control: the same rotted-claim state on an ordinary card, which the
+      // recovery pool *must* still offer. Without it, a `staleReason` that
+      // happened to return null would make the deploy assertion above pass for
+      // the wrong reason.
+      const recoveredPlain = linusTodo(commands, { title: "Running card", allowDup: true });
+      commands.claim({ id: recoveredPlain.id, actor: AGENT });
+      db.prepare("UPDATE tasks SET heartbeat_at = ? WHERE id = ?").run("2026-01-01T00:00:00.000Z", recoveredPlain.id);
+
+      const read = commands.listCandidates({ assignee: "linus", stale: true, includeUnassigned: true });
+      assert.deepEqual(
+        read.map((c) => c.identifier),
+        [plain.identifier, recoveredPlain.identifier],
+        "the poll's read offers the ordinary cards and neither deployment card",
+      );
+      assert.equal(read.some((c) => c.identifier === deploy.identifier), false, "ready deploy stays out");
+      assert.equal(read.some((c) => c.identifier === pooledDeploy.identifier), false, "pooled deploy stays out");
+      assert.equal(read.some((c) => c.identifier === recoveredDeploy.identifier), false, "recovery deploy stays out");
+
+      // ③ — the explicit path: the assignee claims it and the card really moves.
+      const claimed = commands.moveStatus({ id: deploy.id, to: "in_progress", actor: AGENT });
+      assert.equal(claimed.status, "in_progress");
+      assert.equal(claimed.claimedBy, AGENT.id);
+      assert.equal(claimed.kind, "deploy", "the marker survives the claim");
+    });
+  });
+
   it("resolves the assignee by display name or normalised name", async () => {
     await board(async ({ db, commands }) => {
       const byName = commands.createTask({ projectId: "proj", title: "One", assignee: "Linus", assigneeKind: "agent", actor: AGENT });

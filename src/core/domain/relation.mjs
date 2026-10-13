@@ -17,7 +17,7 @@
 
 import { RELATION_ANCESTOR_CAP, RELATION_CHAIN_MAX, RELATION_FANIN_MAX } from "../../shared/constants.mjs";
 import { DomainError } from "../../shared/errors.mjs";
-import { RELATION_TYPES, RELATION_TYPE, TASK_KINDS } from "./enums.mjs";
+import { RELATION_TYPES, RELATION_TYPE, TASK_KIND } from "./enums.mjs";
 
 /**
  * Normalise an edge so storage never has to think about direction.
@@ -65,7 +65,7 @@ export function assertParentIsEpic(parentTask) {
   if (parentTask === null || parentTask === undefined) {
     throw new DomainError("NOT_FOUND", { message: "parent task does not exist", details: { field: "source" } });
   }
-  if (parentTask.kind !== TASK_KINDS[1]) {
+  if (parentTask.kind !== TASK_KIND.EPIC) {
     throw new DomainError("VALIDATION_FAILED", {
       message: `task ${parentTask.identifier ?? parentTask.id} is a ${parentTask.kind}; only an epic can be a parent`,
       details: { field: "kind", taskId: parentTask.id, kind: parentTask.kind },
@@ -87,8 +87,8 @@ export function assertParentIsEpic(parentTask) {
  * @param {{id: number}[]} children `parent` edges with `source === current.id`
  */
 export function assertEpicDowngradeAllowed(current, nextKind, children) {
-  if (current.kind !== TASK_KINDS[1]) return; // task → anything: no parent edge to orphan
-  if (nextKind === TASK_KINDS[1]) return; // epic → epic: a no-op, not a downgrade
+  if (current.kind !== TASK_KIND.EPIC) return; // task → anything: no parent edge to orphan
+  if (nextKind === TASK_KIND.EPIC) return; // epic → epic: a no-op, not a downgrade
   if (children.length > 0) {
     throw new DomainError("VALIDATION_FAILED", {
       message: `task ${current.identifier ?? current.id} still has ${children.length} child card(s); an epic with children cannot be downgraded to ${nextKind}`,

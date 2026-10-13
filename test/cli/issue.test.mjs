@@ -8,7 +8,7 @@
 import assert from "node:assert/strict";
 import test, { after, describe, it } from "node:test";
 
-import { cleanupTempDirs, dataOf, withCli } from "./helpers/cli-harness.mjs";
+import { cleanupTempDirs, dataOf, errorOf, withCli } from "./helpers/cli-harness.mjs";
 
 after(cleanupTempDirs);
 
@@ -358,12 +358,15 @@ describe("cli/issue — the actor recorded on a report", () => {
 });
 
 describe("cli/issue — candidates (the poll read)", () => {
-  it("lists claimable cards and excludes unmet deps and epics", async () => {
+  it("lists claimable cards and excludes unmet deps, epics and deployment cards", async () => {
     await board(async ({ run }) => {
-      // `--allow-dup` keeps the four cards distinct: they share one assignee, so
+      // `--allow-dup` keeps the cards distinct: they share one assignee, so
       // the creation idempotency key would otherwise converge them onto one card.
       const ready = createIssue(run, ["--title", "Ready", "--assignee", "pollbot", "--assignee-kind", "agent", "--allow-dup"]);
       createIssue(run, ["--title", "Epic", "--kind", "epic", "--assignee", "pollbot", "--assignee-kind", "agent", "--allow-dup"]);
+      // A deployment card (T-20261013-232004) assigned to the same poller: the
+      // poll's read must not offer it, even though it is a claimable `todo`.
+      const deploy = createIssue(run, ["--title", "Rebuild dist", "--kind", "deploy", "--assignee", "pollbot", "--assignee-kind", "agent", "--allow-dup"]);
       const blocked = createIssue(run, ["--title", "Blocked", "--assignee", "pollbot", "--assignee-kind", "agent", "--allow-dup"]);
       const blocker = createIssue(run, ["--title", "Blocker", "--assignee", "pollbot", "--assignee-kind", "agent", "--allow-dup"]);
       // `blocks` source = blocker, target = blocked — the blocked card's depends_on.
@@ -373,7 +376,7 @@ describe("cli/issue — candidates (the poll read)", () => {
       assert.deepEqual(
         candidates.candidates.map((c) => c.identifier),
         [ready.task.identifier, blocker.task.identifier],
-        "the blocked card is excluded (depends_on unmet) and so is the epic",
+        "the blocked card is excluded (depends_on unmet), and so are the epic and the deploy card",
       );
       assert.equal(candidates.candidates[0].status, "todo");
       assert.equal(candidates.candidates[0].project, "demo");
@@ -382,6 +385,22 @@ describe("cli/issue — candidates (the poll read)", () => {
       const human = run(["issue", "candidates", "--assignee", "pollbot"]);
       assert.match(human.stdout, new RegExp(`${ready.task.identifier}\\s+todo\\s+medium`));
       assert.match(human.stdout, new RegExp(`${blocker.task.identifier}\\s+todo\\s+medium`));
+      assert.equal(human.stdout.includes(deploy.task.identifier), false, "the deploy card is withheld from the human read too");
+
+      // ...but it is a card like any other when it is dispatched explicitly: the
+      // refusal here is the **ordinary routing lock** (another actor, another
+      // card), never `not_claimable` — the marker keeps the poll off the card, it
+      // does not lock the claim gate. The documented override then takes it.
+      const asStranger = run(["issue", "move", deploy.task.identifier, "in_progress", "--json"]);
+      assert.equal(errorOf(asStranger).code, "not_assignee");
+      const dispatched = dataOf(
+        run([
+          "issue", "move", deploy.task.identifier, "in_progress",
+          "--allow-steal", "--reason", "explicit dispatch of a deployment card", "--json",
+        ]),
+      ).task;
+      assert.equal(dispatched.status, "in_progress");
+      assert.equal(dispatched.kind, "deploy", "the marker survives the claim");
     });
   });
 
@@ -391,6 +410,7 @@ describe("cli/issue — candidates (the poll read)", () => {
       const pool = createIssue(run, ["--title", "Public pool", "--allow-dup"]);
       createIssue(run, ["--title", "Someone else", "--assignee", "terry", "--assignee-kind", "agent", "--allow-dup"]);
       createIssue(run, ["--title", "Pool epic", "--kind", "epic", "--allow-dup"]);
+      createIssue(run, ["--title", "Pool deploy", "--kind", "deploy", "--allow-dup"]);
 
       const without = dataOf(run(["issue", "candidates", "--assignee", "pollbot", "--json"]));
       assert.deepEqual(without.candidates.map((c) => c.identifier), [assigned.task.identifier]);
@@ -401,6 +421,7 @@ describe("cli/issue — candidates (the poll read)", () => {
       assert.deepEqual(
         withPool.candidates.map((c) => c.identifier),
         [assigned.task.identifier, pool.task.identifier],
+        "the public pool admits an unassigned card — but not the epic or the deploy card in it",
       );
       assert.equal(withPool.candidates[1].reason, "unassigned");
     });
