@@ -15,6 +15,11 @@
  * Shared (extracted from `src/cli`) so the token resolves the same way from every
  * entry point that uses the seam, with the same priority and the same corruption
  * error.
+ *
+ * The `pointer` this reads is the one board resolution produced
+ * (`runtime.mjs#readPointer`, data-directory fallback included, R1) — the token
+ * therefore always belongs to the board `/health` answered for, not to whatever
+ * happens to hold the machine-wide slot.
  */
 
 import { readFileSync } from "node:fs";
