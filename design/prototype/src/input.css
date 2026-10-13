@@ -4071,6 +4071,19 @@ html[data-theme="dark"] .modal-box {
     line-height: 1.35;
     color: var(--color-td-ink);
   }
+  /* R15 ③ — the header's two-line text block, declared once for this view and
+     measured identical to B26's `.td-activity-head-text` / `.td-activity-sub`:
+     the title keeps the shell's leading and the description is 12px on ink-3,
+     2px under it. Named in this family (`.td-waiting-*`) per B27's rule; no new
+     token, no new colour — both values already resolve in `tw.css`. */
+  .td-waiting-head-text {
+    min-width: 0;
+  }
+  .td-waiting-sub {
+    margin: 2px 0 0;
+    font-size: 12px;
+    color: var(--color-td-ink-3);
+  }
   /* The tally rides the header's far end and reads as a count, not as an
      action — the neutral pill B26 gives a folded burst, for the same reason:
      a number about what is below it, not something to press. */

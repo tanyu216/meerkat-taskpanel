@@ -498,30 +498,78 @@
            ================================================================ -->
       <main class="td-main">
         <section class="td-filters" id="td-filters" data-filters data-i18n-aria-label="filters.label" aria-label="Filters">
-          <label class="td-sr" for="td-filter-assignee" data-i18n="filters.assignee">Assignee</label>
-          <select class="select select-sm td-select" id="td-filter-assignee" data-filter-assignee>
-            <option value="all" data-i18n="filters.assignee.all">Assignee: All</option>
-            <option value="me" data-i18n="filters.assignee.me">Assignee: Me</option>
-            <option value="human" data-i18n="filters.assignee.human">Assignee: Human</option>
-            <option value="agent" data-i18n="filters.assignee.agent">Assignee: Agent</option>
-          </select>
-          <!-- R13 修订（Terry 2026-10-13 · 决定甲）— the assignee condition's
+          <!-- Assignee selector — R15 ② (Terry 2026-10-13, 口径 B): the two
+               controls that were native `<select>`s are daisyUI `dropdown`s now,
+               the same component the Status and Label controls beside them have
+               always been. The bar is one component family end to end: a
+               `<details class="dropdown" data-dismiss-on-outside>` whose
+               `<summary class="btn btn-sm td-label-trigger">` states the value as
+               plain text and whose `dropdown-content menu` holds the rows. The
+               hook name did not move — `[data-filter-assignee]` is still the
+               element the interaction layer reads (the label control's own
+               precedent, R3) — but the value rides
+               `data-filter-assignee-value` rather than a form value, because a
+               `<details>` has none.
+
+               R13 修订（Terry 2026-10-13 · 决定甲）— the assignee condition's
                removal affordance is the control's own `Assignee: All` row: a
                press on a roster name is exactly the dropdown's own selection, so
                the row it selects and the row that undoes it are the same
-               control. No `✕` sits beside the select, and none sits in the
-               roster: a given name the control is stating is one more `option`
-               in the document while it is in force, and leaving it is choosing
-               another row of the same select. -->
-          <label class="td-sr" for="td-filter-priority" data-i18n="filters.priority">Priority</label>
-          <select class="select select-sm td-select" id="td-filter-priority" data-filter-priority>
-            <option value="all" data-i18n="filters.priority.all">Priority: All</option>
-            <option value="urgent" data-i18n="filters.priority.urgent">Priority: Urgent</option>
-            <option value="high" data-i18n="filters.priority.high">Priority: High</option>
-            <option value="medium" data-i18n="filters.priority.medium">Priority: Medium</option>
-            <option value="low" data-i18n="filters.priority.low">Priority: Low</option>
-            <option value="none" data-i18n="filters.priority.none">Priority: None</option>
-          </select>
+               control. No `✕` sits beside it, and none sits in the roster: a
+               given name the control is stating is one more **row** in the
+               document while it is in force, and leaving it is choosing another
+               row of the same control. -->
+          <details class="dropdown" data-filter-assignee data-filter-assignee-value="all" data-dismiss-on-outside>
+            <summary
+              class="btn btn-sm td-label-trigger"
+              role="button"
+              aria-haspopup="menu"
+              data-filter-assignee-summary
+              data-i18n-aria-label="filters.assignee"
+              aria-label="Assignee"
+            >
+              <span data-filter-assignee-text>Assignee: All</span>
+              <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M6 9.5 12 15.5 18 9.5" />
+              </svg>
+            </summary>
+            <ul class="dropdown-content menu td-label-menu">
+              <li><button type="button" data-assignee-filter-option="all" data-i18n="filters.assignee.all">Assignee: All</button></li>
+              <li><button type="button" data-assignee-filter-option="me" data-i18n="filters.assignee.me">Assignee: Me</button></li>
+              <li><button type="button" data-assignee-filter-option="human" data-i18n="filters.assignee.human">Assignee: Human</button></li>
+              <li><button type="button" data-assignee-filter-option="agent" data-i18n="filters.assignee.agent">Assignee: Agent</button></li>
+            </ul>
+          </details>
+
+          <!-- Priority selector — the same control, one row per priority. Its rows
+               carry the 6px `status` dot beside the copy the way the Status menu's
+               rows do, because priority is the board's other colour-coded scalar:
+               the dot reads `--status-color` off the row's own `[data-priority]`
+               (the same binding the cards and the legend read), so no component
+               names a colour. -->
+          <details class="dropdown" data-filter-priority data-filter-priority-value="all" data-dismiss-on-outside>
+            <summary
+              class="btn btn-sm td-label-trigger"
+              role="button"
+              aria-haspopup="menu"
+              data-filter-priority-summary
+              data-i18n-aria-label="filters.priority"
+              aria-label="Priority"
+            >
+              <span data-filter-priority-text>Priority: All</span>
+              <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M6 9.5 12 15.5 18 9.5" />
+              </svg>
+            </summary>
+            <ul class="dropdown-content menu td-label-menu">
+              <li><button type="button" data-filter-priority-option data-priority-value="all" data-i18n="filters.priority.all">Priority: All</button></li>
+              <li><button type="button" data-filter-priority-option data-priority-value="urgent" data-priority="urgent"><span class="status td-status-dot" aria-hidden="true"></span><span data-i18n="filters.priority.urgent">Priority: Urgent</span></button></li>
+              <li><button type="button" data-filter-priority-option data-priority-value="high" data-priority="high"><span class="status td-status-dot" aria-hidden="true"></span><span data-i18n="filters.priority.high">Priority: High</span></button></li>
+              <li><button type="button" data-filter-priority-option data-priority-value="medium" data-priority="medium"><span class="status td-status-dot" aria-hidden="true"></span><span data-i18n="filters.priority.medium">Priority: Medium</span></button></li>
+              <li><button type="button" data-filter-priority-option data-priority-value="low" data-priority="low"><span class="status td-status-dot" aria-hidden="true"></span><span data-i18n="filters.priority.low">Priority: Low</span></button></li>
+              <li><button type="button" data-filter-priority-option data-priority-value="none" data-priority="none"><span class="status td-status-dot" aria-hidden="true"></span><span data-i18n="filters.priority.none">Priority: None</span></button></li>
+            </ul>
+          </details>
 
           <!-- Status selector — the sibling of the label dropdown below, and the
                only filter that takes more than one value: the two statuses a
@@ -2374,40 +2422,110 @@
             </div>
           </header>
 
-          <!-- B26.1 · header + filters -->
-          <div class="td-filters" data-activity-filters>
-            <label class="td-sr" for="td-activity-filter-actor" data-i18n="activity.filter.actor.label">Actor</label>
-            <select class="select select-sm td-select" id="td-activity-filter-actor" data-activity-filter="actor">
-              <option value="all" data-i18n="activity.filter.actor.all">Anyone</option>
-              <option value="human" data-i18n="activity.filter.actor.human">Humans</option>
-              <option value="agent" data-i18n="activity.filter.actor.agent">Agents</option>
-            </select>
+          <!-- B26.1 · header + filters. R15 ① — the bar is the **same control
+               container** as B04's on the board/list, in the document tree as
+               well as in the cascade: a named `section.td-filters` landmark
+               whose direct children are its control row (the three selects) and
+               its tail (Clear · count), with each control's `.td-sr` label as a
+               sibling seat (`for=` / `id=`). The board bar's own shape, hook for
+               hook; `filters.label` is reused, so the round adds no key here. -->
+          <section class="td-filters" data-activity-filters data-i18n-aria-label="filters.label" aria-label="Filters">
+            <!-- R15 ① (Terry 2026-10-13, 口径 B) — the three activity filters are
+                 the **same control** as the board/list bar's four: a daisyUI
+                 `dropdown` panel (`<details>` + `<summary class="btn btn-sm
+                 td-label-trigger">` + `dropdown-content menu`), not a native
+                 `<select>`. The hook name did not move — `[data-activity-filter]`
+                 is still the element the interaction layer reads, one per domain
+                 — but the chosen value rides `data-activity-filter-value`, the
+                 way `[data-filter-status]` / `[data-filter-label]` carry theirs,
+                 because a `<details>` has no form value. The rows are
+                 `[data-activity-filter-option]` with `data-activity-value`, and
+                 the trigger states the chosen row's own copy through
+                 `[data-activity-filter-text]` (the status control's shape). -->
+            <details class="dropdown" data-activity-filter="actor" data-activity-filter-value="all" data-dismiss-on-outside>
+              <summary
+                class="btn btn-sm td-label-trigger"
+                role="button"
+                aria-haspopup="menu"
+                data-activity-filter-summary
+                data-i18n-aria-label="activity.filter.actor.label"
+                aria-label="Actor"
+              >
+                <span data-activity-filter-text>Anyone</span>
+                <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M6 9.5 12 15.5 18 9.5" />
+                </svg>
+              </summary>
+              <ul class="dropdown-content menu td-label-menu">
+                <li><button type="button" data-activity-filter-option data-activity-value="all" data-i18n="activity.filter.actor.all">Anyone</button></li>
+                <li><button type="button" data-activity-filter-option data-activity-value="human" data-i18n="activity.filter.actor.human">Humans</button></li>
+                <li><button type="button" data-activity-filter-option data-activity-value="agent" data-i18n="activity.filter.actor.agent">Agents</button></li>
+              </ul>
+            </details>
 
-            <label class="td-sr" for="td-activity-filter-event" data-i18n="activity.filter.event.label">Event</label>
-            <select class="select select-sm td-select" id="td-activity-filter-event" data-activity-filter="event">
-              <option value="all" data-i18n="activity.filter.event.all">All events</option>
-              <option value="status" data-i18n="activity.filter.event.status">Status</option>
-              <option value="comment" data-i18n="activity.filter.event.comment">Comments</option>
-              <option value="delivery" data-i18n="activity.filter.event.delivery">Delivery</option>
-            </select>
+            <details class="dropdown" data-activity-filter="event" data-activity-filter-value="all" data-dismiss-on-outside>
+              <summary
+                class="btn btn-sm td-label-trigger"
+                role="button"
+                aria-haspopup="menu"
+                data-activity-filter-summary
+                data-i18n-aria-label="activity.filter.event.label"
+                aria-label="Event"
+              >
+                <span data-activity-filter-text>All events</span>
+                <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M6 9.5 12 15.5 18 9.5" />
+                </svg>
+              </summary>
+              <ul class="dropdown-content menu td-label-menu">
+                <li><button type="button" data-activity-filter-option data-activity-value="all" data-i18n="activity.filter.event.all">All events</button></li>
+                <li><button type="button" data-activity-filter-option data-activity-value="status" data-i18n="activity.filter.event.status">Status</button></li>
+                <li><button type="button" data-activity-filter-option data-activity-value="comment" data-i18n="activity.filter.event.comment">Comments</button></li>
+                <li><button type="button" data-activity-filter-option data-activity-value="delivery" data-i18n="activity.filter.event.delivery">Delivery</button></li>
+              </ul>
+            </details>
 
-            <label class="td-sr" for="td-activity-filter-task" data-i18n="activity.filter.task.label">Task</label>
-            <select class="select select-sm td-select" id="td-activity-filter-task" data-activity-filter="task">
-              <option value="all" data-i18n="activity.filter.task.all">All tasks</option>
-              <option value="TD-134">TD-134</option>
-              <option value="TD-133">TD-133</option>
-              <option value="TD-129">TD-129</option>
-              <option value="TD-128">TD-128</option>
-              <option value="TD-127">TD-127</option>
-              <option value="TD-126">TD-126</option>
-              <option value="TD-123">TD-123</option>
-              <option value="TD-118">TD-118</option>
-              <option value="PROJ-0007">PROJ-0007</option>
-            </select>
+            <!-- The task domain is the one open-ended control: its rows are the
+                 identifiers the feed itself admits (`data-activity-task-id`), so
+                 the menu is the feed's own list and the trigger states the chosen
+                 identifier verbatim — no copy, because an identifier is data. -->
+            <details class="dropdown" data-activity-filter="task" data-activity-filter-value="all" data-dismiss-on-outside>
+              <summary
+                class="btn btn-sm td-label-trigger"
+                role="button"
+                aria-haspopup="menu"
+                data-activity-filter-summary
+                data-i18n-aria-label="activity.filter.task.label"
+                aria-label="Task"
+              >
+                <span data-activity-filter-text>All tasks</span>
+                <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M6 9.5 12 15.5 18 9.5" />
+                </svg>
+              </summary>
+              <ul class="dropdown-content menu td-label-menu">
+                <li><button type="button" data-activity-filter-option data-activity-value="all" data-i18n="activity.filter.task.all">All tasks</button></li>
+                <li><button type="button" data-activity-filter-option data-activity-value="TD-134">TD-134</button></li>
+                <li><button type="button" data-activity-filter-option data-activity-value="TD-133">TD-133</button></li>
+                <li><button type="button" data-activity-filter-option data-activity-value="TD-129">TD-129</button></li>
+                <li><button type="button" data-activity-filter-option data-activity-value="TD-128">TD-128</button></li>
+                <li><button type="button" data-activity-filter-option data-activity-value="TD-127">TD-127</button></li>
+                <li><button type="button" data-activity-filter-option data-activity-value="TD-126">TD-126</button></li>
+                <li><button type="button" data-activity-filter-option data-activity-value="TD-123">TD-123</button></li>
+                <li><button type="button" data-activity-filter-option data-activity-value="TD-118">TD-118</button></li>
+                <li><button type="button" data-activity-filter-option data-activity-value="PROJ-0007">PROJ-0007</button></li>
+              </ul>
+            </details>
 
-            <button type="button" class="btn btn-ghost btn-sm" data-activity-filter-reset data-i18n="activity.filter.reset">Reset</button>
+            <!-- R15 ② — the clear control is B04's own: `[data-filter-clear]` and
+                 `filters.clear`, the hook and the key the board/list bar's Clear
+                 carries, wearing the same `btn btn-ghost btn-sm` shell. It sits
+                 in the same tail position (Clear · count) as its board twin; the
+                 script tells the two apart by the bar the press came from, not by
+                 a second hook name. `activity.filter.reset` retired with it. -->
+            <button type="button" class="btn btn-ghost btn-sm" data-filter-clear data-i18n="filters.clear">Clear</button>
             <span class="td-filter-count" data-activity-filter-count aria-live="polite" data-i18n="activity.filter.count" data-i18n-arg="15">15 entries</span>
-          </div>
+          </section>
 
           <!-- B26.2 · feed. Every row is in the markup, not in a template:
                with the script off a reader still gets day groups, rows, task
@@ -3000,7 +3118,19 @@
              ============================================================== -->
         <section class="td-waiting-view" data-waiting-view hidden>
           <header class="td-waiting-head" data-waiting-head>
-            <h1 class="td-waiting-title" data-waiting-title data-i18n="waiting.title">Waiting on me</h1>
+            <!-- R15 ③ — the header states *what* the view is, not only its name:
+                 a title plus a one-line description, the two-line text block
+                 B26's own header carries (`.td-activity-head-text` +
+                 `.td-activity-sub`, measured 16px/600 over 12px ink-3). This
+                 view spells it in its own family names (`.td-waiting-head-text`
+                 / `.td-waiting-sub`) so either header can move without dragging
+                 the other — B27's rule for every rule this view owns. The
+                 description carries a `data-i18n` hook only, no `data-waiting-*`
+                 of its own, exactly as Activity's does (B26.1). -->
+            <div class="td-waiting-head-text">
+              <h1 class="td-waiting-title" data-waiting-title data-i18n="waiting.title">Waiting on me</h1>
+              <p class="td-waiting-sub" data-i18n="waiting.subtitle">Everything waiting on your answer, oldest first.</p>
+            </div>
             <!-- B27.2 · the tally. The one number this view keeps: how many
                  things are owed to the reader. Kept honest by hand in this
                  document (nothing here filters), and stated as `waiting.count`
