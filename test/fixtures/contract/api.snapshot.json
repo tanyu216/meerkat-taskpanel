@@ -1178,6 +1178,7 @@
         "labels": "array",
         "meta": "object",
         "name": "string",
+        "prefix": "string",
         "readme": "string",
         "task_count": "number",
         "updated_at": "string"

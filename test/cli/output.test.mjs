@@ -114,7 +114,7 @@ describe("cli/wire — the JSON vocabulary", () => {
   it("projects the other entities with the same naming rule", () => {
     assert.deepEqual(
       projectToWire({ id: "p", name: "P", labels: [], meta: {}, readme: null, archivedAt: null, createdAt: "t", updatedAt: "t" }),
-      { id: "p", name: "P", labels: [], meta: {}, readme: null, task_count: null, archived_at: null, created_at: "t", updated_at: "t" },
+      { id: "p", name: "P", prefix: "P", labels: [], meta: {}, readme: null, task_count: null, archived_at: null, created_at: "t", updated_at: "t" },
     );
 
     // The sidebar badge's number: served with the list, so it is `null` — not 0 —
@@ -122,6 +122,27 @@ describe("cli/wire — the JSON vocabulary", () => {
     assert.equal(projectToWire({ id: "p", name: "P", taskCount: 4 }).task_count, 4);
     assert.equal(projectToWire({ id: "p", name: "P", taskCount: 0 }).task_count, 0);
     assert.equal(projectToWire({ id: "p", name: "P", taskCount: "4" }).task_count, null);
+
+    // C-RAIL-1 §4 R-W1 — the wire carries the project's **effective prefix**, so
+    // the sidebar rail can render the token the project's cards are numbered
+    // with. It is the derived value, not `meta.prefix` verbatim: what is served
+    // is what `allocateIdentifier` numbers with (C-RAIL-1 §3.1 M1/M2).
+    assert.equal(projectToWire({ id: "p", meta: { prefix: "td" } }).prefix, "TD");
+    assert.equal(projectToWire({ id: "p", meta: { prefix: "or c" } }).prefix, "OR-C");
+    // Legacy fallback: no stored prefix ⇒ the id, exactly as before the slot
+    // existed. This is the branch the browser cannot reproduce, which is why the
+    // value is projected rather than derived client-side (C-RAIL-1 §3.2 (D)).
+    assert.equal(projectToWire({ id: "demo" }).prefix, "DEMO");
+    // The trap C-RAIL-1 §0 ⑤ / §5 names: `identifierPrefix(meta?.prefix) ||
+    // identifierPrefix(id)` yields the *truthy* "UNDEFINED" when `meta` exists
+    // but carries no prefix, and the fallback never runs.
+    const uuid = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
+    assert.equal(projectToWire({ id: uuid, meta: {} }).prefix, "A1B2C3D4-E5F6-4A7B-8C9D-0E1F2A3B4C5D");
+    assert.equal(projectToWire({ id: uuid }).prefix, "A1B2C3D4-E5F6-4A7B-8C9D-0E1F2A3B4C5D");
+    assert.notEqual(projectToWire({ id: uuid, meta: {} }).prefix, "UNDEFINED");
+    // A prefix that normalizes to nothing falls back too (C-PREFIX-1 M4 refuses
+    // it at creation; a row that predates the guard must still not mint "####").
+    assert.equal(projectToWire({ id: "p1", meta: { prefix: "####" } }).prefix, "P1");
     assert.equal(commentToWire({ id: "c", taskId: "t", body: "b", kind: "note", authorKind: "human", authorId: "e", refs: [], version: 1, createdAt: "t" }).author_kind, "human");
     assert.equal(relationToWire({ id: 1, type: "parent", source: "a", target: "b", origin: null, createdAt: "t" }).source, "a");
     assert.equal(sessionToWire({ id: "s", taskId: "t", seg: "s1", owner: "linus", backend: "claude", sessionId: "x", status: "running", ts: "t" }).session_id, "x");
