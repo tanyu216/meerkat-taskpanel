@@ -33,6 +33,7 @@ import {
   acquireWriterLock,
   isProcessAlive,
   removeRuntimePointer,
+  resolveRuntimePointerPath,
   writeRuntimePointer,
 } from "../../src/core/index.mjs";
 import { WRITER_LOCK_FILENAME } from "../../src/shared/constants.mjs";
@@ -173,6 +174,85 @@ describe("concurrency/writer-guard — the pointer belongs to its owner", () => 
     const path = join(dir, "runtime.json");
     assert.equal(removeRuntimePointer({ path, pid: process.pid }), true, "nothing there is fine");
     assert.equal(removeRuntimePointer({ path }), true);
+  });
+});
+
+describe("concurrency/writer-guard — two *boards*, one pointer slot", () => {
+  /**
+   * The comparison the audit's incident needed and never had.
+   *
+   * `pid` alone does not identify a board: a board is *(pid, dataDir)*. The
+   * machine-wide pointer is one file, so a board whose data dir is not the
+   * incumbent's — a dev run, a stray `--data-dir <tmp>` — could take the slot
+   * on start and empty it on exit, and the canonical board (still running,
+   * still healthy) went unreachable. `home` is a temp dir, so the "machine-wide"
+   * slot is this test's alone and the developer's real one is never in play.
+   */
+  const slotOptions = (home) => ({ env: {}, home });
+
+  it("does not displace the live board that holds the shared slot", () => {
+    const home = tempDir();
+    const canonical = join(home, "canonical-board");
+    const stray = join(home, "stray-board");
+    const slot = resolveRuntimePointerPath(slotOptions(home));
+
+    // The canonical board (this process standing in for the live daemon) is up.
+    const mine = writeRuntimePointer(
+      { url: "http://127.0.0.1:9527", dataDir: canonical, pid: process.pid },
+      slotOptions(home),
+    );
+    assert.equal(mine.path, slot, "the first board holds the machine-wide slot");
+    const before = readFileSync(slot, "utf8");
+
+    // A board with another data dir starts. It must not take the slot: an
+    // overwrite here is the "抢占" half of the incident.
+    const other = writeRuntimePointer(
+      { url: "http://127.0.0.1:9531", dataDir: stray, pid: deadPid() },
+      slotOptions(home),
+    );
+    assert.notEqual(other.path, slot, "the newcomer is addressed elsewhere");
+    assert.equal(readFileSync(slot, "utf8"), before, "the canonical address is byte-identical");
+    assert.equal(JSON.parse(before).dataDir, canonical);
+
+    // …and its cleanup cannot unplug the board it never owned ("摘除"), even
+    // though it is removing a pointer that names its own pid.
+    assert.equal(removeRuntimePointer({ path: other.path, pid: deadPid(), dataDir: stray }), true);
+    assert.equal(existsSync(slot), true, "the canonical board is still addressable");
+    assert.equal(readFileSync(slot, "utf8"), before, "…and its address was not emptied");
+    assert.equal(removeRuntimePointer({ path: other.path, pid: deadPid(), dataDir: stray }), true, "idempotent");
+
+    // A board that *is* over the canonical data dir may take over a slot whose
+    // owner is gone — the same crash-recovery rule the write lock applies.
+    writeRuntimePointer({ url: "http://127.0.0.1:1", dataDir: canonical, pid: deadPid() }, slotOptions(home));
+    const restarted = writeRuntimePointer(
+      { url: "http://127.0.0.1:9527", dataDir: canonical, pid: process.pid },
+      slotOptions(home),
+    );
+    assert.equal(restarted.path, slot, "a stale owner of the same board is recovered, not obeyed");
+  });
+
+  it("declines to remove a pointer that names another board's data dir", () => {
+    const dir = tempDir();
+    const path = join(dir, "runtime.json");
+    writeRuntimePointer(
+      { url: "http://127.0.0.1:9527", dataDir: join(dir, "board-a"), pid: process.pid },
+      { path },
+    );
+    const before = readFileSync(path, "utf8");
+
+    // The same pid — with `pid` as the only rule, this removal used to succeed
+    // and a live board lost its address. The ownership check has to name the
+    // *data dir* too.
+    assert.equal(
+      removeRuntimePointer({ path, pid: process.pid, dataDir: join(dir, "board-b") }),
+      false,
+      "another board's pointer is not ours to delete",
+    );
+    assert.equal(existsSync(path), true, "the other board's address survives");
+    assert.equal(readFileSync(path, "utf8"), before, "…and is not emptied (the 15:37 symptom)");
+
+    assert.equal(removeRuntimePointer({ path, pid: process.pid, dataDir: join(dir, "board-a") }), true);
+    assert.equal(existsSync(path), false);
   });
 });
 

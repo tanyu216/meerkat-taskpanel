@@ -71,6 +71,16 @@ export const LOGS_DIRNAME = "logs";
  * `src/core/storage/writer-lock.mjs`.
  */
 export const WRITER_LOCK_FILENAME = "writer.lock";
+/**
+ * A board's *own* address file, inside its data directory (§7.1).
+ *
+ * That is where the runtime pointer goes when the machine-wide one is held by
+ * another live board — the same reasoning as the write lock beside it: a board
+ * with this data directory and a board with another one are different boards,
+ * and the second must not be able to unplug the first. See
+ * `src/core/storage/secrets/runtime-pointer.mjs`.
+ */
+export const RUNTIME_FILENAME = "runtime.json";
 /** Default HTTP port (D10 — 4 digits, avoids common dev ports). */
 export const DEFAULT_PORT = 9527;
 /** Default listen host (ARCHITECTURE §7: welcome LAN access). */
