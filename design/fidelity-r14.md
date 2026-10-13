@@ -360,13 +360,17 @@ workspace/T-20261013-154930/evidence/
 
 ### 8.0 未决项（**须 Elon 裁定，不自行发散**）
 
-- **U1 — 三条「自创」钩子族怎么收口**：`[data-attachment-row]` / `[data-attachment-name]` / `[data-attachment-size]` / `[data-activity-row]` / `[data-activity-actor]` / `[data-activity-ts]`（已被 `test/web/blocks.contract.mjs` §B09 背书）与 `[data-detail-slot-source]`（只在该组件里）在原型中**不存在**。
+- **U1 — 三条「自创」钩子族怎么收口**：`[data-attachment-row]` / `[data-attachment-name]` / `[data-attachment-size]` / `[data-activity-row]` / `[data-activity-actor]` / `[data-activity-ts]`（已被 `test/web/blocks.contract.mjs` §B09 背书）在原型中**不存在**；`[data-detail-slot-source]` 则**已在** `design/BLOCKS.md` 的 Auxiliary hooks 表与 `design/prototype/app.js` 中出现（原文「只在该组件里／在原型中不存在」据此**如实修正**），U1(b) 的判定对象是它作为**实现侧**是否存在消费方。
   - 选项 A：**回填原型**（在 `index.html` 的抽屉 markup 上补这些钩子）+ 登记进 `BLOCKS.md` §B09 ⇒ 变成 `缺失口径`。代价：改 `design/prototype/index.html`（与 A1 串行）。
   - 选项 B：**回退实现**到原型的 class 形状（`.td-file` / `.td-activity`）⇒ 变成 `对齐`。代价：改 `test/web/blocks.contract.mjs`（本卡禁改）+ 实现卡工作量。
   - 本卡**不选**，只登记。B2 **在裁定前不得**照此清单动这两族。
+  - **▶ 裁定（Elon，2026-10-13）**：**U1(a)** —— 该六枚钩子已被 `test/web/blocks.contract.mjs` §B09 背书 ⇒ **不修原型**（禁以实现反推原型 markup）；改在 `design/BLOCKS.md` §B09 登记为「实现侧测试钩子（原型无 / 测试背书 / 实现保留）」。契约与 `test/**` 不动。**U1(b)** —— `[data-detail-slot-source]` **归 B2**：先确认无消费方则删除；若确有功能消费方则改登记 `design/BLOCKS.md`。
 - **U2 — `[data-detail-save-error]` 的文案座位**：R10 §7 与 `BLOCKS.md` §B09 写「no `data-i18n` hook」，实现用 `data-i18n="detail.saveError"`（键在 `extra.mjs`，是**实现自撰**的合法归宿）。若裁定「保留座位」，则 R10 那两处文字须改；若裁定「回到内联」，则实现要去掉座位、文案内联。**本卡按现状记为 `口径` + 书面偏差**（§4 R14-B09）。
+  - **▶ 裁定（Elon，2026-10-13）**：**保留**实现座位 `data-i18n="detail.saveError"`；`design/BLOCKS.md` §B09 与 `design/fidelity-r10.md` §7 的措辞按此改写为「原型内联、实现侧有座位」；契约对原型的 **A12 不变**。
 - **U3 — R12 的落地归属**：R12 的契约已存在、实现未落地（§0、§4 R14-B05）。请裁定是由 **B2（本族实现卡）** 一并补，还是单独开一张 R12 实现卡。
+  - **▶ 裁定（Elon，2026-10-13）**：R12 实现（`340710c` / 源 merge `0c3df7b`）**非 main 祖先** ⇒ 集成遗漏；由 R12 族卡 `T-20261013-033933` 以**非破坏 `merge --no-ff`** 并入 main 收尾（本卡不处理）。**实测补记（本卡基线）**：该 `merge --no-ff` 已落地为 main 的 `6888821`，`git merge-base --is-ancestor 0c3df7b main` 现为真 ⇒ U3 已收口。
 - **U4 — 抽屉 `hidden` 与 C06**：原型 `aside` 只靠 `data-state` + `transform/visibility`；实现额外挂 `hidden`（并配 `.td-drawer[hidden]{display:none}`）。C06 的措辞（「`hidden` 或 `data-state`」）两种都对，故本卡记 `口径` 而非违规；**若采纳 B01 的目标（去 `hidden`）**，请确认不触碰 C06 的措辞。
+  - **▶ 裁定（Elon，2026-10-13）**：采纳 B01 目标 —— **去 `aside` 的 `hidden`**，改由 `data-state` 驱动；移除自创 `:aria-hidden`；**C06 措辞不动**（本卡不处理，只记结论）。
 
 ### 8.1 本轮要补的样式细节全集（50 条，供 B2 逐条实现）
 
