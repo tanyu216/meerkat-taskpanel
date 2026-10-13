@@ -12,11 +12,13 @@ import assert from "node:assert/strict";
 import test, { describe, it } from "node:test";
 
 import {
+  AUTO_CLAIM_EXCLUDED_KINDS,
   CLAIM_ACTIONS,
   assertClaimable,
   decideClaim,
   explainLostClaim,
   isAssignee,
+  isAutoClaimableKind,
 } from "../../../src/core/domain/claim.mjs";
 import { DomainError } from "../../../src/shared/errors.mjs";
 
@@ -129,6 +131,27 @@ describe("domain/claim — decide", () => {
       assert.equal(verdict.action, CLAIM_ACTIONS.INVALID);
       assert.equal(verdict.code, "not_claimable");
     }
+  });
+
+  it("allows a deploy card — the marker withholds it from the poll's read, not from a dispatch", () => {
+    // T-20261013-232004. The asymmetry with `epic` is the whole design: a
+    // deployment card has to be runnable (Elon assigns it, `issue move <ref>
+    // in_progress` takes it), so the claim gate must let it through. What keeps
+    // it off a poll is `AUTO_CLAIM_EXCLUDED_KINDS`, applied by the candidate
+    // read — a read rule, not a claim rule.
+    const verdict = decideClaim(task({ kind: "deploy", assigneeId: "dict-linus" }), {
+      actor: "linus",
+      now: NOW,
+      resolveAssignee: resolveLinus,
+    });
+    assert.equal(verdict.action, CLAIM_ACTIONS.TAKE);
+    assert.equal(verdict.code, null);
+
+    // ...and the read rule is what the two kinds have in common.
+    assert.deepEqual(AUTO_CLAIM_EXCLUDED_KINDS, ["epic", "deploy"]);
+    assert.equal(isAutoClaimableKind("epic"), false);
+    assert.equal(isAutoClaimableKind("deploy"), false);
+    assert.equal(isAutoClaimableKind("task"), true);
   });
 
   it("refuses backlog and every other non-todo status", () => {

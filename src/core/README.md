@@ -20,7 +20,10 @@ Rules that are enforced, not just documented:
   lost 0005's `ix_tasks_source` and 0014 restores it (0014's header carries the index
   count 0013's own header got wrong, since its text is frozen); the property is held by
   `test/core/storage/migrations-0013.test.mjs`, which derives the expected set from the
-  board *before* 0013 instead of listing it;
+  board *before* 0013 instead of listing it. 0015 (the `deploy` kind) is the next
+  rebuild of `tasks` and names all seven indexes itself — the set a board at 0014
+  carries, which is what its own `migrations-0015.test.mjs` compares against a fresh
+  one;
 * the delivery gate is a database trigger *and* a domain check, and the two are
   tested against each other (`test/contract/`).
 

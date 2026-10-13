@@ -537,6 +537,7 @@
             },
             "kind": {
               "enum": [
+                "deploy",
                 "epic",
                 "task"
               ],
@@ -646,6 +647,7 @@
             },
             "kind": {
               "enum": [
+                "deploy",
                 "epic",
                 "task"
               ],

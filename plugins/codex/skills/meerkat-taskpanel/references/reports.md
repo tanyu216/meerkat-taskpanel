@@ -112,7 +112,7 @@ A card's bucket comes from exactly one **grouping dimension**, chosen with
 
 | `--group-by` | Bucket key | Missing value |
 |---|---|---|
-| `kind` *(default)* | the card's `kind` (`task`, `epic`) | not counted |
+| `kind` *(default)* | the card's `kind` (`task`, `epic`, `deploy`) | not counted |
 | `project` | `project_id` | not counted |
 | `assignee` | the assignee's `display_name` (falling back to its `id`) | not counted |
 | `status` | the card's `status` | not counted |
