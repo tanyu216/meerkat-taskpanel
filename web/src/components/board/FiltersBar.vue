@@ -49,10 +49,12 @@
  * deliberately does **not** close the menu, so the two in-flight statuses can be
  * picked in a row (the card's U1 ruling).
  *
- * R13 — the assignee control keeps its four static rows and grows the **given
- * name** the roster's press writes, on demand (`namedAssignee`); beside it sits
- * the one `[data-assignee-clear]`, which removes that name and nothing else. Both
- * are driven by the control's own value, which stays the one truth
+ * R13 修订（seg3 · 决定甲）— the assignee control keeps its four static rows and
+ * grows the **given name** the roster's press writes, on demand (`namedAssignee`).
+ * The `x` that used to sit beside it is **withdrawn** (`design/fidelity-r13.md`
+ * §10.1 row 3/4): the removal path is the control's own `Assignee: All` row, which
+ * already has a seat (`filters.assignee.all`), so neither the markup, the rule
+ * nor the delegated handler survives. The control's own value stays the one truth
  * (`design/fidelity-r13.md` §2.8) — and R15 ② kept that reading while moving the
  * rows from `<option>`s to menu `button`s, so the roster press and a menu press
  * are still the same write.
@@ -177,18 +179,6 @@ function toggleStatus(key) {
   writeStatusFilter(values.includes(key) ? values.filter((value) => value !== key) : [...values, key]);
 }
 
-/**
- * R13 ④ — the bar's `x` removes the assignee condition **alone**: no view
- * switch, no status / priority / label / search change, no toast. `stop` keeps
- * the press from travelling on to whatever sits behind the bar.
- *
- * @param {MouseEvent} event
- */
-function clearAssignee(event) {
-  event.stopPropagation();
-  board.filters.assignee = "all";
-}
-
 function clearFilters() {
   board.filters.search = "";
   writeAssigneeFilter("all");
@@ -256,21 +246,12 @@ function chooseLabel(value, event) {
         </li>
       </ul>
     </details>
-    <!-- R13 ④ — the one removal affordance, the assignee control's **sibling**
-         (B04). Static markup, `hidden` at rest, shown only while the control
-         states a *name*: `all` is the select's own first row and the three kinds
-         are its rows, so neither needs a second exit. It sits here rather than
-         inside the roster's capsule — that row is one line with no width to
-         spare (`design/fidelity-r13.md` §2.1/§3.3). -->
-    <button
-      type="button"
-      class="td-assignee-clear shrink-0"
-      data-assignee-clear
-      :hidden="!namedAssignee"
-      data-i18n-aria-label="assignee.clear"
-      :aria-label="$t('assignee.clear')"
-      @click="clearAssignee"
-    >✕</button>
+    <!-- R13 修订（seg3 · 决定甲）— the `✕` removal affordance is **withdrawn**
+         (`design/fidelity-r13.md` §10.1 row 4): no markup, no rule, no delegated
+         handler, no aria/i18n seat survive. The control's own `Assignee: All` row
+         above is the removal path, and its copy is the existing
+         `filters.assignee.all` key — which is why the `assignee.clear` key goes
+         back (the catalogue already ships one key fewer). -->
 
     <!-- R15 ② — the priority control is the same dropdown. Its rows carry the
          6px dot beside the copy, the way the status menu's do, because priority

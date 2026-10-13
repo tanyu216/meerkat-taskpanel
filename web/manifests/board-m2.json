@@ -143,10 +143,6 @@
         "selector": "[data-assignee-item]"
       },
       {
-        "name": "r13-assignee-clear",
-        "selector": "[data-assignee-clear]"
-      },
-      {
         "name": "b26-activity-view",
         "selector": "[data-activity-view]"
       },
@@ -1521,8 +1517,8 @@
     },
     {
       "id": "B03-r13",
-      "name": "R11 ② · R13 — 名册名：路由 + 按名收窄，名是项里的唯一一个按钮；胶囊壳挂在**项**上",
-      "evidence": "design/fidelity-r11.md §2.2、design/fidelity-r13.md §2.1/§2.9；web/src/components/shell/Sidebar.vue（`[data-agent-row]` → `[data-agent-text]` → `[data-assignee-item]` → 一个 `[data-agent-assignee]`）；胶囊与 U-6 修正的样式在 web/src/styles/app.css。数目是数据（board 的名册有几行），只设下限；胶囊只在具名时存在，其几何由驱动层实测（R13 §5.2 B1/B3/B6）",
+      "name": "R11 ② · R13 — 名册名：**只按名收窄**（不路由、不写状态），名是项里的唯一一个按钮；胶囊壳挂在**项**上",
+      "evidence": "design/fidelity-r11.md §2.2、design/fidelity-r13.md §2.1/§2.9/§10.1（决定甲）；web/src/components/shell/Sidebar.vue（`[data-agent-row]` → `[data-agent-text]` → `[data-assignee-item]` → 一个 `[data-agent-assignee]`）；胶囊与 U-6 修正的样式在 web/src/styles/app.css。数目是数据（board 的名册有几行），只设下限；胶囊只在具名时存在，其几何由驱动层实测（R13 §10.3 B1/B3）",
       "status": "delivered",
       "checks": [
         {
@@ -1550,10 +1546,9 @@
           "desc": "每项恰一个名按钮"
         },
         {
-          "scope": "[data-agents-presence]",
           "selector": "[data-assignee-clear]",
           "count": 0,
-          "desc": "项内**没有**第二个按钮：唯一的 `x` 在筛选条（R13 §2.1 / N8）"
+          "desc": "全文档**无**清除 `x`：撤销后 markup / 样式规则 / JS 处理器 / aria 座位四路全无（R13 修订 §10.1 row 4）"
         },
         {
           "scope": "[data-agents-presence]",
@@ -1622,8 +1617,8 @@
     },
     {
       "id": "B04-r13",
-      "name": "R13 · R15 ② — assignee 具名：控件值域按需扩一个名字，`x` 是控件的紧邻兄弟",
-      "evidence": "design/fidelity-r13.md §2.4/§2.9/§3.4、design/fidelity-r15.md §2.2；web/src/components/board/FiltersBar.vue（`[data-filter-assignee]` 的菜单行 `button[data-assignee-filter-option]`（R15 ② 由 `<option>` 改为菜单行，钩子与值载体不变）+ 其后的 `button[data-assignee-clear][hidden]`）；勾子名 `[data-assignee-filter-option]` 与 B22 的 `[data-assignee-option]` 不同名（R12 红线）",
+      "name": "R13 · R15 ② — assignee 具名：控件值域按需扩一个名字；`x` 已撤销，移除路径 = 控件自身的 `Assignee: All` 行",
+      "evidence": "design/fidelity-r13.md §2.9/§3.4/§10.1（决定甲）、design/fidelity-r15.md §2.2；web/src/components/board/FiltersBar.vue（`[data-filter-assignee]` 的菜单行 `button[data-assignee-filter-option]`（R15 ② 由 `<option>` 改为菜单行，钩子与值载体不变）；`[data-assignee-clear]` 已随本轮撤销）；勾子名 `[data-assignee-filter-option]` 与 B22 的 `[data-assignee-option]` 不同名（R12 红线）",
       "status": "delivered",
       "checks": [
         {
@@ -1644,21 +1639,16 @@
           "desc": "静止恰一行在选（`all`）—— 静止无名时具名行不出现在文档里，故上一条恰为四行"
         },
         {
+          "scope": "[data-filter-assignee]",
+          "selector": "[data-assignee-filter-option=\"all\"]",
+          "count": 1,
+          "desc": "移除路径 = 控件自身的 `Assignee: All` 行（R13 修订 §10.1 row 3）——`x` 撤销后由它承担"
+        },
+        {
           "scope": "[data-filters]",
           "selector": "[data-assignee-clear]",
-          "count": 1,
-          "desc": "文档唯一 `x`，落在筛选条内"
-        },
-        {
-          "scope": "[data-filters]",
-          "selector": "[data-filter-assignee] + [data-assignee-clear]",
-          "count": 1,
-          "desc": "`x` 是 assignee 控件的**紧邻兄弟**（JS-off 结构完整的唯一来源）"
-        },
-        {
-          "selector": "[data-assignee-clear][hidden]",
-          "count": 1,
-          "desc": "静止带 `hidden` 属性 —— 隐藏由 preflight 的 `[hidden]` 承担，不由 `display` 声明"
+          "count": 0,
+          "desc": "筛选条内也**无** `x`（R13 修订 §10.1 row 4；移除路径 = 控件自身的 `Assignee: All` 行）"
         }
       ]
     },
@@ -2014,14 +2004,13 @@
       "styleTargets": [
         "r11-status-trigger",
         "r11-roster-name",
-        "r13-assignee-item",
-        "r13-assignee-clear"
+        "r13-assignee-item"
       ],
       "stylePropsAdded": [],
       "checksRetargeted": [
         "B04-r9 的三条类名锚（`.td-label-trigger` 计数 / 其内 `span` 与 `[data-filter-label-summary]` / `> .td-icon-sm`）改按控件自己的钩子 `[data-filter-label]` 收窄"
       ],
-      "note": "R11 两项（Terry：① list 的「状态」筛选 ② Active agents 的 Assignee 可点 ⇒ 路由）与 R13 的扩写（同一按名收窄 + 具名胶囊 + 筛选条里的 `x`）。**A 腿三条块**：状态控件的域与 8 行（B04-r11）、名册项与名按钮的结构（B03-r13）、具名 option 与 `x` 的兄弟关系（B04-r13）。**C 腿四个 style 目标**（状态触发、名册名、胶囊项、`x`）—— `styleProps` 无需新增，四个目标要看的属性都已在册；C 腿非阻塞。**B04-r9 的三条类名锚按控件钩子收窄**：R11 §4.1 R4 要求状态控件复用 `.td-label-trigger` 这件壳（bar 四控件同高的口径就是它），于是「文档里只有一个 `.td-label-trigger`」不再成立——原断言想说的是「label 触发器的壳与 caret」，不是「文档只有一个触发器」，故改按 `[data-filter-label]` 收窄，事实不变而不再被同一族的新成员误伤。行数、`clippedPx == 0`、胶囊的宽度中性、名册左帽的 U-6 修正、以及 R11/R13 的全部交互（路由四步、切换关闭、`x` 只清 assignee），只能由驱动层 web/scripts/dom-smoke.mjs 的 R11/R13 段判定。"
+      "note": "R11 两项（Terry：① list 的「状态」筛选 ② Active agents 的 Assignee 可点 ⇒ 路由）与 R13 的扩写（具名胶囊 + 控件值域按需扩名）。**R13 修订（seg3 · 决定甲）**：名册按下**只**写 assignee 值（不切视图、不写状态，再按同名幂等），筛选条里的 `x` **撤销**，移除路径 = 控件自身的 `Assignee: All` 行。**A 腿三条块**：状态控件的域与 8 行（B04-r11）、名册项与名按钮的结构（B03-r13）、具名 option（B04-r13）。**C 腿三个 style 目标**（状态触发、名册名、胶囊项）—— `styleProps` 无需新增；C 腿非阻塞。**B04-r9 的三条类名锚按控件钩子收窄**：R11 §4.1 R4 要求状态控件复用 `.td-label-trigger` 这件壳（bar 四控件同高的口径就是它），于是「文档里只有一个 `.td-label-trigger`」不再成立——原断言想说的是「label 触发器的壳与 caret」，不是「文档只有一个触发器」，故改按 `[data-filter-label]` 收窄，事实不变而不再被同一族的新成员误伤。行数、`clippedPx == 0`、胶囊的宽度中性、名册左帽的 U-6 修正、以及 R11/R13 的全部交互（按下只写 assignee、幂等、控件自身 `all` 行复位），只能由驱动层 web/scripts/dom-smoke.mjs 的 R11/R13 段判定。"
     }
   }
 }

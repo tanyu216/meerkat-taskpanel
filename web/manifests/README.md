@@ -358,6 +358,13 @@ diff count changed** except `filters`, where the four new rows *are* the round's
 ## 9. The R11/R13 additions — the status filter, the roster route and the named assignee
 (`T-20261013-014701-3`, 2026-10-13)
 
+> **Partially superseded by §13** (R13 修订, `T-20261013-154954-2`). Everything below that
+> describes the roster press as a *route* (view → `list`, status set → the two in-flight
+> statuses, a toggle-off on the second press) and the `[data-assignee-clear]` `x` is **no
+> longer the contract**. The three blocks and two of the four style targets this section
+> added stay; `r13-assignee-clear` is withdrawn and the press is now assignee-only. §13
+> carries the current readings.
+
 Three blocks (`B03-r13`, `B04-r11`, `B04-r13`) and four `style.targets` entries
 (`r11-status-trigger`, `r11-roster-name`, `r13-assignee-item`, `r13-assignee-clear`), one set per
 item of the two contracts this round ports in one commit (`design/fidelity-r11.md` §2.1/§2.2 and
@@ -378,8 +385,8 @@ probe for the same reason.
 | which fact | instrument |
 |---|---|
 | the status control is in the bar, has 8 rows (`all` + the seven first-class statuses) with the seven value-qualified rows in board order, joins the light-dismiss membership, and carries its value on its own `data-filter-status-value` | **this manifest** — `B04-r11`, the six-word vocabulary |
-| the roster's one-name-button-per-item structure, and that a roster item holds **no** second button (the `x` lives in the bar) | **this manifest** — `B03-r13`, plus `count … == 0` scoped to `[data-agents-presence]` for the `x` |
-| the named option is generated **on demand** (0 at rest) and the one `[data-assignee-clear]` is the assignee control's **adjacent sibling**, `hidden` at rest | **this manifest** — `B04-r13` |
+| the roster's one-name-button-per-item structure, and that a roster item holds **no** second button (the `x` is withdrawn entirely) | **this manifest** — `B03-r13`, plus a document-wide `count … == 0` for the `x` *(superseded by §13: the global `count == 0` / `absent` form)* |
+| the named option is generated **on demand** (0 at rest) and the one `[data-assignee-clear]` is the assignee control's **adjacent sibling**, `hidden` at rest | **this manifest** — `B04-r13` *(superseded by §13: the `x` is withdrawn, the control's own `Assignee: All` row is the removal path)* |
 | the status domain equals the board's own (the seven columns' and the cards' `data-status` set), the named option's hook name is not B22's, the roster host clips nothing, one name button per item | **`test/web/blocks.contract.mjs`** — `order`/`domain` rules read off `DOMAINS.STATUS`, `computed` rules on `[data-agent-assignee]`/`[data-agent-text]`, evaluated by the same harness |
 | computed style, both sides, prototype as oracle | **`style.targets`** — the four new names; the diffs they add are the round's own decisions (the trigger 30→32px, the roster button's 18→21px line, the capsule item's inline box) |
 | the rest: the route's four steps and its AND semantics, the toggle-off, `x` clearing the assignee alone, the capsule's width neutrality (`clippedPx == 0` at every tier), the row-height delta, the U-6 correction (a first-in-row capsule bleeding 6px with its cap intact), and the eight status rows' OR | **the driven layer** — `web/scripts/dom-smoke.mjs`'s R11/R13 section, the only leg that can press a control and read the result |
@@ -420,7 +427,8 @@ each is one of three known shapes):
   acceptance is the name's clickability, the capsule and the clipping, and the row's face is a
   B03 question the card does not open. The target exposes it; it does not create it.
 * `r13-assignee-clear` **0** — the one target of the four that is fully aligned, because the `x`
-  is a static 14px glyph with no colour of its own at rest.
+  is a static 14px glyph with no colour of its own at rest. *(Withdrawn by §13; it contributed 0
+  comparisons anyway — the prototype side had already dropped the `x`, so the target skipped.)*
 
 The capsule itself has no target: at rest no `[data-assignee-item]` is active, and the width
 neutrality, the 999px bed, the accent ink and the U-6 correction are all measured live in
@@ -622,3 +630,68 @@ written deviation `r11-status-trigger` has always carried — and `borderColor`
 resolved element moved as described above. **The converted triggers are measured to be the same
 component as the already-converted status trigger, diff for diff** — that is the round's own claim,
 and it is the reason the three new targets are worth their 105 comparisons.
+
+## 13. The R13 修订 — the roster press is a narrowing, and the `x` is withdrawn
+(`T-20261013-154954-2`, 2026-10-13; re-landed on `main` after the R15/R17 rounds)
+
+The design contract's third revision (`design/fidelity-r13.md` §10, Terry's 决定甲) landed on the
+prototype side first (`T-20261013-154954`, merged as `1d2319f`). It does two things, and this round
+ports both:
+
+* **The roster press writes the assignee and nothing else.** No `setView("list")`, no
+  `writeStatusFilter(["in_progress","in_review"])`, and **no toggle-off** — pressing the name
+  already in force writes the same name again (§10.1 rows 1–2). The removal path is the control's
+  own `Assignee: All` row.
+* **The `[data-assignee-clear]` `x` is withdrawn** — markup, `app.css` rule and delegated handler,
+  all three, on the prototype side and here (§10.1 row 4). Its `aria-label` was the only seat of
+  the `assignee.clear` key; the two byte-locked catalogue copies had already shed that key (R17's
+  re-pin, `T-20261013-184457`), and R15 ②'s `web/src/i18n/extra.mjs` copy of it — authored while the
+  implementation still shipped the `x` — goes with the control.
+
+**What moved in this manifest.** One block changed shape, one style target left.
+
+| change | was | now |
+|---|---|---|
+| `B04-r13` · the `x` inside the bar | `count == 1` | `count == 0` |
+| `B04-r13` · `[data-filter-assignee] + [data-assignee-clear]` | `count == 1` | **removed** — there is no sibling to be adjacent to |
+| `B04-r13` · `[data-assignee-clear][hidden]` | `count == 1` | **removed** — the attribute is gone document-wide |
+| `B04-r13` · the removal path | (implicit) | **added**: `[data-assignee-filter-option="all"]` inside `[data-filter-assignee]`, `count == 1` |
+| `B03-r13` · the roster's `x` | `count == 0`, scoped to `[data-agents-presence]` | `count == 0`, **document-wide** |
+| `style.targets` | `r13-assignee-clear` | **removed** |
+
+Assertions move **258 → 257**: three checks became one (`B04-r13`'s `count == 1` → `count == 0`, and
+the two existence checks that are now false by construction), plus the one added for the replacement
+removal path. Nothing was loosened: the two deleted checks asserted the *presence* of a control the
+contract retires, and the contract itself states the withdrawal as a document-wide `absent` rule
+(`test/web/blocks.contract.mjs`, B04) rather than a scoped zero — which is also what makes
+`web/blocks.bundle.test.mjs` require the attribute name to be gone from the built bundle (measured:
+0 hits in `dist/assets/*.js` and `*.css`).
+
+**`style.targets` 46 → 45, and the style leg does not move.** `r13-assignee-clear` is deleted, but it
+was already contributing **0 comparisons**: the prototype side had dropped the `x`, so the tool's
+"no obligation" path skipped it (§11's `r12-list-id-clamp` note is the same mechanism). The
+denominator and the diff total are therefore unchanged — see the readings below.
+
+**Where R13 修订 stands** (this lane, `board-m2 --strict`, `2dd7ba3` vs this commit):
+
+| | base `2dd7ba3` | this round |
+|---|---|---|
+| blocks | 39 — all delivered, none pending | 39 — all delivered, none pending |
+| assertions | 258 · failures **0** | **257** · failures **0** |
+| overflow / console | 0 failures at all five widths | 0 failures at all five widths |
+| computed style | 62 of 1540 compared properties differ (96.0%) — non-blocking | **62 of 1540** (96.0%) — identical |
+
+The driven layer carries the behaviour the A-leg cannot state: `web/scripts/dom-smoke.mjs`'s
+R11/R13 section now asserts the press writes the assignee **and moves neither half of the view
+indicator nor `data-filter-status-value`**, that a second press on the same name is **idempotent**,
+that the control's own `all` row resets the capsule and `aria-pressed`, and that
+`[data-assignee-clear]` counts **0 at rest, while a name is in force, and after a twelve-selector
+click sweep** (both roster names, the bar, the board, the four nav items, both view tabs, the filter
+toggle and the body) — §10.3 C1–C4.
+
+**The mirror side needed no edit here.** §10.4's "5 new reds" were measured against the prototype
+change's own baseline (`02176bb`); the intervening R15/R17 rounds re-pinned the same records
+(`design/prototype/app.js` 281 keys, `design/prototype/index.html` 819 hooks — 78 `-aria-label`),
+and `test/web/i18n.catalogue.mjs` carries no `assignee.clear`. This round therefore ships **no**
+catalogue or `STALE_PROSE_COUNTS` change, and `node --test "test/web/**/*.test.mjs"` reads
+231 tests / 231 pass / **0 fail** / 0 skip on both `2dd7ba3` and this commit.
