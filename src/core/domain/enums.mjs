@@ -72,8 +72,32 @@ export const PRIORITY = Object.freeze({
   URGENT: "urgent",
 });
 
-/** Task kinds. Only `epic` may be a parent (see `domain/relation.mjs`). */
-export const TASK_KINDS = Object.freeze(["task", "epic"]);
+/**
+ * Task kinds. Only `epic` may be a parent (see `domain/relation.mjs`), and
+ * `deploy` is a **work card that no automatic read may offer** (see
+ * `domain/claim.mjs#AUTO_CLAIM_EXCLUDED_KINDS`).
+ *
+ * `deploy` is the marker for a *deployment* card — work that runs against a live
+ * instance rather than in the repository (rebuilding `dist`, restarting `taskd`,
+ * a full `install.sh` run). It is a `kind` and not a label on purpose: `kind` is
+ * the vocabulary the schema, the enum-parity contract and the claim rules all
+ * already read, so the marker is checkable at every layer — exactly the shape
+ * `epic` uses. It is **not** a third claimability rule: a `deploy` card stays
+ * claimable by an explicit dispatch, it is only withheld from the *automatic*
+ * candidate read (the difference from `epic`, which is never claimable at all).
+ */
+export const TASK_KINDS = Object.freeze(["task", "epic", "deploy"]);
+
+/**
+ * Named access to the kinds. Callers that mean "the grouping card" say
+ * `TASK_KIND.EPIC` rather than indexing `TASK_KINDS` positionally, so adding a
+ * kind cannot silently move a rule onto a different one.
+ */
+export const TASK_KIND = Object.freeze({
+  TASK: "task",
+  EPIC: "epic",
+  DEPLOY: "deploy",
+});
 
 /** Relation types. */
 export const RELATION_TYPES = Object.freeze(["parent", "blocks", "related"]);

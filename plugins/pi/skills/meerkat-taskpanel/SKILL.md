@@ -53,9 +53,11 @@ Do **not** claim a card that any of these is true of — it is not yours:
 - it sits in **`backlog`** and has not been released for work (only the
   dispatcher or a human moves it to `todo`);
 - it is an **`epic`** — a container, not a unit of work; claim its leaf children;
+- it is a **deployment card** (`kind: deploy`) — deployment work runs against a
+  live instance and is dispatched explicitly, so it is never auto-claimed;
 - a **`depends_on` blocker is not `done`**.
 
-`issue candidates --assignee <me>` already withholds the last two; use
+`issue candidates --assignee <me>` already withholds the last three; use
 `taskctl relation list <ref>` when a card you expected is missing. Hold **one
 card at a time**, keep its claim fresh, deliver with a report, and stop at
 `in_review` — a human accepts to `done`.
