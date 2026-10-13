@@ -54,7 +54,7 @@ Two keys are **required**: `id` and `title`. A card missing either is refused
 
 ## Field reference
 
-Exactly the 20 keys of `KNOWN_CARD_KEYS`, in that order. Anything else is preserved, not
+Exactly the 21 keys of `KNOWN_CARD_KEYS`, in that order. Anything else is preserved, not
 mapped — see §Unknown keys are preserved.
 
 | Key | Meaning | Values & rules |
@@ -63,7 +63,7 @@ mapped — see §Unknown keys are preserved.
 | `title` | **Required.** One-line summary. | Non-empty string. |
 | `status` | Where the card sits in the lifecycle. | `backlog` · `todo` · `in_progress` · `in_review` · `blocked` · `done` · `canceled`, plus the overlay `awaiting`. Absent ⇒ `todo`. The seven stage statuses are the board's columns; `awaiting` is an **attention overlay**, not an eighth column. Read aliases (never stored): `ready`→`todo`, `failed`→`canceled`, `cancelled`→`canceled`, `in-review`→`in_review`, `in-progress`→`in_progress`. See §The status machine. |
 | `priority` | Urgency. | `low` · `medium` · `high` · `urgent`, case-insensitive. Absent/empty ⇒ `medium`. Anything else is refused (`VALIDATION_FAILED`). |
-| `kind` | The card's role. | `task` · `epic`. Anything that is not `epic` is read as `task`. **Only an `epic` may be a parent** (`parent:` and `relation add --type parent`). |
+| `kind` | The card's role. | `task` · `epic` · `deploy`. Anything the vocabulary does not name is read as `task`. **Only an `epic` may be a parent** (`parent:` and `relation add --type parent`); a `deploy` card is a work card no automatic read may offer. |
 | `labels` | Free-form tags, shown in order. | Inline array `[a, b]` (or a comma-separated scalar). Trimmed, de-duplicated, order kept. Each label ≤ 64 chars, at most 32 labels. Labels register in the project's label registry, so an imported card ends up with the same first-seen spelling a CLI write would produce. |
 | `project` | **Required** — which board project the card belongs to. | The project's **registered name** (a key in `projects.json`) or its id; resolved to the project id. May be supplied by `--project` instead. An unresolvable name is a warning + skip, never a silently created project. |
 | `assignee` | Who is on the hook. | A dictionary name. Empty ⇒ unassigned. |
@@ -76,6 +76,7 @@ mapped — see §Unknown keys are preserved.
 | `claimed_at` | When the claim was taken. | Timestamp, same coercion. `claimed_by`/`claimed_at` travel as a pair. |
 | `heartbeat_at` | Last liveness signal from the holder. | Timestamp, same coercion. This is what separates a live worker from an abandoned card. |
 | `blocked_at` | When the card entered `blocked`. | Timestamp, same coercion. Absent while `status: blocked` ⇒ `status_changed_at`. |
+| `blocked_reason` | **Why** the card is blocked — what it is waiting for. | One of `clarify` · `decision` · `dependency` · `out_of_bounds` · `defect` · `external` · `resource` · `unknown`, or absent. Trims surrounding whitespace and nothing else; an absent value is *not* written back as an empty key. See §`blocked_reason`. |
 | `depends_on` | Blockers: these must finish **before** this card. | Inline array of card **ids**, e.g. `[PROJ-0007]`. The direction is `blocks` with **source = the blocker**, target = this card. An unresolvable id is a warning + skip (the card still imports). |
 | `parent` | This card's parent. | A single card id. The parent must exist **and be an `epic`**; a non-epic parent is a warning + skip, never a silent link. |
 | `notify_leader` | Tell the leader this card needs attention. | A scalar flag, kept **verbatim** in `meta_json.notify_leader` and readable as the task DTO's `meta.notify_leader`. The board preserves it; it does not itself act on it. The legacy spelling `notify_elon` is accepted as a read alias — the canonical key always wins when both are present. |
@@ -111,9 +112,65 @@ delivery gate; `cli.md` §`report` has the command surface and the audited waive
 
 ---
 
+## `blocked_reason` — what a blocked card is waiting for
+
+`blocked_at` says *when* a card started waiting; it cannot say **what** it is waiting for. Two
+cards in `blocked` — "the leader owes an answer" and "the predecessor has not landed" — look
+identical on the board without it, and a reader (a person, or a process inspecting the board)
+has to open the comment trail and guess. `blocked_reason` is that missing half: a
+single-value enum naming **who or what** the card waits for.
+
+It is deliberately **not a severity and not an explanation** — prose belongs in the comment
+trail, which is where a reader looks for it.
+
+| Value | The card is waiting on |
+|---|---|
+| `clarify` | an answer from the leader to an ambiguous requirement |
+| `decision` | a decision fork, or a gate sign-off |
+| `dependency` | a predecessor card, or an upstream artifact that has not landed |
+| `out_of_bounds` | a hand-back: the card is outside the worker's duties |
+| `defect` | the defect loop |
+| `external` | something outside the team — a third-party service, an operator input, a host resource |
+| `resource` | capacity — host, model, concurrency limits |
+| `unknown` | present, but not classified |
+
+Five rules go with it:
+
+1. **Absent is legal, and is not `unknown`.** A `blocked` card with no reason is valid — a
+   reader treats it exactly as it treats `clarify`. `unknown` is a writer saying *"there is a
+   block and I cannot classify it"*, which is a different statement from saying nothing.
+2. **Absent means the key is missing, not empty.** A card that never carried a reason exports
+   without the line, byte-identical to how it always did. There is no empty form of the field:
+   `blocked_reason: ""` is read as *unset* (the same column value as an absent key), and it is
+   **not** written back — a rewrite of such a card drops the line.
+3. **A supplied value must be one of the literals.** Nothing is folded, repaired or
+   lower-cased into place: `Dependency` and `deps` are both refused, naming the field and the
+   allowed set. Accepting a near-miss is how one state ends up with two spellings.
+   **Whitespace is the one exception**: a value is trimmed before it is tested, so
+   `"  dependency  "` is accepted *as* `dependency`. Space around a word is not a second
+   spelling of it; a different word is. The trim is not remembered, so a card written with the
+   spaces comes back without them.
+4. **It follows the status.** The value is written in the same update that moves the card into
+   `blocked`, and cleared by the update that moves it out — the field describes the *current*
+   block, so a card that has moved on must not go on claiming it is waiting. (History is not
+   lost: the reason is recorded on the card's activity trail.) `blocked_at` is deliberately
+   the opposite and is *kept* on the way out, because it dates the last blockage.
+5. **A value the vocabulary does not name is preserved, not lost.** A card is written by a
+   provider the board does not control, and before the key was recognised such a card rode
+   through `meta_json.legacy` untouched. Recognising the key may not turn it into a lost card:
+   an unrecognised value keeps its original text, in its original slot, still goes back out on
+   export word for word, and the *column* stays empty. The import reports it as a warning, and
+   the card carries `blocked_reason_unrecognized` among its `meta_json.import_warnings`. This
+   leniency belongs to the import edge only — a value supplied to the board itself (a move, a
+   create) is refused outright. And it lasts exactly as long as the column is empty: once the
+   board is the one that wrote a reason, the card exports the board's value, as it does for
+   every other field.
+
+---
+
 ## Unknown keys are preserved
 
-**Any frontmatter key outside the 20 above is kept verbatim** in `meta_json.legacy` — in the
+**Any frontmatter key outside the 21 above is kept verbatim** in `meta_json.legacy` — in the
 card's own order — and **re-emitted on export**, in its original position. Nothing is dropped
 because this document does not happen to name it; that round-trip is the property the whole
 migrator is built on.
@@ -232,8 +289,10 @@ Properties `import → export` guarantees, and the reason to trust a rewrite:
 |---|---|
 | Fixed key order and fixed section order | An exported card is byte-identical regardless of how the input was written. |
 | Unknown keys re-emitted in place | A rewrite does not lose a team's own fields. |
+| A known key's unrecognised value re-emitted in place | A card whose `blocked_reason` is not one of the literals keeps its own wording: the value is preserved under `meta_json.legacy` and the column stays empty, so recognising the key never costs a card. |
 | Legacy status word restored | A card that said `ready` exports saying `ready`, not `todo`. |
 | Empty values become `NULL`, never `""` | A real invariant can never trip on a frontmatter artefact. |
+| Optional keys are written only when set | `blocked_reason` — like `labels`, `depends_on`, `parent` and `notify_leader` — writes no line when it is unset, so an existing card is not grown by a key it never had. `blocked_at`, `claimed_by` and the other always-written keys are the deliberate opposite. |
 | A card that cannot be parsed is skipped and reported | One bad file never sinks a board's migration. |
 | Growth guard | If a rewrite would grow a card beyond the guard factor, the export **refuses** rather than write. |
 
@@ -251,7 +310,7 @@ Two asymmetries worth knowing, both deliberate:
 
 This document is hand-maintained; the code is not. The field table above is asserted against
 `KNOWN_CARD_KEYS` — run this from the repository root; it exits `0` when the two agree,
-printing `{"doc":20,"code":20,"same":true}`:
+printing `{"doc":21,"code":21,"same":true}`:
 
 ```bash
 node --input-type=module -e '

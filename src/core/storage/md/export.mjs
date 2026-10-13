@@ -61,6 +61,7 @@ export const CARD_KEY_ORDER = Object.freeze([
   "claimed_at",
   "heartbeat_at",
   "blocked_at",
+  "blocked_reason",
   "depends_on",
   "parent",
   "notify_leader",
@@ -131,6 +132,14 @@ export function renderCard(task, context) {
     heartbeat_at: task.heartbeatAt ?? "",
     blocked_at: task.blockedAt ?? "",
   };
+  // 0016 — emitted only when the column holds a value. `blocked_at` above is
+  // always written (`""` when unset) because every card has carried that key
+  // since the beginning; `blocked_reason` has not, so writing an empty one would
+  // grow every existing card by a line and break the byte-for-byte goldens.
+  // "Unset" is the absence of the key, on both sides of the round trip.
+  if (task.blockedReason !== null && task.blockedReason !== undefined && task.blockedReason !== "") {
+    data.blocked_reason = task.blockedReason;
+  }
   if (task.labels.length > 0) data.labels = task.labels;
 
   const dependents = repos.relations

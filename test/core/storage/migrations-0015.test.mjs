@@ -106,7 +106,9 @@ describe("storage/migrations — 0015 makes `deploy` a task kind (T-20261013-232
       seedLegacyBoard(board.db);
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0015"]);
+      // 0015 and everything after it: 0016 (`blocked_reason`) is the next file in
+      // the set, and this board is below both.
+      assert.deepEqual(up.applied.map((m) => m.version), ["0015", "0016"]);
       assert.deepEqual(up.skipped.slice(-2), ["0013", "0014"]);
 
       // 1 — the enum: the new word is storable, the old ones still are (they are
