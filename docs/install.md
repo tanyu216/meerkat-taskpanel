@@ -233,6 +233,18 @@ The install ends with a report line, followed by the commands that undo it:
 taskd guard: enabled (com.meerkat-taskpanel.taskd, pid …)
 ```
 
+`enabled` is claimed only once the board itself answers `/health` — a loaded unit with a
+pid is not a working board. When the unit is loaded but nothing answers, install says so
+and names the log to read:
+
+```text
+taskd guard: loaded (com.meerkat-taskpanel.taskd, pid …); /health did not answer within 10000ms — read <dataDir>/logs/taskd.log
+```
+
+Neither line fails the install. The unit names the **absolute** node that ran the install,
+so a node that lives only under nvm or Homebrew still starts the server — see
+[`scheduling.md § The taskd guard (keepalive)`](scheduling.md#the-taskd-guard-keepalive).
+
 **Stopping / uninstalling it.** The guard restarts the server after *any* exit, so a
 plain `kill` is not enough — use the supervisor's own stop:
 
