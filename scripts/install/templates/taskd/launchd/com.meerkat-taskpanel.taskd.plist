@@ -8,17 +8,34 @@
 
      This is NOT a scheduled tick (no StartInterval): it is the single long-running
      owner of the data directory's write lock (R1). `install.sh` writes this plist and
-     loads it immediately. Logs append to the same file the lazy-start path uses. -->
+     loads it immediately. Logs append to the same file the lazy-start path uses.
+
+     ProgramArguments[0] is the ABSOLUTE node that rendered this file — never
+     `/usr/bin/env node`. launchd runs a job with PATH=/usr/bin:/bin:/usr/sbin:/sbin,
+     which holds no nvm and no Homebrew directory, so an `env node` job on a machine
+     whose node lives only there exits 127 and restart-loops forever. PATH below
+     prepends node's own directory to that same default, so a child that looks `node`
+     up by name finds it too. The path is version-pinned: after a node upgrade, run
+     `install.sh --force` to refresh this plist.
+
+     EnvironmentVariables also carries the operator's TASKD_DATA_DIR /
+     TASKD_RUNTIME_POINTER when they set either at install time, so the guard and the
+     CLI resolve the same board. `install.sh` renders the entries below. -->
 <plist version="1.0">
 <dict>
   <key>Label</key>
   <string>com.meerkat-taskpanel.taskd</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/bin/env</string>
-    <string>node</string>
+    <string>{{NODE}}</string>
     <string>{{SERVER_ENTRY}}</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>{{PATH}}</string>
+{{ENV_PLIST}}
+  </dict>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
