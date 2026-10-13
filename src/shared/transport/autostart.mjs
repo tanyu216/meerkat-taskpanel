@@ -27,7 +27,7 @@ import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { AUTOSTART_POLL_MS, AUTOSTART_TIMEOUT_MS, LOGS_DIRNAME, RUNTIME_POINTER_ENV } from "../constants.mjs";
+import { AUTOSTART_POLL_MS, AUTOSTART_TIMEOUT_MS, LOG_FILENAME, LOGS_DIRNAME, RUNTIME_POINTER_ENV } from "../constants.mjs";
 import { resolveDataDir } from "../runtime-locator.mjs";
 import { ioError } from "./errors.mjs";
 
@@ -78,7 +78,7 @@ export async function spawnTaskd(options) {
 
   const dataDir = resolveDataDir({ env });
   const logDir = join(dataDir, LOGS_DIRNAME);
-  const logFile = join(logDir, "taskd.log");
+  const logFile = join(logDir, LOG_FILENAME);
   mkdirSync(logDir, { recursive: true });
 
   // Append, so a second start does not erase the evidence of the first one's

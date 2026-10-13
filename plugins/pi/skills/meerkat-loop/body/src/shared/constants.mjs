@@ -64,6 +64,15 @@ export const TOKEN_FILENAME = "token";
 /** Log directory name inside the data directory. */
 export const LOGS_DIRNAME = "logs";
 /**
+ * The daemon's log file name, inside the log directory.
+ *
+ * One name for one file: the CLI's lazy start writes it (`spawnTaskd`) and the
+ * OS-level `taskd` keepalive unit appends to it, so a reader sees one history
+ * whichever way the server was started. The installer renders the unit's log
+ * path from this constant rather than restating the literal.
+ */
+export const LOG_FILENAME = "taskd.log";
+/**
  * The single-writer lock's file name inside the data directory (R1).
  *
  * One `taskd` owns a data directory: the lock makes a second instance a

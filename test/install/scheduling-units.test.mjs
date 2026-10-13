@@ -41,11 +41,15 @@ function installEnv(home, bin) {
   return { ...process.env, MEERKAT_TASKPANEL_TARGET_HOME: home, PATH: `${bin}:${process.env.PATH}` };
 }
 
+// The taskd keepalive guard is skipped: it loads a real OS unit on install, and these
+// cases are about the host's *loop* units (which are written, never loaded — the rule
+// the guard is the one exception to). `MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE` is the
+// contract's test-only bypass; the guard's own cases live in `taskd-guard.test.mjs`.
 function runInstall(args, env = {}) {
   return spawnSync("bash", [join(ROOT, "install.sh"), ...args], {
     cwd: ROOT,
     encoding: "utf8",
-    env: { ...process.env, ...env },
+    env: { ...process.env, MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1", ...env },
   });
 }
 
