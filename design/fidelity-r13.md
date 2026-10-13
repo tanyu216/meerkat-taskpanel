@@ -538,7 +538,14 @@ if (ok && byAssignee !== "all") {
 - **实测（静态）**：`design/prototype/app.js` 的 `MESSAGES` 键数 **en 281 → 280**、**zh 281 → 280**（两侧仍严格 1:1 镜像，无单侧键）。`design/prototype/index.html` 的 **`data-i18n-aria-label` 座位 73 → 72**（被删的那个 `✕` 是该键**唯一**的座位，所以该键的座位数归 0，而不是「少了一座仍有余」）。
 - **其余 `data-i18n*` 类目**：`data-i18n`（525）/ `-placeholder` / `-title` / `-arg` **本轮零改动** —— 名册名是**数据**（角色名）不进 `MESSAGES`，`✕` 的 `aria-label` 是本轮**唯一**的座位来源。
 - **无新文案串**：本轮的可见文案**一条不新增**；移除路径用控件自身的 `Assignee: All` 行，其文案是既有键 `filters.assignee.all`（en / zh 都已有座位）。所以「移除路径」不需要任何新键，这正是撤销后能**回到 280** 的原因。
-- **镜像面（`test/**`，**不在本卡写面**）**：`test/web/i18n.catalogue.mjs` 与 `test/web/blocks.contract.mjs` 逐字镜像 `MESSAGES` 与座位数。R13 seg2 记录该族在基线即已有 4 条镜像红；本轮**减少 1 键、减少 1 座**，其红条数与内容变化**归实现卡 A2（`T-20261013-154954-2`）核**（§10.6 O-3）。
+- **镜像面（`test/**`，**不在本卡写面**）**：`test/web/i18n.catalogue.mjs` 与 `test/web/blocks.contract.mjs` 逐字镜像 `MESSAGES` 与座位数。R13 seg2 §7 记该族在**其**基线已有 4 条镜像红；**实测更正（本段）**：在**本卡的**基线 `02176bb` 上，该族是**全绿**（`node --test "test/web/**/*.test.mjs"` = 227 tests / 226 pass / **0 fail** / 1 skip），故本轮**减少 1 键、减少 1 座**产生的是 **5 条新增红**，而不是「已有红条数的变化」：
+  1. `web/blocks.contract — the recorded counts are re-measured against the documents` › `counts the data-i18n* seats in design/prototype/index.html`（镜像记 **73**，原型现 **72**）；
+  2. 同套 › `counts the MESSAGES keys in design/prototype/app.js`（镜像记 **281**，原型现 **280**）；
+  3. `catalogue vs prototype` › `carries the prototype's entries verbatim, minus the prototype-only keys`（`test/web/i18n.catalogue.mjs` 仍含 `assignee.clear`）；
+  4. 同套 › `deep-equals the catalogue re-derived from design/prototype/app.js, minus the prototype-only keys`；
+  5. 同套 › `matches the prototype's real key count minus the prototype-only keys`。
+
+  同套的 `states the prototype's MESSAGES count in design/prototype/README.md` 仍**绿**（README 已同步到 280）。这 5 条**不可能**由本卡消除 —— 卡明令**零实现**（禁写 `test/**`），它们正是「原型是唯一事实源、镜像滞后」的既定代价，**归实现卡 A2（`T-20261013-154954-2`）**：A2 须把 `test/web/i18n.catalogue.mjs` 的 `assignee.clear` 删掉、把 `test/web/blocks.contract.mjs` 的 281/73 改成 280/72、并在 `web/src/**` 落地移除（§10.6 O-3）。
 
 ### 10.5 文档同步与本轮自检
 
@@ -553,12 +560,14 @@ if (ok && byAssignee !== "all") {
 
 **原型纯度门禁**（0 命中）：`fetch(` / `XMLHttpRequest` / `axios` / `apiFetch` / `idtoken` / `access_token` / `localStorage` / `sessionStorage` / `/api/v[0-9]` —— `design/prototype/**` 本轮**未新增任何命中**（改动只删除与改写注释，未引入新语句）。
 
+**宿主测试 A/B（同一命令两遍，同一脚本、同一 reporter）**：`node --test "test/web/**/*.test.mjs"` 在 **基线 `02176bb`**（独立 detached worktree，`git worktree add --detach <sha>`）与 **本卡提交** 各跑一遍。读数：基线 **227 tests / 226 pass / 0 fail / 1 skip**；本卡提交 **227 / 221 / 5 fail / 1 skip**。**新增红 5 条、消除 0 条**，逐条见 §10.4。归因**只**落在镜像面：本卡 `git diff --name-only -- web/ test/ src/ server/` 为空，故这 5 条不可能是本卡代码所致，而是「卡要求的零实现」与「镜像随事实源滞后」两件事的必然交汇（§10.6 O-3）。原始输出：`evidence/host-web-{base,mine-only}.txt`。
+
 ### 10.6 未决 / 待 Terry 确认
 
 | # | 事项 | 状态 | 说明 |
 |---|---|---|---|
 | **O-1** | 再按同一个已选 name：**幂等**（本轮采纳，D2）还是保留 R13 的 toggle 关闭？ | **[STILL OPEN]** | 甲把该按下定义成「等同下拉选择」，下拉重选同值不产生新后果 ⇒ 本轮取**幂等**（实测 C2：before `all` / after `jobs`）。若要恢复 toggle，会与本卡 Acceptance 第 1 条「把 Assignee 选为该 name」字面冲突，需 Terry 一句话并另开小卡（在 A2 前插） |
 | **O-2** | 不改视图的代价：非 board 区目的地（Activity / Waiting）下筛选条**不显示**，值虽写入却不可见（D5；实测 `barHidden: true` / `view: activity`）。是否需要「点选时若 bar 不可见则提示 / 或例外允许切 list」？ | **[STILL OPEN]** | 本轮按甲**不切**、**如实记账**，不自行「修」。注意 `Clear`（`[data-filter-clear]`，B04 的全量重置）**不在本轮范围**，原样保留 |
-| **O-3** | 删 `assignee.clear` 后实现仓 `web/src/i18n/**` 与 `test/web/{i18n.catalogue,blocks.contract}` 的镜像红条数变化 | **[OPEN → 归 A2]** | 本卡写面只有 `design/**`；镜像面变化归实现卡 A2 核（R13 seg2 记基线 4 条镜像红） |
+| **O-3** | 删 `assignee.clear` 后实现仓 `web/src/i18n/**` 与 `test/web/{i18n.catalogue,blocks.contract}` 的镜像面变化 | **[OPEN → 归 A2，实测已定量]** | 本卡写面只有 `design/**`。**实测**：基线 `02176bb` 该族全绿（227/226/0 fail），本卡提交后 **5 条新增红**（逐条见 §10.4）。这 5 条**只能**由实现卡 A2 消除（删 `test/web/i18n.catalogue.mjs` 的 `assignee.clear`、把 `test/web/blocks.contract.mjs` 的 281/73 改 280/72、并在 `web/src/**` 落地移除）。**R13 seg2 §7 「该族在基线已有 4 条红」在其基线上成立、在本卡的基线上不成立** —— 镜像已被后续轮次同步过 |
 | **O-4** | `design/assets/r13/**` 的六帧截图仍以「pressing that `✕`」描述一帧 | **[ADDED]** | 该 capture set 是 R13 seg2 的**历史存证**，本轮不重截、不改写它（改它会把历史帧与历史文案错配）；现行契约以 §10.3 的 12 帧为准。是否要为 R13 seg2 的历史帧加一条过期声明，请 Terry 定 |
 | **U-6（承 §8）** | 宽度中性的镜像代价：床的左帽被宿主 `overflow: hidden` 裁 6px | **[STILL OPEN]** | 与决定甲**无关**，本轮不动；`clippedPx == 0` 仍达标 |

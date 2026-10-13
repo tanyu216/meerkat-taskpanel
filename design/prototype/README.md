@@ -421,6 +421,15 @@ not immediately visible. Measured on both sides of the change at 1512 (evidence
 `D5:1512-en`): before, the press lands on the list view with the bar shown; after, the view
 stays `activity` and the bar stays hidden while the value is `jobs`. That is 甲's own
 consequence, recorded and not "fixed" — see `fidelity-r13.md` §10 O-2.
+
+A second cost is measured rather than assumed: the **mirror surface**. `test/web/**` pins the
+prototype's `MESSAGES` count and its `data-i18n*` seats, and `test/web/i18n.catalogue.mjs`
+mirrors the catalogue key for key. At this round's base (`02176bb`) that family is **green** —
+`node --test "test/web/**/*.test.mjs"` reads 227 tests, 226 passing, **0 failing**, 1 skipped —
+so taking one key and one seat out produces **five new reds**, not a shift in an existing red
+count. They cannot be cleared here: this round's contract is design-only and forbids touching
+`test/**` or `web/**`. They are the implementation card's, itemised in `fidelity-r13.md` §10.4
+and §10.6 O-3.
 `design/fidelity-r13.md` §10 is the revision record; `DESIGN.md` §31.6 lists the rejected
 alternative.
 
