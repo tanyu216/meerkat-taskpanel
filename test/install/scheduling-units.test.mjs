@@ -41,11 +41,15 @@ function installEnv(home, bin) {
   return { ...process.env, MEERKAT_TASKPANEL_TARGET_HOME: home, PATH: `${bin}:${process.env.PATH}` };
 }
 
+// The taskd keepalive guard is skipped: it loads a real OS unit on install, and these
+// cases are about the host's *loop* units (which are written, never loaded — the rule
+// the guard is the one exception to). `MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE` is the
+// contract's test-only bypass; the guard's own cases live in `taskd-guard.test.mjs`.
 function runInstall(args, env = {}) {
   return spawnSync("bash", [join(ROOT, "install.sh"), ...args], {
     cwd: ROOT,
     encoding: "utf8",
-    env: { ...process.env, ...env },
+    env: { ...process.env, MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1", ...env },
   });
 }
 
@@ -315,6 +319,28 @@ describe("install.sh: scheduling units", () => {
     // The skill, AGENTS.md and shim are unaffected.
     assert.ok(existsSync(join(home, ".codex", "skills", "meerkat-taskpanel", "SKILL.md")));
     assert.ok(existsSync(join(home, ".codex", "AGENTS.md")));
+  });
+
+  it("the bypass's environment form skips exactly the same artefacts through the dispatcher", () => {
+    // `MEERKAT_TASKPANEL_NO_AUTOMATION=1` is documented as the other spelling of
+    // `--no-automation` (docs/install.md). It travels through install.sh, so the
+    // dispatcher must not overwrite the caller's value with its own empty one —
+    // the failure that would make the documented form skip nothing.
+    for (const env of [{ MEERKAT_TASKPANEL_NO_AUTOMATION: "1" }, { TASKPANEL_NO_AUTOMATION: "1" }]) {
+      const home = makeTempDir();
+      const bin = makeTempDir();
+      makeFakeCli(bin, "codex");
+      const run = runInstall(
+        ["--target", "codex", "--agent-name", "alice"],
+        { ...installEnv(home, bin), ...env },
+      );
+      const which = Object.keys(env)[0];
+
+      assert.equal(run.status, 0, run.stderr);
+      assert.equal(existsSync(join(home, ".codex", "scheduling")), false, `${which}: no scheduling units`);
+      assert.equal(existsSync(join(home, ".codex", "meerkat-taskpanel-claim.sh")), false, `${which}: no claim trigger`);
+      assert.ok(existsSync(join(home, ".codex", "skills", "meerkat-taskpanel", "SKILL.md")), `${which}: the skill is unaffected`);
+    }
   });
 
   it("is idempotent: a re-run changes no scheduling file", () => {

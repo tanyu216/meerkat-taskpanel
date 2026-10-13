@@ -112,12 +112,57 @@ Environment (set for each host installer):
   MEERKAT_TASKPANEL_DRY_RUN      print only, change nothing
   MEERKAT_TASKPANEL_MIN_NODE     required Node major (default 22)
   MEERKAT_TASKPANEL_SKIP_NODE_CHECK  "1" to skip the Node version check
+  MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE  "1" to skip the taskd keepalive guard
+                                 (internal — for tests, not a user option)
+
+The taskd keepalive guard is written and loaded on every install (one unit per
+machine, at <prefix>/taskpanel/scheduling/) — see docs/scheduling.md. It has no
+user flag and no prompt; the bypasses are --no-automation, --dry-run, and the
+test-only MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE above.
 EOF
 }
 
 die() {
   echo "install.sh: $*" >&2
   exit 2
+}
+
+# install_taskd_guard — write the `taskd` keepalive unit and load it (docs/scheduling.md).
+#
+# One unit per **machine**, not per host: it is written once here, to the neutral
+# `<prefix>/taskpanel/scheduling/` directory, and never touched by a host's own
+# scheduling install. It is also the one unit this installer *loads* rather than
+# only printing a command for — a deliberate, narrow exception to "write the unit,
+# never start a daemon for you". The loop supervisor's units keep that rule.
+#
+# Reporting is the point: the guard's whole job is a server that comes back after
+# it dies, so an install says what it did (`enabled`, or `installed … not loaded`
+# with the command that would) and how to stop it. A machine with no user service
+# manager — a container, say — reports the second form instead of failing the
+# install: the host skills are installed either way, and the operator gets the one
+# command that finishes the job. Never fatal, so it cannot mask a host failure.
+install_taskd_guard() {
+  # Automation off means this guard is off too, whichever way it was said. `NO_AUTOMATION`
+  # is already normalised from the flag or `MEERKAT_TASKPANEL_NO_AUTOMATION` above, so one
+  # test covers both spellings of the documented bypass; `TASKPANEL_NO_AUTOMATION` is the
+  # pre-rename alias `_common.sh` still honours for the hosts. `=1` is the same test
+  # `codex.sh` uses — a value that is not `1` is not a bypass.
+  if [ "${NO_AUTOMATION:-}" = "1" ] || [ "${TASKPANEL_NO_AUTOMATION:-}" = "1" ]; then
+    echo "taskd guard: skipped (--no-automation)"
+    return 0
+  fi
+  if [ -n "$DRY_RUN" ]; then
+    echo "taskd guard: skipped (dry-run)"
+    return 0
+  fi
+  if [ "${MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE:-}" = "1" ]; then
+    echo "taskd guard: skipped (MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE=1 — tests only)"
+    return 0
+  fi
+
+  force_flag=""
+  [ -n "$FORCE" ] && force_flag="--force"
+  node "$ROOT/scripts/install/lib/taskd-guard.mjs" install --prefix "$TARGET_HOME" $force_flag
 }
 
 while [ "$#" -gt 0 ]; do
@@ -249,6 +294,12 @@ IFS="$OLD_IFS"
 # --prefix wins; otherwise honour an inherited MEERKAT_TASKPANEL_TARGET_HOME; else $HOME.
 TARGET_HOME="${PREFIX_HOME:-${MEERKAT_TASKPANEL_TARGET_HOME:-$HOME}}"
 DRY_RUN="${DRY_RUN:-${MEERKAT_TASKPANEL_DRY_RUN:-}}"
+# Same for --no-automation: the flag, else the inherited environment. Without this the
+# forwarding below would hand each host installer an *empty* MEERKAT_TASKPANEL_NO_AUTOMATION
+# and silently overwrite the one the caller set, so the documented environment form of the
+# bypass would skip nothing. (The pre-rename TASKPANEL_NO_AUTOMATION needs no line here:
+# `_common.sh` still normalises it inside each host installer.)
+NO_AUTOMATION="${NO_AUTOMATION:-${MEERKAT_TASKPANEL_NO_AUTOMATION:-}}"
 
 # Resolve the "allow claiming unassigned tasks?" policy (per-host config default).
 # An explicit flag wins; else the environment; else ask on a TTY (default yes) —
@@ -299,6 +350,15 @@ FAIL $host — see the message above (re-run with --force to overwrite an existi
     status=1
   fi
 done
+
+# The taskd keepalive guard, once for the machine rather than once per host, and
+# after the hosts so its report closes the install's own work (see the function
+# above). Non-fatal by design: a failed host is already reported, and letting the
+# guard step abort the run would leave its message as the only explanation.
+echo
+if ! install_taskd_guard; then
+  echo "install.sh: the taskd guard step failed (see the message above)" >&2
+fi
 
 echo
 echo "== install summary =="

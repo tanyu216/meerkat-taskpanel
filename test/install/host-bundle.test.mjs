@@ -50,11 +50,14 @@ after(() => {
   for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
 });
 
+// MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE is the contract's test-only bypass: an install
+// loads a real OS unit for the taskd guard, and a test must never do that. The guard
+// has its own cases in `taskd-guard.test.mjs`, where the supervisor is faked on PATH.
 function runInstall(args, env = {}) {
   return spawnSync("bash", [join(ROOT, "install.sh"), ...args], {
     cwd: ROOT,
     encoding: "utf8",
-    env: { ...process.env, ...env },
+    env: { ...process.env, MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1", ...env },
   });
 }
 
@@ -63,6 +66,7 @@ function hostEnv(home, extra = {}) {
   return {
     ...process.env,
     MEERKAT_TASKPANEL_TARGET_HOME: home,
+    MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1",
     ...extra,
   };
 }
