@@ -9,20 +9,20 @@
  * deliberate subtractions.
  *
  * ---------------------------------------------------------------------------
- * Measured counts (host-static, re-extracted for R12x · T-20261013-014701-7)
+ * Measured counts (host-static, re-pinned after R17 · T-20261013-184457)
  * ---------------------------------------------------------------------------
- *   prototype MESSAGES  en 280 / zh 280 (exact 1:1 mirror)
- *   this catalogue      en 263 / zh 263 — the 280 minus the 17 prototype-only
+ *   prototype MESSAGES  en 281 / zh 281 (exact 1:1 mirror)
+ *   this catalogue      en 264 / zh 264 — the 281 minus the 17 prototype-only
  *                       keys listed below, still an exact 1:1 mirror (identical
  *                       key sets, identical key order, no duplicates, no empty
  *                       values)
- *   `%s` placeholders  246 keys carry none, 16 carry one, 2 carry two — and the
+ *   `%s` placeholders  245 keys carry none, 17 carry one, 2 carry two — and the
  *                       histogram is identical for en and zh, key for key (no
  *                       prototype-only key carries a placeholder)
- *   data-i18n* hooks    817 in `design/prototype/index.html`:
- *                         525 `data-i18n=`
+ *   data-i18n* hooks    819 in `design/prototype/index.html`:
+ *                         522 `data-i18n=`
  *                         193 `data-i18n-arg=`
- *                          73 `data-i18n-aria-label=`
+ *                          78 `data-i18n-aria-label=`
  *                          18 `data-i18n-title=`
  *                           8 `data-i18n-placeholder=`
  *
@@ -41,30 +41,32 @@
  * ones out, so the grader's greps for them over `web/` return nothing.)
  *
  * R12x's `waiting.*` family (B27) is **not** excluded: the shipped 「等你回复」view
- * is that block, so its six names are the view's own copy — which is also why
+ * is that block, so its seven names (six from R12x, plus `waiting.empty.hint`,
+ * which R17 added to the prototype) are the view's own copy — which is also why
  * `extra.mjs` no longer carries `waiting.count` / `waiting.empty`: a key that is
  * in the catalogue may not also shadow it (`i18n.parity`, "extra is only for new
  * states").
  *
  * ---------------------------------------------------------------------------
- * Discrepancy to record: `design/BLOCKS.md` header is stale
+ * Discrepancy to record: `design/BLOCKS.md`'s header counts are not assertions
  * ---------------------------------------------------------------------------
- * Its header claims **252 `data-i18n*` hooks** and **198 catalogue keys**. Both
- * are wrong against the shipped files; measured above are 817 and 280 (the
- * prototype's own count). BLOCKS.md's own body already says "220 keys per
- * language", so only the header drifted — and each round's own additions widen
- * the gap. Machine checks must therefore count from the real data/DOM and never
- * assert a prose number from that header; `test/web/blocks.contract.mjs` keeps
- * the claim as `STALE_PROSE_COUNTS` and re-measures it against the two
- * documents every run.
+ * Its header now quotes **626 `data-i18n*` hooks** and **281 catalogue keys** —
+ * its own line reads "522 `data-i18n` plus 104 `placeholder` / `aria-label` /
+ * `title` variants", so it counts four of the five attributes and leaves the 193
+ * `data-i18n-arg` seats out. Measured over all five, the document carries 819;
+ * the key count (281) does agree this round. Earlier rounds were wrong on both,
+ * which is the case `test/web/blocks.contract.mjs` still keeps on the books as
+ * `STALE_PROSE_COUNTS`. Machine checks must therefore count from the real
+ * data/DOM and never assert a prose number from that header; every recorded
+ * number is re-measured against the two documents on each run.
  *
  * ---------------------------------------------------------------------------
  * Coverage: every hook the prototype's own markup authors resolves
  * ---------------------------------------------------------------------------
- * All 525 `data-i18n`, 73 `-aria-label`, 18 `-title` and 8 `-placeholder`
- * values are real catalogue keys — except the prototype-only hook values the
- * shipped app does not render (the demo keys above, and the six `waiting.*` names
- * of B27), which the suite tracks by name. Every key composed at runtime
+ * All 522 `data-i18n`, 78 `-aria-label`, 18 `-title` and 8 `-placeholder`
+ * values are real catalogue keys — except the 17 prototype-only demo values the
+ * shipped app does not render (16 of them on `data-i18n`, `states.close` on
+ * `-aria-label`), which the suite tracks by name. Every key composed at runtime
  * (`status.*`, `priority.*`, `access.theme.*`, `access.lang.short.*` in `app.js`)
  * exists too. `data-i18n-arg` is different in kind: its 193 values (50 distinct)
  * are arguments, not keys — the prototype resolves one with `text(arg)`, which
@@ -357,6 +359,7 @@ export const CATALOGUE = {
       "waiting.reason.blocked": "Blocked",
       "waiting.open": "Open %s",
       "waiting.empty": "Nothing is waiting on you",
+      "waiting.empty.hint": "Blocked, in-review and handed-off tasks land here.",
   },
   zh: {
       "app.title": "MeerkatTaskPanel — 看板",
@@ -622,6 +625,7 @@ export const CATALOGUE = {
       "waiting.reason.blocked": "已阻塞",
       "waiting.open": "打开 %s",
       "waiting.empty": "没有等你处理的事",
+      "waiting.empty.hint": "被阻塞、待复核或已交接的任务会出现在这里。",
   },
 };
 
