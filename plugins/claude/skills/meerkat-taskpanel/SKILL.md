@@ -150,7 +150,7 @@ call** — taskpanel neither prescribes it nor advises it, and neither does this
 
 See [`references/card-schema.md`](references/card-schema.md) for the **card format** — every
 frontmatter key and every body section, i.e. what `taskctl export` writes and the md migrator
-reads back,
+reads back (the known keys, what an empty value means, and how a card round-trips),
 [`references/cli.md`](references/cli.md) for the command surface, the delivery gate,
 the report template and the `--json` contract,
 [`references/reports.md`](references/reports.md) for periodic reports and statistics,

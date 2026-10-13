@@ -74,6 +74,11 @@ const FIELD_SPECS = Object.freeze([
   { field: "updated_at", home: "tasks.updated_at", get: (card) => card.updatedAt },
   { field: "status_changed_at", home: "tasks.status_changed_at", get: (card) => card.statusChangedAt },
   { field: "blocked_at", home: "tasks.blocked_at", get: (card) => card.blockedAt },
+  // 0016 — a card's block class. Absent on most cards; `null === null` on both
+  // sides, so the row costs nothing for a card that never carried one, and
+  // catches the one thing it exists to catch: a reason that failed to survive
+  // the export.
+  { field: "blocked_reason", home: "tasks.blocked_reason", get: (card) => card.blockedReason },
   { field: "claimed_by", home: "tasks.claimed_by", get: (card) => card.claimedBy },
   { field: "claimed_at", home: "tasks.claimed_at", get: (card) => card.claimedAt },
   { field: "heartbeat_at", home: "tasks.heartbeat_at", get: (card) => card.heartbeatAt },

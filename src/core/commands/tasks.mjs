@@ -23,6 +23,7 @@ import {
 } from "../domain/delivery-gate.mjs";
 import { assertTransition } from "../domain/status.mjs";
 import { assertAwaitingReason } from "../domain/awaiting.mjs";
+import { normalizeBlockedReason } from "../domain/blocked-reason.mjs";
 import { STATUS } from "../domain/enums.mjs";
 import { hasIdemDiscriminator, idemKey, idemSource, normalizeIdem } from "../domain/idem.mjs";
 import { isArchivable, normalizeTaskCreate, normalizeTaskUpdate } from "../domain/task.mjs";
@@ -509,7 +510,7 @@ export function heartbeat(ctx, input) {
  * `task_moved`, so the card's history says what actually happened.
  *
  * @param {object} ctx
- * @param {{id: string, to: string, actor: object, ifVersion?: number, noReport?: boolean, reason?: string, allowSteal?: boolean, awaitingReason?: string|null}} input
+ * @param {{id: string, to: string, actor: object, ifVersion?: number, noReport?: boolean, reason?: string, allowSteal?: boolean, awaitingReason?: string|null, blockedReason?: string|null}} input
  */
 export function moveStatus(ctx, input) {
   const actor = actorOf(input.actor);
@@ -521,6 +522,12 @@ export function moveStatus(ctx, input) {
   // a move to any other status carries no reason (the column is cleared).
   const awaitingReason =
     input.to === STATUS.AWAITING ? assertAwaitingReason(input.awaitingReason) : null;
+  // 0016 — entering `blocked` *may* name the class of the block (SLA-inspection
+  // contract §7). Normalized, not asserted: an unstated reason is legal — the
+  // inspector reads it as `clarify` — so the only refusal here is a supplied
+  // value that is not one of the literals. Any other destination clears it.
+  const blockedReason =
+    input.to === STATUS.BLOCKED ? normalizeBlockedReason(input.blockedReason) : null;
 
   return transaction(
     ctx.db,
@@ -577,6 +584,7 @@ export function moveStatus(ctx, input) {
         now,
         waiver,
         awaitingReason,
+        blockedReason,
       });
       ctx.repos.activities.append({
         taskId: task.id,
@@ -592,6 +600,9 @@ export function moveStatus(ctx, input) {
                 // M1 — record the entry category alongside the move, so the
                 // card's history says *why* it stopped for a human.
                 ...(awaitingReason === null ? {} : { awaitingReason }),
+                // 0016 — and the same for a block's class, so the trail keeps
+                // the reason even after `blocked_reason` is cleared on exit.
+                ...(blockedReason === null ? {} : { blockedReason }),
               }
             : {
                 from: current.status,

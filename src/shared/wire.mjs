@@ -65,6 +65,10 @@ const COPY_TASK_FIELDS = Object.freeze({
   // human, so a client can read "is there a question, and of what kind" from
   // one field.
   awaiting_reason: "awaitingReason",
+  // 0016 — a `blocked` card's class (SLA-inspection contract §7). `null` unless
+  // a reason was written, so a client reads "is there a reason, and which" from
+  // one field, exactly as it does for `awaiting_reason`.
+  blocked_reason: "blockedReason",
 });
 
 /**

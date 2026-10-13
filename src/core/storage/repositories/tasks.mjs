@@ -40,6 +40,9 @@ const PATCHABLE = [
   "threadSource",
   "sourceHash",
   "meta",
+  // 0016 — carried onto the row by a re-import (`md/import.mjs#patchFrom`), so
+  // a card whose reason changed is corrected rather than silently skipped.
+  "blockedReason",
 ];
 
 const SELECT_LIST = TASK_COLUMNS.join(", ");
@@ -263,10 +266,18 @@ export function createTasksRepository(db) {
      * happen. The column is therefore written on every move, derived from the
      * destination status, never left to the caller.
      *
-     * @param {{id: string, ifVersion?: number, to: string, now: string, reportLatestId?: number|null, waiver?: {round: number, reason: string}|null, awaitingReason?: string|null}} input
+     * `blockedReason` (0016) is the same shape for the `blocked` card's class:
+     * written on entry, cleared by every exit. It is the deliberate opposite of
+     * `blocked_at` just below — that one is *kept* on the way out, because it
+     * dates the last blockage — whereas the reason describes the *current*
+     * block, so a card that has moved on must not keep claiming it is waiting on
+     * something. Both stay inside this one UPDATE, so status, timestamps and
+     * reasons can never disagree.
+     *
+     * @param {{id: string, ifVersion?: number, to: string, now: string, reportLatestId?: number|null, waiver?: {round: number, reason: string}|null, awaitingReason?: string|null, blockedReason?: string|null}} input
      */
     moveCas(input) {
-      const { id, ifVersion, to, now, reportLatestId, waiver, awaitingReason } = input;
+      const { id, ifVersion, to, now, reportLatestId, waiver, awaitingReason, blockedReason } = input;
       return transaction(
         db,
         () => {
@@ -276,6 +287,10 @@ export function createTasksRepository(db) {
           // every exit (including a move that never touches `awaiting`).
           sets.push("awaiting_reason = ?");
           values.push(to === "awaiting" ? (awaitingReason ?? null) : null);
+          // 0016 — the block's class, written the same way and for the same
+          // reason: an unset reason is NULL (never ""), and every exit clears it.
+          sets.push("blocked_reason = ?");
+          values.push(to === "blocked" ? (blockedReason ?? null) : null);
           if (to === "blocked") {
             sets.push("blocked_at = ?");
             values.push(now);
