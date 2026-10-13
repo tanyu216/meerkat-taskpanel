@@ -42,14 +42,21 @@ function makeFakeCli(binDir, name) {
 
 /** An environment that sees fake host CLIs and installs into an isolated home. */
 function installEnv(home, bin) {
-  return { ...process.env, MEERKAT_TASKPANEL_TARGET_HOME: home, PATH: `${bin}:${process.env.PATH}` };
+  return {
+    ...process.env,
+    MEERKAT_TASKPANEL_TARGET_HOME: home,
+    // The taskd guard loads a real OS unit on install; its own cases live in
+    // `taskd-guard.test.mjs`. This is the contract's test-only bypass.
+    MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1",
+    PATH: `${bin}:${process.env.PATH}`,
+  };
 }
 
 function runInstall(args, env = {}) {
   return spawnSync("bash", [join(ROOT, "install.sh"), ...args], {
     cwd: ROOT,
     encoding: "utf8",
-    env: { ...process.env, ...env },
+    env: { ...process.env, MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1", ...env },
   });
 }
 

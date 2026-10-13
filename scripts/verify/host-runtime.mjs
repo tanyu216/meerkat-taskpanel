@@ -169,7 +169,15 @@ function freshLog(name) {
 function installHost(host) {
   const res = run(
     [join(ROOT, "install.sh"), "--target", host, "--prefix", ctx.home, "--agent-name", AGENT, "--skip-node-check"],
-    { env: { MEERKAT_TASKPANEL_TARGET_HOME: ctx.home } },
+    {
+      env: {
+        MEERKAT_TASKPANEL_TARGET_HOME: ctx.home,
+        // The taskd keepalive guard loads a real OS unit at install; this harness is
+        // offline and must not. The bypass is the contract's own (`docs/scheduling.md`),
+        // and the guard's install behaviour is verified in `test/install/taskd-guard.test.mjs`.
+        MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1",
+      },
+    },
   );
   if (res.status !== 0) {
     throw new Error(`install.sh --target ${host} exited ${res.status}\n${res.stdout}\n${res.stderr}`);
