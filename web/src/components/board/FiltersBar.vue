@@ -65,7 +65,7 @@ import {
   totalVisible,
   writeStatusFilter,
 } from "../../stores/board.js";
-import { filtersOpen, pushToast } from "../../stores/ui.js";
+import { boardArea, filtersOpen, pushToast } from "../../stores/ui.js";
 import { t } from "../../i18n/index.js";
 
 const assigneeOptions = ASSIGNEE_STATIC_VALUES;
@@ -140,7 +140,12 @@ function chooseLabel(value, event) {
        and `min-w-0`. A narrow tier scrolls this row inside the bar (the
        prototype wraps it onto a second line instead — the round's one approved
        deviation); the document itself stays free of horizontal overflow. -->
-  <section class="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto" data-filters :hidden="!filtersOpen" id="td-filters">
+  <section
+    class="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto"
+    data-filters
+    :hidden="!filtersOpen || !boardArea"
+    id="td-filters"
+  >
     <!-- R12 — the prototype's own shape: two visually-hidden `.td-sr` labels as
          siblings of the controls they name (`for=` / `id=`), so the bar's direct
          children are its control row and nothing else. R9 ②'s finding was that

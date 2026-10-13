@@ -138,6 +138,14 @@ export const DOMAINS = Object.freeze({
   LANG: Object.freeze(["en", "zh"]),
   /** `html[data-theme-mode]` and the theme cell's mirrored state (B01/B03). */
   THEME_MODE: Object.freeze(["light", "dark", "auto"]),
+  /** B26 — the feed's three filter slots (§6). */
+  ACTIVITY_FILTER: Object.freeze(["actor", "event", "task"]),
+  /** B26 — a row's event bucket, as the **event** filter reads it (§3.4). */
+  ACTIVITY_GROUP: Object.freeze(["status", "comment", "delivery", "meta"]),
+  /** B26 — the two mutually exclusive empty states (§8). */
+  ACTIVITY_EMPTY: Object.freeze(["project", "filter"]),
+  /** B27 — the waiting queue's reason kinds (§30). */
+  WAITING_REASON: Object.freeze(["question", "blocked"]),
   /** `html[data-theme]` — what the stylesheet reads. Note the different vocabulary. */
   THEME_DOC: Object.freeze(["meerkat-taskpanel", "dark", "auto"]),
   /** Toast kinds (B14). */
@@ -2307,6 +2315,168 @@ const BLOCKS = [
       },
     ],
   },
+
+  {
+    id: "B26",
+    title: "Activity view",
+    root: "[data-activity-view]",
+    scope: "board",
+    status: "active",
+    required: [
+      "[data-activity-title]",
+      "[data-activity-mark-read]",
+      "[data-activity-filters]",
+      "[data-activity-filter]",
+      "[data-activity-filter-reset]",
+      "[data-activity-filter-count]",
+      "[data-activity-feed]",
+      "[data-activity-day]",
+      "[data-activity-day-label]",
+      "[data-activity-day-kind]",
+      "[data-activity-page]",
+      "[data-activity-row]",
+      "[data-activity-line]",
+      "[data-activity-actor]",
+      "[data-activity-sentence]",
+      "[data-activity-task]",
+      "[data-activity-task-id]",
+      "[data-activity-task-title]",
+      "[data-activity-at]",
+      "[data-activity-open]",
+      "[data-activity-detail]",
+      "[data-activity-change]",
+      "[data-activity-unread]",
+      "[data-activity-unread-divider]",
+      "[data-activity-unread-count]",
+      "[data-activity-burst]",
+      "[data-activity-burst-count]",
+      "[data-activity-burst-count-label]",
+      "[data-activity-burst-item]",
+      "[data-activity-group]",
+      "[data-activity-empty]",
+      "[data-activity-empty-kind]",
+      "[data-activity-empty-reset]",
+      "[data-activity-more]",
+    ],
+    states: [],
+    rules: [
+      { kind: "count", selector: "[data-activity-view]", equals: 1 },
+      { kind: "count", selector: "[data-activity-title]", equals: 1 },
+      { kind: "count", selector: "[data-activity-mark-read]", equals: 1 },
+      { kind: "count", selector: "[data-activity-filters]", equals: 1 },
+      { kind: "count", selector: "[data-activity-filter]", equals: 3 },
+      { kind: "domain", selector: "[data-activity-filter]", attribute: "data-activity-filter", subset: DOMAINS.ACTIVITY_FILTER },
+      { kind: "count", selector: "[data-activity-filter-reset]", equals: 1 },
+      { kind: "count", selector: "[data-activity-filter-count]", equals: 1 },
+      { kind: "count", selector: "[data-activity-feed]", equals: 1 },
+      { kind: "count", selector: "[data-activity-more]", equals: 1 },
+      /* §8 — both empty states are **resident** and mutually exclusive by the
+       * `hidden` attribute, never by being absent: the resting document holds the
+       * pair (which is what makes them checkable at all), and the filter one owns
+       * the only reset. Asserting `count: 2` rather than "one of them" is the
+       * point — a `v-if` would make each state unobservable until it fired. */
+      { kind: "count", selector: "[data-activity-empty]", equals: 2 },
+      { kind: "domain", selector: "[data-activity-empty]", attribute: "data-activity-empty-kind", subset: DOMAINS.ACTIVITY_EMPTY },
+      { kind: "count", selector: "[data-activity-empty-reset]", within: "[data-activity-empty-kind=\"filter\"]", equals: 1 },
+      /* R-3 / §9.1 — **one dictionary**. The design page carried its own
+       * `[data-activity-i18n]` catalogue; the shipped view reads the app's, so the
+       * carrier must not exist. This is the block's one `absent`. */
+      { kind: "absent", selector: "[data-activity-i18n]" },
+      /* §6 — the row body and its keyboard twin are siblings on the row's first
+       * level, so neither ever lands inside itself (a row that were a button would
+       * make the task link inside it a nested interactive element). `within` is how
+       * this contract states containment: "no X inside an X" reads as a count of 0
+       * inside every X. */
+      { kind: "count", selector: "[data-activity-line]", within: "[data-activity-line]", equals: 0 },
+      { kind: "count", selector: "[data-activity-row]", within: "[data-activity-row]", equals: 0 },
+      { kind: "count", selector: "[data-activity-open]", within: "[data-activity-open]", equals: 0 },
+      /* §4 L2 — the row's six fields are the contract: a row that lost one would
+       * still filter and count, and still be unreadable. */
+      { kind: "count", selector: "[data-activity-actor]", within: "[data-activity-view]", min: 1, when: "activity view" },
+      { kind: "count", selector: "[data-activity-sentence]", within: "[data-activity-view]", min: 1, when: "activity view" },
+      { kind: "count", selector: "[data-activity-task]", within: "[data-activity-view]", min: 1, when: "activity view" },
+      { kind: "count", selector: "[data-activity-at]", within: "[data-activity-view]", min: 1, when: "activity view" },
+      { kind: "count", selector: "[data-activity-open]", within: "[data-activity-view]", min: 1, when: "activity view" },
+      { kind: "count", selector: "[data-activity-detail]", within: "[data-activity-view]", min: 1, when: "activity view" },
+      { kind: "count", selector: "[data-activity-day]", min: 1, when: "activity view" },
+      { kind: "count", selector: "[data-activity-row]", within: "[data-activity-view]", min: 1, when: "activity view" },
+      { kind: "count", selector: "[data-activity-more]", min: 1, when: "activity view" },
+      /* C02's sibling invariant, for this view's rows. It is deliberately **not**
+       * `identical-hookset` here: two of a row's hooks are per-row *state* by
+       * design — `[data-activity-unread]` marks the rows the reader has not seen
+       * and `[data-activity-burst]` the one row a run of edits folded into (§4/§5)
+       * — so the rows' hook sets differ on purpose and the invariant that actually
+       * holds is the weaker one: every row carries its six fields. That is stated
+       * as a live relation in `web/scripts/dom-smoke.mjs`, where a row's children
+       * can be counted against the row itself. */
+      { kind: "domain", selector: "[data-activity-row]", attribute: "data-activity-group", subset: DOMAINS.ACTIVITY_GROUP, when: "activity view" },
+      { kind: "domain", selector: "[data-activity-row]", attribute: "data-assignee-kind", subset: DOMAINS.ASSIGNEE_KIND, when: "activity view" },
+      { kind: "domain", selector: "[data-activity-filter]", attribute: "data-activity-filter", subset: DOMAINS.ACTIVITY_FILTER, when: "activity view" },
+      /* §11 — day groups and rows are both newest-first, and each row's visible
+       * stamp is its own instant. The window's own ≤5-minute span, the count's
+       * equality with the visible rows and the boundary are measured live in
+       * `web/scripts/dom-smoke.mjs` (they are relations, not values). The day
+       * `data-activity-page` values are read there too: page 1 while `Load older`
+       * is unread, and a page `2` day once it is pressed. */
+      { kind: "monotonic", selector: "[data-activity-day]", attribute: "data-day", direction: "non-increasing", when: "activity view" },
+      { kind: "monotonic", selector: "[data-activity-row]", attribute: "data-at", direction: "non-increasing", when: "activity view" },
+      { kind: "manual", note: "Admission is an allow-list (`design/activity/DESIGN-activity.md` §3.2); heartbeats, session lifecycle, per-field auto-save and label GC never reach the feed. The set is proved live in `web/scripts/dom-smoke.mjs` (the fixture carries two noise rows that must not appear)." },
+      { kind: "manual", note: "A burst folds one actor's field edits on one task inside a five-minute window (§5), and the count sentence is the number of rows the reader can see — a burst counts once. Both are measured live." },
+      { kind: "manual", note: "Unread is local (§4/§17) and there is exactly **one** boundary per feed, placed after the last unread row inside its day group; the pill, the boundary and the boundary's count read one derivation. Measured live." },
+    ],
+  },
+
+  {
+    id: "B27",
+    title: "Waiting view",
+    root: "[data-waiting-view]",
+    scope: "board",
+    status: "active",
+    required: [
+      "[data-waiting-head]",
+      "[data-waiting-title]",
+      "[data-waiting-count]",
+      "[data-waiting-list]",
+      "[data-waiting-item]",
+      "[data-waiting-actor]",
+      "[data-waiting-reason]",
+      "[data-waiting-reason-kind]",
+      "[data-waiting-task]",
+      "[data-waiting-task-title]",
+      "[data-waiting-since]",
+      "[data-waiting-open]",
+      "[data-waiting-empty]",
+    ],
+    states: [],
+    rules: [
+      { kind: "count", selector: "[data-waiting-view]", equals: 1 },
+      { kind: "count", selector: "[data-waiting-head]", equals: 1 },
+      { kind: "count", selector: "[data-waiting-title]", equals: 1 },
+      { kind: "count", selector: "[data-waiting-count]", equals: 1 },
+      { kind: "count", selector: "[data-waiting-list]", equals: 1 },
+      { kind: "count", selector: "[data-waiting-empty]", equals: 1 },
+      /* §30.2 — one name per destination: the heading over the queue and the
+       * sidebar's nav item carry the *same* string, so they cannot drift. */
+      { kind: "count", selector: "[data-waiting-count]", within: "[data-waiting-head]", equals: 1 },
+      { kind: "domain", selector: "[data-waiting-reason]", attribute: "data-waiting-reason-kind", subset: DOMAINS.WAITING_REASON },
+      { kind: "domain", selector: "[data-waiting-actor]", attribute: "data-assignee-kind", subset: DOMAINS.ASSIGNEE_KIND, when: "waiting view" },
+      /* The queue has no filter, no paging and no folding (§30.1's consistency
+       * item 1), so every row carries the identical hook set — six fields and
+       * nothing else. This is the one place `identical-hookset` fits a view
+       * whose rows carry no per-row state flags (B26's rows do, which is why its
+       * rule is stated differently). */
+      { kind: "identical-hookset", selector: "[data-waiting-item]", when: "waiting view" },
+      { kind: "count", selector: "[data-waiting-item]", min: 1, when: "waiting view" },
+      { kind: "count", selector: "[data-waiting-reason]", within: "[data-waiting-view]", min: 1, when: "waiting view" },
+      { kind: "count", selector: "[data-waiting-open]", min: 1, when: "waiting view" },
+      { kind: "count", selector: "[data-waiting-item]", within: "[data-waiting-item]", equals: 0, when: "waiting view" },
+      { kind: "count", selector: "[data-waiting-task]", within: "[data-waiting-task]", equals: 0, when: "waiting view" },
+      { kind: "manual", note: "The queue runs **oldest first** (§30.2) — the top row has waited longest. The order is a relation between the rows' own `data-since`, so it is asserted in `test/web/waiting.queue.test.mjs` (the projection) and measured live in `web/scripts/dom-smoke.mjs` (the render)." },
+      { kind: "manual", note: "`[data-waiting-since]` carries the instant on `datetime` and the row carries it again on `data-since`; the visible text is that instant on B26's three `time.*` keys — one time vocabulary across the two views. Measured live." },
+      { kind: "manual", note: "`[data-waiting-task]` renders at most eight characters plus `…` with the whole value on `title` (R8 ③). Measured live." },
+      { kind: "manual", note: "The reason chip's dot is coloured through `[data-waiting-reason-kind]` → `var(--status-color)` (§30's one-attribute rule), so no component names a colour and the token registry is unchanged. Asserted as a source scan in `web/scripts/dom-smoke.mjs`'s C-group." },
+    ],
+  },
 ];
 
 /**
@@ -2535,14 +2705,14 @@ const CONSISTENCY_ITEMS = [
 export const STALE_PROSE_COUNTS = Object.freeze([
   Object.freeze({
     claim: "252 `data-i18n*` hooks",
-    measured: 612,
-    detail: "395 `data-i18n` + 144 `-arg` + 47 `-aria-label` + 8 `-placeholder` + 18 `-title`",
+    measured: 817,
+    detail: "525 `data-i18n` + 193 `-arg` + 73 `-aria-label` + 18 `-title` + 8 `-placeholder`",
     verdict: "stale",
   }),
   Object.freeze({
     claim: "198 catalogue keys",
-    measured: 220,
-    detail: "en = 220 and zh = 220, mirrored 1:1 — the prototype `MESSAGES` count the body states; the shipped extraction drops the 17 prototype-only keys, so it ships 203",
+    measured: 281,
+    detail: "en = 281 and zh = 281, mirrored 1:1 — the prototype `MESSAGES` count the body states; the shipped extraction drops the 23 prototype-only keys, so it ships 258",
     verdict: "stale",
   }),
   Object.freeze({

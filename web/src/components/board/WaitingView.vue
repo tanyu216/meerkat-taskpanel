@@ -1,98 +1,144 @@
 <script setup>
 /**
- * M1 · B-view 「等你回复」 — the filter view for cards parked on a human.
+ * B27 · the 「等你回复」queue (R12x; M1's own view, re-cut to the design's block).
  *
- * Three things this view is careful about, all of them design requirements:
+ * The sidebar's fourth destination: the reader's own queue, not a second Activity.
+ * B26 is the project's ledger — everything, newest first; this is the items whose
+ * ball is in *the reader's* court, and only by how long they have waited
+ * (`design/DESIGN.md` §30.1 — two destinations, two questions).
  *
- *   * **It is not a column.** `[data-waiting-view]` is a *view* of the same
- *     cards the board holds; the rows reuse the existing card component
- *     unchanged, so nothing about a card moves when it appears here (§3.2).
- *   * **The payload is the triggering human comment, read, never invented.**
- *     `[data-waiting-payload-summary]` is the comment's first sentence and
- *     `[data-waiting-payload-full]` its verbatim text behind a native
- *     `<details>` that is **closed by default** — a silent view, and one that
- *     works with the keyboard and the browser's own find-in-page without a line
- *     of script (§3.4).
- *   * **List and count read one predicate.** Both come from the store's
- *     `waitingTasks`, so a card hidden by an active filter is in neither (§3.5).
+ * Four things it is careful about, each of them a design rule:
  *
- * The rows are `awaiting` cards, so they carry `data-status="awaiting"` on the
- * *wrapper* — the card inside keeps its stage (its column), which is what keeps
- * the board's "no eighth column" and "no repainted stripe" promises intact.
+ *   * **Oldest first** (§30.2). The top row has waited longest, so the list is an
+ *     overdue-first inbox. Reverse it and the item that has waited five days hides
+ *     behind the one that arrived a minute ago — the failure a queue exists to
+ *     prevent. The order lives in `lib/waiting-queue.js`, not in this template.
+ *   * **The stamp is the row's own instant.** `data-waiting-since` and the
+ *     `datetime` its visible text is printed from are the *same* value, and the
+ *     text uses B26's three `time.*` keys — one time vocabulary across the two
+ *     views, so the two read the same way.
+ *   * **The reason is an attribute, the colour a variable.** The chip carries
+ *     `data-waiting-reason-kind="question"|"blocked"` and the stylesheet's
+ *     attribute rule sets `--status-color`; no component names a colour (B27's
+ *     "zero new hues").
+ *   * **A row opens B09.** The row body is the pointer's affordance and
+ *     `[data-waiting-open]` its keyboard twin and accessible name; both land on
+ *     the board's own detail surface for the task the row names. There is no
+ *     second drawer and no anchor back to the board.
+ *
+ * What M1 rendered here (the card component, and the triggering question as an
+ * inline summary plus a `<details>`) is **replaced** by the design's row: the
+ * queue is a way *into* a card, and the card — with the question on it — is one
+ * press away. The triggering comment is still read, because its instant is what
+ * `since` reports; it is no longer painted here. That replacement is registered in
+ * the card's report (`T-20261013-014701-7`), hooks and all.
  */
 import { computed, watch } from "vue";
 
-import { board, firstSentence, loadWaitingPayloads, openDetail, waitingTasks } from "../../stores/board.js";
+import { waitingRows } from "../../lib/waiting-queue.js";
+import { board, loadWaitingPayloads, openDetail, waitingTasks } from "../../stores/board.js";
+import { view } from "../../stores/ui.js";
 
-import Card from "./Card.vue";
-
-/** The payload comment for a card, or `null` when it has not loaded / has none. */
-function payloadOf(task) {
-  return board.waitingPayload[task.id] ?? null;
-}
-
-/** The first sentence shown above the fold; empty when there is nothing to read. */
-function summaryOf(task) {
-  const payload = payloadOf(task);
-  return payload === null ? "" : firstSentence(payload.body);
-}
-
-const isEmpty = computed(() => waitingTasks.value.length === 0);
-
-async function refresh() {
-  await loadWaitingPayloads();
-}
+/** The queue: one row per awaiting card, oldest first (§30.2). */
+const rows = computed(() => waitingRows(waitingTasks.value, board.waitingPayload));
 
 /**
  * The payloads load as soon as an awaiting card *exists*, not when the view is
- * opened. Two triggers alone are not enough and both were tried:
+ * opened — its instant is the row's `since`, so the queue is ordered by the real
+ * wait from the first paint.
  *
- *   * `onMounted` runs before the board has fetched its tasks, so the awaiting
- *     set is still empty and nothing is ever requested;
- *   * watching `view` fires only on a *change*, so an SSE re-sync that adds an
- *     awaiting card while the board is on screen loads nothing — the case the
- *     loader's own contract ("a re-entrant call does not re-fetch") assumed.
- *
- * Keying the watcher on the set of awaiting ids covers both, and is cheap: the
- * loader skips every id it already knows, so a re-run over an unchanged set
- * issues no request at all. `[data-waiting-payload-summary]` is therefore filled
- * the moment the card is, whichever view is on screen (design §8-06).
+ * Two triggers alone are not enough and both were tried (M1): `onMounted` runs
+ * before the board has fetched its tasks, so the awaiting set is still empty; and
+ * watching `view` fires only on a *change*, so an SSE re-sync that adds an
+ * awaiting card while another view is up loads nothing. Keying the watcher on the
+ * set of awaiting ids covers both, and is cheap: the loader skips every id it
+ * already knows.
  */
 const awaitingIds = computed(() => waitingTasks.value.map((task) => task.id).join(","));
+watch(awaitingIds, () => loadWaitingPayloads(), { immediate: true });
 
-watch(awaitingIds, refresh, { immediate: true });
+const isEmpty = computed(() => rows.value.length === 0);
+
+/**
+ * The row body is the pointer's affordance and `[data-waiting-open]` its keyboard
+ * twin — the same pair B26's rows are. A press that lands on the row's own button
+ * is the button's, not the row's (the button stops its own propagation anyway;
+ * this is the belt to that braces).
+ */
+function onRow(event, row) {
+  if (event.target.closest("button")) return;
+  openDetail(row.identifier);
+}
 </script>
 
 <template>
-  <section id="td-waiting" class="flex flex-col gap-3 p-3" data-waiting-view>
-    <div class="flex flex-col gap-3" data-waiting-list>
-      <!-- Pinned first: an awaiting row is what blocks a machine, so it leads
-           the view (§3.5). The row is a wrapper — the card itself is untouched. -->
-      <article
-        v-for="task in waitingTasks"
-        :key="task.id"
-        class="flex flex-col gap-2 p-3 border border-(--brand-border) rounded-lg bg-(--brand-surface) border-s-2 border-s-primary data-[waiting-pinned=true]:order-[-1]"
-        data-waiting-card
-        data-waiting-pinned="true"
-        data-status="awaiting"
+  <section class="td-waiting-view" data-waiting-view :hidden="view !== 'waiting'">
+    <!-- B27.2 · the head: the destination's name and the queue's tally. Both read
+         one derivation (`rows`), so the heading and the count cannot disagree —
+         and `waiting.title` is byte-identical to `nav.waiting`, which is the one
+         name this surface has. An empty queue hides the tally: "0 waiting on you"
+         beside "Nothing is waiting on you" is the same sentence twice (§30). -->
+    <header class="td-waiting-head" data-waiting-head>
+      <h1 class="td-waiting-title" data-waiting-title data-i18n="waiting.title">{{ $t("waiting.title") }}</h1>
+      <span
+        class="td-waiting-count"
+        data-waiting-count
+        data-i18n="waiting.count"
+        :data-i18n-arg="rows.length"
+        aria-live="polite"
+        :hidden="isEmpty"
+      >{{ $t("waiting.count", rows.length) }}</span>
+    </header>
+
+    <ul class="td-waiting-list" data-waiting-list>
+      <li
+        v-for="row in rows"
+        :key="row.id"
+        class="td-waiting-item"
+        data-waiting-item
+        :data-task="row.identifier"
+        :data-since="row.since"
+        @click="onRow($event, row)"
       >
-        <Card :task="task" @open="openDetail(task.identifier)" />
+        <span class="td-waiting-actor td-mono" data-waiting-actor :data-assignee-kind="row.actorKind">{{ row.actor }}</span>
+        <!-- The two kinds are catalogue sentences, so they are two static hooks
+             rather than one computed key — the same reading B26's day headings use.
+             The chip is `.td-waiting-reason`, **not** the status chip: it carries
+             its own 18px box, its own 4px radius and its own `::before` dot, and
+             wearing `.td-chip` would hand all three to another family (the ui-align
+             target caught exactly that on the first pass). -->
+        <span class="td-waiting-reason" data-waiting-reason :data-waiting-reason-kind="row.reasonKind">
+          <span v-if="row.reasonKind === 'blocked'" data-i18n="waiting.reason.blocked">{{ $t("waiting.reason.blocked") }}</span>
+          <span v-else data-i18n="waiting.reason.question">{{ $t("waiting.reason.question") }}</span>
+        </span>
+        <span class="td-waiting-task-cell">
+          <span class="td-waiting-task td-mono" data-waiting-task :title="row.identifier">{{ row.display }}</span>
+          <span class="td-waiting-task-title" data-waiting-task-title>{{ row.title }}</span>
+        </span>
+        <time
+          v-if="row.stamp !== null"
+          class="td-waiting-since td-mono"
+          data-waiting-since
+          :datetime="row.since"
+          :title="row.stamp.absolute"
+        >{{ $t(row.stamp.key, row.stamp.arg) }}</time>
+        <button
+          type="button"
+          class="td-iconbtn td-waiting-open"
+          data-waiting-open
+          :aria-label="$t('waiting.open', row.identifier)"
+          @click.stop="openDetail(row.identifier)"
+        >
+          <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4h16v16H4zM15 4v16" /></svg>
+        </button>
+      </li>
+    </ul>
 
-        <div class="flex flex-col gap-1" data-waiting-payload>
-          <p class="m-0 line-clamp-2 text-[14px] text-(--brand-text-2)" data-waiting-payload-summary>{{ summaryOf(task) }}</p>
-          <details data-waiting-payload-details>
-            <summary>{{ $t("waiting.payload.expand") }}</summary>
-            <div class="max-w-[68ch] whitespace-pre-wrap [overflow-wrap:anywhere] text-[12px] text-(--brand-text-3)" data-waiting-payload-full>{{ payloadOf(task)?.body ?? "" }}</div>
-          </details>
-        </div>
-      </article>
-    </div>
-
-    <!-- The existing empty-state component (B12: `.td-empty .td-empty-lg`),
-         with M1's own hook. Deliberately *not* `[data-empty]`: that hook is the
-         board's, and B12 allows exactly one no-results state per board view. -->
-    <div v-if="isEmpty" class="flex flex-col items-center gap-1 p-10 text-center text-(--brand-text-3) border border-dashed border-(--brand-border-strong) rounded-lg" data-waiting-empty>
-      <span class="font-medium text-(--brand-text-2)">{{ $t("waiting.empty") }}</span>
+    <!-- B27.3 · the empty state. It is *resident* and mutually exclusive with the
+         list by the `hidden` attribute, never by a `v-if` — the resting document
+         carries it, which is what makes it machine-checkable (B26's own reading). -->
+    <div class="td-empty td-waiting-empty" data-waiting-empty :hidden="!isEmpty">
+      <span class="td-empty-title" data-i18n="waiting.empty">{{ $t("waiting.empty") }}</span>
     </div>
   </section>
 </template>
