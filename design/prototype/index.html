@@ -262,21 +262,23 @@
           <h2 class="td-side-label" data-i18n="sidebar.agents">Active agents</h2>
           <!-- R11 ② — every roster name is its own button. The row still reads as
                one sentence (the separators are the same commas they were), but a
-               press on a name now routes to the list view with the two in-flight
-               statuses in force. The pressability hangs on
+               press on a name is a filter move. The pressability hangs on
                `[data-agent-assignee]`, never on a class, so the hook is what a
                machine check reads and what the interaction layer binds.
                R13 — the name carries a given name as well: a press writes the
                name into the assignee control (whose domain gains the name), so
-               the route is a narrowing too, and the pressed name wears the
-               selected capsule. Each name is therefore wrapped in a
-               `[data-assignee-item]`; the item is the capsule's shell and the
-               name button is its only child, so the shell sits *around* the name
-               and the row's one line gains no width (`padding` and an equal
-               negative `margin-inline` cancel). The capsule has no `x` of its
-               own: the removal affordance is one control in the bar, next to the
-               assignee select, because the roster row has no room to spend (see
-               `fidelity-r13.md` §3). -->
+               the pressed name wears the selected capsule. Each name is
+               therefore wrapped in a `[data-assignee-item]`; the item is the
+               capsule's shell and the name button is its only child, so the
+               shell sits *around* the name and the row's one line gains no width
+               (`padding` and an equal negative `margin-inline` cancel).
+               R13 修订（Terry 2026-10-13 · 决定甲）— the press is *only* the
+               assignee value: it is exactly the move of choosing that name in
+               the bar's dropdown, and nothing else follows from it. It no longer
+               routes to the list view and no longer writes the two in-flight
+               statuses. The removal path is the control's own `Assignee: All`
+               row, so neither the roster row nor the bar carries a clear `✕`
+               (see `fidelity-r13.md` §10). -->
           <div class="mt-2" data-agents-presence>
             <div class="td-agent-row" title="claude · jobs, linus, simons" data-agent-row="claude">
               <span class="badge badge-xs td-agent-badge" data-agent-platform="claude">claude</span>
@@ -503,18 +505,14 @@
             <option value="human" data-i18n="filters.assignee.human">Assignee: Human</option>
             <option value="agent" data-i18n="filters.assignee.agent">Assignee: Agent</option>
           </select>
-          <!-- R13 — the assignee condition's removal affordance, as the sibling
-               of the control it clears. A given name has no home in the static
-               domain above, so the select grows a name on demand; this `x` is
-               what takes that name back out — and only that one. It is static
-               markup, `hidden` at rest, and it appears only while the select
-               states a name (never for `all` / `me` / `human` / `agent`, which
-               the select's own `all` row already undoes). It sits here rather
-               than inside the roster's capsule: the roster row is one line with
-               no width to spare, and a shell that bleeds over its own row is
-               width-neutral only while it stays a shell. -->
-          <button type="button" class="td-assignee-clear" data-assignee-clear hidden data-i18n-aria-label="assignee.clear" aria-label="Remove assignee filter">✕</button>
-
+          <!-- R13 修订（Terry 2026-10-13 · 决定甲）— the assignee condition's
+               removal affordance is the control's own `Assignee: All` row: a
+               press on a roster name is exactly the dropdown's own selection, so
+               the row it selects and the row that undoes it are the same
+               control. No `✕` sits beside the select, and none sits in the
+               roster: a given name the control is stating is one more `option`
+               in the document while it is in force, and leaving it is choosing
+               another row of the same select. -->
           <label class="td-sr" for="td-filter-priority" data-i18n="filters.priority">Priority</label>
           <select class="select select-sm td-select" id="td-filter-priority" data-filter-priority>
             <option value="all" data-i18n="filters.priority.all">Priority: All</option>

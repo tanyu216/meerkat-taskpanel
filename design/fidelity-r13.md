@@ -419,3 +419,146 @@ if (ok && byAssignee !== "all") {
 | **R-2** | `[data-assignee-option]` → **`[data-assignee-filter-option]`**（生成处 + 契约 + BLOCKS + 机检）；核 B22 的 14 座不变、全局委托不再命中本卡元素 | §2.9 / §3.4 / §4.2 / §5.1 R2.1 / §8 R12 | A3.2 / A4.6（控件内 0 个）、R2.1（文档 14 个，全在 `[data-assignee-menu]` 内）、C4.2 |
 | **R-3** | 补齐 `design/prototype/README.md`：MESSAGES `280 → 281`、`tw.css` 字节、I-map / Coverage 补 R13 | §7（README 行） | 宿主 `web/blocks.contract` › `states the prototype's MESSAGES count in design/prototype/README.md` **转绿**（复跑读数 `claim 281 == app.js 281`） |
 | **R-4** | 同步 `fidelity-r13.md` / `BLOCKS.md` / `DESIGN.md`；重跑 A/B/C 与 `check-activity`；重截六帧 + README | 本文件 + §6 + `design/assets/r13/README.md` | `verify-r13.json`（55/55）、`check-activity` 132/132、`tw-tokens.json`（conserved） |
+
+---
+
+## 10. seg3 修订（Terry 2026-10-13 决定甲）
+
+> 上游逐字（Terry 2026-10-13，卡 `T-20261013-154954` Background）：在 sidebar「Active agents」里点选一个 agent name 时，**只把 filters 的 Assignee 选成该 name（等同下拉选择）**，别的都不动 —— 不切视图、不写状态筛选、**不出现那个 ✕ 清除**。
+> 本节的定位规则与 §1 同：引用只用「文档名 §小节」或「**文件:选择器**」/「文件:符号」，**禁行号**；断言只用 **data 钩子 + 属性**，**禁以 class 名作锚**。
+> 证据口径：五档 **1512 / 1240 / 980 / 760 / 430** × **en / zh**（+ 每档 JS-off 一遍）在 **Chromium headless（Playwright）** 里对原型实测，经 **127.0.0.1 回环静态服务**（非 `file://`）打开；`verify-a1.mjs` 同一脚本跑 **before**（`git show HEAD:design/prototype/*` 物化的未改原型）与 **after** 两遍，逐条判 **200/200**，原始记录 `verify-a1.json` 与 `verify-a1-{before,after}.json`（本卡工作区，**不进仓**）。所有断言对 **before / after 两列**同时给出读数 —— 结论不是「改后成立」，而是「改前不成立、改后成立」。
+> 基线：main，HEAD = `02176bb`。
+
+### 10.1 改前 → 改后（五路，逐条）
+
+| # | 面 | 改前（R13 seg2） | 改后（决定甲） |
+|---|---|---|---|
+| 1 | **名册按下的后果** | 四步：`setView("list")` → `writeStatusFilter(["in_progress","in_review"])` → `writeAssigneeFilter(name)` → 一次 `applyFilters()`（`design/prototype/app.js`:`$("[data-agents-presence]").on("click","[data-agent-assignee]",…)`） | **一步**：`writeAssigneeFilter(name)` + 一次 `applyFilters()`。视图、`[data-filter-status]`、priority / label / search / project 一律不动 |
+| 2 | **再按同一个已选名** | toggle 分支：`assigneeFilterValue() === name` ⇒ `writeAssigneeFilter("all")`（清空） | **幂等**：仍写成该 name（`.value` 恒 `"jobs"`）；**无** toggle 分支 |
+| 3 | **移除路径** | 两条：名册 toggle + bar 的 `✕` | **唯一**：控件自身的 `Assignee: All` 行（`filters.assignee.all`） |
+| 4 | **`✕` 的存在性** | `[data-assignee-clear]` 计数 **1**（JS-on 与 JS-off 同）；`renderAssigneeFilter()` 内 `$("[data-assignee-clear]").prop("hidden", named === null)` 控制显隐；`$("[data-filters]").on("click","[data-assignee-clear]",…)` 委托处理器 | **0**（JS-on 与 JS-off **均 0**）；上述三处（markup / 显隐规则 / 委托处理器）与 `src/input.css` 的三条规则**全部删除**；`tw.css` 重建后该选择器 **0 命中**。原型四文件里**无元素、无规则、无处理器**带该钩子 —— 仅存活于记录撤销的注释与文档（`design/prototype/{index.html,app.js,src/input.css}` 各一处注释），故「四路全清」= 无落点，而非无字面串 |
+| 5 | **i18n** | `MESSAGES` en **281** / zh **281**（含 `assignee.clear`） | en **280** / zh **280**（`assignee.clear` 删除，1:1 镜像不变）；`index.html` 的 `data-i18n-aria-label` 座位 **73 → 72** |
+
+**改动落点（全部在 `design/**`）**
+
+| 文件 | 改动 |
+|---|---|
+| `design/prototype/index.html` | 删 `[data-filters]` 内、`[data-filter-assignee]` 之后的 `<button … data-assignee-clear hidden …>✕</button>` 与其上 R13 注释块；名册段 R13 注释改写为甲口径（按下 = 只写 assignee 值，不路由、不写状态、无 `✕`）；名册段结构**不动**（每项仍恰 1 个 `[data-agent-assignee]`） |
+| `design/prototype/app.js` | `MESSAGES` 删 `assignee.clear`（en、zh 各一处）；`renderAssigneeFilter()` 删 `$("[data-assignee-clear]").prop("hidden", …)` 与其注释；**删** `$("[data-filters]").on("click","[data-assignee-clear]",…)` 整段；名册按下处理器改写为 `writeAssigneeFilter($(this).attr("data-assignee")); applyFilters();`（删 `setView("list")` / `writeStatusFilter([...])` / toggle 分支）；相关注释改写 |
+| `design/prototype/src/input.css` | 删 `[data-assignee-clear]{…}`、`[data-assignee-clear]:hover{…}`、`[data-assignee-clear]:focus-visible{…}` 三条规则 |
+| `design/prototype/tw.css` | 重建。**205606 → 205057 bytes（−549）**；diff = **−23 行 / +0 行**，逐行核过，**只有**上述三条规则（无扫描器误产） |
+| `design/prototype/README.md` | MESSAGES `281 → 280`；**删 I22 行**并把其钩子语义并入 I20（改题为「Roster assignee pick」）；Coverage 表「Assignee clear」行改为「Assignee removal = 控件自身 `all` 行」；`tw.css` 字节更新；追加 R13 修订段 |
+| `design/fidelity-r13.md` | 本节（§10） |
+| `design/BLOCKS.md` | **B03**：按下 = 只写 assignee 值（不路由 / 不写 in-flight 状态 / 无 toggle 关闭）；**B04**：Controls 行删 `[data-assignee-clear]`、「Clear」行改为控件自身 `all` 行、Single writer 行删第三项、bar-order 段删「roster route」措辞 |
+| `design/DESIGN.md` | §31 标题段补第三次修订；**§31.1** 重写（按下 = 只写值）；§31.2 渲染表删 `✕` 行；§31.3 令牌守恒段补第三次重建读数；**§31.4** 重写（无 `✕`，移除路径 = 控件 `all` 行，并记账代价）；§31.5 Checked 改第三版读数；**§31.6 新增两条被否决备选** |
+
+### 10.2 被撤销的 R13 条文（逐条点名，**作废**）
+
+| 位置（文档:小节） | 条文（摘要） | 处置 |
+|---|---|---|
+| 本文件 **§0** | 「**单一路由变双条件**：按名册名 ⇒ ① `setView("list")` ② `writeStatusFilter(["in_progress","in_review"])` ③ `writeAssigneeFilter(name)` ④ `applyFilters()`」 | **作废**：③④ 保留，①② 撤销 |
+| 本文件 **§0** | 「BLOCKS.md 改 …**B04**（…**新增 `[data-assignee-clear]`**）」 | **作废**：B04 不再新增该控件 |
+| 本文件 **§0** | 「**`x`（seg2 落点）**：**一个** `[data-assignee-clear]`…事件 `stopPropagation()`」 | **作废**（连同其全部数值） |
+| 本文件 **§0** | 「`tw.css` 本轮 205633 → **205606** bytes（−27）」 | **被取代**：本轮 205606 → **205057**（−549） |
+| 本文件 **§0** | 「机检 A/B/C 共 55 条…55/55 通过」 | **被取代**：本轮 **200/200**（五档 × en/zh + JS-off） |
+| 本文件 **§2.2** | 按下名字的四步（含 `setView("list")` 与 in-flight 状态集） | **作废**：改为一步 |
+| 本文件 **§2.3** | 「按下**已选中**的名字（同一名字再按）= **切换关闭**」 | **作废**：改为**幂等**（无 toggle） |
+| 本文件 **§2.4** | 「按下 `x`（`[data-assignee-clear]`…）」全节 | **作废**：控件不存在 |
+| 本文件 **§2.8** | 渲染器同时把「唯一的 `[data-assignee-clear]` 按值是否具名显隐」 | **作废**：渲染器只写胶囊与具名 option |
+| 本文件 **§3.3** | 「`x` 清除按钮（B04 内，assignee 控件的紧邻兄弟）」全节（含 `width:14px` / `height:14px` / `border-radius:999px` / `--color-td-ink-3` / `:hover` / `:focus-visible` 读数） | **作废**：三条规则已删 |
+| 本文件 **§2.9 / §3.4 / §4.2** | 具名 option 钩子名 `[data-assignee-filter-option]`（R-2 改名） | **保留**（与本轮无冲突；B22 的 14 座实测不变） |
+| 本文件 **§5.1 A2.2** | 「JS-on 静止：文档恰 1 个 `[data-assignee-clear]`，其 `hidden` 存在且不可见」 | **作废** → 新 **A1**（计数 0） |
+| 本文件 **§5.1 A4.3 / A4.4 / A4.5** | 「每项恰 1 名按钮、**0** 清除按钮」/「JS-off 文档恰 1 个 `[data-assignee-clear]`…不绘制」/「该 `x` 的 glyph 是 `✕`」 | **A4.3 保留**（名册项结构不变）；**A4.4 / A4.5 作废** → 新 **A1js-off**（JS-off 计数 0） |
+| 本文件 **§5.3 C1.1 / C1.2** | 点 `jobs` ⇒ `[data-nav-item="list"]` 为 current；`data-filter-status-value` == `in_progress,in_review` | **作废** → 新 **C1.2 / C1.3**（视图**不变**、状态值**不变**） |
+| 本文件 **§5.3 C1.4** | 可见行数 == 「`assignee==jobs` 且 `status ∈ {in_progress,in_review}`」的卡数（1 == 1） | **作废**：状态集不再被写，该合取不再成立 |
+| 本文件 **§5.3 C2.2** | 「承接 C2：**B04 的** `[data-assignee-clear]` 无 `hidden` 且**可见**」 | **作废** → 新 **C1.4**（按下后计数仍 0） |
+| 本文件 **§5.3 C3.1** | 「点 `[data-assignee-clear]` ⇒ value == `"all"`」 | **作废** → 新 **C3**（把控件选回 `Assignee: All` ⇒ 胶囊与 `aria-pressed` 复位） |
+| 本文件 **§5.3 C3.3 / C3.4 / C3.5** | 「status 值**不变**（仍 `in_progress,in_review`）」/「名册还原静止**且 `x` 复隐**」/「视图仍为 list」 | **作废**（随 C3 一并重写：新 C3 只看 `data-assignee-active` 与 `aria-pressed`） |
+| 本文件 **§5.3 C5.1 – C5.4** | 「再点已选中的 `linus` ⇒ value == `"all"`」/「名册 0 active」/「status 不变」/「`x` 随名字一起复隐」 | **作废** → 新 **C2**（幂等，value 仍 `"jobs"`）+ **C2.capsule**（胶囊仍 active） |
+| 本文件 **§5.3 C6.3 / C6.4** | 「键盘 Tab 到 `[data-assignee-clear]`…」/「该按钮 Enter ⇒ C3」 | **作废**：该控件不存在，键盘路径不再有第三站 |
+| 本文件 **§6** 表（55 条实测） | A2.2 / A4.4 / A4.5 / C1.1–C1.4 / C2.2 / C3.1–C3.5 / C5.1–C5.4 / C6.3–C6.4 各行 | **作废**：以 §10.3 为准；`verify-r13.json` 是 R13 seg2 的历史记录，不再描述契约 |
+| 本文件 **§7** 文档同步判定 | `design/prototype/README.md` 的 I22 / 281 / 205606 | **被取代**：I22 行删除、`280`、`205057` |
+| 本文件 **§9** R-1（后半） | 「再按已选中名 = 关闭（保留）」 | **作废**（D2）：改为幂等 |
+| 本文件 **§9** R-1（前半）/ R-2 / R-3 / R-4 | 宽度中性胶囊（`padding:0 6px` + `margin-inline:-6px`）/ `[data-assignee-filter-option]` 改名 / README 同步 / 文档同步 | **保留**：与本轮无冲突（胶囊 = 决定 D6，名册胶囊 `data-assignee-active` 原样保留） |
+| `design/BLOCKS.md` B03 / B04、`design/DESIGN.md` §31 | 上列各条对应的散文 | **已改写**，见 §10.1 落点表 |
+| `design/assets/r13/**`（capture set） | R13 seg2 的六帧截图与 `README.md` | **历史存证**，不作文档同步对象：其中「pressing that `✕`」一帧描述的是 R13 seg2 的行为，**不再描述现行契约**；本轮的重截见 §10.3 证据目录（§10.6 O-4） |
+
+### 10.3 新断言清单（A 结构 / B 几何·计算样式 / C 交互；选择器级、**禁行号**、**禁 class 锚**）
+
+每条给出 **before 实测 / after 实测**（同一脚本两遍；五档 × en/zh 逐档成立，表内为 1512 / en 的代表值，除注明外五档同值）。**全部 200/200 通过**（五档 × {en, zh, JS-off} = 15 次页面运行）。
+
+**A · 结构**
+
+| # | 态 | 断言 | before | after |
+|---|---|---|---|---|
+| **A1** | JS-on 静止 | 文档 `[data-assignee-clear]` 计数 == 0 | **1** | **0** |
+| **A1js-off** | **JS-off** | 同上一量（静态 markup，非脚本移除） | **1** | **0** |
+| **A2** | JS-on 静止 | 每个 `[data-assignee-item]` 内恰 **1** 个 `[data-agent-assignee]`（6/6），且文档 `[data-assignee-clear]` == 0 | 6 项、6 名按钮、bar 内 **1** | 6 项、6 名按钮、**0** |
+| **A3** | JS-on 静止 | 文档中**无**任何元素带 `data-i18n-aria-label="assignee.clear"` | **1** | **0** |
+| **A4** | JS-on 静止 | `[data-filter-assignee]` 的**静态** option 集合 == `all\|me\|human\|agent`（具名 option 不在静态文档里） | `all\|me\|human\|agent` | 同（不变） |
+
+**B · 几何 / 计算样式**
+
+| # | 断言 | before | after |
+|---|---|---|---|
+| **B1.clip** | 名册行单行宿主 `scrollWidth − clientWidth` == **0**（名不省略） | 0 | 0 |
+| **B1.select** | 具名态下 `[data-filter-assignee]` 的 `getBoundingClientRect()`：五档**逐档同值** | 1512 `x=272, w=59.7` | **同**（该控件在 `✕` 左侧，不受删除影响） |
+| **B1.priority** | 具名态下 `[data-filter-priority]` 的 `getBoundingClientRect()`（删除后的位移读数） | 1512 `x=361.7` · 1240 `361.7` · 980 `177.7` · 760 `169.7` · 430 `161.7` | 1512 `x=339.7` · 1240 `339.7` · 980 `155.7` · 760 `147.7` · 430 `139.7` — **五档一致 `Δx = −22px`**（= 被删的 14px `✕` + bar 的 8px gap）；五档 `y` **不变**（76 / 76 / 76 / 105 / 105）⇒ 删除**未引起任何换行** |
+| **B2** | `:root` 自定义属性声明集合 before == after（**逐字节相等**） | 浏览器 CSSOM 走查 **115** 条，`sha256 = 739dfb0b…` | **同 115 条、同 sha256**（文本口径 89 条唯一声明，`sha256 = 1923c955…`，两侧同） |
+| **B3** | 五档 `documentElement.scrollWidth == clientWidth`（无横向溢出） | `Δ = 0`（五档） | `Δ = 0`（五档） |
+| **B3.console** | `console.error` == 0 且 `pageerror` == 0（含 D5 的第二张页） | 0 / 0 | 0 / 0 |
+
+**C · 交互**（真实浏览器点击；1512 / 1240 档为真实鼠标 `page.click()`，980 / 760 / 430 档名册名**整体 `display:none`**（`≤1023` 轨道布局）⇒ 以 `element.click()` 派发，`dispatchMode` 逐档记录在证据里）
+
+起始态：视图 = **board**（`[data-nav-item="board"]` 为 current）、`data-filter-status-value` = `all`、`[data-filter-assignee]`.value = `all`。
+
+| # | 断言 | before | after |
+|---|---|---|---|
+| **C1.1** | 点 `[data-agent-assignee][data-assignee="jobs"]` ⇒ `[data-filter-assignee]`.value == `"jobs"` | `jobs` | `jobs` |
+| **C1.2** | **视图指示不变**（`[data-nav-item][aria-current="page"]` 与 `[data-view-toggle] [data-view][aria-pressed="true"]`） | **变**：`board → list` | **不变**：`board → board` |
+| **C1.3** | **`[data-filter-status]` 的 `data-filter-status-value` 不变** | **变**：`all → in_progress,in_review` | **不变**：`all → all` |
+| **C1.4** | 按下后 `[data-assignee-clear]` 计数仍 == 0 | **1** | **0** |
+| **C2** | 再点同一个 `jobs` ⇒ value 仍 == `"jobs"`（幂等，**不**回 `all`） | **`all`**（toggle 关闭） | **`jobs`** |
+| **C2.capsule** | 承接 C2：`[data-assignee-item][data-assignee-active="true"]` == `["jobs"]` 且 `[data-agent-assignee][aria-pressed="true"]` == `["jobs"]` | —（此时已关） | `["jobs"]` / `["jobs"]` |
+| **C2.domain** | 承接 C2：`[data-filter-assignee]` 的 option 集在具名态含 `jobs`、在静止态**不含**（域扩展按需生成保留） | 静止 4 项 | 静止 `[all,me,human,agent]` → 具名 `[all,me,human,agent,jobs]` |
+| **C3** | 把 `[data-filter-assignee]` 选回 `Assignee: All` ⇒ `[data-assignee-item][data-assignee-item="jobs"]` 的 `data-assignee-active` == `"false"` 且 `[data-agent-assignee][data-assignee="jobs"]` 的 `aria-pressed` == `"false"` | —（该路径在 R13 走 `✕`） | active 集 `[]`、pressed 集 `[]`、value `all` |
+| **C4**（负向） | 全文档任意点击路径（两个名册名 / `[data-filter-assignee]` / `[data-filters]` / `[data-board]` / 四个 `[data-nav-item]` / 两个 `[data-view-toggle] [data-view]` / `[data-filter-toggle]` / `body`）下 `[data-assignee-clear]` 永不出现（计数恒 0） | **max = 1** | **max = 0** |
+
+**D · 记账（非断言）**
+
+| # | 事项 | before | after |
+|---|---|---|---|
+| **D5** | 起始不在 board 区（Activity 目的地）+ 点 `jobs`：`[data-filters]` 是否隐藏 / value / 视图 | barHidden **false**、value `jobs`、view **list** | barHidden **true**、value `jobs`、view **activity** |
+
+**证据目录**（本卡 workspace，**不进仓**）：`evidence/{before,after}/<w>-{en,zh,jsoff}.json`（15 × 2 个原始读数）、`evidence/shots/{before,after}-<w>[-zh].png`（12 帧，每帧附 `clearCount` / `clearVisible` / `assigneeValue` / `view` / `barHidden` 探针）、`evidence/verify-a1.json`（200/200 + 逐条 before/after）、`evidence/verify-a1.mjs`（运行器）、`evidence/shots-a1.mjs`（before 组由 `git show HEAD:design/prototype/*` 物化到仓外 scratch 目录后截图）、`evidence/tw.css.{before-r13x,after-r13x}`、`evidence/build-twcss.mjs`。
+
+### 10.4 零 i18n 增量：口径与座位数
+
+- **口径（本轮的「零增量」定义）**：本轮**不新增任何键**，且**净 −1** —— `assignee.clear` 随其控件一同撤销。所以「零 i18n 增量」= 本轮对 `MESSAGES` 的**新增为 0**；余额变化是**回归基线**，不是花费。
+- **实测（静态）**：`design/prototype/app.js` 的 `MESSAGES` 键数 **en 281 → 280**、**zh 281 → 280**（两侧仍严格 1:1 镜像，无单侧键）。`design/prototype/index.html` 的 **`data-i18n-aria-label` 座位 73 → 72**（被删的那个 `✕` 是该键**唯一**的座位，所以该键的座位数归 0，而不是「少了一座仍有余」）。
+- **其余 `data-i18n*` 类目**：`data-i18n`（525）/ `-placeholder` / `-title` / `-arg` **本轮零改动** —— 名册名是**数据**（角色名）不进 `MESSAGES`，`✕` 的 `aria-label` 是本轮**唯一**的座位来源。
+- **无新文案串**：本轮的可见文案**一条不新增**；移除路径用控件自身的 `Assignee: All` 行，其文案是既有键 `filters.assignee.all`（en / zh 都已有座位）。所以「移除路径」不需要任何新键，这正是撤销后能**回到 280** 的原因。
+- **镜像面（`test/**`，**不在本卡写面**）**：`test/web/i18n.catalogue.mjs` 与 `test/web/blocks.contract.mjs` 逐字镜像 `MESSAGES` 与座位数。R13 seg2 记录该族在基线即已有 4 条镜像红；本轮**减少 1 键、减少 1 座**，其红条数与内容变化**归实现卡 A2（`T-20261013-154954-2`）核**（§10.6 O-3）。
+
+### 10.5 文档同步与本轮自检
+
+| 文件 | 本轮 | 结果 |
+|---|---|---|
+| `design/prototype/{index.html,app.js,src/input.css,tw.css}` | 契约唯一事实源，四路全清 + 重建 | **已改** |
+| `design/prototype/README.md` | MESSAGES `281→280`；**删 I22 行**（钩子语义并入 I20）；Coverage 表「Assignee clear」→「Assignee removal」；`tw.css` 字节 `205606→205057`；追加 R13 修订段 | **已改** |
+| `design/fidelity-r13.md` | 本节（§10） | **已改** |
+| `design/BLOCKS.md` | B03 / B04 | **已改** |
+| `design/DESIGN.md` | §31（§31.1 / §31.2 / §31.3 / §31.4 / §31.5 / §31.6） | **已改** |
+| `web/**`、`test/**`、`src/**`、`server/**` | **零实现**：`git diff --name-only -- web/ test/ src/ server/` == 空 | **已核** |
+
+**原型纯度门禁**（0 命中）：`fetch(` / `XMLHttpRequest` / `axios` / `apiFetch` / `idtoken` / `access_token` / `localStorage` / `sessionStorage` / `/api/v[0-9]` —— `design/prototype/**` 本轮**未新增任何命中**（改动只删除与改写注释，未引入新语句）。
+
+### 10.6 未决 / 待 Terry 确认
+
+| # | 事项 | 状态 | 说明 |
+|---|---|---|---|
+| **O-1** | 再按同一个已选 name：**幂等**（本轮采纳，D2）还是保留 R13 的 toggle 关闭？ | **[STILL OPEN]** | 甲把该按下定义成「等同下拉选择」，下拉重选同值不产生新后果 ⇒ 本轮取**幂等**（实测 C2：before `all` / after `jobs`）。若要恢复 toggle，会与本卡 Acceptance 第 1 条「把 Assignee 选为该 name」字面冲突，需 Terry 一句话并另开小卡（在 A2 前插） |
+| **O-2** | 不改视图的代价：非 board 区目的地（Activity / Waiting）下筛选条**不显示**，值虽写入却不可见（D5；实测 `barHidden: true` / `view: activity`）。是否需要「点选时若 bar 不可见则提示 / 或例外允许切 list」？ | **[STILL OPEN]** | 本轮按甲**不切**、**如实记账**，不自行「修」。注意 `Clear`（`[data-filter-clear]`，B04 的全量重置）**不在本轮范围**，原样保留 |
+| **O-3** | 删 `assignee.clear` 后实现仓 `web/src/i18n/**` 与 `test/web/{i18n.catalogue,blocks.contract}` 的镜像红条数变化 | **[OPEN → 归 A2]** | 本卡写面只有 `design/**`；镜像面变化归实现卡 A2 核（R13 seg2 记基线 4 条镜像红） |
+| **O-4** | `design/assets/r13/**` 的六帧截图仍以「pressing that `✕`」描述一帧 | **[ADDED]** | 该 capture set 是 R13 seg2 的**历史存证**，本轮不重截、不改写它（改它会把历史帧与历史文案错配）；现行契约以 §10.3 的 12 帧为准。是否要为 R13 seg2 的历史帧加一条过期声明，请 Terry 定 |
+| **U-6（承 §8）** | 宽度中性的镜像代价：床的左帽被宿主 `overflow: hidden` 裁 6px | **[STILL OPEN]** | 与决定甲**无关**，本轮不动；`clippedPx == 0` 仍达标 |

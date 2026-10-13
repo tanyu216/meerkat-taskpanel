@@ -1014,12 +1014,12 @@ html[data-theme="dark"] .modal-box {
     color: var(--color-td-ink-2);
   }
 
-  /* R11 ② — the roster names are buttons, because a press on one routes to the
-     list view. The face is exactly the text it replaces — no shell, no border,
-     no padding — so the row still reads as one sentence; the affordance is the
-     pointer and an underline that appears on hover. The family and the numerals
-     come from `.td-mono`, which the markup carries on each button, so nothing
-     here restates a face. */
+  /* R11 ② — the roster names are buttons, because a press on one is a filter
+     move (R13 修订: it writes the assignee value, and nothing else). The face is
+     exactly the text it replaces — no shell, no border, no padding — so the row
+     still reads as one sentence; the affordance is the pointer and an underline
+     that appears on hover. The family and the numerals come from `.td-mono`,
+     which the markup carries on each button, so nothing here restates a face. */
   .td-agent-assignee {
     font-size: inherit;
     font-weight: inherit;
@@ -1062,36 +1062,10 @@ html[data-theme="dark"] .modal-box {
     color: var(--color-td-accent);
   }
 
-  /* R13 — the `x` that clears a given-name assignee filter, the sibling of the
-     select it lives beside (B04). Static markup that is `hidden` until the
-     select states a *name* — and `[hidden]` is `display: none !important` in the
-     preflight, so the resting state is the attribute's, not this rule's. The
-     glyph is text: no image, no icon font, no new token. */
-  [data-assignee-clear] {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 14px;
-    height: 14px;
-    padding: 0;
-    border: 0;
-    border-radius: 999px;
-    font-size: 10px;
-    line-height: 1;
-    color: var(--color-td-ink-3);
-    background: transparent;
-    cursor: pointer;
-  }
-
-  [data-assignee-clear]:hover {
-    color: var(--color-td-ink);
-    background: var(--color-td-hover);
-  }
-
-  [data-assignee-clear]:focus-visible {
-    outline: 2px solid var(--color-td-focus);
-    outline-offset: 1px;
-  }
+  /* R13 修订（Terry 2026-10-13 · 决定甲）— the `[data-assignee-clear]` `✕` and its
+     `:hover` / `:focus-visible` rules are withdrawn with the affordance. A given
+     name is an `option` of the control while it is in force, so the select's own
+     `Assignee: All` row is the removal path and no second control is styled. */
 
   .td-presence {
     width: 6px;

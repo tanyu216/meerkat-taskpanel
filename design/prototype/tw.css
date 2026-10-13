@@ -4208,29 +4208,6 @@ html[data-theme="dark"] .modal-box {
   [data-assignee-item][data-assignee-active="true"] [data-agent-assignee] {
     color: var(--color-td-accent);
   }
-  [data-assignee-clear] {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 14px;
-    height: 14px;
-    padding: 0;
-    border: 0;
-    border-radius: 999px;
-    font-size: 10px;
-    line-height: 1;
-    color: var(--color-td-ink-3);
-    background: transparent;
-    cursor: pointer;
-  }
-  [data-assignee-clear]:hover {
-    color: var(--color-td-ink);
-    background: var(--color-td-hover);
-  }
-  [data-assignee-clear]:focus-visible {
-    outline: 2px solid var(--color-td-focus);
-    outline-offset: 1px;
-  }
   .td-presence {
     width: 6px;
     height: 6px;
