@@ -170,6 +170,12 @@ recorded here pending the written-deviation sign-off M0 asked for:
 `pending` blocks — they exist there to be *visible*, not to pass, and `--strict` against it
 would be the wrong reading of a snapshot.
 
+`board.json` remains the M1 record — its four `pending` blocks and its measured values stand —
+with **one exception among its live checks**: B04's clear-hook check now reads
+`scope: [data-filters]`, because R15 ③ moved the Activity bar's clear control onto the same
+`[data-filter-clear]` hook and the two bars are told apart by the bar they sit in
+(`design/fidelity-r15.md` §4.2; see §12).
+
 `board-m2.json` is the live manifest: no `pending` blocks, 0 failures under both the default
 and `--strict` runs (§5). It is still **not** wired into `npm run check` / CI, for the reason
 that has not changed:
