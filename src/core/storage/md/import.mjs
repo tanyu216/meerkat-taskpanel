@@ -30,6 +30,7 @@ import { contentHash, newId, sha256Hex } from "../../../shared/ids.mjs";
 import { ACCEPTANCE_STATUSES, TASK_KINDS } from "../../domain/enums.mjs";
 import { normalizeName } from "../../domain/dictionary.mjs";
 import { labelDisplayName, nextColor, normalizeLabelName } from "../../domain/labels.mjs";
+import { normalizeBlockedReason } from "../../domain/blocked-reason.mjs";
 import { normalizeCommentCreate } from "../../domain/comment.mjs";
 import { normalizeImportedReport, normalizeReportCreate } from "../../domain/report.mjs";
 import { parsePriority } from "../../domain/priority.mjs";
@@ -81,6 +82,11 @@ export const KNOWN_CARD_KEYS = Object.freeze([
   "claimed_at",
   "heartbeat_at",
   "blocked_at",
+  // 0016 — what a `blocked` card is waiting for. A *known* key, so a card that
+  // carries one lands in the `blocked_reason` column; adding it here is also
+  // what keeps it out of `meta_json.legacy` (a key the importer recognises is
+  // never filed as an unknown one).
+  "blocked_reason",
   "depends_on",
   "parent",
   "notify_leader",
@@ -136,6 +142,42 @@ function nullable(value) {
   if (value === undefined || value === null) return null;
   const text = typeof value === "string" ? value.trim() : value;
   return text === "" ? null : text;
+}
+
+/**
+ * Read a card's `blocked_reason` the way an *import edge* must: a literal comes
+ * back as itself, and anything else — a misspelling, a word from a provider's
+ * own vocabulary, a number — comes back as `unrecognized`, for the caller to
+ * preserve instead of refusing the card.
+ *
+ * This is the one place the board is lenient about the field, and it is lenient
+ * because of where the input comes from: a card is written by a provider the
+ * board does not control, and before 0016 recognised the key, a card carrying
+ * `blocked_reason: quantum_entanglement` imported *verbatim* into
+ * `meta_json.legacy` and exported unchanged (C1 §7.3(3)). Promoting the key to a
+ * column must not turn that card into a lost one — markdown is the only way a
+ * provider's work reaches the board — so the value keeps its ticket back out
+ * through `legacy` and only the *column* goes unwritten.
+ *
+ * The vocabulary test is `normalizeBlockedReason`'s, never a second list: the
+ * domain stays the single authority on what a literal is, and the write entries
+ * (a payload, a move) keep its refusal intact. What differs here is only the
+ * reaction — file the value, warn, carry on.
+ *
+ * @param {unknown} raw the frontmatter value, or `undefined` when the key is absent
+ * @returns {{reason: string|null, unrecognized: unknown}} `unrecognized` is
+ *   `undefined` when nothing has to be preserved (absent, empty, or a literal)
+ */
+function splitBlockedReason(raw) {
+  try {
+    return { reason: normalizeBlockedReason(raw), unrecognized: undefined };
+  } catch (err) {
+    // Only the domain's own refusal is "a value the board cannot classify".
+    // Anything else escaping this call is a bug, and swallowing it as a normal
+    // outcome would hide it behind a warning about the card's spelling.
+    if (!isDomainError(err) || err.code !== "VALIDATION_FAILED") throw err;
+    return { reason: null, unrecognized: raw };
+  }
 }
 
 /**
@@ -252,6 +294,15 @@ export function importMd(input) {
           hash: sha256Hex(text),
           parsed: card,
         });
+        // A card whose `blocked_reason` is not one of the literals is imported,
+        // not skipped — but the board could not store what the card said, so the
+        // difference is a warning rather than something to be discovered later
+        // in `meta_json.legacy`.
+        if (card.blockedReasonUnrecognized === true) {
+          stats.warnings.push(
+            `${name}: blocked_reason is not one of the literals — kept as written in meta_json.legacy, the column stays empty`,
+          );
+        }
       }
 
       // Pass 1: resolve each card's project name → id, and gather the per-project
@@ -662,6 +713,16 @@ export function parseCard(text, { file }) {
     if (canonical !== undefined && meta[canonical] === undefined) meta[canonical] = data[key];
   }
 
+  // 0016 — the *known* key `blocked_reason` may still carry a value that is not
+  // one of the literals, and that may not cost the card (C1 §7.3(3), restated by
+  // the implementation card's D2). The value rides back out through `legacy` —
+  // the exporter prefers the legacy entry whenever the column is empty, so the
+  // card is written back word for word — while the column stays NULL and the
+  // write entries keep refusing. See `splitBlockedReason` for why the leniency
+  // exists only here.
+  const blocked = splitBlockedReason(data.blocked_reason);
+  if (blocked.unrecognized !== undefined) legacy.blocked_reason = blocked.unrecognized;
+
   // Tolerated lines (prose in `## Acceptance`, a table row in a report's
   // acceptance sub-block, a comment without a separator …) are collected here
   // and surfaced on the card, so a lenient parse is still observable rather
@@ -682,6 +743,9 @@ export function parseCard(text, { file }) {
   // A tolerated line parsed, but was not understood: record it so the lenient
   // parse is visible in the persisted metadata, not just on the returned card.
   if (notices.length > 0) importWarnings.push("parse_tolerated");
+  // 0016 — the card named a block class the vocabulary does not have. The value
+  // is preserved (see `splitBlockedReason`), but the mismatch stays on the card.
+  if (blocked.unrecognized !== undefined) importWarnings.push("blocked_reason_unrecognized");
 
   return {
     identifier,
@@ -707,6 +771,11 @@ export function parseCard(text, { file }) {
     claimedAt: nullable(data.claimed_at),
     heartbeatAt: nullable(data.heartbeat_at),
     blockedAt: nullable(data.blocked_at),
+    // 0016 — the column value, or NULL when the card wrote something the
+    // vocabulary does not name (the card keeps its own spelling in `legacy`, and
+    // `blockedReasonUnrecognized` is what makes the import report it).
+    blockedReason: blocked.reason,
+    blockedReasonUnrecognized: blocked.unrecognized !== undefined,
     dependsOn: normalizeLabels(data.depends_on ?? null),
     parent: typeof data.parent === "string" && data.parent.trim() !== "" ? data.parent : null,
     reviewOf: typeof data.review_of === "string" && data.review_of.trim() !== "" ? data.review_of : null,
@@ -824,6 +893,11 @@ function planReportImport(report, now) {
  * that reaches the stored task reflects the *actual* import outcome (a report
  * that was skipped is not tagged as degraded).
  *
+ * The `blocked_reason` tag is the one entry that does not come from a report
+ * plan: it records a fact about the *card* (the column could not take what the
+ * card wrote) that survives every plan outcome, so it is carried across rather
+ * than recomputed.
+ *
  * @param {object} card
  * @param {object[]} plans
  */
@@ -832,6 +906,7 @@ function mergeReportWarnings(card, plans) {
   if (card.reportMissingWarning === true) tags.push("report_missing");
   for (const plan of plans) if (plan.ok && plan.tag !== null) tags.push(plan.tag);
   if (card.notices.length > 0) tags.push("parse_tolerated");
+  if (card.blockedReasonUnrecognized === true) tags.push("blocked_reason_unrecognized");
   if (tags.length === 0) delete card.meta.import_warnings;
   else card.meta.import_warnings = tags;
 }
@@ -1018,6 +1093,10 @@ function buildTask(repos, card, context) {
     claimedAt: card.claimedAt,
     heartbeatAt: card.heartbeatAt,
     blockedAt: card.blockedAt ?? (card.status === "blocked" ? card.statusChangedAt ?? now : null),
+    // 0016 — carried verbatim, with no derived fallback: a block with no stated
+    // reason stays unstated (the column is NULL and the inspector reads that as
+    // `clarify`). Inventing a default here would destroy the distinction.
+    blockedReason: card.blockedReason ?? null,
     sortOrder: 0,
   };
 }
@@ -1035,6 +1114,11 @@ function patchFrom(task) {
     reporterId: task.reporterId,
     sourceHash: task.sourceHash,
     meta: task.meta,
+    // 0016 — unlike `blocked_at` (deliberately absent above: it dates the last
+    // blockage and a re-import must not rewrite history), the reason describes
+    // the *current* block, so a `--resume` re-import that finds a new value
+    // corrects the column instead of leaving the row contradicting its card.
+    blockedReason: task.blockedReason,
   };
 }
 

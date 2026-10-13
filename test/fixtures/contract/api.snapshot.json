@@ -1236,6 +1236,7 @@
         "assignee_id": "string",
         "awaiting_reason": "string",
         "blocked_at": "string",
+        "blocked_reason": "string",
         "claimed_at": "string",
         "claimed_by": "string",
         "created_at": "string",

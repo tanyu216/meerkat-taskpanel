@@ -1,0 +1,116 @@
+-- 0016_blocked_reason.sql — the structural `blocked_reason` card field.
+--
+-- ---------------------------------------------------------------------------
+-- Numbering (why this is 0016 and not 0015)
+-- ---------------------------------------------------------------------------
+--
+-- This file was authored as `0015`, off a board whose head was `0014`. While it
+-- was in review, `0015_deploy_kind.sql` landed on `main` first — a `tasks`
+-- rebuild that widens the `kind` CHECK — so two files claimed version 0015 and
+-- the board could not bootstrap (`listMigrations()` refuses a duplicate). A
+-- migration number, once merged, is spent: the append-only rule exists so that
+-- an already-applied file never changes underneath a database that recorded its
+-- checksum, and renumbering the *merged* file would break exactly that. So the
+-- later arrival renumbers, not the earlier one.
+--
+-- Nothing else moved with the number. 0015 rebuilds `tasks` (create → copy →
+-- drop → rename) and this file then `ALTER`s the rebuilt table, which is the
+-- order a fresh install and an upgrade both walk: 0001 … 0014 build `tasks`,
+-- 0015 re-creates it with the `deploy` kind, 0016 adds the column below.
+--
+-- ---------------------------------------------------------------------------
+-- What it is, and why it is a column rather than free text
+-- ---------------------------------------------------------------------------
+--
+-- `blocked_at` says *when* a card started waiting; it cannot say *what the card
+-- is waiting for*. Without that, two very different cards look identical on the
+-- board — "the leader owes an answer" and "the card is waiting on a predecessor
+-- that has not landed" — so a reader (a human, or an inspecting process) has to
+-- open the comment trail and guess. The SLA-inspection contract makes the reason
+-- a **structural field**: a single-value enum naming *who or what the block is
+-- waiting for*. It is deliberately **not a severity and not an explanation** —
+-- prose belongs in the comment trail, which is where a reader looks for it.
+--
+-- The value travels with the status, exactly as `blocked_at` does: it is written
+-- in the same `tasks.moveCas` UPDATE that enters `blocked`, and cleared by the
+-- same UPDATE that leaves it (the field describes the *current* block; history
+-- stays in the trail — see `repositories/tasks.mjs#moveCas`).
+--
+-- Column, not `meta_json`: the reason answers "why is this card where it is",
+-- which the board itself reads — `md/export.mjs` re-emits it, the `--json` wire
+-- carries it, the migration reconciler diffs it. A `meta_json` key would put it
+-- behind the meta-decode on every one of those paths while buying nothing; the
+-- board already models "a nullable enum column beside a timestamp" for
+-- `awaiting_reason` (`status_changed_at` / `awaiting_reason`, 0013).
+--
+-- ---------------------------------------------------------------------------
+-- The shape of the change
+-- ---------------------------------------------------------------------------
+--
+-- `ALTER TABLE … ADD COLUMN`, not a rebuild. 0013 and 0015 rebuilt `tasks`
+-- because SQLite has no `ALTER TABLE … MODIFY` and each needed to **widen an
+-- existing** `CHECK`; nothing here widens anything — the column is new and
+-- carries its own constraint. SQLite accepts a column-level `CHECK` in
+-- `ADD COLUMN`, and the constraint is enforced from that point on (rows that
+-- already exist are NULL, and a NULL `CHECK` is satisfied: SQLite treats NULL or
+-- true as passing, which is what makes the column optional without a second
+-- `IS NULL OR` branch — the same property 0013's `awaiting_reason` relies on).
+--
+-- There is exactly one table to touch and nothing to copy, so the failure modes
+-- a rebuild invites — a forgotten index, a lost trigger, a column missing from
+-- the copy list — do not arise here. The board's own table-level `CHECK
+-- (claimed_by IS NULL OR status <> 'backlog')`, its seven indexes and its
+-- revision/delivery triggers are all untouched.
+--
+-- ---------------------------------------------------------------------------
+-- The revision cursor deliberately does not name the new column
+-- ---------------------------------------------------------------------------
+--
+-- `tr_rev_tasks_upd` (0015's text, verbatim) fires `AFTER UPDATE OF <list>` on
+-- `tasks`, and `<list>` does **not** contain `blocked_reason`. That is stated
+-- here rather than fixed, and the consequence is worth being exact about:
+--
+--   * every path the board itself writes through sets `version` and
+--     `updated_at` unconditionally (`updateCas`, `moveCas`, `archive`, …), and
+--     both of those *are* in the list — so no service-level write can move
+--     `blocked_reason` without bumping the global revision;
+--   * a **bare** `UPDATE tasks SET blocked_reason = …` issued by hand — no
+--     version bump, no other column touched — therefore does **not** bump the
+--     revision. The row changes and a revision-watching reader (the board's SSE
+--     cursor, the md reconciler) does not hear about it.
+--
+-- The second bullet is the whole reason this paragraph exists: it is a real
+-- (if narrow) hole, it is reachable only by a hand-written UPDATE that bypasses
+-- the repositories, and it is *accepted* because the alternative is worse.
+-- Adding the name to the list means re-declaring the trigger body verbatim in
+-- this file — a second copy of the transition whitelist's sibling that must be
+-- kept in step with 0015's by hand, for a case no caller in the tree performs.
+-- The guarantee that matters ("a write the board makes is always seen") is
+-- already total. `test/contract/md-blocked-reason.test.mjs` pins the list
+-- against this file, so the day a caller does need the bare-write case, the
+-- mismatch is a failing test rather than a silent omission.
+--
+-- ---------------------------------------------------------------------------
+-- Byte stability (what the empty value means)
+-- ---------------------------------------------------------------------------
+--
+-- NULL is the unset state, and it is the only one: `""` is never stored (the
+-- importer's `nullable` folds it to NULL, and the domain refuses a value that is
+-- not one of the literals below). The markdown exporter **omits the key
+-- entirely** when the column is NULL, so a card that never carried a reason
+-- exports byte-identically to how it always did — the whole point of the
+-- "unset ⇒ no key" rule, and what keeps the checked-in golden cards unchanged.
+--
+-- The mirror case is a card whose `blocked_reason` is not one of the literals.
+-- Before the key was known, such a card imported verbatim into
+-- `meta_json.legacy` and exported unchanged; recognising the key must not turn
+-- that into a lost card, so the importer keeps the *original* value in
+-- `meta_json.legacy`, leaves this column NULL, and warns — see
+-- `md/import.mjs#parseCard`. The column is written only from a literal, so the
+-- `CHECK` below can stay strict without ever rejecting a card.
+--
+-- Append-only: 0001 … 0015 are never edited. The enum is frozen by the `CHECK`
+-- below, so a new literal is a new file (SQLite cannot widen a column `CHECK`
+-- in place — see 0013 for what widening one costs).
+
+ALTER TABLE tasks ADD COLUMN blocked_reason TEXT CHECK (blocked_reason IN ('clarify','decision','dependency','out_of_bounds','defect','external','resource','unknown'));
