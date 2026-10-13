@@ -25,9 +25,11 @@
  *
  * Counts are REPORTED, not hardcoded: `node --test` prints the measured en/zh
  * key counts via `t.diagnostic`. See the module header for the recorded
- * numbers and for the `BLOCKS.md` header discrepancy (claims 252 hooks / 198
- * keys; measured 612 hooks and 220 prototype `MESSAGES` keys, of which this
- * catalogue ships the 203 that are not prototype-only).
+ * numbers and for the `BLOCKS.md` header discrepancy: its line quotes 626 hooks
+ * (four of the five `data-i18n*` attributes, the 193 `data-i18n-arg` seats left
+ * out) and 281 keys, while the documents measure 819 hooks and 281 prototype
+ * `MESSAGES` keys, of which this catalogue ships the 264 that are not
+ * prototype-only.
  */
 
 import assert from "node:assert/strict";
