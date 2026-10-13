@@ -4,6 +4,13 @@
  *
  * Always in the document, toggled by `hidden`, so its single
  * `[data-create-project]` holds whether open or closed.
+ *
+ * The prefix is sent **verbatim**, as `meta.prefix`, and the server normalizes
+ * it (C-PREFIX-1 M1/M2): the UI has no copy of `identifierPrefix` — `web/` and
+ * `src/` are two builds with no import between them — so uppercasing here would
+ * be a second, weaker normalization (it cannot fold or trim) that only ever
+ * agrees with the server by accident. Both fields are required, so an empty
+ * prefix never reaches the network.
  */
 import { computed, reactive, watch } from "vue";
 
@@ -13,7 +20,7 @@ import { createProjectOpen, pushToast } from "../../stores/ui.js";
 import { t } from "../../i18n/index.js";
 
 const form = reactive({ name: "", prefix: "" });
-const canSubmit = computed(() => form.name.trim() !== "");
+const canSubmit = computed(() => form.name.trim() !== "" && form.prefix.trim() !== "");
 
 watch(createProjectOpen, (open) => {
   if (open) {
@@ -24,7 +31,7 @@ watch(createProjectOpen, (open) => {
 
 async function submit() {
   if (!canSubmit.value) return;
-  const data = await api.createProject({ name: form.name.trim(), meta: form.prefix.trim() ? { prefix: form.prefix.trim().toUpperCase() } : {} });
+  const data = await api.createProject({ name: form.name.trim(), meta: { prefix: form.prefix.trim() } });
   await loadProjects();
   if (data?.project?.id) await selectProject(data.project.id);
   pushToast(t("toast.projectCreated"), "success");

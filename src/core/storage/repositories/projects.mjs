@@ -12,8 +12,8 @@
  */
 
 import { DomainError } from "../../../shared/errors.mjs";
-import { newId } from "../../../shared/ids.mjs";
-import { identifierFor, assertIsoMillis } from "../../domain/task.mjs";
+import { newId, projectPrefix } from "../../../shared/ids.mjs";
+import { identifierForPrefix, assertIsoMillis } from "../../domain/task.mjs";
 import { mapSqliteError } from "../sqlite-errors.mjs";
 import { transaction } from "../unit-of-work.mjs";
 
@@ -140,6 +140,13 @@ export function createProjectsRepository(db) {
      * transaction (savepoint-aware) — the counter read and bump are two
      * statements.
      *
+     * The prefix is read off the **project row**, not derived from the argument
+     * (C-PREFIX-1 M3): a project created with an explicit prefix numbers its
+     * cards with it, and a project without one falls back to
+     * `identifierPrefix(id)` — the behaviour every card on the board was minted
+     * under. The row is read in the same statement that bumps the counter, so
+     * the prefix and the number cannot come from two different versions of it.
+     *
      * @param {string} projectId
      * @returns {{serial: number, identifier: string}}
      */
@@ -147,13 +154,14 @@ export function createProjectsRepository(db) {
       return transaction(
         db,
         () => {
-          const row = db.prepare("SELECT next_task_number, id FROM projects WHERE id = ?").get(projectId);
+          const row = db.prepare("SELECT next_task_number, id, meta_json FROM projects WHERE id = ?").get(projectId);
           if (row === undefined) {
             throw new DomainError("NOT_FOUND", { message: `no project ${projectId}`, details: { projectId } });
           }
           const serial = Number(row.next_task_number);
+          const prefix = projectPrefix({ id: row.id, meta: decodeJson(row.meta_json, {}) });
           db.prepare("UPDATE projects SET next_task_number = next_task_number + 1 WHERE id = ?").run(projectId);
-          return { serial, identifier: identifierFor(projectId, serial) };
+          return { serial, identifier: identifierForPrefix(prefix, serial, projectId) };
         },
         { op: "projects.allocateIdentifier" },
       );
