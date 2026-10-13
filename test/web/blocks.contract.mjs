@@ -568,25 +568,24 @@ const BLOCKS = [
       { kind: "absent", selector: "[data-lang-modal]" },
 
       /* ---- R11 ② · R13 · the roster names (design/fidelity-r11.md §2.2,
-         design/fidelity-r13.md §2.1) ---------------------------------------
+         design/fidelity-r13.md §2.1, §10.1) --------------------------------
          Each name is a real `<button>` carrying `[data-agent-assignee]`, wrapped
          by exactly one `[data-assignee-item]` — the capsule's shell. A press
-         routes to the list view *and* narrows by the name (R13 §2.2), so the
-         press is a writer, and the button is the control: no `role`, no
-         `tabindex`, no key handler. The item holds **no** second button, and in
-         particular no `[data-assignee-clear]` — that one lives in the bar beside
-         the control whose value it clears (R13 §2.1). The counts are data (how
-         many agents the board's roster has), never a frozen number; only the
-         one-name-button-per-item relation is stated.
+         **narrows and nothing else**: it writes the name into the assignee
+         control the way the control's own row would (R13 修订 §10.1 row 1), so
+         the press is a writer, and the button is the control: no `role`, no
+         `tabindex`, no key handler. The item holds **no** second button; with the
+         `x` withdrawn the document holds no `[data-assignee-clear]` at all (B04
+         states that globally). The counts are data (how many agents the board's
+         roster has), never a frozen number; only the one-name-button-per-item
+         relation is stated.
          The capsule itself is **width-neutral** and only exists while a name is
          in force, so its geometry is measured live in `web/scripts/dom-smoke.mjs`
-         (R13 §5.2 B1/B3/B6) rather than as a resting computed rule. */
+         (R13 §10.3 B1/B3) rather than as a resting computed rule. */
       { kind: "count", selector: "[data-agent-assignee]", min: 1 },
       { kind: "count", selector: "[data-agent-assignee]", within: "[data-agents-presence]", min: 1 },
       { kind: "count", selector: "[data-assignee-item]", within: "[data-agents-presence]", min: 1 },
       { kind: "count", selector: "[data-agent-assignee]", within: "[data-assignee-item]", min: 1 },
-      // No clear button inside a roster item: the one `x` lives in the bar (B04).
-      { kind: "count", selector: "[data-assignee-clear]", within: "[data-agents-presence]", equals: 0 },
       { kind: "identical-hookset", selector: "[data-assignee-item]", within: "[data-agents-presence]" },
       { kind: "identical-hookset", selector: "[data-agent-assignee]", within: "[data-agents-presence]" },
       { kind: "domain", selector: "[data-agent-assignee]", attribute: "data-assignee-kind", subset: DOMAINS.ASSIGNEE_KIND },
@@ -1032,21 +1031,24 @@ const BLOCKS = [
       { kind: "count", selector: "[data-assignee-filter-option][aria-current=\"true\"]", equals: 1 },
       { kind: "count", selector: "[data-filter-priority-option][aria-current=\"true\"]", equals: 1 },
 
-      /* ---- R13 · the named assignee and its `x` --------------------------
+      /* ---- R13 · the named assignee, and no `x` --------------------------
          The control's four static rows are the document's (B04's own domain) and
          each carries `[data-assignee-filter-option]` with **its own value** —
          R15 ② moved those rows from `<option>`s to menu `button`s without moving
          the hook or its carrier. A *given name* is still written on demand and
-         removed with the value, so at rest the menu holds the four and no more,
-         and the one `[data-assignee-clear]` sits beside the control it clears,
-         `hidden`. The hook is **not** B22's `[data-assignee-option]` (14 bare
-         seats in the dialogs) — R13 §2.9; the B22 block keeps its own rules over
-         that name, and the named row's own count is state, not resting geometry,
-         so it is measured live in `web/scripts/dom-smoke.mjs`. */
-      { kind: "count", selector: "[data-assignee-clear]", equals: 1 },
-      { kind: "count", selector: "[data-assignee-clear]", within: "[data-filters]", equals: 1 },
-      { kind: "count", selector: "[data-assignee-clear]", within: "[data-agents-presence]", equals: 0 },
-      { kind: "computed", probe: "[data-assignee-clear]", property: "display", equals: "none" },
+         removed with the value, so at rest the menu holds the four and no more.
+         The `x` that used to sit beside the control is **withdrawn** (R13 修订
+         §10.1 row 4 / §10.2): no markup, no rule, no handler, no aria seat — the
+         removal path is the control's own `Assignee: All` row. The rule is stated
+         over the whole document, so the hook cannot survive anywhere the way a
+         scoped zero would let it (the `absent` form is also what makes
+         `web/blocks.bundle.test.mjs` require the name to be gone from the built
+         bundle).
+         The hook is **not** B22's `[data-assignee-option]` (14 bare seats in the
+         dialogs) — R13 §2.9; the B22 block keeps its own rules over that name,
+         and the named row's own count is state, not resting geometry, so it is
+         measured live in `web/scripts/dom-smoke.mjs`. */
+      { kind: "absent", selector: "[data-assignee-clear]" },
       { kind: "computed", probe: "[data-filter-assignee]", property: "height", equalsPx: 32 },
       {
         kind: "manual",
@@ -1056,9 +1058,9 @@ const BLOCKS = [
           "value — R15 ② kept R13's hook and carrier while moving the rows from `<option>`s to " +
           "menu `button`s. A named row's value is the name and its copy is the name — the roster's " +
           "own names are data, never catalogue keys. The named row is not a resting figure, so the " +
-          "rules above pin the resting state; the live behaviour (writing the name, the capsule) " +
-          "is measured in `web/scripts/dom-smoke.mjs`'s R11/R13 section " +
-          "(design/fidelity-r13.md §5.3 C1–C5).",
+          "rules above pin the resting state; the live behaviour (writing the name, the capsule, " +
+          "the removal via the control's own `all` row) is measured in " +
+          "`web/scripts/dom-smoke.mjs`'s R11/R13 section (design/fidelity-r13.md §10.3 C1–C4).",
       },
       {
         kind: "manual",

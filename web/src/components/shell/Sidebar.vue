@@ -25,7 +25,6 @@ import {
   selectProject,
   waitingCount,
   writeAssigneeFilter,
-  writeStatusFilter,
 } from "../../stores/board.js";
 import { unreadCount as activityUnreadCount } from "../../stores/activity.js";
 import { view, setView } from "../../stores/ui.js";
@@ -95,28 +94,21 @@ function onNav(item) {
 }
 
 /**
- * R11 ② · R13 — a roster name is a route **and** a narrowing.
+ * R13 修订（seg3 · 决定甲）— a roster name is a **narrowing**, nothing else.
  *
- * Pressing a name does three things in this order: the view goes to `list`, the
- * status set becomes the two in-flight statuses, and the name is written into the
- * assignee control — the two conditions are ANDed, exactly as any two fields of
- * the bar are (`design/fidelity-r13.md` §2.2). R11 wrote the name into no filter
- * because the control's domain held no given name; R13 extends that domain, so
- * the press narrows as well as routes.
- *
- * A press on the name **already in force** is the capsule's own close, not a
- * re-route: it removes the assignee condition and nothing else — the view and the
- * status set stay, which is what the bar's `x` does too (§2.3).
+ * Pressing a name does one thing: the name is written into the assignee control,
+ * exactly as choosing it in the bar's own menu would (`design/fidelity-r13.md`
+ * §10.1 row 1). The view is **not** switched, no status / priority / label /
+ * search / project condition is touched, and the press is **idempotent** — the
+ * name already in force is written again, so there is no toggle-off (R13 §10.2
+ * retires the old four-step route and the toggle branch; §10.3 C1.2/C1.3/C2).
+ * The removal path is the control's own `Assignee: All` row
+ * (`filters.assignee.all`), which is why this round gives back the
+ * `assignee.clear` key rather than adding one.
  *
  * @param {string} name
  */
 function onAssignee(name) {
-  if (assigneeFilterValue() === name) {
-    writeAssigneeFilter("all");
-    return;
-  }
-  setView("list");
-  writeStatusFilter(["in_progress", "in_review"]);
   writeAssigneeFilter(name);
 }
 </script>

@@ -640,8 +640,8 @@ describe("web/board — filtered board (visible branches)", () => {
   it("reads a card's stage for the status clause, so an awaiting card is in flight", async () => {
     // M1 — `awaiting` is an overlay on `in_progress`, so the filter compares the
     // card's own stage (what `[data-card][data-status]` carries), not the raw
-    // state, and the list a roster route produces shows the same cards the
-    // board's in-progress column does.
+    // state, and the list shows the same cards the board's in-progress column
+    // does.
     const { board, visibleTasks, writeStatusFilter } = await freshBoard();
     board.tasks = [
       { id: "1", identifier: "TD-1", title: "Parked", status: "awaiting", priority: "high", labels: [], assignee: { display_name: "linus", kind: "agent" } },
