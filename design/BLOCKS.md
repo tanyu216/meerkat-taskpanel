@@ -472,12 +472,14 @@ element with a zero maximum is a dividing error.
 | Identity slot | human card → monogram avatar visible, badge and role empty+hidden. Agent card → avatar hidden but still carrying the monogram, `[data-card-agent-badge]` **and** `[data-card-agent-role]` visible, so every card states both the platform and the role name. |
 | States | default · `:hover` · `:focus-within` · `aria-selected="true"` · `data-dragging="true"` · `data-done="true"` · `data-canceled="true"` |
 
-**R8 — the identifier is capped.** `[data-card-identifier]` renders **at most eight
-characters plus an ellipsis**: the display value is `len > 8 ? slice(0, 8) + "…" : id`,
+**R8 — the identifier is capped.** `[data-card-identifier]` renders **at most ten
+characters plus an ellipsis**: the display value is `len > 10 ? slice(0, 10) + "…" : id`,
 computed by `identifierText()` in the render layer, and the element carries the **full**
 id on `title` plus the shared `.td-id` class (single line: `nowrap` + overflow
 ellipsis). The card root's `data-identifier` keeps the full id — never the display
-value — so every lookup by attribute is unaffected. Same rule as B08.
+value — so every lookup by attribute is unaffected. Same rule as B08, and the same rule
+the create dialog's Parent/Depends rows and chips take from the one function
+(`T-20261014-001418` moved the cap from eight to ten — see `DESIGN.md` §24.3).
 
 **R12 leaves this card path alone.** The round that shows the whole id in the drawer's
 head (see **B09**) explicitly does **not** touch B07: the static markup's own abbreviated
@@ -524,7 +526,7 @@ The middle three carry `td-hide-sm` **on both sides** — the same class, the sa
 its single caption span, which spans the whole template (`grid-column: 1 / -1`) so it
 cannot be squeezed into the 74px first track.
 
-The row's `[data-list-identifier]` carries the R8 cap too: display = eight characters
+The row's `[data-list-identifier]` carries the R8 cap too: display = ten characters
 plus an ellipsis, `title` = the full id, and the row root's `data-identifier` = the
 full id.
 
@@ -565,7 +567,7 @@ card's own `data-identifier`; `identifierText()` is **not** called for this elem
 width limit — the span carries **`.td-id-full`** alongside `.td-id`, and that variant rule
 lifts the cap (`max-width: none; overflow: visible; text-overflow: clip`) while `.td-id`
 keeps the single line. `title` stays the full id. This is the **one** identifier render point
-that is not capped: **B07**'s cards and **B08**'s rows keep R8's eight characters plus an
+that is not capped: **B07**'s cards and **B08**'s rows keep R8's ten characters plus an
 ellipsis, and neither may carry `.td-id-full`.
 
 **R8's other half still stands — identity never lives in the text.** The drawer root carries
@@ -1196,11 +1198,11 @@ script off the queue is complete and merely `hidden`, and the header's tally is 
 sentence it ships. This is the property R-5 states and the check measures twice: once against
 the source, once in a context with JavaScript disabled.
 
-**The identifier rule is shared, not restated.** `[data-waiting-task]` renders at most eight
+**The identifier rule is shared, not restated.** `[data-waiting-task]` renders at most ten
 characters plus `…` with the whole value on `title` — R8 ③, the rule B07's cards and B08's
 rows follow. Waiting is the first surface that *proves* it without a script: `PROJ-0007` is
-the board's only identifier longer than eight characters, so its cell reads `PROJ-000…` in
-the markup itself.
+the board's longest identifier at nine characters, so at the ten-character cap its cell
+reads `PROJ-0007` in the markup itself, whole.
 
 **The reason chip is a two-value attribute.** `[data-waiting-reason]` carries
 `data-waiting-reason-kind="question" | "blocked"` and reads its copy from

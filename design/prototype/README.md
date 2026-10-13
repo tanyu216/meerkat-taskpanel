@@ -265,7 +265,7 @@ looking at it (DESIGN.md §12).
 | 7 statuses | 7 columns, ≥1 card each, plus the legend |
 | 5 priorities | every level appears on a card, plus the legend |
 | Ownership | 11 human cards + 7 agent cards across claude / openclaw / codex / pi |
-| Dual id | human identifier on the card (mono, capped at eight characters + `…` with the full id on `title` — R8) + internal `td_…` id in the drawer (copyable) |
+| Dual id | human identifier on the card (mono, capped at ten characters + `…` with the full id on `title` — R8, cap raised from eight on 2026-10-14) + internal `td_…` id in the drawer (copyable) |
 | Concurrency | `v3`-style version in the drawer + `rev 128` with a live pulse in the top bar |
 | Relations | `↑` parent / `→|` blocks / `🔗`-shaped related counters on cards, spelled out in the drawer |
 | Comments | human author, agent author and a `decision`-styled comment |
@@ -274,7 +274,7 @@ looking at it (DESIGN.md §12).
 | Empty states | empty column + no-results — and since R10 the board-level no-results block is the board view's `empty` state, mutually exclusive with the board itself (a project with no cards shows it too) |
 | Loading | 3 shimmer rows in the list view, in the list's `loading` state — mutually exclusive with the rows (R9) |
 | Drawer saves | assignee / reporter / labels commit as they change; one `data-save-state` region and a `role="alert"` failure block (R10) |
-| Drawer identifier | the detail drawer's head shows the card's **whole** id — no slice, no width limit — while the cards and the list rows keep eight characters plus an ellipsis (R12) |
+| Drawer identifier | the detail drawer's head shows the card's **whole** id — no slice, no width limit — while the cards and the list rows keep ten characters plus an ellipsis (R12; cap raised from eight on 2026-10-14) |
 | Status filter | the bar's Status control holds any subset of the seven first-class statuses at once, OR inside the field and ANDed against every other filter (R11) |
 | Assignee filter | the Assignee control's domain gains a **given name** on demand — the name is written into the select (as an `[data-assignee-filter-option]`) when an Active-agents name is pressed, and taken out again when the control leaves it (R13) |
 | Assignee capsule | the roster item the control's value names wears a **width-neutral** accent capsule — `padding: 0 6px` cancelled by `margin-inline: -6px` — so no row's one line is elided at any viewport (R13) |

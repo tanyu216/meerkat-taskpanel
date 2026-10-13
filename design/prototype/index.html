@@ -771,7 +771,7 @@
               >
                 <span class="td-card-stripe" data-card-stripe aria-hidden="true" title="Backlog"></span>
                 <div class="td-card-top">
-                  <span class="td-card-id td-id" data-card-identifier title="PROJ-0007">PROJ-000…</span>
+                  <span class="td-card-id td-id" data-card-identifier title="PROJ-0007">PROJ-0007</span>
                   <button
                     type="button"
                     class="td-card-menu"
@@ -3320,11 +3320,11 @@
               </button>
             </li>
 
-            <!-- The ninth character is the one the identifier rule takes away:
-                 `PROJ-0007` is the board's only identifier longer than eight
-                 characters, so its cell reads `PROJ-000…` and the whole value
-                 stays on `title` — the same rule B07's cards and B08's rows
-                 follow (R8 ③), and the one row that proves it without a script. -->
+            <!-- `PROJ-0007` is the board's longest identifier at nine
+                 characters, so under the ten-character rule it renders whole —
+                 and the whole value stays on `title`. The same rule B07's cards
+                 and B08's rows follow (R8 ③); this row is where a reader can
+                 check it without a script. -->
             <li
               class="td-waiting-item"
               data-waiting-item
@@ -3334,7 +3334,7 @@
               <span class="td-waiting-actor td-mono" data-waiting-actor data-assignee-kind="agent">elon</span>
               <span class="td-waiting-reason" data-waiting-reason data-waiting-reason-kind="question" data-i18n="waiting.reason.question">Question</span>
               <span class="td-waiting-task-cell">
-                <span class="td-waiting-task td-mono" data-waiting-task title="PROJ-0007">PROJ-000…</span>
+                <span class="td-waiting-task td-mono" data-waiting-task title="PROJ-0007">PROJ-0007</span>
                 <span class="td-waiting-task-title" data-waiting-task-title>Add bulk status change to board selection</span>
               </span>
               <time class="td-waiting-since td-mono" data-waiting-since datetime="2026-10-13T09:10:00Z" title="2026-10-13 09:10" data-i18n="time.minutesAgo" data-i18n-arg="41">41m ago</time>
@@ -4043,16 +4043,18 @@ npm test
                     </button>
                   </div>
                   <ul class="menu td-combo-menu" id="td-parent-menu-create" role="listbox" data-parent-menu hidden>
-                    <!-- Terry 2026-10-14 — the two display samples this field's spec
+                    <!-- Terry 2026-10-14 — the display samples this field's spec
                          names, kept at the head of the seed so a screenshot catches
-                         them: an over-cap identifier (`INVENTORY-0042` → `INVENTOR…`)
-                         and a title long enough that the row's ellipsis has to fire.
+                         them: an over-cap identifier (`INVENTORY-0042` → `INVENTORY-…`)
+                         and a title long enough that the row's ellipsis has to fire,
+                         then an identifier inside the cap (`PROJ-0007`, nine
+                         characters) that must come through whole.
                          Both keep the whole value on `data-parent-value` and the whole
                          title on `title`, so the seed stays inert data rather than a
                          second source of truth. -->
-                    <li><button type="button" data-parent-option data-parent-value="INVENTORY-0042" title="Reconcile the quarterly inventory ledger against vendor manifests and flag every drift"><span class="td-mono td-combo-id">INVENTOR…</span><span class="td-combo-title">Reconcile the quarterly inventory ledger against vendor manifests and flag every drift</span></button></li>
+                    <li><button type="button" data-parent-option data-parent-value="INVENTORY-0042" title="Reconcile the quarterly inventory ledger against vendor manifests and flag every drift"><span class="td-mono td-combo-id">INVENTORY-…</span><span class="td-combo-title">Reconcile the quarterly inventory ledger against vendor manifests and flag every drift</span></button></li>
                     <li><button type="button" data-parent-option data-parent-value="TD-147" title="Backfill the archived sprint audit trail and re-derive every rollup before the freeze"><span class="td-mono td-combo-id">TD-147</span><span class="td-combo-title">Backfill the archived sprint audit trail and re-derive every rollup before the freeze</span></button></li>
-                    <li><button type="button" data-parent-option data-parent-value="PROJ-0007" title="Add bulk status change to board selection"><span class="td-mono td-combo-id">PROJ-000…</span><span class="td-combo-title">Add bulk status change to board selection</span></button></li>
+                    <li><button type="button" data-parent-option data-parent-value="PROJ-0007" title="Add bulk status change to board selection"><span class="td-mono td-combo-id">PROJ-0007</span><span class="td-combo-title">Add bulk status change to board selection</span></button></li>
                     <li><button type="button" data-parent-option data-parent-value="TD-129" title="Audit dependency licences for vendored assets"><span class="td-mono td-combo-id">TD-129</span><span class="td-combo-title">Audit dependency licences for vendored assets</span></button></li>
                     <li><button type="button" data-parent-option data-parent-value="TD-128" title="Wire keyboard navigation across board columns"><span class="td-mono td-combo-id">TD-128</span><span class="td-combo-title">Wire keyboard navigation across board columns</span></button></li>
                     <li><button type="button" data-parent-option data-parent-value="TD-133" title="Expose task version in the edit response"><span class="td-mono td-combo-id">TD-133</span><span class="td-combo-title">Expose task version in the edit response</span></button></li>
@@ -4105,9 +4107,9 @@ npm test
                     <!-- The same two display samples the parent menu carries, so the
                          multi-select offers the identical reading: one over-cap
                          identifier and one title that cannot fit on a row. -->
-                    <li><button type="button" data-depends-option data-depends-value="INVENTORY-0042" title="Reconcile the quarterly inventory ledger against vendor manifests and flag every drift"><span class="td-mono td-combo-id">INVENTOR…</span><span class="td-combo-title">Reconcile the quarterly inventory ledger against vendor manifests and flag every drift</span></button></li>
+                    <li><button type="button" data-depends-option data-depends-value="INVENTORY-0042" title="Reconcile the quarterly inventory ledger against vendor manifests and flag every drift"><span class="td-mono td-combo-id">INVENTORY-…</span><span class="td-combo-title">Reconcile the quarterly inventory ledger against vendor manifests and flag every drift</span></button></li>
                     <li><button type="button" data-depends-option data-depends-value="TD-147" title="Backfill the archived sprint audit trail and re-derive every rollup before the freeze"><span class="td-mono td-combo-id">TD-147</span><span class="td-combo-title">Backfill the archived sprint audit trail and re-derive every rollup before the freeze</span></button></li>
-                    <li><button type="button" data-depends-option data-depends-value="PROJ-0007" title="Add bulk status change to board selection"><span class="td-mono td-combo-id">PROJ-000…</span><span class="td-combo-title">Add bulk status change to board selection</span></button></li>
+                    <li><button type="button" data-depends-option data-depends-value="PROJ-0007" title="Add bulk status change to board selection"><span class="td-mono td-combo-id">PROJ-0007</span><span class="td-combo-title">Add bulk status change to board selection</span></button></li>
                     <li><button type="button" data-depends-option data-depends-value="TD-129" title="Audit dependency licences for vendored assets"><span class="td-mono td-combo-id">TD-129</span><span class="td-combo-title">Audit dependency licences for vendored assets</span></button></li>
                     <li><button type="button" data-depends-option data-depends-value="TD-128" title="Wire keyboard navigation across board columns"><span class="td-mono td-combo-id">TD-128</span><span class="td-combo-title">Wire keyboard navigation across board columns</span></button></li>
                     <li><button type="button" data-depends-option data-depends-value="TD-133" title="Expose task version in the edit response"><span class="td-mono td-combo-id">TD-133</span><span class="td-combo-title">Expose task version in the edit response</span></button></li>
