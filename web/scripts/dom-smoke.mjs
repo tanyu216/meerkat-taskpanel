@@ -2286,19 +2286,23 @@ export async function run() {
       langEn: langAfterEn === "en",
     };
 
-    /* ---- R11 ①/② · R13 — the status filter, the roster route and the assignee
+    /* ---- R11 ①/② · R13 — the status filter, the roster press and the assignee
        constraint ---------------------------------------------------------------
        The design contracts' machine checks, ported to the shipped app: R11 §5
-       (the status control's domain/order/OR-and-AND semantics, the roster names
-       that route) and R13 §5 (the named assignee, the width-neutral capsule, the
-       bar's `x`). Every assertion is a **data hook + attribute** or a computed
+       (the status control's domain/order/OR-and-AND semantics) and R13 §10.3
+       (the named assignee, the width-neutral capsule, the roster press that only
+       narrows). Every assertion is a **data hook + attribute** or a computed
        value — never a class name (R11 §5 C′9, R13 §5.4).
 
        Two families of the contracts' rows are deliberately not asserted:
        the JS-off rows (R11 A4.x / A8 / C-12) — a Vue SPA has no SSR, the written
        deviation the block contract already records (C06) — and R11's C-6 ("the
-       press writes the name into no filter"), which R13 §2.2 replaces with the
-       opposite: the press narrows as well as routes. */
+       press writes the name into no filter"), which R13 replaced with the
+       opposite: the press narrows the assignee. R13 修订（seg3 · 决定甲）then
+       narrowed *that* again: the press writes the assignee and **nothing else**
+       — no view switch, no status write, no toggle-off — and the bar's `x` is
+       withdrawn, leaving the control's own `Assignee: All` row as the removal
+       path (design/fidelity-r13.md §10.1/§10.3 C1–C4). */
     const r11Failures = [];
     const r11Check = (ok, message) => { if (!ok) r11Failures.push(message); };
 
@@ -2316,7 +2320,7 @@ export async function run() {
       const items = [...document.querySelectorAll("[data-assignee-item]")];
       const bar = document.querySelector("[data-filters]");
       const childHook = (el) => {
-        for (const hook of ["data-filter-assignee", "data-assignee-clear", "data-filter-priority",
+        for (const hook of ["data-filter-assignee", "data-filter-priority",
           "data-filter-status", "data-filter-label", "data-filter-clear", "data-filter-count"]) {
           if (el.hasAttribute(hook)) return hook;
         }
@@ -2335,15 +2339,20 @@ export async function run() {
       const assigneeRows = [...document.querySelectorAll("[data-filter-assignee] [data-assignee-filter-option]")]
         .map((el) => attr(el, "data-assignee-filter-option"));
       const priorityRows = [...document.querySelectorAll("[data-filter-priority] [data-filter-priority-option]")];
-      const cardMatches = (el) => {
+      // The assignee half alone — the roster press writes only this condition
+      // (R13 修订 §10.1 row 1), so the card set it produces is stated without
+      // the status conjunct the retired four-step route used to add.
+      const assigneeMatches = (el) => {
         const cardName = attr(el, "data-assignee") ?? "";
         const kind = attr(el, "data-assignee-kind");
-        const okName = name === "all" ? true
-          : name === "me" ? cardName === "Terry"
-          : name === "human" || name === "agent" ? kind === name
-          : cardName === name;
+        if (name === "all") return true;
+        if (name === "me") return cardName === "Terry";
+        if (name === "human" || name === "agent") return kind === name;
+        return cardName === name;
+      };
+      const cardMatches = (el) => {
         const okStatus = statusSet.length === 0 ? true : statusSet.includes(attr(el, "data-status"));
-        return okName && okStatus;
+        return assigneeMatches(el) && okStatus;
       };
       return {
         statusCount: document.querySelectorAll("[data-filter-status]").length,
@@ -2366,16 +2375,10 @@ export async function run() {
         activeItems: items.filter((el) => attr(el, "data-assignee-active") === "true").map((el) => attr(el, "data-assignee-item")),
         pressedNames: [...document.querySelectorAll("[data-agent-assignee]")]
           .filter((el) => attr(el, "aria-pressed") === "true").map((el) => attr(el, "data-assignee")),
+        // R13 修订 §10.1 row 4 — the `x` is gone document-wide, so this single
+        // probe is the whole of its check (count 0 at rest, while a name is in
+        // force, and after every click path).
         clearCount: document.querySelectorAll("[data-assignee-clear]").length,
-        clearHidden: attr(document.querySelector("[data-assignee-clear]"), "hidden") !== null,
-        clearPainted: painted(document.querySelector("[data-assignee-clear]")),
-        clearInsideBar: !!document.querySelector("[data-filters] [data-assignee-clear]"),
-        clearIsSibling: (() => {
-          const clear = document.querySelector("[data-assignee-clear]");
-          const control = document.querySelector("[data-filter-assignee]");
-          return !!clear && !!control && control.nextElementSibling === clear;
-        })(),
-        clearGlyph: document.querySelector("[data-assignee-clear]")?.textContent.trim() ?? null,
         assigneeValue: name,
         // R15 ② — every assignee row carries `[data-assignee-filter-option]` with
         // **its own value** now (the four static ones included; the `<option>`s
@@ -2411,9 +2414,18 @@ export async function run() {
         listRowStatuses: [...document.querySelectorAll("[data-list-rows] [data-list-status]")].map((el) => attr(el, "data-status")),
         viewCurrent: attr(document.querySelector('[data-nav-item][aria-current="page"]'), "data-nav-item"),
         listPressed: attr(document.querySelector('[data-view="list"]'), "aria-pressed"),
+        // The second half of the view indicator (R13 §10.3 C1.2): which tab of
+        // the topbar's `[data-view-toggle]` states itself pressed.
+        viewPressed: attr(document.querySelector('[data-view-toggle] [data-view][aria-pressed="true"]'), "data-view"),
         boardHidden: document.querySelector("[data-board-view]")?.hasAttribute("hidden") ?? null,
+        // The board's rendered card set, read off the same painted cards the
+        // board draws — the re-filter the roster press must produce (§10.3 C1.4).
+        visibleCardNames: boardCards.filter(painted).map((el) => attr(el, "data-assignee")),
+        visibleCardIds: boardCards.filter(painted).map((el) => attr(el, "data-identifier")),
         expectedRows: boardCards.filter(cardMatches).length,
         expectedIds: boardCards.filter(cardMatches).map((el) => `${attr(el, "data-identifier")}/${attr(el, "data-assignee")}/${attr(el, "data-status")}`),
+        expectedAssigneeRows: boardCards.filter(assigneeMatches).length,
+        expectedAssigneeIds: boardCards.filter(assigneeMatches).map((el) => attr(el, "data-identifier")),
         listIds: [...document.querySelectorAll("[data-list-rows] [data-list-row]")].map((el) => attr(el.querySelector("[data-list-identifier]"), "title") ?? el.textContent.trim()),
         columns: document.querySelectorAll("[data-column]").length,
       };
@@ -2491,19 +2503,16 @@ export async function run() {
       JSON.stringify(restR11.barOrder) === JSON.stringify(["data-filter-assignee", "data-filter-priority", "data-filter-status", "data-filter-label", "data-filter-clear", "data-filter-count"]),
       `bar order ${restR11.barOrder.join(" · ")}`,
     );
-    // R13 A1/A2 — the roster items, one name button each, no `x` inside.
+    // R13 修订 A1/A2 — the roster items, one name button each, no `x` at all.
     r11Check(restR11.itemNames.length > 0, "the roster renders no [data-assignee-item]");
     r11Check(restR11.itemNames.length === new Set(restR11.itemNames).size, `duplicate roster names ${restR11.itemNames.join(",")}`);
     r11Check(restR11.buttonsPerItem.every((n) => n === 1), `name buttons per item ${restR11.buttonsPerItem.join(",")}`);
     r11Check(restR11.clearsPerItem.every((n) => n === 0), `the roster must hold no [data-assignee-clear]: ${restR11.clearsPerItem.join(",")}`);
     r11Check(restR11.nameButtonTags.length === 1 && restR11.nameButtonTags[0] === "BUTTON", `roster names are ${restR11.nameButtonTags.join(",")}, expected BUTTON`);
     r11Check(restR11.activeItems.length === 0, `at rest ${restR11.activeItems.length} roster items are active`);
-    // R13 A2.2/A4.4 — exactly one `x`, inside the bar, the control's sibling, hidden.
-    r11Check(restR11.clearCount === 1, `[data-assignee-clear] count ${restR11.clearCount} !== 1`);
-    r11Check(restR11.clearInsideBar === true, "the `x` must live inside [data-filters]");
-    r11Check(restR11.clearIsSibling === true, "the `x` must be [data-filter-assignee]'s next sibling");
-    r11Check(restR11.clearHidden === true && restR11.clearPainted === false, "the `x` must be hidden and unpainted at rest");
-    r11Check(restR11.clearGlyph === "✕", `the \`x\` glyph is ${JSON.stringify(restR11.clearGlyph)}`);
+    // R13 修订 A1 — the `x` is withdrawn document-wide (markup/rule/handler/aria):
+    // 0 at rest, and 0 at every point a name is in force or the control resets.
+    r11Check(restR11.clearCount === 0, `[data-assignee-clear] count ${restR11.clearCount} !== 0`);
     // R13 A3/R2.1 — the control's four static rows, no named option at rest, and
     // B22's bare seats untouched by this round's hook.
     r11Check(restR11.staticOptions === 4, `static assignee options ${restR11.staticOptions} !== 4`);
@@ -2618,37 +2627,43 @@ export async function run() {
     r11Check(r11All.statusValue === "all", `after All the value is ${r11All.statusValue}`);
     r11Check(r11All.pressedOptions.length === 1 && r11All.pressedOptions[0] === "all", `after All aria-pressed=${r11All.pressedOptions.join(",")}`);
 
-    // Roster route — press a name and read the four facts (R11 C-5 + R13 C1).
+    // Roster press — one fact changes (R13 修订 §10.3 C1): the assignee condition
+    // narrows to the name, and **nothing else moves**.
     const rosterNames = restR11.itemNames;
     const [firstName, secondName] = rosterNames;
     r11Check(rosterNames.length >= 2, `the fixture must offer two roster names, got ${rosterNames.length}`);
     await page.click(`[data-agent-assignee="${firstName}"]`);
-    await page.waitForTimeout(400); // the list view reads on entry
+    await page.waitForTimeout(400);
     const r11Route = await readR11();
-    r11Check(r11Route.viewCurrent === "list", `the route left the view on ${r11Route.viewCurrent}`);
-    r11Check(r11Route.listPressed === "true", `[data-view="list"] aria-pressed=${r11Route.listPressed}`);
-    r11Check(r11Route.statusValue === "in_progress,in_review", `the route wrote status ${r11Route.statusValue}`);
-    r11Check(r11Route.assigneeValue === firstName, `the route wrote assignee ${r11Route.assigneeValue}, expected ${firstName}`);
+    // C1.1 — the name is written into the control, exactly as its own row would.
+    r11Check(r11Route.assigneeValue === firstName, `the press wrote assignee ${r11Route.assigneeValue}, expected ${firstName}`);
+    // C1.2 — **both** halves of the view indicator are unmoved (nav aria-current
+    // and the topbar tab's aria-pressed).
+    r11Check(r11Route.viewCurrent === restR11.viewCurrent, `the press switched the view ${restR11.viewCurrent} → ${r11Route.viewCurrent}`);
+    r11Check(r11Route.viewPressed === restR11.viewPressed, `the press switched the view tab ${restR11.viewPressed} → ${r11Route.viewPressed}`);
+    r11Check(r11Route.listPressed === restR11.listPressed, `[data-view="list"] aria-pressed=${r11Route.listPressed}`);
+    // C1.3 — the status set is not written at all.
+    r11Check(r11Route.statusValue === restR11.statusValue, `the press wrote status ${restR11.statusValue} → ${r11Route.statusValue}`);
+    // C1.4 — and the `x` never appears.
+    r11Check(r11Route.clearCount === 0, `a name in force raised ${r11Route.clearCount} [data-assignee-clear]`);
     // R15 ② — the trigger states the chosen row's own copy, which for a given
     // name is the name itself (R13's reading, kept across the conversion).
     r11Check(r11Route.assigneeText === firstName, `R15 ②: the trigger states ${JSON.stringify(r11Route.assigneeText)}, expected ${JSON.stringify(firstName)}`);
+    // The capsule and the named option follow the value (§10.3 C2.capsule/C2.domain).
     r11Check(r11Route.activeItems.length === 1 && r11Route.activeItems[0] === firstName, `active roster items ${r11Route.activeItems.join(",")}`);
     r11Check(r11Route.pressedNames.length === 1 && r11Route.pressedNames[0] === firstName, `pressed names ${r11Route.pressedNames.join(",")}`);
     r11Check(r11Route.namedOptionValues.length === 1 && r11Route.namedOptionValues[0] === firstName, `named options ${r11Route.namedOptionValues.join(",")}`);
-    r11Check(r11Route.clearHidden === false && r11Route.clearPainted === true, "the `x` must appear with a named assignee");
     r11Check(r11Route.b22Options === restR11.b22Options, `B22's seat count moved ${restR11.b22Options} → ${r11Route.b22Options}`);
-    r11Check(r11Route.listState === "data", `the list settled on ${r11Route.listState}`);
-    r11Check(r11Route.listRowCount === r11Route.expectedRows, `list shows ${r11Route.listRowCount} rows (${r11Route.listIds.join(" | ")}), ${r11Route.expectedRows} expected (${r11Route.expectedIds.join(" | ")})`);
-    r11Check(r11Route.listRowCount > 0, "the route narrowed to nothing");
-    // R11 §5 C-5 — every routed row is in flight. The list's chip states the
-    // card's **raw** status, and M1's `awaiting` is an overlay a card wears while
-    // it stays on `in_progress` (the board renders it in that column, and the
-    // filter matches it there) — so `awaiting` is the third member of the "in
-    // flight" set here, not an escape hatch. On the prototype, where the overlay
-    // does not exist, the set is the contract's two.
+    // The narrowing is real: the board re-filters to the assignee alone — **no**
+    // status conjunct (that was the retired four-step route), so the rendered
+    // card set is exactly the assignee-only match.
     r11Check(
-      r11Route.listRowStatuses.every((s) => s === "in_progress" || s === "in_review" || s === "awaiting"),
-      `routed rows carry statuses ${[...new Set(r11Route.listRowStatuses)].join(",")}`,
+      r11Route.visibleCardNames.length > 0 && r11Route.visibleCardNames.every((n) => n === firstName),
+      `the board still shows names ${[...new Set(r11Route.visibleCardNames)].join(",")} — expected only ${firstName}`,
+    );
+    r11Check(
+      r11Route.visibleCardIds.length === r11Route.expectedAssigneeRows,
+      `the board shows ${r11Route.visibleCardIds.length} cards (${r11Route.visibleCardIds.join(" | ")}), ${r11Route.expectedAssigneeRows} expected (${r11Route.expectedAssigneeIds.join(" | ")})`,
     );
 
     // R13 §5.2 — the capsule's geometry and its width neutrality, measured with
@@ -2679,7 +2694,8 @@ export async function run() {
     );
     r11Check(restRoster.rows.every((r) => r.clip === 0), `at rest the roster clips ${restRoster.rows.map((r) => r.clip).join(",")}`);
 
-    // R13 C4 — switching names moves the capsule, never doubles it.
+    // R13 §10.3 C4 — switching names moves the capsule, never doubles it, and
+    // still writes nothing but the assignee.
     if (secondName) {
       await page.click(`[data-agent-assignee="${secondName}"]`);
       await page.waitForTimeout(300);
@@ -2687,42 +2703,112 @@ export async function run() {
       r11Check(r11Switch.activeItems.length === 1 && r11Switch.activeItems[0] === secondName, `switched active ${r11Switch.activeItems.join(",")}`);
       r11Check(r11Switch.namedOptionValues.length === 1 && r11Switch.namedOptionValues[0] === secondName, `switched named option ${r11Switch.namedOptionValues.join(",")}`);
       r11Check(r11Switch.assigneeValue === secondName, `switched value ${r11Switch.assigneeValue}`);
-      r11Check(r11Switch.statusValue === "in_progress,in_review", `switching names moved the status set to ${r11Switch.statusValue}`);
+      r11Check(r11Switch.statusValue === restR11.statusValue, `switching names moved the status set to ${r11Switch.statusValue}`);
+      r11Check(r11Switch.viewCurrent === restR11.viewCurrent, `switching names moved the view to ${r11Switch.viewCurrent}`);
+      r11Check(r11Switch.clearCount === 0, `switching names raised ${r11Switch.clearCount} [data-assignee-clear]`);
 
-      // R13 C3 — the `x` clears the assignee and nothing else.
-      const beforeX = await readR11();
-      await page.click("[data-assignee-clear]");
+      // R13 §10.3 C3 — the **control's own `Assignee: All` row** is the removal
+      // path now (the `x` is gone): it resets the capsule and `aria-pressed`,
+      // and moves no other condition. R15 ② — the row is a menu `button`, so the
+      // panel is opened first, exactly as a user would.
+      const beforeReset = await readR11();
+      if (!beforeReset.assigneeOpen) {
+        await page.click("[data-filter-assignee] > summary");
+        await page.waitForTimeout(90);
+      }
+      await page.click('[data-assignee-filter-option="all"]');
       await page.waitForTimeout(150);
-      const afterX = await readR11();
-      r11Check(afterX.assigneeValue === "all", `after \`x\` the assignee is ${afterX.assigneeValue}`);
-      r11Check(afterX.namedOptionValues.length === 0, `after \`x\` ${afterX.namedOptionValues.length} named options remain`);
-      r11Check(afterX.activeItems.length === 0, `after \`x\` ${afterX.activeItems.length} roster items stay active`);
-      r11Check(afterX.clearHidden === true && afterX.clearPainted === false, "after `x` the control must hide again");
-      r11Check(afterX.statusValue === beforeX.statusValue, `\`x\` moved the status set ${beforeX.statusValue} → ${afterX.statusValue}`);
-      r11Check(afterX.viewCurrent === "list", `\`x\` switched the view to ${afterX.viewCurrent}`);
-      r11Check(afterX.toastChildren === beforeX.toastChildren, "`x` must not raise a toast");
+      const afterReset = await readR11();
+      r11Check(afterReset.assigneeValue === "all", `after the control's \`all\` row the assignee is ${afterReset.assigneeValue}`);
+      r11Check(afterReset.namedOptionValues.length === 0, `after the \`all\` row ${afterReset.namedOptionValues.length} named options remain`);
+      r11Check(afterReset.activeItems.length === 0, `after the \`all\` row ${afterReset.activeItems.length} roster items stay active`);
+      r11Check(afterReset.pressedNames.length === 0, `after the \`all\` row ${afterReset.pressedNames.length} names stay pressed`);
+      r11Check(afterReset.clearCount === 0, `the \`all\` row raised ${afterReset.clearCount} [data-assignee-clear]`);
+      r11Check(afterReset.statusValue === beforeReset.statusValue, `the \`all\` row moved the status set ${beforeReset.statusValue} → ${afterReset.statusValue}`);
+      r11Check(afterReset.viewCurrent === beforeReset.viewCurrent, `the \`all\` row switched the view to ${afterReset.viewCurrent}`);
+      r11Check(afterReset.toastChildren === beforeReset.toastChildren, "the `all` row must not raise a toast");
       r11Check(
-        afterX.countText === beforeX.countText || afterX.listRowCount >= beforeX.listRowCount,
-        "clearing the assignee must widen (or hold) the row set, never narrow it",
+        afterReset.visibleCardIds.length >= beforeReset.visibleCardIds.length,
+        "clearing the assignee must widen (or hold) the card set, never narrow it",
       );
     }
 
-    // R13 C5 — pressing the name in force again is the capsule's own close: the
-    // assignee goes, the view and the status set stay.
+    // R13 §10.3 C2 — pressing the name already in force is **idempotent**: the
+    // control stays on that name, the capsule stays, and no toggle-off happens.
     await page.click(`[data-agent-assignee="${firstName}"]`);
     await page.waitForTimeout(300);
     const r11Reopen = await readR11();
-    r11Check(r11Reopen.assigneeValue === firstName, `re-route wrote ${r11Reopen.assigneeValue}`);
-    const statusBeforeToggle = r11Reopen.statusValue;
+    r11Check(r11Reopen.assigneeValue === firstName, `the press wrote ${r11Reopen.assigneeValue}`);
+    const statusBeforeRepeat = r11Reopen.statusValue;
+    const viewBeforeRepeat = r11Reopen.viewCurrent;
     await page.click(`[data-agent-assignee="${firstName}"]`);
     await page.waitForTimeout(200);
-    const r11Toggle = await readR11();
-    r11Check(r11Toggle.assigneeValue === "all", `the toggle left the assignee on ${r11Toggle.assigneeValue}`);
-    r11Check(r11Toggle.activeItems.length === 0, `the toggle left ${r11Toggle.activeItems.length} active items`);
-    r11Check(r11Toggle.statusValue === statusBeforeToggle, `the toggle moved the status set ${statusBeforeToggle} → ${r11Toggle.statusValue}`);
-    r11Check(r11Toggle.viewCurrent === "list", `the toggle switched the view to ${r11Toggle.viewCurrent}`);
-    r11Check(r11Toggle.clearHidden === true, "the toggle must hide the `x`");
+    const r11Repeat = await readR11();
+    r11Check(r11Repeat.assigneeValue === firstName, `the repeat press left the assignee on ${r11Repeat.assigneeValue} — pressing the name in force is idempotent`);
+    r11Check(r11Repeat.activeItems.length === 1 && r11Repeat.activeItems[0] === firstName, `the repeat press left ${r11Repeat.activeItems.length} active items`);
+    r11Check(r11Repeat.pressedNames.length === 1 && r11Repeat.pressedNames[0] === firstName, `the repeat press left pressed names ${r11Repeat.pressedNames.join(",")}`);
+    r11Check(r11Repeat.statusValue === statusBeforeRepeat, `the repeat press moved the status set ${statusBeforeRepeat} → ${r11Repeat.statusValue}`);
+    r11Check(r11Repeat.viewCurrent === viewBeforeRepeat, `the repeat press switched the view to ${r11Repeat.viewCurrent}`);
+    r11Check(r11Repeat.clearCount === 0, `the repeat press raised ${r11Repeat.clearCount} [data-assignee-clear]`);
     await closeFloating();
+
+    // R13 §10.3 C4 — no click path anywhere raises the `x`: sweep the two roster
+    // names, the bar, the board, the four nav items, both view tabs, the filter
+    // toggle and the body, reading the count after each. The control's own path
+    // is the `all`-row press above, so this sweep does not need to re-open a menu.
+    //
+    // The clicks are dispatched with `HTMLElement.click()` inside the page rather
+    // than through Playwright's actionability machinery: this is a "does the hook
+    // appear" sweep, not a UI-driving one, and a real click on a hidden or
+    // animating target is both stronger (it still fires the handler) and free
+    // (no 30s stability wait per selector, which is what turned this block into
+    // the whole suite's critical path when everything else was competing for the
+    // browser). The state the clicks disturb is restored below.
+    const CLEAR_SWEEP = [
+      `[data-agent-assignee="${firstName}"]`,
+      `[data-agent-assignee="${secondName}"]`,
+      "[data-filters]",
+      "[data-board]",
+      '[data-nav-item="board"]',
+      '[data-nav-item="list"]',
+      '[data-nav-item="activity"]',
+      '[data-nav-item="waiting"]',
+      '[data-view-toggle] [data-view="board"]',
+      '[data-view-toggle] [data-view="list"]',
+      "[data-filter-toggle]",
+      "body",
+    ];
+    const sweep = await page.evaluate((selectors) => {
+      let max = 0;
+      for (const selector of selectors) {
+        const el = document.querySelector(selector);
+        if (!el) continue;
+        el.click();
+        max = Math.max(max, document.querySelectorAll("[data-assignee-clear]").length);
+      }
+      return max;
+    }, CLEAR_SWEEP);
+    r11Check(sweep === 0, `a click path raised ${sweep} [data-assignee-clear] (C4: the count is 0 on every path)`);
+    await page.waitForTimeout(200); // let the view switches the sweep triggered settle
+
+    // The sweep left the view, the view tab, the filters bar and the assignee
+    // condition disturbed; put them all back so the trailing reset (and every
+    // section after this one) reads the resting board. The view and the bar come
+    // first — the bar may be hidden, and the assignee control is inside it. The
+    // assignee is the one that matters: a name still in force would filter the
+    // M1/B27 sections' cards out of the board.
+    await page.click('[data-view-toggle] [data-view="board"]').catch(() => {});
+    await page.waitForTimeout(80);
+    if (await page.evaluate(() => document.querySelector("[data-filters]")?.hasAttribute("hidden") === true)) {
+      await page.click("[data-filter-toggle]");
+      await page.waitForTimeout(120);
+    }
+    if (!(await page.evaluate(() => document.querySelector("[data-filter-assignee]")?.hasAttribute("open") ?? false))) {
+      await page.click("[data-filter-assignee] > summary");
+      await page.waitForTimeout(90);
+    }
+    await page.click('[data-assignee-filter-option="all"]');
+    await page.waitForTimeout(120);
 
     // Base state again, so the sections after this one read the resting board.
     await page.click("[data-nav-item='board']");
@@ -3590,7 +3676,7 @@ if (isEntryPoint) run().then(
         console.log(`R11/R13 (fidelity) — ${report.r11.failures.length} failed:`);
         for (const failure of report.r11.failures) console.log(`  ✗ ${failure}`);
       } else {
-        console.log("R11/R13 (fidelity) — the status filter, the roster route, the named assignee, the width-neutral capsule and the bar's `x` all pass");
+        console.log("R11/R13 (fidelity) — the status filter, the roster's assignee-only press, the named assignee, the width-neutral capsule and the withdrawn `x` (count 0 on every click path) all pass");
       }
       if (report.b26.failures.length > 0) {
         console.log(`R12x · B26 (activity) — ${report.b26.failures.length} failed:`);

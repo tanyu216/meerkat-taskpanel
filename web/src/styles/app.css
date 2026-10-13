@@ -404,34 +404,11 @@ svg[data-token-icon][hidden] { display: none; }
   overflow: visible;
 }
 
-/* R13 ④ — the `x` that clears a given-name assignee filter, the sibling of the
-   select it lives beside (B04). Static markup, `hidden` until the select states a
-   *name* — and `[hidden]` is `display: none !important` in the preflight, so the
-   resting state is the attribute's, not this rule's. The glyph is text: no image,
-   no icon font, no new token. */
-.td-assignee-clear {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  font-size: 10px;
-  line-height: 1;
-  color: var(--brand-text-3);
-  background: transparent;
-  cursor: pointer;
-}
-.td-assignee-clear:hover {
-  color: var(--brand-text);
-  background: var(--brand-hover);
-}
-.td-assignee-clear:focus-visible {
-  outline: 2px solid var(--brand-focus-ring);
-  outline-offset: 1px;
-}
+/* R13 修订（seg3 · 决定甲）— the `[data-assignee-clear]` `x` and its `:hover` /
+   `:focus-visible` rules are **withdrawn** with the control they styled
+   (`design/fidelity-r13.md` §10.1 row 4; §10.2 retires §3.3 in full). The removal
+   path is the assignee control's own `Assignee: All` row, which needs no rule of
+   its own. */
 
 /* ------------------------------------------------- daisyUI shell overrides */
 

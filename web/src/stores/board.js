@@ -208,8 +208,9 @@ export function assigneeFilterValue() {
 
 /**
  * R13 — write the assignee condition. Apart from the four static values this
- * accepts a **given name** (the roster's own names), which is what makes the
- * roster press a narrowing as well as a route (`design/fidelity-r13.md` §2.2).
+ * accepts a **given name** (the roster's own names), which is what makes a
+ * roster press a narrowing and nothing more (`design/fidelity-r13.md` §10.1
+ * row 1 — the press writes the value the way the control's own row would).
  *
  * @param {string} value
  */
@@ -237,9 +238,10 @@ export function writePriorityFilter(value) {
 
 /**
  * R13 — the given name the control states, or `null` when it holds one of the
- * four static values. This is the **one** reading that drives both the named
- * `<option>` and the bar's `x`, so the control and its removal affordance can
- * never contradict each other (`design/fidelity-r13.md` §2.8).
+ * four static values. This is the **one** reading that drives the named
+ * `<option>`, so the control's row set can never contradict its value
+ * (`design/fidelity-r13.md` §2.8; with the `x` withdrawn in §10.1 row 4 the
+ * on-demand option is the whole of what the name adds to the control).
  */
 export const namedAssignee = computed(() =>
   ASSIGNEE_STATIC_VALUES.includes(board.filters.assignee) ? null : board.filters.assignee,
@@ -276,7 +278,7 @@ export const visibleTasks = computed(() => {
     /* R11 ① — multiple choice is **OR** (a card passes when it is in *any* chosen
      * status), and it is ANDed with the clauses above. The comparison is against
      * the card's own **stage** — the value `[data-card][data-status]` carries —
-     * so the list after a roster route shows the same cards the board's
+     * so the list shows the same cards the board's
      * `in_progress` / `in_review` columns show, M1's `awaiting` overlay included. */
     if (byStatus.length && !byStatus.includes(stageOf(task))) return false;
     if (label !== "all" && !(task.labels ?? []).some((l) => l.toLowerCase() === label.toLowerCase())) return false;
