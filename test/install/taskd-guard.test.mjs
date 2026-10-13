@@ -1,5 +1,5 @@
 /**
- * The `taskd` keepalive guard (T-20261013-213717-3).
+ * The `taskd` keepalive guard (T-20261013-213717-3, hardening T-20261014-052428).
  *
  * `taskctl` lazy-starts `taskd` only when a CLI call needs it, so a board whose server
  * dies while nobody is calling it stays down until the next call. The guard closes that
@@ -9,42 +9,69 @@
  * rule (the contract is `docs/scheduling.md`, and it is the single source of truth for
  * the unit text below).
  *
- * Three things are held here:
+ * Four things are held here:
  *
  *   1. the **unit templates** — committed under `scripts/install/templates/taskd/` — are
  *      the contract's own text, and are well-formed (plutil, where it exists);
- *   2. **rendering**: absolute `{{SERVER_ENTRY}}` / `{{LOG}}`, the log directory created,
- *      and idempotence (a re-install rewrites nothing, `--force` is the only overwrite);
- *   3. **install.sh**: the guard is written *and loaded* once per machine, the second
+ *   2. **rendering**: absolute `{{SERVER_ENTRY}}` / `{{LOG}}`, an **absolute interpreter**
+ *      that never has to be found on the host's `PATH` (the exit-127 crash loop this card
+ *      fixes), the operator's `TASKD_*` carried into the unit's environment, the log
+ *      directory created, and idempotence (a re-install rewrites nothing, `--force` is
+ *      the only overwrite);
+ *   3. **readiness**: `enabled` is claimed only when the board answers `/health`, not when
+ *      the supervisor merely hands back a pid — the distinction the crash loop hid behind;
+ *   4. **install.sh**: the guard is written *and loaded* once per machine, the second
  *      install loads nothing a second time, and the boxed-in cases — `--dry-run`,
  *      `--no-automation`, the test-only bypass, and a supervisor that refuses — report
  *      themselves instead of failing the install.
  *
  * The service manager is **faked on PATH**, the way `scheduling-units.test.mjs` fakes a
- * host CLI: an install must never load a real unit during a test run.
+ * host CLI: an install must never load a real unit during a test run. The readiness probe
+ * is answered by a **real loopback `/health` server in its own process** — `spawnSync`
+ * blocks this one's event loop, so a server in-process could never reply.
  *
  * Run with: node --test
  */
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 
-import { TASKD_LABEL, TASKD_TEMPLATE_FILES, TASKD_UNIT, enablePlan, guardPaths, systemdUserDir } from "../../scripts/install/lib/taskd-guard.mjs";
+import {
+  TASKD_LABEL,
+  TASKD_TEMPLATE_FILES,
+  TASKD_UNIT,
+  enablePlan,
+  guardPaths,
+  installGuard,
+  isOurBoard,
+  plistEnvBlock,
+  systemdEnvBlock,
+  systemdUserDir,
+  unitEnv,
+  unitPath,
+  unitVars,
+  waitForHealth,
+} from "../../scripts/install/lib/taskd-guard.mjs";
+import { render } from "../../scripts/install/lib/apply.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const TEMPLATES = join(ROOT, "scripts", "install", "templates");
 const PLATFORM = process.platform;
 const UID = process.getuid?.() ?? 0;
+/** The pid the fake manager reports, and therefore the one a pointer must carry. */
+const FAKE_PID = 4242;
 
 const launchdTemplate = readFileSync(join(TEMPLATES, TASKD_TEMPLATE_FILES.launchd), "utf8");
 const systemdTemplate = readFileSync(join(TEMPLATES, TASKD_TEMPLATE_FILES.systemd), "utf8");
 
 const tempDirs = [];
+const healthServers = [];
+
 function makeTempDir(prefix = "meerkat-taskpanel-guard-") {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   tempDirs.push(dir);
@@ -52,7 +79,26 @@ function makeTempDir(prefix = "meerkat-taskpanel-guard-") {
 }
 after(() => {
   for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+  for (const child of healthServers) child.kill();
 });
+
+/** Literal text as a regular expression — temp paths may hold `.` and `-`. */
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\/-]/g, "\\$&");
+}
+
+/** The plist without its XML comments — what launchd actually parses. */
+function withoutXmlComments(xml) {
+  return xml.replace(/<!--[\s\S]*?-->/g, "");
+}
+
+/** The systemd unit without its comment lines — what systemd actually parses. */
+function withoutIniComments(ini) {
+  return ini
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("#"))
+    .join("\n");
+}
 
 /** The fenced block an anchored section of a doc runs into — verbatim. */
 function fencedBlock(doc, anchor, fence) {
@@ -79,18 +125,31 @@ describe("taskd guard: the unit templates are the contract's", () => {
     assert.equal(systemdTemplate, fencedBlock("docs/scheduling.md", "#### systemd unit (Linux)", "```ini"));
   });
 
-  it("the plist is well-formed, and plutil agrees where it exists", () => {
-    assertWellFormedPlist(launchdTemplate);
+  it("the rendered plist is well-formed, and plutil agrees where it exists", () => {
+    // Rendered, not raw: `{{ENV_PLIST}}` expands to markup, so only the rendered document
+    // is a plist at all. Both shapes are checked — the operator who isolated their board
+    // (entries present) and the default install (the token expands to nothing, which must
+    // still leave a parseable `<dict>`).
+    for (const [label, env] of [
+      ["no TASKD_* set", {}],
+      ["TASKD_DATA_DIR + TASKD_RUNTIME_POINTER set", { TASKD_DATA_DIR: makeTempDir(), TASKD_RUNTIME_POINTER: join(makeTempDir(), "runtime.json") }],
+    ]) {
+      const paths = guardPaths({ prefix: makeTempDir(), env });
+      const rendered = render(launchdTemplate, unitVars(paths));
+      assert.doesNotMatch(rendered, /\{\{/, `${label}: every token is substituted`);
+      assertWellFormedPlist(rendered);
+      assert.match(rendered, new RegExp(`<string>${escapeRegExp(paths.serverEntry)}</string>`));
 
-    // plutil ships with macOS; on Linux the structural check above is the equivalent
-    // assertion the acceptance allows. Deliberately not a `skip`: a skipped case is a
-    // case nobody reads.
-    if (existsSync("/usr/bin/plutil")) {
-      const file = join(makeTempDir(), `${TASKD_LABEL}.plist`);
-      writeFileSync(file, launchdTemplate, "utf8");
-      const lint = spawnSync("/usr/bin/plutil", ["-lint", file], { encoding: "utf8" });
-      assert.equal(lint.status, 0, `${lint.stdout}${lint.stderr}`);
-      assert.match(lint.stdout, /OK/);
+      // plutil ships with macOS; on Linux the structural check above is the equivalent
+      // assertion the acceptance allows. Deliberately not a `skip`: a skipped case is a
+      // case nobody reads.
+      if (existsSync("/usr/bin/plutil")) {
+        const file = join(makeTempDir(), `${TASKD_LABEL}.plist`);
+        writeFileSync(file, rendered, "utf8");
+        const lint = spawnSync("/usr/bin/plutil", ["-lint", file], { encoding: "utf8" });
+        assert.equal(lint.status, 0, `${label}: ${lint.stdout}${lint.stderr}`);
+        assert.match(lint.stdout, /OK/);
+      }
     }
   });
 
@@ -108,7 +167,25 @@ describe("taskd guard: the unit templates are the contract's", () => {
     const args = /<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(text);
     assert.notEqual(args, null, "ProgramArguments must be an array");
     const argv = [...args[1].matchAll(/<string>(.*?)<\/string>/g)].map((m) => m[1]);
-    assert.deepEqual(argv, ["/usr/bin/env", "node", "{{SERVER_ENTRY}}"]);
+    assert.deepEqual(argv, ["{{NODE}}", "{{SERVER_ENTRY}}"]);
+  });
+
+  it("neither unit starts the server through the host's PATH (the exit-127 crash loop)", () => {
+    // The whole defect (T-20261014-052428): `/usr/bin/env node` is resolved against the
+    // supervisor's PATH — launchd's is `/usr/bin:/bin:/usr/sbin:/sbin` — so a node that
+    // lives only under nvm or Homebrew is not found, the job exits 127, and `KeepAlive`
+    // turns that into an endless restart loop. The interpreter is named outright instead.
+    // Checked on the *effective* files: both templates name `env node` in a comment, to
+    // record what they must never go back to.
+    assert.doesNotMatch(withoutXmlComments(launchdTemplate), /\/usr\/bin\/env/);
+    assert.doesNotMatch(withoutIniComments(systemdTemplate), /\/usr\/bin\/env/);
+    assert.match(withoutXmlComments(launchdTemplate), /<string>\{\{NODE\}\}<\/string>/);
+    assert.match(withoutIniComments(systemdTemplate), /^ExecStart=\{\{NODE\}\} \{\{SERVER_ENTRY\}\}$/m);
+
+    // launchd's PATH is the minimal default launchd gives a job, with node's own
+    // directory in front — so a *child* that looks `node` up by name finds it too. The
+    // token is the whole PATH, so the default cannot be dropped by accident.
+    assert.match(launchdTemplate, /<key>PATH<\/key>\s*<string>\{\{PATH\}\}<\/string>/);
   });
 
   it("the systemd unit carries the restart + back-off shape the contract fixes", () => {
@@ -117,7 +194,6 @@ describe("taskd guard: the unit templates are the contract's", () => {
     assert.match(text, /Description=Meerkat TaskPanel taskd \(board server\) guard/);
     assert.match(text, /\[Service\]/);
     assert.match(text, /Type=simple/);
-    assert.match(text, /ExecStart=\/usr\/bin\/env node \{\{SERVER_ENTRY\}\}/);
     assert.match(text, /Restart=always/);
     assert.match(text, /RestartSec=5/);
     assert.match(text, /StandardOutput=append:\{\{LOG\}\}/);
@@ -145,6 +221,9 @@ describe("taskd guard: the unit templates are the contract's", () => {
     // Both are client concerns (docs/scheduling.md § Coexisting with taskctl's lazy
     // start): a long-running guard needs a *stable* port another client can find, and
     // exporting TASKD_NO_AUTOSTART from the guard would mislead any CLI that inherited it.
+    // `TASKD_DATA_DIR` / `TASKD_RUNTIME_POINTER` are the opposite case — the unit must
+    // carry those, or it guards a board nobody installed — and they arrive through the
+    // `{{ENV_PLIST}}` / `{{ENV_SYSTEMD}}` tokens, never as literals here.
     for (const [name, text] of [["launchd", launchdTemplate], ["systemd", systemdTemplate]]) {
       assert.doesNotMatch(text, /TASKD_NO_AUTOSTART/, `${name} must not set TASKD_NO_AUTOSTART`);
       assert.doesNotMatch(text, /TASKD_PORT/, `${name} must not set TASKD_PORT`);
@@ -207,7 +286,7 @@ function assertWellFormedPlist(xml) {
 }
 
 // ---------------------------------------------------------------------------
-// 2 — rendering: absolute paths, the log directory, idempotence
+// 2 — rendering: absolute paths, the unit's own environment, idempotence
 // ---------------------------------------------------------------------------
 
 describe("taskd guard: rendering", () => {
@@ -225,58 +304,133 @@ describe("taskd guard: rendering", () => {
     }
   });
 
-  it("substitutes both placeholders, and creates the log directory launchd will not", () => {
-    const prefix = makeTempDir();
-    const dataDir = makeTempDir();
-    const env = guardEnv(prefix, dataDir, fakeManagerBin());
+  it("the interpreter is this node, absolute — not a name to be looked up", () => {
+    const paths = guardPaths({ prefix: makeTempDir(), env: {} });
+    assert.equal(paths.node, resolve(process.execPath));
+    assert.equal(paths.nodeDir, dirname(resolve(process.execPath)));
+    assert.ok(isAbsolute(paths.node));
 
-    const first = runGuardInstall(prefix, env);
+    // The PATH the plist exports is `node`'s own directory followed by launchd's
+    // documented default — so the job can find its interpreter *and* a child that
+    // looks `node` up by name still gets the same one.
+    assert.equal(unitPath(paths.nodeDir), `${paths.nodeDir}:/usr/bin:/bin:/usr/sbin:/sbin`);
+    const first = unitPath(paths.nodeDir).split(":")[0];
+    assert.equal(first, dirname(paths.node));
+  });
+
+  it("carries TASKD_DATA_DIR / TASKD_RUNTIME_POINTER only when the operator set them", () => {
+    // Unset: nothing to inject, so a default install's unit stays minimal (and stable
+    // across machines, which is what keeps re-installs byte-identical).
+    const dataDir = makeTempDir();
+    assert.deepEqual(unitEnv({ env: {} }), []);
+    assert.equal(plistEnvBlock([]), "");
+    assert.equal(systemdEnvBlock([]), "");
+
+    // Set: absolute, in a stable order, and **not** the two client-only variables.
+    const pointer = join(makeTempDir(), "runtime.json");
+    const env = { TASKD_DATA_DIR: dataDir, TASKD_RUNTIME_POINTER: pointer, TASKD_PORT: "29527", TASKD_NO_AUTOSTART: "1" };
+    assert.deepEqual(unitEnv({ env }), [
+      ["TASKD_DATA_DIR", resolve(dataDir)],
+      ["TASKD_RUNTIME_POINTER", resolve(pointer)],
+    ]);
+  });
+
+  it("escapes what both file formats give meaning to", () => {
+    // A path may legitimately hold `&`. Unescaped it makes the plist unparseable —
+    // and the escape is asserted, not assumed, because `plutil` is not on every host.
+    const plist = plistEnvBlock([["TASKD_DATA_DIR", "/tmp/a&b<c>/d"]]);
+    assert.match(plist, /<string>\/tmp\/a&amp;b&lt;c&gt;\/d<\/string>/);
+
+    // systemd splits an unquoted Environment= value on whitespace, so a path with a
+    // space has to arrive quoted or systemd rejects the whole unit.
+    assert.equal(systemdEnvBlock([["TASKD_DATA_DIR", "/tmp/board-data"]]), "Environment=TASKD_DATA_DIR=/tmp/board-data");
+    assert.equal(systemdEnvBlock([["TASKD_DATA_DIR", "/tmp/board data"]]), 'Environment=TASKD_DATA_DIR="/tmp/board data"');
+  });
+
+  it("substitutes every placeholder, and creates the log directory launchd will not", async () => {
+    const install = await readyInstall();
+
+    const first = install.run();
     assert.equal(first.status, 0, first.stderr);
 
-    const paths = guardPaths({ prefix, env });
+    const paths = guardPaths({ prefix: install.prefix, env: install.env });
     for (const file of [paths.launchdUnit, paths.systemdUnit]) {
       const text = readFileSync(file, "utf8");
       assert.doesNotMatch(text, /\{\{/, `${file} still has a template token`);
       assert.ok(text.includes(paths.serverEntry), `${file} must name the absolute server entry`);
       assert.ok(text.includes(paths.logFile), `${file} must name the absolute log file`);
+      assert.ok(text.includes(paths.node), `${file} must name the absolute interpreter`);
+      assert.ok(text.includes(paths.nodeDir), `${file} must put node's directory on PATH`);
     }
 
     // launchd will not create a missing StandardOutPath directory, so the installer
     // must — otherwise the job starts and cannot log.
-    assert.ok(statSync(join(dataDir, "logs")).isDirectory(), "the log directory must exist");
+    assert.ok(statSync(join(install.dataDir, "logs")).isDirectory(), "the log directory must exist");
   });
 
-  it("is idempotent: a re-install rewrites nothing, and does not load a second time", () => {
-    const prefix = makeTempDir();
-    const dataDir = makeTempDir();
-    const bin = fakeManagerBin();
-    const env = guardEnv(prefix, dataDir, bin);
+  it("the rendered plist runs the absolute interpreter, with an absolute PATH that has node", async () => {
+    const install = await readyInstall();
+    assert.equal(install.run().status, 0);
 
-    const first = runGuardInstall(prefix, env);
+    const paths = guardPaths({ prefix: install.prefix, env: install.env });
+    const text = readFileSync(paths.launchdUnit, "utf8");
+    assertWellFormedPlist(text);
+    assert.doesNotMatch(withoutXmlComments(text), /\/usr\/bin\/env/);
+
+    const args = /<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(text);
+    const argv = [...args[1].matchAll(/<string>(.*?)<\/string>/g)].map((m) => m[1]);
+    assert.equal(argv.length, 2);
+    assert.equal(argv[0], resolve(process.execPath), "the interpreter is the node that rendered it");
+    assert.ok(isAbsolute(argv[0]) && existsSync(argv[0]), `${argv[0]} must be an absolute, existing node`);
+    assert.match(basename(argv[0]), /^node/);
+    assert.equal(argv[1], paths.serverEntry);
+
+    const exported = /<key>PATH<\/key>\s*<string>(.*?)<\/string>/.exec(text)?.[1];
+    assert.equal(exported, `${paths.nodeDir}:/usr/bin:/bin:/usr/sbin:/sbin`);
+
+    // The operator's data directory is carried into the unit, or the guard would serve
+    // a different board than the one that was installed.
+    assert.match(text, new RegExp(`<key>TASKD_DATA_DIR</key>\\s*<string>${escapeRegExp(paths.dataDir)}</string>`));
+  });
+
+  it("the rendered systemd unit runs the absolute interpreter and carries the environment", async () => {
+    const install = await readyInstall();
+    assert.equal(install.run().status, 0);
+
+    const paths = guardPaths({ prefix: install.prefix, env: install.env });
+    const text = readFileSync(paths.systemdUnit, "utf8");
+    assert.doesNotMatch(text, /\{\{/);
+    assert.match(text, new RegExp(`^ExecStart=${escapeRegExp(resolve(process.execPath))} `, "m"));
+    assert.match(text, new RegExp(`^Environment=TASKD_DATA_DIR=${escapeRegExp(paths.dataDir)}$`, "m"));
+    assert.match(text, new RegExp(`^Environment=TASKD_RUNTIME_POINTER=`, "m"));
+    assert.doesNotMatch(text, /TASKD_NO_AUTOSTART|TASKD_PORT/);
+  });
+
+  it("is idempotent: a re-install rewrites nothing, and does not load a second time", async () => {
+    const install = await readyInstall();
+
+    const first = install.run();
     assert.equal(first.status, 0, first.stderr);
-    const paths = guardPaths({ prefix, env });
+    const paths = guardPaths({ prefix: install.prefix, env: install.env });
     const before = { plist: readFileSync(paths.launchdUnit, "utf8"), unit: readFileSync(paths.systemdUnit, "utf8") };
-    const loadsBefore = countLoads(bin);
+    const loadsBefore = countLoads(install.bin);
 
-    const again = runGuardInstall(prefix, env);
+    const again = install.run();
     assert.equal(again.status, 0, again.stderr);
     assert.match(again.stdout, /taskd guard: already loaded \(no change\)/);
     assert.equal(readFileSync(paths.launchdUnit, "utf8"), before.plist, "the plist is not rewritten");
     assert.equal(readFileSync(paths.systemdUnit, "utf8"), before.unit, "the unit is not rewritten");
-    assert.equal(countLoads(bin), loadsBefore, "the guard is not loaded a second time");
+    assert.equal(countLoads(install.bin), loadsBefore, "the guard is not loaded a second time");
   });
 
-  it("--force is the only way to refresh a unit that drifted, and a stale unit is never loaded", () => {
-    const prefix = makeTempDir();
-    const dataDir = makeTempDir();
-    const bin = fakeManagerBin();
-    const env = guardEnv(prefix, dataDir, bin);
-    assert.equal(runGuardInstall(prefix, env).status, 0);
-    const loadsAfterInstall = countLoads(bin);
+  it("--force is the only way to refresh a unit that drifted, and a stale unit is never loaded", async () => {
+    const install = await readyInstall();
+    assert.equal(install.run().status, 0);
+    const loadsAfterInstall = countLoads(install.bin);
 
     // Drift the unit *this platform loads* — the plist on macOS, the systemd unit on
     // Linux. The other one is written but never loaded, so it cannot make this case pass.
-    const paths = guardPaths({ prefix, env });
+    const paths = guardPaths({ prefix: install.prefix, env: install.env });
     const unitPath = activeUnit(paths);
     const drift = PLATFORM === "darwin" ? "<plist/>\n" : "# drifted\n";
     const restored = PLATFORM === "darwin" ? /KeepAlive/ : /Restart=always/;
@@ -284,13 +438,13 @@ describe("taskd guard: rendering", () => {
 
     // Merge, never clobber — and do *not* load what this run did not write: a stale
     // unit is typically a previous install pointing at a checkout that has moved.
-    const stale = runGuardInstall(prefix, env);
+    const stale = install.run();
     assert.equal(stale.status, 0, stale.stderr);
     assert.equal(readFileSync(unitPath, "utf8"), drift, "merge, never clobber");
     assert.match(stale.stdout, /taskd guard: not loaded — .*re-run with --force/);
-    assert.equal(countLoads(bin), loadsAfterInstall, "a unit this run did not write is not loaded");
+    assert.equal(countLoads(install.bin), loadsAfterInstall, "a unit this run did not write is not loaded");
 
-    const forced = runGuardInstall(prefix, env, ["--force"]);
+    const forced = install.run(["--force"]);
     assert.equal(forced.status, 0, forced.stderr);
     assert.match(readFileSync(unitPath, "utf8"), restored, "--force refreshes the unit");
     // The supervisor already holds the job, so the refreshed unit is *not* re-loaded —
@@ -339,26 +493,148 @@ describe("taskd guard: what makes the unit live", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4 — install.sh: written once, loaded once, and honest when it cannot load
+// 4 — readiness: `enabled` means `/health` answers, not "a pid exists"
+// ---------------------------------------------------------------------------
+
+describe("taskd guard: readiness", () => {
+  const pointer = (over = {}) => ({ url: "http://127.0.0.1:9527", pid: FAKE_PID, dataDir: "/data", ...over });
+
+  it("a pointer is ours when the pid and the data directory agree", () => {
+    assert.equal(isOurBoard(pointer(), { pid: FAKE_PID, dataDir: "/data" }), true);
+    // A *different* pid is a different board: the stale pointer the old daemon left, or
+    // another board's address entirely. Neither is this unit's readiness.
+    assert.equal(isOurBoard(pointer({ pid: 12 }), { pid: FAKE_PID, dataDir: "/data" }), false);
+    assert.equal(isOurBoard(pointer({ dataDir: "/other" }), { pid: FAKE_PID, dataDir: "/data" }), false);
+    // A pointer that names no owner protects nobody, so an absent pid/dataDir is not a
+    // mismatch — the `/health` knock is what decides.
+    assert.equal(isOurBoard({ url: "http://x" }, { pid: FAKE_PID, dataDir: "/data" }), true);
+    assert.equal(isOurBoard({ pid: FAKE_PID }, { pid: FAKE_PID }), false, "no url, nothing to knock on");
+    assert.equal(isOurBoard(null, {}), false);
+  });
+
+  it("waits for the pointer to appear, then for /health — and the pid must match", async () => {
+    const calls = [];
+    const probe = async (url) => {
+      calls.push(url);
+      return url === "http://127.0.0.1:9527";
+    };
+    let reads = 0;
+    const readPointerFn = () => {
+      reads += 1;
+      if (reads === 1) return null; // the server has not written it yet
+      if (reads === 2) return pointer({ pid: 999 }); // someone else's, still starting
+      return pointer();
+    };
+
+    const result = await waitForHealth({
+      pointers: ["/p/runtime.json"],
+      dataDir: "/data",
+      pid: FAKE_PID,
+      timeoutMs: 1_000,
+      pollMs: 1,
+      probe,
+      readPointerFn,
+      sleep: async () => {},
+    });
+
+    assert.deepEqual(result, { ready: true, url: "http://127.0.0.1:9527", pid: FAKE_PID, path: "/p/runtime.json" });
+    assert.deepEqual(calls, ["http://127.0.0.1:9527"], "the foreign pointer is never knocked on");
+    assert.equal(reads, 3);
+  });
+
+  it("asks the second pointer too — a board beside its own data directory is still ours", async () => {
+    const wanted = { url: "http://127.0.0.1:9600", pid: FAKE_PID, dataDir: "/data" };
+    const result = await waitForHealth({
+      pointers: ["/machine-wide.json", "/data/runtime.json"],
+      dataDir: "/data",
+      pid: FAKE_PID,
+      timeoutMs: 1_000,
+      pollMs: 1,
+      probe: async () => true,
+      readPointerFn: ({ path }) => (path === "/data/runtime.json" ? wanted : null),
+      sleep: async () => {},
+    });
+    assert.equal(result.ready, true);
+    assert.equal(result.path, "/data/runtime.json");
+  });
+
+  it("times out honestly when nothing ever answers", async () => {
+    let clock = 0;
+    const result = await waitForHealth({
+      pointers: ["/p/runtime.json"],
+      pid: FAKE_PID,
+      timeoutMs: 30,
+      pollMs: 10,
+      probe: async () => false,
+      readPointerFn: () => pointer(),
+      now: () => clock,
+      sleep: async (ms) => {
+        clock += ms;
+      },
+    });
+    assert.equal(result.ready, false);
+    // The URL it last saw is reported: "loaded, and here is the address that did not
+    // answer" is what an operator can act on.
+    assert.equal(result.url, "http://127.0.0.1:9527");
+  });
+
+  it("never throws when a probe blows up", async () => {
+    // A probe that rejects would otherwise take the whole install down with it — and an
+    // install that dies mid-way is worse than one that reports an unready guard.
+    const result = await waitForHealth({
+      pointers: ["/p/runtime.json"],
+      pid: FAKE_PID,
+      timeoutMs: 0,
+      probe: async () => {
+        throw new Error("connection reset");
+      },
+      readPointerFn: () => pointer(),
+      sleep: async () => {},
+    });
+    assert.equal(result.ready, false);
+    assert.equal(result.url, "http://127.0.0.1:9527", "the address that failed is still reported");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5 — install.sh: written once, loaded once, and honest when it cannot serve
 // ---------------------------------------------------------------------------
 
 describe("install.sh: the taskd guard", () => {
-  it("writes both units and loads this platform's one, reporting the label and pid", () => {
-    const prefix = makeTempDir();
-    const dataDir = makeTempDir();
-    const bin = fakeManagerBin();
+  it("writes both units and loads this platform's one, reporting the label and pid", async () => {
+    const install = await readyInstall();
 
-    const run = runGuardInstall(prefix, guardEnv(prefix, dataDir, bin));
+    const run = install.run();
     assert.equal(run.status, 0, `${run.stderr}\n${run.stdout}`);
-    assert.match(run.stdout, new RegExp(`taskd guard: enabled \\(${TASKD_LABEL}, pid 4242\\)`));
+    assert.match(run.stdout, new RegExp(`taskd guard: enabled \\(${TASKD_LABEL}, pid ${FAKE_PID}\\)`));
     assert.match(run.stdout, /taskd guard: to stop and remove it:/);
 
-    const paths = guardPaths({ prefix, env: guardEnv(prefix, dataDir, bin) });
+    const paths = guardPaths({ prefix: install.prefix, env: install.env });
     for (const file of [paths.launchdUnit, paths.systemdUnit]) {
       assert.ok(existsSync(file), `install must write ${file}`);
     }
-    assert.equal(countLoads(bin), 1, "exactly one load");
-    assert.ok(readFileSync(bin.log, "utf8").includes(expectedLoadLine(paths)), "loaded the way the contract says");
+    assert.equal(countLoads(install.bin), 1, "exactly one load");
+    assert.ok(readFileSync(install.bin.log, "utf8").includes(expectedLoadLine(paths)), "loaded the way the contract says");
+  });
+
+  it("reports a loaded-but-not-serving unit as loaded, never as enabled", async () => {
+    // The defect this hardening closes: `launchctl print` answers a pid for a job that
+    // has already died (the exit-127 loop), and the old report called that `enabled`.
+    // With nothing writing a pointer, no board can answer /health — so the honest line
+    // is `loaded`, with the log to read, and `enabled` must not appear at all.
+    const prefix = makeTempDir();
+    const dataDir = makeTempDir();
+    const bin = fakeManagerBin();
+    const env = guardEnv(prefix, dataDir, bin);
+
+    const run = runGuardInstall(prefix, env);
+    assert.equal(run.status, 0, `${run.stderr}\n${run.stdout}`);
+    assert.match(run.stdout, new RegExp(`taskd guard: loaded \\(${TASKD_LABEL}, pid ${FAKE_PID}\\)`));
+    assert.match(run.stdout, /\/health did not answer within \d+ms — read .*logs[/\\]taskd\.log/);
+    assert.doesNotMatch(run.stdout, /taskd guard: enabled/);
+    // Still a real load, and still the undo commands: the unit *is* installed.
+    assert.equal(countLoads(bin), 1);
+    assert.match(run.stdout, /taskd guard: to stop and remove it:/);
   });
 
   it("--dry-run changes nothing and says so", () => {
@@ -424,6 +700,98 @@ describe("install.sh: the taskd guard", () => {
 });
 
 // ---------------------------------------------------------------------------
+// 6 — installGuard in-process: the readiness gate without a real supervisor
+// ---------------------------------------------------------------------------
+
+describe("taskd guard: the readiness gate", () => {
+  /** A `spawnSync`-shaped fake of the platform's service manager. */
+  function fakeRunner(options = {}) {
+    const state = { loaded: Boolean(options.already), loads: 0 };
+    return {
+      state,
+      run(command, args) {
+        const line = `${command} ${args.join(" ")}`;
+        if (options.fail) return { status: 1, stdout: "", stderr: "refusing" };
+        if (/\b(bootstrap|load|enable)\b/.test(line)) {
+          state.loads += 1;
+          state.loaded = true;
+          return { status: 0, stdout: "", stderr: "" };
+        }
+        if (command === "launchctl") {
+          return state.loaded ? { status: 0, stdout: `\tpid = ${FAKE_PID}\n`, stderr: "" } : { status: 1, stdout: "", stderr: "not found" };
+        }
+        if (args.includes("is-active")) return state.loaded ? { status: 0, stdout: "active\n", stderr: "" } : { status: 3, stdout: "inactive\n", stderr: "" };
+        return { status: 0, stdout: `${state.loaded ? FAKE_PID : 0}\n`, stderr: "" };
+      },
+    };
+  }
+
+  /** An install whose guard runs in-process, so the probe and the clock are ours. */
+  async function guardRun({ ready = true, healthWaitMs = 200 } = {}) {
+    const prefix = makeTempDir();
+    const dataDir = makeTempDir();
+    const lines = [];
+    const runner = fakeRunner();
+    const report = await installGuard({
+      prefix,
+      platform: "darwin",
+      uid: 501,
+      home: prefix,
+      env: { ...process.env, TASKD_DATA_DIR: dataDir },
+      runner: runner.run,
+      log: (line) => lines.push(line),
+      pidWaitMs: 20,
+      healthWaitMs,
+      healthPollMs: 5,
+      readPointerFn: () => ({ url: "http://127.0.0.1:9527", pid: FAKE_PID, dataDir }),
+      healthProbe: async () => ready,
+    });
+    return { report, lines, runner, prefix, dataDir };
+  }
+
+  it("reports enabled, with the url, when the board answers /health", async () => {
+    const { report, lines, runner } = await guardRun({ ready: true });
+    assert.equal(report.state, "enabled");
+    assert.equal(report.ready, true);
+    assert.equal(report.url, "http://127.0.0.1:9527");
+    assert.equal(report.pid, FAKE_PID);
+    assert.equal(runner.state.loads, 1);
+    assert.ok(lines.some((line) => line === `taskd guard: enabled (${TASKD_LABEL}, pid ${FAKE_PID})`), lines.join("\n"));
+  });
+
+  it("reports loaded, unready, when the supervisor answers but /health does not", async () => {
+    const { report, lines } = await guardRun({ ready: false });
+    assert.equal(report.state, "unready");
+    assert.equal(report.ready, false);
+    assert.equal(report.pid, FAKE_PID, "the pid is still reported — that much is true");
+    assert.ok(!lines.includes(`taskd guard: enabled (${TASKD_LABEL}, pid ${FAKE_PID})`), lines.join("\n"));
+    assert.ok(lines.some((line) => /^taskd guard: loaded \(.*\); \/health did not answer/.test(line)), lines.join("\n"));
+  });
+
+  it("does not claim the guard is live when the supervisor refuses to load it", async () => {
+    const prefix = makeTempDir();
+    const dataDir = makeTempDir();
+    const lines = [];
+    const runner = fakeRunner({ fail: true });
+    const report = await installGuard({
+      prefix,
+      platform: "darwin",
+      uid: 501,
+      home: prefix,
+      env: { ...process.env, TASKD_DATA_DIR: dataDir },
+      runner: runner.run,
+      log: (line) => lines.push(line),
+      pidWaitMs: 20,
+      healthWaitMs: 20,
+      healthPollMs: 5,
+    });
+    assert.equal(report.state, "manual");
+    assert.equal(report.ready, false);
+    assert.doesNotMatch(lines.join("\n"), /enabled/);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
 
@@ -436,18 +804,74 @@ function runInstall(args, env) {
   return spawnSync("bash", [join(ROOT, "install.sh"), ...args], { cwd: ROOT, encoding: "utf8", env });
 }
 
-/** The environment a guard install runs under: a fake manager on PATH, a private log. */
+/**
+ * The environment a guard install runs under: a fake manager on PATH, a private log,
+ * and — because the guard now reads the board's real address — an isolated runtime
+ * pointer inside the throwaway data directory.
+ */
 function guardEnv(prefix, dataDir, bin, extra = {}) {
   return {
     ...process.env,
     MEERKAT_TASKPANEL_TARGET_HOME: prefix,
     HOME: prefix,
     TASKD_DATA_DIR: dataDir,
+    TASKD_RUNTIME_POINTER: join(dataDir, "runtime.json"),
     FAKE_STATE: bin.state,
     FAKE_LOG: bin.log,
     PATH: `${bin.dir}:${process.env.PATH}`,
     ...extra,
   };
+}
+
+/**
+ * An isolated install that can actually become **ready**: the fake manager, a throwaway
+ * prefix and data directory, and a live loopback `/health` server whose address is
+ * written into the pointer the guard reads (with the pid the fake manager reports).
+ *
+ * Call it from an `async` test: the server is a child process because `spawnSync` — how
+ * the installer is run — blocks this process's event loop, so an in-process server could
+ * never answer the guard's probe.
+ */
+async function readyInstall(extra = {}) {
+  const prefix = makeTempDir();
+  const dataDir = makeTempDir();
+  const bin = fakeManagerBin();
+  const server = await startHealthServer();
+  writeFileSync(join(dataDir, "runtime.json"), `${JSON.stringify({ url: server.url, pid: FAKE_PID, dataDir })}\n`, "utf8");
+
+  const env = guardEnv(prefix, dataDir, bin, extra);
+  return { prefix, dataDir, bin, server, env, run: (argv = []) => runGuardInstall(prefix, env, argv) };
+}
+
+/** A minimal `/health` server in its own process; prints its port, then serves. */
+async function startHealthServer() {
+  const script = `
+    const http = require("node:http");
+    const server = http.createServer((req, res) => {
+      if (req.url === "/health") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true, data: { status: "ok" } }));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    server.listen(0, "127.0.0.1", () => process.stdout.write(String(server.address().port) + "\\n"));
+  `;
+
+  const child = spawn(process.execPath, ["-e", script], { stdio: ["ignore", "pipe", "inherit"] });
+  healthServers.push(child);
+
+  const port = await new Promise((done, fail) => {
+    let buffer = "";
+    child.stdout.on("data", (chunk) => {
+      buffer += chunk;
+      const [first] = buffer.split("\n");
+      if (/^\d+$/.test(first.trim())) done(Number(first.trim()));
+    });
+    child.on("exit", (code) => fail(new Error(`the /health server exited early (${code})`)));
+  });
+  return { port, url: `http://127.0.0.1:${port}`, stop: () => child.kill() };
 }
 
 /**

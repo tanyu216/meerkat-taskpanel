@@ -12,6 +12,16 @@
 #   mkdir -p ~/.config/systemd/user
 #   cp <prefix>/taskpanel/scheduling/systemd/meerkat-taskpanel-taskd.service ~/.config/systemd/user/
 #   systemctl --user enable --now meerkat-taskpanel-taskd.service
+#
+# ExecStart names the ABSOLUTE node that rendered this unit — never
+# `/usr/bin/env node`, which systemd would resolve against the *service's* PATH
+# and which fails outright on a machine whose node lives only under nvm or
+# Homebrew. The path is version-pinned: after a node upgrade, run
+# `install.sh --force` to refresh this unit.
+#
+# The Environment= line(s) at the end of [Service] carry the operator's
+# TASKD_DATA_DIR / TASKD_RUNTIME_POINTER when they set either at install time, so
+# the guard and the CLI resolve the same board. `install.sh` renders them.
 [Unit]
 Description=Meerkat TaskPanel taskd (board server) guard
 StartLimitIntervalSec=60
@@ -19,11 +29,11 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/env node {{SERVER_ENTRY}}
+ExecStart={{NODE}} {{SERVER_ENTRY}}
 Restart=always
 RestartSec=5
 StandardOutput=append:{{LOG}}
 StandardError=append:{{LOG}}
-
+{{ENV_SYSTEMD}}
 [Install]
 WantedBy=default.target
