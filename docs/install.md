@@ -122,6 +122,70 @@ systemctl --user enable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-pat
 crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 ```
 
+### The taskd guard (enabled by default)
+
+The board server `taskd` (`src/server/main.mjs`) is kept alive by an **OS-level guard**,
+and — alone among the units `install.sh` writes — it is **enabled at install time**.
+`taskctl` lazy-starts `taskd` only when a CLI call needs it, so an idle board whose
+server dies stays down until the next call (see
+[`scheduling.md § The taskd guard (keepalive)`](scheduling.md#the-taskd-guard-keepalive));
+the guard closes that gap by restarting the server after any exit.
+
+This is a deliberate, **narrow exception** to the rule that the installer never starts
+a daemon for you (the [Scheduling units](#scheduling-units-claude-codex-pi) above). It
+applies **only to the `taskd` service guard**: the `meerkat-loop` supervisor's units are
+still written and left for you to load, and OpenClaw still gets none.
+
+**Where it lands** — a neutral directory, deliberately *not* the loop units'
+`<host>/scheduling/`, so re-installing a host's loop units never touches it:
+
+```text
+<prefix>/taskpanel/scheduling/launchd/com.meerkat-taskpanel.taskd.plist
+<prefix>/taskpanel/scheduling/systemd/meerkat-taskpanel-taskd.service
+```
+
+`<prefix>` is `--prefix` (default `$HOME`). There is **one guard per machine**, not one
+per host — the label and unit name carry no agent or host segment.
+
+**What install does:** it writes the unit and loads it immediately — no question, no
+opt-in flag:
+
+```bash
+# macOS
+launchctl bootstrap gui/$UID <prefix>/taskpanel/scheduling/launchd/com.meerkat-taskpanel.taskd.plist
+# Linux (user unit)
+mkdir -p ~/.config/systemd/user
+cp <prefix>/taskpanel/scheduling/systemd/meerkat-taskpanel-taskd.service ~/.config/systemd/user/
+systemctl --user enable --now meerkat-taskpanel-taskd.service
+```
+
+The install ends with a report line, followed by the commands that undo it:
+
+```text
+taskd guard: enabled (com.meerkat-taskpanel.taskd, pid …)
+```
+
+**Stopping / uninstalling it.** The guard restarts the server after *any* exit, so a
+plain `kill` is not enough — use the supervisor's own stop:
+
+```bash
+# macOS
+launchctl bootout gui/$UID/com.meerkat-taskpanel.taskd
+rm <prefix>/taskpanel/scheduling/launchd/com.meerkat-taskpanel.taskd.plist
+# Linux
+systemctl --user disable --now meerkat-taskpanel-taskd.service
+rm ~/.config/systemd/user/meerkat-taskpanel-taskd.service
+```
+
+**Internal bypasses** (not user options): `--dry-run` writes and loads nothing and
+reports `taskd guard: skipped (dry-run)`; `MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE=1`
+skips the guard and is **for tests only**. `--no-automation` does **not** touch the
+guard — that flag governs the host supervisor's automation, not the board server.
+
+The unit files in full, the restart and back-off semantics, and how the guard coexists
+with `taskctl`'s lazy start are in
+[`scheduling.md § The taskd guard (keepalive)`](scheduling.md#the-taskd-guard-keepalive).
+
 ### The claim-unassigned question
 
 When stdin is a TTY and no flag was given, `install.sh` asks once:
@@ -161,6 +225,13 @@ install.sh [--target claude|openclaw|codex|pi|all] [--prefix <home>]
 | `--force` | The **only** way to overwrite. Without it, an existing destination is left untouched (merge, never clobber) and the installer prints a `left unchanged — use --force to overwrite` notice, so a re-run is safe, idempotent, and exits 0. With it, managed files and managed config keys are re-rendered from the current flags. |
 | `--dry-run` | Print every path that would be written/changed and change nothing. |
 | `--skip-node-check` | Skip the Node version check (see below). |
+
+**The `taskd` guard is enabled by default and has no user flag.** Every install writes
+the `taskd` keepalive unit and loads it — there is no switch to turn it on and no prompt
+to answer (see [The taskd guard](#the-taskd-guard-enabled-by-default)). The only
+bypasses are `--dry-run` and, **for tests only**,
+`MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE=1`. This is the one exception to "write the unit,
+print the load command, never start a daemon"; the `meerkat-loop` units keep that rule.
 
 Before dispatching, `install.sh` requires **Node >= 22** — the engine stores to SQLite
 through the built-in `node:sqlite` module, which the 22.x line is the first to ship. A
