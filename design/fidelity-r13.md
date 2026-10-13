@@ -560,6 +560,8 @@ if (ok && byAssignee !== "all") {
 
 **原型纯度门禁**（0 命中）：`fetch(` / `XMLHttpRequest` / `axios` / `apiFetch` / `idtoken` / `access_token` / `localStorage` / `sessionStorage` / `/api/v[0-9]` —— `design/prototype/**` 本轮**未新增任何命中**（改动只删除与改写注释，未引入新语句）。
 
+**一处顺带对齐（实测发现，非本轮改动）**：`design/BLOCKS.md` 有两处把目录规模写成 **280**（文首摘要行与 §i18n 段的「**280 keys per**」），而 `design/prototype/app.js` 在 R13 seg2 时是 **281** —— 即 seg2 的「文档同步」漏了这两行，且**无任何测试钉住它**（唯一被 `test/web/blocks.contract` 复测的是 `design/prototype/README.md` 的那一句，故 seg2 的这处漂移不会被发现）。本轮把 `app.js` 减回 **280** 后，这两行**自动重新成立**，无需改动（`fidelity-r13.md` §10）。这是一次**被动对齐**，不是本轮完成的同步项；若将来再加键，这两行会再次静默漂移。
+
 **宿主测试 A/B（同一命令两遍，同一脚本、同一 reporter）**：`node --test "test/web/**/*.test.mjs"` 在 **基线 `02176bb`**（独立 detached worktree，`git worktree add --detach <sha>`）与 **本卡提交** 各跑一遍。读数：基线 **227 tests / 226 pass / 0 fail / 1 skip**；本卡提交 **227 / 221 / 5 fail / 1 skip**。**新增红 5 条、消除 0 条**，逐条见 §10.4。归因**只**落在镜像面：本卡 `git diff --name-only -- web/ test/ src/ server/` 为空，故这 5 条不可能是本卡代码所致，而是「卡要求的零实现」与「镜像随事实源滞后」两件事的必然交汇（§10.6 O-3）。原始输出：`evidence/host-web-{base,mine-only}.txt`。
 
 ### 10.6 未决 / 待 Terry 确认
