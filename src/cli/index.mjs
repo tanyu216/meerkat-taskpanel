@@ -143,7 +143,9 @@ export async function run(argv, io) {
     // still say which of the four sources was in play. It costs nothing —
     // `--url`/`$TASKD_TOKEN`/the token file do not depend on the board being up,
     // and a board this process started itself is on loopback, which needs no
-    // token at all.
+    // token at all. The pointer is read exactly the way `ensureBoard` reads it
+    // (data-directory fallback included, R1), so the token belongs to whichever
+    // board answers.
     const { token, source } = resolveToken({
       flag: parsed.flags.token,
       env,
