@@ -142,13 +142,12 @@ die() {
 # install: the host skills are installed either way, and the operator gets the one
 # command that finishes the job. Never fatal, so it cannot mask a host failure.
 install_taskd_guard() {
-  # Automation off means this guard is off too, whichever way it was said: the flag, or
-  # the environment — `MEERKAT_TASKPANEL_NO_AUTOMATION`, or the pre-rename
-  # `TASKPANEL_NO_AUTOMATION` that `_common.sh` still normalises. `=1` is the same test
-  # the sibling flags in this file use; a value that is not `1` is not a bypass.
-  if [ "${NO_AUTOMATION:-}" = "1" ] ||
-    [ "${MEERKAT_TASKPANEL_NO_AUTOMATION:-}" = "1" ] ||
-    [ "${TASKPANEL_NO_AUTOMATION:-}" = "1" ]; then
+  # Automation off means this guard is off too, whichever way it was said. `NO_AUTOMATION`
+  # is already normalised from the flag or `MEERKAT_TASKPANEL_NO_AUTOMATION` above, so one
+  # test covers both spellings of the documented bypass; `TASKPANEL_NO_AUTOMATION` is the
+  # pre-rename alias `_common.sh` still honours for the hosts. `=1` is the same test
+  # `codex.sh` uses — a value that is not `1` is not a bypass.
+  if [ "${NO_AUTOMATION:-}" = "1" ] || [ "${TASKPANEL_NO_AUTOMATION:-}" = "1" ]; then
     echo "taskd guard: skipped (--no-automation)"
     return 0
   fi
@@ -295,6 +294,12 @@ IFS="$OLD_IFS"
 # --prefix wins; otherwise honour an inherited MEERKAT_TASKPANEL_TARGET_HOME; else $HOME.
 TARGET_HOME="${PREFIX_HOME:-${MEERKAT_TASKPANEL_TARGET_HOME:-$HOME}}"
 DRY_RUN="${DRY_RUN:-${MEERKAT_TASKPANEL_DRY_RUN:-}}"
+# Same for --no-automation: the flag, else the inherited environment. Without this the
+# forwarding below would hand each host installer an *empty* MEERKAT_TASKPANEL_NO_AUTOMATION
+# and silently overwrite the one the caller set, so the documented environment form of the
+# bypass would skip nothing. (The pre-rename TASKPANEL_NO_AUTOMATION needs no line here:
+# `_common.sh` still normalises it inside each host installer.)
+NO_AUTOMATION="${NO_AUTOMATION:-${MEERKAT_TASKPANEL_NO_AUTOMATION:-}}"
 
 # Resolve the "allow claiming unassigned tasks?" policy (per-host config default).
 # An explicit flag wins; else the environment; else ask on a TTY (default yes) —
