@@ -156,11 +156,17 @@ export function enablePlan(options) {
  * Run one command, reporting a missing binary the same way as a non-zero exit
  * (both mean "this environment cannot load the unit"), never as a throw.
  *
- * @param {{command: string, args: string[]}} step
+ * `step.input` (optional) is fed to the command's stdin — `crontab -`, in
+ * `supervisor.mjs` next door, reads its new table that way. Shared from here so
+ * there is one implementation of "run a step and report what happened".
+ *
+ * @param {{command: string, args: string[], input?: string}} step
  * @param {typeof spawnSync} [runner]
  */
 export function runStep(step, runner = spawnSync) {
-  const result = runner(step.command, step.args, { encoding: "utf8" });
+  const options = { encoding: "utf8" };
+  if (step.input !== undefined) options.input = step.input;
+  const result = runner(step.command, step.args, options);
   return {
     ok: !result.error && result.status === 0,
     status: result.status ?? null,
