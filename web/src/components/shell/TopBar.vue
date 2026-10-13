@@ -50,8 +50,14 @@ function switchProject(id, event) {
            `--color-primary` (the design's `--color-td-accent`), so the mark
            follows the active theme with no second file. The eyes and mouth are
            cut as negative space by the mask below; the watch signal stays
-           outside it, so the sentinel on duty is always solid. -->
-      <svg class="size-[18px] shrink-0 self-center" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+           outside it, so the sentinel on duty is always solid.
+
+           R17 — the 18px size comes from the design's own `td-logo` rather than
+           the `size-[18px] shrink-0 self-center` utility trio, which stated the
+           same three numbers. One mark vocabulary across the app: the top bar's
+           mark and the four empty states' all read a `.td-logo*` class. See the
+           ported pair in `web/src/styles/app.css`. -->
+      <svg class="td-logo" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
         <defs>
           <mask id="face-knockout-a-top" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
             <rect x="0" y="0" width="32" height="32" fill="#FFFFFF" />

@@ -148,9 +148,62 @@ function onRow(event, row) {
 
     <!-- B27.3 · the empty state. It is *resident* and mutually exclusive with the
          list by the `hidden` attribute, never by a `v-if` — the resting document
-         carries it, which is what makes it machine-checkable (B26's own reading). -->
-    <div class="td-empty td-waiting-empty" data-waiting-empty :hidden="!isEmpty">
+         carries it, which is what makes it machine-checkable (B26's own reading).
+
+         R17 — it now reads like the other two: the brand mark B12 opens an empty
+         board with, the `-lg` box, the title **and** a hint. The queue used to
+         stand on its one line alone, which left the reader knowing nothing was
+         owed but not where owed work lands; `waiting.empty.hint` is the second
+         line B12's own two-part state gave it. No button: this view has no filter
+         to clear (§30.1), so there is nothing a control here could do. -->
+    <div class="td-empty td-empty-lg td-waiting-empty" data-waiting-empty :hidden="!isEmpty">
+      <!-- The brand mark stands in for a generic empty glyph. Its two lead
+           meerkats drop to `--brand-text-3` (the design's `--color-td-ink-3`) so
+           the on-duty sentinel and its watch signal stay the only lit elements on
+           the surface. Its own face-mask id keeps the document's mask ids
+           unique — the board's empty state, the top bar's mark and the activity
+           view's pair are all resident at the same time. -->
+      <svg class="td-logo td-logo-lg" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+        <defs>
+          <mask id="face-knockout-d-lg" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+            <rect x="0" y="0" width="32" height="32" fill="#FFFFFF" />
+            <g fill="#000000">
+              <circle cx="6.4" cy="20" r="0.42" />
+              <circle cx="8" cy="20" r="0.42" />
+              <rect x="6.84" y="21.05" width="0.72" height="0.2" rx="0.1" />
+              <circle cx="15.2" cy="14.8" r="0.42" />
+              <circle cx="16.8" cy="14.8" r="0.42" />
+              <rect x="15.64" y="15.85" width="0.72" height="0.2" rx="0.1" />
+              <circle cx="24" cy="12" r="0.42" />
+              <circle cx="25.6" cy="12" r="0.42" />
+              <rect x="24.44" y="13.05" width="0.72" height="0.2" rx="0.1" />
+            </g>
+          </mask>
+        </defs>
+        <g mask="url(#face-knockout-d-lg)">
+          <g fill="var(--brand-text-3)">
+            <rect x="4.6" y="17.6" width="5.2" height="9.4" rx="2.6" />
+            <circle cx="7.2" cy="20.2" r="2.6" />
+            <circle cx="4.8" cy="19.3" r="1.2" />
+            <circle cx="9.6" cy="19.3" r="1.2" />
+          </g>
+          <g fill="var(--brand-text-3)">
+            <rect x="13.4" y="12.4" width="5.2" height="14.6" rx="2.6" />
+            <circle cx="16" cy="15" r="2.6" />
+            <circle cx="13.6" cy="14.1" r="1.2" />
+            <circle cx="18.4" cy="14.1" r="1.2" />
+          </g>
+          <g fill="var(--color-primary)">
+            <rect x="22.2" y="9.6" width="5.2" height="17.4" rx="2.6" />
+            <circle cx="24.8" cy="12.2" r="2.6" />
+            <circle cx="22.4" cy="11.3" r="1.2" />
+            <circle cx="27.2" cy="11.3" r="1.2" />
+          </g>
+        </g>
+        <circle cx="24.8" cy="3.4" r="2.1" fill="var(--color-primary)" />
+      </svg>
       <span class="td-empty-title" data-i18n="waiting.empty">{{ $t("waiting.empty") }}</span>
+      <span class="td-empty-hint" data-i18n="waiting.empty.hint">{{ $t("waiting.empty.hint") }}</span>
     </div>
   </section>
 </template>
