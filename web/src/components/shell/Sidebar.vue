@@ -29,7 +29,6 @@ import {
 import { unreadCount as activityUnreadCount } from "../../stores/activity.js";
 import { navigate } from "../../stores/route.js";
 import { view } from "../../stores/ui.js";
-import { initialsOf } from "../../lib/monogram.js";
 
 import SidebarFooter from "./SidebarFooter.vue";
 
@@ -52,7 +51,17 @@ const projects = computed(() =>
   board.projects.map((project, index) => ({
     id: project.id,
     name: project.name,
-    initials: initialsOf(project.name),
+    // C-RAIL-1 · the rail chip is the project's **effective prefix**, read off
+    // the wire (`projectToWire` → `prefix`), rendered verbatim. It is *not*
+    // derived here: the client has no copy of `identifierPrefix` and cannot
+    // reproduce the legacy fallback (`identifierPrefix(id)`) that numbers every
+    // project created before the prefix slot existed, so a client-side
+    // derivation would blank the chip for exactly those projects. One
+    // derivation, server-side — the same value the cards are numbered with, so
+    // `TD-0001` on the board and `TD` in the rail are one property, not two
+    // (C-RAIL-1 §3.1 M1/M2). Consequently nothing in `web/src/**` uppercases or
+    // folds this string.
+    prefix: project.prefix,
     // The badge is the project's **total** task count, served by `/projects`
     // (`task_count`). It is deliberately not derived from `board.tasks` — that
     // array holds only the *current* project's tasks, so reading `.length` here
@@ -188,7 +197,18 @@ function onAssignee(name) {
           <!-- The prefix monogram is the rail's stand-in for the name, so it is
                desktop-hidden and rail-visible — one element, two faces
                (BLOCKS.md B03: "prefix monogram, rail only"). -->
-          <span class="td-mono" data-side-icon aria-hidden="true">{{ project.initials }}</span>
+          <!-- C-RAIL-1 U1a · change note (declarative supplement, prototype
+               untouched). The prototype's `[data-create-project-form]` handler
+               appends its row with `.td-side-name` + `[data-project-count]` and
+               **no** `.td-side-icon` (C-RAIL-1 §2 R6) — a gap in the prototype
+               itself, not a second reading of the chip. This template renders
+               *every* row of `[data-project-list]`, and `CreateProjectModal`
+               re-reads `/projects` before selecting the new id, so a project
+               created in the UI wears its chip from its first paint and no
+               hand-appended row exists to fall behind. Elon chose (a) — the
+               supplement lives in the implementation and `design/prototype/**`
+               keeps its static three rows (C-RAIL-1 §7 U1). -->
+          <span class="td-mono" data-side-icon aria-hidden="true">{{ project.prefix }}</span>
           <span class="td-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap" data-side-name>{{ project.name }}</span>
           <!-- R7 ② — the count is the brand's `.td-count` pill and it *is* the
                `data-project-count` element (the prototype puts the hook on the

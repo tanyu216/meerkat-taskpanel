@@ -7,11 +7,13 @@
  * nowhere else. It lives in `shared` because *both* surfaces need it: the server
  * to build a response, the CLI to render one — and neither may import the other.
  *
- * Pure: no `node:` specifiers, no clock, no database. The one thing a projection
+ * Pure: no clock, no database. The one thing a projection
  * cannot know by itself is what an id is *called*, so the caller passes a
  * `lookup(kind, id)`; when it is absent the id stands in for its own name, which
  * keeps the projection usable (and testable) without a board.
  */
+
+import { projectPrefix } from "./ids.mjs";
 
 /** Assignee/reporter ids are meaningless on their own; this is what resolves them. */
 export const NO_LOOKUP = () => null;
@@ -121,6 +123,17 @@ export function projectToWire(project) {
   return {
     id: project.id,
     name: project.name,
+    // C-RAIL-1 §4 R-W1 — the project's **effective prefix**, read-only, served so
+    // the sidebar rail can show the same token every card of the project is
+    // numbered with (`TD-0001` ⇒ rail chip `TD`). It is the *derived* value, not
+    // `meta.prefix` verbatim: a project created before the prefix slot existed is
+    // numbered from its id, and the browser cannot reproduce that ((web/ and
+    // src/ are two builds with no import between them, C-PREFIX-1 §4). The
+    // derivation is `projectPrefix` — the same one the counter reads, so the
+    // chip and the identifier cannot disagree (C-RAIL-1 §3.1 M2: one derivation,
+    // server-side). It is deliberately **not** in the PATCH declaration
+    // (C-RAIL-1 §4 R-W2): a prefix is fixed at creation.
+    prefix: projectPrefix(project),
     labels: Array.isArray(project.labels) ? project.labels : [],
     meta: project.meta ?? {},
     readme: project.readme ?? null,
