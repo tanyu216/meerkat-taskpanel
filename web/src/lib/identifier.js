@@ -1,28 +1,34 @@
 /**
- * R8 ③ — the identifier's display value, for the **two** render points that
- * still clamp.
+ * R8 ③ — the identifier's display value, for every render point that clamps.
  *
- * A task's identifier renders at most **eight characters plus `…`**; anything
- * shorter renders verbatim, with no ellipsis. Real ids run to nine
- * (`PROJ-0007`), which is why the cap has a trigger rather than being a
- * hypothetical edge.
+ * A task's identifier renders at most **ten characters plus `…`**; anything
+ * shorter renders verbatim, with no ellipsis. The cap was **eight** until
+ * T-20261014-001418 moved it to ten (Terry, 2026-10-14) so that it is one
+ * number across the board. An identifier is `<PREFIX>-<serial>` and the prefix
+ * is the project's whole id (`src/shared/ids.mjs` `formatIdentifier`), so a
+ * project with a long id mints identifiers well past the cap — the truncation
+ * branch is real data, not a hypothetical edge.
  *
  * The cut is a **character slice**, not a CSS width. `max-width: 9ch` is a
  * *width*: it depends on the face's advance width and its `letter-spacing`, so
- * it cannot promise "exactly eight characters" — measured in the prototype it
- * resolves to 65.02px, which is a different character count at a different
- * font. The slice is deterministic and machine-checkable, and `.td-id` (the
- * single-line guard in `app.css`) is the belt to this braces: even if some
- * render path forgot to slice, the string still would not wrap.
+ * it cannot promise a character count — measured in the prototype it resolves
+ * to 65.02px, which is a different character count at a different font. The
+ * slice is deterministic and machine-checkable, and `.td-id` (the single-line
+ * guard in `app.css`) is the belt to this braces: even if some render path
+ * forgot to slice, the string still would not wrap.
  *
- * **Who calls this (R12).** Two render points: B07's `Card.vue` and B08's
- * `ListView.vue`. The third one used to be the drawer's head, and R12 made that
- * element the **exception** — it shows the id verbatim and wears `.td-id-full`
- * to lift the width cap (`design/fidelity-r12.md` §2.1/§2.2, §2.4), so it no
- * longer calls this function and must not start again (R12 §8 R3). The cap the
- * two remaining callers inherit is unchanged, and `.td-id-full` must not be
- * added to them (R12 §8 R1) — the cards and the list rows are the density-first
- * scan surfaces where eight characters plus `…` is what R8 ruled.
+ * **Who calls this (R12).** B07's `Card.vue`, B08's `ListView.vue` and B27's
+ * queue row (`lib/waiting-queue.js`) — plus, since T-20261014-001418, the
+ * create dialog's two relation fields (`components/combo/ComboField.vue`: the
+ * option rows **and** the accepted-value chips). That last pair is the point of
+ * the shared function: an option row, a chip and a card all name the same task,
+ * so they must all cap at the same character. The drawer's head used to call
+ * this too, and R12 made that element the **exception** — it shows the id
+ * verbatim and wears `.td-id-full` to lift the width cap
+ * (`design/fidelity-r12.md` §2.1/§2.2, §2.4), so it no longer calls this
+ * function and must not start again (R12 §8 R3). `.td-id-full` must not be
+ * added to any of the callers above (R12 §8 R1) — they are the density-first
+ * scan surfaces where `IDENTIFIER_LIMIT` characters plus `…` is what R8 ruled.
  *
  * The **full** value never leaves the DOM: it stays on the element's `title`
  * (hover, a11y) and on the row / card / drawer root's `data-identifier`
@@ -34,9 +40,9 @@
  *
  * @param {unknown} value the task's full identifier
  * @returns {string} the display string — `value` when it is short enough, else
- *   its first eight characters followed by `…`
+ *   its first `IDENTIFIER_LIMIT` characters followed by `…`
  */
-export const IDENTIFIER_LIMIT = 8;
+export const IDENTIFIER_LIMIT = 10;
 
 export function identifierText(value) {
   const id = String(value ?? "");
