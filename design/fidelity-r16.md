@@ -125,9 +125,11 @@
 
 ### 4.5 视图切换的四个入口，一律走 `navigate()`
 
+**`navigate(v)` 写的地址 = 目标视图的规范地址（§3）**；四个视图里只有 activity 的规范地址带载荷，所以 `navigate("activity")` 写的是 **`/activity` + 当前筛选槽**（`?actor` → `?event` → `?task`，§4.6 的四条规矩不变）——离开动态流再回来，地址落回读者离开时那三个条件，与 §4.6 末条「筛选值活在 store 里、回来自会照旧」是同一条口径。按旧字面写裸 `/activity` 会产出**陈旧地址**（地址无条件、屏幕有条件），正是本轮要消灭的东西。⇒ **本节字面按此修订**（取法来源：Elon 2026-10-13T19:14:20Z 裁定 ③「采纳实现取法」；§11 记）。
+
 | 入口（今天） | 今天怎么写 | R16 之后 |
 |---|---|---|
-| 侧栏 `[data-nav-item]`（`Sidebar.vue:onNav`） | `setView(item)` | `navigate(item)` → `pushState('/' + item)` |
+| 侧栏 `[data-nav-item]`（`Sidebar.vue:onNav`） | `setView(item)` | `navigate(item)` → `pushState(目标视图规范地址)`（activity 含当前筛选槽） |
 | 顶栏 `[data-view="board"\|"list"]`（`TopBar.vue`） | `setView(mode)` | `navigate(mode)` |
 | 名册名字按下（`Sidebar.vue:onAssignee`） | **实读**：仍 `setView("list")` + `writeStatusFilter(["in_progress","in_review"])`——**R11 的路由那一半**，而 `DESIGN.md §31.3` / `BLOCKS.md §B03` 的 R13 修订（决定甲）把它**撤掉了**；原型实测**同意甲**（按下 → 视图与状态集都没动，§7.1）⇒ 这是**本轮之前就存在的**设计文本 vs（实现 + `dom-smoke` harness）漂移（§9 O-5） | **若这半边还在**，它必须走 `navigate("list")`（写地址 + 进历史）；**本轮不裁决**它该不该在——D2 只负责让它在时走对口径 |
 | 动态流一行里的任务锚（`ActivityView.vue:onTask`） | `view.value = "board"` | `navigate("board")` → `pushState('/board')` |
@@ -318,5 +320,6 @@ node --test test/server/static.test.mjs                             # → 8/8（
 |---|---|---|
 | 第一版草稿 | `82c21da`（本 lane 私有，**未进 main**） | 按卡 `## Background` 落稿：path 方案、映射表、地址是真相、**activity 筛选「并入 query，旧式 hash 不做兼容读」** |
 | **本版（唯一口径）** | 本 lane 的最终 commit（见卡 `## Report` 记的 sha） | 对齐 **Elon 裁定（2026-10-13T10:46:33.515Z，卡 `## Comments`，经 sessions_send 转记；比本 lane 开工晚 5 分钟）**：旧式 `#/activity?…` 改为**双读兼容并重定向**（§3/§4.3/§4.4/§5/§6 B4·B7·B8·C12），并补记 ②抽屉保留 hash（新增 §6 C13 与 §9 O-2 的「后续可选」措辞）、③`/list` 独立、④历史边界三条已对齐的条目（§4.8）。**唯一被改变的判断是 O-4**（兼容读：不做 → 做）。 |
+| **§4.5 字面修订**（doc-sync · `T-20261014-031420`） | 见该卡 `## Report` 记的 sha | 按 **Elon 裁定 ③（2026-10-13T19:14:20Z）**：§4.5 的写入口地址口径由 `pushState('/' + item)`（activity 会写成裸 `/activity`）修订为**目标视图规范地址（activity 含当前筛选槽）**，与 §3 规范地址（三槽）、§4.2「目标规范地址」、§4.6「地址是真相」一致。**只改 §4.5 字面**——映射表（§3）、断言清单（§6）、结论（§1/§7/§8）、§5 的实现建议与姓名一律不动；本文件其余各处「唯一口径」不变。 |
 
 > 第一版草稿的 sha 只作记录：它已被本版取代，不构成第二份口径（§4.4 的规矩以本版为准）。
