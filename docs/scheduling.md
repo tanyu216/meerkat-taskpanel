@@ -180,7 +180,7 @@ write lock (R1: one `taskd` per data directory).
 > This is the board **server**'s guard, not the loop. It is separate from the table
 > above, which asks where the *loop* might one day run; the guard answers only "keep
 > `taskd` up". Enabling and stopping it is in
-> [`install.md`](install.md#the-taskd-guard-enabled-by-default).
+> [`install.md`](install.md#the-taskd-guard-keepalive-always-enabled).
 
 #### Where the unit lands (ownership separation)
 
@@ -336,16 +336,15 @@ systemctl --user disable --now meerkat-taskpanel-taskd.service
 rm ~/.config/systemd/user/meerkat-taskpanel-taskd.service
 ```
 
-Two **internal** bypasses exist; neither is a user option:
+Three **internal** bypasses exist; none is a user option:
 
+- `--no-automation` — **skips the guard too**, semantically consistent with its other
+  targets (the Codex claim trigger and the scheduling units). It is an advanced install
+  flag, not a switch for the guard alone.
 - `--dry-run` — writes and loads nothing; the report line becomes
   `taskd guard: skipped (dry-run)`.
 - `MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE=1` — **for tests only**; skips the guard so a
   CI or test install never loads a real unit.
-
-`--no-automation` does **not** suppress the guard: that flag governs the host
-supervisor's automation (the Codex claim trigger and the scheduling units), not the
-board server.
 
 #### Coexisting with `taskctl`'s lazy start
 

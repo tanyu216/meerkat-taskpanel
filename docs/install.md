@@ -122,7 +122,7 @@ systemctl --user enable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-pat
 crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 ```
 
-### The taskd guard (enabled by default)
+### The taskd guard (keepalive, always enabled)
 
 The board server `taskd` (`src/server/main.mjs`) is kept alive by an **OS-level guard**,
 and — alone among the units `install.sh` writes — it is **enabled at install time**.
@@ -148,7 +148,7 @@ still written and left for you to load, and OpenClaw still gets none.
 per host — the label and unit name carry no agent or host segment.
 
 **What install does:** it writes the unit and loads it immediately — no question, no
-opt-in flag:
+separate flag:
 
 ```bash
 # macOS
@@ -177,10 +177,10 @@ systemctl --user disable --now meerkat-taskpanel-taskd.service
 rm ~/.config/systemd/user/meerkat-taskpanel-taskd.service
 ```
 
-**Internal bypasses** (not user options): `--dry-run` writes and loads nothing and
-reports `taskd guard: skipped (dry-run)`; `MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE=1`
-skips the guard and is **for tests only**. `--no-automation` does **not** touch the
-guard — that flag governs the host supervisor's automation, not the board server.
+**Internal bypasses** (not user options): `--no-automation` skips the guard along with
+its other automation targets (see its row in the flag table below); `--dry-run`
+writes and loads nothing and reports `taskd guard: skipped (dry-run)`;
+`MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE=1` skips the guard and is **for tests only**.
 
 The unit files in full, the restart and back-off semantics, and how the guard coexists
 with `taskctl`'s lazy start are in
@@ -218,7 +218,7 @@ install.sh [--target claude|openclaw|codex|pi|all] [--prefix <home>]
 | `--target <host>` | Which host(s) to install for. Default `all`. Repeatable, and a comma-separated list (`--target claude,codex`) works too. |
 | `--prefix <home>` | Install relative to `<home>` instead of `$HOME`. |
 | `--agent-name <name>` | The agent's identity on the board, written into the claude/codex bundle (default `$USER`). Must equal the board assignee for the agent to claim cards. |
-| `--no-automation` | Skip **all** Codex automation — the claim trigger *and* the scheduling units (Claude/OpenClaw/Pi are unaffected). |
+| `--no-automation` | Skip **all** Codex automation — the claim trigger *and* the scheduling units — **and** the `taskd` keepalive guard; the Claude/OpenClaw/Pi skill bundles are otherwise unaffected. |
 | `--claim-unassigned=yes\|no` | May the supervisor claim **unassigned** cards (the public pool)? Persisted to `<home>/<host>/meerkat-taskpanel.env`; overrides the interactive answer. Default `yes`. |
 | `--assignee-only` | Alias for `--claim-unassigned=no`. |
 | `--link` | Symlink the **board** skill instead of copying it — edits to the repo take effect immediately. Recommended for a checkout. The `meerkat-loop` skill is always copied, because the loop's whole point is that its execution body does not live in a checkout. |
@@ -226,10 +226,10 @@ install.sh [--target claude|openclaw|codex|pi|all] [--prefix <home>]
 | `--dry-run` | Print every path that would be written/changed and change nothing. |
 | `--skip-node-check` | Skip the Node version check (see below). |
 
-**The `taskd` guard is enabled by default and has no user flag.** Every install writes
+**The `taskd` guard is always enabled and has no user flag.** Every install writes
 the `taskd` keepalive unit and loads it — there is no switch to turn it on and no prompt
-to answer (see [The taskd guard](#the-taskd-guard-enabled-by-default)). The only
-bypasses are `--dry-run` and, **for tests only**,
+to answer (see [The taskd guard](#the-taskd-guard-keepalive-always-enabled)). The
+bypasses are `--no-automation`, `--dry-run`, and — **for tests only** —
 `MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE=1`. This is the one exception to "write the unit,
 print the load command, never start a daemon"; the `meerkat-loop` units keep that rule.
 
