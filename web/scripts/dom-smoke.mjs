@@ -1196,24 +1196,27 @@ export async function run() {
     for (const [selector, entries] of Object.entries(identifiers)) {
       r8Check(entries.length > 0, `${selector} matched nothing`);
       for (const entry of entries) {
-        const expected = (entry.title ?? "").length > 8 ? `${(entry.title ?? "").slice(0, 8)}…` : entry.title;
+        const expected = (entry.title ?? "").length > 10 ? `${(entry.title ?? "").slice(0, 10)}…` : entry.title;
         r8Check(entry.hasIdClass, `${selector} ${JSON.stringify(entry.title)} does not wear .td-id`);
         r8Check(entry.whiteSpace === "nowrap", `${selector} white-space is ${entry.whiteSpace}, expected nowrap`);
         r8Check(typeof entry.title === "string" && entry.title.length > 0, `${selector} carries no title`);
         r8Check(entry.text === expected, `${selector} renders ${JSON.stringify(entry.text)}, expected ${JSON.stringify(expected)}`);
-        r8Check(entry.text.length <= 9, `${selector} renders ${entry.text.length} characters`);
+        r8Check(entry.text.length <= 11, `${selector} renders ${entry.text.length} characters`);
         // N4/B21-B23 — the root keeps the whole value, and the rendered text may
         // never be the thing read back (it is the truncated form whenever the id
         // is long enough to be truncated at all).
         r8Check(entry.root === entry.title, `${selector}: the root's data-identifier ${JSON.stringify(entry.root)} != the title ${JSON.stringify(entry.title)}`);
       }
     }
-    // A 6-character id is not truncated and gains no ellipsis (the fixture's ids
-    // are all short, so every one of them is a below-the-cap sample; the cap's own
-    // trigger — a 9-character id — is covered by `test/web/identifier.test.mjs`,
-    // which can construct one without touching the shared fixture).
+    // The fixture's ids are all short — its longest is nine (`PROJ-0007`) — so
+    // every one of them is a below-the-cap sample under the **ten**-character cap
+    // (it was eight until T-20261014-001418, which is what made `PROJ-0007` the
+    // over-cap sample this section used to lean on). None may be altered: a row
+    // that still sliced at eight would fail here. Truncation *arithmetic* is
+    // covered by `test/web/identifier.test.mjs`, which can construct an over-cap
+    // id without touching the shared fixture.
     for (const entry of identifiers["[data-card-identifier]"]) {
-      if ((entry.title ?? "").length <= 8) r8Check(entry.text === entry.title, `a ${entry.title.length}-character id was altered: ${JSON.stringify(entry.text)}`);
+      r8Check(entry.text === entry.title, `a ${entry.title.length}-character id was altered: ${JSON.stringify(entry.text)}`);
     }
 
     // The drawer's root is the one all three readings above could not reach while
@@ -1241,17 +1244,22 @@ export async function run() {
 
     // ---- R12 · the drawer's head shows the whole identifier ------------------
     // The contract's §5 A1–A3′ / A4–A6″ and C-1–C-4, driven through real events.
-    // `PROJ-0007` is the fixture's one **over-cap** id (nine characters, above the
-    // render layer's eight-character slice), so it is the sample that tells the
-    // two render points apart: the drawer head must show it whole, while the card
-    // and the list row must still show `PROJ-000…`. This section is the reverse
-    // half's home because a class list and a rendered string are things a probe
-    // reads, but "the head and the card disagree about the *same* id" is a
-    // relation between two elements — which is exactly what R-6a sends here.
+    // `PROJ-0007` is the fixture's **longest** id (nine characters). Under the
+    // eight-character cap it used to be the fixture's one over-cap sample, and
+    // "the head shows it whole while its own card shows `PROJ-000…`" was the
+    // relation that told the two render points apart. The cap is **ten** since
+    // T-20261014-001418, so nine is now *below* it: both sides render the id
+    // whole and that disagreement is no longer constructible from the fixture.
+    // What still separates them — and what this section therefore turns on — is
+    // the width cap: the drawer's head carries `.td-id-full` and the card and
+    // list row must not, and their `max-width` must stay a finite px value. The
+    // truncated string itself is covered by `test/web/identifier.test.mjs` (the
+    // arithmetic) and by the combo section below (an option row that caps).
     const r12IdFailures = [];
     const r12IdCheck = (ok, message) => { if (!ok) r12IdFailures.push(message); };
     const LONG_ID = "PROJ-0007";
-    const CLAMPED = "PROJ-000…";
+    /** The card's and the list row's text for `LONG_ID` — whole, since 10 ≥ 9. */
+    const CLAMPED = "PROJ-0007";
 
     /** Open `identifier`'s card by a real press, then read the head whole. */
     const openCardAndReadHead = async (identifier) => {
@@ -1325,10 +1333,11 @@ export async function run() {
     r12IdCheck(spill.cards === 0, `${spill.cards} card identifiers wear .td-id-full, expected 0`);
     r12IdCheck(spill.rows === 0, `${spill.rows} list identifiers wear .td-id-full, expected 0`);
     r12IdCheck(spill.fullClass === 1, `${spill.fullClass} elements wear .td-id-full, expected exactly the drawer head`);
-    // A4 — the over-cap card still shows eight characters and an ellipsis, and
-    // still carries a finite width cap (`9ch` resolves to px — C′1: never assert
-    // the string `9ch`).
-    r12IdCheck(spill.cardText === CLAMPED, `the over-cap card renders ${JSON.stringify(spill.cardText)}, expected ${JSON.stringify(CLAMPED)}`);
+    // A4 — the card renders the same id whole (nine is inside the ten-character
+    // cap; under the old cap this was `PROJ-000…`) and still carries a finite
+    // width cap (`9ch` resolves to px — C′1: never assert the string `9ch`).
+    r12IdCheck(spill.cardText === CLAMPED, `the card for ${LONG_ID} renders ${JSON.stringify(spill.cardText)}, expected ${JSON.stringify(CLAMPED)}`);
+    r12IdCheck(!spill.cardText.includes("…"), `the card gained an ellipsis under the widened cap: ${JSON.stringify(spill.cardText)}`);
     r12IdCheck(
       spill.cardMax !== null && spill.cardMax !== "none" && /px$/.test(spill.cardMax),
       `the card identifier's max-width is ${spill.cardMax}, expected a finite px value`,
@@ -1358,8 +1367,8 @@ export async function run() {
         max: el ? getComputedStyle(el).maxWidth : null,
       };
     });
-    r12IdCheck(listRead.found, "the over-cap card has no list row to reverse-assert against");
-    r12IdCheck(listRead.text === CLAMPED, `the over-cap list row renders ${JSON.stringify(listRead.text)}, expected ${JSON.stringify(CLAMPED)}`);
+    r12IdCheck(listRead.found, `the card for ${LONG_ID} has no list row to reverse-assert against`);
+    r12IdCheck(listRead.text === CLAMPED, `the list row for ${LONG_ID} renders ${JSON.stringify(listRead.text)}, expected ${JSON.stringify(CLAMPED)}`);
     r12IdCheck(listRead.hasFull === false, "a list row wears .td-id-full");
     r12IdCheck(
       listRead.max !== null && listRead.max !== "none" && /px$/.test(listRead.max),
@@ -1978,6 +1987,196 @@ export async function run() {
     r10Check(narrowFill.panesHeight >= 200, `the single-column panes fell to ${narrowFill.panesHeight}px`);
     r10Check(narrowFill.sourceHeight <= narrowFill.panesHeight + 1, `the write side (${narrowFill.sourceHeight}px) overflows its ${narrowFill.panesHeight}px pane`);
     r10Check(narrowFill.overflow === false, "the single-column dialog overflows horizontally");
+    await page.click("[data-create-task] [data-modal-close]");
+    await page.waitForTimeout(250);
+    await page.setViewportSize({ width: 1512, height: 950 });
+    await page.waitForTimeout(150);
+
+    // --- B24 · the relation rows and the chips they accept --------------------
+    //
+    // T-20261014-001418. The design source froze two display rules for the
+    // create dialog's Parent / Depends-on fields (`design/prototype/app.js`
+    // `comboOptionMarkup` / `addComboChip`, the one `identifierText` cap), and
+    // this is the impl-side drive of both:
+    //
+    //   ① an **option row** names its task as identifier-then-title, the
+    //      identifier under the board's single cap and the title on one line,
+    //      ellipsised when it does not fit;
+    //   ② the accepted value stays **visible in the field** — one chip for the
+    //      single-valued parent, one per task for the multi-valued depends-on,
+    //      both reading like the row they came from, and the field's clear ✕
+    //      still empties the chip and the box together.
+    //
+    // The menu rows are activated with the event the control listens for
+    // (`mousedown`) rather than `page.click`: a row can sit under the dialog's
+    // own scroller, and an actionability wait there costs 30s of a harness that
+    // has a spawn timeout over it (the same reason the B26 sweep clicks in page).
+    const r8cFailures = [];
+    const r8cCheck = (ok, message) => { if (!ok) r8cFailures.push(message); };
+
+    // 980px is where the right-hand column is narrow enough that a 41-character
+    // title cannot fit its row — the reading the design lane measured there.
+    await page.setViewportSize({ width: 980, height: 900 });
+    await page.click("[data-new-task]");
+    await page.waitForTimeout(300);
+
+    const chipsAtRest = await page.evaluate(() => {
+      const parent = document.querySelector("[data-create-task-parent] [data-parent-chips]");
+      return {
+        parentContainer: parent !== null,
+        parentChips: document.querySelectorAll("[data-parent-chip]").length,
+        dependsContainer: document.querySelector("[data-create-task-depends] [data-depends-chips]") !== null,
+      };
+    });
+    r8cCheck(chipsAtRest.parentContainer, "[data-parent-chips] is not in the parent field");
+    r8cCheck(chipsAtRest.dependsContainer, "[data-depends-chips] is not in the depends-on field");
+    r8cCheck(chipsAtRest.parentChips === 0, `the dialog opens with ${chipsAtRest.parentChips} parent chips, expected 0`);
+
+    await page.click("[data-parent-input]");
+    await page.waitForTimeout(250);
+    const optionRows = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll("[data-parent-option]")];
+      return rows.map((row) => {
+        const id = row.querySelector(".td-combo-id");
+        const title = row.querySelector(".td-combo-title");
+        const cs = title ? getComputedStyle(title) : null;
+        return {
+          value: row.getAttribute("data-parent-value"),
+          idText: id ? (id.textContent ?? "").trim() : null,
+          titleText: title ? (title.textContent ?? "").trim() : null,
+          titleAttr: row.getAttribute("title"),
+          whiteSpace: cs?.whiteSpace ?? null,
+          overflow: cs?.overflow ?? null,
+          textOverflow: cs?.textOverflow ?? null,
+          clipped: title ? title.scrollWidth > title.clientWidth : null,
+        };
+      });
+    });
+    r8cCheck(optionRows.length > 0, "the parent menu offers no rows to read");
+    for (const row of optionRows) {
+      // The fixture's ids are all ≤ 9 characters, so each is below the ten-
+      // character cap: the row shows the whole value and gains no ellipsis. A
+      // row that still sliced at eight would render `PROJ-000…` and fail here.
+      r8cCheck(row.idText === row.value, `the row for ${JSON.stringify(row.value)} renders ${JSON.stringify(row.idText)}`);
+      r8cCheck(!(row.idText ?? "").includes("…"), `a ${row.value.length}-character id was truncated: ${JSON.stringify(row.idText)}`);
+      r8cCheck(row.titleText === row.titleAttr, `the row for ${JSON.stringify(row.value)} renders ${JSON.stringify(row.titleText)}, its title is ${JSON.stringify(row.titleAttr)}`);
+      r8cCheck(row.whiteSpace === "nowrap", `a row's title is ${row.whiteSpace}, expected nowrap`);
+      r8cCheck(row.overflow === "hidden", `a row's title overflow is ${row.overflow}, expected hidden`);
+      r8cCheck(row.textOverflow === "ellipsis", `a row's title text-overflow is ${row.textOverflow}, expected ellipsis`);
+    }
+    r8cCheck(
+      optionRows.some((row) => row.clipped === true),
+      "no option row is actually clipped at 980px — the ellipsis has nothing to fire on",
+    );
+
+    // ② — accepting a row puts the task in the field as a chip: identifier (same
+    // cap) then title, with a way out of it, and the box hands the display over.
+    const chosen = optionRows.find((row) => (row.titleText ?? "").length > 20) ?? optionRows[0];
+    await page.evaluate((value) => {
+      const row = document.querySelector(`[data-parent-option][data-parent-value="${value}"]`);
+      row?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    }, chosen.value);
+    await page.waitForTimeout(200);
+    const parentPicked = await page.evaluate(() => {
+      const container = document.querySelector("[data-create-task-parent] [data-parent-chips]");
+      const chip = container?.querySelector("[data-parent-chip]") ?? null;
+      const menu = document.querySelector("[data-parent-menu]");
+      return {
+        count: container ? container.querySelectorAll("[data-parent-chip]").length : 0,
+        mono: chip?.querySelector(".td-mono")?.textContent?.trim() ?? null,
+        title: chip?.querySelector(".td-combo-title")?.textContent?.trim() ?? null,
+        chipTitle: chip?.getAttribute("title") ?? null,
+        value: chip?.getAttribute("data-parent-value") ?? null,
+        remove: chip ? chip.querySelector("[data-parent-remove]") !== null : false,
+        input: document.querySelector("[data-parent-input]")?.value ?? null,
+        menuDisplay: menu ? getComputedStyle(menu).display : null,
+      };
+    });
+    r8cCheck(parentPicked.count === 1, `selecting a parent left ${parentPicked.count} chips, expected exactly 1`);
+    r8cCheck(parentPicked.value === chosen.value, `the chip carries ${JSON.stringify(parentPicked.value)}, expected ${JSON.stringify(chosen.value)}`);
+    r8cCheck(parentPicked.mono === chosen.value, `the chip's identifier is ${JSON.stringify(parentPicked.mono)}, expected ${JSON.stringify(chosen.value)}`);
+    r8cCheck(parentPicked.title === chosen.titleText, `the chip's title is ${JSON.stringify(parentPicked.title)}, expected ${JSON.stringify(chosen.titleText)}`);
+    r8cCheck(parentPicked.chipTitle === chosen.titleText, `the chip's title attribute is ${JSON.stringify(parentPicked.chipTitle)}, expected the whole title`);
+    r8cCheck(parentPicked.remove, "the parent chip carries no [data-parent-remove]");
+    r8cCheck(parentPicked.input === "", `the chip did not take over the display — the box still holds ${JSON.stringify(parentPicked.input)}`);
+    r8cCheck(parentPicked.menuDisplay === "none", `the menu is still shown (display: ${parentPicked.menuDisplay}) after a single-valued accept`);
+
+    // The chip's ✕ empties the field on its own, and so does the field's clear
+    // control — both leave the container empty and the box empty.
+    await page.evaluate(() => {
+      document.querySelector("[data-parent-chip] [data-parent-remove]")?.click();
+    });
+    await page.waitForTimeout(150);
+    const afterChipRemove = await page.evaluate(() => ({
+      chips: document.querySelectorAll("[data-parent-chip]").length,
+      input: document.querySelector("[data-parent-input]")?.value ?? null,
+    }));
+    r8cCheck(afterChipRemove.chips === 0, `the chip's own ✕ left ${afterChipRemove.chips} chips`);
+
+    await page.evaluate((value) => {
+      const row = document.querySelector(`[data-parent-option][data-parent-value="${value}"]`);
+      row?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    }, chosen.value);
+    await page.waitForTimeout(150);
+    await page.evaluate(() => {
+      const input = document.querySelector("[data-parent-input]");
+      input.value = "td";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await page.waitForTimeout(150);
+    await page.click("[data-parent-clear]");
+    await page.waitForTimeout(150);
+    const afterClear = await page.evaluate(() => {
+      const menu = document.querySelector("[data-parent-menu]");
+      return {
+        chips: document.querySelectorAll("[data-parent-chip]").length,
+        input: document.querySelector("[data-parent-input]")?.value ?? null,
+        menuDisplay: menu ? getComputedStyle(menu).display : null,
+      };
+    });
+    r8cCheck(afterClear.chips === 0, `[data-parent-clear] left ${afterClear.chips} parent chips`);
+    r8cCheck(afterClear.input === "", `[data-parent-clear] left the box holding ${JSON.stringify(afterClear.input)}`);
+    r8cCheck(afterClear.menuDisplay === "none", `[data-parent-clear] re-opened the menu (display: ${afterClear.menuDisplay})`);
+
+    // Depends-on is the same reading, many times over: two accepted tasks are
+    // two chips, each with the identifier and the title, each removable.
+    await page.click("[data-depends-input]");
+    await page.waitForTimeout(250);
+    const dependsValues = await page.evaluate(() => [...document.querySelectorAll("[data-depends-option]")].map((row) => row.getAttribute("data-depends-value")));
+    r8cCheck(dependsValues.length >= 2, `the depends-on menu offers ${dependsValues.length} rows, expected at least 2`);
+    for (const value of dependsValues.slice(0, 2)) {
+      await page.evaluate((v) => {
+        const row = document.querySelector(`[data-depends-option][data-depends-value="${v}"]`);
+        row?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      }, value);
+      await page.waitForTimeout(150);
+    }
+    const dependsChips = await page.evaluate(() => {
+      const container = document.querySelector("[data-create-task-depends] [data-depends-chips]");
+      const chips = [...(container?.querySelectorAll("[data-depends-chip]") ?? [])];
+      return chips.map((chip) => ({
+        mono: chip.querySelector(".td-mono")?.textContent?.trim() ?? null,
+        title: chip.querySelector(".td-combo-title")?.textContent?.trim() ?? null,
+        value: chip.getAttribute("data-depends-value"),
+        chipTitle: chip.getAttribute("title"),
+        remove: chip.querySelector("[data-depends-remove]") !== null,
+      }));
+    });
+    r8cCheck(dependsChips.length === 2, `accepting two depends-on tasks left ${dependsChips.length} chips`);
+    for (const chip of dependsChips) {
+      r8cCheck(chip.mono === chip.value, `a depends-on chip's identifier is ${JSON.stringify(chip.mono)}, expected ${JSON.stringify(chip.value)}`);
+      r8cCheck(!(chip.mono ?? "").includes("…"), `a ${chip.value?.length}-character id was truncated in a chip: ${JSON.stringify(chip.mono)}`);
+      r8cCheck(typeof chip.title === "string" && chip.title.length > 0, `a depends-on chip carries no title: ${JSON.stringify(chip)}`);
+      r8cCheck(chip.chipTitle === chip.title, `a depends-on chip's title attribute is ${JSON.stringify(chip.chipTitle)}, expected the whole title`);
+      r8cCheck(chip.remove, "a depends-on chip carries no [data-depends-remove]");
+    }
+    await page.evaluate(() => {
+      document.querySelector("[data-depends-chip] [data-depends-remove]")?.click();
+    });
+    await page.waitForTimeout(150);
+    const dependsLeft = await page.evaluate(() => document.querySelectorAll("[data-depends-chip]").length);
+    r8cCheck(dependsLeft === 1, `removing one depends-on chip left ${dependsLeft}`);
+
     await page.click("[data-create-task] [data-modal-close]");
     await page.waitForTimeout(250);
     await page.setViewportSize({ width: 1512, height: 950 });
@@ -3572,6 +3771,7 @@ export async function run() {
       r6: { failures: r6Failures, themeSweep, titleGeometry, listDetail, panel: panelGeometry, rail },
       r7: { failures: r7Failures, wide, rail: railBand, drawerHead: closeR7 },
       r8: { failures: r8Failures, headWide, headNarrow, identifiers, drawerIdentifier, dark, light },
+      r8c: { failures: r8cFailures, optionRows, parentPicked, afterClear, dependsChips },
       r9: { failures: r9Failures, register, controls, listEn, listZh, loadingRules: listLoadingRules.length },
       r10: {
         failures: r10Failures,
@@ -3666,6 +3866,12 @@ if (isEntryPoint) run().then(
       } else {
         console.log("R10 (fidelity) — the board's two states, the drawer's four save states and the description's fill all pass");
       }
+      if (report.r8c.failures.length > 0) {
+        console.log(`B24 (fidelity) — ${report.r8c.failures.length} failed:`);
+        for (const failure of report.r8c.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log(`B24 (fidelity) — ${report.r8c.optionRows.length} relation rows carry identifier + one-line title (${report.r8c.optionRows.filter((row) => row.clipped).length} actually clipped), the parent field shows one chip (${JSON.stringify(report.r8c.parentPicked.mono)} …) and the depends-on field ${report.r8c.dependsChips.length} chips, all pass`);
+      }
       if (report.r12.failures.length > 0) {
         console.log(`R12 (fidelity) — ${report.r12.failures.length} failed:`);
         for (const failure of report.r12.failures) console.log(`  ✗ ${failure}`);
@@ -3692,7 +3898,7 @@ if (isEntryPoint) run().then(
         console.log(`R12-id (fidelity) — ${report.r12Id.failures.length} failed:`);
         for (const failure of report.r12Id.failures) console.log(`  ✗ ${failure}`);
       } else {
-        console.log(`R12-id (fidelity) — the drawer head shows ${report.r12Id.longId} whole while the card and the list row still show ${report.r12Id.clamped}, and .td-id-full does not spill (${report.r12Id.spill.fullClass} match, cards ${report.r12Id.spill.cards}, rows ${report.r12Id.spill.rows})`);
+        console.log(`R12-id (fidelity) — the drawer head and the card / list row both show ${report.r12Id.longId} whole under the ten-character cap, and .td-id-full does not spill (${report.r12Id.spill.fullClass} match, cards ${report.r12Id.spill.cards}, rows ${report.r12Id.spill.rows})`);
       }
     }
     const interactionOk =
@@ -3712,6 +3918,7 @@ if (isEntryPoint) run().then(
       report.r6.failures.length === 0 &&
       report.r7.failures.length === 0 &&
       report.r8.failures.length === 0 &&
+      report.r8c.failures.length === 0 &&
       report.r9.failures.length === 0 &&
       report.r10.failures.length === 0 &&
       report.r12.failures.length === 0 &&

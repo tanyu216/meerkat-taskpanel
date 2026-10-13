@@ -1552,11 +1552,17 @@ const BLOCKS = [
       // R12 — and the head's text carries no ellipsis, whatever card is open.
       // This is the **card-agnostic** half of "逐字完整显示": a rule cannot choose
       // which card the drawer pass opens (it must be the attachment-carrying one,
-      // whose id is short), so the *specific* over-cap sample — `PROJ-0007`
-      // rendering whole while its own card still shows `PROJ-000…` — is measured
-      // where the press can be aimed, in `web/scripts/dom-smoke.mjs`'s R12-id
-      // section. What this rule adds is the negative that holds for every card:
-      // the head never renders the truncation marker at all.
+      // whose id is short), so the *specific* sample is measured where the press
+      // can be aimed, in `web/scripts/dom-smoke.mjs`'s R12-id section. What this
+      // rule adds is the negative that holds for every card: the head never
+      // renders the truncation marker at all.
+      //
+      // Note (T-20261014-001418) — the cap is ten since 2026-10-14, so the
+      // fixture's longest id (`PROJ-0007`, nine) is now **below** it: the head
+      // and its own card render the same string, and the "the two disagree about
+      // one id" half of R12's evidence is no longer constructible from the
+      // fixture. The reverse anchor that survives is the width cap
+      // (`.td-id` ≠ `.td-id-full`), asserted above and measured in dom-smoke.
       { kind: "text", probe: "[data-detail-identifier]", matches: "^[^…]+$", when: "drawer open" },
       // …and the variant is scoped to that one element. A probe can name the
       // `td-` class the design owns, so the absence is written as an exact count
@@ -1760,8 +1766,8 @@ const BLOCKS = [
         kind: "manual",
         note:
           "[data-modal-close] dismisses; the single writer also serves as the post-submit reset, " +
-          "and must additionally clear the relation inputs, the depends-on chips and the label " +
-          "control's input/chips/menu — none of which a native form reset reaches.",
+          "and must additionally clear the relation inputs, the parent chip, the depends-on chips " +
+          "and the label control's input/chips/menu — none of which a native form reset reaches.",
       },
       {
         kind: "manual",
@@ -2346,6 +2352,7 @@ const BLOCKS = [
       "[data-parent-menu]",
       "[data-parent-option]",
       "[data-parent-clear]",
+      "[data-parent-chips]",
       "[data-create-task-depends]",
       "[data-depends-input]",
       "[data-depends-menu]",
@@ -2353,18 +2360,25 @@ const BLOCKS = [
       "[data-depends-chips]",
       "[data-depends-chip]",
     ],
-    states: ["[data-depends-remove]", "[data-drop=\"up\"]"],
+    states: ["[data-parent-chip]", "[data-parent-remove]", "[data-depends-remove]", "[data-drop=\"up\"]"],
     rules: [
       { kind: "count", selector: "[data-create-task-parent]", equals: 1 },
       { kind: "count", selector: "[data-create-task-depends]", equals: 1 },
       { kind: "count", selector: "[data-parent-clear]", equals: 1 },
+      { kind: "count", selector: "[data-parent-chips]", equals: 1 },
       {
         kind: "manual",
         note:
-          "Two optional fields: parent is single-selection (`[data-parent-clear]` empties it); " +
-          "depends-on is multi, one [data-depends-chip] per task with its own [data-depends-remove] " +
-          "(generated with the chip, so it is a runtime hook — hence under `states`, like B25's " +
-          "[data-label-remove]). Both are B22's control pointed at the current project's cards " +
+          "Two optional fields, both single-roster relations but only one of them is single-valued: " +
+          "parent holds at most one task, and it shows that task **as a chip** — one " +
+          "[data-parent-chip], carrying the identifier under the board's one cap (`lib/identifier.js`) " +
+          "and the title, with its own [data-parent-remove]; [data-parent-clear] empties the field and " +
+          "its box together. depends-on is multi, one [data-depends-chip] per task with its own " +
+          "[data-depends-remove]. Every chip is generated with its value, so both chip hooks are " +
+          "runtime hooks — hence under `states`, like B25's [data-label-remove]. The relation chip is " +
+          "the same reading an option row gives (identifier + title, title ellipsised, whole title on " +
+          "`title`), which is what makes the choice visible in the field after the menu closes " +
+          "(T-20261014-001418 ①②). Both are B22's control pointed at the current project's cards " +
           "(identifier + title) rather than a people roster.",
       },
       {
@@ -2679,7 +2693,7 @@ const BLOCKS = [
       { kind: "count", selector: "[data-waiting-task]", within: "[data-waiting-task]", equals: 0, when: "waiting view" },
       { kind: "manual", note: "The queue runs **oldest first** (§30.2) — the top row has waited longest. The order is a relation between the rows' own `data-since`, so it is asserted in `test/web/waiting.queue.test.mjs` (the projection) and measured live in `web/scripts/dom-smoke.mjs` (the render)." },
       { kind: "manual", note: "`[data-waiting-since]` carries the instant on `datetime` and the row carries it again on `data-since`; the visible text is that instant on B26's three `time.*` keys — one time vocabulary across the two views. Measured live." },
-      { kind: "manual", note: "`[data-waiting-task]` renders at most eight characters plus `…` with the whole value on `title` (R8 ③). Measured live." },
+      { kind: "manual", note: "`[data-waiting-task]` renders at most ten characters plus `…` with the whole value on `title` (R8 ③; the cap moved 8 → 10 in T-20261014-001418). Measured live." },
       { kind: "manual", note: "The reason chip's dot is coloured through `[data-waiting-reason-kind]` → `var(--status-color)` (§30's one-attribute rule), so no component names a colour and the token registry is unchanged. Asserted as a source scan in `web/scripts/dom-smoke.mjs`'s C-group." },
     ],
   },
