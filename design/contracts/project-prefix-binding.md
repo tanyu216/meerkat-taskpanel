@@ -315,6 +315,14 @@ checked 842234 strings; mismatches: 0 []
 ```
 （1–3 字符全量 238,328 + 4 字符定种子抽样 603,906，字符集 `[A-Za-z0-9]`）
 
+**B′ 段 · 幂等性穷举（实测；M5 直接比对的前提，对应 §9 B3）**
+
+```
+$ node --input-type=module -e "… identifierPrefix(identifierPrefix(s)) !== identifierPrefix(s) …"
+idempotence checked 11110 strings; violations: 0 []
+```
+（1–4 字符全量，字符集 `a b _ - . <空格> X # 9 Z`——刻意含 `_`、`.`、空格、`#`、两端 `-` 等会触发折叠/去边的字符）
+
 **C 段 · `meta.prefix` 读点扫描（实测）**
 
 ```
