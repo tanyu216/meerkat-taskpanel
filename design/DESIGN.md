@@ -1409,21 +1409,37 @@ machine-checkable signal is **header-equals-row**, never a literal; and the **lo
 header (B13) is a caption, not a column row — it keeps its single span, which now spans
 the whole template so it cannot be squeezed into the 74px first track.
 
-### 24.3 An identifier renders at most eight characters plus `…`
+### 24.3 An identifier renders at most ten characters plus `…`
 
-Real identifiers run from six characters (`TD-128`) to nine (`PROJ-0007`), so the cap has
-a genuine trigger, not a hypothetical one. The ruling:
+Real identifiers run from six characters (`TD-128`) to nine (`PROJ-0007`). The ruling:
 
-- **What is shown** — the identifier's own first **eight** characters, with `…` appended
+- **What is shown** — the identifier's own first **ten** characters, with `…` appended
   when it was longer. Not a hard cut: two long ids must not become visually identical.
-- **How** — a **render-layer character slice** (`len > 8 ? slice(0, 8) + "…" : id`), not
+- **How** — a **render-layer character slice** (`len > 10 ? slice(0, 10) + "…" : id`), not
   a CSS width. `max-width: 9ch` is a *width* — it depends on the face's advance width and
-  on letter-spacing, and cannot promise "exactly eight characters". A `ch` cap is kept
+  on letter-spacing, and cannot promise "exactly ten characters". A `ch` cap is kept
   as a **single-line guard** (`.td-id`: `nowrap` + overflow ellipsis), never as the
   truncation mechanism itself.
 - **What is preserved** — the full id stays on `title` (hover) and on the row / card /
   drawer root's `data-identifier`. The visible text is a *display value*; identity never
   travels in it.
+- **Where it reads** — the cap is **global and single-sourced**: B07's cards, B08's rows
+  and (from `T-20261014-001418`) the create dialog's Parent and Depends rows and chips all
+  take their display value from the one `identifierText()`. R12 exempts the drawer's head,
+  which renders the id verbatim.
+
+**Revision 2026-10-14 (operator Terry, `T-20261014-001418`) — the cap moved from eight to
+ten characters.** The one function changed (`design/prototype/app.js:identifierText`), and
+the dialog's rows and chips were brought onto it; no token or theme definition moved. Two
+consequences worth stating:
+
+- The cap now sits **above** the shipped board's longest identifier (`PROJ-0007`, nine
+  characters), so nothing the board carries is truncated any more — the nine-character
+  sample renders whole. The truncation still has evidence: the dialog's own seed rows carry
+  a fourteen-character sample (`INVENTORY-0042` → `INVENTORY-…`).
+- The round records in this file that quote `PROJ-000…` for a nine-character id (§24.4,
+  §28.4) are **measurements taken at the eight-character cap** and are kept as such; §30.2
+  and §30's checklist describe the shipped waiting cell and read `PROJ-0007`.
 
 That last point has a consequence the round had to fix, and it is written into the
 contract as a regression rule: the drawer's comment handler used to read the identifier
@@ -2047,7 +2063,7 @@ Three things the rows state, and how:
 | | |
 |---|---|
 | The wait | `[data-waiting-since]` carries the instant on `datetime`, the row carries it again on `data-since`, and the visible text is that instant read the way the feed reads one. The three `time.*` keys are reused rather than restated, and in the shipped document the text already equals what the page would compute — so the script has nothing to recompute here, and a reader without it sees the same sentence |
-| The identifier | `[data-waiting-task]` renders at most eight characters plus `…`, whole value on `title` — R8 ③'s rule, the one B07's cards and B08's rows follow. Waiting is the first surface that can *prove* the rule without a script: `PROJ-0007` is the board's only identifier longer than eight characters, so its cell reads `PROJ-000…` in the markup itself |
+| The identifier | `[data-waiting-task]` renders at most ten characters plus `…`, whole value on `title` — R8 ③'s rule, the one B07's cards and B08's rows follow. Waiting is the first surface that can *prove* the rule without a script: `PROJ-0007` is the board's longest identifier at nine characters, so at the ten-character cap (§24.3, revision 2026-10-14) its cell reads `PROJ-0007` in the markup itself, whole |
 | The open press | `[data-waiting-open]` is the keyboard affordance and the row body its pointer twin, and both land on the board's own **B09** for the task the row names. The queue is a way *into* a task, never a second task page |
 
 ### 30.3 The two kinds, and how a colour reaches the chip without a new hue
@@ -2117,9 +2133,10 @@ move the current-item mark (routing landed in the previous segment), and every v
   heading on the same line.
 - **The queue.** The first row's own button opens B09 with `data-identifier="TD-118"` and the
   drawer's activity section filled; a different row's *body* opens the same surface on its own
-  task; the identifier rule holds (`PROJ-000…` on screen, `PROJ-0007` on `title`, every
-  short identifier verbatim); the reason domain is exactly `question | blocked` with both copies
-  present; each of the five stamps equals the instant it carries read by the page's own rule;
+  task; the identifier rule holds (at the ten-character cap of §24.3's 2026-10-14 revision:
+  `PROJ-0007` whole on screen and on `title`, every short identifier verbatim); the reason
+  domain is exactly `question | blocked` with both copies present; each of the five stamps
+  equals the instant it carries read by the page's own rule;
   the waits run non-decreasing down the list; and all five rows name a task the board carries,
   so no opener is a dead press.
 - **Scripting off.** Five items in the document, the list's own count equal to the source count,
