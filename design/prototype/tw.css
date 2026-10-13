@@ -6419,7 +6419,7 @@ html[data-theme="dark"] .modal-box {
   }
   .td-activity-empty {
     flex: none;
-    margin: auto 12px;
+    margin: 0 12px;
   }
   .td-activity-empty[hidden] {
     display: none;
@@ -6633,10 +6633,9 @@ html[data-theme="dark"] .modal-box {
   }
   .td-waiting-empty {
     flex: none;
-    align-self: center;
     width: 100%;
     max-width: 420px;
-    margin: auto 0;
+    margin: 0 auto;
   }
   .td-waiting-empty[hidden] {
     display: none;

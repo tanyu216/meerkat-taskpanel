@@ -2079,15 +2079,23 @@ second one.
 ### 30.4 The empty state
 
 `[data-waiting-empty]` ships in the document and `hidden`, as B26's two empties do, so a reader
-without the script still gets a complete view. When nothing is owed the design's answer is one
-line where the queue stood — centred in the view and capped in width, because a dashed rule
-stretched across 1300px is the shape of a drop target, not the shape of an answer — and the
-header's tally stands down with the queue, since "0 waiting on you" above "Nothing is waiting on
-you" is one sentence printed twice.
+without the script still gets a complete view. When nothing is owed the design's answer stands
+where the queue stood — the brand mark over a title and a hint, capped in width and centred
+across, because a dashed rule stretched across 1300px is the shape of a drop target, not the
+shape of an answer — and the header's tally stands down with the queue, since "0 waiting on you"
+above "Nothing is waiting on you" is one sentence printed twice.
+
+**R17 gave it B12's reading.** It was one line where the family reads as two, and it was
+centred in the view rather than standing at the top of it; it now opens on the same 28px brand
+mark B12 draws, carries the second line the state was missing, sits at the top of the view under
+the header, and keeps its 100% / 420px cap with horizontal centring. The second line is
+`waiting.empty.hint` — the round's one new catalogue key — and the state offers no button,
+because nothing in this view filters. §33 has the matrix and the reasons.
 
 The prototype cannot reach that state: nothing in this queue filters, and the seeded board has
-five items. Its frame is therefore driven by the capture script moving one attribute — the same
-arrangement the activity design's own empty-state frames used, and the same disclosure.
+five items. Its frame is therefore driven by the capture script moving two attributes — the
+queue stands down and the empty state stands up — the same arrangement the activity design's own
+empty-state frames used, and the same disclosure.
 
 ### 30.5 Checked
 
@@ -2551,3 +2559,126 @@ a screen.
 
 The **legacy `#/activity?…` read** was an open item in the contract's first draft and is now
 **ruled**: the old form is read and redirected (§32.4). The remaining four items above are open.
+
+---
+
+## 33. Review round R17 — the empty-state family reads B12
+
+Terry's 2026-10-13 request (`T-20261013-184102-2`, 需求 E), carried as design first and
+implementation second. The board's no-results state (B12) had grown a brand mark, a two-line
+reading and a Clear control; the other three empty states in the product had not. Measured
+before the round, in a real Chromium at 1512×900:
+
+| State | Brand mark | Lines | Button | Position in its container |
+|---|---|---|---|---|
+| board · no-results (B12, the reference) | 28×28 Sentinel Watch | title + hint | *Clear filters* | top |
+| activity · project | **none** | title + hint | none | **centred** |
+| activity · filter | **none** | title + hint | *Reset filters* | **centred** |
+| waiting · queue-empty | **none** | **title only** | none | **centred** |
+
+So the request was three defects in one family: a missing mark, a missing line, and a block
+that had drifted to the middle of its container. The round fixes all three, and — the part
+that is a ruling rather than a repair — decides *which* empty states may offer a clear control.
+
+### 33.1 The matrix, and the ruling behind it
+
+| View | State | In force when | title | hint | Button |
+|---|---|---|---|---|---|
+| board (B12) | `no-results` | a filter is in force and nothing survives it | `noResults.title` | `noResults.hint` | `[data-filter-clear]` · `noResults.clear` |
+| activity | `project` | the project has no entries **and no filter** | `activity.empty.project.title` | `activity.empty.project.hint` | **none** |
+| activity | `filter` | a filter is in force and nothing survives it | `activity.empty.filter.title` | `activity.empty.filter.hint` | `[data-activity-empty-reset]` · `activity.empty.filter.reset` |
+| waiting | `queue-empty` | the queue is empty | `waiting.empty` | **`waiting.empty.hint`** | **none** |
+
+**A clear control belongs to a state that has something to clear.** The project state's own
+definition is the *absence* of a filter: a *Clear filters* press there addresses a filter that
+is not in force and does nothing at all. B12 earns its Clear because B12's state is the other
+one — `shown === 0` **under a filter** — so the button is the way out of a real condition. The
+activity view is the only one of the two that carries both states, and the button is exactly
+what tells them apart on screen. The waiting state has no filters at all, so it has nothing to
+offer either.
+
+**`[data-activity-empty-reset]` is not this round's to move.** R15 ③ replaced the activity
+*bar's* reset with the board bar's own Clear (`[data-filter-clear]` / `filters.clear`) and left
+this inline one standing deliberately — it is a second affordance in a second place, and R15
+recorded as much in `BLOCKS.md` §B26. R17 confirms the matrix line ("the filter state is the
+one with a button") without touching the hook or the key.
+
+### 33.2 One new key — `waiting.empty.hint`
+
+The waiting state shipped one line where every other state in the family ships two, so a reader
+learnt what was not there without learning what would be. The second line names the three
+reasons the queue collects and stops:
+
+| | |
+|---|---|
+| en | `Blocked, in-review and handed-off tasks land here.` |
+| zh | `被阻塞、待复核或已交接的任务会出现在这里。` |
+
+It is a **net +1** in each language: `MESSAGES` goes 280 → 281, the document's `data-i18n` seats
+521 → 522 (626 `data-i18n*` hooks in total), and nothing else in the catalogue moves. The
+mirror copies (`test/web/i18n.catalogue.mjs` and `web/src/i18n/catalogue.mjs`) are the
+implementing card's to change; at this build they lag the prototype by two names
+(`waiting.subtitle` from R15 and this one) while still carrying the two the prototype retired
+(`assignee.clear`, `activity.filter.reset`). That is the same intermediate state R15's U2
+records, and it is why the count-only assertions in `blocks.contract.test.mjs` and
+`i18n.catalogue.test.mjs` go **green** on this round while the set-equality ones stay red until
+the implementation card lands.
+
+### 33.3 What every state in the family now shares
+
+- **The brand mark first.** `svg.td-logo.td-logo-lg`, 28×28: the two lead meerkats at
+  `--color-td-ink-3`, the on-duty sentinel and its watch signal at `--color-td-accent`. Both
+  tokens already exist; no size and no colour is invented. B12's mark is copied **verbatim**,
+  mask and all, with one change per copy — the mask id.
+- **A unique mask id per document.** A knockout mask is addressed by id, so two copies sharing
+  one id would silently re-point both references at the last one declared. The four large marks
+  are `face-knockout-a-lg` (B12), `-b-lg` (activity · project), `-c-lg` (activity · filter) and
+  `-d-lg` (waiting); the check measures uniqueness and that every `url(#…)` resolves.
+- **The `.td-empty-lg` size.** 12px gap, `40px 24px` padding, 14px title, 12px hint — the same
+  box B12 measures, so the mark does not sit in a small block. B12's own copy does not move.
+- **Top alignment.** `.td-activity-empty` loses `margin: auto 12px` for `margin: 0 12px`;
+  `.td-waiting-empty` loses `align-self: center` and `margin: auto 0` for `margin: 0 auto`,
+  keeping its `width: 100%` / `max-width: 420px` cap — the block is the only box in the main
+  area, and a dashed rule across 1300px reads as a drop target rather than an answer. The two
+  rules live in `src/input.css` (and in `design/activity/prototype.html`'s scoped `<style>`),
+  and `tw.css` is rebuilt from them; the comments that argued *for* the old centring are
+  rewritten rather than left standing.
+
+Measured after the round, at 1512×900: the activity project state reads `top 1px of 708px`
+(a centred block would be at ~268px), the activity filter state `top 1px of 708px` (~248px),
+and the waiting state `top 54px of 804px` — 42px of header plus the 12px gap (~316px). Each is
+measured on its own, with its sibling hidden, so the number is the state's and not a stack's.
+
+### 33.4 What this round does not change
+
+Board B12's own markup and copy (it is the reference, not a subject); `[data-filter-clear]` and
+`[data-activity-empty-reset]` and their keys; the activity view's filter bar, feed, unread
+boundary and paging; the waiting queue's rows, ordering and header; every token in the sheet.
+The activity view's design page (`design/activity/`) carries the same rules in its own scoped
+block and is edited in step — its machine check, `node design/activity/check-activity.mjs`, is
+the round's regression gate and reports **155/155** (93 static + 62 render).
+
+### 33.5 Boundaries and open items
+
+**Boundaries.** No implementation in this card: `web/**`, `test/**`, `src/**`, `server/**`,
+`plugins/**` and `skills/**` are untouched, and the round's diff is design-only. The two
+mirror catalogues and the implementation-side empty states are the implementing card's.
+
+**Open items** (for the leader to rule on, not for this round to absorb):
+
+1. **The round has no number until this file gives it one.** `R10`–`R16` were each named by
+   their own contract; this section calls the round **R17** by sequence. If the epic carries a
+   different label, the two headings (`BLOCKS.md` §R17 and this section) rename together.
+2. **The activity states also live inside `design/prototype/index.html`.** The card's write-face
+   table names `design/activity/prototype.html` for the activity states and
+   `design/prototype/index.html` for the waiting one, but the board document carries B26's two
+   states as well — and it is the document `web/manifests/board-m2.json` compares against and
+   the one the round's own screenshots are taken from. Both copies are edited, so the two
+   documents cannot disagree; if the leader intended the board's pair to stay small, that is a
+   one-line revert each.
+3. **The implementation's own four empty states still differ.** `ActivityView.vue`'s two blocks
+   carry `p-4`/`gap-1` utility padding and no mark, and `WaitingView.vue`'s carries one line —
+   the gap this round's contract now measures. It closes when the implementation card lands.
+4. **`design/prototype/README.md`'s key-pair claim is edited** (280 → 281) because
+   `blocks.contract.test.mjs` re-measures that prose against `app.js`; it is the one file
+   outside the card's named list that had to move with the key.

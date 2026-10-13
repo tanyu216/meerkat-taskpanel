@@ -273,13 +273,27 @@
 
 | 情形 | 呈现 | 钩子 |
 |---|---|---|
-| **项目级空**（从未发生过任何可准入事件） | 「这个项目还没有发生过什么」+ 引导语 | `[data-activity-empty][data-activity-empty-kind="project"]` |
-| **筛选空**（有事件，但没有符合筛选的） | 「没有动态符合这些筛选」+ **Reset** 内嵌按钮 | `[data-activity-empty][data-activity-empty-kind="filter"]` + `[data-activity-empty-reset]` |
+| **项目级空**（从未发生过任何可准入事件） | 品牌 mark +「这个项目还没有发生过什么」+ 引导语，**无按钮** | `[data-activity-empty][data-activity-empty-kind="project"]` |
+| **筛选空**（有事件，但没有符合筛选的） | 品牌 mark +「没有动态符合这些筛选」+ **Reset** 内嵌按钮 | `[data-activity-empty][data-activity-empty-kind="filter"]` + `[data-activity-empty-reset]` |
 | 错误态 | 复用 **B17** 既有约定（`[data-error-state]`、danger-soft 面、`Retry`）——本视图不新造错误态 | B17 |
 | 超长任务标题 | **1 行 clamp**（`-webkit-line-clamp: 1`），**不是** `text-overflow: ellipsis`——与既有 C4 断言同一口径 | `.td-activity-task-title` |
 
 两个空态**在静态文档里都是 `hidden`**：静态文档是「发生过事情」的那一读，
 脚本才是把它们换上来的东西。这与 B05/B12 的二态口径一致。
+
+**R17 — 两个空态改为照 B12 读。** 本页原有的两个空态**没有品牌 mark**、且 `margin: auto`
+把它们**垂直居中**在 feed 里。R17 之后：首个子元素是 `svg.td-logo.td-logo-lg`（28×28，
+两只迈凯特 `--color-td-ink-3`、当班哨兵与顶端信号 `--color-td-accent`，mask id 逐文档唯一，
+本页为 `face-knockout-b-lg` / `-c-lg`）；两块**统一升 `td-empty-lg`**（与 B12 同档：
+gap 12px、padding 40px 24px、title 14px、hint 12px）；`.td-activity-empty` 的
+`margin: auto 12px` 改为 `margin: 0 12px`，空态**贴容器顶部**。
+
+**按钮矩阵（本页两态的裁定）**：**筛选空**保留其 `[data-activity-empty-reset]` /
+`activity.empty.filter.reset`（R15 ③ 明确「不同场所的不同 affordance、不动」）；
+**项目空不设按钮**——该态的定义就是「没有筛选在生效、项目本身没有内容」，
+一个「清空筛选」按钮指向一个不存在的筛选，按下不会有任何结果。B12 带 Clear 的前提是
+确有筛选在 force（`shown === 0` 在筛选之下）——本项目空是另一态。理由详见
+`design/DESIGN.md §33.1` 与 `design/BLOCKS.md §R17`。
 
 **两者互斥**：项目级空只在**一条可准入事件都没有**时出现；筛选空只在**有事件、但当前命中为 0** 时出现。
 命中 0 时可见行数 = 0（§机检断言 · 6）。
@@ -398,7 +412,7 @@
 | B26.2 feed | `[data-activity-feed]` | → `[data-activity-day]` → `[data-activity-row]` → `[data-activity-actor]` / `[data-activity-sentence]` / `[data-activity-task]` / `[data-activity-at]` / `[data-activity-detail]` |
 | B26.3 未读分界 | `[data-activity-unread-divider]` | + `[data-activity-unread-count]`（计数）、`[data-activity-mark-read]`（一键已读） |
 | B26.4 突发折叠 | `[data-activity-burst]` | + `[data-activity-burst-count]`（`×N`）、`[data-activity-burst-item]`（展开后的逐条） |
-| B26.5 空态 | `[data-activity-empty][data-activity-empty-kind="project\|filter"]` | 筛选空态内嵌 `[data-activity-empty-reset]` |
+| B26.5 空态 | `[data-activity-empty][data-activity-empty-kind="project\|filter"]` | 筛选空态内嵌 `[data-activity-empty-reset]`；项目空态**无按钮**；两态首子元素为 `svg.td-logo.td-logo-lg`、class 含 `td-empty-lg`（R17） |
 | B26.6 加载更早 | `[data-activity-more]` | `Load older`（翻开 `[data-activity-day][data-activity-page]` 的下一页） |
 | **B03 扩展** | `[data-nav-item="activity"]` | 获得 `aria-current="page"` 语义 + `[data-nav-count="activity"]`（0 时 `hidden`） |
 
@@ -474,8 +488,11 @@
 | 突发的每一条明细都是字段编辑（族一致） | `S7.5` |
 | 点行开抽屉、抽屉指名任务、关闭可用 | `R5.1`–`R5.4` |
 | 切中文：`<html lang>`、文案、计数句、相对时间、绝对日期、专有名词 | `R6.1`–`R6.6` |
+| 空态家族（R17）：首子元素为品牌 mark、class 含 `td-empty-lg`、项目无重置按钮 / 筛选有、mask id 唯一且引用可解析、两处规则均已顶对齐、waiting 块在位 | `S11.1`–`S11.13` |
+| 空态家族（R17）：computed `margin` 非 `auto`、`align-self` 非 `center`、mark 计算尺寸 28×28、块位于容器顶部（附 px） | `R9.project*` `R9.filter*` `R9.waiting*` |
 
-**当前结果：132 条断言，全部通过**（`node design/activity/check-activity.mjs`；80 条静态 + 52 条渲染）。
+**当前结果：155 条断言，全部通过**（`node design/activity/check-activity.mjs`；93 条静态 + 62 条渲染）。
+其中 R17 增量：静态 `S11.1`–`S11.13`（13 条）、渲染 `R9.*`（10 条）。
 
 ---
 
@@ -518,6 +535,14 @@
 同步的落点在 **E2 实现卡**（Terry 通过后）：届时新增 `design/DESIGN.md` 一节、
 `design/BLOCKS.md` 的 B26 条目、把 B26 落进原型基线并把断言交给 `test/web/blocks.contract.mjs`。
 本节的**存在本身**即满足 §⑫ 的第一条（显式声明判定与理由）。
+
+> **R17 补记（2026-10-13，`T-20261013-184102-2`）。** 上表是 R-3 提案轮当时的判定，作为**当时**的记录保留：
+> 同步后来确由 E2 实现卡完成（B26 已进 `design/prototype/index.html`，断言已由 `test/web/blocks.contract.mjs` 承担）。
+> R17（需求 E）**只动空态**：本页的两个空态照 B12 读 —— 加品牌 mark、升 `td-empty-lg`、
+> 去垂直居中，项目空态不设按钮（§8）。因此本页与 `design/prototype/index.html` **同时改**，
+> `design/BLOCKS.md`（§B26.5、§B27.3、§R17）与 `design/DESIGN.md`（§30.4、§33）同步，
+> 本页的机检从 132 条增至 **155 条**。R15 记录的「本页已与出货原型分叉」（控件形状、钩子名、词典）
+> 仍**未**由本节解决 —— 那是一次控件层的同步，不在 R17 的写面内（见 `design/fidelity-r15.md` §7）。
 
 ---
 

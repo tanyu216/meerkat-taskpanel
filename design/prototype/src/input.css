@@ -3959,12 +3959,15 @@ html[data-theme="dark"] .modal-box {
   }
 
   /* --- B26.5 / B26.6 --------------------------------------------- */
-  /* `margin: auto` centres the block in the feed when it is the only
-     thing left standing — a 12-line explanation pinned to the top of a
-     600px empty card reads as a rendering failure, not as an answer. */
+  /* The empty state sits at the **top** of the feed — the same reading
+     B12 gives an empty board, and the one the whole empty-state family
+     now shares. The block stands where the first row would have stood,
+     so the eye reaches it at once instead of hunting for a box that has
+     drifted to the middle of a tall column. `margin: auto`'s vertical
+     centring is withdrawn; the 12px side margins are horizontal only. */
   .td-activity-empty {
     flex: none;
-    margin: auto 12px;
+    margin: 0 12px;
   }
   .td-activity-empty[hidden] {
     display: none;
@@ -4225,17 +4228,18 @@ html[data-theme="dark"] .modal-box {
   }
 
   /* --- B27.3 the empty state --------------------------------------- */
-  /* `margin: auto` centres it in the view when the queue is gone — the same
-     answer B26 gives an empty feed: one line pinned to the top of a tall box
-     reads as a fault, not as an answer. It is capped and centred horizontally
-     because here it is the only box in the main area: a dashed rule stretched
-     across 1300px is the shape of a drop target, not the shape of an answer. */
+  /* It sits at the **top** of the view when the queue is gone, the same
+     reading B26's empty feed and an empty board (B12) now share — and the
+     vertical centring `align-self: center` + `margin: auto` used to give it
+     is withdrawn with them. It keeps its cap and its horizontal centring
+     because here it is the only box in the main area: a dashed rule
+     stretched across 1300px is the shape of a drop target, not the shape of
+     an answer. `margin: 0 auto` centres it across, not down. */
   .td-waiting-empty {
     flex: none;
-    align-self: center;
     width: 100%;
     max-width: 420px;
-    margin: auto 0;
+    margin: 0 auto;
   }
   .td-waiting-empty[hidden] {
     display: none;

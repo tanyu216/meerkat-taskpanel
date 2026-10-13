@@ -5,9 +5,9 @@ Tailwind class names are never part of the contract, and no anchor is positional
 
 Counts in the current build, measured in the live DOM: **7 columns · 18 cards ·
 18 detail templates** (`[data-slot]`: 18 description · 18 activity · 16 comments ·
-15 agent-session · 11 attachments · 9 relations) · **625 `data-i18n*` hooks** in the
-shipped document (521 `data-i18n` plus 104 `placeholder` / `aria-label` / `title`
-variants) · **280 catalogue keys, `en` and `zh` in exact parity.**
+15 agent-session · 11 attachments · 9 relations) · **626 `data-i18n*` hooks** in the
+shipped document (522 `data-i18n` plus 104 `placeholder` / `aria-label` / `title`
+variants) · **281 catalogue keys, `en` and `zh` in exact parity.**
 
 **"35 blocks" means 35 *contract entries*, not 35 DOM blocks.** The DOM block
 inventory is **B01–B25** (25 entries; B20/B21 are retired and kept only as
@@ -735,6 +735,14 @@ generic no-results glyph. Its two lead meerkats are `--color-td-ink-3` rather th
 `--color-td-ink`, so on an empty board the on-duty sentinel is still the only lit element on
 the surface.
 
+**R17 — B12 is now the whole family's reference, not only the board's.** Terry's 2026-10-13
+request (`T-20261013-184102-2`, 需求 E) was that the activity and waiting empty states read
+the way the board's does. Every choice B12 already made is the choice the family now shares:
+the brand mark first, the `.td-empty-lg` size, the block at the **top** of its container, and
+the rule that a state offers only the buttons that do something in it. The states themselves
+and their copy are B26.5 and B27.3's; the reading is this section's. See the R17 section at
+the end of this file for the matrix and the reasons.
+
 ## B13 · Loading state
 
 | | |
@@ -1039,7 +1047,7 @@ copy. Its own page stays in the repository as the design source and as its own e
 | B26.2 feed | `[data-activity-feed]` → `[data-activity-day]` → `[data-activity-row]` → `[data-activity-actor]` / `[data-activity-sentence]` / `[data-activity-task]` / `[data-activity-at]` / `[data-activity-detail]` |
 | B26.3 unread boundary | `[data-activity-unread-divider]` + `[data-activity-unread-count]`; the same press that clears it is `[data-activity-mark-read]` |
 | B26.4 burst | `[data-activity-burst]` + `[data-activity-burst-count]` (`×N`) + one `[data-activity-burst-item]` per folded event |
-| B26.5 empty states | `[data-activity-empty][data-activity-empty-kind="project" \| "filter"]`; the filter one holds `[data-activity-empty-reset]`. Both ship `hidden` |
+| B26.5 empty states | `[data-activity-empty][data-activity-empty-kind="project" \| "filter"]`; the filter one holds `[data-activity-empty-reset]`, the project one holds no control at all. Both ship `hidden`, both open on the brand mark, and both are `td-empty-lg` (R17) |
 | B26.6 Load older | `[data-activity-more]` — unfolds the next `[data-activity-day][data-activity-page]`, then retires |
 
 **The feed is static markup, not a render.** 17 rows across 4 day groups, each row's
@@ -1155,7 +1163,7 @@ roots, two questions; the ruling that keeps them apart is Elon's (card comment, 
 | Root | `[data-waiting-view]` — fourth child of `main.td-main`, beside `[data-board-view]`, `[data-list]` and `[data-activity-view]`; ships **`hidden`**, because the no-script default view is the board |
 | B27.2 header | `[data-waiting-head]` → `[data-waiting-title]` (`waiting.title`, byte-identical to `nav.waiting`) + the description (`waiting.subtitle`, R15 ④ — a `data-i18n` seat only, no `data-waiting-*` of its own) + `[data-waiting-count]` (`waiting.count`, `%s` template) |
 | B27.1 the queue | `[data-waiting-list]` → `[data-waiting-item]` → `[data-waiting-actor]` / `[data-waiting-reason]` / `[data-waiting-task]` + `[data-waiting-task-title]` / `[data-waiting-since]` / `[data-waiting-open]` |
-| B27.3 empty state | `[data-waiting-empty]`; ships `hidden` |
+| B27.3 empty state | `[data-waiting-empty]`; ships `hidden`. R17 gives it B12's reading — the brand mark first, `td-empty-lg`, top-aligned — and the second line the state was missing (`waiting.empty.hint`). No button: nothing in this view filters |
 
 **R15 ④ — the header states what the view is, not only its name.** Terry's 2026-10-13 third
 request (`T-20261013-165112`) was that `Waiting on me` learn the two-line head B26 already
@@ -1336,10 +1344,18 @@ copy:
 | `data-i18n-title` | `title` |
 | `data-i18n-arg` | the `%s` value for any of the four above; it is resolved as a key first, so `column.add` + `status.todo` reads `Add task to To Do` / `在待办中新建任务` |
 
-The catalogue is the in-memory `MESSAGES` object at the top of `app.js` — **280 keys per
+The catalogue is the in-memory `MESSAGES` object at the top of `app.js` — **281 keys per
 language, mirrored 1:1** (verified by set equality, not by eye), never an external file.
 Copy `app.js` composes at runtime (toast sentences, list rows, card aria labels, the token
 mask) is keyed there too.
+
+**R17 spends exactly one key — `waiting.empty.hint`** (`280 → 281` in each language, `+1`
+`data-i18n` seat in the document: `625 → 626`). It is the second line B27.3 was missing (see
+B27.3 below); nothing else in the catalogue moves. The mirror copies in `test/**` and `web/**`
+are the implementing card's, so at this build they lag the prototype by two names
+(`waiting.subtitle` from R15 and this one) while still carrying the two the prototype has
+retired (`assignee.clear`, `activity.filter.reset`) — the same intermediate state R15's own
+U2 records, and the reason the design-side key count is the one this file states.
 
 **B27 brought 6 more (R12x)** — `waiting.title` · `waiting.count` · `waiting.reason.question`
 · `waiting.reason.blocked` · `waiting.open` · `waiting.empty` — and they are the whole of what
@@ -1475,3 +1491,64 @@ place like every other surface.
    relation hooks), and its roster is read off the cards rather than declared, so it
    cannot drift from what the board carries. No block, and no hook, offers to add,
    rename or delete a label.
+
+---
+
+## R17 · The empty-state family reads B12
+
+Terry's 2026-10-13 request (`T-20261013-184102-2`, 需求 E). Measured before this round:
+board B12's no-results state opened on the brand mark with a title, a hint and a **Clear
+filters** button, while the activity view's two states and the waiting view's one had **no
+mark** at all, the waiting state had **only a title**, and all three sat vertically centred
+in their containers. This round makes them read the way B12 does, and decides — which none
+of them had — *which* empty states carry a clear control.
+
+### The matrix
+
+| View | State | Reachable when | `title` | `hint` | Button |
+|---|---|---|---|---|---|
+| board (B12) | `no-results` | a filter is in force and nothing survives it | `noResults.title` | `noResults.hint` | `[data-filter-clear]` · `noResults.clear` |
+| activity | `project` | the project has no entries and **no filter** is in force | `activity.empty.project.title` | `activity.empty.project.hint` | **none** |
+| activity | `filter` | a filter is in force and nothing survives it | `activity.empty.filter.title` | `activity.empty.filter.hint` | `[data-activity-empty-reset]` · `activity.empty.filter.reset` |
+| waiting | `queue-empty` | the queue is empty | `waiting.empty` | **`waiting.empty.hint`** (new, R17) | **none** |
+
+### The three decisions, and why
+
+- **The project state gets no button.** Its definition is "nothing has happened and no filter
+  is narrowing anything". A *Clear filters* control there would point at a filter that is not
+  in force — pressing it would do nothing, which is the definition of a dead control. B12
+  earns its Clear because its state is the *other* one: a filter really is in force
+  (`shown === 0` under a filter). So `project` = title + hint, and the pair is what tells the
+  two states apart.
+- **The filter state keeps the button it already had.** `[data-activity-empty-reset]` /
+  `activity.empty.filter.reset` is the inline affordance R15 ③ explicitly left standing when
+  the bar's own *Reset* became B04's Clear (`[data-filter-clear]` / `filters.clear`): one
+  control family, two bars, and a second affordance in a second place. This round changes
+  neither its hook nor its key — it only confirms the matrix line that says the filter state
+  is the one that has a button.
+- **The waiting state gets a second line.** It carried one line where the family carries two,
+  so a reader learnt what was *not* there without learning what would be. `waiting.empty.hint`
+  names the three reasons the queue collects (blocked / in review / handed off) and stops —
+  this view has no filters, so it promises no control.
+
+### What every state in the family now shares
+
+- The brand mark first: `svg.td-logo.td-logo-lg` — 28×28, the two lead meerkats at
+  `--color-td-ink-3` and the on-duty sentinel plus its watch signal at `--color-td-accent`.
+  No new size and no new colour; the mark is the same one B12 draws.
+- **Each mask id is unique in its own document** — the mark's face knockout is `<mask id>` and
+  a repeated id silently re-points every reference at the last one declared. The four *large*
+  marks are `face-knockout-a-lg` (B12) · `-b-lg` (activity project) · `-c-lg` (activity filter)
+  · `-d-lg` (waiting), in the document each belongs to.
+- The `.td-empty-lg` size, so the title and hint land at 14px / 12px and the gap at 12px on
+  every one of them (B12's own copy is unchanged).
+- The block stands at the **top** of its container. `.td-activity-empty` loses
+  `margin: auto 12px` for `margin: 0 12px`, and `.td-waiting-empty` loses
+  `align-self: center` + `margin: auto 0` for `margin: 0 auto` — the waiting block keeps its
+  100% / 420px cap and its horizontal centring, because it is the only box in the main area
+  and a dashed rule stretched across 1300px is the shape of a drop target, not of an answer.
+  Nothing else about either rule moves.
+
+The activity view's own design page (`design/activity/`) carries the same two states and the
+same rules in its scoped `<style>`; it is edited in step, and its machine check —
+`node design/activity/check-activity.mjs`, 155 assertions — is the round's regression gate.
