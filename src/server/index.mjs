@@ -39,6 +39,7 @@ import {
   SSE_HEARTBEAT_MS,
   SSE_POLL_MS,
   STATIC_DIR_REL,
+  TASK_ORDER_CAPABILITY,
   VERSION,
 } from "../shared/constants.mjs";
 import { authorize } from "./auth.mjs";
@@ -235,6 +236,10 @@ export async function createTaskd(options = {}) {
       events: "/api/v1/events",
       static_hosting: await staticHost.probe(),
       project_order: "weights-v1",
+      // C-WEIGHT-1: the assignee task weight order exists on `/tasks` and
+      // `/tasks/candidates` (`?order=weight`). A client probes this rather than
+      // guessing whether the query parameter does anything.
+      task_order: TASK_ORDER_CAPABILITY,
       allow_list: allowList.configured,
     },
   }));

@@ -12,7 +12,15 @@
  */
 
 import { DomainError, isDomainError } from "../../shared/errors.mjs";
-import { CLAIM_STALE_ANY_MS, CLAIM_STALE_SAME_MS, HEARTBEAT_FRESH_MS } from "../../shared/constants.mjs";
+import {
+  CLAIM_STALE_ANY_MS,
+  CLAIM_STALE_SAME_MS,
+  HEARTBEAT_FRESH_MS,
+  TASK_LIST_DEFAULT_LIMIT,
+  TASK_ORDER_DEFAULT,
+  TASK_ORDER_MODES,
+} from "../../shared/constants.mjs";
+import { orderTasks, taskOrderDebugEntry } from "../../shared/task-order.mjs";
 import { assertClaimable, decideClaim, explainLostClaim, isAutoClaimableKind } from "../domain/claim.mjs";
 import {
   assertCreationGate,
@@ -676,12 +684,104 @@ export function archive(ctx, input) {
 }
 
 /**
+ * The board / list read.
+ *
+ * Two orders exist and one of them is opt-in (contract §7.1):
+ *
+ *   * `board` (the default, and what every caller got before this existed) — the
+ *     repository's `sort_order, created_at, project_id, identifier`;
+ *   * `weight` — the assignee weight order (`shared/task-order.mjs`), requested
+ *     with `?order=weight`.
+ *
+ * The default is deliberately untouched: the existing order is a frozen
+ * commitment (md export reuses the same `ORDER BY`) and the weight order is
+ * clock-dependent, so switching the default would change behaviour where nothing
+ * tests it.
+ *
  * @param {object} ctx
- * @param {{projectId?: string, status?: string|string[], assigneeId?: string, includeArchived?: boolean, limit?: number, offset?: number}} [filter]
+ * @param {{projectId?: string, status?: string|string[], assigneeId?: string|string[], includeArchived?: boolean, limit?: number, offset?: number, order?: string, orderDebug?: boolean}} [filter]
  */
 export function listTasks(ctx, filter = {}) {
-  return ctx.repos.tasks.list(filter);
+  return readOrdered(ctx, filter).tasks;
 }
+
+/**
+ * `listTasks` plus the `order_debug` projection, for the surface that wants both.
+ *
+ * A separate function rather than a changed return shape: every existing caller
+ * of `listTasks` receives a bare array and must keep receiving one.
+ *
+ * @param {object} ctx
+ * @param {object} [filter] as `listTasks`, plus `orderDebug`
+ * @returns {{tasks: object[], orderDebug: object[]|null}}
+ */
+export function listOrderedTasks(ctx, filter = {}) {
+  const { tasks, orderDebug } = readOrdered(ctx, filter);
+  return { tasks, orderDebug };
+}
+
+/**
+ * Validate `?order=` and let `order_debug` select the order it projects.
+ *
+ * `order_debug=1` is the *weight* order's diagnostic, so asking for it selects
+ * that order — there is no board-order debug projection to return, and silently
+ * ignoring the flag would be worse than honouring it.
+ *
+ * @param {unknown} value @param {boolean} debug
+ */
+function resolveOrder(value, debug) {
+  if (debug) return "weight";
+  if (value === undefined || value === null || value === "") return TASK_ORDER_DEFAULT;
+  const word = String(value).trim().toLowerCase();
+  if (TASK_ORDER_MODES.includes(word)) return word;
+  throw new DomainError("VALIDATION_FAILED", {
+    message: `unknown order ${JSON.stringify(value)}`,
+    details: { field: "order", received: value, allowed: TASK_ORDER_MODES },
+  });
+}
+
+/**
+ * Read a scope and order it.
+ *
+ * **Scope first, then order** (R16). Under `order=weight` the filter goes into
+ * SQL with **no `LIMIT`**, the weight order is computed over that whole set, and
+ * only then is the page sliced. Ordering the `LIMIT 200` page would be "the wrong
+ * page, very neatly sorted" — the defect the contract names.
+ *
+ * The relation counts come from one batched read (`relations.openEdgeCounts`),
+ * never one per card.
+ *
+ * @param {object} ctx @param {object} filter
+ * @returns {{tasks: object[], orderDebug: object[]|null}}
+ */
+function readOrdered(ctx, filter) {
+  const { order: requestedOrder, orderDebug: debugFlag, ...scope } = filter;
+  const order = resolveOrder(requestedOrder, debugFlag === true);
+  if (order !== "weight") return { tasks: ctx.repos.tasks.list(scope), orderDebug: null };
+
+  const scoped = ctx.repos.tasks.list({ ...scope, limit: null });
+  const counts = ctx.repos.relations.openEdgeCounts(scoped.map((task) => task.id));
+  const ranked = orderTasks(withRelationCounts(scoped, counts), { now: ctx.now() });
+
+  const offset = Number.isInteger(scope.offset) ? scope.offset : 0;
+  // `limit: null` is the caller's "give me the whole set" (the repository reads it
+  // the same way), so the JS page must not re-impose the default on top of it.
+  const limit = Number.isInteger(scope.limit) ? scope.limit : TASK_LIST_DEFAULT_LIMIT;
+  const page = scope.limit === null ? ranked.slice(offset) : ranked.slice(offset, offset + limit);
+  return {
+    tasks: page.map((item) => item.card),
+    // The projection covers the whole ranking, not the page — the question it
+    // answers is "why is this card where it is", and that needs the cards it beat.
+    orderDebug: ranked.map(taskOrderDebugEntry),
+  };
+}
+
+/** Attach the two relation counts the weight order reads, defaulting to none. */
+function withRelationCounts(tasks, counts) {
+  return tasks.map((task) => ({ ...task, ...(counts.get(task.id) ?? NO_OPEN_EDGES) }));
+}
+
+const NO_OPEN_EDGES = Object.freeze({ blockersOpen: 0, unblocksOpen: 0 });
 
 /**
  * The claimable candidates for an assignee — the read a poll performs *before*
@@ -720,54 +820,108 @@ export function listTasks(ctx, filter = {}) {
  * @param {{assignee: string, stale?: boolean, includeUnassigned?: boolean}} input
  */
 export function listCandidates(ctx, input = {}) {
+  return orderedCandidates(ctx, input).candidates;
+}
+
+/**
+ * `listCandidates` plus the `order_debug` projection (contract §7.1).
+ *
+ * @param {object} ctx
+ * @param {object} [input] as `listCandidates`, plus `order` / `orderDebug`
+ * @returns {{candidates: object[], orderDebug: object[]|null}}
+ */
+export function listOrderedCandidates(ctx, input = {}) {
+  const { candidates, orderDebug } = orderedCandidates(ctx, input);
+  return { candidates, orderDebug };
+}
+
+/** The bucket order (S3): what a card is *claimable as*, a ruling, not a preference. */
+const CANDIDATE_BUCKET_RANK = Object.freeze({ ready: 0, unassigned: 1, stale_same: 2, stale_any: 2 });
+
+/**
+ * The candidate read, in whatever order was asked for.
+ *
+ * **The scope is pushed into SQL** (R16). The previous form read
+ * `list({status:"todo"})` — which the repository caps at 200 rows — and filtered
+ * by assignee *in JS*, so an assignee whose claimable card sat past row 200 never
+ * saw it. Here the status *and* the assignee set are predicates, the read is
+ * unbounded, and the order is computed over the assignee's whole pool.
+ *
+ * @param {object} ctx
+ * @param {{assignee?: string, stale?: boolean, includeUnassigned?: boolean, order?: string, orderDebug?: boolean}} [input]
+ * @returns {{candidates: object[], orderDebug: object[]|null}}
+ */
+function orderedCandidates(ctx, input = {}) {
   const assignee = String(input.assignee ?? "").trim();
   const includeUnassigned = input.includeUnassigned === true;
   const ids = assigneeEntryIds(ctx, assignee);
-  if (ids.length === 0 && !includeUnassigned) return [];
+  const order = resolveOrder(input.order, input.orderDebug === true);
+  if (ids.length === 0 && !includeUnassigned) return { candidates: [], orderDebug: order === "weight" ? [] : null };
 
   const now = ctx.now();
   const isAssignee = (task) => isAutoClaimableKind(task.kind) && ids.includes(task.assigneeId);
-  const ready = ctx.repos.tasks.list({ status: "todo" }).filter(isAssignee);
+  // Every read below is the *whole* scope: no `LIMIT` to truncate it first.
+  const ready =
+    ids.length === 0 ? [] : ctx.repos.tasks.list({ status: STATUS.TODO, assigneeId: ids, limit: null }).filter(isAssignee);
   const pool = includeUnassigned
     ? ctx.repos.tasks
-        .list({ status: "todo" })
-        .filter(
-          (task) =>
-            isAutoClaimableKind(task.kind) &&
-            (task.assigneeId === null || task.assigneeId === undefined || task.assigneeId === ""),
-        )
+        .list({ status: STATUS.TODO, unassignedOnly: true, limit: null })
+        .filter((task) => isAutoClaimableKind(task.kind))
     : [];
   const stale =
-    input.stale === true
+    input.stale === true && ids.length > 0
       ? ctx.repos.tasks
-          .list({ status: "in_progress" })
+          .list({ status: STATUS.IN_PROGRESS, assigneeId: ids, limit: null })
           .filter((task) => isAssignee(task) && staleReason(task, assignee, now) !== null)
       : [];
 
+  // One batched edge read for every pool, not one per card (R16).
+  const scoped = [...ready, ...pool, ...stale];
+  const counts = ctx.repos.relations.openEdgeCounts(scoped.map((task) => task.id));
+  const blockersOpen = (task) => (counts.get(task.id) ?? NO_OPEN_EDGES).blockersOpen;
+
   const found = [];
+  // `allBlockersDone` as a count: an open `blocks` predecessor is what holds a
+  // card back, whether it says so through `status = blocked` or not (R14).
   for (const task of ready) {
-    if (allBlockersDone(ctx, task.id)) found.push({ task, reason: "ready" });
+    if (blockersOpen(task) === 0) found.push({ task, reason: "ready" });
   }
   for (const task of pool) {
-    if (allBlockersDone(ctx, task.id)) found.push({ task, reason: "unassigned" });
+    if (blockersOpen(task) === 0) found.push({ task, reason: "unassigned" });
   }
   for (const task of stale) {
     const reason = staleReason(task, assignee, now);
-    if (reason !== null && allBlockersDone(ctx, task.id)) found.push({ task, reason });
+    if (reason !== null && blockersOpen(task) === 0) found.push({ task, reason });
   }
 
-  // Ready, then the pool this agent may take, then recovery — every rank then
-  // falls back to the board's own deterministic order.
-  const rank = { ready: 0, unassigned: 1, stale_same: 2, stale_any: 2 };
-  found.sort(
-    (a, b) =>
-      rank[a.reason] - rank[b.reason] ||
+  const byWeight =
+    order === "weight"
+      ? new Map(orderTasks(withRelationCounts(scoped, counts), { now }).map((item) => [item.card.id, item]))
+      : null;
+
+  // Ready, then the pool this agent may take, then recovery. The weight order
+  // refines **within** a bucket and never reorders across one: the bucket says
+  // whether the card can be claimed at all, which the contract (S3) keeps as the
+  // first key because it is a ruling rather than a preference.
+  found.sort((a, b) => {
+    const byBucket = CANDIDATE_BUCKET_RANK[a.reason] - CANDIDATE_BUCKET_RANK[b.reason];
+    if (byBucket !== 0) return byBucket;
+    if (byWeight !== null) return byWeight.get(a.task.id).rank - byWeight.get(b.task.id).rank;
+    return (
       (a.task.sortOrder ?? 0) - (b.task.sortOrder ?? 0) ||
       (a.task.createdAt ?? "").localeCompare(b.task.createdAt ?? "") ||
       (a.task.projectId ?? "").localeCompare(b.task.projectId ?? "") ||
-      (a.task.identifier ?? "").localeCompare(b.task.identifier ?? ""),
-  );
-  return found.map(({ task, reason }) => candidateOf(task, reason));
+      (a.task.identifier ?? "").localeCompare(b.task.identifier ?? "")
+    );
+  });
+
+  return {
+    candidates: found.map(({ task, reason }) => candidateOf(task, reason)),
+    // In the order the caller receives them, so the two arrays reconcile
+    // line for line; `reason` rides along because the bucket is the first key.
+    orderDebug:
+      byWeight === null ? null : found.map(({ task, reason }) => ({ ...taskOrderDebugEntry(byWeight.get(task.id)), reason })),
+  };
 }
 
 /**
@@ -810,18 +964,6 @@ function staleReason(task, assignee, now) {
   if (age > CLAIM_STALE_ANY_MS) return "stale_any";
   if (task.claimedBy === assignee && age > CLAIM_STALE_SAME_MS) return "stale_same";
   return null;
-}
-
-/**
- * Every `blocks` edge pointing at `taskId` (its `depends_on`) is `done`.
- * @param {object} ctx
- * @param {string} taskId
- * @returns {boolean}
- */
-function allBlockersDone(ctx, taskId) {
-  return ctx.repos.relations
-    .listBlockerOf(taskId)
-    .every((edge) => ctx.repos.tasks.get(edge.source)?.status === "done");
 }
 
 /**

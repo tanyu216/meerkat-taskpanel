@@ -155,6 +155,55 @@ export function createRelationsRepository(db) {
         .map(relationFromRow);
     },
 
+    /**
+     * The batched form of `listBlockedBy` / `listBlockerOf` over a whole scope.
+     *
+     * The weight order needs, per card, how many open `blocks` edges point *at*
+     * it (does a dependency still hold it up?) and how many point *away* from it
+     * (how much does finishing it unlock?). Asking card by card is an N+1 — one
+     * query per candidate, on every poll — so this reads every edge touching the
+     * scope in **one** statement and joins both endpoints' status, letting the
+     * caller count without a second read.
+     *
+     * "Open" means the other end is not `done`: a finished card neither blocks
+     * nor is worth unlocking. A missing row in the result means "no edges", so a
+     * caller defaults to `{blockersOpen: 0, unblocksOpen: 0}` — never `undefined`,
+     * which would flow into the score as a `NaN`.
+     *
+     * @param {string[]} taskIds
+     * @returns {Map<string, {blockersOpen: number, unblocksOpen: number}>}
+     */
+    openEdgeCounts(taskIds) {
+      const ids = [...new Set((taskIds ?? []).filter((id) => typeof id === "string" && id !== ""))];
+      const counts = new Map(ids.map((id) => [id, { blockersOpen: 0, unblocksOpen: 0 }]));
+      if (ids.length === 0) return counts;
+
+      const marks = ids.map(() => "?").join(", ");
+      const rows = db
+        .prepare(
+          `SELECT r.source_task_id AS source, r.target_task_id AS target,
+                  src.status AS source_status, dst.status AS target_status
+             FROM task_relations r
+             JOIN tasks src ON src.id = r.source_task_id
+             JOIN tasks dst ON dst.id = r.target_task_id
+            WHERE r.relation_type = 'blocks'
+              AND (r.source_task_id IN (${marks}) OR r.target_task_id IN (${marks}))`,
+        )
+        .all(...ids, ...ids);
+
+      for (const row of rows) {
+        if (row.target_status !== "done") {
+          const source = counts.get(row.source);
+          if (source !== undefined) source.unblocksOpen += 1;
+        }
+        if (row.source_status !== "done") {
+          const target = counts.get(row.target);
+          if (target !== undefined) target.blockersOpen += 1;
+        }
+      }
+      return counts;
+    },
+
     /** @param {string} [projectId] all `parent` edges (for the pure validators) */
     listParentEdges(projectId) {
       const sql =
