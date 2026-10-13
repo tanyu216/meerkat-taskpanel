@@ -29,6 +29,7 @@
 import { computed, reactive } from "vue";
 
 import { ACTOR_VALUES, EVENT_VALUES, buildFeed } from "../lib/activity-feed.js";
+import { activityQuery, readActivityQuery } from "../lib/route.js";
 import { lang } from "../i18n/index.js";
 import { api } from "../services/api.js";
 
@@ -124,57 +125,51 @@ export function loadOlder() {
 
 /* ------------------------------------------------------------- the address */
 
-/** The three slots, in the order the address writes them (§6). */
-export const HASH_SLOTS = Object.freeze(["actor", "event", "task"]);
-
 /**
- * The feed's address for the current filters: `#/activity?actor=agent`, with the
- * `all` slots left out. A pure string builder, so the test can assert the shape
- * without a `location`.
+ * R16 §4.2 — writer B: mirror the filters onto the address bar with
+ * `replaceState`, so a narrowed feed is shareable and survives a reload.
+ *
+ * The carrier moved from the fragment to the query (`/activity?actor=agent`) —
+ * the fragment is the drawer's own slot and must stay free for `#/task/<id>`
+ * (§4.4) — and the payload's four rules moved with it, unchanged: the fixed slot
+ * order, `all` never written, the whole query omitted when all three are at rest,
+ * and a value outside its domain never written. `lib/route.js` builds and parses
+ * the string; this writer is the only thing that touches `location`.
+ *
+ * `replaceState` (never `pushState`) is what keeps the back button meaning "the
+ * view before" — so **back and forward undo view changes and never undo filter
+ * changes** — and the path and the fragment are preserved verbatim, which is what
+ * keeps the drawer's `#/task/<id>` off this writer's account.
+ *
+ * A writer whose target address is already the current one writes nothing: the
+ * same idempotence the fragment writer had, and what keeps a re-press of the
+ * chosen filter row out of the history.
  */
-export function activityHash(filters = activity.filters) {
-  const params = HASH_SLOTS.filter((slot) => (filters[slot] ?? "all") !== "all")
-    .map((slot) => `${slot}=${encodeURIComponent(filters[slot])}`)
-    .join("&");
-  return `#/activity${params === "" ? "" : `?${params}`}`;
-}
-
-/**
- * §6 — mirror the filters onto the address bar with `replaceState`, so a narrowed
- * feed is shareable and survives a reload. `replaceState` (never `pushState`) is
- * what keeps the back button meaning "the view before", and the hook never
- * touches `#/task/<id>`, which is the drawer's own path.
- */
-export function writeActivityHash(location = globalThis.location, history = globalThis.history) {
+export function replaceActivityQuery(location = globalThis.location, history = globalThis.history) {
   if (!location || typeof history?.replaceState !== "function") return null;
-  const hash = activityHash();
-  if (location.hash === hash) return hash;
-  history.replaceState(null, "", hash);
-  return hash;
+  const query = activityQuery(activity.filters);
+  if ((location.search ?? "") === query) return query;
+  history.replaceState(null, "", `${location.pathname ?? ""}${query}${location.hash ?? ""}`);
+  return query;
 }
 
 /**
- * Read a `#/activity?…` address back into the filters — a shared link, a reload.
- * Returns whether anything was applied; an address that is not the feed's (a
- * `#/task/…` from the drawer, say) is left alone.
+ * §4.6 — the reader's feed half: land the three filters exactly as the address
+ * states them. A slot the address does not name is `all`, which is also what the
+ * literal `all` and an out-of-domain value mean, so an address that names nothing
+ * is not "leave the filters alone" but "no condition anywhere" — "a refresh does
+ * not lose the filters" and "a back press does not leave stale ones" are the same
+ * rule. It never writes history: `stores/route.js` owns that, and the address is
+ * what the reader is reading.
+ *
+ * @param {string} source a query (`?actor=agent`) or the old fragment's payload
+ * @returns {boolean} whether the address named any condition at all
  */
-export function readActivityHash(hash = globalThis.location?.hash ?? "") {
-  if (typeof hash !== "string" || !hash.startsWith("#/activity")) return false;
-  /** Does this view understand the slot/value pair? (`task` takes any identifier.) */
-  const accepted = (key, value) =>
-    key === "task" || (key === "actor" ? ACTOR_VALUES : key === "event" ? EVENT_VALUES : []).includes(value);
-
-  let seen = false;
-  for (const pair of hash.slice("#/activity".length).replace(/^\?/, "").split("&")) {
-    if (pair === "") continue;
-    const [rawKey, rawValue] = pair.split("=");
-    const key = decodeURIComponent(rawKey ?? "");
-    const value = decodeURIComponent(rawValue ?? "");
-    if (value === "" || !accepted(key, value)) continue;
-    writeActivityFilter(key, value);
-    seen = true;
-  }
-  return seen;
+export function applyActivityQuery(source) {
+  const parsed = readActivityQuery(source);
+  activity.filters = { ...parsed.filters };
+  activity.page = 1;
+  return parsed.applied;
 }
 
 /**

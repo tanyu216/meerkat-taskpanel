@@ -15,12 +15,21 @@ This is a real implementation, not a placeholder. What it ships:
 - **The sidebar's four destinations** (B26 = Activity, B27 = Waiting): the ledger is
   the project's *what happened* — admitted events only, newest first, grouped by day,
   a burst of one actor's edits folded into one row, an unread boundary over a
-  browser-local read cursor, three filters whose address rides the hash, and two
+  browser-local read cursor, three filters whose address rides the query
+  (`/activity?actor=agent`), and two
   honest empty states. It is read one card at a time (`GET /tasks/:ref/activities`,
   merged) because M6a has no project-wide activities route, and the SSE tail keeps it
   current between reads. The queue is its opposite number: the items whose ball is in
   the *reader's* court, oldest first, one 30px row each (actor · reason chip ·
   identifier + title · how long · open), and a head whose tally is the same number.
+- **URL routing** (R16): each of the four views has its own address (`/board`,
+  `/list`, `/activity`, `/waiting`), the bare entry point lands on the board, and the
+  browser's back and forward buttons walk the views. The path is the truth — a view
+  is what `location.pathname` says it is — with two writers (`pushState` for a view
+  change, `replaceState` for a filter narrowing) and one reader shared by the first
+  load and `popstate` (`src/lib/route.js` + `src/stores/route.js`). The fragment is
+  left to the drawer's `#/task/<id>`; an old `#/activity?…` link is read and
+  redirected to the query form.
 - **Live updates (SSE)**: one `EventSource` on `/api/v1/events`, keyed by
   `global_revision`; incremental per-task refresh; reconnect with `Last-Event-ID`
   and a manual `?after=` resync. Optimistic moves carry `if_version`, and a
@@ -40,7 +49,10 @@ The planned stack listed `vue-router`, `pinia`, `vue-i18n`, `markdown-it`,
 only**, because every additional dependency would have to enter the committed
 offline cache and the container build (M6b O1). The equivalents are hand-rolled
 and small: module-scope reactive stores instead of Pinia, a `<details>`/state
-switch instead of a router, a tiny reactive `t()` over the catalogue instead of
+switch instead of `vue-router` (R16 added a hand-rolled address layer over the
+four views — a route table, two writers and one reader, ~120 lines in
+`src/lib/route.js` + `src/stores/route.js` — which is still not a router
+dependency), a tiny reactive `t()` over the catalogue instead of
 `vue-i18n`, and the prototype's own first-party `markdown-lite` / `highlight-lite`
 (`src/lib/`) instead of `markdown-it` + `dompurify` — both escape their own input,
 so no sanitiser library is needed. `mermaid` is not implemented.
@@ -63,8 +75,12 @@ npm -w web run preview  # serve the built artefact
   built app against a fixture API, runs every dom-layer contract assertion
   (`EVALUATED_RULES` — the contract's dom rules minus the prototype-only blocks)
   against the live DOM, checks console/page errors are zero, and checks the five
-  viewports for horizontal overflow. It exits 2 ("skip") when no browser is
-  available — which is the container's normal state.
+  viewports for horizontal overflow. Its R16 section drives the address layer for
+  real — every route loaded as a genuine deep link, the default redirect, an unknown
+  path, the old `#/activity?…` link, and nav / filter / back / forward — because a
+  `goto` between two URLs that differ only in their fragment would test nothing. It
+  exits 2 ("skip") when no browser is available — which is the container's normal
+  state.
 - `node ~/.openclaw/team/tools/ui-align/check.mjs --config web/.ui-align.json board` —
   the **prototype ↔ implementation** check (host-only, same browser exception). It
   boots the app from `scripts/ui-align-serve.mjs` (the fixture harness above) and the

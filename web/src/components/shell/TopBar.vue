@@ -13,7 +13,8 @@ import { computed } from "vue";
 
 import { dismissMemberFrom } from "../../lib/light-dismiss.js";
 import { board, selectProject } from "../../stores/board.js";
-import { createProjectOpen, createTaskOpen, filtersOpen, setView, toggleFilters, view } from "../../stores/ui.js";
+import { navigate } from "../../stores/route.js";
+import { createProjectOpen, createTaskOpen, filtersOpen, toggleFilters, view } from "../../stores/ui.js";
 
 const projects = computed(() => board.projects);
 const currentName = computed(() => board.projects.find((p) => p.id === board.currentProjectId)?.name ?? "—");
@@ -191,7 +192,7 @@ function switchProject(id, event) {
         class="tab td-tab"
         :data-view="mode"
         :aria-pressed="view === mode ? 'true' : 'false'"
-        @click="setView(mode)"
+        @click="navigate(mode)"
       >
         <svg class="td-icon size-3.5" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path :d="viewIcons[mode]" />

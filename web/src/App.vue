@@ -13,6 +13,7 @@ import { onMounted, onUnmounted } from "vue";
 
 import { closeFloatingControls, installLightDismiss } from "./lib/light-dismiss.js";
 import { initBoard, reloadConflict, board, closeDetail } from "./stores/board.js";
+import { applyLocation } from "./stores/route.js";
 import { accessOpen, closeMoveMenu, createProjectOpen, createTaskOpen, moveMenu, view } from "./stores/ui.js";
 
 import FiltersBar from "./components/board/FiltersBar.vue";
@@ -49,13 +50,32 @@ function onKeydown(event) {
 
 let uninstallLightDismiss = () => {};
 
+/**
+ * R16 §4.2/§4.3 — the address's own two events. The reader is shared, so a deep
+ * link and a back press take one code path and cannot drift apart; the wrapper
+ * exists because `applyLocation()` takes a `location`, and a `popstate` listener
+ * would otherwise be handed the event in its place.
+ */
+function onPopState() {
+  applyLocation();
+}
+
 onMounted(() => {
   document.addEventListener("keydown", onKeydown);
   uninstallLightDismiss = installLightDismiss(document);
+  // The boot itself is an "an address arrived" event (§4.3): resolve the address
+  // this document was opened on — a deep link, a refresh, the bare `/` — before
+  // the board's first read, so the view is the address's from the first paint.
+  // The children's own mount hooks (the feed's view watcher) have already run by
+  // the time this shell hook does, which is what lets a `/activity` deep link
+  // come up with its ledger rather than an unread empty state (§4.3 step 6).
+  applyLocation();
+  globalThis.addEventListener?.("popstate", onPopState);
   initBoard();
 });
 onUnmounted(() => {
   document.removeEventListener("keydown", onKeydown);
+  globalThis.removeEventListener?.("popstate", onPopState);
   uninstallLightDismiss();
 });
 </script>

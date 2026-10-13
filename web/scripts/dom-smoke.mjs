@@ -3176,7 +3176,9 @@ export async function run() {
           groups: [...new Set(rows.map((row) => row.getAttribute("data-activity-group")))],
           tasks: [...new Set(rows.map((row) => row.getAttribute("data-task")))],
           count: root.querySelector("[data-activity-filter-count]")?.textContent?.trim() ?? "",
-          hash: globalThis.location.hash,
+          // R16 §4.4 — the feed's payload moved from the fragment to the query,
+          // so the shadow these assertions read is `location.search`.
+          search: globalThis.location.search,
           empty: [...root.querySelectorAll("[data-activity-empty]")].filter((el) => !el.hasAttribute("hidden")).map((el) => el.getAttribute("data-activity-empty-kind")),
           dayCount: root.querySelectorAll("[data-activity-day]").length,
           triggers: ["actor", "event", "task"].map((slot) => root.querySelector(`[data-activity-filter="${slot}"] [data-activity-filter-text]`)?.textContent?.trim() ?? null),
@@ -3445,7 +3447,7 @@ export async function run() {
     b26Check(b26Detail.reflowedFeed === false && b26Detail.reflowedBody === false, "opening a row must not reflow the feed");
     b26Check(b26Filters.agent.rows > 0 && b26Filters.agent.kinds.length === 1 && b26Filters.agent.kinds[0] === "agent", `actor=agent left ${b26Filters.agent.kinds.join(",")}`);
     b26Check(b26Filters.agent.count === `${b26Filters.agent.rows} entries`, `actor=agent count ${b26Filters.agent.count} for ${b26Filters.agent.rows} rows`);
-    b26Check(b26Filters.agent.hash === "#/activity?actor=agent", `actor=agent hash ${b26Filters.agent.hash}`);
+    b26Check(b26Filters.agent.search === "?actor=agent", `actor=agent query ${b26Filters.agent.search}`);
     b26Check(b26Filters.agentDelivery.groups.join(",") === "delivery", `agent+delivery groups ${b26Filters.agentDelivery.groups.join(",")}`);
     b26Check(b26Filters.task.tasks.length === 1 && b26Filters.task.tasks[0] === "TD-6", `task=TD-6 left ${b26Filters.task.tasks.join(",")}`);
     b26Check(b26Filters.emptyMatch.rows === 0, `the empty filter left ${b26Filters.emptyMatch.rows} rows`);
@@ -3475,10 +3477,10 @@ export async function run() {
     // priority condition is untouched, and the board's own confirmation toast is
     // raised here too (the ruling's ④).
     b26Check(b26Filters.clearHook === true, "R15 ③: the activity bar must carry B04's [data-filter-clear]");
-    b26Check(b26Filters.beforeClear.hash === "#/activity?event=delivery", `R15 ③: the round left the address at ${b26Filters.beforeClear.hash}`);
+    b26Check(b26Filters.beforeClear.search === "?event=delivery", `R15 ③: the round left the address at ${b26Filters.beforeClear.search}`);
     b26Check(b26Filters.afterClear.values.join(",") === "all,all,all", `R15 ③: Clear left the three slots ${b26Filters.afterClear.values.join(",")}`);
     b26Check(b26Filters.afterClear.rows === b26Filters.before.rows, `R15 ③: Clear restored ${b26Filters.afterClear.rows} of ${b26Filters.before.rows} rows`);
-    b26Check(b26Filters.afterClear.hash === "#/activity", `R15 ③: Clear left the address at ${b26Filters.afterClear.hash}`);
+    b26Check(b26Filters.afterClear.search === "", `R15 ③: Clear left the address at ${b26Filters.afterClear.search}`);
     b26Check(b26Filters.afterClear.currents.join(",") === "all,all,all", `R15 ③: Clear left the chosen rows at ${b26Filters.afterClear.currents.join(",")}`);
     b26Check(
       b26Filters.before.boardPriority === "all" && b26Filters.afterClear.boardPriority === "urgent",
@@ -3492,7 +3494,7 @@ export async function run() {
     // …and let it retire before the sections below, so their toast reads bracket
     // a quiet region (the toast lives 2500ms + a 200ms exit).
     await page.waitForTimeout(2900);
-    b26Check(b26Filters.afterReset.hash === "#/activity", `reset must clear the hash, got ${b26Filters.afterReset.hash}`);
+    b26Check(b26Filters.afterReset.search === "", `reset must clear the query, got ${b26Filters.afterReset.search}`);
     b26Check(b26Keys.wrappable === true, `j/k focus walk: first=${b26Keys.first} second=${b26Keys.second} back=${b26Keys.back}`);
     b26Check((b26Keys.firstLabel ?? "").startsWith("Open "), `row button aria-label ${b26Keys.firstLabel}`);
     b26Check(b26Read.before.unreadRows > 0 && b26Read.before.dividers === 1, "a fresh reader must see one boundary over the new rows");
@@ -3547,6 +3549,190 @@ export async function run() {
     });
     b26Check(b26Back.filtersHidden === false && b26Back.filtersPainted, "the filter bar must come back with the board");
     b26Check(b26Back.activityHidden === true && b26Back.boardPainted === true, "the board must come back and the feed stand down");
+
+    // ---- R16 · the address layer (URL routing) --------------------------------
+    //
+    // The round's own four claims, measured where they can only be measured: in a
+    // real browser, on a real address. Every deep link below is a **real load**
+    // (`about:blank` → the address), never a `goto` between two URLs that differ
+    // only in their fragment: those are same-document navigations, the boot
+    // branch does not re-run, and a probe that skipped this would report "the
+    // second address is not a route" when what happened is "only the first load
+    // was tested" (design/fidelity-r16.md §1 rule 4, which is exactly the trap
+    // the contract's own first probe fell into).
+    //
+    // The history half drives `history.back()` / `forward()` **inside the page**
+    // rather than through Playwright's `goBack()`: the entries these presses
+    // create are same-document ones, and Playwright's navigation plumbing is
+    // built for the other kind. It runs last, because each load re-boots the app.
+    const r16Failures = [];
+    const r16Check = (ok, message) => { if (!ok) r16Failures.push(message); };
+    const R16_ORIGIN = `http://127.0.0.1:${port}`;
+
+    /** What the document says about itself: the address, the nav, the view roots. */
+    const readAddress = () =>
+      page.evaluate(() => {
+        const painted = (selector) => (document.querySelector(selector)?.getClientRects().length ?? 0) > 0;
+        return {
+          pathname: globalThis.location.pathname,
+          search: globalThis.location.search,
+          hash: globalThis.location.hash,
+          navCurrent: document.querySelector("[data-nav] [data-nav-item][aria-current='page']")?.getAttribute("data-nav-item") ?? null,
+          navCurrents: document.querySelectorAll("[data-nav] [data-nav-item][aria-current='page']").length,
+          toggles: [...document.querySelectorAll("[data-view-toggle] [data-view]")].map(
+            (el) => `${el.getAttribute("data-view")}=${el.getAttribute("aria-pressed")}`,
+          ),
+          entries: globalThis.history.length,
+          board: painted("[data-board-view]"),
+          list: painted("[data-list]"),
+          activity: painted("[data-activity-view]"),
+          waiting: painted("[data-waiting-view]"),
+          filterValues: ["actor", "event", "task"].map(
+            (slot) => document.querySelector(`[data-activity-filter="${slot}"]`)?.getAttribute("data-activity-filter-value") ?? null,
+          ),
+        };
+      });
+
+    /** A real load of one address, settled enough to read. */
+    const loadAddress = async (path) => {
+      await page.goto("about:blank");
+      await page.goto(`${R16_ORIGIN}${path}`, { waitUntil: "domcontentloaded" });
+      await page.waitForSelector("[data-nav]", { timeout: 20_000 });
+      await page.waitForTimeout(400);
+      return readAddress();
+    };
+
+    // ① — each view has its own address, and a deep link lands on it: the view
+    // root is the only one painted, and the sidebar's single `aria-current` is
+    // the same view. This is the acceptance's "deep link / refresh must not 404"
+    // read from inside the document (the server answers the shell; the *view* is
+    // the frontend's, which is the point of the round).
+    const r16Routes = {};
+    for (const [path, view] of [
+      ["/board", "board"],
+      ["/list", "list"],
+      ["/activity", "activity"],
+      ["/waiting", "waiting"],
+    ]) {
+      const seen = await loadAddress(path);
+      r16Routes[path] = seen;
+      r16Check(seen.pathname === path, `${path} landed on ${seen.pathname}`);
+      r16Check(seen.navCurrent === view && seen.navCurrents === 1, `${path} nav current ${seen.navCurrent} (${seen.navCurrents} marked)`);
+      r16Check(seen[view] === true, `${path} painted the wrong view: ${JSON.stringify({ board: seen.board, list: seen.list, activity: seen.activity, waiting: seen.waiting })}`);
+      r16Check(
+        ["board", "list", "activity", "waiting"].filter((name) => seen[name]).length === 1,
+        `${path} painted more than one view root`,
+      );
+    }
+
+    // §4.3 step 6 — a `/activity` deep link must come up with its **ledger**, not
+    // with the "nothing has ever happened here" state. The feed's read is driven
+    // by the view, so this is the assertion that the boot reader really does run
+    // after the view watcher is alive: a reader wired in too early would land a
+    // deep link on a ledger that had not been read and would announce the project
+    // empty state over a project with twelve rows in it.
+    await page.goto("about:blank");
+    await page.goto(`${R16_ORIGIN}/activity`, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector("[data-activity-row]", { timeout: 20_000 }).catch(() => {});
+    const r16DeepFeed = await page.evaluate(() => ({
+      rows: document.querySelectorAll("[data-activity-row]").length,
+      emptyShown: [...document.querySelectorAll("[data-activity-empty]")].filter((el) => !el.hasAttribute("hidden")).length,
+    }));
+    r16Check(
+      r16DeepFeed.rows > 0 && r16DeepFeed.emptyShown === 0,
+      `a /activity deep link showed ${r16DeepFeed.rows} rows and ${r16DeepFeed.emptyShown} empty states`,
+    );
+
+    // ② — the default entry point is the board, and the address says so.
+    for (const alias of ["/", "/index.html"]) {
+      const seen = await loadAddress(alias);
+      r16Check(seen.pathname === "/board" && seen.navCurrent === "board" && seen.board, `${alias} did not land on the board (${seen.pathname}/${seen.navCurrent})`);
+    }
+    // …and a path that is not a route is silently corrected to the same place,
+    // which is the whole reason the server may answer 200 for anything.
+    const r16Unknown = await loadAddress("/borad");
+    r16Check(r16Unknown.pathname === "/board" && r16Unknown.board, `/borad was not corrected to the board (${r16Unknown.pathname})`);
+
+    // The drawer's own fragment is not a route and survives the correction.
+    const r16Drawer = await loadAddress("/#/task/TD-1");
+    r16Check(
+      r16Drawer.pathname === "/board" && r16Drawer.hash === "#/task/TD-1" && r16Drawer.board,
+      `a drawer fragment was consumed: ${r16Drawer.pathname}${r16Drawer.hash}`,
+    );
+
+    // §4.4 / 裁定 ① — an old share link is read, entered and redirected to the
+    // query form, and the fragment it arrived in is consumed.
+    const r16Legacy = await loadAddress("/#/activity?actor=agent&event=status&task=TD-128");
+    r16Check(
+      r16Legacy.pathname === "/activity" && r16Legacy.search === "?actor=agent&event=status&task=TD-128" && r16Legacy.hash === "",
+      `the old feed address redirected to ${r16Legacy.pathname}${r16Legacy.search}${r16Legacy.hash}`,
+    );
+    r16Check(r16Legacy.activity && r16Legacy.navCurrent === "activity", "an old feed address must enter the feed");
+    r16Check(r16Legacy.filterValues.join(",") === "agent,status,TD-128", `the old address restored ${r16Legacy.filterValues.join(",")}`);
+    const r16LegacyBare = await loadAddress("/#/activity");
+    r16Check(
+      r16LegacyBare.pathname === "/activity" && r16LegacyBare.search === "" && r16LegacyBare.hash === "",
+      `the bare old address redirected to ${r16LegacyBare.pathname}${r16LegacyBare.search}${r16LegacyBare.hash}`,
+    );
+
+    // ③ — the nav writes the address, a filter narrows it in place, and back /
+    // forward walk the views (and only the views: a filter is a `replaceState`,
+    // so it is never an entry).
+    await page.goto("about:blank");
+    await page.goto(`${R16_ORIGIN}/board`, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector("[data-nav]", { timeout: 20_000 });
+    await page.waitForTimeout(400);
+    const r16Before = await readAddress();
+    await page.click('[data-nav-item="activity"]');
+    await page.waitForTimeout(250);
+    const r16AtFeed = await readAddress();
+    r16Check(r16AtFeed.pathname === "/activity" && r16AtFeed.navCurrent === "activity", `the nav press wrote ${r16AtFeed.pathname}`);
+    r16Check(r16AtFeed.entries === r16Before.entries + 1, `a view change must add one history entry (${r16Before.entries} → ${r16AtFeed.entries})`);
+    // A filter is writer B: the query changes, the path and the entry count do not.
+    await page.evaluate(async () => {
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const host = document.querySelector('[data-activity-filter="actor"]');
+      host.querySelector("summary")?.click();
+      await sleep(40);
+      host.querySelector('[data-activity-filter-option][data-activity-value="agent"]')?.click();
+      await sleep(80);
+    });
+    const r16Filtered = await readAddress();
+    r16Check(r16Filtered.search === "?actor=agent" && r16Filtered.pathname === "/activity", `a filter wrote ${r16Filtered.pathname}${r16Filtered.search}`);
+    r16Check(r16Filtered.entries === r16AtFeed.entries, `a filter must not add a history entry (${r16AtFeed.entries} → ${r16Filtered.entries})`);
+    await page.click('[data-nav-item="waiting"]');
+    await page.waitForTimeout(250);
+    const r16AtQueue = await readAddress();
+    r16Check(r16AtQueue.pathname === "/waiting" && r16AtQueue.waiting && r16AtQueue.navCurrent === "waiting", `the queue landed on ${r16AtQueue.pathname}`);
+    r16Check(r16AtQueue.toggles.join(",") === "board=false,list=false", `on /waiting the toggle reads ${r16AtQueue.toggles.join(",")}`);
+
+    await page.evaluate(() => globalThis.history.back());
+    await page.waitForTimeout(250);
+    const r16BackOne = await readAddress();
+    r16Check(
+      r16BackOne.pathname === "/activity" && r16BackOne.search === "?actor=agent" && r16BackOne.activity,
+      `back #1 landed on ${r16BackOne.pathname}${r16BackOne.search}`,
+    );
+    r16Check(r16BackOne.filterValues[0] === "agent", `back #1 lost the filter the address names (${r16BackOne.filterValues.join(",")})`);
+    await page.evaluate(() => globalThis.history.back());
+    await page.waitForTimeout(250);
+    const r16BackTwo = await readAddress();
+    r16Check(r16BackTwo.pathname === "/board" && r16BackTwo.board && r16BackTwo.navCurrent === "board", `back #2 landed on ${r16BackTwo.pathname}`);
+    r16Check(r16BackTwo.toggles.join(",") === "board=true,list=false", `on /board the toggle reads ${r16BackTwo.toggles.join(",")}`);
+    await page.evaluate(() => globalThis.history.forward());
+    await page.waitForTimeout(250);
+    const r16Forward = await readAddress();
+    r16Check(r16Forward.pathname === "/activity" && r16Forward.activity, `forward landed on ${r16Forward.pathname}`);
+
+    // C8 — a row's task anchor routes back to the board, and the fragment stays
+    // the drawer's: the press writes the view's own address and nothing else.
+    const r16Anchor = await page.evaluate(() => {
+      document.querySelector("[data-activity-task]")?.click();
+      return true;
+    });
+    await page.waitForTimeout(300);
+    const r16AfterAnchor = await readAddress();
+    r16Check(r16Anchor && r16AfterAnchor.pathname === "/board" && r16AfterAnchor.hash === "", `the task anchor left the address at ${r16AfterAnchor.pathname}${r16AfterAnchor.hash}`);
 
     const results = [
       ...boardResults,
@@ -3603,6 +3789,20 @@ export async function run() {
         viewportFailures: b26ViewportFailures,
       },
       r12Id: { failures: r12IdFailures, longId: LONG_ID, clamped: CLAMPED, longHead, spill, listRead },
+      r16: {
+        failures: r16Failures,
+        routes: r16Routes,
+        legacy: r16Legacy,
+        deepFeed: r16DeepFeed,
+        unknown: r16Unknown,
+        drawerFragment: r16Drawer,
+        feed: r16AtFeed,
+        queue: r16AtQueue,
+        backOne: r16BackOne,
+        backTwo: r16BackTwo,
+        forward: r16Forward,
+        afterAnchor: r16AfterAnchor,
+      },
       geometry,
       counts: { rules: results.length, failed: failures.length, ...geometry },
       fixtureTasks: data.tasks.length,
@@ -3694,6 +3894,17 @@ if (isEntryPoint) run().then(
       } else {
         console.log(`R12-id (fidelity) — the drawer head shows ${report.r12Id.longId} whole while the card and the list row still show ${report.r12Id.clamped}, and .td-id-full does not spill (${report.r12Id.spill.fullClass} match, cards ${report.r12Id.spill.cards}, rows ${report.r12Id.spill.rows})`);
       }
+      if (report.r16.failures.length > 0) {
+        console.log(`R16 (routing) — ${report.r16.failures.length} failed:`);
+        for (const failure of report.r16.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log(
+          "R16 (routing) — the four views load from their own addresses (each root painted alone, one `aria-current`), `/` and `/index.html` " +
+            `redirect to ${report.r16.routes["/board"].pathname}, an unknown path is corrected to the board while a drawer fragment survives, ` +
+            `the old \`#/activity?…\` link redirects to ${report.r16.legacy.pathname}${report.r16.legacy.search} with the fragment consumed, ` +
+            `and nav / filter / back / forward walk the views with the toggle and the filters in step (back #1 ${report.r16.backOne.pathname}${report.r16.backOne.search}, back #2 ${report.r16.backTwo.pathname})`,
+        );
+      }
     }
     const interactionOk =
       report.interactions.drawerOpened &&
@@ -3718,6 +3929,7 @@ if (isEntryPoint) run().then(
       report.r11.failures.length === 0 &&
       report.b26.failures.length === 0 &&
       report.r12Id.failures.length === 0 &&
+      report.r16.failures.length === 0 &&
       interactionOk;
     process.exit(ok ? 0 : 1);
   },
