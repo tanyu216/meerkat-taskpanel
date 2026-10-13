@@ -5,9 +5,12 @@
  *
  * One drawer component renders for any card (the prototype's per-card
  * `<template>` clones are a jQuery mechanism; the *hooks* are the contract, the
- * template multiplicity is not). The drawer is toggled by `data-state` and
- * `hidden`, never by a stylesheet rule (C06), and Escape returns focus to the
- * opener (handled in `App.vue`).
+ * template multiplicity is not). The drawer is toggled by **`data-state`** — the
+ * one state source, which is C06's own vocabulary and is unchanged — and never by
+ * a stylesheet rule; since R14 §8 U4 the `aside` carries no `hidden` attribute at
+ * all, its closed face being the prototype's `translateX(100%)` +
+ * `visibility: hidden` pair (`.td-drawer`, `app.css`). Escape returns focus to
+ * the opener (handled in `App.vue`).
  *
  * The body is **always in the document** — the contract counts hooks like
  * `[data-detail-labels]` with no `when` precondition, so they must exist while
@@ -42,6 +45,13 @@ const idText = computed(() => task.value?.id ?? "");
 const assigneeName = computed(() => task.value?.assignee?.display_name ?? "");
 const reporterName = computed(() => task.value?.reporter?.display_name ?? "");
 const isAgent = computed(() => (task.value?.assignee?.kind ?? "human") === "agent");
+/**
+ * The assignee's kind as the contract's own attribute value. The prototype
+ * carries `data-assignee-kind="agent"` on the value row **and** on its avatar
+ * (R14 §2.4 / A19); only an agent has a kind to state, so a human card leaves
+ * the attribute off rather than writing an empty one.
+ */
+const assigneeKind = computed(() => (isAgent.value ? "agent" : "human"));
 const platform = computed(() => platformOf(assigneeName.value));
 const projectLabel = computed(() => board.projects.find((p) => p.id === task.value?.project_id)?.name ?? "");
 const initial = (name) => (name ? name.charAt(0).toUpperCase() : "?");
@@ -62,14 +72,42 @@ const attachments = computed(() => attachmentRows(task.value?.meta));
  * The activity rows: actor + a localised sentence + a relative timestamp whose
  * `title` carries the absolute one. `event` is the core's vocabulary, so an
  * event without a catalogue sentence reads as its own name (see `lib/activity.js`).
+ * `agent` picks the actor's face — an agent's handle is monospaced, exactly as
+ * the prototype's `font-medium td-mono` states it (R14 D46).
  */
 const activityRows = computed(() =>
   activities.value.map((row) => ({
     id: row.id,
     actor: row.actor_id ?? "—",
+    agent: row.actor_kind === "agent",
     line: activityLine(row),
     stamp: relativeTime(row.created_at),
   })),
+);
+
+/**
+ * The comment rows (B09's `[data-detail-comments]`): avatar, meta line and body.
+ * The meta line names three things — the author, the kind, and when — and the
+ * kind is the comment's own `decision` first, then the author's `agent`/`human`
+ * (the catalogue's `comment.*` trio, R14 D40). A decision comment is *quoted*
+ * (`[data-detail-comments] .td-comment-decision`) and its kind rides a chip, as
+ * the prototype has it.
+ */
+const commentRows = computed(() =>
+  comments.value.map((row) => {
+    const name = row.author?.display_name ?? row.author_id ?? "—";
+    const kind = row.author_kind ?? "human";
+    const decision = row.kind === "decision";
+    return {
+      id: row.id,
+      name,
+      initials: initial(name),
+      agent: kind === "agent",
+      decision,
+      stamp: relativeTime(row.created_at),
+      body: row.body ?? "",
+    };
+  }),
 );
 
 const session = computed(() => {
@@ -95,6 +133,17 @@ const relationLinks = computed(() => {
     return { key: row.id, type: row.type, label: identifierOf(other) };
   });
 });
+
+/**
+ * R14 D37 — the relations row groups its links by kind, one `.td-rel-item` per
+ * label. The catalogue names `parent` and `blocks`; a link of any other kind
+ * (`related` is the only one left in the vocabulary, `src/core/domain/enums.mjs`)
+ * is listed as a bare link rather than given an invented label — the round adds
+ * no catalogue key (`design/fidelity-r14.md` §8.2 ④).
+ */
+const parentLinks = computed(() => relationLinks.value.filter((link) => link.type === "parent"));
+const blockLinks = computed(() => relationLinks.value.filter((link) => link.type === "blocks"));
+const otherLinks = computed(() => relationLinks.value.filter((link) => link.type !== "parent" && link.type !== "blocks"));
 
 /** `data-status` on the status chip/prop falls back to a valid domain value at rest. */
 const statusValue = computed(() => status.value);
@@ -236,19 +285,27 @@ function copyId() {
        dialogs wear it too, so every veil in the app deepens together in the dark
        (`design/fidelity-r8.md` §2.1). Its **light** appearance is byte-identical
        to what `bg-neutral` + `opacity-32` composited to. -->
-  <div class="fixed inset-0 z-50 bg-(--brand-scrim)" data-detail-overlay :data-state="board.drawerState" :hidden="!open" @click="closeDetail"></div>
+  <!-- R14 D06/A22 — the veil sits at **z 40**, one rung *under* the drawer's 50:
+       the pair the prototype states (`.td-scrim` / `.td-drawer`). It is also the
+       half of the state pair that keeps a `hidden` attribute. -->
+  <div class="fixed inset-0 z-40 bg-(--brand-scrim)" data-detail-overlay :data-state="board.drawerState" :hidden="!open" @click="closeDetail"></div>
 
+  <!-- R14 §2.1 / §8 U4 — the drawer carries **no `hidden`**: `data-state` is the
+       one state source (closed | open | closing) and the closed face is the
+       prototype's own `translateX(100%)` + `visibility: hidden` pair, stated in
+       `.td-drawer` (app.css). `aria-hidden` is gone with it — the prototype
+       never had it, and the section is what "off screen" already means there.
+       The scrim keeps `hidden`: that half of the pair *is* the contract's. -->
   <aside
     class="td-drawer"
     data-detail-drawer
     :data-identifier="identifier"
     :data-state="board.drawerState"
-    :hidden="!open"
-    :aria-hidden="open ? 'false' : 'true'"
     role="dialog"
     aria-modal="true"
+    aria-labelledby="td-detail-title"
   >
-    <header class="flex flex-col gap-1 p-4 border-b border-b-(--brand-border)">
+    <header class="td-drawer-head">
       <!-- R7 ④ — identifier, chip and the close button share one flex row, with
            the close pushed to its inline end (`ml-auto`). It used to be the
            header's third line, *below* the title: the prototype puts it in the
@@ -264,7 +321,7 @@ function copyId() {
              back to resolve the task: the rendered text is a display value, and
              its being the whole id now is a coincidence of this round, not a
              licence to parse it (R8 §2.3, restated in R12 §2.1). -->
-        <span class="td-mono td-id td-id-full" data-detail-identifier :title="identifier">{{ identifier }}</span>
+        <span class="td-mono text-xs text-(--brand-text-3) td-id td-id-full" data-detail-identifier :title="identifier">{{ identifier }}</span>
         <!-- The status chip is a dot **and** a word (B09/§2.4: colour is never
              the only signal). daisyUI's `badge-sm` owns the box, `td-chip` the
              brand's metrics, `td-chip-status` the 6px dot. -->
@@ -284,10 +341,14 @@ function copyId() {
           </svg>
         </button>
       </div>
-      <h2 data-detail-title>{{ title }}</h2>
+      <!-- R14 D20 — `aria-labelledby` on the root needs a seat to point at: the
+           id lands on this `<h2>`, exactly as `design/prototype/index.html`
+           carries it. The 16px/600 face is the prototype's own measured one
+           (R14 §3): Tailwind's `text-lg` is 18px here, so the value is stated. -->
+      <h2 id="td-detail-title" class="text-[16px] font-semibold" data-detail-title>{{ title }}</h2>
     </header>
 
-    <div class="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
+    <div class="td-drawer-body">
       <!-- R10 ② — the drawer's save state, one region for all three editable
            fields. `data-save-state` is the source of truth (`idle` ships, as the
            resting state) and the alert below is its only visible half: hidden
@@ -297,72 +358,95 @@ function copyId() {
       <span data-detail-save :data-save-state="saveState" hidden></span>
       <span class="td-save-error" data-detail-save-error :hidden="!saveError" role="alert" data-i18n="detail.saveError">{{ $t("detail.saveError") }}</span>
 
-      <!-- The property grid is the prototype's plain two-column `<div>` grid
-           (`[data-detail-props]` is a `<div>` there), not a definition list: the
-           rows pair a label with a *control* — buttons and comboboxes — which is
-           not what `<dt>/<dd>` describe. Labels and values are therefore spans
-           and divs, and the stylesheet selects them by class. -->
-      <div class="m-0 grid grid-cols-[96px_minmax(0,1fr)] items-center gap-x-3 gap-y-1 text-[13px]" data-detail-props>
-        <span class="text-[12px] text-(--brand-text-3)">{{ $t("prop.status") }}</span>
-        <div class="inline-flex min-h-7 min-w-0 items-center gap-1 px-1 text-[13px] text-(--brand-text)" data-detail-status :data-status="statusValue"><span data-detail-status-label>{{ $t(`status.${statusValue}`) }}</span></div>
+      <section class="td-section">
+        <h3 class="td-section-title" data-i18n="drawer.properties">{{ $t("drawer.properties") }}</h3>
+        <!-- The property grid is the prototype's plain two-column `<div>` grid
+             (`[data-detail-props]` is a `<div>` there), not a definition list: the
+             rows pair a label with a *control* — buttons and comboboxes — which is
+             not what `<dt>/<dd>` describe. The grid's own box (the 96px label
+             track, the 4px row rhythm and the **absent** column gap) is
+             `.td-props` in `app.css`, where the prototype states it (R14 D23). -->
+        <div class="td-props" data-detail-props>
+          <span class="td-prop-label" data-i18n="prop.status">{{ $t("prop.status") }}</span>
+          <!-- R14 D26 — the three single-choice properties are **controls**, not
+               text: the prototype's row is a `<button class="td-prop-value">`
+               that opens a menu. The dot, the label and the disclosure caret are
+               its three children (A16/A17). -->
+          <button type="button" class="td-prop-value" data-detail-status :data-status="statusValue">
+            <span class="td-status-dot" aria-hidden="true"></span>
+            <span data-detail-status-label>{{ $t(`status.${statusValue}`) }}</span>
+            <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M6 9.5 12 15.5 18 9.5" />
+            </svg>
+          </button>
 
-        <span class="text-[12px] text-(--brand-text-3)">{{ $t("prop.priority") }}</span>
-        <div class="inline-flex min-h-7 min-w-0 items-center gap-1 px-1 text-[13px] text-(--brand-text)" data-detail-priority :data-priority="priority"><span data-detail-priority-label>{{ $t(`priority.${priority}`) }}</span></div>
+          <span class="td-prop-label" data-i18n="prop.priority">{{ $t("prop.priority") }}</span>
+          <button type="button" class="td-prop-value" data-detail-priority :data-priority="priority">
+            <span class="td-pri" :aria-label="$t(`priority.${priority}`)" role="img">
+              <svg class="td-pri-glyph" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+                <rect x="2.5" y="2.5" width="7" height="7" rx="1" />
+                <line x1="2" y1="6" x2="10" y2="6" />
+              </svg>
+            </span>
+            <span data-detail-priority-label>{{ $t(`priority.${priority}`) }}</span>
+            <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M6 9.5 12 15.5 18 9.5" />
+            </svg>
+          </button>
 
-        <span class="text-[12px] text-(--brand-text-3)">{{ $t("prop.assignee") }}</span>
-        <div class="flex min-h-7 min-w-0 items-center gap-1 px-1 text-[13px] text-(--brand-text)" data-detail-assignee data-detail-save-field="assignee">
-          <span class="inline-flex size-5 items-center justify-center rounded-[999px] bg-(--brand-active) text-[11px] font-medium text-(--brand-text-2)" data-detail-assignee-avatar>{{ initial(assigneeName) }}</span>
-          <span v-if="isAgent" data-detail-assignee-platform>{{ platform }}</span>
-          <ComboField
-            v-model="assigneeDraft"
-            :options="peopleOptions"
-            seed
-            hook-input="data-assignee-input"
-            hook-label="data-detail-assignee-label"
-            hook-menu="data-assignee-menu"
-            hook-option="data-assignee-option"
-            hook-value="data-assignee-value"
-            kind-attr="data-assignee-kind"
-            platform-attr="data-agent-platform"
-            placeholder-key="combo.assigneePlaceholder"
-            aria-key="prop.assignee"
-            @blur="(value) => commitField('assignee', value)"
-          />
-        </div>
+          <span class="td-prop-label" data-i18n="prop.assignee">{{ $t("prop.assignee") }}</span>
+          <!-- R14 D26/B13 — the people rows are combos: the value box carries
+               `data-assignee-kind`, and its avatar carries it too (A19), so the
+               dashed agent ring resolves on both. The platform badge is the row's
+               own `[data-agent-platform]` seat. -->
+          <div class="td-prop-value" data-detail-assignee data-detail-save-field="assignee" :data-assignee-kind="assigneeKind">
+            <span class="avatar"><span class="td-avatar" data-detail-assignee-avatar :data-assignee-kind="assigneeKind">{{ initial(assigneeName) }}</span></span>
+            <ComboField
+              v-model="assigneeDraft"
+              :options="peopleOptions"
+              seed
+              hook-input="data-assignee-input"
+              hook-label="data-detail-assignee-label"
+              hook-menu="data-assignee-menu"
+              hook-option="data-assignee-option"
+              hook-value="data-assignee-value"
+              kind-attr="data-assignee-kind"
+              platform-attr="data-agent-platform"
+              placeholder-key="combo.assigneePlaceholder"
+              aria-key="prop.assignee"
+              @blur="(value) => commitField('assignee', value)"
+            />
+            <span v-if="isAgent" class="badge badge-xs td-agent-badge" data-detail-assignee-platform :data-agent-platform="platform">{{ platform }}</span>
+          </div>
 
-        <span class="text-[12px] text-(--brand-text-3)">{{ $t("prop.reporter") }}</span>
-        <div class="flex min-h-7 min-w-0 items-center gap-1 px-1 text-[13px] text-(--brand-text)" data-detail-reporter data-detail-save-field="reporter">
-          <span class="inline-flex size-5 items-center justify-center rounded-[999px] bg-(--brand-active) text-[11px] font-medium text-(--brand-text-2)" data-detail-reporter-avatar>{{ initial(reporterName) }}</span>
-          <ComboField
-            v-model="reporterDraft"
-            :options="reporterOptions"
-            seed
-            hook-input="data-reporter-input"
-            hook-label="data-detail-reporter-label"
-            hook-menu="data-reporter-menu"
-            hook-option="data-reporter-option"
-            hook-value="data-reporter-value"
-            placeholder-key="combo.reporterPlaceholder"
-            aria-key="prop.reporter"
-            @blur="(value) => commitField('reporter', value)"
-          />
-        </div>
+          <span class="td-prop-label" data-i18n="prop.reporter">{{ $t("prop.reporter") }}</span>
+          <div class="td-prop-value" data-detail-reporter data-detail-save-field="reporter">
+            <span class="avatar"><span class="td-avatar" data-detail-reporter-avatar>{{ initial(reporterName) }}</span></span>
+            <ComboField
+              v-model="reporterDraft"
+              :options="reporterOptions"
+              seed
+              hook-input="data-reporter-input"
+              hook-label="data-detail-reporter-label"
+              hook-menu="data-reporter-menu"
+              hook-option="data-reporter-option"
+              hook-value="data-reporter-value"
+              placeholder-key="combo.reporterPlaceholder"
+              aria-key="prop.reporter"
+              @blur="(value) => commitField('reporter', value)"
+            />
+          </div>
 
-        <span class="text-[12px] text-(--brand-text-3)">{{ $t("prop.project") }}</span>
-        <div class="inline-flex min-h-7 min-w-0 items-center gap-1 px-1 text-[13px] text-(--brand-text)" data-detail-project><span data-detail-project-label>{{ projectLabel }}</span></div>
+          <span class="td-prop-label" data-i18n="prop.project">{{ $t("prop.project") }}</span>
+          <button type="button" class="td-prop-value" data-detail-project>
+            <span class="td-mono" data-detail-project-label>{{ projectLabel }}</span>
+          </button>
 
-        <span class="text-[12px] text-(--brand-text-3)">{{ $t("prop.id") }}</span>
-        <div class="inline-flex min-h-7 min-w-0 items-center gap-1 px-1 text-[13px] text-(--brand-text)">
-          <span class="td-mono" data-detail-id>{{ idText }}</span>
-          <button type="button" class="border-0 bg-transparent text-(--brand-text-3) cursor-pointer" data-detail-id-copy :data-copy-value="idText" :aria-label="$t('toast.copied')" @click="copyId">⧉</button>
-        </div>
-
-        <span class="text-[12px] text-(--brand-text-3)">{{ $t("prop.version") }}</span>
-        <div class="td-mono inline-flex min-h-7 min-w-0 items-center gap-1 px-1 text-[13px] text-(--brand-text)" data-detail-version>{{ versionText }}</div>
-
-        <span class="text-[12px] text-(--brand-text-3)">{{ $t("prop.labels") }}</span>
-        <div class="flex min-h-7 min-w-0 items-center gap-1 px-1 text-[13px] text-(--brand-text)">
-          <div data-detail-labels data-detail-save-field="labels">
+          <span class="td-prop-label" data-i18n="prop.labels">{{ $t("prop.labels") }}</span>
+          <!-- R14 B16/D27 — the labels row's **root** is the value box itself
+               (`.td-prop-value.td-prop-combo`): the row's 28px measure and its
+               6px gutters belong to the row, not to a wrapper inside it. -->
+          <div class="td-prop-value td-prop-combo" data-detail-labels data-detail-save-field="labels">
             <ComboField
               v-model="labelDraft"
               :options="labelOptions"
@@ -380,86 +464,167 @@ function copyId() {
               aria-key="prop.labels"
             />
           </div>
+
+          <span class="td-prop-label" data-i18n="prop.id">{{ $t("prop.id") }}</span>
+          <!-- R14 D28/B17 — the copy control is `.td-copy` and holds two things:
+               the internal id and the `svg.td-icon-sm` glyph (the prototype's
+               two children; a text `⧉` is the shape it replaces). -->
+          <button type="button" class="td-copy" data-detail-id-copy :data-copy-value="idText" :aria-label="$t('toast.copied')" @click="copyId">
+            <span data-detail-id>{{ idText }}</span>
+            <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M8 8h11v11H8zM5 16V5h11" />
+            </svg>
+          </button>
+
+          <span class="td-prop-label" data-i18n="prop.version">{{ $t("prop.version") }}</span>
+          <span class="td-prop-value td-mono" data-detail-version>{{ versionText }}</span>
         </div>
-      </div>
-
-      <section class="border-t border-t-(--brand-border) pt-3" data-detail-description>
-        <h3 class="m-0 mb-2 text-[13px] font-semibold">{{ $t("drawer.description") }}</h3>
-        <div v-if="descriptionHtml" class="td-gfm" v-html="descriptionHtml"></div>
-        <p v-else class="text-[12px] text-(--brand-text-3)" data-i18n="description.none">{{ $t("description.none") }}</p>
       </section>
 
-      <section class="border-t border-t-(--brand-border) pt-3" data-detail-relations>
-        <h3 class="m-0 mb-2 text-[13px] font-semibold">{{ $t("drawer.relations") }}</h3>
-        <ul v-if="relationLinks.length" class="m-0 pl-4">
-          <li v-for="link in relationLinks" :key="link.key">
-            <a href="#" class="td-mono" data-relation-link @click.prevent>{{ link.type }} · {{ link.label }}</a>
-          </li>
-        </ul>
-        <p v-else class="text-[12px] text-(--brand-text-3)" data-i18n="relations.none">{{ $t("relations.none") }}</p>
+      <section class="td-section">
+        <h3 class="td-section-title" data-i18n="drawer.description">{{ $t("drawer.description") }}</h3>
+        <!-- A13 — the hook rides the **content container** (`div.td-gfm`), whose
+             parent is the `section`; the empty state is a plain `span` inside it,
+             which is the shape the prototype's `fill()` injects (A21/D49). -->
+        <div v-if="descriptionHtml" class="td-gfm" data-detail-description v-html="descriptionHtml"></div>
+        <div v-else class="td-gfm" data-detail-description>
+          <span class="text-xs text-(--brand-text-3)" data-i18n="description.none">{{ $t("description.none") }}</span>
+        </div>
       </section>
 
-      <section class="border-t border-t-(--brand-border) pt-3" data-detail-agent-session :hidden="!isAgent">
-        <h3 class="m-0 mb-2 text-[13px] font-semibold">{{ $t("drawer.session") }}</h3>
+      <section class="td-section">
+        <h3 class="td-section-title" data-i18n="drawer.relations">{{ $t("drawer.relations") }}</h3>
+        <!-- R14 D37 — the prototype groups its links by kind: one `.td-rel-item`
+             per label, holding that kind's `.td-copy` links. The board's relation
+             vocabulary is `parent` / `blocks` / `related`
+             (`src/core/domain/enums.mjs`) and the catalogue names the first two,
+             so a `related` link is listed as a bare link rather than given an
+             invented label — no new key, and no bare catalogue key on screen
+             (`design/fidelity-r14.md` §8.2 ④). -->
+        <div class="td-rel" data-detail-relations>
+          <template v-if="relationLinks.length">
+            <span v-if="parentLinks.length" class="td-rel-item">
+              <span class="text-xs text-(--brand-text-3)" data-i18n="relations.parent">{{ $t("relations.parent") }}</span>
+              <button v-for="link in parentLinks" :key="link.key" type="button" class="td-copy" data-relation-link>{{ link.label }}</button>
+            </span>
+            <span v-if="blockLinks.length" class="td-rel-item">
+              <span class="text-xs text-(--brand-text-3)" data-i18n="relations.blocks">{{ $t("relations.blocks") }}</span>
+              <button v-for="link in blockLinks" :key="link.key" type="button" class="td-copy" data-relation-link>{{ link.label }}</button>
+            </span>
+            <button v-for="link in otherLinks" :key="link.key" type="button" class="td-copy" data-relation-link>{{ link.label }}</button>
+          </template>
+          <span v-else class="text-xs text-(--brand-text-3)" data-i18n="relations.none">{{ $t("relations.none") }}</span>
+        </div>
+      </section>
+
+      <section class="td-section" data-detail-agent-session :hidden="!isAgent">
+        <h3 class="td-section-title" data-i18n="drawer.session">{{ $t("drawer.session") }}</h3>
         <div data-detail-agent-session-body>
-          <div data-agent-session>
-            <p>{{ $t("session.id") }}: <span class="td-mono" data-agent-session-id>{{ session?.session_id ?? "—" }}</span></p>
-            <p><span :data-agent-platform="isAgent ? platform : undefined">{{ platform }}</span> · <span data-agent-platform-value>{{ platform }}</span></p>
-            <button type="button" class="btn btn-ghost btn-xs" data-agent-resume>{{ $t("drawer.resume") }}</button>
+          <!-- R14 D43/D44/D45 — the session is one sunken box in two rows:
+               platform badge + `--agent-platform` value + the Resume button
+               pushed to the row's end, then the id under the prototype's own
+               `.td-copy` face. `data-agent-platform` is stated only for an agent
+               card — a human card has no platform to name (B16's domain rule). -->
+          <div class="td-session" data-agent-session>
+            <div class="flex items-center gap-2">
+              <span class="badge badge-xs td-agent-badge" :data-agent-platform="isAgent ? platform : undefined">{{ isAgent ? platform : "" }}</span>
+              <span class="td-mono text-xs text-(--brand-text-2)" data-agent-platform-value>{{ platform }}</span>
+              <button type="button" class="btn btn-outline btn-xs ms-auto" data-agent-resume data-i18n="drawer.resume">{{ $t("drawer.resume") }}</button>
+            </div>
+            <div class="mt-2 flex items-center gap-2">
+              <span class="text-xs text-(--brand-text-3)" data-i18n="session.id">{{ $t("session.id") }}</span>
+              <span class="td-copy" data-agent-session-id>{{ session?.session_id ?? "—" }}</span>
+            </div>
           </div>
         </div>
       </section>
 
-      <section class="border-t border-t-(--brand-border) pt-3" data-detail-attachments>
-        <h3 class="m-0 mb-2 text-[13px] font-semibold">{{ $t("drawer.attachments") }}</h3>
+      <section class="td-section">
+        <h3 class="td-section-title" data-i18n="drawer.attachments">{{ $t("drawer.attachments") }}</h3>
         <!-- The prototype's rows: a file icon, the name, and the size pushed to
-             the row's end. `attachments.none` is the state of a task that has no
+             the row's end (`[data-attachment-row]` and its two hooks are the
+             implementation's own test hooks and stay exactly where they are —
+             R14 §8 U1(a)). `attachments.none` is the state of a task that has no
              attachments — never the state of a drawer with no task in it. -->
-        <div v-for="file in attachments" :key="file.name" class="flex items-center gap-2 border border-(--brand-border) rounded-[6px] bg-(--brand-surface) px-2 py-1 [&+&]:mt-2" data-attachment-row>
-          <svg class="td-icon size-4" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path d="M14 3v5h5M7 3h7l5 5v13H7z" />
-          </svg>
-          <span class="text-[12px] font-medium text-(--brand-text)" data-attachment-name>{{ file.name }}</span>
-          <span class="td-mono ms-auto text-[11px] text-(--brand-text-3)" data-attachment-size>{{ file.size }}</span>
-        </div>
-        <p v-if="task && attachments.length === 0" class="text-[12px] text-(--brand-text-3)" data-i18n="attachments.none">{{ $t("attachments.none") }}</p>
-      </section>
-
-      <section class="border-t border-t-(--brand-border) pt-3" data-detail-comments>
-        <h3 class="m-0 mb-2 text-[13px] font-semibold">{{ $t("drawer.comments") }}</h3>
-        <article v-for="comment in comments" :key="comment.id" class="flex flex-col gap-1 py-2 border-b border-b-(--brand-border)">
-          <div class="flex items-center gap-2 text-[12px] text-(--brand-text-3)">
-            <span>{{ comment.author_id ?? comment.author?.display_name ?? "—" }}</span>
-            <span>{{ $t(`comment.${comment.author_kind ?? 'human'}`) }}</span>
+        <div data-detail-attachments>
+          <div v-for="file in attachments" :key="file.name" class="td-file" data-attachment-row>
+            <svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M14 3v5h5M7 3h7l5 5v13H7z" />
+            </svg>
+            <span class="td-file-name" data-attachment-name>{{ file.name }}</span>
+            <span class="td-file-size" data-attachment-size>{{ file.size }}</span>
           </div>
-          <p>{{ comment.body }}</p>
-        </article>
-        <form data-comment-form @submit.prevent="submitComment">
-          <textarea v-model="commentDraft" class="min-h-16 w-full resize-y rounded-[6px] border border-(--brand-border-strong) bg-(--brand-surface) p-2 text-(--brand-text)" data-comment-input :placeholder="$t('drawer.commentPlaceholder')"></textarea>
-          <button type="submit" class="btn btn-primary btn-sm" data-comment-submit>{{ $t("drawer.submit") }}</button>
-        </form>
+          <span v-if="task && attachments.length === 0" class="text-xs text-(--brand-text-3)" data-i18n="attachments.none">{{ $t("attachments.none") }}</span>
+        </div>
       </section>
 
-      <section class="border-t border-t-(--brand-border) pt-3" data-detail-activity>
-        <h3 class="m-0 mb-2 text-[13px] font-semibold">{{ $t("drawer.activity") }}</h3>
+      <section class="td-section">
+        <h3 class="td-section-title" data-i18n="drawer.comments">{{ $t("drawer.comments") }}</h3>
+        <div data-detail-comments>
+          <!-- R14 D39/D40/D41 — avatar, meta line (author + kin + stamp) and the
+               pre-lined body; a decision comment is quoted by `.td-comment-decision`
+               and its kin is the chip the prototype gives it. -->
+          <article v-for="row in commentRows" :key="row.id" class="td-comment" :class="{ 'td-comment-decision': row.decision }">
+            <span class="avatar"><span class="td-avatar" :data-assignee-kind="row.agent ? 'agent' : undefined">{{ row.initials }}</span></span>
+            <div>
+              <div class="td-comment-meta">
+                <span class="font-medium text-(--brand-text)" :class="{ 'td-mono': row.agent }">{{ row.name }}</span>
+                <span v-if="row.decision" class="badge badge-sm td-chip" data-i18n="comment.decision">{{ $t("comment.decision") }}</span>
+                <span v-else :data-i18n="`comment.${row.agent ? 'agent' : 'human'}`">{{ $t(`comment.${row.agent ? 'agent' : 'human'}`) }}</span>
+                <span v-if="row.stamp" class="td-mono" :title="row.stamp.absolute" :data-i18n="`${row.stamp.key}`">{{ $t(row.stamp.key, row.stamp.arg) }}</span>
+              </div>
+              <div class="td-comment-body">{{ row.body }}</div>
+            </div>
+          </article>
+
+          <!-- R14 D47 — the form is four pieces: the visually-hidden label (the
+               prototype's `.td-sr`, whose `for` names the field), the field, the
+               hint, and the submit button on the hint's line. -->
+          <form class="mt-2" data-comment-form @submit.prevent="submitComment">
+            <label class="td-sr" for="td-comment-input" data-i18n="drawer.comment">{{ $t("drawer.comment") }}</label>
+            <textarea id="td-comment-input" class="td-textarea" data-comment-input v-model="commentDraft" :placeholder="$t('drawer.commentPlaceholder')"></textarea>
+            <div class="mt-2 flex items-center justify-between">
+              <span class="text-[11px] text-(--brand-text-3)" data-i18n="drawer.commentHint">{{ $t("drawer.commentHint") }}</span>
+              <button type="submit" class="btn btn-primary btn-sm" data-comment-submit>{{ $t("drawer.submit") }}</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section class="td-section">
+        <h3 class="td-section-title" data-i18n="drawer.activity">{{ $t("drawer.activity") }}</h3>
         <!-- Each row is actor · sentence · relative time. The sentence is a
              catalogue key where the prototype names the event, the prototype's
              mono `status: from → to` line for a move, and the event's own name
-             otherwise. The timestamp's `title` carries the absolute stamp. -->
-        <div v-for="row in activityRows" :key="row.id" class="flex items-baseline gap-2 py-[3px] text-[12px] text-(--brand-text-2)" data-activity-row>
-          <span class="td-activity-actor td-mono" data-activity-actor>{{ row.actor }}</span>
-          <span v-if="row.line.sentence" :data-i18n="`activity.${row.line.sentence}`">{{ $t(`activity.${row.line.sentence}`) }}</span>
-          <span v-else class="td-mono">{{ row.line.text }}</span>
-          <span v-if="row.stamp" class="td-mono ms-auto whitespace-nowrap text-[11px] text-(--brand-text-3)" data-activity-ts :title="row.stamp.absolute">{{ $t(row.stamp.key, row.stamp.arg) }}</span>
+             otherwise. The timestamp's `title` carries the absolute stamp.
+             R14 D46 — the row wears `.td-activity`, the drawer's own short family;
+             B26's view rows keep `.td-activity-*`/`.td-activity-view` to
+             themselves, which is why the actor here is the prototype's plain
+             `font-medium` span (mono for an agent) and not `.td-activity-actor`. -->
+        <div data-detail-activity>
+          <div v-for="row in activityRows" :key="row.id" class="td-activity" data-activity-row>
+            <span class="font-medium" :class="{ 'td-mono': row.agent }" data-activity-actor>{{ row.actor }}</span>
+            <span v-if="row.line.sentence" :data-i18n="`activity.${row.line.sentence}`">{{ $t(`activity.${row.line.sentence}`) }}</span>
+            <span v-else class="td-mono">{{ row.line.text }}</span>
+            <span v-if="row.stamp" class="td-activity-ts" data-activity-ts :title="row.stamp.absolute">{{ $t(row.stamp.key, row.stamp.arg) }}</span>
+          </div>
         </div>
       </section>
     </div>
 
     <!-- The contract's inert slot templates: the hooks survive the framework,
-         the multiplicity does not. One template holds one slot per SLOT value. -->
+         the multiplicity does not. One template holds one slot per SLOT value.
+
+         R14 §8 U1(b) — `[data-detail-slot-source]` was the one hook of the three
+         self-invented families with no backing in either contract test, and the
+         implementation has no consumer for it: the prototype's `app.js` builds
+         that transient wrapper while copying a `<template>` into the drawer, and
+         a component-based drawer renders its sections directly. It is **removed**
+         here (with its `AUXILIARY_HOOKS` record), which is the ruling's first
+         branch; the six `[data-slot]` containers below are what the contract
+         actually counts (A5/A26). -->
     <div data-detail-templates hidden>
       <div data-detail-for="*">
-        <div data-detail-slot-source hidden></div>
         <div data-slot="description"></div>
         <div data-slot="relations"></div>
         <div data-slot="agent-session"></div>

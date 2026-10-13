@@ -1545,19 +1545,328 @@ html[data-theme="dark"] [data-create-project-panel] {
 
 /* ----------------------------------------------------------------- drawer */
 
+/* B09 · the detail drawer's flesh and bone, transcribed from
+   `design/prototype/src/input.css` per `design/fidelity-r14.md` §8.1 D01–D50:
+   `.td-drawer` / `.td-drawer-head` / `.td-drawer-body`, the `.td-section` pair,
+   the property grid, and the body sections' own families (relations, files,
+   session, comments, activity, the comment form and the label chips). Every
+   value below is the prototype's *measured* one, written with this repo's
+   tokens — no token is added, renamed or re-valued (R14 §3), and no colour
+   literal enters this file (C08: the six-digit hexes live in `tokens.css`).
+
+   The drawer **carries no `hidden`** (D08 / §8 U4, Elon's ruling): `data-state`
+   is the one state source, exactly as the prototype has it, and the closed face
+   is the prototype's own `translateX(100%)` + `visibility: hidden` pair. The
+   scrim keeps `hidden` — that half of the pair is the contract's (R14 §2.1). */
 .td-drawer {
-  @apply fixed end-0 z-[60] flex w-[min(560px,100vw)] flex-col bg-(--brand-surface) [box-shadow:var(--shadow-pop)];
+  position: fixed;
   inset-block: 0;
+  inset-inline-end: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 100vw);
+  max-width: 100vw;
+  background-color: var(--brand-surface);
   border-inline-start: var(--border) solid var(--brand-border);
+  box-shadow: var(--shadow-pop);
   transform: translateX(100%);
-  transition: transform var(--dur-2) var(--ease-brand);
+  visibility: hidden;
+  transition:
+    transform var(--dur-2) var(--ease-brand),
+    visibility var(--dur-2) var(--ease-brand);
 }
-.td-drawer[data-state="open"] { transform: translateX(0); }
-.td-drawer[hidden] { display: none; }
+.td-drawer[data-state="open"] {
+  transform: translateX(0);
+  visibility: visible;
+}
+/* The `closing` beat slides back out but stays painted, which is what makes the
+   transition visible at all (`design/BLOCKS.md` B09's three states). */
+.td-drawer[data-state="closing"] {
+  transform: translateX(100%);
+  visibility: visible;
+}
+
+/* The head's box is the prototype's asymmetric `12px 16px 12px 20px` — the 20px
+   on the reading edge is the body's own gutter. */
+.td-drawer-head {
+  flex: none;
+  padding: 12px var(--space-4) 12px var(--space-5);
+  border-bottom: var(--border) solid var(--brand-border);
+}
+/* The scrolling host: the prototype's own padding, its `min-height: 0` (without
+   which a flex item refuses to shrink below its content and the drawer grows a
+   body-level scroller) and its thin scrollbar. */
+.td-drawer-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--space-4) var(--space-5) var(--space-6);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+/* The body's sections: a hairline rule and a 16px block rhythm, with the rule
+   and the top padding withdrawn from whichever section opens the body. */
+.td-section {
+  padding: var(--space-4) 0;
+  border-top: var(--border) solid var(--brand-border);
+}
+.td-section:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.td-section-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-11);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--brand-text-3);
+}
+
+/* The property grid: two tracks (the label is a fixed 96px), a 4px row rhythm
+   and **no column gap** — the prototype states `column-gap: normal`, which the
+   round removes from the implementation's `gap-x-3` (R14 §4 R14-B10). */
+.td-props {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  row-gap: var(--space-1);
+  align-items: center;
+}
+.td-prop-label {
+  font-size: var(--text-12);
+  color: var(--brand-text-3);
+}
+/* A value is a *control-sized* box even at rest: the transparent border and the
+   4px radius are what stop the row jumping when the pointer lands on it. */
+.td-prop-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 6px;
+  font-size: var(--text-13);
+  color: var(--brand-text);
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-selector);
+}
+button.td-prop-value {
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease-brand);
+}
+button.td-prop-value:hover {
+  background-color: var(--brand-hover);
+  border-color: var(--brand-border);
+}
+
+/* The copy affordance — the internal id, the relation links and the session id
+   share it: mono 12px on ink-2, 2px/6px of padding, a 4px radius. */
+.td-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+  font-variant-numeric: tabular-nums;
+  color: var(--brand-text-2);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-selector);
+  cursor: pointer;
+}
+.td-copy:hover {
+  color: var(--brand-text);
+  background-color: var(--brand-hover);
+  border-color: var(--brand-border);
+}
 
 /* The free-text controls inside a property value take the row's slack, so the
    input fills the track instead of shrinking to its placeholder. */
 [data-detail-props] [data-drop] { flex: 1 1 auto; min-width: 0; }
+
+/* R14 D39/D40/D41 · the comment row: avatar, meta line, body. The rule runs
+   *between* rows (`border-top`, withdrawn from the first). */
+.td-comment {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-top: var(--border) solid var(--brand-border);
+}
+.td-comment:first-child { border-top: 0; }
+.td-comment-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-12);
+  color: var(--brand-text-3);
+}
+.td-comment-body {
+  font-size: var(--text-13);
+  color: var(--brand-text-2);
+  white-space: pre-line;
+}
+/* A decision comment is quoted rather than merely listed: the accent rule on
+   the inline start is the only colour it adds. */
+.td-comment-decision {
+  padding-left: var(--space-2);
+  border-left: 2px solid var(--brand-accent);
+}
+
+/* R14 D42/D43 · the attachment row and the session box — one hairline box each,
+   the file's size pushed to the row's end. */
+.td-file {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px var(--space-2);
+  background-color: var(--brand-surface);
+  border: var(--border) solid var(--brand-border);
+  border-radius: var(--radius-field);
+}
+.td-file + .td-file { margin-top: var(--space-2); }
+.td-file-name {
+  font-size: var(--text-12);
+  font-weight: var(--weight-medium);
+  color: var(--brand-text);
+}
+.td-file-size {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  font-variant-numeric: tabular-nums;
+  color: var(--brand-text-3);
+}
+.td-session {
+  padding: var(--space-2) 10px;
+  background-color: var(--brand-sunken);
+  border: var(--border) solid var(--brand-border);
+  border-radius: var(--radius-field);
+}
+
+/* R14 D37 · the relations row: label + link groups that wrap. */
+.td-rel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--space-2);
+}
+.td-rel-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* R14 D46 — B09's activity stream, in this drawer's own short names. It shares
+   nothing with B26's `.td-activity-view` family but the prefix: the view's rows
+   are a fixed-track 30px line (`.td-activity-actor` holds a 76px column), while
+   a drawer row is an inline sentence that may wrap. */
+.td-activity {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  padding: 3px 0;
+  font-size: var(--text-12);
+  color: var(--brand-text-2);
+}
+.td-activity-ts {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-11);
+  font-variant-numeric: tabular-nums;
+  color: var(--brand-text-3);
+  white-space: nowrap;
+}
+
+/* R14 D48 · the comment field. One rule for the box, its hover edge and its
+   focus ring, so the three can never disagree. */
+.td-textarea {
+  width: 100%;
+  min-height: 64px;
+  padding: 6px var(--space-2);
+  font-family: inherit;
+  font-size: var(--text-13);
+  color: var(--brand-text);
+  background-color: var(--brand-surface);
+  border: var(--border) solid var(--brand-border);
+  border-radius: var(--radius-field);
+  resize: vertical;
+  transition: border-color var(--dur-1) var(--ease-brand);
+}
+.td-textarea:hover { border-color: var(--brand-border-strong); }
+.td-textarea:focus {
+  outline: none;
+  border-color: var(--brand-accent);
+  box-shadow: 0 0 0 3px var(--brand-focus-ring);
+}
+
+/* R14 D44 · the platform badge — a dashed edge, because the platform is the
+   identity and not the state: a solid edge would read as a status. daisyUI's
+   `badge` owns the box; these are the brand's metrics on top. */
+.td-agent-badge {
+  gap: var(--space-1);
+  height: 18px;
+  padding: 0 6px;
+  font-size: var(--text-11);
+  font-weight: var(--weight-medium);
+  color: var(--brand-text-2);
+  background-color: var(--brand-surface);
+  border: 1px dashed var(--brand-border-strong);
+  border-radius: var(--radius-full);
+}
+
+/* Inside a chip the identifier holds its width and the title gives — the
+   prototype's own `.td-chip .td-mono` / `.td-chip .td-combo-title` pair
+   (R14 D50 / B14). `.td-combo-title`'s own rule already states the giving half
+   for the menu rows, so only the holding half is added here. */
+.td-chip .td-mono {
+  flex: 0 0 auto;
+}
+
+/* R14 D50 · the label chip's remove control: a 16×16 hit area holding the same
+   `svg.td-icon-sm` ✕ the rest of the shell draws. It sits inside `.td-chip`
+   (above), which already carries the chip's own measured face. */
+.td-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  color: var(--brand-text-3);
+  background-color: transparent;
+  border: 0;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+.td-chip-remove:hover {
+  color: var(--brand-text);
+  background-color: var(--brand-hover);
+}
+
+/* R14 D35/D36 · the avatar the comment rows and the two people properties wear,
+   and the GFM richly-rendered faces the description can hold. */
+.td-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+  color: var(--brand-text-2);
+  background-color: var(--brand-sunken);
+  border-radius: var(--radius-full);
+}
+/* Agent identity is a dashed ring, never a colour of its own (style guide §1):
+   the same signal the card's badge carries, on the avatar. */
+.td-avatar[data-assignee-kind="agent"] {
+  color: var(--brand-text-2);
+  background-color: var(--brand-surface);
+  border: 1px dashed var(--brand-border-strong);
+}
 
 /* R10 ② — the only visible half of the drawer's save state. It is shown exactly
    when `[data-detail-save]` says `error`, and it is hidden otherwise — the
@@ -1742,20 +2051,108 @@ html[data-theme="dark"] [data-create-project-panel] {
 
 /* ------------------------------------------------------- markdown surfaces */
 
-/* The GFM half of the preview: the prototype's `td-gfm` shape. `pre` and `code`
-   are produced by `lib/markdown-lite.js`, so they cannot carry a utility of their
-   own — the descendant rules are where the classes would have to go. */
+/* The GFM half of the preview and the drawer's read-only description face: the
+   prototype's `td-gfm` shape, whole (`design/prototype/src/input.css` §"rendered
+   GFM description"). `pre`/`code`/`h4`/`table`/`blockquote`/`.td-task-list` are
+   produced by `lib/markdown-lite.js`, so they cannot carry a utility of their own
+   — the descendant rules are where the classes have to go (R14 §8.1 D33–D36).
+
+   13px on ink-2 with a 1.5 leading is the prototype's measured face (R14 §3
+   "GFM 面 13px / 19.5px / rgb(74,85,94)"), not the 14px body baseline the rule
+   used to carry. */
 .td-gfm {
-  font-size: var(--text-14);
+  font-size: var(--text-13);
   line-height: var(--leading-body);
+  color: var(--brand-text-2);
+}
+.td-gfm > * + * { margin-top: var(--space-2); }
+.td-gfm h4 {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-13);
+  font-weight: var(--weight-semibold);
+  color: var(--brand-text);
+}
+.td-gfm ul,
+.td-gfm ol {
+  margin: 0;
+  padding-left: 18px;
+}
+.td-gfm li + li { margin-top: 2px; }
+.td-gfm code {
+  padding: 1px 4px;
+  font-family: var(--font-mono);
+  font-size: var(--text-12);
+  color: var(--brand-text);
+  background-color: var(--brand-sunken);
+  border: var(--border) solid var(--brand-border);
+  border-radius: var(--radius-selector);
 }
 .td-gfm pre {
-  padding: var(--space-3);
-  border-radius: var(--radius-field);
-  background: var(--brand-sunken);
+  margin: 0;
+  padding: var(--space-2) 10px;
   overflow-x: auto;
+  background-color: var(--brand-sunken);
+  border: var(--border) solid var(--brand-border);
+  border-radius: var(--radius-field);
 }
-.td-gfm code { font-family: var(--font-mono); }
+/* The box belongs to `pre`; the `code` inside it is plain text again. */
+.td-gfm pre code {
+  padding: 0;
+  font-size: var(--text-12);
+  line-height: var(--leading-body);
+  background: transparent;
+  border: 0;
+}
+.td-gfm blockquote {
+  margin: 0;
+  padding: 2px 0 2px 10px;
+  color: var(--brand-text-3);
+  border-left: 2px solid var(--brand-border-strong);
+}
+.td-gfm table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-12);
+}
+.td-gfm th,
+.td-gfm td {
+  padding: var(--space-1) var(--space-2);
+  text-align: left;
+  border: var(--border) solid var(--brand-border);
+}
+.td-gfm th {
+  font-weight: var(--weight-semibold);
+  color: var(--brand-text);
+  background-color: var(--brand-sunken);
+}
+/* The task list drops the bullet and hangs its own 13×13 check box in the
+   bullet's place. The renderer marks the list `.td-task-list` and each row
+   `.td-task-item`; the prototype only names the first, so `li` is the selector
+   that holds for both. */
+.td-gfm .td-task-list {
+  padding-left: 2px;
+  list-style: none;
+}
+.td-gfm .td-task-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.td-gfm .td-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  margin-top: 2px;
+  color: var(--brand-text-3);
+  border: var(--border) solid var(--brand-border-strong);
+  border-radius: 3px;
+}
+.td-gfm .td-check[data-checked="true"] {
+  color: var(--color-success);
+  border-color: var(--color-success);
+}
 
 /* R10 ③ — the description fills the column it sits in.
    The chain runs one way only: the two-column grid stretches its tracks, each

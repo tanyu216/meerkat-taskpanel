@@ -660,8 +660,14 @@ export async function run() {
       const centreY = (rect) => (rect.top + rect.bottom) / 2;
       const glyph = close?.querySelector("svg.td-icon") ?? null;
       return {
+        // R14 §2.1 / §8 U4 — `data-state` is the drawer's *only* state source.
+        // The probe used to also report `hasAttribute("hidden")`; that attribute
+        // is gone from the `aside` (the closed face is `translateX(100%)` +
+        // `visibility: hidden`, the prototype's own pair), so the reading could
+        // only ever have been `false` and distinguished nothing. The scrim keeps
+        // its `hidden`, and the closed/open relation is read off `data-state`
+        // here and off the scrim's own attribute where that half is asserted.
         state: drawer?.getAttribute("data-state") ?? null,
-        hidden: drawer?.hasAttribute("hidden") ?? true,
         title,
         agentSessionHook: session !== null,
         r7: {
