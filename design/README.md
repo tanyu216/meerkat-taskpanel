@@ -17,7 +17,10 @@ design/
 round — each is the single written source of truth for one interface question, written so
 an implementation card can build it and an independent verification card can check it.
 The first one is `contracts/project-prefix-binding.md` (the create-project prefix field and
-the card-number prefix).
+the card-number prefix). The second is `contracts/side-rail-short-code.md` (the rail's
+project short code: it is the project's **effective prefix** — the same value the card
+numbers carry — and it decides the read-only `prefix` field the projects wire hands the
+sidebar).
 
 ## Status
 
