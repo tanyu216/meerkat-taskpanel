@@ -57,6 +57,7 @@
     "borderColor",
     "whiteSpace",
     "overflow",
+    "textOverflow",
     "textTransform"
   ],
   "style": { "blocking": false }
