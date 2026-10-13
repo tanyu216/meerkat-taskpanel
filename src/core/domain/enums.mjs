@@ -63,6 +63,52 @@ export const STAGE_STATUSES = Object.freeze(STATUSES.filter((status) => status !
  */
 export const AWAITING_REASONS = Object.freeze(["E1", "E2", "E3", "E4", "E5"]);
 
+/**
+ * Why a card is `blocked` — an enumeration, never free text. The value names
+ * **who or what the block is waiting for**, which is the one thing `blocked_at`
+ * (a timestamp) cannot say; it is not a severity and not an explanation, because
+ * those are read from the comment trail.
+ *
+ * The vocabulary is the SLA-inspection contract's (`§7`), which both the board
+ * and the two inspection mechanisms share — the board must not invent its own
+ * spelling for a value the inspectors switch on:
+ *
+ *   * `clarify`        — the leader owes an answer to an ambiguous requirement;
+ *   * `decision`       — a decision fork / gate sign-off is outstanding;
+ *   * `dependency`     — a predecessor card or upstream artifact has not landed;
+ *   * `out_of_bounds`  — handed back: the card is outside the worker's duties;
+ *   * `defect`         — waiting on the defect loop;
+ *   * `external`       — waiting on something outside the team (third-party
+ *                        service, an operator input, a host resource);
+ *   * `resource`       — waiting on capacity (host / model / concurrency);
+ *   * `unknown`        — present, but not classified. This is a value a writer
+ *                        may choose deliberately; it is **not** how an absent
+ *                        reason is spelled (absence is NULL — see below).
+ *
+ * **Absent is a first-class state and is not a member of this list.** A card
+ * blocked without a reason stays legal: the column is NULL, and a reader treats
+ * it exactly as it treats `clarify` — absence never silences the block. `unknown`
+ * exists so a writer can say "there is a block and I cannot classify it", which
+ * is a different statement from saying nothing at all.
+ *
+ * The matching `CHECK` is added by 0016 by `ALTER TABLE … ADD COLUMN`, which the
+ * SQL-parity reader does not see (it reads `CREATE TABLE` bodies), so
+ * `tasks.blocked_reason` is deliberately **absent from `SQL_ENUM_SETS` below** —
+ * declaring it there would report "declared in JS but no CHECK in SQL".
+ * `test/contract/md-blocked-reason.test.mjs` closes that gap from the other side:
+ * it reads 0016's text and asserts its literals are these, in this order.
+ */
+export const BLOCKED_REASONS = Object.freeze([
+  "clarify",
+  "decision",
+  "dependency",
+  "out_of_bounds",
+  "defect",
+  "external",
+  "resource",
+  "unknown",
+]);
+
 /** Task priorities, least → most urgent. */
 export const PRIORITIES = Object.freeze(["low", "medium", "high", "urgent"]);
 export const PRIORITY = Object.freeze({

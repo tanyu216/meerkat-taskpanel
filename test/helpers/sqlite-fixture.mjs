@@ -197,6 +197,12 @@ export function insertTask(db, overrides = {}) {
     baseColumns.push("awaiting_reason");
     values.push(row.awaiting_reason ?? null);
   }
+  // `blocked_reason` arrives with 0016, by the same rule and for the same
+  // reason: a board built short of that migration simply does not name it.
+  if (columns.has("blocked_reason")) {
+    baseColumns.push("blocked_reason");
+    values.push(row.blocked_reason ?? null);
+  }
   db.prepare(
     `INSERT INTO tasks(${baseColumns.join(", ")}) VALUES (${baseColumns.map(() => "?").join(", ")})`,
   ).run(...values);

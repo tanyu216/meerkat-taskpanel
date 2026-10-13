@@ -13,6 +13,7 @@ import { ARCHIVE_AFTER_DAYS, HEARTBEAT_FRESH_MS, IDENTIFIER_PATTERN, LABEL_MAX_L
 import { DomainError } from "../../shared/errors.mjs";
 import { identifierPrefix } from "../../shared/ids.mjs";
 import { ACTOR_KINDS, AWAITING_REASONS, DICT_KINDS, STATUS, STATUSES, TASK_KINDS } from "./enums.mjs";
+import { normalizeBlockedReason } from "./blocked-reason.mjs";
 import { normalizeIdem } from "./idem.mjs";
 import { parsePriority } from "./priority.mjs";
 import { isTerminalStatus } from "./status.mjs";
@@ -58,6 +59,9 @@ export const TASK_COLUMNS = Object.freeze([
   // M1 — the `awaiting` entry category (design §2.1). NULL unless the card is
   // waiting on a human.
   "awaiting_reason",
+  // 0016 — what a `blocked` card is waiting for (SLA-inspection contract §7).
+  // NULL unless a reason was written; appended by ALTER, so it is last.
+  "blocked_reason",
 ]);
 
 const ISO_MILLIS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
@@ -322,6 +326,11 @@ export function normalizeTaskCreate(input, context) {
     claimedAt: null,
     heartbeatAt: null,
     blockedAt: status === "blocked" ? now : null,
+    // 0016 — the block's *class*, when the caller names one. Unrelated to the
+    // status: the markdown importer carries a card's reason verbatim even when
+    // the card is not currently `blocked`, and `moveCas` is what ties the value
+    // to the status on a live move.
+    blockedReason: normalizeBlockedReason(input.blockedReason),
     statusChangedAt: now,
     archivedAt: null,
     sourcePath: input.sourcePath ?? null,
@@ -480,6 +489,7 @@ const CAMEL = {
   created_at: "createdAt",
   updated_at: "updatedAt",
   awaiting_reason: "awaitingReason",
+  blocked_reason: "blockedReason",
 };
 
 /**

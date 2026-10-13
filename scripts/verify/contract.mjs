@@ -303,6 +303,7 @@ const PROBE_TASK = Object.freeze({
   claimedAt: "probe",
   heartbeatAt: "probe",
   blockedAt: "probe",
+  blockedReason: "probe",
   statusChangedAt: "probe",
   archivedAt: "probe",
   sourcePath: "probe",
