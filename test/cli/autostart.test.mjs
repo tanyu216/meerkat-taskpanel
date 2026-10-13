@@ -16,7 +16,8 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
-import { waitForPointer } from "../../src/shared/transport/autostart.mjs";
+import { waitForPointer, spawnTaskd } from "../../src/shared/transport/autostart.mjs";
+import { resolveRuntimePointerPath } from "../../src/shared/runtime-locator.mjs";
 import {
   baseEnv,
   cleanupTempDirs,
@@ -61,6 +62,34 @@ describe("cli/autostart — refusals need no process", () => {
     assert.equal(result.status, 1);
     assert.equal(JSON.parse(result.stdout).error.code, "CLI_IO");
     assert.equal(existsSync(join(dataDir, "logs", "taskd.log")), false, "no daemon was spawned");
+  });
+
+  it("tells the daemon it starts which pointer file to write", async () => {
+    // The spawned daemon resolves its own pointer from the *environment*, so a
+    // caller that named a path has to say so out loud. Otherwise the parent
+    // waits on the caller's file while the child writes the machine-wide one —
+    // which is both a hang and the way an isolated test (or a second board)
+    // reaches into a live board's address.
+    const home = makeTempDir();
+    const dataDir = makeTempDir();
+    const pinned = join(makeTempDir(), "runtime.json");
+    const env = { ...baseEnv(), TASKD_DATA_DIR: dataDir, TASKD_PORT: "0", TASKD_HOST: "127.0.0.1", HOME: home };
+    delete env.TASKD_RUNTIME_POINTER;
+
+    const spawns = [];
+    const spawnFn = (command, args, options) => {
+      spawns.push({ command, args, options });
+      return { pid: 2_147_483_646, unref() {} };
+    };
+
+    // The injected spawner starts nothing, so the wait has to end — as a
+    // refusal ("started but never answered"), which is the point: no daemon, no
+    // real port, no second autostart case.
+    await assert.rejects(() => spawnTaskd({ env, pointerPath: pinned, waitMs: 1, spawnFn }));
+    assert.equal(spawns.length, 1, "exactly one daemon was spawned");
+    assert.equal(spawns[0].options.env.TASKD_RUNTIME_POINTER, pinned, "the child is told where to write");
+    assert.equal(spawns[0].options.env.TASKD_DATA_DIR, dataDir, "…and keeps the rest of the environment");
+    assert.equal(existsSync(resolveRuntimePointerPath({ env, home })), false, "the machine-wide slot is untouched");
   });
 });
 

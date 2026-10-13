@@ -42,6 +42,7 @@ export { ensureToken, generateToken, isToken, readToken, rotateToken } from "./s
 export {
   readRuntimePointer,
   removeRuntimePointer,
+  runtimePointerPathForDataDir,
   writeRuntimePointer,
 } from "./storage/secrets/runtime-pointer.mjs";
 export { exportMd, renderCard } from "./storage/md/export.mjs";

@@ -14,8 +14,8 @@
  *      board;
  *   3. **signal handling**, so `SIGTERM` closes the connection and removes the
  *      pointer rather than leaving a stale one behind for the next `taskctl` —
- *      and removes it *only while it still names this process* (R1), so an
- *      exiting instance can never unplug a live one;
+ *      and removes it *only while it still names this process **and this data
+ *      directory*** (R1), so an exiting instance can never unplug a live one;
  *   4. **the address on stdout**, so a human who started it by hand can see
  *      where it went.
  *
@@ -81,9 +81,10 @@ export async function main(env = process.env, options = {}) {
     }
   };
 
-  // The pointer records `pid`, and the same `pid` is what lets the daemon remove
-  // *its own* pointer on exit and nobody else's (R1).
-  const pointerOptions = { env, pid: process.pid };
+  // The pointer records `pid`, and `pid` + `dataDir` together are what let the
+  // daemon remove *its own* pointer on exit and nobody else's (R1). `written.path`
+  // is the file it actually owns: the machine-wide one, or the data directory's
+  // own when a live board with another data directory held that slot.
   const written = writeRuntimePointer(
     {
       url: taskd.url,
@@ -93,11 +94,18 @@ export async function main(env = process.env, options = {}) {
       tokenFile: taskd.board.token?.file ?? null,
       pid: process.pid,
     },
-    pointerOptions,
+    { env, pid: process.pid },
   );
+  const pointerOptions = { path: written.path, pid: process.pid, dataDir: taskd.board.dataDir };
 
   process.stdout.write(`taskd ${VERSION} listening on ${taskd.url}\n`);
   process.stdout.write(`runtime pointer: ${written.path}\n`);
+  if (written.heldBy !== undefined) {
+    process.stdout.write(
+      `runtime pointer note: the machine-wide pointer names pid ${written.heldBy}, another board — ` +
+        `this one is addressed beside its data directory, so that board is left alone\n`,
+    );
+  }
   process.stdout.write(`write lock: ${lock.path}\n`);
 
   const shutdown = createShutdown({ taskd, pointerOptions });
@@ -121,9 +129,10 @@ export async function main(env = process.env, options = {}) {
  * promise reachable only by signalling a live process is a promise nobody tests.
  * The injected `exit`/`write` make it a plain function.
  *
- * `pointerOptions` carries the daemon's `pid` (R1), so the removal is
- * ownership-checked: this process removes the pointer while it still names this
- * process and leaves a stranger's pointer alone.
+ * `pointerOptions` carries the daemon's `pid`, its `dataDir` and — via `path` —
+ * the file it wrote (R1), so the removal is ownership-checked on all three: this
+ * process removes the pointer while it still names this process *and this
+ * board*, and leaves a stranger's pointer alone.
  *
  * @param {{taskd: {close: Function}, pointerOptions: object, exit?: Function, write?: Function}} input
  * @returns {(signal: string) => Promise<void>}
