@@ -4124,9 +4124,9 @@ export async function run() {
 
       // The app's own console, with the browser's resource notices set aside: a
       // non-2xx response is logged by Chromium itself ("Failed to load resource:
-      // … 400"), and two of these cases ask for exactly that. What must not appear
-      // is the app leaving the reader nothing — before the catch existed this list
-      // held Vue's `ApiError: …`, the refused create's only trace.
+      // … 400"), and this leg asks for three of them. What must not appear is the
+      // app leaving the reader nothing — before the catch existed this list held
+      // Vue's `ApiError: …`, the refused create's only trace.
       const m7Notices = m7.consoleErrors.filter((text) => text.startsWith("Failed to load resource"));
       m7.appConsoleErrors = m7.consoleErrors.filter((text) => !text.startsWith("Failed to load resource"));
       m7.resourceNotices = m7Notices.length;
