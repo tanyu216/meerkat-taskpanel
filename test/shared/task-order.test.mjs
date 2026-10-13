@@ -158,6 +158,17 @@ describe("task-order — the contract's §9 worked example", () => {
     assert.equal(byId.get("A6").factors.normalised.S.toFixed(3), "0.333");
   });
 
+  it("assertion 1 — the same (cards, now) twice is the same array, byte for byte", () => {
+    const first = orderTasks(SAMPLE, { now: NOW });
+    const second = orderTasks(SAMPLE, { now: NOW });
+    assert.deepEqual(second, first);
+    assert.equal(JSON.stringify(second), JSON.stringify(first), "not merely equal — identical bytes");
+    // The order is a function of the cards, not of the array they arrived in:
+    // the tie-break chain ends on a unique key, so no `Array#sort` stability is
+    // being relied on to keep the result reproducible.
+    assert.deepEqual(idsOf(orderTasks([...SAMPLE].reverse(), { now: NOW })), idsOf(first));
+  });
+
   it("assertion 2 — a tier beats a score: the best-scoring T2 card still comes last", () => {
     // §9.3's first point, made unmissable: A5 has the highest raw score in the
     // sample (0.431944) and still ranks behind every T0 card, because "already
