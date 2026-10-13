@@ -13,6 +13,23 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { IDENTIFIER_PAD, IDENTIFIER_PATTERN, SESSION_ID_NAMESPACE } from "./constants.mjs";
 
+/**
+ * The `meta` key a project's identifier prefix lives under (C-PREFIX-1 §7.2 (i)).
+ *
+ * A **reserved** key: the server owns it. Creation writes the normalized value
+ * there; an update can neither replace it nor introduce one, because the numbers
+ * on the cards already issued must not change under them. A client may *send* it
+ * in a create body — that is the UI's only prefix input — but it is not part of
+ * the wire projection, so nothing reads it back off a project (C-PREFIX-1 §7.4
+ * makes that conditional on the sidebar monogram being ruled the prefix).
+ *
+ * It lives here, beside the function that reads it, rather than in
+ * `constants.mjs`: `constants.mjs` is copied verbatim into the loop skill's
+ * generated payload, and this key is not a name the CLI, the skill or the HTTP
+ * surface share — it is internal to identifier handling.
+ */
+export const PROJECT_PREFIX_META_KEY = "prefix";
+
 /** A fresh internal id (never shown to humans; `identifier` is the readable one). */
 export function newId() {
   return randomUUID();
@@ -56,6 +73,29 @@ export function identifierPrefix(projectId) {
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * A project's **effective identifier prefix** — the token its cards are
+ * numbered with (C-PREFIX-1 M3).
+ *
+ * A project created with an explicit prefix carries it in
+ * `meta[PROJECT_PREFIX_META_KEY]`, normalized at creation; a project without one
+ * — every row that predates the slot, and every project the CLI creates from an
+ * id — derives it from its id, exactly as before the slot existed. That fallback
+ * is what keeps cards already on the board numbered the way they are.
+ *
+ * The stored value is re-normalized rather than trusted, so a row written by a
+ * path that bypasses the create use-case (an md import carrying a registry meta)
+ * still resolves to the same prefix the create use-case would have stored —
+ * `identifierPrefix` is idempotent, so the normal path is unaffected.
+ *
+ * @param {{id: string, meta?: object|null}} project
+ */
+export function projectPrefix(project) {
+  const stored = project?.meta?.[PROJECT_PREFIX_META_KEY];
+  const normalized = typeof stored === "string" ? identifierPrefix(stored) : "";
+  return normalized === "" ? identifierPrefix(project?.id ?? "") : normalized;
 }
 
 /**
