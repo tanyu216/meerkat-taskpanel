@@ -475,6 +475,12 @@
             "offset": {
               "type": "string"
             },
+            "order": {
+              "type": "string"
+            },
+            "order_debug": {
+              "type": "string"
+            },
             "project_id": {
               "type": "string"
             },
@@ -1075,6 +1081,12 @@
               "type": "string"
             },
             "include_unassigned": {
+              "type": "string"
+            },
+            "order": {
+              "type": "string"
+            },
+            "order_debug": {
               "type": "string"
             },
             "stale": {

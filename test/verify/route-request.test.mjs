@@ -89,7 +89,16 @@ describe("route-request.mjs — the live surface", () => {
     assert.deepEqual(create.body, declaredFields(byKey.get("POST /api/v1/tasks").request, "body"));
 
     const list = extractReads(byKey.get("GET /api/v1/tasks").handler);
-    assert.deepEqual(list.query, ["assignee_id", "include_archived", "limit", "offset", "project_id", "status"]);
+    assert.deepEqual(list.query, [
+      "assignee_id",
+      "include_archived",
+      "limit",
+      "offset",
+      "order",
+      "order_debug",
+      "project_id",
+      "status",
+    ]);
 
     // The query/body split is real: nothing reads a body on a GET, and the one route that
     // reads a body by computed key (`body[field]`) resolves through its literal loop.

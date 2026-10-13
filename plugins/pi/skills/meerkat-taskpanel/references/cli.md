@@ -86,14 +86,50 @@ project's directory.
 | Command | Purpose |
 |---|---|
 | `issue create --project <id> --title <t> [--acceptance <text>]… [--assignee <text>] [--reporter <text>] …` | Create a task. |
-| `issue list [--project] [--status <s>]… [--assignee-id] [--limit] [--include-archived]` | List tasks. |
-| `issue candidates --assignee <name> [--stale] [--include-unassigned]` | The poll's read: claimable cards for an assignee (`todo`, **auto-claimable** — not an `epic`, not a `deploy` —, every `depends_on` done; `--stale` adds `in_progress` cards whose heartbeat expired; `--include-unassigned` adds the **public pool** — unassigned claimable cards — for a supervisor whose policy allows them). Read-only — claiming still goes through `issue move`/claim semantics. |
+| `issue list [--project] [--status <s>]… [--assignee-id] [--limit] [--include-archived] [--order board\|weight] [--order-debug]` | List tasks. `--order weight` is the **assignee weight order** (below); the default is the board's own deterministic order, so nothing changes unless you ask. |
+| `issue candidates --assignee <name> [--stale] [--include-unassigned] [--order board\|weight] [--order-debug]` | The poll's read: claimable cards for an assignee (`todo`, **auto-claimable** — not an `epic`, not a `deploy` —, every `depends_on` done; `--stale` adds `in_progress` cards whose heartbeat expired; `--include-unassigned` adds the **public pool** — unassigned claimable cards — for a supervisor whose policy allows them). Read-only — claiming still goes through `issue move`/claim semantics. `--order weight` refines the order *within* each claimability bucket, which stays the first key. |
 | `issue get <id\|identifier>` | One task, plus `report_waivers[]`. |
 | `issue update <ref> [--title] [--description] [--priority] [--kind] [--label]… [--meta k=v]… [--acceptance <text>]…` | Patch. `--status` is refused here on purpose. |
 | `issue move <ref> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"] [--awaiting-reason E1..E5]` | Move, subject to the delivery gate. A `todo → in_progress` move is a **claim**: only the card's assignee, unless `--allow-steal`. `--awaiting-reason` is **required** by a move to `awaiting` — see [The `awaiting` state](#the-awaiting-state--asking-a-human-a-question). |
 | `issue assign <ref> [--assignee <text>] [--assignee-id <id>] [--reporter <text>] [--force-create]` | Assign. |
 | `issue archive <ref> [--days <n>]` | Archive finished work (done/canceled; 7-day window by default). |
 | `issue deliver <ref> --report-file <file\|->` | **Write the report and move to `in_review`, in one transaction.** |
+
+### The weight order (`--order weight`)
+
+`issue list` and `issue candidates` take an optional `--order weight` — the
+**assignee weight order** (contract `C-WEIGHT-1`). It answers "which of my cards
+should I look at next?", and it is **opt-in**: the default is still the board's
+own `sort_order, created_at, project_id, identifier` sequence, so nothing moves
+until you ask.
+
+It ranks in three passes — a hard *tier* (can I move this card at all?), then a
+weighted *score*, then a deterministic tie-break ending on the card's number:
+
+- `T0` cards you can start now → `T1` ones you are stalled on (blocked, or
+  waiting on an unfinished `depends_on`) → `T2` ones in somebody else's hands
+  (`in_review`, `awaiting`). A tier is never traded against a score: a
+  high-scoring card waiting on a reviewer still sits behind one you can start.
+- Inside a tier the score is a linear sum of priority, time in the current
+  status, time since creation, SLA pressure, and how many unfinished cards this
+  one unblocks — each capped at its own saturation point, so a card's score never
+  depends on which other cards happen to be in the list.
+- Equal scores fall through to priority, then the longest wait, then age, then
+  the board's column order, then `project`, then the identifier — a total order,
+  so two runs over the same board agree.
+
+`--order-debug` adds the arithmetic, card by card, so a rank can be reconciled by
+hand: `{ id, identifier, order, tier, tier_name, score, factors: { P, W, S, A, B,
+L } }`, each factor with its `raw` value, its `normalised` value and its
+`weighted` contribution. Asking for it selects the weight order (there is no
+board-order projection to return).
+
+**What it does not touch.** `activity` and `waiting` keep their own orders (a
+timeline and a longest-waiting queue), and `export --md` keeps the board order
+byte for byte. Inside `issue candidates` the claimability bucket —
+`ready` → `unassigned` → recovery — stays the **first** key, because it says
+whether a card can be claimed at all; the weight order only refines within a
+bucket.
 
 ### Claiming: only the assignee may claim
 

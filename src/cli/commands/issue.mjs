@@ -101,7 +101,7 @@ export const COMMANDS = [
   {
     name: "list",
     summary: "List tasks.",
-    usage: "issue list [--project <id>] [--status <status>]… [--limit <n>]",
+    usage: "issue list [--project <id>] [--status <status>]… [--limit <n>] [--order board|weight] [--order-debug]",
     positionals: [],
     flags: [
       { flag: "project", key: "project", as: "string", value: "<id>" },
@@ -109,15 +109,19 @@ export const COMMANDS = [
       { flag: "assignee-id", key: "assigneeId", as: "string", value: "<id>" },
       { flag: "limit", key: "limit", as: "number", value: "<n>" },
       { flag: "include-archived", key: "includeArchived", as: "boolean" },
+      { flag: "order", key: "order", as: "string", value: "board|weight", summary: "`weight` = the assignee weight order (C-WEIGHT-1); the default is the board's own deterministic order." },
+      { flag: "order-debug", key: "orderDebug", as: "boolean", summary: "Also return the weight order's per-card projection (implies --order weight)." },
     ],
     async run(ctx) {
-      const { tasks } = await ctx.client.get("/api/v1/tasks", {
+      const { tasks, order_debug: orderDebug } = await ctx.client.get("/api/v1/tasks", {
         query: {
           project_id: ctx.flags.project,
           status: ctx.flags.statuses,
           assignee_id: ctx.flags.assigneeId,
           limit: ctx.flags.limit,
           include_archived: ctx.flags.includeArchived === true ? "1" : undefined,
+          order: ctx.flags.order,
+          order_debug: ctx.flags.orderDebug === true ? "1" : undefined,
         },
       });
       const human = tasks.length === 0
@@ -129,26 +133,32 @@ export const COMMANDS = [
             task.assignee === null ? "-" : `${task.assignee.display_name}#${task.assignee.id}`,
             task.reporter === null ? "-" : `${task.reporter.display_name}#${task.reporter.id}`,
           ]));
-      return { data: { tasks }, human };
+      // `--order-debug` rides through untouched: it is the weight order's
+      // projection, and re-shaping it here would be a second implementation.
+      return { data: { tasks, ...(orderDebug === undefined ? {} : { order_debug: orderDebug }) }, human };
     },
   },
 
   {
     name: "candidates",
     summary: "List the claimable cards for an assignee (the poll's read; claim still goes through issue move/claim semantics).",
-    usage: "issue candidates --assignee <name> [--stale] [--include-unassigned]",
+    usage: "issue candidates --assignee <name> [--stale] [--include-unassigned] [--order board|weight] [--order-debug]",
     positionals: [],
     flags: [
       { flag: "assignee", key: "assignee", as: "string", value: "<name>", required: true, summary: "Which assignee to list candidates for." },
       { flag: "stale", key: "stale", as: "boolean", summary: "Also include stale-recovery candidates (in_progress with an expired heartbeat)." },
       { flag: "include-unassigned", key: "includeUnassigned", as: "boolean", summary: "Also include claimable unassigned cards (the public pool) — the supervisor's `claim_unassigned` read." },
+      { flag: "order", key: "order", as: "string", value: "board|weight", summary: "`weight` refines the order *within* each claimability bucket (the bucket stays the first key)." },
+      { flag: "order-debug", key: "orderDebug", as: "boolean", summary: "Also return the weight order's per-card projection (implies --order weight)." },
     ],
     async run(ctx) {
-      const { candidates } = await ctx.client.get("/api/v1/tasks/candidates", {
+      const { candidates, order_debug: orderDebug } = await ctx.client.get("/api/v1/tasks/candidates", {
         query: {
           assignee: ctx.flags.assignee,
           stale: ctx.flags.stale === true ? "1" : undefined,
           include_unassigned: ctx.flags.includeUnassigned === true ? "1" : undefined,
+          order: ctx.flags.order,
+          order_debug: ctx.flags.orderDebug === true ? "1" : undefined,
         },
       });
       const human =
@@ -164,7 +174,7 @@ export const COMMANDS = [
                 candidate.reason,
               ]),
             );
-      return { data: { candidates }, human };
+      return { data: { candidates, ...(orderDebug === undefined ? {} : { order_debug: orderDebug }) }, human };
     },
   },
 
