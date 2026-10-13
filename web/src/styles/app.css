@@ -1199,12 +1199,16 @@ svg[data-token-icon][hidden] { display: none; }
 }
 
 /* --- B26.5 / B26.6 --------------------------------------------- */
-/* `margin: auto` centres the block in the feed when it is the only
-   thing left standing — a 12-line explanation pinned to the top of a
-   600px empty card reads as a rendering failure, not as an answer. */
+/* R17 — the block sits at the **top** of the feed, the way B12's no-results
+   state sits at the top of the board. The vertical centring this rule used to
+   ask for (`margin: auto`) put the answer in the middle of a 600px card and
+   read as a rendering failure of the feed rather than as an answer about it;
+   the design states top alignment for all three empty states, and the answer
+   now opens on the same brand mark they share. The horizontal 12px inset is
+   the feed's own gutter and stays. */
 .td-activity-empty {
   flex: none;
-  margin: auto 12px;
+  margin: 0 12px;
 }
 .td-activity-empty[hidden] {
   display: none;
@@ -1481,17 +1485,18 @@ svg[data-token-icon][hidden] { display: none; }
 }
 
 /* --- B27.3 the empty state --------------------------------------- */
-/* `margin: auto` centres it in the view when the queue is gone — the same
-   answer B26 gives an empty feed: one line pinned to the top of a tall box
-   reads as a fault, not as an answer. It is capped and centred horizontally
-   because here it is the only box in the main area: a dashed rule stretched
-   across 1300px is the shape of a drop target, not the shape of an answer. */
+/* R17 — the block sits at the **top** of the view, the same answer B26 now
+   gives an empty feed and B12 gives an empty board. The vertical centring this
+   rule used to ask for (`align-self: center` + `margin: auto`) put the queue's
+   one line in the middle of a tall box, which reads as a fault rather than as
+   an answer. It stays capped and centred **horizontally** because here it is
+   the only box in the main area: a dashed rule stretched across 1300px is the
+   shape of a drop target, not the shape of an answer. */
 .td-waiting-empty {
   flex: none;
-  align-self: center;
   width: 100%;
   max-width: 420px;
-  margin: auto 0;
+  margin: 0 auto;
 }
 .td-waiting-empty[hidden] {
   display: none;
@@ -1879,6 +1884,29 @@ html[data-theme="dark"] [data-create-project-panel] {
   border-radius: var(--radius-field);
 }
 .td-error > .td-icon { color: var(--color-error); }
+
+/* R17 — the mark every empty state opens on. Ported from the same source as the
+   family above (`design/prototype/src/input.css` `.td-logo` · `.td-logo-lg`),
+   name for name, so an empty state's first child is the design's own
+   `svg.td-logo.td-logo-lg` on both sides and the two stay comparable by
+   selector. `.td-logo` is the 18px top-bar size with `align-self: center`; the
+   `-lg` variant is the empty states' 28px and hands alignment back to the
+   container's `align-items` (`auto`), which is what centres it in the column
+   flex of `.td-empty`. Colours are the templates' own (`--brand-text-3` /
+   `--color-primary`, the design's `--color-td-ink-3` / `--color-td-accent`),
+   never a rule here: a mark that is recoloured per surface keeps its geometry
+   in one place. */
+.td-logo {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  align-self: center;
+}
+.td-logo-lg {
+  width: 28px;
+  height: 28px;
+  align-self: auto;
+}
 
 /* B13 · the loading row is a daisyUI `skeleton` per cell, with no rule of its
    own: the component owns the shimmer animation and the box, and the cells'

@@ -154,8 +154,16 @@ watch(view, closeMoveMenu);
            meerkats drop to `--brand-text-3` (the design's `--color-td-ink-3`) so
            the on-duty sentinel and its watch signal stay the only lit elements
            on an empty board. Its own face-mask id keeps the document's mask ids
-           unique — the top bar's mark is rendered at the same time. -->
-      <svg class="size-7 shrink-0" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+           unique — the top bar's mark is rendered at the same time.
+
+           R17 — the mark reads its size from the design's own `td-logo-lg`
+           (28px) rather than the `size-7 shrink-0` utility pair, so all four
+           empty states open on the same class list the design states and the
+           three added this round are not a second idiom. `size-7` was already
+           28px and `shrink-0` already `flex: none`, so nothing here moved: the
+           swap is `web/src/styles/app.css`'s ported rule for the same
+           numbers. -->
+      <svg class="td-logo td-logo-lg" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
         <defs>
           <mask id="face-knockout-a-lg" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
             <rect x="0" y="0" width="32" height="32" fill="#FFFFFF" />

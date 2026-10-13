@@ -443,8 +443,10 @@ describe(
     const INDEX_MARKS = [...PROTOTYPE_HTML.matchAll(/<svg class="td-logo[^"]*"[\s\S]*?<\/svg>/g)].map((m) => m[0]);
     assert.equal(
       INDEX_MARKS.length,
-      2,
-      "design/prototype/index.html must carry exactly two `.td-logo` marks (top bar + empty state)",
+      5,
+      "design/prototype/index.html must carry exactly five `.td-logo` marks — the top bar's, " +
+        "the board's no-results state, the activity view's two empty states and the waiting " +
+        "queue's (R17 / T-20261013-184102-2 added the last four empty-state marks)",
     );
 
     const FAV_STYLE = /<style>([\s\S]*?)<\/style>/.exec(FAVICON_SVG)?.[1] ?? "";
@@ -517,7 +519,7 @@ describe(
         assert.deepEqual(drift(shapes, expectedShapes({ mob: TOKEN.ink3, sentinel: TOKEN.accent })), []);
       });
 
-      it("both index.html marks paint only `--color-td-*` tokens (no bare hex)", () => {
+      it("every index.html mark paints only `--color-td-*` tokens (no bare hex)", () => {
         for (const [i, svg] of INDEX_MARKS.entries()) {
           assert.deepEqual(
             bareHexes(svg),
@@ -806,7 +808,7 @@ describe(
           });
         }
 
-        it("gives both inline marks their own mask id", () => {
+        it("gives every inline mark its own mask id", () => {
           const ids = maskDefIds(PROTOTYPE_HTML);
           assert.equal(ids.length, INDEX_MARKS.length, `design/prototype/index.html must define one mask per mark (found ${ids.join(", ")})`);
           assert.deepEqual(ids, [...new Set(ids)], `design/prototype/index.html reuses a <mask id>: ${ids.join(", ")}`);

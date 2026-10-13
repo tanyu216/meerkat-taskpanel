@@ -2526,19 +2526,31 @@ const BLOCKS = [
        * point — a `v-if` would make each state unobservable until it fired. */
       { kind: "count", selector: "[data-activity-empty]", equals: 2 },
       { kind: "domain", selector: "[data-activity-empty]", attribute: "data-activity-empty-kind", subset: DOMAINS.ACTIVITY_EMPTY },
-      /* T-20261013-160505 — the pair's own face, byte for byte the design's:
-       * `design/activity/prototype.html`'s project variant wears
-       * `td-empty td-empty-lg td-activity-empty` and the filter one
-       * `td-empty td-activity-empty` (`DESIGN-activity.md` §8 draws the two as
-       * different sizes — the `-lg` split is the design's, not an implementation
-       * choice). The utilities they carried instead matched `.td-empty` on four
-       * of its properties but not on its box: `p-4` cannot express the `-lg`
-       * variant's 40px/24px, and `gap-1`/`rounded-lg` are 4px/8px where the
-       * design states 12px/6px. */
+      /* T-20261013-160505, revised by R17 (T-20261013-184102-2) — the pair's own
+       * face, byte for byte the design's: both variants wear
+       * `td-empty td-empty-lg td-activity-empty` (the design used to draw the
+       * filter one a size down; its R17 revision puts both on B12's footing, so
+       * the `-lg` split is gone and the two are told apart by their copy and
+       * their button alone — `DESIGN-activity.md` §8). The utilities they carried
+       * before 160505 matched `.td-empty` on four of its properties but not on
+       * its box: `p-4` cannot express the `-lg` variant's 40px/24px, and
+       * `gap-1`/`rounded-lg` are 4px/8px where the design states 12px/6px. */
       { kind: "classes", probe: "[data-activity-empty][data-activity-empty-kind=\"project\"]", includes: ["td-empty", "td-empty-lg", "td-activity-empty"] },
-      { kind: "classes", probe: "[data-activity-empty][data-activity-empty-kind=\"filter\"]", includes: ["td-empty", "td-activity-empty"] },
+      { kind: "classes", probe: "[data-activity-empty][data-activity-empty-kind=\"filter\"]", includes: ["td-empty", "td-empty-lg", "td-activity-empty"] },
       { kind: "computed", probe: "[data-activity-empty][data-activity-empty-kind=\"project\"]", property: "paddingTop", equalsPx: 40 },
-      { kind: "computed", probe: "[data-activity-empty][data-activity-empty-kind=\"filter\"]", property: "paddingTop", equalsPx: 16 },
+      { kind: "computed", probe: "[data-activity-empty][data-activity-empty-kind=\"filter\"]", property: "paddingTop", equalsPx: 40 },
+      /* R17 ② — each variant opens on the brand mark, at the empty states' own
+       * `-lg` size: one mark per block, 28px. The `count` is the assertion that
+       * matters (a block with a mark but three of them, or none, is the failure
+       * this family has already seen once). */
+      { kind: "computed", probe: "[data-activity-empty][data-activity-empty-kind=\"project\"] svg.td-logo.td-logo-lg", count: 1, property: "width", equalsPx: 28 },
+      { kind: "computed", probe: "[data-activity-empty][data-activity-empty-kind=\"filter\"] svg.td-logo.td-logo-lg", count: 1, property: "width", equalsPx: 28 },
+      /* R17 ① — the vertical centring is gone: the variants read top-aligned in
+       * their feed, as B12's no-results state reads on the board. `margin: auto`
+       * was what put them in the middle; the rule below states its absence, and
+       * `.td-activity-empty`'s 12px side inset (`0 12px`) is the feed's own
+       * gutter rather than part of this item. */
+      { kind: "computed", probe: "[data-activity-empty]", property: "marginTop", notEquals: "auto" },
       { kind: "count", selector: "[data-activity-empty-reset]", within: "[data-activity-empty-kind=\"filter\"]", equals: 1 },
       /* R-3 / §9.1 — **one dictionary**. The design page carried its own
        * `[data-activity-i18n]` catalogue; the shipped view reads the app's, so the
@@ -2625,15 +2637,28 @@ const BLOCKS = [
        * only one of the six with **no box** — no padding, no hairline, no centred
        * line, at the default ink. The family is what it was written against, so
        * these rules assert the box, not the markup. */
-      { kind: "classes", probe: "[data-waiting-empty]", includes: ["td-empty", "td-waiting-empty"] },
+      /* R17 (T-20261013-184102-2) — the queue's empty state is no longer the
+       * plainest of the family: it takes the `-lg` box B12 and B26's pair now
+       * carry, opens on the same 28px brand mark, and states the second line
+       * (`waiting.empty.hint`) its one-line version was missing. Its box grows
+       * with the variant — gap 8 → 12px, padding 16 → 40px/24px, title 12 → 14px
+       * — because `-lg` restates its children's type. The horizontal cap and
+       * centring (`.td-waiting-empty`'s 420px / `margin: 0 auto`) are unchanged;
+       * only the vertical centring went. */
+      { kind: "classes", probe: "[data-waiting-empty]", includes: ["td-empty", "td-empty-lg", "td-waiting-empty"] },
       { kind: "classes", probe: "[data-waiting-empty] [data-i18n=\"waiting.empty\"]", includes: ["td-empty-title"] },
-      { kind: "computed", probe: "[data-waiting-empty]", property: "gap", equalsPx: 8 },
-      { kind: "computed", probe: "[data-waiting-empty]", property: "paddingTop", equalsPx: 16 },
+      { kind: "classes", probe: "[data-waiting-empty] [data-i18n=\"waiting.empty.hint\"]", includes: ["td-empty-hint"] },
+      { kind: "computed", probe: "[data-waiting-empty] svg.td-logo.td-logo-lg", count: 1, property: "width", equalsPx: 28 },
+      { kind: "computed", probe: "[data-waiting-empty]", property: "alignSelf", notEquals: "center" },
+      { kind: "computed", probe: "[data-waiting-empty]", property: "gap", equalsPx: 12 },
+      { kind: "computed", probe: "[data-waiting-empty]", property: "paddingTop", equalsPx: 40 },
+      { kind: "computed", probe: "[data-waiting-empty]", property: "paddingRight", equalsPx: 24 },
       { kind: "computed", probe: "[data-waiting-empty]", property: "borderTopWidth", equalsPx: 1 },
       { kind: "computed", probe: "[data-waiting-empty]", property: "borderTopStyle", equals: "dashed" },
       { kind: "computed", probe: "[data-waiting-empty]", property: "borderRadius", equalsPx: 6 },
-      { kind: "computed", probe: "[data-waiting-empty] .td-empty-title", property: "fontSize", equalsPx: 12 },
+      { kind: "computed", probe: "[data-waiting-empty] .td-empty-title", property: "fontSize", equalsPx: 14 },
       { kind: "computed", probe: "[data-waiting-empty] .td-empty-title", property: "fontWeight", equals: "500" },
+      { kind: "computed", probe: "[data-waiting-empty] .td-empty-hint", property: "fontSize", equalsPx: 12 },
       /* §30.2 — one name per destination: the heading over the queue and the
        * sidebar's nav item carry the *same* string, so they cannot drift. */
       { kind: "count", selector: "[data-waiting-count]", within: "[data-waiting-head]", equals: 1 },
