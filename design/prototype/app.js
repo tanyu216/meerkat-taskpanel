@@ -310,7 +310,6 @@
       "activity.filter.event.delivery": "Delivery",
       "activity.filter.task.label": "Task",
       "activity.filter.task.all": "All tasks",
-      "activity.filter.reset": "Reset",
       "activity.filter.count": "%s entries",
       "activity.verb.created": "created",
       "activity.verb.claimed": "claimed",
@@ -343,6 +342,7 @@
          The reason chips read as the *state of the item*, not as an action, which
          is what keeps them short in both languages. */
       "waiting.title": "Waiting on me",
+      "waiting.subtitle": "Everything waiting on your answer, oldest first.",
       "waiting.count": "%s waiting on you",
       "waiting.reason.question": "Question",
       "waiting.reason.blocked": "Blocked",
@@ -609,7 +609,6 @@
       "activity.filter.event.delivery": "交付",
       "activity.filter.task.label": "任务",
       "activity.filter.task.all": "全部任务",
-      "activity.filter.reset": "重置",
       "activity.filter.count": "%s 条动态",
       "activity.verb.created": "创建了",
       "activity.verb.claimed": "认领了",
@@ -640,6 +639,7 @@
       /* R12x · B27 的词典，与上方 en 逐键对应。两条 reason 用状态词而非动词短语：
          `已阻塞` 与 `status.blocked` 是同一个词。 */
       "waiting.title": "等你回复",
+      "waiting.subtitle": "所有等你答复的事项，最久的排在最前。",
       "waiting.count": "%s 项等你回复",
       "waiting.reason.question": "待回答",
       "waiting.reason.blocked": "已阻塞",
@@ -3071,10 +3071,11 @@
       applyActivityFilters();
     });
 
-    $("[data-activity-filter-reset], [data-activity-empty-reset]").on(
-      "click",
-      resetActivityFilters
-    );
+    /* R15 ② — the three activity filters' Clear is B04's own control, so the
+       bar no longer binds a hook of its own; only the *filter-empty* state's
+       inline reset keeps `[data-activity-empty-reset]` (it is a different
+       affordance in a different place — the empty state, not the bar). */
+    $("[data-activity-empty-reset]").on("click", resetActivityFilters);
 
     $("[data-activity-mark-read]").on("click", markActivityRead);
     $("[data-activity-more]").on("click", loadOlderActivity);
@@ -3150,7 +3151,17 @@
         applyFilters();
       }
     );
+    /* R15 ② — `[data-filter-clear]` now sits on two bars: B04's, and B26's
+       activity filter bar (R15 ②). The press is told apart by **the bar it came
+       from**, not by a second hook name: `[data-activity-filters]` is the
+       activity bar's own root, so a Clear inside it resets the three activity
+       filters and leaves every board filter alone — and a Clear inside
+       `[data-filters]` does the reverse. Two bars, one control family. */
     $(document).on("click", "[data-filter-clear]", function () {
+      if ($(this).closest("[data-activity-filters]").length) {
+        resetActivityFilters();
+        return;
+      }
       resetFilters();
       toast(text("toast.filtersCleared"), "info");
     });
