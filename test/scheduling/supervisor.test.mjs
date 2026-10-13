@@ -37,7 +37,15 @@ import {
   resolveClaimUnassigned,
   wakeCommand,
 } from "../../src/shared/scheduling.mjs";
-import { defaultRepo, parseArgs, runPatrolTick, runPollTick } from "../../scripts/supervisor.mjs";
+import { emptySlaLedger, planSlaPatrol } from "../../src/shared/sla-patrol.mjs";
+import {
+  defaultRepo,
+  loadSlaLedger,
+  parseArgs,
+  runPatrolTick,
+  runPollTick,
+  saveSlaLedger,
+} from "../../scripts/supervisor.mjs";
 
 /** A tiny collector standing in for a "spy" — records every call. */
 function spy(impl = () => undefined) {
@@ -672,6 +680,28 @@ describe("runPatrolTick (injected deps)", () => {
     });
     assert.equal(spawnPatrol.count(), 1);
   });
+
+  // The heartbeat row is the ONE `PROTOCOL §⑮` row the SLA pass deliberately
+  // does not re-emit (`SLA_ROWS.heartbeat_stale.coveredBy`): the legacy alert
+  // below is a published consumer contract, and a second notification for the
+  // same condition would be a regression dressed up as coverage.
+  it("emits exactly one notification per stale heartbeat — the legacy alert, not a tuple too", async () => {
+    const legacyNotify = spy();
+    const patrol = await runPatrolTick({
+      tasks: [{ identifier: "T-1", status: "in_progress", heartbeat_at: ago(45) }],
+      config: { patrolLlm: false },
+      spawnPatrol: async () => ({ ok: true }),
+      notify: legacyNotify,
+      now: () => now,
+      log: () => {},
+    });
+    assert.equal(patrol.alerts.length, 1);
+    assert.equal(legacyNotify.count(), 1);
+
+    // …and the SLA planner, given the same card, plans nothing for it.
+    const sla = planSlaPatrol({ cards: [{ identifier: "T-1", status: "in_progress", heartbeat_at: ago(45), created_at: now, status_changed_at: now }], now });
+    assert.deepEqual(sla.alerts, []);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -724,6 +754,54 @@ describe("parseArgs — the wake surface", () => {
     assert.equal(opts.glue, "/tmp/my-wake.sh");
     assert.equal(opts.projectsJson, "/tmp/map.json");
     assert.equal(opts.wakeCommand, "my-wake.sh");
+  });
+
+  it("defaults the SLA ledger beside the state file, and follows a custom one", () => {
+    assert.equal(parseArgs(["--host", "claude", "--once"], ENV).slaLedger, "/home/alice/.claude/meerkat-taskpanel/sla-ledger.json");
+    const moved = parseArgs(["--host", "claude", "--once", "--state", "/tmp/state.json"], ENV);
+    assert.equal(moved.slaLedger, "/tmp/sla-ledger.json", "one directory remembers everything");
+    assert.equal(parseArgs(["--host", "claude", "--once", "--sla-ledger=/tmp/l.json"], ENV).slaLedger, "/tmp/l.json");
+  });
+
+  it("bounds the two reads the SLA pass makes", () => {
+    const opts = parseArgs(["--host", "claude", "--once"], ENV);
+    assert.ok(opts.boardLimit > 0);
+    assert.ok(opts.trailLimit > 0);
+    assert.equal(parseArgs(["--host", "claude", "--once", "--board-limit=10", "--trail-limit", "5"], ENV).boardLimit, 10);
+    assert.equal(parseArgs(["--host", "claude", "--once", "--trail-limit", "5"], ENV).trailLimit, 5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The SLA ledger on disk (fail-soft by construction)
+// ---------------------------------------------------------------------------
+
+describe("the SLA ledger file", () => {
+  const tempDirs = [];
+  function tempDir(prefix) {
+    const dir = mkdtempSync(join(tmpdir(), prefix));
+    tempDirs.push(dir);
+    return dir;
+  }
+  after(() => {
+    for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("round-trips through a file", () => {
+    const path = join(tempDir("meerkat-ledger-"), "sla-ledger.json");
+    const ledger = { version: 1, seen: { key: { first_seen: "2026-10-14T10:00:00.000Z", last_seen: "2026-10-14T10:00:00.000Z", observed_by: ["loop-patrol"] } } };
+    saveSlaLedger(path, ledger);
+    assert.deepEqual(loadSlaLedger(path), ledger);
+  });
+
+  it("reads a missing or corrupt ledger as empty — a duplicate is admissible, a lost alert is not", () => {
+    assert.deepEqual(loadSlaLedger(join(tempDir("meerkat-ledger-"), "nope.json")), emptySlaLedger());
+    const corrupt = join(tempDir("meerkat-ledger-"), "sla-ledger.json");
+    writeFileSync(corrupt, "{not json", "utf8");
+    assert.deepEqual(loadSlaLedger(corrupt), emptySlaLedger());
+    const shapeless = join(tempDir("meerkat-ledger-"), "sla-ledger.json");
+    writeFileSync(shapeless, JSON.stringify({ version: 1 }), "utf8");
+    assert.deepEqual(loadSlaLedger(shapeless), emptySlaLedger());
   });
 });
 

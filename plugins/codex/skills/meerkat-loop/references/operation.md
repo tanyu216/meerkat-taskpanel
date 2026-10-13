@@ -85,8 +85,10 @@ node <host>/meerkat-taskpanel/scripts/supervisor.mjs --agent alice --dry-run --o
 | `--max-concurrency <n>` | `8` | cap on simultaneously running workers |
 | `--claim-unassigned=yes\|no` | from the host config → `yes` | also claim unassigned cards (the public pool) |
 | `--once` / `--patrol-only` | off | one tick (for cron / launchd / systemd); patrol pass only |
-| `--notify <cmd>` | — | run `<cmd>` with each patrol alert as JSON on stdin |
+| `--notify <cmd>` | — | run `<cmd>` with each patrol alert as JSON on stdin (the legacy heartbeat alert and the SLA tuple) |
 | `--dry-run` | off | print intended actions; claim nothing, spawn nothing |
+| `--sla-ledger <path>` | `sla-ledger.json` beside `--state` | the SLA de-duplication ledger; an unreadable one suppresses nothing |
+| `--board-limit <n>` / `--trail-limit <n>` | `500` / `200` | caps on the two reads one patrol pass makes |
 
 The full table, and the tick's flow, are in the repository's `docs/scheduling.md`.
 
