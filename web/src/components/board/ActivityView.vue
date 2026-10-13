@@ -40,6 +40,7 @@ import {
   loadActivities,
   loadOlder,
   markAllRead,
+  projectEmpty,
   readActivityHash,
   resetActivityFilters,
   unreadCount,
@@ -373,25 +374,38 @@ onUnmounted(() => {
            exclusive by the `hidden` attribute (never by `v-if`): the project one
            means no admissible event exists, the filter one that none of them
            match, and the resting document carries both — which is what makes the
-           pair machine-checkable and is the same two-state reading B05/B12 use. -->
+           pair machine-checkable and is the same two-state reading B05/B12 use.
+
+           Each wears the design's own class list, byte for byte: `td-empty
+           td-empty-lg td-activity-empty` for the project variant (the `-lg` split
+           is the design's — `design/activity/DESIGN-activity.md` §8 draws the two
+           as different sizes), `td-empty td-activity-empty` for the filter one.
+           The utilities they carried instead had drifted from `.td-empty` on
+           four of its properties, and the `-lg` variant's 40px/24px block is not
+           reachable from `p-4` at all. See `.td-empty` in `app.css`.
+
+           The project variant reads the store's `projectEmpty` rather than the
+           derivation's `emptyKind` alone, so "nothing admissible" only becomes
+           the answer once the ledger has actually been read — see that
+           derivation's note in `stores/activity.js`. -->
       <div
-        class="td-activity-empty flex flex-col items-center gap-1 p-4 text-center text-(--brand-text-3) border border-dashed border-(--brand-border-strong) rounded-lg"
+        class="td-empty td-empty-lg td-activity-empty"
         data-activity-empty
         data-activity-empty-kind="project"
-        :hidden="feed.emptyKind !== 'project'"
+        :hidden="!projectEmpty"
       >
-        <span class="font-medium text-(--brand-text-2)" data-i18n="activity.empty.project.title">{{ $t("activity.empty.project.title") }}</span>
-        <span class="text-[12px]" data-i18n="activity.empty.project.hint">{{ $t("activity.empty.project.hint") }}</span>
+        <span class="td-empty-title" data-i18n="activity.empty.project.title">{{ $t("activity.empty.project.title") }}</span>
+        <span class="td-empty-hint" data-i18n="activity.empty.project.hint">{{ $t("activity.empty.project.hint") }}</span>
       </div>
 
       <div
-        class="td-activity-empty flex flex-col items-center gap-1 p-4 text-center text-(--brand-text-3) border border-dashed border-(--brand-border-strong) rounded-lg"
+        class="td-empty td-activity-empty"
         data-activity-empty
         data-activity-empty-kind="filter"
         :hidden="feed.emptyKind !== 'filter'"
       >
-        <span class="font-medium text-(--brand-text-2)" data-i18n="activity.empty.filter.title">{{ $t("activity.empty.filter.title") }}</span>
-        <span class="text-[12px]" data-i18n="activity.empty.filter.hint">{{ $t("activity.empty.filter.hint") }}</span>
+        <span class="td-empty-title" data-i18n="activity.empty.filter.title">{{ $t("activity.empty.filter.title") }}</span>
+        <span class="td-empty-hint" data-i18n="activity.empty.filter.hint">{{ $t("activity.empty.filter.hint") }}</span>
         <button
           type="button"
           class="btn btn-outline btn-sm"
