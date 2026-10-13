@@ -19,7 +19,7 @@
  */
 
 import { DomainError } from "../../../shared/errors.mjs";
-import { HEARTBEAT_FRESH_MS } from "../../../shared/constants.mjs";
+import { HEARTBEAT_FRESH_MS, TASK_LIST_DEFAULT_LIMIT } from "../../../shared/constants.mjs";
 import { TASK_COLUMNS, taskFromRow, taskToRow } from "../../domain/task.mjs";
 import { mapSqliteError } from "../sqlite-errors.mjs";
 import { transaction } from "../unit-of-work.mjs";
@@ -132,7 +132,20 @@ export function createTasksRepository(db) {
     },
 
     /**
-     * @param {{projectId?: string, status?: string|string[], assigneeId?: string, includeArchived?: boolean, limit?: number, offset?: number}} [filter]
+     * The board read.
+     *
+     * `assigneeId` accepts an array as well as a value, and `unassignedOnly`
+     * selects the open pool — both exist so a caller can push a whole *scope*
+     * into SQL instead of filtering a page in JS (R16: the candidate read used to
+     * do `list({status:"todo"})` — capped at 200 — and only then filter by
+     * assignee, i.e. truncate-before-filter).
+     *
+     * `limit: null` asks for **no `LIMIT` clause at all**. It is the honest way to
+     * say "I need the whole scoped set", which is what an order computed in JS
+     * needs before it paginates: sorting a page and slicing it is how you get a
+     * beautifully ordered wrong page.
+     *
+     * @param {{projectId?: string, status?: string|string[], assigneeId?: string|string[], unassignedOnly?: boolean, includeArchived?: boolean, limit?: number|null, offset?: number}} [filter]
      */
     list(filter = {}) {
       const clauses = [];
@@ -147,23 +160,31 @@ export function createTasksRepository(db) {
         values.push(...statuses);
       }
       if (filter.assigneeId !== undefined) {
-        clauses.push("assignee_id = ?");
-        values.push(filter.assigneeId);
+        const ids = Array.isArray(filter.assigneeId) ? filter.assigneeId : [filter.assigneeId];
+        if (ids.length === 0) {
+          clauses.push("1 = 0");
+        } else {
+          clauses.push(`assignee_id IN (${ids.map(() => "?").join(", ")})`);
+          values.push(...ids);
+        }
+      }
+      if (filter.unassignedOnly === true) {
+        clauses.push("(assignee_id IS NULL OR assignee_id = '')");
       }
       if (!filter.includeArchived) clauses.push("archived_at IS NULL");
 
-      const limit = Number.isInteger(filter.limit) ? filter.limit : 200;
+      const unbounded = filter.limit === null;
+      const limit = Number.isInteger(filter.limit) ? filter.limit : TASK_LIST_DEFAULT_LIMIT;
       const offset = Number.isInteger(filter.offset) ? filter.offset : 0;
       const sql = `SELECT ${SELECT_LIST} FROM tasks
                    ${clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : ""}
                    -- Deterministic: two tasks created in the same millisecond
                    -- must not come back in a random order (exports depend on it).
                    ORDER BY sort_order ASC, created_at ASC, project_id ASC, identifier ASC
-                   LIMIT ? OFFSET ?`;
-      return db
-        .prepare(sql)
-        .all(...values, limit, offset)
-        .map(taskFromRow);
+                   ${unbounded ? "" : "LIMIT ? OFFSET ?"}`;
+      return (unbounded ? db.prepare(sql).all(...values) : db.prepare(sql).all(...values, limit, offset)).map(
+        taskFromRow,
+      );
     },
 
     /**

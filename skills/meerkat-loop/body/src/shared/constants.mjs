@@ -313,3 +313,85 @@ export const ATTACHMENT_MAX_BYTES = 8 * 1024 * 1024;
 export const PROJECT_ORDER_WEIGHTS = Object.freeze({ a7: 0.5, a30: 0.3, created: 0.2 });
 /** The two activity windows, in days (§4.6). */
 export const PROJECT_ACTIVITY_WINDOW_DAYS = Object.freeze({ a7: 7, a30: 30 });
+
+// ---------------------------------------------------------------------------
+// Assignee task ordering (C-WEIGHT-1, `design/contracts/assignee-weight-order.md`)
+// ---------------------------------------------------------------------------
+
+/**
+ * The signed-off **assignee task weight** vector (Terry, 2026-10-14; contract §5.1):
+ * `P .30 / W .25 / S .20 / A .10 / B .10 / L .05`, and `Σ = 1.00`.
+ *
+ * `P` priority · `W` dwell in the current status · `S` SLA pressure · `A` age ·
+ * `B` open downstream · `L` severity (`sev:` labels). Each factor is normalised
+ * into `[0,1]` before it is weighted, so a weight reads directly as "this
+ * factor's share of the ordering decision" — which is why the numbers are worth
+ * signing rather than inferring.
+ */
+export const TASK_ORDER_WEIGHTS = Object.freeze({ P: 0.3, W: 0.25, S: 0.2, A: 0.1, B: 0.1, L: 0.05 });
+
+/**
+ * Is the optional severity factor `L` in play? **No** (contract §4.2 / R9).
+ *
+ * `sev:*` is a documented convention (`guides/task-interface.md` §15), not a
+ * schema-checked column, so its weight is not spent until Terry rules otherwise
+ * (contract §5.4 question 3). While it is off the *factor* is forced to `0` for
+ * every card: the optional factor's share is left **unused, not redistributed**,
+ * so the other five weights stay exactly the signed numbers and the contract's
+ * §9.4 worked examples reproduce to the digit. `Σ` of the enabled weights is
+ * therefore `0.95` — the honest number, and the one difference from the
+ * contract's "Σ = 1.00" that disabling an optional factor necessarily makes.
+ */
+export const TASK_ORDER_SEVERITY_ENABLED = false;
+
+/**
+ * The **saturation points** of the three ratio-clamped factors (contract §6.2).
+ *
+ * Unlike `PROJECT_ORDER_WEIGHTS`' rank normalisation, every factor here is
+ * `min(value / cap, 1)`: a card's score depends on that card alone, which is
+ * what lets the order be paginated and keeps one card's arrival from re-scoring
+ * everybody else. `dwell`/`age` are hours; `unblocks` is a count of open
+ * downstream cards, capped at 3 because `0/1/2/3+` are the only meaningful
+ * buckets (`PROTOCOL §①` limits fan-in and chain length to 8).
+ */
+export const TASK_ORDER_CAPS = Object.freeze({ dwellHours: 72, ageHours: 720, unblocks: 3 });
+
+/**
+ * SLA thresholds in **hours of wall clock**, by card status (contract §5.2 / R3).
+ *
+ * There is no product-side SLA constant anywhere else in the tree; these mirror
+ * the rows of the team `PROTOCOL §⑮` that can be mapped onto a status. A status
+ * **absent** from this table has no threshold and scores `S = 0` — not a skip,
+ * not a `NaN` ("no definition" is reported, not faked). v1 measures wall clock;
+ * `PROTOCOL §⑮`'s Asia/Shanghai working-hours calendar is a v2 extension Terry
+ * still has to rule on (§5.4 question 2), and is the one place a strict reading
+ * would add real engineering.
+ */
+export const TASK_ORDER_SLA_HOURS = Object.freeze({ blocked: 2, in_review: 24, awaiting: 24 });
+
+/**
+ * The board read's page size when a caller does not ask for one.
+ *
+ * Shared because two layers now page the same read: the repository puts it in
+ * SQL's `LIMIT`, and the weight order — which has to see the whole scoped set
+ * before it can order it — applies the same number when it slices the page in
+ * JS. One constant, so the two cannot drift into "the default page is 200, and
+ * sometimes 200 of something else".
+ */
+export const TASK_LIST_DEFAULT_LIMIT = 200;
+
+/** The two `?order=` values (contract §7.1). `board` is the default; `weight` is opt-in. */
+export const TASK_ORDER_MODES = Object.freeze(["board", "weight"]);
+/**
+ * The default `?order=` — the existing deterministic `sort_order, created_at,
+ * project_id, identifier` order. The weight order is a **deliberate opt-in**: it
+ * is clock-dependent (R5), and it is what `src/shared/scheduling.mjs#planTick`
+ * dispatches on, so making it the default would silently change who works next
+ * (§7.1/§7.4).
+ */
+export const TASK_ORDER_DEFAULT = "board";
+/**
+ * The capability bit a client probes instead of guessing (§7.1), published beside
+ * `project_order` on `/meta`.
+ */
+export const TASK_ORDER_CAPABILITY = "weights-v1";
