@@ -190,7 +190,10 @@ whenever the owner wants a red/green gate rather than the current reported count
 
 ## 5. The M2 manifest (`board-m2.json`) — added 2026-10-12
 
-`board.json` above is the M1 record and is left exactly as it was. `board-m2.json` is the
+`board.json` above is the M1 record and stands as it was measured, with the one exception §4
+names — B04's clear-hook check reads `scope: [data-filters]`, because R15 ③ moved the Activity
+bar's clear control onto the same `[data-filter-clear]` hook (`design/fidelity-r15.md` §4.2;
+see §4 and §12). `board-m2.json` is the
 **M2** manifest, frozen by the upstream contract card (`T-20261012-165120`,
 `fidelity-contract.md` + `manifests/board-m2.json`, HEAD `ec97acde506c`) and copied in
 byte-for-byte apart from the ten `status` flips noted below: same 8-block main path, plus
