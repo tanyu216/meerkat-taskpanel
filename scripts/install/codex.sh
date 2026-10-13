@@ -28,6 +28,9 @@ append_snippet "$(target_home)/.codex/AGENTS.md" "codex/AGENTS.md.snippet" "meer
 # Claim trigger + scheduling — Codex has no hooks, so these are the automation.
 if [ "${MEERKAT_TASKPANEL_NO_AUTOMATION:-}" = "1" ]; then
   echo "codex: --no-automation — skipping the claim trigger and scheduling units"
+  # A requested disable/status still applies: it acts on whatever an *earlier* install
+  # wrote, and skipping it would leave a loaded unit nobody can stop from here.
+  apply_supervisor
 else
   emit_file "codex/trigger.sh" "$TP_TRIGGER" --exec
   echo "codex: legacy claim trigger written to $TP_TRIGGER (the supervisor supersedes it)"

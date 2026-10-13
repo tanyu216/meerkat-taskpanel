@@ -25,6 +25,10 @@
 #   MEERKAT_TASKPANEL_NO_AUTOMATION "1" to skip the Codex claim trigger
 #   MEERKAT_TASKPANEL_MIN_NODE     required Node major (default: 22)
 #   MEERKAT_TASKPANEL_SKIP_NODE_CHECK  "1" to skip the Node version check
+#   MEERKAT_TASKPANEL_SUPERVISOR   "enable"/"disable"/"status" — the opt-in supervisor
+#                                  action for this host (empty: only print the load command,
+#                                  which is what a plain install does)
+#   MEERKAT_TASKPANEL_SCHEDULER    which mechanism that action acts on (default: auto)
 #
 # Everything is **idempotent**: re-running an installer with the same inputs leaves
 # the destination unchanged and exits 0. Existing files and configuration keys are
@@ -45,9 +49,14 @@ MEERKAT_TASKPANEL_NO_AUTOMATION="${MEERKAT_TASKPANEL_NO_AUTOMATION:-${TASKPANEL_
 MEERKAT_TASKPANEL_MIN_NODE="${MEERKAT_TASKPANEL_MIN_NODE:-${TASKPANEL_MIN_NODE:-}}"
 MEERKAT_TASKPANEL_SKIP_NODE_CHECK="${MEERKAT_TASKPANEL_SKIP_NODE_CHECK:-${TASKPANEL_SKIP_NODE_CHECK:-}}"
 MEERKAT_TASKPANEL_CLAIM_UNASSIGNED="${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-${TASKPANEL_CLAIM_UNASSIGNED:-}}"
+# No pre-rename alias for these two: the supervisor's flag surface is new in the opt-in
+# contract, so there is no TASKPANEL_SUPERVISOR spelling in the wild to keep working.
+MEERKAT_TASKPANEL_SUPERVISOR="${MEERKAT_TASKPANEL_SUPERVISOR:-}"
+MEERKAT_TASKPANEL_SCHEDULER="${MEERKAT_TASKPANEL_SCHEDULER:-}"
 export MEERKAT_TASKPANEL_TARGET_HOME MEERKAT_TASKPANEL_AGENT_NAME MEERKAT_TASKPANEL_LINK \
   MEERKAT_TASKPANEL_FORCE MEERKAT_TASKPANEL_DRY_RUN MEERKAT_TASKPANEL_NO_AUTOMATION \
-  MEERKAT_TASKPANEL_MIN_NODE MEERKAT_TASKPANEL_SKIP_NODE_CHECK MEERKAT_TASKPANEL_CLAIM_UNASSIGNED
+  MEERKAT_TASKPANEL_MIN_NODE MEERKAT_TASKPANEL_SKIP_NODE_CHECK MEERKAT_TASKPANEL_CLAIM_UNASSIGNED \
+  MEERKAT_TASKPANEL_SUPERVISOR MEERKAT_TASKPANEL_SCHEDULER
 
 # is_int64 <value> — 0 when <value> is a non-negative integer that fits in a
 # signed 64-bit integer (the width bash's `[ … -lt … ]` test arithmetic uses),
@@ -193,6 +202,7 @@ export_tp_env() {
   # so a unit a user has already loaded keeps working after the checkout is moved,
   # renamed or removed — and never has to be reloaded for that.
   TP_HOST="$label"
+  TP_HOST_BASE="$(target_home)/$host_dir"
   TP_LOOP="$(target_home)/$host_dir/meerkat-taskpanel"
   TP_SUPERVISOR="$TP_LOOP/scripts/supervisor.mjs"
   TP_LOG="$TP_LOOP/supervisor.log"
@@ -202,7 +212,7 @@ export_tp_env() {
   TP_WAKE="$(target_home)/$host_dir/bin/wake-$label.sh"
   TP_CLAIM_UNASSIGNED="${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-yes}"
   export TP_AGENT TP_REPO TP_SHIM TP_HOOK TP_TRIGGER
-  export TP_HOST TP_LOOP TP_SUPERVISOR TP_LOG TP_STATE TP_ENV TP_SCHED TP_WAKE TP_CLAIM_UNASSIGNED
+  export TP_HOST TP_HOST_BASE TP_LOOP TP_SUPERVISOR TP_LOG TP_STATE TP_ENV TP_SCHED TP_WAKE TP_CLAIM_UNASSIGNED
 }
 
 # claim_unassigned_value <flag> <interactive> — decide the "allow claiming unassigned
@@ -243,6 +253,96 @@ claim_unassigned_value() {
   fi
 
   printf 'yes\n'
+}
+
+# supervisor_value <flag> <interactive> — decide the opt-in supervisor action. Prints
+# `enable`, `disable`, `status`, or **empty** for "do nothing" (a plain install):
+#
+#   * an explicit <flag> wins, verbatim (`enable` / `disable` / `status`);
+#   * otherwise, when <interactive> is "1" (stdin is a TTY), ask the question once —
+#     default **no**, because the supervisor is a daemon that runs unattended;
+#   * otherwise (the non-interactive default, and the whole of `--dry-run`): nothing.
+#
+# The default is deliberately the opposite of `claim_unassigned_value` next door, which
+# asks the same way but defaults **yes**: enabling a background daemon must be asked for,
+# never assumed. An unrecognised <flag> is a hard error, not a silent default.
+supervisor_value() {
+  flag="$1"
+  interactive="$2"
+  case "$flag" in
+    enable | disable | status)
+      printf '%s\n' "$flag"
+      return 0
+      ;;
+    "")
+      ;;
+    *)
+      echo "--supervisor must be enable, disable or status (got '$flag')." >&2
+      return 1
+      ;;
+  esac
+
+  if [ "$interactive" = "1" ]; then
+    printf 'Enable the supervisor now? It runs headless in the background (poll 60s / patrol 300s). [y/N] ' >&2
+    answer=""
+    read -r answer || answer=""
+    case "$answer" in
+      [Yy]*) printf 'enable\n' ;;
+      *) printf '' ;;
+    esac
+    return 0
+  fi
+
+  printf ''
+}
+
+# apply_supervisor — perform this host's requested enable / disable / status action.
+# Requires export_tp_env first (TP_HOST, TP_AGENT, TP_HOST_BASE, TP_SCHED).
+#
+# This is the opt-in path `docs/scheduling.md` defines, and the one place an installer
+# starts something: with no request (an empty MEERKAT_TASKPANEL_SUPERVISOR) nothing here
+# runs at all, so a plain install still only prints the load command.
+#
+# A refusal from the OS (`supervisor: not enabled …`, exit 1) is **reported, not fatal**:
+# the host's skills are installed either way, and the install summary's own remedy
+# ("re-run with --force") would not apply to, say, a launchd bootstrap with no GUI
+# session. Anything else — a bad action or scheduler value, or a crashed helper — fails.
+apply_supervisor() {
+  action="${MEERKAT_TASKPANEL_SUPERVISOR:-}"
+  [ -n "$action" ] || return 0
+
+  case "$action" in
+    enable | disable | status) ;;
+    *)
+      echo "MEERKAT_TASKPANEL_SUPERVISOR must be enable, disable or status (got '$action')." >&2
+      return 1
+      ;;
+  esac
+
+  scheduler="${MEERKAT_TASKPANEL_SCHEDULER:-auto}"
+  case "$scheduler" in
+    auto | launchd | systemd | cron) ;;
+    *)
+      echo "MEERKAT_TASKPANEL_SCHEDULER must be auto, launchd, systemd or cron (got '$scheduler')." >&2
+      return 1
+      ;;
+  esac
+
+  dry=""
+  [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ] && dry="--dry-run"
+
+  status=0
+  node "$(script_dir)/lib/supervisor.mjs" "$action" \
+    --host "$TP_HOST" \
+    --agent "$TP_AGENT" \
+    --host-base "$TP_HOST_BASE" \
+    --scheduler "$scheduler" $dry || status=$?
+
+  if [ "$status" -ne 0 ] && [ "$status" -ne 1 ]; then
+    echo "$TP_HOST: the supervisor helper failed (exit $status)" >&2
+    return "$status"
+  fi
+  return 0
 }
 
 # install_loop_body — copy the loop execution body into the host. Requires
@@ -321,9 +421,11 @@ install_loop_body() {
 }
 
 # install_scheduling — drop the loop body, the poll/patrol units and the per-host wake
-# glue, then print the exact command that loads them. The installer never runs
-# `launchctl` / `systemctl` / `crontab` itself: enabling a daemon is the user's call,
-# and a test or `--dry-run` must have no side effects. Requires export_tp_env first.
+# glue, then either print the exact command that loads them or — when the user asked for
+# it (`--supervisor=…`, i.e. MEERKAT_TASKPANEL_SUPERVISOR is set) — run that load. Without
+# a request the installer never runs `launchctl` / `systemctl` / `crontab` itself:
+# enabling a daemon is the user's call, and a plain install must have no side effects.
+# Requires export_tp_env first.
 #
 # Every template here comes from the **loop** skill (`emit_loop_file`), not from this
 # installer's own templates: the units, the wake glues and the host config are the loop's
@@ -342,6 +444,12 @@ install_scheduling() {
   emit_loop_file "$TP_HOST/wake-$TP_HOST.sh" "$TP_WAKE" --exec
 
   echo "$TP_HOST: scheduling units installed under $TP_SCHED"
+
+  if [ -n "${MEERKAT_TASKPANEL_SUPERVISOR:-}" ]; then
+    apply_supervisor
+    return 0
+  fi
+
   echo "$TP_HOST: to start the supervisor, load one of these (nothing is loaded for you):"
   echo "  launchd:  launchctl load $TP_SCHED/launchd/com.meerkat-taskpanel.poll.plist   # and .patrol.plist"
   echo "  systemd:  mkdir -p ~/.config/systemd/user && cp $TP_SCHED/systemd/* ~/.config/systemd/user/ && systemctl --user enable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer"

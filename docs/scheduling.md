@@ -744,12 +744,11 @@ ruling](#openclaw-do-not-build-a-supervisor). `--target openclaw` still installs
 `{claude,codex,pi}`. `--supervisor-hosts openclaw` is **rejected** (reason on stderr, exit
 2).
 
-> **Not yet wired.** This section states the enable contract; the installer-side
-> implementation (`scripts/install/_common.sh` and the per-host
-> `scripts/install/<host>.sh` pass-through of `MEERKAT_TASKPANEL_SUPERVISOR`) — and the
-> matching `skills/meerkat-loop/SKILL.md` / `references/operation.md` wording — land in the
-> follow-on implementation change. Until then the **manual** commands above are the only
-> working path.
+> **Where it is implemented.** `scripts/install/_common.sh` (`apply_supervisor`, the
+> per-host action) drives `scripts/install/lib/supervisor.mjs`, which owns the per-OS
+> commands above and their failure modes. A refusal is reported
+> (`supervisor: not enabled …`) and does **not** fail the install: the host's skills are
+> installed either way, and the printed command is what finishes the job.
 
 ## Running the supervisor
 

@@ -10,6 +10,8 @@
 #   install.sh [--target claude|openclaw|codex|pi|all] [--prefix <home>]
 #              [--agent-name <name>] [--no-automation]
 #              [--claim-unassigned=yes|no] [--assignee-only]
+#              [--supervisor=enable|disable|status] [--supervisor-hosts <list>]
+#              [--scheduler auto|launchd|systemd|cron]
 #              [--link] [--force] [--dry-run] [--skip-node-check] [-h|--help]
 #
 # `--target` also accepts a comma-separated list (e.g. `--target claude,codex`).
@@ -19,6 +21,12 @@
 # may claim **unassigned** cards, and persists the answer as
 # `<home>/<host>/meerkat-taskpanel.env` for the bundle hosts. Non-interactive runs
 # default to yes; `--claim-unassigned=no` / `--assignee-only` opt out.
+#
+# The supervisor itself is **opt-in** and never a silent default: `--supervisor=enable`
+# (or MEERKAT_TASKPANEL_SUPERVISOR, or answering **yes** to its TTY question, default
+# **N**) runs the per-OS load of the units the install wrote; `disable` / `status` are
+# the same entry point. Without a request the installer still only prints the load
+# command. See docs/scheduling.md §Enabling the supervisor (opt-in).
 #
 # Before dispatching, it checks the runtime: Node >= 22 is required (the engine
 # uses the built-in `node:sqlite` module), and a missing or older `node` is a hard
@@ -50,6 +58,9 @@ PREFIX_HOME=""
 AGENT_NAME=""
 NO_AUTOMATION=""
 CLAIM_UNASSIGNED_FLAG=""
+SUPERVISOR_FLAG=""
+SUPERVISOR_HOSTS_FLAG=""
+SCHEDULER_FLAG=""
 LINK=""
 FORCE=""
 DRY_RUN=""
@@ -71,6 +82,22 @@ Options:
                     May the supervisor claim unassigned cards? Persisted to the
                     host config; also asked interactively on a TTY (default yes).
   --assignee-only   Alias for --claim-unassigned=no (claim only my own cards)
+  --supervisor=enable|disable|status
+                    Opt in to the supervisor daemon: load / unload / report the
+                    loop units the install just wrote. There is no silent default
+                    — a plain install still only prints the load command — and on
+                    a TTY with no flag the one-time question defaults to NO.
+                    Aliases: --enable-supervisor, --disable-supervisor,
+                    --supervisor-status.
+  --supervisor-hosts <list>
+                    Which loop hosts the action applies to: claude, codex or pi
+                    (default: the loop hosts in --target). 'openclaw' is rejected
+                    (exit 2) — it runs openclaw-team's own poll/patrol. (Not
+                    --host: that already names the wake selector in
+                    scripts/supervisor.mjs.)
+  --scheduler <m>   auto | launchd | systemd | cron   (default: auto — launchd on
+                    macOS, systemd --user on Linux, cron elsewhere). Only one
+                    mechanism may be loaded per host.
   --link            Symlink the skill instead of copying it (board skill only)
   --force           Overwrite an existing installation
   --dry-run         Print the destination paths and change nothing
@@ -102,11 +129,17 @@ symlinked loop would put the checkout back into the load path the split removes.
 The claim policy is written to <home>/<host>/meerkat-taskpanel.env for the hosts that
 build a supervisor (claude, codex, pi); OpenClaw installs openclaw-team instead.
 
+The supervisor stays opt-in (--supervisor, above): without it, and without the
+MEERKAT_TASKPANEL_SUPERVISOR below, a plain install only prints the load command.
+
 Environment (set for each host installer):
   MEERKAT_TASKPANEL_TARGET_HOME  overrides $HOME
   MEERKAT_TASKPANEL_AGENT_NAME   agent identity (default: $USER)
   MEERKAT_TASKPANEL_NO_AUTOMATION "1" to skip the Codex claim trigger + scheduling
   MEERKAT_TASKPANEL_CLAIM_UNASSIGNED  "yes"/"no" default for the claim policy
+  MEERKAT_TASKPANEL_SUPERVISOR   "enable"/"disable"/"status" — the non-interactive
+                                 form of --supervisor (an explicit flag wins)
+  MEERKAT_TASKPANEL_SCHEDULER    "auto"/"launchd"/"systemd"/"cron" (default auto)
   MEERKAT_TASKPANEL_LINK         symlink instead of copy
   MEERKAT_TASKPANEL_FORCE        overwrite an existing destination
   MEERKAT_TASKPANEL_DRY_RUN      print only, change nothing
@@ -209,6 +242,45 @@ while [ "$#" -gt 0 ]; do
       ;;
     --assignee-only)
       CLAIM_UNASSIGNED_FLAG="no"
+      shift
+      ;;
+    --supervisor)
+      [ "$#" -ge 2 ] || die "--supervisor requires a value (enable|disable|status)"
+      SUPERVISOR_FLAG="$2"
+      shift 2
+      ;;
+    --supervisor=*)
+      SUPERVISOR_FLAG="${1#*=}"
+      shift
+      ;;
+    --enable-supervisor)
+      SUPERVISOR_FLAG="enable"
+      shift
+      ;;
+    --disable-supervisor)
+      SUPERVISOR_FLAG="disable"
+      shift
+      ;;
+    --supervisor-status)
+      SUPERVISOR_FLAG="status"
+      shift
+      ;;
+    --supervisor-hosts)
+      [ "$#" -ge 2 ] || die "--supervisor-hosts requires a value (claude,codex,pi)"
+      SUPERVISOR_HOSTS_FLAG="$2"
+      shift 2
+      ;;
+    --supervisor-hosts=*)
+      SUPERVISOR_HOSTS_FLAG="${1#*=}"
+      shift
+      ;;
+    --scheduler)
+      [ "$#" -ge 2 ] || die "--scheduler requires a value (auto|launchd|systemd|cron)"
+      SCHEDULER_FLAG="$2"
+      shift 2
+      ;;
+    --scheduler=*)
+      SCHEDULER_FLAG="${1#*=}"
       shift
       ;;
     --link)
@@ -315,6 +387,57 @@ if ! CLAIM_UNASSIGNED="$(claim_unassigned_value "$CLAIM_FLAG" "$TTY")"; then
 fi
 echo "install.sh: claim unassigned tasks: $CLAIM_UNASSIGNED"
 
+# Resolve the supervisor request (per-host, opt-in). An explicit flag wins; else the
+# environment; else ask on a TTY — where the default is **no**, the opposite of the
+# claim question above, because the supervisor is a daemon that runs unattended. An
+# empty result is the plain install: units are written and the load command is printed.
+SUPERVISOR_FLAG="${SUPERVISOR_FLAG:-${MEERKAT_TASKPANEL_SUPERVISOR:-}}"
+if ! SUPERVISOR="$(supervisor_value "$SUPERVISOR_FLAG" "$TTY")"; then
+  exit 2
+fi
+SCHEDULER="${SCHEDULER_FLAG:-${MEERKAT_TASKPANEL_SCHEDULER:-auto}}"
+case "$SCHEDULER" in
+  auto | launchd | systemd | cron) ;;
+  *) die "invalid --scheduler: $SCHEDULER (expected auto|launchd|systemd|cron)" ;;
+esac
+
+# Which loop hosts the action applies to: --supervisor-hosts, else the loop hosts this
+# install covers. OpenClaw is never among them, and is rejected explicitly when named —
+# it runs openclaw-team's own poll/patrol, so there is no meerkat-loop supervisor to
+# enable (docs/scheduling.md §OpenClaw: do not build a supervisor).
+if [ -n "$SUPERVISOR_HOSTS_FLAG" ]; then
+  SUPERVISOR_HOSTS=""
+  OLD_IFS="$IFS"
+  IFS=','
+  for raw in $SUPERVISOR_HOSTS_FLAG; do
+    IFS="$OLD_IFS"
+    entry="$(echo "$raw" | tr -d '[:space:]')"
+    IFS=','
+    case "$entry" in
+      "") ;;
+      claude | codex | pi) SUPERVISOR_HOSTS="$SUPERVISOR_HOSTS $entry " ;;
+      openclaw)
+        die "--supervisor-hosts openclaw: OpenClaw has no meerkat-loop supervisor to enable (it runs openclaw-team's own poll/patrol — see docs/scheduling.md)"
+        ;;
+      *) die "invalid --supervisor-hosts: $entry (expected claude|codex|pi)" ;;
+    esac
+  done
+  IFS="$OLD_IFS"
+else
+  SUPERVISOR_HOSTS=""
+  for host in $HOSTS; do
+    case "$host" in
+      claude | codex | pi) SUPERVISOR_HOSTS="$SUPERVISOR_HOSTS $host " ;;
+    esac
+  done
+fi
+
+if [ -n "$SUPERVISOR" ] && [ -n "$(echo "$SUPERVISOR_HOSTS" | tr -d ' ')" ]; then
+  echo "install.sh: supervisor: $SUPERVISOR (hosts:$(echo "$SUPERVISOR_HOSTS" | sed 's/ $//'), scheduler: $SCHEDULER)"
+elif [ -n "$SUPERVISOR" ]; then
+  echo "install.sh: supervisor: $SUPERVISOR — no loop host to act on (OpenClaw runs openclaw-team's own poll/patrol)"
+fi
+
 if [ -n "$DRY_RUN" ]; then
   echo "install.sh: dry run — no files will be changed"
 fi
@@ -333,10 +456,21 @@ FAIL $host — installer not found"
   fi
 
   echo "install.sh: $host"
+
+  # The supervisor action is per host: a host outside --supervisor-hosts is handed an
+  # empty request, so it installs exactly as it always did (write the units, print the
+  # load command) and `_common.sh` never starts anything for it.
+  host_supervisor=""
+  case " $SUPERVISOR_HOSTS " in
+    *" $host "*) host_supervisor="$SUPERVISOR" ;;
+  esac
+
   if MEERKAT_TASKPANEL_TARGET_HOME="$TARGET_HOME" \
       MEERKAT_TASKPANEL_AGENT_NAME="$AGENT_NAME" \
       MEERKAT_TASKPANEL_NO_AUTOMATION="$NO_AUTOMATION" \
       MEERKAT_TASKPANEL_CLAIM_UNASSIGNED="$CLAIM_UNASSIGNED" \
+      MEERKAT_TASKPANEL_SUPERVISOR="$host_supervisor" \
+      MEERKAT_TASKPANEL_SCHEDULER="$SCHEDULER" \
       MEERKAT_TASKPANEL_LINK="$LINK" \
       MEERKAT_TASKPANEL_FORCE="$FORCE" \
       MEERKAT_TASKPANEL_DRY_RUN="$DRY_RUN" \
