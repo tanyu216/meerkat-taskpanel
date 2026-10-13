@@ -107,6 +107,30 @@ function i18nHooks(source, attr) {
   return out;
 }
 
+/** The document with its comments removed — "the first child" is an element. */
+function withoutComments(source) {
+  return source.replace(/<!--[\s\S]*?-->/g, "");
+}
+
+/** The first element that opens inside `tag`'s block, comments ignored. */
+function firstChildTag(source, tag) {
+  const body = withoutComments(source.slice(tag.index + tag.raw.length));
+  const m = body.match(/<([a-zA-Z][a-zA-Z0-9-]*)((?:"[^"]*"|[^>"])*?)(\/?)>/);
+  return m ? { name: m[1].toLowerCase(), attrs: parseAttrs(m[2]), raw: m[0] } : null;
+}
+
+/** A tag's `class` attribute, as a set of names. */
+function classSet(tag) {
+  return new Set(String((tag && tag.attrs.class) || "").split(/\s+/).filter(Boolean));
+}
+
+/** A single rule's declaration block, as text — `""` when the rule is gone. */
+function ruleBody(css, selector) {
+  const at = css.indexOf(`${selector} {`);
+  if (at === -1) return null;
+  return css.slice(at, css.indexOf("}", at) + 1);
+}
+
 /* =====================================================================
    STATIC SUITE
    ===================================================================== */
@@ -508,6 +532,120 @@ function resolveArg(arg, catalogue) {
   );
 }
 
+/* --- 11 · the empty states, read B12's way -----------------------------
+   Board B12 is the reference the card names: the brand mark first, the
+   large size, the buttons the state actually has, and the block at the top
+   of its container. The board's own copy is `design/prototype/index.html`,
+   so the two rules the family shares are read off `tw.css` — the file both
+   pages load — while the page's own scoped copy is read off the document. */
+{
+  const empties = startTags(html).filter((t) => t.attrs["data-activity-empty"] !== undefined);
+  const project = empties.find((t) => t.attrs["data-activity-empty-kind"] === "project");
+  const filter = empties.find((t) => t.attrs["data-activity-empty-kind"] === "filter");
+
+  const kids = { project: project && firstChildTag(html, project), filter: filter && firstChildTag(html, filter) };
+  const isMark = (tag) =>
+    tag !== null && tag !== undefined && tag.name === "svg" &&
+    classSet(tag).has("td-logo") && classSet(tag).has("td-logo-lg");
+  check(
+    "S11.1 both empty states open on the brand mark (svg.td-logo.td-logo-lg)",
+    isMark(kids.project) && isMark(kids.filter),
+    `project: ${kids.project ? kids.project.raw : "none"} · filter: ${kids.filter ? kids.filter.raw : "none"}`
+  );
+
+  check(
+    "S11.2 both empty states are the large size (td-empty-lg)",
+    classSet(project).has("td-empty-lg") && classSet(filter).has("td-empty-lg"),
+    `project: "${project && project.attrs.class}" · filter: "${filter && filter.attrs.class}"`
+  );
+
+  /* The pair is the point: the project state has no filter in force, so it
+     must not offer a control that clears one. */
+  const blockOf = (source, tag) => (tag ? source.slice(tag.index, source.indexOf("</div>", tag.index)) : "");
+  const projectBlock = blockOf(html, project);
+  const filterBlock = blockOf(html, filter);
+  check(
+    "S11.3 the project empty carries no [data-activity-empty-reset]",
+    projectBlock.length > 0 && !projectBlock.includes("data-activity-empty-reset")
+  );
+  check(
+    "S11.4 the filter empty carries [data-activity-empty-reset] (and the contrast holds)",
+    filterBlock.includes("data-activity-empty-reset") && !projectBlock.includes("data-activity-empty-reset")
+  );
+
+  /* A mask is addressed by id, so a repeated id silently re-points every
+     reference at the last one declared — B12's comment states the rule and
+     this measures it. */
+  const maskIds = [...html.matchAll(/mask\s+id="([^"]+)"/g)].map((m) => m[1]);
+  const dupeIds = maskIds.filter((id, i) => maskIds.indexOf(id) !== i);
+  check(
+    "S11.5 every mask id in the document is unique",
+    maskIds.length === 3 && dupeIds.length === 0,
+    `${maskIds.length} mask(s): ${maskIds.join(", ")}${dupeIds.length ? ` · repeated: ${dupeIds.join(", ")}` : ""}`
+  );
+  const refs = [...html.matchAll(/url\(#(face-[^)]+)\)/g)].map((m) => m[1]);
+  const dangling = refs.filter((id) => !maskIds.includes(id));
+  check(
+    "S11.6 every mask reference resolves to a declared id",
+    refs.length === 3 && dangling.length === 0,
+    `refs: ${[...new Set(refs)].join(", ")}${dangling.length ? ` · dangling: ${dangling.join(", ")}` : ""}`
+  );
+
+  /* The rules themselves: the vertical centring the card withdrew must be
+     gone from the page's scoped copy *and* from the stylesheet the board
+     reads, and the block must be the large one on both sides. */
+  const scoped = (html.match(/<style[^>]*>([\s\S]*?)<\/style>/) || ["", ""])[1];
+  const scopedRule = ruleBody(scoped, ".td-activity-empty") || "";
+  check(
+    "S11.7 the page's scoped .td-activity-empty is top-aligned",
+    scopedRule.length > 0 && !/auto\s*;/.test(scopedRule) && !/align-self/.test(scopedRule) && /margin:\s*0 12px/.test(scopedRule),
+    scopedRule.replace(/\s+/g, " ").trim()
+  );
+
+  const tw = readFileSync(TW_CSS_PATH, "utf8");
+  const boardActivity = ruleBody(tw, ".td-activity-empty") || "";
+  const boardWaiting = ruleBody(tw, ".td-waiting-empty") || "";
+  check(
+    "S11.8 tw.css's .td-activity-empty is top-aligned",
+    boardActivity.length > 0 && !/auto\s*;/.test(boardActivity) && !/align-self/.test(boardActivity) && /margin:\s*0 12px/.test(boardActivity),
+    boardActivity.replace(/\s+/g, " ").trim()
+  );
+  check(
+    "S11.9 tw.css's .td-waiting-empty drops align-self and keeps only horizontal auto margins",
+    boardWaiting.length > 0 && !/align-self/.test(boardWaiting) &&
+      /margin:\s*0 auto/.test(boardWaiting) && /max-width:\s*420px/.test(boardWaiting),
+    boardWaiting.replace(/\s+/g, " ").trim()
+  );
+
+  /* The waiting state is B27's, and it lives on the board page — its block
+     is read there, so the family's own check does not stop at this page. */
+  const board = readFileSync(join(DESIGN, "prototype", "index.html"), "utf8");
+  const waiting = startTags(board).find((t) => t.attrs["data-waiting-empty"] !== undefined);
+  check("S11.10 the board's [data-waiting-empty] exists", !!waiting);
+  if (waiting) {
+    const kid = firstChildTag(board, waiting);
+    check(
+      "S11.11 the waiting empty opens on the brand mark and is the large size",
+      isMark(kid) && classSet(waiting).has("td-empty-lg"),
+      `${kid ? kid.raw : "none"} · class "${waiting.attrs.class}"`
+    );
+    const waitingBlock = blockOf(board, waiting);
+    check(
+      "S11.12 the waiting empty carries a hint and no button",
+      /class="td-empty-hint"[^>]*data-i18n="waiting\.empty\.hint"/.test(waitingBlock) &&
+        !/<button/.test(waitingBlock),
+      waitingBlock.match(/data-i18n="waiting\.empty[^"]*"/g).join(", ")
+    );
+    const maskIds2 = [...board.matchAll(/mask\s+id="([^"]+)"/g)].map((m) => m[1]);
+    const dupeIds2 = maskIds2.filter((id, i) => maskIds2.indexOf(id) !== i);
+    check(
+      "S11.13 the board's mask ids are unique",
+      dupeIds2.length === 0,
+      `${maskIds2.length} mask(s): ${maskIds2.join(", ")}`
+    );
+  }
+}
+
 /* =====================================================================
    RENDER SUITE
    ===================================================================== */
@@ -764,6 +902,124 @@ async function renderSuite() {
     });
     check("R6b.1 an empty project shows the project empty state, not the filter one", bare.rows === 0 && bare.projectEmpty && !bare.filterEmpty);
     check("R6b.2 an empty project offers no Load older", bare.footHidden);
+
+    /* -- R9 · the empty-state family, on a real box -------------------------
+       B12's reading, measured: the block opens on the brand mark, the mark is
+       the large one (28×28), and the block stands at the **top** of its
+       container instead of being centred in it. Both pages are measured —
+       this one for the two activity states, the board for B27's waiting
+       state, which no press can reach (nothing in that queue filters, so the
+       frame is driven by the two attributes the empty state actually is). */
+    await page.evaluate(() => window.tdActivity.setLang("en"));
+    const actEmpty = await page.evaluate(() => {
+      const host = document.querySelector("[data-activity-feed]");
+      const kinds = [...document.querySelectorAll("[data-activity-empty]")];
+      const ofKind = (k) => kinds.find((e) => e.getAttribute("data-activity-empty-kind") === k);
+      const read = (el) => {
+        const cs = getComputedStyle(el);
+        const mark = el.firstElementChild;
+        const mcs = mark ? getComputedStyle(mark) : null;
+        const hostBox = host.getBoundingClientRect();
+        const box = el.getBoundingClientRect();
+        return {
+          isSvg: !!mark && mark.tagName.toLowerCase() === "svg",
+          markClasses: mark ? mark.getAttribute("class") : null,
+          markSize: mcs ? `${mcs.width} / ${mcs.height}` : null,
+          marginTop: cs.marginTop,
+          marginBottom: cs.marginBottom,
+          alignSelf: cs.alignSelf,
+          top: Math.round(box.top - hostBox.top),
+          blockHeight: Math.round(box.height),
+          hostHeight: Math.round(hostBox.height),
+        };
+      };
+      /* Each state is measured on its own: the two are mutually exclusive, so
+         leaving both up would measure the second one below the first. */
+      kinds.forEach((e) => { e.hidden = true; });
+      const project = ofKind("project");
+      project.hidden = false;
+      const projectBox = read(project);
+      project.hidden = true;
+      const filter = ofKind("filter");
+      filter.hidden = false;
+      const filterBox = read(filter);
+      filter.hidden = true;
+      return { project: projectBox, filter: filterBox };
+    });
+
+    for (const kind of ["project", "filter"]) {
+      const e = actEmpty[kind];
+      const centred = Math.round((e.hostHeight - e.blockHeight) / 2);
+      check(
+        `R9.${kind} the empty state is not vertically centred`,
+        e.marginTop !== "auto" && e.marginBottom !== "auto" && e.alignSelf !== "center",
+        `margin ${e.marginTop} / ${e.marginBottom} · align-self ${e.alignSelf}`
+      );
+      check(
+        `R9.${kind}b the empty state opens on the 28×28 brand mark`,
+        e.isSvg && /(^|\s)td-logo(\s|$)/.test(e.markClasses) && /(^|\s)td-logo-lg(\s|$)/.test(e.markClasses) && e.markSize === "28px / 28px",
+        `${e.markClasses} · ${e.markSize}`
+      );
+      check(
+        `R9.${kind}c the empty state stands at the top of its container`,
+        e.top < centred - 8,
+        `top ${e.top}px of ${e.hostHeight}px (block ${e.blockHeight}px — centred would be ~${centred}px)`
+      );
+    }
+
+    /* B27.3 lives on the board page. Its two attributes are the state: the
+       queue stands down and the empty state comes up in its place. */
+    const boardPage = await browser.newPage({ viewport: { width: 1512, height: 900 } });
+    const boardErrors = [];
+    boardPage.on("console", (m) => {
+      if (m.type() === "error") boardErrors.push(m.text());
+    });
+    boardPage.on("pageerror", (e) => boardErrors.push(String(e)));
+    await boardPage.goto(`http://127.0.0.1:${port}/prototype/index.html`, { waitUntil: "load" });
+    await boardPage.evaluate(() => document.querySelector('[data-nav-item="waiting"]').click());
+    await boardPage.waitForFunction(() => !document.querySelector("[data-waiting-view]").hidden);
+
+    const waitEmpty = await boardPage.evaluate(() => {
+      const host = document.querySelector("[data-waiting-view]");
+      const el = document.querySelector("[data-waiting-empty]");
+      document.querySelector("[data-waiting-list]").hidden = true;
+      el.hidden = false;
+      const cs = getComputedStyle(el);
+      const mark = el.firstElementChild;
+      const mcs = mark ? getComputedStyle(mark) : null;
+      const hostBox = host.getBoundingClientRect();
+      const box = el.getBoundingClientRect();
+      return {
+        isSvg: !!mark && mark.tagName.toLowerCase() === "svg",
+        markClasses: mark ? mark.getAttribute("class") : null,
+        markSize: mcs ? `${mcs.width} / ${mcs.height}` : null,
+        marginTop: cs.marginTop,
+        marginBottom: cs.marginBottom,
+        alignSelf: cs.alignSelf,
+        top: Math.round(box.top - hostBox.top),
+        blockHeight: Math.round(box.height),
+        hostHeight: Math.round(hostBox.height),
+        headHeight: Math.round(document.querySelector("[data-waiting-head]").getBoundingClientRect().height),
+      };
+    });
+    const waitCentred = Math.round((waitEmpty.hostHeight - waitEmpty.blockHeight) / 2);
+    check(
+      "R9.waiting the empty state is not vertically centred",
+      waitEmpty.marginTop !== "auto" && waitEmpty.marginBottom !== "auto" && waitEmpty.alignSelf !== "center",
+      `margin ${waitEmpty.marginTop} / ${waitEmpty.marginBottom} · align-self ${waitEmpty.alignSelf}`
+    );
+    check(
+      "R9.waitingb the empty state opens on the 28×28 brand mark",
+      waitEmpty.isSvg && /(^|\s)td-logo(\s|$)/.test(waitEmpty.markClasses) && /(^|\s)td-logo-lg(\s|$)/.test(waitEmpty.markClasses) && waitEmpty.markSize === "28px / 28px",
+      `${waitEmpty.markClasses} · ${waitEmpty.markSize}`
+    );
+    check(
+      "R9.waitingc the empty state stands at the top of the view, under the header",
+      waitEmpty.top < waitCentred - 8 && waitEmpty.top < waitEmpty.headHeight + 32,
+      `top ${waitEmpty.top}px of ${waitEmpty.hostHeight}px (header ${waitEmpty.headHeight}px, block ${waitEmpty.blockHeight}px — centred would be ~${waitCentred}px)`
+    );
+    check("R9.waitingd the board page is clean", boardErrors.length === 0, boardErrors.slice(0, 2).join(" | "));
+    await boardPage.close();
 
     await page.close();
 
