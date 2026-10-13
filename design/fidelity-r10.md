@@ -428,7 +428,7 @@
 | `src/styles/tokens.css`（实现侧 token）/ `design/DESIGN.md` 的 token 表 | **无新增、无改动** —— 错误块用既有 `--color-td-danger` / `--color-td-danger-soft`，拉伸链不引入任何新值，braces/radius 全部沿用 | **不改（有意）** |
 | `design/fidelity-r6.md` / `-r7` / `-r8` / `-r9` | **不改**：本轮与它们正交（§3），旧契约仍成立 | **不改（有意）** |
 | `test/**` / `web/**` | **不改**（卡的红线：无实现代码） | **不改（红线）** |
-| **i18n 归属（显式判定）** | 错误串**内联、无 `data-i18n` 钩子**。原因：`test/web/i18n.catalogue.mjs` 逐字镜像原型 `app.js` 的 `MESSAGES`（en 220 / zh 220），且 `i18n.catalogue.test.mjs` 同时校验「条目逐行相等」与「每个 `data-i18n` 钩子可解析」；本卡不得碰 `test/**`，因此新增键或新增钩子都会把该套件**在 host 上变红**。设计初稿 §2.3 明写「或直接内联」，故取内联一支，并把多语言归属交给实现卡（实现侧加键时字符串可自定，契约只锁 `data-*` 与可见性） | **已判定（内联）** |
+| **i18n 归属（显式判定）** | 错误串**内联、无 `data-i18n` 钩子**。原因：`test/web/i18n.catalogue.mjs` 逐字镜像原型 `app.js` 的 `MESSAGES`（en 220 / zh 220），且 `i18n.catalogue.test.mjs` 同时校验「条目逐行相等」与「每个 `data-i18n` 钩子可解析」；本卡不得碰 `test/**`，因此新增键或新增钩子都会把该套件**在 host 上变红**。设计初稿 §2.3 明写「或直接内联」，故取内联一支。**实现侧另有合法归宿**：文案座位由 `web/src/i18n/extra.mjs:detail.saveError` 承载（`data-i18n="detail.saveError"`；键为实现自撰，契约只锁 `data-*` 与可见性）；**原型侧的 A12（无钩子）不变** | **已判定（原型内联；实现侧有座位）** |
 
 **判定依据的实测**：本轮 `index.html` 的 `data-i18n*` 钩子数 **468（不变）**、`app.js` 的 `MESSAGES` 键数 **en 220 / zh 220（不变）** —— 与 `test/web/i18n.catalogue.test.mjs` 在基线 commit 上量到的数字一致。
 

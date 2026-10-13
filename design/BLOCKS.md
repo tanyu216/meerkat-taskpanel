@@ -566,9 +566,33 @@ to `idle`, so a drawer never wears the previous card's verdict). `setDetailSaveS
 single writer of both the attribute and the alert's `hidden`, so the two cannot disagree.
 Contract: `design/fidelity-r10.md` §2.2.
 
-The alert's copy is **inlined**, with no `data-i18n` hook — `test/web/i18n.catalogue.mjs`
-mirrors the prototype's `MESSAGES` byte for byte and this round may not touch `test/**`; see
-`design/fidelity-r10.md` §7. The implementation decides the translation.
+The prototype's alert copy is **inlined**, with no `data-i18n` hook — `test/web/i18n.catalogue.mjs`
+mirrors the prototype's `MESSAGES` byte for byte; see `design/fidelity-r10.md` §7. The
+**implementation** carries the copy on its own seat, `data-i18n="detail.saveError"`
+(`web/src/i18n/extra.mjs:detail.saveError`); the prototype's A12 is unchanged.
+
+**Implementation-side test hooks (not prototype contracts).** 〔原型无此钩子；由
+`test/web/blocks.contract.mjs` §B09 背书；实现保留〕 Two hook families are pinned by
+`test/web/blocks.contract.mjs` §B09 — all six sit in the block's `required` list, and three carry a
+driven `count … min: 1` rule under `when: "drawer open"` (`[data-attachment-row]` and
+`[data-activity-row]` / `[data-activity-ts]`, scoped `within: "[data-detail-attachments]"` /
+`within: "[data-detail-activity]"`) — but they are **not** part of the prototype's own drawer
+markup: `[data-attachment-row]` / `[data-attachment-name]` / `[data-attachment-size]` (the
+attachment rows) and `[data-activity-row]` / `[data-activity-actor]` / `[data-activity-ts]` (the
+drawer's activity rows). 实测：原型 18 个 `template[data-detail-for]` 的 `[data-slot="attachments"]`
+/ `[data-slot="activity"]` 内，六枚属性钩子计数**全为 0**；抽屉打开态（TD-125，3 附件）实读
+`[data-detail-drawer] [data-attachment-row|name|size]` = 0、
+`[data-detail-drawer] [data-activity-row|actor|ts]` = 0。原型这两个分区一律用 **class**：
+`.td-file` / `.td-file-name` / `.td-file-size`（19 行）与 `.td-activity` / `.td-activity-ts`
+（72 行）。The implementation keeps them; the prototype is **not** to be retro-fitted with them
+(a contract is not rewritten from an implementation). Recorded here only so the two surfaces' hook
+inventories can be compared.
+
+⚠️ `[data-activity-row]` / `[data-activity-actor]` are **also** B26's feed hooks (see **B26.2**),
+where the stamp is `[data-activity-at]` — 实测全文档 `[data-activity-row]` / `[data-activity-actor]`
+/ `[data-activity-at]` 各 17 命中且**全部**落在 `[data-activity-feed]` 内（抽屉内 0）。抽屉族与 B26
+**只在 `[data-activity-row]` / `[data-activity-actor]` 这两枚属性上同名**；抽屉族的
+`[data-activity-ts]` 与 B26 的 `[data-activity-at]` 不同名，不冲突。
 
 ## B10 · Create-task modal — two columns
 
