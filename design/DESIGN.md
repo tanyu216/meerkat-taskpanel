@@ -826,7 +826,10 @@ override only. The rule is the addendum's: use the component, keep the brand.
 |---|---|---|
 | view toggle (Board / List) | `tabs tabs-box` + `tab` | top bar, `.td-tabs` / `.td-tab` |
 | label filter | `dropdown` + `menu` (R9: the value is flat text, not a `badge`) | filters bar, `.td-label-trigger` / `.td-label-menu` |
-| assignee / priority filters | `select select-sm` | filters bar, `.td-select` |
+| assignee / priority filters | `dropdown` + `menu` (R15 ②; was `select select-sm`) | filters bar, `.td-label-trigger` / `.td-label-menu` |
+| status filter | `dropdown` + `menu` (R11 ①) | filters bar, `.td-label-trigger` / `.td-label-menu` |
+| activity filters (actor / event / task) | `dropdown` + `menu` (R15 ①) | activity view, `.td-label-trigger` / `.td-label-menu` |
+| filter clear | `btn btn-ghost btn-sm` (`[data-filter-clear]` / `filters.clear`, R15 ②) | filters bar tail · activity filters bar tail |
 | create-dialog fields | `select select-sm` | Priority / Project / Status |
 | label chips, decision chips | `badge badge-sm` | cards, comments, drawer, list |
 | platform badge | `badge badge-xs` | card foot, drawer, combo options |
@@ -842,6 +845,17 @@ override only. The rule is the addendum's: use the component, keep the brand.
 | allow-list switch | `toggle toggle-sm` | access panel, `.td-switch` |
 | inputs, textareas | `input input-sm` | create dialog, drawer |
 | tooltips | `tooltip` | legend, states showcase |
+
+**R15 ①② — the filter bar is one component, so this table now says `dropdown` for all four of
+its controls.** Before R15 the two halves of the mapping disagreed: the label control was a
+`dropdown` and the assignee/priority filters were `select select-sm`, which left the bar
+reading as two components in one row and left the Activity view's three filters (also
+`select`) outside the family entirely. The round converted all four, so the `assignee /
+priority filters` row above is a **change of record**, not an addition — and `select
+select-sm` remains in the mapping only where it is the right component: the create dialog's
+three fields. The `.td-select` rule stays for those. See `design/fidelity-r15.md` for the
+measured before/after and the machine checks, and BLOCKS.md §B04 for the block's own account
+(including the sharper reading of R9's "one shell" rule that the conversion makes possible).
 
 **The drawer is the documented exception.** daisyUI's `drawer` is a *page-level* grid:
 `.drawer-side` must be a sibling of `.drawer-content` inside a `.drawer` root, and the

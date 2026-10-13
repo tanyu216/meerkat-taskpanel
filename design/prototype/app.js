@@ -310,7 +310,6 @@
       "activity.filter.event.delivery": "Delivery",
       "activity.filter.task.label": "Task",
       "activity.filter.task.all": "All tasks",
-      "activity.filter.reset": "Reset",
       "activity.filter.count": "%s entries",
       "activity.verb.created": "created",
       "activity.verb.claimed": "claimed",
@@ -343,6 +342,7 @@
          The reason chips read as the *state of the item*, not as an action, which
          is what keeps them short in both languages. */
       "waiting.title": "Waiting on me",
+      "waiting.subtitle": "Everything waiting on your answer, oldest first.",
       "waiting.count": "%s waiting on you",
       "waiting.reason.question": "Question",
       "waiting.reason.blocked": "Blocked",
@@ -609,7 +609,6 @@
       "activity.filter.event.delivery": "交付",
       "activity.filter.task.label": "任务",
       "activity.filter.task.all": "全部任务",
-      "activity.filter.reset": "重置",
       "activity.filter.count": "%s 条动态",
       "activity.verb.created": "创建了",
       "activity.verb.claimed": "认领了",
@@ -640,6 +639,7 @@
       /* R12x · B27 的词典，与上方 en 逐键对应。两条 reason 用状态词而非动词短语：
          `已阻塞` 与 `status.blocked` 是同一个词。 */
       "waiting.title": "等你回复",
+      "waiting.subtitle": "所有等你答复的事项，最久的排在最前。",
       "waiting.count": "%s 项等你回复",
       "waiting.reason.question": "待回答",
       "waiting.reason.blocked": "已阻塞",
@@ -968,7 +968,7 @@
   var ASSIGNEE_STATIC_VALUES = ["all", "me", "human", "agent"];
 
   function assigneeFilterValue() {
-    var value = $("[data-filter-assignee]").val();
+    var value = $("[data-filter-assignee]").attr("data-filter-assignee-value");
     return value == null || value === "" ? "all" : String(value);
   }
 
@@ -979,36 +979,66 @@
      five are restored. So the capsule and the control cannot contradict each
      other, and a restatement is the same move whatever changed the value — a
      press on a name, the control itself, or `resetFilters()`.
-     It also reconciles the *options*: a name that is not in force is not in the
+     It also reconciles the *rows*: a name that is not in force is not in the
      document, so the control can never offer a name the roster is not showing —
-     and, with the `✕` withdrawn (R13 修订, 决定甲), the option set *is* the whole
-     removal affordance: a given name is one more `option` while it is in force,
-     and leaving it is choosing another row of the same select.
+     and, with the `✕` withdrawn (R13 修订, 决定甲), the row set *is* the whole
+     removal affordance: a given name is one more **row** while it is in force,
+     and leaving it is choosing another row of the same dropdown.
      The hook is `[data-assignee-filter-option]`, not `[data-assignee-option]`:
      that name is B22's (the dialogs' assignee menus, 14 bare seats) and the
      roster control binds it document-wide, so a seat here would be answered by
-     that control instead of by nothing. */
+     that control instead of by nothing. R15 ② kept the hook and its
+     value-in-the-attribute carrier exactly as R13 fixed them; only the element
+     it sits on moved — a menu row `button` now, not an `<option>`. */
   function renderAssigneeFilter() {
     var value = assigneeFilterValue();
     var named =
       ASSIGNEE_STATIC_VALUES.indexOf(value) === -1 ? value : null;
-    var $select = $("[data-filter-assignee]");
+    var $control = $("[data-filter-assignee]");
 
-    $select.find("[data-assignee-filter-option]").each(function () {
-      if ($(this).attr("data-assignee-filter-option") !== named) $(this).remove();
+    /* the four static rows stay; a given name is one more row while it is in
+       force and is gone the moment the control leaves it */
+    $control.find("[data-assignee-filter-option]").each(function () {
+      var $row = $(this);
+      var rowValue = $row.attr("data-assignee-filter-option");
+      if (
+        ASSIGNEE_STATIC_VALUES.indexOf(rowValue) === -1 &&
+        rowValue !== named
+      ) {
+        $row.closest("li").remove();
+      }
     });
 
     if (
       named &&
-      !$select.find('[data-assignee-filter-option="' + named + '"]').length
+      !$control.find('[data-assignee-filter-option="' + named + '"]').length
     ) {
-      $("<option>")
-        .attr("data-assignee-filter-option", named)
-        .attr("value", named)
-        .text(named)
-        .appendTo($select)
-        .prop("selected", true);
+      $("<li>")
+        .append(
+          $("<button>")
+            .attr("type", "button")
+            .attr("data-assignee-filter-option", named)
+            .text(named)
+        )
+        .appendTo($control.find(".td-label-menu"));
     }
+
+    $control.find("[data-assignee-filter-option]").each(function () {
+      var $row = $(this);
+      $row.attr(
+        "aria-current",
+        String($row.attr("data-assignee-filter-option") === value)
+      );
+    });
+
+    /* the trigger states the chosen row's own copy — a static row's sentence, or
+       the bare name R13 writes for a given one — in the active language */
+    var $chosen = $control.find(
+      '[data-assignee-filter-option="' + value + '"]'
+    );
+    $control
+      .find("[data-filter-assignee-text]")
+      .text($chosen.length ? $.trim($chosen.text()) : text("filters.assignee.all"));
 
     $("[data-assignee-item]").each(function () {
       var $item = $(this);
@@ -1019,20 +1049,51 @@
   }
 
   /* Writes a given name (or one of the four static values) into the control and
-     restates the roster. The option has to exist before the value can select
-     it, which is why the write is one call and not two. */
+     restates the roster. The control's *value* is the whole write — the named
+     row follows from it in `renderAssigneeFilter()`, which is why this is one
+     call and not two. */
   function writeAssigneeFilter(value) {
-    var $select = $("[data-filter-assignee]");
-    if (ASSIGNEE_STATIC_VALUES.indexOf(value) === -1) {
-      $select.find("[data-assignee-filter-option]").remove();
-      $("<option>")
-        .attr("data-assignee-filter-option", value)
-        .attr("value", value)
-        .text(value)
-        .appendTo($select);
-    }
-    $select.val(value);
+    $("[data-filter-assignee]").attr("data-filter-assignee-value", value);
     renderAssigneeFilter();
+  }
+
+  function closeAssigneeMenu() {
+    $("[data-filter-assignee]").removeAttr("open");
+  }
+
+  /* The priority control is the same single-choice dropdown: `all` plus the five
+     priorities, one row each, the chosen one restated on the trigger. */
+  function priorityFilterValue() {
+    return $("[data-filter-priority]").attr("data-filter-priority-value") || "all";
+  }
+
+  function renderPriorityFilter() {
+    var value = priorityFilterValue();
+    var $control = $("[data-filter-priority]");
+
+    $control.find("[data-filter-priority-option]").each(function () {
+      var $row = $(this);
+      $row.attr(
+        "aria-current",
+        String($row.attr("data-priority-value") === value)
+      );
+    });
+
+    var $chosen = $control.find(
+      '[data-filter-priority-option][data-priority-value="' + value + '"]'
+    );
+    $control
+      .find("[data-filter-priority-text]")
+      .text($chosen.length ? $.trim($chosen.text()) : text("filters.priority.all"));
+  }
+
+  function writePriorityFilter(value) {
+    $("[data-filter-priority]").attr("data-filter-priority-value", value);
+    renderPriorityFilter();
+  }
+
+  function closePriorityMenu() {
+    $("[data-filter-priority]").removeAttr("open");
   }
 
   /* I6 / I8 · one filter pass drives cards, column counts and the count readout */
@@ -1040,10 +1101,11 @@
     renderLabelFilter();
     renderStatusFilter();
     renderAssigneeFilter();
+    renderPriorityFilter();
 
     var query = $.trim(String($("[data-search-input]").val() || "")).toLowerCase();
     var byAssignee = assigneeFilterValue();
-    var byPriority = $("[data-filter-priority]").val();
+    var byPriority = priorityFilterValue();
     var byLabel = labelFilterValue();
     var byStatus = statusFilterValues();
 
@@ -1134,8 +1196,13 @@
 
   function resetFilters() {
     $("[data-search-input]").val("");
-    $("[data-filter-assignee]").val("all");
-    $("[data-filter-priority]").val("all");
+    /* R15 ② — all four field controls are dropdowns now, so the reset writes
+       their value attributes (the same write a press on each control's own `all`
+       row makes) and closes their menus. */
+    writeAssigneeFilter("all");
+    closeAssigneeMenu();
+    writePriorityFilter("all");
+    closePriorityMenu();
     $("[data-filter-label]").attr("data-filter-label-value", "all");
     closeLabelMenu();
     /* R11 ① — `[]` writes `all` and clears every row's `aria-pressed`, which is
@@ -1511,6 +1578,11 @@
        cells and the fixed date headings are words, and the entry count is a
        sentence around a number. */
     refreshActivityCopy();
+
+    /* R15 ① — and so do the three activity triggers: their copy is the chosen
+       row's, which `translateTree` has just re-worded, so the restatement has to
+       come after it. */
+    renderActivityFilters();
 
     applyFilters();
   }
@@ -2892,14 +2964,49 @@
     $("[data-activity-filter]").each(function () {
       var $el = $(this);
       var name = $el.attr("data-activity-filter");
-      if (activity.filters[name] !== undefined) activity.filters[name] = $el.val();
+      var value = $el.attr("data-activity-filter-value");
+      if (activity.filters[name] !== undefined && value) {
+        activity.filters[name] = value;
+      }
+    });
+  }
+
+  /* R15 ① — the three controls are dropdown panels now, so each one states its
+     chosen row twice: on the control's own value attribute, and on the trigger's
+     copy (the chosen row's own text, in the active language). Run from the same
+     place `readActivityFilters()` is, so a language switch restates them for
+     free — the trigger spans carry no `data-i18n` seat for exactly that reason,
+     the way the board's label and status triggers do not. */
+  function renderActivityFilters() {
+    $("[data-activity-filter]").each(function () {
+      var $control = $(this);
+      var value = $control.attr("data-activity-filter-value") || "all";
+
+      $control.find("[data-activity-filter-option]").each(function () {
+        var $row = $(this);
+        $row.attr(
+          "aria-current",
+          String($row.attr("data-activity-value") === value)
+        );
+      });
+
+      var $chosen = $control.find(
+        '[data-activity-filter-option][data-activity-value="' + value + '"]'
+      );
+      $control
+        .find("[data-activity-filter-text]")
+        .text($chosen.length ? $.trim($chosen.text()) : value);
     });
   }
 
   function syncActivityControls() {
     ["actor", "event", "task"].forEach(function (name) {
-      $('[data-activity-filter="' + name + '"]').val(activity.filters[name]);
+      $('[data-activity-filter="' + name + '"]').attr(
+        "data-activity-filter-value",
+        activity.filters[name]
+      );
     });
+    renderActivityFilters();
   }
 
   function resetActivityFilters() {
@@ -3065,16 +3172,30 @@
     });
 
     /* B26 · the activity feed ---------------------------------------------- */
-    $("[data-activity-filter]").on("change", function () {
-      readActivityFilters();
-      writeActivityHash();
-      applyActivityFilters();
-    });
-
-    $("[data-activity-filter-reset], [data-activity-empty-reset]").on(
+    /* R15 ① — a filter is a press on a dropdown row now: write the control's
+       value, close its menu, restate the trigger and re-run the pass. */
+    $("[data-activity-filters]").on(
       "click",
-      resetActivityFilters
+      "[data-activity-filter-option]",
+      function () {
+        var $control = $(this).closest("[data-activity-filter]");
+        $control.attr(
+          "data-activity-filter-value",
+          $(this).attr("data-activity-value")
+        );
+        $control.removeAttr("open");
+        readActivityFilters();
+        renderActivityFilters();
+        writeActivityHash();
+        applyActivityFilters();
+      }
     );
+
+    /* R15 ② — the three activity filters' Clear is B04's own control, so the
+       bar no longer binds a hook of its own; only the *filter-empty* state's
+       inline reset keeps `[data-activity-empty-reset]` (it is a different
+       affordance in a different place — the empty state, not the bar). */
+    $("[data-activity-empty-reset]").on("click", resetActivityFilters);
 
     $("[data-activity-mark-read]").on("click", markActivityRead);
     $("[data-activity-more]").on("click", loadOlderActivity);
@@ -3131,10 +3252,31 @@
     };
 
     $("[data-search]").on("input", "[data-search-input]", debouncedFilter);
-    $("[data-filters]").on(
-      "change",
-      "[data-filter-assignee], [data-filter-priority]",
-      applyFilters
+
+    /* R15 ② — the assignee and priority controls are dropdowns now, so choosing
+       is a press on a menu row: write the value, restate the trigger and re-run
+       the filter pass. The assignee control keeps R13's single writer
+       (`writeAssigneeFilter`), so a roster press and a menu press are the same
+       move. Both close their own menu on the choice, the way the label control
+       does. */
+    $("[data-filter-assignee]").on(
+      "click",
+      "[data-assignee-filter-option]",
+      function () {
+        writeAssigneeFilter($(this).attr("data-assignee-filter-option"));
+        closeAssigneeMenu();
+        applyFilters();
+      }
+    );
+
+    $("[data-filter-priority]").on(
+      "click",
+      "[data-filter-priority-option]",
+      function () {
+        writePriorityFilter($(this).attr("data-priority-value"));
+        closePriorityMenu();
+        applyFilters();
+      }
     );
 
     /* the label dropdown: choosing a row writes the value, restates the
@@ -3150,7 +3292,17 @@
         applyFilters();
       }
     );
+    /* R15 ② — `[data-filter-clear]` now sits on two bars: B04's, and B26's
+       activity filter bar (R15 ②). The press is told apart by **the bar it came
+       from**, not by a second hook name: `[data-activity-filters]` is the
+       activity bar's own root, so a Clear inside it resets the three activity
+       filters and leaves every board filter alone — and a Clear inside
+       `[data-filters]` does the reverse. Two bars, one control family. */
     $(document).on("click", "[data-filter-clear]", function () {
+      if ($(this).closest("[data-activity-filters]").length) {
+        resetActivityFilters();
+        return;
+      }
       resetFilters();
       toast(text("toast.filtersCleared"), "info");
     });
