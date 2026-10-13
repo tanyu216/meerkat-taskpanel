@@ -112,9 +112,10 @@ with it.
 
 **R13 — the name is a narrowing as well as a route, and the name in force wears a capsule.**
 R11 wrote the name into no filter because the assignee control's domain held no given name
-(B04); R13 extends that domain, so a press on a name now narrows *and* routes: the list view,
-the two in-flight statuses, and the name itself (B04), then one filter pass — the two
-conditions are ANDed exactly as any two fields of the bar are. The roster's own structure
+(B04); R13 extends that domain, so a press on a name narrows as well as routes.
+**(R13 修订 · Terry 2026-10-13 · 决定甲 supersedes the route half: the press is now *only* the
+name — one `writeAssigneeFilter()` and one `applyFilters()`, no `setView("list")`, no status
+set. See the paragraph after the capsule below.)** The roster's own structure
 changes shape to carry the selected state: each name is now a **`[data-assignee-item]`**
 wrapper holding **one** button — the name (`[data-agent-assignee]`, which also carries
 `data-assignee` + `data-assignee-kind` and its own `aria-pressed`). The commas are still the
@@ -133,10 +134,13 @@ capsule *and* the control's options — it reads the control's value and every i
 the same pass, so the roster and the control cannot contradict each other (B04; DESIGN.md
 §31.2).
 
-The removal affordance is **not here** — the roster row has 143 of its 144px spent and a second
-button in it could only elide a name — it is one `[data-assignee-clear]` in the bar, beside the
-control whose value it clears (B04). Pressing the name **already in force** is the same move
-(the capsule's own close), which is the ordinary toggle semantics of an `aria-pressed` button.
+**What the press does is the assignee value and nothing else** (R13 修订 · Terry 2026-10-13 ·
+决定甲): it is exactly the move of choosing that name in the bar's dropdown, so it writes the
+name and runs one filter pass — the view is **not** switched to the list, no status set is
+written, and **no removal control exists here or in the bar**. Pressing the name **already in
+force** is a **no-op**: a dropdown does not close itself when the value it already states is
+picked again, so R13 seg2's clear-the-name toggle is withdrawn with the `✕` and the one removal
+path is the control's own `Assignee: All` row (B04).
 The R11 face is otherwise unchanged — no shell, no border, no padding at rest — and the name
 button takes its `:focus-visible` ring and answers `Enter`/`Space` by being a real button. In
 the ≤1023px rail the whole `.td-agent-text` span is hidden, the items go with it, and that is
@@ -253,7 +257,7 @@ project, so every row is filled at all times.
 | | |
 |---|---|
 | Root | `section#td-filters[data-filters]` |
-| Controls | `[data-filter-assignee]` (all/me/human/agent + a given name on demand, R13) · its sibling `[data-assignee-clear]` (R13 — the `✕` that takes a given name back out; `hidden` unless the select states one) · `[data-filter-priority]` (all/urgent/high/medium/low/none) · `[data-filter-status]` (all + the seven statuses, R11) · `[data-filter-label]` (all + 16 labels) |
+| Controls | `[data-filter-assignee]` (all/me/human/agent + a given name on demand, R13 — the removal path for the name is this control's own `all` row) · `[data-filter-priority]` (all/urgent/high/medium/low/none) · `[data-filter-status]` (all + the seven statuses, R11) · `[data-filter-label]` (all + 16 labels) |
 | Label selector | `[data-filter-label]` on a `<details class="dropdown" data-dismiss-on-outside>`; the chosen value lives on `data-filter-label-value`, the trigger states it via `[data-filter-label-summary]`, and the menu holds `[data-filter-label-option]` × 17, each with `data-label-value` and `aria-current` on the chosen one |
 | Status selector | `[data-filter-status]` on its own `<details class="dropdown" data-dismiss-on-outside>`; the chosen set lives on `data-filter-status-value` (`all`, or a comma-joined subset of the seven keys), the trigger states it via `[data-filter-status-summary]` → `[data-filter-status-text]`, and the menu holds `[data-filter-status-option]` × 8, each with `data-status-value` and its own `aria-pressed` (R11) |
 | Actions | `[data-filter-clear]` · `[data-filter-count]` (`aria-live="polite"`) |
@@ -295,7 +299,8 @@ height), and takes the same `data-dismiss-on-outside` rule. What it adds is a **
 | Pressing `all` | clears the set — the value returns to `"all"` and every row's `aria-pressed` follows in the same write |
 
 `assignee` and `priority` are the two native `<select>`s; `status` could not be one (it has
-to hold two values at once for the roster route), and the label control could not host it
+to hold more than one value at once — the set is the field's own multi-valued nature, and R11
+also composed it with a roster press), and the label control could not host it
 without either a second mode or a fourth kind of row. `applyFilters()` reads the set through
 one helper (`statusFilterValues()`), which is also what `resetFilters()` writes back to `all`.
 
@@ -311,10 +316,10 @@ it is needed and taken out when the control leaves it**:
 | Named option | **one at a time, at most** — `[data-filter-assignee] [data-assignee-filter-option="<name>"]`, `value` and copy both the name, generated by `renderAssigneeFilter()` and removed when the control's value is no longer that name |
 | Static options | the four above stay in the markup and are **never** removed (measured: 4 at rest, 4 while a name is in force) |
 | Semantics | `me` → `data-assignee` == the local human; `human`/`agent` → `data-assignee-kind`; a name → `data-assignee` — the attribute the card already carries and the drawer already shows, so the control adds no second source for who a card belongs to |
-| Stacking | **AND** against the other filters, like assignee/priority/label — and with the status set R11's roster route writes, so a name press means *this person's work that is in flight* |
+| Stacking | **AND** against the other filters, like assignee/priority/label |
 | Capsule | **not here** — the native `<select>` carries the value only; the selected state is drawn on the roster (B03) |
-| Clear | **`[data-assignee-clear]`**, the control's own next sibling: static markup, `hidden` at rest, shown only while the value is a **given name** (never for `all`/`me`/`human`/`agent` — `all` is the select's own first row and the three kinds are its own rows, so neither needs a second way out). A press clears the name and **nothing else** — no view switch, no status change, no menu, no toast — and stops the event so it cannot fall through to a name's route (B03) |
-| Single writer | `renderAssigneeFilter()` reads the control's value and derives the roster's capsules, the control's own options *and* the clear button's `hidden` from it, so no two of the three can state different things |
+| Clear | **the control's own `all` row, and nothing else** (R13 修订 · 决定甲): a roster press *is* this control's own selection, so the row that selects a name and the row that leaves it are the same control and no second affordance is needed. R13 seg2's sibling `[data-assignee-clear]` — static markup, `hidden` at rest, shown only while the value is a given name — is **withdrawn** with its three rules, its delegated press handler and its key; no element, rule or handler in the shipped prototype carries the hook (it survives only in the comments and documents that record the withdrawal) |
+| Single writer | `renderAssigneeFilter()` reads the control's value and derives the roster's capsules *and* the control's own options from it, so the two can never state different things |
 
 The named option is **`[data-assignee-filter-option]`**, deliberately **not**
 `[data-assignee-option]`: B22 (R3) already owns that hook on the dialogs' assignee menus (a
@@ -1179,7 +1184,7 @@ not declared — it is read off the cards' `data-reporter` at first pass, which 
 | `data-filter-status-value` | on `[data-filter-status]`: `"all"` or a comma-joined subset of the seven first-class status keys — the one place the status selection is written (R11 — see B04) |
 | `[data-filter-status-summary]` → `[data-filter-status-text]` | the status dropdown's trigger and its mutable text leaf; the text is restated from `data-filter-status-value` and reads `Status: All` / `Status: <Label>` / `Status: <first> +<n-1>` (R11 — see B04) |
 | `[data-filter-status-option]` + `data-status-value` | one menu row per status (`all` first, then the seven keys); the rows are also the filter's value domain, which the script reads rather than restating (R11 — see B04) |
-| `[data-agent-assignee]` | on each roster name's `<button>` in B03 (with `data-assignee` + `data-assignee-kind`): pressing it routes to the list view with the two in-flight statuses preset (R11 — see B03) |
+| `[data-agent-assignee]` | on each roster name's `<button>` in B03 (with `data-assignee` + `data-assignee-kind`): pressing it writes that name into `[data-filter-assignee]` and nothing else (R13 修订 — see B03) |
 | `[data-dismiss-on-outside]` | on a `<details class="dropdown">`: a press outside it, or `Esc`, closes it (R9 — see *Floating controls*) |
 | `data-list-state` | on `[data-list]`: `loading` \| `data`, the list's two mutually exclusive states (R9 — see B08/B13) |
 | `data-board-state` | on `[data-board-view]`: `data` \| `empty`, the **board view's** two mutually exclusive states — the R9 list idiom applied to the board (R10 — see B05/B12) |
