@@ -868,26 +868,12 @@ svg[data-token-icon][hidden] { display: none; }
 
 /* ------------------------------------------------------- activity view -- */
 
-/* B26.1 — the filter bar's three `<select>`s wear the field family's caret as an
-   inline glyph. The prototype states the caret as a `background-image` on
-   `.td-select`; this stylesheet may not repeat that data-URI's hex (C08: a
-   six-digit hex lives only in the token block) and a native `<select>` cannot
-   hold a child, so the control sits in a positioning box with the glyph beside
-   it — the division `.td-label-trigger` already uses one row down in the shell.
-   The box adds no geometry of its own: the select keeps its own box. */
-.td-select-caret {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-}
-.td-select-caret > .td-icon-sm {
-  position: absolute;
-  inset-inline-end: 6px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--brand-text-3);
-  pointer-events: none;
-}
+/* R15 ① deleted `.td-select-caret` with the three `<select>`s it existed for:
+   the wrapper and its inline glyph were the workaround for "a `<select>` cannot
+   hold a child", and the activity filters are `<details>` panels now, whose
+   `<summary>` holds the family's own `.td-label-trigger > .td-icon-sm` caret
+   (`design/fidelity-r15.md` §2.1). `.td-select` itself stays — the create
+   dialog's three fields still wear it (§3). */
 
 /* R12x · B26 — the Activity view's own rules. Every value is an existing token:
    no new hue, no new radius, no new duration — the token set is byte-identical
@@ -1333,6 +1319,19 @@ svg[data-token-icon][hidden] { display: none; }
   line-height: 1.35;
   color: var(--brand-text);
 }
+/* R15 ④ — the header's two-line text block, declared once for this view and
+   measured identical to B26's own `.td-activity-head-text` / `.td-activity-sub`:
+   the title keeps the shell's leading and the description is 12px on ink-3, 2px
+   under it. Named in this family (`.td-waiting-*`) per B27's rule, so either
+   header can move without dragging the other; no new token, no new colour. */
+.td-waiting-head-text {
+  min-width: 0;
+}
+.td-waiting-sub {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--brand-text-3);
+}
 /* The tally rides the header's far end and reads as a count, not as an
    action — the neutral pill B26 gives a folded burst, for the same reason:
    a number about what is below it, not something to press. */
@@ -1671,6 +1670,21 @@ html[data-theme="dark"] [data-create-project-panel] {
 .td-status-menu button[aria-pressed="true"] {
   color: var(--brand-accent);
   font-weight: var(--weight-medium);
+}
+
+/* R15 ② — the priority menu's rows are the status menu's, one glyph over: the
+   priority's own 8px dot beside its name, on one line. The row carries
+   `data-priority`, so the dot resolves the `[data-priority]` map's `--pri-color`
+   — the same binding the cards and the legend read — and neither component names
+   a colour (the contract's `.td-status-dot` rule is reused, not copied). */
+.td-priority-menu button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+[data-filter-priority-option][data-priority] {
+  --status-color: var(--pri-color);
 }
 
 /* The combobox popup: `position: absolute` inside a `position: relative` root,

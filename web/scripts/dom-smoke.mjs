@@ -2328,7 +2328,13 @@ export async function run() {
       // twice (M1's overlay is one card in two surfaces).
       const boardCards = [...document.querySelectorAll("[data-board] [data-card]")];
       const statusSet = statusRaw === "all" ? [] : statusRaw.split(",");
-      const name = document.querySelector("[data-filter-assignee]")?.value ?? "all";
+      // R15 ② — the assignee control is a `<details>` now, so its value rides the
+      // control's own attribute rather than a form value (a `<details>` has none).
+      const name = attr(document.querySelector("[data-filter-assignee]"), "data-filter-assignee-value") || "all";
+      const ASSIGNEE_STATIC = ["all", "me", "human", "agent"];
+      const assigneeRows = [...document.querySelectorAll("[data-filter-assignee] [data-assignee-filter-option]")]
+        .map((el) => attr(el, "data-assignee-filter-option"));
+      const priorityRows = [...document.querySelectorAll("[data-filter-priority] [data-filter-priority-option]")];
       const cardMatches = (el) => {
         const cardName = attr(el, "data-assignee") ?? "";
         const kind = attr(el, "data-assignee-kind");
@@ -2371,10 +2377,31 @@ export async function run() {
         })(),
         clearGlyph: document.querySelector("[data-assignee-clear]")?.textContent.trim() ?? null,
         assigneeValue: name,
-        staticOptions: [...document.querySelectorAll("[data-filter-assignee] option")]
-          .filter((el) => !el.hasAttribute("data-assignee-filter-option")).length,
-        namedOptionValues: [...document.querySelectorAll("[data-filter-assignee] [data-assignee-filter-option]")]
+        // R15 ② — every assignee row carries `[data-assignee-filter-option]` with
+        // **its own value** now (the four static ones included; the `<option>`s
+        // and their bare selects are gone), so the given name is whatever the
+        // four static values are not.
+        assigneeRows,
+        staticOptions: assigneeRows.filter((value) => ASSIGNEE_STATIC.includes(value)).length,
+        namedOptionValues: assigneeRows.filter((value) => !ASSIGNEE_STATIC.includes(value)),
+        assigneeText: document.querySelector("[data-filter-assignee-text]")?.textContent.trim() ?? null,
+        assigneeSummaryTag: document.querySelector("[data-filter-assignee-summary]")?.tagName ?? null,
+        assigneeDismiss: !!document.querySelector("[data-filter-assignee][data-dismiss-on-outside]"),
+        assigneeOpen: document.querySelector("[data-filter-assignee]")?.hasAttribute("open") ?? false,
+        currentAssigneeRows: [...document.querySelectorAll('[data-assignee-filter-option][aria-current="true"]')]
           .map((el) => attr(el, "data-assignee-filter-option")),
+        priorityValue: attr(document.querySelector("[data-filter-priority]"), "data-filter-priority-value") || "all",
+        priorityText: document.querySelector("[data-filter-priority-text]")?.textContent.trim() ?? null,
+        priorityDismiss: !!document.querySelector("[data-filter-priority][data-dismiss-on-outside]"),
+        priorityOpen: document.querySelector("[data-filter-priority]")?.hasAttribute("open") ?? false,
+        priorityRowValues: priorityRows.map((el) => attr(el, "data-priority-value")),
+        priorityDots: priorityRows.filter((el) => el.querySelector(".td-status-dot") !== null).length,
+        priorityDotColors: priorityRows
+          .filter((el) => el.querySelector(".td-status-dot") !== null)
+          .map((el) => getComputedStyle(el.querySelector(".td-status-dot")).backgroundColor),
+        currentPriorityRows: [...document.querySelectorAll('[data-filter-priority-option][aria-current="true"]')]
+          .map((el) => attr(el, "data-priority-value")),
+        selectCountInBar: bar.querySelectorAll("select").length,
         b22Options: document.querySelectorAll("[data-assignee-option]").length,
         b22InMenu: [...document.querySelectorAll("[data-assignee-option]")].filter((el) => el.closest("[data-assignee-menu]")).length,
         countText: document.querySelector("[data-filter-count]")?.textContent.trim() ?? null,
@@ -2484,6 +2511,71 @@ export async function run() {
     r11Check(restR11.assigneeValue === "all", `resting assignee value ${restR11.assigneeValue} !== all`);
     r11Check(restR11.b22Options === restR11.b22InMenu, `[data-assignee-option] ${restR11.b22Options} seats, ${restR11.b22InMenu} inside [data-assignee-menu]`);
 
+    // R15 ② · A — the two converted controls are `dropdown` panels, not `<select>`s
+    // (design/fidelity-r15.md §2.2): no native select survives in the bar, both
+    // controls join the light-dismiss membership, and each summary states the
+    // chosen row's own copy. The rows are the domain the document authors — the
+    // four static assignee values and `all` plus the five priorities — with
+    // `aria-current` on exactly the chosen one, and the priority rows carry the
+    // colour dot beside their copy (the ruling's ③).
+    r11Check(restR11.selectCountInBar === 0, `R15 ②: ${restR11.selectCountInBar} <select> still in the bar`);
+    r11Check(restR11.assigneeDismiss === true && restR11.priorityDismiss === true, "R15 ②: both converted controls must join the light-dismiss membership");
+    r11Check(restR11.assigneeSummaryTag === "SUMMARY", `R15 ②: the assignee trigger is <${restR11.assigneeSummaryTag}>, expected <summary>`);
+    r11Check(restR11.assigneeText === "Assignee: All", `R15 ②: the assignee trigger states ${JSON.stringify(restR11.assigneeText)}`);
+    r11Check(restR11.priorityText === "Priority: All", `R15 ②: the priority trigger states ${JSON.stringify(restR11.priorityText)}`);
+    r11Check(
+      JSON.stringify(restR11.assigneeRows) === JSON.stringify(["all", "me", "human", "agent"]),
+      `R15 ②: the assignee rows are ${restR11.assigneeRows.join(",")}`,
+    );
+    r11Check(
+      JSON.stringify(restR11.priorityRowValues) === JSON.stringify(["all", "urgent", "high", "medium", "low", "none"]),
+      `R15 ②: the priority rows are ${restR11.priorityRowValues.join(",")}`,
+    );
+    r11Check(restR11.priorityDots === 5, `R15 ②: ${restR11.priorityDots} priority dots, expected 5 (one per non-\`all\` row)`);
+    r11Check(
+      new Set(restR11.priorityDotColors).size === 5,
+      `R15 ②: five priorities share ${new Set(restR11.priorityDotColors).size} dot colour(s): ${[...new Set(restR11.priorityDotColors)].join(" | ")}`,
+    );
+    r11Check(restR11.currentAssigneeRows.length === 1 && restR11.currentAssigneeRows[0] === "all", `R15 ②: assignee aria-current=${restR11.currentAssigneeRows.join(",")}`);
+    r11Check(restR11.currentPriorityRows.length === 1 && restR11.currentPriorityRows[0] === "all", `R15 ②: priority aria-current=${restR11.currentPriorityRows.join(",")}`);
+    r11Check(restR11.assigneeOpen === false && restR11.priorityOpen === false, "R15 ②: both panels must rest closed");
+
+    // R15 ② · C — the panels really open and choose: a press on the summary
+    // paints the menu, a press on a row writes the value, restates the trigger,
+    // moves `aria-current` and closes the panel. Clear (B04's own control) is the
+    // way back for both.
+    await page.click("[data-filter-assignee] > summary");
+    await page.waitForTimeout(90);
+    const r15Opened = await readR11();
+    r11Check(r15Opened.assigneeOpen === true, "R15 ②: pressing the assignee summary must open its panel");
+    await page.click('[data-assignee-filter-option="me"]');
+    await page.waitForTimeout(150);
+    const r15Me = await readR11();
+    r11Check(r15Me.assigneeValue === "me", `R15 ②: the menu press wrote ${r15Me.assigneeValue}`);
+    r11Check(r15Me.assigneeText === "Assignee: Me", `R15 ②: the trigger states ${JSON.stringify(r15Me.assigneeText)}`);
+    r11Check(r15Me.assigneeOpen === false, "R15 ②: choosing closes the panel");
+    r11Check(r15Me.currentAssigneeRows.length === 1 && r15Me.currentAssigneeRows[0] === "me", `R15 ②: aria-current rows ${r15Me.currentAssigneeRows.join(",")}`);
+    r11Check(r15Me.countText !== restR11.countText, `R15 ②: the count must follow the choice (${JSON.stringify(restR11.countText)} → ${JSON.stringify(r15Me.countText)})`);
+    await page.click("[data-filter-priority] > summary");
+    await page.waitForTimeout(90);
+    await page.click('[data-filter-priority-option][data-priority-value="urgent"]');
+    await page.waitForTimeout(150);
+    const r15Urgent = await readR11();
+    r11Check(r15Urgent.priorityValue === "urgent", `R15 ②: the priority press wrote ${r15Urgent.priorityValue}`);
+    r11Check(r15Urgent.priorityText === "Priority: Urgent", `R15 ②: the priority trigger states ${JSON.stringify(r15Urgent.priorityText)}`);
+    r11Check(
+      r15Urgent.priorityOpen === false && r15Urgent.currentPriorityRows.length === 1 && r15Urgent.currentPriorityRows[0] === "urgent",
+      `R15 ②: priority panel ${r15Urgent.priorityOpen}/${r15Urgent.currentPriorityRows.join(",")}`,
+    );
+    await page.click("[data-filters] [data-filter-clear]");
+    await page.waitForTimeout(150);
+    const r15Cleared = await readR11();
+    r11Check(r15Cleared.assigneeValue === "all" && r15Cleared.priorityValue === "all", `R15 ②: Clear left ${r15Cleared.assigneeValue}/${r15Cleared.priorityValue}`);
+    r11Check(r15Cleared.countText === restR11.countText, `R15 ②: Clear must restore the count (${JSON.stringify(r15Cleared.countText)})`);
+    // The board's Clear raises `toast.filtersCleared`; let it retire so the later
+    // sections' toast reads bracket a quiet region (2500ms + a 200ms exit).
+    await page.waitForTimeout(2900);
+
     // C · interaction (R11 §5.3 C-1…C-5, R13 §5.3 C1–C5)
     const openStatusMenu = async () => {
       const open = await page.evaluate(() => document.querySelector("[data-filter-status]")?.hasAttribute("open") ?? false);
@@ -2537,6 +2629,9 @@ export async function run() {
     r11Check(r11Route.listPressed === "true", `[data-view="list"] aria-pressed=${r11Route.listPressed}`);
     r11Check(r11Route.statusValue === "in_progress,in_review", `the route wrote status ${r11Route.statusValue}`);
     r11Check(r11Route.assigneeValue === firstName, `the route wrote assignee ${r11Route.assigneeValue}, expected ${firstName}`);
+    // R15 ② — the trigger states the chosen row's own copy, which for a given
+    // name is the name itself (R13's reading, kept across the conversion).
+    r11Check(r11Route.assigneeText === firstName, `R15 ②: the trigger states ${JSON.stringify(r11Route.assigneeText)}, expected ${JSON.stringify(firstName)}`);
     r11Check(r11Route.activeItems.length === 1 && r11Route.activeItems[0] === firstName, `active roster items ${r11Route.activeItems.join(",")}`);
     r11Check(r11Route.pressedNames.length === 1 && r11Route.pressedNames[0] === firstName, `pressed names ${r11Route.pressedNames.join(",")}`);
     r11Check(r11Route.namedOptionValues.length === 1 && r11Route.namedOptionValues[0] === firstName, `named options ${r11Route.namedOptionValues.join(",")}`);
@@ -2698,6 +2793,11 @@ export async function run() {
         openLabel: item?.querySelector("[data-waiting-open]")?.getAttribute("aria-label") ?? null,
         // B27.2 — the head's name and its tally.
         headTitle: document.querySelector("[data-waiting-title]")?.textContent?.trim() ?? null,
+        // R15 ④ — the head's description: a `<p>` inside the header's text block,
+        // carrying a `data-i18n` hook and **no** `data-waiting-*` seat of its own.
+        headSub: document.querySelector("[data-waiting-head] .td-waiting-head-text p")?.textContent?.trim() ?? null,
+        headSubTag: document.querySelector("[data-waiting-head] p")?.tagName ?? null,
+        headSubHooks: [...(document.querySelector("[data-waiting-head] p")?.attributes ?? [])].map((a) => a.name),
         headCount: document.querySelector("[data-waiting-count]")?.textContent?.trim() ?? null,
         headCountHidden: document.querySelector("[data-waiting-count]")?.hasAttribute("hidden") ?? null,
         // §8-09(a): no freshness/claim affordance anywhere inside a card.
@@ -2784,6 +2884,13 @@ export async function run() {
     check(/^\d+[dhm] ago$/.test(m1.sinceText ?? ""), `stamp text ${m1.sinceText}`);
     check((m1.openLabel ?? "").startsWith("Open "), `opener aria-label ${m1.openLabel}`);
     check(m1.headTitle === "Waiting on me", `head title ${m1.headTitle}`);
+    // R15 ④ — the header states what the view is as well as what it is called.
+    check(m1.headSub === "Everything waiting on your answer, oldest first.", `R15 ④: head description ${JSON.stringify(m1.headSub)}`);
+    check(m1.headSubTag === "P", `R15 ④: the description is <${m1.headSubTag}>, expected <p>`);
+    check(
+      m1.headSubHooks.includes("data-i18n") && !m1.headSubHooks.some((name) => name.startsWith("data-waiting-")),
+      `R15 ④: the description's hooks are ${JSON.stringify(m1.headSubHooks)} — a \`data-i18n\` seat and no \`data-waiting-*\` of its own`,
+    );
     check(m1.headCount === "1 waiting on you", `head count ${m1.headCount}`);
     check(m1.headCountHidden === false, "a non-empty queue must show its tally");
     check(waitingView.current === "page", "the waiting nav item must carry aria-current");
@@ -2807,12 +2914,17 @@ export async function run() {
     const b26Failures = [];
     const b26Check = (ok, message) => { if (!ok) b26Failures.push(message); };
 
-    /** BLOCKS.md B26's closed vocabulary — the 35 names, no more (sorted). */
+    /** BLOCKS.md B26's closed vocabulary — the 39 names, no more (sorted).
+     *  R15 ① added the five the dropdown conversion needs (`filter-summary`,
+     *  `filter-text`, `filter-option`, `filter-value`, `value`) and retired one
+     *  (`filter-reset`); `design/BLOCKS.md` B26 "Auxiliary hooks" is the record
+     *  this list is read against. */
     const B26_HOOK_NAMES = [
       "actor", "at", "burst", "burst-count", "burst-count-label", "burst-item", "change", "day", "day-kind",
       "day-label", "detail", "empty", "empty-kind", "empty-reset", "feed", "filter", "filter-count",
-      "filter-reset", "filters", "group", "line", "mark-read", "more", "open", "page", "row", "sentence",
-      "task", "task-id", "task-title", "title", "unread", "unread-count", "unread-divider", "view",
+      "filter-option", "filter-summary", "filter-text", "filter-value", "filters", "group", "line",
+      "mark-read", "more", "open", "page", "row", "sentence", "task", "task-id", "task-title", "title",
+      "unread", "unread-count", "unread-divider", "value", "view",
     ];
 
     // A press on a nav item used to answer with a toast; nothing may raise one now.
@@ -2957,12 +3069,18 @@ export async function run() {
     // §6 — the three filters narrow, the count follows the rows, and the address
     // bar shadows the three of them.
     const b26Filters = await page.evaluate(async () => {
-      const set = async (slot, value) => {
-        const select = document.querySelector(`[data-activity-filter="${slot}"]`);
-        select.value = value;
-        select.dispatchEvent(new Event("change", { bubbles: true }));
-        await new Promise((resolve) => setTimeout(resolve, 60));
+      // R15 ① — a filter is a press on a dropdown row now, not `select.value`
+      // plus a synthetic `change`: open the control's own panel, press the row
+      // the domain names, and let the control's document click handler close it.
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const press = async (host, rowSelector) => {
+        host.querySelector("summary")?.click();
+        await sleep(40);
+        host.querySelector(rowSelector)?.click();
+        await sleep(70);
       };
+      const set = async (slot, value) =>
+        press(document.querySelector(`[data-activity-filter="${slot}"]`), `[data-activity-filter-option][data-activity-value="${value}"]`);
       const read = () => {
         const root = document.querySelector("[data-activity-view]");
         const rows = [...root.querySelectorAll("[data-activity-row]")].filter((row) => !row.hasAttribute("hidden"));
@@ -2975,9 +3093,39 @@ export async function run() {
           hash: globalThis.location.hash,
           empty: [...root.querySelectorAll("[data-activity-empty]")].filter((el) => !el.hasAttribute("hidden")).map((el) => el.getAttribute("data-activity-empty-kind")),
           dayCount: root.querySelectorAll("[data-activity-day]").length,
+          triggers: ["actor", "event", "task"].map((slot) => root.querySelector(`[data-activity-filter="${slot}"] [data-activity-filter-text]`)?.textContent?.trim() ?? null),
+          values: ["actor", "event", "task"].map((slot) => root.querySelector(`[data-activity-filter="${slot}"]`)?.getAttribute("data-activity-filter-value") ?? null),
+          // One chosen row per control (each control's own `aria-current`), read
+          // through the control rather than document-wide so the three do not
+          // blur into one list.
+          currents: ["actor", "event", "task"].map(
+            (slot) =>
+              root
+                .querySelector(`[data-activity-filter="${slot}"] [data-activity-filter-option][aria-current="true"]`)
+                ?.getAttribute("data-activity-value") ?? null,
+          ),
+          // The board's own priority condition, read from this same window: the
+          // two Clear controls must not touch each other's bar (§2.4, C12).
+          boardPriority: document.querySelector("[data-filter-priority]")?.getAttribute("data-filter-priority-value") ?? null,
         };
       };
+      const actorControl = document.querySelector('[data-activity-filter="actor"]');
       const out = { before: read() };
+      actorControl.querySelector("summary")?.click();
+      await sleep(60);
+      out.openPanel = {
+        open: actorControl.hasAttribute("open"),
+        painted: (actorControl.querySelector('[data-activity-filter-option][data-activity-value="agent"]')?.getClientRects().length ?? 0) > 0,
+        text: actorControl.querySelector("[data-activity-filter-text]")?.textContent?.trim() ?? null,
+        dismiss: actorControl.hasAttribute("data-dismiss-on-outside"),
+      };
+      // …the panel really paints, so close it again before the rounds below.
+      actorControl.querySelector("summary")?.click();
+      await sleep(60);
+      out.closedAgain = actorControl.hasAttribute("open");
+      // A board filter in force for the whole round: the activity Clear must
+      // leave it exactly where it was.
+      await press(document.querySelector("[data-filter-priority]"), '[data-filter-priority-option][data-priority-value="urgent"]');
       await set("actor", "agent");
       out.agent = read();
       await set("event", "delivery");
@@ -2993,8 +3141,22 @@ export async function run() {
       out.emptyMatch = read();
       // The empty state's own button is the way back.
       document.querySelector('[data-activity-empty][data-activity-empty-kind="filter"] [data-activity-empty-reset]')?.click();
-      await new Promise((resolve) => setTimeout(resolve, 80));
+      await sleep(80);
       out.afterReset = read();
+      // R15 ③/④ — the bar's Clear is B04's own control: the three activity slots
+      // go back to `all`, the board's priority condition is untouched, and the
+      // board's own confirmation toast is raised here too (the ruling's ④).
+      await set("event", "delivery");
+      out.beforeClear = read();
+      const clear = document.querySelector("[data-activity-filters] [data-filter-clear]");
+      out.clearHook = clear !== null;
+      clear?.click();
+      await sleep(80);
+      out.afterClear = read();
+      out.toastAfterClear = [...document.querySelectorAll("[data-toast-region] > *")].map((el) => el.textContent.trim());
+      // …and back to the resting board condition for the sections after this one.
+      await press(document.querySelector("[data-filter-priority]"), '[data-filter-priority-option][data-priority-value="all"]');
+      out.afterBoardRestore = read();
       return out;
     });
 
@@ -3122,6 +3284,19 @@ export async function run() {
         day: root.querySelector("[data-activity-day-label]")?.textContent?.trim() ?? null,
         openLabel: root.querySelector("[data-activity-open]")?.getAttribute("aria-label") ?? null,
         keyText: [...root.querySelectorAll("[data-i18n]")].filter((el) => el.textContent.trim() === el.getAttribute("data-i18n")).length,
+        // R15 ①/③/⑤ — the converted controls' copy is the catalogue's, so a
+        // language switch re-states every trigger (they carry no `data-i18n` seat
+        // of their own, the way the board's label and status triggers do not)
+        // and the activity bar's own accessible name is the dedicated word.
+        activityTriggers: ["actor", "event", "task"].map(
+          (slot) => root.querySelector(`[data-activity-filter="${slot}"] [data-activity-filter-text]`)?.textContent?.trim() ?? null,
+        ),
+        activityBarLabel: root.querySelector("[data-activity-filters]")?.getAttribute("aria-label") ?? null,
+        clearText: root.querySelector("[data-activity-filters] [data-filter-clear]")?.textContent?.trim() ?? null,
+        boardTriggers: ["[data-filter-assignee-text]", "[data-filter-priority-text]"].map(
+          (selector) => document.querySelector(selector)?.textContent?.trim() ?? null,
+        ),
+        waitingSub: document.querySelector("[data-waiting-head] p")?.textContent?.trim() ?? null,
       };
     });
     await page.evaluate(() => document.querySelector('[data-lang-option="en"]')?.click());
@@ -3191,6 +3366,46 @@ export async function run() {
     b26Check(b26Filters.emptyMatch.empty.join(",") === "filter", `empty kind ${b26Filters.emptyMatch.empty.join(",")}`);
     b26Check(b26Filters.emptyMatch.dayCount === 0, "a filter that matches nothing must paint no day group");
     b26Check(b26Filters.afterReset.rows === b26Filters.before.rows, `reset restored ${b26Filters.afterReset.rows} of ${b26Filters.before.rows}`);
+
+    // R15 ① — the three controls are dropdown panels (design/fidelity-r15.md
+    // §2.3): the panel paints on a press on the summary, the trigger states the
+    // chosen row's own copy, the value rides the control's own attribute, and
+    // `aria-current` follows on exactly one row.
+    b26Check(b26Filters.openPanel.open === true && b26Filters.openPanel.painted === true, `R15 ①: the actor panel ${b26Filters.openPanel.open}/${b26Filters.openPanel.painted}`);
+    b26Check(b26Filters.openPanel.dismiss === true, "R15 ①: the three controls must join the light-dismiss membership");
+    b26Check(b26Filters.openPanel.text === "Anyone", `R15 ①: the resting actor trigger reads ${JSON.stringify(b26Filters.openPanel.text)}`);
+    b26Check(b26Filters.closedAgain === false, "R15 ①: a second press on the summary must close the panel");
+    b26Check(b26Filters.agent.triggers[0] === "Agents", `R15 ①: the actor trigger reads ${JSON.stringify(b26Filters.agent.triggers[0])}`);
+    b26Check(b26Filters.agentDelivery.triggers[1] === "Delivery", `R15 ①: the event trigger reads ${JSON.stringify(b26Filters.agentDelivery.triggers[1])}`);
+    b26Check(b26Filters.task.triggers[2] === "TD-6", `R15 ①: the task trigger reads ${JSON.stringify(b26Filters.task.triggers[2])}`);
+    b26Check(
+      b26Filters.agent.values.join(",") === "agent,all,all" && b26Filters.agent.currents.join(",") === "agent,all,all",
+      `R15 ①: value/aria-current ${b26Filters.agent.values.join(",")}/${b26Filters.agent.currents.join(",")}`,
+    );
+    b26Check(b26Filters.afterReset.values.join(",") === "all,all,all", `R15 ①: the empty state's reset left ${b26Filters.afterReset.values.join(",")}`);
+
+    // R15 ③/④ — the bar's Clear is B04's own control, told apart by the bar the
+    // press came from: the three activity slots go back to `all`, the board's
+    // priority condition is untouched, and the board's own confirmation toast is
+    // raised here too (the ruling's ④).
+    b26Check(b26Filters.clearHook === true, "R15 ③: the activity bar must carry B04's [data-filter-clear]");
+    b26Check(b26Filters.beforeClear.hash === "#/activity?event=delivery", `R15 ③: the round left the address at ${b26Filters.beforeClear.hash}`);
+    b26Check(b26Filters.afterClear.values.join(",") === "all,all,all", `R15 ③: Clear left the three slots ${b26Filters.afterClear.values.join(",")}`);
+    b26Check(b26Filters.afterClear.rows === b26Filters.before.rows, `R15 ③: Clear restored ${b26Filters.afterClear.rows} of ${b26Filters.before.rows} rows`);
+    b26Check(b26Filters.afterClear.hash === "#/activity", `R15 ③: Clear left the address at ${b26Filters.afterClear.hash}`);
+    b26Check(b26Filters.afterClear.currents.join(",") === "all,all,all", `R15 ③: Clear left the chosen rows at ${b26Filters.afterClear.currents.join(",")}`);
+    b26Check(
+      b26Filters.before.boardPriority === "all" && b26Filters.afterClear.boardPriority === "urgent",
+      `R15 ③: the board's priority moved "${b26Filters.before.boardPriority}" → "${b26Filters.afterClear.boardPriority}" across the activity round (expected all → urgent: Clear must not touch the board bar)`,
+    );
+    b26Check(b26Filters.afterBoardRestore.boardPriority === "all", `R15 ③: the board's priority did not return to all (${b26Filters.afterBoardRestore.boardPriority})`);
+    b26Check(
+      b26Filters.toastAfterClear.some((text) => text === "Filters cleared"),
+      `R15 ③/④: Clear must raise the board's own confirmation toast, saw ${JSON.stringify(b26Filters.toastAfterClear)}`,
+    );
+    // …and let it retire before the sections below, so their toast reads bracket
+    // a quiet region (the toast lives 2500ms + a 200ms exit).
+    await page.waitForTimeout(2900);
     b26Check(b26Filters.afterReset.hash === "#/activity", `reset must clear the hash, got ${b26Filters.afterReset.hash}`);
     b26Check(b26Keys.wrappable === true, `j/k focus walk: first=${b26Keys.first} second=${b26Keys.second} back=${b26Keys.back}`);
     b26Check((b26Keys.firstLabel ?? "").startsWith("Open "), `row button aria-label ${b26Keys.firstLabel}`);
@@ -3213,6 +3428,24 @@ export async function run() {
     b26Check(b26Zh.title === "动态" && b26Zh.day === "今天", `zh copy ${b26Zh.title} / ${b26Zh.day}`);
     b26Check((b26Zh.openLabel ?? "").startsWith("打开 "), `zh open label ${b26Zh.openLabel}`);
     b26Check(b26Zh.keyText === 0, `${b26Zh.keyText} elements render their own key`);
+    // R15 ①/③/⑤ — a language switch re-states all five converted triggers (they
+    // read the catalogue through the same `$t` the rest of the view does), the
+    // bar's clear control is B04's copy in both languages, and the two named
+    // landmarks read differently.
+    b26Check(
+      JSON.stringify(b26Zh.activityTriggers) === JSON.stringify(["任何人", "全部事件", "全部任务"]),
+      `R15 ① zh: the activity triggers read ${b26Zh.activityTriggers.join(" / ")}`,
+    );
+    b26Check(b26Zh.clearText === "清除", `R15 ③ zh: the bar's clear control reads ${JSON.stringify(b26Zh.clearText)}`);
+    b26Check(b26Zh.activityBarLabel === "动态筛选", `R15 ⑤ zh: the bar's own name is ${JSON.stringify(b26Zh.activityBarLabel)}`);
+    b26Check(
+      JSON.stringify(b26Zh.boardTriggers) === JSON.stringify(["负责人：全部", "优先级：全部"]),
+      `R15 ② zh: the board's converted triggers read ${b26Zh.boardTriggers.join(" / ")}`,
+    );
+    b26Check(
+      b26Zh.waitingSub === "所有等你答复的事项，最久的排在最前。",
+      `R15 ④ zh: the queue's description reads ${JSON.stringify(b26Zh.waitingSub)}`,
+    );
     b26Check(b26En.title === "Activity", `en copy after the cycle ${b26En.title}`);
     b26Check((b26En.openLabel ?? "").startsWith("Open "), `en open label ${b26En.openLabel}`);
     await page.click('[data-nav-item="board"]');

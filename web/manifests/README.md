@@ -557,3 +557,59 @@ drawer head's *text*, and a `0×0` box cannot see its *cap*. The cap's two halve
 properties that survive `display: none` (this target) and by the driven layer, which opens the
 drawer for real and reads the head's `maxWidth`/`overflow`/`textOverflow` **and** its text off the
 same live element.
+
+
+## 12. The R15 additions — every filter control is one `dropdown` panel
+(`T-20261013-165112-3`, 2026-10-13)
+
+**Four `style.targets` entries, no new blocks.** The contract is `design/fidelity-r15.md` (口径 B;
+card `T-20261013-165112-2`, source `b225dec`, merged as `49f6f77`) and this card is its product
+implementation: the board bar's assignee and priority controls and the activity bar's three stop
+being native `<select>`s and become the daisyUI `dropdown` panel the status and label controls
+beside them already wore, the activity bar's clear control becomes B04's own
+`[data-filter-clear]`, and the Waiting head grows the two-line text block B26's header carries.
+
+| which fact | instrument |
+|---|---|
+| the seven filter controls are one component family — seven equal triggers, the caret centred on each, each trigger's box the width of the control it replaced | **`style.targets`** — `r15-assignee-trigger` (`[data-filter-assignee-summary]`), `r15-priority-trigger` (`[data-filter-priority-summary]`), `r15-activity-trigger` (`[data-activity-filter-summary]`), beside the pre-existing `r9-label-trigger` (`.td-label-trigger`) and `r11-status-trigger` |
+| the Waiting description is B26's own sub-line, spelled in this view's family names | **`style.targets`** — `r15-waiting-sub` (`[data-waiting-head] > div > p`) |
+| which hooks exist, and where: the value carriers (`-value`), the trigger seats (`-summary` / `-text`), the rows (`[data-assignee-filter-option]` × 4 · `[data-filter-priority-option]` × 6 · `[data-activity-filter-option]` + `data-activity-value`), one `aria-current` row per single-choice control, and one `[data-filter-clear]` **per bar** | **`blocks`** — the B04 / B04-r13 / B26 checks below |
+| the panels really open, choose, restate and close; the two Clear controls split by the bar they sit in; `j`/`k`; the drawer | **the driven layer** — `web/scripts/dom-smoke.mjs`'s R11/R13 `R15 ②` block, its B26 `R15 ①/③` section and its M1·B27 `R15 ④` checks |
+
+**Four structure reds had to be cleared, and all four were the round's own change surfacing:**
+`[data-filter-clear]` is no longer the document's only clear control (two bars, one hook — the B04
+check is now `scope: [data-filters]`, B26 states its own), `option` inside `[data-filter-assignee]`
+was 0 hits (the four static rows are menu `button`s now), the assignee-row rule that froze
+`[data-assignee-filter-option] == 0` read 4 (every row carries the hook with **its own value** —
+R15 kept R13's hook and carrier and only moved the element), and `[data-activity-filter-reset]` —
+retired by the round — read 0.
+
+**Two denominator facts, recorded rather than smoothed:**
+
+* `.td-select` (`r12-select`) is no longer in either filter bar: on the **implementation** side the
+  first match is now the create dialog's field (`0×0`, `display:none`), while the prototype's is the
+  same dialog's (`385×29`, still laid out). The target still resolves on both sides — the element it
+  resolves to moved. This is the denominator shift the implementation card's ruling ⑨ names; it is
+  not a new surface.
+* `.td-label-trigger` (`r9-label-trigger`) now resolves to the **assignee** trigger on both sides
+  (both bars are ordered assignee → priority → status → label), so the target's box is the converted
+  control's on both sides alike — its two diffs are the same pair it already carried.
+
+**Where it stands** (`T-20261013-165112-3`, 2026-10-13):
+
+| | before this round (`49f6f77`) | after |
+|---|---|---|
+| blocks | 39 — unchanged, none pending | **39** — unchanged, none pending |
+| assertions | 252 · failures **0** | **258** · failures **0** |
+| overflow / console | 0 failures at all five widths | 0 failures at all five widths |
+| computed style | 55 of 1435 differ (96.2%) — non-blocking | **62 of 1540** differ (96.0%) — **non-blocking** |
+
+**The arithmetic, as measured.** `+105` comparisons are the three new trigger targets
+(`3 × 35` properties); `r15-waiting-sub` agrees on every property it compares and contributes no
+diff. `+7` diffs: two on each of the three new trigger targets (`height` `30px → 32px` — the
+implementation's field family is 32px on the 4px grid, `design/fidelity-r9.md` §5 B3, the same
+written deviation `r11-status-trigger` has always carried — and `borderColor`
+`rgb(230,232,235) → rgb(207,213,217)`, `--brand-border-strong`), plus one on `r12-select`, whose
+resolved element moved as described above. **The converted triggers are measured to be the same
+component as the already-converted status trigger, diff for diff** — that is the round's own claim,
+and it is the reason the three new targets are worth their 105 comparisons.

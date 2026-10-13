@@ -185,6 +185,22 @@
       {
         "name": "r12-list-id-clamp",
         "selector": "[data-list-identifier]"
+      },
+      {
+        "name": "r15-assignee-trigger",
+        "selector": "[data-filter-assignee-summary]"
+      },
+      {
+        "name": "r15-priority-trigger",
+        "selector": "[data-filter-priority-summary]"
+      },
+      {
+        "name": "r15-activity-trigger",
+        "selector": "[data-activity-filter-summary]"
+      },
+      {
+        "name": "r15-waiting-sub",
+        "selector": "[data-waiting-head] > div > p"
       }
     ]
   },
@@ -493,9 +509,10 @@
           "desc": "选项数由 roster 派生（原型 17 = all + 16）"
         },
         {
+          "scope": "[data-filters]",
           "selector": "[data-filter-clear]",
           "count": 1,
-          "desc": "文档唯一 clear 钩子"
+          "desc": "本条的 clear 钩子唯一 —— R15 ③ 起 B26 的 Activity 条也挂同一个钩子，两条靠「按下的那条条」分流，故按本条收窄"
         },
         {
           "selector": "[data-filter-count]",
@@ -1605,8 +1622,8 @@
     },
     {
       "id": "B04-r13",
-      "name": "R13 — assignee 具名：控件值域按需扩一个名字，`x` 是控件的紧邻兄弟",
-      "evidence": "design/fidelity-r13.md §2.4/§2.9/§3.4；web/src/components/board/FiltersBar.vue（`[data-filter-assignee]` 内按需 `<option data-assignee-filter-option>` + 其后的 `button[data-assignee-clear][hidden]`）；勾子名 `[data-assignee-filter-option]` 与 B22 的 `[data-assignee-option]` 不同名（R12 红线）",
+      "name": "R13 · R15 ② — assignee 具名：控件值域按需扩一个名字，`x` 是控件的紧邻兄弟",
+      "evidence": "design/fidelity-r13.md §2.4/§2.9/§3.4、design/fidelity-r15.md §2.2；web/src/components/board/FiltersBar.vue（`[data-filter-assignee]` 的菜单行 `button[data-assignee-filter-option]`（R15 ② 由 `<option>` 改为菜单行，钩子与值载体不变）+ 其后的 `button[data-assignee-clear][hidden]`）；勾子名 `[data-assignee-filter-option]` 与 B22 的 `[data-assignee-option]` 不同名（R12 红线）",
       "status": "delivered",
       "checks": [
         {
@@ -1616,15 +1633,15 @@
         },
         {
           "scope": "[data-filter-assignee]",
-          "selector": "option",
-          "min": 4,
-          "desc": "四个静态行（all | me | human | agent）在位"
+          "selector": "[data-assignee-filter-option]",
+          "count": 4,
+          "desc": "四个静态行（all | me | human | agent）在位 —— R15 ② 起每行都自己带 `[data-assignee-filter-option]`（值即该行的值）"
         },
         {
           "scope": "[data-filter-assignee]",
-          "selector": "[data-assignee-filter-option]",
-          "count": 0,
-          "desc": "静止无名：具名 option 由值按需生成（至多一个）"
+          "selector": "[data-assignee-filter-option][aria-current=\"true\"]",
+          "count": 1,
+          "desc": "静止恰一行在选（`all`）—— 静止无名时具名行不出现在文档里，故上一条恰为四行"
         },
         {
           "scope": "[data-filters]",
@@ -1716,7 +1733,37 @@
           "scope": "[data-activity-view]",
           "selector": "[data-activity-filter]",
           "count": 3,
-          "desc": "三档筛选（actor | event | task）"
+          "desc": "三档筛选（actor | event | task）—— R15 ① 起每档是 daisyUI `dropdown` 面板（`<details data-dismiss-on-outside>`）"
+        },
+        {
+          "scope": "[data-activity-filters]",
+          "selector": "[data-activity-filter][data-dismiss-on-outside]",
+          "count": 3,
+          "desc": "R15 ①：三档都进同一条 light-dismiss 成员资格（属性即成员资格）"
+        },
+        {
+          "scope": "[data-activity-filters]",
+          "selector": "[data-activity-filter-value][data-activity-filter]",
+          "count": 3,
+          "desc": "R15 ①：所选值挂在控件自己的 `-value` 属性上（`<details>` 没有表单值）"
+        },
+        {
+          "scope": "[data-activity-filters]",
+          "selector": "[data-activity-filter-summary]",
+          "count": 3,
+          "desc": "R15 ①：三个触发器各一个 `<summary>`"
+        },
+        {
+          "scope": "[data-activity-filters]",
+          "selector": "[data-activity-filter-text]",
+          "count": 3,
+          "desc": "R15 ①：触发器复述所选行自己的文案（板面 `-text` 位）"
+        },
+        {
+          "scope": "[data-activity-filters]",
+          "selector": "[data-activity-filter-option][aria-current=\"true\"]",
+          "count": 3,
+          "desc": "R15 ①：每档恰一行在选（单选由 `aria-current` 陈述，与 label 控件同）"
         },
         {
           "selector": "[data-activity-filter-count]",
@@ -1724,9 +1771,10 @@
           "desc": "计数句唯一（aria-live）"
         },
         {
-          "selector": "[data-activity-filter-reset]",
+          "scope": "[data-activity-filters]",
+          "selector": "[data-filter-clear]",
           "count": 1,
-          "desc": "重置唯一"
+          "desc": "R15 ③：清空控件是 B04 的 Clear（`[data-filter-clear]` + `filters.clear`）；`[data-activity-filter-reset]` 已退场，两条靠「按下的那条条」分流"
         },
         {
           "selector": "[data-activity-feed]",
@@ -1771,7 +1819,7 @@
     {
       "id": "B27",
       "name": "R12x · B27 Waiting 队列 — 静止态结构（驱动半在 dom-smoke 的 M1·B27 段）",
-      "evidence": "design/BLOCKS.md B27；design/DESIGN.md §30；design/assets/r12x-waiting/**",
+      "evidence": "design/BLOCKS.md B27；design/DESIGN.md §30；design/assets/r12x-waiting/**；R15 ④ 见 design/fidelity-r15.md §2.5",
       "status": "delivered",
       "checks": [
         {
@@ -1793,6 +1841,12 @@
           "selector": "[data-waiting-title]",
           "count": 1,
           "desc": "标题唯一（与 nav.waiting 同一句话，§30.3）"
+        },
+        {
+          "scope": "[data-waiting-head]",
+          "selector": "div > p",
+          "count": 1,
+          "desc": "R15 ④：头部改两行文本块 —— 标题 + 一行描述（= B26 头部形状），描述是 `<p>` 且只挂 `data-i18n`（机器判钩子在 dom-smoke 的 M1·B27 段）"
         },
         {
           "scope": "[data-waiting-head]",

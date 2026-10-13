@@ -33,6 +33,7 @@
 import { computed, onMounted, onUnmounted, watch } from "vue";
 
 import { changeLines } from "../../lib/activity-feed.js";
+import { dismissMemberFrom } from "../../lib/light-dismiss.js";
 import { t } from "../../i18n/index.js";
 import {
   activity,
@@ -47,27 +48,56 @@ import {
   writeActivityHash,
 } from "../../stores/activity.js";
 import { board, openDetail } from "../../stores/board.js";
-import { view } from "../../stores/ui.js";
+import { pushToast, view } from "../../stores/ui.js";
 
 /**
  * The three filter domains, from the design's own value tables (§3.4).
  *
- * Each control is a native `<select>` wearing the bar's field face, plus the
- * family's caret as an inline glyph: the prototype draws that caret as a
- * `background-image` data-URI on `.td-select` (design `input.css`), which this
- * stylesheet may not carry (C08: a six-digit hex lives only in the token block),
- * and a native `<select>` cannot hold a child. The wrapper is a positioning box
- * and nothing else; the glyph is `aria-hidden` and `pointer-events: none`, so the
- * control is still the control.
+ * R15 ① (口径 B) — each control is now the **same component** as the board bar's
+ * four: a daisyUI `dropdown` panel (`<details class="dropdown"
+ * data-dismiss-on-outside>` + `<summary class="btn btn-sm td-label-trigger">` +
+ * a menu of rows), not a native `<select>`. The chosen value rides the control's
+ * own `data-activity-filter-value`, because a `<details>` has no form value —
+ * which is also why the `.td-select-caret` wrapper and its inline glyph are
+ * gone: a `<select>` cannot hold a child, so that caret had to be a sibling
+ * glyph, and a `<summary>` holds the family's own (`design/fidelity-r15.md`
+ * §2.1/§2.3).
  */
 const ACTOR_OPTIONS = ["all", "human", "agent"];
 const EVENT_OPTIONS = ["all", "status", "comment", "delivery"];
 
+/** The three slots, in the bar's own order (the address's order, §6). */
+const CONTROLS = Object.freeze(["actor", "event", "task"]);
+
 const days = computed(() => feed.value.days);
 const taskOptions = computed(() => feed.value.taskOptions);
 
-/** The catalogue's copy for a filter `<option>`: `activity.filter.<slot>.<value>`. */
+/** The catalogue's copy for a filter row: `activity.filter.<slot>.<value>`. */
 const optionText = (slot, value) => t(`activity.filter.${slot}.${value}`);
+
+/**
+ * Each control's rows, as `{ value, text }`. A row's text is the trigger's text:
+ * a domain value's own sentence, or — for the task control, whose domain is open
+ * — the identifier itself, because an identifier is data and not a catalogue key
+ * (`design/fidelity-r15.md` §2.3).
+ */
+const filterRows = computed(() => ({
+  actor: ACTOR_OPTIONS.map((value) => ({ value, text: optionText("actor", value) })),
+  event: EVENT_OPTIONS.map((value) => ({ value, text: optionText("event", value) })),
+  task: ["all", ...taskOptions.value.map((entry) => entry.identifier)].map((value) => ({
+    value,
+    text: value === "all" ? optionText("task", value) : value,
+  })),
+}));
+
+/** The control's chosen value, `all` when unset — the same reading the hash uses. */
+const filterValue = (slot) => activity.filters[slot] ?? "all";
+
+/** The trigger states the chosen row's own copy, in the active language. */
+function filterSummary(slot) {
+  const value = filterValue(slot);
+  return filterRows.value[slot].find((row) => row.value === value)?.text ?? value;
+}
 
 /**
  * §4 L3 / §5 — the lines a row's `<details>` unfolds, as `{member, lines}`: the
@@ -100,14 +130,37 @@ function onTask(event, item) {
   openDetail(item.identifier);
 }
 
+/** R15 ① — a press on a row writes the value, closes the panel (choosing is what
+ *  the panel was open for — the family's own rule) and re-runs the pass. */
+function chooseFilter(slot, value, event) {
+  dismissMemberFrom(event);
+  onFilter(slot, value);
+}
+
 function onFilter(slot, value) {
   writeActivityFilter(slot, value);
   writeActivityHash();
 }
 
+/** The filter-empty state's own button: the three slots back to `all`, no toast
+ *  (it is a way out of an empty feed, not a command the reader gave the bar). */
 function onReset() {
   resetActivityFilters();
   writeActivityHash();
+}
+
+/**
+ * R15 ③ — the bar's clear control is B04's own: `[data-filter-clear]` wearing
+ * `filters.clear`, in the bar's tail. The document-level rule tells the two
+ * apart by **the bar the press came from**, so this one resets the three
+ * activity slots and touches no board filter (`design/fidelity-r15.md` §2.4).
+ * The confirmation toast is the board bar's own behaviour, which the ruling
+ * extends here (Elon 2026-10-13T10:45Z, ④).
+ */
+function onClear() {
+  resetActivityFilters();
+  writeActivityHash();
+  pushToast(t("toast.filtersCleared"), "info");
 }
 
 /* -------------------------------------------------------------- keyboard */
@@ -192,53 +245,58 @@ onUnmounted(() => {
 
     <!-- B26.1 · header + filters. Three controls, three domains; the count is the
          number of rows the reader can see, `aria-live` so a narrowing announces
-         itself without stealing focus. -->
-    <div class="flex min-w-0 flex-wrap items-center gap-2" data-activity-filters>
-      <label class="td-sr" for="td-activity-filter-actor" data-i18n="activity.filter.actor.label">{{ $t("activity.filter.actor.label") }}</label>
-      <span class="td-select-caret">
-        <select
-          id="td-activity-filter-actor"
-          class="select select-sm td-select"
-          data-activity-filter="actor"
-          :value="activity.filters.actor"
-          @change="onFilter('actor', $event.target.value)"
-        >
-          <option v-for="value in ACTOR_OPTIONS" :key="value" :value="value" :data-i18n="`activity.filter.actor.${value}`">{{ optionText("actor", value) }}</option>
-        </select>
-        <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6" /></svg>
-      </span>
+         itself without stealing focus.
 
-      <label class="td-sr" for="td-activity-filter-event" data-i18n="activity.filter.event.label">{{ $t("activity.filter.event.label") }}</label>
-      <span class="td-select-caret">
-        <select
-          id="td-activity-filter-event"
-          class="select select-sm td-select"
-          data-activity-filter="event"
-          :value="activity.filters.event"
-          @change="onFilter('event', $event.target.value)"
+         R15 ①/③ — the bar is a named `section` whose control row is the board
+         bar's component, hook for hook (`[data-activity-filter]` +
+         `data-activity-filter-value` + a `[data-activity-filter-option]` row
+         carrying `data-activity-value` + the `[data-activity-filter-text]`
+         restatement), and whose tail is B04's own `[data-filter-clear]`. The
+         bar's accessible name is the one word this surface does **not** share
+         with the board's: two landmarks reading "Filters" would be the same
+         region twice to a screen reader (Elon 2026-10-13T10:45Z, ⑤). -->
+    <section
+      class="flex min-w-0 flex-wrap items-center gap-2"
+      data-activity-filters
+      data-i18n-aria-label="activity.filters.label"
+      :aria-label="$t('activity.filters.label')"
+    >
+      <details
+        v-for="slot in CONTROLS"
+        :key="slot"
+        class="dropdown shrink-0"
+        :data-activity-filter="slot"
+        :data-activity-filter-value="filterValue(slot)"
+        data-dismiss-on-outside
+      >
+        <summary
+          class="btn btn-sm td-label-trigger cursor-pointer list-none [&::-webkit-details-marker]:hidden"
+          role="button"
+          aria-haspopup="menu"
+          data-activity-filter-summary
+          :data-i18n-aria-label="`activity.filter.${slot}.label`"
+          :aria-label="$t(`activity.filter.${slot}.label`)"
         >
-          <option v-for="value in EVENT_OPTIONS" :key="value" :value="value" :data-i18n="`activity.filter.event.${value}`">{{ optionText("event", value) }}</option>
-        </select>
-        <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6" /></svg>
-      </span>
+          <span data-activity-filter-text>{{ filterSummary(slot) }}</span>
+          <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6 9.5 12 15.5 18 9.5" />
+          </svg>
+        </summary>
+        <ul class="td-details-menu menu">
+          <li v-for="row in filterRows[slot]" :key="row.value">
+            <button
+              type="button"
+              data-activity-filter-option
+              :data-activity-value="row.value"
+              :aria-current="row.value === filterValue(slot) ? 'true' : 'false'"
+              @click="chooseFilter(slot, row.value, $event)"
+            >{{ row.text }}</button>
+          </li>
+        </ul>
+      </details>
 
-      <label class="td-sr" for="td-activity-filter-task" data-i18n="activity.filter.task.label">{{ $t("activity.filter.task.label") }}</label>
-      <span class="td-select-caret">
-        <select
-          id="td-activity-filter-task"
-          class="select select-sm td-select"
-          data-activity-filter="task"
-          :value="activity.filters.task"
-          @change="onFilter('task', $event.target.value)"
-        >
-          <option value="all" data-i18n="activity.filter.task.all">{{ $t("activity.filter.task.all") }}</option>
-          <option v-for="entry in taskOptions" :key="entry.identifier" :value="entry.identifier" :title="entry.title">{{ entry.identifier }}</option>
-        </select>
-        <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6" /></svg>
-      </span>
-
-      <button type="button" class="btn btn-ghost btn-sm" data-activity-filter-reset data-i18n="activity.filter.reset" @click="onReset">
-        {{ $t("activity.filter.reset") }}
+      <button type="button" class="btn btn-ghost btn-sm" data-filter-clear data-i18n="filters.clear" @click="onClear">
+        {{ $t("filters.clear") }}
       </button>
       <span
         class="ms-auto shrink-0 text-[12px] text-(--brand-text-2)"
@@ -247,7 +305,7 @@ onUnmounted(() => {
         data-i18n="activity.filter.count"
         :data-i18n-arg="feed.shown"
       >{{ $t("activity.filter.count", feed.shown) }}</span>
-    </div>
+    </section>
 
     <!-- B26.2 · the feed -->
     <div class="td-activity-feed" data-activity-feed>

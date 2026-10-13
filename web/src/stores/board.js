@@ -210,6 +210,24 @@ export function writeAssigneeFilter(value) {
   board.filters.assignee = value;
 }
 
+/** The priority control's current value, with `""`/`null` read as `all`. */
+export function priorityFilterValue() {
+  const value = board.filters.priority;
+  return value == null || value === "" ? "all" : String(value);
+}
+
+/**
+ * R15 ② — the priority control's single writer, the assignee one's twin: the
+ * dropdown's row press and `resetFilters()` both go through here, so the value
+ * attribute, the chosen row's `aria-current` and the trigger's copy are one
+ * write (`design/fidelity-r15.md` §2.2).
+ *
+ * @param {string} value
+ */
+export function writePriorityFilter(value) {
+  board.filters.priority = value;
+}
+
 /**
  * R13 — the given name the control states, or `null` when it holds one of the
  * four static values. This is the **one** reading that drives both the named

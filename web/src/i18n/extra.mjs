@@ -34,6 +34,18 @@ export const EXTRA = {
     "toast.resynced": "Board resynced",
     "toast.relationNone": "No relations",
     "attach.placeholder": "No attachments",
+    // R15 ② — `assignee.clear` names the bar's `✕`, and the prototype withdrew
+    // *both* the control and its key (R13 修订 · 决定甲: the removal path is the
+    // assignee dropdown's own `Assignee: All` row). The implementation still
+    // ships the `x`, so its string is implementation-authored and lives here —
+    // the two catalogue copies are byte-locked mirrors, and a key the prototype
+    // does not carry cannot ride in them.
+    "assignee.clear": "Remove assignee filter",
+    // R15 ① — the Activity bar's own accessible name. The prototype reuses
+    // `filters.label` for both bars; the implementation card's ruling (Elon
+    // 2026-10-13T10:45Z, ⑤) gives this one a **dedicated** word instead, so the
+    // two named landmarks do not read as the same region to a screen reader.
+    "activity.filters.label": "Activity filters",
     // R10 ② — the drawer's save failure. The prototype inlines this one string
     // (its catalogue is mirrored byte for byte by `test/web/i18n.catalogue.mjs`),
     // so it has no catalogue key to reuse: it lives here, like every other
@@ -73,6 +85,8 @@ export const EXTRA = {
     "toast.resynced": "看板已补齐",
     "toast.relationNone": "无关联",
     "attach.placeholder": "无附件",
+    "assignee.clear": "移除负责人筛选",
+    "activity.filters.label": "动态筛选",
     "detail.saveError": "保存失败 —— 请重试。",
     "status.awaiting": "等你回复",
     "waiting.aria.badge": "等待你的回复",
