@@ -121,7 +121,7 @@
         { "selector": "[data-filter-label]", "count": 1, "desc": "label 下拉（data-filter-label-value 承载所选）" },
         { "selector": "[data-filter-label-summary]", "nonEmpty": true, "desc": "触发器复述所选值" },
         { "selector": "[data-filter-label-option]", "min": 1, "desc": "选项数由 roster 派生（原型 17 = all + 16）" },
-        { "selector": "[data-filter-clear]", "count": 1, "desc": "文档唯一 clear 钩子" },
+        { "scope": "[data-filters]", "selector": "[data-filter-clear]", "count": 1, "desc": "本条的 clear 钩子唯一 —— R15 ③（design/fidelity-r15.md §4.2）起 B26 的 Activity 条也挂同一个钩子（`[data-filter-clear]`），两条靠「按下的那条条」分流，故收窄到本条（`[data-filters] [data-filter-clear]`）" },
         { "selector": "[data-filter-count]", "nonEmpty": true, "desc": "计数（aria-live=polite）" }
       ]
     },
