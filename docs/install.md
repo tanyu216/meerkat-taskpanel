@@ -110,7 +110,8 @@ version control.
 [openclaw-team](https://github.com/tanyu216/openclaw-team) framework's own
 `poll`/`patrol` instead (see [`scheduling.md`](scheduling.md#openclaw-do-not-build-a-supervisor)).
 
-Load one of them to start the supervisor:
+**Load one of them to start the supervisor** — this is the **manual** path, and a plain
+install stops here (nothing is loaded for you):
 
 ```bash
 # macOS
@@ -121,6 +122,74 @@ systemctl --user enable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-pat
 # Anywhere
 crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 ```
+
+`--supervisor=enable` is the **opt-in** path that runs the right one of these for you —
+see [Enabling the supervisor (opt-in)](#enabling-the-supervisor-opt-in) below.
+
+### Enabling the supervisor (opt-in)
+
+A plain install **writes** the units above and prints the load command — it never loads
+anything. Starting the daemon is a separate, **explicit request**, and it is one flag:
+
+```bash
+bash install.sh --target all --supervisor=enable                # enable claude, codex and pi
+bash install.sh --supervisor=enable --supervisor-hosts claude   # …just one host
+bash install.sh --supervisor=status                             # what is loaded right now
+bash install.sh --supervisor=disable --supervisor-hosts claude  # stop and remove it
+```
+
+**Per-host selection is `--supervisor-hosts claude,codex,pi`** — a subset of the loop hosts
+the install covers (default: the loop hosts present in `--target`). It is deliberately
+*not* `--host`: in this repo `--host` already means the **wake** selector inside
+`scripts/supervisor.mjs --host claude|codex|pi`, and reusing the name on `install.sh` would
+collide. **`openclaw` is rejected** in this list (reason on stderr, exit 2) — it has no loop
+supervisor to enable (see
+[`scheduling.md §OpenClaw: do not build a supervisor`](scheduling.md#openclaw-do-not-build-a-supervisor)).
+
+**One entry point, three actions.** `--supervisor=enable|disable|status` (aliases
+`--enable-supervisor`, `--disable-supervisor`, `--supervisor-status`), with
+`--scheduler auto|launchd|systemd|cron` choosing the mechanism — there is no second script
+to remember. Non-interactive callers use
+`MEERKAT_TASKPANEL_SUPERVISOR=enable|disable|status` instead of the flag (an explicit flag
+wins), the same precedence style as `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED`.
+
+**The TTY question.** When stdin is a TTY and neither a flag nor the env var was given, the
+installer asks once:
+
+```text
+Enable the supervisor now? It runs headless in the background (poll 60s / patrol 300s). [y/N]
+```
+
+The default is **N** — deliberately the opposite of the `--claim-unassigned` question
+below, which asks the same way but defaults **Y**. The supervisor is a **daemon** that runs
+unattended, so silence must mean *no*: it is opt-in, never silent residency, and a plain
+`install.sh` never enables it.
+
+**Idempotence and safety.** A repeat enable never double-loads — an already-loaded unit is
+reported as `already enabled` and exits 0 — and enabling a second mechanism for the same
+host requires disabling the first, so the installer never leaves two loaded. `--dry-run`
+always wins: with it, `--supervisor=enable` prints the exact commands it would run and
+changes nothing. On success the installer reports what it enabled **and how to stop it**:
+
+```text
+supervisor: enabled (host=claude, scheduler=launchd, units=com.meerkat-taskpanel.<agent>.claude.poll,.patrol)
+to disable:  install.sh --supervisor=disable --supervisor-hosts claude
+```
+
+Enabling changes **nothing** about the cost model: the poll tick is still the $0 local scan,
+and an LLM turn still starts only when a claim succeeded (see
+[`scheduling.md §The cost gate`](scheduling.md#the-cost-gate-a-turn-starts-only-on-fire)).
+
+The exact per-OS commands, their failure modes, and the `loginctl enable-linger` caveat are
+in [`scheduling.md §Enabling the supervisor (opt-in)`](scheduling.md#enabling-the-supervisor-opt-in).
+
+> **Not yet wired.** This section states the enable contract; the installer-side
+> implementation (`scripts/install/_common.sh` and the per-host
+> `scripts/install/<host>.sh` pass-through of `MEERKAT_TASKPANEL_SUPERVISOR`) — and the
+> matching `skills/meerkat-loop/SKILL.md` / `references/operation.md` wording — land in the
+> follow-on implementation change. Until then the **manual** commands above are the only
+> working path.
+
 
 ### The taskd guard (keepalive, always enabled)
 
@@ -186,6 +255,7 @@ The unit files in full, the restart and back-off semantics, and how the guard co
 with `taskctl`'s lazy start are in
 [`scheduling.md § The taskd guard (keepalive)`](scheduling.md#the-taskd-guard-keepalive).
 
+
 ### The claim-unassigned question
 
 When stdin is a TTY and no flag was given, `install.sh` asks once:
@@ -210,6 +280,8 @@ missing, so an install made before that key existed still learns it (see
 install.sh [--target claude|openclaw|codex|pi|all] [--prefix <home>]
            [--agent-name <name>] [--no-automation]
            [--claim-unassigned=yes|no] [--assignee-only]
+           [--supervisor=enable|disable|status] [--supervisor-hosts <list>]
+           [--scheduler auto|launchd|systemd|cron]
            [--link] [--force] [--dry-run] [--skip-node-check] [-h|--help]
 ```
 
@@ -221,6 +293,10 @@ install.sh [--target claude|openclaw|codex|pi|all] [--prefix <home>]
 | `--no-automation` | Skip **all** Codex automation — the claim trigger *and* the scheduling units — **and** the `taskd` keepalive guard; the Claude/OpenClaw/Pi skill bundles are otherwise unaffected. |
 | `--claim-unassigned=yes\|no` | May the supervisor claim **unassigned** cards (the public pool)? Persisted to `<home>/<host>/meerkat-taskpanel.env`; overrides the interactive answer. Default `yes`. |
 | `--assignee-only` | Alias for `--claim-unassigned=no`. |
+| `--supervisor=enable\|disable\|status` | Opt-in control of the supervisor **daemon** (the units above): `enable` loads/enables it, `disable` unloads/removes it, `status` prints the per-host load state and changes nothing. Off by default — a plain install still only *prints* the load command. Aliases: `--enable-supervisor`, `--disable-supervisor`, `--supervisor-status`. See [Enabling the supervisor (opt-in)](#enabling-the-supervisor-opt-in). |
+| `--supervisor-hosts <list>` | Which loop hosts the `--supervisor` action applies to — a comma list ⊆ `{claude,codex,pi}` (default: the loop hosts present in `--target`). Deliberately **not** a `--host` flag: `--host` already means the **wake** selector in `scripts/supervisor.mjs`, so reusing the name here would collide. `openclaw` is **rejected** (reason on stderr, exit 2). |
+| `--scheduler <auto\|launchd\|systemd\|cron>` | Which mechanism the `--supervisor` action acts on (default `auto`: launchd on macOS, systemd on Linux, cron elsewhere). Only one mechanism may be loaded per host — see [`scheduling.md §Enabling the supervisor (opt-in)`](scheduling.md#enabling-the-supervisor-opt-in). |
+| `MEERKAT_TASKPANEL_SUPERVISOR=enable\|disable\|status` | The non-interactive form of `--supervisor` (an explicit flag wins) — the same precedence style as `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED`. |
 | `--link` | Symlink the **board** skill instead of copying it — edits to the repo take effect immediately. Recommended for a checkout. The `meerkat-loop` skill is always copied, because the loop's whole point is that its execution body does not live in a checkout. |
 | `--force` | The **only** way to overwrite. Without it, an existing destination is left untouched (merge, never clobber) and the installer prints a `left unchanged — use --force to overwrite` notice, so a re-run is safe, idempotent, and exits 0. With it, managed files and managed config keys are re-rendered from the current flags. |
 | `--dry-run` | Print every path that would be written/changed and change nothing. |
@@ -273,6 +349,7 @@ never an error:
 bash install.sh --target all --dry-run                 # preview
 bash install.sh --target claude --link --force         # development install
 bash install.sh --target all --prefix /tmp/tp-home     # isolated home (testing)
+bash install.sh --target all --supervisor=enable       # opt in: install + load the supervisor
 ```
 
 ## Per-host steps
