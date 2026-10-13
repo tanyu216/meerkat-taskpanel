@@ -73,13 +73,25 @@ function onRow(event, row) {
 
 <template>
   <section class="td-waiting-view" data-waiting-view :hidden="view !== 'waiting'">
-    <!-- B27.2 · the head: the destination's name and the queue's tally. Both read
-         one derivation (`rows`), so the heading and the count cannot disagree —
-         and `waiting.title` is byte-identical to `nav.waiting`, which is the one
-         name this surface has. An empty queue hides the tally: "0 waiting on you"
-         beside "Nothing is waiting on you" is the same sentence twice (§30). -->
+    <!-- B27.2 · the head: the destination's name, what the view *is* and the
+         queue's tally. Both read one derivation (`rows`), so the heading and the
+         count cannot disagree — and `waiting.title` is byte-identical to
+         `nav.waiting`, which is the one name this surface has. An empty queue
+         hides the tally: "0 waiting on you" beside "Nothing is waiting on you"
+         is the same sentence twice (§30).
+
+         R15 ④ — the header states what the view is, not only its name: a title
+         plus a one-line description, the two-line text block B26's own header
+         carries (`design/fidelity-r15.md` §2.5). The view spells it in its own
+         family names (`.td-waiting-head-text` / `.td-waiting-sub`) so either
+         header can move without dragging the other, and the description carries
+         a `data-i18n` hook only — no `data-waiting-*` seat of its own, exactly
+         as B26's does. -->
     <header class="td-waiting-head" data-waiting-head>
-      <h1 class="td-waiting-title" data-waiting-title data-i18n="waiting.title">{{ $t("waiting.title") }}</h1>
+      <div class="td-waiting-head-text">
+        <h1 class="td-waiting-title" data-waiting-title data-i18n="waiting.title">{{ $t("waiting.title") }}</h1>
+        <p class="td-waiting-sub" data-i18n="waiting.subtitle">{{ $t("waiting.subtitle") }}</p>
+      </div>
       <span
         class="td-waiting-count"
         data-waiting-count

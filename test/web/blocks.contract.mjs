@@ -888,7 +888,15 @@ const BLOCKS = [
     status: "active",
     required: [
       "[data-filter-assignee]",
+      "[data-filter-assignee-value]",
+      "[data-filter-assignee-summary]",
+      "[data-filter-assignee-text]",
+      "[data-assignee-filter-option]",
       "[data-filter-priority]",
+      "[data-filter-priority-value]",
+      "[data-filter-priority-summary]",
+      "[data-filter-priority-text]",
+      "[data-filter-priority-option]",
       "[data-filter-label]",
       "[data-filter-label-value]",
       "[data-filter-label-summary]",
@@ -899,7 +907,12 @@ const BLOCKS = [
     states: [],
     rules: [
       { kind: "count", selector: "[data-filters]", equals: 1 },
-      { kind: "count", selector: "[data-filter-clear]", min: 1, max: 1 },
+      // R15 ② — `[data-filter-clear]` is no longer the document's only one: the
+      // activity bar's tail carries B04's control too (B26), and the two are
+      // told apart by **the bar the press came from** rather than by a second
+      // hook name (`design/fidelity-r15.md` §2.4). So this rule is scoped to
+      // this bar and B26 states its own.
+      { kind: "count", selector: "[data-filter-clear]", within: "[data-filters]", equals: 1 },
       { kind: "identical-hookset", selector: "[data-filter-label-option]" },
       // R9 ② — the label control is the third member of the field family, not a
       // lookalike. `.td-label-trigger` wears the `.td-select` shell, so the three
@@ -992,14 +1005,44 @@ const BLOCKS = [
       { kind: "computed", probe: "[data-filter-status-summary]", property: "height", equalsPx: 32 },
       { kind: "text", probe: "[data-filter-status-text]", oneOf: ["Status: All", "状态：全部"] },
 
+      /* ---- R15 ② · the assignee and priority controls are dropdowns --------
+         The two controls that were native `<select>`s are daisyUI `dropdown`
+         panels now, the same component the status and label controls beside them
+         already wore (`design/fidelity-r15.md` §2.1/§2.2): a
+         `<details data-dismiss-on-outside>` whose `<summary class="btn btn-sm
+         td-label-trigger">` states the chosen row as plain text, whose rows are
+         menu `button`s, and whose value rides the control's own `-value`
+         attribute. The carrier matters as much as the shape — a `<details>` has
+         no form value, which is why the hook's value moved off `.value` and onto
+         the attribute the label and status controls already used. The rows' own
+         `aria-current` is the single-choice reading (the label control's), and
+         the four static assignee rows are the document's own domain. */
+      { kind: "count", selector: "[data-filter-assignee][data-dismiss-on-outside]", equals: 1 },
+      { kind: "count", selector: "[data-filter-priority][data-dismiss-on-outside]", equals: 1 },
+      { kind: "count", selector: "[data-filter-assignee-value]", equals: 1 },
+      { kind: "count", selector: "[data-filter-priority-value]", equals: 1 },
+      { kind: "count", selector: "[data-filter-assignee-summary]", equals: 1 },
+      { kind: "count", selector: "[data-filter-priority-summary]", equals: 1 },
+      { kind: "count", selector: "[data-filter-assignee-text]", equals: 1 },
+      { kind: "count", selector: "[data-filter-priority-text]", equals: 1 },
+      { kind: "text", probe: "[data-filter-assignee-text]", oneOf: ["Assignee: All", "负责人：全部"] },
+      { kind: "text", probe: "[data-filter-priority-text]", oneOf: ["Priority: All", "优先级：全部"] },
+      { kind: "count", selector: "[data-assignee-filter-option]", equals: 4 },
+      { kind: "count", selector: "[data-filter-priority-option]", equals: 6 },
+      { kind: "count", selector: "[data-assignee-filter-option][aria-current=\"true\"]", equals: 1 },
+      { kind: "count", selector: "[data-filter-priority-option][aria-current=\"true\"]", equals: 1 },
+
       /* ---- R13 · the named assignee and its `x` --------------------------
-         The control's four static rows are the document's (B04's own domain);
-         a *given name* is written on demand and removed with the value, so at
-         rest there is no `[data-assignee-filter-option]` at all and the one
-         `[data-assignee-clear]` sits beside the control it clears, `hidden`.
-         The hook is **not** B22's `[data-assignee-option]` (14 bare seats in the
-         dialogs) — R13 §2.9; the B22 block keeps its own rules over that name. */
-      { kind: "count", selector: "[data-assignee-filter-option]", equals: 0 },
+         The control's four static rows are the document's (B04's own domain) and
+         each carries `[data-assignee-filter-option]` with **its own value** —
+         R15 ② moved those rows from `<option>`s to menu `button`s without moving
+         the hook or its carrier. A *given name* is still written on demand and
+         removed with the value, so at rest the menu holds the four and no more,
+         and the one `[data-assignee-clear]` sits beside the control it clears,
+         `hidden`. The hook is **not** B22's `[data-assignee-option]` (14 bare
+         seats in the dialogs) — R13 §2.9; the B22 block keeps its own rules over
+         that name, and the named row's own count is state, not resting geometry,
+         so it is measured live in `web/scripts/dom-smoke.mjs`. */
       { kind: "count", selector: "[data-assignee-clear]", equals: 1 },
       { kind: "count", selector: "[data-assignee-clear]", within: "[data-filters]", equals: 1 },
       { kind: "count", selector: "[data-assignee-clear]", within: "[data-agents-presence]", equals: 0 },
@@ -1008,13 +1051,14 @@ const BLOCKS = [
       {
         kind: "manual",
         note:
-          "The assignee control's `<select>` holds four static rows (`all | me | human | agent`) " +
-          "plus, on demand, exactly one given name carrying `[data-assignee-filter-option]`. A " +
-          "named option's `value` is the name and its copy is the name — the roster's own names " +
-          "are data, never catalogue keys. Neither the option count nor the selected value is a " +
-          "resting figure, so the rule above pins only the resting state; the live behaviour " +
-          "(writing the name, the capsule, the `x`) is measured in `web/scripts/dom-smoke.mjs`'s " +
-          "R11/R13 section (design/fidelity-r13.md §5.3 C1–C5).",
+          "The assignee menu holds four static rows (`all | me | human | agent`) plus, on demand, " +
+          "exactly one given name, every row carrying `[data-assignee-filter-option]` with its own " +
+          "value — R15 ② kept R13's hook and carrier while moving the rows from `<option>`s to " +
+          "menu `button`s. A named row's value is the name and its copy is the name — the roster's " +
+          "own names are data, never catalogue keys. The named row is not a resting figure, so the " +
+          "rules above pin the resting state; the live behaviour (writing the name, the capsule) " +
+          "is measured in `web/scripts/dom-smoke.mjs`'s R11/R13 section " +
+          "(design/fidelity-r13.md §5.3 C1–C5).",
       },
       {
         kind: "manual",
@@ -1038,8 +1082,12 @@ const BLOCKS = [
       {
         kind: "manual",
         note:
-          "Assignee and priority are native selects whose option value domains live on the form " +
-          "value, not on a `data-*` attribute, so they cannot be asserted as a hook domain. " +
+          "R15 ② — the four field controls are one component family: the two `<select>`s are " +
+          "`dropdown` panels now, so all seven filter triggers in the document (this bar's four " +
+          "and B26's three) wear `.td-label-trigger` and compute to one shell. The *relation* " +
+          "(seven equal heights, the caret centred on each trigger, each trigger's box the width " +
+          "of the control it replaced) is measured live in `web/scripts/dom-smoke.mjs`, where two " +
+          "elements can be compared with each other (design/fidelity-r15.md §3 B2). " +
           "[data-filter-count] carries `aria-live=\"polite\"`.",
       },
     ],
@@ -2412,7 +2460,12 @@ const BLOCKS = [
       "[data-activity-mark-read]",
       "[data-activity-filters]",
       "[data-activity-filter]",
-      "[data-activity-filter-reset]",
+      "[data-activity-filter-value]",
+      "[data-activity-filter-summary]",
+      "[data-activity-filter-text]",
+      "[data-activity-filter-option]",
+      "[data-activity-value]",
+      "[data-filter-clear]",
       "[data-activity-filter-count]",
       "[data-activity-feed]",
       "[data-activity-day]",
@@ -2451,7 +2504,18 @@ const BLOCKS = [
       { kind: "count", selector: "[data-activity-filters]", equals: 1 },
       { kind: "count", selector: "[data-activity-filter]", equals: 3 },
       { kind: "domain", selector: "[data-activity-filter]", attribute: "data-activity-filter", subset: DOMAINS.ACTIVITY_FILTER },
-      { kind: "count", selector: "[data-activity-filter-reset]", equals: 1 },
+      /* R15 ①/③ — the three controls are the board bar's component (R15 ②), and
+       * the bar's clear control is B04's own. The hook that used to name the
+       * reset (`[data-activity-filter-reset]`) is **retired**: the two Clear
+       * controls are told apart by the bar the press came from, and B04's rule
+       * is scoped the same way, so "one Clear per bar" is stated twice rather
+       * than once document-wide (`design/fidelity-r15.md` §2.4). */
+      { kind: "count", selector: "[data-activity-filter][data-dismiss-on-outside]", equals: 3 },
+      { kind: "count", selector: "[data-activity-filter-value]", equals: 3 },
+      { kind: "count", selector: "[data-activity-filter-summary]", equals: 3 },
+      { kind: "count", selector: "[data-activity-filter-text]", equals: 3 },
+      { kind: "count", selector: "[data-activity-filter-option][aria-current=\"true\"]", equals: 3 },
+      { kind: "count", selector: "[data-filter-clear]", within: "[data-activity-filters]", equals: 1 },
       { kind: "count", selector: "[data-activity-filter-count]", equals: 1 },
       { kind: "count", selector: "[data-activity-feed]", equals: 1 },
       { kind: "count", selector: "[data-activity-more]", equals: 1 },

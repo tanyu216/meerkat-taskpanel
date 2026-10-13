@@ -2,12 +2,16 @@
 /**
  * B04 · Filters bar.
  *
- * Assignee and priority are native `<select>`s (their value domains live on the
- * form value, not on a hook). The label filter is a `<details>` dropdown whose
- * chosen value rides on `[data-filter-label-value]` and is restated on the
- * summary trigger. `[data-filter-clear]` is the document's **only** clear
+ * Assignee and priority are daisyUI `dropdown` panels in R15 (口径 B,
+ * `design/fidelity-r15.md` §2.2): a `<details class="dropdown"
+ * data-dismiss-on-outside>` whose `<summary class="btn btn-sm
+ * td-label-trigger">` states the chosen row as plain text, and whose chosen
+ * value rides the control's own `-value` attribute — a `<details>` has no form
+ * value, which is why the hook's carrier moved off the form value the two
+ * `<select>`s used. `[data-filter-clear]` is the document's **only** board clear
  * control — the no-results empty state reuses this bar's handler rather than
- * carrying a second hook of its own.
+ * carrying a second hook of its own (B26's activity bar carries a **second**
+ * `[data-filter-clear]`, told apart by the bar it sits in — R15 §2.4).
  *
  * R9 ② — the label control is the third member of one component family, not a
  * lookalike: `.td-label-trigger` is the `.td-select` shell (`app.css`), the value
@@ -26,13 +30,14 @@
  * Every control is `flex: 0 0 auto` — the family's metrics never compress, which
  * is the (b) alternative §2.1 rejects.
  *
- * R12 also puts the two `<select>`s back where the prototype keeps them: they are
- * the bar's own children, named by visually-hidden `.td-sr` label **siblings**
- * (`for=` / `id=`), not by wrapper `<label>` boxes. The wrappers were an
- * invention of this component — the prototype's `.td-sr` labels are absolutely
- * positioned and occupy no box at all — and they are what made the bar's direct
+ * R12 also puts the four field controls back where the prototype keeps them:
+ * they are the bar's own children, not wrapped in `<label>` boxes. The wrappers
+ * were an invention of this component — they are what made the bar's direct
  * children stop reading as its control row (the contract's closed-set and
- * relative-order checks are stated over that row, §5.1 A1/A10).
+ * relative-order checks are stated over that row, §5.1 A1/A10). With the two
+ * `<select>`s gone (R15 ②) the `.td-sr` sibling seats went with them: a
+ * `<details>` is not a labelable element, so each control's summary states its
+ * own accessible name, exactly as the prototype's does.
  *
  * R11 ① — the **status** filter is the bar's third field and its only
  * multiple-choice control (`design/fidelity-r11.md` §2.1): a `<details>` dropdown
@@ -44,11 +49,13 @@
  * deliberately does **not** close the menu, so the two in-flight statuses can be
  * picked in a row (the card's U1 ruling).
  *
- * R13 — the assignee `<select>` keeps its four static rows and grows the **given
+ * R13 — the assignee control keeps its four static rows and grows the **given
  * name** the roster's press writes, on demand (`namedAssignee`); beside it sits
  * the one `[data-assignee-clear]`, which removes that name and nothing else. Both
  * are driven by the control's own value, which stays the one truth
- * (`design/fidelity-r13.md` §2.8).
+ * (`design/fidelity-r13.md` §2.8) — and R15 ② kept that reading while moving the
+ * rows from `<option>`s to menu `button`s, so the roster press and a menu press
+ * are still the same write.
  */
 import { computed } from "vue";
 
@@ -56,25 +63,89 @@ import { dismissMemberFrom } from "../../lib/light-dismiss.js";
 import {
   activeFilterCount,
   ASSIGNEE_STATIC_VALUES,
+  assigneeFilterValue,
   board,
   labelRoster,
   namedAssignee,
   PRIORITIES,
+  priorityFilterValue,
   STATUS_FILTER_KEYS,
   statusFilterValues,
   totalVisible,
+  writeAssigneeFilter,
+  writePriorityFilter,
   writeStatusFilter,
 } from "../../stores/board.js";
 import { boardArea, filtersOpen, pushToast } from "../../stores/ui.js";
 import { t } from "../../i18n/index.js";
-
-const assigneeOptions = ASSIGNEE_STATIC_VALUES;
 
 const countText = computed(() => {
   const total = board.tasks.length;
   if (activeFilterCount.value > 0) return t("filters.count.filtered", totalVisible.value, total);
   return total === 1 ? t("filters.count.one") : t("filters.count.many", total);
 });
+
+/* ------------------------------------------------- R15 ② · the dropdowns --
+ * The assignee and priority controls are the project switcher's component, not
+ * lookalikes: a `<details class="dropdown" data-dismiss-on-outside>` whose
+ * `<summary class="btn btn-sm td-label-trigger">` states the chosen row as plain
+ * text, exactly as the status and label controls beside them already did
+ * (`design/fidelity-r15.md` §2.1/§2.2). The value rides the control's own
+ * `-value` attribute — a `<details>` has no form value — and the single writer
+ * is the one the roster press already went through, so a menu press and a roster
+ * press remain the same move (R13 §2.8).
+ */
+
+/** The assignee control's chosen value, `all` when unset. */
+const assigneeValue = computed(() => assigneeFilterValue());
+
+/** The priority control's chosen value, `all` when unset. */
+const priorityValue = computed(() => priorityFilterValue());
+
+/**
+ * The assignee rows: the four static ones, plus the roster's given name while it
+ * is in force. The row's own copy is the trigger's copy — a static row's
+ * sentence, or the bare name for a given one — which is what keeps a `<details>`
+ * stating its value exactly as the `<select>` it replaced did (R13 §2.8, R15
+ * §2.2).
+ */
+const assigneeRows = computed(() => {
+  const rows = ASSIGNEE_STATIC_VALUES.map((value) => ({ value, text: t(`filters.assignee.${value}`) }));
+  if (namedAssignee.value) rows.push({ value: namedAssignee.value, text: namedAssignee.value });
+  return rows;
+});
+
+const assigneeSummary = computed(
+  () => assigneeRows.value.find((row) => row.value === assigneeValue.value)?.text ?? t("filters.assignee.all"),
+);
+
+/** `all` plus the five priorities, in the board's own order. */
+const priorityRows = computed(() =>
+  ["all", ...PRIORITIES].map((value) => ({ value, text: t(`filters.priority.${value}`) })),
+);
+
+const prioritySummary = computed(
+  () => priorityRows.value.find((row) => row.value === priorityValue.value)?.text ?? t("filters.priority.all"),
+);
+
+/**
+ * Choosing is what the menu was open for, so the panel closes with the choice —
+ * the family's own rule (`dismissMemberFrom`), which the label control already
+ * followed.
+ *
+ * @param {string} value
+ * @param {MouseEvent} event
+ */
+function chooseAssignee(value, event) {
+  dismissMemberFrom(event);
+  writeAssigneeFilter(value);
+}
+
+/** @param {string} value @param {MouseEvent} event */
+function choosePriority(value, event) {
+  dismissMemberFrom(event);
+  writePriorityFilter(value);
+}
 
 const labelSummary = computed(() =>
   board.filters.label === "all" ? t("filters.label.all") : t("filters.labelOption", board.filters.label),
@@ -120,8 +191,8 @@ function clearAssignee(event) {
 
 function clearFilters() {
   board.filters.search = "";
-  board.filters.assignee = "all";
-  board.filters.priority = "all";
+  writeAssigneeFilter("all");
+  writePriorityFilter("all");
   writeStatusFilter([]);
   board.filters.label = "all";
   pushToast(t("toast.filtersCleared"), "info");
@@ -143,28 +214,48 @@ function chooseLabel(value, event) {
   <section
     class="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto"
     data-filters
+    data-i18n-aria-label="filters.label"
+    :aria-label="$t('filters.label')"
     :hidden="!filtersOpen || !boardArea"
     id="td-filters"
   >
-    <!-- R12 — the prototype's own shape: two visually-hidden `.td-sr` labels as
-         siblings of the controls they name (`for=` / `id=`), so the bar's direct
-         children are its control row and nothing else. R9 ②'s finding was that
-         wrapper boxes (`mb-3` on a stacked form) floated the selects off the
-         row's centre line; the prototype never had boxes there to begin with. -->
-    <label class="td-sr" for="td-filter-assignee">{{ $t("filters.assignee") }}</label>
-    <select id="td-filter-assignee" v-model="board.filters.assignee" class="select select-sm td-select shrink-0" data-filter-assignee :aria-label="$t('filters.assignee')">
-      <option v-for="option in assigneeOptions" :key="option" :value="option">{{ $t(`filters.assignee.${option}`) }}</option>
-      <!-- R13 — the given name the roster's press writes, generated **by the
-           control's value** and removed with it. At most one exists, it lives
-           inside the control, and it carries `[data-assignee-filter-option]` (not
-           B22's `[data-assignee-option]`, whose document-wide delegate would
-           otherwise answer it) — `design/fidelity-r13.md` §2.8/§2.9. -->
-      <option
-        v-if="namedAssignee"
-        :data-assignee-filter-option="namedAssignee"
-        :value="namedAssignee"
-      >{{ namedAssignee }}</option>
-    </select>
+    <!-- R15 ② — the assignee control: a daisyUI `dropdown` panel, the same
+         component the status and label controls beside it wear. R12's finding
+         still holds — the bar's direct children are its control row and nothing
+         else — and the label seat the `<select>` needed (`for=` / `id=`) is gone
+         with it: the summary states its own accessible name, as the prototype's
+         does. -->
+    <details class="dropdown shrink-0" data-filter-assignee :data-filter-assignee-value="assigneeValue" data-dismiss-on-outside>
+      <summary
+        class="btn btn-sm td-label-trigger cursor-pointer list-none [&::-webkit-details-marker]:hidden"
+        role="button"
+        aria-haspopup="menu"
+        data-filter-assignee-summary
+        data-i18n-aria-label="filters.assignee"
+        :aria-label="$t('filters.assignee')"
+      >
+        <span data-filter-assignee-text>{{ assigneeSummary }}</span>
+        <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M6 9.5 12 15.5 18 9.5" />
+        </svg>
+      </summary>
+      <!-- R13 — the four static rows, plus the given name the roster's press
+           writes, generated **by the control's value** and removed with it. At
+           most one given name exists, and every row carries
+           `[data-assignee-filter-option]` (its own value) — not B22's
+           `[data-assignee-option]`, whose document-wide delegate would otherwise
+           answer it (`design/fidelity-r13.md` §2.8/§2.9, R15 §2.2). -->
+      <ul class="td-details-menu menu">
+        <li v-for="row in assigneeRows" :key="row.value">
+          <button
+            type="button"
+            :data-assignee-filter-option="row.value"
+            :aria-current="row.value === assigneeValue ? 'true' : 'false'"
+            @click="chooseAssignee(row.value, $event)"
+          >{{ row.text }}</button>
+        </li>
+      </ul>
+    </details>
     <!-- R13 ④ — the one removal affordance, the assignee control's **sibling**
          (B04). Static markup, `hidden` at rest, shown only while the control
          states a *name*: `all` is the select's own first row and the three kinds
@@ -181,11 +272,41 @@ function chooseLabel(value, event) {
       @click="clearAssignee"
     >✕</button>
 
-    <label class="td-sr" for="td-filter-priority">{{ $t("filters.priority") }}</label>
-    <select id="td-filter-priority" v-model="board.filters.priority" class="select select-sm td-select shrink-0" data-filter-priority :aria-label="$t('filters.priority')">
-      <option value="all">{{ $t("filters.priority.all") }}</option>
-      <option v-for="priority in PRIORITIES" :key="priority" :value="priority">{{ $t(`filters.priority.${priority}`) }}</option>
-    </select>
+    <!-- R15 ② — the priority control is the same dropdown. Its rows carry the
+         6px dot beside the copy, the way the status menu's do, because priority
+         is the board's other colour-coded scalar: the dot reads `--pri-color`
+         through the row's own `[data-priority]` (the same binding the cards and
+         the legend read), so no component names a colour. -->
+    <details class="dropdown shrink-0" data-filter-priority :data-filter-priority-value="priorityValue" data-dismiss-on-outside>
+      <summary
+        class="btn btn-sm td-label-trigger cursor-pointer list-none [&::-webkit-details-marker]:hidden"
+        role="button"
+        aria-haspopup="menu"
+        data-filter-priority-summary
+        data-i18n-aria-label="filters.priority"
+        :aria-label="$t('filters.priority')"
+      >
+        <span data-filter-priority-text>{{ prioritySummary }}</span>
+        <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M6 9.5 12 15.5 18 9.5" />
+        </svg>
+      </summary>
+      <ul class="td-details-menu td-priority-menu menu">
+        <li v-for="row in priorityRows" :key="row.value">
+          <button
+            type="button"
+            data-filter-priority-option
+            :data-priority-value="row.value"
+            :data-priority="row.value === 'all' ? undefined : row.value"
+            :aria-current="row.value === priorityValue ? 'true' : 'false'"
+            @click="choosePriority(row.value, $event)"
+          >
+            <span v-if="row.value !== 'all'" class="status td-status-dot" aria-hidden="true"></span>
+            <span>{{ row.text }}</span>
+          </button>
+        </li>
+      </ul>
+    </details>
 
     <!-- R11 ① — the status filter, the bar's third field and its only
          multiple-choice one. Multiple choice states itself on **every** row's
