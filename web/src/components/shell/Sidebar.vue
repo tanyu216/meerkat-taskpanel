@@ -183,6 +183,24 @@ function onAssignee(name) {
     <section>
       <h2 class="m-0 mb-2 text-[11px] uppercase tracking-[0.06em] text-(--brand-text-3)" data-side-label data-i18n="sidebar.projects">{{ $t("sidebar.projects") }}</h2>
       <div class="td-nav" data-project-list>
+        <!-- A11y (T-20261015-055434) · the row's own `title` = the project name.
+             The prototype has always carried it (`design/prototype/index.html`,
+             `button.td-side-item[data-project]` → `title="Orchestrator"`); M6b
+             stage 3 dropped it when the row was re-cut, and with it the only name
+             the row has at ≤1023px. The rail hides *every* visible text node of
+             the row (`[data-side-name]` and `[data-side-count]` are
+             `display:none`), so name-from-contents yields nothing and the
+             button's accessible name comes out empty: Playwright's
+             `ariaSnapshot()` answers `- button` for all five rows at 980px, and
+             `- button "Zulu Legacy Importer 0"` at 1512px. The chip cannot carry
+             the name instead — it is `aria-hidden` by the rail's own rule, and
+             the `title` it does have is the *prefix* (C-RAIL-2 P5), which
+             reaches a pointer and no assistive technology. `title` is the name
+             computation's last resort, so it fires exactly where nothing else
+             does: at ≥1024px the visible name still wins, and the computed name
+             is the same string it was before (`MeerkatTaskPanel 12` either way)
+             — the row gains a name in the rail and the desktop board does not
+             move. The prototype's own markup, restored; not a supplement. -->
         <button
           v-for="project in projects"
           :key="project.id"
@@ -192,6 +210,7 @@ function onAssignee(name) {
           :data-order-rank="project.rank"
           :data-order-score="project.score"
           :aria-current="project.id === board.currentProjectId ? 'page' : undefined"
+          :title="project.name"
           @click="selectProject(project.id)"
         >
           <!-- The prefix monogram is the rail's stand-in for the name, so it is
