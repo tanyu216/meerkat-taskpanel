@@ -917,6 +917,9 @@
             "awaiting_reason": {
               "type": "string"
             },
+            "blocked_reason": {
+              "type": "string"
+            },
             "if_version": {
               "type": "integer"
             },

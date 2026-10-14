@@ -257,6 +257,10 @@ export function registerTaskRoutes(router, surface) {
       // M1 — the `awaiting` entry category (`E1..E5`), required only when the
       // destination is `awaiting`; the command layer is what enforces that.
       awaitingReason: body.awaiting_reason,
+      // 0016 — the `blocked` card's class (`clarify`…`unknown`, SLA-inspection
+      // contract §7), optional; written when the destination is `blocked`, and
+      // cleared on any other destination. The command layer enforces both.
+      blockedReason: body.blocked_reason,
       actor,
     });
     return { ...taskPayload(repos, task), status: task.status };

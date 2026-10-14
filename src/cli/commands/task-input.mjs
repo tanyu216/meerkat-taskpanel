@@ -105,6 +105,12 @@ export const SPELLING = Object.freeze({
     allow_steal: { summary: "Claim a card assigned to somebody else (needs --reason; audited)." },
     reason: { value: "<why>", summary: "Why this move is audited (a report waiver or an --allow-steal)." },
     awaiting_reason: { value: "<E1..E5>", summary: "Why this card needs a human — required by `issue move <ref> awaiting`." },
+    blocked_reason: {
+      value: "<class>",
+      summary:
+        "What a blocked card is waiting for — written on a move into `blocked`, cleared on any move out of it. " +
+        "clarify · decision · dependency · out_of_bounds · defect · external · resource · unknown",
+    },
   }),
   [TASK_OPS.deliver]: Object.freeze({
     // The flag carries a path; the body carries the parsed object. Reading and

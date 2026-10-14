@@ -152,6 +152,7 @@ const MOVE = Object.freeze([
   both("allow_steal", { type: BOOLEAN }),
   both("reason"),
   both("awaiting_reason"),
+  both("blocked_reason"),
 ]);
 
 const DELIVER = Object.freeze([

@@ -801,3 +801,75 @@ describe("server/routes — claim enforces the assignee (T-20261009-230500)", ()
     assert.equal(refused.body.error.details.field, "reason");
   });
 });
+
+describe("server/routes — blocked_reason over HTTP (0016)", () => {
+  // The regression this pins: `blocked_reason` was readable everywhere and
+  // writable nowhere — `moveCas` and `moveStatus` took it, but neither entry
+  // point (the CLI flag, this body) carried it, so `git grep blocked_reason
+  // src/server/` was empty. These assertions go to the *column*, not only to the
+  // response, because a wire field that is echoed back proves nothing landed.
+  // Captured from the create response rather than hardcoded: the identifier's
+  // prefix is the project's own business (`projectPrefix()`), not this test's.
+  let REF;
+  const columnOf = (identifier) =>
+    taskd.board.db
+      .prepare("SELECT blocked_reason FROM tasks WHERE identifier = ?")
+      .get(identifier).blocked_reason;
+
+  before(async () => {
+    dataOf(await call("POST", "/api/v1/projects", { id: "block", name: "Block" }));
+    const created = dataOf(await call("POST", "/api/v1/tasks", { project_id: "block", title: "Waiting on a dep" }));
+    REF = created.task.identifier;
+  });
+
+  it("writes the class into the column on a move into `blocked`, and clears it on the move out", async () => {
+    const blocked = dataOf(
+      await call("POST", `/api/v1/tasks/${REF}/move`, { to: "blocked", blocked_reason: "dependency" }),
+    );
+    assert.equal(blocked.task.status, "blocked");
+    assert.equal(blocked.task.blocked_reason, "dependency", "the wire projection carries it");
+    assert.equal(columnOf(REF), "dependency", "and the row itself does — not merely the response");
+
+    const back = dataOf(await call("POST", `/api/v1/tasks/${REF}/move`, { to: "in_progress" }));
+    assert.equal(back.task.status, "in_progress");
+    assert.equal(back.task.blocked_reason, null);
+    assert.equal(columnOf(REF), null, "the reason describes the current block, so leaving clears it");
+  });
+
+  it("accepts a block with no stated class, and refuses a value that is not a literal", async () => {
+    const anonymous = dataOf(await call("POST", `/api/v1/tasks/${REF}/move`, { to: "blocked" }));
+    assert.equal(anonymous.task.blocked_reason, null, "an unstated class is legal and stays null");
+    assert.equal(columnOf(REF), null);
+    dataOf(await call("POST", `/api/v1/tasks/${REF}/move`, { to: "in_progress" }));
+
+    const refused = await call(
+      "POST",
+      `/api/v1/tasks/${REF}/move`,
+      { to: "blocked", blocked_reason: "deps" },
+    );
+    assert.equal(refused.status, 400, JSON.stringify(refused.body));
+    assert.equal(refused.body.error.code, "VALIDATION_FAILED");
+    assert.equal(refused.body.error.details.field, "blocked_reason");
+    assert.deepEqual(refused.body.error.details.allowed, [
+      "clarify",
+      "decision",
+      "dependency",
+      "out_of_bounds",
+      "defect",
+      "external",
+      "resource",
+      "unknown",
+    ]);
+    assert.equal(columnOf(REF), null, "a refused move wrote nothing");
+    assert.equal(dataOf(await call("GET", `/api/v1/tasks/${REF}`)).task.status, "in_progress");
+  });
+
+  it("still ignores an unknown body key, so the declaration did not tighten the shape", async () => {
+    const moved = dataOf(
+      await call("POST", `/api/v1/tasks/${REF}/move`, { to: "blocked", blocked_reason: "resource", nonsense: true }),
+    );
+    assert.equal(moved.task.blocked_reason, "resource");
+    dataOf(await call("POST", `/api/v1/tasks/${REF}/move`, { to: "canceled" }));
+    assert.equal(columnOf(REF), null);
+  });
+});
