@@ -27,15 +27,18 @@
  */
 
 import { readFileSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { basename, resolve } from "node:path";
 
 import {
   AUTOSTART_TIMEOUT_MS,
   NO_AUTOSTART_ENV,
-  RUNTIME_FILENAME,
   RUNTIME_POINTER_ENV,
 } from "../constants.mjs";
-import { resolveDataDir, resolveRuntimePointerPath } from "../runtime-locator.mjs";
+import {
+  resolveDataDir,
+  resolveRuntimePointerPath,
+  runtimePointerPathForDataDir,
+} from "../runtime-locator.mjs";
 import { ioError } from "./errors.mjs";
 import { probeHealth, spawnTaskd } from "./autostart.mjs";
 
@@ -44,24 +47,6 @@ export { probeHealth };
 /** A non-empty string, with the whitespace-only case treated as absent. */
 function hasText(value) {
   return typeof value === "string" && value.trim() !== "";
-}
-
-/**
- * The file a board is addressed at when the machine-wide slot is somebody
- * else's — beside its own `token` and `writer.lock` (§7.1).
- *
- * The write side's twin is
- * `core/storage/secrets/runtime-pointer.mjs#runtimePointerPathForDataDir`, and
- * the arithmetic is repeated here rather than imported for the same reason
- * `token.mjs` rebuilds the token shape: the client must not reach into
- * `src/core/storage` (see `test/cli/imports.test.mjs`). Built from the one
- * `RUNTIME_FILENAME` constant, so the two cannot drift apart silently.
- *
- * @param {string} dataDir
- * @returns {string} absolute file path
- */
-function dataDirPointerPath(dataDir) {
-  return join(resolve(dataDir), RUNTIME_FILENAME);
 }
 
 /** The pointer file at exactly this path; `null` when it is missing or junk. */
@@ -118,7 +103,9 @@ function ownBoardPointer({ env, dataDir, incumbent }) {
   const own = resolveDataDir({ dataDir, env });
   if (incumbent !== null && !namesAnotherBoard(incumbent, own)) return null;
 
-  const local = readPointerFile(dataDirPointerPath(own));
+  // One implementation of "beside its data directory", shared with the parent
+  // that waits for the daemon it spawns (`autostart.mjs`).
+  const local = readPointerFile(runtimePointerPathForDataDir(own));
   return hasText(local?.url) ? local : null;
 }
 
@@ -160,12 +147,18 @@ async function answers(pointer) {
  * slot itself.
  *
  * It is a candidate because the data-directory fallback can be a fossil — a
- * board killed before it could remove the file beside its own data directory.
- * Autostarting over that fossil would spawn a daemon that takes the slot's
- * address away from the live board holding it: the spawn handoff *names* that
- * path (`spawnTaskd`), so the write side's "never displace a live board" rule
- * does not apply to the daemon this process starts. A board that answers at the
- * slot is therefore believed before anything is spawned.
+ * board killed before it could remove the file beside its own data directory —
+ * while the board in the slot is up and answering. That board is the one to
+ * answer from, and it is cheap to ask: one `/health` against an address we are
+ * already looking at, rather than a daemon spawned for a board that was running
+ * the whole time.
+ *
+ * It is *only* a candidate: an address that does not answer `/health` is not
+ * believed here, and until T-20261014-044653 the autostart that followed could
+ * take that board's address from it (the spawned daemon was *named* the
+ * machine-wide path, so the write side's "never displace a live board" rule did
+ * not apply to it). That door is shut in `spawnTaskd`; this candidate remains
+ * what it always was — the ordinary "which board is up" answer.
  *
  * @param {{env: NodeJS.ProcessEnv, pointerPath: string|undefined, preferred: object|null, platform?: string, home?: string}} input
  * @returns {Promise<object|null>}
@@ -242,7 +235,14 @@ export async function ensureBoard(options = {}) {
 
   const started = await spawnTaskd({
     env,
-    pointerPath: pointerPath ?? resolveRuntimePointerPath({ env, platform, home }),
+    // Handed over only when the caller named it. Without a name the daemon picks
+    // its own file — the write side's rule, which the *parent* must not override:
+    // naming the machine-wide path here is what let a spawned daemon take the
+    // address of a live board that was merely unhealthy (T-20261014-044653, see
+    // `spawnTaskd`'s header).
+    pointerPath,
+    platform,
+    home,
     waitMs,
   });
   return { url: started.url.replace(/\/+$/, ""), autostarted: true, pointer: started.pointer };

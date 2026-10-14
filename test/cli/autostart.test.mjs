@@ -12,7 +12,7 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
@@ -91,6 +91,45 @@ describe("cli/autostart — refusals need no process", () => {
     assert.equal(spawns[0].options.env.TASKD_RUNTIME_POINTER, pinned, "the child is told where to write");
     assert.equal(spawns[0].options.env.TASKD_DATA_DIR, dataDir, "…and keeps the rest of the environment");
     assert.equal(existsSync(resolveRuntimePointerPath({ env, home })), false, "the machine-wide slot is untouched");
+  });
+});
+
+describe("cli/autostart — a pointer named through the environment (T-20261014-044653)", () => {
+  it("is handed to the child, and is the file this parent waits on", async () => {
+    // A name is the `pointerPath` *option* or `TASKD_RUNTIME_POINTER`, and the two
+    // arrive separately: the CLI (and the scheduling guard) has the option unset
+    // and the variable in the environment. Treating only the option as a name is
+    // how a *fix* for the autostart-steals-a-live-board window would break this
+    // path — the child would be left to choose a file for itself (the machine-wide
+    // slot) while this parent waited at the named one, which cannot end.
+    const dataDir = makeTempDir();
+    const named = join(makeTempDir(), "runtime.json");
+    const live = await startTaskd();
+    try {
+      const env = {
+        ...baseEnv(),
+        TASKD_DATA_DIR: dataDir,
+        TASKD_RUNTIME_POINTER: named,
+        TASKD_PORT: "0",
+        TASKD_HOST: "127.0.0.1",
+      };
+
+      const childPid = 2_147_483_646;
+      let childEnv = null;
+      const spawnFn = (command, args, options) => {
+        childEnv = options.env;
+        // A "daemon" that writes exactly where it was told, naming the pid the
+        // parent is waiting for — nothing else makes a file believable there.
+        writeFileSync(named, JSON.stringify({ url: live.url, port: live.port, pid: childPid }));
+        return { pid: childPid, unref() {} };
+      };
+
+      const started = await spawnTaskd({ env, waitMs: 2_000, spawnFn });
+      assert.equal(childEnv.TASKD_RUNTIME_POINTER, named, "the child is told where to write");
+      assert.equal(started.url, live.url, "and the parent waited at that file, not at the machine-wide slot");
+    } finally {
+      await live.close();
+    }
   });
 });
 
