@@ -1582,7 +1582,9 @@ of them had — *which* empty states carry a clear control.
 
 The activity view's own design page (`design/activity/`) carries the same two states and the
 same rules in its scoped `<style>`; it is edited in step, and its machine check —
-`node design/activity/check-activity.mjs`, 194 assertions — is the round's regression gate.
+`node design/activity/check-activity.mjs`, 209 assertions — is the round's regression gate.
+(R17 landed it at 194; T-20261013-184456 aligned the page's filter bar to R15 ①/③ and added
+the family's 15 assertions — `S1.5`–`S1.8b`, `R7.0`, `R2.4a`–`R2.4c`, `R2.10a`–`R2.12`.)
 
 **"At the top" is read after layout, not off the declaration.** R17's third decision is a
 *layout* fact, and the check now measures it as one: `flow-gap` (the container is given 240px

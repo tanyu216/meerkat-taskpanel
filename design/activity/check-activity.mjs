@@ -149,7 +149,7 @@ check(
 );
 for (const hook of [
   "data-activity-filters",
-  "data-activity-filter-reset",
+  "data-filter-clear",
   "data-activity-filter-count",
   "data-activity-day",
   "data-activity-row",
@@ -175,6 +175,77 @@ for (const name of ["actor", "event", "task"]) {
   check(
     `S1.4 [data-activity-filter="${name}"] present`,
     html.includes(`data-activity-filter="${name}"`)
+  );
+}
+
+/* --- 1b · the control family, R15 ①/③ --------------------------------
+   B26's bar and B04's are one bar, control for control: a named
+   `section.td-filters` whose fields are daisyUI `dropdown` panels, and whose
+   tail clear is B04's own `[data-filter-clear]` / `filters.clear`. The native
+   `<select>` is gone, and with it the old `[data-activity-filter-reset]`; the
+   comments are read out of the way first, so a mention of a tag in prose
+   cannot satisfy — or break — a count. */
+{
+  const bare = withoutComments(html);
+  const bar = startTags(html).find((t) => t.attrs["data-activity-filters"] !== undefined);
+  check(
+    "S1.5 the bar is a `section.td-filters` named `filters.label` (R15 ①)",
+    !!bar && bar.name === "section" && classSet(bar).has("td-filters") &&
+      bar.attrs["data-i18n-aria-label"] === "filters.label" &&
+      bar.attrs["aria-label"] === "Filters",
+    bar ? `${bar.name}.${bar.attrs.class} · aria-label "${bar.attrs["aria-label"]}"` : "no [data-activity-filters]"
+  );
+
+  const selects = (bare.match(/<select\b/g) || []).length;
+  check("S1.6 no native <select> anywhere in the document (R15 ①)", selects === 0, `${selects} <select>`);
+
+  const controls = startTags(html).filter((t) => t.attrs["data-activity-filter"] !== undefined);
+  const shapes = controls.map((t) => ({
+    name: t.name,
+    dropdown: classSet(t).has("dropdown"),
+    dismiss: t.attrs["data-dismiss-on-outside"] !== undefined,
+    value: t.attrs["data-activity-filter-value"]
+  }));
+  check(
+    "S1.7 the three controls are `details.dropdown` panels with a value carrier (R15 ①)",
+    controls.length === 3 && shapes.every((s) => s.name === "details" && s.dropdown && s.dismiss && s.value === "all"),
+    shapes.map((s) => `${s.name}.dropdown:${s.dropdown} dismiss:${s.dismiss} value:${s.value}`).join(" · ")
+  );
+
+  const summaries = startTags(html).filter((t) => t.attrs["data-activity-filter-summary"] !== undefined);
+  check(
+    "S1.7a each control has a `summary` trigger (role=button, aria-haspopup=menu)",
+    summaries.length === 3 &&
+      summaries.every((t) => t.name === "summary" && classSet(t).has("td-label-trigger") &&
+        t.attrs.role === "button" && t.attrs["aria-haspopup"] === "menu"),
+    `${summaries.length} summary trigger(s)`
+  );
+
+  const rows = startTags(html).filter((t) => t.attrs["data-activity-filter-option"] !== undefined);
+  check(
+    "S1.7b the menus hold the rows as `data-activity-value` buttons",
+    rows.length === 17 && rows.every((t) => t.name === "button" && t.attrs["data-activity-value"] !== undefined),
+    `${rows.length} option row(s)`
+  );
+
+  const clears = (bare.match(/data-filter-clear(?=[\s=>])/g) || []).length;
+  check(
+    "S1.8 the bar's clear is `[data-filter-clear]` carrying `filters.clear` (R15 ③)",
+    clears === 1 && /data-filter-clear[^>]*data-i18n="filters\.clear"/.test(bare),
+    `${clears} Clear control(s)`
+  );
+  const stale = [
+    bare.includes("data-activity-filter-reset") ? "[data-activity-filter-reset]" : null,
+    bare.includes("activity.filter.reset") ? "activity.filter.reset" : null
+  ].filter(Boolean);
+  check(
+    "S1.8a the retired hook and key are gone from the page (R15 ③)",
+    stale.length === 0,
+    stale.length ? `still present: ${stale.join(", ")}` : "hook and key both retired"
+  );
+  check(
+    "S1.8b the filter-empty state keeps its own inline reset (B26.5)",
+    startTags(html).some((t) => t.attrs["data-activity-empty-reset"] !== undefined)
   );
 }
 
@@ -328,13 +399,17 @@ check("S2.1 every [data-activity-day] carries data-day", dayTags.every((t) => /^
   );
 }
 
-function optionValues(source, selectNeedle) {
-  const at = source.indexOf(selectNeedle);
+/* The rows a filter control admits. R15 ① — the control is a `dropdown`
+   panel now, so its domain is the `data-activity-value` on each option button
+   inside the control's own `<details>`, not an `<option value>` in a
+   `<select>`. */
+function optionValues(source, controlNeedle) {
+  const at = source.indexOf(controlNeedle);
   if (at === -1) return [];
-  const open = source.lastIndexOf("<select", at);
-  const close = source.indexOf("</select>", at);
+  const open = source.lastIndexOf("<details", at);
+  const close = source.indexOf("</details>", at);
   const body = source.slice(open, close);
-  return [...body.matchAll(/<option[^>]*value="([^"]+)"/g)].map((m) => m[1]);
+  return [...body.matchAll(/data-activity-filter-option[^>]*data-activity-value="([^"]+)"/g)].map((m) => m[1]);
 }
 
 /* --- 6 · empty states -------------------------------------------------- */
@@ -767,33 +842,45 @@ async function renderSuite() {
     check("R1.9 relative times are the reference instant's", boot.times[0] === "9m ago" && boot.times[2] === "39m ago", boot.times.join(" | "));
     check("R1.10 exactly one nav item is current, and it is activity", boot.navCurrent === 1 && boot.navCurrentIsActivity === "activity");
 
-    /* -- R2 · filters ---------------------------------------------------- */
+    /* -- R2 · filters ----------------------------------------------------
+       R15 ① — a filter is chosen by pressing a row in the control's own
+       dropdown panel, not by setting a `<select>` value. The press is a real
+       DOM click, so it exercises the delegated handler the page ships. */
     const agents = await page.evaluate(() => {
-      const select = document.querySelector('[data-activity-filter="actor"]');
-      select.value = "agent";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
+      document
+        .querySelector('[data-activity-filter="actor"] [data-activity-filter-option][data-activity-value="agent"]')
+        .click();
+      const control = document.querySelector('[data-activity-filter="actor"]');
       const rows = [...document.querySelectorAll("[data-activity-row]")].filter((r) => !r.hidden);
       return {
         visible: rows.length,
         allAgents: rows.every((r) => r.getAttribute("data-assignee-kind") === "agent"),
         count: document.querySelector("[data-activity-filter-count]").textContent.trim(),
         hash: location.hash,
+        value: control.getAttribute("data-activity-filter-value"),
+        trigger: control.querySelector("[data-activity-filter-text]").textContent.trim(),
+        current: control.querySelector('[data-activity-filter-option][aria-current="true"]')
+          ?.getAttribute("data-activity-value"),
+        menuOpen: control.hasAttribute("open"),
       };
     });
     check("R2.1 the actor filter narrows the feed", agents.visible > 0 && agents.visible < boot.visible, `${agents.visible} of ${boot.visible}`);
     check("R2.2 every surviving row is an agent", agents.allAgents);
     check("R2.3 the count follows the filter", agents.count === `${agents.visible} entries`, `"${agents.count}"`);
     check("R2.4 the filter state is in the URL hash", agents.hash === "#/activity?actor=agent", agents.hash);
+    check("R2.4a the chosen row writes the control's value and closes its menu", agents.value === "agent" && !agents.menuOpen, `value ${agents.value} · open ${agents.menuOpen}`);
+    check("R2.4b the trigger states the chosen row's own copy (R15 ①)", agents.trigger === "Agents", `"${agents.trigger}"`);
+    check("R2.4c `aria-current` follows the chosen row (R15 ①)", agents.current === "agent", `aria-current "${agents.current}"`);
 
     const empty = await page.evaluate(() => {
       /* Humans never filed a delivery report in this feed, so the pair
          matches nothing — the filter empty state, not the project one. */
-      const actor = document.querySelector('[data-activity-filter="actor"]');
-      actor.value = "human";
-      actor.dispatchEvent(new Event("change", { bubbles: true }));
-      const select = document.querySelector('[data-activity-filter="event"]');
-      select.value = "delivery";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
+      document
+        .querySelector('[data-activity-filter="actor"] [data-activity-filter-option][data-activity-value="human"]')
+        .click();
+      document
+        .querySelector('[data-activity-filter="event"] [data-activity-filter-option][data-activity-value="delivery"]')
+        .click();
       return {
         visible: [...document.querySelectorAll("[data-activity-row]")].filter((r) => !r.hidden).length,
         filterEmpty: !document.querySelector('[data-activity-empty][data-activity-empty-kind="filter"]').hidden,
@@ -814,10 +901,39 @@ async function renderSuite() {
         visible: [...document.querySelectorAll("[data-activity-row]")].filter((r) => !r.hidden).length,
         hash: location.hash,
         count: document.querySelector("[data-activity-filter-count]").textContent.trim(),
+        values: ["actor", "event", "task"].map((n) =>
+          document.querySelector(`[data-activity-filter="${n}"]`).getAttribute("data-activity-filter-value")
+        ),
       };
     });
     check("R2.9 reset restores the full feed", reset.visible === boot.visible && reset.count === `${boot.visible} entries`, `${reset.visible} · "${reset.count}"`);
     check("R2.10 reset clears the hash", reset.hash === "#/activity", reset.hash);
+    check("R2.10a reset returns all three controls to `all`", reset.values.every((v) => v === "all"), reset.values.join(" / "));
+
+    /* R15 ③ — the bar's own Clear is B04's control. Pressing it must reset the
+       three activity filters *and* leave the state restatable, the same move
+       the empty-state reset makes from the other place. */
+    const cleared = await page.evaluate(() => {
+      document
+        .querySelector('[data-activity-filter="task"] [data-activity-filter-option][data-activity-value="TD-128"]')
+        .click();
+      const before = location.hash;
+      document.querySelector("[data-activity-filters] [data-filter-clear]").click();
+      return {
+        before,
+        after: location.hash,
+        visible: [...document.querySelectorAll("[data-activity-row]")].filter((r) => !r.hidden).length,
+        values: ["actor", "event", "task"].map((n) =>
+          document.querySelector(`[data-activity-filter="${n}"]`).getAttribute("data-activity-filter-value")
+        ),
+        trigger: document.querySelector('[data-activity-filter="task"] [data-activity-filter-text]').textContent.trim(),
+      };
+    });
+    check("R2.11 the bar's Clear is `[data-filter-clear]` and resets the three filters (R15 ③)",
+      cleared.before === "#/activity?task=TD-128" && cleared.after === "#/activity" &&
+      cleared.visible === boot.visible && cleared.values.every((v) => v === "all"),
+      `${cleared.before} → ${cleared.after} · ${cleared.visible} row(s) · ${cleared.values.join(" / ")}`);
+    check("R2.12 Clear restates the trigger from the chosen row (R15 ①/③)", cleared.trigger === "All tasks", `"${cleared.trigger}"`);
 
     /* -- R3 · the unread boundary --------------------------------------- */
     const read = await page.evaluate(() => {
@@ -1065,6 +1181,38 @@ async function renderSuite() {
     await page.close();
 
     /* -- R7 · the breakpoints --------------------------------------------- */
+    /* The R7 probe's closed-panel exclusion must not become a blanket skip:
+       read the predicate itself, closed *and* open. An open panel stays in
+       scope (so a menu that really overflows is still caught), the closed
+       face — the `summary` — is always in scope, and only the skipped panel
+       is out. */
+    {
+      const gpage = await browser.newPage({ viewport: { width: 1512, height: 900 } });
+      await gpage.goto(base, { waitUntil: "load" });
+      await gpage.waitForFunction(() => !!window.tdActivity);
+      const guard = await gpage.evaluate(() => {
+        const d = document.querySelector('[data-activity-filter="actor"]');
+        const menu = d.querySelector(".dropdown-content");
+        const summary = d.querySelector(":scope > summary");
+        const skipped = (el) => {
+          const dd = el.closest("details");
+          if (!dd || dd.open) return false;
+          const s = dd.querySelector(":scope > summary");
+          return !(s && (s === el || s.contains(el)));
+        };
+        d.open = true;
+        const openSkipped = skipped(menu);
+        d.open = false;
+        return { openSkipped, closedSkipped: skipped(menu), summarySkipped: skipped(summary) };
+      });
+      await gpage.close();
+      check(
+        "R7.0 the overflow probe measures an open panel and the closed face, and skips only the closed panel",
+        guard.openSkipped === false && guard.closedSkipped === true && guard.summarySkipped === false,
+        `open ${guard.openSkipped} · closed ${guard.closedSkipped} · trigger ${guard.summarySkipped}`
+      );
+    }
+
     for (const vp of VIEWPORTS) {
       const vpage = await browser.newPage({ viewport: { width: vp.width, height: vp.height } });
       const errors = [];
@@ -1076,8 +1224,24 @@ async function renderSuite() {
       await vpage.waitForFunction(() => !!window.tdActivity);
       const metrics = await vpage.evaluate(() => {
         const de = document.documentElement;
+        /* R15 ① — the filter bar holds `dropdown` panels now, and a closed
+           `<details>` does not paint its panel while the panel's box still
+           measures: `getBoundingClientRect` returns the absolutely-positioned
+           menu's rect even though nothing is drawn and the document does not
+           scroll (`scrollWidth == clientWidth` — the hard reading below, and
+           the one the probe alone cannot make). The panel is a *skipped*
+           descendant, so it is not an element this assertion is about; the
+           closed face — the `summary` — is. Excluding them is not a
+           relaxation: the board page (the R15 oracle) carries the identical
+           shape, and an **open** panel is still measured. */
+        const skipped = (el) => {
+          const d = el.closest("details");
+          if (!d || d.open) return false;
+          const s = d.querySelector(":scope > summary");
+          return !(s && (s === el || s.contains(el)));
+        };
         const overflowing = [...document.querySelectorAll("[data-activity-view] *")]
-          .filter((el) => el.getBoundingClientRect().right > de.clientWidth + 1)
+          .filter((el) => !skipped(el) && el.getBoundingClientRect().right > de.clientWidth + 1)
           .slice(0, 3)
           .map((el) => el.className || el.tagName);
         return { scrollWidth: de.scrollWidth, clientWidth: de.clientWidth, overflowing };
@@ -1181,12 +1345,12 @@ async function shots() {
   await shoot("24-activity-filter-empty.png", {
     viewport: { width: 1512, height: 900 },
     act: (p) => p.evaluate(() => {
-      const actor = document.querySelector('[data-activity-filter="actor"]');
-      actor.value = "human";
-      actor.dispatchEvent(new Event("change", { bubbles: true }));
-      const event = document.querySelector('[data-activity-filter="event"]');
-      event.value = "delivery";
-      event.dispatchEvent(new Event("change", { bubbles: true }));
+      document
+        .querySelector('[data-activity-filter="actor"] [data-activity-filter-option][data-activity-value="human"]')
+        .click();
+      document
+        .querySelector('[data-activity-filter="event"] [data-activity-filter-option][data-activity-value="delivery"]')
+        .click();
     }),
   });
   await shoot("25-activity-burst.png", {
