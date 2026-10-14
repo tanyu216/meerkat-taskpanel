@@ -100,6 +100,87 @@ stale, so the supervisor surfaces it instead of guessing. Patrol does not start
 an LLM turn by default — escalation is a notification, not a model call
 (`--patrol-llm=yes` opts in).
 
+## The rest of the SLA table: the same pass, five more rows
+
+A stale heartbeat is **one** row of `PROTOCOL §⑮`'s timeout table. The others —
+a card parked on the leader's clarification, an unanswered confirmation gate, a
+delivery nobody queued an acceptance review for, a defect whose fix card was
+never created, and the leader's own patrol going quiet — used to be invisible to
+the same pass that watched the heartbeat. They are now covered by the **same
+patrol tick**, through the shared inspection contract
+(`sla-inspection-contract.md`, the `team/guides/` document both mechanisms are
+written against), which also gives the stale-heartbeat row a channel the two
+mechanisms can share and adds a row for the inspectors' own liveness — an
+inspector that has stopped reads exactly like a healthy board.
+
+What that means concretely:
+
+- **One tuple, shared with the openclaw-side inspector.** Each alert is the flat
+  25-field object of the contract (§4): `alert_id`, `dedup_key`, `sla_row`,
+  `severity`, `measure_start_at`, `threshold_min`, `due_at`, `action`, `target`,
+  `evidence`, … A field means the same thing on both mechanisms, so the two can
+  never label one card differently.
+- **Thresholds are `PROTOCOL §⑮`'s, referenced.** `SLA_ROWS` in
+  `src/shared/sla-patrol.mjs` is the runtime mapping table: every limit sits next
+  to the row it came from. `warn` is `L − P` (the mechanism's own period before
+  the published limit — 到点提醒, not a breach), `overdue` is `L`, `escalate` is
+  the published further timeout.
+- **Working hours, not wall clock.** `T` accumulates only inside the
+  Asia/Shanghai 09:00–23:00 window, off-hours rolled over — a card blocked at the
+  end of a working day cannot be "overdue" overnight, and a host in another
+  timezone measures the same `T`.
+- **Notify-only, always.** Every alert is addressed to the **leader**
+  (`target: "leader"`; the card field is `notify_leader`, never a person's name).
+  The releasability hint (`releasable` / `releasable_basis`) points at a card that
+  *looks* releasable — releasing it stays the leader's `§⑦` action, and no code
+  path in the patrol writes card state or starts an LLM turn for a new row.
+- **Leader attribution is an *author* test, not a *kind* test.** The
+  `leader_stalled` row counts an event as the leader's by **who did it** — a
+  `confirm` / `decision` / `change` comment whose author is the leader, a card
+  the leader created, a card that moved through the leader-only `done`
+  transition. A `change` comment written by a *worker* does not reset the stall
+  clock, because otherwise any chatty worker could mask a real stall. "Who" is
+  the board's own decision authority by default (`author_kind = "human"`, the
+  same reading `isDecisionComment` and `listDecisions` use); a deployment whose
+  leader writes as an agent names it with `--sla-leader <id>` — set the same
+  identity on both mechanisms, since the contract requires **one** set.
+- **Confidence is pinned, not guessed.** `confidence: "high"` means the origin
+  instant was read verbatim from one unambiguous source; `"low"` means it came
+  from a fallback, a shape match, or a predicate that could not be decided. A
+  quietly-picking-latest among several *exact* candidates stays `high`.
+- **Zero-cost idle.** A board with nothing past a lead produces no alert, no
+  notification and no extra read. `leader_stalled` additionally conditions on
+  there being leader-owed work at all, so a quiet night is never read as a
+  stalled leader.
+- **Fail-safe.** An origin that cannot be read alerts (at `warn`, with no
+  threshold) instead of staying quiet; a pre-emit re-check that cannot run lets
+  the alert through rather than silencing it; a defect wait whose fix-card check
+  could not be decided (an incomplete board read) is still reported — as open,
+  with `confidence: "low"`; and a candidate the re-check drops is always
+  reported, never swallowed.
+- **De-duplicated.** A ledger beside the supervisor's state file keys each alert
+  by `<card>#<row>#<tier>@<origin>`, so a repeat is suppressed, a *tier
+  promotion* is not (an escalation is never de-duplicated away), and a new wait on
+  the same card re-notifies. An unreadable ledger suppresses nothing.
+
+### Two rows that used to be exceptions
+
+- **`heartbeat_stale` now emits the §4 tuple as well**, beside the legacy
+  `{stale: […]}` alert. The legacy envelope is a published consumer contract and
+  keeps working exactly as before, but it carries no `dedup_key` and no
+  `sla_row`, so it cannot take part in the shared ledger — without the tuple the
+  two mechanisms would each notify the same stale heartbeat. The stale heartbeat
+  therefore goes out twice, to two different channels, on purpose.
+- **`inspector_liveness` is the mutual watchdog.** Every completed pass rewrites
+  this mechanism's own last-successful-run marker
+  (`--sla-last-ok`, default `loop-patrol-last-ok.json` beside the state file).
+  Point `--sla-peer <path>` at the other mechanism's marker and a marker older
+  than `3 × 15min` raises the row at `warn` — a stopped inspector otherwise looks
+  exactly like a healthy board. **With no `--sla-peer` configured, the peer's
+  half is a registered dependency, not an alarm**: the peer inspector's marker
+  does not exist on this board yet, and alarming every pass on that would be the
+  permanently-red failure this contract exists to prevent.
+
 ## Continuity: a fresh handoff, not a resumed pile
 
 Every wake hands the worker a **bounded, fresh handoff** built by
@@ -854,10 +935,16 @@ takes the board's location from `MEERKAT_TASKPANEL_REPO` in the host config.
 | `--once` | off | one tick, then exit (for cron / launchd / systemd / tests) |
 | `--patrol-only` | off | with `--once`, run only the patrol pass |
 | `--patrol-llm=yes\|no` | `no` | let patrol start an LLM turn on a stale card |
-| `--notify <cmd>` | — | run `<cmd>` with each patrol alert as JSON on stdin |
+| `--notify <cmd>` | — | run `<cmd>` with each patrol alert as JSON on stdin — both the legacy heartbeat alert and the SLA tuple |
 | `--dry-run` | off | print intended actions; claim nothing, spawn nothing |
 | `--log <path>` | `<home>/<host-dir>/meerkat-taskpanel/supervisor.log` | where the tick log appends |
 | `--state <path>` | `<home>/<host-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry |
+| `--sla-ledger <path>` | `sla-ledger.json` beside `--state` | the SLA de-duplication ledger; an unreadable one suppresses nothing |
+| `--sla-leader <id>` | from `$MEERKAT_TASKPANEL_SLA_LEADER`, else unset | the author id the leader writes under, for the `leader_stalled` attribution set; unset ⇒ the board's own decision authority (`author_kind = "human"`). Set the **same** identity on both mechanisms |
+| `--sla-last-ok <path>` | `loop-patrol-last-ok.json` beside `--state` | where this mechanism publishes its own last-successful-run marker for the peer's watchdog |
+| `--sla-peer <path>` | from `$MEERKAT_TASKPANEL_SLA_PEER`, else unset | the peer inspector's last-ok marker; a marker older than `3 × 15min` raises `inspector_liveness`. Unset ⇒ the peer's half is a registered dependency and nothing alarms |
+| `--board-limit <n>` | `500` | max cards read in one patrol pass |
+| `--trail-limit <n>` | `200` | max comment trails read in one pass (a cap is always logged) |
 | `--config <path>` | `<home>/<host-dir>/meerkat-taskpanel.env` | host config: the claim default, and (for a host copy) `MEERKAT_TASKPANEL_REPO` |
 | `--home <path>` | `$HOME` | base for those defaults |
 | `--glue <path>` | `<home>/<host-dir>/bin/wake-<host>.sh` | the wake glue that resolves the project directory and starts the worker ([Where a worker runs](#where-a-worker-runs)) |
