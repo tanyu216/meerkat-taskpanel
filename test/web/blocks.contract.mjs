@@ -2884,14 +2884,24 @@ const BLOCKS = [
        * carry, opens on the same 28px brand mark, and states the second line
        * (`waiting.empty.hint`) its one-line version was missing. Its box grows
        * with the variant — gap 8 → 12px, padding 16 → 40px/24px, title 12 → 14px
-       * — because `-lg` restates its children's type. The horizontal cap and
-       * centring (`.td-waiting-empty`'s 420px / `margin: 0 auto`) are unchanged;
-       * only the vertical centring went. */
+       * — because `-lg` restates its children's type.
+       *
+       * 2026-10-15 — R17's horizontal cap is withdrawn. `.td-waiting-empty` was
+       * `width: 100%` / `max-width: 420px` / `margin: 0 auto`; it is now
+       * `flex: none` + `width: 100%` alone, so the dashed box spans the view the
+       * way B12's `no-results` box spans the board. `maxWidth` is asserted
+       * rather than left implicit because it is the one declaration the other
+       * rules here cannot see: every remaining rule (`gap`, `paddingTop`,
+       * `borderRadius`, the two font sizes) is just as true of a 420px box as of
+       * a full-width one. The computed value of `max-width` is the specified one
+       * — it is not resolved against layout — so `none` is a real reading even
+       * though the element ships `hidden` in the fixture. */
       { kind: "classes", probe: "[data-waiting-empty]", includes: ["td-empty", "td-empty-lg", "td-waiting-empty"] },
       { kind: "classes", probe: "[data-waiting-empty] [data-i18n=\"waiting.empty\"]", includes: ["td-empty-title"] },
       { kind: "classes", probe: "[data-waiting-empty] [data-i18n=\"waiting.empty.hint\"]", includes: ["td-empty-hint"] },
       { kind: "computed", probe: "[data-waiting-empty] svg.td-logo.td-logo-lg", count: 1, property: "width", equalsPx: 28 },
       { kind: "computed", probe: "[data-waiting-empty]", property: "alignSelf", notEquals: "center" },
+      { kind: "computed", probe: "[data-waiting-empty]", property: "maxWidth", equals: "none" },
       { kind: "computed", probe: "[data-waiting-empty]", property: "gap", equalsPx: 12 },
       { kind: "computed", probe: "[data-waiting-empty]", property: "paddingTop", equalsPx: 40 },
       { kind: "computed", probe: "[data-waiting-empty]", property: "paddingRight", equalsPx: 24 },

@@ -96,6 +96,17 @@ label selector opens (one of the two is open at a time).
 | States preview | `[data-states-open]` — sidebar footer control, opens **B18** |
 | Footer controls | `[data-access-status]` — **one row of three equal thirds at ≥1024px, three stacked full-width rows at ≤1023px** (R7, revised 2026-10-12 21:19): theme · language · settings. Each cell is a `[data-access-cell]` block button (`.td-access-cell`); in the row a vertical hairline on its **inline start** separates it from its neighbour (the first cell carries none), and in the stack a horizontal hairline on its **block start** separates it from the cell above (the first row carries none) |
 
+> **项目短码（口径 = `design/contracts/side-rail-short-code.md`）**：`.td-side-icon` 的文本 =
+> 该项目的**有效前缀**（= 卡号前缀，服务端一次派生：存储前缀非空，否则 `identifierPrefix(id)`），
+> 经 projects wire 的**只读** `prefix` 字段下发，客户端**逐字**渲染。原型三行的 `ORC`/`TD`/`SR`
+> 与 `app.js` 的 `PROJECT_PREFIX` 逐字一致（本行「prefix monogram」即此义）；实现侧
+> `initialsOf(name)` 是偏离，另卡修正。
+
+> **前缀蒙版的溢出（口径 = `design/contracts/rail-chip-overflow.md`）**：`.td-side-icon` 的文本 =
+> 项目的**有效前缀**，逐字渲染；`24×24` 的盒装不下时，**行内自伤可接受、跨行他伤不可接受**——
+> 绘制文本不得越出本行行盒、不得越出 rail 的 inline 盒；整串走 `title`。盒几何（24×24、rail only）
+> 与「≥1024px 不显示」不动。实测依据、被排除的候选（clamp / `…` / 字符 slice）与留给实现卡的断言清单见该契约。
+
 **R11 ② — a roster name is a route.** The `.td-agent-text` span used to hold the row's names
 as one string of text; it now holds one `<button>` per name (`[data-agent-assignee="jobs"]`,
 carrying `data-assignee` + `data-assignee-kind="agent"` as well), with the commas left as the
@@ -1187,7 +1198,7 @@ roots, two questions; the ruling that keeps them apart is Elon's (card comment, 
 | Root | `[data-waiting-view]` — fourth child of `main.td-main`, beside `[data-board-view]`, `[data-list]` and `[data-activity-view]`; ships **`hidden`**, because the no-script default view is the board |
 | B27.2 header | `[data-waiting-head]` → `[data-waiting-title]` (`waiting.title`, byte-identical to `nav.waiting`) + the description (`waiting.subtitle`, R15 ④ — a `data-i18n` seat only, no `data-waiting-*` of its own) + `[data-waiting-count]` (`waiting.count`, `%s` template) |
 | B27.1 the queue | `[data-waiting-list]` → `[data-waiting-item]` → `[data-waiting-actor]` / `[data-waiting-reason]` / `[data-waiting-task]` + `[data-waiting-task-title]` / `[data-waiting-since]` / `[data-waiting-open]` |
-| B27.3 empty state | `[data-waiting-empty]`; ships `hidden`. R17 gives it B12's reading — the brand mark first, `td-empty-lg`, top-aligned — and the second line the state was missing (`waiting.empty.hint`). No button: nothing in this view filters |
+| B27.3 empty state | `[data-waiting-empty]`; ships `hidden`. R17 gives it B12's reading — the brand mark first, `td-empty-lg`, top-aligned — and the second line the state was missing (`waiting.empty.hint`). No button: nothing in this view filters. Its R17 420px cap is withdrawn (2026-10-15): it is `width: 100%`, full-width like B12's |
 
 **R15 ④ — the header states what the view is, not only its name.** Terry's 2026-10-13 third
 request (`T-20261013-165112`) was that `Waiting on me` learn the two-line head B26 already
@@ -1575,10 +1586,12 @@ of them had — *which* empty states carry a clear control.
   every one of them (B12's own copy is unchanged).
 - The block stands at the **top** of its container. `.td-activity-empty` loses
   `margin: auto 12px` for `margin: 0 12px`, and `.td-waiting-empty` loses
-  `align-self: center` + `margin: auto 0` for `margin: 0 auto` — the waiting block keeps its
-  100% / 420px cap and its horizontal centring, because it is the only box in the main area
-  and a dashed rule stretched across 1300px is the shape of a drop target, not of an answer.
-  Nothing else about either rule moves.
+  `align-self: center` + `margin: auto 0` for `margin: 0 auto` — R17 kept a 100% / 420px cap
+  there, because it is the only box in the main area and a dashed rule stretched across
+  1300px is the shape of a drop target, not of an answer. **That cap is withdrawn
+  (2026-10-15):** the waiting block is `flex: none` + `width: 100%` like B12's, since the
+  queue's own header and rows span the view and the box standing in for them has to span it
+  too. Nothing else about either rule moves.
 
 The activity view's own design page (`design/activity/`) carries the same two states and the
 same rules in its scoped `<style>`; it is edited in step, and its machine check —

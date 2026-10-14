@@ -220,8 +220,10 @@ still written and left for you to load, and OpenClaw still gets none.
 <prefix>/taskpanel/scheduling/systemd/meerkat-taskpanel-taskd.service
 ```
 
-`<prefix>` is `--prefix` (default `$HOME`). There is **one guard per machine**, not one
-per host — the label and unit name carry no agent or host segment.
+`<prefix>` is `--prefix` (default `$HOME`). There is **one guard per machine** — and
+therefore **one guarded board** — not one per host: the label and unit name carry no agent
+or host segment, and which board it serves is chosen at install time. See
+[`scheduling.md § One guard per machine`](scheduling.md#one-guard-per-machine).
 
 **What install does:** it writes the unit and loads it immediately — no question, no
 separate flag:
@@ -252,6 +254,30 @@ taskd guard: loaded (com.meerkat-taskpanel.taskd, pid …); /health did not answ
 Neither line fails the install. The unit names the **absolute** node that ran the install,
 so a node that lives only under nvm or Homebrew still starts the server — see
 [`scheduling.md § The taskd guard (keepalive)`](scheduling.md#the-taskd-guard-keepalive).
+
+**A second board does not inherit the guard.** The guard is one per machine
+([`scheduling.md § One guard per machine`](scheduling.md#one-guard-per-machine)), so a
+re-install for a *different* board is refused rather than silently re-pointing the machine's
+only guard (on Linux, systemd reads `~/.config/systemd/user/meerkat-taskpanel-taskd.service`
+and that file is the guard). The refusal names both boards, leaves the unit alone, and is
+the install's one non-zero guard outcome — **exit 3**, which `install.sh` reports and then
+carries on from (the host skills are installed either way, and the install's own exit status
+is unchanged). `--force` is how you re-point it deliberately:
+
+```text
+taskd guard: refused — com.meerkat-taskpanel.taskd is already loaded and serves another board (<its dataDir>);
+  ~/.config/systemd/user/meerkat-taskpanel-taskd.service was left unchanged, and this board (<this dataDir>) is not guarded by it
+taskd guard: this machine runs one guarded board — re-run with --force to point it at <this dataDir>
+```
+
+A re-install of the **same** board is not a refusal, and says which board the loaded guard
+serves — so `already loaded (no change)` can no longer read as "your board is guarded" when
+it is not:
+
+```text
+taskd guard: already loaded (no change) — the machine's guard serves this board (<dataDir>)
+taskd guard: already loaded (no change) — which board it serves could not be read here
+```
 
 **Stopping / uninstalling it.** The guard restarts the server after *any* exit, so a
 plain `kill` is not enough — use the supervisor's own stop:

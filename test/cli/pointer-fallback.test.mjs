@@ -26,7 +26,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
-import { ensureBoard, readPointer } from "../../src/shared/transport/runtime.mjs";
+import { ensureBoard, probeHealth, readPointer } from "../../src/shared/transport/runtime.mjs";
 import { resolveRuntimePointerPath } from "../../src/shared/runtime-locator.mjs";
 import {
   baseEnv,
@@ -36,6 +36,7 @@ import {
   readJsonFile,
   runCli,
   startTaskd,
+  waitUntil,
 } from "./helpers/cli-harness.mjs";
 
 after(cleanupTempDirs);
@@ -248,6 +249,152 @@ describe("cli/pointer-fallback — a real board pushed off the slot", () => {
       assert.equal(readFileSync(slot, "utf8"), slotBefore, "the live board keeps its address, byte for byte");
     } finally {
       await live.close();
+    }
+  });
+});
+
+/**
+ * The residual window (T-20261013-165749 §⑪ 遗留 ② / §6.3).
+ *
+ * The fossil guard above believes the slot's board *when it answers `/health`*.
+ * "Reachable" and "healthy" are not the same thing: a board can hold its address
+ * and run its event loop while `/health` reports that it is not serving yet (a
+ * 503, a non-`ok` status). The guard then declines the slot, and the autostart
+ * path takes over — and *that* path is the one place where the write side's rule
+ * ("never displace a live board") does not reach, because the parent **names**
+ * the machine-wide file to the daemon it spawns: a named pointer is obeyed
+ * verbatim, so the newcomer overwrites the live-but-unhealthy board's address
+ * instead of being addressed beside its own data directory.
+ *
+ * The harm is the incident this family of cards exists to remove: a board that
+ * is up becomes unfindable — every reader of the slot now resolves a *different*
+ * board's address, and the wedged one has no path back to the machine-wide file.
+ *
+ * The cases below are the two halves of the fix's contract: with a live but
+ * unhealthy board in the slot the spawned daemon must be addressed beside its own
+ * data directory (the slot untouched, byte for byte), and with nobody in the slot
+ * the ordinary unnamed start must still be found — the child, not the parent,
+ * decides which file it owns, so the parent waits at both places it may have
+ * written.
+ */
+
+/** A board-shaped address that is reachable but unhealthy: `/health` is a 503. */
+async function startUnhealthyBoard() {
+  const { createServer } = await import("node:http");
+  const server = createServer((req, res) => {
+    res.writeHead(503, { "content-type": "application/json" });
+    res.end(JSON.stringify({ ok: false, error: { code: "BOARD_NOT_READY", message: "not serving yet" } }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  return {
+    url: `http://127.0.0.1:${port}`,
+    port,
+    // It answers, so "reachable" is not the question — and it is a live process,
+    // which is what makes the write side treat it as an owner rather than a fossil.
+    pid: process.pid,
+    async close() {
+      server.closeAllConnections?.();
+      await new Promise((resolve) => server.close(resolve));
+    },
+  };
+}
+
+/** Stop the daemon an `ensureBoard` call started (the pid is in its pointer). */
+async function stopSpawned(started) {
+  const pid = started?.pointer?.pid;
+  if (typeof pid !== "number") return;
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    /* already gone */
+  }
+  await waitUntil(() => {
+    try {
+      process.kill(pid, 0);
+      return false;
+    } catch {
+      return true;
+    }
+  });
+}
+
+/** The environment a child gets in these cases: a temp `home`, no named pointer. */
+function spawnChildEnv(home, dataDir) {
+  return slotChildEnv(home, { TASKD_DATA_DIR: dataDir, TASKD_PORT: "0", TASKD_HOST: "127.0.0.1" });
+}
+
+describe("cli/pointer-fallback — a live but unhealthy board keeps its address", () => {
+  it("does not hand the machine-wide slot to the daemon it spawns", async () => {
+    const home = makeTempDir();
+    const dataDir = makeTempDir();
+    const otherDir = makeTempDir();
+    const slot = slotPath(home);
+    const unhealthy = await startUnhealthyBoard();
+    let started = null;
+    try {
+      // The slot names another board that is *up* — a live pid, a listening port
+      // — whose `/health` does not report `ok`. The write side would refuse to
+      // displace it; the autostart path must not do it by proxy either.
+      writePointerAt(slot, {
+        url: unhealthy.url,
+        host: "127.0.0.1",
+        port: unhealthy.port,
+        dataDir: otherDir,
+        pid: unhealthy.pid,
+      });
+      const slotBefore = readFileSync(slot, "utf8");
+
+      // Beside our own data directory, a fossil: the preferred pointer does not
+      // answer, the slot's board does not answer *health* — autostart is reached.
+      const dead = await closedPortUrl();
+      writePointerAt(join(dataDir, "runtime.json"), {
+        url: dead,
+        host: "127.0.0.1",
+        port: Number(new URL(dead).port),
+        dataDir,
+        pid: 999_001,
+      });
+
+      started = await ensureBoard({
+        env: spawnChildEnv(home, dataDir),
+        // In-process, `homedir()` is the developer's — the slot below must be this
+        // test's own. The child sees `HOME` (in `env`), so both agree on the path.
+        home,
+        waitMs: 20_000,
+      });
+
+      assert.equal(started.autostarted, true, "the fossil is not believed, so a board was started");
+      assert.equal(
+        readFileSync(slot, "utf8"),
+        slotBefore,
+        "the live board keeps its address, byte for byte",
+      );
+      const own = readJsonFile(join(dataDir, "runtime.json"));
+      assert.equal(own.pid, started.pointer.pid, "the daemon is addressed beside its own data directory");
+      assert.equal(await probeHealth(started.url), true, "…and the board we were given answers");
+    } finally {
+      await stopSpawned(started);
+      await unhealthy.close();
+    }
+  });
+
+  it("finds a daemon it started when the slot is nobody's", async () => {
+    const home = makeTempDir();
+    const dataDir = makeTempDir();
+    const slot = slotPath(home);
+    let started = null;
+    try {
+      // Nothing in the slot and nothing beside the data directory: the ordinary
+      // production start, and the one the fix must not break. The child resolves
+      // its own pointer from the environment, so it takes the machine-wide slot.
+      started = await ensureBoard({ env: spawnChildEnv(home, dataDir), home, waitMs: 20_000 });
+      assert.equal(started.autostarted, true);
+      assert.equal(await probeHealth(started.url), true);
+      assert.equal(started.pointer.path, slot, "the board is addressed at the machine-wide slot");
+      assert.equal(readJsonFile(slot).pid, started.pointer.pid);
+    } finally {
+      await stopSpawned(started);
     }
   });
 });
