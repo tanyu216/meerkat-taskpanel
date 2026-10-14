@@ -714,8 +714,21 @@ renders *except* its button:
 
 | seat | block | element | design oracle |
 |---|---|---|---|
-| `noResults.clear` | `[data-empty][data-empty-kind="no-results"]` (the board-level state) | the block's one `<button>` | `design/prototype/index.html:722` — the live 7-column page. `:4253` is a `<pre><code>` document fragment and is not counted |
-| `column.empty.add` | `[data-empty][data-empty-kind="column"]` ×7 (one per column) | each block's one `<button>` | `design/prototype/index.html:999/1263/1530/1794/1978/2243/2344`; `:4237` is the fragment copy |
+| `noResults.clear` | `[data-empty][data-empty-kind="no-results"]` (the board-level state) | the block's one `<button>` | `design/prototype/index.html:722` — the live 7-column page. `:4253` is the states-gallery demo copy, not counted (see below) |
+| `column.empty.add` | `[data-empty][data-empty-kind="column"]` ×7 (one per column) | each block's one `<button>` | `design/prototype/index.html:999/1263/1530/1794/1978/2243/2344`; `:4237` is the states-gallery demo copy, same three reasons |
+
+**The two excluded copies are B18's, and three things — not a code fence — exclude them.** Each
+seat appears one extra time in the prototype, inside B18's states showcase (`:4174`, *hidden by
+default, opened from the sidebar*): `column.empty.add` at `:4237` sits in the
+`<section class="td-state-card" data-empty-column>` at `:4230`, and `noResults.clear` at `:4253`
+sits in the `<section class="td-state-card" data-empty-results>` at `:4243`. Each is (i) a
+**prototype-only** block (`test/web/blocks.contract.mjs` B18, `status: "prototype-only"` — the
+shipped app renders no states gallery at all), (ii) hooked `data-empty-column` /
+`data-empty-results`, **not** `data-empty` + `data-empty-kind`, so the seat's own block selector
+never reaches it, and (iii) **outside `[data-board]`**. That is why the oracle counts are 1 and 7
+and not 2 and 8. (An earlier revision of this section said these two were `<pre><code>` document
+fragments; that was wrong — the code fences the `[data-column]` rows are scoped against are at
+`:2429`/`:3365` and are a different hook's problem entirely.)
 
 The design's own buttons carry a second hook the implementation deliberately does **not**:
 `noResults.clear`'s button has `data-filter-clear` (the implementation keeps `[data-filter-clear]`

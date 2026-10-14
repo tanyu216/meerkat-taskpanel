@@ -610,7 +610,7 @@
           "scope": "[data-board]",
           "selector": "[data-empty][data-empty-kind=\"column\"] [data-i18n=\"column.empty.add\"]",
           "count": 7,
-          "desc": "【席位·计数】七个列空态块内各 1 个 `column.empty.add` 席位（B06 钉 7 列 ⇒ 7 席）。**设计 oracle**：`design/prototype/index.html:999/1263/1530/1794/1978/2243/2344`（七个活体 column 块各 1 个；`:4237` 是 `<pre><code>` 文档片段的副本，不计）；契约口径见 `design/BLOCKS.md` R17 表 §1517 第 2 行「column | `column.empty.add`」。**撤掉任一席位 ⇒ 本行 count=6 变红**（T-20261014-100326 的负向证明）"
+          "desc": "【席位·计数】七个列空态块内各 1 个 `column.empty.add` 席位（B06 钉 7 列 ⇒ 7 席）。**设计 oracle**：`design/prototype/index.html:999/1263/1530/1794/1978/2243/2344`（七个活体 column 块各 1 个；`:4237` 是 B18 状态陈列卡 `data-empty-column` 的演示副本 —— 该块 prototype-only、挂的是 `data-empty-column` 而非 `data-empty`+`data-empty-kind`、且在 `[data-board]` 之外，三条都不进本 scope）；契约口径见 `design/BLOCKS.md` R17 表 §1517 第 2 行「column | `column.empty.add`」。**撤掉任一席位 ⇒ 本行 count=6 变红**（T-20261014-100326 的负向证明）"
         },
         {
           "scope": "[data-board]",
@@ -977,7 +977,7 @@
           "scope": "[data-empty][data-empty-kind=\"no-results\"]",
           "selector": "[data-i18n=\"noResults.clear\"]",
           "count": 1,
-          "desc": "【席位·计数】B12 大空态块内恰好 1 个 `noResults.clear` 席位。**设计 oracle**：`design/prototype/index.html:722`（该页唯一活体 no-results 块内 1 个；`:4253` 是 `<pre><code>` 文档片段的副本，不计）；契约口径见 `design/BLOCKS.md` R17 表 §1517 第 1 行「board (B12) | `no-results` | … | `noResults.clear`」。**撤掉席位 ⇒ 本行 count=0 变红**（T-20261014-100326 的负向证明，见 `web/manifests/README.md` §14）"
+          "desc": "【席位·计数】B12 大空态块内恰好 1 个 `noResults.clear` 席位。**设计 oracle**：`design/prototype/index.html:722`（该页唯一活体 no-results 块内 1 个；`:4253` 是 B18 状态陈列卡 `data-empty-results` 的演示副本 —— 该块 prototype-only、挂的是 `data-empty-results` 而非 `data-empty`+`data-empty-kind`、且在 `[data-board]` 之外，三条都不进本 scope）；契约口径见 `design/BLOCKS.md` R17 表 §1517 第 1 行「board (B12) | `no-results` | … | `noResults.clear`」。**撤掉席位 ⇒ 本行 count=0 变红**（T-20261014-100326 的负向证明，见 `web/manifests/README.md` §14）"
         },
         {
           "scope": "[data-empty][data-empty-kind=\"no-results\"]",
