@@ -97,7 +97,17 @@ function onDrop(event) {
            The Add button is `btn-sm`, the size the prototype's `[data-column-add]`
            wears in this block (28px); it is deliberately **not** given that hook
            — the header's button already carries it, once per column, and the
-           manifest counts exactly seven of them (`web/manifests/board.json` B06). -->
+           manifest counts exactly seven of them (`web/manifests/board.json` B06).
+
+           It does wear the prototype's **static `data-i18n` seat**
+           (`design/prototype/index.html`, `column.empty.add`), the same seat the
+           block's title and hint lines above already carry. Its copy was
+           `$t()`-driven from the start, so the rendered text was right either
+           way — what was missing was the *key* the resting document could be
+           addressed by, which is why the design counted the seat eight times
+           document-wide (the seven columns plus the state gallery's demo card)
+           and the built app none. The seat is a hook only: the copy still comes
+           from the catalogue through `$t()`, and the click handler is unchanged. -->
       <div
         class="td-empty"
         data-empty
@@ -108,7 +118,7 @@ function onDrop(event) {
         <span class="td-empty-hint" data-i18n="column.empty.hint" :data-i18n-arg="`status.${column.status}`">
           {{ $t("column.empty.hint", $t(`status.${column.status}`)) }}
         </span>
-        <button type="button" class="btn btn-outline btn-sm" @click="emit('add', column.status)">{{ $t("column.empty.add") }}</button>
+        <button type="button" class="btn btn-outline btn-sm" data-i18n="column.empty.add" @click="emit('add', column.status)">{{ $t("column.empty.add") }}</button>
       </div>
 
       <div v-if="dragOver" class="h-1.5 rounded-[999px] bg-(--brand-border-strong)" data-drop-placeholder></div>
