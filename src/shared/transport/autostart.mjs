@@ -17,6 +17,19 @@
  * still points at the pid we just started (or a live one), its URL is the right
  * one to try.
  *
+ * **Which file the child writes is the child's decision, not this function's**
+ * (T-20261014-044653). The write side refuses to displace a live *other* board —
+ * it is addressed beside its own data directory instead — and that rule has a
+ * hole exactly here: a `TASKD_RUNTIME_POINTER` handed to the child is *named*, and
+ * a named pointer is obeyed verbatim, so a daemon started by this function would
+ * overwrite whatever the machine-wide slot held. That is harmless while the
+ * sitting board is healthy (`ensureBoard` believes it and never gets here), but a
+ * board that is **reachable and unhealthy** — still holding its port, `/health`
+ * not `ok` — is one autostart away from losing its address to a board that had no
+ * business taking it. So: the path is named only when the *caller* named one, and
+ * otherwise the parent waits at **both** places the child may have written
+ * (`waitForPointer`), believing only a file that names the pid it just started.
+ *
  * Shared (extracted from `src/cli/client/autostart.mjs`) so starting the daemon
  * lives below the CLI rather than inside it; the CLI's stdout-redirection
  * guarantee is what keeps a spawned daemon off the caller's stdout.
@@ -28,7 +41,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { AUTOSTART_POLL_MS, AUTOSTART_TIMEOUT_MS, LOG_FILENAME, LOGS_DIRNAME, RUNTIME_POINTER_ENV } from "../constants.mjs";
-import { resolveDataDir } from "../runtime-locator.mjs";
+import { resolveDataDir, resolveRuntimePointerPath, runtimePointerPathForDataDir } from "../runtime-locator.mjs";
 import { ioError } from "./errors.mjs";
 
 /** Repository root, from `src/shared/transport/`. */
@@ -65,7 +78,17 @@ export async function probeHealth(url, { timeoutMs = 1_000 } = {}) {
 /**
  * Spawn `taskd` and wait until it answers.
  *
- * @param {{env?: NodeJS.ProcessEnv, pointerPath: string, waitMs?: number, spawnFn?: Function}} options
+ * `pointerPath` is the file the caller named, and a name is either this option or
+ * `TASKD_RUNTIME_POINTER` in `env` — the same two the reader accepts. When there
+ * is no name at all the daemon picks its own file by the write side's rule, and
+ * this function waits at both places it may have written (see the module header).
+ *
+ * `platform`/`home` mean what they do to `resolveRuntimePointerPath`, and they
+ * must agree with `env`: the child sees `env` only. Production never passes them
+ * (both default to the running process); a test pins the machine-wide slot with
+ * them *and* `home` in `env`.
+ *
+ * @param {{env?: NodeJS.ProcessEnv, pointerPath?: string, waitMs?: number, platform?: string, home?: string, spawnFn?: Function}} options
  * @returns {Promise<{url: string, pointer: object|null, pid: number|null, logFile: string}>}
  */
 export async function spawnTaskd(options) {
@@ -73,6 +96,8 @@ export async function spawnTaskd(options) {
     env = process.env,
     pointerPath,
     waitMs = AUTOSTART_TIMEOUT_MS,
+    platform,
+    home,
     spawnFn = spawn,
   } = options;
 
@@ -80,6 +105,36 @@ export async function spawnTaskd(options) {
   const logDir = join(dataDir, LOGS_DIRNAME);
   const logFile = join(logDir, LOG_FILENAME);
   mkdirSync(logDir, { recursive: true });
+
+  // A *named* pointer — the option, or `TASKD_RUNTIME_POINTER` — is the caller's
+  // namespace: the child is told about it (it is obeyed verbatim by the write
+  // side), and this function waits there. With no name the child decides, so
+  // nothing is handed over and *both* files it could choose are watched; a
+  // leftover pointer in either is only believed when it names the pid we just
+  // started (`waitForPointer`'s `requireOwnPid`), because that is the only proof a
+  // file is this child's own address.
+  //
+  // "Named" has to mean here exactly what it means to the reader
+  // (`runtime.mjs#namedPointerPath`), or the parent would wait somewhere the child
+  // never writes: the CLI calls this seam with the *option* unset and the variable
+  // in `env` (the harness and the scheduling guard both run that way).
+  const namedByEnv =
+    typeof env[RUNTIME_POINTER_ENV] === "string" && env[RUNTIME_POINTER_ENV].trim() !== "";
+  const named =
+    typeof pointerPath === "string"
+      ? pointerPath
+      : namedByEnv
+        ? resolveRuntimePointerPath({ env, platform, home })
+        : null;
+  const candidates =
+    named !== null
+      ? [named]
+      : [resolveRuntimePointerPath({ env, platform, home }), runtimePointerPathForDataDir(dataDir)];
+  const childEnv = { ...env };
+  if (typeof pointerPath === "string") childEnv[RUNTIME_POINTER_ENV] = pointerPath;
+  else if (named === null) delete childEnv[RUNTIME_POINTER_ENV];
+  // Named through the environment only: the variable is inherited exactly as the
+  // caller set it, and the child resolves it to the same file this parent waits on.
 
   // Append, so a second start does not erase the evidence of the first one's
   // failure. The fd is closed in the parent immediately: the child holds it.
@@ -89,13 +144,7 @@ export async function spawnTaskd(options) {
     child = spawnFn(process.execPath, [serverEntry()], {
       detached: true,
       stdio: ["ignore", fd, fd],
-      // The child resolves its own pointer from the environment, so a caller
-      // that named a path has to hand it over: otherwise this parent polls the
-      // caller's file while the daemon writes the machine-wide one — a wait that
-      // cannot end, and an isolated board reaching into a live board's address.
-      // The caller's path wins over whatever the environment already said,
-      // because the caller's path is the one this function will wait on.
-      env: { ...env, [RUNTIME_POINTER_ENV]: pointerPath },
+      env: childEnv,
     });
   } catch (err) {
     closeSync(fd);
@@ -112,7 +161,12 @@ export async function spawnTaskd(options) {
   }
   child.unref?.();
 
-  const started = await waitForPointer({ pointerPath, timeoutMs: waitMs, pid: child.pid ?? null });
+  const started = await waitForPointer({
+    pointerPaths: candidates,
+    timeoutMs: waitMs,
+    pid: child.pid ?? null,
+    requireOwnPid: named === null,
+  });
   if (started === null || !(await probeHealth(started.url, { timeoutMs: 2_000 }))) {
     throw ioError("taskd was started but never answered /health", {
       details: { logFile, pointer: pointerPath, pid: child.pid ?? null },
@@ -130,14 +184,21 @@ export async function spawnTaskd(options) {
  * before). Comparing pids is what keeps a stale file from being mistaken for the
  * new daemon's.
  *
- * @param {{pointerPath: string, timeoutMs?: number, pollMs?: number, pid?: number|null, readFile?: Function, sleep?: Function, now?: Function}} options
+ * `pointerPaths` names every file the child could have written, and the first
+ * match wins. `requireOwnPid` tightens the pid test to an *exact* match: it is
+ * for the files we did **not** name to the child, where a pointer without a pid
+ * is some other board's leftover rather than the file we asked for.
+ *
+ * @param {{pointerPath?: string, pointerPaths?: string[], timeoutMs?: number, pollMs?: number, pid?: number|null, requireOwnPid?: boolean, readFile?: Function, sleep?: Function, now?: Function}} options
  */
 export async function waitForPointer(options) {
   const {
     pointerPath,
+    pointerPaths = [pointerPath],
     timeoutMs = AUTOSTART_TIMEOUT_MS,
     pollMs = AUTOSTART_POLL_MS,
     pid = null,
+    requireOwnPid = false,
     readFile = (file) => readFileSync(file, "utf8"),
     sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     now = () => Date.now(),
@@ -147,13 +208,31 @@ export async function waitForPointer(options) {
   // The deadline check happens *after* the first read, so a board that was
   // already up costs one stat rather than one poll interval.
   for (;;) {
-    const pointer = readPointerFile(pointerPath, readFile);
-    if (pointer !== null && typeof pointer.url === "string" && (pid === null || pointer.pid === undefined || pointer.pid === pid)) {
-      return pointer;
+    for (const path of pointerPaths) {
+      const pointer = readPointerFile(path, readFile);
+      if (pointer !== null && typeof pointer.url === "string" && isOurs(pointer, { pid, requireOwnPid })) {
+        return pointer;
+      }
     }
     if (now() >= deadline) return null;
     await sleep(pollMs);
   }
+}
+
+/**
+ * Does this pointer name the process we started?
+ *
+ * The loose rule (any pointer, or one whose pid is unstated) is the historical
+ * one, kept for a file the caller *named*; `requireOwnPid` narrows it to the pid
+ * itself — nothing else identifies a file as the child's own write.
+ *
+ * @param {object} pointer
+ * @param {{pid: number|null, requireOwnPid: boolean}} input
+ */
+function isOurs(pointer, { pid, requireOwnPid }) {
+  if (pid === null) return !requireOwnPid;
+  if (pointer.pid === pid) return true;
+  return !requireOwnPid && pointer.pid === undefined;
 }
 
 /** @param {string} file @param {(file: string) => string} readFile */
