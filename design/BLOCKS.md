@@ -7,7 +7,7 @@ Counts in the current build, measured in the live DOM: **7 columns · 18 cards �
 18 detail templates** (`[data-slot]`: 18 description · 18 activity · 16 comments ·
 15 agent-session · 11 attachments · 9 relations) · **626 `data-i18n*` hooks** in the
 shipped document (522 `data-i18n` plus 104 `placeholder` / `aria-label` / `title`
-variants) · **281 catalogue keys, `en` and `zh` in exact parity.**
+variants) · **282 catalogue keys, `en` and `zh` in exact parity.**
 
 **"35 blocks" means 35 *contract entries*, not 35 DOM blocks.** The DOM block
 inventory is **B01–B25** (25 entries; B20/B21 are retired and kept only as
@@ -560,6 +560,19 @@ the distinction.
 | Properties | `[data-detail-props]` → status `[data-detail-status]` / `[data-detail-status-label]` · priority `[data-detail-priority]` / `[data-detail-priority-label]` · assignee `[data-detail-assignee]` / `[data-detail-assignee-avatar]` / `[data-detail-assignee-label]` (**an input**, see B22) / `[data-detail-assignee-platform]` (platform badge, hidden for the human owner) · **reporter** `[data-detail-reporter]` / `[data-detail-reporter-avatar]` / `[data-detail-reporter-label]` (an editable control — see B22) · project `[data-detail-project]` / `[data-detail-project-label]` · **labels** `[data-detail-labels]` (editable label combo — see B25) · internal id `[data-detail-id]` + `[data-detail-id-copy]` (`data-copy-value`) · `[data-detail-version]` |
 | Body | `[data-detail-description]` (rendered GFM) · `[data-detail-relations]` → `[data-relation-link]` · `[data-detail-agent-session]` → `[data-detail-agent-session-body]` → `[data-agent-session]` · `[data-detail-attachments]` · `[data-detail-comments]` · `[data-comment-form]` → `[data-comment-input]`, `[data-comment-submit]` · `[data-detail-activity]` |
 | Source | `template[data-detail-for="TD-…"]` holds one `[data-slot="description \| relations \| agent-session \| attachments \| comments \| activity"]` per card, wrapped by `[data-detail-templates]` |
+
+**R14 — the relations area names its three kinds.** `[data-detail-relations]` groups its
+`[data-relation-link]`s by kind, each group led by that kind's own name, and the kind is
+one of three — `parent` | `blocks` | `related`. Each names itself from the catalogue:
+`relations.parent` (`Parent` / `父任务`) · `relations.blocks` (`Blocks` / `阻塞`) ·
+`relations.related` (`Related` / `关联`). They are the same three the card's own counters
+carry (`data-relations-parent` | `data-relations-blocks` | `data-relations-related`, B07),
+so a card and the drawer it opens spell a kind identically; an area holding no relation
+reads `relations.none` (`No relations` / `暂无关联`), which `app.js` injects rather than
+the markup declaring it. 实测：`index.html` 里 `relations.parent` 有 4 座、`relations.blocks`
+6 座，`relations.related` **0 座** —— 三处 `Related`（`[data-slot="relations"]` ×3：4793 /
+4885 / 5253）仍是内联、无 `data-i18n` 的旧标记，本节先把第三个名字定在目录里，座位留给
+后续实现卡。
 
 **R12 — the head identifier is the whole id, uncapped.** `[data-detail-identifier]` shows
 the card's **complete** identifier, verbatim: no character slice (the render path writes the
@@ -1352,7 +1365,7 @@ copy:
 | `data-i18n-title` | `title` |
 | `data-i18n-arg` | the `%s` value for any of the four above; it is resolved as a key first, so `column.add` + `status.todo` reads `Add task to To Do` / `在待办中新建任务` |
 
-The catalogue is the in-memory `MESSAGES` object at the top of `app.js` — **281 keys per
+The catalogue is the in-memory `MESSAGES` object at the top of `app.js` — **282 keys per
 language, mirrored 1:1** (verified by set equality, not by eye), never an external file.
 Copy `app.js` composes at runtime (toast sentences, list rows, card aria labels, the token
 mask) is keyed there too.
@@ -1364,6 +1377,13 @@ are the implementing card's, so at this build they lag the prototype by two name
 (`waiting.subtitle` from R15 and this one) while still carrying the two the prototype has
 retired (`assignee.clear`, `activity.filter.reset`) — the same intermediate state R15's own
 U2 records, and the reason the design-side key count is the one this file states.
+
+**R14 names the third relation kind — `relations.related`** (`281 → 282` in each language;
+**no** `data-i18n` seat moves, because the drawer's three `Related` labels are inline and
+unhooked — see B09). Unlike R17's round, this one syncs its mirrors **in the same commit**
+(`test/web/i18n.catalogue.mjs`, `web/src/i18n/catalogue.mjs`, `STALE_PROSE_COUNTS`,
+`design/prototype/README.md` all read 282), so the lag R17 records above is that round's
+state, not this build's.
 
 **B27 brought 6 more (R12x)** — `waiting.title` · `waiting.count` · `waiting.reason.question`
 · `waiting.reason.blocked` · `waiting.open` · `waiting.empty` — and they are the whole of what

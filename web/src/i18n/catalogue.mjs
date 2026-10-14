@@ -9,14 +9,15 @@
  * deliberate subtractions.
  *
  * ---------------------------------------------------------------------------
- * Measured counts (host-static, re-pinned after R17 · T-20261013-184457)
+ * Measured counts (host-static, re-pinned after R17 · T-20261013-184457 and
+ * R14 · T-20261014-082533)
  * ---------------------------------------------------------------------------
- *   prototype MESSAGES  en 281 / zh 281 (exact 1:1 mirror)
- *   this catalogue      en 264 / zh 264 — the 281 minus the 17 prototype-only
+ *   prototype MESSAGES  en 282 / zh 282 (exact 1:1 mirror)
+ *   this catalogue      en 265 / zh 265 — the 282 minus the 17 prototype-only
  *                       keys listed below, still an exact 1:1 mirror (identical
  *                       key sets, identical key order, no duplicates, no empty
  *                       values)
- *   `%s` placeholders  245 keys carry none, 17 carry one, 2 carry two — and the
+ *   `%s` placeholders  246 keys carry none, 17 carry one, 2 carry two — and the
  *                       histogram is identical for en and zh, key for key (no
  *                       prototype-only key carries a placeholder)
  *   data-i18n* hooks    819 in `design/prototype/index.html`:
@@ -50,11 +51,11 @@
  * ---------------------------------------------------------------------------
  * Discrepancy to record: `design/BLOCKS.md`'s header counts are not assertions
  * ---------------------------------------------------------------------------
- * Its header now quotes **626 `data-i18n*` hooks** and **281 catalogue keys** —
+ * Its header now quotes **626 `data-i18n*` hooks** and **282 catalogue keys** —
  * its own line reads "522 `data-i18n` plus 104 `placeholder` / `aria-label` /
  * `title` variants", so it counts four of the five attributes and leaves the 193
  * `data-i18n-arg` seats out. Measured over all five, the document carries 819;
- * the key count (281) does agree this round. Earlier rounds were wrong on both,
+ * the key count (282) does agree this round. Earlier rounds were wrong on both,
  * which is the case `test/web/blocks.contract.mjs` still keeps on the books as
  * `STALE_PROSE_COUNTS`. Machine checks must therefore count from the real
  * data/DOM and never assert a prose number from that header; every recorded
@@ -189,6 +190,7 @@ export const CATALOGUE = {
       "drawer.relations": "Relations",
       "relations.parent": "Parent",
       "relations.blocks": "Blocks",
+      "relations.related": "Related",
       "relations.none": "No relations",
       "drawer.session": "Agent session",
       "session.id": "Session",
@@ -455,6 +457,7 @@ export const CATALOGUE = {
       "drawer.relations": "关联",
       "relations.parent": "父任务",
       "relations.blocks": "阻塞",
+      "relations.related": "关联",
       "relations.none": "暂无关联",
       "drawer.session": "Agent 会话",
       "session.id": "会话",
