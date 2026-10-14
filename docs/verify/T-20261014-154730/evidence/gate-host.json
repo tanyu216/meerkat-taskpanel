@@ -1,0 +1,35 @@
+{
+  "card": "T-20261014-154730",
+  "what": "host full-suite npm test — iteration leg, not the verdict",
+  "command": "npm test",
+  "summary": {
+    "tests": 2206,
+    "pass": 2202,
+    "fail": 3,
+    "skipped": 1,
+    "duration_ms": 1648388
+  },
+  "reds": [
+    {
+      "test": "cli/token rotate — end to end (V10)",
+      "detail": "taskd did not come up (waited ~499 s)"
+    },
+    {
+      "test": "coverage gate (A11 / V11) → src/core/commands",
+      "detail": "no coverage summary for src/core/commands"
+    },
+    {
+      "test": "web/blocks.dom — the browser layer",
+      "detail": "spawnSync status null — killed at the 180 s cap; the harness never disagreed with the DOM"
+    }
+  ],
+  "standalone": {
+    "command": "node web/scripts/dom-smoke.mjs",
+    "exit": 0,
+    "wall_seconds": 144.4,
+    "spawnSync_cap_seconds": 180,
+    "added_assertion_cost_ms": 150,
+    "note": "the browser leg has 36 s of standalone headroom; the three added assertion groups cost ~150 ms (0.1%)."
+  },
+  "reading": "all three reds are infrastructure (service startup, coverage instrumentation, browser harness timeout) and none is a functional assertion; the card's own leg is green standalone."
+}
