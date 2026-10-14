@@ -12,13 +12,14 @@
  * a task by the same `id-or-identifier` reference the CLI hands them.
  */
 
+import { TASK_OPS } from "../../core/index.mjs";
 import { DomainError } from "../../shared/errors.mjs";
 import {
   reportToWire,
   taskToWire,
   waiversFromActivities,
 } from "../../shared/wire.mjs";
-import { arr, bool, int, obj, REQUEST, shape, str } from "../requests.mjs";
+import { project, REQUEST, shape, str } from "../requests.mjs";
 import { intOrUndefined, truthy } from "./projects.mjs";
 
 // Declared request schemas — what the contract snapshot freezes
@@ -51,31 +52,14 @@ const CANDIDATES_QUERY = shape(
   ["assignee"],
 );
 
+// The six task bodies are **projected** from the command's own input declaration
+// (`src/core/commands/tasks-input.mjs`), so this route's shape, the CLI's flags
+// and the CLI's body all read from one record instead of three hand-kept lists.
+// Adding a field there adds it here; `scripts/verify/route-request.mjs` still
+// proves the projection equals what each handler below actually reads.
+
 /** `POST /api/v1/tasks` — the create body, every field the command is handed. */
-const CREATE_BODY = shape({
-  project_id: str(),
-  title: str(),
-  description: str(),
-  status: REQUEST.status,
-  priority: REQUEST.priority,
-  kind: REQUEST.taskKind,
-  labels: arr(str()),
-  meta: obj(),
-  identifier: str(),
-  source_path: str(),
-  assignee: str(),
-  assignee_id: str(),
-  assignee_kind: REQUEST.dictKind,
-  reporter: str(),
-  reporter_id: str(),
-  reporter_kind: REQUEST.dictKind,
-  force_create: bool(),
-  idem: str(),
-  allow_dup: bool(),
-  review_of: str(),
-  parent: str(),
-  target: str(),
-});
+const CREATE_BODY = project(TASK_OPS.create);
 
 /**
  * `PATCH /api/v1/tasks/:ref` — a partial update.
@@ -84,25 +68,10 @@ const CREATE_BODY = shape({
  * "use move or deliver"), and a declared shape lists what a route accepts, not
  * what it recognises in order to reject.
  */
-const PATCH_BODY = shape({
-  title: str(),
-  description: str(),
-  priority: REQUEST.priority,
-  kind: REQUEST.taskKind,
-  labels: arr(str()),
-  meta: obj(),
-  acceptance: arr(str()), // sugar over `meta.acceptance` (F-D1)
-  if_version: int(),
-  assignee: str(),
-  reporter: str(),
-  force_create: bool(),
-});
+const PATCH_BODY = project(TASK_OPS.update);
 
 /** `POST /api/v1/tasks/:ref/move` — the transition, plus the audited waiver (F-B1). */
-const MOVE_BODY = shape(
-  { to: REQUEST.status, if_version: int(), no_report: bool(), reason: str(), allow_steal: bool(), awaiting_reason: str() },
-  ["to"],
-);
+const MOVE_BODY = project(TASK_OPS.move);
 
 /**
  * `POST /api/v1/tasks/:ref/deliver` — the report, or the waiver that replaces it.
@@ -111,28 +80,13 @@ const MOVE_BODY = shape(
  * "a report *or* `no_report` + `reason`" rule is a conditional no `properties`
  * map can state, so it stays where it is enforced: `deliver` itself.
  */
-const DELIVER_BODY = shape({
-  to: REQUEST.status,
-  report: shape({ conclusion: str(), acceptance: arr(obj()), evidence: arr(obj()), leftovers: str(), seg: str() }),
-  if_version: int(),
-  no_report: bool(),
-  reason: str(),
-  seg: str(),
-  session_id: str(),
-});
+const DELIVER_BODY = project(TASK_OPS.deliver);
 
 /** `POST /api/v1/tasks/:ref/assign` — `assign` is `update` with the dictionary in play. */
-const ASSIGN_BODY = shape({
-  assignee_id: str(),
-  reporter_id: str(),
-  assignee: str(),
-  reporter: str(),
-  if_version: int(),
-  force_create: bool(),
-});
+const ASSIGN_BODY = project(TASK_OPS.assign);
 
 /** `POST /api/v1/tasks/:ref/archive` — a soft delete, optionally backdated. */
-const ARCHIVE_BODY = shape({ if_version: int(), days: int() });
+const ARCHIVE_BODY = project(TASK_OPS.archive);
 
 /**
  * `PROJ-0007` or a UUID — whichever the caller has.

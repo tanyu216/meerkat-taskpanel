@@ -29,10 +29,13 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 
 import { OUT_OF_ROUTER_ENDPOINTS } from "../../src/server/index.mjs";
-import { arr, bool, int, obj, REQUEST, shape, str } from "../../src/server/requests.mjs";
+import { arr, bool, int, obj, project, REQUEST, shape, str } from "../../src/server/requests.mjs";
+import { TASK_OPS } from "../../src/core/commands/tasks-input.mjs";
+import { projectFlags } from "../../src/cli/commands/task-input.mjs";
 import {
   OUT_OF_LINT,
   REFUSED_READS,
+  checkCommandInputs,
   checkRouteRequests,
   declaredFields,
   extractReads,
@@ -375,6 +378,7 @@ describe("route-request.mjs — the CLI", () => {
     const result = runCli([]);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /route-request: OK — 30 routes/);
+    assert.match(result.stdout, /6 command inputs paired/);
     assert.match(result.stdout, /5 out-of-router endpoints acknowledged/);
   });
 
@@ -387,9 +391,99 @@ describe("route-request.mjs — the CLI", () => {
     assert.match(result.stdout, /status \(refused\)/);
   });
 
+  it("prints the op pairing with --print, so a mispairing is visible", () => {
+    const result = runCli(["--print"]);
+    assert.match(result.stdout, /tasks\.move\n\s+route\s+POST \/api\/v1\/tasks\/:ref\/move\n\s+command\s+issue move/);
+    assert.match(result.stdout, /target \(cli\)/);
+  });
+
   it("prints its usage with --help", () => {
     const result = runCli(["--help"]);
     assert.equal(result.status, 0);
     assert.match(result.stdout, /Usage: node scripts\/verify\/route-request\.mjs/);
+  });
+});
+
+/**
+ * The command-input pairing, driven with synthetic registries.
+ *
+ * Same discipline as the block above: a check that never went red proves nothing,
+ * so each case breaks exactly one side of the pairing and asserts the finding it
+ * produces. The green baseline is built from the real `project` / `projectFlags`,
+ * so a case that passes, passes for the right reason.
+ */
+describe("route-request.mjs — the command-input pairing (red → green)", () => {
+  const OPS = Object.values(TASK_OPS);
+
+  /** Every op, projected onto a route of its own. */
+  const allRoutes = () => OPS.map((op) => route("POST", `/api/v1/${op}`, () => 0, { query: null, body: project(op) }));
+  /** Every op, declared by a command that projects its flags. */
+  const allCommands = (mutate = (command) => command) => ({
+    groups: [{ name: "issue", commands: OPS.map((op) => mutate({ name: op, op, flags: projectFlags(op) })) }],
+  });
+  const check = (routes, registry) => {
+    const result = checkCommandInputs(routes, registry);
+    return { ok: result.ok, lines: result.findings.map((finding) => `${finding.kind} ${finding.route} ${finding.side} ${finding.detail}`) };
+  };
+
+  it("passes when every declaration has a route and a command", () => {
+    const result = check(allRoutes(), allCommands());
+    assert.equal(result.ok, true, result.lines.join("\n"));
+  });
+
+  it("reports an op the route side stopped projecting", () => {
+    const routes = allRoutes().filter((entry) => entry.request.body.op !== TASK_OPS.move);
+    const result = check(routes, allCommands());
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.lines, [
+      `unpaired_op ${TASK_OPS.move} body no route projects "${TASK_OPS.move}" — the declaration has a consumer that is gone`,
+    ]);
+  });
+
+  it("reports an op the command side stopped declaring", () => {
+    const registry = allCommands((command) => (command.op === TASK_OPS.archive ? { name: "archive", flags: [] } : command));
+    const result = check(allRoutes(), registry);
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.lines, [
+      `unpaired_op ${TASK_OPS.archive} null no CLI command declares "${TASK_OPS.archive}" — the declaration has a consumer that is gone`,
+    ]);
+  });
+
+  it("reports two routes claiming one op", () => {
+    const routes = [...allRoutes(), route("PUT", "/api/v1/again", () => 0, { query: null, body: project(TASK_OPS.create) })];
+    const result = check(routes, allCommands());
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.lines, [
+      `duplicate_op PUT /api/v1/again body "${TASK_OPS.create}" is already projected by POST /api/v1/${TASK_OPS.create}`,
+    ]);
+  });
+
+  it("reports a route whose declared body is not the declaration's non-CLI fields", () => {
+    // The hand-written declaration coming back: same op, different fields.
+    const handWritten = { ...shape({ title: str() }), op: TASK_OPS.move };
+    const routes = allRoutes().map((entry) => (entry.request.body.op === TASK_OPS.move ? { ...entry, request: { query: null, body: handWritten } } : entry));
+    const result = check(routes, allCommands());
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.lines, [
+      `op_shape_mismatch POST /api/v1/${TASK_OPS.move} body "${TASK_OPS.move}" declares [title] where its declaration's non-CLI fields are [allow_steal, awaiting_reason, if_version, no_report, reason, to]`,
+    ]);
+  });
+
+  it("reports a command whose flags are not what the declaration projects", () => {
+    const registry = allCommands((command) => (command.op === TASK_OPS.deliver ? { ...command, flags: [{ flag: "report-file", key: "reportFile", as: "string" }] } : command));
+    const result = check(allRoutes(), registry);
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.lines, [
+      `op_shape_mismatch taskctl issue ${TASK_OPS.deliver} null "${TASK_OPS.deliver}" projects flags [report-file, no-report, reason, seg] where the command declares [report-file]`,
+    ]);
+  });
+
+  it("reports a misspelt op rather than pairing nothing and saying nothing", () => {
+    const registry = { groups: [{ name: "issue", commands: [{ name: "create", op: "tasks.creat", flags: [] }] }] };
+    const result = check([], registry);
+    assert.ok(
+      result.lines.some((line) => line.startsWith("unknown_op tasks.creat")),
+      result.lines.join("\n"),
+    );
   });
 });
