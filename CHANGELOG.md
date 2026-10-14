@@ -267,6 +267,28 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   default the script could have had was one machine's absolute path. `--out <dir>` (or
   `SHOT_OUT`) is now required, and a run without one fails with usage rather than writing
   somewhere only its author could find.
+- **An actor's `kind` is no longer a closed vocabulary** (migration **`0018`**). The two
+  columns that carried `CHECK (kind IN ('agent','human','system'))` and are not otherwise
+  scheduled to move — `comments.author_kind` and `task_reports.author_kind` — now accept any
+  non-empty string. `human` is the one reserved value; everything else is "not the human",
+  and naming *which* agent platform wrote a row is data rather than something the schema
+  should adjudicate. `NOT NULL` is unchanged: the enumeration goes, the requirement does not.
+
+  The other four actor-kind columns are deliberately untouched, because each is going away
+  with the column it sits on: `tasks.assignee_kind` / `creator_kind` / `creator_id` are the
+  denormalised kind copies the identity model removes, and `assignees.kind` / `reporters.kind`
+  belong to the two dictionary tables that a later migration replaces with a single `actors`
+  table whose column is open from birth. Rebuilding those five columns' tables here would be
+  work done twice — on the two tables that carry inbound foreign keys from `tasks`.
+
+  **No data step, and no board migration to run by hand:** `agent`, `human` and `system`
+  remain legal values of an open string, so every existing row is already valid. The
+  migration is a pure widening, which is why it ships with no accompanying code change.
+  It also brings one constraint into view that was previously invisible: `task_reports.origin`
+  was constrained by `0008`'s `ALTER TABLE … ADD COLUMN`, which the SQL-parity reader does
+  not see; the rebuild declares it in a `CREATE TABLE` body, so the value set is now declared
+  on the JS side too (`REPORT_ORIGINS` in `src/core/domain/enums.mjs`) and the parity test
+  covers it for the first time.
 
 ### Removed
 
