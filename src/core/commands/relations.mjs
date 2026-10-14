@@ -50,8 +50,19 @@ export function addRelation(ctx, input) {
       // reason a parent cycle is — it is a deadlock, not a shape nobody minds.
       // T-20261014-212017-4 added this; before it the table's only `blocks`
       // guards were self-reference and cross-project, and `a → b → a` went in.
+      //
+      // The parent chain is read as well, because the two orders together are
+      // what makes a deadlock: a card waiting on its own ancestor, or on a child
+      // it contains, is never offered to the poll either however acyclic the
+      // `blocks` graph is on its own (T-20261015-063755, ruling 乙). Reading it
+      // is the one extra query this command does, and it is on the write path
+      // only — the same shape as the `parent` guard above, which already reads
+      // the chain.
       if (edge.type === "blocks" && input.force !== true) {
-        assertBlockEdgeAllowed(edge, { edges: ctx.repos.relations.listBlockEdges() });
+        assertBlockEdgeAllowed(edge, {
+          edges: ctx.repos.relations.listBlockEdges(),
+          parentEdges: ctx.repos.relations.listParentEdges(),
+        });
       }
 
       const relation = ctx.repos.relations.insert({
