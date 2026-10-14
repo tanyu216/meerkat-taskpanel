@@ -301,10 +301,12 @@
 
 **「改前」是怎么测到的（可复核）**：`verify/pristine/`（`index.html` + `app.js` + `tw.css` + `package.json` + `favicon.svg`，逐字取自 `git show 4824298:design/prototype/*`；`vendor/` 与 `src/` 原样拷贝）由 `verify/make-pristine.mjs` 生成；探针以该副本的 `index.html` 为入参实测。因此「改前」一栏是**同一探针对同一原型的旧版重跑**，不是推断、也不是从 diff 反读。
 
-**复跑命令（逐条，可直接粘）**：
+**复跑命令（逐条）**：
+
+> 这些命令不像上文那样以仓库为根：探针脚本在本卡的工作区里，而**工作区在仓库之外**（运行时由卡片的执行者创建）。先设 `W` 指向那个工作区的 `verify/`，其余命令即可原样粘贴。
 
 ```sh
-W=/Users/tanyu/.openclaw/team/workspace/T-20261013-014701-2/verify
+W=<本卡工作区>/verify    # 在仓库之外；按你手上的实际路径填
 node "$W/make-pristine.mjs"          # 生成 HEAD 版副本（改前一列的证据）
 node "$W/r11-probe.mjs" before       # 改前：A1–A10 逐条打 PASS/FAIL
 node "$W/r11-probe.mjs" after        # 改后：同上

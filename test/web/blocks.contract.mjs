@@ -1207,7 +1207,8 @@ const BLOCKS = [
           "overflow-free at every tier because it scrolls instead. Since R12 the filters bar " +
           "carries a scroller of its own (one line, §2.1), but that one is contained in a " +
           "32px row and never reaches the page. Both facts are CSS, not hooks; the page-level " +
-          "half is what `web/manifests/board-m2.json`'s `overflowTargets` measures as a gate.",
+          "half is what `web/scripts/dom-smoke.mjs` asserts as `noHorizontalOverflow` on the " +
+          "document element, at every tier.",
       },
     ],
   },
@@ -1786,9 +1787,9 @@ const BLOCKS = [
       },
       /* ---- R14 §8.1 D01–D50 · the drawer's shell, head and body ------------
          The round's own decisions, each one a fact no earlier rule reached. The
-         *values* of the prototype's visual spec (R14 §3) are measured bilaterally
-         in `web/manifests/board-m2.json`'s `style.targets`; what a declaration can
-         state is asserted here — which element is which, which attribute is the
+         *values* of the prototype's visual spec (R14 §3) were measured bilaterally
+         during the round, on the prototype; what a declaration can state is
+         asserted here — which element is which, which attribute is the
          state source, and which of the two ends of a pair sits above the other.
          Everything below was first measured on the prototype in
          `design/fidelity-r14.md` §5 (69/69) and then on the shipped drawer. */

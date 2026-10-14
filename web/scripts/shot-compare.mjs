@@ -47,16 +47,18 @@
  *
  * ── Placement ────────────────────────────────────────────────────────────────
  * Under `web/scripts/`, not `test/`, so `node --test` never collects it. The
- * output defaults to the review workspace OUTSIDE the repository — the shots are
- * review artefacts and are deliberately **not** committed. Override with
- * `--out=<dir>` (or `SHOT_OUT`). Playwright is a host tool resolved from an
- * already-installed location, exactly as `dom-smoke.mjs` does; the image carries
- * no browser, so inside the container this exits 2 ("skip") — rendering is a
- * host-allowed exception (plan §9.1 exception 4; `docs/docker.md`).
+ * output goes to the review workspace OUTSIDE the repository — the shots are review
+ * artefacts and are deliberately **not** committed — so the directory must be given:
+ * `--out=<dir>` or `SHOT_OUT`. There is no default, because the workspace path is a
+ * property of the machine the review runs on, not of this checkout. Playwright is a
+ * host tool resolved from an already-installed location, exactly as `dom-smoke.mjs`
+ * does; the image carries no browser, so inside the container this exits 2 ("skip") —
+ * rendering is a host-allowed exception (plan §9.1 exception 4; `docs/docker.md`).
  *
- * Usage: node web/scripts/shot-compare.mjs [--out=<dir>] [--json] [--strict]
- * Exit:  0 = captured + every check green · 1 = a check or a capture failed ·
- *        2 = skip (no browser, no `web/dist`, no prototype)
+ * Usage: node web/scripts/shot-compare.mjs --out=<dir> [--json] [--strict]
+ * Exit:  0 = captured + every check green · 1 = a check or a capture failed, or the
+ *        invocation was wrong (no `--out`) · 2 = skip (no browser, no `web/dist`, no
+ *        prototype) — the same split `dom-smoke.mjs` uses
  */
 
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -69,8 +71,13 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB = resolve(HERE, "..");
 const PROTOTYPE = resolve(WEB, "../design/prototype/index.html");
 
-/** Review artefacts belong to the task workspace, never to the repository. */
-const DEFAULT_OUT = process.env.SHOT_OUT ?? "/Users/tanyu/.openclaw/team/workspace/T-20261009-034400-meerkat-taskpanel-m6b/shots";
+/**
+ * Review artefacts belong to the task workspace, never to the repository — and that
+ * workspace lives outside this checkout, so there is no portable default path. The
+ * output directory is therefore **required** (`--out <dir>` or `SHOT_OUT`); `main`
+ * refuses a run without one rather than inventing a path that exists on one machine.
+ */
+const DEFAULT_OUT = process.env.SHOT_OUT ?? null;
 
 /** Every shot is a viewport (non-full-page) capture: the board is a fixed shell. */
 const HEIGHT = 950;
@@ -79,7 +86,7 @@ const DEVICE_SCALE = 2;
 
 /**
  * The five widths the acceptance names — `1512 / 1240 / 980 / 760 / 430`, the
- * same five `web/.ui-align.json`'s `viewports` and the review matrix use.
+ * same five widths the review matrix uses.
  *
  * The fifth was `500`, one tier the tool had invented: no other surface in the
  * repo names it, so the narrowest band the acceptance actually reviews (`430`,
@@ -153,6 +160,13 @@ function parseArgs(argv) {
 
 const skip = (message) => Object.assign(new Error(message), { code: "SKIP" });
 
+/**
+ * A bad invocation is neither a skip nor a check failure. Same exit code as any other
+ * failure (1 — `2` means "skip" in this family, see `dom-smoke.mjs`), but the message is
+ * printed on its own: a missing `--out` is a thing to read and fix, not a stack to scroll.
+ */
+const usage = (message) => Object.assign(new Error(message), { code: "USAGE" });
+
 /** `documentElement` horizontal-overflow — the geometric assertion. */
 const measureOverflow = () => {
   const de = document.documentElement;
@@ -172,9 +186,9 @@ const readDocState = () => ({
  * A stable name for one element: `tag[data-hook]` where it has a `data-*`
  * attribute, else `tag.firstClass.secondClass`.
  *
- * The probe prefers the element's own hook because the alignment SOP already
- * requires checks to key on `data-*` rather than on a class (ui-align SOP §B4),
- * and M3 moved the board's surfaces onto hooks. Naming by class made this list
+ * The probe prefers the element's own hook because the board's conventions require
+ * checks to key on `data-*` rather than on a class, and M3 moved its surfaces onto
+ * hooks. Naming by class made this list
  * churn on a refactor that changed no layout at all: the same board box printed
  * as `div.td-board` before and `div.flex.h-full` after.
  *
@@ -430,6 +444,14 @@ async function makeSheet(browser, outDir, combo, width, prototypeShot, implement
 /* -------------------------------------------------------------------- main */
 
 async function main(opts) {
+  if (typeof opts.out !== "string" || opts.out.trim() === "") {
+    throw usage(
+      "no output directory: pass --out <dir>, or set SHOT_OUT.\n" +
+        "Review artefacts belong to the task workspace, which is outside this repository,\n" +
+        "so there is no in-repo default to fall back to.\n" +
+        "Usage: node web/scripts/shot-compare.mjs --out=<dir> [--json] [--strict]",
+    );
+  }
   if (!existsSync(join(DIST, "index.html"))) throw skip(`web/dist is not built — run \`npm -w web run build\` (looked in ${DIST})`);
   if (!existsSync(PROTOTYPE)) throw skip(`the prototype baseline is missing: ${PROTOTYPE}`);
   const playwright = resolvePlaywright();
@@ -679,6 +701,10 @@ main(OPTS).then(
     if (err.code === "SKIP") {
       console.log(`SKIP: ${err.message}`);
       process.exit(2);
+    }
+    if (err.code === "USAGE") {
+      console.error(err.message);
+      process.exit(1);
     }
     console.error(err);
     process.exit(1);

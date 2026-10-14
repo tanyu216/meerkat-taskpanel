@@ -67,15 +67,24 @@ URLs in their own source and the purity gate rejects both (DESIGN.md §18.4).
 
 ## Build
 
-`tw.css` is generated from `src/input.css`. **`node_modules` must never live inside
-`design/prototype/`** — install the toolchain in the temporary build directory instead and
-expose it to Tailwind only for the duration of the build:
+`tw.css` is generated from `src/input.css` by the toolchain `design/prototype/package.json`
+pins (`tailwindcss` + `@tailwindcss/cli` + `daisyui` + `jquery`). The canonical build is the
+script carried in that manifest:
 
 ```sh
-BUILD=/Users/tanyu/.openclaw/team/workspace/T-20261008-200429-taskboardproto/twbuild
-PROTO=/Users/tanyu/Documents/meerkat-taskpanel/design/prototype
+cd design/prototype && npm install && npm run build:css
+```
 
-cd "$BUILD" && npm install            # tailwindcss, @tailwindcss/cli, daisyui, jquery
+**`node_modules` must never be committed from inside `design/prototype/`** — the directory's
+own `.gitignore` covers it, but if you would rather not have it in the tree at all, install
+the toolchain in a scratch directory *outside the repository* and expose it to Tailwind only
+for the duration of the build:
+
+```sh
+BUILD=<a scratch dir outside the repo>       # e.g. "$TMPDIR/td-twbuild"
+PROTO=<this checkout>/design/prototype
+
+cd "$BUILD" && npm install                    # tailwindcss, @tailwindcss/cli, daisyui, jquery
 
 # Tailwind resolves `@import "tailwindcss"` relative to the input CSS file, so the
 # toolchain is bridged with a transient symlink that is removed again right after.
@@ -84,8 +93,11 @@ cd "$PROTO" && "$BUILD/node_modules/.bin/tailwindcss" -i src/input.css -o tw.css
 rm -f "$PROTO/node_modules"
 ```
 
-`design/prototype/package.json` also carries the canonical `npm run build:css` for a normal
-checkout where `node_modules` is allowed to sit next to the sources.
+There is deliberately **no lockfile** for `design/prototype/`: the two build paths above use
+whatever the registry resolves for the ranges in `package.json`, which is why the committed
+`tw.css` records its own byte count and rebuild delta in this file rather than trusting the
+toolchain to reproduce it. `design/prototype` is a host-allowed, design-only step — it is not
+part of any gate and nothing here runs in the container (`.dockerignore` excludes `design/`).
 
 Two `@source` directives limit class scanning to `index.html` and `app.js`
 (`@import "tailwindcss" source(none)` disables auto-detection, so nothing else on

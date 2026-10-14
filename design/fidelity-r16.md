@@ -304,7 +304,7 @@ node <workspace>/evidence/r16-prototype-address-probe.mjs <repo-root>  # → 10/
 node --test test/server/static.test.mjs                             # → 8/8（含 `/board/PROJ-0001` 回落与 `/api` 不被遮蔽）
 ```
 
-`<workspace>` = `/Users/tanyu/.openclaw/team/workspace/T-20261013-183505-2`。
+`<workspace>` = 本卡的工作区，**在仓库之外**（运行时由卡片的执行者创建；探针脚本 `evidence/*.mjs` 与原始输出都在那里）。按你手上的实际路径替换 `<repo-root>` 与 `<workspace>` 后即可复跑。
 
 **A 腿的原始结论**（`r16-route-probe.txt`）：14 条候选地址的 status/content-type 表 + 8 条断言全 PASS，其中「`/` 与四个路由名 + query + 两条尾斜杠 + `/index.html` 都是 200 `text/html` 的 shell」「`/nope` 也是 200 shell（⇒ 服务器对坏路由**没有** 404）」「缺失资源与 `/api/v1/nope` 仍是 404 JSON」「shell 是 `no-cache`」。
 

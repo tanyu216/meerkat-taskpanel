@@ -1,0 +1,9 @@
+# Canonical author identities.
+#
+# `git shortlog` and `git log` fold the left-hand identity onto the right-hand spelling,
+# so one person stops counting as several. The canonical spellings are the ones on the
+# left; the entries on the right are pre-existing commit identities, kept so the history
+# reads as one author per person.
+#
+# The canonical identity is `Terry <tanyu216@hotmail.com>` — history was rewritten to it
+# on 2026-10-19, so every commit already carries it verbatim and needs no mapping line.

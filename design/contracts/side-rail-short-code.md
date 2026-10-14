@@ -173,7 +173,7 @@ const effective = (typeof raw === "string" ? identifierPrefix(raw) : "") || iden
 **U1 · 原型自身的遗漏：新建项目行不带短码（R6）。**
 - 现状：原型 `[data-create-project-form]` 的提交处理器追加的行只含 `.td-side-name` + `[data-project-count]`；`setProject` 不建行（R7）。⇒ 原型**从未**演示「建项目 → 短码出现」，静态三行是唯一带 chip 的形态。
 - 本裁定的后果：前缀在建项目时**必填**（C-PREFIX-1 M2/M4）⇒ **新建项目必有短码**，实现里新行**必须**带 chip。这是一处**声明式补充**（§⑨.1 Addendum II 规则 2：遗漏可最小补充，但**必须登记**）。
-- **请 Elon 择一**：**(a)** 依本契约——实现补短码、**原型不动**（**推荐**：原型保留为「静态三行」的设计基线，实现侧补充已被本文件登记；代价 = 原型与实际行为在这一点上不同）；**(b)** 另开一张**小设计卡**把动态行也补进原型（会动 `design/prototype/**` ⇒ 重算 `STALE_PROSE_COUNTS` / i18n 计数 / ui-align 分母，**本卡不做**）。
+- **请 Elon 择一**：**(a)** 依本契约——实现补短码、**原型不动**（**推荐**：原型保留为「静态三行」的设计基线，实现侧补充已被本文件登记；代价 = 原型与实际行为在这一点上不同）；**(b)** 另开一张**小设计卡**把动态行也补进原型（会动 `design/prototype/**` ⇒ 重算 `STALE_PROSE_COUNTS` / i18n 计数，**本卡不做**）。
 - 登记：本卡**不改原型一行**；若 Elon 选 (b)，本契约 §2 R6 的表述需随之更新。
 
 **U2 · 长前缀的 chip 宽度（原型无 in-oracle 证据）。**
@@ -234,7 +234,7 @@ const effective = (typeof raw === "string" ? identifierPrefix(raw) : "") || iden
 | D4 | **U2 取证**：长前缀（存量项目）在 64px / 56px 两档 rail 下不产生横向溢出、不裁剪名字行的其它部分；实测数字入报告 |
 | D5 | U1 落地后：新建项目 ⇒ 新行**立即**带短码，且等于刚输入的前缀 |
 
-**不得断言**（负向注记）：不断言短码的**字体/颜色/边框**（那属 `ui-align` 的 computed-style 腿）；不断言 rail 里 chip 的**个数**（fixture 派生多重性，`blocks.contract.mjs` 头部禁则）；不断言 C-PREFIX-1 §8 E1/E2/E6 三条未决项；不断言拒绝文案字面（C-PREFIX-1 M7）。
+**不得断言**（负向注记）：不断言短码的**字体/颜色/边框**（那不在本契约的断言范围）；不断言 rail 里 chip 的**个数**（fixture 派生多重性，`blocks.contract.mjs` 头部禁则）；不断言 C-PREFIX-1 §8 E1/E2/E6 三条未决项；不断言拒绝文案字面（C-PREFIX-1 M7）。
 
 ---
 

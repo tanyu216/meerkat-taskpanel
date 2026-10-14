@@ -336,6 +336,10 @@ Or run everything at once:
 npm run check
 ```
 
+**Contributing?** Start with [CONTRIBUTING.md](CONTRIBUTING.md) — it covers the container
+gate (`npm run verify:docker`), the pull-request flow and the conventions CI enforces.
+Contributions land under the MIT license.
+
 ## Roadmap
 
 | Milestone | Contents |

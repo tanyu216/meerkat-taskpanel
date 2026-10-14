@@ -81,11 +81,11 @@ hyphenated: 换行从 10 起，越出本行行盒从 19 起，越出 rail 右缘
 solid:      永不换行；36 字符 = 213.14px；越出 rail 右缘从 11 起
 ```
 
-⇒ **两侧同一类断裂，阈值不同仅因字号不同**（10px/15px vs 13px/19.5px）。该字号差是 C-RAIL-1 §2.6 表里**已登记**的既有差异（契约把字体/颜色/边框划归 `ui-align` 的 computed 腿，本契约不重开）。
+⇒ **两侧同一类断裂，阈值不同仅因字号不同**（10px/15px vs 13px/19.5px）。该字号差是 C-RAIL-1 §2.6 表里**已登记**的既有差异（字体/颜色/边框**不在本契约的断言范围**，本契约不重开）。
 
 ### 2.4 门禁盲区（实测）
 
-- `web/manifests/board.json` / `board-m2.json`：**没有任何** rail chip 盒规则（`grep 'side-icon'` 只命中一条 prose `evidence` 串）⇒ `ui-align` 对 chip 几何无断言。
+- 原型对照的清单（`web/manifests/`，随团队外部工具链移出本仓库）里**没有任何** rail chip 盒规则（`grep 'side-icon'` 只命中一条 prose 串）⇒ 那条引擎腿对 chip 几何无断言。本契约的 D1–D7 因此由实现侧自带，见 §7 与 `web/scripts/rail-chip-overflow.mjs`。
 - `test/web/blocks.contract.mjs` 对 chip 只有一条 `count … equals: 0`（`[data-nav]` 内不得带该钩子），**无** overflow/几何断言。
 - `test/web/side-rail-short-code.test.mjs` 钉的是「值来自 wire、不派生、钩子形态」（A1/A2/A3/A7），**不钉盒**。
 - `docOverflow` 恒 0（§2.1）⇒ dom-smoke 的视口规则不响。
@@ -194,7 +194,7 @@ C-RAIL-1（`design/contracts/side-rail-short-code.md`，commit `31904db`）**从
 
 ### 6.1 已排除：靠「改字号」缩小观感
 
-原型 10px / 实现 13px 的差是 C-RAIL-1 §2.6 登记的**既有**差异，且字号属 `ui-align` 的 computed 腿；把它拉回 10px 只把阈值从 10 推到 19（§2.3），**不消除**断裂。⇒ 不作为口径。
+原型 10px / 实现 13px 的差是 C-RAIL-1 §2.6 登记的**既有**差异，且字号不在本契约的断言范围；把它拉回 10px 只把阈值从 10 推到 19（§2.3），**不消除**断裂。⇒ 不作为口径。
 
 ### 6.2 两条根治路，各有一处硬冲突
 
@@ -222,7 +222,7 @@ C-RAIL-1（`design/contracts/side-rail-short-code.md`，commit `31904db`）**从
 
 **必须注意**
 
-1. **既有门禁对这条口径全盲**（§2.4）：`ui-align` 无 chip 盒规则、`docOverflow` 恒 0、`blocks.contract.mjs` 只钉一条 `count … equals: 0` ⇒ **D1/D2 必须由实现卡自带浏览器腿**，不得以「门禁全绿」代替。
+1. **既有门禁对这条口径全盲**（§2.4）：本仓库内**无 chip 盒规则**、`docOverflow` 恒 0、`blocks.contract.mjs` 只钉一条 `count … equals: 0` ⇒ **D1/D2 必须由实现卡自带浏览器腿**，不得以「门禁全绿」代替。
 2. **`test/web/side-rail-short-code.test.mjs` 的 A7 会因 P5 而红**：它逐字断言 `<span class="td-mono" data-side-icon aria-hidden="true">`，加 `title` 后该字面串不再匹配 ⇒ 实现卡须**同一步**重钉 A7（这是本契约预期的红，不是回归）。
 3. **不得**引用 `…` / slice / clamp 作为实现手段（§3.1 P6 与 §2.6 实测）。
 4. 测量口径（沿用上一轮的坑）：用 `Range.getClientRects()` 读**文本块**（元素自身 `getBoundingClientRect()` 恒报 24px）；**量与该状态下的截图必须同一次运行同刻**（rail 是 `overflow:auto`，中途采样会读到未落定的行位置）；探针要同时读两类钩子（原型用类名 `.td-side-icon`、实现用 `data-side-icon`）。

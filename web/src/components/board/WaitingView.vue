@@ -117,8 +117,7 @@ function onRow(event, row) {
              rather than one computed key — the same reading B26's day headings use.
              The chip is `.td-waiting-reason`, **not** the status chip: it carries
              its own 18px box, its own 4px radius and its own `::before` dot, and
-             wearing `.td-chip` would hand all three to another family (the ui-align
-             target caught exactly that on the first pass). -->
+             wearing `.td-chip` would hand all three to another family. -->
         <span class="td-waiting-reason" data-waiting-reason :data-waiting-reason-kind="row.reasonKind">
           <span v-if="row.reasonKind === 'blocked'" data-i18n="waiting.reason.blocked">{{ $t("waiting.reason.blocked") }}</span>
           <span v-else data-i18n="waiting.reason.question">{{ $t("waiting.reason.question") }}</span>
