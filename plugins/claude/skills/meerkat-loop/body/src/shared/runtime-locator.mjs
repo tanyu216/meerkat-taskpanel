@@ -7,7 +7,8 @@
  *   database   explicit → `TASKD_DB` (absolute wins) → `<dataDir>/board.sqlite`
  *   token      `<dataDir>/token`
  *   pointer    `TASKD_RUNTIME_POINTER` → per-user state dir (macOS: Application
- *              Support, Linux: XDG_STATE_HOME)
+ *              Support, Linux: XDG_STATE_HOME); its data-dir twin is
+ *              `runtimePointerPathForDataDir`
  *
  * Every resolver takes an optional `env` object so tests never touch the real
  * environment, and nothing here writes anything at all.
@@ -26,6 +27,7 @@ import {
   DB_PATH_ENV,
   DEFAULT_DATA_DIR,
   LOGS_DIRNAME,
+  RUNTIME_FILENAME,
   RUNTIME_POINTER_ENV,
   TOKEN_FILENAME,
 } from "./constants.mjs";
@@ -84,6 +86,26 @@ export function tokenPath(dataDir) {
 /** @param {string} dataDir */
 export function logsDir(dataDir) {
   return join(resolve(dataDir), LOGS_DIRNAME);
+}
+
+/**
+ * The file a board is addressed at when the machine-wide slot is somebody
+ * else's: beside its own `token` and `writer.lock` (§7.1).
+ *
+ * The write side's twin is
+ * `core/storage/secrets/runtime-pointer.mjs#runtimePointerPathForDataDir`; this
+ * is the seam-side copy the CLI and the transport share. It exists because the
+ * *read* side has to look at that file too — and, since
+ * T-20261014-044653, because the parent that spawns a daemon waits on it as
+ * well: with no named pointer the child picks this file itself (the write side's
+ * "never displace a live board" rule), so the parent cannot know in advance
+ * which of the two it wrote.
+ *
+ * @param {string} dataDir
+ * @returns {string} absolute file path
+ */
+export function runtimePointerPathForDataDir(dataDir) {
+  return join(resolve(dataDir), RUNTIME_FILENAME);
 }
 
 /**
