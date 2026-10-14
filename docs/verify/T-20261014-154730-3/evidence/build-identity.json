@@ -1,0 +1,64 @@
+{
+  "card": "T-20261014-154730-3",
+  "note": "实现腿的身份。本 lane 从 HEAD（= 修复 lane `lane/T-20261014-154730-seg1` @ a2e644b，本 lane 以 `--ff-only` 快进到该顶端）自建 `web/dist`，并与修复 lane 的现成构建**逐字节比对**；`capture.mjs` 的 `readings.servedBuild` 另在同一 run 内把载体实际吐出的响应体哈希了一遍，两边一致才说明「读的是这一份」。",
+  "head_commit": "a2e644b7efaa353bdf192eb65e88c1d5d1891356",
+  "fix_commit": "57f487fef9ad7e8c5729f35e0eca4ff67095f502",
+  "rebuild": {
+    "command": "npm --prefix web ci --prefer-offline --no-audit --no-fund && npm --prefix web run build",
+    "host_cache_note": "仓内 `web/.vendor/npm-cache` 是 linux/arm64，darwin 上 rolldown 缺 binding；用**宿主** `~/.npm` 缓存离线装（52 包，578ms），未触网。",
+    "output": [
+      "dist/index.html                 0.95 kB",
+      "dist/assets/index-OQOGJCz4.css  245.17 kB",
+      "dist/assets/index-D6-f3mPs.js   227.32 kB"
+    ]
+  },
+  "files": [
+    {
+      "name": "index.html",
+      "bytes": 950,
+      "sha256": "b6999676a800cf9d9435d32697df4d6691d4f679f9cd7be8d0e03f61f25e4c4c",
+      "sha256_16": "b6999676a800cf9d",
+      "this_lane": "docs-verify-worktree web/dist",
+      "fix_lane": "meerkat-taskpanel-wt-T-20261014-154730-seg1 web/dist",
+      "byte_identical": true
+    },
+    {
+      "name": "assets/index-D6-f3mPs.js",
+      "bytes": 227327,
+      "sha256": "795880e663862716f7c371c1dec488355997048fcecc8b0296f4297f4f747ebd",
+      "sha256_16": "795880e663862716",
+      "this_lane": "docs-verify-worktree web/dist",
+      "fix_lane": "meerkat-taskpanel-wt-T-20261014-154730-seg1 web/dist",
+      "byte_identical": true
+    },
+    {
+      "name": "assets/index-OQOGJCz4.css",
+      "bytes": 245173,
+      "sha256": "4630af1bdca1e1fd042652296531f86578a2315d15c3eeaac99d7d64e6cd3d2b",
+      "sha256_16": "4630af1bdca1e1fd",
+      "this_lane": "docs-verify-worktree web/dist",
+      "fix_lane": "meerkat-taskpanel-wt-T-20261014-154730-seg1 web/dist",
+      "byte_identical": true
+    }
+  ],
+  "served_back_by_carrier": {
+    "carrier": "loopback static server over this lane's web/dist (`capture.mjs --dist`)",
+    "index-D6-f3mPs.js": { "status": 200, "bytes": 227327, "sha256_16": "795880e663862716" },
+    "index-OQOGJCz4.css": { "status": 200, "bytes": 245173, "sha256_16": "4630af1bdca1e1fd" }
+  },
+  "asset_names_match_brief": {
+    "expected": ["index-D6-f3mPs.js", "index-OQOGJCz4.css"],
+    "observed": ["index-D6-f3mPs.js", "index-OQOGJCz4.css"],
+    "match": true
+  },
+  "prototype_carrier": {
+    "note": "原型腿 = `capture.mjs` / `probe-closeups.mjs` 的 throwaway loopback 静态服务 over `design/`；原型侧读数在两次 run 之间**零位移**（见 `verdict.json` 的 `protoMovedSince150729` 全为 0），即本次读的仍是 150729 读过的那个 oracle。",
+    "design_tree_unchanged_in_this_lane": true,
+    "oracle_files": {
+      "design/prototype/index.html": { "bytes": 376584, "sha256_16": "7a1aaeaca792c0fa" },
+      "design/prototype/app.js": { "bytes": 163907, "sha256_16": "da5ff4b27ab7a987" },
+      "design/prototype/tw.css": { "bytes": 205473, "sha256_16": "e8d80ae7fe80b50e" }
+    },
+    "oracle_pinned_note": "原型是**活 oracle**：本 lane 在隔离 worktree 内，`design/prototype/**` 的 mtime 全为 2026-10-14T10:58:31Z（worktree 创建时刻）、`git status -- design/` 只列本卡的 `fidelity-r14.md` ⇒ 本次两侧读数所依据的原型就是上表三份字节。"
+  }
+}
