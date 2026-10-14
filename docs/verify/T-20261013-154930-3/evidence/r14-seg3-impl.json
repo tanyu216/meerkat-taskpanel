@@ -1,0 +1,2640 @@
+{
+  "summary": {
+    "label": "impl",
+    "dist": "/Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261013-154930-3-seg3/web/dist",
+    "total": 122,
+    "pass": 122,
+    "fail": 0,
+    "failed": []
+  },
+  "results": [
+    {
+      "id": "A6",
+      "leg": "A",
+      "selector": "[data-detail-drawer]",
+      "assertion": "抽屉本体不带 hidden（§8 U4 裁定）",
+      "expected": false,
+      "actual": false,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A6b",
+      "leg": "A",
+      "selector": "[data-detail-drawer]",
+      "assertion": "关闭态 = translateX(100%) + visibility:hidden（原型同形）",
+      "expected": [
+        "none",
+        "hidden"
+      ],
+      "actual": [
+        "none",
+        "hidden"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A6c",
+      "leg": "A",
+      "selector": "[data-detail-overlay]",
+      "assertion": "遮罩关闭态带 hidden",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A6d",
+      "leg": "A",
+      "selector": "13 枚 B09 钩子（关闭态）",
+      "assertion": "逐个 count >= 1",
+      "expected": true,
+      "actual": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A1",
+      "leg": "A",
+      "selector": "[data-detail-drawer]",
+      "assertion": "count == 1",
+      "expected": 1,
+      "actual": 1,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A2",
+      "leg": "A",
+      "selector": "[data-detail-overlay]",
+      "assertion": "count == 1",
+      "expected": 1,
+      "actual": 1,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A3",
+      "leg": "A",
+      "selector": "[data-detail-identifier]",
+      "assertion": "classList 含 td-id-full 计数 == 1",
+      "expected": 1,
+      "actual": 1,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A4",
+      "leg": "A",
+      "selector": "[data-detail-templates]",
+      "assertion": "§5 归属列已改「原型」（回灌契约 T-20261014-112216）：**实现侧 N/A** —— 模板源（`template[data-detail-for]` / slot 多重性）是原型腿的断言",
+      "expected": "原型腿 · N/A",
+      "actual": {
+        "hasHidden": true,
+        "templateCount": 0,
+        "divForCount": 1
+      },
+      "pass": true,
+      "note": "实现侧无 clone 机制（§4 R14-B32 已判 `简化`）；模板源断言由原型腿 verify-r14-proto.mjs 承载，不在本腿裁决。实现侧读数仅登记"
+    },
+    {
+      "id": "A6e",
+      "leg": "A",
+      "selector": "[data-detail-templates] / [data-detail-drawer]",
+      "assertion": "§5 归属列已改「原型」（模板宿主位置）：**实现侧 N/A**；实现侧 `aside` 无 hidden 的义务由 §8.0 U4 / §8.1 D08 承载（见 A6）",
+      "expected": "原型腿 · N/A",
+      "actual": {
+        "templateInsideDrawer": true,
+        "asideHasHidden": false
+      },
+      "pass": true,
+      "note": "aside hidden = false（U4 义务，A6 已断言）；模板宿主位置由原型腿承载"
+    },
+    {
+      "id": "A7",
+      "leg": "A",
+      "selector": "[data-detail-drawer][aria-labelledby]",
+      "assertion": "指向 td-detail-title，且该元素存在、是 h2",
+      "expected": [
+        "td-detail-title",
+        true,
+        "h2"
+      ],
+      "actual": [
+        "td-detail-title",
+        true,
+        "h2"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A8",
+      "leg": "A",
+      "selector": "[data-detail-close] · identifier · chip",
+      "assertion": "三者同一父元素",
+      "expected": [
+        true,
+        true
+      ],
+      "actual": [
+        true,
+        true
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A9",
+      "leg": "A",
+      "selector": "[data-detail-props]",
+      "assertion": "childElementCount == 16",
+      "expected": 16,
+      "actual": 16,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A10",
+      "leg": "A",
+      "selector": "[data-detail-save-field]",
+      "assertion": "三处 == assignee/reporter/labels",
+      "expected": [
+        "assignee",
+        "reporter",
+        "labels"
+      ],
+      "actual": [
+        "assignee",
+        "reporter",
+        "labels"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A11",
+      "leg": "A",
+      "selector": "[data-detail-save] / [data-detail-save-error]",
+      "assertion": "idle + 载体 hidden + role=alert + 错块 hidden",
+      "expected": [
+        "idle",
+        true,
+        "alert",
+        true
+      ],
+      "actual": [
+        "idle",
+        true,
+        "alert",
+        true
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A12",
+      "leg": "A",
+      "selector": "[data-detail-save-error]",
+      "assertion": "原型无 data-i18n；实现保留座位（§8 U2 裁定 = 口径偏离）",
+      "expected": "detail.saveError",
+      "actual": "detail.saveError",
+      "pass": true,
+      "note": "允许的书面偏差，非缺陷"
+    },
+    {
+      "id": "A13",
+      "leg": "A",
+      "selector": "[data-detail-description]",
+      "assertion": "tag / class / 父",
+      "expected": [
+        "div",
+        "td-gfm",
+        "section"
+      ],
+      "actual": [
+        "div",
+        "td-gfm",
+        "section"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A14",
+      "leg": "A",
+      "selector": "relations · attachments · comments · activity",
+      "assertion": "四者都是 div",
+      "expected": [
+        "div",
+        "div",
+        "div",
+        "div"
+      ],
+      "actual": [
+        "div",
+        "div",
+        "div",
+        "div"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A14b",
+      "leg": "A",
+      "selector": "同上",
+      "assertion": "四者的父都是 section",
+      "expected": [
+        "section",
+        "section",
+        "section",
+        "section"
+      ],
+      "actual": [
+        "section",
+        "section",
+        "section",
+        "section"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A15",
+      "leg": "A",
+      "selector": "[data-detail-agent-session]",
+      "assertion": "tag == section",
+      "expected": "section",
+      "actual": "section",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A16",
+      "leg": "A",
+      "selector": "status / priority / project",
+      "assertion": "三者 tag == button",
+      "expected": [
+        "button",
+        "button",
+        "button"
+      ],
+      "actual": [
+        "button",
+        "button",
+        "button"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A17",
+      "leg": "A",
+      "selector": "[data-detail-status] 子元素",
+      "assertion": "== [span, span, svg]",
+      "expected": [
+        "span",
+        "span",
+        "svg"
+      ],
+      "actual": [
+        "span",
+        "span",
+        "svg"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A18",
+      "leg": "A",
+      "selector": "[data-detail-id-copy]",
+      "assertion": "button + data-copy-value 非空 + 内含 1 个 svg",
+      "expected": [
+        "button",
+        true,
+        1
+      ],
+      "actual": [
+        "button",
+        true,
+        1
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A19",
+      "leg": "A",
+      "selector": "[data-detail-assignee] / -avatar / -platform",
+      "assertion": "kind ×2 == agent，platform == openclaw",
+      "expected": [
+        "agent",
+        "agent",
+        "openclaw"
+      ],
+      "actual": [
+        "agent",
+        "agent",
+        "openclaw"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A20",
+      "leg": "A",
+      "selector": "[data-comment-form]",
+      "assertion": "子 = [label, textarea, div]｜label 1｜#td-comment-input｜hint 1｜form 1",
+      "expected": [
+        [
+          "label",
+          "textarea",
+          "div"
+        ],
+        1,
+        "td-comment-input",
+        1,
+        1
+      ],
+      "actual": [
+        [
+          "label",
+          "textarea",
+          "div"
+        ],
+        1,
+        "td-comment-input",
+        1,
+        1
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A22",
+      "leg": "A",
+      "selector": "遮罩 / 抽屉 z-index",
+      "assertion": "40 / 50",
+      "expected": [
+        "40",
+        "50"
+      ],
+      "actual": [
+        "40",
+        "50"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A23",
+      "leg": "A",
+      "selector": "[data-detail-props] [data-i18n^=\"prop.\"]",
+      "assertion": "count >= 8",
+      "expected": true,
+      "actual": 8,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A24",
+      "leg": "A",
+      "selector": "JS-on 轮",
+      "assertion": "console.error == 0 && pageerror == 0",
+      "expected": [
+        0,
+        0
+      ],
+      "actual": [
+        0,
+        0
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B1",
+      "leg": "B",
+      "selector": "[data-detail-drawer]",
+      "assertion": "width / max-width / position",
+      "expected": [
+        "520px",
+        "1512px",
+        "fixed"
+      ],
+      "actual": [
+        "520px",
+        "1512px",
+        "fixed"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B2",
+      "leg": "B",
+      "selector": "[data-detail-identifier]",
+      "assertion": "max-width / overflow / text-overflow / white-space",
+      "expected": [
+        "none",
+        "visible",
+        "clip",
+        "nowrap"
+      ],
+      "actual": [
+        "none",
+        "visible",
+        "clip",
+        "nowrap"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B3",
+      "leg": "B",
+      "selector": "[data-detail-identifier]",
+      "assertion": "scrollWidth == clientWidth（9 字符 PROJ-0007 不裁）",
+      "expected": true,
+      "actual": [
+        65,
+        65
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B4",
+      "leg": "B",
+      "selector": ".td-drawer-body 内边距",
+      "assertion": "16 / 20 / 24 / 20",
+      "expected": [
+        16,
+        20,
+        24,
+        20
+      ],
+      "actual": [
+        16,
+        20,
+        24,
+        20
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B5",
+      "leg": "B",
+      "selector": ".td-drawer-body",
+      "assertion": "overflow-y == auto",
+      "expected": "auto",
+      "actual": "auto",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B6",
+      "leg": "B",
+      "selector": "aside > header.td-drawer-head",
+      "assertion": "padding 四值",
+      "expected": [
+        12,
+        16,
+        12,
+        20
+      ],
+      "actual": [
+        12,
+        16,
+        12,
+        20
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B7",
+      "leg": "B",
+      "selector": "[data-detail-props]",
+      "assertion": "grid / 96px 轨道 / row-gap 4px / 无列间距",
+      "expected": [
+        "grid",
+        "96px 383px",
+        4,
+        "normal"
+      ],
+      "actual": [
+        "grid",
+        "96px 383px",
+        4,
+        "normal"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B8",
+      "leg": "B",
+      "selector": ".td-section-title",
+      "assertion": "11px / uppercase / 0.66px / margin-bottom 8px",
+      "expected": [
+        11,
+        "uppercase",
+        "0.66px",
+        8
+      ],
+      "actual": [
+        11,
+        "uppercase",
+        "0.66px",
+        8
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B9",
+      "leg": "B",
+      "selector": "section[data-detail-agent-session]",
+      "assertion": "padding 16 / 16、border-top 1px",
+      "expected": [
+        16,
+        16,
+        1
+      ],
+      "actual": [
+        16,
+        16,
+        1
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B10",
+      "leg": "B",
+      "selector": "[data-detail-description]",
+      "assertion": "13px / 19.5px / ink-2",
+      "expected": [
+        13,
+        "19.5px",
+        "rgb(74, 85, 94)"
+      ],
+      "actual": [
+        13,
+        "19.5px",
+        "rgb(74, 85, 94)"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B11",
+      "leg": "B",
+      "selector": "[data-detail-drawer] .td-gfm",
+      "assertion": "count == 1",
+      "expected": 1,
+      "actual": 1,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B12",
+      "leg": "B",
+      "selector": "[data-detail-status-chip]",
+      "assertion": "18px / 999px / 12px",
+      "expected": [
+        18,
+        "999px",
+        12
+      ],
+      "actual": [
+        18,
+        "999px",
+        12
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B13",
+      "leg": "B",
+      "selector": "[data-detail-labels]",
+      "assertion": "类 / display / min-height / padding-left",
+      "expected": [
+        "td-prop-value td-prop-combo",
+        "flex",
+        28,
+        6
+      ],
+      "actual": [
+        "td-prop-value td-prop-combo",
+        "flex",
+        28,
+        6
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B14",
+      "leg": "B",
+      "selector": "[data-detail-label-chip]",
+      "assertion": "tag / 子 [span,button] / 18px / 999px / 12px / 左内边距 8px",
+      "expected": [
+        "span",
+        [
+          "span",
+          "button"
+        ],
+        18,
+        "999px",
+        12,
+        8
+      ],
+      "actual": [
+        "span",
+        [
+          "span",
+          "button"
+        ],
+        18,
+        "999px",
+        12,
+        8
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B15",
+      "leg": "B",
+      "selector": "[data-detail-label-remove]",
+      "assertion": "tag / 子 [svg] / 16×16",
+      "expected": [
+        "button",
+        [
+          "svg"
+        ],
+        16,
+        16
+      ],
+      "actual": [
+        "button",
+        [
+          "svg"
+        ],
+        16,
+        16
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B16",
+      "leg": "B",
+      "selector": "[data-agent-session]",
+      "assertion": "8px 10px / border 1px / 圆角 6px",
+      "expected": [
+        [
+          8,
+          10
+        ],
+        1,
+        "6px"
+      ],
+      "actual": [
+        [
+          8,
+          10
+        ],
+        1,
+        "6px"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B18",
+      "leg": "B",
+      "selector": "[data-detail-activity] .td-activity",
+      "assertion": "flex / baseline / 3px / 12px",
+      "expected": [
+        "flex",
+        "baseline",
+        3,
+        12
+      ],
+      "actual": [
+        "flex",
+        "baseline",
+        3,
+        12
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B19",
+      "leg": "B",
+      "selector": "documentElement",
+      "assertion": "无横向溢出",
+      "expected": true,
+      "actual": {
+        "scrollWidth": 1512,
+        "clientWidth": 1512
+      },
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B20",
+      "leg": "B",
+      "selector": "[data-detail-drawer]",
+      "assertion": "表面 light 白 + 左边框 1px",
+      "expected": [
+        "rgb(255, 255, 255)",
+        1
+      ],
+      "actual": [
+        "rgb(255, 255, 255)",
+        1
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B20b",
+      "leg": "B",
+      "selector": ".td-drawer 边框色",
+      "assertion": "light rgb(230,232,235)",
+      "expected": "rgb(230, 232, 235)",
+      "actual": "rgb(230, 232, 235)",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B20c",
+      "leg": "B",
+      "selector": ".td-drawer",
+      "assertion": "box-shadow 非 none",
+      "expected": true,
+      "actual": "rgba(15, 20, 23, 0.1) 0px 8px 24px 0px, rgba(15, 20, 23, 0.06) 0px 1px 2px 0px",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B20d",
+      "leg": "B",
+      "selector": "[data-detail-overlay]",
+      "assertion": "fixed / inset 0 / opacity 1",
+      "expected": [
+        "fixed",
+        [
+          "0px",
+          "0px",
+          "0px",
+          "0px"
+        ],
+        "1"
+      ],
+      "actual": [
+        "fixed",
+        [
+          "0px",
+          "0px",
+          "0px",
+          "0px"
+        ],
+        "1"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B22",
+      "leg": "B",
+      "selector": "[data-detail-overlay]",
+      "assertion": "light 遮罩 = **该侧自己的遮罩令牌**（token 口径，回灌契约 §5 B22 / §8.3 DF-1）：实现读既有共享令牌 `--brand-scrim`，涂出色 == 令牌解析值 且 alpha≈0.32；**不对 light 值做跨侧字面量相等断言**（原型 `rgba(15,20,23,.32)` ≠ 实现 `rgb(31,42,46)/32%`，`DF-1` 登记）",
+      "expected": "== var(--brand-scrim)（非透明，alpha 0.32）",
+      "actual": "oklab(0.276439 -0.0125216 -0.0113156 / 0.32)",
+      "pass": true,
+      "note": "token($brand-scrim) → [31,42,46,0.32]；overlay → [31,42,46,0.32]（DF-1：light 字面量与原型故意不同，dark 两侧同值见 B22b）"
+    },
+    {
+      "id": "B24",
+      "leg": "B",
+      "selector": ".td-file（附件行）",
+      "assertion": "flex / padding 6px 8px / border 1px / 圆角 6px",
+      "expected": [
+        "flex",
+        [
+          6,
+          8
+        ],
+        1,
+        "6px"
+      ],
+      "actual": [
+        "flex",
+        [
+          6,
+          8
+        ],
+        1,
+        "6px"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B25",
+      "leg": "B",
+      "selector": ".td-comment 两行",
+      "assertion": "flex / padding-top 8px / 首行无 border、次行 1px",
+      "expected": [
+        "flex",
+        8,
+        [
+          0,
+          1
+        ]
+      ],
+      "actual": [
+        "flex",
+        8,
+        [
+          0,
+          1
+        ]
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B26",
+      "leg": "B",
+      "selector": "富卡样本（TD-128 等价）",
+      "assertion": "评论 ≥1、meta ≥1、头像 ≥1、.td-rel-item ≥1、relation-link ≥1",
+      "expected": true,
+      "actual": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B27",
+      "leg": "B",
+      "selector": ".td-comment-decision",
+      "assertion": "count >= 1",
+      "expected": true,
+      "actual": 1,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D11",
+      "leg": "D",
+      "selector": "aside > header",
+      "assertion": "border-bottom 1px",
+      "expected": 1,
+      "actual": 1,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D13",
+      "leg": "D",
+      "selector": ".td-drawer-body",
+      "assertion": "min-height 0 + scrollbar-width thin + flex 1 1 auto",
+      "expected": [
+        "0px",
+        "thin",
+        "1 1 auto"
+      ],
+      "actual": [
+        "0px",
+        "thin",
+        "1 1 auto"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D18",
+      "leg": "D",
+      "selector": "[data-detail-identifier]",
+      "assertion": "12px / ink-3",
+      "expected": [
+        12,
+        "rgb(126, 138, 145)"
+      ],
+      "actual": [
+        12,
+        "rgb(126, 138, 145)"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D19",
+      "leg": "D",
+      "selector": "[data-detail-title]",
+      "assertion": "16px / 600",
+      "expected": [
+        16,
+        "600"
+      ],
+      "actual": [
+        16,
+        "600"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D21",
+      "leg": "D",
+      "selector": ".td-save-error",
+      "assertion": "12px / 边框 rgb(192,57,43) / 圆角 6px / margin-bottom 12px（四项逐值）+ 底色：原型是不透明 rgb(251,238,236)，实现是同色 12% 的 color-mix，**按涂在抽屉白底上的复合色**比",
+      "expected": [
+        12,
+        "rgb(192, 57, 43)",
+        "6px",
+        12
+      ],
+      "actual": [
+        12,
+        "rgb(192, 57, 43)",
+        "6px",
+        12
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D21b",
+      "leg": "D",
+      "selector": ".td-save-error 底色",
+      "assertion": "复合到白底后 ≈ rgb(251,238,236)（容差 8/255）",
+      "expected": [
+        251,
+        238,
+        236
+      ],
+      "actual": [
+        247.4,
+        231.2,
+        229.6
+      ],
+      "pass": true,
+      "note": "token → [192,57,43,0.12]"
+    },
+    {
+      "id": "D24",
+      "leg": "D",
+      "selector": ".td-prop-label",
+      "assertion": "12px / ink-3（座位由 A23 判）",
+      "expected": [
+        12,
+        "rgb(126, 138, 145)"
+      ],
+      "actual": [
+        12,
+        "rgb(126, 138, 145)"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D25",
+      "leg": "D",
+      "selector": ".td-prop-value",
+      "assertion": "gap 6 / min-height 28 / padding 0 6px / 13px / 透明 1px 边 / 圆角 4px；display：CSS 声明 inline-flex，作为 grid item 被**块化成 flex**（原型同）",
+      "expected": [
+        "flex",
+        6,
+        28,
+        6,
+        13,
+        1,
+        "4px"
+      ],
+      "actual": [
+        "flex",
+        6,
+        28,
+        6,
+        13,
+        1,
+        "4px"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D26",
+      "leg": "D",
+      "selector": "[data-detail-status]",
+      "assertion": "cursor: pointer",
+      "expected": "pointer",
+      "actual": "pointer",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D27",
+      "leg": "D",
+      "selector": "[data-detail-labels]",
+      "assertion": "根本身即值盒（B13 已判）＋含 chips 盒",
+      "expected": [
+        "td-prop-value td-prop-combo",
+        true
+      ],
+      "actual": [
+        "td-prop-value td-prop-combo",
+        true
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D28",
+      "leg": "D",
+      "selector": "[data-detail-id-copy]",
+      "assertion": "gap 6 / mono / 12px / padding 2px 6px / 圆角 4px（display 同 D25 的块化）",
+      "expected": [
+        "flex",
+        6,
+        12,
+        [
+          2,
+          6
+        ],
+        "4px"
+      ],
+      "actual": [
+        "flex",
+        6,
+        12,
+        [
+          2,
+          6
+        ],
+        "4px"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D28b",
+      "leg": "D",
+      "selector": "[data-detail-id-copy]",
+      "assertion": "字体族是 mono",
+      "expected": true,
+      "actual": "\"JetBrains Mono\", ui-monospace, \"SF Mono\", Menlo, Consolas, monospace",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D29",
+      "leg": "D",
+      "selector": "section.td-section",
+      "assertion": "非首段：padding-top 16 / padding-bottom 16 / border-top 1px",
+      "expected": [
+        16,
+        16,
+        1
+      ],
+      "actual": [
+        16,
+        16,
+        1
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D29b",
+      "leg": "D",
+      "selector": "section.td-section",
+      "assertion": "类名与分区数（7 段：属性…活动）",
+      "expected": [
+        "td-section",
+        7
+      ],
+      "actual": [
+        "td-section",
+        7
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D30",
+      "leg": "D",
+      "selector": ".td-section-title",
+      "assertion": "500 / ink-3 / margin-bottom 8px（字号等由 B8 判）",
+      "expected": [
+        "500",
+        "rgb(126, 138, 145)",
+        8
+      ],
+      "actual": [
+        "500",
+        "rgb(126, 138, 145)",
+        8
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D34",
+      "leg": "D",
+      "selector": "[data-detail-description] > * + *",
+      "assertion": "块间 margin-top 8px",
+      "expected": 8,
+      "actual": 8,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D35",
+      "leg": "D",
+      "selector": ".td-gfm 富元素",
+      "assertion": "h4 13/600/margin-top 12；ul padding-left 18；li+li 2；code 盒；pre 圆角 6；blockquote 左边 2",
+      "expected": [
+        [
+          13,
+          "600",
+          12
+        ],
+        18,
+        2,
+        "4px",
+        "6px",
+        2
+      ],
+      "actual": [
+        [
+          13,
+          "600",
+          12
+        ],
+        18,
+        2,
+        "4px",
+        "6px",
+        2
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D35b",
+      "leg": "D",
+      "selector": ".td-gfm code",
+      "assertion": "行内 code 有底/有边（盒）",
+      "expected": true,
+      "actual": [
+        "rgb(245, 246, 247)",
+        1
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D35c",
+      "leg": "D",
+      "selector": ".td-gfm table",
+      "assertion": "width 100%（= 卡体内容宽）/ border-collapse collapse / th 有底色",
+      "expected": [
+        "479px",
+        "collapse",
+        true
+      ],
+      "actual": [
+        "479px",
+        "collapse",
+        true
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D35d",
+      "leg": "D",
+      "selector": ".td-gfm pre",
+      "assertion": "padding 8px 10px",
+      "expected": [
+        8,
+        10
+      ],
+      "actual": [
+        8,
+        10
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D36",
+      "leg": "D",
+      "selector": ".td-gfm 任务清单",
+      "assertion": "ul.list-style none + padding-left 2px；li display flex / gap 6；.td-check 13×13 圆角 3px；勾选与否靠 color/border 换 token",
+      "expected": [
+        [
+          "none",
+          2
+        ],
+        [
+          "flex",
+          6
+        ],
+        [
+          13,
+          13,
+          "3px"
+        ],
+        true
+      ],
+      "actual": [
+        [
+          "none",
+          2
+        ],
+        [
+          "flex",
+          6
+        ],
+        [
+          13,
+          13,
+          "3px"
+        ],
+        true
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D37",
+      "leg": "D",
+      "selector": "[data-detail-relations]",
+      "assertion": "td-rel / wrap / gap 4px 8px / 两个 .td-rel-item 带 relations.parent|blocks 座位",
+      "expected": true,
+      "actual": [
+        "td-rel",
+        "wrap",
+        "4px 8px",
+        [
+          "relations.blocks",
+          "relations.parent"
+        ]
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D37b",
+      "leg": "D",
+      "selector": "[data-relation-link]",
+      "assertion": "都是 button.td-copy 且文本是任务标识符",
+      "expected": true,
+      "actual": [
+        {
+          "tag": "button",
+          "className": "td-copy",
+          "text": "TD-2"
+        },
+        {
+          "tag": "button",
+          "className": "td-copy",
+          "text": "TD-2"
+        }
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D38",
+      "leg": "D",
+      "selector": "[data-detail-comments]",
+      "assertion": "钩子在 div 上（父 section）",
+      "expected": [
+        "div",
+        "section"
+      ],
+      "actual": [
+        "div",
+        "section"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D39",
+      "leg": "D",
+      "selector": ".td-comment",
+      "assertion": "gap 8px",
+      "expected": 8,
+      "actual": 8,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D40",
+      "leg": "D",
+      "selector": ".td-comment 内部",
+      "assertion": "头像 ≥1（.td-avatar）/ meta flex gap 6 12px 且有 kin 座位 / 正文 13px pre-line ink-2",
+      "expected": [
+        true,
+        [
+          "flex",
+          6,
+          12
+        ],
+        [
+          13,
+          "pre-line",
+          "rgb(74, 85, 94)"
+        ]
+      ],
+      "actual": [
+        true,
+        [
+          "flex",
+          6,
+          12
+        ],
+        [
+          13,
+          "pre-line",
+          "rgb(74, 85, 94)"
+        ]
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D40b",
+      "leg": "D",
+      "selector": ".td-comment-meta",
+      "assertion": "kin 座位含 comment.decision|comment.human|comment.agent 与时间戳",
+      "expected": true,
+      "actual": [
+        "comment.human",
+        "time.daysAgo",
+        "comment.decision",
+        "time.daysAgo"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D41",
+      "leg": "D",
+      "selector": ".td-comment-decision",
+      "assertion": "padding-left 8px / border-left 2px accent",
+      "expected": [
+        8,
+        2
+      ],
+      "actual": [
+        8,
+        2
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D41b",
+      "leg": "D",
+      "selector": ".td-comment-decision",
+      "assertion": "左边色 = accent token（非透明）",
+      "expected": true,
+      "actual": "rgb(15, 122, 115)",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D42",
+      "leg": "D",
+      "selector": ".td-file 内部",
+      "assertion": "文件名 12px/500；尺寸 mono 11px **且贴行尾**（原型用 margin-left:auto；实现用别的机制，按几何判）",
+      "expected": [
+        12,
+        "500",
+        11,
+        true
+      ],
+      "actual": [
+        12,
+        "500",
+        11,
+        true
+      ],
+      "pass": true,
+      "note": "size.marginLeft=247.484px（used），row.right=1492 size.right=1483"
+    },
+    {
+      "id": "D42b",
+      "leg": "D",
+      "selector": ".td-file 家族",
+      "assertion": "行/名/尺寸都挂 .td-file* 类，图标是 .td-icon",
+      "expected": true,
+      "actual": [
+        "td-file",
+        "td-file-name",
+        "td-file-size",
+        "td-icon size-4"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D42c",
+      "leg": "D",
+      "selector": "[data-attachment-size]",
+      "assertion": "字体族 mono",
+      "expected": true,
+      "actual": "\"JetBrains Mono\", ui-monospace, \"SF Mono\", Menlo, Consolas, monospace",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D43",
+      "leg": "D",
+      "selector": "section[data-detail-agent-session]",
+      "assertion": "有 .td-session 盒且未隐藏（agent 卡）",
+      "expected": [
+        "div",
+        false
+      ],
+      "actual": [
+        "div",
+        false
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D43b",
+      "leg": "D",
+      "selector": ".td-session",
+      "assertion": "bottom 是 sunken 底（非透明）",
+      "expected": true,
+      "actual": "rgb(245, 246, 247)",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D44",
+      "leg": "D",
+      "selector": "[data-agent-session] 行 1",
+      "assertion": "平台徽 badge.td-agent-badge + data-agent-platform；值 mono 12px；Resume 是 btn 且推右",
+      "expected": [
+        [
+          "span",
+          true,
+          "openclaw"
+        ],
+        [
+          12,
+          true
+        ],
+        "button",
+        "button"
+      ],
+      "actual": [
+        [
+          "span",
+          true,
+          "openclaw"
+        ],
+        [
+          12,
+          true
+        ],
+        "button",
+        "button"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D45",
+      "leg": "D",
+      "selector": "[data-agent-session-id]",
+      "assertion": "座位上是 session.id 且 id 挂 .td-copy",
+      "expected": [
+        true,
+        true
+      ],
+      "actual": [
+        true,
+        true
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D46",
+      "leg": "D",
+      "selector": ".td-activity-ts",
+      "assertion": "行族类 td-activity + ts mono 11px 推右（auto 的 used 值 > 0）nowrap",
+      "expected": true,
+      "actual": [
+        "td-activity",
+        11,
+        "298.953px",
+        "nowrap"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D46b",
+      "leg": "D",
+      "selector": ".td-activity-ts",
+      "assertion": "字体族 mono",
+      "expected": true,
+      "actual": "\"JetBrains Mono\", ui-monospace, \"SF Mono\", Menlo, Consolas, monospace",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D47",
+      "leg": "D",
+      "selector": "[data-comment-form]",
+      "assertion": "label.td-sr[for=td-comment-input] + textarea + hint + submit",
+      "expected": [
+        "label",
+        "td-comment-input",
+        "td-sr",
+        1
+      ],
+      "actual": [
+        "label",
+        "td-comment-input",
+        "td-sr",
+        1
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D48",
+      "leg": "D",
+      "selector": ".td-textarea",
+      "assertion": "width 100%（= 卡体内容宽）/ min-height 64px / padding 6px 8px / 13px / 1px 边 / 圆角 6px / resize vertical",
+      "expected": [
+        "479px",
+        64,
+        [
+          6,
+          8
+        ],
+        13,
+        1,
+        "6px",
+        "vertical"
+      ],
+      "actual": [
+        "479px",
+        64,
+        [
+          6,
+          8
+        ],
+        13,
+        1,
+        "6px",
+        "vertical"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D50",
+      "leg": "D",
+      "selector": "[data-detail-label-chip] / -remove",
+      "assertion": "chip 类含 badge + td-chip 且有 title；remove 带 aria-label=\"Clear …\" 与 title",
+      "expected": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "actual": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D50b",
+      "leg": "D",
+      "selector": "[data-detail-label-remove]",
+      "assertion": "remove 内含 svg.td-icon-sm（不是文字 ✕）",
+      "expected": 1,
+      "actual": 1,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "C1",
+      "leg": "C",
+      "selector": "[data-detail-drawer] / [data-detail-overlay]",
+      "assertion": "data-state=open｜遮罩 open 且 hidden 摘除",
+      "expected": [
+        "open",
+        "open",
+        false
+      ],
+      "actual": [
+        "open",
+        "open",
+        false
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "C2",
+      "leg": "C",
+      "selector": "[data-detail-close]",
+      "assertion": "【只记归属 · 不计 verdict】打开后焦点落 `[data-detail-close]` —— 由另卡 `T-20261014-082552`（`c8c5ccb`）交付，已由 `T-20261014-084606-4` 独立验证 PASS；本卡 SUT 单 lane 不含该修复（Elon 裁定，2026-10-14T03:37Z）",
+      "expected": "归属 T-20261014-082552 · 不计 verdict",
+      "actual": {
+        "onClose": false,
+        "tag": "body",
+        "insideDrawer": false
+      },
+      "pass": true,
+      "note": "单 lane SUT 预期未带该交互；据此判红属误报（首轮 seg2 已因此误报）。集成批次 B 合并两 lane 后 C2 成立。实现侧读数仅登记"
+    },
+    {
+      "id": "C3",
+      "leg": "C",
+      "selector": "[data-detail-label-menu]",
+      "assertion": "聚焦输入即开菜单且选项 > 0（实现 v-show，原型 hidden — 同意图）",
+      "expected": [
+        true,
+        true
+      ],
+      "actual": [
+        true,
+        true
+      ],
+      "pass": true,
+      "note": "display=block"
+    },
+    {
+      "id": "C4",
+      "leg": "C",
+      "selector": "[data-detail-label-remove]",
+      "assertion": "点 remove 少一枚 chip",
+      "expected": [
+        2,
+        1
+      ],
+      "actual": [
+        2,
+        1
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "C5",
+      "leg": "C",
+      "selector": "[data-detail-save]",
+      "assertion": "真实提交把状态推离 idle",
+      "expected": true,
+      "actual": "saved",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "C6",
+      "leg": "C",
+      "selector": "[data-assignee-menu]",
+      "assertion": "ArrowDown 打开菜单（选项 > 0）",
+      "expected": true,
+      "actual": true,
+      "pass": true,
+      "note": "options=5"
+    },
+    {
+      "id": "C7",
+      "leg": "C",
+      "selector": "[data-detail-close]",
+      "assertion": "关闭：state=closed 且遮罩 hidden 复位",
+      "expected": [
+        "closed",
+        true
+      ],
+      "actual": [
+        "closed",
+        true
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "C8",
+      "leg": "C",
+      "selector": "Esc",
+      "assertion": "重开后按 Esc → closed",
+      "expected": "closed",
+      "actual": "closed",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "C9",
+      "leg": "C",
+      "selector": "全 C 轮",
+      "assertion": "console.error == 0 && pageerror == 0",
+      "expected": [
+        0,
+        0
+      ],
+      "actual": [
+        0,
+        0
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "N1",
+      "leg": "N",
+      "selector": "[data-card-identifier]（11 字符样本）",
+      "assertion": "卡片标识符仍是裁断形（含 …）且不带 .td-id-full（§4.3 注记 1）",
+      "expected": [
+        true,
+        false
+      ],
+      "actual": [
+        true,
+        false
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "N2",
+      "leg": "N",
+      "selector": "[data-detail-slot-source]",
+      "assertion": "U1(b) 裁定：实现侧已删（0）",
+      "expected": 0,
+      "actual": 0,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "N3",
+      "leg": "N",
+      "selector": "[data-detail-drawer] [data-empty]",
+      "assertion": "抽屉空态不是 B12 的 [data-empty]",
+      "expected": 0,
+      "actual": 0,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "N4",
+      "leg": "N",
+      "selector": "[data-attachment-*] / [data-activity-*]",
+      "assertion": "U1(a)：两族自创钩子保留",
+      "expected": true,
+      "actual": [
+        2,
+        2,
+        2,
+        3,
+        3,
+        3
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D14",
+      "leg": "D",
+      "selector": "[data-detail-identifier]（11 字符）",
+      "assertion": "抽屉头显示完整 id（不做字符切片）且带 .td-id-full 不裁",
+      "expected": [
+        "PROJ-0007123",
+        true,
+        false
+      ],
+      "actual": [
+        "PROJ-0007123",
+        true,
+        false
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D26h",
+      "leg": "D",
+      "selector": "button.td-prop-value:hover",
+      "assertion": "hover 换底 + 换边框（真实指针）",
+      "expected": true,
+      "actual": {
+        "background": "rgb(240, 242, 243)",
+        "borderColor": "rgb(230, 232, 235)"
+      },
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B21",
+      "leg": "B",
+      "selector": "[data-detail-drawer] @1512",
+      "assertion": "宽 == min(520, 视口)、无横向溢出、identifier 不裁",
+      "expected": 520,
+      "actual": 520,
+      "pass": true,
+      "note": "{\"drawerWidth\":520,\"scrollWidth\":1512,\"clientWidth\":1512,\"identifierScroll\":65,\"identifierClient\":65,\"identifierText\":\"PROJ-0007\"}"
+    },
+    {
+      "id": "B21",
+      "leg": "B",
+      "selector": "[data-detail-drawer] @1240",
+      "assertion": "宽 == min(520, 视口)、无横向溢出、identifier 不裁",
+      "expected": 520,
+      "actual": 520,
+      "pass": true,
+      "note": "{\"drawerWidth\":520,\"scrollWidth\":1240,\"clientWidth\":1240,\"identifierScroll\":65,\"identifierClient\":65,\"identifierText\":\"PROJ-0007\"}"
+    },
+    {
+      "id": "B21",
+      "leg": "B",
+      "selector": "[data-detail-drawer] @980",
+      "assertion": "宽 == min(520, 视口)、无横向溢出、identifier 不裁",
+      "expected": 520,
+      "actual": 520,
+      "pass": true,
+      "note": "{\"drawerWidth\":520,\"scrollWidth\":980,\"clientWidth\":980,\"identifierScroll\":65,\"identifierClient\":65,\"identifierText\":\"PROJ-0007\"}"
+    },
+    {
+      "id": "B21",
+      "leg": "B",
+      "selector": "[data-detail-drawer] @760",
+      "assertion": "宽 == min(520, 视口)、无横向溢出、identifier 不裁",
+      "expected": 520,
+      "actual": 520,
+      "pass": true,
+      "note": "{\"drawerWidth\":520,\"scrollWidth\":760,\"clientWidth\":760,\"identifierScroll\":65,\"identifierClient\":65,\"identifierText\":\"PROJ-0007\"}"
+    },
+    {
+      "id": "B21",
+      "leg": "B",
+      "selector": "[data-detail-drawer] @430",
+      "assertion": "宽 == min(520, 视口)、无横向溢出、identifier 不裁",
+      "expected": 430,
+      "actual": 430,
+      "pass": true,
+      "note": "{\"drawerWidth\":430,\"scrollWidth\":430,\"clientWidth\":430,\"identifierScroll\":65,\"identifierClient\":65,\"identifierText\":\"PROJ-0007\"}"
+    },
+    {
+      "id": "B23",
+      "leg": "B",
+      "selector": "html[lang]（zh）",
+      "assertion": "lang = **该侧自己的 locale id**（回灌契约 §5 B23：原型 `zh-CN` / 实现镜像 `web/src/i18n/catalogue.mjs` 的 `zh`）+ chip + 分区标题 + 无溢出",
+      "expected": [
+        "zh",
+        "待办",
+        "属性",
+        true
+      ],
+      "actual": [
+        "zh",
+        "待办",
+        "属性",
+        true
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "B22b",
+      "leg": "B",
+      "selector": "[data-detail-drawer]（dark）",
+      "assertion": "dark 表面 / 文字 / 遮罩换 token",
+      "expected": [
+        "rgb(22, 27, 30)",
+        "rgb(230, 237, 240)",
+        "rgba(0, 0, 0, 0.55)"
+      ],
+      "actual": [
+        "rgb(22, 27, 30)",
+        "rgb(230, 237, 240)",
+        "rgba(0, 0, 0, 0.55)"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A21",
+      "leg": "A",
+      "selector": "抽屉空态",
+      "assertion": "relations.none / attachments.none 都是 span",
+      "expected": [
+        "span",
+        "span"
+      ],
+      "actual": [
+        "span",
+        "span"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A21b",
+      "leg": "A",
+      "selector": "[data-detail-attachments]",
+      "assertion": "无附件的卡 0 行且出现空态座位",
+      "expected": [
+        0,
+        true
+      ],
+      "actual": [
+        0,
+        true
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A21c",
+      "leg": "A",
+      "selector": "空态座位文本",
+      "assertion": "渲染后的文本非空（不是裸 key）",
+      "expected": true,
+      "actual": [
+        "No attachments",
+        "No relations"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "A25i",
+      "leg": "A",
+      "selector": "实现（JS-off）",
+      "assertion": "记录实现自身的 JS-off 读数（原型 A25/A26 由 verify-r14-proto.mjs 跑）",
+      "expected": "记录",
+      "actual": {
+        "appChildren": 0,
+        "drawerHooks": 0,
+        "noscript": 0
+      },
+      "pass": true,
+      "note": "实现是 SPA，#app 由 JS 挂载；静态可见性只能在原型侧断言，见报告 §no-JS"
+    }
+  ],
+  "widthRows": [
+    {
+      "width": 1512,
+      "drawerWidth": 520,
+      "scrollWidth": 1512,
+      "clientWidth": 1512,
+      "identifierScroll": 65,
+      "identifierClient": 65,
+      "identifierText": "PROJ-0007"
+    },
+    {
+      "width": 1240,
+      "drawerWidth": 520,
+      "scrollWidth": 1240,
+      "clientWidth": 1240,
+      "identifierScroll": 65,
+      "identifierClient": 65,
+      "identifierText": "PROJ-0007"
+    },
+    {
+      "width": 980,
+      "drawerWidth": 520,
+      "scrollWidth": 980,
+      "clientWidth": 980,
+      "identifierScroll": 65,
+      "identifierClient": 65,
+      "identifierText": "PROJ-0007"
+    },
+    {
+      "width": 760,
+      "drawerWidth": 520,
+      "scrollWidth": 760,
+      "clientWidth": 760,
+      "identifierScroll": 65,
+      "identifierClient": 65,
+      "identifierText": "PROJ-0007"
+    },
+    {
+      "width": 430,
+      "drawerWidth": 430,
+      "scrollWidth": 430,
+      "clientWidth": 430,
+      "identifierScroll": 65,
+      "identifierClient": 65,
+      "identifierText": "PROJ-0007"
+    }
+  ],
+  "open": {
+    "state": {
+      "dataState": "open",
+      "overlayState": "open",
+      "overlayHidden": false,
+      "overlayCount": 1,
+      "drawerCount": 1
+    },
+    "drawerShell": {
+      "hasHidden": false,
+      "hasAriaHidden": false,
+      "role": "dialog",
+      "ariaModal": "true",
+      "ariaLabelledby": "td-detail-title",
+      "labelledbyTarget": true,
+      "labelledbyIsH2": "h2",
+      "width": "520px",
+      "maxWidth": "1512px",
+      "position": "fixed",
+      "zIndex": "50",
+      "borderInlineStartWidth": 1,
+      "borderInlineStartColor": "rgb(230, 232, 235)",
+      "boxShadow": "rgba(15, 20, 23, 0.1) 0px 8px 24px 0px, rgba(15, 20, 23, 0.06) 0px 1px 2px 0px",
+      "background": "rgb(255, 255, 255)",
+      "color": "rgb(20, 24, 27)",
+      "transform": "matrix(1, 0, 0, 1, 0, 0)",
+      "visibility": "visible"
+    },
+    "overlayShell": {
+      "position": "fixed",
+      "inset": [
+        "0px",
+        "0px",
+        "0px",
+        "0px"
+      ],
+      "background": "oklab(0.276439 -0.0125216 -0.0113156 / 0.32)",
+      "opacity": "1",
+      "zIndex": "40",
+      "scrimTokenResolved": "oklab(0.276439 -0.0125216 -0.0113156 / 0.32)"
+    },
+    "header": {
+      "padding": [
+        12,
+        16,
+        12,
+        20
+      ],
+      "borderBottomWidth": 1,
+      "isDrawerHead": true
+    },
+    "body": {
+      "padding": [
+        16,
+        20,
+        24,
+        20
+      ],
+      "overflowY": "auto",
+      "minHeight": "0px",
+      "flex": "1 1 auto",
+      "scrollbarWidth": "thin",
+      "isDrawerBody": true,
+      "contentWidth": 479
+    },
+    "identifier": {
+      "tag": "span",
+      "text": "PROJ-0007",
+      "className": "td-mono text-xs text-(--brand-text-3) td-id td-id-full",
+      "hasFullClass": true,
+      "countWithClass": 1,
+      "fontSize": 12,
+      "color": "rgb(126, 138, 145)",
+      "maxWidth": "none",
+      "overflow": "visible",
+      "textOverflow": "clip",
+      "whiteSpace": "nowrap",
+      "scrollWidth": 65,
+      "clientWidth": 65,
+      "title": "PROJ-0007"
+    },
+    "titleBlock": {
+      "tag": "h2",
+      "fontSize": 16,
+      "fontWeight": "600",
+      "id": "td-detail-title",
+      "text": "Collect the install survey"
+    },
+    "chip": {
+      "tag": "span",
+      "height": 18,
+      "borderRadius": "999px",
+      "fontSize": 12,
+      "dot": {
+        "w": 6,
+        "h": 6,
+        "x": 1095.03
+      },
+      "labelText": "To Do"
+    },
+    "close": {
+      "tag": "button",
+      "hasIcon": true,
+      "box": {
+        "w": 16,
+        "h": 16,
+        "x": 1480
+      },
+      "sameRowAsIdentifier": true,
+      "sameRowAsChip": true
+    },
+    "save": {
+      "carrierTag": "span",
+      "carrierState": "idle",
+      "carrierHidden": true,
+      "errorTag": "span",
+      "errorRole": "alert",
+      "errorHidden": true,
+      "errorI18n": "detail.saveError",
+      "errorFontSize": 12,
+      "errorBorderColor": "rgb(192, 57, 43)",
+      "errorBackground": "oklab(0.543352 0.15117 0.0862156 / 0.12)",
+      "errorRadius": "6px",
+      "errorMarginBottom": 12,
+      "fields": [
+        "assignee",
+        "reporter",
+        "labels"
+      ]
+    },
+    "props": {
+      "tag": "div",
+      "display": "grid",
+      "gridTemplateColumns": "96px 383px",
+      "rowGap": 4,
+      "columnGap": "normal",
+      "alignItems": "center",
+      "childCount": 16,
+      "i18nCount": 8,
+      "labelFont": 12,
+      "labelColor": "rgb(126, 138, 145)"
+    },
+    "propValue": {
+      "display": "flex",
+      "gap": 6,
+      "minHeight": 28,
+      "paddingLeft": 6,
+      "fontSize": 13,
+      "borderTopWidth": 1,
+      "borderRadius": "4px",
+      "cursor": "pointer",
+      "tags": [
+        "button",
+        "button",
+        "button"
+      ],
+      "statusChildren": [
+        "span",
+        "span",
+        "svg"
+      ],
+      "priorityChildren": [
+        "span",
+        "span",
+        "svg"
+      ],
+      "hasChevron": true,
+      "projectLabelClass": "td-mono"
+    },
+    "idCopy": {
+      "tag": "button",
+      "className": "td-copy",
+      "copyValue": "td_PROJ_0007",
+      "svgCount": 1,
+      "display": "flex",
+      "gap": 6,
+      "fontFamily": "\"JetBrains Mono\", ui-monospace, \"SF Mono\", Menlo, Consolas, monospace",
+      "fontSize": 12,
+      "padding": [
+        2,
+        6
+      ],
+      "borderRadius": "4px",
+      "color": "rgb(74, 85, 94)"
+    },
+    "version": {
+      "display": "flex",
+      "minHeight": 28,
+      "paddingLeft": 6
+    },
+    "labelsRow": {
+      "className": "td-prop-value td-prop-combo",
+      "display": "flex",
+      "minHeight": 28,
+      "paddingLeft": 6,
+      "chipCount": 2,
+      "chipTag": "span",
+      "chipClass": "badge td-chip",
+      "chipChildren": [
+        "span",
+        "button"
+      ],
+      "chipHeight": 18,
+      "chipRadius": "999px",
+      "chipFontSize": 12,
+      "chipPadding": [
+        2,
+        4,
+        2,
+        8
+      ],
+      "chipBackground": "rgba(15, 122, 115, 0.1)",
+      "chipTitle": "bug",
+      "removeTag": "button",
+      "removeChildren": [
+        "svg"
+      ],
+      "removeWidth": 16,
+      "removeHeight": 16,
+      "removeAria": "Clear bug",
+      "removeTitle": "Clear",
+      "removeSvgCount": 1
+    },
+    "sections": {
+      "count": 7,
+      "firstPaddingTop": 16,
+      "firstPaddingBottom": 16,
+      "firstBorderTop": 1,
+      "secondPaddingTop": 16,
+      "secondPaddingBottom": 16,
+      "secondBorderTop": 1,
+      "className": "td-section",
+      "titleCount": 7,
+      "titleFontSize": 11,
+      "titleWeight": "500",
+      "titleLetterSpacing": "0.66px",
+      "titleTransform": "uppercase",
+      "titleColor": "rgb(126, 138, 145)",
+      "titleMarginBottom": 8,
+      "titles": [
+        "Properties",
+        "Description",
+        "Relations",
+        "Agent session",
+        "Attachments",
+        "Comments",
+        "Activity"
+      ]
+    },
+    "description": {
+      "tag": "div",
+      "className": "td-gfm",
+      "parentTag": "section",
+      "fontSize": 13,
+      "lineHeight": "19.5px",
+      "color": "rgb(74, 85, 94)",
+      "gfmCountInDrawer": 1,
+      "blockGap": 8,
+      "h4": {
+        "fontSize": 13,
+        "weight": "600",
+        "marginTop": 12
+      },
+      "ul": {
+        "paddingLeft": 18
+      },
+      "liGap": 2,
+      "code": {
+        "fontSize": 12,
+        "background": "rgb(245, 246, 247)",
+        "borderRadius": "4px",
+        "borderTopWidth": 1
+      },
+      "pre": {
+        "padding": [
+          8,
+          10
+        ],
+        "borderRadius": "6px"
+      },
+      "blockquote": {
+        "borderLeftWidth": 2,
+        "color": "rgb(126, 138, 145)"
+      },
+      "table": {
+        "width": "479px",
+        "borderCollapse": "collapse"
+      },
+      "th": {
+        "background": "rgb(245, 246, 247)",
+        "fontWeight": "600"
+      },
+      "taskList": {
+        "className": "td-task-list",
+        "display": "block",
+        "itemDisplay": "flex",
+        "itemGap": 6,
+        "listStyle": "none",
+        "paddingLeft": 2
+      },
+      "check": {
+        "count": 2,
+        "box": {
+          "w": 13,
+          "h": 13,
+          "x": 1015
+        },
+        "borderRadius": "3px",
+        "checkedTrue": "rgb(24, 122, 76)",
+        "checkedFalse": "rgb(207, 213, 217)",
+        "checkedTrueInk": "rgb(24, 122, 76)",
+        "checkedFalseInk": "rgb(126, 138, 145)"
+      }
+    },
+    "relations": {
+      "tag": "div",
+      "parentTag": "section",
+      "className": "td-rel",
+      "display": "flex",
+      "flexWrap": "wrap",
+      "gap": "4px 8px",
+      "itemCount": 2,
+      "itemTags": [
+        "span",
+        "span"
+      ],
+      "itemLabels": [
+        "relations.blocks",
+        "relations.parent"
+      ],
+      "links": [
+        {
+          "tag": "button",
+          "className": "td-copy",
+          "text": "TD-2"
+        },
+        {
+          "tag": "button",
+          "className": "td-copy",
+          "text": "TD-2"
+        }
+      ],
+      "emptySeat": null
+    },
+    "attachments": {
+      "tag": "div",
+      "parentTag": "section",
+      "rowCount": 2,
+      "rowTag": "div",
+      "rowClass": "td-file",
+      "display": "flex",
+      "gap": 8,
+      "padding": [
+        6,
+        8
+      ],
+      "borderWidth": 1,
+      "borderRadius": "6px",
+      "iconClass": "td-icon size-4",
+      "nameClass": "td-file-name",
+      "nameFontSize": 12,
+      "nameWeight": "500",
+      "nameColor": "rgb(20, 24, 27)",
+      "sizeClass": "td-file-size",
+      "sizeFont": "\"JetBrains Mono\", ui-monospace, \"SF Mono\", Menlo, Consolas, monospace",
+      "sizeFontSize": 11,
+      "sizeColor": "rgb(126, 138, 145)",
+      "sizeMarginLeft": "247.484px",
+      "rowRect": {
+        "left": 1013,
+        "right": 1492,
+        "w": 479
+      },
+      "sizeRect": {
+        "left": 1449.88,
+        "right": 1483,
+        "w": 33.13
+      },
+      "emptySeat": null
+    },
+    "comments": {
+      "tag": "div",
+      "parentTag": "section",
+      "rowCount": 2,
+      "rowTag": "article",
+      "rowClass": "td-comment",
+      "display": "flex",
+      "gap": 8,
+      "paddingTop": 8,
+      "borderTopWidth": 0,
+      "rowBorders": [
+        0,
+        1
+      ],
+      "avatarCount": 2,
+      "avatarClass": "td-avatar",
+      "metaCount": 2,
+      "metaDisplay": "flex",
+      "metaGap": 6,
+      "metaFontSize": 12,
+      "metaText": "Terryhuman2d ago",
+      "metaI18n": [
+        "comment.human",
+        "time.daysAgo",
+        "comment.decision",
+        "time.daysAgo"
+      ],
+      "bodyClass": "td-comment-body",
+      "bodyFontSize": 13,
+      "bodyWhiteSpace": "pre-line",
+      "bodyColor": "rgb(74, 85, 94)",
+      "decisionCount": 1,
+      "decisionPaddingLeft": 8,
+      "decisionBorderLeft": 2,
+      "decisionBorderColor": "rgb(15, 122, 115)"
+    },
+    "commentForm": {
+      "tag": "form",
+      "childTags": [
+        "label",
+        "textarea",
+        "div"
+      ],
+      "labelCount": 1,
+      "labelTag": "label",
+      "labelClass": "td-sr",
+      "labelFor": "td-comment-input",
+      "labelI18n": "drawer.comment",
+      "textareaTag": "textarea",
+      "textareaId": "td-comment-input",
+      "textareaClass": "td-textarea",
+      "textareaWidth": "479px",
+      "textareaMinHeight": 64,
+      "textareaPadding": [
+        6,
+        8
+      ],
+      "textareaFontSize": 13,
+      "textareaBorderWidth": 1,
+      "textareaRadius": "6px",
+      "textareaResize": "vertical",
+      "hintCount": 1,
+      "hintFontSize": 11,
+      "hintColor": "rgb(126, 138, 145)",
+      "submitTag": "button",
+      "submitClass": "btn btn-primary btn-sm",
+      "submitText": "Submit"
+    },
+    "activity": {
+      "tag": "div",
+      "parentTag": "section",
+      "rowCount": 3,
+      "rowTag": "div",
+      "rowClass": "td-activity",
+      "display": "flex",
+      "alignItems": "baseline",
+      "gap": 8,
+      "paddingTop": 3,
+      "fontSize": 12,
+      "color": "rgb(74, 85, 94)",
+      "tsClass": "td-activity-ts",
+      "tsFont": "\"JetBrains Mono\", ui-monospace, \"SF Mono\", Menlo, Consolas, monospace",
+      "tsFontSize": 11,
+      "tsMarginLeft": "298.953px",
+      "tsWhiteSpace": "nowrap"
+    },
+    "session": {
+      "sectionTag": "section",
+      "sectionHidden": false,
+      "sectionPadding": [
+        16,
+        16
+      ],
+      "sectionBorderTop": 1,
+      "boxTag": "div",
+      "boxPadding": [
+        8,
+        10
+      ],
+      "boxBackground": "rgb(245, 246, 247)",
+      "boxBorder": 1,
+      "boxRadius": "6px",
+      "badgeTag": "span",
+      "badgeClass": "badge badge-xs td-agent-badge",
+      "badgePlatform": "openclaw",
+      "badgeHeight": 18,
+      "platformValueTag": "span",
+      "platformValueClass": "td-mono text-xs text-(--brand-text-2)",
+      "platformValueFont": "\"JetBrains Mono\", ui-monospace, \"SF Mono\", Menlo, Consolas, monospace",
+      "platformValueFontSize": 12,
+      "resumeTag": "button",
+      "resumeClass": "btn btn-outline btn-xs ms-auto",
+      "resumeMarginLeft": "256.75px",
+      "idSeat": "Session",
+      "idTag": "span",
+      "idClass": "td-copy",
+      "idText": "s-1f2e",
+      "copyBoxCount": 4
+    },
+    "templates": {
+      "hasHidden": true,
+      "insideDrawer": true,
+      "templateCount": 0,
+      "divForCount": 1,
+      "liveSlotCount": 6
+    },
+    "overflow": {
+      "scrollWidth": 1512,
+      "clientWidth": 1512
+    }
+  },
+  "closed": {
+    "dataState": "closed",
+    "hasHidden": false,
+    "visibility": "hidden",
+    "transform": "matrix(1, 0, 0, 1, 520, 0)",
+    "overlayHidden": true,
+    "hooksAtRest": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  },
+  "empty": {
+    "relationsNone": "span",
+    "attachmentsNone": "span",
+    "attachmentsRows": 0,
+    "labelChips": 0,
+    "comments": 0,
+    "activity": 0,
+    "attachmentSeatText": "No attachments",
+    "relationsSeatText": "No relations"
+  },
+  "zh": {
+    "lang": "zh",
+    "chip": "待办",
+    "sectionTitle": "属性",
+    "overflow": true
+  },
+  "dark": {
+    "surface": "rgb(22, 27, 30)",
+    "ink": "rgb(230, 237, 240)",
+    "scrim": "rgba(0, 0, 0, 0.55)"
+  },
+  "noJs": {
+    "appChildren": 0,
+    "drawerHooks": 0,
+    "noscript": 0
+  },
+  "errors": {
+    "console": 0,
+    "page": 0,
+    "messages": []
+  }
+}
