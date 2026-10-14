@@ -5,10 +5,19 @@
 > the *file format*; `docs/contract.md` is the *wire* format (HTTP routes and JSON DTOs), and
 > `cli.md` is the command surface. A card is what `taskctl export md --out <dir>` writes and
 > what the md migrator reads back —
-> `node src/core/storage/md/migrate-cli.mjs import --dir <cards>` (see `docs/migration.md`).
+> `node src/core/storage/md/migrate-cli.mjs import --dir <cards>`, run **in the taskpanel
+> repository** (see `docs/migration.md`), because the migrator is source code and this skill
+> does not ship `src/`.
+>
+> **A `src/…` path is provenance, not a location in this skill.** Every `src/…` and
+> `docs/…` path in this page names a file in the **taskpanel source repository** — where a
+> fact is *defined*. This skill distributes only `SKILL.md`, `references/` and `scripts/`, so
+> none of those paths exists beside this page and none of them can be opened or run from an
+> installed copy. The single command below that must run in the checkout says so (§Conformance);
+> everything else you *run* goes through `taskctl`.
 
 **The product owns this schema.** A card is not a private convention of one team's framework:
-the keys below are declared in code — `KNOWN_CARD_KEYS` in
+the keys below are declared in code — `KNOWN_CARD_KEYS` in the source repository's
 `src/core/storage/md/import.mjs` — and the importer and the exporter are built around that one
 list. §Conformance is the command that keeps this document and that list honest.
 
@@ -16,7 +25,7 @@ list. §Conformance is the command that keeps this document and that list honest
 
 ## Where the schema lives
 
-| Layer | Owns | File |
+| Layer | Owns | File (in the source repository) |
 |---|---|---|
 | **Card (this doc)** | frontmatter keys, section shapes | `src/core/storage/md/{import,export,sections,frontmatter}.mjs` |
 | Board / wire | task DTOs, routes, error codes | `docs/contract.md` |
@@ -309,13 +318,28 @@ Two asymmetries worth knowing, both deliberate:
 ## Conformance
 
 This document is hand-maintained; the code is not. The field table above is asserted against
-`KNOWN_CARD_KEYS` — run this from the repository root; it exits `0` when the two agree,
-printing `{"doc":21,"code":21,"same":true}`:
+`KNOWN_CARD_KEYS` — the code's own list.
+
+> **This one needs the checkout.** There is no installed-copy form of this check, and none can
+> be manufactured: the check *is* the agreement between this page and that code, and this skill
+> does not ship `src/`. With no checkout present there is no `KNOWN_CARD_KEYS` to agree with,
+> so the honest instruction is "run it in a checkout" rather than a substitute that would only
+> look like a check. (Every other command this skill asks you to run goes through `taskctl`,
+> which does work from an installed copy — see `SKILL.md` §Running the CLI.)
+
+Run this from the **repository root**; it exits `0` when the two agree, printing
+`{"doc":21,"code":21,"same":true}`, and `1` when they disagree:
 
 ```bash
 node --input-type=module -e '
-import { readFileSync } from "node:fs";
-const { KNOWN_CARD_KEYS } = await import("./src/core/storage/md/import.mjs");
+import { existsSync, readFileSync } from "node:fs";
+const code = "./src/core/storage/md/import.mjs";
+if (!existsSync(code)) {
+  console.error(`card-schema conformance: needs the taskpanel checkout — ${code} is not here.`);
+  console.error("Run this from the repository root, or skip it: an installed copy of this skill carries no `src/`.");
+  process.exit(2);
+}
+const { KNOWN_CARD_KEYS } = await import(code);
 const md = readFileSync("skills/meerkat-taskpanel/references/card-schema.md", "utf8");
 const table = md.split("## Field reference")[1].split("\n## ")[0];
 const keys = [...table.matchAll(/^\|\s*`([a-z_]+)`\s*\|/gm)].map((m) => m[1]);
@@ -324,6 +348,10 @@ console.log(JSON.stringify({ doc: keys.length, code: KNOWN_CARD_KEYS.length, sam
 process.exit(same ? 0 : 1);
 '
 ```
+
+The exit codes are three distinct answers: `0` the page and the code agree, `1` they disagree
+(the page owes an update), `2` this is not a checkout so the question could not be asked — a
+module-not-found stack is deliberately not one of them.
 
 If it prints `false`, the code has moved and this page owes an update — not the other way round:
 **`KNOWN_CARD_KEYS` is the source of truth, this table is its documentation.**
