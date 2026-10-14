@@ -221,7 +221,7 @@ export const COMMANDS = [
     op: TASK_OPS.move,
     usage:
       'issue move <id|identifier> <status> [--allow-steal --reason "<why>"] ' +
-      '[--no-report --reason "<why>"] [--awaiting-reason E1..E5]',
+      '[--no-report --reason "<why>"] [--awaiting-reason E1..E5] [--blocked-reason <class>]',
     positionals: [
       { name: "ref", summary: "Task id or identifier." },
       { name: "to", summary: "Target status." },
@@ -252,6 +252,12 @@ export const COMMANDS = [
         allow_steal: allowSteal,
         reason: ctx.flags.reason,
         awaiting_reason: ctx.flags.awaitingReason,
+        // 0016 — a `blocked` card may name *what* it is waiting for (SLA
+        // inspection contract §7). Optional, unlike `--awaiting-reason`: an
+        // unstated class is legal (the inspector reads it as `clarify`), so the
+        // only refusal is a value that is not one of the literals. Any move out
+        // of `blocked` clears it, service-side — the flag is simply not read.
+        blocked_reason: ctx.flags.blockedReason,
       }));
       const warnings = payload.task.report_waiver === null
         ? []
