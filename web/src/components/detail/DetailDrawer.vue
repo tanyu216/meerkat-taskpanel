@@ -400,8 +400,8 @@ function copyId() {
         </span>
         <!-- I-1 (T-20261014-154730) — the button **is** the design's `.td-iconbtn`,
              the same class the column header's `+` (F4) and the topbar filters
-             toggle (F10) already wear. The card's ④ `32×32` is that box, so the
-             only honest way to state it is to wear it: the four utilities this
+             toggle (F10) already wear. The design's `32×32` (§3) is that box, so
+             the only honest way to state it is to wear it: the four utilities this
              carried (`ml-auto shrink-0 border-0 bg-transparent
              text-(--brand-text-3) cursor-pointer`) described a 16×16 box with no
              edge and the wrong ink, which is what the visual leg measured
