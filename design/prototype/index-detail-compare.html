@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="meerkat-taskpanel" data-theme-mode="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>MeerkatTaskPanel — 任务详情抽屉 · 两方案对照</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="stylesheet" href="tw.css" />
+    <!--
+      T-20261015-025759 · 对照页（delivery surface, not a product screen）
+
+      它是一张壳：把两方案并排框在同一个视口里，供 Terry 直接比效果。
+      两个 iframe 各自加载完整变体页（index.html 的副本），因此两栏都可交互。
+      本页不含实现代码、不发任何请求、不读不写任何存储。
+
+      共享 tw.css 与 favicon.svg；两栏各自的页面共享 tw.css / vendor/* / app.js。
+      本页自己的文案是交付说明，不是产品文案，因此不挂 data-i18n 钩子
+      （产品的 6 条新文案登记见本卡 Report §⑧）。
+    -->
+    <style>
+      /* 壳只读 tw.css 的既有 token，不新增自定义属性、不引入颜色字面量。 */
+      body {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        min-height: 100vh;
+        overflow: hidden;
+      }
+      .td-cmp-head {
+        flex: none;
+        padding: 12px 16px 10px;
+        border-bottom: 1px solid var(--color-td-line);
+      }
+      .td-cmp-title {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--color-td-ink);
+      }
+      .td-cmp-hint {
+        margin: 4px 0 0;
+        font-size: 12px;
+        line-height: 1.6;
+        color: var(--color-td-ink-3);
+      }
+      .td-cmp-grid {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        /* the row must be bounded by the grid box, not by its content, or the
+           frames grow past the viewport and get clipped by `overflow: hidden`. */
+        grid-template-rows: minmax(0, 1fr);
+        grid-auto-rows: minmax(0, 1fr);
+        gap: 1px;
+        overflow: hidden;
+        background-color: var(--color-td-line);
+      }
+      .td-cmp-col {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
+        background-color: var(--color-td-bg);
+      }
+      .td-cmp-col-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px 0;
+      }
+      .td-cmp-col-title {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--color-td-ink);
+      }
+      .td-cmp-note {
+        flex: none;
+        margin: 6px 12px 10px;
+        font-size: 12px;
+        line-height: 1.6;
+        color: var(--color-td-ink-2);
+      }
+      .td-cmp-frame {
+        flex: 1 1 auto;
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+        border: 1px solid var(--color-td-line);
+        border-radius: var(--r-md);
+        background-color: var(--color-td-surface);
+      }
+      .td-cmp-frame-wrap {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        box-sizing: border-box;
+        padding: 0 12px 12px;
+      }
+      .td-cmp-code {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--color-td-ink-3);
+      }
+      @media (max-width: 979px) {
+        .td-cmp-grid {
+          grid-template-columns: minmax(0, 1fr);
+          grid-auto-rows: minmax(0, 1fr);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="td-cmp-head">
+      <h1 class="td-cmp-title">任务详情抽屉 · 两方案对照（T-20261015-025759）</h1>
+      <p class="td-cmp-hint">
+        两栏都是可交互原型，共用同一批写死样例（各渲染点带
+        <span class="td-cmp-code">&lt;!-- SAMPLE DATA · 实现卡需接 GET /api/v1/tasks/:ref/reports --&gt;</span>
+        ）。点任意卡片打开抽屉，再按各栏自己的控件试。<strong>默认两栏都是现在的抽屉形态</strong>，差异只在打开之后。
+        <br />
+        注意：两栏各约 750px 宽，窄于原型自身的 760px 断点，因此<strong>框内</strong>抽屉本来就会占满宽度 ——
+        想看 520px 抽屉与满屏形态的差别，请单独以全宽打开
+        <span class="td-cmp-code">index-detail-full.html</span>（方案一）与
+        <span class="td-cmp-code">index-detail-tabs.html</span>（方案二）。
+        下面的两张截图 <span class="td-cmp-code">screenshots/d1-full-on.png</span>、
+        <span class="td-cmp-code">screenshots/d2-tabs-reports.png</span> 是 1512px 下的原生尺寸读数。
+      </p>
+    </header>
+
+    <main class="td-cmp-grid">
+      <section class="td-cmp-col">
+        <div class="td-cmp-col-head">
+          <span class="badge badge-sm td-chip">方案一</span>
+          <h2 class="td-cmp-col-title">「开启详情」满屏开关</h2>
+        </div>
+        <p class="td-cmp-note">
+          抽屉头右侧多一个开关。关 = 现状（520px 抽屉，report 家族不出现）；开 = 抽屉变成覆盖整个可视区域的满屏层，
+          既有 7 区之后接 Reports / Conclusion / Acceptance / Leftovers，纵向堆叠。
+          开关状态记在浏览器 <span class="td-cmp-code">localStorage["meerkat.detail.fullDetails"]</span>，
+          <strong>默认关</strong>，换任务 / 刷新 / 重开标签都按它展示。
+        </p>
+        <div class="td-cmp-frame-wrap">
+          <iframe
+            class="td-cmp-frame"
+            src="index-detail-full.html"
+            title="方案一 · 抽屉头「开启详情」满屏开关"
+            loading="eager"
+          ></iframe>
+        </div>
+      </section>
+
+      <section class="td-cmp-col">
+        <div class="td-cmp-col-head">
+          <span class="badge badge-sm td-chip">方案二</span>
+          <h2 class="td-cmp-col-title">抽屉内按信息角色重排（Tab）</h2>
+        </div>
+        <p class="td-cmp-note">
+          抽屉体顶部加一条 Tab 条，按「信息角色」分四轴：Details（卡是什么，= 现状 7 区）/ Reports（做完了什么）/
+          Acceptance（凭什么算完成）/ Leftovers（还差什么）。<strong>默认停 Details</strong>，因此默认面与现状等价；
+          键盘 ← / → 循环、Home / End 首尾。
+        </p>
+        <div class="td-cmp-frame-wrap">
+          <iframe
+            class="td-cmp-frame"
+            src="index-detail-tabs.html"
+            title="方案二 · 抽屉内四轴 Tab 重排"
+            loading="eager"
+          ></iframe>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
