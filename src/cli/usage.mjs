@@ -5,8 +5,18 @@
  * parser actually accepts: the same `flags` list that `argv.mjs` validates
  * against is the one printed here. `taskctl --help` must name every group
  * (card A1), and `taskctl <group> --help` must name every command in it.
+ *
+ * The global flags come from `argv.mjs#GLOBAL_FLAGS` — the very array
+ * `bindFlags` validates against and `registry.globals` hands to
+ * `topLevelUsage`. They were once re-declared here "to avoid a cycle"; there is
+ * none (neither module imports the other), and the two copies had already
+ * drifted: `if-version` was `number` there and `string` here, and `json` and
+ * `help` carried different summaries — so `taskctl --help` and
+ * `taskctl <cmd> --help` disagreed about the same four flags.
+ * `test/cli/dispatch.test.mjs` now pins the two surfaces together.
  */
 
+import { GLOBAL_FLAGS } from "./argv.mjs";
 import { CLI_NAME, VERSION } from "../shared/constants.mjs";
 
 /** `--flag <value>` / `-h, --help` — how a flag reads in a usage line. */
@@ -70,7 +80,7 @@ export function commandUsage(group, command) {
   if (own.length > 0) {
     lines.push("", "Options:", flagTable(own));
   }
-  lines.push("", "Global options:", flagTable(GLOBAL_HELP));
+  lines.push("", "Global options:", flagTable(GLOBAL_FLAGS));
   return `${lines.join("\n")}\n`;
 }
 
@@ -78,19 +88,6 @@ export function commandUsage(group, command) {
 export function versionLine() {
   return `${VERSION}\n`;
 }
-
-/** Global flags, for a command's help footer. Re-declared to avoid a cycle. */
-const GLOBAL_HELP = [
-  { flag: "json", as: "boolean", summary: "Machine-readable JSON on stdout." },
-  { flag: "url", as: "string", value: "<url>", summary: "Board to talk to (default: the local taskd)." },
-  { flag: "token", as: "string", value: "<token>", summary: "Access token (never echoed)." },
-  { flag: "if-version", as: "string", value: "<n>", summary: "Optimistic-concurrency guard." },
-  { flag: "agent-platform", as: "string", value: "<name>", summary: "Host platform (claude|codex|…)." },
-  { flag: "session-id", as: "string", value: "<id>", summary: "Agent session identifier." },
-  { flag: "agent", as: "string", value: "<name>", summary: "Actor id recorded on writes." },
-  { flag: "help", as: "boolean", short: "-h", summary: "Show help and exit." },
-  { flag: "version", as: "boolean", summary: "Print the version and exit (with --json: the version and the contract schema_version)." },
-];
 
 function flagTable(specs) {
   const width = Math.max(...specs.map((spec) => flagSynopsis(spec).length), 4);
