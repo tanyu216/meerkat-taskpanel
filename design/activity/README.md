@@ -19,7 +19,7 @@
 ## 怎么跑
 
 ```bash
-node design/activity/check-activity.mjs                # 静态 + 渲染，155 条断言
+node design/activity/check-activity.mjs                # 静态 + 渲染，194 条断言
 node design/activity/check-activity.mjs --static-only   # 不起浏览器
 node design/activity/check-activity.mjs --shots         # 重新产出 screenshots/
 ```
