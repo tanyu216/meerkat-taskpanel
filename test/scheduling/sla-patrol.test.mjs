@@ -575,6 +575,15 @@ describe("inspector_liveness (the mutual watchdog, §5.3 / §8.4 / F3)", () => {
     const result = live({ peerLastOkAt: null, peerRequired: true });
     assert.deepEqual(rowsOf(result), ["inspector_liveness"]);
   });
+
+  it("alarms when the observer's own clock cannot be read — an injected fault is never a clean envelope", () => {
+    const alert = livenessAlert(live({ peerLastOkAt: "2026-10-14T09:00:00.000Z", now: "not-a-timestamp" }));
+    assert.ok(alert, "H4: an unreadable clock must not decide the peer is fine");
+    assert.equal(alert.measure_start_kind, "unverifiable");
+    assert.equal(alert.threshold_min, null);
+    assert.equal(alert.severity, "warn");
+    assert.equal(alert.confidence, "low");
+  });
 });
 
 describe("assignee_changed (the §7 substantive-change channel, F7)", () => {
