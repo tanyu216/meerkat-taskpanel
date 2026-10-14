@@ -188,3 +188,77 @@ export function assertParentEdgeAllowed(edge, context) {
 export function chainDepthOf(edges, taskId) {
   return ancestorsOf(edges, taskId).length + 1;
 }
+
+/**
+ * Everything reachable from `start` by following `blocks` edges forwards
+ * (source = blocker, target = blocked). Bounded by `RELATION_ANCESTOR_CAP` for
+ * the same reason the parent walk is: a malformed graph must not spin.
+ *
+ * @param {{source: string, target: string}[]} edges `blocks` edges
+ * @param {string} start
+ * @returns {string[]}
+ */
+export function blockedClosure(edges, start) {
+  const bySource = new Map();
+  for (const edge of edges) {
+    if (!bySource.has(edge.source)) bySource.set(edge.source, []);
+    bySource.get(edge.source).push(edge.target);
+  }
+  const out = [];
+  const seen = new Set([start]);
+  let frontier = [start];
+  while (frontier.length > 0 && out.length <= RELATION_ANCESTOR_CAP) {
+    const next = [];
+    for (const node of frontier) {
+      for (const target of bySource.get(node) ?? []) {
+        if (seen.has(target)) continue;
+        seen.add(target);
+        out.push(target);
+        next.push(target);
+      }
+    }
+    frontier = next;
+  }
+  return out;
+}
+
+/**
+ * Would `blocker` blocking `blocked` close a loop in the dependency graph?
+ *
+ * It would exactly when `blocked` can already reach `blocker` by following
+ * `blocks` edges forwards — i.e. when `blocker` is *already*, transitively,
+ * waiting on `blocked`. `depends_on` is the DAG of `README.md` §3, so this is
+ * the mirror of `wouldCreateCycle` for the parent chain: same shape, the other
+ * relation kind.
+ *
+ * @param {{source: string, target: string}[]} edges `blocks` edges
+ * @param {string} blocker
+ * @param {string} blocked
+ */
+export function wouldCreateBlockCycle(edges, blocker, blocked) {
+  if (blocker === blocked) return true;
+  return blockedClosure(edges, blocked).includes(blocker);
+}
+
+/**
+ * The `blocks` shape rule, checked before a transaction is opened so a caller
+ * gets `RELATION_CYCLE` (the same code the opposite direction of the parent
+ * guard raises) rather than a raw trigger message.
+ *
+ * The database re-checks it (`0017_block_cycle.sql`), and
+ * `test/contract/invariants.test.mjs` walks both paths — the service layer
+ * repeats a machine guarantee only to phrase it, never to be the guarantee.
+ *
+ * @param {{source: string, target: string}} edge a normalised `blocks` edge
+ * @param {{edges: {source: string, target: string}[]}} context
+ * @throws {DomainError} `RELATION_CYCLE`
+ */
+export function assertBlockEdgeAllowed(edge, context) {
+  if (wouldCreateBlockCycle(context.edges, edge.source, edge.target)) {
+    throw new DomainError("RELATION_CYCLE", {
+      message: `that would make ${edge.source} depend on itself (it is already blocked by ${edge.target})`,
+      details: { source: edge.source, target: edge.target, type: "blocks" },
+    });
+  }
+  return edge;
+}

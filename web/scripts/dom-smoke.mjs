@@ -269,9 +269,27 @@ export function fixtureApi() {
       { id: "rel-parent", type: "parent", source: "td_PROJ_0007", target: "td_TD_1", origin: null, created_at: minutes(46 * 60) },
       { id: "rel-blocks", type: "blocks", source: "td_TD_1", target: "td_TD_3", origin: null, created_at: minutes(45 * 60) },
       { id: "rel-related", type: "related", source: "td_TD_1", target: "td_TD_4", origin: null, created_at: minutes(44 * 60) },
+      // T-20261014-212017-4 — the **incoming** `blocks` edge, which is what a
+      // card's `depends_on` actually is (the wire's `blocked_by`; the other
+      // direction, `rel-blocks` above, is a card *blocking* somebody). TD-5
+      // blocks TD-1, so TD-1 waits on TD-5 and its drawer must say so. (TD-5 is
+      // a real fixture card on purpose: the chips resolve an id to the
+      // identifier the board knows, and an id with no card behind it would test
+      // the fallback rather than the resolution.)
+      { id: "rel-blocked-by", type: "blocks", source: "td_TD_5", target: "td_TD_1", origin: null, created_at: minutes(43 * 60) },
     ],
   };
-  return { projects, orderDebug, tasks, entries, labels, comments, activities, relations };
+  // R14 ① — the drawer's attachment rows, keyed by the card's internal id the
+  // way the route scopes them. TD-1 is the card the interaction pass opens, so
+  // it is the one with files; two rows, so the section is a list and not a
+  // single-row special case.
+  const attachments = {
+    td_TD_1: [
+      { id: "att-1", task_id: "td_TD_1", comment_id: null, filename: "board-keyboard-spec.md", content_type: "text/markdown", size: 12 * 1024, kind: "attachment", created_at: minutes(47 * 60) },
+      { id: "att-2", task_id: "td_TD_1", comment_id: null, filename: "focus-order-record.png", content_type: "image/png", size: 248 * 1024, kind: "attachment", created_at: minutes(46 * 60) },
+    ],
+  };
+  return { projects, orderDebug, tasks, entries, labels, comments, activities, relations, attachments };
 }
 
 /**
@@ -326,7 +344,32 @@ export function startServer({ port = 0 } = {}) {
     if (relationsFor) {
       const ref = decodeURIComponent(relationsFor[1]);
       const task = data.tasks.find((entry) => entry.identifier === ref || entry.id === ref);
-      return ok({ relations: data.relations[task?.id] ?? [] });
+      const all = data.relations[task?.id] ?? [];
+      // The real route's five keys, not just `relations`
+      // (T-20261014-212017-4). The drawer's `depends_on` chips read
+      // **`blocked_by`** — the edges pointing *at* this card, which is what the
+      // card-schema `depends_on` means — so a fixture that answered only
+      // `relations` would leave the control empty for the wrong reason. The
+      // split is the route's own (`src/server/routes/relations.mjs` →
+      // `commands.listRelations`).
+      return ok({
+        task_id: task?.id ?? ref,
+        relations: all,
+        children: all.filter((row) => row.type === "parent" && row.source === task?.id),
+        ancestors: all.filter((row) => row.type === "parent" && row.target === task?.id),
+        blocked_by: all.filter((row) => row.type === "blocks" && row.target === task?.id),
+        blocks: all.filter((row) => row.type === "blocks" && row.source === task?.id),
+      });
+    }
+    // T-20261014-212017-4 / G2 — the drawer's file list reads the `attachments`
+    // **table** (`GET /api/v1/tasks/:ref/attachments`), never `task.meta`. The
+    // fixture answers the same shape the route does, scoped to the card asked
+    // for, so a card with no files is an empty list rather than a wrong one.
+    const attachmentsFor = /^\/api\/v1\/tasks\/([^/]+)\/attachments$/.exec(path);
+    if (attachmentsFor) {
+      const ref = decodeURIComponent(attachmentsFor[1]);
+      const task = data.tasks.find((entry) => entry.identifier === ref || entry.id === ref);
+      return ok({ task_id: task?.id ?? ref, attachments: data.attachments[task?.id] ?? [] });
     }
     // Resolve the task the caller actually asked for (by identifier or by id)
     // rather than always the first one. Answering every ref with the first
@@ -863,7 +906,12 @@ export async function run() {
     // the expected values below the words the catalogue names: the capital `R`
     // of `Related` still tells a real catalogue hit from the unknown-kind
     // fallback (that one prints the bare lowercase enum word).
-    const R14_RELATION_ROWS = ["Parent · PROJ-0007", "Blocks · TD-3", "Related · TD-4"];
+    // T-20261014-212017-3 §4.4 — `Blocks` is no longer one of these rows. The
+    // card's `depends_on` is an editable chip control of its own (the `blocks`
+    // edge, PROTOCOL §①), and the read-only row was withdrawn so the same fact
+    // has one source. `parent` and `related` stay read-only, which is what this
+    // reader still walks.
+    const R14_RELATION_ROWS = ["Parent · PROJ-0007", "Related · TD-4"];
     const r14Relations = await page.evaluate(() =>
       [...document.querySelectorAll("[data-detail-relations] .td-rel-item")].map((item) => {
         const word = item.querySelector("span[data-i18n]")?.textContent.trim() ?? "";
@@ -874,6 +922,19 @@ export async function run() {
     r14Check(
       r14Relations.join("|") === R14_RELATION_ROWS.join("|"),
       `the drawer's relation rows read ${JSON.stringify(r14Relations)}, expected ${JSON.stringify(R14_RELATION_ROWS)}`,
+    );
+
+    // …and the withdrawn row reappears as the card's `depends_on` chips: one
+    // chip per `blocks` edge pointing *at* this card, carrying the prerequisite's
+    // identifier. A chip is the same fact the row used to state, now editable.
+    const r14DependsChips = await page.evaluate(() =>
+      [...document.querySelectorAll("[data-detail-depends-chips] [data-detail-depends-chip]")].map((chip) =>
+        (chip.getAttribute("data-detail-depends-value") ?? "").trim(),
+      ),
+    );
+    r14Check(
+      r14DependsChips.join("|") === "TD-5",
+      `the drawer's depends_on chips read ${JSON.stringify(r14DependsChips)}, expected ["TD-5"] (the one blocks edge pointing *into* this card)`,
     );
 
     /* ---- ② I-2 (T-20261014-154730) — the focus ring ----------------------
@@ -2233,6 +2294,12 @@ export async function run() {
     // editor's bottom lands exactly on the left column's content edge; the only
     // space under it is the dialog's own padding. A fixed-height panes box put
     // 240px between the two.
+    //
+    // The probes below are scoped to `[data-create-task]` on purpose
+    // (T-20261014-212017-4). There are **two** `[data-md-editor]`s in the
+    // document since the drawer's Description section grew one, and the drawer
+    // renders *before* the dialog in `App.vue`, so a bare `document.querySelector`
+    // would measure the drawer's — which is `hidden` at rest and 0px tall.
     await page.click("[data-new-task]");
     await page.waitForTimeout(300);
     const fill = await page.evaluate(() => {
@@ -2240,9 +2307,9 @@ export async function run() {
       const rect = (selector) => document.querySelector(selector)?.getBoundingClientRect() ?? null;
       const row = rect("[data-create-two-col]");
       const left = rect("[data-create-left]");
-      const editor = rect("[data-md-editor]");
-      const panes = rect(".td-md-panes");
-      const source = rect("[data-md-source]");
+      const editor = rect("[data-create-task] [data-md-editor]");
+      const panes = rect("[data-create-task] .td-md-panes");
+      const source = rect("[data-create-task] [data-md-source]");
       const rowStyle = row ? getComputedStyle(document.querySelector("[data-create-two-col]")) : null;
       return {
         rowBottom: round(row?.bottom ?? 0),
@@ -2253,7 +2320,7 @@ export async function run() {
         panesHeight: round(panes?.height ?? 0),
         sourceHeight: round(source?.height ?? 0),
         sourceScrolls: (() => {
-          const el = document.querySelector("[data-md-source]");
+          const el = document.querySelector("[data-create-task] [data-md-source]");
           return el ? getComputedStyle(el).overflowY : null;
         })(),
       };
@@ -2279,9 +2346,9 @@ export async function run() {
     await page.waitForTimeout(250);
     const narrowFill = await page.evaluate(() => {
       const round = (n) => Math.round(n * 100) / 100;
-      const editor = document.querySelector("[data-md-editor]")?.getBoundingClientRect();
-      const panes = document.querySelector(".td-md-panes")?.getBoundingClientRect();
-      const source = document.querySelector("[data-md-source]")?.getBoundingClientRect();
+      const editor = document.querySelector("[data-create-task] [data-md-editor]")?.getBoundingClientRect();
+      const panes = document.querySelector("[data-create-task] .td-md-panes")?.getBoundingClientRect();
+      const source = document.querySelector("[data-create-task] [data-md-source]")?.getBoundingClientRect();
       const de = document.documentElement;
       return {
         editorHeight: round(editor?.height ?? 0),

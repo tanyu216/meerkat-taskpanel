@@ -141,6 +141,16 @@ export const ERROR_CODES = Object.freeze({
   SESSION_DUPLICATE: spec(409, "Agent session already registered for (task, seg, owner)."),
   NOT_FOUND: spec(404, "Not found."),
 
+  // ---- Attachments (the write surface, T-20261014-212017-4) ------------------
+  // The two refusals the upload path can decide on its own. `content_type` used
+  // to be whatever the caller sent and was served back from the board's own
+  // origin; it is now a closed set (`ATTACHMENT_CONTENT_TYPES`) and a type
+  // outside it names itself here. The size limit is the transport's 8 MiB
+  // (`ATTACHMENT_MAX_BYTES`); the code is what a client branches on when the
+  // refusal has to be stated as a sentence (T-20261014-152924 ④).
+  ATTACHMENT_TYPE_UNSUPPORTED: spec(422, "That file type is not allowed on the board."),
+  ATTACHMENT_TOO_LARGE: spec(413, "That file is larger than the board's 8 MiB attachment limit."),
+
   // ---- md migrator -----------------------------------------------------------
   MD_PARSE_ERROR: spec(422, "Markdown card could not be parsed."),
   MD_GROWTH_GUARD: spec(422, "Rewriting this card would grow it beyond the guard factor."),
@@ -214,6 +224,10 @@ export const JS_ONLY_CODES = Object.freeze([
   "MD_PARSE_ERROR",
   "MD_GROWTH_GUARD",
   "SOURCE_CHANGED",
+  // Attachments: both are decided by `src/shared/attachments.mjs` before any
+  // row exists, so no trigger and no SQLite constraint can raise them.
+  "ATTACHMENT_TYPE_UNSUPPORTED",
+  "ATTACHMENT_TOO_LARGE",
   "TOKEN_FILE_CORRUPT",
   "RUNTIME_POINTER_TOKEN_LEAK",
   // The single-writer guard: raised in JS, before any database is opened.

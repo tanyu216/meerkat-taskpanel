@@ -302,6 +302,51 @@ export const ATTACHMENTS_DIRNAME = "attachments";
 /** Upper bound on an uploaded attachment body (8 MiB). */
 export const ATTACHMENT_MAX_BYTES = 8 * 1024 * 1024;
 
+/**
+ * The `content_type` values an attachment row may declare (T-20261014-212017-4).
+ *
+ * Before this list existed `content_type` was whatever the caller sent and it was
+ * echoed back verbatim on download, so a caller could store `text/html` and have
+ * the board serve it from its own origin. The list is the **closed** set the
+ * board will store, and the download path states `content-disposition:
+ * attachment` + `X-Content-Type-Options: nosniff` beside it, so a stored type is
+ * never a type the browser gets to *interpret* as same-origin active content.
+ *
+ * Two deliberate omissions: `text/html`/`application/xhtml+xml` (a stored page)
+ * and `image/svg+xml` (an SVG is a script host). Both remain uploadable as
+ * `application/octet-stream`, which is what "we do not know what this is"
+ * already means on this board.
+ *
+ * A missing `content_type` is allowed and stored as `null`; the download path
+ * then serves `application/octet-stream`.
+ */
+export const ATTACHMENT_CONTENT_TYPES = Object.freeze([
+  "text/plain",
+  "text/markdown",
+  "text/csv",
+  "text/tab-separated-values",
+  "application/json",
+  "application/pdf",
+  "application/zip",
+  "application/gzip",
+  "application/octet-stream",
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/bmp",
+  "application/msword",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+]);
+
+/**
+ * The `content_type` an attachment is stored with when the caller names none,
+ * and the type the download path serves for a row that has none.
+ */
+export const ATTACHMENT_DEFAULT_CONTENT_TYPE = "application/octet-stream";
+
 // ---------------------------------------------------------------------------
 // Project ordering (ARCHITECTURE §4.6, M6a)
 // ---------------------------------------------------------------------------

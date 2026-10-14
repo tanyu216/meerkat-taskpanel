@@ -5,6 +5,14 @@
       "http": 409
     },
     {
+      "code": "ATTACHMENT_TOO_LARGE",
+      "http": 413
+    },
+    {
+      "code": "ATTACHMENT_TYPE_UNSUPPORTED",
+      "http": 422
+    },
+    {
       "code": "BOARD_ALREADY_RUNNING",
       "http": 409
     },
@@ -244,6 +252,14 @@
           "required": [],
           "type": "object"
         }
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/attachments/:id",
+      "request": {
+        "body": null,
+        "query": null
       }
     },
     {
@@ -758,6 +774,40 @@
             },
             "reporter_id": {
               "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tasks/:ref/attachments",
+      "request": {
+        "body": null,
+        "query": null
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tasks/:ref/attachments",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "comment_id": {
+              "type": "string"
+            },
+            "content_type": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "size": {
+              "type": "integer"
             }
           },
           "required": [],
