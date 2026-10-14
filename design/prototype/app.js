@@ -1525,7 +1525,10 @@
   function decorateAttachmentRow($row) {
     if (!$row || !$row.length) return $row;
     if ($row.find("[data-attachment-download]").length) return $row;
-    $row.attr("data-attachment-row", "");
+    /* The row itself stays class-carried (`.td-file`) — BLOCKS.md B09 keeps
+       `[data-attachment-row]` / `-name` / `-size` as the implementation's own
+       hooks, and a contract is not rewritten from an implementation. Only the
+       two affordances this round adds are hooks. */
     $row.append(
       $("<span class='td-file-actions'></span>")
         .append(attachmentButton("download"))
@@ -4233,7 +4236,7 @@
       var $button = $(this);
       if ($button.prop("disabled")) return;
       var $list = $("[data-detail-drawer]").find("[data-detail-attachments]");
-      $button.closest("[data-attachment-row]").remove();
+      $button.closest(".td-file").remove();
       if (!$list.find(".td-file").length) $list.append(attachmentEmptyState());
       detailCommit("attachments", false);
     });

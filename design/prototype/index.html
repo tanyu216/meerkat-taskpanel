@@ -3473,7 +3473,7 @@
                  the trigger keeps the caret it already carried, and the menu is
                  its panel. `data-status` rides on the option button so the
                  existing `[data-status=…]` rule colours the dot in the row. -->
-            <div class="td-combo td-prop-combo" data-detail-status-combo>
+            <div class="td-combo td-prop-combo" data-detail-status-combo data-detail-save-field="status">
               <button type="button" class="td-prop-value" data-detail-status data-status="todo" aria-haspopup="listbox" aria-expanded="false" aria-controls="td-status-menu-detail">
                 <span class="status td-status-dot" aria-hidden="true"></span>
                 <span data-detail-status-label>To Do</span>
@@ -3496,7 +3496,7 @@
                  than on the row itself, so the row's label text keeps the ink
                  colour and only the glyph is tinted — the shape the trigger
                  button already uses. -->
-            <div class="td-combo td-prop-combo" data-detail-priority-combo>
+            <div class="td-combo td-prop-combo" data-detail-priority-combo data-detail-save-field="priority">
               <button type="button" class="td-prop-value" data-detail-priority data-priority="high" aria-haspopup="listbox" aria-expanded="false" aria-controls="td-priority-menu-detail">
                 <span class="td-pri" role="img" aria-label="Priority: High">
                   <svg class="td-pri-glyph" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
@@ -3648,7 +3648,7 @@
           </div>
         </section>
 
-        <section class="td-section" data-detail-description-section data-detail-description-mode="read">
+        <section class="td-section" data-detail-description-section data-detail-description-mode="read" data-detail-save-field="description">
           <div class="td-section-head">
             <h3 class="td-section-title" data-i18n="drawer.description">Description</h3>
             <!-- T-20261014-212017-3 · the rendered markdown and its editor are
@@ -3791,7 +3791,7 @@
           </div>
         </section>
 
-        <section class="td-section" data-detail-attachments-section>
+        <section class="td-section" data-detail-attachments-section data-detail-save-field="attachments">
           <div class="td-section-head">
             <h3 class="td-section-title" data-i18n="drawer.attachments">Attachments</h3>
             <!-- T-20261014-212017-3 · the section's own upload control. The file
@@ -3802,7 +3802,7 @@
             <input type="file" multiple class="sr-only" data-attachment-file aria-hidden="true" tabindex="-1" />
           </div>
           <div data-detail-attachments>
-            <div class="td-file" data-attachment-row>
+            <div class="td-file">
               <svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg>
               <span class="td-file-name">board-keyboard-spec.md</span>
               <span class="td-file-size">12 KB</span>
@@ -3811,7 +3811,7 @@
                 <button type="button" class="td-iconbtn" data-attachment-remove data-i18n-aria-label="drawer.attachRemove" aria-label="Remove" title="Remove"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
               </span>
             </div>
-            <div class="td-file" data-attachment-row>
+            <div class="td-file">
               <svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg>
               <span class="td-file-name">focus-order-record.png</span>
               <span class="td-file-size">248 KB</span>
