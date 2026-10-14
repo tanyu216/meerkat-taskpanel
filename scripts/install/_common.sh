@@ -153,6 +153,28 @@ repo_root() { cd "$(script_dir)/../.." && pwd; }
 target_home() { printf '%s\n' "${MEERKAT_TASKPANEL_TARGET_HOME:-$HOME}"; }
 apply_helper() { printf '%s\n' "$(script_dir)/lib/apply.mjs"; }
 
+# unit_path_helper — the module that owns the unit-PATH recipe.
+#
+# It is asked for its answers (`node`, `path --scheduler …`) rather than restating the
+# recipe here: the same file answers the taskd guard's JS side and the dry-run cron
+# preview, so bash and JS can differ only by a bug in it, never by drift.
+unit_path_helper() { printf '%s\n' "$(script_dir)/lib/unit-path.mjs"; }
+
+# resolve_host_cli_dir <cli> — the directory that holds <cli>, or nothing.
+#
+# `command -v` answers with the name that would run, which is often a symlink
+# (`~/.nvm/…/bin/claude` → `../lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe`).
+# The directory that has to be on a unit's PATH is the one the name resolves *from*, so
+# the symlink's own directory is the answer — never its target. A name with no slash is
+# not a PATH hit at all (a builtin, a function), so it yields nothing rather than a guess.
+resolve_host_cli_dir() {
+  cli_path="$(command -v "$1" 2>/dev/null || true)"
+  case "$cli_path" in
+    */*) printf '%s\n' "${cli_path%/*}" ;;
+    *) : ;;
+  esac
+}
+
 # loop_src — the loop skill's source, which owns the loop body and the loop's templates.
 #
 # The loop is a skill of its own (skills/meerkat-loop/): its execution body and the units /
@@ -211,8 +233,46 @@ export_tp_env() {
   TP_SCHED="$(target_home)/$host_dir/scheduling"
   TP_WAKE="$(target_home)/$host_dir/bin/wake-$label.sh"
   TP_CLAIM_UNASSIGNED="${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-yes}"
+
+  # --- what the scheduling units run with -------------------------------------
+  #
+  # A scheduler starts a unit with a minimal PATH of its own, so on a machine whose node
+  # lives under nvm or Homebrew the unit hits the same wall twice (T-20261014-020103-2):
+  # `/usr/bin/env node` exits 127, and — fixing only that — the glue the tick starts then
+  # fails the same way, because `exec claude` looks the host CLI up on the *inherited*
+  # minimal PATH. Both layers are therefore fixed by one lever: the unit names its
+  # interpreter outright (`{{NODE}}`) **and** carries a PATH (`{{UNIT_PATH_*}}`) whose head
+  # is the host CLI's directory and node's. The recipe lives in lib/unit-path.mjs — one
+  # definition, read here through its CLI, so bash cannot drift from the JS side.
+  #
+  # `{{NODE}}` is version-pinned, exactly like the taskd unit's: after a node or CLI
+  # upgrade, `install.sh --force` refreshes the units (docs/scheduling.md says so).
+  #
+  # A `--dry-run` renders nothing, and `--skip-node-check` exists so an install can be
+  # *previewed* on a machine whose PATH holds no node at all — so a missing node is fatal
+  # only where the values would actually be used. Where they are used, it is fatal: a unit
+  # that renders an empty interpreter is the 127 this exists to remove.
+  if TP_NODE="$(node "$(unit_path_helper)" node 2>/dev/null)"; then
+    TP_CLI_DIR="$(resolve_host_cli_dir "$label")"
+    if [ -n "$TP_CLI_DIR" ]; then
+      TP_UNIT_PATH_LAUNCHD="$(node "$(unit_path_helper)" path --scheduler launchd --cli-dir "$TP_CLI_DIR")"
+      TP_UNIT_PATH_CRON="$(node "$(unit_path_helper)" path --scheduler cron --cli-dir "$TP_CLI_DIR")"
+    else
+      # Degrade loudly, never silently: the interpreter still resolves (that is `{{NODE}}`'s
+      # job), but a woken worker would not — so say so, and say what fixes it.
+      TP_UNIT_PATH_LAUNCHD="$(node "$(unit_path_helper)" path --scheduler launchd)"
+      TP_UNIT_PATH_CRON="$(node "$(unit_path_helper)" path --scheduler cron)"
+      echo "$TP_HOST: $label is not on PATH — the scheduling units will carry node's directory only,"
+      echo "$TP_HOST:   so a woken $label would not resolve. Install it, then re-run this install with --force."
+    fi
+  elif [ -z "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
+    echo "$TP_HOST: could not resolve the interpreter for the scheduling units (is 'node' on PATH?)" >&2
+    return 1
+  fi
+
   export TP_AGENT TP_REPO TP_SHIM TP_HOOK TP_TRIGGER
   export TP_HOST TP_HOST_BASE TP_LOOP TP_SUPERVISOR TP_LOG TP_STATE TP_ENV TP_SCHED TP_WAKE TP_CLAIM_UNASSIGNED
+  export TP_NODE TP_UNIT_PATH_LAUNCHD TP_UNIT_PATH_CRON
 }
 
 # claim_unassigned_value <flag> <interactive> — decide the "allow claiming unassigned

@@ -289,6 +289,27 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The loop's scheduling units no longer resolve anything on the host's `PATH` — the
+  `env: node` exit 127, fixed at both layers at once.** A scheduler starts a unit with a
+  minimal `PATH` of its own, and on a machine whose node lives under nvm or Homebrew that
+  set holds no `node` at all: the launchd / cron units named `/usr/bin/env node` and exited
+  **127** before the tick could run. Repairing only that would have moved the failure down a
+  layer rather than removing it — the wake glue the tick starts runs `exec claude` on the
+  *same* inherited `PATH` and exits 127 in turn, with the worker's own `git` / `node` /
+  `taskctl` tree blind under it. Each unit now names the **absolute `node`** that rendered it
+  *and* carries a `PATH` whose head is the host CLI's directory and node's, followed by that
+  scheduler's own documented default (prepended, never narrowed: `sh`, `git` and the rest
+  stay exactly where the scheduler would have put them). The value comes from one recipe,
+  `scripts/install/lib/unit-path.mjs`, which the installer's bash side reads through its CLI
+  and JavaScript callers import — so the two cannot drift — and the taskd guard's own
+  `{{PATH}}` is deliberately unchanged by the sharing. When the host CLI is **not** on the
+  installing machine's `PATH`, the installer says so and renders node's directory alone
+  rather than inventing one. The systemd service keeps its current form until the ruling on
+  whether its `Environment=PATH=` should be the documented default or an inherited prefix
+  lands; shipping its absolute interpreter alone would be the half-fix above. One path stays
+  out of reach and is documented as such: `templates/codex/trigger.sh` is scheduled from the
+  user's own crontab line, where no unit of ours is in the chain.
+
 - **One light-dismiss rule for the floating controls, the label filter aligned to its two
   selects, and the list's two states made exclusive.** Three findings from Terry's
   2026-10-12 review of the board.
