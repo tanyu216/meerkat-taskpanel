@@ -1,0 +1,5776 @@
+{
+ "card": "T-20261014-150729",
+ "generated_at": "2026-10-14T07:38:54.909Z",
+ "host": "darwin arm64 · node v24.20.0",
+ "live_port": 9527,
+ "widths": [
+  1512,
+  1240,
+  980,
+  760,
+  430
+ ],
+ "height": 900,
+ "pageErrors": [],
+ "shots": [
+  {
+   "file": "a-w1512-proto.png",
+   "note": "prototype · 1512px · drawer open on TD-128",
+   "sha256_16": "cbc7dd9598aba9ea"
+  },
+  {
+   "file": "a-w1512-impl.png",
+   "note": "implementation · 1512px · drawer open on TD-128",
+   "sha256_16": "75481baad7ea93c3"
+  },
+  {
+   "file": "a-w1512-side-by-side.png",
+   "note": "R14 detail drawer · TD-128 (agent) · 1512px · prototype ⟷ implementation",
+   "sha256_16": "8789d0a98586b8e3"
+  },
+  {
+   "file": "a-w1240-proto.png",
+   "note": "prototype · 1240px · drawer open on TD-128",
+   "sha256_16": "e239c6206bfbfe5e"
+  },
+  {
+   "file": "a-w1240-impl.png",
+   "note": "implementation · 1240px · drawer open on TD-128",
+   "sha256_16": "947e6c68f95c2bce"
+  },
+  {
+   "file": "a-w1240-side-by-side.png",
+   "note": "R14 detail drawer · TD-128 (agent) · 1240px · prototype ⟷ implementation",
+   "sha256_16": "ec1b492daec72b21"
+  },
+  {
+   "file": "a-w980-proto.png",
+   "note": "prototype · 980px · drawer open on TD-128",
+   "sha256_16": "1ab890a54ef58896"
+  },
+  {
+   "file": "a-w980-impl.png",
+   "note": "implementation · 980px · drawer open on TD-128",
+   "sha256_16": "bdc5c733dc7dfdbd"
+  },
+  {
+   "file": "a-w980-side-by-side.png",
+   "note": "R14 detail drawer · TD-128 (agent) · 980px · prototype ⟷ implementation",
+   "sha256_16": "f0e370841a938bd8"
+  },
+  {
+   "file": "a-w760-proto.png",
+   "note": "prototype · 760px · drawer open on TD-128",
+   "sha256_16": "e86b2c035f0577fb"
+  },
+  {
+   "file": "a-w760-impl.png",
+   "note": "implementation · 760px · drawer open on TD-128",
+   "sha256_16": "f096311ceba66c37"
+  },
+  {
+   "file": "a-w760-side-by-side.png",
+   "note": "R14 detail drawer · TD-128 (agent) · 760px · prototype ⟷ implementation",
+   "sha256_16": "21d1c7f65ff7b29d"
+  },
+  {
+   "file": "a-w430-proto.png",
+   "note": "prototype · 430px · drawer open on TD-128",
+   "sha256_16": "7f41910cfcbdab43"
+  },
+  {
+   "file": "a-w430-impl.png",
+   "note": "implementation · 430px · drawer open on TD-128",
+   "sha256_16": "15a8a1919a3ab838"
+  },
+  {
+   "file": "a-w430-side-by-side.png",
+   "note": "R14 detail drawer · TD-128 (agent) · 430px · prototype ⟷ implementation",
+   "sha256_16": "a1e123d2e72d56e9"
+  },
+  {
+   "file": "b-human-proto.png",
+   "note": "prototype · 1512px · human · TD-126",
+   "sha256_16": "88c228418f946d28"
+  },
+  {
+   "file": "b-human-impl.png",
+   "note": "implementation · 1512px · human · TD-126",
+   "sha256_16": "e7fc143b53a99e20"
+  },
+  {
+   "file": "b-human-side-by-side.png",
+   "note": "R14 detail drawer · 1512px · TD-126 · human card · the `related` catalogue, single relation row",
+   "sha256_16": "3ad8f2f5b97802b6"
+  },
+  {
+   "file": "b-zh-proto.png",
+   "note": "prototype · 1512px · zh · TD-128",
+   "sha256_16": "ffd643dd543f7b2e"
+  },
+  {
+   "file": "b-zh-impl.png",
+   "note": "implementation · 1512px · zh · TD-128",
+   "sha256_16": "ee6e37c4ff5a6219"
+  },
+  {
+   "file": "b-zh-side-by-side.png",
+   "note": "R14 detail drawer · 1512px · TD-128 · zh · Parent + Blocks catalogues in the zh dictionary",
+   "sha256_16": "caf395220055e881"
+  },
+  {
+   "file": "b-empty-proto.png",
+   "note": "prototype · 1512px · empty · PROJ-0007",
+   "sha256_16": "31c6930382f8a248"
+  },
+  {
+   "file": "b-empty-impl.png",
+   "note": "implementation · 1512px · empty · PROJ-0007",
+   "sha256_16": "d45462966a7e5a07"
+  },
+  {
+   "file": "b-empty-side-by-side.png",
+   "note": "R14 detail drawer · 1512px · PROJ-0007 · relations.none + attachments.none (both empty seats)",
+   "sha256_16": "df7216df2e4dfed5"
+  },
+  {
+   "file": "c-js-off-proto.png",
+   "note": "prototype · 1512px · JS disabled",
+   "sha256_16": "b176283cf6673d30"
+  },
+  {
+   "file": "c-js-off-impl.png",
+   "note": "implementation · 1512px · JS disabled",
+   "sha256_16": "dc8c52ed5c9ef503"
+  },
+  {
+   "file": "c-js-off-side-by-side.png",
+   "note": "R14 detail drawer · 1512px · JS disabled · structural visibility pair",
+   "sha256_16": "d60f7397e3ff5934"
+  },
+  {
+   "file": "d-focus-proto.png",
+   "note": "prototype · 1512px · focus landed on [data-detail-close]",
+   "sha256_16": "cbc7dd9598aba9ea"
+  },
+  {
+   "file": "d-focus-proto-closeup.png",
+   "note": "prototype · drawer head at focus, close button on its focused face",
+   "sha256_16": "5752b9bbb880a59c"
+  },
+  {
+   "file": "d-scroll-proto.png",
+   "note": "prototype · 1512px · drawer body scrolled to its end (scroll surface)",
+   "sha256_16": "afe7f49d96c91aae"
+  },
+  {
+   "file": "d-focus-impl.png",
+   "note": "implementation · 1512px · focus landed on [data-detail-close]",
+   "sha256_16": "75481baad7ea93c3"
+  },
+  {
+   "file": "d-focus-impl-closeup.png",
+   "note": "implementation · drawer head at focus, close button on its focused face",
+   "sha256_16": "d64fdd3c664c75ec"
+  },
+  {
+   "file": "d-scroll-impl.png",
+   "note": "implementation · 1512px · drawer body scrolled to its end (scroll surface)",
+   "sha256_16": "02bafc0425e9e71d"
+  },
+  {
+   "file": "d-focus-side-by-side.png",
+   "note": "R14 drawer head · 1512px · the opening beat lands focus on [data-detail-close]",
+   "sha256_16": "1e99d08ad83757e5"
+  },
+  {
+   "file": "d-scroll-side-by-side.png",
+   "note": "R14 drawer · 1512px · the body's own scroll surface, scrolled to its end",
+   "sha256_16": "b0dc54b58badd08f"
+  },
+  {
+   "file": "live-board-1512.png",
+   "note": "live board at :9527 · unmediated",
+   "sha256_16": "786ca5588f189539"
+  },
+  {
+   "file": "live-drawer-1512.png",
+   "note": "live board at :9527 · drawer opened on OPENCLAW-T…",
+   "sha256_16": "aed4866bc6f65f49"
+  }
+ ],
+ "readings": {
+  "servedBuild": {
+   "origin": "http://127.0.0.1:9527",
+   "assets": {
+    "index-DC60oicY.css": "81539880ba430f6b",
+    "index-2PH8KyYB.js": "8c600ba1f3bbd8d5"
+   },
+   "title": "MeerkatTaskPanel — Board"
+  },
+  "proto": {
+   "w1512": {
+    "present": true,
+    "drawer": {
+     "x": 992,
+     "y": 0,
+     "w": 520,
+     "h": 900,
+     "display": "flex",
+     "visibility": "visible",
+     "visible": true,
+     "transform": "matrix(1, 0, 0, 1, 0, 0)",
+     "width": "520px",
+     "overflowY": "visible",
+     "borderLeft": "1px rgb(230, 232, 235)",
+     "boxShadow": "set"
+    },
+    "body": {
+     "overflowY": "auto",
+     "scrollHeight": 1616,
+     "clientHeight": 821,
+     "scrollTop": 0
+    },
+    "head": {
+     "identifier": "TD-128",
+     "title": "Wire keyboard navigation across board columns",
+     "chip": {
+      "text": "To Do",
+      "status": "todo"
+     },
+     "close": {
+      "x": 1464,
+      "y": 12,
+      "w": 32,
+      "h": 32,
+      "display": "flex",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "status": {
+     "chipAttr": "todo",
+     "propAttr": "todo"
+    },
+    "blocks": {
+     "props": {
+      "labels": [
+       "Status",
+       "Priority",
+       "Assignee",
+       "Reporter",
+       "Project",
+       "Labels",
+       "ID",
+       "Version"
+      ],
+      "values": [
+       "To Do",
+       "High",
+       "LI elon jobs linus turing simons assistant Terry claude",
+       "T Terry",
+       "MeerkatTaskPanel",
+       "a11yboard a11y api backend board ci design docs perf security ui ux",
+       "v3"
+      ],
+      "box": {
+       "x": 1013,
+       "y": 136.1,
+       "w": 479,
+       "h": 270,
+       "display": "grid",
+       "visibility": "visible",
+       "visible": true
+      }
+     },
+     "description": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 463.6,
+       "w": 479,
+       "h": 303.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "blocks": 7
+     },
+     "relations": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 824.6,
+       "w": 479,
+       "h": 24,
+       "display": "flex",
+       "visibility": "visible",
+       "visible": true
+      },
+      "groups": [
+       {
+        "label": "Parent",
+        "links": [
+         "TD-125"
+        ]
+       },
+       {
+        "label": "Blocks",
+        "links": [
+         "TD-130",
+         "TD-126"
+        ]
+       }
+      ],
+      "text": "ParentTD-125BlocksTD-130TD-126"
+     },
+     "attachments": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 1035.6,
+       "w": 479,
+       "h": 72,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "rows": [
+       {
+        "name": "board-keyboard-spec.md",
+        "size": "12 KB",
+        "icon": {
+         "x": 1022,
+         "y": 1043.6,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 1013,
+         "y": 1035.6,
+         "w": 479,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       },
+       {
+        "name": "focus-order-record.png",
+        "size": "248 KB",
+        "icon": {
+         "x": 1022,
+         "y": 1083.6,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 1013,
+         "y": 1075.6,
+         "w": 479,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       }
+      ],
+      "text": "board-keyboard-spec.md12 KBfocus-order-record.png248 KB"
+     },
+     "comments": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 1165.1,
+       "w": 479,
+       "h": 221,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 3,
+      "decisions": 1
+     },
+     "activity": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 1556.6,
+       "w": 479,
+       "h": 98,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 4
+     },
+     "session": {
+      "present": true,
+      "hidden": false,
+      "box": {
+       "x": 1013,
+       "y": 864.6,
+       "w": 479,
+       "h": 129.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "id": "sess_claude_01HQ19XD1NZZQ"
+     },
+     "labels": [
+      "a11y",
+      "board"
+     ]
+    },
+    "overlay": {
+     "present": true,
+     "hidden": false,
+     "state": "open",
+     "background": "rgba(15, 20, 23, 0.32)",
+     "opacity": "1",
+     "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1512,
+      "h": 900,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "page": {
+     "scrollWidth": 1512,
+     "clientWidth": 1512,
+     "lang": "en",
+     "title": "MeerkatTaskPanel — Board"
+    },
+    "focus": {
+     "isClose": true,
+     "tag": "BUTTON",
+     "hook": "data-detail-close",
+     "outline": "2px solid rgb(15, 122, 115)",
+     "boxShadow": "set"
+    }
+   },
+   "w1240": {
+    "present": true,
+    "drawer": {
+     "x": 720,
+     "y": 0,
+     "w": 520,
+     "h": 900,
+     "display": "flex",
+     "visibility": "visible",
+     "visible": true,
+     "transform": "matrix(1, 0, 0, 1, 0, 0)",
+     "width": "520px",
+     "overflowY": "visible",
+     "borderLeft": "1px rgb(230, 232, 235)",
+     "boxShadow": "set"
+    },
+    "body": {
+     "overflowY": "auto",
+     "scrollHeight": 1616,
+     "clientHeight": 821,
+     "scrollTop": 0
+    },
+    "head": {
+     "identifier": "TD-128",
+     "title": "Wire keyboard navigation across board columns",
+     "chip": {
+      "text": "To Do",
+      "status": "todo"
+     },
+     "close": {
+      "x": 1192,
+      "y": 12,
+      "w": 32,
+      "h": 32,
+      "display": "flex",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "status": {
+     "chipAttr": "todo",
+     "propAttr": "todo"
+    },
+    "blocks": {
+     "props": {
+      "labels": [
+       "Status",
+       "Priority",
+       "Assignee",
+       "Reporter",
+       "Project",
+       "Labels",
+       "ID",
+       "Version"
+      ],
+      "values": [
+       "To Do",
+       "High",
+       "LI elon jobs linus turing simons assistant Terry claude",
+       "T Terry",
+       "MeerkatTaskPanel",
+       "a11yboard a11y api backend board ci design docs perf security ui ux",
+       "v3"
+      ],
+      "box": {
+       "x": 741,
+       "y": 136.1,
+       "w": 479,
+       "h": 270,
+       "display": "grid",
+       "visibility": "visible",
+       "visible": true
+      }
+     },
+     "description": {
+      "present": true,
+      "box": {
+       "x": 741,
+       "y": 463.6,
+       "w": 479,
+       "h": 303.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "blocks": 7
+     },
+     "relations": {
+      "present": true,
+      "box": {
+       "x": 741,
+       "y": 824.6,
+       "w": 479,
+       "h": 24,
+       "display": "flex",
+       "visibility": "visible",
+       "visible": true
+      },
+      "groups": [
+       {
+        "label": "Parent",
+        "links": [
+         "TD-125"
+        ]
+       },
+       {
+        "label": "Blocks",
+        "links": [
+         "TD-130",
+         "TD-126"
+        ]
+       }
+      ],
+      "text": "ParentTD-125BlocksTD-130TD-126"
+     },
+     "attachments": {
+      "present": true,
+      "box": {
+       "x": 741,
+       "y": 1035.6,
+       "w": 479,
+       "h": 72,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "rows": [
+       {
+        "name": "board-keyboard-spec.md",
+        "size": "12 KB",
+        "icon": {
+         "x": 750,
+         "y": 1043.6,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 741,
+         "y": 1035.6,
+         "w": 479,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       },
+       {
+        "name": "focus-order-record.png",
+        "size": "248 KB",
+        "icon": {
+         "x": 750,
+         "y": 1083.6,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 741,
+         "y": 1075.6,
+         "w": 479,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       }
+      ],
+      "text": "board-keyboard-spec.md12 KBfocus-order-record.png248 KB"
+     },
+     "comments": {
+      "present": true,
+      "box": {
+       "x": 741,
+       "y": 1165.1,
+       "w": 479,
+       "h": 221,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 3,
+      "decisions": 1
+     },
+     "activity": {
+      "present": true,
+      "box": {
+       "x": 741,
+       "y": 1556.6,
+       "w": 479,
+       "h": 98,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 4
+     },
+     "session": {
+      "present": true,
+      "hidden": false,
+      "box": {
+       "x": 741,
+       "y": 864.6,
+       "w": 479,
+       "h": 129.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "id": "sess_claude_01HQ19XD1NZZQ"
+     },
+     "labels": [
+      "a11y",
+      "board"
+     ]
+    },
+    "overlay": {
+     "present": true,
+     "hidden": false,
+     "state": "open",
+     "background": "rgba(15, 20, 23, 0.32)",
+     "opacity": "1",
+     "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1240,
+      "h": 900,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "page": {
+     "scrollWidth": 1240,
+     "clientWidth": 1240,
+     "lang": "en",
+     "title": "MeerkatTaskPanel — Board"
+    },
+    "focus": {
+     "isClose": true,
+     "tag": "BUTTON",
+     "hook": "data-detail-close",
+     "outline": "2px solid rgb(15, 122, 115)",
+     "boxShadow": "set"
+    }
+   },
+   "w980": {
+    "present": true,
+    "drawer": {
+     "x": 460,
+     "y": 0,
+     "w": 520,
+     "h": 900,
+     "display": "flex",
+     "visibility": "visible",
+     "visible": true,
+     "transform": "matrix(1, 0, 0, 1, 0, 0)",
+     "width": "520px",
+     "overflowY": "visible",
+     "borderLeft": "1px rgb(230, 232, 235)",
+     "boxShadow": "set"
+    },
+    "body": {
+     "overflowY": "auto",
+     "scrollHeight": 1616,
+     "clientHeight": 821,
+     "scrollTop": 0
+    },
+    "head": {
+     "identifier": "TD-128",
+     "title": "Wire keyboard navigation across board columns",
+     "chip": {
+      "text": "To Do",
+      "status": "todo"
+     },
+     "close": {
+      "x": 932,
+      "y": 12,
+      "w": 32,
+      "h": 32,
+      "display": "flex",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "status": {
+     "chipAttr": "todo",
+     "propAttr": "todo"
+    },
+    "blocks": {
+     "props": {
+      "labels": [
+       "Status",
+       "Priority",
+       "Assignee",
+       "Reporter",
+       "Project",
+       "Labels",
+       "ID",
+       "Version"
+      ],
+      "values": [
+       "To Do",
+       "High",
+       "LI elon jobs linus turing simons assistant Terry claude",
+       "T Terry",
+       "MeerkatTaskPanel",
+       "a11yboard a11y api backend board ci design docs perf security ui ux",
+       "v3"
+      ],
+      "box": {
+       "x": 481,
+       "y": 136.1,
+       "w": 479,
+       "h": 270,
+       "display": "grid",
+       "visibility": "visible",
+       "visible": true
+      }
+     },
+     "description": {
+      "present": true,
+      "box": {
+       "x": 481,
+       "y": 463.6,
+       "w": 479,
+       "h": 303.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "blocks": 7
+     },
+     "relations": {
+      "present": true,
+      "box": {
+       "x": 481,
+       "y": 824.6,
+       "w": 479,
+       "h": 24,
+       "display": "flex",
+       "visibility": "visible",
+       "visible": true
+      },
+      "groups": [
+       {
+        "label": "Parent",
+        "links": [
+         "TD-125"
+        ]
+       },
+       {
+        "label": "Blocks",
+        "links": [
+         "TD-130",
+         "TD-126"
+        ]
+       }
+      ],
+      "text": "ParentTD-125BlocksTD-130TD-126"
+     },
+     "attachments": {
+      "present": true,
+      "box": {
+       "x": 481,
+       "y": 1035.6,
+       "w": 479,
+       "h": 72,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "rows": [
+       {
+        "name": "board-keyboard-spec.md",
+        "size": "12 KB",
+        "icon": {
+         "x": 490,
+         "y": 1043.6,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 481,
+         "y": 1035.6,
+         "w": 479,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       },
+       {
+        "name": "focus-order-record.png",
+        "size": "248 KB",
+        "icon": {
+         "x": 490,
+         "y": 1083.6,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 481,
+         "y": 1075.6,
+         "w": 479,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       }
+      ],
+      "text": "board-keyboard-spec.md12 KBfocus-order-record.png248 KB"
+     },
+     "comments": {
+      "present": true,
+      "box": {
+       "x": 481,
+       "y": 1165.1,
+       "w": 479,
+       "h": 221,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 3,
+      "decisions": 1
+     },
+     "activity": {
+      "present": true,
+      "box": {
+       "x": 481,
+       "y": 1556.6,
+       "w": 479,
+       "h": 98,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 4
+     },
+     "session": {
+      "present": true,
+      "hidden": false,
+      "box": {
+       "x": 481,
+       "y": 864.6,
+       "w": 479,
+       "h": 129.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "id": "sess_claude_01HQ19XD1NZZQ"
+     },
+     "labels": [
+      "a11y",
+      "board"
+     ]
+    },
+    "overlay": {
+     "present": true,
+     "hidden": false,
+     "state": "open",
+     "background": "rgba(15, 20, 23, 0.32)",
+     "opacity": "1",
+     "box": {
+      "x": 0,
+      "y": 0,
+      "w": 980,
+      "h": 900,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "page": {
+     "scrollWidth": 980,
+     "clientWidth": 980,
+     "lang": "en",
+     "title": "MeerkatTaskPanel — Board"
+    },
+    "focus": {
+     "isClose": true,
+     "tag": "BUTTON",
+     "hook": "data-detail-close",
+     "outline": "2px solid rgb(15, 122, 115)",
+     "boxShadow": "set"
+    }
+   },
+   "w760": {
+    "present": true,
+    "drawer": {
+     "x": 240,
+     "y": 0,
+     "w": 520,
+     "h": 900,
+     "display": "flex",
+     "visibility": "visible",
+     "visible": true,
+     "transform": "matrix(1, 0, 0, 1, 0, 0)",
+     "width": "520px",
+     "overflowY": "visible",
+     "borderLeft": "1px rgb(230, 232, 235)",
+     "boxShadow": "set"
+    },
+    "body": {
+     "overflowY": "auto",
+     "scrollHeight": 1616,
+     "clientHeight": 821,
+     "scrollTop": 0
+    },
+    "head": {
+     "identifier": "TD-128",
+     "title": "Wire keyboard navigation across board columns",
+     "chip": {
+      "text": "To Do",
+      "status": "todo"
+     },
+     "close": {
+      "x": 712,
+      "y": 12,
+      "w": 32,
+      "h": 32,
+      "display": "flex",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "status": {
+     "chipAttr": "todo",
+     "propAttr": "todo"
+    },
+    "blocks": {
+     "props": {
+      "labels": [
+       "Status",
+       "Priority",
+       "Assignee",
+       "Reporter",
+       "Project",
+       "Labels",
+       "ID",
+       "Version"
+      ],
+      "values": [
+       "To Do",
+       "High",
+       "LI elon jobs linus turing simons assistant Terry claude",
+       "T Terry",
+       "MeerkatTaskPanel",
+       "a11yboard a11y api backend board ci design docs perf security ui ux",
+       "v3"
+      ],
+      "box": {
+       "x": 261,
+       "y": 136.1,
+       "w": 479,
+       "h": 270,
+       "display": "grid",
+       "visibility": "visible",
+       "visible": true
+      }
+     },
+     "description": {
+      "present": true,
+      "box": {
+       "x": 261,
+       "y": 463.6,
+       "w": 479,
+       "h": 303.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "blocks": 7
+     },
+     "relations": {
+      "present": true,
+      "box": {
+       "x": 261,
+       "y": 824.6,
+       "w": 479,
+       "h": 24,
+       "display": "flex",
+       "visibility": "visible",
+       "visible": true
+      },
+      "groups": [
+       {
+        "label": "Parent",
+        "links": [
+         "TD-125"
+        ]
+       },
+       {
+        "label": "Blocks",
+        "links": [
+         "TD-130",
+         "TD-126"
+        ]
+       }
+      ],
+      "text": "ParentTD-125BlocksTD-130TD-126"
+     },
+     "attachments": {
+      "present": true,
+      "box": {
+       "x": 261,
+       "y": 1035.6,
+       "w": 479,
+       "h": 72,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "rows": [
+       {
+        "name": "board-keyboard-spec.md",
+        "size": "12 KB",
+        "icon": {
+         "x": 270,
+         "y": 1043.6,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 261,
+         "y": 1035.6,
+         "w": 479,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       },
+       {
+        "name": "focus-order-record.png",
+        "size": "248 KB",
+        "icon": {
+         "x": 270,
+         "y": 1083.6,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 261,
+         "y": 1075.6,
+         "w": 479,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       }
+      ],
+      "text": "board-keyboard-spec.md12 KBfocus-order-record.png248 KB"
+     },
+     "comments": {
+      "present": true,
+      "box": {
+       "x": 261,
+       "y": 1165.1,
+       "w": 479,
+       "h": 221,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 3,
+      "decisions": 1
+     },
+     "activity": {
+      "present": true,
+      "box": {
+       "x": 261,
+       "y": 1556.6,
+       "w": 479,
+       "h": 98,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 4
+     },
+     "session": {
+      "present": true,
+      "hidden": false,
+      "box": {
+       "x": 261,
+       "y": 864.6,
+       "w": 479,
+       "h": 129.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "id": "sess_claude_01HQ19XD1NZZQ"
+     },
+     "labels": [
+      "a11y",
+      "board"
+     ]
+    },
+    "overlay": {
+     "present": true,
+     "hidden": false,
+     "state": "open",
+     "background": "rgba(15, 20, 23, 0.32)",
+     "opacity": "1",
+     "box": {
+      "x": 0,
+      "y": 0,
+      "w": 760,
+      "h": 900,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "page": {
+     "scrollWidth": 760,
+     "clientWidth": 760,
+     "lang": "en",
+     "title": "MeerkatTaskPanel — Board"
+    },
+    "focus": {
+     "isClose": true,
+     "tag": "BUTTON",
+     "hook": "data-detail-close",
+     "outline": "2px solid rgb(15, 122, 115)",
+     "boxShadow": "set"
+    }
+   },
+   "w430": {
+    "present": true,
+    "drawer": {
+     "x": 0,
+     "y": 0,
+     "w": 430,
+     "h": 900,
+     "display": "flex",
+     "visibility": "visible",
+     "visible": true,
+     "transform": "matrix(1, 0, 0, 1, 0, 0)",
+     "width": "430px",
+     "overflowY": "visible",
+     "borderLeft": "1px rgb(230, 232, 235)",
+     "boxShadow": "set"
+    },
+    "body": {
+     "overflowY": "auto",
+     "scrollHeight": 1636,
+     "clientHeight": 821,
+     "scrollTop": 0
+    },
+    "head": {
+     "identifier": "TD-128",
+     "title": "Wire keyboard navigation across board columns",
+     "chip": {
+      "text": "To Do",
+      "status": "todo"
+     },
+     "close": {
+      "x": 382,
+      "y": 12,
+      "w": 32,
+      "h": 32,
+      "display": "flex",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "status": {
+     "chipAttr": "todo",
+     "propAttr": "todo"
+    },
+    "blocks": {
+     "props": {
+      "labels": [
+       "Status",
+       "Priority",
+       "Assignee",
+       "Reporter",
+       "Project",
+       "Labels",
+       "ID",
+       "Version"
+      ],
+      "values": [
+       "To Do",
+       "High",
+       "LI elon jobs linus turing simons assistant Terry claude",
+       "T Terry",
+       "MeerkatTaskPanel",
+       "a11yboard a11y api backend board ci design docs perf security ui ux",
+       "v3"
+      ],
+      "box": {
+       "x": 21,
+       "y": 136.1,
+       "w": 389,
+       "h": 270,
+       "display": "grid",
+       "visibility": "visible",
+       "visible": true
+      }
+     },
+     "description": {
+      "present": true,
+      "box": {
+       "x": 21,
+       "y": 463.6,
+       "w": 389,
+       "h": 323,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "blocks": 7
+     },
+     "relations": {
+      "present": true,
+      "box": {
+       "x": 21,
+       "y": 844.1,
+       "w": 389,
+       "h": 24,
+       "display": "flex",
+       "visibility": "visible",
+       "visible": true
+      },
+      "groups": [
+       {
+        "label": "Parent",
+        "links": [
+         "TD-125"
+        ]
+       },
+       {
+        "label": "Blocks",
+        "links": [
+         "TD-130",
+         "TD-126"
+        ]
+       }
+      ],
+      "text": "ParentTD-125BlocksTD-130TD-126"
+     },
+     "attachments": {
+      "present": true,
+      "box": {
+       "x": 21,
+       "y": 1055.1,
+       "w": 389,
+       "h": 72,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "rows": [
+       {
+        "name": "board-keyboard-spec.md",
+        "size": "12 KB",
+        "icon": {
+         "x": 30,
+         "y": 1063.1,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 21,
+         "y": 1055.1,
+         "w": 389,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       },
+       {
+        "name": "focus-order-record.png",
+        "size": "248 KB",
+        "icon": {
+         "x": 30,
+         "y": 1103.1,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 21,
+         "y": 1095.1,
+         "w": 389,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       }
+      ],
+      "text": "board-keyboard-spec.md12 KBfocus-order-record.png248 KB"
+     },
+     "comments": {
+      "present": true,
+      "box": {
+       "x": 21,
+       "y": 1184.6,
+       "w": 389,
+       "h": 221,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 3,
+      "decisions": 1
+     },
+     "activity": {
+      "present": true,
+      "box": {
+       "x": 21,
+       "y": 1576.1,
+       "w": 389,
+       "h": 98,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 4
+     },
+     "session": {
+      "present": true,
+      "hidden": false,
+      "box": {
+       "x": 21,
+       "y": 884.1,
+       "w": 389,
+       "h": 129.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "id": "sess_claude_01HQ19XD1NZZQ"
+     },
+     "labels": [
+      "a11y",
+      "board"
+     ]
+    },
+    "overlay": {
+     "present": true,
+     "hidden": false,
+     "state": "open",
+     "background": "rgba(15, 20, 23, 0.32)",
+     "opacity": "1",
+     "box": {
+      "x": 0,
+      "y": 0,
+      "w": 430,
+      "h": 900,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "page": {
+     "scrollWidth": 430,
+     "clientWidth": 430,
+     "lang": "en",
+     "title": "MeerkatTaskPanel — Board"
+    },
+    "focus": {
+     "isClose": true,
+     "tag": "BUTTON",
+     "hook": "data-detail-close",
+     "outline": "2px solid rgb(15, 122, 115)",
+     "boxShadow": "set"
+    }
+   },
+   "b-human": {
+    "present": true,
+    "drawer": {
+     "x": 992,
+     "y": 0,
+     "w": 520,
+     "h": 900,
+     "display": "flex",
+     "visibility": "visible",
+     "visible": true,
+     "transform": "matrix(1, 0, 0, 1, 0, 0)",
+     "width": "520px",
+     "overflowY": "visible",
+     "borderLeft": "1px rgb(230, 232, 235)",
+     "boxShadow": "set"
+    },
+    "body": {
+     "overflowY": "auto",
+     "scrollHeight": 1326,
+     "clientHeight": 821,
+     "scrollTop": 0
+    },
+    "head": {
+     "identifier": "TD-126",
+     "title": "Skeleton loading for list view",
+     "chip": {
+      "text": "To Do",
+      "status": "in_review"
+     },
+     "close": {
+      "x": 1464,
+      "y": 12,
+      "w": 32,
+      "h": 32,
+      "display": "flex",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "status": {
+     "chipAttr": "in_review",
+     "propAttr": "in_review"
+    },
+    "blocks": {
+     "props": {
+      "labels": [
+       "Status",
+       "Priority",
+       "Assignee",
+       "Reporter",
+       "Project",
+       "Labels",
+       "ID",
+       "Version"
+      ],
+      "values": [
+       "In Review",
+       "Medium",
+       "T elon jobs linus turing simons assistant Terry claude",
+       "T Terry",
+       "MeerkatTaskPanel",
+       "ui a11y api backend board ci design docs perf security ui ux",
+       "v2"
+      ],
+      "box": {
+       "x": 1013,
+       "y": 136.1,
+       "w": 479,
+       "h": 270,
+       "display": "grid",
+       "visibility": "visible",
+       "visible": true
+      }
+     },
+     "description": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 463.6,
+       "w": 479,
+       "h": 276.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "blocks": 7
+     },
+     "relations": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 797.6,
+       "w": 479,
+       "h": 24,
+       "display": "flex",
+       "visibility": "visible",
+       "visible": true
+      },
+      "groups": [
+       {
+        "label": "Related",
+        "links": [
+         "TD-128"
+        ]
+       }
+      ],
+      "text": "RelatedTD-128"
+     },
+     "attachments": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 879.1,
+       "w": 479,
+       "h": 32,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "rows": [
+       {
+        "name": "skeleton-rows.png",
+        "size": "180 KB",
+        "icon": {
+         "x": 1022,
+         "y": 887.1,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 1013,
+         "y": 879.1,
+         "w": 479,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       }
+      ],
+      "text": "skeleton-rows.png180 KB"
+     },
+     "comments": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 968.6,
+       "w": 479,
+       "h": 127.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 2,
+      "decisions": 1
+     },
+     "activity": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 1266.6,
+       "w": 479,
+       "h": 98,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 4
+     },
+     "session": {
+      "present": true,
+      "hidden": true,
+      "box": {
+       "x": 0,
+       "y": 0,
+       "w": 0,
+       "h": 0,
+       "display": "none",
+       "visibility": "visible",
+       "visible": false
+      },
+      "id": ""
+     },
+     "labels": [
+      "ui"
+     ]
+    },
+    "overlay": {
+     "present": true,
+     "hidden": false,
+     "state": "open",
+     "background": "rgba(15, 20, 23, 0.32)",
+     "opacity": "1",
+     "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1512,
+      "h": 900,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "page": {
+     "scrollWidth": 1512,
+     "clientWidth": 1512,
+     "lang": "en",
+     "title": "MeerkatTaskPanel — Board"
+    },
+    "focus": {
+     "isClose": true,
+     "tag": "BUTTON",
+     "hook": "data-detail-close",
+     "outline": "2px solid rgb(15, 122, 115)",
+     "boxShadow": "set"
+    }
+   },
+   "b-zh": {
+    "present": true,
+    "drawer": {
+     "x": 992,
+     "y": 0,
+     "w": 520,
+     "h": 900,
+     "display": "flex",
+     "visibility": "visible",
+     "visible": true,
+     "transform": "matrix(1, 0, 0, 1, 0, 0)",
+     "width": "520px",
+     "overflowY": "visible",
+     "borderLeft": "1px rgb(230, 232, 235)",
+     "boxShadow": "set"
+    },
+    "body": {
+     "overflowY": "auto",
+     "scrollHeight": 1616,
+     "clientHeight": 821,
+     "scrollTop": 0
+    },
+    "head": {
+     "identifier": "TD-128",
+     "title": "Wire keyboard navigation across board columns",
+     "chip": {
+      "text": "待办",
+      "status": "todo"
+     },
+     "close": {
+      "x": 1464,
+      "y": 12,
+      "w": 32,
+      "h": 32,
+      "display": "flex",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "status": {
+     "chipAttr": "todo",
+     "propAttr": "todo"
+    },
+    "blocks": {
+     "props": {
+      "labels": [
+       "状态",
+       "优先级",
+       "负责人",
+       "创建人",
+       "项目",
+       "标签",
+       "内部 ID",
+       "版本"
+      ],
+      "values": [
+       "待办",
+       "高",
+       "LI elon jobs linus turing simons assistant Terry claude",
+       "T Terry",
+       "MeerkatTaskPanel",
+       "a11yboard a11y api backend board ci design docs perf security ui ux",
+       "v3"
+      ],
+      "box": {
+       "x": 1013,
+       "y": 136.1,
+       "w": 479,
+       "h": 270,
+       "display": "grid",
+       "visibility": "visible",
+       "visible": true
+      }
+     },
+     "description": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 463.6,
+       "w": 479,
+       "h": 303.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "blocks": 7
+     },
+     "relations": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 824.6,
+       "w": 479,
+       "h": 24,
+       "display": "flex",
+       "visibility": "visible",
+       "visible": true
+      },
+      "groups": [
+       {
+        "label": "父任务",
+        "links": [
+         "TD-125"
+        ]
+       },
+       {
+        "label": "阻塞",
+        "links": [
+         "TD-130",
+         "TD-126"
+        ]
+       }
+      ],
+      "text": "父任务TD-125阻塞TD-130TD-126"
+     },
+     "attachments": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 1035.6,
+       "w": 479,
+       "h": 72,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "rows": [
+       {
+        "name": "board-keyboard-spec.md",
+        "size": "12 KB",
+        "icon": {
+         "x": 1022,
+         "y": 1043.6,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 1013,
+         "y": 1035.6,
+         "w": 479,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       },
+       {
+        "name": "focus-order-record.png",
+        "size": "248 KB",
+        "icon": {
+         "x": 1022,
+         "y": 1083.6,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 1013,
+         "y": 1075.6,
+         "w": 479,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       }
+      ],
+      "text": "board-keyboard-spec.md12 KBfocus-order-record.png248 KB"
+     },
+     "comments": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 1165.1,
+       "w": 479,
+       "h": 221,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 3,
+      "decisions": 1
+     },
+     "activity": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 1556.6,
+       "w": 479,
+       "h": 98,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 4
+     },
+     "session": {
+      "present": true,
+      "hidden": false,
+      "box": {
+       "x": 1013,
+       "y": 864.6,
+       "w": 479,
+       "h": 129.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "id": "sess_claude_01HQ19XD1NZZQ"
+     },
+     "labels": [
+      "a11y",
+      "board"
+     ]
+    },
+    "overlay": {
+     "present": true,
+     "hidden": false,
+     "state": "open",
+     "background": "rgba(15, 20, 23, 0.32)",
+     "opacity": "1",
+     "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1512,
+      "h": 900,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "page": {
+     "scrollWidth": 1512,
+     "clientWidth": 1512,
+     "lang": "zh-CN",
+     "title": "MeerkatTaskPanel — 看板"
+    },
+    "focus": {
+     "isClose": true,
+     "tag": "BUTTON",
+     "hook": "data-detail-close",
+     "outline": "2px solid rgb(15, 122, 115)",
+     "boxShadow": "set"
+    }
+   },
+   "b-empty": {
+    "present": true,
+    "drawer": {
+     "x": 992,
+     "y": 0,
+     "w": 520,
+     "h": 900,
+     "display": "flex",
+     "visibility": "visible",
+     "visible": true,
+     "transform": "matrix(1, 0, 0, 1, 0, 0)",
+     "width": "520px",
+     "overflowY": "visible",
+     "borderLeft": "1px rgb(230, 232, 235)",
+     "boxShadow": "set"
+    },
+    "body": {
+     "overflowY": "auto",
+     "scrollHeight": 1303,
+     "clientHeight": 821,
+     "scrollTop": 0
+    },
+    "head": {
+     "identifier": "PROJ-0007",
+     "title": "Add bulk status change to board selection",
+     "chip": {
+      "text": "To Do",
+      "status": "backlog"
+     },
+     "close": {
+      "x": 1464,
+      "y": 12,
+      "w": 32,
+      "h": 32,
+      "display": "flex",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "status": {
+     "chipAttr": "backlog",
+     "propAttr": "backlog"
+    },
+    "blocks": {
+     "props": {
+      "labels": [
+       "Status",
+       "Priority",
+       "Assignee",
+       "Reporter",
+       "Project",
+       "Labels",
+       "ID",
+       "Version"
+      ],
+      "values": [
+       "Backlog",
+       "None",
+       "EL elon jobs linus turing simons assistant Terry openclaw",
+       "T Terry",
+       "MeerkatTaskPanel",
+       "uxboard a11y api backend board ci design docs perf security ui ux",
+       "v1"
+      ],
+      "box": {
+       "x": 1013,
+       "y": 136.1,
+       "w": 479,
+       "h": 270,
+       "display": "grid",
+       "visibility": "visible",
+       "visible": true
+      }
+     },
+     "description": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 463.6,
+       "w": 479,
+       "h": 276.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "blocks": 7
+     },
+     "relations": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 797.6,
+       "w": 479,
+       "h": 18,
+       "display": "flex",
+       "visibility": "visible",
+       "visible": true
+      },
+      "groups": [],
+      "text": "No relations"
+     },
+     "attachments": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 1002.6,
+       "w": 479,
+       "h": 21,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "rows": [],
+      "text": "No attachments"
+     },
+     "comments": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 1081.1,
+       "w": 479,
+       "h": 0,
+       "display": "block",
+       "visibility": "visible",
+       "visible": false
+      },
+      "count": 0,
+      "decisions": 0
+     },
+     "activity": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 1243.6,
+       "w": 479,
+       "h": 98,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 4
+     },
+     "session": {
+      "present": true,
+      "hidden": false,
+      "box": {
+       "x": 1013,
+       "y": 831.6,
+       "w": 479,
+       "h": 129.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "id": "sess_openclaw_01HQ0VWFJ9QEW"
+     },
+     "labels": [
+      "ux",
+      "board"
+     ]
+    },
+    "overlay": {
+     "present": true,
+     "hidden": false,
+     "state": "open",
+     "background": "rgba(15, 20, 23, 0.32)",
+     "opacity": "1",
+     "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1512,
+      "h": 900,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "page": {
+     "scrollWidth": 1512,
+     "clientWidth": 1512,
+     "lang": "en",
+     "title": "MeerkatTaskPanel — Board"
+    },
+    "focus": {
+     "isClose": true,
+     "tag": "BUTTON",
+     "hook": "data-detail-close",
+     "outline": "2px solid rgb(15, 122, 115)",
+     "boxShadow": "set"
+    }
+   }
+  },
+  "impl": {
+   "w1512": {
+    "present": true,
+    "drawer": {
+     "x": 992,
+     "y": 0,
+     "w": 520,
+     "h": 900,
+     "display": "flex",
+     "visibility": "visible",
+     "visible": true,
+     "transform": "matrix(1, 0, 0, 1, 0, 0)",
+     "width": "520px",
+     "overflowY": "visible",
+     "borderLeft": "1px rgb(230, 232, 235)",
+     "boxShadow": "set"
+    },
+    "body": {
+     "overflowY": "auto",
+     "scrollHeight": 1633,
+     "clientHeight": 833,
+     "scrollTop": 0
+    },
+    "head": {
+     "identifier": "TD-128",
+     "title": "Wire keyboard navigation across board columns",
+     "chip": {
+      "text": "To Do",
+      "status": "todo"
+     },
+     "close": {
+      "x": 1480,
+      "y": 13,
+      "w": 16,
+      "h": 16,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "status": {
+     "chipAttr": "todo",
+     "propAttr": "todo"
+    },
+    "blocks": {
+     "props": {
+      "labels": [
+       "Status",
+       "Priority",
+       "Assignee",
+       "Reporter",
+       "Project",
+       "Labels",
+       "ID",
+       "Version"
+      ],
+      "values": [
+       "To Do",
+       "High",
+       "Llinusclaude",
+       "TTerry",
+       "MeerkatTaskPanel",
+       "a11yboarduiuxdesignperf",
+       "3"
+      ],
+      "box": {
+       "x": 1013,
+       "y": 124.5,
+       "w": 479,
+       "h": 280.5,
+       "display": "grid",
+       "visibility": "visible",
+       "visible": true
+      }
+     },
+     "description": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 462.5,
+       "w": 479,
+       "h": 303.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "blocks": 7
+     },
+     "relations": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 823.5,
+       "w": 479,
+       "h": 24,
+       "display": "flex",
+       "visibility": "visible",
+       "visible": true
+      },
+      "groups": [
+       {
+        "label": "Parent",
+        "links": [
+         "TD-125"
+        ]
+       },
+       {
+        "label": "Blocks",
+        "links": [
+         "TD-130",
+         "TD-126"
+        ]
+       }
+      ],
+      "text": "ParentTD-125BlocksTD-130TD-126"
+     },
+     "attachments": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 1036.5,
+       "w": 479,
+       "h": 72,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "rows": [
+       {
+        "name": "board-keyboard-spec.md",
+        "size": "12 KB",
+        "icon": {
+         "x": 1022,
+         "y": 1044.5,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 1013,
+         "y": 1036.5,
+         "w": 479,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       },
+       {
+        "name": "focus-order-record.png",
+        "size": "248 KB",
+        "icon": {
+         "x": 1022,
+         "y": 1084.5,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 1013,
+         "y": 1076.5,
+         "w": 479,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       }
+      ],
+      "text": "board-keyboard-spec.md12 KBfocus-order-record.png248 KB"
+     },
+     "comments": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 1166,
+       "w": 479,
+       "h": 338,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 3,
+      "decisions": 1
+     },
+     "activity": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 1561.5,
+       "w": 479,
+       "h": 98,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 4
+     },
+     "session": {
+      "present": true,
+      "hidden": false,
+      "box": {
+       "x": 1013,
+       "y": 863.5,
+       "w": 479,
+       "h": 131.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "id": "sess_claude_01HQ19XD1NZZQ"
+     },
+     "labels": [
+      "a11y",
+      "board"
+     ]
+    },
+    "overlay": {
+     "present": true,
+     "hidden": false,
+     "state": "open",
+     "background": "oklab(0.276439 -0.0125216 -0.0113156 / 0.32)",
+     "opacity": "1",
+     "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1512,
+      "h": 900,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "page": {
+     "scrollWidth": 1512,
+     "clientWidth": 1512,
+     "lang": "en",
+     "title": "MeerkatTaskPanel — Board"
+    },
+    "focus": {
+     "isClose": true,
+     "tag": "BUTTON",
+     "hook": "data-detail-close",
+     "outline": "1px auto rgb(0, 95, 204)",
+     "boxShadow": "none"
+    }
+   },
+   "w1240": {
+    "present": true,
+    "drawer": {
+     "x": 720,
+     "y": 0,
+     "w": 520,
+     "h": 900,
+     "display": "flex",
+     "visibility": "visible",
+     "visible": true,
+     "transform": "matrix(1, 0, 0, 1, 0, 0)",
+     "width": "520px",
+     "overflowY": "visible",
+     "borderLeft": "1px rgb(230, 232, 235)",
+     "boxShadow": "set"
+    },
+    "body": {
+     "overflowY": "auto",
+     "scrollHeight": 1633,
+     "clientHeight": 833,
+     "scrollTop": 0
+    },
+    "head": {
+     "identifier": "TD-128",
+     "title": "Wire keyboard navigation across board columns",
+     "chip": {
+      "text": "To Do",
+      "status": "todo"
+     },
+     "close": {
+      "x": 1208,
+      "y": 13,
+      "w": 16,
+      "h": 16,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "status": {
+     "chipAttr": "todo",
+     "propAttr": "todo"
+    },
+    "blocks": {
+     "props": {
+      "labels": [
+       "Status",
+       "Priority",
+       "Assignee",
+       "Reporter",
+       "Project",
+       "Labels",
+       "ID",
+       "Version"
+      ],
+      "values": [
+       "To Do",
+       "High",
+       "Llinusclaude",
+       "TTerry",
+       "MeerkatTaskPanel",
+       "a11yboarduiuxdesignperf",
+       "3"
+      ],
+      "box": {
+       "x": 741,
+       "y": 124.5,
+       "w": 479,
+       "h": 280.5,
+       "display": "grid",
+       "visibility": "visible",
+       "visible": true
+      }
+     },
+     "description": {
+      "present": true,
+      "box": {
+       "x": 741,
+       "y": 462.5,
+       "w": 479,
+       "h": 303.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "blocks": 7
+     },
+     "relations": {
+      "present": true,
+      "box": {
+       "x": 741,
+       "y": 823.5,
+       "w": 479,
+       "h": 24,
+       "display": "flex",
+       "visibility": "visible",
+       "visible": true
+      },
+      "groups": [
+       {
+        "label": "Parent",
+        "links": [
+         "TD-125"
+        ]
+       },
+       {
+        "label": "Blocks",
+        "links": [
+         "TD-130",
+         "TD-126"
+        ]
+       }
+      ],
+      "text": "ParentTD-125BlocksTD-130TD-126"
+     },
+     "attachments": {
+      "present": true,
+      "box": {
+       "x": 741,
+       "y": 1036.5,
+       "w": 479,
+       "h": 72,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "rows": [
+       {
+        "name": "board-keyboard-spec.md",
+        "size": "12 KB",
+        "icon": {
+         "x": 750,
+         "y": 1044.5,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 741,
+         "y": 1036.5,
+         "w": 479,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       },
+       {
+        "name": "focus-order-record.png",
+        "size": "248 KB",
+        "icon": {
+         "x": 750,
+         "y": 1084.5,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 741,
+         "y": 1076.5,
+         "w": 479,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       }
+      ],
+      "text": "board-keyboard-spec.md12 KBfocus-order-record.png248 KB"
+     },
+     "comments": {
+      "present": true,
+      "box": {
+       "x": 741,
+       "y": 1166,
+       "w": 479,
+       "h": 338,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 3,
+      "decisions": 1
+     },
+     "activity": {
+      "present": true,
+      "box": {
+       "x": 741,
+       "y": 1561.5,
+       "w": 479,
+       "h": 98,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 4
+     },
+     "session": {
+      "present": true,
+      "hidden": false,
+      "box": {
+       "x": 741,
+       "y": 863.5,
+       "w": 479,
+       "h": 131.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "id": "sess_claude_01HQ19XD1NZZQ"
+     },
+     "labels": [
+      "a11y",
+      "board"
+     ]
+    },
+    "overlay": {
+     "present": true,
+     "hidden": false,
+     "state": "open",
+     "background": "oklab(0.276439 -0.0125216 -0.0113156 / 0.32)",
+     "opacity": "1",
+     "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1240,
+      "h": 900,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "page": {
+     "scrollWidth": 1240,
+     "clientWidth": 1240,
+     "lang": "en",
+     "title": "MeerkatTaskPanel — Board"
+    },
+    "focus": {
+     "isClose": true,
+     "tag": "BUTTON",
+     "hook": "data-detail-close",
+     "outline": "1px auto rgb(0, 95, 204)",
+     "boxShadow": "none"
+    }
+   },
+   "w980": {
+    "present": true,
+    "drawer": {
+     "x": 460,
+     "y": 0,
+     "w": 520,
+     "h": 900,
+     "display": "flex",
+     "visibility": "visible",
+     "visible": true,
+     "transform": "matrix(1, 0, 0, 1, 0, 0)",
+     "width": "520px",
+     "overflowY": "visible",
+     "borderLeft": "1px rgb(230, 232, 235)",
+     "boxShadow": "set"
+    },
+    "body": {
+     "overflowY": "auto",
+     "scrollHeight": 1633,
+     "clientHeight": 833,
+     "scrollTop": 0
+    },
+    "head": {
+     "identifier": "TD-128",
+     "title": "Wire keyboard navigation across board columns",
+     "chip": {
+      "text": "To Do",
+      "status": "todo"
+     },
+     "close": {
+      "x": 948,
+      "y": 13,
+      "w": 16,
+      "h": 16,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "status": {
+     "chipAttr": "todo",
+     "propAttr": "todo"
+    },
+    "blocks": {
+     "props": {
+      "labels": [
+       "Status",
+       "Priority",
+       "Assignee",
+       "Reporter",
+       "Project",
+       "Labels",
+       "ID",
+       "Version"
+      ],
+      "values": [
+       "To Do",
+       "High",
+       "Llinusclaude",
+       "TTerry",
+       "MeerkatTaskPanel",
+       "a11yboarduiuxdesignperf",
+       "3"
+      ],
+      "box": {
+       "x": 481,
+       "y": 124.5,
+       "w": 479,
+       "h": 280.5,
+       "display": "grid",
+       "visibility": "visible",
+       "visible": true
+      }
+     },
+     "description": {
+      "present": true,
+      "box": {
+       "x": 481,
+       "y": 462.5,
+       "w": 479,
+       "h": 303.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "blocks": 7
+     },
+     "relations": {
+      "present": true,
+      "box": {
+       "x": 481,
+       "y": 823.5,
+       "w": 479,
+       "h": 24,
+       "display": "flex",
+       "visibility": "visible",
+       "visible": true
+      },
+      "groups": [
+       {
+        "label": "Parent",
+        "links": [
+         "TD-125"
+        ]
+       },
+       {
+        "label": "Blocks",
+        "links": [
+         "TD-130",
+         "TD-126"
+        ]
+       }
+      ],
+      "text": "ParentTD-125BlocksTD-130TD-126"
+     },
+     "attachments": {
+      "present": true,
+      "box": {
+       "x": 481,
+       "y": 1036.5,
+       "w": 479,
+       "h": 72,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "rows": [
+       {
+        "name": "board-keyboard-spec.md",
+        "size": "12 KB",
+        "icon": {
+         "x": 490,
+         "y": 1044.5,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 481,
+         "y": 1036.5,
+         "w": 479,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       },
+       {
+        "name": "focus-order-record.png",
+        "size": "248 KB",
+        "icon": {
+         "x": 490,
+         "y": 1084.5,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 481,
+         "y": 1076.5,
+         "w": 479,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       }
+      ],
+      "text": "board-keyboard-spec.md12 KBfocus-order-record.png248 KB"
+     },
+     "comments": {
+      "present": true,
+      "box": {
+       "x": 481,
+       "y": 1166,
+       "w": 479,
+       "h": 338,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 3,
+      "decisions": 1
+     },
+     "activity": {
+      "present": true,
+      "box": {
+       "x": 481,
+       "y": 1561.5,
+       "w": 479,
+       "h": 98,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 4
+     },
+     "session": {
+      "present": true,
+      "hidden": false,
+      "box": {
+       "x": 481,
+       "y": 863.5,
+       "w": 479,
+       "h": 131.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "id": "sess_claude_01HQ19XD1NZZQ"
+     },
+     "labels": [
+      "a11y",
+      "board"
+     ]
+    },
+    "overlay": {
+     "present": true,
+     "hidden": false,
+     "state": "open",
+     "background": "oklab(0.276439 -0.0125216 -0.0113156 / 0.32)",
+     "opacity": "1",
+     "box": {
+      "x": 0,
+      "y": 0,
+      "w": 980,
+      "h": 900,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "page": {
+     "scrollWidth": 980,
+     "clientWidth": 980,
+     "lang": "en",
+     "title": "MeerkatTaskPanel — Board"
+    },
+    "focus": {
+     "isClose": true,
+     "tag": "BUTTON",
+     "hook": "data-detail-close",
+     "outline": "1px auto rgb(0, 95, 204)",
+     "boxShadow": "none"
+    }
+   },
+   "w760": {
+    "present": true,
+    "drawer": {
+     "x": 240,
+     "y": 0,
+     "w": 520,
+     "h": 900,
+     "display": "flex",
+     "visibility": "visible",
+     "visible": true,
+     "transform": "matrix(1, 0, 0, 1, 0, 0)",
+     "width": "520px",
+     "overflowY": "visible",
+     "borderLeft": "1px rgb(230, 232, 235)",
+     "boxShadow": "set"
+    },
+    "body": {
+     "overflowY": "auto",
+     "scrollHeight": 1633,
+     "clientHeight": 833,
+     "scrollTop": 0
+    },
+    "head": {
+     "identifier": "TD-128",
+     "title": "Wire keyboard navigation across board columns",
+     "chip": {
+      "text": "To Do",
+      "status": "todo"
+     },
+     "close": {
+      "x": 728,
+      "y": 13,
+      "w": 16,
+      "h": 16,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "status": {
+     "chipAttr": "todo",
+     "propAttr": "todo"
+    },
+    "blocks": {
+     "props": {
+      "labels": [
+       "Status",
+       "Priority",
+       "Assignee",
+       "Reporter",
+       "Project",
+       "Labels",
+       "ID",
+       "Version"
+      ],
+      "values": [
+       "To Do",
+       "High",
+       "Llinusclaude",
+       "TTerry",
+       "MeerkatTaskPanel",
+       "a11yboarduiuxdesignperf",
+       "3"
+      ],
+      "box": {
+       "x": 261,
+       "y": 124.5,
+       "w": 479,
+       "h": 280.5,
+       "display": "grid",
+       "visibility": "visible",
+       "visible": true
+      }
+     },
+     "description": {
+      "present": true,
+      "box": {
+       "x": 261,
+       "y": 462.5,
+       "w": 479,
+       "h": 303.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "blocks": 7
+     },
+     "relations": {
+      "present": true,
+      "box": {
+       "x": 261,
+       "y": 823.5,
+       "w": 479,
+       "h": 24,
+       "display": "flex",
+       "visibility": "visible",
+       "visible": true
+      },
+      "groups": [
+       {
+        "label": "Parent",
+        "links": [
+         "TD-125"
+        ]
+       },
+       {
+        "label": "Blocks",
+        "links": [
+         "TD-130",
+         "TD-126"
+        ]
+       }
+      ],
+      "text": "ParentTD-125BlocksTD-130TD-126"
+     },
+     "attachments": {
+      "present": true,
+      "box": {
+       "x": 261,
+       "y": 1036.5,
+       "w": 479,
+       "h": 72,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "rows": [
+       {
+        "name": "board-keyboard-spec.md",
+        "size": "12 KB",
+        "icon": {
+         "x": 270,
+         "y": 1044.5,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 261,
+         "y": 1036.5,
+         "w": 479,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       },
+       {
+        "name": "focus-order-record.png",
+        "size": "248 KB",
+        "icon": {
+         "x": 270,
+         "y": 1084.5,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 261,
+         "y": 1076.5,
+         "w": 479,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       }
+      ],
+      "text": "board-keyboard-spec.md12 KBfocus-order-record.png248 KB"
+     },
+     "comments": {
+      "present": true,
+      "box": {
+       "x": 261,
+       "y": 1166,
+       "w": 479,
+       "h": 338,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 3,
+      "decisions": 1
+     },
+     "activity": {
+      "present": true,
+      "box": {
+       "x": 261,
+       "y": 1561.5,
+       "w": 479,
+       "h": 98,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 4
+     },
+     "session": {
+      "present": true,
+      "hidden": false,
+      "box": {
+       "x": 261,
+       "y": 863.5,
+       "w": 479,
+       "h": 131.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "id": "sess_claude_01HQ19XD1NZZQ"
+     },
+     "labels": [
+      "a11y",
+      "board"
+     ]
+    },
+    "overlay": {
+     "present": true,
+     "hidden": false,
+     "state": "open",
+     "background": "oklab(0.276439 -0.0125216 -0.0113156 / 0.32)",
+     "opacity": "1",
+     "box": {
+      "x": 0,
+      "y": 0,
+      "w": 760,
+      "h": 900,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "page": {
+     "scrollWidth": 760,
+     "clientWidth": 760,
+     "lang": "en",
+     "title": "MeerkatTaskPanel — Board"
+    },
+    "focus": {
+     "isClose": true,
+     "tag": "BUTTON",
+     "hook": "data-detail-close",
+     "outline": "1px auto rgb(0, 95, 204)",
+     "boxShadow": "none"
+    }
+   },
+   "w430": {
+    "present": true,
+    "drawer": {
+     "x": 0,
+     "y": 0,
+     "w": 430,
+     "h": 900,
+     "display": "flex",
+     "visibility": "visible",
+     "visible": true,
+     "transform": "matrix(1, 0, 0, 1, 0, 0)",
+     "width": "430px",
+     "overflowY": "visible",
+     "borderLeft": "1px rgb(230, 232, 235)",
+     "boxShadow": "set"
+    },
+    "body": {
+     "overflowY": "auto",
+     "scrollHeight": 1652,
+     "clientHeight": 833,
+     "scrollTop": 0
+    },
+    "head": {
+     "identifier": "TD-128",
+     "title": "Wire keyboard navigation across board columns",
+     "chip": {
+      "text": "To Do",
+      "status": "todo"
+     },
+     "close": {
+      "x": 398,
+      "y": 13,
+      "w": 16,
+      "h": 16,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "status": {
+     "chipAttr": "todo",
+     "propAttr": "todo"
+    },
+    "blocks": {
+     "props": {
+      "labels": [
+       "Status",
+       "Priority",
+       "Assignee",
+       "Reporter",
+       "Project",
+       "Labels",
+       "ID",
+       "Version"
+      ],
+      "values": [
+       "To Do",
+       "High",
+       "Llinusclaude",
+       "TTerry",
+       "MeerkatTaskPanel",
+       "a11yboarduiuxdesignperf",
+       "3"
+      ],
+      "box": {
+       "x": 21,
+       "y": 124.5,
+       "w": 389,
+       "h": 280.5,
+       "display": "grid",
+       "visibility": "visible",
+       "visible": true
+      }
+     },
+     "description": {
+      "present": true,
+      "box": {
+       "x": 21,
+       "y": 462.5,
+       "w": 389,
+       "h": 323,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "blocks": 7
+     },
+     "relations": {
+      "present": true,
+      "box": {
+       "x": 21,
+       "y": 843,
+       "w": 389,
+       "h": 24,
+       "display": "flex",
+       "visibility": "visible",
+       "visible": true
+      },
+      "groups": [
+       {
+        "label": "Parent",
+        "links": [
+         "TD-125"
+        ]
+       },
+       {
+        "label": "Blocks",
+        "links": [
+         "TD-130",
+         "TD-126"
+        ]
+       }
+      ],
+      "text": "ParentTD-125BlocksTD-130TD-126"
+     },
+     "attachments": {
+      "present": true,
+      "box": {
+       "x": 21,
+       "y": 1056,
+       "w": 389,
+       "h": 72,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "rows": [
+       {
+        "name": "board-keyboard-spec.md",
+        "size": "12 KB",
+        "icon": {
+         "x": 30,
+         "y": 1064,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 21,
+         "y": 1056,
+         "w": 389,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       },
+       {
+        "name": "focus-order-record.png",
+        "size": "248 KB",
+        "icon": {
+         "x": 30,
+         "y": 1104,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 21,
+         "y": 1096,
+         "w": 389,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       }
+      ],
+      "text": "board-keyboard-spec.md12 KBfocus-order-record.png248 KB"
+     },
+     "comments": {
+      "present": true,
+      "box": {
+       "x": 21,
+       "y": 1185.5,
+       "w": 389,
+       "h": 338,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 3,
+      "decisions": 1
+     },
+     "activity": {
+      "present": true,
+      "box": {
+       "x": 21,
+       "y": 1581,
+       "w": 389,
+       "h": 98,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 4
+     },
+     "session": {
+      "present": true,
+      "hidden": false,
+      "box": {
+       "x": 21,
+       "y": 883,
+       "w": 389,
+       "h": 131.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "id": "sess_claude_01HQ19XD1NZZQ"
+     },
+     "labels": [
+      "a11y",
+      "board"
+     ]
+    },
+    "overlay": {
+     "present": true,
+     "hidden": false,
+     "state": "open",
+     "background": "oklab(0.276439 -0.0125216 -0.0113156 / 0.32)",
+     "opacity": "1",
+     "box": {
+      "x": 0,
+      "y": 0,
+      "w": 430,
+      "h": 900,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "page": {
+     "scrollWidth": 430,
+     "clientWidth": 430,
+     "lang": "en",
+     "title": "MeerkatTaskPanel — Board"
+    },
+    "focus": {
+     "isClose": true,
+     "tag": "BUTTON",
+     "hook": "data-detail-close",
+     "outline": "1px auto rgb(0, 95, 204)",
+     "boxShadow": "none"
+    }
+   },
+   "b-human": {
+    "present": true,
+    "drawer": {
+     "x": 992,
+     "y": 0,
+     "w": 520,
+     "h": 900,
+     "display": "flex",
+     "visibility": "visible",
+     "visible": true,
+     "transform": "matrix(1, 0, 0, 1, 0, 0)",
+     "width": "520px",
+     "overflowY": "visible",
+     "borderLeft": "1px rgb(230, 232, 235)",
+     "boxShadow": "set"
+    },
+    "body": {
+     "overflowY": "auto",
+     "scrollHeight": 1341,
+     "clientHeight": 833,
+     "scrollTop": 0
+    },
+    "head": {
+     "identifier": "TD-126",
+     "title": "Skeleton loading for list view",
+     "chip": {
+      "text": "In Review",
+      "status": "in_review"
+     },
+     "close": {
+      "x": 1480,
+      "y": 13,
+      "w": 16,
+      "h": 16,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "status": {
+     "chipAttr": "in_review",
+     "propAttr": "in_review"
+    },
+    "blocks": {
+     "props": {
+      "labels": [
+       "Status",
+       "Priority",
+       "Assignee",
+       "Reporter",
+       "Project",
+       "Labels",
+       "ID",
+       "Version"
+      ],
+      "values": [
+       "In Review",
+       "Medium",
+       "TTerry",
+       "TTerry",
+       "MeerkatTaskPanel",
+       "uia11yboarduxdesignperf",
+       "2"
+      ],
+      "box": {
+       "x": 1013,
+       "y": 124.5,
+       "w": 479,
+       "h": 280.5,
+       "display": "grid",
+       "visibility": "visible",
+       "visible": true
+      }
+     },
+     "description": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 462.5,
+       "w": 479,
+       "h": 276.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "blocks": 7
+     },
+     "relations": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 796.5,
+       "w": 479,
+       "h": 24,
+       "display": "flex",
+       "visibility": "visible",
+       "visible": true
+      },
+      "groups": [
+       {
+        "label": "Related",
+        "links": [
+         "TD-128"
+        ]
+       }
+      ],
+      "text": "RelatedTD-128"
+     },
+     "attachments": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 878,
+       "w": 479,
+       "h": 32,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "rows": [
+       {
+        "name": "skeleton-rows.png",
+        "size": "180 KB",
+        "icon": {
+         "x": 1022,
+         "y": 886,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 1013,
+         "y": 878,
+         "w": 479,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       }
+      ],
+      "text": "skeleton-rows.png180 KB"
+     },
+     "comments": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 967.5,
+       "w": 479,
+       "h": 244.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 2,
+      "decisions": 1
+     },
+     "activity": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 1269.5,
+       "w": 479,
+       "h": 98,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 4
+     },
+     "session": {
+      "present": true,
+      "hidden": true,
+      "box": {
+       "x": 0,
+       "y": 0,
+       "w": 0,
+       "h": 0,
+       "display": "none",
+       "visibility": "visible",
+       "visible": false
+      },
+      "id": "sess_codex_01HQ7Y1A9B3D"
+     },
+     "labels": [
+      "ui"
+     ]
+    },
+    "overlay": {
+     "present": true,
+     "hidden": false,
+     "state": "open",
+     "background": "oklab(0.276439 -0.0125216 -0.0113156 / 0.32)",
+     "opacity": "1",
+     "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1512,
+      "h": 900,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "page": {
+     "scrollWidth": 1512,
+     "clientWidth": 1512,
+     "lang": "en",
+     "title": "MeerkatTaskPanel — Board"
+    },
+    "focus": {
+     "isClose": true,
+     "tag": "BUTTON",
+     "hook": "data-detail-close",
+     "outline": "1px auto rgb(0, 95, 204)",
+     "boxShadow": "none"
+    }
+   },
+   "b-zh": {
+    "present": true,
+    "drawer": {
+     "x": 992,
+     "y": 0,
+     "w": 520,
+     "h": 900,
+     "display": "flex",
+     "visibility": "visible",
+     "visible": true,
+     "transform": "matrix(1, 0, 0, 1, 0, 0)",
+     "width": "520px",
+     "overflowY": "visible",
+     "borderLeft": "1px rgb(230, 232, 235)",
+     "boxShadow": "set"
+    },
+    "body": {
+     "overflowY": "auto",
+     "scrollHeight": 1633,
+     "clientHeight": 833,
+     "scrollTop": 0
+    },
+    "head": {
+     "identifier": "TD-128",
+     "title": "Wire keyboard navigation across board columns",
+     "chip": {
+      "text": "待办",
+      "status": "todo"
+     },
+     "close": {
+      "x": 1480,
+      "y": 13,
+      "w": 16,
+      "h": 16,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "status": {
+     "chipAttr": "todo",
+     "propAttr": "todo"
+    },
+    "blocks": {
+     "props": {
+      "labels": [
+       "状态",
+       "优先级",
+       "负责人",
+       "创建人",
+       "项目",
+       "标签",
+       "内部 ID",
+       "版本"
+      ],
+      "values": [
+       "待办",
+       "高",
+       "Llinusclaude",
+       "TTerry",
+       "MeerkatTaskPanel",
+       "a11yboarduiuxdesignperf",
+       "3"
+      ],
+      "box": {
+       "x": 1013,
+       "y": 124.5,
+       "w": 479,
+       "h": 280.5,
+       "display": "grid",
+       "visibility": "visible",
+       "visible": true
+      }
+     },
+     "description": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 462.5,
+       "w": 479,
+       "h": 303.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "blocks": 7
+     },
+     "relations": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 823.5,
+       "w": 479,
+       "h": 24,
+       "display": "flex",
+       "visibility": "visible",
+       "visible": true
+      },
+      "groups": [
+       {
+        "label": "父任务",
+        "links": [
+         "TD-125"
+        ]
+       },
+       {
+        "label": "阻塞",
+        "links": [
+         "TD-130",
+         "TD-126"
+        ]
+       }
+      ],
+      "text": "父任务TD-125阻塞TD-130TD-126"
+     },
+     "attachments": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 1036.5,
+       "w": 479,
+       "h": 72,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "rows": [
+       {
+        "name": "board-keyboard-spec.md",
+        "size": "12 KB",
+        "icon": {
+         "x": 1022,
+         "y": 1044.5,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 1013,
+         "y": 1036.5,
+         "w": 479,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       },
+       {
+        "name": "focus-order-record.png",
+        "size": "248 KB",
+        "icon": {
+         "x": 1022,
+         "y": 1084.5,
+         "w": 16,
+         "h": 16,
+         "display": "block",
+         "visibility": "visible",
+         "visible": true
+        },
+        "box": {
+         "x": 1013,
+         "y": 1076.5,
+         "w": 479,
+         "h": 32,
+         "display": "flex",
+         "visibility": "visible",
+         "visible": true
+        }
+       }
+      ],
+      "text": "board-keyboard-spec.md12 KBfocus-order-record.png248 KB"
+     },
+     "comments": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 1166,
+       "w": 479,
+       "h": 338,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 3,
+      "decisions": 1
+     },
+     "activity": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 1561.5,
+       "w": 479,
+       "h": 98,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 4
+     },
+     "session": {
+      "present": true,
+      "hidden": false,
+      "box": {
+       "x": 1013,
+       "y": 863.5,
+       "w": 479,
+       "h": 131.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "id": "sess_claude_01HQ19XD1NZZQ"
+     },
+     "labels": [
+      "a11y",
+      "board"
+     ]
+    },
+    "overlay": {
+     "present": true,
+     "hidden": false,
+     "state": "open",
+     "background": "oklab(0.276439 -0.0125216 -0.0113156 / 0.32)",
+     "opacity": "1",
+     "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1512,
+      "h": 900,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "page": {
+     "scrollWidth": 1512,
+     "clientWidth": 1512,
+     "lang": "zh",
+     "title": "MeerkatTaskPanel — Board"
+    },
+    "focus": {
+     "isClose": true,
+     "tag": "BUTTON",
+     "hook": "data-detail-close",
+     "outline": "1px auto rgb(0, 95, 204)",
+     "boxShadow": "none"
+    }
+   },
+   "b-empty": {
+    "present": true,
+    "drawer": {
+     "x": 992,
+     "y": 0,
+     "w": 520,
+     "h": 900,
+     "display": "flex",
+     "visibility": "visible",
+     "visible": true,
+     "transform": "matrix(1, 0, 0, 1, 0, 0)",
+     "width": "520px",
+     "overflowY": "visible",
+     "borderLeft": "1px rgb(230, 232, 235)",
+     "boxShadow": "set"
+    },
+    "body": {
+     "overflowY": "auto",
+     "scrollHeight": 1220,
+     "clientHeight": 833,
+     "scrollTop": 0
+    },
+    "head": {
+     "identifier": "PROJ-0007",
+     "title": "Add bulk status change to board selection",
+     "chip": {
+      "text": "Backlog",
+      "status": "backlog"
+     },
+     "close": {
+      "x": 1480,
+      "y": 13,
+      "w": 16,
+      "h": 16,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "status": {
+     "chipAttr": "backlog",
+     "propAttr": "backlog"
+    },
+    "blocks": {
+     "props": {
+      "labels": [
+       "Status",
+       "Priority",
+       "Assignee",
+       "Reporter",
+       "Project",
+       "Labels",
+       "ID",
+       "Version"
+      ],
+      "values": [
+       "Backlog",
+       "None",
+       "Eelonopenclaw",
+       "TTerry",
+       "MeerkatTaskPanel",
+       "uxboarda11yuidesignperf",
+       "1"
+      ],
+      "box": {
+       "x": 1013,
+       "y": 124.5,
+       "w": 479,
+       "h": 280.5,
+       "display": "grid",
+       "visibility": "visible",
+       "visible": true
+      }
+     },
+     "description": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 462.5,
+       "w": 479,
+       "h": 276.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "blocks": 7
+     },
+     "relations": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 796.5,
+       "w": 479,
+       "h": 16,
+       "display": "flex",
+       "visibility": "visible",
+       "visible": true
+      },
+      "groups": [],
+      "text": "No relations"
+     },
+     "attachments": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 1001.5,
+       "w": 479,
+       "h": 21,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "rows": [],
+      "text": "No attachments"
+     },
+     "comments": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 1080,
+       "w": 479,
+       "h": 109,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "count": 0,
+      "decisions": 0
+     },
+     "activity": {
+      "present": true,
+      "box": {
+       "x": 1013,
+       "y": 1246.5,
+       "w": 479,
+       "h": 0,
+       "display": "block",
+       "visibility": "visible",
+       "visible": false
+      },
+      "count": 0
+     },
+     "session": {
+      "present": true,
+      "hidden": false,
+      "box": {
+       "x": 1013,
+       "y": 828.5,
+       "w": 479,
+       "h": 131.5,
+       "display": "block",
+       "visibility": "visible",
+       "visible": true
+      },
+      "id": "—"
+     },
+     "labels": [
+      "ux",
+      "board"
+     ]
+    },
+    "overlay": {
+     "present": true,
+     "hidden": false,
+     "state": "open",
+     "background": "oklab(0.276439 -0.0125216 -0.0113156 / 0.32)",
+     "opacity": "1",
+     "box": {
+      "x": 0,
+      "y": 0,
+      "w": 1512,
+      "h": 900,
+      "display": "block",
+      "visibility": "visible",
+      "visible": true
+     }
+    },
+    "page": {
+     "scrollWidth": 1512,
+     "clientWidth": 1512,
+     "lang": "en",
+     "title": "MeerkatTaskPanel — Board"
+    },
+    "focus": {
+     "isClose": true,
+     "tag": "BUTTON",
+     "hook": "data-detail-close",
+     "outline": "1px auto rgb(0, 95, 204)",
+     "boxShadow": "none"
+    }
+   }
+  },
+  "seatCompare": {
+   "proto": {
+    "[data-detail-drawer]": {
+     "text": "TD-128 To Do Wire keyboard navigation across board columns Couldn’t save — try again. Prop",
+     "rect": [
+      520,
+      900
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "1px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "set",
+     "marginLeft": "0px",
+     "display": "flex"
+    },
+    ".td-drawer-head": {
+     "text": "TD-128 To Do Wire keyboard navigation across board columns",
+     "rect": [
+      519,
+      78.6
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "12px 16px 12px 20px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "1px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-identifier]": {
+     "text": "TD-128",
+     "rect": [
+      42.6,
+      18
+     ],
+     "fontSize": "12px",
+     "fontWeight": "400",
+     "lineHeight": "18px",
+     "color": "rgb(126, 138, 145)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(126, 138, 145)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-title]": {
+     "text": "Wire keyboard navigation across board columns",
+     "rect": [
+      483,
+      21.6
+     ],
+     "fontSize": "16px",
+     "fontWeight": "600",
+     "lineHeight": "21.6px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-status-chip]": {
+     "text": "To Do",
+     "rect": [
+      57.1,
+      18
+     ],
+     "fontSize": "12px",
+     "fontWeight": "500",
+     "lineHeight": "12px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "4px",
+     "padding": "2px 4px 2px 8px",
+     "marginTop": "0px",
+     "borderTopWidth": "1px",
+     "borderBottomWidth": "1px",
+     "borderLeftWidth": "1px",
+     "borderRadius": "999px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "flex"
+    },
+    "[data-detail-close]": {
+     "text": "",
+     "rect": [
+      32,
+      32
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(74, 85, 94)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "1px",
+     "borderBottomWidth": "1px",
+     "borderLeftWidth": "1px",
+     "borderRadius": "6px",
+     "outlineWidth": "2px",
+     "outlineStyle": "solid",
+     "outlineColor": "rgb(15, 122, 115)",
+     "boxShadow": "set",
+     "marginLeft": "335.297px",
+     "display": "flex"
+    },
+    "[data-detail-props]": {
+     "text": "Status To Do Priority High Assignee LI elon jobs linus turing simons assistant Terry claud",
+     "rect": [
+      479,
+      270
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "4px normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "grid"
+    },
+    "[data-detail-assignee]": {
+     "text": "LI elon jobs linus turing simons assistant Terry claude",
+     "rect": [
+      383,
+      28
+     ],
+     "fontSize": "13px",
+     "fontWeight": "400",
+     "lineHeight": "19.5px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "6px",
+     "padding": "0px 6px",
+     "marginTop": "0px",
+     "borderTopWidth": "1px",
+     "borderBottomWidth": "1px",
+     "borderLeftWidth": "1px",
+     "borderRadius": "4px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "flex"
+    },
+    "[data-detail-assignee] .td-avatar": {
+     "text": "LI",
+     "rect": [
+      20,
+      20
+     ],
+     "fontSize": "10px",
+     "fontWeight": "600",
+     "lineHeight": "15px",
+     "color": "rgb(74, 85, 94)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "1px",
+     "borderBottomWidth": "1px",
+     "borderLeftWidth": "1px",
+     "borderRadius": "999px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(74, 85, 94)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "flex"
+    },
+    "[data-detail-reporter]": {
+     "text": "T Terry",
+     "rect": [
+      383,
+      28
+     ],
+     "fontSize": "13px",
+     "fontWeight": "400",
+     "lineHeight": "19.5px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "6px",
+     "padding": "0px 6px",
+     "marginTop": "0px",
+     "borderTopWidth": "1px",
+     "borderBottomWidth": "1px",
+     "borderLeftWidth": "1px",
+     "borderRadius": "4px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "flex"
+    },
+    "[data-detail-label-input]": {
+     "text": "",
+     "rect": [
+      369,
+      24
+     ],
+     "fontSize": "13px",
+     "fontWeight": "400",
+     "lineHeight": "19.5px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "0px 6px",
+     "marginTop": "0px",
+     "borderTopWidth": "1px",
+     "borderBottomWidth": "1px",
+     "borderLeftWidth": "1px",
+     "borderRadius": "4px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "inline-block"
+    },
+    "[data-detail-agent-session] [data-agent-platform-value]": {
+     "text": "--agent-platform claude",
+     "rect": [
+      163.4,
+      18
+     ],
+     "fontSize": "12px",
+     "fontWeight": "400",
+     "lineHeight": "18px",
+     "color": "rgb(74, 85, 94)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(74, 85, 94)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-version]": {
+     "text": "v3",
+     "rect": [
+      383,
+      28
+     ],
+     "fontSize": "13px",
+     "fontWeight": "400",
+     "lineHeight": "19.5px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "6px",
+     "padding": "0px 6px",
+     "marginTop": "0px",
+     "borderTopWidth": "1px",
+     "borderBottomWidth": "1px",
+     "borderLeftWidth": "1px",
+     "borderRadius": "4px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "flex"
+    },
+    "[data-detail-status-chip] [data-detail-status-chip-label]": {
+     "text": "To Do",
+     "rect": [
+      33.1,
+      12
+     ],
+     "fontSize": "12px",
+     "fontWeight": "500",
+     "lineHeight": "12px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-description]": {
+     "text": "Board navigation is mouse-only today. Keyboard users can reach a card but cannot move it b",
+     "rect": [
+      479,
+      303.5
+     ],
+     "fontSize": "13px",
+     "fontWeight": "400",
+     "lineHeight": "19.5px",
+     "color": "rgb(74, 85, 94)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(74, 85, 94)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-description] > *": {
+     "text": "Board navigation is mouse-only today. Keyboard users can reach a card but cannot move it b",
+     "rect": [
+      479,
+      39
+     ],
+     "fontSize": "13px",
+     "fontWeight": "400",
+     "lineHeight": "19.5px",
+     "color": "rgb(74, 85, 94)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(74, 85, 94)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-relations]": {
+     "text": "ParentTD-125BlocksTD-130TD-126",
+     "rect": [
+      479,
+      24
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "4px 8px",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "flex"
+    },
+    "[data-detail-relations] .td-rel-item": {
+     "text": "ParentTD-125",
+     "rect": [
+      100,
+      24
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "6px",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "flex"
+    },
+    "[data-detail-attachments]": {
+     "text": "board-keyboard-spec.md12 KBfocus-order-record.png248 KB",
+     "rect": [
+      479,
+      72
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-attachments] .td-file": {
+     "text": "board-keyboard-spec.md12 KB",
+     "rect": [
+      479,
+      32
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "8px",
+     "padding": "6px 8px",
+     "marginTop": "0px",
+     "borderTopWidth": "1px",
+     "borderBottomWidth": "1px",
+     "borderLeftWidth": "1px",
+     "borderRadius": "6px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "flex"
+    },
+    "[data-detail-attachments] .td-file svg": {
+     "text": "",
+     "rect": [
+      16,
+      16
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-attachments] .td-file-name": {
+     "text": "board-keyboard-spec.md",
+     "rect": [
+      148.4,
+      18
+     ],
+     "fontSize": "12px",
+     "fontWeight": "500",
+     "lineHeight": "18px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-attachments] .td-file-size": {
+     "text": "12 KB",
+     "rect": [
+      33.1,
+      16.5
+     ],
+     "fontSize": "11px",
+     "fontWeight": "400",
+     "lineHeight": "16.5px",
+     "color": "rgb(126, 138, 145)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(126, 138, 145)",
+     "boxShadow": "none",
+     "marginLeft": "247.484px",
+     "display": "block"
+    },
+    "[data-detail-comments]": {
+     "text": "JOjobshuman2h agoTab order looks right in the recording. Keep the stripe colour as the onl",
+     "rect": [
+      479,
+      221
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-comments] .td-comment": {
+     "text": "JOjobshuman2h agoTab order looks right in the recording. Keep the stripe colour as the onl",
+     "rect": [
+      479,
+      73
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "8px",
+     "padding": "8px 0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "flex"
+    },
+    "[data-comment-input]": {
+     "text": "",
+     "rect": [
+      479,
+      64
+     ],
+     "fontSize": "13px",
+     "fontWeight": "400",
+     "lineHeight": "19.5px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "6px 8px",
+     "marginTop": "0px",
+     "borderTopWidth": "1px",
+     "borderBottomWidth": "1px",
+     "borderLeftWidth": "1px",
+     "borderRadius": "6px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "inline-block"
+    },
+    "[data-detail-activity]": {
+     "text": "Terrycreated this task3d agojobsclaimed the task2d agoTerrystatus: backlog → todo1d agojob",
+     "rect": [
+      479,
+      98
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-agent-session]": {
+     "text": "Agent session claude--agent-platform claudeResume Sessionsess_claude_01HQ19XD1NZZQ",
+     "rect": [
+      479,
+      129.5
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "16px 0px",
+     "marginTop": "0px",
+     "borderTopWidth": "1px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-save-error]": {
+     "text": "Couldn’t save — try again.",
+     "rect": [
+      0,
+      0
+     ],
+     "fontSize": "12px",
+     "fontWeight": "400",
+     "lineHeight": "18px",
+     "color": "rgb(192, 57, 43)",
+     "gap": "normal",
+     "padding": "8px 10px",
+     "marginTop": "0px",
+     "borderTopWidth": "1px",
+     "borderBottomWidth": "1px",
+     "borderLeftWidth": "1px",
+     "borderRadius": "6px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(192, 57, 43)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "none"
+    }
+   },
+   "impl": {
+    "[data-detail-drawer]": {
+     "text": "TD-128To DoWire keyboard navigation across board columnsCouldn’t save — try again.Properti",
+     "rect": [
+      520,
+      900
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "1px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "set",
+     "marginLeft": "0px",
+     "display": "flex"
+    },
+    ".td-drawer-head": {
+     "text": "TD-128To DoWire keyboard navigation across board columns",
+     "rect": [
+      519,
+      67
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "12px 16px 12px 20px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "1px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-identifier]": {
+     "text": "TD-128",
+     "rect": [
+      43.4,
+      16
+     ],
+     "fontSize": "12px",
+     "fontWeight": "400",
+     "lineHeight": "16px",
+     "color": "rgb(126, 138, 145)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(126, 138, 145)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-title]": {
+     "text": "Wire keyboard navigation across board columns",
+     "rect": [
+      483,
+      24
+     ],
+     "fontSize": "16px",
+     "fontWeight": "600",
+     "lineHeight": "24px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-status-chip]": {
+     "text": "To Do",
+     "rect": [
+      57.1,
+      18
+     ],
+     "fontSize": "12px",
+     "fontWeight": "500",
+     "lineHeight": "12px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "4px",
+     "padding": "2px 4px 2px 8px",
+     "marginTop": "0px",
+     "borderTopWidth": "1px",
+     "borderBottomWidth": "1px",
+     "borderLeftWidth": "1px",
+     "borderRadius": "999px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "flex"
+    },
+    "[data-detail-close]": {
+     "text": "",
+     "rect": [
+      16,
+      16
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(126, 138, 145)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "1px",
+     "outlineStyle": "auto",
+     "outlineColor": "rgb(0, 95, 204)",
+     "boxShadow": "none",
+     "marginLeft": "350.578px",
+     "display": "block"
+    },
+    "[data-detail-props]": {
+     "text": "StatusTo DoPriorityHighAssigneeLlinusclaudeReporterTTerryProjectMeerkatTaskPanelLabelsa11y",
+     "rect": [
+      479,
+      280.5
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "4px normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "grid"
+    },
+    "[data-detail-assignee]": {
+     "text": "Llinusclaude",
+     "rect": [
+      383,
+      31.5
+     ],
+     "fontSize": "13px",
+     "fontWeight": "400",
+     "lineHeight": "19.5px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "6px",
+     "padding": "0px 6px",
+     "marginTop": "0px",
+     "borderTopWidth": "1px",
+     "borderBottomWidth": "1px",
+     "borderLeftWidth": "1px",
+     "borderRadius": "4px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "flex"
+    },
+    "[data-detail-assignee] .td-avatar": {
+     "text": "L",
+     "rect": [
+      20,
+      20
+     ],
+     "fontSize": "10px",
+     "fontWeight": "600",
+     "lineHeight": "15px",
+     "color": "rgb(74, 85, 94)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "1px",
+     "borderBottomWidth": "1px",
+     "borderLeftWidth": "1px",
+     "borderRadius": "999px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(74, 85, 94)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "flex"
+    },
+    "[data-detail-reporter]": {
+     "text": "TTerry",
+     "rect": [
+      383,
+      31.5
+     ],
+     "fontSize": "13px",
+     "fontWeight": "400",
+     "lineHeight": "19.5px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "6px",
+     "padding": "0px 6px",
+     "marginTop": "0px",
+     "borderTopWidth": "1px",
+     "borderBottomWidth": "1px",
+     "borderLeftWidth": "1px",
+     "borderRadius": "4px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "flex"
+    },
+    "[data-detail-label-input]": {
+     "text": "",
+     "rect": [
+      369,
+      29.5
+     ],
+     "fontSize": "13px",
+     "fontWeight": "400",
+     "lineHeight": "19.5px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "4px 8px",
+     "marginTop": "0px",
+     "borderTopWidth": "1px",
+     "borderBottomWidth": "1px",
+     "borderLeftWidth": "1px",
+     "borderRadius": "6px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "inline-block"
+    },
+    "[data-detail-agent-session] [data-agent-platform-value]": {
+     "text": "claude",
+     "rect": [
+      43.4,
+      16
+     ],
+     "fontSize": "12px",
+     "fontWeight": "400",
+     "lineHeight": "16px",
+     "color": "rgb(74, 85, 94)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(74, 85, 94)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-version]": {
+     "text": "3",
+     "rect": [
+      383,
+      28
+     ],
+     "fontSize": "13px",
+     "fontWeight": "400",
+     "lineHeight": "19.5px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "6px",
+     "padding": "0px 6px",
+     "marginTop": "0px",
+     "borderTopWidth": "1px",
+     "borderBottomWidth": "1px",
+     "borderLeftWidth": "1px",
+     "borderRadius": "4px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "flex"
+    },
+    "[data-detail-status-chip] [data-detail-status-chip-label]": {
+     "text": "To Do",
+     "rect": [
+      33.1,
+      12
+     ],
+     "fontSize": "12px",
+     "fontWeight": "500",
+     "lineHeight": "12px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-description]": {
+     "text": "Board navigation is mouse-only today. Keyboard users can reach a card but cannot move it b",
+     "rect": [
+      479,
+      303.5
+     ],
+     "fontSize": "13px",
+     "fontWeight": "400",
+     "lineHeight": "19.5px",
+     "color": "rgb(74, 85, 94)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(74, 85, 94)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-description] > *": {
+     "text": "Board navigation is mouse-only today. Keyboard users can reach a card but cannot move it b",
+     "rect": [
+      479,
+      39
+     ],
+     "fontSize": "13px",
+     "fontWeight": "400",
+     "lineHeight": "19.5px",
+     "color": "rgb(74, 85, 94)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(74, 85, 94)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-relations]": {
+     "text": "ParentTD-125BlocksTD-130TD-126",
+     "rect": [
+      479,
+      24
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "4px 8px",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "flex"
+    },
+    "[data-detail-relations] .td-rel-item": {
+     "text": "ParentTD-125",
+     "rect": [
+      100,
+      24
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "6px",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "flex"
+    },
+    "[data-detail-attachments]": {
+     "text": "board-keyboard-spec.md12 KBfocus-order-record.png248 KB",
+     "rect": [
+      479,
+      72
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-attachments] .td-file": {
+     "text": "board-keyboard-spec.md12 KB",
+     "rect": [
+      479,
+      32
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "8px",
+     "padding": "6px 8px",
+     "marginTop": "0px",
+     "borderTopWidth": "1px",
+     "borderBottomWidth": "1px",
+     "borderLeftWidth": "1px",
+     "borderRadius": "6px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "flex"
+    },
+    "[data-detail-attachments] .td-file svg": {
+     "text": "",
+     "rect": [
+      16,
+      16
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-attachments] .td-file-name": {
+     "text": "board-keyboard-spec.md",
+     "rect": [
+      148.4,
+      18
+     ],
+     "fontSize": "12px",
+     "fontWeight": "500",
+     "lineHeight": "18px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-attachments] .td-file-size": {
+     "text": "12 KB",
+     "rect": [
+      33.1,
+      16.5
+     ],
+     "fontSize": "11px",
+     "fontWeight": "400",
+     "lineHeight": "16.5px",
+     "color": "rgb(126, 138, 145)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(126, 138, 145)",
+     "boxShadow": "none",
+     "marginLeft": "247.484px",
+     "display": "block"
+    },
+    "[data-detail-comments]": {
+     "text": "Jjobshuman2h agoTab order looks right in the recording. Keep the stripe colour as the only",
+     "rect": [
+      479,
+      338
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-comments] .td-comment": {
+     "text": "Jjobshuman2h agoTab order looks right in the recording. Keep the stripe colour as the only",
+     "rect": [
+      479,
+      73
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "8px",
+     "padding": "8px 0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "flex"
+    },
+    "[data-comment-input]": {
+     "text": "",
+     "rect": [
+      479,
+      64
+     ],
+     "fontSize": "13px",
+     "fontWeight": "400",
+     "lineHeight": "19.5px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "6px 8px",
+     "marginTop": "0px",
+     "borderTopWidth": "1px",
+     "borderBottomWidth": "1px",
+     "borderLeftWidth": "1px",
+     "borderRadius": "6px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "inline-block"
+    },
+    "[data-detail-activity]": {
+     "text": "Terrycreated this task3d agojobsclaimed the task2d agoTerrystatus: backlog → todo1d agojob",
+     "rect": [
+      479,
+      98
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "0px",
+     "marginTop": "0px",
+     "borderTopWidth": "0px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-agent-session]": {
+     "text": "Agent sessionclaudeclaudeResumeSessionsess_claude_01HQ19XD1NZZQ",
+     "rect": [
+      479,
+      131.5
+     ],
+     "fontSize": "14px",
+     "fontWeight": "400",
+     "lineHeight": "21px",
+     "color": "rgb(20, 24, 27)",
+     "gap": "normal",
+     "padding": "16px 0px",
+     "marginTop": "0px",
+     "borderTopWidth": "1px",
+     "borderBottomWidth": "0px",
+     "borderLeftWidth": "0px",
+     "borderRadius": "0px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(20, 24, 27)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "block"
+    },
+    "[data-detail-save-error]": {
+     "text": "Couldn’t save — try again.",
+     "rect": [
+      0,
+      0
+     ],
+     "fontSize": "12px",
+     "fontWeight": "400",
+     "lineHeight": "18px",
+     "color": "rgb(192, 57, 43)",
+     "gap": "normal",
+     "padding": "8px 10px",
+     "marginTop": "0px",
+     "borderTopWidth": "1px",
+     "borderBottomWidth": "1px",
+     "borderLeftWidth": "1px",
+     "borderRadius": "6px",
+     "outlineWidth": "3px",
+     "outlineStyle": "none",
+     "outlineColor": "rgb(192, 57, 43)",
+     "boxShadow": "none",
+     "marginLeft": "0px",
+     "display": "none"
+    }
+   }
+  },
+  "jsOff": {
+   "proto": {
+    "present": {
+     "[data-detail-drawer]": 1,
+     "[data-detail-close]": 1,
+     "[data-detail-identifier]": 1,
+     "[data-detail-title]": 1,
+     "[data-detail-props]": 1,
+     "[data-detail-relations]": 1,
+     "[data-detail-attachments]": 1,
+     "[data-detail-comments]": 1,
+     "[data-detail-activity]": 1,
+     "[data-detail-agent-session]": 1,
+     ".td-rel-item": 2,
+     ".td-file": 2,
+     ".td-comment": 3,
+     ".td-activity": 4
+    },
+    "visible": {
+     "[data-detail-drawer]": 0,
+     "[data-detail-close]": 0,
+     "[data-detail-identifier]": 0,
+     "[data-detail-title]": 0,
+     "[data-detail-props]": 0,
+     "[data-detail-relations]": 0,
+     "[data-detail-attachments]": 0,
+     "[data-detail-comments]": 0,
+     "[data-detail-activity]": 0,
+     "[data-detail-agent-session]": 0,
+     ".td-rel-item": 0,
+     ".td-file": 0,
+     ".td-comment": 0,
+     ".td-activity": 0
+    },
+    "app": null,
+    "boardCards": 18
+   },
+   "criteria": {
+    "note": "判据 = 在 JS 禁用下，抽屉结构钩子是否仍在 DOM 中、且布局盒可见（w/h>0 且 visibility≠hidden）。"
+   },
+   "impl": {
+    "present": {
+     "[data-detail-drawer]": 0,
+     "[data-detail-close]": 0,
+     "[data-detail-identifier]": 0,
+     "[data-detail-title]": 0,
+     "[data-detail-props]": 0,
+     "[data-detail-relations]": 0,
+     "[data-detail-attachments]": 0,
+     "[data-detail-comments]": 0,
+     "[data-detail-activity]": 0,
+     "[data-detail-agent-session]": 0,
+     ".td-rel-item": 0,
+     ".td-file": 0,
+     ".td-comment": 0,
+     ".td-activity": 0
+    },
+    "visible": {
+     "[data-detail-drawer]": 0,
+     "[data-detail-close]": 0,
+     "[data-detail-identifier]": 0,
+     "[data-detail-title]": 0,
+     "[data-detail-props]": 0,
+     "[data-detail-relations]": 0,
+     "[data-detail-attachments]": 0,
+     "[data-detail-comments]": 0,
+     "[data-detail-activity]": 0,
+     "[data-detail-agent-session]": 0,
+     ".td-rel-item": 0,
+     ".td-file": 0,
+     ".td-comment": 0,
+     ".td-activity": 0
+    },
+    "app": {
+     "children": 0,
+     "text": 0
+    },
+    "boardCards": 0
+   }
+  },
+  "focus": {
+   "proto": {
+    "isClose": true,
+    "tag": "BUTTON",
+    "hook": "data-detail-close",
+    "outline": "2px solid rgb(15, 122, 115)",
+    "boxShadow": "set"
+   },
+   "impl": {
+    "isClose": true,
+    "tag": "BUTTON",
+    "hook": "data-detail-close",
+    "outline": "1px auto rgb(0, 95, 204)",
+    "boxShadow": "none"
+   }
+  },
+  "scroll": {
+   "proto": {
+    "scrollTop": 795,
+    "scrollHeight": 1616,
+    "clientHeight": 821,
+    "overflowY": "auto"
+   },
+   "impl": {
+    "scrollTop": 800,
+    "scrollHeight": 1633,
+    "clientHeight": 833,
+    "overflowY": "auto"
+   }
+  },
+  "overlay": {
+   "proto": {
+    "present": true,
+    "hidden": false,
+    "state": "open",
+    "background": "rgba(15, 20, 23, 0.32)",
+    "opacity": "1",
+    "box": {
+     "x": 0,
+     "y": 0,
+     "w": 1512,
+     "h": 900,
+     "display": "block",
+     "visibility": "visible",
+     "visible": true
+    }
+   },
+   "impl": {
+    "present": true,
+    "hidden": false,
+    "state": "open",
+    "background": "oklab(0.276439 -0.0125216 -0.0113156 / 0.32)",
+    "opacity": "1",
+    "box": {
+     "x": 0,
+     "y": 0,
+     "w": 1512,
+     "h": 900,
+     "display": "block",
+     "visibility": "visible",
+     "visible": true
+    }
+   }
+  },
+  "live": {
+   "opened": "OPENCLAW-T…",
+   "address_after_open": "/board",
+   "deep_link_opens": {
+    "drawerState": "closed",
+    "address": "/board#/task/OPENCLAW-T%E2%80%A6"
+   },
+   "drawer": {
+    "present": true,
+    "drawer": {
+     "x": 1512,
+     "y": 0,
+     "w": 520,
+     "h": 900,
+     "display": "flex",
+     "visibility": "hidden",
+     "visible": false,
+     "transform": "matrix(1, 0, 0, 1, 520, 0)",
+     "width": "520px",
+     "overflowY": "visible",
+     "borderLeft": "1px rgb(230, 232, 235)",
+     "boxShadow": "set"
+    },
+    "body": {
+     "overflowY": "auto",
+     "scrollHeight": 857,
+     "clientHeight": 857,
+     "scrollTop": 0
+    },
+    "head": {
+     "identifier": "",
+     "title": "",
+     "chip": {
+      "text": "Backlog",
+      "status": "backlog"
+     },
+     "close": {
+      "x": 2000,
+      "y": 13,
+      "w": 16,
+      "h": 16,
+      "display": "block",
+      "visibility": "hidden",
+      "visible": false
+     }
+    },
+    "status": {
+     "chipAttr": "backlog",
+     "propAttr": "backlog"
+    },
+    "blocks": {
+     "props": {
+      "labels": [
+       "Status",
+       "Priority",
+       "Assignee",
+       "Reporter",
+       "Project",
+       "Labels",
+       "ID",
+       "Version"
+      ],
+      "values": [
+       "Backlog",
+       "None",
+       "?linus",
+       "?No match — a new name is saved when you use it.",
+       "",
+       "core",
+       ""
+      ],
+      "box": {
+       "x": 1533,
+       "y": 100.5,
+       "w": 479,
+       "h": 254.5,
+       "display": "grid",
+       "visibility": "hidden",
+       "visible": false
+      }
+     },
+     "description": {
+      "present": true,
+      "box": {
+       "x": 1533,
+       "y": 412.5,
+       "w": 479,
+       "h": 19.5,
+       "display": "block",
+       "visibility": "hidden",
+       "visible": false
+      },
+      "blocks": 1
+     },
+     "relations": {
+      "present": true,
+      "box": {
+       "x": 1533,
+       "y": 489.5,
+       "w": 479,
+       "h": 16,
+       "display": "flex",
+       "visibility": "hidden",
+       "visible": false
+      },
+      "groups": [],
+      "text": "No relations"
+     },
+     "attachments": {
+      "present": true,
+      "box": {
+       "x": 1533,
+       "y": 563,
+       "w": 479,
+       "h": 0,
+       "display": "block",
+       "visibility": "hidden",
+       "visible": false
+      },
+      "rows": [],
+      "text": ""
+     },
+     "comments": {
+      "present": true,
+      "box": {
+       "x": 1533,
+       "y": 620.5,
+       "w": 479,
+       "h": 109,
+       "display": "block",
+       "visibility": "hidden",
+       "visible": false
+      },
+      "count": 0,
+      "decisions": 0
+     },
+     "activity": {
+      "present": true,
+      "box": {
+       "x": 1533,
+       "y": 787,
+       "w": 479,
+       "h": 0,
+       "display": "block",
+       "visibility": "hidden",
+       "visible": false
+      },
+      "count": 0
+     },
+     "session": {
+      "present": true,
+      "hidden": true,
+      "box": {
+       "x": 0,
+       "y": 0,
+       "w": 0,
+       "h": 0,
+       "display": "none",
+       "visibility": "hidden",
+       "visible": false
+      },
+      "id": "—"
+     },
+     "labels": []
+    },
+    "overlay": {
+     "present": true,
+     "hidden": true,
+     "state": "closed",
+     "background": "oklab(0.276439 -0.0125216 -0.0113156 / 0.32)",
+     "opacity": "1",
+     "box": {
+      "x": 0,
+      "y": 0,
+      "w": 0,
+      "h": 0,
+      "display": "none",
+      "visibility": "visible",
+      "visible": false
+     }
+    },
+    "page": {
+     "scrollWidth": 1512,
+     "clientWidth": 1512,
+     "lang": "en",
+     "title": "MeerkatTaskPanel — Board"
+    },
+    "focus": {
+     "isClose": false,
+     "tag": "BODY",
+     "hook": null,
+     "outline": "3px none rgb(20, 24, 27)",
+     "boxShadow": "none"
+    }
+   }
+  }
+ }
+}
