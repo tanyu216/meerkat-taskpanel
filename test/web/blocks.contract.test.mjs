@@ -12,11 +12,11 @@
  * BLOCKS.md's header contradicts its own body and the shipped DOM. The two claims
  * `STALE_PROSE_COUNTS` keeps — "**252** `data-i18n*` hooks" and "**198** catalogue
  * keys" — were already wrong when they were written; measured today against
- * `design/prototype/index.html` and `design/prototype/app.js`, the document carries **849**
- * `data-i18n*` attributes (543 `data-i18n` + 193 `-arg` + 85 `-aria-label` +
- * 19 `-title` + 9 `-placeholder`) and the prototype's `MESSAGES` holds **288 keys per
- * language** (en = 288, zh = 288, exact parity; the shipped extraction drops the 17
- * prototype-only keys, so it ships 271). Only the
+ * `design/prototype/index.html` and `design/prototype/app.js`, the document carries **819**
+ * `data-i18n*` attributes (522 `data-i18n` + 193 `-arg` + 78 `-aria-label` +
+ * 18 `-title` + 8 `-placeholder`) and the prototype's `MESSAGES` holds **282 keys per
+ * language** (en = 282, zh = 282, exact parity; the shipped extraction drops the 17
+ * prototype-only keys, so it ships 265). Only the
  * "7 columns · 18 cards · 18 detail templates" line survives measurement. A contract
  * that quoted "252" or "198" would be wrong the day it was written, and one that
  * asserted "18 cards" would freeze a demo fixture into the spec. So every count in the
