@@ -128,6 +128,15 @@ export const ERROR_CODES = Object.freeze({
   }),
   VALIDATION_FAILED: spec(400, "Input failed validation."),
   ID_CONFLICT: spec(409, "Record already exists."),
+  // The `tasks` table's own CHECK: `claimed_by IS NULL OR status <> 'backlog'`.
+  // The service releases the claim on every move out of the work cycle
+  // (`domain/status.mjs#CLAIM_HOLDING_STATUSES`), so this is a **defensive**
+  // mapping — the path that used to reach it (`in_progress → todo` leaving
+  // `claimed_by` behind, then `todo → backlog`) no longer exists. It is mapped
+  // rather than left to the `VALIDATION_FAILED` fallback so a state that can
+  // only come from a foreign writer (a hand-written row, an md import) names
+  // itself instead of going out as "Input failed validation."
+  CLAIM_ON_BACKLOG: spec(409, "A backlog task cannot hold a claim."),
   IDENTIFIER_CONFLICT: spec(409, "Identifier already exists in this project."),
   SESSION_DUPLICATE: spec(409, "Agent session already registered for (task, seg, owner)."),
   NOT_FOUND: spec(404, "Not found."),
@@ -175,6 +184,7 @@ export const SQL_CONSTRAINT_CODES = Object.freeze([
   "COMMENT_DUPLICATE",
   "IDENTIFIER_CONFLICT",
   "ID_CONFLICT",
+  "CLAIM_ON_BACKLOG",
   "SESSION_DUPLICATE",
   "DICTIONARY_CONFLICT",
   "LABEL_CONFLICT",
@@ -222,6 +232,40 @@ export const JS_ONLY_CODES = Object.freeze([
 ]);
 
 /**
+ * The storage engine's own vocabulary — the strings that describe SQLite to a
+ * programmer and mean nothing to a reader of the board.
+ *
+ * This is the *shape* of a leak, not a list of messages: it matches the four
+ * families SQLite prints for a refused write (`CHECK`/`NOT NULL`/`UNIQUE`/
+ * `FOREIGN KEY` constraint failures) plus the engine's own name. A message that
+ * matches it is replaced by the sentence its `code` carries
+ * (`safeMessage` below); the raw text stays available on the error's `details`
+ * (`details.sqlite.message`, the server-side log surface) so nothing is lost
+ * for debugging. T-20261014-152924: the UI used to render
+ * `CHECK constraint failed: claimed_by IS NULL OR status <> 'backlog'` verbatim.
+ */
+export const TECHNICAL_ERROR_TEXT = /constraint failed|SQLITE|SqliteError|NOT NULL constraint|UNIQUE constraint/;
+
+/**
+ * The sentence this error may show a reader.
+ *
+ * A `code` is the machine-readable half of a failure and the only half a client
+ * is allowed to branch on, so the message is free to be replaced: if the
+ * message is missing, empty, or engine text, the code's own sentence is used
+ * instead. Anything else is the caller's own words and is passed through.
+ *
+ * @param {string} code
+ * @param {unknown} message
+ * @returns {string}
+ */
+export function safeMessage(code, message) {
+  const entry = ERROR_CODES[code];
+  if (entry === undefined) return typeof message === "string" ? message : ""; // not ours to rewrite
+  if (typeof message !== "string" || message.trim() === "") return entry.message;
+  return TECHNICAL_ERROR_TEXT.test(message) ? entry.message : message;
+}
+
+/**
  * A failure with a machine-readable `code`, an HTTP status and redacted details.
  */
 export class DomainError extends Error {
@@ -235,7 +279,9 @@ export class DomainError extends Error {
       throw new TypeError(`DomainError: unknown code ${JSON.stringify(code)}`);
     }
     const { details = {}, message, hint, cause } = options;
-    super(redactText(message ?? entry.message));
+    // The single chokepoint for "a reader never sees engine text": whatever a
+    // caller passes, the message that survives is one a person can read.
+    super(redactText(safeMessage(code, message ?? entry.message)));
     this.name = "DomainError";
     this.code = code;
     this.http = entry.http;
@@ -281,14 +327,24 @@ export function isDomainError(value) {
 /**
  * Normalise any thrown value into `{code, message, http, details, hint}`.
  * Never throws; unknown codes become `VALIDATION_FAILED` at 500.
+ *
+ * This is the envelope every HTTP error body is built from (`server/router.mjs`
+ * `errorResponse`), so the message is re-checked here as well as at construction
+ * (T-20261014-152924, acceptance ③): a payload that did not come through this
+ * module's `DomainError` — a foreign object wearing the same shape, or one built
+ * before this guard existed — must not put engine text on the wire either.
+ *
  * @param {unknown} err
  */
 export function toErrorPayload(err) {
-  if (isDomainError(err)) return err.toJSON();
+  if (isDomainError(err)) {
+    const payload = err.toJSON();
+    return { ...payload, message: redactText(safeMessage(payload.code, payload.message)) };
+  }
   const message = err instanceof Error ? err.message : String(err);
   return {
     code: "VALIDATION_FAILED",
-    message: redactText(message),
+    message: redactText(safeMessage("VALIDATION_FAILED", message)),
     http: 500,
     details: {},
     hint: null,

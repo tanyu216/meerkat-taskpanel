@@ -20,6 +20,7 @@
 
 import { DomainError } from "../../../shared/errors.mjs";
 import { HEARTBEAT_FRESH_MS, TASK_LIST_DEFAULT_LIMIT } from "../../../shared/constants.mjs";
+import { holdsClaim } from "../../domain/status.mjs";
 import { TASK_COLUMNS, taskFromRow, taskToRow } from "../../domain/task.mjs";
 import { mapSqliteError } from "../sqlite-errors.mjs";
 import { transaction } from "../unit-of-work.mjs";
@@ -295,6 +296,18 @@ export function createTasksRepository(db) {
      * something. Both stay inside this one UPDATE, so status, timestamps and
      * reasons can never disagree.
      *
+     * The **execution claim** (`claimed_by`/`claimed_at`/`heartbeat_at`) follows
+     * the same "derive it from the destination" rule
+     * (T-20261014-152924), keyed on `status.mjs#holdsClaim`: the lock is held
+     * while the card is in the work cycle and released by the one UPDATE that
+     * takes it out. Releasing it *here*, in the same write, is what makes the
+     * schema's `CHECK (claimed_by IS NULL OR status <> 'backlog')` unreachable
+     * from the service: `in_progress → todo` used to leave `claimed_by` behind,
+     * and the legal `todo → backlog` then tripped the CHECK — surfacing to the
+     * board as a raw `CHECK constraint failed: …`. See
+     * `domain/status.mjs#CLAIM_HOLDING_STATUSES` for why `in_review`/`blocked`
+     * count as *inside* the cycle.
+     *
      * @param {{id: string, ifVersion?: number, to: string, now: string, reportLatestId?: number|null, waiver?: {round: number, reason: string}|null, awaitingReason?: string|null, blockedReason?: string|null}} input
      */
     moveCas(input) {
@@ -315,6 +328,13 @@ export function createTasksRepository(db) {
           if (to === "blocked") {
             sets.push("blocked_at = ?");
             values.push(now);
+          }
+          // The execution lock follows the work cycle: leaving it (a move to
+          // `todo`, `backlog`, `done` or `canceled`) releases the claim in this
+          // same UPDATE, so no reader can ever see a card carrying a claim it
+          // no longer owns — and the backlog CHECK cannot be reached from here.
+          if (!holdsClaim(to)) {
+            sets.push("claimed_by = NULL", "claimed_at = NULL", "heartbeat_at = NULL");
           }
           if (reportLatestId !== undefined) {
             sets.push("report_latest_id = ?");
@@ -412,6 +432,14 @@ export function createTasksRepository(db) {
     /**
      * Refresh the heartbeat. Does not touch `status` or `claimed_by`, so it can
      * never resurrect a task somebody else moved.
+     *
+     * A 0-row result is explained from the re-read row, and the three ways to
+     * match nothing are three different answers: the card is no longer being
+     * executed (there is nothing to pulse — `INVALID_TRANSITION`), it is being
+     * executed by somebody else (`EXECUTION_ACTIVE`), or it is `in_progress`
+     * with no holder at all, which is the corrupt state I2 names
+     * (`EXECUTION_STATE_CORRUPT`). The last two used to share one branch, so an
+     * unclaimed card reported itself as "held by null".
      * @param {{id: string, actor: string, now: string}} input
      */
     setHeartbeat(input) {
@@ -428,12 +456,22 @@ export function createTasksRepository(db) {
           if (current === null) {
             throw new DomainError("NOT_FOUND", { message: `no task ${id}`, details: { taskId: id } });
           }
-          throw new DomainError(current.claimedBy === actor ? "INVALID_TRANSITION" : "EXECUTION_ACTIVE", {
-            message:
-              current.claimedBy === actor
-                ? `task ${current.identifier} is ${current.status}, not in_progress — nothing to pulse`
-                : `task ${current.identifier} is held by ${current.claimedBy}`,
-            details: { taskId: id, status: current.status, claimedBy: current.claimedBy, actor },
+          const details = { taskId: id, status: current.status, claimedBy: current.claimedBy, actor };
+          if (current.status !== "in_progress") {
+            throw new DomainError("INVALID_TRANSITION", {
+              message: `task ${current.identifier} is ${current.status}, not in_progress — nothing to pulse`,
+              details,
+            });
+          }
+          if (current.claimedBy === null || current.claimedBy === "") {
+            throw new DomainError("EXECUTION_STATE_CORRUPT", {
+              message: `task ${current.identifier} is in_progress but nobody claims it`,
+              details,
+            });
+          }
+          throw new DomainError("EXECUTION_ACTIVE", {
+            message: `task ${current.identifier} is held by ${current.claimedBy}`,
+            details,
           });
         }
       } catch (err) {

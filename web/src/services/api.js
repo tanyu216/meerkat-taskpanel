@@ -5,6 +5,15 @@
  * of `{ok:true,data:…}` and rejects with an `ApiError` carrying the server's
  * `{code,message,http,details,hint}`. Nothing else in the app touches `fetch`.
  *
+ * **`code` is what the UI renders; `message` never is** (T-20261014-152924 ④).
+ * The message is the server's own prose about the write it refused — for a
+ * constraint failure that is the storage engine's words — so it is kept here for
+ * the console and for tests, and every surface turns `code` into a sentence with
+ * `errorTextKey` (`i18n/messages.mjs`) plus `t()`: see `stores/board.js` and
+ * `ToastRegion.vue`, which render exactly what that pair returns and fall back
+ * to `error.generic` for a code they do not know. The two ends agree by
+ * construction — one vocabulary, one lookup.
+ *
  * URLs are **relative** (`/api/v1/…`), so dev (Vite proxy) and production
  * (taskd serving `web/dist` from the same origin) are the same code path — there
  * is no API-base switch to get wrong.
@@ -12,7 +21,12 @@
 
 const BASE = "/api/v1";
 
-/** A server error, carrying the machine-readable `code` the UI branches on. */
+/**
+ * A server error, carrying the machine-readable `code` the UI branches on.
+ *
+ * `message` (inherited from `Error`) exists so a stack and a console read
+ * usefully; it is **not** a UI string — see the module note above.
+ */
 export class ApiError extends Error {
   /**
    * @param {{code?: string, message?: string, http?: number, details?: object, hint?: object|null}} payload

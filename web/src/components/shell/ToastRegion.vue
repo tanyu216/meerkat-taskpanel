@@ -5,6 +5,11 @@
  * One live region (`role="status"`, `aria-live="polite"`), one inert template
  * element carrying the toast markup, and the runtime toasts the UI store pushes.
  * Auto-dismiss is the store's job (2.5 s); this component only renders state.
+ *
+ * The text it renders is **already a sentence**: a failure is turned into one by
+ * its `code` where it is caught (`stores/board.js` via `i18n/messages.mjs`), so
+ * nothing reaches this region that the wire wrote (T-20261014-152924 ④). That is
+ * the whole reason there is no formatting here.
  */
 import { toasts } from "../../stores/ui.js";
 </script>

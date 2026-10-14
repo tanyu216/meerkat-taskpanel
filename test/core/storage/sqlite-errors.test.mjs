@@ -109,7 +109,7 @@ describe("storage/sqlite-errors — constraint failures", () => {
     assert.deepEqual(mapped.details.columns, ["t.a", "t.b"]);
   });
 
-  it("maps the two CHECK texts that express an invariant", () => {
+  it("maps the CHECK texts that express an invariant", () => {
     const self = mapSqliteError(
       sqliteFailure(SQLITE_ERRCODE.CHECK, "CHECK constraint failed: source_task_id <> target_task_id"),
     );
@@ -121,10 +121,53 @@ describe("storage/sqlite-errors — constraint failures", () => {
       ),
     );
     assert.equal(direction.code, "RELATION_DIRECTION_INVALID");
+    // T-20261014-152924 — the tasks-table CHECK the board used to show verbatim.
+    const backlog = mapSqliteError(
+      sqliteFailure(SQLITE_ERRCODE.CHECK, "CHECK constraint failed: claimed_by IS NULL OR status <> 'backlog'"),
+    );
+    assert.equal(backlog.code, "CLAIM_ON_BACKLOG");
+    assert.equal(backlog.message, "A backlog task cannot hold a claim.");
+    assert.equal(backlog.details.check, "claimed_by IS NULL OR status <> 'backlog'");
+    assert.match(backlog.details.sqlite.message, /CHECK constraint failed/);
 
     const other = mapSqliteError(sqliteFailure(SQLITE_ERRCODE.CHECK, "CHECK constraint failed: version >= 1"));
     assert.equal(other.code, "VALIDATION_FAILED");
     assert.equal(other.details.check, "version >= 1");
+    // An unmapped CHECK no longer echoes the expression either — it is a schema
+    // detail, and it stays on `details.check` / `details.sqlite` instead.
+    assert.equal(other.message, "Input failed validation.");
+    assert.equal(other.message.includes("constraint failed"), false);
+  });
+
+  it("never lets engine text reach the message of any mapped failure", () => {
+    // The acceptance-③ predicate, applied to every errcode the mapper knows:
+    // the raw SQLite sentence may live on `details`, never on `message`.
+    const forbidden = /constraint failed|SQLITE|SqliteError|NOT NULL constraint|UNIQUE constraint/;
+    const samples = [
+      [SQLITE_ERRCODE.CHECK, "CHECK constraint failed: version >= 1"],
+      [SQLITE_ERRCODE.CHECK, "CHECK constraint failed: claimed_by IS NULL OR status <> 'backlog'"],
+      [SQLITE_ERRCODE.UNIQUE, "UNIQUE constraint failed: tasks.title, tasks.kind"],
+      [SQLITE_ERRCODE.PRIMARYKEY, "UNIQUE constraint failed: nope.id"],
+      [SQLITE_ERRCODE.NOTNULL, "NOT NULL constraint failed: tasks.title"],
+      [SQLITE_ERRCODE.FOREIGNKEY, "FOREIGN KEY constraint failed"],
+      [SQLITE_ERRCODE.TRIGGER, "NO_SUCH_RAISED_CODE"],
+      [SQLITE_ERRCODE.CHECK, "CHECK constraint failed: source_task_id <> target_task_id"],
+      [1, "SQLITE_ERROR: near \"x\": syntax error"],
+      [SQLITE_ERRCODE.BUSY, "database is locked"],
+    ];
+    for (const [errcode, message] of samples) {
+      const mapped = mapSqliteError(sqliteFailure(errcode, message));
+      assert.equal(
+        forbidden.test(mapped.message),
+        false,
+        `errcode ${errcode}: message echoed engine text — ${mapped.message}`,
+      );
+      assert.equal(forbidden.test(JSON.stringify(mapped.toJSON().message)), false);
+    }
+    for (const code of DB_RAISE_CODES) {
+      const mapped = mapSqliteError(sqliteFailure(SQLITE_ERRCODE.TRIGGER, code));
+      assert.equal(forbidden.test(mapped.message), false, code);
+    }
   });
 
   it("maps missing rows to NOT_FOUND and missing values to VALIDATION_FAILED", () => {
@@ -152,9 +195,12 @@ describe("storage/sqlite-errors — constraint failures", () => {
   it("redacts tokens that ride out on a database error", () => {
     const token = `td_${"ab12cd34".repeat(8)}`;
     const mapped = mapSqliteError(sqliteFailure(1, `near "x": syntax error while opening ${token}`));
+    // T-20261014-152924 — the engine's sentence no longer reaches the message at
+    // all (the code's own sentence is there instead), and the redaction still
+    // holds on the surface that *does* carry it: `details.sqlite.message`.
     assert.equal(mapped.message.includes(token), false);
-    assert.match(mapped.message, /td_\*\*\*\*/);
     assert.equal(JSON.stringify(mapped.details).includes(token), false);
+    assert.match(mapped.details.sqlite.message, /td_\*\*\*\*/);
   });
 
   it("covers every SQL_CONSTRAINT_CODES bucket member with a reachable input", () => {
@@ -162,6 +208,11 @@ describe("storage/sqlite-errors — constraint failures", () => {
       UNIQUE_KEY_CODES.map((entry) => entry.code).concat([
         "SELF_REFERENCE",
         "RELATION_DIRECTION_INVALID",
+        // T-20261014-152924 — the `tasks` CHECK that forbids a claim on a
+        // backlog card; mapped, and reachable straight from SQL (see
+        // `test/contract/invariants.test.mjs`, "refuses a backlog task that
+        // claims to be claimed").
+        "CLAIM_ON_BACKLOG",
         "VALIDATION_FAILED",
         "NOT_FOUND",
         // R2: not a constraint, but the same mapper — a raw `SQLITE_BUSY` from
