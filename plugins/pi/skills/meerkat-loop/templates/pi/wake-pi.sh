@@ -19,6 +19,11 @@
 #   TP_NODE          node to resolve with; defaults to `node` on PATH (the
 #                    supervisor passes its own interpreter, since cron/launchd
 #                    run with a minimal PATH)
+#   the host CLI     the `exec pi` at the end of this file is looked up on
+#                    PATH, so the scheduling unit sets PATH to the CLI's own
+#                    directory plus node's, ahead of the scheduler's default
+#                    (T-20261014-020103-2). Run this by hand, or from a hook,
+#                    and it is your own PATH that answers.
 # The directory is resolved from that map and validated (absolute, exists, is a
 # directory). If it cannot be resolved this script **exits 3 without starting a
 # worker** — running a session in the wrong checkout is worse than not waking one.

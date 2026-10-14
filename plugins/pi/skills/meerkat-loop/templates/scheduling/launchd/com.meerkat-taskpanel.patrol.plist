@@ -4,15 +4,24 @@
      pass every five minutes: stale in_progress claims are escalated and an
      unreadable heartbeat is reported. No LLM turn by default. `install.sh` prints
      the launchctl command to load it; nothing is loaded automatically. Logs append
-     to {{LOG}}. -->
+     to {{LOG}}.
+
+     ProgramArguments[0] is the ABSOLUTE node that rendered this plist — never
+     `/usr/bin/env node`, which launchd resolves against the job's PATH
+     (`/usr/bin:/bin:/usr/sbin:/sbin`, holding no nvm and no Homebrew directory) and
+     which therefore exits 127 on any machine whose node lives only there. PATH below
+     does the same job for everything the tick *derives*: the wake glue's `exec claude`
+     resolves the host CLI by name, and so does the worker's own process tree. It
+     prepends those directories to launchd's default rather than replacing it, so a
+     child that asks for `sh` or `git` still finds them. Both are version-pinned: after
+     a node or CLI upgrade, run `install.sh --force` to refresh this plist. -->
 <plist version="1.0">
 <dict>
   <key>Label</key>
   <string>com.meerkat-taskpanel.{{AGENT}}.{{HOST}}.patrol</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/bin/env</string>
-    <string>node</string>
+    <string>{{NODE}}</string>
     <string>{{SUPERVISOR}}</string>
     <string>--host</string>
     <string>{{HOST}}</string>
@@ -25,6 +34,11 @@
     <string>--state</string>
     <string>{{STATE}}</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>{{UNIT_PATH_LAUNCHD}}</string>
+  </dict>
   <key>StartInterval</key>
   <integer>300</integer>
   <key>RunAtLoad</key>

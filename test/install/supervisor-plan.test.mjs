@@ -231,12 +231,32 @@ describe("supervisor: the cron marker block is the idempotency key", () => {
     paths.cronFile = cronFile;
 
     // In a `--dry-run` nothing has been written yet — the lines are built from the same
-    // paths the unit names, so the two are interchangeable.
+    // recipe the unit template is rendered from, so the two are interchangeable: the
+    // `PATH=` setting line first, then an ABSOLUTE interpreter. `/usr/bin/env node` is
+    // exactly what cron cannot resolve (T-20261014-020103-2), so a preview that showed it
+    // would be advertising a line the unit no longer carries.
     const built = cronContentLines(paths);
-    assert.equal(built.length, 2);
-    assert.match(built[0], /^\* \* \* \* \* \/usr\/bin\/env node \/home\/op\/\.claude\/meerkat-taskpanel\/scripts\/supervisor\.mjs --host claude --agent alice --once /);
-    assert.match(built[1], /^\*\/5 \* \* \* \* .* --patrol-only --once /);
-    assert.match(built[0], />\/dev\/null 2>&1$/);
+    assert.equal(built.length, 3);
+    assert.match(built[0], /^PATH=\S+$/);
+    assert.match(built[1], /^\* \* \* \* \* \/[^ ]*node \/home\/op\/\.claude\/meerkat-taskpanel\/scripts\/supervisor\.mjs --host claude --agent alice --once /);
+    assert.match(built[2], /^\*\/5 \* \* \* \* .* --patrol-only --once /);
+    assert.match(built[1], />\/dev\/null 2>&1$/);
+
+    // Exported by `install.sh` before it calls this module: the preview then carries the
+    // very values the rendered unit carries, not a second guess at them.
+    const exported = supervisorPaths({
+      hostBase: "/home/op/.claude",
+      agent: "alice",
+      host: "claude",
+      env: { TP_NODE: "/opt/node/bin/node", TP_UNIT_PATH_CRON: "/opt/cli/bin:/opt/node/bin:/usr/bin:/bin" },
+      home: "/home/op",
+    });
+    exported.cronFile = join(makeTempDir(), "meerkat-taskpanel.cron");
+    assert.deepEqual(cronContentLines(exported), [
+      "PATH=/opt/cli/bin:/opt/node/bin:/usr/bin:/bin",
+      "* * * * * /opt/node/bin/node /home/op/.claude/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --once --log /home/op/.claude/meerkat-taskpanel/supervisor.log --state /home/op/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1",
+      "*/5 * * * * /opt/node/bin/node /home/op/.claude/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --patrol-only --once --log /home/op/.claude/meerkat-taskpanel/supervisor.log --state /home/op/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1",
+    ]);
 
     // Once the installer has written the unit, that file is the source: the enable path
     // and the manual `crontab <file>` path can never drift apart.

@@ -6,6 +6,26 @@
 #
 # Load with:  crontab <scheduling>/cron/meerkat-taskpanel.cron
 # Logs append to {{LOG}}.
+#
+# Each line names the ABSOLUTE node that rendered this file — never
+# `/usr/bin/env node`, which cron resolves against its own minimal PATH (typically
+# `/usr/bin:/bin`, holding no nvm and no Homebrew directory) and which therefore
+# exits 127 on any machine whose node lives only there.
+#
+# The `PATH=` line below is what the same problem needs for everything a tick
+# *derives*: the wake glue's `exec claude` resolves the host CLI by name, and so
+# does the worker's own process tree. It prepends those directories to cron's
+# default rather than replacing it, so a child that asks for `sh` or `git` still
+# finds them. `PATH=` is a cron *setting line*: it applies to every line after it.
+# Via `crontab <file>` that is just this file; `install.sh --supervisor=enable`
+# instead appends the lines inside a managed marker block, so there the PATH also
+# reaches any line you add below that block (and is removed with it) — see
+# docs/scheduling.md §Anywhere — cron.
+#
+# The interpreter and the directories are version-pinned: after a node or CLI
+# upgrade, run `install.sh --force` to refresh this file and re-run `crontab`.
 
-* * * * * /usr/bin/env node {{SUPERVISOR}} --host {{HOST}} --agent {{AGENT}} --once --log {{LOG}} --state {{STATE}} >/dev/null 2>&1
-*/5 * * * * /usr/bin/env node {{SUPERVISOR}} --host {{HOST}} --agent {{AGENT}} --patrol-only --once --log {{LOG}} --state {{STATE}} >/dev/null 2>&1
+PATH={{UNIT_PATH_CRON}}
+
+* * * * * {{NODE}} {{SUPERVISOR}} --host {{HOST}} --agent {{AGENT}} --once --log {{LOG}} --state {{STATE}} >/dev/null 2>&1
+*/5 * * * * {{NODE}} {{SUPERVISOR}} --host {{HOST}} --agent {{AGENT}} --patrol-only --once --log {{LOG}} --state {{STATE}} >/dev/null 2>&1
