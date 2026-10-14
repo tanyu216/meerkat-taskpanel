@@ -235,8 +235,8 @@
 | 点行 | `[data-activity-line]` | **就地打开该任务详情抽屉**（与看板卡点击同一路径：`[data-detail-drawer][data-state="open"]` + `[data-detail-overlay]`） |
 | 点任务标识 / 标题 | `[data-activity-task]` | 真实 `<a href="#/task/<id>">` 回看板并聚焦；**JS 关闭下仍是可点链接** |
 | 展开变更 | `[data-activity-detail]` | 原生 `<details>`，JS 关闭下可用 |
-| 筛选 | `[data-activity-filter="actor\|event\|task"]` | 三档独立；命中行数实时进 `[data-activity-filter-count]`（`aria-live="polite"`） |
-| 重置 | `[data-activity-filter-reset]`、`[data-activity-empty-reset]` | 回到 `All` 三档 |
+| 筛选 | `[data-activity-filter="actor\|event\|task"]` | 三档独立；**R15 ① 起三条都是 daisyUI `dropdown` 面板**（`<details class="dropdown" data-dismiss-on-outside>` + `summary.btn.btn-sm.td-label-trigger` + `ul.dropdown-content.menu.td-label-menu`），所选值挂在控件的 `data-activity-filter-value` 上、触发器 `[data-activity-filter-text]` 陈述所选行**自己的文案**；点行即写值、关自己的菜单、重述触发器、重跑筛选。命中行数实时进 `[data-activity-filter-count]`（`aria-live="polite"`） |
+| 重置 | `[data-filter-clear]`（条上）、`[data-activity-empty-reset]`（筛选空态内嵌） | 条上的 Clear 回到 `All` 三档（**R15 ③ 起是 B04 的 Clear**：钩子与键 `filters.clear` 与看板条同款，脚本按「按下的那条条」分流）；筛选空态的内嵌 reset 是**另一处的另一种 affordance**，保留自己的钩子与键（B26.5） |
 | 筛选态入 URL | `history.replaceState` | `#/activity?actor=agent&event=status&task=TD-128`——可分享、刷新不丢。**不污染** `#/task/<id>` |
 | 一键已读 | `[data-activity-mark-read]` | 清 `[data-activity-unread]`，分界线与侧栏计数一起归零 |
 | 侧栏计数 | `[data-nav-count="activity"]` | 复用 B03 的 `.badge.td-count`；**0 时 `hidden`**，与 `waiting` 同一规则 |
@@ -317,10 +317,15 @@ gap 12px、padding 40px 24px、title 14px、hint 12px）；`.td-activity-empty` 
 
 ### 9.2 en / zh 对照表
 
-本原型词典共 **79 键**，其中 **50 键是新增**（余下 29 键与实现侧现有 `MESSAGES` 同名，直接复用）。
+本原型词典共 **80 键**，其中 **49 键是新增**（余下 31 键与实现侧现有 `MESSAGES` 同名，直接复用）。
 `app.title` 属复用键但取值不同：本文档是 Activity 文档，实现侧是 Board 文档，各自描述自己。
 
-**新增键（50）**
+**R15 的净零账**：R15 ①/③ 换掉了条上的控件与清空钮 —— 退掉一条新键（`activity.filter.reset`），
+收进两条复用键（`filters.label` 做条的无障碍名、`filters.clear` 做 Clear 的词面），
+**总数只增 1**（79 → 80：新增 50 → 49，复用 29 → 31）。两条新入的键与看板条**逐字同值**，
+因为它们就是同一对键（`design/prototype/app.js` 的 `MESSAGES`）：本页不重写、只引用。
+
+**新增键（49）**
 
 | 键 | en | zh |
 |---|---|---|
@@ -346,7 +351,6 @@ gap 12px、padding 40px 24px、title 14px、hint 12px）；`.td-activity-empty` 
 | `activity.filter.event.delivery` | Delivery | 交付 |
 | `activity.filter.task.label` | Task | 任务 |
 | `activity.filter.task.all` | All tasks | 全部任务 |
-| `activity.filter.reset` | Reset | 重置 |
 | `activity.filter.count` | `%s entries` | `%s 条动态` |
 | `activity.verb.created` | created | 创建了 |
 | `activity.verb.claimed` | claimed | 认领了 |
@@ -375,13 +379,14 @@ gap 12px、padding 40px 24px、title 14px、hint 12px）；`.td-activity-empty` 
 | `activity.empty.filter.hint` | Widen the filters to see the full log. | 放宽筛选即可看到完整记录。 |
 | `activity.empty.filter.reset` | Reset filters | 重置筛选 |
 
-**复用键（29，取值取自实现侧现有 `MESSAGES`，不重写）**
+**复用键（31，取值取自实现侧现有 `MESSAGES`，不重写）**
 
 `app.brand`、`app.tagline`、`topbar.view`、`topbar.view.board`、`topbar.view.list`、`topbar.live`、
 `topbar.revision.title`、`topbar.newTask`、`nav.label`、`nav.board`、`nav.list`、`nav.activity`、
 `nav.waiting`、`sidebar.projects`、`sidebar.agents`、`presence.running`、`presence.idle`、
 `status.backlog`、`status.todo`、`status.in_progress`、`status.in_review`、`status.blocked`、
-`status.done`、`status.canceled`、`drawer.close`、`drawer.activity`、`time.hoursAgo`、`time.daysAgo`，
+`status.done`、`status.canceled`、`drawer.close`、`drawer.activity`、`time.hoursAgo`、`time.daysAgo`、
+`filters.label`（R15 ① — 条的无障碍名，与看板条同名）、`filters.clear`（R15 ③ — Clear 的词面），
 以及 `app.title`（取值随文档而变）。
 
 **给 E2 实现卡的提示**：`activity.created` / `activity.claimed` / `activity.commented` 三个键在实现侧
@@ -408,7 +413,8 @@ gap 12px、padding 40px 24px、title 14px、hint 12px）；`.td-activity-empty` 
 | 块 | Root | 钩子 / 角色 |
 |---|---|---|
 | **B26** | `[data-activity-view]` | 视图根（main 区当 `view=activity` 时显示） |
-| B26.1 头部 + 筛选 | `[data-activity-filters]` | `[data-activity-filter="actor\|event\|task"]`、`[data-activity-filter-reset]`、`[data-activity-filter-count]`（`aria-live="polite"`）；头部另有 `[data-activity-title]` 与 `[data-activity-mark-read]` |
+| B26.1 头部 + 筛选 | `[data-activity-filters]`（一个 `section.td-filters`，无障碍名 `filters.label`，R15 ①） | `[data-activity-filter="actor\|event\|task"]`（**各是一个 `<details class="dropdown" data-dismiss-on-outside>`**，R15 ①）、`[data-filter-clear]`（R15 ③）、`[data-activity-filter-count]`（`aria-live="polite"`）；头部另有 `[data-activity-title]` 与 `[data-activity-mark-read]` |
+| B26.1a 一个筛选控件 | `[data-activity-filter="…"]` | `<details class="dropdown" data-dismiss-on-outside>`；所选值在 `data-activity-filter-value` 上，触发器 `[data-activity-filter-summary]` → `[data-activity-filter-text]` 陈述所选行**自己的文案**，菜单 `[data-activity-filter-option]` × N 每行带 `data-activity-value`、所选行 `aria-current="true"` |
 | B26.2 feed | `[data-activity-feed]` | → `[data-activity-day]` → `[data-activity-row]` → `[data-activity-actor]` / `[data-activity-sentence]` / `[data-activity-task]` / `[data-activity-at]` / `[data-activity-detail]` |
 | B26.3 未读分界 | `[data-activity-unread-divider]` | + `[data-activity-unread-count]`（计数）、`[data-activity-mark-read]`（一键已读） |
 | B26.4 突发折叠 | `[data-activity-burst]` | + `[data-activity-burst-count]`（`×N`）、`[data-activity-burst-item]`（展开后的逐条） |
@@ -447,7 +453,7 @@ gap 12px、padding 40px 24px、title 14px、hint 12px）；`.td-activity-empty` 
    且每行的 `[data-activity-at]@datetime` 等于该行的 `data-at`。
 4. **天分组覆盖所有可准入事件**：每个 `[data-activity-row]` 都在（且只在一个）`[data-activity-day]` 内。
 5. **不新增色相**：scoped `<style>` 的 token 集合前后逐字节相等（§token 的三条强形式）。
-6. **i18n en/zh parity**：79 键两侧集合相等；每个 `data-i18n*` 钩子两侧可解析。
+6. **i18n en/zh parity**：80 键两侧集合相等；每个 `data-i18n*` 钩子两侧可解析。
 7. **无行号锚点**：文档互引只写「文件名 §小节名」。
 8. **JS 关闭下结构可见**：天分组 + 行 + 任务标识 + 时间 + `<details>` 全部在静态 HTML 里。
 
@@ -478,11 +484,15 @@ R17 把「空态块位于容器**顶部**、不垂直居中」写进了契约。
 **负向实测**（同一个检查器、`design/` 的纯净副本上改写一处居中手段；`--static-only` 之外的
 渲染套件全跑）：
 
-| 注入的居中手段 | 升级前（155 条） | 升级后（194 条） |
+| 注入的居中手段 | 升级前（155 条） | 升级后（R17 时 194 条） |
 |---|---|---|
 | `margin: auto` 回归（两页三态的规则体改写） | **6 红**：声明守卫 3 + `R9.*c` 3；**名为「不垂直居中」的三条全绿** | **42 红**：几何 39 全红 + 声明守卫 3 |
 | 容器 `justify-content: center` | **3 红**：仅 `R9.*c`；三条「不垂直居中」与声明守卫全绿 | **39 红**：几何读数全红（声明守卫按预期保持绿——它的声明确实一字未动） |
-| 还原 | 155/155 绿 | 194/194 绿 |
+| 还原 | 155/155 绿 | 194/194 绿（R17 时） |
+
+> **本表是 R17 那次实验的记录。** 本页机检后来增至 **209 条**（见 §12），但 R15 新增的
+> 15 条是筛选控件族的断言、与居中手段无关，故**该注入实验本轮未重跑** —— 表里的红数是
+> R17 在 194 条那次跑出来的，不是 209 条下的新读数。
 
 升级前那一列的 `R9.*c` 是「块位于容器顶部（附 px）」那三条（仅 1512、仅一页，含 B27.3 的
 「在头部之下」子句）；升级后由五档 × 三态 × 两页的几何读数取代（`under-header` 把那子句
@@ -505,11 +515,11 @@ R17 把「空态块位于容器**顶部**、不垂直居中」写进了契约。
 | 2 | 天分组 / 行时间非递增 | `[data-activity-day]@data-day`、`[data-activity-row]@data-at`、`[data-activity-at]@datetime` | 静态：逐对比较文档序 | `S2.2` `S2.4` `S2.5` |
 | 3 | JS 关闭下静态文档已含 天分组 + 行 + 标识 + 时间 + `<details>` | 上列钩子 | 静态：计数相等且 `<template>` 计数为 0；**渲染**：`javaScriptEnabled:false` 上下文里逐项复核 | `S3.1`–`S3.7`、`R8.1`–`R8.5` |
 | 4 | 导航互斥 + 计数 0 时 `hidden` | `[data-nav-item="activity"]`、`[data-nav-count="activity"]` | 静态：`[data-nav]` 内唯一 `aria-current`、`[hidden]⇒display:none` 规则存在、脚本写 `hidden`；**渲染**：`markAllRead()` 后断言 `pill.hidden === true` | `S4.1`–`S4.6`、`R3.1`–`R3.3` |
-| 5 | 筛选变窄、计数 == 命中行数、reset 复原 | `[data-activity-filter]`、`[data-activity-filter-count]` | 静态：每行的 actor/task 都有对应 option、group 或为显式背景；**渲染**：`actor=agent` 后逐行复核 `data-assignee-kind`、计数 == 可见行数、hash 写入、reset 复原 | `S5.1`–`S5.4`、`R2.1`–`R2.10` |
+| 5 | 筛选变窄、计数 == 命中行数、Clear 复原 | `[data-activity-filter]`、`[data-activity-filter-count]`、`[data-filter-clear]` | 静态：每行的 actor/task 都有对应 option、group 或为显式背景；**渲染**：真实点 `[data-activity-filter-option]` 行（`actor=agent`）后逐行复核 `data-assignee-kind`、写值与触发器文案、`aria-current`、菜单关闭、计数 == 可见行数、hash 写入、Clear 复原 | `S5.1`–`S5.4`、`R2.1`–`R2.12` |
 | 6 | 空态：可准入 0 或命中 0 ⇒ `[data-activity-empty]`，且此时 0 行 | `[data-activity-empty]`、`[data-activity-empty-reset]` | 静态：两种 kind 齐备、静态均 `hidden`、脚本按 `admissible===0` / `shown===0` 分支；**渲染**：命中 0 时可见行 = 0 且**筛选**空态（非项目空态）可见 | `S6.1`–`S6.5`、`R2.5`–`R2.8` |
 | 7 | 突发：5 分钟窗口 N 条 ⇒ 1 行且 count == N | `[data-activity-burst]`、`[data-activity-burst-count]`、`[data-activity-burst-item]@data-at` | 静态：`count` == 明细条数、可见文本 `×N`、窗口跨度 ≤ 5 分钟、actor/task 与折叠对象一致 | `S7.1`–`S7.6` |
 | 8 | i18n：新键 en/zh 齐备 | `[data-activity-i18n]`、全部 `data-i18n*` | 静态：`JSON.parse` 后集合相等 + 逐钩子可解析 + **静态文本逐字等于 en 取值** | `S8.1`–`S8.8` |
-| 9 | 五档无横向溢出 + `console errors == []` | 整个 `[data-activity-view]` 子树 | 渲染：1512 / 1240 / 980 / 760 / 430，逐元素 `getBoundingClientRect().right ≤ clientWidth+1`，且 `console`/`pageerror` 为 0 | `R7.*` |
+| 9 | 五档无横向溢出 + `console errors == []` | 整个 `[data-activity-view]` 子树 | 渲染：1512 / 1240 / 980 / 760 / 430，`scrollWidth ≤ clientWidth` **且**每个**已渲染**元素 `getBoundingClientRect().right ≤ clientWidth+1`，且 `console`/`pageerror` 为 0 | `R7.*` |
 
 **spec §5 之外的补充断言**（本设计的自证部分）：
 
@@ -527,9 +537,14 @@ R17 把「空态块位于容器**顶部**、不垂直居中」写进了契约。
 | 切中文：`<html lang>`、文案、计数句、相对时间、绝对日期、专有名词 | `R6.1`–`R6.6` |
 | 空态家族（R17）：首子元素为品牌 mark、class 含 `td-empty-lg`、项目无重置按钮 / 筛选有、mask id 唯一且引用可解析、两处规则体均**不带居中声明**（声明守卫，布局读数见 §11.1）、waiting 块在位 | `S11.1`–`S11.13` |
 | 空态家族（R17）：**布局后几何** —— `flow-gap`（容器 +240px 余量下块不动）、`not-v-centred`（下方余量比上方多 ≥ 8px）、`under-header`（仅 B27.3：块紧接自己的头部）；mark 计算尺寸 28×28；板面 console/pageerror 归零 | `R9.page.*` · `R9.board.*` |
+| 筛选控件族（R15 ①/③）：条是具名 `section.td-filters`、页内零 `<select>`、三控件是 `details.dropdown` 且各带值载体与 `summary` 触发器、菜单 17 行、条上的 Clear 是 `[data-filter-clear]` + `filters.clear`、退场钩子与键均已消失、筛选空态仍保留自己的 embedded reset | `S1.5`–`S1.8b` |
+| 溢出探针自身的守卫（R15 ①）：关闭的 `<details>` 面板被跳过、**打开的面板与关闭面（`summary`）仍在量程内** | `R7.0` |
 
-**当前结果：194 条断言，全部通过**（`node design/activity/check-activity.mjs`；93 条静态 + 101 条渲染）。
+**当前结果：209 条断言，全部通过**（`node design/activity/check-activity.mjs`；101 条静态 + 108 条渲染）。
 其中 R17 增量：静态 `S11.1`–`S11.13`（13 条）、渲染 `R9.*`（49 条 = 本页 6 + 板面 5 档 × 8 + 板面 mark 3）。
+R15 增量：静态 `S1.5`–`S1.8b`（8 条）、渲染 `R7.0` + `R2.4a`–`R2.4c` + `R2.10a`–`R2.12`（7 条）＝ **15 条**；
+其中 `R7.430` 那条从红转绿，是因为探针不再把**关闭面板**的布局盒算作溢出（见 §12 的上表第 9 行：
+判定式补上「已渲染」限定，且 `R7.0` 证明该限定是**有条件**的、不是通融）。
 
 ---
 
@@ -586,8 +601,8 @@ R17 把「空态块位于容器**顶部**、不垂直居中」写进了契约。
 > 读的却是 `margin !== "auto"` / `align-self !== "center"`。`getComputedStyle` 把 `auto` 外边距解成
 > 全用值 px，容器侧居中又不动块自己的声明 —— 于是那三条在两种回退下都**照绿**（见 §11.1 的负向实测）。
 > 现升级为**布局后几何**读数：`flow-gap` + `not-v-centred`（B27.3 另有 `under-header`），五档 × 三态 × 两页，
-> 声明守卫 `S11.7`–`S11.9` 保留但只作声明回归。机检 **155 → 194 条**（93 静态 + 101 渲染）。写面只有 `design/**`：
-> 原型与实现一行未动。
+> 声明守卫 `S11.7`–`S11.9` 保留但只作声明回归。机检 **155 → 194 条**（93 静态 + 101 渲染；R15 同步后 **209 条**，见 §16）。
+> 写面只有 `design/**`：原型与实现一行未动。
 
 ---
 
@@ -631,3 +646,57 @@ R17 把「空态块位于容器**顶部**、不垂直居中」写进了契约。
    文案取 `%s entries`。若 Terry 希望它报**事件条数**（折叠行算 N），则数字与可见行数不再相等，
    §机检断言 · 5 的判据要相应改写。本设计取前者，因为「计数 == 你能数出来的行数」是一个
    使用者能自己验算的口径。
+
+---
+
+## 18. R15 同步（T-20261013-184456）——权威源对齐出货原型
+
+**为什么要这一段**：`design/fidelity-r15.md` §7 记了一条必须同步项 —— R15 把出货原型
+`design/prototype/index.html` 的 Activity 筛选条改成口径 B（`dropdown` 面板 + Clear），
+但**权威源**（本页）仍写 `<select>` 与 `[data-activity-filter-reset]`，双源分叉。
+本卡把本页对齐 R15，消除分叉。**零实现**：`web/**`、`test/**`、`src/**` 一行不动。
+
+### 18.1 改了什么
+
+| 面 | R15 之前（本页） | R15 之后（本页 = 出货原型） |
+|---|---|---|
+| 条容器 | `<div class="td-filters" data-activity-filters>` | `<section class="td-filters" data-activity-filters data-i18n-aria-label="filters.label" aria-label="Filters">`（R15 ①：具名地标） |
+| 三个筛选控件 | `select.select.select-sm.td-select` ×3，各带一个 `.td-sr` label 兄弟 | `details.dropdown[data-dismiss-on-outside]` ×3（R15 ①），各带 `data-activity-filter-value="all"`；触发器 `summary.btn.btn-sm.td-label-trigger`（`role=button` / `aria-haspopup=menu` / `data-i18n-aria-label`），菜单 `ul.dropdown-content.menu.td-label-menu` |
+| 行 | `<option value="…">` | `[data-activity-filter-option][data-activity-value="…"]` 的 `<li><button>`，所选行 `aria-current="true"` |
+| 触发器文案 | 由浏览器从 `<option>` 读出 | `[data-activity-filter-text]` 陈述所选行**自己的文案**（该 span **故意不挂** `data-i18n` —— 脚本拥有它，与看板 label/status 触发器同规矩） |
+| 清空钮 | `[data-activity-filter-reset]` / `activity.filter.reset` / `Reset` | `[data-filter-clear]` / `filters.clear` / `Clear`（R15 ③ —— B04 的同一个控件；两条 Clear 靠**按下的那条条**分流） |
+| 筛选空态的内嵌 reset | `[data-activity-empty-reset]` | **原钩子、原键、原行为**（R15 ③ 明确「不同场所的不同 affordance，不动」，见 B26.5） |
+| 交互层（`activity.js`） | `select` 的 `change` → `readFilters()`；`.val()` 读写 | 点行 → 写值属性、关自己的菜单、`readFilters()`；新增 `renderFilters()`（`aria-current` + 触发器文案）、`resetFilters()`；补 `data-dismiss-on-outside` 的光散与 `Esc` 关闭（R9 ① 的同一规则） |
+| 词典 | 79 键（含 `activity.filter.reset`） | **80 键**：退 1 条新键、收 2 条复用键（`filters.label` / `filters.clear`，与看板条逐字同值） |
+
+**未变**：feed / 未读分界 / 崩溃折叠 / `Load older` / 行开卡 / `j`·`k` / 抽屉 / 三档的**域**与筛选**行为** /
+`[data-activity-filter-count]` 的 `aria-live` / `design/prototype/**` 与 `web/**`（一行未动）。
+
+### 18.2 交叉引用核对（验收 ④）
+
+| 文档 | 是否矛盾 | 处置 |
+|---|---|---|
+| `design/BLOCKS.md` §B26.1 / §B26.1a | **不矛盾** —— 它早已按出货原型记录（`section` + 具名 + 三个 `dropdown` + `[data-filter-clear]`，R15 ①/③），本页现在与它逐钩子一致 | 只重钉文末的机检条数：`194 → 209`（并在括注里点名 R15 的 15 条） |
+| `design/DESIGN.md` §33.4 | **不矛盾** | 同上，`194/194 → 209/209`（93+101 → 101+108） |
+| `design/fidelity-r15.md` §7 | 该表把本页与 `check-activity.mjs` 列为「必须同步（未由本卡落）」 | 本卡即为落点；R15 原文不改（它是 R15 轮的记录） |
+| `design/prototype/index.html` | **不矛盾** —— 其 B26 段自称 `Verbatim from design/activity/prototype.html` 的 `[data-activity-view]` | 本轮之后这句话**更成立**（分叉已消） |
+
+### 18.3 一条探针修正（诚实记录）
+
+对齐后 `R7.430`（430px 无横向溢出）由绿转红：探针把**关闭的 `<details>` 面板**的
+`getBoundingClientRect()` 当成溢出。这是**探针的口径问题，不是本页的新缺陷** ——
+
+- 同一探针打在**出货原型**（R15 oracle）的板面页上，同一 430px 档报出**同样的**元素，且更宽
+  （`right 489` vs 本页 `452`）：该形状是 R15 控件族本身的；
+- 两页的硬读数 `scrollWidth == clientWidth == 430`，即**文档并没有横向溢出**：
+  关闭的 `<details>` 不绘制其面板，但面板的盒仍然可测。
+
+故判据补上「**已渲染**」限定（跳过关闭面板、保留关闭面 `summary`），并新增 `R7.0` 证明该限定是
+**有条件**的：打开的面板与关闭面都仍在量程内 —— 真溢出的菜单照样会被抓住。
+
+### 18.4 证据
+
+`node design/activity/check-activity.mjs` → **209/209 通过**（101 静态 + 108 渲染），
+五档渲染轮 `console.error = 0` / `pageerror = 0`，`screenshots/` 全部重出
+（`10`–`14`、`20`–`22`、`24` 直观反映新控件形状；`21-activity-zh` 读到 `任何人 / 全部事件 / 全部任务 / 清除`）。
+**未跑的一律未写**：R17 的居中注入实验（§11.1）本轮未重跑，该表已标明红数是 R17 时 194 条下的读数。
