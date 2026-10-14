@@ -314,10 +314,10 @@ claude:   so a woken claude would not resolve. Install it, then re-run this inst
 ```
 
 **One path these units cannot reach**: `templates/codex/trigger.sh`, the legacy Codex
-trigger, runs `node -e …` and is meant to be scheduled from **your own** crontab line
-(`docs/install.md §Codex`). No unit of ours is in that chain, so nothing here sets a `PATH`
-for it — give that line its own `PATH=` (or an absolute `node`). It is the same defect, in
-the one place a unit's environment does not reach.
+trigger, runs `node -e …` and is meant to be scheduled from **your own** crontab line (see
+[`install.md §Codex`](install.md#codex)). No unit of ours is in that chain, so nothing here
+sets a `PATH` for it — give that line its own `PATH=` (or an absolute `node`). It is the same
+defect, in the one place a unit's environment does not reach.
 
 ### The taskd guard (keepalive)
 
