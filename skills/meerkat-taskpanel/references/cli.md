@@ -584,7 +584,8 @@ metadata row (`POST /api/v1/tasks/:ref/attachments`, which returns the id and an
 `upload_url`) and then stores the bytes (`PUT /api/v1/attachments/:id/content` —
 the one request on this board that is not JSON). A one-shot route would need a
 body that is both JSON and bytes; the seam is instead **named**: a row whose `PUT`
-never arrives keeps `size = 0` and answers an honest `404` on download, so nothing
+never arrives holds no bytes and answers an honest `404` on download — its `size`
+is whatever the create declared (`0` for a caller that declared none) — so nothing
 is invented. `attachment add` does both halves in one command and a caller never
 sees the seam; the board's own drawer rolls the row back when the second half
 fails.
