@@ -695,3 +695,65 @@ change's own baseline (`02176bb`); the intervening R15/R17 rounds re-pinned the 
 and `test/web/i18n.catalogue.mjs` carries no `assignee.clear`. This round therefore ships **no**
 catalogue or `STALE_PROSE_COUNTS` change, and `node --test "test/web/**/*.test.mjs"` reads
 231 tests / 231 pass / **0 fail** / 0 skip on both `2dd7ba3` and this commit.
+
+## 14. The readiness gate — the first band's false red (`T-20261014-105807`, 2026-10-14)
+
+Both manifests now declare `"readySelector": "[data-card]"`. That is the one line that closes the
+first-band false red recorded in `T-20261014-100326`'s report §9, and it is a **check-side** change:
+no assertion was added, loosened or skipped, and nothing under `web/src/` moved.
+
+### What the engine does without it
+
+`~/.openclaw/team/tools/ui-align/check.mjs`'s `goto()` is: navigate → wait `Page.loadEventFired` →
+wait the ready selector → `sleep(settleMs)` → probe. The ready selector it uses when the manifest
+declares none is *the first delivered block's first check* — which, in both of these manifests, is
+`[data-app-shell]`. The board paints its shell (topbar, sidebar, the seven columns) at mount and
+fills the **data-driven** half — cards, the sidebar's presence rows, the waiting queue — when
+`loadBoard()`'s reads land (`web/src/stores/board.js`: `loadProjects()`, then
+`Promise.all([loadRosters(), loadTasks()])`). So the default gate is satisfied *before the board has
+anything in it*, and the only thing standing between the probe and an empty board is a fixed
+`sleep(600)`.
+
+On a quiet host the reads land ~15–25 ms after the load event — a 25× margin, which is why the check
+is normally green. On a host that stalls them past 600 ms the probe reads the intermediate state: the
+shell rows all match and every data-driven row reads 0. That is not a selector error — the same
+selectors match at the next band, and the probe reports `count=0` / `scope 未命中`, never
+`选择器非法`.
+
+### What the gate changes
+
+The engine's ready poll runs **before** the settle sleep, so the gate turns "sleep 600 ms and hope"
+into "wait until the board has cards in it, then settle". It is adaptive: it costs one poll interval
+(≤120 ms) when the host is quiet, and it absorbs a stall instead of reporting from inside it. It does
+**not** soften anything: `[data-card]` is already asserted by `B07` (`min: 1`) in both manifests, so a
+card-less board is a red whichever way it is reached — the gate can only delay that verdict, never
+change it. When the gate is never satisfied the engine waits its full 15 s per navigation and then
+probes anyway; measured, that is ~45 s for a single band (see below), and the run still exits 1.
+
+### Readings (`board-m2`, `web/dist` `index-Brs_pA8y.js` / `index-qF5G0B_N.css`, host Chrome)
+
+The false red was reproduced deterministically by holding the second-wave reads back 1200 ms on the
+**first** board load only (`workspace/T-20261014-105807/slow-fixture.mjs`, run with `--url` — the
+repository and the tool are untouched):
+
+| | gate absent | `"readySelector": "[data-card]"` |
+|---|---|---|
+| exit | **1** | **0** |
+| assertions | 257 | **257** |
+| failures | **34**, all in band `1512` | **0** |
+| failing rows | `B03` 1, `B03-r13` 5, `B07` 13, `B07-identity` 3, `B07-r6` 3, `B27` 9 | — |
+
+Those 34 rows are **row-for-row identical** to `T-20261014-100326`'s recorded failure — the same six
+blocks, the same selectors, the same single band. The gate costs **+472 ms** on a full quiet-host run
+(four paired runs: 5591 ms before, 6063 ms after, all eight green at 257/0).
+
+Two negative legs hold the fix's feet to the fire. Remove the waiting card from the fixture and `B27`
+still reds at **all five** bands (9 rows × 5, exit 1, 6.1 s — no timeout, because `[data-card]` is
+still there). Empty `tasks` entirely and the gate times out and the run is still **exit 1**, 29 rows —
+a gate that cannot be satisfied does not become a skip.
+
+**Drift guard**: `test/web/ui-align-ready.test.mjs` pins both manifests against re-introducing the
+defect — it recomputes the engine's fallback the way `check.mjs` does, requires the declared gate to
+differ from it, and requires the gate to name something the manifest itself asserts with a positive
+bound. It is browser-free, so it runs in the container; the behavioural half above does not
+(`.dockerignore` drops `design/`, so no `ui-align` leg runs there — see §1 "Which host").

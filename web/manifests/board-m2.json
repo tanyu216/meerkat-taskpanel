@@ -2,6 +2,7 @@
   "page": "board-m2",
   "name": "Board — M2 逐块保真契约（主路径 8 块 + M2 目标态块；冻结于 HEAD ec97acde506c）",
   "route": "/",
+  "readySelector": "[data-card]",
   "widths": [
     1512,
     1240,
