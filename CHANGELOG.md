@@ -131,6 +131,44 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The patrol's `leader_stalled` row now counts the *author* of an event, not its *kind* — and
+  `heartbeat_stale` emits the shared SLA tuple beside the legacy alert.** Both are `v1.1`
+  write-backs of the SLA inspection contract (`T-20261014-084606-2`, §6.3-D and §10.4), and
+  both are user-visible:
+  - The leader's action set is a `confirm` / `decision` / `change` comment **authored by the
+    leader**, a card the leader created, and the leader-only `done` transition. A `kind=change`
+    entry written by a *worker* no longer resets the stall clock, which is the point: any chatty
+    worker could otherwise mask a real stall. "Who is the leader" is the board's own decision
+    authority by default (an author whose `author_kind` is `human` — the same reading
+    `isDecisionComment` / `listDecisions` use); a deployment whose leader writes as an agent sets
+    `--sla-leader <id>` (or `$MEERKAT_TASKPANEL_SLA_LEADER`) to the **same** identity on both
+    mechanisms. A board whose newest leader-attributed event is older than the 7-day lookback
+    still emits the row with its **real** origin (never a softened one) and `confidence: "low"`,
+    and a board that has never shown a leader event says so rather than staying quiet.
+  - `heartbeat_stale` now also emits the §4 tuple. The legacy `{stale: […]}` alert keeps its
+    exact envelope and its consumer — it is a published contract and is not touched — but it
+    carries no `dedup_key` and no `sla_row`, so without the tuple the two mechanisms could not
+    de-duplicate the row between them. **One stale heartbeat therefore notifies twice, on two
+    channels, by design** (§10.4 leaves no additive alternative). The tuple fires one period
+    earlier than the legacy alert (`warn` = `L − P`), and an unreadable heartbeat is reported at
+    `warn` with no threshold.
+- **`inspector_liveness` lands — the mutual watchdog between the two inspectors** (§5.3/§8.4).
+  Every completed pass publishes this mechanism's own last-successful-run marker
+  (`--sla-last-ok`, default `loop-patrol-last-ok.json` beside `--state`), and `--sla-peer <path>`
+  points at the other mechanism's marker: one older than `3 × 15min` raises the row at `warn`
+  (no threshold — the bound is derived, never invented). With no `--sla-peer` configured, the
+  peer's half is recorded as an **explicit dependency** and nothing alarms, because the peer's
+  marker has not landed yet and alarming every pass would be the permanently-red failure the
+  contract exists to prevent.
+- **Two smaller contract write-backs ride along.** `confidence` is now pinned where it was
+  guessed (§6.2): an exactly-read origin is `high` — including `defect_card_creation`, whose
+  origin was being reported `low` for no reason — and only a fallback, a shape match, or an
+  undecidable predicate is `low` (a board read cut off at the page cap makes the defect row's
+  "no fix card exists" check undecidable, and that now shows as `low` while still alerting).
+  `releasable_basis: "assignee_changed"` is implemented off the §7 substantive-change trail
+  (a `kind=change` entry, authored by the leader, that says it was a reassignment), where it
+  previously stayed `null` because "the read surface has no assignee history" — the contract
+  names the trail as that history's channel.
 - **The candidate read is scoped in SQL instead of truncated before the filter — C-WEIGHT-1's one
   existing-read change.** `GET /api/v1/tasks/candidates` — the read a supervisor's poll performs
   before claiming — read `tasks.list({status:"todo"})`, which the repository caps at its default
