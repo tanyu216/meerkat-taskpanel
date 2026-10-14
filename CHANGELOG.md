@@ -131,6 +131,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The candidate read is scoped in SQL instead of truncated before the filter — C-WEIGHT-1's one
+  existing-read change.** `GET /api/v1/tasks/candidates` — the read a supervisor's poll performs
+  before claiming — read `tasks.list({status:"todo"})`, which the repository caps at its default
+  **`LIMIT 200`**, and dropped the rows that were not the caller's *afterwards*, in JavaScript. An
+  assignee whose claimable cards sat past the first 200 `todo` rows of the board therefore had them
+  **silently invisible to their own poll**: a truncate-then-filter read. The `status` and
+  `assignee` filters are now pushed into the query and the read is issued with **no `LIMIT` clause
+  at all** (`limit: null`, the repository's explicit statement of "the whole scope", which the JS
+  page must not re-impose on top of), so the ordering and the paging are built on the complete set.
+  It is a **pure extension**: the sort key chain is unchanged (bucket → `sort_order` → `created_at`
+  → `project_id` → `identifier`) and the bucket table is the same four entries (`ready` /
+  `unassigned` / `stale_same` / `stale_any`), so the old read's rows appear item-for-item, in the
+  same order — the new read only appends. Nothing else moves: the default order is byte-unchanged
+  (`?order=weight` is opt-in), activity / waiting / the markdown export are untouched, and there is
+  no UI switch.
 - **The wake glue resolves the card's project directory through the host, not the checkout.**
   The generated `wake-<host>.sh` templates called `{{REPO}}/scripts/wake-cwd.mjs` — a
   checkout path baked into a host-installed file, which is exactly the coupling the split
