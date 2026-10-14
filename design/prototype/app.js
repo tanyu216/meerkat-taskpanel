@@ -3267,14 +3267,14 @@
       openWaitingItem($(this).closest("[data-waiting-item]"));
     });
 
-    /* The identifier and the title are a route back to the board, not a second
-       way into the drawer: the anchor stays a real anchor for a reader without the
-       script, and with it the press returns to the board and lands on the task. */
+    /* The identifier and the title open the same drawer the row body opens, in
+       place: the anchor stays a real anchor for a reader without the script, and
+       with it the press opens the board's own detail surface without leaving the
+       activity view. */
     $("[data-activity-feed]").on("click", "[data-activity-task]", function (event) {
       var $card = activityCard($(this).closest("[data-activity-row]"));
       if (!$card.length) return;
       event.preventDefault();
-      setView("board");
       openDetail($card);
     });
 
