@@ -13,14 +13,14 @@
  * `[data-detail-labels]` with no `when` precondition, so they must exist while
  * the drawer is closed; only their values are empty at rest.
  */
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 
 import { board, addComment, closeDetail, labelRoster, platformOf, priorityOf, reporterRoster, saveDetailField } from "../../stores/board.js";
 import { renderMarkdown } from "../../lib/markdown.js";
 import { activityLine, relativeTime } from "../../lib/activity.js";
 import { attachmentRows } from "../../lib/attachments.js";
 import { pushToast } from "../../stores/ui.js";
-import { t } from "../../i18n/index.js";
+import { has, t } from "../../i18n/index.js";
 
 import ComboField from "../combo/ComboField.vue";
 
@@ -28,6 +28,9 @@ const commentDraft = ref("");
 const assigneeDraft = ref("");
 const reporterDraft = ref("");
 const labelDraft = ref([]);
+
+/** The head's ✕ — the element the drawer hands focus to when it opens (C2). */
+const closeButton = ref(null);
 
 const detail = computed(() => board.detail);
 const task = computed(() => detail.value?.task ?? null);
@@ -88,11 +91,54 @@ function identifierOf(id) {
   return board.tasks.find((item) => item.id === id)?.identifier ?? id;
 }
 
+/**
+ * R14 ① — the category word is the catalogue's, the way every other word in the
+ * drawer is: `relations.<type>` over the three kinds the domain allows
+ * (`parent`, `blocks`, `related` — `RELATION_TYPES`,
+ * `src/core/domain/enums.mjs`). The wire's `type` is vocabulary, not copy, so it
+ * used to reach the UI verbatim as a bare enum word. A kind the catalogue has
+ * not named keeps its own wire value rather than rendering a bare
+ * `relations.<type>` key — the same "read as its own name" fallback
+ * `lib/activity.js` gives an unnamed event.
+ */
 const relationLinks = computed(() => {
   const rel = detail.value?.relations ?? {};
   return (rel.relations ?? []).map((row) => {
     const other = row.source === task.value?.id ? row.target : row.source;
-    return { key: row.id, type: row.type, label: identifierOf(other) };
+    const key = `relations.${row.type}`;
+    return { key: row.id, category: has(key) ? t(key) : row.type, label: identifierOf(other) };
+  });
+});
+
+/* ----------------------------------------- R14 §2.1 C2 · focus enters the drawer */
+
+/**
+ * Opening the drawer moves focus to its close button, the way the prototype's
+ * `focusWhenOpen($("[data-detail-close]"), $panel)` does
+ * (`design/prototype/app.js`, which measures `[data-detail-close]` `focused:
+ * true` once the drawer is up).
+ *
+ * The prototype defers the move by one transition length because its panel is
+ * `visibility: hidden` on the frame it opens, and a box that is not rendered
+ * cannot take focus. Here the panel is `hidden` — i.e. `display: none`
+ * (`.td-drawer[hidden]`, `styles/app.css`) — until the task arrives, so the
+ * equivalent moment is the post-flush one: `nextTick` after `open` flips, by
+ * which time Vue has withdrawn `hidden` and the button is focusable. The re-read
+ * of `open` inside the callback is the prototype's own `data-state === "open"`
+ * guard, so a drawer closed within that beat is never focused.
+ *
+ * This is the *only* focus this component moves, and only ever **into** the
+ * panel: Escape and the ✕ still close the drawer through `App.vue`'s keydown arm
+ * exactly as before. (The card's "关闭回 opener" half has no drawer-side
+ * implementation to preserve — `web/src` focuses nothing on close, and neither
+ * does the prototype's `closeDetail`, which only clears `aria-selected` on the
+ * cards. The opener-return the contract states is the access panel's,
+ * `test/web/blocks.contract.mjs` B19.)
+ */
+watch(open, (isOpen) => {
+  if (!isOpen) return;
+  void nextTick(() => {
+    if (open.value) closeButton.value?.focus();
   });
 });
 
@@ -273,6 +319,7 @@ function copyId() {
           <span data-detail-status-chip-label>{{ $t(`status.${statusValue}`) }}</span>
         </span>
         <button
+          ref="closeButton"
           type="button"
           class="ml-auto shrink-0 border-0 bg-transparent text-(--brand-text-3) cursor-pointer"
           data-detail-close
@@ -393,7 +440,7 @@ function copyId() {
         <h3 class="m-0 mb-2 text-[13px] font-semibold">{{ $t("drawer.relations") }}</h3>
         <ul v-if="relationLinks.length" class="m-0 pl-4">
           <li v-for="link in relationLinks" :key="link.key">
-            <a href="#" class="td-mono" data-relation-link @click.prevent>{{ link.type }} · {{ link.label }}</a>
+            <a href="#" class="td-mono" data-relation-link @click.prevent>{{ link.category }} · {{ link.label }}</a>
           </li>
         </ul>
         <p v-else class="text-[12px] text-(--brand-text-3)" data-i18n="relations.none">{{ $t("relations.none") }}</p>
