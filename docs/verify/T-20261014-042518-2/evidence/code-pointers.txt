@@ -1,0 +1,67 @@
+# T-20261014-042518-2 — code / query pointers (lane HEAD 9e4c1aa7b74661d9396511f51685a6e8e5fdcaa8)
+#
+# Every line number below was read at this lane's HEAD unless it names another
+# revision on purpose. Nothing here was modified by this card.
+
+## D1 · the candidate read — truncate-then-filter (contract §8 R16, second half)
+
+BEFORE (pre-fix, revision `872f3cd^`, i.e. the parent of the weight-order commit):
+  src/core/commands/tasks.mjs:719   const ready = ctx.repos.tasks.list({ status: "todo" }).filter(isAssignee);
+  src/core/commands/tasks.mjs:722   .list({ status: "todo" })          # pool read, same shape
+  src/core/commands/tasks.mjs:732   .list({ status: "in_progress" })   # stale read, same shape
+  src/core/commands/tasks.mjs:738/741/745  if (allBlockersDone(ctx, task.id)) found.push(...)
+  src/core/commands/tasks.mjs:810   function allBlockersDone(ctx, taskId)   # one read per card (N+1)
+  excerpt: evidence/prefix-candidates.txt (git show 872f3cd^:src/core/commands/tasks.mjs)
+
+The cap the truncation comes from:
+  src/shared/constants.mjs:381            export const TASK_LIST_DEFAULT_LIMIT = 200;
+  src/core/storage/repositories/tasks.mjs:178  const limit = Number.isInteger(filter.limit) ? filter.limit : TASK_LIST_DEFAULT_LIMIT;
+
+AFTER (HEAD):
+  src/core/commands/tasks.mjs:854   function orderedCandidates(ctx, input = {})   # the whole read
+  src/core/commands/tasks.mjs:865   .list({ status: STATUS.TODO, assigneeId: ids, limit: null })   # scope in SQL, no LIMIT
+  src/core/commands/tasks.mjs:868   .list({ status: STATUS.TODO, unassignedOnly: true, limit: null })
+  src/core/commands/tasks.mjs:874   .list({ status: STATUS.IN_PROGRESS, assigneeId: ids, limit: null })
+  src/core/commands/tasks.mjs:880   ctx.repos.relations.openEdgeCounts(scoped.map((t) => t.id))    # 1 batched read, not N
+  src/core/commands/tasks.mjs:762   const scoped = ctx.repos.tasks.list({ ...scope, limit: null }); # same for order=weight
+  src/core/storage/repositories/tasks.mjs:177  const unbounded = filter.limit === null;             # "no LIMIT clause at all"
+  src/core/storage/repositories/relations.mjs:176  openEdgeCounts(taskIds)                          # the batched edge read
+
+Transport (no limit injected anywhere on this path):
+  src/server/routes/tasks.mjs:229   router.get("/api/v1/tasks/candidates", ...)   # no limit read from the query
+  src/cli/commands/issue.mjs:143    name: "candidates"                            # no --limit flag
+
+The fix landed in: 872f3cd `feat(order): assignee 任务权重排序 C-WEIGHT-1（opt-in ?order=weight）`
+  (merge bddb308; both are ancestors of this lane's HEAD — `git merge-base --is-ancestor 872f3cd HEAD` → 0)
+
+## D2 · `sort_order` has no production writer (the card's Background item ②)
+
+  src/core/storage/repositories/tasks.mjs:184  ORDER BY sort_order ASC, created_at ASC, project_id ASC, identifier ASC
+  src/core/storage/md/import.mjs:1100          sortOrder: 0        # <- the ONLY write in src/, a literal zero
+  grep -rn 'sortOrder|sort_order' src/ → the above, plus:
+    src/shared/wire.mjs:46                     sort_order: "sortOrder"    # on the wire
+    src/core/storage/repositories/tasks.mjs:35 PATCHABLE includes "sortOrder"  # repository would accept a patch
+    src/core/commands/tasks.mjs:911            (a.task.sortOrder ?? 0) - (b.task.sortOrder ?? 0)   # board-order fallback
+    src/core/commands/tasks.mjs:987            sort: task.sortOrder ?? 0                            # candidate projection
+  No writer outside md import; no HTTP/CLI surface supplies it
+    (src/server/routes/tasks.mjs PATCH field list = title/description/priority/kind/labels).
+  The weight order never reads it:  grep -n sortOrder src/shared/task-order.mjs → no match.
+  Contract §6.3's total-order chain ends priority → W → created_at → status → project_id → identifier.
+
+## D3 · `blocked_at` is not cleared when a card leaves `blocked` (contract §8 R15)
+
+  src/core/storage/repositories/tasks.mjs:322   sets.push("awaiting_reason = ?")   # cleared on every move
+  src/core/storage/repositories/tasks.mjs:326   sets.push("blocked_reason = ?")    # cleared on every move
+  src/core/storage/repositories/tasks.mjs:328   if (to === "blocked") {             # BLOCKED_AT: write-only branch
+  src/core/storage/repositories/tasks.mjs:329     sets.push("blocked_at = ?")       #   no clear branch exists
+  src/shared/task-order.mjs:212   const startedAt = card.status === "blocked" ? card.blockedAt : card.statusChangedAt || card.createdAt;  # the gate
+
+Assertions that already lock the two behaviours:
+  test/shared/task-order.test.mjs:353            "does not read `blocked_at` on a card that is not blocked"
+  test/server/task-order.test.mjs:253            "assertion 10: the scope reaches SQL before the order does"
+  test/core/commands/task-order-scale.test.mjs:157  assert.ok(scope > 200, ...)  # per-assignee scope past the old cap
+  test/core/storage/repositories/repositories.test.mjs:217  "moves status, marking blocked_at only on the way in"
+  test/contract/md-blocked-reason.test.mjs:268   blocked_at still dates the last blockage (md round-trip)
+
+Adjacent consumer worth a look (NOT in this card's scope):
+  src/shared/sla-patrol.mjs:710-713  reads `blocked_at` as the block's origin with confidence "high"

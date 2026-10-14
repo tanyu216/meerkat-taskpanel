@@ -1,0 +1,42 @@
+# T-20261014-042518-2 — host test evidence
+# lane HEAD: 9e4c1aa7b74661d9396511f51685a6e8e5fdcaa8
+
+### node --test test/shared/task-order.test.mjs
+  ✔ does not read `blocked_at` on a card that is not blocked (0.444167ms)
+ℹ tests 16
+ℹ pass 16
+ℹ fail 0
+
+### node --test test/server/task-order.test.mjs
+▶ task-order — assertion 10: the scope reaches SQL before the order does
+✔ task-order — assertion 10: the scope reaches SQL before the order does (174.898875ms)
+ℹ tests 18
+ℹ pass 18
+ℹ fail 0
+
+### node --test test/core/commands/task-order-scale.test.mjs
+  ✔ orders the whole project scope without truncating it (103.289375ms)
+ℹ tests 3
+ℹ pass 3
+ℹ fail 0
+
+### node --test test/core/commands/tasks.test.mjs
+ℹ tests 54
+ℹ pass 54
+ℹ fail 0
+
+### node --test test/contract/md-blocked-reason.test.mjs
+ℹ tests 18
+ℹ pass 18
+ℹ fail 0
+
+### node --test test/contract/state-machine.test.mjs
+ℹ tests 16
+ℹ pass 16
+ℹ fail 0
+
+### node --test "test/core/storage/repositories/**/*.test.mjs"
+  ✔ moves status, marking blocked_at only on the way in (47.053708ms)
+ℹ tests 36
+ℹ pass 36
+ℹ fail 0
