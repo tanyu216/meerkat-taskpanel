@@ -193,6 +193,7 @@
 design-spec §3.1.5 要求「`GET/PATCH` 的 wire 投影把 `prefix` 一并回传（供 UI 展示）」。**实测**：今天**没有任何**面消费项目前缀（侧栏短码走的是 `web/src/lib/monogram.js` `initialsOf(project.name)`，不是前缀——见 §8 E4）。⇒ 本契约把它记为**条件条款**：
 - 只在**侧栏短码裁定为「前缀」**（§8 E4）之后才需要；届时 `src/shared/wire.mjs` 加 `prefix` 字段，并**必须**同步刷新契约快照（`node scripts/verify/contract.mjs --update`）与 `shape_check` 的消费面，否则 `contract-gate` 红。
 - 若 E4 裁定为「名字首字母」，则**不加**该键（省一次快照变更 + 一次消费面回归）。
+- **已激活（2026-10-14，卡 `T-20261014-011936-4`）**：E4 已裁定为**前缀** ⇒ 该键**需要**加。语义由 `design/contracts/side-rail-short-code.md`（C-RAIL-1）§4 钉死：字段名 `prefix`、值 = **有效前缀**（非 `meta.prefix` 原样——legacy/CLI 项目的有效前缀是服务端派生值，客户端复现不了）、**只读**、须 `--update` 刷新快照与消费面（该节 R-W1–R-W3）。
 
 ### 7.5 i18n / 文案
 
@@ -221,6 +222,7 @@ design-spec §3.1.5 要求「`GET/PATCH` 的 wire 投影把 `prefix` 一并回�
 **E4 · 侧栏短码（`.td-side-icon`）：原型是「前缀」，实现是「名字首字母」。**
 - 现状：原型 `[data-project-list]` 三行的 `.td-side-icon` = `ORC`/`TD`/`SR`（= 前缀，P5）；实现 `Sidebar.vue` 渲染 `initialsOf(project.name)`（`web/src/lib/monogram.js`）。三个种子里两个**巧合重合**（`Orchestrator`→`ORC`、`Site Refresh`→`SR`），**只有 `MeerkatTaskPanel` 分叉**：原型 `TD`，实现 `MT`。另：原型**动态新建**的项目行根本不渲染该 span（§2 细节 2）。
 - 归属：**正交于卡号前缀**（卡号前缀已由 §3 定死）；`BLOCKS.md §B03` 的措辞（「prefix monogram, rail only」）与本裁定**同向**，但改它要动 `monogram.js` + `Sidebar.vue` + `test/web/monogram.test.mjs` + 块契约里的 `[data-side-icon]` 规则，**并触发 §7.4 的 wire/快照变更**。⇒ **建议单开一张卡**裁定「蒙版 = 前缀 还是 名字首字母」，本契约不改。
+- **已裁定（2026-10-14，卡 `T-20261014-011936-4`）：口径 = 前缀。** 唯一口径见 `design/contracts/side-rail-short-code.md`（C-RAIL-1）；实现侧 `initialsOf(name)` 是偏离，另卡修正。上文「实现 `MT`」的**字面值**经实测更正为 **`MEE`**（两侧种子名都无空格，该契约 §0 ④ / §9 A 段），分叉的存在不变。
 
 **E5 · M4（空前缀拒绝）收窄了 `assertPrefixAvailable` 的既有让路。** 本契约只把让路限定在「未提供前缀」的情形，并新增「提供了却不可用 ⇒ 拒」。这是对既有**刻意**注释的收窄（不是推翻），**请 Elon 确认**；未确认前 C2 不得顺手改（否则等于代 Elon 定口径）。
 

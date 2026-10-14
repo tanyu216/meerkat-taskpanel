@@ -96,6 +96,12 @@ label selector opens (one of the two is open at a time).
 | States preview | `[data-states-open]` — sidebar footer control, opens **B18** |
 | Footer controls | `[data-access-status]` — **one row of three equal thirds at ≥1024px, three stacked full-width rows at ≤1023px** (R7, revised 2026-10-12 21:19): theme · language · settings. Each cell is a `[data-access-cell]` block button (`.td-access-cell`); in the row a vertical hairline on its **inline start** separates it from its neighbour (the first cell carries none), and in the stack a horizontal hairline on its **block start** separates it from the cell above (the first row carries none) |
 
+> **项目短码（口径 = `design/contracts/side-rail-short-code.md`）**：`.td-side-icon` 的文本 =
+> 该项目的**有效前缀**（= 卡号前缀，服务端一次派生：存储前缀非空，否则 `identifierPrefix(id)`），
+> 经 projects wire 的**只读** `prefix` 字段下发，客户端**逐字**渲染。原型三行的 `ORC`/`TD`/`SR`
+> 与 `app.js` 的 `PROJECT_PREFIX` 逐字一致（本行「prefix monogram」即此义）；实现侧
+> `initialsOf(name)` 是偏离，另卡修正。
+
 **R11 ② — a roster name is a route.** The `.td-agent-text` span used to hold the row's names
 as one string of text; it now holds one `<button>` per name (`[data-agent-assignee="jobs"]`,
 carrying `data-assignee` + `data-assignee-kind="agent"` as well), with the commas left as the
