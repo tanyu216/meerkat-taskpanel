@@ -593,11 +593,17 @@ function resolveArg(arg, catalogue) {
 
   /* The rules themselves: the vertical centring the card withdrew must be
      gone from the page's scoped copy *and* from the stylesheet the board
-     reads, and the block must be the large one on both sides. */
+     reads, and the block must be the large one on both sides.
+
+     These three are *declaration* guards, and they are only that: they read
+     one rule body's text, so a centring device that arrives from another rule
+     (an override, a `justify-content` on the container) leaves them green.
+     The placement itself is read after layout — `R9.*.flow-gap` and
+     `R9.*.not-v-centred` below, and `DESIGN-activity.md` §11.1. */
   const scoped = (html.match(/<style[^>]*>([\s\S]*?)<\/style>/) || ["", ""])[1];
   const scopedRule = ruleBody(scoped, ".td-activity-empty") || "";
   check(
-    "S11.7 the page's scoped .td-activity-empty is top-aligned",
+    "S11.7 the page's scoped .td-activity-empty declares no centring",
     scopedRule.length > 0 && !/auto\s*;/.test(scopedRule) && !/align-self/.test(scopedRule) && /margin:\s*0 12px/.test(scopedRule),
     scopedRule.replace(/\s+/g, " ").trim()
   );
@@ -606,7 +612,7 @@ function resolveArg(arg, catalogue) {
   const boardActivity = ruleBody(tw, ".td-activity-empty") || "";
   const boardWaiting = ruleBody(tw, ".td-waiting-empty") || "";
   check(
-    "S11.8 tw.css's .td-activity-empty is top-aligned",
+    "S11.8 tw.css's .td-activity-empty declares no centring",
     boardActivity.length > 0 && !/auto\s*;/.test(boardActivity) && !/align-self/.test(boardActivity) && /margin:\s*0 12px/.test(boardActivity),
     boardActivity.replace(/\s+/g, " ").trim()
   );
@@ -903,123 +909,158 @@ async function renderSuite() {
     check("R6b.1 an empty project shows the project empty state, not the filter one", bare.rows === 0 && bare.projectEmpty && !bare.filterEmpty);
     check("R6b.2 an empty project offers no Load older", bare.footHidden);
 
-    /* -- R9 · the empty-state family, on a real box -------------------------
-       B12's reading, measured: the block opens on the brand mark, the mark is
-       the large one (28×28), and the block stands at the **top** of its
-       container instead of being centred in it. Both pages are measured —
-       this one for the two activity states, the board for B27's waiting
-       state, which no press can reach (nothing in that queue filters, so the
-       frame is driven by the two attributes the empty state actually is). */
-    await page.evaluate(() => window.tdActivity.setLang("en"));
-    const actEmpty = await page.evaluate(() => {
-      const host = document.querySelector("[data-activity-feed]");
-      const kinds = [...document.querySelectorAll("[data-activity-empty]")];
-      const ofKind = (k) => kinds.find((e) => e.getAttribute("data-activity-empty-kind") === k);
-      const read = (el) => {
+    /* -- R9 · the empty-state family, read after layout ---------------------
+       B12's reading is the family's: the block opens on the brand mark, the
+       mark is the large one (28×28), and the block stands at the **top** of
+       its container instead of being centred in it. The last of those three
+       is a *layout* fact, and it is read here as geometry — off
+       `getBoundingClientRect`, never off a declaration:
+
+         flow-gap      the block's offset from its container's content top is
+                       the flow's offset: give the container 240px more height
+                       and the block does not move. A device that splits free
+                       space — `margin: auto`, `justify-content: center`, a
+                       `flex: 1` spacer — moves it by half the extra height.
+         not-v-centred the free space is not split evenly around the block:
+                       decisively more of it lies below than above. A *fixed*
+                       post-layout offset (a set `top`, a spacer of set height)
+                       is what this one catches, and it is the reading the
+                       flow-gap probe cannot see.
+
+       Why neither can be a declaration: `getComputedStyle` resolves an auto
+       margin to its **used** px value, so a re-centred block still reports
+       `marginTop !== "auto"`; and a container that centres its children leaves
+       the child's own `margin` / `align-self` at `0px / auto`. Both devices
+       are measured against this contract in `DESIGN-activity.md` §11.1.
+
+       The board page is the page the shipped blocks live on — B26.5's two
+       states and B27.3's one — so the family is read there at every width the
+       design is drawn for, plus once on this page, whose two states are the
+       family's origin. */
+    const MEASURE_EMPTY = `(el) => {
+      const read = () => {
+        const host = el.parentElement;
+        const hcs = getComputedStyle(host);
         const cs = getComputedStyle(el);
+        const box = el.getBoundingClientRect();
+        const hbox = host.getBoundingClientRect();
+        const padTop = parseFloat(hcs.paddingTop) || 0;
+        const padBottom = parseFloat(hcs.paddingBottom) || 0;
         const mark = el.firstElementChild;
         const mcs = mark ? getComputedStyle(mark) : null;
-        const hostBox = host.getBoundingClientRect();
-        const box = el.getBoundingClientRect();
+        /* The waiting view's own header, when there is one — the block has to
+           come after it, not be pushed to the top over it. */
+        const head = host.querySelector("[data-waiting-head]");
         return {
-          isSvg: !!mark && mark.tagName.toLowerCase() === "svg",
-          markClasses: mark ? mark.getAttribute("class") : null,
-          markSize: mcs ? `${mcs.width} / ${mcs.height}` : null,
+          gapAbove: Math.round((box.top - (hbox.top + padTop)) * 100) / 100,
+          gapBelow: Math.round((hbox.bottom - padBottom - box.bottom) * 100) / 100,
+          blockHeight: Math.round(box.height * 100) / 100,
+          hostHeight: Math.round(hbox.height * 100) / 100,
+          headHeight: head ? Math.round(head.getBoundingClientRect().height * 100) / 100 : 0,
           marginTop: cs.marginTop,
           marginBottom: cs.marginBottom,
           alignSelf: cs.alignSelf,
-          top: Math.round(box.top - hostBox.top),
-          blockHeight: Math.round(box.height),
-          hostHeight: Math.round(hostBox.height),
+          isSvg: !!mark && mark.tagName.toLowerCase() === "svg",
+          markClasses: mark ? mark.getAttribute("class") : null,
+          markSize: mcs ? mcs.width + " / " + mcs.height : null,
         };
       };
-      /* Each state is measured on its own: the two are mutually exclusive, so
-         leaving both up would measure the second one below the first. */
+      const natural = read();
+      /* The flow-gap probe: 240px of free space, then the offset again. */
+      const host = el.parentElement;
+      const was = host.style.minHeight;
+      host.style.minHeight = host.getBoundingClientRect().height + 240 + "px";
+      const tall = read();
+      host.style.minHeight = was;
+      return { natural, tall, shift: Math.round((tall.gapAbove - natural.gapAbove) * 100) / 100 };
+    }`;
+    const reachKind = (kind) => `() => {
+      const kinds = [...document.querySelectorAll("[data-activity-empty]")];
       kinds.forEach((e) => { e.hidden = true; });
-      const project = ofKind("project");
-      project.hidden = false;
-      const projectBox = read(project);
-      project.hidden = true;
-      const filter = ofKind("filter");
-      filter.hidden = false;
-      const filterBox = read(filter);
-      filter.hidden = true;
-      return { project: projectBox, filter: filterBox };
-    });
+      const el = kinds.find((e) => e.getAttribute("data-activity-empty-kind") === ${JSON.stringify(kind)});
+      el.hidden = false;
+      return el;
+    }`;
+    const REACH_WAITING = `() => {
+      document.querySelector("[data-waiting-list]").hidden = true;
+      const el = document.querySelector("[data-waiting-empty]");
+      el.hidden = false;
+      return el;
+    }`;
+    const measureEmpty = async (p, reach) => {
+      const handle = await p.evaluateHandle(eval(reach));
+      const m = await p.evaluate(eval(MEASURE_EMPTY), handle);
+      await handle.dispose();
+      return m;
+    };
+    const checkMark = (id, m) => {
+      const n = m.natural;
+      check(
+        `${id} the empty state opens on the 28×28 brand mark`,
+        n.isSvg && /(^|\s)td-logo(\s|$)/.test(n.markClasses) && /(^|\s)td-logo-lg(\s|$)/.test(n.markClasses) && n.markSize === "28px / 28px",
+        `${n.markClasses} · ${n.markSize}`
+      );
+    };
+    const checkPlacement = (where, state, m) => {
+      const n = m.natural;
+      check(
+        `R9.${where}.${state}.flow-gap the empty state stands in the flow at the top`,
+        m.shift <= 2,
+        `+240px of container height moves it ${m.shift}px (top offset ${n.gapAbove}px of ${n.hostHeight}px; a centred block moves 120px)`
+      );
+      check(
+        `R9.${where}.${state}.not-v-centred the empty state is not vertically centred`,
+        n.gapBelow - n.gapAbove >= 8,
+        `${n.gapAbove}px above / ${n.gapBelow}px below (centred would be even; declared margin ${n.marginTop}/${n.marginBottom}, align-self ${n.alignSelf})`
+      );
+      /* B27's view has a header above the block, and the reading that used to
+         carry "the block stands at the top of the view, under the header"
+         carried this clause too: the flow's first stop is the header, so the
+         block comes after it and immediately after it. */
+      if (n.headHeight > 0) {
+        check(
+          `R9.${where}.${state}.under-header the empty state stands under the queue's header`,
+          n.gapAbove >= n.headHeight && n.gapAbove <= n.headHeight + 32,
+          `${n.gapAbove}px above the block, header ${n.headHeight}px (head + gap is the flow's own offset)`
+        );
+      }
+    };
 
+    await page.evaluate(() => window.tdActivity.setLang("en"));
     for (const kind of ["project", "filter"]) {
-      const e = actEmpty[kind];
-      const centred = Math.round((e.hostHeight - e.blockHeight) / 2);
-      check(
-        `R9.${kind} the empty state is not vertically centred`,
-        e.marginTop !== "auto" && e.marginBottom !== "auto" && e.alignSelf !== "center",
-        `margin ${e.marginTop} / ${e.marginBottom} · align-self ${e.alignSelf}`
-      );
-      check(
-        `R9.${kind}b the empty state opens on the 28×28 brand mark`,
-        e.isSvg && /(^|\s)td-logo(\s|$)/.test(e.markClasses) && /(^|\s)td-logo-lg(\s|$)/.test(e.markClasses) && e.markSize === "28px / 28px",
-        `${e.markClasses} · ${e.markSize}`
-      );
-      check(
-        `R9.${kind}c the empty state stands at the top of its container`,
-        e.top < centred - 8,
-        `top ${e.top}px of ${e.hostHeight}px (block ${e.blockHeight}px — centred would be ~${centred}px)`
-      );
+      const m = await measureEmpty(page, reachKind(kind));
+      checkPlacement("page", kind, m);
+      checkMark(`R9.page.${kind}.mark`, m);
     }
 
-    /* B27.3 lives on the board page. Its two attributes are the state: the
-       queue stands down and the empty state comes up in its place. */
-    const boardPage = await browser.newPage({ viewport: { width: 1512, height: 900 } });
-    const boardErrors = [];
-    boardPage.on("console", (m) => {
-      if (m.type() === "error") boardErrors.push(m.text());
-    });
-    boardPage.on("pageerror", (e) => boardErrors.push(String(e)));
-    await boardPage.goto(`http://127.0.0.1:${port}/prototype/index.html`, { waitUntil: "load" });
-    await boardPage.evaluate(() => document.querySelector('[data-nav-item="waiting"]').click());
-    await boardPage.waitForFunction(() => !document.querySelector("[data-waiting-view]").hidden);
-
-    const waitEmpty = await boardPage.evaluate(() => {
-      const host = document.querySelector("[data-waiting-view]");
-      const el = document.querySelector("[data-waiting-empty]");
-      document.querySelector("[data-waiting-list]").hidden = true;
-      el.hidden = false;
-      const cs = getComputedStyle(el);
-      const mark = el.firstElementChild;
-      const mcs = mark ? getComputedStyle(mark) : null;
-      const hostBox = host.getBoundingClientRect();
-      const box = el.getBoundingClientRect();
-      return {
-        isSvg: !!mark && mark.tagName.toLowerCase() === "svg",
-        markClasses: mark ? mark.getAttribute("class") : null,
-        markSize: mcs ? `${mcs.width} / ${mcs.height}` : null,
-        marginTop: cs.marginTop,
-        marginBottom: cs.marginBottom,
-        alignSelf: cs.alignSelf,
-        top: Math.round(box.top - hostBox.top),
-        blockHeight: Math.round(box.height),
-        hostHeight: Math.round(hostBox.height),
-        headHeight: Math.round(document.querySelector("[data-waiting-head]").getBoundingClientRect().height),
-      };
-    });
-    const waitCentred = Math.round((waitEmpty.hostHeight - waitEmpty.blockHeight) / 2);
-    check(
-      "R9.waiting the empty state is not vertically centred",
-      waitEmpty.marginTop !== "auto" && waitEmpty.marginBottom !== "auto" && waitEmpty.alignSelf !== "center",
-      `margin ${waitEmpty.marginTop} / ${waitEmpty.marginBottom} · align-self ${waitEmpty.alignSelf}`
-    );
-    check(
-      "R9.waitingb the empty state opens on the 28×28 brand mark",
-      waitEmpty.isSvg && /(^|\s)td-logo(\s|$)/.test(waitEmpty.markClasses) && /(^|\s)td-logo-lg(\s|$)/.test(waitEmpty.markClasses) && waitEmpty.markSize === "28px / 28px",
-      `${waitEmpty.markClasses} · ${waitEmpty.markSize}`
-    );
-    check(
-      "R9.waitingc the empty state stands at the top of the view, under the header",
-      waitEmpty.top < waitCentred - 8 && waitEmpty.top < waitEmpty.headHeight + 32,
-      `top ${waitEmpty.top}px of ${waitEmpty.hostHeight}px (header ${waitEmpty.headHeight}px, block ${waitEmpty.blockHeight}px — centred would be ~${waitCentred}px)`
-    );
-    check("R9.waitingd the board page is clean", boardErrors.length === 0, boardErrors.slice(0, 2).join(" | "));
-    await boardPage.close();
+    for (const vp of VIEWPORTS) {
+      const boardPage = await browser.newPage({ viewport: { width: vp.width, height: vp.height } });
+      const boardErrors = [];
+      boardPage.on("console", (m) => {
+        if (m.type() === "error") boardErrors.push(m.text());
+      });
+      boardPage.on("pageerror", (e) => boardErrors.push(String(e)));
+      await boardPage.goto(`http://127.0.0.1:${port}/prototype/index.html`, { waitUntil: "load" });
+      await boardPage.evaluate(() => document.querySelector('[data-nav-item="activity"]').click());
+      await boardPage.waitForFunction(() => !document.querySelector("[data-activity-view]").hidden);
+      /* The feed's rows go: the empty state is what is left of the view, the
+         same way B26.5's project reading empties it. */
+      await boardPage.evaluate(() => document.querySelectorAll("[data-activity-row]").forEach((r) => r.remove()));
+      for (const kind of ["project", "filter"]) {
+        const m = await measureEmpty(boardPage, reachKind(kind));
+        checkPlacement(`board.${vp.label}`, kind, m);
+        if (vp.width === 1512) checkMark(`R9.board.1512.${kind}.mark`, m);
+      }
+      /* B27.3: the queue stands down and the empty state comes up in its
+         place — the two attributes are the state. */
+      await boardPage.evaluate(() => document.querySelector('[data-nav-item="waiting"]').click());
+      await boardPage.waitForFunction(() => !document.querySelector("[data-waiting-view]").hidden);
+      const waiting = await measureEmpty(boardPage, REACH_WAITING);
+      checkPlacement(`board.${vp.label}`, "waiting", waiting);
+      if (vp.width === 1512) checkMark("R9.board.1512.waiting.mark", waiting);
+      check(`R9.board.${vp.label}.clean the board page is clean`, boardErrors.length === 0, boardErrors.slice(0, 2).join(" | "));
+      await boardPage.close();
+    }
 
     await page.close();
 
