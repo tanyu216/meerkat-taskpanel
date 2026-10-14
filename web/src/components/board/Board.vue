@@ -204,7 +204,14 @@ watch(view, closeMoveMenu);
       </svg>
       <span class="td-empty-title" data-i18n="noResults.title">{{ $t("noResults.title") }}</span>
       <span class="td-empty-hint" data-i18n="noResults.hint">{{ $t("noResults.hint") }}</span>
-      <button type="button" class="btn btn-outline btn-sm" @click="clearFilters">{{ $t("noResults.clear") }}</button>
+      <!-- The Clear button carries the same static seat as the two lines above
+           it (`data-i18n`, B12's `noResults.clear`), so the block's whole copy is
+           addressable by key on the document rather than only through the render
+           — T-20261013-184103-2 F2. Its press is `clearFilters` here: the design's
+           own control wears `[data-filter-clear]` too, but that hook is B04's and
+           the bar scopes it to `[data-filters]`, so this block is not its second
+           carrier. -->
+      <button type="button" class="btn btn-outline btn-sm" data-i18n="noResults.clear" @click="clearFilters">{{ $t("noResults.clear") }}</button>
     </div>
   </div>
 </template>
