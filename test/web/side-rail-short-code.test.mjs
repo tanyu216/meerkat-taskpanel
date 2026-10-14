@@ -24,6 +24,13 @@
  * prefix** in the browser.
  *
  * Static text reading only — no browser, no build, so it runs anywhere.
+ *
+ * **2026-10-15 · C-RAIL-2 P5.** The chip also carries `title` = the full
+ * effective prefix (the 24px box fits three characters, so an over-long prefix
+ * can only be reached whole through a `title`). A7 is re-cut for it and A7b
+ * pins the binding; the containment half of C-RAIL-2 (P1/P2) is a *paint* rule
+ * and has no static face, so it lives in `web/scripts/rail-chip-overflow.mjs`
+ * (browser, D1/D2).
  */
 
 import assert from "node:assert/strict";
@@ -109,14 +116,36 @@ describe("web · C-RAIL-1 — the rail chip is the project's effective prefix", 
   });
 
   it("A7 — the rail hook kept its shape (one element, two faces)", () => {
+    // C-RAIL-2 P5 re-pin (2026-10-15). The literal used to end at
+    // `aria-hidden="true">`; the chip now also carries `:title="project.prefix"`,
+    // so the assertion is re-cut to the hook's own three attributes and then
+    // *allows* exactly that one supplement after them. This is the red
+    // C-RAIL-2 §7 named in advance — not a regression — and the pin stays
+    // strict: the class, the data hook and `aria-hidden` are still required,
+    // in that order, with nothing else between them and the `title` binding.
     assert.match(
       sidebar,
-      /<span class="td-mono" data-side-icon aria-hidden="true">/,
+      /<span class="td-mono" data-side-icon aria-hidden="true"(?:\s+:title="project\.prefix")?>/,
       "[data-side-icon] must keep `td-mono` + `aria-hidden` — the rail chip rule matches on the hook",
     );
     // The chip lives inside the project row, and the nav glyphs still do not
     // wear the hook (B03's count rule in blocks.contract.mjs rests on this).
     const row = sidebar.slice(sidebar.indexOf("data-project-list"));
     assert.ok(row.includes("data-side-icon"), "[data-side-icon] is no longer inside [data-project-list]");
+  });
+
+  it("A7b — the chip carries the full prefix in `title` (C-RAIL-2 P5)", () => {
+    // The static face of P5. The behavioural face is D4 in
+    // `web/scripts/rail-chip-overflow.mjs`, which reads the rendered attribute
+    // off the built board; this leg only says the binding is written down, so a
+    // `title` silently dropped in a later edit reds a suite that needs no
+    // browser. C-RAIL-2 §3.1 P5 asks for `title` = the *complete effective
+    // prefix* — i.e. the same binding as the visible text, not a copy of it, so
+    // the assertion is that both read `project.prefix`.
+    assert.match(
+      sidebar,
+      /<span class="td-mono" data-side-icon aria-hidden="true" :title="project\.prefix">\{\{\s*project\.prefix\s*\}\}<\/span>/,
+      "the chip must bind `title` to the same `project.prefix` it draws (P5)",
+    );
   });
 });
