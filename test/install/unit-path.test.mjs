@@ -128,6 +128,12 @@ describe("unit-path: the CLI", () => {
     assert.equal(run.stdout.trim(), unitPath(NODE_DIR, { cliDir: "/opt/cli/bin", scheduler: "launchd" }));
   });
 
+  it("takes --node-dir as the directory it is, not as a binary to strip", () => {
+    const run = runHelper(["path", "--scheduler", "cron", "--node-dir", "/opt/node/bin", "--cli-dir", "/opt/cli/bin"]);
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(run.stdout.trim(), "/opt/cli/bin:/opt/node/bin:/usr/bin:/bin");
+  });
+
   it("exits 2 — never silently — on a scheduler or option it cannot honour", () => {
     const bad = runHelper(["path", "--scheduler", "upstart"]);
     assert.equal(bad.status, 2);

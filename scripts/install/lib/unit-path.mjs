@@ -120,7 +120,7 @@ function main(argv) {
     }
   }
 
-  const node = opts.nodeDir ?? process.execPath;
+  const nodeDir = opts.nodeDir ?? dirname(process.execPath);
   if (what === "node") {
     process.stdout.write(`${process.execPath}\n`);
     return 0;
@@ -131,7 +131,7 @@ function main(argv) {
       return 2;
     }
     try {
-      process.stdout.write(`${unitPath(dirname(node), { cliDir: opts.cliDir, scheduler: opts.scheduler })}\n`);
+      process.stdout.write(`${unitPath(nodeDir, { cliDir: opts.cliDir, scheduler: opts.scheduler })}\n`);
     } catch (error) {
       process.stderr.write(`unit-path: ${error.message}\n`);
       return 2;
