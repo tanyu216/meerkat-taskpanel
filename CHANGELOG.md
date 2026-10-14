@@ -299,6 +299,28 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   drives the `taskctl` CLI directly, and the board's HTTP API, delivery gate and SQL
   schema are untouched, so an existing board needs no data migration.
 
+- **The prototype-comparison manifests and their project-side wiring.** `web/manifests/`
+  (`board.json`, `board-m2.json` and the 970-line `README.md`), `web/.ui-align.json`,
+  `web/scripts/ui-align-serve.mjs` and the browser-free drift guard
+  `test/web/ui-align-ready.test.mjs` are gone. They were the project half of a
+  prototype-versus-implementation comparison engine that lives **outside this repository**,
+  in the team's own toolchain — so what is removed here is the half that named a tool no
+  reader of this repo could obtain, and the half that could only ever be run on the machine
+  it was written on.
+
+  **Nothing that runs is lost.** The browser-free assertions those manifests duplicated are
+  already asserted by `test/web/blocks.contract.mjs`; the geometry and multi-viewport legs
+  run in `web/scripts/dom-smoke.mjs` (inside `npm test`) and in
+  `web/scripts/rail-chip-overflow.mjs`; the screenshots are `web/scripts/shot-compare.mjs`.
+  `web/scripts/dom-smoke.mjs`'s `startServer()` also loses its unused `{ port }` parameter —
+  its one caller that had to name the port up front was `ui-align-serve.mjs`.
+
+  Three contracts had delegated their typography/colour/border assertions to that external
+  engine's computed leg (`rail-chip-overflow.md`, `side-rail-short-code.md`,
+  `assignee-weight-order.md`); those clauses now read "not in this contract's assertion
+  scope", because the delegation was never this project's to hold. The `design/fidelity-r*`
+  round records keep their references — they are records of what was run, not instructions.
+
 ### Fixed
 
 - **The loop's scheduling units no longer resolve anything on the host's `PATH` — the
