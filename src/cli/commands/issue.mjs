@@ -200,7 +200,7 @@ export const COMMANDS = [
 
   {
     name: "update",
-    summary: "Update a task's title, priority, labels, metadata or acceptance list.",
+    summary: "Update a task's title, description, priority, labels, metadata or acceptance list.",
     usage: "issue update <id|identifier> [--title <text>] [--acceptance <text>]…",
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
     flags: [
