@@ -1187,7 +1187,7 @@ roots, two questions; the ruling that keeps them apart is Elon's (card comment, 
 | Root | `[data-waiting-view]` — fourth child of `main.td-main`, beside `[data-board-view]`, `[data-list]` and `[data-activity-view]`; ships **`hidden`**, because the no-script default view is the board |
 | B27.2 header | `[data-waiting-head]` → `[data-waiting-title]` (`waiting.title`, byte-identical to `nav.waiting`) + the description (`waiting.subtitle`, R15 ④ — a `data-i18n` seat only, no `data-waiting-*` of its own) + `[data-waiting-count]` (`waiting.count`, `%s` template) |
 | B27.1 the queue | `[data-waiting-list]` → `[data-waiting-item]` → `[data-waiting-actor]` / `[data-waiting-reason]` / `[data-waiting-task]` + `[data-waiting-task-title]` / `[data-waiting-since]` / `[data-waiting-open]` |
-| B27.3 empty state | `[data-waiting-empty]`; ships `hidden`. R17 gives it B12's reading — the brand mark first, `td-empty-lg`, top-aligned — and the second line the state was missing (`waiting.empty.hint`). No button: nothing in this view filters |
+| B27.3 empty state | `[data-waiting-empty]`; ships `hidden`. R17 gives it B12's reading — the brand mark first, `td-empty-lg`, top-aligned — and the second line the state was missing (`waiting.empty.hint`). No button: nothing in this view filters. Its R17 420px cap is withdrawn (2026-10-15): it is `width: 100%`, full-width like B12's |
 
 **R15 ④ — the header states what the view is, not only its name.** Terry's 2026-10-13 third
 request (`T-20261013-165112`) was that `Waiting on me` learn the two-line head B26 already
@@ -1575,10 +1575,12 @@ of them had — *which* empty states carry a clear control.
   every one of them (B12's own copy is unchanged).
 - The block stands at the **top** of its container. `.td-activity-empty` loses
   `margin: auto 12px` for `margin: 0 12px`, and `.td-waiting-empty` loses
-  `align-self: center` + `margin: auto 0` for `margin: 0 auto` — the waiting block keeps its
-  100% / 420px cap and its horizontal centring, because it is the only box in the main area
-  and a dashed rule stretched across 1300px is the shape of a drop target, not of an answer.
-  Nothing else about either rule moves.
+  `align-self: center` + `margin: auto 0` for `margin: 0 auto` — R17 kept a 100% / 420px cap
+  there, because it is the only box in the main area and a dashed rule stretched across
+  1300px is the shape of a drop target, not of an answer. **That cap is withdrawn
+  (2026-10-15):** the waiting block is `flex: none` + `width: 100%` like B12's, since the
+  queue's own header and rows span the view and the box standing in for them has to span it
+  too. Nothing else about either rule moves.
 
 The activity view's own design page (`design/activity/`) carries the same two states and the
 same rules in its scoped `<style>`; it is edited in step, and its machine check —
