@@ -1,0 +1,9 @@
+# tip (HEAD da709a1) — npm test
+ℹ tests 2223
+ℹ suites 575
+ℹ pass 1960
+ℹ fail 148
+ℹ cancelled 113
+ℹ skipped 2
+ℹ duration_ms 686322.986
+EPERM occurrences: 161
