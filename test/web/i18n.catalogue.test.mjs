@@ -27,8 +27,8 @@
  * key counts via `t.diagnostic`. See the module header for the recorded
  * numbers and for the `BLOCKS.md` header discrepancy: its line quotes 626 hooks
  * (four of the five `data-i18n*` attributes, the 193 `data-i18n-arg` seats left
- * out) and 282 keys, while the documents measure 819 hooks and 282 prototype
- * `MESSAGES` keys, of which this catalogue ships the 265 that are not
+ * out) and 282 keys, while the documents measure 849 hooks and 288 prototype
+ * `MESSAGES` keys, of which this catalogue ships the 271 that are not
  * prototype-only.
  */
 
