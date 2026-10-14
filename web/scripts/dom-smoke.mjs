@@ -256,7 +256,22 @@ export function fixtureApi() {
     // Beyond the first page of day groups (three days), so `Load older` unfolds.
     { id: "act-18", task_id: "td_TD_10", actor_kind: "human", actor_id: "Terry", event: "task_created", changes: { identifier: "TD-10", status: "done" }, revision: 20, created_at: minutes(120 * 60) },
   ];
-  return { projects, orderDebug, tasks, entries, labels, comments, activities };
+  // R14 ① — the drawer's relation rows. Keyed by the task's internal id, the way
+  // the real route scopes them, and TD-1 is the card the interaction pass opens,
+  // so it is the one that carries **all three** kinds: `parent`, `blocks` and
+  // `related` is the domain's whole vocabulary (`RELATION_TYPES`,
+  // `src/core/domain/enums.mjs`), which is what lets the drawer's three category
+  // words be measured on one screen. The refs are the fixture's own ids — they
+  // are derived from the *identifier* (`fixture()` above), so PROJ-0007 is
+  // `td_PROJ_0007`, not `td_TD_2`.
+  const relations = {
+    td_TD_1: [
+      { id: "rel-parent", type: "parent", source: "td_PROJ_0007", target: "td_TD_1", origin: null, created_at: minutes(46 * 60) },
+      { id: "rel-blocks", type: "blocks", source: "td_TD_1", target: "td_TD_3", origin: null, created_at: minutes(45 * 60) },
+      { id: "rel-related", type: "related", source: "td_TD_1", target: "td_TD_4", origin: null, created_at: minutes(44 * 60) },
+    ],
+  };
+  return { projects, orderDebug, tasks, entries, labels, comments, activities, relations };
 }
 
 /**
@@ -301,6 +316,17 @@ export function startServer({ port = 0 } = {}) {
         task_id: task?.id ?? ref,
         activities: data.activities.filter((activity) => activity.task_id === task?.id),
       });
+    }
+    // R14 ① — the real route's shape (`src/server/routes/relations.mjs` →
+    // `{ relations: [...] }`, each row `relationToWire`: id/type/source/target).
+    // Scoped to the card asked for, like `/activities`: the drawer renders the
+    // rows a card *has*, so a fixture answering every ref with the whole table
+    // would let the wrong card's edges look right.
+    const relationsFor = /^\/api\/v1\/tasks\/([^/]+)\/relations$/.exec(path);
+    if (relationsFor) {
+      const ref = decodeURIComponent(relationsFor[1]);
+      const task = data.tasks.find((entry) => entry.identifier === ref || entry.id === ref);
+      return ok({ relations: data.relations[task?.id] ?? [] });
     }
     // Resolve the task the caller actually asked for (by identifier or by id)
     // rather than always the first one. Answering every ref with the first
@@ -699,6 +725,62 @@ export async function run() {
       rule: entry.rule,
     }));
     const drawerResults = await page.evaluate(evaluateRules, drawerRules);
+
+    /* ---- R14 ①② — the drawer's focus hand-off and its category words --------
+       Both leftovers live on the drawer that is open right here (TD-1), so both
+       are measured on the same screen, between the open and the Escape.
+
+       ② C2 — the prototype hands the keyboard into the panel the moment it is
+       up (`focusWhenOpen($("[data-detail-close]"), $panel)`,
+       `design/prototype/app.js`; there `[data-detail-close]` reads back
+       `focused: true`). `document.activeElement` is the only reader of that: a
+       static probe reads a document, it cannot open a drawer, so the contract's
+       declarable half stops at the hook and the *move* is measured here.
+
+       ① (the R14 leftover of the same number) — the relation row's category word
+       is the catalogue's, not the wire's enum. The fixture's TD-1 carries one
+       edge of each of the three kinds, so all three keys are consumed on one
+       screen — including `relations.related`, whose capital R is what tells a
+       real catalogue hit apart from the unknown-kind fallback (that one prints
+       the bare lowercase enum word). */
+    const r14Failures = [];
+    const r14Check = (ok, message) => { if (!ok) r14Failures.push(message); };
+
+    const r14Focus = await page.evaluate(() => {
+      const drawer = document.querySelector("[data-detail-drawer]");
+      const close = document.querySelector("[data-detail-close]");
+      const active = document.activeElement;
+      const name = (el) =>
+        el === null
+          ? "null"
+          : el === document.body
+            ? "body"
+            : `<${el.tagName.toLowerCase()}${el.hasAttribute("data-detail-close") ? " data-detail-close" : ""}>`;
+      return {
+        state: drawer?.getAttribute("data-state") ?? null,
+        hidden: drawer?.hasAttribute("hidden") ?? true,
+        isClose: close !== null && active === close,
+        active: name(active),
+      };
+    });
+    // A focus probe measured against a closed (or still-`hidden`) panel would be
+    // vacuously true, so the precondition is asserted too rather than assumed.
+    r14Check(
+      r14Focus.state === "open" && !r14Focus.hidden,
+      `the focus probe needs the drawer open: data-state=${JSON.stringify(r14Focus.state)}${r14Focus.hidden ? ", still hidden" : ""}`,
+    );
+    r14Check(r14Focus.isClose, `document.activeElement after the drawer opened is ${r14Focus.active}, expected [data-detail-close]`);
+
+    // The three rows in render order, word · identifier — the words are the
+    // catalogue's (`relations.parent|blocks|related`), the identifiers the
+    // resolved refs (PROJ-0007 for the parent edge, which is the fixture's own
+    // id derivation, not a typo).
+    const R14_RELATION_ROWS = ["Parent · PROJ-0007", "Blocks · TD-3", "Related · TD-4"];
+    const r14Relations = await page.evaluate(() => [...document.querySelectorAll("[data-relation-link]")].map((row) => row.textContent.trim()));
+    r14Check(
+      r14Relations.join("|") === R14_RELATION_ROWS.join("|"),
+      `the drawer's relation rows read ${JSON.stringify(r14Relations)}, expected ${JSON.stringify(R14_RELATION_ROWS)}`,
+    );
 
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
@@ -4300,6 +4382,7 @@ export async function run() {
         viewportFailures: b26ViewportFailures,
       },
       r12Id: { failures: r12IdFailures, longId: LONG_ID, clamped: CLAMPED, longHead, spill, listRead },
+      r14: { failures: r14Failures, focus: r14Focus, relations: r14Relations },
       m7: {
         failures: m7Failures,
         cases: m7.cases,
@@ -4419,6 +4502,15 @@ if (isEntryPoint) run().then(
       } else {
         console.log(`R12-id (fidelity) — the drawer head and the card / list row both show ${report.r12Id.longId} whole under the ten-character cap, and .td-id-full does not spill (${report.r12Id.spill.fullClass} match, cards ${report.r12Id.spill.cards}, rows ${report.r12Id.spill.rows})`);
       }
+      if (report.r14.failures.length > 0) {
+        console.log(`R14 (drawer) — ${report.r14.failures.length} failed:`);
+        for (const failure of report.r14.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log(
+          `R14 (drawer) — opening hands focus to [data-detail-close] (activeElement ${report.r14.focus.active}) ` +
+            `and the relation rows read ${report.r14.relations.join(" / ")}`,
+        );
+      }
       if (report.m7.failures.length > 0) {
         console.log(`M7 · C-PREFIX-1 (create-project refusal) — ${report.m7.failures.length} failed:`);
         for (const failure of report.m7.failures) console.log(`  ✗ ${failure}`);
@@ -4465,6 +4557,7 @@ if (isEntryPoint) run().then(
       report.r11.failures.length === 0 &&
       report.b26.failures.length === 0 &&
       report.r12Id.failures.length === 0 &&
+      report.r14.failures.length === 0 &&
       report.m7.failures.length === 0 &&
       report.r16.failures.length === 0 &&
       interactionOk;
