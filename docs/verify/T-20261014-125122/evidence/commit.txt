@@ -1,21 +1,25 @@
-# T-20261014-125122 — commit ledger (written after the commit; a commit cannot name itself)
+# T-20261014-125122 — commit ledger (updated *after* the commits: a commit cannot
+# name its own sha, so this file is the follow-up fix-up; the final tip sha is in
+# the card's final answer / `git log` of the mirror below).
 #
 # Why the commit is not in the shared object store: this lane's sandbox denies
-# every write under the shared .git (`git add` → index.lock EPERM, exit 128).
-# The same objects therefore live in a fetchable mirror repo, branched off the
-# verified parent. Integration:
+# every write under the shared .git (`git add` → index.lock EPERM, exit 128), the
+# same wall T-20261013-154930-3 hit. The objects therefore live in a fetchable
+# mirror repo branched off the verified parent. Integration:
 #
-#   git fetch /tmp/lane-mirror-T-20261014-125122 lane/T-20261014-125122-seg1
-#   git merge --no-ff FETCH_HEAD        # or: git cherry-pick 18fe856 adb4b02
+#   git fetch /tmp/lane-mirror-T-20261014-125122b lane/T-20261014-125122-seg1
+#   git merge --no-ff FETCH_HEAD     # or: git cherry-pick 3e81a3a 4c21128 <tip>
 #
 branch:                      lane/T-20261014-125122-seg1
 parent (verified SUT):       3ad4b1913b5256bf3688bf0e92eee722e28061db   (= main tip on entry)
-mirror repo:                 /tmp/lane-mirror-T-20261014-125122
-artifacts commit (A):        18fe856c50c3c0c6b03d2dc2436c760cc57f7adf   14 files, +12097
-tip commit (B = A + its own format-patch):
-                             adb4b02549b0ff2ec8ae2f3d2e66ac9a73f92d5a
+mirror repo:                 /tmp/lane-mirror-T-20261014-125122b
+artifacts commit (A):        3e81a3aa0a301a1b151d7628011fc6d4a9bd6edf   27 files, +~40k (harness + all evidence)
+patch commit (B = A + A's own format-patch):
+                             4c2112838194d91e9bc59a2dc6a1e72313e06991   28 files
+tip commit (C = B + this ledger correction):
+                             see `git log --oneline -1` in the mirror / the card's final answer
 patch copy:                  docs/verify/T-20261014-125122/integration.patch  (= format-patch of A)
-paths in the commits:        docs/verify/T-20261014-125122/**  only
+paths in the commits:        docs/verify/T-20261014-125122/**  only (28 files, zero outside)
 worktree copies of the report (untracked, convenience):
   verification/T-20261014-125122/report.md
   /tmp/T-20261014-125122/report.md
