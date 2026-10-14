@@ -349,10 +349,12 @@ live ([Scheduling units](install.md#scheduling-units-claude-codex-pi)). Re-insta
 host's loop units never touches this directory, and the two are never confused for one
 another.
 
-There is **one guard per machine** — per effective data directory — and **not** one per
-host: the `Label` and the unit name carry no agent or host segment (unlike the loop's
+There is **one guard per machine** — and therefore **one guarded board** — and **not** one
+per host: the `Label` and the unit name carry no agent or host segment (unlike the loop's
 `com.meerkat-taskpanel.poll` / `meerkat-taskpanel-patrol`), so installing for several
-hosts does not multiply the guard.
+hosts does not multiply the guard. Which board it serves is chosen **at install time**, and
+a second board is the unguarded case; see
+[One guard per machine](#one-guard-per-machine).
 
 The unit writes its stdout/stderr into `<dataDir>/logs/taskd.log` — the **same file the
 lazy-start path uses**. `install.sh` creates `<dataDir>/logs` before writing the unit,
@@ -566,6 +568,35 @@ taskd guard: loaded (com.meerkat-taskpanel.taskd, pid 17388); /health did not an
 Neither line fails the install (the host skills are installed either way), but only the
 first one claims the guard works.
 
+A **second board** is where the install has to be careful, because the guard is one per
+machine ([One guard per machine](#one-guard-per-machine)): on Linux the file systemd reads
+`~/.config/systemd/user/meerkat-taskpanel-taskd.service`, and that file *is* the machine's
+guard. So the loaded probe is asked **before** anything is written there, and a guard that
+is already loaded for a different board is a refusal — the file is left alone, and the
+refusal names both boards:
+
+```text
+taskd guard: refused — com.meerkat-taskpanel.taskd is already loaded and serves another board (<its dataDir>);
+  ~/.config/systemd/user/meerkat-taskpanel-taskd.service was left unchanged, and this board (<this dataDir>) is not guarded by it
+taskd guard: this machine runs one guarded board — re-run with --force to point it at <this dataDir>
+```
+
+That is the one non-zero outcome of an install — **exit 3** (`install.sh` reports a non-zero
+guard step and carries on; the install's own status is unaffected). A re-install of the
+**same** board is not a refusal: it reports which board the loaded guard serves, so
+`already loaded` can no longer read as "your board is guarded" when it is not:
+
+```text
+taskd guard: already loaded (no change) — the machine's guard serves this board (<dataDir>)
+taskd guard: already loaded (no change) — which board it serves could not be read here
+```
+
+The second form is the honest one for a machine where neither the unit file nor a runtime
+pointer carrying the guard's pid names a board; it is never smoothed into a bare no-change.
+On macOS there is no machine-side unit file to read, so the pointer is the evidence install
+has — and a guard that is already loaded for another board is reported there too, though
+nothing can be refused (nothing is written over the loaded job's plist).
+
 To stop and remove the guard:
 
 ```bash
@@ -609,9 +640,14 @@ one write lock, so they never fight over the slot:
   to whoever calls `taskctl`, not to the server's own unit — and exporting it from the
   guard would mislead any CLI that inherited the environment.
 - **The unit must not set `TASKD_PORT=0`.** A long-running guard needs a **stable**
-  port: the default `9527`, or an explicit `TASKD_PORT`. `0` (an ephemeral port) is for
-  the lazy-start and test paths only — a client that has lost the pointer cannot guess a
-  random port to find the server again.
+  port: the default `9527`, or a port from **outside** the unit (macOS: the launchd session
+  environment; Linux: an operator drop-in on the unit). `0` — the *value*, an ephemeral
+  port — is for the lazy-start and test paths only, because a client that has lost the
+  pointer cannot guess a random port to find the server again. The ban is on `0`, not on
+  the variable name: `install.sh` renders only `TASKD_DATA_DIR` / `TASKD_RUNTIME_POINTER`
+  into the unit (`unitEnv()`, `scripts/install/lib/taskd-guard.mjs`), which is the
+  installer's choice for the one-guard boundary below — not a claim that a port in a unit
+  would be wrong. See [One guard per machine](#one-guard-per-machine).
 - **The data directory matches.** Both the unit and the CLI run `main.mjs` from the
   *same* checkout, so the default data directory (`<repo>/.data`) is the same by
   construction. If the operator exports `TASKD_DATA_DIR` or `TASKD_RUNTIME_POINTER` for the
@@ -623,7 +659,9 @@ one write lock, so they never fight over the slot:
   and the readiness probe reads the pointer the unit itself would write (`TASKD_RUNTIME_POINTER`
   when set, else the machine-wide one, else `<dataDir>/runtime.json` when another live board
   holds the machine-wide slot). `TASKD_NO_AUTOSTART` and `TASKD_PORT` are deliberately **not**
-  propagated — a client policy and an ephemeral port, respectively; see the two bullets above.
+  propagated — a client policy, and (for the one guarded board this machine has) a port that
+  belongs outside the unit; see the two bullets above and
+  [One guard per machine](#one-guard-per-machine).
 - **If something else already owns the slot**, the guard's `taskd` exits non-zero with
   `BOARD_ALREADY_RUNNING`, the supervisor restarts it, and the back-off below ends the
   retries. Stop the hand-started board first, or accept the unit going `failed`.
@@ -644,8 +682,45 @@ one write lock, so they never fight over the slot:
   on macOS, point `newsyslog` (or a user `logrotate`) at that file by size or time; on
   Linux, replace the two `StandardOutput=append:` / `StandardError=append:` lines with
   `StandardOutput=journal` / `StandardError=journal` and let journald own rotation.
-- **One guard per machine**, per effective data directory — see
-  [Where the unit lands](#where-the-unit-lands-ownership-separation).
+- **One guard per machine** — see [One guard per machine](#one-guard-per-machine).
+
+#### One guard per machine
+
+**A machine runs one `taskd` guard unit, and therefore one guarded board. Running two
+guarded boards on one machine is out of scope, deliberately and permanently
+(T-20261014-063205 §3.2–§3.4, ruled on by Elon 2026-10-15).**
+
+This is a **design boundary**, not a defect to be closed:
+
+- The job's identity is machine-level: `TASKD_LABEL` and `TASKD_UNIT` in
+  `scripts/install/lib/taskd-guard.mjs` carry no board or host segment, and `enablePlan()`
+  refers to them directly — on Linux it resolves the directory systemd reads itself. A
+  second install cannot create a second job; it can only re-point the one that exists.
+- **Which board it serves is decided at install time** and carried in the unit's own
+  environment (`TASKD_DATA_DIR` / `TASKD_RUNTIME_POINTER`, rendered by `unitEnv()`). It is
+  not chosen at run time, and it is not per-host: installing for several hosts does not
+  multiply the guard.
+- The second board is the **unguarded** case, and it is a supported one: `TASKD_DATA_DIR`
+  plus an explicit `TASKD_PORT`, with its address falling back to
+  `<dataDir>/runtime.json` so the machine-wide slot and the incumbent board are untouched
+  (`src/core/storage/secrets/runtime-pointer.mjs`, R1). A board that must be *resident*
+  belongs on its own machine or in its own container — which is what `docker/` is for.
+- Because the guard is unique, a second install **does not silently inherit it**: the one
+  unconditional write to a machine-side path, in `installGuard()`, is reached only after the
+  loaded guard's own board has been read (`unitBoard()` / `servedBoard()`), and a guard
+  already loaded for another board is a **named refusal** that leaves that file alone —
+  exit 3 (`exitCode()`), with `--force` as the deliberate way to re-point it.
+  `docs/install.md § The taskd guard` has the report lines.
+
+**Not adopted — for the record.** If a resident second guarded board is ever really
+needed, the minimal change set is: (a) parameterise the Label/unit name with a board slug;
+(b) let a unit carry a validated **non-zero** `TASKD_PORT` (a clarification of the contract
+above, not a break of it) by injecting one more variable in `unitEnv()`; (c) restate this
+section per board; (d) document migrating the Label for machines that already have a job
+installed. None of it is implemented, and none of it should be done "for symmetry" — the
+cost lands on the unit identity, which is the one thing every client-facing address
+(`9527`, the pointer, the compose healthcheck) is built on. Kept here only so a future
+decision starts from the analysis rather than from scratch.
 
 ### The loop body is installed, not referenced
 
@@ -858,7 +933,7 @@ Exit 0 with a `state =` line ⇒ loaded; `Could not find service …` ⇒ not lo
 | Symptom | Meaning | What the enable path does |
 |---|---|---|
 | `Bootstrap failed: 5: Input/output error` | no Aqua/GUI session — an SSH-only or headless launchd context | reports it and tells you to retry from a GUI login session (or use `launchctl load -w`). It does **not** claim success |
-| `Bootstrap failed: 37: … already bootstrapped` (legacy: `service already loaded`) | already loaded | **idempotent success** — reports `already enabled`, exit 0 |
+| **the loop's** `Bootstrap failed: 37: … already bootstrapped` (legacy: `service already loaded`) | already loaded | **idempotent success** — the **supervisor** reports `supervisor: already enabled (…)`, exit 0. The `taskd` guard is bootstrapped the same way but reports its own, board-aware line instead — `already enabled` is *not* its wording ([`install.md § The taskd guard`](install.md#the-taskd-guard-keepalive-always-enabled)) |
 | `Could not find service` on disable | not loaded | **idempotent no-op** — reports `already disabled`, exit 0 |
 
 ### Linux — systemd `--user`

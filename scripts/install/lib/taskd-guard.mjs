@@ -50,9 +50,24 @@
  * exactly the readiness test the CLI applies. A unit that is loaded but not
  * serving reports `loaded … /health did not answer` instead, with the log to read.
  *
+ * **The guard is one per machine, so a second install may have to refuse**
+ * (`docs/scheduling.md § One guard per machine`). Because the label and the unit name
+ * carry no board segment, the machine has exactly one guard job, and on Linux the file
+ * systemd reads (`~/.config/systemd/user/<TASKD_UNIT>`) *is* that guard's definition:
+ * copying this run's unit over it while a first board's guard is loaded re-points the
+ * machine's only guard at a second board — silently, and only at the next reload, which
+ * is what made it invisible (T-20261014-063205 §2.2). So the loaded probe is asked
+ * **before** anything is installed into that directory, the board the loaded guard
+ * serves is read from the unit systemd would read (or, when there is no such file, from
+ * the board's own runtime pointer carrying this guard's pid), and a guard that is
+ * already loaded **for another board** is a refusal — named, left untouched, exit 3 —
+ * not a clobber. `--force` remains the one way to re-point it deliberately.
+ *
  * Subcommand:
  *   install --prefix <dir> [--force]   render + write both units, then load this
  *                                      platform's one; prints a `taskd guard:` report
+ *                                      (exit 3 when it refused to re-point the machine's
+ *                                      guard at this board)
  *
  * Node builtins only; no network beyond the loopback `/health` probe; no dependencies.
  */
@@ -75,6 +90,21 @@ import {
 } from "../../../src/shared/constants.mjs";
 import { resolveDataDir, resolveRuntimePointerPath } from "../../../src/shared/runtime-locator.mjs";
 import { probeHealth, readPointer } from "../../../src/shared/transport/runtime.mjs";
+
+/**
+ * The exit code a finished `install` leaves: **3** when it refused to re-point the
+ * machine's already-loaded guard at this board (`report.state === "occupied"`), else 0.
+ *
+ * 3 is this repository's "ran, found a difference, declined" code — `export --check`
+ * and `wake-cwd.mjs` use it the same way. Every other outcome of an install is 0 on
+ * purpose: a unit that cannot be loaded is *reported*, not failed (the host install is
+ * unaffected either way), so the one non-zero exit is the one deliberate refusal.
+ *
+ * @param {object} report the `installGuard` report
+ */
+export function exitCode(report) {
+  return report.state === "occupied" ? 3 : 0;
+}
 
 /** The launchd Label. One per machine: no agent or host segment (unlike the loop's). */
 export const TASKD_LABEL = "com.meerkat-taskpanel.taskd";
@@ -243,6 +273,55 @@ export function systemdEnvBlock(entries) {
   return entries
     .map(([name, value]) => `Environment=${name}=${/^[A-Za-z0-9_./:=@+-]+$/.test(value) ? value : JSON.stringify(value)}`)
     .join("\n");
+}
+
+/** Invert `xmlEscape` — in the order that cannot double-unescape an escaped `&`. */
+function xmlUnescape(value) {
+  return value.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+}
+
+/**
+ * The board a **rendered unit** pins: its `TASKD_DATA_DIR`, or `null` when it pins none.
+ *
+ * This is how "which board does that guard serve?" is answered without starting
+ * anything (`installGuard` below). Both file formats are read because both are written
+ * here: systemd puts the value in one `Environment=` line (`systemdEnvBlock` quotes a
+ * value that is not a bare word, hence the JSON branch), a plist in a
+ * `<key>`/`<string>` pair.
+ *
+ * `null` is not "no board" — it is the **unpinned** board, the one `resolveDataDir`
+ * resolves at the unit's own start. Two units that both pin nothing serve the same
+ * board by construction (they name the same checkout), which is what makes comparing
+ * two of these values the whole test.
+ *
+ * @param {string} text a rendered unit file (systemd or launchd)
+ * @returns {string|null}
+ */
+export function unitBoard(text) {
+  const plist = /<key>TASKD_DATA_DIR<\/key>\s*<string>([\s\S]*?)<\/string>/.exec(text);
+  if (plist !== null) return xmlUnescape(plist[1]);
+
+  // Anchored at the start of a line, so a mention of the name inside a comment or
+  // another directive cannot be mistaken for the value systemd would read.
+  const systemd = /^Environment=TASKD_DATA_DIR=(.*)$/m.exec(text);
+  if (systemd === null) return null;
+  const value = systemd[1].trim();
+  if (!value.startsWith('"')) return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+/** Two `unitBoard` answers name the same board. Absolute both ways: one side is a render. */
+function sameBoard(a, b) {
+  return (a === null ? null : resolve(a)) === (b === null ? null : resolve(b));
+}
+
+/** The board as it reads in a report line. `null` is the unpinned (default) board. */
+function boardLabel(dataDir) {
+  return dataDir === null ? "the default board" : dataDir;
 }
 
 /**
@@ -426,6 +505,42 @@ export async function installGuard(options = {}) {
   }
   report.stop = plan.stop;
 
+  const pidWaitMs = options.pidWaitMs ?? 1_000;
+
+  // Ask the supervisor what it already holds **before** anything is installed into the
+  // place it reads. The machine has exactly one guard (`TASKD_UNIT`, no host segment),
+  // so on Linux the copy below *is* that guard: taken while a first board's guard is
+  // loaded, it re-points it at this board — visible only at the next reload, and
+  // reported as `already loaded (no change)` while the unit on disk had just changed
+  // (T-20261014-063205 §2.2). Hence the order: probe, identify the board, then write.
+  const already = runStep(plan.loadedProbe, run);
+  if (already.ok) report.pid = waitForPid(plan, run, pidWaitMs);
+
+  // The board this run would install, read back from the file that would be copied —
+  // what actually lands, not a re-derivation of it.
+  const mine = unitBoard(readFileSync(kind === "launchd" ? paths.launchdUnit : paths.systemdUnit, "utf8"));
+  const served = already.ok
+    ? servedBoard({
+        unitFile: plan.unitDir === undefined ? null : join(plan.unitDir, TASKD_UNIT),
+        pointers: [...new Set([paths.pointerFile, join(paths.dataDir, RUNTIME_FILENAME)])],
+        pid: report.pid,
+        readPointerFn: options.readPointerFn ?? readPointer,
+      })
+    : null;
+
+  // A guard loaded for **another** board is a refusal, not a clobber: the machine's one
+  // guard belongs to whoever installed first, and re-pointing it is a deliberate act
+  // (`--force`), not a side effect of installing a second board. An unreadable board is
+  // *not* a refusal — that would block a re-install on no evidence — it is reported.
+  if (already.ok && plan.unitDir !== undefined && !force && served !== null && !sameBoard(served.dataDir, mine)) {
+    report.state = "occupied";
+    report.reason = `${join(plan.unitDir, TASKD_UNIT)} is loaded for another board (${boardLabel(served.dataDir)})`;
+    log(`taskd guard: refused — ${TASKD_LABEL} is already loaded and serves another board (${boardLabel(served.dataDir)});`);
+    log(`  ${join(plan.unitDir, TASKD_UNIT)} was left unchanged, and this board (${boardLabel(mine)}) is not guarded by it`);
+    log(`taskd guard: this machine runs one guarded board — re-run with --force to point it at ${boardLabel(mine)}`);
+    return report;
+  }
+
   // systemd only reads its own user unit directory, so the unit is copied there
   // before it can be enabled — the same two steps docs/scheduling.md prints.
   if (plan.unitDir !== undefined) {
@@ -434,7 +549,6 @@ export async function installGuard(options = {}) {
     copyFileSync(paths.systemdUnit, installed);
   }
 
-  const already = runStep(plan.loadedProbe, run);
   let state = "manual";
   let reason = null;
 
@@ -462,8 +576,27 @@ export async function installGuard(options = {}) {
     return report;
   }
 
-  if (state === "already") log("taskd guard: already loaded (no change)");
-  report.pid = waitForPid(plan, run, options.pidWaitMs ?? 1_000);
+  // `already loaded (no change)` describes the *job*, and on its own was read as "your
+  // board is guarded" even when the loaded guard served a different one — the second
+  // half of the F2 defect. The board is named whenever it could be read, and the
+  // unreadable case says so rather than passing as a plain no-change.
+  if (state === "already") {
+    const other = served !== null && !sameBoard(served.dataDir, mine);
+    // Reached with `other` only through `--force` (the gate above returns otherwise), and
+    // then only on a platform that writes the machine's unit. The live job keeps the board
+    // it started with until the supervisor reloads it, so that is what the line says.
+    const repointed = other && plan.unitDir !== undefined;
+    const clause =
+      served === null
+        ? " — which board it serves could not be read here"
+        : !other
+          ? ` — the machine's guard serves this board (${boardLabel(mine)})`
+          : repointed
+            ? ` — the live guard still serves ${boardLabel(served.dataDir)} until it is reloaded; its unit now names ${boardLabel(mine)}`
+            : ` — the machine's guard serves another board (${boardLabel(served.dataDir)}); this board (${boardLabel(mine)}) is not the one it keeps alive`;
+    log(`taskd guard: already loaded (no change)${clause}`);
+  }
+  if (report.pid === null) report.pid = waitForPid(plan, run, pidWaitMs);
 
   // The supervisor says the job *exists*. Whether the board it owns is *serving*
   // is a second question, and the one an operator actually cares about — so it is
@@ -504,6 +637,63 @@ export async function installGuard(options = {}) {
   log("taskd guard: to stop and remove it:");
   for (const line of report.stop) log(`  ${line}`);
   return report;
+}
+
+/** A unit file's text, or `null` when there is no file to read. */
+function readUnitText(path) {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Which board the machine's **already-loaded** guard serves, as far as this run can tell.
+ *
+ * Two sources, most authoritative first, because neither covers every platform:
+ *
+ *   1. **The unit the supervisor reads.** On Linux that is
+ *      `~/.config/systemd/user/<TASKD_UNIT>` — the very file a second install used to
+ *      rewrite, and the definition of the board the guard owns. It answers whether or
+ *      not any board is running, which is the case that matters: the F1 defect rewrote
+ *      the file and left the *loaded* job alone, so the damage only showed at the next
+ *      reload.
+ *   2. **The board's own runtime pointer, when it carries this guard's pid.** A board
+ *      writes its address and pid on the way up (`runtime-pointer.mjs`), so a pointer
+ *      naming *this* pid is that board's own statement of who serves it. This is what
+ *      covers macOS, where no unit file is written for the machine: `launchctl` is given
+ *      this run's plist path and the loaded job's own path is not readable through the
+ *      seam this installer has. Only the machine-wide slot can name a board other than
+ *      this run's, and the pointer beside *this* data directory can only ever confirm it.
+ *
+ * `null` is the honest third answer — **neither source could tell** — and callers report
+ * it as such rather than smoothing it into "no change" (F2, T-20261014-063205).
+ *
+ * @param {{unitFile?: string|null, pointers?: string[], pid?: number|null,
+ *          readUnitFn?: (path: string) => string|null, readPointerFn?: Function}} [options]
+ * @returns {{dataDir: string|null, source: "unit"|"pointer"}|null}
+ */
+export function servedBoard(options = {}) {
+  const { unitFile = null, pointers = [], pid = null, readUnitFn = readUnitText, readPointerFn = readPointer } = options;
+
+  if (unitFile !== null) {
+    const text = readUnitFn(unitFile);
+    if (text !== null) return { dataDir: unitBoard(text), source: "unit" };
+  }
+
+  // No readable unit, so the pid is all that is left to attribute a pointer with. A
+  // pointer whose pid is *not* the guard's belongs to some other process and says
+  // nothing about this guard.
+  if (pid === null) return null;
+  for (const path of pointers) {
+    const pointer = readPointerFn({ path });
+    if (pointer === null || typeof pointer !== "object") continue;
+    if (pointer.pid !== pid) continue;
+    if (typeof pointer.dataDir !== "string" || pointer.dataDir === "") continue;
+    return { dataDir: pointer.dataDir, source: "pointer" };
+  }
+  return null;
 }
 
 /**
@@ -603,6 +793,11 @@ Writes the taskd keepalive unit (launchd + systemd) under
 <dir>/taskpanel/scheduling/, then loads this platform's one, waits for its
 board to answer /health, and reports what happened.
 Called by install.sh; not meant to be run by hand.
+
+Exit 0 even when the unit could not be loaded (the report says so, and the
+host install is unaffected). Exit 3 when it refused to re-point the machine's
+already-loaded guard at this board — that guard is one per machine, and it
+belongs to the board installed first; --force re-points it deliberately.
 `;
 
 async function main() {
@@ -637,8 +832,11 @@ async function main() {
     return 2;
   }
 
-  await installGuard({ prefix, force });
-  return 0;
+  // A refusal is not a success — the machine's one guard still serves whoever installed
+  // first — so it leaves the subcommand with a code of its own (`exitCode`). `install.sh`
+  // already treats a non-zero guard step as non-fatal (it prints the line above and
+  // carries on, `install.sh:488-495`), which keeps this out of the install's own status.
+  return exitCode(await installGuard({ prefix, force }));
 }
 
 /**
