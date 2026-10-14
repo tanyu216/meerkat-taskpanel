@@ -17,6 +17,10 @@
       "http": 409
     },
     {
+      "code": "CLAIM_ON_BACKLOG",
+      "http": 409
+    },
+    {
       "code": "CLI_IO",
       "http": 400
     },

@@ -41,6 +41,27 @@ export const EXTRA = {
     "toast.moveConflict": "Conflict on %s — reload and retry",
     "toast.resynced": "Board resynced",
     "toast.relationNone": "No relations",
+    // T-20261014-152924 ④ — the sentences a **failure code** resolves to.
+    //
+    // The board used to print the server's own `message`, which for a refused
+    // write is the storage engine talking (`CHECK constraint failed: claimed_by
+    // IS NULL OR status <> 'backlog'`, the string Terry saw on a drag). Every
+    // refusal now renders `t(errorTextKey(err))` instead — a code is the only
+    // half of an error a client may branch on, so it is the only half the UI
+    // reads (`web/src/i18n/messages.mjs`, `web/src/stores/board.js`).
+    //
+    // `error.generic` is the **fallback for every code without a sentence**,
+    // including the technical ones (`EXECUTION_STATE_CORRUPT`, `VALIDATION_FAILED`,
+    // `SQLITE_UNAVAILABLE`) and any code a newer server invents. A refusal whose
+    // code the board does not know must still say something readable, and it
+    // must not be the wire's own words.
+    "error.generic": "That action did not complete — retry, or contact an administrator.",
+    "error.notFound": "%s is no longer on the board — reload it.",
+    "error.busy": "The board is writing — try again in a moment.",
+    "error.network": "The board did not respond. Check that taskd is running, then retry.",
+    "error.notAssignee": "%s is assigned to somebody else.",
+    "error.executionActive": "%s is being worked on by somebody else right now.",
+    "error.claimOnBacklog": "%s is in Backlog, where nothing can be claimed.",
     "attach.placeholder": "No attachments",
     // R13 修订（seg3 · 决定甲）— `assignee.clear` is gone from here too. R15 ②
     // authored it locally (the prototype had already withdrawn the key, while the
@@ -94,6 +115,13 @@ export const EXTRA = {
     "toast.moveConflict": "%s 发生冲突 —— 请重新载入后重试",
     "toast.resynced": "看板已补齐",
     "toast.relationNone": "无关联",
+    "error.generic": "操作未完成，请重试或联系管理员。",
+    "error.notFound": "%s 已不在看板上 —— 请重新载入。",
+    "error.busy": "看板正在写入 —— 请稍后重试。",
+    "error.network": "看板没有响应。请确认 taskd 正在运行，然后重试。",
+    "error.notAssignee": "%s 已指派给他人。",
+    "error.executionActive": "%s 正由他人处理中。",
+    "error.claimOnBacklog": "%s 位于 Backlog，其中的卡片不能认领。",
     "attach.placeholder": "无附件",
     "activity.filters.label": "动态筛选",
     "detail.saveError": "保存失败 —— 请重试。",

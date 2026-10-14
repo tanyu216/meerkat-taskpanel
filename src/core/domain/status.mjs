@@ -84,6 +84,48 @@ export const ROUND_BUMPING_EXITS = Object.freeze([STATUS.IN_PROGRESS, STATUS.BLO
 /** The single status a task may be claimed from. */
 export const CLAIMABLE_STATUS = STATUS.TODO;
 
+/**
+ * The **work cycle** — the statuses in which a card keeps its execution claim
+ * (`claimed_by` / `claimed_at` / `heartbeat_at`).
+ *
+ * The claim is a lock on *this* attempt, so it lives exactly as long as the card
+ * is being worked: `in_progress` holds it, `awaiting` is the same attempt
+ * paused on a human (M1), `in_review` is the same attempt handed over for
+ * review, and `blocked` is the same attempt stopped on something external. Every
+ * status **outside** the cycle is an exit — `todo`, `backlog` and the terminal
+ * pair — and leaving the cycle releases the lock (see
+ * `storage/repositories/tasks.mjs#moveCas`).
+ *
+ * Why the release matters (T-20261014-152924): the schema refuses a claim on a
+ * `backlog` card (`CHECK (claimed_by IS NULL OR status <> 'backlog')`), while
+ * `in_progress → todo` and `todo → backlog` are both legal transitions. Before
+ * the release, the first leg left `claimed_by` behind and the second leg tripped
+ * the CHECK — surfacing as a raw `CHECK constraint failed: …` in the UI.
+ *
+ * Why `in_review` and `blocked` are **inside** the cycle rather than released on
+ * entry: both can be exited back into `in_progress` (`rework`, `unblock`), and
+ * the card that comes back must still be the *same executor's* card. Releasing
+ * on entry would hand the lock to whoever performed the bounce — `rework` does
+ * not re-check the routing lock (`commands/tasks.mjs#moveStatus`), so the new
+ * holder would be taken silently and the original executor's next heartbeat
+ * would be refused with `EXECUTION_ACTIVE` for up to six hours.
+ */
+export const CLAIM_HOLDING_STATUSES = Object.freeze([
+  STATUS.IN_PROGRESS,
+  STATUS.AWAITING,
+  STATUS.IN_REVIEW,
+  STATUS.BLOCKED,
+]);
+
+/**
+ * Does a card in this status keep its execution claim?
+ * @param {unknown} status
+ * @returns {boolean}
+ */
+export function holdsClaim(status) {
+  return CLAIM_HOLDING_STATUSES.includes(/** @type {string} */ (status));
+}
+
 /** @param {unknown} value */
 export function isKnownStatus(value) {
   return STATUSES.includes(/** @type {string} */ (value));
