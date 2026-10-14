@@ -1498,14 +1498,17 @@ svg[data-token-icon][hidden] { display: none; }
    gives an empty feed and B12 gives an empty board. The vertical centring this
    rule used to ask for (`align-self: center` + `margin: auto`) put the queue's
    one line in the middle of a tall box, which reads as a fault rather than as
-   an answer. It stays capped and centred **horizontally** because here it is
-   the only box in the main area: a dashed rule stretched across 1300px is the
-   shape of a drop target, not the shape of an answer. */
+   an answer. R17 also kept a 420px horizontal cap and centred the block across
+   it, on the argument that a dashed rule stretched across 1300px reads as the
+   shape of a drop target rather than the shape of an answer. That cap is
+   withdrawn (2026-10-15), mirroring `design/prototype/src/input.css`: the
+   queue's own header and rows span the view, so the box standing in for them
+   spans it too and the three empty states read as one family — B12's
+   no-results box has been full-width since M2. The hairline is the answer's
+   box, not a target: this queue offers no drop. */
 .td-waiting-empty {
   flex: none;
   width: 100%;
-  max-width: 420px;
-  margin: 0 auto;
 }
 .td-waiting-empty[hidden] {
   display: none;
