@@ -471,6 +471,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   asserts the two value sets are equal, and — as the defect's own signature — strips the
   `menu` class and requires the width not to move. It is **15/38 red** on the pre-fix tree and
   **38/38 green** after.
+- **`node --test`'s `fail 0` no longer stands in for the two legs it skipped.** The bundle
+  and DOM suites are held behind a `web/dist` guard and skip when there is no build — which
+  is every lane worktree, and (for the DOM leg) the container too. A green suite therefore
+  read the same whether or not the browser layer had run. `node scripts/verify/web-dist.mjs`
+  now classifies the build on disk (`unbuilt` / `stale` / `fresh`), names each leg COVERED or
+  UNCOVERED with the reason, and rebuilds first when a toolchain is present; `npm run
+  verify:web-dist` is the fail-closed form. This also names the case that used to read as a
+  contract violation: a build older than `web/src` fails with "these hooks are absent from
+  the bundle", which is a **stale artefact**, not a broken contract. `npm run verify` runs
+  the verdict and `docker/verify-in-container.sh` requires the bundle leg there, where the
+  image builds the frontend itself. `web/dist` is now excluded from the build context, so a
+  stale local build can no longer merge its old chunks into the image beside the fresh ones.
 
 - **The loop's scheduling units no longer resolve anything on the host's `PATH` — the
   `env: node` exit 127, fixed at both layers at once.** A scheduler starts a unit with a
