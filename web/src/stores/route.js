@@ -6,11 +6,11 @@
  * points, and the split between them is the round's whole rule:
  *
  *   * **`navigate(view)`** — a view change — **`pushState`**. Every view-switching
- *     press goes through it: the sidebar's nav, the top bar's toggle, the feed
- *     row's own "return to the board and open this card" anchor. A press whose
+ *     press goes through it: the sidebar's nav, the top bar's toggle. A press whose
  *     target address is *already* the current one writes nothing (the idempotence
  *     the feed's filter writer has had since R12x), so a no-op press leaves no
- *     history entry.
+ *     history entry. The feed row's task anchor is *not* one of these: F2 made it
+ *     open the drawer in place, so the view — and this writer — never sees it.
  *   * **`replaceActivityQuery()`** — a filter change — and it lives with the
  *     filters it writes (`stores/activity.js`): `replaceState`, path and fragment
  *     preserved. That is what makes back/forward undo **view changes only** and

@@ -3590,8 +3590,9 @@ export async function run() {
       return { before, after: read() };
     });
 
-    // §6 — a row opens the board's own drawer (B09), and the task link routes
-    // back to the board with the same task open.
+    // §6 / F2 — a row opens the board's own drawer (B09), and the task anchor is
+    // the row's second way into the same drawer: pressing it opens it **in place**,
+    // so the view stays the activity view. (It used to route back to the board.)
     const b26Drawer = await page.evaluate(async () => {
       const root = document.querySelector("[data-activity-view]");
       const row = root.querySelector("[data-activity-row]");
@@ -3616,18 +3617,20 @@ export async function run() {
       return { href };
     });
     await page.waitForTimeout(250);
-    const b26AfterLink = await page.evaluate(() => ({
-      view: document.querySelector("[data-board-view]")?.hasAttribute("hidden") === false ? "board" : "other",
-      drawerState: document.querySelector("[data-detail-drawer]")?.getAttribute("data-state") ?? null,
-      identifier: document.querySelector("[data-detail-drawer]")?.getAttribute("data-identifier") ?? null,
-    }));
+    const b26AfterLink = await page.evaluate(() => {
+      const drawer = document.querySelector("[data-detail-drawer]");
+      return {
+        feedView: document.querySelector("[data-activity-view]")?.hasAttribute("hidden") === false,
+        boardView: document.querySelector("[data-board-view]")?.hasAttribute("hidden") === false,
+        drawerState: drawer?.getAttribute("data-state") ?? null,
+        identifier: drawer?.getAttribute("data-identifier") ?? null,
+      };
+    });
     await page.keyboard.press("Escape");
     await page.waitForTimeout(150);
 
-    // The link routed away from the feed; the geometry sweep below is the feed's,
-    // so step back into it.
-    await page.click('[data-nav-item="activity"]');
-    await page.waitForTimeout(200);
+    // The press no longer leaves the feed, so the geometry sweep below is already
+    // on the surface it means to measure — there is no view to step back into.
 
     // §7 / §9 — no sideways overflow with the feed open, at the five review tiers.
     const b26ViewportFailures = [];
@@ -3795,7 +3798,10 @@ export async function run() {
     b26Check(b26Drawer.opened.state === "open", `a row must open the drawer, state ${b26Drawer.opened.state}`);
     b26Check(b26Drawer.opened.identifier === b26Drawer.identifier, `drawer shows ${b26Drawer.opened.identifier}, row names ${b26Drawer.identifier}`);
     b26Check(b26Link.href === `#/task/${b26Drawer.identifier}`, `task anchor href ${b26Link.href}`);
-    b26Check(b26AfterLink.view === "board" && b26AfterLink.drawerState === "open" && b26AfterLink.identifier === b26Drawer.identifier, "the task link must route back to the board with that task open");
+    b26Check(
+      b26AfterLink.feedView === true && b26AfterLink.boardView === false && b26AfterLink.drawerState === "open" && b26AfterLink.identifier === b26Drawer.identifier,
+      `the task anchor must open the drawer in place, leaving the activity view on screen (feed=${b26AfterLink.feedView}, board=${b26AfterLink.boardView}, drawer=${b26AfterLink.drawerState}, ${b26AfterLink.identifier})`,
+    );
     b26Check(b26ViewportFailures.length === 0, b26ViewportFailures.join("; "));
     b26Check(b26Zh.title === "动态" && b26Zh.day === "今天", `zh copy ${b26Zh.title} / ${b26Zh.day}`);
     b26Check((b26Zh.openLabel ?? "").startsWith("打开 "), `zh open label ${b26Zh.openLabel}`);
@@ -4008,15 +4014,29 @@ export async function run() {
     const r16Forward = await readAddress();
     r16Check(r16Forward.pathname === "/activity" && r16Forward.activity, `forward landed on ${r16Forward.pathname}`);
 
-    // C8 — a row's task anchor routes back to the board, and the fragment stays
-    // the drawer's: the press writes the view's own address and nothing else.
+    // C8 / F2 — a row's task anchor opens the drawer in place and writes no
+    // address at all: the view stays the feed's, the filters stay in the query,
+    // and the fragment stays free for the drawer's own `#/task/<id>` deep link
+    // (§4.4). It no longer routes back to the board, so it adds no history entry
+    // and moves no `aria-current`.
     const r16Anchor = await page.evaluate(() => {
       document.querySelector("[data-activity-task]")?.click();
       return true;
     });
     await page.waitForTimeout(300);
     const r16AfterAnchor = await readAddress();
-    r16Check(r16Anchor && r16AfterAnchor.pathname === "/board" && r16AfterAnchor.hash === "", `the task anchor left the address at ${r16AfterAnchor.pathname}${r16AfterAnchor.hash}`);
+    r16Check(
+      r16Anchor && r16AfterAnchor.pathname === "/activity" && r16AfterAnchor.search === r16Forward.search && r16AfterAnchor.hash === "",
+      `the task anchor left the address at ${r16AfterAnchor.pathname}${r16AfterAnchor.search}${r16AfterAnchor.hash} (the feed was on ${r16Forward.pathname}${r16Forward.search})`,
+    );
+    r16Check(r16AfterAnchor.activity && !r16AfterAnchor.board, `the task anchor must leave the activity view on screen (activity=${r16AfterAnchor.activity}, board=${r16AfterAnchor.board})`);
+    r16Check(r16AfterAnchor.navCurrent === "activity", `the task anchor moved \`aria-current\` to ${r16AfterAnchor.navCurrent}`);
+    // No `history.length` assertion here on purpose: this leg of the harness runs
+    // at the tab's session-history cap (measured: 48 entries, so a `pushState` no
+    // longer moves the number), which would make "must not add an entry" pass
+    // whether or not the anchor wrote one. The address assertion above is the one
+    // that discriminates — with the old `navigate("board")` in place it reports
+    // "left the address at /board" and goes red.
 
     // ---- M7 · C-PREFIX-1 — a refused create is visible (T-20261014-042811) ---
     //
@@ -4416,7 +4436,8 @@ if (isEntryPoint) run().then(
           "R16 (routing) — the four views load from their own addresses (each root painted alone, one `aria-current`), `/` and `/index.html` " +
             `redirect to ${report.r16.routes["/board"].pathname}, an unknown path is corrected to the board while a drawer fragment survives, ` +
             `the old \`#/activity?…\` link redirects to ${report.r16.legacy.pathname}${report.r16.legacy.search} with the fragment consumed, ` +
-            `and nav / filter / back / forward walk the views with the toggle and the filters in step (back #1 ${report.r16.backOne.pathname}${report.r16.backOne.search}, back #2 ${report.r16.backTwo.pathname})`,
+            `and nav / filter / back / forward walk the views with the toggle and the filters in step (back #1 ${report.r16.backOne.pathname}${report.r16.backOne.search}, back #2 ${report.r16.backTwo.pathname})` +
+            `, and the feed's task anchor opens its drawer in place with ${report.r16.afterAnchor.pathname}${report.r16.afterAnchor.search} left as it was`,
         );
       }
     }
