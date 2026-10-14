@@ -17,6 +17,10 @@ import { DEFAULT_HOST, DEFAULT_PORT, createExporter, parseConfig, startExporter 
 
 const observation = { method: "GET", route: "/api/tasks", status: 200, durationMs: 12 };
 
+/** The series the observed traffic shows up as, and the metric names one push carries. */
+const HTTP_REQUESTS_TOTAL = "meerkat_taskpanel_http_requests_total";
+const metricNamesOf = (push) => JSON.parse(push.body).resourceMetrics[0].scopeMetrics[0].metrics.map((metric) => metric.name);
+
 /** Start an exporter on an ephemeral loopback port and always close it. */
 async function withExporter(options, fn) {
   const exporter = await startExporter({ host: "127.0.0.1", port: 0, ...options });
@@ -186,11 +190,15 @@ describe("exporter — OTLP push", () => {
       await withExporter({ otlpEndpoint: base, otlpIntervalMs: 25 }, async ({ url }) => {
         assert.equal((await post(`${url}/v1/observe`, JSON.stringify(observation))).status, 202);
 
-        const pushed = await waitFor(() => received.length > 0);
-        assert.ok(pushed, "expected at least one OTLP push");
-        assert.equal(received[0].url, "/v1/metrics");
-        const metrics = JSON.parse(received[0].body).resourceMetrics[0].scopeMetrics[0].metrics;
-        assert.ok(metrics.some((metric) => metric.name === "meerkat_taskpanel_http_requests_total"));
+        // The push loop runs on its own interval, so the first push can land before this
+        // POST has been handled — an empty snapshot, with none of the traffic below. Wait
+        // for a push that *carries* the observation instead of for the first one.
+        const pushed = await waitFor(() => received.some((push) => metricNamesOf(push).includes(HTTP_REQUESTS_TOTAL)));
+        assert.ok(pushed, `expected an OTLP push carrying ${HTTP_REQUESTS_TOTAL}`);
+
+        const carrying = received.find((push) => metricNamesOf(push).includes(HTTP_REQUESTS_TOTAL));
+        assert.equal(carrying.url, "/v1/metrics");
+        assert.ok(received.every((push) => push.url === "/v1/metrics"), "every push targets the OTLP metrics path");
 
         const health = await getJson(`${url}/health`);
         assert.equal(health.body.otel.enabled, true);
