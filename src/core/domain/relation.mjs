@@ -241,16 +241,51 @@ export function wouldCreateBlockCycle(edges, blocker, blocked) {
 }
 
 /**
+ * Are `a` and `b` on one parent chain — the same card, or one the other's
+ * ancestor?
+ *
+ * `parentEdges` are `parent` edges (`{source: parent, target: child}`), the list
+ * `ancestorsOf` walks. **Siblings are not on one chain**: two children of the
+ * same epic share a parent but neither reaches the other, which is why this is
+ * a two-way ancestry test and not "do they share an ancestor?" — a card and its
+ * sibling depending on each other in sequence is an ordinary, wanted edge.
+ *
+ * @param {{source: string, target: string}[]} parentEdges
+ * @param {string} a
+ * @param {string} b
+ * @returns {boolean}
+ */
+export function isOnSameParentChain(parentEdges, a, b) {
+  if (a === b) return true;
+  return ancestorsOf(parentEdges, a).includes(b) || ancestorsOf(parentEdges, b).includes(a);
+}
+
+/**
  * The `blocks` shape rule, checked before a transaction is opened so a caller
  * gets `RELATION_CYCLE` (the same code the opposite direction of the parent
  * guard raises) rather than a raw trigger message.
  *
- * The database re-checks it (`0017_block_cycle.sql`), and
+ * Two things are refused, and both are deadlocks rather than shapes nobody
+ * minds — the poll holds back a card whose blockers are unfinished, so a card
+ * waiting on its way round the dependency graph, or on a card it already
+ * contains, is never offered again:
+ *
+ *   * an edge that closes a loop in the `blocks` graph (`0017_block_cycle.sql`);
+ *   * an edge joining an ancestor and a descendant of the **parent** chain
+ *     (`0019_block_chain.sql`) — `D depends_on E` where `E` is `D`'s parent, or
+ *     `E depends_on D` where `D` is `E`'s child. Reading 乙 of the "ancestor"
+ *     ruling (T-20261014-212017): neither direction is allowed. Siblings are not
+ *     on one chain and stay legal.
+ *
+ * The database re-checks both (`0017`, `0019`), and
  * `test/contract/invariants.test.mjs` walks both paths — the service layer
  * repeats a machine guarantee only to phrase it, never to be the guarantee.
  *
  * @param {{source: string, target: string}} edge a normalised `blocks` edge
- * @param {{edges: {source: string, target: string}[]}} context
+ * @param {{edges: {source: string, target: string}[], parentEdges?: {source: string, target: string}[]}} context
+ *        `edges` are `blocks` edges; `parentEdges` are `parent` edges, optional
+ *        so a caller with no parent chain to offer (an empty board reads as one)
+ *        still gets the cycle rule rather than a crash.
  * @throws {DomainError} `RELATION_CYCLE`
  */
 export function assertBlockEdgeAllowed(edge, context) {
@@ -260,5 +295,13 @@ export function assertBlockEdgeAllowed(edge, context) {
       details: { source: edge.source, target: edge.target, type: "blocks" },
     });
   }
+
+  if (isOnSameParentChain(context.parentEdges ?? [], edge.source, edge.target)) {
+    throw new DomainError("RELATION_CYCLE", {
+      message: `an ancestor and a descendant cannot depend on each other: ${edge.source} and ${edge.target} are on one parent chain`,
+      details: { source: edge.source, target: edge.target, type: "blocks", chain: "ancestor" },
+    });
+  }
+
   return edge;
 }

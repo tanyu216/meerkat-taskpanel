@@ -21,6 +21,10 @@ import { fileURLToPath } from "node:url";
 import test, { after, describe, it } from "node:test";
 
 import { openDatabase } from "../../src/core/storage/driver.mjs";
+import { createContext } from "../../src/core/commands/index.mjs";
+import { addRelation } from "../../src/core/commands/relations.mjs";
+import { assertBlockEdgeAllowed, isOnSameParentChain } from "../../src/core/domain/relation.mjs";
+import { createRepositories } from "../../src/core/storage/repositories/index.mjs";
 import {
   TS,
   TS2,
@@ -71,6 +75,14 @@ const addParent = (db, source, target) =>
       )
       .run(source, target, TS),
   );
+
+/** The same insert, for fixtures that only need the edge to *exist* (source = parent). */
+const addParentEdge = (db, source, target) =>
+  db
+    .prepare(
+      "INSERT INTO task_relations(relation_type, source_task_id, target_task_id, created_at) VALUES ('parent', ?, ?, ?)",
+    )
+    .run(source, target, TS);
 
 describe("contract/invariants — I1/I2 claim atomicity", () => {
   it("eight connections race for one task and exactly one wins", async () => {
@@ -613,5 +625,185 @@ describe("contract/invariants — indexes are actually used", () => {
       assert.match(plan, /USING (COVERING )?INDEX/, plan);
       assert.equal(/SCAN task_reports/.test(plan), false, plan);
     });
+  });
+});
+
+/**
+ * T-20261015-063755 — a `blocks` edge may not join an ancestor and a descendant
+ * (`0019_block_chain.sql`; Elon's reading 乙 of the "ancestor" ruling on
+ * T-20261014-212017). The defect: a descendant could `depends_on` its own parent
+ * epic and an epic could `depends_on` its own child, both HTTP 200.
+ *
+ * Unlike the rest of this file, which talks to SQLite and nothing else, this
+ * section walks **both** paths — the card asks for exactly that — because the
+ * whole point is that they agree. The trigger is the guarantee; the service
+ * layer repeats it only to phrase it. `test/contract/block-cycle.test.mjs` is
+ * the 0017 counterpart of the same shape.
+ *
+ *   N10a  a cycle in the parent chain is refused        (0002/0010, already)
+ *   N10b  `D depends_on E`, E the parent of D           → RELATION_CYCLE / 422
+ *   N10c  `E depends_on D`, D a child of E              → RELATION_CYCLE / 422
+ *   N10d  the picker never offers an ancestor           (UI; not this layer)
+ *   —     two siblings may still be ordered             → accepted, both paths
+ */
+describe("contract/invariants — a blocks edge may not join an ancestor and a descendant", () => {
+  /** `e → d → g`, plus siblings `s1`/`s2` under `e` and an unrelated `u`. */
+  function seedChain(db) {
+    insertProject(db);
+    insertProject(db, { id: "other", name: "Other" });
+    insertTask(db, { id: "e", identifier: "PROJ-E", kind: "epic" });
+    insertTask(db, { id: "d", identifier: "PROJ-D", kind: "epic" });
+    insertTask(db, { id: "g", identifier: "PROJ-G" });
+    insertTask(db, { id: "s1", identifier: "PROJ-S1" });
+    insertTask(db, { id: "s2", identifier: "PROJ-S2" });
+    insertTask(db, { id: "u", identifier: "PROJ-U" });
+    insertTask(db, { id: "z", identifier: "OTHER-Z", project_id: "other" });
+    for (const [parent, child] of [["e", "d"], ["d", "g"], ["e", "s1"], ["e", "s2"]]) {
+      addParentEdge(db, parent, child);
+    }
+  }
+
+  // `id` is an INTEGER PRIMARY KEY, so the row names only what the edge *is*.
+  const insertEdge = (db, type, source, target) => () =>
+    db
+      .prepare("INSERT INTO task_relations(relation_type, source_task_id, target_task_id, created_at) VALUES (?, ?, ?, ?)")
+      .run(type, source, target, TS);
+
+  it("reads the parent chain in both directions, and leaves siblings off it", () => {
+    const edges = [
+      { source: "e", target: "d" },
+      { source: "d", target: "g" },
+      { source: "e", target: "s1" },
+      { source: "e", target: "s2" },
+    ];
+    assert.equal(isOnSameParentChain(edges, "e", "d"), true, "the parent");
+    assert.equal(isOnSameParentChain(edges, "d", "e"), true, "the same pair, read the other way");
+    assert.equal(isOnSameParentChain(edges, "e", "g"), true, "two generations above");
+    assert.equal(isOnSameParentChain(edges, "g", "e"), true);
+    assert.equal(isOnSameParentChain(edges, "d", "g"), true);
+    assert.equal(isOnSameParentChain(edges, "x", "x"), true, "itself is trivially on its own chain");
+    assert.equal(isOnSameParentChain(edges, "s1", "s2"), false, "siblings share a parent, not a chain");
+    assert.equal(isOnSameParentChain(edges, "d", "u"), false, "no shared chain at all");
+    assert.equal(isOnSameParentChain([], "a", "b"), false, "an empty board has no chain");
+  });
+
+  it("refuses the edge in the service layer, with the code and the words the caller sees", () => {
+    const parentEdges = [{ source: "e", target: "d" }];
+    for (const edge of [{ source: "d", target: "e" }, { source: "e", target: "d" }]) {
+      assert.throws(
+        () => assertBlockEdgeAllowed(edge, { edges: [], parentEdges }),
+        (err) => {
+          assert.equal(err.code, "RELATION_CYCLE");
+          assert.equal(err.http, 422, "the ruling asks for a rejection the client can read as 422");
+          assert.equal(err.details.type, "blocks");
+          assert.equal(err.details.chain, "ancestor", "the chain reason is distinguishable from a loop");
+          assert.match(err.message, /ancestor and a descendant cannot depend on each other/, err.message);
+          assert.ok(err.message.includes(edge.source) && err.message.includes(edge.target), err.message);
+          return true;
+        },
+      );
+    }
+    // "含自身": a card is trivially on its own chain, so the guard refuses the
+    // identity edge with this code too. The command never gets here — normalization
+    // raises SELF_REFERENCE before the shape rules run, and the trigger's
+    // `source <> target` clause keeps it off SELF_REFERENCE's row — which is why
+    // this is asserted on the pure rule rather than through the use-case.
+    assert.throws(
+      () => assertBlockEdgeAllowed({ source: "x", target: "x" }, { edges: [], parentEdges }),
+      (err) => err.code === "RELATION_CYCLE",
+    );
+    // No `parentEdges` at all still gets the cycle rule rather than a crash — a
+    // caller that has no chain to offer is not a caller with a broken context.
+    assert.doesNotThrow(() => assertBlockEdgeAllowed({ source: "a", target: "b" }, { edges: [] }));
+  });
+
+  it("refuses it in the database too: parent depends_on child, and child depends_on parent", async () => {
+    await withBoard(({ db }) => {
+      seedChain(db);
+
+      // N10c — the epic depends on its own child.
+      assert.equal(reasonCode(insertEdge(db, "blocks", "e", "d")), "RELATION_CYCLE");
+      // N10b — the child depends on its own parent.
+      assert.equal(reasonCode(insertEdge(db, "blocks", "d", "e")), "RELATION_CYCLE");
+      // Two generations, both ways: the walk is the chain, not the immediate parent.
+      assert.equal(reasonCode(insertEdge(db, "blocks", "g", "e")), "RELATION_CYCLE");
+      assert.equal(reasonCode(insertEdge(db, "blocks", "e", "g")), "RELATION_CYCLE");
+
+      assert.equal(
+        db.prepare("SELECT COUNT(*) AS n FROM task_relations WHERE relation_type = 'blocks'").get().n,
+        0,
+        "a refused edge must leave no row behind",
+      );
+    });
+  });
+
+  it("does not touch siblings, or cards with no chain between them", async () => {
+    await withBoard(({ db }) => {
+      seedChain(db);
+
+      // The non-regression that matters: a card and its sibling are ordered all
+      // the time, and a guard that also refused these would be a different,
+      // wrong guard.
+      assert.equal(reasonCode(insertEdge(db, "blocks", "s1", "s2")), "NO_ERROR");
+      assert.equal(reasonCode(insertEdge(db, "blocks", "s2", "s1")), "RELATION_CYCLE", "that pair is now a loop");
+      assert.equal(reasonCode(insertEdge(db, "blocks", "u", "s1")), "NO_ERROR");
+      assert.equal(reasonCode(insertEdge(db, "blocks", "g", "u")), "NO_ERROR", "a descendant may depend on a stranger");
+    });
+  });
+
+  it("leaves SELF_REFERENCE and CROSS_PROJECT_RELATION owning their own rows", async () => {
+    await withBoard(({ db }) => {
+      seedChain(db);
+      // The determinism rule (0002): `source = target` and the cross-project row
+      // each report one code, and it is not this guard's — the clauses that keep
+      // this trigger off those rows are what make a reason code reproducible.
+      assert.equal(reasonCode(insertEdge(db, "blocks", "e", "e")), "SELF_REFERENCE");
+      assert.equal(reasonCode(insertEdge(db, "blocks", "z", "e")), "CROSS_PROJECT_RELATION");
+    });
+  });
+
+  it("reports one code for a row that is both a loop and an ancestor join", async () => {
+    await withBoard(({ db }) => {
+      seedChain(db);
+      // `tr_rel_block_cycle` and `tr_rel_block_chain` are the one pair on this
+      // event that can both apply to one row, and SQLite does not promise which
+      // fires first. They raise the *same* code, so the row reports one answer
+      // whichever wins — which is all the determinism rule asks for. The row
+      // below is genuinely both: `e → d` is a parent chain, and `e → u → d`
+      // makes `d → e` close a loop.
+      assert.equal(reasonCode(insertEdge(db, "blocks", "e", "u")), "NO_ERROR");
+      assert.equal(reasonCode(insertEdge(db, "blocks", "u", "d")), "NO_ERROR");
+      assert.equal(reasonCode(insertEdge(db, "blocks", "d", "e")), "RELATION_CYCLE");
+    });
+  });
+
+  it("reaches the caller through the use-case, over the same code and status", async () => {
+    const board = await createTempBoard();
+    try {
+      seedChain(board.db);
+      const ctx = () =>
+        createContext({ db: board.db, repos: createRepositories(board.db), clock: () => TS });
+      const actor = { kind: "agent", id: "linus" };
+
+      for (const [source, target] of [["d", "e"], ["e", "d"], ["g", "e"]]) {
+        assert.throws(
+          () => addRelation(ctx(), { type: "blocks", source, target, actor }),
+          (err) => {
+            assert.equal(err.code, "RELATION_CYCLE", `${source} → ${target}`);
+            assert.equal(err.http, 422, `${source} → ${target}`);
+            assert.match(err.message, /parent chain/, err.message);
+            return true;
+          },
+        );
+      }
+
+      // …and the sibling edge the same path must still accept.
+      const accepted = addRelation(ctx(), { type: "blocks", source: "s1", target: "s2", actor });
+      assert.equal(accepted.type, "blocks");
+      assert.equal(accepted.source, "s1");
+      assert.equal(accepted.target, "s2");
+    } finally {
+      board.close();
+    }
   });
 });
