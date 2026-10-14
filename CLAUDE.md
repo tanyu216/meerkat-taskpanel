@@ -86,6 +86,7 @@ Mind the two different `dist` trees: `dist/` is the **npm release tree** that
 - **Single writer.** The design assumes one local service owns the SQLite file — avoid concurrent writers against the same database.
 - **Commit with explicit paths:** `git commit -- <path>` (never a bare `git commit -a`).
 - **Code style / layering:** `src/core/domain/` imports **no Node builtins**; dependency direction is `cli|server -> core -> shared` (nothing imports from `cli`/`server`; `shared` imports nothing from `src/`); every failure is a domain error with a code, never a bare `Error`.
+- **`ARCHITECTURE.md` is not in this tree** (and never has been), yet `src/**`, `scripts/**`, `test/**`, `docs/**` and `design/**` cite it by section (`ARCHITECTURE §4.6`, `§7.1`, `§9.1`, …). Those citations are historical orientation only — none resolves to a file. Project ordering lives in `design/DESIGN.md` §20; do not add a new `ARCHITECTURE.md` citation, name the live document instead. See `docs/README.md`.
 
 ## Key invariants to remember
 

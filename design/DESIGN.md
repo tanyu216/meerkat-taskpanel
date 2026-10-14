@@ -1003,7 +1003,7 @@ still resets after a submit; zero console errors; and no page-level horizontal o
 ## 20. PROJECTS ordering (weight algorithm)
 
 The `PROJECTS` sidebar list is ranked by recent activity, not by creation time or name.
-This is the concrete UI expression of `ARCHITECTURE §4.6`; the prototype is **pure UI** —
+This section is the authority for that order; the prototype is **pure UI** —
 it does not implement the algorithm or touch the network, it only renders the order the
 server already decided.
 

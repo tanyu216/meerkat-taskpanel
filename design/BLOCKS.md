@@ -248,7 +248,7 @@ breakpoint the thirds hold the labels, which is why the stack is the rail's alon
 
 **The `PROJECTS` list is ordered by activity, not alphabetically or by creation.** Items
 render in the order the **server** computed — a weighted rank over 7-day and 30-day
-activity plus creation recency (`ARCHITECTURE §4.6`; full rule in `DESIGN.md` §20), with
+activity plus creation recency (full rule in `DESIGN.md` §20), with
 tie-breaks and archived-project exclusion applied there. The frontend **consumes the order
 only** and does no computation. Each item exposes the decision for machine checks:
 `[data-order-score]` (the composite, e.g. `0.867`) and `[data-order-rank]` (`1`…`N`). The
