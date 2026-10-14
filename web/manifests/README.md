@@ -8,8 +8,8 @@ project is wired by writing exactly two things and changing no tool line.
 | File | Role |
 |---|---|
 | `../.ui-align.json` | the project config — prototype root, dev server, the bilateral theme/locale agreement |
-| `board.json` | the page manifest — the board main path, **full block list** (unimplemented blocks carried as `pending`) |
-| `board-m2.json` | the M2 manifest — the same main path plus M2's target-state blocks; see §5 |
+| `board.json` | the board manifest — the M1 main path, **full block list**, **no `pending` block** since the M4 close-out flip (§16); **this is the successor gate** (§4) |
+| `board-m2.json` | the M2 manifest — the same main path plus M2's and R6–R12x's target-state blocks; the superset gate; see §5 |
 | `../scripts/ui-align-serve.mjs` | the implementation leg: the fixture harness on a port the engine names |
 
 ## 1. Run it
@@ -18,8 +18,12 @@ project is wired by writing exactly two things and changing no tool line.
 node ~/.openclaw/team/tools/ui-align/check.mjs --config web/.ui-align.json board
 ```
 
-- `--json` for CI-shaped output; `--strict` promotes `pending` blocks from SKIP to failure
-  (the flip switch for the day M2 lands the outstanding blocks).
+- `--json` for CI-shaped output; `--strict` stops **skipping** `pending` blocks. The engine's rule
+  is `skip = pending && !strict` (`lib/judge.mjs`) and a skipped block's rows are probed but never
+  counted — so the switch that turns a `pending` block into a failure is not the strict one, it is
+  the **default** run that is blind while a block sits at `pending`. Neither manifest has carried a
+  `pending` block since the M4 close-out flip (§16); the flag stays as the drift guard, so a block
+  regressing to `pending` is caught with or without it.
 - Exit codes: `0` all asserted checks green · `1` an assertion/overflow/console failure ·
   `2` environment or config (no browser, server won't start, manifest invalid).
 
@@ -42,6 +46,23 @@ computed style 差异 51 / 断言 186（一致率 72.6%）← 非阻塞
 The `72.6%` is the honest size of the M2 backlog, not a pass mark: the style leg is
 non-blocking on purpose (`style.blocking: false`), the same call the tool ships with, so
 that the check could be wired *before* the fidelity work rather than after it.
+
+### Baseline after the M4 close-out flip (2026-10-14, `main` @ `3e808b2` + `T-20261014-201200`)
+
+```
+区块 12（断言 12 ｜ 待实现 0）· 断言 112 条 · 失败 0
+溢出档位失败 0 ｜ console 失败档位 0            （1512 / 1240 / 980 / 760 / 430）
+computed style 差异 8 / 断言 210（一致率 96.2%）← 非阻塞
+```
+
+The four blocks the 2026-10-12 baseline printed as SKIP are the ones §16 flips, and the
+`112` is `102 + 6 + 4`: the 102 the M1 baseline counted under its eight delivered blocks, the
+**6** measured checks of the four `pending` blocks (probed all along, never counted), and the
+4 rows §14 added (the two B12 seats). The style line moved `51/186 → 8/210` without the oracle
+changing — the targets are the same 6 surfaces, four property names joined `styleProps` (§11's
+`textOverflow`, §12's `flexWrap` / `overflowX` / `overflowY`, hence `210 = 6 × 35`), and the
+diffs the fidelity rounds closed are gone. Read the two lines as *before* and *after* the
+fidelity work, not as two measurements of one state.
 
 ### How the two sides are booted
 
@@ -102,7 +123,7 @@ manifest (12 blocks / 108 checks). This manifest is that draft, **re-measured ag
 tree it now runs on** — M0's implementation positions were taken at HEAD `176a777`, and the
 web lane has since landed `5c420b7`, `956fe33`, `2aed9d8`.
 
-Block count agrees 1:1 (8 contract blocks + the 4 pending blocks M0 derived from its own
+Block count agrees 1:1 (8 contract blocks + the 4 blocks M0 derived from its own
 "缺/简化/自创" rows). Check-level deltas — **2 semantic changes**, both forced by in-repo
 decisions that landed after M0 measured:
 
@@ -133,7 +154,7 @@ dropped:
 | **交互态** — only exists after a click (drawer `closing`, language menu open, aria-expanded) | B09 `closing` · B03 `[data-lang-menu]` structure & clipping risk | `shot-compare.mjs`, which drives the prototype and the app |
 | **数据驱动态** — needs a board state the fixture does not carry | B12 big empty state (Sentinel Watch mark) · B03 `[data-project-count]` on non-current rows · B09 attachment list & localized activity text | M2, with a fixture that renders the state; B12 is also out of Terry's ① scope |
 | **文档口径** — the row was a documentation defect, not a DOM fact | `[data-empty-lg]` (Elon ②), `BLOCKS.md`'s stale header counts (`blocks.contract.mjs` `STALE_PROSE_COUNTS`) | `[data-empty-lg]` doc fix landed in `T-20261012-041728-2` (BLOCKS.md B12 now describes the shipped markup); the `BLOCKS.md` header counts stay tracked on the M0 card |
-| **已登记为 `pending` 块** | B02 mark · B03 icon geometry · B03 footer visible text · B07 identity slot | the 4 `pending` blocks in `board.json` — SKIPped and printed by name |
+| **已登记为 `pending` 块** | B02 mark · B03 icon geometry · B03 footer visible text · B07 identity slot | **closed** — M2 (`T-20261012-165126`) landed all four; `board.json` carried them as `pending` until the M4 close-out flip (`T-20261014-201200`, §16) turned them into rows the **default** run asserts |
 | **原型-实现有意分歧（已裁定）** | B03 nav `waiting` · B03 `[data-states-open]` | asserted here (reality), rationale in the two deltas above |
 
 ### Scope ledger — every block of `BLOCKS.md`
@@ -161,23 +182,37 @@ recorded here pending the written-deviation sign-off M0 asked for:
 |---|---|---|
 | `.td-error` panel, `.td-conflict` panel, the board `resync` button, `[data-connection]` on the live dot | `App.vue`, `TopBar.vue` — M6b SSE integration | M0 §1 flagged these as 自创 G1 requiring Elon's approval; still owed |
 | the 「等你回复」view surface (B05/B09 adjacent: the view root, its rows, the payload block, the count pill) | `WaitingView.vue`, `Sidebar.vue` | already adjudicated — `blocks.contract.mjs:125-132`, "approved with B03's count together". The `waiting` *nav item* is no longer a divergence: the prototype carries it as of `T-20261012-041728-2` |
-| No brand mark, text glyphs instead of the footer's three SVGs, no `.td-caret`, no `closing` state, attachment/activity placeholders | B02/B03/B09 | **closed** — M2 (`T-20261012-165126`) landed the mark, the three SVG glyphs, the caret and the `closing` state and flipped those four blocks in `board-m2.json`; the attachment/activity rows landed as driver-asserted rows (see §5). The M1 record `board.json` keeps them `pending` on purpose — it is the M1 snapshot, not a live ledger |
+| No brand mark, text glyphs instead of the footer's three SVGs, no `.td-caret`, no `closing` state, attachment/activity placeholders | B02/B03/B09 | **closed** — M2 (`T-20261012-165126`) landed the mark, the three SVG glyphs, the caret and the `closing` state and flipped those four blocks in `board-m2.json`; the attachment/activity rows landed as driver-asserted rows (see §5). `board.json` kept the same four blocks at `pending` until the M4 close-out flip (`T-20261014-201200`, §16), which made the **default** run assert them |
 | A visible order-score span on every sidebar project row (`.td-order-score` / `[data-side-score]`) | `Sidebar.vue` | **removed** in M2b (`T-20261012-174913-2`, E2b): the score is the prototype's `data-order-score` **attribute** and is never painted. The desktop prefix monogram (`[data-side-icon]`) was hidden at the same time — BLOCKS.md B03 says "prefix monogram, **rail only**", and the extra cell was what ellipsised the project name |
 
-## 4. Why `board.json` is not a gate
+## 4. What each manifest is the gate *for* — the M4 close-out ruling
 
-`board.json` above is the **M1 record** and stays as it was measured, including its four
-`pending` blocks — they exist there to be *visible*, not to pass, and `--strict` against it
-would be the wrong reading of a snapshot.
+> This section replaces an earlier one titled "Why `board.json` is not a gate". That section
+> argued `board.json` was a frozen M1 snapshot whose four `pending` blocks existed "to be
+> *visible*, not to pass". The M4 close-out (`T-20261014-201200`, §16) retired that reading:
+> the four blocks were **already delivered** by M2 and the `pending` label only kept the
+> `board.json` blocks out of the default run's guard. Both manifests are gates now, for
+> different scopes.
 
-`board.json` remains the M1 record — its four `pending` blocks and its measured values stand —
-with **one exception among its live checks**: B04's clear-hook check now reads
-`scope: [data-filters]`, because R15 ③ moved the Activity bar's clear control onto the same
-`[data-filter-clear]` hook and the two bars are told apart by the bar they sit in
-(`design/fidelity-r15.md` §4.2; see §12).
+**`board.json` is the successor gate for the M1 main path** — 12 blocks, 112 assertions, 0
+`pending`, green under the default run *and* under `--strict` (§1 baseline, §16). Elon ruled
+that **M4 closes on `board`** (2026-10-14); the flip that makes that reading true is this card's.
+It is the manifest that answers "does the board main path still hold?".
 
-`board-m2.json` is the live manifest: no `pending` blocks, 0 failures under both the default
-and `--strict` runs (§5). It is still **not** wired into `npm run check` / CI, for the reason
+**`board-m2.json` is the superset gate** — 39 blocks, 261 assertions, also 0 `pending` and 0
+failures under both switches (§5). It is what the design contracts of the later rounds bind
+their implementation cards to: `design/fidelity-r9.md`, `-r10.md`, `-r11.md`, `-r12.md` and
+`-r15.md` each write the acceptance of their implementation card as **`ui-align board-m2
+--strict` 0 failures**, and `test/web/ui-align-ready.test.mjs` says the same thing in code
+("*Both board manifests are live: `ui-align board` and `ui-align board-m2` are separate gates*").
+
+**The two are not one manifest and not one a superset of the other.** They share the main path's
+selectors, but each carries blocks the other does not: `board.json` alone asserts an agent card's
+role hook and a human card's *absence* of one (`B07-identity`, §16), and `board-m2.json` alone
+carries R6–R12x. So a run of one is not a substitute for a run of the other, and the honest
+practice is **both**. Gating on `board.json` alone would leave every R6–R12x block unguarded by
+that switch — registered here rather than smoothed over; a future card that wants a single gate
+should say so explicitly. Neither manifest is wired into `npm run check` / CI, for the reason
 that has not changed:
 
 - the check needs a **host browser**, and CI's authoritative job is the container one — the
@@ -190,15 +225,19 @@ whenever the owner wants a red/green gate rather than the current reported count
 
 ## 5. The M2 manifest (`board-m2.json`) — added 2026-10-12
 
-`board.json` above is the M1 record and stands as it was measured, with the one exception §4
-names — B04's clear-hook check reads `scope: [data-filters]`, because R15 ③ moved the Activity
+`board.json` above is the M1 record, with the one exception §4 names — B04's clear-hook check
+reads `scope: [data-filters]`, because R15 ③ moved the Activity
 bar's clear control onto the same `[data-filter-clear]` hook (`design/fidelity-r15.md` §4.2;
 see §4 and §12). `board-m2.json` is the
 **M2** manifest, frozen by the upstream contract card (`T-20261012-165120`,
 `fidelity-contract.md` + `manifests/board-m2.json`, HEAD `ec97acde506c`) and copied in
 byte-for-byte apart from the ten `status` flips noted below: same 8-block main path, plus
 the target-state blocks M2 owes. Nothing of M1's check list was dropped — the M2 file is a
-superset (`m2.derivedFrom`).
+superset (`m2.derivedFrom`). **The copy is live, not a museum piece**: besides the `status`
+flips it has since taken the later rounds' blocks (R6–R12x, §6–§14) and, on 2026-10-14, a prose
+sync of the four blocks §16 flips — their `name`/`evidence` still described the M2-era gap
+("实现未落地", "实现渲染出可见 'Access'") on a block already marked `delivered`. `checks` were not
+touched by that sync; only the sentences about them.
 
 The ten blocks M2 closed are flipped `pending → delivered` in this copy (the tool's own
 workflow: a `pending` block is SKIPped, so it would otherwise keep its assertions out of the
@@ -774,7 +813,9 @@ that nothing can exceed is a vacuous pass. The correct statement is `B05-r10`'s,
 `[data-board-view]` and reads 1. The two new seat checks deliberately do **not** reuse the vacuous
 scope: they scope to `[data-empty][data-empty-kind="no-results"]` itself. The stale bound is left as
 the M1 record measured it and is now named in both blocks' `desc`; correcting it belongs to whoever
-owns the M1 record, not to this card.
+owns the M1 record, not to this card. The M4 close-out flip (§16) took the **role** of that record
+over — `board.json` is a gate now — but not this **check**: it is carried into the gate exactly as
+measured, and is one of the two open items §16 registers against it.
 
 **Verification ran on the host, not in the container** — by design: this is a browser-rendered
 frontend check (`docs/docker.md` §"Host-allowed checks"), and `design/` is `.dockerignore`d, so the
@@ -842,3 +883,88 @@ defect — it recomputes the engine's fallback the way `check.mjs` does, require
 differ from it, and requires the gate to name something the manifest itself asserts with a positive
 bound. It is browser-free, so it runs in the container; the behavioural half above does not
 (`.dockerignore` drops `design/`, so no `ui-align` leg runs there — see §1 "Which host").
+
+## 16. The M4 close-out flip — `board.json` carries no `pending` block any more
+(`T-20261014-201200`, 2026-10-14)
+
+The M4 re-run (`T-20261012-165652-3`) found the two manifests disagreeing: `board.json` = 12 blocks /
+8 delivered / **4 `pending`** (B02-mark, B03-icons, B03-footer-text, B07-identity) while
+`board-m2.json` = 39 / all delivered. Elon ruled that **M4 closes on `board`**, with the four
+`pending` counted as SKIP for that round and marked "delivered, awaiting the flip". This card is that
+flip, on the design side.
+
+**Per-block basis.** The four blocks were delivered by **M2 (`T-20261012-165126`, `done`)** — the
+card whose own acceptance records each measurement — with M2b (`T-20261012-174913-2`, `done`) as the
+follow-up that touched the same surfaces (the favicon, the language menu's `ul.menu` shell) and
+re-ran the whole set independently. No visual acceptance was redone here: the fact source is the
+accepted card plus a static read of the shipped source, and the machine check below.
+
+| block | its checks, as written in the manifest | delivered by | shipped source (read 2026-10-14) | check reading (5 bands) |
+|---|---|---|---|---|
+| `B02-mark` | `[data-brand] svg == 1` | M2 · `fbc41fb` (`[data-brand] svg` 0→1) | `TopBar.vue:61` — `<svg class="td-logo" viewBox="0 0 32 32">`, V2 geometry, mask knockout | `count == 1 · 命中 1` |
+| `B03-icons` | `svg[data-theme-icon] == 3` · `[data-lang-select] svg == 2` | M2 · `fbc41fb` (0→3, 0→2, and the `.td-caret`) | `SidebarFooter.vue:131-148` (3 glyphs, `hidden` by presence), `:164` globe, `:168` `svg.td-caret` | `3 · 命中 3` / `2 · 命中 2` |
+| `B03-footer-text` | `[data-access-open] [data-side-text] == 0` | M2 · `fbc41fb` (`[data-access-open] span` 2→0) | `SidebarFooter.vue:173-187` — one `aria-hidden` gear `<svg>`, no text node | `count == 0 · 命中 0` |
+| `B07-identity` | agent card `[data-card-agent-role] >= 1` · human card `== 0` | M2 · `8e000be` (agent `[hidden] [data-card-assignee]` 0→1; human side 0 on both) | `Card.vue:135` (`:hidden="isAgent"` on the wrapper) and `:139` (`v-if="isAgent"` on the role hook) | `命中 1` / `count == 0 · 命中 0` |
+
+**What changed in the file.** `status: "pending"` → `"delivered"` on those four blocks, and the
+same four blocks' `name`/`evidence` rewritten: each still described the M2-era **gap** on a block
+now marked delivered ("实现未落地", "实现改为文本字形，无 caret", "实现渲染出可见 'Access'",
+"实现为始终显示 / v-if 不渲染") — false sentences, and a delivered block should not be described by
+a closed gap. `B07-identity`'s human-card `desc` also carried a **target that was falsified by
+measurement**: M0 recorded "human card keeps an empty `agent-role`, target `min: 1`", the M2 round
+measured the prototype at **0** for that combination (`board-m2.json`: *M0 row corrected*), and M2
+shipped the avatar-`hidden` form instead. The assertion (still `count == 0`) is unchanged; the
+target sentence is gone. The same three block headers were synced in `board-m2.json`, whose own
+`name`/`evidence` still carried the gap prose under an already-`delivered` status (§5). **No `checks`
+array in either file had a value touched** — only `status`, `name`, `evidence` and one `desc`.
+
+**The flip is load-bearing, and this is the negative proof.** The engine's rule
+(`lib/judge.mjs:17`) is `skip = pending && !opts.strict`: a `pending` block's rows are probed but
+left out of the exit code, so the *default* run is the blind one. One mutation — the agent card's
+`[data-card-agent-role]` span deleted from `Card.vue`, `web/dist` rebuilt between every row —
+against the pre-flip manifest (a copy of `board.json` at `HEAD`, served from an out-of-repo config so
+nothing was written into the repo):
+
+| manifest | `ui-align board … --json` | `--strict --json` |
+|---|---|---|
+| pre-flip (4 `pending`) | exit **0** · 8 asserted / 4 skipped · 106 checks · **0 failures** ← blind | exit **1** · 12 asserted · 112 checks · 1 failure |
+| flipped | exit **1** · 12 asserted · 112 checks · **1 failure** | exit **1** · same row |
+
+The one failing row is `B07-identity#0 [data-card-agent-role]` (`count=0，期望 >=1`) at all five
+bands, named identically in all three failing legs. The pre-flip default run lists all four blocks
+by name as `skip=true` — that list *is* the per-block statement of what the flip brought under the
+**default** guard.
+
+**Readings on the final tree** (`web/dist` built from it on the host, `main` @ `3e808b2` + this card):
+
+```bash
+node ~/.openclaw/team/tools/ui-align/check.mjs --config web/.ui-align.json board --strict --json
+```
+
+| manifest | default | `--strict` | failures | overflow / console | computed style |
+|---|---|---|---|---|---|
+| `board` | exit 0 · 12 · 112 | **exit 0** · 12 · 112 | 0 in both | 0 / 0 at all five widths | 8 of 210 differ (96.2%) — non-blocking |
+| `board-m2` | exit 0 · 39 · 261 | exit 0 · 39 · 261 | 0 in both | 0 / 0 at all five widths | 57 of 1540 differ (96.3%) — non-blocking |
+
+The `board-m2` style line reads **57**, five below the `62` §12/§13 last recorded: a later round
+closed those five and nobody re-recorded the number. Registered here rather than back-dated into
+§12/§13, whose readings were true of their own commits.
+
+**Registered, not fixed** (two items, both consequences of `board.json` becoming a gate):
+
+1. `B05`'s board-level no-results check is the vacuous bound §14 recorded —
+   `scope: "[data-board]"` with `max: 1` reads **0** at all five widths, because the state block is
+   a *sibling* of `[data-board]` (both hang off `[data-board-view]`). It is carried into the gate
+   exactly as measured; the meaningful statement is `B05-r10`'s. Correcting it is a `checks` edit
+   with its own negative proof, so it is left to its own card.
+2. **A run of `board.json` is not a run of `board-m2.json`.** The successor gate covers the M1 main
+   path; 27 of `board-m2.json`'s blocks — 150 assertions, everything from `B02-icon` through `B27` —
+   exist only in the superset (§4 lists what each file asserts alone). Gating on `board.json` alone
+   would leave all of them unguarded by that switch. The practice this section records is **both
+   legs**, and a future card that wants a single gate should make that call explicitly rather than by
+   default.
+
+**Verification ran on the host** — a browser-rendered frontend check (`docs/docker.md`
+§"Host-allowed checks"; `design/` is `.dockerignore`d, so no container leg can see this half). The
+two container-visible halves of this change are the manifests' JSON validity and
+`test/web/ui-align-ready.test.mjs`'s gate assertions, both of which read the flipped file.
