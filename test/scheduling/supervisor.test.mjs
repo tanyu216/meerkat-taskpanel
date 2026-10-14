@@ -18,7 +18,7 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,8 +42,10 @@ import {
   defaultRepo,
   loadSlaLedger,
   parseArgs,
+  readPeerLastOk,
   runPatrolTick,
   runPollTick,
+  saveLastOk,
   saveSlaLedger,
 } from "../../scripts/supervisor.mjs";
 
@@ -802,6 +804,59 @@ describe("the SLA ledger file", () => {
     const shapeless = join(tempDir("meerkat-ledger-"), "sla-ledger.json");
     writeFileSync(shapeless, JSON.stringify({ version: 1 }), "utf8");
     assert.deepEqual(loadSlaLedger(shapeless), emptySlaLedger());
+  });
+
+  it("publishes a last-ok marker the peer can read, atomically (§8.4)", () => {
+    const dir = tempDir("meerkat-lastok-");
+    const path = join(dir, "loop-patrol-last-ok.json");
+    saveLastOk(path, { mechanism: "loop-patrol", at: "2026-10-14T10:00:00.000Z", host: "claude/linus", periodSeconds: 300 });
+    assert.equal(readPeerLastOk(path), "2026-10-14T10:00:00.000Z");
+    // The marker names its own mechanism and cadence, so the peer's watchdog
+    // computes the derived bound from *this* side's declared period.
+    const written = JSON.parse(readFileSync(path, "utf8"));
+    assert.equal(written.mechanism, "loop-patrol");
+    assert.equal(written.cadence_period_min, 5);
+    assert.equal(existsSync(`${path}.${process.pid}.tmp`), false, "the temp file is renamed, never left behind");
+  });
+
+  it("reads an absent, corrupt or shapeless peer marker as 'not published'", () => {
+    const dir = tempDir("meerkat-peer-");
+    assert.equal(readPeerLastOk(join(dir, "nope.json")), null);
+    assert.equal(readPeerLastOk(null), null, "no configured peer is not a marker");
+    const corrupt = join(dir, "peer.json");
+    writeFileSync(corrupt, "{not json", "utf8");
+    assert.equal(readPeerLastOk(corrupt), null);
+    const shapeless = join(dir, "peer2.json");
+    writeFileSync(shapeless, JSON.stringify({ mechanism: "openclaw-cron" }), "utf8");
+    assert.equal(readPeerLastOk(shapeless), null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The liveness/marker arguments — the surface a deployment configures
+// ---------------------------------------------------------------------------
+
+describe("parseArgs — the SLA attribution and liveness surface", () => {
+  it("defaults the marker beside the state file and leaves the leader unset", () => {
+    const opts = parseArgs(["--home", "/tmp/home"], {});
+    assert.equal(opts.slaLeader, null, "no person is hard-coded (contract §3)");
+    assert.equal(opts.slaPeer, null, "an unwired peer is a registered dependency, not an alarm");
+    assert.equal(opts.slaLastOk, join(dirname(opts.state), "loop-patrol-last-ok.json"));
+  });
+
+  it("takes the leader identity and the peer's marker from flags", () => {
+    const opts = parseArgs(["--home", "/tmp/home", "--sla-leader", "elon", "--sla-peer", "/team/.sla-scan-state.json"], {});
+    assert.equal(opts.slaLeader, "elon");
+    assert.equal(opts.slaPeer, "/team/.sla-scan-state.json");
+  });
+
+  it("takes them from the environment too, so a unit file need not restate them", () => {
+    const opts = parseArgs(["--home", "/tmp/home"], {
+      MEERKAT_TASKPANEL_SLA_LEADER: "elon",
+      MEERKAT_TASKPANEL_SLA_PEER: "/team/.sla-scan-state.json",
+    });
+    assert.equal(opts.slaLeader, "elon");
+    assert.equal(opts.slaPeer, "/team/.sla-scan-state.json");
   });
 });
 

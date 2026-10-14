@@ -88,6 +88,9 @@ node <host>/meerkat-taskpanel/scripts/supervisor.mjs --agent alice --dry-run --o
 | `--notify <cmd>` | — | run `<cmd>` with each patrol alert as JSON on stdin (the legacy heartbeat alert and the SLA tuple) |
 | `--dry-run` | off | print intended actions; claim nothing, spawn nothing |
 | `--sla-ledger <path>` | `sla-ledger.json` beside `--state` | the SLA de-duplication ledger; an unreadable one suppresses nothing |
+| `--sla-leader <id>` | `$MEERKAT_TASKPANEL_SLA_LEADER` → unset | the author id the leader writes under (the `leader_stalled` attribution set); unset ⇒ the board's decision authority (`author_kind = "human"`) |
+| `--sla-last-ok <path>` | `loop-patrol-last-ok.json` beside `--state` | this mechanism's own last-successful-run marker, for the peer's watchdog |
+| `--sla-peer <path>` | `$MEERKAT_TASKPANEL_SLA_PEER` → unset | the peer inspector's last-ok marker; stale ⇒ `inspector_liveness`. Unset ⇒ a registered dependency, no alarm |
 | `--board-limit <n>` / `--trail-limit <n>` | `500` / `200` | caps on the two reads one patrol pass makes |
 
 The full table, and the tick's flow, are in the repository's `docs/scheduling.md`.

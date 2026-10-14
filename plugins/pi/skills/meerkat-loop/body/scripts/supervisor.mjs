@@ -23,13 +23,23 @@
  *   4. **patrol** — a slower pass. A heartbeat older than 30 minutes is
  *      escalated and a heartbeat that cannot be read is *reported*, never
  *      silently dropped (that half is unchanged and its envelope is a published
- *      consumer contract). Beside it, the pass now covers the rest of
- *      `PROTOCOL §⑮`: a card parked on the leader, an unanswered confirmation
- *      gate, a defect whose fix card was never created, a delivery nobody
- *      accepted, and a stalled leader — each emitted as the **shared alert
- *      tuple** of `src/shared/sla-patrol.mjs`, the same schema, thresholds,
- *      de-duplication key and working-hours basis as the openclaw-side
- *      inspector. No LLM turn by default, and **no alert ever moves a card**.
+ *      consumer contract). Beside it, the pass covers `PROTOCOL §⑮`: a card
+ *      parked on the leader, an unanswered confirmation gate, a defect whose fix
+ *      card was never created, a delivery nobody accepted, a stale heartbeat and
+ *      a stalled leader — each emitted as the **shared alert tuple** of
+ *      `src/shared/sla-patrol.mjs`, the same schema, thresholds, de-duplication
+ *      key and working-hours basis as the openclaw-side inspector. The stale
+ *      heartbeat goes out **twice on purpose** (the legacy envelope for its own
+ *      consumer, the §4 tuple for the shared ledger — §10.4 leaves no other way
+ *      for the two mechanisms to de-duplicate the row between them). No LLM turn
+ *      by default, and **no alert ever moves a card**.
+ *
+ * The pass also holds one end of the **mutual liveness watchdog** (§8.4): it
+ * writes its own last-successful-run marker every pass, and — when `--sla-peer`
+ * names the peer's marker — raises `inspector_liveness` if that marker has gone
+ * quiet, because a stopped inspector looks exactly like a healthy board. With no
+ * peer marker configured the peer's half is an *explicit dependency* rather than
+ * a per-period false alarm; see the flag's note in `--help`.
  *
  * The decision half is pure and lives in `src/shared/scheduling.mjs` +
  * `src/shared/sla-patrol.mjs`; this file is the I/O half. That split is what
@@ -52,7 +62,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -72,9 +82,14 @@ import {
   wakeCommand,
 } from "../src/shared/scheduling.mjs";
 import {
+  BOARD_CARD_ID,
   DEFAULT_BOARD_LIMIT,
   DEFAULT_TRAIL_LIMIT,
+  LEADER_LOOKBACK_DAYS,
   MECHANISM,
+  PEER_LIVENESS_K,
+  PEER_MECHANISM,
+  PEER_PERIOD_MIN,
   emptySlaLedger,
   partitionSlaAlerts,
   planSlaPatrol,
@@ -127,6 +142,20 @@ Options:
   --sla-ledger <path>     De-duplication ledger for SLA alerts (default: a
                           sibling of --state). Notification is never suppressed
                           by an unreadable or absent ledger.
+  --sla-leader <id>       Who the contract calls "the leader" when a trail entry
+                          is attributed (§6.3-D): the author id the leader writes
+                          under. Set it to the same identity the peer mechanism
+                          uses (${PEER_MECHANISM}) so both share one attribution
+                          set. Unset ⇒ the board's own decision authority — an
+                          author that is not a worker agent (author_kind=human).
+  --sla-last-ok <path>    Where this mechanism publishes its own last-successful-
+                          run marker (§8.4; default: a sibling of --state). Every
+                          completed pass rewrites it — it is this mechanism's
+                          half of the mutual liveness watchdog.
+  --sla-peer <path>       The peer inspector's last-ok marker. When given, a
+                          marker older than ${PEER_LIVENESS_K} × ${PEER_PERIOD_MIN}min raises
+                          inspector_liveness; when unset, the peer's half is
+                          recorded as an explicit dependency and nothing alarms.
   --board-limit <n>       Max cards read per patrol pass (default: ${DEFAULT_BOARD_LIMIT}).
   --trail-limit <n>       Max cards whose comment trail is read per pass
                           (default: ${DEFAULT_TRAIL_LIMIT}); a cap is always logged.
@@ -276,6 +305,10 @@ export async function runPatrolTick(deps) {
  *   ledger: object,
  *   periodSeconds: number,
  *   mechanismHost: string|null,
+ *   leaderId?: string|null,
+ *   boardTruncated?: boolean,
+ *   peerLastOkAt?: string|number|null,
+ *   peerRequired?: boolean,
  *   recheck: (cardId: string) => Promise<{checked: boolean, card?: object|null}>,
  *   notify: (alert: object) => void,
  *   now: () => string,
@@ -291,6 +324,11 @@ export async function runSlaPatrolTick(deps) {
     now: stamp,
     periodSeconds,
     mechanismHost: mechanismHost ?? null,
+    leaderId: deps.leaderId ?? null,
+    boardTruncated: deps.boardTruncated === true,
+    peerLastOkAt: deps.peerLastOkAt ?? null,
+    peerRequired: deps.peerRequired === true,
+    lookbackDays: deps.lookbackDays,
   });
 
   const { notify: fresh, suppressed } = partitionSlaAlerts(planned.alerts, ledger);
@@ -301,6 +339,15 @@ export async function runSlaPatrolTick(deps) {
   const dropped = [];
   const survivors = [];
   for (const alert of fresh) {
+    // A board-level row (`leader_stalled`, `inspector_liveness`) names no card,
+    // so there is nothing to re-read — and asking the provider for the sentinel
+    // would log a failure that is not one. §9.6's second look is about *card*
+    // rows; these go straight through, which is also what §9.3 requires when a
+    // re-check cannot be performed.
+    if (alert.card_id === BOARD_CARD_ID) {
+      survivors.push(alert);
+      continue;
+    }
     const live = await recheck(alert.card_id);
     // A re-check that could not run must never be able to silence a real alert
     // (§9.3): an unverifiable card is notified, not dropped. Only a *successful*
@@ -433,6 +480,10 @@ export function parseArgs(argv, env = process.env) {
     log: null,
     state: null,
     slaLedger: null,
+    slaLeader: null,
+    slaLastOk: null,
+    slaPeer: null,
+    slaLookbackDays: null,
     boardLimit: DEFAULT_BOARD_LIMIT,
     trailLimit: DEFAULT_TRAIL_LIMIT,
     config: null,
@@ -485,6 +536,12 @@ export function parseArgs(argv, env = process.env) {
     else if (arg.startsWith("--state=")) opts.state = arg.slice(8);
     else if (arg === "--sla-ledger") opts.slaLedger = take("--sla-ledger");
     else if (arg.startsWith("--sla-ledger=")) opts.slaLedger = arg.slice(13);
+    else if (arg === "--sla-leader") opts.slaLeader = take("--sla-leader");
+    else if (arg.startsWith("--sla-leader=")) opts.slaLeader = arg.slice(13);
+    else if (arg === "--sla-last-ok") opts.slaLastOk = take("--sla-last-ok");
+    else if (arg.startsWith("--sla-last-ok=")) opts.slaLastOk = arg.slice(14);
+    else if (arg === "--sla-peer") opts.slaPeer = take("--sla-peer");
+    else if (arg.startsWith("--sla-peer=")) opts.slaPeer = arg.slice(11);
     else if (arg === "--board-limit") opts.boardLimit = number("--board-limit", take("--board-limit"));
     else if (arg.startsWith("--board-limit=")) opts.boardLimit = number("--board-limit", arg.slice(14));
     else if (arg === "--trail-limit") opts.trailLimit = number("--trail-limit", take("--trail-limit"));
@@ -517,6 +574,17 @@ export function parseArgs(argv, env = process.env) {
   // The ledger sits beside the state file by default, so a host with a custom
   // --state keeps one directory for everything the supervisor remembers.
   opts.slaLedger ??= join(dirname(opts.state), "sla-ledger.json");
+  // The liveness marker goes beside them, for the same reason — and it is the
+  // path a peer deployment points its own `--sla-peer` at (`<mech>-last-ok.json`
+  // is this mechanism's name for it, mirroring the peer's `sla-scan` marker).
+  opts.slaLastOk ??= join(dirname(opts.state), "loop-patrol-last-ok.json");
+  // The leader identity is deployable, not hard-coded (§3 of the contract).
+  opts.slaLeader ??= env.MEERKAT_TASKPANEL_SLA_LEADER ?? null;
+  opts.slaPeer ??= env.MEERKAT_TASKPANEL_SLA_PEER ?? null;
+  // The leader lookback is a mechanism parameter with a default, not a knob a
+  // deployment normally touches — it is read here so `planSlaPatrol`'s caller
+  // states it rather than leaving it implicit.
+  opts.slaLookbackDays ??= LEADER_LOOKBACK_DAYS;
   opts.config ??= join(opts.home, hostDir, "meerkat-taskpanel.env");
   opts.repo ??= defaultRepo(opts.config);
   opts.cli ??= join(opts.repo, "src", "cli", "index.mjs");
@@ -661,6 +729,41 @@ export function saveSlaLedger(path, ledger) {
   writeFileSync(path, `${JSON.stringify(ledger, null, 2)}\n`);
 }
 
+/**
+ * The mutual liveness watchdog's two files (§8.4).
+ *
+ * Each mechanism publishes a **last-successful-run marker** and watches the
+ * peer's. The marker is a plain `{mechanism, last_ok, ...}` object written
+ * atomically (temp + rename) so a reader never sees half a file. Reading the
+ * peer's is deliberately failure-tolerant: an unreadable marker reads as
+ * `null`, and what `null` *means* is the decision half's business — this half
+ * does not get to turn a parse error into a silence.
+ */
+export function saveLastOk(path, { mechanism, at, host = null, periodSeconds = null } = {}) {
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(
+    tmp,
+    `${JSON.stringify({ mechanism, last_ok: at, mechanism_host: host, cadence_period_min: periodSeconds === null ? null : periodSeconds / 60 }, null, 2)}\n`,
+  );
+  renameSync(tmp, path);
+}
+
+/** The peer's last-successful-run marker's `last_ok`, or `null` when unreadable. */
+export function readPeerLastOk(path) {
+  if (path === null || path === undefined) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8"));
+    const value = parsed?.last_ok ?? parsed?.lastOk ?? null;
+    return typeof value === "string" && value !== "" ? value : null;
+  } catch {
+    // Absent, unreadable or malformed all mean the same thing here: the peer has
+    // not published a usable marker. Whether that is an alarm or a dependency is
+    // decided above this line.
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
@@ -747,6 +850,14 @@ async function main(argv, env = process.env) {
   if (!gluePresent && opts.wakeCommand === null && !opts.dryRun) {
     log(`warning: no wake glue at ${opts.glue} — workers will run in ${opts.repo} without a project target directory`);
   }
+  // The two SLA settings a deployment has to get right are stated up front, for
+  // the same reason as the glue line: a mis-set leader identity silently changes
+  // which events count as "the leader acted", and a missing peer marker silently
+  // disables half a contract. Neither may be discovered from a quiet board.
+  log(
+    `sla: leader=${opts.slaLeader === null ? "board-authority(author_kind=human)" : opts.slaLeader} ` +
+      `last_ok=${opts.slaLastOk} peer=${opts.slaPeer === null ? "not configured (dependency registered)" : opts.slaPeer}`,
+  );
 
   let failed = 0;
 
@@ -778,7 +889,7 @@ async function main(argv, env = process.env) {
       log(`patrol: ${patrol.alerts.length} alert(s), ${patrol.spawns} LLM turn(s)`);
       // Same guard as the heartbeat pass: `--dry-run` reads nothing, so it
       // reports nothing. The SLA pass is a notification pass, not a planner.
-      if (read.ok) await runSlaPass(opts, log, tasks, opts.patrolInterval);
+      if (read.ok) await runSlaPass(opts, log, tasks, opts.patrolInterval, { boardTruncated: read.truncated === true });
     }
     if (!opts.dryRun) saveRegistry(opts.state, registry);
     return failed > 0 ? 1 : 0;
@@ -807,7 +918,7 @@ async function main(argv, env = process.env) {
         now: () => new Date().toISOString(),
         log,
       });
-      if (read.ok) await runSlaPass(opts, log, tasks, opts.patrolInterval);
+      if (read.ok) await runSlaPass(opts, log, tasks, opts.patrolInterval, { boardTruncated: read.truncated === true });
     } catch (err) {
       log(`patrol error: ${err.message}`);
     }
@@ -844,7 +955,13 @@ function readBoard(opts, log) {
     log(`patrol scan failed: ${read.error}`);
     return { ok: false };
   }
-  return read;
+  // A board read that came back exactly at the cap may have been cut off, and
+  // one row's open predicate ("no fix card exists") is a *negative* over the
+  // whole board — so the truncation has to travel with the data rather than be
+  // rediscovered. The decision half then reports the affected row as open but
+  // undecidable instead of quietly calling it decided (§6.3-B).
+  const tasks = Array.isArray(read.data?.tasks) ? read.data.tasks : [];
+  return { ...read, truncated: tasks.length >= opts.boardLimit };
 }
 
 /** One card's comment trail, or `null` when it could not be read. */
@@ -871,7 +988,7 @@ function readLiveCard(opts, log, identifier) {
  * The SLA half of a patrol pass: read the trails the rows need, decide, re-check
  * the candidates, notify, and remember what was notified.
  */
-async function runSlaPass(opts, log, tasks, periodSeconds) {
+async function runSlaPass(opts, log, tasks, periodSeconds, { boardTruncated = false } = {}) {
   const wanted = trailReadCandidates(tasks, { now: new Date().toISOString(), periodSeconds });
   const trails = {};
   const budget = Math.max(0, opts.trailLimit);
@@ -887,12 +1004,25 @@ async function runSlaPass(opts, log, tasks, periodSeconds) {
     else trails[identifier] = trail;
   }
 
+  // The peer's marker, read once (§8.4). No path configured means the peer's
+  // half has not landed — the pass records that as an explicit dependency (a
+  // startup line and the `--sla-peer` note) rather than alarming every period.
+  const peerLastOkAt = opts.slaPeer === null ? null : readPeerLastOk(opts.slaPeer);
+
   const result = await runSlaPatrolTick({
     cards: tasks,
     trails,
     ledger: loadSlaLedger(opts.slaLedger),
     periodSeconds,
     mechanismHost: `${opts.host}/${opts.agents[0]}`,
+    leaderId: opts.slaLeader,
+    boardTruncated,
+    peerLastOkAt,
+    // With no peer path configured the peer cannot be *required*: there is
+    // nothing to read, and "absent ⇒ down" would be a permanent false alarm in
+    // exactly the deployment that has not installed the peer yet.
+    peerRequired: opts.slaPeer !== null,
+    lookbackDays: opts.slaLookbackDays,
     recheck: (identifier) => Promise.resolve(readLiveCard(opts, log, identifier)),
     notify: opts.dryRun ? () => {} : notifyReal(opts, log),
     now: () => new Date().toISOString(),
@@ -905,10 +1035,24 @@ async function runSlaPass(opts, log, tasks, periodSeconds) {
     } catch (err) {
       log(`patrol: could not persist the SLA ledger (${err.message}) — a duplicate is possible, a lost alert is not`);
     }
+    // Publish our own last-ok marker (§8.4). It is written **after** the pass,
+    // so it means "a pass completed", and a failure to write it is logged but
+    // never fatal — the peer's watchdog is what notices, and that is the point.
+    try {
+      saveLastOk(opts.slaLastOk, {
+        mechanism: MECHANISM,
+        at: new Date().toISOString(),
+        host: `${opts.host}/${opts.agents[0]}`,
+        periodSeconds,
+      });
+    } catch (err) {
+      log(`patrol: could not publish the liveness marker (${err.message}) — the peer's watchdog may report this mechanism silent`);
+    }
   }
   log(
     `patrol: sla ${result.alerts.length} alert(s), ${result.suppressed.length} suppressed, ` +
-      `${result.dropped.length} dropped, ${trailFailures} trail read(s) failed`,
+      `${result.dropped.length} dropped, ${trailFailures} trail read(s) failed` +
+      `${opts.slaPeer === null ? " [liveness: peer marker not configured — registered as a dependency]" : ""}`,
   );
   return result;
 }
