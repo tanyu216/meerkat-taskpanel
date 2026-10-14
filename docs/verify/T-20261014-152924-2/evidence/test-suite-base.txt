@@ -1,0 +1,9 @@
+# base (7cb8e42, current main) — node --test on a clean git-archive copy
+ℹ tests 2204
+ℹ suites 568
+ℹ pass 1943
+ℹ fail 148
+ℹ cancelled 111
+ℹ skipped 2
+ℹ duration_ms 686223.829333
+EPERM occurrences: 157

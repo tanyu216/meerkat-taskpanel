@@ -1,0 +1,6 @@
+ℹ tests 84
+ℹ suites 19
+ℹ pass 84
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0

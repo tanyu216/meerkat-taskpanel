@@ -1,0 +1,9 @@
+# failing-test names: base(7cb8e42) vs tip(da709a1) — set difference
+base unique red names:      340
+tip  unique red names:      344
+--- tip-only (new red):
+answers every refusing route with a readable sentence
+moves a claimed card back to Backlog and leaves no claim behind
+server/error-envelope — ② Terry's drag, end to end
+server/error-envelope — ③ engine text never reaches a message
+--- base-only (red that went away):
