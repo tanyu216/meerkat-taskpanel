@@ -156,6 +156,16 @@
       "drawer.commentPlaceholder": "Write a comment…",
       "drawer.commentHint": "Comments are recorded in the activity log.",
       "drawer.submit": "Submit",
+      /* T-20261014-212017-3 · E-1 — the drawer's four edit affordances. The
+         catalogue is mirrored byte for byte by test/web/i18n.catalogue.mjs and
+         web/src/i18n/catalogue.mjs, so these six are the whole of the new
+         vocabulary (Elon's ruling: at most six). */
+      "drawer.save": "Save",
+      "drawer.upload": "Upload",
+      "drawer.editDescription": "Edit description",
+      "drawer.attachDownload": "Download",
+      "drawer.attachRemove": "Remove",
+      "drawer.readonly": "Read-only",
       "drawer.activity": "Activity",
       "activity.created": "created this task",
       "activity.claimed": "claimed the task",
@@ -475,6 +485,12 @@
       "drawer.commentPlaceholder": "写下评论…",
       "drawer.commentHint": "评论会记录到活动流中。",
       "drawer.submit": "提交",
+      "drawer.save": "保存",
+      "drawer.upload": "上传",
+      "drawer.editDescription": "编辑描述",
+      "drawer.attachDownload": "下载",
+      "drawer.attachRemove": "移除",
+      "drawer.readonly": "只读",
       "drawer.activity": "活动",
       "activity.created": "创建了任务",
       "activity.claimed": "认领了任务",
@@ -698,6 +714,14 @@
     detailSaveState: "idle",
     detailSaveFailed: false,
     detailSaveTimer: null,
+    /* T-20261014-212017-3 — the markdown *source* the drawer's editor opens
+       with, captured per card at `openDetail` (the template's
+       `description-src` slot, or the rendered text when a card carries none).
+       It is not a saved value: it is where a round-trip starts. */
+    detailDescriptionSource: "",
+    /* …and which face the Description section is showing: `read` ships, `edit`
+       is what the section's own button switches it to. */
+    detailDescriptionMode: "read",
     /* Token panel state. Value and reveal flag live in memory for the lifetime
        of the page and are written back to nothing. */
     token: { value: "", revealed: false },
@@ -1267,6 +1291,13 @@
     /* the alert is the state's only visible half, and the attribute is the only
        thing that decides it — the two are one write, never two */
     $("[data-detail-save-error]").prop("hidden", next !== "error");
+    /* T-20261014-212017-3 — the description editor's Save says so while the save
+       is in flight. It is derived from the region rather than set beside it, so
+       the button can never disagree with the state the region is showing. */
+    var saving = next === "saving";
+    $("[data-detail-description-save]")
+      .attr("aria-busy", saving ? "true" : "false")
+      .prop("disabled", saving);
   }
 
   /* One settle sequence serves all three fields. A commit that arrives while
@@ -1309,6 +1340,222 @@
     if (value === state.detailSaved[field]) return;
     state.detailSaved[field] = value;
     detailCommit(field, !value);
+  }
+
+  /* ------------------- T-20261014-212017-3 · the drawer's edit surface --- */
+
+  /* Four surfaces, one rule each, and one save region between them (R10). What
+     the reader sees is an attribute; the write is `detailCommit`. */
+
+  /* Status and priority are the two controls whose panel is not a roster combo:
+     they are a value picker over a fixed enumeration, so they get their own
+     open/close pair beside `closeCombos` rather than joining it — the create
+     dialog's controls must not be able to close them, and vice versa. */
+  function closePropMenus() {
+    $("[data-detail-status-menu], [data-detail-priority-menu]").prop("hidden", true);
+    $("[data-detail-status], [data-detail-priority]").attr("aria-expanded", "false");
+  }
+
+  /* The three facts a status/priority press needs about its own control. */
+  function propMenuShape($button) {
+    var isStatus = $button.is("[data-detail-status]");
+    return {
+      isStatus: isStatus,
+      menu: isStatus ? "[data-detail-status-menu]" : "[data-detail-priority-menu]",
+      option: isStatus ? "[data-detail-status-option]" : "[data-detail-priority-option]",
+      valueAttr: isStatus ? "data-status-value" : "data-priority-value",
+      current: $button.attr(isStatus ? "data-status" : "data-priority"),
+    };
+  }
+
+  function openPropMenu($button) {
+    var shape = propMenuShape($button);
+    var $combo = $button.closest(".td-combo");
+    var $menu = $combo.find(shape.menu);
+    closeCombos();
+    closePropMenus();
+    /* The row the control already holds is the one Enter would re-accept, so it
+       is where the ring starts — and it is the only row that paints as chosen. */
+    $menu
+      .find(shape.option)
+      .attr("aria-selected", "false")
+      .filter("[" + shape.valueAttr + '="' + shape.current + '"]')
+      .attr("aria-selected", "true");
+    $menu.prop("hidden", false);
+    $button.attr("aria-expanded", "true");
+    positionDropdown($combo, $combo.closest(".td-drawer-body")[0]);
+  }
+
+  function closePropMenu($button) {
+    var shape = propMenuShape($button);
+    $button.closest(".td-combo").find(shape.menu).prop("hidden", true);
+    $button.attr("aria-expanded", "false");
+  }
+
+  function propMenuOpen($button) {
+    return !$button.closest(".td-combo").find(propMenuShape($button).menu).prop("hidden");
+  }
+
+  /* The arrow keys move the ring while a panel is open, wrapping is not offered
+     and the ends hold — the create dialog's combos behave the same way. */
+  function propMenuMove($button, step) {
+    var shape = propMenuShape($button);
+    var $rows = $button.closest(".td-combo").find(shape.menu).find(shape.option);
+    if (!$rows.length) return;
+    var index = $rows.index($rows.filter('[aria-selected="true"]'));
+    if (index === -1) index = 0;
+    var next = Math.max(0, Math.min($rows.length - 1, index + step));
+    $rows.attr("aria-selected", "false");
+    $rows.eq(next).attr("aria-selected", "true");
+  }
+
+  /* Taking a row writes the value where the board reads it and re-words every
+     render point at once: the control, the head's status chip, and the priority
+     glyph's own label. Then one commit — and neither field can fail, because
+     every value in both enumerations is a legal one. */
+  function applyPropChoice($option) {
+    var $drawer = $("[data-detail-drawer]");
+    if ($option.is("[data-detail-status-option]")) {
+      var status = $option.attr("data-status-value");
+      var statusText = statusLabel(status);
+      $drawer
+        .find("[data-detail-status]")
+        .attr("data-status", status)
+        .find("[data-detail-status-label]")
+        .text(statusText);
+      $drawer
+        .find("[data-detail-status-chip]")
+        .attr("data-status", status)
+        .find("[data-detail-status-chip-label]")
+        .text(statusText);
+      closePropMenus();
+      detailCommit("status", false);
+      return;
+    }
+    var priority = $option.attr("data-priority-value");
+    var priorityText = priorityLabel(priority);
+    var $priority = $drawer.find("[data-detail-priority]");
+    $priority.attr("data-priority", priority);
+    $priority.find("[data-detail-priority-label]").text(priorityText);
+    $priority
+      .find(".td-pri")
+      .attr("aria-label", text("prop.priorityValue", priorityText));
+    closePropMenus();
+    detailCommit("priority", false);
+  }
+
+  /* The Description section is two faces and one attribute. Entering edit seeds
+     the editor with the card's own markdown — captured at open, so the first
+     edit continues the card instead of starting from the rendered HTML — and
+     leaves the mode attribute to say which face is showing. */
+  function setDescriptionMode(mode) {
+    var $drawer = $("[data-detail-drawer]");
+    state.detailDescriptionMode = mode;
+    $drawer
+      .find("[data-detail-description-section]")
+      .attr("data-detail-description-mode", mode);
+    $drawer.find("[data-md-editor]").prop("hidden", mode !== "edit");
+  }
+
+  function openDescriptionEditor() {
+    var $drawer = $("[data-detail-drawer]");
+    var $editor = $drawer.find("[data-md-editor]");
+    var seed = state.detailDescriptionSource;
+    if (!$.trim(seed)) {
+      seed = $.trim($drawer.find("[data-detail-description]").text());
+    }
+    $editor.find("[data-md-source]").val(seed);
+    setMarkdownMode($editor, "write");
+    renderMarkdown($editor);
+    setDescriptionMode("edit");
+    $editor.find("[data-md-source]").trigger("focus");
+  }
+
+  /* Cancelling is a dismissal, not a write: nothing is committed and the seed
+     stays where it was, so opening the editor again shows the card's text and
+     not the draft that was abandoned. */
+  function closeDescriptionEditor() {
+    $("[data-detail-drawer] [data-md-editor]").find("[data-md-source]").val(state.detailDescriptionSource);
+    setDescriptionMode("read");
+  }
+
+  /* Saving renders the source into the read pane and commits. An emptied
+     description is the deterministic failure R10 demonstrates — the same rule
+     the single-valued roster fields follow — and the editor stays open when it
+     happens, so the reader can see what was refused rather than watching the
+     section fold away over a save that did not take. */
+  function saveDescription() {
+    var $drawer = $("[data-detail-drawer]");
+    var $editor = $drawer.find("[data-md-editor]");
+    var source = String($editor.find("[data-md-source]").val() || "");
+    if (!$.trim(source)) {
+      detailCommit("description", true);
+      return;
+    }
+    if (window.MarkdownLite) {
+      $drawer
+        .find("[data-detail-description]")
+        .html(window.MarkdownLite.render(source));
+    }
+    state.detailDescriptionSource = source;
+    setDescriptionMode("read");
+    detailCommit("description", false);
+  }
+
+  /* Attachments. A row is built in one place because the drawer meets rows from
+     two — a card's own template, and a file the reader just picked — and the
+     two have to end up identical. The download half is a display state only:
+     the prototype has nowhere to fetch a file from and does not pretend to. */
+  var ATTACHMENT_ICONS = {
+    file: '<svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg>',
+    download: '<svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v11M7 11l5 5 5-5M5 20h14" /></svg>',
+    remove: '<svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6 6 18" /></svg>',
+  };
+
+  function attachmentButton(kind) {
+    var key = kind === "download" ? "drawer.attachDownload" : "drawer.attachRemove";
+    return $("<button type='button' class='td-iconbtn'></button>")
+      .attr("data-attachment-" + kind, "")
+      .attr("data-i18n-aria-label", key)
+      .attr("aria-label", text(key))
+      .attr("title", text(key))
+      .append($(ATTACHMENT_ICONS[kind]));
+  }
+
+  function decorateAttachmentRow($row) {
+    if (!$row || !$row.length) return $row;
+    if ($row.find("[data-attachment-download]").length) return $row;
+    $row.attr("data-attachment-row", "");
+    $row.append(
+      $("<span class='td-file-actions'></span>")
+        .append(attachmentButton("download"))
+        .append(attachmentButton("remove"))
+    );
+    return $row;
+  }
+
+  function attachmentEmptyState() {
+    return $('<span class="text-xs text-td-ink-3"></span>')
+      .attr("data-i18n", "attachments.none")
+      .text(text("attachments.none"));
+  }
+
+  /* A size read off the picked file, stated the way the card states it: whole
+     KB below a megabyte, one decimal above, and never a bare zero. */
+  function attachmentSizeLabel(bytes) {
+    if (!bytes || bytes < 0) return "0 KB";
+    if (bytes < 1024) return "1 KB";
+    if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  function attachmentRow(name, size) {
+    return decorateAttachmentRow(
+      $("<div class='td-file'></div>")
+        .append($(ATTACHMENT_ICONS.file))
+        .append($("<span class='td-file-name'></span>").text(name))
+        .append($("<span class='td-file-size'></span>").text(size))
+    );
   }
 
   /* R12x — whether the board area's filter bar belongs on screen: the board and
@@ -1841,11 +2088,21 @@
       .text(monogram(reporter))
       .attr("title", reporter);
 
-    /* R10 ② — opening a card is the baseline the drawer's three editable
-       fields are measured against, and it starts clean: these are the values
-       a commit would have to differ from, and a drawer that still wore the
-       previous card's verdict would be reporting on the wrong card. */
-    state.detailSaved = { assignee: data.assignee, reporter: reporter };
+    /* R10 ② — opening a card is the baseline the drawer's editable fields are
+       measured against, and it starts clean: these are the values a commit
+       would have to differ from, and a drawer that still wore the previous
+       card's verdict would be reporting on the wrong card. T-20261014-212017-3
+       extended the set with the four surfaces this round made editable, so
+       every field's baseline is seeded in the same place. */
+    state.detailSaved = {
+      assignee: data.assignee,
+      reporter: reporter,
+      status: data.status,
+      priority: data.priority,
+      description: "",
+      attachments: "",
+      depends: "",
+    };
     state.detailSaveFailed = false;
     window.clearTimeout(state.detailSaveTimer);
     setDetailSaveState("idle");
@@ -1911,6 +2168,18 @@
       $sessionSection.prop("hidden", true);
     }
 
+    /* T-20261014-212017-3 — the markdown *source* this card's editor opens
+       with. It rides beside the rendered description slot rather than in it
+       (`fill` only ever reads `description`), and it has to be read before the
+       scratch source is dropped — after this line the string is all that is
+       left of it. A card without one falls back to the rendered text at edit
+       time, which is what keeps the control working on the cards that predate
+       the slot. */
+    var $descriptionSource = $source.find('[data-slot="description-src"]');
+    state.detailDescriptionSource = $descriptionSource.length
+      ? String($descriptionSource.text())
+      : "";
+
     $source.remove();
 
     /* the copied template still carries the language it was authored in */
@@ -1926,6 +2195,79 @@
     $drawer
       .find("[data-detail-status-label], [data-detail-status-chip-label]")
       .text(statusLabel(restatedStatus));
+
+    /* ------------------- T-20261014-212017-3 · the edit surface ------------ */
+
+    /* Everything below runs *after* the translation pass and the status
+       restatement above, on purpose: the pass re-resolves every `data-i18n`
+       seat it meets — including the ones the controls below carry — and a
+       control left in a half-written state at that point would be re-worded
+       out from under the card it belongs to. */
+
+    /* depends_on. The card's `blocks` relation and this control are the same
+       fact (PROTOCOL §①), so the card is the seed: each read-only link becomes
+       a chip, and the row that carried them goes — one fact, one source, from
+       here on the chips. */
+    var $dependsInput = $drawer.find("[data-detail-depends-input]");
+    $drawer.find("[data-detail-depends-chips]").empty();
+    $drawer
+      .find("[data-detail-relations] .td-rel-item")
+      .each(function () {
+        var $item = $(this);
+        if (!$item.find('[data-i18n="relations.blocks"]').length) return;
+        $item.find("[data-relation-link]").each(function () {
+          var id = $.trim($(this).text());
+          if (!id) return;
+          addComboChip($dependsInput, COMBO.detailDepends, id, "");
+        });
+        $item.remove();
+      });
+    $dependsInput.val("");
+    $drawer.find("[data-detail-depends-menu]").prop("hidden", true);
+
+    /* Attachments — the card's rows are the same rows an upload makes, so both
+       go through one decorator and neither can drift from the other. */
+    $drawer.find("[data-detail-attachments] .td-file").each(function () {
+      decorateAttachmentRow($(this));
+    });
+
+    /* Description — always opens on the rendered face, never on a draft a
+       previous card left behind. */
+    setDescriptionMode("read");
+
+    /* Status and priority — menus shut, and the current value marked, so the
+       ring starts where the card is rather than where the last card was. */
+    closePropMenus();
+    $.each(["[data-detail-status]", "[data-detail-priority]"], function (index, selector) {
+      var $button = $drawer.find(selector);
+      var shape = propMenuShape($button);
+      $button
+        .closest(".td-combo")
+        .find(shape.option)
+        .attr("aria-selected", "false")
+        .filter("[" + shape.valueAttr + '="' + shape.current + '"]')
+        .attr("aria-selected", "true");
+    });
+
+    /* Read-only. A terminal card — `done` or `canceled` — is not reversible
+       (PROTOCOL §①), so the drawer shows it and offers no way to move it: every
+       edit affordance is disabled together, from one list, so a control added
+       later has one place to be enrolled. Elon's reopen is a privileged path
+       and is deliberately not part of this surface. */
+    var readOnly = data.status === "done" || data.status === "canceled";
+    if (readOnly) $drawer.attr("data-readonly", "true");
+    else $drawer.removeAttr("data-readonly");
+    $drawer.find("[data-detail-readonly]").prop("hidden", !readOnly);
+    var $editControls = $drawer.find(
+      "[data-detail-status], [data-detail-priority], [data-detail-description-edit], " +
+        "[data-attachment-upload], [data-attachment-download], [data-attachment-remove], " +
+        "[data-detail-depends-input], [data-detail-depends-remove]"
+    );
+    if (readOnly) {
+      $editControls.prop("disabled", true).attr("aria-disabled", "true");
+    } else {
+      $editControls.prop("disabled", false).removeAttr("aria-disabled");
+    }
 
     /* selection + open state ----------------------------------------------- */
     $("[data-card]").attr("aria-selected", "false");
@@ -1964,6 +2306,11 @@
     var $drawer = $("[data-detail-drawer]");
     if ($drawer.attr("data-state") !== "open") return;
     $drawer.attr("data-state", "closed").attr("aria-hidden", "true");
+    /* T-20261014-212017-3 — the read-only face belongs to the card that was
+       open, not to the drawer: a closed drawer must not carry one card's
+       verdict into the next one it is asked to show. */
+    $drawer.removeAttr("data-readonly");
+    $drawer.find("[data-detail-readonly]").prop("hidden", true);
     $("[data-detail-overlay]").attr("data-state", "closed");
     window.setTimeout(function () {
       if ($("[data-detail-overlay]").attr("data-state") === "closed") {
@@ -2563,6 +2910,25 @@
       chipMono: false,
       emptyKey: "combo.noLabels",
     },
+    /* T-20261014-212017-3 — the drawer's own prerequisite control: the same
+       multi-select relation combo the create dialog carries (B24), pointed at
+       this surface's hook family. `depends_on` is the `blocks` relation
+       (PROTOCOL §①), which is why its label is `relations.blocks`. */
+    detailDepends: {
+      roster: taskRoster,
+      input: "[data-detail-depends-input]",
+      menu: "[data-detail-depends-menu]",
+      option: "[data-detail-depends-option]",
+      optionAttr: "data-detail-depends-option",
+      valueAttr: "data-detail-depends-value",
+      kindAttr: "",
+      freeText: false,
+      multi: true,
+      chips: "[data-detail-depends-chips]",
+      chipAttr: "data-detail-depends-chip",
+      removeAttr: "data-detail-depends-remove",
+      emptyKey: "combo.noTasks",
+    },
   };
 
   function comboMenu($input, config) {
@@ -2674,20 +3040,25 @@
     positionComboMenu($input, config);
   }
 
-  /* The create dialog scrolls its own box, so a menu hanging off a field near
-     the bottom would be clipped by that box. Measured in viewport coordinates
-     — which already account for the container's scroll — the menu flips above
-     its control when there is not room below. Outside the dialog there is no
-     such container and the menu stays where it is. */
-  function positionComboMenu($input, config) {
-    var $combo = $input.closest(".td-combo");
-    var $menu = comboMenu($input, config);
-    var box = $input.closest(".td-modal-box")[0];
+  /* A floating menu hanging off a control near the bottom of a scrolling
+     container would be clipped by it, so it flips above its control instead.
+     Measured in viewport coordinates — which already account for the
+     container's scroll — against the container the caller names; with no
+     container there is nothing to be clipped by and the menu stays put.
+     T-20261014-212017-3 lifted this out of `positionComboMenu` so the drawer's
+     own status/priority dropdowns can reuse it against the drawer body. */
+  function positionDropdown($combo, container) {
     $combo.removeAttr("data-drop");
+    var $menu = $combo.find(".td-combo-menu").first();
+    var box = container || $combo.closest(".td-modal-box")[0];
     if (!box || !$menu.length) return;
     if ($menu[0].getBoundingClientRect().bottom > box.getBoundingClientRect().bottom - 8) {
       $combo.attr("data-drop", "up");
     }
+  }
+
+  function positionComboMenu($input, config) {
+    positionDropdown($input.closest(".td-combo"), $input.closest(".td-modal-box")[0]);
   }
 
   /* The row the arrow keys are on. `aria-selected` is the single source of
@@ -3569,7 +3940,13 @@
       if (!$(event.target).closest("[data-filter-label]").length) {
         closeLabelMenu();
       }
-      if (!$(event.target).closest(".td-combo").length) closeCombos();
+      if (!$(event.target).closest(".td-combo").length) {
+        closeCombos();
+        /* T-20261014-212017-3 — the drawer's status/priority panels are dropdowns
+           too, and the same light-dismiss rule reaches them: a press anywhere
+           else in the document puts them away. */
+        closePropMenus();
+      }
     });
 
     /* R9 ① — one rule for every floating control that has to give way when the
@@ -3721,6 +4098,163 @@
         renderCombo($input, COMBO.detailLabels);
       }
       $input.trigger("change");
+    });
+
+    /* ------------------- T-20261014-212017-3 · the drawer's edit surface -- */
+
+    /* Status / priority — one trigger pair, one panel each. The press is a
+       toggle, and opening one panel is what shuts the other: the two are
+       siblings in the same grid and both hang over the sections below, so two
+       open at once would overlap. */
+    $("[data-detail-drawer]").on(
+      "click",
+      "[data-detail-status], [data-detail-priority]",
+      function () {
+        var $button = $(this);
+        if ($button.prop("disabled")) return;
+        if (propMenuOpen($button)) {
+          closePropMenu($button);
+          return;
+        }
+        openPropMenu($button);
+      }
+    );
+
+    $("[data-detail-drawer]").on(
+      "click",
+      "[data-detail-status-option], [data-detail-priority-option]",
+      function () {
+        var $option = $(this);
+        if ($option.prop("disabled")) return;
+        applyPropChoice($option);
+      }
+    );
+
+    /* The arrow ring. Bound to the trigger *and* the rows, so the keys work
+       whether focus is still on the control or has moved into the panel — and
+       Escape stops here, because the drawer itself answers Escape by closing
+       and a reader dismissing a menu means only the menu. */
+    $("[data-detail-drawer]").on(
+      "keydown",
+      "[data-detail-status], [data-detail-priority], [data-detail-status-option], [data-detail-priority-option]",
+      function (event) {
+        var $target = $(this);
+        var $button = $target.is("[data-detail-status], [data-detail-priority]")
+          ? $target
+          : $target.closest(".td-combo").find("[data-detail-status], [data-detail-priority]");
+        if ($button.prop("disabled")) return;
+        var open = propMenuOpen($button);
+
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          event.preventDefault();
+          if (!open) {
+            openPropMenu($button);
+            return;
+          }
+          propMenuMove($button, event.key === "ArrowDown" ? 1 : -1);
+          return;
+        }
+        if (event.key === "Enter" || event.key === " ") {
+          if (!open) return;
+          event.preventDefault();
+          var shape = propMenuShape($button);
+          var $selected = $button
+            .closest(".td-combo")
+            .find(shape.menu)
+            .find(shape.option)
+            .filter('[aria-selected="true"]');
+          if (!$selected.length) $selected = $button.closest(".td-combo").find(shape.option).first();
+          if ($selected.length) applyPropChoice($selected);
+          return;
+        }
+        if (event.key === "Escape") {
+          if (!open) return;
+          event.stopPropagation();
+          closePropMenu($button);
+          return;
+        }
+        if (event.key === "Tab") closePropMenu($button);
+      }
+    );
+
+    /* Description — the section's button opens the editor on the card's own
+       markdown, Save renders and commits, Cancel is a dismissal. */
+    $("[data-detail-drawer]").on("click", "[data-detail-description-edit]", function () {
+      if ($(this).prop("disabled")) return;
+      openDescriptionEditor();
+    });
+
+    $("[data-detail-drawer]").on("click", "[data-detail-description-save]", function () {
+      if ($(this).prop("disabled")) return;
+      saveDescription();
+    });
+
+    $("[data-detail-drawer]").on("click", "[data-detail-description-cancel]", function () {
+      closeDescriptionEditor();
+      $("[data-detail-drawer]").find("[data-detail-description-edit]").trigger("focus");
+    });
+
+    /* Attachments — the section's Upload is the picker's handle, and the change
+       that follows is the whole of the write: each file becomes the row its
+       name and size describe. The input is cleared so picking the same file
+       twice in a row still fires. */
+    $("[data-detail-drawer]").on("click", "[data-attachment-upload]", function () {
+      if ($(this).prop("disabled")) return;
+      $("[data-detail-drawer]").find("[data-attachment-file]").trigger("click");
+    });
+
+    $("[data-detail-drawer]").on("change", "[data-attachment-file]", function () {
+      var $input = $(this);
+      var files = $input[0] && $input[0].files ? $input[0].files : [];
+      if (!files.length) return;
+      var $list = $("[data-detail-drawer]").find("[data-detail-attachments]");
+      $list.find('[data-i18n="attachments.none"]').remove();
+      $.each(files, function (index, file) {
+        $list.append(attachmentRow(file.name, attachmentSizeLabel(file.size)));
+      });
+      $input.val("");
+      detailCommit("attachments", false);
+    });
+
+    /* Download is a display state and says so: the button reports the work for
+       as long as a save would take and then stops. Nothing is transferred,
+       because there is nowhere to transfer it from. */
+    $("[data-detail-drawer]").on("click", "[data-attachment-download]", function () {
+      var $button = $(this);
+      if ($button.prop("disabled")) return;
+      $button.attr("aria-busy", "true").addClass("is-loading");
+      window.setTimeout(function () {
+        $button.attr("aria-busy", "false").removeClass("is-loading");
+      }, DETAIL_SAVE_MS);
+    });
+
+    /* Removing the last row leaves the section saying so rather than empty. */
+    $("[data-detail-drawer]").on("click", "[data-attachment-remove]", function () {
+      var $button = $(this);
+      if ($button.prop("disabled")) return;
+      var $list = $("[data-detail-drawer]").find("[data-detail-attachments]");
+      $button.closest("[data-attachment-row]").remove();
+      if (!$list.find(".td-file").length) $list.append(attachmentEmptyState());
+      detailCommit("attachments", false);
+    });
+
+    /* depends_on — dropping a chip. The mirror of the create form's own
+       removal: the menu, if it is open, puts the task back among the offers,
+       and either way the drop commits. */
+    $("[data-detail-drawer]").on("click", "[data-detail-depends-remove]", function () {
+      var $scope = $(this).closest(".td-combo");
+      var $input = $scope.find("[data-detail-depends-input]");
+      $(this).closest("[data-detail-depends-chip]").remove();
+      if (!$scope.find("[data-detail-depends-menu]").prop("hidden")) {
+        renderCombo($input, COMBO.detailDepends);
+      }
+      detailCommit("depends", false);
+    });
+
+    /* …and adding one, which `comboAccept` announces through `change` exactly
+       as it does for the drawer's label control. */
+    $("[data-detail-drawer]").on("change", "[data-detail-depends-input]", function () {
+      detailCommit("depends", false);
     });
 
     /* ---------------------------------------- R10 ② · drawer auto-save ---- */
