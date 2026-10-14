@@ -208,7 +208,17 @@ function onAssignee(name) {
                hand-appended row exists to fall behind. Elon chose (a) — the
                supplement lives in the implementation and `design/prototype/**`
                keeps its static three rows (C-RAIL-1 §7 U1). -->
-          <span class="td-mono" data-side-icon aria-hidden="true">{{ project.prefix }}</span>
+          <!-- C-RAIL-2 P5 · U2 (approved) — the whole prefix, on the same
+               channel `DESIGN.md` §24.3 (R8) already uses for an over-long
+               identifier: the visible text may be a fragment, the `title`
+               carries the value. Here it is the *only* channel that can: the
+               chip is `aria-hidden`, so `title` reaches a pointer, not assistive
+               technology, and at ≤1023px the chip is the rail's only drawn
+               identity cue. The value itself is untouched — no slice, no `…`
+               (P3), which the 24px box makes pointless anyway: it fits three
+               characters, so any truncation would render `ORCHESTRA-1`,
+               `ORCHESTRA-2` and `ORC` as the same string (C-RAIL-2 §2.6). -->
+          <span class="td-mono" data-side-icon aria-hidden="true" :title="project.prefix">{{ project.prefix }}</span>
           <span class="td-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap" data-side-name>{{ project.name }}</span>
           <!-- R7 ② — the count is the brand's `.td-count` pill and it *is* the
                `data-project-count` element (the prototype puts the hook on the
