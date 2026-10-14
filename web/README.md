@@ -70,6 +70,13 @@ npm -w web run preview  # serve the built artefact
 - `node --test test/web/*.test.mjs` — the browser-free layers: the block contract
   module, i18n parity, the theme/SSE/combo pure logic, and the selector-literal +
   CSS source checks against `web/dist`.
+- `node scripts/verify/web-dist.mjs` — **which of those legs actually ran.** The
+  bundle and DOM suites skip when `web/dist` is missing, and a *stale* build makes them
+  fail with messages ("these hooks are absent from the bundle") that read like contract
+  violations. The verdict classifies the build (`unbuilt` / `stale` / `fresh`) and names
+  each leg COVERED or UNCOVERED; `--build` rebuilds first, `--require=all` fails closed.
+  A lane worktree has no `web/dist` and cannot build one (the committed cache is
+  linux/arm64), which is the case the verdict exists to make legible.
 - `node web/scripts/dom-smoke.mjs` — the **browser layer** (host-only; Playwright
   is resolved from an already-installed location, never added here). It serves the
   built app against a fixture API, runs every dom-layer contract assertion
