@@ -32,6 +32,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { runStep, systemdUserDir } from "./taskd-guard.mjs";
+import { unitPath } from "./unit-path.mjs";
 
 /** The three actions of the single entry point. */
 export const ACTIONS = Object.freeze(["enable", "disable", "status"]);
@@ -162,8 +163,14 @@ export function stripBlock(text, begin, end) {
 /**
  * The cron lines the block carries: the *rendered* unit the installer wrote (so the
  * enable path and the manual `crontab <file>` path can never drift apart), else — in a
- * `--dry-run`, where nothing has been written yet — the same two lines built from the
- * paths the units name.
+ * `--dry-run`, where nothing has been written yet — the same lines built from the paths
+ * the units name.
+ *
+ * "The same lines" includes the `PATH=` setting line and the absolute interpreter
+ * (T-20261014-020103-2): a preview that showed `/usr/bin/env node` would be advertising
+ * the line the unit no longer carries. `install.sh` exports `TP_NODE` /
+ * `TP_UNIT_PATH_CRON` before it calls this, so the preview and the written file are the
+ * same bytes; the fallbacks below exist for a caller that has neither (a test).
  *
  * @param {ReturnType<typeof supervisorPaths>} paths
  * @returns {string[]}
@@ -177,10 +184,15 @@ export function cronContentLines(paths) {
     if (lines.length > 0) return lines;
   }
 
+  const env = paths.env ?? {};
+  const node = env.TP_NODE || process.execPath;
+  const cronPath = env.TP_UNIT_PATH_CRON || unitPath(dirname(node), { scheduler: "cron" });
+
   const line = (schedule, patrol) =>
     [
       schedule,
-      `/usr/bin/env node ${paths.supervisor}`,
+      node,
+      paths.supervisor,
       `--host ${paths.host}`,
       `--agent ${paths.agent}`,
       patrol ? "--patrol-only" : null,
@@ -191,7 +203,7 @@ export function cronContentLines(paths) {
     ]
       .filter((part) => part !== null)
       .join(" ");
-  return [line("* * * * *", false), line("*/5 * * * *", true)];
+  return [`PATH=${cronPath}`, line("* * * * *", false), line("*/5 * * * *", true)];
 }
 
 /** The full cron block (markers + content lines). */

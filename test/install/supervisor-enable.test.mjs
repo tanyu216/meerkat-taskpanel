@@ -493,8 +493,15 @@ describe("install.sh: enable — cron", () => {
     assert.match(table, /^# mine$/m, "and their comment");
     assert.match(table, /^$/m, "and their blank line — nothing is reflowed");
     assert.equal(table.split("# >>> meerkat-taskpanel (~/.claude) >>>").length - 1, 1, "exactly one block");
-    assert.match(table, /^\* \* \* \* \* \/usr\/bin\/env node .*supervisor\.mjs --host claude --agent alice --once --log .* >\/dev\/null 2>&1$/m);
-    assert.match(table, /^\*\/5 \* \* \* \* \/usr\/bin\/env node .*supervisor\.mjs --host claude --agent alice --patrol-only --once /m);
+    // The block is what the unit file says — the `PATH=` setting line included, and an
+    // absolute interpreter: cron resolves a bare `node` against its own minimal PATH, so
+    // `/usr/bin/env node` here is the 127 this card removes (T-20261014-020103-2). The
+    // PATH line sits *inside* the block, so `disable` takes it away with the block.
+    const blockLines = table.split("# >>> meerkat-taskpanel (~/.claude) >>>\n")[1].split("\n");
+    assert.match(blockLines[0], /^PATH=\S+$/);
+    assert.match(blockLines[1], /^\* \* \* \* \* \/[^ ]*node .*supervisor\.mjs --host claude --agent alice --once --log .* >\/dev\/null 2>&1$/);
+    assert.match(blockLines[2], /^\*\/5 \* \* \* \* \/[^ ]*node .*supervisor\.mjs --host claude --agent alice --patrol-only --once /);
+    assert.equal(blockLines[3], "# <<< meerkat-taskpanel (~/.claude) <<<");
     assert.match(table, /^# <<< meerkat-taskpanel \(~\/\.claude\) <<<$/m);
 
     assert.equal(calls(manager).filter((line) => line === "crontab -").length, 1, "written once");
