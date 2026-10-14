@@ -1,0 +1,43 @@
+name: paths-gate
+
+# The host-path gate.
+#
+# A `/Users/<someone>/…` path in a shared repository is a statement about one
+# machine, and it reads as ordinary prose — which is why review does not catch
+# it. It is either an instruction nobody else can follow (a repro step that only
+# works for its author) or a disclosure (the repository carrying its developer's
+# home directory, and with it a username and a layout that has nothing to do with
+# this project). `scripts/verify/paths.mjs` fails the build on either.
+#
+# The files that legitimately carry one are records of verification runs that
+# really happened on one machine; they are listed, one by one, in
+# `test/fixtures/host-paths-allowlist.json`. That list is checked in both
+# directions — an entry that no longer exists is a red, and so is an entry whose
+# file has since been cleaned up — so it can only shrink without a deliberate
+# edit.
+#
+# It lives in its own workflow on purpose: `.github/workflows/check.yml` is owned
+# by a concurrent change and must not be modified, the same reason
+# `contract-gate.yml` and `version-gate.yml` carry their rules in workflows of
+# their own. The same check also runs locally in `.githooks/pre-push`, in
+# `npm run verify`, and inside the container suite.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  paths:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `setup-node`: the checker is Node builtins only and offline, and the
+      # runner's Node is well past the `engines` floor. It reads the tree — via
+      # `git ls-files` here, and by walking in the container image, which carries
+      # no `.git`.
+      - name: No tracked file carries a host-absolute path
+        run: node scripts/verify/paths.mjs
