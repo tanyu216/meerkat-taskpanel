@@ -1074,9 +1074,10 @@ were: they serve B09's own stream and read as whole sentences.
 `[data-activity-open]` its keyboard twin, and both land on the board's own detail surface
 for the task the row names — found by the internal id the row's own link carries, or by the
 identifier when that id is not on this board. The `[data-activity-task]` anchor stays a real
-link for a reader without the script; with it, the press returns to the board view and lands
-on the same task. Neither path is B26's own shell — the design's `design/activity/` page
-carries a stand-in drawer, and that stand-in is deliberately not what the board gets.
+link for a reader without the script; with it, the press opens the same detail surface in
+place — the view stays the activity view. Neither path is B26's own shell — the design's
+`design/activity/` page carries a stand-in drawer, and that stand-in is deliberately not
+what the board gets.
 
 **Zero new hues.** The view's rules moved from the design page's scoped `<style>` block into
 `src/input.css` (R-7). They declare no custom property of their own and carry no colour
