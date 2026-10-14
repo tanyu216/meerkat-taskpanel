@@ -1,5 +1,5 @@
 /**
- * The PROJECTS list weight algorithm (ARCHITECTURE §4.6), as a pure function.
+ * The PROJECTS list weight algorithm (DESIGN.md §20), as a pure function.
  *
  * The board must not sort projects itself (§8: "前端只消费顺序"), so the order is
  * computed here — at the boundary — and shipped in the response. The three
@@ -50,7 +50,7 @@ function stringDesc(a, b) {
 }
 
 /**
- * Order projects by §4.6.
+ * Order projects by DESIGN.md §20.
  *
  * @param {Array<{
  *   id: string, name: string, createdAt?: string|null,
@@ -81,7 +81,7 @@ export function rankProjects(entries, options = {}) {
   });
 
   scored.sort((left, right) => {
-    // Archived projects are fixed to the bottom (§4.6) but keep their relative order.
+    // Archived projects are fixed to the bottom (DESIGN.md §20) but keep their relative order.
     if (left.archived !== right.archived) return left.archived ? 1 : -1;
     if (right.total !== left.total) return right.total - left.total;
     // ① most recently active, ② project name ascending.
@@ -95,7 +95,7 @@ export function rankProjects(entries, options = {}) {
 }
 
 /**
- * The `order_debug` projection (§4.6): raw factors, per-factor ranks and scores,
+ * The `order_debug` projection (DESIGN.md §20): raw factors, per-factor ranks and scores,
  * plus the total — everything needed to reconcile the order by hand.
  *
  * @param {object} item one entry from `rankProjects`

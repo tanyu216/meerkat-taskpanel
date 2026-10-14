@@ -56,7 +56,7 @@
 | S4 | 活动流序 | `web/src/lib/activity-feed.js`：倒序时间线（B26） | 是 | **明确不受本契约影响**（§7.1） |
 | S5 | 等待队列序 | `web/src/lib/waiting-queue.js#waitingRows`：`since` 升序 = **最久优先**（B27） | 是 | **明确不受本契约影响**；并点名它与因子 W 是**两只不同的钟**（§8 R7） |
 
-**一处必须先说的口径精度（S2 的权威链是断的）**：`DESIGN.md` §20、`BLOCKS.md`、`src/shared/constants.mjs#PROJECT_ORDER_WEIGHTS` 都把权威记为 `ARCHITECTURE §4.6`，但**本 checkout 没有 `ARCHITECTURE.md`**（`docs/` 下也没有）。⇒ 本文件**只**把 `DESIGN.md` §20 + `src/shared/project-order.mjs` 当作可引用的口径，不去引一个不在树里的 §4.6。这条列进 §11 交 Elon。
+**一处必须先说的口径精度（S2 的权威链，v1.0 时是断的）**：`DESIGN.md` §20、`BLOCKS.md`、`src/shared/constants.mjs#PROJECT_ORDER_WEIGHTS` 当时都把权威记为 `ARCHITECTURE §4.6`，但**本 checkout 没有 `ARCHITECTURE.md`**（`docs/` 下也没有）。⇒ 本文件**只**把 `DESIGN.md` §20 + `src/shared/project-order.mjs` 当作可引用的口径，不去引一个不在树里的 §4.6。这条列进 §11 交 Elon。**已闭环**：doc-sync 卡 `T-20261014-042518` 把全仓 §4.6 引用改指 `DESIGN.md` §20，并对 `ARCHITECTURE.md` 家族补了存在性说明（`docs/README.md`「On `ARCHITECTURE.md` citations」）—— 见 §11 E3 / §12 U8。
 
 **原型（oracle）在本议题上的立场**：`design/prototype/index.html` **只**给侧栏项目行烤了序（`data-order-score` / `data-order-rank`）；**没有任何** per-assignee 权重排序的钩子、数据或文案。即：**本议题在原型上是空地**。照「原型是前端契约」的既定立场，这有两层含义，必须说清：
 
@@ -475,7 +475,7 @@ breakeven wP (A3 overtakes A1) = 0.29873  A1-A3 @0.30 = 0.001806
 |---|---|---|---|
 | E1 | 卡面 Background「可用数据面」 | 列了 `blocked_reason`，**全库无此字段** | 本契约不采用；见 §8 R1 |
 | E2 | 卡面 Background「可用数据面」 | 把 `depends_on` 列为字段；本实现里它是 **relation 的 `blocks` 边**，不是列 | 本契约按 relation 图取值；见 §4.2 核对表 |
-| E3 | `DESIGN.md` §20 / `BLOCKS.md` / `constants.mjs` | 引 `ARCHITECTURE §4.6` 为权威，但**树里没有 `ARCHITECTURE.md`** | 本契约改引 `DESIGN.md §20` + `src/shared/project-order.mjs`；§4.6 的引用链是**文档债**，建议另开一张 doc-sync 卡 |
+| E3 | `DESIGN.md` §20 / `BLOCKS.md` / `constants.mjs` | 引 `ARCHITECTURE §4.6` 为权威，但**树里没有 `ARCHITECTURE.md`** | 本契约改引 `DESIGN.md §20` + `src/shared/project-order.mjs`；§4.6 的引用链当时是**文档债**（建议另开一张 doc-sync 卡）。**已由 `T-20261014-042518` 修复**：全仓 §4.6 引用 → `DESIGN.md` §20，`ARCHITECTURE.md` 家族 → `docs/README.md` 的存在性说明 |
 | E4 | 前端域 vs core 域 | 优先级前端 5 值（含 `none`，被 `DOMAINS.PRIORITY` 冻结）vs core 4 值 | 本契约用显式全表；见 §8 R2 |
 | E5 | 卡面 Background「SLA 阈值口径 = `PROTOCOL §⑮`」 | §⑮ 是**团队**协议（工作时间口径、人工 patrol），**不是产品阈值** | 本契约把阈值做成**参数表 + 墙钟默认**，并把它列为签核问题 2；见 §5.2 |
 | E6 | 原型（oracle） | 本议题在原型上**完全空地**（只有项目序被烤进侧栏） | 本契约的验证判据全部落在纯函数/服务端；**若 Terry 要 UI toggle，需先开一个设计轮次动原型**；见 §2 |
@@ -505,7 +505,7 @@ breakeven wP (A3 overtakes A1) = 0.29873  A1-A3 @0.30 = 0.001806
 | U5 | 三步校准的**实际执行**（需要板历史 + 人类标注） | **Elon 排期**（§5.3，本 lane 未跑） |
 | U6 | ~~权重序在**整项目规模**上的性能测量~~ —— **已关闭（v1.1）** | ~~**C2 实现卡**（§8 R12）~~ 由 `T-20261014-043124` 补测（`test/core/commands/task-order-scale.test.mjs`，1004 卡），v1.1 回填 §8 R12 |
 | U7 | 「阻塞原因」要不要成为结构化字段（`blocked_reason`） | **另开 schema 卡**（§8 R1） |
-| U8 | `ARCHITECTURE.md` 引用链（§4.6）的修复 | **另开 doc-sync 卡**（§11 E3） |
+| U8 | ~~`ARCHITECTURE.md` 引用链（§4.6）的修复~~ —— **已关闭** | ~~**另开 doc-sync 卡**（§11 E3）~~ 由 `T-20261014-042518` 修复（全仓 §4.6 → `DESIGN.md` §20；`ARCHITECTURE.md` 家族 → `docs/README.md` 的存在性说明） |
 | U9 | ~~候选读「先截断再过滤」是**既有**缺陷（§8 R16）——修不修、与权重序一次性做还是分开做~~ —— **已关闭（v1.1）** | ~~**C2 实现卡 / Elon 排期**~~ **与权重序一次性做了**：`T-20261014-043124` 把作用域下推 SQL 并去掉截断（`CHANGELOG` 记录 `T-20261014-061937`），见 §7.3 |
 | U10 | `blocked_at` 不清空是否要顺手修（改成离开即清）——**改 schema 语义**、影响面未知 | **另开卡评估**（本契约**不要求**改，只要求 S 因子把门关严，§8 R15） |
 

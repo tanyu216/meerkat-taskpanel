@@ -8,7 +8,7 @@
  *   * **`/api/v1/events`** — SSE over `global_revision` (`sse.mjs`);
  *   * **static hosting** of `web/dist` when the frontend has been built
  *     (`static.mjs`); absence is normal and must not be an error;
- *   * **the board projection** — `/projects` ordered by the §4.6 weight
+ *   * **the board projection** — `/projects` ordered by the DESIGN.md §20 weight
  *     algorithm server-side, so clients consume an order they did not compute.
  *
  * `createTaskd` is library-shaped so the tests can start a board *in-process* on
