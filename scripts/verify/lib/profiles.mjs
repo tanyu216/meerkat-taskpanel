@@ -153,7 +153,13 @@ export function buildChecks(profile, opts = {}) {
 
   const installEnv = {
     MEERKAT_TASKPANEL_TARGET_HOME: home,
-    // Link, not copy: the skill wrapper resolves the CLI relative to itself.
+    // Link, not copy: this keeps the run on the wrapper's checkout-relative rung, so
+    // `wrapper --version` below exercises that resolution end to end. The mode
+    // `install.sh` *defaults* to — a copy, which carries no `src/` and so has to reach a CLI
+    // on PATH or through an explicit root — is the other half, and has its own per-host
+    // coverage in `test/install/installed-copy.test.mjs` (T-20261014-214002). Neither mode
+    // replaces the other: this one would not have caught that defect, and only that one
+    // covers what a user actually gets.
     MEERKAT_TASKPANEL_LINK: "1",
     MEERKAT_TASKPANEL_FORCE: "1",
   };

@@ -26,15 +26,34 @@ node scripts/run.mjs --help
 node scripts/run.mjs --version
 ```
 
-`scripts/run.mjs` resolves the repository root relative to itself and spawns
-`src/cli/index.mjs`, piping stdin/stdout/stderr and propagating the exit code — so it works
-regardless of the current working directory.
+`scripts/run.mjs` is a launcher: it finds the board CLI, spawns it with your arguments,
+pipes stdin/stdout/stderr through, and propagates the exit code. It is safe to call from
+any working directory, and it looks for the CLI in this order — using the first that
+exists, and never assuming one:
+
+1. `$MEERKAT_TASKPANEL_ROOT/src/cli/index.mjs` — a root you name explicitly;
+2. `$MEERKAT_TASKPANEL_REPO/src/cli/index.mjs` — the key `install.sh` records in the host
+   config;
+3. the checkout this skill sits in, when it is in one;
+4. `taskctl` on your `PATH`.
+
+So inside a checkout it runs the CLI beside it; installed on its own — which is how
+`install.sh` distributes it, and how every host consumes it — it uses a `taskctl` you have
+installed or a checkout you name. When it finds none of the four it **stops with a message
+saying where it looked and the three ways to fix it**, rather than dying inside Node.
 
 If `taskctl` is on your `PATH` (installed via `install.sh` or `npm link`), call it directly:
 
 ```bash
 taskctl --help
 ```
+
+> **What a `src/…` path means in these references.** Paths written as `src/…` (and
+> `docs/…`) are in the **taskpanel source repository**. This skill ships only `SKILL.md`,
+> `references/` and `scripts/`, so such a path is *provenance* — where a fact is defined —
+> and not a file you can open or run from an installed copy. Everything this skill asks you
+> to *run* goes through `taskctl`; where a reference documents a command that genuinely
+> needs the checkout, it says so.
 
 ## Claiming work (claim-first)
 

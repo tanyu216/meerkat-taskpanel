@@ -517,6 +517,18 @@ rm -rf ~/.agents/skills/meerkat-taskpanel ~/.agents/skills/meerkat-loop \
 > meerkat-taskpanel`, or the matching entry in OpenClaw's or Pi's MCP configuration. No
 > replacement is needed: the skill drives the `taskctl` CLI directly.
 
+The installed skill is self-contained but carries **no engine**: `install.sh` copies
+`SKILL.md`, `references/` and `scripts/` into the host, never `src/`. So the wrapper
+`scripts/run.mjs` resolves the CLI on a ladder — a checkout named by
+`MEERKAT_TASKPANEL_ROOT` (or by `MEERKAT_TASKPANEL_REPO`, the key the installer records in
+the host config), then a checkout around the skill itself, then `taskctl` on `PATH` — and
+when none of those holds a CLI it stops with the three ways to fix it, instead of the
+module-not-found stack an earlier version died with (T-20261014-214002). In the normal case
+it is the last of the four that answers: `install.sh` writes a `taskctl` shim into the
+host's own `bin/` (`~/.claude/bin/taskctl`, `~/.codex/bin/taskctl`, …), and putting that
+directory on your `PATH` gives the skill a CLI to find — as does `npm link` or a global
+install.
+
 ## Verifying the install
 
 **Everything that runs is verified inside the container** (see

@@ -289,6 +289,24 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The board skill's wrapper works when the skill is deployed on its own — which is how it
+  is deployed.** `install.sh` distributes the skill as a *copy* of `SKILL.md` +
+  `references/` + `scripts/`, so the taskpanel checkout is not beside it; but
+  `scripts/run.mjs` — the entry point `SKILL.md` documents — resolved the CLI only as
+  `<here>/../../..`, which from `<home>/.claude/skills/meerkat-taskpanel/scripts/` lands on
+  `<home>/.claude`. The documented command therefore died with
+  `Cannot find module '<home>/.claude/src/cli/index.mjs'`: a path the user never had,
+  reported as a module-not-found stack rather than as a condition of the deployment. The
+  wrapper now walks a checked ladder — an explicit `MEERKAT_TASKPANEL_ROOT` (or the
+  `MEERKAT_TASKPANEL_REPO` key `install.sh` records in the host config), then its own
+  checkout, then `taskctl` on `PATH` — skipping any rung whose CLI is not there, and
+  refusing with the three remedies when none is. So an installed copy runs a `taskctl` you
+  installed or a checkout you name, and the reference docs' `src/…` pointers are marked for
+  what they are — provenance in the source repository, not files an installed copy has — with
+  `card-schema.md` §Conformance labelled as needing the checkout and refusing clearly
+  (exit 2) when run without one. Regression-tested per host in
+  `test/install/installed-copy.test.mjs`, which installs by copy — the mode
+  `scripts/verify/profiles.mjs` never exercised, because it installs with `--link`.
 - **One light-dismiss rule for the floating controls, the label filter aligned to its two
   selects, and the list's two states made exclusive.** Three findings from Terry's
   2026-10-12 review of the board.
