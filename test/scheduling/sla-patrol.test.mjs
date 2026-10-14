@@ -28,7 +28,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  BOARD_CARD_ID,
   MECHANISM,
+  PEER_LIVENESS_K,
+  PEER_PERIOD_MIN,
   SLA_ROWS,
   addWorkingMinutes,
   alertIdFor,
@@ -63,13 +66,37 @@ const ago = (minutes) => new Date(Date.parse(NOW) - minutes * 60_000).toISOStrin
 const PERIOD_SECONDS = 300; // the installed patrol unit's cadence (5 min)
 
 /**
- * A card fixture. `created_at` defaults to `NOW`, so the board always shows a
- * recent leader action and `leader_stalled` (which needs *pending leader work*
- * and a quiet leader) stays out of the way of the row under test — the tests
- * that want it set an old `created_at` on purpose.
+ * A card fixture.
+ *
+ * `created_at` defaults to `NOW`, so the board always shows a recent leader
+ * action and `leader_stalled` (which needs *pending leader work* and a quiet
+ * leader) stays out of the way of the row under test — the tests that want it
+ * set an old `created_at` on purpose.
+ *
+ * `heartbeat_at` defaults fresh for the same reason: an `in_progress` card on a
+ * real board has one (it was claimed and is being worked), and the heartbeat row
+ * now emits a tuple of its own, so a fixture without one would be a card that is
+ * running and not running at the same time. The heartbeat tests set it (or its
+ * absence) on purpose.
+ *
+ * `creator_kind`/`creator_id` default to what the board records for a plain
+ * local writer — which is what `actorFromRequest` answers for a `curl` or a
+ * `taskctl` run with no agent identity. It matters now that leader attribution
+ * is an **author** test (§6.3-D): a card the leader created is a leader event,
+ * and a fixture that omitted the creator would model a board where nobody ever
+ * dispatches anything.
  */
 function card(fields) {
-  return { identifier: "T-1", status: "in_progress", created_at: NOW, status_changed_at: NOW, ...fields };
+  return {
+    identifier: "T-1",
+    status: "in_progress",
+    created_at: NOW,
+    status_changed_at: NOW,
+    heartbeat_at: NOW,
+    creator_kind: "human",
+    creator_id: "local",
+    ...fields,
+  };
 }
 
 function plan(cards, { trails = {}, now = NOW, periodSeconds = PERIOD_SECONDS } = {}) {
@@ -164,10 +191,14 @@ describe("SLA_ROWS (the §⑮ runtime mapping table, hook H6)", () => {
   });
 
   it("says which code path covers each row, including the rows it does not emit", () => {
-    assert.equal(SLA_ROWS.heartbeat_stale.coveredBy, "legacy-stale-alert");
-    assert.equal(SLA_ROWS.inspector_liveness.coveredBy, "not-implemented");
-    for (const row of ["blocked_clarification", "confirmation_gate", "defect_card_creation", "acceptance_card_creation", "leader_stalled"]) {
-      assert.equal(SLA_ROWS[row].coveredBy, "sla-patrol");
+    // Every row now names this module as a producer: `heartbeat_stale` because
+    // the SLA channel must exist beside the legacy envelope (§10.4, "F4"), and
+    // `inspector_liveness` because the row is emitted whenever the deployment
+    // wires the peer's marker (§8.4, "F3"). Neither *replaces* what was there.
+    assert.equal(SLA_ROWS.heartbeat_stale.coveredBy, "sla-patrol+legacy-stale-alert");
+    assert.equal(SLA_ROWS.inspector_liveness.coveredBy, "sla-patrol");
+    for (const row of Object.keys(SLA_ROWS)) {
+      assert.match(SLA_ROWS[row].coveredBy, /sla-patrol/, `${row} must name a producer`);
     }
   });
 
@@ -429,6 +460,152 @@ describe("defect_card_creation", () => {
     const result = plan([card({ identifier: "T-1", status: "in_review", status_changed_at: "2026-10-01T04:00:00.000Z" })]);
     assert.deepEqual(rowsOf(result), ["acceptance_card_creation"]);
   });
+
+  it("reads an exact defect origin verbatim — high, not low (F6)", () => {
+    const result = plan(
+      [card({ ...origin, identifier: "T-1" })],
+      { trails: { "T-1": [{ kind: "defect", created_at: "2026-10-02T04:00:00.000Z", body: "regression" }] } },
+    );
+    const alert = result.alerts.find((entry) => entry.sla_row === "defect_card_creation");
+    assert.equal(alert.confidence, "high", "the origin is one exact trail timestamp");
+    assert.equal(alert.evidence.open_predicate, "no_fix_card");
+  });
+
+  it("treats an incomplete board read as open but undecidable — low (F6, §6.3-B)", () => {
+    // The open predicate is a *negative* over the whole board ("no fix card
+    // exists"), so a snapshot cut off at the page cap cannot decide it. The row
+    // still fires — an unknown must not become silence — and says why.
+    const result = planSlaPatrol({
+      cards: [card({ ...origin, identifier: "T-1" })],
+      trails: { "T-1": [{ kind: "defect", created_at: "2026-10-02T04:00:00.000Z", body: "regression" }] },
+      now: NOW,
+      periodSeconds: PERIOD_SECONDS,
+      boardTruncated: true,
+    });
+    const alert = result.alerts.find((entry) => entry.sla_row === "defect_card_creation");
+    assert.equal(alert.confidence, "low");
+    assert.equal(alert.evidence.open_predicate, "no_fix_card_undecidable");
+    assert.match(alert.action, /could not be decided/);
+  });
+});
+
+describe("heartbeat_stale (the SLA channel beside the legacy envelope, §10.4 / F4)", () => {
+  const hbAlert = (result) => result.alerts.find((entry) => entry.sla_row === "heartbeat_stale");
+
+  it("emits the §4 tuple for a stale heartbeat, which the legacy envelope cannot", () => {
+    const result = plan([card({ status: "in_progress", heartbeat_at: ago(40) })]);
+    const alert = hbAlert(result);
+    assert.ok(alert, "the legacy alert is no longer the only channel for this row");
+    assert.equal(alert.measure_start_kind, "heartbeat_at");
+    assert.equal(alert.measure_start_source, "frontmatter");
+    assert.equal(alert.threshold_min, 30);
+    assert.equal(alert.confidence, "high", "heartbeat_at is exact frontmatter");
+    assert.equal(alert.target, "leader");
+    // The shared idempotency key the legacy envelope does not carry — which is
+    // precisely why the legacy shape cannot take part in the shared ledger.
+    assert.match(alert.dedup_key, /#heartbeat_stale#overdue@/);
+  });
+
+  it("fires one period early, at the lead — not only once it is already stale", () => {
+    // The legacy alert fires past 30 minutes; the tuple's `warn` is `L − P`, so
+    // the two envelopes do not even describe the same instant. That is the point
+    // of having both: the row is now 到点提醒, and the legacy consumer is intact.
+    assert.equal(hbAlert(plan([card({ heartbeat_at: ago(26) })])).severity, "warn");
+    assert.equal(hbAlert(plan([card({ heartbeat_at: ago(24) })])) ?? null, null);
+  });
+
+  it("escalates at the further bound with an immediate notify", () => {
+    const alert = hbAlert(plan([card({ heartbeat_at: ago(400) })]));
+    assert.equal(alert.severity, "escalate");
+    assert.equal(alert.notify, "immediate");
+    assert.equal(alert.threshold_min, 30);
+  });
+
+  it("applies only to in_progress cards", () => {
+    const result = plan([card({ status: "in_review", heartbeat_at: ago(600), status_changed_at: ago(600) })]);
+    assert.equal(rowsOf(result).includes("heartbeat_stale"), false);
+  });
+
+  it("alerts with no threshold when the heartbeat cannot be read (§6.5)", () => {
+    const result = plan([card({ heartbeat_at: "not-a-timestamp" })]);
+    const alert = hbAlert(result);
+    assert.equal(alert.measure_start_kind, "unverifiable");
+    assert.equal(alert.threshold_min, null);
+    assert.equal(alert.severity, "warn");
+    assert.equal(alert.confidence, "low");
+  });
+});
+
+describe("inspector_liveness (the mutual watchdog, §5.3 / §8.4 / F3)", () => {
+  const live = (input) => planSlaPatrol({ cards: [], trails: {}, now: NOW, periodSeconds: PERIOD_SECONDS, ...input });
+  const livenessAlert = (result) => result.alerts.find((entry) => entry.sla_row === "inspector_liveness");
+  /** The derived bound this mechanism watches the peer against. */
+  const BOUND_MIN = PEER_LIVENESS_K * PEER_PERIOD_MIN;
+
+  it("raises when the peer has run and gone quiet past the derived bound", () => {
+    const alert = livenessAlert(live({ peerLastOkAt: ago(BOUND_MIN + 1) }));
+    assert.ok(alert, "a peer marker older than k × P_peer is a silent inspector");
+    assert.equal(alert.severity, "warn");
+    assert.equal(alert.threshold_min, null, "no PROTOCOL §⑮ row ⇒ no invented threshold");
+    assert.equal(alert.confidence, "high", "the marker's own timestamp is exact");
+    assert.equal(alert.target, "leader");
+    assert.equal(alert.evidence.peer, "openclaw-cron");
+    assert.equal(alert.evidence.peer_state, "present");
+  });
+
+  it("stays silent while the peer is inside its bound", () => {
+    assert.equal(livenessAlert(live({ peerLastOkAt: ago(BOUND_MIN - 1) })) ?? null, null);
+    assert.equal(livenessAlert(live({ peerLastOkAt: NOW })) ?? null, null);
+  });
+
+  it("registers a never-published peer marker as a dependency, not a per-period alarm", () => {
+    // The peer's half has not landed. Alarming every pass on that is the "never
+    // green" failure mode the contract exists to prevent, so the default is
+    // silence; a deployment that *requires* the peer asks for the alarm instead.
+    assert.equal(livenessAlert(live({ peerLastOkAt: null })) ?? null, null);
+    const required = livenessAlert(live({ peerLastOkAt: null, peerRequired: true }));
+    assert.ok(required, "with the peer required, an absent marker is a liveness failure");
+    assert.equal(required.measure_start_kind, "unverifiable");
+    assert.equal(required.threshold_min, null);
+    assert.equal(required.severity, "warn");
+    assert.equal(required.evidence.peer_state, "absent");
+  });
+
+  it("is not leader-owed work, so it can never make a quiet board look stalled", () => {
+    const result = live({ peerLastOkAt: null, peerRequired: true });
+    assert.deepEqual(rowsOf(result), ["inspector_liveness"]);
+  });
+});
+
+describe("assignee_changed (the §7 substantive-change channel, F7)", () => {
+  const outOfBounds = (over = {}) =>
+    card({ status: "blocked", blocked_reason: "out_of_bounds", blocked_at: ago(200), status_changed_at: ago(200), ...over });
+  const entry = (at, body, author = { kind: "human", id: "local" }) =>
+    ({ kind: "change", created_at: at, body, author_kind: author.kind, author_id: author.id });
+  const basisOf = (result) => result.alerts.find((a) => a.sla_row === "blocked_clarification")?.releasable_basis ?? null;
+
+  it("reads the reassignment from the trail, not from a snapshot that has no history", () => {
+    const result = plan([outOfBounds()], { trails: { "T-1": [entry(ago(100), "改派给 turing")] } });
+    assert.equal(basisOf(result), "assignee_changed");
+    assert.equal(result.alerts.find((a) => a.sla_row === "blocked_clarification").releasable, true);
+  });
+
+  it("requires the entry to be newer than the block — an old reassignment is history", () => {
+    const result = plan([outOfBounds()], { trails: { "T-1": [entry(ago(300), "reassign: linus")] } });
+    assert.equal(basisOf(result), null);
+  });
+
+  it("requires the entry to say it was a reassignment", () => {
+    const result = plan([outOfBounds()], { trails: { "T-1": [entry(ago(100), "noted, will look after lunch")] } });
+    assert.equal(basisOf(result), null);
+  });
+
+  it("applies only to a block raised back as out_of_bounds", () => {
+    const result = plan([card({ status: "blocked", blocked_reason: "clarify", blocked_at: ago(200), status_changed_at: ago(200) })], {
+      trails: { "T-1": [entry(ago(100), "reassign: turing")] },
+    });
+    assert.equal(basisOf(result), "clarification_trail_after_block", "the clarify basis, not the reassignment one");
+  });
 });
 
 describe("acceptance_card_creation", () => {
@@ -466,6 +643,16 @@ describe("leader_stalled", () => {
   /** A leader-owed card (blocked, wait open) on a board whose newest card is old. */
   const blocked = (identifier, created = ago(200)) =>
     card({ identifier, status: "blocked", created_at: created, blocked_at: ago(30), status_changed_at: ago(30) });
+  /** A comment in the shared wire shape, written by whoever is named. */
+  const comment = (kind, at, author, body = "") => ({
+    kind,
+    created_at: at,
+    body,
+    author_kind: author.kind,
+    author_id: author.id,
+  });
+  const LEADER = { kind: "human", id: "local" };
+  const WORKER = { kind: "agent", id: "linus" };
 
   it("fires when leader-owed work is pending and no leader action is observable", () => {
     const result = plan([blocked("T-1")], { now: NOW });
@@ -473,13 +660,25 @@ describe("leader_stalled", () => {
     assert.equal(alert.severity, "warn");
     assert.equal(alert.threshold_min, 60);
     assert.equal(alert.target, "leader");
-    assert.equal(alert.measure_start_kind, "trail_event");
-    assert.equal(alert.confidence, "low", "authorship is not recorded on this board");
+    // The newest leader-attributed event is the card's own creation (the leader
+    // is the only dispatcher, §⑩), read verbatim from the frontmatter — an exact
+    // candidate inside the lookback, so §6.2's rule makes it `high`.
+    assert.equal(alert.measure_start_kind, "created_at");
+    assert.equal(alert.measure_start_source, "frontmatter");
+    assert.equal(alert.confidence, "high");
   });
 
   it("stays silent on an idle board (no leader-owed work) — the conditioning rule", () => {
     const result = plan([card({ identifier: "T-1", status: "in_progress", status_changed_at: ago(600) })]);
     assert.deepEqual(result.alerts, []);
+  });
+
+  it("stays silent on a quiet board whose only alert would be a stale heartbeat", () => {
+    // A stale heartbeat is not leader-owed work (§5.1): if it conditioned this
+    // row, every quiet night would read as a stalled leader (§9.4).
+    const result = plan([card({ identifier: "T-1", created_at: "2026-09-01T04:00:00.000Z", status_changed_at: ago(600), heartbeat_at: ago(600) })]);
+    assert.equal(hasStalled(result), false);
+    assert.deepEqual(rowsOf(result), ["heartbeat_stale"]);
   });
 
   it("stays silent while a leader action is observable on the board", () => {
@@ -496,15 +695,74 @@ describe("leader_stalled", () => {
     assert.equal(alert.notify, "immediate");
   });
 
-  it("counts a confirm / decision trail entry as leader activity", () => {
+  it("counts a leader-authored confirm / decision / change entry as leader activity", () => {
     const fresh = { identifier: "T-2", status: "in_progress", created_at: "2026-09-01T04:00:00.000Z", status_changed_at: ago(5) };
     const staleBlocked = blocked("T-1", "2026-09-01T04:00:00.000Z");
     const silent = plan([staleBlocked, fresh]);
-    const active = plan([staleBlocked, fresh], {
-      trails: { "T-2": [{ kind: "confirm", created_at: ago(10), body: "confirmed" }] },
+    for (const kind of ["confirm", "decision", "change"]) {
+      const active = plan([staleBlocked, fresh], {
+        trails: { "T-2": [comment(kind, ago(10), LEADER)] },
+      });
+      assert.equal(hasStalled(silent), true, `${kind}: the quiet board stalls`);
+      assert.equal(hasStalled(active), false, `${kind}: a leader's ${kind} resets the clock`);
+    }
+  });
+
+  it("does not count a worker's kind=change entry as leader activity (F2)", () => {
+    // The whole point of the ruling: a chatty worker must not be able to mask a
+    // real stall by narrating its own progress.
+    const staleBlocked = blocked("T-1", "2026-09-01T04:00:00.000Z");
+    const worker = plan([staleBlocked], { trails: { "T-1": [comment("change", ago(1), WORKER)] } });
+    assert.equal(hasStalled(worker), true, "a worker's change must not reset the stall clock");
+    const leader = plan([staleBlocked], { trails: { "T-1": [comment("change", ago(1), LEADER)] } });
+    assert.equal(hasStalled(leader), false, "the leader's change must reset it");
+  });
+
+  it("narrows the attribution to an explicitly configured leader id", () => {
+    // `--sla-leader` is how a deployment whose leader writes as an *agent* keeps
+    // the same set the peer mechanism uses; with it set, kind alone is not enough
+    // and the board's own human-authority default is overridden.
+    const staleBlocked = blocked("T-1", "2026-09-01T04:00:00.000Z");
+    const asCoordinator = planSlaPatrol({
+      cards: [staleBlocked],
+      trails: { "T-1": [comment("change", ago(1), { kind: "agent", id: "elon" })] },
+      now: NOW,
+      periodSeconds: PERIOD_SECONDS,
+      leaderId: "elon",
     });
-    assert.equal(hasStalled(silent), true);
-    assert.equal(hasStalled(active), false);
+    assert.equal(hasStalled(asCoordinator), false, "a configured leader id counts");
+    const asSomeoneElse = planSlaPatrol({
+      cards: [staleBlocked],
+      trails: { "T-1": [comment("change", ago(1), { kind: "agent", id: "linus" })] },
+      now: NOW,
+      periodSeconds: PERIOD_SECONDS,
+      leaderId: "elon",
+    });
+    assert.equal(hasStalled(asSomeoneElse), true, "a configured leader id counts only the leader");
+  });
+
+  it("keeps the real pre-lookback origin, and says the board is quiet (low)", () => {
+    // Dropping a >7-day origin would silently soften the deepest stall into a
+    // fresh one; §6.3-D wants the real start emitted and the *confidence* to
+    // carry the "no leader event in the lookback" fact.
+    const result = plan([blocked("T-1", "2026-09-01T04:00:00.000Z")]);
+    const alert = result.alerts.find((entry) => entry.sla_row === "leader_stalled");
+    assert.equal(alert.measure_start_at, "2026-09-01T04:00:00.000Z");
+    assert.equal(alert.confidence, "low");
+    assert.equal(alert.severity, "escalate", "the real origin keeps the real tier");
+  });
+
+  it("reports a board that has never shown a leader event rather than staying quiet", () => {
+    // §6.3-D's last sentence: an inspector that has never seen the leader act
+    // must say so. No threshold (there is no origin to count from), `warn` only.
+    const orphan = blocked("T-1", "2026-09-01T04:00:00.000Z");
+    delete orphan.created_at;
+    const result = plan([{ ...orphan, creator_kind: "agent", creator_id: "linus" }]);
+    const alert = result.alerts.find((entry) => entry.sla_row === "leader_stalled");
+    assert.equal(alert.measure_start_kind, "unverifiable");
+    assert.equal(alert.threshold_min, null);
+    assert.equal(alert.severity, "warn");
+    assert.equal(alert.confidence, "low");
   });
 
   it("anchors the alert on a real leader-owed card", () => {
@@ -780,6 +1038,29 @@ describe("runSlaPatrolTick (injected deps)", () => {
     assert.equal(second.alerts.length, 0);
     assert.equal(second.suppressed.length, 1);
     assert.equal(recheck.count(), 1, "a suppressed alert costs no provider read");
+  });
+
+  it("does not re-read a card for a board-level row — there is no card to read", async () => {
+    // `leader_stalled` and `inspector_liveness` name the board, not a card. Asking
+    // the provider for the sentinel would be a read that cannot succeed and a log
+    // line that reports a failure that is not one; the row goes straight out,
+    // which is also what §9.3 requires of a re-check that cannot be performed.
+    const asked = [];
+    const result = await runSlaPatrolTick(runnerDeps({
+      cards: [card({ status: "blocked", blocked_at: ago(130), created_at: ago(200) })],
+      peerLastOkAt: ago(1_000),
+      peerRequired: true,
+      recheck: async (cardId) => {
+        asked.push(cardId);
+        return { checked: true, card: { status: "blocked" } };
+      },
+    }));
+    const liveness = result.alerts.find((a) => a.sla_row === "inspector_liveness");
+    assert.equal(liveness.card_id, BOARD_CARD_ID);
+    // The card rows are re-read (the leader_stalled row is anchored on a real
+    // card); the sentinel never is.
+    assert.deepEqual(asked, ["T-1", "T-1"]);
+    assert.equal(asked.includes(BOARD_CARD_ID), false, "the provider is never asked for a card that does not exist");
   });
 
   it("starts no LLM turn and moves no card", async () => {
