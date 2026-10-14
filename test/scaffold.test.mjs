@@ -322,6 +322,47 @@ describe("repository guard files", () => {
       assert.ok(existsSync(join(ROOT, file)), `${file} must exist`);
     }
   });
+
+  it("ships the contribution contract: CONTRIBUTING, CODEOWNERS, PR and issue templates", () => {
+    for (const file of [
+      "CONTRIBUTING.md",
+      join(".github", "CODEOWNERS"),
+      join(".github", "PULL_REQUEST_TEMPLATE.md"),
+      join(".github", "ISSUE_TEMPLATE", "bug_report.md"),
+      join(".github", "ISSUE_TEMPLATE", "feature_request.md"),
+      ".mailmap",
+    ]) {
+      assert.ok(existsSync(join(ROOT, file)), `${file} must exist`);
+    }
+  });
+
+  it("CONTRIBUTING names the gate a contribution actually has to pass", async () => {
+    /* Non-vacuity: a CONTRIBUTING.md that only says "be nice" would satisfy an
+     * existence check. Pin the two facts a contributor cannot guess — the container
+     * gate and the commit-before-you-run-it ordering — plus the generated-skills rule. */
+    const text = await readFile(join(ROOT, "CONTRIBUTING.md"), "utf8");
+    for (const needle of ["npm run verify:docker", "commit", "sync-skills", "contract"]) {
+      assert.ok(text.includes(needle), `CONTRIBUTING.md must mention ${needle}`);
+    }
+  });
+
+  it("CODEOWNERS routes the repository, not just some paths", async () => {
+    /* A CODEOWNERS file with only narrow rules leaves everything else unreviewed, which
+     * is the exact opposite of what the file is for. Require the catch-all rule. */
+    const text = await readFile(join(ROOT, ".github", "CODEOWNERS"), "utf8");
+    const rules = text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "" && !line.startsWith("#"));
+    assert.ok(rules.length >= 1, "CODEOWNERS must carry at least one rule");
+    assert.ok(
+      rules.some((rule) => rule.startsWith("*")),
+      "CODEOWNERS must have a catch-all rule so no path is left unowned",
+    );
+    for (const rule of rules) {
+      assert.match(rule, /@[A-Za-z0-9-]+/, `every CODEOWNERS rule needs an owner: ${rule}`);
+    }
+  });
 });
 
 describe("taskctl CLI", () => {

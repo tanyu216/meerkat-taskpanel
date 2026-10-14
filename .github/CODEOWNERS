@@ -1,0 +1,8 @@
+# Review routing.
+#
+# GitHub reads this from `.github/`, the repository root or `docs/` — this file is the
+# first of those. The default rule below is deliberately the only one: there is a single
+# maintainer, so per-path rules would route every path to the same person while adding a
+# second list to keep in sync. Add narrower rules here the moment a second owner exists.
+
+*       @tanyu216

@@ -415,8 +415,9 @@
 ### 8.1 可跑的命令串（E⑤）
 
 ```sh
-# ① 原型实测（本卡已跑；六档 + 五帧截图）—— 原始记录 workspace/T-20261013-023717/verify/proto-*.json
-node /Users/tanyu/.openclaw/team/workspace/T-20261013-023717/verify/r12-probe.mjs --shots
+# ① 原型实测（本卡已跑；六档 + 五帧截图）—— 原始记录 <本卡工作区>/verify/proto-*.json
+#    探针脚本在仓库之外的本卡工作区里，按你手上的实际路径替换 <本卡工作区>。
+node <本卡工作区>/verify/r12-probe.mjs --shots
 
 # ② 结构/溢出/console 腿（引擎）—— 当前实现：A 腿块未落，只作「无回归」基线
 node ~/.openclaw/team/tools/ui-align/check.mjs --config web/.ui-align.json board-m2 --json

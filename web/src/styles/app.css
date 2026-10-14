@@ -12,7 +12,7 @@
  * daisyUI component class or a Tailwind utility now says it in the template, and
  * every purely semantic hook is a `data-*` attribute — the responsive layer
  * selects `[data-side-name]`, `[data-nav-count]`, `[data-caret]`, … instead of a
- * class (ui-align SOP §B4). A `.td-*` class survives only where it carries
+ * class. A `.td-*` class survives only where it carries
  * something daisyUI cannot express. The surviving set, one reason each:
  *
  *   colour maps      [data-status] / [data-priority] → the single var the stripe,

@@ -4,8 +4,9 @@
  *
  * `design/contracts/rail-chip-overflow.md` §7 lists D1–D7 as assertions the
  * **implementation card must bring itself**, and §7 note 1 says why: every
- * existing gate is blind to this defect. `ui-align` has no chip-box rule (the
- * manifests carry none — `grep side-icon web/manifests/` hits one prose string),
+ * existing gate is blind to this defect. There is no chip-box rule anywhere —
+ * the prototype-comparison manifests carried none (a `grep side-icon` over them
+ * hit one prose string),
  * `blocks.contract.mjs` pins a single `count … equals: 0` about the hook, and
  * `docOverflow` is `{0,0}` both before and after the breakage, so dom-smoke's
  * viewport rule never fires. A green suite therefore says nothing about this
@@ -27,8 +28,8 @@
  * a real `createTaskd` over a scratch SQLite board seeded through the real
  * `createProject`, whose 36-character legacy prefix is produced by the real
  * `projectPrefix` fallback, not by a fixture. The `fixture` engine runs the
- * same `web/dist` through the fixture harness `dom-smoke.mjs` and `ui-align`
- * already share, with the same token (derived by the same real function)
+ * same `web/dist` through the fixture harness `dom-smoke.mjs` provides, with the
+ * same token (derived by the same real function)
  * injected into that harness's payload, so the leg also runs where a database
  * is not wanted. `--engine both` (default) reports both; the assertions are
  * identical and neither is skipped silently.
@@ -276,7 +277,7 @@ function probe() {
 
 /* ------------------------------------------------------------------ engines */
 
-/** The fixture harness `dom-smoke.mjs` / `ui-align` share, with the long token injected. */
+/** The fixture harness `dom-smoke.mjs` provides, with the long token injected. */
 async function startFixtureEngine() {
   const { server, port, data } = await startServer();
   const like = (p, id, name, prefix) => ({ ...structuredClone(p), id, name, prefix, task_count: 0 });

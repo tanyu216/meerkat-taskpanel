@@ -296,9 +296,8 @@ export function fixtureApi() {
  * Boot the fixture API + static `web/dist` server.
  *
  * `port` defaults to 0 (an ephemeral port), which is what the smoke itself and
- * `shot-compare.mjs` want. A caller that has to *name* the port up front — the
- * `ui-align` machine check, whose `devServer` leg is handed a free port by the
- * engine — passes `{ port }` so the server binds where the engine is looking.
+ * `shot-compare.mjs` want. A caller that has to *name* the port up front passes
+ * `{ port }`, so the server binds where the caller is already looking.
  */
 export function startServer({ port = 0 } = {}) {
   const data = fixtureApi();

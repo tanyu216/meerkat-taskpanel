@@ -282,10 +282,12 @@ R8 §2.3（`design/fidelity-r8.md`，卡 `T-20261012-211516`）把上限写成**
 
 **「改前」是怎么测到的（可复核）**：`verify/pristine/`（`index.html` + `app.js` + `tw.css` + `package.json` + `favicon.svg`，逐字取自 `git show 2eb6a9e:design/prototype/*`；`vendor/` 与 `src/` 原样拷贝）由 `verify/make-pristine.mjs` 生成；探针以该副本的 `index.html` 为入参实测。因此「改前」一栏是**同一探针对同一原型的旧版重跑**，不是推断、也不是从 diff 反读。
 
-**复跑命令（逐条，可直接粘）**：
+**复跑命令（逐条）**：
+
+> 与 r11 同：探针脚本在本卡的工作区里，而**工作区在仓库之外**。先设 `W`，其余命令即可原样粘贴。
 
 ```sh
-W=/Users/tanyu/.openclaw/team/workspace/T-20261013-023310/verify
+W=<本卡工作区>/verify    # 在仓库之外；按你手上的实际路径填
 node "$W/make-pristine.mjs"          # 生成基线版副本（默认锚定 2eb6a9e；改前一列的证据）
 node "$W/r12-probe.mjs" before       # 改前：A1–A8 逐条打 PASS/FAIL
 node "$W/r12-probe.mjs" after        # 改后：同上

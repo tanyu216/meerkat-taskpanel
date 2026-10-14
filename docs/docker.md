@@ -268,13 +268,12 @@ host, because they are static or pure and touch nothing:
   `node scripts/sync-skills.mjs --check`;
 - `git` operations, file listing and inspection;
 - static rendering/screenshots of the design prototype under `design/prototype/`;
-- browser-rendered frontend checks — the DOM/selector contract assertions, the
-  prototype-vs-implementation screenshots for `web/`, and the `ui-align` machine check
-  (`web/manifests/`, which serves the app itself). The image has no Chromium (installing
+- browser-rendered frontend checks — the DOM/selector contract assertions and the
+  prototype-vs-implementation screenshots for `web/`. The image has no Chromium (installing
   it needs an apt mirror, i.e. network at build time), so these stay on the host, driving a
   host-installed Chrome. This is the "browser rendering" exception under §9.1. For the same
-  reason `test/web/tokens.parity.test.mjs` reads `design/brand/tokens.css`, which
-  `.dockerignore` keeps out of the image, so it skips inside the container.
+  reason `test/web/i18n.catalogue.test.mjs` reads `design/prototype/index.html`, which
+  `.dockerignore` keeps out of the image, so it self-skips inside the container.
 
 Everything that *installs*, *serves*, or *deploys* goes through Docker.
 

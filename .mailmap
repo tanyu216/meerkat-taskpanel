@@ -1,0 +1,11 @@
+# Canonical author identities.
+#
+# `git shortlog` and `git log` fold the left-hand identity onto the right-hand spelling,
+# so one person stops counting as several. The canonical spellings are the ones on the
+# left; the entries on the right are pre-existing commit identities, kept so the history
+# reads as one author per person without rewriting it.
+#
+# `yu.tan <yu.tan@walanyun.com>` is already canonical — every commit carries it verbatim —
+# so it needs no line here. Only a spelling that differs from its canonical form does.
+
+turing <turing@openclaw.local> <turing@team.local>

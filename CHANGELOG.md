@@ -128,6 +128,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `favicon-32-dark.png`, transparent, the Sentinel Watch mark lifted to the dark brand line.
   The light favicons keep their role; the dark pair gives a dark tab strip a mark rendered
   for its ground, and closes the gap left when only the light pair shipped.
+- **A contribution contract.** `CONTRIBUTING.md` (the container gate and the
+  commit-before-you-run-it ordering, the pull-request flow, and the conventions CI
+  enforces), `.github/CODEOWNERS`, a pull-request template, bug and feature issue templates,
+  and a `.mailmap` that folds the two `turing` spellings onto one author.
+  `test/scaffold.test.mjs` asserts they exist **and** that the two carrying meaning say the
+  right thing rather than merely being present. `docs/development.md` gains the
+  pull-request section, including the repository settings a maintainer has to set by hand.
 
 ### Changed
 
@@ -255,6 +262,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   differing config is otherwise never rewritten without `--force`. The board engine itself,
   the `taskctl` shim and the wake glue's project resolver stay checkout-resident; that
   remaining half of the split is its own card.
+- **`web/scripts/shot-compare.mjs` no longer carries a default output directory.** Review
+  artefacts belong to the task workspace, which lives outside this checkout, so the only
+  default the script could have had was one machine's absolute path. `--out <dir>` (or
+  `SHOT_OUT`) is now required, and a run without one fails with usage rather than writing
+  somewhere only its author could find.
 
 ### Removed
 
@@ -517,7 +529,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   The block contract also gained the row-level **floor** under the project count pill:
   after a retired assertion went, the R7 ② family stated only "at most one pill per row",
   so a row that lost its pill while its siblings kept theirs was invisible.
-  Machine checks: `ui-align board-m2 --strict`, `shot-compare --strict`,
+  Machine checks: `shot-compare --strict`,
   `node --test "test/web/**/*.test.mjs"` and the DOM smoke, plus the 20-frame matrix.
   `design/**` is untouched — every change is the implementation moving to the frozen
   prototype.
@@ -565,6 +577,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `/tmp` — or any symlinked checkout — hit it on every file. Both sides are now resolved
   with `realpathSync` before the comparison, and `test/install/apply-guard.test.mjs` pins the
   direct, symlinked and imported states.
+- **Host-absolute paths out of the files a second person has to read.** Six of them told a
+  reader to run a command at a path that exists on exactly one machine: the `shot-compare`
+  default above, `design/prototype/README.md` (the `tw.css` build now leads with the in-repo
+  `npm run build:css`, with the out-of-tree scratch-toolchain variant kept as the copy-free
+  alternative), and four round records (`design/fidelity-r11/r12/r12-supplement/r16.md`)
+  whose repro commands now take their workspace through a placeholder. The records still
+  describe what was run; they no longer claim a path the reader cannot have.
+- **`docs/docker.md` cited a test that does not exist.** Its host-allowed-checks list named
+  `test/web/tokens.parity.test.mjs` reading `design/brand/tokens.css`. No test reads that
+  file and no test has that name; the sentence now names the check that really does
+  self-skip inside the container for the same reason.
 
 ## [1.0.0] - 2026-10-09
 

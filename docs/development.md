@@ -82,6 +82,39 @@ that script in `package.json`; the workflow invokes the script rather than resta
 numbers, so there is a single place to change them. A miss makes the script exit non-zero
 and turns the job red.
 
+## Contributing: the pull-request flow
+
+[CONTRIBUTING.md](../CONTRIBUTING.md) is the contributor-facing version of this section.
+The mechanics:
+
+1. Branch off `main`.
+2. Push the branch and **open a pull request**.
+3. Wait for CI. Three workflows already carry a `pull_request` trigger, so no workflow
+   change is needed for PR gating:
+   - `.github/workflows/check.yml` — the Node 22/24 matrix plus the container job;
+   - `.github/workflows/contract-gate.yml` — the contract snapshot and the route-request lint;
+   - `.github/workflows/security-scan.yml`.
+4. Merge once green.
+
+Nothing in the tree can *require* step 2. The `pre-push` hook is a local courtesy and
+`git push --no-verify` bypasses it (and a fresh clone has no hooks at all until
+`git config core.hooksPath .githooks` — see [.githooks/README.md](../.githooks/README.md)).
+
+### Repository settings a maintainer must set by hand
+
+These live in GitHub, not in the repository, so nothing here can assert them. On `main`:
+
+- **Require a pull request before merging.**
+- **Require status checks to pass.** The job ids, exactly as they appear on a check run:
+  `check` and `docker` (from `check.yml`), `contract` (from `contract-gate.yml`), and
+  `dependency-scan` (from `security-scan.yml`). `docker` is the authoritative job — a rule
+  that requires `check` but not `docker` gates the fast half and not the real one.
+  `security-scan.yml`'s other job, `sbom`, also runs on every trigger, but it exists to
+  publish a release artefact rather than to judge a change; requiring it is defensible but
+  it is slower than the rest, so it is a per-repository call.
+- **Do not allow bypassing the above settings**, if the intent is that `main` is genuinely
+  protected rather than advisory.
+
 ## Two build layers: engine and web
 
 The repository builds two independent layers plus a release tree, and the two `dist` names
