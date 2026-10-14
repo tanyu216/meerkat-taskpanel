@@ -21,7 +21,14 @@ import {
   uniqueColumnsFrom,
   uniqueKey,
 } from "../../../src/core/storage/sqlite-errors.mjs";
-import { DB_RAISE_CODES, DomainError, ERROR_CODES, SQL_CONSTRAINT_CODES } from "../../../src/shared/errors.mjs";
+import {
+  DB_RAISE_CODES,
+  DomainError,
+  ERROR_CODES,
+  SQL_CONSTRAINT_CODES,
+  TECHNICAL_ERROR_TEXT,
+  toErrorPayload,
+} from "../../../src/shared/errors.mjs";
 import { cleanupTempDirs, insertProject, insertTask, reasonCode, withBoard } from "../../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);
@@ -201,6 +208,28 @@ describe("storage/sqlite-errors — constraint failures", () => {
     assert.equal(mapped.message.includes(token), false);
     assert.equal(JSON.stringify(mapped.details).includes(token), false);
     assert.match(mapped.details.sqlite.message, /td_\*\*\*\*/);
+  });
+
+  it("carries engine text on no code's envelope, mapped or hand-built", () => {
+    // Acceptance ③ as a sweep over the *whole* vocabulary, not a sample: every
+    // declared code (built by hand with a raw engine message — the case the
+    // mapper is not the only producer of) and every errcode the mapper knows,
+    // through `toErrorPayload` — the document `server/router.mjs` serialises.
+    // The standalone reading of the same predicate is
+    // `docs/verify/T-20261014-152924/scan-error-envelope.mjs`.
+    for (const code of Object.keys(ERROR_CODES)) {
+      const payload = toErrorPayload(new DomainError(code, { message: "CHECK constraint failed: x" }));
+      assert.equal(TECHNICAL_ERROR_TEXT.test(payload.message), false, `${code}: ${payload.message}`);
+    }
+    for (const errcode of Object.values(SQLITE_ERRCODE)) {
+      const payload = toErrorPayload(
+        mapSqliteError(sqliteFailure(errcode, "UNIQUE constraint failed: tasks.id"), { op: "sweep" }),
+      );
+      assert.equal(TECHNICAL_ERROR_TEXT.test(payload.message), false, `errcode ${errcode}: ${payload.message}`);
+    }
+    // A non-DomainError throw is normalised the same way.
+    const wrapped = toErrorPayload(sqliteFailure(SQLITE_ERRCODE.CHECK, "NOT NULL constraint failed: tasks.title"));
+    assert.equal(TECHNICAL_ERROR_TEXT.test(wrapped.message), false, wrapped.message);
   });
 
   it("covers every SQL_CONSTRAINT_CODES bucket member with a reachable input", () => {
