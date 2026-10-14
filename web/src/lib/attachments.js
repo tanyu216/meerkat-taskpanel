@@ -1,14 +1,21 @@
 /**
- * B09 · the drawer's attachment rows (M2).
+ * B09 · the drawer's attachment rows (M2, re-sourced by T-20261014-212017-4).
  *
- * Attachment metadata lives in the free-form `task.meta` bucket — the same
- * convention `[data-card-attachment-count]` already reads
- * (`meta.attachment_count`). There is no list endpoint yet (`GET
- * /api/v1/attachments/:id/content` streams bytes; the `attachments` table holds
- * the metadata), so the drawer renders whatever the task carries under
- * `meta.attachments` and shows the "no attachments" state when it carries
- * nothing. The row shape follows the table's own vocabulary: `filename` and
- * `size` in bytes.
+ * The rows come from the **`attachments` table** — `GET /api/v1/tasks/:ref/attachments`
+ * — which is the G2 ruling (`T-20261014-212017-2`, 2026-10-14: "附件唯一真源 =
+ * `attachments` 表；`meta.attachments` 数组约定**不引入**"). The old reader here
+ * took `task.meta.attachments`, a convention with **no writer anywhere**
+ * (`--meta attachments=…` stores a string, not an array), so the drawer could
+ * only ever show whatever a hand-written `meta` bucket happened to hold while a
+ * real upload went somewhere the UI never looked.
+ *
+ * `[data-card-attachment-count]` is *not* re-sourced here: it reads
+ * `meta.attachment_count` on the card face, which is B07's own seat and a
+ * separate question from "what does this card's file list hold". Changing it
+ * would be a design change, and this card makes none.
+ *
+ * The row shape follows the table's own vocabulary: `id`, `filename`, `size` in
+ * bytes, `content_type`.
  */
 
 /**
@@ -29,15 +36,39 @@ export function formatFileSize(bytes) {
 }
 
 /**
- * The drawer's rows, in the order the task carries them, with any entry that
- * names no file dropped (a row with an empty name is not an attachment).
+ * The drawer's rows, in the order the wire returned them (the table's own
+ * `created_at, id`), with any entry that names no file dropped — a row with an
+ * empty name is not an attachment.
  *
- * @param {unknown} meta a task's `meta`
- * @returns {{name: string, size: string}[]}
+ * @param {unknown} rows the `attachments` half of the listing
+ * @returns {{id: string, name: string, size: string, contentType: string|null}[]}
  */
-export function attachmentRows(meta) {
-  const list = Array.isArray(meta?.attachments) ? meta.attachments : [];
+export function attachmentRows(rows) {
+  const list = Array.isArray(rows) ? rows : [];
   return list
-    .map((file) => ({ name: String(file?.filename ?? file?.name ?? ""), size: formatFileSize(file?.size) }))
+    .map((file) => ({
+      id: String(file?.id ?? ""),
+      name: String(file?.filename ?? file?.name ?? ""),
+      size: formatFileSize(file?.size),
+      contentType: typeof file?.content_type === "string" ? file.content_type : (file?.contentType ?? null),
+    }))
     .filter((row) => row.name !== "");
+}
+
+/**
+ * The stored name of a `File` the reader picked, made safe to hand to the board.
+ *
+ * Browsers give a `File.name` with no directory component, but the value is
+ * ultimately a string a page or a hand-written client controls, so it is
+ * reduced to its last path segment here as well: a name that still carried
+ * `../` would be sent to a board whose own id/filename handling is the last line
+ * of defence, and defence in depth is the point of the strip.
+ *
+ * @param {unknown} name
+ * @returns {string}
+ */
+export function safeFileName(name) {
+  const text = String(name ?? "");
+  const cut = Math.max(text.lastIndexOf("/"), text.lastIndexOf("\\"));
+  return cut === -1 ? text : text.slice(cut + 1);
 }

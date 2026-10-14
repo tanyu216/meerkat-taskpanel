@@ -216,6 +216,24 @@ export function createRelationsRepository(db) {
     },
 
     /**
+     * Every `blocks` edge, as `{source, target}` pairs (source = the blocker).
+     *
+     * The dependency graph is a DAG — `README.md` §3 says so and a cycle is a
+     * scheduling deadlock — and this is the read the pure cycle check walks
+     * (`domain/relation.mjs#wouldCreateBlockCycle`). It is deliberately the whole
+     * table rather than a per-task read: a cycle is a property of the graph, so
+     * the check needs the graph, exactly as `listParentEdges` does for the parent
+     * one.
+     */
+    listBlockEdges() {
+      return db
+        .prepare("SELECT * FROM task_relations WHERE relation_type = 'blocks' ORDER BY id")
+        .all()
+        .map(relationFromRow)
+        .map(({ source, target }) => ({ source, target }));
+    },
+
+    /**
      * Relation counts per task, for the board rollup.
      * @param {string} taskId
      */

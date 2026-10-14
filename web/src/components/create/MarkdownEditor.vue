@@ -81,5 +81,13 @@ watch(mode, () => {
         <div class="td-gfm" data-md-preview v-html="previewHtml"></div>
       </div>
     </div>
+
+    <!-- The editor's own trailing row, for a surface that needs one. The create
+         dialog has none (its submit is the form's), so this renders nothing
+         there; the drawer's Description section puts its Save/Cancel pair here,
+         which is where `design/prototype/src/input.css` `.td-desc-actions` says
+         they belong — inside `.td-md-editor`, under the panes
+         (T-20261014-212017-3 §4.2). -->
+    <slot />
   </div>
 </template>

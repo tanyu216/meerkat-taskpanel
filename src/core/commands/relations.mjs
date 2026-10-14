@@ -7,7 +7,7 @@
  */
 
 import { DomainError } from "../../shared/errors.mjs";
-import { assertParentEdgeAllowed, normalizeRelation } from "../domain/relation.mjs";
+import { assertBlockEdgeAllowed, assertParentEdgeAllowed, normalizeRelation } from "../domain/relation.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { actorOf } from "./context.mjs";
 
@@ -42,6 +42,16 @@ export function addRelation(ctx, input) {
           projectOf,
           parent: source,
         });
+      }
+
+      // A `blocks` edge is a `depends_on` link (the drawer's ④): source is the
+      // prerequisite, target is the card that waits on it. `README.md` §3 makes
+      // the dependency graph a DAG, so a cycle is refused here for the same
+      // reason a parent cycle is — it is a deadlock, not a shape nobody minds.
+      // T-20261014-212017-4 added this; before it the table's only `blocks`
+      // guards were self-reference and cross-project, and `a → b → a` went in.
+      if (edge.type === "blocks" && input.force !== true) {
+        assertBlockEdgeAllowed(edge, { edges: ctx.repos.relations.listBlockEdges() });
       }
 
       const relation = ctx.repos.relations.insert({

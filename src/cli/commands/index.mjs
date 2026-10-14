@@ -6,13 +6,16 @@
  * nothing else, which is what keeps `--help` honest.
  *
  * The groups are the card's vocabulary (§A1): `project`, `issue`, `comment`,
- * `relation`, `session`, `assignees`, `reporters`, `report`, `export`, `token`.
+ * `relation`, `attachment`, `session`, `assignees`, `reporters`, `report`,
+ * `export`, `token`. `attachment` is T-20261014-212017-4's: the drawer's file
+ * surface needed a writer, and the CLI is the board's second front door.
  * Note what is *not* here: `assignees add`, `assignees rm`, `assignees rename`.
  * The dictionary has no management surface by design, so those are not "not
  * implemented" — they are not commands.
  */
 
 import { GLOBAL_FLAGS } from "../argv.mjs";
+import { COMMANDS as attachmentCommands } from "./attachment.mjs";
 import { COMMANDS as commentCommands } from "./comment.mjs";
 import { COMMANDS as dictCommands, REPORTER_COMMANDS } from "./dict.mjs";
 import { COMMANDS as exportCommands } from "./export.mjs";
@@ -29,6 +32,7 @@ export const groups = Object.freeze([
   { name: "issue", summary: "Tasks: create, move, deliver.", commands: issueCommands },
   { name: "comment", summary: "The append-only discussion trail.", commands: commentCommands },
   { name: "relation", summary: "Parent/child, blocks, related.", commands: relationCommands },
+  { name: "attachment", summary: "A card's files: add, list, remove.", commands: attachmentCommands },
   { name: "session", summary: "Agent sessions per task.", commands: sessionCommands },
   { name: "assignees", summary: "Read-only dictionary of assignees.", commands: dictCommands },
   { name: "reporters", summary: "Read-only dictionary of reporters.", commands: REPORTER_COMMANDS },

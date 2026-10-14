@@ -62,6 +62,15 @@ export const EXTRA = {
     "error.notAssignee": "%s is assigned to somebody else.",
     "error.executionActive": "%s is being worked on by somebody else right now.",
     "error.claimOnBacklog": "%s is in Backlog, where nothing can be claimed.",
+    // T-20261014-212017-4 — the sentences the drawer's four new edit surfaces
+    // need. Each names a refusal the reader can act on: a status that the state
+    // machine will not take, a dependency that would close a loop, a file the
+    // board will not store. Without them all four would fall back to
+    // `error.generic`, which is readable but says nothing about the repair.
+    "error.relationCycle": "That dependency would create a loop — a card cannot wait on itself.",
+    "error.relationCrossProject": "Dependencies must stay inside one project.",
+    "error.attachTooLarge": "That file is larger than the board's 8 MiB limit.",
+    "error.attachType": "That file type is not allowed on the board.",
     "attach.placeholder": "No attachments",
     // R13 修订（seg3 · 决定甲）— `assignee.clear` is gone from here too. R15 ②
     // authored it locally (the prototype had already withdrawn the key, while the
@@ -122,6 +131,10 @@ export const EXTRA = {
     "error.notAssignee": "%s 已指派给他人。",
     "error.executionActive": "%s 正由他人处理中。",
     "error.claimOnBacklog": "%s 位于 Backlog，其中的卡片不能认领。",
+    "error.relationCycle": "该依赖会形成环 —— 卡片不能等待自己。",
+    "error.relationCrossProject": "依赖必须留在同一个项目内。",
+    "error.attachTooLarge": "该文件超过看板 8 MiB 的上限。",
+    "error.attachType": "看板不接受该文件类型。",
     "attach.placeholder": "无附件",
     "activity.filters.label": "动态筛选",
     "detail.saveError": "保存失败 —— 请重试。",

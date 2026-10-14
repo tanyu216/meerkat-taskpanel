@@ -137,7 +137,7 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
       seedLegacyBoard(board.db);
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017"]);
       assert.deepEqual(up.skipped.slice(-2), ["0011", "0012"]);
 
       // 1 — the enum: the new word is storable, the old ones still are, and an
@@ -263,10 +263,24 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
       const oldTriggers = triggersOf(before.db);
       const newTriggers = triggersOf(after.db);
 
+      // `after` runs the **whole shipped set**, so a migration later than this
+      // one may legitimately bring a trigger of its own; the key sets are then a
+      // superset by exactly those. The rebuild itself may never lose one or
+      // invent one, so the allowance is named rather than the comparison
+      // loosened. (T-20261014-212017-4 — `0017_block_cycle.sql` adds
+      // `tr_rel_block_cycle`, the dependency-cycle guard.)
+      const LATER_MIGRATION_TRIGGERS = ["tr_rel_block_cycle"];
       assert.deepEqual(
-        Object.keys(newTriggers).sort(),
-        Object.keys(oldTriggers).sort(),
-        "the rebuild must not add or lose a trigger",
+        Object.keys(newTriggers)
+          .filter((name) => !(name in oldTriggers))
+          .sort(),
+        LATER_MIGRATION_TRIGGERS,
+        "only a later migration's own trigger may appear",
+      );
+      assert.deepEqual(
+        Object.keys(oldTriggers).filter((name) => !(name in newTriggers)),
+        [],
+        "the rebuild must not lose a trigger",
       );
       // Two triggers may change, and both are intentional: the transition
       // whitelist gains its `awaiting` clause, and the revision cursor's column
