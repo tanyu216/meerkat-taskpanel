@@ -1579,4 +1579,18 @@ of them had — *which* empty states carry a clear control.
 
 The activity view's own design page (`design/activity/`) carries the same two states and the
 same rules in its scoped `<style>`; it is edited in step, and its machine check —
-`node design/activity/check-activity.mjs`, 155 assertions — is the round's regression gate.
+`node design/activity/check-activity.mjs`, 194 assertions — is the round's regression gate.
+
+**"At the top" is read after layout, not off the declaration.** R17's third decision is a
+*layout* fact, and the check now measures it as one: `flow-gap` (the container is given 240px
+more height and the block must not move — a device that splits free space, `margin: auto` or a
+container's `justify-content: center`, moves it by half that) and `not-v-centred` (there must
+be decisively more free space below the block than above it — the reading that catches a *fixed*
+post-layout offset, which the flow-gap probe cannot see), plus `under-header` for B27.3's state,
+whose flow's first stop is the queue's header. All three are read from `getBoundingClientRect`,
+over all three states at all five widths, on the board document and once on the activity one.
+The declaration guards (`S11.7`–`S11.9`) stay, but only as what they are: they read one rule
+body's text, so they cannot see a centring that arrives from another rule. Why the declaration
+could not carry this claim — `getComputedStyle` resolves an auto margin to its used px value, so
+a re-centred block still reports `marginTop !== "auto"` — and the measured negative runs are in
+`design/activity/DESIGN-activity.md` §11.1.

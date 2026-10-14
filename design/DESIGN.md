@@ -2666,6 +2666,21 @@ Measured after the round, at 1512×900: the activity project state reads `top 1p
 and the waiting state `top 54px of 804px` — 42px of header plus the 12px gap (~316px). Each is
 measured on its own, with its sibling hidden, so the number is the state's and not a stack's.
 
+**These are read as geometry, and that is a repair of the reading itself.** The three
+assertions that carried "it is not vertically centred" measured `margin !== "auto"` and
+`align-self !== "center"` — declarations. `getComputedStyle` resolves an auto margin to its
+*used* px value, so a block that has been re-centred still reports `marginTop !== "auto"` and
+the assertion stays green; and a *container* that centres its children leaves the block's own
+`margin` and `align-self` untouched, which the declaration cannot see at all. The check now
+reads the box after layout — `flow-gap` (give the container 240px more height; a block in flow
+at the top does not move, a centred one moves 120px) and `not-v-centred` (more free space below
+the block than above), plus `under-header` for B27.3's state — over all three states at all five
+widths, on the board document and once on the activity one. Measured against a copy of `design/`
+with one centring device rewritten into it: `margin: auto` back on the blocks reds **42** of the
+check's assertions (where the three named "not vertically centred" used to stay green), and a
+container's `justify-content: center` — the device no declaration can see — reds **39**. Details
+and the per-device table: `design/activity/DESIGN-activity.md` §11.1.
+
 ### 33.4 What this round does not change
 
 Board B12's own markup and copy (it is the reference, not a subject); `[data-filter-clear]` and
@@ -2673,7 +2688,9 @@ Board B12's own markup and copy (it is the reference, not a subject); `[data-fil
 boundary and paging; the waiting queue's rows, ordering and header; every token in the sheet.
 The activity view's design page (`design/activity/`) carries the same rules in its own scoped
 block and is edited in step — its machine check, `node design/activity/check-activity.mjs`, is
-the round's regression gate and reports **155/155** (93 static + 62 render).
+the round's regression gate and reports **194/194** (93 static + 101 render; the family's
+placement grew from three declaration readings at 1512 into three geometric ones over three
+states × five widths, §33.3).
 
 ### 33.5 Boundaries and open items
 
