@@ -398,10 +398,20 @@ function copyId() {
           <span class="td-status-dot" aria-hidden="true"></span>
           <span data-detail-status-chip-label>{{ $t(`status.${statusValue}`) }}</span>
         </span>
+        <!-- I-1 (T-20261014-154730) — the button **is** the design's `.td-iconbtn`,
+             the same class the column header's `+` (F4) and the topbar filters
+             toggle (F10) already wear. The design's `32×32` (§3) is that box, so
+             the only honest way to state it is to wear it: the four utilities this
+             carried (`ml-auto shrink-0 border-0 bg-transparent
+             text-(--brand-text-3) cursor-pointer`) described a 16×16 box with no
+             edge and the wrong ink, which is what the visual leg measured
+             (`docs/verify/T-20261014-150729`, impl `16×16` vs proto `32×32`).
+             `.td-iconbtn` is unlayered in `app.css`, so it outranks the `ml-auto`
+             utility it still needs for the row-end push. -->
         <button
           ref="closeButton"
           type="button"
-          class="ml-auto shrink-0 border-0 bg-transparent text-(--brand-text-3) cursor-pointer"
+          class="td-iconbtn ml-auto"
           data-detail-close
           :aria-label="$t('drawer.close')"
           @click="closeDetail"
@@ -414,8 +424,18 @@ function copyId() {
       <!-- R14 D20 — `aria-labelledby` on the root needs a seat to point at: the
            id lands on this `<h2>`, exactly as `design/prototype/index.html`
            carries it. The 16px/600 face is the prototype's own measured one
-           (R14 §3): Tailwind's `text-lg` is 18px here, so the value is stated. -->
-      <h2 id="td-detail-title" class="text-[16px] font-semibold" data-detail-title>{{ title }}</h2>
+           (R14 §3): Tailwind's `text-lg` is 18px here, so the value is stated.
+
+           I-1 (T-20261014-154730) — the *leading* is stated for the same reason
+           and had been left to inherit: the design's `--text-lg` is the pair
+           `16px / 1.35` (`design/prototype/tw.css` §:root), and `text-lg`
+           applies both, so the prototype's head reads 16px on a 21.6px line.
+           Stating only the size left the title on the body's `1.5` — 24px — and
+           that 2.41px is the whole of the head's remaining disagreement once the
+           close button is the design's 32×32 box (measured: prototype head
+           78.59 vs implementation 81). `--leading-title` is this layer's name
+           for the design's 1.35, so the pair is whole again with no new value. -->
+      <h2 id="td-detail-title" class="text-[16px] leading-(--leading-title) font-semibold" data-detail-title>{{ title }}</h2>
     </header>
 
     <div class="td-drawer-body">

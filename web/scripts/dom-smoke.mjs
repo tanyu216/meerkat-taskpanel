@@ -777,6 +777,80 @@ export async function run() {
     );
     r14Check(r14Focus.isClose, `document.activeElement after the drawer opened is ${r14Focus.active}, expected [data-detail-close]`);
 
+    /* ---- ① I-1 (T-20261014-154730) — the close button's box ---------------
+       Read as **computed long-hand**, not as a hook count and not as a rect
+       alone. Both of those passed on the 16×16 button: the hook was present, in
+       the right row, and the glyph was the right glyph — which is exactly why
+       R14-B08's selector-level verdict read "匹配·无需改" while the box was half
+       the size the design states. A rect cannot tell a 32×32 content-box from a
+       30×30 box with 1px borders, and neither `border-radius` nor the ink colour
+       has a rect at all, so the pair is read together and asserted together.
+
+       The head's own height rides here because a taller button is the only thing
+       that moves it: `docs/verify/T-20261014-150729` measured prototype 32×32 ·
+       head 78.59 against implementation 16×16 · head 67, and the probe next door
+       (`docs/verify/T-20261014-154730/probe-close-focus.mjs`) re-measures both
+       sides' head down to its two children. */
+    const r14Close = await page.evaluate(() => {
+      const close = document.querySelector("[data-detail-close]");
+      const head =
+        document.querySelector("[data-detail-drawer] .td-drawer-head") ?? document.querySelector(".td-drawer-head");
+      if (!close) return { present: false };
+      const cs = getComputedStyle(close);
+      const r = close.getBoundingClientRect();
+      const glyph = close.querySelector("svg.td-icon");
+      const gr = glyph?.getBoundingClientRect() ?? null;
+      return {
+        present: true,
+        width: cs.width,
+        height: cs.height,
+        rectWidth: r.width,
+        rectHeight: r.height,
+        display: cs.display,
+        alignItems: cs.alignItems,
+        justifyContent: cs.justifyContent,
+        borderTopWidth: cs.borderTopWidth,
+        borderTopStyle: cs.borderTopStyle,
+        borderTopColor: cs.borderTopColor,
+        borderRadius: cs.borderRadius,
+        color: cs.color,
+        glyphWidth: gr?.width ?? null,
+        glyphHeight: gr?.height ?? null,
+        headHeight: head?.getBoundingClientRect().height ?? null,
+      };
+    });
+    r14Check(r14Close.present, "the drawer has no [data-detail-close] to measure");
+    r14Check(
+      r14Close.width === "32px" && r14Close.height === "32px",
+      `[data-detail-close] computes ${r14Close.width}×${r14Close.height}, expected 32px×32px — the design's .td-iconbtn box (R14 §3)`,
+    );
+    r14Check(
+      r14Close.rectWidth === 32 && r14Close.rectHeight === 32,
+      `[data-detail-close] measures ${r14Close.rectWidth}×${r14Close.rectHeight}, expected 32×32 — the computed pair and the rect must agree`,
+    );
+    r14Check(
+      r14Close.display === "flex" && r14Close.alignItems === "center" && r14Close.justifyContent === "center",
+      `[data-detail-close] is ${r14Close.display}/${r14Close.alignItems}/${r14Close.justifyContent}, expected flex/center/center (.td-iconbtn centres its glyph)`,
+    );
+    r14Check(
+      r14Close.borderTopWidth === "1px" &&
+        r14Close.borderTopStyle === "solid" &&
+        r14Close.borderTopColor === "rgba(0, 0, 0, 0)",
+      `[data-detail-close]'s edge is ${r14Close.borderTopWidth} ${r14Close.borderTopStyle} ${r14Close.borderTopColor}, expected a transparent 1px solid (.td-iconbtn)`,
+    );
+    r14Check(
+      r14Close.borderRadius === "6px",
+      `[data-detail-close]'s radius is ${r14Close.borderRadius}, expected 6px (--radius-field, the design's --r-md)`,
+    );
+    r14Check(
+      r14Close.glyphWidth === 16 && r14Close.glyphHeight === 16,
+      `the close glyph is ${r14Close.glyphWidth}×${r14Close.glyphHeight}, expected 16×16 — the box grew, the glyph did not`,
+    );
+    r14Check(
+      r14Close.headHeight !== null && Math.abs(r14Close.headHeight - 78.59) <= 1,
+      `the drawer head is ${r14Close.headHeight}px tall, expected the prototype's 78.59px ±1`,
+    );
+
     // The three rows in render order, word · identifier — the words are the
     // catalogue's (`relations.parent|blocks|related`), the identifiers the
     // resolved refs (PROJ-0007 for the parent edge, which is the fixture's own
@@ -800,6 +874,51 @@ export async function run() {
     r14Check(
       r14Relations.join("|") === R14_RELATION_ROWS.join("|"),
       `the drawer's relation rows read ${JSON.stringify(r14Relations)}, expected ${JSON.stringify(R14_RELATION_ROWS)}`,
+    );
+
+    /* ---- ② I-2 (T-20261014-154730) — the focus ring ----------------------
+       The design states the ring **globally**, in its own base layer
+       (`design/prototype/tw.css`, `@layer base`): the accent at 2px with a 2px
+       offset, plus the 35%-accent halo. The implementation carried no rule at
+       all, so the UA's own blue `1px auto` ring showed through — the visual leg
+       measured prototype `2px solid rgb(15, 122, 115)` · halo set against
+       implementation `1px auto rgb(0, 95, 204)` · halo none.
+
+       **Modality is established on purpose.** The drawer above was opened by a
+       real *pointer* click, and after a pointer interaction Chromium rightly
+       stops matching `:focus-visible` on a script-focused button — the ring the
+       design draws is the keyboard one. So a `Tab` is pressed and the button is
+       focused again, and `matches(":focus-visible")` is asserted as the
+       precondition: without it a run could read the UA's ring off a
+       non-matching face and report it as the design's. */
+    await page.keyboard.press("Tab");
+    await page.waitForTimeout(60);
+    const r14Ring = await page.evaluate(() => {
+      const close = document.querySelector("[data-detail-close]");
+      close.focus();
+      const fv = close.matches(":focus-visible");
+      const cs = getComputedStyle(close);
+      return {
+        focusVisible: fv,
+        width: fv ? cs.outlineWidth : null,
+        style: fv ? cs.outlineStyle : null,
+        color: fv ? cs.outlineColor : null,
+        offset: fv ? cs.outlineOffset : null,
+        boxShadow: fv ? cs.boxShadow : null,
+      };
+    });
+    r14Check(
+      r14Ring.focusVisible === true,
+      "the focus probe needs [data-detail-close] on its :focus-visible face — the ring the design draws is the keyboard one",
+    );
+    r14Check(
+      r14Ring.width === "2px" && r14Ring.style === "solid" && r14Ring.color === "rgb(15, 122, 115)",
+      `[data-detail-close]'s focus outline is ${r14Ring.width} ${r14Ring.style} ${r14Ring.color}, expected 2px solid rgb(15, 122, 115) — the design's accent, not the UA's ring`,
+    );
+    r14Check(r14Ring.offset === "2px", `[data-detail-close]'s outline offset is ${r14Ring.offset}, expected 2px`);
+    r14Check(
+      r14Ring.boxShadow === "rgba(15, 122, 115, 0.35) 0px 0px 0px 4px",
+      `[data-detail-close]'s focus halo is ${r14Ring.boxShadow}, expected rgba(15, 122, 115, 0.35) 0px 0px 0px 4px (--brand-focus-ring at 4px)`,
     );
 
     await page.keyboard.press("Escape");
@@ -4402,7 +4521,7 @@ export async function run() {
         viewportFailures: b26ViewportFailures,
       },
       r12Id: { failures: r12IdFailures, longId: LONG_ID, clamped: CLAMPED, longHead, spill, listRead },
-      r14: { failures: r14Failures, focus: r14Focus, relations: r14Relations },
+      r14: { failures: r14Failures, focus: r14Focus, relations: r14Relations, close: r14Close, ring: r14Ring },
       m7: {
         failures: m7Failures,
         cases: m7.cases,
@@ -4527,7 +4646,9 @@ if (isEntryPoint) run().then(
         for (const failure of report.r14.failures) console.log(`  ✗ ${failure}`);
       } else {
         console.log(
-          `R14 (drawer) — opening hands focus to [data-detail-close] (activeElement ${report.r14.focus.active}) ` +
+          `R14 (drawer) — opening hands focus to [data-detail-close] (activeElement ${report.r14.focus.active}), ` +
+            `its box computes ${report.r14.close.width}×${report.r14.close.height} with the head at ${report.r14.close.headHeight}px, ` +
+            `its focus ring is ${report.r14.ring.width} ${report.r14.ring.style} ${report.r14.ring.color}, ` +
             `and the relation rows read ${report.r14.relations.join(" / ")}`,
         );
       }

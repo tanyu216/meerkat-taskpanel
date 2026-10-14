@@ -130,6 +130,33 @@ body {
   line-height: 1.5;
 }
 
+/* I-2 (T-20261014-154730) — the focus ring, transcribed from the design's own
+   base layer (`design/prototype/tw.css`, the `@layer base` block): the accent
+   outline at 2px and a 2px offset, plus the 35%-accent halo — for every
+   focusable element, which is how the design states it. The implementation
+   carried no rule at all, so every control fell back to the UA's own blue
+   `1px auto` ring; the visual leg measured exactly that on
+   `[data-detail-close]` (`docs/verify/T-20261014-150729`: prototype
+   `2px solid` accent vs implementation `1px auto` UA blue).
+
+   It stays inside `@layer base` because that is where the design puts it, and
+   that placement is load-bearing: this is a **default**, so the file's own
+   unlayered rules and every Tailwind utility still outrank it.
+   `.td-access-cell:focus-visible` withdraws the offset to `-2px` (R7 ③) and
+   `.td-textarea:focus` replaces the ring with the field's own 3px halo
+   (R14 D48) — both unlayered, so both win here without any specificity fight.
+   The `4px` radius is the design's `--r-sm`; in this layer's token names that
+   is `--radius-selector`, the same value and not a second one.
+   Colour literals: none — both reads are tokens, as C08 requires. */
+@layer base {
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--brand-accent);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px var(--brand-focus-ring);
+    border-radius: var(--radius-selector);
+  }
+}
+
 /* C04 · the identifier/metric face. The declaration is literal on purpose. */
 .td-mono {
   font-family: var(--font-mono);
