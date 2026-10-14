@@ -1,0 +1,292 @@
+{
+  "root": "/Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-152924-2-seg1",
+  "head": null,
+  "ran_at": "2026-10-14T12:23:13.203Z",
+  "transport": "in-process route handlers + errorResponse (no socket; listen(2) is EPERM in this sandbox)",
+  "checks": [
+    {
+      "label": "new card starts in `todo` with no claim",
+      "ok": true,
+      "detail": "status=todo claimed_by=null"
+    },
+    {
+      "label": "todo → in_progress takes the claim (heartbeat stamped)",
+      "ok": true,
+      "detail": "http=200 claimed_by=linus heartbeat_at=2026-10-14T12:23:13.182Z"
+    },
+    {
+      "label": "in_progress → todo **releases** the claim in the same write",
+      "ok": true,
+      "detail": "http=200 claimed_by=null claimed_at=null heartbeat_at=null"
+    },
+    {
+      "label": "todo → backlog is accepted (no CHECK violation) and leaves claimed_by NULL",
+      "ok": true,
+      "detail": "http=200 code=— stored.status=backlog claimed_by=null"
+    },
+    {
+      "label": "read-back agrees: status=backlog, claimed_by=null",
+      "ok": true,
+      "detail": "status=backlog claimed_by=null"
+    },
+    {
+      "label": "CLAIM_HOLDING_STATUSES = {in_progress, awaiting, in_review, blocked}",
+      "ok": true,
+      "detail": "[\"in_progress\",\"awaiting\",\"in_review\",\"blocked\"]"
+    },
+    {
+      "label": "holdsClaim(backlog) === false (leaving the cycle releases)",
+      "ok": true,
+      "detail": "holdsClaim=false"
+    },
+    {
+      "label": "holdsClaim(todo) === false (leaving the cycle releases)",
+      "ok": true,
+      "detail": "holdsClaim=false"
+    },
+    {
+      "label": "holdsClaim(done) === false (leaving the cycle releases)",
+      "ok": true,
+      "detail": "holdsClaim=false"
+    },
+    {
+      "label": "holdsClaim(canceled) === false (leaving the cycle releases)",
+      "ok": true,
+      "detail": "holdsClaim=false"
+    },
+    {
+      "label": "holdsClaim(in_progress) === true (inside the cycle keeps the lock)",
+      "ok": true,
+      "detail": "holdsClaim=true"
+    },
+    {
+      "label": "holdsClaim(awaiting) === true (inside the cycle keeps the lock)",
+      "ok": true,
+      "detail": "holdsClaim=true"
+    },
+    {
+      "label": "holdsClaim(in_review) === true (inside the cycle keeps the lock)",
+      "ok": true,
+      "detail": "holdsClaim=true"
+    },
+    {
+      "label": "holdsClaim(blocked) === true (inside the cycle keeps the lock)",
+      "ok": true,
+      "detail": "holdsClaim=true"
+    },
+    {
+      "label": "in_progress → awaiting keeps the claim",
+      "ok": true,
+      "detail": "http=200 claimed_by=linus awaiting_reason=E1"
+    },
+    {
+      "label": "awaiting → in_progress keeps the same holder (no re-check of the routing lock)",
+      "ok": true,
+      "detail": "http=200 claimed_by=linus awaiting_reason=null"
+    },
+    {
+      "label": "in_progress → in_review keeps the claim",
+      "ok": true,
+      "detail": "http=200 code=— claimed_by=linus"
+    },
+    {
+      "label": "in_review → in_progress (rework) keeps the same holder",
+      "ok": true,
+      "detail": "claimed_by=linus"
+    },
+    {
+      "label": "in_progress → blocked keeps the claim",
+      "ok": true,
+      "detail": "http=200 claimed_by=linus blocked_reason=null"
+    },
+    {
+      "label": "blocked → in_progress (unblock) keeps the same holder",
+      "ok": true,
+      "detail": "claimed_by=linus"
+    },
+    {
+      "label": "in_progress → canceled releases the claim",
+      "ok": true,
+      "detail": "claimed_by=null"
+    },
+    {
+      "label": "in_review → done releases the claim",
+      "ok": true,
+      "detail": "http=200 status=done claimed_by=null"
+    },
+    {
+      "label": "a foreign writer can still leave a claimed card in `todo` (the pre-fix state)",
+      "ok": true,
+      "detail": "status=todo claimed_by=linus"
+    },
+    {
+      "label": "the schema CHECK is still enforced (a foreign writer is refused)",
+      "ok": true,
+      "detail": "errcode=275 code=CLAIM_ON_BACKLOG"
+    },
+    {
+      "label": "…and the engine text stays on details.sqlite, not on the message",
+      "ok": true,
+      "detail": "message=\"A backlog task cannot hold a claim.\" details.sqlite.message=\"CHECK constraint failed: claimed_by IS NULL OR status <> 'backlog'\""
+    },
+    {
+      "label": "in_progress → todo and todo → backlog are both whitelisted",
+      "ok": true,
+      "detail": "in_progress→[in_review,blocked,todo,canceled,awaiting] todo→[backlog,in_progress,blocked,canceled]"
+    }
+  ],
+  "readings": [
+    {
+      "step": "FDB58B99-DC15-4E08-A472-359BAE0BE44A-0001: todo → in_progress",
+      "http": 200,
+      "code": null,
+      "message": null,
+      "stored": {
+        "status": "in_progress",
+        "claimed_by": "linus"
+      }
+    },
+    {
+      "step": "FDB58B99-DC15-4E08-A472-359BAE0BE44A-0001: todo → todo",
+      "http": 200,
+      "code": null,
+      "message": null,
+      "stored": {
+        "status": "todo",
+        "claimed_by": null
+      }
+    },
+    {
+      "step": "FDB58B99-DC15-4E08-A472-359BAE0BE44A-0001: todo → backlog",
+      "http": 200,
+      "code": null,
+      "message": null,
+      "stored": {
+        "status": "backlog",
+        "claimed_by": null
+      }
+    },
+    {
+      "step": "FDB58B99-DC15-4E08-A472-359BAE0BE44A-0002: todo → in_progress",
+      "http": 200,
+      "code": null,
+      "message": null,
+      "stored": {
+        "status": "in_progress",
+        "claimed_by": "linus"
+      }
+    },
+    {
+      "step": "FDB58B99-DC15-4E08-A472-359BAE0BE44A-0002: todo → awaiting",
+      "http": 200,
+      "code": null,
+      "message": null,
+      "stored": {
+        "status": "awaiting",
+        "claimed_by": "linus"
+      }
+    },
+    {
+      "step": "FDB58B99-DC15-4E08-A472-359BAE0BE44A-0002: todo → in_progress",
+      "http": 200,
+      "code": null,
+      "message": null,
+      "stored": {
+        "status": "in_progress",
+        "claimed_by": "linus"
+      }
+    },
+    {
+      "step": "FDB58B99-DC15-4E08-A472-359BAE0BE44A-0002: todo → in_review",
+      "http": 200,
+      "code": null,
+      "message": null,
+      "stored": {
+        "status": "in_review",
+        "claimed_by": "linus"
+      }
+    },
+    {
+      "step": "FDB58B99-DC15-4E08-A472-359BAE0BE44A-0002: todo → in_progress",
+      "http": 200,
+      "code": null,
+      "message": null,
+      "stored": {
+        "status": "in_progress",
+        "claimed_by": "linus"
+      }
+    },
+    {
+      "step": "FDB58B99-DC15-4E08-A472-359BAE0BE44A-0002: todo → blocked",
+      "http": 200,
+      "code": null,
+      "message": null,
+      "stored": {
+        "status": "blocked",
+        "claimed_by": "linus"
+      }
+    },
+    {
+      "step": "FDB58B99-DC15-4E08-A472-359BAE0BE44A-0002: todo → in_progress",
+      "http": 200,
+      "code": null,
+      "message": null,
+      "stored": {
+        "status": "in_progress",
+        "claimed_by": "linus"
+      }
+    },
+    {
+      "step": "FDB58B99-DC15-4E08-A472-359BAE0BE44A-0002: todo → canceled",
+      "http": 200,
+      "code": null,
+      "message": null,
+      "stored": {
+        "status": "canceled",
+        "claimed_by": null
+      }
+    },
+    {
+      "step": "FDB58B99-DC15-4E08-A472-359BAE0BE44A-0003: todo → in_progress",
+      "http": 200,
+      "code": null,
+      "message": null,
+      "stored": {
+        "status": "in_progress",
+        "claimed_by": "linus"
+      }
+    },
+    {
+      "step": "FDB58B99-DC15-4E08-A472-359BAE0BE44A-0003: todo → in_review",
+      "http": 200,
+      "code": null,
+      "message": null,
+      "stored": {
+        "status": "in_review",
+        "claimed_by": "linus"
+      }
+    },
+    {
+      "step": "FDB58B99-DC15-4E08-A472-359BAE0BE44A-0003: todo → done",
+      "http": 200,
+      "code": null,
+      "message": null,
+      "stored": {
+        "status": "done",
+        "claimed_by": null
+      }
+    },
+    {
+      "step": "FDB58B99-DC15-4E08-A472-359BAE0BE44A-0004: todo → in_progress",
+      "http": 200,
+      "code": null,
+      "message": null,
+      "stored": {
+        "status": "in_progress",
+        "claimed_by": "linus"
+      }
+    }
+  ],
+  "failed": 0,
+  "verdict": "PASS"
+}
