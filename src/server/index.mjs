@@ -212,6 +212,16 @@ export async function createTaskd(options = {}) {
     pollMs: options.eventsPollMs ?? SSE_POLL_MS,
     heartbeatMs: options.eventsHeartbeatMs ?? SSE_HEARTBEAT_MS,
   };
+  /**
+   * The SSE streams that are open right now.
+   *
+   * They are held here because shutdown has to end them *itself*: a stream is an
+   * **active** request, so `server.close()` waits on it for as long as the
+   * client cares to stay connected, and `closeIdleConnections()` will not touch
+   * it. Without this set a signal was answered with a hang
+   * (T-20261014-213238).
+   */
+  const streams = new Set();
 
   router.get("/health", () => ({
     status: "ok",
@@ -292,13 +302,21 @@ export async function createTaskd(options = {}) {
     // The SSE stream owns its response for as long as the client stays connected;
     // it never returns a value for the envelope to wrap.
     if (pathname === "/api/v1/events" && req.method === "GET") {
-      openEventStream({
+      const stream = openEventStream({
         res,
         board,
         after: revisionFromRequest(url, req),
         pollMs: events.pollMs,
         heartbeatMs: events.heartbeatMs,
+        // Registered so `close()` can end it deliberately; forgotten by the
+        // stream itself, whichever side ends it.
+        onClose: () => streams.delete(stream),
       });
+      streams.add(stream);
+      // The response may have ended between `openEventStream` and this line (a
+      // client that hung up at exactly the wrong moment); `close` is idempotent
+      // and this is what keeps the set free of dead entries.
+      if (res.writableEnded || res.destroyed) stream.close();
       return;
     }
 
@@ -361,12 +379,88 @@ export async function createTaskd(options = {}) {
     token,
     /** The label GC, exposed so a test can trigger a sweep without waiting out the timer. */
     labelGc,
+    /**
+     * Stop the board.
+     *
+     * The order is the fix for T-20261014-213238. An SSE stream is an *active*
+     * request: `server.close()` stops accepting new connections, but it settles
+     * only when every socket is gone, and a stream has no reason to ever go —
+     * so it is ended here, deliberately, before the server is asked to close.
+     * The client is told why (`SSE_SHUTDOWN_EVENT`), which is what lets it
+     * reconnect on a defined schedule rather than in a loop.
+     *
+     * The database is released last: a connection that was still in flight
+     * during the close must not write to a closed board.
+     */
     async close() {
       labelGc.stop();
-      await new Promise((resolve) => server.close(resolve));
+      for (const stream of streams) stream.close("server_shutdown");
+      streams.clear();
+      await closeServer(server);
       board.close();
     },
   };
+}
+
+/**
+ * How long `close()` waits for connections that are still *doing* something
+ * before it destroys them. Well inside the 5 s a deploy allows a graceful stop.
+ */
+export const SHUTDOWN_GRACE_MS = 1_000;
+
+/**
+ * Close an HTTP server **with a bound**.
+ *
+ * Extracted from `createTaskd` because the rule is worth stating once: a signal
+ * must never be answerable with a hang. `server.close()` stops *accepting* and
+ * resolves once every socket is gone — but two kinds of socket never go on their
+ * own, and neither is exotic:
+ *
+ *   * an **idle keep-alive** connection, which the peer sees no reason to end
+ *     (`closeIdleConnections` retires it, once the responses just ended have
+ *     been counted as idle rather than active);
+ *   * an **in-flight response that is deliberately long-lived**, which is the
+ *     SSE stream before the caller ended it — and any client that is simply
+ *     slow.
+ *
+ * The second kind gets `graceMs` and is then destroyed (`closeAllConnections`),
+ * so this promise always settles. A caller holding connections it wants ended
+ * *gracefully* must end them before calling: this function's job is the bound,
+ * not the courtesy.
+ *
+ * Timers are cleared on the way out whichever way the race went, so a fast close
+ * leaves no handle behind to hold a process (or a test runner) open.
+ *
+ * @param {import('node:http').Server} server
+ * @param {number} [graceMs]
+ */
+export async function closeServer(server, graceMs = SHUTDOWN_GRACE_MS) {
+  let settled = false;
+  const closed = new Promise((resolve) => {
+    server.close(() => {
+      settled = true;
+      resolve();
+    });
+  });
+
+  const timers = [];
+  const wait = (ms) => new Promise((resolve) => { timers.push(setTimeout(resolve, ms)); });
+  const bounded = (async () => {
+    // A turn, so the responses the caller just ended are seen as idle.
+    await wait(0);
+    server.closeIdleConnections?.();
+    if (settled) return;
+    await wait(graceMs);
+    if (settled) return;
+    // Still connected after the grace: a client that will not hang up.
+    server.closeAllConnections?.();
+  })();
+
+  try {
+    await Promise.race([closed, bounded]);
+  } finally {
+    for (const timer of timers) clearTimeout(timer);
+  }
 }
 
 /**
