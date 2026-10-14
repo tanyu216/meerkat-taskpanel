@@ -1,0 +1,49 @@
+{
+  "card": "T-20261014-154730",
+  "what": "negative self-proof for the two new computed-level R14 assertions",
+  "assertionSite": "web/scripts/dom-smoke.mjs · the R14 (drawer) block",
+  "runs": [
+    {
+      "mutation": "M1 — I-1 reverted: [data-detail-close] back to the four utilities (16x16, no edge, no radius)",
+      "log": "mut-M1.log",
+      "exitCode": 1,
+      "domSmoke": [
+        "R14 (drawer) — 6 failed:",
+        "✗ [data-detail-close] computes 16px×16px, expected 32px×32px — the design's .td-iconbtn box (R14 §3)",
+        "✗ [data-detail-close] measures 16×16, expected 32×32 — the computed pair and the rect must agree",
+        "✗ [data-detail-close] is block/normal/normal, expected flex/center/center (.td-iconbtn centres its glyph)",
+        "✗ [data-detail-close]'s edge is 0px solid rgb(126, 138, 145), expected a transparent 1px solid (.td-iconbtn)",
+        "✗ [data-detail-close]'s radius is 0px, expected 6px (--radius-field, the design's --r-md)",
+        "✗ the drawer head is 64.59375px tall, expected the prototype's 78.59px ±1"
+      ]
+    },
+    {
+      "mutation": "M2 — I-2 colour only: the ring rule kept but its colour swapped from --brand-accent to --brand-text-3",
+      "log": "mut-M2.log",
+      "exitCode": 1,
+      "domSmoke": [
+        "R14 (drawer) — 1 failed:",
+        "✗ [data-detail-close]'s focus outline is 2px solid rgb(126, 138, 145), expected 2px solid rgb(15, 122, 115) — the design's accent, not the UA's ring"
+      ]
+    },
+    {
+      "mutation": "M3 — I-2 rule removed in full (the pre-fix state: no author rule at all)",
+      "log": "mut-M3.log",
+      "exitCode": 1,
+      "domSmoke": [
+        "R14 (drawer) — 3 failed:",
+        "✗ [data-detail-close]'s focus outline is 1px auto rgb(0, 95, 204), expected 2px solid rgb(15, 122, 115) — the design's accent, not the UA's ring",
+        "✗ [data-detail-close]'s outline offset is 0px, expected 2px",
+        "✗ [data-detail-close]'s focus halo is none, expected rgba(15, 122, 115, 0.35) 0px 0px 0px 4px (--brand-focus-ring at 4px)"
+      ]
+    },
+    {
+      "mutation": "restored — the committed tree, unchanged",
+      "log": "domsmoke-after.log",
+      "exitCode": 0,
+      "domSmoke": [
+        "R14 (drawer) — opening hands focus to [data-detail-close] (activeElement <button data-detail-close>), its box computes 32px×32px with the head at 78.59375px, its focus ring is 2px solid rgb(15, 122, 115), and the relation rows read Parent · PROJ-0007 / Blocks · TD-3 / Related · TD-4"
+      ]
+    }
+  ]
+}

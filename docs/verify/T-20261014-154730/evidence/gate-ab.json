@@ -1,0 +1,47 @@
+{
+  "card": "T-20261014-154730",
+  "why": "A/B: prove the in-container red is not this card's",
+  "tip": {
+    "ref": "4abdf1e",
+    "worktree": "lane/T-20261014-154730-seg1"
+  },
+  "base": {
+    "ref": "7cb8e42",
+    "worktree": "/Users/tanyu/.openclaw/team/workspace/T-20261014-154730/base-ab (detached)"
+  },
+  "image": {
+    "tip": "ac56974dea7beae0043987c8931c3aca76483f2021fa4cfbad99feabfcb10808",
+    "base": "d881d02d2cc053b0a2355f14e99d200b3d071913109feec47eaeaae034c1479e"
+  },
+  "result": {
+    "tip (4abdf1e)": {
+      "tests": 2153,
+      "pass": 2149,
+      "fail": 1,
+      "skipped": 3,
+      "suiteReds": [
+        "exporter — OTLP push"
+      ],
+      "subtestReds": [
+        "exporter.test.mjs:193 http_requests_total absent on the first push"
+      ]
+    },
+    "base (7cb8e42)": {
+      "tests": 2153,
+      "pass": 2148,
+      "fail": 2,
+      "skipped": 3,
+      "suiteReds": [
+        "coverage gate (A11 / V11)"
+      ],
+      "subtestReds": [
+        "src/cli stays at or above 80% line / branch / function",
+        "src/server stays at or above 80% line / branch / function"
+      ]
+    }
+  },
+  "reading": "the two red sets are disjoint. The base reds the container coverage gate (the repo-known environmental red); the tip reds the repo-known load-flaky OTLP push instead. Neither red appears on both sides, so this card adds no reproducible red.",
+  "hostIsolation": "node --test test/monitoring/exporter.test.mjs — exit 0, twice, on the same tip.",
+  "coverage": "The gate build ran while the working tree was at 61091e7 or 4abdf1e — the two differ by one source comment inside a .vue template, and the rebuild after that comment emits byte-identical assets (index-D6-f3mPs.js / index-OQOGJCz4.css). The gate log records its own webbuild output (#8) as exactly those two hashes, so the image the suite ran inside carries the tip 4abdf1e/61091e7 bundle either way.",
+  "note": "no red is shared between the two runs; the base reds only the environmental coverage gate, the tip reds only the load-flaky OTLP push."
+}

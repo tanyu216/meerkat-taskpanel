@@ -1,0 +1,112 @@
+{
+  "label": "before",
+  "dist": "/Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-154730-seg1/web/dist",
+  "width": 1512,
+  "proto": {
+    "present": true,
+    "box": {
+      "rectWidth": 32,
+      "rectHeight": 32,
+      "rectTop": 12,
+      "rectRight": 1496,
+      "width": "32px",
+      "height": "32px",
+      "display": "flex",
+      "boxSizing": "border-box",
+      "borderTopWidth": "1px",
+      "borderRightWidth": "1px",
+      "borderBottomWidth": "1px",
+      "borderLeftWidth": "1px",
+      "borderTopStyle": "solid",
+      "borderTopColor": "rgba(0, 0, 0, 0)",
+      "borderRadius": "6px",
+      "color": "rgb(74, 85, 94)",
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "cursor": "pointer",
+      "flex": "0 0 auto",
+      "alignItems": "center",
+      "justifyContent": "center",
+      "marginLeft": "313.984px"
+    },
+    "glyph": {
+      "width": 16,
+      "height": 16
+    },
+    "head": {
+      "height": 78.59,
+      "paddingTop": "12px",
+      "paddingBottom": "12px",
+      "borderBottomWidth": "1px"
+    },
+    "focus": {
+      "matchesFocusVisible": true,
+      "isActive": true,
+      "activeTag": "BUTTON",
+      "outlineWidth": "2px",
+      "outlineStyle": "solid",
+      "outlineColor": "rgb(15, 122, 115)",
+      "outlineOffset": "2px",
+      "boxShadow": "rgba(15, 122, 115, 0.35) 0px 0px 0px 4px",
+      "activeOutline": "2px solid rgb(15, 122, 115)"
+    }
+  },
+  "impl": {
+    "present": true,
+    "box": {
+      "rectWidth": 16,
+      "rectHeight": 16,
+      "rectTop": 13,
+      "rectRight": 1496,
+      "width": "16px",
+      "height": "16px",
+      "display": "block",
+      "boxSizing": "border-box",
+      "borderTopWidth": "0px",
+      "borderRightWidth": "0px",
+      "borderBottomWidth": "0px",
+      "borderLeftWidth": "0px",
+      "borderTopStyle": "solid",
+      "borderTopColor": "rgb(126, 138, 145)",
+      "borderRadius": "0px",
+      "color": "rgb(126, 138, 145)",
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "cursor": "pointer",
+      "flex": "0 0 auto",
+      "alignItems": "normal",
+      "justifyContent": "normal",
+      "marginLeft": "328.906px"
+    },
+    "glyph": {
+      "width": 16,
+      "height": 16
+    },
+    "head": {
+      "height": 67,
+      "paddingTop": "12px",
+      "paddingBottom": "12px",
+      "borderBottomWidth": "1px"
+    },
+    "focus": {
+      "matchesFocusVisible": true,
+      "isActive": true,
+      "activeTag": "BUTTON",
+      "outlineWidth": "1px",
+      "outlineStyle": "auto",
+      "outlineColor": "rgb(0, 95, 204)",
+      "outlineOffset": "0px",
+      "boxShadow": "none",
+      "activeOutline": "1px auto rgb(0, 95, 204)"
+    }
+  },
+  "distAssets": [
+    {
+      "name": "index-2PH8KyYB.js",
+      "sha256_16": "8c600ba1f3bbd8d5"
+    },
+    {
+      "name": "index-DC60oicY.css",
+      "sha256_16": "81539880ba430f6b"
+    }
+  ],
+  "pageErrors": []
+}
