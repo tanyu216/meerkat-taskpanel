@@ -1,6 +1,6 @@
 ---
 name: meerkat-taskpanel
-description: Coordinate work across an AI Agent team using a shared local task board. Use when an agent or a human needs to create and track tasks, move them through a status workflow, assign owners, comment on a decision, link parent/child and blocking relations, record which agent session is working on what, deliver a task with a report, write a periodic (daily / weekly / monthly) report with statistics over completed work, or export the board as markdown. Runs the local `taskctl` CLI; no network required.
+description: Coordinate work across an AI Agent team using a shared local task board. Use when an agent or a human needs to create and track tasks, move them through a status workflow, assign owners, comment on a decision, edit a task's description or its priority, link parent/child and blocking relations, record which agent session is working on what, deliver a task with a report, write a periodic (daily / weekly / monthly) report with statistics over completed work, or export the board as markdown. Runs the local `taskctl` CLI; no network required.
 ---
 
 # Meerkat TaskPanel
@@ -79,6 +79,12 @@ per-host differences (Claude Code / Codex) and a worked example are in
 - **Asking for something** — `taskctl issue create --project <id> --title "…" --acceptance "…"`.
 - **While working** — `taskctl comment add <id> --body "…"`; a `decision`/`change`
   comment is what a reviewer reads later.
+- **Editing a card** — `status` moves (`issue move`), `priority` and the markdown
+  `description` patch (`issue update`), and `depends_on` is a `relation` written
+  from the blocker's side. Attachments have **no CLI face**, and the API's is
+  half a face — the pointer you would attach goes in the description, a comment or
+  `--meta`. The five edits, capability by capability, are in
+  [`references/cli.md`](references/cli.md#editing-a-card-status-priority-description-attachments-dependencies).
 - **Delegating** — `taskctl issue create --kind epic …` plus
   `taskctl relation add <parent> --type parent --target <child>`.
 - **Finishing** — `taskctl report template <id>` to get a report, fill in the TODO
