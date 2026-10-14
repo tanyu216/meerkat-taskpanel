@@ -1,0 +1,239 @@
+▶ server/routes — a task's audit trail
+  ✔ returns the history in order, with the actor and the revision (24.427042ms)
+  ✔ honours ?limit and ?after as a cursor (8.849625ms)
+  ✔ 404s an unknown task reference (7.796125ms)
+✔ server/routes — a task's audit trail (89.873458ms)
+▶ attachments — path and header safety
+  ✔ builds a content path only for a safe id (0.367542ms)
+  ✔ strips header-breaking characters from a filename (0.102708ms)
+✔ attachments — path and header safety (90.753791ms)
+▶ attachments — content over HTTP
+  ✔ 404s with a repair hint when the row has no stored bytes (35.99175ms)
+  ✔ stores bytes with PUT and streams them back with GET (31.105709ms)
+  ✔ replaces the stored bytes on a second PUT (65.456416ms)
+  ✔ 404s an attachment id that does not exist, and one that is not a safe path (10.222083ms)
+✔ attachments — content over HTTP (143.114917ms)
+▶ server/auth — loopback detection
+  ✔ recognises the three spellings of 'this machine', and the whole 127/8 block (0.536666ms)
+✔ server/auth — loopback detection (86.428916ms)
+▶ server/auth — the local case, over real HTTP
+  ✔ lets a loopback request read the board with no token at all (20.397291ms)
+  ✔ rotates the token from loopback, and never puts the secret in the response (16.063625ms)
+✔ server/auth — the local case, over real HTTP (36.828959ms)
+▶ server/auth — a request from elsewhere
+  ✔ demands a token (401) and says which of the two problems it is (0.362917ms)
+  ✔ accepts Authorization: Bearer and ?token= interchangeably (0.550042ms)
+  ✔ refuses to rotate a token from anywhere but this machine (403, loopback_only) (0.0995ms)
+  ✔ refuses a wrong-length token without throwing (constant-time compare) (0.080291ms)
+✔ server/auth — a request from elsewhere (1.288083ms)
+▶ server/cidr — parsing
+  ✔ parses IPv4 and IPv6 addresses to bytes (1.0305ms)
+  ✔ returns null for anything that is not an address (0.118459ms)
+  ✔ parses CIDRs, including a bare address as a full-length prefix (0.12825ms)
+✔ server/cidr — parsing (1.879166ms)
+▶ server/cidr — matching
+  ✔ matches inside a prefix and rejects outside it (0.174916ms)
+  ✔ never matches across address families (0.093708ms)
+  ✔ honours /0 and a full-length prefix (0.065125ms)
+✔ server/cidr — matching (0.470167ms)
+▶ server/cidr — the configured policy
+  ✔ treats an unset or blank value as 'allow everything' (0.131334ms)
+  ✔ parses a multi-segment list and only allows what is inside it (0.152667ms)
+  ✔ fails closed on a typo instead of opening up (0.082083ms)
+  ✔ refuses a non-string address when a list is configured (0.735083ms)
+✔ server/cidr — the configured policy (1.2665ms)
+▶ server/cidr — authorize composes the list, the token and loopback
+  ✔ answers 403 ip_not_allowed before it looks at the token (0.373917ms)
+  ✔ lets an allowed address through the list, then still demands the token (0.275375ms)
+  ✔ never blocks loopback, even when the list excludes it (0.3555ms)
+  ✔ still refuses to rotate from an allowed remote address (0.191125ms)
+✔ server/cidr — authorize composes the list, the token and loopback (1.373958ms)
+▶ server/cidr — over a real socket, the list is enforced
+  ✔ serves loopback with the list set, and reports it on /meta (141.684084ms)
+✔ server/cidr — over a real socket, the list is enforced (141.884125ms)
+▶ server/error-envelope — ③ engine text never reaches a message
+  ✔ answers every refusing route with a readable sentence (90.104083ms)
+✔ server/error-envelope — ③ engine text never reaches a message (132.699ms)
+▶ server/error-envelope — ② Terry's drag, end to end
+  ✔ moves a claimed card back to Backlog and leaves no claim behind (72.68375ms)
+✔ server/error-envelope — ② Terry's drag, end to end (73.098875ms)
+▶ server/events — the unit rules
+  ✔ names heartbeat-only activities as noise (0.352541ms)
+  ✔ formats a frame with an id and an unnamed data payload (0.700166ms)
+  ✔ reads ?after= and Last-Event-ID, and refuses anything else (3.710208ms)
+✔ server/events — the unit rules (70.12575ms)
+▶ server/events — increments over a real socket
+  ✔ streams a change made in-process, without going through an HTTP write (35.905917ms)
+  ✔ replays exactly the increments missed while disconnected (13.484875ms)
+  ✔ filters pure heartbeats but keeps the claim that preceded them (46.620208ms)
+  ✔ keeps the connection alive with a comment ping, with no board write at all (154.036791ms)
+  ✔ answers 400 for a malformed ?after instead of silently resyncing (2.263708ms)
+✔ server/events — increments over a real socket (252.917791ms)
+taskd 1.0.0 listening on http://127.0.0.1:53680
+runtime pointer: /Users/tanyu/.openclaw/tmp/meerkat-taskpanel-main-qJqG2a/runtime.json
+write lock: /Users/tanyu/.openclaw/tmp/meerkat-taskpanel-main-qJqG2a/writer.lock
+▶ server/main — TASKD_PORT
+  ✔ parses a port, and treats unset/blank as 'use the default' (1.295167ms)
+  ✔ refuses nonsense rather than binding something arbitrary (0.130791ms)
+✔ server/main — TASKD_PORT (2.047292ms)
+▶ server/main — shutdown
+  ✔ closes the board, removes the pointer and exits 0 (2.077458ms)
+  ✔ ignores a second signal while the first is still closing (0.659125ms)
+  ✔ still removes the pointer when closing the board throws (0.547084ms)
+✔ server/main — shutdown (3.442333ms)
+▶ server/main — the daemon, started in-process
+  ✔ writes a pointer naming the real port, and cleans up on close (133.951666ms)
+✔ server/main — the daemon, started in-process (134.16475ms)
+▶ server/index — the label GC timer (F1-C)
+  ✔ reads the interval and TTL from env, and honours the off switch (0.174042ms)
+  ✔ sweeps once at startup, and the timer prunes a label that stops being used (47.12575ms)
+  ✔ fires on its own once the interval elapses (70.605542ms)
+  ✔ is off entirely when TASKD_LABEL_GC=off (24.440167ms)
+  ✔ logs a failed sweep instead of taking the daemon down (0.17425ms)
+✔ server/index — the label GC timer (F1-C) (142.793709ms)
+▶ server/main — the URL a client is told to use
+  ✔ maps a wildcard bind to loopback and brackets an IPv6 literal (0.055583ms)
+✔ server/main — the URL a client is told to use (0.091625ms)
+▶ project-order — the pure ranking
+  ✔ normalises by rank, not by magnitude (0.912542ms)
+  ✔ combines the three factors with the published weights (0.305042ms)
+  ✔ breaks a total tie by last activity, then by name (10.072ms)
+  ✔ fixes archived projects to the bottom and survives an empty list (0.173583ms)
+  ✔ projects a debug view with the raw factors, ranks and scores (0.166792ms)
+✔ project-order — the pure ranking (67.849ms)
+▶ project-order — over HTTP against a real board
+  ✔ orders by activity, keeps the old project last, and ships no debug by default (29.5025ms)
+  ✔ returns the three factors on ?order_debug=1 (2.558583ms)
+  ✔ folds a heartbeat into no activity at all (25.464834ms)
+✔ project-order — over HTTP against a real board (59.448541ms)
+▶ C-PREFIX-1 §9 C — the prefix over the wire
+  ✔ C1/C2 · a UI create (no id, meta.prefix) numbers its cards DEMO-0001… (90.024041ms)
+  ✔ C3 · a project created with an id and no prefix still numbers DEMO-0001… (42.456708ms)
+  ✔ C4 · the two carriers cannot both own DEMO (53.999ms)
+  ✔ C5 · the same id twice is a 409, not a prefix refusal (30.821958ms)
+  ✔ C6 · `####` is refused and the project is not in the list (23.702125ms)
+  ✔ C7 · a project that predates the slot keeps the identifier its UUID gives it (25.13375ms)
+  ✔ C6′ · an update cannot put a prefix on a project that was created without one (23.939375ms)
+✔ C-PREFIX-1 §9 C — the prefix over the wire (291.271333ms)
+▶ server/routes — the sidebar task count
+  ✔ serves a numeric task_count per project, archived rows included (9.464333ms)
+  ✔ counts what the default task list hides (13.338291ms)
+  ✔ carries the same number on the single-project route (3.014958ms)
+  ✔ is the project's own row count, not its activity or its rank (4.914ms)
+✔ server/routes — the sidebar task count (166.811959ms)
+▶ server/routes — health and meta
+  ✔ keeps the /health contract the compose healthcheck depends on (54.732709ms)
+  ✔ reports the schema position on /meta (31.028416ms)
+  ✔ answers 404 with the standard envelope, not an HTML page (9.960875ms)
+✔ server/routes — health and meta (156.274458ms)
+▶ server/routes — projects
+  ✔ creates, lists, patches and round-trips the readme (17.426709ms)
+  ✔ has no `current` endpoint — the directory resolver is gone (O3) (6.97ms)
+✔ server/routes — projects (24.639833ms)
+▶ server/routes — tasks, the gate and deliver
+  ✔ creates a task with an acceptance list and a free-text assignee (5.497958ms)
+  ✔ lists, filters and fetches a task by identifier (5.618667ms)
+  ✔ refuses an illegal transition, then the gate, each with its own code (8.599334ms)
+  ✔ delivers atomically and reports the report id (7.241666ms)
+  ✔ delivers with an audited waiver when there is no report (10.943041ms)
+  ✔ refuses a status patch instead of silently ignoring it (1.374875ms)
+  ✔ merges --acceptance into meta without clobbering the rest (3.192083ms)
+✔ server/routes — tasks, the gate and deliver (42.887125ms)
+▶ server/routes — comments, relations, sessions, dictionary, export
+  ✔ appends and lists comments (4.637375ms)
+  ✔ records the actor the CLI declares (2.700708ms)
+  ✔ adds, lists and removes a relation (17.555083ms)
+  ✔ registers, lists and closes an agent session (7.764583ms)
+  ✔ reads the dictionary, and offers no way to write it (6.220042ms)
+  ✔ reads the label registry, and offers no way to write it (13.409458ms)
+  ✔ returns markdown from /export rather than writing files (4.326166ms)
+✔ server/routes — comments, relations, sessions, dictionary, export (56.992125ms)
+▶ server/routes — the edges a happy path never reaches
+  ✔ reads query parameters: filters, limits, offsets and archived rows (17.170459ms)
+  ✔ patches a project's labels and readme, and 404s an unknown one (6.41375ms)
+  ✔ creates a task with the less common fields, and refuses a second project id (3.925292ms)
+  ✔ patches the remaining task fields and honours if_version (7.41925ms)
+  ✔ moves with if_version, and records seg/session on a delivered report (8.431584ms)
+  ✔ adds a relation with force/origin, and 404s an unknown relation on remove (5.373583ms)
+  ✔ registers a session with phase/pid, closes as failed, and 404s an unknown session (8.430208ms)
+  ✔ treats a missing body as an empty object, and refuses a body that is not one (6.620542ms)
+  ✔ refuses a body larger than the limit instead of buffering it (3.207ms)
+  ✔ falls back to a local human when the actor header is malformed (4.116042ms)
+  ✔ exports without archived rows when asked (2.862167ms)
+✔ server/routes — the edges a happy path never reaches (74.453625ms)
+▶ server/routes — the authorization rejection, over a real socket
+  ✔ answers 401/403 with the standard envelope when authorization denies (32.638583ms)
+✔ server/routes — the authorization rejection, over a real socket (32.815917ms)
+▶ server/routes — a session registered from headers only
+  ✔ falls back to the CLI's session/seg headers when the body leaves them out (4.636ms)
+✔ server/routes — a session registered from headers only (4.771791ms)
+▶ server/routes — task_create cannot enter a delivery state (M3fix D1)
+  ✔ refuses in_review/done exactly as a reportless move is refused (7.591584ms)
+  ✔ still creates a task in the states it may start in (6.571375ms)
+✔ server/routes — task_create cannot enter a delivery state (M3fix D1) (18.785875ms)
+▶ server/routes — creation idempotency (T-20261009-175500)
+  ✔ re-uses the existing task for a repeated idem key (HTTP 200, same id) (6.545708ms)
+  ✔ creates a second task when allow_dup is set (4.633958ms)
+✔ server/routes — creation idempotency (T-20261009-175500) (13.726083ms)
+▶ server/routes — candidates (the poll read)
+  ✔ lists claimable cards and excludes unmet deps and epics (29.290416ms)
+  ✔ answers an empty list for an unknown assignee, and 400 without one (3.990958ms)
+✔ server/routes — candidates (the poll read) (33.431125ms)
+▶ server/routes — claim enforces the assignee (T-20261009-230500)
+  ✔ lets the assignee move their card to in_progress (200) (5.161375ms)
+  ✔ refuses a different actor with 409 not_assignee (4.78325ms)
+  ✔ takes it with allow_steal, and the takeover is readable as a change comment (7.202375ms)
+  ✔ refuses allow_steal without a reason (4.733208ms)
+✔ server/routes — claim enforces the assignee (T-20261009-230500) (24.533875ms)
+▶ server/static — pure path and type rules
+  ✔ maps a small set of extensions and defaults to octet-stream (0.416167ms)
+  ✔ resolves inside the root and refuses escapes (0.930042ms)
+✔ server/static — pure path and type rules (61.07875ms)
+▶ server/static — serving over a real socket
+  ✔ serves the shell at the root and an asset by path (42.704667ms)
+  ✔ falls back to the shell for a client-side route, but not for a missing asset (19.650958ms)
+  ✔ refuses directory traversal over a real request (7.383916ms)
+  ✔ answers HEAD with the headers and no body (11.385292ms)
+  ✔ never shadows the API: an unknown /api path stays a JSON 404 (4.852166ms)
+✔ server/static — serving over a real socket (86.497375ms)
+▶ server/static — a checkout with no build
+  ✔ 404s instead of failing, and says so on /meta (31.648958ms)
+✔ server/static — a checkout with no build (31.863917ms)
+▶ task-order — the surface
+  ✔ publishes the capability bit beside `project_order` (13.782375ms)
+  ✔ refuses an unknown order rather than silently falling back (2.789416ms)
+  ✔ refuses an unknown order on the candidate read too (2.353792ms)
+✔ task-order — the surface (100.412791ms)
+▶ task-order — assertion 7: the default order did not move
+  ✔ returns the existing deterministic order when `order` is absent (5.736ms)
+  ✔ returns a genuinely different order for `order=weight` (5.398792ms)
+  ✔ does not leak an `order_debug` key into a plain read (1.509125ms)
+  ✔ projects `order_debug` when asked, and asking selects the weight order (2.754917ms)
+  ✔ keeps `limit`/`offset` semantics on the whole scoped set (11.457ms)
+  ✔ treats an explicit `limit: null` as the whole scoped set, in both orders (0.646666ms)
+✔ task-order — assertion 7: the default order did not move (31.91925ms)
+▶ task-order — assertion 8: the export is untouched
+  ✔ walks the board order and emits byte-stable cards (6.478792ms)
+✔ task-order — assertion 8: the export is untouched (6.586208ms)
+▶ task-order — assertion 9: the `blocked_at` gate (R15)
+  ✔ does not let a stale `blocked_at` score a card that is not blocked (8.029708ms)
+  ✔ still times a card that *is* blocked from `blocked_at` (3.329709ms)
+✔ task-order — assertion 9: the `blocked_at` gate (R15) (11.498833ms)
+▶ task-order — assertion 10: the scope reaches SQL before the order does
+  ✔ returns the assignee's whole pool, not the first 200 rows of the board (11.798833ms)
+  ✔ orders the untruncated set, so a card past row 200 can lead (7.521458ms)
+  ✔ keeps the claimability bucket as the first key (5.0035ms)
+  ✔ never offers an epic, however much it blocks (R10) (5.616209ms)
+  ✔ counts open downstream cards for the `B` factor from one batched read (5.0905ms)
+✔ task-order — assertion 10: the scope reaches SQL before the order does (103.056291ms)
+▶ task-order — the candidate projection is unchanged by the order
+  ✔ still emits exactly the card's fields plus `reason`, and writes nothing (5.724834ms)
+✔ task-order — the candidate projection is unchanged by the order (5.836625ms)
+ℹ tests 140
+ℹ suites 44
+ℹ pass 140
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1008.030625
