@@ -21,6 +21,7 @@ import { computed, reactive } from "vue";
 import { api, ApiError } from "../services/api.js";
 import { createEventClient } from "../services/events.js";
 import { t } from "../i18n/index.js";
+import { errorTextKey } from "../i18n/messages.mjs";
 import { pushStickyToast, pushToast } from "./ui.js";
 
 /**
@@ -507,6 +508,13 @@ export async function selectProject(projectId) {
  * Move a card, optimistically. The local status flips first; the request carries
  * `if_version` so a concurrent writer is detected rather than overwritten.
  *
+ * A refusal is always read as a **code**, never as the wire's `message`
+ * (T-20261014-152924 ④): the server's message describes the failing write
+ * (`CHECK constraint failed: …` is what a reader saw here when the claim was not
+ * released), while `errorTextKey` maps the code to a sentence in the reader's
+ * language, with `error.generic` for anything unmapped. The version conflict
+ * keeps its own surface (a sticky panel) *and* its sentence.
+ *
  * @param {object} task the wire task
  * @param {string} to target status
  */
@@ -524,21 +532,22 @@ export async function moveTask(task, to) {
     pushToast(`${t("toast.moved")} · ${task.identifier} → ${t(`status.${to}`)}`, dangerous ? "danger" : "success");
   } catch (err) {
     patchTaskLocal(task.id, { status: from }); // roll back, visibly
-    if (err instanceof ApiError && err.isVersionConflict) {
+    const conflict = err instanceof ApiError && err.isVersionConflict;
+    if (conflict) {
+      // The panel carries the two versions the reader needs and the reload that
+      // repairs them; the wire's prose is deliberately not copied into it.
       board.conflict = {
         identifier: task.identifier,
         expectedVersion: err.details?.expectedVersion ?? baseVersion,
         currentVersion: err.details?.currentVersion ?? null,
-        message: err.message,
       };
-      pushStickyToast(`${t("toast.moveConflict", task.identifier)}`, "danger");
-    } else if (err?.code === "REPORT_REQUIRED") {
-      pushToast(t("toast.reportRequired", task.identifier), "danger");
-    } else if (err?.code === "INVALID_TRANSITION" || err?.code === "TERMINAL_STATE") {
-      pushToast(t("toast.moveFailed", task.identifier), "danger");
-    } else {
-      pushToast(err?.message ?? t("toast.moveFailed", task.identifier), "danger");
     }
+    // One sentence per refusal, chosen by its `code`. A conflict is sticky —
+    // it needs the reader to act before the board is trustworthy again — and
+    // every other refusal is an ordinary toast that expires on its own.
+    const text = t(errorTextKey(err), task.identifier);
+    if (conflict) pushStickyToast(text, "danger");
+    else pushToast(text, "danger");
     throw err;
   }
 }
@@ -643,7 +652,9 @@ export async function openDetail(identifier) {
     };
   } catch (err) {
     board.drawerState = "closed";
-    pushToast(err?.message ?? "failed to open", "danger");
+    // The wire's message is never shown (④) — the code names the sentence, and
+    // the card's own ref makes it answer "which one?".
+    pushToast(t(errorTextKey(err), identifier), "danger");
   }
 }
 

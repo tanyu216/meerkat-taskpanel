@@ -10,11 +10,16 @@
  *
  * The language is mirrored onto `<html lang>` by `applyLang()` (the one writer),
  * and the value is persisted under `meerkat-taskpanel.lang` (F5). Default `en`.
+ *
+ * The lookup itself lives in `./messages.mjs` (extra table, then catalogue), so
+ * the sentences can be asserted in both languages from `node --test`; this
+ * module adds only the reactive `lang` ref and the two accessors over it.
  */
 import { computed, ref } from "vue";
 
 import { CATALOGUE, DEFAULT_LANGUAGE, LANGUAGES, hasKey, tableFor, translate } from "./catalogue.mjs";
 import { EXTRA } from "./extra.mjs";
+import { resolveText } from "./messages.mjs";
 import { LANG_STORAGE_KEY, readLang, nextLang as cycleLang } from "../stores/prefs.js";
 
 export { CATALOGUE, DEFAULT_LANGUAGE, LANGUAGES, EXTRA };
@@ -22,24 +27,13 @@ export { CATALOGUE, DEFAULT_LANGUAGE, LANGUAGES, EXTRA };
 /** The active language. One reactive source of truth for the whole app. */
 export const lang = ref(readLang());
 
-/** Resolve a key against the extra table (new M6b states), then the catalogue. */
-function resolve(language, key, args) {
-  const table = EXTRA[language] ?? EXTRA[DEFAULT_LANGUAGE];
-  if (Object.prototype.hasOwnProperty.call(table, key)) {
-    let out = table[key];
-    for (const arg of args) if (arg !== undefined && arg !== null) out = out.replace("%s", String(arg));
-    return out;
-  }
-  return translate(language, key, ...args);
-}
-
 /** `t(key, ...args)` bound to the active language. */
 export function t(key, ...args) {
-  return resolve(lang.value, key, args);
+  return resolveText(lang.value, key, args);
 }
 
 /** A computed accessor for templates that prefer `tt.value`. */
-export const tt = computed(() => (key, ...args) => resolve(lang.value, key, args));
+export const tt = computed(() => (key, ...args) => resolveText(lang.value, key, args));
 
 /** True when the key resolves in the active language (over the en fallback). */
 export function has(key) {

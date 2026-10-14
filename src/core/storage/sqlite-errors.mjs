@@ -13,6 +13,15 @@
  *
  * Everything is re-messaged through `redactText` so a token can never ride out
  * on a SQL error string.
+ *
+ * **The message is never the engine's** (T-20261014-152924). A caller gets the
+ * sentence its reason code carries; the engine's own words — including the
+ * constraint expression, which is a schema detail a reader of the board has no
+ * use for — are kept on the error's `details` (`details.sqlite.message`, plus
+ * the parsed `check`/`columns`) for the server-side log surface. That is what
+ * stops `CHECK constraint failed: claimed_by IS NULL OR status <> 'backlog'`
+ * from reaching a screen; `shared/errors.mjs#safeMessage` enforces the same rule
+ * for any caller that builds a `DomainError` of its own.
  */
 
 import { DB_RAISE_CODES, DomainError, isDomainError } from "../../shared/errors.mjs";
@@ -99,6 +108,13 @@ export const UNIQUE_COLUMNS_TO_CODE = Object.freeze(
 export const CHECK_TEXT_TO_CODE = Object.freeze([
   { match: "source_task_id <> target_task_id", code: "SELF_REFERENCE" },
   { match: "relation_type <> 'related'", code: "RELATION_DIRECTION_INVALID" },
+  // T-20261014-152924 — the `tasks` row's own "a backlog card is never claimed"
+  // CHECK. The service now releases the claim as part of the move that leaves
+  // the work cycle (`domain/status.mjs#CLAIM_HOLDING_STATUSES`), so this entry is
+  // **defensive**: it maps a state that only a foreign writer can produce (a
+  // hand-written row, an md import) to a code that names itself, instead of
+  // falling through to a generic `VALIDATION_FAILED`.
+  { match: "claimed_by IS NULL OR status <> 'backlog'", code: "CLAIM_ON_BACKLOG" },
 ]);
 
 /** @param {unknown} err */
@@ -186,8 +202,9 @@ export function mapSqliteError(err, context = {}) {
     if (RAISED_CODES.has(message)) {
       return new DomainError(message, { details, message: raiseMessage(message, context), cause: err });
     }
+    // An unmapped RAISE is still engine-side text: the code answers the caller,
+    // the raw string is kept in `details` for the log surface (③).
     return new DomainError("VALIDATION_FAILED", {
-      message,
       details: { ...details, unmappedRaise: message },
       cause: err,
     });
@@ -200,7 +217,6 @@ export function mapSqliteError(err, context = {}) {
       return new DomainError(code, { details: { ...details, columns }, cause: err });
     }
     return new DomainError("VALIDATION_FAILED", {
-      message,
       details: { ...details, columns, unmappedUnique: true },
       cause: err,
     });
@@ -213,7 +229,6 @@ export function mapSqliteError(err, context = {}) {
       return new DomainError(hit.code, { details: { ...details, check }, cause: err });
     }
     return new DomainError("VALIDATION_FAILED", {
-      message,
       details: { ...details, check },
       cause: err,
     });
@@ -229,13 +244,17 @@ export function mapSqliteError(err, context = {}) {
 
   if (errcode === SQLITE_ERRCODE.NOTNULL) {
     return new DomainError("VALIDATION_FAILED", {
-      message,
       details: { ...details, columns: notNullColumnsFrom(message) },
       cause: err,
     });
   }
 
-  return new DomainError("VALIDATION_FAILED", { message, details, cause: err });
+  // Anything else the engine raised is *its* vocabulary, and `message` is only
+  // ever the reason-code sentence: callers read `details.sqlite.message` (the
+  // log surface) if they need the engine's own words. `safeMessage` at
+  // construction would swap a matching string anyway; not passing one makes the
+  // intent explicit rather than relying on the guard.
+  return new DomainError("VALIDATION_FAILED", { details, cause: err });
 }
 
 /**
