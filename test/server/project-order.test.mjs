@@ -1,5 +1,5 @@
 /**
- * M6a — the §4.6 project ranking, as pure maths and as an HTTP response.
+ * M6a — the DESIGN.md §20 project ranking, as pure maths and as an HTTP response.
  *
  * Two layers, tested separately for a reason: the *algorithm* (rank
  * normalization, weights, tie-breaks) is arithmetic and belongs in unit cases

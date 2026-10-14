@@ -3,7 +3,7 @@
  *
  * The badge is the project's **total** task count (`design/BLOCKS.md` §Projects,
  * `design/DESIGN.md` §20.1): every status, archived included, and independent of
- * the §4.6 ordering. It is emphatically *not* the activity count the same route
+ * the DESIGN.md §20 ordering. It is emphatically *not* the activity count the same route
  * exposes under `?order_debug=1` — that one counts `task_activities` rows in a
  * trailing window, so one create + one move + one archive make it three while the
  * project still owns a single task.

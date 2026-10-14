@@ -120,7 +120,7 @@ network** (`docker build --network=none` succeeds).
 | Route (`/api/v1` unless noted) | Methods | Notes |
 |---|---|---|
 | `/health`, `/meta` | GET | liveness + version/capabilities; `/health` is unauthenticated |
-| `/projects`, `/projects/:id`, `/projects/:id/readme` | GET/POST/PATCH/PUT | `/projects` is ordered server-side (§4.6) and carries each project's `task_count` (the sidebar badge — total tasks, archived included, independent of the order) |
+| `/projects`, `/projects/:id`, `/projects/:id/readme` | GET/POST/PATCH/PUT | `/projects` is ordered server-side (DESIGN.md §20) and carries each project's `task_count` (the sidebar badge — total tasks, archived included, independent of the order) |
 | `/tasks`, `/tasks/:ref` | GET/POST/PATCH | `:ref` is an identifier or a UUID |
 | `/tasks/:ref/move`, `/tasks/:ref/deliver`, `/tasks/:ref/assign`, `/tasks/:ref/archive` | POST | the delivery gate bites on `/move` and `/deliver` |
 | `/tasks/:ref/comments`, `/tasks/:ref/relations`, `/tasks/:ref/sessions`, `/tasks/:ref/activities`, `/tasks/:ref/reports` | GET/POST/DELETE | activities is the audit cursor read |

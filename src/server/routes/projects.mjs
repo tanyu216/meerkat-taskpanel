@@ -5,7 +5,7 @@
  * path for it, and there is no "which directory is this?" endpoint. The mapping
  * from a local directory to a project lives on the agent side.
  *
- * `GET /api/v1/projects` is where §4.6 lives: the list is returned **already
+ * `GET /api/v1/projects` is where DESIGN.md §20 lives: the list is returned **already
  * ordered** by the weight algorithm (activity over 7/30 days + creation age),
  * because §8 says the frontend consumes the order and must not recompute it.
  * The aggregation is a SQL join (`task_activities → tasks → project_id`) and
@@ -28,7 +28,7 @@ import { arr, obj, shape, str } from "../requests.mjs";
 // (`routes[].request`). See `src/server/requests.mjs` for the vocabulary and the
 // "declared, not enforced" stance.
 
-/** `GET /api/v1/projects` — the §4.6 list, with the diagnostic `order_debug` opt-in. */
+/** `GET /api/v1/projects` — the DESIGN.md §20 list, with the diagnostic `order_debug` opt-in. */
 const LIST_QUERY = shape({ include_archived: str(), order_debug: str() });
 
 /** `POST /api/v1/projects`. */
@@ -70,7 +70,7 @@ export function registerProjectRoutes(router, surface) {
     );
     return {
       projects: ranked.map((item) => projectToWire(item.entry)),
-      // The escape hatch §4.6 asks for: on request, ship the three raw factors,
+      // The escape hatch DESIGN.md §20 asks for: on request, ship the three raw factors,
       // their ranks and their normalised scores so the order can be reconciled
       // by hand. Off by default — it is a diagnostic, not board state.
       ...(truthy(query.get("order_debug")) ? { order_debug: ranked.map(orderDebugEntry) } : {}),
@@ -137,11 +137,11 @@ export function intOrUndefined(value) {
   return Number.isInteger(parsed) ? parsed : undefined;
 }
 
-/** What a project with no activity in either window looks like (§4.6). */
+/** What a project with no activity in either window looks like (DESIGN.md §20). */
 const EMPTY_ACTIVITY = Object.freeze({ a7: 0, a30: 0, lastActivityAt: null });
 
 /**
- * Per-project activity counts for the §4.6 windows.
+ * Per-project activity counts for the DESIGN.md §20 windows.
  *
  * "Activity" is the reproducible definition the architecture fixes: the number
  * of `task_activities` rows in the window that belong to a task of the project,
@@ -188,7 +188,7 @@ export function activityByProject(board, options = {}) {
  * Per-project **task counts** — what the sidebar badge prints.
  *
  * This is deliberately *not* a ranking input and deliberately not the activity
- * count above: §4.6 orders by trailing-window activity, while the badge is the
+ * count above: DESIGN.md §20 orders by trailing-window activity, while the badge is the
  * project's **total** number of tasks (every status, archived included, and
  * whatever order the list happens to be in). A project with no tasks is simply
  * absent from the map — the caller defaults it to `0` rather than inventing a

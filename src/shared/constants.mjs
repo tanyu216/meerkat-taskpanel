@@ -348,7 +348,7 @@ export const ATTACHMENT_CONTENT_TYPES = Object.freeze([
 export const ATTACHMENT_DEFAULT_CONTENT_TYPE = "application/octet-stream";
 
 // ---------------------------------------------------------------------------
-// Project ordering (ARCHITECTURE §4.6, M6a)
+// Project ordering (DESIGN.md §20, M6a)
 // ---------------------------------------------------------------------------
 
 /**
@@ -356,7 +356,7 @@ export const ATTACHMENT_DEFAULT_CONTENT_TYPE = "application/octet-stream";
  * `A7` (7-day activity) 0.50 · `A30` (30-day) 0.30 · `C` (created) 0.20.
  */
 export const PROJECT_ORDER_WEIGHTS = Object.freeze({ a7: 0.5, a30: 0.3, created: 0.2 });
-/** The two activity windows, in days (§4.6). */
+/** The two activity windows, in days (DESIGN.md §20). */
 export const PROJECT_ACTIVITY_WINDOW_DAYS = Object.freeze({ a7: 7, a30: 30 });
 
 // ---------------------------------------------------------------------------
