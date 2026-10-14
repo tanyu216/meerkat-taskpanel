@@ -27,11 +27,18 @@
  *     string (or an array of them) where the handler will parse an integer, and
  *     the *parse* is the handler's business, not the transport's. Declaring
  *     `number` here would describe a value the route is never handed.
+ *
+ * A **task command's body** is no longer written out here by hand: it is
+ * projected from the command's own input declaration
+ * (`src/core/commands/tasks-input.mjs`) by `project` below, so the route's shape,
+ * the CLI's flags and the CLI's body all come from one record. The query shapes
+ * are still declared by hand — nothing else consumes them.
  */
 
 import {
   COMMENT_KINDS,
   DICT_KINDS,
+  inputOf,
   PRIORITIES,
   RELATION_TYPES,
   SESSION_STATUSES,
@@ -90,3 +97,46 @@ export const REQUEST = Object.freeze({
   sessionStatus: oneOf(SESSION_STATUSES),
   dictKind: oneOf(DICT_KINDS),
 });
+
+/** A field's schema: its vocabulary where the domain closes it, else its type. */
+function leafFor(field) {
+  if (field.vocab !== null) return oneOf(field.vocab);
+  if (field.type === "integer") return int();
+  if (field.type === "boolean") return bool();
+  if (field.type === "object") {
+    if (field.nested === null) return obj();
+    const properties = {};
+    for (const member of field.nested) properties[member.key] = schemaFor(member);
+    return shape(properties);
+  }
+  return str();
+}
+
+/** A field's schema, wrapped in an array when the field repeats. */
+function schemaFor(field) {
+  const leaf = leafFor(field);
+  return field.repeat ? arr(leaf) : leaf;
+}
+
+/**
+ * A task command's request body, projected from its input declaration.
+ *
+ * The declaration is the record (`src/core/commands/tasks-input.mjs`); this is
+ * how the wire side of it reads. A field the CLI alone carries is skipped — it
+ * has no wire name, so the route does not accept it under one.
+ *
+ * @param {string} op one of `TASK_OPS`
+ */
+export function project(op) {
+  const { fields, required } = inputOf(op);
+  const properties = {};
+  for (const field of fields) {
+    if (field.surface === "cli") continue;
+    properties[field.key] = schemaFor(field);
+  }
+  // `op` rides along as a key `canonicalSchema` does not whitelist, so the frozen
+  // snapshot never sees it — while `scripts/verify/route-request.mjs` gets the
+  // exact handle it needs to pair this route with the CLI command that sends to
+  // it, and with the declaration both project.
+  return { ...shape(properties, required), op };
+}

@@ -18,6 +18,23 @@ import { allCommands, groups } from "../../src/cli/commands/index.mjs";
 
 after(cleanupTempDirs);
 
+/**
+ * The `Global options:` block exactly as printed — the table, without the
+ * `Run \`taskctl <group> --help\`…` pointer `topLevelUsage` appends after it.
+ */
+function globalBlock(stdout) {
+  const lines = stdout.split("\n");
+  const at = lines.indexOf("Global options:");
+  assert.notEqual(at, -1, `no global-options block in:\n${stdout}`);
+  const block = [];
+  for (const line of lines.slice(at + 1)) {
+    if (line.startsWith("Run `taskctl")) break;
+    block.push(line);
+  }
+  while (block.length > 0 && block.at(-1) === "") block.pop();
+  return block.join("\n");
+}
+
 describe("cli/dispatch — help", () => {
   it("lists every group at the top level", () => {
     const run = runCli(["--help"], { noUrl: true });
@@ -40,10 +57,23 @@ describe("cli/dispatch — help", () => {
   });
 
   it("prints per-command usage and its options, exit 0", () => {
+    // One declaration, two pages: `registry.globals` feeds `taskctl --help`, and
+    // `commandUsage` reads the same `argv.mjs#GLOBAL_FLAGS`. They were separate
+    // copies once and had already drifted — `if-version` was `number` in one and
+    // `string` in the other, and `json` / `help` carried different summaries —
+    // which no assertion could see, because nothing compared the two pages.
+    const top = globalBlock(runCli(["--help"], { noUrl: true }).stdout);
+    assert.match(top, /--if-version <n>/);
+
     for (const { group, command } of allCommands()) {
       const run = runCli([group.name, command.name, "--help"], { noUrl: true });
       assert.equal(run.status, 0, `${group.name} ${command.name}: ${run.stderr}`);
       assert.match(run.stdout, /^Usage: taskctl /m);
+      assert.equal(
+        globalBlock(run.stdout),
+        top,
+        `${group.name} ${command.name} prints a different global-options block`,
+      );
     }
   });
 

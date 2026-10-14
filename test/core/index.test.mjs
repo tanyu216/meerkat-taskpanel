@@ -68,6 +68,7 @@ const PLANNED = [
   "commands/context.mjs",
   "commands/projects.mjs",
   "commands/tasks.mjs",
+  "commands/tasks-input.mjs",
   "commands/reports.mjs",
   "commands/comments.mjs",
   "commands/relations.mjs",
