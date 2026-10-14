@@ -161,6 +161,30 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     `warn` with no threshold.
 - **`inspector_liveness` lands — the mutual watchdog between the two inspectors** (§5.3/§8.4).
   Every completed pass publishes this mechanism's own last-successful-run marker
+- **A gate on host-absolute paths, so the cleanup above cannot come back.**
+  `scripts/verify/paths.mjs` fails a build in which any tracked file carries a
+  `/Users/<name>` or `/home/<name>` path that names a real machine. It reads as ordinary
+  prose, which is exactly why review did not catch the six that were fixed by hand, and why
+  it took several rounds for anyone to notice the tree was carrying a developer's home
+  directory.
+
+  Two kinds of path are exemptions, listed by name rather than inferred: **placeholders**
+  (`/Users/you`, `/home/you` — the thing a reader substitutes into, in the skill references
+  and `docs/scheduling.md`) and **fixture names** (`tester`, `op`, `team`, `alice` — arguments
+  to pure path-resolution functions under test, in the same spirit as `/tmp/…`). A new
+  placeholder name outside that list is a red whose message says what to do about it.
+
+  `test/fixtures/host-paths-allowlist.json` carries the files that legitimately keep one —
+  records of verification runs that really happened on one machine. It is checked in three
+  directions: nothing off the list may offend, every entry must still exist, and every entry
+  must still offend. The last two mean the list cannot grow without an edit in the same
+  change and cannot go stale once a file is cleaned; there is deliberately no `--update`.
+
+  Wired into `npm run verify`, `.githooks/pre-push`, the container suite and its own
+  `.github/workflows/paths-gate.yml` — that last one for the same reason `contract-gate.yml`
+  exists separately: `check.yml` is owned by a concurrent change and must not be modified.
+  The checker uses `git ls-files` when there is a git checkout and walks the tree otherwise,
+  because the verification image carries no `.git` (`.dockerignore` drops it).
   (`--sla-last-ok`, default `loop-patrol-last-ok.json` beside `--state`), and `--sla-peer <path>`
   points at the other mechanism's marker: one older than `3 × 15min` raises the row at `warn`
   (no threshold — the bound is derived, never invented). With no `--sla-peer` configured, the
