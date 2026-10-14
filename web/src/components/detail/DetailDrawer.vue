@@ -9,8 +9,9 @@
  * one state source, which is C06's own vocabulary and is unchanged — and never by
  * a stylesheet rule; since R14 §8 U4 the `aside` carries no `hidden` attribute at
  * all, its closed face being the prototype's `translateX(100%)` +
- * `visibility: hidden` pair (`.td-drawer`, `app.css`). Escape returns focus to
- * the opener (handled in `App.vue`).
+ * `visibility: hidden` pair (`.td-drawer`, `app.css`). Escape closes through
+ * `App.vue`'s own `keydown` arm (it calls `closeDetail`); this drawer restores
+ * no focus to the opener.
  *
  * The body is **always in the document** — the contract counts hooks like
  * `[data-detail-labels]` with no `when` precondition, so they must exist while
@@ -548,7 +549,7 @@ function copyId() {
              attachments — never the state of a drawer with no task in it. -->
         <div data-detail-attachments>
           <div v-for="file in attachments" :key="file.name" class="td-file" data-attachment-row>
-            <svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <svg class="td-icon size-4" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M14 3v5h5M7 3h7l5 5v13H7z" />
             </svg>
             <span class="td-file-name" data-attachment-name>{{ file.name }}</span>
