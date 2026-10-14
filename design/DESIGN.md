@@ -1899,7 +1899,7 @@ source and as the round's own evidence page. What moved is where the board *read
 |---|---|
 | Structure | `[data-activity-view]` is copied **verbatim** from the design page's own section — same hooks, same order, same copy, same row data. Retyping is where a hook drifts, so the block was spliced from the source rather than rewritten |
 | Placement | third child of `main.td-main`, beside `[data-board-view]` and `[data-list]`; it ships **`hidden`**, so the no-script default view stays the board |
-| Routing | `setView()` takes four values; the nav's click handler hands it every `[data-nav-item]`, and the branch that answered `activity`/`waiting` with a revision toast is **deleted** |
+| Routing | `mirrorView()` takes four values; the nav's click handler hands it every `[data-nav-item]`, and the branch that answered `activity`/`waiting` with a revision toast is **deleted** |
 | Copy | read from `app.js`'s `MESSAGES`, the document's one catalogue. The design page's own `[data-activity-i18n]` carrier is **not** carried over — two dictionaries in one document drift page by page |
 | Styles | the design page's scoped `<style>` block moves into `src/input.css`, unchanged in value and in selector, and `tw.css` is rebuilt |
 | A row's drawer | it lands on the board's own **B09**, on the task the row names. The design page's stand-in drawer was exactly that — a stand-in for a page with no board behind it |
@@ -1926,7 +1926,7 @@ result is the round's whole reason. The fix is one rule instead of two branches:
 
 | | |
 |---|---|
-| `setView(view)` | toggles four roots — `[data-board-view]`, `[data-list]`, `[data-activity-view]`, `[data-waiting-view]` — and writes `aria-current="page"` on the nav item whose name equals the view, clearing it off the others |
+| `mirrorView(view)` | toggles four roots — `[data-board-view]`, `[data-list]`, `[data-activity-view]`, `[data-waiting-view]` — and writes `aria-current="page"` on the nav item whose name equals the view, clearing it off the others |
 | Scope | `[data-nav]` only. The **project rows** carry `aria-current="page"` too, for the current project, so "exactly one" is a property of the nav and not of the document |
 | `[data-nav-count="activity"]` | the feed's unread count, in B03's existing `.badge.td-count` shell; `hidden` at zero, the rule the `waiting` pill already follows |
 | The top bar's toggle | still exactly `board | list`, still frozen. It is a *layout* control for the board area; the sidebar's is a four-way destination list. They are different controls and R12x does not touch the first |
