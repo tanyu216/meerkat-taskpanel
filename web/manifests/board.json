@@ -2,6 +2,7 @@
   "page": "board",
   "name": "Board — 看板主路径 8 块（B01/B02/B03/B04/B05/B06/B07/B09）",
   "route": "/",
+  "readySelector": "[data-card]",
   "widths": [1512, 1240, 980, 760, 430],
   "height": 900,
   "overflowTargets": [
