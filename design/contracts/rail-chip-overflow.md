@@ -85,7 +85,7 @@ solid:      永不换行；36 字符 = 213.14px；越出 rail 右缘从 11 起
 
 ### 2.4 门禁盲区（实测）
 
-- 原型对照的清单（`web/manifests/`，随团队外部工具链移出本仓库）里**没有任何** rail chip 盒规则（`grep 'side-icon'` 只命中一条 prose 串）⇒ 那条引擎腿对 chip 几何无断言。本契约的 D1–D7 因此由实现侧自带，见 §7 与 `web/scripts/rail-chip-overflow.mjs`。
+- 原型对照的清单**不在本仓库**（它属团队的外部工具链），且其中**没有任何** rail chip 盒规则 ⇒ 那条引擎腿对 chip 几何无断言。本契约的 D1–D7 因此由实现侧自带，见 §7 与 `web/scripts/rail-chip-overflow.mjs`。
 - `test/web/blocks.contract.mjs` 对 chip 只有一条 `count … equals: 0`（`[data-nav]` 内不得带该钩子），**无** overflow/几何断言。
 - `test/web/side-rail-short-code.test.mjs` 钉的是「值来自 wire、不派生、钩子形态」（A1/A2/A3/A7），**不钉盒**。
 - `docOverflow` 恒 0（§2.1）⇒ dom-smoke 的视口规则不响。

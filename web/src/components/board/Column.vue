@@ -96,8 +96,9 @@ function onDrop(event) {
 
            The Add button is `btn-sm`, the size the prototype's `[data-column-add]`
            wears in this block (28px); it is deliberately **not** given that hook
-           — the header's button already carries it, once per column, and the
-           manifest counts exactly seven of them (`web/manifests/board.json` B06).
+           — the header's button already carries it, and B06 holds the hook
+           `required` on every `[data-column]` with an `identical-hookset` rule
+           across them, so a second carrier here would break that rule.
 
            It does wear the prototype's **static `data-i18n` seat**
            (`design/prototype/index.html`, `column.empty.add`), the same seat the

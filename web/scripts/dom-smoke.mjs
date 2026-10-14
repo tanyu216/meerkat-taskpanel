@@ -295,11 +295,13 @@ export function fixtureApi() {
 /**
  * Boot the fixture API + static `web/dist` server.
  *
- * `port` defaults to 0 (an ephemeral port), which is what the smoke itself and
- * `shot-compare.mjs` want. A caller that has to *name* the port up front passes
- * `{ port }`, so the server binds where the caller is already looking.
+ * `port` defaults to 0 (an ephemeral port), and every caller today wants exactly
+ * that: the smoke itself, `shot-compare.mjs` and `rail-chip-overflow.mjs` all take
+ * the bound port back off the return value. The option to *name* the port used to
+ * exist for one caller that had to be told where to look first; with that caller
+ * gone there is no such case left, so the parameter is gone with it.
  */
-export function startServer({ port = 0 } = {}) {
+export function startServer() {
   const data = fixtureApi();
   const server = createServer((req, res) => {
     const url = new URL(req.url, "http://127.0.0.1");
@@ -401,7 +403,7 @@ export function startServer({ port = 0 } = {}) {
     res.end(readFileSync(file));
   });
   return new Promise((resolvePromise) => {
-    server.listen(port, "127.0.0.1", () => resolvePromise({ server, port: server.address().port, data }));
+    server.listen(0, "127.0.0.1", () => resolvePromise({ server, port: server.address().port, data }));
   });
 }
 
