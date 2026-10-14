@@ -67,10 +67,13 @@ export const SCHEDULER_DEFAULT_PATH = Object.freeze({
  */
 export function unitPath(nodeDir, options = {}) {
   const { cliDir, scheduler = "launchd" } = options;
-  const defaults = SCHEDULER_DEFAULT_PATH[scheduler];
-  if (defaults === undefined) {
+  // `Object.hasOwn`, not a truthiness/undefined test: a bare lookup answers for the
+  // prototype chain too, so `--scheduler constructor` would otherwise render
+  // `function Object() { … }` as a "default" instead of being refused.
+  if (!Object.hasOwn(SCHEDULER_DEFAULT_PATH, scheduler)) {
     throw new Error(`unitPath: unknown scheduler '${scheduler}' (expected ${Object.keys(SCHEDULER_DEFAULT_PATH).join("|")})`);
   }
+  const defaults = SCHEDULER_DEFAULT_PATH[scheduler];
   // A `Set` deduplicates and keeps insertion order, so a machine where the host CLI and
   // node share a directory (nvm puts its global bin there) gets one entry, not two.
   const dirs = [...new Set([cliDir, nodeDir].filter((dir) => typeof dir === "string" && dir !== ""))];

@@ -108,6 +108,11 @@ describe("unit-path: the recipe", () => {
 
   it("refuses a scheduler it does not know, rather than guessing a default set", () => {
     assert.throws(() => unitPath("/opt/node/bin", { scheduler: "upstart" }), /unknown scheduler/);
+    // …including the names every object answers for by inheritance: a bare lookup would
+    // hand back `function Object() { … }` and render it as if it were a PATH.
+    for (const inherited of ["constructor", "toString", "hasOwnProperty"]) {
+      assert.throws(() => unitPath("/opt/node/bin", { scheduler: inherited }), /unknown scheduler/);
+    }
   });
 });
 
