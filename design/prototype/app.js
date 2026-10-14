@@ -1916,6 +1916,17 @@
     /* the copied template still carries the language it was authored in */
     translateTree($drawer);
 
+    /* T-20261014-154730-4 · I-3 — the pass above re-resolves every `data-i18n`
+       hook it meets, and the status chip's label ships with a static
+       `data-i18n="status.todo"` in the template, so the per-card status written
+       into it at the top of this function is overwritten by the template's own
+       default. The chip's text has to be restated *after* the translation —
+       the same restatement `applyLang()` already makes for the drawer. */
+    var restatedStatus = $drawer.find("[data-detail-status]").attr("data-status");
+    $drawer
+      .find("[data-detail-status-label], [data-detail-status-chip-label]")
+      .text(statusLabel(restatedStatus));
+
     /* selection + open state ----------------------------------------------- */
     $("[data-card]").attr("aria-selected", "false");
     $card.attr("aria-selected", "true");
