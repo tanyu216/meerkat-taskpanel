@@ -13,6 +13,7 @@ Documentation for Meerkat TaskPanel.
 | [contract.md](contract.md) | The API contract snapshot (routes + error codes + wire fields): what it freezes, the `--update` workflow, and the pre-push / pre-tag / CI gates. |
 | [scheduling.md](scheduling.md) | The two-layer poll/patrol model, the fire-only cost gate, the atomic-claim dispatch, the host-external supervisor, the three-host trigger differences, and why OpenClaw uses openclaw-team instead. |
 | [web-local-first.md](web-local-first.md) | The board frontend is loopback-only: why a remote browser gets 401 (no token injection) and what implementing it would take. |
+| [ui-align-retirement-audit.md](ui-align-retirement-audit.md) | The assertion-coverage reconciliation after `ui-align` was retired from this repository: which of the deleted manifest's rows the contract layer still guards, the 52 it does not, and how to re-derive the counts. |
 | [`../skills/meerkat-taskpanel/SKILL.md`](../skills/meerkat-taskpanel/SKILL.md) | The agent-facing skill definition. |
 | [`../skills/meerkat-taskpanel/references/cli.md`](../skills/meerkat-taskpanel/references/cli.md) | The `taskctl` command surface (M2, implemented). |
 
