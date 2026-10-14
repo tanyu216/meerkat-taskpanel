@@ -17,3 +17,21 @@ Documentation for Meerkat TaskPanel.
 | [`../skills/meerkat-taskpanel/references/cli.md`](../skills/meerkat-taskpanel/references/cli.md) | The `taskctl` command surface (M2, implemented). |
 
 Start with the [README](../README.md) for what the project is and its current status.
+
+## On `ARCHITECTURE.md` citations
+
+`ARCHITECTURE.md` is **not part of this repository** — there is no such file in the tree, and
+none in the git history. Older code and prose nonetheless cite it by section (`ARCHITECTURE
+§1`, `§3`, `§4.1`–`§4.8`, `§5.1`/`§5.4`, `§7`/`§7.1`, `§8`, `§9.1`, `§13`), across `src/**`,
+`scripts/**`, `test/**`, `docs/**` and `design/**`.
+
+Read those citations as **historical orientation only** — none of them resolves to a file in
+this repository. Where a topic has a live authority, the citation names it explicitly:
+
+| Cited as | Live authority |
+|---|---|
+| Project ordering (`ARCHITECTURE §4.6`) | [`../design/DESIGN.md`](../design/DESIGN.md) §20, implemented by `src/shared/project-order.mjs` |
+| Container verification (`ARCHITECTURE §9.1`) | [docker.md](docker.md) |
+
+**Do not add a new `ARCHITECTURE.md` citation.** Name the live document instead.
+
