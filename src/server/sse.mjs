@@ -51,6 +51,22 @@ export function formatEvent(activity) {
 }
 
 /**
+ * The one frame that *is* named — the server's notice that it is ending the
+ * stream on purpose (T-20261014-213238).
+ *
+ * A named frame is invisible to `onmessage`, which is the point: this is not an
+ * activity and must never be mistaken for one. A client that wants it asks for
+ * it by name; a client that does not is unaffected. It carries no `id:`, so a
+ * client cannot advance its cursor past events it has not seen.
+ */
+export const SSE_SHUTDOWN_EVENT = "shutdown";
+
+/** @param {string} reason */
+export function formatShutdown(reason) {
+  return `event: ${SSE_SHUTDOWN_EVENT}\ndata: ${JSON.stringify({ reason })}\n\n`;
+}
+
+/**
  * Attach an SSE stream to a live response.
  *
  * @param {{
@@ -58,8 +74,9 @@ export function formatEvent(activity) {
  *   board: {db: object, repos: object},
  *   after?: number|null,          // replay increments newer than this revision
  *   pollMs?: number, heartbeatMs?: number, retryMs?: number, replayLimit?: number,
+ *   onClose?: () => void,         // told once, whenever the stream ends
  * }} input
- * @returns {{cursor: {revision: number, id: number}, flush: () => number, close: () => void}}
+ * @returns {{cursor: {revision: number, id: number}, flush: () => number, close: (reason?: string|null) => void}}
  */
 export function openEventStream(input) {
   const {
@@ -70,6 +87,7 @@ export function openEventStream(input) {
     heartbeatMs = SSE_HEARTBEAT_MS,
     retryMs = SSE_RETRY_MS,
     replayLimit = SSE_REPLAY_LIMIT,
+    onClose = null,
   } = input;
 
   const cursor = { revision: after ?? currentRevision(board.db), id: 0 };
@@ -136,23 +154,38 @@ export function openEventStream(input) {
   if (typeof poll.unref === "function") poll.unref();
   if (typeof beat.unref === "function") beat.unref();
 
-  const close = () => {
-    if (closed) return;
-    closed = true;
-    clearInterval(poll);
-    clearInterval(beat);
-    try {
-      res.end();
-    } catch {
-      /* already gone */
+  /**
+   * End the stream.
+   *
+   * `reason` is given by a caller that is *stopping the server* rather than
+   * reacting to a client: the client is then told why, with a named frame, so it
+   * can tell "the daemon is going down" from "your network broke" and reconnect
+   * on a different schedule (T-20261014-213238). A client-initiated end passes
+   * nothing and writes nothing — the peer is already gone.
+   */
+  const close = (reason = null) => {
+    if (!closed) {
+      if (reason !== null) write(formatShutdown(reason));
+      closed = true;
+      clearInterval(poll);
+      clearInterval(beat);
+      try {
+        res.end();
+      } catch {
+        /* already gone */
+      }
     }
+    // Called even when the stream was already closed: a registry that added us
+    // before the end must not be left holding a dead entry, and deleting twice
+    // is free.
+    if (typeof onClose === "function") onClose();
   };
   // `res`, not `req`: the response is what stays open for the life of the
   // stream, and it emits `close` on a client abort on every supported Node.
   // (An `IncomingMessage` 'close' can fire as soon as the request is fully
   // consumed, which for a bodyless GET is immediately.)
-  res.on("close", close);
-  res.on("error", close);
+  res.on("close", () => close());
+  res.on("error", () => close());
 
   return { cursor, flush, close };
 }

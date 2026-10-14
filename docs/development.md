@@ -125,7 +125,7 @@ network** (`docker build --network=none` succeeds).
 | `/tasks/:ref/move`, `/tasks/:ref/deliver`, `/tasks/:ref/assign`, `/tasks/:ref/archive` | POST | the delivery gate bites on `/move` and `/deliver` |
 | `/tasks/:ref/comments`, `/tasks/:ref/relations`, `/tasks/:ref/sessions`, `/tasks/:ref/activities`, `/tasks/:ref/reports` | GET/POST/DELETE | activities is the audit cursor read |
 | `/attachments/:id/content` | GET/PUT | raw bytes; not JSON — handled outside the router |
-| `/events` | GET (SSE) | `global_revision` increments; `?after=<rev>` replays |
+| `/events` | GET (SSE) | `global_revision` increments; `?after=<rev>` replays; a deliberate stop sends a named `shutdown` frame (see [Stopping the daemon](#stopping-the-daemon)) |
 | `/assignees`, `/reporters`, `/labels` | GET | read-only by design (§4.4) |
 | `/token` | POST | rotate; loopback only |
 | `/` and everything else | GET/HEAD | built frontend from `web/dist`, when it exists |
@@ -185,6 +185,32 @@ Three operator-facing consequences:
 If you see `BOARD_ALREADY_RUNNING` and believe no board is running, stop the
 named pid first; if that process is gone, the stale lock is removed
 automatically on the next start (or by hand: `rm <dataDir>/writer.lock`).
+
+### Stopping the daemon
+
+`SIGTERM` / `SIGINT` is the graceful stop, and it is **bounded**. The daemon
+releases the database (so no `-wal` is left beside it), removes its own runtime
+pointer, releases the write lock and exits 0 — which is what lets a deployment
+restart it without reaching for `SIGKILL`. (A `SIGKILL` is survivable — the stale
+lock, the fossil pointer and the `-wal` are all handled on the next start — but
+it is no longer the only way to stop a board.)
+
+What has to be bounded is the SSE stream. `server.close()` stops *accepting*,
+and settles only when every socket is gone — and a `/api/v1/events` response is an
+**active** request with no reason to end on its own, so waiting for it is waiting
+forever. The daemon therefore ends those streams itself, and tells the client
+why: a named `shutdown` frame (`event: shutdown`) just before the stream closes,
+carrying no `id:`, so no client can advance its cursor past events it has not
+seen. Anything still connected after a short grace is destroyed rather than
+waited on (`src/server/index.mjs`: `closeServer`, `SHUTDOWN_GRACE_MS`).
+
+The board client takes that frame for what it is — a restart, not a failure —
+and owns its reconnect either way: the socket is closed and re-opened after an
+exponential backoff (1 s, 2 s, 4 s … held at 30 s), resumed from
+`?after=<cursor>`, with the ladder reset by a successful `open`. That is the
+point of owning it: the browser's built-in retry is a fixed interval that
+repeats forever, and a board that is down for an hour must not be a board that is
+polled twice a second.
 
 ### Lock contention is a 503, not a 500
 
