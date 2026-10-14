@@ -35,7 +35,7 @@
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,12 +47,15 @@ import {
   TASKD_TEMPLATE_FILES,
   TASKD_UNIT,
   enablePlan,
+  exitCode,
   guardPaths,
   installGuard,
   isOurBoard,
   plistEnvBlock,
+  servedBoard,
   systemdEnvBlock,
   systemdUserDir,
+  unitBoard,
   unitEnv,
   unitPath,
   unitVars,
@@ -713,7 +716,219 @@ describe("install.sh: the taskd guard", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 6 — installGuard in-process: the readiness gate without a real supervisor
+// 6 — the machine's one guard: a second board refuses, it never clobbers (F1/F2)
+// ---------------------------------------------------------------------------
+
+/**
+ * The two defects this block pins, both from `T-20261014-063205` §2.2 (a probe that
+ * ran an install twice against one fake machine):
+ *
+ *   **F1** — a second install copied its unit over `~/.config/systemd/user/<TASKD_UNIT>`
+ *   *before* asking whether the guard was loaded, so the machine's **only** guard was
+ *   re-pointed at the second board, silently, with the change showing only at the next
+ *   reload. The file systemd reads is the guard's definition; it must not be rewritten
+ *   out from under a loaded guard that serves a different board.
+ *
+ *   **F2** — the report said `already loaded (no change)` in that case, which reads as
+ *   "your board is guarded" when the loaded guard served another one. The board is now
+ *   named — this one, another one, or "could not be read".
+ *
+ * The platform is passed explicitly (the `test/install/supervisor-*` precedent), so the
+ * Linux-only refusal is exercised on the host that runs the suite, macOS included.
+ */
+describe("taskd guard: one guard per machine (F1/F2)", () => {
+  /** A `spawnSync`-shaped service manager, loaded, answering either platform's probes. */
+  function loadedManager({ pid = 9001 } = {}) {
+    const calls = [];
+    return {
+      calls,
+      loads: () => calls.filter((line) => /enable --now|launchctl (bootstrap|load)/.test(line)).length,
+      run(command, args) {
+        calls.push(`${command} ${args.join(" ")}`);
+        if (command === "launchctl") return { status: 0, stdout: `\tpid = ${pid}\n`, stderr: "" };
+        if (args.includes("is-active")) return { status: 0, stdout: "active\n", stderr: "" };
+        if (args.includes("show")) return { status: 0, stdout: `${pid}\n`, stderr: "" };
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    };
+  }
+
+  /**
+   * A machine whose guard is installed and loaded **for `board`**, plus a second install
+   * pointed at `mine` — the two boards of the F1 scenario, with nothing real touched:
+   * a throwaway `HOME` (so `~/.config/systemd/user/` is a temp dir), a throwaway pointer
+   * file, and a fake manager. The guard's pid is `9001`, which is also the pid the default
+   * pointer carries — the healthy case, where the pointer confirms the board the unit
+   * names rather than contradicting it.
+   */
+  function machine({ board, mine, force = false, platform = "linux", readPointerFn = null, healthProbe = null, pid = 9001 } = {}) {
+    const home = makeTempDir();
+    const dataDir = makeTempDir();
+    const unitDir = systemdUserDir({}, home);
+    mkdirSync(unitDir, { recursive: true });
+
+    // Board A's unit, rendered by the same code path a real install uses — so the
+    // comparison under test is between two authentic units, not a hand-written string.
+    const installed = join(unitDir, TASKD_UNIT);
+    writeFileSync(installed, render(systemdTemplate, unitVars(guardPaths({ prefix: home, env: { TASKD_DATA_DIR: board } }))), "utf8");
+
+    const runner = loadedManager({ pid });
+    const lines = [];
+    return {
+      home,
+      dataDir,
+      installed,
+      runner,
+      lines,
+      read: () => readFileSync(installed, "utf8"),
+      run: async () =>
+        installGuard({
+          prefix: home,
+          platform,
+          home,
+          force,
+          env: { TASKD_DATA_DIR: mine, TASKD_RUNTIME_POINTER: join(dataDir, "runtime.json") },
+          runner: runner.run,
+          log: (line) => lines.push(line),
+          pidWaitMs: 20,
+          healthWaitMs: 20,
+          healthPollMs: 5,
+          healthProbe: healthProbe ?? (async () => true),
+          readPointerFn: readPointerFn ?? (() => ({ url: "http://127.0.0.1:9527", pid, dataDir: mine })),
+        }),
+    };
+  }
+
+  it("refuses to re-point a loaded guard at a second board, and leaves its unit alone", async () => {
+    const boardA = makeTempDir();
+    const boardB = makeTempDir();
+    const m = machine({ board: boardA, mine: boardB });
+    const before = m.read();
+
+    const report = await m.run();
+
+    // The unit systemd would read is byte-for-byte the one the first install wrote.
+    // This is the F1 defect's own assertion: before the fix it held board B here.
+    assert.equal(m.read(), before, "the machine's guard unit must not be rewritten");
+    assert.equal(unitBoard(m.read()), resolve(boardA), "and it still pins the first board");
+
+    assert.equal(report.state, "occupied");
+    assert.match(report.reason, /another board/);
+    const out = m.lines.join("\n");
+    assert.match(out, /taskd guard: refused — .*already loaded and serves another board \(/);
+    assert.ok(out.includes(boardA), `the refusal names the board that owns it:\n${out}`);
+    assert.match(out, /re-run with --force to point it at /);
+    assert.ok(out.includes(boardB), `and the board it was asked for:\n${out}`);
+    assert.equal(m.runner.loads(), 0, "nothing was loaded, enabled or re-enabled");
+    assert.equal(exitCode(report), 3, "a refusal has a code of its own");
+  });
+
+  it("serves this board when the loaded guard is already the one that was asked for", async () => {
+    const boardA = makeTempDir();
+    const m = machine({ board: boardA, mine: boardA });
+
+    const report = await m.run();
+
+    assert.equal(report.state, "already");
+    assert.equal(exitCode(report), 0, "the same board is not a refusal");
+    const out = m.lines.join("\n");
+    // F2: the board is named, rather than a bare `already loaded (no change)` that
+    // reads the same whether or not the guard is this board's.
+    assert.match(out, /taskd guard: already loaded \(no change\) — the machine's guard serves this board \(/);
+    assert.ok(out.includes(resolve(boardA)), out);
+    assert.doesNotMatch(out, /another board/);
+    assert.equal(unitBoard(m.read()), resolve(boardA), "the unit is left as the first install wrote it");
+    assert.equal(m.runner.loads(), 0, "and nothing is loaded a second time");
+  });
+
+  it("names the other board in the report even where nothing is written over (macOS)", async () => {
+    // No `unitDir` on launchd, so there is nothing to refuse — but the honest answer is
+    // still "that guard is not yours", which is exactly the reading F2 was about. The
+    // evidence here is the board's own pointer, carrying the guard's pid.
+    const boardA = makeTempDir();
+    const boardB = makeTempDir();
+    const m = machine({
+      board: boardA,
+      mine: boardB,
+      platform: "darwin",
+      readPointerFn: () => ({ url: "http://127.0.0.1:9527", pid: 9001, dataDir: boardA }),
+    });
+
+    const report = await m.run();
+
+    assert.notEqual(report.state, "occupied", "nothing is overwritten on launchd, so nothing is refused");
+    const out = m.lines.join("\n");
+    assert.match(out, /taskd guard: already loaded \(no change\) — the machine's guard serves another board \(/);
+    assert.ok(out.includes(boardA), out);
+    assert.ok(out.includes(boardB), `the line also names the board that is not guarded:\n${out}`);
+  });
+
+  it("says the board could not be read, rather than passing it off as a plain no-change", async () => {
+    const boardA = makeTempDir();
+    // No unit file to read (launchd) and no pointer naming the guard's pid: neither
+    // source can answer, which is reported as exactly that.
+    const m = machine({ board: boardA, mine: boardA, platform: "darwin", readPointerFn: () => null });
+
+    await m.run();
+
+    const out = m.lines.join("\n");
+    assert.match(out, /taskd guard: already loaded \(no change\) — which board it serves could not be read here/);
+  });
+
+  it("--force is the deliberate way to re-point it, and then the unit does change", async () => {
+    const boardA = makeTempDir();
+    const boardB = makeTempDir();
+    const m = machine({ board: boardA, mine: boardB, force: true });
+
+    const report = await m.run();
+
+    assert.notEqual(report.state, "occupied");
+    assert.equal(exitCode(report), 0);
+    assert.equal(unitBoard(m.read()), resolve(boardB), "--force re-points the guard");
+    const out = m.lines.join("\n");
+    assert.doesNotMatch(out, /refused/);
+    // The file now names this board, but the job is still the one that was already
+    // running — which is a thing the operator has to know, so the line says it.
+    assert.match(out, /still serves .* until it is reloaded/);
+    assert.ok(out.includes(resolve(boardA)) && out.includes(resolve(boardB)), out);
+  });
+
+  it("reads the pinned board out of either unit format", () => {
+    const dataDir = makeTempDir();
+    const paths = guardPaths({ prefix: makeTempDir(), env: { TASKD_DATA_DIR: dataDir, TASKD_RUNTIME_POINTER: join(dataDir, "runtime.json") } });
+    const vars = unitVars(paths);
+
+    assert.equal(unitBoard(render(systemdTemplate, vars)), resolve(dataDir));
+    assert.equal(unitBoard(render(launchdTemplate, vars)), resolve(dataDir));
+
+    // Unpinned is its own answer — the board `resolveDataDir` resolves at the unit's
+    // start — and never confused with "could not be read".
+    assert.equal(unitBoard(render(systemdTemplate, unitVars(guardPaths({ prefix: makeTempDir(), env: {} })))), null);
+    // A name in a comment is not a directive systemd reads.
+    assert.equal(unitBoard("# Environment=TASKD_DATA_DIR=/tmp/ignored\n"), null);
+  });
+
+  it("takes the unit as the authority, and only falls back to a pointer that names the guard's pid", () => {
+    const dataDir = makeTempDir();
+    const unitFile = join(makeTempDir(), TASKD_UNIT);
+    writeFileSync(unitFile, render(systemdTemplate, unitVars(guardPaths({ prefix: makeTempDir(), env: { TASKD_DATA_DIR: dataDir } }))), "utf8");
+
+    const pointer = { pid: 9001, dataDir: "/other" };
+    const read = () => pointer;
+
+    // The unit answers on its own: the file systemd reads defines the guard.
+    assert.deepEqual(servedBoard({ unitFile, pid: 9001, readPointerFn: read }), { dataDir: resolve(dataDir), source: "unit" });
+    // No unit (launchd): the pointer decides — but only when it carries *this* pid.
+    assert.deepEqual(servedBoard({ pointers: ["/p"], pid: 9001, readPointerFn: read }), { dataDir: "/other", source: "pointer" });
+    assert.equal(servedBoard({ pointers: ["/p"], pid: 4242, readPointerFn: read }), null, "another process's pointer says nothing");
+    assert.equal(servedBoard({ pointers: ["/p"], pid: 9001, readPointerFn: () => null }), null, "no pointer, no guess");
+    // A file that is not there is not a board.
+    assert.deepEqual(servedBoard({ unitFile: "/nowhere", pointers: ["/p"], pid: 9001, readPointerFn: read }), { dataDir: "/other", source: "pointer" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7 — installGuard in-process: the readiness gate without a real supervisor
 // ---------------------------------------------------------------------------
 
 describe("taskd guard: the readiness gate", () => {
