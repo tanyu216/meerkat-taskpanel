@@ -1879,10 +1879,21 @@ const BLOCKS = [
        * empty state and one column-level empty state per column (7 columns, B05).
        *
        * Values from the design oracle, read statically on
-       * `design/prototype/index.html` (the live 7-column board page, not the
-       * `<pre><code>` document fragments at :4237/:4253): 1 `noResults.clear` seat
-       * in the sole `no-results` block, 7 `column.empty.add` seats, one per
-       * `column` block. */
+       * `design/prototype/index.html` (the live 7-column board page): 1
+       * `noResults.clear` seat in the sole `no-results` block, 7
+       * `column.empty.add` seats, one per `column` block.
+       *
+       * Each seat appears one extra time in the prototype, inside B18's states
+       * showcase (`:4174`, *hidden by default, opened from the sidebar*) —
+       * `:4237` in the `data-empty-column` demo card (`:4230`), `:4253` in the
+       * `data-empty-results` one (`:4243`). Three things, **not** a code fence,
+       * exclude them: those blocks are prototype-only (B18, this file), they are
+       * hooked `data-empty-column` / `data-empty-results` rather than
+       * `data-empty` + `data-empty-kind` (so the seat's own block selector never
+       * reaches them), and they sit outside `[data-board]`. An earlier revision
+       * of this comment called them `<pre><code>` document fragments; that was
+       * wrong — the code fences the `[data-column]` rows are scoped against are
+       * at :2429/:3365 and are a different hook's problem entirely. */
       { kind: "count", selector: "[data-i18n=\"noResults.clear\"]", equals: 1 },
       {
         kind: "count",
