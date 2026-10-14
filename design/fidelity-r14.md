@@ -16,6 +16,7 @@
 - **一处必须点名的既有项**：**R12 未落地**。契约 `design/fidelity-r12.md` §2.1/§2.2 要求 `[data-detail-identifier]` 去掉字符切片并追加 `.td-id-full`；实测 `web/` 全树 **`grep -rn "td-id-full" web/` 零命中**，`web/src/components/detail/DetailDrawer.vue` 的 `[data-detail-identifier]` 仍是 `{{ identifierText(identifier) }}`（`web/src/lib/identifier.js:identifierText` 8 字符 + `…`）。**这是 §4 R14-B05，B2 必须一并补。**
 - **三处「自创」是既有契约测试已经背书的实现侧钩子**（`[data-attachment-row]`/`[data-attachment-name]`/`[data-attachment-size]`/`[data-activity-row]`/`[data-activity-actor]`/`[data-activity-ts]`，见 `test/web/blocks.contract.mjs` §B09 `states`；`[data-detail-slot-source]` 只在该组件里）。原型**没有**这些钩子 ⇒ 是「原型无、实现新增」。**采纳/回退须 Elon 裁定**（§8 未决 U1）——本卡只登记，不单方面改原型，也不改 `test/**`。
 - **不变式**：五宽度（1512/1240/980/760/430）× light/zh **全部无横向溢出**（B19 / B21 / B23）；抽屉本体宽度 = `min(520, 视口)`（B21：520/520/520/520/**430**）。
+- **回灌（2026-10-14，卡 `T-20261014-112216`）**：独立验证 `T-20261013-154930-3`（verdict FAIL）暴露的 **3 条口径问题**已落回本契约 —— ① B22 的 light 遮罩取「**既有令牌口径保留**」（§3 遮罩行 / §4.1 R14-B03 / §5 B22 / §8.1 D07 四处同步 + §8.3 `DF-1` 登记）；② §5 B23 的 `lang` 期望由字面 `zh-CN` 改为「**镜像该侧自己的 locale id**」（原型 `zh-CN` / 实现 `zh`）；③ §5 A4 / A6 的**归属列**由「双侧」改「**原型**」。**未放宽任何真缺陷断言**：§8.1 D42（附件行几何）等 `缺`／`简化` 项的判定与断言原样保留，实现侧的必修面不变。
 
 ---
 
@@ -93,7 +94,7 @@
 
 ## 3. 视觉规格（数值即结论）
 
-令牌守恒声明：**本轮不新增、不改名任何设计令牌**。以下数值全部来自原型实测（1512×950，light，en，卡片 `PROJ-0007`，除注明外）。
+令牌守恒声明：**本轮不新增、不改名任何设计令牌**；并且**不改任何既有令牌的值**。遮罩（原型 `.td-scrim` 的 `--scrim` ↔ 实现 `[data-detail-overlay]` 的 `--brand-scrim`）按 R14 裁定取「**既有令牌口径保留**」——实现侧只有 `--brand-scrim` 一枚遮罩令牌，**不得为追平原型字面量而改它**（书面偏差见 §8.3 `DF-1`）。因此下表「遮罩」一行**并列给出两侧各自的解析值**：原型字面量是实测，实现侧是 `T-20261013-154930-3` 的 computed 实测读数。其余数值全部来自原型实测（1512×950，light，en，卡片 `PROJ-0007`，除注明外）。
 
 | 量 | 原型实测值 | 出处（文件:选择器） |
 |---|---|---|
@@ -102,7 +103,8 @@
 | 抽屉表面 | light `rgb(255,255,255)` / dark `rgb(22,27,30)`；文字 light `rgb(20,24,27)` / dark `rgb(230,237,240)` | `.td-drawer` + `--color-td-surface` / `--color-td-ink` |
 | 抽屉左边框 | `1px`，light `rgb(230,232,235)` | `.td-drawer`（`--color-td-line`） |
 | 抽屉层级 / 遮罩层级 | `50` / `40` | `.td-drawer` / `.td-scrim` |
-| 遮罩 | light `rgba(15,20,23,0.32)` / dark `rgba(0,0,0,0.55)`，打开态 `opacity: 1` | `.td-scrim`（`--scrim`） |
+| 遮罩（**原型**的表达式） | light `rgba(15,20,23,0.32)` / dark `rgba(0,0,0,0.55)`，打开态 `opacity: 1` | `.td-scrim`（`--scrim`） |
+| 遮罩（**既有令牌口径保留** —— 实现侧，R14 裁定；同一枚 `--brand-scrim` 被 `CreateTaskModal` / `CreateProjectModal` / `DetailDrawer.vue` 三面共持） | light `oklab(0.276439 … / .32)` ≡ **`rgb(31,42,46)` / 32%**（= `--color-neutral` light `#1f2a2e` 的 32%，来自 `color-mix(in oklab, var(--color-neutral) 32%, transparent)`）；dark `rgba(0,0,0,0.55)`（**与原型同值，不变**） | `web/src/styles/tokens.css:--brand-scrim`（`T-20261013-154930-3` computed 实测） |
 | 头部内边距 | `12px 16px 12px 20px` | `.td-drawer-head` |
 | 卡体（滚动宿主）内边距 | `16px 20px 24px`；`overflow-y: auto` | `.td-drawer-body` |
 | 头部标识符 | `12px`，`rgb(126,138,145)`，`max-width: none` / `overflow: visible` / `text-overflow: clip` / `white-space: nowrap`；9 字符 `PROJ-0007` 实测 `scrollWidth == clientWidth == 64`（不裁） | `.td-id.td-id-full` + `[data-detail-identifier]` |
@@ -139,7 +141,7 @@
 |---|---|---|---|---|---|---|
 | R14-B01 | 抽屉壳层 | `aside[data-detail-drawer]` | `口径` | `fixed`、宽 `520px`、`max-width:100vw`、`z-index:50`、关闭态 `transform:translateX(100%)`+`visibility:hidden`、**无 `hidden` 属性** | `web/src/styles/app.css:.td-drawer`（`w-[min(560px,100vw)]`、`z-[60]`、`border-inline-start`、`box-shadow`）；`DetailDrawer.vue:[data-detail-drawer]`（`:hidden="!open"`、`:aria-hidden`） | 宽度 560→**520**；z 60→**50**；`aside` 上多出的 `hidden` 是自创（原型的关闭态靠 transform+visibility），保留 `data-state` 即可 |
 | R14-B02 | 抽屉 a11y 座位 | `aside[data-detail-drawer]` ↔ `[data-detail-title]` | `缺` | `aria-labelledby="td-detail-title"` 且 `#td-detail-title` 落在 `<h2 data-detail-title>` 上（A7 `["td-detail-title", true]`） | `DetailDrawer.vue`：`aside` 无 `aria-labelledby`；`h2[data-detail-title]` 无 `id` | 两个座位都没落 |
-| R14-B03 | 遮罩 | `[data-detail-overlay]` | `口径` | `z-index:40`、`position:fixed`、`inset:0`、`background: var(--scrim)`、`hidden`+`data-state` 双载体 | `DetailDrawer.vue:[data-detail-overlay]`（`z-50`、`bg-(--brand-scrim)`、`:hidden`、`:data-state`） | z 50→**40**（要低于抽屉） |
+| R14-B03 | 遮罩 | `[data-detail-overlay]` | `口径` | `z-index:40`、`position:fixed`、`inset:0`、`background: var(--scrim)`、`hidden`+`data-state` 双载体 | `DetailDrawer.vue:[data-detail-overlay]`（`z-50`、`bg-(--brand-scrim)`、`:hidden`、`:data-state`） | z 50→**40**（要低于抽屉）；**遮罩色：既有令牌口径保留** —— 实现读既有共享令牌 `--brand-scrim`，light 解析值 `rgb(31,42,46)/32%` ≠ 原型字面量 `rgba(15,20,23,.32)`（dark 两侧同值 `rgba(0,0,0,.55)`）。**该令牌不改值** ⇒ 书面偏差登记 §8.3 `DF-1`，§5 B22 已按 token 口径改写 |
 | R14-B04 | 头部盒 | `aside[data-detail-drawer] > header` | `缺` | `padding: 12px 16px 12px 20px`；`border-bottom: 1px` | `DetailDrawer.vue` header（`p-4`、`border-b`） | 统一 16px → **非对称 12/16/12/20** |
 | R14-B05 | 头部标识符 | `[data-detail-identifier]` | `缺` | 文本 = **完整 id**（`PROJ-0007`），class 含 **`.td-id-full`**，computed `max-width:none`/`overflow:visible`/`text-overflow:clip`（B2/B3）；JS-off 下 `TD-128` 亦带 `.td-id-full`（A25） | `DetailDrawer.vue:[data-detail-identifier]`：`class="td-mono td-id"`、`{{ identifierText(identifier) }}`；`web/src/lib/identifier.js:identifierText`（8 字符 + `…`）；`grep -rn "td-id-full" web/` **零命中** | **R12 未落地**：切片未去、`.td-id-full` 未加、`app.css` 无该规则 |
 | R14-B06 | 标题 | `[data-detail-title]` | `缺` | `16px` / `600` | `DetailDrawer.vue:<h2 data-detail-title>` 无字号/字重 utility（Tailwind preflight 下继承正文） | 补 `text-[16px] font-semibold` |
@@ -209,9 +211,9 @@
 | A1 | `[data-detail-drawer]` | `count == 1` | `1` | 双侧 |
 | A2 | `[data-detail-overlay]` | `count == 1` | `1` | 双侧 |
 | A3 | `[data-detail-identifier]` | `classList` 含 `td-id-full` 计数 `== 1` | `1` | 双侧（**实现当前 0**） |
-| A4 | `[data-detail-templates]` | 无 `hidden` 且 `template[data-detail-for]` 数 > 0 | `[false, true]` | 双侧 |
+| A4 | `[data-detail-templates]` | 无 `hidden` 且 `template[data-detail-for]` 数 > 0 | `[false, true]` | **原型**（模板源是原型腿的断言：§4 R14-B32 已判实现侧 `简化`，§5.x 明文禁把模板/slot 多重性断言到实现） |
 | A5 | `template[data-detail-for]` / `[data-slot]` | `count == 18`；`template.content` 内 `[data-slot] == 87`；活 DOM `[data-slot] == 0` | `[18, 87, 0]` | 原型（实现是 1 / 6 / 0，见 §4） |
-| A6 | `[data-detail-templates]` / `[data-detail-drawer]` | 模板宿主**不在**抽屉内；`aside` 无 `hidden` | `[false, false]` | 双侧 |
+| A6 | `[data-detail-templates]` / `[data-detail-drawer]` | 模板宿主**不在**抽屉内；`aside` 无 `hidden` | `[false, false]` | **原型**（**模板宿主位置**一条；harness 记作 A6/A6e。`aside` 无 `hidden` 的实现侧义务**不因此消失**，由 §8.0 U4 裁定 + §8.1 D08 承载） |
 | A7 | `[data-detail-drawer][aria-labelledby]` | 属性 `== "td-detail-title"` 且指向存在的元素 | `["td-detail-title", true]` | 双侧（**实现当前 null**） |
 | A8 | `[data-detail-close]` 与 identifier / chip | 三者同一父元素 | `true` | 双侧 |
 | A9 | `[data-detail-props]` | `childElementCount == 16` | `16` | 双侧 |
@@ -257,8 +259,8 @@
 | B19 | `documentElement` | `scrollWidth == clientWidth` | `true` |
 | B20 | `[data-detail-drawer]` | 记录 `transform` / 表面色 / 遮罩（不断言） | `matrix(1,0,0,1,0,0)` / `rgb(255,255,255)` / `rgba(15,20,23,0.32)` |
 | B21 | `[data-detail-drawer]`（五档宽度） | 宽 `== min(520, 视口)`；无横向溢出；identifier 不被裁 | 1512/1240/980/760 → `520`；430 → `430`；identifier 恒 `63.95px` 未裁 |
-| B22 | `[data-detail-drawer]`（light/dark） | `data-theme` 生效；表面/遮罩换 token | light `rgb(255,255,255)` / `rgba(15,20,23,0.32)`；dark `rgb(22,27,30)` / `rgba(0,0,0,0.55)` |
-| B23 | `html[lang]`（zh，1512/430） | `lang == "zh-CN"` 且无溢出；chip 文案 `待办`；分区标题 `属性` | 全通过 |
+| B22 | `[data-detail-drawer]`（light/dark） | `data-theme` 生效；表面/遮罩换 token；遮罩**按各侧自己的遮罩令牌**解析（原型 `--scrim` / 实现 `--brand-scrim`），**不对 light 值做跨侧字面量相等断言**（§8.3 `DF-1`） | 表面 light `rgb(255,255,255)` / dark `rgb(22,27,30)`（**两侧同值，逐字断言**）；遮罩 light = 原型 `rgba(15,20,23,0.32)` / 实现 `oklab(0.276439 … / .32)` ≡ `rgb(31,42,46)/32%`（**token 口径，允许不同**）；遮罩 dark `rgba(0,0,0,0.55)`（**两侧同值**） |
+| B23 | `html[lang]`（zh，1512/430） | `lang` = **该侧自己的 locale id**（原型 `zh-CN`；实现镜像 `web/src/i18n/catalogue.mjs:LANGUAGES` 的 `en`\|`zh`，由 `web/src/i18n/index.js` 写 `documentElement.lang`）且无溢出；chip 文案 `待办`；分区标题 `属性` | 原型 `zh-CN`（本页实测，全通过）；实现 `zh`（`T-20261013-154930-3` 实测）⇒ 本条改约后两侧均判通过，不再是恒红项 |
 | B24 | `.td-file`（TD-128） | `display`/`padding`/`border-top-width`/`border-radius` | `["flex","6px","8px","1px","6px"]` |
 | B25 | `.td-comment`（TD-128） | `display`/`padding-top`/`border-top-width` | `["flex","8px","1px"]` |
 | B26 | TD-128 富卡 | 评论 ≥1、`meta` ≥1、头像 ≥1、`.td-rel-item` ≥1、`[data-relation-link]` ≥1 | 全 `true` |
@@ -282,7 +284,8 @@
 
 - **不得**在实现侧断言 `.td-*` class 的存在（class 是样式，不是契约锚）。
 - **不得**在实现侧断言 `data-i18n` 座位集合等于原型（实现用 `$t()` 渲染是合法表达；要断言的是**渲染后的文本**等于目录值，见 §8 D22/D37）。
-- **不得**把原型的 `18` 个模板 / `87` 个 slot 多重性断言到实现（框架无 clone 机制，见 §4 R14-B32）。
+- **不得**把原型的 `18` 个模板 / `87` 个 slot 多重性断言到实现（框架无 clone 机制，见 §4 R14-B32）。A4 / A6 的**归属列据此写「原型」**（模板源整组是原型腿的断言；实现侧只保留 `aside` 无 `hidden` 这一条义务，见 §8.0 U4 / §8.1 D08）。
+- **不得**对遮罩的 light 值做**跨侧字面量相等**断言（原型 `rgba(15,20,23,.32)` vs 实现 `rgb(31,42,46)/32%`）；要断言的是「各侧读**自己的**遮罩令牌 + 该令牌随主题换值 + dark 两侧同值 `rgba(0,0,0,.55)`」（见 §8.3 `DF-1`）。
 - **不得**在原型上断言 `[data-attachment-row]` / `[data-activity-row]` / `[data-detail-slot-source]`（原型没有，见 §8 U1）。
 - **不得**断言 `[data-detail-save-error]` 有 `data-i18n`（A12 实测 `null`）。
 - **不得**用 `[data-slot]` 的活 DOM 计数当「槽位数」（A5 实测恒 0，见 §1.8）。
@@ -353,6 +356,7 @@ workspace/T-20261013-154930/evidence/
 | `design/README.md` | 无影响 | 索引已按 `fidelity-r*.md` 家族收录，无需新增行 |
 | `design/prototype/README.md` | 无影响 | 原型零改动 ⇒ 说明不变 |
 | `design/fidelity-r12.md` | **无需改**（但**必须点名未落地**） | R12 的契约内容本身不变；它是本轮的**输入**，未落地这件事登记在 §0 与 §4 R14-B05 |
+| `design/BLOCKS.md`（§B09 `Scrim` 行）· `design/fidelity-r8.md` · `design/DESIGN.md` | **无需改**（**回灌** `T-20261014-112216` 的判定） | 回灌只动本契约：§B09 的 `Scrim` 行只登记钩子 `[data-detail-overlay][data-state]`，遮罩的**令牌口径**本已由 `design/BLOCKS.md` §B10 的 R8 段（「one token, every veil」+ 实现侧 light 值「must not be churned」）与 `design/fidelity-r8.md` 的实现偏离表承载 ⇒ 无新增事实可登记；§8.3 `DF-1` 只是把它**点名到 B09 这一面**并给出跨侧断言口径 |
 
 ---
 
@@ -387,7 +391,7 @@ workspace/T-20261013-154930/evidence/
 | D04 | 同上 | `box-shadow: var(--shadow-pop)` | `.td-drawer` 已有 | 对齐 | B20 |
 | D05 | 同上 | `z-index: 50` | `.td-drawer` `z-[60]` | 口径 | A22 |
 | D06 | `.td-scrim` | `z-index: 40`；`position: fixed`；`inset: 0` | `DetailDrawer.vue:[data-detail-overlay]` `z-50` | 口径 | A22 |
-| D07 | `.td-scrim` | `background-color: var(--scrim)`；打开态 `opacity: 1` | `bg-(--brand-scrim)` | 对齐 | B20/B22 |
+| D07 | `.td-scrim` | `background-color: var(--scrim)`；打开态 `opacity: 1`。**既有令牌口径保留**：实现读等价的既有令牌 `--brand-scrim`（light 解析 `rgb(31,42,46)/32%` ≠ 原型字面量 `rgba(15,20,23,.32)`；dark 两侧同值 `rgba(0,0,0,.55)`）—— 该令牌**不得改值**，书面偏差见 §8.3 `DF-1` | `bg-(--brand-scrim)` | 口径 | B20/B22 |
 | D08 | `.td-drawer` | 关闭态 `transform: translateX(100%)` + `visibility: hidden`；**无 `hidden` 属性** | `DetailDrawer.vue` 额外 `:hidden="!open"` | 自创 | A6 |
 | D09 | `.td-drawer` | **无 `aria-hidden`** | 实现写了 `:aria-hidden` | 自创 | —（§8 U4 待裁定） |
 | D10 | `.td-drawer-head` | `padding: 12px 16px 12px 20px` | header `p-4`（16px 四边） | 缺 | B6 |
@@ -469,3 +473,13 @@ workspace/T-20261013-154930/evidence/
 3. **不改原型实现纯度**：即使 §4 的 B27/B31/B33 是「实现侧多出来的钩子」，也**不**用改原型的方式去追平（§8 U1 待裁定）。
 4. **不新增 i18n 键**：本卡不要求任何新键；`detail.saveError` 已存在于 `web/src/i18n/extra.mjs`（实现自撰归宿），两个目录副本（`test/web/i18n.catalogue.mjs` / `web/src/i18n/catalogue.mjs`）**不得**因本轮而分叉。
 5. **不改契约测试**：`test/web/blocks.contract.mjs`、`web/scripts/dom-smoke.mjs` 一律不动——U1 的两种收口方式都会触及它们，因此**先裁定后施工**。
+
+### 8.3 偏差登记（与原型字面量的偏离 · `DF`）
+
+> 只登记**已裁定、且实现侧不改**的偏离；裁定前不得据此动实现。**登记 ≠ 放宽**：§8.1 的 `缺`／`简化`（含 D42 附件行几何）不在此表，判定与断言原样保留。格式 = `id | 偏离点（契约位点） | 原型字面量 | 契约采用的口径 | 理由 | 裁定/出处`。
+
+| id | 偏离点（契约位点） | 原型字面量（实测） | 契约采用的口径 | 理由 | 裁定/出处 |
+|---|---|---|---|---|---|
+| **`DF-1`** | **light 遮罩的涂出色** —— §3「遮罩」行 · §4.1 R14-B03 · §5 B22 · §8.1 D07 | `rgba(15,20,23,0.32)`（= `#0f1417`，即原型深色画布色；`design/prototype/src/input.css:--scrim`） | **既有令牌口径保留**：实现读**既有共享令牌** `--brand-scrim`（`web/src/styles/tokens.css:--brand-scrim`）⇒ light 解析 `oklab(0.276439 … / .32)` ≡ **`rgb(31,42,46)` / 32%**（= `--color-neutral` light `#1f2a2e` 的 32%）；**dark 两侧同值 `rgba(0,0,0,0.55)`，不变** | ① `--brand-scrim` 是**既有共享令牌**，被 `CreateTaskModal` / `CreateProjectModal` / `DetailDrawer.vue` **三面共持**（实读）⇒ 改值 = 跨面回归，超出本轮写面（本轮只写 `design/**`）。② 实现侧**要求三面同值**：`web/scripts/dom-smoke.mjs` 的 R8 检查**断言抽屉遮罩与弹窗 scrim 相等**（其失败消息原文：`the drawer's veil … != the dialog's scrim — they share one token`）⇒ 为抽屉单独改值即违该不变式。③ 触 §3「令牌守恒」红线（本轮不改既有令牌的值）。④ light 值本就是实现侧**自己的既有值**（R8 为深色覆写而把它提成令牌时**刻意保留**，原文「the light value is the one those surfaces have always carried」/「must not be churned」；见 `design/fidelity-r8.md` §实现偏离表 与 `design/BLOCKS.md` §B10 R8 段）；原型字面量 `rgba(15,20,23,.32)` 是**原型专有表述**（`.td-scrim` 读它自己的 `--scrim`），不是实现侧的令牌语义 | **Elon 裁定**（2026-10-14，卡 `T-20261013-154930-3` `## Comments` · decision）：取「保留既有令牌 + 改约/改断言」。独立验证原始读数见 `T-20261013-154930-3` §4.3 与 `review/evidence/r14-impl.json`（B22） |
+
+**据此的跨侧断言口径**（§5 B22 / §5.x 已按此写）：遮罩**只**断言「各侧读自己的遮罩令牌 + 该令牌随主题换值 + dark 两侧同值 `rgba(0,0,0,0.55)`」，**不对 light 的绝对值做跨侧相等断言**；抽屉表面色（light `rgb(255,255,255)` / dark `rgb(22,27,30)`）仍**逐字**断言，深色遮罩加深这一 R8 结论不受影响。
