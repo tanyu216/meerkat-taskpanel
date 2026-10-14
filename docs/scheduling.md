@@ -100,6 +100,55 @@ stale, so the supervisor surfaces it instead of guessing. Patrol does not start
 an LLM turn by default — escalation is a notification, not a model call
 (`--patrol-llm=yes` opts in).
 
+## The rest of the SLA table: the same pass, five more rows
+
+A stale heartbeat is **one** row of `PROTOCOL §⑮`'s timeout table. The others —
+a card parked on the leader's clarification, an unanswered confirmation gate, a
+delivery nobody queued an acceptance review for, a defect whose fix card was
+never created, and the leader's own patrol going quiet — used to be invisible to
+the same pass that watched the heartbeat. They are now covered by the **same
+patrol tick**, through the shared inspection contract
+(`sla-inspection-contract.md`, the `team/guides/` document both mechanisms are
+written against).
+
+What that means concretely:
+
+- **One tuple, shared with the openclaw-side inspector.** Each alert is the flat
+  25-field object of the contract (§4): `alert_id`, `dedup_key`, `sla_row`,
+  `severity`, `measure_start_at`, `threshold_min`, `due_at`, `action`, `target`,
+  `evidence`, … A field means the same thing on both mechanisms, so the two can
+  never label one card differently.
+- **Thresholds are `PROTOCOL §⑮`'s, referenced.** `SLA_ROWS` in
+  `src/shared/sla-patrol.mjs` is the runtime mapping table: every limit sits next
+  to the row it came from. `warn` is `L − P` (the mechanism's own period before
+  the published limit — 到点提醒, not a breach), `overdue` is `L`, `escalate` is
+  the published further timeout.
+- **Working hours, not wall clock.** `T` accumulates only inside the
+  Asia/Shanghai 09:00–23:00 window, off-hours rolled over — a card blocked at the
+  end of a working day cannot be "overdue" overnight, and a host in another
+  timezone measures the same `T`.
+- **Notify-only, always.** Every alert is addressed to the **leader**
+  (`target: "leader"`; the card field is `notify_leader`, never a person's name).
+  The releasability hint (`releasable` / `releasable_basis`) points at a card that
+  *looks* releasable — releasing it stays the leader's `§⑦` action, and no code
+  path in the patrol writes card state or starts an LLM turn for a new row.
+- **Zero-cost idle.** A board with nothing past a lead produces no alert, no
+  notification and no extra read.
+- **Fail-safe.** An origin that cannot be read alerts (at `warn`, with no
+  threshold) instead of staying quiet; a pre-emit re-check that cannot run lets
+  the alert through rather than silencing it; and a candidate the re-check drops
+  is always reported, never swallowed.
+- **De-duplicated.** A ledger beside the supervisor's state file keys each alert
+  by `<card>#<row>#<tier>@<origin>`, so a repeat is suppressed, a *tier
+  promotion* is not (an escalation is never de-duplicated away), and a new wait on
+  the same card re-notifies. An unreadable ledger suppresses nothing.
+
+Two rows of the contract are deliberately **not** emitted here, and both are
+stated in `SLA_ROWS` rather than left to be inferred: the stale-heartbeat row is
+already covered by the alert above (re-emitting it as a tuple would
+double-notify one condition), and `inspector_liveness` needs the peer
+inspector's last-successful-run marker, which does not exist on this board yet.
+
 ## Continuity: a fresh handoff, not a resumed pile
 
 Every wake hands the worker a **bounded, fresh handoff** built by
@@ -854,10 +903,13 @@ takes the board's location from `MEERKAT_TASKPANEL_REPO` in the host config.
 | `--once` | off | one tick, then exit (for cron / launchd / systemd / tests) |
 | `--patrol-only` | off | with `--once`, run only the patrol pass |
 | `--patrol-llm=yes\|no` | `no` | let patrol start an LLM turn on a stale card |
-| `--notify <cmd>` | — | run `<cmd>` with each patrol alert as JSON on stdin |
+| `--notify <cmd>` | — | run `<cmd>` with each patrol alert as JSON on stdin — both the legacy heartbeat alert and the SLA tuple |
 | `--dry-run` | off | print intended actions; claim nothing, spawn nothing |
 | `--log <path>` | `<home>/<host-dir>/meerkat-taskpanel/supervisor.log` | where the tick log appends |
 | `--state <path>` | `<home>/<host-dir>/meerkat-taskpanel/supervisor.state.json` | the running registry |
+| `--sla-ledger <path>` | `sla-ledger.json` beside `--state` | the SLA de-duplication ledger; an unreadable one suppresses nothing |
+| `--board-limit <n>` | `500` | max cards read in one patrol pass |
+| `--trail-limit <n>` | `200` | max comment trails read in one pass (a cap is always logged) |
 | `--config <path>` | `<home>/<host-dir>/meerkat-taskpanel.env` | host config: the claim default, and (for a host copy) `MEERKAT_TASKPANEL_REPO` |
 | `--home <path>` | `$HOME` | base for those defaults |
 | `--glue <path>` | `<home>/<host-dir>/bin/wake-<host>.sh` | the wake glue that resolves the project directory and starts the worker ([Where a worker runs](#where-a-worker-runs)) |

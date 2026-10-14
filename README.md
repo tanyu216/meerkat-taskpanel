@@ -209,7 +209,11 @@ them*.
 **In short:** the loop is a **supervisor that runs outside the host**. It scans
 the board **every minute** and wakes a worker **only when a card was actually
 claimed** ($0 on an empty tick); every **five minutes** it patrols for claims
-whose heartbeat has gone stale. Claude Code and Codex have **no timers of their
+whose heartbeat has gone stale — and for the rest of the `PROTOCOL §⑮` timeout
+table: a card parked on the leader, an unanswered confirmation gate, a defect
+whose fix card was never created, a delivery nobody queued an acceptance review
+for, and the leader's own patrol going quiet. Each of those is a **notification
+to the leader**, never an action on a card. Claude Code and Codex have **no timers of their
 own**, so the loop sits *outside* them and only ever wakes the worker
 (`claude -p`, `codex exec`, `pi --print`). **To turn it on,** run
 `install.sh --target claude|codex|pi`: it installs the `meerkat-loop` skill and
@@ -223,8 +227,10 @@ Claiming is not left to an agent's memory. A small **host-external supervisor**
 [`scripts/supervisor.mjs`](scripts/supervisor.mjs)) runs a cheap **1-minute poll**
 — a $0 local CLI scan, where a model turn starts **only** when a card was actually
 claimed (the atomic claim is the single dispatch source) — and a **5-minute
-patrol** that escalates a claim whose heartbeat has gone stale and reports a
-heartbeat it cannot read (never silently). Claude Code and Codex have **no
+patrol** that escalates a claim whose heartbeat has gone stale, reports a
+heartbeat it cannot read (never silently), and covers the rest of the
+`PROTOCOL §⑮` timeout table with the same alert tuple the openclaw-side inspector
+emits. Claude Code and Codex have **no
 timers**, so the loop lives *outside* them and only the worker is woken
 (`claude -p`, `codex exec`, `pi --print`).
 
