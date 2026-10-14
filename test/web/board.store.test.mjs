@@ -31,6 +31,12 @@ register("./support/vue-loader.mjs", import.meta.url);
 
 const { ApiError } = await import("../../web/src/services/api.js");
 const { toasts } = await import("../../web/src/stores/ui.js");
+// The one vocabulary a refusal is rendered through (T-20261014-152924 ④); pure,
+// so the expected sentence is read from it rather than typed out twice.
+const { GENERIC_ERROR_KEY, errorText, resolveText } = await import("../../web/src/i18n/messages.mjs");
+
+/** What an unmapped code shows, in the default language. */
+const GENERIC_ERROR_SENTENCE = resolveText("en", GENERIC_ERROR_KEY);
 
 /* --------------------------------------------------------------- harness */
 
@@ -178,11 +184,14 @@ describe("web/board — 409 rollback and the conflict panel", () => {
     });
 
     assert.equal(board.tasks[0].status, "todo"); // reverted, visibly
+    // T-20261014-152924 ④ — the panel carries the two versions and the ref. It
+    // used to also carry the wire's `message`; a reader gets the board's own
+    // sentence instead (`conflict.hint`), so the server's prose is not copied
+    // into component state at all.
     assert.deepEqual(board.conflict, {
       identifier: "TD-1",
       expectedVersion: 3,
       currentVersion: 5,
-      message: "stale version",
     });
   });
 
@@ -234,7 +243,7 @@ describe("web/board — 409 rollback and the conflict panel", () => {
   it("reloadConflict clears the panel and re-reads the task — the only offered recovery", async () => {
     const { board, reloadConflict } = await freshBoard();
     seedTask(board);
-    board.conflict = { identifier: "TD-1", expectedVersion: 3, currentVersion: 5, message: "stale" };
+    board.conflict = { identifier: "TD-1", expectedVersion: 3, currentVersion: 5 };
     installFetch({
       "GET /api/v1/tasks/TD-1": () => ok({ task: { id: "td_1", identifier: "TD-1", status: "in_progress", version: 5 } }),
     });
@@ -257,7 +266,7 @@ describe("web/board — 409 rollback and the conflict panel", () => {
   it("a recovery move after a reload succeeds and clears the panel", async () => {
     const { board, reloadConflict, moveTask } = await freshBoard();
     seedTask(board);
-    board.conflict = { identifier: "TD-1", expectedVersion: 3, currentVersion: 5, message: "stale" };
+    board.conflict = { identifier: "TD-1", expectedVersion: 3, currentVersion: 5 };
     installFetch({
       "GET /api/v1/tasks/TD-1": () => ok({ task: { id: "td_1", identifier: "TD-1", status: "todo", version: 5 } }),
       "POST /api/v1/tasks/TD-1/move": () => ok({ task: { id: "td_1", identifier: "TD-1", status: "done", version: 6 } }),
@@ -298,13 +307,28 @@ describe("web/board — move failures other than a conflict", () => {
     }
   });
 
-  it("an unknown failure surfaces its own message and still rolls back", async () => {
+  it("an unmapped code falls back to the generic sentence, never to the wire's message", async () => {
     const { board, moveTask } = await freshBoard();
     seedTask(board);
-    installFetch({ "POST /api/v1/tasks/TD-1/move": () => failure(500, "INTERNAL", "the disk is on fire") });
+    const wire = "CHECK constraint failed: claimed_by IS NULL OR status <> 'backlog'";
+    installFetch({ "POST /api/v1/tasks/TD-1/move": () => failure(500, "INTERNAL", wire) });
     await assert.rejects(() => moveTask(board.tasks[0], "done"));
     assert.equal(board.tasks[0].status, "todo");
-    assert.equal(toasts.value.at(-1).text, "the disk is on fire");
+    const text = toasts.value.at(-1).text;
+    assert.equal(text, GENERIC_ERROR_SENTENCE);
+    assert.equal(text.includes("constraint"), false, "the storage engine's words are not shown");
+    assert.equal(text.includes(wire), false);
+  });
+
+  it("renders a known code as the board's own sentence, in the active language", async () => {
+    const { board, moveTask } = await freshBoard();
+    seedTask(board);
+    installFetch({ "POST /api/v1/tasks/TD-1/move": () => failure(409, "not_assignee", "task is assigned to somebody else") });
+    await assert.rejects(() => moveTask(board.tasks[0], "done"));
+    assert.equal(toasts.value.at(-1).text, errorText("en", { code: "not_assignee" }, ["TD-1"]));
+    // ...and the sentence is bilingual: the same code in zh is the zh string,
+    // which is the half a reader of the board actually needs.
+    assert.equal(errorText("zh", { code: "not_assignee" }, ["TD-1"]), `TD-1 已指派给他人。`);
   });
 });
 
@@ -410,7 +434,7 @@ describe("web/board — the live stream drives the revision", () => {
     const { board, startEvents } = await freshBoard();
     seedTask(board);
     installFetch({ "GET /api/v1/tasks/td_1": () => ok({ task: { id: "td_1", identifier: "TD-1", status: "done", version: 9 } }) });
-    board.conflict = { identifier: "TD-1", expectedVersion: 3, currentVersion: 5, message: "stale" };
+    board.conflict = { identifier: "TD-1", expectedVersion: 3, currentVersion: 5 };
 
     startEvents();
     FakeEventSource.instances.at(-1).emit(21, { event: "task_updated", task_id: "td_1" });

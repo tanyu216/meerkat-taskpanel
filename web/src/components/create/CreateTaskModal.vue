@@ -14,7 +14,8 @@
 import { computed, reactive, ref, watch } from "vue";
 
 import { board, assigneeRoster, createTask, labelRoster, reporterRoster, PRIORITIES, taskRoster } from "../../stores/board.js";
-import { createTaskOpen, createTaskStatus } from "../../stores/ui.js";
+import { createTaskOpen, createTaskStatus, pushToast } from "../../stores/ui.js";
+import { errorTextKey } from "../../i18n/messages.mjs";
 import { t } from "../../i18n/index.js";
 
 import ComboField from "../combo/ComboField.vue";
@@ -76,6 +77,15 @@ watch(createTaskOpen, (open) => {
   if (open) reset();
 });
 
+/**
+ * Submit, and **answer a refusal** (T-20261014-152924 ④).
+ *
+ * This used to be a bare `await createTask(payload)`: a refused create rejected
+ * into nothing, so the dialog neither closed nor said why — the worst of the two
+ * outcomes. The refusal now goes through the same one-sentence-per-code path the
+ * board uses, the dialog stays up holding what was typed, and only a success
+ * closes it.
+ */
 async function submit() {
   if (!canSubmit.value) return;
   const payload = {
@@ -88,7 +98,12 @@ async function submit() {
   };
   if (form.assignee) payload.assignee = form.assignee;
   if (form.reporter) payload.reporter = form.reporter;
-  await createTask(payload);
+  try {
+    await createTask(payload);
+  } catch (err) {
+    pushToast(t(errorTextKey(err)), "danger");
+    return;
+  }
   createTaskOpen.value = false;
   reset();
 }

@@ -1174,3 +1174,88 @@ describe("commands/tasks — move to in_progress is the claim path", () => {
     });
   });
 });
+
+/**
+ * T-20261014-152924 ① — the execution claim never outlives the card's work cycle.
+ *
+ * Terry's report, as a sequence: a card that is claimed (`in_progress`) is
+ * dragged back to `todo` and then to `backlog`. Both legs are legal transitions;
+ * the claim was the thing that was not released, so the second leg tripped the
+ * schema's own `CHECK (claimed_by IS NULL OR status <> 'backlog')` and the board
+ * showed the raw SQLite sentence. The fix belongs to the *first* leg — the move
+ * that takes a card out of the work cycle drops the claim in the same write —
+ * which is what these cases pin down, together with the two paths that must
+ * **keep** the lock so the same executor can resume.
+ */
+describe("commands/tasks — the execution claim follows the work cycle (T-20261014-152924)", () => {
+  async function claimed(commands, actor = AGENT) {
+    const task = commands.createTask({ projectId: "proj", title: "Ship M1", actor });
+    // `claim` returns the *updated* DTO; the one `createTask` handed back is the
+    // pre-claim revision and reads `claimedBy === null`.
+    return commands.claim({ id: task.id, actor }).task;
+  }
+
+  it("walks Terry's drag — in_progress → todo → backlog — and never reaches the CHECK", async () => {
+    await board(async ({ db, commands }) => {
+      const task = await claimed(commands);
+      assert.equal(task.claimedBy, "linus");
+
+      const todo = commands.moveStatus({ id: task.id, to: "todo", actor: AGENT });
+      assert.equal(todo.claimedBy, null, "leaving the work cycle releases the lock");
+      assert.equal(todo.claimedAt, null, "and its two timestamps with it");
+      assert.equal(todo.heartbeatAt, null);
+
+      // The leg that used to fail with `CHECK constraint failed: …`.
+      const backlog = commands.moveStatus({ id: task.id, to: "backlog", actor: HUMAN });
+      assert.equal(backlog.status, "backlog");
+      assert.equal(backlog.claimedBy, null);
+      assert.equal(
+        db.prepare("SELECT claimed_by FROM tasks WHERE id = ?").get(task.id).claimed_by,
+        null,
+        "the row itself carries no claim, not merely the DTO",
+      );
+      assert.deepEqual(activitiesFor(db, task.id), [
+        "task_created",
+        "task_claimed",
+        "task_moved",
+        "task_moved",
+      ]);
+    });
+  });
+
+  it("releases the lock for the terminal pair too, so a finished card is nobody's", async () => {
+    await board(async ({ db, commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "Ship M1", actor: AGENT });
+      commands.claim({ id: task.id, actor: AGENT });
+      const canceled = commands.moveStatus({ id: task.id, to: "canceled", actor: HUMAN });
+      assert.equal(canceled.claimedBy, null);
+      assert.equal(db.prepare("SELECT claimed_by FROM tasks WHERE id = ?").get(task.id).claimed_by, null);
+    });
+  });
+
+  it("keeps the lock on in_progress ↔ awaiting — the same attempt, paused", async () => {
+    await board(async ({ commands }) => {
+      const task = await claimed(commands);
+      const waiting = commands.moveStatus({
+        id: task.id,
+        to: "awaiting",
+        awaitingReason: "E1",
+        actor: AGENT,
+      });
+      assert.equal(waiting.claimedBy, "linus", "asking a human does not hand the card over");
+      const resumed = commands.moveStatus({ id: task.id, to: "in_progress", actor: AGENT });
+      assert.equal(resumed.claimedBy, "linus");
+      assert.equal(resumed.heartbeatAt, task.heartbeatAt, "resuming does not re-stamp the attempt");
+    });
+  });
+
+  it("keeps the lock across a block and a rework, so the executor can resume", async () => {
+    await board(async ({ commands }) => {
+      const task = await claimed(commands);
+      const blocked = commands.moveStatus({ id: task.id, to: "blocked", actor: AGENT, blockedReason: "dependency" });
+      assert.equal(blocked.claimedBy, "linus", "a stopped card is still the same executor's card");
+      const unblocked = commands.moveStatus({ id: task.id, to: "in_progress", actor: AGENT });
+      assert.equal(unblocked.claimedBy, "linus");
+    });
+  });
+});

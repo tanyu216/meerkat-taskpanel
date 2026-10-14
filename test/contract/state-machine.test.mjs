@@ -28,8 +28,16 @@ import assert from "node:assert/strict";
 import test, { after, describe, it } from "node:test";
 
 import { STATUSES } from "../../src/core/domain/enums.mjs";
-import { ALLOWED_TRANSITIONS, allowedTargets, canTransition, isTerminalStatus, transitionReasonCode } from "../../src/core/domain/status.mjs";
-import { cleanupTempDirs, insertProject, insertReport, insertTask, reasonCode, withBoard } from "../helpers/sqlite-fixture.mjs";
+import {
+  ALLOWED_TRANSITIONS,
+  allowedTargets,
+  canTransition,
+  holdsClaim,
+  isTerminalStatus,
+  transitionReasonCode,
+} from "../../src/core/domain/status.mjs";
+import { createRepositories } from "../../src/core/storage/repositories/index.mjs";
+import { TS, TS2, cleanupTempDirs, insertProject, insertReport, insertTask, reasonCode, withBoard } from "../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);
 
@@ -318,6 +326,107 @@ describe("contract/state-machine — one move, one revision (plan §3.3.6③)", 
       assert.equal(move(db, "t", "in_progress"), "NO_ERROR");
       assert.equal(revision() - before, 1, "status move + nested round bump = 1 revision");
       assert.equal(db.prepare("SELECT delivery_round AS r FROM tasks WHERE id='t'").get().r, 2);
+    });
+  });
+});
+
+/**
+ * The execution claim, walked over the whole whitelist (T-20261014-152924 ①).
+ *
+ * `holdsClaim` is the domain fact — the claim lives while the card is inside the
+ * work cycle and is released by the very UPDATE that takes it out — and this
+ * test is the storage half of it: one claimed card per whitelisted pair, moved
+ * through `repos.tasks.moveCas`, then the **row** is read back and compared with
+ * the predicate. A pair the trigger refuses (there are several: `done` only from
+ * `in_review`, `in_review` only with a report, terminal states not at all) is
+ * recorded as not-exercised rather than counted as a pass — the assertion at the
+ * end requires every destination status to have been reached by at least one
+ * pair, so "the move was refused" can never quietly become "the claim was fine".
+ */
+describe("contract/state-machine — the execution claim follows the work cycle", () => {
+  it("releases the claim on every destination outside the cycle, keeps it inside", async () => {
+    await withBoard(({ db }) => {
+      const repos = createRepositories(db);
+      const wrong = [];
+      const refused = [];
+      const reached = new Set();
+
+      for (const from of STATUSES) {
+        for (const to of allowedTargets(from)) {
+          const id = `t_${from}_${to}`;
+          insertProject(db, { id: `p-${from}-${to}` });
+          insertTask(db, {
+            id,
+            identifier: `${from}-${to}`.toUpperCase(),
+            project_id: `p-${from}-${to}`,
+            status: from,
+            // A `backlog` card may not hold a claim (the CHECK this card fixes);
+            // every other status seeds the claim the move must carry.
+            ...(from === "backlog" ? {} : { claimed_by: "linus", claimed_at: TS, heartbeat_at: TS }),
+          });
+          if (to === "in_review") insertReport(db, { task_id: id, round: 1 });
+
+          try {
+            repos.tasks.moveCas({ id, to, now: TS2 });
+          } catch (err) {
+            refused.push(`${from} → ${to}: ${err.code}`);
+            continue;
+          }
+          reached.add(to);
+          const after = db.prepare("SELECT status, claimed_by FROM tasks WHERE id = ?").get(id);
+          assert.equal(after.status, to);
+          const expected = holdsClaim(to) ? "linus" : null;
+          if (after.claimed_by !== expected) {
+            wrong.push(`${from} → ${to}: claimed_by=${JSON.stringify(after.claimed_by)}, expected ${JSON.stringify(expected)}`);
+          }
+        }
+      }
+
+      assert.deepEqual(wrong, [], "the row must agree with holdsClaim on every move");
+      // Coverage: a destination no pair could reach would make the walk vacuous
+      // for that status. Every one of the eight is reachable — `backlog` from
+      // `todo`, which is also the leg the reported bug travelled.
+      assert.deepEqual(
+        STATUSES.filter((to) => !reached.has(to)),
+        [],
+        "every destination must be reached by some pair",
+      );
+      assert.ok(reached.size === STATUSES.length);
+      // ...and the refusals are the whitelist's own gate, never a claim:
+      // a `VERSION_CONFLICT`/`CLAIM_LOST`/`VALIDATION_FAILED` here would mean
+      // this walk measured something other than the release.
+      for (const entry of refused) {
+        assert.match(entry, /: (REPORT_REQUIRED|INVALID_TRANSITION|TERMINAL_STATE)$/, entry);
+      }
+    });
+  });
+
+  it("leaves the backlog CHECK unreachable from the release's own paths", async () => {
+    await withBoard(({ db }) => {
+      const repos = createRepositories(db);
+      // The reported bug, at the storage layer: claim a card, walk it out of the
+      // work cycle into `todo`, then to `backlog`. Before the release, the second
+      // leg hit `CHECK constraint failed: claimed_by IS NULL OR status <>
+      // 'backlog'`; now the first leg has already dropped the claim.
+      insertProject(db);
+      insertTask(db, { id: "t", identifier: "PROJ-0001", status: "todo" });
+      repos.tasks.claimCas({ id: "t", actor: "linus", now: TS });
+      assert.equal(db.prepare("SELECT claimed_by FROM tasks WHERE id='t'").get().claimed_by, "linus");
+
+      repos.tasks.moveCas({ id: "t", to: "todo", now: TS2 });
+      assert.equal(
+        db.prepare("SELECT claimed_by FROM tasks WHERE id='t'").get().claimed_by,
+        null,
+        "in_progress → todo releases the lock in the same write",
+      );
+      repos.tasks.moveCas({ id: "t", to: "backlog", now: TS2 });
+      assert.equal(db.prepare("SELECT status, claimed_by FROM tasks WHERE id='t'").get().status, "backlog");
+
+      // The CHECK is still there, and still refuses a claim on a backlog card
+      // written by anything else — the release closes the path, it does not
+      // weaken the guarantee (`test/contract/invariants.test.mjs`).
+      const verdict = reasonCode(() => db.prepare("UPDATE tasks SET claimed_by = 'linus' WHERE id = 't'").run());
+      assert.equal(verdict, "CLAIM_ON_BACKLOG");
     });
   });
 });

@@ -406,9 +406,17 @@ describe("contract/invariants — enum CHECKs", () => {
     await withBoard(({ db }) => {
       insertProject(db);
       insertTask(db, { id: "t", identifier: "PROJ-0001", status: "backlog" });
+      // T-20261014-152924 — this CHECK names itself now. It is the constraint
+      // Terry's drag tripped, and it used to arrive as a generic
+      // `VALIDATION_FAILED` still carrying the raw SQLite sentence
+      // (`CHECK constraint failed: claimed_by IS NULL OR status <> 'backlog'`).
+      // The service releases the claim on the way out of the work cycle
+      // (`domain/status.mjs#CLAIM_HOLDING_STATUSES`), so reaching this line means
+      // a foreign writer wrote the row; `CLAIM_ON_BACKLOG` says which rule it
+      // broke, and the message says it in words.
       assert.equal(
         reasonCode(() => db.prepare("UPDATE tasks SET claimed_by = 'linus' WHERE id = 't'").run()),
-        "VALIDATION_FAILED",
+        "CLAIM_ON_BACKLOG",
       );
     });
   });
