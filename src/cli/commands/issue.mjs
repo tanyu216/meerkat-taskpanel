@@ -15,8 +15,10 @@
  */
 
 import { usageError } from "../../shared/transport/errors.mjs";
+import { TASK_OPS } from "../../core/commands/tasks-input.mjs";
 import { fields, table, taskLine } from "../output/human.mjs";
 import { parseReport } from "./report.mjs";
+import { projectBody, projectFlags } from "./task-input.mjs";
 
 /** `--meta k=v` repeated → object. */
 const metaOf = (flags) => flags.meta;
@@ -40,40 +42,20 @@ export const COMMANDS = [
   {
     name: "create",
     summary: "Create a task.",
+    op: TASK_OPS.create,
     usage: "issue create --project <id> --title <text> [--assignee <name>]",
     positionals: [],
-    flags: [
-      { flag: "project", key: "project", as: "string", value: "<id>", required: true },
-      { flag: "title", key: "title", as: "string", value: "<text>", required: true },
-      { flag: "description", key: "description", as: "string", value: "<text>" },
-      { flag: "status", key: "status", as: "string", value: "<status>" },
-      { flag: "priority", key: "priority", as: "string", value: "<low|medium|high|urgent>" },
-      { flag: "kind", key: "kind", as: "string", value: "<task|epic|deploy>" },
-      { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true },
-      { flag: "meta", key: "meta", as: "kv" },
-      { flag: "acceptance", key: "acceptance", as: "string", value: "<text>", repeat: true, summary: "Acceptance criterion; repeatable." },
-      { flag: "assignee", key: "assignee", as: "string", value: "<text>", summary: "Free text; resolved against the dictionary." },
-      { flag: "assignee-kind", key: "assigneeKind", as: "string", value: "<agent|human>" },
-      { flag: "assignee-id", key: "assigneeId", as: "string", value: "<id>" },
-      { flag: "reporter", key: "reporter", as: "string", value: "<text>" },
-      { flag: "reporter-kind", key: "reporterKind", as: "string", value: "<agent|human>" },
-      { flag: "reporter-id", key: "reporterId", as: "string", value: "<id>" },
-      { flag: "force-create", key: "forceCreate", as: "boolean", summary: "Skip dictionary fuzzy matching." },
-      { flag: "idem", key: "idem", as: "string", value: "<key>", summary: "Explicit idempotency key; a match re-uses the existing task." },
-      { flag: "allow-dup", key: "allowDup", as: "boolean", summary: "Bypass the idempotency guard and create a duplicate anyway." },
-      { flag: "target", key: "target", as: "string", value: "<t>", summary: "The card's target — stored in its meta; also the idempotency key's target slot." },
-      { flag: "review-of", key: "reviewOf", as: "string", value: "<id>", summary: "Idempotency key's source slot (a card under review)." },
-      { flag: "parent", key: "parent", as: "string", value: "<id>", summary: "Idempotency key's source slot (a parent card)." },
-    ],
+    // The flags and the body are both projected from the command's input
+    // declaration (`core/commands/tasks-input.mjs`), so neither is a second
+    // hand-kept list. The spelling of each flag lives in `./task-input.mjs`.
+    flags: projectFlags(TASK_OPS.create),
     async run(ctx) {
       const flags = ctx.flags;
-      const meta = { ...(metaOf(flags) ?? {}) };
-      if (flags.acceptance !== undefined) meta.acceptance = flags.acceptance;
-      // `--target` writes the card's own `target` into `meta` (the board owns no
-      // project directory, so `target` is not a top-level create field). The
-      // idempotency key reads it back from there.
-      if (flags.target !== undefined) meta.target = flags.target;
-      const payload = await ctx.client.post("/api/v1/tasks", {
+      // `--acceptance` and `--target` are declared CLI-only inputs that fold into
+      // the card's `meta` (`--target` because the board owns no project
+      // directory, so `target` is not a top-level create field). `projectBody`
+      // does that folding; the idempotency key reads `target` back from there.
+      const payload = await ctx.client.post("/api/v1/tasks", projectBody(TASK_OPS.create, {
         project_id: flags.project,
         title: flags.title,
         description: flags.description,
@@ -81,7 +63,8 @@ export const COMMANDS = [
         priority: flags.priority,
         kind: flags.kind,
         labels: flags.labels,
-        meta: Object.keys(meta).length === 0 ? undefined : meta,
+        meta: metaOf(flags),
+        acceptance: flags.acceptance,
         assignee: flags.assignee,
         assignee_kind: flags.assigneeKind,
         assignee_id: flags.assigneeId,
@@ -91,9 +74,10 @@ export const COMMANDS = [
         force_create: flags.forceCreate === true,
         idem: flags.idem,
         allow_dup: flags.allowDup === true,
+        target: flags.target,
         review_of: flags.reviewOf,
         parent: flags.parent,
-      });
+      }));
       return { data: payload, human: `created ${payload.task.identifier}  ${payload.task.title}` };
     },
   },
@@ -201,26 +185,23 @@ export const COMMANDS = [
   {
     name: "update",
     summary: "Update a task's title, priority, labels, metadata or acceptance list.",
+    op: TASK_OPS.update,
     usage: "issue update <id|identifier> [--title <text>] [--acceptance <text>]…",
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
-    flags: [
-      { flag: "title", key: "title", as: "string", value: "<text>" },
-      { flag: "description", key: "description", as: "string", value: "<text>" },
-      { flag: "priority", key: "priority", as: "string", value: "<priority>" },
-      { flag: "kind", key: "kind", as: "string", value: "<task|epic|deploy>" },
-      { flag: "label", key: "labels", as: "string", value: "<label>", repeat: true },
-      { flag: "meta", key: "meta", as: "kv" },
-      { flag: "acceptance", key: "acceptance", as: "string", value: "<text>", repeat: true },
-    ],
+    flags: projectFlags(TASK_OPS.update),
     async run(ctx) {
       const flags = ctx.flags;
-      const body = {};
-      for (const key of ["title", "description", "priority", "kind"]) {
-        if (flags[key] !== undefined) body[key] = flags[key];
-      }
-      if (flags.labels !== undefined) body.labels = flags.labels;
-      if (metaOf(flags) !== undefined) body.meta = metaOf(flags);
-      if (flags.acceptance !== undefined) body.acceptance = flags.acceptance;
+      // Every field is offered; `projectBody` drops the ones the caller did not
+      // pass, so "nothing to update" stays measurable below.
+      const body = projectBody(TASK_OPS.update, {
+        title: flags.title,
+        description: flags.description,
+        priority: flags.priority,
+        kind: flags.kind,
+        labels: flags.labels,
+        meta: metaOf(flags),
+        acceptance: flags.acceptance,
+      });
       if (Object.keys(body).length === 0) {
         // Refuse locally: a round trip that changes nothing is never what was meant.
         return {
@@ -237,6 +218,7 @@ export const COMMANDS = [
   {
     name: "move",
     summary: "Move a task to another status (this is where the delivery gate bites).",
+    op: TASK_OPS.move,
     usage:
       'issue move <id|identifier> <status> [--allow-steal --reason "<why>"] ' +
       '[--no-report --reason "<why>"] [--awaiting-reason E1..E5]',
@@ -244,18 +226,7 @@ export const COMMANDS = [
       { name: "ref", summary: "Task id or identifier." },
       { name: "to", summary: "Target status." },
     ],
-    flags: [
-      { flag: "no-report", key: "noReport", as: "boolean", summary: "Waive the report for this round (needs --reason)." },
-      { flag: "allow-steal", key: "allowSteal", as: "boolean", summary: "Claim a card assigned to somebody else (needs --reason; audited)." },
-      { flag: "reason", key: "reason", as: "string", value: "<why>", summary: "Why this move is audited (a report waiver or an --allow-steal)." },
-      {
-        flag: "awaiting-reason",
-        key: "awaitingReason",
-        as: "string",
-        value: "<E1..E5>",
-        summary: "Why this card needs a human — required by `issue move <ref> awaiting`.",
-      },
-    ],
+    flags: projectFlags(TASK_OPS.move),
     async run(ctx) {
       const allowSteal = ctx.flags.allowSteal === true;
       // A claim on somebody else's card is an audited exception, so it must say
@@ -274,14 +245,14 @@ export const COMMANDS = [
           fix: "E1 scope · E2 acceptance baseline · E3 design direction · E4 security · E5 architecture",
         });
       }
-      const payload = await ctx.client.post(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/move`, {
+      const payload = await ctx.client.post(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/move`, projectBody(TASK_OPS.move, {
         to: ctx.args.to,
         if_version: ctx.flags.ifVersion,
         no_report: ctx.flags.noReport === true,
         allow_steal: allowSteal,
         reason: ctx.flags.reason,
         awaiting_reason: ctx.flags.awaitingReason,
-      });
+      }));
       const warnings = payload.task.report_waiver === null
         ? []
         : [`delivered without a report; recorded as report_waived round ${payload.task.report_waiver.round}`];
@@ -295,23 +266,18 @@ export const COMMANDS = [
   {
     name: "assign",
     summary: "Assign (or reassign) a task's assignee and reporter.",
+    op: TASK_OPS.assign,
     usage: "issue assign <id|identifier> [--assignee <text>] [--reporter <text>]",
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
-    flags: [
-      { flag: "assignee", key: "assignee", as: "string", value: "<text>" },
-      { flag: "assignee-id", key: "assigneeId", as: "string", value: "<id>" },
-      { flag: "reporter", key: "reporter", as: "string", value: "<text>" },
-      { flag: "reporter-id", key: "reporterId", as: "string", value: "<id>" },
-      { flag: "force-create", key: "forceCreate", as: "boolean" },
-    ],
+    flags: projectFlags(TASK_OPS.assign),
     async run(ctx) {
-      const payload = await ctx.client.post(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/assign`, {
+      const payload = await ctx.client.post(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/assign`, projectBody(TASK_OPS.assign, {
         assignee: ctx.flags.assignee,
         assignee_id: ctx.flags.assigneeId,
         reporter: ctx.flags.reporter,
         reporter_id: ctx.flags.reporterId,
         force_create: ctx.flags.forceCreate === true,
-      });
+      }));
       const task = payload.task;
       return {
         data: payload,
@@ -323,14 +289,15 @@ export const COMMANDS = [
   {
     name: "archive",
     summary: "Archive a finished task (done/canceled, after the waiting window).",
+    op: TASK_OPS.archive,
     usage: "issue archive <id|identifier> [--days <n>]",
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
-    flags: [{ flag: "days", key: "days", as: "number", value: "<n>", summary: "Override the 7-day window." }],
+    flags: projectFlags(TASK_OPS.archive),
     async run(ctx) {
-      const payload = await ctx.client.post(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/archive`, {
+      const payload = await ctx.client.post(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/archive`, projectBody(TASK_OPS.archive, {
         if_version: ctx.flags.ifVersion,
         days: ctx.flags.days,
-      });
+      }));
       return { data: payload, human: `archived ${payload.task.identifier} (${payload.task.status})` };
     },
   },
@@ -338,14 +305,10 @@ export const COMMANDS = [
   {
     name: "deliver",
     summary: "Write a report and move to in_review, atomically. The compliant path.",
+    op: TASK_OPS.deliver,
     usage: "issue deliver <id|identifier> --report-file <file|-> [--no-report --reason <why>]",
     positionals: [{ name: "ref", summary: "Task id or identifier." }],
-    flags: [
-      { flag: "report-file", key: "reportFile", as: "string", value: "<file|->", summary: "Report JSON, or `-` for stdin." },
-      { flag: "no-report", key: "noReport", as: "boolean", summary: "Waive the report for this round (needs --reason)." },
-      { flag: "reason", key: "reason", as: "string", value: "<why>" },
-      { flag: "seg", key: "seg", as: "string", value: "<seg>" },
-    ],
+    flags: projectFlags(TASK_OPS.deliver),
     async run(ctx) {
       const flags = ctx.flags;
       const waived = flags.noReport === true;
@@ -377,14 +340,14 @@ export const COMMANDS = [
         if (report.author == null) report.author = ctx.actor;
       }
 
-      const payload = await ctx.client.post(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/deliver`, {
+      const payload = await ctx.client.post(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/deliver`, projectBody(TASK_OPS.deliver, {
         report,
         if_version: flags.ifVersion,
         no_report: waived,
         reason: flags.reason,
         seg: flags.seg,
         session_id: flags.sessionId,
-      });
+      }));
       if (payload.waived) {
         warnings.push(`delivering without a report; recorded as report_waived (round ${payload.round})`);
       }

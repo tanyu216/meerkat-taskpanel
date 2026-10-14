@@ -25,7 +25,15 @@ Rules that are enforced, not just documented:
   carries, which is what its own `migrations-0015.test.mjs` compares against a fresh
   one;
 * the delivery gate is a database trigger *and* a domain check, and the two are
-  tested against each other (`test/contract/`).
+  tested against each other (`test/contract/`);
+* a task command's **input** is declared once, in `commands/tasks-input.mjs`, in
+  wire terms — field name, type, vocabulary, multiplicity, and which surface
+  carries it. The route's request shape and the CLI's flags and body are
+  *projected* from it (`server/requests.mjs#project`, `cli/commands/task-input.mjs`),
+  so there is no second hand-kept field list to drift. Each side names its `op`,
+  and `scripts/verify/route-request.mjs` proves the three still name the same one
+  — as well as that each projection covers exactly the fields its `surface`
+  marker says it should.
 
 ## Creation idempotency (the main gate is you, the creator)
 

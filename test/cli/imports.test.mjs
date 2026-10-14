@@ -10,6 +10,11 @@
  *      service the single writer, F-A1.)
  *   2. `src/server/**` must not import `src/cli/**` — the dependency direction
  *      is `cli|server -> core -> shared`, never sideways.
+ *   3. the one `src/core` module `src/cli` *does* read — the command-input
+ *      declaration, whose two projections the CLI builds its flags and body
+ *      from — is a storage-free leaf, checked transitively rather than by
+ *      specifier (the barrel would satisfy a specifier check and still drag
+ *      `node:sqlite` in).
  *
  * Every direction is asserted against the *source text*, so a violation is
  * caught even in a file nothing imports yet.
@@ -43,6 +48,7 @@ const PLANNED_CLI = [
   "commands/index.mjs",
   "commands/project.mjs",
   "commands/issue.mjs",
+  "commands/task-input.mjs",
   "commands/report.mjs",
   "commands/comment.mjs",
   "commands/relation.mjs",
@@ -76,6 +82,23 @@ const PLANNED_SERVER = [
 
 function filesUnder(rel) {
   return listModuleFiles(join(ROOT, rel));
+}
+
+/**
+ * Walk every module reachable from `entry` by static import, recording anything
+ * `src/cli` must never reach. Relative specifiers are followed; a bare one is a
+ * builtin or a package, and the builtin allow-list is the other test's business.
+ */
+function walkInto(entry, violations, seen = new Set()) {
+  const file = existsSync(entry) ? entry : `${entry}.mjs`;
+  if (seen.has(file) || !existsSync(file)) return;
+  seen.add(file);
+  for (const specifier of importedSpecifiers(readSource(file))) {
+    if (/^node:sqlite$/.test(specifier) || /core\/storage/.test(specifier)) {
+      violations.push(`${file.slice(ROOT.length + 1)} imports ${specifier}`);
+    }
+    if (specifier.startsWith(".")) walkInto(resolve(dirname(file), specifier), violations, seen);
+  }
 }
 
 describe("cli/imports — the layering rules", () => {
@@ -123,6 +146,24 @@ describe("cli/imports — the layering rules", () => {
     for (const file of filesUnder("src/cli")) {
       for (const specifier of importedSpecifiers(readSource(file))) {
         if (/(^|\/)server\//.test(specifier)) violations.push(`${file.slice(ROOT.length + 1)} imports ${specifier}`);
+      }
+    }
+    assert.deepEqual(violations, []);
+  });
+
+  it("any src/core module src/cli reads is a storage-free leaf, transitively", () => {
+    // `src/cli` reads exactly one `src/core` module — the command-input
+    // declaration — and only because that module imports nothing beyond
+    // `shared/` and `domain/`. The specifier rule above cannot see the danger it
+    // guards against: importing the core *barrel* would pass it while dragging
+    // `node:sqlite` into a process whose whole point is that it talks to the
+    // board over HTTP. So the property is asserted over the whole reach, not the
+    // one specifier.
+    const violations = [];
+    for (const file of filesUnder("src/cli")) {
+      for (const specifier of importedSpecifiers(readSource(file))) {
+        if (!/core\//.test(specifier)) continue;
+        walkInto(resolve(dirname(file), specifier), violations);
       }
     }
     assert.deepEqual(violations, []);

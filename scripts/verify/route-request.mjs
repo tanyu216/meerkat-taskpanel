@@ -31,6 +31,20 @@
  *   * `uncovered_endpoint`  — an endpoint *outside* the JSON router that declares a
  *                             request schema the lint cannot reach (see `OUT_OF_LINT`).
  *
+ * ## The second check: a command's input is declared once
+ *
+ * A task command's input is no longer written down three times. It is declared
+ * once (`src/core/commands/tasks-input.mjs`) and projected into the route's
+ * request shape and the CLI's flags and body. What the two projections cannot
+ * prove on their own is that they are still talking about the *same command* —
+ * nothing a compiler sees pairs `POST /api/v1/tasks/:ref/move` with `issue move`.
+ * So each side names its op (`project(op)` returns it on the shape; the command
+ * carries an `op` field) and `checkCommandInputs` holds the three sides
+ * together, reporting `unpaired_op`, `duplicate_op`, `op_shape_mismatch` and
+ * `unknown_op`. The last two are the ones that matter over time: they catch a
+ * declaration quietly ceasing to be the source, which is what a hand-written
+ * body or a hand-written `flags:` array coming back would look like.
+ *
  * ## Why the two directions matter
  *
  * A handler reading an undeclared field is the obvious drift: a caller sends a field the
@@ -73,6 +87,9 @@ import { pathToFileURL } from "node:url";
 
 import { OUT_OF_ROUTER_ENDPOINTS, registerApiRoutes } from "../../src/server/index.mjs";
 import { createRouter } from "../../src/server/router.mjs";
+import { inputOf, TASK_OPS } from "../../src/core/commands/tasks-input.mjs";
+import { registry as cliRegistry } from "../../src/cli/commands/index.mjs";
+import { projectFlags } from "../../src/cli/commands/task-input.mjs";
 
 // ---------------------------------------------------------------------------
 // Lexing: just enough JavaScript to find reads, and to not be fooled by prose
@@ -688,6 +705,116 @@ export function formatFinding(finding) {
 }
 
 // ---------------------------------------------------------------------------
+// The command-input pairing
+// ---------------------------------------------------------------------------
+
+/**
+ * One declaration, three consumers — and the pairing between them is proved here.
+ *
+ * A task command's input is declared once (`src/core/commands/tasks-input.mjs`)
+ * and projected twice: the route builds its request shape from it, and the CLI
+ * builds its flags and its body. What the projections cannot prove on their own
+ * is that all three sides are still *talking about the same command*: the route
+ * that projects `tasks.move` and the `issue move` command are paired by nothing
+ * a compiler sees.
+ *
+ * So each side names its op — the route through the shape `project(op)` returns,
+ * the command through its own `op` field — and this check holds them together:
+ *
+ *   * `unpaired_op`       — an op in `TASK_OPS` that one side no longer names, or
+ *                           a side naming an op with no declaration (the two
+ *                           directions of the same divorce);
+ *   * `duplicate_op`      — two routes, or two commands, claiming one op;
+ *   * `op_shape_mismatch` — a side whose projected surface is not what the
+ *                           declaration says it should be: the route's body is
+ *                           not exactly the non-`cli` fields, or the command's
+ *                           flags are not what `projectFlags` produces. This is
+ *                           the check that catches a declaration quietly ceasing
+ *                           to be the source — a hand-written body or a
+ *                           hand-written `flags:` array sneaking back in.
+ *   * `unknown_op`        — a side naming something that is not in `TASK_OPS`.
+ *                           A misspelt op would otherwise pair nothing and say
+ *                           nothing, which is how a silent hole is built.
+ *
+ * @param {{method: string, pattern: string, handler: Function, request: object}[]} routes
+ * @param {{groups: object[]}} [registry]
+ */
+export function checkCommandInputs(routes, registry = cliRegistry) {
+  const findings = [];
+  const known = new Set(Object.values(TASK_OPS));
+
+  const byRoute = new Map();
+  for (const route of routes) {
+    const op = route.request?.body?.op;
+    if (op === undefined) continue;
+    const where = routeKey(route);
+    if (byRoute.has(op)) {
+      findings.push({ kind: "duplicate_op", route: where, side: "body", detail: `"${op}" is already projected by ${byRoute.get(op).where}` });
+    } else {
+      byRoute.set(op, { where, request: route.request });
+    }
+  }
+
+  const byCommand = new Map();
+  for (const group of registry.groups) {
+    for (const command of group.commands) {
+      if (command.op === undefined) continue;
+      const where = `${registry.name ?? "taskctl"} ${group.name} ${command.name}`;
+      if (byCommand.has(command.op)) {
+        findings.push({ kind: "duplicate_op", route: where, side: null, detail: `"${command.op}" is already declared by ${byCommand.get(command.op).where}` });
+      } else {
+        byCommand.set(command.op, { where, command });
+      }
+    }
+  }
+
+  for (const op of known) {
+    const route = byRoute.get(op);
+    const cli = byCommand.get(op);
+    if (route === undefined) {
+      findings.push({ kind: "unpaired_op", route: op, side: "body", detail: `no route projects "${op}" — the declaration has a consumer that is gone` });
+    }
+    if (cli === undefined) {
+      findings.push({ kind: "unpaired_op", route: op, side: null, detail: `no CLI command declares "${op}" — the declaration has a consumer that is gone` });
+    }
+    if (route === undefined || cli === undefined) continue;
+
+    const expected = inputOf(op).fields.filter((field) => field.surface !== "cli").map((field) => field.key).sort();
+    const declared = declaredFields(route.request, "body");
+    if (expected.join(",") !== declared.join(",")) {
+      findings.push({
+        kind: "op_shape_mismatch",
+        route: route.where,
+        side: "body",
+        detail: `"${op}" declares [${declared.join(", ")}] where its declaration's non-CLI fields are [${expected.join(", ")}]`,
+      });
+    }
+
+    const projected = projectFlags(op).map((spec) => spec.flag);
+    const declaredFlags = (cli.command.flags ?? []).map((spec) => spec.flag);
+    if (projected.join(",") !== declaredFlags.join(",")) {
+      findings.push({
+        kind: "op_shape_mismatch",
+        route: cli.where,
+        side: null,
+        detail: `"${op}" projects flags [${projected.join(", ")}] where the command declares [${declaredFlags.join(", ")}]`,
+      });
+    }
+  }
+
+  const named = new Set([...byRoute.keys(), ...byCommand.keys()]);
+  for (const op of named) {
+    if (known.has(op)) continue;
+    findings.push({ kind: "unknown_op", route: op, side: null, detail: `"${op}" is not one of TASK_OPS — a misspelt op would otherwise pair nothing and say nothing` });
+  }
+
+  findings.sort((a, b) =>
+    `${a.route}|${a.side ?? ""}|${a.kind}|${a.detail}` < `${b.route}|${b.side ?? ""}|${b.kind}|${b.detail}` ? -1 : 1,
+  );
+  return { ok: findings.length === 0, findings };
+}
+
+// ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 
@@ -708,6 +835,25 @@ function printTable(routes) {
   }
 }
 
+/** Per op: the declaration, the route that projects it, and the command that sends to it. */
+function printCommandInputs(routes, registry = cliRegistry) {
+  const routeOf = new Map();
+  for (const route of routes) {
+    const op = route.request?.body?.op;
+    if (op !== undefined) routeOf.set(op, routeKey(route));
+  }
+  const commandOf = new Map();
+  for (const group of registry.groups) {
+    for (const command of group.commands) {
+      if (command.op !== undefined) commandOf.set(command.op, `${group.name} ${command.name}`);
+    }
+  }
+  for (const op of Object.values(TASK_OPS)) {
+    const fields = inputOf(op).fields.map((field) => `${field.key} (${field.surface})`).join(", ");
+    process.stdout.write(`  ${op}\n    route    ${routeOf.get(op) ?? "—"}\n    command  ${commandOf.get(op) ?? "—"}\n    fields   [${fields}]\n`);
+  }
+}
+
 async function main(argv) {
   const { values } = parseArgs({
     args: argv,
@@ -718,8 +864,9 @@ async function main(argv) {
   if (values.help) {
     process.stdout.write(
       "Usage: node scripts/verify/route-request.mjs [--print]\n\n" +
-        "  --print   print, per route, the declared request fields and the fields its handler reads\n\n" +
-        "Exit: 0 the declarations match the handlers · 1 drift · 2 usage\n",
+        "  --print   per route, the declared request fields and the fields its handler reads;\n" +
+        "            then, per op, the declaration, its route and its CLI command\n\n" +
+        "Exit: 0 the declarations match the handlers and the command inputs pair · 1 drift · 2 usage\n",
     );
     return 0;
   }
@@ -727,22 +874,32 @@ async function main(argv) {
   const routes = liveRouterRoutes();
   if (values.print) {
     printTable(routes);
+    printCommandInputs(routes);
     return 0;
   }
 
-  const result = checkRouteRequests(routes);
-  if (!result.ok) {
-    process.stderr.write(`route-request: FAILED — ${result.findings.length} finding(s)\n`);
-    for (const finding of result.findings) process.stderr.write(`  ${formatFinding(finding)}\n`);
+  const findings = [...checkRouteRequests(routes).findings, ...checkCommandInputs(routes).findings];
+  findings.sort((a, b) =>
+    `${a.route}|${a.side ?? ""}|${a.kind}|${a.detail}` < `${b.route}|${b.side ?? ""}|${b.kind}|${b.detail}` ? -1 : 1,
+  );
+
+  if (findings.length > 0) {
+    process.stderr.write(`route-request: FAILED — ${findings.length} finding(s)\n`);
+    for (const finding of findings) process.stderr.write(`  ${formatFinding(finding)}\n`);
     process.stderr.write(
-      "route-request: a route's declared request schema and its handler must agree.\n" +
+      "route-request: a route's declared request schema and its handler must agree, and a command's\n" +
+        "  input must be projected from its declaration on both surfaces.\n" +
         "  Fix the declaration beside the route, or — if the read is deliberate and the field is\n" +
         "  refused rather than accepted — add a reasoned entry to REFUSED_READS.\n",
     );
     return 1;
   }
 
-  process.stdout.write(`route-request: OK — ${routes.length} routes, declaration == handler reads (${OUT_OF_LINT.length} out-of-router endpoints acknowledged)\n`);
+  const ops = Object.values(TASK_OPS).length;
+  process.stdout.write(
+    `route-request: OK — ${routes.length} routes, declaration == handler reads, ${ops} command inputs paired ` +
+      `(${OUT_OF_LINT.length} out-of-router endpoints acknowledged)\n`,
+  );
   return 0;
 }
 
