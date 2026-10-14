@@ -178,6 +178,24 @@ $ echo $?
   (`in_review`/`blocked → in_progress`) is *not* a claim: it keeps the existing
   executor and their lock.
 
+**The lock lasts the whole work cycle.** The claim is held while the card is in
+any of `in_progress`, `awaiting`, `in_review` or `blocked` — the set is
+`CLAIM_HOLDING_STATUSES` in `src/core/domain/status.mjs`, and `holdsClaim` is the
+predicate — and it is released by the **same write** that takes the card out of
+that cycle: a move to `todo`, `backlog`, `done` or `canceled`. There is no
+separate unclaim command, and because `status`, its timestamps and the claim go
+down in one `UPDATE`, no reader ever sees a card still holding a claim it no
+longer owns. `awaiting` (a pause inside the attempt), `in_review` and `blocked`
+stay *inside* the cycle because each of them can return to `in_progress` — and
+the card that comes back must still be the same executor's.
+
+**That release is what closes the `backlog` CHECK.** The schema's
+`CHECK (claimed_by IS NULL OR status <> 'backlog')` used to be reachable from the
+service: `in_progress → todo` left `claimed_by` behind, and the legal
+`todo → backlog` then tripped it — surfacing to the board as a raw
+`CHECK constraint failed: …`. Releasing the claim on the way out of the work
+cycle makes that path unreachable.
+
 ### Deployment cards: never auto-claimed
 
 A **deployment card** — work that runs against a live instance rather than in the
