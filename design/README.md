@@ -26,7 +26,10 @@ role, and which must not) and
 **effective prefix** — the same value the card numbers carry — and it decides the
 read-only `prefix` field the projects wire hands the sidebar) and
 `contracts/rail-chip-overflow.md` (how the sidebar rail's project chip behaves when the
-effective prefix does not fit its 24×24 box).
+effective prefix does not fit its 24×24 box) and `contracts/detail-drawer-editing.md` (the
+detail drawer's three editing seats, whose semantics the server owns rather than the
+prototype: which side of a `blocks` edge the `depends_on` chips show, what removing an
+attachment removes, and the declared deviation in the size text).
 
 ## Status
 
