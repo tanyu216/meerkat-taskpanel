@@ -1,0 +1,210 @@
+== node scripts/verify/contract.mjs ==
+contract: OK — 35 routes (211 request facets), 55 error codes, 118 wire fields (/Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/test/fixtures/contract/api.snapshot.json)
+EXIT=0
+== node scripts/verify/route-request.mjs ==
+route-request: OK — 30 routes, declaration == handler reads (5 out-of-router endpoints acknowledged)
+EXIT=0
+== node scripts/verify/manifests.mjs ==
+OK    claude       plugins/claude/.claude-plugin/plugin.json
+OK    codex        plugins/codex/.codex-plugin/plugin.json
+OK    openclaw     plugins/openclaw/openclaw.plugin.json
+OK    pi           plugins/pi/package.json
+OK    loop         plugins/loop/.claude-plugin/plugin.json
+OK    loop-pi      plugins/loop/package.json
+OK    marketplace  .claude-plugin/marketplace.json
+
+manifests: OK (7 manifests)
+EXIT=0
+== node scripts/verify/skill.mjs ==
+OK    skills/meerkat-taskpanel/SKILL.md (name=meerkat-taskpanel)
+
+skill: OK
+EXIT=0
+== node scripts/verify/migrations.mjs ==
+migrations: OK — 16 file(s), versions 0001…0016 (git HEAD baseline: 16 file(s))
+EXIT=0
+== bash install.sh --target all --dry-run ==
+install.sh: claim unassigned tasks: yes
+install.sh: dry run — no files will be changed
+install.sh: claude
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-taskpanel -> /Users/tanyu/.claude/skills/meerkat-taskpanel
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop -> /Users/tanyu/.claude/skills/meerkat-loop
+would write /Users/tanyu/.claude/hooks/meerkat-taskpanel-session-start.sh
+would merge /Users/tanyu/.claude/settings.json (env.TASKCTL_AGENT + SessionStart hook)
+would write /Users/tanyu/.claude/bin/taskctl
+would write /Users/tanyu/.claude/commands/board.md
+would write /Users/tanyu/.claude/commands/claim.md
+would write /Users/tanyu/.claude/commands/deliver.md
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/scripts/supervisor.mjs -> /Users/tanyu/.claude/meerkat-taskpanel/scripts/supervisor.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/scripts/wake-cwd.mjs -> /Users/tanyu/.claude/meerkat-taskpanel/scripts/wake-cwd.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/src/shared/constants.mjs -> /Users/tanyu/.claude/meerkat-taskpanel/src/shared/constants.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/src/shared/errors.mjs -> /Users/tanyu/.claude/meerkat-taskpanel/src/shared/errors.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/src/shared/project-dir.mjs -> /Users/tanyu/.claude/meerkat-taskpanel/src/shared/project-dir.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/src/shared/redact.mjs -> /Users/tanyu/.claude/meerkat-taskpanel/src/shared/redact.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/src/shared/runtime-locator.mjs -> /Users/tanyu/.claude/meerkat-taskpanel/src/shared/runtime-locator.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/src/shared/scheduling.mjs -> /Users/tanyu/.claude/meerkat-taskpanel/src/shared/scheduling.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/src/shared/sla-patrol.mjs -> /Users/tanyu/.claude/meerkat-taskpanel/src/shared/sla-patrol.mjs
+would write /Users/tanyu/.claude/scheduling/launchd/com.meerkat-taskpanel.poll.plist
+would write /Users/tanyu/.claude/scheduling/launchd/com.meerkat-taskpanel.patrol.plist
+would write /Users/tanyu/.claude/scheduling/systemd/meerkat-taskpanel-poll.service
+would write /Users/tanyu/.claude/scheduling/systemd/meerkat-taskpanel-poll.timer
+would write /Users/tanyu/.claude/scheduling/systemd/meerkat-taskpanel-patrol.service
+would write /Users/tanyu/.claude/scheduling/systemd/meerkat-taskpanel-patrol.timer
+would write /Users/tanyu/.claude/scheduling/cron/meerkat-taskpanel.cron
+would write /Users/tanyu/.claude/bin/wake-claude.sh
+claude: scheduling units installed under /Users/tanyu/.claude/scheduling
+claude: to start the supervisor, load one of these (nothing is loaded for you):
+  launchd:  launchctl load /Users/tanyu/.claude/scheduling/launchd/com.meerkat-taskpanel.poll.plist   # and .patrol.plist
+  systemd:  mkdir -p ~/.config/systemd/user && cp /Users/tanyu/.claude/scheduling/systemd/* ~/.config/systemd/user/ && systemctl --user enable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer
+  cron:     crontab /Users/tanyu/.claude/scheduling/cron/meerkat-taskpanel.cron
+would write /Users/tanyu/.claude/meerkat-taskpanel.env
+would ensure MEERKAT_TASKPANEL_REPO in /Users/tanyu/.claude/meerkat-taskpanel.env
+install.sh: openclaw
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-taskpanel -> /Users/tanyu/.openclaw/skills/meerkat-taskpanel
+install.sh: codex
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-taskpanel -> /Users/tanyu/.codex/skills/meerkat-taskpanel
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop -> /Users/tanyu/.codex/skills/meerkat-loop
+would write /Users/tanyu/.codex/bin/taskctl
+would update /Users/tanyu/.codex/AGENTS.md (append/replace meerkat-taskpanel block)
+would write /Users/tanyu/.codex/meerkat-taskpanel-claim.sh
+codex: legacy claim trigger written to /Users/tanyu/.codex/meerkat-taskpanel-claim.sh (the supervisor supersedes it)
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/scripts/supervisor.mjs -> /Users/tanyu/.codex/meerkat-taskpanel/scripts/supervisor.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/scripts/wake-cwd.mjs -> /Users/tanyu/.codex/meerkat-taskpanel/scripts/wake-cwd.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/src/shared/constants.mjs -> /Users/tanyu/.codex/meerkat-taskpanel/src/shared/constants.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/src/shared/errors.mjs -> /Users/tanyu/.codex/meerkat-taskpanel/src/shared/errors.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/src/shared/project-dir.mjs -> /Users/tanyu/.codex/meerkat-taskpanel/src/shared/project-dir.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/src/shared/redact.mjs -> /Users/tanyu/.codex/meerkat-taskpanel/src/shared/redact.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/src/shared/runtime-locator.mjs -> /Users/tanyu/.codex/meerkat-taskpanel/src/shared/runtime-locator.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/src/shared/scheduling.mjs -> /Users/tanyu/.codex/meerkat-taskpanel/src/shared/scheduling.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/src/shared/sla-patrol.mjs -> /Users/tanyu/.codex/meerkat-taskpanel/src/shared/sla-patrol.mjs
+would write /Users/tanyu/.codex/scheduling/launchd/com.meerkat-taskpanel.poll.plist
+would write /Users/tanyu/.codex/scheduling/launchd/com.meerkat-taskpanel.patrol.plist
+would write /Users/tanyu/.codex/scheduling/systemd/meerkat-taskpanel-poll.service
+would write /Users/tanyu/.codex/scheduling/systemd/meerkat-taskpanel-poll.timer
+would write /Users/tanyu/.codex/scheduling/systemd/meerkat-taskpanel-patrol.service
+would write /Users/tanyu/.codex/scheduling/systemd/meerkat-taskpanel-patrol.timer
+would write /Users/tanyu/.codex/scheduling/cron/meerkat-taskpanel.cron
+would write /Users/tanyu/.codex/bin/wake-codex.sh
+codex: scheduling units installed under /Users/tanyu/.codex/scheduling
+codex: to start the supervisor, load one of these (nothing is loaded for you):
+  launchd:  launchctl load /Users/tanyu/.codex/scheduling/launchd/com.meerkat-taskpanel.poll.plist   # and .patrol.plist
+  systemd:  mkdir -p ~/.config/systemd/user && cp /Users/tanyu/.codex/scheduling/systemd/* ~/.config/systemd/user/ && systemctl --user enable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer
+  cron:     crontab /Users/tanyu/.codex/scheduling/cron/meerkat-taskpanel.cron
+would write /Users/tanyu/.codex/meerkat-taskpanel.env
+would ensure MEERKAT_TASKPANEL_REPO in /Users/tanyu/.codex/meerkat-taskpanel.env
+install.sh: pi
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-taskpanel -> /Users/tanyu/.agents/skills/meerkat-taskpanel
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop -> /Users/tanyu/.agents/skills/meerkat-loop
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/scripts/supervisor.mjs -> /Users/tanyu/.agents/meerkat-taskpanel/scripts/supervisor.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/scripts/wake-cwd.mjs -> /Users/tanyu/.agents/meerkat-taskpanel/scripts/wake-cwd.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/src/shared/constants.mjs -> /Users/tanyu/.agents/meerkat-taskpanel/src/shared/constants.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/src/shared/errors.mjs -> /Users/tanyu/.agents/meerkat-taskpanel/src/shared/errors.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/src/shared/project-dir.mjs -> /Users/tanyu/.agents/meerkat-taskpanel/src/shared/project-dir.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/src/shared/redact.mjs -> /Users/tanyu/.agents/meerkat-taskpanel/src/shared/redact.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/src/shared/runtime-locator.mjs -> /Users/tanyu/.agents/meerkat-taskpanel/src/shared/runtime-locator.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/src/shared/scheduling.mjs -> /Users/tanyu/.agents/meerkat-taskpanel/src/shared/scheduling.mjs
+would copy  /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/skills/meerkat-loop/body/src/shared/sla-patrol.mjs -> /Users/tanyu/.agents/meerkat-taskpanel/src/shared/sla-patrol.mjs
+would write /Users/tanyu/.agents/scheduling/launchd/com.meerkat-taskpanel.poll.plist
+would write /Users/tanyu/.agents/scheduling/launchd/com.meerkat-taskpanel.patrol.plist
+would write /Users/tanyu/.agents/scheduling/systemd/meerkat-taskpanel-poll.service
+would write /Users/tanyu/.agents/scheduling/systemd/meerkat-taskpanel-poll.timer
+would write /Users/tanyu/.agents/scheduling/systemd/meerkat-taskpanel-patrol.service
+would write /Users/tanyu/.agents/scheduling/systemd/meerkat-taskpanel-patrol.timer
+would write /Users/tanyu/.agents/scheduling/cron/meerkat-taskpanel.cron
+would write /Users/tanyu/.agents/bin/wake-pi.sh
+pi: scheduling units installed under /Users/tanyu/.agents/scheduling
+pi: to start the supervisor, load one of these (nothing is loaded for you):
+  launchd:  launchctl load /Users/tanyu/.agents/scheduling/launchd/com.meerkat-taskpanel.poll.plist   # and .patrol.plist
+  systemd:  mkdir -p ~/.config/systemd/user && cp /Users/tanyu/.agents/scheduling/systemd/* ~/.config/systemd/user/ && systemctl --user enable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer
+  cron:     crontab /Users/tanyu/.agents/scheduling/cron/meerkat-taskpanel.cron
+would write /Users/tanyu/.agents/meerkat-taskpanel.env
+would ensure MEERKAT_TASKPANEL_REPO in /Users/tanyu/.agents/meerkat-taskpanel.env
+
+taskd guard: skipped (dry-run)
+
+== install summary ==
+OK   claude — /Users/tanyu
+OK   openclaw — /Users/tanyu
+OK   codex — /Users/tanyu
+OK   pi — /Users/tanyu
+
+install.sh: dry run complete — nothing was changed
+EXIT=0
+== node scripts/verify/profiles.mjs ==
+ok   claude: install
+ok   claude: SKILL.md installed
+ok   claude: SKILL.md frontmatter name: meerkat-taskpanel
+ok   claude: scripts/run.mjs --version == 1.0.0
+ok   claude: manifest parses (plugins/claude/.claude-plugin/plugin.json)
+ok   claude: bundle detected as bundle/claude with skill meerkat-taskpanel
+ok   claude: .claude-plugin/marketplace.json parses and its entries resolve
+ok   openclaw: install
+ok   openclaw: SKILL.md installed
+ok   openclaw: SKILL.md frontmatter name: meerkat-taskpanel
+ok   openclaw: scripts/run.mjs --version == 1.0.0
+ok   openclaw: manifest parses (plugins/openclaw/openclaw.plugin.json)
+ok   openclaw: bundle detected as native/native with skill meerkat-taskpanel
+ok   codex: install
+ok   codex: SKILL.md installed
+ok   codex: SKILL.md frontmatter name: meerkat-taskpanel
+ok   codex: scripts/run.mjs --version == 1.0.0
+ok   codex: manifest parses (plugins/codex/.codex-plugin/plugin.json)
+ok   codex: bundle detected as bundle/codex with skill meerkat-taskpanel
+ok   pi: install
+ok   pi: SKILL.md installed
+ok   pi: SKILL.md frontmatter name: meerkat-taskpanel
+ok   pi: scripts/run.mjs --version == 1.0.0
+ok   pi: manifest parses (plugins/pi/package.json)
+ok   pi: bundle detected as bundle/claude with skill meerkat-taskpanel
+
+profiles: 4/4 hosts passed
+profiles: home = /Users/tanyu/.openclaw/tmp/meerkat-taskpanel-profiles-64398
+EXIT=0
+== node scripts/verify/host-runtime.mjs ==
+host-runtime: home = /Users/tanyu/.openclaw/tmp/meerkat-taskpanel-hostruntime-3h37n1/home
+
+session-start (claude)
+  PASS  hook installed and executable  — .claude/hooks/meerkat-taskpanel-session-start.sh
+  PASS  lists candidates through the shim (argv + output) and prints the eight rules  — shim argv = issue candidates --assignee alice; rules 1–8 printed
+  PASS  non-fatal: a failing shim still exits 0  — shim exit 3 → hook exit 0
+  PASS  PATH-independent fallback when the shim is missing (still exit 0)  — names the absolute shim path; exit 0
+
+wake (claude)
+  PASS  .claude/bin/wake-claude.sh installed and executable  — .claude/bin/wake-claude.sh
+  PASS  no prompt → exit 2, host CLI never invoked  — exit 2
+  PASS  mapped project → exact argv matches wakeCommand(), run in the mapped directory  — claude -p … in the mapped directory
+  PASS  unmapped project → exit 3, no worker started (no silent fallback)  — exit 3
+  PASS  bad target directory (gone / not a directory) → exit 3, no worker started  — exit 3
+  PASS  no permission-bypass flag in any executed command  — headless permission boundary held
+
+trigger (codex)
+  PASS  trigger installed and executable  — .codex/meerkat-taskpanel-claim.sh
+  PASS  no held card → claims the first candidate (`issue move T-1 in_progress`)  — move T-1 only
+  PASS  held card that is mine (NFKC/whitespace/case) → skip, exit 0, no move  — skip + exit 0
+  PASS  held card that is someone else's → claims the first candidate  — identity filter is per-agent
+  PASS  empty pool → exit 0, nothing claimed  — exit 0
+  PASS  shim missing → exit 1 (the trigger's explicit contract)  — exit 1
+
+wake (codex)
+  PASS  .codex/bin/wake-codex.sh installed and executable  — .codex/bin/wake-codex.sh
+  PASS  no prompt → exit 2, host CLI never invoked  — exit 2
+  PASS  mapped project → exact argv matches wakeCommand(), run in the mapped directory  — codex exec … in the mapped directory
+  PASS  unmapped project → exit 3, no worker started (no silent fallback)  — exit 3
+  PASS  bad target directory (gone / not a directory) → exit 3, no worker started  — exit 3
+  PASS  no permission-bypass flag in any executed command  — headless permission boundary held
+
+wake (pi)
+  PASS  .agents/bin/wake-pi.sh installed and executable  — .agents/bin/wake-pi.sh
+  PASS  no prompt → exit 2, host CLI never invoked  — exit 2
+  PASS  mapped project → exact argv matches wakeCommand(), run in the mapped directory  — pi --print … in the mapped directory
+  PASS  unmapped project → exit 3, no worker started (no silent fallback)  — exit 3
+  PASS  bad target directory (gone / not a directory) → exit 3, no worker started  — exit 3
+  PASS  no permission-bypass flag in any executed command  — headless permission boundary held
+
+coverage map
+  PASS  claude ships no cron trigger (SessionStart hook instead)  — N/A — Claude uses the SessionStart hook
+  PASS  codex ships no SessionStart hook (cron trigger instead)  — N/A — Codex has no hooks; the trigger is the automation
+  PASS  pi ships no hook, trigger or shim  — N/A — pi has no hooks and no shim; only its external wake path applies
+
+host-runtime: 31/31 assertions passed (claude, codex, pi)
+EXIT=0

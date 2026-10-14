@@ -1,0 +1,10 @@
+
+> meerkat-taskpanel@1.0.0 verify:docker
+> node scripts/verify/docker.mjs
+
+verify:docker — cannot reach the Docker daemon.
+  command: docker version --format {{.Server.Version}}
+  Got permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: Get "http://%2Fvar%2Frun%2Fdocker.sock/v1.24/version": dial unix /var/run/docker.sock: connect: operation not permitted
+
+Start Docker (or colima) and re-run. Nothing was changed.
+GATE_VERIFY_DOCKER_EXIT=1

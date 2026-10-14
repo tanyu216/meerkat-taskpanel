@@ -1,0 +1,1548 @@
+{
+  "label": "state-pristine-before",
+  "dist": "/Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/web/dist",
+  "only": null,
+  "total": 48,
+  "passed": 48,
+  "failed": 0,
+  "gatingFailed": 0,
+  "results": [
+    {
+      "id": "S1",
+      "leg": "focus:source",
+      "selector": "web/src/components/detail/DetailDrawer.vue",
+      "assertion": "the focus beat is one transition length (200ms)",
+      "expected": 200,
+      "actual": 200,
+      "pass": true,
+      "note": "design/prototype/app.js waits the same 200ms"
+    },
+    {
+      "id": "S2",
+      "leg": "focus:source",
+      "selector": "web/src/components/detail/DetailDrawer.vue",
+      "assertion": "the hand-off is a deferred setTimeout that reads data-state back before focusing (the prototype's focusWhenOpen)",
+      "expected": "match",
+      "actual": "match",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "S3",
+      "leg": "focus:source",
+      "selector": "web/src/components/detail/DetailDrawer.vue",
+      "assertion": "no nextTick is used for the hand-off (the beat is the timeout, not an attribute flush; the two remaining hits are the comment that explains why not)",
+      "expected": {
+        "calls": 0,
+        "importedFromVue": false
+      },
+      "actual": {
+        "calls": 0,
+        "importedFromVue": false
+      },
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "S4",
+      "leg": "focus:source",
+      "selector": "web/src/components/detail/DetailDrawer.vue",
+      "assertion": "the beat is armed only on the open edge (watch(open), early return when closed)",
+      "expected": "match",
+      "actual": "match",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "S5",
+      "leg": "focus:source",
+      "selector": "design/prototype/app.js · focusWhenOpen",
+      "assertion": "the prototype's own beat is 200ms + a data-state read-back (the oracle the implementation follows)",
+      "expected": "match",
+      "actual": "match",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "S6",
+      "leg": "focus:source",
+      "selector": "web/src/components/detail/DetailDrawer.vue",
+      "assertion": "no `hidden` attribute is left on the panel (R14 §8 U4: data-state is the one state source)",
+      "expected": {
+        "asideFound": true,
+        "hiddenOnAside": false,
+        "dataStateBound": true
+      },
+      "actual": {
+        "asideFound": true,
+        "hiddenOnAside": false,
+        "dataStateBound": true
+      },
+      "pass": true,
+      "note": "the scrim keeps its own `hidden`/`:hidden` — that half is the contract's (R14 §2.1)"
+    },
+    {
+      "id": "D1",
+      "leg": "dist",
+      "selector": "web/dist/assets/*.js",
+      "assertion": "the built bundle carries the grouped relation markup",
+      "expected": 1,
+      "actual": 1,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D2",
+      "leg": "dist",
+      "selector": "web/dist/assets/*.js",
+      "assertion": "the built bundle carries the relation link hook",
+      "expected": 1,
+      "actual": 1,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D3",
+      "leg": "dist",
+      "selector": "web/dist/assets/*.js",
+      "assertion": "the built bundle carries the deferred beat: focus only after reading drawerState === \"open\"",
+      "expected": "match",
+      "actual": "match",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D4",
+      "leg": "dist",
+      "selector": "web/dist/assets/*.js",
+      "assertion": "…and the deferred beat is the 200ms one",
+      "expected": 200,
+      "actual": 200,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "D5",
+      "leg": "dist",
+      "selector": "web/dist/assets/*.js",
+      "assertion": "the shipped catalogue names all three relation kinds plus the empty face",
+      "expected": [],
+      "actual": [],
+      "pass": true,
+      "note": "the list is the *missing* keys"
+    },
+    {
+      "id": "R1",
+      "leg": "relations@en",
+      "selector": "[data-detail-relations]",
+      "assertion": "the hook rides a `div` that carries `.td-rel` (D37: not the `<section>`, not a `<ul>`)",
+      "expected": {
+        "tag": "div",
+        "tdRel": true
+      },
+      "actual": {
+        "tag": "div",
+        "tdRel": true
+      },
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "R2",
+      "leg": "relations@en",
+      "selector": ".td-rel",
+      "assertion": "the row is the prototype's flex-wrap box with a 4px/8px gap",
+      "expected": {
+        "display": "flex",
+        "flexWrap": "wrap",
+        "gap": "4px 8px"
+      },
+      "actual": {
+        "display": "flex",
+        "flexWrap": "wrap",
+        "gap": "4px 8px"
+      },
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "R3",
+      "leg": "relations@en",
+      "selector": "[data-detail-relations] .td-rel-item",
+      "assertion": "one group per kind — the fixture carries three kinds, so exactly three items",
+      "expected": 3,
+      "actual": 3,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "R4",
+      "leg": "relations@en",
+      "selector": ".td-rel-item > span[data-i18n]",
+      "assertion": "the three groups are led by the three catalogue names, in the domain's own order (parent · blocks · related)",
+      "expected": [
+        "relations.parent",
+        "relations.blocks",
+        "relations.related"
+      ],
+      "actual": [
+        "relations.parent",
+        "relations.blocks",
+        "relations.related"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "R5",
+      "leg": "relations@en",
+      "selector": ".td-rel-item > span[data-i18n]",
+      "assertion": "the rendered words are the catalogue's own (en)",
+      "expected": [
+        "Parent",
+        "Blocks",
+        "Related"
+      ],
+      "actual": [
+        "Parent",
+        "Blocks",
+        "Related"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "R6",
+      "leg": "relations@en",
+      "selector": ".td-rel-item button.td-copy[data-relation-link]",
+      "assertion": "every group holds at least one copy link, and every link is a `button.td-copy` (R14-B17's box)",
+      "expected": {
+        "groups": 3,
+        "links": 4,
+        "tags": [
+          "button"
+        ],
+        "tdCopy": true,
+        "emptyGroups": 0
+      },
+      "actual": {
+        "groups": 3,
+        "links": 4,
+        "tags": [
+          "button"
+        ],
+        "tdCopy": true,
+        "emptyGroups": 0
+      },
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "R7",
+      "leg": "relations@en",
+      "selector": "[data-detail-relations] .td-rel-item [data-relation-link]",
+      "assertion": "the links resolve to the other cards' identifiers (the wire's ids are looked up, not printed)",
+      "expected": [
+        "TD-125",
+        "TD-130",
+        "TD-126",
+        "TD-127"
+      ],
+      "actual": [
+        "TD-125",
+        "TD-130",
+        "TD-126",
+        "TD-127"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "R8",
+      "leg": "relations@en",
+      "selector": "[data-card][data-identifier=PROJ-0007][data-relations-*]",
+      "assertion": "the card and the drawer it opens spell the same three kinds, and the card's counts agree with the drawer's group sizes",
+      "expected": {
+        "kinds": [
+          "parent",
+          "blocks",
+          "related"
+        ],
+        "counts": {
+          "parent": "1",
+          "blocks": "2",
+          "related": "1"
+        }
+      },
+      "actual": {
+        "kinds": [
+          "parent",
+          "blocks",
+          "related"
+        ],
+        "counts": {
+          "parent": "1",
+          "blocks": "2",
+          "related": "1"
+        }
+      },
+      "pass": true,
+      "note": "the card's counts are fixture-seeded (`meta.relations_*`); see the report's observation O1"
+    },
+    {
+      "id": "F0",
+      "leg": "focus@en",
+      "selector": "[data-detail-drawer] (at rest)",
+      "assertion": "the closed face is `visibility: hidden` + no `hidden` attribute — the pair that makes the wait load-bearing",
+      "expected": {
+        "visibility": "hidden",
+        "hidden": false
+      },
+      "actual": {
+        "visibility": "hidden",
+        "hidden": false
+      },
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "F1",
+      "leg": "focus@en",
+      "selector": "[data-detail-drawer] (click task)",
+      "assertion": "the panel is not focused from the opening task: a `.focus()` there does not take (this is the frame a `nextTick` beat lands in)",
+      "expected": false,
+      "actual": false,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "F2",
+      "leg": "focus@en",
+      "selector": "[data-detail-drawer] (first open frame)",
+      "assertion": "…and it still does not take on the first frame the panel reads `data-state=\"open\"`",
+      "expected": false,
+      "actual": false,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "F3",
+      "leg": "focus@en",
+      "selector": "[data-detail-drawer] (first open frame)",
+      "assertion": "on that first open frame `document.activeElement` is not the close button yet (the beat has not elapsed)",
+      "expected": true,
+      "actual": "body",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "F4",
+      "leg": "focus@en",
+      "selector": "[data-detail-close]",
+      "assertion": "after the beat, `document.activeElement` is the drawer's close button (not `body`)",
+      "expected": "<button data-detail-close>",
+      "actual": "<button data-detail-close>",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "F5",
+      "leg": "focus@en",
+      "selector": "[data-detail-drawer] (settled)",
+      "assertion": "the drawer really is open when the focus is read (data-state + visibility)",
+      "expected": {
+        "state": "open",
+        "visibility": "visible"
+      },
+      "actual": {
+        "state": "open",
+        "visibility": "visible"
+      },
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "F6",
+      "leg": "focus@en",
+      "selector": "[data-detail-close]",
+      "assertion": "the focus lands no earlier than one beat after the click (the prototype's 200ms wait, measured)",
+      "expected": true,
+      "actual": {
+        "firstOpenMs": 4.7,
+        "focusMs": 230.9
+      },
+      "pass": true,
+      "note": "raw frame trace in the evidence JSON"
+    },
+    {
+      "id": "R9",
+      "leg": "relations@en",
+      "selector": "[data-detail-relations] (card with no relation)",
+      "assertion": "with no relation the area renders the catalogue's `relations.none` span and no group",
+      "expected": {
+        "groups": 0,
+        "noneKey": "relations.none",
+        "noneText": "No relations"
+      },
+      "actual": {
+        "groups": 0,
+        "noneKey": "relations.none",
+        "noneText": "No relations"
+      },
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "R1",
+      "leg": "relations@zh",
+      "selector": "[data-detail-relations]",
+      "assertion": "the hook rides a `div` that carries `.td-rel` (D37: not the `<section>`, not a `<ul>`)",
+      "expected": {
+        "tag": "div",
+        "tdRel": true
+      },
+      "actual": {
+        "tag": "div",
+        "tdRel": true
+      },
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "R2",
+      "leg": "relations@zh",
+      "selector": ".td-rel",
+      "assertion": "the row is the prototype's flex-wrap box with a 4px/8px gap",
+      "expected": {
+        "display": "flex",
+        "flexWrap": "wrap",
+        "gap": "4px 8px"
+      },
+      "actual": {
+        "display": "flex",
+        "flexWrap": "wrap",
+        "gap": "4px 8px"
+      },
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "R3",
+      "leg": "relations@zh",
+      "selector": "[data-detail-relations] .td-rel-item",
+      "assertion": "one group per kind — the fixture carries three kinds, so exactly three items",
+      "expected": 3,
+      "actual": 3,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "R4",
+      "leg": "relations@zh",
+      "selector": ".td-rel-item > span[data-i18n]",
+      "assertion": "the three groups are led by the three catalogue names, in the domain's own order (parent · blocks · related)",
+      "expected": [
+        "relations.parent",
+        "relations.blocks",
+        "relations.related"
+      ],
+      "actual": [
+        "relations.parent",
+        "relations.blocks",
+        "relations.related"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "R5",
+      "leg": "relations@zh",
+      "selector": ".td-rel-item > span[data-i18n]",
+      "assertion": "the rendered words are the catalogue's own (zh)",
+      "expected": [
+        "父任务",
+        "阻塞",
+        "关联"
+      ],
+      "actual": [
+        "父任务",
+        "阻塞",
+        "关联"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "R6",
+      "leg": "relations@zh",
+      "selector": ".td-rel-item button.td-copy[data-relation-link]",
+      "assertion": "every group holds at least one copy link, and every link is a `button.td-copy` (R14-B17's box)",
+      "expected": {
+        "groups": 3,
+        "links": 4,
+        "tags": [
+          "button"
+        ],
+        "tdCopy": true,
+        "emptyGroups": 0
+      },
+      "actual": {
+        "groups": 3,
+        "links": 4,
+        "tags": [
+          "button"
+        ],
+        "tdCopy": true,
+        "emptyGroups": 0
+      },
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "R7",
+      "leg": "relations@zh",
+      "selector": "[data-detail-relations] .td-rel-item [data-relation-link]",
+      "assertion": "the links resolve to the other cards' identifiers (the wire's ids are looked up, not printed)",
+      "expected": [
+        "TD-125",
+        "TD-130",
+        "TD-126",
+        "TD-127"
+      ],
+      "actual": [
+        "TD-125",
+        "TD-130",
+        "TD-126",
+        "TD-127"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "R8",
+      "leg": "relations@zh",
+      "selector": "[data-card][data-identifier=PROJ-0007][data-relations-*]",
+      "assertion": "the card and the drawer it opens spell the same three kinds, and the card's counts agree with the drawer's group sizes",
+      "expected": {
+        "kinds": [
+          "parent",
+          "blocks",
+          "related"
+        ],
+        "counts": {
+          "parent": "1",
+          "blocks": "2",
+          "related": "1"
+        }
+      },
+      "actual": {
+        "kinds": [
+          "parent",
+          "blocks",
+          "related"
+        ],
+        "counts": {
+          "parent": "1",
+          "blocks": "2",
+          "related": "1"
+        }
+      },
+      "pass": true,
+      "note": "the card's counts are fixture-seeded (`meta.relations_*`); see the report's observation O1"
+    },
+    {
+      "id": "F0",
+      "leg": "focus@zh",
+      "selector": "[data-detail-drawer] (at rest)",
+      "assertion": "the closed face is `visibility: hidden` + no `hidden` attribute — the pair that makes the wait load-bearing",
+      "expected": {
+        "visibility": "hidden",
+        "hidden": false
+      },
+      "actual": {
+        "visibility": "hidden",
+        "hidden": false
+      },
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "F1",
+      "leg": "focus@zh",
+      "selector": "[data-detail-drawer] (click task)",
+      "assertion": "the panel is not focused from the opening task: a `.focus()` there does not take (this is the frame a `nextTick` beat lands in)",
+      "expected": false,
+      "actual": false,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "F2",
+      "leg": "focus@zh",
+      "selector": "[data-detail-drawer] (first open frame)",
+      "assertion": "…and it still does not take on the first frame the panel reads `data-state=\"open\"`",
+      "expected": false,
+      "actual": false,
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "F3",
+      "leg": "focus@zh",
+      "selector": "[data-detail-drawer] (first open frame)",
+      "assertion": "on that first open frame `document.activeElement` is not the close button yet (the beat has not elapsed)",
+      "expected": true,
+      "actual": "body",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "F4",
+      "leg": "focus@zh",
+      "selector": "[data-detail-close]",
+      "assertion": "after the beat, `document.activeElement` is the drawer's close button (not `body`)",
+      "expected": "<button data-detail-close>",
+      "actual": "<button data-detail-close>",
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "F5",
+      "leg": "focus@zh",
+      "selector": "[data-detail-drawer] (settled)",
+      "assertion": "the drawer really is open when the focus is read (data-state + visibility)",
+      "expected": {
+        "state": "open",
+        "visibility": "visible"
+      },
+      "actual": {
+        "state": "open",
+        "visibility": "visible"
+      },
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "F6",
+      "leg": "focus@zh",
+      "selector": "[data-detail-close]",
+      "assertion": "the focus lands no earlier than one beat after the click (the prototype's 200ms wait, measured)",
+      "expected": true,
+      "actual": {
+        "firstOpenMs": 4.3,
+        "focusMs": 230.8
+      },
+      "pass": true,
+      "note": "raw frame trace in the evidence JSON"
+    },
+    {
+      "id": "R9",
+      "leg": "relations@zh",
+      "selector": "[data-detail-relations] (card with no relation)",
+      "assertion": "with no relation the area renders the catalogue's `relations.none` span and no group",
+      "expected": {
+        "groups": 0,
+        "noneKey": "relations.none",
+        "noneText": "暂无关联"
+      },
+      "actual": {
+        "groups": 0,
+        "noneKey": "relations.none",
+        "noneText": "暂无关联"
+      },
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "P1",
+      "leg": "prototype",
+      "selector": "design/prototype/index.html",
+      "assertion": "the prototype's row is the same `div.td-rel` box, flex-wrap with a 4px/8px gap",
+      "expected": {
+        "display": "flex",
+        "flexWrap": "wrap",
+        "gap": "4px 8px"
+      },
+      "actual": {
+        "display": "flex",
+        "flexWrap": "wrap",
+        "gap": "4px 8px"
+      },
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "P2",
+      "leg": "prototype",
+      "selector": "design/prototype/index.html [data-slot=\"relations\"]",
+      "assertion": "the prototype's shape is `span.td-rel-item` → label + `button.td-copy[data-relation-link]` (the shape the ruling took)",
+      "expected": {
+        "itemTag": "span",
+        "linkTags": [
+          "button"
+        ],
+        "tdCopy": true
+      },
+      "actual": {
+        "itemTag": "span",
+        "linkTags": [
+          "button"
+        ],
+        "tdCopy": true,
+        "labelKeys": [
+          "relations.parent",
+          "relations.blocks"
+        ]
+      },
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "P3",
+      "leg": "prototype",
+      "selector": "[data-i18n^=relations.] (prototype markup)",
+      "assertion": "the prototype's static markup names two kinds inline; the third (`relations.related`) is named in the catalogue, not in its static seats (BLOCKS.md §R14 records that gap)",
+      "expected": [
+        "relations.parent",
+        "relations.blocks"
+      ],
+      "actual": [
+        "relations.parent",
+        "relations.blocks"
+      ],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "C1",
+      "leg": "console",
+      "selector": "page console",
+      "assertion": "zero console errors on the driven pages",
+      "expected": [],
+      "actual": [],
+      "pass": true,
+      "note": ""
+    },
+    {
+      "id": "C2",
+      "leg": "console",
+      "selector": "page errors",
+      "assertion": "zero uncaught page errors on the driven pages",
+      "expected": [],
+      "actual": [],
+      "pass": true,
+      "note": ""
+    }
+  ],
+  "evidence": {
+    "label": "state-pristine-before",
+    "dist": "/Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/web/dist",
+    "src": "/Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1/web",
+    "locales": {
+      "en": {
+        "cardCounters": {
+          "parent": "1",
+          "blocks": "2",
+          "related": "1"
+        },
+        "relations": {
+          "rootTag": "div",
+          "rootHasTdRel": true,
+          "display": "flex",
+          "flexWrap": "wrap",
+          "gap": "4px 8px",
+          "itemCount": 3,
+          "items": [
+            {
+              "tag": "span",
+              "hasTdRelItem": true,
+              "labelKey": "relations.parent",
+              "labelText": "Parent",
+              "links": [
+                {
+                  "tag": "button",
+                  "isTdCopy": true,
+                  "text": "TD-125",
+                  "active": false
+                }
+              ]
+            },
+            {
+              "tag": "span",
+              "hasTdRelItem": true,
+              "labelKey": "relations.blocks",
+              "labelText": "Blocks",
+              "links": [
+                {
+                  "tag": "button",
+                  "isTdCopy": true,
+                  "text": "TD-130",
+                  "active": false
+                },
+                {
+                  "tag": "button",
+                  "isTdCopy": true,
+                  "text": "TD-126",
+                  "active": false
+                }
+              ]
+            },
+            {
+              "tag": "span",
+              "hasTdRelItem": true,
+              "labelKey": "relations.related",
+              "labelText": "Related",
+              "links": [
+                {
+                  "tag": "button",
+                  "isTdCopy": true,
+                  "text": "TD-127",
+                  "active": false
+                }
+              ]
+            }
+          ],
+          "noneKey": null,
+          "noneText": null,
+          "noneTag": null,
+          "activeInRow": "<button data-detail-close>"
+        },
+        "openTrace": {
+          "trace": [
+            {
+              "label": "rest",
+              "t": 0.2,
+              "state": "closed",
+              "visibility": "hidden",
+              "active": "body"
+            },
+            {
+              "label": "click-task",
+              "t": 1.8,
+              "state": "closed",
+              "visibility": "hidden",
+              "active": "body",
+              "probeFocusTook": false
+            },
+            {
+              "label": "raf",
+              "t": 4.7,
+              "state": "open",
+              "visibility": "hidden",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 10.1,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 34.2,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 46.2,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 66.4,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 81.8,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 99.1,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 115.5,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 132.3,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 143.7,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 165.2,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 180.5,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 195.3,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 213.2,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 230.9,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 246.6,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 264.8,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 279,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 300.5,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 312,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 333.9,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 347.9,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 366,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 382,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 399,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 413.1,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 431.4,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 445.1,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 464.5,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 482.8,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 495.1,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 511.4,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 533.7,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 548.1,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 566,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 578.2,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 595.3,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 617.4,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            }
+          ],
+          "probeAtClick": false,
+          "probeFirstOpenFrame": false,
+          "probeFirstFrameVisibility": "hidden"
+        },
+        "settled": {
+          "state": "open",
+          "hidden": false,
+          "visibility": "visible",
+          "active": "<button data-detail-close>"
+        },
+        "emptyRelations": {
+          "rootTag": "div",
+          "rootHasTdRel": true,
+          "display": "flex",
+          "flexWrap": "wrap",
+          "gap": "4px 8px",
+          "itemCount": 0,
+          "items": [],
+          "noneKey": "relations.none",
+          "noneText": "No relations",
+          "noneTag": "span",
+          "activeInRow": "<button data-detail-close>"
+        }
+      },
+      "zh": {
+        "cardCounters": {
+          "parent": "1",
+          "blocks": "2",
+          "related": "1"
+        },
+        "relations": {
+          "rootTag": "div",
+          "rootHasTdRel": true,
+          "display": "flex",
+          "flexWrap": "wrap",
+          "gap": "4px 8px",
+          "itemCount": 3,
+          "items": [
+            {
+              "tag": "span",
+              "hasTdRelItem": true,
+              "labelKey": "relations.parent",
+              "labelText": "父任务",
+              "links": [
+                {
+                  "tag": "button",
+                  "isTdCopy": true,
+                  "text": "TD-125",
+                  "active": false
+                }
+              ]
+            },
+            {
+              "tag": "span",
+              "hasTdRelItem": true,
+              "labelKey": "relations.blocks",
+              "labelText": "阻塞",
+              "links": [
+                {
+                  "tag": "button",
+                  "isTdCopy": true,
+                  "text": "TD-130",
+                  "active": false
+                },
+                {
+                  "tag": "button",
+                  "isTdCopy": true,
+                  "text": "TD-126",
+                  "active": false
+                }
+              ]
+            },
+            {
+              "tag": "span",
+              "hasTdRelItem": true,
+              "labelKey": "relations.related",
+              "labelText": "关联",
+              "links": [
+                {
+                  "tag": "button",
+                  "isTdCopy": true,
+                  "text": "TD-127",
+                  "active": false
+                }
+              ]
+            }
+          ],
+          "noneKey": null,
+          "noneText": null,
+          "noneTag": null,
+          "activeInRow": "<button data-detail-close>"
+        },
+        "openTrace": {
+          "trace": [
+            {
+              "label": "rest",
+              "t": 0.2,
+              "state": "closed",
+              "visibility": "hidden",
+              "active": "body"
+            },
+            {
+              "label": "click-task",
+              "t": 1.7,
+              "state": "closed",
+              "visibility": "hidden",
+              "active": "body",
+              "probeFocusTook": false
+            },
+            {
+              "label": "raf",
+              "t": 4.3,
+              "state": "open",
+              "visibility": "hidden",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 15.2,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 28.8,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 48.2,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 64.3,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 81.7,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 97.5,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 113.4,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 133.8,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 148.6,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 167.7,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 181.6,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 201.3,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 213.2,
+              "state": "open",
+              "visibility": "visible",
+              "active": "body"
+            },
+            {
+              "label": "raf",
+              "t": 230.8,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 248,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 264.8,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 284.9,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 299.9,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 317.5,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 333.6,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 350.4,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 364.3,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 381.9,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 395.7,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 412.2,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 433.2,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 446.3,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 464.9,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 480.9,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 497.7,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 518.6,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 533.1,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 546.1,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 565,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 580.8,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 595.7,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            },
+            {
+              "label": "raf",
+              "t": 618,
+              "state": "open",
+              "visibility": "visible",
+              "active": "<button data-detail-close>"
+            }
+          ],
+          "probeAtClick": false,
+          "probeFirstOpenFrame": false,
+          "probeFirstFrameVisibility": "hidden"
+        },
+        "settled": {
+          "state": "open",
+          "hidden": false,
+          "visibility": "visible",
+          "active": "<button data-detail-close>"
+        },
+        "emptyRelations": {
+          "rootTag": "div",
+          "rootHasTdRel": true,
+          "display": "flex",
+          "flexWrap": "wrap",
+          "gap": "4px 8px",
+          "itemCount": 0,
+          "items": [],
+          "noneKey": "relations.none",
+          "noneText": "暂无关联",
+          "noneTag": "span",
+          "activeInRow": "<button data-detail-close>"
+        }
+      }
+    },
+    "prototype": {
+      "rootTag": "div",
+      "rootClasses": [
+        "td-rel"
+      ],
+      "display": "flex",
+      "flexWrap": "wrap",
+      "gap": "4px 8px",
+      "items": [
+        {
+          "tag": "span",
+          "labelKey": "relations.parent",
+          "labelText": "Parent",
+          "links": [
+            "button.td-copy:TD-125"
+          ]
+        },
+        {
+          "tag": "span",
+          "labelKey": "relations.blocks",
+          "labelText": "Blocks",
+          "links": [
+            "button.td-copy:TD-130",
+            "button.td-copy:TD-126"
+          ]
+        }
+      ],
+      "slotItems": null,
+      "catalogueKeys": [
+        "relations.parent",
+        "relations.blocks"
+      ]
+    },
+    "assets": [
+      {
+        "name": "index-2PH8KyYB.js",
+        "sha256": "8c600ba1f3bbd8d53d7723e9bee52b9f5f7bdf7fd8bbdc71da207381e64ee3ac",
+        "bytes": 227360
+      }
+    ],
+    "observations": {
+      "cardRelationCounters": {
+        "note": "the card's `data-relations-*` values are read from `meta.relations_parent|blocks|related`; nothing in `src/server` writes those fields, so on a board whose seed data omits them the counters read 0 and `[data-card-relations]` stays hidden",
+        "files": [
+          {
+            "file": "web/src/components/board/Card.vue",
+            "writes": 0,
+            "lines": 3
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+sandbox socket probe — 2026-10-14T05:40:48Z
+host: Darwin Home-MacBook-Pro.local 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:17:12 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T8103 arm64
+node: v24.20.0  npm: 11.19.0
+
+-- node http.listen(0, '127.0.0.1') --
+FAIL EPERM listen EPERM: operation not permitted 127.0.0.1
+-- node http.listen(0, '0.0.0.0') --
+FAIL EPERM listen EPERM: operation not permitted 0.0.0.0
+-- node http.listen(0, '::1') --
+FAIL EPERM listen EPERM: operation not permitted ::1
+
+-- python3 socket.bind(('127.0.0.1',0)) --
+FAIL PermissionError [Errno 1] Operation not permitted
