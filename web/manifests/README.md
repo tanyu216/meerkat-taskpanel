@@ -696,7 +696,92 @@ and `test/web/i18n.catalogue.mjs` carries no `assignee.clear`. This round theref
 catalogue or `STALE_PROSE_COUNTS` change, and `node --test "test/web/**/*.test.mjs"` reads
 231 tests / 231 pass / **0 fail** / 0 skip on both `2dd7ba3` and this commit.
 
-## 14. The readiness gate — the first band's false red (`T-20261014-105807`, 2026-10-14)
+## 14. The B12 seat assertions — the two empty-state buttons get a contract
+(`T-20261014-100326`, 2026-10-14)
+
+**Two checks per seat, in both manifests, plus five resident rules in the DOM contract.**
+The source is *observation Ⅱ* of two independent verification legs (`T-20261014-084751`
+re-checking `081150-2` @ `be8b3c1`, and `T-20261014-100008` re-checking `084800` @ `eaef63f`)
+— reported, not fixed: the board's two B12 empty-state buttons were the only copy in either
+block **without** a `data-i18n` seat, and neither the contract's rule set nor the manifests
+asserted the two seats that do exist. So removing one was silent: the contract evaluator's
+`board-view` rules (370) and its whole B12 block (19) stayed green, and so did `npm test`. The
+only instrument that reddened was the verification leg's own throwaway probe — which is exactly
+the "probe-only window" this card closes.
+
+**What the two seats are.** Every B12 state block puts a `data-i18n` seat on each copy line it
+renders *except* its button:
+
+| seat | block | element | design oracle |
+|---|---|---|---|
+| `noResults.clear` | `[data-empty][data-empty-kind="no-results"]` (the board-level state) | the block's one `<button>` | `design/prototype/index.html:722` — the live 7-column page. `:4253` is the states-gallery demo copy, not counted (see below) |
+| `column.empty.add` | `[data-empty][data-empty-kind="column"]` ×7 (one per column) | each block's one `<button>` | `design/prototype/index.html:999/1263/1530/1794/1978/2243/2344`; `:4237` is the states-gallery demo copy, same three reasons |
+
+**The two excluded copies are B18's, and three things — not a code fence — exclude them.** Each
+seat appears one extra time in the prototype, inside B18's states showcase (`:4174`, *hidden by
+default, opened from the sidebar*): `column.empty.add` at `:4237` sits in the
+`<section class="td-state-card" data-empty-column>` at `:4230`, and `noResults.clear` at `:4253`
+sits in the `<section class="td-state-card" data-empty-results>` at `:4243`. Each is (i) a
+**prototype-only** block (`test/web/blocks.contract.mjs` B18, `status: "prototype-only"` — the
+shipped app renders no states gallery at all), (ii) hooked `data-empty-column` /
+`data-empty-results`, **not** `data-empty` + `data-empty-kind`, so the seat's own block selector
+never reaches it, and (iii) **outside `[data-board]`**. That is why the oracle counts are 1 and 7
+and not 2 and 8. (An earlier revision of this section said these two were `<pre><code>` document
+fragments; that was wrong — the code fences the `[data-column]` rows are scoped against are at
+`:2429`/`:3365` and are a different hook's problem entirely.)
+
+The design's own buttons carry a second hook the implementation deliberately does **not**:
+`noResults.clear`'s button has `data-filter-clear` (the implementation keeps `[data-filter-clear]`
+as B04's own, scoped to `[data-filters]` — `081150-2`'s F2 record), and `column.empty.add`'s has
+`data-column-add` (the implementation's `[data-column-add]` is the *header's*, one per column, and
+B06 already counts exactly 7 — `084800`). Both new assertions therefore pin **tag + seat only**,
+which is what stops them from silently re-importing a hook the design has and the product ruled out.
+
+**Where the assertions live, and which instrument each one answers to.**
+
+| assertion | file | instrument |
+|---|---|---|
+| seat count in the block, and the seat's landing site (on the `<button>`) | `board-m2.json` `B05-empty-lg` (no-results) / `B06` (column) — and the same two pairs in the M1 record `board.json` (`B05` / `B06`) | `ui-align` — `blocks[].checks`, evaluated against the **implementation page only** at all five widths |
+| the same facts as rules, so `npm test` sees them too | `test/web/blocks.contract.mjs` B12 — one document-wide and one `within`-scoped `count` per seat, plus the button-scoped landing site | `web/scripts/dom-smoke.mjs` (`test/web/blocks.dom.test.mjs`), which also exports the `evaluateRules` walk the verification legs drive in-page |
+
+The second row exists because the first is **not wired into CI** (§4: the check needs a host
+browser) — a manifest-only fix would have left the `npm test` window open, which is the half the
+observation complained about. The contract rules are the resident leg; the manifest checks are the
+declarative record an implementer reads. Neither is a substitute for the other, and the counts they
+state are domain-fixed, not fixture-derived (one board-level empty state; one column empty state per
+column, 7 columns by B05).
+
+**Negative proof.** Each mutation is the smallest edit that deletes one seat from the shipped
+implementation; `web/dist` is rebuilt between every row (the manifests are evaluated against the
+built page). Both `ui-align` commands and both contract legs are read per state.
+
+| state | `ui-align board-m2 --no-style` | `ui-align board --no-style` | `node --test test/web/blocks.dom.test.mjs` |
+|---|---|---|---|
+| baseline (both seats present) | exit **0** · 261 assertions · 0 failures | exit **0** · 106 assertions · 0 failures | exit **0** · 1 pass / 0 fail |
+| M1 — `data-i18n="noResults.clear"` removed from `Board.vue` | exit **1** · 2 failures | exit **1** · 2 failures | exit **1** · `B12 count [data-i18n="noResults.clear"] — count 0 != 1` (×2 rules) + the button-scoped rule |
+| M2 — `data-i18n="column.empty.add"` removed from `Column.vue` | exit **1** · 2 failures | exit **1** · 2 failures | exit **1** · `B12 count [data-i18n="column.empty.add"] — count 0 != 7` and `… button[…] — count 0 != 1` |
+| restored | exit **0** · 261 · 0 | exit **0** · 106 · 0 | exit **0** |
+
+The failed rows are named in the JSON report (`blocks[].rows[].widths[].why`: `count=0，期望 1` /
+`count=0，期望 7`), and each state's report is kept beside the card's evidence. Nothing was
+loosened: every pre-existing check keeps its own value, no check gained a `pending` status, and the
+counts moved **+4** in each manifest (M1 record 102 → 106 asserted; M2 live 257 → 261).
+
+**One adjacent defect registered, not fixed.** `B05`'s board-level no-results check
+(`scope: "[data-board]"`, `max: 1`) reads **0** at all five widths on the implementation, because
+the state block is a *sibling* of `[data-board]` (both hang off `[data-board-view]`) — a `max` bound
+that nothing can exceed is a vacuous pass. The correct statement is `B05-r10`'s, which scopes to
+`[data-board-view]` and reads 1. The two new seat checks deliberately do **not** reuse the vacuous
+scope: they scope to `[data-empty][data-empty-kind="no-results"]` itself. The stale bound is left as
+the M1 record measured it and is now named in both blocks' `desc`; correcting it belongs to whoever
+owns the M1 record, not to this card.
+
+**Verification ran on the host, not in the container** — by design: this is a browser-rendered
+frontend check (`docs/docker.md` §"Host-allowed checks"), and `design/` is `.dockerignore`d, so the
+container gate is blind to the manifest half anyway. The host `npm test` reading on this change is
+**2198 tests / 2197 pass / 0 fail / 1 skip** (the skip is `host-cli: absent CLIs are skipped, never
+failed`, unrelated and pre-existing).
+## 15. The readiness gate — the first band's false red (`T-20261014-105807`, 2026-10-14)
 
 Both manifests now declare `"readySelector": "[data-card]"`. That is the one line that closes the
 first-band false red recorded in `T-20261014-100326`'s report §9, and it is a **check-side** change:
