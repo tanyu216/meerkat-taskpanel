@@ -17,7 +17,7 @@
  * `[data-detail-labels]` with no `when` precondition, so they must exist while
  * the drawer is closed; only their values are empty at rest.
  */
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 
 import { board, addComment, closeDetail, labelRoster, platformOf, priorityOf, reporterRoster, saveDetailField } from "../../stores/board.js";
 import { renderMarkdown } from "../../lib/markdown.js";
@@ -157,14 +157,21 @@ const relationLinks = computed(() => {
  * (`design/prototype/app.js`, which measures `[data-detail-close]` `focused:
  * true` once the drawer is up).
  *
- * The prototype defers the move by one transition length because its panel is
- * `visibility: hidden` on the frame it opens, and a box that is not rendered
- * cannot take focus. Here the panel is `hidden` — i.e. `display: none`
- * (`.td-drawer[hidden]`, `styles/app.css`) — until the task arrives, so the
- * equivalent moment is the post-flush one: `nextTick` after `open` flips, by
- * which time Vue has withdrawn `hidden` and the button is focusable. The re-read
- * of `open` inside the callback is the prototype's own `data-state === "open"`
- * guard, so a drawer closed within that beat is never focused.
+ * The move waits **one transition length** and only then focuses — and only if
+ * the panel still reads `data-state === "open"`, which is the prototype's own
+ * guard, so a drawer closed within that beat is never focused. (`focusWhenOpen`
+ * is itself a 200 ms `setTimeout` around exactly that attribute check; the
+ * app's panel transition is `--dur-2` = 180 ms, `styles/tokens.css`.)
+ *
+ * The wait is load-bearing, not cosmetic. `.td-drawer` is `visibility: hidden` on
+ * its closed face and `visibility: visible` on its open one (R14 §8 U4: the panel
+ * carries no `hidden` at all), and `visibility` is a *discrete* transition — at
+ * progress 0 it still resolves to `hidden`, so on the first frame of the open
+ * beat the panel is not focusable and a `.focus()` there is silently a no-op. A
+ * `nextTick` flushes the *attribute*, not the style, so it lands inside that
+ * frame. (082552 wrote the `nextTick` beat against the pre-U4 panel, whose
+ * `hidden`/`display: none` was withdrawn synchronously; U4 is what makes the wait
+ * necessary.)
  *
  * This is the *only* focus this component moves, and only ever **into** the
  * panel: Escape and the ✕ still close the drawer through `App.vue`'s keydown arm
@@ -174,11 +181,12 @@ const relationLinks = computed(() => {
  * cards. The opener-return the contract states is the access panel's,
  * `test/web/blocks.contract.mjs` B19.)
  */
+const FOCUS_BEAT_MS = 200;
 watch(open, (isOpen) => {
   if (!isOpen) return;
-  void nextTick(() => {
-    if (open.value) closeButton.value?.focus();
-  });
+  window.setTimeout(() => {
+    if (board.drawerState === "open") closeButton.value?.focus();
+  }, FOCUS_BEAT_MS);
 });
 
 /**
