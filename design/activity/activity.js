@@ -199,6 +199,7 @@
     state.shown = shown;
     applyUnread(unread);
     applyEmptyStates(shown);
+    renderFilters();
   }
 
   function applyEmptyStates(shown) {
@@ -233,14 +234,54 @@
     $("[data-activity-filter]").each(function () {
       var $el = $(this);
       var name = $el.attr("data-activity-filter");
-      if (state.filters[name] !== undefined) state.filters[name] = $el.val();
+      var value = $el.attr("data-activity-filter-value");
+      if (state.filters[name] !== undefined && value) state.filters[name] = value;
+    });
+  }
+
+  /* R15 ① — the three controls are dropdown panels now, so each one states its
+     chosen row twice: on the control's own value attribute, and on the trigger's
+     copy (the chosen row's own text, in the active language). Run from the same
+     place `readFilters()` is, so a language switch restates them for free — the
+     trigger spans carry no `data-i18n` seat for exactly that reason, the way the
+     board's label and status triggers do not. */
+  function renderFilters() {
+    $("[data-activity-filter]").each(function () {
+      var $control = $(this);
+      var value = $control.attr("data-activity-filter-value") || "all";
+
+      $control.find("[data-activity-filter-option]").each(function () {
+        var $row = $(this);
+        $row.attr(
+          "aria-current",
+          String($row.attr("data-activity-value") === value)
+        );
+      });
+
+      var $chosen = $control.find(
+        '[data-activity-filter-option][data-activity-value="' + value + '"]'
+      );
+      $control
+        .find("[data-activity-filter-text]")
+        .text($chosen.length ? $.trim($chosen.text()) : value);
     });
   }
 
   function syncControls() {
     ["actor", "event", "task"].forEach(function (name) {
-      $('[data-activity-filter="' + name + '"]').val(state.filters[name]);
+      $('[data-activity-filter="' + name + '"]').attr(
+        "data-activity-filter-value",
+        state.filters[name]
+      );
     });
+    renderFilters();
+  }
+
+  function resetFilters() {
+    state.filters = { actor: "all", event: "all", task: "all" };
+    syncControls();
+    writeHash();
+    applyFilters();
   }
 
   function writeHash() {
@@ -406,17 +447,49 @@
   }
 
   function wire() {
-    $("[data-activity-filter]").on("change", function () {
-      readFilters();
-      writeHash();
-      applyFilters();
+    /* R15 ① — a filter is a press on a dropdown row now: write the control's
+       value, close its menu, restate the trigger and re-run the pass. */
+    $("[data-activity-filters]").on(
+      "click",
+      "[data-activity-filter-option]",
+      function () {
+        var $control = $(this).closest("[data-activity-filter]");
+        $control.attr(
+          "data-activity-filter-value",
+          $(this).attr("data-activity-value")
+        );
+        $control.removeAttr("open");
+        readFilters();
+        writeHash();
+        applyFilters();
+      }
+    );
+
+    /* R15 ③ — the bar's clear control is B04's own `[data-filter-clear]`, told
+       apart by the bar the press came from: a Clear inside `[data-activity-filters]`
+       resets the three activity filters and leaves every board filter alone. The
+       *filter-empty* state's inline reset is a different affordance in a different
+       place and keeps `[data-activity-empty-reset]` (B26.5). */
+    $(document).on("click", "[data-filter-clear]", function () {
+      if (!$(this).closest("[data-activity-filters]").length) return;
+      resetFilters();
     });
 
-    $("[data-activity-filter-reset], [data-activity-empty-reset]").on("click", function () {
-      state.filters = { actor: "all", event: "all", task: "all" };
-      syncControls();
-      writeHash();
-      applyFilters();
+    $("[data-activity-empty-reset]").on("click", resetFilters);
+
+    /* R15 ① — light dismissal for the dropdown family, the rule the board's bar
+       follows (R9 ①): a press outside every `[data-dismiss-on-outside]` closes
+       the open ones, and an already-open control on its way *closed* must not
+       take its sibling down with it. */
+    $(document).on("click", function (event) {
+      if (!$(event.target).closest("[data-dismiss-on-outside]").length) {
+        $("[data-dismiss-on-outside][open]").removeAttr("open");
+      }
+    });
+    $(document).on("click", "[data-dismiss-on-outside] > summary", function () {
+      var $self = $(this).closest("[data-dismiss-on-outside]");
+      if ($self.attr("open") !== undefined) return;
+      $("[data-dismiss-on-outside][open]").not($self).removeAttr("open");
     });
 
     $("[data-activity-mark-read]").on("click", markAllRead);
@@ -439,6 +512,9 @@
 
     $(document).on("keydown", function (event) {
       if (event.key === "Escape") {
+        /* R15 ① — the same hook decides who answers Escape: every dropdown that
+           took the light-dismiss rule closes on it too. */
+        $("[data-dismiss-on-outside]").removeAttr("open");
         closeDrawer();
         return;
       }

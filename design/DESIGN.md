@@ -2688,9 +2688,10 @@ Board B12's own markup and copy (it is the reference, not a subject); `[data-fil
 boundary and paging; the waiting queue's rows, ordering and header; every token in the sheet.
 The activity view's design page (`design/activity/`) carries the same rules in its own scoped
 block and is edited in step — its machine check, `node design/activity/check-activity.mjs`, is
-the round's regression gate and reports **194/194** (93 static + 101 render; the family's
+the round's regression gate and reports **209/209** (101 static + 108 render; the family's
 placement grew from three declaration readings at 1512 into three geometric ones over three
-states × five widths, §33.3).
+states × five widths, §33.3; R15's filter-control alignment added 15 — `S1.5`–`S1.8b`,
+`R7.0`, `R2.4a`–`R2.4c`, `R2.10a`–`R2.12`).
 
 ### 33.5 Boundaries and open items
 
