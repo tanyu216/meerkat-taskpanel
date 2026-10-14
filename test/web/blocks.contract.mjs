@@ -1867,6 +1867,42 @@ const BLOCKS = [
        * that these seven are **never** counted in the board-level tally, so their
        * presence costs the board-level pair nothing. */
       { kind: "count", selector: "[data-empty][data-empty-kind=\"column\"]", equals: 7 },
+      /* T-20261014-100326 — the two seats of B12's state family.
+       *
+       * Both blocks put a `data-i18n` seat on every copy line they render *except*
+       * their button, so dropping that one hook — or moving it onto a wrapper —
+       * took the block's whole pressable copy out of the addressable surface while
+       * every rule above stayed green. `web/scripts/dom-smoke.mjs`'s
+       * `i18n.parity` leg cannot close this: it proves a *present* hook resolves
+       * through the catalogue, and a removed hook leaves it nothing to resolve.
+       * The two counts are domain-fixed, not fixture-derived: one board-level
+       * empty state and one column-level empty state per column (7 columns, B05).
+       *
+       * Values from the design oracle, read statically on
+       * `design/prototype/index.html` (the live 7-column board page, not the
+       * `<pre><code>` document fragments at :4237/:4253): 1 `noResults.clear` seat
+       * in the sole `no-results` block, 7 `column.empty.add` seats, one per
+       * `column` block. */
+      { kind: "count", selector: "[data-i18n=\"noResults.clear\"]", equals: 1 },
+      {
+        kind: "count",
+        selector: "[data-i18n=\"noResults.clear\"]",
+        within: "[data-empty][data-empty-kind=\"no-results\"]",
+        equals: 1,
+      },
+      {
+        kind: "count",
+        selector: "button[data-i18n=\"noResults.clear\"]",
+        within: "[data-empty][data-empty-kind=\"no-results\"]",
+        equals: 1,
+      },
+      { kind: "count", selector: "[data-i18n=\"column.empty.add\"]", equals: 7 },
+      {
+        kind: "count",
+        selector: "button[data-i18n=\"column.empty.add\"]",
+        within: "[data-empty][data-empty-kind=\"column\"]",
+        equals: 1,
+      },
       {
         kind: "manual",
         note:

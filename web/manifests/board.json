@@ -134,7 +134,9 @@
         { "selector": "[data-board]", "count": 1, "desc": "板根" },
         { "scope": "[data-board]", "selector": "[data-column]", "count": 7, "desc": "恰好 7 列（scope 到板内，避开文档片段）" },
         { "scope": "[data-board]", "selector": "[data-column][data-status]", "min": 7, "desc": "每列带 data-status" },
-        { "scope": "[data-board]", "selector": "[data-empty][data-empty-kind=\"no-results\"]", "max": 1, "desc": "板级 no-results 空态（至多一个）" },
+        { "scope": "[data-board]", "selector": "[data-empty][data-empty-kind=\"no-results\"]", "max": 1, "desc": "板级 no-results 空态（至多一个）—— **记录值，不改**：空态块与板根并列（都挂在 `[data-board-view]` 下），scope 到 `[data-board]` 实测五档全 0 ⇒ 本条是空过（`max:1` 恒真）；对的那条是 `B05-r10` 的 `[data-board-view]`。席位由下面两条把守（T-20261014-100326）" },
+        { "scope": "[data-empty][data-empty-kind=\"no-results\"]", "selector": "[data-i18n=\"noResults.clear\"]", "count": 1, "desc": "B12 大空态块内 `noResults.clear` 席位 = 1（设计 oracle `design/prototype/index.html:722`；`design/BLOCKS.md` R17 §1517 第 1 行）。撤掉席位 ⇒ count=0 变红（T-20261014-100326）" },
+        { "scope": "[data-empty][data-empty-kind=\"no-results\"]", "selector": "button[data-i18n=\"noResults.clear\"]", "count": 1, "desc": "落点：席位在块内唯一 `<button>` 上（oracle 同址；oracle 另有 `data-filter-clear`，实现侧有意不带 ⇒ 只钉 tag + 席位）。挪离按钮 ⇒ count=0 变红" },
         { "selector": "[data-move-menu]", "max": 1, "desc": "共享 Move to 菜单（关闭时 0）" }
       ]
     },
@@ -151,7 +153,9 @@
         { "scope": "[data-board]", "selector": "[data-column-add]", "count": 7, "desc": "列内新建" },
         { "scope": "[data-board]", "selector": "[data-column-body]", "count": 7, "desc": "放置区" },
         { "scope": "[data-board]", "selector": "[data-column-progress]", "count": 7, "desc": "占板比进度条（value 可见数 / max 板可见总数，非 0）" },
-        { "selector": "[data-empty][data-empty-kind=\"column\"]", "max": 7, "desc": "空列空态（空列数驱动）" }
+        { "selector": "[data-empty][data-empty-kind=\"column\"]", "max": 7, "desc": "空列空态（空列数驱动）—— 基数条；席位由下面两条把守" },
+        { "scope": "[data-board]", "selector": "[data-empty][data-empty-kind=\"column\"] [data-i18n=\"column.empty.add\"]", "count": 7, "desc": "七个列空态块内各 1 个 `column.empty.add` 席位（设计 oracle `design/prototype/index.html:999/1263/1530/1794/1978/2243/2344`；`design/BLOCKS.md` R17 §1517 第 2 行）。撤掉任一席位 ⇒ count=6 变红（T-20261014-100326）" },
+        { "scope": "[data-board]", "selector": "[data-empty][data-empty-kind=\"column\"] button[data-i18n=\"column.empty.add\"]", "count": 7, "desc": "落点：七个席位都在各自块内的 `<button>` 上（oracle 同址；oracle 另有 `data-column-add`，实现侧有意不加 ⇒ 只钉 tag + 席位）。挪离按钮 ⇒ count=0 变红" }
       ]
     },
     {

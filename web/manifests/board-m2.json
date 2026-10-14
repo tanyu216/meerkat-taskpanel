@@ -605,6 +605,18 @@
           "selector": "[data-empty][data-empty-kind=\"column\"]",
           "max": 7,
           "desc": "空列空态（空列数驱动）"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-empty][data-empty-kind=\"column\"] [data-i18n=\"column.empty.add\"]",
+          "count": 7,
+          "desc": "【席位·计数】七个列空态块内各 1 个 `column.empty.add` 席位（B06 钉 7 列 ⇒ 7 席）。**设计 oracle**：`design/prototype/index.html:999/1263/1530/1794/1978/2243/2344`（七个活体 column 块各 1 个；`:4237` 是 `<pre><code>` 文档片段的副本，不计）；契约口径见 `design/BLOCKS.md` R17 表 §1517 第 2 行「column | `column.empty.add`」。**撤掉任一席位 ⇒ 本行 count=6 变红**（T-20261014-100326 的负向证明）"
+        },
+        {
+          "scope": "[data-board]",
+          "selector": "[data-empty][data-empty-kind=\"column\"] button[data-i18n=\"column.empty.add\"]",
+          "count": 7,
+          "desc": "【席位·落点】七个席位都必须落在各自列空态块内的那个 `<button>` 上。**设计 oracle** 同址：`<button type=\"button\" class=\"btn btn-outline btn-sm\" data-i18n=\"column.empty.add\">`。oracle 的该按钮另有 `data-column-add`，实现侧**有意不加**它——列头的 `[data-column-add]` 已是一列一个、由本块上面的条钉 7（见 `T-20261014-084800`）——故本行只钉 tag + 席位。席位挪到非 `<button>` 元素 ⇒ count=0 变红"
         }
       ]
     },
@@ -959,7 +971,19 @@
           "scope": "[data-empty][data-empty-kind=\"no-results\"]",
           "selector": "svg[viewBox=\"0 0 32 32\"]",
           "min": 1,
-          "desc": "【M2 目标态】no-results 大空态带 32×32 的 mark（原型该空态内 svg=1）。注意：原型把该空态放在 `[data-board]` **之外**、实现放在其**内**，故本条不 scope 到 `[data-board]`。⚠️ 首轮实测该 scope **未命中**（fixture 12 卡、无过滤 ⇒ 空态未渲染）⇒ 必须先**驱动到空态**才能评该条"
+          "desc": "【M2 目标态】no-results 大空态带 32×32 的 mark（原型该空态内 svg=1）。scope 是空态块自身，**不是** `[data-board]`：两侧的空态块都与板根并列（都挂在 `[data-board-view]` 下），scope 到 `[data-board]` 会 0 命中、`max` 形式随即退化成空过 —— 本文件的 `B05` 那条实测正是如此（五档全 0；`B05-r10` 用 `[data-board-view]` 才是对的那条）。⚠️ 首轮实测该 scope **未命中**（fixture 12 卡、无过滤 ⇒ 空态未渲染）⇒ 必须先**驱动到空态**才能评该条"
+        },
+        {
+          "scope": "[data-empty][data-empty-kind=\"no-results\"]",
+          "selector": "[data-i18n=\"noResults.clear\"]",
+          "count": 1,
+          "desc": "【席位·计数】B12 大空态块内恰好 1 个 `noResults.clear` 席位。**设计 oracle**：`design/prototype/index.html:722`（该页唯一活体 no-results 块内 1 个；`:4253` 是 `<pre><code>` 文档片段的副本，不计）；契约口径见 `design/BLOCKS.md` R17 表 §1517 第 1 行「board (B12) | `no-results` | … | `noResults.clear`」。**撤掉席位 ⇒ 本行 count=0 变红**（T-20261014-100326 的负向证明，见 `web/manifests/README.md` §14）"
+        },
+        {
+          "scope": "[data-empty][data-empty-kind=\"no-results\"]",
+          "selector": "button[data-i18n=\"noResults.clear\"]",
+          "count": 1,
+          "desc": "【席位·落点】同一席位必须落在块内那个唯一的 `<button>` 上。**设计 oracle** 同址：`<button type=\"button\" class=\"btn btn-outline btn-sm\" data-i18n=\"noResults.clear\">`（`design/prototype/index.html:722`）。注意 oracle 的按钮另有 `data-filter-clear`，实现侧**有意不带**（`[data-filter-clear]` 仍归 B04、scope 在 `[data-filters]` 内 ⇒ 见本文件 B04 那条），故本行只钉 tag + 席位、不钉 `data-filter-clear`。席位挪到非 `<button>` 元素 ⇒ 本行 count=0 变红"
         }
       ]
     },
