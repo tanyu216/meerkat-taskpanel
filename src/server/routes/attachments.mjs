@@ -1,27 +1,130 @@
 /**
- * `GET|PUT /api/v1/attachments/:id/content` (§5.1).
+ * The attachment surface: `GET|PUT /api/v1/attachments/:id/content` (§5.1) plus
+ * the metadata routes T-20261014-212017-4 added
+ * (`POST|GET /api/v1/tasks/:ref/attachments`, `DELETE /api/v1/attachments/:id`).
  *
- * This pair is handled **outside the router** on purpose. Everything else on the
- * board is JSON in and JSON out, which is exactly what the router's uniform
- * envelope is for; an attachment is bytes in and bytes out, and routing it
- * through `readJsonBody`/`sendJson` would be a category error. `index.mjs`
- * matches the path and calls `handleAttachmentContent` before dispatch.
+ * The content pair is handled **outside the router** on purpose. Everything else
+ * on the board is JSON in and JSON out, which is exactly what the router's
+ * uniform envelope is for; an attachment is bytes in and bytes out, and routing
+ * it through `readJsonBody`/`sendJson` would be a category error. `index.mjs`
+ * matches the path and calls `handleAttachmentContent` before dispatch. The
+ * three metadata routes below are ordinary JSON and therefore ordinary routes.
  *
  * The row stays metadata (`attachments` has no content column) — the bytes live
  * in `<dataDir>/attachments/<id>`, owned by the single-writer daemon. A row with
  * no stored bytes is a truthful 404, not an error: attachments are a reserved
  * surface (§13) and most rows will never have content.
+ *
+ * ## Upload is two requests, deliberately
+ *
+ * `POST …/attachments` mints the row, `PUT …/content` stores the bytes. A
+ * one-shot route would need a body that is both JSON and bytes, and would
+ * duplicate the staging-plus-rename write discipline the content handler already
+ * has (T-20261013-014304). The window between them is **named** rather than
+ * hidden: a row whose `PUT` never arrives keeps `size = 0` and its download
+ * answers an honest 404 — nothing is invented, and the web client rolls the row
+ * back when the byte half fails (`stores/board.js#uploadAttachments`).
+ *
+ * ## Removal is a hard delete, and it is one act
+ *
+ * T-20261014-212017-4's ruling: an attachment is removed **for good** — the row
+ * and its bytes go together. Nothing here is recoverable, and re-uploading the
+ * file is the whole recovery story. The alternative (a `deleted_at` column) would
+ * buy an undo the drawer does not offer while leaving the bytes on disk for a
+ * reader to find, which is a worse answer to "is it gone?" than "yes".
+ *
+ * The pairing is the point. Bytes are renamed to a staging name and the row is
+ * deleted **inside one transaction that holds the write lock**, and the staged
+ * file is only discarded once that transaction has committed. So every way this
+ * can be refused leaves the board as it was: a retried `DB_BUSY` re-runs the
+ * body (the bytes are already staged, which the guard below tolerates), and a
+ * refusal that exhausts the budget puts the bytes back before re-throwing.
  */
 
-import { createReadStream, renameSync, rmSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import { transaction } from "../../core/index.mjs";
+import { downloadContentType, normalizeAttachmentContentType } from "../../shared/attachments.mjs";
 import { ATTACHMENTS_DIRNAME, ATTACHMENT_MAX_BYTES } from "../../shared/constants.mjs";
 import { DomainError } from "../../shared/errors.mjs";
 import { newId } from "../../shared/ids.mjs";
+import { attachmentToWire } from "../../shared/wire.mjs";
+import { int, shape, str } from "../requests.mjs";
 import { errorResponse, readRawBody, sendJson } from "../router.mjs";
+import { resolveTask } from "./tasks.mjs";
+
+// Declared request schemas, frozen by the contract snapshot (`routes[].request`);
+// the vocabulary lives in `src/server/requests.mjs`.
+//
+// `kind` is **not** here. The board's attachment surface is download-only —
+// every response states `content-disposition: attachment` — so `inline` has no
+// writer on this surface, and the create route stores `attachment`
+// unconditionally rather than accepting a value it would then have to ignore.
+const CREATE_BODY = shape({ filename: str(), content_type: str(), comment_id: str(), size: int() });
+
+/**
+ * `POST|GET /api/v1/tasks/:ref/attachments` · `DELETE /api/v1/attachments/:id`.
+ *
+ * The three JSON halves of the attachment surface. Before them the table had no
+ * writer outside the tests (`T-20261014-212017-2` G1), so the drawer could list
+ * nothing, upload nothing and remove nothing.
+ *
+ * @param {object} router @param {{board: object}} surface
+ */
+export function registerAttachmentRoutes(router, surface) {
+  const { board } = surface;
+  const { repos } = board;
+
+  router.post(
+    "/api/v1/tasks/:ref/attachments",
+    ({ params, body }) => {
+      const task = resolveTask(repos, params.ref);
+      const contentType = normalizeAttachmentContentType(body.content_type);
+      const size = body.size === undefined ? 0 : body.size;
+      if (!Number.isInteger(size) || size < 0 || size > ATTACHMENT_MAX_BYTES) {
+        throw new DomainError("ATTACHMENT_TOO_LARGE", {
+          message: `attachment is ${size} bytes; the limit is ${ATTACHMENT_MAX_BYTES}`,
+          details: { field: "size", received: Number.isFinite(size) ? size : null, maxBytes: ATTACHMENT_MAX_BYTES },
+        });
+      }
+      const attachment = repos.attachments.insert({
+        taskId: task.id,
+        commentId: body.comment_id ?? null,
+        filename: String(body.filename),
+        contentType,
+        size,
+        kind: "attachment",
+        createdAt: new Date().toISOString(),
+      });
+      return { attachment: attachmentToWire(attachment), upload_url: `/api/v1/attachments/${attachment.id}/content` };
+    },
+    { body: CREATE_BODY },
+  );
+
+  router.get("/api/v1/tasks/:ref/attachments", ({ params }) => {
+    const task = resolveTask(repos, params.ref);
+    return { task_id: task.id, attachments: repos.attachments.listByTask(task.id).map(attachmentToWire) };
+  });
+
+  router.delete("/api/v1/attachments/:id", ({ params }) => {
+    const id = params.id;
+    const attachment = repos.attachments.get(id);
+    if (attachment === null) {
+      throw new DomainError("NOT_FOUND", { message: `no attachment ${id}`, details: { attachmentId: id } });
+    }
+    const path = attachmentContentPath(board.dataDir, id);
+    if (path === null) {
+      throw new DomainError("VALIDATION_FAILED", {
+        message: `attachment id ${JSON.stringify(id)} is not a safe file name`,
+        details: { attachmentId: id },
+      });
+    }
+    removeAttachmentRow(board.db, repos.attachments, id, path);
+    return { removed: true, attachment: attachmentToWire(attachment) };
+  });
+}
 
 /** Where one attachment's bytes live: `<dataDir>/attachments/<id>`. */
 export function attachmentContentPath(dataDir, id) {
@@ -73,10 +176,24 @@ export async function handleAttachmentContent(req, res, board, id) {
       });
     }
 
+    // Three headers, three jobs, all of them the type boundary
+    // (T-20261014-212017-4):
+    //
+    //   * `content-disposition: attachment` — the bytes are a download, never a
+    //     document the origin renders. This is what makes a stored `text/plain`
+    //     (or anything else that survived the create-time allow-list) inert.
+    //   * `x-content-type-options: nosniff` — the browser may not second-guess
+    //     the stored type and execute what it finds instead.
+    //   * `cache-control: no-store` — a removed attachment must not survive in a
+    //     cache after `DELETE` reports it gone.
+    //
+    // The filename is stripped of `"` and newlines: a value that reached the
+    // header raw would let a caller write header syntax (`sanitizeFilename`).
     res.writeHead(200, {
-      "content-type": attachment.contentType ?? "application/octet-stream",
+      "content-type": downloadContentType(attachment.contentType),
       "content-length": info.size,
       "content-disposition": `attachment; filename="${sanitizeFilename(attachment.filename)}"`,
+      "x-content-type-options": "nosniff",
       "cache-control": "no-store",
     });
     await pipe(createReadStream(path), res);
@@ -169,6 +286,69 @@ function storeContent(db, attachments, id, path, body) {
       /* the staging file is the lesser problem */
     }
     throw err;
+  }
+}
+
+/**
+ * Remove an attachment **for good**: its bytes and its row, in one act.
+ *
+ * The order is the whole point, and it is the mirror of `storeContent`'s. The
+ * bytes are renamed to a staging name and the row is deleted inside a single
+ * transaction that holds the write lock; the staged file is discarded only after
+ * that transaction committed. So:
+ *
+ *   * a refused write (a `DB_BUSY` that exhausts the retry budget, a row that
+ *     vanished under us) leaves the board exactly as it was — the catch puts the
+ *     bytes back, and the rollback restores the row;
+ *   * a **retry** re-runs the body. The rename is the one step that is not
+ *     idempotent, so it is guarded by `existsSync`: on the second pass the bytes
+ *     are already staged and there is nothing left to move, which is exactly the
+ *     state the commit wants;
+ *   * a row with no stored bytes (the `PUT` never arrived) is the ordinary case,
+ *     not an error — there is nothing to rename and the row still goes.
+ *
+ * A file that could not be discarded after the commit is swallowed on purpose: a
+ * leftover `.part` is garbage, while a throw here would report a delete that
+ * *did* happen as a failure.
+ *
+ * @param {import('node:sqlite').DatabaseSync} db
+ * @param {{remove: (id: string) => boolean}} attachments
+ * @param {string} id
+ * @param {string} path
+ */
+function removeAttachmentRow(db, attachments, id, path) {
+  const staged = `${path}.${newId()}.part`;
+  let stagedBytes = false;
+  try {
+    transaction(
+      db,
+      () => {
+        if (!stagedBytes && existsSync(path)) {
+          renameSync(path, staged);
+          stagedBytes = true;
+        }
+        if (!attachments.remove(id)) {
+          throw new DomainError("NOT_FOUND", { message: `no attachment ${id}`, details: { attachmentId: id } });
+        }
+      },
+      { op: "attachments.remove" },
+    );
+  } catch (err) {
+    if (stagedBytes) {
+      try {
+        renameSync(staged, path);
+      } catch {
+        /* the row is intact; the bytes' exact name matters less than the throw */
+      }
+    }
+    throw err;
+  }
+  if (stagedBytes) {
+    try {
+      rmSync(staged, { force: true });
+    } catch {
+      /* the staged bytes are the lesser problem */
+    }
   }
 }
 

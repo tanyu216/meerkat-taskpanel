@@ -1399,8 +1399,8 @@
     },
     {
       "id": "B09-r10",
-      "name": "R10 ② — 抽屉保存状态区：属性载体 + 唯一可见半（`role=\"alert\"`）+ 三个字段钩子",
-      "evidence": "design/fidelity-r10.md §2.2；web/src/components/detail/DetailDrawer.vue（`[data-detail-save]` / `[data-detail-save-error]` / 三个 `data-detail-save-field`）+ web/src/styles/app.css `.td-save-error`",
+      "name": "R10 ② — 抽屉保存状态区：属性载体 + 唯一可见半（`role=\"alert\"`）+ 八个字段钩子",
+      "evidence": "design/fidelity-r10.md §2.2；web/src/components/detail/DetailDrawer.vue（`[data-detail-save]` / `[data-detail-save-error]` / 八个 `data-detail-save-field`，见 T-20261014-212017-4：R10 的三个 + 本轮四类编辑面 status/priority/description/attachments/depends）+ web/src/styles/app.css `.td-save-error`。原型 `design/prototype/index.html` 同址实测 8 枚（`grep -o 'data-detail-save-field=\"[^\"]*\"'` ⇒ assignee/attachments/depends/description/labels/priority/reporter/status 各 1）",
       "status": "delivered",
       "checks": [
         {
@@ -1425,8 +1425,8 @@
         },
         {
           "selector": "[data-detail-save-field]",
-          "count": 3,
-          "desc": "三个可编辑字段钩子（取值域由 `blocks.contract` 的 domain 断言把守）"
+          "count": 8,
+          "desc": "八个可编辑字段钩子（取值域由 `blocks.contract` 的 domain 断言把守）。T-20261014-212017-4 把 R10 的 3 枚扩到 8 枚 —— 与原型同址同数，逐值断言在 `blocks.contract.mjs` 的 `DOMAINS.SAVE_FIELD` + 五条“钩子骑在各自根上”的 count 规则"
         },
         {
           "selector": "[data-detail-assignee][data-detail-save-field=\"assignee\"]",

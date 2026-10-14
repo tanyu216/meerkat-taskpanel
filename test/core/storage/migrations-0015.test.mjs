@@ -108,7 +108,7 @@ describe("storage/migrations — 0015 makes `deploy` a task kind (T-20261013-232
       const up = applyMigrations(board.db);
       // 0015 and everything after it: 0016 (`blocked_reason`) is the next file in
       // the set, and this board is below both.
-      assert.deepEqual(up.applied.map((m) => m.version), ["0015", "0016"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0015", "0016", "0017"]);
       assert.deepEqual(up.skipped.slice(-2), ["0013", "0014"]);
 
       // 1 — the enum: the new word is storable, the old ones still are (they are
@@ -229,10 +229,21 @@ describe("storage/migrations — 0015 makes `deploy` a task kind (T-20261013-232
       const oldTriggers = triggersOf(before.db);
       const newTriggers = triggersOf(after.db);
 
+      // As in the 0013 suite: `after` runs the whole shipped set, so a later
+      // migration's own trigger (`0017_block_cycle.sql` → `tr_rel_block_cycle`)
+      // is an allowed addition; what the rebuild may not do is lose one or
+      // invent one of its own (T-20261014-212017-4).
       assert.deepEqual(
-        Object.keys(newTriggers).sort(),
-        Object.keys(oldTriggers).sort(),
-        "the rebuild must not add or lose a trigger",
+        Object.keys(newTriggers)
+          .filter((name) => !(name in oldTriggers))
+          .sort(),
+        ["tr_rel_block_cycle"],
+        "only a later migration's own trigger may appear",
+      );
+      assert.deepEqual(
+        Object.keys(oldTriggers).filter((name) => !(name in newTriggers)),
+        [],
+        "the rebuild must not lose a trigger",
       );
       const changed = Object.keys(oldTriggers).filter((name) => oldTriggers[name] !== newTriggers[name]).sort();
       assert.deepEqual(changed, [], "0015 must change no trigger — it widens a CHECK");

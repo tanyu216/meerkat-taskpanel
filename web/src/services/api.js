@@ -99,6 +99,41 @@ export async function request(method, path, options = {}) {
 export const get = (path, query) => request("GET", path, { query });
 export const post = (path, body) => request("POST", path, { body });
 export const patch = (path, body) => request("PATCH", path, { body });
+export const del = (path) => request("DELETE", path);
+
+/**
+ * The one non-JSON request the board has: an attachment's bytes
+ * (`PUT /api/v1/attachments/:id/content`, §5.1). The body is the file verbatim
+ * and the answer is still the usual envelope, so the error path is shared with
+ * `request` — one `ApiError`, one `code` for the UI to branch on.
+ *
+ * @param {string} path
+ * @param {Blob|ArrayBuffer|Uint8Array} bytes
+ * @param {string} contentType
+ */
+export async function putBytes(path, bytes, contentType) {
+  let response;
+  try {
+    response = await fetch(`${BASE}${path}`, {
+      method: "PUT",
+      headers: { "content-type": contentType },
+      body: bytes,
+    });
+  } catch (err) {
+    throw new ApiError({ code: "NETWORK", message: "The board did not respond.", http: 0, details: { cause: String(err) } });
+  }
+  let envelope = null;
+  try {
+    envelope = await response.json();
+  } catch {
+    envelope = null;
+  }
+  if (!envelope || envelope.ok !== true) {
+    const payload = envelope?.error ?? { code: "INTERNAL", message: `unexpected response (${response.status})` };
+    throw new ApiError(payload, response.status);
+  }
+  return envelope.data;
+}
 
 /** `GET /health` (no auth) — used by the dev/connection indicator. */
 export async function health() {
@@ -126,6 +161,22 @@ export const api = {
   taskRelations: (ref) => get(`/tasks/${encodeURIComponent(ref)}/relations`),
   taskActivities: (ref, query) => get(`/tasks/${encodeURIComponent(ref)}/activities`, query),
   taskSessions: (ref) => get(`/tasks/${encodeURIComponent(ref)}/sessions`),
+
+  // Relations are add/remove only (the board keeps history readable): a
+  // `depends_on` edge is written as `blocks` with **source = the prerequisite**
+  // (`stores/board.js#saveDepends`), and removed by its numeric id.
+  addRelation: (ref, body) => post(`/tasks/${encodeURIComponent(ref)}/relations`, body),
+  removeRelation: (ref, relationId) => del(`/tasks/${encodeURIComponent(ref)}/relations/${encodeURIComponent(relationId)}`),
+
+  // The attachment surface (T-20261014-212017-4). Its truth is the `attachments`
+  // **table** — the G2 ruling — never a `meta.attachments` array, which has no
+  // writer at all. Upload is two requests by design (row, then bytes) and the
+  // caller owns rolling the row back when the byte half fails.
+  taskAttachments: (ref) => get(`/tasks/${encodeURIComponent(ref)}/attachments`),
+  addAttachment: (ref, body) => post(`/tasks/${encodeURIComponent(ref)}/attachments`, body),
+  removeAttachment: (id) => del(`/attachments/${encodeURIComponent(id)}`),
+  uploadAttachmentContent: (id, bytes, contentType) => putBytes(`/attachments/${encodeURIComponent(id)}/content`, bytes, contentType),
+  attachmentContentUrl: (id) => `${BASE}/attachments/${encodeURIComponent(id)}/content`,
 
   assignees: (query) => get("/assignees", query),
   reporters: (query) => get("/reporters", query),

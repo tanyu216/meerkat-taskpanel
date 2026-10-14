@@ -52,6 +52,15 @@ export const ERROR_TEXT_KEYS = Object.freeze({
   NOT_FOUND: "error.notFound",
   DB_BUSY: "error.busy",
   NETWORK: "error.network",
+  // T-20261014-212017-4 — the four refusals the drawer's new edit surfaces can
+  // actually provoke: an illegal move, a dependency loop, and the two file
+  // verdicts. `SELF_REFERENCE` shares the loop's sentence: "a card cannot wait
+  // on itself" is the one-node case of exactly that statement.
+  RELATION_CYCLE: "error.relationCycle",
+  SELF_REFERENCE: "error.relationCycle",
+  CROSS_PROJECT_RELATION: "error.relationCrossProject",
+  ATTACHMENT_TOO_LARGE: "error.attachTooLarge",
+  ATTACHMENT_TYPE_UNSUPPORTED: "error.attachType",
 });
 
 /** The `%s`-carrying keys above — a sentence may name the card it is about. */

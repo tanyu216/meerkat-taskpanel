@@ -111,6 +111,26 @@ export function createAttachmentsRepository(db) {
         .map(attachmentFromRow);
     },
 
+    /**
+     * Delete the row. The **bytes belong to the caller**: an attachment's
+     * content lives beside the database (`<dataDir>/attachments/<id>`), not in
+     * it, so the pairing is the route's business — it opens one transaction,
+     * removes the bytes to a staging name and the row together, and only
+     * discards the staged file once the transaction committed (see
+     * `removeAttachment` in `src/server/routes/attachments.mjs`).
+     *
+     * @param {string} id
+     * @returns {boolean} whether a row was there to delete
+     */
+    remove(id) {
+      try {
+        const result = db.prepare("DELETE FROM attachments WHERE id = ?").run(id);
+        return Number(result.changes) > 0;
+      } catch (err) {
+        throw mapSqliteError(err, { op: "attachments.remove", table: "attachments" });
+      }
+    },
+
     /** @param {string} id */
     get(id) {
       return attachmentFromRow(db.prepare("SELECT * FROM attachments WHERE id = ?").get(id));

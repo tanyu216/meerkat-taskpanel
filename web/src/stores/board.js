@@ -19,6 +19,7 @@
 import { computed, reactive } from "vue";
 
 import { api, ApiError } from "../services/api.js";
+import { safeFileName } from "../lib/attachments.js";
 import { createEventClient } from "../services/events.js";
 import { t } from "../i18n/index.js";
 import { errorTextKey } from "../i18n/messages.mjs";
@@ -603,6 +604,20 @@ export async function saveDetailField(field, value) {
   const task = board.detail?.task;
   if (!task) return;
 
+  // T-20261014-212017-4 — the drawer's four new edit surfaces. Each one keeps
+  // the M6b shape: state the new value locally, carry `if_version`, roll back on
+  // a refusal **before** re-throwing so the drawer's state machine lands on
+  // `error` with the board showing what is actually stored.
+  //
+  // `status` is deliberately not a PATCH: G6 (T-20261014-212017-2) records that
+  // the server has no status patch on purpose, so a status edit is a **move** —
+  // it inherits the state machine, the delivery gate and the claim lock, and
+  // reaches `VERSION_CONFLICT`/`INVALID_TRANSITION`/`REPORT_REQUIRED` as codes
+  // the drawer renders as sentences.
+  if (field === "status") return saveDetailStatus(task, value);
+  if (field === "priority") return patchDetailField(task, "priority", value, { priority: value });
+  if (field === "description") return patchDetailField(task, "description", value, { description: value });
+
   const before = field === "labels" ? { labels: task.labels ?? [] } : { [field]: task[field] ?? null };
   const next =
     field === "labels"
@@ -611,11 +626,214 @@ export async function saveDetailField(field, value) {
 
   patchTaskLocal(task.id, next);
   try {
-    await api.patchTask(task.identifier, { [field]: value, if_version: task.version });
+    await adoptPatch(task, await api.patchTask(task.identifier, { [field]: value, if_version: task.version }));
   } catch (err) {
     patchTaskLocal(task.id, before);
     throw err;
   }
+}
+
+/**
+ * Take only the **version** the write returned, and leave the rest of the record
+ * as the local edit left it.
+ *
+ * Why this is needed at all: `if_version` is optimistic concurrency, and the
+ * M6b path relied on the live stream's `task_updated` re-read to carry the new
+ * version back. That is fine for one edit — the drawer is opened, read and
+ * closed around it — but two edits in a row (choose a status, then a priority;
+ * type a description and save) happen faster than a round trip, and the second
+ * one would be refused as `VERSION_CONFLICT` on a version the board had already
+ * moved past. The card's own acceptance asks for `--if-version` semantics *and*
+ * a working surface, and those two only hold together if the writer keeps its
+ * version current.
+ *
+ * The rest of the payload is deliberately **not** adopted: `updateTask` records
+ * a `task_updated` activity and the live stream re-reads the task on every
+ * activity, so the canonical form arrives by the path that owns it — whereas
+ * copying the envelope here would let a payload that says nothing about this
+ * card overwrite the edit that was just made.
+ */
+function adoptPatch(task, data) {
+  const version = data?.task?.version;
+  if (typeof version === "number" && version !== task.version) patchTaskLocal(task.id, { version });
+  return data;
+}
+
+/**
+ * A status edit is a **move** (see `saveDetailField`). Optimistic and
+ * version-guarded exactly as the drag path is, but the refusal is *re-thrown*
+ * rather than toasted here: the drawer owns the reporting for this surface, and
+ * two voices for one refusal is one too many.
+ *
+ * @param {object} task the wire task
+ * @param {string} to
+ */
+async function saveDetailStatus(task, to) {
+  const from = task.status;
+  if (to === from) return;
+  patchTaskLocal(task.id, { status: to });
+  try {
+    const data = await api.moveTask(task.identifier, { to, if_version: task.version });
+    replaceTask(data.task);
+  } catch (err) {
+    patchTaskLocal(task.id, { status: from });
+    throw err;
+  }
+}
+
+/**
+ * A single-valued field that the server patches. `local` is what the record
+ * states while the request is in flight; `before` is what it said.
+ *
+ * @param {object} task
+ * @param {string} field
+ * @param {unknown} value the wire value
+ * @param {object} local the optimistic patch
+ */
+async function patchDetailField(task, field, value, local) {
+  const before = { [field]: task[field] ?? null };
+  patchTaskLocal(task.id, local);
+  try {
+    await adoptPatch(task, await api.patchTask(task.identifier, { [field]: value, if_version: task.version }));
+  } catch (err) {
+    patchTaskLocal(task.id, before);
+    throw err;
+  }
+}
+
+/* -------------------------------------------------- dependencies (T-212017-4) */
+
+/**
+ * A card's `depends_on`, resolved into the drawer's chips.
+ *
+ * `depends_on` is not a column and not a relation type: it is the **reverse view
+ * of the `blocks` edge** (`T-20261014-212017-2` §④) — the wire's `blocked_by`
+ * array, whose rows carry `source` = the prerequisite and `target` = this card.
+ * The chip needs both the relation id (to remove the edge) and the
+ * prerequisite's identifier (to show it), which is why this reads the relation
+ * list rather than either of the task's own fields.
+ *
+ * @returns {{relationId: number, identifier: string, title: string}[]}
+ */
+export const detailDepends = computed(() => {
+  const rows = board.detail?.relations?.blocked_by ?? [];
+  const current = board.detail?.task?.id ?? null;
+  return rows
+    .filter((row) => row.target === current)
+    .map((row) => {
+      const other = board.tasks.find((item) => item.id === row.source);
+      return {
+        relationId: row.id,
+        identifier: other?.identifier ?? row.source,
+        title: other?.title ?? "",
+      };
+    });
+});
+
+/**
+ * Add a `depends_on`: "this card waits on `identifier`" is stored as a `blocks`
+ * edge with **source = the prerequisite** and target = this card.
+ *
+ * A cycle (including the one-node case, "this card depends on itself") is refused
+ * by the board — `RELATION_CYCLE` / `SELF_REFERENCE` — and the drawer turns that
+ * code into a sentence. The check is the server's: the board's relation guards
+ * are the guarantee, and this client does not duplicate the graph walk it could
+ * only get wrong.
+ *
+ * @param {string} identifier the prerequisite's identifier
+ */
+export async function addDepends(identifier) {
+  const task = board.detail?.task;
+  if (!task) return;
+  const target = board.tasks.find((item) => item.identifier === identifier);
+  const ref = target?.id ?? identifier;
+  await api.addRelation(ref, { type: "blocks", target: task.id });
+  await reloadDetailRelations();
+}
+
+/**
+ * Remove a `depends_on` by its relation id. The board removes edges by id (there
+ * is no `depends_on` sugar), and the id is what the chip carries.
+ *
+ * @param {number} relationId
+ */
+export async function removeDepends(relationId) {
+  const task = board.detail?.task;
+  if (!task) return;
+  await api.removeRelation(task.identifier, relationId);
+  await reloadDetailRelations();
+}
+
+/** Re-read the edges after a change, so the chips are the board's own answer. */
+async function reloadDetailRelations() {
+  const task = board.detail?.task;
+  if (!task) return;
+  board.detail = { ...board.detail, relations: await api.taskRelations(task.identifier) };
+}
+
+/* ------------------------------------------------ attachments (T-212017-4) */
+
+/**
+ * Upload a file onto the open card: the metadata row first, then the bytes.
+ *
+ * Two requests, deliberately. The board stores an attachment as a row **and** a
+ * file, and the byte half is the endpoint that already owns the staging-plus-
+ * rename write discipline (`src/server/routes/attachments.mjs`, T-20261013-014304).
+ * The window between them is closed from this side: if the byte half fails, the
+ * row is removed before the error propagates, so a failed upload does not leave
+ * a zero-byte ghost in the list.
+ *
+ * All three of the board's refusals — over the 8 MiB limit, a type outside the
+ * allow-list, a name that is not a name — arrive as codes and are rendered as
+ * sentences by the caller.
+ *
+ * @param {File} file
+ */
+export async function uploadAttachment(file) {
+  const task = board.detail?.task;
+  if (!task) return null;
+  const filename = safeFileName(file?.name);
+  const created = await api.addAttachment(task.identifier, {
+    filename,
+    ...(file?.type ? { content_type: normaliseBrowserType(file.type) } : {}),
+    size: Number.isFinite(file?.size) ? file.size : 0,
+  });
+  const id = created.attachment.id;
+  try {
+    await api.uploadAttachmentContent(id, file, created.attachment.content_type ?? "application/octet-stream");
+  } catch (err) {
+    await api.removeAttachment(id).catch(() => {});
+    throw err;
+  }
+  await reloadDetailAttachments();
+  return created.attachment;
+}
+
+/**
+ * The browser's `File.type` carries parameters the board's allow-list does not
+ * name (`text/plain;charset=utf-8` is not `text/plain`), and an empty type is
+ * "no declaration" rather than an unknown one.
+ *
+ * @param {string} type
+ * @returns {string|undefined}
+ */
+function normaliseBrowserType(type) {
+  const base = String(type).split(";")[0].trim().toLowerCase();
+  return base === "" ? undefined : base;
+}
+
+/** Remove an attachment for good (the board hard-deletes the row and its bytes). */
+export async function removeAttachment(id) {
+  await api.removeAttachment(id);
+  await reloadDetailAttachments();
+}
+
+/** Re-read the file list after a change, so it is the board's own answer. */
+async function reloadDetailAttachments() {
+  const task = board.detail?.task;
+  if (!task) return;
+  const listing = await api.taskAttachments(task.identifier);
+  board.detail = { ...board.detail, attachments: listing.attachments ?? [] };
 }
 
 /**
@@ -642,6 +860,11 @@ export async function openDetail(identifier) {
       api.taskSessions(identifier).catch(() => ({ sessions: [] })),
     ]);
     const comments = await api.taskComments(identifier, { limit: 200 }).catch(() => ({ comments: [] }));
+    // T-20261014-212017-4 / G2 — the attachment rows come from the `attachments`
+    // **table**, not from `task.meta`. A board that predates the write surface
+    // (or a card with none) answers `[]`, which is the drawer's empty state —
+    // never an error, because "this card has no files" is not a failure.
+    const attachments = await api.taskAttachments(identifier).catch(() => ({ attachments: [] }));
     board.detail = {
       task: taskData.task,
       reportWaivers: taskData.report_waivers ?? [],
@@ -649,6 +872,7 @@ export async function openDetail(identifier) {
       activities: activities.activities ?? [],
       sessions: sessions.sessions ?? [],
       comments: comments.comments ?? [],
+      attachments: attachments.attachments ?? [],
     };
   } catch (err) {
     board.drawerState = "closed";
