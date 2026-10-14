@@ -386,6 +386,221 @@ and never touches a path the caller named.
 Prints `td_****` and the token file; `--show` prints the value and says what it
 just did.
 
+## Editing a card: status, priority, description, attachments, dependencies
+
+A card's detail view offers five edits — `status`, `priority`, the markdown
+`description`, attachments (download / upload / remove) and `depends_on`
+(add / remove). They do **not** share one shape: two are a single flag, one is a
+**move**, one is an indirection through relations, and one has **no `taskctl`
+command at all**.
+
+The two columns below are kept apart on purpose, because they answer different
+questions. **Board (HTTP API)** is what the service can do; **`taskctl`** is what
+a caller can actually type. A capability can exist on the API and still be out of
+reach from the CLI — the attachments row is that case, and it is the one to read
+carefully.
+
+| Capability | Board (HTTP API) | `taskctl` |
+|---|---|---|
+| **`status`** | **supported** — but the write path is a **move**: `PATCH {status}` is refused (`INVALID_TRANSITION`, "status is not a patchable field — use move or deliver") | **supported** — `issue move <ref> <status>`; `issue update` has no `--status` |
+| **`priority`** | **supported** — `PATCH /api/v1/tasks/:ref {"priority": …}` | **supported** — `issue update <ref> --priority <p>` |
+| **`description`** (markdown) | **supported** — `PATCH {"description": …}`, stored as opaque text | **supported** — `issue update <ref> --description <md>` |
+| **attachments** | **half** — the bytes of a row that already exists can be read and replaced; there is **no** create / list / delete face | **not supported** — no group, no flag |
+| **`depends_on`** | **half** — carried by a `blocks` relation; the task object has no such field | **half** — `relation add` / `remove` / `list`, with the direction reversed |
+
+**The board's web drawer is a second client of the same API.** It can do nothing
+the API does not offer, and it inherits the API's refusals — which is why the
+`status` row reads the same for both. So a file listed in the drawer's attachment
+area says nothing about the CLI: that area reads a `task.meta` convention (see
+[attachments](#attachments--no-command-and-half-an-api) below), and a convention
+is not a write path.
+
+### `status` — a move, never a patch
+
+```bash
+taskctl issue move PROJ-0007 blocked
+taskctl issue move PROJ-0007 in_progress         # todo → in_progress is the claim
+taskctl issue deliver PROJ-0007 --report-file -  # report + move to in_review, in one transaction
+```
+
+`status` is deliberately **not** a patchable field: the move path is what carries
+the state machine, the delivery gate and the claim lock, so a status write cannot
+side-step any of them. `issue update` therefore has no `--status`, and that costs
+a usage error rather than a round trip:
+
+```console
+$ taskctl issue update PROJ-0007 --status blocked
+CLI_USAGE: issue update: unknown option --status
+fix: run `taskctl issue update --help` to see the options it accepts
+$ echo $?
+2
+```
+
+A move can still be refused — always by the service, always in the CLI's one
+error shape:
+
+- a status that is not a legal transition → `INVALID_TRANSITION`, whose
+  `details.allowed` lists the statuses that are;
+- `in_review` without a report for the current delivery round →
+  `REPORT_REQUIRED`, and the hint prints the exact `issue deliver` command that
+  fixes it (see *The delivery gate* above);
+- `awaiting` without `--awaiting-reason E1..E5` → refused locally, exit `2`
+  (see *The `awaiting` state* above).
+
+`issue create --status <s>` sets the status at creation, and `in_review` / `done`
+are refused there by the same gate. The HTTP form is
+`POST /api/v1/tasks/:ref/move` with `{"to": "<status>"}`.
+
+### `priority` — one flag, one closed set
+
+```bash
+taskctl issue update PROJ-0007 --priority high
+taskctl issue create --project PROJ --title "…" --priority urgent
+```
+
+The vocabulary is a closed set — `low`, `medium`, `high`, `urgent`
+(`PRIORITIES`, `src/core/domain/enums.mjs`) — matched case-insensitively.
+Anything else is refused with `VALIDATION_FAILED` (HTTP 400, `details.field` =
+`priority`). A card that carries no priority reads as `medium`.
+
+There is no gap on either side, so there is no fallback to document:
+`PATCH /api/v1/tasks/:ref` with `{"priority":"high"}`, and `POST /api/v1/tasks`
+accepts it at creation.
+
+### `description` — markdown as opaque text
+
+```bash
+taskctl issue update PROJ-0007 --description "$(cat findings.md)"
+taskctl issue create --project PROJ --title "…" --description "one-line summary"
+taskctl issue update PROJ-0007 --description ""   # an empty value clears the field
+```
+
+The board stores and returns the string **byte for byte**. It does not parse,
+validate or render markdown, so a markdown mistake is never a board error — it is
+the *web client* that renders it. An agent is therefore writing markdown for a
+renderer it cannot see; that, and not any server-side rule, is the real limit of
+this path. The column has no length cap.
+
+`issue update` takes the text as the flag's value and has no `--file` form, so a
+long body goes through the shell as above — or through the markdown card, which is
+the same write by another door:
+
+- `taskctl export md` writes the description as the card's `## Background`
+  section (see `references/card-schema.md`);
+- importing that card maps `## Background` back to the description, and a
+  re-import patches a card that already exists rather than skipping it;
+- `issue update --description` sends exactly `PATCH /api/v1/tasks/:ref`, which is
+  the HTTP form of the same write.
+
+### attachments — no command, and half an API
+
+**`taskctl` has no attachment surface at all.** There is no group for it, and a
+call fails as an unknown command rather than as a missing feature:
+
+```console
+$ taskctl attachments --help
+CLI_USAGE: unknown command "attachments"
+fix: run `taskctl --help` for the list of commands
+$ echo $?
+2
+```
+
+The registry has eleven groups (`taskctl --help`), none of them attachments — and
+no flag on any other group reaches one either.
+
+**The API has the bytes and nothing else.** Two endpoints exist —
+`GET` and `PUT /api/v1/attachments/:id/content` — and both address an attachment
+by an id that must **already be a row** in the `attachments` table. Nothing
+creates that row (`POST /api/v1/attachments` is `404 no route`), nothing lists a
+card's attachments (`GET /api/v1/attachments` is `404 no route`), and nothing
+deletes one. A `PUT` against an unknown id is a `404`, not a create — so the bytes
+cannot be uploaded before the row exists, and nothing creates the row.
+
+**Consequence: an agent cannot add, list or remove an attachment today.** What
+exists is the storage — the `attachments` row (`filename`, `content_type`,
+`size`, `kind` ∈ `inline`|`attachment`, an optional `comment_id`) and the bytes at
+`<dataDir>/attachments/<id>` — with no write path from either client.
+
+**What to do instead: put the pointer on the card, not the file.**
+
+```bash
+taskctl issue update PROJ-0007 --description "Design doc: ~/docs/drawer.md (v3)"
+taskctl comment add PROJ-0007 --kind note --body "Screenshot: https://…/shot.png"
+```
+
+`--meta <key>=<value>` is available too, and its one trap is worth stating
+plainly: the value is always a **string**. `--meta attachments=[{"filename":"a.png"}]`
+saves that literal text, not an array — and the board's own attachment list does
+not read that key anyway. `--meta` is a place to record something *you* will
+parse, not a second channel into the attachment table.
+
+**Limits any write path must respect**, so that a client can be built against
+them now: a single request body is capped at **8 MiB** (`ATTACHMENT_MAX_BYTES`;
+over it, `413`), which is a *different* cap from the 1 MiB JSON routes; an
+attachment id must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`, and anything else
+is refused before it can become a second path segment; `content_type` is **not**
+allow-listed and is echoed back verbatim on download, so never serve an untrusted
+type as `inline`; and a row with no stored bytes is a truthful `404`, not an
+error. `/meta.capabilities` carries no attachment key, so a client cannot
+feature-detect the face either.
+
+### `depends_on` — a `blocks` edge, written the other way round
+
+`depends_on` is **not** a field on the task. "This card depends on X" is stored as
+a relation of type `blocks` whose **source is X** (the blocker) and whose target is
+this card. The task object carries no `depends_on`, and `PATCH {"depends_on": […]}`
+is refused (`400`, "nothing to update"). The relation vocabulary is the closed set
+`parent` | `blocks` | `related`, and `--type depends_on` is refused as
+`VALIDATION_FAILED` (`400`, `unknown relation type`): there is no alias to
+remember, only a direction.
+
+So **adding a dependency names the blocker first**:
+
+```bash
+# "PROJ-0007 depends on PROJ-0003" — the task you name is the blocker.
+taskctl relation add PROJ-0003 --type blocks --target PROJ-0007
+```
+
+**Listing** is `relation list`; the card's dependencies are its `blocked_by` rows
+(`blocked_by` is printed with the *blocker* on the task column):
+
+```bash
+taskctl relation list PROJ-0007
+```
+
+**Removing** needs the relation's own **id**, which that listing carries in its
+third column — the card reference is not enough, because a card can have several
+edges:
+
+```bash
+taskctl relation remove PROJ-0007 41   # 41 = the relation's id
+```
+
+`<ref>` may be either endpoint of the edge; the number is what selects it. There
+is no `depends_on` sugar on any command, so this three-step
+(add / list / remove) *is* the interface.
+
+Round-trip and effect:
+
+- `taskctl export md` writes `depends_on: [PROJ-0003]` into the card's
+  frontmatter, and importing that card re-creates the edge with the same
+  direction (`source` = the blocker) — see `references/card-schema.md`;
+- an unfinished `depends_on` is what keeps a card out of `issue candidates`, and
+  it is what `T1` ("stalled") means in the `--order weight` tiers.
+
+The HTTP form is `POST /api/v1/tasks/<blocker>/relations` with
+`{"type":"blocks","target":"<card>"}` to add, `GET /api/v1/tasks/<card>/relations`
+to read `blocked_by[]`, and `DELETE /api/v1/tasks/<card>/relations/<relationId>`
+to remove; each relation on the wire carries
+`{ id, type, source, target, origin, created_at }`.
+
+Guards, and which of them apply to which type: a task may not be related to
+itself (`SELF_REFERENCE`), and the same `(type, source, target)` triple cannot be
+inserted twice (`ux_relations_triple`). `parent` carries more than `blocks` does —
+only an `epic` may be a parent, and a parent edge that would close a cycle is
+refused (`RELATION_CYCLE`); `--force` skips the app-layer parent checks, never the
+database's.
+
 ## `--json`
 
 Wire names are `snake_case` (the card's vocabulary). A task looks like:
