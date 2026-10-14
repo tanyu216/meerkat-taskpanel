@@ -242,7 +242,7 @@ describe("repositories/tasks", () => {
   });
 
   it("takes over a stale claim and pulses a heartbeat only for the holder", async () => {
-    await board(({ repos }) => {
+    await board(({ db, repos }) => {
       const task = makeTask(repos);
       // The claim's heartbeat has to be genuinely stale for a steal to be
       // allowed at all (R3): the repository refuses to take a claim whose
@@ -271,6 +271,16 @@ describe("repositories/tasks", () => {
         (err) => err.code === "INVALID_TRANSITION",
       );
       assert.throws(() => repos.tasks.setHeartbeat({ id: "nope", actor: "elon", now: TS2 }), (err) => err.code === "NOT_FOUND");
+
+      // T-20261014-152924 — the third way a pulse can match nothing. A card that
+      // is `in_progress` with nobody holding it is the corrupt state I2 names,
+      // and it used to be reported as `EXECUTION_ACTIVE` "held by null" — a
+      // claim conflict that does not exist, naming a holder that does not exist.
+      db.prepare("UPDATE tasks SET status = 'in_progress', claimed_by = NULL WHERE id = ?").run(task.id);
+      assert.throws(
+        () => repos.tasks.setHeartbeat({ id: task.id, actor: "elon", now: TS2 }),
+        (err) => err.code === "EXECUTION_STATE_CORRUPT",
+      );
     });
   });
 
