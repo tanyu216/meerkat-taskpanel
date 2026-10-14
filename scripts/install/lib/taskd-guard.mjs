@@ -64,6 +64,7 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { render, writeFileIdempotent } from "./apply.mjs";
+import { unitPath } from "./unit-path.mjs";
 import {
   AUTOSTART_POLL_MS,
   DATA_DIR_ENV,
@@ -152,11 +153,15 @@ export function guardPaths(options = {}) {
  * what launchd would have given the job, so nothing else changes for a child
  * process.
  *
+ * The recipe itself lives in `unit-path.mjs`, shared with the loop's units — which
+ * prepend one more directory, the host CLI's, because they derive a wakeable
+ * executable this guard never does. The taskd unit's own `{{PATH}}` is deliberately
+ * unchanged by that sharing: called with node's directory alone, `unitPath()` still
+ * renders exactly the string it always did.
+ *
  * @param {string} nodeDir
  */
-export function unitPath(nodeDir) {
-  return [nodeDir, "/usr/bin", "/bin", "/usr/sbin", "/sbin"].join(":");
-}
+export { unitPath };
 
 /**
  * The `TASKD_*` variables the unit must carry to resolve the same board the

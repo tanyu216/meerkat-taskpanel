@@ -246,6 +246,79 @@ timers** — their hooks fire only on session events. So the loop lives outside:
 The host is just a worker: the supervisor claims on the board, then starts the
 host's own headless entry point.
 
+### What the loop's units run with
+
+A scheduler does not start a unit in your login shell. It starts it with a **minimal
+`PATH`** of its own — launchd's is `/usr/bin:/bin:/usr/sbin:/sbin`, cron's is typically
+`/usr/bin:/bin` — and that set holds no nvm and no Homebrew directory. On such a machine
+the loop fails **twice**, and fixing only the first failure makes the symptom worse rather
+than better:
+
+| Layer | What it is | What a minimal `PATH` does to it |
+|---|---|---|
+| ① the unit's interpreter | `/usr/bin/env node <supervisor.mjs>` | `env: node: No such file or directory` — exit 127, and no tick ever runs |
+| ② the glue the tick starts | `exec claude` in `wake-<host>.sh` | 127 again, on the *inherited* minimal `PATH` — the tick now starts and the wake still fails. Underneath it sits the worker's own process tree (`git`, `node`, `taskctl`), which is equally blind |
+
+So each loop unit names **both** things outright:
+
+- the **absolute `node`** that rendered it (launchd `ProgramArguments[0]`, the command on
+  each cron line) — the interpreter never goes through `env` at all;
+- a **`PATH`** whose head is the host CLI's directory and node's, followed by that
+  scheduler's own documented default — so the names the tick *derives* still resolve, and
+  the suffix keeps `sh`, `git` and the rest exactly where the scheduler would have put them.
+
+Neither is optional. An absolute interpreter with a bare `exec claude` underneath is the
+half-fix above; a `PATH` alone leaves the interpreter looking at a set it was never in.
+Both are **version-pinned** (the directories carry a node/CLI version), so after an upgrade
+run `install.sh --force` to rewrite the units.
+
+The value comes from one recipe (`scripts/install/lib/unit-path.mjs`), read two ways — the
+installer's bash side asks it through its CLI, and JavaScript callers (the taskd guard, the
+`--supervisor=enable` dry-run) import it — so the two can differ only by a bug in that file,
+never by drift.
+
+```xml
+  <!-- launchd: com.meerkat-taskpanel.poll.plist -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/home/you/.nvm/versions/node/v24.20.0/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+```
+
+```cron
+# cron: ~/.claude/scheduling/cron/meerkat-taskpanel.cron
+PATH=/home/you/.nvm/versions/node/v24.20.0/bin:/usr/bin:/bin
+
+* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node ~/.claude/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --once --log ~/.claude/meerkat-taskpanel/supervisor.log --state ~/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1
+```
+
+(Both are rendered for the host CLI you installed *for*, and only for it: a unit that wakes
+`claude` has no use for `codex`'s directory, and a union would only make the resolution
+longer and less predictable.)
+
+The **systemd** service is the third rendering of the same value and is deliberately **not
+rendered yet**: whether its `Environment=PATH=` takes the documented default (decisive, and
+identical in shape to launchd's) or inherits the login session's `PATH` (richer, but a
+*trailing colon* when that `PATH` is empty — which POSIX reads as "the current directory")
+is an open ruling. Until it lands, that service keeps its current form; shipping the
+absolute interpreter alone would be exactly the half-fix described above.
+
+When the host CLI is **not** on the installing machine's `PATH` — you installed for a host
+that is not there yet — the installer says so and renders node's directory alone. It does
+not invent a directory, and it does not fail silently:
+
+```text
+claude: claude is not on PATH — the scheduling units will carry node's directory only,
+claude:   so a woken claude would not resolve. Install it, then re-run this install with --force.
+```
+
+**One path these units cannot reach**: `templates/codex/trigger.sh`, the legacy Codex
+trigger, runs `node -e …` and is meant to be scheduled from **your own** crontab line
+(`docs/install.md §Codex`). No unit of ours is in that chain, so nothing here sets a `PATH`
+for it — give that line its own `PATH=` (or an absolute `node`). It is the same defect, in
+the one place a unit's environment does not reach.
+
 ### The taskd guard (keepalive)
 
 `taskd` — the board server, `src/server/main.mjs` — has an **OS-level keepalive**: the
@@ -429,9 +502,14 @@ WantedBy=default.target
 - **`ExecStart`** — `{{NODE}} {{SERVER_ENTRY}}`: two absolute paths and no interpreter
   lookup. `/usr/bin/env node` is not an option here at all — systemd resolves `ExecStart`'s
   first word against the *service's* `PATH`, which has no nvm and no Homebrew directory, so
-  an `env node` unit fails on exactly the machines the macOS unit used to crash on. The
-  macOS `PATH` override has no counterpart here on purpose: with an absolute `ExecStart`
-  the service does not need one, and writing one would only narrow systemd's own default.
+  an `env node` unit fails on exactly the machines the macOS unit used to crash on.
+- **No `PATH`, and that is specific to this unit family.** With an absolute `ExecStart` the
+  guard never resolves another name: it starts node on the board server and nothing else, so
+  a `PATH` of its own would only narrow systemd's own default. The **loop** units are the
+  other family — their tick *derives* executables (the wake glue's `exec claude`, and the
+  worker's own `git` / `node` / `taskctl` tree), so they carry an absolute interpreter *and*
+  a `PATH`. Same scheduler, two answers, each for a stated reason: see
+  [What the loop's units run with](#what-the-loops-units-run-with).
 - **`Restart=always`** — restart the server after it exits, whatever the reason. Only an
   explicit `systemctl --user stop meerkat-taskpanel-taskd.service` stops it for good; a
   bare `kill` is undone.
@@ -830,12 +908,17 @@ it is idempotent and cleanly removable:
 
 ```cron
 # >>> meerkat-taskpanel (~/.claude) >>>
-* * * * * /usr/bin/env node ~/.claude/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --once --log ~/.claude/meerkat-taskpanel/supervisor.log --state ~/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1
-*/5 * * * * /usr/bin/env node ~/.claude/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --patrol-only --once --log ~/.claude/meerkat-taskpanel/supervisor.log --state ~/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1
+PATH=/home/you/.nvm/versions/node/v24.20.0/bin:/usr/bin:/bin
+* * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node ~/.claude/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --once --log ~/.claude/meerkat-taskpanel/supervisor.log --state ~/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1
+*/5 * * * * /home/you/.nvm/versions/node/v24.20.0/bin/node ~/.claude/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --patrol-only --once --log ~/.claude/meerkat-taskpanel/supervisor.log --state ~/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1
 # <<< meerkat-taskpanel (~/.claude) <<<
 ```
 
-(The manual path above — `crontab <file>` — drops the same two lines in *without* a marker
+The interpreter is absolute and the block opens with a `PATH=` setting line for the reasons
+in [What the loop's units run with](#what-the-loops-units-run-with) — a cron job inherits
+cron's own minimal `PATH`, not yours.
+
+(The manual path above — `crontab <file>` — drops the same lines in *without* a marker
 block; the enable path is the one that wraps them. The `(~/.claude)` in the marker is the
 host directory, so the three hosts get three independent blocks.)
 
@@ -845,6 +928,16 @@ host directory, so the three hosts get three independent blocks.)
   machine-readable "enabled" state.
 - **Disable** does the same but only strips; no block ⇒ no-op.
 - **Status** is `crontab -l | sed -n '/>>> meerkat-taskpanel (~/.claude) >>>/,/<<< meerkat-taskpanel (~/.claude) <<</p'`.
+
+> **`PATH=` is a cron *setting line*: it applies to every line below it.** That is cron's
+> own idiom, and it is what the manual path (`crontab <file>`) relies on — there the file
+> *is* the crontab, so the setting covers exactly the two jobs. The **enable** path is the
+> different case, and the one to know about: the block is **appended** to your crontab, so
+> the `PATH=` reaches every line you add *after* it. Which is deliberate housekeeping, not a
+> side effect — the value is still just `dir(<your CLI>):dir(node):<cron's default>`, and
+> `--supervisor=disable` removes the line together with the block. If you keep your own jobs
+> below the block and depend on your own `PATH`, either put them above it or repeat your
+> own `PATH=` — a cron setting line is not scoped the way a shell's is.
 
 **Failure modes.**
 

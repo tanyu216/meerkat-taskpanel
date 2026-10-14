@@ -100,6 +100,14 @@ version control.
 | launchd | `<host>/scheduling/launchd/com.meerkat-taskpanel.{poll,patrol}.plist` | `StartInterval` 60 / 300 |
 | systemd | `<host>/scheduling/systemd/meerkat-taskpanel-{poll,patrol}.{service,timer}` | 60s / 300s timers |
 | cron | `<host>/scheduling/cron/meerkat-taskpanel.cron` | `* * * * *` poll, `*/5 * * * *` patrol |
+
+Each unit names the **absolute `node`** that rendered it and carries a **`PATH`** holding
+the host CLI's directory and node's ahead of the scheduler's own default. Neither is
+optional: a scheduler starts a unit with a minimal `PATH` that holds no nvm and no Homebrew
+directory, so `/usr/bin/env node` is exit 127 — and the wake glue's `exec claude`, and the
+worker's own tool tree, resolve on that same set. If the host CLI is not on `PATH` at
+install time, the installer says so and renders node's directory alone rather than guessing.
+See [`scheduling.md` §What the loop's units run with](scheduling.md#what-the-loops-units-run-with).
 | wake glue | `<host>/bin/wake-<host>.sh` | resolves the card's project target directory from the board skill's `projects.json` via the host-local `meerkat-taskpanel/scripts/wake-cwd.mjs`, `cd`s there (refusing the wake if it cannot), then runs `claude -p` (+`--resume`), `codex exec`, or `pi --print` |
 | host config | `<host>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no` + `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives) |
 | log (runtime) | `<host>/meerkat-taskpanel/supervisor.log` | the supervisor's tick log |

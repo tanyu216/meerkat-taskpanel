@@ -37,7 +37,7 @@ carried the board's constraints. Split apart:
 |---|---|---|
 | loop skill | `<host>/skills/meerkat-loop/` | this skill — body, templates, gate. Always **copied**, never symlinked |
 | execution body | `<host>/meerkat-taskpanel/scripts/supervisor.mjs` + `.../scripts/wake-cwd.mjs` + `.../src/shared/*.mjs` | the copy the units run; its closure is listed in this skill's `body/manifest.txt` |
-| units | `<host>/scheduling/{launchd,systemd,cron}/` | `StartInterval` 60 (poll) and 300 (patrol) units |
+| units | `<host>/scheduling/{launchd,systemd,cron}/` | `StartInterval` 60 (poll) and 300 (patrol) units. Each names the **absolute `node`** it was rendered with and carries a **`PATH`** (host CLI's directory + node's, then the scheduler's default) — a scheduler runs a unit with a minimal `PATH` that has neither, so `env node` is exit 127 and the wake glue's `exec claude` fails on it too |
 | wake glue | `<host>/bin/wake-<host>.sh` | resolves the card's project directory from the skill's `projects.json`, then runs `claude -p` / `codex exec` / `pi --print` |
 | host config | `<host>/meerkat-taskpanel.env` | the claim-unassigned policy, and `MEERKAT_TASKPANEL_REPO` — where the board engine lives |
 | runtime | `<host>/meerkat-taskpanel/{supervisor.log,supervisor.state.json}` | the tick log and the running registry |
@@ -75,6 +75,10 @@ the checkout does not invalidate them and reloading is never required.
 node <host>/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --once
 node <host>/meerkat-taskpanel/scripts/supervisor.mjs --agent alice --dry-run --once
 ```
+
+A bare `node` is right *here*, because you are in your own shell and it is your `PATH` that
+answers. The units cannot make that assumption (see the `units` row above), which is why
+they name an absolute interpreter and set their own `PATH`.
 
 | Flag | Default | Meaning |
 |---|---|---|
