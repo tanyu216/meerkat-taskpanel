@@ -9,23 +9,23 @@
  * deliberate subtractions.
  *
  * ---------------------------------------------------------------------------
- * Measured counts (host-static, re-pinned after R17 · T-20261013-184457 and
- * R14 · T-20261014-082533)
+ * Measured counts (host-static, re-pinned after R17 · T-20261013-184457,
+ * R14 · T-20261014-082533 and T-20261014-212017-3)
  * ---------------------------------------------------------------------------
- *   prototype MESSAGES  en 282 / zh 282 (exact 1:1 mirror)
- *   this catalogue      en 265 / zh 265 — the 282 minus the 17 prototype-only
+ *   prototype MESSAGES  en 288 / zh 288 (exact 1:1 mirror)
+ *   this catalogue      en 271 / zh 271 — the 288 minus the 17 prototype-only
  *                       keys listed below, still an exact 1:1 mirror (identical
  *                       key sets, identical key order, no duplicates, no empty
  *                       values)
- *   `%s` placeholders  246 keys carry none, 17 carry one, 2 carry two — and the
+ *   `%s` placeholders  252 keys carry none, 17 carry one, 2 carry two — and the
  *                       histogram is identical for en and zh, key for key (no
  *                       prototype-only key carries a placeholder)
- *   data-i18n* hooks    819 in `design/prototype/index.html`:
- *                         522 `data-i18n=`
+ *   data-i18n* hooks    849 in `design/prototype/index.html`:
+ *                         543 `data-i18n=`
  *                         193 `data-i18n-arg=`
- *                          78 `data-i18n-aria-label=`
- *                          18 `data-i18n-title=`
- *                           8 `data-i18n-placeholder=`
+ *                          85 `data-i18n-aria-label=`
+ *                          19 `data-i18n-title=`
+ *                           9 `data-i18n-placeholder=`
  *
  * ---------------------------------------------------------------------------
  * Prototype-only keys (deliberately not shipped)
@@ -54,9 +54,11 @@
  * Its header now quotes **626 `data-i18n*` hooks** and **282 catalogue keys** —
  * its own line reads "522 `data-i18n` plus 104 `placeholder` / `aria-label` /
  * `title` variants", so it counts four of the five attributes and leaves the 193
- * `data-i18n-arg` seats out. Measured over all five, the document carries 819;
- * the key count (282) does agree this round. Earlier rounds were wrong on both,
- * which is the case `test/web/blocks.contract.mjs` still keeps on the books as
+ * `data-i18n-arg` seats out. Measured over all five, the document carries 849;
+ * and its key count no longer agrees either — the 282 it states is one design
+ * round behind the 288 `app.js` now holds (T-20261014-212017-3 added the
+ * drawer's six edit keys). Earlier rounds were wrong on both, which is the
+ * case `test/web/blocks.contract.mjs` still keeps on the books as
  * `STALE_PROSE_COUNTS`. Machine checks must therefore count from the real
  * data/DOM and never assert a prose number from that header; every recorded
  * number is re-measured against the two documents on each run.
@@ -64,7 +66,7 @@
  * ---------------------------------------------------------------------------
  * Coverage: every hook the prototype's own markup authors resolves
  * ---------------------------------------------------------------------------
- * All 522 `data-i18n`, 78 `-aria-label`, 18 `-title` and 8 `-placeholder`
+ * All 543 `data-i18n`, 85 `-aria-label`, 19 `-title` and 9 `-placeholder`
  * values are real catalogue keys — except the 17 prototype-only demo values the
  * shipped app does not render (16 of them on `data-i18n`, `states.close` on
  * `-aria-label`), which the suite tracks by name. Every key composed at runtime
@@ -207,6 +209,12 @@ export const CATALOGUE = {
       "drawer.commentPlaceholder": "Write a comment…",
       "drawer.commentHint": "Comments are recorded in the activity log.",
       "drawer.submit": "Submit",
+      "drawer.save": "Save",
+      "drawer.upload": "Upload",
+      "drawer.editDescription": "Edit description",
+      "drawer.attachDownload": "Download",
+      "drawer.attachRemove": "Remove",
+      "drawer.readonly": "Read-only",
       "drawer.activity": "Activity",
       "activity.created": "created this task",
       "activity.claimed": "claimed the task",
@@ -474,6 +482,12 @@ export const CATALOGUE = {
       "drawer.commentPlaceholder": "写下评论…",
       "drawer.commentHint": "评论会记录到活动流中。",
       "drawer.submit": "提交",
+      "drawer.save": "保存",
+      "drawer.upload": "上传",
+      "drawer.editDescription": "编辑描述",
+      "drawer.attachDownload": "下载",
+      "drawer.attachRemove": "移除",
+      "drawer.readonly": "只读",
       "drawer.activity": "活动",
       "activity.created": "创建了任务",
       "activity.claimed": "认领了任务",
