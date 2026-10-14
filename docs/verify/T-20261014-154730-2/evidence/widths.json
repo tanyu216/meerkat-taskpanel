@@ -1,0 +1,82 @@
+{
+  "staticRoot": "/Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-154730-2-seg1/web/dist",
+  "widths": [
+    1512,
+    1240,
+    980,
+    760,
+    430
+  ],
+  "rows": [
+    {
+      "width": 1512,
+      "drawerWidth": 520,
+      "drawerLeft": 992,
+      "drawerRight": 1512,
+      "docScrollWidth": 1512,
+      "docClientWidth": 1512,
+      "docOverflow": false,
+      "bodyScrollWidth": 1512,
+      "drawerScrollWidth": 519,
+      "drawerClientWidth": 519,
+      "drawerContentOverflow": false,
+      "innerWidth": 1512
+    },
+    {
+      "width": 1240,
+      "drawerWidth": 520,
+      "drawerLeft": 720,
+      "drawerRight": 1240,
+      "docScrollWidth": 1240,
+      "docClientWidth": 1240,
+      "docOverflow": false,
+      "bodyScrollWidth": 1240,
+      "drawerScrollWidth": 519,
+      "drawerClientWidth": 519,
+      "drawerContentOverflow": false,
+      "innerWidth": 1240
+    },
+    {
+      "width": 980,
+      "drawerWidth": 520,
+      "drawerLeft": 460,
+      "drawerRight": 980,
+      "docScrollWidth": 980,
+      "docClientWidth": 980,
+      "docOverflow": false,
+      "bodyScrollWidth": 980,
+      "drawerScrollWidth": 519,
+      "drawerClientWidth": 519,
+      "drawerContentOverflow": false,
+      "innerWidth": 980
+    },
+    {
+      "width": 760,
+      "drawerWidth": 520,
+      "drawerLeft": 240,
+      "drawerRight": 760,
+      "docScrollWidth": 760,
+      "docClientWidth": 760,
+      "docOverflow": false,
+      "bodyScrollWidth": 760,
+      "drawerScrollWidth": 519,
+      "drawerClientWidth": 519,
+      "drawerContentOverflow": false,
+      "innerWidth": 760
+    },
+    {
+      "width": 430,
+      "drawerWidth": 430,
+      "drawerLeft": 0,
+      "drawerRight": 430,
+      "docScrollWidth": 430,
+      "docClientWidth": 430,
+      "docOverflow": false,
+      "bodyScrollWidth": 430,
+      "drawerScrollWidth": 429,
+      "drawerClientWidth": 429,
+      "drawerContentOverflow": false,
+      "innerWidth": 430
+    }
+  ]
+}
