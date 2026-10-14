@@ -345,6 +345,27 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The combobox popup stopped collapsing to its content width — fixed once, for both places
+  the control appears.** `.td-combo-menu`'s box was **110.19px** wide in the drawer where the
+  prototype draws **383px**, and its rows were 27.5px where the prototype's are 28; the create
+  dialog's menu had the same box and laid out as a block where the prototype is a flex column
+  (`T-20261014-212017-7` D3/D4). The cause was a competing declaration rather than a missing
+  one: the drawer's markup carries daisyUI's `menu` class — as the prototype's own
+  (`ul.menu.td-combo-menu`) does — and `.menu` declares `width: fit-content`, which wins an
+  absolutely positioned box over its `left: 0`. Stripping the class in the page flipped
+  110.19 → 383, which is how the cause was pinned. The shared box rule now states `width:
+  max(100%, 220px)` and the prototype's own metrics (`border-radius` 6px, `max-height` 232px,
+  `padding` 4px, 13px/1.5 type, a flex column with `flex-wrap: nowrap`) and the row rule the
+  prototype's `.menu li > button` (`min-height: 28px`, `padding: 0 8px`, `border-radius` 4px,
+  `color: var(--brand-text-2)`), so **both** surfaces land the same values from the one rule
+  family. The same pass adds the browser leg that had been missing — every existing gate was
+  blind to this box (`ui-align`'s baseline never opened either menu, `blocks.contract.mjs`
+  pins counts, and `docOverflow` reads `{0,0}` on both sides of the breakage):
+  `web/scripts/combo-menu-geometry.mjs`, which re-measures the box and a row on both surfaces,
+  asserts the two value sets are equal, and — as the defect's own signature — strips the
+  `menu` class and requires the width not to move. It is **15/38 red** on the pre-fix tree and
+  **38/38 green** after.
+
 - **The loop's scheduling units no longer resolve anything on the host's `PATH` — the
   `env: node` exit 127, fixed at both layers at once.** A scheduler starts a unit with a
   minimal `PATH` of its own, and on a machine whose node lives under nvm or Homebrew that

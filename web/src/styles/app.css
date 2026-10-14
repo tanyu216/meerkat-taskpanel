@@ -2020,18 +2020,45 @@ button.td-prop-value:hover {
 }
 
 /* The combobox popup: `position: absolute` inside a `position: relative` root,
-   flipped above the field when there is no room below. */
+   flipped above the field when there is no room below.
+
+   One box rule for both places the control appears — the create dialog's fields
+   and the drawer's status/priority rows — because the prototype states it once
+   for both (`design/prototype/src/input.css:2950`, carried into `tw.css:5633`).
+   `width` is the load-bearing declaration: the drawer's own markup carries
+   daisyUI's `menu` class, as the prototype's does (`ul.menu.td-combo-menu`), and
+   `.menu` declares `width: fit-content`. An absolutely positioned box with a
+   competing `width` settles on the width, so the popup shrank to its content —
+   110.19px against the prototype's 383 (T-20261014-212017-7 D3). `display` /
+   `flex-direction` / `flex-wrap` are stated here rather than borrowed from
+   `.menu` for the same reason: the dialog's menu carries no `menu` class, so it
+   would lay out as a block while the drawer's was a flex column. */
 .td-combo-menu {
-  @apply absolute left-0 right-0 z-[55] list-none overflow-y-auto border border-(--brand-border) rounded-lg bg-(--brand-surface) [box-shadow:var(--shadow-pop)];
+  @apply absolute left-0 z-[55] list-none overflow-y-auto border border-(--brand-border) bg-(--brand-surface) [box-shadow:var(--shadow-pop)];
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
   top: calc(100% + 4px);
-  max-height: 220px;
+  width: max(100%, 220px);
+  max-height: 232px;
   padding: var(--space-1);
   margin: 0;
-}
-.td-combo-menu button {
-  @apply flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent text-left text-inherit;
-  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-13);
+  line-height: var(--leading-body);
   border-radius: var(--radius-field);
+}
+/* The rows keep their height, so a long list scrolls instead of squashing into
+   the `max-height` above — the prototype's own reason for this rule. */
+.td-combo-menu > li { flex: none; }
+/* The row: the box's own metrics plus the design layer's `.menu li > button`
+   (`design/prototype/src/input.css:1639`) — a 28px line of secondary ink, 8px
+   in from each edge, on the 4px corner. */
+.td-combo-menu button {
+  @apply flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent text-left;
+  min-height: 28px;
+  padding: 0 var(--space-2);
+  color: var(--brand-text-2);
+  border-radius: var(--radius-selector);
 }
 .td-combo-menu button:hover { background: var(--brand-hover); }
 .td-combo-menu button[aria-selected="true"] { background: var(--brand-active); }
