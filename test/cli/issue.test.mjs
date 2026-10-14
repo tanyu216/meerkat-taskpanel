@@ -503,3 +503,81 @@ describe("cli/issue — move enforces the assignee (T-20261009-230500)", () => {
     });
   });
 });
+
+describe("cli/issue — `issue move --blocked-reason` (0016)", () => {
+  // The CLI half of the write path. The column itself is asserted over HTTP in
+  // test/server/routes.test.mjs; the point here is that the flag exists, that it
+  // reaches the board, and that the *vocabulary* — not a locally invented list —
+  // is what refuses a bad value.
+  it("writes the class on a move into `blocked`, and clears it on the move out", async () => {
+    await board(async ({ run }) => {
+      createIssue(run);
+
+      const blocked = dataOf(
+        run(["issue", "move", "DEMO-0001", "blocked", "--blocked-reason", "dependency", "--json"]),
+      );
+      assert.equal(blocked.task.status, "blocked");
+      assert.equal(blocked.task.blocked_reason, "dependency");
+
+      // A separate process reads it back, so the value is on the card and not
+      // merely in the response the writer happened to receive.
+      assert.equal(dataOf(run(["issue", "get", "DEMO-0001", "--json"])).task.blocked_reason, "dependency");
+
+      const back = dataOf(run(["issue", "move", "DEMO-0001", "in_progress", "--json"]));
+      assert.equal(back.task.status, "in_progress");
+      assert.equal(back.task.blocked_reason, null);
+      assert.equal(dataOf(run(["issue", "get", "DEMO-0001", "--json"])).task.blocked_reason, null);
+    });
+  });
+
+  it("is optional — a card blocked without a class is legal", async () => {
+    await board(async ({ run }) => {
+      createIssue(run);
+      const blocked = dataOf(run(["issue", "move", "DEMO-0001", "blocked", "--json"]));
+      assert.equal(blocked.task.status, "blocked");
+      assert.equal(blocked.task.blocked_reason, null);
+    });
+  });
+
+  it("refuses a value outside the eight literals with VALIDATION_FAILED", async () => {
+    await board(async ({ run }) => {
+      createIssue(run);
+
+      for (const bad of ["deps", "Dependency", "free text"]) {
+        const refused = run(["issue", "move", "DEMO-0001", "blocked", "--blocked-reason", bad, "--json"]);
+        assert.equal(refused.status, 1, `${bad}: ${refused.stdout}${refused.stderr}`);
+        const error = errorOf(refused);
+        assert.equal(error.code, "VALIDATION_FAILED");
+        assert.equal(error.details.field, "blocked_reason");
+        assert.equal(error.http, 400);
+      }
+
+      // The refused moves wrote nothing: the card never left `todo`.
+      assert.equal(dataOf(run(["issue", "get", "DEMO-0001", "--json"])).task.status, "todo");
+    });
+  });
+
+  it("writes the same column the HTTP body does — one card, two entry points", async () => {
+    await board(async ({ run, url, token }) => {
+      createIssue(run);
+
+      // HTTP in, CLI out: the flag and the body are two spellings of one write.
+      const moved = await fetch(`${url}/api/v1/tasks/DEMO-0001/move`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({ to: "blocked", blocked_reason: "defect" }),
+      });
+      assert.equal(moved.status, 200);
+      assert.equal((await moved.json()).data.task.blocked_reason, "defect");
+      assert.equal(dataOf(run(["issue", "get", "DEMO-0001", "--json"])).task.blocked_reason, "defect");
+
+      // And back out through the CLI — the column is cleared by whichever entry
+      // performed the move, since both go through the same command layer.
+      dataOf(run(["issue", "move", "DEMO-0001", "in_progress", "--json"]));
+      const read = await fetch(`${url}/api/v1/tasks/DEMO-0001`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      assert.equal((await read.json()).data.task.blocked_reason, null);
+    });
+  });
+});

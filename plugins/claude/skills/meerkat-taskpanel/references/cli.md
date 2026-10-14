@@ -90,7 +90,7 @@ project's directory.
 | `issue candidates --assignee <name> [--stale] [--include-unassigned] [--order board\|weight] [--order-debug]` | The poll's read: claimable cards for an assignee (`todo`, **auto-claimable** — not an `epic`, not a `deploy` —, every `depends_on` done; `--stale` adds `in_progress` cards whose heartbeat expired; `--include-unassigned` adds the **public pool** — unassigned claimable cards — for a supervisor whose policy allows them). Read-only — claiming still goes through `issue move`/claim semantics. `--order weight` refines the order *within* each claimability bucket, which stays the first key. |
 | `issue get <id\|identifier>` | One task, plus `report_waivers[]`. |
 | `issue update <ref> [--title] [--description] [--priority] [--kind] [--label]… [--meta k=v]… [--acceptance <text>]…` | Patch. `--status` is refused here on purpose. |
-| `issue move <ref> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"] [--awaiting-reason E1..E5]` | Move, subject to the delivery gate. A `todo → in_progress` move is a **claim**: only the card's assignee, unless `--allow-steal`. `--awaiting-reason` is **required** by a move to `awaiting` — see [The `awaiting` state](#the-awaiting-state--asking-a-human-a-question). |
+| `issue move <ref> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"] [--awaiting-reason E1..E5] [--blocked-reason <clarify\|decision\|dependency\|out_of_bounds\|defect\|external\|resource\|unknown>]` | Move, subject to the delivery gate. A `todo → in_progress` move is a **claim**: only the card's assignee, unless `--allow-steal`. `--awaiting-reason` is **required** by a move to `awaiting` — see [The `awaiting` state](#the-awaiting-state--asking-a-human-a-question). `--blocked-reason` is **optional** and records *what* a `blocked` card is waiting for — see [The `blocked` state](#the-blocked-state--what-the-card-is-waiting-for). |
 | `issue assign <ref> [--assignee <text>] [--assignee-id <id>] [--reporter <text>] [--force-create]` | Assign. |
 | `issue archive <ref> [--days <n>]` | Archive finished work (done/canceled; 7-day window by default). |
 | `issue deliver <ref> --report-file <file\|->` | **Write the report and move to `in_review`, in one transaction.** |
@@ -308,6 +308,60 @@ beside `status` (see below).
 **Reading it.** `issue list --status awaiting` lists the cards parked on a human.
 The web board's **waiting** view is that same set, and each row carries the entry
 category as a badge (localized `waiting.reason.E1..E5`).
+
+### The `blocked` state — what the card is waiting for
+
+`blocked` is the *other* stop, and it is a different statement: the card cannot
+proceed on its own, but nobody has been asked a question. The status already said
+that much; `blocked_reason` says **what** the card is waiting for, so an operator
+scanning the board — or the SLA patrol — does not have to open the comment trail
+and guess.
+
+**Writing it is one optional flag on the move.** `--blocked-reason` may accompany
+a move whose destination is `blocked`:
+
+```bash
+taskctl issue move PROJ-0007 blocked --blocked-reason dependency
+```
+
+Unlike `--awaiting-reason`, it is **not required**: a card blocked for a reason
+the writer cannot classify — or one they simply did not state — is legal, and the
+inspector reads an unset value as `clarify`. The only refusal is a value that is
+not one of the literals.
+
+**The vocabulary is eight words** — the *class* of the block, never free text:
+
+| Value | The card is waiting on |
+|---|---|
+| `clarify` | a clarification (the default the inspector assumes when unset) |
+| `decision` | a decision that has not been made |
+| `dependency` | another card, or another team, to land |
+| `out_of_bounds` | something outside this card's remit |
+| `defect` | a bug elsewhere that has to be fixed first |
+| `external` | a third party (a vendor, an upstream service) |
+| `resource` | a machine, an environment, or a budget |
+| `unknown` | there *is* a block, and it cannot be classified |
+
+`unknown` is deliberately **not** the spelling of "no reason": it is a writer
+saying there is a block they cannot classify, while an absent value says the
+writer stated none. The set is `BLOCKED_REASONS` in `src/core/domain/enums.mjs`,
+and nothing else defines it. Any other value — free text, an empty string — is
+refused with `VALIDATION_FAILED` (`details.field` is `blocked_reason`,
+`details.allowed` the vocabulary). Surrounding whitespace is trimmed and nothing
+else is: `Dependency` is not `dependency`.
+
+**The reason lives on the card, and only while it is blocked.** Entering `blocked`
+stamps `blocked_reason`; **leaving clears it**, to `null`, in the same write as the
+status change — so the column is non-null *exactly* while the card is `blocked`,
+and a reworked or canceled card never keeps a stale class. A flag passed on a move
+to any other status is simply not read. `--json` carries it on the task object
+beside `status` as `blocked_reason` (see below), and the card's own history keeps
+the class on the `task_moved` activity, so the trail still says why after the
+column is cleared.
+
+The field is documented on the card itself in
+[`card-schema.md`](./card-schema.md#blocked_reason--what-a-blocked-card-is-waiting-for),
+including how a value that is not a literal survives a markdown import.
 
 ### `comment`
 
