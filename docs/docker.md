@@ -249,9 +249,14 @@ hosts installed: the profile's `target_dir` and `installer` are exercised for re
 the installed skill is executed through its own wrapper.
 
 The verification installs with `--link` semantics (`MEERKAT_TASKPANEL_LINK=1`), matching
-`install.sh --link`. The skill's wrapper resolves the CLI relative to its own file
-location, so only a symlinked skill points back at this checkout; a copied skill has no
-`src/` next to it. See [Troubleshooting](#troubleshooting).
+`install.sh --link`. That is what keeps this check on the wrapper's **checkout-relative**
+rung: a symlinked skill still has this checkout three levels up, so `run.mjs` finds the CLI
+beside it, and `--version` exercises that path end to end. The mode `install.sh` *defaults*
+to — a copy, which carries no `src/` — is covered per host by
+`test/install/installed-copy.test.mjs`: it installs all four hosts by copy and asserts the
+wrapper falls back to `taskctl` on `PATH` or to an explicitly named checkout, and otherwise
+refuses with an actionable remedy rather than a crash. See
+[Troubleshooting](#troubleshooting).
 
 ## Host-allowed checks
 
@@ -363,10 +368,15 @@ A tarball the lockfile needs is missing from `web/.vendor/npm-cache` — usually
 [re-vendoring step](#re-vendoring-the-npm-cache) and commit the refreshed cache with the
 lockfile.
 
-**`profiles: ... wrapper ... exit 1` / `Cannot find module .../src/cli/index.mjs`.**
-The skill was *copied* instead of linked, so the wrapper's relative path walked up out of
-the checkout. Install with `--link` (`install.sh --link`, or `MEERKAT_TASKPANEL_LINK=1`), which
-is what `scripts/verify/profiles.mjs` does.
+**`profiles: ... wrapper ... exit 1` / `meerkat-taskpanel: cannot find the board CLI to run`.**
+The wrapper found no CLI on any rung: no checkout named by `MEERKAT_TASKPANEL_ROOT` or
+`MEERKAT_TASKPANEL_REPO`, no checkout around the skill itself (an installed copy carries no
+`src/`), and no `taskctl` on `PATH`. The message prints what it looked for and the three
+ways in; pick one — install the CLI and put it on `PATH` (`install.sh --target <host>`),
+name a checkout in `MEERKAT_TASKPANEL_ROOT`, or run that checkout's own
+`skills/meerkat-taskpanel/scripts/run.mjs`. A *copied* skill is not a failure by itself:
+before T-20261014-214002 this case died with `Cannot find module .../src/cli/index.mjs`,
+and reinstalling with `--link` was the only way out.
 
 **Port 9527 is already in use on the host.**
 `docker compose up` fails to bind. Stop the other listener, or edit the published port in

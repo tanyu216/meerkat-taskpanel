@@ -8,6 +8,13 @@
 second copy of the rules in the CLI: a refusal you see here is the one the service
 raised, with the same code, the same details and the same repair command.
 
+> **`src/…` paths below are provenance.** A few places name the file a set or a rule is
+> *defined* in (`src/core/domain/status.mjs`, `src/core/domain/enums.mjs`,
+> `src/server/main.mjs`). Those are paths in the **taskpanel source repository**; this skill
+> ships `SKILL.md`, `references/` and `scripts/` only, so they are pointers for whoever is
+> reading the source, not files an installed copy has. Nothing in this page asks you to run
+> them — every command here is `taskctl`.
+
 ```bash
 taskctl <group> <command> [options]
 ```
