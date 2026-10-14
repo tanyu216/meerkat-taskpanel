@@ -21,7 +21,7 @@
 | lane worktree | `/Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-125122-seg1` |
 | branch | **`lane/T-20261014-125122-seg1`** |
 | 被验 SUT（父提交） | **`3ad4b19`** = 进入本卡时的 main tip（= 主 checkout HEAD，批次 B/C 已并入） |
-| 交付提交 | 见 §6：ranch 分支在**可 fetch 的镜像仓**里提交（本 lane 沙箱禁止写共享 `.git`，见 §6 R-1）；sha 记录在 `evidence/commit.txt` 与最终回复 |
+| 交付提交 | 本 lane 沙箱禁止写共享 `.git`（`index.lock` EPERM，见 §6 R-1），故落在**可 fetch 的镜像仓** `/tmp/lane-mirror-T-20261014-125122b`：产物提交 **`3e81a3a`**（27 文件）→ `4c21128`（附 `integration.patch`）→ `e227fe4`（台账校正）；sha 亦见 `evidence/commit.txt` 与最终回复 |
 | push | 未 push（等集成） |
 
 ## 2 · ① 关系行结构（selector 级，chips 表 2）
@@ -107,9 +107,17 @@
   主 checkout `/Users/tanyu/Documents/meerkat-taskpanel` 干净且同 sha（`3ad4b19`）。实现/契约/测试文件（`web/**`、`src/**`、`design/**`、`test/**`）逐字未动。
 - **R-1（环境阻塞，必须登记）**：本 lane 沙箱的可写根不含共享 `.git`（`/Users/tanyu/Documents/meerkat-taskpanel/.git`），
   `git add` 即 `Unable to create '…/worktrees/…-seg1/index.lock': Operation not permitted (128)` —— 与 154930-3 同因。
-  故本卡产物**通过一个可 fetch 的镜像仓提交**（`/tmp/lane-mirror-T-20261014-125122`，`git fetch <lane-worktree> lane/T-…` 后
-  在 `3ad4b19` 上落成），集成方可直接 `git fetch /tmp/lane-mirror-T-20261014-125122 lane/T-20261014-125122-seg1` 取用；
-  另附 `integration.patch`（该提交的 `format-patch`）与 `evidence/commit.txt`（sha 台账，提交后写入）。
+  故本卡产物**通过一个可 fetch 的镜像仓提交**（`/tmp/lane-mirror-T-20261014-125122b`，由
+  `git fetch <lane-worktree> lane/T-20261014-125122-seg1` 取得 `3ad4b19` 后在**同一父提交**上落成，
+  三个提交全部只动 `docs/verify/T-20261014-125122/**`，`git diff-tree 3ad4b19 HEAD` 无本卡目录外路径）：
+
+  | 提交 | 内容 | sha |
+  |---|---|---|
+  | A | harness + fixture + mutations + report + 全量证据（27 文件） | `3e81a3aa0a301a1b151d7628011fc6d4a9bd6edf` |
+  | B | A + `integration.patch`（= A 的 `format-patch`，自描述副本） | `4c2112838194d91e9bc59a2dc6a1e72313e06991` |
+  | C | `evidence/commit.txt` 台账校正 | `e227fe44e836a43d52a252acb561b67d3ac502f0` |
+
+  集成方可直接 `git fetch /tmp/lane-mirror-T-20261014-125122b lane/T-20261014-125122-seg1`（或 `git am` 上面任一 sha 的 `format-patch`）。
 - **flake**：真实 flake **未现**。同一读法跑了 6 次（tip / 4 例抽件 / 还原），焦点帧迹与关系行读数逐值一致；
   四门里也没有出现「同一命令重复跑结果不同」的现象（门禁的红全部可复现且成因唯一 = socket）。
 - 产物：`docs/verify/T-20261014-125122/{verify-integration.mjs,fixture.mjs,mutations.mjs,evidence/**}`（另 `verification/T-20261014-125122/report.md`、`/tmp/T-20261014-125122/report.md` 同内容副本）。
