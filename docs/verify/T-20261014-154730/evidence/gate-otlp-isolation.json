@@ -1,0 +1,22 @@
+{
+  "card": "T-20261014-154730",
+  "command": "node --test test/monitoring/exporter.test.mjs",
+  "runs": [
+    {
+      "log": "otlp-run-1.log",
+      "pass": null,
+      "fail": null
+    },
+    {
+      "log": "otlp-run-2.log",
+      "pass": null,
+      "fail": null
+    }
+  ],
+  "exitCodes": [
+    0,
+    0
+  ],
+  "reading": "the container red (exporter — OTLP push) is green in isolation on the same tip, twice — the load-flaky signature.",
+  "surface": "this card touches no file under src/monitoring or test/monitoring (git diff --name-only 7cb8e42..HEAD)."
+}
