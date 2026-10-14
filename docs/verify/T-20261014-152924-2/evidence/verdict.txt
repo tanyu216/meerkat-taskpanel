@@ -1,0 +1,23 @@
+# stdout verdict summary — T-20261014-152924-2 (SUT da709a1)
+# 01 repro-claim-release.mjs            exit 0
+
+26/26 checks pass — verdict PASS
+readings → /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-152924-2-seg1/docs/verify/T-20261014-152924-2/evidence/repro-claim-release.json
+
+# 02 scan-error-envelope.mjs            exit 0
+PASS  ② sweep · the engine text itself survives on details.sqlite for every mapped failure  [72/72 carried details.sqlite.message === the raw engine text]
+
+19/19 checks pass — verdict PASS
+readings → /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-152924-2-seg1/docs/verify/T-20261014-152924-2/evidence/scan-error-envelope.json
+
+# 03 check-ui-fallback.mjs              exit 0  (dist = git-archive HEAD build, /tmp)
+# probe tip: root=/Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-152924-2-seg1 dist=/tmp/T-20261014-152924-2.EDqwyN/dist-tip dist/index.html=true
+28/28 checks pass — verdict PASS
+readings → /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-152924-2-seg1/docs/verify/T-20261014-152924-2/evidence/ui-fallback.json
+
+# 04 mutations.mjs                      exit 0
+
+restore — probe three on the pristine tree: exit=0 failed=0 verdict=PASS
+
+PASS — every mutant went red on the named assertion and the pristine tree stayed green
+readings → /Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261014-152924-2-seg1/docs/verify/T-20261014-152924-2/evidence/mutations.json
