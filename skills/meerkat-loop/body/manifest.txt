@@ -6,3 +6,4 @@ src/shared/project-dir.mjs
 src/shared/redact.mjs
 src/shared/runtime-locator.mjs
 src/shared/scheduling.mjs
+src/shared/sla-patrol.mjs
