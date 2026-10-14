@@ -2931,8 +2931,8 @@ export const STALE_PROSE_COUNTS = Object.freeze([
   }),
   Object.freeze({
     claim: "198 catalogue keys",
-    measured: 281,
-    detail: "en = 281 and zh = 281, mirrored 1:1 — the prototype `MESSAGES` count the body states; the shipped extraction drops the 17 prototype-only keys, so it ships 264",
+    measured: 282,
+    detail: "en = 282 and zh = 282, mirrored 1:1 — the prototype `MESSAGES` count the body states; the shipped extraction drops the 17 prototype-only keys, so it ships 265",
     verdict: "stale",
   }),
   Object.freeze({
