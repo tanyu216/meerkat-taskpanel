@@ -102,6 +102,11 @@ label selector opens (one of the two is open at a time).
 > 与 `app.js` 的 `PROJECT_PREFIX` 逐字一致（本行「prefix monogram」即此义）；实现侧
 > `initialsOf(name)` 是偏离，另卡修正。
 
+> **前缀蒙版的溢出（口径 = `design/contracts/rail-chip-overflow.md`）**：`.td-side-icon` 的文本 =
+> 项目的**有效前缀**，逐字渲染；`24×24` 的盒装不下时，**行内自伤可接受、跨行他伤不可接受**——
+> 绘制文本不得越出本行行盒、不得越出 rail 的 inline 盒；整串走 `title`。盒几何（24×24、rail only）
+> 与「≥1024px 不显示」不动。实测依据、被排除的候选（clamp / `…` / 字符 slice）与留给实现卡的断言清单见该契约。
+
 **R11 ② — a roster name is a route.** The `.td-agent-text` span used to hold the row's names
 as one string of text; it now holds one `<button>` per name (`[data-agent-assignee="jobs"]`,
 carrying `data-assignee` + `data-assignee-kind="agent"` as well), with the commas left as the
