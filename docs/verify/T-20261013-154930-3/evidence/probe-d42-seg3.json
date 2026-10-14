@@ -1,0 +1,90 @@
+{
+  "row": {
+    "tag": "div",
+    "class": "td-file",
+    "rect": {
+      "l": 1013,
+      "r": 1492,
+      "w": 479,
+      "h": 32
+    },
+    "width": "479px",
+    "height": "32px",
+    "flex": "0/1/auto",
+    "marginLeft": "0px",
+    "display": "flex",
+    "paddingLeft": "8px",
+    "paddingRight": "8px",
+    "overflowX": "visible"
+  },
+  "children": [
+    {
+      "tag": "svg",
+      "class": "td-icon size-4",
+      "rect": {
+        "l": 1022,
+        "r": 1038,
+        "w": 16,
+        "h": 16
+      },
+      "width": "16px",
+      "height": "16px",
+      "flex": "0/0/auto",
+      "marginLeft": "0px",
+      "display": "block"
+    },
+    {
+      "tag": "span",
+      "class": "td-file-name",
+      "rect": {
+        "l": 1046,
+        "r": 1194.39,
+        "w": 148.39,
+        "h": 18
+      },
+      "width": "148.391px",
+      "height": "18px",
+      "flex": "0/1/auto",
+      "marginLeft": "0px",
+      "display": "block"
+    },
+    {
+      "tag": "span",
+      "class": "td-file-size",
+      "rect": {
+        "l": 1449.88,
+        "r": 1483,
+        "w": 33.13,
+        "h": 16.5
+      },
+      "width": "33.125px",
+      "height": "16.5px",
+      "flex": "0/1/auto",
+      "marginLeft": "247.484px",
+      "display": "block"
+    }
+  ],
+  "size": {
+    "tag": "span",
+    "class": "td-file-size",
+    "rect": {
+      "l": 1449.88,
+      "r": 1483,
+      "w": 33.13,
+      "h": 16.5
+    },
+    "width": "33.125px",
+    "height": "16.5px",
+    "flex": "0/1/auto",
+    "marginLeft": "247.484px",
+    "display": "block"
+  },
+  "rowScroll": {
+    "scrollWidth": 477,
+    "clientWidth": 477
+  },
+  "docOverflow": {
+    "scrollWidth": 1512,
+    "clientWidth": 1512
+  }
+}
