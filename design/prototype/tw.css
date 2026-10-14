@@ -5677,6 +5677,91 @@ html[data-theme="dark"] .modal-box {
   .td-prop-combo {
     gap: 6px;
   }
+  /* T-20261014-212017-3 · a section head with a control trailing it. Only the
+     two sections this round put an action in the head; the title keeps its own
+     rule and this only takes its margin over, so the row centres. */
+  .td-section-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .td-section-head > .td-section-title {
+    margin: 0;
+  }
+  .td-section-head > .btn,
+  .td-section-head > .td-iconbtn {
+    margin-left: auto;
+  }
+  /* The file row's actions. With them present the size gives up its push to the
+     right — the buttons take it — so name and size read as one group on the
+     left and the row's own affordances sit at the far edge. */
+  .td-file-actions {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 2px;
+    margin-left: auto;
+  }
+  .td-file:has(.td-file-actions) .td-file-size {
+    margin-left: 0;
+  }
+  /* Status / priority rows: the assignee option row's shape, over the fixed
+     enumerations rather than a roster. */
+  .td-combo-menu .td-combo-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    font-size: 13px;
+    text-align: start;
+  }
+  /* The Description section's two faces. The mode attribute is the only thing
+     that decides which is showing — the stylesheet holds both readings, and the
+     editor's own `hidden` agrees with the `read` half so the no-JS floor is the
+     rendered text. */
+  [data-detail-description-mode="read"] [data-md-editor] {
+    display: none;
+  }
+  [data-detail-description-mode="edit"] [data-detail-description],
+  [data-detail-description-mode="edit"] [data-detail-description-edit] {
+    display: none;
+  }
+  .td-desc-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 8px;
+    border-top: 1px solid var(--color-td-line);
+  }
+  /* A disabled control says so, and says it the same way wherever it is: the
+     read-only drawer disables a whole family at once. */
+  .td-iconbtn:disabled,
+  .td-prop-value:disabled,
+  .td-chip-remove:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .td-iconbtn:disabled:hover,
+  .td-prop-value:disabled:hover {
+    color: var(--color-td-ink-2);
+    background-color: transparent;
+    border-color: transparent;
+  }
+  /* The drawer's file input is a picker handle and nothing else: it is reached
+     through the section's Upload button, so it is never shown and never a tab
+     stop. */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
   .td-combo-inline {
     flex: 1 1 auto;
     min-width: 0;

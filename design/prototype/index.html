@@ -3432,6 +3432,12 @@
             <span class="status td-status-dot" aria-hidden="true"></span>
             <span data-detail-status-chip-label data-i18n="status.todo">To Do</span>
           </span>
+          <!-- T-20261014-212017-3 · the drawer's read-only badge. A terminal
+               card (`done` / `canceled`) opens with every edit affordance
+               disabled; the attribute and this badge are written together by
+               `openDetail`. Elon's reopen path is a privileged one and is
+               deliberately not offered here. -->
+          <span class="badge badge-sm td-chip" data-detail-readonly data-i18n="drawer.readonly" hidden>Read-only</span>
           <button
             type="button"
             class="td-iconbtn"
@@ -3462,23 +3468,53 @@
           <h3 class="td-section-title" data-i18n="drawer.properties">Properties</h3>
           <div class="td-props" data-detail-props>
             <span class="td-prop-label" data-i18n="prop.status">Status</span>
-            <button type="button" class="td-prop-value" data-detail-status data-status="todo">
-              <span class="status td-status-dot" aria-hidden="true"></span>
-              <span data-detail-status-label>To Do</span>
-              <svg class="td-icon td-icon-sm" style="color: var(--color-td-ink-4)" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 9.5 12 15.5 18 9.5" /></svg>
-            </button>
+            <!-- T-20261014-212017-3 · status is editable in place. The control
+                 is the board's own `.td-combo` + `ul.menu` dropdown (B22/B25):
+                 the trigger keeps the caret it already carried, and the menu is
+                 its panel. `data-status` rides on the option button so the
+                 existing `[data-status=…]` rule colours the dot in the row. -->
+            <div class="td-combo td-prop-combo" data-detail-status-combo data-detail-save-field="status">
+              <button type="button" class="td-prop-value" data-detail-status data-status="todo" aria-haspopup="listbox" aria-expanded="false" aria-controls="td-status-menu-detail">
+                <span class="status td-status-dot" aria-hidden="true"></span>
+                <span data-detail-status-label>To Do</span>
+                <svg class="td-icon td-icon-sm" style="color: var(--color-td-ink-4)" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 9.5 12 15.5 18 9.5" /></svg>
+              </button>
+              <ul class="menu td-combo-menu" id="td-status-menu-detail" role="listbox" data-detail-status-menu hidden>
+                <li role="none"><button type="button" class="td-combo-option" role="option" aria-selected="false" data-detail-status-option data-status="backlog" data-status-value="backlog"><span class="status td-status-dot" aria-hidden="true"></span><span data-i18n="status.backlog">Backlog</span></button></li>
+                <li role="none"><button type="button" class="td-combo-option" role="option" aria-selected="false" data-detail-status-option data-status="todo" data-status-value="todo"><span class="status td-status-dot" aria-hidden="true"></span><span data-i18n="status.todo">To Do</span></button></li>
+                <li role="none"><button type="button" class="td-combo-option" role="option" aria-selected="false" data-detail-status-option data-status="in_progress" data-status-value="in_progress"><span class="status td-status-dot" aria-hidden="true"></span><span data-i18n="status.in_progress">In Progress</span></button></li>
+                <li role="none"><button type="button" class="td-combo-option" role="option" aria-selected="false" data-detail-status-option data-status="in_review" data-status-value="in_review"><span class="status td-status-dot" aria-hidden="true"></span><span data-i18n="status.in_review">In Review</span></button></li>
+                <li role="none"><button type="button" class="td-combo-option" role="option" aria-selected="false" data-detail-status-option data-status="blocked" data-status-value="blocked"><span class="status td-status-dot" aria-hidden="true"></span><span data-i18n="status.blocked">Blocked</span></button></li>
+                <li role="none"><button type="button" class="td-combo-option" role="option" aria-selected="false" data-detail-status-option data-status="done" data-status-value="done"><span class="status td-status-dot" aria-hidden="true"></span><span data-i18n="status.done">Done</span></button></li>
+                <li role="none"><button type="button" class="td-combo-option" role="option" aria-selected="false" data-detail-status-option data-status="canceled" data-status-value="canceled"><span class="status td-status-dot" aria-hidden="true"></span><span data-i18n="status.canceled">Canceled</span></button></li>
+              </ul>
+            </div>
 
             <span class="td-prop-label" data-i18n="prop.priority">Priority</span>
-            <button type="button" class="td-prop-value" data-detail-priority data-priority="high">
-              <span class="td-pri" role="img" aria-label="Priority: High">
-                <svg class="td-pri-glyph" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
-                  <rect x="2.5" y="2.5" width="7" height="7" rx="1" />
-                  <line x1="2" y1="6" x2="10" y2="6" />
-                </svg>
-              </span>
-              <span data-detail-priority-label>High</span>
-              <svg class="td-icon td-icon-sm" style="color: var(--color-td-ink-4)" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 9.5 12 15.5 18 9.5" /></svg>
-            </button>
+            <!-- Priority takes the same dropdown. Unlike status, the priority
+                 colour rides on the `.td-pri` wrapper inside each row rather
+                 than on the row itself, so the row's label text keeps the ink
+                 colour and only the glyph is tinted — the shape the trigger
+                 button already uses. -->
+            <div class="td-combo td-prop-combo" data-detail-priority-combo data-detail-save-field="priority">
+              <button type="button" class="td-prop-value" data-detail-priority data-priority="high" aria-haspopup="listbox" aria-expanded="false" aria-controls="td-priority-menu-detail">
+                <span class="td-pri" role="img" aria-label="Priority: High">
+                  <svg class="td-pri-glyph" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+                    <rect x="2.5" y="2.5" width="7" height="7" rx="1" />
+                    <line x1="2" y1="6" x2="10" y2="6" />
+                  </svg>
+                </span>
+                <span data-detail-priority-label>High</span>
+                <svg class="td-icon td-icon-sm" style="color: var(--color-td-ink-4)" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 9.5 12 15.5 18 9.5" /></svg>
+              </button>
+              <ul class="menu td-combo-menu" id="td-priority-menu-detail" role="listbox" data-detail-priority-menu hidden>
+                <li role="none"><button type="button" class="td-combo-option" role="option" aria-selected="false" data-detail-priority-option data-priority-value="none"><span class="td-pri" data-priority="none" aria-hidden="true"><svg class="td-pri-glyph" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><rect x="2.5" y="2.5" width="7" height="7" rx="1" /><line x1="2" y1="6" x2="10" y2="6" /></svg></span><span data-i18n="priority.none">None</span></button></li>
+                <li role="none"><button type="button" class="td-combo-option" role="option" aria-selected="false" data-detail-priority-option data-priority-value="low"><span class="td-pri" data-priority="low" aria-hidden="true"><svg class="td-pri-glyph" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><rect x="2.5" y="2.5" width="7" height="7" rx="1" /><line x1="2" y1="6" x2="10" y2="6" /></svg></span><span data-i18n="priority.low">Low</span></button></li>
+                <li role="none"><button type="button" class="td-combo-option" role="option" aria-selected="false" data-detail-priority-option data-priority-value="medium"><span class="td-pri" data-priority="medium" aria-hidden="true"><svg class="td-pri-glyph" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><rect x="2.5" y="2.5" width="7" height="7" rx="1" /><line x1="2" y1="6" x2="10" y2="6" /></svg></span><span data-i18n="priority.medium">Medium</span></button></li>
+                <li role="none"><button type="button" class="td-combo-option" role="option" aria-selected="false" data-detail-priority-option data-priority-value="high"><span class="td-pri" data-priority="high" aria-hidden="true"><svg class="td-pri-glyph" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><rect x="2.5" y="2.5" width="7" height="7" rx="1" /><line x1="2" y1="6" x2="10" y2="6" /></svg></span><span data-i18n="priority.high">High</span></button></li>
+                <li role="none"><button type="button" class="td-combo-option" role="option" aria-selected="false" data-detail-priority-option data-priority-value="urgent"><span class="td-pri" data-priority="urgent" aria-hidden="true"><svg class="td-pri-glyph" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><rect x="2.5" y="2.5" width="7" height="7" rx="1" /><line x1="2" y1="6" x2="10" y2="6" /></svg></span><span data-i18n="priority.urgent">Urgent</span></button></li>
+              </ul>
+            </div>
 
             <span class="td-prop-label" data-i18n="prop.assignee">Assignee</span>
             <!-- Re-assignment happens here, so this is an assignee control too:
@@ -3612,8 +3648,19 @@
           </div>
         </section>
 
-        <section class="td-section">
-          <h3 class="td-section-title" data-i18n="drawer.description">Description</h3>
+        <section class="td-section" data-detail-description-section data-detail-description-mode="read" data-detail-save-field="description">
+          <div class="td-section-head">
+            <h3 class="td-section-title" data-i18n="drawer.description">Description</h3>
+            <!-- T-20261014-212017-3 · the rendered markdown and its editor are
+                 two faces of one section: `data-detail-description-mode` says
+                 which is showing, and the stylesheet does the hiding. The
+                 editor is B23 as the create dialog ships it — the same
+                 `.td-md-*` machinery and the same vendored renderer/highlighter
+                 — re-hung on this surface's own hooks. -->
+            <button type="button" class="td-iconbtn" data-detail-description-edit data-i18n-aria-label="drawer.editDescription" aria-label="Edit description" title="Edit description">
+              <svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 20h4l10-10-4-4L4 16z" /><path d="M14 6l4 4" /></svg>
+            </button>
+          </div>
           <div class="td-gfm" data-detail-description>
             <p>Board navigation is mouse-only today. Keyboard users can reach a card but cannot move it between columns.</p>
             <h4>Acceptance</h4>
@@ -3645,6 +3692,28 @@
               </li>
             </ul>
           </div>
+
+          <div class="td-md-editor" data-md-editor hidden>
+            <div class="td-md-bar">
+              <div class="tabs tabs-box td-md-tabs" role="group" data-i18n-aria-label="md.label" aria-label="Markdown view">
+                <button type="button" class="tab td-tab td-md-toggle" data-md-toggle="write" aria-pressed="true" data-i18n="md.write">Write</button>
+                <button type="button" class="tab td-tab td-md-toggle" data-md-toggle="preview" aria-pressed="false" data-i18n="md.preview">Preview</button>
+                <button type="button" class="tab td-tab td-md-toggle" data-md-toggle="split" aria-pressed="false" data-i18n="md.split">Split</button>
+              </div>
+              <span class="td-md-hint" data-i18n="md.hint">Markdown · rendered locally</span>
+            </div>
+            <div class="td-md-panes" data-md-mode="write">
+              <div class="td-md-pane td-md-pane-write">
+                <pre class="td-md-text td-md-highlight" data-md-highlight aria-hidden="true"></pre>
+                <textarea class="td-md-text td-md-source" rows="8" spellcheck="false" autocomplete="off" data-md-source data-i18n-aria-label="createTask.field.description" aria-label="Description"></textarea>
+              </div>
+              <div class="td-md-pane td-md-pane-preview"><div class="td-gfm td-md-text td-md-preview" data-md-preview></div></div>
+            </div>
+            <div class="td-desc-actions">
+              <button type="button" class="btn btn-xs" data-detail-description-save data-i18n="drawer.save">Save</button>
+              <button type="button" class="btn btn-outline btn-xs" data-detail-description-cancel data-i18n="modal.cancel">Cancel</button>
+            </div>
+          </div>
         </section>
 
         <section class="td-section">
@@ -3659,6 +3728,47 @@
               <button type="button" class="td-copy" data-relation-link>TD-130</button>
               <button type="button" class="td-copy" data-relation-link>TD-126</button>
             </span>
+          </div>
+
+          <!-- T-20261014-212017-3 · `depends_on` is the `blocks` relation
+               (PROTOCOL §①), so the read-only Blocks links above are the
+               control's seed rather than a second source: `openDetail` reads
+               them into these chips and drops the row. From then on the
+               relation is edited here — B24's multi-select chip combo, pointed
+               at the drawer's own hook family. -->
+          <div class="td-combo td-prop-combo" data-detail-depends data-detail-save-field="depends">
+            <span class="td-prop-label" data-i18n="relations.blocks">Blocks</span>
+            <div class="td-chips" data-detail-depends-chips></div>
+            <div class="td-combo-field">
+              <input
+                class="input input-sm td-input w-full"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+                aria-controls="td-depends-menu-detail"
+                data-detail-depends-input
+                data-i18n-title="combo.taskHint"
+                title="↑↓ to choose, Enter to add, Esc to dismiss."
+                data-i18n-placeholder="combo.dependsPlaceholder"
+                placeholder="Add a prerequisite…"
+              />
+            </div>
+            <ul class="menu td-combo-menu" id="td-depends-menu-detail" role="listbox" data-detail-depends-menu hidden>
+              <!-- The inert resting seed — this project's own cards, the same
+                   reading the create dialog's prerequisite menu offers. The
+                   control redraws it from the live board the moment it is
+                   focused, so these rows are the no-JS floor, not a source. -->
+              <li role="option" data-detail-depends-option data-detail-depends-value="TD-125"><span class="td-mono td-combo-id">TD-125</span><span class="td-combo-title">Draft the v1 prototype of the task board</span></li>
+              <li role="option" data-detail-depends-option data-detail-depends-value="TD-130"><span class="td-mono td-combo-id">TD-130</span><span class="td-combo-title">Tighten filter debounce and query state</span></li>
+              <li role="option" data-detail-depends-option data-detail-depends-value="TD-126"><span class="td-mono td-combo-id">TD-126</span><span class="td-combo-title">Skeleton loading for list view</span></li>
+              <li role="option" data-detail-depends-option data-detail-depends-value="TD-124"><span class="td-mono td-combo-id">TD-124</span><span class="td-combo-title">Add agent session provenance block</span></li>
+              <li role="option" data-detail-depends-option data-detail-depends-value="TD-133"><span class="td-mono td-combo-id">TD-133</span><span class="td-combo-title">Expose task version in the edit response</span></li>
+              <li role="option" data-detail-depends-option data-detail-depends-value="TD-129"><span class="td-mono td-combo-id">TD-129</span><span class="td-combo-title">Audit dependency licences for vendored assets</span></li>
+            </ul>
           </div>
         </section>
 
@@ -3681,18 +3791,34 @@
           </div>
         </section>
 
-        <section class="td-section">
-          <h3 class="td-section-title" data-i18n="drawer.attachments">Attachments</h3>
+        <section class="td-section" data-detail-attachments-section data-detail-save-field="attachments">
+          <div class="td-section-head">
+            <h3 class="td-section-title" data-i18n="drawer.attachments">Attachments</h3>
+            <!-- T-20261014-212017-3 · the section's own upload control. The file
+                 input is the browser's picker and nothing else: the row that
+                 follows reads the file's name and size and stops there — no
+                 request, no store, no credential (§⑨.2). -->
+            <button type="button" class="btn btn-outline btn-xs" data-attachment-upload data-i18n="drawer.upload">Upload</button>
+            <input type="file" multiple class="sr-only" data-attachment-file aria-hidden="true" tabindex="-1" />
+          </div>
           <div data-detail-attachments>
             <div class="td-file">
               <svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg>
               <span class="td-file-name">board-keyboard-spec.md</span>
               <span class="td-file-size">12 KB</span>
+              <span class="td-file-actions">
+                <button type="button" class="td-iconbtn" data-attachment-download data-i18n-aria-label="drawer.attachDownload" aria-label="Download" title="Download"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v11M7 11l5 5 5-5M5 20h14" /></svg></button>
+                <button type="button" class="td-iconbtn" data-attachment-remove data-i18n-aria-label="drawer.attachRemove" aria-label="Remove" title="Remove"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
+              </span>
             </div>
             <div class="td-file">
               <svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3v5h5M7 3h7l5 5v13H7z" /></svg>
               <span class="td-file-name">focus-order-record.png</span>
               <span class="td-file-size">248 KB</span>
+              <span class="td-file-actions">
+                <button type="button" class="td-iconbtn" data-attachment-download data-i18n-aria-label="drawer.attachDownload" aria-label="Download" title="Download"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v11M7 11l5 5 5-5M5 20h14" /></svg></button>
+                <button type="button" class="td-iconbtn" data-attachment-remove data-i18n-aria-label="drawer.attachRemove" aria-label="Remove" title="Remove"><svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
+              </span>
             </div>
           </div>
         </section>
@@ -4590,6 +4716,31 @@ npm test
             <li><span class="td-check" data-checked="false"></span><span>Announce the new column after a move</span></li>
           </ul>
         </div>
+        <!-- T-20261014-212017-3 · the card's markdown *source*, beside the
+             rendered slot rather than inside it. `fill()` only ever reads
+             `description`, so this never reaches the page: it is the seed the
+             in-place editor opens with, which is what lets an edit round-trip
+             instead of starting from the rendered HTML. -->
+        <script type="text/plain" data-slot="description-src">Board navigation is mouse-only today. Keyboard users can reach a card but cannot move it between columns.
+
+#### Acceptance
+
+- Tab order follows the visual column order
+- Enter opens the detail drawer for the focused card
+
+```html
+<section class="td-col" data-column data-status="todo">
+```
+
+| Key | Action |
+| --- | ------ |
+| Enter | Open detail |
+| Esc | Close detail |
+
+> Keep the DOM order stable so focus never jumps between columns.
+
+- [x] Roving tabindex on cards
+- [ ] Announce the new column after a move</script>
         <div data-slot="relations">
           <span class="td-rel-item"><span class="text-xs text-td-ink-3" data-i18n="relations.parent">Parent</span><button type="button" class="td-copy" data-relation-link>TD-125</button></span>
           <span class="td-rel-item"><span class="text-xs text-td-ink-3" data-i18n="relations.blocks">Blocks</span><button type="button" class="td-copy" data-relation-link>TD-130</button><button type="button" class="td-copy" data-relation-link>TD-126</button></span>
@@ -4641,6 +4792,26 @@ npm test
             <li><span class="td-check" data-checked="false"></span><span>Dark theme pass</span></li>
           </ul>
         </div>
+        <script type="text/plain" data-slot="description-src">Build the first high-fidelity board so the token layer can be reviewed against a real screen.
+
+#### Scope
+
+- Seven status columns with one card each at minimum
+- Detail drawer with rendered markdown
+
+```sh
+npm run build:css
+```
+
+| Surface | State |
+| ------- | ----- |
+| Board | Ready |
+| Drawer | In progress |
+
+> Cards stay flat: border and surface carry the hierarchy, never shadow.
+
+- [x] Token layer in tw.css
+- [ ] Dark theme pass</script>
         <div data-slot="relations">
           <span class="td-rel-item"><span class="text-xs text-td-ink-3" data-i18n="relations.blocks">Blocks</span><button type="button" class="td-copy" data-relation-link>TD-124</button></span>
         </div>
@@ -4691,6 +4862,26 @@ npm test
             <li><span class="td-check" data-checked="true"><svg class="td-icon" style="width: 9px; height: 9px" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 13l4.5 4.5L19 7" /></svg></span><span>Session id in the drawer</span></li>
           </ul>
         </div>
+        <script type="text/plain" data-slot="description-src">Every agent-authored task should carry the session that produced it so the work can be resumed later.
+
+#### Fields
+
+- Platform badge: claude, openclaw, codex, pi
+- Session identifier, copyable
+
+```html
+<div data-agent-session data-agent-platform="claude">
+```
+
+| Platform | Resume |
+| -------- | ------ |
+| claude | Yes |
+| codex | Yes |
+
+> The session block is read-only on the card and editable only through the agent that owns it.
+
+- [x] Badge in the card footer
+- [x] Session id in the drawer</script>
         <div data-slot="relations">
           <span class="td-rel-item"><span class="text-xs text-td-ink-3" data-i18n="relations.blocks">Blocks</span><button type="button" class="td-copy" data-relation-link>TD-127</button></span>
         </div>
@@ -4740,6 +4931,24 @@ npm test
             <li><span class="td-check" data-checked="false"></span><span>Deduplicate by event id</span></li>
           </ul>
         </div>
+        <script type="text/plain" data-slot="description-src">The activity feed repeats events when a task is moved twice in the same revision.
+
+#### Reproduction
+
+- Move a card twice within one second
+- Reload the detail drawer
+
+```text
+status: todo → in_progress (x2)
+```
+
+| Event | Expected |
+| ----- | -------- |
+| moved | 1 row |
+
+> Blocked until the revision stream lands, the fix depends on the event identity.
+
+- [ ] Deduplicate by event id</script>
         <div data-slot="relations">
           <span class="td-rel-item"><span class="text-xs text-td-ink-3" data-i18n="relations.blocks">Blocks</span><button type="button" class="td-copy" data-relation-link>TD-130</button><button type="button" class="td-copy" data-relation-link>TD-127</button></span>
         </div>
@@ -4789,6 +4998,26 @@ npm test
             <li><span class="td-check" data-checked="false"></span><span>Precondition check</span></li>
           </ul>
         </div>
+        <script type="text/plain" data-slot="description-src">Clients cannot tell whether their edit raced with a concurrent write. Return the task version on every write.
+
+#### Contract
+
+- Version returned on create, update and move
+- Version accepted as a precondition
+
+```json
+{ "id": "td_01HQ9A2B7C4D6EFG", "version": "v1" }
+```
+
+| Endpoint | Version |
+| -------- | ------- |
+| create | Yes |
+| move | Yes |
+
+> Never echo a version the caller did not write.
+
+- [x] Version on the detail payload
+- [ ] Precondition check</script>
         <div data-slot="relations">
           <span class="td-rel-item"><span class="text-xs text-td-ink-3">Related</span><button type="button" class="td-copy" data-relation-link>TD-119</button></span>
         </div>

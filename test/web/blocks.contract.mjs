@@ -3040,14 +3040,14 @@ const CONSISTENCY_ITEMS = [
 export const STALE_PROSE_COUNTS = Object.freeze([
   Object.freeze({
     claim: "252 `data-i18n*` hooks",
-    measured: 819,
-    detail: "522 `data-i18n` + 193 `-arg` + 78 `-aria-label` + 18 `-title` + 8 `-placeholder`",
+    measured: 849,
+    detail: "543 `data-i18n` + 193 `-arg` + 85 `-aria-label` + 19 `-title` + 9 `-placeholder`",
     verdict: "stale",
   }),
   Object.freeze({
     claim: "198 catalogue keys",
-    measured: 282,
-    detail: "en = 282 and zh = 282, mirrored 1:1 — the prototype `MESSAGES` count the body states; the shipped extraction drops the 17 prototype-only keys, so it ships 265",
+    measured: 288,
+    detail: "en = 288 and zh = 288, mirrored 1:1 — the prototype `MESSAGES` count the body states; the shipped extraction drops the 17 prototype-only keys, so it ships 271",
     verdict: "stale",
   }),
   Object.freeze({
