@@ -4355,17 +4355,19 @@ html[data-theme="dark"] .modal-box {
 
   /* --- B27.3 the empty state --------------------------------------- */
   /* It sits at the **top** of the view when the queue is gone, the same
-     reading B26's empty feed and an empty board (B12) now share — and the
+     reading B26's empty feed and an empty board (B12) share — and the
      vertical centring `align-self: center` + `margin: auto` used to give it
-     is withdrawn with them. It keeps its cap and its horizontal centring
-     because here it is the only box in the main area: a dashed rule
-     stretched across 1300px is the shape of a drop target, not the shape of
-     an answer. `margin: 0 auto` centres it across, not down. */
+     is withdrawn with them. R17 also capped it at 420px and centred it
+     across, on the argument that a dashed rule stretched across 1300px reads
+     as the shape of a drop target rather than the shape of an answer. That
+     cap is withdrawn (2026-10-15): the queue's own header and rows already
+     span the view, so the box that stands in for them spans it too, and B12
+     · B26 · B27 read as one family — the no-results state of an empty board
+     has been full-width since M2. The hairline is the answer's box, not a
+     target: this queue offers no drop. */
   .td-waiting-empty {
     flex: none;
     width: 100%;
-    max-width: 420px;
-    margin: 0 auto;
   }
   .td-waiting-empty[hidden] {
     display: none;

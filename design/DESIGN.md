@@ -2108,6 +2108,10 @@ the header, and keeps its 100% / 420px cap with horizontal centring. The second 
 `waiting.empty.hint` — the round's one new catalogue key — and the state offers no button,
 because nothing in this view filters. §33 has the matrix and the reasons.
 
+**Revision, 2026-10-15.** The 420px cap above is withdrawn: `[data-waiting-empty]` now spans
+the view at `width: 100%`, the way B12's `no-results` box spans the board. §33.3 carries the
+reasoning under *Top alignment*; `S11.9` and the implementation's `app.css` move with it.
+
 The prototype cannot reach that state: nothing in this queue filters, and the seeded board has
 five items. Its frame is therefore driven by the capture script moving two attributes — the
 queue stands down and the empty state stands up — the same arrangement the activity design's own
@@ -2660,6 +2664,22 @@ the implementation card lands.
   rules live in `src/input.css` (and in `design/activity/prototype.html`'s scoped `<style>`),
   and `tw.css` is rebuilt from them; the comments that argued *for* the old centring are
   rewritten rather than left standing.
+
+  **Revision, 2026-10-15 — the waiting cap is withdrawn.** The R17 paragraph above is kept as
+  the round's record; the cap it describes no longer stands. `.td-waiting-empty` is now
+  `flex: none` + `width: 100%` with neither `max-width` nor `margin: 0 auto`, so the dashed box
+  spans the view exactly as B12's `no-results` box has spanned the board since M2. The argument
+  above was that a wide dashed rule reads as a drop target; the counter-reading, and the one
+  that now governs, is that the answer's box should occupy the same footprint as the answer's
+  subject — the queue's header and its rows both span the view, and three empty states that
+  differ only in this one dimension read as three states rather than one family. This view
+  offers no drop, so the hairline advertises no target. `S11.9` and `test/web/blocks.contract.mjs`
+  are updated in step, as is `design/prototype/tw.css` — whose `.td-waiting-empty` rule now reads
+  exactly what `tailwindcss -i src/input.css -o tw.css` emits for it, the two declarations
+  removed and nothing else. (The file is updated by that delta rather than by a whole-tree
+  rebuild: a rebuild today also emits `.link` and `.ring` from two `app.js` comment words and
+  re-nests `.sr-only`, ~1.4 KB of rules no element matches — pre-existing drift, present in a
+  build of this round's own baseline, and not this change's to absorb.)
 
 Measured after the round, at 1512×900: the activity project state reads `top 1px of 708px`
 (a centred block would be at ~268px), the activity filter state `top 1px of 708px` (~248px),
