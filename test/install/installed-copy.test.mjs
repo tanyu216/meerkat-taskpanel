@@ -113,8 +113,16 @@ function runWrapper(dir, args, env) {
 /** A wrapper failure never looks like this — that is half of what this file asserts. */
 const CRASH = /MODULE_NOT_FOUND|Cannot find module|ERR_MODULE_NOT_FOUND|\n\s+at /;
 
-/** An environment with no CLI reachable at all: every rung of the ladder is dead. */
-const NO_CLI = Object.freeze({ PATH: "" });
+/**
+ * An environment with no CLI reachable at all: every rung of the ladder is dead.
+ *
+ * Deliberately *not* frozen. `spawnSync` writes to the env object it is handed — under
+ * `--experimental-test-coverage` the runner adds `NODE_V8_COVERAGE` to it so spawned
+ * children are instrumented — and a non-extensible object makes that a `TypeError`
+ * before any child is spawned. Freezing bought nothing here: nothing in this file
+ * mutates the object, and the injected variable changes no assertion (T-20261015-051046).
+ */
+const NO_CLI = { PATH: "" };
 
 describe("the installed skill is a copy, not a link", () => {
   it("install.sh --target all lands every host, each as a real directory", () => {
