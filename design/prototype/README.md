@@ -280,7 +280,7 @@ looking at it (DESIGN.md §12).
 | Assignee capsule | the roster item the control's value names wears a **width-neutral** accent capsule — `padding: 0 6px` cancelled by `margin-inline: -6px` — so no row's one line is elided at any viewport (R13) |
 | Assignee removal | **the control's own `Assignee: All` row, and nothing else.** A roster press is the dropdown's own selection, so it neither routes the view nor writes a status, and no second control exists to undo it (R13 修订 · 决定甲) |
 | Themes | three states cycled from the footer — **Light** (default) → **Dark** → **Auto** (follows `prefers-color-scheme`, CSS-only) → Light; no-record default is Light, not the system preference |
-| Language | English (default) + Chinese via the language dropdown — 281 key pairs, mirrored |
+| Language | English (default) + Chinese via the language dropdown — 282 key pairs, mirrored |
 | Activity | the sidebar's third destination opens a real view (R12x): 17 rows over 4 day groups, one folded burst, an unread boundary that reads the same number as the sidebar pill, three narrowing controls, `Load older`, and two empty states — all of it static markup |
 | Waiting | the sidebar's fourth destination opens a real queue (R12x): 5 items ordered by how long each has waited, two reason kinds (`question` / `blocked`), a count in its heading, no filters, and an empty state — all of it static markup |
 | List columns | six labelled columns — ID · Title · Status · Assignee · Priority · Revision — with the header sharing the row's grid template; the middle three hide at ≤759px (R8) |
