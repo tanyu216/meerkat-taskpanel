@@ -99,10 +99,33 @@ whatever the registry resolves for the ranges in `package.json`, which is why th
 toolchain to reproduce it. `design/prototype` is a host-allowed, design-only step — it is not
 part of any gate and nothing here runs in the container (`.dockerignore` excludes `design/`).
 
+**A rebuild will not land on that number — measured 2026-10-15, so a diff can be read against
+it.** Building the committed sources with an install of the declared ranges (tailwindcss
+`4.3.3` / daisyUI `5.7.47`) yields **209562 bytes**, **+1464** on the committed **208098**.
+The delta invents two classes and reprints four selector lists, and it **removes no class
+token**: class tokens `400 → 402` (**added = `{link, ring}`, removed = `{}`**), `@property`
+registrations `18 → 32`, and the 4 selector lists this file writes across two lines coming
+back joined onto one (`4 → 0`).
+
+Both invented classes come from **five prose words in `app.js`** — `ring` ×4, in the comments
+"…is where the ring starts", "The arrow keys move the ring while a panel is open", "ring starts
+where the card is" and "The arrow ring" — and one `link` ("each read-only link becomes").
+It is the same accident this file records for `stack` / `steps` / `blur`, and the same remedy
+applies: rewording those five takes the same rebuild to **207172 bytes** with added = `{}`
+and removed = `{}`. What is left then — **−926 bytes, 43 changed lines** — is formatting this
+toolchain does differently from whatever produced the committed file (four selector lists
+joined, `.sr-only` landing in another layer, several authored comments not carried over), and
+**rewording cannot close it.** So: treat the byte count as a measurement, and read a rebuild's
+diff by its **class-token sets** — `added = {}` / `removed = {}` is what must hold, and it
+holds whichever toolchain the ranges resolve to.
+
 Two `@source` directives limit class scanning to `index.html` and `app.js`
 (`@import "tailwindcss" source(none)` disables auto-detection, so nothing else on
-disk can leak classes into the bundle). Current output: **201 KB** (`tw.css` = 205057
-bytes after the R13 修订 rebuild — 决定甲 withdrew the `✕` beside the assignee control and
+disk can leak classes into the bundle). Current output: **203 KB** (`tw.css` = 208098
+bytes, 2026-10-15 — the line had gone stale again: it still read 205057 while the file had
+grown to 208140 across the rounds after it, and this change took 42 bytes back off; the
+paragraph above says why a rebuild will not land on the number either. That R13 修订 rebuild
+was where 决定甲 withdrew the `✕` beside the assignee control and
 its three rules, so the round is **−549 bytes / −23 lines / +0 lines** against the 205606
 seg2 left; the rebuild diff was read line by line and holds nothing but those three rules,
 so the comment scan emitted no new class. Before that the R13 seg2 rebuild was net −27
