@@ -803,7 +803,10 @@ every status and priority is visible in one screenshot.
 
 `[data-agent-session]` — rendered inside `[data-detail-agent-session]` from the
 card's template, with `[data-agent-platform]`, `[data-agent-platform-value]`
-(`--agent-platform claude`), `[data-agent-session-id]` and `[data-agent-resume]`.
+(the session's **platform id**, e.g. `claude` — `[data-agent-platform]` is the
+id's badge; the prototype's static sample renders a CLI-style declaration there,
+a prototype-only expression registered in `design/fidelity-r14.md` §8.3 `DF-4`),
+`[data-agent-session-id]` and `[data-agent-resume]`.
 All **15 agent cards** carry a session block whose platform matches the card's
 `data-agent-platform` and whose session id is prefixed with that platform; the three
 human cards carry none and the drawer hides the section for them.
