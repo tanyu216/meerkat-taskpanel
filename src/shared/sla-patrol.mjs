@@ -1052,7 +1052,27 @@ export function inspectorLivenessDetection(input = {}) {
   }
 
   const ageMin = now === null ? null : Math.floor((now - lastOk) / MS_PER_MINUTE);
-  if (ageMin === null || ageMin <= boundMin) return null;
+  // A clock that cannot be read is not a healthy peer (§9.3 / hook H4: an
+  // injected fault must alarm, never yield a clean envelope). The age is
+  // unknowable, so the row goes out at `warn` with `confidence: "low"` and says
+  // which half was unreadable rather than quietly deciding the peer is fine.
+  if (ageMin === null) {
+    return {
+      row: "inspector_liveness",
+      origin: { kind: "unverifiable", at: null, source: "missing", confidence: "low" },
+      thresholdMin: null,
+      thresholdRef: null,
+      visibilityOnly: true,
+      releasable: false,
+      releasableBasis: null,
+      blockedReason: null,
+      openPredicate: `peer ${PEER_MECHANISM} last-ok present but the observer's clock is unreadable`,
+      action: `${spec.action} — the liveness age could not be computed`,
+      cardOverride: null,
+      evidence: livenessEvidence(null, null, boundMin, "unverifiable"),
+    };
+  }
+  if (ageMin <= boundMin) return null;
   return {
     row: "inspector_liveness",
     origin: { kind: "trail_event", at: new Date(lastOk).toISOString(), source: "mechanism-marker", confidence: "high" },
