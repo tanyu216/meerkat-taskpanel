@@ -1,0 +1,92 @@
+[
+  {
+    "step": "claimCas",
+    "claimed": true,
+    "version": 2,
+    "claimedBy": "linus"
+  },
+  {
+    "step": "bareSteal(same-instant)",
+    "outcome": {
+      "code": "VALIDATION_FAILED",
+      "http": 400
+    },
+    "afterClaimedBy": "linus",
+    "afterVersion": 2
+  },
+  {
+    "step": "bareSteal(loose-bound (tomorrow))",
+    "outcome": {
+      "code": "VALIDATION_FAILED",
+      "http": 400
+    },
+    "afterClaimedBy": "linus",
+    "afterVersion": 2
+  },
+  {
+    "step": "bareSteal(bound omitted)",
+    "outcome": {
+      "code": "VALIDATION_FAILED",
+      "http": 400,
+      "field": "staleBefore"
+    },
+    "afterClaimedBy": "linus",
+    "afterVersion": 2
+  },
+  {
+    "step": "steal(rotted, strict bound)",
+    "claimedBy": "elon",
+    "bound": "2026-10-07T18:00:00.000Z"
+  },
+  {
+    "step": "race: two processes bare claimCas",
+    "claimResults": [
+      {
+        "ok": true,
+        "claimed": false,
+        "version": 2,
+        "claimedBy": "racer-b"
+      },
+      {
+        "ok": true,
+        "claimed": true,
+        "version": 2,
+        "claimedBy": "racer-b"
+      }
+    ],
+    "afterVersion": 2,
+    "claimedBy": "racer-b"
+  },
+  {
+    "step": "race: two processes bare stealStaleClaim on the same rotted claim",
+    "stealResults": [
+      {
+        "ok": true,
+        "claimed": null,
+        "version": null,
+        "claimedBy": "racer-a"
+      },
+      {
+        "ok": false,
+        "code": "VALIDATION_FAILED",
+        "http": 400
+      }
+    ],
+    "beforeVersion": 2,
+    "afterVersion": 3,
+    "claimedBy": "racer-a"
+  },
+  {
+    "step": "source scan",
+    "scannedFiles": 116,
+    "casCallSites": [
+      "src/core/commands/reports.mjs: moveCas",
+      "src/core/commands/tasks.mjs: claimCas",
+      "src/core/commands/tasks.mjs: stealStaleClaim",
+      "src/core/commands/tasks.mjs: moveCas"
+    ],
+    "outsideCommandLayer": [],
+    "repositoryImportsFromSurfaces": []
+  }
+]
+R3 PROBE PASS

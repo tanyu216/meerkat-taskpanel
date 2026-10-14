@@ -1,0 +1,48 @@
+▶ concurrency/writer-guard — one writer per data directory
+  ✔ gives the lock to exactly one caller and refuses the next by name (16.697875ms)
+  ✔ recovers a fossil lock — a SIGKILLed daemon must not need a human (5.088375ms)
+  ✔ never removes a lock that names somebody else (5.581625ms)
+  ✔ treats a live pid as alive and a dead one as recoverable (0.14025ms)
+✔ concurrency/writer-guard — one writer per data directory (28.291792ms)
+▶ concurrency/writer-guard — the pointer belongs to its owner
+  ✔ removes its own pointer (6.989667ms)
+  ✔ refuses to delete the pointer a live instance is using (5.336042ms)
+  ✔ removes a pointer that names nobody (there is nobody to protect) (0.730667ms)
+  ✔ stays idempotent (0.416542ms)
+✔ concurrency/writer-guard — the pointer belongs to its owner (13.85725ms)
+▶ concurrency/writer-guard — two *boards*, one pointer slot
+  ✔ does not displace the live board that holds the shared slot (18.949542ms)
+  ✔ declines to remove a pointer that names another board's data dir (6.256791ms)
+✔ concurrency/writer-guard — two *boards*, one pointer slot (25.386209ms)
+▶ concurrency/writer-guard — two real daemons
+  ✖ refuses the second start and leaves the live board reachable (15019.932875ms)
+✖ concurrency/writer-guard — two real daemons (15020.380375ms)
+ℹ tests 11
+ℹ suites 4
+ℹ pass 10
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15201.688125
+
+✖ failing tests:
+
+test at test/concurrency/writer-guard.test.mjs:260:3
+✖ refuses the second start and leaves the live board reachable (15019.932875ms)
+  AssertionError [ERR_ASSERTION]: the first daemon wrote its pointer
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///Users/tanyu/Documents/meerkat-taskpanel-wt-T-20261012-234655-seg1/test/concurrency/writer-guard.test.mjs:274:12)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Promise.all (index 0)
+      at async Suite.run (node:internal/test_runner/test:1889:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

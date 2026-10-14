@@ -1,0 +1,41 @@
+T-20261012-234655 — deliverable manifest
+SUT (被测仓 lane HEAD): 7cb8e42ae688596f449795586e2640d6e7fb4308  (branch lane/T-20261012-234655-seg1)
+卡: /Users/tanyu/.openclaw/team/tasks/T-20261012-234655.md
+generated: 2026-10-14T11:55:31Z
+note: 本 lane 的 .git 只读 => 无法 commit；交付 = 下列文件 + integration.patch
+
+sha256  path (repo-relative)
+b5078af8c897f35ec224fe504baeab0604d9aee038c466ed9bc7cecd1220dc5a  docs/verify/T-20261012-234655/evidence/classify-failures.mjs
+69de26b740986bebf3dd3cfad564d2f8c6221e4e43dacdd8b6aac7ba5324d738  docs/verify/T-20261012-234655/evidence/env-listen-eperm.log
+5c36078b2511fb7107d5226cb5688dcea227902ed154519eb6a7801a9db42317  docs/verify/T-20261012-234655/evidence/lib/inproc-http.mjs
+9266ce849737c734c89fa82406af77dba45630d5ee5fd094e50cb0a0bfabab25  docs/verify/T-20261012-234655/evidence/lib/sut.mjs
+7ac9299188b769339582add3384d6c9cac4d8de06a6dc7ff9ff4074be21f7227  docs/verify/T-20261012-234655/evidence/mutations.sh
+20115e7ac7fe6c0a70ccc5f6403d07b5fa041f5e47522486a553ae9836bfebe0  docs/verify/T-20261012-234655/evidence/mutations.txt
+b3b3b9f35c290171de0f905075ad9a1df547196e33b86407a815c6fbf561ec21  docs/verify/T-20261012-234655/evidence/mutations/baseline-db-busy.log
+bb743079698550690502cb2638f3a7a013a34608d9be01e404ecee2045dd3bd4  docs/verify/T-20261012-234655/evidence/mutations/baseline-r2-probe.log
+44b1436a456c514c70ab1126976a79fc5d75b40c61f5c081665e724755fb0f7d  docs/verify/T-20261012-234655/evidence/mutations/baseline-r3-probe.log
+1eb0e50c2f56d55e3d6c15e020ecd58afd742320b6f2964979fd48b854bd4a87  docs/verify/T-20261012-234655/evidence/mutations/baseline-repository-boundary.log
+4a5c2a688730a4812d35797ed1fc4d8a122277f97ebdb7f09530b4cc37451f02  docs/verify/T-20261012-234655/evidence/mutations/baseline-writer-guard.log
+619d257eab26cf795f8ee01c6a025846a09bc9af2cae0cad0079f9b380e550ee  docs/verify/T-20261012-234655/evidence/mutations/mutationA-writer-guard.log
+8efcf37fbaca2469b5f2b1048ca6c615f981b293c277ff218c197606b51c4a77  docs/verify/T-20261012-234655/evidence/mutations/mutationB-r2-probe.log
+3e4b19aa07519084a01db54bf62f576bea1af229389cbfb497ae2b95a2ad0db6  docs/verify/T-20261012-234655/evidence/mutations/mutationC-db-busy.log
+8fea78a1cdf30fc8b4f61cbda5f4e95738e8ee0a056fa989b4c7d205468d1f39  docs/verify/T-20261012-234655/evidence/mutations/mutationD-r3-probe.log
+2b133a42ae39b967ae5a513aeceda9e7ea7e34b2d646d08988342e38f61072bb  docs/verify/T-20261012-234655/evidence/mutations/mutationD-repository-boundary.log
+21cca9be1613dc948da6d9582d09da4558dcb2fb6163203058529d8a74c241d9  docs/verify/T-20261012-234655/evidence/npm-check-skills.log
+b7b443be09cc1375f580baabbf362f31e3d410982b37fb5ed9994f4ff315255b  docs/verify/T-20261012-234655/evidence/npm-test-classification.txt
+6deeaabf83debfcd76fac2fff28c5e35f31ce3812ce9c4f67cc3821c0c73e1ad  docs/verify/T-20261012-234655/evidence/npm-test-socketfree.log
+f94635302f84a5a48f802bd3e129498884999b5fb1de813d04a635de85e59d57  docs/verify/T-20261012-234655/evidence/npm-test.log
+e0f41ed47869110e01ddb179ea6b11f62b4cea6768b1508da23924b96f694daf  docs/verify/T-20261012-234655/evidence/npm-verify-docker.log
+abb19960229844e8f999e05b2e5e4854cf7f33a0e8700df111f77a50ced58236  docs/verify/T-20261012-234655/evidence/npm-verify.log
+919bc1d4208f7347f850e6f53f10f4b712562bd00e11e43a09995fece7984ce7  docs/verify/T-20261012-234655/evidence/probe-listen.mjs
+84f7491c3e87d6607c38fca1bd17789d764e7226355f1e85daa60a4897924243  docs/verify/T-20261012-234655/evidence/r1-lock-and-pointer.mjs
+f230c5ab39368c0eaf04709b0d1bc2a59c68f25acce9927a4f23aa2480877251  docs/verify/T-20261012-234655/evidence/r1-probe.log
+fdd8f54b1bf83acedea58763de995b60d4e11ed5cbe729ae9486c7fdc0976bab  docs/verify/T-20261012-234655/evidence/r1-writer-guard.log
+fa59841f8c64d085f8dc3bcbfa89c3184f3bdad96d22be647185cab60a058a35  docs/verify/T-20261012-234655/evidence/r2-probe.log
+2a086dd15582f08b3b8339e03792cb110d74596e3c8203222f1285a1fa4d95e4  docs/verify/T-20261012-234655/evidence/r2-wire-busy.mjs
+20bce6234cf8bdbaa60998f17c0908387dbe06d6c6a78678f36eb5a42a5fbe22  docs/verify/T-20261012-234655/evidence/r3-bare-repo.mjs
+f8d88ddaa2f6397769b10e9c46a18862d7dff0fe6ecf850e4c10bfacfa59eedc  docs/verify/T-20261012-234655/evidence/r3-probe.log
+0b102bb1eca84a9ef3e551771fb81e7ad57f67daa0a56f19c0d0e6763145c7ac  docs/verify/T-20261012-234655/evidence/r3-repository-boundary.log
+6059014956cbb99a5fe7d6aaa2cd2bb791c5ead216710630f98edbffdfd5152e  docs/verify/T-20261012-234655/evidence/smoke-harness.mjs
+780c665b7eae96b3722b5915465ff1a74b5b214d363b39af2c2e5351441d70c6  docs/verify/T-20261012-234655/evidence/socket-free-test-files.txt
+569a2fafeb9d9018718a3cb01dca1dc8aca799a13213ce168ae42c4efda23411  docs/verify/T-20261012-234655/report.md
