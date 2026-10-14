@@ -1,0 +1,113 @@
+
+== install.sh --target all --prefix <throwaway home> ==
+install.sh: claim unassigned tasks: yes
+install.sh: claude
+claude: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/skills/meerkat-taskpanel
+claude: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/skills/meerkat-loop
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/hooks/meerkat-taskpanel-session-start.sh
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/settings.json
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/bin/taskctl
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/commands/board.md
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/commands/claim.md
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/commands/deliver.md
+claude: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/meerkat-taskpanel/scripts/supervisor.mjs
+claude: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/meerkat-taskpanel/scripts/wake-cwd.mjs
+claude: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/meerkat-taskpanel/src/shared/constants.mjs
+claude: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/meerkat-taskpanel/src/shared/errors.mjs
+claude: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/meerkat-taskpanel/src/shared/project-dir.mjs
+claude: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/meerkat-taskpanel/src/shared/redact.mjs
+claude: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/meerkat-taskpanel/src/shared/runtime-locator.mjs
+claude: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/meerkat-taskpanel/src/shared/scheduling.mjs
+claude: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/meerkat-taskpanel/src/shared/sla-patrol.mjs
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/scheduling/launchd/com.meerkat-taskpanel.poll.plist
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/scheduling/launchd/com.meerkat-taskpanel.patrol.plist
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/scheduling/systemd/meerkat-taskpanel-poll.service
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/scheduling/systemd/meerkat-taskpanel-poll.timer
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/scheduling/systemd/meerkat-taskpanel-patrol.service
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/scheduling/systemd/meerkat-taskpanel-patrol.timer
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/scheduling/cron/meerkat-taskpanel.cron
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/bin/wake-claude.sh
+claude: scheduling units installed under /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/scheduling
+claude: to start the supervisor, load one of these (nothing is loaded for you):
+  launchd:  launchctl load /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/scheduling/launchd/com.meerkat-taskpanel.poll.plist   # and .patrol.plist
+  systemd:  mkdir -p ~/.config/systemd/user && cp /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/scheduling/systemd/* ~/.config/systemd/user/ && systemctl --user enable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer
+  cron:     crontab /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/scheduling/cron/meerkat-taskpanel.cron
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.claude/meerkat-taskpanel.env
+install.sh: openclaw
+openclaw: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.openclaw/skills/meerkat-taskpanel
+install.sh: codex
+codex: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/skills/meerkat-taskpanel
+codex: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/skills/meerkat-loop
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/bin/taskctl
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/AGENTS.md
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/meerkat-taskpanel-claim.sh
+codex: legacy claim trigger written to /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/meerkat-taskpanel-claim.sh (the supervisor supersedes it)
+codex: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/meerkat-taskpanel/scripts/supervisor.mjs
+codex: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/meerkat-taskpanel/scripts/wake-cwd.mjs
+codex: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/meerkat-taskpanel/src/shared/constants.mjs
+codex: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/meerkat-taskpanel/src/shared/errors.mjs
+codex: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/meerkat-taskpanel/src/shared/project-dir.mjs
+codex: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/meerkat-taskpanel/src/shared/redact.mjs
+codex: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/meerkat-taskpanel/src/shared/runtime-locator.mjs
+codex: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/meerkat-taskpanel/src/shared/scheduling.mjs
+codex: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/meerkat-taskpanel/src/shared/sla-patrol.mjs
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/scheduling/launchd/com.meerkat-taskpanel.poll.plist
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/scheduling/launchd/com.meerkat-taskpanel.patrol.plist
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/scheduling/systemd/meerkat-taskpanel-poll.service
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/scheduling/systemd/meerkat-taskpanel-poll.timer
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/scheduling/systemd/meerkat-taskpanel-patrol.service
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/scheduling/systemd/meerkat-taskpanel-patrol.timer
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/scheduling/cron/meerkat-taskpanel.cron
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/bin/wake-codex.sh
+codex: scheduling units installed under /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/scheduling
+codex: to start the supervisor, load one of these (nothing is loaded for you):
+  launchd:  launchctl load /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/scheduling/launchd/com.meerkat-taskpanel.poll.plist   # and .patrol.plist
+  systemd:  mkdir -p ~/.config/systemd/user && cp /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/scheduling/systemd/* ~/.config/systemd/user/ && systemctl --user enable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer
+  cron:     crontab /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/scheduling/cron/meerkat-taskpanel.cron
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.codex/meerkat-taskpanel.env
+install.sh: pi
+pi: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/skills/meerkat-taskpanel
+pi: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/skills/meerkat-loop
+pi: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/meerkat-taskpanel/scripts/supervisor.mjs
+pi: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/meerkat-taskpanel/scripts/wake-cwd.mjs
+pi: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/meerkat-taskpanel/src/shared/constants.mjs
+pi: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/meerkat-taskpanel/src/shared/errors.mjs
+pi: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/meerkat-taskpanel/src/shared/project-dir.mjs
+pi: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/meerkat-taskpanel/src/shared/redact.mjs
+pi: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/meerkat-taskpanel/src/shared/runtime-locator.mjs
+pi: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/meerkat-taskpanel/src/shared/scheduling.mjs
+pi: copied  /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/meerkat-taskpanel/src/shared/sla-patrol.mjs
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/scheduling/launchd/com.meerkat-taskpanel.poll.plist
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/scheduling/launchd/com.meerkat-taskpanel.patrol.plist
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/scheduling/systemd/meerkat-taskpanel-poll.service
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/scheduling/systemd/meerkat-taskpanel-poll.timer
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/scheduling/systemd/meerkat-taskpanel-patrol.service
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/scheduling/systemd/meerkat-taskpanel-patrol.timer
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/scheduling/cron/meerkat-taskpanel.cron
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/bin/wake-pi.sh
+pi: scheduling units installed under /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/scheduling
+pi: to start the supervisor, load one of these (nothing is loaded for you):
+  launchd:  launchctl load /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/scheduling/launchd/com.meerkat-taskpanel.poll.plist   # and .patrol.plist
+  systemd:  mkdir -p ~/.config/systemd/user && cp /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/scheduling/systemd/* ~/.config/systemd/user/ && systemctl --user enable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer
+  cron:     crontab /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/scheduling/cron/meerkat-taskpanel.cron
+wrote /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr/.agents/meerkat-taskpanel.env
+
+taskd guard: skipped (MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE=1 — tests only)
+
+== install summary ==
+OK   claude — /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr
+OK   openclaw — /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr
+OK   codex — /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr
+OK   pi — /Users/tanyu/.openclaw/tmp/tmp.M4vnje8mGr
+
+install.sh: done. Next step: register the host plugin/bundle (see docs/install.md),
+             or point the host at the installed skill directory.
+  OK  .claude/skills/meerkat-taskpanel/SKILL.md
+  OK  .openclaw/skills/meerkat-taskpanel/SKILL.md
+  OK  .codex/skills/meerkat-taskpanel/SKILL.md
+  OK  .agents/skills/meerkat-taskpanel/SKILL.md
+
+== taskctl project create ==
+CLI_IO: taskd was started but never answered /health
+fix: read /Users/tanyu/.openclaw/tmp/tmp.oqhTCDUyix/logs/taskd.log
+INSTALL_E2E_EXIT=1

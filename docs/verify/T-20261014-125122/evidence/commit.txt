@@ -1,0 +1,23 @@
+# T-20261014-125122 — commit ledger (written after the commit; a commit cannot name itself)
+#
+# Why the commit is not in the shared object store: this lane's sandbox denies
+# every write under the shared .git (`git add` → index.lock EPERM, exit 128).
+# The same objects therefore live in a fetchable mirror repo, branched off the
+# verified parent. Integration:
+#
+#   git fetch /tmp/lane-mirror-T-20261014-125122 lane/T-20261014-125122-seg1
+#   git merge --no-ff FETCH_HEAD        # or: git cherry-pick 18fe856 adb4b02
+#
+branch:                      lane/T-20261014-125122-seg1
+parent (verified SUT):       3ad4b1913b5256bf3688bf0e92eee722e28061db   (= main tip on entry)
+mirror repo:                 /tmp/lane-mirror-T-20261014-125122
+artifacts commit (A):        18fe856c50c3c0c6b03d2dc2436c760cc57f7adf   14 files, +12097
+tip commit (B = A + its own format-patch):
+                             adb4b02549b0ff2ec8ae2f3d2e66ac9a73f92d5a
+patch copy:                  docs/verify/T-20261014-125122/integration.patch  (= format-patch of A)
+paths in the commits:        docs/verify/T-20261014-125122/**  only
+worktree copies of the report (untracked, convenience):
+  verification/T-20261014-125122/report.md
+  /tmp/T-20261014-125122/report.md
+canonical report path:       /Users/tanyu/.openclaw/team/workspace/T-20261014-125122/report.md
+                             → NOT writable from this lane's sandbox (Operation not permitted)

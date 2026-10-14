@@ -1,0 +1,4 @@
+
+ui-align check 无法执行（环境/配置问题，退出码 2）：
+  listen EPERM: operation not permitted 127.0.0.1
+GATE_UIALIGN_BOARD_M2_EXIT=2
