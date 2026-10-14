@@ -189,6 +189,20 @@ export const ATTACHMENT_KINDS = Object.freeze(["inline", "attachment"]);
 /** Agent session lifecycle. */
 export const SESSION_STATUSES = Object.freeze(["running", "closed", "failed"]);
 
+/**
+ * Who wrote a report (0008). The delivery path writes `delivery`; the markdown
+ * importer writes `import`, because an imported narrative is history and must
+ * never satisfy the delivery gate.
+ *
+ * Declared here for the first time by `0018`: the constraint was added by
+ * `ALTER TABLE … ADD COLUMN`, which the SQL-parity reader does not see, so the
+ * value set had no JS side to be compared against. `0018` rebuilds the table and
+ * the constraint moves into a `CREATE TABLE` body — where the reader *does* see
+ * it, and would report it as "a CHECK in SQL that nothing declares" if this were
+ * not here.
+ */
+export const REPORT_ORIGINS = Object.freeze(["delivery", "import"]);
+
 /** Activity event names written to `task_activities`. */
 export const ACTIVITY_EVENTS = Object.freeze([
   "project_created",
@@ -217,6 +231,17 @@ export const ACTIVITY_EVENTS = Object.freeze([
  * `table.column` → allowed literals, as checked by the migration SQL. The
  * SQL-parity contract test compares this against the `CHECK (... IN (...))`
  * clauses it parses out of `migrations/*.sql`, both directions.
+ *
+ * **Two actor-kind columns are deliberately absent.** `0018` drops the
+ * enumeration from `comments.author_kind` and `task_reports.author_kind`: an
+ * actor's kind is an opaque string whose only reserved value is `human`, so
+ * there is no literal list left for this table to declare. The app layer is
+ * still free to validate a narrower set on its own write paths (`ACTOR_KINDS`
+ * below), and being stricter than the schema is safe; what must not linger is a
+ * *declaration* here, which the parity test would read as "declared in JS but no
+ * CHECK in SQL".
+ * `test/core/storage/migrations-0018.test.mjs` closes that gap from the other
+ * side: it reads `0018`'s text and asserts both columns really are open.
  */
 export const SQL_ENUM_SETS = Object.freeze({
   "tasks.status": STATUSES,
@@ -227,10 +252,9 @@ export const SQL_ENUM_SETS = Object.freeze({
   "tasks.creator_kind": ACTOR_KINDS,
   "task_relations.relation_type": RELATION_TYPES,
   "comments.kind": COMMENT_KINDS,
-  "comments.author_kind": ACTOR_KINDS,
   "attachments.kind": ATTACHMENT_KINDS,
   "agent_sessions.status": SESSION_STATUSES,
   "assignees.kind": DICT_KINDS,
   "reporters.kind": DICT_KINDS,
-  "task_reports.author_kind": ACTOR_KINDS,
+  "task_reports.origin": REPORT_ORIGINS,
 });
