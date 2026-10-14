@@ -57,9 +57,9 @@
     },
     {
       "id": "B02-mark",
-      "name": "品牌 mark（Sentinel Watch，B02 的 .td-logo）— 实现未落地，且原型仍在改（lane T-20261012-002049）",
-      "evidence": "design/prototype/index.html:27-78 <svg class=\"td-logo\" viewBox=\"0 0 32 32\">（V2 几何，BRAND.md §5）；实现侧 web/src/** 全文 0 命中 td-logo（实测 2026-10-12 仍有 0 命中）",
-      "status": "pending",
+      "name": "品牌 mark（Sentinel Watch，B02 的 .td-logo）",
+      "evidence": "原型 design/prototype/index.html:27-78 <svg class=\"td-logo\" viewBox=\"0 0 32 32\">（V2 几何，BRAND.md §5）；实现 web/src/components/shell/TopBar.vue:61 同址同 viewBox（V2 三哨兵 + mask 面部挖空 + mask 外的值守信号）。交付源 = M2「T-20261012-165126」（done）· 提交 fbc41fb（卡面实测 `[data-brand] svg` 0→1、五档全绿）。M1 记录的「实现侧 web/src/** 0 命中 td-logo」由 T-20261014-201200 撤下：翻转当天实测 1 命中（README §16）",
+      "status": "delivered",
       "checks": [
         { "scope": "[data-brand]", "selector": "svg", "count": 1, "desc": "品牌块内的 Sentinel Watch mark（选择器不含类名）" }
       ]
@@ -93,9 +93,9 @@
     },
     {
       "id": "B03-icons",
-      "name": "页脚三格的图标几何（主题 sun/moon/display SVG、语言 globe + caret）— 实现改为文本字形，无 caret",
-      "evidence": "design/prototype/index.html:374/377/382 <svg data-theme-icon>；:406-413 globe <svg> + <svg class=\"td-caret\">；实现 SidebarFooter.vue:50-52 文本字形、:58 无 caret",
-      "status": "pending",
+      "name": "页脚三格的图标几何（主题 sun/moon/display SVG、语言 globe + caret）",
+      "evidence": "原型 design/prototype/index.html:374/377/382 <svg data-theme-icon>；:406-413 globe <svg> + <svg class=\"td-caret\">；实现 web/src/components/shell/SidebarFooter.vue:131-148 三个 `svg[data-theme-icon]`（sun/moon/display，可见性靠 `hidden` 的**存在**）、:164 globe `<svg>`、:168 `<svg class=\"td-icon td-caret\" data-caret>`。交付源 = M2「T-20261012-165126」（done）· 提交 fbc41fb（卡面实测 `svg[data-theme-icon]` 0→3、`[data-lang-select] svg` 0→2，补 `.td-caret`）。M1 记录的「实现改为文本字形、无 caret」由 T-20261014-201200 撤下（README §16）",
+      "status": "delivered",
       "checks": [
         { "scope": "[data-theme-switch]", "selector": "svg[data-theme-icon]", "count": 3, "desc": "三个主题字形为 SVG" },
         { "scope": "[data-lang-select]", "selector": "svg", "count": 2, "desc": "语言触发器 = globe + caret 两个 SVG" }
@@ -103,9 +103,9 @@
     },
     {
       "id": "B03-footer-text",
-      "name": "设置格无可见文字（BLOCKS.md B03 明文）— 实现渲染出可见 'Access'",
-      "evidence": "design/prototype/index.html:418-432（仅 gear SVG + data-i18n-aria-label）；实现 SidebarFooter.vue:80 <span class=\"td-side-text\">",
-      "status": "pending",
+      "name": "设置格无可见文字（BLOCKS.md B03 明文）",
+      "evidence": "原型 design/prototype/index.html:418-432（仅 gear SVG + data-i18n-aria-label）；实现 web/src/components/shell/SidebarFooter.vue:173-187 —— `[data-access-open]` 内只有 1 个 `aria-hidden` 的 gear `<svg>`，无文字节点。（`.td-side-text` 今天在文档里共 2 个：主题格 :149 与语言格 :167，都不在设置格内 —— 这正是本条断言 `scope: [data-access-open]` 的原因。）交付源 = M2「T-20261012-165126」（done）· 提交 fbc41fb（卡面实测 `[data-access-open] span` 2→0、设置格内 `.td-side-text` 1→0）。M1 记录的「实现渲染出可见 'Access'」由 T-20261014-201200 撤下（README §16）",
+      "status": "delivered",
       "checks": [
         { "scope": "[data-access-open]", "selector": "[data-side-text]", "count": 0, "desc": "近似机检 + 人工复核（双轨）：语料表只能表达『计数为 0』，读作『设置格内不得有可见文字』；.td-side-text 只用于定位被检查对象，不作样式依赖（ui-align §4 / Elon §7 裁定③）" }
       ]
@@ -182,12 +182,12 @@
     },
     {
       "id": "B07-identity",
-      "name": "卡身份槽：agent 卡隐藏 avatar（保留 monogram）、human 卡保留空的 agent-role 元素 — 实现为始终显示 / v-if 不渲染",
-      "evidence": "design/prototype/index.html:636 <span class=\"avatar\" hidden><span data-card-assignee>EL</span></span>；:638 <span data-card-agent-role hidden>；实现 Card.vue:92（无 hidden）、:94（v-if）",
-      "status": "pending",
+      "name": "卡身份槽：agent 卡隐藏 avatar（保留 monogram）— human 卡的 agent-role 行经实测修正为『两侧一致无该元素』",
+      "evidence": "原型 design/prototype/index.html:636 `<span class=\"avatar\" hidden><span data-card-assignee>EL</span></span>`（hidden 在**祖先**上，monogram 仍在 DOM 内）；实现 web/src/components/board/Card.vue:135 `<span class=\"avatar\" :hidden=\"isAgent\">` 包住 :136 的 `[data-card-assignee]`，:139 的 `[data-card-agent-role]` 由 `v-if=\"isAgent\"` 只对 agent 卡渲染。交付源 = M2「T-20261012-165126」（done）· 提交 8e000be（卡面实测 agent 卡 `[hidden] [data-card-assignee]` 0→1、human 卡该组合恒 0）。M1 记录的「实现为始终显示 / v-if 不渲染」由 T-20261014-201200 撤下（README §16）",
+      "status": "delivered",
       "checks": [
-        { "scope": "[data-card][data-assignee-kind=\"agent\"]", "selector": "[data-card-agent-role]", "min": 1, "desc": "agent 卡上角色钩子存在" },
-        { "scope": "[data-card][data-assignee-kind=\"human\"]", "selector": "[data-card-agent-role]", "count": 0, "desc": "现状（待跟）：human 卡上角色钩子不存在 —— 目标为『存在但空』（M2 落地后本条须翻成 min:1）" }
+        { "scope": "[data-card][data-assignee-kind=\"agent\"]", "selector": "[data-card-agent-role]", "min": 1, "desc": "agent 卡上角色钩子存在（M2 落地后五档实测 1/卡）" },
+        { "scope": "[data-card][data-assignee-kind=\"human\"]", "selector": "[data-card-agent-role]", "count": 0, "desc": "反向钉住：human 卡上无 `[data-card-agent-role]`（实现由 `v-if=\"isAgent\"` 保证；原型 human 卡同址实测亦为 0）。M0 把这条写成待跟项、目标『human 卡保留空元素 ⇒ min:1』—— 该目标经 board-m2 实测证伪（原型该组合 = 0，M0 row corrected）并在 M2 落地时按原型校正；T-20261014-201200 据此撤下『目标 min:1』，**断言本身不变**（仍为 count 0）" }
       ]
     },
     {
