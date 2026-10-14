@@ -47,7 +47,7 @@ import { parseAllowList } from "./cidr.mjs";
 import { shape, str } from "./requests.mjs";
 import { createRouter, errorResponse, readJsonBody, sendJson } from "./router.mjs";
 import { registerActivityRoutes } from "./routes/activities.mjs";
-import { handleAttachmentContent } from "./routes/attachments.mjs";
+import { handleAttachmentContent, registerAttachmentRoutes } from "./routes/attachments.mjs";
 import { registerCommentRoutes } from "./routes/comments.mjs";
 import { registerDictionaryRoutes } from "./routes/dictionary.mjs";
 import { registerExportRoutes } from "./routes/export.mjs";
@@ -114,6 +114,9 @@ export function registerApiRoutes(router, surface) {
   registerDictionaryRoutes(router, surface);
   registerLabelRoutes(router, surface);
   registerExportRoutes(router, surface);
+  // The attachment **metadata** routes are JSON like every other route; the byte
+  // pair next to them is not, and is matched before dispatch (`handle` below).
+  registerAttachmentRoutes(router, surface);
 }
 
 /**
@@ -250,6 +253,11 @@ export async function createTaskd(options = {}) {
       // `/tasks/candidates` (`?order=weight`). A client probes this rather than
       // guessing whether the query parameter does anything.
       task_order: TASK_ORDER_CAPABILITY,
+      // G7 (T-20261014-212017-2/4): the attachment write surface — create, list
+      // and remove — so a client feature-detects it instead of probing for a
+      // 404. The bytes pair (`GET|PUT /attachments/:id/content`) predates it and
+      // is what this capability's `upload_url` points at.
+      attachments: true,
       allow_list: allowList.configured,
     },
   }));

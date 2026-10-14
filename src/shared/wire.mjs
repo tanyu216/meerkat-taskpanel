@@ -183,6 +183,28 @@ export function relationToWire(relation) {
   };
 }
 
+/**
+ * @param {object} attachment a core Attachment DTO
+ *
+ * `has_content` is deliberately **not** here: whether bytes are stored is a
+ * `stat` on the daemon's own filesystem, and a listing that claimed it would be
+ * guessing. The download path answers it truthfully on the one request that
+ * needs it (a 404 for a row with no bytes — §13's reserved surface).
+ */
+export function attachmentToWire(attachment) {
+  if (attachment === null || attachment === undefined) return null;
+  return {
+    id: attachment.id,
+    task_id: attachment.taskId,
+    comment_id: attachment.commentId ?? null,
+    filename: attachment.filename,
+    content_type: attachment.contentType ?? null,
+    size: attachment.size ?? 0,
+    kind: attachment.kind,
+    created_at: attachment.createdAt,
+  };
+}
+
 /** @param {object} session a core AgentSession DTO */
 export function sessionToWire(session) {
   if (session === null || session === undefined) return null;

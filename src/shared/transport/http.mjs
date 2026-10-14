@@ -67,8 +67,16 @@ export function withQuery(path, query) {
 /**
  * One request. Returns the `data` half of a success envelope.
  *
+ * `rawBody` is the one non-JSON shape the board has: an attachment's bytes
+ * (`PUT /api/v1/attachments/:id/content`, §5.1). It is a `Uint8Array` sent
+ * verbatim, and it is **exclusive** with `body` — a request that carried both
+ * would have to guess which one the server reads. The response is still the
+ * usual JSON envelope, because that endpoint answers JSON even though it takes
+ * bytes.
+ *
  * @param {{
  *   url: string, method?: string, path: string, body?: unknown,
+ *   rawBody?: Uint8Array|null, contentType?: string|null,
  *   token?: string|null, actor?: object|null, session?: string|null, seg?: string|null,
  *   timeoutMs?: number, fetchFn?: typeof fetch,
  * }} options
@@ -79,6 +87,8 @@ export async function requestJson(options) {
     method = "GET",
     path,
     body,
+    rawBody = null,
+    contentType = null,
     token = null,
     actor = null,
     session = null,
@@ -87,19 +97,29 @@ export async function requestJson(options) {
     fetchFn = fetch,
   } = options;
 
+  if (rawBody !== null && body !== undefined) {
+    throw new DomainError("CLI_IO", {
+      message: "a request cannot carry a JSON body and raw bytes at once",
+      details: { path: redactText(path) },
+    });
+  }
+
   const headers = { accept: "application/json" };
   if (token !== null && token !== "") headers.authorization = `Bearer ${token}`;
   if (actor !== null && typeof actor === "object") headers["x-taskctl-actor"] = JSON.stringify(actor);
   if (session !== null) headers["x-taskctl-session"] = session;
   if (seg !== null) headers["x-taskctl-seg"] = seg;
-  if (body !== undefined) headers["content-type"] = "application/json";
+  if (rawBody !== null) headers["content-type"] = contentType ?? "application/octet-stream";
+  else if (body !== undefined) headers["content-type"] = "application/json";
+
+  const payload = rawBody !== null ? rawBody : body === undefined ? undefined : JSON.stringify(body);
 
   let response;
   try {
     response = await fetchFn(`${url}${path}`, {
       method,
       headers,
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(payload === undefined ? {} : { body: payload }),
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {

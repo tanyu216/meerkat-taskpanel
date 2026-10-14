@@ -19,19 +19,49 @@
  */
 import { computed, ref, watch } from "vue";
 
-import { board, addComment, closeDetail, labelRoster, platformOf, priorityOf, reporterRoster, saveDetailField } from "../../stores/board.js";
+import {
+  board,
+  addComment,
+  addDepends,
+  COLUMN_STATUSES,
+  closeDetail,
+  detailDepends,
+  labelRoster,
+  platformOf,
+  priorityOf,
+  removeAttachment,
+  removeDepends,
+  reporterRoster,
+  saveDetailField,
+  taskRoster,
+  uploadAttachment,
+} from "../../stores/board.js";
 import { renderMarkdown } from "../../lib/markdown.js";
 import { activityLine, relativeTime } from "../../lib/activity.js";
 import { attachmentRows } from "../../lib/attachments.js";
+import { errorTextKey } from "../../i18n/messages.mjs";
+import { api, ApiError } from "../../services/api.js";
 import { pushToast } from "../../stores/ui.js";
 import { has, t } from "../../i18n/index.js";
 
 import ComboField from "../combo/ComboField.vue";
+import MarkdownEditor from "../create/MarkdownEditor.vue";
 
 const commentDraft = ref("");
 const assigneeDraft = ref("");
 const reporterDraft = ref("");
 const labelDraft = ref([]);
+/** The `depends_on` chips' identifiers (the edge itself lives on the board). */
+const dependsDraft = ref([]);
+/** Description is the one section with two faces; the attribute is the switch. */
+const descriptionMode = ref("read");
+const descriptionDraft = ref("");
+/** The two in-place property menus (status / priority). */
+const statusMenuOpen = ref(false);
+const priorityMenuOpen = ref(false);
+const fileInput = ref(null);
+/** The id of the attachment whose download is in flight (the row's busy beat). */
+const busyAttachment = ref("");
 
 /** The head's ✕ — the element the drawer hands focus to when it opens (C2). */
 const closeButton = ref(null);
@@ -65,12 +95,30 @@ const activities = computed(() => detail.value?.activities ?? []);
 const labelNames = computed(() => task.value?.labels ?? []);
 
 /**
- * The attachment rows come from the task's own `meta` bucket — the same place
- * `[data-card-attachment-count]` reads its count. With no task open there is
- * nothing to list *and* nothing to say about it, so the section renders neither
- * rows nor the "no attachments" state.
+ * The attachment rows come from the **`attachments` table** — the listing
+ * `openDetail` reads (`GET /api/v1/tasks/:ref/attachments`), which is the G2
+ * ruling (T-20261014-212017-2: the table is the one source; `meta.attachments`
+ * has no writer and is not introduced). With no task open there is nothing to
+ * list *and* nothing to say about it, so the section renders neither rows nor
+ * the "no attachments" state.
  */
-const attachments = computed(() => attachmentRows(task.value?.meta));
+const attachments = computed(() => attachmentRows(detail.value?.attachments));
+
+/**
+ * The two property menus' value domains, in the prototype's own order: the
+ * seven **stage** statuses (not the eight-value `STATUSES`, which carries M1's
+ * `awaiting` overlay — a state a card wears while staying on its stage, never a
+ * menu row) and the five priorities ascending.
+ */
+const STATUS_MENU = COLUMN_STATUSES;
+const PRIORITY_MENU = ["none", "low", "medium", "high", "urgent"];
+
+/**
+ * `done`/`canceled` are terminal (E-2): the drawer opens read-only, every
+ * writable control is disabled, and the badge says why. Elon's reopen is a
+ * privileged path and is deliberately not offered here.
+ */
+const readonly = computed(() => status.value === "done" || status.value === "canceled");
 
 /**
  * The activity rows: actor + a localised sentence + a relative timestamp whose
@@ -208,6 +256,12 @@ const relationRank = (type) => {
 const relationGroups = computed(() => {
   const groups = new Map();
   for (const link of relationLinks.value) {
+    // T-20261014-212017-3 §4.4 — the `blocks` group is no longer a read-only
+    // row. It is the card's `depends_on`, and the drawer owns it as an editable
+    // chip control below; leaving the row in place would be a second source for
+    // the same fact. The prototype withdraws exactly this one group and keeps
+    // `parent` / `related` read-only.
+    if (link.type === "blocks") continue;
     if (!groups.has(link.type)) groups.set(link.type, { type: link.type, category: link.category, links: [] });
     groups.get(link.type).links.push(link);
   }
@@ -287,6 +341,177 @@ async function save(field, value) {
   }
 }
 
+/**
+ * The same state machine for a commit that is **not** one value moving: the
+ * drawer's four new surfaces write through their own store actions (a status
+ * edit is a `move`, a `depends_on` edit is an edge add/remove, an upload is a
+ * row plus its bytes), and a rejection must land on `error` exactly as a
+ * PATCH's does.
+ *
+ * A failure is reported **twice, in the two registers the board already uses**
+ * (T-20261014-152924 ④): the section's own alert — the prototype's
+ * `[data-detail-save-error]`, the visible half of the state — and a toast
+ * carrying the failure's `code` turned into a sentence by `errorTextKey`. The
+ * alert says *that* it failed, the toast says *why* (a refused transition and a
+ * lost version race need different repairs), and neither ever prints the wire's
+ * own prose.
+ *
+ * @param {() => Promise<unknown>} commit
+ */
+async function runCommit(commit) {
+  const token = (saveToken += 1);
+  clearTimeout(savedTimer);
+  saveState.value = "saving";
+  try {
+    await commit();
+    if (token !== saveToken) return;
+    saveState.value = "saved";
+    savedTimer = setTimeout(() => {
+      if (token === saveToken) saveState.value = "idle";
+    }, SAVE_BEAT_MS);
+  } catch (err) {
+    if (token !== saveToken) return;
+    saveState.value = "error";
+    pushToast(t(errorTextKey(err), identifier.value), "danger");
+  }
+}
+
+/* -------------------------------------------- status / priority (B22 menu) */
+
+/** Only one property menu is open at a time, the way `.td-combo` behaves. */
+function toggleStatusMenu() {
+  const next = !statusMenuOpen.value;
+  closePropMenus();
+  statusMenuOpen.value = next;
+}
+function togglePriorityMenu() {
+  const next = !priorityMenuOpen.value;
+  closePropMenus();
+  priorityMenuOpen.value = next;
+}
+function closePropMenus() {
+  statusMenuOpen.value = false;
+  priorityMenuOpen.value = false;
+}
+
+/**
+ * Choose a status. It is a **move**, so the board's state machine, delivery
+ * gate and claim lock all apply; an illegal transition comes back as
+ * `INVALID_TRANSITION` and is rendered as a sentence rather than as a rule
+ * number. The menu closes first — the reader's choice is made either way.
+ */
+async function chooseStatus(to) {
+  closePropMenus();
+  if (to === status.value) return;
+  await runCommit(() => saveDetailField("status", to));
+}
+
+async function choosePriority(to) {
+  closePropMenus();
+  if (to === priority.value) return;
+  await runCommit(() => saveDetailField("priority", to));
+}
+
+/* ------------------------------------------------- sentence (the md editor) */
+
+function startDescriptionEdit() {
+  if (readonly.value) return;
+  descriptionDraft.value = task.value?.description ?? "";
+  descriptionMode.value = "edit";
+}
+
+function cancelDescriptionEdit() {
+  descriptionMode.value = "read";
+  descriptionDraft.value = task.value?.description ?? "";
+}
+
+/**
+ * Save the markdown. An empty description is the drawer's one deterministic
+ * local failure — the same rule the single-valued people fields follow ("a
+ * single-valued field that is blank is the one failure the drawer can decide on
+ * its own", contract §2.2) — so it never reaches the board and the editor stays
+ * open with the draft intact.
+ */
+async function saveDescription() {
+  if (descriptionDraft.value.trim() === "") return failSave();
+  await save("description", descriptionDraft.value);
+  if (saveState.value !== "error") descriptionMode.value = "read";
+}
+
+/* ------------------------------------------------- depends_on (the DAG edge) */
+
+/**
+ * The chips are the card's `depends_on`, and the board stores each one as a
+ * `blocks` edge. A change is therefore an **edge add or remove**, not a value:
+ * the diff between what the control now holds and what the board returned is
+ * replayed one edge at a time, and a refusal (a cycle, a self-reference, a
+ * cross-project edge) stops the walk and lands on `error` with a sentence.
+ *
+ * The draft is re-read from the board afterwards rather than trusted, so what
+ * the chips show is what is stored even when a refusal left the walk half done.
+ */
+async function commitDepends(next) {
+  const current = detailDepends.value;
+  const had = current.map((row) => row.identifier);
+  const added = next.filter((x) => !had.includes(x));
+  const removed = current.filter((row) => !next.includes(row.identifier));
+  if (added.length === 0 && removed.length === 0) return;
+  await runCommit(async () => {
+    for (const id of added) await addDepends(id);
+    for (const row of removed) await removeDepends(row.relationId);
+  });
+  dependsDraft.value = detailDepends.value.map((row) => row.identifier);
+}
+
+/* ------------------------------------------------------- attachments (files) */
+
+function chooseFiles() {
+  if (readonly.value) return;
+  fileInput.value?.click();
+}
+
+/** Every file the picker returned, uploaded one at a time, in the order picked. */
+async function onFiles(event) {
+  const files = [...(event.target?.files ?? [])];
+  event.target.value = "";
+  for (const file of files) await runCommit(() => uploadAttachment(file));
+}
+
+/**
+ * Download the stored bytes.
+ *
+ * The prototype's row shows a busy beat and transfers nothing — it has no
+ * network at all (§⑨.2) — so the *behaviour* here is the implementation's: the
+ * busy beat is kept (the reader gets the same acknowledgement) and the bytes are
+ * fetched and handed to the browser as a file. A failure (a row whose bytes were
+ * never stored answers an honest 404) is caught and reported as a sentence
+ * rather than left to the browser's own console.
+ */
+async function downloadAttachment(row) {
+  if (!row?.id) return;
+  busyAttachment.value = row.id;
+  try {
+    const response = await fetch(api.attachmentContentUrl(row.id));
+    if (!response.ok) throw new ApiError({ code: "NOT_FOUND", http: response.status });
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = row.name;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    pushToast(t(errorTextKey(err), row.name), "danger");
+  } finally {
+    busyAttachment.value = "";
+  }
+}
+
+async function removeAttachmentRow(row) {
+  if (readonly.value) return;
+  await runCommit(() => removeAttachment(row.id));
+}
+
 /** A local rejection is a verdict of its own: it takes the state and holds it. */
 function failSave() {
   clearTimeout(savedTimer);
@@ -324,9 +549,30 @@ watch(
     reporterDraft.value = reporterName.value;
     labelDraft.value = [...labelNames.value];
     commentDraft.value = "";
+    // T-20261014-212017-4 — opening a card also resets the round's own four
+    // surfaces: the description goes back to its rendered face with the card's
+    // own markdown as the seed, the chips take the board's `blocked_by`, and both
+    // property menus are closed. The read-only judgement is derived, so it needs
+    // no resetting — it cannot outlive the card it belongs to (§4.5, "关抽屉即清除").
+    descriptionMode.value = "read";
+    descriptionDraft.value = task.value?.description ?? "";
+    dependsDraft.value = detailDepends.value.map((row) => row.identifier);
+    closePropMenus();
+    busyAttachment.value = "";
     resetSave();
   },
   { immediate: true },
+);
+
+// The chips follow the board's own relations whenever they are re-read (an
+// upload's SSE refresh can re-open the detail), so the control never shows a
+// set the board does not have.
+watch(
+  () => detailDepends.value.map((row) => row.identifier).join("\u0000"),
+  () => {
+    const next = detailDepends.value.map((row) => row.identifier);
+    if (next.join("\u0000") !== dependsDraft.value.join("\u0000")) dependsDraft.value = next;
+  },
 );
 
 // Accepting a roster row rewrites the draft — that is the `change` half of the
@@ -335,6 +581,7 @@ watch(
 watch(assigneeDraft, () => commitField("assignee", assigneeDraft.value));
 watch(reporterDraft, () => commitField("reporter", reporterDraft.value));
 watch(labelDraft, () => commitLabels(), { deep: true });
+watch(dependsDraft, () => commitDepends(dependsDraft.value), { deep: true });
 
 async function submitComment() {
   const body = commentDraft.value.trim();
@@ -373,6 +620,7 @@ function copyId() {
     role="dialog"
     aria-modal="true"
     aria-labelledby="td-detail-title"
+    :data-readonly="readonly && open ? 'true' : undefined"
   >
     <header class="td-drawer-head">
       <!-- R7 ④ — identifier, chip and the close button share one flex row, with
@@ -398,6 +646,11 @@ function copyId() {
           <span class="td-status-dot" aria-hidden="true"></span>
           <span data-detail-status-chip-label>{{ $t(`status.${statusValue}`) }}</span>
         </span>
+        <!-- E-2 (T-20261014-212017-3) — a terminal card's drawer is read-only:
+             the root states it, this badge says so, and every writable control
+             below is disabled. Elon's reopen is a privileged path and is
+             deliberately not offered here. -->
+        <span class="badge badge-sm td-chip" data-detail-readonly :hidden="!(readonly && open)">{{ $t("drawer.readonly") }}</span>
         <!-- I-1 (T-20261014-154730) — the button **is** the design's `.td-iconbtn`,
              the same class the column header's `+` (F4) and the topbar filters
              toggle (F10) already wear. The design's `32×32` (§3) is that box, so
@@ -461,28 +714,108 @@ function copyId() {
           <!-- R14 D26 — the three single-choice properties are **controls**, not
                text: the prototype's row is a `<button class="td-prop-value">`
                that opens a menu. The dot, the label and the disclosure caret are
-               its three children (A16/A17). -->
-          <button type="button" class="td-prop-value" data-detail-status :data-status="statusValue">
-            <span class="td-status-dot" aria-hidden="true"></span>
-            <span data-detail-status-label>{{ $t(`status.${statusValue}`) }}</span>
-            <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M6 9.5 12 15.5 18 9.5" />
-            </svg>
-          </button>
+               its three children (A16/A17).
+
+               T-20261014-212017-3 — the button is now **in place editable**: the
+               row is the prototype's `.td-combo.td-prop-combo` wrapper and the
+               menu its `ul.menu`, so choosing a status is a move, not a
+               navigation. `data-status` stays on the option buttons (it is what
+               the existing `[data-status=…]` colour rules key on) and
+               `data-status-value` carries the value the control writes back. -->
+          <div class="td-combo td-prop-combo" data-detail-status-combo data-detail-save-field="status">
+            <button
+              type="button"
+              class="td-prop-value"
+              data-detail-status
+              :data-status="statusValue"
+              aria-haspopup="listbox"
+              :aria-expanded="statusMenuOpen ? 'true' : 'false'"
+              aria-controls="td-status-menu-detail"
+              :disabled="readonly"
+              :aria-disabled="readonly ? 'true' : undefined"
+              @click="toggleStatusMenu"
+              @keydown.esc="closePropMenus"
+              @blur="closePropMenus"
+            >
+              <span class="td-status-dot" aria-hidden="true"></span>
+              <span data-detail-status-label>{{ $t(`status.${statusValue}`) }}</span>
+              <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M6 9.5 12 15.5 18 9.5" />
+              </svg>
+            </button>
+            <ul id="td-status-menu-detail" class="menu td-combo-menu" role="listbox" data-detail-status-menu :hidden="!statusMenuOpen">
+              <li v-for="value in STATUS_MENU" :key="value" role="none">
+                <button
+                  type="button"
+                  class="td-combo-option"
+                  role="option"
+                  :aria-selected="value === statusValue ? 'true' : 'false'"
+                  data-detail-status-option
+                  :data-status="value"
+                  :data-status-value="value"
+                  @mousedown.prevent="chooseStatus(value)"
+                >
+                  <span class="status td-status-dot" aria-hidden="true"></span>
+                  <span :data-i18n="`status.${value}`">{{ $t(`status.${value}`) }}</span>
+                </button>
+              </li>
+            </ul>
+          </div>
 
           <span class="td-prop-label" data-i18n="prop.priority">{{ $t("prop.priority") }}</span>
-          <button type="button" class="td-prop-value" data-detail-priority :data-priority="priority">
-            <span class="td-pri" :aria-label="$t(`priority.${priority}`)" role="img">
-              <svg class="td-pri-glyph" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
-                <rect x="2.5" y="2.5" width="7" height="7" rx="1" />
-                <line x1="2" y1="6" x2="10" y2="6" />
+          <!-- Priority takes the same dropdown. Unlike status, the priority
+               colour rides on the `.td-pri` wrapper inside each row rather than
+               on the row itself, so the row's label text keeps the ink colour and
+               only the glyph is tinted — the shape the trigger button already
+               uses (T-20261014-212017-3 §4.1). -->
+          <div class="td-combo td-prop-combo" data-detail-priority-combo data-detail-save-field="priority">
+            <button
+              type="button"
+              class="td-prop-value"
+              data-detail-priority
+              :data-priority="priority"
+              aria-haspopup="listbox"
+              :aria-expanded="priorityMenuOpen ? 'true' : 'false'"
+              aria-controls="td-priority-menu-detail"
+              :disabled="readonly"
+              :aria-disabled="readonly ? 'true' : undefined"
+              @click="togglePriorityMenu"
+              @keydown.esc="closePropMenus"
+              @blur="closePropMenus"
+            >
+              <span class="td-pri" :aria-label="$t(`priority.${priority}`)" role="img">
+                <svg class="td-pri-glyph" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+                  <rect x="2.5" y="2.5" width="7" height="7" rx="1" />
+                  <line x1="2" y1="6" x2="10" y2="6" />
+                </svg>
+              </span>
+              <span data-detail-priority-label>{{ $t(`priority.${priority}`) }}</span>
+              <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M6 9.5 12 15.5 18 9.5" />
               </svg>
-            </span>
-            <span data-detail-priority-label>{{ $t(`priority.${priority}`) }}</span>
-            <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M6 9.5 12 15.5 18 9.5" />
-            </svg>
-          </button>
+            </button>
+            <ul id="td-priority-menu-detail" class="menu td-combo-menu" role="listbox" data-detail-priority-menu :hidden="!priorityMenuOpen">
+              <li v-for="value in PRIORITY_MENU" :key="value" role="none">
+                <button
+                  type="button"
+                  class="td-combo-option"
+                  role="option"
+                  :aria-selected="value === priority ? 'true' : 'false'"
+                  data-detail-priority-option
+                  :data-priority-value="value"
+                  @mousedown.prevent="choosePriority(value)"
+                >
+                  <span class="td-pri" :data-priority="value" aria-hidden="true">
+                    <svg class="td-pri-glyph" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+                      <rect x="2.5" y="2.5" width="7" height="7" rx="1" />
+                      <line x1="2" y1="6" x2="10" y2="6" />
+                    </svg>
+                  </span>
+                  <span :data-i18n="`priority.${value}`">{{ $t(`priority.${value}`) }}</span>
+                </button>
+              </li>
+            </ul>
+          </div>
 
           <span class="td-prop-label" data-i18n="prop.assignee">{{ $t("prop.assignee") }}</span>
           <!-- R14 D26/B13 — the people rows are combos: the value box carries
@@ -571,15 +904,62 @@ function copyId() {
         </div>
       </section>
 
-      <section class="td-section">
-        <h3 class="td-section-title" data-i18n="drawer.description">{{ $t("drawer.description") }}</h3>
+      <section class="td-section" data-detail-description-section :data-detail-description-mode="descriptionMode" data-detail-save-field="description">
+        <div class="td-section-head">
+          <h3 class="td-section-title" data-i18n="drawer.description">{{ $t("drawer.description") }}</h3>
+          <!-- T-20261014-212017-3 §4.2 — the pencil turns the rendered markdown
+               into the B23 editor in place. The section's `data-detail-description-mode`
+               is the one switch and the stylesheet holds both readings, so the
+               two faces can never both be showing. -->
+          <button
+            type="button"
+            class="td-iconbtn"
+            data-detail-description-edit
+            :aria-label="$t('drawer.editDescription')"
+            :title="$t('drawer.editDescription')"
+            :disabled="readonly"
+            :aria-disabled="readonly ? 'true' : undefined"
+            @click="startDescriptionEdit"
+          >
+            <svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M4 20h4l10-10-4-4L4 16z" />
+              <path d="M14 6l4 4" />
+            </svg>
+          </button>
+        </div>
         <!-- A13 — the hook rides the **content container** (`div.td-gfm`), whose
              parent is the `section`; the empty state is a plain `span` inside it,
-             which is the shape the prototype's `fill()` injects (A21/D49). -->
+             which is the shape the prototype's `fill()` injects (A21/D49).
+
+             The `v-html` half is the board's one rendering sink and it is the
+             prototype's own vendored renderer: `lib/markdown.js` escapes its
+             input before it emits anything (`MarkdownLite.escape`) and falls back
+             to escaped plain text when the renderer is absent, so a description
+             can never inject markup the board did not write. The stored text is
+             opaque to the server on purpose (T-20261014-212017-2 §①), which makes
+             this the only boundary that matters for it. -->
         <div v-if="descriptionHtml" class="td-gfm" data-detail-description v-html="descriptionHtml"></div>
         <div v-else class="td-gfm" data-detail-description>
           <span class="text-xs text-(--brand-text-3)" data-i18n="description.none">{{ $t("description.none") }}</span>
         </div>
+
+        <MarkdownEditor v-model="descriptionDraft" :source-hooks="[]" :hidden="descriptionMode !== 'edit'">
+          <div class="td-desc-actions">
+            <button
+              type="button"
+              class="btn btn-xs"
+              data-detail-description-save
+              :aria-busy="saveState === 'saving' ? 'true' : undefined"
+              :disabled="saveState === 'saving'"
+              @click="saveDescription"
+            >
+              {{ $t("drawer.save") }}
+            </button>
+            <button type="button" class="btn btn-outline btn-xs" data-detail-description-cancel @click="cancelDescriptionEdit">
+              {{ $t("modal.cancel") }}
+            </button>
+          </div>
+        </MarkdownEditor>
       </section>
 
       <section class="td-section">
@@ -597,13 +977,48 @@ function copyId() {
              "read as its own name" fallback `lib/activity.js` gives an unnamed
              event. -->
         <div class="td-rel" data-detail-relations>
-          <template v-if="relationLinks.length">
+          <template v-if="relationGroups.length">
             <span v-for="group in relationGroups" :key="group.type" class="td-rel-item">
               <span class="text-xs text-(--brand-text-3)" :data-i18n="`relations.${group.type}`">{{ group.category }}</span>
               <button v-for="link in group.links" :key="link.key" type="button" class="td-copy" data-relation-link>{{ link.label }}</button>
             </span>
           </template>
-          <span v-else class="text-xs text-(--brand-text-3)" data-i18n="relations.none">{{ $t("relations.none") }}</span>
+          <!-- The empty state is the card that has **nothing at all** — no
+               read-only edge and no dependency. A card whose only relation was
+               `blocks` reads as an empty group here, exactly as the prototype's
+               own `fill()` leaves it once its Blocks row is withdrawn in favour
+               of the chips below. -->
+          <span v-else-if="dependsDraft.length === 0" class="text-xs text-(--brand-text-3)" data-i18n="relations.none">{{ $t("relations.none") }}</span>
+        </div>
+
+        <!-- T-20261014-212017-3 §4.4 — `depends_on` ⇄ the `blocks` edge
+             (PROTOCOL §①). The card's prerequisites are an editable multi-select
+             of this project's cards; the value the control holds is each
+             prerequisite's **identifier**, and the store resolves it to a task id
+             to write the edge (`stores/board.js#addDepends`). A cycle, a
+             self-reference or a cross-project edge is refused by the board's
+             relation guards, and the refusal is a sentence, not a stack. -->
+        <div class="td-combo td-prop-combo" data-detail-depends data-detail-save-field="depends">
+          <span class="td-prop-label" data-i18n="relations.blocks">{{ $t("relations.blocks") }}</span>
+          <ComboField
+            v-model="dependsDraft"
+            :options="taskRoster"
+            multi
+            task-mode
+            :free-text="false"
+            :disabled="readonly"
+            hook-input="data-detail-depends-input"
+            hook-menu="data-detail-depends-menu"
+            hook-option="data-detail-depends-option"
+            hook-value="data-detail-depends-value"
+            hook-chips="data-detail-depends-chips"
+            hook-chip="data-detail-depends-chip"
+            hook-chip-value="data-detail-depends-value"
+            hook-chip-remove="data-detail-depends-remove"
+            placeholder-key="combo.dependsPlaceholder"
+            empty-key="combo.noTasks"
+            aria-key="relations.blocks"
+          />
         </div>
       </section>
 
@@ -633,20 +1048,79 @@ function copyId() {
         </div>
       </section>
 
-      <section class="td-section">
-        <h3 class="td-section-title" data-i18n="drawer.attachments">{{ $t("drawer.attachments") }}</h3>
-        <!-- The prototype's rows: a file icon, the name, and the size pushed to
-             the row's end (`[data-attachment-row]` and its two hooks are the
-             implementation's own test hooks and stay exactly where they are —
-             R14 §8 U1(a)). `attachments.none` is the state of a task that has no
-             attachments — never the state of a drawer with no task in it. -->
+      <section class="td-section" data-detail-attachments-section data-detail-save-field="attachments">
+        <div class="td-section-head">
+          <h3 class="td-section-title" data-i18n="drawer.attachments">{{ $t("drawer.attachments") }}</h3>
+          <!-- T-20261014-212017-3 §4.3 — the section's own upload control. The
+               file input is the browser's picker and is never shown: it is
+               reached through the button, so it is `.sr-only` and out of the tab
+               order, exactly as the prototype states it. -->
+          <button
+            type="button"
+            class="btn btn-outline btn-xs"
+            data-attachment-upload
+            :disabled="readonly"
+            :aria-disabled="readonly ? 'true' : undefined"
+            @click="chooseFiles"
+          >
+            {{ $t("drawer.upload") }}
+          </button>
+          <input
+            ref="fileInput"
+            type="file"
+            multiple
+            class="sr-only"
+            data-attachment-file
+            aria-hidden="true"
+            tabindex="-1"
+            @change="onFiles"
+          />
+        </div>
+        <!-- The prototype's rows: a file icon, the name, its size, and now the
+             row's own two affordances. `[data-attachment-row]` and its two hooks
+             are the implementation's own test hooks and stay exactly where they
+             are (R14 §8 U1(a)); the download/remove pair is the prototype's
+             (`[data-attachment-download]` / `[data-attachment-remove]`).
+             `attachments.none` is the state of a task that has no attachments —
+             never the state of a drawer with no task in it. -->
         <div data-detail-attachments>
-          <div v-for="file in attachments" :key="file.name" class="td-file" data-attachment-row>
+          <div v-for="file in attachments" :key="file.id || file.name" class="td-file" data-attachment-row>
             <svg class="td-icon size-4" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M14 3v5h5M7 3h7l5 5v13H7z" />
             </svg>
             <span class="td-file-name" data-attachment-name>{{ file.name }}</span>
             <span class="td-file-size" data-attachment-size>{{ file.size }}</span>
+            <span class="td-file-actions">
+              <button
+                type="button"
+                class="td-iconbtn"
+                data-attachment-download
+                :aria-label="$t('drawer.attachDownload')"
+                :title="$t('drawer.attachDownload')"
+                :aria-busy="busyAttachment === file.id ? 'true' : undefined"
+                :disabled="readonly"
+                :aria-disabled="readonly ? 'true' : undefined"
+                @click="downloadAttachment(file)"
+              >
+                <svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M12 4v11M7 11l5 5 5-5M5 20h14" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                class="td-iconbtn"
+                data-attachment-remove
+                :aria-label="$t('drawer.attachRemove')"
+                :title="$t('drawer.attachRemove')"
+                :disabled="readonly"
+                :aria-disabled="readonly ? 'true' : undefined"
+                @click="removeAttachmentRow(file)"
+              >
+                <svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M6 6l12 12M18 6 6 18" />
+                </svg>
+              </button>
+            </span>
           </div>
           <span v-if="task && attachments.length === 0" class="text-xs text-(--brand-text-3)" data-i18n="attachments.none">{{ $t("attachments.none") }}</span>
         </div>

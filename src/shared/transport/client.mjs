@@ -40,15 +40,17 @@ export function createBoardClient(options) {
   /**
    * @param {string} method
    * @param {string} path
-   * @param {{body?: unknown, query?: object}} [extra]
+   * @param {{body?: unknown, rawBody?: Uint8Array|null, contentType?: string|null, query?: object}} [extra]
    */
   async function call(method, path, extra = {}) {
-    const { body, query } = extra;
+    const { body, rawBody, contentType, query } = extra;
     return requestJson({
       url,
       method,
       path: withQuery(path, query),
       ...(body === undefined ? {} : { body }),
+      ...(rawBody === undefined ? {} : { rawBody }),
+      ...(contentType === undefined ? {} : { contentType }),
       token,
       actor,
       session,
@@ -66,6 +68,12 @@ export function createBoardClient(options) {
     post: (path, body, extra = {}) => call("POST", path, { ...extra, body }),
     patch: (path, body, extra = {}) => call("PATCH", path, { ...extra, body }),
     put: (path, body, extra = {}) => call("PUT", path, { ...extra, body }),
+    /**
+     * The byte half of an upload: send `bytes` verbatim as the request body.
+     * Kept beside `put` rather than folded into it so a JSON `put` can never
+     * accidentally ship its `JSON.stringify`'d envelope as an attachment.
+     */
+    putBytes: (path, bytes, contentType, extra = {}) => call("PUT", path, { ...extra, rawBody: bytes, contentType }),
     delete: (path, extra) => call("DELETE", path, extra),
     /** Escape hatch for the rare call that is not CRUD-shaped. */
     call,

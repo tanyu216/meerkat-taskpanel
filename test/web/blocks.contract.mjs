@@ -154,6 +154,12 @@ export const DOMAINS = Object.freeze({
   SLOT: Object.freeze(["description", "relations", "agent-session", "attachments", "comments", "activity"]),
   /** Markdown editor modes (B23). */
   MD_MODE: Object.freeze(["write", "preview", "split"]),
+  /**
+   * B09 · the drawer's Description section is one section with two faces, and
+   * `data-detail-description-mode` names which is showing (T-20261014-212017-3
+   * §4.2). Two values, and the stylesheet holds both readings.
+   */
+  DESCRIPTION_MODE: Object.freeze(["read", "edit"]),
   /** Agent presence rows (B03). */
   PRESENCE: Object.freeze(["running", "idle"]),
   /** Empty-state kinds (B12). */
@@ -176,7 +182,12 @@ export const DOMAINS = Object.freeze({
    */
   SAVE_STATE: Object.freeze(["idle", "saving", "saved", "error"]),
   /** The drawer fields that save as they change (B09, R10 ②). */
-  SAVE_FIELD: Object.freeze(["assignee", "reporter", "labels"]),
+  // T-20261014-212017-4 — the drawer's own four edit surfaces joined R10's
+  // three: the two property menus, the markdown description, the file list and
+  // the dependency chips. The set is the prototype's, read off
+  // `design/prototype/index.html` (`data-detail-save-field` appears exactly
+  // eight times, once per value below).
+  SAVE_FIELD: Object.freeze(["assignee", "reporter", "labels", "status", "priority", "description", "attachments", "depends"]),
   /**
    * The list view's two states (B08/B13, R9 ③). Exactly two, and they are
    * mutually exclusive by rule: `loading` shows the skeleton, `data` shows the
@@ -1481,10 +1492,40 @@ const BLOCKS = [
       "[data-detail-save]",
       "[data-detail-save-error]",
       "[data-detail-save-field]",
+      // T-20261014-212017-4 — the drawer's four edit surfaces, whose shells are
+      // in the document whether or not a card is open (like every other hook of
+      // this block): the two property menus, the markdown editor's section, the
+      // file section and the dependency chips' control.
+      "[data-detail-status-combo]",
+      "[data-detail-status-menu]",
+      "[data-detail-status-option]",
+      "[data-detail-priority-combo]",
+      "[data-detail-priority-menu]",
+      "[data-detail-priority-option]",
+      "[data-detail-description-section]",
+      "[data-detail-description-edit]",
+      "[data-detail-description-save]",
+      "[data-detail-description-cancel]",
+      "[data-detail-attachments-section]",
+      "[data-attachment-upload]",
+      "[data-attachment-file]",
+      "[data-detail-depends]",
+      "[data-detail-depends-input]",
+      "[data-detail-depends-menu]",
+      "[data-detail-depends-chips]",
+      "[data-detail-readonly]",
     ],
     states: [
       "[data-detail-drawer][data-state=\"open\"]",
       "[data-detail-drawer][data-state=\"closing\"]",
+      // …and the four surfaces' *data-driven* hooks, which exist only while a
+      // card is open (a row per file, a chip per dependency, a menu row per
+      // candidate card).
+      "[data-attachment-download]",
+      "[data-attachment-remove]",
+      "[data-detail-depends-chip]",
+      "[data-detail-depends-remove]",
+      "[data-detail-depends-option]",
       // M2 · data-driven rows. They exist only while a task is open, so they are
       // asserted in the driven pass (`when: "drawer open"`) below.
       "[data-attachment-row]",
@@ -1524,18 +1565,73 @@ const BLOCKS = [
       { kind: "count", selector: "[data-detail-save-error][role=\"alert\"]", equals: 1 },
       { kind: "count", selector: "[data-detail-save-error][hidden]", equals: 1 },
       { kind: "computed", probe: "[data-detail-save-error]", property: "display", equals: "none" },
-      { kind: "count", selector: "[data-detail-save-field]", equals: 3 },
+      // T-20261014-212017-4 — R10's save region now covers **eight** fields: the
+      // three M6b rows plus the four the drawer's edit surfaces added (status,
+      // priority, description, attachments, depends). The number is the
+      // prototype's own (`design/prototype/index.html` carries eight
+      // `data-detail-save-field` hooks) and the domain below spells the values.
+      { kind: "count", selector: "[data-detail-save-field]", equals: 8 },
       {
         kind: "domain",
         selector: "[data-detail-save-field]",
         attribute: "data-detail-save-field",
         subset: DOMAINS.SAVE_FIELD,
       },
-      // The hook rides the three rows that already exist — this round added an
-      // attribute, never a node (contract §4.3 note 2).
+      // The hook rides the three rows that already exist — that round added an
+      // attribute, never a node (contract §4.3 note 2). The round after it put
+      // the hook on the section/combo roots of its own four controls, which is
+      // the same rule: one hook per editable field, on the field's own root.
       { kind: "count", selector: "[data-detail-assignee][data-detail-save-field=\"assignee\"]", equals: 1 },
       { kind: "count", selector: "[data-detail-reporter][data-detail-save-field=\"reporter\"]", equals: 1 },
       { kind: "count", selector: "[data-detail-labels][data-detail-save-field=\"labels\"]", equals: 1 },
+      { kind: "count", selector: "[data-detail-status-combo][data-detail-save-field=\"status\"]", equals: 1 },
+      { kind: "count", selector: "[data-detail-priority-combo][data-detail-save-field=\"priority\"]", equals: 1 },
+      { kind: "count", selector: "[data-detail-description-section][data-detail-save-field=\"description\"]", equals: 1 },
+      { kind: "count", selector: "[data-detail-attachments-section][data-detail-save-field=\"attachments\"]", equals: 1 },
+      { kind: "count", selector: "[data-detail-depends][data-detail-save-field=\"depends\"]", equals: 1 },
+      // T-20261014-212017-4 · the four edit surfaces, block by block.
+      //
+      // ① status / priority — the prototype's `.td-combo` menus over fixed
+      // enumerations (B22's menu shape). Seven status rows and five priority
+      // rows, both value sets the domain's own; `data-status` stays on the status
+      // option buttons (the existing `[data-status=…]` colour rules key on it),
+      // while priority rides on each row's `.td-pri` **inside** the button so the
+      // row's label keeps the ink colour.
+      { kind: "count", selector: "[data-detail-status-option]", within: "[data-detail-status-menu]", equals: 7 },
+      { kind: "domain", selector: "[data-detail-status-option]", attribute: "data-status-value", subset: DOMAINS.STATUS },
+      { kind: "count", selector: "[data-detail-priority-option]", within: "[data-detail-priority-menu]", equals: 5 },
+      { kind: "domain", selector: "[data-detail-priority-option]", attribute: "data-priority-value", subset: DOMAINS.PRIORITY },
+      { kind: "count", selector: "button[data-detail-status]", within: "[data-detail-status-combo]", equals: 1 },
+      { kind: "count", selector: "button[data-detail-priority]", within: "[data-detail-priority-combo]", equals: 1 },
+      // Both menus ship closed — the resting document says so, and a menu that
+      // started open would be an edit surface nobody asked for.
+      { kind: "count", selector: "[data-detail-status-menu][hidden]", equals: 1 },
+      { kind: "count", selector: "[data-detail-priority-menu][hidden]", equals: 1 },
+      // ② description — one section, two faces, and the mode attribute is the
+      // only switch. At rest it is `read`, with the editor present but out.
+      { kind: "domain", selector: "[data-detail-description-section]", attribute: "data-detail-description-mode", subset: DOMAINS.DESCRIPTION_MODE },
+      { kind: "count", selector: "[data-detail-description-section][data-detail-description-mode=\"read\"]", equals: 1 },
+      { kind: "count", selector: "[data-md-editor]", within: "[data-detail-description-section]", equals: 1 },
+      { kind: "count", selector: "[data-md-source]", within: "[data-detail-description-section]", equals: 1 },
+      { kind: "count", selector: "[data-detail-description-save]", within: "[data-detail-description-section]", equals: 1 },
+      { kind: "count", selector: "[data-detail-description-cancel]", within: "[data-detail-description-section]", equals: 1 },
+      // The drawer's editor is **not** the create dialog's: the create hook is
+      // the dialog's own seat and the drawer must not claim it (B10/§4.2).
+      { kind: "count", selector: "[data-create-task-description]", within: "[data-detail-description-section]", equals: 0 },
+      // ③ attachments — the section's upload control and its hidden picker. The
+      // rows themselves are data-driven (`states` above) and are asserted in the
+      // driven pass, where a card with files is actually open.
+      { kind: "count", selector: "[data-attachment-upload]", within: "[data-detail-attachments-section]", equals: 1 },
+      { kind: "count", selector: "[data-attachment-file]", within: "[data-detail-attachments-section]", equals: 1 },
+      // ④ depends_on — one chip control over the `blocks` edge (PROTOCOL §①).
+      { kind: "count", selector: "[data-detail-depends-input]", within: "[data-detail-depends]", equals: 1 },
+      { kind: "count", selector: "[data-detail-depends-menu]", within: "[data-detail-depends]", equals: 1 },
+      { kind: "count", selector: "[data-detail-depends-chips]", within: "[data-detail-depends]", equals: 1 },
+      // E-2 — the read-only badge exists and is **off** at rest: the root carries
+      // no `data-readonly` until a terminal card is opened, so a drawer that
+      // leaked the attribute would red here rather than on the next card.
+      { kind: "count", selector: "[data-detail-readonly][hidden]", equals: 1 },
+      { kind: "count", selector: "[data-detail-drawer][data-readonly=\"true\"]", equals: 0 },
       // R8 ③ — the drawer's identifier wears the same single-line guard as the
       // card's and the list row's (the cap itself is the render-layer slice), and
       // the drawer **root** carries the full identifier. The root's attribute is
@@ -1728,9 +1824,17 @@ const BLOCKS = [
       { kind: "computed", probe: "button[data-detail-status]", count: 1 },
       { kind: "computed", probe: "button[data-detail-priority]", count: 1 },
       { kind: "computed", probe: "button[data-detail-project]", count: 1 },
-      // R14 D24 (A23) — the property labels are catalogue seats: the grid's eight
-      // `data-i18n` attributes are exactly the label column, one per row.
-      { kind: "computed", probe: "[data-detail-props] [data-i18n]", count: 8 },
+      // R14 D24 (A23) — the property grid's catalogue seats. It was "eight
+      // `data-i18n` attributes, one per label row"; since T-20261014-212017-4 the
+      // grid also *contains* the status and priority menus, whose option labels
+      // are seats too, so the seat count is the grid's own arithmetic over the
+      // design's own vocabulary: **8 property labels + 7 status options + 5
+      // priority options = 20**. That is a domain-fixed multiplicity of the kind
+      // this file's header allows (7 statuses ⇒ 7 columns, 3 editor modes), and
+      // it is a stronger statement than the old one: the grid holds exactly
+      // these seats and nothing else. A sixth priority or an eighth property row
+      // reds here, which is what the row-per-label rule meant all along.
+      { kind: "count", selector: "[data-i18n]", within: "[data-detail-props]", equals: 20 },
       // R14 D32/D37/D38 (A13/A14/A15) — *where* each body hook rides: the
       // description hook is on the content container (`div.td-gfm`), the four
       // stream hooks are on a `div`, and the session hook is on the `section`
@@ -2414,8 +2518,15 @@ const BLOCKS = [
     required: ["[data-md-editor]", "[data-md-toggle]", "[data-md-source]", "[data-md-highlight]", "[data-md-preview]"],
     states: [],
     rules: [
-      { kind: "count", selector: "[data-md-editor]", equals: 1 },
-      { kind: "count", selector: "[data-md-toggle]", equals: 3 },
+      // T-20261014-212017-4 — B23's editor is the **create dialog's**, and since
+      // the drawer's Description section grew one of its own there are two
+      // `[data-md-editor]`s in the document. The counts here were document-wide
+      // and said "exactly one"; the honest statement is "exactly one **per
+      // surface**", so they are scoped. This is not a loosening: a second editor
+      // inside `[data-create-task]` still reds, and the drawer's own editor is
+      // asserted in B09 where it belongs.
+      { kind: "count", selector: "[data-md-editor]", within: "[data-create-task]", equals: 1 },
+      { kind: "count", selector: "[data-md-toggle]", within: "[data-create-task]", equals: 3 },
       { kind: "domain", selector: "[data-md-toggle]", attribute: "data-md-toggle", subset: DOMAINS.MD_MODE },
       // R10 ③ — the editor's own end of the stretch chain, and the reason the
       // round exists. The editor takes what the column leaves it, the panes take
@@ -2423,16 +2534,16 @@ const BLOCKS = [
       // than a viewport-driven ceiling: the old `clamp(280px, 46vh, 520px)` was
       // a rule about the window, so the box could grow and the editing area could
       // not, and the difference piled up under the editor.
-      { kind: "computed", probe: "[data-md-editor]", property: "display", equals: "flex" },
-      { kind: "computed", probe: "[data-md-editor]", property: "flexGrow", equals: "1" },
-      { kind: "computed", probe: "[data-md-editor]", property: "flexBasis", equals: "auto" },
-      { kind: "computed", probe: "[data-md-editor]", property: "flexDirection", equals: "column" },
-      { kind: "computed", probe: ".td-md-panes", property: "minHeight", equals: "200px" },
-      { kind: "computed", probe: ".td-md-panes", property: "flexGrow", equals: "1" },
+      { kind: "computed", probe: "[data-create-task] [data-md-editor]", property: "display", equals: "flex" },
+      { kind: "computed", probe: "[data-create-task] [data-md-editor]", property: "flexGrow", equals: "1" },
+      { kind: "computed", probe: "[data-create-task] [data-md-editor]", property: "flexBasis", equals: "auto" },
+      { kind: "computed", probe: "[data-create-task] [data-md-editor]", property: "flexDirection", equals: "column" },
+      { kind: "computed", probe: "[data-create-task] .td-md-panes", property: "minHeight", equals: "200px" },
+      { kind: "computed", probe: "[data-create-task] .td-md-panes", property: "flexGrow", equals: "1" },
       // The write side takes the pane it is stacked in and scrolls itself once
       // the text outgrows it — the same behaviour as before the round, now from
       // a height that follows the pane instead of a fixed 220px.
-      { kind: "computed", probe: "[data-md-source]", property: "overflowY", equals: "auto" },
+      { kind: "computed", probe: "[data-create-task] [data-md-source]", property: "overflowY", equals: "auto" },
       {
         kind: "manual",
         note:

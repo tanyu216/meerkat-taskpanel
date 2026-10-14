@@ -50,6 +50,13 @@ const props = defineProps({
    * empty because there is nothing to edit yet.
    */
   seed: { type: Boolean, default: false },
+  /**
+   * E-2 (T-20261014-212017-3 §4.5) — a terminal card's drawer is read-only, and
+   * the relation control's box and its chips' ✕ are on the disabled list. The
+   * box still *shows* its values (a read-only control that hid them would say
+   * the card has no dependencies); it just cannot be typed into or opened.
+   */
+  disabled: { type: Boolean, default: false },
 });
 const emit = defineEmits(["update:modelValue", "blur"]);
 
@@ -119,6 +126,7 @@ function accept(entry) {
 }
 
 function onInput() {
+  if (props.disabled) return;
   open.value = true;
   active.value = 0;
 }
@@ -269,6 +277,8 @@ defineExpose({ focus, clear });
           v-bind="{ [hookChipRemove]: '' }"
           :aria-label="`Clear ${name}`"
           :title="$t('combo.clear')"
+          :disabled="disabled"
+          :aria-disabled="disabled ? 'true' : undefined"
           @click="removeChip(name)"
         >
           <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -289,6 +299,8 @@ defineExpose({ focus, clear });
       :aria-label="ariaKey ? $t(ariaKey) : undefined"
       :aria-expanded="open ? 'true' : 'false'"
       :placeholder="$t(placeholderKey)"
+      :disabled="disabled"
+      :aria-disabled="disabled ? 'true' : undefined"
       @input="onInput"
       @focus="onInput"
       @keydown="onKeydown"
