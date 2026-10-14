@@ -17,8 +17,10 @@ design/
 round — each is the single written source of truth for one interface question, written so
 an implementation card can build it and an independent verification card can check it.
 They are `contracts/project-prefix-binding.md` (the create-project prefix field and the
-card-number prefix) and `contracts/assignee-weight-order.md` (the assignee task weight
-order: factors, weights, composite, tie-break, view interactions).
+card-number prefix), `contracts/assignee-weight-order.md` (the assignee task weight
+order: factors, weights, composite, tie-break, view interactions) and
+`contracts/rail-chip-overflow.md` (how the sidebar rail's project chip behaves when the
+effective prefix does not fit its 24×24 box).
 
 ## Status
 
