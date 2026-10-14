@@ -591,10 +591,14 @@ function copyId() {
         <h3 class="td-section-title" data-i18n="drawer.session">{{ $t("drawer.session") }}</h3>
         <div data-detail-agent-session-body>
           <!-- R14 D43/D44/D45 — the session is one sunken box in two rows:
-               platform badge + `--agent-platform` value + the Resume button
-               pushed to the row's end, then the id under the prototype's own
-               `.td-copy` face. `data-agent-platform` is stated only for an agent
-               card — a human card has no platform to name (B16's domain rule). -->
+               platform badge + that session's **platform id** (e.g. `claude`) +
+               the Resume button pushed to the row's end, then the id under the
+               prototype's own `.td-copy` face. The seat is the id, not a CLI
+               flag: the prototype's static sample reads `--agent-platform claude`,
+               but that declaration is a prototype-only expression — `--agent-platform`
+               is neither this seat's content nor a CSS custom property this repo
+               defines or uses (DF-4). `data-agent-platform` is stated only for an
+               agent card — a human card has no platform to name (B16's domain rule). -->
           <div class="td-session" data-agent-session>
             <div class="flex items-center gap-2">
               <span class="badge badge-xs td-agent-badge" :data-agent-platform="isAgent ? platform : undefined">{{ isAgent ? platform : "" }}</span>
