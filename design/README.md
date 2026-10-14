@@ -21,7 +21,9 @@ card-number prefix), `contracts/assignee-weight-order.md` (the assignee task wei
 order: factors, weights, composite, tie-break, view interactions) and
 `contracts/side-rail-short-code.md` (the rail's project short code: it is the project's
 **effective prefix** — the same value the card numbers carry — and it decides the
-read-only `prefix` field the projects wire hands the sidebar).
+read-only `prefix` field the projects wire hands the sidebar) and
+`contracts/rail-chip-overflow.md` (how the sidebar rail's project chip behaves when the
+effective prefix does not fit its 24×24 box).
 
 ## Status
 
