@@ -241,35 +241,39 @@ defineExpose({ focus, clear });
   <div class="relative" :data-drop="dropUp ? 'up' : 'down'">
     <!-- The accepted values read as chips *above* the field, which is where the
          prototype puts `.td-chips` for all four controls that carry them (the
-         parent, depends-on, the create dialog's labels and the drawer's). Each
-         chip is the value: a relation chip names its task exactly as the option
-         row did — the identifier under the same `identifierText` cap, then the
-         title — and keeps the whole title on `title` (T-20261014-001418 ①/②). -->
+         parent, depends-on, the create dialog's labels and the drawer's).
+
+         R14 D50/B14/B15 — a chip is the prototype's own `.badge.td-chip`: the
+         18px accent-soft pill whose 2px/4px/2px/8px padding and 12px face the
+         stylesheet already states for the status chip. Its two children are the
+         name and the remove control, and the remove control is the prototype's
+         `button.td-chip-remove` — a 16×16 box holding `svg.td-icon-sm`, never a
+         text glyph. A relation chip names its task the way an option row does —
+         the identifier (mono, width held) then the title (the half that gives) —
+         and keeps the whole title on `title` (T-20261014-001418 ①/②). -->
     <div v-if="hookChips" v-bind="{ [hookChips]: '' }" class="td-chips">
       <span
         v-for="name in values"
         :key="name"
-        class="inline-flex items-center gap-1 px-1.5 py-px rounded-[4px] border border-(--brand-border) bg-(--brand-sunken) text-[11px] text-(--brand-text-2)"
+        class="badge td-chip"
         v-bind="hookChip ? { [hookChip]: '', ...(hookChipValue ? { [hookChipValue]: name } : {}) } : {}"
         :title="chipTitle(name) || name"
       >
-        <!-- The identifier holds its width and the title gives: the prototype's
-             `.td-chip .td-mono { flex: 0 0 auto }` / `.td-chip .td-combo-title`,
-             spelled here because this chip states its box in utilities rather
-             than wearing `.td-chip` (as it has since it landed). -->
-        <span v-if="taskMode" class="td-mono shrink-0">{{ identifierText(name) }}</span>
-        <template v-else>{{ name }}</template>
+        <span v-if="taskMode" class="td-mono">{{ identifierText(name) }}</span>
+        <span v-else>{{ name }}</span>
         <span v-if="taskMode && chipTitle(name)" class="td-combo-title">{{ chipTitle(name) }}</span>
         <button
           v-if="hookChipRemove"
           type="button"
-          class="border-0 bg-transparent text-(--brand-text-3) cursor-pointer leading-none"
+          class="td-chip-remove"
           v-bind="{ [hookChipRemove]: '' }"
           :aria-label="`Clear ${name}`"
           :title="$t('combo.clear')"
           @click="removeChip(name)"
         >
-          ✕
+          <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6 6l12 12M18 6 6 18" />
+          </svg>
         </button>
       </span>
     </div>

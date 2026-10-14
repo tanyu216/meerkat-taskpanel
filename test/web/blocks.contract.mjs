@@ -1688,6 +1688,70 @@ const BLOCKS = [
           "A component-based implementation renders one drawer instead; the **hooks** are the " +
           "contract, the template multiplicity is not.",
       },
+      /* ---- R14 §8.1 D01–D50 · the drawer's shell, head and body ------------
+         The round's own decisions, each one a fact no earlier rule reached. The
+         *values* of the prototype's visual spec (R14 §3) are measured bilaterally
+         in `web/manifests/board-m2.json`'s `style.targets`; what a declaration can
+         state is asserted here — which element is which, which attribute is the
+         state source, and which of the two ends of a pair sits above the other.
+         Everything below was first measured on the prototype in
+         `design/fidelity-r14.md` §5 (69/69) and then on the shipped drawer. */
+      // R14 §8 U4 — `data-state` is the drawer's **only** state source: the
+      // `aside` carries no `hidden` at all (its closed face is the prototype's
+      // `translateX(100%)` + `visibility: hidden`, stated in `.td-drawer`). The
+      // scrim keeps its own `hidden`, asserted with the rest of the save state
+      // above; this rule pins the half that changed. A valueless compound, so it
+      // forbids the *combination* on that element and nothing else — the scrim,
+      // the dialogs and every `[hidden]` in the shell are untouched by it.
+      { kind: "absent", selector: "[data-detail-drawer][hidden]" },
+      // R14 §2.1 / D20 (A7) — the accessible name's two seats.
+      { kind: "count", selector: "[data-detail-drawer][aria-labelledby=\"td-detail-title\"]", equals: 1 },
+      { kind: "count", selector: "[data-detail-title][id=\"td-detail-title\"]", equals: 1 },
+      // R14 D05/D06 (A22) — the pair's two rungs: the veil one *under* the drawer.
+      { kind: "computed", probe: "[data-detail-overlay]", property: "zIndex", equals: "40" },
+      { kind: "computed", probe: "[data-detail-drawer]", property: "zIndex", equals: "50" },
+      // R14 D01 (B1/B21) — the prototype's `--shell-drawer`. Stated as a **px
+      // string** rather than with `equalsPx`, for the reason `strokeWidth` above
+      // is: the stale-prose guard (`web/blocks.contract.test.mjs`) forbids a
+      // *numeric* rule value that could be mistaken for one of the recorded prose
+      // counts, and 520 is inside that range. Its `max-width: 100vw` companion was
+      // already `对齐` before this round and is not re-pinned here — a rule for it
+      // would be measuring the viewport, not the drawer.
+      { kind: "computed", probe: "[data-detail-drawer]", property: "width", equals: "520px" },
+      // R14 D10/D12 (B4/B6) — the head and the scrolling host are the
+      // prototype's own boxes, worn by their own classes.
+      { kind: "computed", probe: ".td-drawer-head", count: 1 },
+      { kind: "computed", probe: ".td-drawer-body", count: 1 },
+      // R14 D26 (A16) — the three single-choice properties are **controls**: the
+      // probe names the tag, so a `<div>` wearing the hook matches nothing and
+      // the rule fails rather than passing vacuously.
+      { kind: "computed", probe: "button[data-detail-status]", count: 1 },
+      { kind: "computed", probe: "button[data-detail-priority]", count: 1 },
+      { kind: "computed", probe: "button[data-detail-project]", count: 1 },
+      // R14 D24 (A23) — the property labels are catalogue seats: the grid's eight
+      // `data-i18n` attributes are exactly the label column, one per row.
+      { kind: "computed", probe: "[data-detail-props] [data-i18n]", count: 8 },
+      // R14 D32/D37/D38 (A13/A14/A15) — *where* each body hook rides: the
+      // description hook is on the content container (`div.td-gfm`), the four
+      // stream hooks are on a `div`, and the session hook is on the `section`
+      // itself. A tag in a probe is part of the grammar (PROBE GRAMMAR), so the
+      // element kind is declarable even though the hook is not.
+      { kind: "computed", probe: "div.td-gfm[data-detail-description]", count: 1 },
+      { kind: "computed", probe: "div[data-detail-relations]", count: 1 },
+      { kind: "computed", probe: "div[data-detail-attachments]", count: 1 },
+      { kind: "computed", probe: "div[data-detail-comments]", count: 1 },
+      { kind: "computed", probe: "div[data-detail-activity]", count: 1 },
+      { kind: "computed", probe: "section[data-detail-agent-session]", count: 1 },
+      // R14 D28 (A18) — the id copy control is the prototype's `.td-copy` box and
+      // its glyph is an inline icon, not a text character.
+      { kind: "classes", probe: "[data-detail-id-copy]", includes: ["td-copy"] },
+      { kind: "computed", probe: "[data-detail-id-copy] .td-icon-sm", count: 1 },
+      // R14 D50 (B14/B15) — the label chip is the prototype's `.badge.td-chip`
+      // and its remove control is a real button holding `svg.td-icon-sm`. Chips
+      // exist only while a task with labels is open, so these two carry the
+      // driven precondition.
+      { kind: "classes", probe: "[data-detail-label-chip]", includes: ["td-chip"], when: "drawer open" },
+      { kind: "computed", probe: "[data-detail-label-remove] .td-icon-sm", count: 1, when: "drawer open" },
       {
         kind: "manual",
         note:
@@ -2966,7 +3030,14 @@ export const AUXILIARY_HOOKS = Object.freeze([
     status: "prototype-only",
   }),
   Object.freeze({ selector: "[data-access-overlay]", purpose: "scrim behind B19" }),
-  Object.freeze({ selector: "[data-detail-slot-source]", purpose: "transient wrapper built while copying a detail template into the drawer" }),
+  // R14 §8 U1(b) — `[data-detail-slot-source]` was BLOCKS.md's one auxiliary hook
+  // with no consumer on the implementation side: the prototype's `app.js` builds
+  // that transient wrapper while copying a `<template>` into the drawer, and a
+  // component-based drawer renders its sections directly. The design's ruling
+  // gives the hook to the implementation card, whose first branch is "no consumer
+  // ⇒ remove", so it left the app (`DetailDrawer.vue`) **and** this table
+  // together. The three `[data-attachment-*]` / `[data-activity-*]` hooks stay:
+  // U1(a) keeps them, and `test/web/blocks.contract.mjs` §B09 backs them.
   Object.freeze({ selector: "[data-label]", purpose: "one chip per card label" }),
   Object.freeze({ selector: "[data-assignee-value]", purpose: "the name an assignee roster option carries" }),
   Object.freeze({ selector: "[data-reporter-value]", purpose: "the name a reporter roster option carries" }),
