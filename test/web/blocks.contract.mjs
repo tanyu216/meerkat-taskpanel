@@ -2105,8 +2105,12 @@ const BLOCKS = [
           "Every agent card carries a session block whose platform matches the card's own " +
           "`data-agent-platform` and whose session id is prefixed with that platform; human " +
           "cards carry none and the drawer hides the section for them. How many cards are agent " +
-          "cards is fixture data. [data-agent-platform-value] also sets the `--agent-platform` " +
-          "custom property.",
+          "cards is fixture data. [data-agent-platform-value] seats that session's **platform " +
+          "id** (e.g. `claude`) — the seat is the id, not a CLI flag, and that is what the app " +
+          "renders there. The prototype's static sample reads `--agent-platform claude`, but " +
+          "that CLI-style declaration is a prototype-only expression: `--agent-platform` is " +
+          "neither this seat's content nor a CSS custom property this repo defines or uses. " +
+          "Registered as the deviation `design/fidelity-r14.md` §8.3 `DF-4`.",
       },
     ],
   },
