@@ -108,8 +108,10 @@
 - **R-1（环境阻塞，必须登记）**：本 lane 沙箱的可写根不含共享 `.git`（`/Users/tanyu/Documents/meerkat-taskpanel/.git`），
   `git add` 即 `Unable to create '…/worktrees/…-seg1/index.lock': Operation not permitted (128)` —— 与 154930-3 同因。
   故本卡产物**通过一个可 fetch 的镜像仓提交**（`/tmp/lane-mirror-T-20261014-125122b`，由
-  `git fetch <lane-worktree> lane/T-20261014-125122-seg1` 取得 `3ad4b19` 后在**同一父提交**上落成，
-  三个提交全部只动 `docs/verify/T-20261014-125122/**`，`git diff-tree 3ad4b19 HEAD` 无本卡目录外路径）：
+  `git fetch <lane-worktree> lane/T-20261014-125122-seg1` 取得 `3ad4b19` 后在**同一父提交**上落成；
+  全部提交只动 `docs/verify/T-20261014-125122/**`，`git diff-tree 3ad4b19 HEAD` 无本卡目录外路径）：
+
+  提交链（这条链上还有台账/补丁的小校正提交；**tip 的 sha 见本卡最终回复与 `git log --oneline -1`**）：
 
   | 提交 | 内容 | sha |
   |---|---|---|
