@@ -691,10 +691,15 @@ function resolveArg(arg, catalogue) {
     boardActivity.length > 0 && !/auto\s*;/.test(boardActivity) && !/align-self/.test(boardActivity) && /margin:\s*0 12px/.test(boardActivity),
     boardActivity.replace(/\s+/g, " ").trim()
   );
+  /* 2026-10-15 — R17's 420px cap on the waiting block is withdrawn, so this
+     reads the opposite way round: the family's third member must now be as
+     uncapped as the two above it. A `max-width` or a horizontal `auto` margin
+     coming back is the regression, not a `flex: none` / `width: 100%` pair. */
   check(
-    "S11.9 tw.css's .td-waiting-empty drops align-self and keeps only horizontal auto margins",
+    "S11.9 tw.css's .td-waiting-empty drops align-self and is not width-capped",
     boardWaiting.length > 0 && !/align-self/.test(boardWaiting) &&
-      /margin:\s*0 auto/.test(boardWaiting) && /max-width:\s*420px/.test(boardWaiting),
+      /flex:\s*none/.test(boardWaiting) && /width:\s*100%/.test(boardWaiting) &&
+      !/max-width/.test(boardWaiting) && !/auto\s*;/.test(boardWaiting),
     boardWaiting.replace(/\s+/g, " ").trim()
   );
 
