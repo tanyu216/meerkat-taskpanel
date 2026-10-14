@@ -632,6 +632,29 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `test/web/tokens.parity.test.mjs` reading `design/brand/tokens.css`. No test reads that
   file and no test has that name; the sentence now names the check that really does
   self-skip inside the container for the same reason.
+- **The committed npm cache covered one architecture, so the image would not build on the
+  other.** `web/.vendor/npm-cache` held only the `linux/arm64` optional binaries
+  (`@rolldown/binding-linux-arm64-gnu`, `@tailwindcss/oxide-linux-arm64-gnu`,
+  `lightningcss-linux-arm64-gnu`) — correct for the machine it was vendored on, and wrong
+  for `check.yml`'s `docker` job, which builds the image on `ubuntu-latest` (x86_64) with
+  no exemption. The cache now carries both architectures, and
+  `test/docker.test.mjs` asserts all six binaries from the cacache index.
+
+  **The failure was quieter than it looked, which is the part worth recording.**
+  `npm ci --offline` does **not** fail on the uncovered architecture: those platform
+  packages are `optionalDependencies` and npm tolerates their absence. The install
+  succeeds and the build dies one step later, in `vite build`, with
+  `Error: Cannot find native binding` — rolldown finds no native binding and falls back to
+  `@rolldown/binding-wasm32-wasi`, which a single-architecture cache does not hold either.
+  So the Dockerfile's own comment ("`npm ci --offline` **hard-fails** … if the cache is
+  incomplete") was wrong about the mechanism while being right about the outcome, and
+  `docs/docker.md` documented the cache as arm64-only *by design* — a design that had not
+  accounted for the architecture CI builds on. Both comments now say what actually happens,
+  and the re-vendoring recipe runs once per architecture into the same cache (cacache is
+  content-addressed, so the runs merge).
+
+  Verified on this tree: `docker build --network=none` succeeds for `linux/arm64` and
+  `linux/amd64`; the `webbuild` stage takes the offline branch on both.
 
 ## [1.0.0] - 2026-10-09
 

@@ -95,20 +95,42 @@ empty `/app/web/dist`, so the image keeps building and the runtime contract hold
 ## Re-vendoring the npm cache
 
 `web/.vendor/npm-cache` is the committed npm cache that makes the `webbuild` stage offline.
-It is the npm cache **of the arm64 linux container**, not of the host: it holds only the
-linux/arm64 optional binaries (`@rolldown/binding-linux-arm64-gnu`,
-`@tailwindcss/oxide-linux-arm64-gnu`, `lightningcss-linux-arm64-gnu`, …) — the packages the
-in-image `npm ci` actually needs — and no darwin/win32 variants. That is why the vendoring
-step runs **inside the container** and never against the host `web/node_modules`:
+It is the npm cache **of a linux container**, not of the host: it holds the linux optional
+binaries (`@rolldown/binding-linux-*-gnu`, `@tailwindcss/oxide-linux-*-gnu`,
+`lightningcss-linux-*-gnu`, …) — the packages the in-image `npm ci` actually needs — and no
+darwin/win32 variants. That is why the vendoring step runs **inside the container** and
+never against the host `web/node_modules`.
+
+It has to cover **both** linux architectures the image is built on, and the command below
+is therefore run **once per architecture**, into the same cache directory. cacache is
+content-addressed, so the two runs merge rather than overwrite:
 
 ```bash
 mkdir -p web/.vendor/npm-cache
-docker run --rm \
-  -v "$PWD/web/package.json:/src/package.json:ro" \
-  -v "$PWD/web/package-lock.json:/src/package-lock.json:ro" \
-  -v "$PWD/web/.vendor/npm-cache:/cache" -w /src node:22-bookworm-slim \
-  sh -c 'npm ci --cache /cache --ignore-scripts'
+for platform in linux/arm64 linux/amd64; do
+  docker run --rm --platform "$platform" \
+    -v "$PWD/web/package.json:/src/package.json:ro" \
+    -v "$PWD/web/package-lock.json:/src/package-lock.json:ro" \
+    -v "$PWD/web/.vendor/npm-cache:/cache" -w /src node:22-bookworm-slim \
+    sh -c 'npm ci --cache /cache --ignore-scripts'
+done
 ```
+
+> **Why both, and why it is easy to miss.** The image is built on `linux/arm64` (a
+> developer on Apple Silicon) *and* on `linux/amd64` (CI's `docker` job runs on
+> `ubuntu-latest`, x86_64). A cache produced by only one of those runs names only that
+> architecture's binaries.
+>
+> The failure that follows is **quiet**: `npm ci --offline` does *not* fail on the
+> uncovered architecture, because those platform packages are `optionalDependencies` and
+> npm tolerates their absence. It surfaces one step later, in `vite build`, as
+> `Error: Cannot find native binding` — rolldown loads no native binding and then falls
+> back to `@rolldown/binding-wasm32-wasi`, which a single-architecture cache does not hold
+> either. So a single-arch cache does not break the *install*; it breaks the *build*, on
+> the architecture nobody ran the vendoring step on.
+>
+> `test/docker.test.mjs` asserts all six binaries are present, straight from the cacache
+> index — no docker and no network, so it runs with the rest of the suite.
 
 This installs the tree into the throwaway container (from `package.json` /
 `package-lock.json`, mounted read-only) and leaves only the cache tarballs in
@@ -117,14 +139,15 @@ This installs the tree into the throwaway container (from `package.json` /
 the lockfile; they must move together. The `--ignore-scripts` flag keeps the step to a pure
 download-and-cache — no native build runs here.
 
-Confirm the F1-c guarantee after re-vendoring:
+Confirm the F1-c guarantee after re-vendoring, on **each** architecture:
 
 ```bash
-docker build --network=none -t meerkat-taskpanel:verify -f docker/Dockerfile .
+docker build --network=none --platform linux/arm64 -t meerkat-taskpanel:verify -f docker/Dockerfile .
+docker build --network=none --platform linux/amd64 -t meerkat-taskpanel:verify -f docker/Dockerfile .
 ```
 
-`--network=none` must succeed; if it fails, a tarball the lockfile needs is missing from
-the cache.
+`--network=none` must succeed for both; if it fails, a tarball the lockfile needs is
+missing from the cache for that architecture.
 
 ## Run
 

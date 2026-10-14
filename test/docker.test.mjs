@@ -16,7 +16,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -516,6 +516,59 @@ describe("static: Dockerfile", () => {
         "the Dockerfile comment must state the networked fallback is not the committed configuration",
       );
     }
+  });
+
+  it("the committed npm cache covers every architecture the image is built on, not only its own", async () => {
+    // F1-c makes the image build offline from the committed cache. That cache is produced
+    // *inside a container*, so by construction it holds the architecture of whichever
+    // container produced it — and the two places the image gets built disagree:
+    // `check.yml`'s `docker` job runs on `ubuntu-latest` (x86_64) with no exemption, while
+    // a developer on Apple Silicon builds linux/arm64.
+    //
+    // The shortfall does not announce itself as an install failure, which is what makes it
+    // worth a test. `npm ci --offline` **succeeds** on the uncovered architecture: the
+    // platform binaries are `optionalDependencies` and npm tolerates their absence. It
+    // surfaces one step later, in `vite build`, where rolldown cannot load a native
+    // binding and falls back to `@rolldown/binding-wasm32-wasi` — which a single-arch cache
+    // does not hold either. The build then dies with "Cannot find native binding"
+    // (measured on this tree), so the job that is meant to be the authoritative one fails
+    // for a reason that has nothing to do with the change under test.
+    //
+    // Static read of the cacache index — no docker, no network, so this is a host-allowed
+    // check that runs everywhere the suite runs.
+    const indexRoot = join(ROOT, "web", ".vendor", "npm-cache", "_cacache", "index-v5");
+    const entries = await readdir(indexRoot, { recursive: true, withFileTypes: true });
+    const indexText = (
+      await Promise.all(
+        entries
+          .filter((entry) => entry.isFile())
+          // `parentPath` is Node >= 22.12; `path` is what earlier 22.x carries.
+          .map((entry) => readFile(join(entry.parentPath ?? entry.path, entry.name), "utf8")),
+      )
+    ).join("\n");
+
+    const required = [
+      "@rolldown/binding-linux-arm64-gnu",
+      "@rolldown/binding-linux-x64-gnu",
+      "lightningcss-linux-arm64-gnu",
+      "lightningcss-linux-x64-gnu",
+      "@tailwindcss/oxide-linux-arm64-gnu",
+      "@tailwindcss/oxide-linux-x64-gnu",
+    ];
+    for (const pkg of required) {
+      assert.ok(
+        indexText.includes(pkg),
+        `the committed npm cache must carry ${pkg} — the image is built on linux/arm64 and linux/x64 alike`,
+      );
+    }
+
+    // Non-vacuity: the reader that just proved six packages present must also be able to
+    // report one absent, or it would pass on an empty cache.
+    assert.equal(
+      indexText.includes("@rolldown/binding-win32-x64-msvc"),
+      false,
+      "the cache holds only what the linux images need",
+    );
   });
 });
 

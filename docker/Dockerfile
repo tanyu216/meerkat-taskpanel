@@ -14,11 +14,21 @@
 #
 # Boundary (F1-c, ruling O1, 2026-10-09): the image builds with NO NETWORK. Runtime and
 # every verification step are offline, and — because the cache is committed — so is the
-# frontend build stage: `npm ci --offline` hard-fails instead of reaching the registry if
-# the cache is incomplete, so `docker build --network=none` succeeds. The cache is a
-# GENERATED artefact (linux/arm64, produced inside the arm64 container): re-run the
-# vendoring step in `docs/docker.md` after any `web/package.json` dependency bump, and
-# commit the refreshed cache with the lockfile.
+# frontend build stage: `npm ci --offline` never reaches the registry, so `docker build
+# --network=none` succeeds. The cache is a GENERATED artefact, produced inside a container
+# by the vendoring step in `docs/docker.md`: re-run it after any `web/package.json`
+# dependency bump, and commit the refreshed cache with the lockfile.
+#
+# It must cover **both** linux architectures. The cache holds platform-specific optional
+# binaries (`@rolldown/binding-*`, `@tailwindcss/oxide-*`, `lightningcss-*`), and it is
+# built inside whichever container runs the vendoring step — so a single-arch cache builds
+# on one architecture only. That is a live difference, not a hypothetical one: CI's
+# `docker` job runs on `ubuntu-latest` (x86_64) while a developer on Apple Silicon builds
+# linux/arm64. And the shortfall is quiet — `npm ci --offline` **succeeds** on the
+# uncovered architecture, because those binaries are `optionalDependencies` — so it
+# surfaces one step later, in `vite build`, as "Cannot find native binding" (rolldown
+# falls back to `@rolldown/binding-wasm32-wasi`, which a single-arch cache does not hold
+# either). `test/docker.test.mjs` asserts the cache covers both, from the cacache index.
 #
 # Nothing is installed with apt — no apt mirror is reachable at build time, which is the
 # point (Terry, 2026-10-08: local verification runs isolated in a container, never on the
