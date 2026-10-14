@@ -176,9 +176,20 @@
     return align ? ' style="text-align: ' + align + '"' : "";
   }
 
-  /* A list item carries its own continuation lines, already de-indented. */
+  /* A list item carries its own continuation lines, already de-indented.
+
+     A **task list** wears the prototype's own class on the list element
+     (`.td-gfm .td-task-list`, `design/prototype/src/input.css` §"rendered GFM
+     description"): the bullet is dropped and each item's 13×13 check box is
+     hung in its place (R14 §8.1 D36). The class goes on the `<ul>` rather than
+     on every item because that is where the prototype puts it and where the
+     stylesheet reads it; the item keeps its own hook for the row's flex. */
   function renderList(items, ordered, options) {
-    var html = ordered ? "<ol>\n" : "<ul>\n";
+    var isTaskList = false;
+    items.forEach(function (item) {
+      if (/^\[([ xX])\]\s+[\s\S]*$/.test(item.text)) isTaskList = true;
+    });
+    var html = ordered ? "<ol>\n" : isTaskList ? '<ul class="td-task-list">\n' : "<ul>\n";
     items.forEach(function (item) {
       var task = /^\[([ xX])\]\s+([\s\S]*)$/.exec(item.text);
       var body;

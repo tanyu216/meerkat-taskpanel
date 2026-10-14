@@ -699,8 +699,14 @@ export async function run() {
       const centreY = (rect) => (rect.top + rect.bottom) / 2;
       const glyph = close?.querySelector("svg.td-icon") ?? null;
       return {
+        // R14 §2.1 / §8 U4 — `data-state` is the drawer's *only* state source.
+        // The probe used to also report `hasAttribute("hidden")`; that attribute
+        // is gone from the `aside` (the closed face is `translateX(100%)` +
+        // `visibility: hidden`, the prototype's own pair), so the reading could
+        // only ever have been `false` and distinguished nothing. The scrim keeps
+        // its `hidden`, and the closed/open relation is read off `data-state`
+        // here and off the scrim's own attribute where that half is asserted.
         state: drawer?.getAttribute("data-state") ?? null,
-        hidden: drawer?.hasAttribute("hidden") ?? true,
         title,
         agentSessionHook: session !== null,
         r7: {
@@ -775,8 +781,22 @@ export async function run() {
     // catalogue's (`relations.parent|blocks|related`), the identifiers the
     // resolved refs (PROJ-0007 for the parent edge, which is the fixture's own
     // id derivation, not a typo).
+    //
+    // The reader walks the row's **groups**, not the bare links (R14 D37 /
+    // BLOCKS.md §R14: `[data-detail-relations]` groups its `[data-relation-link]`s
+    // by kind, each group led by that kind's own name — the structure 154930-2
+    // shipped). One `.td-rel-item` therefore reads `word · ref…`, which keeps
+    // the expected values below the words the catalogue names: the capital `R`
+    // of `Related` still tells a real catalogue hit from the unknown-kind
+    // fallback (that one prints the bare lowercase enum word).
     const R14_RELATION_ROWS = ["Parent · PROJ-0007", "Blocks · TD-3", "Related · TD-4"];
-    const r14Relations = await page.evaluate(() => [...document.querySelectorAll("[data-relation-link]")].map((row) => row.textContent.trim()));
+    const r14Relations = await page.evaluate(() =>
+      [...document.querySelectorAll("[data-detail-relations] .td-rel-item")].map((item) => {
+        const word = item.querySelector("span[data-i18n]")?.textContent.trim() ?? "";
+        const refs = [...item.querySelectorAll("[data-relation-link]")].map((button) => button.textContent.trim());
+        return [word, ...refs].join(" · ");
+      }),
+    );
     r14Check(
       r14Relations.join("|") === R14_RELATION_ROWS.join("|"),
       `the drawer's relation rows read ${JSON.stringify(r14Relations)}, expected ${JSON.stringify(R14_RELATION_ROWS)}`,
