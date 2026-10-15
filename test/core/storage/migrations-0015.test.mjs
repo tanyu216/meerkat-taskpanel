@@ -108,7 +108,7 @@ describe("storage/migrations — 0015 makes `deploy` a task kind (T-20261013-232
       const up = applyMigrations(board.db);
       // 0015 and everything after it: 0016 (`blocked_reason`) is the next file in
       // the set, and this board is below both.
-      assert.deepEqual(up.applied.map((m) => m.version), ["0015", "0016", "0017", "0018", "0019"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0015", "0016", "0017", "0018", "0019", "0020"]);
       assert.deepEqual(up.skipped.slice(-2), ["0013", "0014"]);
 
       // 1 — the enum: the new word is storable, the old ones still are (they are
@@ -270,7 +270,7 @@ describe("storage/migrations — 0015 makes `deploy` a task kind (T-20261013-232
       assert.deepEqual(
         changed,
         [...LATER_TRIGGERS_REMOVED, "tr_rev_tasks_upd"].sort(),
-        "0015 must change no trigger — only 0019's own `tasks` rebuild moves `tr_rev_tasks_upd`",
+        "0015 must change no trigger — only 0019's own `tasks` rebuild moves `tr_rev_tasks_upd`; 0020 re-declares every trigger it parks verbatim",
       );
 
       for (const name of ["tr_rel_cross_project", "tr_rel_parent_guard", "tr_rel_parent_epic"]) {

@@ -137,7 +137,7 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
       seedLegacyBoard(board.db);
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017", "0018", "0019"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020"]);
       assert.deepEqual(up.skipped.slice(-2), ["0011", "0012"]);
 
       // 1 — the enum: the new word is storable, the old ones still are, and an
@@ -303,7 +303,10 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
       // The transition whitelist gains its `awaiting` clause and the revision
       // cursor's column domain gains `awaiting_reason` (0013); 0019 later rewrites
       // that same cursor's domain again when the `tasks` columns move, and removes
-      // the two old tables' triggers. Everything else must be identical.
+      // the two old tables' triggers. (`tr_dict_actors_delete` is 0019's, so it is
+      // an *addition* to this baseline, not a change; 0020 widens it in place and
+      // re-declares every trigger it parks verbatim.) Everything else must be
+      // identical.
       const changed = Object.keys(oldTriggers).filter((name) => oldTriggers[name] !== newTriggers[name]).sort();
       assert.deepEqual(
         changed,

@@ -20,8 +20,10 @@ import { DomainError } from "../../../src/shared/errors.mjs";
 import {
   TS,
   TS2,
+  actorName,
   cleanupTempDirs,
   countRows,
+  ensureActor,
   revision,
   withBoard,
 } from "../../helpers/sqlite-fixture.mjs";
@@ -246,13 +248,18 @@ describe("commands/tasks — claim and heartbeat", () => {
   it("claims, reuses and refuses exactly as the policy says", async () => {
     await board(async ({ db, commands }) => {
       const task = commands.createTask({ projectId: "proj", title: "Ship M1", actor: AGENT });
+      // The claimant is already a dictionary entry, so the claim below costs the
+      // task and its audit row and nothing else. (A claim by a *new* actor also
+      // creates its `actors` row — one more revision — which 0020's own test pins.)
+      ensureActor(db, "linus");
       const before = revision(db);
 
       const claimed = commands.claim({ id: task.id, actor: AGENT });
       assert.equal(claimed.reused, false);
       assert.equal(claimed.task.status, "in_progress");
-      assert.equal(claimed.task.claimedBy, "linus");
+      assert.equal(actorName(db, claimed.task.claimedBy), "linus");
       assert.equal(revision(db), before + 2, "claim + audit row");
+      // (No third bump: the claim resolves the already-known actor read-only.)
       assert.deepEqual(activitiesFor(db, task.id), ["task_created", "task_claimed"]);
 
       const again = commands.claim({ id: task.id, actor: AGENT });
@@ -280,7 +287,7 @@ describe("commands/tasks — claim and heartbeat", () => {
 
       const stolen = commands.claim({ id: task.id, actor: HUMAN });
       assert.equal(stolen.stole, true);
-      assert.equal(stolen.task.claimedBy, "Terry");
+      assert.equal(actorName(db, stolen.task.claimedBy), "Terry");
 
       const after = revision(db);
       const pulsed = commands.heartbeat({ id: task.id, actor: HUMAN });
@@ -538,7 +545,7 @@ describe("commands/tasks — one move, one revision", () => {
         "the status move and its audit row — the nested delivery_round update must not bump",
       );
       assert.equal(reworked.status, "in_progress");
-      assert.equal(reworked.claimedBy, "linus", "a rework does not drop the claim");
+      assert.equal(actorName(db, reworked.claimedBy), "linus", "a rework does not drop the claim");
     });
   });
 });
@@ -603,10 +610,10 @@ describe("commands/tasks — terminal states", () => {
 
 describe("commands/tasks — claim accounting", () => {
   it("records who claimed it and when, from the injected clock", async () => {
-    await board(async ({ commands }) => {
+    await board(async ({ db, commands }) => {
       const task = commands.createTask({ projectId: "proj", title: "Ship M1", actor: AGENT });
       const claimed = commands.claim({ id: task.id, actor: AGENT });
-      assert.equal(claimed.task.claimedBy, "linus");
+      assert.equal(actorName(db, claimed.task.claimedBy), "linus");
       assert.equal(claimed.task.createdAt, TS2, "the clock drives every timestamp");
     }, { clock: () => TS2 });
   });
@@ -863,7 +870,7 @@ describe("commands/tasks — listCandidates (poll read)", () => {
       // ③ — the explicit path: the assignee claims it and the card really moves.
       const claimed = commands.moveStatus({ id: deploy.id, to: "in_progress", actor: AGENT });
       assert.equal(claimed.status, "in_progress");
-      assert.equal(claimed.claimedBy, AGENT.id);
+      assert.equal(actorName(db, claimed.claimedBy), AGENT.id);
       assert.equal(claimed.kind, "deploy", "the marker survives the claim");
     });
   });
@@ -900,6 +907,7 @@ describe("commands/tasks — listCandidates (poll read)", () => {
       // rewriting the holder) left it with a different executor.
       const staleAny = linusTodo(commands, { title: "Stale, any holder", allowDup: true });
       commands.claim({ id: staleAny.id, actor: AGENT });
+      ensureActor(db, "Terry");
       db.prepare("UPDATE tasks SET claimed_by = 'Terry', heartbeat_at = ? WHERE id = ?").run(
         ago(-7 * 60 * 60 * 1000),
         staleAny.id,
@@ -971,12 +979,14 @@ describe("commands/tasks — claim requires the actor to be the assignee (T-2026
     });
 
   it("lets the assignee claim their own card (normalised: actor linus == assignee Linus)", async () => {
-    await board(async ({ commands }) => {
+    await board(async ({ db, commands }) => {
       const task = assignedTo(commands, "Linus");
       const claimed = commands.claim({ id: task.id, actor: AGENT });
       assert.equal(claimed.stole, false);
       assert.equal(claimed.task.status, "in_progress");
-      assert.equal(claimed.task.claimedBy, "linus");
+      // The actor row `createTask` made for the assignee `Linus` — `norm` folds the
+      // case, so the claimant `linus` is that same person, and the stored spelling wins.
+      assert.equal(actorName(db, claimed.task.claimedBy), "Linus");
     });
   });
 
@@ -996,7 +1006,7 @@ describe("commands/tasks — claim requires the actor to be the assignee (T-2026
   });
 
   it("takes somebody else's card with allowSteal, leaving a readable change comment", async () => {
-    await board(async ({ commands }) => {
+    await board(async ({ db, commands }) => {
       const task = assignedTo(commands, "Linus");
       const claimed = commands.claim({
         id: task.id,
@@ -1005,7 +1015,7 @@ describe("commands/tasks — claim requires the actor to be the assignee (T-2026
         reason: "linus is unavailable, taking the card over",
       });
       assert.equal(claimed.stole, true);
-      assert.equal(claimed.task.claimedBy, "Terry");
+      assert.equal(actorName(db, claimed.task.claimedBy), "Terry");
 
       const comments = commands.listComments({ taskId: task.id });
       assert.equal(comments.length, 1);
@@ -1087,7 +1097,7 @@ describe("commands/tasks — claim requires the actor to be the assignee (T-2026
 
       const stolen = commands.claim({ id: task.id, actor: HUMAN });
       assert.equal(stolen.stole, true);
-      assert.equal(stolen.task.claimedBy, "Terry");
+      assert.equal(actorName(db, stolen.task.claimedBy), "Terry");
 
       const comments = commands.listComments({ taskId: task.id });
       assert.equal(comments.length, 1, "the >6h takeover leaves a change comment");
@@ -1103,7 +1113,7 @@ describe("commands/tasks — move to in_progress is the claim path", () => {
       const task = commands.createTask({ projectId: "proj", title: "Ship", actor: AGENT });
       const moved = commands.moveStatus({ id: task.id, to: "in_progress", actor: AGENT });
       assert.equal(moved.status, "in_progress");
-      assert.equal(moved.claimedBy, "linus");
+      assert.equal(actorName(db, moved.claimedBy), "linus");
       assert.match(moved.claimedAt, /^\d{4}-\d{2}-\d{2}T/);
       assert.match(moved.heartbeatAt, /^\d{4}-\d{2}-\d{2}T/);
       assert.deepEqual(activitiesFor(db, task.id), ["task_created", "task_claimed"]);
@@ -1128,7 +1138,7 @@ describe("commands/tasks — move to in_progress is the claim path", () => {
   });
 
   it("honours allowSteal on the move and leaves a change comment", async () => {
-    await board(async ({ commands }) => {
+    await board(async ({ db, commands }) => {
       const task = commands.createTask({
         projectId: "proj",
         title: "For Linus",
@@ -1143,7 +1153,7 @@ describe("commands/tasks — move to in_progress is the claim path", () => {
         allowSteal: true,
         reason: "linus is on another card, taking this over",
       });
-      assert.equal(moved.claimedBy, "Terry");
+      assert.equal(actorName(db, moved.claimedBy), "Terry");
       assert.equal(commands.listComments({ taskId: task.id }).length, 1);
     });
   });
@@ -1164,7 +1174,9 @@ describe("commands/tasks — move to in_progress is the claim path", () => {
       // the existing execution lock and does not re-check the assignee.
       const rework = commands.moveStatus({ id: task.id, to: "in_progress", actor: HUMAN });
       assert.equal(rework.status, "in_progress");
-      assert.equal(rework.claimedBy, "linus", "a rework never drops the executor's lock");
+      // The lock is the actor row the assignee `Linus` named, so the display
+      // spelling is `Linus` — `norm` folded the claimant's case onto that row.
+      assert.equal(actorName(db, rework.claimedBy), "Linus", "a rework never drops the executor's lock");
       assert.deepEqual(activitiesFor(db, task.id), [
         "task_created",
         "task_claimed",
@@ -1198,7 +1210,7 @@ describe("commands/tasks — the execution claim follows the work cycle (T-20261
   it("walks Terry's drag — in_progress → todo → backlog — and never reaches the CHECK", async () => {
     await board(async ({ db, commands }) => {
       const task = await claimed(commands);
-      assert.equal(task.claimedBy, "linus");
+      assert.equal(actorName(db, task.claimedBy), "linus");
 
       const todo = commands.moveStatus({ id: task.id, to: "todo", actor: AGENT });
       assert.equal(todo.claimedBy, null, "leaving the work cycle releases the lock");
@@ -1234,7 +1246,7 @@ describe("commands/tasks — the execution claim follows the work cycle (T-20261
   });
 
   it("keeps the lock on in_progress ↔ awaiting — the same attempt, paused", async () => {
-    await board(async ({ commands }) => {
+    await board(async ({ db, commands }) => {
       const task = await claimed(commands);
       const waiting = commands.moveStatus({
         id: task.id,
@@ -1242,20 +1254,20 @@ describe("commands/tasks — the execution claim follows the work cycle (T-20261
         awaitingReason: "E1",
         actor: AGENT,
       });
-      assert.equal(waiting.claimedBy, "linus", "asking a human does not hand the card over");
+      assert.equal(actorName(db, waiting.claimedBy), "linus", "asking a human does not hand the card over");
       const resumed = commands.moveStatus({ id: task.id, to: "in_progress", actor: AGENT });
-      assert.equal(resumed.claimedBy, "linus");
+      assert.equal(actorName(db, resumed.claimedBy), "linus");
       assert.equal(resumed.heartbeatAt, task.heartbeatAt, "resuming does not re-stamp the attempt");
     });
   });
 
   it("keeps the lock across a block and a rework, so the executor can resume", async () => {
-    await board(async ({ commands }) => {
+    await board(async ({ db, commands }) => {
       const task = await claimed(commands);
       const blocked = commands.moveStatus({ id: task.id, to: "blocked", actor: AGENT, blockedReason: "dependency" });
-      assert.equal(blocked.claimedBy, "linus", "a stopped card is still the same executor's card");
+      assert.equal(actorName(db, blocked.claimedBy), "linus", "a stopped card is still the same executor's card");
       const unblocked = commands.moveStatus({ id: task.id, to: "in_progress", actor: AGENT });
-      assert.equal(unblocked.claimedBy, "linus");
+      assert.equal(actorName(db, unblocked.claimedBy), "linus");
     });
   });
 });

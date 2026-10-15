@@ -13,8 +13,10 @@ import { createRepositories } from "../../../src/core/storage/repositories/index
 import {
   TS,
   TS2,
+  actorName,
   cleanupTempDirs,
   countRows,
+  ensureActor,
   revision,
   withBoard,
 } from "../../helpers/sqlite-fixture.mjs";
@@ -237,6 +239,9 @@ describe("commands/comments", () => {
   it("appends a comment and records it once", async () => {
     await board(({ db, commands }) => {
       const task = commands.createTask({ projectId: "proj", title: "one", actor: AGENT });
+      // The author is already a dictionary entry, so the comment costs the row and
+      // its audit row only (a first-ever author also creates its `actors` row).
+      ensureActor(db, AGENT.id);
       const before = revision(db);
       const comment = commands.addComment({
         taskId: task.id,
@@ -256,12 +261,13 @@ describe("commands/comments", () => {
   });
 
   it("keeps the human decision trail readable (I5)", async () => {
-    await board(({ commands }) => {
+    await board(({ db, commands }) => {
       const task = commands.createTask({ projectId: "proj", title: "one", actor: AGENT });
       commands.addComment({ taskId: task.id, body: "ship it", kind: "confirm", actor: HUMAN });
       commands.addComment({ taskId: task.id, body: "noted", kind: "note", actor: AGENT });
       const decisions = commands.listDecisions({ taskId: task.id });
-      assert.deepEqual(decisions.map((c) => c.authorId), ["Terry"]);
+      // author_id is an actor id since 0020 — the trail still reads as the person.
+      assert.deepEqual(decisions.map((c) => actorName(db, c.authorId)), ["Terry"]);
       assert.equal(decisions[0].body, "ship it");
       assert.throws(() => commands.addComment({ taskId: "nope", body: "x", actor: AGENT }), (err) => err.code === "NOT_FOUND");
       assert.throws(() => commands.addComment({ taskId: task.id, body: "", actor: AGENT }), (err) => err.code === "VALIDATION_FAILED");

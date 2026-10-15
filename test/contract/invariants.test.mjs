@@ -27,6 +27,7 @@ import {
   cleanupTempDirs,
   countRows,
   createTempBoard,
+  ensureActor,
   insertProject,
   insertReport,
   insertTask,
@@ -77,6 +78,8 @@ describe("contract/invariants — I1/I2 claim atomicity", () => {
     try {
       insertProject(board.db);
       insertTask(board.db, { id: "t", identifier: "PROJ-0001", status: "todo" });
+      // `claimed_by` is a reference since 0020 — the racing actors must exist.
+      for (let i = 0; i < 8; i += 1) ensureActor(board.db, `agent-${i}`);
       const path = board.dbPath;
       board.close();
 
@@ -99,6 +102,8 @@ describe("contract/invariants — I1/I2 claim atomicity", () => {
     try {
       insertProject(board.db);
       insertTask(board.db, { id: "t", identifier: "PROJ-0001", status: "todo" });
+      // `claimed_by` is a reference since 0020 — the racing actors must exist.
+      for (let i = 0; i < 8; i += 1) ensureActor(board.db, `proc-${i}`);
       const dbPath = board.dbPath;
       board.close();
 
@@ -146,6 +151,7 @@ describe("contract/invariants — I1/I2 claim atomicity", () => {
     await withBoard(({ db }) => {
       insertProject(db);
       insertTask(db, { id: "t", identifier: "PROJ-0001", status: "todo" });
+      ensureActor(db, "linus");
       assert.equal(claimWith(db, { taskId: "t", version: 1, actor: "linus", at: TS }), 1);
 
       // Same actor, still fresh: the service reuses the claim instead of erroring,
@@ -228,6 +234,7 @@ describe("contract/invariants — I4/I5 the record is immutable", () => {
     await withBoard(({ db }) => {
       insertProject(db);
       insertTask(db, { id: "t", identifier: "PROJ-0001" });
+      ensureActor(db, "Terry", "human");
       db.prepare(
         `INSERT INTO comments(id, task_id, body, kind, author_kind, author_id, refs_json, created_at)
          VALUES ('c1', 't', 'go ahead', 'confirm', 'human', 'Terry', '["PROJ-0001"]', ?)`,
@@ -546,11 +553,13 @@ describe("contract/invariants — global_revision covers every write table", () 
       insertProject(db);
       insertTask(db, { id: "t", identifier: "PROJ-0001" });
       insertTask(db, { id: "t2", identifier: "PROJ-0002" });
+      // `author_id` is a reference since 0020 — the report author must exist.
+      ensureActor(db, "linus");
       const writes = [
         // 0019: one actor table, not two dictionary tables.
         () => db.prepare("INSERT INTO actors(id,kind,display_name,normalized_name,first_seen_at,last_seen_at) VALUES('as','agent','A','a',?,?)").run(TS, TS),
         () => db.prepare("INSERT INTO task_relations(relation_type,source_task_id,target_task_id,created_at) VALUES('blocks','t','t2',?)").run(TS),
-        () => db.prepare("INSERT INTO comments(id,task_id,body,kind,author_kind,author_id,created_at) VALUES('c','t','b','note','agent','a',?)").run(TS),
+        () => db.prepare("INSERT INTO comments(id,task_id,body,kind,author_kind,author_id,created_at) VALUES('c','t','b','note','agent','as',?)").run(TS),
         () => db.prepare("INSERT INTO task_activities(task_id,event,changes_json,created_at) VALUES('t','x','{}',?)").run(TS),
         () => db.prepare("INSERT INTO attachments(id,task_id,filename,kind,created_at) VALUES('at','t','f','attachment',?)").run(TS),
         () => db.prepare("INSERT INTO agent_sessions(id,task_id,seg,owner,backend,session_id,status,ts) VALUES('s','t','seg1','linus','claude','sid','running',?)").run(TS),

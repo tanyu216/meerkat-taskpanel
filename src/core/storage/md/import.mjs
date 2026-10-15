@@ -28,7 +28,7 @@ import { DomainError, isDomainError } from "../../../shared/errors.mjs";
 import { LABEL_PALETTE } from "../../../shared/constants.mjs";
 import { contentHash, newId, sha256Hex } from "../../../shared/ids.mjs";
 import { ACCEPTANCE_STATUSES, TASK_KINDS } from "../../domain/enums.mjs";
-import { resolveOrCreate } from "../../commands/dictionary.mjs";
+import { resolveActorId, resolveOrCreate } from "../../commands/dictionary.mjs";
 import { labelDisplayName, nextColor, normalizeLabelName } from "../../domain/labels.mjs";
 import { normalizeBlockedReason } from "../../domain/blocked-reason.mjs";
 import { normalizeCommentCreate } from "../../domain/comment.mjs";
@@ -488,9 +488,19 @@ export function importMd(input) {
 
         for (const comment of card.comments) {
           if (repos.comments.getBySourceSeq(task.id, comment.sourceSeq) !== null) continue;
+          // `comments.author_id` is an actor id since 0020; the card names its
+          // author by name, so it is resolved the same way the live comment path
+          // resolves one.
+          const author = {
+            kind: comment.author.kind,
+            id: resolveActorId(
+              { repos, now },
+              { name: comment.author.id, actorKind: comment.author.kind },
+            ),
+          };
           repos.comments.append(
             normalizeCommentCreate(
-              { body: comment.body, kind: comment.kind, author: comment.author, refs: comment.refs },
+              { body: comment.body, kind: comment.kind, author, refs: comment.refs },
               { now: importTimestamp(comment.ts, now, stats, "comment"), id: newId(), taskId: task.id, sourceSeq: comment.sourceSeq },
             ),
           );
@@ -538,7 +548,17 @@ export function importMd(input) {
           // Every imported report is history, never a delivery: tagged `import`
           // (whether the strict path accepted it or the relaxed path degraded
           // it), so the delivery gate does not count it (0008).
-          const stored = repos.reports.insert({ ...plan.prepared, taskId: task.id, origin: "import" });
+          const stored = repos.reports.insert({
+            ...plan.prepared,
+            // `task_reports.author_id` is an actor id since 0020; the card names
+            // its report author by name, resolved the same way the live path does.
+            authorId: resolveActorId(
+              { repos, now },
+              { name: plan.prepared.authorId, actorKind: plan.prepared.authorKind },
+            ),
+            taskId: task.id,
+            origin: "import",
+          });
           stats.reports += 1;
           entry.latestReport = stored;
         }
@@ -962,12 +982,12 @@ function ensureProject(repos, plan, now, stats) {
  * The former claimant branch is **gone**. It resolved the card's `claimed_by` into
  * an actor row and wrote the id into a `writes.claimedById` key that was never in
  * the initialiser and never read — a spurious row for every claimant, discarded.
- * `tasks.claimed_by` is still a free string (`0019` deliberately leaves it alone),
- * so the claimant needs no actor row here; when a later migration turns that
- * column into a reference it will create the rows it needs itself.
+ * `0020` turned `tasks.claimed_by` into a reference, so the claimant is resolved
+ * here after all — but *read*, into the column the task is built with, not
+ * written to a key nobody looks at.
  */
 function resolveCardDictionaries(repos, card, now) {
-  const writes = { assigneeId: null, reporterId: null, count: 0 };
+  const writes = { assigneeId: null, reporterId: null, claimedById: null, count: 0 };
   if (typeof card.assignee === "string" && card.assignee.trim() !== "") {
     const { entry } = resolveOrCreate({ repos, now }, {
       kind: "assignee",
@@ -984,6 +1004,13 @@ function resolveCardDictionaries(repos, card, now) {
       actorKind: authorKind(card.reporter),
     });
     writes.reporterId = entry.id;
+    writes.count += 1;
+  }
+  if (typeof card.claimedBy === "string" && card.claimedBy.trim() !== "") {
+    // `claimed_by` is an actor id since 0020. The card's claimant is a name; it is
+    // resolved like the live claim path resolves one, so an imported card and a
+    // claimed card agree on who holds it.
+    writes.claimedById = resolveActorId({ repos, now }, { name: card.claimedBy, actorKind: "agent" });
     writes.count += 1;
   }
   return writes;
@@ -1094,7 +1121,7 @@ function buildTask(repos, card, context) {
     statusChangedAt: card.statusChangedAt ?? card.createdAt ?? now,
     createdAt: card.createdAt ?? now,
     updatedAt: card.updatedAt ?? card.createdAt ?? now,
-    claimedBy: card.claimedBy,
+    claimedBy: dictionary.claimedById,
     claimedAt: card.claimedAt,
     heartbeatAt: card.heartbeatAt,
     blockedAt: card.blockedAt ?? (card.status === "blocked" ? card.statusChangedAt ?? now : null),

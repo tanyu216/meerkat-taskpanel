@@ -30,7 +30,7 @@ import test, { after, describe, it } from "node:test";
 
 import { normalizeTaskCreate } from "../../src/core/domain/task.mjs";
 import { createRepositories } from "../../src/core/storage/repositories/index.mjs";
-import { cleanupTempDirs, withBoard } from "../helpers/sqlite-fixture.mjs";
+import { cleanupTempDirs, ensureActor, withBoard } from "../helpers/sqlite-fixture.mjs";
 import { importedSpecifiers, listModuleFiles, readSource, stripComments } from "../helpers/source-scan.mjs";
 
 after(cleanupTempDirs);
@@ -45,6 +45,10 @@ const NOW = "2026-10-08T00:00:00.000Z";
 async function board(fn) {
   return withBoard(({ db }) => {
     const repos = createRepositories(db);
+    // `claimed_by` is a reference to `actors` since 0020; these are the holders
+    // the boundary tests name. `ensureActor` keys the row by the name, so the
+    // assertions below still read the value they passed in.
+    for (const name of ["linus", "elon", "third"]) ensureActor(db, name);
     repos.projects.create({ id: "proj", name: "Project", now: NOW });
     const { identifier } = repos.projects.allocateIdentifier("proj");
     const task = repos.tasks.insert(
