@@ -305,6 +305,49 @@ describe("install.sh: scheduling units", () => {
     assert.ok(existsSync(join(home, ".agents", "meerkat-taskpanel.env")), "pi config missing");
   });
 
+  it("refuses to wake when the resolver succeeds with an empty directory", () => {
+    // `wake-cwd.mjs`'s contract is "exit 0 means resolved, and the directory is the ONLY
+    // thing on stdout" — so an empty `$cwd` with exit 0 is an illegal state that the
+    // `if ! cwd=$(…)` guard cannot see, because `cd ""` succeeds in bash and would run the
+    // worker in the caller's directory: the exact wrong checkout this glue exists to
+    // refuse. A `TP_NODE` that prints nothing and exits 0 stands in for any resolver that
+    // succeeds emptily, whatever the reason.
+    const home = makeTempDir();
+    const bin = makeTempDir();
+    const log = join(makeTempDir(), "host-cli.log");
+    const cli = join(bin, "claude");
+    writeFileSync(cli, `#!/usr/bin/env bash\necho "invoked $*" >> "${log}"\nexit 0\n`, "utf8");
+    chmodSync(cli, 0o755);
+    const emptyResolver = join(bin, "empty-resolver.sh");
+    writeFileSync(emptyResolver, "#!/usr/bin/env bash\nexit 0\n", "utf8");
+    chmodSync(emptyResolver, 0o755);
+
+    const install = runInstall(["--target", "claude"], installEnv(home, bin));
+    assert.equal(install.status, 0, install.stderr);
+
+    const wake = join(home, ".claude", "bin", "wake-claude.sh");
+    // Fixture precondition: the glue under test must be the one that calls the resolver.
+    assert.ok(readFileSync(wake, "utf8").includes("wake-cwd.mjs"), "the glue must call wake-cwd.mjs");
+
+    const run = spawnSync("bash", [wake, "do T-1"], {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TP_PROJECT: "TaskPanel", TP_NODE: emptyResolver },
+    });
+
+    assert.equal(
+      run.status,
+      3,
+      `want exit 3 (a refused wake), got ${run.status}; stderr=${JSON.stringify(run.stderr)}`,
+    );
+    assert.match(run.stderr, /refusing to wake/);
+    assert.equal(
+      existsSync(log),
+      false,
+      `the host CLI must not have been invoked at all: ${existsSync(log) ? readFileSync(log, "utf8") : ""}`,
+    );
+  });
+
   it("--no-automation skips every codex automation artefact", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
