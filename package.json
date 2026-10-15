@@ -16,11 +16,20 @@
   "engines": {
     "node": ">=22"
   },
+  "pi": {
+    "skills": [
+      "./skills"
+    ],
+    "extensions": [
+      "./.pi/extensions/meerkat-taskpanel.ts"
+    ]
+  },
   "files": [
     "src",
     "skills",
     "plugins",
     ".claude-plugin",
+    ".pi",
     "scripts",
     "docs",
     "install.sh",
@@ -50,7 +59,8 @@
   "keywords": [
     "task-management",
     "ai-agent",
-    "kanban"
+    "kanban",
+    "pi-package"
   ],
   "repository": {
     "type": "git",

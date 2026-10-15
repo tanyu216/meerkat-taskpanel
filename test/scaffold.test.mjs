@@ -61,11 +61,13 @@ describe("plugin manifests", () => {
   it("every host manifest points its skills field at ./skills (or [./skills])", async () => {
     // Codex is absent on purpose: it ships no manifest, and installs the same
     // repository-root bundle as Claude Code (HOST_BUNDLES.codex names that manifest).
+    // Pi's manifest is the repository's own `package.json`, whose `pi` field declares the
+    // skills path — hence the `files`/`skills` fallback in the assertion below.
     const hosts = ["claude", "openclaw", "pi"];
     const paths = {
       claude: ".claude-plugin/plugin.json",
       openclaw: "plugins/openclaw/openclaw.plugin.json",
-      pi: "plugins/pi/package.json",
+      pi: "package.json",
     };
 
     for (const host of hosts) {

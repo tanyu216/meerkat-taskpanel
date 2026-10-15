@@ -91,10 +91,11 @@ export const HOST_BUNDLES = {
     openclawFormat: "native",
   },
   pi: {
-    dir: "plugins/pi",
+    dir: ".",
     manifest: PACKAGE_MANIFEST,
-    // Pi's own unit is an npm package, but OpenClaw sees the ships-a-`skills/`-dir
-    // layout and classifies it as a manifestless Claude bundle. Both are true.
+    // Pi declares itself in the root package's `pi` field, so its bundle IS the
+    // repository root; OpenClaw sees the ships-a-`skills/`-dir layout and classifies that
+    // root as a manifestless Claude bundle. Both are true.
     openclawKind: "bundle",
     openclawFormat: "claude",
   },

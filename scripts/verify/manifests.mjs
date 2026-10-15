@@ -5,7 +5,8 @@
  * Each host has its own conventional manifest location and its own required keys:
  *   .claude-plugin/plugin.json                    (the board plugin; root = repo root)
  *   plugins/openclaw/openclaw.plugin.json         (root-level, no dot-directory)
- *   plugins/pi/package.json
+ *   package.json                                  (the `pi` field — Pi has no manifest of
+ *                                                  its own either, it reads the root package)
  * plus the loop skill's own bundle — the marketplace's second plugin, which ships the
  * loop and nothing else, so it can be installed on its own:
  *   plugins/loop/.claude-plugin/plugin.json
@@ -58,15 +59,12 @@ export const MANIFESTS = [
   },
   {
     label: "pi",
-    path: "plugins/pi/package.json",
+    path: "package.json",
     required: [
       "name",
       "version",
-      "private",
-      "description",
-      "license",
       "type",
-      "files",
+      "pi",
     ],
   },
   {

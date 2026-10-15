@@ -84,12 +84,13 @@ export const PROBES = [
     host: "pi",
     bin: "pi",
     home: ".pi",
-    // A path source, so nothing is fetched.
+    // A path source, so nothing is fetched. The root package is the pi package now —
+    // its `pi` field declares the skills directory and the extension.
     steps: [
-      ["install", join(ROOT, "plugins/pi")],
+      ["install", ROOT],
       ["list"],
     ],
-    expect: (output) => (/plugins\/pi/.test(output) ? null : "expected the installed ./plugins/pi package"),
+    expect: (output) => (/meerkat-taskpanel/.test(output) ? null : "expected the installed meerkat-taskpanel package"),
   },
 ];
 

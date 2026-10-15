@@ -6,16 +6,17 @@
  * schedules, coupled only by the interface the loop declares it needs.
  *
  *   board (canonical: the root `package.json`)
- *   1. package.json                                    (the source of truth)
+ *   1. package.json                                    (the source of truth — and Pi's
+ *                                                       carrier too: its manifest IS the
+ *                                                       root package's `pi` field)
  *   2. .claude-plugin/plugin.json                      (the board plugin — claude,
  *                                                       and codex via the marketplace)
- *   3. plugins/pi/package.json
- *   4. plugins/openclaw/openclaw.plugin.json
- *   5. .claude-plugin/marketplace.json  → metadata.version
+ *   3. plugins/openclaw/openclaw.plugin.json
+ *   4. .claude-plugin/marketplace.json  → metadata.version
  *
  *   loop (canonical: its own Claude-format plugin manifest)
- *   6. plugins/loop/.claude-plugin/plugin.json
- *   7. plugins/loop/package.json
+ *   5. plugins/loop/.claude-plugin/plugin.json
+ *   6. plugins/loop/package.json
  *
  * Every host reads *its own* manifest to decide what version it installed, so a
  * drift inside a group ships a release that calls itself two different things. This
@@ -45,21 +46,21 @@ import { parseArgs } from "node:util";
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 /**
- * The board's five manifests, in reporting order. The first entry is the canonical
+ * The board's four manifests, in reporting order. The first entry is the canonical
  * one: every other entry in the group must equal it.
  *
  * `field` names the property that carries the version (so the diagnostic for the
  * marketplace, whose version hides under `metadata`, says so).
  *
- * Codex is not a carrier: it installs the same `.claude-plugin/plugin.json` bundle
- * through the repository marketplace, so a second row would only restate it.
+ * Two hosts are not carriers: Codex installs the same `.claude-plugin/plugin.json`
+ * bundle through the repository marketplace, and Pi declares itself in the canonical
+ * `package.json` itself. A row for either would only restate one already above.
  *
  * @type {ReadonlyArray<{label: string, path: string, field: string, canonical?: boolean, pick: (doc: object) => unknown}>}
  */
 export const VERSION_SOURCES = Object.freeze([
   { label: "package.json", path: "package.json", field: "version", canonical: true, pick: (doc) => doc.version },
   { label: "claude", path: ".claude-plugin/plugin.json", field: "version", pick: (doc) => doc.version },
-  { label: "pi", path: "plugins/pi/package.json", field: "version", pick: (doc) => doc.version },
   { label: "openclaw", path: "plugins/openclaw/openclaw.plugin.json", field: "version", pick: (doc) => doc.version },
   { label: "marketplace", path: ".claude-plugin/marketplace.json", field: "metadata.version", pick: (doc) => doc.metadata?.version },
 ]);

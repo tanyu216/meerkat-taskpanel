@@ -77,6 +77,7 @@ const FILES_WHITELIST = [
   "skills",
   "plugins",
   ".claude-plugin",
+  ".pi",
   "scripts",
   "docs",
   "install.sh",
