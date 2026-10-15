@@ -47,8 +47,7 @@ describe("commands/dictionary — no management surface (V8)", () => {
       for (const forbidden of FORBIDDEN_DICTIONARY_COMMANDS) {
         assert.equal(forbidden in commands, false, `${forbidden} must not exist`);
       }
-      assert.equal(typeof commands.listAssignees, "function");
-      assert.equal(typeof commands.listReporters, "function");
+      assert.equal(typeof commands.listActors, "function");
       // ...and not as module exports either.
       for (const name of Object.keys(commandsModule)) {
         assert.equal(/assignee|reporter/i.test(name) && /add|remove|rename|create/i.test(name), false, name);
@@ -61,11 +60,11 @@ describe("commands/dictionary — no management surface (V8)", () => {
       const first = commands.createTask({ projectId: "proj", title: "one", assignee: "Linus", actor: AGENT });
       const second = commands.createTask({ projectId: "proj", title: "two", assignee: "linus", actor: AGENT });
       assert.equal(second.assigneeId, first.assigneeId, "case and spacing do not matter");
-      assert.equal(countRows(db, "assignees"), 1);
-      assert.equal(commands.listAssignees({})[0].useCount, 2, "using it again counts once more");
+      assert.equal(countRows(db, "actors"), 1);
+      assert.equal(commands.listActors({})[0].useCount, 2, "using it again counts once more");
 
       commands.createTask({ projectId: "proj", title: "three", assignee: "Linus Torvalds", actor: AGENT });
-      assert.equal(commands.listAssignees({ q: "torvalds" })[0].displayName, "Linus Torvalds");
+      assert.equal(commands.listActors({ q: "torvalds" })[0].displayName, "Linus Torvalds");
 
       assert.throws(
         () => commands.createTask({ projectId: "proj", title: "four", assignee: "linu", actor: AGENT }),
@@ -87,12 +86,12 @@ describe("commands/dictionary — no management surface (V8)", () => {
         forceCreate: true,
         actor: AGENT,
       });
-      assert.equal(commands.listAssignees({ q: "linu" }).length, 3);
+      assert.equal(commands.listActors({ q: "linu" }).length, 3);
       assert.equal(forced.assigneeId !== first.assigneeId, true);
     });
   });
 
-  it("keeps assignees and reporters apart", async () => {
+  it("merges the assignee and reporter roles onto one actor row (0019)", async () => {
     await board(({ commands }) => {
       const task = commands.createTask({
         projectId: "proj",
@@ -102,10 +101,10 @@ describe("commands/dictionary — no management surface (V8)", () => {
         reporter: "Sam",
         actor: AGENT,
       });
-      assert.notEqual(task.assigneeId, task.reporterId);
-      assert.equal(commands.listAssignees({}).length, 1);
-      assert.equal(commands.listReporters({}).length, 1);
-      assert.equal(commands.listReporters({})[0].kind, "human", "the reporter defaults to a human");
+      // One table: the same name is ONE row whichever role names it, and both
+      // columns point at it.
+      assert.equal(task.assigneeId, task.reporterId);
+      assert.equal(commands.listActors({}).length, 1);
     });
   });
 
@@ -113,13 +112,12 @@ describe("commands/dictionary — no management surface (V8)", () => {
     await board(({ db, commands }) => {
       const task = commands.createTask({ projectId: "proj", title: "one", actor: AGENT });
       const updated = commands.updateTask({ id: task.id, assignee: "Linus", actor: AGENT });
-      assert.equal(commands.listAssignees({}).length, 1);
-      assert.equal(updated.assigneeId, commands.listAssignees({})[0].id);
-      assert.equal(updated.assigneeKind, "agent");
+      assert.equal(commands.listActors({}).length, 1);
+      assert.equal(updated.assigneeId, commands.listActors({})[0].id);
 
       commands.updateTask({ id: task.id, assignee: "Linus", actor: AGENT });
-      assert.equal(countRows(db, "assignees"), 1, "the same name never duplicates");
-      assert.equal(commands.listAssignees({})[0].useCount, 2);
+      assert.equal(countRows(db, "actors"), 1, "the same name never duplicates");
+      assert.equal(commands.listActors({})[0].useCount, 2);
 
       assert.throws(() => commands.updateTask({ id: task.id, actor: AGENT }), (err) => {
         assert.equal(err.code, "VALIDATION_FAILED");

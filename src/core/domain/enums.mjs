@@ -248,13 +248,15 @@ export const SQL_ENUM_SETS = Object.freeze({
   "tasks.awaiting_reason": AWAITING_REASONS,
   "tasks.priority": PRIORITIES,
   "tasks.kind": TASK_KINDS,
-  "tasks.assignee_kind": DICT_KINDS,
-  "tasks.creator_kind": ACTOR_KINDS,
+  // `0019` rebuilds `tasks` and moves `blocked_reason`'s `CHECK` (0016, added by
+  // `ALTER TABLE … ADD COLUMN`, invisible to the SQL-parity reader) into the
+  // `CREATE TABLE` body, where the reader *does* see it. Declaring its literals
+  // here is what keeps the two sides paired — exactly the `0018`/`REPORT_ORIGINS`
+  // precedent. `BLOCKED_REASONS` above owns the vocabulary.
+  "tasks.blocked_reason": BLOCKED_REASONS,
   "task_relations.relation_type": RELATION_TYPES,
   "comments.kind": COMMENT_KINDS,
   "attachments.kind": ATTACHMENT_KINDS,
   "agent_sessions.status": SESSION_STATUSES,
-  "assignees.kind": DICT_KINDS,
-  "reporters.kind": DICT_KINDS,
   "task_reports.origin": REPORT_ORIGINS,
 });

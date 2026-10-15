@@ -79,12 +79,12 @@ const PERIOD_SECONDS = 300; // the installed patrol unit's cadence (5 min)
  * running and not running at the same time. The heartbeat tests set it (or its
  * absence) on purpose.
  *
- * `creator_kind`/`creator_id` default to what the board records for a plain
- * local writer — which is what `actorFromRequest` answers for a `curl` or a
- * `taskctl` run with no agent identity. It matters now that leader attribution
- * is an **author** test (§6.3-D): a card the leader created is a leader event,
- * and a fixture that omitted the creator would model a board where nobody ever
- * dispatches anything.
+ * The `reporter` actor defaults to what the board records for a plain local
+ * writer — which is what `actorFromRequest` answers for a `curl` or a `taskctl`
+ * run with no agent identity. It matters because leader attribution is an
+ * **author** test (§6.3-D): a card the leader created is a leader event, and the
+ * creator IS the reporter (0019), so a fixture that omitted it would model a
+ * board where nobody ever dispatches anything.
  */
 function card(fields) {
   return {
@@ -93,8 +93,7 @@ function card(fields) {
     created_at: NOW,
     status_changed_at: NOW,
     heartbeat_at: NOW,
-    creator_kind: "human",
-    creator_id: "local",
+    reporter: { id: "local", display_name: "local", kind: "human" },
     ...fields,
   };
 }
@@ -766,7 +765,7 @@ describe("leader_stalled", () => {
     // must say so. No threshold (there is no origin to count from), `warn` only.
     const orphan = blocked("T-1", "2026-09-01T04:00:00.000Z");
     delete orphan.created_at;
-    const result = plan([{ ...orphan, creator_kind: "agent", creator_id: "linus" }]);
+    const result = plan([{ ...orphan, reporter: { id: "linus", display_name: "linus", kind: "agent" } }]);
     const alert = result.alerts.find((entry) => entry.sla_row === "leader_stalled");
     assert.equal(alert.measure_start_kind, "unverifiable");
     assert.equal(alert.threshold_min, null);

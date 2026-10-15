@@ -178,7 +178,8 @@ export const api = {
   uploadAttachmentContent: (id, bytes, contentType) => putBytes(`/attachments/${encodeURIComponent(id)}/content`, bytes, contentType),
   attachmentContentUrl: (id) => `${BASE}/attachments/${encodeURIComponent(id)}/content`,
 
-  assignees: (query) => get("/assignees", query),
-  reporters: (query) => get("/reporters", query),
+  // One dictionary read since 0019: `actors` is the single table, and
+  // `assignee`/`reporter` became roles a card fills.
+  actors: (query) => get("/actors", query),
   labels: (query) => get("/labels", query),
 };

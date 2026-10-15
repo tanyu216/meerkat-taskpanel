@@ -27,7 +27,7 @@ or `?token=<token>` for the SSE stream (the query form exists precisely because
 - `web/src/services/events.js` builds `/api/v1/events` with only a `?after=` cursor.
 
 So on a remote deployment essentially **every** request the board makes — `/meta`,
-`/projects`, `/tasks`, `/assignees`, `/events` — is answered **401**, and the panel renders
+`/projects`, `/tasks`, `/actors`, `/events` — is answered **401**, and the panel renders
 its error state rather than a board. This is a **missing feature, not a security hole**: the
 server is doing exactly what §7 says it should. The board has no way to *present* a token, so
 it simply is not a remote client.

@@ -125,7 +125,7 @@ export function createTask(ctx, input) {
 
       const dictionaryAudit = [];
       if (input.assignee !== undefined && input.assignee !== null) {
-        const resolved = resolveAssignment(ctx, {
+        const resolved = resolveAssignment({ repos: ctx.repos, now }, {
           kind: "assignee",
           name: input.assignee,
           actorKind: input.assigneeKind ?? "agent",
@@ -135,7 +135,7 @@ export function createTask(ctx, input) {
         dictionaryAudit.push(...resolved.audit);
       }
       if (input.reporter !== undefined && input.reporter !== null) {
-        const resolved = resolveAssignment(ctx, {
+        const resolved = resolveAssignment({ repos: ctx.repos, now }, {
           kind: "reporter",
           name: input.reporter,
           actorKind: input.reporterKind ?? "human",
@@ -220,12 +220,12 @@ export function updateTask(ctx, input) {
 
       const dictionaryAudit = [];
       if (input.assignee !== undefined) {
-        const resolved = resolveAssignment(ctx, { kind: "assignee", name: input.assignee, forceCreate: input.forceCreate });
+        const resolved = resolveAssignment({ repos: ctx.repos, now }, { kind: "assignee", name: input.assignee, forceCreate: input.forceCreate });
         Object.assign(patch, resolved.patch);
         dictionaryAudit.push(...resolved.audit);
       }
       if (input.reporter !== undefined) {
-        const resolved = resolveAssignment(ctx, { kind: "reporter", name: input.reporter, actorKind: "human", forceCreate: input.forceCreate });
+        const resolved = resolveAssignment({ repos: ctx.repos, now }, { kind: "reporter", name: input.reporter, actorKind: "human", forceCreate: input.forceCreate });
         patch.reporterId = resolved.patch.reporterId;
         dictionaryAudit.push(...resolved.audit);
       }

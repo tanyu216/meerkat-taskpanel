@@ -58,11 +58,9 @@ function snapshot(db) {
   );
   const byIdentifier = (id) => identifierOf.get(id) ?? `<missing:${id}>`;
   const rows = (sql) => db.prepare(sql).all().map((row) => ({ ...row }));
-  // Dictionary rows also carry fresh UUIDs; the *name* is what must match.
+  // Actor rows also carry fresh UUIDs; the *name* is what must match.
   const dictionaryNames = new Map(
-    rows("SELECT id, display_name FROM assignees")
-      .concat(rows("SELECT id, display_name FROM reporters"))
-      .map((entry) => [entry.id, entry.display_name]),
+    rows("SELECT id, display_name FROM actors").map((entry) => [entry.id, entry.display_name]),
   );
   const byName = (id) => (id === null ? null : (dictionaryNames.get(id) ?? `<missing:${id}>`));
 
@@ -121,13 +119,9 @@ function snapshot(db) {
       changes_json: activity.changes_json,
       created_at: activity.created_at,
     })),
-    dictionary: rows("SELECT kind, display_name, normalized_name, use_count FROM assignees ORDER BY normalized_name")
-      .map((entry) => ({ table: "assignees", ...entry }))
-      .concat(
-        rows("SELECT kind, display_name, normalized_name, use_count FROM reporters ORDER BY normalized_name").map(
-          (entry) => ({ table: "reporters", ...entry }),
-        ),
-      ),
+    // One table since 0019 — the `table` label is gone with the two tables it
+    // distinguished.
+    dictionary: rows("SELECT kind, display_name, normalized_name, use_count FROM actors ORDER BY normalized_name"),
   };
 }
 
