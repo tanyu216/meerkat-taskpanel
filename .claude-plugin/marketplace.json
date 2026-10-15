@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "meerkat-taskpanel",
-      "source": "./plugins/claude",
+      "source": "./",
       "description": "Task management board for AI Agent teams."
     },
     {

@@ -24,7 +24,8 @@
 | `src/shared/` | Shared DTOs, constants, small pure helpers |
 | `web/` | Vue 3 + Vite board frontend → `web/dist` (the hosted frontend root) |
 | `skills/meerkat-taskpanel/` | The skill — **single source of truth** |
-| `plugins/<host>/` | Per-host manifests + generated `skills/` copies |
+| `.claude-plugin/` | The board plugin manifest and the marketplace; the plugin root is the repository root, which is how every harness shares the one `skills/` tree |
+| `plugins/` | The bundles that still need a sibling `skills/`: OpenClaw's native manifest, and the loop's own marketplace entry |
 | `scripts/` | Build, install, sync and verify scripts |
 | `test/` | Smoke / contract tests |
 | `design/` | Product design artifacts — the DESIGN / BLOCKS documents, the interactive `prototype/`, brand assets and exported assets (see `design/README.md`) |
@@ -285,8 +286,8 @@ around them (it delegates the payload half to `scripts/sync-loop.mjs`):
 
 | Skill | Authored in | Generated into |
 |---|---|---|
-| `meerkat-taskpanel` (the board) | `skills/meerkat-taskpanel/` | `plugins/{claude,codex,openclaw,pi}/skills/meerkat-taskpanel/` |
-| `meerkat-loop` (the supervisor) | `skills/meerkat-loop/` — `SKILL.md`, `references/`, `scripts/board-check.mjs` | its own `body/` + `templates/`, then `plugins/{claude,codex,pi}/skills/meerkat-loop/` **and** `plugins/loop/skills/meerkat-loop/` |
+| `meerkat-taskpanel` (the board) | `skills/meerkat-taskpanel/` | `plugins/openclaw/skills/meerkat-taskpanel/` — every other harness reads `skills/` in place |
+| `meerkat-loop` (the supervisor) | `skills/meerkat-loop/` — `SKILL.md`, `references/`, `scripts/board-check.mjs` | its own `body/` + `templates/`, then `plugins/loop/skills/meerkat-loop/` |
 
 The loop's `body/` and `templates/` are generated *from this repository*: `body/` is the
 transitive import closure of `scripts/supervisor.mjs` and `scripts/wake-cwd.mjs` (written out
@@ -296,7 +297,7 @@ modules in `src/shared/` are **not** moved into the skill; they stay where the C
 them, and the skill's copy is generated and guarded. OpenClaw never receives the loop copy,
 by ruling: its framework already ships an equivalent supervisor.
 
-Those copies are generated artifacts and are committed so that each host directory is
+Those two copies are generated artifacts and are committed so that each bundle directory is
 self-contained — but they must always match their sources.
 
 **After editing anything under `skills/`, `scripts/supervisor.mjs`, `scripts/wake-cwd.mjs`,
@@ -312,8 +313,10 @@ gitignored.
 
 **One more rule for the skills, because they are distributed rather than read in place:** a
 link inside `skills/**` must resolve wherever the skill is *installed*, not where it was
-authored. The plugin bundles carry `skills/<name>/` and nothing above it, so a
-`../../../docs/…` link dangles in every install — link out by absolute URL instead.
+authored. A host's skill store holds `skills/<name>/` and nothing above it, so a
+`../../../docs/…` link dangles in every install — link out by absolute URL instead. (Sharing
+the tree across harnesses does not relax this: `install.sh` still lands one skill directory
+in the host's store, and the bundles under `plugins/` still carry only their own copy.)
 `test/skill/loop.test.mjs` asserts no link climbs out of the skill tree.
 
 ## Build output

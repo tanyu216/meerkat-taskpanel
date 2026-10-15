@@ -47,7 +47,7 @@ export const PROBES = [
     bin: "openclaw",
     home: ".openclaw",
     steps: [
-      ["plugins", "install", join(ROOT, "plugins/claude"), "--link", "--force", "--accept-capabilities"],
+      ["plugins", "install", ROOT, "--link", "--force", "--accept-capabilities"],
       ["plugins", "inspect", "meerkat-taskpanel"],
     ],
     expect: (output) => {

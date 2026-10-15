@@ -41,10 +41,12 @@ after(async () => {
 });
 
 describe("plugin manifests", () => {
-  it("all four host manifests + the loop bundle + the marketplace parse and carry required keys", async () => {
-    // 4 board host bundles + the loop skill's 2 manifests (Claude-format plugin + Pi
-    // package) + the marketplace.
-    assert.equal(MANIFESTS.length, 7);
+  it("the board, OpenClaw, Pi and the loop bundle manifests parse and carry required keys", async () => {
+    // 3 board manifests (the repository-root board plugin, OpenClaw's native manifest and
+    // the Pi package) + the loop skill's 2 (Claude-format plugin + Pi package) + the
+    // marketplace. Codex has no manifest of its own: it installs the same `./` bundle as
+    // Claude Code through the repository-root marketplace.
+    assert.equal(MANIFESTS.length, 6);
 
     const report = await validateManifests(ROOT);
     const failures = report.results.filter((r) => !r.ok);
@@ -57,10 +59,11 @@ describe("plugin manifests", () => {
   });
 
   it("every host manifest points its skills field at ./skills (or [./skills])", async () => {
-    const hosts = ["claude", "codex", "openclaw", "pi"];
+    // Codex is absent on purpose: it ships no manifest, and installs the same
+    // repository-root bundle as Claude Code (HOST_BUNDLES.codex names that manifest).
+    const hosts = ["claude", "openclaw", "pi"];
     const paths = {
-      claude: "plugins/claude/.claude-plugin/plugin.json",
-      codex: "plugins/codex/.codex-plugin/plugin.json",
+      claude: ".claude-plugin/plugin.json",
       openclaw: "plugins/openclaw/openclaw.plugin.json",
       pi: "plugins/pi/package.json",
     };
@@ -109,12 +112,14 @@ describe("skill sync", () => {
     assert.equal(report.ok, true);
   });
 
-  it("distributes the board to four hosts and the loop to claude/codex/pi only", () => {
+  it("distributes the board only to OpenClaw, and the loop only as a marketplace bundle", () => {
     // The split's whole point: the distribution surface follows the responsibility.
     // OpenClaw runs the openclaw-team framework's own poll/patrol, so a second supervisor
-    // there would only race the first for the same cards (ruling O3).
-    assert.deepEqual(SKILL_HOSTS["meerkat-taskpanel"], ["claude", "codex", "openclaw", "pi"]);
-    assert.deepEqual(SKILL_HOSTS["meerkat-loop"], ["claude", "codex", "pi"]);
+    // there would only race the first for the same cards (ruling O3) — and it is the only
+    // host left that needs a generated copy, because every other harness reads the
+    // repository's own `skills/` tree through its manifest.
+    assert.deepEqual(SKILL_HOSTS["meerkat-taskpanel"], ["openclaw"]);
+    assert.deepEqual(SKILL_HOSTS["meerkat-loop"], []);
     assert.equal(SKILL_HOSTS["meerkat-loop"].includes("openclaw"), false);
 
     // A `bundle` target is not a host: it exists so the marketplace can list the loop as
@@ -124,16 +129,7 @@ describe("skill sync", () => {
     const rows = skillTargets();
     assert.deepEqual(
       rows.map((row) => `${row.skill}→${row.target}`),
-      [
-        "meerkat-taskpanel→claude",
-        "meerkat-taskpanel→codex",
-        "meerkat-taskpanel→openclaw",
-        "meerkat-taskpanel→pi",
-        "meerkat-loop→claude",
-        "meerkat-loop→codex",
-        "meerkat-loop→pi",
-        "meerkat-loop→loop",
-      ],
+      ["meerkat-taskpanel→openclaw", "meerkat-loop→loop"],
     );
   });
 
