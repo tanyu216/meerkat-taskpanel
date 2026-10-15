@@ -44,6 +44,19 @@ export const MANIFESTS = [
     ],
   },
   {
+    label: "cursor",
+    path: ".cursor-plugin/plugin.json",
+    required: [
+      "name",
+      "displayName",
+      "description",
+      "version",
+      "author",
+      "license",
+      "skills",
+    ],
+  },
+  {
     label: "openclaw",
     path: "plugins/openclaw/openclaw.plugin.json",
     required: [

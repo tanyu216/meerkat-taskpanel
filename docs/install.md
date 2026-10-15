@@ -462,9 +462,15 @@ openclaw plugins inspect meerkat-taskpanel
 
 ```text
 Format: bundle
-Bundle format: claude
+Bundle format: cursor
 Bundle capabilities: skills
 ```
+
+**Why `cursor`?** The repository root carries two client markers — `.cursor-plugin/` and
+`.claude-plugin/` — and OpenClaw's detection precedence is **codex → cursor → claude**. The
+root is therefore reported as a cursor bundle. That is the only line the second marker
+changes: `Format: bundle`, `Shape`, `Capability mode` and `Bundle capabilities: skills` are
+identical either way (measured against OpenClaw 2026.9.8 with and without the marker).
 
 > **No supervisor for OpenClaw.** Unlike the other three hosts, OpenClaw gets **no**
 > scheduling unit and **no `meerkat-loop` skill**: it already has a scheduler in the
@@ -595,6 +601,36 @@ restart alone picks up nothing — clear that cache, or pin explicitly with `#vX
 container or on the development host, so the *host integration* above has never been run
 from here. The plugin's own logic is covered by `test/install/opencode-plugin.test.mjs`,
 which drives it against a fake plugin context.
+
+### Cursor
+
+> **Plugin only, for now.** `install.sh` has **no** `cursor` target yet, so Cursor gets no
+> host-side skill copy, no scheduling units and no `taskctl` shim. It reads the skills
+> through `.cursor-plugin/plugin.json` at the repository root.
+
+```bash
+# in Cursor's agent chat
+/add-plugin meerkat-taskpanel
+# or search the plugin marketplace
+```
+
+`.cursor-plugin/plugin.json` declares `"skills": "./skills/"` — the repository's one
+`skills/` tree, read in place, so Cursor needs no `skills/` directory of its own. Like
+OpenCode, Cursor registers a *directory*, so both skills arrive together.
+
+**No hooks are shipped, deliberately.** Cursor's hook contract is its own schema (a
+lowercase `sessionStart` key, a relative `command`, `additional_context` rather than Claude
+Code's `hookSpecificOutput.additionalContext`), and Cursor's own documentation has no
+uninstall or update path to follow. Rather than invent one, the plugin is skills-only —
+which is also what the board's Claude plugin and OpenClaw bundle are. Porting the
+session-start briefing to Cursor is a follow-up card, and it must be proved with a
+unique-marker test (a throwaway hook whose marker must reach the model with no tool call)
+rather than assumed.
+
+**Unverified, and flagged as such.** Cursor's CLI is not installed here, so nothing in this
+section has been run from this repository. Upstream does not document Cursor's
+uninstall/update path at all, so even the install gesture above is transcribed from
+`obra/superpowers` rather than reproduced.
 
 ## Agent integration: skill only
 
