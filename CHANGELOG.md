@@ -313,9 +313,44 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   not see; the rebuild declares it in a `CREATE TABLE` body, so the value set is now declared
   on the JS side too (`REPORT_ORIGINS` in `src/core/domain/enums.mjs`) and the parity test
   covers it for the first time.
+- **The two dictionary tables are one `actors` table, and everything that referenced them
+  moved with it** (migration **`0019`**). `assignees` and `reporters` are gone; a person is
+  one row keyed by `normalized_name`, whichever role the board knows them in. The merge
+  **deduplicates**: the group's earliest row survives — its `id` is one a task already holds —
+  `use_count` sums, `first_seen_at`/`last_seen_at` take the extremes, and every
+  `tasks.assignee_id`/`reporter_id` is repointed, **across tables**, because a person can be
+  an assignee on one card and a reporter on another. The guard that refused to delete a
+  referenced dictionary row is now one trigger on `actors` checking both roles.
+
+  The surface follows the table: `GET /api/v1/assignees` and `GET /api/v1/reporters` become one
+  `GET /api/v1/actors`; the CLI's `assignees` and `reporters` groups become one `actors` group;
+  `dictionary_entry` loses `platform`; and the board fetches its roster once instead of twice.
+  **The dictionary still has no management surface** — that ruling is unchanged.
+
+  **Two behaviour changes worth naming.** The importer now drives the *same* dictionary
+  decision as the live path (normalise, exact match, unique-prefix match, the dictionary's own
+  spelling wins on reuse). Before, it called the repository directly: a card imported as
+  `"  terry "` kept that spelling while the same name entered through the CLI stored
+  `"Terry"` — one key, two spellings, and behaviour that depended on import order. And a
+  card's `claimed_by` **no longer creates a dictionary row**: the old importer resolved the
+  claimant into an actor and then discarded the id, so the row was a roster entry nothing
+  referenced. `tasks.claimed_by` stays a free string here — the migration that turns it into a
+  reference will create the rows it needs itself.
+
+  The board's platform badge reads an actor's `kind`, but only a kind that *names* a platform
+  (`claude`, `codex`, …); the generic `agent`/`human` deliberately fill nothing in, so the
+  badge is absent exactly as it was while the `platform` column was never written. That is a
+  holding position, not a finished rule: the DOM contract reads `[data-card]`'s
+  `data-assignee-kind` off the same value and requires `human` or `agent`, so no single value
+  satisfies both until an actor's kind carries a platform name.
 
 ### Removed
 
+- **Three denormalised columns on `tasks`.** `assignee_kind`, `creator_kind` and `creator_id`
+  are gone (migration `0019`): the kind belongs to the actor row, and a copy of a value that
+  can now change goes stale. A card's creator **is** its reporter — `created_by` already
+  mapped there — so `creator_id` was a second name for one fact and `creator_kind` a second
+  copy of one kind. The wire loses `creator_kind` and `creator_id` with them.
 - **Project directories, from the board — the local map moves to the skill.** TaskPanel
   no longer manages project directories at all. `project create` / `project update` no
   longer take `--workspace-path` and `project list` no longer prints a `workspace_path`
