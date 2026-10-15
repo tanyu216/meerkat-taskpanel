@@ -15,14 +15,15 @@ Two components are shipped and they version **independently** (ruling O4): the *
 the **loop**. Each component's manifests must agree with each other; the two components are
 not compared with one another.
 
-**Board** — four files, root `package.json` canonical:
+**Board** — five files, root `package.json` canonical:
 
 | # | File | Field |
 |---|---|---|
 | 1 | `package.json` | `version` |
 | 2 | `.claude-plugin/plugin.json` | `version` |
-| 3 | `plugins/openclaw/openclaw.plugin.json` | `version` |
-| 4 | `.claude-plugin/marketplace.json` | `metadata.version` |
+| 3 | `.cursor-plugin/plugin.json` | `version` |
+| 4 | `plugins/openclaw/openclaw.plugin.json` | `version` |
+| 5 | `.claude-plugin/marketplace.json` | `metadata.version` |
 
 Two hosts are not carriers. Codex installs the same `.claude-plugin/plugin.json` bundle
 through the repository-root marketplace, and Pi declares itself in the canonical

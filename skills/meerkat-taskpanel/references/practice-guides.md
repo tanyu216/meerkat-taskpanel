@@ -235,7 +235,7 @@ bash install.sh --target openclaw --link --force
 
 # 2. plugin — OpenClaw consumes the Claude-format bundle at the repository root
 openclaw plugins install "$PWD" --force --accept-capabilities
-openclaw plugins inspect meerkat-taskpanel                 # → meerkat-taskpanel, bundle format: claude
+openclaw plugins inspect meerkat-taskpanel                 # → meerkat-taskpanel, bundle format: cursor
 ```
 
 (`plugins/openclaw/openclaw.plugin.json` is a *native* manifest — a skill-only pack

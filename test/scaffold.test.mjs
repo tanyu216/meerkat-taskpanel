@@ -61,12 +61,12 @@ async function skillDirsUnder(dir, rel = "") {
 }
 
 describe("plugin manifests", () => {
-  it("the board, OpenClaw, Pi and the loop bundle manifests parse and carry required keys", async () => {
-    // 3 board manifests (the repository-root board plugin, OpenClaw's native manifest and
-    // the Pi package) + the loop skill's 2 (Claude-format plugin + Pi package) + the
-    // marketplace. Codex has no manifest of its own: it installs the same `./` bundle as
-    // Claude Code through the repository-root marketplace.
-    assert.equal(MANIFESTS.length, 6);
+  it("the board, Cursor, OpenClaw, Pi and the loop bundle manifests parse and carry required keys", async () => {
+    // 4 board manifests (the repository-root board plugin, Cursor's marker, OpenClaw's
+    // native manifest and the Pi package) + the loop skill's 2 (Claude-format plugin + Pi
+    // package) + the marketplace. Codex has no manifest of its own: it installs the same
+    // `./` bundle as Claude Code through the repository-root marketplace.
+    assert.equal(MANIFESTS.length, 7);
 
     const report = await validateManifests(ROOT);
     const failures = report.results.filter((r) => !r.ok);

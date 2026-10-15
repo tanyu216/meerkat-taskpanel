@@ -6,8 +6,8 @@ target_dir: .agents/skills/meerkat-taskpanel
 skill_entry: SKILL.md
 wrapper: scripts/run.mjs
 # Pi consumes the repository's own package.json — its `pi` field declares the skills
-# directory and the extension in `.pi/extensions/`. Because the root also ships a
-# skills/ tree, OpenClaw's detector classifies it as a manifestless Claude bundle.
+# directory and the extension in `.pi/extensions/`. OpenClaw's detector reports the
+# repository root's format for it, which is cursor (see docker/profiles/claude.yml).
 bundle: .
 bundle_kind: bundle
-bundle_format: claude
+bundle_format: cursor

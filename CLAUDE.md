@@ -48,6 +48,7 @@ meerkat-taskpanel/
 │                           #   which is how every harness shares the one skills/ tree
 ├── .pi/extensions/         # the Pi extension; declared by the root package.json's `pi` field
 ├── .opencode/plugins/      # the OpenCode plugin; reads the one skills/ tree in place
+├── .cursor-plugin/         # Cursor's marker; makes the repo root its plugin root as well
 ├── plugins/openclaw/       # native manifest + its own generated skills/ copy
 ├── plugins/loop/           # the loop's own bundle (the marketplace plugin `meerkat-loop`)
 ├── design/                 # design artifacts: DESIGN / BLOCKS, prototype/ (HTML + daisyUI), brand/, assets/
