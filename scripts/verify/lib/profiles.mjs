@@ -34,7 +34,7 @@ import { MiniYamlError, parseMiniYaml } from "./mini-yaml.mjs";
 export { readFrontmatterField };
 
 /** Hosts that must each ship a profile. */
-export const PROFILE_HOSTS = ["claude", "openclaw", "codex", "pi"];
+export const PROFILE_HOSTS = ["claude", "openclaw", "codex", "pi", "opencode"];
 
 /** Required keys of the flat profile schema. */
 export const REQUIRED_PROFILE_FIELDS = ["host", "label", "installer", "target_dir", "skill_entry", "wrapper"];
