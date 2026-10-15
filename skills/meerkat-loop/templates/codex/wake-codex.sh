@@ -48,6 +48,15 @@ if ! cwd="$("${TP_NODE:-node}" "{{LOOP}}/scripts/wake-cwd.mjs" --project "${TP_P
   echo "wake-codex: refusing to wake a worker without a target directory" >&2
   exit 3
 fi
+# `wake-cwd.mjs`'s contract: exit 0 means "resolved", with the directory as the ONLY thing on
+# stdout. An empty $cwd is therefore an illegal state the `if !` above cannot see — `cd ""`
+# succeeds in bash and would run the worker in the caller's directory, which is the exact wrong
+# checkout this script exists to refuse. The absolute-path test subsumes the empty case and a
+# relative one, so it is the whole check.
+case "$cwd" in
+  /*) ;;
+  *) echo "wake-codex: refusing to wake a worker without a target directory" >&2; exit 3 ;;
+esac
 cd "$cwd"
 echo "wake-codex: working directory $cwd" >&2
 

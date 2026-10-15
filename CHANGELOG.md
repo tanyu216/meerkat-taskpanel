@@ -461,6 +461,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   must stay one. The branch had no test, so `test/install/install.test.mjs` now drives it with a
   `PATH` that is a file, and asserts the SKIP summary where it previously produced four FAILs and
   exit 1.
+- **The wake glue refuses an empty target directory instead of waking a worker in the wrong
+  checkout.** `wake-cwd.mjs`'s contract is "exit 0 means resolved, and the directory is the only
+  thing on stdout", so an empty `$cwd` with exit 0 is an illegal state — and the glue's
+  `if ! cwd=$(…)` guard could not see it, because `cd ""` **succeeds** in bash: the worker then
+  started in whatever directory the scheduler happened to run in. All three wake scripts
+  (`claude`, `codex`, `pi`) now test the resolved *value*, not only the exit status — an
+  absolute-path check that subsumes both the empty and the relative case — and exit 3 without
+  starting a worker. This is defence in depth rather than a fix for whatever makes a resolver
+  answer emptily, but the outcome changes shape in a way an operator can see: a wake that used to
+  start somewhere wrong now does not start at all, which is the deliberate trade (README R1 — a
+  worker in the wrong checkout is worse than no worker).
 
 - **The combobox popup stopped collapsing to its content width — fixed once, for both places
   the control appears.** `.td-combo-menu`'s box was **110.19px** wide in the drawer where the

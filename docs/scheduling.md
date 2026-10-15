@@ -1194,7 +1194,7 @@ not just the exit code:
 |---|---|
 | `session-start.sh` (claude) | calls `issue candidates --assignee <agent>`, prints candidates + the eight rules, and is **non-fatal** — a failing or missing shim still exits 0 with a PATH-independent fallback |
 | `meerkat-taskpanel-claim.sh` (codex) | claims the first candidate (`issue move <ref> in_progress`) when free; **skips** when a held card is mine (identity matched under the board's NFKC/whitespace/case rule); still claims when the held card is someone else's; exits 0 on an empty pool; exits 1 when the shim is missing |
-| `wake-claude.sh` | no prompt → exit 2; mapped project → `claude -p <prompt>` **run in the mapped directory**; plus `--resume <sid>` when a session is given; unmapped project / bad target directory → exit 3, no worker started; **no** permission-bypass flag |
+| `wake-claude.sh` | no prompt → exit 2; mapped project → `claude -p <prompt>` **run in the mapped directory**; plus `--resume <sid>` when a session is given; unmapped project / bad target directory / a resolver that succeeds with an empty or relative directory → exit 3, no worker started; **no** permission-bypass flag |
 | `wake-codex.sh` | the same, with `codex exec <prompt>` (and `codex exec resume <sid> <prompt>`) |
 | `wake-pi.sh` | the same, with `pi --print <prompt>` (and `pi --print --session <sid> <prompt>`) |
 
