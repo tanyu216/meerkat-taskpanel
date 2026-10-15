@@ -78,6 +78,7 @@ const FILES_WHITELIST = [
   "plugins",
   ".claude-plugin",
   ".pi",
+  ".opencode",
   "scripts",
   "docs",
   "install.sh",

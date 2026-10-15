@@ -63,6 +63,11 @@ The repository-root Claude marketplace `.claude-plugin/marketplace.json` lists
 `./` (the board) and `./plugins/loop` (the loop); Codex reads the same
 marketplace manifest, which is why it has no bundle of its own.
 
+**OpenCode and Cursor are plugin-only hosts** — they have no `--target` yet, so nothing
+lands in a host directory for them and the table above does not list them. They take the
+skills through their own plugin mechanism instead: see [OpenCode](#opencode) and
+[Cursor](#cursor).
+
 `--link` applies to the **board** skill only. The loop is always copied: a symlinked
 execution body would put the checkout back into the load path of the very thing the split
 exists to make independent of it (`skills/meerkat-loop/body/`).
@@ -555,6 +560,41 @@ pi remove "$PWD"
 rm -rf ~/.agents/skills/meerkat-taskpanel ~/.agents/skills/meerkat-loop \
        ~/.agents/scheduling ~/.agents/bin/wake-pi.sh ~/.agents/meerkat-taskpanel.env
 ```
+
+### OpenCode
+
+> **Plugin only, for now.** `install.sh` has **no** `opencode` target yet, so OpenCode gets
+> no host-side skill copy, no scheduling units and no `taskctl` shim. It reads the
+> skills through the plugin below — the same way `obra/superpowers` distributes to it.
+
+Register the plugin in `opencode.json` (V2 `>= 2.0.4`; V1 uses the singular `plugin` key):
+
+```jsonc
+{
+  // V2: { "plugins": ["meerkat-taskpanel@git+https://github.com/tanyu216/meerkat-taskpanel.git"] }
+  "plugin": ["meerkat-taskpanel@git+https://github.com/tanyu216/meerkat-taskpanel.git"]
+}
+```
+
+`.opencode/plugins/meerkat-taskpanel.js` then hands OpenCode the repository's own
+`skills/` directory — nothing is copied. On V1 it pushes that directory into
+`config.skills.paths`; on V2, where `config.skills` is a flat array, it registers one
+`Skill.Info` per `skills/<name>/SKILL.md` instead. Both skills arrive together, because
+OpenCode's registration unit is a directory.
+
+```bash
+# verify — a session should list meerkat-taskpanel as a skill
+opencode run --standalone --print-logs "hello" 2>&1 | grep -i meerkat
+```
+
+Uninstall: remove the entry from `opencode.json`. Update: restart OpenCode; some OpenCode
+and Bun versions pin the resolved git dependency in a lockfile or cache, in which case a
+restart alone picks up nothing — clear that cache, or pin explicitly with `#vX.Y.Z`.
+
+**Unverified, and flagged as such.** OpenCode's CLI is not installed in this repository's
+container or on the development host, so the *host integration* above has never been run
+from here. The plugin's own logic is covered by `test/install/opencode-plugin.test.mjs`,
+which drives it against a fake plugin context.
 
 ## Agent integration: skill only
 

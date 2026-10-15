@@ -41,6 +41,7 @@ export const REQUIRED = Object.freeze([
   ".claude-plugin/plugin.json",
   ".claude-plugin/marketplace.json",
   ".pi/extensions/meerkat-taskpanel.ts",
+  ".opencode/plugins/meerkat-taskpanel.js",
   "plugins/openclaw/openclaw.plugin.json",
 ]);
 

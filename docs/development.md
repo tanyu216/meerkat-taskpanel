@@ -26,6 +26,7 @@
 | `skills/meerkat-taskpanel/` | The skill — **single source of truth** |
 | `.claude-plugin/` | The board plugin manifest and the marketplace; the plugin root is the repository root, which is how every harness shares the one `skills/` tree |
 | `.pi/` | The Pi extension, declared by the root `package.json`'s `pi` field (which also names the skills directory) |
+| `.opencode/` | The OpenCode plugin — a Shape-B host: it registers the shared `skills/` directory at runtime, so it too needs no copy |
 | `plugins/` | The bundles that still need a sibling `skills/`: OpenClaw's native manifest, and the loop's own marketplace entry |
 | `scripts/` | Build, install, sync and verify scripts |
 | `test/` | Smoke / contract tests |
