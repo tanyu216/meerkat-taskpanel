@@ -92,6 +92,16 @@ The `web/` workspace has landed with M6b; its built `web/dist` is the hosted fro
 When `web/package.json` is absent from a checkout the stage is a no-op that still emits an
 empty `/app/web/dist`, so the image keeps building and the runtime contract holds.
 
+> **`web/dist` is excluded from the build context** (`.dockerignore`), so the `webbuild`
+> stage's own `vite build` is the only thing that writes `/app/web/dist`. That matters
+> because a directory `COPY` **merges**: a developer machine carrying a locally built
+> `web/dist` would otherwise land it beside the fresh one, and Vite's `emptyOutDir` cannot
+> remove files it did not write. The two builds name their chunks by content hash, so the
+> mixture survives as a tree with several generations of `assets/*.js` in it — and the
+> hook-surface leg (`test/web/blocks.bundle.test.mjs`) scans *every* chunk, so the stale
+> ones are read as if the app still carried retired hooks. The runtime stage's
+> `COPY . .` no longer brings a frontend build with it; `COPY --from=webbuild` does.
+
 ## Re-vendoring the npm cache
 
 `web/.vendor/npm-cache` is the committed npm cache that makes the `webbuild` stage offline.
@@ -301,6 +311,44 @@ host, because they are static or pure and touch nothing:
   `.dockerignore` keeps out of the image, so it self-skips inside the container.
 
 Everything that *installs*, *serves*, or *deploys* goes through Docker.
+
+## Which of `node --test`'s legs actually ran
+
+Two of the suites live behind a `web/dist` guard — `test/web/blocks.bundle.test.mjs` (the
+hook surface survived the build) and `test/web/blocks.dom.test.mjs` (the browser layer).
+They **skip** rather than fail when there is no build, so `node --test`'s `fail 0` is also
+true of a run that never exercised either. In practice they skip in two places:
+
+- a **lane worktree**, because `web/dist` is a gitignored build product and there is none;
+  and
+- the **container**, for the DOM leg only — the image deliberately carries no Chromium.
+
+`scripts/verify/web-dist.mjs` reads the build on disk and names each leg:
+
+```bash
+node scripts/verify/web-dist.mjs              # verdict only; exits 0
+node scripts/verify/web-dist.mjs --build      # rebuild first when the build is missing/stale
+npm run verify:web-dist                       # the fail-closed form (exit 3 unless both legs ran)
+```
+
+It classifies the build as `unbuilt`, `stale` or `fresh`, and reports each leg `COVERED` or
+`UNCOVERED` with the reason. `npm run verify` runs it (rebuilding when it can), and
+`docker/verify-in-container.sh` runs it with `--require=bundle` — the image builds the
+frontend itself, so the bundle leg is required there and a `webbuild` stage that quietly
+emitted nothing fails the run instead of showing up as two quiet skips.
+
+The rebuild is a whole-tree write, so it goes through the team's `build-guard.mjs` lock when
+that checkout has one (`--build-guard=auto`, the default): another lane's build serializes
+with it rather than racing. A lock held elsewhere means the rebuild is **not attempted**, and
+the verdict says that instead of reporting a failed build.
+
+**A stale build is a false red.** When `web/dist` is older than `web/src`, the bundle leg
+reports "these hooks are absent from the bundle" and the DOM leg a rule failure — both of
+which read like contract violations and are really one stale artefact. Rebuild
+(`npm -w web run build`, or the `--build` form above) before believing either. A host that
+cannot build (a `darwin` machine with only the committed linux/arm64 cache, say) cannot
+repair it either, which is exactly why the missing build is *reported* rather than treated
+as a failure by default.
 
 ## CI
 

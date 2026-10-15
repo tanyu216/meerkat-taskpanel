@@ -310,8 +310,9 @@ describe("contract/md-golden — the data that must survive", () => {
     try {
       const epic = board.repos.tasks.getByIdentifier("proj", "PROJ-0001");
       const child = board.repos.tasks.getByIdentifier("proj", "PROJ-0002");
+      const blocker = board.repos.tasks.getByIdentifier("proj", "PROJ-0003");
       assert.equal(board.repos.relations.getParent(child.id).source, epic.id);
-      assert.deepEqual(board.repos.relations.listBlockerOf(child.id).map((r) => r.source), [epic.id]);
+      assert.deepEqual(board.repos.relations.listBlockerOf(child.id).map((r) => r.source), [blocker.id]);
 
       const comments = board.repos.comments.list({ taskId: epic.id });
       assert.deepEqual(comments.map((c) => c.kind), ["discuss", "decision", "confirm"]);

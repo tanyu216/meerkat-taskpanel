@@ -25,6 +25,12 @@ export function registerRelationRoutes(router, surface) {
       ancestors: listing.ancestors.map(relationToWire),
       blocked_by: listing.blockedBy.map(relationToWire),
       blocks: listing.blocks.map(relationToWire),
+      // Task **ids** on this card's parent chain, either direction — what the
+      // drawer's prerequisite picker leaves out of its candidates, so a card the
+      // `blocks` guard would refuse with `RELATION_CYCLE` is never offered
+      // (T-20261015-104813). Ids, not relation rows: the caller is filtering a
+      // roster by identity, not rendering an edge.
+      parent_chain: listing.parentChain,
     };
   });
 
