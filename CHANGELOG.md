@@ -384,9 +384,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   second request. `author_id` / `claimed_by` are **kept**, so nothing that keys on the id
   breaks, and the CLI prints the author's name again (`taskctl comment list`). `author_kind`
   also stays: it is the append-only column's own record of the kind a write claimed, a
-  different fact from the actor row's *current* kind the ref resolves. The claim refusals
-  name the holder again (`decideClaim`/`assertClaimable` take an injected `describeHolder`,
-  the same seam as `resolveAssignee`), and the loop's `planPatrol` reads the holder's name
+  different fact from the actor row's *current* kind the ref resolves. The claim and
+  heartbeat refusals name the holder again (`decideClaim`/`assertClaimable`/`setHeartbeat`
+  take an injected `describeHolder`, the same seam as `resolveAssignee`), and the loop's
+  `planPatrol` reads the holder's name
   off `claimed_by_actor`. The contract snapshot is refreshed; `author` / `claimed_by_actor`
   and their nested shapes are frozen by it.
 

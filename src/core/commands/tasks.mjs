@@ -527,7 +527,14 @@ export function heartbeat(ctx, input) {
       // the dictionary: the pulsing actor's name resolves to the same row the
       // claim wrote (the audit row below keeps the name).
       const holderId = resolveActorId({ repos: ctx.repos, now }, { name: actor.id, actorKind: actor.kind });
-      const task = ctx.repos.tasks.setHeartbeat({ id: input.id, actor: holderId, now });
+      const task = ctx.repos.tasks.setHeartbeat({
+        id: input.id,
+        actor: holderId,
+        now,
+        // Name the holder in an `EXECUTION_ACTIVE` refusal (0020: `claimed_by` is
+        // an id), the same way the claim refusals do.
+        describeHolder: (id) => readableHolder(ctx, id),
+      });
       ctx.repos.activities.append({
         taskId: task.id,
         actorKind: actor.kind,

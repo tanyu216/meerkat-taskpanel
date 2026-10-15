@@ -263,10 +263,30 @@ describe("repositories/tasks", () => {
       assert.equal(pulsed.heartbeatAt, TS2);
       assert.equal(pulsed.status, "in_progress", "a heartbeat never changes status");
 
+      // No resolver: the raw holder value stands in (the domain-only fallback).
       assert.throws(
         () => repos.tasks.setHeartbeat({ id: task.id, actor: "linus", now: TS2 }),
         (err) => {
           assert.equal(err.code, "EXECUTION_ACTIVE");
+          assert.match(err.message, /held by elon/);
+          return true;
+        },
+      );
+
+      // Phase 7 — an injected `describeHolder` names the holder, and the raw
+      // value does *not* also appear: a name-only message, not name-and-id.
+      assert.throws(
+        () =>
+          repos.tasks.setHeartbeat({
+            id: task.id,
+            actor: "linus",
+            now: TS2,
+            describeHolder: (id) => (id === "elon" ? "Elon Musk" : null),
+          }),
+        (err) => {
+          assert.equal(err.code, "EXECUTION_ACTIVE");
+          assert.match(err.message, /held by Elon Musk/);
+          assert.ok(!err.message.includes("elon"), `message must not carry the raw value: ${err.message}`);
           return true;
         },
       );
