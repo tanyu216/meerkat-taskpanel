@@ -22,15 +22,16 @@ export const NO_LOOKUP = () => null;
  * @param {string|null} id
  * @param {string} kind "assignee" | "reporter"
  * @param {(kind: string, id: string) => object|null} lookup
- * @param {string|null} [fallbackKind] the task's `assignee_kind` when the entry is gone
  */
-function actorRef(id, kind, lookup, fallbackKind = null) {
+function actorRef(id, kind, lookup) {
   if (id === null || id === undefined || id === "") return null;
   const entry = lookup === undefined ? null : lookup(kind, id);
   return {
     id,
+    // The actor's kind lives on its `actors` row (0019 dropped the denormalised
+    // `tasks.assignee_kind`); when the row is gone the role name stands in.
     display_name: entry?.displayName ?? id,
-    kind: entry?.kind ?? fallbackKind ?? kind,
+    kind: entry?.kind ?? kind,
   };
 }
 
@@ -46,8 +47,6 @@ const COPY_TASK_FIELDS = Object.freeze({
   sort_order: "sortOrder",
   assignee_id: "assigneeId",
   reporter_id: "reporterId",
-  creator_kind: "creatorKind",
-  creator_id: "creatorId",
   agent_session: "agentSession",
   thread_id: "threadId",
   thread_source: "threadSource",
@@ -88,7 +87,7 @@ export function taskToWire(task, options = {}) {
   }
   out.labels = Array.isArray(task.labels) ? task.labels : [];
   out.meta = task.meta ?? {};
-  out.assignee = actorRef(task.assigneeId, "assignee", lookup, task.assigneeKind);
+  out.assignee = actorRef(task.assigneeId, "assignee", lookup);
   out.reporter = actorRef(task.reporterId, "reporter", lookup);
   out.report_waiver = waiverOf(task);
   return out;
@@ -222,7 +221,7 @@ export function sessionToWire(session) {
   };
 }
 
-/** @param {object} entry a dictionary entry (assignee or reporter) */
+/** @param {object} entry an actor dictionary entry */
 export function dictionaryEntryToWire(entry) {
   if (entry === null || entry === undefined) return null;
   return {
@@ -230,7 +229,6 @@ export function dictionaryEntryToWire(entry) {
     kind: entry.kind,
     display_name: entry.displayName,
     normalized_name: entry.normalizedName,
-    platform: entry.platform ?? null,
     first_seen_at: entry.firstSeenAt,
     last_seen_at: entry.lastSeenAt,
     use_count: entry.useCount,

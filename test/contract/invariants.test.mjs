@@ -547,8 +547,8 @@ describe("contract/invariants — global_revision covers every write table", () 
       insertTask(db, { id: "t", identifier: "PROJ-0001" });
       insertTask(db, { id: "t2", identifier: "PROJ-0002" });
       const writes = [
-        () => db.prepare("INSERT INTO assignees(id,kind,display_name,normalized_name,first_seen_at,last_seen_at) VALUES('as','agent','A','a',?,?)").run(TS, TS),
-        () => db.prepare("INSERT INTO reporters(id,kind,display_name,normalized_name,first_seen_at,last_seen_at) VALUES('rp','human','R','r',?,?)").run(TS, TS),
+        // 0019: one actor table, not two dictionary tables.
+        () => db.prepare("INSERT INTO actors(id,kind,display_name,normalized_name,first_seen_at,last_seen_at) VALUES('as','agent','A','a',?,?)").run(TS, TS),
         () => db.prepare("INSERT INTO task_relations(relation_type,source_task_id,target_task_id,created_at) VALUES('blocks','t','t2',?)").run(TS),
         () => db.prepare("INSERT INTO comments(id,task_id,body,kind,author_kind,author_id,created_at) VALUES('c','t','b','note','agent','a',?)").run(TS),
         () => db.prepare("INSERT INTO task_activities(task_id,event,changes_json,created_at) VALUES('t','x','{}',?)").run(TS),

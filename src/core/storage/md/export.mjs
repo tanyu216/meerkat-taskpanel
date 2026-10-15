@@ -123,7 +123,9 @@ export function renderCard(task, context) {
     priority: task.priority,
     kind: task.kind,
     project: task.projectId,
-    created_by: labelOf(repos, "reporter", task.reporterId) ?? task.creatorId ?? "",
+    // The creator IS the reporter (0019): `created_by` reads the one column that
+    // holds it, with no second `creator_id` fallback to consult.
+    created_by: labelOf(repos, "reporter", task.reporterId) ?? "",
     created_at: task.createdAt,
     updated_at: task.updatedAt,
     status_changed_at: task.statusChangedAt,

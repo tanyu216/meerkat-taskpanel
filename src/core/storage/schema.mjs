@@ -18,8 +18,7 @@ export const MIGRATION_FILE_PATTERN = /^(\d{4})_([a-z0-9]+(?:_[a-z0-9]+)*)\.sql$
 /** Every table the board owns, in dependency order (FK targets first). */
 export const TABLES = Object.freeze([
   "projects",
-  "assignees",
-  "reporters",
+  "actors",
   "labels",
   "tasks",
   "task_relations",
@@ -40,8 +39,7 @@ export const TABLES = Object.freeze([
  */
 export const REVISION_TABLES = Object.freeze([
   "projects",
-  "assignees",
-  "reporters",
+  "actors",
   "labels",
   "tasks",
   "task_relations",

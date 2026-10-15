@@ -1163,13 +1163,19 @@ function boardContext(cards, trails, options = {}) {
     }
   };
 
-  /** Is a card's creator the leader — the same filter, applied to a card field? */
+  /**
+   * Is a card's creator the leader — the same filter, applied to a card field?
+   *
+   * The creator IS the reporter (0019): the wire's `reporter` actor ref carries
+   * the id and kind that used to ride in `creator_id`/`creator_kind`.
+   */
   const createdByLeader = (card) => {
-    const id = String(card?.creator_id ?? "").trim();
+    const reporter = card?.reporter ?? null;
+    const id = String(reporter?.id ?? "").trim();
     if (leaderId !== null && String(leaderId).trim() !== "") {
       return id !== "" && id === String(leaderId).trim();
     }
-    return String(card?.creator_kind ?? "").trim() === LEADER_AUTHOR_KIND;
+    return String(reporter?.kind ?? "").trim() === LEADER_AUTHOR_KIND;
   };
 
   for (const card of cards) {

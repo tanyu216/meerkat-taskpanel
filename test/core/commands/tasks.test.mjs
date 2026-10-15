@@ -143,10 +143,10 @@ describe("commands/tasks — create and update", () => {
         assigneeKind: "agent",
         actor: AGENT,
       });
-      assert.equal(countRows(db, "assignees"), 1);
-      const entry = commands.listAssignees({})[0];
+      assert.equal(countRows(db, "actors"), 1);
+      const entry = commands.listActors({})[0];
       assert.equal(task.assigneeId, entry.id);
-      assert.equal(task.assigneeKind, "agent");
+      assert.equal(entry.kind, "agent", "the actor's kind lives on the actor row");
       assert.equal(entry.displayName, "Linus");
       assert.equal(entry.useCount, 1);
 
@@ -178,7 +178,7 @@ describe("commands/tasks — create and update", () => {
         },
       );
       assert.equal(countRows(db, "tasks"), 1, "the failed create left no task");
-      assert.equal(countRows(db, "assignees"), 2, "and no stray dictionary row");
+      assert.equal(countRows(db, "actors"), 2, "and no stray dictionary row");
     });
   });
 

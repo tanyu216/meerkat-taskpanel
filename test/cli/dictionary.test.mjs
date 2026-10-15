@@ -74,35 +74,34 @@ describe("cli/dictionary — free text resolves against what exists", () => {
   it("selects an entry by id, bypassing the dictionary", async () => {
     await board(async ({ run }) => {
       create(run, ["--assignee", "linus"]);
-      const id = dataOf(run(["assignees", "list", "--json"])).entries[0].id;
+      const id = dataOf(run(["actors", "list", "--json"])).entries[0].id;
 
       const byId = create(run, ["--assignee-id", id, "--title", "Second"]);
       assert.equal(byId.task.assignee.id, id);
-      assert.equal(dataOf(run(["assignees", "list", "--json"])).entries.length, 1, "no new entry");
+      assert.equal(dataOf(run(["actors", "list", "--json"])).entries.length, 1, "no new entry");
     });
   });
 });
 
 describe("cli/dictionary — the read-only surface", () => {
-  it("lists assignees and reporters with display_name and id, and filters by --query", async () => {
+  it("lists the whole dictionary with display_name and id, and filters by --query", async () => {
     await board(async ({ run }) => {
       create(run, ["--assignee", "linus", "--reporter", "elon"]);
       create(run, ["--assignee", "terry", "--title", "Second"]);
 
-      const all = dataOf(run(["assignees", "list", "--json"]));
-      assert.equal(all.entries.length, 2);
+      // One read since 0019: assignees and reporters are one table, so the list
+      // carries all three (linus, elon, terry).
+      const all = dataOf(run(["actors", "list", "--json"]));
+      assert.equal(all.entries.length, 3);
       for (const entry of all.entries) {
         assert.equal(typeof entry.display_name, "string");
         assert.equal(typeof entry.id, "string");
       }
 
-      const filtered = dataOf(run(["assignees", "list", "--query", "lin", "--json"]));
+      const filtered = dataOf(run(["actors", "list", "--query", "lin", "--json"]));
       assert.deepEqual(filtered.entries.map((e) => e.display_name), ["linus"]);
 
-      const reporters = dataOf(run(["reporters", "list", "--json"]));
-      assert.deepEqual(reporters.entries.map((e) => e.display_name), ["elon"]);
-
-      const human = run(["assignees", "list"]);
+      const human = run(["actors", "list"]);
       assert.match(human.stdout, /display_name\s+id/);
       assert.match(human.stdout, /linus\s+[0-9a-f-]{36}/);
     });
@@ -111,10 +110,10 @@ describe("cli/dictionary — the read-only surface", () => {
   it("has no add/rm/rename: they are not commands, so they exit 2", async () => {
     await board(async ({ run }) => {
       for (const verb of ["add", "rm", "remove", "rename", "create"]) {
-        const result = run(["assignees", verb, "linus", "--json"]);
-        assert.equal(result.status, 2, `assignees ${verb} should not exist`);
+        const result = run(["actors", verb, "linus", "--json"]);
+        assert.equal(result.status, 2, `actors ${verb} should not exist`);
         assert.equal(errorOf(result).code, "CLI_USAGE");
-        assert.match(errorOf(result).message, new RegExp(`unknown command "assignees ${verb}"`));
+        assert.match(errorOf(result).message, new RegExp(`unknown command "actors ${verb}"`));
       }
     });
   });
