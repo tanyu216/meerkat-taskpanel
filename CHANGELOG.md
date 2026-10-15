@@ -451,6 +451,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **An absent host CLI is SKIPPED even when a `PATH` entry is not a directory.**
+  `scripts/verify/host-cli.mjs` treated only `ENOENT` as "this CLI is not here"; when a `PATH`
+  element is a regular file rather than a directory, the bare-name lookup dies with `ENOTDIR`
+  before it can report a miss, so one stray file entry turned every absent host into a **FAIL**
+  instead of a SKIP — the opposite of the file's own promise that it is safe to run anywhere. The
+  two errnos are now named as the single class they are, `BIN_ABSENT = {ENOENT, ENOTDIR}`;
+  `EACCES` is deliberately *not* in it, because "found but not executable" is a real failure and
+  must stay one. The branch had no test, so `test/install/install.test.mjs` now drives it with a
+  `PATH` that is a file, and asserts the SKIP summary where it previously produced four FAILs and
+  exit 1.
+
 - **The combobox popup stopped collapsing to its content width — fixed once, for both places
   the control appears.** `.td-combo-menu`'s box was **110.19px** wide in the drawer where the
   prototype draws **383px**, and its rows were 27.5px where the prototype's are 28; the create
