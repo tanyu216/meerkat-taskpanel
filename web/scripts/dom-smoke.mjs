@@ -2341,6 +2341,44 @@ export async function run() {
     r10Check(Math.abs(fill.sourceHeight - fill.panesHeight) <= 1, `the write side is ${fill.sourceHeight}px inside ${fill.panesHeight}px panes`);
     r10Check(fill.sourceScrolls === "auto", `the write side scrolls as ${fill.sourceScrolls}`);
 
+    // R4 · the containing box, and the **field track** it feeds
+    // (T-20261015-215028). The routing column's width *is* the track every
+    // combobox menu sizes against (`.td-combo-menu { width: max(100%, 220px) }`
+    // resolves `100%` against it), and it is arithmetic, not taste:
+    // `(1120 − 2 hairline − 2×20 gutter − 24 gap) / 2.6 = 405.3846`, which the
+    // browser snaps to 405.391 on both sides. 1120/20/24 are the prototype's own
+    // R4 geometry (`design/prototype/src/input.css`: `.td-modal-box`,
+    // `.td-two-col`); `T-20261015-215028` ① measured the track *ratio* identical
+    // on the two sides and the box the only difference.
+    //
+    // This is a **pin, not a description**: the implementation shipped
+    // 960/16/16 for several rounds, which put this column at 350px and was
+    // invisible to every gate — nothing asserted the box, so nothing reddened
+    // when it stopped matching the prototype. Same family as the two relations
+    // above: a number the contract states, measured where it can be measured.
+    const track = await page.evaluate(() => {
+      const round = (n) => Math.round(n * 100) / 100;
+      const width = (selector) => round(document.querySelector(selector)?.getBoundingClientRect().width ?? 0);
+      const grid = document.querySelector("[data-create-two-col]");
+      const style = grid ? getComputedStyle(grid) : null;
+      return {
+        panel: width("[data-create-task-panel]"),
+        left: width("[data-create-left]"),
+        right: width("[data-create-right]"),
+        gutter: round(Number.parseFloat(style?.paddingRight ?? "0")),
+        gap: round(Number.parseFloat(style?.columnGap ?? "0")),
+      };
+    });
+    r10Check(
+      Math.abs(track.right - 405.391) <= 0.5,
+      `the routing column is ${track.right}px; the prototype's field track is 405.391px ` +
+        `(panel ${track.panel}, gutter ${track.gutter}, column gap ${track.gap})`,
+    );
+    r10Check(
+      Math.abs(track.left / track.right - 1.6) <= 0.005,
+      `the create dialog's two tracks are ${track.left}/${track.right}, not the prototype's 1.6 : 1`,
+    );
+
     // …and the same chain one breakpoint down, where there is no neighbour to
     // stretch to: the panes' floor is what keeps the editor usable.
     await page.setViewportSize({ width: 500, height: 900 });
