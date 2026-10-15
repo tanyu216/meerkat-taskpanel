@@ -19,6 +19,7 @@ import test, { after, before, describe, it } from "node:test";
 
 import { createTaskd } from "../../src/server/index.mjs";
 import { attachmentContentPath, sanitizeFilename } from "../../src/server/routes/attachments.mjs";
+import { ATTACHMENT_MAX_BYTES } from "../../src/shared/constants.mjs";
 
 const AGENT = { kind: "agent", id: "linus" };
 const tempDirs = [];
@@ -147,6 +148,10 @@ describe("attachments — content over HTTP", () => {
  * ceiling above the transport's own 8 MiB guard, and the removal's **hard
  * delete** — the ruling this card records: the row and its bytes go together,
  * and re-uploading is the whole recovery story.
+ *
+ * The size ceiling gets *two* cases plus a pairing case, because an upload is
+ * two requests and the ceiling can be reached in either one — T-20261015-075845-2
+ * is about those two answers being one answer.
  */
 describe("attachments — the write surface (metadata routes)", () => {
   const create = (body) =>
@@ -212,9 +217,13 @@ describe("attachments — the write surface (metadata routes)", () => {
   });
 
   it("refuses a declared size over the 8 MiB ceiling", async () => {
-    const response = await create({ filename: "huge.bin", content_type: "application/octet-stream", size: 8 * 1024 * 1024 + 1 });
+    const response = await create({ filename: "huge.bin", content_type: "application/octet-stream", size: ATTACHMENT_MAX_BYTES + 1 });
     assert.equal(response.status, 413);
-    assert.equal((await response.json()).error.code, "ATTACHMENT_TOO_LARGE");
+    const { error } = await response.json();
+    assert.equal(error.code, "ATTACHMENT_TOO_LARGE");
+    assert.equal(error.http, 413, "the payload's own status agrees with the status line");
+    assert.equal(error.details.maxBytes, ATTACHMENT_MAX_BYTES);
+    assert.equal(error.details.received, ATTACHMENT_MAX_BYTES + 1, "the declared size is known exactly here");
   });
 
   it("refuses a body over the transport's own byte ceiling", async () => {
@@ -222,9 +231,55 @@ describe("attachments — the write surface (metadata routes)", () => {
     const { attachment } = (await created.json()).data;
     const put = await fetch(`${base}/api/v1/attachments/${attachment.id}/content`, {
       method: "PUT",
-      body: Buffer.alloc(8 * 1024 * 1024 + 1),
+      body: Buffer.alloc(ATTACHMENT_MAX_BYTES + 1),
     });
     assert.equal(put.status, 413);
+    const { error } = await put.json();
+    assert.equal(error.code, "ATTACHMENT_TOO_LARGE", "the ceiling is the attachment's, not the router's");
+    assert.equal(error.http, 413);
+    assert.equal(error.details.maxBytes, ATTACHMENT_MAX_BYTES);
+    // The body was refused *mid-stream*, so its length was never established —
+    // and the refusal says so rather than guessing at one.
+    assert.equal(error.details.received, null);
+  });
+
+  /**
+   * The two halves of one upload, and the point of T-20261015-075845-2 (F2):
+   * the same oversized file must be refused the same way whichever half of it
+   * the board notices first. Before this card the metadata route answered
+   * `ATTACHMENT_TOO_LARGE` and the byte route answered `VALIDATION_FAILED`, so
+   * the web drawer rendered a sentence for one and its generic fallback for the
+   * other (`web/src/i18n/messages.mjs` maps codes, never server prose).
+   */
+  it("states one refusal across both over-limit paths, differing only in what each can know", async () => {
+    const declared = await create({
+      filename: "huge.bin",
+      content_type: "application/octet-stream",
+      size: ATTACHMENT_MAX_BYTES + 1,
+    });
+    const declaredError = (await declared.json()).error;
+
+    const created = await create({ filename: "big.bin" });
+    const { attachment } = (await created.json()).data;
+    const put = await fetch(`${base}/api/v1/attachments/${attachment.id}/content`, {
+      method: "PUT",
+      body: Buffer.alloc(ATTACHMENT_MAX_BYTES + 1),
+    });
+    const bytesError = (await put.json()).error;
+
+    assert.equal(declared.status, put.status);
+    // Everything a client branches on is identical — only `received` differs,
+    // because the byte path stopped counting at the ceiling instead of reading
+    // the whole body to find out how big it was. So that one field comes off
+    // both sides before the comparison.
+    const withoutReceived = ({ details, ...rest }) => {
+      const { received, ...detailRest } = details;
+      return { ...rest, details: detailRest };
+    };
+    assert.deepEqual(withoutReceived(bytesError), withoutReceived(declaredError));
+    assert.equal(bytesError.code, "ATTACHMENT_TOO_LARGE");
+    assert.equal(declaredError.details.received, ATTACHMENT_MAX_BYTES + 1, "the declared size is known exactly here");
+    assert.equal(bytesError.details.received, null, "and is honestly unknown here");
   });
 
   it("removes an attachment for good — the row and its bytes together", async () => {
