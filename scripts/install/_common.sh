@@ -257,13 +257,15 @@ export_tp_env() {
     if [ -n "$TP_CLI_DIR" ]; then
       TP_UNIT_PATH_LAUNCHD="$(node "$(unit_path_helper)" path --scheduler launchd --cli-dir "$TP_CLI_DIR")"
       TP_UNIT_PATH_CRON="$(node "$(unit_path_helper)" path --scheduler cron --cli-dir "$TP_CLI_DIR")"
+      TP_CLI_ON_PATH="1"
     else
       # Degrade loudly, never silently: the interpreter still resolves (that is `{{NODE}}`'s
-      # job), but a woken worker would not — so say so, and say what fixes it.
+      # job), but a woken worker would not — so *record* that, and let `install_scheduling`
+      # say it, because only it knows whether this host gets units at all. A host with no
+      # supervisor (OpenClaw, OpenCode) renders no unit and must not be warned about one.
       TP_UNIT_PATH_LAUNCHD="$(node "$(unit_path_helper)" path --scheduler launchd)"
       TP_UNIT_PATH_CRON="$(node "$(unit_path_helper)" path --scheduler cron)"
-      echo "$TP_HOST: $label is not on PATH — the scheduling units will carry node's directory only,"
-      echo "$TP_HOST:   so a woken $label would not resolve. Install it, then re-run this install with --force."
+      TP_CLI_ON_PATH="0"
     fi
   elif [ -z "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
     echo "$TP_HOST: could not resolve the interpreter for the scheduling units (is 'node' on PATH?)" >&2
@@ -272,7 +274,7 @@ export_tp_env() {
 
   export TP_AGENT TP_REPO TP_SHIM TP_HOOK TP_TRIGGER
   export TP_HOST TP_HOST_BASE TP_LOOP TP_SUPERVISOR TP_LOG TP_STATE TP_ENV TP_SCHED TP_WAKE TP_CLAIM_UNASSIGNED
-  export TP_NODE TP_UNIT_PATH_LAUNCHD TP_UNIT_PATH_CRON
+  export TP_NODE TP_UNIT_PATH_LAUNCHD TP_UNIT_PATH_CRON TP_CLI_ON_PATH
 }
 
 # claim_unassigned_value <flag> <interactive> — decide the "allow claiming unassigned
@@ -493,6 +495,13 @@ install_loop_body() {
 # and "what was verified" the same bytes.
 install_scheduling() {
   install_loop_body
+
+  # Said here, not in export_tp_env: this is the function that knows the host gets
+  # units, and the warning is about *them*. A host with no supervisor never reaches it.
+  if [ "${TP_CLI_ON_PATH:-1}" = "0" ]; then
+    echo "$TP_HOST: $TP_HOST is not on PATH — the scheduling units will carry node's directory only,"
+    echo "$TP_HOST:   so a woken $TP_HOST would not resolve. Install it, then re-run this install with --force."
+  fi
 
   emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.poll.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.poll.plist"
   emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.patrol.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.patrol.plist"

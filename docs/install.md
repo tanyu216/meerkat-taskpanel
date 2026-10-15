@@ -58,15 +58,16 @@ match the assignee the board uses for it; it defaults to `$USER`.
 | OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | **none** — see [OpenClaw](scheduling.md#openclaw-do-not-build-a-supervisor) | `plugins/openclaw` (native `openclaw.plugin.json`) |
 | Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | `~/.codex/skills/meerkat-loop` | `.` — the same root bundle, through the marketplace |
 | Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | `~/.agents/skills/meerkat-loop` | `.` — the root `package.json`'s `pi` field |
+| OpenCode | `opencode` | `~/.config/opencode/skills/meerkat-taskpanel` | **none** — see [OpenCode](#opencode) | `.opencode/plugins/` (in-process registration) |
 
 The repository-root Claude marketplace `.claude-plugin/marketplace.json` lists
 `./` (the board) and `./plugins/loop` (the loop); Codex reads the same
 marketplace manifest, which is why it has no bundle of its own.
 
-**OpenCode and Cursor are plugin-only hosts** — they have no `--target` yet, so nothing
-lands in a host directory for them and the table above does not list them. They take the
-skills through their own plugin mechanism instead: see [OpenCode](#opencode) and
-[Cursor](#cursor).
+**Cursor is a plugin-only host** — it has no `--target`, so nothing lands in a host
+directory for it and the table above does not list it. It takes the skills through its own
+plugin mechanism instead: see [Cursor](#cursor). (OpenCode has both routes — a `--target`
+of its own and the plugin — see [OpenCode](#opencode).)
 
 `--link` applies to the **board** skill only. The loop is always copied: a symlinked
 execution body would put the checkout back into the load path of the very thing the split
@@ -569,11 +570,40 @@ rm -rf ~/.agents/skills/meerkat-taskpanel ~/.agents/skills/meerkat-loop \
 
 ### OpenCode
 
-> **Plugin only, for now.** `install.sh` has **no** `opencode` target yet, so OpenCode gets
-> no host-side skill copy, no scheduling units and no `taskctl` shim. It reads the
-> skills through the plugin below — the same way `obra/superpowers` distributes to it.
+```bash
+# 1. skill + host config
+bash install.sh --target opencode --link --force
 
-Register the plugin in `opencode.json` (V2 `>= 2.0.4`; V1 uses the singular `plugin` key):
+# 2. plugin (optional — it delivers the same skills, read in place)
+#    see the registration below
+```
+
+Step 1 writes the board skill to `~/.config/opencode/skills/meerkat-taskpanel` and the
+host config `~/.config/opencode/meerkat-taskpanel.env`, whose `MEERKAT_TASKPANEL_REPO`
+is what lets the skill's wrapper find the board engine once the skill no longer sits
+beside the checkout (see the resolution ladder in
+[the wrapper](../skills/meerkat-taskpanel/scripts/run.mjs)).
+
+> **No supervisor, and no scheduling unit.** OpenCode gets no `~/.config/opencode/scheduling`,
+> no `meerkat-loop` skill and no `wake-opencode.sh`. The supervisor's glue is a *headless*
+> invocation, and OpenCode's headless and resume forms are **unverified** here —
+> `docs/scheduling.md` says so in as many words ("opencode is not a supported `--host`;
+> its headless and resume forms were **not verified** — its CLI was not installed").
+> Pointing an unattended daemon at an unverified command is a different risk class from
+> copying a skill, so `--supervisor-hosts opencode` is rejected (exit 2). Use the plugin
+> route below and wake OpenCode yourself until someone can probe those forms.
+
+Uninstall:
+
+```bash
+rm -rf ~/.config/opencode/skills/meerkat-taskpanel ~/.config/opencode/meerkat-taskpanel.env
+```
+
+#### The plugin route
+
+The step above copies the skill; the plugin hands OpenCode the repository's own copy
+*in place*, so a host that registers it needs no step 1 at all. Register it in
+`opencode.json` (V2 `>= 2.0.4`; V1 uses the singular `plugin` key):
 
 ```jsonc
 {

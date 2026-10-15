@@ -30,7 +30,7 @@ API + SSE backend and the `web/` board frontend. See the roadmap in `README.md` 
 ```text
 meerkat-taskpanel/
 ├── package.json            # bin(taskctl), scripts; type:module; engines node>=22
-├── install.sh              # install dispatcher: --target claude|openclaw|codex|pi|all
+├── install.sh              # install dispatcher: --target claude|openclaw|codex|pi|opencode|all
 ├── src/
 │   ├── core/               # engine: domain model, SQLite storage, commands, bootstrap
 │   │   ├── domain/         #   entities, state machine, invariants, delivery gate (no Node builtins)
@@ -81,7 +81,7 @@ Mind the two different `dist` trees: `dist/` is the **npm release tree** that
 - `node scripts/verify/contract.mjs` — the API contract snapshot (routes + each route's declared request shape + error codes + wire fields); `--update` refreshes it, drift exits 1. Wired into `pre-push`/`pre-tag`, `contract-gate.yml`/`version-gate.yml` and the container suite; see `docs/contract.md`.
 - `node scripts/verify/route-request.mjs` — the route-request lint: for every route, the **declared** request schema must equal what its handler actually reads (static, from handler source; `--print` shows the table). Findings exit 1; a read the lint cannot resolve is a failure, not a pass. Wired into `pre-push`/`pre-tag`, `contract-gate.yml` and the container suite; see `docs/contract.md`.
 - `node src/core/storage/md/migrate-cli.mjs check --dir <cards>` — md-card migration check (also `import` / `export`; exit 3 when `check` finds differences).
-- `bash install.sh --target claude|openclaw|codex|pi|all` — install the skill into each host's skill directory (flags: `--prefix`, `--link`, `--force`, `--dry-run`).
+- `bash install.sh --target claude|openclaw|codex|pi|opencode|all` — install the skill into each host's skill directory (flags: `--prefix`, `--link`, `--force`, `--dry-run`).
 - `taskctl` (`bin` → `src/cli/index.mjs`) — the CLI (`project`, `issue`, `comment`, `relation`, `session`, `report`, `export`, `token`, … groups; auto-starts the local `taskd`).
 
 ## Constraints / MUST-follow rules

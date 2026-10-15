@@ -73,7 +73,8 @@ Usage: install.sh [options]
 Install the Meerkat TaskPanel skills into one or more agent hosts.
 
 Options:
-  --target <host>   claude | openclaw | codex | pi | all   (default: all)
+  --target <host>   claude | openclaw | codex | pi | opencode | all
+                    (default: all)
                     A comma-separated list is also accepted (claude,codex).
   --prefix <home>   Install relative to <home> instead of $HOME
   --agent-name <n>  Agent identity written into the host bundle (default: $USER)
@@ -92,7 +93,8 @@ Options:
   --supervisor-hosts <list>
                     Which loop hosts the action applies to: claude, codex or pi
                     (default: the loop hosts in --target). 'openclaw' is rejected
-                    (exit 2) — it runs openclaw-team's own poll/patrol. (Not
+                    (exit 2) — it runs openclaw-team's own poll/patrol — and so is
+                    'opencode', whose headless form is unverified (exit 2). (Not
                     --host: that already names the wake selector in
                     scripts/supervisor.mjs.)
   --scheduler <m>   auto | launchd | systemd | cron   (default: auto — launchd on
@@ -113,6 +115,7 @@ Destinations:
   openclaw   <home>/.openclaw/skills/meerkat-taskpanel
   codex      <home>/.codex/skills/meerkat-taskpanel
   pi         <home>/.agents/skills/meerkat-taskpanel
+  opencode   <home>/.config/opencode/skills/meerkat-taskpanel
 
 Two skills, two distribution surfaces. The **board** skill goes to all four hosts. The
 **loop** skill (the host-external supervisor) goes to claude, codex and pi only:
@@ -122,6 +125,8 @@ Two skills, two distribution surfaces. The **board** skill goes to all four host
   pi         <home>/.agents/skills/meerkat-loop
   openclaw   — none, on purpose: the openclaw-team framework's poll / task-patrol
               automations already are this design (see docs/scheduling.md).
+  opencode   — none: its skills come from the plugin, and its headless form is not
+              verified, so no scheduling unit is wired for it (see docs/scheduling.md).
 
 The loop is always **copied**, never symlinked: --link names the board skill only, or a
 symlinked loop would put the checkout back into the load path the split removes.
@@ -350,12 +355,13 @@ for raw in $TARGET; do
       add_host openclaw
       add_host codex
       add_host pi
+      add_host opencode
       ;;
-    claude | openclaw | codex | pi)
+    claude | openclaw | codex | pi | opencode)
       add_host "$entry"
       ;;
     *)
-      die "invalid --target: $entry (expected claude|openclaw|codex|pi|all)"
+      die "invalid --target: $entry (expected claude|openclaw|codex|pi|opencode|all)"
       ;;
   esac
 done
@@ -418,6 +424,9 @@ if [ -n "$SUPERVISOR_HOSTS_FLAG" ]; then
       claude | codex | pi) SUPERVISOR_HOSTS="$SUPERVISOR_HOSTS $entry " ;;
       openclaw)
         die "--supervisor-hosts openclaw: OpenClaw has no meerkat-loop supervisor to enable (it runs openclaw-team's own poll/patrol — see docs/scheduling.md)"
+        ;;
+      opencode)
+        die "--supervisor-hosts opencode: OpenCode has no meerkat-loop supervisor to enable (its headless form is unverified — see docs/scheduling.md)"
         ;;
       *) die "invalid --supervisor-hosts: $entry (expected claude|codex|pi)" ;;
     esac

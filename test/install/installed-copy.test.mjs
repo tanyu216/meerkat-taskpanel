@@ -55,6 +55,7 @@ const HOSTS = Object.freeze([
   { host: "codex", dir: ".codex" },
   { host: "openclaw", dir: ".openclaw" },
   { host: "pi", dir: ".agents" },
+  { host: "opencode", dir: ".config/opencode" },
 ]);
 
 const tempDirs = [];
@@ -115,7 +116,7 @@ const CRASH = /MODULE_NOT_FOUND|Cannot find module|ERR_MODULE_NOT_FOUND|\n\s+at 
 const NO_CLI = Object.freeze({ PATH: "" });
 
 describe("the installed skill is a copy, not a link", () => {
-  it("install.sh --target all lands all four hosts, each as a real directory", () => {
+  it("install.sh --target all lands every host, each as a real directory", () => {
     for (const { host, dir } of HOSTS) {
       const dest = installedDir(dir);
       assert.ok(existsSync(join(dest, "SKILL.md")), `${host}: SKILL.md must be installed at ${dest}`);
