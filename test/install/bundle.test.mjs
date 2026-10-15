@@ -296,6 +296,18 @@ describe("profiles: bundle expectations", () => {
     for (const host of PROFILE_HOSTS) {
       const profile = profiles[host];
       const meta = HOST_BUNDLES[host];
+
+      // A host may deliberately have no bundle of its own. OpenCode is one: its skills
+      // arrive through an in-process plugin rather than a bundle directory a detector
+      // classifies. Such a host must declare *no* bundle fields — the profile is where
+      // "skills only, no supervisor, no browser-checkable bundle" is recorded.
+      if (!meta) {
+        assert.equal(profile.bundle, undefined, `${host}: must not declare a bundle`);
+        assert.equal(profile.bundle_format, undefined, `${host}: must not declare a bundle format`);
+        assert.equal(profile.bundle_kind, undefined, `${host}: must not declare a bundle kind`);
+        continue;
+      }
+
       assert.equal(profile.bundle, meta.dir, `${host}: bundle dir`);
       assert.equal(profile.bundle_format, meta.openclawFormat, `${host}: bundle format`);
       assert.equal(profile.bundle_kind, meta.openclawKind, `${host}: bundle kind`);
@@ -310,13 +322,20 @@ describe("profiles: bundle expectations", () => {
 
     for (const entry of result.results) {
       const kinds = entry.steps.map((s) => s.name);
-      assert.ok(
+      const hasBundle = HOST_BUNDLES[entry.host] !== undefined;
+
+      // The assertion follows the host: a bundle-less host (OpenCode) must NOT have
+      // these steps, and every other host must. Asserting both directions keeps the
+      // branch honest instead of letting a bundle silently go unchecked.
+      assert.equal(
         kinds.some((n) => n.includes("bundle detected as")),
-        `${entry.host}: expected a bundle-detection step`,
+        hasBundle,
+        `${entry.host}: bundle-detection step presence`,
       );
-      assert.ok(
+      assert.equal(
         kinds.some((n) => n.includes("manifest parses")),
-        `${entry.host}: expected a manifest-parse step`,
+        hasBundle,
+        `${entry.host}: manifest-parse step presence`,
       );
     }
 

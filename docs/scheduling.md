@@ -816,7 +816,9 @@ registry) is identical.
 | **OpenClaw** | *n/a — no self-scheduler* | install **openclaw-team**; its `poll`/`patrol` automations are this design | the framework keeps the id stable across resumes |
 
 (opencode is not a supported `--host`; its headless and resume forms were **not
-verified** — its CLI was not installed — so this table promises nothing about it.)
+verified** — its CLI was not installed — so this table promises nothing about it. It is
+a supported `install.sh --target` — see [OpenCode](install.md#opencode) — but that
+installs the skill and the host config only, and never a supervisor: this table is why.)
 
 The wake command column is what the *host CLI* is called with. When the host's glue
 is installed, the supervisor starts **the glue** with that handoff and lets it set
@@ -888,7 +890,11 @@ The switch is `--supervisor=enable|disable|status` with
 `--supervisor-hosts claude,codex,pi` (which hosts; default: the loop hosts in `--target`)
 and `--scheduler auto|launchd|systemd|cron` (which mechanism; default `auto`). On
 `--target all`, `--supervisor=enable` enables **claude, codex and pi** — and only those
-(see [OpenClaw stays excluded](#openclaw-stays-excluded)).
+(see [OpenClaw stays excluded](#openclaw-stays-excluded)). `--target all` also covers
+**opencode** now, which takes a profile and a skill copy but **no** loop: it is never among
+the supervisor hosts, and naming it in `--supervisor-hosts` is rejected (exit 2) — the glue
+those units start *is* the headless invocation, and OpenCode's is unverified
+(see [OpenCode](install.md#opencode)).
 
 Per-OS commands below are written for the Claude install (`~/.claude`); for Codex and Pi
 substitute `~/.codex` / `~/.agents` for the host directory and `codex` / `pi` for

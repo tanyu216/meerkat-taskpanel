@@ -119,7 +119,7 @@ meerkat-taskpanel/
 ├── README.md / README.zh-CN.md   # docs (English default, Chinese mirror)
 ├── LICENSE / PRIVACY.md
 ├── package.json                  # workspace root, bin(taskctl), scripts
-├── install.sh                    # install dispatcher: --target claude|openclaw|codex|pi|all
+├── install.sh                    # install dispatcher: --target claude|openclaw|codex|pi|opencode|cursor|all
 ├── .claude-plugin/               # Claude marketplace manifest
 ├── src/                          # engineering source
 │   ├── core/                     #   domain model / SQLite repo / state machine / invariants
@@ -159,7 +159,7 @@ meerkat-taskpanel/
 ## Install
 
 ```bash
-bash install.sh --target claude|openclaw|codex|pi|all
+bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|all
 ```
 
 Default target is `all`. The dispatcher forwards to `scripts/install/<host>.sh`, which
@@ -180,8 +180,8 @@ the host's own plugin system consumes — registering it needs that host's CLI, 
 | OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | `plugins/openclaw/openclaw.plugin.json` (native) |
 | Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | the same root bundle, through the marketplace |
 | Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | the root `package.json`'s `pi` field |
-| OpenCode | — (plugin only) | read in place via `.opencode/plugins/` | `./` — the one `skills/` tree |
-| Cursor | — (plugin only) | read in place via `.cursor-plugin/plugin.json` | `./` — the one `skills/` tree |
+| OpenCode | `opencode` | `~/.config/opencode/skills/meerkat-taskpanel` | `.opencode/plugins/` (in-process) |
+| Cursor | `cursor` | `~/.cursor/skills/meerkat-taskpanel` | `.` — the root (`.cursor-plugin/plugin.json`) |
 
 The repository root is the board's plugin root, so every harness reads the one `skills/`
 tree instead of receiving a copy. OpenClaw also consumes that Claude-format bundle, which
