@@ -131,12 +131,14 @@ function identityKey(value) {
  * interpolated it used to read a uuid. The caller — which has the dictionary —
  * injects `describeHolder` to turn that id back into a person; this function
  * stays pure, and with no resolver the id stands in (the same "the id is its own
- * name" fallback the wire's `actorRef` uses).
+ * name" fallback the wire's `actorRef` uses). Exported so the repository's
+ * `setHeartbeat` refusal (`repositories/tasks.mjs`), which has the same problem a
+ * layer down, names a holder the **same** way — one implementation, not two.
  *
  * @param {string|null|undefined} holder a `task.claimedBy` value
  * @param {((id: string) => string|null|undefined)|undefined} describeHolder
  */
-function holderLabel(holder, describeHolder) {
+export function holderLabel(holder, describeHolder) {
   if (typeof describeHolder !== "function") return holder;
   const name = describeHolder(/** @type {string} */ (holder));
   return name === undefined || name === null || name === "" ? holder : name;

@@ -300,6 +300,11 @@ describe("commands/tasks — claim and heartbeat", () => {
 
       assert.throws(() => commands.heartbeat({ id: task.id, actor: AGENT }), (err) => {
         assert.equal(err.code, "EXECUTION_ACTIVE");
+        // Phase 7 — the refusal names the holder ("Terry"), and does *not* also
+        // print their actor id: the message went through `describeHolder`.
+        assert.match(err.message, /Terry/);
+        const holderId = db.prepare("SELECT claimed_by FROM tasks WHERE id = ?").get(task.id).claimed_by;
+        assert.ok(!err.message.includes(holderId), `message must not carry the id: ${err.message}`);
         return true;
       });
     });
