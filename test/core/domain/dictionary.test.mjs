@@ -130,10 +130,14 @@ describe("domain/dictionary — resolution", () => {
     );
   });
 
-  it("isolates the kinds: an agent and a human may share a name", () => {
+  it("resolves across kinds — one name is one entry (0019)", () => {
+    // The old rule kept an agent and a human of the same name apart; since 0019
+    // `actors` is keyed on the name alone, so resolution must span kinds: asking
+    // with any kind reuses the one stored row rather than creating a twin.
     assert.equal(resolveDictionaryEntry(EXISTING, "Terry", { kind: "human" }).entry.id, "rp1");
-    assert.equal(resolveDictionaryEntry(EXISTING, "Terry", { kind: "agent" }).action, "create");
-    assert.equal(resolveDictionaryEntry(EXISTING, "Linus", { kind: "human" }).action, "create");
+    assert.equal(resolveDictionaryEntry(EXISTING, "Terry", { kind: "agent" }).entry.id, "rp1");
+    assert.equal(resolveDictionaryEntry(EXISTING, "Linus", { kind: "human" }).entry.id, "as1");
+    assert.equal(resolveDictionaryEntry(EXISTING, "Grace", { kind: "human" }).action, "create");
   });
 
   it("refuses an unknown kind and tolerates a missing list", () => {
@@ -161,7 +165,6 @@ describe("domain/dictionary — row mapping", () => {
       kind: "agent",
       display_name: "Linus",
       normalized_name: "linus",
-      platform: "claude",
       first_seen_at: "2026-10-01T00:00:00.000Z",
       last_seen_at: "2026-10-08T00:00:00.000Z",
       use_count: 3,

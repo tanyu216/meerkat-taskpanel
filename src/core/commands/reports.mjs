@@ -15,6 +15,7 @@ import { normalizeReportCreate } from "../domain/report.mjs";
 import { assertTransition } from "../domain/status.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { actorOf } from "./context.mjs";
+import { resolveActorId } from "./dictionary.mjs";
 
 /** The task must exist, and its delivery round is what the report is judged against. */
 function loadTask(ctx, taskRef) {
@@ -24,6 +25,24 @@ function loadTask(ctx, taskRef) {
     throw new DomainError("NOT_FOUND", { message: `no task ${taskRef}`, details: { taskId: taskRef } });
   }
   return task;
+}
+
+/**
+ * The report's author, resolved to an actor **id**.
+ *
+ * `task_reports.author_id` is a reference to `actors(id)` since 0020. A report may
+ * name its own author (a historical, back-dated report), otherwise the writer is
+ * the actor that ran the command — either way the value that arrives is a *name*,
+ * and the column wants the id. The `kind` is carried through unchanged: it is a
+ * label on the log row, and the actor's own kind lives on the actor row.
+ *
+ * @param {object} ctx
+ * @param {{kind: string, id: string}} author
+ * @param {string} now
+ */
+function resolveAuthor(ctx, author, now) {
+  const id = resolveActorId({ repos: ctx.repos, now }, { name: author.id, actorKind: author.kind });
+  return { kind: author.kind, id };
 }
 
 /**
@@ -40,10 +59,13 @@ export function writeReport(ctx, input) {
     ctx.db,
     () => {
       const task = loadTask(ctx, input.taskId);
-      const prepared = normalizeReportCreate({ ...input.report, author: input.report?.author ?? actor }, {
-        taskRound: task.deliveryRound,
-        now,
-      });
+      const prepared = normalizeReportCreate(
+        { ...input.report, author: resolveAuthor(ctx, input.report?.author ?? actor, now) },
+        {
+          taskRound: task.deliveryRound,
+          now,
+        },
+      );
 
       const report = ctx.repos.reports.insert({
         ...prepared,
@@ -131,10 +153,13 @@ export function deliver(ctx, input) {
         return { task: moved, report: null, waived: true };
       }
 
-      const prepared = normalizeReportCreate({ ...input.report, author: input.report?.author ?? actor }, {
-        taskRound: task.deliveryRound,
-        now,
-      });
+      const prepared = normalizeReportCreate(
+        { ...input.report, author: resolveAuthor(ctx, input.report?.author ?? actor, now) },
+        {
+          taskRound: task.deliveryRound,
+          now,
+        },
+      );
       const report = ctx.repos.reports.insert({
         ...prepared,
         taskId: task.id,

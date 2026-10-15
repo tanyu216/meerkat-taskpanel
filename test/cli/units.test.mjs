@@ -131,11 +131,11 @@ describe("cli/commands — the registry", () => {
       // `attachment` is T-20261014-212017-4's group: the drawer's file surface
       // needed a writer and the CLI is the board's second front door. It sits
       // beside `relation` because both are per-card edge/sidecar writes.
-      ["project", "issue", "comment", "relation", "attachment", "session", "assignees", "reporters", "labels", "report", "export", "token"],
+      ["project", "issue", "comment", "relation", "attachment", "session", "actors", "labels", "report", "export", "token"],
     );
     for (const { group, command } of allCommands()) {
       assert.equal(
-        /^(add|rm|remove|rename|create|delete|set)$/.test(command.name) && /assignees|reporters|labels/.test(group.name),
+        /^(add|rm|remove|rename|create|delete|set)$/.test(command.name) && /actors|labels/.test(group.name),
         false,
       );
     }

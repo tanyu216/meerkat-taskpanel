@@ -145,7 +145,8 @@ describe("server/error-envelope — ② Terry's drag, end to end", () => {
       await call("POST", `/api/v1/tasks/${card.identifier}/move`, { to: "in_progress" }, asAgent("linus")),
     ).task;
     assert.equal(claimed.status, "in_progress");
-    assert.equal(claimed.claimed_by, "linus");
+    // claimed_by is an actor id since 0020; the wire's ref carries the name.
+    assert.equal(claimed.claimed_by_actor.display_name, "linus");
     assert.equal(typeof claimed.heartbeat_at, "string");
 
     // 2. Drag it back to Todo. This is the leg that used to leave the lock.

@@ -7,6 +7,7 @@ import { DomainError } from "../../shared/errors.mjs";
 import { normalizeCommentCreate } from "../domain/comment.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { actorOf } from "./context.mjs";
+import { resolveActorId } from "./dictionary.mjs";
 
 /**
  * @param {object} ctx
@@ -24,11 +25,15 @@ export function addComment(ctx, input) {
         throw new DomainError("NOT_FOUND", { message: `no task ${input.taskId}`, details: { taskId: input.taskId } });
       }
 
+      // `comments.author_id` is an actor **id** since 0020 (not the `--agent`
+      // name): resolve the author first. The audit row below keeps the name —
+      // `task_activities.actor_id` is deliberately a free string.
+      const authorId = resolveActorId({ repos: ctx.repos, now }, { name: actor.id, actorKind: actor.kind });
       const comment = normalizeCommentCreate(
         {
           body: input.body,
           kind: input.kind,
-          author: actor,
+          author: { kind: actor.kind, id: authorId },
           refs: input.refs,
           agentSession: input.agentSession,
           sourceSeq: input.sourceSeq,

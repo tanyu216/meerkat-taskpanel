@@ -45,11 +45,8 @@ const TASK = {
   kind: "task",
   labels: ["m2"],
   sortOrder: 0,
-  assigneeKind: "agent",
   assigneeId: "a-1",
   reporterId: "r-1",
-  creatorKind: "human",
-  creatorId: "elon",
   claimedBy: null,
   claimedAt: null,
   heartbeatAt: null,
@@ -96,7 +93,7 @@ describe("cli/wire — the JSON vocabulary", () => {
 
   it("falls back to the id as the display name when nothing can resolve it", () => {
     const wire = taskToWire(TASK);
-    assert.deepEqual(wire.assignee, { id: "a-1", display_name: "a-1", kind: "agent" });
+    assert.deepEqual(wire.assignee, { id: "a-1", display_name: "a-1", kind: "assignee" });
     assert.equal(wire.reporter.display_name, "r-1");
   });
 
@@ -227,13 +224,13 @@ describe("cli/wire — the projector's edges", () => {
     assert.equal(nobody.reporter, null);
   });
 
-  it("takes the kind from the dictionary when it has one, and the task when it does not", () => {
-    const resolved = taskToWire({ ...TASK, assigneeKind: "human" }, { lookup: () => ({ id: "a-1", displayName: "Linus", kind: "agent" }) });
-    assert.equal(resolved.assignee.kind, "agent", "the dictionary is authoritative");
+  it("takes the kind from the actor row, and the role name when the row is gone (0019)", () => {
+    const resolved = taskToWire(TASK, { lookup: () => ({ id: "a-1", displayName: "Linus", kind: "agent" }) });
+    assert.equal(resolved.assignee.kind, "agent", "the actor row is authoritative");
 
-    const unresolved = taskToWire({ ...TASK, assigneeKind: "human" });
-    assert.equal(unresolved.assignee.kind, "human", "otherwise the task's own column decides");
-    assert.equal(taskToWire({ ...TASK, assigneeKind: null }).assignee.kind, "assignee", "and otherwise the role name");
+    // The denormalised `tasks.assignee_kind` is gone, so there is no task-column
+    // fallback left: an unresolved id falls back to the role name.
+    assert.equal(taskToWire(TASK).assignee.kind, "assignee");
   });
 
   it("reads evidence whether it is a list or a truncation envelope", () => {

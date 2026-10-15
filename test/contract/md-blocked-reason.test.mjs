@@ -193,11 +193,13 @@ describe("blocked_reason — the card field (0016)", () => {
       "same literals, same order, on both sides",
     );
 
-    // And the absence is deliberate, not an oversight: the SQL-parity reader
-    // only walks `CREATE TABLE` statements, so an `ALTER TABLE … ADD COLUMN`
-    // constraint cannot appear there. Declaring it would read as "declared in JS
-    // but no CHECK in SQL"; the assertion above covers the pairing instead.
-    assert.equal(Object.hasOwn(SQL_ENUM_SETS, "tasks.blocked_reason"), false);
+    // 0016's `ALTER TABLE … ADD COLUMN` constraint was invisible to the SQL-parity
+    // reader (it walks `CREATE TABLE` statements), so the value set had no JS
+    // side — the assertion above covered the pairing instead. `0019` rebuilds
+    // `tasks` and declares `blocked_reason` in the `CREATE TABLE` body, where the
+    // reader *does* see it, so the vocabulary is now declared in `SQL_ENUM_SETS`
+    // and compared **both** ways (the `0018`/`REPORT_ORIGINS` precedent).
+    assert.equal(Object.hasOwn(SQL_ENUM_SETS, "tasks.blocked_reason"), true);
   });
 
   it("pins the revision cursor's column list, which does not name the new column", () => {
@@ -211,9 +213,10 @@ describe("blocked_reason — the card field (0016)", () => {
     //   * a hand-written `UPDATE tasks SET blocked_reason = …` alone is not, so
     //     it bumps no revision and a cursor-watching reader misses it.
     //
-    // 0015 owns the trigger's text (it re-creates it during the `tasks` rebuild);
-    // 0016's header owns the explanation. If a caller ever needs the bare-write
-    // case, this is the test that says so.
+    // 0015 and 0019 own the trigger's text (both re-create it during a `tasks`
+    // rebuild — 0019's list loses the three columns 0019 drops); 0016's header owns
+    // the explanation. If a caller ever needs the bare-write case, this is the
+    // test that says so.
     const files = readMigrationFiles(MIGRATIONS_DIR);
     const declarations = files.flatMap((entry) =>
       [...entry.sql.matchAll(/CREATE TRIGGER tr_rev_tasks_upd[\s\S]*?END;/g)].map((match) => ({
@@ -223,10 +226,10 @@ describe("blocked_reason — the card field (0016)", () => {
     );
     assert.ok(declarations.length >= 1, "the revision cursor is declared somewhere");
     // `readMigrationFiles` sorts by filename, so the last declaration is the one
-    // a board at the head of the set actually has — 0015 re-declares it (during
+    // a board at the head of the set actually has — 0019 re-declares it (during
     // its `tasks` rebuild) and 0016 does not.
     const live = declarations.at(-1);
-    assert.equal(live.version, "0015", "the live declaration is 0015's — 0016 does not re-declare the trigger");
+    assert.equal(live.version, "0020", "the live declaration is 0020's — the last `tasks` rebuild re-declares the trigger");
     assert.equal(/\bblocked_reason\b/.test(live.sql), false, "the cursor's column list does not name blocked_reason");
     assert.ok(live.sql.includes("version") && live.sql.includes("updated_at"), "but it does name both CAS columns");
 

@@ -26,16 +26,24 @@ describe("cli/comment", () => {
 
       const listed = dataOf(run(["comment", "list", "DEMO-0001", "--json"]));
       assert.equal(listed.comments.length, 1);
+      // The wire carries an `author` ref beside the id (Phase 7).
+      assert.equal(added.comment.author.kind, "human");
+      assert.equal(typeof added.comment.author.display_name, "string");
 
       const filtered = dataOf(run(["comment", "list", "DEMO-0001", "--kind", "note", "--json"]));
       assert.equal(filtered.comments.length, 0);
 
-      assert.match(run(["comment", "list", "DEMO-0001"]).stdout, /decision\s+local \(human\)\s+looks good/);
+      // The rendered author column names the author, not the actor id: since
+      // 0020 `author_id` is a uuid, and the table shows the ref's display name.
+      const rendered = run(["comment", "list", "DEMO-0001"]).stdout;
+      assert.match(rendered, /decision\s+.* \(human\)\s+looks good/);
+      assert.ok(rendered.includes(`${added.comment.author.display_name} (human)`), rendered);
+      assert.ok(!rendered.includes(added.comment.author_id), "the table names the author, not the id");
     });
   });
 
   it("reads the body from stdin, and records the agent that wrote it", async () => {
-    await withCli(async ({ run, dataDir }) => {
+    await withCli(async ({ run }) => {
       run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
       run(["issue", "create", "--project", "demo", "--title", "T", "--json"]);
 
@@ -50,7 +58,7 @@ describe("cli/comment", () => {
       const asAgent = dataOf(
         run(["comment", "add", "DEMO-0001", "--body", "hi", "--agent", "linus", "--json"]),
       );
-      assert.equal(asAgent.comment.author_id, "linus");
+      assert.equal(asAgent.comment.author.display_name, "linus");
     });
   });
 

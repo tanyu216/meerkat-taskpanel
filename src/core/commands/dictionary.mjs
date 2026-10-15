@@ -9,6 +9,10 @@
  * `resolveOrCreate` does not write its own audit row: the command that needed
  * the entry records `dictionary_upsert` inside its own `changes_json`, so a
  * task creation stays one transaction with one activity.
+ *
+ * Since `0019` there is one `actors` table and `assignee`/`reporter` are roles
+ * (the `tasks` column a task fills). Resolution is **role-agnostic**: one person
+ * is one row, so both callers resolve against the whole dictionary.
  */
 
 import { DomainError } from "../../shared/errors.mjs";
@@ -33,11 +37,18 @@ export function dictionaryKind(kind) {
  * Resolve a free-text name to a dictionary row, creating it if it is new.
  * Runs in the caller's transaction.
  *
- * @param {object} ctx
- * @param {{kind: "assignee"|"reporter", name: string, actorKind?: "agent"|"human", forceCreate?: boolean, platform?: string|null}} input
+ * The first argument is a **scope**, not the full command context: it needs only
+ * the repository bag and a timestamp. The markdown importer has exactly those
+ * (`repos` + a card's `now`) and no `ctx`, so it can drive this same decision
+ * rather than bypassing it with a direct `upsert` — which is what made the live
+ * path and the import path disagree (Phase 5's whole point).
+ *
+ * @param {{repos: object, now: string}} scope
+ * @param {{kind: "assignee"|"reporter", name: string, actorKind?: "agent"|"human", forceCreate?: boolean}} input
  * @returns {{entry: object, action: "created"|"reused", kind: string, field: string}}
  */
-export function resolveOrCreate(ctx, input) {
+export function resolveOrCreate(scope, input) {
+  const { repos, now } = scope;
   const kind = dictionaryKind(input.kind);
   const actorKind = input.actorKind ?? "agent";
   if (!DICT_KINDS.includes(actorKind)) {
@@ -47,7 +58,7 @@ export function resolveOrCreate(ctx, input) {
     });
   }
 
-  const existing = ctx.repos.dictionary.list(kind);
+  const existing = repos.dictionary.list();
   const verdict = resolveDictionaryEntry(
     existing.map((entry) => ({
       id: entry.id,
@@ -59,29 +70,103 @@ export function resolveOrCreate(ctx, input) {
     { kind: actorKind, forceCreate: input.forceCreate === true },
   );
 
-  const { action, entry } = ctx.repos.dictionary.upsert({
+  const { action, entry } = repos.dictionary.upsert({
     kind,
     actorKind,
-    normalizedName: verdict.normalizedName,
+    normalizedName: storedKey(verdict),
     displayName: verdict.displayName,
-    platform: input.platform ?? null,
-    now: ctx.now(),
+    now,
   });
 
   return { entry, action, kind, field: TASK_FIELD[kind] };
 }
 
 /**
- * Resolve and assign in one step, for a command that changes an assignee.
+ * The `normalized_name` to key an upsert on.
  *
+ * On a **reuse** the matched row's own key wins, not `norm(raw)`. The two agree
+ * whenever `normalized_name === norm(display_name)`, which every row the live
+ * dictionary writes satisfies — but a row a migration back-filled may not (a
+ * SQL-only migration cannot reproduce `norm`; see `0020_attribution_fk.sql`). The
+ * fuzzy branch of `resolveDictionaryEntry` already carries the entry's key for
+ * exactly this reason; taking it for the exact branch too keeps a reuse from
+ * missing the row it just matched and inserting a twin.
+ *
+ * @param {{action: string, entry?: object, normalizedName: string}} verdict
+ */
+function storedKey(verdict) {
+  return verdict.entry?.normalizedName ?? verdict.normalizedName;
+}
+
+/**
+ * Resolve a free-text name to an **actor row id**, for the attribution columns —
+ * `tasks.claimed_by`, `comments.author_id`, `task_reports.author_id` — that name a
+ * person without naming a task role.
+ *
+ * It is `resolveOrCreate`'s role-less sibling, driving the **same** one identity
+ * decision (`resolveDictionaryEntry` + the one upsert); the only difference is
+ * that it needs no `assignee`/`reporter` role, because the caller writes the id
+ * into a column it already owns.
+ *
+ * `forceCreate` defaults to **true**: an attribution is an *identity*, not a
+ * search, so a claimant or an author must not be fuzzy-matched onto somebody
+ * else. An exact spelling reuses the person the board already knows; anything
+ * else creates a row (the dictionary "grows by use" — §4.4).
+ *
+ * `actorKind` follows the same rule the importer uses: only `human` is
+ * meaningful, and everything else is `agent`.
+ *
+ * A **reuse is read-only**: unlike `resolveOrCreate` it does not touch
+ * `last_seen_at`/`use_count`. The attribution columns ride on hot paths (every
+ * claim, heartbeat, comment and report), and an `UPDATE actors` there would bump
+ * the global revision on every write — a heartbeat would move the cursor, which
+ * only the *task* row is supposed to do. Attribution is also not a "use" of the
+ * dictionary in the sense `use_count` counts (that is a task naming a person):
+ * the person wrote; the board did not name them.
+ *
+ * @param {{repos: object, now: string}} scope
+ * @param {{name: string, actorKind?: string, forceCreate?: boolean}} input
+ * @returns {string} the actor row's id
+ */
+export function resolveActorId(scope, input) {
+  const { repos, now } = scope;
+  const actorKind = input.actorKind === "human" ? "human" : "agent";
+  const existing = repos.dictionary.list();
+  const verdict = resolveDictionaryEntry(
+    existing.map((entry) => ({
+      id: entry.id,
+      kind: entry.kind,
+      displayName: entry.displayName,
+      normalizedName: entry.normalizedName,
+    })),
+    input.name,
+    { kind: actorKind, forceCreate: input.forceCreate !== false },
+  );
+  if (verdict.action === "reuse") return verdict.entry.id;
+  const { entry } = repos.dictionary.upsert({
+    kind: "actor",
+    actorKind,
+    normalizedName: storedKey(verdict),
+    displayName: verdict.displayName,
+    now,
+  });
+  return entry.id;
+}
+
+/**
+ * Resolve and assign in one step, for a command that changes an assignee or a
+ * reporter.
+ *
+ * The patch names one column (`assigneeId` / `reporterId`). It no longer carries a
+ * denormalised `assigneeKind`: the actor's kind lives on the `actors` row and the
+ * wire reads it from there (`wire.mjs#actorRef`).
+ *
+ * @param {{repos: object, now: string}} scope
  * @returns {{patch: object, audit: object[]}}
  */
-export function resolveAssignment(ctx, input) {
-  const resolved = resolveOrCreate(ctx, input);
-  const patch = {
-    [resolved.field]: resolved.entry.id,
-    ...(resolved.kind === "assignee" ? { assigneeKind: resolved.entry.kind } : {}),
-  };
+export function resolveAssignment(scope, input) {
+  const resolved = resolveOrCreate(scope, input);
+  const patch = { [resolved.field]: resolved.entry.id };
   return {
     patch,
     audit: [
@@ -96,21 +181,12 @@ export function resolveAssignment(ctx, input) {
 }
 
 /**
- * Read the dictionary. This is the *only* public entry point (§4.4: no管理入口).
+ * Read the whole dictionary. This is the *only* public entry point (§4.4: no
+ * 管理入口). One read for one table — the two role reads merged with the tables.
+ *
  * @param {object} ctx
- * @param {{kind: "assignee"|"reporter", q?: string, limit?: number}} input
+ * @param {{q?: string, limit?: number}} [input]
  */
-export function listEntries(ctx, input) {
-  const kind = dictionaryKind(input.kind);
-  return ctx.repos.dictionary.search(kind, { q: input.q, limit: input.limit });
-}
-
-/** @param {object} ctx @param {{q?: string, limit?: number}} [input] */
-export function listAssignees(ctx, input = {}) {
-  return listEntries(ctx, { ...input, kind: "assignee" });
-}
-
-/** @param {object} ctx @param {{q?: string, limit?: number}} [input] */
-export function listReporters(ctx, input = {}) {
-  return listEntries(ctx, { ...input, kind: "reporter" });
+export function listActors(ctx, input = {}) {
+  return ctx.repos.dictionary.search("actor", { q: input.q, limit: input.limit });
 }
