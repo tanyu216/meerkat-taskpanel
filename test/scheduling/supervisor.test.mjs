@@ -18,7 +18,8 @@
  */
 
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,6 +48,7 @@ import {
   runPollTick,
   saveLastOk,
   saveSlaLedger,
+  spawnWorkerReal,
 } from "../../scripts/supervisor.mjs";
 
 /** A tiny collector standing in for a "spy" — records every call. */
@@ -924,6 +926,132 @@ describe("defaultRepo — the board a supervisor drives", () => {
 // Wiring sanity: the exported runner lives in the repo
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// The wake wiring: the *resolved* glue is what a wake uses (R1, T-20261014-010025)
+//
+// `planWakeInvocation` is pure and is covered above — but every one of those cases
+// *hands it* a `gluePath`. The defect lived one level out, in the I/O half that builds
+// that argument: `spawnWorkerReal` read `opts.gluePath`, a field `parseArgs` never
+// assigns (`opts.glue` is the resolved one), so the planner was handed `undefined`,
+// `existsSync(undefined)` (DEP0187) returned false, and `glueInstalled` was always
+// false. The glue was installed, named in the tick line, and still never used: R1's
+// "the worker runs in the card's project target directory" had silently stopped
+// happening. Both cases below fail on the pre-fix file and pass on the fixed one.
+// ---------------------------------------------------------------------------
+
+describe("spawnWorkerReal — the wake goes through the resolved glue (R1)", () => {
+  const tempDirs = [];
+  function tempDir(prefix) {
+    const dir = mkdtempSync(join(tmpdir(), prefix));
+    tempDirs.push(dir);
+    return dir;
+  }
+  after(() => {
+    for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+  });
+
+  const SUPERVISOR_URL = new URL("../../scripts/supervisor.mjs", import.meta.url);
+
+  /** Write an executable stub script: shebang, `set -eu`, the given body, `exit 0`. */
+  function stub(dir, name, body) {
+    const path = join(dir, name);
+    writeFileSync(path, ["#!/usr/bin/env bash", "set -eu", ...body, "exit 0", ""].join("\n"), "utf8");
+    chmodSync(path, 0o755);
+    return path;
+  }
+
+  async function waitFor(predicate, ms = 5000) {
+    const deadline = Date.now() + ms;
+    for (;;) {
+      if (predicate()) return true;
+      if (Date.now() >= deadline) return predicate();
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  }
+
+  it("runs the installed glue — not the direct fallback — and hands it the project identity", async () => {
+    const dir = tempDir("meerkat-wake-glue-");
+    // Two mutually exclusive stubs, so the case reports *which* branch ran rather than
+    // merely that something did. The `claude` stub goes first on PATH for the duration
+    // of the call: the direct fallback must resolve to it, never to a real host CLI.
+    const glueMarker = join(dir, "glue.txt");
+    const directMarker = join(dir, "direct.txt");
+    const glue = stub(dir, "wake-claude.sh", [
+      `printf 'argv=%s\\n' "$*" > "${glueMarker}"`,
+      `printf 'project=%s\\n' "\${TP_PROJECT:-}" >> "${glueMarker}"`,
+    ]);
+    const bin = tempDir("meerkat-wake-bin-");
+    stub(bin, "claude", [`printf 'direct\\n' > "${directMarker}"`]);
+
+    const logs = [];
+    const spawnWorker = spawnWorkerReal(
+      { host: "claude", repo: dir, glue, projectsJson: join(dir, "projects.json"), log: join(dir, "supervisor.log") },
+      { wakeCommand: null },
+      (line) => logs.push(line),
+    );
+
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${bin}:${originalPath}`;
+    let result;
+    try {
+      result = await spawnWorker(
+        { identifier: "T-1", agent: "alice" },
+        { identifier: "T-1", title: "wire the glue", project: "TaskPanel" },
+      );
+      assert.ok(await waitFor(() => existsSync(glueMarker)), "the installed glue never ran");
+    } finally {
+      process.env.PATH = originalPath;
+    }
+
+    assert.equal(result.ok, true, result.error);
+    assert.equal(existsSync(directMarker), false, "the direct fallback ran despite an installed glue");
+    const recorded = readFileSync(glueMarker, "utf8");
+    assert.match(recorded, /T-1/, "the glue is handed the handoff that names the card");
+    assert.match(recorded, /^project=TaskPanel$/m, "the identity the glue resolves the directory from must ride along");
+    // The silent half of the defect: the fallback announces itself, so a glue that
+    // exists and is still not used must never look like an ordinary wake.
+    assert.deepEqual(logs.filter((line) => /no wake glue/.test(line)), []);
+  });
+
+  it("names the configured glue, and probes no undefined path (DEP0187)", () => {
+    // In a child process: a deprecation warning is emitted once per process, so a fresh
+    // one is what turns its absence into a fact instead of a leftover. PATH is emptied
+    // so a regression to the direct branch cannot reach a real host CLI — this case
+    // only observes what the glue decision was handed.
+    const dir = tempDir("meerkat-wake-probe-");
+    const missing = join(dir, "definitely-not-installed.sh");
+    const probe = join(dir, "probe.mjs");
+    writeFileSync(
+      probe,
+      [
+        `import { spawnWorkerReal } from ${JSON.stringify(SUPERVISOR_URL.href)};`,
+        "const logs = [];",
+        "const spawnWorker = spawnWorkerReal(",
+        `  { host: "claude", repo: ${JSON.stringify(dir)}, glue: ${JSON.stringify(missing)}, projectsJson: ${JSON.stringify(join(dir, "map.json"))}, log: ${JSON.stringify(join(dir, "supervisor.log"))} },`,
+        "  { wakeCommand: null },",
+        "  (line) => logs.push(line),",
+        ");",
+        'spawnWorker({ identifier: "T-9", agent: "alice" }, { identifier: "T-9", project: "P1" }).then((result) => {',
+        '  process.stdout.write(JSON.stringify({ ok: result.ok, logs }) + "\\n");',
+        "});",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const emptyBin = tempDir("meerkat-wake-emptybin-");
+    const run = spawnSync(process.execPath, [probe], { encoding: "utf8", env: { ...process.env, PATH: emptyBin } });
+
+    assert.equal(run.status, 0, run.stderr);
+    assert.doesNotMatch(run.stderr, /DEP0187/, "must not probe existsSync() with a non-path");
+    const { logs } = JSON.parse(run.stdout.trim().split("\n").pop());
+    const warning = logs.find((line) => /no wake glue/.test(line));
+    assert.ok(warning, "a missing glue must still be announced");
+    assert.ok(warning.includes(missing), `the warning must name the configured glue, got: ${warning}`);
+    assert.ok(!warning.includes("(unset)"), "an unassigned opts field made the warning name '(unset)' instead");
+  });
+});
+
 describe("supervisor module", () => {
   // Resolved *relative to this test file*, never from a directory name — the
   // checkout is mounted at /app inside the container, so any assertion keyed on
@@ -941,7 +1069,7 @@ describe("supervisor module", () => {
     // directory is *not* named "meerkat-taskpanel". Loading by URL proves the module is
     // importable in place; the export check proves it is the runner, not a stub.
     const mod = await import(SUPERVISOR_URL.href);
-    for (const name of ["runPollTick", "runPatrolTick", "parseArgs", "loadRegistry", "saveRegistry", "planWakeInvocation"]) {
+    for (const name of ["runPollTick", "runPatrolTick", "parseArgs", "loadRegistry", "saveRegistry", "planWakeInvocation", "spawnWorkerReal"]) {
       assert.equal(typeof mod[name], "function", `missing export: ${name}`);
     }
   });

@@ -634,15 +634,22 @@ function openAppendFd(path) {
   }
 }
 
-function spawnWorkerReal(opts, config, log) {
+export function spawnWorkerReal(opts, config, log) {
   return (action, card) => {
     const prompt = buildHandoff({ card: card ?? { identifier: action.identifier }, agent: action.agent, host: opts.host });
+    // The resolved glue is `opts.glue` — the `--glue` flag, else the host default
+    // `parseArgs` fills in. There is **no** `opts.gluePath`, and reading one here
+    // handed the planner `undefined`: `existsSync(undefined)` (DEP0187) is false, so
+    // `glueInstalled` was false on every wake and every wake took the direct branch.
+    // An installed glue was named in the tick line and still never used — R1's "the
+    // worker runs in the card's target directory" had silently stopped happening.
+    // Read the field that is actually assigned.
     const invocation = planWakeInvocation({
       host: opts.host,
       prompt,
       wakeCommand: config.wakeCommand ?? null,
-      gluePath: opts.gluePath,
-      glueInstalled: opts.gluePath !== null && existsSync(opts.gluePath),
+      gluePath: opts.glue,
+      glueInstalled: opts.glue !== null && existsSync(opts.glue),
       project: card?.project ?? null,
       projectsJson: opts.projectsJson,
       nodePath: process.execPath,
