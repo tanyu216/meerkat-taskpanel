@@ -122,10 +122,19 @@ async function submit() {
          so a machine check can address the edge, the shadow and the surface
          without a positional anchor (`[data-create-task] > div` is a position,
          which the contract's own selector grammar forbids). Its dark edge is the
-         strong hairline; see the `dialog dark edge` rule in `app.css`. -->
-    <div class="w-[min(960px,100%)] border border-(--brand-border) rounded-lg bg-(--brand-surface) [box-shadow:var(--shadow-pop)]" data-create-task-panel>
+         strong hairline; see the `dialog dark edge` rule in `app.css`.
+
+         R4 · the box is the prototype's `min(1120px, …)`, not 960. The **field
+         track width is the column width**, and the column width is this box
+         minus the 20px gutter, the 24px gap and the hairline — so a 960px box
+         renders the routing column at 350px against the prototype's 405.391
+         (T-20261015-215028 ①: the track *ratio* was never the difference, only
+         the box that feeds it). 1120 + 20 + 24 is the prototype's own R4
+         geometry (`design/prototype/src/input.css` `.td-modal-box` /
+         `.td-two-col`), which is what makes the two sides agree to the pixel. -->
+    <div class="w-[min(1120px,100%)] border border-(--brand-border) rounded-lg bg-(--brand-surface) [box-shadow:var(--shadow-pop)]" data-create-task-panel>
       <form data-create-task-form @submit.prevent="submit">
-        <header class="flex items-center justify-between px-4 py-3 border-b border-b-(--brand-border)">
+        <header class="flex items-center justify-between px-5 py-3 border-b border-b-(--brand-border)">
           <h2 data-i18n="createTask.title">{{ $t("createTask.title") }}</h2>
           <button type="button" class="border-0 bg-transparent text-(--brand-text-3) cursor-pointer" data-modal-close :aria-label="$t('modal.close')" @click="createTaskOpen = false">✕</button>
         </header>
@@ -136,8 +145,15 @@ async function submit() {
              two-column; DESIGN.md §18.5 wants the dialog single-column *at* 760,
              matching the prototype's own `@media (max-width: 760px)`. The
              `minmax(0, …)` pair is kept: it is what stops a long value or the
-             editor from pushing the dialog past its box. -->
-        <div class="grid grid-cols-1 min-[761px]:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-4 p-4" data-create-two-col>
+             editor from pushing the dialog past its box.
+
+             The gutter (20px) and the gap (24px) are the prototype's own
+             (`.td-modal-box`'s 20px padding, `.td-two-col`'s 24px gap) and they
+             are load-bearing for the track: the routing column is
+             `(1120 − 2·1 − 2·20 − 24) / 2.6 = 405.391px`, which is the number
+             T-20261015-215028 aligns to. The header and the footer carry the
+             same 20px so the three gutters stay one column. -->
+        <div class="grid grid-cols-1 min-[761px]:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-6 p-5" data-create-two-col>
           <div data-create-left>
             <label class="flex flex-col gap-1 mb-3">
               <span data-i18n="createTask.field.title">{{ $t("createTask.field.title") }}</span>
@@ -284,7 +300,7 @@ async function submit() {
           </div>
         </div>
 
-        <footer class="flex justify-end gap-2 px-4 py-3 border-t border-t-(--brand-border)">
+        <footer class="flex justify-end gap-2 px-5 py-3 border-t border-t-(--brand-border)">
           <button type="button" class="btn btn-ghost btn-sm" @click="createTaskOpen = false">{{ $t("modal.cancel") }}</button>
           <button type="submit" class="btn btn-primary btn-sm" :disabled="!canSubmit" data-i18n="createTask.submit">{{ $t("createTask.submit") }}</button>
         </footer>
