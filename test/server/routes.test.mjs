@@ -257,7 +257,8 @@ describe("server/routes — comments, relations, sessions, dictionary, export", 
       ),
     );
     assert.equal(added.comment.author_kind, "agent");
-    assert.equal(added.comment.author_id, "linus");
+    assert.equal(added.comment.author.display_name, "linus");
+    assert.equal(added.comment.author.kind, "agent", "the ref carries the actor's kind");
   });
 
   it("adds, lists and removes a relation", async () => {
@@ -313,15 +314,14 @@ describe("server/routes — comments, relations, sessions, dictionary, export", 
   });
 
   it("reads the dictionary, and offers no way to write it", async () => {
-    const assignees = dataOf(await call("GET", "/api/v1/assignees?q=lin"));
-    assert.equal(assignees.entries.length, 1);
-    assert.equal(assignees.entries[0].display_name, "linus");
-    assert.equal(typeof assignees.entries[0].id, "string");
+    const actors = dataOf(await call("GET", "/api/v1/actors?q=lin"));
+    assert.equal(actors.entries.length, 1);
+    assert.equal(actors.entries[0].display_name, "linus");
+    assert.equal(typeof actors.entries[0].id, "string");
 
-    assert.equal(dataOf(await call("GET", "/api/v1/reporters")).entries.length, 0);
     // The management surface does not exist, so it cannot be reached.
-    assert.equal((await call("POST", "/api/v1/assignees", { name: "x" })).status, 404);
-    assert.equal((await call("DELETE", "/api/v1/assignees/x")).status, 404);
+    assert.equal((await call("POST", "/api/v1/actors", { name: "x" })).status, 404);
+    assert.equal((await call("DELETE", "/api/v1/actors/x")).status, 404);
   });
 
   it("reads the label registry, and offers no way to write it", async () => {
@@ -370,7 +370,7 @@ describe("server/routes — the edges a happy path never reaches", () => {
     );
     assert.equal(after.comments.length, 0, "nothing is newer than the future");
 
-    const dictionary = dataOf(await call("GET", "/api/v1/assignees?q=lin&limit=1"));
+    const dictionary = dataOf(await call("GET", "/api/v1/actors?q=lin&limit=1"));
     assert.equal(dictionary.entries.length, 1);
     assert.equal(dataOf(await call("GET", "/api/v1/projects?include_archived=1")).projects.length >= 1, true);
   });
@@ -546,13 +546,14 @@ describe("server/routes — the edges a happy path never reaches", () => {
       await call("POST", "/api/v1/tasks/DEMO-0001/comments", { body: "x" }, { "x-taskctl-actor": "{not json" }),
     );
     assert.equal(added.comment.author_kind, "human");
-    assert.equal(added.comment.author_id, "local");
+    assert.equal(added.comment.author.display_name, "local");
+    assert.equal(added.comment.author.kind, "human");
 
     const odd = dataOf(
       await call("POST", "/api/v1/tasks/DEMO-0001/comments", { body: "y" }, { "x-taskctl-actor": JSON.stringify({ kind: "wizard", id: "z" }) }),
     );
     assert.equal(odd.comment.author_kind, "human", "an unknown kind is not trusted");
-    assert.equal(odd.comment.author_id, "z");
+    assert.equal(odd.comment.author.display_name, "z");
   });
 
   it("exports without archived rows when asked", async () => {
@@ -753,7 +754,7 @@ describe("server/routes — claim enforces the assignee (T-20261009-230500)", ()
       await call("POST", `/api/v1/tasks/${card.task.identifier}/move`, { to: "in_progress" }, asAgent("linus")),
     );
     assert.equal(moved.task.status, "in_progress");
-    assert.equal(moved.task.claimed_by, "linus");
+    assert.equal(moved.task.claimed_by_actor.display_name, "linus");
   });
 
   it("refuses a different actor with 409 not_assignee", async () => {
@@ -779,7 +780,7 @@ describe("server/routes — claim enforces the assignee (T-20261009-230500)", ()
         asAgent("elon"),
       ),
     );
-    assert.equal(moved.task.claimed_by, "elon");
+    assert.equal(moved.task.claimed_by_actor.display_name, "elon");
 
     const comments = dataOf(await call("GET", `/api/v1/tasks/${card.task.identifier}/comments`));
     assert.equal(comments.comments.length, 1);

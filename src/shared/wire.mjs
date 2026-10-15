@@ -20,17 +20,21 @@ export const NO_LOOKUP = () => null;
 
 /**
  * @param {string|null} id
- * @param {string} kind "assignee" | "reporter"
+ * @param {string} kind the dictionary **role** the id is looked up under —
+ *   `"assignee"`/`"reporter"` name a `tasks` column, `"actor"` is the role-less
+ *   read the attribution columns use. It is also the `kind` stand-in when the
+ *   row is missing.
  * @param {(kind: string, id: string) => object|null} lookup
- * @param {string|null} [fallbackKind] the task's `assignee_kind` when the entry is gone
  */
-function actorRef(id, kind, lookup, fallbackKind = null) {
+function actorRef(id, kind, lookup) {
   if (id === null || id === undefined || id === "") return null;
   const entry = lookup === undefined ? null : lookup(kind, id);
   return {
     id,
+    // The actor's kind lives on its `actors` row (0019 dropped the denormalised
+    // `tasks.assignee_kind`); when the row is gone the role name stands in.
     display_name: entry?.displayName ?? id,
-    kind: entry?.kind ?? fallbackKind ?? kind,
+    kind: entry?.kind ?? kind,
   };
 }
 
@@ -46,8 +50,6 @@ const COPY_TASK_FIELDS = Object.freeze({
   sort_order: "sortOrder",
   assignee_id: "assigneeId",
   reporter_id: "reporterId",
-  creator_kind: "creatorKind",
-  creator_id: "creatorId",
   agent_session: "agentSession",
   thread_id: "threadId",
   thread_source: "threadSource",
@@ -88,8 +90,18 @@ export function taskToWire(task, options = {}) {
   }
   out.labels = Array.isArray(task.labels) ? task.labels : [];
   out.meta = task.meta ?? {};
-  out.assignee = actorRef(task.assigneeId, "assignee", lookup, task.assigneeKind);
+  out.assignee = actorRef(task.assigneeId, "assignee", lookup);
   out.reporter = actorRef(task.reporterId, "reporter", lookup);
+  // `claimed_by` is an actor **id** since 0020 (the execution lock's holder),
+  // exactly like `assignee_id`/`reporter_id`. It keeps its scalar field — a
+  // client that keys on the id still has one — and gains a companion ref so a
+  // consumer can render the holder's name without a second request, the way it
+  // already reads `assignee.display_name`. The ref sits *beside* the id: the
+  // scalar is not replaced, so nothing that read `claimed_by` breaks. It is
+  // named `claimed_by_actor` (not a bare role word like `assignee`) because
+  // `claimed_by` already occupies the role word, and the suffix keeps the pair
+  // adjacent — same shape as `assignee`/`reporter`, one name apart.
+  out.claimed_by_actor = actorRef(task.claimedBy, "actor", lookup);
   out.report_waiver = waiverOf(task);
   return out;
 }
@@ -153,9 +165,21 @@ export function projectToWire(project) {
   };
 }
 
-/** @param {object} comment a core Comment DTO */
-export function commentToWire(comment) {
+/**
+ * @param {object} comment a core Comment DTO
+ * @param {{lookup?: (kind: string, id: string) => object|null}} [options]
+ *
+ * `author_id` is an actor **id** since 0020 (the column is `REFERENCES
+ * actors(id)`); `author` is the companion ref that carries the readable
+ * `display_name` beside it, so a reader of a comment can name its author without
+ * a second request. `author_kind` stays: it is the **append-only column's own
+ * record** of the kind the write claimed, which is a different fact from the
+ * `actors` row's *current* kind the ref resolves (the dictionary's kind wins on
+ * reuse — see `dictionary.mjs#upsert`), so dropping it would lose history.
+ */
+export function commentToWire(comment, options = {}) {
   if (comment === null || comment === undefined) return null;
+  const lookup = options.lookup ?? NO_LOOKUP;
   return {
     id: comment.id,
     task_id: comment.taskId,
@@ -163,6 +187,7 @@ export function commentToWire(comment) {
     kind: comment.kind,
     author_kind: comment.authorKind,
     author_id: comment.authorId,
+    author: actorRef(comment.authorId, "actor", lookup),
     agent_session: comment.agentSession ?? null,
     refs: comment.refs ?? [],
     version: comment.version,
@@ -222,7 +247,7 @@ export function sessionToWire(session) {
   };
 }
 
-/** @param {object} entry a dictionary entry (assignee or reporter) */
+/** @param {object} entry an actor dictionary entry */
 export function dictionaryEntryToWire(entry) {
   if (entry === null || entry === undefined) return null;
   return {
@@ -230,7 +255,6 @@ export function dictionaryEntryToWire(entry) {
     kind: entry.kind,
     display_name: entry.displayName,
     normalized_name: entry.normalizedName,
-    platform: entry.platform ?? null,
     first_seen_at: entry.firstSeenAt,
     last_seen_at: entry.lastSeenAt,
     use_count: entry.useCount,
@@ -274,9 +298,17 @@ export function labelToWire(label) {
   };
 }
 
-/** @param {object} report a core Report DTO */
-export function reportToWire(report) {
+/**
+ * @param {object} report a core Report DTO
+ * @param {{lookup?: (kind: string, id: string) => object|null}} [options]
+ *
+ * Same attribution shape as a comment: `author_id` is an actor id since 0020,
+ * `author` is the companion ref (see `commentToWire` for why `author_kind`
+ * stays).
+ */
+export function reportToWire(report, options = {}) {
   if (report === null || report === undefined) return null;
+  const lookup = options.lookup ?? NO_LOOKUP;
   const evidence = report.evidence?.items ?? report.evidence ?? [];
   return {
     id: report.id,
@@ -291,6 +323,7 @@ export function reportToWire(report) {
     leftovers: report.leftovers ?? null,
     author_kind: report.authorKind,
     author_id: report.authorId,
+    author: actorRef(report.authorId, "actor", lookup),
     created_at: report.createdAt,
   };
 }

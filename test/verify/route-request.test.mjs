@@ -377,9 +377,11 @@ describe("route-request.mjs — the CLI", () => {
   it("exits 0 on the live surface and names the coverage", () => {
     const result = runCli([]);
     assert.equal(result.status, 0, result.stderr);
-    // 33 since T-20261014-212017-4 added the three attachment metadata routes
-    // (POST|GET /tasks/:ref/attachments, DELETE /attachments/:id).
-    assert.match(result.stdout, /route-request: OK — 33 routes/);
+    // 32 since 0019 merged the two dictionary reads (`/assignees`, `/reporters`)
+    // into one `/actors` route; it was 33 after T-20261014-212017-4 added the
+    // three attachment metadata routes (POST|GET /tasks/:ref/attachments,
+    // DELETE /attachments/:id).
+    assert.match(result.stdout, /route-request: OK — 32 routes/);
     assert.match(result.stdout, /6 command inputs paired/);
     assert.match(result.stdout, /5 out-of-router endpoints acknowledged/);
   });

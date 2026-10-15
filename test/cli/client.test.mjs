@@ -130,7 +130,8 @@ describe("shared/transport/http — over a real board", () => {
       session: "session-1",
       seg: "seg-2",
     });
-    assert.equal(commented.comment.author_id, "linus");
+    // author_id is an actor id since 0020; the wire's ref carries the name.
+    assert.equal(commented.comment.author.display_name, "linus");
     assert.equal(commented.comment.agent_session, "session-1");
   });
 

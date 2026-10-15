@@ -7,7 +7,7 @@
 import { commentToWire } from "../../shared/wire.mjs";
 import { arr, REQUEST, shape, str } from "../requests.mjs";
 import { intOrUndefined } from "./projects.mjs";
-import { resolveTask } from "./tasks.mjs";
+import { lookupFor, resolveTask } from "./tasks.mjs";
 
 // Declared request schemas, frozen by the contract snapshot (`routes[].request`)
 // — see `src/server/requests.mjs` for the vocabulary and the "declared, not
@@ -25,6 +25,7 @@ export function registerCommentRoutes(router, surface) {
 
   router.get("/api/v1/tasks/:ref/comments", ({ params, query }) => {
     const task = resolveTask(repos, params.ref);
+    const lookup = lookupFor(repos);
     return {
       comments: commands
         .listComments({
@@ -33,7 +34,7 @@ export function registerCommentRoutes(router, surface) {
           ...(intOrUndefined(query.get("limit")) === undefined ? {} : { limit: intOrUndefined(query.get("limit")) }),
           ...(query.get("after") === null ? {} : { after: query.get("after") }),
         })
-        .map(commentToWire),
+        .map((comment) => commentToWire(comment, { lookup })),
     };
   }, { query: LIST_QUERY });
 
@@ -47,6 +48,6 @@ export function registerCommentRoutes(router, surface) {
       agentSession: body.agent_session ?? session,
       actor,
     });
-    return { comment: commentToWire(comment) };
+    return { comment: commentToWire(comment, { lookup: lookupFor(repos) }) };
   }, { body: CREATE_BODY });
 }

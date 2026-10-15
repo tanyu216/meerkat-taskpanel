@@ -58,11 +58,9 @@ function snapshot(db) {
   );
   const byIdentifier = (id) => identifierOf.get(id) ?? `<missing:${id}>`;
   const rows = (sql) => db.prepare(sql).all().map((row) => ({ ...row }));
-  // Dictionary rows also carry fresh UUIDs; the *name* is what must match.
+  // Actor rows also carry fresh UUIDs; the *name* is what must match.
   const dictionaryNames = new Map(
-    rows("SELECT id, display_name FROM assignees")
-      .concat(rows("SELECT id, display_name FROM reporters"))
-      .map((entry) => [entry.id, entry.display_name]),
+    rows("SELECT id, display_name FROM actors").map((entry) => [entry.id, entry.display_name]),
   );
   const byName = (id) => (id === null ? null : (dictionaryNames.get(id) ?? `<missing:${id}>`));
 
@@ -73,8 +71,14 @@ function snapshot(db) {
   return {
     projects: rows("SELECT id, name, next_task_number, labels, meta_json FROM projects ORDER BY id"),
     tasks: rows("SELECT * FROM tasks ORDER BY identifier").map((task) => {
-      const { id, source_path, source_hash, assignee_id, reporter_id, ...rest } = task;
-      return { ...rest, assignee: byName(assignee_id), reporter: byName(reporter_id) };
+      const { id, source_path, source_hash, assignee_id, reporter_id, claimed_by, ...rest } = task;
+      return {
+        ...rest,
+        assignee: byName(assignee_id),
+        reporter: byName(reporter_id),
+        // `claimed_by` is an actor reference since 0020 — the name must match.
+        claimed_by: byName(claimed_by),
+      };
     }),
     task_relations: sorted(rows("SELECT * FROM task_relations ORDER BY id").map((relation) => ({
       type: relation.relation_type,
@@ -88,7 +92,8 @@ function snapshot(db) {
       body: comment.body,
       kind: comment.kind,
       author_kind: comment.author_kind,
-      author_id: comment.author_id,
+      // an actor reference since 0020 — compared by the person's name
+      author_id: byName(comment.author_id),
       refs_json: comment.refs_json,
       source_seq: comment.source_seq,
       created_at: comment.created_at,
@@ -101,7 +106,8 @@ function snapshot(db) {
       evidence_json: report.evidence_json,
       leftovers: report.leftovers,
       author_kind: report.author_kind,
-      author_id: report.author_id,
+      // an actor reference since 0020 — compared by the person's name
+      author_id: byName(report.author_id),
       created_at: report.created_at,
     })), (r) => `${r.task}|${r.round}`),
     agent_sessions: sorted(rows("SELECT * FROM agent_sessions ORDER BY task_id, seg").map((session) => ({
@@ -121,13 +127,9 @@ function snapshot(db) {
       changes_json: activity.changes_json,
       created_at: activity.created_at,
     })),
-    dictionary: rows("SELECT kind, display_name, normalized_name, use_count FROM assignees ORDER BY normalized_name")
-      .map((entry) => ({ table: "assignees", ...entry }))
-      .concat(
-        rows("SELECT kind, display_name, normalized_name, use_count FROM reporters ORDER BY normalized_name").map(
-          (entry) => ({ table: "reporters", ...entry }),
-        ),
-      ),
+    // One table since 0019 — the `table` label is gone with the two tables it
+    // distinguished.
+    dictionary: rows("SELECT kind, display_name, normalized_name, use_count FROM actors ORDER BY normalized_name"),
   };
 }
 

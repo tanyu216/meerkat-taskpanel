@@ -14,6 +14,7 @@ import { closeDatabase, openDatabase } from "../../src/core/storage/driver.mjs";
 import { applyMigrations } from "../../src/core/storage/migrations-runner.mjs";
 import { ensureParentDir } from "../../src/core/storage/paths.mjs";
 import { mapSqliteError } from "../../src/core/storage/sqlite-errors.mjs";
+import { norm } from "../../src/shared/norm.mjs";
 
 /** A fixed, millisecond-width UTC stamp — tests never depend on the wall clock. */
 export const TS = "2026-10-08T00:00:00.000Z";
@@ -113,6 +114,40 @@ export function reasonCode(fn) {
 // Raw row builders (direct SQL on purpose — repositories are under test too)
 // ---------------------------------------------------------------------------
 
+/**
+ * Make sure an `actors` row exists for `value`, and return the id to reference it
+ * by.
+ *
+ * `0020` made `tasks.claimed_by`, `comments.author_id` and
+ * `task_reports.author_id` references to `actors(id)`, so a fixture that writes an
+ * author or a claim must have an actor to point at. The row's **id is the given
+ * value** — a fixture is synthetic, and this keeps a test's author assertion
+ * reading the same string it passed in. A board without `actors` (pre-0019) is
+ * left alone: those columns are free strings there and carry no foreign key.
+ *
+ * @param {any} db
+ * @param {string|null|undefined} value
+ * @param {string} [kind]
+ * @returns {string|null|undefined}
+ */
+export function ensureActor(db, value, kind = "agent") {
+  if (value === null || value === undefined || value === "") return value;
+  const hasActors =
+    db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'actors'").get() !== undefined;
+  if (!hasActors) return value;
+  let key;
+  try {
+    key = norm(String(value));
+  } catch {
+    return value; // a blank value can never be an actor; let the write fail loudly
+  }
+  db.prepare(
+    `INSERT OR IGNORE INTO actors(id, kind, display_name, normalized_name, first_seen_at, last_seen_at, use_count)
+     VALUES (?, ?, ?, ?, ?, ?, 1)`,
+  ).run(String(value), kind, String(value), key, TS, TS);
+  return String(value);
+}
+
 /** @param {any} db */
 export function insertProject(db, overrides = {}) {
   const row = {
@@ -151,58 +186,57 @@ export function insertTask(db, overrides = {}) {
     status_changed_at: TS,
     ...overrides,
   };
-  // `awaiting_reason` arrives with 0013, and the migration tests deliberately
-  // build boards that stop short of it — so the column is only named when this
-  // board actually has it. Asking the schema (rather than a flag the caller has
-  // to remember) is what keeps an insert from failing on a legacy board.
+  // Five columns come and go across the migration history, and a fixture must
+  // not name a column the board it is building does not have:
+  //
+  //   * `awaiting_reason` arrives with 0013;
+  //   * `blocked_reason` arrives with 0016;
+  //   * `assignee_kind`, `creator_kind`, `creator_id` are **removed** by 0019
+  //     (the kind moved onto the actor, and the creator IS the reporter).
+  //
+  // Asking the schema (rather than a flag the caller has to remember) is what
+  // keeps one helper usable against a legacy board and against a 0019 board.
   const columns = new Set(
     db.prepare("SELECT name FROM pragma_table_info('tasks')").all().map((r) => r.name),
   );
-  const baseColumns = [
-    "id", "identifier", "project_id", "title", "description", "status", "priority", "kind",
-    "labels", "sort_order", "assignee_kind", "assignee_id", "reporter_id", "creator_kind", "creator_id",
-    "claimed_by", "claimed_at", "heartbeat_at", "blocked_at", "status_changed_at",
-    "archived_at", "source_path", "source_hash", "version", "idem", "created_at", "updated_at",
+  const pairs = [
+    ["id", row.id],
+    ["identifier", row.identifier],
+    ["project_id", row.project_id],
+    ["title", row.title],
+    ["description", row.description ?? ""],
+    ["status", row.status],
+    ["priority", row.priority ?? "medium"],
+    ["kind", row.kind ?? "task"],
+    ["labels", row.labels ?? "[]"],
+    ["sort_order", row.sort_order ?? 0],
+    ["assignee_id", ensureActor(db, row.assignee_id ?? null)],
+    ["reporter_id", ensureActor(db, row.reporter_id ?? null)],
+    ["claimed_by", ensureActor(db, row.claimed_by ?? null)],
+    ["claimed_at", row.claimed_at ?? null],
+    ["heartbeat_at", row.heartbeat_at ?? null],
+    ["blocked_at", row.blocked_at ?? null],
+    ["status_changed_at", row.status_changed_at],
+    ["archived_at", row.archived_at ?? null],
+    ["source_path", row.source_path ?? null],
+    ["source_hash", row.source_hash ?? null],
+    ["version", row.version ?? 1],
+    ["idem", row.idem ?? null],
+    ["created_at", row.created_at],
+    ["updated_at", row.updated_at],
   ];
-  const values = [
-    row.id,
-    row.identifier,
-    row.project_id,
-    row.title,
-    row.description ?? "",
-    row.status,
-    row.priority ?? "medium",
-    row.kind ?? "task",
-    row.labels ?? "[]",
-    row.sort_order ?? 0,
-    row.assignee_kind ?? null,
-    row.assignee_id ?? null,
-    row.reporter_id ?? null,
-    row.creator_kind ?? null,
-    row.creator_id ?? null,
-    row.claimed_by ?? null,
-    row.claimed_at ?? null,
-    row.heartbeat_at ?? null,
-    row.blocked_at ?? null,
-    row.status_changed_at,
-    row.archived_at ?? null,
-    row.source_path ?? null,
-    row.source_hash ?? null,
-    row.version ?? 1,
-    row.idem ?? null,
-    row.created_at,
-    row.updated_at,
+  const optional = [
+    ["assignee_kind", row.assignee_kind ?? null],
+    ["creator_kind", row.creator_kind ?? null],
+    ["creator_id", row.creator_id ?? null],
+    ["awaiting_reason", row.awaiting_reason ?? null],
+    ["blocked_reason", row.blocked_reason ?? null],
   ];
-  if (columns.has("awaiting_reason")) {
-    baseColumns.push("awaiting_reason");
-    values.push(row.awaiting_reason ?? null);
+  for (const [column, value] of optional) {
+    if (columns.has(column)) pairs.push([column, value]);
   }
-  // `blocked_reason` arrives with 0016, by the same rule and for the same
-  // reason: a board built short of that migration simply does not name it.
-  if (columns.has("blocked_reason")) {
-    baseColumns.push("blocked_reason");
-    values.push(row.blocked_reason ?? null);
-  }
+  const baseColumns = pairs.map(([column]) => column);
+  const values = pairs.map(([, value]) => value);
   db.prepare(
     `INSERT INTO tasks(${baseColumns.join(", ")}) VALUES (${baseColumns.map(() => "?").join(", ")})`,
   ).run(...values);
@@ -237,7 +271,7 @@ export function insertComment(db, overrides = {}) {
     row.body,
     row.kind,
     row.author_kind,
-    row.author_id,
+    ensureActor(db, row.author_id, row.author_kind),
     row.agent_session ?? null,
     row.refs_json ?? "[]",
     row.source_seq ?? null,
@@ -276,7 +310,7 @@ export function insertReport(db, overrides = {}) {
       row.evidence_json,
       row.leftovers ?? null,
       row.author_kind,
-      row.author_id,
+      ensureActor(db, row.author_id, row.author_kind),
       row.created_at,
     );
   return Number(info.lastInsertRowid);
@@ -285,6 +319,24 @@ export function insertReport(db, overrides = {}) {
 /** Current global revision. @param {any} db */
 export function revision(db) {
   return Number(db.prepare("SELECT revision FROM global_revision WHERE singleton = 1").get().revision);
+}
+
+/**
+ * An actor id → the name it carries, so a **core** test can assert "who
+ * claimed/wrote this" without hard-coding the row's uuid. `0020` made the
+ * attribution columns references, so the value a task/comment/report DTO carries
+ * is an id; the *name* is the fact the test means. The wire-level suites no
+ * longer need this: since Phase 7 the wire carries `author`/`claimed_by_actor`
+ * refs, so those assert `…display_name` directly.
+ *
+ * @param {any} db
+ * @param {string|null|undefined} id
+ * @returns {string|null|undefined}
+ */
+export function actorName(db, id) {
+  if (id === null || id === undefined) return id;
+  const row = db.prepare("SELECT display_name FROM actors WHERE id = ?").get(id);
+  return row === undefined ? id : row.display_name;
 }
 
 /** Row count of a table. @param {any} db @param {string} table */

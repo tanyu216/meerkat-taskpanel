@@ -13,8 +13,10 @@ import { createRepositories } from "../../../src/core/storage/repositories/index
 import {
   TS,
   TS2,
+  actorName,
   cleanupTempDirs,
   countRows,
+  ensureActor,
   revision,
   withBoard,
 } from "../../helpers/sqlite-fixture.mjs";
@@ -47,8 +49,7 @@ describe("commands/dictionary — no management surface (V8)", () => {
       for (const forbidden of FORBIDDEN_DICTIONARY_COMMANDS) {
         assert.equal(forbidden in commands, false, `${forbidden} must not exist`);
       }
-      assert.equal(typeof commands.listAssignees, "function");
-      assert.equal(typeof commands.listReporters, "function");
+      assert.equal(typeof commands.listActors, "function");
       // ...and not as module exports either.
       for (const name of Object.keys(commandsModule)) {
         assert.equal(/assignee|reporter/i.test(name) && /add|remove|rename|create/i.test(name), false, name);
@@ -61,11 +62,11 @@ describe("commands/dictionary — no management surface (V8)", () => {
       const first = commands.createTask({ projectId: "proj", title: "one", assignee: "Linus", actor: AGENT });
       const second = commands.createTask({ projectId: "proj", title: "two", assignee: "linus", actor: AGENT });
       assert.equal(second.assigneeId, first.assigneeId, "case and spacing do not matter");
-      assert.equal(countRows(db, "assignees"), 1);
-      assert.equal(commands.listAssignees({})[0].useCount, 2, "using it again counts once more");
+      assert.equal(countRows(db, "actors"), 1);
+      assert.equal(commands.listActors({})[0].useCount, 2, "using it again counts once more");
 
       commands.createTask({ projectId: "proj", title: "three", assignee: "Linus Torvalds", actor: AGENT });
-      assert.equal(commands.listAssignees({ q: "torvalds" })[0].displayName, "Linus Torvalds");
+      assert.equal(commands.listActors({ q: "torvalds" })[0].displayName, "Linus Torvalds");
 
       assert.throws(
         () => commands.createTask({ projectId: "proj", title: "four", assignee: "linu", actor: AGENT }),
@@ -87,12 +88,12 @@ describe("commands/dictionary — no management surface (V8)", () => {
         forceCreate: true,
         actor: AGENT,
       });
-      assert.equal(commands.listAssignees({ q: "linu" }).length, 3);
+      assert.equal(commands.listActors({ q: "linu" }).length, 3);
       assert.equal(forced.assigneeId !== first.assigneeId, true);
     });
   });
 
-  it("keeps assignees and reporters apart", async () => {
+  it("merges the assignee and reporter roles onto one actor row (0019)", async () => {
     await board(({ commands }) => {
       const task = commands.createTask({
         projectId: "proj",
@@ -102,10 +103,10 @@ describe("commands/dictionary — no management surface (V8)", () => {
         reporter: "Sam",
         actor: AGENT,
       });
-      assert.notEqual(task.assigneeId, task.reporterId);
-      assert.equal(commands.listAssignees({}).length, 1);
-      assert.equal(commands.listReporters({}).length, 1);
-      assert.equal(commands.listReporters({})[0].kind, "human", "the reporter defaults to a human");
+      // One table: the same name is ONE row whichever role names it, and both
+      // columns point at it.
+      assert.equal(task.assigneeId, task.reporterId);
+      assert.equal(commands.listActors({}).length, 1);
     });
   });
 
@@ -113,13 +114,12 @@ describe("commands/dictionary — no management surface (V8)", () => {
     await board(({ db, commands }) => {
       const task = commands.createTask({ projectId: "proj", title: "one", actor: AGENT });
       const updated = commands.updateTask({ id: task.id, assignee: "Linus", actor: AGENT });
-      assert.equal(commands.listAssignees({}).length, 1);
-      assert.equal(updated.assigneeId, commands.listAssignees({})[0].id);
-      assert.equal(updated.assigneeKind, "agent");
+      assert.equal(commands.listActors({}).length, 1);
+      assert.equal(updated.assigneeId, commands.listActors({})[0].id);
 
       commands.updateTask({ id: task.id, assignee: "Linus", actor: AGENT });
-      assert.equal(countRows(db, "assignees"), 1, "the same name never duplicates");
-      assert.equal(commands.listAssignees({})[0].useCount, 2);
+      assert.equal(countRows(db, "actors"), 1, "the same name never duplicates");
+      assert.equal(commands.listActors({})[0].useCount, 2);
 
       assert.throws(() => commands.updateTask({ id: task.id, actor: AGENT }), (err) => {
         assert.equal(err.code, "VALIDATION_FAILED");
@@ -239,6 +239,9 @@ describe("commands/comments", () => {
   it("appends a comment and records it once", async () => {
     await board(({ db, commands }) => {
       const task = commands.createTask({ projectId: "proj", title: "one", actor: AGENT });
+      // The author is already a dictionary entry, so the comment costs the row and
+      // its audit row only (a first-ever author also creates its `actors` row).
+      ensureActor(db, AGENT.id);
       const before = revision(db);
       const comment = commands.addComment({
         taskId: task.id,
@@ -258,12 +261,13 @@ describe("commands/comments", () => {
   });
 
   it("keeps the human decision trail readable (I5)", async () => {
-    await board(({ commands }) => {
+    await board(({ db, commands }) => {
       const task = commands.createTask({ projectId: "proj", title: "one", actor: AGENT });
       commands.addComment({ taskId: task.id, body: "ship it", kind: "confirm", actor: HUMAN });
       commands.addComment({ taskId: task.id, body: "noted", kind: "note", actor: AGENT });
       const decisions = commands.listDecisions({ taskId: task.id });
-      assert.deepEqual(decisions.map((c) => c.authorId), ["Terry"]);
+      // author_id is an actor id since 0020 — the trail still reads as the person.
+      assert.deepEqual(decisions.map((c) => actorName(db, c.authorId)), ["Terry"]);
       assert.equal(decisions[0].body, "ship it");
       assert.throws(() => commands.addComment({ taskId: "nope", body: "x", actor: AGENT }), (err) => err.code === "NOT_FOUND");
       assert.throws(() => commands.addComment({ taskId: task.id, body: "", actor: AGENT }), (err) => err.code === "VALIDATION_FAILED");

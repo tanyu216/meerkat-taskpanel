@@ -30,7 +30,11 @@ export const COMMANDS = [
         : table(["created_at", "kind", "author", "body"], comments.map((c) => [
             c.created_at,
             c.kind,
-            `${c.author_id} (${c.author_kind})`,
+            // The author column names the author, not the id: `author_id` is an
+            // actor id since 0020, and the wire's `author` ref carries the
+            // readable `display_name` beside it (the id stands in only when the
+            // ref is absent — a board-less projection).
+            `${c.author?.display_name ?? c.author_id} (${c.author?.kind ?? c.author_kind})`,
             c.body.length > 60 ? `${c.body.slice(0, 57)}...` : c.body,
           ]));
       return { data: { comments }, human };

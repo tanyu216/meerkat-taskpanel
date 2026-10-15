@@ -37,7 +37,7 @@ import {
   transitionReasonCode,
 } from "../../src/core/domain/status.mjs";
 import { createRepositories } from "../../src/core/storage/repositories/index.mjs";
-import { TS, TS2, cleanupTempDirs, insertProject, insertReport, insertTask, reasonCode, withBoard } from "../helpers/sqlite-fixture.mjs";
+import { TS, TS2, cleanupTempDirs, ensureActor, insertProject, insertReport, insertTask, reasonCode, withBoard } from "../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);
 
@@ -410,6 +410,7 @@ describe("contract/state-machine — the execution claim follows the work cycle"
       // 'backlog'`; now the first leg has already dropped the claim.
       insertProject(db);
       insertTask(db, { id: "t", identifier: "PROJ-0001", status: "todo" });
+      ensureActor(db, "linus"); // claimed_by is a reference since 0020
       repos.tasks.claimCas({ id: "t", actor: "linus", now: TS });
       assert.equal(db.prepare("SELECT claimed_by FROM tasks WHERE id='t'").get().claimed_by, "linus");
 

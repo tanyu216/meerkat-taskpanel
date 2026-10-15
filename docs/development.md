@@ -163,7 +163,7 @@ network** (`docker build --network=none` succeeds).
 | `/tasks/:ref/comments`, `/tasks/:ref/relations`, `/tasks/:ref/sessions`, `/tasks/:ref/activities`, `/tasks/:ref/reports` | GET/POST/DELETE | activities is the audit cursor read |
 | `/attachments/:id/content` | GET/PUT | raw bytes; not JSON — handled outside the router |
 | `/events` | GET (SSE) | `global_revision` increments; `?after=<rev>` replays; a deliberate stop sends a named `shutdown` frame (see [Stopping the daemon](#stopping-the-daemon)) |
-| `/assignees`, `/reporters`, `/labels` | GET | read-only by design (§4.4) |
+| `/actors`, `/labels` | GET | read-only by design (§4.4) |
 | `/token` | POST | rotate; loopback only |
 | `/` and everything else | GET/HEAD | built frontend from `web/dist`, when it exists |
 

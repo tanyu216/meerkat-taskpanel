@@ -20,6 +20,7 @@
 
 import { DomainError } from "../../../shared/errors.mjs";
 import { HEARTBEAT_FRESH_MS, TASK_LIST_DEFAULT_LIMIT } from "../../../shared/constants.mjs";
+import { holderLabel } from "../../domain/claim.mjs";
 import { holdsClaim } from "../../domain/status.mjs";
 import { TASK_COLUMNS, taskFromRow, taskToRow } from "../../domain/task.mjs";
 import { mapSqliteError } from "../sqlite-errors.mjs";
@@ -33,7 +34,6 @@ const PATCHABLE = [
   "kind",
   "labels",
   "sortOrder",
-  "assigneeKind",
   "assigneeId",
   "reporterId",
   "agentSession",
@@ -440,10 +440,18 @@ export function createTasksRepository(db) {
      * with no holder at all, which is the corrupt state I2 names
      * (`EXECUTION_STATE_CORRUPT`). The last two used to share one branch, so an
      * unclaimed card reported itself as "held by null".
-     * @param {{id: string, actor: string, now: string}} input
+     *
+     * `describeHolder` is the same injected resolver `decideClaim` takes: since
+     * `0020` `claimed_by` is an actor **id**, and the `EXECUTION_ACTIVE` message
+     * should name the holder rather than print a uuid. The command layer supplies
+     * it (this repository has no dictionary); with no resolver the id stands in.
+     * The `details.claimedBy` payload stays the **id** — it is the stable
+     * machine-readable value a client keys on, and the message is the prose.
+     *
+     * @param {{id: string, actor: string, now: string, describeHolder?: ((id: string) => string|null|undefined)}} input
      */
     setHeartbeat(input) {
-      const { id, actor, now } = input;
+      const { id, actor, now, describeHolder } = input;
       try {
         const info = db
           .prepare(
@@ -470,7 +478,7 @@ export function createTasksRepository(db) {
             });
           }
           throw new DomainError("EXECUTION_ACTIVE", {
-            message: `task ${current.identifier} is held by ${current.claimedBy}`,
+            message: `task ${current.identifier} is held by ${holderLabel(current.claimedBy, describeHolder)}`,
             details,
           });
         }
