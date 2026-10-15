@@ -122,7 +122,7 @@ describe("storage/migrations — 0019 merges the two dictionary tables into `act
       const triggersBefore = triggersOf(board.db);
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0019", "0020"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0019", "0020", "0021", "0022"]);
 
       // 1 — the merge itself. Three `terry` rows become one, and the sums hold.
       const merged = board.db.prepare("SELECT * FROM actors ORDER BY normalized_name").all();
