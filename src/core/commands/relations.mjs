@@ -7,7 +7,7 @@
  */
 
 import { DomainError } from "../../shared/errors.mjs";
-import { assertBlockEdgeAllowed, assertParentEdgeAllowed, normalizeRelation } from "../domain/relation.mjs";
+import { assertBlockEdgeAllowed, assertParentEdgeAllowed, normalizeRelation, parentChainOf } from "../domain/relation.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { actorOf } from "./context.mjs";
 
@@ -128,6 +128,16 @@ export function removeRelation(ctx, input) {
 
 /**
  * Everything around one task: its edges, its parent chain and its blockers.
+ *
+ * `parentChain` is the card's **ancestor and descendant ids, either direction**
+ * — the set a `blocks` edge to or from this card would be refused on
+ * (`domain/relation.mjs#isOnSameParentChain`, `0019_block_chain.sql`). It is
+ * read here, on the same response the drawer already fetches when it opens, so
+ * the prerequisite picker's candidate list can be filtered by the board's own
+ * answer instead of by a second graph walk in the browser. The picker offered
+ * ancestors before this existed; the refusal was the only half that was built
+ * (T-20261015-104813).
+ *
  * @param {object} ctx
  * @param {{taskId: string}} input
  */
@@ -140,5 +150,6 @@ export function listRelations(ctx, input) {
     ancestors: ctx.repos.relations.listAncestors(task.id),
     blockedBy: ctx.repos.relations.listBlockerOf(task.id),
     blocks: ctx.repos.relations.listBlockedBy(task.id),
+    parentChain: parentChainOf(ctx.repos.relations.listParentEdges(), task.id),
   };
 }
