@@ -85,7 +85,9 @@ describe("contract/sql-parity — migration files", () => {
         `revision trigger must not exist for ${excluded}`,
       );
     }
-    assert.equal(REVISION_TABLES.length, 11);
+    // 0019 merged `assignees` + `reporters` into `actors`: 13 tables → 12, and the
+    // eleven revision-carrying tables → ten.
+    assert.equal(REVISION_TABLES.length, 10);
   });
 });
 

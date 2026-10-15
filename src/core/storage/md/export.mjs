@@ -123,11 +123,16 @@ export function renderCard(task, context) {
     priority: task.priority,
     kind: task.kind,
     project: task.projectId,
-    created_by: labelOf(repos, "reporter", task.reporterId) ?? task.creatorId ?? "",
+    // The creator IS the reporter (0019): `created_by` reads the one column that
+    // holds it, with no second `creator_id` fallback to consult.
+    created_by: labelOf(repos, "reporter", task.reporterId) ?? "",
     created_at: task.createdAt,
     updated_at: task.updatedAt,
     status_changed_at: task.statusChangedAt,
-    claimed_by: task.claimedBy ?? "",
+    // Since 0020 `claimed_by` is an actor id; the card writes the person's
+    // display name, like `assignee`/`created_by` above (and the importer resolves
+    // it back). The md format stays human-readable, and the round trip is exact.
+    claimed_by: labelOf(repos, "actor", task.claimedBy) ?? "",
     claimed_at: task.claimedAt ?? "",
     heartbeat_at: task.heartbeatAt ?? "",
     blocked_at: task.blockedAt ?? "",
@@ -179,7 +184,8 @@ export function renderCard(task, context) {
       repos.comments.list({ taskId: task.id, limit: 10_000 }).map((comment) => ({
         ts: comment.createdAt,
         kind: comment.kind,
-        authorId: comment.authorId,
+        // author_id is an actor id since 0020 — the card carries the name.
+        authorId: labelOf(repos, "actor", comment.authorId) ?? "",
         body: comment.body,
       })),
     ),
@@ -207,7 +213,8 @@ export function renderCard(task, context) {
       repos.reports.listByTask(task.id).map((report) => ({
         round: report.round,
         ts: report.createdAt,
-        authorId: report.authorId,
+        // author_id is an actor id since 0020 — the card carries the name.
+        authorId: labelOf(repos, "actor", report.authorId) ?? "",
         conclusion: report.conclusion,
         acceptance: report.acceptance,
         evidence: report.evidence,

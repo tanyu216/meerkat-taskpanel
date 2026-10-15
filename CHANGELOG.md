@@ -313,9 +313,91 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   not see; the rebuild declares it in a `CREATE TABLE` body, so the value set is now declared
   on the JS side too (`REPORT_ORIGINS` in `src/core/domain/enums.mjs`) and the parity test
   covers it for the first time.
+- **The two dictionary tables are one `actors` table, and everything that referenced them
+  moved with it** (migration **`0019`**). `assignees` and `reporters` are gone; a person is
+  one row keyed by `normalized_name`, whichever role the board knows them in. The merge
+  **deduplicates**: the group's earliest row survives — its `id` is one a task already holds —
+  `use_count` sums, `first_seen_at`/`last_seen_at` take the extremes, and every
+  `tasks.assignee_id`/`reporter_id` is repointed, **across tables**, because a person can be
+  an assignee on one card and a reporter on another. The guard that refused to delete a
+  referenced dictionary row is now one trigger on `actors` checking both roles.
+
+  The surface follows the table: `GET /api/v1/assignees` and `GET /api/v1/reporters` become one
+  `GET /api/v1/actors`; the CLI's `assignees` and `reporters` groups become one `actors` group;
+  `dictionary_entry` loses `platform`; and the board fetches its roster once instead of twice.
+  **The dictionary still has no management surface** — that ruling is unchanged.
+
+  **Two behaviour changes worth naming.** The importer now drives the *same* dictionary
+  decision as the live path (normalise, exact match, unique-prefix match, the dictionary's own
+  spelling wins on reuse). Before, it called the repository directly: a card imported as
+  `"  terry "` kept that spelling while the same name entered through the CLI stored
+  `"Terry"` — one key, two spellings, and behaviour that depended on import order. And a
+  card's `claimed_by` **no longer creates a dictionary row**: the old importer resolved the
+  claimant into an actor and then discarded the id, so the row was a roster entry nothing
+  referenced. `tasks.claimed_by` stays a free string here — the migration that turns it into a
+  reference will create the rows it needs itself.
+
+  The board's platform badge reads an actor's `kind`, but only a kind that *names* a platform
+  (`claude`, `codex`, …); the generic `agent`/`human` deliberately fill nothing in, so the
+  badge is absent exactly as it was while the `platform` column was never written. That is a
+  holding position, not a finished rule: the DOM contract reads `[data-card]`'s
+  `data-assignee-kind` off the same value and requires `human` or `agent`, so no single value
+  satisfies both until an actor's kind carries a platform name.
+- **Every attribution column is now a reference to `actors(id)`** (migration **`0020`**).
+  `tasks.claimed_by`, `comments.author_id` and `task_reports.author_id` join
+  `tasks.assignee_id`/`reporter_id` as foreign keys, so "who claimed this", "who wrote this"
+  and "who reported this" all point at the one person table.
+- **…and the two log/telemetry columns deliberately are not.** `task_activities.actor_id`
+  (an append-only audit log) and `agent_sessions.owner` (runtime telemetry, half of a
+  natural key) stay free strings: a foreign key from a log to a mutable dictionary couples
+  deletion to history, and the log has to outlive the people it names. The synthetic ids
+  `taskd` and `md-import` are **reserved names in the log namespace** — no `actors` row is
+  created for them, and a roster never shows a "person" called `taskd`. Both exclusions,
+  and the reserved names, are pinned by `test/contract/attribution-boundary.test.mjs`, the
+  way `tasks.blocked_reason`'s exclusion is.
+
+  **The back-fill, and the one way it rewrites history.** Every distinct value in those three
+  columns is a **name** — the live path writes `--agent`/`$TASKCTL_AGENT`/`$USER`/`local`,
+  the importer writes the card's own text — so each value is normalised (`norm`) and
+  resolved to the `actors` row with that `normalized_name`, or a new row is created for it
+  (a value like `local` or a caller's `$USER` has no row yet, and is **created, not dropped**).
+  Because `norm` folds case and whitespace, **spellings merge**: `"Terry"` and `"terry"` are
+  two `author_id` values on a pre-0020 board and become **one person**. That is intended —
+  they were always one identity — but it is a merge of historical rows, so a board that
+  carried both spellings will see them collapse.
+
+  **The write side follows the column.** Every writer — a claim, a heartbeat, a comment, a
+  report, and the markdown importer — now resolves the name it was given to an actor row
+  first, and the claim comparison (`claimed_by` against the claimant) is between ids.
+  The markdown round trip is unchanged: a card still carries the **name** (`claimed_by:`,
+  the comment/report author), the exporter resolves the id back to it, and the importer
+  resolves the name forward.
+
+  **The wire now carries an actor reference** (the change just below): `author_id` /
+  `claimed_by` stay as ids, and a companion `author` / `claimed_by_actor` object carries the
+  readable `display_name` beside each.
+
+- **The wire carries an actor reference beside the id** — the readability regression `0020`
+  left open is closed at the projection. `commentToWire` and `reportToWire` gained an
+  `author` object and `taskToWire` gained `claimed_by_actor`, each `{id, display_name,
+  kind}` — the shape `assignee`/`reporter` already had — so a client names an actor without a
+  second request. `author_id` / `claimed_by` are **kept**, so nothing that keys on the id
+  breaks, and the CLI prints the author's name again (`taskctl comment list`). `author_kind`
+  also stays: it is the append-only column's own record of the kind a write claimed, a
+  different fact from the actor row's *current* kind the ref resolves. The claim and
+  heartbeat refusals name the holder again (`decideClaim`/`assertClaimable`/`setHeartbeat`
+  take an injected `describeHolder`, the same seam as `resolveAssignee`), and the loop's
+  `planPatrol` reads the holder's name
+  off `claimed_by_actor`. The contract snapshot is refreshed; `author` / `claimed_by_actor`
+  and their nested shapes are frozen by it.
 
 ### Removed
 
+- **Three denormalised columns on `tasks`.** `assignee_kind`, `creator_kind` and `creator_id`
+  are gone (migration `0019`): the kind belongs to the actor row, and a copy of a value that
+  can now change goes stale. A card's creator **is** its reporter — `created_by` already
+  mapped there — so `creator_id` was a second name for one fact and `creator_kind` a second
+  copy of one kind. The wire loses `creator_kind` and `creator_id` with them.
 - **Project directories, from the board — the local map moves to the skill.** TaskPanel
   no longer manages project directories at all. `project create` / `project update` no
   longer take `--workspace-path` and `project list` no longer prints a `workspace_path`

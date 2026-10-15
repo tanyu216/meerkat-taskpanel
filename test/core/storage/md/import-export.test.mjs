@@ -16,6 +16,7 @@ import { createRepositories } from "../../../../src/core/storage/repositories/in
 import { createContext, createCommands } from "../../../../src/core/commands/index.mjs";
 import {
   TS,
+  actorName,
   cleanupTempDirs,
   countRows,
   createTempBoard,
@@ -100,6 +101,52 @@ describe("md/import — statistics and behaviour", () => {
       // byte-stable against the original card.
       assert.deepEqual(board.repos.tasks.getByIdentifier("proj", "PROJ-0001").labels, ["Bug", "core"]);
       assert.deepEqual(board.repos.tasks.getByIdentifier("proj", "PROJ-0002").labels, ["Bug"]);
+    } finally {
+      board.close();
+    }
+  });
+
+  it("resolves a card's people through one decision, and a claimant is one of them", async () => {
+    // This file is the only place that can pin these two facts. The first was new
+    // in Phase 5 (`0019`); the second changed in Phase 6 (`0020`).
+    //
+    // (1) The importer drives the **same** dictionary decision as the live path. One card
+    //     naming the same person as both its assignee and its reporter — `linus` /
+    //     `Linus` — is **one** actor, because the two old tables are now one and the
+    //     resolution spans them. Before, that card produced two rows, one per table.
+    //     It is also the reuse rule: the dictionary's own spelling wins, so the second
+    //     name does not overwrite the first.
+    // (2) A card's `claimed_by` **does** create an actor row now. `0020` turned
+    //     `tasks.claimed_by` into a reference to `actors(id)`, so the importer
+    //     resolves the claimant exactly as the live claim path does — the card's
+    //     text is a name, and the column wants the id of the person it names.
+    const board = await boardWithCards({
+      "PROJ-0001.md": cardText({ assignee: "linus", created_by: "Linus", claimed_by: "someone-else" }),
+    });
+    try {
+      importMd({ db: board.db, repos: board.repos, dir: board.dir, now: TS });
+
+      assert.deepEqual(
+        board.db
+          .prepare("SELECT kind, display_name, normalized_name FROM actors ORDER BY normalized_name")
+          .all()
+          .map((r) => ({ ...r })),
+        [
+          { kind: "agent", display_name: "linus", normalized_name: "linus" },
+          { kind: "agent", display_name: "someone-else", normalized_name: "someone-else" },
+        ],
+        "one person across the two roles; the claimant is a person too",
+      );
+
+      const task = board.repos.tasks.getByIdentifier("proj", "PROJ-0001");
+      assert.equal(task.assigneeId, task.reporterId, "both roles resolve to the same actor row");
+
+      assert.equal(
+        board.db.prepare("SELECT COUNT(*) AS n FROM actors WHERE normalized_name = ?").get("someone-else").n,
+        1,
+        "the claimant is resolved into an actor row `claimed_by` references",
+      );
+      assert.equal(actorName(board.db, task.claimedBy), "someone-else", "…and `claimed_by` reads back as the card's name");
     } finally {
       board.close();
     }
