@@ -25,12 +25,14 @@ There are three layers, and it is worth keeping them straight:
    file and config key at its existing value, and prints a
    `left unchanged — use --force to overwrite` notice; `--force` is the *only* way to
    overwrite. See [Idempotence](#idempotence-re-running-and-force).
-3. **The plugin/bundle** — the per-host manifest under `plugins/<host>/` that lets the
-   host's own plugin system discover and enable the skill. This step needs the host CLI,
-   so `install.sh` does **not** run it; it prints the command and you run it once. The
-   marketplace lists two plugins — `meerkat-taskpanel` (sourced at `plugins/claude`) and
-   `meerkat-loop` (sourced at `plugins/loop`, which carries the loop skill and nothing
-   else, so it can be installed on its own).
+3. **The plugin/bundle** — the manifest that lets the host's own plugin system discover
+   and enable the skill. This step needs the host CLI, so `install.sh` does **not** run
+   it; it prints the command and you run it once. The repository root *is* the board's
+   plugin root (`.claude-plugin/plugin.json`), which is what lets every harness share the
+   one `skills/` tree instead of receiving a copy; only OpenClaw keeps a bundle of its own
+   under `plugins/openclaw/`. The marketplace lists two plugins — `meerkat-taskpanel`
+   (sourced at `./`, the repository root) and `meerkat-loop` (sourced at `plugins/loop`,
+   which carries the loop skill and nothing else, so it can be installed on its own).
 
 > **Status: the engine has landed through M6.** The skill is discoverable, the `taskctl`
 > commands it describes are implemented, and the board backend (`src/server/`, HTTP + SSE)
@@ -52,14 +54,14 @@ match the assignee the board uses for it; it defaults to `$USER`.
 
 | Host | `--target` | Board skill | Loop skill | Bundle |
 |---|---|---|---|---|
-| Claude Code | `claude` | `~/.claude/skills/meerkat-taskpanel` | `~/.claude/skills/meerkat-loop` | `plugins/claude` (`.claude-plugin/plugin.json`) |
+| Claude Code | `claude` | `~/.claude/skills/meerkat-taskpanel` | `~/.claude/skills/meerkat-loop` | `.` — the repository root (`.claude-plugin/plugin.json`) |
 | OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | **none** — see [OpenClaw](scheduling.md#openclaw-do-not-build-a-supervisor) | `plugins/openclaw` (native `openclaw.plugin.json`) |
-| Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | `~/.codex/skills/meerkat-loop` | `plugins/codex` (`.codex-plugin/plugin.json`) |
+| Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | `~/.codex/skills/meerkat-loop` | `.` — the same root bundle, through the marketplace |
 | Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | `~/.agents/skills/meerkat-loop` | `plugins/pi` (`package.json`) |
 
 The repository-root Claude marketplace `.claude-plugin/marketplace.json` lists
-`./plugins/claude` (the board) and `./plugins/loop` (the loop); Codex reads the same
-marketplace manifest.
+`./` (the board) and `./plugins/loop` (the loop); Codex reads the same
+marketplace manifest, which is why it has no bundle of its own.
 
 `--link` applies to the **board** skill only. The loop is always copied: a symlinked
 execution body would put the checkout back into the load path of the very thing the split
@@ -444,8 +446,8 @@ rm -rf ~/.claude/skills/meerkat-taskpanel ~/.claude/skills/meerkat-loop \
 # 1. skill
 bash install.sh --target openclaw --link --force
 
-# 2. bundle — OpenClaw consumes the Claude-format bundle
-openclaw plugins install "$PWD/plugins/claude" --force --accept-capabilities
+# 2. bundle — OpenClaw consumes the Claude-format bundle at the repository root
+openclaw plugins install "$PWD" --force --accept-capabilities
 
 # verify
 openclaw plugins inspect meerkat-taskpanel
@@ -474,7 +476,7 @@ Bundle capabilities: skills
 > **skill-only** pack therefore installs through the supported bundle route above (or,
 > equivalently, by placing the skill in `~/.openclaw/skills/`). OpenClaw's detector still
 > classifies `plugins/openclaw` as a native plugin, which is why its profile asserts that
-> and the bundle assertions run against `plugins/claude`.
+> and the bundle assertions run against the repository root instead.
 
 Uninstall:
 
@@ -668,5 +670,5 @@ Nothing is written outside those directories, and nothing is sent over the netwo
 - **`plugins/*/skills` out of date** — those copies are generated. Run
   `node scripts/sync-skills.mjs`; `npm run check:skills` fails CI on drift.
 - **OpenClaw does not list the plugin** — install the bundle
-  (`openclaw plugins install "$PWD/plugins/claude" ...`), not `plugins/openclaw`; see the
+  (`openclaw plugins install "$PWD" ...`), not `plugins/openclaw`; see the
   native-vs-bundle note above.

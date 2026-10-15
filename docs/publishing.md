@@ -15,16 +15,18 @@ Two components are shipped and they version **independently** (ruling O4): the *
 the **loop**. Each component's manifests must agree with each other; the two components are
 not compared with one another.
 
-**Board** — six files, root `package.json` canonical:
+**Board** — five files, root `package.json` canonical:
 
 | # | File | Field |
 |---|---|---|
 | 1 | `package.json` | `version` |
-| 2 | `plugins/pi/package.json` | `version` |
-| 3 | `plugins/claude/.claude-plugin/plugin.json` | `version` |
-| 4 | `plugins/codex/.codex-plugin/plugin.json` | `version` |
-| 5 | `plugins/openclaw/openclaw.plugin.json` | `version` |
-| 6 | `.claude-plugin/marketplace.json` | `metadata.version` |
+| 2 | `.claude-plugin/plugin.json` | `version` |
+| 3 | `plugins/pi/package.json` | `version` |
+| 4 | `plugins/openclaw/openclaw.plugin.json` | `version` |
+| 5 | `.claude-plugin/marketplace.json` | `metadata.version` |
+
+Codex is not a carrier: it installs the same `.claude-plugin/plugin.json` bundle through the
+repository-root marketplace, so a row for it would only restate the one above.
 
 **Loop** — two files, its own plugin manifest canonical:
 
@@ -268,12 +270,12 @@ git merge-base --is-ancestor "$(git rev-parse v1.2.3^{commit})" origin/main \
 
 | Plugin | Source | Carries |
 |---|---|---|
-| `meerkat-taskpanel` | `./plugins/claude` | the board skill |
+| `meerkat-taskpanel` | `./` | the board skill, and the loop alongside it |
 | `meerkat-loop` | `./plugins/loop` | the loop skill, and nothing else |
 
-They are separate entries on purpose: a single source directory carrying both skills could
-not be installed for the loop alone, and the loop is installed for `claude` / `codex` / `pi`
-only — never for OpenClaw, which runs the openclaw-team framework's own supervisor instead.
+They are separate entries on purpose: a source directory carrying both skills could not be
+installed for the loop alone, and the loop is never installed for OpenClaw, which runs the
+openclaw-team framework's own supervisor instead.
 
 ```bash
 # consumer: register this repository as the marketplace, then install what you need
@@ -301,11 +303,11 @@ OpenClaw has two routes, and they are not interchangeable:
   and an entry point that imports the OpenClaw plugin SDK. That SDK is a real runtime
   dependency this zero-dependency project deliberately does not take, so `plugins/openclaw`
   is a manifest only — OpenClaw's detector still classifies it as native, which is why the
-  repository verifies the *bundle* contract against `plugins/claude` instead.
+  repository verifies the *bundle* contract against the repository root instead.
 - **Bundle (the supported skill-only route)** — OpenClaw consumes the Claude-format bundle:
 
 ```bash
-openclaw plugins install <path>/plugins/claude --force --accept-capabilities
+openclaw plugins install <path> --force --accept-capabilities
 openclaw plugins inspect meerkat-taskpanel    # Format: bundle / Bundle format: claude / skills
 ```
 
@@ -315,8 +317,9 @@ does) is enough for the skill to be found.
 ## 6. Codex
 
 Codex reads the same repository-root marketplace manifest as Claude
-(`.claude-plugin/marketplace.json`) and the `plugins/codex/.codex-plugin/plugin.json`
-bundle.
+(`.claude-plugin/marketplace.json`), and installs the same `./` bundle. It ships no manifest
+of its own — which is why it appears in neither the version-carrier table nor
+`plugins/`.
 
 ```bash
 codex plugin marketplace add <path-or-git-url>
@@ -343,13 +346,18 @@ pi list
 
 ## 8. Skill wrappers ship with the bundle
 
-Every host bundle carries its own generated `skills/` copy (see
+Every manifest points at the repository's one `skills/` tree, so the npm whitelist ships the
+skills directly and only OpenClaw and the loop's own marketplace bundle still carry a
+generated copy (see
 [development.md](development.md#the-skill-is-generated-never-hand-edited)). A publish is
-only correct if `node scripts/sync-skills.mjs --check` is green — for each skill, the
-generated copies and the source under `skills/<skill>/` must be identical, and the loop
-skill's generated payload must match the repository modules it is generated from. Both
-skills are in the npm whitelist, so the tarball ships the source skills *and* the per-host
-copies.
+only correct if `node scripts/sync-skills.mjs --check` is green — the generated copies and
+the source under `skills/<skill>/` must be identical, and the loop skill's generated payload
+must match the repository modules it is generated from.
+
+The `files` whitelist must also name each dot-directory the plugins live in
+(`.claude-plugin`, and later `.cursor-plugin` / `.opencode` / `.pi`): npm does not include
+dot files by default, so a manifest that is not listed never reaches the tarball, and
+`node scripts/release/pack-manifest.mjs` fails the release on it.
 
 ## See also
 

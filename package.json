@@ -20,6 +20,7 @@
     "src",
     "skills",
     "plugins",
+    ".claude-plugin",
     "scripts",
     "docs",
     "install.sh",

@@ -66,17 +66,23 @@ export const CLAUDE_DEFAULT_ROOTS = [
  * @type {Record<string, {dir: string, manifest: string, openclawKind: string, openclawFormat: string}>}
  */
 export const HOST_BUNDLES = {
+  // The repository root IS the board's plugin root. `.claude-plugin/plugin.json` is the
+  // board manifest and the root marketplace resolves `meerkat-taskpanel` to `./`, so
+  // Claude Code and Codex install the very same bundle. Codex ships no marker of its
+  // own, which is why its row names the Claude manifest — and why, once a second marker
+  // lands at the root, `openclawFormat` follows the detector's precedence for BOTH rows
+  // rather than either host's own idea of itself.
   claude: {
-    dir: "plugins/claude",
+    dir: ".",
     manifest: CLAUDE_MANIFEST,
     openclawKind: "bundle",
     openclawFormat: "claude",
   },
   codex: {
-    dir: "plugins/codex",
-    manifest: CODEX_MANIFEST,
+    dir: ".",
+    manifest: CLAUDE_MANIFEST,
     openclawKind: "bundle",
-    openclawFormat: "codex",
+    openclawFormat: "claude",
   },
   openclaw: {
     dir: "plugins/openclaw",
