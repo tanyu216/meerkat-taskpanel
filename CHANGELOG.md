@@ -451,6 +451,35 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Every entry-point guard compares canonical paths, so a symlinked path can no longer turn a
+  CLI into a silent no-op.** The idiom that decides "run `main()` when executed, stay inert when
+  imported" compared `import.meta.url` against `pathToFileURL(process.argv[1]).href` — and Node
+  resolves the first through `realpath` while leaving the second exactly as the caller spelled
+  it, so **any symlinked ancestor** made the guard false. Nothing ran, nothing was written, and
+  the process still exited **0**: a no-op reported as success. Not theoretical — `script_dir()`
+  in `_common.sh` prints the logical path, macOS's `/tmp` is itself a symlink to `/private/tmp`,
+  and a host whose home directory is mounted elsewhere commonly has a symlinked `$HOME`. Two
+  consequences were live. A `scripts/verify/*` checker reached through a symlink **reported
+  success without looking at anything** (`verify:migrate:container`'s `scripts/migrate/drill.mjs`
+  and `docker/migrate-in-container.sh`'s `reconcile.mjs` among them), and `wake-cwd.mjs` printed
+  an empty directory that the wake glue accepted as resolved, so a woken worker ran in the wrong
+  checkout. The fix is one shared `src/shared/entry-guard.mjs` (`canonicalPath` +
+  `isEntryPoint`), generalising what `scripts/install/lib/{unit-path,apply,supervisor,taskd-guard}.mjs`
+  had each already discovered privately, applied across all 23 in-tree entry points; the four
+  that cannot share it carry a private copy instead, for three reasons: the board skill's
+  `report.mjs` and the loop skill's `board-check.mjs` ship on their own (an import reaching back
+  out of their directory would dangle once copied), `web/scripts/dom-smoke.mjs` lives in a
+  separate workspace with its own lockfile, and `scripts/security/scan-gate.mjs` must import
+  **Node builtins only** — a security gate cannot depend on the code it exists to clear.
+  `test/install/apply-guard.test.mjs` gains
+  a table that runs six entry points twice, canonically and through a symlinked ancestor, and
+  requires identical status, stdout and stderr, plus a source scan that fails on any
+  reintroduction of the three fragile shapes. `host-runtime.mjs` goes from **22/31 to 31/31** on
+  macOS; its own "ran in the mapped directory" assertion had the same defect and now compares
+  canonically. One behaviour change to note on an affected host: code that had been silently
+  inert starts actually running — above all the loop supervisor, which cron / launchd start by
+  absolute path and which would previously have exited 0 having scanned nothing.
+
 - **The combobox popup stopped collapsing to its content width — fixed once, for both places
   the control appears.** `.td-combo-menu`'s box was **110.19px** wide in the drawer where the
   prototype draws **383px**, and its rows were 27.5px where the prototype's are 28; the create

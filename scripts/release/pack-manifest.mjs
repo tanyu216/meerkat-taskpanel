@@ -23,9 +23,9 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { pathToFileURL } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { parseArgs } from "node:util";
+import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
 
 /** Files a publishable tarball must contain. */
 export const REQUIRED = Object.freeze([
@@ -244,8 +244,6 @@ function readEntryBody(buffer, wanted) {
   throw new Error(`${wanted} not found in tarball`);
 }
 
-const invokedDirectly =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (invokedDirectly) {
+if (isEntryPoint(import.meta.url)) {
   process.exit(await main(process.argv.slice(2)));
 }

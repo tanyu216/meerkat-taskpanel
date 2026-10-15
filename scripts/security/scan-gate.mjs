@@ -26,8 +26,10 @@
  *        --waivers scripts/security/waivers.json --summary "$GITHUB_STEP_SUMMARY"
  */
 
+import { realpathSync } from "node:fs";
 import { appendFile, readFile } from "node:fs/promises";
-import { pathToFileURL } from "node:url";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 /** An advisory at or above this CVSS base score blocks. */
@@ -1011,9 +1013,25 @@ async function main(argv) {
   return decision.exitCode;
 }
 
+// A private copy of `src/shared/entry-guard.mjs`. This file must import **Node builtins only** —
+// see the "keeps the gate free of third-party imports" case in `workflow.test.mjs`, because a
+// security gate that depends on repository code cannot be trusted to run before that code has
+// been cleared. Node resolves `import.meta.url` through `realpath` but leaves `process.argv[1]`
+// as spelled, so both sides must be canonicalised — otherwise the guard is silently false and
+// the gate exits 0 having scanned nothing.
+function canonicalPath(path) {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
 // Guarded so the module can be imported by the test suite without side effects.
 const invokedDirectly =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+  process.argv[1] !== undefined &&
+  canonicalPath(process.argv[1]) === canonicalPath(fileURLToPath(import.meta.url));
+
 if (invokedDirectly) {
   process.exit(await main(process.argv.slice(2)));
 }

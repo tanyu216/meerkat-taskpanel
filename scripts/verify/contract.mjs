@@ -61,7 +61,7 @@
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { OUT_OF_ROUTER_ENDPOINTS, registerApiRoutes } from "../../src/server/index.mjs";
@@ -79,6 +79,7 @@ import {
   sessionToWire,
   taskToWire,
 } from "../../src/shared/wire.mjs";
+import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
 
 /** Repository root, resolved from this file (`scripts/verify/`). */
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -766,8 +767,6 @@ async function main(argv) {
 }
 
 // Guarded so the module can be imported by the test suite without side effects.
-const invokedDirectly =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (invokedDirectly) {
+if (isEntryPoint(import.meta.url)) {
   process.exit(await main(process.argv.slice(2)));
 }

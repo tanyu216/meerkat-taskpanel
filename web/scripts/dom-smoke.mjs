@@ -24,11 +24,11 @@
 
 import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, normalize, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 import { BROWSER_LAYER_RULES, IMPLEMENTED_CONTRACT_ITEMS } from "../../test/web/blocks.contract.mjs";
 
@@ -4673,7 +4673,21 @@ export async function run() {
    fixture server, the Playwright resolver and the in-page rule evaluator from
    here rather than growing a second copy of each. Only run the smoke when this
    file *is* the process entry point. */
-const isEntryPoint = process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
+/* A private copy of `src/shared/entry-guard.mjs` — `web/` is a workspace of its own with its own
+   lockfile, so it does not reach into `src/shared/`. Node resolves `import.meta.url` through
+   `realpath` while leaving `process.argv[1]` as spelled, so both sides must be canonicalised:
+   otherwise the guard is silently false and this harness exits 0 having measured nothing. */
+function canonicalPath(path) {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
+const isEntryPoint =
+  process.argv[1] !== undefined &&
+  canonicalPath(process.argv[1]) === canonicalPath(fileURLToPath(import.meta.url));
 
 if (isEntryPoint) run().then(
   (report) => {

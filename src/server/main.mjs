@@ -22,11 +22,10 @@
  * Started like any other module: `node src/server/main.mjs`.
  */
 
-import { pathToFileURL } from "node:url";
-
 import { acquireWriterLock, removeRuntimePointer, resolveDataDir, writeRuntimePointer } from "../core/index.mjs";
 import { DEFAULT_HOST, DEFAULT_PORT, HOST_ENV, PORT_ENV, VERSION } from "../shared/constants.mjs";
 import { createTaskd } from "./index.mjs";
+import { isEntryPoint } from "../shared/entry-guard.mjs";
 
 /**
  * `TASKD_PORT` may be 0 (ephemeral) — do not treat it as "unset".
@@ -158,8 +157,7 @@ export function createShutdown(input) {
 
 // Only run when executed directly — importing this module (tests, tooling) must
 // not bind a port.
-const invoked = process.argv[1] === undefined ? null : pathToFileURL(process.argv[1]).href;
-if (invoked !== null && invoked === import.meta.url) {
+if (isEntryPoint(import.meta.url)) {
   main().catch((err) => {
     process.stderr.write(`taskd: ${err?.stack ?? err}\n`);
     process.exit(1);

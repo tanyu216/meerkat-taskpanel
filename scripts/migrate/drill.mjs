@@ -26,6 +26,7 @@ import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { buildArgs, imageTag } from "../verify/lib/docker-plan.mjs";
+import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
 
 const USAGE = `Usage: node scripts/migrate/drill.mjs [options]
 
@@ -169,7 +170,7 @@ export function main(argv) {
   return result.status ?? 1;
 }
 
-if (process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1]}`) {
+if (isEntryPoint(import.meta.url)) {
   process.exitCode = main(process.argv.slice(2));
 }
 
