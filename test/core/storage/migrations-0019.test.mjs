@@ -197,8 +197,8 @@ describe("storage/migrations — 0019 merges the two dictionary tables into `act
       ];
       assert.deepEqual(
         Object.keys(triggersAfter).filter((name) => !(name in triggersBefore)).sort(),
-        ["tr_dict_actors_delete", "tr_rev_actors_del", "tr_rev_actors_ins", "tr_rev_actors_upd"],
-        "0019 adds one delete guard and three revision triggers on `actors`",
+        ["tr_dict_actors_delete", "tr_rel_block_chain", "tr_rel_parent_block_pair", "tr_rev_actors_del", "tr_rev_actors_ins", "tr_rev_actors_upd"],
+        "0019 adds one delete guard and three revision triggers on `actors`; 0021/0022 add the two relation guards",
       );
       assert.deepEqual(
         Object.keys(triggersBefore).filter((name) => !(name in triggersAfter)).sort(),
