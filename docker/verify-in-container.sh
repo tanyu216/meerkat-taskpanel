@@ -23,6 +23,16 @@ step() {
   echo "== $* =="
 }
 
+# The frontend coverage verdict, *before* the suite that depends on it. `node --test` holds
+# two legs behind `web/dist` (`blocks.bundle`, `blocks.dom`) and reports `fail 0` when they
+# skip — so a webbuild stage that silently emitted an empty `web/dist` would show up only as
+# two quiet skips. The image's `webbuild` stage builds `web/dist` itself, so here the bundle
+# leg is *required* to be covered, and this step fails closed (exit 3) if it is not. The DOM
+# leg is structurally uncovered in the image — no Chromium, the documented §9.1 exception —
+# and the step prints that rather than letting it pass as coverage.
+step "frontend coverage (web/dist built by the webbuild stage; bundle leg required)"
+node scripts/verify/web-dist.mjs --require=bundle
+
 step "node --test"
 node --test
 

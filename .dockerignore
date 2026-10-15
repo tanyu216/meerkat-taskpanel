@@ -11,6 +11,14 @@ node_modules
 dist
 *.tgz
 
+# the frontend's build product — `dist` above does NOT cover it (a bare name matches at the
+# context root, not at `web/dist`). Kept out of the image so the `webbuild` stage's own
+# `vite build` is the *only* thing that writes `/app/web/dist`: a directory COPY merges, so
+# a host-built `web/dist` would otherwise land beside the fresh one — with its own hashed
+# chunk names, which an `emptyOutDir` in the build stage cannot remove. That mixture is what
+# makes a stale local build poison an otherwise clean image (docker/Dockerfile).
+web/dist
+
 # runtime state — bind-mounted at run time via docker-compose.yml, never baked in
 .data
 
