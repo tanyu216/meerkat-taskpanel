@@ -217,7 +217,13 @@ Three operator-facing consequences:
   the writing one. And if the fallback file turns out to be a fossil (a board
   killed before it could remove it), the slot's board is believed *when it
   answers* before anything is spawned, so the lazy start cannot take a live
-  board's address away from it.
+  board's address away from it. The other half of that guarantee is on the
+  **starting** side: autostart hands the machine-wide slot to the daemon it
+  spawns only when the *caller* named a pointer, and with no name the child
+  addresses itself beside its own data directory while the parent waits at
+  **both** files, believing only one that carries the pid it just started —
+  so starting a board cannot overwrite the slot a live board is sitting in
+  either, however unhealthy that board looks.
 
 If you see `BOARD_ALREADY_RUNNING` and believe no board is running, stop the
 named pid first; if that process is gone, the stale lock is removed

@@ -18,12 +18,18 @@ round — each is the single written source of truth for one interface question,
 an implementation card can build it and an independent verification card can check it.
 They are `contracts/project-prefix-binding.md` (the create-project prefix field and the
 card-number prefix), `contracts/assignee-weight-order.md` (the assignee task weight
-order: factors, weights, composite, tie-break, view interactions) and
+order: factors, weights, composite, tie-break, view interactions),
+`contracts/naming-boundary.md` (which framework words — `task-interface`,
+`openclaw-team`, `PROTOCOL`, `task-ops` — may appear in this repository, in what
+role, and which must not) and
 `contracts/side-rail-short-code.md` (the rail's project short code: it is the project's
 **effective prefix** — the same value the card numbers carry — and it decides the
 read-only `prefix` field the projects wire hands the sidebar) and
 `contracts/rail-chip-overflow.md` (how the sidebar rail's project chip behaves when the
-effective prefix does not fit its 24×24 box).
+effective prefix does not fit its 24×24 box) and `contracts/detail-drawer-editing.md` (the
+detail drawer's three editing seats, whose semantics the server owns rather than the
+prototype: which side of a `blocks` edge the `depends_on` chips show, what removing an
+attachment removes, and the declared deviation in the size text).
 
 ## Status
 

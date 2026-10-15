@@ -387,6 +387,22 @@ Append-only: there is no edit and no delete, by design.
 | `relation remove <ref> <relation-id>` | Remove it. |
 | `relation list <ref>` | Edges, children, ancestors, blockers. |
 
+### `attachment`
+
+| Command | Purpose |
+|---|---|
+| `attachment add <ref> --file <path> [--name <filename>] [--content-type <type>]` | Upload a file: the metadata row first, then the bytes. |
+| `attachment list <ref>` | A card's files — `id`, `filename`, `size`, `type`. Empty reads `no attachments`, not an error. |
+| `attachment remove <attachment-id>` | Remove a file **for good**: the row and the bytes together. |
+
+`add` reads the file from **your** disk (`CLI_IO` when it cannot), and refuses one
+over 8 MiB (`ATTACHMENT_TOO_LARGE`) before it opens a socket. The stored name
+defaults to the file's basename and the type to what the extension names; both are
+overridable, and a type outside the board's closed set is refused on both sides.
+**Download has no command** — the bytes are a plain `GET` of the content URL. The
+whole story, including the limits, is under
+[attachments](#attachments--two-requests-and-a-hard-delete).
+
 ### `session`
 
 | Command | Purpose |
@@ -452,29 +468,29 @@ just did.
 A card's detail view offers five edits — `status`, `priority`, the markdown
 `description`, attachments (download / upload / remove) and `depends_on`
 (add / remove). They do **not** share one shape: two are a single flag, one is a
-**move**, one is an indirection through relations, and one has **no `taskctl`
-command at all**.
+**move**, one is a **two-request upload**, and one is an indirection through
+relations.
 
 The two columns below are kept apart on purpose, because they answer different
 questions. **Board (HTTP API)** is what the service can do; **`taskctl`** is what
-a caller can actually type. A capability can exist on the API and still be out of
-reach from the CLI — the attachments row is that case, and it is the one to read
-carefully.
+a caller can actually type. All five are reachable from the CLI now — the one
+place it is still the narrower client is the attachments row, and it is the row to
+read carefully: the writes have commands, the **download** does not.
 
 | Capability | Board (HTTP API) | `taskctl` |
 |---|---|---|
 | **`status`** | **supported** — but the write path is a **move**: `PATCH {status}` is refused (`INVALID_TRANSITION`, "status is not a patchable field — use move or deliver") | **supported** — `issue move <ref> <status>`; `issue update` has no `--status` |
 | **`priority`** | **supported** — `PATCH /api/v1/tasks/:ref {"priority": …}` | **supported** — `issue update <ref> --priority <p>` |
 | **`description`** (markdown) | **supported** — `PATCH {"description": …}`, stored as opaque text | **supported** — `issue update <ref> --description <md>` |
-| **attachments** | **half** — the bytes of a row that already exists can be read and replaced; there is **no** create / list / delete face | **not supported** — no group, no flag |
+| **attachments** | **supported** — a row (`POST`/`GET /api/v1/tasks/:ref/attachments`, `DELETE /api/v1/attachments/:id`) beside the bytes (`GET`/`PUT /api/v1/attachments/:id/content`) | **half** — `attachment add` / `list` / `remove`; **download** has no command (read the content URL over HTTP) |
 | **`depends_on`** | **half** — carried by a `blocks` relation; the task object has no such field | **half** — `relation add` / `remove` / `list`, with the direction reversed |
 
 **The board's web drawer is a second client of the same API.** It can do nothing
 the API does not offer, and it inherits the API's refusals — which is why the
-`status` row reads the same for both. So a file listed in the drawer's attachment
-area says nothing about the CLI: that area reads a `task.meta` convention (see
-[attachments](#attachments--no-command-and-half-an-api) below), and a convention
-is not a write path.
+`status` row reads the same for both. Its attachment area lists the **same
+`attachments` table** that `attachment list` reads (see
+[attachments](#attachments--two-requests-and-a-hard-delete) below) — one source of
+truth, so the drawer and the CLI cannot disagree about what a card carries.
 
 ### `status` — a move, never a patch
 
@@ -553,57 +569,70 @@ the same write by another door:
 - `issue update --description` sends exactly `PATCH /api/v1/tasks/:ref`, which is
   the HTTP form of the same write.
 
-### attachments — no command, and half an API
-
-**`taskctl` has no attachment surface at all.** There is no group for it, and a
-call fails as an unknown command rather than as a missing feature:
-
-```console
-$ taskctl attachments --help
-CLI_USAGE: unknown command "attachments"
-fix: run `taskctl --help` for the list of commands
-$ echo $?
-2
-```
-
-The registry has eleven groups (`taskctl --help`), none of them attachments — and
-no flag on any other group reaches one either.
-
-**The API has the bytes and nothing else.** Two endpoints exist —
-`GET` and `PUT /api/v1/attachments/:id/content` — and both address an attachment
-by an id that must **already be a row** in the `attachments` table. Nothing
-creates that row (`POST /api/v1/attachments` is `404 no route`), nothing lists a
-card's attachments (`GET /api/v1/attachments` is `404 no route`), and nothing
-deletes one. A `PUT` against an unknown id is a `404`, not a create — so the bytes
-cannot be uploaded before the row exists, and nothing creates the row.
-
-**Consequence: an agent cannot add, list or remove an attachment today.** What
-exists is the storage — the `attachments` row (`filename`, `content_type`,
-`size`, `kind` ∈ `inline`|`attachment`, an optional `comment_id`) and the bytes at
-`<dataDir>/attachments/<id>` — with no write path from either client.
-
-**What to do instead: put the pointer on the card, not the file.**
+### attachments — two requests, and a hard delete
 
 ```bash
-taskctl issue update PROJ-0007 --description "Design doc: ~/docs/drawer.md (v3)"
-taskctl comment add PROJ-0007 --kind note --body "Screenshot: https://…/shot.png"
+taskctl attachment add PROJ-0007 --file ./shot.png       # name and type from the file
+taskctl attachment add PROJ-0007 --file ./notes --name notes.txt --content-type text/plain
+taskctl attachment list PROJ-0007
+taskctl attachment remove 3f1c9a2e-…                     # the id `list` prints
+curl -sO http://127.0.0.1:7788/api/v1/attachments/3f1c9a2e-…/content   # download: API only
 ```
 
-`--meta <key>=<value>` is available too, and its one trap is worth stating
-plainly: the value is always a **string**. `--meta attachments=[{"filename":"a.png"}]`
-saves that literal text, not an array — and the board's own attachment list does
-not read that key anyway. `--meta` is a place to record something *you* will
-parse, not a second channel into the attachment table.
+**Upload is two requests, deliberately.** `attachment add` first mints the
+metadata row (`POST /api/v1/tasks/:ref/attachments`, which returns the id and an
+`upload_url`) and then stores the bytes (`PUT /api/v1/attachments/:id/content` —
+the one request on this board that is not JSON). A one-shot route would need a
+body that is both JSON and bytes; the seam is instead **named**: a row whose `PUT`
+never arrives holds no bytes and answers an honest `404` on download — its `size`
+is whatever the create declared (`0` for a caller that declared none) — so nothing
+is invented. `attachment add` does both halves in one command and a caller never
+sees the seam; the board's own drawer rolls the row back when the second half
+fails.
 
-**Limits any write path must respect**, so that a client can be built against
-them now: a single request body is capped at **8 MiB** (`ATTACHMENT_MAX_BYTES`;
-over it, `413`), which is a *different* cap from the 1 MiB JSON routes; an
-attachment id must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`, and anything else
-is refused before it can become a second path segment; `content_type` is **not**
-allow-listed and is echoed back verbatim on download, so never serve an untrusted
-type as `inline`; and a row with no stored bytes is a truthful `404`, not an
-error. `/meta.capabilities` carries no attachment key, so a client cannot
-feature-detect the face either.
+**Removal is a hard delete, and it is one act.** `attachment remove` deletes the
+row **and** the bytes, in a single transaction that holds the write lock — so
+every way the removal can be refused leaves the board as it was. An attachment is
+**not recoverable** and re-uploading is the whole recovery story; the ruling is
+recorded where it is implemented (`src/server/routes/attachments.mjs`). The
+argument you pass is the attachment's **id**, not the card reference, because one
+card can carry several files.
+
+**Download is where the CLI stops.** There is no `attachment download`: the bytes
+are a `GET` of the content URL, and every response is a download, never a document
+the board's origin renders — `content-disposition: attachment` plus
+`x-content-type-options: nosniff` and `cache-control: no-store` (so a removed
+attachment cannot survive in the client's cache) carry that boundary. A row with
+no stored bytes is a truthful `404`, not an error.
+
+**The write limits, shared rather than restated.** `src/shared/attachments.mjs`
+is the one place they are decided, and both the CLI and the board call it, so the
+CLI cannot drift from the board it uploads to:
+
+- a single request body is capped at **8 MiB** (`ATTACHMENT_MAX_BYTES`; over it,
+  `413` `ATTACHMENT_TOO_LARGE`) — a *different* cap from the 1 MiB JSON routes.
+  The CLI checks it before it opens a socket, and the board refuses an oversized
+  raw body on its own side;
+- `content_type` is a **closed set** (`ATTACHMENT_CONTENT_TYPES` — the text, JSON,
+  PDF, archive, image and office types). A type outside it is refused with `422`
+  `ATTACHMENT_TYPE_UNSUPPORTED` on **both** sides. An extension is only a
+  *suggestion* of a type: one the board cannot name becomes
+  `application/octet-stream` ("we do not know what this is"), which is always
+  allowed and is still served as an inert download;
+- an attachment id must match `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`, and anything
+  else is refused before it can become a second path segment;
+- `/meta.capabilities.attachments` is `true`, so a client feature-detects this
+  surface instead of probing for a `404`.
+
+On the wire an attachment is
+`{ id, task_id, comment_id, filename, content_type, size, kind, created_at }`.
+`kind` is always `attachment` on this surface: the board serves every file as a
+download, so no route accepts — or has a use for — `inline`.
+
+**`--meta` is still not a channel into this table.** `--meta <key>=<value>` stores
+a **string**: `--meta attachments=[{"filename":"a.png"}]` saves that literal text,
+not an array, and nothing on the board reads the key. It is a place to record
+something *you* will parse — the file itself has a real write path now, so use it.
 
 ### `depends_on` — a `blocks` edge, written the other way round
 
@@ -655,12 +684,36 @@ to read `blocked_by[]`, and `DELETE /api/v1/tasks/<card>/relations/<relationId>`
 to remove; each relation on the wire carries
 `{ id, type, source, target, origin, created_at }`.
 
-Guards, and which of them apply to which type: a task may not be related to
-itself (`SELF_REFERENCE`), and the same `(type, source, target)` triple cannot be
-inserted twice (`ux_relations_triple`). `parent` carries more than `blocks` does —
-only an `epic` may be a parent, and a parent edge that would close a cycle is
-refused (`RELATION_CYCLE`); `--force` skips the app-layer parent checks, never the
-database's.
+Guards, and which of them apply to which type: two are the same for every type —
+a task may not be related to itself (`SELF_REFERENCE`), and the same
+`(type, source, target)` triple cannot be inserted twice (`ux_relations_triple`).
+`parent` carries two more: only an `epic` may be a parent, and a parent edge that
+would close a cycle is refused (`RELATION_CYCLE`).
+
+`blocks` is not the unguarded one. It has two refusals of its own, and both rest
+on the same fact — the poll never offers a card whose blockers are unfinished, so
+an edge that leaves a card waiting on something that can never finish parks it for
+good:
+
+- **a loop in the dependency graph.** Before migration `0017_block_cycle.sql`,
+  `a blocks b` plus `b blocks a` went in, and every card in that loop became
+  permanently unclaimable; now the edge is refused with the same `RELATION_CYCLE`
+  the parent direction raises;
+- **a card and its own ancestor or descendant**, in either direction: `D
+  depends_on E` where `E` is `D`'s parent, and `E depends_on D` where `D` is `E`'s
+  child, both refuse — "an ancestor and a descendant cannot depend on each other"
+  (`0021_block_chain.sql`). **Siblings are not on one chain**: two children of one
+  epic depend on each other all the time, and stay legal. The rule holds whichever
+  order the two edges arrive in: it is re-checked at the **parent** insertion point
+  as well (`0022_block_pair_on_parent.sql`), so a `blocks` edge that lands *before*
+  the parent link — the order an `md` import writes in — is refused just the same.
+
+Both live in the database first (`tr_rel_block_cycle` and `tr_rel_block_chain`,
+`src/core/storage/migrations/0017_block_cycle.sql` / `0021_block_chain.sql`; the
+pair guard adds `tr_rel_parent_block_pair`, `0022_block_pair_on_parent.sql`).
+
+`--force` skips the app-layer checks of either type, never the database's: the
+trigger is the invariant, the service layer only phrases the refusal first.
 
 ## `--json`
 
