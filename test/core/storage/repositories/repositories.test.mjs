@@ -20,6 +20,7 @@ import {
   TS2,
   cleanupTempDirs,
   countRows,
+  ensureActor,
   revision,
   withBoard,
 } from "../../../helpers/sqlite-fixture.mjs";
@@ -195,7 +196,10 @@ describe("repositories/tasks", () => {
   });
 
   it("claims with a CAS and reports the loss rather than throwing", async () => {
-    await board(({ repos }) => {
+    await board(({ db, repos }) => {
+      // `claimed_by` is a reference since 0020 — the actor names here must exist.
+      ensureActor(db, "linus");
+      ensureActor(db, "elon");
       const task = makeTask(repos);
       const first = repos.tasks.claimCas({ id: task.id, ifVersion: 1, actor: "linus", now: TS2 });
       assert.equal(first.claimed, true);
@@ -243,6 +247,8 @@ describe("repositories/tasks", () => {
 
   it("takes over a stale claim and pulses a heartbeat only for the holder", async () => {
     await board(({ db, repos }) => {
+      ensureActor(db, "linus");
+      ensureActor(db, "elon");
       const task = makeTask(repos);
       // The claim's heartbeat has to be genuinely stale for a steal to be
       // allowed at all (R3): the repository refuses to take a claim whose
@@ -285,7 +291,8 @@ describe("repositories/tasks", () => {
   });
 
   it("points report_latest_id at a report and refuses one from another task", async () => {
-    await board(({ repos }) => {
+    await board(({ db, repos }) => {
+      ensureActor(db, "linus");
       const task = makeTask(repos);
       const other = makeTask(repos, { id: "other" });
       const report = repos.reports.insert(prepared(task.id, task.deliveryRound));
@@ -395,7 +402,8 @@ describe("repositories/relations", () => {
 
 describe("repositories/comments", () => {
   it("appends, reads and finds by import sequence", async () => {
-    await board(({ repos }) => {
+    await board(({ db, repos }) => {
+      ensureActor(db, "linus");
       const task = makeTask(repos);
       const comment = repos.comments.append(
         normalizeCommentCreate(
@@ -427,7 +435,9 @@ describe("repositories/comments", () => {
   });
 
   it("finds the human decisions on a task (I5)", async () => {
-    await board(({ repos }) => {
+    await board(({ db, repos }) => {
+      ensureActor(db, "Terry");
+      ensureActor(db, "linus");
       const task = makeTask(repos);
       repos.comments.append(
         normalizeCommentCreate(
@@ -450,7 +460,8 @@ describe("repositories/comments", () => {
 
 describe("repositories/reports", () => {
   it("stores rounds in order and answers the gate's question", async () => {
-    await board(({ repos }) => {
+    await board(({ db, repos }) => {
+      ensureActor(db, "linus");
       const task = makeTask(repos);
       const r1 = repos.reports.insert(prepared(task.id, 1));
       assert.equal(r1.round, 1);
@@ -473,6 +484,7 @@ describe("repositories/reports", () => {
 
   it("keeps history: a second report for the same round is refused", async () => {
     await board(({ db, repos }) => {
+      ensureActor(db, "linus");
       const task = makeTask(repos);
       repos.reports.insert(prepared(task.id, 1));
       assert.throws(() => repos.reports.insert(prepared(task.id, 1)), (err) => {

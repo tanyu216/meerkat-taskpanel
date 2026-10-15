@@ -123,7 +123,7 @@ describe("storage/migrations — 0018 opens the actor-kind columns (comments, ta
       const up = applyMigrations(board.db);
       // 0018 is the last file in the set today; when a later migration lands this
       // list grows by one, as the 0013/0015 suites' equivalents did.
-      assert.deepEqual(up.applied.map((m) => m.version), ["0018", "0019"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0018", "0019", "0020"]);
       assert.deepEqual(up.skipped.slice(-2), ["0016", "0017"]);
 
       // 1 — the enumeration is gone from both tables, and nothing replaced it.
@@ -134,19 +134,22 @@ describe("storage/migrations — 0018 opens the actor-kind columns (comments, ta
       assert.match(commentsSql, /author_kind\s+TEXT NOT NULL/, "only the CHECK goes — NOT NULL is not the enumeration");
       assert.match(reportsSql, /author_kind\s+TEXT NOT NULL/, "only the CHECK goes — NOT NULL is not the enumeration");
 
-      // 2 — the rows the previous build wrote are still there, unchanged. These are
-      // the values the old CHECK accepted, so they must remain legal by construction.
+      // 2 — the rows the previous build wrote are still there. `author_kind` is
+      // untouched; `author_id` is a reference to `actors` since 0020, so it reads
+      // back through the actor row as the same name the row carried.
       assert.equal(board.db.prepare("SELECT COUNT(*) AS n FROM comments").get().n, 2);
       // `node:sqlite` hands back null-prototype rows, which `deepStrictEqual` treats as
       // a different type from an object literal — so the projection is explicit here.
       assert.deepEqual(
         board.db
-          .prepare("SELECT id, author_kind, author_id FROM comments ORDER BY id")
+          .prepare(
+            "SELECT c.id, c.author_kind, a.display_name AS name FROM comments c JOIN actors a ON a.id = c.author_id ORDER BY c.id",
+          )
           .all()
-          .map((r) => ({ id: r.id, author_kind: r.author_kind, author_id: r.author_id })),
+          .map((r) => ({ id: r.id, author_kind: r.author_kind, name: r.name })),
         [
-          { id: "c-1", author_kind: "human", author_id: "terry" },
-          { id: "c-2", author_kind: "system", author_id: "taskd" },
+          { id: "c-1", author_kind: "human", name: "terry" },
+          { id: "c-2", author_kind: "system", name: "taskd" },
         ],
       );
       assert.equal(board.db.prepare("SELECT author_kind FROM task_reports WHERE round = 1").get().author_kind, "agent");
@@ -277,7 +280,7 @@ describe("storage/migrations — 0018 opens the actor-kind columns (comments, ta
       assert.deepEqual(
         changed,
         [...DICTIONARY_TRIGGERS_REMOVED, "tr_rev_tasks_upd"].sort(),
-        "0018 must change no trigger — only 0019's own `tasks` rebuild moves `tr_rev_tasks_upd`",
+        "0018 must change no trigger — only 0019's own `tasks` rebuild moves `tr_rev_tasks_upd`; 0020 re-declares every trigger it parks verbatim",
       );
 
       // The four that a careless rebuild would be most likely to mangle, named so a

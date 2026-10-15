@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import test, { after, describe, it } from "node:test";
 
-import { cleanupTempDirs, dataOf, errorOf, withCli } from "./helpers/cli-harness.mjs";
+import { boardActorName, cleanupTempDirs, dataOf, errorOf, withCli } from "./helpers/cli-harness.mjs";
 
 after(cleanupTempDirs);
 
@@ -30,7 +30,10 @@ describe("cli/comment", () => {
       const filtered = dataOf(run(["comment", "list", "DEMO-0001", "--kind", "note", "--json"]));
       assert.equal(filtered.comments.length, 0);
 
-      assert.match(run(["comment", "list", "DEMO-0001"]).stdout, /decision\s+local \(human\)\s+looks good/);
+      // The rendered table's author column is an actor **id** since 0020; Phase 7
+      // puts the display name back on the wire as an actor ref. Assert the shape
+      // (kind, author kind, body) rather than the id, which is a fresh uuid.
+      assert.match(run(["comment", "list", "DEMO-0001"]).stdout, /decision\s+\S+ \(human\)\s+looks good/);
     });
   });
 
@@ -50,7 +53,7 @@ describe("cli/comment", () => {
       const asAgent = dataOf(
         run(["comment", "add", "DEMO-0001", "--body", "hi", "--agent", "linus", "--json"]),
       );
-      assert.equal(asAgent.comment.author_id, "linus");
+      assert.equal(boardActorName(dataDir, asAgent.comment.author_id), "linus");
     });
   });
 

@@ -9,11 +9,13 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import { closeDatabase, openDatabase } from "../../src/core/storage/driver.mjs";
 import { applyMigrations } from "../../src/core/storage/migrations-runner.mjs";
 import { ensureParentDir } from "../../src/core/storage/paths.mjs";
 import { mapSqliteError } from "../../src/core/storage/sqlite-errors.mjs";
+import { norm } from "../../src/shared/norm.mjs";
 
 /** A fixed, millisecond-width UTC stamp — tests never depend on the wall clock. */
 export const TS = "2026-10-08T00:00:00.000Z";
@@ -113,6 +115,40 @@ export function reasonCode(fn) {
 // Raw row builders (direct SQL on purpose — repositories are under test too)
 // ---------------------------------------------------------------------------
 
+/**
+ * Make sure an `actors` row exists for `value`, and return the id to reference it
+ * by.
+ *
+ * `0020` made `tasks.claimed_by`, `comments.author_id` and
+ * `task_reports.author_id` references to `actors(id)`, so a fixture that writes an
+ * author or a claim must have an actor to point at. The row's **id is the given
+ * value** — a fixture is synthetic, and this keeps a test's author assertion
+ * reading the same string it passed in. A board without `actors` (pre-0019) is
+ * left alone: those columns are free strings there and carry no foreign key.
+ *
+ * @param {any} db
+ * @param {string|null|undefined} value
+ * @param {string} [kind]
+ * @returns {string|null|undefined}
+ */
+export function ensureActor(db, value, kind = "agent") {
+  if (value === null || value === undefined || value === "") return value;
+  const hasActors =
+    db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'actors'").get() !== undefined;
+  if (!hasActors) return value;
+  let key;
+  try {
+    key = norm(String(value));
+  } catch {
+    return value; // a blank value can never be an actor; let the write fail loudly
+  }
+  db.prepare(
+    `INSERT OR IGNORE INTO actors(id, kind, display_name, normalized_name, first_seen_at, last_seen_at, use_count)
+     VALUES (?, ?, ?, ?, ?, ?, 1)`,
+  ).run(String(value), kind, String(value), key, TS, TS);
+  return String(value);
+}
+
 /** @param {any} db */
 export function insertProject(db, overrides = {}) {
   const row = {
@@ -175,9 +211,9 @@ export function insertTask(db, overrides = {}) {
     ["kind", row.kind ?? "task"],
     ["labels", row.labels ?? "[]"],
     ["sort_order", row.sort_order ?? 0],
-    ["assignee_id", row.assignee_id ?? null],
-    ["reporter_id", row.reporter_id ?? null],
-    ["claimed_by", row.claimed_by ?? null],
+    ["assignee_id", ensureActor(db, row.assignee_id ?? null)],
+    ["reporter_id", ensureActor(db, row.reporter_id ?? null)],
+    ["claimed_by", ensureActor(db, row.claimed_by ?? null)],
     ["claimed_at", row.claimed_at ?? null],
     ["heartbeat_at", row.heartbeat_at ?? null],
     ["blocked_at", row.blocked_at ?? null],
@@ -236,7 +272,7 @@ export function insertComment(db, overrides = {}) {
     row.body,
     row.kind,
     row.author_kind,
-    row.author_id,
+    ensureActor(db, row.author_id, row.author_kind),
     row.agent_session ?? null,
     row.refs_json ?? "[]",
     row.source_seq ?? null,
@@ -275,7 +311,7 @@ export function insertReport(db, overrides = {}) {
       row.evidence_json,
       row.leftovers ?? null,
       row.author_kind,
-      row.author_id,
+      ensureActor(db, row.author_id, row.author_kind),
       row.created_at,
     );
   return Number(info.lastInsertRowid);
@@ -284,6 +320,46 @@ export function insertReport(db, overrides = {}) {
 /** Current global revision. @param {any} db */
 export function revision(db) {
   return Number(db.prepare("SELECT revision FROM global_revision WHERE singleton = 1").get().revision);
+}
+
+/**
+ * An actor id → its name, read straight off a board **file**.
+ *
+ * For the wire-level suites (the CLI and the HTTP surface), where `author_id` /
+ * `claimed_by` are actor ids since 0020 and — until Phase 7 puts an actor ref on
+ * the wire — the displayed name lives only in the `actors` table. The board is
+ * opened read-only, so this never runs a migration or takes a write lock on a
+ * board a spawned `taskd` is serving.
+ *
+ * @param {string} dbPath
+ * @param {string|null|undefined} id
+ * @returns {string|null|undefined}
+ */
+export function actorNameOnBoard(dbPath, id) {
+  if (id === null || id === undefined) return id;
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    const row = db.prepare("SELECT display_name FROM actors WHERE id = ?").get(id);
+    return row === undefined ? id : row.display_name;
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * An actor id → the name it carries, so a test can assert "who claimed/wrote
+ * this" without hard-coding the row's uuid. `0020` made the attribution columns
+ * references, so the value a task/comment/report carries is an id; the *name* is
+ * the fact the test means.
+ *
+ * @param {any} db
+ * @param {string|null|undefined} id
+ * @returns {string|null|undefined}
+ */
+export function actorName(db, id) {
+  if (id === null || id === undefined) return id;
+  const row = db.prepare("SELECT display_name FROM actors WHERE id = ?").get(id);
+  return row === undefined ? id : row.display_name;
 }
 
 /** Row count of a table. @param {any} db @param {string} table */

@@ -41,7 +41,7 @@ import { normalizeName } from "../domain/dictionary.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { actorOf } from "./context.mjs";
 import { addComment } from "./comments.mjs";
-import { resolveAssignment } from "./dictionary.mjs";
+import { resolveActorId, resolveAssignment } from "./dictionary.mjs";
 import { resolveLabels } from "./labels.mjs";
 
 /**
@@ -366,8 +366,18 @@ function stealCommentBody(task, verdict, actor, reason) {
 function performClaim(ctx, input) {
   const { current, actor, now, allowSteal, reason, ifVersion } = input;
   const resolveAssignee = resolveAssigneeFor(ctx);
+  // Since `0020` `tasks.claimed_by` holds an actor **id**, not a name. The claim
+  // holder and the actor `--agent`/`$USER` named are the same person only through
+  // the dictionary, so the name is resolved here — once, in the command layer —
+  // and every comparison below (`assertClaimable`'s `holder === actor`, the CAS,
+  // the loss explainer) works on ids. The audit row still records the *name*:
+  // `task_activities.actor_id` is deliberately a free string (0020's boundary).
+  const claimantId = resolveActorId(
+    { repos: ctx.repos, now },
+    { name: actor.id, actorKind: actor.kind },
+  );
   const verdict = assertClaimable(current, {
-    actor: actor.id,
+    actor: claimantId,
     now,
     allowSteal: allowSteal === true,
     resolveAssignee,
@@ -392,17 +402,17 @@ function performClaim(ctx, input) {
     task = ctx.repos.tasks.stealStaleClaim({
       id: current.id,
       ifVersion,
-      actor: actor.id,
+      actor: claimantId,
       now,
       staleBefore: staleBound(now, verdict.steal === true),
     });
   } else {
-    const result = ctx.repos.tasks.claimCas({ id: current.id, ifVersion, actor: actor.id, now });
+    const result = ctx.repos.tasks.claimCas({ id: current.id, ifVersion, actor: claimantId, now });
     if (!result.claimed) {
       throw explainLostClaim({
         before: current,
         after: result.task,
-        actor: actor.id,
+        actor: claimantId,
         now,
         ifVersion,
         allowSteal: allowSteal === true,
@@ -420,7 +430,7 @@ function performClaim(ctx, input) {
     changes: {
       from: current.status,
       to: task.status,
-      ...(verdict.steal === true ? { stoleFrom: verdict.stolenFrom } : {}),
+      ...(verdict.steal === true ? { stoleFrom: readableHolder(ctx, verdict.stolenFrom) } : {}),
       ...(stealReason === null ? {} : { reason: stealReason }),
     },
     createdAt: now,
@@ -432,12 +442,27 @@ function performClaim(ctx, input) {
     addComment(ctx, {
       taskId: task.id,
       kind: "change",
-      body: stealCommentBody(task, verdict, actor, stealReason),
+      body: stealCommentBody(task, { ...verdict, stolenFrom: readableHolder(ctx, verdict.stolenFrom) }, actor, stealReason),
       actor,
     });
   }
 
   return { task, reused: false, stole: verdict.steal === true };
+}
+
+/**
+ * The held-by value a takeover message names, as a person rather than an id.
+ *
+ * `decideClaim` reports the previous holder straight off the row, which since
+ * `0020` is an actor **id**; the audit comment and the activity's `stoleFrom`
+ * should read like a sentence, so it is resolved to the display name. An
+ * `--allow-steal` takeover already reports the assignee's display name (it never
+ * had an id), so the lookup misses and the value passes through unchanged.
+ */
+function readableHolder(ctx, value) {
+  if (value === undefined || value === null) return value;
+  const entry = ctx.repos.dictionary.getById("actor", value);
+  return entry?.displayName ?? value;
 }
 
 /**
@@ -494,7 +519,11 @@ export function heartbeat(ctx, input) {
           details: { taskId: existing.id, status: existing.status },
         });
       }
-      const task = ctx.repos.tasks.setHeartbeat({ id: input.id, actor: actor.id, now });
+      // `claimed_by` is an actor id since 0020, so the holder is matched through
+      // the dictionary: the pulsing actor's name resolves to the same row the
+      // claim wrote (the audit row below keeps the name).
+      const holderId = resolveActorId({ repos: ctx.repos, now }, { name: actor.id, actorKind: actor.kind });
+      const task = ctx.repos.tasks.setHeartbeat({ id: input.id, actor: holderId, now });
       ctx.repos.activities.append({
         taskId: task.id,
         actorKind: actor.kind,
@@ -872,7 +901,7 @@ function orderedCandidates(ctx, input = {}) {
     input.stale === true && ids.length > 0
       ? ctx.repos.tasks
           .list({ status: STATUS.IN_PROGRESS, assigneeId: ids, limit: null })
-          .filter((task) => isAssignee(task) && staleReason(task, assignee, now) !== null)
+          .filter((task) => isAssignee(task) && staleReason(task, ids, now) !== null)
       : [];
 
   // One batched edge read for every pool, not one per card (R16).
@@ -890,7 +919,7 @@ function orderedCandidates(ctx, input = {}) {
     if (blockersOpen(task) === 0) found.push({ task, reason: "unassigned" });
   }
   for (const task of stale) {
-    const reason = staleReason(task, assignee, now);
+    const reason = staleReason(task, ids, now);
     if (reason !== null && blockersOpen(task) === 0) found.push({ task, reason });
   }
 
@@ -952,17 +981,22 @@ function assigneeEntryIds(ctx, assignee) {
  * `>` comparisons. A task with no heartbeat is not surfaced — it is an
  * execution-state anomaly the claim path refuses anyway, not a candidate.
  *
+ * `stale_same` means "the holder is the person who is asking", a comparison that
+ * since `0020` is between actor **ids** (`claimed_by` holds one, and `assigneeIds`
+ * are the ids the asked-for name resolves to — `assigneeEntryIds`). Comparing a
+ * name to the stored value is exactly the bug the FK removed.
+ *
  * @param {object} task
- * @param {string} assignee
+ * @param {string[]} assigneeIds the actor ids the requested assignee resolves to
  * @param {string} now
  * @returns {"stale_same"|"stale_any"|null}
  */
-function staleReason(task, assignee, now) {
+function staleReason(task, assigneeIds, now) {
   if (task.heartbeatAt === null || task.heartbeatAt === undefined || task.heartbeatAt === "") return null;
   const age = new Date(now).getTime() - new Date(task.heartbeatAt).getTime();
   if (!Number.isFinite(age) || age < 0) return null;
   if (age > CLAIM_STALE_ANY_MS) return "stale_any";
-  if (task.claimedBy === assignee && age > CLAIM_STALE_SAME_MS) return "stale_same";
+  if (assigneeIds.includes(task.claimedBy) && age > CLAIM_STALE_SAME_MS) return "stale_same";
   return null;
 }
 

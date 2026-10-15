@@ -19,6 +19,7 @@ import { join } from "node:path";
 import test, { after, before, describe, it } from "node:test";
 
 import { createTaskd } from "../../src/server/index.mjs";
+import { actorNameOnBoard } from "../helpers/sqlite-fixture.mjs";
 
 const tempDirs = [];
 let taskd;
@@ -30,6 +31,15 @@ before(async () => {
   taskd = await createTaskd({ dataDir: dir, host: "127.0.0.1", port: 0, env: {} });
   base = taskd.url;
 });
+
+/**
+ * The wire's `author_id`/`claimed_by` are actor ids since 0020; the name lives in
+ * the board's `actors` table until Phase 7 puts an actor ref on the wire.
+ * @param {string|null|undefined} id
+ */
+function actorName(id) {
+  return actorNameOnBoard(taskd.board.dbPath, id);
+}
 
 after(async () => {
   if (taskd) await taskd.close();
@@ -257,7 +267,7 @@ describe("server/routes — comments, relations, sessions, dictionary, export", 
       ),
     );
     assert.equal(added.comment.author_kind, "agent");
-    assert.equal(added.comment.author_id, "linus");
+    assert.equal(actorName(added.comment.author_id), "linus");
   });
 
   it("adds, lists and removes a relation", async () => {
@@ -545,13 +555,13 @@ describe("server/routes — the edges a happy path never reaches", () => {
       await call("POST", "/api/v1/tasks/DEMO-0001/comments", { body: "x" }, { "x-taskctl-actor": "{not json" }),
     );
     assert.equal(added.comment.author_kind, "human");
-    assert.equal(added.comment.author_id, "local");
+    assert.equal(actorName(added.comment.author_id), "local");
 
     const odd = dataOf(
       await call("POST", "/api/v1/tasks/DEMO-0001/comments", { body: "y" }, { "x-taskctl-actor": JSON.stringify({ kind: "wizard", id: "z" }) }),
     );
     assert.equal(odd.comment.author_kind, "human", "an unknown kind is not trusted");
-    assert.equal(odd.comment.author_id, "z");
+    assert.equal(actorName(odd.comment.author_id), "z");
   });
 
   it("exports without archived rows when asked", async () => {
@@ -752,7 +762,7 @@ describe("server/routes — claim enforces the assignee (T-20261009-230500)", ()
       await call("POST", `/api/v1/tasks/${card.task.identifier}/move`, { to: "in_progress" }, asAgent("linus")),
     );
     assert.equal(moved.task.status, "in_progress");
-    assert.equal(moved.task.claimed_by, "linus");
+    assert.equal(actorName(moved.task.claimed_by), "linus");
   });
 
   it("refuses a different actor with 409 not_assignee", async () => {
@@ -778,7 +788,7 @@ describe("server/routes — claim enforces the assignee (T-20261009-230500)", ()
         asAgent("elon"),
       ),
     );
-    assert.equal(moved.task.claimed_by, "elon");
+    assert.equal(actorName(moved.task.claimed_by), "elon");
 
     const comments = dataOf(await call("GET", `/api/v1/tasks/${card.task.identifier}/comments`));
     assert.equal(comments.comments.length, 1);

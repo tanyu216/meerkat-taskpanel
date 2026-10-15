@@ -33,6 +33,7 @@ import {
   cleanupTempDirs,
   countRows,
   createTempBoard,
+  ensureActor,
   insertProject,
   insertTask,
   makeTempDir,
@@ -95,6 +96,7 @@ const INCOMPLETE = [
 
 /** Raw insert with an explicit `origin`, for the trigger tests. */
 function insertOriginReport(db, { taskId, round = 1, origin }) {
+  ensureActor(db, "linus"); // task_reports.author_id is a reference since 0020
   db.prepare(
     `INSERT INTO task_reports(task_id, round, conclusion, acceptance_json, evidence_json,
                               author_kind, author_id, created_at, origin)
@@ -175,6 +177,7 @@ describe("0008 — import writes origin='import'", () => {
       insertProject(board.db);
       insertTask(board.db, { id: "t-default", identifier: "PROJ-0001", status: "todo" });
       insertTask(board.db, { id: "t-import", identifier: "PROJ-0002", status: "todo" });
+      ensureActor(board.db, "linus"); // task_reports.author_id is a reference since 0020
 
       const base = {
         round: 1,

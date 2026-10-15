@@ -122,7 +122,7 @@ describe("storage/migrations — 0019 merges the two dictionary tables into `act
       const triggersBefore = triggersOf(board.db);
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0019"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0019", "0020"]);
 
       // 1 — the merge itself. Three `terry` rows become one, and the sums hold.
       const merged = board.db.prepare("SELECT * FROM actors ORDER BY normalized_name").all();
@@ -139,10 +139,14 @@ describe("storage/migrations — 0019 merges the two dictionary tables into `act
 
       // 2 — references. The old assignee rows a1/a2 are gone; the cards that
       // pointed at them must now point at the survivor r1 (a cross-table repoint).
-      assert.deepEqual(refs(board.db, "t1"), { id: "t1", assignee_id: "r1", reporter_id: "r1", claimed_by: "linus" });
+      // `claimed_by` was a free string at 0019 and became an actor reference at
+      // 0020, so it reads back through the actor row as the name the card carried.
+      const actorIdByName = (name) =>
+        board.db.prepare("SELECT id FROM actors WHERE normalized_name = ?").get(name).id;
+      assert.deepEqual(refs(board.db, "t1"), { id: "t1", assignee_id: "r1", reporter_id: "r1", claimed_by: actorIdByName("linus") });
       assert.deepEqual(refs(board.db, "t2"), { id: "t2", assignee_id: "r1", reporter_id: "r2", claimed_by: null });
       assert.deepEqual(refs(board.db, "t3"), { id: "t3", assignee_id: "a3", reporter_id: null, claimed_by: null });
-      assert.deepEqual(refs(board.db, "t4"), { id: "t4", assignee_id: null, reporter_id: "r1", claimed_by: "elon" });
+      assert.deepEqual(refs(board.db, "t4"), { id: "t4", assignee_id: null, reporter_id: "r1", claimed_by: actorIdByName("elon") });
 
       // Every reference resolves — nothing dangles.
       assert.equal(
@@ -156,13 +160,14 @@ describe("storage/migrations — 0019 merges the two dictionary tables into `act
         "no dangling reporter",
       );
 
-      // 3 — the two old tables are gone, and `claimed_by` is untouched (it is not
-      // a reference yet — see the migration's header).
+      // 3 — the two old tables are gone. `claimed_by` was untouched by 0019 (it
+      // was a free string then); 0020, later in the same upgrade, turns it into a
+      // reference — so it reads back through the actor row.
       const tables = tableNames(board.db);
       assert.equal(tables.includes("actors"), true);
       assert.equal(tables.includes("assignees"), false);
       assert.equal(tables.includes("reporters"), false);
-      assert.equal(refs(board.db, "t1").claimed_by, "linus", "claimed_by stayed a free string");
+      assert.equal(refs(board.db, "t1").claimed_by, actorIdByName("linus"), "claimed_by names the actor for `linus`");
 
       // 4 — the three denormalised columns are gone; the two ALTER-added ones stay.
       const columns = board.db.prepare("SELECT name FROM pragma_table_info('tasks')").all().map((r) => r.name);

@@ -229,7 +229,7 @@ describe("blocked_reason — the card field (0016)", () => {
     // a board at the head of the set actually has — 0019 re-declares it (during
     // its `tasks` rebuild) and 0016 does not.
     const live = declarations.at(-1);
-    assert.equal(live.version, "0019", "the live declaration is 0019's — the last `tasks` rebuild re-declares the trigger");
+    assert.equal(live.version, "0020", "the live declaration is 0020's — the last `tasks` rebuild re-declares the trigger");
     assert.equal(/\bblocked_reason\b/.test(live.sql), false, "the cursor's column list does not name blocked_reason");
     assert.ok(live.sql.includes("version") && live.sql.includes("updated_at"), "but it does name both CAS columns");
 

@@ -343,6 +343,40 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   holding position, not a finished rule: the DOM contract reads `[data-card]`'s
   `data-assignee-kind` off the same value and requires `human` or `agent`, so no single value
   satisfies both until an actor's kind carries a platform name.
+- **Every attribution column is now a reference to `actors(id)`** (migration **`0020`**).
+  `tasks.claimed_by`, `comments.author_id` and `task_reports.author_id` join
+  `tasks.assignee_id`/`reporter_id` as foreign keys, so "who claimed this", "who wrote this"
+  and "who reported this" all point at the one person table.
+- **…and the two log/telemetry columns deliberately are not.** `task_activities.actor_id`
+  (an append-only audit log) and `agent_sessions.owner` (runtime telemetry, half of a
+  natural key) stay free strings: a foreign key from a log to a mutable dictionary couples
+  deletion to history, and the log has to outlive the people it names. The synthetic ids
+  `taskd` and `md-import` are **reserved names in the log namespace** — no `actors` row is
+  created for them, and a roster never shows a "person" called `taskd`. Both exclusions,
+  and the reserved names, are pinned by `test/contract/attribution-boundary.test.mjs`, the
+  way `tasks.blocked_reason`'s exclusion is.
+
+  **The back-fill, and the one way it rewrites history.** Every distinct value in those three
+  columns is a **name** — the live path writes `--agent`/`$TASKCTL_AGENT`/`$USER`/`local`,
+  the importer writes the card's own text — so each value is normalised (`norm`) and
+  resolved to the `actors` row with that `normalized_name`, or a new row is created for it
+  (a value like `local` or a caller's `$USER` has no row yet, and is **created, not dropped**).
+  Because `norm` folds case and whitespace, **spellings merge**: `"Terry"` and `"terry"` are
+  two `author_id` values on a pre-0020 board and become **one person**. That is intended —
+  they were always one identity — but it is a merge of historical rows, so a board that
+  carried both spellings will see them collapse.
+
+  **The write side follows the column.** Every writer — a claim, a heartbeat, a comment, a
+  report, and the markdown importer — now resolves the name it was given to an actor row
+  first, and the claim comparison (`claimed_by` against the claimant) is between ids.
+  The markdown round trip is unchanged: a card still carries the **name** (`claimed_by:`,
+  the comment/report author), the exporter resolves the id back to it, and the importer
+  resolves the name forward.
+
+  **Until the wire carries an actor reference**, `author_id` / `claimed_by` are opaque ids
+  in JSON and in rendered output — `taskctl comment list` prints the id where it used to
+  print the name. The actor-reference projection that restores readability is the next
+  change in this program.
 
 ### Removed
 
