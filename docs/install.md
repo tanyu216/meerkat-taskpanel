@@ -59,15 +59,15 @@ match the assignee the board uses for it; it defaults to `$USER`.
 | Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | `~/.codex/skills/meerkat-loop` | `.` — the same root bundle, through the marketplace |
 | Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | `~/.agents/skills/meerkat-loop` | `.` — the root `package.json`'s `pi` field |
 | OpenCode | `opencode` | `~/.config/opencode/skills/meerkat-taskpanel` | **none** — see [OpenCode](#opencode) | `.opencode/plugins/` (in-process registration) |
+| Cursor | `cursor` | `~/.cursor/skills/meerkat-taskpanel` | **none** — see [Cursor](#cursor) | `.` — the repository root (`.cursor-plugin/plugin.json`) |
 
 The repository-root Claude marketplace `.claude-plugin/marketplace.json` lists
 `./` (the board) and `./plugins/loop` (the loop); Codex reads the same
 marketplace manifest, which is why it has no bundle of its own.
 
-**Cursor is a plugin-only host** — it has no `--target`, so nothing lands in a host
-directory for it and the table above does not list it. It takes the skills through its own
-plugin mechanism instead: see [Cursor](#cursor). (OpenCode has both routes — a `--target`
-of its own and the plugin — see [OpenCode](#opencode).)
+Every host above has both routes: a `--target` that lands the skill on disk, and a
+plugin/bundle the host's own plugin system reads in place. OpenCode and Cursor are no
+exception — see [OpenCode](#opencode) and [Cursor](#cursor).
 
 `--link` applies to the **board** skill only. The loop is always copied: a symlinked
 execution body would put the checkout back into the load path of the very thing the split
@@ -634,15 +634,41 @@ which drives it against a fake plugin context.
 
 ### Cursor
 
-> **Plugin only, for now.** `install.sh` has **no** `cursor` target yet, so Cursor gets no
-> host-side skill copy, no scheduling units and no `taskctl` shim. It reads the skills
-> through `.cursor-plugin/plugin.json` at the repository root.
+```bash
+# 1. skill + host config
+bash install.sh --target cursor --link --force
+
+# 2. plugin (optional — it delivers the same skills, read in place)
+#    in Cursor's agent chat:  /add-plugin meerkat-taskpanel
+#    or search for it in the plugin marketplace
+```
+
+Step 1 writes the board skill to `~/.cursor/skills/meerkat-taskpanel` and the host config
+`~/.cursor/meerkat-taskpanel.env`, whose `MEERKAT_TASKPANEL_REPO` is what lets the skill's
+wrapper find the board engine once the skill no longer sits beside the checkout.
+
+> **Rank of the evidence.** `~/.cursor/skills/` is where Cursor reads user skills, per
+> secondary sources (Cursor's help index and a third-party agent-skills guide agree;
+> Cursor also reads `~/.agents/skills/` and the `~/.claude` / `~/.codex` compatibility
+> directories, so an existing `--target claude` install is already visible to it). It is a
+> *skill directory*, so a wrong guess leaves an inert folder — which is why this target
+> ships while the supervisor below does not.
+
+Uninstall:
 
 ```bash
-# in Cursor's agent chat
-/add-plugin meerkat-taskpanel
-# or search the plugin marketplace
+rm -rf ~/.cursor/skills/meerkat-taskpanel ~/.cursor/meerkat-taskpanel.env
 ```
+
+> **No supervisor, and no scheduling unit.** Cursor gets no `~/.cursor/scheduling`, no
+> `meerkat-loop` skill and no `wake-cursor.sh`, and `--supervisor-hosts cursor` is
+> rejected (exit 2). `docs/scheduling.md` has no Cursor row at all — its headless and
+> resume forms are unverified here, and the only invocation anyone records
+> (`cursor-agent -p`) appears in a third-party experiment table, not in an install or
+> reference document. The units start *the glue*, which is a headless call; an unattended
+> daemon is not the place to guess.
+
+#### The plugin route
 
 `.cursor-plugin/plugin.json` declares `"skills": "./skills/"` — the repository's one
 `skills/` tree, read in place, so Cursor needs no `skills/` directory of its own. Like

@@ -56,6 +56,7 @@ const HOSTS = Object.freeze([
   { host: "openclaw", dir: ".openclaw" },
   { host: "pi", dir: ".agents" },
   { host: "opencode", dir: ".config/opencode" },
+  { host: "cursor", dir: ".cursor" },
 ]);
 
 const tempDirs = [];

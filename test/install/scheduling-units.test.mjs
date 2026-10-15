@@ -438,6 +438,26 @@ describe("install.sh: the loop skill's distribution", () => {
     assert.equal(existsSync(join(home, ".config/opencode", "bin", "wake-opencode.sh")), false);
   });
 
+  it("never installs the loop skill or a scheduling unit for cursor", () => {
+    const home = makeTempDir();
+    const run = runInstall(["--target", "cursor", "--prefix", home]);
+    assert.equal(run.status, 0, run.stderr);
+
+    assert.ok(
+      existsSync(join(home, ".cursor", "skills", "meerkat-taskpanel", "SKILL.md")),
+      "cursor must still get the board skill",
+    );
+    assert.ok(
+      existsSync(join(home, ".cursor", "meerkat-taskpanel.env")),
+      "cursor must get the host config (it is what resolves the CLI from a copied skill)",
+    );
+
+    assert.equal(existsSync(join(home, ".cursor", "skills", "meerkat-loop")), false);
+    assert.equal(existsSync(join(home, ".cursor", "scheduling")), false);
+    assert.equal(existsSync(join(home, ".cursor", "meerkat-taskpanel")), false);
+    assert.equal(existsSync(join(home, ".cursor", "bin", "wake-cursor.sh")), false);
+  });
+
   it("copies the loop skill even under --link, which names the board skill only", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
