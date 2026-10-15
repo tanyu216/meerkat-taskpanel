@@ -3,15 +3,19 @@
  * Contract check for the plugin manifests.
  *
  * Each host has its own conventional manifest location and its own required keys:
- *   plugins/claude/.claude-plugin/plugin.json
- *   plugins/codex/.codex-plugin/plugin.json
- *   plugins/openclaw/openclaw.plugin.json      (root-level, no dot-directory)
- *   plugins/pi/package.json
+ *   .claude-plugin/plugin.json                    (the board plugin; root = repo root)
+ *   plugins/openclaw/openclaw.plugin.json         (root-level, no dot-directory)
+ *   package.json                                  (the `pi` field — Pi has no manifest of
+ *                                                  its own either, it reads the root package)
  * plus the loop skill's own bundle — the marketplace's second plugin, which ships the
  * loop and nothing else, so it can be installed on its own:
  *   plugins/loop/.claude-plugin/plugin.json
  *   plugins/loop/package.json
  * plus the repository-root Claude marketplace: .claude-plugin/marketplace.json
+ *
+ * Codex has no manifest of its own: `codex plugin marketplace add` reads the same
+ * repository-root marketplace and installs the same `./` bundle as Claude Code, so its
+ * expected manifest is the board plugin's (see HOST_BUNDLES.codex).
  *
  * Exits non-zero with a readable message on the first failure. Node builtins only.
  */
@@ -26,7 +30,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const MANIFESTS = [
   {
     label: "claude",
-    path: "plugins/claude/.claude-plugin/plugin.json",
+    path: ".claude-plugin/plugin.json",
     required: [
       "name",
       "version",
@@ -40,17 +44,15 @@ export const MANIFESTS = [
     ],
   },
   {
-    label: "codex",
-    path: "plugins/codex/.codex-plugin/plugin.json",
+    label: "cursor",
+    path: ".cursor-plugin/plugin.json",
     required: [
       "name",
-      "version",
+      "displayName",
       "description",
+      "version",
       "author",
       "license",
-      "homepage",
-      "repository",
-      "keywords",
       "skills",
     ],
   },
@@ -70,15 +72,12 @@ export const MANIFESTS = [
   },
   {
     label: "pi",
-    path: "plugins/pi/package.json",
+    path: "package.json",
     required: [
       "name",
       "version",
-      "private",
-      "description",
-      "license",
       "type",
-      "files",
+      "pi",
     ],
   },
   {

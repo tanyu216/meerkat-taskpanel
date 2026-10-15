@@ -47,12 +47,16 @@ export const PROBES = [
     bin: "openclaw",
     home: ".openclaw",
     steps: [
-      ["plugins", "install", join(ROOT, "plugins/claude"), "--link", "--force", "--accept-capabilities"],
+      ["plugins", "install", ROOT, "--link", "--force", "--accept-capabilities"],
       ["plugins", "inspect", "meerkat-taskpanel"],
     ],
     expect: (output) => {
       if (!/Format:\s*bundle/.test(output)) return "expected `Format: bundle`";
-      if (!/Bundle format:\s*claude/.test(output)) return "expected `Bundle format: claude`";
+      // The repository root carries both `.claude-plugin/` and `.cursor-plugin/`, and
+      // OpenClaw's detection precedence is codex → cursor → claude, so it reports cursor.
+      // Measured: that is the *only* line the Cursor marker changes — `Format: bundle`,
+      // `Shape`, `Capability mode` and `Bundle capabilities: skills` are untouched.
+      if (!/Bundle format:\s*cursor/.test(output)) return "expected `Bundle format: cursor`";
       if (!/Bundle capabilities:\s*skills/.test(output)) return "expected `Bundle capabilities: skills`";
       return null;
     },
@@ -84,12 +88,13 @@ export const PROBES = [
     host: "pi",
     bin: "pi",
     home: ".pi",
-    // A path source, so nothing is fetched.
+    // A path source, so nothing is fetched. The root package is the pi package now —
+    // its `pi` field declares the skills directory and the extension.
     steps: [
-      ["install", join(ROOT, "plugins/pi")],
+      ["install", ROOT],
       ["list"],
     ],
-    expect: (output) => (/plugins\/pi/.test(output) ? null : "expected the installed ./plugins/pi package"),
+    expect: (output) => (/meerkat-taskpanel/.test(output) ? null : "expected the installed meerkat-taskpanel package"),
   },
 ];
 

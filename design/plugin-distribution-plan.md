@@ -4,6 +4,17 @@
 **Reference:** [`obra/superpowers`](https://github.com/obra/superpowers) @ `bb92a77741419a4ab5f06e711a283343f1ada0c3` (v7.0.0, shallow clone, 2026-10-15)
 **Author:** linus · **Audience:** Elon (review) → operator (architecture sign-off) → implementation card
 
+> **实施修正（2026-10-15，实现分支 `lane/plugin-distribution-impl-seg1`）。** §3.2 的目标布局把
+> `.claude-plugin/`、`.codex-plugin/`、`.cursor-plugin/` 三份标记**同时**放仓根，同时又要 OpenClaw 断言
+> `Bundle format: claude` —— 这两件事不能同时成立：`scripts/verify/lib/bundle.mjs:169-176` 的探测顺序是
+> **codex → cursor → claude**（转录自 OpenClaw CLI），仓根挂哪个标记就被认成哪种格式。§3.3/§3.4 还假设
+> Codex 需要一份 `.codex-plugin/` 包，但 Codex 的文档安装路径本来就是 marketplace
+> （`codex plugin marketplace add "$PWD"` → 装的就是 `./plugins/claude`），那份包没有任何路径用到。
+>
+> 实现按 operator 裁定落地：**仓根只挂 `.claude-plugin/plugin.json`（claude 与 codex 共用）；`plugins/codex`
+> 删除；`plugins/pi` 改走根 `package.json` 的 `pi` 字段 + `.pi/extensions/`**；Cursor 与 OpenCode 另见各自阶段。
+> 其余部分（§1 的机制结论、§2 的量化、阶段划分、回滚模型）按本文执行。原文保留不改，作为当时的记录。
+
 ---
 
 ## 摘要（中文，结论先行）
