@@ -217,11 +217,18 @@ describe("md/migrate-cli — exit code when a dependency edge is refused (T-2026
     assert.equal(payload.ok, true, "`ok` tracks the run, not the per-edge outcome");
     assert.equal(payload.warnings.length, 1);
     assert.equal(payload.invariantViolations.length, 1);
-    assert.equal(payload.invariantViolations[0].reason, "RELATION_CYCLE");
-    assert.equal(payload.invariantViolations[0].identifier, "DEMO-0002");
     // A caller that wants a completeness signal reads these two arrays; a caller
-    // that reads only the exit code is reading the documented contract.
-    assert.ok(payload.warnings.length > 0 && payload.invariantViolations.length > 0);
+    // that reads only the exit code is reading the documented contract. So the
+    // entry has to be *locatable*, not merely present: which card, which field,
+    // why.
+    const violation = payload.invariantViolations[0];
+    assert.equal(violation.reason, "RELATION_CYCLE");
+    assert.equal(violation.identifier, "DEMO-0002");
+    assert.equal(violation.file, "DEMO-0002.md");
+    assert.ok(
+      violation.field === "parent" || violation.field === "depends_on",
+      `the refused field must be named: ${JSON.stringify(violation)}`,
+    );
   });
 
   it("`check` does not evaluate relations, so the illegal shape is no difference there", async () => {
