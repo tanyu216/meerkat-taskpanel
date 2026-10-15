@@ -296,6 +296,63 @@ export function fixtureApi() {
 }
 
 /**
+ * The ids on `taskId`'s parent chain, either direction — the fixture's answer to
+ * the route's `parent_chain`.
+ *
+ * The fixture keys rows by the card that *has* them, so the walk first collects
+ * every `parent` row it holds (deduped by id) and then runs the same two walks
+ * `src/core/domain/relation.mjs#parentChainOf` runs over the real table: up
+ * through `source → target` (source = parent), down breadth-first through the
+ * children. The fixture's graph is one hop deep, which makes the walks short —
+ * not different.
+ *
+ * T-20261015-104813 — the drawer's prerequisite picker filters its roster by
+ * this set, so a fixture that answered without it would hand the drawer a shape
+ * the route does not have.
+ *
+ * @param {string} taskId
+ * @param {{[taskId: string]: object[]}} byTask
+ * @returns {string[]}
+ */
+function parentChainOf(taskId, byTask) {
+  const edges = new Map();
+  for (const rows of Object.values(byTask)) {
+    for (const row of rows) if (row.type === "parent") edges.set(row.id, row);
+  }
+  const parentEdges = [...edges.values()];
+  const out = [];
+  const add = (id) => {
+    if (id !== taskId && !out.includes(id)) out.push(id);
+  };
+
+  const seenUp = new Set([taskId]);
+  let up = taskId;
+  for (;;) {
+    const edge = parentEdges.find((row) => row.target === up);
+    if (edge === undefined || seenUp.has(edge.source)) break;
+    seenUp.add(edge.source);
+    add(edge.source);
+    up = edge.source;
+  }
+
+  const seenDown = new Set([taskId]);
+  let frontier = [taskId];
+  while (frontier.length > 0) {
+    const next = [];
+    for (const node of frontier) {
+      for (const edge of parentEdges.filter((row) => row.source === node)) {
+        if (seenDown.has(edge.target)) continue;
+        seenDown.add(edge.target);
+        add(edge.target);
+        next.push(edge.target);
+      }
+    }
+    frontier = next;
+  }
+  return out;
+}
+
+/**
  * Boot the fixture API + static `web/dist` server.
  *
  * `port` defaults to 0 (an ephemeral port), and every caller today wants exactly
@@ -349,7 +406,7 @@ export function startServer() {
       const ref = decodeURIComponent(relationsFor[1]);
       const task = data.tasks.find((entry) => entry.identifier === ref || entry.id === ref);
       const all = data.relations[task?.id] ?? [];
-      // The real route's five keys, not just `relations`
+      // The real route's six keys, not just `relations`
       // (T-20261014-212017-4). The drawer's `depends_on` chips read
       // **`blocked_by`** — the edges pointing *at* this card, which is what the
       // card-schema `depends_on` means — so a fixture that answered only
@@ -363,6 +420,15 @@ export function startServer() {
         ancestors: all.filter((row) => row.type === "parent" && row.target === task?.id),
         blocked_by: all.filter((row) => row.type === "blocks" && row.target === task?.id),
         blocks: all.filter((row) => row.type === "blocks" && row.source === task?.id),
+        // T-20261015-104813 — the ids on this card's parent chain, either
+        // direction. The drawer's prerequisite picker filters its roster by this
+        // set, so the fixture answers it the way the route does: the transitive
+        // walk over the `parent` edges this fixture already holds, not just the
+        // one hop. Absent, the picker would still work (it offers everything,
+        // which is what it did before this field existed) — but a fixture that
+        // silently omits a field the route sends is the drift this harness is
+        // here to catch.
+        parent_chain: parentChainOf(task?.id ?? ref, data.relations),
       });
     }
     // T-20261014-212017-4 / G2 — the drawer's file list reads the `attachments`

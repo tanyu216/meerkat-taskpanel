@@ -25,6 +25,7 @@ import {
   addDepends,
   COLUMN_STATUSES,
   closeDetail,
+  dependsCandidates,
   detailDepends,
   labelRoster,
   platformOf,
@@ -33,7 +34,6 @@ import {
   removeDepends,
   reporterRoster,
   saveDetailField,
-  taskRoster,
   uploadAttachment,
 } from "../../stores/board.js";
 import { renderMarkdown } from "../../lib/markdown.js";
@@ -997,12 +997,17 @@ function copyId() {
              prerequisite's **identifier**, and the store resolves it to a task id
              to write the edge (`stores/board.js#addDepends`). A cycle, a
              self-reference or a cross-project edge is refused by the board's
-             relation guards, and the refusal is a sentence, not a stack. -->
+             relation guards, and the refusal is a sentence, not a stack.
+             The candidates are `dependsCandidates`, not the whole roster: the
+             board's own parent chain of this card is left out, so a card the
+             `blocks` guard would refuse is not offered in the first place
+             (T-20261015-104813) — and so is this card's own row, which
+             `normalizeRelation` refuses with `SELF_REFERENCE` (T-20261015-132952). -->
         <div class="td-combo td-prop-combo" data-detail-depends data-detail-save-field="depends">
           <span class="td-prop-label" data-i18n="relations.blocks">{{ $t("relations.blocks") }}</span>
           <ComboField
             v-model="dependsDraft"
-            :options="taskRoster"
+            :options="dependsCandidates"
             multi
             task-mode
             :free-text="false"
