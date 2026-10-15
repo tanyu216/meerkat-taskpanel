@@ -13,11 +13,13 @@ import test, { describe, it } from "node:test";
 
 import {
   assertAttachmentSize,
+  attachmentTooLargeError,
   contentTypeForFilename,
   downloadContentType,
   normalizeAttachmentContentType,
 } from "../../src/shared/attachments.mjs";
 import { ATTACHMENT_CONTENT_TYPES, ATTACHMENT_MAX_BYTES } from "../../src/shared/constants.mjs";
+import { DomainError, toErrorPayload } from "../../src/shared/errors.mjs";
 
 describe("shared/attachments — the declared type", () => {
   it("folds case and drops parameters", () => {
@@ -101,5 +103,46 @@ describe("shared/attachments — the byte ceiling", () => {
 
   it("states the limit once: 8 MiB", () => {
     assert.equal(ATTACHMENT_MAX_BYTES, 8 * 1024 * 1024);
+  });
+
+  /**
+   * T-20261015-075845-2 (F2) — **one** refusal, in one sentence.
+   *
+   * Three places can reach this ceiling and they are the same verdict: this pure
+   * check, the metadata route's declared `size`, and the content route's byte
+   * stream. The literal is pinned here — once — because it is the sentence every
+   * one of them puts on the wire; `test/server/attachments.test.mjs` then asserts
+   * the two HTTP paths agree with each other on every field a client branches on.
+   */
+  it("is one refusal with one sentence, wherever the ceiling is reached", () => {
+    const raised = attachmentTooLargeError(ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_BYTES + 1);
+    assert.equal(raised.message, "attachment is larger than the board's 8388608-byte limit");
+    assert.equal(raised.code, "ATTACHMENT_TOO_LARGE");
+    assert.equal(raised.http, 413);
+    assert.deepEqual(raised.details, { field: "size", received: ATTACHMENT_MAX_BYTES + 1, maxBytes: ATTACHMENT_MAX_BYTES });
+
+    // The byte path knows only that the body is over the ceiling, so it claims
+    // no size at all — same sentence, `received: null`.
+    const unknown = attachmentTooLargeError(ATTACHMENT_MAX_BYTES);
+    assert.equal(unknown.message, raised.message);
+    assert.equal(unknown.details.received, null);
+
+    // And the sentence is derived from the constant, not spelled beside it: a
+    // ceiling that moved would move the message with it.
+    assert.equal(attachmentTooLargeError(1024).message, "attachment is larger than the board's 1024-byte limit");
+    // The ceiling the *message* names and the one `details` reports are one value.
+    assert.ok(raised.message.includes(String(raised.details.maxBytes)));
+  });
+
+  it("keeps the refusal a real domain error, not a bare one", () => {
+    // The router's own over-limit refusal is a bare `Error` carrying an HTTP
+    // status, which `toErrorPayload` cannot read: it flattens to http 500 with
+    // empty details. That is why the attachment surfaces raise a `DomainError`
+    // instead — the payload's `http` has to agree with the status line.
+    assert.ok(attachmentTooLargeError(ATTACHMENT_MAX_BYTES) instanceof DomainError);
+    const payload = toErrorPayload(attachmentTooLargeError(ATTACHMENT_MAX_BYTES));
+    assert.equal(payload.code, "ATTACHMENT_TOO_LARGE");
+    assert.equal(payload.http, 413);
+    assert.equal(payload.details.maxBytes, ATTACHMENT_MAX_BYTES);
   });
 });
