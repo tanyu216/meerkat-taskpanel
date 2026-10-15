@@ -5,8 +5,8 @@ installer: scripts/install/codex.sh
 target_dir: .codex/skills/meerkat-taskpanel
 skill_entry: SKILL.md
 wrapper: scripts/run.mjs
-# Codex reads .codex-plugin/plugin.json; OpenClaw also detects this marker as a
-# "codex" bundle.
-bundle: plugins/codex
+# Codex has no marker of its own: `codex plugin marketplace add` reads the same
+# repository-root marketplace and installs the same `./` bundle as Claude Code.
+bundle: .
 bundle_kind: bundle
-bundle_format: codex
+bundle_format: cursor

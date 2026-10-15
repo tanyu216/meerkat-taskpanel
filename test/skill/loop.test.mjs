@@ -147,7 +147,12 @@ describe("loop skill: SKILL.md", () => {
 
   it("says out loud that OpenClaw never gets the loop", () => {
     assert.match(text, /OpenClaw is deliberately excluded/);
-    assert.deepEqual(SKILL_HOSTS[LOOP_SKILL_NAME], ["claude", "codex", "pi"]);
+    // No host takes a generated copy of the loop any more: claude / codex / cursor / pi
+    // read the repository's own skills/ tree and OpenClaw is excluded by ruling. The loop
+    // still ships — as the plugins/loop bundle the marketplace lists (SKILL_BUNDLES) and
+    // through install.sh — so the exclusion is now the table's only content.
+    assert.deepEqual(SKILL_HOSTS[LOOP_SKILL_NAME], []);
+    assert.ok(!SKILL_HOSTS[LOOP_SKILL_NAME].includes("openclaw"));
   });
 
   it("records what the loop still needs from a checkout, rather than implying it needs none", () => {

@@ -196,14 +196,18 @@ export function buildChecks(profile, opts = {}) {
   const expectedFormat = profile.bundle_format ?? fallback?.openclawFormat;
 
   if (bundleDir && expectedKind && expectedFormat) {
+    // A host may install a bundle whose manifest belongs to another label — Codex reads
+    // the same repository-root marketplace as Claude Code and ships no manifest of its
+    // own — so the entry is resolved by path when the label does not name one.
     const manifestRel = MANIFESTS.find((m) => m.label === host)?.path ?? fallback?.manifest;
+    const manifestKey = MANIFESTS.find((m) => m.path === manifestRel)?.label ?? host;
 
     if (manifestRel) {
       assertions.push({
         kind: "manifestParses",
         name: `${host}: manifest parses (${manifestRel})`,
         path: join(root, manifestRel),
-        manifestKey: host,
+        manifestKey,
         root,
       });
     }
