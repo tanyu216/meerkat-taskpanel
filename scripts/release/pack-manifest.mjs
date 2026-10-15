@@ -40,8 +40,8 @@ export const REQUIRED = Object.freeze([
   "skills/meerkat-taskpanel/SKILL.md",
   ".claude-plugin/plugin.json",
   ".claude-plugin/marketplace.json",
+  ".pi/extensions/meerkat-taskpanel.ts",
   "plugins/openclaw/openclaw.plugin.json",
-  "plugins/pi/package.json",
 ]);
 
 /**

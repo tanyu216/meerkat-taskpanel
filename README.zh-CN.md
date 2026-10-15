@@ -94,6 +94,7 @@ meerkat-taskpanel/
 ├── web/                          # 看板前端（Vue 3 + Vite）→ web/dist（托管根）
 ├── skills/meerkat-taskpanel/        # skill —— 单一事实源
 ├── .claude-plugin/               # board 插件清单（插件根 = 仓根）
+├── .pi/                          # Pi 扩展（由 package.json 的 `pi` 字段声明）
 ├── plugins/                      # 仍需自备 skills/ 的 bundle
 │                                 #   （openclaw，以及 loop 自己的 marketplace 条目）
 ├── design/                       # 设计文档：DESIGN / BLOCKS、prototype/、brand/、assets/
@@ -136,7 +137,7 @@ skill 目录 —— 对 **Claude Code** 与 **Codex** 还会部署宿主 bundle 
 | Claude Code | `claude` | `~/.claude/skills/meerkat-taskpanel` | `.claude-plugin/plugin.json`（插件根 = 仓根） |
 | OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | `plugins/openclaw/openclaw.plugin.json`（原生） |
 | Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | 同一个仓根 bundle，经 marketplace 解析 |
-| Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | `plugins/pi/package.json` |
+| Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | 仓根 `package.json` 的 `pi` 字段 |
 
 仓根就是 board 的插件根，每个 harness 都**就地读**那一份 `skills/`，不再各拿一份副本。
 OpenClaw 也可消费这个 Claude 格式的 bundle，这是受支持的 skill-only

@@ -57,7 +57,7 @@ match the assignee the board uses for it; it defaults to `$USER`.
 | Claude Code | `claude` | `~/.claude/skills/meerkat-taskpanel` | `~/.claude/skills/meerkat-loop` | `.` — the repository root (`.claude-plugin/plugin.json`) |
 | OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | **none** — see [OpenClaw](scheduling.md#openclaw-do-not-build-a-supervisor) | `plugins/openclaw` (native `openclaw.plugin.json`) |
 | Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | `~/.codex/skills/meerkat-loop` | `.` — the same root bundle, through the marketplace |
-| Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | `~/.agents/skills/meerkat-loop` | `plugins/pi` (`package.json`) |
+| Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | `~/.agents/skills/meerkat-loop` | `.` — the root `package.json`'s `pi` field |
 
 The repository-root Claude marketplace `.claude-plugin/marketplace.json` lists
 `./` (the board) and `./plugins/loop` (the loop); Codex reads the same
@@ -526,12 +526,23 @@ rm -rf ~/.codex/skills/meerkat-taskpanel ~/.codex/skills/meerkat-loop \
 # 1. skill + scheduling set (units, wake-pi.sh, ~/.agents/meerkat-taskpanel.env)
 bash install.sh --target pi --link --force
 
-# 2. package
-pi install "$PWD/plugins/pi"
+# 2. package — the repository's own package.json declares the pi manifest
+pi install "$PWD"
 
 # verify
 pi list
 ```
+
+The root `package.json` carries Pi's manifest, so no copy of the skill tree is made:
+
+```jsonc
+"pi": { "skills": ["./skills"], "extensions": ["./.pi/extensions/meerkat-taskpanel.ts"] }
+```
+
+`pi.skills` is the skills directory, and `pi.extensions` is the module that re-registers
+the same directory at runtime through Pi's `resources_discover` event. Those are two of the
+four resource fields Pi reads from a package's `pi` object (`extensions`, `skills`,
+`prompts`, `themes`), which is why the board needs no `plugins/pi` directory.
 
 Pi has no timer of its own, so step 1 also drops the units under
 `~/.agents/scheduling/` and the `~/.agents/bin/wake-pi.sh` glue; load one of them to
@@ -540,7 +551,7 @@ run the supervisor (see [Scheduling units](#scheduling-units-claude-codex-pi)).
 Uninstall:
 
 ```bash
-pi remove "$PWD/plugins/pi"
+pi remove "$PWD"
 rm -rf ~/.agents/skills/meerkat-taskpanel ~/.agents/skills/meerkat-loop \
        ~/.agents/scheduling ~/.agents/bin/wake-pi.sh ~/.agents/meerkat-taskpanel.env
 ```

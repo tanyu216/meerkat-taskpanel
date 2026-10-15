@@ -58,7 +58,6 @@ async function makeTree() {
 function manifests(version, loopVersion = version) {
   return {
     "package.json": { name: "meerkat-taskpanel", version, private: true },
-    "plugins/pi/package.json": { name: "meerkat-taskpanel-pi", version },
     ".claude-plugin/plugin.json": { name: "meerkat-taskpanel", version },
     "plugins/openclaw/openclaw.plugin.json": { id: "meerkat-taskpanel", version },
     ".claude-plugin/marketplace.json": { name: "meerkat-taskpanel-marketplace", metadata: { version } },
@@ -91,8 +90,8 @@ function runCli(args) {
 }
 
 describe("version.mjs — the shipped manifests", () => {
-  it("declares the board's five sources and the loop's two, one canonical each", () => {
-    assert.equal(VERSION_SOURCES.length, 5);
+  it("declares the board's four sources and the loop's two, one canonical each", () => {
+    assert.equal(VERSION_SOURCES.length, 4);
     assert.equal(VERSION_SOURCES[0].path, "package.json", "package.json is the board's canonical source");
     assert.equal(VERSION_SOURCES.filter((s) => s.canonical === true).length, 1, "exactly one source is canonical");
 
@@ -117,7 +116,7 @@ describe("version.mjs — the shipped manifests", () => {
     const board = await validateVersions(ROOT);
     assert.equal(board.ok, true, board.error);
     assert.equal(board.version, declared);
-    assert.equal(board.sources.length, 5);
+    assert.equal(board.sources.length, 4);
     assert.ok(board.sources.every((entry) => entry.version === declared));
     assert.equal(await currentVersion(ROOT), declared);
 
@@ -141,7 +140,7 @@ describe("version.mjs — validateVersions(base)", () => {
     const result = await validateVersions(dir);
     assert.equal(result.ok, true, result.error);
     assert.equal(result.version, "9.9.9");
-    assert.equal(result.sources.length, 5);
+    assert.equal(result.sources.length, 4);
   });
 
   it("fails, naming the file, when one manifest drifts", async () => {
@@ -156,7 +155,7 @@ describe("version.mjs — validateVersions(base)", () => {
     assert.equal(result.version, "1.0.0", "the canonical version is still reported");
     assert.match(result.error, /\.claude-plugin\/marketplace\.json/);
     assert.match(result.error, /0\.9\.9/);
-    assert.equal(result.sources.length, 5, "every source is still listed so the diff is legible");
+    assert.equal(result.sources.length, 4, "every source is still listed so the diff is legible");
   });
 
   it("fails when a nested field is missing (marketplace metadata.version)", async () => {
@@ -175,13 +174,13 @@ describe("version.mjs — validateVersions(base)", () => {
   it("fails when a top-level version is missing", async () => {
     const dir = await makeTree();
     const files = manifests("1.0.0");
-    files["plugins/pi/package.json"] = { name: "meerkat-taskpanel-pi" };
+    files[".claude-plugin/plugin.json"] = { name: "meerkat-taskpanel" };
     await writeTree(dir, files);
 
     const result = await validateVersions(dir);
     assert.equal(result.ok, false);
     assert.equal(result.kind, "read");
-    assert.match(result.error, /plugins\/pi\/package\.json/);
+    assert.match(result.error, /\.claude-plugin\/plugin\.json/);
     assert.match(result.error, /`version`/);
   });
 
@@ -223,19 +222,19 @@ describe("version.mjs — the CLI", () => {
     await writeTree(dir, manifests("2.0.0"));
     const result = runCli(["--base", dir]);
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /all 5 board manifests agree on 2\.0\.0/);
+    assert.match(result.stdout, /all 4 board manifests agree on 2\.0\.0/);
     assert.match(result.stdout, /all 2 loop manifests agree on 2\.0\.0/);
   });
 
   it("exits 1 and prints the drift on a drifted tree", async () => {
     const dir = await makeTree();
     const files = manifests("2.0.0");
-    files["plugins/pi/package.json"] = { name: "meerkat-taskpanel-pi", version: "1.0.0" };
+    files[".claude-plugin/plugin.json"] = { name: "meerkat-taskpanel", version: "1.0.0" };
     await writeTree(dir, files);
     const result = runCli(["--base", dir]);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /version drift/);
-    assert.match(result.stderr, /plugins\/pi\/package\.json/);
+    assert.match(result.stderr, /\.claude-plugin\/plugin\.json/);
   });
 
   it("exits 2 when the tree itself is broken", async () => {
@@ -260,7 +259,7 @@ describe("version.mjs — the CLI", () => {
     assert.match(result.stderr, /plugins\/loop\/package\.json/);
     // The board group is reported clean in the same run — one drifted group must not
     // condemn the other.
-    assert.match(result.stdout, /all 5 board manifests agree on 2\.0\.0/);
+    assert.match(result.stdout, /all 4 board manifests agree on 2\.0\.0/);
   });
 
   it("stays green when the loop carries a version of its own", async () => {
@@ -271,7 +270,7 @@ describe("version.mjs — the CLI", () => {
 
     const result = runCli(["--base", dir]);
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /all 5 board manifests agree on 2\.0\.0/);
+    assert.match(result.stdout, /all 4 board manifests agree on 2\.0\.0/);
     assert.match(result.stdout, /all 2 loop manifests agree on 2\.1\.0/);
   });
 

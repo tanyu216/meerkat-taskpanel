@@ -15,18 +15,18 @@ Two components are shipped and they version **independently** (ruling O4): the *
 the **loop**. Each component's manifests must agree with each other; the two components are
 not compared with one another.
 
-**Board** — five files, root `package.json` canonical:
+**Board** — four files, root `package.json` canonical:
 
 | # | File | Field |
 |---|---|---|
 | 1 | `package.json` | `version` |
 | 2 | `.claude-plugin/plugin.json` | `version` |
-| 3 | `plugins/pi/package.json` | `version` |
-| 4 | `plugins/openclaw/openclaw.plugin.json` | `version` |
-| 5 | `.claude-plugin/marketplace.json` | `metadata.version` |
+| 3 | `plugins/openclaw/openclaw.plugin.json` | `version` |
+| 4 | `.claude-plugin/marketplace.json` | `metadata.version` |
 
-Codex is not a carrier: it installs the same `.claude-plugin/plugin.json` bundle through the
-repository-root marketplace, so a row for it would only restate the one above.
+Two hosts are not carriers. Codex installs the same `.claude-plugin/plugin.json` bundle
+through the repository-root marketplace, and Pi declares itself in the canonical
+`package.json` itself (its `pi` field) — a row for either would only restate one above.
 
 **Loop** — two files, its own plugin manifest canonical:
 
@@ -331,14 +331,15 @@ codex plugin list
 
 ## 7. Pi / Agent Skills
 
-`plugins/pi/package.json` is the board's Pi package (`"files": ["skills"]`), and
-`plugins/pi/skills/` is the generated skill copy. The loop has its own package on the same
-pattern — `plugins/loop/package.json` with `plugins/loop/skills/meerkat-loop/` — so a Pi
-host can install either component on its own.
+The board's Pi package **is the repository's own `package.json`**: its `pi` object declares
+`skills` (the one tree) and `extensions` (the module in `.pi/extensions/` that re-registers
+that directory at runtime). Pi reads `extensions`, `skills`, `prompts` and `themes` from a
+package's `pi` object, so there is no `plugins/pi` copy of the skill tree to publish. The
+loop keeps its own package under `plugins/loop/` so a Pi host can install it alone.
 
 ```bash
-pi install <path>/plugins/pi        # the board
-pi install <path>/plugins/loop      # the loop (claude/codex/pi hosts only)
+pi install <path>                   # the board
+pi install <path>/plugins/loop      # the loop
 
 # verify
 pi list

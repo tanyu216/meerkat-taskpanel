@@ -129,6 +129,7 @@ meerkat-taskpanel/
 ├── web/                          # board frontend (Vue 3 + Vite) → web/dist (hosted root)
 ├── skills/meerkat-taskpanel/        # skill — single source of truth
 ├── .claude-plugin/               # the board plugin manifest (root = the plugin root)
+├── .pi/                          # the Pi extension (declared by package.json's `pi` field)
 ├── plugins/                      # the bundles that still need a sibling skills/
 │                                 #   (openclaw, and the loop's own marketplace entry)
 ├── design/                       # design artifacts: DESIGN / BLOCKS, prototype/, brand/, assets/
@@ -176,7 +177,7 @@ the host's own plugin system consumes — registering it needs that host's CLI, 
 | Claude Code | `claude` | `~/.claude/skills/meerkat-taskpanel` | `.claude-plugin/plugin.json` (plugin root = the repository root) |
 | OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | `plugins/openclaw/openclaw.plugin.json` (native) |
 | Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | the same root bundle, through the marketplace |
-| Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | `plugins/pi/package.json` |
+| Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | the root `package.json`'s `pi` field |
 
 The repository root is the board's plugin root, so every harness reads the one `skills/`
 tree instead of receiving a copy. OpenClaw also consumes that Claude-format bundle, which
