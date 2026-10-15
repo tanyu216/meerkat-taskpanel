@@ -224,6 +224,18 @@ chmod a-w ~/.openclaw/team/projects.json
 #    never the markdown files.
 ```
 
+**A green `check` is not a green light for the import.** `migrate-cli check` verifies two
+things only: that every card **parses**, and that a stored copy is not **stale** (its
+`source-hash`). It evaluates **no relations and no identifier uniqueness**, so `ok: true`
+(exit 0) on the frozen card set does not mean the import will refuse nothing — a green
+pre-check is not "no refused edges". The verdict comes from the run that writes: `import`
+prints one `warning:` line on stdout per skipped edge (`warnings[]` and
+`invariantViolations[]` under `--json`), and the drill lists the aggregate under
+`unmappable[]` — the readouts described in *What the drill tends to find* above and in the
+table under *Risks & checklist* below. A **duplicate identifier** is not even a skipped
+edge: `import` stops with `IDENTIFIER_CONFLICT` (exit 1), and the drill, which imports,
+stops with it and writes no report.
+
 **Freezing the registry.** `~/.openclaw/team/projects.json` is the *current*
 authority for project metadata (git rules, repos, guides, and any `root` /
 `workspace_path` spellings the team kept there). After the import, that metadata
@@ -271,6 +283,8 @@ rollback is always available and is a data *export*, never a rewrite of history:
 | **A card the parser cannot read** | a real card can carry prose, a `>` note or a sub-bullet where a checkbox is expected | Those lines are recorded as notices and skipped; the card still parses. A genuinely unreadable card is reported under `unparsable` and as a `parse:` difference |
 | **Non-epic parent** | only an `epic` may be a parent (§4.8 ③) | The link is **skipped with a warning** and listed (`unmappable[kind=non-epic-parent]`) — never silently dropped |
 | **Invariant violations** (cycle / chain > 8 / fan-in > 8 / cross-project) | the DB triggers would refuse the edge | Refusals are caught per-edge, listed as `unmappable[kind=invariant-violation]`, and not lost |
+| **A `depends_on` the import cannot resolve** (`unmappable[kind=unresolved-depends-on]`) | the id names a card this import never saw (or one outside the project), so no `blocks` edge can join them | **Skipped with a warning** — `import` prints `<file>: depends_on <id> is not in this import` — carried structurally in `dependsUnresolved`, and listed as `unmappable[kind=unresolved-depends-on]`; never silently dropped. The card still imports |
+| **A `depends_on` naming the card itself** (the self-dependency sub-case of the row above) | a task cannot be related to itself (`src/core/domain/relation.mjs`), so the reference can never become an edge — yet the id *does* resolve, so it is not the "unresolved" case either | Since `T-20261015-183125` the skip warns in its own words — `<file>: depends_on <id> is the card itself — a self dependency is not an edge; the reference was skipped` — and the drill's `unmappable[kind=unresolved-depends-on]` note reads `the card names itself — a self dependency is not an edge; the reference was skipped` instead of claiming the card is missing. Import still exits 0; the unlanded edge is a drill difference (exit 3) |
 | **Unregistered project name** | a card's `project:` is a registry *name*, not an id | Resolved name → id; an unresolved name is **warned and skipped** — a project is created only with an explicit `--create-project`. The reserved `__team__` is buildin and resolves without a registry entry |
 | **`target` is an opaque per-card value** | it is no longer a project-level directory, so nothing can validate it against anything | Imported cards keep their `target` verbatim (`meta_json.legacy`); new cards have none. The board derives and checks nothing — the mapping to a real directory is the skill-side `projects.json` |
 | **`notices` vs `warnings`** | an auto-created project is informational; a skipped card is a problem | Both are reported separately: `notices` never block, `warnings` are what a reviewer reads |
