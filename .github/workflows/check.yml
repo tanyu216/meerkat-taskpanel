@@ -23,6 +23,14 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
 
+      # Before the suite: two of its legs (`web/blocks.bundle`, `web/blocks.dom`) sit behind
+      # a `web/dist` guard, so a `fail 0` here says nothing about either. This runner builds
+      # no frontend (that happens in the `docker` job below), so the verdict is *reported* —
+      # the enforcing copy of it lives in `docker/verify-in-container.sh`, where the image's
+      # `webbuild` stage has actually produced `web/dist`.
+      - name: Frontend coverage verdict (web/dist)
+        run: node scripts/verify/web-dist.mjs
+
       # No `npm install`: the engine, scripts and tests use Node builtins only and run
       # offline. The `web/` frontend's build-time devDependencies are assembled offline
       # inside the `docker` job (image `webbuild` stage) — never installed on this runner.
