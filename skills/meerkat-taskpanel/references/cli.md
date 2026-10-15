@@ -684,12 +684,32 @@ to read `blocked_by[]`, and `DELETE /api/v1/tasks/<card>/relations/<relationId>`
 to remove; each relation on the wire carries
 `{ id, type, source, target, origin, created_at }`.
 
-Guards, and which of them apply to which type: a task may not be related to
-itself (`SELF_REFERENCE`), and the same `(type, source, target)` triple cannot be
-inserted twice (`ux_relations_triple`). `parent` carries more than `blocks` does —
-only an `epic` may be a parent, and a parent edge that would close a cycle is
-refused (`RELATION_CYCLE`); `--force` skips the app-layer parent checks, never the
-database's.
+Guards, and which of them apply to which type: two are the same for every type —
+a task may not be related to itself (`SELF_REFERENCE`), and the same
+`(type, source, target)` triple cannot be inserted twice (`ux_relations_triple`).
+`parent` carries two more: only an `epic` may be a parent, and a parent edge that
+would close a cycle is refused (`RELATION_CYCLE`).
+
+`blocks` is not the unguarded one. It has two refusals of its own, and both rest
+on the same fact — the poll never offers a card whose blockers are unfinished, so
+an edge that leaves a card waiting on something that can never finish parks it for
+good:
+
+- **a loop in the dependency graph.** Before migration `0017_block_cycle.sql`,
+  `a blocks b` plus `b blocks a` went in, and every card in that loop became
+  permanently unclaimable; now the edge is refused with the same `RELATION_CYCLE`
+  the parent direction raises;
+- **a card and its own ancestor or descendant**, in either direction: `D
+  depends_on E` where `E` is `D`'s parent, and `E depends_on D` where `D` is `E`'s
+  child, both refuse — "an ancestor and a descendant cannot depend on each other"
+  (`0019_block_chain.sql`). **Siblings are not on one chain**: two children of one
+  epic depend on each other all the time, and stay legal.
+
+Both live in the database first (`tr_rel_block_cycle` and `tr_rel_block_chain`,
+`src/core/storage/migrations/0017_block_cycle.sql` / `0019_block_chain.sql`).
+
+`--force` skips the app-layer checks of either type, never the database's: the
+trigger is the invariant, the service layer only phrases the refusal first.
 
 ## `--json`
 
