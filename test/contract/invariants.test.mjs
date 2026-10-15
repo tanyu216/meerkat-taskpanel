@@ -745,10 +745,14 @@ describe("contract/invariants — a blocks edge may not join an ancestor and a d
       assert.equal(has(root, "PROJ-U"), false, "a stranger is not");
 
       // The point of the field: filtering the picker's roster by it takes out
-      // the two ancestors and leaves the cards the guard would accept an edge
-      // to — the siblings, the stranger, and the card's own row. The card's own
-      // row stays on purpose: a self-edge is `SELF_REFERENCE`, a different code
-      // this set does not own.
+      // the two ancestors. What is left is the sibling and the stranger — plus
+      // the card's own row, which this set deliberately keeps, because a
+      // self-edge is `SELF_REFERENCE`, a different code this walk does not own.
+      // The drawer subtracts that row separately
+      // (`web/src/stores/board.js#dependsCandidates`, T-20261015-132952), so
+      // this reading pins the chain half alone: folding the two exclusions
+      // together — widening `parent_chain` to carry the card's own id, say —
+      // would drop `PROJ-G` from the list below and show up right here.
       const roster = board.db.prepare("SELECT id, identifier FROM tasks WHERE project_id = 'proj'").all();
       const candidates = roster.filter((task) => !leaf.has(String(task.id))).map((task) => String(task.identifier));
       assert.deepEqual(candidates.sort(), ["PROJ-G", "PROJ-S1", "PROJ-S2", "PROJ-U"]);

@@ -1001,7 +1001,8 @@ function copyId() {
              The candidates are `dependsCandidates`, not the whole roster: the
              board's own parent chain of this card is left out, so a card the
              `blocks` guard would refuse is not offered in the first place
-             (T-20261015-104813). -->
+             (T-20261015-104813) — and so is this card's own row, which
+             `normalizeRelation` refuses with `SELF_REFERENCE` (T-20261015-132952). -->
         <div class="td-combo td-prop-combo" data-detail-depends data-detail-save-field="depends">
           <span class="td-prop-label" data-i18n="relations.blocks">{{ $t("relations.blocks") }}</span>
           <ComboField
