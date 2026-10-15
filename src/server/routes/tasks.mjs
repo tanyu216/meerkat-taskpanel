@@ -281,7 +281,7 @@ export function registerTaskRoutes(router, surface) {
     });
     return {
       ...taskPayload(repos, result.task),
-      report: reportToWire(result.report),
+      report: reportToWire(result.report, { lookup: lookupFor(repos) }),
       report_id: result.report?.id ?? null,
       round: result.report?.round ?? result.task.reportWaiverRound,
       status: result.task.status,
@@ -322,6 +322,7 @@ export function registerTaskRoutes(router, surface) {
 
   router.get("/api/v1/tasks/:ref/reports", ({ params }) => {
     const task = resolveTask(repos, params.ref);
-    return { reports: commands.listReports({ taskId: task.id }).map(reportToWire) };
+    const lookup = lookupFor(repos);
+    return { reports: commands.listReports({ taskId: task.id }).map((report) => reportToWire(report, { lookup })) };
   });
 }

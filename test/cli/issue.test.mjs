@@ -152,7 +152,7 @@ describe("cli/issue — update, move, assign, archive", () => {
       const assigned = dataOf(run(["issue", "assign", "DEMO-0001", "--assignee", "Linus", "--json"]));
       assert.equal(assigned.task.assignee.display_name, "Linus");
 
-      const entries = dataOf(run(["assignees", "list", "--json"]));
+      const entries = dataOf(run(["actors", "list", "--json"]));
       assert.equal(entries.entries.length, 1);
       const id = entries.entries[0].id;
 
@@ -218,7 +218,7 @@ describe("cli/issue — every flag the command declares", () => {
   it("create can pick an assignee by id", async () => {
     await board(async ({ run }) => {
       createIssue(run, ["--assignee", "linus"]);
-      const id = dataOf(run(["assignees", "list", "--json"])).entries[0].id;
+      const id = dataOf(run(["actors", "list", "--json"])).entries[0].id;
       const created = createIssue(run, ["--title", "Second", "--assignee-id", id]);
       assert.equal(created.task.assignee.id, id);
     });
@@ -334,7 +334,7 @@ describe("cli/issue — the actor recorded on a report", () => {
           input: JSON.stringify(report),
         }),
       );
-      assert.equal(anonymous.report.author_id, "linus");
+      assert.equal(anonymous.report.author.display_name, "linus");
 
       // An explicit `author: null` is the same as omitting it.
       dataOf(run(["issue", "move", "DEMO-0001", "in_progress", "--json"]));
@@ -343,7 +343,7 @@ describe("cli/issue — the actor recorded on a report", () => {
           input: JSON.stringify({ ...report, author: null }),
         }),
       );
-      assert.equal(explicitNull.report.author_id, "terry");
+      assert.equal(explicitNull.report.author.display_name, "terry");
 
       // A named author wins.
       dataOf(run(["issue", "move", "DEMO-0001", "in_progress", "--json"]));
@@ -352,7 +352,7 @@ describe("cli/issue — the actor recorded on a report", () => {
           input: JSON.stringify({ ...report, author: { kind: "agent", id: "linus" } }),
         }),
       );
-      assert.equal(named.report.author_id, "linus");
+      assert.equal(named.report.author.display_name, "linus");
     });
   });
 });
@@ -447,7 +447,9 @@ describe("cli/issue — move enforces the assignee (T-20261009-230500)", () => {
       assignLinus(run);
       const moved = dataOf(run(["issue", "move", "DEMO-0001", "in_progress", "--agent", "linus", "--json"]));
       assert.equal(moved.task.status, "in_progress");
-      assert.equal(moved.task.claimed_by, "linus");
+      // `norm` folds the case, so the claimant `linus` is the assignee actor row
+      // `Linus` — the spelling the dictionary saw first wins.
+      assert.equal(moved.task.claimed_by_actor.display_name, "Linus");
     });
   });
 
@@ -475,7 +477,7 @@ describe("cli/issue — move enforces the assignee (T-20261009-230500)", () => {
           "--agent", "elon", "--json",
         ]),
       );
-      assert.equal(moved.task.claimed_by, "elon");
+      assert.equal(moved.task.claimed_by_actor.display_name, "elon");
 
       const comments = dataOf(run(["comment", "list", "DEMO-0001", "--json"])).comments;
       assert.equal(comments.length, 1);

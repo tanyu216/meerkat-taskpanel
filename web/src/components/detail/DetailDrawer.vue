@@ -167,7 +167,7 @@ const session = computed(() => {
   return sessions.find((row) => row.status === "running") ?? sessions[0] ?? null;
 });
 
-const peopleOptions = computed(() => board.assignees.map((entry) => ({ name: entry.display_name, kind: entry.kind, platform: entry.platform })));
+const peopleOptions = computed(() => board.assignees.map((entry) => ({ name: entry.display_name, kind: entry.kind, platform: platformOf(entry.display_name) })));
 const reporterOptions = computed(() => reporterRoster.value.map((name) => ({ name })));
 const labelOptions = computed(() => labelRoster.value.map((name) => ({ name })));
 

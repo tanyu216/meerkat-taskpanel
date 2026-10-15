@@ -236,7 +236,7 @@
   "routes": [
     {
       "method": "GET",
-      "path": "/api/v1/assignees",
+      "path": "/api/v1/actors",
       "request": {
         "body": null,
         "query": {
@@ -453,26 +453,6 @@
           "type": "object"
         },
         "query": null
-      }
-    },
-    {
-      "method": "GET",
-      "path": "/api/v1/reporters",
-      "request": {
-        "body": null,
-        "query": {
-          "additionalProperties": true,
-          "properties": {
-            "limit": {
-              "type": "string"
-            },
-            "q": {
-              "type": "string"
-            }
-          },
-          "required": [],
-          "type": "object"
-        }
       }
     },
     {
@@ -1200,6 +1180,7 @@
     {
       "fields": {
         "agent_session": "string",
+        "author": "object",
         "author_id": "string",
         "author_kind": "string",
         "body": "string",
@@ -1215,12 +1196,19 @@
     {
       "fields": {
         "display_name": "string",
+        "id": "string",
+        "kind": "string"
+      },
+      "shape": "comment.author"
+    },
+    {
+      "fields": {
+        "display_name": "string",
         "first_seen_at": "string",
         "id": "string",
         "kind": "string",
         "last_seen_at": "string",
         "normalized_name": "string",
-        "platform": "string",
         "use_count": "number"
       },
       "shape": "dictionary_entry"
@@ -1268,6 +1256,7 @@
     {
       "fields": {
         "acceptance": "array",
+        "author": "object",
         "author_id": "string",
         "author_kind": "string",
         "conclusion": "string",
@@ -1282,6 +1271,14 @@
         "task_id": "string"
       },
       "shape": "report"
+    },
+    {
+      "fields": {
+        "display_name": "string",
+        "id": "string",
+        "kind": "string"
+      },
+      "shape": "report.author"
     },
     {
       "fields": {
@@ -1309,9 +1306,8 @@
         "blocked_reason": "string",
         "claimed_at": "string",
         "claimed_by": "string",
+        "claimed_by_actor": "object",
         "created_at": "string",
-        "creator_id": "string",
-        "creator_kind": "string",
         "delivery_round": "number",
         "description": "string",
         "heartbeat_at": "string",
@@ -1345,6 +1341,14 @@
         "kind": "string"
       },
       "shape": "task.assignee"
+    },
+    {
+      "fields": {
+        "display_name": "string",
+        "id": "string",
+        "kind": "string"
+      },
+      "shape": "task.claimed_by_actor"
     },
     {
       "fields": {

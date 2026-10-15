@@ -84,7 +84,7 @@ meerkat-taskpanel/
 ├── README.md / README.zh-CN.md   # 文档（默认英文，中文镜像）
 ├── LICENSE / PRIVACY.md
 ├── package.json                  # 工作区根 + bin(taskctl) + scripts
-├── install.sh                    # 安装分发器：--target claude|openclaw|codex|pi|all
+├── install.sh                    # 安装分发器：--target claude|openclaw|codex|pi|opencode|cursor|all
 ├── .claude-plugin/               # Claude marketplace 清单
 ├── src/                          # 工程源码
 │   ├── core/                     #   领域模型 / SQLite 仓储 / 状态机 / 不变量
@@ -121,7 +121,7 @@ meerkat-taskpanel/
 ## 安装
 
 ```bash
-bash install.sh --target claude|openclaw|codex|pi|all
+bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|all
 ```
 
 默认 target 为 `all`。分发器转发到 `scripts/install/<host>.sh`，把 skill 安装到各宿主的
@@ -140,8 +140,8 @@ skill 目录 —— 对 **Claude Code** 与 **Codex** 还会部署宿主 bundle 
 | OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | `plugins/openclaw/openclaw.plugin.json`（原生） |
 | Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | 同一个仓根 bundle，经 marketplace 解析 |
 | Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | 仓根 `package.json` 的 `pi` 字段 |
-| OpenCode | —（仅插件） | 经 `.opencode/plugins/` 就地读取 | `./` —— 那一份 `skills/` |
-| Cursor | —（仅插件） | 经 `.cursor-plugin/plugin.json` 就地读取 | `./` —— 那一份 `skills/` |
+| OpenCode | `opencode` | `~/.config/opencode/skills/meerkat-taskpanel` | `.opencode/plugins/`（进程内注册） |
+| Cursor | `cursor` | `~/.cursor/skills/meerkat-taskpanel` | `.` —— 仓根（`.cursor-plugin/plugin.json`） |
 
 仓根就是 board 的插件根，每个 harness 都**就地读**那一份 `skills/`，不再各拿一份副本。
 OpenClaw 也可消费这个 Claude 格式的 bundle，这是受支持的 skill-only

@@ -1,9 +1,9 @@
 /**
  * The command surface — everything a surface (CLI, HTTP) is allowed to do.
  *
- * Note what is *absent*: there is no `assignee add/remove/rename`. The
+ * Note what is *absent*: there is no `assignee`/`actor` add/remove/rename. The
  * dictionary has no management API by design (§4.4); it grows when tasks are
- * created or reassigned, and `listAssignees`/`listReporters` are read-only.
+ * created or reassigned, and `listActors` is read-only.
  */
 
 import * as agentSessions from "./agent-sessions.mjs";
@@ -65,8 +65,8 @@ export function createCommands(ctx) {
     listRelations: (input) => relations.listRelations(ctx, input),
 
     // dictionary (read-only by design) ---------------------------------------
-    listAssignees: (input) => dictionary.listAssignees(ctx, input),
-    listReporters: (input) => dictionary.listReporters(ctx, input),
+    // One read for one table (`0019`): the two role reads merged with the tables.
+    listActors: (input) => dictionary.listActors(ctx, input),
 
     // labels (read-only by design; the GC is internal housekeeping) ----------
     listLabels: (input) => labels.listLabels(ctx, input),
@@ -89,6 +89,11 @@ export const FORBIDDEN_DICTIONARY_COMMANDS = Object.freeze([
   "removeReporter",
   "renameReporter",
   "createReporter",
+  "addActor",
+  "removeActor",
+  "renameActor",
+  "createActor",
+  "deleteActor",
 ]);
 
 /**

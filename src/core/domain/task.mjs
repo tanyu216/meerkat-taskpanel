@@ -12,7 +12,7 @@
 import { ARCHIVE_AFTER_DAYS, HEARTBEAT_FRESH_MS, IDENTIFIER_PATTERN, LABEL_MAX_LEN } from "../../shared/constants.mjs";
 import { DomainError } from "../../shared/errors.mjs";
 import { identifierPrefix } from "../../shared/ids.mjs";
-import { ACTOR_KINDS, AWAITING_REASONS, DICT_KINDS, STATUS, STATUSES, TASK_KINDS } from "./enums.mjs";
+import { AWAITING_REASONS, STATUS, STATUSES, TASK_KINDS } from "./enums.mjs";
 import { normalizeBlockedReason } from "./blocked-reason.mjs";
 import { normalizeIdem } from "./idem.mjs";
 import { parsePriority } from "./priority.mjs";
@@ -30,11 +30,8 @@ export const TASK_COLUMNS = Object.freeze([
   "kind",
   "labels",
   "sort_order",
-  "assignee_kind",
   "assignee_id",
   "reporter_id",
-  "creator_kind",
-  "creator_id",
   "agent_session",
   "thread_id",
   "thread_source",
@@ -219,26 +216,6 @@ export function normalizeLabels(value) {
   return out;
 }
 
-/** `{kind, id}` for creators/assignees, or null. */
-export function normalizeActor(value, field) {
-  if (value === null || value === undefined) return null;
-  const kind = value.kind;
-  const id = value.id;
-  if (typeof id !== "string" || id.trim() === "") {
-    throw new DomainError("VALIDATION_FAILED", {
-      message: `${field}.id must be a non-empty string`,
-      details: { field: `${field}.id`, received: id },
-    });
-  }
-  if (!ACTOR_KINDS.includes(kind)) {
-    throw new DomainError("VALIDATION_FAILED", {
-      message: `${field}.kind must be one of ${ACTOR_KINDS.join(", ")}`,
-      details: { field: `${field}.kind`, received: kind, allowed: ACTOR_KINDS },
-    });
-  }
-  return { kind, id };
-}
-
 // ---------------------------------------------------------------------------
 // create / update
 // ---------------------------------------------------------------------------
@@ -295,14 +272,6 @@ export function normalizeTaskCreate(input, context) {
     });
   }
 
-  const assigneeKind = input.assigneeKind ?? null;
-  if (assigneeKind !== null && !DICT_KINDS.includes(assigneeKind)) {
-    throw new DomainError("VALIDATION_FAILED", {
-      message: `assigneeKind must be one of ${DICT_KINDS.join(", ")}`,
-      details: { field: "assigneeKind", received: assigneeKind, allowed: DICT_KINDS },
-    });
-  }
-
   return {
     id,
     identifier,
@@ -314,11 +283,8 @@ export function normalizeTaskCreate(input, context) {
     kind,
     labels: normalizeLabels(input.labels),
     sortOrder: Number.isInteger(input.sortOrder) ? input.sortOrder : 0,
-    assigneeKind,
     assigneeId: input.assigneeId ?? null,
     reporterId: input.reporterId ?? null,
-    creatorKind: normalizeActor(input.creator, "creator")?.kind ?? null,
-    creatorId: normalizeActor(input.creator, "creator")?.id ?? null,
     agentSession: input.agentSession ?? null,
     threadId: input.threadId ?? null,
     threadSource: input.threadSource ?? null,
@@ -359,7 +325,6 @@ export const UPDATABLE_TASK_FIELDS = Object.freeze([
   "kind",
   "labels",
   "sortOrder",
-  "assigneeKind",
   "assigneeId",
   "reporterId",
   "agentSession",
@@ -426,15 +391,6 @@ export function normalizeTaskUpdate(input, context) {
     }
     patch.meta = input.meta;
   }
-  if (input.assigneeKind !== undefined) {
-    if (input.assigneeKind !== null && !DICT_KINDS.includes(input.assigneeKind)) {
-      throw new DomainError("VALIDATION_FAILED", {
-        message: `assigneeKind must be one of ${DICT_KINDS.join(", ")}`,
-        details: { field: "assigneeKind", allowed: DICT_KINDS },
-      });
-    }
-    patch.assigneeKind = input.assigneeKind;
-  }
   for (const field of ["assigneeId", "reporterId", "agentSession", "threadId", "threadSource", "sourceHash"]) {
     if (input[field] !== undefined) patch[field] = input[field];
   }
@@ -462,11 +418,8 @@ const CAMEL = {
   kind: "kind",
   labels: "labels",
   sort_order: "sortOrder",
-  assignee_kind: "assigneeKind",
   assignee_id: "assigneeId",
   reporter_id: "reporterId",
-  creator_kind: "creatorKind",
-  creator_id: "creatorId",
   agent_session: "agentSession",
   thread_id: "threadId",
   thread_source: "threadSource",

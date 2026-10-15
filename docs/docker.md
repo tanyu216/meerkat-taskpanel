@@ -219,7 +219,7 @@ check belongs. Its steps, in order:
 | 4 | `node scripts/verify/contract.mjs` (API contract snapshot) |
 | 5 | `node scripts/verify/route-request.mjs` (declared request schema vs handler reads) |
 | 6 | `bash install.sh --target all --dry-run` |
-| 7 | `node scripts/verify/profiles.mjs` (all four hosts, throwaway home) |
+| 7 | `node scripts/verify/profiles.mjs` (every host, throwaway home) |
 | 8 | `node scripts/verify/host-runtime.mjs` (offline host-runtime harness) |
 | 9 | `bash scripts/verify/install-e2e.sh` (install + first-run end-to-end) |
 
@@ -241,6 +241,8 @@ Each step prints an `== ... ==` header and the script aborts on the first failur
 | `openclaw` | `.openclaw/skills/meerkat-taskpanel` | `scripts/install/openclaw.sh` |
 | `codex` | `.codex/skills/meerkat-taskpanel` | `scripts/install/codex.sh` |
 | `pi` | `.agents/skills/meerkat-taskpanel` | `scripts/install/pi.sh` |
+| `opencode` | `.config/opencode/skills/meerkat-taskpanel` | `scripts/install/opencode.sh` |
+| `cursor` | `.cursor/skills/meerkat-taskpanel` | `scripts/install/cursor.sh` |
 
 Each file has the same six keys: `host`, `label`, `installer`, `target_dir`,
 `skill_entry`, `wrapper`. They are read by a tiny flat-map parser
@@ -248,7 +250,7 @@ Each file has the same six keys: `host`, `label`, `installer`, `target_dir`,
 profile must stay a flat `key: value` map. Unsupported syntax is a hard error with a
 line number.
 
-`node scripts/verify/profiles.mjs` installs all four hosts and asserts, per host:
+`node scripts/verify/profiles.mjs` installs every profiled host and asserts, per host:
 
 - the skill directory exists at `<home>/<target_dir>`;
 - `SKILL.md` still carries `name: meerkat-taskpanel` in its frontmatter;
@@ -276,7 +278,7 @@ The verification installs with `--link` semantics (`MEERKAT_TASKPANEL_LINK=1`), 
 rung: a symlinked skill still has this checkout three levels up, so `run.mjs` finds the CLI
 beside it, and `--version` exercises that path end to end. The mode `install.sh` *defaults*
 to — a copy, which carries no `src/` — is covered per host by
-`test/install/installed-copy.test.mjs`: it installs all four hosts by copy and asserts the
+`test/install/installed-copy.test.mjs`: it installs the hosts by copy and asserts the
 wrapper falls back to `taskctl` on `PATH` or to an explicitly named checkout, and otherwise
 refuses with an actionable remedy rather than a crash. See
 [Troubleshooting](#troubleshooting).

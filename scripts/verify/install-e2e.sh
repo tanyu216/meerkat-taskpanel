@@ -123,8 +123,8 @@ node "$CLI" issue deliver "$ID" --report-file "$REPORT_FILE"
 step "taskctl labels list"
 node "$CLI" labels list
 
-step "taskctl assignees list"
-node "$CLI" assignees list
+step "taskctl actors list"
+node "$CLI" actors list
 
 echo
 echo "== all install e2e checks passed =="

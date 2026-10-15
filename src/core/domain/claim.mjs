@@ -124,6 +124,26 @@ function identityKey(value) {
   }
 }
 
+/**
+ * How a holder is *named* in a message.
+ *
+ * Since `0020` `task.claimedBy` is an actor **id**, so a reason string that
+ * interpolated it used to read a uuid. The caller — which has the dictionary —
+ * injects `describeHolder` to turn that id back into a person; this function
+ * stays pure, and with no resolver the id stands in (the same "the id is its own
+ * name" fallback the wire's `actorRef` uses). Exported so the repository's
+ * `setHeartbeat` refusal (`repositories/tasks.mjs`), which has the same problem a
+ * layer down, names a holder the **same** way — one implementation, not two.
+ *
+ * @param {string|null|undefined} holder a `task.claimedBy` value
+ * @param {((id: string) => string|null|undefined)|undefined} describeHolder
+ */
+export function holderLabel(holder, describeHolder) {
+  if (typeof describeHolder !== "function") return holder;
+  const name = describeHolder(/** @type {string} */ (holder));
+  return name === undefined || name === null || name === "" ? holder : name;
+}
+
 /** Heartbeat age in ms, or `null` when there is no usable heartbeat. */
 function heartbeatAgeMs(task, now) {
   const at = task.heartbeatAt;
@@ -134,7 +154,7 @@ function heartbeatAgeMs(task, now) {
 
 /**
  * @param {object} task a Task DTO
- * @param {{actor: string, now: string, freshMs?: number, allowSteal?: boolean, resolveAssignee?: ((task: object) => object|null)|null}} options
+ * @param {{actor: string, now: string, freshMs?: number, allowSteal?: boolean, resolveAssignee?: ((task: object) => object|null)|null, describeHolder?: ((id: string) => string|null|undefined)}} options
  * @returns {{action: string, code: string|null, reason?: string, reclaim?: boolean, steal?: boolean, stolenFrom?: string}}
  */
 export function decideClaim(task, options) {
@@ -144,6 +164,7 @@ export function decideClaim(task, options) {
     freshMs = HEARTBEAT_FRESH_MS,
     allowSteal = false,
     resolveAssignee = null,
+    describeHolder = undefined,
   } = options;
 
   if (task.status === "in_progress") {
@@ -155,6 +176,9 @@ export function decideClaim(task, options) {
         reason: "task is in_progress but nobody claims it",
       };
     }
+    // The comparisons stay on the raw value (an id since 0020); only the message
+    // names the holder, so `.reason` reads a person rather than a uuid.
+    const holderName = holderLabel(holder, describeHolder);
     const age = heartbeatAgeMs(task, now);
     if (age !== null && age <= freshMs) {
       if (holder === actor) {
@@ -163,7 +187,7 @@ export function decideClaim(task, options) {
       return {
         action: CLAIM_ACTIONS.CONFLICT,
         code: "EXECUTION_ACTIVE",
-        reason: `${holder} holds a fresh claim (heartbeat ${task.heartbeatAt})`,
+        reason: `${holderName} holds a fresh claim (heartbeat ${task.heartbeatAt})`,
       };
     }
     if (age !== null && age <= CLAIM_STALE_ANY_MS) {
@@ -181,14 +205,14 @@ export function decideClaim(task, options) {
       return {
         action: CLAIM_ACTIONS.CONFLICT,
         code: "EXECUTION_ACTIVE",
-        reason: `${holder} still holds this task; only they may re-claim it within 6 hours`,
+        reason: `${holderName} still holds this task; only they may re-claim it within 6 hours`,
       };
     }
     // Older than six hours — or no heartbeat at all: the claim is not a claim.
     return {
       action: CLAIM_ACTIONS.TAKE,
       code: null,
-      reason: `previous claim by ${holder} went stale`,
+      reason: `previous claim by ${holderName} went stale`,
       reclaim: true,
       steal: true,
       stolenFrom: holder,
@@ -237,7 +261,7 @@ export function decideClaim(task, options) {
  * The same decision, as a throw.
  *
  * @param {object} task
- * @param {{actor: string, now: string, freshMs?: number, allowSteal?: boolean, resolveAssignee?: ((task: object) => object|null)|null}} options
+ * @param {{actor: string, now: string, freshMs?: number, allowSteal?: boolean, resolveAssignee?: ((task: object) => object|null)|null, describeHolder?: ((id: string) => string|null|undefined)}} options
  * @throws {DomainError} EXECUTION_STATE_CORRUPT / EXECUTION_ACTIVE / not_assignee / not_claimable / INVALID_TRANSITION
  */
 export function assertClaimable(task, options) {
@@ -267,10 +291,10 @@ export function assertClaimable(task, options) {
  * How a 0-row CAS is explained, once the current row has been re-read inside
  * the same transaction.
  *
- * @param {{before: object, after: object|null, actor: string, now: string, ifVersion?: number, freshMs?: number, allowSteal?: boolean, resolveAssignee?: ((task: object) => object|null)|null}} input
+ * @param {{before: object, after: object|null, actor: string, now: string, ifVersion?: number, freshMs?: number, allowSteal?: boolean, resolveAssignee?: ((task: object) => object|null)|null, describeHolder?: ((id: string) => string|null|undefined)}} input
  */
 export function explainLostClaim(input) {
-  const { before, after, actor, now, ifVersion, freshMs, allowSteal, resolveAssignee } = input;
+  const { before, after, actor, now, ifVersion, freshMs, allowSteal, resolveAssignee, describeHolder } = input;
 
   if (after === null || after === undefined) {
     return new DomainError("NOT_FOUND", {
@@ -284,7 +308,7 @@ export function explainLostClaim(input) {
       details: { taskId: after.id, currentVersion: after.version, expectedVersion: ifVersion },
     });
   }
-  const verdict = decideClaim(after, { actor, now, freshMs, allowSteal, resolveAssignee });
+  const verdict = decideClaim(after, { actor, now, freshMs, allowSteal, resolveAssignee, describeHolder });
   if (verdict.code !== null) {
     return new DomainError(verdict.code, {
       message: `${after.identifier ?? after.id}: lost the claim race (${verdict.reason})`,

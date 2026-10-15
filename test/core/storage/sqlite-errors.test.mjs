@@ -29,7 +29,7 @@ import {
   TECHNICAL_ERROR_TEXT,
   toErrorPayload,
 } from "../../../src/shared/errors.mjs";
-import { cleanupTempDirs, insertProject, insertTask, reasonCode, withBoard } from "../../helpers/sqlite-fixture.mjs";
+import { cleanupTempDirs, ensureActor, insertProject, insertTask, reasonCode, withBoard } from "../../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);
 
@@ -271,6 +271,7 @@ describe("storage/sqlite-errors — against a real database", () => {
         ),
         "SELF_REFERENCE",
       );
+      ensureActor(db, "a"); // comments.author_id is a reference since 0020
       db.prepare(
         "INSERT INTO comments(id, task_id, body, kind, author_kind, author_id, created_at) VALUES ('c','t','b','note','agent','a','x')",
       ).run();

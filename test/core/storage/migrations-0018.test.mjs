@@ -123,7 +123,7 @@ describe("storage/migrations — 0018 opens the actor-kind columns (comments, ta
       const up = applyMigrations(board.db);
       // 0018 is the last file in the set today; when a later migration lands this
       // list grows by one, as the 0013/0015 suites' equivalents did.
-      assert.deepEqual(up.applied.map((m) => m.version), ["0018"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0018", "0019", "0020"]);
       assert.deepEqual(up.skipped.slice(-2), ["0016", "0017"]);
 
       // 1 — the enumeration is gone from both tables, and nothing replaced it.
@@ -134,19 +134,22 @@ describe("storage/migrations — 0018 opens the actor-kind columns (comments, ta
       assert.match(commentsSql, /author_kind\s+TEXT NOT NULL/, "only the CHECK goes — NOT NULL is not the enumeration");
       assert.match(reportsSql, /author_kind\s+TEXT NOT NULL/, "only the CHECK goes — NOT NULL is not the enumeration");
 
-      // 2 — the rows the previous build wrote are still there, unchanged. These are
-      // the values the old CHECK accepted, so they must remain legal by construction.
+      // 2 — the rows the previous build wrote are still there. `author_kind` is
+      // untouched; `author_id` is a reference to `actors` since 0020, so it reads
+      // back through the actor row as the same name the row carried.
       assert.equal(board.db.prepare("SELECT COUNT(*) AS n FROM comments").get().n, 2);
       // `node:sqlite` hands back null-prototype rows, which `deepStrictEqual` treats as
       // a different type from an object literal — so the projection is explicit here.
       assert.deepEqual(
         board.db
-          .prepare("SELECT id, author_kind, author_id FROM comments ORDER BY id")
+          .prepare(
+            "SELECT c.id, c.author_kind, a.display_name AS name FROM comments c JOIN actors a ON a.id = c.author_id ORDER BY c.id",
+          )
           .all()
-          .map((r) => ({ id: r.id, author_kind: r.author_kind, author_id: r.author_id })),
+          .map((r) => ({ id: r.id, author_kind: r.author_kind, name: r.name })),
         [
-          { id: "c-1", author_kind: "human", author_id: "terry" },
-          { id: "c-2", author_kind: "system", author_id: "taskd" },
+          { id: "c-1", author_kind: "human", name: "terry" },
+          { id: "c-2", author_kind: "system", name: "taskd" },
         ],
       );
       assert.equal(board.db.prepare("SELECT author_kind FROM task_reports WHERE round = 1").get().author_kind, "agent");
@@ -246,23 +249,39 @@ describe("storage/migrations — 0018 opens the actor-kind columns (comments, ta
       const newTriggers = triggersOf(after.db);
 
       // As in the 0013/0015 suites: `after` runs the whole shipped set, so a *later*
-      // migration's own trigger is an allowed addition. 0018 is the last file today,
-      // so the allowed set is empty and the next migration extends this list.
+      // migration's own trigger is an allowed addition. 0019 — which merged the two
+      // dictionary tables into `actors` — removes the four triggers that lived on
+      // each old table and adds one delete guard + three revision triggers on
+      // `actors`, and re-declares `tr_rev_tasks_upd` during its `tasks` rebuild.
+      const DICTIONARY_TRIGGERS_REMOVED = [
+        "tr_dict_assignees_delete",
+        "tr_dict_reporters_delete",
+        "tr_rev_assignees_del",
+        "tr_rev_assignees_ins",
+        "tr_rev_assignees_upd",
+        "tr_rev_reporters_del",
+        "tr_rev_reporters_ins",
+        "tr_rev_reporters_upd",
+      ];
       assert.deepEqual(
         Object.keys(newTriggers)
           .filter((name) => !(name in oldTriggers))
           .sort(),
-        [],
-        "0018 invents no trigger",
+        ["tr_dict_actors_delete", "tr_rev_actors_del", "tr_rev_actors_ins", "tr_rev_actors_upd"],
+        "0018 invents no trigger; 0019's actor triggers are the later addition",
       );
       assert.deepEqual(
-        Object.keys(oldTriggers).filter((name) => !(name in newTriggers)),
-        [],
-        "the rebuild must not lose a trigger",
+        Object.keys(oldTriggers).filter((name) => !(name in newTriggers)).sort(),
+        DICTIONARY_TRIGGERS_REMOVED,
+        "the rebuild must not lose a trigger (0019 removes the two old tables' triggers)",
       );
 
       const changed = Object.keys(oldTriggers).filter((name) => oldTriggers[name] !== newTriggers[name]).sort();
-      assert.deepEqual(changed, [], "0018 must change no trigger — it removes a CHECK");
+      assert.deepEqual(
+        changed,
+        [...DICTIONARY_TRIGGERS_REMOVED, "tr_rev_tasks_upd"].sort(),
+        "0018 must change no trigger — only 0019's own `tasks` rebuild moves `tr_rev_tasks_upd`; 0020 re-declares every trigger it parks verbatim",
+      );
 
       // The four that a careless rebuild would be most likely to mangle, named so a
       // failure says which one rather than only that the set differs.
@@ -324,9 +343,13 @@ describe("storage/migrations — 0018 opens the actor-kind columns (comments, ta
     for (const key of ["comments.author_kind", "task_reports.author_kind"]) {
       assert.equal(Object.hasOwn(SQL_ENUM_SETS, key), false, `${key} must not be declared`);
     }
-    // Non-vacuity: the neighbouring actor-kind columns, whose tables this migration
-    // deliberately does not touch, are still declared.
-    for (const key of ["tasks.assignee_kind", "tasks.creator_kind", "assignees.kind", "reporters.kind"]) {
+    // Non-vacuity: other enumerated columns are still declared, so "absent" here
+    // means these two specifically, not an empty registry. (The four actor-kind
+    // columns `0018` left open — `tasks.assignee_kind`, `tasks.creator_kind`,
+    // `assignees.kind`, `reporters.kind` — are gone entirely under `0019`, which
+    // drops the columns and merges the two tables, so they are no longer usable as
+    // "still declared" witnesses.)
+    for (const key of ["tasks.status", "comments.kind", "task_reports.origin"]) {
       assert.equal(Object.hasOwn(SQL_ENUM_SETS, key), true, `${key} must still be declared`);
     }
   });
