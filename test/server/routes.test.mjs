@@ -313,15 +313,14 @@ describe("server/routes — comments, relations, sessions, dictionary, export", 
   });
 
   it("reads the dictionary, and offers no way to write it", async () => {
-    const assignees = dataOf(await call("GET", "/api/v1/assignees?q=lin"));
-    assert.equal(assignees.entries.length, 1);
-    assert.equal(assignees.entries[0].display_name, "linus");
-    assert.equal(typeof assignees.entries[0].id, "string");
+    const actors = dataOf(await call("GET", "/api/v1/actors?q=lin"));
+    assert.equal(actors.entries.length, 1);
+    assert.equal(actors.entries[0].display_name, "linus");
+    assert.equal(typeof actors.entries[0].id, "string");
 
-    assert.equal(dataOf(await call("GET", "/api/v1/reporters")).entries.length, 0);
     // The management surface does not exist, so it cannot be reached.
-    assert.equal((await call("POST", "/api/v1/assignees", { name: "x" })).status, 404);
-    assert.equal((await call("DELETE", "/api/v1/assignees/x")).status, 404);
+    assert.equal((await call("POST", "/api/v1/actors", { name: "x" })).status, 404);
+    assert.equal((await call("DELETE", "/api/v1/actors/x")).status, 404);
   });
 
   it("reads the label registry, and offers no way to write it", async () => {
@@ -370,7 +369,7 @@ describe("server/routes — the edges a happy path never reaches", () => {
     );
     assert.equal(after.comments.length, 0, "nothing is newer than the future");
 
-    const dictionary = dataOf(await call("GET", "/api/v1/assignees?q=lin&limit=1"));
+    const dictionary = dataOf(await call("GET", "/api/v1/actors?q=lin&limit=1"));
     assert.equal(dictionary.entries.length, 1);
     assert.equal(dataOf(await call("GET", "/api/v1/projects?include_archived=1")).projects.length >= 1, true);
   });

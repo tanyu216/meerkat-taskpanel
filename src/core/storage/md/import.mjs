@@ -28,7 +28,7 @@ import { DomainError, isDomainError } from "../../../shared/errors.mjs";
 import { LABEL_PALETTE } from "../../../shared/constants.mjs";
 import { contentHash, newId, sha256Hex } from "../../../shared/ids.mjs";
 import { ACCEPTANCE_STATUSES, TASK_KINDS } from "../../domain/enums.mjs";
-import { normalizeName } from "../../domain/dictionary.mjs";
+import { resolveOrCreate } from "../../commands/dictionary.mjs";
 import { labelDisplayName, nextColor, normalizeLabelName } from "../../domain/labels.mjs";
 import { normalizeBlockedReason } from "../../domain/blocked-reason.mjs";
 import { normalizeCommentCreate } from "../../domain/comment.mjs";
@@ -543,12 +543,19 @@ export function importMd(input) {
           entry.latestReport = stored;
         }
 
+        // The card's creator IS its reporter (0019) — the creator columns are gone,
+        // so a progress line is attributed to that actor (kind + display name),
+        // falling back to the importer itself when the card names nobody.
+        const progressActor =
+          task.reporterId === null || task.reporterId === undefined
+            ? null
+            : repos.dictionary.getById("reporter", task.reporterId);
         for (const [index, line] of card.progress.entries()) {
           const { ts, text } = splitProgressLine(line);
           repos.activities.append({
             taskId: task.id,
-            actorKind: entry.task.creatorKind ?? "system",
-            actorId: entry.task.creatorId ?? "md-import",
+            actorKind: progressActor?.kind ?? "system",
+            actorId: progressActor?.displayName ?? "md-import",
             event: "progress",
             changes: { line, seq: index },
             createdAt: importTimestamp(ts, now, stats, "progress"),
@@ -942,41 +949,41 @@ function ensureProject(repos, plan, now, stats) {
   }
 }
 
-/** Event-driven dictionary upsert for the two names a card carries. */
+/**
+ * Event-driven dictionary resolution for the two names a card carries.
+ *
+ * It drives the **same** decision the live path drives (`resolveOrCreate`): the
+ * name is normalised, matched exactly then by unique prefix, and the dictionary's
+ * own spelling wins on reuse. Before Phase 5 this called `repos.dictionary.upsert`
+ * directly — bypassing the verdict — so a card imported as `"  terry "` stored
+ * `"  terry "` while the same name entered through the CLI stored `"Terry"`: one
+ * key, two spellings, and behaviour that depended on import order.
+ *
+ * The former claimant branch is **gone**. It resolved the card's `claimed_by` into
+ * an actor row and wrote the id into a `writes.claimedById` key that was never in
+ * the initialiser and never read — a spurious row for every claimant, discarded.
+ * `tasks.claimed_by` is still a free string (`0019` deliberately leaves it alone),
+ * so the claimant needs no actor row here; when a later migration turns that
+ * column into a reference it will create the rows it needs itself.
+ */
 function resolveCardDictionaries(repos, card, now) {
-  const writes = { assigneeId: null, assigneeKind: null, reporterId: null, count: 0 };
+  const writes = { assigneeId: null, reporterId: null, count: 0 };
   if (typeof card.assignee === "string" && card.assignee.trim() !== "") {
-    const { entry } = repos.dictionary.upsert({
+    const { entry } = resolveOrCreate({ repos, now }, {
       kind: "assignee",
+      name: card.assignee,
       actorKind: card.assigneeKind === "human" ? "human" : "agent",
-      normalizedName: normalizeName(card.assignee),
-      displayName: card.assignee,
-      now,
     });
     writes.assigneeId = entry.id;
-    writes.assigneeKind = entry.kind;
     writes.count += 1;
   }
   if (typeof card.reporter === "string" && card.reporter.trim() !== "") {
-    const { entry } = repos.dictionary.upsert({
+    const { entry } = resolveOrCreate({ repos, now }, {
       kind: "reporter",
+      name: card.reporter,
       actorKind: authorKind(card.reporter),
-      normalizedName: normalizeName(card.reporter),
-      displayName: card.reporter,
-      now,
     });
     writes.reporterId = entry.id;
-    writes.count += 1;
-  }
-  if (typeof card.claimedBy === "string" && card.claimedBy.trim() !== "") {
-    const { entry } = repos.dictionary.upsert({
-      kind: "assignee",
-      actorKind: authorKind(card.claimedBy),
-      normalizedName: normalizeName(card.claimedBy),
-      displayName: card.claimedBy,
-      now,
-    });
-    writes.claimedById = entry.id;
     writes.count += 1;
   }
   return writes;
@@ -1067,10 +1074,8 @@ function buildTask(repos, card, context) {
       // imported card ends up with the same first-seen label spelling a CLI
       // write would have produced.
       labels: labels ?? card.labels,
-      assigneeKind: dictionary.assigneeKind,
       assigneeId: dictionary.assigneeId,
       reporterId: dictionary.reporterId,
-      creator: card.createdBy === null ? null : { kind: authorKind(card.createdBy), id: card.createdBy },
       sourcePath: rel,
       sourceHash: hash,
       meta: card.meta,
@@ -1109,7 +1114,6 @@ function patchFrom(task) {
     priority: task.priority,
     kind: task.kind,
     labels: task.labels,
-    assigneeKind: task.assigneeKind,
     assigneeId: task.assigneeId,
     reporterId: task.reporterId,
     sourceHash: task.sourceHash,

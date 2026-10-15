@@ -511,18 +511,21 @@ describe("repositories/dictionary", () => {
       assert.equal(second.entry.useCount, 2);
       assert.equal(second.entry.firstSeenAt, TS);
       assert.equal(second.entry.lastSeenAt, TS2);
-      assert.equal(countRows(db, "assignees"), 1);
+      assert.equal(countRows(db, "actors"), 1);
     });
   });
 
-  it("keeps the two actor kinds apart and the two tables apart", async () => {
+  it("collapses one name onto one row, whatever the kind or the role (0019)", async () => {
     await board(({ repos }) => {
       const agent = repos.dictionary.upsert({ kind: "assignee", actorKind: "agent", normalizedName: "sam", displayName: "Sam", now: TS });
       const human = repos.dictionary.upsert({ kind: "assignee", actorKind: "human", normalizedName: "sam", displayName: "Sam", now: TS });
       const reporter = repos.dictionary.upsert({ kind: "reporter", actorKind: "agent", normalizedName: "sam", displayName: "Sam", now: TS });
-      assert.notEqual(agent.entry.id, human.entry.id);
-      assert.notEqual(agent.entry.id, reporter.entry.id);
-      assert.equal(repos.dictionary.list("assignee").length, 2);
+      // One name ⇒ one row: the kind no longer splits it, and neither does the role.
+      assert.equal(human.entry.id, agent.entry.id);
+      assert.equal(reporter.entry.id, agent.entry.id);
+      assert.equal(reporter.action, "reused");
+      assert.equal(agent.entry.kind, "agent", "the stored kind wins on reuse");
+      assert.equal(repos.dictionary.list("assignee").length, 1);
       assert.equal(repos.dictionary.list("reporter").length, 1);
     });
   });
@@ -537,7 +540,7 @@ describe("repositories/dictionary", () => {
       assert.equal(repos.dictionary.search("assignee", { limit: 1 }).length, 1);
       assert.equal(repos.dictionary.search("assignee", { q: "nobody" }).length, 0);
 
-      const task = makeTask(repos, { assigneeKind: "agent", assigneeId: linus.entry.id });
+      const task = makeTask(repos, { assigneeId: linus.entry.id });
       assert.equal(repos.dictionary.refCount("assignee", linus.entry.id), 1);
       assert.equal(repos.dictionary.getById("assignee", linus.entry.id).displayName, "Linus");
 

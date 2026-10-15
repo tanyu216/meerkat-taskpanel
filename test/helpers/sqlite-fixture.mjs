@@ -151,58 +151,57 @@ export function insertTask(db, overrides = {}) {
     status_changed_at: TS,
     ...overrides,
   };
-  // `awaiting_reason` arrives with 0013, and the migration tests deliberately
-  // build boards that stop short of it — so the column is only named when this
-  // board actually has it. Asking the schema (rather than a flag the caller has
-  // to remember) is what keeps an insert from failing on a legacy board.
+  // Five columns come and go across the migration history, and a fixture must
+  // not name a column the board it is building does not have:
+  //
+  //   * `awaiting_reason` arrives with 0013;
+  //   * `blocked_reason` arrives with 0016;
+  //   * `assignee_kind`, `creator_kind`, `creator_id` are **removed** by 0019
+  //     (the kind moved onto the actor, and the creator IS the reporter).
+  //
+  // Asking the schema (rather than a flag the caller has to remember) is what
+  // keeps one helper usable against a legacy board and against a 0019 board.
   const columns = new Set(
     db.prepare("SELECT name FROM pragma_table_info('tasks')").all().map((r) => r.name),
   );
-  const baseColumns = [
-    "id", "identifier", "project_id", "title", "description", "status", "priority", "kind",
-    "labels", "sort_order", "assignee_kind", "assignee_id", "reporter_id", "creator_kind", "creator_id",
-    "claimed_by", "claimed_at", "heartbeat_at", "blocked_at", "status_changed_at",
-    "archived_at", "source_path", "source_hash", "version", "idem", "created_at", "updated_at",
+  const pairs = [
+    ["id", row.id],
+    ["identifier", row.identifier],
+    ["project_id", row.project_id],
+    ["title", row.title],
+    ["description", row.description ?? ""],
+    ["status", row.status],
+    ["priority", row.priority ?? "medium"],
+    ["kind", row.kind ?? "task"],
+    ["labels", row.labels ?? "[]"],
+    ["sort_order", row.sort_order ?? 0],
+    ["assignee_id", row.assignee_id ?? null],
+    ["reporter_id", row.reporter_id ?? null],
+    ["claimed_by", row.claimed_by ?? null],
+    ["claimed_at", row.claimed_at ?? null],
+    ["heartbeat_at", row.heartbeat_at ?? null],
+    ["blocked_at", row.blocked_at ?? null],
+    ["status_changed_at", row.status_changed_at],
+    ["archived_at", row.archived_at ?? null],
+    ["source_path", row.source_path ?? null],
+    ["source_hash", row.source_hash ?? null],
+    ["version", row.version ?? 1],
+    ["idem", row.idem ?? null],
+    ["created_at", row.created_at],
+    ["updated_at", row.updated_at],
   ];
-  const values = [
-    row.id,
-    row.identifier,
-    row.project_id,
-    row.title,
-    row.description ?? "",
-    row.status,
-    row.priority ?? "medium",
-    row.kind ?? "task",
-    row.labels ?? "[]",
-    row.sort_order ?? 0,
-    row.assignee_kind ?? null,
-    row.assignee_id ?? null,
-    row.reporter_id ?? null,
-    row.creator_kind ?? null,
-    row.creator_id ?? null,
-    row.claimed_by ?? null,
-    row.claimed_at ?? null,
-    row.heartbeat_at ?? null,
-    row.blocked_at ?? null,
-    row.status_changed_at,
-    row.archived_at ?? null,
-    row.source_path ?? null,
-    row.source_hash ?? null,
-    row.version ?? 1,
-    row.idem ?? null,
-    row.created_at,
-    row.updated_at,
+  const optional = [
+    ["assignee_kind", row.assignee_kind ?? null],
+    ["creator_kind", row.creator_kind ?? null],
+    ["creator_id", row.creator_id ?? null],
+    ["awaiting_reason", row.awaiting_reason ?? null],
+    ["blocked_reason", row.blocked_reason ?? null],
   ];
-  if (columns.has("awaiting_reason")) {
-    baseColumns.push("awaiting_reason");
-    values.push(row.awaiting_reason ?? null);
+  for (const [column, value] of optional) {
+    if (columns.has(column)) pairs.push([column, value]);
   }
-  // `blocked_reason` arrives with 0016, by the same rule and for the same
-  // reason: a board built short of that migration simply does not name it.
-  if (columns.has("blocked_reason")) {
-    baseColumns.push("blocked_reason");
-    values.push(row.blocked_reason ?? null);
-  }
+  const baseColumns = pairs.map(([column]) => column);
+  const values = pairs.map(([, value]) => value);
   db.prepare(
     `INSERT INTO tasks(${baseColumns.join(", ")}) VALUES (${baseColumns.map(() => "?").join(", ")})`,
   ).run(...values);

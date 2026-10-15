@@ -76,8 +76,8 @@ mapped — see §Unknown keys are preserved.
 | `labels` | Free-form tags, shown in order. | Inline array `[a, b]` (or a comma-separated scalar). Trimmed, de-duplicated, order kept. Each label ≤ 64 chars, at most 32 labels. Labels register in the project's label registry, so an imported card ends up with the same first-seen spelling a CLI write would produce. |
 | `project` | **Required** — which board project the card belongs to. | The project's **registered name** (a key in `projects.json`) or its id; resolved to the project id. May be supplied by `--project` instead. An unresolvable name is a warning + skip, never a silently created project. |
 | `assignee` | Who is on the hook. | A dictionary name. Empty ⇒ unassigned. |
-| `assignee_kind` | Which dictionary that name is looked up in. | `agent` · `human`. Absent ⇒ `agent`. **Not re-emitted on export** (see §Round-trip rules). |
-| `created_by` | Who created the card. | A name → the `reporters` dictionary + `tasks.reporter_id`. The importer infers the actor kind from a small name list (`elon`, `terry`, `tanyu` ⇒ human, otherwise agent) — a card author who is a human but not on that list arrives as an agent. |
+| `assignee_kind` | The kind of the actor a **new** name becomes (the dictionary is one table; `agent` · `human`). Ignored on an exact reuse — the stored kind wins. | `agent` · `human`. Absent ⇒ `agent`. **Not re-emitted on export** (see §Round-trip rules). |
+| `created_by` | Who created the card. | A name → the actor dictionary + `tasks.reporter_id`. The importer infers the actor kind from a small name list (`elon`, `terry`, `tanyu` ⇒ human, otherwise agent) — a card author who is a human but not on that list arrives as an agent. |
 | `created_at` | When the card was created. | ISO 8601. Absent ⇒ the import clock. Always normalised to the canonical ms-Z form (`2026-10-08T15:31:25.161Z`) — `2026-10-08T14:03Z` and `…+08:00` are coerced, and the coercion is recorded as a notice, not silently swallowed. |
 | `updated_at` | Last content change. | Same coercion. Absent ⇒ `created_at`. |
 | `status_changed_at` | When `status` last changed. | Same coercion. Absent ⇒ `created_at`, else the import clock. |
@@ -307,7 +307,7 @@ Properties `import → export` guarantees, and the reason to trust a rewrite:
 
 Two asymmetries worth knowing, both deliberate:
 
-- **`assignee_kind` is not re-exported.** The assignee's kind lives with the dictionary entry,
+- **`assignee_kind` is not re-exported.** The assignee's kind lives on the actor row,
   not on every card, so an exported card omits the key.
 - **`meta_json` is where the non-column values live**: `notify_leader` is a *known* key with
   its own meta slot (it has no column), while every unknown key — `target`, `goal`, … — lives

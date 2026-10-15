@@ -137,7 +137,7 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
       seedLegacyBoard(board.db);
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017", "0018"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017", "0018", "0019"]);
       assert.deepEqual(up.skipped.slice(-2), ["0011", "0012"]);
 
       // 1 — the enum: the new word is storable, the old ones still are, and an
@@ -264,12 +264,30 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
       const newTriggers = triggersOf(after.db);
 
       // `after` runs the **whole shipped set**, so a migration later than this
-      // one may legitimately bring a trigger of its own; the key sets are then a
-      // superset by exactly those. The rebuild itself may never lose one or
-      // invent one, so the allowance is named rather than the comparison
-      // loosened. (T-20261014-212017-4 — `0017_block_cycle.sql` adds
-      // `tr_rel_block_cycle`, the dependency-cycle guard.)
-      const LATER_MIGRATION_TRIGGERS = ["tr_rel_block_cycle"];
+      // one may legitimately bring or remove a trigger of its own; the key sets
+      // differ by exactly those. The rebuild itself may never lose one or invent
+      // one, so the allowances are named rather than the comparison loosened.
+      // Two later files touch triggers: `0017_block_cycle.sql` adds
+      // `tr_rel_block_cycle`, and `0019_actors.sql` merges the two dictionary
+      // tables into `actors` — removing the four triggers on each old table and
+      // adding `tr_dict_actors_delete` + `tr_rev_actors_{ins,upd,del}`.
+      const LATER_MIGRATION_TRIGGERS = [
+        "tr_dict_actors_delete",
+        "tr_rel_block_cycle",
+        "tr_rev_actors_del",
+        "tr_rev_actors_ins",
+        "tr_rev_actors_upd",
+      ];
+      const LATER_MIGRATION_TRIGGERS_REMOVED = [
+        "tr_dict_assignees_delete",
+        "tr_dict_reporters_delete",
+        "tr_rev_assignees_del",
+        "tr_rev_assignees_ins",
+        "tr_rev_assignees_upd",
+        "tr_rev_reporters_del",
+        "tr_rev_reporters_ins",
+        "tr_rev_reporters_upd",
+      ];
       assert.deepEqual(
         Object.keys(newTriggers)
           .filter((name) => !(name in oldTriggers))
@@ -278,19 +296,25 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
         "only a later migration's own trigger may appear",
       );
       assert.deepEqual(
-        Object.keys(oldTriggers).filter((name) => !(name in newTriggers)),
-        [],
-        "the rebuild must not lose a trigger",
+        Object.keys(oldTriggers).filter((name) => !(name in newTriggers)).sort(),
+        LATER_MIGRATION_TRIGGERS_REMOVED,
+        "the rebuild must not lose a trigger (0019 removes the two old tables' triggers)",
       );
-      // Two triggers may change, and both are intentional: the transition
-      // whitelist gains its `awaiting` clause, and the revision cursor's column
-      // domain gains `awaiting_reason` (a real content change a watching client
-      // has to see). Everything else must be identical.
+      // The transition whitelist gains its `awaiting` clause and the revision
+      // cursor's column domain gains `awaiting_reason` (0013); 0019 later rewrites
+      // that same cursor's domain again when the `tasks` columns move, and removes
+      // the two old tables' triggers. Everything else must be identical.
       const changed = Object.keys(oldTriggers).filter((name) => oldTriggers[name] !== newTriggers[name]).sort();
-      assert.deepEqual(changed, ["tr_rev_tasks_upd", "tr_tasks_transition"], "only these two may change");
+      assert.deepEqual(
+        changed,
+        [...LATER_MIGRATION_TRIGGERS_REMOVED, "tr_rev_tasks_upd", "tr_tasks_transition"].sort(),
+        "only these may change",
+      );
 
-      // ...and the parked five really are the shipped guards, not lookalikes.
-      for (const name of ["tr_dict_assignees_delete", "tr_dict_reporters_delete", "tr_rel_cross_project", "tr_rel_parent_guard", "tr_rel_parent_epic"]) {
+      // ...and the parked guards that survive to the head really are the shipped
+      // guards, not lookalikes (0019 removes `tr_dict_assignees_delete` /
+      // `tr_dict_reporters_delete` with their tables, so those two are gone).
+      for (const name of ["tr_rel_cross_project", "tr_rel_parent_guard", "tr_rel_parent_epic"]) {
         assert.equal(newTriggers[name], oldTriggers[name], `${name} must survive the rebuild verbatim`);
       }
     } finally {

@@ -33,7 +33,6 @@ const PATCHABLE = [
   "kind",
   "labels",
   "sortOrder",
-  "assigneeKind",
   "assigneeId",
   "reporterId",
   "agentSession",

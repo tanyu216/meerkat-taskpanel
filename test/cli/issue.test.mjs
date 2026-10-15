@@ -152,7 +152,7 @@ describe("cli/issue — update, move, assign, archive", () => {
       const assigned = dataOf(run(["issue", "assign", "DEMO-0001", "--assignee", "Linus", "--json"]));
       assert.equal(assigned.task.assignee.display_name, "Linus");
 
-      const entries = dataOf(run(["assignees", "list", "--json"]));
+      const entries = dataOf(run(["actors", "list", "--json"]));
       assert.equal(entries.entries.length, 1);
       const id = entries.entries[0].id;
 
@@ -218,7 +218,7 @@ describe("cli/issue — every flag the command declares", () => {
   it("create can pick an assignee by id", async () => {
     await board(async ({ run }) => {
       createIssue(run, ["--assignee", "linus"]);
-      const id = dataOf(run(["assignees", "list", "--json"])).entries[0].id;
+      const id = dataOf(run(["actors", "list", "--json"])).entries[0].id;
       const created = createIssue(run, ["--title", "Second", "--assignee-id", id]);
       assert.equal(created.task.assignee.id, id);
     });

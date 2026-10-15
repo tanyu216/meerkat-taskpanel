@@ -191,12 +191,15 @@ export function fixtureApi() {
     fixture("p1", "canceled", { identifier: "TD-11", title: "Drop the legacy importer", priority: "none", labels: ["perf"], assignee: AGENT.openclaw }),
     fixture("p1", "done", { identifier: "TD-12", title: "Lock down the webhooks", priority: "medium", labels: ["security", "design"], assignee: AGENT.pi }),
   ];
+  // The actor dictionary (0019): one table, no `platform` column. `kind` is the
+  // actor's kind — `agent`/`human` today, which name no platform, so the badges
+  // stay absent exactly as they were while `platform` was never written.
   const entries = [
-    { id: "a1", kind: "agent", display_name: "linus", normalized_name: "linus", platform: "claude" },
-    { id: "a2", kind: "agent", display_name: "jobs", normalized_name: "jobs", platform: "codex" },
-    { id: "a3", kind: "agent", display_name: "elon", normalized_name: "elon", platform: "openclaw" },
-    { id: "a4", kind: "agent", display_name: "assistant", normalized_name: "assistant", platform: "pi" },
-    { id: "h1", kind: "human", display_name: "Terry", normalized_name: "terry", platform: null },
+    { id: "a1", kind: "agent", display_name: "linus", normalized_name: "linus" },
+    { id: "a2", kind: "agent", display_name: "jobs", normalized_name: "jobs" },
+    { id: "a3", kind: "agent", display_name: "elon", normalized_name: "elon" },
+    { id: "a4", kind: "agent", display_name: "assistant", normalized_name: "assistant" },
+    { id: "h1", kind: "human", display_name: "Terry", normalized_name: "terry" },
   ];
   const labels = [
     { id: "l1", project_id: "p1", norm: "bug", display_name: "bug", color: null },
@@ -388,7 +391,13 @@ export function startServer() {
       const task = data.tasks.find((entry) => entry.identifier === ref || entry.id === ref) ?? data.tasks[0];
       return ok({ task, report_waivers: [] });
     }
-    if (path === "/api/v1/assignees" || path === "/api/v1/reporters") return ok({ entries: data.entries });
+    // One dictionary read since 0019: `assignees`/`reporters` merged into
+    // `actors` (`src/core/storage/migrations/0019_actors.sql`), and the route
+    // with them. The browser leg reads exactly this path in
+    // `web/src/services/api.js` — answering it with the pre-merge paths would
+    // fall through to the empty-envelope fallback below and render an empty
+    // roster.
+    if (path === "/api/v1/actors") return ok({ entries: data.entries });
     if (path === "/api/v1/labels") return ok({ labels: data.labels });
     if (path.startsWith("/api/v1/")) return ok({});
 

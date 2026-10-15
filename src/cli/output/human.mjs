@@ -2,7 +2,7 @@
  * Human output — small, shared building blocks.
  *
  * Each command chooses its own shape (a move reads differently from a list), but
- * the *words* come from here so `assignees list` and `issue get` label an actor
+ * the *words* come from here so `actors list` and `issue get` label an actor
  * the same way, and both use the wire names the `--json` output uses.
  *
  * The one rule worth stating: an actor is always shown as `display_name#id`.

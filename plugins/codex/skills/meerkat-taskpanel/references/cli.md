@@ -395,12 +395,12 @@ Append-only: there is no edit and no delete, by design.
 | `session close <ref> <session-id> [--failed]` | Close it. |
 | `session list <ref>` | List them. |
 
-### `assignees list` / `reporters list`
+### `actors list`
 
-Read-only dictionaries, with `--query <text>` and `--limit <n>`. Every row carries
+A read-only dictionary, with `--query <text>` and `--limit <n>`. Every row carries
 `display_name` **and** `id`.
 
-There is **no** `assignees add`, `assignees rm` or `assignees rename` — not
+There is **no** `actors add`, `actors rm` or `actors rename` — not
 "unimplemented", but absent: the dictionary grows when a task names somebody new
 (`--assignee "<text>"`), and that is the whole interface.
 

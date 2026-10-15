@@ -22,6 +22,7 @@ import { computed, ref } from "vue";
 import {
   assigneeFilterValue,
   board,
+  platformOf,
   selectProject,
   waitingCount,
   writeAssigneeFilter,
@@ -84,7 +85,11 @@ const agents = computed(() => {
   const byPlatform = new Map();
   for (const entry of board.assignees) {
     if (entry.kind !== "agent") continue;
-    const platform = entry.platform ?? "claude";
+    // The dictionary's `platform` column is gone (0019); an actor's platform is
+    // its kind when the kind names one. Every agent the board knows today is the
+    // generic `agent`, so they fall back to the prototype's default row — the
+    // same grouping the old `?? "claude"` produced.
+    const platform = platformOf(entry.display_name) ?? "claude";
     if (!byPlatform.has(platform)) byPlatform.set(platform, { platform, handles: [], presence: "idle" });
     const row = byPlatform.get(platform);
     row.handles.push(entry.display_name);

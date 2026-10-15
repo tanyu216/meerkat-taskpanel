@@ -15,7 +15,6 @@ import {
   isClaimFresh,
   isIsoMillis,
   isValidIdentifier,
-  normalizeActor,
   normalizeLabels,
   normalizeTaskCreate,
   normalizeTaskUpdate,
@@ -58,9 +57,7 @@ describe("domain/task — create", () => {
       priority: "URGENT",
       kind: "epic",
       labels: ["a", "a", "b"],
-      assigneeKind: "agent",
       assigneeId: "as1",
-      creator: { kind: "human", id: "Terry" },
       sortOrder: 5,
       sourcePath: "cards/x.md",
       sourceHash: "abc",
@@ -69,9 +66,7 @@ describe("domain/task — create", () => {
     assert.equal(task.priority, "urgent");
     assert.equal(task.kind, "epic");
     assert.deepEqual(task.labels, ["a", "b"], "labels are de-duplicated in order");
-    assert.equal(task.assigneeKind, "agent");
-    assert.equal(task.creatorKind, "human");
-    assert.equal(task.creatorId, "Terry");
+    assert.equal(task.assigneeId, "as1");
     assert.equal(task.sortOrder, 5);
     assert.equal(task.sourcePath, "cards/x.md");
   });
@@ -85,9 +80,6 @@ describe("domain/task — create", () => {
       return true;
     });
     assert.throws(() => create({ kind: "story" }), (e) => e.details.field === "kind");
-    assert.throws(() => create({ assigneeKind: "robot" }), (e) => e.details.field === "assigneeKind");
-    assert.throws(() => create({ creator: { kind: "ghost", id: "x" } }), (e) => e.code === "VALIDATION_FAILED");
-    assert.throws(() => create({ creator: { kind: "agent", id: "" } }), (e) => e.code === "VALIDATION_FAILED");
     assert.throws(() => create({}, { identifier: "has space" }), (e) => e.details.field === "identifier");
     assert.throws(() => create({}, { projectId: "" }), (e) => e.details.field === "projectId");
     assert.throws(() => create({}, { now: "yesterday" }), (e) => e.code === "VALIDATION_FAILED");
@@ -126,8 +118,6 @@ describe("domain/task — labels, paths, identifiers, timestamps", () => {
     assert.throws(() => toIsoMillis(new Date("nope")), DomainError);
     assert.equal(assertNonEmptyString(" x ", "title"), " x ");
     assert.throws(() => assertNonEmptyString(7, "title"), DomainError);
-    assert.deepEqual(normalizeActor({ kind: "human", id: "Terry" }, "creator"), { kind: "human", id: "Terry" });
-    assert.equal(normalizeActor(null, "creator"), null);
   });
 });
 
@@ -151,7 +141,6 @@ describe("domain/task — update", () => {
     assert.throws(() => normalizeTaskUpdate({}, { now: NOW }), (e) => /empty/.test(e.message));
     assert.throws(() => normalizeTaskUpdate(null, { now: NOW }), DomainError);
     assert.throws(() => normalizeTaskUpdate({ kind: "story" }, { now: NOW }), DomainError);
-    assert.throws(() => normalizeTaskUpdate({ assigneeKind: "bot" }, { now: NOW }), DomainError);
   });
 });
 
