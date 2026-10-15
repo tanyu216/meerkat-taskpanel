@@ -242,6 +242,7 @@ Each step prints an `== ... ==` header and the script aborts on the first failur
 | `codex` | `.codex/skills/meerkat-taskpanel` | `scripts/install/codex.sh` |
 | `pi` | `.agents/skills/meerkat-taskpanel` | `scripts/install/pi.sh` |
 | `opencode` | `.config/opencode/skills/meerkat-taskpanel` | `scripts/install/opencode.sh` |
+| `cursor` | `.cursor/skills/meerkat-taskpanel` | `scripts/install/cursor.sh` |
 
 Each file has the same six keys: `host`, `label`, `installer`, `target_dir`,
 `skill_entry`, `wrapper`. They are read by a tiny flat-map parser
