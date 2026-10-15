@@ -33,7 +33,7 @@ const { ApiError } = await import("../../web/src/services/api.js");
 const { toasts } = await import("../../web/src/stores/ui.js");
 // The one vocabulary a refusal is rendered through (T-20261014-152924 ④); pure,
 // so the expected sentence is read from it rather than typed out twice.
-const { GENERIC_ERROR_KEY, errorText, resolveText } = await import("../../web/src/i18n/messages.mjs");
+const { GENERIC_ERROR_KEY, errorText, errorTextKey, resolveText } = await import("../../web/src/i18n/messages.mjs");
 
 /** What an unmapped code shows, in the default language. */
 const GENERIC_ERROR_SENTENCE = resolveText("en", GENERIC_ERROR_KEY);
@@ -594,7 +594,135 @@ describe("web/board — loads", () => {
   });
 });
 
+/* ------------------------------------------------ the drawer's prerequisite list */
+
+/**
+ * T-20261015-104813 / T-20261015-132952 — the `depends_on` picker must not offer
+ * the open card's own parent chain, nor the open card itself.
+ *
+ * The board refuses a prerequisite two ways: an ancestor↔descendant edge is
+ * `RELATION_CYCLE` (`0019_block_chain.sql`), and a self-edge is `SELF_REFERENCE`
+ * (`domain/relation.mjs#normalizeRelation`). Both reach the drawer's write path,
+ * so neither may be offered. These readings are the store half: the chain comes
+ * off the card's own relations read (`parent_chain`, the board's answer), the
+ * self half is the id the drawer is open on, and the roster it filters is keyed
+ * by task id — so an id/identifier mismatch would show up here as a chain that
+ * filters nothing.
+ */
+describe("web/board — the drawer's prerequisite candidates", () => {
+  const tasks = [
+    { id: "id-epic", identifier: "TD-E", title: "Epic", status: "todo", labels: [] },
+    { id: "id-child", identifier: "TD-C", title: "Child", status: "todo", labels: [] },
+    { id: "id-grand", identifier: "TD-G", title: "Grandchild", status: "todo", labels: [] },
+    { id: "id-sib", identifier: "TD-S", title: "Sibling", status: "todo", labels: [] },
+    { id: "id-stranger", identifier: "TD-X", title: "Stranger", status: "todo", labels: [] },
+  ];
+
+  it("leaves out the ancestors and the descendants, and keeps the rest", async () => {
+    const { board, dependsCandidates } = await freshBoard();
+    board.tasks = tasks;
+    // The child's chain: its parent above it, its own child below it. Its own row
+    // is gone too — `SELF_REFERENCE`, not `RELATION_CYCLE`, but the same answer.
+    board.detail = { task: tasks[1], relations: { parent_chain: ["id-epic", "id-grand"] } };
+    assert.deepEqual(dependsCandidates.value.map((entry) => entry.identifier), ["TD-S", "TD-X"]);
+  });
+
+  it("leaves the open card out even when it has no chain at all", async () => {
+    const { board, dependsCandidates } = await freshBoard();
+    board.tasks = tasks;
+    // The common case: a fresh card with no relations reads an empty chain, so
+    // the chain half subtracts nothing and only the self half can bite. Before
+    // T-20261015-132952 the card's own row was offered here.
+    board.detail = { task: tasks[0], relations: { parent_chain: [] } };
+    assert.deepEqual(dependsCandidates.value.map((entry) => entry.identifier), ["TD-C", "TD-G", "TD-S", "TD-X"]);
+    // No `parent_chain` at all — a board that predates the field — subtracts the
+    // same one row.
+    board.detail = { task: tasks[0], relations: {} };
+    assert.deepEqual(dependsCandidates.value.map((entry) => entry.identifier), ["TD-C", "TD-G", "TD-S", "TD-X"]);
+  });
+
+  it("offers the whole roster when there is no card open to subtract", async () => {
+    const { board, dependsCandidates } = await freshBoard();
+    board.tasks = tasks;
+    // Nothing open, nothing to subtract: the filter is a subtraction, so
+    // "nothing to subtract" is the old behaviour.
+    board.detail = null;
+    assert.equal(dependsCandidates.value.length, 5);
+  });
+
+  it("keeps the roster's own shape — identifier, title, and the id the chain is keyed by", async () => {
+    const { board, dependsCandidates } = await freshBoard();
+    board.tasks = tasks;
+    const entry = dependsCandidates.value.find((row) => row.identifier === "TD-X");
+    assert.deepEqual(entry, { id: "id-stranger", name: "TD-X", identifier: "TD-X", title: "Stranger", keys: ["TD-X", "Stranger"] });
+  });
+});
+
 /* ------------------------------------------------------------------ filters */
+
+/* ------------------------------- the refusal's shape survives to the sentence */
+
+/**
+ * T-20261015-175921 — the `depends_on` write, from the board's own refusal to the
+ * sentence the drawer shows.
+ *
+ * The server refuses an ancestor↔descendant edge with `RELATION_CYCLE` **and**
+ * `details.chain = "ancestor"` (`domain/relation.mjs#assertBlockEdgeAllowed`), and
+ * `errorTextKey` reads that field before the flat code table. The body below is a
+ * wire body copied verbatim from a live `POST /api/v1/tasks/:ref/relations`.
+ *
+ * What this pins is the seam the drawer's call sites stand on: the store hands
+ * `runCommit` the error `services/api.js` built, and that error still carries the
+ * envelope's own `details` — so the shape reaches the sentence without any call
+ * site knowing about it. Also the non-regression: the same code *without* the
+ * field is still the loop's sentence, which is what a board that predates the
+ * field answers.
+ */
+describe("web/board — a refusal's shape reaches the sentence", () => {
+  const REFUSAL = {
+    ok: false,
+    error: {
+      code: "RELATION_CYCLE",
+      message: "an ancestor and a descendant cannot depend on each other: PROJ-0002 and PROJ-0001 are on one parent chain",
+      http: 422,
+      details: { source: "id-child", target: "id-epic", type: "blocks", chain: "ancestor" },
+      hint: null,
+    },
+  };
+
+  /** The drawer's own write, with the board answering the way it really does. */
+  async function refuseAddDepends() {
+    const { board, addDepends } = await freshBoard();
+    board.tasks = [{ id: "id-epic", identifier: "TD-E", title: "Epic", status: "todo", labels: [] }];
+    board.detail = { task: { id: "id-child", identifier: "TD-C" }, relations: { parent_chain: [] } };
+    installFetch({ "POST /api/v1/tasks/id-epic/relations": () => json(422, REFUSAL) });
+    let thrown;
+    try {
+      await addDepends("TD-E");
+      assert.fail("expected the board to refuse the edge");
+    } catch (err) {
+      thrown = err;
+    }
+    return thrown;
+  }
+
+  it("keeps the shape on the error the drawer catches", async () => {
+    const err = await refuseAddDepends();
+    assert.ok(err instanceof ApiError);
+    assert.equal(err.details.chain, "ancestor", "the refusal's shape is not lost on the way out of the service");
+  });
+
+  it("renders the ancestor join as itself, not as the loop it is not", async () => {
+    const err = await refuseAddDepends();
+    assert.equal(errorTextKey(err), "error.relationAncestor");
+    const sentence = errorText("en", err);
+    assert.match(sentence, /ancestor and a descendant/);
+    // The sentence the reader used to get for this refusal — still right for the
+    // shapes that *are* loops, and still what a shape-less `RELATION_CYCLE` gets.
+    assert.notEqual(sentence, errorText("en", { code: "RELATION_CYCLE" }));
+    assert.equal(errorText("en", { code: "RELATION_CYCLE" }), resolveText("en", "error.relationCycle"));
+  });
+});
 
 describe("web/board — filtered board (visible branches)", () => {
   const tasks = [

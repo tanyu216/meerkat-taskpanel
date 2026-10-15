@@ -17,7 +17,7 @@ export const COMMANDS = [
     flags: [
       { flag: "type", key: "type", as: "string", value: "<parent|blocks|related>", required: true },
       { flag: "target", key: "target", as: "string", value: "<id|identifier>", required: true },
-      { flag: "force", key: "force", as: "boolean", summary: "Skip the app-layer parent checks (the database still guards)." },
+      { flag: "force", key: "force", as: "boolean", summary: "Skip the app-layer checks of either type (the database still guards)." },
     ],
     async run(ctx) {
       const { relation } = await ctx.client.post(

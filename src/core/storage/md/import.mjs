@@ -453,7 +453,19 @@ export function importMd(input) {
             continue;
           }
           if (blocker.id === entry.task.id) {
+            // The lookup *found* a card — this one — so this is not the
+            // "not in this import" case below. But the reference still cannot
+            // become an edge (`domain/relation.mjs`: a task cannot be related to
+            // itself), so it is a skipped link, and a skipped link warns: the
+            // card-schema contract for `depends_on` is "a warning + skip", and
+            // `docs/migration.md` calls a skipped link "never silently dropped".
+            // Both readings live in `dependsUnresolved` (a `depends_on` that
+            // became no `blocks` edge); the warning below is the one that names
+            // the actual reason. See `test/migrate/self-dependency.test.mjs`.
             stats.dependsUnresolved.push({ file: entry.file, identifier: entry.task.identifier, dependsOn: dependency });
+            stats.warnings.push(
+              `${entry.file}: depends_on ${dependency} is the card itself — a self dependency is not an edge; the reference was skipped`,
+            );
             continue;
           }
           insertRelation(repos, { type: "blocks", source: blocker.id, target: entry.task.id, now, origin: "md" }, entry, stats, "depends_on");

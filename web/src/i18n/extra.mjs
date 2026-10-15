@@ -68,6 +68,16 @@ export const EXTRA = {
     // board will not store. Without them all four would fall back to
     // `error.generic`, which is readable but says nothing about the repair.
     "error.relationCycle": "That dependency would create a loop — a card cannot wait on itself.",
+    // T-20261015-175921 ③ — `RELATION_CYCLE`'s **third** shape, an edge that
+    // joins an ancestor and a descendant of the parent chain (`details.chain =
+    // "ancestor"`, set by `domain/relation.mjs#assertBlockEdgeAllowed`). What:
+    // one sentence that names both ends and the reason, in place of the loop's
+    // own words. Why: that refusal is not a loop — nothing waits on itself and
+    // no edge closes a cycle — so the shared sentence told the reader the wrong
+    // thing about the graph they are looking at. Implementation-authored, like
+    // every `error.*` key here: the prototype has no network, so it carries no
+    // refusal vocabulary to contradict or to extend.
+    "error.relationAncestor": "That dependency would join an ancestor and a descendant — cards on one parent chain cannot depend on each other.",
     "error.relationCrossProject": "Dependencies must stay inside one project.",
     "error.attachTooLarge": "That file is larger than the board's 8 MiB limit.",
     "error.attachType": "That file type is not allowed on the board.",
@@ -132,6 +142,8 @@ export const EXTRA = {
     "error.executionActive": "%s 正由他人处理中。",
     "error.claimOnBacklog": "%s 位于 Backlog，其中的卡片不能认领。",
     "error.relationCycle": "该依赖会形成环 —— 卡片不能等待自己。",
+    // 同上：`RELATION_CYCLE` 的第三种形状（祖先/后代），与「环 / 自环」那句分开。
+    "error.relationAncestor": "该依赖会把祖先与后代连起来 —— 同一条父链上的卡片不能互相依赖。",
     "error.relationCrossProject": "依赖必须留在同一个项目内。",
     "error.attachTooLarge": "该文件超过看板 8 MiB 的上限。",
     "error.attachType": "看板不接受该文件类型。",

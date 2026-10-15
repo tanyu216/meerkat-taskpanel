@@ -424,10 +424,65 @@ export const reporterRoster = computed(() => {
   return [...names];
 });
 
-/** The identifier+title roster for parent / depends-on (B24). */
+/**
+ * The identifier+title roster for parent / depends-on (B24).
+ *
+ * `id` rides along beside the identifier it is the roster key: the drawer's
+ * candidate filter below compares against the board's own task ids, and reading
+ * them off the roster is what lets that filter be one expression rather than a
+ * second lookup into `board.tasks`.
+ */
 export const taskRoster = computed(() =>
-  board.tasks.map((task) => ({ name: task.identifier, identifier: task.identifier, title: task.title, keys: [task.identifier, task.title] })),
+  board.tasks.map((task) => ({
+    id: task.id,
+    name: task.identifier,
+    identifier: task.identifier,
+    title: task.title,
+    keys: [task.identifier, task.title],
+  })),
 );
+
+/**
+ * The drawer's prerequisite candidates: the card roster **minus the open card
+ * itself and its own parent chain** (both directions) — the two halves of the
+ * set the board refuses.
+ *
+ * The board refuses a prerequisite two ways, and the picker mirrors both:
+ *
+ *   * an edge joining an ancestor and a descendant — `0019_block_chain.sql` and
+ *     `domain/relation.mjs#assertBlockEdgeAllowed` refuse it with
+ *     `RELATION_CYCLE`, because such a card can never be offered to the poll
+ *     again. That half arrives as `parent_chain` (T-20261015-104813).
+ *   * the card itself — `domain/relation.mjs#normalizeRelation` refuses a
+ *     self-edge, from the drawer's own write path, with `SELF_REFERENCE`. A card
+ *     is *not* on its own parent chain (that set is the ancestor/descendant half
+ *     only), so this half has to be subtracted here or not at all
+ *     (T-20261015-132952).
+ *
+ * The board is the guarantee; the picker's job is not to *offer* what the board
+ * will refuse, since a refusal here is a dead end the reader cannot resolve from
+ * the drawer. The two different codes are why this is one exclusion expressed
+ * over two sources rather than a wider `parent_chain`.
+ *
+ * The chain half is the board's, not the browser's: `parent_chain` comes off the
+ * card's own relations read (`GET /tasks/:ref/relations`), computed by the walks
+ * the guard uses. The self half is the identity the drawer is already open on,
+ * not a rule the browser re-implements. With neither to subtract (no open card,
+ * no chain read) the roster is offered whole, exactly as it was before.
+ *
+ * The cross-project half of the same rule needs nothing here: the roster is
+ * already one project's cards.
+ *
+ * @returns {{id: string, name: string, identifier: string, title: string}[]}
+ */
+export const dependsCandidates = computed(() => {
+  const self = board.detail?.task?.id;
+  const chain = board.detail?.relations?.parent_chain ?? [];
+  if (self === undefined && chain.length === 0) return taskRoster.value;
+  const excluded = new Set(chain);
+  if (self !== undefined) excluded.add(self);
+  return taskRoster.value.filter((entry) => !excluded.has(entry.id));
+});
 
 /* -------------------------------------------------------------- mutations */
 

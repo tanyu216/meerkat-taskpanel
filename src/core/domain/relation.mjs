@@ -123,6 +123,46 @@ export function ancestorsOf(edges, taskId) {
   return out;
 }
 
+/**
+ * Descendant ids of `taskId`, nearest first — the mirror of `ancestorsOf` over
+ * the same `parent` edges, and bounded the same way so a malformed graph cannot
+ * spin.
+ *
+ * A card may have many children where it has at most one parent, so the walk is
+ * a breadth-first frontier rather than the single `byChild` lookup above. Both
+ * walks exist because both directions are refused: `isOnSameParentChain` tests
+ * `ancestorsOf(a).includes(b) || ancestorsOf(b).includes(a)`, and the board's
+ * read of that set (`commands/relations.mjs#listRelations#parentChain`) hands
+ * the same union to the drawer's prerequisite picker.
+ *
+ * @param {{source: string, target: string}[]} edges `parent` edges (source = parent)
+ * @param {string} taskId
+ * @returns {string[]}
+ */
+export function descendantsOf(edges, taskId) {
+  const byParent = new Map();
+  for (const edge of edges) {
+    if (!byParent.has(edge.source)) byParent.set(edge.source, []);
+    byParent.get(edge.source).push(edge.target);
+  }
+  const out = [];
+  const seen = new Set([taskId]);
+  let frontier = [taskId];
+  while (frontier.length > 0 && out.length <= RELATION_ANCESTOR_CAP) {
+    const next = [];
+    for (const node of frontier) {
+      for (const child of byParent.get(node) ?? []) {
+        if (seen.has(child)) continue;
+        seen.add(child);
+        out.push(child);
+        next.push(child);
+      }
+    }
+    frontier = next;
+  }
+  return out;
+}
+
 /** Would adding this parent edge close a loop? */
 export function wouldCreateCycle(edges, parent, child) {
   if (parent === child) return true;
@@ -133,8 +173,18 @@ export function wouldCreateCycle(edges, parent, child) {
  * The whole shape rule set, as pure predicates over the current parent edges.
  * `context` carries what the rules need beyond the edge list.
  *
+ * The rules are ordered, and the order is the ruling on a row two of them could
+ * both refuse: the local shape limits first (cycle, chain depth, fan-in), then
+ * project, then the reciprocal `blocks`/parent-chain conflict last. The trigger
+ * that backs the last one is `AFTER INSERT` (`0020`), so the database and this
+ * function report the same code for the same row.
+ *
  * @param {{source: string, target: string}} edge a normalised `parent` edge
- * @param {{edges: {source: string, target: string}[], projectOf: (id: string) => string|undefined, parent?: object}} context
+ * @param {{edges: {source: string, target: string}[], projectOf: (id: string) => string|undefined, parent?: object, blockEdges?: {source: string, target: string}[]}} context
+ *        `blockEdges` are `blocks` edges, optional so a caller with no
+ *        dependency graph to offer (an empty board reads as one) still gets
+ *        every rule above rather than a crash — the same convention
+ *        `assertBlockEdgeAllowed` uses for `parentEdges`.
  * @throws {DomainError} with the same reason code the DB trigger raises
  */
 export function assertParentEdgeAllowed(edge, context) {
@@ -178,6 +228,26 @@ export function assertParentEdgeAllowed(edge, context) {
     throw new DomainError("CROSS_PROJECT_RELATION", {
       message: "relations must not cross projects",
       details: { source: edge.source, target: edge.target, sourceProject, targetProject },
+    });
+  }
+
+  // Last, and deliberately so. This is the *reciprocal* of the `blocks` rule —
+  // the same defect, asked at the other insert point — and the local shape rules
+  // above must keep owning the rows they already own, with the codes they
+  // already raise. `0020`'s trigger is `AFTER INSERT` for exactly this reason:
+  // it speaks only once every `BEFORE` guard on the row has stayed silent, so
+  // the two layers agree on which of two applicable reasons a row reports.
+  const pair = blockedPairOnChain(edges, context.blockEdges ?? [], edge.source, edge.target);
+  if (pair !== null) {
+    throw new DomainError("RELATION_CYCLE", {
+      message: `an ancestor and a descendant cannot depend on each other: ${pair.source} depends on, or is depended on by, ${pair.target}, and this parent would put them on one chain`,
+      details: {
+        source: edge.source,
+        target: edge.target,
+        type: "parent",
+        chain: "ancestor",
+        blocks: { source: pair.source, target: pair.target },
+      },
     });
   }
 
@@ -241,16 +311,112 @@ export function wouldCreateBlockCycle(edges, blocker, blocked) {
 }
 
 /**
+ * Are `a` and `b` on one parent chain — the same card, or one the other's
+ * ancestor?
+ *
+ * `parentEdges` are `parent` edges (`{source: parent, target: child}`), the list
+ * `ancestorsOf` walks. **Siblings are not on one chain**: two children of the
+ * same epic share a parent but neither reaches the other, which is why this is
+ * a two-way ancestry test and not "do they share an ancestor?" — a card and its
+ * sibling depending on each other in sequence is an ordinary, wanted edge.
+ *
+ * @param {{source: string, target: string}[]} parentEdges
+ * @param {string} a
+ * @param {string} b
+ * @returns {boolean}
+ */
+export function isOnSameParentChain(parentEdges, a, b) {
+  if (a === b) return true;
+  return ancestorsOf(parentEdges, a).includes(b) || ancestorsOf(parentEdges, b).includes(a);
+}
+
+/**
+ * Every card on `taskId`'s own parent chain, either direction — the ancestors
+ * then the descendants, nearest first within each half.
+ *
+ * This is the board's answer to "which cards may this one not depend on?", and
+ * it is deliberately the *same* pair of walks the write guard uses rather than a
+ * second spelling of the rule: the drawer's prerequisite picker asks here, the
+ * `blocks` guard refuses there, and the two cannot drift because they read one
+ * function.
+ *
+ * The card itself is **not** in the set, even though asking
+ * `isOnSameParentChain` about the card and itself answers true: a self-edge is a
+ * different defect with its own code (`SELF_REFERENCE`), and this set is only
+ * the ancestor/descendant half of the shape rule.
+ *
+ * @param {{source: string, target: string}[]} parentEdges `parent` edges
+ * @param {string} taskId
+ * @returns {string[]}
+ */
+export function parentChainOf(parentEdges, taskId) {
+  return [...ancestorsOf(parentEdges, taskId), ...descendantsOf(parentEdges, taskId)];
+}
+
+/**
+ * The `blocks` edge that a prospective `parent` edge would strand on one parent
+ * chain — the reciprocal of `isOnSameParentChain`, asked at the *other* insert
+ * point.
+ *
+ * `parent edges` and `blocks` edges are guarded by two separate rules and each
+ * rule used to read only its own graph. That made the verdict depend on arrival
+ * order: with the `blocks` edge already down, adding the `parent` edge that puts
+ * the two cards on one chain went in unchallenged (`0019` only ever saw the
+ * `blocks` insert). The order is not exotic — `storage/md/import.mjs` writes
+ * `depends_on` before `parent` for every card it loads, so a real import could
+ * land a pair the board refuses to build by hand.
+ *
+ * The predicate is the **closure**, not the pair: a new `parent` edge `P → C`
+ * puts *everything above `P`* above *everything below `C`*, so a `blocks` edge
+ * already sitting between an ancestor of `P` and a descendant of `C` becomes an
+ * ancestor/descendant join the moment the edge lands, however far either side
+ * of the new edge it is. Testing only `(P, C)` would leave that case open.
+ *
+ * Siblings are still legal, and so is any edge with only one end in the two
+ * closures: neither walks the other's side.
+ *
+ * @param {{source: string, target: string}[]} parentEdges `parent` edges
+ * @param {{source: string, target: string}[]} blockEdges `blocks` edges
+ * @param {string} parent the prospective parent (source of the new edge)
+ * @param {string} child the prospective child (target of the new edge)
+ * @returns {{source: string, target: string}|null} the offending edge, if any
+ */
+export function blockedPairOnChain(parentEdges, blockEdges, parent, child) {
+  const above = new Set([parent, ...ancestorsOf(parentEdges, parent)]);
+  const below = new Set([child, ...descendantsOf(parentEdges, child)]);
+  for (const edge of blockEdges) {
+    if (above.has(edge.source) && below.has(edge.target)) return edge;
+    if (above.has(edge.target) && below.has(edge.source)) return edge;
+  }
+  return null;
+}
+
+/**
  * The `blocks` shape rule, checked before a transaction is opened so a caller
  * gets `RELATION_CYCLE` (the same code the opposite direction of the parent
  * guard raises) rather than a raw trigger message.
  *
- * The database re-checks it (`0017_block_cycle.sql`), and
+ * Two things are refused, and both are deadlocks rather than shapes nobody
+ * minds — the poll holds back a card whose blockers are unfinished, so a card
+ * waiting on its way round the dependency graph, or on a card it already
+ * contains, is never offered again:
+ *
+ *   * an edge that closes a loop in the `blocks` graph (`0017_block_cycle.sql`);
+ *   * an edge joining an ancestor and a descendant of the **parent** chain
+ *     (`0019_block_chain.sql`) — `D depends_on E` where `E` is `D`'s parent, or
+ *     `E depends_on D` where `D` is `E`'s child. Reading 乙 of the "ancestor"
+ *     ruling (T-20261014-212017): neither direction is allowed. Siblings are not
+ *     on one chain and stay legal.
+ *
+ * The database re-checks both (`0017`, `0019`), and
  * `test/contract/invariants.test.mjs` walks both paths — the service layer
  * repeats a machine guarantee only to phrase it, never to be the guarantee.
  *
  * @param {{source: string, target: string}} edge a normalised `blocks` edge
- * @param {{edges: {source: string, target: string}[]}} context
+ * @param {{edges: {source: string, target: string}[], parentEdges?: {source: string, target: string}[]}} context
+ *        `edges` are `blocks` edges; `parentEdges` are `parent` edges, optional
+ *        so a caller with no parent chain to offer (an empty board reads as one)
+ *        still gets the cycle rule rather than a crash.
  * @throws {DomainError} `RELATION_CYCLE`
  */
 export function assertBlockEdgeAllowed(edge, context) {
@@ -260,5 +426,13 @@ export function assertBlockEdgeAllowed(edge, context) {
       details: { source: edge.source, target: edge.target, type: "blocks" },
     });
   }
+
+  if (isOnSameParentChain(context.parentEdges ?? [], edge.source, edge.target)) {
+    throw new DomainError("RELATION_CYCLE", {
+      message: `an ancestor and a descendant cannot depend on each other: ${edge.source} and ${edge.target} are on one parent chain`,
+      details: { source: edge.source, target: edge.target, type: "blocks", chain: "ancestor" },
+    });
+  }
+
   return edge;
 }
