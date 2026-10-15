@@ -126,7 +126,7 @@ describe("mini-yaml", () => {
 // ---------------------------------------------------------------------------
 
 describe("profiles: loadProfiles", () => {
-  it("parses the four shipped profiles with the expected fields", async () => {
+  it("parses every shipped profile with the expected fields", async () => {
     const { hosts, profiles, errors } = await loadProfiles(join(ROOT, "docker", "profiles"));
 
     assert.deepEqual(errors, []);
@@ -137,6 +137,8 @@ describe("profiles: loadProfiles", () => {
       openclaw: { dir: ".openclaw/skills/meerkat-taskpanel", installer: "scripts/install/openclaw.sh" },
       codex: { dir: ".codex/skills/meerkat-taskpanel", installer: "scripts/install/codex.sh" },
       pi: { dir: ".agents/skills/meerkat-taskpanel", installer: "scripts/install/pi.sh" },
+      opencode: { dir: ".config/opencode/skills/meerkat-taskpanel", installer: "scripts/install/opencode.sh" },
+      cursor: { dir: ".cursor/skills/meerkat-taskpanel", installer: "scripts/install/cursor.sh" },
     };
 
     for (const host of PROFILE_HOSTS) {
@@ -297,6 +299,8 @@ describe("profiles: runProfiles", () => {
     await writeFile(join(dir, "openclaw.yml"), `host: openclaw\nlabel: OpenClaw\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
     await writeFile(join(dir, "codex.yml"), `host: codex\nlabel: Codex\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
     await writeFile(join(dir, "pi.yml"), `host: pi\nlabel: Pi\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
+    await writeFile(join(dir, "opencode.yml"), `host: opencode\nlabel: OpenCode\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
+    await writeFile(join(dir, "cursor.yml"), `host: cursor\nlabel: Cursor\ninstaller: scripts/install/does-not-exist.sh\n${base}`);
 
     const result = await runProfiles({ home, profilesDir: dir, root: ROOT, quiet: true });
     assert.equal(result.ok, false);
