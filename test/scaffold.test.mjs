@@ -11,7 +11,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -39,6 +39,26 @@ after(async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+/**
+ * Every directory named `skills` under `rootDir`, repository-relative and sorted.
+ * Skips the trees that are output rather than content (`dist/`, `node_modules/`, `.git/`).
+ *
+ * @param {string} dir
+ * @param {string} [rel]
+ * @returns {Promise<string[]>}
+ */
+async function skillDirsUnder(dir, rel = "") {
+  const out = [];
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name === ".git" || entry.name === "node_modules" || entry.name === "dist") continue;
+    const child = rel === "" ? entry.name : `${rel}/${entry.name}`;
+    if (entry.name === "skills") out.push(child);
+    out.push(...(await skillDirsUnder(join(dir, entry.name), child)));
+  }
+  return out.sort();
+}
 
 describe("plugin manifests", () => {
   it("the board, OpenClaw, Pi and the loop bundle manifests parse and carry required keys", async () => {
@@ -133,6 +153,26 @@ describe("skill sync", () => {
       rows.map((row) => `${row.skill}→${row.target}`),
       ["meerkat-taskpanel→openclaw", "meerkat-loop→loop"],
     );
+  });
+
+  it("keeps one skills tree: no harness gains a third copy", async () => {
+    // The invariant the whole distribution change exists for, asserted against the
+    // checkout rather than the table — a table can only describe the copies it knows
+    // about. Only the two bundles that MUST carry a sibling `skills/` do; every other
+    // harness reads the repository's own tree through its manifest. A new host that adds
+    // a copy is exactly the regression this catches
+    // (design/plugin-distribution-plan.md §3.1 and the §5.3 acceptance list).
+    assert.deepEqual(await skillDirsUnder(ROOT), [
+      "plugins/loop/skills",
+      "plugins/openclaw/skills",
+      "skills",
+    ]);
+
+    assert.deepEqual((await readdir(join(ROOT, "plugins"))).sort(), ["loop", "openclaw"]);
+
+    // 1 OpenClaw manifest + 8 OpenClaw skill files + 2 loop manifests + 24 loop skill files.
+    // The count is the floor the plan measured; it moves only deliberately.
+    assert.equal((await listFiles(join(ROOT, "plugins"))).length, 35);
   });
 
   it("compareDirs detects changed, missing and extra files in a temp copy", async () => {
