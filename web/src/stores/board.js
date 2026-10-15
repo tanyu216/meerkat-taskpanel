@@ -3,7 +3,7 @@
  *
  * The single place that talks to `services/api.js` and holds the working set:
  * projects (in the **server's** order — never re-sorted here), the current
- * project's tasks, the two people rosters, the label roster, filters, the open
+ * project's tasks, the actor roster, the label roster, filters, the open
  * task's detail, and the live cursor.
  *
  * Two rules this store exists to enforce:
@@ -118,8 +118,10 @@ export const board = reactive({
   orderDebug: {},
   currentProjectId: null,
   tasks: [],
+  // One actor list since 0019 (the `assignees`/`reporters` tables merged into
+  // `actors`). Kept under the name the components already read; it now holds
+  // every actor, not only assignees.
   assignees: [],
-  reporters: [],
   labels: [],
   loading: false,
   /**
@@ -154,9 +156,21 @@ export const currentProjectName = computed(() => currentProject.value?.name ?? "
 /** id → project name, for a card's `data-project` scalar. */
 const projectNames = computed(() => Object.fromEntries(board.projects.map((p) => [p.id, p.name])));
 
-/** assignee display name → platform (the wire drops platform; the dictionary restores it). */
+/**
+ * The generic actor kinds name **no** platform — they say "an agent" / "a human",
+ * not *which* agent. The dictionary's `platform` column is gone (0019): "which
+ * agent" now belongs in `kind`, so an actor's platform is its kind — but only a
+ * kind that actually names one. The generic kinds are skipped, which leaves the
+ * platform badge absent exactly as it was while `platform` was never written; a
+ * kind that carries a platform name fills it in.
+ */
+const GENERIC_ACTOR_KINDS = new Set(["agent", "human"]);
 const platforms = computed(() =>
-  Object.fromEntries(board.assignees.filter((a) => a.platform).map((a) => [a.display_name, a.platform])),
+  Object.fromEntries(
+    board.assignees
+      .filter((a) => typeof a.kind === "string" && a.kind !== "" && !GENERIC_ACTOR_KINDS.has(a.kind))
+      .map((a) => [a.display_name, a.kind]),
+  ),
 );
 
 export function platformOf(name) {
@@ -402,7 +416,10 @@ export const labelRoster = computed(() => {
 
 export const assigneeRoster = computed(() => board.assignees.map((a) => a.display_name));
 export const reporterRoster = computed(() => {
-  const names = new Set(board.reporters.map((r) => r.display_name));
+  // One actor list now serves both rosters (0019): a reporter is an actor like
+  // any other. The task reporter names are still folded in, so a name a card
+  // carries but the dictionary has not (yet) returned still appears.
+  const names = new Set(board.assignees.map((r) => r.display_name));
   for (const task of board.tasks) if (task.reporter?.display_name) names.add(task.reporter.display_name);
   return [...names];
 });
@@ -438,13 +455,11 @@ export async function loadProjects() {
 }
 
 export async function loadRosters() {
-  const [assignees, reporters, labels] = await Promise.all([
-    api.assignees({ limit: 200 }),
-    api.reporters({ limit: 200 }),
+  const [actors, labels] = await Promise.all([
+    api.actors({ limit: 200 }),
     api.labels({ limit: 200 }),
   ]);
-  board.assignees = assignees.entries ?? [];
-  board.reporters = reporters.entries ?? [];
+  board.assignees = actors.entries ?? [];
   board.labels = labels.labels ?? [];
 }
 

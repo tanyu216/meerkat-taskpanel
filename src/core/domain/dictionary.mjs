@@ -1,9 +1,11 @@
 /**
- * Dictionary entities: assignees and reporters (ARCHITECTURE §4.4).
+ * Dictionary entities: the actors a card can name (ARCHITECTURE §4.4).
  *
- * The list is *grown by use* — there is no management API anywhere in core, and
- * this module exports no add/remove/rename. A task write resolves the free-text
- * name it was given against what already exists:
+ * Since `0019` there is one actor table (`actors`); `assignee` and `reporter` are
+ * **roles** — the `tasks` column a task fills — not separate dictionaries. The
+ * list is *grown by use*: there is no management API anywhere in core, and this
+ * module exports no add/remove/rename. A task write resolves the free-text name
+ * it was given against what already exists:
  *
  *   1. normalise  (`normalizeName` = the shared `norm`: NFKC, case-fold,
  *                   remove ALL whitespace)
@@ -13,8 +15,8 @@
  *   4. `forceCreate` skips 3 and creates
  *
  * `normalizeName` is a re-export of `src/shared/norm.mjs#norm`, the single source
- * of truth for labels / assignees / reporters alike. The name is kept because the
- * `assignees`/`reporters` column is `normalized_name` — that column **is** `norm`.
+ * of truth for labels / assignees / reporters alike. The name is kept because
+ * `actors`' column is `normalized_name` — that column **is** `norm`.
  *
  * Pure: no `node:` specifiers.
  */
@@ -38,7 +40,13 @@ export function isDictionaryKind(value) {
 }
 
 /**
- * Resolve a raw name against the existing entries of one kind.
+ * Resolve a raw name against **every** existing entry.
+ *
+ * Resolution spans kinds: since `0019` a person is one row (`UNIQUE(normalized_name)`),
+ * so a name that already exists is reused regardless of the `kind` the caller
+ * names — the stored kind wins (the same rule the repository's `upsert` applies
+ * on reuse). `kind` here is the *actor* kind to give a freshly created entry, and
+ * is validated as one of `DICT_KINDS`.
  *
  * @param {{id: string, kind: string, displayName: string, normalizedName: string}[]} existing
  * @param {string} raw
@@ -56,25 +64,25 @@ export function resolveDictionaryEntry(existing, raw, options) {
   }
   const normalizedName = normalizeName(raw);
   const displayName = raw.normalize("NFKC").replace(/\s+/g, " ").trim();
-  const sameKind = (Array.isArray(existing) ? existing : []).filter((entry) => entry.kind === kind);
+  const pool = Array.isArray(existing) ? existing : [];
 
-  const exact = sameKind.filter((entry) => normalizeName(entry.displayName) === normalizedName);
+  const exact = pool.filter((entry) => normalizeName(entry.displayName) === normalizedName);
   if (exact.length === 1) {
     // On reuse the *dictionary's* spelling wins: that is what makes the list a
     // dictionary rather than a log of whatever people typed.
     return { action: "reuse", entry: exact[0], displayName: exact[0].displayName, normalizedName, kind };
   }
   if (exact.length > 1) {
-    // Two rows with the same normalised name cannot exist (UNIQUE(normalized_name, kind))
+    // Two rows with the same normalised name cannot exist (UNIQUE(normalized_name))
     // — unless the caller handed us unsaved rows. Refuse rather than pick one.
     throw ambiguous(raw, exact);
   }
 
-  const fuzzy = sameKind.filter((entry) => normalizeName(entry.displayName).includes(normalizedName));
+  const fuzzy = pool.filter((entry) => normalizeName(entry.displayName).includes(normalizedName));
   if (fuzzy.length === 1) {
     // On reuse the verdict describes the *existing* entry — including its
     // normalised name. Returning the caller's spelling here looks harmless and
-    // is not: `dictionary.upsert` keys on `(normalized_name, kind)`, so
+    // is not: `dictionary.upsert` keys on `normalized_name`, so
     // `--assignee linu` (a unique prefix of `linus`) would miss the row it just
     // matched and insert a second one. M2's `issue create --assignee <text>` is
     // what surfaced it; `test/core/domain/dictionary.test.mjs` pins it.
@@ -114,7 +122,6 @@ const CAMEL = {
   // it holds is exactly `src/shared/norm.mjs#norm`, so a label and an assignee
   // with the same spelling share one identity rule.
   normalized_name: "normalizedName",
-  platform: "platform",
   first_seen_at: "firstSeenAt",
   last_seen_at: "lastSeenAt",
   use_count: "useCount",

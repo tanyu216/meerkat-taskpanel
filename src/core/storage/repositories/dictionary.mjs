@@ -1,5 +1,12 @@
 /**
- * The dictionary tables — upsert and read.
+ * The actor dictionary — upsert and read.
+ *
+ * Since `0019` there is **one** table, `actors`, keyed by `UNIQUE(normalized_name)`.
+ * `assignee`/`reporter` survive only as **roles** — the name of the `tasks`
+ * column a task fills (`assignee_id` / `reporter_id`) — so both role names map to
+ * the same table. The role a caller names still selects *which column the delete
+ * guard and `refCount` check*, which is why the reference column is keyed by role
+ * (kind) rather than by table: the table can no longer tell them apart.
  *
  * `remove` exists for the reference-protection trigger to be testable and is
  * deliberately *not* wired into any command: there is no management surface
@@ -11,12 +18,19 @@ import { newId } from "../../../shared/ids.mjs";
 import { dictionaryEntryFromRow } from "../../domain/dictionary.mjs";
 import { mapSqliteError } from "../sqlite-errors.mjs";
 
-/** kind → table. A whitelist, because the table name cannot be a bound parameter. */
+/**
+ * name → table. Every role lives in `actors` now; the whitelist stays because the
+ * table name cannot be a bound parameter and an unknown name must still be
+ * refused rather than silently mapped. `actor`/`actors` name the role-less read —
+ * the whole dictionary, which is what the merged `GET /api/v1/actors` asks for.
+ */
 export const DICTIONARY_TABLES = Object.freeze({
-  assignee: "assignees",
-  reporter: "reporters",
-  assignees: "assignees",
-  reporters: "reporters",
+  actor: "actors",
+  actors: "actors",
+  assignee: "actors",
+  reporter: "actors",
+  assignees: "actors",
+  reporters: "actors",
 });
 
 /** @param {unknown} kind */
@@ -25,14 +39,18 @@ export function dictionaryTable(kind) {
   if (table === undefined) {
     throw new DomainError("VALIDATION_FAILED", {
       message: `unknown dictionary kind ${JSON.stringify(kind)}`,
-      details: { field: "kind", received: kind, allowed: ["assignee", "reporter"] },
+      details: { field: "kind", received: kind, allowed: ["assignee", "reporter", "actor"] },
     });
   }
   return table;
 }
 
-/** Which `tasks` column references this dictionary kind. */
-const REFERENCE_COLUMN = { assignees: "assignee_id", reporters: "reporter_id" };
+/**
+ * Which `tasks` column references this **role** (kind). Keyed by role, not by
+ * table, because one table now answers both columns — `actors` cannot say which
+ * of `assignee_id` / `reporter_id` to look at.
+ */
+const REFERENCE_COLUMN = { assignee: "assignee_id", reporter: "reporter_id", assignees: "assignee_id", reporters: "reporter_id" };
 
 /** @param {import('node:sqlite').DatabaseSync} db */
 export function createDictionaryRepository(db) {
@@ -42,11 +60,16 @@ export function createDictionaryRepository(db) {
      * a repeat visit only moves `last_seen_at`/`use_count` — the display name
      * the dictionary already agreed on is kept.
      *
-     * `kind` selects the *table* (assignee vs reporter); `actorKind` is the
-     * `agent|human` value stored in the row. They are different axes and it is
-     * worth being explicit about it.
+     * `kind` is the **role** (assignee vs reporter) and only decides which
+     * `tasks` column a later `refCount`/delete-guard reads; `actorKind` is the
+     * `agent|human` value stored in the row. The row itself is one per
+     * `normalized_name`, whichever role asked for it — so a repeat visit through
+     * the *other* role touches the same row rather than creating a twin.
      *
-     * @param {{kind: "assignee"|"reporter", actorKind: "agent"|"human", normalizedName: string, displayName: string, platform?: string|null, now: string, id?: string}} input
+     * On reuse the stored `kind` is kept (the dictionary's own kind wins): a card
+     * that names an existing actor as a different kind must not flip the actor.
+     *
+     * @param {{kind: "assignee"|"reporter", actorKind: "agent"|"human", normalizedName: string, displayName: string, now: string, id?: string}} input
      * @returns {{action: "created"|"reused", entry: object}}
      */
     upsert(input) {
@@ -60,22 +83,14 @@ export function createDictionaryRepository(db) {
       const id = input.id ?? newId();
       try {
         const existing = db
-          .prepare(`SELECT * FROM ${table} WHERE normalized_name = ? AND kind = ?`)
-          .get(input.normalizedName, input.actorKind);
+          .prepare(`SELECT * FROM ${table} WHERE normalized_name = ?`)
+          .get(input.normalizedName);
 
         if (existing === undefined) {
           db.prepare(
-            `INSERT INTO ${table}(id, kind, display_name, normalized_name, platform, first_seen_at, last_seen_at, use_count)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
-          ).run(
-            id,
-            input.actorKind,
-            input.displayName,
-            input.normalizedName,
-            input.platform ?? null,
-            input.now,
-            input.now,
-          );
+            `INSERT INTO ${table}(id, kind, display_name, normalized_name, first_seen_at, last_seen_at, use_count)
+             VALUES (?, ?, ?, ?, ?, ?, 1)`,
+          ).run(id, input.actorKind, input.displayName, input.normalizedName, input.now, input.now);
           return {
             action: "created",
             entry: dictionaryEntryFromRow(db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id)),
@@ -102,10 +117,15 @@ export function createDictionaryRepository(db) {
 
     /**
      * Substring search, for autocomplete (§4.4).
-     * @param {"assignee"|"reporter"} kind
+     *
+     * The name defaults to the role-less read (`"actor"`): since both roles are
+     * one table, the query is the same whichever name is given, and the merged
+     * `GET /api/v1/actors` asks for the whole dictionary.
+     *
+     * @param {"assignee"|"reporter"|"actor"} [kind]
      * @param {{q?: string, limit?: number}} [options]
      */
-    search(kind, options = {}) {
+    search(kind = "actor", options = {}) {
       const table = dictionaryTable(kind);
       const q = typeof options.q === "string" ? options.q.trim().toLowerCase() : "";
       const limit = Number.isInteger(options.limit) ? options.limit : 20;
@@ -119,10 +139,11 @@ export function createDictionaryRepository(db) {
     },
 
     /**
-     * Every entry of a kind — what the resolver matches against.
-     * @param {"assignee"|"reporter"} kind
+     * Every entry — what the resolver matches against. Role-agnostic (see
+     * `search`): one table, one list.
+     * @param {"assignee"|"reporter"|"actor"} [kind]
      */
-    list(kind) {
+    list(kind = "actor") {
       const table = dictionaryTable(kind);
       return db.prepare(`SELECT * FROM ${table} ORDER BY display_name ASC`).all().map(dictionaryEntryFromRow);
     },
@@ -132,14 +153,14 @@ export function createDictionaryRepository(db) {
      * @param {"assignee"|"reporter"} kind @param {string} id
      */
     refCount(kind, id) {
-      const table = dictionaryTable(kind);
-      const column = REFERENCE_COLUMN[table];
+      dictionaryTable(kind); // validate the role, then read its column
+      const column = REFERENCE_COLUMN[kind];
       return Number(db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE ${column} = ?`).get(id).n);
     },
 
     /**
      * Delete an entry. Refused by the database while a task references it
-     * (`tr_dict_*_delete` → DICTIONARY_ENTRY_IN_USE). Not exposed as a command.
+     * (`tr_dict_actors_delete` → DICTIONARY_ENTRY_IN_USE). Not exposed as a command.
      * @param {"assignee"|"reporter"} kind @param {string} id
      */
     remove(kind, id) {

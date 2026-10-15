@@ -81,14 +81,14 @@ export const UNIQUE_KEY_CODES = Object.freeze([
     code: "SESSION_DUPLICATE",
   },
   { columns: ["task_reports.task_id", "task_reports.round"], code: "REPORT_ROUND_MISMATCH" },
-  { columns: ["assignees.normalized_name", "assignees.kind"], code: "DICTIONARY_CONFLICT" },
-  { columns: ["reporters.normalized_name", "reporters.kind"], code: "DICTIONARY_CONFLICT" },
+  // 0019: one actor table, keyed by `UNIQUE(normalized_name)` — the old two-column
+  // keys (`normalized_name, kind`) are gone with the tables.
+  { columns: ["actors.normalized_name"], code: "DICTIONARY_CONFLICT" },
   { columns: ["labels.project_id", "labels.norm"], code: "LABEL_CONFLICT" },
   { columns: ["projects.id"], code: "ID_CONFLICT" },
   { columns: ["tasks.id"], code: "ID_CONFLICT" },
   { columns: ["comments.id"], code: "ID_CONFLICT" },
-  { columns: ["assignees.id"], code: "ID_CONFLICT" },
-  { columns: ["reporters.id"], code: "ID_CONFLICT" },
+  { columns: ["actors.id"], code: "ID_CONFLICT" },
   { columns: ["labels.id"], code: "ID_CONFLICT" },
   { columns: ["agent_sessions.id"], code: "ID_CONFLICT" },
   { columns: ["attachments.id"], code: "ID_CONFLICT" },

@@ -236,7 +236,7 @@
   "routes": [
     {
       "method": "GET",
-      "path": "/api/v1/assignees",
+      "path": "/api/v1/actors",
       "request": {
         "body": null,
         "query": {
@@ -453,26 +453,6 @@
           "type": "object"
         },
         "query": null
-      }
-    },
-    {
-      "method": "GET",
-      "path": "/api/v1/reporters",
-      "request": {
-        "body": null,
-        "query": {
-          "additionalProperties": true,
-          "properties": {
-            "limit": {
-              "type": "string"
-            },
-            "q": {
-              "type": "string"
-            }
-          },
-          "required": [],
-          "type": "object"
-        }
       }
     },
     {
@@ -1220,7 +1200,6 @@
         "kind": "string",
         "last_seen_at": "string",
         "normalized_name": "string",
-        "platform": "string",
         "use_count": "number"
       },
       "shape": "dictionary_entry"
@@ -1310,8 +1289,6 @@
         "claimed_at": "string",
         "claimed_by": "string",
         "created_at": "string",
-        "creator_id": "string",
-        "creator_kind": "string",
         "delivery_round": "number",
         "description": "string",
         "heartbeat_at": "string",

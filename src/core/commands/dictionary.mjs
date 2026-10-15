@@ -9,6 +9,10 @@
  * `resolveOrCreate` does not write its own audit row: the command that needed
  * the entry records `dictionary_upsert` inside its own `changes_json`, so a
  * task creation stays one transaction with one activity.
+ *
+ * Since `0019` there is one `actors` table and `assignee`/`reporter` are roles
+ * (the `tasks` column a task fills). Resolution is **role-agnostic**: one person
+ * is one row, so both callers resolve against the whole dictionary.
  */
 
 import { DomainError } from "../../shared/errors.mjs";
@@ -33,11 +37,18 @@ export function dictionaryKind(kind) {
  * Resolve a free-text name to a dictionary row, creating it if it is new.
  * Runs in the caller's transaction.
  *
- * @param {object} ctx
- * @param {{kind: "assignee"|"reporter", name: string, actorKind?: "agent"|"human", forceCreate?: boolean, platform?: string|null}} input
+ * The first argument is a **scope**, not the full command context: it needs only
+ * the repository bag and a timestamp. The markdown importer has exactly those
+ * (`repos` + a card's `now`) and no `ctx`, so it can drive this same decision
+ * rather than bypassing it with a direct `upsert` — which is what made the live
+ * path and the import path disagree (Phase 5's whole point).
+ *
+ * @param {{repos: object, now: string}} scope
+ * @param {{kind: "assignee"|"reporter", name: string, actorKind?: "agent"|"human", forceCreate?: boolean}} input
  * @returns {{entry: object, action: "created"|"reused", kind: string, field: string}}
  */
-export function resolveOrCreate(ctx, input) {
+export function resolveOrCreate(scope, input) {
+  const { repos, now } = scope;
   const kind = dictionaryKind(input.kind);
   const actorKind = input.actorKind ?? "agent";
   if (!DICT_KINDS.includes(actorKind)) {
@@ -47,7 +58,7 @@ export function resolveOrCreate(ctx, input) {
     });
   }
 
-  const existing = ctx.repos.dictionary.list(kind);
+  const existing = repos.dictionary.list();
   const verdict = resolveDictionaryEntry(
     existing.map((entry) => ({
       id: entry.id,
@@ -59,29 +70,31 @@ export function resolveOrCreate(ctx, input) {
     { kind: actorKind, forceCreate: input.forceCreate === true },
   );
 
-  const { action, entry } = ctx.repos.dictionary.upsert({
+  const { action, entry } = repos.dictionary.upsert({
     kind,
     actorKind,
     normalizedName: verdict.normalizedName,
     displayName: verdict.displayName,
-    platform: input.platform ?? null,
-    now: ctx.now(),
+    now,
   });
 
   return { entry, action, kind, field: TASK_FIELD[kind] };
 }
 
 /**
- * Resolve and assign in one step, for a command that changes an assignee.
+ * Resolve and assign in one step, for a command that changes an assignee or a
+ * reporter.
  *
+ * The patch names one column (`assigneeId` / `reporterId`). It no longer carries a
+ * denormalised `assigneeKind`: the actor's kind lives on the `actors` row and the
+ * wire reads it from there (`wire.mjs#actorRef`).
+ *
+ * @param {{repos: object, now: string}} scope
  * @returns {{patch: object, audit: object[]}}
  */
-export function resolveAssignment(ctx, input) {
-  const resolved = resolveOrCreate(ctx, input);
-  const patch = {
-    [resolved.field]: resolved.entry.id,
-    ...(resolved.kind === "assignee" ? { assigneeKind: resolved.entry.kind } : {}),
-  };
+export function resolveAssignment(scope, input) {
+  const resolved = resolveOrCreate(scope, input);
+  const patch = { [resolved.field]: resolved.entry.id };
   return {
     patch,
     audit: [
@@ -96,21 +109,12 @@ export function resolveAssignment(ctx, input) {
 }
 
 /**
- * Read the dictionary. This is the *only* public entry point (§4.4: no管理入口).
+ * Read the whole dictionary. This is the *only* public entry point (§4.4: no
+ * 管理入口). One read for one table — the two role reads merged with the tables.
+ *
  * @param {object} ctx
- * @param {{kind: "assignee"|"reporter", q?: string, limit?: number}} input
+ * @param {{q?: string, limit?: number}} [input]
  */
-export function listEntries(ctx, input) {
-  const kind = dictionaryKind(input.kind);
-  return ctx.repos.dictionary.search(kind, { q: input.q, limit: input.limit });
-}
-
-/** @param {object} ctx @param {{q?: string, limit?: number}} [input] */
-export function listAssignees(ctx, input = {}) {
-  return listEntries(ctx, { ...input, kind: "assignee" });
-}
-
-/** @param {object} ctx @param {{q?: string, limit?: number}} [input] */
-export function listReporters(ctx, input = {}) {
-  return listEntries(ctx, { ...input, kind: "reporter" });
+export function listActors(ctx, input = {}) {
+  return ctx.repos.dictionary.search("actor", { q: input.q, limit: input.limit });
 }
