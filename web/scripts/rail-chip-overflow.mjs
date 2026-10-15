@@ -24,6 +24,16 @@
  * clip-independent half of that (the rail's own `scrollWidth`), and it is
  * reported next to D1 so a red can be read without trusting either one alone.
  *
+ * **D8 is this card's half, not the contract's.** §7 lists D1–D7. The a11y
+ * reading this script has always taken was recorded and deliberately left
+ * *unasserted*: it was the design confirmation's unmet gate ②
+ * (`workspace/T-20261015-050446/review/design-confirmation.md` §4), a known gap
+ * owned by a card of its own. That card is `T-20261015-055434`, so the reading
+ * becomes an assertion here rather than in a second script that would have to
+ * rebuild the same two engines to ask the same question: at every measured width
+ * the project row's computed accessible name must be non-empty **and** name the
+ * project. D1–D7 are untouched by it.
+ *
  * **Two engines, one assertion set.** The `taskd` engine runs the real thing —
  * a real `createTaskd` over a scratch SQLite board seeded through the real
  * `createProject`, whose 36-character legacy prefix is produced by the real
@@ -54,7 +64,8 @@
  *   --lang <code>       en | zh                           (default en)
  *   --port <n>          force a port for the taskd engine (default: ephemeral)
  *
- * Exit: 0 every assertion holds; 1 at least one failed; 2 the leg could not run
+ * Exit: 0 every assertion holds (D1–D7 + D8); 1 at least one failed; 2 the leg
+ *       could not run
  * (no Playwright, no `web/dist`).
  *
  * Host-side on purpose: `docs/docker.md` §Host-allowed-checks keeps
@@ -595,7 +606,39 @@ async function runEngine(engine, failures) {
       } catch (err) {
         error = err.message;
       }
-      out.a11y[width] = { rows, snapshots, source, error };
+
+      // D8 · T-20261015-055434 — the row button's **computed** name is not empty,
+      // and it names the project. This is the assertion §4 of the design
+      // confirmation (`workspace/T-20261015-050446/review/design-confirmation.md`)
+      // recorded as unmet and left to a card of its own: the chip is
+      // `aria-hidden`, so its `title` (P5, the prefix) reaches a pointer, and the
+      // rail drops every visible text node of the row, so name-from-contents
+      // yields nothing at ≤1023px. The reading above is the browser's own name
+      // computation — not a reading of the markup — which is why it can only be
+      // asserted here.
+      //
+      // The claim is width-dependent on purpose and both halves are required:
+      // ≤1023px the name must exist at all (it is the rail's only identity cue),
+      // and at ≥1024px it must *still* contain the project name, because that is
+      // the control reading acceptance ① compares against. Note what is **not**
+      // asserted: the exact string. At ≥1024px the visible name and the count
+      // both feed the name (`MeerkatTaskPanel 12`) while in the rail the row's
+      // own `title` answers alone (`MeerkatTaskPanel`), so pinning one literal
+      // would forbid the other — `includes(project)` is the invariant both share.
+      rows.forEach((row, index) => {
+        const snap = snapshots?.[index] ?? null;
+        row.accessibleName = snap ? (/"(.*)"/.exec(snap)?.[1] ?? "") : row.nameByContents;
+      });
+      const unnamed = rows.filter((r) => !r.accessibleName.length);
+      const misnamed = rows.filter((r) => r.accessibleName.length > 0 && !r.accessibleName.includes(r.project));
+      const d8 =
+        unnamed.length === 0 && misnamed.length === 0
+          ? `${rows.length} rows: ${width <= RAIL_MAX ? "rail" : "full"} name = ${JSON.stringify(rows[0]?.accessibleName ?? "")}`
+          : [
+              ...unnamed.map((r) => `${r.project}: empty accessible name`),
+              ...misnamed.map((r) => `${r.project}: named ${JSON.stringify(r.accessibleName)}`),
+            ].join("; ");
+      out.a11y[width] = { rows, snapshots, source, error, assertions: [check("D8", unnamed.length === 0 && misnamed.length === 0, `@${width} ${d8}`)] };
       await context.close();
     }
   } finally {
@@ -666,8 +709,9 @@ for (const engine of artifact.engines) {
     }
   }
   for (const [width, a11y] of Object.entries(engine.a11y ?? {})) {
-    console.log(`  a11y @${width} (name source: ${a11y.source}${a11y.error ? `, ariaSnapshot unavailable: ${a11y.error}` : ""}):`);
-    for (const r of a11y.rows) console.log(`        ${String(r.project).padEnd(22)} <${r.tag}> chipShown=${r.chipDisplayed} chipAriaHidden=${r.chipAriaHidden} nameByContents=${JSON.stringify(r.nameByContents)}`);
+    console.log(`  a11y @${width} (name source: ${a11y.source}${a11y.error ? `, ariaSnapshot unavailable: ${a11y.error}` : ""})  ${(a11y.assertions ?? []).map((a) => `${a.id}:${a.ok ? "PASS" : "FAIL"}`).join(" ")}`);
+    for (const r of a11y.rows) console.log(`        ${String(r.project).padEnd(22)} <${r.tag}> chipShown=${r.chipDisplayed} chipAriaHidden=${r.chipAriaHidden} nameByContents=${JSON.stringify(r.nameByContents)} accessibleName=${JSON.stringify(r.accessibleName ?? null)}`);
+    for (const a of a11y.assertions ?? []) if (!a.ok) console.log(`        x ${a.id}: ${a.detail}`);
     for (const s of a11y.snapshots ?? []) console.log(`        ariaSnapshot: ${JSON.stringify(s)}`);
   }
   if (engine.consoleErrors.length) console.log(`  console errors: ${engine.consoleErrors.length} ${JSON.stringify(engine.consoleErrors.slice(0, 3))}`);
