@@ -24,13 +24,13 @@
  */
 
 import { createServer } from "node:http";
-import { pathToFileURL } from "node:url";
 
 import { VERSION } from "../src/shared/constants.mjs";
 import { MonitoringError, isMonitoringError } from "./lib/errors.mjs";
 import { exportMetrics, resolveOtlpEndpoint, withMetricsPath } from "./lib/otlp.mjs";
 import { Registry, validateObservation } from "./lib/registry.mjs";
 import { SLO_TARGETS, httpStatusFor, summarize, toHealth } from "./lib/slo.mjs";
+import { isEntryPoint } from "../src/shared/entry-guard.mjs";
 
 /** Loopback by default: the sidecar is a local component, not a public one. */
 export const DEFAULT_HOST = "127.0.0.1";
@@ -375,8 +375,7 @@ async function main() {
   for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => void shutdown(signal));
 }
 
-const invokedDirectly = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (invokedDirectly) {
+if (isEntryPoint(import.meta.url)) {
   main().catch((error) => {
     process.stderr.write(`${isMonitoringError(error) ? error.code : "ERROR"}: ${error?.message ?? error}\n`);
     process.exitCode = 1;

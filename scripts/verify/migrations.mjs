@@ -31,11 +31,12 @@
 import { execFileSync } from "node:child_process";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { MIGRATION_FILE_PATTERN } from "../../src/core/storage/schema.mjs";
 import { checksumFor } from "../../src/core/storage/migrations-runner.mjs";
+import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
 
 /** Repository root, resolved from this file (`scripts/verify/`). */
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -272,8 +273,6 @@ async function main(argv) {
 }
 
 // Guarded so the module can be imported by the test suite without side effects.
-const invokedDirectly =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (invokedDirectly) {
+if (isEntryPoint(import.meta.url)) {
   process.exit(await main(process.argv.slice(2)));
 }

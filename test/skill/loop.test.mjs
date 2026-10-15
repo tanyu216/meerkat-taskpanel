@@ -73,7 +73,7 @@ describe("loop skill: the generated payload", () => {
     }
   });
 
-  it("carries the four shared modules the supervisor and the wake resolver import", () => {
+  it("carries the shared modules the supervisor and the wake resolver import", () => {
     // Named explicitly as well as derived: the closure is a computation, and a
     // computation with a bug would still look internally consistent.
     const body = bodyClosure();
@@ -87,6 +87,7 @@ describe("loop skill: the generated payload", () => {
       "src/shared/redact.mjs",
       "src/shared/project-dir.mjs",
       "src/shared/runtime-locator.mjs",
+      "src/shared/entry-guard.mjs",
     ]) {
       assert.ok(body.includes(rel), `${rel} must be part of the loop body`);
     }
