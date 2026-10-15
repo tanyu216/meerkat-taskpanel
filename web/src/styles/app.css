@@ -2061,7 +2061,20 @@ button.td-prop-value:hover {
   border-radius: var(--radius-selector);
 }
 .td-combo-menu button:hover { background: var(--brand-hover); }
-.td-combo-menu button[aria-selected="true"] { background: var(--brand-active); }
+/* The row the arrow keys are on — the popup's `active`, and the drawer menus'
+   current value: the prototype's own state face
+   (`design/prototype/src/input.css:2986` → `tw.css:5664`), the accent ink on
+   the accent's 10% tint, the same pair the selected nav row wears
+   (`[data-nav-item][aria-current="page"]`, R6 ②). The grey `--brand-active`
+   this used to paint moved the background and left the row's ink on
+   `--brand-text-2`, so the state differed from the base row by a wash alone —
+   "this is the row you are on" was the one thing it did not say. One rule, so
+   the create dialog's fields and the drawer's status/priority menus cannot
+   fork. */
+.td-combo-menu button[aria-selected="true"] {
+  color: var(--brand-accent);
+  background: var(--brand-accent-soft);
+}
 [data-drop="up"] .td-combo-menu { top: auto; bottom: calc(100% + 4px); }
 
 /* One task per row: identifier first, title trailing. The row keeps the

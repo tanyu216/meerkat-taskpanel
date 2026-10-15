@@ -46,6 +46,21 @@
  * the same group of values" — so the leg reads both and D7 asserts the two sets are
  * equal, not merely that each matches the table.
  *
+ * **D5/D9 — the selected row's state face.** The row above is sampled
+ * *unselected* on purpose (D3 is the resting row, and a state background would
+ * have leaked a second variable into it). The state face is read separately:
+ * `design/prototype/src/input.css:2986` (→ `tw.css:5664`) paints
+ * `[aria-selected="true"]` with `--color-td-accent` on `--color-td-accent-soft`
+ * — `--brand-accent` / `--brand-accent-soft` under the web layer's names
+ * (`tokens.css:103-110`) —
+ * and `T-20261014-212017-7`'s certification left the implementation on the grey
+ * `--brand-active` with the row's ink untouched, so the state differed from the
+ * base row by a wash alone. D5 asserts the pair the rule must name (and that it
+ * is **not** `--brand-active` — the defect's signature, in the shape R6 ② pins
+ * on the nav row); D9 asserts the drawer and the create dialog carry the *same*
+ * pair, which is the card's ① "one rule, no fork" stated as a measurement
+ * rather than as a reading of the stylesheet.
+ *
  * Usage: node web/scripts/combo-menu-geometry.mjs [options]
  *   --json <path>   write the full artifact (default: stdout summary only)
  *   --lang <code>   en | zh                          (default en)
@@ -125,10 +140,31 @@ function readMenus() {
   };
   /** The unselected row — the selected one paints a state background (see D-notes). */
   const rowOf = (menu) => [...menu.querySelectorAll("button")].find((b) => b.getAttribute("aria-selected") !== "true") ?? null;
+  /** The row the control's `active` (or the drawer menu's current value) is on. */
+  const selectedOf = (menu) => [...menu.querySelectorAll("button")].find((b) => b.getAttribute("aria-selected") === "true") ?? null;
+  /**
+   * Resolve a custom property the way `dom-smoke.mjs`'s `equalsVar` does — paint
+   * it as a `color` on a hidden probe and read the computed value back, so a
+   * computed `backgroundColor` is never compared against the token's own source
+   * text. It matters here: the shipped stylesheet is minified, and
+   * `--brand-accent-soft`'s `rgba(15, 122, 115, 0.1)` comes back off the token as
+   * the 8-digit hex `#0f7a731a`, which is the same colour under a different
+   * spelling. The probe is removed again, so nothing it adds can reach a count.
+   */
+  const resolveVar = (name) => {
+    const probe = document.createElement("span");
+    probe.style.cssText = "position:absolute;visibility:hidden;";
+    probe.style.color = `var(${name})`;
+    document.body.appendChild(probe);
+    const value = getComputedStyle(probe).color;
+    probe.remove();
+    return value;
+  };
 
-  const read = (menu, row) => {
+  const read = (menu, row, selected) => {
     const cs = getComputedStyle(menu);
     const rs = row === null ? null : getComputedStyle(row);
+    const ss = selected === null ? null : getComputedStyle(selected);
     const token = cs.getPropertyValue("--brand-text-2").trim();
     return {
       menu: {
@@ -167,16 +203,27 @@ function readMenus() {
         token,
         width_fills_box: round(box(row).w - (box(menu).w - (parseFloat(cs.paddingLeft) || 0) * 2 - (parseFloat(cs.borderLeftWidth) || 0) * 2)),
       },
+      /** The state face — D5/D9. `has_row` says the sample is real: a null here
+       *  means the menu simply had no selected row, which is a finding, not a
+       *  quiet pass. */
+      selected: selected === null ? { has_row: false } : {
+        has_row: true,
+        color: ss.color,
+        background_color: ss.backgroundColor,
+        ink_token: resolveVar("--brand-accent"),
+        soft_token: resolveVar("--brand-accent-soft"),
+        grey_token: resolveVar("--brand-active"),
+      },
     };
   };
 
   const drawerMenu = document.querySelector("[data-detail-status-menu]");
   const out = {
-    drawer: drawerMenu === null ? null : read(drawerMenu, rowOf(drawerMenu)),
+    drawer: drawerMenu === null ? null : read(drawerMenu, rowOf(drawerMenu), selectedOf(drawerMenu)),
     create: null,
   };
   const createMenu = document.querySelector("[data-create-task] [data-parent-menu]");
-  if (createMenu !== null) out.create = read(createMenu, rowOf(createMenu));
+  if (createMenu !== null) out.create = read(createMenu, rowOf(createMenu), selectedOf(createMenu));
   return out;
 }
 
@@ -310,6 +357,15 @@ try {
       near(side.menu.width_without_menu_class.with, side.menu.width_without_menu_class.without),
       `${side.menu.has_menu_class ? "has" : "no"} menu class；with=${side.menu.width_without_menu_class.with} without=${side.menu.width_without_menu_class.without}`,
     );
+
+    suite(`${surface} · 选中行 [aria-selected="true"]（卡 ①）`);
+    const sel = side.selected;
+    check("D5 菜单里读到一行 aria-selected=\"true\"", sel.has_row, sel.has_row ? "一行" : "没有选中行 —— 状态面读不到，D5 不得空过");
+    if (sel.has_row) {
+      check("D5 选中行 color = var(--brand-accent)", sel.color === sel.ink_token, `color=${sel.color} token=${sel.ink_token}`);
+      check("D5 选中行 background = var(--brand-accent-soft)", sel.background_color === sel.soft_token, `background=${sel.background_color} token=${sel.soft_token}`);
+      check("D5 选中行 background ≠ var(--brand-active)（旧灰底即缺陷签名）", sel.background_color !== sel.grey_token, `background=${sel.background_color} --brand-active=${sel.grey_token}`);
+    }
   }
 
   suite("两处同时落同一组值（卡 ②）");
@@ -317,6 +373,16 @@ try {
   const b = valueSet(create.create);
   const drifted = Object.keys(a).filter((k) => a[k] !== b[k]);
   check("D7 create 对话框与详情抽屉的值集全等", drifted.length === 0, drifted.length === 0 ? `${Object.keys(a).length} 条逐字相同` : drifted.map((k) => `${k}: ${a[k]} vs ${b[k]}`).join("; "));
+
+  suite("选中行两处同一对色（卡 ①：同一条规则，不得分叉）");
+  const sa = drawer.drawer.selected;
+  const sb = create.create.selected;
+  const bothRead = sa.has_row && sb.has_row;
+  check(
+    "D9 create 对话框与详情抽屉的选中行色对全等",
+    bothRead && sa.color === sb.color && sa.background_color === sb.background_color,
+    `drawer ${sa.color ?? "—"} / ${sa.background_color ?? "—"} vs create ${sb.color ?? "—"} / ${sb.background_color ?? "—"}`,
+  );
 
   suite("硬门");
   check("D8 console/page error = 0", consoleErrors.length === 0 && pageErrors.length === 0, `${consoleErrors.length} console / ${pageErrors.length} page${consoleErrors.length || pageErrors.length ? `: ${[...consoleErrors, ...pageErrors].slice(0, 3).join(" | ")}` : ""}`);
