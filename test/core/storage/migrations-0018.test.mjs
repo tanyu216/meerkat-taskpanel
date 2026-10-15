@@ -267,8 +267,8 @@ describe("storage/migrations — 0018 opens the actor-kind columns (comments, ta
         Object.keys(newTriggers)
           .filter((name) => !(name in oldTriggers))
           .sort(),
-        ["tr_dict_actors_delete", "tr_rev_actors_del", "tr_rev_actors_ins", "tr_rev_actors_upd"],
-        "0018 invents no trigger; 0019's actor triggers are the later addition",
+        ["tr_dict_actors_delete", "tr_rel_block_chain", "tr_rel_parent_block_pair", "tr_rev_actors_del", "tr_rev_actors_ins", "tr_rev_actors_upd"],
+        "0018 invents no trigger; 0019's actor triggers and 0021/0022's relation guards are the later additions",
       );
       assert.deepEqual(
         Object.keys(oldTriggers).filter((name) => !(name in newTriggers)).sort(),

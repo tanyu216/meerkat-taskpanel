@@ -230,16 +230,19 @@ describe("storage/migrations — 0015 makes `deploy` a task kind (T-20261013-232
       const newTriggers = triggersOf(after.db);
 
       // As in the 0013 suite: `after` runs the whole shipped set, so a later
-      // migration's own trigger is an allowed addition/removal. Two later files
+      // migration's own trigger is an allowed addition/removal. Later files
       // touch triggers: `0017_block_cycle.sql` adds `tr_rel_block_cycle`, and
       // `0019_actors.sql` merges the two dictionary tables into `actors` — removing
       // the four triggers on each old table (`tr_dict_*_delete` + `tr_rev_*_{ins,upd,del}`),
       // adding `tr_dict_actors_delete` and `tr_rev_actors_{ins,upd,del}`, and
       // re-declaring `tr_rev_tasks_upd` during its `tasks` rebuild. What 0015's own
-      // rebuild may not do is lose one or invent one of its own.
+      // rebuild may not do is lose one or invent one of its own. 0021/0022 add the
+      // two relation guards `tr_rel_block_chain` / `tr_rel_parent_block_pair`.
       const LATER_TRIGGERS_ADDED = [
         "tr_dict_actors_delete",
+        "tr_rel_block_chain",
         "tr_rel_block_cycle",
+        "tr_rel_parent_block_pair",
         "tr_rev_actors_del",
         "tr_rev_actors_ins",
         "tr_rev_actors_upd",
