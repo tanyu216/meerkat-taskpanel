@@ -43,6 +43,8 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
+import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
+
 /** Repository root, resolved from this file (`scripts/verify/`). */
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -375,6 +377,6 @@ export async function main(argv = process.argv.slice(2), out = process.stdout) {
   return missing.length === 0 ? 0 : 3;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isEntryPoint(import.meta.url)) {
   process.exit(await main());
 }

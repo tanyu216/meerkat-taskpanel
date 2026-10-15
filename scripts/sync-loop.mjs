@@ -36,6 +36,7 @@
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isEntryPoint } from "../src/shared/entry-guard.mjs";
 
 /** Directory name of the loop skill, inside `skills/` and each host's `skills/`. */
 export const LOOP_SKILL_NAME = "meerkat-loop";
@@ -362,7 +363,7 @@ async function main() {
 }
 
 // Only run when executed directly, so the sync entry point can import the functions above.
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isEntryPoint(import.meta.url)) {
   process.exit(await main());
 }
 

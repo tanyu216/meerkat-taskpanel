@@ -51,8 +51,8 @@ import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
 
 const IMAGE = "meerkat-taskpanel:verify";
 
@@ -464,6 +464,6 @@ async function main() {
   return rows.some((r) => r.status === "FAIL") ? 1 : 0;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isEntryPoint(import.meta.url)) {
   process.exit(await main());
 }

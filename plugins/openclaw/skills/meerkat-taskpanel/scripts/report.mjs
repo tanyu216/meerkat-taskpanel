@@ -35,6 +35,7 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -852,8 +853,21 @@ async function main(argv) {
   }
 }
 
+// A private copy of `src/shared/entry-guard.mjs`. This file ships as part of the board skill and
+// is copied out on its own, so an import reaching back into the checkout would dangle once it is.
+// Node resolves `import.meta.url` through `realpath` but leaves `process.argv[1]` as spelled, so
+// both sides must be canonicalised — otherwise the guard is silently false and this exits 0
+// having generated nothing.
+function canonicalPath(path) {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
 // Only run when executed directly, so the tests can import the pure helpers.
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] !== undefined && canonicalPath(process.argv[1]) === canonicalPath(fileURLToPath(import.meta.url))) {
   process.exit(await main(process.argv.slice(2)));
 }
 

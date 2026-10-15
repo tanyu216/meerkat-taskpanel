@@ -27,6 +27,7 @@ import { exportMd } from "./export.mjs";
 import { importMd, parseCard } from "./import.mjs";
 import { loadProjectRegistry } from "./project-registry.mjs";
 import { readdirSync } from "node:fs";
+import { isEntryPoint } from "../../../shared/entry-guard.mjs";
 
 const USAGE = `Usage: node src/core/storage/md/migrate-cli.mjs <command> [options]
 
@@ -315,7 +316,7 @@ async function checkCards(options, { now }) {
 }
 
 // Only run when invoked directly (`node migrate-cli.mjs …`), not when imported.
-if (process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1]}`) {
+if (isEntryPoint(import.meta.url)) {
   const code = await main(process.argv.slice(2));
   process.exitCode = code;
 }

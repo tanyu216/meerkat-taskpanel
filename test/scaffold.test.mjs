@@ -170,9 +170,9 @@ describe("skill sync", () => {
 
     assert.deepEqual((await readdir(join(ROOT, "plugins"))).sort(), ["loop", "openclaw"]);
 
-    // 1 OpenClaw manifest + 8 OpenClaw skill files + 2 loop manifests + 24 loop skill files.
+    // 1 OpenClaw manifest + 8 OpenClaw skill files + 2 loop manifests + 25 loop skill files.
     // The count is the floor the plan measured; it moves only deliberately.
-    assert.equal((await listFiles(join(ROOT, "plugins"))).length, 35);
+    assert.equal((await listFiles(join(ROOT, "plugins"))).length, 36);
   });
 
   it("compareDirs detects changed, missing and extra files in a temp copy", async () => {

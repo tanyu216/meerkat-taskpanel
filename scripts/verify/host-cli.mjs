@@ -23,6 +23,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -221,6 +222,6 @@ async function main() {
 }
 
 // Only run when executed directly, so tests can import PROBES / runProbe.
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isEntryPoint(import.meta.url)) {
   process.exit(await main());
 }
