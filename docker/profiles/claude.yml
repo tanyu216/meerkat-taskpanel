@@ -7,7 +7,9 @@ skill_entry: SKILL.md
 wrapper: scripts/run.mjs
 # Distribution bundle this host installs from, and what the host's detector must report.
 # Claude Code reads .claude-plugin/plugin.json; the repository-root marketplace
-# (.claude-plugin/marketplace.json) points at this bundle.
-bundle: plugins/claude
+# (.claude-plugin/marketplace.json) resolves this plugin to the repository root.
+# The format below is OpenClaw's, not Claude's: the root carries .cursor-plugin/ as well,
+# and OpenClaw's precedence (codex → cursor → claude) settles on cursor.
+bundle: .
 bundle_kind: bundle
-bundle_format: claude
+bundle_format: cursor

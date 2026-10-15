@@ -205,7 +205,9 @@ describe("bundle: parseMarketplace", () => {
     assert.equal(market.ok, true, market.error);
 
     const expected = [
-      { name: SKILL_NAME, skill: SKILL_NAME, dir: "plugins/claude" },
+      // `source: "./"` — the board's plugin root IS the repository root, which is what
+      // lets claude / codex / cursor / pi share the one `skills/` tree.
+      { name: SKILL_NAME, skill: SKILL_NAME, dir: "" },
       { name: LOOP_SKILL_NAME, skill: LOOP_SKILL_NAME, dir: "plugins/loop" },
     ];
     assert.deepEqual(
@@ -220,9 +222,10 @@ describe("bundle: parseMarketplace", () => {
       assert.ok(names.includes(want.skill), `${want.name}: ${entry.dir} must expose ${want.skill}`);
     }
 
-    // The loop bundle is loop-only. The board's bundle additionally carries the loop's copy
-    // (`plugins/claude/skills/meerkat-loop/`) — that is the claude/codex/pi distribution
-    // ②, not a second marketplace plugin — but the reverse must not hold.
+    // The loop bundle is loop-only: installing `meerkat-loop` alone must not quietly bring
+    // the board with it. The board's bundle is the repository root, so it exposes both
+    // skills — that is the shared tree, not a second marketplace plugin — and only the
+    // loop bundle has to stay narrow.
     assert.deepEqual(
       inspectBundle(join(ROOT, "plugins/loop")).skills.map((skill) => skill.name),
       [LOOP_SKILL_NAME],

@@ -6,19 +6,22 @@
  * Those copies are GENERATED — never edit them by hand. `--check` verifies they are in
  * sync without writing anything, and is wired into CI (`npm run check:skills`).
  *
- * Two skills, two distribution surfaces — and the difference between them is the point
- * of the split (T-20261012-163500-loopdecouple-b):
+ * Since the plugin-distribution change (design/plugin-distribution-plan.md) the
+ * repository root *is* the board's plugin root for claude / codex / cursor / pi: each
+ * harness's manifest sits next to the one `skills/` tree and points at it, so those
+ * four hosts need no generated copy at all. What remains here are the two directories
+ * that genuinely need a `skills/` beside them:
  *
- *   * `meerkat-taskpanel` (the board) goes to **all four** hosts;
- *   * `meerkat-loop` (the host-external supervisor) goes to the three hosts that can be
- *     woken by an external scheduler — `claude`, `codex`, `pi` — and **never** to
- *     OpenClaw, which already runs an equivalent supervisor in the openclaw-team
- *     framework. Installing both would be two supervisors racing one board.
+ *   * `plugins/openclaw` — OpenClaw is installed as a native plugin whose manifest must
+ *     live beside its own `skills/`;
+ *   * `plugins/loop` — the marketplace lists skills as plugins, and a plugin whose
+ *     source directory carried both skills could not be installed for the loop alone.
+ *     A bundle target is not a host: it exists so `meerkat-loop` can be resolved as its
+ *     own marketplace entry.
  *
- * The loop skill additionally has a *bundle* target (`plugins/loop`): the marketplace
- * lists skills as plugins, and a plugin whose source directory carried both skills could
- * not be installed for the loop alone. A bundle target is not a host — it exists so
- * `meerkat-loop` can be resolved as its own marketplace entry.
+ * OpenClaw receives the board skill only, **never** `meerkat-loop`: it already runs an
+ * equivalent supervisor in the openclaw-team framework, and installing both would be two
+ * supervisors racing one board (the split is T-20261012-163500-loopdecouple-b).
  *
  * This script is also the entry point for the other half of "the skill is up to date":
  * the loop's execution body and templates are *generated into* `skills/meerkat-loop/` from
@@ -38,11 +41,17 @@ import { syncLoop } from "./sync-loop.mjs";
 /**
  * Which host plugin directories receive a generated copy of which skill.
  *
+ * Only OpenClaw needs one. The other harnesses read `skills/` at the repository root
+ * through their own manifest (`.claude-plugin/`, `.cursor-plugin/`, the root
+ * `package.json`'s `pi` field, `.opencode/`) — a copy beside them would be exactly the
+ * duplication this table exists to avoid. `meerkat-loop` therefore has no host target
+ * left; it is still distributed, via {@link SKILL_BUNDLES} and `install.sh`.
+ *
  * @type {Readonly<Record<string, readonly string[]>>}
  */
 export const SKILL_HOSTS = Object.freeze({
-  "meerkat-taskpanel": Object.freeze(["claude", "codex", "openclaw", "pi"]),
-  "meerkat-loop": Object.freeze(["claude", "codex", "pi"]),
+  "meerkat-taskpanel": Object.freeze(["openclaw"]),
+  "meerkat-loop": Object.freeze([]),
 });
 
 /**
@@ -261,9 +270,10 @@ Two steps, one guard:
 
   1. generates the loop payload (execution body + installer templates) inside
      skills/meerkat-loop/, from scripts/, src/shared/ and scripts/install/templates/;
-  2. copies each skill from skills/<skill>/ into the plugin directories that distribute
-     it — the board skill to claude, codex, openclaw and pi; the loop skill to claude,
-     codex and pi, plus the plugins/loop bundle the marketplace lists.
+  2. copies each skill from skills/<skill>/ into the plugin directories that need a
+     generated copy — the board skill to openclaw, and the loop skill into the
+     plugins/loop bundle the marketplace lists. claude, codex, cursor and pi read the
+     repository's own skills/ tree and get no copy.
 
 Options:
   --check        Only verify both are in sync; do not write.

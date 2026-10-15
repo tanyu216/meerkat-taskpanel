@@ -66,17 +66,29 @@ export const CLAUDE_DEFAULT_ROOTS = [
  * @type {Record<string, {dir: string, manifest: string, openclawKind: string, openclawFormat: string}>}
  */
 export const HOST_BUNDLES = {
+  // The repository root IS the board's plugin root. `.claude-plugin/plugin.json` is the
+  // board manifest and the root marketplace resolves `meerkat-taskpanel` to `./`, so
+  // Claude Code and Codex install the very same bundle. Codex ships no marker of its
+  // own, which is why its row names the Claude manifest.
+  //
+  // `openclawFormat` is what the detector reports for the row's `dir` — not what the host
+  // calls itself. Four hosts share this one directory, and the root carries two client
+  // markers (`.cursor-plugin/` and `.claude-plugin/`), so OpenClaw's precedence picks
+  // cursor for all four. Measured: adding the Cursor marker changes exactly one line of
+  // `openclaw plugins inspect` — `Bundle format: claude` → `cursor` — while
+  // `Format: bundle`, `Shape`, `Capability mode` and `Bundle capabilities: skills` are
+  // unchanged.
   claude: {
-    dir: "plugins/claude",
+    dir: ".",
     manifest: CLAUDE_MANIFEST,
     openclawKind: "bundle",
-    openclawFormat: "claude",
+    openclawFormat: "cursor",
   },
   codex: {
-    dir: "plugins/codex",
-    manifest: CODEX_MANIFEST,
+    dir: ".",
+    manifest: CLAUDE_MANIFEST,
     openclawKind: "bundle",
-    openclawFormat: "codex",
+    openclawFormat: "cursor",
   },
   openclaw: {
     dir: "plugins/openclaw",
@@ -85,12 +97,18 @@ export const HOST_BUNDLES = {
     openclawFormat: "native",
   },
   pi: {
-    dir: "plugins/pi",
+    dir: ".",
     manifest: PACKAGE_MANIFEST,
-    // Pi's own unit is an npm package, but OpenClaw sees the ships-a-`skills/`-dir
-    // layout and classifies it as a manifestless Claude bundle. Both are true.
+    // Pi declares itself in the root package's `pi` field, so its bundle IS the
+    // repository root, and the detector reports that root's format for it as well.
     openclawKind: "bundle",
-    openclawFormat: "claude",
+    openclawFormat: "cursor",
+  },
+  cursor: {
+    dir: ".",
+    manifest: CURSOR_MANIFEST,
+    openclawKind: "bundle",
+    openclawFormat: "cursor",
   },
 };
 
