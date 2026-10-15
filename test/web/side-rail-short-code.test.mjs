@@ -148,4 +148,45 @@ describe("web · C-RAIL-1 — the rail chip is the project's effective prefix", 
       "the chip must bind `title` to the same `project.prefix` it draws (P5)",
     );
   });
+
+  it("A8 — the row's own name source is the prototype's `title` (T-20261015-055434)", () => {
+    // The rail hides *every* visible text node of the project row
+    // (`[data-side-name]` and `[data-side-count]` are `display:none` at
+    // ≤1023px), so name-from-contents yields nothing and the `<button>` is
+    // announced unnamed — the chip cannot stand in, because it is `aria-hidden`
+    // and its `title` is the *prefix* (A7b), which reaches a pointer and no
+    // assistive technology.
+    //
+    // The prototype already answers this, on the row itself:
+    // `design/prototype/index.html` gives every `button.td-side-item[data-project]`
+    // a `title` equal to the project name (`title="Orchestrator"`), and `title`
+    // is the name computation's **last resort** — so it fires in the rail, where
+    // nothing else produces a name, and is outranked by the visible name at
+    // ≥1024px, where the row already had one. M6b stage 3 dropped the attribute
+    // while re-cutting the row; this pin is what keeps it from being dropped a
+    // second time. It needs no browser, so it holds where `web/dist` cannot be
+    // built.
+    //
+    // The behavioural half — the browser's own name computation, measured at
+    // both sides of the breakpoint — is D8 in
+    // `web/scripts/rail-chip-overflow.mjs`, which does need a build.
+    assert.match(
+      sidebar,
+      /:title="project\.name"/,
+      "the project row must carry the prototype's `title` = the project name — the rail's only name source",
+    );
+    // Deliberately **not** `aria-label`/`aria-labelledby`: either one outranks
+    // the row's contents, so it would also rewrite the desktop reading
+    // (`MeerkatTaskPanel 12` → `MeerkatTaskPanel`) — a change to a name that was
+    // already correct, bought to fix one that was not. `title` fills the rail's
+    // empty name and leaves ≥1024px byte-identical.
+    const from = sidebar.indexOf("data-project-list");
+    const row = sidebar.slice(from, sidebar.indexOf("data-side-icon", from));
+    assert.ok(from > -1 && row.includes("data-project"), "the project row region could not be located");
+    assert.doesNotMatch(
+      row,
+      /:aria-label=|aria-labelledby=/,
+      "the row's accessible name must not be overridden by an ARIA naming attribute",
+    );
+  });
 });
