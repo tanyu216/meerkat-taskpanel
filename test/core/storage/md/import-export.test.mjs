@@ -105,6 +105,50 @@ describe("md/import — statistics and behaviour", () => {
     }
   });
 
+  it("resolves a card's people through one decision, and a claimant is not one of them", async () => {
+    // This file is the only place that can pin these two facts, and neither was pinned
+    // before Phase 5 (`0019`).
+    //
+    // (1) The importer drives the **same** dictionary decision as the live path. One card
+    //     naming the same person as both its assignee and its reporter — `linus` /
+    //     `Linus` — is **one** actor, because the two old tables are now one and the
+    //     resolution spans them. Before, that card produced two rows, one per table.
+    //     It is also the reuse rule: the dictionary's own spelling wins, so the second
+    //     name does not overwrite the first.
+    // (2) A card's `claimed_by` does **not** create an actor row. The old importer resolved
+    //     the claimant into an actor and then discarded the id, so the row was a roster
+    //     entry nothing referenced. `tasks.claimed_by` is still a free string, so the
+    //     claimant needs no row here; the migration that gives that column a reference
+    //     will create the rows it needs itself.
+    const board = await boardWithCards({
+      "PROJ-0001.md": cardText({ assignee: "linus", created_by: "Linus", claimed_by: "someone-else" }),
+    });
+    try {
+      importMd({ db: board.db, repos: board.repos, dir: board.dir, now: TS });
+
+      assert.deepEqual(
+        board.db
+          .prepare("SELECT kind, display_name, normalized_name FROM actors ORDER BY normalized_name")
+          .all()
+          .map((r) => ({ ...r })),
+        [{ kind: "agent", display_name: "linus", normalized_name: "linus" }],
+        "one person across the two roles, under the spelling the dictionary saw first",
+      );
+
+      const task = board.repos.tasks.getByIdentifier("proj", "PROJ-0001");
+      assert.equal(task.assigneeId, task.reporterId, "both roles resolve to the same actor row");
+
+      assert.equal(
+        board.db.prepare("SELECT COUNT(*) AS n FROM actors WHERE normalized_name = ?").get("someone-else").n,
+        0,
+        "a claimant alone is not an actor",
+      );
+      assert.equal(task.claimedBy, "someone-else", "…and `claimed_by` keeps the card's own text");
+    } finally {
+      board.close();
+    }
+  });
+
   it("moves the use count when a re-import drops a label", async () => {
     const board = await boardWithCards({ "PROJ-0001.md": cardText({ labels: "[Bug, ui]" }) });
     try {
