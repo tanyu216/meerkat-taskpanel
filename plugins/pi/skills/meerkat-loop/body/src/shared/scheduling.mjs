@@ -198,7 +198,10 @@ export function planPatrol(input = {}) {
     if (task?.status !== "in_progress") continue;
     const identifier = String(task?.identifier ?? "");
     if (identifier === "") continue;
-    const agent = task?.claimed_by ?? task?.assignee?.display_name ?? null;
+    // Who holds the card, as a person: `claimed_by` is an actor **id** since 0020,
+    // so the name comes off the wire's `claimed_by_actor` ref (the same one the
+    // board renders). The fallbacks keep an older/board-less projection readable.
+    const agent = task?.claimed_by_actor?.display_name ?? task?.assignee?.display_name ?? null;
     const parsed = parseHeartbeat(task?.heartbeat_at);
     if (!parsed.ok) {
       alerts.push({

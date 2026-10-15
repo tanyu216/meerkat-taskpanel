@@ -22,8 +22,6 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { actorNameOnBoard } from "../../helpers/sqlite-fixture.mjs";
-
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 export const CLI = join(ROOT, "src", "cli", "index.mjs");
 /** The daemon *program* (what autostart spawns); `index.mjs` is the library. */
@@ -174,19 +172,6 @@ export function readTokenFile(dataDir) {
   } catch {
     return null;
   }
-}
-
-/**
- * An actor id → the name it carries, read off the board the spawned `taskd` is
- * serving. Since 0020 `author_id`/`claimed_by` on the wire are actor ids; until
- * Phase 7 puts an actor ref on the wire, this is how a CLI test gets back to the
- * name an assertion means.
- *
- * @param {string} dataDir
- * @param {string|null|undefined} id
- */
-export function boardActorName(dataDir, id) {
-  return actorNameOnBoard(join(dataDir, "board.sqlite"), id);
 }
 
 /**

@@ -381,6 +381,9 @@ function performClaim(ctx, input) {
     now,
     allowSteal: allowSteal === true,
     resolveAssignee,
+    // The holder is an actor id since 0020; name it in the refusal message the
+    // way the audit trail names it (the command layer is what has the dictionary).
+    describeHolder: (id) => readableHolder(ctx, id),
   });
 
   if (verdict.action === "reuse") {
@@ -417,6 +420,7 @@ function performClaim(ctx, input) {
         ifVersion,
         allowSteal: allowSteal === true,
         resolveAssignee,
+        describeHolder: (id) => readableHolder(ctx, id),
       });
     }
     task = result.task;

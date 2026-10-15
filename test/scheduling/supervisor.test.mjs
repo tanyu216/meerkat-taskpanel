@@ -166,12 +166,21 @@ describe("planPatrol (pure)", () => {
 
   it("flags a stale in_progress card (heartbeat older than 30 minutes)", () => {
     const alerts = planPatrol({
-      tasks: [{ identifier: "T-1", status: "in_progress", claimed_by: "alice", heartbeat_at: ago(31) }],
+      tasks: [{
+        identifier: "T-1",
+        status: "in_progress",
+        // `claimed_by` is an actor id since 0020; the readable holder rides the
+        // `claimed_by_actor` ref, which is what the alert names.
+        claimed_by: "a-1",
+        claimed_by_actor: { id: "a-1", display_name: "alice", kind: "agent" },
+        heartbeat_at: ago(31),
+      }],
       now,
     });
     assert.equal(alerts.length, 1);
     assert.equal(alerts[0].type, "stale");
     assert.equal(alerts[0].identifier, "T-1");
+    assert.equal(alerts[0].agent, "alice");
     assert.ok(alerts[0].ageMs >= 30 * 60_000);
   });
 

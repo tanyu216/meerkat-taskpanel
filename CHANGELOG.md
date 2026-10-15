@@ -373,10 +373,22 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the comment/report author), the exporter resolves the id back to it, and the importer
   resolves the name forward.
 
-  **Until the wire carries an actor reference**, `author_id` / `claimed_by` are opaque ids
-  in JSON and in rendered output — `taskctl comment list` prints the id where it used to
-  print the name. The actor-reference projection that restores readability is the next
-  change in this program.
+  **The wire now carries an actor reference** (the change just below): `author_id` /
+  `claimed_by` stay as ids, and a companion `author` / `claimed_by_actor` object carries the
+  readable `display_name` beside each.
+
+- **The wire carries an actor reference beside the id** — the readability regression `0020`
+  left open is closed at the projection. `commentToWire` and `reportToWire` gained an
+  `author` object and `taskToWire` gained `claimed_by_actor`, each `{id, display_name,
+  kind}` — the shape `assignee`/`reporter` already had — so a client names an actor without a
+  second request. `author_id` / `claimed_by` are **kept**, so nothing that keys on the id
+  breaks, and the CLI prints the author's name again (`taskctl comment list`). `author_kind`
+  also stays: it is the append-only column's own record of the kind a write claimed, a
+  different fact from the actor row's *current* kind the ref resolves. The claim refusals
+  name the holder again (`decideClaim`/`assertClaimable` take an injected `describeHolder`,
+  the same seam as `resolveAssignee`), and the loop's `planPatrol` reads the holder's name
+  off `claimed_by_actor`. The contract snapshot is refreshed; `author` / `claimed_by_actor`
+  and their nested shapes are frozen by it.
 
 ### Removed
 

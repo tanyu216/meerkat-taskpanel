@@ -350,14 +350,16 @@ function fieldTypes(value) {
  */
 export function collectWire() {
   const task = taskToWire(PROBE_TASK, { lookup: PROBE_ACTOR_LOOKUP });
+  const comment = commentToWire(PROBE_COMMENT, { lookup: PROBE_ACTOR_LOOKUP });
+  const report = reportToWire(PROBE_REPORT, { lookup: PROBE_ACTOR_LOOKUP });
   const shapes = {
     activity: activityToWire(PROBE_ACTIVITY),
-    comment: commentToWire(PROBE_COMMENT),
+    comment,
     dictionary_entry: dictionaryEntryToWire(PROBE_DICTIONARY_ENTRY),
     label: labelToWire(PROBE_LABEL),
     project: projectToWire(PROBE_PROJECT),
     relation: relationToWire(PROBE_RELATION),
-    report: reportToWire(PROBE_REPORT),
+    report,
     session: sessionToWire(PROBE_SESSION),
     task,
   };
@@ -365,8 +367,12 @@ export function collectWire() {
   const out = [];
   for (const [shape, value] of Object.entries(shapes)) out.push({ shape, fields: fieldTypes(value) });
   // The nested shapes are part of the same contract: a client reads
-  // `assignee.display_name`, so that field is as frozen as `task.title`.
+  // `assignee.display_name` / `author.display_name`, so those fields are as
+  // frozen as `task.title`.
+  out.push({ shape: "comment.author", fields: fieldTypes(comment.author) });
+  out.push({ shape: "report.author", fields: fieldTypes(report.author) });
   out.push({ shape: "task.assignee", fields: fieldTypes(task.assignee) });
+  out.push({ shape: "task.claimed_by_actor", fields: fieldTypes(task.claimed_by_actor) });
   out.push({ shape: "task.reporter", fields: fieldTypes(task.reporter) });
   out.push({ shape: "task.report_waiver", fields: fieldTypes(task.report_waiver) });
 
