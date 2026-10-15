@@ -8,7 +8,7 @@
 import assert from "node:assert/strict";
 import test, { after, describe, it } from "node:test";
 
-import { boardActorName, cleanupTempDirs, dataOf, errorOf, withCli } from "./helpers/cli-harness.mjs";
+import { cleanupTempDirs, dataOf, errorOf, withCli } from "./helpers/cli-harness.mjs";
 
 after(cleanupTempDirs);
 
@@ -319,7 +319,7 @@ describe("cli/issue — an empty board reads as 'no tasks'", () => {
 
 describe("cli/issue — the actor recorded on a report", () => {
   it("uses the caller as the author when the report does not name one, and honours it when it does", async () => {
-    await board(async ({ run, dataDir }) => {
+    await board(async ({ run }) => {
       createIssue(run);
       dataOf(run(["issue", "move", "DEMO-0001", "in_progress", "--json"]));
       const report = {
@@ -334,7 +334,7 @@ describe("cli/issue — the actor recorded on a report", () => {
           input: JSON.stringify(report),
         }),
       );
-      assert.equal(boardActorName(dataDir, anonymous.report.author_id), "linus");
+      assert.equal(anonymous.report.author.display_name, "linus");
 
       // An explicit `author: null` is the same as omitting it.
       dataOf(run(["issue", "move", "DEMO-0001", "in_progress", "--json"]));
@@ -343,7 +343,7 @@ describe("cli/issue — the actor recorded on a report", () => {
           input: JSON.stringify({ ...report, author: null }),
         }),
       );
-      assert.equal(boardActorName(dataDir, explicitNull.report.author_id), "terry");
+      assert.equal(explicitNull.report.author.display_name, "terry");
 
       // A named author wins.
       dataOf(run(["issue", "move", "DEMO-0001", "in_progress", "--json"]));
@@ -352,7 +352,7 @@ describe("cli/issue — the actor recorded on a report", () => {
           input: JSON.stringify({ ...report, author: { kind: "agent", id: "linus" } }),
         }),
       );
-      assert.equal(boardActorName(dataDir, named.report.author_id), "linus");
+      assert.equal(named.report.author.display_name, "linus");
     });
   });
 });
@@ -442,14 +442,14 @@ describe("cli/issue — move enforces the assignee (T-20261009-230500)", () => {
     dataOf(run(["issue", "assign", "DEMO-0001", "--assignee", "Linus", "--json"]));
 
   it("lets the assignee move their own card to in_progress", async () => {
-    await board(async ({ run, dataDir }) => {
+    await board(async ({ run }) => {
       createIssue(run);
       assignLinus(run);
       const moved = dataOf(run(["issue", "move", "DEMO-0001", "in_progress", "--agent", "linus", "--json"]));
       assert.equal(moved.task.status, "in_progress");
       // `norm` folds the case, so the claimant `linus` is the assignee actor row
       // `Linus` — the spelling the dictionary saw first wins.
-      assert.equal(boardActorName(dataDir, moved.task.claimed_by), "Linus");
+      assert.equal(moved.task.claimed_by_actor.display_name, "Linus");
     });
   });
 
@@ -467,7 +467,7 @@ describe("cli/issue — move enforces the assignee (T-20261009-230500)", () => {
   });
 
   it("takes it with --allow-steal --reason, and the takeover is readable", async () => {
-    await board(async ({ run, dataDir }) => {
+    await board(async ({ run }) => {
       createIssue(run);
       assignLinus(run);
       const moved = dataOf(
@@ -477,7 +477,7 @@ describe("cli/issue — move enforces the assignee (T-20261009-230500)", () => {
           "--agent", "elon", "--json",
         ]),
       );
-      assert.equal(boardActorName(dataDir, moved.task.claimed_by), "elon");
+      assert.equal(moved.task.claimed_by_actor.display_name, "elon");
 
       const comments = dataOf(run(["comment", "list", "DEMO-0001", "--json"])).comments;
       assert.equal(comments.length, 1);

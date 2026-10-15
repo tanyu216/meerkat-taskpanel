@@ -9,7 +9,6 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 
 import { closeDatabase, openDatabase } from "../../src/core/storage/driver.mjs";
 import { applyMigrations } from "../../src/core/storage/migrations-runner.mjs";
@@ -323,34 +322,12 @@ export function revision(db) {
 }
 
 /**
- * An actor id → its name, read straight off a board **file**.
- *
- * For the wire-level suites (the CLI and the HTTP surface), where `author_id` /
- * `claimed_by` are actor ids since 0020 and — until Phase 7 puts an actor ref on
- * the wire — the displayed name lives only in the `actors` table. The board is
- * opened read-only, so this never runs a migration or takes a write lock on a
- * board a spawned `taskd` is serving.
- *
- * @param {string} dbPath
- * @param {string|null|undefined} id
- * @returns {string|null|undefined}
- */
-export function actorNameOnBoard(dbPath, id) {
-  if (id === null || id === undefined) return id;
-  const db = new DatabaseSync(dbPath, { readOnly: true });
-  try {
-    const row = db.prepare("SELECT display_name FROM actors WHERE id = ?").get(id);
-    return row === undefined ? id : row.display_name;
-  } finally {
-    db.close();
-  }
-}
-
-/**
- * An actor id → the name it carries, so a test can assert "who claimed/wrote
- * this" without hard-coding the row's uuid. `0020` made the attribution columns
- * references, so the value a task/comment/report carries is an id; the *name* is
- * the fact the test means.
+ * An actor id → the name it carries, so a **core** test can assert "who
+ * claimed/wrote this" without hard-coding the row's uuid. `0020` made the
+ * attribution columns references, so the value a task/comment/report DTO carries
+ * is an id; the *name* is the fact the test means. The wire-level suites no
+ * longer need this: since Phase 7 the wire carries `author`/`claimed_by_actor`
+ * refs, so those assert `…display_name` directly.
  *
  * @param {any} db
  * @param {string|null|undefined} id

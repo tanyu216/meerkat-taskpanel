@@ -22,7 +22,7 @@ import { domainErrorFromPayload, requestJson, withQuery } from "../../src/shared
 import { probeHealth, repoRoot, serverEntry, spawnTaskd, waitForPointer } from "../../src/shared/transport/autostart.mjs";
 import { ensureBoard, readPointer } from "../../src/shared/transport/runtime.mjs";
 import { ERROR_CODES, isDomainError } from "../../src/shared/errors.mjs";
-import { baseEnv, boardActorName, cleanupTempDirs, makeTempDir, startTaskd } from "./helpers/cli-harness.mjs";
+import { baseEnv, cleanupTempDirs, makeTempDir, startTaskd } from "./helpers/cli-harness.mjs";
 
 const tempDirs = [];
 after(() => {
@@ -130,8 +130,8 @@ describe("shared/transport/http — over a real board", () => {
       session: "session-1",
       seg: "seg-2",
     });
-    // author_id is an actor id since 0020 — read the name off the board.
-    assert.equal(boardActorName(taskd.dataDir, commented.comment.author_id), "linus");
+    // author_id is an actor id since 0020; the wire's ref carries the name.
+    assert.equal(commented.comment.author.display_name, "linus");
     assert.equal(commented.comment.agent_session, "session-1");
   });
 

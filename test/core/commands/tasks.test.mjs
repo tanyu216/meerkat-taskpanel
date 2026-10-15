@@ -270,6 +270,9 @@ describe("commands/tasks — claim and heartbeat", () => {
       assert.throws(() => commands.claim({ id: task.id, actor: HUMAN }), (err) => {
         assert.equal(err.code, "EXECUTION_ACTIVE");
         assert.equal(err.http, 409);
+        // Phase 7 — the refusal names the holder, not their actor id.
+        assert.match(err.message, /linus/);
+        assert.doesNotMatch(err.message, /[0-9a-f]{8}-[0-9a-f]{4}/, "…and not the holder's uuid");
         return true;
       });
       assert.throws(() => commands.claim({ id: "nope", actor: AGENT }), (err) => err.code === "NOT_FOUND");

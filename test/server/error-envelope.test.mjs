@@ -28,7 +28,6 @@ import { join } from "node:path";
 import test, { after, before, describe, it } from "node:test";
 
 import { createTaskd } from "../../src/server/index.mjs";
-import { actorNameOnBoard } from "../helpers/sqlite-fixture.mjs";
 
 /** The acceptance-③ predicate, spelled exactly as the card spells it. */
 const ENGINE_TEXT = /constraint failed|SQLITE|SqliteError|NOT NULL constraint|UNIQUE constraint/;
@@ -146,8 +145,8 @@ describe("server/error-envelope — ② Terry's drag, end to end", () => {
       await call("POST", `/api/v1/tasks/${card.identifier}/move`, { to: "in_progress" }, asAgent("linus")),
     ).task;
     assert.equal(claimed.status, "in_progress");
-    // claimed_by is an actor id since 0020 — the name is read off the board.
-    assert.equal(actorNameOnBoard(taskd.board.dbPath, claimed.claimed_by), "linus");
+    // claimed_by is an actor id since 0020; the wire's ref carries the name.
+    assert.equal(claimed.claimed_by_actor.display_name, "linus");
     assert.equal(typeof claimed.heartbeat_at, "string");
 
     // 2. Drag it back to Todo. This is the leg that used to leave the lock.

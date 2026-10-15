@@ -208,6 +208,29 @@ describe("domain/claim — the in_progress windows", () => {
     assert.match(verdict.reason, /elon/);
   });
 
+  it("names the holder through describeHolder, not the raw actor id (Phase 7)", () => {
+    // `claimedBy` is an actor **id** since 0020; the command layer injects a
+    // resolver so the refusal reads a person, not a uuid.
+    const verdict = decideClaim(held({ claimedBy: "a-9", heartbeatAt: FRESH }), {
+      actor: "linus",
+      now: NOW,
+      resolveAssignee: resolveNone,
+      describeHolder: (id) => (id === "a-9" ? "elon" : null),
+    });
+    assert.equal(verdict.code, "EXECUTION_ACTIVE");
+    assert.match(verdict.reason, /elon/);
+    assert.doesNotMatch(verdict.reason, /a-9/);
+
+    // With no resolver the id stands in — the same fallback the wire ref uses.
+    const plain = decideClaim(held({ claimedBy: "a-9", heartbeatAt: FRESH }), {
+      actor: "linus",
+      now: NOW,
+      resolveAssignee: resolveNone,
+    });
+    assert.equal(plain.code, "EXECUTION_ACTIVE");
+    assert.match(plain.reason, /a-9/);
+  });
+
   it("flags in_progress with nobody claiming it as corruption (I2)", () => {
     for (const claimedBy of [null, undefined, ""]) {
       const verdict = decideClaim(task({ status: "in_progress", claimedBy }), {
