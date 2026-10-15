@@ -11,7 +11,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -40,10 +40,32 @@ after(async () => {
   }
 });
 
+/**
+ * Every directory named `skills` under `rootDir`, repository-relative and sorted.
+ * Skips the trees that are output rather than content (`dist/`, `node_modules/`, `.git/`).
+ *
+ * @param {string} dir
+ * @param {string} [rel]
+ * @returns {Promise<string[]>}
+ */
+async function skillDirsUnder(dir, rel = "") {
+  const out = [];
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name === ".git" || entry.name === "node_modules" || entry.name === "dist") continue;
+    const child = rel === "" ? entry.name : `${rel}/${entry.name}`;
+    if (entry.name === "skills") out.push(child);
+    out.push(...(await skillDirsUnder(join(dir, entry.name), child)));
+  }
+  return out.sort();
+}
+
 describe("plugin manifests", () => {
-  it("all four host manifests + the loop bundle + the marketplace parse and carry required keys", async () => {
-    // 4 board host bundles + the loop skill's 2 manifests (Claude-format plugin + Pi
-    // package) + the marketplace.
+  it("the board, Cursor, OpenClaw, Pi and the loop bundle manifests parse and carry required keys", async () => {
+    // 4 board manifests (the repository-root board plugin, Cursor's marker, OpenClaw's
+    // native manifest and the Pi package) + the loop skill's 2 (Claude-format plugin + Pi
+    // package) + the marketplace. Codex has no manifest of its own: it installs the same
+    // `./` bundle as Claude Code through the repository-root marketplace.
     assert.equal(MANIFESTS.length, 7);
 
     const report = await validateManifests(ROOT);
@@ -57,12 +79,15 @@ describe("plugin manifests", () => {
   });
 
   it("every host manifest points its skills field at ./skills (or [./skills])", async () => {
-    const hosts = ["claude", "codex", "openclaw", "pi"];
+    // Codex is absent on purpose: it ships no manifest, and installs the same
+    // repository-root bundle as Claude Code (HOST_BUNDLES.codex names that manifest).
+    // Pi's manifest is the repository's own `package.json`, whose `pi` field declares the
+    // skills path — hence the `files`/`skills` fallback in the assertion below.
+    const hosts = ["claude", "openclaw", "pi"];
     const paths = {
-      claude: "plugins/claude/.claude-plugin/plugin.json",
-      codex: "plugins/codex/.codex-plugin/plugin.json",
+      claude: ".claude-plugin/plugin.json",
       openclaw: "plugins/openclaw/openclaw.plugin.json",
-      pi: "plugins/pi/package.json",
+      pi: "package.json",
     };
 
     for (const host of hosts) {
@@ -109,12 +134,14 @@ describe("skill sync", () => {
     assert.equal(report.ok, true);
   });
 
-  it("distributes the board to four hosts and the loop to claude/codex/pi only", () => {
+  it("distributes the board only to OpenClaw, and the loop only as a marketplace bundle", () => {
     // The split's whole point: the distribution surface follows the responsibility.
     // OpenClaw runs the openclaw-team framework's own poll/patrol, so a second supervisor
-    // there would only race the first for the same cards (ruling O3).
-    assert.deepEqual(SKILL_HOSTS["meerkat-taskpanel"], ["claude", "codex", "openclaw", "pi"]);
-    assert.deepEqual(SKILL_HOSTS["meerkat-loop"], ["claude", "codex", "pi"]);
+    // there would only race the first for the same cards (ruling O3) — and it is the only
+    // host left that needs a generated copy, because every other harness reads the
+    // repository's own `skills/` tree through its manifest.
+    assert.deepEqual(SKILL_HOSTS["meerkat-taskpanel"], ["openclaw"]);
+    assert.deepEqual(SKILL_HOSTS["meerkat-loop"], []);
     assert.equal(SKILL_HOSTS["meerkat-loop"].includes("openclaw"), false);
 
     // A `bundle` target is not a host: it exists so the marketplace can list the loop as
@@ -124,17 +151,28 @@ describe("skill sync", () => {
     const rows = skillTargets();
     assert.deepEqual(
       rows.map((row) => `${row.skill}→${row.target}`),
-      [
-        "meerkat-taskpanel→claude",
-        "meerkat-taskpanel→codex",
-        "meerkat-taskpanel→openclaw",
-        "meerkat-taskpanel→pi",
-        "meerkat-loop→claude",
-        "meerkat-loop→codex",
-        "meerkat-loop→pi",
-        "meerkat-loop→loop",
-      ],
+      ["meerkat-taskpanel→openclaw", "meerkat-loop→loop"],
     );
+  });
+
+  it("keeps one skills tree: no harness gains a third copy", async () => {
+    // The invariant the whole distribution change exists for, asserted against the
+    // checkout rather than the table — a table can only describe the copies it knows
+    // about. Only the two bundles that MUST carry a sibling `skills/` do; every other
+    // harness reads the repository's own tree through its manifest. A new host that adds
+    // a copy is exactly the regression this catches
+    // (design/plugin-distribution-plan.md §3.1 and the §5.3 acceptance list).
+    assert.deepEqual(await skillDirsUnder(ROOT), [
+      "plugins/loop/skills",
+      "plugins/openclaw/skills",
+      "skills",
+    ]);
+
+    assert.deepEqual((await readdir(join(ROOT, "plugins"))).sort(), ["loop", "openclaw"]);
+
+    // 1 OpenClaw manifest + 8 OpenClaw skill files + 2 loop manifests + 24 loop skill files.
+    // The count is the floor the plan measured; it moves only deliberately.
+    assert.equal((await listFiles(join(ROOT, "plugins"))).length, 35);
   });
 
   it("compareDirs detects changed, missing and extra files in a temp copy", async () => {

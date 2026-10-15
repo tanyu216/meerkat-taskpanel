@@ -4,7 +4,7 @@ Documentation for Meerkat TaskPanel.
 
 | Document | Contents |
 |---|---|
-| [install.md](install.md) | Installing the skill into Claude Code, OpenClaw, Codex or Pi; `install.sh` usage, the per-host table and flags. |
+| [install.md](install.md) | Installing the skill into Claude Code, OpenClaw, Codex or Pi; `install.sh` usage, the per-host table and flags. OpenCode and Cursor are plugin-only hosts — their sections show how they read the shared `skills/` tree. |
 | [publishing.md](publishing.md) | Releasing a version: npm packaging / publish, the git tag + GitHub Release pipeline, and the Claude marketplace / OpenClaw / Codex / Pi publication steps. |
 | [development.md](development.md) | Repository layout, Node requirement, test / verify / build commands, the two build layers (engine vs `web/`) and the offline / dependency policy. |
 | [docker.md](docker.md) | Why verification and the four-host installs run in a container; the image build, the offline `web/` build stage, profiles and troubleshooting. |
