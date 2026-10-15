@@ -89,6 +89,38 @@ const EXTENSION_TYPES = Object.freeze({
 });
 
 /**
+ * The **one** refusal an over-limit attachment is, wherever the board notices it.
+ *
+ * There are three places the ceiling can be reached, and they are one verdict,
+ * not three (T-20261015-075845-2, F2):
+ *
+ *   * `assertAttachmentSize` below — the CLI's pre-flight, and the pure check a
+ *     test can call without a socket;
+ *   * the metadata route's **declared** `size`
+ *     (`POST /api/v1/tasks/:ref/attachments`);
+ *   * the content route's **actual bytes**
+ *     (`PUT /api/v1/attachments/:id/content`), where the transport stops reading
+ *     at the ceiling.
+ *
+ * The first two know the size exactly; the third only knows the body is over the
+ * limit, because counting it is precisely what the bound exists to avoid. So the
+ * sentence states the fact all three share and **the numbers live in `details`**,
+ * where `received: null` is the established spelling of "not known" (`received`
+ * is the declared size when there was one). A caller can therefore branch on the
+ * code and read the ceiling off `details.maxBytes` without parsing prose.
+ *
+ * @param {number} maxBytes
+ * @param {number|null} [received] the size when the caller knows it
+ * @returns {DomainError} `ATTACHMENT_TOO_LARGE`, http 413
+ */
+export function attachmentTooLargeError(maxBytes, received = null) {
+  return new DomainError("ATTACHMENT_TOO_LARGE", {
+    message: `attachment is larger than the board's ${maxBytes}-byte limit`,
+    details: { field: "size", received, maxBytes },
+  });
+}
+
+/**
  * The bytes limit, stated once for both clients: a body over it is refused
  * **before** anything is written. The transport enforces it too
  * (`readRawBody({maxBytes})` → 413); this is the check a CLI or a test can call
@@ -109,10 +141,7 @@ export function assertAttachmentSize(size, maxBytes) {
       ? Number.NaN
       : Number(size);
   if (!Number.isInteger(bytes) || bytes < 0 || bytes > maxBytes) {
-    throw new DomainError("ATTACHMENT_TOO_LARGE", {
-      message: `attachment is ${Number.isFinite(bytes) ? bytes : "not a number of"} bytes; the limit is ${maxBytes}`,
-      details: { field: "size", received: Number.isFinite(bytes) ? bytes : null, maxBytes },
-    });
+    throw attachmentTooLargeError(maxBytes, Number.isFinite(bytes) ? bytes : null);
   }
   return bytes;
 }

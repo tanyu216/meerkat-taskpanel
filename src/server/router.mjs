@@ -135,14 +135,25 @@ export function readJsonBody(req, options = {}) {
  *
  * The JSON reader is the right default, but an attachment is not JSON: its
  * content endpoint takes the raw body and must not try to parse it. Same bound,
- * same refusal shape — a body over the limit is a readable 413, never a reset.
+ * and the same *shape* of refusal — a body over the limit is a readable 413,
+ * never a reset.
+ *
+ * `onOverLimit` names the refusal, because **whose ceiling it is decides whose
+ * error it is**. The default is this module's own (`VALIDATION_FAILED`: a request
+ * the router would not take), which is right for every JSON body. An
+ * attachment's bytes carry their own code instead — the caller that sets the
+ * ceiling and serves the surface is the one that can say so
+ * (`src/shared/attachments.mjs#attachmentTooLargeError`, T-20261015-075845-2):
+ * the same over-limit upload must not answer two different codes depending on
+ * which half of it the board noticed first.
  *
  * @param {import('node:http').IncomingMessage} req
- * @param {{maxBytes?: number}} [options]
+ * @param {{maxBytes?: number, onOverLimit?: (maxBytes: number) => Error}} [options]
  * @returns {Promise<Buffer>}
  */
 export function readRawBody(req, options = {}) {
   const maxBytes = options.maxBytes ?? MAX_BODY_BYTES;
+  const refuse = options.onOverLimit ?? tooLarge;
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
@@ -151,7 +162,7 @@ export function readRawBody(req, options = {}) {
       size += chunk.length;
       if (size > maxBytes) {
         chunks.length = 0;
-        reject(tooLarge(maxBytes));
+        reject(refuse(maxBytes));
         return;
       }
       chunks.push(chunk);

@@ -25,6 +25,16 @@
  * answers an honest 404 — nothing is invented, and the web client rolls the row
  * back when the byte half fails (`stores/board.js#uploadAttachments`).
  *
+ * ## The size ceiling is one verdict, not two
+ *
+ * Because the bytes half is a stream, the board can notice an over-limit file in
+ * two different places — the declared `size` on the metadata route, the actual
+ * bytes in `handleAttachmentContent`. They are the same refusal and they say so
+ * with the same code and the same sentence
+ * (`shared/attachments.mjs#attachmentTooLargeError`, T-20261015-075845-2): a
+ * client that branches on the code must not have to know which half of the
+ * upload got there first.
+ *
  * ## Removal is a hard delete, and it is one act
  *
  * T-20261014-212017-4's ruling: an attachment is removed **for good** — the row
@@ -46,7 +56,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import { transaction } from "../../core/index.mjs";
-import { downloadContentType, normalizeAttachmentContentType } from "../../shared/attachments.mjs";
+import { attachmentTooLargeError, downloadContentType, normalizeAttachmentContentType } from "../../shared/attachments.mjs";
 import { ATTACHMENTS_DIRNAME, ATTACHMENT_MAX_BYTES } from "../../shared/constants.mjs";
 import { DomainError } from "../../shared/errors.mjs";
 import { newId } from "../../shared/ids.mjs";
@@ -84,10 +94,10 @@ export function registerAttachmentRoutes(router, surface) {
       const contentType = normalizeAttachmentContentType(body.content_type);
       const size = body.size === undefined ? 0 : body.size;
       if (!Number.isInteger(size) || size < 0 || size > ATTACHMENT_MAX_BYTES) {
-        throw new DomainError("ATTACHMENT_TOO_LARGE", {
-          message: `attachment is ${size} bytes; the limit is ${ATTACHMENT_MAX_BYTES}`,
-          details: { field: "size", received: Number.isFinite(size) ? size : null, maxBytes: ATTACHMENT_MAX_BYTES },
-        });
+        // The same refusal the content route raises for the same file. The
+        // declared size is known exactly here, so it goes to `details.received`;
+        // the message is the shared one (see `attachmentTooLargeError`).
+        throw attachmentTooLargeError(ATTACHMENT_MAX_BYTES, Number.isFinite(size) ? size : null);
       }
       const attachment = repos.attachments.insert({
         taskId: task.id,
@@ -160,7 +170,16 @@ export async function handleAttachmentContent(req, res, board, id) {
     }
 
     if (req.method === "PUT") {
-      const body = await readRawBody(req, { maxBytes: ATTACHMENT_MAX_BYTES });
+      // The transport's own `VALIDATION_FAILED` is the right answer for a JSON
+      // body the router would not take; it is the *wrong* answer here, where the
+      // ceiling is the attachment's and a client branches on the code to say
+      // "that file is too big" instead of falling back to a generic sentence
+      // (T-20261015-075845-2, F2). The bytes path and the declared-size path
+      // therefore raise one code and one sentence.
+      const body = await readRawBody(req, {
+        maxBytes: ATTACHMENT_MAX_BYTES,
+        onOverLimit: (maxBytes) => attachmentTooLargeError(maxBytes),
+      });
       await mkdir(join(board.dataDir, ATTACHMENTS_DIRNAME), { recursive: true });
       storeContent(board.db, board.repos.attachments, id, path, body);
       sendJson(res, 200, { ok: true, data: { attachment_id: id, size: body.length, stored: true } });
