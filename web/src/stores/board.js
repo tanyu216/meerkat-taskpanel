@@ -443,22 +443,32 @@ export const taskRoster = computed(() =>
 );
 
 /**
- * The drawer's prerequisite candidates: the card roster **minus the open card's
- * own parent chain** (both directions), which is the set `blocks` refuses.
+ * The drawer's prerequisite candidates: the card roster **minus the open card
+ * itself and its own parent chain** (both directions) — the two halves of the
+ * set the board refuses.
  *
- * A `blocks` edge may not join an ancestor and a descendant — `0019_block_chain.sql`
- * and `domain/relation.mjs#assertBlockEdgeAllowed` refuse it with
- * `RELATION_CYCLE`, because such a card can never be offered to the poll again.
+ * The board refuses a prerequisite two ways, and the picker mirrors both:
+ *
+ *   * an edge joining an ancestor and a descendant — `0019_block_chain.sql` and
+ *     `domain/relation.mjs#assertBlockEdgeAllowed` refuse it with
+ *     `RELATION_CYCLE`, because such a card can never be offered to the poll
+ *     again. That half arrives as `parent_chain` (T-20261015-104813).
+ *   * the card itself — `domain/relation.mjs#normalizeRelation` refuses a
+ *     self-edge, from the drawer's own write path, with `SELF_REFERENCE`. A card
+ *     is *not* on its own parent chain (that set is the ancestor/descendant half
+ *     only), so this half has to be subtracted here or not at all
+ *     (T-20261015-132952).
+ *
  * The board is the guarantee; the picker's job is not to *offer* what the board
  * will refuse, since a refusal here is a dead end the reader cannot resolve from
- * the drawer.
+ * the drawer. The two different codes are why this is one exclusion expressed
+ * over two sources rather than a wider `parent_chain`.
  *
- * The set itself is the board's, not the browser's: `parent_chain` comes off the
+ * The chain half is the board's, not the browser's: `parent_chain` comes off the
  * card's own relations read (`GET /tasks/:ref/relations`), computed by the walks
- * the guard uses. This is a filter over the candidate list, not a second
- * implementation of the shape rule — with no chain read (a board that predates
- * the field, a card with no relations) the roster is offered whole, exactly as
- * it was before.
+ * the guard uses. The self half is the identity the drawer is already open on,
+ * not a rule the browser re-implements. With neither to subtract (no open card,
+ * no chain read) the roster is offered whole, exactly as it was before.
  *
  * The cross-project half of the same rule needs nothing here: the roster is
  * already one project's cards.
@@ -466,9 +476,11 @@ export const taskRoster = computed(() =>
  * @returns {{id: string, name: string, identifier: string, title: string}[]}
  */
 export const dependsCandidates = computed(() => {
+  const self = board.detail?.task?.id;
   const chain = board.detail?.relations?.parent_chain ?? [];
-  if (chain.length === 0) return taskRoster.value;
+  if (self === undefined && chain.length === 0) return taskRoster.value;
   const excluded = new Set(chain);
+  if (self !== undefined) excluded.add(self);
   return taskRoster.value.filter((entry) => !excluded.has(entry.id));
 });
 

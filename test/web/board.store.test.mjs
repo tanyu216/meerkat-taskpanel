@@ -597,15 +597,17 @@ describe("web/board — loads", () => {
 /* ------------------------------------------------ the drawer's prerequisite list */
 
 /**
- * T-20261015-104813 — the `depends_on` picker must not offer the open card's
- * own parent chain.
+ * T-20261015-104813 / T-20261015-132952 — the `depends_on` picker must not offer
+ * the open card's own parent chain, nor the open card itself.
  *
- * The board's `blocks` guard refuses an ancestor↔descendant edge with
- * `RELATION_CYCLE` (`0019_block_chain.sql`), and the picker's candidate source
- * is the card roster. These readings are the store half: the chain comes off the
- * card's own relations read (`parent_chain`, the board's answer), and the roster
- * it filters is keyed by task id — so an id/identifier mismatch would show up
- * here as a chain that filters nothing.
+ * The board refuses a prerequisite two ways: an ancestor↔descendant edge is
+ * `RELATION_CYCLE` (`0019_block_chain.sql`), and a self-edge is `SELF_REFERENCE`
+ * (`domain/relation.mjs#normalizeRelation`). Both reach the drawer's write path,
+ * so neither may be offered. These readings are the store half: the chain comes
+ * off the card's own relations read (`parent_chain`, the board's answer), the
+ * self half is the id the drawer is open on, and the roster it filters is keyed
+ * by task id — so an id/identifier mismatch would show up here as a chain that
+ * filters nothing.
  */
 describe("web/board — the drawer's prerequisite candidates", () => {
   const tasks = [
@@ -619,18 +621,31 @@ describe("web/board — the drawer's prerequisite candidates", () => {
   it("leaves out the ancestors and the descendants, and keeps the rest", async () => {
     const { board, dependsCandidates } = await freshBoard();
     board.tasks = tasks;
-    // The child's chain: its parent above it, its own child below it.
+    // The child's chain: its parent above it, its own child below it. Its own row
+    // is gone too — `SELF_REFERENCE`, not `RELATION_CYCLE`, but the same answer.
     board.detail = { task: tasks[1], relations: { parent_chain: ["id-epic", "id-grand"] } };
-    assert.deepEqual(dependsCandidates.value.map((entry) => entry.identifier), ["TD-C", "TD-S", "TD-X"]);
+    assert.deepEqual(dependsCandidates.value.map((entry) => entry.identifier), ["TD-S", "TD-X"]);
   });
 
-  it("offers the whole roster when there is no chain to read", async () => {
+  it("leaves the open card out even when it has no chain at all", async () => {
     const { board, dependsCandidates } = await freshBoard();
     board.tasks = tasks;
-    // A board that predates the field, or a card with no relations at all: the
-    // filter is a subtraction, so "nothing to subtract" is the old behaviour.
+    // The common case: a fresh card with no relations reads an empty chain, so
+    // the chain half subtracts nothing and only the self half can bite. Before
+    // T-20261015-132952 the card's own row was offered here.
+    board.detail = { task: tasks[0], relations: { parent_chain: [] } };
+    assert.deepEqual(dependsCandidates.value.map((entry) => entry.identifier), ["TD-C", "TD-G", "TD-S", "TD-X"]);
+    // No `parent_chain` at all — a board that predates the field — subtracts the
+    // same one row.
     board.detail = { task: tasks[0], relations: {} };
-    assert.equal(dependsCandidates.value.length, 5);
+    assert.deepEqual(dependsCandidates.value.map((entry) => entry.identifier), ["TD-C", "TD-G", "TD-S", "TD-X"]);
+  });
+
+  it("offers the whole roster when there is no card open to subtract", async () => {
+    const { board, dependsCandidates } = await freshBoard();
+    board.tasks = tasks;
+    // Nothing open, nothing to subtract: the filter is a subtraction, so
+    // "nothing to subtract" is the old behaviour.
     board.detail = null;
     assert.equal(dependsCandidates.value.length, 5);
   });
