@@ -35,6 +35,7 @@ import { applyMigrations } from "../../src/core/storage/migrations-runner.mjs";
 import { createRepositories } from "../../src/core/storage/repositories/index.mjs";
 import { DomainError, isDomainError, toErrorPayload } from "../../src/shared/errors.mjs";
 import { sha256Hex } from "../../src/shared/ids.mjs";
+import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
 
 const REPORT_VERSION = 1;
 
@@ -801,7 +802,7 @@ export async function main(argv, io = {}) {
   }
 }
 
-if (process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1]}`) {
+if (isEntryPoint(import.meta.url)) {
   process.exitCode = await main(process.argv.slice(2));
 }
 
