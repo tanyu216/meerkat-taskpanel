@@ -594,6 +594,55 @@ describe("web/board — loads", () => {
   });
 });
 
+/* ------------------------------------------------ the drawer's prerequisite list */
+
+/**
+ * T-20261015-104813 — the `depends_on` picker must not offer the open card's
+ * own parent chain.
+ *
+ * The board's `blocks` guard refuses an ancestor↔descendant edge with
+ * `RELATION_CYCLE` (`0019_block_chain.sql`), and the picker's candidate source
+ * is the card roster. These readings are the store half: the chain comes off the
+ * card's own relations read (`parent_chain`, the board's answer), and the roster
+ * it filters is keyed by task id — so an id/identifier mismatch would show up
+ * here as a chain that filters nothing.
+ */
+describe("web/board — the drawer's prerequisite candidates", () => {
+  const tasks = [
+    { id: "id-epic", identifier: "TD-E", title: "Epic", status: "todo", labels: [] },
+    { id: "id-child", identifier: "TD-C", title: "Child", status: "todo", labels: [] },
+    { id: "id-grand", identifier: "TD-G", title: "Grandchild", status: "todo", labels: [] },
+    { id: "id-sib", identifier: "TD-S", title: "Sibling", status: "todo", labels: [] },
+    { id: "id-stranger", identifier: "TD-X", title: "Stranger", status: "todo", labels: [] },
+  ];
+
+  it("leaves out the ancestors and the descendants, and keeps the rest", async () => {
+    const { board, dependsCandidates } = await freshBoard();
+    board.tasks = tasks;
+    // The child's chain: its parent above it, its own child below it.
+    board.detail = { task: tasks[1], relations: { parent_chain: ["id-epic", "id-grand"] } };
+    assert.deepEqual(dependsCandidates.value.map((entry) => entry.identifier), ["TD-C", "TD-S", "TD-X"]);
+  });
+
+  it("offers the whole roster when there is no chain to read", async () => {
+    const { board, dependsCandidates } = await freshBoard();
+    board.tasks = tasks;
+    // A board that predates the field, or a card with no relations at all: the
+    // filter is a subtraction, so "nothing to subtract" is the old behaviour.
+    board.detail = { task: tasks[0], relations: {} };
+    assert.equal(dependsCandidates.value.length, 5);
+    board.detail = null;
+    assert.equal(dependsCandidates.value.length, 5);
+  });
+
+  it("keeps the roster's own shape — identifier, title, and the id the chain is keyed by", async () => {
+    const { board, dependsCandidates } = await freshBoard();
+    board.tasks = tasks;
+    const entry = dependsCandidates.value.find((row) => row.identifier === "TD-X");
+    assert.deepEqual(entry, { id: "id-stranger", name: "TD-X", identifier: "TD-X", title: "Stranger", keys: ["TD-X", "Stranger"] });
+  });
+});
+
 /* ------------------------------------------------------------------ filters */
 
 describe("web/board — filtered board (visible branches)", () => {

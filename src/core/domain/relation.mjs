@@ -123,6 +123,46 @@ export function ancestorsOf(edges, taskId) {
   return out;
 }
 
+/**
+ * Descendant ids of `taskId`, nearest first — the mirror of `ancestorsOf` over
+ * the same `parent` edges, and bounded the same way so a malformed graph cannot
+ * spin.
+ *
+ * A card may have many children where it has at most one parent, so the walk is
+ * a breadth-first frontier rather than the single `byChild` lookup above. Both
+ * walks exist because both directions are refused: `isOnSameParentChain` tests
+ * `ancestorsOf(a).includes(b) || ancestorsOf(b).includes(a)`, and the board's
+ * read of that set (`commands/relations.mjs#listRelations#parentChain`) hands
+ * the same union to the drawer's prerequisite picker.
+ *
+ * @param {{source: string, target: string}[]} edges `parent` edges (source = parent)
+ * @param {string} taskId
+ * @returns {string[]}
+ */
+export function descendantsOf(edges, taskId) {
+  const byParent = new Map();
+  for (const edge of edges) {
+    if (!byParent.has(edge.source)) byParent.set(edge.source, []);
+    byParent.get(edge.source).push(edge.target);
+  }
+  const out = [];
+  const seen = new Set([taskId]);
+  let frontier = [taskId];
+  while (frontier.length > 0 && out.length <= RELATION_ANCESTOR_CAP) {
+    const next = [];
+    for (const node of frontier) {
+      for (const child of byParent.get(node) ?? []) {
+        if (seen.has(child)) continue;
+        seen.add(child);
+        out.push(child);
+        next.push(child);
+      }
+    }
+    frontier = next;
+  }
+  return out;
+}
+
 /** Would adding this parent edge close a loop? */
 export function wouldCreateCycle(edges, parent, child) {
   if (parent === child) return true;
@@ -258,6 +298,29 @@ export function wouldCreateBlockCycle(edges, blocker, blocked) {
 export function isOnSameParentChain(parentEdges, a, b) {
   if (a === b) return true;
   return ancestorsOf(parentEdges, a).includes(b) || ancestorsOf(parentEdges, b).includes(a);
+}
+
+/**
+ * Every card on `taskId`'s own parent chain, either direction — the ancestors
+ * then the descendants, nearest first within each half.
+ *
+ * This is the board's answer to "which cards may this one not depend on?", and
+ * it is deliberately the *same* pair of walks the write guard uses rather than a
+ * second spelling of the rule: the drawer's prerequisite picker asks here, the
+ * `blocks` guard refuses there, and the two cannot drift because they read one
+ * function.
+ *
+ * The card itself is **not** in the set, even though asking
+ * `isOnSameParentChain` about the card and itself answers true: a self-edge is a
+ * different defect with its own code (`SELF_REFERENCE`), and this set is only
+ * the ancestor/descendant half of the shape rule.
+ *
+ * @param {{source: string, target: string}[]} parentEdges `parent` edges
+ * @param {string} taskId
+ * @returns {string[]}
+ */
+export function parentChainOf(parentEdges, taskId) {
+  return [...ancestorsOf(parentEdges, taskId), ...descendantsOf(parentEdges, taskId)];
 }
 
 /**

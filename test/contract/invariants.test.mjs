@@ -22,8 +22,8 @@ import test, { after, describe, it } from "node:test";
 
 import { openDatabase } from "../../src/core/storage/driver.mjs";
 import { createContext } from "../../src/core/commands/index.mjs";
-import { addRelation } from "../../src/core/commands/relations.mjs";
-import { assertBlockEdgeAllowed, isOnSameParentChain } from "../../src/core/domain/relation.mjs";
+import { addRelation, listRelations } from "../../src/core/commands/relations.mjs";
+import { assertBlockEdgeAllowed, isOnSameParentChain, parentChainOf } from "../../src/core/domain/relation.mjs";
 import { createRepositories } from "../../src/core/storage/repositories/index.mjs";
 import {
   TS,
@@ -643,8 +643,16 @@ describe("contract/invariants — indexes are actually used", () => {
  *   N10a  a cycle in the parent chain is refused        (0002/0010, already)
  *   N10b  `D depends_on E`, E the parent of D           → RELATION_CYCLE / 422
  *   N10c  `E depends_on D`, D a child of E              → RELATION_CYCLE / 422
- *   N10d  the picker never offers an ancestor           (UI; not this layer)
+ *   N10d  the picker never offers an ancestor           → the board *says which*
+ *                                                         (`parentChain`, below)
  *   —     two siblings may still be ordered             → accepted, both paths
+ *
+ * N10d is a UI reading, and this layer cannot make it: what this layer can do —
+ * and what T-20261015-104813 added — is answer the question the UI asks. The
+ * drawer's prerequisite picker filters its candidate roster by
+ * `listRelations().parentChain`, the same two walks the guard above uses, so the
+ * picker and the refusal cannot disagree. The readings below are that answer:
+ * the ancestor and the descendant in it, the sibling and the stranger out.
  */
 describe("contract/invariants — a blocks edge may not join an ancestor and a descendant", () => {
   /** `e → d → g`, plus siblings `s1`/`s2` under `e` and an unrelated `u`. */
@@ -685,6 +693,68 @@ describe("contract/invariants — a blocks edge may not join an ancestor and a d
     assert.equal(isOnSameParentChain(edges, "s1", "s2"), false, "siblings share a parent, not a chain");
     assert.equal(isOnSameParentChain(edges, "d", "u"), false, "no shared chain at all");
     assert.equal(isOnSameParentChain([], "a", "b"), false, "an empty board has no chain");
+  });
+
+  it("hands the drawer both directions of the chain — and only the chain", () => {
+    const edges = [
+      { source: "e", target: "d" },
+      { source: "d", target: "g" },
+      { source: "e", target: "s1" },
+      { source: "e", target: "s2" },
+    ];
+    // `d` sits between `e` and `g`: one ancestor above it, one descendant below.
+    assert.deepEqual(parentChainOf(edges, "d").sort(), ["e", "g"]);
+    // A leaf's chain runs only upward; the root's only downward.
+    assert.deepEqual(parentChainOf(edges, "g").sort(), ["d", "e"]);
+    assert.deepEqual(parentChainOf(edges, "e").sort(), ["d", "g", "s1", "s2"]);
+    // The card itself is not in its own chain: a self-edge has its own code
+    // (`SELF_REFERENCE`), and a picker row that cannot be chosen is a worse
+    // answer than an absent one.
+    assert.equal(parentChainOf(edges, "d").includes("d"), false);
+    // Off the chain: a sibling, and a card the chain does not reach.
+    assert.equal(parentChainOf(edges, "s1").includes("s2"), false, "siblings are orderable");
+    assert.equal(parentChainOf(edges, "u").includes("e"), false);
+    assert.deepEqual(parentChainOf([], "a"), []);
+  });
+
+  it("answers that question over the real board, from the card's own relation read", async () => {
+    const board = await createTempBoard();
+    try {
+      seedChain(board.db);
+      const ctx = createContext({ db: board.db, repos: createRepositories(board.db), clock: () => TS });
+      const ids = new Map(
+        board.db
+          .prepare("SELECT id, identifier FROM tasks")
+          .all()
+          .map((row) => [String(row.identifier), String(row.id)]),
+      );
+      const chainOf = (ref) => new Set(listRelations(ctx, { taskId: ref }).parentChain);
+      const has = (chain, identifier) => chain.has(ids.get(identifier));
+
+      // The leaf reads its two ancestors; the root reads everything under it.
+      const leaf = chainOf("PROJ-G");
+      assert.equal(has(leaf, "PROJ-D"), true);
+      assert.equal(has(leaf, "PROJ-E"), true, "the walk is the chain, not the immediate parent");
+      assert.equal(has(leaf, "PROJ-G"), false, "a card is not on its own chain");
+      assert.equal(has(leaf, "PROJ-S1"), false, "an uncle is not on it");
+
+      const root = chainOf("PROJ-E");
+      for (const under of ["PROJ-D", "PROJ-G", "PROJ-S1", "PROJ-S2"]) {
+        assert.equal(has(root, under), true, `${under} is under PROJ-E`);
+      }
+      assert.equal(has(root, "PROJ-U"), false, "a stranger is not");
+
+      // The point of the field: filtering the picker's roster by it takes out
+      // the two ancestors and leaves the cards the guard would accept an edge
+      // to — the siblings, the stranger, and the card's own row. The card's own
+      // row stays on purpose: a self-edge is `SELF_REFERENCE`, a different code
+      // this set does not own.
+      const roster = board.db.prepare("SELECT id, identifier FROM tasks WHERE project_id = 'proj'").all();
+      const candidates = roster.filter((task) => !leaf.has(String(task.id))).map((task) => String(task.identifier));
+      assert.deepEqual(candidates.sort(), ["PROJ-G", "PROJ-S1", "PROJ-S2", "PROJ-U"]);
+    } finally {
+      board.close();
+    }
   });
 
   it("refuses the edge in the service layer, with the code and the words the caller sees", () => {

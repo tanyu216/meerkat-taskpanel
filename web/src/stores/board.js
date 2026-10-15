@@ -424,10 +424,53 @@ export const reporterRoster = computed(() => {
   return [...names];
 });
 
-/** The identifier+title roster for parent / depends-on (B24). */
+/**
+ * The identifier+title roster for parent / depends-on (B24).
+ *
+ * `id` rides along beside the identifier it is the roster key: the drawer's
+ * candidate filter below compares against the board's own task ids, and reading
+ * them off the roster is what lets that filter be one expression rather than a
+ * second lookup into `board.tasks`.
+ */
 export const taskRoster = computed(() =>
-  board.tasks.map((task) => ({ name: task.identifier, identifier: task.identifier, title: task.title, keys: [task.identifier, task.title] })),
+  board.tasks.map((task) => ({
+    id: task.id,
+    name: task.identifier,
+    identifier: task.identifier,
+    title: task.title,
+    keys: [task.identifier, task.title],
+  })),
 );
+
+/**
+ * The drawer's prerequisite candidates: the card roster **minus the open card's
+ * own parent chain** (both directions), which is the set `blocks` refuses.
+ *
+ * A `blocks` edge may not join an ancestor and a descendant — `0019_block_chain.sql`
+ * and `domain/relation.mjs#assertBlockEdgeAllowed` refuse it with
+ * `RELATION_CYCLE`, because such a card can never be offered to the poll again.
+ * The board is the guarantee; the picker's job is not to *offer* what the board
+ * will refuse, since a refusal here is a dead end the reader cannot resolve from
+ * the drawer.
+ *
+ * The set itself is the board's, not the browser's: `parent_chain` comes off the
+ * card's own relations read (`GET /tasks/:ref/relations`), computed by the walks
+ * the guard uses. This is a filter over the candidate list, not a second
+ * implementation of the shape rule — with no chain read (a board that predates
+ * the field, a card with no relations) the roster is offered whole, exactly as
+ * it was before.
+ *
+ * The cross-project half of the same rule needs nothing here: the roster is
+ * already one project's cards.
+ *
+ * @returns {{id: string, name: string, identifier: string, title: string}[]}
+ */
+export const dependsCandidates = computed(() => {
+  const chain = board.detail?.relations?.parent_chain ?? [];
+  if (chain.length === 0) return taskRoster.value;
+  const excluded = new Set(chain);
+  return taskRoster.value.filter((entry) => !excluded.has(entry.id));
+});
 
 /* -------------------------------------------------------------- mutations */
 

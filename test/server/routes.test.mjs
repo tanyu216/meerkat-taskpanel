@@ -285,6 +285,12 @@ describe("server/routes — comments, relations, sessions, dictionary, export", 
     const listed = dataOf(await call("GET", `/api/v1/tasks/${epic.identifier}/relations`));
     assert.equal(listed.children.length, 1);
     assert.equal(listed.children[0].target, sibling.id, "source is the parent, target the child");
+    // T-20261015-104813 — each card's own read carries the chain the drawer's
+    // prerequisite picker subtracts from its roster, and the chain runs **both
+    // ways**: the epic reads its child below it, the child reads its epic above.
+    assert.deepEqual(listed.parent_chain, [sibling.id], "the parent's chain is its descendant");
+    const onChild = dataOf(await call("GET", `/api/v1/tasks/${sibling.identifier}/relations`));
+    assert.deepEqual(onChild.parent_chain, [epic.id], "the child's chain is its ancestor");
 
     const removed = dataOf(
       await call("DELETE", `/api/v1/tasks/${epic.identifier}/relations/${added.relation.id}`),
