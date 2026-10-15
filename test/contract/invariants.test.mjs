@@ -23,7 +23,7 @@ import test, { after, describe, it } from "node:test";
 import { openDatabase } from "../../src/core/storage/driver.mjs";
 import { createContext } from "../../src/core/commands/index.mjs";
 import { addRelation, listRelations } from "../../src/core/commands/relations.mjs";
-import { assertBlockEdgeAllowed, isOnSameParentChain, parentChainOf } from "../../src/core/domain/relation.mjs";
+import { assertBlockEdgeAllowed, blockedPairOnChain, isOnSameParentChain, parentChainOf } from "../../src/core/domain/relation.mjs";
 import { createRepositories } from "../../src/core/storage/repositories/index.mjs";
 import {
   TS,
@@ -875,5 +875,221 @@ describe("contract/invariants — a blocks edge may not join an ancestor and a d
     } finally {
       board.close();
     }
+  });
+});
+
+/**
+ * T-20261015-075826 — the ancestor/descendant rule is asked at **both** insert
+ * points, so the verdict stops depending on arrival order.
+ *
+ * `0019` refused the `blocks` edge joining an ancestor and a descendant, but
+ * only at the `blocks` insert. With the `blocks` edge already down, the *parent*
+ * edge that puts the two cards on one chain went in unchallenged, because
+ * `tr_rel_parent_guard` (0002) never reads the `blocks` graph. That is the order
+ * `storage/md/import.mjs` writes — `depends_on` (→ `blocks`) before `parent`,
+ * for every card — so it is the order a real import uses, not a theoretical one.
+ *
+ *   order 1  parent P → C, then the `blocks` edge   → refused by `0019`  (unchanged)
+ *   order 2  the `blocks` edge, then parent P → C   → refused by `0020`  (this card)
+ *
+ * Both orders report the **same code** (`RELATION_CYCLE`), which is what
+ * "order-independent" has to mean: not merely that both refuse, but that the
+ * caller cannot tell which edge happened to land second.
+ *
+ * Three readings are asserted, and they are the three ways this guard could be
+ * wrong:
+ *
+ *   * the **closure** — the offending `blocks` edge need not touch either end of
+ *     the new parent edge (`seedStrandedPair` strands `x depends_on y` with a
+ *     `p → c` two generations away), so a test of the direct pair `(P, C)` is
+ *     not this guard;
+ *   * the **precedence** — a row that is both a chain overflow and an
+ *     ancestor/descendant join has one code and it is the cap's. SQLite would
+ *     otherwise pick by firing order; `0020`'s trigger is `AFTER INSERT` so the
+ *     `BEFORE` caps always speak first;
+ *   * the **non-regression** — siblings, strangers, and the two codes that own
+ *     their own rows (`SELF_REFERENCE`, `CROSS_PROJECT_RELATION`).
+ */
+describe("contract/invariants — the ancestor/descendant rule is order-independent", () => {
+  /** `a` is an epic so it can parent; `task` is not. */
+  const epic = (db, id) => insertTask(db, { id, identifier: `PROJ-${id.toUpperCase()}`, kind: "epic" });
+  const plain = (db, id) => insertTask(db, { id, identifier: `PROJ-${id.toUpperCase()}` });
+
+  /**
+   * `x → p` and `c → y`, with `x blocks y` already down. Adding `p → c` puts
+   * `x` above `y`, so the pre-existing `blocks` edge becomes an
+   * ancestor/descendant join — two generations from either end of the new edge,
+   * which is exactly what a direct-pair check misses.
+   */
+  function seedStrandedPair(db) {
+    insertProject(db);
+    epic(db, "x");
+    epic(db, "p");
+    epic(db, "c");
+    plain(db, "y");
+    addParentEdge(db, "x", "p");
+    addParentEdge(db, "c", "y");
+    db.prepare(
+      "INSERT INTO task_relations(relation_type, source_task_id, target_task_id, created_at) VALUES ('blocks', ?, ?, ?)",
+    ).run("x", "y", TS);
+  }
+
+  /** `a` (epic) and `b`, with `b blocks a` down — the order-2 arrival. */
+  function seedBlockFirst(db, a = "a", b = "b") {
+    insertProject(db);
+    epic(db, a);
+    plain(db, b);
+    db.prepare(
+      "INSERT INTO task_relations(relation_type, source_task_id, target_task_id, created_at) VALUES ('blocks', ?, ?, ?)",
+    ).run(b, a, TS);
+  }
+
+  /** `addParentEdge` as a thunk — `reasonCode` takes a function, not a call. */
+  const tryAddParent = (db, source, target) => () => addParentEdge(db, source, target);
+
+  // `node:sqlite` hands back null-prototype rows; `deepEqual` wants plain ones.
+  const edgesOf = (db, type) =>
+    db
+      .prepare("SELECT source_task_id AS source, target_task_id AS target FROM task_relations WHERE relation_type = ?")
+      .all(type)
+      .map((row) => ({ source: String(row.source), target: String(row.target) }));
+  const parentEdgesOf = (db) => edgesOf(db, "parent");
+  const blockEdgesOf = (db) => edgesOf(db, "blocks");
+
+  it("reads the closure, not just the pair, and leaves siblings and strangers alone", () => {
+    const parentEdges = [
+      { source: "x", target: "p" },
+      { source: "c", target: "y" },
+    ];
+    const blockEdges = [{ source: "x", target: "y" }];
+    // The stranded pair: neither end of the prospective `p → c` is on the edge.
+    assert.deepEqual(blockedPairOnChain(parentEdges, blockEdges, "p", "c"), { source: "x", target: "y" });
+    // The other direction of the same pair is the same defect.
+    assert.deepEqual(blockedPairOnChain(parentEdges, [{ source: "y", target: "x" }], "p", "c"), { source: "y", target: "x" });
+    // The direct pair, for contrast: `blocks` between `p` and `c` is caught by
+    // the same walk that catches the stranded one.
+    assert.deepEqual(blockedPairOnChain(parentEdges, [{ source: "c", target: "p" }], "p", "c"), { source: "c", target: "p" });
+    // A `blocks` edge wholly inside one closure is *not* this rule's business:
+    // `x` and `p` are already on one chain, and `0019`/`0020` would each have
+    // refused it when it landed. Neither closure reaches the other's side.
+    assert.equal(blockedPairOnChain(parentEdges, [{ source: "x", target: "p" }], "p", "c"), null);
+    assert.equal(blockedPairOnChain(parentEdges, [{ source: "c", target: "y" }], "p", "c"), null);
+    // Off the chain entirely — a stranger, and an empty board.
+    assert.equal(blockedPairOnChain(parentEdges, [{ source: "u", target: "u2" }], "p", "c"), null);
+    assert.equal(blockedPairOnChain([], [], "a", "b"), null);
+  });
+
+  it("refuses the parent edge when the blocks edge landed first — both paths, one code", async () => {
+    const board = await createTempBoard();
+    try {
+      seedBlockFirst(board.db);
+      const ctx = () => createContext({ db: board.db, repos: createRepositories(board.db), clock: () => TS });
+      const actor = { kind: "agent", id: "linus" };
+
+      // Order 2 — the order the repro (`repro-order-gap.mjs`) and `md` import use.
+      assert.throws(
+        () => addRelation(ctx(), { type: "parent", source: "PROJ-A", target: "PROJ-B", actor }),
+        (err) => {
+          assert.equal(err.code, "RELATION_CYCLE", "the same code order 1 reports");
+          assert.equal(err.http, 422);
+          assert.equal(err.details.type, "parent");
+          assert.equal(err.details.chain, "ancestor", "distinguishable from a parent cycle");
+          assert.match(err.message, /ancestor and a descendant cannot depend on each other/, err.message);
+          return true;
+        },
+      );
+      // …and the database refuses it too, on its own.
+      assert.equal(reasonCode(tryAddParent(board.db, "a", "b")), "RELATION_CYCLE");
+      assert.deepEqual(
+        parentEdgesOf(board.db),
+        [],
+        "the AFTER-INSERT abort backs the row out — a refused edge leaves nothing behind",
+      );
+      assert.equal(blockEdgesOf(board.db).length, 1, "the edge that landed first is untouched");
+    } finally {
+      board.close();
+    }
+  });
+
+  it("refuses it when the blocks edge is stranded two generations away", async () => {
+    const board = await createTempBoard();
+    try {
+      seedStrandedPair(board.db);
+      assert.equal(
+        reasonCode(tryAddParent(board.db, "p", "c")),
+        "RELATION_CYCLE",
+        "the closure — a direct-pair test would have admitted this row",
+      );
+      assert.deepEqual(parentEdgesOf(board.db).map((e) => `${e.source}->${e.target}`).sort(), ["c->y", "x->p"]);
+      assert.deepEqual(blockEdgesOf(board.db), [{ source: "x", target: "y" }]);
+    } finally {
+      board.close();
+    }
+  });
+
+  it("reaches the closure through the use-case, over the same code and status", async () => {
+    const board = await createTempBoard();
+    try {
+      seedStrandedPair(board.db);
+      const ctx = createContext({ db: board.db, repos: createRepositories(board.db), clock: () => TS });
+      assert.throws(
+        () => addRelation(ctx, { type: "parent", source: "PROJ-P", target: "PROJ-C", actor: { kind: "agent", id: "linus" } }),
+        (err) => {
+          assert.equal(err.code, "RELATION_CYCLE");
+          assert.equal(err.http, 422);
+          assert.deepEqual(err.details.blocks, { source: "x", target: "y" }, "the message names the offending edge");
+          return true;
+        },
+      );
+    } finally {
+      board.close();
+    }
+  });
+
+  it("reports the cap's code, not this one, when a row is both", async () => {
+    // `r1 → … → r8` is the deepest chain the shape rules allow (8 nodes); `c
+    // blocks r1` is legal while it lands, because `c` is on no chain yet.
+    const seed = (db, depth) => {
+      insertProject(db);
+      for (let i = 1; i <= depth; i += 1) epic(db, `r${i}`);
+      plain(db, "c");
+      for (let i = 1; i < depth; i += 1) addParentEdge(db, `r${i}`, `r${i + 1}`);
+      db.prepare(
+        "INSERT INTO task_relations(relation_type, source_task_id, target_task_id, created_at) VALUES ('blocks', ?, ?, ?)",
+      ).run("c", "r1", TS);
+    };
+
+    await withBoard(({ db }) => {
+      seed(db, 2);
+      // A short chain: the join is the only defect, so this guard owns the row.
+      assert.equal(reasonCode(tryAddParent(db, "r2", "c")), "RELATION_CYCLE");
+    });
+
+    await withBoard(({ db }) => {
+      seed(db, 8);
+      // The same join, on a chain that `tr_rel_parent_guard` also refuses as
+      // CHAIN_TOO_LONG. `0020` runs AFTER INSERT, so the cap's code is the one
+      // the caller reads — one row, one code, whatever order SQLite fires the
+      // triggers in.
+      assert.equal(reasonCode(tryAddParent(db, "r8", "c")), "CHAIN_TOO_LONG");
+      assert.deepEqual(parentEdgesOf(db).length, 7, "the refused edge left nothing behind");
+    });
+  });
+
+  it("does not touch siblings, strangers, or the codes that own their own rows", async () => {
+    await withBoard(({ db }) => {
+      seedStrandedPair(db);
+      insertProject(db, { id: "other", name: "Other" });
+      insertTask(db, { id: "z", identifier: "OTHER-Z", project_id: "other" });
+      plain(db, "y2");
+
+      // A sibling of `y` under the same epic: on no shared chain with the
+      // stranded pair, so the edge the guard must keep admitting is admitted.
+      assert.equal(reasonCode(tryAddParent(db, "c", "y2")), "NO_ERROR", "siblings are orderable");
+      // The clauses that keep this trigger off the rows two other codes own —
+      // the same three clauses `tr_rel_parent_guard` carries.
+      assert.equal(reasonCode(tryAddParent(db, "c", "c")), "SELF_REFERENCE");
+      assert.equal(reasonCode(tryAddParent(db, "z", "y")), "CROSS_PROJECT_RELATION");
+    });
   });
 });

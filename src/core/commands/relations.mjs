@@ -35,10 +35,18 @@ export function addRelation(ctx, input) {
       const target = loadTask(ctx, input.target);
       const edge = normalizeRelation({ type: input.type, source: source.id, target: target.id });
 
+      // The `blocks` graph is read here as well, and for the same reason the
+      // `blocks` guard below reads the parent chain: the two orders together are
+      // what makes the pair a deadlock, so a guard that reads only its own graph
+      // answers a question about insertion order rather than about the board.
+      // Without this read, a `blocks` edge already down let the parent edge that
+      // joins the two cards onto one chain through — which is the order
+      // `storage/md/import.mjs` writes them in (T-20261015-075826).
       if (edge.type === "parent" && input.force !== true) {
         const projectOf = (id) => (id === source.id ? source.projectId : id === target.id ? target.projectId : undefined);
         assertParentEdgeAllowed(edge, {
           edges: ctx.repos.relations.listParentEdges(),
+          blockEdges: ctx.repos.relations.listBlockEdges(),
           projectOf,
           parent: source,
         });
