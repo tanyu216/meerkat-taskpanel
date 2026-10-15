@@ -12,7 +12,7 @@
 > **事实源**（**实读**，本 lane 未起 `taskd`、未构建 `web/dist`、未驱动浏览器、未进容器；唯一**实测**是 §9 的纯函数算术，用 Node 直跑，原始输出见 §9.4。**v1.1 另有两笔**：§8 R12 的规模测量（转述 + 复跑）与 §13 的探针，见 §14）：
 > `design/DESIGN.md` §20（PROJECTS 权重排序）、`design/BLOCKS.md`（B26/B27）、`design/prototype/index.html`（`data-order-score` / `data-order-rank`）、
 > `src/shared/project-order.mjs`、`src/shared/constants.mjs`、`src/shared/wire.mjs`、`src/core/domain/priority.mjs`、`src/core/domain/enums.mjs`、`src/core/domain/task.mjs`、`src/core/domain/claim.mjs`、`src/core/commands/tasks.mjs`、`src/core/storage/repositories/tasks.mjs`、`src/server/index.mjs`、`src/server/routes/projects.mjs`、`src/server/routes/tasks.mjs`、`web/src/stores/board.js`、`web/src/lib/activity-feed.js`、`web/src/lib/waiting-queue.js`、`test/web/blocks.contract.mjs`（`DOMAINS.PRIORITY`）、`src/shared/scheduling.mjs`、`src/core/storage/repositories/relations.mjs`。
-> **配套输入卡**：`T-20261014-033502-2`（Linus，只读盘点）。它的三条结论（`sort_order` 无写入方 / 权重须服务端算 / `blocked_reason` 不存在）本契约**逐条按符号名自行复核后**采信；另两条（候选读**先截断再过滤**、`blocked_at` **不清空**）本契约吸收为风险项 R16 / R15。见 §11 E8。
+> **配套输入卡**：`T-20261014-033502-2`（Linus，只读盘点）。它的三条结论（`sort_order` 无写入方 / 权重须服务端算 / `blocked_reason` 的存在性）本契约**逐条按符号名自行复核后**采信（**v1.2 订正**：第三条已随迁移 `0016` 落地而订正为「**已存在**」，见 §8 R1 / §14）；另两条（候选读**先截断再过滤**、`blocked_at` **不清空**）本契约吸收为风险项 R16 / R15。见 §11 E8。
 > **基线 commit**：`2c85440`（= 本 lane 的开工点 = `main`）。
 > **本文件为新增文件**：未改动 `DESIGN.md` / `BLOCKS.md` / `fidelity-*.md` / `design/prototype/**` 一行；`design/README.md` 改一句（把「The first one is …」改成两项并列），见 §12。
 
@@ -24,7 +24,7 @@
 - **② 推荐权值向量 = `P .30 / 停留 .25 / SLA .20 / 建龄 .10 / 下游解锁 .10 / 严重度 .05`**（Σ = 1.00），每项带**合理区间**与量级依据；量级依据的根 = **归一化到概率单纯形（Σ=1）⇒ 一项权值直接读作「占排序决策的百分比」**，见 **§5**。
 - **③ 合成公式 = 线性加权，配「比值封顶」归一化**（非 §20 的秩归一化，理由见 §6.2，与分页/稳定性直接相关）；**tie-break = 7 级确定性链**，末级落到卡号（唯一）⇒ 排序是**全序**、与 `Array#sort` 是否稳定无关，见 **§6.3**。卡面建议的 `priority → created_at` 先后是链上的第 3、5 级。
 - **④ 交互**：**不设为默认排序**（默认仍是 `sort_order, created_at, …` 的既有确定性序，而 `sort_order` 恒为 0 ⇒ 实际等于创建顺序）；**可选可切换**（`?order=weight` + `?order_debug=1`；**`order_debug` 顺带选中 weight 序且优先于 `order=`**，见 §13.1；能力位 `task_order: "weights-v1"`）；**影响 board（列内）/ list / candidates 候选清单**，**明确不影响 activity（B26 时间线）与 waiting（B27 最久优先）**；筛选不变、分组不变（权重只在组内定序，**永不跨列搬卡**），分页**可下推到 SQL**，见 **§7**。**最重的一条交互**：候选清单的顺序 = supervisor 的**派发优先级**（`src/shared/scheduling.mjs#planTick` 按给定顺序唤醒到并发上限）⇒ 权重向量能改变团队行为，故必须 opt-in + 可回溯（§7.4）。**等待 Terry 拍板的一项**：tier 的先后（§7.1 T0/T1/T2）。
-- **⑤ 边界与风险**共 16 条（§8 R1–R16），含 5 条**本轮核出的真陷阱**：`blocked_reason` **全库无此字段**（卡面背景列了它）；前端优先级域是 **5 值含 `none`**、core 是 4 值，而 `priorityRank` 对未知值的兜底是 `medium`（会把 `none` 排到 `low` **之上**）；`depends_on` 在本实现里**不是列**而是 relation 图；SLA 阈值**只存在于团队 `PROTOCOL §⑮`，产品侧未定义**；`blocked_at` **离开 blocked 后不清空** ⇒ S 必须被 `status == "blocked"` 门住（`moveCas` 只在进入时写、从不清除）。另把「超期」「`blocked` 的两义」「依赖不在 wire 上 + 截断先于过滤」单列（R13/R14/R16）。见 **§8**。
+- **⑤ 边界与风险**共 16 条（§8 R1–R16），含 **4 条**本轮核出的**真陷阱**（v1.2 订正：原列 5 条，`blocked_reason` 一项已不再成立）；**`blocked_reason` 已存在**（迁移 `0016`，commit `f0c95a3`；已进 wire/导出）——v1.0 的否定断言属**基线漂移**（契约基线 `2c85440` 早于该迁移，见 §8 R1 / §14）；前端优先级域是 **5 值含 `none`**、core 是 4 值，而 `priorityRank` 对未知值的兜底是 `medium`（会把 `none` 排到 `low` **之上**）；`depends_on` 在本实现里**不是列**而是 relation 图；SLA 阈值**只存在于团队 `PROTOCOL §⑮`，产品侧未定义**；`blocked_at` **离开 blocked 后不清空** ⇒ S 必须被 `status == "blocked"` 门住（`moveCas` 只在进入时写、从不清除）。另把「超期」「`blocked` 的两义」「依赖不在 wire 上 + 截断先于过滤」单列（R13/R14/R16）。见 **§8**。
 - **⑥ 交付**：本文件（`design/contracts/assignee-weight-order.md`）+ `design/README.md` 一行登记。**未 push**（本 lane 只提交到 `lane/T-20261014-033502-seg1`），见 Report。
 
 ---
@@ -118,7 +118,7 @@
 | `labels` | ✔ 同上 | `L`（可选） |
 | `project` | ✔（`project_id`） | 作用域与 tie-break 末级 |
 | `depends_on` | ⚠ **不是列**——它是 relation 表上的 `blocks` 边（`TASK_COLUMNS` 里没有 `depends_on`；`PROTOCOL §①` 的 frontmatter 有它，产品侧落成 relation） | tier T1 与因子 `B` |
-| `blocked_reason` | ✗ **不存在**——`src/`、`web/src/`、`test/`、`PROTOCOL §①` 全库无此符号 | **不采用**（§8 R1） |
+| `blocked_reason` | ✔ **已存在**（v1.2 订正）——迁移 `0016`（commit `f0c95a3`），`src/core/domain/task.mjs#TASK_COLUMNS` 有列，已进 wire（`src/shared/wire.mjs#COPY_TASK_FIELDS`）/ 导出（`src/core/storage/md/export.mjs`） | **仍不采用**（§8 R1）——但理由已变：v1.0 是「没有这个字段」，v1.2 起是「**采用它 = 设计变更**」（回设计轮，§12 U7）。本卡不改权重公式 |
 
 ### 4.3 一处必须点名的冗余：W 与 A 高度相关，建议只留一个
 
@@ -315,7 +315,7 @@ order  = sort by ( tier ↑, round3(score) ↓, <tie-break 链 §6.3> )
 
 | # | 风险 | 事实（实读/实测） | 处置 |
 |---|---|---|---|
-| **R1** | **卡面背景列了一个不存在的字段** `blocked_reason` | `src/`、`web/src/`、`test/`、`PROTOCOL §①` schema **全库无此符号**（grep 无命中）；板 schema 只有 `blocked_at` + `awaiting_reason` | 因子表**不采用** `blocked_reason`；「为什么被阻塞」目前**没有结构化字段**（只有 `awaiting_reason` E1–E5，且它属于 `awaiting` 不是 `blocked`）。**若 Terry 想要「阻塞原因」作为权重因子，那要先有字段**——这是一张新的 schema 卡，不在本卡 |
+| **R1** | **`blocked_reason`：v1.0 判卡面所列该字段在树中不可得，该断言已失效 ⇒ 漂移** | **该字段已存在**：`src/core/storage/migrations/0016_blocked_reason.sql`（`ALTER TABLE tasks ADD COLUMN blocked_reason TEXT CHECK (blocked_reason IN ('clarify','decision','dependency','out_of_bounds','defect','external','resource','unknown'))`），落地 commit `f0c95a3`（`T-20261014-022254-4`，2026-10-14 06:20）；已进 **wire**（`src/shared/wire.mjs#COPY_TASK_FIELDS` 的 `blocked_reason: "blockedReason"`）、**导出**（`src/core/storage/md/export.mjs`）、**导入**（`md/import.mjs`）与 **写入**（`src/core/storage/repositories/tasks.mjs#moveCas`：进 `blocked` 时写、任何离开即清，与 `awaiting_reason` 同法）。契约基线 `2c85440`（2026-10-14 03:25）**早于**该迁移 ⇒ v1.0 的否定断言**当时为真、其后失效** | 因子表**仍不采用** `blocked_reason`——但**理由已变**：v1.0 是「没有这个字段」，v1.2 起是「**采用它 = 设计变更**，回设计轮由 Terry 定」（见 §12 U7）。**本卡只订正事实**：**不**把 `blocked_reason` 纳入权重公式、**不**改任何排序结论。「为什么被阻塞」现在**有**结构化字段（`blocked_reason`，8 值枚举），与 `awaiting_reason`（E1–E5，属 `awaiting` 不是 `blocked`）**并列但不同轴** |
 | **R2** | **优先级域两侧不一致**：《前端》5 值含 `none`（`test/web/blocks.contract.mjs#DOMAINS.PRIORITY` 冻结、原型 `data-priority="none"` 实有 4 张卡、`web/src/stores/board.js#PRIORITIES` 五值）；《core/存储》4 值（`src/core/domain/enums.mjs#PRIORITIES`），**永远不产出 `none`** | `src/core/domain/priority.mjs#priorityRank` 对**未知值兜底 `medium`** | **潜在陷阱（服务端目前不会踩到，但别把它做出来）**：因为 core 只产出 4 值，服务端算序时 `none` **不会出现**；但只要有人在**五值域**（wire / web / 原型）上复用 `priorityRank`，`none` 会被算成 `medium`（`rank 1`）、**排在 `low`（`rank 0`）之上**——「没定优先级」压过「定为最低优先级」。⇒ **必须另写一张显式全表**覆盖 `none`：`none=.000, low=.000, medium=.333, high=.667, urgent=1.000`，**禁止**复用 `priorityRank` 的 `?? medium` 兜底 |
 | **R3** | **SLA 阈值在产品侧未定义** | 全库无 `SLA` 常量；唯一成文在**团队** `PROTOCOL §⑮`，且是**工作时间**口径 | §5.2 参数表 + 默认值 + 「无对应 ⇒ 记 0」；签核问题 2（墙钟 vs 工作日历） |
 | **R4** | **空值 / 缺失字段** | `status_changed_at` 可为空（`""`）；`blocked_at` 仅在 blocked 时有值；`priority` 缺省 `medium`；`labels` 可为 `[]` | 逐因子给**总函数**：`status_changed_at` 空 ⇒ **回退 `created_at`**；`blocked_at` 空 ⇒ 该卡非 blocked，`S` 走 `status_changed_at`；**任何缺失都不产生 `NaN`**（`NaN` 会毒化整个比较器，让 `sort` 输出垃圾——这是 JS 里最典型的排序事故）。**兜底值必须是 `0`（无压力），不是最大值**（否则缺数据的卡会插队） |
@@ -473,14 +473,14 @@ breakeven wP (A3 overtakes A1) = 0.29873  A1-A3 @0.30 = 0.001806
 
 | # | 出处 | 出入 | 处置 |
 |---|---|---|---|
-| E1 | 卡面 Background「可用数据面」 | 列了 `blocked_reason`，**全库无此字段** | 本契约不采用；见 §8 R1 |
+| E1 | 卡面 Background「可用数据面」 | 列了 `blocked_reason`——**v1.0 判它在树中不可得，已失效**：该字段**已存在**（迁移 `0016`，commit `f0c95a3`，已进 wire/导出）。**卡面当初就是对的** | **仍不采用**——但这是**设计选择**（采用它 = 设计变更），不再是「无字段」；见 §8 R1 / §12 U7 |
 | E2 | 卡面 Background「可用数据面」 | 把 `depends_on` 列为字段；本实现里它是 **relation 的 `blocks` 边**，不是列 | 本契约按 relation 图取值；见 §4.2 核对表 |
 | E3 | `DESIGN.md` §20 / `BLOCKS.md` / `constants.mjs` | 引 `ARCHITECTURE §4.6` 为权威，但**树里没有 `ARCHITECTURE.md`** | 本契约改引 `DESIGN.md §20` + `src/shared/project-order.mjs`；§4.6 的引用链当时是**文档债**（建议另开一张 doc-sync 卡）。**已由 `T-20261014-042518` 修复**：全仓 §4.6 引用 → `DESIGN.md` §20，`ARCHITECTURE.md` 家族 → `docs/README.md` 的存在性说明 |
 | E4 | 前端域 vs core 域 | 优先级前端 5 值（含 `none`，被 `DOMAINS.PRIORITY` 冻结）vs core 4 值 | 本契约用显式全表；见 §8 R2 |
 | E5 | 卡面 Background「SLA 阈值口径 = `PROTOCOL §⑮`」 | §⑮ 是**团队**协议（工作时间口径、人工 patrol），**不是产品阈值** | 本契约把阈值做成**参数表 + 墙钟默认**，并把它列为签核问题 2；见 §5.2 |
 | E6 | 原型（oracle） | 本议题在原型上**完全空地**（只有项目序被烤进侧栏） | 本契约的验证判据全部落在纯函数/服务端；**若 Terry 要 UI toggle，需先开一个设计轮次动原型**；见 §2 |
 | E7 | 卡面 Acceptance ③ 的 tie-break 示例 | 写的是「priority → created_at 先后」 | 本契约把它落成链上的第 3、5 级，并在其后补 3 级（含复用既有 `ORDER BY` 末两键）；**是对卡面的细化，不是改动** |
-| E8 | 配套输入卡 `T-20261014-033502-2`（Linus，只读盘点）的 Report | 与本契约**结论一致**的三条独立佐证：`sort_order` 无写入方；权重须服务端算（`LIMIT` 在 `ORDER BY` 之后 + md 导出复用同一 `ORDER BY` + `planTick` 按序唤醒）；`blocked_reason` 不存在。另给出**本契约已吸收**的两条：候选读**先截断 200 再过滤**（§8 R16）、`blocked_at` **不清空**（§8 R15） | 本契约按符号名**自行复核**了这三条（`grep sortOrder` / `repositories/tasks.mjs#list` / `scheduling.mjs#planTick` / `repositories/tasks.mjs#moveCas`）后才采信；其为**实读+合成基准**，本 lane **未跑**它的 `bench-weight-sort.mjs`（未进容器）。⇒ v1.0 时 §8 R12 的性能结论标为「未测」；**v1.1 已回填**（由 `T-20261014-043124` 的规模用例补测，见 §8 R12 与 §14） |
+| E8 | 配套输入卡 `T-20261014-033502-2`（Linus，只读盘点）的 Report | 与本契约**结论一致**的三条独立佐证：`sort_order` 无写入方；权重须服务端算（`LIMIT` 在 `ORDER BY` 之后 + md 导出复用同一 `ORDER BY` + `planTick` 按序唤醒）；`blocked_reason` 的可得性（**第三条已由 v1.2 订正**：该字段**已存在**，见 §8 R1）。另给出**本契约已吸收**的两条：候选读**先截断 200 再过滤**（§8 R16）、`blocked_at` **不清空**（§8 R15） | 本契约按符号名**自行复核**了这三条（`grep sortOrder` / `repositories/tasks.mjs#list` / `scheduling.mjs#planTick` / `repositories/tasks.mjs#moveCas`）后才采信；其为**实读+合成基准**，本 lane **未跑**它的 `bench-weight-sort.mjs`（未进容器）。⇒ v1.0 时 §8 R12 的性能结论标为「未测」；**v1.1 已回填**（由 `T-20261014-043124` 的规模用例补测，见 §8 R12 与 §14） |
 
 ---
 
@@ -491,6 +491,7 @@ breakeven wP (A3 overtakes A1) = 0.29873  A1-A3 @0.30 = 0.001806
 1. **新增** `design/contracts/assignee-weight-order.md`（本文件）。
 2. **改动** `design/README.md`：仅把「The first one is `contracts/project-prefix-binding.md` …」一句改成 **They are … and …** 的两项并列（`+3 −2` 行）。目录树里 `contracts/` 一行**本来就有**（上一契约留的），未动；**其余一字未改**。
 3. **v1.1 订正**（另一 lane，doc-only；写面同样限 `design/contracts/**`）：本文件内的 §0 ④（一句）、§4.1（补 T3 收口行）、§6.2 / §7.1 / §7.3（登记 (a) 三项口径；§7.3 另记「先截断后过滤」的收口）、§8 R12（回填实测、关闭 U6）、§8 R16（标注已落地）、§9.1 / §9.2 / §9.4 / 新增 §9.5（`awaiting` 笔误订正与复核）、§11 E8（去陈旧「未测」）、§12 U6 与 U9（关闭），以及新增的 §13 / §14。**未新增文件**；`design/README.md`、`DESIGN.md`、`BLOCKS.md`、`design/prototype/**`、`src/**`、`web/**`、`test/**` **一字未动**。逐条见 §14。
+4. **v1.2 订正**（又一 lane，doc-only；写面同样限 `design/contracts/**`）：本文件内的 §0 ⑤（一条）、§4.2 核对表（`blocked_reason` 行）、§8 R1（三栏重写）、§11 E1 / §11 E8（`blocked_reason` 一条）、§12 U7（前提已满足、归属改为设计轮）、以及本清单第 4 条与 §14。订正的是**事实**（该字段已存在）；**权重公式 / 因子集 / 排序结论一字未动**。**未新增文件**；其余路径一字未动。逐条见 §14。
 
 **未改动**：`DESIGN.md`、`BLOCKS.md`、`fidelity-*.md`、`design/prototype/**`、`src/**`、`web/**`、`test/**`。**本卡不含实现代码**（卡面 ⑥）。
 
@@ -504,7 +505,7 @@ breakeven wP (A3 overtakes A1) = 0.29873  A1-A3 @0.30 = 0.001806
 | U4 | 可选因子 `L`（sev 标签）开不开 | **Terry**（§5.4 问题 3） |
 | U5 | 三步校准的**实际执行**（需要板历史 + 人类标注） | **Elon 排期**（§5.3，本 lane 未跑） |
 | U6 | ~~权重序在**整项目规模**上的性能测量~~ —— **已关闭（v1.1）** | ~~**C2 实现卡**（§8 R12）~~ 由 `T-20261014-043124` 补测（`test/core/commands/task-order-scale.test.mjs`，1004 卡），v1.1 回填 §8 R12 |
-| U7 | 「阻塞原因」要不要成为结构化字段（`blocked_reason`） | **另开 schema 卡**（§8 R1） |
+| U7 | 「阻塞原因」要不要成为结构化字段（`blocked_reason`）—— ~~**另开 schema 卡**~~ **前提已由迁移 `0016` 满足（v1.2）**：字段**已存在**并已进 wire/导出。**「要不要把它采用为权重因子」是另一个问题，且是设计变更** | **回设计轮 / Terry 定**（§8 R1）：**schema 已就绪，用不用待设计轮**。本卡只订正事实——**不**把 `blocked_reason` 纳入权重公式、**不**改排序结论 |
 | U8 | ~~`ARCHITECTURE.md` 引用链（§4.6）的修复~~ —— **已关闭** | ~~**另开 doc-sync 卡**（§11 E3）~~ 由 `T-20261014-042518` 修复（全仓 §4.6 → `DESIGN.md` §20；`ARCHITECTURE.md` 家族 → `docs/README.md` 的存在性说明） |
 | U9 | ~~候选读「先截断再过滤」是**既有**缺陷（§8 R16）——修不修、与权重序一次性做还是分开做~~ —— **已关闭（v1.1）** | ~~**C2 实现卡 / Elon 排期**~~ **与权重序一次性做了**：`T-20261014-043124` 把作用域下推 SQL 并去掉截断（`CHANGELOG` 记录 `T-20261014-061937`），见 §7.3 |
 | U10 | `blocked_at` 不清空是否要顺手修（改成离开即清）——**改 schema 语义**、影响面未知 | **另开卡评估**（本契约**不要求**改，只要求 S 因子把门关严，§8 R15） |
@@ -607,6 +608,27 @@ breakeven wP (A3 overtakes A1) = 0.29873  A1-A3 @0.30 = 0.001806
 **未改（一字未动）**：§1–§3、§5、§6.1、§6.3、§8 其余 14 条、§9.3、§10.1、§11 E1–E7、§12 的 U1–U5 / U7 / U8 / U10；以及 `DESIGN.md`、`BLOCKS.md`、`design/README.md`、`README.md`、`README.zh-CN.md`、`fidelity-*.md`、`design/prototype/**`、`src/**`、`web/**`、`test/**`。
 
 **证据分级（按 §1）**：§9 / §9.5 的算术是**实测**（本 lane 用 Node 直跑合成分与三层比较器，**独立于 v1.0 的原脚本**，逐卡复现了 §9.2 / §9.4 的每一个数字）；§13.1–§13.3 是**实跑**（一次性探针，宿主允许项）；§8 R12 的测量**转述**自实现卡与其独立验证腿（本 lane 另**复跑**了同一个规模用例）。**边界照旧**：本 lane **未**起 `taskd`、**未**构建 `web/dist`、**未**驱动浏览器、**未**进容器。
+
+### v1.2 —— `T-20261014-223655`（doc-only；写面 `design/contracts/**`；基线 `10b919c`）
+
+**一句话**：把 §0 ⑤ / §4.2 核对表 / §8 R1 / §11 E1 / §11 E8 / §12 U7 里 `blocked_reason`「全库无此符号 / 没有结构化字段」的**陈旧断言**订正为「**已存在**（迁移 `0016`，commit `f0c95a3`；已进 wire/导出）」；**权重公式、因子集、排序结论一字未动**。
+
+**为什么是「漂移」而不是当初写错**：v1.0 基线 `2c85440`（2026-10-14 03:25）**早于** `f0c95a3`（2026-10-14 06:20，`T-20261014-022254-4`）。写 v1.0 时全库 grep 无命中**是真的**，是**之后**另一张 schema 卡把字段落了地。
+
+| 处 | 订正 / 登记 | 依据 |
+|---|---|---|
+| §0 ⑤ | 「5 条真陷阱」的首项（`blocked_reason`）⇒ 改为 **4 条** + 一条 v1.2 订正说明（该字段已存在；v1.0 的否定断言属基线漂移） | 迁移 `0016`、commit `f0c95a3` |
+| §4.2 核对表 | `blocked_reason` 行：`✗ 不可得 ⇒ 不采用` ⇒ **`✔ 已存在` ⇒ 仍不采用，但理由改为「采用它 = 设计变更」** | 同上 |
+| §8 R1 | 风险标题 / 事实栏 / 处置栏**三栏重写**：事实 = 已存在（迁移 `0016` + wire / 导出 / 导入 / 写入四条路径 + commit + 基线先后）；处置 = 仍不采用，**理由变了**；删去「若想要，先有字段——这是一张新的 schema 卡」 | 同上 |
+| §11 E1 | 卡面列的 `blocked_reason`：由「不可得」改为 **「已存在」——卡面当初就是对的**；处置同步 | 同上 |
+| §11 E8 | 输入卡三条佐证的第三条（`blocked_reason` 的可得性）标注 **v1.2 订正为「已存在」**（另两条 `sort_order` / 服务端算序**不变**） | 同上 |
+| §12 U7 | 未决项**保留**，但前提已满足：由「另开 schema 卡」改为 **「schema 已就绪，用不用待设计轮」**——「要不要把阻塞原因采用为**权重因子**」是**设计变更**，**回设计轮 / Terry 定** | 本卡 ② |
+| §12 | 写面清单加第 4 条（v1.2 订正） | — |
+| §14 | **新增本节**（v1.2） | 本卡 ④ |
+
+**未改（一字未动）**：§1–§3、§4.1、§4.2 的**软权重因子表**（因子集 / 归一化 / 方向）与 §4.3、§5（权值向量 / 区间 / §5.2 阈值表 / §5.3 校准 / §5.4 **仍为 3 个问题**）、§6（合成公式与 tie-break）、§7、§8 其余 15 条、§9（样例与敏感度，含 v1.1 的 A6 订正）、§10（C2 落点 / C3 的 10 条断言）、§11 E2–E7、§12 U1–U6 / U8–U10、§13；以及 `DESIGN.md`、`BLOCKS.md`、`design/README.md`、`README.md`、`README.zh-CN.md`、`fidelity-*.md`、`design/prototype/**`、`src/**`、`web/**`、`test/**`。**零实现代码**（卡面 ③）。
+
+**证据分级（按 §1）**：本节「已存在」是**实读**——本 lane 逐符号读了 `src/core/storage/migrations/0016_blocked_reason.sql`、`src/shared/wire.mjs#COPY_TASK_FIELDS`、`src/core/storage/md/export.mjs` / `import.mjs`、`src/core/storage/repositories/tasks.mjs#moveCas`、`src/core/domain/task.mjs#TASK_COLUMNS` / `blocked-reason.mjs` / `enums.mjs#BLOCKED_REASONS`，并以 `git merge-base --is-ancestor` 核**`f0c95a3` 已进本 lane 基线**。**边界照旧**：本 lane **未**起 `taskd`、**未**构建 `web/dist`、**未**驱动浏览器、**未**进容器——改动**纯文档**。
 
 ### v1.0 —— `T-20261014-033502`（基线 `2c85440`）
 

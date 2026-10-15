@@ -45,6 +45,7 @@ node scripts/sync-skills.mjs         # regenerate the loop payload + every plugi
 node scripts/sync-skills.mjs --check # verify both are in sync
 node scripts/verify/manifests.mjs    # validate the host + loop + marketplace manifests
 node scripts/verify/skill.mjs        # validate the board skill's SKILL.md frontmatter
+node scripts/verify/web-dist.mjs     # are the two web/dist-guarded tests legs actually run?
 node scripts/build.mjs               # produce dist/ — the npm release tree (not web/dist)
 ```
 
@@ -54,6 +55,7 @@ Or via npm aliases:
 npm test          # node --test
 npm run check:skills
 npm run verify
+npm run verify:web-dist  # fail unless both web/dist-guarded legs ran (see below)
 npm run build
 npm run check     # check:skills + verify + test
 npm run test:coverage   # node --test + the coverage gate (see below)
@@ -149,6 +151,15 @@ The container-first path is the image build — see
 frontend build stage are all offline: with the cache committed, the image builds with **no
 network** (`docker build --network=none` succeeds).
 
+Because `web/dist` is a build product and not committed, the two suites that read it —
+`test/web/blocks.bundle.test.mjs` and `test/web/blocks.dom.test.mjs` — **skip** in any tree
+that has not built the frontend, which includes every lane worktree and the CI `check` job.
+`node --test`'s `fail 0` is silent about that. `node scripts/verify/web-dist.mjs` is the
+verdict: it names the legs that ran, and `npm run verify` (inside `npm run check`) runs it —
+rebuilding first when a toolchain is present — so the answer to "did the gate cover the
+browser?" is printed rather than inferred. See
+[docker.md](docker.md#which-of-node---tests-legs-actually-ran).
+
 ## The `taskd` HTTP surface (M6)
 
 `src/server/` is the local service every other surface talks to. Start it with
@@ -217,7 +228,13 @@ Three operator-facing consequences:
   the writing one. And if the fallback file turns out to be a fossil (a board
   killed before it could remove it), the slot's board is believed *when it
   answers* before anything is spawned, so the lazy start cannot take a live
-  board's address away from it.
+  board's address away from it. The other half of that guarantee is on the
+  **starting** side: autostart hands the machine-wide slot to the daemon it
+  spawns only when the *caller* named a pointer, and with no name the child
+  addresses itself beside its own data directory while the parent waits at
+  **both** files, believing only one that carries the pid it just started —
+  so starting a board cannot overwrite the slot a live board is sitting in
+  either, however unhealthy that board looks.
 
 If you see `BOARD_ALREADY_RUNNING` and believe no board is running, stop the
 named pid first; if that process is gone, the stale lock is removed

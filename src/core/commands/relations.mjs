@@ -7,7 +7,7 @@
  */
 
 import { DomainError } from "../../shared/errors.mjs";
-import { assertBlockEdgeAllowed, assertParentEdgeAllowed, normalizeRelation } from "../domain/relation.mjs";
+import { assertBlockEdgeAllowed, assertParentEdgeAllowed, normalizeRelation, parentChainOf } from "../domain/relation.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { actorOf } from "./context.mjs";
 
@@ -35,10 +35,18 @@ export function addRelation(ctx, input) {
       const target = loadTask(ctx, input.target);
       const edge = normalizeRelation({ type: input.type, source: source.id, target: target.id });
 
+      // The `blocks` graph is read here as well, and for the same reason the
+      // `blocks` guard below reads the parent chain: the two orders together are
+      // what makes the pair a deadlock, so a guard that reads only its own graph
+      // answers a question about insertion order rather than about the board.
+      // Without this read, a `blocks` edge already down let the parent edge that
+      // joins the two cards onto one chain through — which is the order
+      // `storage/md/import.mjs` writes them in (T-20261015-075826).
       if (edge.type === "parent" && input.force !== true) {
         const projectOf = (id) => (id === source.id ? source.projectId : id === target.id ? target.projectId : undefined);
         assertParentEdgeAllowed(edge, {
           edges: ctx.repos.relations.listParentEdges(),
+          blockEdges: ctx.repos.relations.listBlockEdges(),
           projectOf,
           parent: source,
         });
@@ -50,8 +58,19 @@ export function addRelation(ctx, input) {
       // reason a parent cycle is — it is a deadlock, not a shape nobody minds.
       // T-20261014-212017-4 added this; before it the table's only `blocks`
       // guards were self-reference and cross-project, and `a → b → a` went in.
+      //
+      // The parent chain is read as well, because the two orders together are
+      // what makes a deadlock: a card waiting on its own ancestor, or on a child
+      // it contains, is never offered to the poll either however acyclic the
+      // `blocks` graph is on its own (T-20261015-063755, ruling 乙). Reading it
+      // is the one extra query this command does, and it is on the write path
+      // only — the same shape as the `parent` guard above, which already reads
+      // the chain.
       if (edge.type === "blocks" && input.force !== true) {
-        assertBlockEdgeAllowed(edge, { edges: ctx.repos.relations.listBlockEdges() });
+        assertBlockEdgeAllowed(edge, {
+          edges: ctx.repos.relations.listBlockEdges(),
+          parentEdges: ctx.repos.relations.listParentEdges(),
+        });
       }
 
       const relation = ctx.repos.relations.insert({
@@ -117,6 +136,16 @@ export function removeRelation(ctx, input) {
 
 /**
  * Everything around one task: its edges, its parent chain and its blockers.
+ *
+ * `parentChain` is the card's **ancestor and descendant ids, either direction**
+ * — the set a `blocks` edge to or from this card would be refused on
+ * (`domain/relation.mjs#isOnSameParentChain`, `0019_block_chain.sql`). It is
+ * read here, on the same response the drawer already fetches when it opens, so
+ * the prerequisite picker's candidate list can be filtered by the board's own
+ * answer instead of by a second graph walk in the browser. The picker offered
+ * ancestors before this existed; the refusal was the only half that was built
+ * (T-20261015-104813).
+ *
  * @param {object} ctx
  * @param {{taskId: string}} input
  */
@@ -129,5 +158,6 @@ export function listRelations(ctx, input) {
     ancestors: ctx.repos.relations.listAncestors(task.id),
     blockedBy: ctx.repos.relations.listBlockerOf(task.id),
     blocks: ctx.repos.relations.listBlockedBy(task.id),
+    parentChain: parentChainOf(ctx.repos.relations.listParentEdges(), task.id),
   };
 }

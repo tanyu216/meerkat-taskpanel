@@ -285,6 +285,12 @@ describe("server/routes — comments, relations, sessions, dictionary, export", 
     const listed = dataOf(await call("GET", `/api/v1/tasks/${epic.identifier}/relations`));
     assert.equal(listed.children.length, 1);
     assert.equal(listed.children[0].target, sibling.id, "source is the parent, target the child");
+    // T-20261015-104813 — each card's own read carries the chain the drawer's
+    // prerequisite picker subtracts from its roster, and the chain runs **both
+    // ways**: the epic reads its child below it, the child reads its epic above.
+    assert.deepEqual(listed.parent_chain, [sibling.id], "the parent's chain is its descendant");
+    const onChild = dataOf(await call("GET", `/api/v1/tasks/${sibling.identifier}/relations`));
+    assert.deepEqual(onChild.parent_chain, [epic.id], "the child's chain is its ancestor");
 
     const removed = dataOf(
       await call("DELETE", `/api/v1/tasks/${epic.identifier}/relations/${added.relation.id}`),
@@ -872,5 +878,76 @@ describe("server/routes — blocked_reason over HTTP (0016)", () => {
     assert.equal(moved.task.blocked_reason, "resource");
     dataOf(await call("POST", `/api/v1/tasks/${REF}/move`, { to: "canceled" }));
     assert.equal(columnOf(REF), null);
+  });
+});
+
+// Last, and on its own project: T-20261015-063755 asked for the wire-level
+// half of the ancestor ruling — the defect was reported through the API (N10b
+// and N10c both answered HTTP 200), so the regression is asserted where it was
+// seen, not only in the schema.
+describe("server/routes — a blocks edge may not join an ancestor and a descendant (T-20261015-063755)", () => {
+  let epic;
+  let child;
+  let grandchild;
+  let sibling;
+
+  before(async () => {
+    dataOf(await call("POST", "/api/v1/projects", { id: "chain", name: "Chain" }));
+    const card = (title, kind) =>
+      call("POST", "/api/v1/tasks", { project_id: "chain", title, ...(kind ? { kind } : {}), allow_dup: true }).then(
+        (r) => dataOf(r).task,
+      );
+    epic = await card("Epic", "epic");
+    child = await card("Child", "epic");
+    grandchild = await card("Grandchild");
+    sibling = await card("Sibling");
+    // `parent` hangs off the *parent*, and `target` is the child.
+    for (const [parent, kid] of [[epic, child], [child, grandchild], [epic, sibling]]) {
+      dataOf(await call("POST", `/api/v1/tasks/${parent.identifier}/relations`, { type: "parent", target: kid.identifier }));
+    }
+  });
+
+  /** `POST …/relations` with `source` = the blocker, as the wire defines it. */
+  const depend = (blocker, blocked) =>
+    call("POST", `/api/v1/tasks/${blocker.identifier}/relations`, { type: "blocks", target: blocked.identifier });
+
+  it("refuses the descendant depending on its own parent (N10b), 422", async () => {
+    const refused = await depend(grandchild, epic);
+    assert.equal(refused.status, 422, JSON.stringify(refused.body));
+    assert.equal(refused.body.error.code, "RELATION_CYCLE");
+    assert.match(refused.body.error.message, /ancestor and a descendant cannot depend on each other/);
+  });
+
+  it("refuses the epic depending on its own descendant, immediate or not (N10c), 422", async () => {
+    for (const descendant of [child, grandchild]) {
+      const refused = await depend(epic, descendant);
+      assert.equal(refused.status, 422, JSON.stringify(refused.body));
+      assert.equal(refused.body.error.code, "RELATION_CYCLE");
+      assert.match(refused.body.error.message, /parent chain/);
+    }
+  });
+
+  it("still orders two siblings of the same epic (200)", async () => {
+    const accepted = dataOf(await depend(sibling, child));
+    assert.equal(accepted.relation.type, "blocks");
+    assert.equal(accepted.relation.source, sibling.id);
+    assert.equal(accepted.relation.target, child.id);
+  });
+
+  it("wrote no edge for any of the refused ones", async () => {
+    // Every refused pair named the epic as one end, so an edge left behind by
+    // any of them would be listed on it.
+    const onEpic = dataOf(await call("GET", `/api/v1/tasks/${epic.identifier}/relations`));
+    assert.deepEqual(
+      onEpic.relations.filter((r) => r.type === "blocks"),
+      [],
+      "a refused edge must leave no row behind",
+    );
+    const onChild = dataOf(await call("GET", `/api/v1/tasks/${child.identifier}/relations`));
+    assert.deepEqual(
+      onChild.relations.filter((r) => r.type === "blocks").map((r) => [r.source, r.target]),
+      [[sibling.id, child.id]],
+      "only the sibling edge the previous case accepted was written",
+    );
   });
 });

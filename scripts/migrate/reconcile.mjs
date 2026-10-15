@@ -479,11 +479,22 @@ function buildReport(context) {
     });
   }
   for (const unresolved of stats1.dependsUnresolved) {
+    // `dependsUnresolved` holds two shapes, both of which became no `blocks`
+    // edge: a reference to a card this import never saw, and a card naming
+    // *itself* (`depends_on: [its own id]`). Only the first is "not in this
+    // import", so the note has to name the one that applies — a reviewer must
+    // not be handed a false reason. The discriminator is exact: the self shape
+    // is reached only when the id resolves to this very task, and the
+    // identifier lookup is case-sensitive, so a card may carry at most one
+    // self reference and its spelling is the stored one.
+    const isSelfReference = unresolved.identifier === unresolved.dependsOn;
     unmappable.push({
       kind: "unresolved-depends-on",
       card: unresolved.identifier,
       value: unresolved.dependsOn,
-      note: "the referenced card is not in this import (or is outside the project)",
+      note: isSelfReference
+        ? "the card names itself — a self dependency is not an edge; the reference was skipped"
+        : "the referenced card is not in this import (or is outside the project)",
     });
   }
   for (const violation of stats1.invariantViolations ?? []) {

@@ -99,10 +99,10 @@ per-host differences (Claude Code / Codex) and a worked example are in
 - **While working** — `taskctl comment add <id> --body "…"`; a `decision`/`change`
   comment is what a reviewer reads later.
 - **Editing a card** — `status` moves (`issue move`), `priority` and the markdown
-  `description` patch (`issue update`), and `depends_on` is a `relation` written
-  from the blocker's side. Attachments have **no CLI face**, and the API's is
-  half a face — the pointer you would attach goes in the description, a comment or
-  `--meta`. The five edits, capability by capability, are in
+  `description` patch (`issue update`), files go through `attachment add|list|remove`,
+  and `depends_on` is a `relation` written from the blocker's side. Downloading a
+  file is the API's alone (`GET /api/v1/attachments/:id/content`); removal is a
+  hard delete. The five edits, capability by capability, are in
   [`references/cli.md`](references/cli.md#editing-a-card-status-priority-description-attachments-dependencies).
 - **Delegating** — `taskctl issue create --kind epic …` plus
   `taskctl relation add <parent> --type parent --target <child>`.

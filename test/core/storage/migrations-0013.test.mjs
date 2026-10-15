@@ -137,7 +137,7 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
       seedLegacyBoard(board.db);
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022"]);
       assert.deepEqual(up.skipped.slice(-2), ["0011", "0012"]);
 
       // 1 — the enum: the new word is storable, the old ones still are, and an
@@ -267,13 +267,17 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
       // one may legitimately bring or remove a trigger of its own; the key sets
       // differ by exactly those. The rebuild itself may never lose one or invent
       // one, so the allowances are named rather than the comparison loosened.
-      // Two later files touch triggers: `0017_block_cycle.sql` adds
-      // `tr_rel_block_cycle`, and `0019_actors.sql` merges the two dictionary
-      // tables into `actors` — removing the four triggers on each old table and
-      // adding `tr_dict_actors_delete` + `tr_rev_actors_{ins,upd,del}`.
+      // Later files touch triggers: `0017_block_cycle.sql` adds
+      // `tr_rel_block_cycle`; `0019_actors.sql` merges the two dictionary tables
+      // into `actors` — removing the four triggers on each old table and adding
+      // `tr_dict_actors_delete` + `tr_rev_actors_{ins,upd,del}`; and
+      // `0021_block_chain.sql` / `0022_block_pair_on_parent.sql` add the two
+      // relation guards `tr_rel_block_chain` + `tr_rel_parent_block_pair`.
       const LATER_MIGRATION_TRIGGERS = [
         "tr_dict_actors_delete",
+        "tr_rel_block_chain",
         "tr_rel_block_cycle",
+        "tr_rel_parent_block_pair",
         "tr_rev_actors_del",
         "tr_rev_actors_ins",
         "tr_rev_actors_upd",
