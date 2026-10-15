@@ -465,7 +465,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   an empty directory that the wake glue accepted as resolved, so a woken worker ran in the wrong
   checkout. The fix is one shared `src/shared/entry-guard.mjs` (`canonicalPath` +
   `isEntryPoint`), generalising what `scripts/install/lib/{unit-path,apply,supervisor,taskd-guard}.mjs`
-  had each already discovered privately, applied across all 23 in-tree entry points; the four
+  had each already discovered privately, applied across all 24 in-tree entry points (the scan
+  caught `scripts/verify/web-dist.mjs`, added after this work began, on the first merge); the four
   that cannot share it carry a private copy instead, for three reasons: the board skill's
   `report.mjs` and the loop skill's `board-check.mjs` ship on their own (an import reaching back
   out of their directory would dangle once copied), `web/scripts/dom-smoke.mjs` lives in a

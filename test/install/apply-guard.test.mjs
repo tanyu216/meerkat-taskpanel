@@ -282,6 +282,7 @@ describe("no entry point reverts to a symlink-fragile guard", () => {
     "scripts/wake-cwd.mjs",
     "scripts/supervisor.mjs",
     "scripts/verify/contract.mjs",
+    "scripts/verify/web-dist.mjs",
     "scripts/migrate/drill.mjs",
     "scripts/security/scan-gate.mjs",
     "monitoring/exporter.mjs",
