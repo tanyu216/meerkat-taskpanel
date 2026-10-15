@@ -488,7 +488,7 @@ describe("md/migrate-cli — the new flags", () => {
   });
 });
 
-describe("md/import — the buildin __team__ project (PROTOCOL ②)", () => {
+describe("md/import — the buildin __team__ project (docs/migration.md §The reserved __team__ project)", () => {
   it("imports a __team__ card with no registry file at all", async () => {
     const board = await boardWithCards({ "A.md": cardText({ project: "__team__", target: "/tmp/team-chore" }) });
     try {
