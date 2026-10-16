@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Host-bundle file writer used by the per-host installers (claude / codex).
+ * Host-bundle file writer used by the per-host installers.
  *
  * The installers are thin bash orchestrators; everything that is fiddly to do in
  * `sh` — JSON merging, idempotent template rendering, delimited-block upserts —
