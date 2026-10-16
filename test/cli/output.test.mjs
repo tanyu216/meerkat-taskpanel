@@ -46,7 +46,11 @@ const TASK = {
   labels: ["m2"],
   sortOrder: 0,
   assigneeId: "a-1",
+  // 0023 — the kind each reference was made under, on the *card*. This is what
+  // the ref renders: the registry holds one row per person and no kind.
+  assigneeKind: "claude",
   reporterId: "r-1",
+  reporterKind: "human",
   claimedBy: null,
   claimedAt: null,
   heartbeatAt: null,
@@ -65,12 +69,13 @@ const TASK = {
   updatedAt: "2026-10-09T00:00:00.000Z",
 };
 
-const LOOKUP = (kind, id) =>
-  ({ assignee: { id: "a-1", displayName: "linus", kind: "agent" }, reporter: { id: "r-1", displayName: "elon", kind: "human" } })[
-    kind
-  ]?.id === id
-    ? { assignee: { id: "a-1", displayName: "linus", kind: "agent" }, reporter: { id: "r-1", displayName: "elon", kind: "human" } }[kind]
-    : null;
+const NAMES = { "a-1": "linus", "r-1": "elon" };
+/**
+ * The registry lookup a projection is given: **a name for an id, and nothing
+ * else**. It is role-less (`"actor"` names the one table both roles live in), and
+ * since `0023` the entry it returns carries no kind — the reference does.
+ */
+const LOOKUP = (kind, id) => (NAMES[id] === undefined ? null : { id, displayName: NAMES[id] });
 
 describe("cli/wire — the JSON vocabulary", () => {
   it("projects a task to snake_case with no camelCase leak", () => {
@@ -87,13 +92,18 @@ describe("cli/wire — the JSON vocabulary", () => {
 
   it("gives assignee and reporter both a display_name and an id", () => {
     const wire = taskToWire(TASK, { lookup: LOOKUP });
-    assert.deepEqual(wire.assignee, { id: "a-1", display_name: "linus", kind: "agent" });
+    // The **kind is the card's** (0023): which platform this assignee is on is a
+    // fact about this reference, not about the person, who may be on another one
+    // tomorrow. The lookup supplies the *name* and nothing else.
+    assert.deepEqual(wire.assignee, { id: "a-1", display_name: "linus", kind: "claude" });
     assert.deepEqual(wire.reporter, { id: "r-1", display_name: "elon", kind: "human" });
   });
 
   it("falls back to the id as the display name when nothing can resolve it", () => {
     const wire = taskToWire(TASK);
-    assert.deepEqual(wire.assignee, { id: "a-1", display_name: "a-1", kind: "assignee" });
+    // With no lookup there is no row to read a name from, so the id stands in —
+    // but the kind is still the card's, because it never needed a row.
+    assert.deepEqual(wire.assignee, { id: "a-1", display_name: "a-1", kind: "claude" });
     assert.equal(wire.reporter.display_name, "r-1");
   });
 
@@ -224,13 +234,21 @@ describe("cli/wire — the projector's edges", () => {
     assert.equal(nobody.reporter, null);
   });
 
-  it("takes the kind from the actor row, and the role name when the row is gone (0019)", () => {
-    const resolved = taskToWire(TASK, { lookup: () => ({ id: "a-1", displayName: "Linus", kind: "agent" }) });
-    assert.equal(resolved.assignee.kind, "agent", "the actor row is authoritative");
+  it("takes the kind from the record, and the row cannot override it (0023)", () => {
+    // The inversion of what `0019` did. The registry holds one row per person, so
+    // a kind there could only ever be one person's *last* answer — and the whole
+    // point of `0023` is that "which platform is this act from" belongs to the
+    // act. A lookup that still reports a kind is ignored: the card's wins.
+    const resolved = taskToWire(TASK, { lookup: () => ({ id: "a-1", displayName: "Linus", kind: "codex" }) });
+    assert.equal(resolved.assignee.display_name, "Linus", "the row still names the person");
+    assert.equal(resolved.assignee.kind, "claude", "and the reference still says what it is");
 
-    // The denormalised `tasks.assignee_kind` is gone, so there is no task-column
-    // fallback left: an unresolved id falls back to the role name.
-    assert.equal(taskToWire(TASK).assignee.kind, "assignee");
+    // A card that recorded no kind reports none — `null`, not a fabricated
+    // `agent`, and not the role word the role-name fallback used to produce.
+    // (`null` is the client's cue to apply its own reading; the board does not
+    // guess on the reference's behalf.)
+    assert.equal(taskToWire({ ...TASK, assigneeKind: null }).assignee.kind, null);
+    assert.equal(taskToWire(TASK).assignee.kind, "claude", "and no lookup is needed for it");
   });
 
   it("reads evidence whether it is a list or a truncation envelope", () => {

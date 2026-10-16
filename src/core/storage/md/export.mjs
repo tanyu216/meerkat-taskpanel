@@ -47,6 +47,7 @@ export const CARD_KEY_ORDER = Object.freeze([
   "id",
   "title",
   "assignee",
+  "assignee_kind",
   "status",
   "priority",
   "kind",
@@ -54,10 +55,12 @@ export const CARD_KEY_ORDER = Object.freeze([
   "project",
   "target",
   "created_by",
+  "created_by_kind",
   "created_at",
   "updated_at",
   "status_changed_at",
   "claimed_by",
+  "claimed_kind",
   "claimed_at",
   "heartbeat_at",
   "blocked_at",
@@ -137,6 +140,22 @@ export function renderCard(task, context) {
     heartbeat_at: task.heartbeatAt ?? "",
     blocked_at: task.blockedAt ?? "",
   };
+  // 0023 — the three reference kinds, each written **only when it says something**
+  // the reader could not otherwise know. Writing an empty key would grow every
+  // card that never carried one by a line and break the byte-for-byte goldens:
+  //
+  //   * `assignee_kind` — default `agent`, the parser's prior for a card that
+  //     states nothing;
+  //   * `created_by_kind` — default `human`, the role's own definition;
+  //   * `claimed_kind` — default `null`: a claim records no kind until a live
+  //     claim makes one, and "not recorded" is not the same as a person.
+  for (const [key, value, fallback] of [
+    ["assignee_kind", task.assigneeKind, "agent"],
+    ["created_by_kind", task.reporterKind, "human"],
+    ["claimed_kind", task.claimedKind, null],
+  ]) {
+    if (typeof value === "string" && value.trim() !== "" && value !== fallback) data[key] = value;
+  }
   // 0016 — emitted only when the column holds a value. `blocked_at` above is
   // always written (`""` when unset) because every card has carried that key
   // since the beginning; `blocked_reason` has not, so writing an empty one would

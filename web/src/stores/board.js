@@ -19,6 +19,12 @@
 import { computed, reactive } from "vue";
 
 import { api, ApiError } from "../services/api.js";
+// The reading of a kind (`human`? a platform? nothing?) lives in `lib/` so the
+// pure row builders can use it without pulling Vue into their unit tests. It is
+// re-exported here so a component has one import site.
+import { isAgentKind, kindLabel, platformOfKind } from "../lib/actor-kind.js";
+
+export { isAgentKind, kindLabel, platformOfKind };
 import { safeFileName } from "../lib/attachments.js";
 import { createEventClient } from "../services/events.js";
 import { t } from "../i18n/index.js";
@@ -164,12 +170,12 @@ const projectNames = computed(() => Object.fromEntries(board.projects.map((p) =>
  * platform badge absent exactly as it was while `platform` was never written; a
  * kind that carries a platform name fills it in.
  */
-const GENERIC_ACTOR_KINDS = new Set(["agent", "human"]);
+
 const platforms = computed(() =>
   Object.fromEntries(
     board.assignees
-      .filter((a) => typeof a.kind === "string" && a.kind !== "" && !GENERIC_ACTOR_KINDS.has(a.kind))
-      .map((a) => [a.display_name, a.kind]),
+      .map((a) => [a.display_name, platformOfKind(a.kind)])
+      .filter(([, platform]) => platform !== null),
   ),
 );
 
@@ -285,7 +291,13 @@ export const visibleTasks = computed(() => {
       if (assignee === "me") {
         if (name !== ME) return false;
       } else if (assignee === "human" || assignee === "agent") {
-        if (task.assignee?.kind !== assignee) return false;
+        // An **unassigned** card is in neither row: the chip asks about the
+        // assignee, and there is nobody to ask about.
+        if (task.assignee === null || task.assignee === undefined) return false;
+        // The chip asks the two-valued question the design's attribute asks, and
+        // since 0023 a kind is a platform — so `agent` means "not the human",
+        // never "the literal string `agent`".
+        if (isAgentKind(task.assignee.kind) !== (assignee === "agent")) return false;
       } else if (name !== assignee) {
         return false;
       }
@@ -913,6 +925,11 @@ async function reloadDetailAttachments() {
  */
 function personKind(field, name) {
   if (field === "reporter") return "human";
+  // The roster's kind **verbatim**, which is what the server will record too: since
+  // 0023 the registry read reports the kind the person's references last recorded
+  // — a platform, or the generic `agent` for one that has not named a platform.
+  // Copying it is the point; narrowing it to a platform here would make the
+  // optimistic record disagree with the answer that replaces it.
   return board.assignees.find((entry) => entry.display_name === name)?.kind ?? "human";
 }
 

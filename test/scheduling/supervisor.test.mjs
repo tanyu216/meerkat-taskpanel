@@ -468,7 +468,7 @@ describe("buildHandoff (pure)", () => {
     assert.match(text, /T-1/);
     assert.match(text, /Wire the supervisor/);
     assert.match(text, /--agent alice/);
-    assert.match(text, /--agent-platform claude/);
+    assert.match(text, /--actor-kind claude/);
     assert.match(text, /--session-id sid-9/);
     assert.match(text, /report/i);
     assert.ok(text.length < 2000, "the handoff must be bounded");

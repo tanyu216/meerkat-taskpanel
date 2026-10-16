@@ -37,6 +37,24 @@ function before0019() {
   return dir;
 }
 
+/**
+ * The shipped set **through 0022** — everything this file's migration did, and
+ * nothing after it.
+ *
+ * `0023` moves the kind off the actor row, so a test that applied *every* file
+ * would be asserting 0023's outcome inside a 0019 suite: `actors.kind` — the
+ * column `0019` introduced — would be gone before the assertions ran. A
+ * migration's own test asserts the state *that migration* produces; `0023` has
+ * its own (`migrations-0023.test.mjs`).
+ */
+function through0022() {
+  const dir = makeTempDir("meerkat-taskpanel-through0022-");
+  for (const name of readdirSync(defaultMigrationsDir()).filter((n) => n.endsWith(".sql") && n.slice(0, 4) <= "0022")) {
+    copyFileSync(join(defaultMigrationsDir(), name), join(dir, name));
+  }
+  return dir;
+}
+
 const d = (n) => `2026-01-${String(n).padStart(2, "0")}T00:00:00.000Z`;
 const EARLY = "2025-12-01T00:00:00.000Z";
 const LATE = "2026-02-01T00:00:00.000Z";
@@ -121,7 +139,9 @@ describe("storage/migrations — 0019 merges the two dictionary tables into `act
       const indexesBefore = indexShapes(board.db);
       const triggersBefore = triggersOf(board.db);
 
-      const up = applyMigrations(board.db);
+      // Through 0022: this suite asserts what *0019* built, and 0023 (which moves
+      // the kind off the actor row) has its own.
+      const up = applyMigrations(board.db, { dir: through0022() });
       assert.deepEqual(up.applied.map((m) => m.version), ["0019", "0020", "0021", "0022"]);
 
       // 1 — the merge itself. Three `terry` rows become one, and the sums hold.
@@ -249,7 +269,7 @@ describe("storage/migrations — 0019 merges the two dictionary tables into `act
     try {
       applyMigrations(board.db, { dir: before0019() });
       seedCollidingBoard(board.db);
-      applyMigrations(board.db);
+      applyMigrations(board.db, { dir: through0022() });
 
       // r1 is an assignee of one card and a reporter of two.
       assert.equal(reasonCode(() => board.db.prepare("DELETE FROM actors WHERE id = 'r1'").run()), "DICTIONARY_ENTRY_IN_USE");

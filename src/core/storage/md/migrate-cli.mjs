@@ -19,6 +19,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { DomainError, isDomainError, toErrorPayload } from "../../../shared/errors.mjs";
+import { ACTOR_ENV_KEYS } from "../../../shared/transport/actor.mjs";
 import { openDatabase, closeDatabase } from "../driver.mjs";
 import { applyMigrations } from "../migrations-runner.mjs";
 import { resolveDbPath } from "../paths.mjs";
@@ -28,6 +29,20 @@ import { importMd, parseCard } from "./import.mjs";
 import { loadProjectRegistry } from "./project-registry.mjs";
 import { readdirSync } from "node:fs";
 import { isEntryPoint } from "../../../shared/entry-guard.mjs";
+
+/**
+ * The board's configured human, for the cards this runner parses.
+ *
+ * It is the one name an undeclared author is read as a person by
+ * (`authorKindOf`), so the importer has to be told it — and the value is the one
+ * the install recorded (`TASKCTL_HUMAN`, set with `--human-name`). A runner with
+ * none configured reads every undeclared author as an agent, which is the honest
+ * answer: it does not know who the person is.
+ */
+const boardHuman = () => {
+  const value = process.env[ACTOR_ENV_KEYS.human];
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+};
 
 const USAGE = `Usage: node src/core/storage/md/migrate-cli.mjs <command> [options]
 
@@ -155,6 +170,7 @@ export async function main(argv, io = {}) {
           resume: options.resume,
           registry,
           createProject: options.createProject === true,
+          human: boardHuman(),
           ...(options.project === undefined ? {} : { projectId: options.project }),
         });
         if (options.json) stdout(`${JSON.stringify({ ok: true, db: board.path, ...result }, null, 2)}\n`);
@@ -280,7 +296,7 @@ async function checkCards(options, { now }) {
       const text = readFileSync(join(options.dir, name), "utf8");
       let card;
       try {
-        card = parseCard(text, { file: name });
+        card = parseCard(text, { file: name, human: boardHuman() });
       } catch (err) {
         report.ok = false;
         report.differences.push(`${name}: ${err.message}`);

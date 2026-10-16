@@ -15,7 +15,17 @@
 import { computed } from "vue";
 
 import { identifierText } from "../../lib/identifier.js";
-import { board, isAwaiting, platformOf, priorityOf, projectNameOf, stageOf } from "../../stores/board.js";
+import {
+  board,
+  isAgentKind,
+  isAwaiting,
+  kindLabel,
+  platformOf,
+  platformOfKind,
+  priorityOf,
+  projectNameOf,
+  stageOf,
+} from "../../stores/board.js";
 import { openMoveMenu } from "../../stores/ui.js";
 
 const props = defineProps({ task: { type: Object, required: true }, dragging: { type: Boolean, default: false } });
@@ -34,9 +44,14 @@ const stage = computed(() => stageOf(props.task));
 const awaiting = computed(() => isAwaiting(props.task));
 
 const assigneeName = computed(() => props.task.assignee?.display_name ?? "");
-const assigneeKind = computed(() => props.task.assignee?.kind ?? "human");
-const isAgent = computed(() => assigneeKind.value === "agent");
-const platform = computed(() => platformOf(assigneeName.value));
+// `data-assignee-kind` is a closed design domain (`agent | human`), so it is
+// derived from the kind rather than carrying it: since 0023 a kind is a platform.
+const assigneeKind = computed(() => kindLabel(props.task.assignee?.kind));
+const isAgent = computed(() => isAgentKind(props.task.assignee?.kind));
+// The badge prefers the **card's own** reference — that is the act's platform —
+// and falls back to the registry's aggregate for a card whose reference recorded
+// none (every card written before 0023, and any the backfill could not place).
+const platform = computed(() => platformOfKind(props.task.assignee?.kind) ?? platformOf(assigneeName.value));
 const labels = computed(() => props.task.labels ?? []);
 const labelsCsv = computed(() => labels.value.join(","));
 const monogram = computed(() => (assigneeName.value ? assigneeName.value.trim().charAt(0).toUpperCase() : "?"));

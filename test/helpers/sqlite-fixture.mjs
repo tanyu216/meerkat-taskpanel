@@ -141,10 +141,17 @@ export function ensureActor(db, value, kind = "agent") {
   } catch {
     return value; // a blank value can never be an actor; let the write fail loudly
   }
-  db.prepare(
-    `INSERT OR IGNORE INTO actors(id, kind, display_name, normalized_name, first_seen_at, last_seen_at, use_count)
-     VALUES (?, ?, ?, ?, ?, ?, 1)`,
-  ).run(String(value), kind, String(value), key, TS, TS);
+  // `actors.kind` exists between `0019` and `0023` and not outside that window, so
+  // the column is named only when the board actually has it — the same
+  // ask-the-schema rule `insertTask` follows for the `tasks` columns that come and
+  // go. A fixture that always named it could not build a board on either side of
+  // `0023`, and the `0023` test needs to build the *earlier* one on purpose.
+  const hasKind = db.prepare("SELECT 1 FROM pragma_table_info('actors') WHERE name = 'kind'").get() !== undefined;
+  const columns = ["id", ...(hasKind ? ["kind"] : []), "display_name", "normalized_name", "first_seen_at", "last_seen_at", "use_count"];
+  const values = hasKind
+    ? [String(value), kind, String(value), key, TS, TS, 1]
+    : [String(value), String(value), key, TS, TS, 1];
+  db.prepare(`INSERT OR IGNORE INTO actors(${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`).run(...values);
   return String(value);
 }
 
@@ -192,7 +199,9 @@ export function insertTask(db, overrides = {}) {
   //   * `awaiting_reason` arrives with 0013;
   //   * `blocked_reason` arrives with 0016;
   //   * `assignee_kind`, `creator_kind`, `creator_id` are **removed** by 0019
-  //     (the kind moved onto the actor, and the creator IS the reporter).
+  //     (the kind moved onto the actor, and the creator IS the reporter) — and
+  //     `assignee_kind` **returns** with 0023, which moves the kind back onto the
+  //     reference, beside `reporter_kind` and a new `claimed_kind`.
   //
   // Asking the schema (rather than a flag the caller has to remember) is what
   // keeps one helper usable against a legacy board and against a 0019 board.
@@ -226,7 +235,12 @@ export function insertTask(db, overrides = {}) {
     ["updated_at", row.updated_at],
   ];
   const optional = [
+    // `assignee_kind` leaves with 0019 and returns with 0023; `reporter_kind` and
+    // `claimed_kind` arrive with 0023. Which of them this board has is asked of
+    // the schema, never assumed.
     ["assignee_kind", row.assignee_kind ?? null],
+    ["reporter_kind", row.reporter_kind ?? null],
+    ["claimed_kind", row.claimed_kind ?? null],
     ["creator_kind", row.creator_kind ?? null],
     ["creator_id", row.creator_id ?? null],
     ["awaiting_reason", row.awaiting_reason ?? null],
