@@ -1,4 +1,0 @@
-T-20261014-125122 verdict: ①PASS ②PASS ③PASS(2门环境受限,已登记等价替代+零新增红) ④PASS ⑤PASS
-gates: blocks.dom exit1 EPERM | npm run check exit1 (2206/1945/149/111; 基线2196/1935/148/111, 红名342⊇340) | ui-align board/board-m2 exit2 EPERM | verify:docker exit1 socket
-substitute: harness 48/48 pass; prototype parity 3/3; container file-level legs 8/8
-branch lane/T-20261014-125122-seg1 tip 433783200c6c25b06a9cc8e38e2fabad80d94ea2 (mirror /tmp/lane-mirror-T-20261014-125122b, parent 3ad4b19)

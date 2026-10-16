@@ -906,9 +906,9 @@ export async function run() {
        has a rect at all, so the pair is read together and asserted together.
 
        The head's own height rides here because a taller button is the only thing
-       that moves it: `docs/verify/T-20261014-150729` measured prototype 32×32 ·
+       that moves it: `T-20261014-150729` measured prototype 32×32 ·
        head 78.59 against implementation 16×16 · head 67, and the probe next door
-       (`docs/verify/T-20261014-154730/probe-close-focus.mjs`) re-measures both
+       (`T-20261014-154730/probe-close-focus.mjs`) re-measures both
        sides' head down to its two children. */
     const r14Close = await page.evaluate(() => {
       const close = document.querySelector("[data-detail-close]");

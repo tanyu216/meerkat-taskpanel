@@ -136,7 +136,7 @@ body {
    focusable element, which is how the design states it. The implementation
    carried no rule at all, so every control fell back to the UA's own blue
    `1px auto` ring; the visual leg measured exactly that on
-   `[data-detail-close]` (`docs/verify/T-20261014-150729`: prototype
+   `[data-detail-close]` (`T-20261014-150729`: prototype
    `2px solid` accent vs implementation `1px auto` UA blue).
 
    It stays inside `@layer base` because that is where the design puts it, and
