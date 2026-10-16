@@ -164,10 +164,15 @@ missing from the cache for that architecture.
 The `taskd` service is described by `docker/docker-compose.yml`:
 
 ```bash
-docker compose -f docker/docker-compose.yml up -d --build
-docker compose -f docker/docker-compose.yml ps        # wait for "healthy"
+# -p: one project per checkout. Without it compose derives the name from the
+# directory — and every worktree has a `docker/` — so two lanes verifying at once
+# share `docker-taskd-1` and the later one fails with "container name ... is
+# already in use". `verify:docker` passes this itself (`composeProjectName`); the
+# line below shows what to type by hand.
+docker compose -p meerkat-taskpanel-local -f docker/docker-compose.yml up -d --build
+docker compose -p meerkat-taskpanel-local -f docker/docker-compose.yml ps   # wait for "healthy"
 curl -s http://127.0.0.1:9527/health
-docker compose -f docker/docker-compose.yml down -v
+docker compose -p meerkat-taskpanel-local -f docker/docker-compose.yml down -v
 ```
 
 `/health` answers:
@@ -205,6 +210,9 @@ This is the whole suite, host-side, in one command. It:
 3. brings the compose service up, polls `docker inspect` until the `/health`
    healthcheck reports `healthy` (60 s budget), then always tears down with
    `docker compose down -v` — teardown is in a `finally` block, so a failure does not
+   leak a container or a volume. Both are addressed by a **per-checkout project
+   name** (`composeProjectName`), which is what lets two worktrees verify
+   concurrently
    leave containers or volumes behind;
 4. prints a `SUMMARY` of every phase and exits non-zero if any of them failed.
 
