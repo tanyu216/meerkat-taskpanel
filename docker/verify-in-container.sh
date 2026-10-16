@@ -51,13 +51,13 @@ node scripts/verify/route-request.mjs
 step "install.sh --target all --dry-run"
 bash install.sh --target all --dry-run
 
-step "skill install profiles (all four hosts, throwaway home)"
+step "skill install profiles (all six hosts, throwaway home)"
 node scripts/verify/profiles.mjs
 
 step "host runtime claim path (offline mock harness: hook / trigger / wake scripts)"
 node scripts/verify/host-runtime.mjs
 
-# The deepest step: a fresh machine's first run — install the skill for all four hosts
+# The deepest step: a fresh machine's first run — install the skill for all six hosts
 # with a throwaway HOME, then drive the real `taskctl` against a real `taskd`. It lives
 # here, and not only in CI, so `npm run verify:docker` and the CI `docker` job cover
 # exactly the same ground: a green local run means a green CI run.

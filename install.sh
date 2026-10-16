@@ -7,7 +7,7 @@
 # through MEERKAT_TASKPANEL_* environment variables.
 #
 # Usage:
-#   install.sh [--target claude|openclaw|codex|pi|all] [--prefix <home>]
+#   install.sh [--target claude|openclaw|codex|pi|opencode|cursor|all] [--prefix <home>]
 #              [--agent-name <name>] [--no-automation]
 #              [--claim-unassigned=yes|no] [--assignee-only]
 #              [--supervisor=enable|disable|status] [--supervisor-hosts <list>]
@@ -118,7 +118,7 @@ Destinations:
   opencode   <home>/.config/opencode/skills/meerkat-taskpanel
   cursor     <home>/.cursor/skills/meerkat-taskpanel
 
-Two skills, two distribution surfaces. The **board** skill goes to all four hosts. The
+Two skills, two distribution surfaces. The **board** skill goes to all six hosts. The
 **loop** skill (the host-external supervisor) goes to claude, codex and pi only:
 
   claude     <home>/.claude/skills/meerkat-loop
