@@ -26,6 +26,46 @@ async function read(relPath) {
   return readFile(join(ROOT, relPath), "utf8");
 }
 
+/** Per-field bounds for a 5-field cron, as GitHub Actions accepts them. */
+const CRON_BOUNDS = [
+  [0, 59, "minute"],
+  [0, 23, "hour"],
+  [1, 31, "day of month"],
+  [1, 12, "month"],
+  [0, 6, "day of week"],
+];
+
+/**
+ * Assert a cron entry is one GitHub Actions will accept.
+ *
+ * This is not pedantry: an invalid cron does not red a *job*, it voids the whole
+ * workflow file. The run then completes with **zero jobs** and registers no status
+ * checks at all, so nothing in the UI explains the absence — which is exactly how
+ * `17 3 * * 2-7` sat in this workflow unnoticed. Day-of-week is 0-6 (Sunday is 0);
+ * POSIX cron also accepts 7, Actions does not.
+ */
+function assertValidGithubCron(cron, label) {
+  const fields = cron.trim().split(/\s+/);
+  assert.equal(fields.length, 5, `${label}: expected 5 cron fields, got ${JSON.stringify(cron)}`);
+
+  fields.forEach((field, index) => {
+    const [lo, hi, name] = CRON_BOUNDS[index];
+    for (const part of field.split(",")) {
+      const parsed = /^(\*|\d+|\d+-\d+)(?:\/\d+)?$/.exec(part);
+      assert.ok(parsed, `${label}: unparseable ${name} field ${JSON.stringify(part)} in ${JSON.stringify(cron)}`);
+
+      const values =
+        parsed[1] === "*" ? [] : parsed[1].includes("-") ? parsed[1].split("-").map(Number) : [Number(parsed[1])];
+      for (const value of values) {
+        assert.ok(
+          value >= lo && value <= hi,
+          `${label}: ${name} ${value} is outside ${lo}-${hi} in ${JSON.stringify(cron)} — GitHub rejects the entire workflow file`,
+        );
+      }
+    }
+  });
+}
+
 describe("static: security-scan.yml", () => {
   it("exists, is named, and is triggered on push, PR, a schedule and dispatch", async () => {
     const text = await read(WORKFLOW);
@@ -49,6 +89,8 @@ describe("static: security-scan.yml", () => {
     const crons = [...text.matchAll(/^\s*- cron: "(.+)"$/gm)].map((m) => m[1]);
 
     assert.equal(crons.length, 2, `expected exactly two cron entries, got ${JSON.stringify(crons)}`);
+    for (const cron of crons) assertValidGithubCron(cron, WORKFLOW);
+
     const weekly = crons.find((cron) => /^\d+ \d+ \* \* \d$/.test(cron));
     const daily = crons.find((cron) => cron !== weekly);
     assert.ok(weekly, "expected a weekly (single day-of-week) cron entry");

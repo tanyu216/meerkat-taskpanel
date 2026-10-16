@@ -44,11 +44,12 @@ running it** — an uncommitted tree is not what CI will see.
    `contract-gate.yml` and `security-scan.yml`. Green CI is the entry bar.
 4. Merge.
 
-> **Repository settings this depends on** (GitHub-side; not enforceable from the tree):
+> **Repository settings this depends on** (GitHub-side; the tree cannot switch them on):
 > on `main`, enable *Require a pull request before merging* and require the `check`,
-> `contract` and `security` status checks. Nothing in the tree can enforce a PR on its own:
-> the `pre-push` hook runs the contract and changelog gates, but a hook is a courtesy —
-> `git push --no-verify` bypasses it. The branch protection rule is the actual enforcement.
+> `contract` and `security` status checks. The rule is the actual enforcement; the
+> `pre-push` hook now refuses a direct push to `main` as the local half, but it is still a
+> courtesy — `git push --no-verify` bypasses it, and a fresh clone has no hooks at all until
+> you install them (below).
 
 ### Install the local hooks
 
