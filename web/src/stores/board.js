@@ -925,11 +925,12 @@ async function reloadDetailAttachments() {
  */
 function personKind(field, name) {
   if (field === "reporter") return "human";
-  const kind = board.assignees.find((entry) => entry.display_name === name)?.kind ?? null;
-  // The *record* gets the kind the registry reports for that person — which since
-  // 0023 is the platform their references last recorded, or `null` when nothing
-  // has named them and the prior stands.
-  return platformOfKind(kind) ?? (isAgentKind(kind) ? null : "human");
+  // The roster's kind **verbatim**, which is what the server will record too: since
+  // 0023 the registry read reports the kind the person's references last recorded
+  // — a platform, or the generic `agent` for one that has not named a platform.
+  // Copying it is the point; narrowing it to a platform here would make the
+  // optimistic record disagree with the answer that replaces it.
+  return board.assignees.find((entry) => entry.display_name === name)?.kind ?? "human";
 }
 
 /* ------------------------------------------------------------------ detail */
