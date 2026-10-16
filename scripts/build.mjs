@@ -4,9 +4,11 @@
  *
  * `dist/` is the npm release tree. The hosted board root is `web/dist`, produced by the
  * frontend build — *not* `dist/web`. This only
- *   1. recreates `dist/` from scratch,
- *   2. drops a release-tree placeholder at `dist/web/.gitkeep` (not the board asset dir), and
- *   3. syncs every skill into `dist/plugins/<target>/skills/<skill>/`.
+ *   1. recreates `dist/` from scratch, and
+ *   2. drops a release-tree placeholder at `dist/web/.gitkeep` (not the board asset dir).
+ *
+ * Nothing is copied into `dist/plugins/`: no skill is distributed as a committed copy, and
+ * every harness reads the repository's own `skills/` tree through a manifest at the root.
  *
  * The loop payload (`skills/meerkat-loop/body` + `templates/`) is a *generated* artefact
  * that a release ships as-is; the build verifies it is current rather than rewriting the
@@ -20,7 +22,6 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { syncLoop } from "./sync-loop.mjs";
-import { skillTargets, syncSkills } from "./sync-skills.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = join(root, "dist");
@@ -46,18 +47,7 @@ async function main() {
   );
   console.log("  dist/web/.gitkeep (release-tree placeholder; hosted board root is web/dist)");
 
-  const report = await syncSkills({ root, baseDir: dist });
-  for (const r of report.results) {
-    console.log(`  dist/plugins/${r.target}/skills/${r.skill}`);
-  }
-
-  if (!report.ok) {
-    console.error("build: FAILED — skill sync into dist/ was not clean.");
-    return 1;
-  }
-
-  const targets = skillTargets();
-  console.log(`build: OK — ${targets.length} skill copy(ies) written to dist/`);
+  console.log("build: OK — dist/ recreated (no skill copies: every harness reads skills/ in place)");
   return 0;
 }
 
