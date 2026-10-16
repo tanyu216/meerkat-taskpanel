@@ -31,6 +31,7 @@ import { ACCEPTANCE_STATUSES, TASK_KINDS } from "../../domain/enums.mjs";
 import { resolveActorId, resolveOrCreate } from "../../commands/dictionary.mjs";
 import { labelDisplayName, nextColor, normalizeLabelName } from "../../domain/labels.mjs";
 import { normalizeBlockedReason } from "../../domain/blocked-reason.mjs";
+import { normalizeName } from "../../domain/dictionary.mjs";
 import { normalizeCommentCreate } from "../../domain/comment.mjs";
 import { normalizeImportedReport, normalizeReportCreate } from "../../domain/report.mjs";
 import { parsePriority } from "../../domain/priority.mjs";
@@ -227,6 +228,11 @@ function importTimestamp(value, fallback, stats, field = "timestamp") {
  */
 export function importMd(input) {
   const { db, repos, dir, now, check = false, resume = false } = input;
+  // The board's configured human (`TASKCTL_HUMAN`), the one name an undeclared
+  // author is read as a person by. Passed in rather than read from the
+  // environment here: `core` takes its configuration from its caller, the same
+  // way it takes its clock (`now`).
+  const human = input.human ?? null;
   const registry = input.registry ?? null;
   const createProject = input.createProject === true;
   const stats = {
@@ -288,7 +294,7 @@ export function importMd(input) {
         // `parseCard`'s own callers and `check` rely on.
         let card;
         try {
-          card = parseCard(text, { file: basename(path) });
+          card = parseCard(text, { file: basename(path), human });
         } catch (err) {
           const code = isDomainError(err) ? err.code : "ERROR";
           stats.parseSkipped.push({ file: name, code, reason: err.message });
@@ -726,7 +732,13 @@ function validateBoardInvariants(db) {
 }
 
 /** Parse one card file into the shape the rest of the importer wants. */
-export function parseCard(text, { file }) {
+/**
+ * @param {string} text @param {{file: string, human?: string|null}} options
+ *   `human` is the board's configured human (`TASKCTL_HUMAN`), the only name the
+ *   importer reads as a person when a card states no kind. Absent, no undeclared
+ *   author is a person — see `authorKindOf`.
+ */
+export function parseCard(text, { file, human = null }) {
   const { data, order, body } = parseFrontmatter(text, { file });
   const { sections, extra } = splitSections(body);
 
@@ -837,7 +849,7 @@ export function parseCard(text, { file }) {
           ...comment,
           sourceSeq: index + 1,
           author: {
-            kind: /^(elon|terry|tanyu)$/i.test(comment.authorId) ? "human" : "agent",
+            kind: authorKindOf(comment.authorId, human),
             id: comment.authorId,
           },
           refs: [],
@@ -848,7 +860,7 @@ export function parseCard(text, { file }) {
       : [],
     reports: reports.map((report) => ({
       ...report,
-      author: report.authorId === null ? null : { kind: authorKind(report.authorId), id: report.authorId },
+      author: report.authorId === null ? null : { kind: authorKindOf(report.authorId, human), id: report.authorId },
       evidence: report.evidence,
     })),
     reportMissingWarning,
@@ -868,8 +880,35 @@ export function parseCard(text, { file }) {
   };
 }
 
-function authorKind(authorId) {
-  return /^(elon|terry|tanyu)$/i.test(String(authorId)) ? "human" : "agent";
+/**
+ * The kind an author is given when the card does not state one.
+ *
+ * **The board knows exactly one human**, and it is the one the install named
+ * (`TASKCTL_HUMAN`, `--human-name`). A card's handle is compared to that name
+ * through the registry's own key function — `norm`, the same one the registry
+ * keys rows by — so a handle that differs only in case or padding is the same
+ * person here as it is everywhere else on this board.
+ *
+ * Everything else is an agent. That is the whole rule.
+ *
+ * What it replaces is worth stating, because the replacement looks smaller than
+ * it is: this file used to carry a **roster** — a case-insensitive alternation of
+ * several person-names, each accepted as a human and everything else filed as an
+ * agent. Two things were wrong with that, and only one is obvious. It was a
+ * machine's list of who its people are, checked into a public repository; and,
+ * worse, it made "did a person say this" depend on a regex nobody outside that
+ * machine could know to update. **A name is not evidence of a person. A
+ * configuration is** — and a card that knows better states it (`created_by_kind`).
+ *
+ * @param {unknown} name the handle the card wrote
+ * @param {string|null|undefined} human the board's configured human, or nothing
+ * @returns {string} `"human"` or `"agent"`
+ */
+function authorKindOf(name, human) {
+  const text = String(name ?? "").trim();
+  const who = String(human ?? "").trim();
+  if (text === "" || who === "") return "agent";
+  return normalizeName(text) === normalizeName(who) ? "human" : "agent";
 }
 
 /**

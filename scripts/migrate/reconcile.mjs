@@ -35,6 +35,7 @@ import { applyMigrations } from "../../src/core/storage/migrations-runner.mjs";
 import { createRepositories } from "../../src/core/storage/repositories/index.mjs";
 import { DomainError, isDomainError, toErrorPayload } from "../../src/shared/errors.mjs";
 import { sha256Hex } from "../../src/shared/ids.mjs";
+import { ACTOR_ENV_KEYS } from "../../src/shared/transport/actor.mjs";
 import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
 
 const REPORT_VERSION = 1;
@@ -223,7 +224,7 @@ function sameValue(a, b) {
  * @param {{file: string, registry: object|null, projectId?: string|null}} context
  */
 export function parseForCompare(text, context) {
-  const card = parseCard(text, { file: context.file });
+  const card = parseCard(text, { file: context.file, human: context.human ?? null });
   const raw = card.project ?? context.projectId ?? null;
   card.projectId = resolveProjectId(raw, context.registry);
   return card;
@@ -240,6 +241,10 @@ export function parseForCompare(text, context) {
  * }} options
  */
 export async function reconcile(options) {
+  // The board's configured human, so an undeclared author is read the way a real
+  // board would read it (`authorKindOf`). Passed to *every* call below, so the
+  // drill compares two boards that were told the same thing.
+  const human = options.human ?? null;
   const { dir, registry, registryPath, createProject, workdir, now } = options;
 
   const sourceDir = join(workdir, "import-source");
@@ -266,7 +271,7 @@ export async function reconcile(options) {
     const text = readFileSync(join(dir, name), "utf8");
     const hash = sha256Hex(text);
     try {
-      const card = parseForCompare(text, { file: name, registry });
+      const card = parseForCompare(text, { file: name, registry, human });
       writeFileSync(join(sourceDir, name), text, "utf8");
       sourceCards.push({ file: name, identifier: card.identifier, hash, card, raw: text });
     } catch (err) {
@@ -287,18 +292,18 @@ export async function reconcile(options) {
     const repos1 = createRepositories(db1);
     const repos2 = createRepositories(db2);
 
-    stats1 = importMd({ db: db1, repos: repos1, dir: sourceDir, now, registry, createProject });
+    stats1 = importMd({ db: db1, repos: repos1, dir: sourceDir, now, registry, createProject, human });
     for (const notice of stats1.notices) warnings.push(`notice: ${notice}`);
 
     const exportResult = exportMd({ repos: repos1, outDir: exportDir, now });
     for (const file of exportResult.files) exported.set(file.identifier, file.content);
 
-    stats2 = importMd({ db: db2, repos: repos2, dir: exportDir, now, registry, createProject });
+    stats2 = importMd({ db: db2, repos: repos2, dir: exportDir, now, registry, createProject, human });
 
     // Idempotency: the same cards, a second time, into the first board. Snapshot
     // the row counts around it — "no new rows" is the property under test.
     const before = rowCounts(db1);
-    stats3 = importMd({ db: db1, repos: repos1, dir: sourceDir, now, registry, createProject });
+    stats3 = importMd({ db: db1, repos: repos1, dir: sourceDir, now, registry, createProject, human });
     const after = rowCounts(db1);
 
     const report = buildReport({
@@ -306,6 +311,7 @@ export async function reconcile(options) {
       registry,
       registryPath,
       now,
+      human,
       files,
       sourceCards,
       unparsable,
@@ -331,6 +337,7 @@ function buildReport(context) {
     registry,
     registryPath,
     now,
+    human,
     files,
     sourceCards,
     unparsable,
@@ -389,6 +396,7 @@ function buildReport(context) {
     const roundtrip = parseForCompare(exportedText, {
       file: `${entry.identifier}.md`,
       registry,
+      human,
     });
 
     for (const spec of FIELD_SPECS) {
@@ -792,6 +800,7 @@ export async function main(argv, io = {}) {
       createProject: options.createProject === true,
       workdir,
       now,
+      human: process.env[ACTOR_ENV_KEYS.human] ?? null,
     });
     if (options.out !== undefined) writeFileSync(resolve(options.out), `${JSON.stringify(report, null, 2)}\n`, "utf8");
     if (options.json) stdout(`${JSON.stringify(report, null, 2)}\n`);
