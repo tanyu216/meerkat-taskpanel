@@ -219,6 +219,7 @@ its allowlist (`test/fixtures/host-paths-allowlist.json`) is checked in both dir
 
 ## Docs to read next (do not re-paste)
 
+- `GLOSSARY.md` — the canonical vocabulary: one word per concept, the words to avoid, and the terms that are *not* in the model.
 - `README.md` / `README.zh-CN.md` — what the project is, install, roadmap.
 - `CONTRIBUTING.md` — the container gate, PR flow, conventions the gates enforce.
 - `docs/development.md` — layout, commands, the two build layers, skills generation, constraints.
