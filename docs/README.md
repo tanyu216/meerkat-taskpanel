@@ -36,3 +36,23 @@ this repository. Where a topic has a live authority, the citation names it expli
 
 **Do not add a new `ARCHITECTURE.md` citation.** Name the live document instead.
 
+## On `docs/verify/`
+
+This tree used to hold **verification-run records**: one directory per `T-<card>` work lane,
+each carrying that lane's report plus the harness, evidence dumps and screenshots that
+produced it. They were never documentation. They accounted for **224 of the 237 files and
+98.8% of the bytes under `docs/`**, nothing in the repository read them, and because `docs` is
+in `package.json`'s `files` while `docker/Dockerfile` does `COPY . .`, they were being shipped
+in the npm package and baked into the container image — carrying a developer's home directory
+with them, which is exactly the disclosure `scripts/verify/paths.mjs` exists to prevent.
+
+They now live **outside the repository**, in each card's own workspace under `repo-verify/` —
+the same place the `design/fidelity-rNN.md` round records already send the oracle and probe
+harnesses they keep out of the repository. So a bare `T-<card>` citation you meet in `src/**`,
+`test/**`, `web/**` or `design/**` (for example `T-20261014-150729`) names a **card**, not a
+file in this repository.
+
+**Do not land run records here again.** `test/fixtures/host-paths-allowlist.json` is now
+deliberately empty, so `scripts/verify/paths.mjs` fails on *any* tracked file carrying a
+host-absolute path — and all 65 records it used to exempt carried one.
+
