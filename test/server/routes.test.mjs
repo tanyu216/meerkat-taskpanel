@@ -292,6 +292,21 @@ describe("server/routes — the heartbeat write surface (T-20261017-063818)", ()
     assert.match(result.body.error.message, /nothing to pulse/);
   });
 
+  it("refuses a card that reached a terminal state under the holder — a pulse is not an un-cancel", async () => {
+    const { ref, task } = await claimedCard("Canceled under me");
+    dataOf(await call("POST", `/api/v1/tasks/${ref}/move`, { to: "canceled" }, LINUS));
+
+    const result = await call("POST", `/api/v1/tasks/${ref}/heartbeat`, {}, LINUS);
+    assert.equal(result.status, 409, JSON.stringify(result.body));
+    assert.equal(result.body.error.code, "INVALID_TRANSITION");
+    assert.match(result.body.error.message, /canceled, not in_progress/);
+    // The holder is the one who canceled it, so this is not a permissions
+    // refusal — it is the status guard, and the card stays where it was.
+    const after = dataOf(await call("GET", `/api/v1/tasks/${ref}`));
+    assert.equal(after.task.status, "canceled");
+    assert.equal(after.task.version, task.version + 1, "the cancel, and no pulse write");
+  });
+
   it("refuses a non-holder with EXECUTION_ACTIVE, naming the holder rather than their id", async () => {
     const { ref } = await claimedCard("Somebody else's");
     const result = await call("POST", `/api/v1/tasks/${ref}/heartbeat`, {}, {
