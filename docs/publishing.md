@@ -221,7 +221,9 @@ prove any of them (reading branch protection takes an API scope this repository 
 does not hand its workflows). They are stated as policy, with the human steps that apply them.
 
 1. **`main` changes only through a pull request.** No direct pushes, no force pushes, no
-   deletions: an unreviewed commit must not become reachable from `main`.
+   deletions: an unreviewed commit must not become reachable from `main`. The `pre-push` hook
+   refuses a direct push to `main` locally ([.githooks/README.md](../.githooks/README.md)),
+   which is a courtesy — the rule below is the enforcement.
 2. **The required checks are green before the merge.** The checks are this repository's own
    workflows, so the list is short and closed — from `check.yml` the `check` job (both matrix
    legs) and the `docker` job, from `contract-gate.yml` the `contract` job, and from
@@ -242,7 +244,11 @@ run *because* a tag was pushed, which is exactly why rule 3 matters.
 - **Branches.** Settings → Branches → **Add branch protection rule** for `main` (a ruleset
   under Settings → Rules is the newer equivalent), then:
   - **Require a pull request before merging** — at least one approval, and enable *Dismiss
-    stale pull request approvals when new commits are pushed*;
+    stale pull request approvals when new commits are pushed*. **Check the collaborator count
+    first.** With no second contributor a required approval can never be satisfied (GitHub
+    does not let you approve your own pull request), and pairing it with *Do not allow
+    bypassing* below freezes `main` outright; a single-maintainer repository is better served
+    by requiring the pull request and keeping the administrative bypass;
   - **Require status checks to pass before merging** — search for and add `check` (both
     matrix legs), `docker`, `contract`, `Dependency scan (osv-scanner + npm audit)` and
     `SBOM (syft)`, then tick *Require branches to be up to date before merging*;

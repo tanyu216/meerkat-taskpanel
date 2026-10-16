@@ -102,24 +102,32 @@ The mechanics:
    - `.github/workflows/security-scan.yml`.
 4. Merge once green.
 
-Nothing in the tree can *require* step 2. The `pre-push` hook is a local courtesy and
-`git push --no-verify` bypasses it (and a fresh clone has no hooks at all until
-`git config core.hooksPath .githooks` — see [.githooks/README.md](../.githooks/README.md)).
+Nothing in the tree can *require* step 2 — that is GitHub's rule to set (below). The
+`pre-push` hook refuses a direct push to `main` as the local half, so the mistake surfaces
+before the network; it is still a courtesy, `git push --no-verify` bypasses it, and a fresh
+clone has no hooks at all until `git config core.hooksPath .githooks` — see
+[.githooks/README.md](../.githooks/README.md).
 
 ### Repository settings a maintainer must set by hand
 
 These live in GitHub, not in the repository, so nothing here can assert them. On `main`:
 
 - **Require a pull request before merging.**
-- **Require status checks to pass.** The job ids, exactly as they appear on a check run:
-  `check` and `docker` (from `check.yml`), `contract` (from `contract-gate.yml`), and
-  `dependency-scan` (from `security-scan.yml`). `docker` is the authoritative job — a rule
+- **Require status checks to pass.** The names, exactly as they appear on a check run —
+  search for them by these strings, not by job id: `check (22)` and `check (24)` and
+  `docker` (from `check.yml`), `contract` (from `contract-gate.yml`), and
+  `Dependency scan (osv-scanner + npm audit)` and `SBOM (syft)` (from `security-scan.yml`,
+  which spell their jobs out with a `name:`). `docker` is the authoritative job — a rule
   that requires `check` but not `docker` gates the fast half and not the real one.
-  `security-scan.yml`'s other job, `sbom`, also runs on every trigger, but it exists to
-  publish a release artefact rather than to judge a change; requiring it is defensible but
-  it is slower than the rest, so it is a per-repository call.
+  `sbom` also runs on every trigger, but it exists to publish a release artefact rather than
+  to judge a change; requiring it is defensible but slower than the rest, so it is a
+  per-repository call. A check can only be required once it has *reported* — a workflow
+  GitHub rejects never registers one, so an invalid workflow file leaves its two checks
+  absent from the picker with no trace anywhere in the UI.
 - **Do not allow bypassing the above settings**, if the intent is that `main` is genuinely
-  protected rather than advisory.
+  protected rather than advisory. Check who can approve first: with **no** second
+  collaborator, a required approval can never be given (GitHub does not let you approve your
+  own pull request), so this combination freezes `main` outright.
 
 ## Two build layers: engine and web
 
