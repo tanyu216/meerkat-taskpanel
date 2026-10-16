@@ -138,6 +138,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`pre-push` now refuses a direct push to `main`.** `main` advances through a pull request,
+  so a mistaken `git push origin main` (or a `--delete` of it) is caught locally, before the
+  round trip, instead of by the branch-protection rule on the remote. A deliberate release
+  push says so — `ALLOW_PUSH_MAIN=1 git push origin main` — and only that rule is silenced;
+  the two API gates still run. The hook remains a courtesy (`git push --no-verify` bypasses
+  everything here), and the GitHub rule is the enforcement. See
+  [`.githooks/README.md`](.githooks/README.md).
 - **The patrol's `leader_stalled` row now counts the *author* of an event, not its *kind* — and
   `heartbeat_stale` emits the shared SLA tuple beside the legacy alert.** Both are `v1.1`
   write-backs of the SLA inspection contract (`T-20261014-084606-2`, §6.3-D and §10.4), and
@@ -451,6 +458,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`security-scan.yml` was rejected by GitHub, so the dependency scan never once ran.** Its
+  daily entry was `17 3 * * 2-7`, and Actions accepts only `0-6` for day-of-week — and an
+  out-of-range cron does not red a *job*, it voids the **whole workflow file**. Every run
+  since the workflow landed completed with **zero jobs** and registered no status checks at
+  all, which is precisely why nothing surfaced: a check that never reports looks like a check
+  that was never configured, and the run page that would have explained it is one nobody had
+  reason to open. The daily entry is now `0,2-6` (Sunday is 0, `1` stays the weekly Monday),
+  and `scripts/security/workflow.test.mjs` now validates every cron against Actions' per-field
+  bounds rather than the old `[\d,-]+`, which let the `7` through — it is what would have
+  caught this on the day it was written.
 - **An absent host CLI is SKIPPED even when a `PATH` entry is not a directory.**
   `scripts/verify/host-cli.mjs` treated only `ENOENT` as "this CLI is not here"; when a `PATH`
   element is a regular file rather than a directory, the bare-name lookup dies with `ENOTDIR`
