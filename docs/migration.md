@@ -276,7 +276,7 @@ rollback is always available and is a data *export*, never a rewrite of history:
 
 | Risk | Why it bites | Mitigation |
 |---|---|---|
-| **Field drift the export cannot carry back** | `assignee_kind` has no export home in the card key order, so a card whose `assignee_kind` is not the default drifts on the round trip | Reported as `unmappable[kind=field-drift]`. Decide per §4.8 ① whether to add it to the export order or accept the drift before the switch |
+| **Field drift the export cannot carry back** | Any field with no export home in the card key order, so a card carrying one drifts on the round trip (the legacy-only keys: `review_of`, `goal`, `git_rules`, …) | Reported as `unmappable[kind=field-drift]`. Decide per §4.8 ① whether to add it to the export order or accept the drift before the switch. **`assignee_kind` used to be listed here and is not any more**: it has an export home (written whenever it differs from the parser's default), so a card that declares one round-trips |
 | **Status aliases** (`ready`→`todo`, `failed`→`canceled`) | the board stores the canonical word, so a raw byte comparison differs | Kept in `meta_json.legacy_status` and re-emitted on export; reported as `unmappable[kind=status-alias]` |
 | **Cards missing `## Report`** | a delivery gate needs a report for the current round; historical cards predate the gate | Importer warns (`unmappable[kind=missing-report]`) and still imports; `in_review`/`done` cards without a report are flagged, never silently blessed |
 | **A `## Report` that predates the structured schema** | a free-form narrative has no acceptance list and no evidence anchor, so the strict report validator cannot accept it verbatim | The narrative is imported conclusion-only (acceptance/evidence empty, nothing fabricated) and listed (`unmappable[kind=report-narrative]`); a *non-narrative* malformation is still `unmappable[kind=report-invalid]`. The gate is not weakened — only the read path |
@@ -298,6 +298,10 @@ could not be mapped faithfully". The reconcile report surfaces both, and
 **Checklist**
 
 *Pre-switch*
+- [ ] **`TASKCTL_HUMAN` is set** in the shell the drill and the import run in — it is the one
+      name an undeclared card author is read as a person by, so an unset variable means *every*
+      comment and report in the migration arrives as an agent's. (`install.sh --human-name
+      <name>` records it; a card that declares its own `created_by_kind` does not need it.)
 - [ ] drill reports `ok: true` (or every `unmappable` item reviewed and accepted)
 - [ ] board backed up; card set and registry frozen for the window
 - [ ] `taskd` reachable; `taskctl` installed; agents know the new commands
@@ -312,7 +316,7 @@ could not be mapped faithfully". The reconcile report surfaces both, and
 *Post-switch*
 - [ ] one working day with no agent reaching for the markdown files
 - [ ] board export spot-checked against the frozen cards
-- [ ] `assignee_kind` drift decision recorded per §4.8 ①
+- [ ] `TASKCTL_HUMAN` set in the shell the drill and the import run in (see the pre-switch list)
 
 *Rollback*
 - [ ] `export --out <new dir>` run and reviewed
