@@ -19,8 +19,14 @@ import { DomainError } from "../../shared/errors.mjs";
 import { resolveDictionaryEntry } from "../domain/dictionary.mjs";
 import { isActorKind } from "../domain/enums.mjs";
 
-/** `assignee` → the `tasks` column it fills. */
+/** `assignee` → the `tasks` column it fills, and the kind column beside it. */
 const TASK_FIELD = { assignee: "assigneeId", reporter: "reporterId" };
+/**
+ * The kind column paired with each role's id column (0023). The two are written
+ * together: a reference and the kind it was made under are one fact, so
+ * `resolveAssignment`'s patch names both.
+ */
+const TASK_KIND_FIELD = { assignee: "assigneeKind", reporter: "reporterKind" };
 
 /** @param {unknown} kind */
 export function dictionaryKind(kind) {

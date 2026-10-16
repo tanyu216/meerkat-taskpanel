@@ -33,6 +33,57 @@ export const DICTIONARY_TABLES = Object.freeze({
   reporters: "actors",
 });
 
+/**
+ * An actor's kind, as the **registry read** reports it: aggregated from the
+ * references that recorded one.
+ *
+ * `0023` took the kind off the actor row, because an actor is one row per person
+ * and a kind is a fact about an act — one row cannot hold "worked from `claude`
+ * on Tuesday, from `codex` on Friday". But a registry read still has to answer
+ * "is this a person", which is what the agent roster, the sidebar and the
+ * assignee pickers ask. So it is derived rather than stored:
+ *
+ *   * **the latest wins**, ordered by the reference's own timestamp —
+ *     `claimed_at` for a claim (falling back to `updated_at`, since a claim made
+ *     before `0023` back-fills no `claimed_at` of its own), `created_at` for a
+ *     comment or a report, `updated_at` for a task's assignee/reporter;
+ *   * ties break on the kind's own text, so the answer is deterministic rather
+ *     than "whichever row the planner reached first";
+ *   * **an actor nothing has ever named has no kind**: `NULL`, which is a real
+ *     answer ("not recorded") and a different statement from `human`.
+ *
+ * This is a read-time derivation, not a stored copy: nothing to keep in step, and
+ * nothing that goes stale the way the old `actors.kind` did.
+ */
+const AGGREGATED_KIND = `(
+        SELECT ref.kind FROM (
+          -- The union is wrapped in its own SELECT because SQLite will only order a
+          -- compound select by its *result columns*: the tie-break below is an
+          -- expression, so it needs a plain subquery to sort.
+          SELECT * FROM (
+            SELECT assignee_kind AS kind, updated_at AS ts FROM tasks
+             WHERE assignee_id = a.id AND assignee_kind IS NOT NULL
+            UNION ALL
+            SELECT reporter_kind, updated_at FROM tasks
+             WHERE reporter_id = a.id AND reporter_kind IS NOT NULL
+            UNION ALL
+            SELECT claimed_kind, COALESCE(claimed_at, updated_at) FROM tasks
+             WHERE claimed_by = a.id AND claimed_kind IS NOT NULL
+            UNION ALL
+            SELECT author_kind, created_at FROM comments WHERE author_id = a.id
+            UNION ALL
+            SELECT author_kind, created_at FROM task_reports WHERE author_id = a.id
+          )
+          -- On a tie -- one task records both an assignee and a creator, so the
+          -- same updated_at -- 'human' wins. That is the repo's recorded prior
+          -- ("a misread handle is the cheaper error") and the asymmetry is real:
+          -- reading a person as an agent opens the agent-only affordances, where
+          -- reading an agent as a person only costs a badge.
+          ORDER BY ts DESC, (kind = 'human') DESC, kind ASC
+          LIMIT 1
+        ) AS ref
+      ) AS kind`;
+
 /** @param {unknown} kind */
 export function dictionaryTable(kind) {
   const table = DICTIONARY_TABLES[/** @type {string} */ (kind)];
@@ -123,9 +174,13 @@ export function createDictionaryRepository(db) {
       const table = dictionaryTable(kind);
       const q = typeof options.q === "string" ? options.q.trim().toLowerCase() : "";
       const limit = Number.isInteger(options.limit) ? options.limit : 20;
+      // The registry read is the one place that asks "is this actor a person",
+      // and since `0023` the row cannot answer: a kind describes an *act*, and
+      // this table is one row per person. So it is aggregated from the references
+      // that recorded one — see `AGGREGATED_KIND`.
       const sql = q === ""
-        ? `SELECT * FROM ${table} ORDER BY use_count DESC, display_name ASC LIMIT ?`
-        : `SELECT * FROM ${table} WHERE normalized_name LIKE ? OR display_name LIKE ? ORDER BY use_count DESC, display_name ASC LIMIT ?`;
+        ? `SELECT a.*, ${AGGREGATED_KIND} FROM ${table} AS a ORDER BY use_count DESC, display_name ASC LIMIT ?`
+        : `SELECT a.*, ${AGGREGATED_KIND} FROM ${table} AS a WHERE normalized_name LIKE ? OR display_name LIKE ? ORDER BY use_count DESC, display_name ASC LIMIT ?`;
       const rows = q === ""
         ? db.prepare(sql).all(limit)
         : db.prepare(sql).all(`%${q}%`, `%${options.q.trim()}%`, limit);

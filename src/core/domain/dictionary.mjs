@@ -109,6 +109,12 @@ function ambiguous(raw, candidates) {
 
 const CAMEL = {
   id: "id",
+  // **Not a column.** `actors` holds no kind (since `0023`): a kind describes an
+  // act, and this table is one row per person. The registry *read* aliases this
+  // name onto an aggregate over the references that recorded one
+  // (`repositories/dictionary.mjs#AGGREGATED_KIND`), so the DTO carries the field
+  // and a plain row read reports `null` — "not recorded" — for it.
+  kind: "kind",
   display_name: "displayName",
   // `normalized_name` is the historical column name for `norm` (F4-A): the value
   // it holds is exactly `src/shared/norm.mjs#norm`, so a label and an assignee

@@ -13,7 +13,17 @@
  */
 import { computed, reactive, watch } from "vue";
 
-import { board, assigneeRoster, createTask, labelRoster, platformOf, reporterRoster, PRIORITIES, taskRoster } from "../../stores/board.js";
+import {
+  board,
+  assigneeRoster,
+  createTask,
+  kindLabel,
+  labelRoster,
+  platformOf,
+  reporterRoster,
+  PRIORITIES,
+  taskRoster,
+} from "../../stores/board.js";
 import { createTaskOpen, createTaskStatus, pushToast } from "../../stores/ui.js";
 import { errorTextKey } from "../../i18n/messages.mjs";
 import { t } from "../../i18n/index.js";
@@ -37,7 +47,7 @@ const form = reactive({
   depends: [],
 });
 
-const peopleOptions = computed(() => board.assignees.map((entry) => ({ name: entry.display_name, kind: entry.kind, platform: platformOf(entry.display_name) })));
+const peopleOptions = computed(() => board.assignees.map((entry) => ({ name: entry.display_name, kind: kindLabel(entry.kind), platform: platformOf(entry.display_name) })));
 const reporterOptions = computed(() => reporterRoster.value.map((name) => ({ name })));
 const labelOptions = computed(() => labelRoster.value.map((name) => ({ name })));
 /**

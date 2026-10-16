@@ -81,6 +81,8 @@ describe("storage/migrations — the shipped set", () => {
       "attribution_fk",
       "block_chain",
       "block_pair_on_parent",
+      // the three reference kinds move off the actor row and onto the record (0023).
+      "actor_kind_on_record",
     ]);
     for (const migration of migrations) {
       assert.match(migration.checksum, /^[0-9a-f]{64}$/);

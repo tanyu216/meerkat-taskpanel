@@ -290,11 +290,21 @@ export function normalizeTaskCreate(input, context) {
     labels: normalizeLabels(input.labels),
     sortOrder: Number.isInteger(input.sortOrder) ? input.sortOrder : 0,
     assigneeId: input.assigneeId ?? null,
+    // 0023 — the kind each reference was made under, beside the reference. A
+    // fresh card has no links, so there is nothing to record yet — `null` here is
+    // "no link", and `resolveAssignment` fills both halves of the pair in one
+    // patch when a *name* is given, while these two carry the kind for a caller
+    // that passed an id directly.
+    assigneeKind: input.assigneeKind ?? null,
     reporterId: input.reporterId ?? null,
+    reporterKind: input.reporterKind ?? null,
     agentSession: input.agentSession ?? null,
     threadId: input.threadId ?? null,
     threadSource: input.threadSource ?? null,
     claimedBy: null,
+    // A fresh card is unclaimed, so there is no kind to record yet — the claim is
+    // what writes both (`claimCas`).
+    claimedKind: null,
     claimedAt: null,
     heartbeatAt: null,
     blockedAt: status === "blocked" ? now : null,
@@ -332,7 +342,9 @@ export const UPDATABLE_TASK_FIELDS = Object.freeze([
   "labels",
   "sortOrder",
   "assigneeId",
+  "assigneeKind",
   "reporterId",
+  "reporterKind",
   "agentSession",
   "threadId",
   "threadSource",
@@ -397,7 +409,19 @@ export function normalizeTaskUpdate(input, context) {
     }
     patch.meta = input.meta;
   }
-  for (const field of ["assigneeId", "reporterId", "agentSession", "threadId", "threadSource", "sourceHash"]) {
+  // The kind travels with its reference (0023): a caller that patches the
+  // assignee may state what that assignee *is* in the same call, and one that
+  // patches only the kind is stating something about the assignee already there.
+  for (const field of [
+    "assigneeId",
+    "assigneeKind",
+    "reporterId",
+    "reporterKind",
+    "agentSession",
+    "threadId",
+    "threadSource",
+    "sourceHash",
+  ]) {
     if (input[field] !== undefined) patch[field] = input[field];
   }
   if (Object.keys(patch).length === 0) {

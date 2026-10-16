@@ -35,7 +35,13 @@ const PATCHABLE = [
   "labels",
   "sortOrder",
   "assigneeId",
+  // 0023 — the kind travelling with each reference. A caller that patches the
+  // reference patches the kind in the same write, because the two are one fact:
+  // an assignment whose kind stayed behind would name a person the card is no
+  // longer about.
+  "assigneeKind",
   "reporterId",
+  "reporterKind",
   "agentSession",
   "threadId",
   "threadSource",

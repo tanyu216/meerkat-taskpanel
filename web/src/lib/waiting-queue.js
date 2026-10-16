@@ -34,6 +34,7 @@
  * time vocabulary" across the two views, and a second copy of the same ladder is
  * exactly how the two would drift apart.
  */
+import { kindLabel } from "./actor-kind.js";
 import { feedTime } from "./activity-feed.js";
 import { identifierText } from "./identifier.js";
 
@@ -89,7 +90,8 @@ export function waitingRow(task, payload = null) {
     // "Who is waiting on you": the agent the card is parked on, not the human it
     // is parked *for*.
     actor: task.assignee?.display_name ?? "",
-    actorKind: task.assignee?.kind ?? "human",
+    // The design attribute's two values: is the assignee *not* the human?
+    actorKind: kindLabel(task.assignee?.kind),
     reasonKind,
     reasonKey: reasonKeyOf(reasonKind),
     since: sinceOf(task, payload),

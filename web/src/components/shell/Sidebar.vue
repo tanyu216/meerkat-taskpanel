@@ -22,6 +22,7 @@ import { computed, ref } from "vue";
 import {
   assigneeFilterValue,
   board,
+  isAgentKind,
   platformOf,
   selectProject,
   waitingCount,
@@ -84,11 +85,12 @@ const agents = computed(() => {
   );
   const byPlatform = new Map();
   for (const entry of board.assignees) {
-    if (entry.kind !== "agent") continue;
-    // The dictionary's `platform` column is gone (0019); an actor's platform is
-    // its kind when the kind names one. Every agent the board knows today is the
-    // generic `agent`, so they fall back to the prototype's default row — the
-    // same grouping the old `?? "claude"` produced.
+    // An **agent** is anyone the board has not recorded as the human, and since
+    // 0023 the kind a roster entry shows is aggregated from the references that
+    // named them — so the platform is a real one rather than the generic `agent`
+    // this used to skip. An entry nothing has ever named has no kind, and cannot
+    // be placed on a platform row at all.
+    if (!isAgentKind(entry.kind)) continue;
     const platform = platformOf(entry.display_name) ?? "claude";
     if (!byPlatform.has(platform)) byPlatform.set(platform, { platform, handles: [], presence: "idle" });
     const row = byPlatform.get(platform);
