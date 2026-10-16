@@ -61,12 +61,27 @@ and `issue get <ref>` shows whether it is a deployment card, which is the other
 reason it will not appear. A `deploy` card is still claimable when it is
 dispatched to you: wait for the dispatch rather than looking for it yourself.
 
+**When the card turns out to be a container, promote it — do not claim it.** A card a human
+filed is a `task`; if it holds several deliverables, `issue update <ref> --kind epic` makes it
+the container (only an `epic` may be a parent), then one `issue create` per deliverable — each
+with its own `--target`, or the create guard reads the second as a retry of the first — and a
+`relation add <ref> --type parent --target <child>` per edge. An epic can be neither claimed nor
+moved `todo → in_review`, so park it where it can still reach review — `issue move <ref> blocked
+--blocked-reason dependency`, a container waiting on its own children — and close it with a
+rollup report when they land. Claim it *while it is still a `task`* only when you want the
+container visibly `in_progress`. The full order, and the three commands that surprise people,
+are in [`SKILL.md`](../SKILL.md#when-the-card-is-a-container-promote-it-to-an-epic).
+
 ### 3. One card at a time
 
 Hold **at most one** claimed card. A second concurrent claim is how two agents
 end up half-editing the same files, and how a board acquires `in_progress` cards
 nobody is actually working. Finish (or explicitly hand back) the current card
 before you claim another.
+
+A **container** you promoted is not a second card: an epic carries no work of its
+own, so parking it (§2) leaves your budget untouched — its children are the cards
+you claim, one at a time.
 
 ### 4. Keep the heartbeat fresh (≤ 10 minutes)
 

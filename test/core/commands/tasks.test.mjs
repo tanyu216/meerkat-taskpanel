@@ -244,6 +244,106 @@ describe("commands/tasks — an epic with children cannot be downgraded", () => 
   });
 });
 
+describe("commands/tasks — promoting a card into an epic (the container protocol)", () => {
+  // The board skill teaches this order for a card that turns out to hold several
+  // deliverables: promote it, split it into children, park it on
+  // `blocked/dependency`, close it with a rollup report. Every refusal below is a
+  // *reason* the order cannot be shortened, so widening the state machine for
+  // epics means coming back here and re-teaching the skill, not just editing it.
+  const linusTask = (commands, extra = {}) =>
+    commands.createTask({ projectId: "proj", title: "For linus", assignee: "linus", assigneeKind: "agent", actor: AGENT, ...extra });
+
+  it("promotes in place: the kind changes and nothing else does", async () => {
+    await board(async ({ db, commands }) => {
+      const task = linusTask(commands);
+      const claimed = commands.claim({ id: task.id, actor: AGENT }).task;
+      assert.match(task.idem, /^task \| linus/, "the key's first slot is the kind at create time");
+
+      const promoted = commands.updateTask({ id: task.id, patch: { kind: "epic" }, actor: AGENT });
+
+      assert.equal(promoted.kind, "epic");
+      assert.equal(promoted.status, "in_progress", "a patch is not a move");
+      assert.equal(promoted.claimedBy, claimed.claimedBy, "the execution claim rides along");
+      assert.equal(promoted.deliveryRound, claimed.deliveryRound, "no delivery-round bump");
+      assert.equal(promoted.idem, task.idem, "frozen at create; a promotion does not rewrite it");
+      assert.equal(promoted.version, claimed.version + 1);
+      assert.deepEqual(activitiesFor(db, task.id), ["task_created", "task_claimed", "task_updated"]);
+      const last = db
+        .prepare("SELECT changes_json FROM task_activities WHERE task_id = ? ORDER BY id DESC LIMIT 1")
+        .get(task.id);
+      assert.deepEqual(JSON.parse(last.changes_json).fields, ["kind"], "a promotion carries no prose");
+    });
+  });
+
+  it("cannot be claimed as an epic, and cannot be delivered from todo", async () => {
+    await board(async ({ commands }) => {
+      const epic = linusTask(commands, { kind: "epic" });
+
+      // Both halves of the dead end the skill's order works around.
+      assert.throws(
+        () => commands.moveStatus({ id: epic.id, to: "in_progress", actor: AGENT }),
+        (err) => {
+          assert.equal(err.code, "not_claimable");
+          assert.equal(err.http, 409);
+          return true;
+        },
+      );
+      assert.throws(
+        () => commands.moveStatus({ id: epic.id, to: "in_review", actor: AGENT }),
+        (err) => {
+          assert.equal(err.code, "INVALID_TRANSITION");
+          assert.deepEqual(err.details.allowed, ["backlog", "in_progress", "blocked", "canceled"]);
+          return true;
+        },
+      );
+      assert.deepEqual(commands.listCandidates({ assignee: "linus" }), [], "the poll never offers a container");
+
+      // ...and the one claim-free route out, which is where the protocol parks it.
+      const parked = commands.moveStatus({ id: epic.id, to: "blocked", blockedReason: "dependency", actor: AGENT });
+      assert.equal(parked.status, "blocked");
+      assert.equal(parked.blockedReason, "dependency");
+    });
+  });
+
+  it("lets an epic parent children — but not a card still typed `task`", async () => {
+    await board(async ({ repos, commands }) => {
+      const container = linusTask(commands, { title: "Container to be" });
+      const child = linusTask(commands, { title: "Child", allowDup: true });
+
+      assert.throws(
+        () => commands.addRelation({ type: "parent", source: container.id, target: child.id, actor: AGENT }),
+        (err) => {
+          assert.equal(err.code, "VALIDATION_FAILED");
+          assert.equal(err.details.field, "kind");
+          return true;
+        },
+        "promote first: only an epic may be a parent",
+      );
+
+      commands.updateTask({ id: container.id, patch: { kind: "epic" }, actor: AGENT });
+      commands.addRelation({ type: "parent", source: container.id, target: child.id, actor: AGENT });
+      assert.deepEqual(repos.relations.listChildren(container.id).map((edge) => edge.target), [child.id]);
+    });
+  });
+
+  it("closes the container from its park, with a rollup report", async () => {
+    await board(async ({ db, commands }) => {
+      const container = linusTask(commands);
+      commands.updateTask({ id: container.id, patch: { kind: "epic" }, actor: AGENT });
+      commands.moveStatus({ id: container.id, to: "blocked", blockedReason: "dependency", actor: AGENT });
+
+      const delivered = commands.deliver({ taskId: container.id, report: report(), actor: AGENT });
+
+      assert.equal(delivered.task.status, "in_review");
+      assert.equal(delivered.task.deliveryRound, 1);
+      const stored = db.prepare("SELECT round, origin FROM task_reports WHERE task_id = ?").get(container.id);
+      assert.equal(stored.origin, "delivery", "the gate is kind-agnostic: a container delivers like a leaf");
+      assert.equal(stored.round, 1);
+      assert.deepEqual(activitiesFor(db, container.id), ["task_created", "task_updated", "task_moved", "task_delivered"]);
+    });
+  });
+});
+
 describe("commands/tasks — claim and heartbeat", () => {
   it("claims, reuses and refuses exactly as the policy says", async () => {
     await board(async ({ db, commands }) => {
