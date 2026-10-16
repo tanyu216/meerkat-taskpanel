@@ -658,7 +658,7 @@ function copyId() {
              carried (`ml-auto shrink-0 border-0 bg-transparent
              text-(--brand-text-3) cursor-pointer`) described a 16×16 box with no
              edge and the wrong ink, which is what the visual leg measured
-             (`docs/verify/T-20261014-150729`, impl `16×16` vs proto `32×32`).
+             (`T-20261014-150729`, impl `16×16` vs proto `32×32`).
              `.td-iconbtn` is unlayered in `app.css`, so it outranks the `ml-auto`
              utility it still needs for the row-end push. -->
         <button
