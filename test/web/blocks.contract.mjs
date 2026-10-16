@@ -2593,6 +2593,36 @@ const BLOCKS = [
       { kind: "count", selector: "[data-create-task-depends]", equals: 1 },
       { kind: "count", selector: "[data-parent-clear]", equals: 1 },
       { kind: "count", selector: "[data-parent-chips]", equals: 1 },
+      // --- the parent control's own structure, against the prototype --------
+      //
+      // T-20261016-113131. The clear ✕ used to be the field group's **sibling**
+      // — a `btn btn-ghost btn-sm` text glyph outside the control, next to a
+      // ComboField whose root shrank to its content (172px against the track's
+      // 405.391). The prototype puts box and ✕ in **one row** (`.td-combo-field`,
+      // the pair that makes `input + gap + ✕ == track` an arithmetic identity),
+      // and draws the ✕ as the same 20×20 `svg.td-icon-sm` box every other
+      // chip-remove in the board is.
+      //
+      // These seven are the **structure** half: what exists, inside what. They
+      // read `querySelectorAll` / `classList` / the computed box, none of which
+      // needs the element to have a box — which matters, because B24's rules
+      // carry no `when` and therefore evaluate in the **board** state, where the
+      // create dialog is `hidden` and every `getBoundingClientRect` is 0
+      // (T-20261015-233122 A6). The **geometry** half — the identity, the 20×20
+      // box, the right edge on the track's right edge, the menu's width — is
+      // measured in `web/scripts/dom-smoke.mjs#r8c`, where the dialog is open.
+      //
+      // A probe may name a design class, so `.td-combo-field` is expressible;
+      // the ✕ itself is addressed by its hook, not by the class the `classes`
+      // rule asserts (that rule is what keeps a Tailwind utility from replacing
+      // it — the design namespace is closed).
+      { kind: "computed", probe: ".td-combo-field [data-parent-input]", count: 1 },
+      { kind: "computed", probe: ".td-combo-field [data-parent-clear]", count: 1 },
+      { kind: "classes", probe: "[data-parent-clear]", includes: ["td-combo-clear"] },
+      { kind: "computed", probe: "[data-parent-clear] svg.td-icon", count: 1 },
+      { kind: "computed", probe: "[data-parent-clear] svg.td-icon-sm", count: 1 },
+      { kind: "computed", probe: "[data-parent-clear]", property: "width", equalsPx: 20 },
+      { kind: "computed", probe: "[data-parent-clear]", property: "height", equalsPx: 20 },
       {
         kind: "manual",
         note:
