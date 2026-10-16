@@ -133,8 +133,55 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `test/scaffold.test.mjs` asserts they exist **and** that the two carrying meaning say the
   right thing rather than merely being present. `docs/development.md` gains the
   pull-request section, including the repository settings a maintainer has to set by hand.
+- **Two more harnesses: OpenCode and Cursor.** Both read the repository's own `skills/` tree
+  in place and add no committed copy — the rule the distribution refactor below established.
+  - **OpenCode** (`.opencode/plugins/meerkat-taskpanel.js`) registers the shared directory
+    through the host's plugin API: on V1 the `config` hook pushes `<root>/skills` into
+    `config.skills.paths`, on V2 (`>= 2.0.4`) `default.setup(ctx)` adds one `Skill.Info` per
+    `skills/<name>/SKILL.md`. Since V2 dropped the directory form, the V1 hook recognises
+    V2's flat `config.skills` array and stands down. Nothing is injected into bootstrap: the
+    board's session opener stays an install-side concern.
+  - **Cursor** (`.cursor-plugin/plugin.json`, `"skills": "./skills/"`) makes the repository
+    root a Cursor plugin root too. No hooks, deliberately — Cursor's hook contract is its own
+    schema and the upstream reference implementation has no uninstall/update path for it yet,
+    so the delivery is skills-only, as the Claude plugin and the OpenClaw bundle are.
+  - Both are **directory-granular**: a host handed a directory gets both skills, so OpenCode
+    and Cursor receive the board and the loop together.
+  - **A contract change this forced.** The root now carries two client markers and OpenClaw's
+    detection precedence is codex → cursor → claude, so OpenClaw reports the root bundle as
+    `Bundle format: cursor` instead of `claude`. Measured on OpenClaw 2026.9.8 with and
+    without the marker: that is the only line that changes — `Format: bundle`,
+    `Shape`, `Capability mode` and `Bundle capabilities: skills` are byte-identical, and the
+    skills load either way.
+  - **Honest gap, documented rather than papered over:** neither the OpenCode nor the Cursor
+    CLI is available on the development host or in the container, so neither host integration
+    has ever been run from here. OpenCode's plugin logic is covered offline by
+    `test/install/opencode-plugin.test.mjs` against a fake plugin context; Cursor's marker is
+    covered by the manifest and bundle assertions. See `docs/install.md`.
 
 ### Changed
+
+- **The repository root is the board's plugin root; three bundle directories were deleted.**
+  `plugins/claude/`, `plugins/codex/` and `plugins/pi/` are gone, and the marketplace source
+  moved from `./plugins/claude` to `./`. Each harness's manifest now sits next to the one
+  `skills/` tree and points at it, so claude, codex, cursor, pi and opencode need no generated
+  copy: `.claude-plugin/plugin.json` was lifted out of `plugins/claude/` unchanged, and Codex
+  turned out to need nothing of its own at all — it reads the same repository-root
+  marketplace and installs the same `./` bundle, so `plugins/codex/` was dead weight.
+  - **Pi** declares itself in the root `package.json` — `pi.skills` names the shared tree and
+    `pi.extensions` names `.pi/extensions/meerkat-taskpanel.ts`, which re-registers that
+    directory at load time through Pi's `resources_discover` event, resolving its own path so
+    it follows the install location. `plugins/pi/` is deleted with it.
+  - Together: **6 → 3 `skills` directories** (68 → 35 committed copy files, as measured when
+    this landed). What remained was the floor the plan called irreducible — the OpenClaw
+    native manifest and the loop's own marketplace bundle — both since removed as well, so
+    the repository is down to **one `skills` directory and no copies at all** (see
+    *Removed*).
+  - Gates followed the move: `HOST_BUNDLES`' claude/codex/pi rows point at `.`, the OpenClaw
+    probe re-points at the repository root, and `manifests` / `version` / `profiles` /
+    `pack-manifest` / `host-cli` and their tests were re-pathed. `package.json#files` names
+    each dot-directory explicitly, since npm does not include dot files by default
+    (verified with a real `npm pack`).
 
 - **`sync-skills.mjs` generates, but copies nothing.** With the last two bundles gone it has
   one job — generating the loop skill's payload (`body/` + `templates/`) from the repository's
