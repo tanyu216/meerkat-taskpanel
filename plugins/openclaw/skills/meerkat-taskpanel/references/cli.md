@@ -75,7 +75,7 @@ an error message.
 | `project create --id <id> --name <n> [--meta k=v]… [--label <l>]… [--readme <text>]` | Create a project. The id becomes the identifier prefix (`demo` → `DEMO-0001`). |
 | `project update <id> [--name] [--meta k=v]… [--label]… [--readme]` | Update it. `--meta` **merges**. |
 | `project list [--include-archived]` | List projects. |
-| `project dir <id>` | Print the local directory the project works in, resolved from `projects.json` (`--projects-json <path>` or `$MEERKAT_TASKPANEL_PROJECTS_JSON` picks another map). Exits non-zero — asking which directory it should be — when none is registered, or when the registered path is relative, missing, or not a directory. |
+| `project dir <id>` | Print the local directory work for the project happens in, resolved from `projects.json` (`--projects-json <path>` or `$MEERKAT_TASKPANEL_PROJECTS_JSON` picks another map): the entry's `local_path`, else its `run_dir`. Prints that the entry names no directory — and still succeeds — for a project that has none. Exits non-zero, asking which directory it should be, only when no entry is registered or the registered path is relative, missing, not a directory, or blank. |
 | `project readme <id>` | Print the readme. |
 | `project readme <id> --set <text>` / `--file <path\|->` | Set it. |
 
@@ -85,8 +85,9 @@ names a project's target directory. The local map from a directory to a board
 project is the `projects.json` kept beside this skill — see
 [`projects-json.md`](projects-json.md). `project dir` is that map's read side, and it
 is local: it resolves and validates the path, and **stops to ask** rather than
-guessing one. The wake glue resolves the same map to run a woken worker in the
-project's directory.
+guessing one — while an entry that deliberately names no directory is an answer, not a
+question. The wake glue resolves the same map to run a woken worker in the directory
+the map names.
 
 ### `issue`
 

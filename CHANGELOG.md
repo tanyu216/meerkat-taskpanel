@@ -138,6 +138,27 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **A `projects.json` entry no longer has to name a directory — and a project that has none
+  may still be woken through a `run_dir` launch pad.** The map's rule is now
+  `dir = local_path ?? run_dir`: `local_path` stays the project's own directory (unchanged for
+  every entry that has one), and the new optional `run_dir` names where a worker starts for a
+  project that has no directory of its own. An entry that names **neither** is the complete
+  answer *"this project has no local directory"* — for operations or coordination work that
+  never touches the disk — and `taskctl project dir <id>` now reports it and succeeds
+  (`dir: null`, exit 0) instead of failing with `PROJECT_DIR_REQUIRED`. That code survives for
+  a genuinely unusable value (a key that is present but blank, or a path that is relative,
+  missing or not a directory), and a project with **no entry at all** still fails
+  `PROJECT_DIR_UNMAPPED` and asks which directory it should be — the two answers stay
+  distinguishable. A **wake** needs somewhere to start a worker, so both of the "no directory"
+  answers refuse it (exit 3, with its own reason), as before. Two boundaries restated alongside
+  it: the keys beyond `project`/`local_path`/`run_dir` are **the business's metadata** — read by
+  the agent from the file, never prescribed, validated or interpreted here — and the directory is
+  where a **worker** runs, not where results are stored: where a task's output lives, or whether
+  it is kept at all, is not the board's business. `run_dir` deliberately takes no part in the
+  directory → project lookup, and a `local_path` that is *omitted* (or `null`) falls through to
+  `run_dir` while one that is given but blank is a failure to fix rather than a reason to fall
+  through. See
+  [`references/projects-json.md`](skills/meerkat-taskpanel/references/projects-json.md).
 - **`pre-push` now refuses a direct push to `main`.** `main` advances through a pull request,
   so a mistaken `git push origin main` (or a `--delete` of it) is caught locally, before the
   round trip, instead of by the branch-protection rule on the remote. A deliberate release

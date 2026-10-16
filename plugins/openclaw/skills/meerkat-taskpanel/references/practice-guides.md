@@ -147,8 +147,19 @@ the board project's **id** (preferred) or name. The file is **local and agent-si
 it is never written into the board**, and it is not part of the skill's source. The
 full schema is in [`projects-json.md`](projects-json.md).
 
-**There is no fallback — ask.** A project absent from `projects.json` has **no target
-directory** — the board cannot supply one. Do not invent, guess, or derive a
+That directory is where a **worker starts** — not where the project's results live.
+Where a project keeps what it produces (a repository, a vault, nowhere at all) is its
+own business; see the boundaries below.
+
+**No directory is an answer — and the map says so.** A project whose work needs no
+checkout is registered with an entry that names no directory
+(`{ "project": "Community" }`), and `taskctl project dir <project>` reports that and
+succeeds. Do not invent a directory for it; if a worker must start somewhere, give the
+entry a `run_dir` — the launch directory, consulted only when `local_path` is absent
+(`dir = local_path ?? run_dir`).
+
+**There is no fallback — ask.** A project **absent** from `projects.json` has no
+registered directory — the board cannot supply one. Do not invent, guess, or derive a
 directory, and do not go looking for one on the board. When a step needs the directory,
 stop and **ask the user**, rather than continuing without an answer:
 
@@ -158,21 +169,26 @@ Which directory does it work in? I will add it to projects.json beside this skil
 (references/projects-json.md) — the board cannot supply one.
 ```
 
-`local_path` is required **and checked** (absolute, exists, is a directory): an entry
+A directory that *is* named is checked (absolute, exists, is a directory): an entry
 that points nowhere — a moved checkout, a typo, a file — is as unusable as no entry,
 and gets the same question with what is wrong named. `taskctl project dir <project>` is
-the command form: it prints the directory, or exits non-zero asking rather than
-proceeding. A directory that maps to nothing gets the same prompt. Work that needs no
-directory — claiming, moving, commenting, delivering (§1–§6) — is unaffected; a missing
-mapping is "no directory known", never "cannot work".
+the command form: it prints the directory, prints that the entry names none, or exits
+non-zero asking rather than proceeding. A directory that maps to nothing gets the same
+prompt. Work that needs no directory — claiming, moving, commenting, delivering (§1–§6)
+— is unaffected; a missing mapping is "no directory known", never "cannot work".
 
-Two boundaries this respects, on purpose:
+Three boundaries this respects, on purpose:
 
 1. **TaskPanel does no project-directory management** — not a column, not a route, not
    a command. A board project simply has no directory; directories are a local concern.
-2. **Whether you manage a project's source data with `meta` is your own call.**
+2. **TaskPanel does not manage project data** — where a task's results live, and
+   whether they are kept at all, is the business's decision. The board keeps task data
+   complete, reliable, traceable and auditable, and nothing else.
+3. **Whether you manage a project's source data with `meta` is your own call.**
    TaskPanel does not prescribe it and does not advise it — and **this skill takes no
-   position either**. Use `meta`, or don't, by your own convention.
+   position either**. Use `meta`, or don't, by your own convention. The metadata keys
+   an entry in `projects.json` carries beyond `project`/`local_path`/`run_dir` are the
+   same kind of call: yours, read by the agent from the file.
 
 ## Waking & patrol (唤醒与巡检)
 
@@ -204,10 +220,11 @@ Three things that keep it honest:
   all; a live claim is invisible to the next scan.
 - **A broken heartbeat is never silent.** If patrol cannot read a heartbeat, it
   *reports* that instead of going quiet — the state that used to vanish.
-- **A woken worker runs in its project's directory — or is not woken at all.** The
+- **A woken worker runs in the directory the map names — or is not woken at all.** The
   wake goes through the host's own glue, which resolves the card's project against
-  this skill's `projects.json` and `cd`s there; a project with no usable directory
-  refuses the wake instead of running somewhere unintended
+  this skill's `projects.json` (its `local_path`, else its `run_dir` launch directory)
+  and `cd`s there; a project with no usable directory — an unregistered one, or an
+  entry that names none — refuses the wake instead of running somewhere unintended
   ([§Where a directory's project lives](#where-a-directorys-project-lives-目录归属)).
 
 Installers drop per-host scheduling units (launchd / systemd / cron) and a wake

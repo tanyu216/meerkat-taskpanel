@@ -83,12 +83,15 @@ Both shims inject `--agent <name>` on every call, with `TASKCTL_AGENT` as the fa
 ### The local `projects.json` (beside the skill)
 
 The board holds no project directories, so the local map from a **directory** to a
-**board project** is a `projects.json` created **inside the installed skill directory**,
-next to `SKILL.md` — `~/.claude/skills/meerkat-taskpanel/projects.json` for Claude Code,
-and the matching skill directory for each other host. The skill's own reference,
+**board project** — and from a project to the directory its **workers** run in — is a
+`projects.json` created **inside the installed skill directory**, next to `SKILL.md` —
+`~/.claude/skills/meerkat-taskpanel/projects.json` for Claude Code, and the matching
+skill directory for each other host. The skill's own reference,
 [`projects-json.md`](../skills/meerkat-taskpanel/references/projects-json.md), documents
-the schema. `install.sh` ships **no** `projects.json` and never writes one: the file is
-yours to create and edit.
+the schema: an entry names the board `project`, may name a directory (`local_path`, or
+the `run_dir` launch directory for a project that has none of its own), and may carry
+whatever else the agent should know about the project. `install.sh` ships **no**
+`projects.json` and never writes one: the file is yours to create and edit.
 
 **It is never overwritten.** A plain re-run leaves the whole existing skill directory
 untouched (an existing install is the desired end state), so a `projects.json` beside
@@ -116,7 +119,7 @@ directory, so `/usr/bin/env node` is exit 127 — and the wake glue's `exec clau
 worker's own tool tree, resolve on that same set. If the host CLI is not on `PATH` at
 install time, the installer says so and renders node's directory alone rather than guessing.
 See [`scheduling.md` §What the loop's units run with](scheduling.md#what-the-loops-units-run-with).
-| wake glue | `<host>/bin/wake-<host>.sh` | resolves the card's project target directory from the board skill's `projects.json` via the host-local `meerkat-taskpanel/scripts/wake-cwd.mjs`, `cd`s there (refusing the wake if it cannot), then runs `claude -p` (+`--resume`), `codex exec`, or `pi --print` |
+| wake glue | `<host>/bin/wake-<host>.sh` | resolves the directory a worker for the card's project runs in (`local_path`, else `run_dir`) from the board skill's `projects.json` via the host-local `meerkat-taskpanel/scripts/wake-cwd.mjs`, `cd`s there (refusing the wake if it cannot), then runs `claude -p` (+`--resume`), `codex exec`, or `pi --print` |
 | host config | `<host>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no` + `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives) |
 | log (runtime) | `<host>/meerkat-taskpanel/supervisor.log` | the supervisor's tick log |
 | state (runtime) | `<host>/meerkat-taskpanel/supervisor.state.json` | the running registry |
