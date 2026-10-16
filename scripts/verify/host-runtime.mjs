@@ -36,7 +36,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -246,7 +246,13 @@ function checkWake(host) {
     if (JSON.stringify(calls[0].argv) !== JSON.stringify(want.args)) {
       return `argv ${JSON.stringify(calls[0].argv)} != wakeCommand().args ${JSON.stringify(want.args)}`;
     }
-    if (calls[0].cwd !== target) return `ran in ${calls[0].cwd}, expected the mapped ${target}`;
+    // Compare canonically, not by spelling. The throwaway home lives under `os.tmpdir()`, which
+    // on macOS is already inside the `/var` → `/private/var` symlink, and a child's
+    // `process.cwd()` reports the *physical* path while the map carries the spelled one — so the
+    // spelled forms differ on a correct run. Same lesson as the guard under test.
+    if (realpathSync(calls[0].cwd) !== realpathSync(target)) {
+      return `ran in ${calls[0].cwd}, expected the mapped ${target}`;
+    }
     return null;
   }, `${spec.cli} ${wakeCommand({ host, prompt: "…" }).args.join(" ")} in the mapped directory`);
 

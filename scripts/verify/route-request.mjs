@@ -83,13 +83,13 @@
  */
 
 import { parseArgs } from "node:util";
-import { pathToFileURL } from "node:url";
 
 import { OUT_OF_ROUTER_ENDPOINTS, registerApiRoutes } from "../../src/server/index.mjs";
 import { createRouter } from "../../src/server/router.mjs";
 import { inputOf, TASK_OPS } from "../../src/core/commands/tasks-input.mjs";
 import { registry as cliRegistry } from "../../src/cli/commands/index.mjs";
 import { projectFlags } from "../../src/cli/commands/task-input.mjs";
+import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
 
 // ---------------------------------------------------------------------------
 // Lexing: just enough JavaScript to find reads, and to not be fooled by prose
@@ -904,7 +904,6 @@ async function main(argv) {
 }
 
 // Guarded so the test suite can import the module without side effects.
-const invokedDirectly = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (invokedDirectly) {
+if (isEntryPoint(import.meta.url)) {
   process.exit(await main(process.argv.slice(2)));
 }

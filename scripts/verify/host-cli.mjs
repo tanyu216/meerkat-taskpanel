@@ -23,6 +23,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -104,6 +105,19 @@ function tail(text, lines = 15) {
   return trimmed.split("\n").slice(-lines).join("\n");
 }
 
+/**
+ * The CLI could not be located at all — as opposed to found-and-then-failed.
+ *
+ *   * `ENOENT` — no `PATH` entry has it.
+ *   * `ENOTDIR` — a `PATH` entry is not a directory, so the search died before it could
+ *     report a miss.
+ *
+ * Both mean "absent", so both are a SKIP and never a FAIL: otherwise one stray file
+ * entry on `PATH` would fail every absent CLI's probe. `EACCES` is deliberately *not*
+ * here — "found but not executable" is a real failure and must stay one.
+ */
+const BIN_ABSENT = new Set(["ENOENT", "ENOTDIR"]);
+
 /** Run one host probe in an isolated HOME. Returns a result row. */
 export function runProbe(probe, timeoutMs) {
   const home = mkdtempSync(join(tmpdir(), `meerkat-taskpanel-hostcli-${probe.host}-`));
@@ -124,7 +138,7 @@ export function runProbe(probe, timeoutMs) {
   try {
     for (const args of probe.steps) {
       const res = spawnSync(probe.bin, args, { cwd: ROOT, env, encoding: "utf8", timeout: timeoutMs });
-      if (res.error?.code === "ENOENT") {
+      if (BIN_ABSENT.has(res.error?.code)) {
         skipped = true;
         break;
       }
@@ -208,6 +222,6 @@ async function main() {
 }
 
 // Only run when executed directly, so tests can import PROBES / runProbe.
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (isEntryPoint(import.meta.url)) {
   process.exit(await main());
 }

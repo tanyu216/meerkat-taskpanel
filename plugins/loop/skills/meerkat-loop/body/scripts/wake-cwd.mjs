@@ -25,10 +25,10 @@
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 
 import { PROJECTS_JSON_ENV, parseProjectMap, resolveProjectDir } from "../src/shared/project-dir.mjs";
 import { repoRoot } from "../src/shared/runtime-locator.mjs";
+import { isEntryPoint } from "../src/shared/entry-guard.mjs";
 
 const USAGE = `Usage: node scripts/wake-cwd.mjs --project <identity> [--projects-json <path>]
 
@@ -120,8 +120,6 @@ export function main(argv, io = { out: (t) => process.stdout.write(t), err: (t) 
   return 0;
 }
 
-const invokedDirectly =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (invokedDirectly) {
+if (isEntryPoint(import.meta.url)) {
   process.exit(main(process.argv.slice(2)));
 }

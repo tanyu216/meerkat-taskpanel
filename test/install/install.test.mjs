@@ -12,7 +12,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -103,5 +103,26 @@ describe("host-cli: absent CLIs are skipped, never failed", () => {
     assert.equal(run.status, 0, run.stderr);
     assert.equal((run.stdout.match(/^SKIP /gm) ?? []).length, 4, run.stdout);
     assert.match(run.stdout, /0 passed, 0 failed, 4 skipped/);
+  });
+
+  it("SKIPs (not FAILs) when a PATH element is a regular file (ENOTDIR)", () => {
+    // A `PATH` element that is a regular file — not a directory — makes the bare-name
+    // lookup die with ENOTDIR before it can report a miss. That is the same outcome as
+    // ENOENT ("this CLI is not here"), so it must SKIP too: one stray file entry on PATH
+    // must not fail every absent CLI's probe.
+    const notADir = join(makeTempDir(), "a-file-not-a-dir");
+    writeFileSync(notADir, "not a directory\n", "utf8");
+    assert.equal(statSync(notADir).isDirectory(), false, "fixture precondition: this PATH entry must be a file");
+
+    const run = spawnSync(NODE, [join(ROOT, "scripts/verify/host-cli.mjs")], {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: { ...process.env, PATH: notADir },
+    });
+
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal((run.stdout.match(/^FAIL /gm) ?? []).length, 0, run.stdout);
+    assert.ok((run.stdout.match(/^SKIP /gm) ?? []).length >= 4, run.stdout);
+    assert.match(run.stdout, /0 passed, 0 failed, \d+ skipped/);
   });
 });

@@ -451,6 +451,57 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **An absent host CLI is SKIPPED even when a `PATH` entry is not a directory.**
+  `scripts/verify/host-cli.mjs` treated only `ENOENT` as "this CLI is not here"; when a `PATH`
+  element is a regular file rather than a directory, the bare-name lookup dies with `ENOTDIR`
+  before it can report a miss, so one stray file entry turned every absent host into a **FAIL**
+  instead of a SKIP — the opposite of the file's own promise that it is safe to run anywhere. The
+  two errnos are now named as the single class they are, `BIN_ABSENT = {ENOENT, ENOTDIR}`;
+  `EACCES` is deliberately *not* in it, because "found but not executable" is a real failure and
+  must stay one. The branch had no test, so `test/install/install.test.mjs` now drives it with a
+  `PATH` that is a file, and asserts the SKIP summary where it previously produced four FAILs and
+  exit 1.
+- **The wake glue refuses an empty target directory instead of waking a worker in the wrong
+  checkout.** `wake-cwd.mjs`'s contract is "exit 0 means resolved, and the directory is the only
+  thing on stdout", so an empty `$cwd` with exit 0 is an illegal state — and the glue's
+  `if ! cwd=$(…)` guard could not see it, because `cd ""` **succeeds** in bash: the worker then
+  started in whatever directory the scheduler happened to run in. All three wake scripts
+  (`claude`, `codex`, `pi`) now test the resolved *value*, not only the exit status — an
+  absolute-path check that subsumes both the empty and the relative case — and exit 3 without
+  starting a worker. This is defence in depth rather than a fix for whatever makes a resolver
+  answer emptily, but the outcome changes shape in a way an operator can see: a wake that used to
+  start somewhere wrong now does not start at all, which is the deliberate trade (README R1 — a
+  worker in the wrong checkout is worse than no worker).
+- **Every entry-point guard compares canonical paths, so a symlinked path can no longer turn a
+  CLI into a silent no-op.** The idiom that decides "run `main()` when executed, stay inert when
+  imported" compared `import.meta.url` against `pathToFileURL(process.argv[1]).href` — and Node
+  resolves the first through `realpath` while leaving the second exactly as the caller spelled
+  it, so **any symlinked ancestor** made the guard false. Nothing ran, nothing was written, and
+  the process still exited **0**: a no-op reported as success. Not theoretical — `script_dir()`
+  in `_common.sh` prints the logical path, macOS's `/tmp` is itself a symlink to `/private/tmp`,
+  and a host whose home directory is mounted elsewhere commonly has a symlinked `$HOME`. Two
+  consequences were live. A `scripts/verify/*` checker reached through a symlink **reported
+  success without looking at anything** (`verify:migrate:container`'s `scripts/migrate/drill.mjs`
+  and `docker/migrate-in-container.sh`'s `reconcile.mjs` among them), and `wake-cwd.mjs` printed
+  an empty directory that the wake glue accepted as resolved, so a woken worker ran in the wrong
+  checkout. The fix is one shared `src/shared/entry-guard.mjs` (`canonicalPath` +
+  `isEntryPoint`), generalising what `scripts/install/lib/{unit-path,apply,supervisor,taskd-guard}.mjs`
+  had each already discovered privately, applied across all 24 in-tree entry points (the scan
+  caught `scripts/verify/web-dist.mjs`, added after this work began, on the first merge); the four
+  that cannot share it carry a private copy instead, for three reasons: the board skill's
+  `report.mjs` and the loop skill's `board-check.mjs` ship on their own (an import reaching back
+  out of their directory would dangle once copied), `web/scripts/dom-smoke.mjs` lives in a
+  separate workspace with its own lockfile, and `scripts/security/scan-gate.mjs` must import
+  **Node builtins only** — a security gate cannot depend on the code it exists to clear.
+  `test/install/apply-guard.test.mjs` gains
+  a table that runs six entry points twice, canonically and through a symlinked ancestor, and
+  requires identical status, stdout and stderr, plus a source scan that fails on any
+  reintroduction of the three fragile shapes. `host-runtime.mjs` goes from **22/31 to 31/31** on
+  macOS; its own "ran in the mapped directory" assertion had the same defect and now compares
+  canonically. One behaviour change to note on an affected host: code that had been silently
+  inert starts actually running — above all the loop supervisor, which cron / launchd start by
+  absolute path and which would previously have exited 0 having scanned nothing.
+
 - **The combobox popup stopped collapsing to its content width — fixed once, for both places
   the control appears.** `.td-combo-menu`'s box was **110.19px** wide in the drawer where the
   prototype draws **383px**, and its rows were 27.5px where the prototype's are 28; the create

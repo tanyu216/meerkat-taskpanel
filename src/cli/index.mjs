@@ -20,7 +20,6 @@
  */
 
 import { readFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
 
 import { CLI_EXIT, CONTRACT_SCHEMA_VERSION, VERSION } from "../shared/constants.mjs";
 import { isSupportedNode, unsupportedNodeMessage } from "../shared/node-version.mjs";
@@ -34,6 +33,7 @@ import { renderFailure, renderResult } from "./output/index.mjs";
 import { ensureBoard, readPointer } from "../shared/transport/runtime.mjs";
 import { resolveToken } from "../shared/transport/token.mjs";
 import { commandUsage, groupUsage, topLevelUsage, versionLine } from "./usage.mjs";
+import { isEntryPoint } from "../shared/entry-guard.mjs";
 
 /** `--json`, in either spelling. Read from the raw argv so it survives a parse failure. */
 export function wantsJson(argv) {
@@ -188,9 +188,7 @@ export async function run(argv, io) {
 }
 
 // Guarded so the module can be imported by tests without running anything.
-const invokedDirectly =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (invokedDirectly) {
+if (isEntryPoint(import.meta.url)) {
   // Step 0: the runtime floor. Exit 2 (the "cannot run as invoked" code, shared
   // with `install.sh`) and one clear line — never a stack trace from node:sqlite.
   if (!isSupportedNode(process.versions.node)) {

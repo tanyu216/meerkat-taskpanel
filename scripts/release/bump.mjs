@@ -44,11 +44,12 @@
 import { spawnSync } from "node:child_process";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { findVersionEntry } from "../verify/changelog.mjs";
 import { LOOP_VERSION_SOURCES, VERSION_SOURCES, validateVersions } from "../verify/version.mjs";
+import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
 
 /** Repository root, resolved from this file (`scripts/release/`). */
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -734,8 +735,6 @@ async function main(argv) {
 }
 
 // Guarded so the module can be imported by the test suite without side effects.
-const invokedDirectly =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (invokedDirectly) {
+if (isEntryPoint(import.meta.url)) {
   process.exit(await main(process.argv.slice(2)));
 }

@@ -34,9 +34,9 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 /**
  * The board interface generation this loop drives.
@@ -278,8 +278,23 @@ export function main(argv, io = {}) {
   return 3;
 }
 
-const invokedDirectly =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (invokedDirectly) {
+// A private copy of `src/shared/entry-guard.mjs`. This file is copied out on its own as part of
+// the loop skill, so an import reaching back into the checkout would dangle once it is. Node
+// resolves `import.meta.url` through `realpath` but leaves `process.argv[1]` as spelled, so both
+// sides must be canonicalised — otherwise the guard is silently false and this exits 0 having
+// checked nothing.
+function canonicalPath(path) {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
+const isEntryPoint =
+  process.argv[1] !== undefined &&
+  canonicalPath(process.argv[1]) === canonicalPath(fileURLToPath(import.meta.url));
+
+if (isEntryPoint) {
   process.exit(main(process.argv.slice(2)));
 }

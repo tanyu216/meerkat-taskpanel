@@ -65,7 +65,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 import {
   DEFAULT_MAX_CONCURRENCY,
@@ -98,6 +98,7 @@ import {
   stillQualifies,
   trailReadCandidates,
 } from "../src/shared/sla-patrol.mjs";
+import { isEntryPoint } from "../src/shared/entry-guard.mjs";
 
 // Re-exported so a caller can import the whole supervisor surface from one place.
 export {
@@ -1064,8 +1065,6 @@ async function runSlaPass(opts, log, tasks, periodSeconds, { boardTruncated = fa
   return result;
 }
 
-const invokedDirectly =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (invokedDirectly) {
+if (isEntryPoint(import.meta.url)) {
   main(process.argv.slice(2)).then((code) => process.exit(code));
 }
