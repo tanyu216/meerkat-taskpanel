@@ -3252,8 +3252,18 @@ export async function run() {
       const cs = active ? getComputedStyle(active) : null;
       const nameCs = activeName ? getComputedStyle(activeName) : null;
       const hostCs = host ? getComputedStyle(host) : null;
+      const railEl = document.querySelector("[data-sidebar]");
       return {
         rows: hosts.map((el) => ({ clip: el.scrollWidth - el.clientWidth, overflow: getComputedStyle(el).overflowX })),
+        // The rail's own box. `rows[].clip === 0` above is satisfied by a host
+        // that simply *grew*, which is how the roster escaped the rail: the host
+        // is a flex item with `overflow: visible`, so its `min-width: auto` floor
+        // was its whole one-line run, and the run's right edge landed past the
+        // 248px column's `overflow-x: auto` cut. The box the names must actually
+        // fit in is this one (T-20261016-130046).
+        rail: railEl
+          ? { clip: railEl.scrollWidth - railEl.clientWidth, scrollWidth: railEl.scrollWidth, clientWidth: railEl.clientWidth }
+          : null,
         rowHeights: [...document.querySelectorAll("[data-agent-row]")].map((el) => round(el.getBoundingClientRect().height)),
         activeCount: document.querySelectorAll('[data-assignee-item][data-assignee-active="true"]').length,
         capsule: cs ? {
@@ -3502,6 +3512,13 @@ export async function run() {
       `the first-in-row capsule bleeds ${r11Capsule.activeBleed}px (first=${r11Capsule.activeIsFirst}, painted=${r11Capsule.activePainted})`,
     );
     r11Check(restRoster.rows.every((r) => r.clip === 0), `at rest the roster clips ${restRoster.rows.map((r) => r.clip).join(",")}`);
+    // B03 · R-1 — the rail is the box the names must fit in. A host that grows
+    // instead of wrapping passes `rows[].clip === 0` and still hands the overflow
+    // to `.td-sidebar`'s own `overflow-x: auto`, which is a 248px column hiding
+    // real content behind a scrollbar most readers never take. Both observations
+    // are needed; neither alone says the names are on screen.
+    r11Check(restRoster.rail?.clip === 0, `at rest the sidebar rail scrolls ${restRoster.rail?.clip}px (scrollWidth ${restRoster.rail?.scrollWidth} > clientWidth ${restRoster.rail?.clientWidth}) — the roster is escaping the rail instead of fitting it`);
+    r11Check(r11Capsule.rail?.clip === 0, `with a capsule the sidebar rail scrolls ${r11Capsule.rail?.clip}px (scrollWidth ${r11Capsule.rail?.scrollWidth} > clientWidth ${r11Capsule.rail?.clientWidth})`);
 
     // R13 §10.3 C4 — switching names moves the capsule, never doubles it, and
     // still writes nothing but the assignee.
