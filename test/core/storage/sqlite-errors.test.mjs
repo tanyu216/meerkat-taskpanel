@@ -216,7 +216,7 @@ describe("storage/sqlite-errors — constraint failures", () => {
     // mapper is not the only producer of) and every errcode the mapper knows,
     // through `toErrorPayload` — the document `server/router.mjs` serialises.
     // The standalone reading of the same predicate is
-    // `docs/verify/T-20261014-152924/scan-error-envelope.mjs`.
+    // `T-20261014-152924/scan-error-envelope.mjs`.
     for (const code of Object.keys(ERROR_CODES)) {
       const payload = toErrorPayload(new DomainError(code, { message: "CHECK constraint failed: x" }));
       assert.equal(TECHNICAL_ERROR_TEXT.test(payload.message), false, `${code}: ${payload.message}`);

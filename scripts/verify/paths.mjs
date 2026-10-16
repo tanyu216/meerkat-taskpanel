@@ -45,7 +45,11 @@
  *
  * `test/fixtures/host-paths-allowlist.json` lists the files that are allowed to carry a
  * path, because they are *records* of verification runs that really did happen on one
- * machine — `docs/verify/<card>/…` evidence. Three assertions keep that list honest:
+ * machine. It is **empty, and that is the intended state**: the class it was written for
+ * — the per-card run records that used to land under `docs/verify/<card>/…` — was moved
+ * out of the repository to each card's own workspace (see `docs/README.md`). Three
+ * assertions keep the list honest, and they are what will catch that material if it ever
+ * comes back:
  *
  *   1. every offending file is on the list;
  *   2. every entry on the list still exists — so a deleted file's entry is a red, not
