@@ -273,8 +273,15 @@ function onAssignee(name) {
                project row's `overflow-hidden`/`text-ellipsis` on purpose — the
                capsule is **width-neutral** (6px padding cancelled by −6px inline
                margin), so its left cap bleeds 6px past the row's edge, and a
-               clipped host would shear it off (R13 §8 U-6, corrected here). -->
-          <span class="td-mono flex-1 whitespace-nowrap" data-side-name data-agent-text>
+               clipped host would shear it off (R13 §8 U-6, corrected here).
+               The host's own `min-width` / `white-space` are stated in the
+               stylesheet with that correction (`app.css`, `[data-agent-row]
+               [data-agent-text]`): an unclipped flex item falls back to its
+               min-content width, so without them a roster wider than the 248px
+               rail escaped the rail and scrolled it (T-20261016-130046). No
+               `whitespace-nowrap` utility is left here — the rule owns the
+               wrap, and a utility the rule contradicts is a trap. -->
+          <span class="td-mono flex-1" data-side-name data-agent-text>
             <template v-for="(handle, index) in agent.handles" :key="handle">
               <span v-if="index > 0">, </span>
               <span
