@@ -288,6 +288,39 @@ function checkWake(host) {
     return null;
   }, "exit 3");
 
+  check(section, "entry naming no directory → exit 3, no worker started (a map's answer, not a wake's)", () => {
+    // The map is happy: an entry that names no directory is the complete answer
+    // "this project has no local directory". A *worker* still needs a cwd, so the
+    // wake refuses — and refuses with its own reason, not the unmapped one.
+    writeMap([{ project: PROJECT, kind: "ops" }]);
+    writeFileSync(log, "");
+    const res = run(["bash", wakePath, "do T-1"], { env: { FAKE_HOST_LOG: log, TP_PROJECT: PROJECT } });
+    writeMap([{ project: PROJECT, local_path: target }]);
+    if (res.status !== 3) return `exit ${res.status} (want 3); stderr=${JSON.stringify(res.stderr)}`;
+    if (!/no usable directory for project/.test(res.stderr)) {
+      return `stderr did not name the missing directory: ${JSON.stringify(res.stderr)}`;
+    }
+    const calls = readJsonl(log);
+    if (calls.length) return `started a worker anyway: ${JSON.stringify(calls)}`;
+    return null;
+  }, "exit 3");
+
+  check(section, "run_dir-only entry → exit 0, worker runs in the launch directory", () => {
+    const launch = join(ctx.tmp, `launch-${host}`);
+    mkdirSync(launch, { recursive: true });
+    writeMap([{ project: PROJECT, run_dir: launch }]);
+    writeFileSync(log, "");
+    const res = run(["bash", wakePath, "do T-1"], { env: { FAKE_HOST_LOG: log, TP_PROJECT: PROJECT } });
+    writeMap([{ project: PROJECT, local_path: target }]);
+    if (res.status !== 0) return `exit ${res.status}; stderr=${JSON.stringify(res.stderr)}`;
+    const calls = readJsonl(log);
+    if (calls.length !== 1) return `want 1 host-CLI call, got ${calls.length}: ${JSON.stringify(calls)}`;
+    if (realpathSync(calls[0].cwd) !== realpathSync(launch)) {
+      return `ran in ${calls[0].cwd}, expected the launch directory ${launch}`;
+    }
+    return null;
+  }, `exit 0 in ${join(ctx.tmp, `launch-${host}`)}`);
+
   check(section, "no permission-bypass flag in any executed command", () => {
     // Comment lines are dropped first: the scripts *document* the boundary by naming the
     // flag they must not use, and a naive substring scan would flag that comment.
