@@ -5,7 +5,7 @@ Documentation for Meerkat TaskPanel.
 | Document | Contents |
 |---|---|
 | [install.md](install.md) | Installing the skill into Claude Code, OpenClaw, Codex or Pi; `install.sh` usage, the per-host table and flags. OpenCode has a `--target` of its own; Cursor is plugin-only — their sections show both routes. |
-| [publishing.md](publishing.md) | Releasing a version: npm packaging / publish, the git tag + GitHub Release pipeline, and the Claude marketplace / OpenClaw / Codex / Pi publication steps. |
+| [publishing.md](publishing.md) | Releasing a version: npm packaging / publish, the git tag + GitHub Release pipeline, and the per-host publication steps (Claude Code marketplace / OpenClaw / Codex / Pi / Cursor / OpenCode). |
 | [development.md](development.md) | Repository layout, Node requirement, test / verify / build commands, the two build layers (engine vs `web/`) and the offline / dependency policy. |
 | [docker.md](docker.md) | Why verification and the six-host installs run in a container; the image build, the offline `web/` build stage, profiles and troubleshooting. |
 | [migration.md](migration.md) | Taking over the team's markdown cards: the dry run, shadow (read-only) mode, the single-point switch and the rollback. |

@@ -1,8 +1,8 @@
 # Publishing
 
-How a Meerkat TaskPanel version is packaged and published across the five distribution
-surfaces: **npm**, **git + GitHub Release**, and the four host bundles (Claude Code
-marketplace, OpenClaw, Codex, Pi).
+How a Meerkat TaskPanel version is packaged and published across its distribution surfaces:
+**npm**, **git + GitHub Release**, and the per-host bundles — Claude Code's marketplace,
+OpenClaw, Codex, Pi, Cursor and OpenCode.
 
 > **Scope.** This page documents the steps only. **The actual `push`, tag and release are
 > performed by Elon** — nothing here is run as part of writing this document, and CI does
@@ -352,7 +352,65 @@ pi install <path>/plugins/loop      # the loop
 pi list
 ```
 
-## 8. Skill wrappers ship with the bundle
+## 8. Cursor
+
+`.cursor-plugin/plugin.json` declares `"skills": "./skills/"` — the repository's one
+`skills/` tree, read in place. Cursor registers a *directory*, so nothing is copied and both
+skills arrive together.
+
+```bash
+# consumer: in Cursor's agent chat
+/add-plugin meerkat-taskpanel     # or find it in the plugin marketplace
+
+# what this repository can verify without Cursor installed
+node scripts/verify/manifests.mjs   # the .cursor-plugin manifest row
+node scripts/verify/version.mjs     # the cursor row in the version-carrier table (§1)
+```
+
+Unlike Codex, Cursor **is** a version carrier: `.cursor-plugin/plugin.json` is a row in the
+table in §1, and the release runs `scripts/verify/version.mjs` before `npm pack`.
+`docker/profiles/cursor.yml` declares `bundle: .` / `bundle_kind: bundle` /
+`bundle_format: cursor`, so `scripts/verify/profiles.mjs` also asserts the repository root is
+detected as a cursor-format bundle exposing a loadable `meerkat-taskpanel` skill.
+
+**No hooks are shipped, deliberately.** Cursor's hook contract is its own schema (a lowercase
+`sessionStart` key, a relative `command`, `additional_context` rather than Claude Code's
+`hookSpecificOutput.additionalContext`), and upstream documents no uninstall or update path
+to follow — so rather than invent one, the plugin stays skills-only.
+
+**Unverified, and flagged as such.** Cursor's CLI is not installed in this repository's
+container or on the development host, so the *host integration* above has never been run from
+here; the in-chat gesture is transcribed from `obra/superpowers` rather than reproduced.
+
+## 9. OpenCode
+
+OpenCode is a *directory-granular* host: it is handed a skills directory, not a list of skill
+names, so `.opencode/plugins/meerkat-taskpanel.js` points it at the repository's own
+`skills/` and both skills arrive together. Nothing is copied — the directory is resolved from
+the plugin's own location, so it follows the package wherever OpenCode fetched it.
+
+```jsonc
+// opencode.json — consumer-side registration (V2 >= 2.0.4; V1 uses the singular `plugin` key)
+{
+  "plugin": ["meerkat-taskpanel@git+https://github.com/tanyu216/meerkat-taskpanel.git"]
+}
+```
+
+The plugin is dual-compatible: on V1 the named export pushes the directory into
+`config.skills.paths`; on V2 `default.setup(ctx)` registers one `Skill.Info` per
+`skills/<name>/SKILL.md`, because V2 dropped the directory form and made `config.skills` a
+flat array.
+
+OpenCode is **not** a version carrier and ships no manifest of its own — like Codex, it
+appears in neither the table in §1 nor `plugins/`. `package.json#files` must still name
+`.opencode`, or the plugin never reaches the tarball.
+
+**Unverified, and flagged as such.** OpenCode's CLI is not installed in this repository's
+container or on the development host, so the host integration above has never been run from
+here. What *is* covered is the plugin's own logic:
+`test/install/opencode-plugin.test.mjs` drives it against a fake plugin context.
+
+## 10. Skill wrappers ship with the bundle
 
 Every manifest points at the repository's one `skills/` tree, so the npm whitelist ships the
 skills directly and only OpenClaw and the loop's own marketplace bundle still carry a
@@ -373,4 +431,4 @@ dot files by default, so a manifest that is not listed never reaches the tarball
 - [development.md](development.md) — the two build layers, the offline policy and the
   generated-skill rule.
 - [`../README.md`](../README.md) / [`../README.zh-CN.md`](../README.zh-CN.md) — status and
-  the four-host support matrix.
+  the six-host support matrix.
