@@ -363,9 +363,15 @@ try {
 } catch (err) {
   await browser?.close().catch(() => {});
   server?.close();
+  // Only a leg that *means* "cannot run" exits 2 — `test/web/blocks.dom.test.mjs`
+  // reads 2 as a skip and prints the reason. A runtime failure (a timeout because
+  // the dialog never rendered, a protocol error) is a **red**: `dom-smoke.mjs`'s
+  // own handler is the family's shape (`SKIP` ⇒ 2, anything else ⇒ 1), and a leg
+  // whose failure modes quietly become "skipped" is the one thing this suite's
+  // wrapper exists to prevent.
   if (err?.code === "SKIP") process.exit(2);
   process.stderr.write(`${err?.stack ?? err}\n`);
-  process.exit(2);
+  process.exit(1);
 }
 
 await browser.close().catch(() => {});
