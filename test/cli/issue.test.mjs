@@ -506,6 +506,65 @@ describe("cli/issue — move enforces the assignee (T-20261009-230500)", () => {
   });
 });
 
+describe("cli/issue — `issue heartbeat` (T-20261017-063818)", () => {
+  // Until this command existed the rule "keep the heartbeat fresh (≤10 minutes)"
+  // named no command at all, and the only way to reset the clock was to re-claim
+  // the card. The board has no background pulse: whoever holds the claim is the
+  // only thing that knows the work is still going, so the pulse is the holder's
+  // to send — and these legs are the proof the holder can.
+  const assignLinus = (run) => dataOf(run(["issue", "assign", "DEMO-0001", "--assignee", "Linus", "--json"]));
+
+  it("pulses a claimed card without moving it, and prints the refreshed heartbeat", async () => {
+    await board(async ({ run }) => {
+      createIssue(run);
+      assignLinus(run);
+      const before = dataOf(run(["issue", "move", "DEMO-0001", "in_progress", "--agent", "linus", "--json"]));
+
+      const pulsed = dataOf(run(["issue", "heartbeat", "DEMO-0001", "--agent", "linus", "--json"]));
+      assert.equal(pulsed.task.status, "in_progress", "a pulse never moves the card");
+      assert.equal(pulsed.task.claimed_by_actor.display_name, "Linus", "…nor changes who holds it");
+      assert.equal(pulsed.task.claimed_at, before.task.claimed_at, "the claim itself is not re-stamped");
+      assert.equal(pulsed.task.version, before.task.version + 1, "the pulse is exactly one write");
+
+      // A separate process reads it back, so the pulse is on the card.
+      const read = dataOf(run(["issue", "get", "DEMO-0001", "--json"])).task;
+      assert.equal(read.heartbeat_at, pulsed.task.heartbeat_at);
+
+      const human = run(["issue", "heartbeat", "DEMO-0001", "--agent", "linus"]);
+      assert.equal(human.status, 0, human.stderr);
+      assert.match(human.stdout, /DEMO-0001/);
+      assert.match(human.stdout, /in_progress/);
+    });
+  });
+
+  it("refuses a card that is not in_progress — there is nothing to pulse", async () => {
+    await board(async ({ run }) => {
+      createIssue(run);
+      const refused = run(["issue", "heartbeat", "DEMO-0001", "--agent", "linus", "--json"]);
+      assert.equal(refused.status, 1);
+      const error = JSON.parse(refused.stdout).error;
+      assert.equal(error.code, "INVALID_TRANSITION");
+      assert.equal(error.http, 409);
+      assert.match(error.message, /nothing to pulse/);
+    });
+  });
+
+  it("refuses a non-holder with EXECUTION_ACTIVE, naming the holder", async () => {
+    await board(async ({ run }) => {
+      createIssue(run);
+      assignLinus(run);
+      dataOf(run(["issue", "move", "DEMO-0001", "in_progress", "--agent", "linus", "--json"]));
+
+      const refused = run(["issue", "heartbeat", "DEMO-0001", "--agent", "elon", "--json"]);
+      assert.equal(refused.status, 1);
+      const error = JSON.parse(refused.stdout).error;
+      assert.equal(error.code, "EXECUTION_ACTIVE");
+      assert.equal(error.http, 409);
+      assert.match(error.message, /Linus/);
+    });
+  });
+});
+
 describe("cli/issue — `issue move --blocked-reason` (0016)", () => {
   // The CLI half of the write path. The column itself is asserted over HTTP in
   // test/server/routes.test.mjs; the point here is that the flag exists, that it

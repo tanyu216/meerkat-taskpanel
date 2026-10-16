@@ -135,8 +135,34 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `test/scaffold.test.mjs` asserts they exist **and** that the two carrying meaning say the
   right thing rather than merely being present. `docs/development.md` gains the
   pull-request section, including the repository settings a maintainer has to set by hand.
+- **`issue heartbeat <ref>` — the heartbeat finally has a write surface.** The eight shared
+  rules have always told an agent to "keep the heartbeat fresh (≤10 minutes)", but no CLI
+  flag, route or request schema could write `heartbeat_at`: the core op existed
+  (`tasks.heartbeat`, with `setHeartbeat`'s holder-only CAS behind it) and the rule named a
+  command nobody could run, so the only way to reset the clock was to **re-claim** the card —
+  which is why a card parked in `in_progress` alerted as abandoned with no way to say
+  otherwise. The pulse is reachable end to end now: the op is declared in `TASK_OPS`
+  (`src/core/commands/tasks-input.mjs`), the route is
+  `POST /api/v1/tasks/:ref/heartbeat` (frozen in the contract snapshot), and the CLI is
+  `taskctl issue heartbeat <ref>`. It takes **no body field** — the card is the path's `:ref`
+  and the pulsing actor is the caller — and it refreshes `heartbeat_at` and nothing else: not
+  the status, not the claimer, not the delivery round, so it can never resurrect a card
+  somebody else has moved. Only the holder may send it (`EXECUTION_ACTIVE` otherwise); a card
+  that is not `in_progress` is refused `INVALID_TRANSITION` ("nothing to pulse"). The write is
+  recorded as a `task_heartbeat` activity, which the board already classified as SSE noise
+  (`SSE_NOISE_EVENTS`), so a pulse never wakes a board client.
+  **The ruling it settles:** the heartbeat belongs to the **agent**, not to the loop. A
+  supervisor-written pulse would be a proxy lie, and it would permanently silence the
+  `heartbeat_stale` SLA row — the one mechanism that notices a worker has stopped.
 
 ### Changed
+
+- **The heartbeat rule now names the command that satisfies it.** `buildHandoff` (the
+  supervisor's wake prompt) lists `taskctl issue heartbeat <ref>` beside the read and the
+  deliver; the Claude `session-start.sh` rule 4 and the Codex `AGENTS.md` snippet name it; and
+  `README` / `SKILL.md` / `references/cli.md` / `references/practice-guides.md` say plainly
+  that the board sends **no** pulse of its own — nothing but the holder knows the work is still
+  going. Before this, four surfaces stated an obligation with no command behind it.
 
 - **A `projects.json` entry no longer has to name a directory — and a project that has none
   may still be woken through a `run_dir` launch pad.** The map's rule is now

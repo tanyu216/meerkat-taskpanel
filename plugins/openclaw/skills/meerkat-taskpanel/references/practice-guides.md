@@ -89,9 +89,21 @@ The board stamps a claim with a **heartbeat** and treats the claim as *fresh* fo
 **10 minutes**. A claim whose heartbeat goes cold is **stale** — recoverable by
 its own holder after 30 minutes and by anyone after 6 hours — so a crashed agent
 never wedges a card. The practical obligation while you work is: keep the claim
-live, and never leave a card `in_progress` while you go idle. `issue candidates
---stale` is how a later reader surfaces a claim whose heartbeat expired
-(`cli.md` §`issue`).
+live, and never leave a card `in_progress` while you go idle.
+
+**The pulse is a command you run — the board never sends one for you:**
+
+```bash
+node scripts/run.mjs issue heartbeat <ref> --agent <me> --actor-kind <host>
+```
+
+Run it at least every 10 minutes while a card is `in_progress`. It resets the
+heartbeat and **nothing else** — the status, the claimer and the delivery round
+are untouched — and only the holder may send it. Nothing else knows the work is
+still going; a claim you stop pulsing is meant to read as abandoned, so a card
+parked in `in_progress` over a long task alerts until you pulse it or take it out
+of the cycle. `issue candidates --stale` is how a later reader surfaces a claim
+whose heartbeat expired (`cli.md` §`issue`).
 
 ### 5. Deliver with a report (the delivery gate)
 

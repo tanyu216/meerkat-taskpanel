@@ -928,6 +928,19 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/tasks/:ref/heartbeat",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/tasks/:ref/move",
       "request": {
         "body": {
