@@ -1,7 +1,7 @@
 /**
  * Bundle / marketplace inspection + the per-host profile bundle assertions.
  *
- * The container cannot run the four host CLIs (they are not in the image and there is
+ * The container cannot run the six host CLIs (they are not in the image and there is
  * no network), so `scripts/verify/lib/bundle.mjs` reproduces the hosts' detection
  * contract offline. These tests pin that reproduction: the shipped bundles must be
  * detected with the format each host's profile declares, and the detector must follow

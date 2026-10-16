@@ -13,7 +13,9 @@ same state on a kanban board (deliberately read-only). Persistence is a single S
 database (Node's built-in `node:sqlite`) — no external services. Node **>= 22**,
 **zero runtime dependencies**, MIT, public repo.
 
-**Status (honest):** landed through **M6**. `src/core/` has the domain model, SQLite storage
+**Status (honest):** the engine has landed in full — the core engine, the `taskctl` CLI and
+its local `taskd`, the six-host installers, the markdown migrator, and the board HTTP API +
+SSE plus the `web/` frontend. `src/core/` has the domain model, SQLite storage
 + migrations, use-cases and `openBoard()`; `src/cli/` is the real `taskctl` command surface
 and auto-starts the local `taskd` (`TASKD_NO_AUTOSTART=1` disables it); `src/server/` is the
 board HTTP API + SSE; `web/` is the Vue 3 + Vite frontend that builds to `web/dist` and is

@@ -3,7 +3,7 @@
 Meerkat TaskPanel ships as **two Agent Skills** plus one distribution bundle per
 host (`plugins/`):
 
-- **`meerkat-taskpanel`** (`skills/meerkat-taskpanel/`) — the board. Installed for all four
+- **`meerkat-taskpanel`** (`skills/meerkat-taskpanel/`) — the board. Installed for all six
   hosts.
 - **`meerkat-loop`** (`skills/meerkat-loop/`) — the host-external supervisor that keeps a
   board moving when no agent is looking. Installed for **claude, codex and pi only**;
@@ -34,7 +34,7 @@ There are three layers, and it is worth keeping them straight:
    (sourced at `./`, the repository root) and `meerkat-loop` (sourced at `plugins/loop`,
    which carries the loop skill and nothing else, so it can be installed on its own).
 
-> **Status: the engine has landed through M6.** The skill is discoverable, the `taskctl`
+> **Status: the engine has landed in full.** The skill is discoverable, the `taskctl`
 > commands it describes are implemented, and the board backend (`src/server/`, HTTP + SSE)
 > plus the `web/` frontend are in place. See `CLAUDE.md` for what is still planned (the
 > Epic view and iteration management).
@@ -711,12 +711,12 @@ install.
 ## Verifying the install
 
 **Everything that runs is verified inside the container** (see
-[`docker.md`](docker.md) and ARCHITECTURE §9.1): the four host CLIs are not installed in
+[`docker.md`](docker.md) and ARCHITECTURE §9.1): the six host CLIs are not installed in
 the image and there is no network, so the container asserts each host's *detection
 contract* offline instead.
 
 ```bash
-npm run verify:docker                     # the full container suite, all four hosts
+npm run verify:docker                     # the full container suite, all six hosts
 ```
 
 That run includes `scripts/verify/profiles.mjs`, which for each host installs into a

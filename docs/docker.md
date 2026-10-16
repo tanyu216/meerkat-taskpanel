@@ -2,7 +2,7 @@
 
 ## Why
 
-Local verification, deployment and the four-host skill installs all happen **inside a
+Local verification, deployment and the six-host skill installs all happen **inside a
 container**, never on the host machine. This is a hard constraint for this repository
 (Terry, 2026-10-08) and it is recorded in `ARCHITECTURE.md §9.1`:
 
@@ -279,7 +279,7 @@ node scripts/verify/profiles.mjs --home "$(mktemp -d)"
 The default is `$TMPDIR/meerkat-taskpanel-profiles-<pid>`, and the installer is driven through
 the same `MEERKAT_TASKPANEL_TARGET_HOME` variable that `install.sh --prefix <dir>` sets — so the
 check is equivalent to a real install while touching only a temp directory. This is how
-the four-host matrix is verified on a machine that does not (and should not) have those
+the six-host matrix is verified on a machine that does not (and should not) have those
 hosts installed: the profile's `target_dir` and `installer` are exercised for real, and
 the installed skill is executed through its own wrapper.
 

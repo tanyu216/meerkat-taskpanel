@@ -14,7 +14,7 @@
  * (T-20261014-214002) — a path the user never had, reported as a crash rather than as a
  * condition of the deployment.
  *
- * Per host (claude / codex / openclaw / pi — the four the board goes to), against a real
+ * Per host (all six the board goes to — see `HOSTS` below), against a real
  * copy-mode install into a throwaway prefix, this asserts the wrapper:
  *
  *   1. with no CLI reachable refuses **controllably** — non-zero, an actionable remedy on
@@ -22,7 +22,7 @@
  *   2. uses a `taskctl` on `PATH`, and propagates its exit code;
  *   3. runs the CLI of a checkout named by `MEERKAT_TASKPANEL_ROOT` / `MEERKAT_TASKPANEL_REPO`.
  *
- * Plus the properties shared by all four: the checkout rung is unchanged (which is what a
+ * Plus the properties shared by all of them: the checkout rung is unchanged (which is what a
  * stale or misspelt root must fall through *to*), and an explicit root outranks `PATH`.
  *
  * Run with: node --test
@@ -45,7 +45,7 @@ const SKILL = "meerkat-taskpanel";
 const WRAPPER = join("scripts", "run.mjs");
 
 /**
- * The four hosts the board skill is distributed to, and the dot-directory each one's skill
+ * The six hosts the board skill is distributed to, and the dot-directory each one's skill
  * lands in. These are `docker/profiles/<host>.yml`'s `target_dir`s — the same destinations
  * `scripts/verify/profiles.mjs` asserts — restated here because this file drives the
  * installs itself.
@@ -70,7 +70,7 @@ after(() => {
   for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
 });
 
-/** The throwaway `$HOME` the four hosts are installed into, and the `bin` holding the fake CLI. */
+/** The throwaway `$HOME` the hosts are installed into, and the `bin` holding the fake CLI. */
 let home;
 let fakeBin;
 
@@ -199,7 +199,7 @@ for (const { host, dir } of HOSTS) {
 }
 
 describe("the resolution ladder is checked, not assumed", () => {
-  /** The claude copy stands in for all four here — the ladder lives in one shared file. */
+  /** The claude copy stands in for all six here — the ladder lives in one shared file. */
   const dir = HOSTS[0].dir;
   /** The wrapper inside the checkout: its own rung resolves, so it is the control case. */
   const checkoutWrapper = join(ROOT, "skills", SKILL, WRAPPER);
