@@ -4,9 +4,11 @@
  *
  * The board holds no directory (O3). The answer lives in the host-local
  * `projects.json` beside the skill, and the command is the CLI's door to it:
- * a registered project prints its directory, an unregistered one **stops and
- * asks the user** (a coded failure with an actionable hint) rather than
- * continuing in some other checkout.
+ * a registered project prints its directory, an entry that names none prints
+ * `dir: null` (a project may legitimately have no local directory), and a
+ * project with **no entry** stops and asks the user (a coded failure with an
+ * actionable hint) rather than continuing in some other checkout. The last two
+ * must never collapse into each other.
  *
  * Real CLI, real board, a temp map — the directory is passed in through
  * `MEERKAT_TASKPANEL_PROJECTS_JSON`, exactly as an installed shim does.
@@ -96,13 +98,54 @@ describe("cli/project dir", () => {
     });
   });
 
-  it("refuses an entry with no local_path at all", async () => {
+  it("answers `dir: null` — a complete answer, not a failure — for an entry that names no directory", async () => {
     await withCli(async ({ run }) => {
       run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
-      const { map } = writeMap([{ project: "demo" }]);
+      // A project that keeps nothing on disk (operations work) is a first-class
+      // project, not a registration that is missing something.
+      const { map } = writeMap([{ project: "demo", meta: { kind: "ops" } }]);
+
       const result = run(["project", "dir", "demo", "--json"], { env: { MEERKAT_TASKPANEL_PROJECTS_JSON: map } });
-      assert.equal(result.status, 1);
-      assert.equal(errorOf(result).code, "PROJECT_DIR_REQUIRED");
+      assert.equal(result.status, 0, result.stderr);
+      const data = dataOf(result);
+      assert.equal(data.project, "demo");
+      assert.equal(data.dir, null, "no directory is an answer, never a guess");
+
+      // Exit 0 must still say something: silence here is the state the wake
+      // glue's guards treat as a failure.
+      const human = run(["project", "dir", "demo"], { env: { MEERKAT_TASKPANEL_PROJECTS_JSON: map } });
+      assert.equal(human.status, 0);
+      assert.notEqual(human.stdout.trim(), "", "a null answer still prints a sentence");
+      assert.match(human.stdout, /demo/);
+    });
+  });
+
+  it("prints `run_dir` when that is the only directory the entry names", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      const launch = makeTarget();
+      const { map } = writeMap([{ project: "demo", run_dir: launch }]);
+
+      const result = run(["project", "dir", "demo", "--json"], { env: { MEERKAT_TASKPANEL_PROJECTS_JSON: map } });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(dataOf(result).dir, launch, "the CLI and the wake agree on one directory");
+
+      const human = run(["project", "dir", "demo"], { env: { MEERKAT_TASKPANEL_PROJECTS_JSON: map } });
+      assert.equal(human.stdout, `${launch}\n`);
+    });
+  });
+
+  it("still refuses a key that is given but unusable — a blank local_path never falls back", async () => {
+    await withCli(async ({ run }) => {
+      run(["project", "create", "--id", "demo", "--name", "Demo", "--json"]);
+      const launch = makeTarget();
+      const { map } = writeMap([{ project: "demo", local_path: "", run_dir: launch }]);
+
+      const result = run(["project", "dir", "demo", "--json"], { env: { MEERKAT_TASKPANEL_PROJECTS_JSON: map } });
+      assert.equal(result.status, 1, "a supplied-but-blank path is a failure");
+      const error = errorOf(result);
+      assert.equal(error.code, "PROJECT_DIR_REQUIRED");
+      assert.match(error.message, /`local_path`/);
     });
   });
 

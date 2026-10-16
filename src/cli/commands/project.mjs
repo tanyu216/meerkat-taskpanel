@@ -16,7 +16,7 @@
 import { resolve } from "node:path";
 
 import { DomainError } from "../../shared/errors.mjs";
-import { PROJECTS_JSON_ENV, parseProjectMap, resolveProjectDir } from "../../shared/project-dir.mjs";
+import { PROJECTS_JSON_ENV, PROJECT_DIR_CODES, parseProjectMap, resolveProjectDir } from "../../shared/project-dir.mjs";
 import { repoRoot } from "../../shared/runtime-locator.mjs";
 import { fields, table } from "../output/human.mjs";
 
@@ -63,12 +63,19 @@ function resolveDirFor(ctx, id) {
 
   const resolved = resolveProjectDir({ entries: map.entries, project: id, file });
   if (!resolved.ok) {
+    // Two different failures, two different things to do about them: a project
+    // *absent* from the map is a question for the user (the step stops and asks,
+    // references/projects-json.md §Unregistered); an entry that is there but
+    // unusable is a registration to fix — or to reduce to "no local directory"
+    // by dropping the key, which is a legitimate answer now.
+    const fix =
+      resolved.code === PROJECT_DIR_CODES.UNMAPPED
+        ? `ask which local directory project ${id} works in, then add it to ${file} (references/projects-json.md)`
+        : `fix the entry for project ${id} in ${file} — or drop \`local_path\`/\`run_dir\` if this project has no local directory (references/projects-json.md)`;
     throw new DomainError(resolved.code, {
       message: resolved.message,
       details: { project: id, file, ...(resolved.path ? { path: resolved.path } : {}) },
-      // The prompt is the point: the step stops and asks, it does not continue
-      // with a guessed directory (references/projects-json.md §Unregistered).
-      hint: { fix: `ask which local directory project ${id} works in, then add it to ${file} (references/projects-json.md)` },
+      hint: { fix },
     });
   }
   return { dir: resolved.dir, file };
@@ -143,7 +150,7 @@ export const COMMANDS = [
 
   {
     name: "dir",
-    summary: "Print the local directory a project works in (from projects.json).",
+    summary: "Print the local directory a project's workers run in (from projects.json).",
     usage: "project dir <id> [--projects-json <path>]",
     positionals: [{ name: "id", summary: "Project id (or the name registered in projects.json)." }],
     flags: [
@@ -168,10 +175,14 @@ export const COMMANDS = [
           details: { project: id },
         });
       }
-      const { dir } = resolveDirFor(ctx, id);
+      const { dir, file } = resolveDirFor(ctx, id);
+      // `dir` is `null` when the entry exists and names no directory — a
+      // complete answer for a project that has none, so it is not an error and
+      // must not be silence either (an exit-0 run that prints nothing reads as
+      // a broken pipeline downstream).
       return {
         data: { project: id, dir },
-        human: dir,
+        human: dir ?? `no local directory for project ${id} — the entry in ${file} names no local_path or run_dir`,
       };
     },
   },

@@ -3,20 +3,39 @@
  * (the file that lives beside the installed skill).
  *
  * The board holds no directory (O3): a board project is an id, a name and an
- * identifier prefix, and nothing else. "Which directory is this project working
- * in?" is decided **locally, per host**, by `projects.json`, and
+ * identifier prefix, and nothing else. "Which directory does work for this
+ * project happen in?" is decided **locally, per host**, by `projects.json`, and
  * `skills/meerkat-taskpanel/references/projects-json.md` documents it. This
  * module is that document in code, so the wake glue, `taskctl` and the tests
  * all read one map the same way — and a project with no mapped directory is a
  * loud, coded answer instead of a silent guess.
  *
- * Two jobs over one file:
+ * The directory is a **worker's** directory, not a data location: taskpanel
+ * neither stores nor cares where a project keeps its results. Two keys may name
+ * it, in one order — `local_path` (the project's own directory) then `run_dir`
+ * (the launch pad a project with no directory of its own gives its workers):
  *
- *   * **resolve** — a board project identity (`T-…`'s `project` field) → the
- *     local target directory the worker for it must run in;
- *   * **validate** — that directory is absolute, exists, and *is* a directory.
- *     Any of the three failing is a failure, not a fallback: running a worker in
- *     the wrong checkout is exactly the bug this exists to prevent.
+ *     dir = local_path ?? run_dir
+ *
+ * Three answers come out of that, and they stay distinguishable:
+ *
+ *   * a usable directory → `{ok: true, dir}`;
+ *   * an entry that names **none** → `{ok: true, dir: null}`. That is a
+ *     complete answer for a project that has no local directory at all (an
+ *     operations project may never touch the disk), not a missing one;
+ *   * **no entry** for the identity → `UNMAPPED`, the documented "no directory
+ *     is registered — stop and ask the user" failure.
+ *
+ * Whatever key answers, it is **validated**: absolute, exists, is a directory.
+ * Any of the three failing is a failure, not a fallback — a supplied-but-blank
+ * value never quietly falls through to the other key either (`??`, deliberately
+ * not `||`), because running a worker in the wrong directory is exactly the bug
+ * this exists to prevent. So is an unusable `run_dir`.
+ *
+ * `run_dir` is **never** used in the other direction: the directory → project
+ * lookup (`references/projects-json.md` §How a directory resolves to a project)
+ * reads `local_path` only. A launch pad can be a generic place — an inbox,
+ * `$HOME` — and must not claim every directory under it.
  *
  * The rules are pure and the filesystem is injected (`inspect`), so every branch
  * is exercised without touching a disk — the split `src/shared/scheduling.mjs`
@@ -33,9 +52,14 @@ import { isAbsolute } from "node:path";
  */
 export const PROJECTS_JSON_ENV = "MEERKAT_TASKPANEL_PROJECTS_JSON";
 
-/** Every way a target directory can fail to be usable, as a stable code. */
+/** Every way a directory can fail to be usable, as a stable code. */
 export const PROJECT_DIR_CODES = Object.freeze({
-  /** No `local_path` in the entry at all — a directory is required, not optional. */
+  /**
+   * A key that was handed over is not a usable path — blank, the wrong type —
+   * or a caller needed a directory to run in and the entry names none.
+   * An entry that simply *omits* both keys is not this: that is the documented
+   * "this project has no local directory" answer.
+   */
   REQUIRED: "PROJECT_DIR_REQUIRED",
   /** A relative path: a directory the board would have to interpret. Never allowed. */
   NOT_ABSOLUTE: "PROJECT_DIR_NOT_ABSOLUTE",
@@ -81,23 +105,31 @@ function failure(code, message, context = {}) {
 }
 
 /**
- * Refuse a target directory that cannot be run in — the "required, absolute,
- * exists, is a directory" rule, in that order, so the message names the *first*
- * thing wrong rather than all of them.
+ * Refuse a directory that cannot be run in — the "usable, absolute, exists, is
+ * a directory" rule, in that order, so the message names the *first* thing wrong
+ * rather than all of them.
  *
- * @param {unknown} value the entry's `local_path`
- * @param {{inspect?: (path: string) => string, project?: string|null, file?: string|null}} [options]
+ * This validates **one value** and is deliberately intolerant of `undefined`,
+ * `null`, `""` and non-strings: `resolveProjectDir` decides *which* key answers
+ * (and whether an entry naming none is the legitimate "no local directory"
+ * answer), while the wake glue reuses this function's `REQUIRED` refusal when it
+ * needs a launch directory that the entry does not supply.
+ *
+ * @param {unknown} value the value carried by `local_path` / `run_dir`
+ * @param {{inspect?: (path: string) => string, key?: string, project?: string|null, file?: string|null}} [options]
  * @returns {{ok: true, dir: string} | {ok: false, code: string, message: string, project?: string|null, path?: string|null, file?: string|null}}
  */
 export function checkTargetDirectory(value, options = {}) {
   const inspect = options.inspect ?? inspectPath;
+  const key = options.key ?? "local_path";
   const where = options.file ? ` in ${options.file}` : "";
   const whose = options.project ? ` for project ${options.project}` : "";
 
   if (typeof value !== "string" || value.trim() === "") {
     return failure(
       PROJECT_DIR_CODES.REQUIRED,
-      `no target directory is registered${whose}${where}: an entry needs an absolute \`local_path\`.`,
+      `no usable directory${whose}${where}: \`${key}\` must be an absolute path that exists and is a directory — ` +
+        "or omit `local_path` and `run_dir` to say this project has no local directory.",
       { project: options.project ?? null, path: null, file: options.file ?? null },
     );
   }
@@ -106,7 +138,7 @@ export function checkTargetDirectory(value, options = {}) {
   if (!isAbsolute(dir)) {
     return failure(
       PROJECT_DIR_CODES.NOT_ABSOLUTE,
-      `target directory${whose}${where} is not an absolute path: '${dir}'.`,
+      `\`${key}\`${whose}${where} is not an absolute path: '${dir}'.`,
       { project: options.project ?? null, path: dir, file: options.file ?? null },
     );
   }
@@ -115,14 +147,14 @@ export function checkTargetDirectory(value, options = {}) {
   if (kind === "missing") {
     return failure(
       PROJECT_DIR_CODES.MISSING,
-      `target directory${whose}${where} does not exist: '${dir}'.`,
+      `\`${key}\`${whose}${where} does not exist: '${dir}'.`,
       { project: options.project ?? null, path: dir, file: options.file ?? null },
     );
   }
   if (kind !== "directory") {
     return failure(
       PROJECT_DIR_CODES.NOT_A_DIRECTORY,
-      `target directory${whose}${where} is not a directory: '${dir}'.`,
+      `\`${key}\`${whose}${where} is not a directory: '${dir}'.`,
       { project: options.project ?? null, path: dir, file: options.file ?? null },
     );
   }
@@ -159,16 +191,22 @@ export function parseProjectMap(text, options = {}) {
 }
 
 /**
- * A board project identity → the directory its worker must run in.
+ * A board project identity → the directory work for it happens in.
  *
  * The identity is matched against each entry's `project` — the board project's
  * **id** (what `issue create --project <id>` takes and what a card carries) or
- * its name, per the document. An identity matching no entry is `UNMAPPED`: the
- * documented "no directory is registered" answer, which the caller must surface
- * and *ask about*, never paper over with a guess.
+ * its name, per the document. Which key answers is decided here and nowhere
+ * else, in one order: `local_path` (the project's own directory) first, then
+ * `run_dir` (the launch pad). `??` and not `||`: a value that is *given* but
+ * blank is a failure to report, never a reason to fall through to the other key.
+ *
+ * An identity matching no entry is `UNMAPPED`: the documented "no directory is
+ * registered" answer, which the caller must surface and *ask about*, never
+ * paper over with a guess. An entry that exists and names **no** directory is
+ * the other, quieter answer — `dir: null` — and callers must tell the two apart.
  *
  * @param {{entries?: object[], project?: unknown, inspect?: (path: string) => string, file?: string|null}} input
- * @returns {{ok: true, dir: string, project: string, entry: object} | {ok: false, code: string, message: string, project?: string|null, path?: string|null, file?: string|null}}
+ * @returns {{ok: true, dir: string|null, project: string, entry: object} | {ok: false, code: string, message: string, project?: string|null, path?: string|null, file?: string|null}}
  */
 export function resolveProjectDir(input = {}) {
   const entries = Array.isArray(input.entries) ? input.entries : [];
@@ -179,7 +217,7 @@ export function resolveProjectDir(input = {}) {
   if (project === "") {
     return failure(
       PROJECT_DIR_CODES.UNMAPPED,
-      `no project identity was given, so no target directory can be resolved${where}.`,
+      `no project identity was given, so no local directory can be resolved${where}.`,
       { project: null, file },
     );
   }
@@ -193,8 +231,21 @@ export function resolveProjectDir(input = {}) {
     );
   }
 
-  const checked = checkTargetDirectory(entry.local_path, {
+  // `null` and a missing key are the same thing here ("this entry does not name
+  // that directory"); anything else is a supplied value and gets validated.
+  const localPath = entry.local_path ?? null;
+  const runDir = entry.run_dir ?? null;
+  const key = localPath !== null ? "local_path" : runDir !== null ? "run_dir" : null;
+
+  if (key === null) {
+    // The entry exists and names no directory: a complete answer for a project
+    // that has none (an operations project needs no checkout), not a failure.
+    return { ok: true, dir: null, project, entry };
+  }
+
+  const checked = checkTargetDirectory(entry[key], {
     ...(input.inspect === undefined ? {} : { inspect: input.inspect }),
+    key,
     project,
     file,
   });

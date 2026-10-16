@@ -12,29 +12,35 @@
  * helper, and this helper answers with the one thing the glue needs: an absolute
  * directory to `cd` into. When it cannot answer, it **fails loudly**: no
  * directory is printed, a non-zero status is returned, and the reason goes to
- * stderr. A worker that runs in the wrong checkout is worse than a worker that
- * never started, so there is deliberately no fallback and no default.
+ * stderr. A worker that runs in the wrong directory is worse than a worker that
+ * never started, so there is deliberately no fallback and no default — an entry
+ * that names no directory at all is one of the ways to have no answer here, even
+ * though the map itself treats it as the complete answer "this project has no
+ * local directory".
  *
  *   node scripts/wake-cwd.mjs --project <identity> [--projects-json <path>]
  *
  * Exit codes: 0 resolved (the directory is the only thing on stdout),
  *             2 the command line is wrong,
- *             3 nothing could be resolved (unmapped project, or a target
- *               directory that is missing / relative / not a directory).
+ *             3 nothing could be resolved (unmapped project; an entry that names
+ *               no directory; or a directory that is missing / relative / not a
+ *               directory).
  */
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { PROJECTS_JSON_ENV, parseProjectMap, resolveProjectDir } from "../src/shared/project-dir.mjs";
+import { PROJECTS_JSON_ENV, checkTargetDirectory, parseProjectMap, resolveProjectDir } from "../src/shared/project-dir.mjs";
 import { repoRoot } from "../src/shared/runtime-locator.mjs";
 import { isEntryPoint } from "../src/shared/entry-guard.mjs";
 
 const USAGE = `Usage: node scripts/wake-cwd.mjs --project <identity> [--projects-json <path>]
 
-Print the absolute target directory for a board project identity, resolved from
-the host-local project map (projects.json). Exits 3 — printing why — rather than
-guessing a directory when the project is not mapped.
+Print the absolute directory a worker for a board project identity must run in,
+resolved from the host-local project map (projects.json): the entry's
+\`local_path\`, or its \`run_dir\` launch pad when it has no directory of its own.
+Exits 3 — printing why — rather than guessing a directory when the project is
+not mapped, or when its entry names no directory at all (a worker needs a cwd).
 `;
 
 /** The map beside the skill, unless a flag or the environment names another. */
@@ -65,7 +71,8 @@ export function parseArgs(argv, env = process.env) {
 }
 
 /**
- * Resolve, or explain why not.
+ * Resolve, or explain why not. `ok` always carries a *directory* — the map's
+ * `dir: null` (an entry that names none) is refused here, not passed on.
  *
  * @param {{project?: string|null, projectsJson: string}} opts
  * @returns {{ok: true, dir: string} | {ok: false, code: string, message: string}}
@@ -90,6 +97,17 @@ export function resolveWakeDir(opts) {
 
   const resolved = resolveProjectDir({ entries: map.entries, project: opts.project, file: opts.projectsJson });
   if (!resolved.ok) return { ok: false, code: resolved.code, message: resolved.message };
+
+  // An entry that names no directory is a legitimate answer for the map (`dir:
+  // null`), but not for a *wake*: a worker is started somewhere, so this one
+  // needs a directory the entry does not have. The refusal is the validator's
+  // own — asked here about the value that is missing — so there is one wording
+  // for "no usable directory", not two.
+  if (resolved.dir === null) {
+    const required = checkTargetDirectory(undefined, { project: opts.project, file: opts.projectsJson });
+    return { ok: false, code: required.code, message: required.message };
+  }
+
   return { ok: true, dir: resolved.dir };
 }
 
