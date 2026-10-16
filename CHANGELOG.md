@@ -532,6 +532,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The `install.sh --supervisor=enable` systemd case failed on any machine that exports
+  `XDG_CONFIG_HOME`, which is why `check` was red in CI and green on a developer machine.** The
+  test's `installEnv` helper builds the child environment as `{ ...process.env, HOME: <temp>, … }`,
+  and `systemdUserDir` prefers an absolute `XDG_CONFIG_HOME` over `$HOME/.config` — correct for
+  systemd, but it meant an inherited value decided where the units landed while the assertion still
+  looked in `$HOME/.config`. The failure therefore reads as a broken installer
+  ("`meerkat-taskpanel-poll.service` must be copied into …/.config/systemd/user") rather than as an
+  environment leak, and it reproduces only where the variable is set: GitHub's `ubuntu` runner
+  exports it, macOS does not, and the container image does not. The helper now pins
+  `XDG_CONFIG_HOME` to the directory the suite asserts, so a case that wants the variable asks for
+  it; a second case pins the XDG branch itself, so the fix cannot be "delete the variable from the
+  installer".
 - **`security-scan.yml` was rejected by GitHub, so the dependency scan never once ran.** Its
   daily entry was `17 3 * * 2-7`, and Actions accepts only `0-6` for day-of-week — and an
   out-of-range cron does not red a *job*, it voids the **whole workflow file**. Every run
