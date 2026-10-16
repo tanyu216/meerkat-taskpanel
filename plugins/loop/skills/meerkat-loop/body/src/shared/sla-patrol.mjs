@@ -99,8 +99,11 @@ export const LEADER_COMMENT_KINDS = Object.freeze(["confirm", "decision", "chang
  *
  * The contract forbids hard-coding a person (`§3`: "the name is never
  * hard-coded"), and a TaskPanel board has no role column — but every comment
- * does carry an author (`author_kind` ∈ {agent, human, system} and `author_id`),
- * and the board's own I5 names the *decision authority*: `isDecisionComment` and
+ * does carry an author (`author_kind` and `author_id`, plus the resolved `author`
+ * object on the wire) — and since `0023` that kind is a **platform**, not one of
+ * three category words, so `LEADER_AUTHOR_KIND` below is the one reserved value
+ * rather than the first of a list. The board's own I5 names the *decision
+ * authority*: `isDecisionComment` and
  * `repos.comments.listDecisions` both read `author_kind = 'human'` with kinds
  * {decision, confirm, change}, and `awaiting` resumes only on a human comment —
  * "an agent comment neither satisfies the payload nor resumes the card".

@@ -206,6 +206,24 @@ agent_name() {
   printf '%s\n' "$name"
 }
 
+# human_name — the person the board records when a write is theirs.
+#
+# It is a *separate* name from the agent's, and that is the point: an agent's own
+# writes carry the agent's name and kind, while `--as-human` is the single write
+# that carries this one — how an agent records something the user said, in the
+# user's voice. Without it, that flag would sign with the *agent's* name, which is
+# the one thing it must not do.
+#
+# The default is the OS user, which is who installs the board; never empty, so a
+# host with no `$USER`/`$LOGNAME` behaves exactly as it did before this existed.
+human_name() {
+  local name="${MEERKAT_TASKPANEL_HUMAN_NAME:-}"
+  [ -n "$name" ] || name="${USER:-}"
+  [ -n "$name" ] || name="${LOGNAME:-}"
+  [ -n "$name" ] || name="$(agent_name)"
+  printf '%s\n' "$name"
+}
+
 # export_tp_env <host_dir> <label> — export the TP_* variables the template renderer reads.
 #
 # {{AGENT}} <- TP_AGENT, {{REPO}} <- TP_REPO, {{SHIM}} <- TP_SHIM, and so on. The
@@ -215,6 +233,7 @@ export_tp_env() {
   host_dir="$1"
   label="$2"
   TP_AGENT="$(agent_name)"
+  TP_HUMAN="$(human_name)"
   TP_REPO="$(repo_root)"
   TP_SHIM="$(target_home)/$host_dir/bin/taskctl"
   TP_HOOK="$(target_home)/$host_dir/hooks/meerkat-taskpanel-session-start.sh"
@@ -276,7 +295,7 @@ export_tp_env() {
     return 1
   fi
 
-  export TP_AGENT TP_REPO TP_SHIM TP_HOOK TP_TRIGGER
+  export TP_AGENT TP_HUMAN TP_REPO TP_SHIM TP_HOOK TP_TRIGGER
   export TP_HOST TP_HOST_BASE TP_LOOP TP_SUPERVISOR TP_LOG TP_STATE TP_ENV TP_SCHED TP_WAKE TP_CLAIM_UNASSIGNED
   export TP_NODE TP_UNIT_PATH_LAUNCHD TP_UNIT_PATH_CRON TP_CLI_ON_PATH
 }
@@ -687,15 +706,19 @@ merge_settings() {
   settings_file="$1"
 
   if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
-    echo "would merge $settings_file (env.TASKCTL_AGENT + SessionStart hook)"
+    echo "would merge $settings_file (env.TASKCTL_AGENT / TASKCTL_ACTOR_KIND / TASKCTL_HUMAN + SessionStart hook)"
     return 0
   fi
 
-  if [ -n "${MEERKAT_TASKPANEL_FORCE:-}" ]; then
-    node "$(apply_helper)" merge-settings "$settings_file" --agent "$TP_AGENT" --hook "$TP_HOOK" --force
-  else
-    node "$(apply_helper)" merge-settings "$settings_file" --agent "$TP_AGENT" --hook "$TP_HOOK"
-  fi
+  # `--kind` is the host platform and it is required, not decoration: a settings
+  # file that names an agent but not what it is leaves every write in that
+  # session reading as a human's — and a human's `decision` is the one kind the
+  # board acts on.
+  force_flag=""
+  [ -n "${MEERKAT_TASKPANEL_FORCE:-}" ] && force_flag="--force"
+
+  node "$(apply_helper)" merge-settings "$settings_file" \
+    --agent "$TP_AGENT" --kind "$TP_HOST" --human "$TP_HUMAN" --hook "$TP_HOOK" $force_flag
 }
 
 # append_snippet <file> <template_rel> <marker>

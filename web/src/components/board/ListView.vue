@@ -27,7 +27,7 @@
 import { computed, watch } from "vue";
 
 import { identifierText } from "../../lib/identifier.js";
-import { board, loadTasks, openDetail, priorityOf, visibleTasks } from "../../stores/board.js";
+import { board, kindLabel, loadTasks, openDetail, priorityOf, visibleTasks } from "../../stores/board.js";
 import { listState, setListState, view } from "../../stores/ui.js";
 
 /**
@@ -66,7 +66,8 @@ const rows = computed(() =>
     status: task.status,
     priority: priorityOf(task),
     assignee: task.assignee?.display_name ?? "—",
-    assigneeKind: task.assignee?.kind ?? "human",
+    // Two-valued for the closed design attribute; the kind itself is a platform.
+    assigneeKind: kindLabel(task.assignee?.kind),
     version: task.version,
   })),
 );

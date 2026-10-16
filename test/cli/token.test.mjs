@@ -101,25 +101,48 @@ describe("cli/token — the three-step ladder", () => {
 });
 
 describe("cli/actor", () => {
-  // The identity (`id`) and the attribution (platform/session) are separate
-  // concerns (T-20261009-230500): the flags/env that say *which conversation* a
-  // write came from are not a name, so they never become the id. What turns the
-  // actor into an agent — the platform/session flags — is unchanged.
-  it("is a human unless the caller names a platform or a session", () => {
+  // A writer's kind is the **only** identity axis: `human`, or the platform an
+  // agent runs on (`claude`, `codex`, …). The old model had a second axis —
+  // `--agent-platform` beside a coarse `agent|human` — and they were two copies
+  // of one fact, with the platform half read by nothing.
+  it("is a human unless the caller names a kind", () => {
     assert.deepEqual(resolveActor({ flags: {}, env: { USER: "tanyu" } }).actor, {
       kind: "human",
       id: "tanyu",
     });
     assert.deepEqual(resolveActor({ flags: {}, env: {} }).actor, { kind: "human", id: "local" });
-    // A platform or a session makes it an agent — but it is attribution, so it
-    // does not become the id.
+    // The kind is the platform, verbatim — not a boolean "is an agent".
     assert.deepEqual(
-      resolveActor({ flags: { agentPlatform: "claude" }, env: {} }).actor,
-      { kind: "agent", id: "local" },
+      resolveActor({ flags: { actorKind: "claude" }, env: {} }).actor,
+      { kind: "claude", id: "local" },
     );
     assert.deepEqual(
-      resolveActor({ flags: { sessionId: "s-1" }, env: {} }).actor,
-      { kind: "agent", id: "local" },
+      resolveActor({ flags: {}, env: { TASKCTL_ACTOR_KIND: "codex" } }).actor,
+      { kind: "codex", id: "local" },
+    );
+  });
+
+  it("refuses a caller that declares itself the human", () => {
+    // `human` is the only kind the board reasons about: a decision on the record
+    // (I5), an `awaiting` card resuming, the patrol counting the leader as
+    // active. A flag that could set it would be a way to forge all three.
+    assert.throws(
+      () => resolveActor({ flags: { actorKind: "human" }, env: {} }),
+      (err) => err.code === "VALIDATION_FAILED" && err.details.reserved === "human",
+    );
+    assert.throws(
+      () => resolveActor({ flags: {}, env: { TASKCTL_ACTOR_KIND: "human" } }),
+      (err) => err.code === "VALIDATION_FAILED",
+    );
+  });
+
+  it("refuses a session id with no kind", () => {
+    // A session id comes from a host, so a write carrying one is an agent's. With
+    // no kind the only thing left to record is `human` — and that would put an
+    // agent's write on the record as a person's.
+    assert.throws(
+      () => resolveActor({ flags: { sessionId: "s-1" }, env: {} }),
+      (err) => err.code === "VALIDATION_FAILED" && err.details.missing === "actorKind",
     );
   });
 
@@ -129,50 +152,67 @@ describe("cli/actor", () => {
   });
 
   it("prefers --agent over --session-id for the id, keeping the session as attribution", () => {
-    const resolved = resolveActor({ flags: { agent: "x", sessionId: "y" }, env: { USER: "tanyu" } });
+    const resolved = resolveActor({
+      flags: { agent: "x", sessionId: "y", actorKind: "claude" },
+      env: { USER: "tanyu" },
+    });
     assert.equal(resolved.actor.id, "x", "the session id must not shadow --agent");
     assert.notEqual(resolved.actor.id, "y");
+    assert.equal(resolved.actor.kind, "claude");
     assert.equal(resolved.session, "y", "the session is still recorded as attribution");
   });
 
-  it("takes the id from TASKCTL_AGENT — never from the session, platform or $USER", () => {
+  it("takes the id from TASKCTL_AGENT — never from the kind, the session or $USER", () => {
     const resolved = resolveActor({
       flags: {},
       env: {
         TASKCTL_AGENT: "linus",
+        TASKCTL_ACTOR_KIND: "claude",
         TASKCTL_SESSION_ID: "sid",
-        TASKCTL_AGENT_PLATFORM: "claude",
         USER: "tanyu",
       },
     });
     assert.equal(resolved.actor.id, "linus", "two agents on one host must not collapse onto $USER");
+    assert.equal(resolved.actor.kind, "claude", "the kind is what the host declared");
     assert.notEqual(resolved.actor.id, "sid");
     assert.notEqual(resolved.actor.id, "claude");
     assert.notEqual(resolved.actor.id, "tanyu");
-    // The attribution still rides along on the result.
-    assert.equal(resolved.platform, "claude");
-    assert.equal(resolved.session, "sid");
+    assert.equal(resolved.session, "sid", "the session still rides along as attribution");
   });
 
-  it("records the platform/session flags as attribution without letting them win the id", () => {
+  it("records the kind and the session without letting either win the id", () => {
     const resolved = resolveActor({
-      flags: { agentPlatform: "codex", sessionId: "s-9" },
+      flags: { actorKind: "codex", sessionId: "s-9" },
       env: { TASKCTL_AGENT: "linus" },
     });
-    assert.deepEqual(resolved.actor, { kind: "agent", id: "linus" });
-    assert.equal(resolved.platform, "codex");
+    assert.deepEqual(resolved.actor, { kind: "codex", id: "linus" });
     assert.equal(resolved.session, "s-9");
   });
 
-  it("only reaches $USER / LOGNAME when nothing names an agent", () => {
+  it("writes as the configured human only when asked", () => {
+    // Every other write is the agent's own and carries the agent's kind. This is
+    // the one write that is the human's, and it has to be explicit: the
+    // alternative — letting one env var outrank another — cannot tell a
+    // transcript from a claim, and the shim injects `--agent` on every call.
+    const resolved = resolveActor({
+      flags: { asHuman: true, actorKind: "claude", agent: "linus" },
+      env: { TASKCTL_HUMAN: "Terry", TASKCTL_AGENT: "linus" },
+    });
+    assert.deepEqual(resolved.actor, { kind: "human", id: "Terry" });
+  });
+
+  it("only reaches $USER / LOGNAME when nothing names an actor", () => {
     assert.equal(resolveActor({ flags: {}, env: { USER: "tanyu" } }).actor.id, "tanyu");
     assert.equal(resolveActor({ flags: {}, env: { LOGNAME: "tanyu" } }).actor.id, "tanyu");
-    // An agent identity — flag or env — beats the ambient OS user.
+    // A named actor — flag or env — beats the ambient OS user.
     assert.equal(resolveActor({ flags: { agent: "linus" }, env: { USER: "tanyu" } }).actor.id, "linus");
     assert.equal(
       resolveActor({ flags: {}, env: { TASKCTL_AGENT: "linus", USER: "tanyu" } }).actor.id,
       "linus",
     );
+    // The configured human is the last name before the OS user, so a host that
+    // has one does not fall through to whatever the shell happens to say.
+    assert.equal(resolveActor({ flags: {}, env: { TASKCTL_HUMAN: "Terry" } }).actor.id, "Terry");
   });
 });
 

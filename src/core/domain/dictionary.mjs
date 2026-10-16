@@ -23,7 +23,7 @@
 
 import { DomainError } from "../../shared/errors.mjs";
 import { norm } from "../../shared/norm.mjs";
-import { DICT_KINDS, DICTIONARY_KINDS } from "./enums.mjs";
+import { DICTIONARY_KINDS, isActorKind } from "./enums.mjs";
 
 /**
  * Fuzzy matching is prefix/substring on the normalised name.
@@ -42,26 +42,20 @@ export function isDictionaryKind(value) {
 /**
  * Resolve a raw name against **every** existing entry.
  *
- * Resolution spans kinds: since `0019` a person is one row (`UNIQUE(normalized_name)`),
- * so a name that already exists is reused regardless of the `kind` the caller
- * names — the stored kind wins (the same rule the repository's `upsert` applies
- * on reuse). `kind` here is the *actor* kind to give a freshly created entry, and
- * is validated as one of `DICT_KINDS`.
+ * Since `0019` a person is one row (`UNIQUE(normalized_name)`), and since `0023`
+ * that row holds **no kind**: a kind describes an act (which platform made this
+ * claim, wrote this comment), and one row per person cannot hold it. So this
+ * resolves a *name* and nothing else — the caller keeps the kind it is recording
+ * on its own reference.
  *
- * @param {{id: string, kind: string, displayName: string, normalizedName: string}[]} existing
+ * @param {{id: string, displayName: string, normalizedName: string}[]} existing
  * @param {string} raw
- * @param {{kind: "agent"|"human", forceCreate?: boolean}} options
- * @returns {{action: "reuse"|"create", entry?: object, displayName: string, normalizedName: string, kind: string}}
+ * @param {{forceCreate?: boolean}} options
+ * @returns {{action: "reuse"|"create", entry?: object, displayName: string, normalizedName: string}}
  * @throws {DomainError} DICTIONARY_AMBIGUOUS when several entries match
  */
 export function resolveDictionaryEntry(existing, raw, options) {
-  const { kind, forceCreate = false } = options;
-  if (!DICT_KINDS.includes(kind)) {
-    throw new DomainError("VALIDATION_FAILED", {
-      message: `dictionary kind must be one of ${DICT_KINDS.join(", ")}`,
-      details: { field: "kind", received: kind, allowed: DICT_KINDS },
-    });
-  }
+  const { forceCreate = false } = options;
   const normalizedName = normalizeName(raw);
   const displayName = raw.normalize("NFKC").replace(/\s+/g, " ").trim();
   const pool = Array.isArray(existing) ? existing : [];
@@ -70,7 +64,7 @@ export function resolveDictionaryEntry(existing, raw, options) {
   if (exact.length === 1) {
     // On reuse the *dictionary's* spelling wins: that is what makes the list a
     // dictionary rather than a log of whatever people typed.
-    return { action: "reuse", entry: exact[0], displayName: exact[0].displayName, normalizedName, kind };
+    return { action: "reuse", entry: exact[0], displayName: exact[0].displayName, normalizedName };
   }
   if (exact.length > 1) {
     // Two rows with the same normalised name cannot exist (UNIQUE(normalized_name))
@@ -91,14 +85,13 @@ export function resolveDictionaryEntry(existing, raw, options) {
       entry: fuzzy[0],
       displayName: fuzzy[0].displayName,
       normalizedName: fuzzy[0].normalizedName ?? normalizeName(fuzzy[0].displayName),
-      kind,
     };
   }
   if (fuzzy.length > 1 && !forceCreate) {
     throw ambiguous(raw, fuzzy);
   }
 
-  return { action: "create", displayName, normalizedName, kind };
+  return { action: "create", displayName, normalizedName };
 }
 
 /** @returns {DomainError} */
@@ -116,6 +109,11 @@ function ambiguous(raw, candidates) {
 
 const CAMEL = {
   id: "id",
+  // **Not a column.** `actors` holds no kind (since `0023`): a kind describes an
+  // act, and this table is one row per person. The registry *read* aliases this
+  // name onto an aggregate over the references that recorded one
+  // (`repositories/dictionary.mjs#AGGREGATED_KIND`), so the DTO carries the field
+  // and a plain row read reports `null` — "not recorded" — for it.
   kind: "kind",
   display_name: "displayName",
   // `normalized_name` is the historical column name for `norm` (F4-A): the value

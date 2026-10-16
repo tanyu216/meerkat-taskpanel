@@ -140,13 +140,26 @@ describe("domain/dictionary — resolution", () => {
     assert.equal(resolveDictionaryEntry(EXISTING, "Grace", { kind: "human" }).action, "create");
   });
 
-  it("refuses an unknown kind and tolerates a missing list", () => {
-    assert.throws(() => resolveDictionaryEntry([], "x", { kind: "reviewer" }), (err) => {
-      assert.equal(err.code, "VALIDATION_FAILED");
-      assert.deepEqual(err.details.allowed, ["agent", "human"]);
-      return true;
-    });
-    assert.equal(resolveDictionaryEntry(undefined, "New", { kind: "agent" }).action, "create");
+  it("resolves a name and nothing else — the kind is the caller's to record", () => {
+    // `0023` took the kind off the actor row: an actor is one row per person, and
+    // a kind describes an act. So this decision has no kind to take or to give —
+    // it answers "which row does this name mean", and the caller writes the kind
+    // on its own reference (`tasks.assignee_kind`, `comments.author_kind`, …).
+    const verdict = resolveDictionaryEntry([], "x", {});
+    assert.equal(verdict.action, "create");
+    assert.equal("kind" in verdict, false, "the resolver neither takes nor invents one");
+    assert.equal(verdict.normalizedName, "x");
+
+    // A list the caller never loaded is tolerated — the empty pool is the same
+    // shape as a missing one, and both mean "a new person".
+    assert.equal(resolveDictionaryEntry(undefined, "New", {}).action, "create");
+
+    // A caller still passing the option it used to take does not get the old
+    // behaviour back: the answer is the name's, so `kind` changes nothing.
+    assert.deepEqual(
+      resolveDictionaryEntry([], "x", { kind: "claude" }),
+      resolveDictionaryEntry([], "x", {}),
+    );
   });
 
   it("refuses duplicate rows in the input rather than picking one", () => {

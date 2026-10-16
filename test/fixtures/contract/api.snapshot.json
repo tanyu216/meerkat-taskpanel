@@ -523,10 +523,6 @@
               "type": "string"
             },
             "assignee_kind": {
-              "enum": [
-                "agent",
-                "human"
-              ],
               "type": "string"
             },
             "description": {
@@ -580,10 +576,6 @@
               "type": "string"
             },
             "reporter_kind": {
-              "enum": [
-                "agent",
-                "human"
-              ],
               "type": "string"
             },
             "review_of": {
@@ -1301,12 +1293,14 @@
         "archived_at": "string",
         "assignee": "object",
         "assignee_id": "string",
+        "assignee_kind": "null",
         "awaiting_reason": "string",
         "blocked_at": "string",
         "blocked_reason": "string",
         "claimed_at": "string",
         "claimed_by": "string",
         "claimed_by_actor": "object",
+        "claimed_kind": "null",
         "created_at": "string",
         "delivery_round": "number",
         "description": "string",
@@ -1322,6 +1316,7 @@
         "report_waiver": "object",
         "reporter": "object",
         "reporter_id": "string",
+        "reporter_kind": "null",
         "sort_order": "number",
         "source_path": "string",
         "status": "string",
@@ -1338,7 +1333,7 @@
       "fields": {
         "display_name": "string",
         "id": "string",
-        "kind": "string"
+        "kind": "null"
       },
       "shape": "task.assignee"
     },
@@ -1346,7 +1341,7 @@
       "fields": {
         "display_name": "string",
         "id": "string",
-        "kind": "string"
+        "kind": "null"
       },
       "shape": "task.claimed_by_actor"
     },
@@ -1362,7 +1357,7 @@
       "fields": {
         "display_name": "string",
         "id": "string",
-        "kind": "string"
+        "kind": "null"
       },
       "shape": "task.reporter"
     }

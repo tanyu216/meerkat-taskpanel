@@ -283,7 +283,7 @@ describe("cli/issue — every flag the command declares", () => {
         evidence: [{ kind: "path", path: "x" }],
       };
       const delivered = dataOf(
-        run(["issue", "deliver", "DEMO-0001", "--report-file", "-", "--seg", "seg2", "--session-id", "session-2", "--json"], {
+        run(["issue", "deliver", "DEMO-0001", "--report-file", "-", "--seg", "seg2", "--actor-kind", "claude", "--session-id", "session-2", "--json"], {
           input: JSON.stringify(report),
         }),
       );

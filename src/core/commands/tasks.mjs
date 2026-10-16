@@ -141,7 +141,10 @@ export function createTask(ctx, input) {
           actorKind: input.reporterKind ?? "human",
           forceCreate: input.forceCreate,
         });
-        candidate.reporterId = resolved.patch.reporterId;
+        // Both columns, not just the id: `resolveAssignment` carries the kind the
+        // reference was made under, and assigning only the id here was how the
+        // kind went missing on this path before `0023` put it back on the record.
+        Object.assign(candidate, resolved.patch);
         dictionaryAudit.push(...resolved.audit);
       }
 
@@ -226,7 +229,7 @@ export function updateTask(ctx, input) {
       }
       if (input.reporter !== undefined) {
         const resolved = resolveAssignment({ repos: ctx.repos, now }, { kind: "reporter", name: input.reporter, actorKind: "human", forceCreate: input.forceCreate });
-        patch.reporterId = resolved.patch.reporterId;
+        Object.assign(patch, resolved.patch);
         dictionaryAudit.push(...resolved.audit);
       }
 
@@ -406,11 +409,20 @@ function performClaim(ctx, input) {
       id: current.id,
       ifVersion,
       actor: claimantId,
+      // The claim is a record, so it records the kind it was made under — the
+      // acting platform, beside the holder (0023).
+      claimedKind: actor.kind,
       now,
       staleBefore: staleBound(now, verdict.steal === true),
     });
   } else {
-    const result = ctx.repos.tasks.claimCas({ id: current.id, ifVersion, actor: claimantId, now });
+    const result = ctx.repos.tasks.claimCas({
+      id: current.id,
+      ifVersion,
+      actor: claimantId,
+      claimedKind: actor.kind,
+      now,
+    });
     if (!result.claimed) {
       throw explainLostClaim({
         before: current,
