@@ -410,10 +410,12 @@ export function buildHandoff(input) {
     `Title: ${title}`,
     "",
     `Read it first:  taskctl issue get ${card.identifier} ${attribution.join(" ")}`,
+    `Keep the claim alive while you work:  taskctl issue heartbeat ${card.identifier} ${attribution.join(" ")}`,
     `Work it, then deliver with a report:  taskctl issue deliver ${card.identifier} --report-file - ${attribution.join(" ")}`,
     "",
     "Rules: claim first (the supervisor already claimed this card for you); keep the heartbeat",
-    "fresh (<=10 minutes); deliver with a report for the current round; stop at in_review — a",
-    "human accepts to done. Carry the attribution flags above on every write.",
+    "fresh (<=10 minutes) with the pulse command above; deliver with a report for the current",
+    "round; stop at in_review — a human accepts to done. Carry the attribution flags above on",
+    "every write.",
   ].join("\n");
 }

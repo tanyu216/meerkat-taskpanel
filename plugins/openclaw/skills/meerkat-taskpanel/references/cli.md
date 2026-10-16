@@ -100,6 +100,7 @@ the map names.
 | `issue get <id\|identifier>` | One task, plus `report_waivers[]`. |
 | `issue update <ref> [--title] [--description] [--priority] [--kind] [--label]… [--meta k=v]… [--acceptance <text>]…` | Patch. `--status` is refused here on purpose. |
 | `issue move <ref> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"] [--awaiting-reason E1..E5] [--blocked-reason <clarify\|decision\|dependency\|out_of_bounds\|defect\|external\|resource\|unknown>]` | Move, subject to the delivery gate. A `todo → in_progress` move is a **claim**: only the card's assignee, unless `--allow-steal`. `--awaiting-reason` is **required** by a move to `awaiting` — see [The `awaiting` state](#the-awaiting-state--asking-a-human-a-question). `--blocked-reason` is **optional** and records *what* a `blocked` card is waiting for — see [The `blocked` state](#the-blocked-state--what-the-card-is-waiting-for). |
+| `issue heartbeat <ref>` | **Pulse a claim you hold**, so its heartbeat stays inside the fresh window and the card does not read as abandoned. Takes no flags of its own — the card is the positional and the pulsing actor is you (the global attribution flags). It refreshes `heartbeat_at` and **nothing else**: the status and the claimer are untouched, so it cannot resurrect a card somebody else moved. Only the holder may pulse — anybody else gets `EXECUTION_ACTIVE`; a card that is not `in_progress` gets `INVALID_TRANSITION` ("nothing to pulse"). The pulse is recorded as a `task_heartbeat` activity, which the board treats as **noise** (it never wakes an SSE client). |
 | `issue assign <ref> [--assignee <text>] [--assignee-id <id>] [--reporter <text>] [--force-create]` | Assign. |
 | `issue archive <ref> [--days <n>]` | Archive finished work (done/canceled; 7-day window by default). |
 | `issue deliver <ref> --report-file <file\|->` | **Write the report and move to `in_review`, in one transaction.** |
@@ -186,6 +187,13 @@ $ echo $?
   *is* the reason, so no `--reason` is needed). A **rework**
   (`in_review`/`blocked → in_progress`) is *not* a claim: it keeps the existing
   executor and their lock.
+- **Keeping the heartbeat fresh is the holder's own job, and it has its own
+  command.** `issue heartbeat <ref>` resets the clock and changes nothing else —
+  not the status, not the claimer, not the delivery round — so it is the honest
+  way to say "still working" and it can never resurrect a card somebody else has
+  moved. Only the holder may send it. The board runs **no background pulse**:
+  nothing but the holder knows the work is still going, so a claim whose holder
+  goes quiet *should* read as abandoned.
 
 **The lock lasts the whole work cycle.** The claim is held while the card is in
 any of `in_progress`, `awaiting`, `in_review` or `blocked` — the set is

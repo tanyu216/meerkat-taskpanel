@@ -81,6 +81,18 @@ Do **not** claim a card that any of these is true of — it is not yours:
 card at a time**, keep its claim fresh, deliver with a report, and stop at
 `in_review` — a human accepts to `done`.
 
+Keeping that claim fresh is a **command you run**, not a hope — the board sends
+no pulse of its own, because nothing but you knows the work is still going:
+
+```bash
+taskctl issue heartbeat <ref>              # at least every 10 minutes while you work
+```
+
+It resets the heartbeat and **nothing else** — not the status, not the claimer,
+not the delivery round — and only the holder may send it. A claim you stop
+pulsing is meant to read as abandoned (see
+[`references/practice-guides.md`](references/practice-guides.md) rule 4).
+
 These are the eight shared rules: claim-first, claim only what you should, one
 card at a time, a fresh heartbeat, deliver with a report, self-review ≠
 acceptance, never preempt a conflict, and stay traceable. The full statement, the

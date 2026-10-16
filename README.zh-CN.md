@@ -163,7 +163,8 @@ OpenClaw 也可消费这个 Claude 格式的 bundle，这是受支持的 skill-o
 **认领优先**（先 `issue candidates --assignee <我>`，再 `issue move <ref> in_progress`）；
 **只领该领的**（非本人 / `backlog` 未授权 / `epic` / 部署卡（`kind: deploy` —— poll 从不出让，由人工
 或 leader 显式派发）/ `depends_on` 未满足 ⇒ 不领）；
-**一次一卡**；**心跳新鲜**（看板把认领视为存活 10 分钟）；**交付带报告**（交付门禁）；
+**一次一卡**；**心跳新鲜**（看板把认领视为存活 10 分钟，`issue heartbeat <ref>` 就是续期命令，
+看板不会代你续期）；**交付带报告**（交付门禁）；
 **自评≠验收**（Agent 只到 `in_review`，人接受才 `done`）；**冲突不抢占**（重读一次，
 仍可领才重试）；**可追溯**（携带会话 id）。宿主之间的差异，只在**由谁来执行这些规则**。
 
