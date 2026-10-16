@@ -68,7 +68,7 @@ step "install.sh --target all --prefix <throwaway home>"
 # covered by test/install/taskd-guard.test.mjs, with the supervisor faked on PATH.
 MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE=1 bash install.sh --target all --prefix "$THROWAWAY_HOME"
 
-for host_dir in .claude .openclaw .codex .agents; do
+for host_dir in .claude .openclaw .codex .agents .config/opencode .cursor; do
   target="$THROWAWAY_HOME/$host_dir/skills/meerkat-taskpanel/SKILL.md"
   if [ ! -f "$target" ]; then
     echo "FAIL: install did not write $target" >&2

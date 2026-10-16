@@ -332,7 +332,7 @@ missing, so an install made before that key existed still learns it (see
 ## install.sh reference
 
 ```text
-install.sh [--target claude|openclaw|codex|pi|all] [--prefix <home>]
+install.sh [--target claude|openclaw|codex|pi|opencode|cursor|all] [--prefix <home>]
            [--agent-name <name>] [--no-automation]
            [--claim-unassigned=yes|no] [--assignee-only]
            [--supervisor=enable|disable|status] [--supervisor-hosts <list>]
@@ -473,7 +473,7 @@ root is therefore reported as a cursor bundle. That is the only line the second 
 changes: `Format: bundle`, `Shape`, `Capability mode` and `Bundle capabilities: skills` are
 identical either way (measured against OpenClaw 2026.9.8 with and without the marker).
 
-> **No supervisor for OpenClaw.** Unlike the other three hosts, OpenClaw gets **no**
+> **No supervisor for OpenClaw.** Unlike claude, codex and pi, OpenClaw gets **no**
 > scheduling unit and **no `meerkat-loop` skill**: it already has a scheduler in the
 > [openclaw-team](https://github.com/tanyu216/openclaw-team) framework, whose
 > per-agent poll and `task-patrol` automations *are* the design in
