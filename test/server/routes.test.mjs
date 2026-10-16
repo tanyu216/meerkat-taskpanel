@@ -558,7 +558,7 @@ describe("server/routes — the edges a happy path never reaches", () => {
     const odd = dataOf(
       await call("POST", "/api/v1/tasks/DEMO-0001/comments", { body: "y" }, { "x-taskctl-actor": JSON.stringify({ kind: "wizard", id: "z" }) }),
     );
-    assert.equal(odd.comment.author_kind, "human", "an unknown kind is not trusted");
+    assert.equal(odd.comment.author_kind, "wizard", "an unfamiliar kind reaches the board as itself");
     assert.equal(odd.comment.author.display_name, "z");
   });
 

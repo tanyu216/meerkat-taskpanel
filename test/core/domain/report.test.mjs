@@ -168,9 +168,19 @@ describe("domain/report — leftovers and author", () => {
 
   it("requires a named author", () => {
     assert.deepEqual(paths({ author: undefined }), ["author"]);
-    assert.deepEqual(paths({ author: { id: "linus" } }), ["author.kind"]);
+    assert.deepEqual(paths({ author: { id: "linus" } }), ["author.kind"], "a missing kind is refused");
     assert.deepEqual(paths({ author: { kind: "agent" } }), ["author.id"]);
-    assert.deepEqual(paths({ author: { kind: "robot", id: "" } }), ["author.kind", "author.id"]);
+    // An *unfamiliar* kind is not an error: `robot` is a name this end has no
+    // business editing, so only the empty id is wrong.
+    assert.deepEqual(paths({ author: { kind: "robot", id: "" } }), ["author.id"]);
+    assert.deepEqual(paths({ author: { kind: "  ", id: "x" } }), ["author.kind"], "blank is not a kind");
+    // ...and a *platform* is a kind, so this report is accepted outright. (Read
+    // through `validateReport` rather than `paths`, which asserts a rejection.)
+    const platform = validateReport(
+      { ...good(), author: { kind: "claude", id: "linus" } },
+      CONTEXT,
+    );
+    assert.equal(platform.ok, true, platform.ok ? "" : JSON.stringify(platform.issues));
   });
 
   it("returns every problem at once", () => {
@@ -223,8 +233,10 @@ describe("domain/report — normalizeImportedReport (the relaxed read path)", ()
       assert.deepEqual(err.details.issues, [{ path: "conclusion", message: "conclusion must be a non-empty string" }]);
       return true;
     });
+    // A *blank* kind is the malformed case now — `nope` is a name this end has no
+    // business editing, and refusing it was the closed vocabulary talking.
     assert.throws(
-      () => normalizeImportedReport({ ...narrative, author: { kind: "nope", id: "x" } }, CONTEXT),
+      () => normalizeImportedReport({ ...narrative, author: { kind: "  ", id: "x" } }, CONTEXT),
       (err) => err.code === "REPORT_INVALID",
     );
     assert.throws(() => normalizeImportedReport({ ...narrative, round: 2 }, CONTEXT), (err) => {

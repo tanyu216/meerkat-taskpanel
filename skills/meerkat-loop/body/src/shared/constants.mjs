@@ -440,3 +440,18 @@ export const TASK_ORDER_DEFAULT = "board";
  * `project_order` on `/meta`.
  */
 export const TASK_ORDER_CAPABILITY = "weights-v1";
+
+/**
+ * The one reserved actor kind — the only value any decision turns on.
+ *
+ * An actor's kind is otherwise an opaque string: `human`, or the platform an
+ * agent runs on (`claude`, `codex`, `pi`, …), or `taskd` for the board itself.
+ * Everywhere the board asks "was this a person?" — a decision comment going on
+ * the record (I5), an `awaiting` card resuming, the patrol counting the leader
+ * as active — the test is `kind === HUMAN_KIND`. Everything else is an agent.
+ *
+ * It lives here, in `shared`, because the transport reads it too
+ * (`shared/transport/actor.mjs`) and `shared` imports nothing from `src/`.
+ * `src/core/domain/enums.mjs` re-exports it for the domain layer.
+ */
+export const HUMAN_KIND = "human";

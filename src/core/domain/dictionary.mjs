@@ -23,7 +23,7 @@
 
 import { DomainError } from "../../shared/errors.mjs";
 import { norm } from "../../shared/norm.mjs";
-import { DICT_KINDS, DICTIONARY_KINDS } from "./enums.mjs";
+import { DICTIONARY_KINDS, isActorKind } from "./enums.mjs";
 
 /**
  * Fuzzy matching is prefix/substring on the normalised name.
@@ -46,20 +46,23 @@ export function isDictionaryKind(value) {
  * so a name that already exists is reused regardless of the `kind` the caller
  * names — the stored kind wins (the same rule the repository's `upsert` applies
  * on reuse). `kind` here is the *actor* kind to give a freshly created entry, and
- * is validated as one of `DICT_KINDS`.
+ * `isActorKind` is what refuses a blank one; there is no list to check it against.
  *
  * @param {{id: string, kind: string, displayName: string, normalizedName: string}[]} existing
  * @param {string} raw
- * @param {{kind: "agent"|"human", forceCreate?: boolean}} options
+ * @param {{kind: string, forceCreate?: boolean}} options
  * @returns {{action: "reuse"|"create", entry?: object, displayName: string, normalizedName: string, kind: string}}
  * @throws {DomainError} DICTIONARY_AMBIGUOUS when several entries match
  */
 export function resolveDictionaryEntry(existing, raw, options) {
   const { kind, forceCreate = false } = options;
-  if (!DICT_KINDS.includes(kind)) {
+  // Open: the kind a fresh row is given is the caller's to state — `human`, or
+  // the platform it is running on. Only a blank one is refused, because a blank
+  // kind reads as neither.
+  if (!isActorKind(kind)) {
     throw new DomainError("VALIDATION_FAILED", {
-      message: `dictionary kind must be one of ${DICT_KINDS.join(", ")}`,
-      details: { field: "kind", received: kind, allowed: DICT_KINDS },
+      message: "dictionary kind must be a non-empty string",
+      details: { field: "kind", received: kind },
     });
   }
   const normalizedName = normalizeName(raw);

@@ -403,7 +403,7 @@ export function planWakeInvocation(input = {}) {
 export function buildHandoff(input) {
   const card = input.card ?? {};
   const title = String(card.title ?? "").slice(0, 300);
-  const attribution = [`--agent ${input.agent}`, `--agent-platform ${input.host}`];
+  const attribution = [`--agent ${input.agent}`, `--actor-kind ${input.host}`];
   if (input.sessionId) attribution.push(`--session-id ${input.sessionId}`);
   return [
     `You have been woken by the Meerkat TaskPanel supervisor to work one card: ${card.identifier}.`,

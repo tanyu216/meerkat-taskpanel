@@ -523,10 +523,6 @@
               "type": "string"
             },
             "assignee_kind": {
-              "enum": [
-                "agent",
-                "human"
-              ],
               "type": "string"
             },
             "description": {
@@ -580,10 +576,6 @@
               "type": "string"
             },
             "reporter_kind": {
-              "enum": [
-                "agent",
-                "human"
-              ],
               "type": "string"
             },
             "review_of": {

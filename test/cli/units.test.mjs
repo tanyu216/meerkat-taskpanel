@@ -49,7 +49,7 @@ describe("cli/index — the program, with injected streams", () => {
   });
 
   it("builds a command context from the parsed flags", () => {
-    const parsed = { flags: { agentPlatform: "claude", sessionId: "s-1" }, commandArgs: { ref: "X" } };
+    const parsed = { flags: { actorKind: "claude", sessionId: "s-1" }, commandArgs: { ref: "X" } };
     const ctx = createContext(parsed, {
       client: { get() {} },
       env: {},
@@ -57,9 +57,9 @@ describe("cli/index — the program, with injected streams", () => {
       stdin: async () => "hi",
       readFile: () => "file",
     });
-    // Identity is separate from attribution: the platform/session flag makes the
-    // actor an agent, but the session id rides on `ctx.session`, not the actor id.
-    assert.deepEqual(ctx.actor, { kind: "agent", id: "local" });
+    // Identity is separate from attribution: `--actor-kind` says *what* is
+    // writing and the session id rides on `ctx.session`, never on the actor id.
+    assert.deepEqual(ctx.actor, { kind: "claude", id: "local" });
     assert.equal(ctx.session, "s-1");
     assert.deepEqual(ctx.args, { ref: "X" });
     assert.equal(ctx.cwd, "/tmp");

@@ -54,9 +54,10 @@ never the token itself) so any shell in any directory finds the same board.
 | `--url <url>` | Board to talk to. Wins over the runtime pointer, and never triggers autostart. |
 | `--token <token>` | Access token. Priority: `--token` > `$TASKD_TOKEN` > the pointer's token file > none (loopback needs no token). |
 | `--if-version <n>` | Optimistic concurrency: the write is refused with `VERSION_CONFLICT` if the task moved on. |
-| `--agent-platform <name>` | Host platform (`claude`, `codex`, …). Makes the actor an `agent`. |
-| `--session-id <id>` | Agent session identifier. Also makes the actor an `agent`. |
-| `--agent <name>` | Name the actor without claiming to be an agent platform. |
+| `--actor-kind <name>` | Who or what is writing: `human`, or the platform (`claude`, `codex`, …). This **is** the identity — there is no separate platform flag. Absent ⇒ `human`. |
+| `--as-human` | Write as the configured human (`$TASKCTL_HUMAN`). The one write that is not the agent's own. |
+| `--session-id <id>` | Agent session identifier. Requires `--actor-kind` — a session with no kind has nothing to attribute it to. |
+| `--agent <name>` | Name the actor. |
 | `--version` | Print the release version and exit. With `--json`, print `{"version", "schema_version"}` — the contract schema generation beside it. Never contacts a board. |
 | `-h`, `--help` | Help for the CLI, a group, or one command. |
 

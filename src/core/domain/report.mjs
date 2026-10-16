@@ -21,7 +21,7 @@ import {
   REPORT_MAX_ITEMS,
 } from "../../shared/constants.mjs";
 import { DomainError } from "../../shared/errors.mjs";
-import { ACCEPTANCE_STATUSES, ACTOR_KINDS, EVIDENCE_KINDS } from "./enums.mjs";
+import { ACCEPTANCE_STATUSES, EVIDENCE_KINDS, isActorKind } from "./enums.mjs";
 
 /** UTF-8 byte length, computed without the node-only byteLength helper. */
 const UTF8 = new TextEncoder();
@@ -164,8 +164,10 @@ export function validateReport(input, context = {}) {
   if (author === null || typeof author !== "object") {
     issues.push({ path: "author", message: "author is required" });
   } else {
-    if (!ACTOR_KINDS.includes(author.kind)) {
-      issues.push({ path: "author.kind", message: `kind must be one of ${ACTOR_KINDS.join(", ")}` });
+    // Open, like a comment's author kind: `human`, a platform, or whatever a host
+    // calls itself. Only a blank one is refused.
+    if (!isActorKind(author.kind)) {
+      issues.push({ path: "author.kind", message: "kind must be a non-empty string" });
     }
     if (typeof author.id !== "string" || author.id.trim() === "") {
       issues.push({ path: "author.id", message: "id must be a non-empty string" });

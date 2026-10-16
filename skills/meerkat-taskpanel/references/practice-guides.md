@@ -114,7 +114,7 @@ agents overwrite each other.
 ### 8. Stay traceable — carry the session id
 
 Every write can name the actor and the conversation behind it
-(`--agent-platform <host> --session-id <id>`). That is what turns a card back into
+(`--actor-kind <host> --session-id <id>`). That is what turns a card back into
 "which agent session did this", and it is what lets a resumed conversation
 re-attach to the same work instead of starting over. Always pass the session id.
 
@@ -250,7 +250,7 @@ has the native-vs-bundle distinction.)
   `todo` / `stale` cards through the board's own criteria. §1–§3 and §7 happen
   around the agent rather than by it.
 - **The session id still travels with every write.** Pass
-  `--agent-platform openclaw --session-id <id>` so a card's trail points back at the
+  `--actor-kind openclaw --session-id <id>` so a card's trail points back at the
   session that did the work (§8); the framework keeps that id stable across resumes.
 - **No supervisor to build.** OpenClaw is the one host that installs **no**
   scheduler of its own: `install.sh --target openclaw` writes this skill only — not
@@ -279,7 +279,7 @@ claude plugin list                                 # → meerkat-taskpanel, enab
   in the `projects.json` beside this skill
   ([§Where a directory's project lives](#where-a-directorys-project-lives)). The board
   holds no directory, so there is nothing to ask it.
-- **Stamp every write with the host and session:** `--agent-platform claude
+- **Stamp every write with the host and session:** `--actor-kind claude
   --session-id <id>`. Use the id of the Claude Code session, so the card's trail
   points back at the conversation that did the work.
 - **Bind the card to the branch / worktree** you are working in: record it once
@@ -313,7 +313,7 @@ codex plugin list                                  # → meerkat-taskpanel
 - **Session ownership comes from the thread.** Codex exposes the running thread as
   **`CODEX_THREAD_ID`**; read it and use it as the session id, so a card's trail
   is attributable at the conversation level:
-  `--agent-platform codex --session-id "$CODEX_THREAD_ID"`.
+  `--actor-kind codex --session-id "$CODEX_THREAD_ID"`.
 - **Same claim-first order**, same board checks (§1). Resolve a directory's project
   from the `projects.json` beside this skill before creating or claiming anything
   ([§Where a directory's project lives](#where-a-directorys-project-lives)).
@@ -327,7 +327,7 @@ codex plugin list                                  # → meerkat-taskpanel
 ## A minimal worked example
 
 From the skill directory, the shortest complete loop (Claude Code shown; on Codex
-swap the actor flags for `--agent-platform codex --session-id "$CODEX_THREAD_ID"`).
+swap the actor flags for `--actor-kind codex --session-id "$CODEX_THREAD_ID"`).
 
 **Prerequisites for the placeholder names below.** `PROJ-0007` stands for a real
 card on *your* board and `linus` for the assignee it belongs to — substitute the
@@ -340,12 +340,12 @@ launched with, or `$CODEX_THREAD_ID` on Codex.
 #    this skill (references/projects-json.md); the board holds no directory
 
 # 1. claim-first: read the claimable set, then take exactly one
-node scripts/run.mjs issue candidates --assignee linus --agent-platform claude --session-id "$SESSION"
-node scripts/run.mjs issue move PROJ-0007 in_progress --agent-platform claude --session-id "$SESSION"
+node scripts/run.mjs issue candidates --assignee linus --actor-kind claude --session-id "$SESSION"
+node scripts/run.mjs issue move PROJ-0007 in_progress --actor-kind claude --session-id "$SESSION"
 
 # 2. register the session (which conversation is on this card) — the resume key
 node scripts/run.mjs session set PROJ-0007 --seg seg1 --backend claude \
-  --agent-platform claude --session-id "$SESSION"
+  --actor-kind claude --session-id "$SESSION"
 
 # 3. …do the work; leave a decision trail while you go…
 node scripts/run.mjs comment add PROJ-0007 --kind decision --body "Chose the SQLite trigger path."
@@ -353,7 +353,7 @@ node scripts/run.mjs comment add PROJ-0007 --kind decision --body "Chose the SQL
 # 4. deliver with a report — the gate refuses an empty round
 node scripts/run.mjs report template PROJ-0007
 node scripts/run.mjs issue deliver PROJ-0007 --report-file - \
-  --agent-platform claude --session-id "$SESSION"
+  --actor-kind claude --session-id "$SESSION"
 # → status in_review; a human accepts to done (self-review ≠ acceptance, §6)
 ```
 
