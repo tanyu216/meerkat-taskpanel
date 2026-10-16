@@ -13,7 +13,6 @@ Documentation for Meerkat TaskPanel.
 | [contract.md](contract.md) | The API contract snapshot (routes + error codes + wire fields): what it freezes, the `--update` workflow, and the pre-push / pre-tag / CI gates. |
 | [scheduling.md](scheduling.md) | The two-layer poll/patrol model, the fire-only cost gate, the atomic-claim dispatch, the host-external supervisor, the three-host trigger differences, and why OpenClaw uses openclaw-team instead. |
 | [web-local-first.md](web-local-first.md) | The board frontend is loopback-only: why a remote browser gets 401 (no token injection) and what implementing it would take. |
-| [ui-align-retirement-audit.md](ui-align-retirement-audit.md) | The assertion-coverage reconciliation after `ui-align` was retired from this repository: which of the deleted manifest's rows the contract layer still guards, the 52 it does not, and how to re-derive the counts. |
 | [`../skills/meerkat-taskpanel/SKILL.md`](../skills/meerkat-taskpanel/SKILL.md) | The agent-facing skill definition. |
 | [`../skills/meerkat-taskpanel/references/cli.md`](../skills/meerkat-taskpanel/references/cli.md) | The `taskctl` command surface (implemented). |
 
@@ -55,4 +54,16 @@ file in this repository.
 **Do not land run records here again.** `test/fixtures/host-paths-allowlist.json` is now
 deliberately empty, so `scripts/verify/paths.mjs` fails on *any* tracked file carrying a
 host-absolute path — and all 65 records it used to exempt carried one.
+
+## On retired audits
+
+`docs/` holds **live** documentation: what a reader needs to install, run, operate or extend
+the repository. A one-off audit is not that. `ui-align-retirement-audit.md` lived here until
+2026-10-17 and was removed alongside the run records above — a reconciliation pinned to two
+historical commits (`b7d6379`, `f61e02a^`), by then 97 commits behind `dev`, of a tool
+(`ui-align`) that no longer exists anywhere in this tree, and referenced by nothing.
+
+Its question was real, though: whether retiring `ui-align` cost checking power was **never
+settled**, because the mutation sweep that would settle it was never run. An open engineering
+question belongs on the board as a card, not in a published document tree.
 
