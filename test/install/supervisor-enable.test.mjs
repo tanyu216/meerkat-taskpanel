@@ -153,6 +153,11 @@ function installEnv(home, manager, extra = {}) {
     // `taskd-guard.test.mjs`, and this file is about the loop's units. Contract's
     // test-only bypass.
     MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1",
+    // `systemdUserDir` prefers an absolute `XDG_CONFIG_HOME` over `$HOME/.config` — right
+    // for systemd, but it means an inherited value decides where the units land. Pin it
+    // to the directory this suite asserts; a case that wants to exercise the variable
+    // passes its own through `extra`.
+    XDG_CONFIG_HOME: join(home, ".config"),
     PATH: `${manager.dir}:${process.env.PATH}`,
     ...manager.env,
     ...extra,
@@ -446,6 +451,47 @@ describe("install.sh: enable — systemd", () => {
     assert.equal(again.status, 0, again.stderr);
     assert.match(again.stdout, /supervisor: already enabled \(host=claude, scheduler=systemd, units=/);
     assert.equal(calls(manager).filter((line) => line.includes("enable --now")).length, 1, "enabled once");
+  });
+
+  it("ignores an ambient XDG_CONFIG_HOME, so the unit directory does not depend on the machine", () => {
+    // `installEnv` inherits the ambient environment through `...process.env`, and
+    // `systemdUserDir` honours an absolute `XDG_CONFIG_HOME` ahead of `$HOME/.config` —
+    // correct for systemd, but it made this suite pass on macOS and fail on any runner
+    // that exports the variable (GitHub's ubuntu image does), with an assertion that
+    // reads like a broken installer rather than an environment leak.
+    const home = makeTempDir();
+    const manager = fakeManager();
+    const args = ["--target", "claude", "--agent-name", "alice", "--prefix", home, "--supervisor=enable", "--scheduler=systemd"];
+    const previous = process.env.XDG_CONFIG_HOME;
+
+    let run;
+    process.env.XDG_CONFIG_HOME = join(home, "ambient", ".config");
+    try {
+      run = runInstall(args, installEnv(home, manager, { FAKE_LINGER: "yes", USER: "alice" }));
+    } finally {
+      if (previous === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = previous;
+    }
+
+    assert.equal(run.status, 0, run.stderr);
+    assert.ok(
+      existsSync(join(home, ".config", "systemd", "user", "meerkat-taskpanel-poll.service")),
+      "the units must land in $HOME/.config regardless of an ambient XDG_CONFIG_HOME",
+    );
+  });
+
+  it("lets an explicit XDG_CONFIG_HOME decide the unit directory", () => {
+    // The counterpart: the variable must still work when the install is actually given
+    // one — a fix that simply deleted it would pass the case above for the wrong reason.
+    const home = makeTempDir();
+    const manager = fakeManager();
+    const xdg = join(home, "xdg");
+    const args = ["--target", "claude", "--agent-name", "alice", "--prefix", home, "--supervisor=enable", "--scheduler=systemd"];
+
+    const run = runInstall(args, installEnv(home, manager, { FAKE_LINGER: "yes", USER: "alice", XDG_CONFIG_HOME: xdg }));
+
+    assert.equal(run.status, 0, run.stderr);
+    assert.ok(existsSync(join(xdg, "systemd", "user", "meerkat-taskpanel-poll.service")), `the unit must follow ${xdg}`);
   });
 
   it("disable disables and stops the timers", () => {
