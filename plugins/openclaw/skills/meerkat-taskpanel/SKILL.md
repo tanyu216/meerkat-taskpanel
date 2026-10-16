@@ -87,6 +87,56 @@ acceptance, never preempt a conflict, and stay traceable. The full statement, th
 per-host differences (Claude Code / Codex) and a worked example are in
 [`references/practice-guides.md`](references/practice-guides.md).
 
+## When the card is a container (promote it to an epic)
+
+A card filed from the web UI is always a `task` — the create dialog has no `kind` field at all
+— so an epic exists only where someone named one. When the card in your hand turns out to hold
+several deliverables rather than one, make it the container **before** you work any of them:
+only an epic may be a parent, so an un-promoted card cannot carry children.
+
+```bash
+taskctl issue update <ref> --kind epic                          # the card becomes the container
+taskctl comment add <ref> --kind change --body "split into N cards: …"
+taskctl issue create --project <p> --title "…" --target <t> --acceptance "…"   # one card per piece
+taskctl relation add <ref> --type parent --target <child>        # <ref> is the parent
+taskctl issue move <ref> blocked --blocked-reason dependency     # park it: waiting on its children
+```
+
+Four board facts decide that order:
+
+- **An epic can never be claimed.** `issue move <epic> in_progress` is refused (`not_claimable`)
+  and `issue candidates` never offers one — so a card that should end up `in_progress` must be
+  claimed **while it is still a `task`**, and promoted after.
+- **`todo → in_review` is not a transition.** An epic left in `todo` would have no way back into
+  the work cycle, so the container is parked on `blocked --blocked-reason dependency` — a
+  container waiting on its own children, a block class that carries no SLA due point.
+- **`issue create --parent <epic>` does not link anything.** On create, `--parent` only fills the
+  idempotency key's source slot; the edge is `relation add … --type parent`, and only an `epic`
+  may be the parent.
+- **The promotion is an ordinary patch, not a new card.** It bumps `version` and records one
+  `task_updated` activity, and changes nothing else — status, the claim, the heartbeat and the
+  delivery round all stay put, so nothing has to be re-linked. What it does *not* leave is a
+  comment, which is why the split is written down in the step above.
+
+Create each child as an ordinary card, assigned to the epic's assignee unless you know a better
+owner for that piece, with one deliverable and its own acceptance list. **Give each child its own
+`--target`** — the piece's handle (a path, an area, a contract): the create guard keys on
+kind + assignee + source + target, so two children for one owner with nothing to tell them apart
+are the *same card* — the second create is read as a retry of the first, not a sibling. Use
+`--allow-dup` when a target genuinely does not apply. Then claim exactly **one** child and work it
+as usual: the container holds no work of its own, so it does not count against your one card.
+
+When the children are done, close the container the way you close any card — with a report that
+rolls them up, one line per child (what it delivered, where it stands):
+
+```bash
+taskctl report template <ref>
+taskctl issue deliver <ref> --report-file -   # → in_review; a human accepts to done
+```
+
+**Never move the epic back to `todo`.** It cannot be claimed there and cannot reach `in_review`:
+a `todo` epic sits where nothing can advance it.
+
 ## When to use it
 
 - **Finding the board** — the board holds no directories; look the directory up in the
@@ -104,8 +154,12 @@ per-host differences (Claude Code / Codex) and a worked example are in
   file is the API's alone (`GET /api/v1/attachments/:id/content`); removal is a
   hard delete. The five edits, capability by capability, are in
   [`references/cli.md`](references/cli.md#editing-a-card-status-priority-description-attachments-dependencies).
-- **Delegating** — `taskctl issue create --kind epic …` plus
-  `taskctl relation add <parent> --type parent --target <child>`.
+- **Delegating** — make the card a container and split it: `taskctl issue update <ref> --kind epic`
+  to promote one you already hold (or `taskctl issue create --kind epic …` for one you are filing
+  fresh), then one `taskctl issue create` per child, a
+  `taskctl relation add <ref> --type parent --target <child>` per edge, and
+  `taskctl issue move <ref> blocked --blocked-reason dependency` to park it. See
+  [When the card is a container](#when-the-card-is-a-container-promote-it-to-an-epic).
 - **Finishing** — `taskctl report template <id>` to get a report, fill in the TODO
   lines, then `taskctl issue deliver <id> --report-file -`. **The board will not let a
   task into `in_review` without a report** for the current round: the refusal prints the

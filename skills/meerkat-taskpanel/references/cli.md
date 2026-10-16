@@ -232,6 +232,60 @@ up on its own. When a card you expected is missing from your candidates and you
 believe it is deployment work, check `issue get <ref>`: a `kind: deploy` card is
 the reason it is not there.
 
+### Promoting an existing card to an epic
+
+`kind` is a patchable field, so a card that turns out to be a container is promoted in place —
+and it has to be, because the web UI cannot set `kind`: a card filed from the board UI is always
+a `task`.
+
+```console
+$ taskctl issue update PROJ-0007 --kind epic
+```
+
+Three board facts decide the order you split in:
+
+- **Only an `epic` may be a parent.** `relation add PROJ-0007 --type parent --target <child>` is
+  refused `VALIDATION_FAILED` (`details.field: kind`) until the card has been promoted.
+- **An epic cannot be claimed.** `issue move <epic> in_progress` is refused `not_claimable`, and
+  `issue candidates` withholds epics from all three pools. So a card that must end up
+  `in_progress` has to be claimed **while it is still a `task`**, and promoted afterwards.
+- **`todo → in_review` is not a transition.** `todo` reaches only `backlog`, `in_progress`,
+  `blocked` and `canceled`, and `done` is reachable only from `in_review` — so a promoted card
+  left in `todo` cannot be delivered. `todo → blocked → in_review` is its one claim-free route
+  out, which is why a container is parked with
+  `issue move PROJ-0007 blocked --blocked-reason dependency` until its children land. That block
+  class is **visibility only** — the SLA patrol gives it no due point.
+
+Linking a child is its own command: `issue create` writes no relation, and its `--parent` flag
+fills the **idempotency key's source slot** and nothing else. A child created with
+`--parent PROJ-0007` is not linked to PROJ-0007.
+
+```console
+$ taskctl issue create --project PROJ --title "…" --target <t> --assignee <owner>   # the child
+$ taskctl relation add PROJ-0007 --type parent --target PROJ-0008                   # the edge
+```
+
+Give each child a `--target` of its own. The create guard keys on
+kind + assignee + source + target, so a second create repeating all four is read as the **same
+request retried** and returns the existing card rather than a sibling — `--allow-dup` is the
+escape when a target genuinely does not apply.
+
+The promotion itself is an ordinary patch: it bumps `version`, writes one `task_updated`
+activity naming `kind`, and changes nothing else — `status`, the execution claim, the heartbeat
+and `delivery_round` all stay put, and the `idem` key (frozen at create, with the card's kind in
+its first slot) is **not** rewritten. It therefore leaves no comment: write the split down
+yourself (`issue update --description` for the container's intent, `comment add --kind change`
+for what you cut it into). One caveat — `issue update` does not forward `--if-version`, so a
+promotion cannot be made race-safe from the CLI; re-read the card if that matters.
+
+Only the **downgrade** is fenced: an epic that still has children cannot go back to `task`
+(`VALIDATION_FAILED`, "an epic with children cannot be downgraded"). Remove the `parent` edges
+first if you really meant to undo it.
+
+The container is closed exactly like a leaf — `report template` → `issue deliver <ref>
+--report-file -`, with a report that rolls the children up, one line each. The delivery gate
+applies to an epic as it does to a task, and it is still `in_review`: a human accepts to `done`.
+
 ### The delivery gate
 
 A card may not enter `in_review` without a report **for the current delivery
@@ -385,7 +439,7 @@ Append-only: there is no edit and no delete, by design.
 
 | Command | Purpose |
 |---|---|
-| `relation add <ref> --type parent\|blocks\|related --target <ref> [--force]` | Add an edge. For `parent`, **the task you name is the parent** and only an `epic` may be one. |
+| `relation add <ref> --type parent\|blocks\|related --target <ref> [--force]` | Add an edge. For `parent`, **the task you name is the parent** and only an `epic` may be one — promote the card first (§Promoting an existing card to an epic). |
 | `relation remove <ref> <relation-id>` | Remove it. |
 | `relation list <ref>` | Edges, children, ancestors, blockers. |
 

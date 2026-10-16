@@ -583,3 +583,68 @@ describe("cli/issue — `issue move --blocked-reason` (0016)", () => {
     });
   });
 });
+
+describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells it", () => {
+  const REPORT = {
+    conclusion: "Rolled up: both pieces delivered, nothing outstanding.",
+    acceptance: [{ text: "the container is whole", status: "met" }],
+    evidence: [{ kind: "commit", sha: "dcd7d15" }],
+  };
+  // Rule 8: every write carries the agent's attribution, so the claim below is
+  // made *by* the card's assignee rather than by whatever actor the host defaulted to.
+  const AS = ["--agent", "linus"];
+  const forLinus = ["--assignee", "linus", "--assignee-kind", "agent", ...AS];
+
+  it("promotes the claimed card, splits it, parks it and closes it", async () => {
+    await board(async ({ run }) => {
+      // 1. the card is in hand and claimed — while it is still a `task`
+      const card = createIssue(run, forLinus);
+      dataOf(run(["issue", "move", card.task.identifier, "in_progress", ...AS, "--json"]));
+
+      // 2. promote it in place: the kind changes, the status does not
+      const promoted = dataOf(run(["issue", "update", card.task.identifier, "--kind", "epic", ...AS, "--json"]));
+      assert.equal(promoted.task.kind, "epic");
+      assert.equal(promoted.task.status, "in_progress");
+
+      // 3. one create per deliverable, each naming its own `target` — the retry
+      //    guard would otherwise read two children for one owner as one card
+      const first = createIssue(run, ["--title", "Piece one", "--target", "src/a", ...forLinus]);
+      const second = createIssue(run, ["--title", "Piece two", "--target", "src/b", ...forLinus]);
+      assert.notEqual(first.task.identifier, second.task.identifier);
+
+      // 4. the edge is its own command — `issue create` links nothing
+      for (const child of [first, second]) {
+        dataOf(run(["relation", "add", card.task.identifier, "--type", "parent", "--target", child.task.identifier, ...AS, "--json"]));
+      }
+      assert.equal(dataOf(run(["relation", "list", card.task.identifier, "--json"])).children.length, 2);
+
+      // 5. park the container on the one claim-free route it can be closed from
+      const parked = dataOf(
+        run(["issue", "move", card.task.identifier, "blocked", "--blocked-reason", "dependency", ...AS, "--json"]),
+      );
+      assert.equal(parked.task.status, "blocked");
+      assert.equal(parked.task.blocked_reason, "dependency");
+
+      // 6. and close it with a rollup report, exactly like a leaf
+      const delivered = dataOf(
+        run(["issue", "deliver", card.task.identifier, "--report-file", "-", ...AS, "--json"], {
+          input: JSON.stringify(REPORT),
+        }),
+      );
+      assert.equal(delivered.task.status, "in_review", "a human accepts the container to done");
+      assert.equal(delivered.report.round, 1);
+    });
+  });
+
+  it("collapses two creates for one owner — which is why a child names its own target", async () => {
+    await board(async ({ run }) => {
+      const asked = createIssue(run, ["--title", "Piece one", ...forLinus]);
+      const again = createIssue(run, ["--title", "Piece two", ...forLinus]);
+      assert.equal(
+        again.task.identifier,
+        asked.task.identifier,
+        "same kind, assignee, source and target: the second create is a retry of the first, not a sibling",
+      );
+    });
+  });
+});
