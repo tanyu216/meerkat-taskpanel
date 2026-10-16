@@ -43,7 +43,6 @@ export const REQUIRED = Object.freeze([
   ".cursor-plugin/plugin.json",
   ".pi/extensions/meerkat-taskpanel.ts",
   ".opencode/plugins/meerkat-taskpanel.js",
-  "plugins/openclaw/openclaw.plugin.json",
 ]);
 
 /**

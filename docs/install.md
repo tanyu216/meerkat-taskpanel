@@ -1,7 +1,7 @@
 # Installation
 
-Meerkat TaskPanel ships as **two Agent Skills** plus one distribution bundle per
-host (`plugins/`):
+Meerkat TaskPanel ships as **two Agent Skills** and **one plugin root** — the repository
+itself, which every harness reads in place:
 
 - **`meerkat-taskpanel`** (`skills/meerkat-taskpanel/`) — the board. Installed for all six
   hosts.
@@ -29,10 +29,9 @@ There are three layers, and it is worth keeping them straight:
    and enable the skill. This step needs the host CLI, so `install.sh` does **not** run
    it; it prints the command and you run it once. The repository root *is* the board's
    plugin root (`.claude-plugin/plugin.json`), which is what lets every harness share the
-   one `skills/` tree instead of receiving a copy; only OpenClaw keeps a bundle of its own
-   under `plugins/openclaw/`. The marketplace lists two plugins — `meerkat-taskpanel`
-   (sourced at `./`, the repository root) and `meerkat-loop` (sourced at `plugins/loop`,
-   which carries the loop skill and nothing else, so it can be installed on its own).
+   one `skills/` tree instead of receiving a copy. The marketplace has a single entry —
+   `meerkat-taskpanel`, sourced at `./`. `meerkat-loop` is **not** a marketplace plugin: it
+   is installed by `install.sh`, and only for claude, codex and pi.
 
 > **Status: the engine has landed in full.** The skill is discoverable, the `taskctl`
 > commands it describes are implemented, and the board backend (`src/server/`, HTTP + SSE)
@@ -55,15 +54,15 @@ match the assignee the board uses for it; it defaults to `$USER`.
 | Host | `--target` | Board skill | Loop skill | Bundle |
 |---|---|---|---|---|
 | Claude Code | `claude` | `~/.claude/skills/meerkat-taskpanel` | `~/.claude/skills/meerkat-loop` | `.` — the repository root (`.claude-plugin/plugin.json`) |
-| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | **none** — see [OpenClaw](scheduling.md#openclaw-do-not-build-a-supervisor) | `plugins/openclaw` (native `openclaw.plugin.json`) |
+| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | **none** — see [OpenClaw](scheduling.md#openclaw-do-not-build-a-supervisor) | `.` — the same root bundle |
 | Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | `~/.codex/skills/meerkat-loop` | `.` — the same root bundle, through the marketplace |
 | Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | `~/.agents/skills/meerkat-loop` | `.` — the root `package.json`'s `pi` field |
 | OpenCode | `opencode` | `~/.config/opencode/skills/meerkat-taskpanel` | **none** — see [OpenCode](#opencode) | `.opencode/plugins/` (in-process registration) |
 | Cursor | `cursor` | `~/.cursor/skills/meerkat-taskpanel` | **none** — see [Cursor](#cursor) | `.` — the repository root (`.cursor-plugin/plugin.json`) |
 
-The repository-root Claude marketplace `.claude-plugin/marketplace.json` lists
-`./` (the board) and `./plugins/loop` (the loop); Codex reads the same
-marketplace manifest, which is why it has no bundle of its own.
+The repository-root Claude marketplace `.claude-plugin/marketplace.json` lists a single
+plugin, `./` (the board); Codex reads the same marketplace manifest, which is why it has no
+bundle of its own.
 
 Every host above has both routes: a `--target` that lands the skill on disk, and a
 plugin/bundle the host's own plugin system reads in place. OpenCode and Cursor are no
@@ -496,14 +495,14 @@ identical either way (measured against OpenClaw 2026.9.8 with and without the ma
 > only — install that framework instead. The exclusion is permanent, not a gap: two
 > supervisors on one board would only race each other for the same cards.
 
-> **Native vs bundle.** `plugins/openclaw/openclaw.plugin.json` is a *native* OpenClaw
-> manifest. A native plugin is an in-process runtime module and must ship
+> **No native manifest.** Meerkat TaskPanel does not ship an `openclaw.plugin.json`. A
+> *native* OpenClaw plugin is an in-process runtime module and must ship
 > `package.json#openclaw.extensions` plus an entry point that imports the OpenClaw plugin
-> SDK — a real dependency this zero-dependency project deliberately does not take. A
-> **skill-only** pack therefore installs through the supported bundle route above (or,
-> equivalently, by placing the skill in `~/.openclaw/skills/`). OpenClaw's detector still
-> classifies `plugins/openclaw` as a native plugin, which is why its profile asserts that
-> and the bundle assertions run against the repository root instead.
+> SDK — a real dependency this zero-dependency project deliberately does not take, so such
+> a manifest could not be installed as what it claims to be. The **skill-only** pack
+> installs through the supported bundle route above (or, equivalently, by placing the skill
+> in `~/.openclaw/skills/`). OpenClaw's detector does recognise a native manifest when one
+> is present; the repository simply has none.
 
 Uninstall:
 
@@ -569,7 +568,7 @@ The root `package.json` carries Pi's manifest, so no copy of the skill tree is m
 `pi.skills` is the skills directory, and `pi.extensions` is the module that re-registers
 the same directory at runtime through Pi's `resources_discover` event. Those are two of the
 four resource fields Pi reads from a package's `pi` object (`extensions`, `skills`,
-`prompts`, `themes`), which is why the board needs no `plugins/pi` directory.
+`prompts`, `themes`), which is why the board needs no Pi bundle directory of its own.
 
 Pi has no timer of its own, so step 1 also drops the units under
 `~/.agents/scheduling/` and the `~/.agents/bin/wake-pi.sh` glue; load one of them to
@@ -825,8 +824,7 @@ Nothing is written outside those directories, and nothing is sent over the netwo
   [Idempotence](#idempotence-re-running-and-force).
 - **`skill source not found`** — run `install.sh` from this checkout (it resolves
   `skills/meerkat-taskpanel/` relative to itself); a `dist/` bundle must be unpacked first.
-- **`plugins/*/skills` out of date** — those copies are generated. Run
-  `node scripts/sync-skills.mjs`; `npm run check:skills` fails CI on drift.
-- **OpenClaw does not list the plugin** — install the bundle
-  (`openclaw plugins install "$PWD" ...`), not `plugins/openclaw`; see the
-  native-vs-bundle note above.
+- **`loop payload out of date`** — `skills/meerkat-loop/body` and its `templates/` are
+  generated. Run `node scripts/sync-skills.mjs`; `npm run check:skills` fails CI on drift.
+- **OpenClaw does not list the plugin** — install the bundle at the repository root
+  (`openclaw plugins install "$PWD" ...`); see the OpenClaw section above.
