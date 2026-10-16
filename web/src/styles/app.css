@@ -2019,6 +2019,53 @@ button.td-prop-value:hover {
   --status-color: var(--pri-color);
 }
 
+/* The control's own row: the box and its clear ✕ share one line.
+
+   This is what makes a field's width a consequence of its **track** instead of
+   its **content**. Before it, the box sat in a `flex items-end` row shell as a
+   `flex: 0 1 auto` item with `width: auto`, so its main size was the content's
+   max-content width — the intrinsic width of a default `size=20` input, 172px,
+   drifting to 218.734 once a chip was in the field. The prototype's row is
+   `display: flex` over the whole track with the box as `flex: 1 1 auto`, which
+   is why `box + gap + ✕ == track` holds there arithmetically (405.391 =
+   381.391 + 4 + 20) and held nowhere here (T-20261015-233122 §①, §③.3).
+
+   `align-items: center` — not the `items-end` the row shell carried. That
+   alignment existed for one reason: the ✕ was the sibling of the *chip row plus
+   the box* and had to be levelled with the box's bottom. Once the ✕ is a child
+   of this row, the reason is gone. */
+.td-combo-field { position: relative; display: flex; align-items: center; gap: 4px; min-width: 0; }
+.td-combo-field > input { flex: 1 1 auto; min-width: 0; }
+
+/* The clear ✕ — the prototype's `.td-combo-clear`: the same 20×20 box the chips'
+   own remove control wears (`.td-chip-remove`), on the selector radius rather
+   than the field radius (`--radius-selector` is 4px, the prototype's `--r-sm`).
+
+   It is drawn only when the field has something to clear, and the stylesheet is
+   where that is decided — the two `:has()` rules below, one per way a value can
+   be in the control: typed into the box, or held as the parent's chip. With
+   neither, the ✕ stays `display: none`, so an empty field does not offer a
+   button that cannot clear anything.
+
+   ⚠️ Both rules name the **element** (`> input`), not `.td-input`. The
+   prototype writes `.td-combo-field > .td-input`, but this repo's combobox box
+   is a hand-rolled stand-in that does **not** carry `td-input` (the create
+   dialog's *title* box does; the combobox's is 31px / `4px 8px` / 14px against
+   that one's 32px / `0 8px` / 13px). Transcribing the class would match nothing
+   and the ✕ would never appear. Giving the box `td-input` is a **different**
+   change — it would move all nine instances' metrics, and the prototype's drawer
+   deliberately uses the flat `.td-input-flat` instead — so it is registered and
+   left alone (T-20261015-233122 A6 #6). */
+.td-combo-clear {
+  display: none; flex: none; align-items: center; justify-content: center;
+  width: 20px; height: 20px; padding: 0; font-size: 14px; line-height: 1;
+  color: var(--brand-text-3); background-color: transparent; border: 0;
+  border-radius: var(--radius-selector); cursor: pointer;
+}
+.td-combo-field:has(> input:not(:placeholder-shown)) .td-combo-clear { display: inline-flex; }
+.td-combo:has([data-parent-chip]) .td-combo-clear { display: inline-flex; }
+.td-combo-clear:hover { color: var(--brand-text); background-color: var(--brand-hover); }
+
 /* The combobox popup: `position: absolute` inside a `position: relative` root,
    flipped above the field when there is no room below.
 

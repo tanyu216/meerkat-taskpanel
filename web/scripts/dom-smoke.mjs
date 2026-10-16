@@ -2501,9 +2501,27 @@ export async function run() {
     const r8cFailures = [];
     const r8cCheck = (ok, message) => { if (!ok) r8cFailures.push(message); };
 
-    // 980px is where the right-hand column is narrow enough that a 41-character
-    // title cannot fit its row — the reading the design lane measured there.
-    await page.setViewportSize({ width: 980, height: 900 });
+    // The viewport where the right-hand column is narrow enough that the
+    // fixture's 40-character title cannot fit its row.
+    //
+    // It used to be 980, and — this is the part that changed — that number was
+    // never really about the viewport. The popup took its width from its
+    // positioning ancestor, which was the *shrink-wrapped* control (172px), so
+    // `.td-combo-menu` resolved `max(100%, 220px)` to **220px at every width**:
+    // the same row was clipped at 1512 as at 980, and the design lane's 980 was
+    // one reading of a viewport-independent fact.
+    //
+    // T-20261016-113131 puts the control on its track, so the popup now *is* the
+    // track (`max(100%, 220px)` with 100% = the control = the field's column) and
+    // the clipping is genuinely viewport-dependent: the track is
+    // `(width − 114) / 2.6`, so it is 333.08 at 980 (the title fits, 0 of 13 rows
+    // clipped) and 302.31 at 900 (the title does not, 1 of 13). The assertion
+    // below is the design criterion — "a title that does not fit is ellipsised,
+    // not wrapped and not lost" — so its breakpoint follows the reading down one
+    // rung rather than the assertion being dropped: **980 → 900**.
+    // (T-20261015-233122 A6 #5 anticipated exactly this flip and forbade deleting
+    // the assertion; the numbers above are the re-derivation it asked for.)
+    await page.setViewportSize({ width: 900, height: 900 });
     await page.click("[data-new-task]");
     await page.waitForTimeout(300);
 
@@ -2553,7 +2571,7 @@ export async function run() {
     }
     r8cCheck(
       optionRows.some((row) => row.clipped === true),
-      "no option row is actually clipped at 980px — the ellipsis has nothing to fire on",
+      "no option row is actually clipped at 900px — the ellipsis has nothing to fire on",
     );
 
     // ② — accepting a row puts the task in the field as a chip: identifier (same
@@ -2668,6 +2686,111 @@ export async function run() {
     await page.waitForTimeout(250);
     await page.setViewportSize({ width: 1512, height: 950 });
     await page.waitForTimeout(150);
+
+    // --- B24 · the parent control on its field's whole track --------------------
+    //
+    // T-20261016-113131. The **geometry** half of the seven structural rules the
+    // contract states for this control (B24), read at the two viewports the
+    // design lane measured the defect at (T-20261015-233122 §①).
+    //
+    // Everything here is written against `track` — the width of the field group
+    // itself — and never against a literal 405.391. That is not tidiness: the
+    // track is the one reading the prototype and the implementation already
+    // agree on, so a constant would make the identity below true by
+    // construction and hide the very defect the leg exists to catch. The defect
+    // was never the track; it was that the control inside it ignored it.
+    //
+    // Why not in the contract layer: B24's rules carry no `when`, so they
+    // evaluate in the **board** state, where the create dialog is `hidden` and
+    // every `getBoundingClientRect` reads 0 — a box rule there would fail on
+    // `0 != 405.391` for reasons that have nothing to do with the layout. And a
+    // *computed-width* rule is worse than useless here: before this change the
+    // box computes to `flex: 1 1 auto`, i.e. `width: auto`, `parseFloat → NaN`,
+    // and `Math.abs(NaN − 405.391) > 0.5` is **false** — the rule passes
+    // silently, which is exactly how the bug survived (T-20261015-233122 §③.4).
+    const round2 = (n) => Math.round(n * 100) / 100;
+    const near = (a, b) => Math.abs(a - b) <= 0.5;
+
+    /** Open a fresh dialog at a viewport and read the parent field twice. */
+    const parentTrackAt = async (width, height) => {
+      await page.setViewportSize({ width, height });
+      await page.click("[data-new-task]");
+      await page.waitForTimeout(300);
+      const read = () =>
+        page.evaluate(() => {
+          const r = (n) => Math.round(n * 100) / 100;
+          const group = document.querySelector("[data-create-task-parent]");
+          const row = document.querySelector(".td-combo-field");
+          const input = document.querySelector("[data-parent-input]");
+          const clear = document.querySelector("[data-parent-clear]");
+          const menu = document.querySelector("[data-parent-menu]");
+          const track = group.getBoundingClientRect();
+          const box = input.getBoundingClientRect();
+          const cross = clear.getBoundingClientRect();
+          return {
+            track: r(track.width),
+            trackRight: r(track.right),
+            gap: row ? Number.parseFloat(getComputedStyle(row).columnGap) : null,
+            input: r(box.width),
+            clearDisplay: getComputedStyle(clear).display,
+            clearWidth: r(cross.width),
+            clearHeight: r(cross.height),
+            clearRight: r(cross.right),
+            menuDisplay: getComputedStyle(menu).display,
+            menuWidth: r(menu.getBoundingClientRect().width),
+          };
+        });
+      // A true rest: the dialog's `reset()` clears the form, but the box's own
+      // query lives in the control, which is never unmounted (the dialog is
+      // toggled by `hidden`) — so a query left behind by an earlier pass
+      // survives the reopen and the field is not empty. Empty it by hand rather
+      // than assert on whatever the previous leg typed.
+      await page.evaluate(() => {
+        const input = document.querySelector("[data-parent-input]");
+        input.focus(); // a `blur()` on an unfocused input fires nothing, and the menu would stay open
+        input.value = "";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.blur();
+      });
+      await page.waitForTimeout(150);
+      const rest = await read();
+      // Type into the box. The field now carries a value, so the ✕ is drawn —
+      // and the menu is open, which is the only state its width can be read in.
+      await page.evaluate(() => {
+        const input = document.querySelector("[data-parent-input]");
+        input.focus();
+        input.value = "td";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await page.waitForTimeout(200);
+      const valued = await read();
+      await page.click("[data-create-task] [data-modal-close]");
+      await page.waitForTimeout(250);
+      return { rest, valued };
+    };
+
+    const parentTrackReadings = {};
+    for (const [label, width, height] of [["1512×950", 1512, 950], ["980×900", 980, 900]]) {
+      const { rest, valued } = await parentTrackAt(width, height);
+      parentTrackReadings[label] = { rest, valued };
+      r8cCheck(rest.track > 0, `at ${label} the parent field group measures ${rest.track}px — the dialog did not lay out`);
+      // Rest: the box takes the whole track, and an empty field draws no ✕.
+      r8cCheck(near(rest.input, rest.track), `at ${label} the empty box is ${rest.input}px inside a ${rest.track}px track`);
+      r8cCheck(rest.clearDisplay === "none", `at ${label} the ✕ is drawn (display: ${rest.clearDisplay}) on an empty field`);
+      // The identity — the arithmetic the prototype's own numbers satisfy.
+      r8cCheck(rest.gap === 4, `at ${label} the field row's gap is ${rest.gap}px, expected 4`);
+      r8cCheck(
+        near(valued.input + valued.gap + valued.clearWidth, valued.track),
+        `at ${label} the valued field is ${valued.input} + ${valued.gap} + ${valued.clearWidth} = ${round2(valued.input + valued.gap + valued.clearWidth)}px against a ${valued.track}px track`,
+      );
+      r8cCheck(valued.clearDisplay !== "none", `at ${label} the ✕ is not drawn (display: ${valued.clearDisplay}) on a field that carries a value`);
+      // The ✕ itself: the 20×20 box, its right edge on the track's right edge.
+      r8cCheck(near(valued.clearWidth, 20) && near(valued.clearHeight, 20), `at ${label} the ✕ box is ${valued.clearWidth}×${valued.clearHeight}, expected 20×20`);
+      r8cCheck(near(valued.clearRight, valued.trackRight), `at ${label} the ✕'s right edge is at ${valued.clearRight}, the track's at ${valued.trackRight}`);
+      // The popup: positioned from the control, so it is as wide as the track.
+      r8cCheck(valued.menuDisplay !== "none", `at ${label} the parent menu is not open (display: ${valued.menuDisplay})`);
+      r8cCheck(near(valued.menuWidth, valued.track), `at ${label} the menu is ${valued.menuWidth}px wide against a ${valued.track}px track`);
+    }
 
     // --- R12 · the filters bar's one line, and the board's equal-height chain ---
     //
@@ -4670,7 +4793,7 @@ export async function run() {
       r6: { failures: r6Failures, themeSweep, titleGeometry, listDetail, panel: panelGeometry, rail },
       r7: { failures: r7Failures, wide, rail: railBand, drawerHead: closeR7 },
       r8: { failures: r8Failures, headWide, headNarrow, identifiers, drawerIdentifier, dark, light },
-      r8c: { failures: r8cFailures, optionRows, parentPicked, afterClear, dependsChips },
+      r8c: { failures: r8cFailures, optionRows, parentPicked, afterClear, dependsChips, parentTrack: parentTrackReadings },
       r9: { failures: r9Failures, register, controls, listEn, listZh, loadingRules: listLoadingRules.length },
       r10: {
         failures: r10Failures,
@@ -4807,6 +4930,9 @@ if (isEntryPoint) run().then(
         for (const failure of report.r8c.failures) console.log(`  ✗ ${failure}`);
       } else {
         console.log(`B24 (fidelity) — ${report.r8c.optionRows.length} relation rows carry identifier + one-line title (${report.r8c.optionRows.filter((row) => row.clipped).length} actually clipped), the parent field shows one chip (${JSON.stringify(report.r8c.parentPicked.mono)} …) and the depends-on field ${report.r8c.dependsChips.length} chips, all pass`);
+        for (const [label, reading] of Object.entries(report.r8c.parentTrack)) {
+          console.log(`B24 (fidelity) — parent field @${label}: track ${reading.rest.track}px, box ${reading.rest.input}px and no ✕ at rest (${reading.rest.clearDisplay}); with a value box ${reading.valued.input} + gap ${reading.valued.gap} + ✕ ${reading.valued.clearWidth} = ${Math.round((reading.valued.input + reading.valued.gap + reading.valued.clearWidth) * 100) / 100}px (${reading.valued.clearDisplay}), ✕ right edge ${reading.valued.clearRight} vs track right ${reading.valued.trackRight}, menu ${reading.valued.menuWidth}px — all pass`);
+        }
       }
       if (report.r12.failures.length > 0) {
         console.log(`R12 (fidelity) — ${report.r12.failures.length} failed:`);
