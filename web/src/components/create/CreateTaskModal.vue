@@ -11,7 +11,7 @@
  * The dialog is always in the document and toggled by `hidden`, so the contract's
  * single `[data-create-task]` holds whether it is open or not.
  */
-import { computed, reactive, ref, watch } from "vue";
+import { computed, reactive, watch } from "vue";
 
 import { board, assigneeRoster, createTask, labelRoster, platformOf, reporterRoster, PRIORITIES, taskRoster } from "../../stores/board.js";
 import { createTaskOpen, createTaskStatus, pushToast } from "../../stores/ui.js";
@@ -51,14 +51,6 @@ const labelOptions = computed(() => labelRoster.value.map((name) => ({ name })))
 const relationOptions = taskRoster;
 
 const canSubmit = computed(() => form.title.trim() !== "" && form.project_id);
-
-/** The parent field, so its clear ✕ can empty the box with the value. */
-const parentField = ref(null);
-
-function clearParent() {
-  form.parent = "";
-  parentField.value?.clear();
-}
 
 function reset() {
   form.title = "";
@@ -249,30 +241,32 @@ async function submit() {
 
             <div class="flex flex-col gap-1 mb-3" data-create-task-parent>
               <span>{{ $t("createTask.field.parent") }} <span class="text-[11px] text-(--brand-text-3)" data-optional>{{ $t("createTask.optional") }}</span></span>
-              <!-- The chip row the control renders sits above the box, so the
-                   clear ✕ is levelled with the box (`items-end`) rather than
-                   stretched over the chips (B24, T-20261014-001418 ②). -->
-              <div class="flex items-end gap-1">
-                <ComboField
-                  ref="parentField"
-                  v-model="form.parent"
-                  :options="relationOptions"
-                  :free-text="false"
-                  task-mode
-                  hook-input="data-parent-input"
-                  hook-menu="data-parent-menu"
-                  hook-option="data-parent-option"
-                  hook-value="data-parent-value"
-                  hook-chips="data-parent-chips"
-                  hook-chip="data-parent-chip"
-                  hook-chip-value="data-parent-value"
-                  hook-chip-remove="data-parent-remove"
-                  placeholder-key="combo.parentPlaceholder"
-                  empty-key="combo.noTasks"
-                  aria-key="createTask.field.parent"
-                />
-                <button type="button" class="btn btn-ghost btn-sm" data-parent-clear :aria-label="$t('combo.clear')" @click="clearParent">✕</button>
-              </div>
+              <!-- The chip row the control renders sits above the box, and the
+                   clear ✕ is now a **child of the control**, on the box's own row
+                   (B24, T-20261015-233122 §③). It used to be a sibling button
+                   beside a `flex items-end` row shell: the shell made the control
+                   a `width: auto` flex item, so it took its content's width
+                   (172px) instead of the field's track (405.391), and the ✕ —
+                   a text glyph, `btn btn-ghost btn-sm`, 35.156×32 — was drawn on
+                   every state, including an empty field. Both are gone. -->
+              <ComboField
+                v-model="form.parent"
+                :options="relationOptions"
+                :free-text="false"
+                task-mode
+                hook-input="data-parent-input"
+                hook-menu="data-parent-menu"
+                hook-option="data-parent-option"
+                hook-value="data-parent-value"
+                hook-chips="data-parent-chips"
+                hook-chip="data-parent-chip"
+                hook-chip-value="data-parent-value"
+                hook-chip-remove="data-parent-remove"
+                hook-clear="data-parent-clear"
+                placeholder-key="combo.parentPlaceholder"
+                empty-key="combo.noTasks"
+                aria-key="createTask.field.parent"
+              />
             </div>
 
             <div class="flex flex-col gap-1 mb-3" data-create-task-depends>
