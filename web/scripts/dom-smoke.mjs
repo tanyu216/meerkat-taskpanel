@@ -2514,11 +2514,15 @@ export async function run() {
     // T-20261016-113131 puts the control on its track, so the popup now *is* the
     // track (`max(100%, 220px)` with 100% = the control = the field's column) and
     // the clipping is genuinely viewport-dependent: the track is
-    // `(width − 114) / 2.6`, so it is 333.08 at 980 (the title fits, 0 of 13 rows
-    // clipped) and 302.31 at 900 (the title does not, 1 of 13). The assertion
-    // below is the design criterion — "a title that does not fit is ellipsised,
-    // not wrapped and not lost" — so its breakpoint follows the reading down one
-    // rung rather than the assertion being dropped: **980 → 900**.
+    // `(width − 98) / 2.6` above 760 (98 = the 2px hairline + 2×20 gutter + 24 gap
+    // + the overlay's 2×16 gutter — 114 until T-20261016-130046-2 widened the
+    // dialog to the prototype's own box, which moved 980 to 339.23 and 900 to
+    // 308.47). At 980 the title fits (0 of 13 rows clipped); at 900 it does not
+    // (1 of 13 — the 40-character row needs 248px of a 238px box, so 10px of
+    // overflow, measured on the widened track). The assertion below is the design
+    // criterion — "a title that does not fit is ellipsised, not wrapped and not
+    // lost" — so its breakpoint follows the reading down one rung rather than the
+    // assertion being dropped: **980 → 900**.
     // (T-20261015-233122 A6 #5 anticipated exactly this flip and forbade deleting
     // the assertion; the numbers above are the re-derivation it asked for.)
     await page.setViewportSize({ width: 900, height: 900 });

@@ -103,7 +103,7 @@ async function submit() {
 
 <template>
   <div
-    class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-6 bg-(--brand-scrim)"
+    class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto p-6 min-[761px]:px-4 bg-(--brand-scrim)"
     data-create-task
     :hidden="!createTaskOpen"
     role="dialog"
@@ -123,7 +123,21 @@ async function submit() {
          (T-20261015-215028 ①: the track *ratio* was never the difference, only
          the box that feeds it). 1120 + 20 + 24 is the prototype's own R4
          geometry (`design/prototype/src/input.css` `.td-modal-box` /
-         `.td-two-col`), which is what makes the two sides agree to the pixel. -->
+         `.td-two-col`), which is what makes the two sides agree to the pixel.
+
+         **The horizontal gutter is the prototype's, above the single-column
+         breakpoint** (T-20261016-130046-2 · D3). `.td-modal-box` states the cap
+         itself — `width: min(1120px, calc(100vw - 32px))`, i.e. a 16px gutter per
+         side — and `min(1120px, 100%)` only reproduces it while the *container's*
+         gutter is 16. It was `p-6`'s 24, so below 1152 every track was short by
+         2·8/2.6 = 6.15px: measured at 980, routing column 333.08 against the
+         prototype's 339.23, on both trees of the round that recorded it
+         (`workspace/T-20261016-121311` A6 #7) — a constant pin could not see it,
+         because the prototype's own box rule is viewport-dependent. Above 760px
+         only: at ≤760 the prototype's second branch (`calc(100vw - 16px)` with
+         `padding: 16px`) also moves the *grid's* padding and gap, which is a
+         separate, untouched divergence — this card's subject is the two-column
+         track. `web/scripts/dialog-track-parity.mjs` is the assertion. -->
     <div class="w-[min(1120px,100%)] border border-(--brand-border) rounded-lg bg-(--brand-surface) [box-shadow:var(--shadow-pop)]" data-create-task-panel>
       <form data-create-task-form @submit.prevent="submit">
         <header class="flex items-center justify-between px-5 py-3 border-b border-b-(--brand-border)">
