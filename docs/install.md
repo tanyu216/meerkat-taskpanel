@@ -74,11 +74,22 @@ execution body would put the checkout back into the load path of the very thing 
 exists to make independent of it (`skills/meerkat-loop/body/`).
 
 The two bundle hosts write more than the skill. **Claude** additionally writes
-`~/.claude/settings.json` (merged `env.TASKCTL_AGENT` + a `SessionStart` hook),
+`~/.claude/settings.json` (merged `env.TASKCTL_AGENT`, `env.TASKCTL_ACTOR_KIND`,
+`env.TASKCTL_HUMAN` + a `SessionStart` hook),
 `~/.claude/hooks/meerkat-taskpanel-session-start.sh`, `~/.claude/commands/{board,claim,deliver}.md`
 and `~/.claude/bin/taskctl`. **Codex** writes `~/.codex/AGENTS.md` (a claim-first snippet),
 `~/.codex/meerkat-taskpanel-claim.sh` (the schedulable trigger) and `~/.codex/bin/taskctl`.
-Both shims inject `--agent <name>` on every call, with `TASKCTL_AGENT` as the fallback.
+Both shims inject **both halves of the identity** on every call — `--agent <name>` and
+`--actor-kind <host>` — with `TASKCTL_AGENT` / `TASKCTL_ACTOR_KIND` as the fallbacks.
+
+The kind is not decoration. It is what the board reads to tell a person from an agent:
+a human's `decision` is what goes on the record (I5), what resumes an `awaiting` card, and
+what the patrol counts as the leader acting. A shim that set only the name recorded every
+agent write as a human's.
+
+`--as-human` is the other direction — the one write an agent makes in the user's voice,
+signing with `TASKCTL_HUMAN` instead of itself. `--actor-kind human` is refused: it is the
+value every one of those decisions turns on, so a caller may not declare it.
 
 ### The local `projects.json` (beside the skill)
 
@@ -386,7 +397,8 @@ never an error:
   end state, not a conflict.
 - **Managed files and managed config keys keep their existing value by default.** The
   skill directory, the emitted scripts (hook / trigger / shim / slash commands), the
-  `AGENTS.md` snippet, `env.TASKCTL_AGENT`, and the `SessionStart` hook are all left
+  `AGENTS.md` snippet, `env.TASKCTL_AGENT` / `env.TASKCTL_ACTOR_KIND` / `env.TASKCTL_HUMAN`,
+  and the `SessionStart` hook are all left
   exactly as they are, and the installer reports each as unchanged — for an emitted file,
   `left unchanged — use --force to overwrite`. This means changing a flag such as
   `--agent-name` on its own does **not** take effect on an existing install — it still

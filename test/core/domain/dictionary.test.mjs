@@ -140,10 +140,16 @@ describe("domain/dictionary — resolution", () => {
     assert.equal(resolveDictionaryEntry(EXISTING, "Grace", { kind: "human" }).action, "create");
   });
 
-  it("refuses an unknown kind and tolerates a missing list", () => {
-    assert.throws(() => resolveDictionaryEntry([], "x", { kind: "reviewer" }), (err) => {
+  it("refuses only a blank kind, and tolerates a missing list", () => {
+    // A kind is open — `human`, a platform, or whatever a host calls itself — so
+    // an unfamiliar one is the caller's to name, not this end's to refuse. A
+    // *blank* kind is the malformed case, because it reads as neither.
+    for (const kind of ["agent", "human", "claude", "reviewer"]) {
+      assert.equal(resolveDictionaryEntry([], "x", { kind }).kind, kind);
+    }
+    assert.throws(() => resolveDictionaryEntry([], "x", { kind: "  " }), (err) => {
       assert.equal(err.code, "VALIDATION_FAILED");
-      assert.deepEqual(err.details.allowed, ["agent", "human"]);
+      assert.equal(err.details.field, "kind");
       return true;
     });
     assert.equal(resolveDictionaryEntry(undefined, "New", { kind: "agent" }).action, "create");

@@ -37,7 +37,6 @@
 
 import {
   COMMENT_KINDS,
-  DICT_KINDS,
   inputOf,
   PRIORITIES,
   RELATION_TYPES,
@@ -95,7 +94,6 @@ export const REQUEST = Object.freeze({
   relationType: oneOf(RELATION_TYPES),
   commentKind: oneOf(COMMENT_KINDS),
   sessionStatus: oneOf(SESSION_STATUSES),
-  dictKind: oneOf(DICT_KINDS),
 });
 
 /** A field's schema: its vocabulary where the domain closes it, else its type. */

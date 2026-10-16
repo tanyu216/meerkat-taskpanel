@@ -41,7 +41,7 @@
  */
 
 import { DomainError } from "../../shared/errors.mjs";
-import { DICT_KINDS, PRIORITIES, STATUSES, TASK_KINDS } from "../domain/enums.mjs";
+import { PRIORITIES, STATUSES, TASK_KINDS } from "../domain/enums.mjs";
 
 /** The six operations this module covers. */
 export const TASK_OPS = Object.freeze({
@@ -109,10 +109,13 @@ const CREATE = Object.freeze([
   both("meta", { type: OBJECT }),
   sugar("acceptance", "meta.acceptance", { repeat: true }),
   both("assignee"),
-  both("assignee_kind", { vocab: DICT_KINDS }),
+  // `assignee_kind` / `reporter_kind` say what that name *is* — `human`, or the
+  // platform it runs on. There is no list to check them against; `isActorKind`
+  // refuses a blank one, and that is the whole vocabulary.
+  both("assignee_kind"),
   both("assignee_id"),
   both("reporter"),
-  both("reporter_kind", { vocab: DICT_KINDS }),
+  both("reporter_kind"),
   both("reporter_id"),
   both("force_create", { type: BOOLEAN }),
   both("idem"),

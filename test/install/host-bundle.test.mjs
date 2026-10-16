@@ -133,6 +133,47 @@ describe("host bundle: mergeSettings", () => {
     assert.equal(forced.data.hooks.SessionStart.length, 1);
   });
 
+  it("writes the whole identity: the agent, what it is, and the human it may sign as", () => {
+    // The kind is what the board reads to tell a person from an agent — a
+    // human's `decision` is the one kind it acts on (it goes on the record,
+    // resumes an `awaiting` card, and counts as the leader acting). A settings
+    // file that named an agent and not its kind would record every one of that
+    // agent's writes as a person's.
+    const { data } = mergeSettings({}, {
+      agent: "linus",
+      kind: "claude",
+      human: "Terry",
+      hookCommand: "/h.sh",
+    });
+    assert.equal(data.env.TASKCTL_AGENT, "linus");
+    assert.equal(data.env.TASKCTL_ACTOR_KIND, "claude");
+    assert.equal(data.env.TASKCTL_HUMAN, "Terry");
+  });
+
+  it("skips a key with no value rather than writing it empty", () => {
+    // An empty kind is worse than none — the board refuses a blank one outright,
+    // and a settings file that carried one would fail every write in the session.
+    const { data } = mergeSettings({}, { agent: "linus", kind: "", human: undefined, hookCommand: "/h.sh" });
+    assert.equal("TASKCTL_ACTOR_KIND" in data.env, false);
+    assert.equal("TASKCTL_HUMAN" in data.env, false);
+    assert.equal(data.env.TASKCTL_AGENT, "linus");
+  });
+
+  it("keeps an existing kind rather than clobbering it — and --force replaces it", () => {
+    const kept = mergeSettings(
+      { env: { TASKCTL_ACTOR_KIND: "codex" } },
+      { agent: "linus", kind: "claude", hookCommand: "/h.sh" },
+    );
+    assert.equal(kept.data.env.TASKCTL_ACTOR_KIND, "codex", "a session's own declaration outranks the installer's");
+    const forced = mergeSettings(kept.data, {
+      agent: "linus",
+      kind: "claude",
+      hookCommand: "/h.sh",
+      force: true,
+    });
+    assert.equal(forced.data.env.TASKCTL_ACTOR_KIND, "claude");
+  });
+
   it("leaves a malformed env shape untouched rather than clobbering it", () => {
     const { data } = mergeSettings(
       { env: ["not-an-object"], hooks: {} },
@@ -160,6 +201,7 @@ describe("host bundle: claude", () => {
     // 2. settings.json — merged identity + SessionStart
     const settings = JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8"));
     assert.equal(settings.env.TASKCTL_AGENT, "alice");
+    assert.equal(settings.env.TASKCTL_ACTOR_KIND, "claude", "the host script names the platform it is installing for");
     const start = settings.hooks.SessionStart;
     assert.equal(start.length, 1);
     assert.equal(start[0].hooks[0].type, "command");
@@ -179,6 +221,12 @@ describe("host bundle: claude", () => {
     const shimText = readFileSync(shim, "utf8");
     assert.ok(shimText.includes('agent="${TASKCTL_AGENT:-alice}"'), shimText);
     assert.ok(shimText.includes('--agent "$agent"'), shimText);
+    // ...and the *kind*, or every write from this shim reads as a human's.
+    assert.ok(shimText.includes('kind="${TASKCTL_ACTOR_KIND:-claude}"'), shimText);
+    assert.ok(shimText.includes('--actor-kind "$kind"'), shimText);
+    // ...and the human, so `--as-human` on this host signs with the person's
+    // name and not the agent's.
+    assert.ok(shimText.includes('human="${TASKCTL_HUMAN:-'), shimText);
     assert.ok(!shimText.includes("{{"), "template tokens must be rendered");
 
     // 5. slash commands

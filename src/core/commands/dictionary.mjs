@@ -17,7 +17,7 @@
 
 import { DomainError } from "../../shared/errors.mjs";
 import { resolveDictionaryEntry } from "../domain/dictionary.mjs";
-import { DICT_KINDS } from "../domain/enums.mjs";
+import { isActorKind } from "../domain/enums.mjs";
 
 /** `assignee` → the `tasks` column it fills. */
 const TASK_FIELD = { assignee: "assigneeId", reporter: "reporterId" };
@@ -44,17 +44,21 @@ export function dictionaryKind(kind) {
  * path and the import path disagree (Phase 5's whole point).
  *
  * @param {{repos: object, now: string}} scope
- * @param {{kind: "assignee"|"reporter", name: string, actorKind?: "agent"|"human", forceCreate?: boolean}} input
+ * @param {{kind: "assignee"|"reporter", name: string, actorKind?: string, forceCreate?: boolean}} input
  * @returns {{entry: object, action: "created"|"reused", kind: string, field: string}}
  */
 export function resolveOrCreate(scope, input) {
   const { repos, now } = scope;
   const kind = dictionaryKind(input.kind);
   const actorKind = input.actorKind ?? "agent";
-  if (!DICT_KINDS.includes(actorKind)) {
+  // Open, like every other kind on this board: `human`, or the platform the
+  // caller is running on. The default is `agent` for a caller that states
+  // nothing — a category, not a platform, and the honest answer when the write
+  // did not say what it was.
+  if (!isActorKind(actorKind)) {
     throw new DomainError("VALIDATION_FAILED", {
-      message: `actorKind must be one of ${DICT_KINDS.join(", ")}`,
-      details: { field: "actorKind", received: input.actorKind, allowed: DICT_KINDS },
+      message: "actorKind must be a non-empty string",
+      details: { field: "actorKind", received: input.actorKind },
     });
   }
 

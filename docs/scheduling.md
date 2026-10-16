@@ -186,7 +186,7 @@ What that means concretely:
 Every wake hands the worker a **bounded, fresh handoff** built by
 `buildHandoff()`: the card id and title, the exact `taskctl` commands to read and
 deliver it, and the attribution flags
-`--agent <name> --agent-platform <host> --session-id <id>`. The handoff is capped
+`--agent <name> --actor-kind <host> --session-id <id>`. The handoff is capped
 (≈1–2 KB) so a wake never drags an unbounded context into the model. It names no
 directory: the board holds none (O3), and the working directory is the host's
 business — see [Where a worker runs](#where-a-worker-runs).

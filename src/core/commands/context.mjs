@@ -9,6 +9,7 @@
 
 import { DomainError } from "../../shared/errors.mjs";
 import { newId } from "../../shared/ids.mjs";
+import { isActorKind } from "../domain/enums.mjs";
 import { toIsoMillis } from "../domain/task.mjs";
 
 /**
@@ -59,10 +60,13 @@ export function actorOf(actor, options = {}) {
     });
   }
   const kind = actor.kind ?? defaultKind;
-  if (!["agent", "human", "system"].includes(kind)) {
+  // Open on purpose. A kind is `human`, or the platform an agent runs on, or
+  // whatever a host calls itself — the schema has no CHECK on it and neither
+  // does this. What is refused is a *blank* one, because that reads as neither.
+  if (!isActorKind(kind)) {
     throw new DomainError("VALIDATION_FAILED", {
-      message: `actor.kind must be agent, human or system (got ${JSON.stringify(kind)})`,
-      details: { field: "actor.kind", received: kind, allowed: ["agent", "human", "system"] },
+      message: `actor.kind must be a non-empty string (got ${JSON.stringify(kind)})`,
+      details: { field: "actor.kind", received: kind },
     });
   }
   return { kind, id: actor.id };

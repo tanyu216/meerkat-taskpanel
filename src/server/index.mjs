@@ -33,6 +33,7 @@ import { currentRevision, openBoard, readToken } from "../core/index.mjs";
 import {
   ALLOW_CIDRS_ENV,
   LABEL_GC_ENV,
+  HUMAN_KIND,
   LABEL_GC_INTERVAL_MS,
   LABEL_TTL_DAYS_DEFAULT,
   LABEL_TTL_DAYS_ENV,
@@ -120,8 +121,19 @@ export function registerApiRoutes(router, surface) {
 }
 
 /**
- * Who is calling. The CLI sends `X-Taskctl-Actor: {"kind":"agent","id":"linus"}`;
+ * Who is calling. The CLI sends `X-Taskctl-Actor: {"kind":"claude","id":"linus"}`;
  * anything else is an anonymous local human, which is what `curl` is.
+ *
+ * **The kind is passed through.** It used to be narrowed to
+ * `agent|human|system`, with anything else rewritten to `human` — which, now
+ * that a kind is the platform an agent runs on, would silently turn every
+ * agent's write into a person's. That matters downstream in one direction only:
+ * the board reads `kind === human` to decide whether a comment goes on the
+ * record as a decision (I5), whether an `awaiting` card resumes, and whether the
+ * patrol counts the leader as acting. A rewrite here forges all three.
+ *
+ * What is refused is a *blank* kind, and the id being anything but a string —
+ * those are malformed, not merely unfamiliar.
  *
  * @param {import('node:http').IncomingMessage} req
  */
@@ -131,13 +143,16 @@ export function actorFromRequest(req) {
     try {
       const parsed = JSON.parse(raw);
       if (parsed !== null && typeof parsed === "object" && typeof parsed.id === "string") {
-        return { kind: ["agent", "human", "system"].includes(parsed.kind) ? parsed.kind : "human", id: parsed.id };
+        // A missing or blank kind defaults; an unfamiliar one is the caller's to
+        // name, and this end has no business editing it.
+        const kind = typeof parsed.kind === "string" && parsed.kind.trim() !== "" ? parsed.kind : HUMAN_KIND;
+        return { kind, id: parsed.id };
       }
     } catch {
       /* A malformed header is not worth failing a request over; fall through. */
     }
   }
-  return { kind: "human", id: "local" };
+  return { kind: HUMAN_KIND, id: "local" };
 }
 
 /** @param {import('node:http').IncomingMessage} req @param {string} name */

@@ -10,7 +10,7 @@
  */
 
 import { DomainError } from "../../shared/errors.mjs";
-import { ACTOR_KINDS, COMMENT_KINDS } from "./enums.mjs";
+import { COMMENT_KINDS, isActorKind } from "./enums.mjs";
 import { assertIsoMillis } from "./task.mjs";
 
 /** Comment kinds that record a human decision (I5). */
@@ -80,10 +80,14 @@ export function normalizeCommentCreate(input, context) {
     });
   }
   const author = input.author ?? {};
-  if (!ACTOR_KINDS.includes(author.kind)) {
+  // Open on purpose. A kind is `human`, or the platform an agent runs on, or
+  // whatever a host calls itself — the schema has no CHECK on this column
+  // (`0018` dropped it) and neither does this. What is refused is a *blank* one,
+  // because that reads as neither.
+  if (!isActorKind(author.kind)) {
     throw new DomainError("VALIDATION_FAILED", {
-      message: `author.kind must be one of ${ACTOR_KINDS.join(", ")}`,
-      details: { field: "author.kind", received: author.kind, allowed: ACTOR_KINDS },
+      message: "author.kind must be a non-empty string",
+      details: { field: "author.kind", received: author.kind },
     });
   }
   if (typeof author.id !== "string" || author.id.trim() === "") {
