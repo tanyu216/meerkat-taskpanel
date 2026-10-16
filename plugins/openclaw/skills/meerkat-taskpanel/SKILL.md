@@ -122,34 +122,48 @@ per-host differences (Claude Code / Codex) and a worked example are in
 
 **The board holds no directories.** A board project carries no `workspace_path`, there is
 no `context` command, and the file importer names no directory anchor — by design:
-taskpanel does not manage project directories. The **local** map is a
-`projects.json` kept **beside this skill** (next to `SKILL.md`), and it is the only
-place that answers "which directory is this project working in".
+taskpanel does not manage project directories (and does not manage project *data*
+either). The **local** map is a `projects.json` kept **beside this skill** (next to
+`SKILL.md`), and it is the only place that answers "which directory does work for this
+project happen in". That directory is where a **worker starts** — not where results are
+stored; where a project keeps what it produces is nobody's business but its own.
 
-Add one entry per project — the **absolute** target directory and the **board project
-identity**:
+Add one entry per project — the **board project identity**, plus the directory if the
+project has one:
 
 ```json
 {
   "projects": [
-    { "local_path": "/Users/you/code/meerkat-taskpanel", "project": "TaskPanel" }
+    { "local_path": "/Users/you/code/meerkat-taskpanel", "project": "TaskPanel" },
+    { "run_dir": "/Users/you/ops-inbox", "project": "Ops" },
+    { "project": "Community" }
   ]
 }
 ```
 
-`local_path` is the local checkout (an absolute path); `project` is the board project —
-its **id** (preferred) or name. A directory resolves to the entry whose `local_path` is
-that directory or an ancestor of it; when several match, the **longest** path wins.
+`project` is the board project — its **id** (preferred) or name. `local_path` is the
+project's own directory, an **absolute** path that exists and *is* a directory;
+`run_dir` is where a worker starts for a project that has no directory of its own, and is
+only consulted when `local_path` is not given (`dir = local_path ?? run_dir`). Both are
+**checked**, and a path that is relative, missing, not a directory — or a key that is
+there but empty — is as unusable as no entry at all: a stale path is a moved checkout, and
+a worker started there would be working the wrong repository.
 
-`local_path` is **required, and it is checked**: it must be an absolute path that
-exists and *is* a directory. An entry that fails any of the three is as unusable as no
-entry at all — a stale path is a moved checkout, and a worker started there would be
-working the wrong repository.
+A directory resolves to the entry whose `local_path` is that directory or an ancestor of
+it; when several match, the **longest** path wins. `run_dir` never takes part in that
+direction — a launch directory (an inbox, a home directory) says nothing about which
+project you are working for.
 
-**Ask when there is no answer — never continue without one.** A project absent from
-`projects.json` has **no target directory**, and the board cannot supply one. Do not
-guess, and do not derive one. When a step needs the directory — a wake, or any command
-that must run *in* the project — stop and **ask the user which directory it is**:
+**No directory is an answer, not a gap.** A project whose work needs no checkout —
+operations, coordination, research — is registered with an entry that names no directory
+at all, and `taskctl project dir <project>` then says so and succeeds. Do not point such a
+project at a directory "so the command works". A **wake** still needs somewhere to start a
+worker: give the entry a `run_dir`, or work that project by hand.
+
+**Ask when there is genuinely no answer.** A project **absent** from `projects.json` has
+no registered directory, and the board cannot supply one. Do not guess, and do not derive
+one. When a step needs the directory — a wake, or any command that must run *in* the
+project — stop and **ask the user which directory it is**:
 
 ```text
 No local directory is registered for project <project>.
@@ -158,18 +172,22 @@ Which directory does it work in? I will add it to projects.json beside this skil
 ```
 
 The same prompt applies to a registered-but-unusable path, naming what is wrong
-(missing, relative, or not a directory). `taskctl project dir <project>` is the
-command form of this rule: it prints the resolved directory, or exits non-zero with
-that question instead of continuing. The **wake glue** uses the same map and the same
-rule, so a woken worker runs in the project's directory — or the wake is refused.
+(missing, relative, or not a directory). `taskctl project dir <project>` is the command
+form of this rule: it prints the resolved directory, prints that the entry names none, or
+exits non-zero with that question instead of continuing. The **wake glue** uses the same
+map and the same rule, so a woken worker runs in the directory the map names — or the wake
+is refused.
 
 Work that needs no directory (claiming, moving, commenting, delivering) is unaffected.
 The full schema, the resolution rule and the re-install behaviour are in
 [`references/projects-json.md`](references/projects-json.md).
 
-Two boundaries this respects, on purpose: **taskpanel does no project-directory
-management**, and **whether you manage a project's source data with `meta` is your own
-call** — taskpanel neither prescribes it nor advises it, and neither does this skill.
+Three boundaries this respects, on purpose: **taskpanel does no project-directory
+management**, **it does not manage project data** — what a task produces and where that is
+kept is the business's call, and the board only keeps task data complete, reliable,
+traceable and auditable — and **whether you manage a project's source data with `meta` is
+your own call**: the metadata key set in `projects.json` is yours too, defined by the work,
+read from the file, never prescribed here.
 
 ## Reference
 

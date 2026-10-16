@@ -203,10 +203,11 @@ nothing is promised about it here.
 
 ## Where a worker runs
 
-A woken worker must run in the **target directory of the card's project** — the
-checkout the work is actually about. The board cannot say which directory that is
-(it holds no directories, O3), and neither can the supervisor: it knows a project
-**identity** and nothing else.
+A woken worker must run in the **directory its project's work happens in** — the
+checkout the work is actually about, or the launch directory a project that has no
+checkout supplies. The board cannot say which directory that is (it holds no
+directories, O3), and neither can the supervisor: it knows a project **identity** and
+nothing else.
 
 So the directory is resolved **by the host, locally**, in the one piece of the chain
 that lives on the host: the wake glue.
@@ -215,11 +216,14 @@ that lives on the host: the wake glue.
   (`<host-dir>/bin/wake-<host>.sh`) when one is installed, handing it the card's
   project identity in `TP_PROJECT` and the map path in `TP_PROJECTS_JSON`.
 - The glue resolves that identity against the host-local `projects.json` beside the
-  skill (`references/projects-json.md`), **validates** the result (absolute, exists,
-  is a directory), `cd`s into it, and only then execs the host CLI.
+  skill (`references/projects-json.md`) as `local_path ?? run_dir`, **validates** the
+  result (absolute, exists, is a directory), `cd`s into it, and only then execs the
+  host CLI.
 - **If it cannot resolve, it refuses the wake** (exit 3, reason on stderr) and the
   card stays unwoken. There is no fallback directory: a session that runs in the
   wrong checkout produces confident, misplaced work, which is worse than no session.
+  An entry that deliberately names **no** directory is one of the ways to have no
+  answer here — the map allows it, but a worker still needs somewhere to start.
 - With **no glue installed**, the supervisor falls back to the host CLI directly,
   pins it to `--repo`, and logs an explicit warning that no target directory was
   resolved. That fallback is visible on every tick — never silent.
@@ -227,9 +231,9 @@ that lives on the host: the wake glue.
   own wake command chose it deliberately, so it is used verbatim (and still handed
   `TP_PROJECT` / `TP_PROJECTS_JSON` / `TP_NODE` if it wants them).
 
-The same map answers the interactive question: `taskctl project dir <project>`
-prints a project's registered directory, or exits non-zero asking which directory it
-should be, rather than continuing.
+The same map answers the interactive question: `taskctl project dir <project>` prints
+a project's registered directory, reports that the entry names none, or exits non-zero
+asking which directory it should be, rather than continuing.
 
 ## Where the supervisor runs
 
@@ -1049,9 +1053,10 @@ describes.
   `StandardErrorPath`, systemd `append:{{LOG}}`, and cron `>/dev/null 2>&1` because `--log`
   already writes it.
 - **State.** `<host-dir>/meerkat-taskpanel/supervisor.state.json` — the running registry.
-- **Working directory.** A woken worker still `cd`s to the card's project directory,
-  resolved by the wake glue from the host-local `projects.json`; enabling changes nothing
-  here (see [Where a worker runs](#where-a-worker-runs)).
+- **Working directory.** A woken worker still `cd`s to the directory the map names for
+  the card's project (`local_path ?? run_dir`), resolved by the wake glue from the
+  host-local `projects.json`; enabling changes nothing here (see
+  [Where a worker runs](#where-a-worker-runs)).
 
 ### One mechanism per host, and the cost gate
 
@@ -1194,7 +1199,7 @@ not just the exit code:
 |---|---|
 | `session-start.sh` (claude) | calls `issue candidates --assignee <agent>`, prints candidates + the eight rules, and is **non-fatal** — a failing or missing shim still exits 0 with a PATH-independent fallback |
 | `meerkat-taskpanel-claim.sh` (codex) | claims the first candidate (`issue move <ref> in_progress`) when free; **skips** when a held card is mine (identity matched under the board's NFKC/whitespace/case rule); still claims when the held card is someone else's; exits 0 on an empty pool; exits 1 when the shim is missing |
-| `wake-claude.sh` | no prompt → exit 2; mapped project → `claude -p <prompt>` **run in the mapped directory**; plus `--resume <sid>` when a session is given; unmapped project / bad target directory / a resolver that succeeds with an empty or relative directory → exit 3, no worker started; **no** permission-bypass flag |
+| `wake-claude.sh` | no prompt → exit 2; mapped project → `claude -p <prompt>` **run in the mapped directory** (`local_path`, else `run_dir`); plus `--resume <sid>` when a session is given; unmapped project / an entry that names no directory / bad target directory / a resolver that succeeds with an empty or relative directory → exit 3, no worker started; **no** permission-bypass flag |
 | `wake-codex.sh` | the same, with `codex exec <prompt>` (and `codex exec resume <sid> <prompt>`) |
 | `wake-pi.sh` | the same, with `pi --print <prompt>` (and `pi --print --session <sid> <prompt>`) |
 

@@ -210,9 +210,15 @@ its allowlist (`test/fixtures/host-paths-allowlist.json`) is checked in both dir
 - **The board holds no project directory.** A project carries no `workspace_path`, the CLI has no
   `context` command (`src/core/commands/context.mjs` is actor/execution context, unrelated) and no
   registry `root` anchor; a card's `target` is an opaque per-card value, never derived from a
-  project. The directory→project map lives in a `projects.json` beside the installed skill
+  project. The directory↔project map lives in a `projects.json` beside the installed skill
   (`skills/meerkat-taskpanel/references/projects-json.md`); whether a project's source data is
   managed with `meta` is the agent's own decision and taskpanel neither prescribes nor advises it.
+  An entry names its directory as `local_path`, else as the `run_dir` launch pad, or names **none** —
+  a project with no local directory is a complete answer (`dir: null`, exit 0), distinct from the
+  `PROJECT_DIR_UNMAPPED` "no entry — ask the user" case; a *wake* needs a directory, so it refuses
+  both of those. Both keys are **worker** directories, not data locations — where a task's results
+  live is the business's call, and the entry's other keys (the metadata an agent reads) are the
+  business's to define, never validated or interpreted here.
 - **Auth:** a loopback caller is trusted; a remote caller must be inside `TASKD_ALLOW_CIDRS` and
   present the token. `POST /token` is loopback-only. The built board injects no token, so serving
   it to a remote browser is 401 by design (`docs/web-local-first.md`).
