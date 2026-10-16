@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# Shared implementation for the per-host installers (claude / openclaw / codex / pi).
+# Shared implementation for the per-host installers
+# (claude / openclaw / codex / pi / opencode / cursor).
 #
 # Two skills are distributed, and each host takes the ones that fit it:
 #
@@ -10,10 +11,13 @@
 #     openclaw-team framework already ships a per-agent poll and a `task-patrol`, which
 #     is the same design (its cadence is the framework's own AUTOMATIONS.md, not a
 #     number restated here) — see `scripts/install/openclaw.sh` and docs/scheduling.md.
+#     **OpenCode and Cursor do not either**: their headless forms are unverified from
+#     here, so pointing an unattended daemon at them is a different risk class — see
+#     `scripts/install/opencode.sh` and `cursor.sh`.
 #
 # Each host script sources this file and calls the pieces it needs. The two bundle hosts
-# (claude, codex) add the config / command / trigger helpers below; the two skill-only
-# hosts (openclaw, pi) do not (pi still takes the loop, OpenClaw takes neither).
+# (claude, codex) add the config / command / trigger helpers below; the skill-only hosts
+# (openclaw, pi, opencode, cursor) do not (pi still takes the loop, the other three do not).
 #
 # Honours:
 #
@@ -262,7 +266,7 @@ export_tp_env() {
       # Degrade loudly, never silently: the interpreter still resolves (that is `{{NODE}}`'s
       # job), but a woken worker would not — so *record* that, and let `install_scheduling`
       # say it, because only it knows whether this host gets units at all. A host with no
-      # supervisor (OpenClaw, OpenCode) renders no unit and must not be warned about one.
+      # supervisor (OpenClaw, OpenCode, Cursor) renders no unit and must not be warned about one.
       TP_UNIT_PATH_LAUNCHD="$(node "$(unit_path_helper)" path --scheduler launchd)"
       TP_UNIT_PATH_CRON="$(node "$(unit_path_helper)" path --scheduler cron)"
       TP_CLI_ON_PATH="0"

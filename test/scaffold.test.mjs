@@ -274,7 +274,7 @@ describe("install.sh", () => {
   it("documents every --target value and supports --dry-run", async () => {
     const script = await readFile(join(ROOT, "install.sh"), "utf8");
 
-    for (const target of ["claude", "openclaw", "codex", "pi", "all"]) {
+    for (const target of ["claude", "openclaw", "codex", "pi", "opencode", "cursor", "all"]) {
       assert.ok(script.includes(target), `install.sh must mention target "${target}"`);
     }
 
