@@ -241,7 +241,7 @@ export function createTasksRepository(db) {
      * @returns {{claimed: boolean, task: object|null}}
      */
     claimCas(input) {
-      const { id, ifVersion, actor, now } = input;
+      const { id, ifVersion, actor, claimedKind = null, now } = input;
       const where = ["id = ?", "status = 'todo'"];
       const values = [id];
       if (ifVersion !== undefined) {
@@ -257,11 +257,11 @@ export function createTasksRepository(db) {
             info = db
               .prepare(
                 `UPDATE tasks
-                    SET status = 'in_progress', claimed_by = ?, claimed_at = ?, heartbeat_at = ?,
+                    SET status = 'in_progress', claimed_by = ?, claimed_kind = ?, claimed_at = ?, heartbeat_at = ?,
                         status_changed_at = ?, version = version + 1, updated_at = ?
                   WHERE ${where.join(" AND ")}`,
               )
-              .run(actor, now, now, now, now, ...values);
+              .run(actor, claimedKind, now, now, now, now, ...values);
           } catch (err) {
             throw mapSqliteError(err, { op: "tasks.claimCas", table: "tasks" });
           }
@@ -334,7 +334,7 @@ export function createTasksRepository(db) {
           // same UPDATE, so no reader can ever see a card carrying a claim it
           // no longer owns — and the backlog CHECK cannot be reached from here.
           if (!holdsClaim(to)) {
-            sets.push("claimed_by = NULL", "claimed_at = NULL", "heartbeat_at = NULL");
+            sets.push("claimed_by = NULL", "claimed_kind = NULL", "claimed_at = NULL", "heartbeat_at = NULL");
           }
           if (reportLatestId !== undefined) {
             sets.push("report_latest_id = ?");
@@ -400,7 +400,7 @@ export function createTasksRepository(db) {
      * @param {{id: string, ifVersion?: number, actor: string, now: string, staleBefore: string}} input
      */
     stealStaleClaim(input) {
-      const { id, ifVersion, actor, now, staleBefore } = input;
+      const { id, ifVersion, actor, claimedKind = null, now, staleBefore } = input;
       const bound = stealBound({ now, staleBefore });
       return transaction(
         db,
@@ -418,10 +418,10 @@ export function createTasksRepository(db) {
           const info = db
             .prepare(
               `UPDATE tasks
-                  SET claimed_by = ?, claimed_at = ?, heartbeat_at = ?, version = version + 1, updated_at = ?
+                  SET claimed_by = ?, claimed_kind = ?, claimed_at = ?, heartbeat_at = ?, version = version + 1, updated_at = ?
                 WHERE ${where.join(" AND ")}`,
             )
-            .run(actor, now, now, now, ...values);
+            .run(actor, claimedKind, now, now, now, ...values);
           if (Number(info.changes) === 0) throw lostUpdate(db, id, ifVersion);
           return requireTask(id);
         },

@@ -45,16 +45,19 @@ export function dictionaryKind(kind) {
  *
  * @param {{repos: object, now: string}} scope
  * @param {{kind: "assignee"|"reporter", name: string, actorKind?: string, forceCreate?: boolean}} input
- * @returns {{entry: object, action: "created"|"reused", kind: string, field: string}}
+ * @returns {{entry: object, action: "created"|"reused", kind: string, field: string, kindField: string, actorKind: string}}
  */
 export function resolveOrCreate(scope, input) {
   const { repos, now } = scope;
   const kind = dictionaryKind(input.kind);
+  // **The actor kind is handed back, not stored.** Since `0023` the registry row
+  // holds no kind — a kind describes the act — so this resolves the *name* and
+  // returns the kind the caller should record on its own reference
+  // (`tasks.assignee_kind` / `reporter_kind`). Open, like every other kind on this
+  // board: `human`, or the platform the caller is running on. A caller that states
+  // nothing gets `agent` — a category, not a platform, and the honest answer when
+  // the write did not say what it was.
   const actorKind = input.actorKind ?? "agent";
-  // Open, like every other kind on this board: `human`, or the platform the
-  // caller is running on. The default is `agent` for a caller that states
-  // nothing — a category, not a platform, and the honest answer when the write
-  // did not say what it was.
   if (!isActorKind(actorKind)) {
     throw new DomainError("VALIDATION_FAILED", {
       message: "actorKind must be a non-empty string",
@@ -66,23 +69,21 @@ export function resolveOrCreate(scope, input) {
   const verdict = resolveDictionaryEntry(
     existing.map((entry) => ({
       id: entry.id,
-      kind: entry.kind,
       displayName: entry.displayName,
       normalizedName: entry.normalizedName,
     })),
     input.name,
-    { kind: actorKind, forceCreate: input.forceCreate === true },
+    { forceCreate: input.forceCreate === true },
   );
 
   const { action, entry } = repos.dictionary.upsert({
     kind,
-    actorKind,
     normalizedName: storedKey(verdict),
     displayName: verdict.displayName,
     now,
   });
 
-  return { entry, action, kind, field: TASK_FIELD[kind] };
+  return { entry, action, kind, field: TASK_FIELD[kind], kindField: TASK_KIND_FIELD[kind], actorKind };
 }
 
 /**
@@ -117,8 +118,8 @@ function storedKey(verdict) {
  * else. An exact spelling reuses the person the board already knows; anything
  * else creates a row (the dictionary "grows by use" — §4.4).
  *
- * `actorKind` follows the same rule the importer uses: only `human` is
- * meaningful, and everything else is `agent`.
+ * It records **no kind**: since `0023` the registry row holds none, and the
+ * caller already owns the column that does (`comments.author_kind`, and so on).
  *
  * A **reuse is read-only**: unlike `resolveOrCreate` it does not touch
  * `last_seen_at`/`use_count`. The attribution columns ride on hot paths (every
@@ -129,27 +130,24 @@ function storedKey(verdict) {
  * the person wrote; the board did not name them.
  *
  * @param {{repos: object, now: string}} scope
- * @param {{name: string, actorKind?: string, forceCreate?: boolean}} input
+ * @param {{name: string, forceCreate?: boolean}} input
  * @returns {string} the actor row's id
  */
 export function resolveActorId(scope, input) {
   const { repos, now } = scope;
-  const actorKind = input.actorKind === "human" ? "human" : "agent";
   const existing = repos.dictionary.list();
   const verdict = resolveDictionaryEntry(
     existing.map((entry) => ({
       id: entry.id,
-      kind: entry.kind,
       displayName: entry.displayName,
       normalizedName: entry.normalizedName,
     })),
     input.name,
-    { kind: actorKind, forceCreate: input.forceCreate !== false },
+    { forceCreate: input.forceCreate !== false },
   );
   if (verdict.action === "reuse") return verdict.entry.id;
   const { entry } = repos.dictionary.upsert({
     kind: "actor",
-    actorKind,
     normalizedName: storedKey(verdict),
     displayName: verdict.displayName,
     now,
@@ -161,16 +159,18 @@ export function resolveActorId(scope, input) {
  * Resolve and assign in one step, for a command that changes an assignee or a
  * reporter.
  *
- * The patch names one column (`assigneeId` / `reporterId`). It no longer carries a
- * denormalised `assigneeKind`: the actor's kind lives on the `actors` row and the
- * wire reads it from there (`wire.mjs#actorRef`).
+ * The patch names **two** columns, and that is the point: the reference
+ * (`assigneeId` / `reporterId`) and the kind it was made under
+ * (`assigneeKind` / `reporterKind`). `0023` moved the kind here from the actor
+ * row, where one row per person could not hold a fact about an act — so the two
+ * are written together, by the one call that knows both.
  *
  * @param {{repos: object, now: string}} scope
  * @returns {{patch: object, audit: object[]}}
  */
 export function resolveAssignment(scope, input) {
   const resolved = resolveOrCreate(scope, input);
-  const patch = { [resolved.field]: resolved.entry.id };
+  const patch = { [resolved.field]: resolved.entry.id, [resolved.kindField]: resolved.actorKind };
   return {
     patch,
     audit: [

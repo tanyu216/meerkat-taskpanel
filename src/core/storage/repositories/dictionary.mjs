@@ -61,25 +61,19 @@ export function createDictionaryRepository(db) {
      * the dictionary already agreed on is kept.
      *
      * `kind` is the **role** (assignee vs reporter) and only decides which
-     * `tasks` column a later `refCount`/delete-guard reads; `actorKind` is the
-     * `agent|human` value stored in the row. The row itself is one per
-     * `normalized_name`, whichever role asked for it — so a repeat visit through
-     * the *other* role touches the same row rather than creating a twin.
+     * `tasks` column a later `refCount`/delete-guard reads. The row itself is one
+     * per `normalized_name`, whichever role asked for it — so a repeat visit
+     * through the *other* role touches the same row rather than creating a twin.
      *
-     * On reuse the stored `kind` is kept (the dictionary's own kind wins): a card
-     * that names an existing actor as a different kind must not flip the actor.
+     * **The row holds no actor kind** (since `0023`): a kind describes an act, and
+     * this table is one row per person. The caller records the kind on the
+     * reference it is making — `tasks.assignee_kind`, `comments.author_kind`, …
      *
-     * @param {{kind: "assignee"|"reporter", actorKind: "agent"|"human", normalizedName: string, displayName: string, now: string, id?: string}} input
+     * @param {{kind: "assignee"|"reporter", normalizedName: string, displayName: string, now: string, id?: string}} input
      * @returns {{action: "created"|"reused", entry: object}}
      */
     upsert(input) {
       const table = dictionaryTable(input.kind);
-      if (!["agent", "human"].includes(input.actorKind)) {
-        throw new DomainError("VALIDATION_FAILED", {
-          message: `actorKind must be agent or human, got ${JSON.stringify(input.actorKind)}`,
-          details: { field: "actorKind", received: input.actorKind, allowed: ["agent", "human"] },
-        });
-      }
       const id = input.id ?? newId();
       try {
         const existing = db
@@ -88,9 +82,9 @@ export function createDictionaryRepository(db) {
 
         if (existing === undefined) {
           db.prepare(
-            `INSERT INTO ${table}(id, kind, display_name, normalized_name, first_seen_at, last_seen_at, use_count)
-             VALUES (?, ?, ?, ?, ?, ?, 1)`,
-          ).run(id, input.actorKind, input.displayName, input.normalizedName, input.now, input.now);
+            `INSERT INTO ${table}(id, display_name, normalized_name, first_seen_at, last_seen_at, use_count)
+             VALUES (?, ?, ?, ?, ?, 1)`,
+          ).run(id, input.displayName, input.normalizedName, input.now, input.now);
           return {
             action: "created",
             entry: dictionaryEntryFromRow(db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id)),
