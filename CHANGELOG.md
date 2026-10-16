@@ -138,6 +138,43 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **An actor's `kind` is a platform, and it lives on the record** (migration **`0023`**).
+  `0019` put the kind on the `actors` row and removed the per-reference copies. That row is
+  `UNIQUE(normalized_name)` — **one row per person** — and a kind describes an *act*: the same
+  handle works from `claude` today and from `codex` tomorrow, and one row cannot hold both. It
+  also kept the **first** kind it was ever given, so the column could be *wrong* with nothing
+  able to tell. The kind moves back onto the three references that record an act —
+  `tasks.assignee_kind`, `tasks.reporter_kind`, and a new `tasks.claimed_kind` — and
+  `actors.kind` is dropped. `creator_id` does not come back: `0019` collapsed provenance to
+  `reporter_id`, and nothing here needs a second provenance column.
+- **The kind vocabulary is no longer narrowed in the application layer either.** `0018` opened
+  the two author-kind columns in SQL, but five places re-imposed a `agent | human | system`
+  list on top: the domain's `ACTOR_KINDS` / `DICT_KINDS`, `actorOf`, `actorFromRequest` (which
+  **rewrote** any other kind to `human`), and the declared request schemas. So a platform was
+  unrepresentable, and — because the board reads `kind === human` to decide whether a comment
+  goes on the record as a decision (I5), whether an `awaiting` card resumes, and whether the
+  patrol counts the leader as acting — a write naming a platform was recorded as a person's.
+  The rule is now the schema's own: **any non-empty string, with `human` the one reserved
+  value**. `--actor-kind` states what a writer is; `human` is refused, and `--as-human` is the
+  one write made in the person's voice.
+- **The registry read reports a kind it derives, not one it stores.** With `actors.kind` gone,
+  `GET /api/v1/actors` aggregates each actor's kind from the references that recorded one (the
+  latest wins; `human` breaks a tie, because reading a person as an agent opens the agent-only
+  affordances where reading an agent as a person only costs a badge). An actor nothing has ever
+  named reports `null`. Nothing is denormalised, so nothing goes stale.
+- **The markdown importer no longer carries a roster of person-names.** It recognised a human by
+  a hardcoded, case-insensitive list of names and filed every other author as an agent — a
+  machine's list of who its people are, in a public repository, and a silent misread for anyone
+  it did not name. The rule is now: **the board knows exactly one human**, the one
+  `install.sh --human-name` recorded (`TASKCTL_HUMAN`), matched through `norm`; everything else
+  is an agent. A card that knows better declares it — `created_by_kind`, a new frontmatter key
+  beside `created_by`, isomorphic to `assignee_kind`.
+- **`assignee_kind` and two new keys round-trip through a card.** The drill used to report
+  every `assignee_kind` as an unmappable field-drift, because the column had no export home.
+  `assignee_kind`, `created_by_kind` and `claimed_kind` are now written back — each **only when
+  it differs from that column's default**, so a card that never carried one does not grow a
+  line and the checked-in goldens are untouched. The drill's false `field-drift` item is gone.
+
 - **The patrol's `leader_stalled` row now counts the *author* of an event, not its *kind* — and
   `heartbeat_stale` emits the shared SLA tuple beside the legacy alert.** Both are `v1.1`
   write-backs of the SLA inspection contract (`T-20261014-084606-2`, §6.3-D and §10.4), and
@@ -305,6 +342,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   table whose column is open from birth. Rebuilding those five columns' tables here would be
   work done twice — on the two tables that carry inbound foreign keys from `tasks`.
 
+  **`0023` partly reverses this paragraph, and the reason is worth reading.** `0019` did remove
+  those copies and put the kind on the `actors` row — but that row is `UNIQUE(normalized_name)`,
+  **one row per person**, and a kind describes an *act*: the same handle works from `claude`
+  today and `codex` tomorrow. Worse, the row keeps the first kind it is ever given, so the
+  column was not merely lossy but could be **wrong**. `0023` moves it back onto the reference
+  (`tasks.assignee_kind` / `reporter_kind`, plus a new `claimed_kind`) and drops `actors.kind`.
+  `creator_id` does **not** come back: `0019` collapsed provenance to `reporter_id`, and
+  nothing in the kind argument needs a second provenance column.
+
   **No data step, and no board migration to run by hand:** `agent`, `human` and `system`
   remain legal values of an open string, so every existing row is already valid. The
   migration is a pure widening, which is why it ships with no accompanying code change.
@@ -339,10 +385,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   The board's platform badge reads an actor's `kind`, but only a kind that *names* a platform
   (`claude`, `codex`, …); the generic `agent`/`human` deliberately fill nothing in, so the
-  badge is absent exactly as it was while the `platform` column was never written. That is a
+  badge is absent exactly as it was while the `platform` column was never written. That was a
   holding position, not a finished rule: the DOM contract reads `[data-card]`'s
   `data-assignee-kind` off the same value and requires `human` or `agent`, so no single value
   satisfies both until an actor's kind carries a platform name.
+
+  **`0023` is where that is settled, and it settles it by splitting the value rather than by
+  making one value serve two rules.** The kind now lives on the *reference*, so the app derives
+  both attributes from it on its own terms: `data-assignee-kind` is the **two-valued** question
+  ("is this not the human?") that the closed domain and the stylesheet ask for, and
+  `data-agent-platform` is the platform, emitted only when the kind names one the design has a
+  face for. The two no longer contend, and the badge is filled in for the first time.
 - **Every attribution column is now a reference to `actors(id)`** (migration **`0020`**).
   `tasks.claimed_by`, `comments.author_id` and `task_reports.author_id` join
   `tasks.assignee_id`/`reporter_id` as foreign keys, so "who claimed this", "who wrote this"
