@@ -63,7 +63,11 @@ the repository. A one-off audit is not that. `ui-align-retirement-audit.md` live
 historical commits (`b7d6379`, `f61e02a^`), by then 97 commits behind `dev`, of a tool
 (`ui-align`) that no longer exists anywhere in this tree, and referenced by nothing.
 
-Its question was real, though: whether retiring `ui-align` cost checking power was **never
-settled**, because the mutation sweep that would settle it was never run. An open engineering
-question belongs on the board as a card, not in a published document tree.
+Its question was real — whether retiring `ui-align` cost checking power — but its **answer does
+not survive checking.** Most rows it lists as having "no guard whatsoever" name guards that are
+present in `test/web/blocks.contract.mjs` *at the very commit it pins*: it calls
+`[data-access-panel]` `count: 1` unguarded, while `b7d6379` asserts exactly that bound. **So its
+headline number is not a backlog — do not open work against it.** Two of the hooks it names
+(`[data-side-text]`, `[data-caret]`) really are unnamed by every harness, but that is two
+absence-claims, not fifty-two lost guards.
 
