@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 /**
- * Every shipped bundle declares the version of the thing it ships, and the bundles of
- * *one* component must agree with each other. There are two components, and they version
- * **independently** (ruling O4): the board and the loop are released on their own
- * schedules, coupled only by the interface the loop declares it needs.
+ * Every shipped bundle declares the version of the thing it ships, and the bundles of a
+ * component must agree with each other.
  *
  *   board (canonical: the root `package.json`)
  *   1. package.json                                    (the source of truth — and Pi's
@@ -12,27 +10,22 @@
  *   2. .claude-plugin/plugin.json                      (the board plugin — claude,
  *                                                       and codex via the marketplace)
  *   3. .cursor-plugin/plugin.json                      (the board plugin, Cursor's marker)
- *   4. plugins/openclaw/openclaw.plugin.json
- *   5. .claude-plugin/marketplace.json  → metadata.version
+ *   4. .claude-plugin/marketplace.json  → metadata.version
  *
- *   loop (canonical: its own Claude-format plugin manifest)
- *   6. plugins/loop/.claude-plugin/plugin.json
- *   7. plugins/loop/package.json
+ * Every host reads *its own* manifest to decide what version it installed, so a drift
+ * within the group ships a release that calls itself two different things. This script
+ * reads every carrier, checks the group against its canonical entry, prints any offending
+ * file and exits non-zero on drift — wired into CI so the mistake is caught at
+ * pull-request time rather than at tag time.
  *
- * Every host reads *its own* manifest to decide what version it installed, so a
- * drift inside a group ships a release that calls itself two different things. This
- * script reads every carrier, checks each group against its own canonical entry, prints
- * any offending file and exits non-zero on drift — wired into CI so the mistake is caught
- * at pull-request time rather than at tag time.
+ * The loop is **not** a version carrier: it is distributed by `install.sh` from
+ * `skills/meerkat-loop/`, declares the *board* interface it requires rather than a
+ * version of its own, and its two former carriers were the `plugins/loop` manifests that
+ * this repository no longer ships (ruling O4 is thereby retired — see the 2026-10-17
+ * decision note in `design/plugin-distribution-plan.md`).
  *
- * The groups are checked separately on purpose: forcing the loop to equal the board would
- * make O4 unenforceable. At the first split the two values happen to be equal (O7 — one
- * linked release); after that, a loop-only bump must go green here.
- *
- *   node scripts/verify/version.mjs                # check both groups
- *   node scripts/verify/version.mjs --group loop   # check one group
+ *   node scripts/verify/version.mjs                # check the group
  *   node scripts/verify/version.mjs --print        # print the board version
- *   node scripts/verify/version.mjs --print --group loop
  *   node scripts/verify/version.mjs --base <dir>   # check a tree rooted at <dir>
  *
  * Node builtins only; no network, no dependencies.
@@ -48,15 +41,16 @@ import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 /**
- * The board's five manifests, in reporting order. The first entry is the canonical
+ * The board's four manifests, in reporting order. The first entry is the canonical
  * one: every other entry in the group must equal it.
  *
  * `field` names the property that carries the version (so the diagnostic for the
  * marketplace, whose version hides under `metadata`, says so).
  *
- * Two hosts are not carriers: Codex installs the same `.claude-plugin/plugin.json`
- * bundle through the repository marketplace, and Pi declares itself in the canonical
- * `package.json` itself. A row for either would only restate one already above.
+ * Three hosts are not carriers: Codex and OpenClaw install the same
+ * `.claude-plugin/plugin.json` bundle through the repository marketplace, and Pi declares
+ * itself in the canonical `package.json` itself. A row for any would only restate one
+ * already above.
  *
  * @type {ReadonlyArray<{label: string, path: string, field: string, canonical?: boolean, pick: (doc: object) => unknown}>}
  */
@@ -64,30 +58,18 @@ export const VERSION_SOURCES = Object.freeze([
   { label: "package.json", path: "package.json", field: "version", canonical: true, pick: (doc) => doc.version },
   { label: "claude", path: ".claude-plugin/plugin.json", field: "version", pick: (doc) => doc.version },
   { label: "cursor", path: ".cursor-plugin/plugin.json", field: "version", pick: (doc) => doc.version },
-  { label: "openclaw", path: "plugins/openclaw/openclaw.plugin.json", field: "version", pick: (doc) => doc.version },
   { label: "marketplace", path: ".claude-plugin/marketplace.json", field: "metadata.version", pick: (doc) => doc.metadata?.version },
 ]);
 
 /**
- * The loop's version carriers. The Claude-format plugin manifest is canonical — it is
- * the one the marketplace resolves `meerkat-loop` to; the Pi package mirrors it.
- *
- * @type {typeof VERSION_SOURCES}
- */
-export const LOOP_VERSION_SOURCES = Object.freeze([
-  { label: "loop", path: "plugins/loop/.claude-plugin/plugin.json", field: "version", canonical: true, pick: (doc) => doc.version },
-  { label: "loop-pi", path: "plugins/loop/package.json", field: "version", pick: (doc) => doc.version },
-]);
-
-/**
- * The version groups, in reporting order. Each is checked independently; the board group
- * is first so `--print` and the release tooling keep reading the board's version.
+ * The version groups, in reporting order. There is one: the loop stopped carrying a
+ * version of its own when its only two carriers (the `plugins/loop` manifests) were
+ * removed. `--print` and the release tooling read the board's version.
  *
  * @type {ReadonlyArray<{name: string, sources: typeof VERSION_SOURCES}>}
  */
 export const VERSION_GROUPS = Object.freeze([
   { name: "board", sources: VERSION_SOURCES },
-  { name: "loop", sources: LOOP_VERSION_SOURCES },
 ]);
 
 /** The group a bare invocation or a bare `--print` refers to. */
@@ -174,8 +156,10 @@ export async function validateVersions(base = ROOT, sources = VERSION_SOURCES) {
 }
 
 /**
- * Validate every version group. Each group is independent: a drifted loop must not be
- * reported as a drifted board, and neither group's numbers are compared with the other's.
+ * Validate every version group. Each group stands alone — a group's manifests are compared
+ * only with that group's canonical entry, never with another group's numbers. (There is one
+ * group left, the board; the seam is kept so a second component can be added back without
+ * re-deriving the check.)
  *
  * @param {string} [base]
  * @param {typeof VERSION_GROUPS} [groups]
@@ -221,8 +205,9 @@ async function main(argv) {
         "  --print        print a group's canonical version and exit (default: board)\n" +
         `  --group <name> check one group only (${groupNames.join(", ")}; default: all)\n` +
         "  --base <dir>   check a tree rooted at <dir> (default: this checkout)\n\n" +
-        "The groups version independently: the board (root package.json is canonical) and\n" +
-        "the loop (plugins/loop/.claude-plugin/plugin.json is canonical).\n",
+        "There is one version group, the board; its canonical carrier is the root\n" +
+        "package.json. The loop carries no version of its own — it is distributed by\n" +
+        "install.sh from skills/meerkat-loop/ and declares the board interface it needs.\n",
     );
     return 0;
   }

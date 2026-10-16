@@ -13,20 +13,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   implicit side effect of installing the board; it is now a self-contained, separately
   distributed skill (`skills/meerkat-loop/`) carrying the execution body, the unit / wake /
   host-config templates and an operator reference. It is distributed to **claude, codex and
-  pi**, and **never to OpenClaw** — permanently, by ruling: the openclaw-team framework
-  already ships a per-agent poll / a `task-patrol`, which is the same design, and two
-  supervisors on one board would only race each other for the same cards. The board skill
-  still goes to all four hosts, so `sync-skills.mjs` now models two skills with two
-  distribution surfaces (plus a `plugins/loop` bundle target, so the marketplace can list
-  the loop as its own plugin: `.claude-plugin/marketplace.json` now lists
-  `meerkat-taskpanel` → `./plugins/claude` and `meerkat-loop` → `./plugins/loop`).
+  pi** by `install.sh --target claude|codex|pi`, and **never to OpenClaw** — permanently, by
+  ruling: the openclaw-team framework already ships a per-agent poll / a `task-patrol`, which
+  is the same design, and two supervisors on one board would only race each other for the
+  same cards. The board skill still goes to all six hosts, and every one of them reads the
+  repository's own `skills/` tree in place through a manifest at the repository root — the
+  board's plugin root *is* the repository root.
   The loop skill **declares the board interface generation it requires** —
   `task-interface v1`, the surface the board first shipped in release 1.0.0 — and its
   `scripts/board-check.mjs` enforces that against the board's own `taskctl --version --json`
-  answer, exiting 3 rather than guessing when the board is too old or cannot be asked.
-  Board and loop **version independently** (a `board` and a `loop` group in
-  `scripts/verify/version.mjs`, and `scripts/release/bump.mjs --group loop`): the first split
-  ships one linked version, but nothing holds them together after that.
+  answer, exiting 3 rather than guessing when the board is too old or cannot be asked. That
+  interface floor is the only coupling: the loop carries **no version of its own** and moves
+  with the board (see *Removed* below).
 - **The loop payload is generated and guarded, not hand-copied.** `scripts/sync-loop.mjs`
   computes the transitive import closure of `scripts/supervisor.mjs` and
   `scripts/wake-cwd.mjs` and writes it into the skill as `body/manifest.txt` — the list the
@@ -138,6 +136,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`sync-skills.mjs` generates, but copies nothing.** With the last two bundles gone it has
+  one job — generating the loop skill's payload (`body/` + `templates/`) from the repository's
+  own modules and installer templates — and `--check` guards that alone. The "exactly one
+  `skills` tree" invariant therefore moved out of it entirely and into
+  `test/scaffold.test.mjs`, which asserts against the checkout that `skills/` is the only
+  `skills` directory and that no `plugins/` tree exists. That is deliberate: a table can only
+  describe the copies it knows about, and with no copy targets left `--check` could not notice
+  an orphan tree a future harness added.
 - **A `projects.json` entry no longer has to name a directory — and a project that has none
   may still be woken through a `run_dir` launch pad.** The map's rule is now
   `dir = local_path ?? run_dir`: `local_path` stays the project's own directory (unchanged for
@@ -474,6 +480,29 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+- **The `plugins/` directory, and the last committed copies of a skill.** `skills/` is now the
+  only `skills` tree in the repository: nothing is distributed as a generated copy, because
+  every harness reads that one tree in place through a manifest at the repository root. Two
+  directories were removed with it, and each needs calling out separately:
+  - **`plugins/openclaw/` — the native OpenClaw manifest** (1 manifest + an 8-file skill
+    copy). A *native* OpenClaw plugin is an in-process runtime module needing
+    `package.json#openclaw.extensions` plus an entry point importing the OpenClaw plugin SDK,
+    a runtime dependency this zero-dependency project does not take — so the manifest could
+    not be installed as what it claimed to be. What OpenClaw installs is the repository-root
+    bundle (`openclaw plugins install "$PWD"`), as it always did. The skill copy under it
+    existed only so the bundle assertion could resolve a skill out of that directory.
+  - **`plugins/loop/` — the standalone `meerkat-loop` marketplace entry.** The marketplace
+    (`.claude-plugin/marketplace.json`) now lists a single plugin, `meerkat-taskpanel` at
+    `./`. `meerkat-loop` is installed by `install.sh --target claude|codex|pi`; **a
+    marketplace install of the supervisor no longer exists.** A marketplace install of the
+    board still brings the loop with it, since the shared tree is not filtered per entry.
+- **The loop's independent version.** `meerkat-loop` no longer carries a version of its own:
+  its only two carriers were the `plugins/loop` manifests, and nothing consumes a loop
+  version — `board-check.mjs` enforces the *board's* interface floor, and `install.sh` writes
+  no version into any unit or env file. `scripts/verify/version.mjs` has one group (the
+  board, now **four** carriers), `scripts/release/bump.mjs` has one bump group, and
+  `--group loop` is an unknown group rather than a silent no-op. Ruling O4 — board and loop
+  version independently — is retired with them.
 - **Three denormalised columns on `tasks`.** `assignee_kind`, `creator_kind` and `creator_id`
   are gone (migration `0019`): the kind belongs to the actor row, and a copy of a value that
   can now change goes stale. A card's creator **is** its reporter — `created_by` already

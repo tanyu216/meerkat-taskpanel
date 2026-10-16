@@ -4,18 +4,16 @@
  *
  * Each host has its own conventional manifest location and its own required keys:
  *   .claude-plugin/plugin.json                    (the board plugin; root = repo root)
- *   plugins/openclaw/openclaw.plugin.json         (root-level, no dot-directory)
+ *   .cursor-plugin/plugin.json                    (Cursor's marker for the same root)
  *   package.json                                  (the `pi` field — Pi has no manifest of
- *                                                  its own either, it reads the root package)
- * plus the loop skill's own bundle — the marketplace's second plugin, which ships the
- * loop and nothing else, so it can be installed on its own:
- *   plugins/loop/.claude-plugin/plugin.json
- *   plugins/loop/package.json
+ *                                                  its own, it reads the root package)
  * plus the repository-root Claude marketplace: .claude-plugin/marketplace.json
  *
  * Codex has no manifest of its own: `codex plugin marketplace add` reads the same
  * repository-root marketplace and installs the same `./` bundle as Claude Code, so its
- * expected manifest is the board plugin's (see HOST_BUNDLES.codex).
+ * expected manifest is the board plugin's (see HOST_BUNDLES.codex). OpenClaw has none
+ * either — it reads that same `./` bundle, which is why no native OpenClaw manifest
+ * ships (see HOST_BUNDLES.openclaw and docs/install.md).
  *
  * Exits non-zero with a readable message on the first failure. Node builtins only.
  */
@@ -58,20 +56,6 @@ export const MANIFESTS = [
     ],
   },
   {
-    label: "openclaw",
-    path: "plugins/openclaw/openclaw.plugin.json",
-    required: [
-      "id",
-      "name",
-      "version",
-      "description",
-      "categories",
-      "skills",
-      "activation",
-      "configSchema",
-    ],
-  },
-  {
     label: "pi",
     path: "package.json",
     required: [
@@ -79,34 +63,6 @@ export const MANIFESTS = [
       "version",
       "type",
       "pi",
-    ],
-  },
-  {
-    label: "loop",
-    path: "plugins/loop/.claude-plugin/plugin.json",
-    required: [
-      "name",
-      "version",
-      "description",
-      "author",
-      "license",
-      "homepage",
-      "repository",
-      "keywords",
-      "skills",
-    ],
-  },
-  {
-    label: "loop-pi",
-    path: "plugins/loop/package.json",
-    required: [
-      "name",
-      "version",
-      "private",
-      "description",
-      "license",
-      "type",
-      "files",
     ],
   },
   {

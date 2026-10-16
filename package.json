@@ -27,7 +27,6 @@
   "files": [
     "src",
     "skills",
-    "plugins",
     ".claude-plugin",
     ".pi",
     ".opencode",
