@@ -21,6 +21,7 @@ import {
   cleanupTempDirs,
   countRows,
   ensureActor,
+  insertComment,
   revision,
   withBoard,
 } from "../../../helpers/sqlite-fixture.mjs";
@@ -547,25 +548,53 @@ describe("repositories/dictionary", () => {
     });
   });
 
-  it("collapses one name onto one row, whatever the kind or the role (0019)", async () => {
+  it("collapses one name onto one row, whatever the role (0019)", async () => {
     await board(({ repos }) => {
-      const agent = repos.dictionary.upsert({ kind: "assignee", actorKind: "agent", normalizedName: "sam", displayName: "Sam", now: TS });
-      const human = repos.dictionary.upsert({ kind: "assignee", actorKind: "human", normalizedName: "sam", displayName: "Sam", now: TS });
-      const reporter = repos.dictionary.upsert({ kind: "reporter", actorKind: "agent", normalizedName: "sam", displayName: "Sam", now: TS });
-      // One name ⇒ one row: the kind no longer splits it, and neither does the role.
-      assert.equal(human.entry.id, agent.entry.id);
-      assert.equal(reporter.entry.id, agent.entry.id);
+      const first = repos.dictionary.upsert({ kind: "assignee", normalizedName: "sam", displayName: "Sam", now: TS });
+      const second = repos.dictionary.upsert({ kind: "assignee", normalizedName: "sam", displayName: "Sam", now: TS });
+      const reporter = repos.dictionary.upsert({ kind: "reporter", normalizedName: "sam", displayName: "Sam", now: TS });
+      // One name ⇒ one row: neither the role nor — since `0023` — a kind splits
+      // it, because the row no longer has one (there is nothing left to disagree).
+      assert.equal(second.entry.id, first.entry.id);
+      assert.equal(reporter.entry.id, first.entry.id);
       assert.equal(reporter.action, "reused");
-      assert.equal(agent.entry.kind, "agent", "the stored kind wins on reuse");
+      assert.equal("kind" in first.entry && first.entry.kind !== null, false, "the row holds no actor kind");
       assert.equal(repos.dictionary.list("assignee").length, 1);
       assert.equal(repos.dictionary.list("reporter").length, 1);
     });
   });
 
+  it("reports an actor's kind by aggregating the references that recorded one (0023)", async () => {
+    // The row holds no kind, so the *registry read* derives one: the most recent
+    // kind recorded on any reference naming the actor. That is what answers "is
+    // this a person" for the roster, the sidebar and the assignee pickers.
+    await board(({ db, repos }) => {
+      const task = makeTask(repos);
+      const linus = repos.dictionary.upsert({ kind: "assignee", normalizedName: "linus", displayName: "Linus", now: TS });
+      const terry = repos.dictionary.upsert({ kind: "assignee", normalizedName: "terry", displayName: "Terry", now: TS });
+      repos.dictionary.upsert({ kind: "assignee", normalizedName: "spare", displayName: "Spare", now: TS });
+
+      repos.tasks.claimCas({ id: task.id, actor: linus.entry.id, claimedKind: "claude", now: TS });
+      insertComment(db, { id: "c-1", task_id: task.id, author_id: terry.entry.id, author_kind: "human", created_at: TS });
+
+      const kindOf = () =>
+        Object.fromEntries(repos.dictionary.search("actor", {}).map((entry) => [entry.displayName, entry.kind]));
+      assert.equal(kindOf().Linus, "claude", "the platform that took the claim");
+      assert.equal(kindOf().Terry, "human", "a comment a person wrote");
+      assert.equal(kindOf().Spare, null, "an actor nothing has named has no kind — not a fabricated `human`");
+
+      // The **latest** wins, so a person who later works from a platform reads as
+      // that platform — the fact the row's first-write-wins column could not hold.
+      insertComment(db, { id: "c-2", task_id: task.id, author_id: terry.entry.id, author_kind: "codex", created_at: TS2 });
+      assert.equal(kindOf().Terry, "codex", "the newest reference decides");
+      assert.equal(kindOf().Linus, "claude", "and the others are untouched");
+    });
+  });
+
   it("searches for autocomplete and counts references", async () => {
     await board(({ repos }) => {
-      const linus = repos.dictionary.upsert({ kind: "assignee", actorKind: "agent", normalizedName: "linus", displayName: "Linus", now: TS });
-      repos.dictionary.upsert({ kind: "assignee", actorKind: "human", normalizedName: "terry", displayName: "Terry", now: TS });
+      const linus = repos.dictionary.upsert({ kind: "assignee", normalizedName: "linus", displayName: "Linus", now: TS });
+      repos.dictionary.upsert({ kind: "assignee", normalizedName: "terry", displayName: "Terry", now: TS });
       assert.deepEqual(repos.dictionary.search("assignee", { q: "lin" }).map((e) => e.displayName), ["Linus"]);
       assert.deepEqual(repos.dictionary.search("assignee", { q: "LIN" }).map((e) => e.displayName), ["Linus"]);
       assert.equal(repos.dictionary.search("assignee", {}).length, 2);
@@ -582,10 +611,15 @@ describe("repositories/dictionary", () => {
       });
       assert.equal(repos.tasks.get(task.id).assigneeId, linus.entry.id, "the task is untouched");
 
-      const spare = repos.dictionary.upsert({ kind: "assignee", actorKind: "human", normalizedName: "spare", displayName: "Spare", now: TS });
+      const spare = repos.dictionary.upsert({ kind: "assignee", normalizedName: "spare", displayName: "Spare", now: TS });
       assert.equal(repos.dictionary.remove("assignee", spare.entry.id), true);
-      assert.throws(() => repos.dictionary.upsert({ kind: "nope", actorKind: "agent", normalizedName: "x", displayName: "X", now: TS }), (err) => err.code === "VALIDATION_FAILED");
-      assert.throws(() => repos.dictionary.upsert({ kind: "assignee", actorKind: "robot", normalizedName: "x", displayName: "X", now: TS }), (err) => err.code === "VALIDATION_FAILED");
+      // An unknown **role** is still refused — there is no table for it.
+      assert.throws(() => repos.dictionary.upsert({ kind: "nope", normalizedName: "x", displayName: "X", now: TS }), (err) => err.code === "VALIDATION_FAILED");
+      // An `actorKind` is no longer an input at all: the row holds no kind, so
+      // what a caller used to name here is now the kind it records on its own
+      // reference. Passing the old option changes nothing.
+      const withStaleOption = repos.dictionary.upsert({ kind: "assignee", actorKind: "robot", normalizedName: "x", displayName: "X", now: TS });
+      assert.equal(withStaleOption.action, "created");
     });
   });
 });

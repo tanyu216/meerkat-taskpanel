@@ -128,8 +128,11 @@ function snapshot(db) {
       created_at: activity.created_at,
     })),
     // One table since 0019 — the `table` label is gone with the two tables it
-    // distinguished.
-    dictionary: rows("SELECT kind, display_name, normalized_name, use_count FROM actors ORDER BY normalized_name"),
+    // distinguished. **No `kind`**: since `0023` the row holds none (a kind
+    // describes an act, and this is one row per person). What the two boards must
+    // agree on here is *who exists*; the kind a reader sees is aggregated from the
+    // references, and `repositories.test.mjs` pins that rule.
+    dictionary: rows("SELECT display_name, normalized_name, use_count FROM actors ORDER BY normalized_name"),
   };
 }
 

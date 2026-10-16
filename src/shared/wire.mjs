@@ -19,22 +19,31 @@ import { projectPrefix } from "./ids.mjs";
 export const NO_LOOKUP = () => null;
 
 /**
+ * One actor reference: the id, the name it resolves to, and **the kind the
+ * reference records**.
+ *
+ * The kind is the caller's, not the registry's, and that is `0023`'s whole
+ * result: `actors` is one row per person, so it cannot hold a fact about an act
+ * — which platform made *this* claim, wrote *this* comment. The registry is
+ * asked only for the name, through the role-less read (`"actor"` names the one
+ * table both roles now live in).
+ *
+ * `null` is a real answer: it means the reference recorded no kind (a claim made
+ * before `0023`, or a row the backfill had no actor for). It is deliberately
+ * *not* filled in from the registry — that would put the actor's own last-known
+ * kind on an act it says nothing about.
+ *
  * @param {string|null} id
- * @param {string} kind the dictionary **role** the id is looked up under —
- *   `"assignee"`/`"reporter"` name a `tasks` column, `"actor"` is the role-less
- *   read the attribution columns use. It is also the `kind` stand-in when the
- *   row is missing.
+ * @param {string|null} kind the kind the reference records
  * @param {(kind: string, id: string) => object|null} lookup
  */
 function actorRef(id, kind, lookup) {
   if (id === null || id === undefined || id === "") return null;
-  const entry = lookup === undefined ? null : lookup(kind, id);
+  const entry = lookup === undefined ? null : lookup("actor", id);
   return {
     id,
-    // The actor's kind lives on its `actors` row (0019 dropped the denormalised
-    // `tasks.assignee_kind`); when the row is gone the role name stands in.
     display_name: entry?.displayName ?? id,
-    kind: entry?.kind ?? kind,
+    kind: kind ?? null,
   };
 }
 
@@ -49,11 +58,16 @@ const COPY_TASK_FIELDS = Object.freeze({
   kind: "kind",
   sort_order: "sortOrder",
   assignee_id: "assigneeId",
+  // 0023 — the kind each reference was made under. On the wire beside the id, so
+  // a reader gets "who, and on what" from the scalar half of the pair too.
+  assignee_kind: "assigneeKind",
   reporter_id: "reporterId",
+  reporter_kind: "reporterKind",
   agent_session: "agentSession",
   thread_id: "threadId",
   thread_source: "threadSource",
   claimed_by: "claimedBy",
+  claimed_kind: "claimedKind",
   claimed_at: "claimedAt",
   heartbeat_at: "heartbeatAt",
   blocked_at: "blockedAt",
@@ -90,8 +104,8 @@ export function taskToWire(task, options = {}) {
   }
   out.labels = Array.isArray(task.labels) ? task.labels : [];
   out.meta = task.meta ?? {};
-  out.assignee = actorRef(task.assigneeId, "assignee", lookup);
-  out.reporter = actorRef(task.reporterId, "reporter", lookup);
+  out.assignee = actorRef(task.assigneeId, task.assigneeKind, lookup);
+  out.reporter = actorRef(task.reporterId, task.reporterKind, lookup);
   // `claimed_by` is an actor **id** since 0020 (the execution lock's holder),
   // exactly like `assignee_id`/`reporter_id`. It keeps its scalar field — a
   // client that keys on the id still has one — and gains a companion ref so a
@@ -101,7 +115,7 @@ export function taskToWire(task, options = {}) {
   // named `claimed_by_actor` (not a bare role word like `assignee`) because
   // `claimed_by` already occupies the role word, and the suffix keeps the pair
   // adjacent — same shape as `assignee`/`reporter`, one name apart.
-  out.claimed_by_actor = actorRef(task.claimedBy, "actor", lookup);
+  out.claimed_by_actor = actorRef(task.claimedBy, task.claimedKind, lookup);
   out.report_waiver = waiverOf(task);
   return out;
 }
@@ -187,7 +201,10 @@ export function commentToWire(comment, options = {}) {
     kind: comment.kind,
     author_kind: comment.authorKind,
     author_id: comment.authorId,
-    author: actorRef(comment.authorId, "actor", lookup),
+    // The comment's own `author_kind` — which platform wrote it — not a role
+    // word and not the registry's: a comment is an act, and this is the column
+    // that recorded what kind of thing performed it.
+    author: actorRef(comment.authorId, comment.authorKind, lookup),
     agent_session: comment.agentSession ?? null,
     refs: comment.refs ?? [],
     version: comment.version,
@@ -323,7 +340,8 @@ export function reportToWire(report, options = {}) {
     leftovers: report.leftovers ?? null,
     author_kind: report.authorKind,
     author_id: report.authorId,
-    author: actorRef(report.authorId, "actor", lookup),
+    // As with a comment: the report's own `author_kind`.
+    author: actorRef(report.authorId, report.authorKind, lookup),
     created_at: report.createdAt,
   };
 }

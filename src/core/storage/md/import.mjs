@@ -75,10 +75,17 @@ export const KNOWN_CARD_KEYS = Object.freeze([
   "assignee",
   "assignee_kind",
   "created_by",
+  // 0023 — what the card's one provenance key *is*, isomorphic to `assignee_kind`
+  // above. A *known* key, so a card that declares one lands in the column instead
+  // of in `meta_json.legacy` (and so a round trip does not file it as unknown).
+  "created_by_kind",
   "created_at",
   "updated_at",
   "status_changed_at",
   "claimed_by",
+  // 0023 — what kind of thing holds the claim. A *known* key, so a card carrying
+  // one lands in the column beside `claimed_by` instead of in `meta_json.legacy`.
+  "claimed_kind",
   "claimed_at",
   "heartbeat_at",
   "blocked_at",
@@ -803,10 +810,14 @@ export function parseCard(text, { file }) {
     assigneeKind: data.assignee_kind ?? "agent",
     reporter: nullable(data.created_by),
     createdBy: nullable(data.created_by),
+    createdByKind: nullable(data.created_by_kind),
     createdAt: nullable(data.created_at),
     updatedAt: nullable(data.updated_at) ?? nullable(data.created_at),
     statusChangedAt: nullable(data.status_changed_at),
     claimedBy: nullable(data.claimed_by),
+    // 0023 — the kind the claim was made under. Absent stays NULL: a card that
+    // names no kind is not claiming its holder is a person, it is declining to say.
+    claimedKind: nullable(data.claimed_kind),
     claimedAt: nullable(data.claimed_at),
     heartbeatAt: nullable(data.heartbeat_at),
     blockedAt: nullable(data.blocked_at),
@@ -999,30 +1010,50 @@ function ensureProject(repos, plan, now, stats) {
  * written to a key nobody looks at.
  */
 function resolveCardDictionaries(repos, card, now) {
-  const writes = { assigneeId: null, reporterId: null, claimedById: null, count: 0 };
+  const writes = {
+    assigneeId: null,
+    assigneeKind: null,
+    reporterId: null,
+    reporterKind: null,
+    claimedById: null,
+    claimedKind: null,
+    count: 0,
+  };
   if (typeof card.assignee === "string" && card.assignee.trim() !== "") {
-    const { entry } = resolveOrCreate({ repos, now }, {
+    const { entry, actorKind } = resolveOrCreate({ repos, now }, {
       kind: "assignee",
       name: card.assignee,
       actorKind: card.assigneeKind === "human" ? "human" : "agent",
     });
     writes.assigneeId = entry.id;
+    // `0023` — the kind rides on the *card's* reference now, not on the actor row:
+    // one row per person cannot hold what a particular link says about them.
+    writes.assigneeKind = actorKind;
     writes.count += 1;
   }
   if (typeof card.reporter === "string" && card.reporter.trim() !== "") {
-    const { entry } = resolveOrCreate({ repos, now }, {
+    const { entry, actorKind } = resolveOrCreate({ repos, now }, {
       kind: "reporter",
       name: card.reporter,
-      actorKind: authorKind(card.reporter),
+      // The card declares what its provenance key is when it knows. The default is
+      // `human` — the role's own definition, the same ruling the service layer
+      // records ("a reporter is the person who filed the card"), and the value the
+      // export omits, so an undeclared card does not grow a line.
+      actorKind: card.createdByKind ?? "human",
     });
     writes.reporterId = entry.id;
+    writes.reporterKind = actorKind;
     writes.count += 1;
   }
   if (typeof card.claimedBy === "string" && card.claimedBy.trim() !== "") {
     // `claimed_by` is an actor id since 0020. The card's claimant is a name; it is
     // resolved like the live claim path resolves one, so an imported card and a
     // claimed card agree on who holds it.
-    writes.claimedById = resolveActorId({ repos, now }, { name: card.claimedBy, actorKind: "agent" });
+    writes.claimedById = resolveActorId({ repos, now }, { name: card.claimedBy });
+    // A card that names a holder and no kind leaves the claim's kind **NULL** —
+    // "not recorded" — rather than guessing a platform. `claimed_by` was an id
+    // since 0020 and carried no kind at all; this does not invent one.
+    writes.claimedKind = card.claimedKind ?? null;
     writes.count += 1;
   }
   return writes;
@@ -1114,7 +1145,9 @@ function buildTask(repos, card, context) {
       // write would have produced.
       labels: labels ?? card.labels,
       assigneeId: dictionary.assigneeId,
+      assigneeKind: dictionary.assigneeKind,
       reporterId: dictionary.reporterId,
+      reporterKind: dictionary.reporterKind,
       sourcePath: rel,
       sourceHash: hash,
       meta: card.meta,
@@ -1134,6 +1167,7 @@ function buildTask(repos, card, context) {
     createdAt: card.createdAt ?? now,
     updatedAt: card.updatedAt ?? card.createdAt ?? now,
     claimedBy: dictionary.claimedById,
+    claimedKind: dictionary.claimedKind,
     claimedAt: card.claimedAt,
     heartbeatAt: card.heartbeatAt,
     blockedAt: card.blockedAt ?? (card.status === "blocked" ? card.statusChangedAt ?? now : null),
@@ -1154,7 +1188,12 @@ function patchFrom(task) {
     kind: task.kind,
     labels: task.labels,
     assigneeId: task.assigneeId,
+    // The kind rides with its reference: a re-import that moves the assignee must
+    // move what the card says that assignee *is*, or the row would name one person
+    // and describe another.
+    assigneeKind: task.assigneeKind,
     reporterId: task.reporterId,
+    reporterKind: task.reporterKind,
     sourceHash: task.sourceHash,
     meta: task.meta,
     // 0016 — unlike `blocked_at` (deliberately absent above: it dates the last

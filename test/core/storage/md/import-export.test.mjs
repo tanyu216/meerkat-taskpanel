@@ -126,16 +126,24 @@ describe("md/import — statistics and behaviour", () => {
     try {
       importMd({ db: board.db, repos: board.repos, dir: board.dir, now: TS });
 
+      // The **registry read**, not a raw `SELECT`: since `0023` the row holds no
+      // kind — a kind describes an act — so the read aggregates it from the
+      // references that recorded one. `linus` is both the assignee and the
+      // creator, and the two readings tie on the task's own `updated_at`; the tie
+      // goes to `human` (the repo's "a misread handle is the cheaper error"
+      // prior). The claimant recorded none, so it has none — a different statement
+      // from "a person", which is why it is `null` and not a fabricated value.
+      const people = board.repos.dictionary
+        .search("actor", {})
+        .map((entry) => ({ kind: entry.kind, display_name: entry.displayName, normalized_name: entry.normalizedName }))
+        .sort((a, b) => (a.normalized_name < b.normalized_name ? -1 : 1));
       assert.deepEqual(
-        board.db
-          .prepare("SELECT kind, display_name, normalized_name FROM actors ORDER BY normalized_name")
-          .all()
-          .map((r) => ({ ...r })),
+        people,
         [
-          { kind: "agent", display_name: "linus", normalized_name: "linus" },
-          { kind: "agent", display_name: "someone-else", normalized_name: "someone-else" },
+          { kind: "human", display_name: "linus", normalized_name: "linus" },
+          { kind: null, display_name: "someone-else", normalized_name: "someone-else" },
         ],
-        "one person across the two roles; the claimant is a person too",
+        "one person across the two roles; the claimant recorded no kind at all",
       );
 
       const task = board.repos.tasks.getByIdentifier("proj", "PROJ-0001");

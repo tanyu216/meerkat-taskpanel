@@ -33,6 +33,8 @@
  * the line says the kind.
  */
 
+import { kindLabel } from "./actor-kind.js";
+
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
@@ -223,7 +225,10 @@ export function rowFrom(activity, task) {
     identifier: task.identifier,
     title: task.title,
     actor: activity.actor_id ?? "",
-    actorKind: activity.actor_kind === "agent" ? "agent" : "human",
+    // `task_activities.actor_kind` is a free string (the audit log's own column),
+    // and since 0018 a kind names a platform rather than a category -- so the
+    // two-valued attribute is derived, not read off.
+    actorKind: kindLabel(activity.actor_kind),
     event: kind.kind,
     verb: kind.verb,
     group: kind.group,

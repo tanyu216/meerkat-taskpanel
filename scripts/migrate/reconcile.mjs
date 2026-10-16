@@ -553,7 +553,13 @@ function buildReport(context) {
   for (const row of perField) {
     if (row.changed > 0) {
       differences.push(`perField:${row.field} changed on ${row.changed} card(s)`);
-      if (LEGACY_ONLY_FIELDS.includes(row.field) || row.field === "assignee_kind") {
+      // `assignee_kind` used to be listed here beside the legacy-only fields: a
+      // card declaring one had no export home, so the value came back differently.
+      // `0023` gave it one (the card writes the key whenever it differs from the
+      // parser's `agent` default), so the drift is closed and the drill must stop
+      // reporting it — a false `unmappable` in a migration report is worse than
+      // none, because it is the list an operator reads before switching.
+      if (LEGACY_ONLY_FIELDS.includes(row.field)) {
         unmappable.push({
           kind: "field-drift",
           field: row.field,
