@@ -72,14 +72,22 @@ exception — see [OpenCode](#opencode) and [Cursor](#cursor).
 execution body would put the checkout back into the load path of the very thing the split
 exists to make independent of it (`skills/meerkat-loop/body/`).
 
+**Every host gets a `taskctl` shim**, at `<host>/bin/taskctl`
+(`~/.claude/bin/taskctl`, `~/.codex/bin/taskctl`, `~/.agents/bin/taskctl`, …), and it injects
+**both halves of the identity** on every call — `--agent <name>` and `--actor-kind <host>` —
+with `TASKCTL_AGENT` / `TASKCTL_ACTOR_KIND` as the fallbacks. It is not the supervisor and
+not a scheduling unit: it is one wrapper around a command the agent already runs itself,
+which is why hosts whose rulings keep the loop out (OpenClaw, OpenCode, Cursor) still get it.
+Without it a write from that host carries a name and no kind, and the board reads a write
+with no kind as a **person's** — which is what would put it on the record as a decision.
+
 The two bundle hosts write more than the skill. **Claude** additionally writes
 `~/.claude/settings.json` (merged `env.TASKCTL_AGENT`, `env.TASKCTL_ACTOR_KIND`,
 `env.TASKCTL_HUMAN` + a `SessionStart` hook),
 `~/.claude/hooks/meerkat-taskpanel-session-start.sh`, `~/.claude/commands/{board,claim,deliver}.md`
 and `~/.claude/bin/taskctl`. **Codex** writes `~/.codex/AGENTS.md` (a claim-first snippet),
 `~/.codex/meerkat-taskpanel-claim.sh` (the schedulable trigger) and `~/.codex/bin/taskctl`.
-Both shims inject **both halves of the identity** on every call — `--agent <name>` and
-`--actor-kind <host>` — with `TASKCTL_AGENT` / `TASKCTL_ACTOR_KIND` as the fallbacks.
+(Their shims are the same file described above — every host gets one.)
 
 The kind is not decoration. It is what the board reads to tell a person from an agent:
 a human's `decision` is what goes on the record (I5), what resumes an `awaiting` card, and
@@ -714,13 +722,14 @@ The installed skill is self-contained but carries **no engine**: `install.sh` co
 `SKILL.md`, `references/` and `scripts/` into the host, never `src/`. So the wrapper
 `scripts/run.mjs` resolves the CLI on a ladder — a checkout named by
 `MEERKAT_TASKPANEL_ROOT` (or by `MEERKAT_TASKPANEL_REPO`, the key the installer records in
-the host config), then a checkout around the skill itself, then `taskctl` on `PATH` — and
-when none of those holds a CLI it stops with the three ways to fix it, instead of the
-module-not-found stack an earlier version died with (T-20261014-214002). In the normal case
-it is the last of the four that answers: `install.sh` writes a `taskctl` shim into the
-host's own `bin/` (`~/.claude/bin/taskctl`, `~/.codex/bin/taskctl`, …), and putting that
-directory on your `PATH` gives the skill a CLI to find — as does `npm link` or a global
-install.
+the host config), then a checkout around the skill itself, then **the host's own `taskctl`
+shim** beside the skill, then `taskctl` on `PATH` — and when none of those holds a CLI it
+stops with the ways to fix it, instead of the module-not-found stack an earlier version died
+with (T-20261014-214002). In the normal case it is the shim that answers: `install.sh` writes
+it into the host's own `bin/` (`~/.claude/bin/taskctl`, `~/.codex/bin/taskctl`, …), and the
+ladder finds it **without** `PATH` having to include that directory — one fewer thing to get
+right, and the rung that carries the identity. Putting the directory on `PATH` also works,
+as does `npm link` or a global install.
 
 ## Verifying the install
 
