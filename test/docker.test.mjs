@@ -363,15 +363,15 @@ describe("docker-plan", () => {
     // verifying at once shared the container name `docker-taskd-1`, and the second
     // one to start failed with "already in use" while the two teardowns fought over
     // it. The name is therefore derived from the checkout's absolute path.
-    const a = composeProjectName("/Users/someone/meerkat-taskpanel");
-    const b = composeProjectName("/Users/someone/meerkat-taskpanel-wt-other-lane");
+    const a = composeProjectName("/Users/you/meerkat-taskpanel");
+    const b = composeProjectName("/Users/you/meerkat-taskpanel-wt-other-lane");
     assert.notEqual(a, b, "two worktrees must not share a project");
 
     // ...and it is *stable* for one checkout, which is what makes an `up` and the
     // `down` that follows it agree — including when one of them is reached through
     // a path that is merely spelled differently.
-    assert.equal(composeProjectName("/Users/someone/meerkat-taskpanel"), a);
-    assert.equal(composeProjectName("/Users/someone/./meerkat-taskpanel"), a, "resolved first");
+    assert.equal(composeProjectName("/Users/you/meerkat-taskpanel"), a);
+    assert.equal(composeProjectName("/Users/you/./meerkat-taskpanel"), a, "resolved first");
 
     // A compose project name must match `[a-z0-9][a-z0-9_-]*`, and a path does not.
     assert.match(a, /^[a-z0-9][a-z0-9_-]*$/);
