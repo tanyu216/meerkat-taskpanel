@@ -27,7 +27,7 @@ import { describe, it } from "node:test";
 
 import { atLeastVersion, checkBoard, resolveBoardCommand } from "../../skills/meerkat-loop/scripts/board-check.mjs";
 import { LOOP_BODY_ROOTS, LOOP_SKILL_NAME, LOOP_TEMPLATE_FILES, relativeImports, syncLoop } from "../../scripts/sync-loop.mjs";
-import { SKILL_HOSTS, resolveSkillSource } from "../../scripts/sync-skills.mjs";
+import { resolveSkillSource } from "../../scripts/sync-skills.mjs";
 import { readFrontmatterField } from "../../scripts/verify/lib/frontmatter.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -148,12 +148,16 @@ describe("loop skill: SKILL.md", () => {
 
   it("says out loud that OpenClaw never gets the loop", () => {
     assert.match(text, /OpenClaw is deliberately excluded/);
-    // No host takes a generated copy of the loop any more: claude / codex / cursor / pi
-    // read the repository's own skills/ tree and OpenClaw is excluded by ruling. The loop
-    // still ships — as the plugins/loop bundle the marketplace lists (SKILL_BUNDLES) and
-    // through install.sh — so the exclusion is now the table's only content.
-    assert.deepEqual(SKILL_HOSTS[LOOP_SKILL_NAME], []);
-    assert.ok(!SKILL_HOSTS[LOOP_SKILL_NAME].includes("openclaw"));
+    // No host takes a generated copy of the loop: every harness reads the repository's own
+    // skills/ tree, and OpenClaw is excluded by ruling. `install.sh` is the loop's only
+    // distribution path — there is no loop bundle in the marketplace any more, and no
+    // `plugins/` tree for one to live in (asserted against the checkout in
+    // test/scaffold.test.mjs, which is where the "exactly one skills tree" invariant lives).
+    assert.equal(
+      existsSync(join(ROOT, "plugins")),
+      false,
+      "the loop ships through install.sh only — no committed bundle may carry it",
+    );
   });
 
   it("records what the loop still needs from a checkout, rather than implying it needs none", () => {

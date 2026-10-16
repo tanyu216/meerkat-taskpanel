@@ -5,10 +5,12 @@ installer: scripts/install/openclaw.sh
 target_dir: .openclaw/skills/meerkat-taskpanel
 skill_entry: SKILL.md
 wrapper: scripts/run.mjs
-# Root-level native manifest (openclaw.plugin.json), so OpenClaw's detector classifies
-# this directory as a native plugin. A skill-only pack cannot be *installed* as a native
-# plugin (that path needs package.json#openclaw.extensions + a runtime entry); OpenClaw
-# installs the skill through the Claude bundle instead — see docs/install.md.
-bundle: plugins/openclaw
-bundle_kind: native
-bundle_format: native
+# OpenClaw installs the repository-root bundle — the same `./` bundle Claude Code and Codex
+# install. It carries no native manifest of its own: a native OpenClaw plugin is an
+# in-process runtime module (package.json#openclaw.extensions + an entry point importing
+# the OpenClaw SDK), a runtime dependency this project does not take. The detector reports
+# the root as `bundle`/`cursor`, the root carrying both `.claude-plugin/` and
+# `.cursor-plugin/` — see docs/install.md.
+bundle: .
+bundle_kind: bundle
+bundle_format: cursor

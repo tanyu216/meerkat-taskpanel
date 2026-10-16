@@ -11,14 +11,14 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cp, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { after, describe, it } from "node:test";
 
-import { SKILL_BUNDLES, SKILL_HOSTS, compareDirs, listFiles, resolveSkillSource, skillTargets, syncSkills } from "../scripts/sync-skills.mjs";
+import { listFiles, resolveSkillSource } from "../scripts/sync-skills.mjs";
 import { MANIFESTS, validateManifests } from "../scripts/verify/manifests.mjs";
 import { validateSkill } from "../scripts/verify/skill.mjs";
 import { VERSION } from "../src/shared/constants.mjs";
@@ -61,12 +61,13 @@ async function skillDirsUnder(dir, rel = "") {
 }
 
 describe("plugin manifests", () => {
-  it("the board, Cursor, OpenClaw, Pi and the loop bundle manifests parse and carry required keys", async () => {
-    // 4 board manifests (the repository-root board plugin, Cursor's marker, OpenClaw's
-    // native manifest and the Pi package) + the loop skill's 2 (Claude-format plugin + Pi
+  it("the board, Cursor, Pi and marketplace manifests parse and carry required keys", async () => {
+    // Three board manifests (the repository-root board plugin, Cursor's marker, and the Pi
     // package) + the marketplace. Codex has no manifest of its own: it installs the same
-    // `./` bundle as Claude Code through the repository-root marketplace.
-    assert.equal(MANIFESTS.length, 7);
+    // `./` bundle as Claude Code through the repository-root marketplace. OpenClaw has none
+    // either — it reads that same root bundle, so it ships no native manifest to keep in
+    // sync (it did until the `plugins/` directory was emptied).
+    assert.equal(MANIFESTS.length, 4);
 
     const report = await validateManifests(ROOT);
     const failures = report.results.filter((r) => !r.ok);
@@ -83,16 +84,16 @@ describe("plugin manifests", () => {
     // repository-root bundle as Claude Code (HOST_BUNDLES.codex names that manifest).
     // Pi's manifest is the repository's own `package.json`, whose `pi` field declares the
     // skills path — hence the `files`/`skills` fallback in the assertion below.
-    const hosts = ["claude", "openclaw", "pi"];
+    const hosts = ["claude", "cursor", "pi"];
     const paths = {
       claude: ".claude-plugin/plugin.json",
-      openclaw: "plugins/openclaw/openclaw.plugin.json",
+      cursor: ".cursor-plugin/plugin.json",
       pi: "package.json",
     };
 
     for (const host of hosts) {
       const data = JSON.parse(await readFile(join(ROOT, paths[host]), "utf8"));
-      // Codex/Claude use `skills`; OpenClaw uses an array; Pi uses `files`.
+      // Claude and Cursor declare `skills`; Pi's carrier is the root package's `files`.
       const value = data.skills ?? data.files;
       assert.ok(
         JSON.stringify(value).includes("./skills") ||
@@ -117,112 +118,24 @@ describe("skill sync", () => {
     assert.deepEqual(files, sorted, "listFiles output must be sorted");
   });
 
-  it("syncSkills({check:true}) reports every generated copy in sync", async () => {
-    const report = await syncSkills({ root: ROOT, check: true });
+  it("keeps exactly one skills tree: nothing is distributed as a copy", async () => {
+    // The invariant the whole distribution story exists for, asserted against the
+    // checkout rather than a table — a table can only describe the copies it knows about.
+    // Every harness (claude, codex, cursor, pi, opencode, openclaw) reads the repository's
+    // own `skills/` tree through its own manifest, so there is no generated copy anywhere.
+    //
+    // This is now the *only* guard: with no copy targets left, `sync-skills.mjs --check`
+    // has nothing to compare and cannot notice an orphan `plugins/` tree. A harness that
+    // reintroduces one is exactly the regression this catches
+    // (design/plugin-distribution-plan.md §3.1 / §5.3, reversed for the floor by
+    // design/plugin-distribution-plan.md's 2026-10-17 decision note).
+    assert.deepEqual(await skillDirsUnder(ROOT), ["skills"]);
 
-    for (const result of report.results) {
-      assert.equal(
-        result.equal,
-        true,
-        `plugins/${result.target}/skills/${result.skill} is out of sync — run \`node scripts/sync-skills.mjs\``,
-      );
-      assert.deepEqual(result.missing, []);
-      assert.deepEqual(result.extra, []);
-      assert.deepEqual(result.differing, []);
-    }
-
-    assert.equal(report.ok, true);
-  });
-
-  it("distributes the board only to OpenClaw, and the loop only as a marketplace bundle", () => {
-    // The split's whole point: the distribution surface follows the responsibility.
-    // OpenClaw runs the openclaw-team framework's own poll/patrol, so a second supervisor
-    // there would only race the first for the same cards (ruling O3) — and it is the only
-    // host left that needs a generated copy, because every other harness reads the
-    // repository's own `skills/` tree through its manifest.
-    assert.deepEqual(SKILL_HOSTS["meerkat-taskpanel"], ["openclaw"]);
-    assert.deepEqual(SKILL_HOSTS["meerkat-loop"], []);
-    assert.equal(SKILL_HOSTS["meerkat-loop"].includes("openclaw"), false);
-
-    // A `bundle` target is not a host: it exists so the marketplace can list the loop as
-    // its own plugin, sourced at a directory that exposes the loop skill and nothing else.
-    assert.deepEqual(SKILL_BUNDLES["meerkat-loop"], ["loop"]);
-
-    const rows = skillTargets();
-    assert.deepEqual(
-      rows.map((row) => `${row.skill}→${row.target}`),
-      ["meerkat-taskpanel→openclaw", "meerkat-loop→loop"],
+    assert.equal(
+      existsSync(join(ROOT, "plugins")),
+      false,
+      "plugins/ must not exist — no skill may be distributed as a committed copy",
     );
-  });
-
-  it("keeps one skills tree: no harness gains a third copy", async () => {
-    // The invariant the whole distribution change exists for, asserted against the
-    // checkout rather than the table — a table can only describe the copies it knows
-    // about. Only the two bundles that MUST carry a sibling `skills/` do; every other
-    // harness reads the repository's own tree through its manifest. A new host that adds
-    // a copy is exactly the regression this catches
-    // (design/plugin-distribution-plan.md §3.1 and the §5.3 acceptance list).
-    assert.deepEqual(await skillDirsUnder(ROOT), [
-      "plugins/loop/skills",
-      "plugins/openclaw/skills",
-      "skills",
-    ]);
-
-    assert.deepEqual((await readdir(join(ROOT, "plugins"))).sort(), ["loop", "openclaw"]);
-
-    // 1 OpenClaw manifest + 8 OpenClaw skill files + 2 loop manifests + 25 loop skill files.
-    // The count is the floor the plan measured; it moves only deliberately.
-    assert.equal((await listFiles(join(ROOT, "plugins"))).length, 36);
-  });
-
-  it("compareDirs detects changed, missing and extra files in a temp copy", async () => {
-    const tmp = await makeTempDir();
-
-    const source = join(tmp, "src", "meerkat-taskpanel");
-    const dest = join(tmp, "dest", "meerkat-taskpanel");
-
-    // Real skill source, copied twice — first as an identical mirror.
-    await cp(resolveSkillSource(ROOT), source, { recursive: true });
-    await cp(source, dest, { recursive: true });
-
-    const same = await compareDirs(source, dest);
-    assert.equal(same.equal, true, "identical trees must compare equal");
-    assert.deepEqual(same.differing, []);
-
-    // 1. Corrupt one file → reported as differing.
-    const docPath = join(dest, "references", "cli.md");
-    await writeFile(docPath, "corrupted\n", "utf8");
-    const corrupted = await compareDirs(source, dest);
-    assert.equal(corrupted.equal, false);
-    assert.deepEqual(corrupted.differing, ["references/cli.md"]);
-    assert.deepEqual(corrupted.missing, []);
-    assert.deepEqual(corrupted.extra, []);
-
-    // 2. Delete a file → reported as missing from the destination.
-    await cp(join(source, "references", "cli.md"), docPath);
-    await rm(join(dest, "scripts", "run.mjs"));
-    const missing = await compareDirs(source, dest);
-    assert.equal(missing.equal, false);
-    assert.deepEqual(missing.missing, ["scripts/run.mjs"]);
-
-    // 3. Add a stray file → reported as extra.
-    await cp(join(source, "scripts", "run.mjs"), join(dest, "scripts", "run.mjs"));
-    await writeFile(join(dest, "stray.md"), "stray\n", "utf8");
-    const extra = await compareDirs(source, dest);
-    assert.equal(extra.equal, false);
-    assert.deepEqual(extra.extra, ["stray.md"]);
-  });
-
-  it("compareDirs treats a wholly absent destination as all-missing", async () => {
-    const tmp = await makeTempDir();
-    const source = resolveSkillSource(ROOT);
-    const absent = join(tmp, "nope");
-
-    const diff = await compareDirs(source, absent);
-    assert.equal(diff.equal, false);
-    assert.ok(diff.missing.length > 0);
-    assert.deepEqual(diff.extra, []);
-    assert.deepEqual(diff.differing, []);
   });
 });
 

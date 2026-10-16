@@ -1,14 +1,15 @@
 /**
- * Tests for `scripts/verify/version.mjs` — the two independent version groups.
+ * Tests for `scripts/verify/version.mjs` — the board version group.
  *
  * Every case builds a real tree on disk (a temp dir) and calls the real
  * `validateVersions(base, sources)`; the CLI cases spawn the real script. Nothing is
  * mocked: the thing under test is precisely "does it read these files
  * correctly", so a stub would test nothing.
  *
- * The board group (6 manifests, root `package.json` canonical) and the loop group (2
- * manifests, its own plugin manifest canonical) are **not** compared with each other:
- * the two components version independently (O4), and a loop-only bump must stay green.
+ * There is one group (4 manifests, root `package.json` canonical). The loop used to be a
+ * second one, versioned independently (O4); it stopped being a carrier when its only two
+ * manifests — the `plugins/loop` bundle — were removed, and the group seam is kept so a
+ * second component can be added back.
  */
 
 import assert from "node:assert/strict";
@@ -21,7 +22,6 @@ import test, { after, describe, it } from "node:test";
 
 import {
   DEFAULT_GROUP,
-  LOOP_VERSION_SOURCES,
   ROOT,
   VERSION_GROUPS,
   VERSION_SOURCES,
@@ -48,22 +48,15 @@ async function makeTree() {
  * A JSON body per manifest path, parameterised by version so a case can make
  * exactly one of them disagree (or drop/blank the field entirely).
  *
- * The loop manifests take their own version (defaulting to the board's), so a case can
- * build the tree a *loop-only* bump leaves behind — which must stay green.
- *
  * @param {string} version
- * @param {string} [loopVersion]
  * @returns {Record<string, object>}
  */
-function manifests(version, loopVersion = version) {
+function manifests(version) {
   return {
     "package.json": { name: "meerkat-taskpanel", version, private: true },
     ".claude-plugin/plugin.json": { name: "meerkat-taskpanel", version },
     ".cursor-plugin/plugin.json": { name: "meerkat-taskpanel", version },
-    "plugins/openclaw/openclaw.plugin.json": { id: "meerkat-taskpanel", version },
     ".claude-plugin/marketplace.json": { name: "meerkat-taskpanel-marketplace", metadata: { version } },
-    "plugins/loop/.claude-plugin/plugin.json": { name: "meerkat-loop", version: loopVersion },
-    "plugins/loop/package.json": { name: "meerkat-loop-pi", version: loopVersion },
   };
 }
 
@@ -91,45 +84,36 @@ function runCli(args) {
 }
 
 describe("version.mjs — the shipped manifests", () => {
-  it("declares the board's five sources and the loop's two, one canonical each", () => {
-    assert.equal(VERSION_SOURCES.length, 5);
+  it("declares the board's four sources, exactly one canonical, in one group", () => {
+    assert.equal(VERSION_SOURCES.length, 4);
     assert.equal(VERSION_SOURCES[0].path, "package.json", "package.json is the board's canonical source");
     assert.equal(VERSION_SOURCES.filter((s) => s.canonical === true).length, 1, "exactly one source is canonical");
 
-    assert.equal(LOOP_VERSION_SOURCES.length, 2);
-    assert.equal(
-      LOOP_VERSION_SOURCES[0].path,
-      "plugins/loop/.claude-plugin/plugin.json",
-      "the loop's Claude-format plugin manifest is its canonical source",
-    );
-    assert.equal(LOOP_VERSION_SOURCES.filter((s) => s.canonical === true).length, 1);
-
+    // The loop is not a version carrier: its only two carriers were the `plugins/loop`
+    // manifests, and nothing consumes a loop version (board-check enforces the *board's*
+    // interface floor). A group for it could not be checked against anything.
     assert.deepEqual(
       VERSION_GROUPS.map((group) => group.name),
-      ["board", "loop"],
+      ["board"],
     );
     assert.equal(DEFAULT_GROUP, "board", "a bare invocation keeps reading the board's version");
   });
 
-  it("agrees across this checkout, per group", async () => {
+  it("agrees across this checkout", async () => {
     const declared = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8")).version;
 
     const board = await validateVersions(ROOT);
     assert.equal(board.ok, true, board.error);
     assert.equal(board.version, declared);
-    assert.equal(board.sources.length, 5);
+    assert.equal(board.sources.length, 4);
     assert.ok(board.sources.every((entry) => entry.version === declared));
     assert.equal(await currentVersion(ROOT), declared);
-
-    const loop = await validateVersions(ROOT, LOOP_VERSION_SOURCES);
-    assert.equal(loop.ok, true, loop.error);
-    assert.equal(loop.sources.length, 2);
 
     const groups = await validateVersionGroups(ROOT);
     assert.equal(groups.ok, true);
     assert.deepEqual(
       groups.results.map((entry) => entry.name),
-      ["board", "loop"],
+      ["board"],
     );
   });
 });
@@ -141,7 +125,7 @@ describe("version.mjs — validateVersions(base)", () => {
     const result = await validateVersions(dir);
     assert.equal(result.ok, true, result.error);
     assert.equal(result.version, "9.9.9");
-    assert.equal(result.sources.length, 5);
+    assert.equal(result.sources.length, 4);
   });
 
   it("fails, naming the file, when one manifest drifts", async () => {
@@ -156,7 +140,7 @@ describe("version.mjs — validateVersions(base)", () => {
     assert.equal(result.version, "1.0.0", "the canonical version is still reported");
     assert.match(result.error, /\.claude-plugin\/marketplace\.json/);
     assert.match(result.error, /0\.9\.9/);
-    assert.equal(result.sources.length, 5, "every source is still listed so the diff is legible");
+    assert.equal(result.sources.length, 4, "every source is still listed so the diff is legible");
   });
 
   it("fails when a nested field is missing (marketplace metadata.version)", async () => {
@@ -200,13 +184,13 @@ describe("version.mjs — validateVersions(base)", () => {
   it("fails when a manifest is not valid JSON", async () => {
     const dir = await makeTree();
     const files = manifests("1.0.0");
-    files["plugins/openclaw/openclaw.plugin.json"] = "{ not json";
+    files[".cursor-plugin/plugin.json"] = "{ not json";
     await writeTree(dir, files);
 
     const result = await validateVersions(dir);
     assert.equal(result.ok, false);
     assert.equal(result.kind, "read");
-    assert.match(result.error, /plugins\/openclaw\/openclaw\.plugin\.json: not valid JSON/);
+    assert.match(result.error, /\.cursor-plugin\/plugin\.json: not valid JSON/);
   });
 });
 
@@ -223,8 +207,7 @@ describe("version.mjs — the CLI", () => {
     await writeTree(dir, manifests("2.0.0"));
     const result = runCli(["--base", dir]);
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /all 5 board manifests agree on 2\.0\.0/);
-    assert.match(result.stdout, /all 2 loop manifests agree on 2\.0\.0/);
+    assert.match(result.stdout, /all 4 board manifests agree on 2\.0\.0/);
   });
 
   it("exits 1 and prints the drift on a drifted tree", async () => {
@@ -248,47 +231,25 @@ describe("version.mjs — the CLI", () => {
     assert.match(result.stderr, /file not found/);
   });
 
-  it("exits 1 when only the loop group drifts, and names that group", async () => {
+  it("--group board narrows to the one group, and --print reads its canonical entry", async () => {
     const dir = await makeTree();
-    const files = manifests("2.0.0");
-    files["plugins/loop/package.json"] = { name: "meerkat-loop-pi", version: "0.9.0" };
-    await writeTree(dir, files);
-
-    const result = runCli(["--base", dir]);
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /version: FAILED \(loop\)/);
-    assert.match(result.stderr, /plugins\/loop\/package\.json/);
-    // The board group is reported clean in the same run — one drifted group must not
-    // condemn the other.
-    assert.match(result.stdout, /all 5 board manifests agree on 2\.0\.0/);
-  });
-
-  it("stays green when the loop carries a version of its own", async () => {
-    // The state a loop-only bump leaves behind: two groups, two versions, no drift
-    // (O4 — they are released independently).
-    const dir = await makeTree();
-    await writeTree(dir, manifests("2.0.0", "2.1.0"));
-
-    const result = runCli(["--base", dir]);
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /all 5 board manifests agree on 2\.0\.0/);
-    assert.match(result.stdout, /all 2 loop manifests agree on 2\.1\.0/);
-  });
-
-  it("--group narrows the check and --print reads that group's canonical entry", async () => {
-    const dir = await makeTree();
-    await writeTree(dir, manifests("2.0.0", "2.1.0"));
+    await writeTree(dir, manifests("2.0.0"));
 
     const boardOnly = runCli(["--base", dir, "--group", "board"]);
     assert.equal(boardOnly.status, 0, boardOnly.stderr);
-    assert.equal(boardOnly.stdout.includes("loop manifests agree"), false);
-
-    const loopPrint = runCli(["--base", dir, "--group", "loop", "--print"]);
-    assert.equal(loopPrint.status, 0, loopPrint.stderr);
-    assert.equal(loopPrint.stdout.trim(), "2.1.0");
+    assert.match(boardOnly.stdout, /all 4 board manifests agree on 2\.0\.0/);
 
     const boardPrint = runCli(["--base", dir, "--print"]);
     assert.equal(boardPrint.stdout.trim(), "2.0.0");
+  });
+
+  it("rejects the retired loop group rather than silently checking nothing", async () => {
+    // `--group loop` used to be valid. Now that the loop carries no version, asking for it
+    // must be an error — a group that resolves to an empty source list would report success
+    // for a tree it never read.
+    const result = runCli(["--group", "loop"]);
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /unknown --group 'loop'/);
   });
 
   it("exits 2 on an unknown --group", async () => {
