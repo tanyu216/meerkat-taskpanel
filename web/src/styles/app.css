@@ -431,9 +431,47 @@ svg[data-token-icon][hidden] { display: none; }
    leaving a flat-edged pill. The implementation corrects it: the roster's text
    host clips nothing, so the capsule is a whole pill on every name. The ellipsis
    the project row needs stays where it belongs — on `[data-project]`'s own name
-   cell, which keeps its utilities. */
+   cell, which keeps its utilities.
+
+   --- the rail's own overflow (`T-20261016-130046`) -------------------------
+
+   `overflow: visible` above is what takes `min-width: auto` away from this flex
+   item: a non-scrollable item's automatic minimum size is its *min-content* size,
+   and the project row's name cell is saved from that only by the very
+   `overflow: hidden` this rule removes. `flex-1` is `flex: 1 1 0%`, so the host
+   still *asks* for 0 — but the floor wins, the host sizes to its whole one-line
+   run, and the row's own box ends where `.td-sidebar`'s `overflow-x: auto` box
+   cuts it: the rail scrolled (measured `scrollWidth 308 > clientWidth 247` at
+   ≥1240, which `shot-compare`'s rail-parity gate reports as *the implementation
+   clipping content the prototype does not*). The prototype never reached it
+   because its sample roster is three short names in a 143.34px host; the board
+   puts **one** row of every `kind: agent` actor there (`platformOf()` reads the
+   kind, `DICT_KINDS = ["agent","human"]`), so a real roster is wider than the
+   rail and the overflow is data-driven, not a prototype reading.
+
+   The rail is a fixed 248px column: it may not hide names (R-1 — no name is ever
+   elided) and it may not scroll. So the host **shrinks and the run wraps**,
+   which is the one shape that satisfies both `dom-smoke`'s `roster clip === 0`
+   and `shot-compare`'s rail parity. `min-width: 0` is the prototype's own
+   `.td-side-name` declaration; `white-space: normal` is where this departs from
+   it (the prototype ellipsises) — the departure is the round's, and it is the
+   only one that keeps every name whole. Each name is an inline-block `<button>`,
+   so a wrap can only land on a separator, never inside a name.
+
+   `text-wrap: balance` is the comma's keeper, not decoration. The separator is
+   static text *between* the items (R13 §10.1), so the last break before the
+   overflowing separator is the item boundary itself — plain greedy wrapping
+   therefore puts `", assistant"` alone on the second line, starting a line with
+   its own separator. Balancing moves the break one item back (`"linus, jobs,"` /
+   `"elon, assistant"`, measured at 1512), which is the same two lines with the
+   punctuation where a reader expects it. Where the engine declines to balance
+   (more lines than it will re-flow) the run degrades to the greedy wrap above —
+   still whole names, still inside the rail. */
 [data-agent-row] [data-agent-text] {
+  min-width: 0;
   overflow: visible;
+  text-wrap: balance;
+  white-space: normal;
 }
 
 /* R13 修订（seg3 · 决定甲）— the `[data-assignee-clear]` `x` and its `:hover` /
