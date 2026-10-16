@@ -20,11 +20,12 @@ Meerkat TaskPanel 就是回答这些问题的记录：
 
 结果是：Agent 团队的工作不再是黑盒，而是**可可视化、可追溯**，其推理过程事后可被检视。
 
-## 它是给谁用的
+## 它用来做什么
 
 Meerkat TaskPanel 是**为 AI Agent 团队而生**的任务看板。它的主题是 **Agent 之间的任务协作** —— 拆分工作、声明依赖、交接结果；而对围绕它们的人来说，它把这种协作变成**可可视化、可追溯**的东西，而不是锁在模型的上下文里。真正干这些事的机制 —— 只增不改的审计轨迹、一等公民的依赖与 epic 关系、可续接的会话 —— 正是下方[亮点](#亮点)所描述的。
 
-> **状态：引擎已落地至 M6 —— 核心（M1）、CLI（M2），以及完整的看板后端与 `web/` 前端（M6）。**
+> **状态：引擎已整体落地 —— 核心引擎、`taskctl` CLI 与其本地 `taskd`、六宿主安装器、
+> md 迁移器，以及完整的看板后端与 `web/` 前端。**
 > `src/core/` 已包含领域模型、SQLite 存储与迁移、用例与 `openBoard()`；`src/cli/` +
 > `src/server/` 提供了真实的 `taskctl` 命令面，以及 CLI 会在回环地址上自动启动的本地
 > `taskd` HTTP 服务（`TASKD_NO_AUTOSTART=1` 可禁用）；`src/server/` 提供完整的看板 HTTP API
@@ -49,7 +50,7 @@ Meerkat TaskPanel 是**为 AI Agent 团队而生**的任务看板。它的主题
 6. **local-first、运行时零依赖。** 唯一持久化是一个 SQLite 文件（Node 内置
    `node:sqlite`）；引擎不依赖其它库，且完全可离线运行。
 7. **同一块看板，多个入口。** 可用 `taskctl` CLI 驱动，也可走本地 `taskd` HTTP API ——
-   并为 Claude Code、Codex、OpenClaw、pi 提供 skill/插件安装。
+   并为 Claude Code、Codex、OpenClaw、pi、OpenCode、Cursor 提供 skill/插件安装。
 8. **设计上 provider-agnostic。** Meerkat TaskPanel 是 openclaw-team 框架的默认看板基座 —— 其
    认领 / 候选判定与框架的 poll 保持同步，因此更换看板底座（Jira、Plane、Linear……）无需
    改动 Agent。访问由 token 与可选的 CIDR 白名单把关。
@@ -82,24 +83,26 @@ Meerkat TaskPanel 是三层薄结构，依赖方向始终向内：`src/cli`、`s
 ```text
 meerkat-taskpanel/
 ├── README.md / README.zh-CN.md   # 文档（默认英文，中文镜像）
+├── CHANGELOG.md / CONTRIBUTING.md
 ├── LICENSE / PRIVACY.md
 ├── package.json                  # 工作区根 + bin(taskctl) + scripts
 ├── install.sh                    # 安装分发器：--target claude|openclaw|codex|pi|opencode|cursor|all
-├── .claude-plugin/               # Claude marketplace 清单
 ├── src/                          # 工程源码
-│   ├── core/                     #   领域模型 / SQLite 仓储 / 状态机 / 不变量
+│   ├── core/                     #   领域模型 / SQLite 仓储 / 状态机 / 不变量 / md 迁移器
 │   ├── cli/                      #   taskctl（CLI 出口）
 │   ├── server/                   #   本地 HTTP API + SSE
 │   └── shared/                   #   共享 DTO / 常量
 ├── web/                          # 看板前端（Vue 3 + Vite）→ web/dist（托管根）
-├── skills/meerkat-taskpanel/        # skill —— 单一事实源
-├── .claude-plugin/               # board 插件清单（插件根 = 仓根）
+├── skills/                       # 两个 skill：meerkat-taskpanel（看板）、meerkat-loop（监督进程）
+├── .claude-plugin/               # marketplace + board 插件清单（插件根 = 仓根）
 ├── .pi/                          # Pi 扩展（由 package.json 的 `pi` 字段声明）
 ├── .opencode/                    # OpenCode 插件（就地读那一份 skills/）
 ├── .cursor-plugin/               # Cursor 标记 —— 让仓根同时也是一个 Cursor 插件
 ├── plugins/                      # 仍需自备 skills/ 的 bundle
 │                                 #   （openclaw，以及 loop 自己的 marketplace 条目）
 ├── design/                       # 设计文档：DESIGN / BLOCKS、prototype/、brand/、assets/
+├── docker/                       # Dockerfile、compose、profiles、verify-in-container.sh
+├── monitoring/                   # OTel / Prometheus 导出器
 ├── scripts/                      # 构建 / 安装 / 同步 / 校验
 ├── test/                         # 契约 + 冒烟测试
 ├── docs/                         # 使用与开发文档
@@ -158,7 +161,8 @@ OpenClaw 也可消费这个 Claude 格式的 bundle，这是受支持的 skill-o
 
 安装 skill 只需一行；把看板用好则是一套习惯。所有宿主共享同一条**八条规则**内核：
 **认领优先**（先 `issue candidates --assignee <我>`，再 `issue move <ref> in_progress`）；
-**只领该领的**（非本人 / `backlog` 未授权 / `epic` / `depends_on` 未满足 ⇒ 不领）；
+**只领该领的**（非本人 / `backlog` 未授权 / `epic` / 部署卡（`kind: deploy` —— poll 从不出让，由人工
+或 leader 显式派发）/ `depends_on` 未满足 ⇒ 不领）；
 **一次一卡**；**心跳新鲜**（看板把认领视为存活 10 分钟）；**交付带报告**（交付门禁）；
 **自评≠验收**（Agent 只到 `in_review`，人接受才 `done`）；**冲突不抢占**（重读一次，
 仍可领才重试）；**可追溯**（携带会话 id）。宿主之间的差异，只在**由谁来执行这些规则**。
@@ -166,7 +170,9 @@ OpenClaw 也可消费这个 Claude 格式的 bundle，这是受支持的 skill-o
 ### 调度：轮询与巡检
 
 **简言之**：这个循环是一个**活在宿主之外**的**监督进程**。它**每分钟**扫描看板，**只有真正
-认领到卡**时才唤醒 worker（空转一次 $0）；**每五分钟**巡检一次，对心跳过期的认领告警。
+认领到卡**时才唤醒 worker（空转一次 $0）；**每五分钟**巡检一次，对心跳过期的认领告警 —— 并覆盖
+`PROTOCOL §⑮` 超时表的其余各项：停在 leader 手上的卡、无人应答的确认门、没建出修复卡的缺陷、
+没人排验收的交付，以及 leader 自身巡检静默。每一条都是**发给 leader 的通知**，绝不对卡动手。
 Claude Code 与 Codex **本身没有定时器**，因此循环活在它们**之外**，只负责唤醒 worker
 （`claude -p`、`codex exec`、`pi --print`）。**启用方式**：运行
 `install.sh --target claude|codex|pi` —— 它会安装 `meerkat-loop` skill、投放该宿主的
@@ -178,17 +184,18 @@ launchd / systemd / cron 单元，并**打印加载命令**（绝不替你启动
 [`scripts/supervisor.mjs`](scripts/supervisor.mjs)）运行两层：**每分钟轮询** —— 一次
 $0 的本地 CLI 扫描，**只有真正认领到卡**时才启动模型回合（原子认领是唯一的派单源）；
 以及**每五分钟巡检** —— 对心跳过期的认领升级告警，并把**无法解析的心跳如实上报**
-（绝不静默）。Claude Code 与 Codex **本身没有定时器**，因此这个循环活在它们**之外**，
+（绝不静默），且以与 openclaw 侧 inspector 相同的告警元组覆盖 `PROTOCOL §⑮` 超时表的其余
+各项。Claude Code 与 Codex **本身没有定时器**，因此这个循环活在它们**之外**，
 被唤醒的只是 worker（`claude -p`、`codex exec`、`pi --print`）。
 
-这个循环本身也是一个 skill（`meerkat-loop`），并且 `install.sh` **只为 claude / codex / pi
+这个循环本身也是一个 skill（`skills/meerkat-loop/`），并且 `install.sh` **只为 claude / codex / pi
 安装它**；OpenClaw 只拿到看板、不拿 loop —— openclaw-team 框架已自带等价实现。除 skill 之外，
 安装器还会写入各宿主的 launchd / systemd / cron 调度单元与唤醒脚本，并**打印**加载
 命令 —— 绝不替你启用守护进程。安装时还会问一次是否允许认领**未分配**的卡（默认允许），
 并把答案记到 `<宿主目录>/meerkat-taskpanel.env`。loop skill 会声明它所需的 board
 `task-interface` 版本，并由 `scripts/board-check.mjs` 对着看板自己的 `--version --json` 强制执行；
 完整设计 —— 两层模型、仅触发才计费的成本闸门、
-幂等唤醒、并发上限、失效兜底，以及三宿主触发差异 —— 见
+幂等唤醒、并发上限、失效兜底，以及 claude / codex / pi 三宿主的触发差异 —— 见
 [`docs/scheduling.md`](docs/scheduling.md)。
 
 ### OpenClaw
@@ -242,7 +249,7 @@ claim-first 片段、写入可调度的认领触发脚本 `~/.codex/meerkat-task
 做会话级归属。Codex **本身没有定时器**，因此规则 1 由[监督进程](#调度轮询与巡检)唤醒
 `codex exec` 回合（或使用 Codex 应用自动化）来驱动，随包的认领触发脚本作为最小后备。
 
-完整指南 —— 八条规则的展开、各宿主的安装与触发差异，以及一个最小示例 —— 在 skill 内：
+完整指南 —— 八条规则的展开、各宿主的安装与触发差异，以及一个实战示例 —— 在 skill 内：
 [`skills/meerkat-taskpanel/references/practice-guides.md`](skills/meerkat-taskpanel/references/practice-guides.md)。
 
 ## 开发
@@ -264,16 +271,23 @@ node scripts/build.mjs               # 产出 dist/
 npm run check
 ```
 
+**想贡献？** 先读 [CONTRIBUTING.md](CONTRIBUTING.md) —— 它讲清了容器门禁（`npm run verify:docker`）、
+PR 流程，以及 CI 强制执行的约定。贡献以 MIT 许可落库。
+
 ## 路线图
 
-| 阶段 | 内容 |
-|---|---|
-| **M0** | 脚手架：目录骨架、清单、同步 / 校验脚本、测试（*已落地*） |
-| M1 | `src/core`：领域模型、SQLite 仓储、状态机、不变量（*已落地*） |
-| M2 | `taskctl` 命令面，对齐 `task-interface v1`；最小本地 `taskd`（*已落地*） |
-| M6 | 完整的看板 HTTP API + SSE 后端（`src/server/`），以及 `web` 看板前端 → `web/dist`（*已落地*） |
-| **Epic 视图** | epic 层级 / 进展 / rollup 的可视化视图 —— 查看 epic 及其子卡状态的聚合（*规划中*） |
-| **迭代管理** | 迭代（sprint）周期管理：任务归入迭代、迭代内进度与容量（*规划中*） |
+| 能力域 | 内容 | 状态 |
+|---|---|---|
+| **引擎** | `src/core/` —— 领域模型、SQLite 存储与迁移、状态机、下沉到数据库触发器的各项不变量、`openBoard()` | *已落地* |
+| **CLI 与本地服务** | `src/cli/` —— 对齐 `task-interface v1` 的 `taskctl` 命令面，以及 CLI 自动启动的回环 `taskd` | *已落地* |
+| **安装器** | `install.sh` + `scripts/install/<host>.sh` —— 六个宿主目标，幂等且合并式写入 | *已落地* |
+| **md 迁移器** | `src/core/storage/md/` —— 卡与 markdown 互导，带 reconcile 与导入后不变量检查 | *已落地* |
+| **看板 API 与前端** | `src/server/` —— 完整的看板 HTTP API 及其 SSE 流；`web/` —— 构建到 `web/dist` 的 Vue 3 看板 | *已落地* |
+| **Epic 视图** | epic 层级 / 进展 / rollup 的可视化视图 —— 查看 epic 及其子卡状态的聚合 | *（规划中）* |
+| **迭代管理** | 迭代（sprint）周期管理：任务归入迭代、迭代内进度与容量 | *（规划中）* |
+
+> 本表已弃用 `M0`–`M6` 编号：`M3`（stdio MCP 服务器）是先落地、后被整体移除的 —— 见
+> [迁移记录](docs/migration.md#separate-migration-the-mcp-integration-is-gone)。
 
 ## 许可证
 
