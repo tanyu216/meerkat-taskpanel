@@ -98,7 +98,7 @@ re-encodes the same table as a trigger — the two are tested against each other
 
 ```
 backlog      → todo | canceled
-todo         → backlog | in_progress | blocked | canceled
+todo         → backlog | in_progress | blocked | canceled        (an `epic` also → in_review)
 in_progress  → in_review | blocked | todo | canceled | awaiting
 awaiting     → in_progress | canceled
 in_review    → done | in_progress | blocked
@@ -107,9 +107,15 @@ done         → (terminal — I3)
 canceled     → (terminal — I3)
 ```
 
-Three properties are load-bearing:
+Four properties are load-bearing:
 
 - **`done` is reachable only from `in_review`** — no delivery without review.
+- **An `epic` may be delivered straight from `todo`** (`0024`). A container is never claimable,
+  so `todo` was otherwise a state with no exit — and `done` sits behind `in_review`. The
+  exception is scoped to **`kind`**, not to the status: a `task` in `todo` still cannot reach
+  `in_review`, and the delivery gate applies to the epic's report exactly as it does to a leaf's.
+  When every child of an epic reaches `done`, the board closes the container itself (the rollup
+  report, authored by the board), so the epic's delivery is not an agent's step.
 - **Leaving `in_review`** (to `in_progress` or `blocked`) **starts a new delivery round**; the
   previous round's report stops counting. `awaiting → in_progress` is *not* such an exit: it
   resumes the same attempt, round untouched.

@@ -4,8 +4,14 @@
  * The whitelist is the *only* fact source: `domain/status.mjs` decides the
  * service-layer path and `migrations/0002_invariants.sql` re-encodes the exact
  * same table as a trigger, so the DB is the machine guarantee behind the same
- * rules (`test/contract/state-machine.test.mjs` walks all 49 pairs down both
- * paths).
+ * rules (`test/contract/state-machine.test.mjs` walks every ordered pair, for a
+ * `task` *and* for an `epic`, down both paths).
+ *
+ * Since 0024 the whitelist has **two rows per status for one pair**: the base
+ * table below is the `task` row and {@link EPIC_ONLY_TRANSITIONS} is the one
+ * pair an `epic` adds to it. The second axis is confined to `kind` — it is not a
+ * general-purpose rule hook — and every predicate takes it as an optional last
+ * argument, so a caller with no kind in hand reads the base table.
  *
  * Key properties:
  *   - `done` is reachable **only** from `in_review` ⇒ "no delivery without review".
@@ -35,11 +41,15 @@
  */
 
 import { DomainError } from "../../shared/errors.mjs";
-import { STATUS, STATUSES } from "./enums.mjs";
+import { STATUS, STATUSES, TASK_KIND } from "./enums.mjs";
 
 /**
  * `from` → allowed `to` values. Every pair *not* listed here is rejected with
  * `INVALID_TRANSITION` (or `TERMINAL_STATE` when `from` is terminal).
+ *
+ * This is the **task** row. An `epic` adds {@link EPIC_ONLY_TRANSITIONS} on top
+ * of it (0024); `kind` is the second argument of every predicate below, and a
+ * caller that does not pass one gets exactly this table.
  */
 export const ALLOWED_TRANSITIONS = Object.freeze({
   [STATUS.BACKLOG]: Object.freeze([STATUS.TODO, STATUS.CANCELED]),
@@ -62,6 +72,38 @@ export const ALLOWED_TRANSITIONS = Object.freeze({
   [STATUS.DONE]: Object.freeze([]),
   [STATUS.CANCELED]: Object.freeze([]),
 });
+
+/**
+ * The **epic overlay** (0024): the pairs that are legal for an `epic` and for no
+ * other kind.
+ *
+ * An `epic` is a container — never claimed, never `in_progress` (that refusal is
+ * `domain/claim.mjs#decideClaim`, and it is product semantics: `GLOSSARY.md`
+ * "Epic"). So the one assumption every other row of the table can make —
+ * *`in_review` is entered from the work cycle* — does not hold for it: `todo` is
+ * where `issue create --kind epic` puts a container, and without an exit there
+ * the card can never be delivered, and so never reach `done`. The pair is
+ * **added** to the row rather than replacing it; the whitelist stays a whitelist.
+ *
+ * One pair, and only `todo → in_review`:
+ *
+ *   - `todo` is the epic's ready state, and the only one that means "released for
+ *     work" — so it is the only state that may be delivered from. `backlog` is
+ *     deliberately absent: an unreleased container is not deliverable, exactly as
+ *     an unreleased task is not claimable.
+ *   - `todo → in_progress` is *not* removed. It is the claim gate, not the table,
+ *     that refuses an epic, and moving that refusal into the table would take
+ *     `in_progress → todo`'s counterexample apart for `deploy` cards too.
+ *
+ * What the overlay does **not** relax is the delivery gate: `requiresReport`
+ * keys on `to` alone, so an epic landing in `in_review` still owes a report for
+ * the current round — the rollup, which is what a reviewer reads. The database
+ * mirrors both halves (`0024_epic_deliver_from_todo.sql`).
+ */
+export const EPIC_ONLY_TRANSITIONS = Object.freeze({
+  [STATUS.TODO]: Object.freeze([STATUS.IN_REVIEW]),
+});
+
 
 /** Statuses nothing may leave (I3). */
 export const TERMINAL_STATUSES = Object.freeze([STATUS.DONE, STATUS.CANCELED]);
@@ -137,21 +179,34 @@ export function isTerminalStatus(value) {
 }
 
 /**
+ * The allowed targets of `from` **for this kind of card**.
+ *
+ * `kind` is the card's own `kind` (`TASK_KIND`). An `epic` gets
+ * {@link EPIC_ONLY_TRANSITIONS} laid over the base row; every other kind — and a
+ * caller that states none — reads the base table unchanged, which is the
+ * fail-closed direction: an unstated kind is never *more* permissive.
+ *
  * @param {string} from
+ * @param {string|null} [kind] the card's kind, or `null`/omitted for the base table
  * @returns {readonly string[]} allowed targets (empty for terminal statuses and
  *   for unknown inputs).
  */
-export function allowedTargets(from) {
-  return ALLOWED_TRANSITIONS[from] ?? Object.freeze([]);
+export function allowedTargets(from, kind = null) {
+  const base = ALLOWED_TRANSITIONS[from];
+  if (base === undefined) return Object.freeze([]);
+  if (kind !== TASK_KIND.EPIC) return base;
+  const extra = EPIC_ONLY_TRANSITIONS[from];
+  return extra === undefined ? base : Object.freeze([...base, ...extra]);
 }
 
 /**
  * @param {string} from
  * @param {string} to
- * @returns {boolean} whether the pair is on the whitelist
+ * @param {string|null} [kind] the card's kind (see {@link allowedTargets})
+ * @returns {boolean} whether the pair is on the whitelist for this kind
  */
-export function canTransition(from, to) {
-  return allowedTargets(from).includes(to);
+export function canTransition(from, to, kind = null) {
+  return allowedTargets(from, kind).includes(to);
 }
 
 /**
@@ -161,10 +216,11 @@ export function canTransition(from, to) {
  *
  * @param {string} from
  * @param {string} to
+ * @param {string|null} [kind] the card's kind (see {@link allowedTargets})
  * @returns {"TERMINAL_STATE"|"INVALID_TRANSITION"|null}
  */
-export function transitionReasonCode(from, to) {
-  if (canTransition(from, to)) return null;
+export function transitionReasonCode(from, to, kind = null) {
+  if (canTransition(from, to, kind)) return null;
   if (isTerminalStatus(from)) return "TERMINAL_STATE";
   return "INVALID_TRANSITION";
 }
@@ -172,24 +228,29 @@ export function transitionReasonCode(from, to) {
 /**
  * Assert a transition, throwing the same reason code the DB trigger raises.
  *
+ * The refusal carries the target's own `allowed` list, so the repair a caller
+ * prints is the move that caller can actually make — an epic in `todo` is told
+ * `in_review` is available, a task in `todo` is not.
+ *
  * @param {string} from
  * @param {string} to
+ * @param {string|null} [kind] the card's kind (see {@link allowedTargets})
  * @returns {string} `to`, for chaining
  */
-export function assertTransition(from, to) {
+export function assertTransition(from, to, kind = null) {
   if (!isKnownStatus(from) || !isKnownStatus(to)) {
     throw new DomainError("VALIDATION_FAILED", {
       message: `unknown status value(s): from=${JSON.stringify(from)} to=${JSON.stringify(to)}`,
       details: { from, to, allowed: STATUSES },
     });
   }
-  const reason = transitionReasonCode(from, to);
+  const reason = transitionReasonCode(from, to, kind);
   if (reason !== null) {
     throw new DomainError(reason, {
       details: {
         from,
         to,
-        allowed: [...allowedTargets(from)],
+        allowed: [...allowedTargets(from, kind)],
       },
       message:
         reason === "TERMINAL_STATE"

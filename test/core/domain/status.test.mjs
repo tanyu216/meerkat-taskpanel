@@ -11,10 +11,11 @@
 import assert from "node:assert/strict";
 import test, { describe, it } from "node:test";
 
-import { STATUS, STATUSES } from "../../../src/core/domain/enums.mjs";
+import { STATUS, STATUSES, TASK_KIND } from "../../../src/core/domain/enums.mjs";
 import {
   ALLOWED_TRANSITIONS,
   CLAIMABLE_STATUS,
+  EPIC_ONLY_TRANSITIONS,
   ROUND_BUMPING_EXITS,
   TERMINAL_STATUSES,
   allowedTargets,
@@ -197,5 +198,110 @@ describe("domain/status — rejection codes", () => {
         return true;
       },
     );
+  });
+});
+
+/**
+ * The epic overlay (0024).
+ *
+ * An `epic` is the one kind that can never be `in_progress` — it is a container,
+ * never claimed — so the whitelist has exactly one gap for it: the route from
+ * `todo` (the status `issue create --kind epic` births in) into `in_review`. The
+ * expected overlay below is written out literally, independently of the module,
+ * the same way `EXPECTED_ALLOWED` is.
+ */
+describe("domain/status — the epic overlay (0024)", () => {
+  /** The only pair an epic may take that a `task` may not. */
+  const EPIC_EXTRA = [["todo", "in_review"]];
+
+  const isExtra = (from, to) => EPIC_EXTRA.some(([f, t]) => f === from && t === to);
+
+  it("adds exactly that one pair, and adds it for no other kind", () => {
+    for (const from of STATUSES) {
+      for (const to of STATUSES) {
+        const base = EXPECTED_ALLOWED[from].includes(to);
+        assert.equal(canTransition(from, to, TASK_KIND.EPIC), base || isExtra(from, to), `epic ${from} → ${to}`);
+        for (const kind of [undefined, TASK_KIND.TASK, TASK_KIND.DEPLOY, null]) {
+          assert.equal(canTransition(from, to, kind), base, `${kind ?? "unstated"} ${from} → ${to}`);
+        }
+      }
+    }
+    assert.deepEqual([...EPIC_ONLY_TRANSITIONS[STATUS.TODO]], ["in_review"]);
+    assert.deepEqual(Object.keys(EPIC_ONLY_TRANSITIONS), [STATUS.TODO], "one row, not a table");
+  });
+
+  it("overlays the row instead of rewriting it", () => {
+    assert.deepEqual(
+      [...allowedTargets(STATUS.TODO, TASK_KIND.EPIC)],
+      [...EXPECTED_ALLOWED.todo, "in_review"],
+      "the epic row is the task row plus the one pair",
+    );
+    assert.deepEqual([...allowedTargets(STATUS.TODO)], EXPECTED_ALLOWED.todo);
+    for (const status of STATUSES) {
+      assert.deepEqual([...ALLOWED_TRANSITIONS[status]], EXPECTED_ALLOWED[status], "the base table never moves");
+      if (status !== STATUS.TODO) {
+        assert.deepEqual([...allowedTargets(status, TASK_KIND.EPIC)], EXPECTED_ALLOWED[status], status);
+      }
+    }
+  });
+
+  it("is about *delivery*, never about *claiming*", () => {
+    // `todo → in_progress` stays on the epic's row — the table has no opinion on
+    // who may claim; it is `decideClaim` that refuses an epic. Widening this
+    // would be the one thing the card forbids, so it is asserted, not assumed.
+    assert.equal(canTransition(STATUS.TODO, STATUS.IN_PROGRESS, TASK_KIND.EPIC), true);
+    assert.equal(isClaimable(STATUS.TODO), true);
+  });
+
+  it("refuses with the epic's own allowed set in the details", () => {
+    assert.equal(assertTransition(STATUS.TODO, STATUS.IN_REVIEW, TASK_KIND.EPIC), "in_review");
+    assert.throws(
+      () => assertTransition(STATUS.TODO, STATUS.IN_REVIEW),
+      (err) => {
+        assert.equal(err.code, "INVALID_TRANSITION");
+        assert.deepEqual(err.details.allowed, EXPECTED_ALLOWED.todo);
+        return true;
+      },
+    );
+    assert.throws(
+      () => assertTransition(STATUS.TODO, STATUS.DONE, TASK_KIND.EPIC),
+      (err) => {
+        assert.equal(err.code, "INVALID_TRANSITION");
+        assert.deepEqual(err.details.allowed, [...EXPECTED_ALLOWED.todo, "in_review"]);
+        return true;
+      },
+    );
+  });
+
+  it("moves the reason code, and nothing else, with the pair", () => {
+    assert.equal(transitionReasonCode(STATUS.TODO, STATUS.IN_REVIEW, TASK_KIND.EPIC), null);
+    assert.equal(transitionReasonCode(STATUS.TODO, STATUS.IN_REVIEW), "INVALID_TRANSITION");
+    assert.equal(transitionReasonCode(STATUS.BACKLOG, STATUS.IN_REVIEW, TASK_KIND.EPIC), "INVALID_TRANSITION");
+    for (const terminal of TERMINAL_STATUSES) {
+      assert.equal(canTransition(terminal, STATUS.IN_REVIEW, TASK_KIND.EPIC), false);
+      assert.equal(transitionReasonCode(terminal, STATUS.IN_REVIEW, TASK_KIND.EPIC), "TERMINAL_STATE");
+    }
+    assert.equal(canTransition("nonsense", STATUS.IN_REVIEW, TASK_KIND.EPIC), false);
+  });
+
+  it("still reaches done only through in_review — for an epic too", () => {
+    assert.deepEqual(STATUSES.filter((from) => canTransition(from, STATUS.DONE, TASK_KIND.EPIC)), [STATUS.IN_REVIEW]);
+    for (const start of STATUSES) {
+      if (start === STATUS.IN_REVIEW) continue;
+      const seen = new Set();
+      const queue = [...allowedTargets(start, TASK_KIND.EPIC)];
+      while (queue.length > 0) {
+        const next = queue.shift();
+        if (next === STATUS.IN_REVIEW || seen.has(next)) continue;
+        seen.add(next);
+        queue.push(...allowedTargets(next, TASK_KIND.EPIC));
+      }
+      assert.equal(seen.has(STATUS.DONE), false, `epic ${start} reaches done without passing in_review`);
+    }
+  });
+
+  it("does not move the round or the gate with the pair", () => {
+    assert.equal(bumpsDeliveryRound(STATUS.TODO, STATUS.IN_REVIEW), false, "todo is not a round-bumping source");
+    assert.equal(requiresReport(STATUS.IN_REVIEW), true, "and the gate still asks for a report");
   });
 });

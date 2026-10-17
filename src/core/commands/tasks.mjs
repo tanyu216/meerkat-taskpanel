@@ -43,6 +43,7 @@ import { actorOf } from "./context.mjs";
 import { addComment } from "./comments.mjs";
 import { resolveActorId, resolveAssignment } from "./dictionary.mjs";
 import { resolveLabels } from "./labels.mjs";
+import { advanceContainerForChild } from "./rollup.mjs";
 
 /**
  * @param {object} ctx
@@ -597,7 +598,7 @@ export function moveStatus(ctx, input) {
         throw new DomainError("NOT_FOUND", { message: `no task ${input.id}`, details: { taskId: input.id } });
       }
 
-      assertTransition(current.status, input.to);
+      assertTransition(current.status, input.to, current.kind);
 
       // `todo → in_progress` **is** a claim (T-20261009-230500): it must respect
       // the routing lock and stamp `claimed_by/claimed_at/heartbeat_at`, so the
@@ -673,6 +674,10 @@ export function moveStatus(ctx, input) {
               },
         createdAt: now,
       });
+      // The container closes itself when its last child lands
+      // (commands/rollup.mjs): the same transaction, so a child can never be
+      // `done` on a board where its epic still looks unfinished.
+      if (task.status === STATUS.DONE) advanceContainerForChild(ctx, task.id, now);
       return task;
     },
     { op: "tasks.move" },
@@ -1065,7 +1070,7 @@ export function canMove(ctx, input) {
   });
   if (!verdict.ok) return verdict;
   try {
-    assertTransition(task.status, input.to);
+    assertTransition(task.status, input.to, task.kind);
   } catch (err) {
     return { ok: false, reason: err.code, details: err.details };
   }

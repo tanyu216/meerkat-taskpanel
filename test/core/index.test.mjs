@@ -72,6 +72,7 @@ const PLANNED = [
   "commands/reports.mjs",
   "commands/comments.mjs",
   "commands/relations.mjs",
+  "commands/rollup.mjs",
   "commands/dictionary.mjs",
   "commands/labels.mjs",
   "commands/agent-sessions.mjs",
