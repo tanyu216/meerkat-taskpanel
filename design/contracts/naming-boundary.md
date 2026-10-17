@@ -5,16 +5,20 @@
 > 卡：`T-20261014-011057-2`（goal：裁定 `task-interface v1` 等 openclaw-team 框架名在产品仓的可用边界。范围 = operator 2026-10-14 拍板的 **(B) 命名耦合**。）
 > **裁定来源**：卡面 Background 的三问（① `task-interface` 作产品对外契约名是否合法；② 哪些框架内部名不得进产品契约/文档；③ 跨仓发版说明类引用如何标注方可保留）+ Acceptance ③ 的事实源口径。本文件是**执行方的落文**，不是新裁定。
 > 分工：**本卡 = C1**（写面 `design/**`，**零实现**）→ 后续**清理卡 = C2**（Linus，按 §4 逐类处置 + §7 分批）→ **独立验证 = C3**（Turing，按 §4 每条的「判据」核落点）。本文件是 C2/C3 的**唯一口径**。
-> 事实源（**实读**）：`src/shared/wire.mjs`、`src/shared/constants.mjs`、`src/core/domain/enums.mjs`、`src/core/domain/idem.mjs`、`src/core/storage/md/project-registry.mjs`、`src/core/commands/tasks.mjs`、`src/cli/index.mjs`、`test/fixtures/contract/api.snapshot.json`、`docs/contract.md`、`README.md`、`README.zh-CN.md`、`CHANGELOG.md`、`skills/meerkat-loop/**`、`skills/meerkat-taskpanel/**`、`install.sh`、`scripts/install/**`（**实读未实测**）；框架侧 `~/.openclaw/team/PROTOCOL.md`、`~/.openclaw/team/guides/task-interface.md`（**实读**，仓库外）。
+> 事实源（**实读**）：`src/shared/wire.mjs`、`src/shared/constants.mjs`、`src/core/domain/enums.mjs`、`src/core/domain/idem.mjs`、`src/core/storage/md/project-registry.mjs`、`src/core/commands/tasks.mjs`、`src/cli/index.mjs`、`test/fixtures/contract/api.snapshot.json`、`docs/contract.md`、`README.md`、`README.zh-CN.md`、`CHANGELOG.md`、`skills/meerkat-loop/**`、`skills/meerkat-taskpanel/**`、`install.sh`、`scripts/install/**`（**实读未实测**）；框架侧的协议文档与接口合同（**实读**，仓库外，路径不入仓）。
 > 定位规则：一律「**文件**」或「**文件:符号**」；散文类文件以**引文**定位，**不使用行号锚**（行号会随任何一次编辑漂移）。
 > 基线 commit：`61f7f3a`（= 本 lane 工作树 HEAD = `main` HEAD，开工时实测同一 sha）。
 > 本文件为**新增文件**：不改任何代码；`design/README.md` 仅按 `C-PREFIX-1` 先例补一行登记（见 §8）。**未 push**（§10）。
+
+> **⛔ 已退役（2026-10-17）。** 本裁定 2026-10-14 由 C1 落文，**§8 的双签从未取得，C2（清理）从未开工，C3（独立验证）从未执行**。2026-10-17 复核：其 §7 独立判据 ④⑤ PASS、**①②③ FAIL** —— `PROTOCOL` 的落点由本文件记录的 6 个文件涨到 **29 个**（约 13 个在已发布面）；`src/shared/**` 与 `src/core/domain/enums.mjs` 的 `task-interface` 未清零；`task-ops` 全仓非 0，命中全在本文件与其登记行。operator 2026-10-17 裁定 **退役并收窄**：不执行 §7 的 P0/P1/P2，把 ①②③ 换成本文件 §7.1 的**现状表**，只有 §7.2 的**两条禁令**继续生效并由 `scripts/verify/signposts.mjs` 机械执行。
+>
+> **随之作废**：§2 的计数与文件清单锚在 `61f7f3a`（现落后 `dev` HEAD 数百个提交），只作当时的快照；§4 里 `plugins/**` 的全部生成副本目标（12 + 8 + 4 份）**在今天的树上不存在** —— `plugins/` 已由 `39a009d` 整目录删除，`skills/` 是仓库里唯一的 skills 树；§10 的 lane 分支持已消失。**§2–§6 保留为历史落点盘点，不再是工单。**
 
 ---
 
 ## 0. 结论摘要
 
-- **① 裁定 = 否：`task-interface` 不得作为产品的对外契约名。** 它是 **openclaw-team 的 ACL 代号**（`~/.openclaw/team/guides/task-interface.md`，版本记于该文件 §13），产品只是它的**参考实现（reference implementation）**。产品的对外契约名自有的那一套（`taskctl` / board wire / `schema_version`）**已经在位**（§5 实测），因此这是**纠正自述**，不是新建命名。
+- **① 裁定 = 否：`task-interface` 不得作为产品的对外契约名。** 它是 **openclaw-team 的 ACL 代号**（框架侧的接口合同，版本记于该文件 §13），产品只是它的**参考实现（reference implementation）**。产品的对外契约名自有的那一套（`taskctl` / board wire / `schema_version`）**已经在位**（§5 实测），因此这是**纠正自述**，不是新建命名。
 - **① - 补：但 `task-interface v1` 可保留，且只保留在一个角色上 = 「兼容声明」。** 它陈述「本产物绑定框架 ACL 的哪一代」，只挂在**框架侧产物**（loop skill 及其 references / `board-check.mjs`）上，并**始终带归属**。这与 Acceptance ③「框架侧只保留 ACL 最小必需集 + 指针」是同一句话的两种说法。
 - **② 判据 = 三轴四条**（§3）：**J1 归属**（这个词命名的是产品自己的东西，还是别人家的东西）→ **J2 角色**（别人家的东西，在此处扮演 指针 R1 / 兼容声明 R2 / 溯源 R3 中的哪一个）→ 都不属三者且指向**框架内部机制**者 = **F1 泄漏**；**J3 事实源**（框架规范与产品 schema 同时描述一个形状时，产品 schema 是事实源，框架侧只放指针）。
 - **③ 逐类处置见 §4**（保留 / 改名 / 加标注，逐文件可执行）。一句话版本：**`openclaw-team` 指针类全保留**；**`task-interface` 分五个子角色**（兼容声明保留、自述改标注、自有 schema 改名、溯源改写、测试锁保留）；**`PROTOCOL` 六处全改写**（F1）；**`task-ops` 零落点 + 立禁**。
@@ -45,11 +49,13 @@
 1. **实测**——本轮真跑出来的：四类词的**文件计数**与**文件清单**（`git grep -l`，§9）、`CONTRACT_SCHEMA_VERSION` / `package.json` 版本号（`grep`）、`taskctl --version --json` 的**产出串扫描**（`git grep` 在机器面零命中）。
 2. **实读**——逐符号读过源码 / 规范，**未运行**。
 3. **实读未实测**——凡涉及**运行时行为**者：本 lane 未构建 `web/dist`、未起 `taskd`、未跑 CLI、未进容器。§4 的每条处置都是**文本层**的，不依赖运行行为。
-4. **不伪造**——未跑的一律写「未跑」；框架侧文件在**仓库外**（`~/.openclaw/team/**`），本 lane 只**实读**，未修改、未纳入版本控制。
+4. **不伪造**——未跑的一律写「未跑」；框架侧文件在**仓库外**的一次性工作区里（路径不入仓），本 lane 只**实读**，未修改、未纳入版本控制。
 
 ---
 
 ## 2. 现状实测（基线 `61f7f3a`）
+
+> ⚠️ **本节是 `61f7f3a` 的快照，不是现状**（2026-10-17 复核：四类词的落点与计数均已变化；`plugins/**` 一栏整体作废 —— 该目录已删除）。不要按本节的数字或清单安排任何工作。
 
 四类词在**受版本控制文件**中的落点（`git grep -l`，含 `plugins/**` 生成副本；`.data/`、`node_modules/`、`dist/` 为忽略目录，不计）：
 
@@ -125,6 +131,8 @@
 ---
 
 ## 4. 逐类处置口径（可执行）
+
+> ⛔ **本章作为「工单」已作废（2026-10-17 退役）。** 它写给 C2，而 C2 从未开工，本裁定已退役（见文首）。保留内容仅为**当时的落点盘点**：其中每一条 `plugins/**` 生成副本目标**都不存在了**（`plugins/` 已删），每条处置也不再需要执行。**§7.2 的两条禁令**才是本文件退役后唯一生效的部分。
 
 处置词只有三个：**保留** / **改名** / **加标注**。每条给出：落点 → 处置 → 改法与理由 → 是否触发再生成。
 
@@ -241,7 +249,7 @@
 |---|---|
 | 无（`61f7f3a` 实测零命中） | **无需动作**；本文件把 `task-ops` 登记为 **F1 禁止项**，供 C3 在后续 PR 上做**回潮检查**（`git grep -n task-ops` 必须恒为 0）。 |
 
-**理由**：F1——它是框架内**收口实现**（`~/.openclaw/team/skills/task-ops/lib/task.mjs`）的路径，产品既不暴露也不消费。卡面记 1 处、本 lane 实测 0 处（§2），说明它在 `main` 前进时已被清掉。
+**理由**：F1——它是框架内**收口实现**在仓库外的私有路径（**字面量故意不复述**：复述一次就等于再造一块指路牌，本文件 2026-10-17 退役的直接起因），产品既不暴露也不消费。卡面记 1 处、本 lane 实测 0 处（§2），说明它在 `main` 前进时已被清掉。
 
 ### 4.5 处置总表（C2 的工单）
 
@@ -295,6 +303,8 @@
 
 ## 7. 执行顺序建议（供 C2 分批）
 
+> ⛔ **分批计划已作废（2026-10-17 退役）—— 这三批从未开工，也不再执行。** 下表与紧随其后的 C3 判据保留为历史。生效中的只有 §7.2。
+
 | 批 | 内容 | 理由 | 每批的 gate |
 |---|---|---|---|
 | **P0** | §4.3 全部（`PROTOCOL` 6 处）+ §4.1-①-d | **悬空指针**：npm 包里不可解析的章节锚，且 4/6 处在对外面。改注释/散文，**零行为**。 | `npm test`（`test/migrate/*`、`test/core/domain/idem.test.mjs`）；`npm run check:skills`（应零变更） |
@@ -302,7 +312,7 @@
 | **P2** | §4.2-②-b（内部符号降为溯源） | 只降低**脆性**，无对外可见变化；触及 `constants.mjs` ⇒ sync-loop。 | `npm run check:skills` + `npm test` |
 | **不动** | §4.1-①-a / ①-e、§4.2-②-a / ②-c、§4.4 | 判据判为「保留」/「零落点」。 | C3 只需**证明未动**（`git diff --stat` 对这些路径为空） |
 
-**C3（Turing）的独立判据**（逐条可核，不依赖本文件的措辞）：
+**C3（Turing）的独立判据**（逐条可核，不依赖本文件的措辞）——**未执行过，且已不是目标**；列出仅供对照：
 
 - ① `git grep -n 'PROTOCOL'` 在 `src/**`、`docs/**`、`README*`、`CHANGELOG.md`、`skills/**`、`plugins/**` **恒为 0**；
 - ② `git grep -n 'task-ops'` 全仓**恒为 0**；
@@ -310,18 +320,37 @@
 - ④ `node scripts/verify/contract.mjs` **零漂移**，`schema_version` 仍为 4（本裁定是 doc-only：**注释与散文的改动不得移动契约**）；
 - ⑤ `npm run check:skills` 绿（无未同步的生成副本）。
 
+> ① 与 ③ 在退役时**已不成立**（见文首）。它们的错误在于把「**跨仓兼容声明**」当成「泄漏」来清零 —— 但 `PROTOCOL §⑮` 是产品**已发布**的接口数据（`threshold_ref` 字段），`task-interface` 是 loop 侧对框架接口代的绑定声明。这两样不是命名耦合，是**跨仓契约**，清掉它们等于清掉产品自己对外声明的事实。④⑤ 仍然成立，但它们守的是**通用不变量**（契约快照不漂移、生成副本已同步），与命名边界无关。
+
+### 7.1 现状表（取代判据 ①②③ —— 「现在是什么样」）
+
+| 框架词 | 今天的角色 | 今天的面（示例，非穷举） |
+|---|---|---|
+| `PROTOCOL` / `PROTOCOL §N` | **R2 跨仓兼容声明** + **已发布的接口数据** | `src/shared/sla-patrol.mjs` 产出 `threshold_ref`（`PROTOCOL §⑮`）并被 `test/scheduling/sla-patrol.test.mjs` 断言；`README*.md`、`docs/scheduling.md`、`skills/meerkat-loop/**` 说明超时表出处 |
+| `task-interface` / `task-interface v1` | **R2 兼容声明**（loop 侧）+ **R3 溯源**（注释） | loop 侧 `skills/meerkat-loop/**` 与 `test/skill/loop.test.mjs`；产品侧的**自述与注释**（`src/shared/**`、`src/core/domain/enums.mjs` 等） |
+| `openclaw-team` | **R1 指针**（带 URL） | 跨仓事实：OpenClaw 宿主由该框架承担 supervisor，本产品因此**不给它装 loop**（`README*.md`、`docs/{install,scheduling}.md`、`install.sh`、`skills/**/practice-guides.md`） |
+| 框架**私有 store 路径** | **F1 —— 禁** | 无落点（2026-10-17 由本轮指路牌清理达成，见 §7.2 第一条） |
+| 框架**内部机制词** | **F1 —— 禁** | 仅本文件，为「说明禁令」而出现（门禁对**它一个**文件按规则豁免；`design/README.md` 的登记行已改写为不枚举这些词，因此不需要豁免） |
+
+### 7.2 现行禁令（本文件退役后唯一生效的部分）
+
+1. **框架私有 store 根的 home 相对路径，不得出现在任何受版本控制的文件里。** 其**字面量刻意不在本文件复述** —— 复述一次就是再造一块指路牌，这正是本文件 2026-10-17 退役的直接起因（一次 `grep` 命中本文件的旧 §4.4，把会话引进了那块 store）。精确形式以 `scripts/verify/signposts.mjs` 的 `store-root` 规则为**唯一权威**。例外是两个**文档化集成子路径**：卡片目录与项目登记文件 —— 产品的迁移功能正当地读写它们，因此写在规则里作结构性豁免，不占豁免名单。
+2. **框架内部机制词不得出现在任何受版本控制的文件里**（收口实现目录名、车道启动脚本、车道回收器、会话登记文件、框架治理文件名）。唯一例外是**本文件**：禁令要求它写出所禁止的词，所以门禁对它豁免——且**只对它**（`design/README.md` 的登记行已改写为不枚举这些词，是有意为之：豁免面越小，回潮越难藏）。
+
+两条禁令由 `scripts/verify/signposts.mjs` **机械执行**（进 `npm run verify`、pre-push 与 CI）。**判据即门禁**：不再依赖人工 `git grep`。
+
 ---
 
 ## 8. 登记与签名
 
 **登记**：`design/README.md` 的 `contracts/` 段现写「The first one is `contracts/project-prefix-binding.md`（…）」——本文件是**第二份** topic-scoped 契约，该句随本卡补一行（`C-PREFIX-1` 的先例：契约文档在 `design/README.md` 的目录树/说明段登记）。**除该行外，本卡不改 `design/**` 任何现文**（未动 `DESIGN.md` / `BLOCKS.md` / `fidelity-*.md` / `prototype/**`）。
 
-**双签（Acceptance ③，本 lane 未取）**：按 `task-interface.md` §7 的接口变更要求与卡面 Acceptance ③，本裁定须 **Elon / operator 双签**方可作为 C2 的开工依据。执行方**不能自签**，故：
+**双签（Acceptance ③）—— 从未取得，现已不再适用（2026-10-17）**：按 `task-interface.md` §7 的接口变更要求与卡面 Acceptance ③，本裁定须 **Elon / operator 双签**方可作为 C2 的开工依据；执行方**不能自签**。**这两个 ☐ 到退役为止始终是空的**，C2 因此从未开工 —— 这是本文件「写得很细却一行没执行」的机制性原因，也是它退役的直接背景。下方两条保留为当时的待办记录：
 
 - ☐ **Elon** —— 裁定与事实源口径一致（§5 五条）；双签建议落 `kind:confirm` comment。
 - ☐ **operator** —— 范围 (B)/② 的裁定成立；`task-interface v1` 保留为**纯兼容声明**、不作产品契约名。
 
-**留给双签方的一个待答问题（唯一一处需要人的判断）**：§4.2-②-c 的示例数据 `openclaw-team`（项目 id 示例）与框架名同形。本裁定判**保留**（它是数据不是引用，且改动会动测试断言）。若双签方认为「同名即应消歧」，则该条从「保留」升为「改名 + 另开实现卡」——**请双签时明确**，否则默认按「保留」执行。
+**留给双签方的一个待答问题**：§4.2-②-c 的示例数据 `openclaw-team`（项目 id 示例）与框架名同形。本裁定判**保留**（它是数据不是引用，且改动会动测试断言）。**2026-10-17 随退役一并按「保留」关闭** —— 该示例至今仍是刻意的示例数据（`test/core/commands/project-prefix.test.mjs` 依赖它），§7.2 的两条禁令都不触及它。
 
 ---
 
@@ -380,7 +409,9 @@ $ echo $?
 
 ## 10. 本 lane 的边界声明
 
-- **doc-only**：本 lane 只新增本文件 + `design/README.md` 一行登记。**未改任何代码**（`src/**`、`web/**`、`skills/**`、`plugins/**`、`test/**`、`scripts/**` 零改动）。
-- **未 push**：提交留在 lane 分支 `lane/T-20261014-011057-2-seg1`，供集成；分支与 sha 见 Report。
+> 本章描述的是 **2026-10-14 那次 C1 落文**的情形，不是现状：它所引的 lane 分支持与 `plugins/**` 都已不存在。
+
+- **doc-only**：本 lane 只新增本文件 + `design/README.md` 一行登记。**未改任何代码**（`src/**`、`web/**`、`skills/**`、`test/**`、`scripts/**` 零改动；当时还有 `plugins/**`，该目录已于 2026-10-17 整目录删除）。
+- **未 push**：提交当时留在 lane 分支 `lane/T-20261014-011057-2-seg1`（该分支此后已被集成并清理，不再存在），供集成；分支与 sha 见 Report。
 - **未跑容器**：按 CLAUDE.md，运行类验证在容器内；本卡无需运行类验证（doc-only），且本文件所依赖的全部结论已在 §9 给出**可在宿主直接复现**的静态命令。
 - **对卡面的两处订正**（§2）：`openclaw-team` 计数 39→40、`task-ops` 计数 1→0，均因 `main` 在本 lane 开工点前已前进；本文件以 `61f7f3a` 实测为准。

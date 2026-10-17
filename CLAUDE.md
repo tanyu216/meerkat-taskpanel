@@ -90,7 +90,7 @@ node --test test/core/index.test.mjs         # one file
 node --test "test/contract/**/*.test.mjs"    # one directory (a bare dir arg does NOT work here)
 npm run test:coverage                        # tap reporter + 80% line/branch/function floors
 npm run check                                # check:skills + verify + test (fast, host-static)
-npm run verify                               # manifests + skill + migrations + paths checkers
+npm run verify                               # manifests + skill + migrations + paths + signposts checkers
 npm run verify:docker                        # AUTHORITATIVE gate: build image + in-container suite
 npm run verify:docker:container              # run docker/verify-in-container.sh inside the image
 node scripts/sync-skills.mjs                 # regenerate the loop payload + plugin skill copies
@@ -189,11 +189,17 @@ to get them). Hook and CI run the same checkers:
 | Hook | Enforces |
 |---|---|
 | `pre-commit` | migrations append-only, contiguous from `0001`, none edited or deleted (`verify/migrations.mjs`) |
-| `pre-push` | contract snapshot matches the live surface; declared request schema equals what the handler reads; every pushed `refs/tags/vX.Y.Z` has a `## [X.Y.Z]` CHANGELOG section |
-| `pre-tag` | the same three rules, run by hand before `git tag` (git has no native pre-tag hook) |
+| `pre-push` | contract snapshot matches the live surface; declared request schema equals what the handler reads; no tracked file carries a host-absolute path (`verify/paths.mjs`) or a signpost out of the repository (`verify/signposts.mjs`); every pushed `refs/tags/vX.Y.Z` has a `## [X.Y.Z]` CHANGELOG section |
+| `pre-tag` | the same API + tag rules, run by hand before `git tag` (git has no native pre-tag hook) |
 
-There is also `paths-gate.yml`: a host-absolute `/Users/<someone>/…` path fails the build —
-its allowlist (`test/fixtures/host-paths-allowlist.json`) is checked in both directions.
+Two workflows guard the tree itself. `paths-gate.yml`: a host-absolute `/Users/<someone>/…`
+path fails the build — its allowlist (`test/fixtures/host-paths-allowlist.json`) is checked in
+both directions. `signposts-gate.yml`: a walkable path into an external framework's private
+store, or one of its internal mechanism names, fails the build — its allowlist
+(`test/fixtures/framework-signposts-allowlist.json`) is keyed by `{file, rule}` and checked in
+both directions too. The rule behind the second is `design/contracts/naming-boundary.md`
+(which is **retired and narrowed**, not the unexecuted work order it once was); CI is its
+authoritative home, because the container image drops `design/`.
 
 ## Key invariants to remember
 
