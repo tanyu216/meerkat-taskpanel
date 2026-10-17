@@ -9,6 +9,28 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A gate against signposts out of the repository: `scripts/verify/signposts.mjs`.** This
+  project interoperates with an external development framework that keeps its own task store
+  in a private directory under the user's home. A document that names one of that framework's
+  internals *in a walkable form* is an instruction to go there, and this repository is
+  greppable — so a session reading it follows. That is not hypothetical: a design contract
+  that spelled the framework's card-writer path **in order to declare the word forbidden**
+  became the signpost, and a session followed it out of the repository and created cards in
+  the external store. The gate fails on either shape — a **home-relative path** into that
+  private store (the two subpaths a shipped feature legitimately integrates with, the card
+  directory and the project registry file, are carved out inside the rule rather than parked
+  on an allowlist), or one of the framework's **internal mechanism names**. What it
+  deliberately does *not* ban is the larger half: framework names that name somebody else's
+  thing, attributed and not used as our own — the project name, the interface-generation
+  codename the loop declares, and the protocol anchors the SLA patrol publishes as a wire
+  field and the test suite asserts. Its one exemption
+  (`test/fixtures/framework-signposts-allowlist.json`) is keyed by `{file, rule}` rather than
+  by file, so that the contract which must write the forbidden terms is not thereby also
+  allowed to spell the store path. It runs in `npm run verify`, in `.githooks/pre-push`
+  (which now also runs the host-path gate — its documented claim to do so had been false),
+  and in CI as `signposts-gate.yml`; CI is authoritative, because the container image drops
+  `design/`.
+
 - **The host-external supervisor is a skill of its own: `meerkat-loop`.** The loop was an
   implicit side effect of installing the board; it is now a self-contained, separately
   distributed skill (`skills/meerkat-loop/`) carrying the execution body, the unit / wake /
@@ -180,6 +202,22 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `heartbeat_stale` SLA row — the one mechanism that notices a worker has stopped.
 
 ### Changed
+
+- **The naming-boundary contract is retired and narrowed, not executed.**
+  `design/contracts/naming-boundary.md` adjudicated which words of the external framework may
+  appear in this repository, and laid out a three-batch cleanup plus independent acceptance
+  criteria. It was written on 2026-10-14, **never double-signed, and never executed**: when
+  it was reviewed on 2026-10-17 the sign-off boxes were still empty, two of its five criteria
+  had never held (the protocol anchors are *published* data — a wire field the SLA patrol
+  emits and the suite asserts — and the framework's project name is a sanctioned pointer),
+  and the vocabulary it meant to shrink had grown from 6 files to 29. It is now marked
+  **retired and narrowed**: the batch plan and the criteria are kept as history, a current-state
+  table says where each framework word legitimately lives today, and only two bans remain
+  live — the private store path and the internal mechanism names — with
+  `scripts/verify/signposts.mjs` as their enforcement. The walkable paths it used to spell
+  (in it and in three other design documents) were rewritten to describe the location
+  instead of naming it, and its stale `plugins/**` targets and baseline counts are marked
+  void.
 
 - **The repository root is the board's plugin root; three bundle directories were deleted.**
   `plugins/claude/`, `plugins/codex/` and `plugins/pi/` are gone, and the marketplace source

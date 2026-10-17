@@ -118,8 +118,8 @@ describe("md/frontmatter — parsing", () => {
     assert.throws(() => parseScalar("{a: 1}", fail), /not supported/);
 
     // And end to end: a real `git_rules` value that begins with `**` parses.
-    const { data } = parseFrontmatter(card("git_rules: **只读**审计 ~/.openclaw/team/**；禁破坏性 git"));
-    assert.equal(data.git_rules, "**只读**审计 ~/.openclaw/team/**；禁破坏性 git");
+    const { data } = parseFrontmatter(card("git_rules: **只读**审计 src/**；禁破坏性 git"));
+    assert.equal(data.git_rules, "**只读**审计 src/**；禁破坏性 git");
   });
 });
 

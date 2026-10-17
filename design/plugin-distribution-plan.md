@@ -716,7 +716,7 @@ written for a **future implementation card**, and is marked as such by being ins
 "the implementation card does" framing — none of them were run here.
 
 Read-only research performed: a shallow clone of `obra/superpowers` to
-`~/.openclaw/team/workspace/T-20261015-035514/superpowers-src` (outside the repository), and
+`<本卡工作区>/superpowers-src` (outside the repository), and
 reads of this repository. No agent CLI config directory was installed into or modified.
 
 ---

@@ -252,7 +252,7 @@ C-RAIL-1（`design/contracts/side-rail-short-code.md`，commit `31904db`）**从
 
 ```bash
 TREE=<本 lane worktree>
-WS=~/.openclaw/team/workspace/T-20261014-061445
+WS=<本卡工作区>          # 仓库外；按你手上的实际路径替换（同 fidelity-r12-supplement.md 的写法）
 npm --prefix "$TREE/web" ci --prefer-offline --no-audit --no-fund   # 宿主 npm cache（committed cache 是 linux/arm64）
 npm --prefix "$TREE/web" run build                                  # 产出 web/dist
 node "$WS/tools/seed-board.mjs"     "$WS/run/board.sqlite" "$WS/run/data" "$TREE"
