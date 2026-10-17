@@ -246,6 +246,9 @@ export const ACTIVITY_EVENTS = Object.freeze([
   "report_written",
   "task_delivered",
   "report_waived",
+  // The container's own start: a child entered the work and the board moved
+  // its epic `todo → in_progress` (a system move, never a claim).
+  "epic_auto_start",
   "comment_added",
   "relation_added",
   "relation_removed",

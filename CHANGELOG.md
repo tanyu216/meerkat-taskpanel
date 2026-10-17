@@ -18,6 +18,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   children were **all** delivered under `--no-report` has no evidence to roll up and stays open,
   and a **`canceled` child** stops the rollup — whether a container is finished despite a
   cancellation is a human's call.
+- **The container starts itself, and a reconciler repairs both transitions.** The first child to
+  enter `in_progress` moves its epic `todo → in_progress` — a **system** move, not a claim
+  (`claimed_by` stays NULL, an `epic_auto_start` activity is recorded, and the board writes a
+  `kind=note` comment naming the child). The rollup close now writes the same note, naming its
+  source (`event` | `sweep`), the basis (`N/N` children) and the instant. `taskctl issue
+  reconcile [--dry-run]` replays both rules over every non-terminal epic: it is the backstop for
+  a child attached after it started or finished (which fires no status transition) and for a
+  write that bypassed the service layer. It is idempotent — a second run writes nothing — and
+  the same sweep runs once at `taskd` startup. A create can no longer be born `in_progress`
+  (any kind), and an epic's initial status is `backlog` or `todo`; this closes the
+  holderless-`in_progress` epic hole.
 - **A `todo` epic may now be delivered (`0024`).** An epic is never claimable, so `todo` was a
   state with no exit: `done` is reachable only from `in_review`, and `todo` had no edge there —
   `issue create --kind epic`, which births a container in `todo`, produced a card no legal path

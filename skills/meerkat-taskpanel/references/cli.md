@@ -104,6 +104,7 @@ the map names.
 | `issue assign <ref> [--assignee <text>] [--assignee-id <id>] [--reporter <text>] [--force-create]` | Assign. |
 | `issue archive <ref> [--days <n>]` | Archive finished work (done/canceled; 7-day window by default). |
 | `issue deliver <ref> --report-file <file\|->` | **Write the report and move to `in_review`, in one transaction.** |
+| `issue reconcile [--dry-run]` | **The container backstop.** Replays the epic rules over every non-terminal container: start a `todo` epic whose child has entered the work, close an epic whose children are all `done`. `--dry-run` reports the plan and writes nothing. Idempotent — a second run over the same board writes nothing; the same sweep runs once at `taskd` startup. Each transition it applies leaves a `kind=note` comment naming its source (`sweep`). |
 
 ### The weight order (`--order weight`)
 

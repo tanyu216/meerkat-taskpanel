@@ -171,6 +171,7 @@ function headerOf(req, name) {
  *   gcIntervalMs?: number,   // label GC period; 0 = startup sweep only (F1-C)
  *   gcTtlDays?: number,      // label GC TTL in days
  *   gc?: boolean,            // false = no label GC at all
+ *   containerSweep?: boolean,// false = no startup container reconcile
  *   authorize?: Function,    // override for tests; defaults to the real check
  *   allowCidrs?: string,     // §7 allow-list; overrides TASKD_ALLOW_CIDRS
  *   staticDir?: string|null, // where `web/dist` lives; null = repo default, false = off
@@ -216,6 +217,14 @@ export async function createTaskd(options = {}) {
   // The label GC (F1-C): one sweep now, then on a timer. `taskd` is the single
   // writer, so it is the one process that may prune the registry.
   const labelGc = startLabelGc({ board, env, logger, options });
+
+  // The container reconciler: one sweep at startup. The event hook closes an
+  // epic in the same transaction as its last child's move, so this is the
+  // *backstop* — it repairs a container whose children were finished by a
+  // writer that bypassed the service layer, and a child attached after the
+  // fact (relations added later fire no status transition). The manual path is
+  // `POST /api/v1/tasks/reconcile` (`taskctl issue reconcile`).
+  const containerSweep = startContainerSweep({ board, logger, options });
 
   const token = board.token === null ? null : readTokenFile(board.dataDir);
   const startedAt = Date.now();
@@ -402,6 +411,8 @@ export async function createTaskd(options = {}) {
     token,
     /** The label GC, exposed so a test can trigger a sweep without waiting out the timer. */
     labelGc,
+    /** The startup container reconcile, exposed so a test can read what it did. */
+    containerSweep,
     /**
      * Stop the board.
      *
@@ -514,6 +525,45 @@ export function labelGcTtlDays(env, override) {
   if (raw === undefined || raw === "") return LABEL_TTL_DAYS_DEFAULT;
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : LABEL_TTL_DAYS_DEFAULT;
+}
+
+/**
+ * Run the container reconciler once, before the daemon starts serving.
+ *
+ * This is the backstop, not the trigger: the event hook in
+ * `commands/rollup.mjs` drives both transitions. A sweep here is what makes a
+ * missed event self-healing on restart (the profile the label GC established).
+ * Like the GC, a failure is **logged, never fatal** — housekeeping must not
+ * take the board down — and a sweep that finds nothing writes nothing.
+ *
+ * @param {{board: object, logger?: Function, options: object}} input
+ * @returns {{ran: boolean, last: object|null}}
+ */
+export function startContainerSweep(input) {
+  const { board, logger, options } = input;
+  const enabled = options.containerSweep === undefined ? true : options.containerSweep !== false;
+  const state = { ran: false, last: null };
+  if (!enabled) return state;
+
+  try {
+    state.last = board.commands.reconcileContainers({});
+    state.ran = true;
+    const started = state.last.actions.filter((entry) => entry.action === "start").length;
+    const closed = state.last.actions.filter((entry) => entry.action === "close").length;
+    if ((started > 0 || closed > 0) && typeof logger === "function") {
+      logger({ event: "container_sweep", scanned: state.last.scanned, started, closed });
+    }
+  } catch (err) {
+    if (typeof logger === "function") {
+      logger({
+        event: "container_sweep_failed",
+        code: err?.code ?? null,
+        message: err?.message ?? String(err),
+      });
+    }
+    state.last = { dryRun: false, scanned: 0, actions: [], failed: true };
+  }
+  return state;
 }
 
 /**

@@ -387,4 +387,38 @@ export const COMMANDS = [
       return { data: payload, human, warnings };
     },
   },
+
+  {
+    name: "reconcile",
+    summary: "Replay the epic start/close rules over the board (the idempotent backstop).",
+    usage: "issue reconcile [--dry-run]",
+    positionals: [],
+    flags: [
+      {
+        flag: "dry-run",
+        key: "dryRun",
+        as: "boolean",
+        summary: "Report what would change; write nothing.",
+      },
+    ],
+    async run(ctx) {
+      const payload = await ctx.client.post("/api/v1/tasks/reconcile", {
+        dry_run: ctx.flags.dryRun === true,
+      });
+      const changed = payload.actions.filter((entry) => entry.action !== "none");
+      const verb = payload.dry_run ? "would reconcile" : "reconciled";
+      const human =
+        changed.length === 0
+          ? `nothing to reconcile (${payload.scanned} container(s) scanned)`
+          : `${verb} ${changed.length} container(s) of ${payload.scanned} scanned\n` +
+            changed
+              .map(
+                (entry) =>
+                  `  ${entry.epic.padEnd(14)} ${entry.action.padEnd(6)} ${entry.reason}` +
+                  (entry.child === undefined ? "" : `  ${entry.child}`),
+              )
+              .join("\n");
+      return { data: payload, human };
+    },
+  },
 ];

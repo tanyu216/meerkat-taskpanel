@@ -1144,6 +1144,23 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/tasks/reconcile",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "dry_run": {
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/token",
       "request": {
         "body": null,

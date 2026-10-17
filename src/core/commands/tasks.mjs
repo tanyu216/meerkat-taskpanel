@@ -43,7 +43,7 @@ import { actorOf } from "./context.mjs";
 import { addComment } from "./comments.mjs";
 import { resolveActorId, resolveAssignment } from "./dictionary.mjs";
 import { resolveLabels } from "./labels.mjs";
-import { advanceContainerForChild } from "./rollup.mjs";
+import { advanceContainerForChild, startContainerForChild } from "./rollup.mjs";
 
 /**
  * @param {object} ctx
@@ -464,6 +464,14 @@ function performClaim(ctx, input) {
     });
   }
 
+  // A child that enters the work starts its container (commands/rollup.mjs).
+  // This is the claim path — `issue claim` and `issue move <ref> in_progress`
+  // both land here — and it is guarded on a real transition so a re-claim of a
+  // card already in progress does not write a second note.
+  if (task.status === STATUS.IN_PROGRESS && current.status !== STATUS.IN_PROGRESS) {
+    startContainerForChild(ctx, task.id, now);
+  }
+
   return { task, reused: false, stole: verdict.steal === true };
 }
 
@@ -674,6 +682,10 @@ export function moveStatus(ctx, input) {
               },
         createdAt: now,
       });
+      // A card that re-enters the work (a rework from `in_review`, an unblock)
+      // starts its container too: the claim path above is not the only way into
+      // `in_progress` (commands/rollup.mjs).
+      if (task.status === STATUS.IN_PROGRESS) startContainerForChild(ctx, task.id, now);
       // The container closes itself when its last child lands
       // (commands/rollup.mjs): the same transaction, so a child can never be
       // `done` on a board where its epic still looks unfinished.
