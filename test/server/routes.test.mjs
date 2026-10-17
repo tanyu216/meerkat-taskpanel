@@ -236,6 +236,23 @@ describe("server/routes — the heartbeat write surface (T-20261017-063818)", ()
   /** The caller identity every write below carries, as the CLI sends it. */
   const LINUS = { "x-taskctl-actor": JSON.stringify({ kind: "agent", id: "linus" }) };
 
+  /**
+   * `demo` is this suite's working project. The cases used to lean on the
+   * `projects` describe above having created it; running one case alone filters
+   * that fixture out and every write here 404s with `no project demo`. Stand it
+   * up in this describe instead — the create is idempotent for our purpose (a
+   * full run already has the row, a focused run gets it now), so no case below
+   * depends on another describe's side effects.
+   */
+  const PROJECT = "demo";
+
+  before(async () => {
+    const created = await call("POST", "/api/v1/projects", { id: PROJECT, name: "Demo" });
+    if (created.body.ok !== true) {
+      assert.equal(created.body.error.code, "ID_CONFLICT", JSON.stringify(created.body));
+    }
+  });
+
   /** A card `linus` has claimed, ready to pulse. */
   async function claimedCard(title) {
     // `allow_dup` on purpose: the idempotency key is `kind|assignee|source|target`
@@ -243,7 +260,7 @@ describe("server/routes — the heartbeat write surface (T-20261017-063818)", ()
     // would otherwise collapse onto the first.
     const created = dataOf(
       await call("POST", "/api/v1/tasks", {
-        project_id: "demo",
+        project_id: PROJECT,
         title,
         assignee: "linus",
         assignee_kind: "agent",
@@ -283,7 +300,7 @@ describe("server/routes — the heartbeat write surface (T-20261017-063818)", ()
 
   it("refuses a card that is not in_progress — there is nothing to pulse", async () => {
     const created = dataOf(
-      await call("POST", "/api/v1/tasks", { project_id: "demo", title: "Still todo", allow_dup: true }),
+      await call("POST", "/api/v1/tasks", { project_id: PROJECT, title: "Still todo", allow_dup: true }),
     );
     const result = await call("POST", `/api/v1/tasks/${created.task.identifier}/heartbeat`, {}, LINUS);
 
