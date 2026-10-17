@@ -19,9 +19,9 @@ an implementation card can build it and an independent verification card can che
 They are `contracts/project-prefix-binding.md` (the create-project prefix field and the
 card-number prefix), `contracts/assignee-weight-order.md` (the assignee task weight
 order: factors, weights, composite, tie-break, view interactions),
-`contracts/naming-boundary.md` (which framework words — `task-interface`,
-`openclaw-team`, `PROTOCOL`, `task-ops` — may appear in this repository, in what
-role, and which must not) and
+`contracts/naming-boundary.md` (which words of an external framework may appear in
+this repository, in what role, and which must not — the part a gate enforces is the
+framework's private store paths and its internal mechanism terms) and
 `contracts/side-rail-short-code.md` (the rail's project short code: it is the project's
 **effective prefix** — the same value the card numbers carry — and it decides the
 read-only `prefix` field the projects wire hands the sidebar) and

@@ -192,6 +192,7 @@ const ENTRY_POINTS = [
   ["scripts/wake-cwd.mjs", ["--help"]],
   ["scripts/verify/version.mjs", []],
   ["scripts/verify/paths.mjs", []],
+  ["scripts/verify/signposts.mjs", []],
   ["scripts/sync-loop.mjs", ["--check"]],
 ];
 
