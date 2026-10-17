@@ -80,9 +80,16 @@
  * The verification image drops `.git`, and it also drops `design/` — so in the container
  * this gate sees a **partial** view of the tree, and the design documents it exists to
  * police are absent. That is acceptable because the container is not the only place it
- * runs (the host `npm run verify` and CI both see the full checkout), but it is worth
- * knowing when a container run reports clean. Git is used when available, else the walk,
- * with the same `SKIP_DIRS` as its sibling gate.
+ * runs (the host `npm run verify` and CI both see the full checkout), but a partial view
+ * has to be handled rather than merely noted: the one allowlist entry lives under
+ * `design/`, and assertion 2 would otherwise read "this view does not carry that subtree"
+ * as "the file was deleted", reddening the container on a tree that is in fact clean.
+ *
+ * So an entry whose top-level subtree is **absent from the root entirely** is skipped, in
+ * both directions, and reported as skipped when `--print` is passed. A missing file inside
+ * a subtree this view *does* carry is still a problem — which is the case the assertion
+ * exists for. Git is used when available, else the walk, with the same `SKIP_DIRS` as its
+ * sibling gate.
  *
  * Usage: node scripts/verify/signposts.mjs [--print] [--root <dir>]
  * Exit:  0 = no unlisted signpost · 1 = at least one finding · 2 = bad usage / unreadable
@@ -187,13 +194,34 @@ export function scan(root = ROOT) {
 /** The `file\u0000rule` key an entry and a finding are joined on. */
 const pairKey = (file, rule) => `${file}\0${rule}`;
 
-/** @returns {{ok: boolean, findings: object[], problems: string[]}} */
+/**
+ * The top-level names of one root. An allowlist entry that lives under a subtree this view
+ * does not carry **at all** cannot be judged here, and must not be reported as a deleted
+ * file: the verification image drops `design/`, and the one exemption this gate needs lives
+ * in there.
+ *
+ * `null` means the root itself could not be listed, in which case nothing is out of view —
+ * an unreadable root is a problem, not a reason to excuse entries.
+ */
+function topLevelNames(root) {
+  try {
+    return new Set(readdirSync(root));
+  } catch {
+    return null;
+  }
+}
+
+/** @returns {{ok: boolean, findings: object[], problems: string[], skipped: string[]}} */
 export function analyze(root = ROOT) {
   const findings = scan(root);
   const offending = new Set();
   for (const finding of findings) {
     for (const rule of finding.rules) offending.add(pairKey(finding.file, rule));
   }
+
+  const topLevel = topLevelNames(root);
+  const outOfView = (file) => topLevel !== null && !topLevel.has(String(file).split("/")[0]);
+  const skipped = [];
 
   let entries = [];
   const problems = [];
@@ -237,6 +265,13 @@ export function analyze(root = ROOT) {
   const present = new Set();
   for (const entry of entries) {
     if (entry === null || typeof entry !== "object" || typeof entry.file !== "string") continue;
+    if (outOfView(entry.file)) {
+      // The subtree is not in this view at all, so "gone" cannot be told from "not carried
+      // here". Skipping is the honest answer; a full checkout (CI, `npm run verify`) is
+      // where a deleted entry is caught.
+      skipped.push(entry.file);
+      continue;
+    }
     try {
       statSync(join(root, entry.file));
       present.add(entry.file);
@@ -258,7 +293,7 @@ export function analyze(root = ROOT) {
     );
   }
 
-  return { ok: problems.length === 0, findings, problems };
+  return { ok: problems.length === 0, findings, problems, skipped };
 }
 
 /** @param {string[]} args — the arguments after `node <file>`; see the guard at the end. */
@@ -285,10 +320,14 @@ function main(args) {
   if (args.includes("--print")) {
     for (const finding of result.findings) console.log(`${finding.file}\t${finding.rules.join(",")}`);
     console.log(`— ${result.findings.length} file(s) carry a signpost`);
+    for (const file of result.skipped) console.log(`${file}\t(skipped — this view does not carry that subtree)`);
   }
 
   if (result.ok) {
-    console.log(`signposts: OK — nothing in the tree points at the external framework's store or internals`);
+    const partial = result.skipped.length > 0
+      ? ` (partial view: ${result.skipped.length} allowlisted file(s) not carried here — a full checkout is what judges them)`
+      : "";
+    console.log(`signposts: OK — nothing in the tree points at the external framework's store or internals${partial}`);
     return 0;
   }
   for (const problem of result.problems) console.error(`  ✗ ${problem}`);
