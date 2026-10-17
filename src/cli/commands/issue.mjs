@@ -1,5 +1,5 @@
 /**
- * `issue create|list|get|update|move|assign|archive|deliver` (A1–A5).
+ * `issue create|list|get|update|move|heartbeat|assign|archive|deliver` (A1–A5).
  *
  * This module owns the two commands the milestone is really about:
  *
@@ -266,6 +266,30 @@ export const COMMANDS = [
         ? `moved ${payload.task.identifier} → ${payload.task.status}`
         : `moved ${payload.task.identifier} → ${payload.task.status} (waived, round ${payload.task.report_waiver.round})`;
       return { data: payload, human, warnings };
+    },
+  },
+
+  {
+    name: "heartbeat",
+    summary: "Pulse a claimed card so its heartbeat stays inside the fresh window.",
+    op: TASK_OPS.heartbeat,
+    usage: "issue heartbeat <id|identifier>",
+    positionals: [{ name: "ref", summary: "Task id or identifier." }],
+    // No flags of its own: the card is the positional and the pulsing actor is
+    // the caller, whom the global attribution flags (`--agent`, `--actor-kind`,
+    // `--session-id`) already name. `projectFlags` returns `[]` here, and that
+    // empty list is asserted against the declaration by the route-request gate.
+    flags: projectFlags(TASK_OPS.heartbeat),
+    async run(ctx) {
+      const payload = await ctx.client.post(
+        `/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/heartbeat`,
+        projectBody(TASK_OPS.heartbeat, {}),
+      );
+      const task = payload.task;
+      return {
+        data: payload,
+        human: `pulsed ${task.identifier}  ${task.status}  heartbeat ${task.heartbeat_at}`,
+      };
     },
   },
 

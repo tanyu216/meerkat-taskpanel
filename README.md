@@ -213,7 +213,8 @@ not an `epic`, not a deployment card (`kind: deploy` — the poll never offers o
 it is dispatched explicitly), and not a card whose `depends_on` blockers are
 unfinished); **one
 card at a time**; keep a **fresh heartbeat** (the board treats a claim as live for
-10 minutes); **deliver with a report** (the delivery gate); **self-review is not
+10 minutes, and `issue heartbeat <ref>` is the pulse — the board never sends one
+for you); **deliver with a report** (the delivery gate); **self-review is not
 acceptance** (an agent reaches `in_review`, a human accepts to `done`); **never
 preempt a conflict** (re-read once, retry only if still claimable); and **stay
 traceable** (carry the session id). What differs between hosts is *who applies

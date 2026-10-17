@@ -32,7 +32,7 @@ cat <<'RULES'
 1. claim-first — read `issue candidates --assignee <me>`, then take exactly one with `issue move <ref> in_progress`
 2. claim only what is yours — never someone else's card, a `backlog` card, an `epic`, a `deploy` card, or one with an unfinished `depends_on` blocker
 3. one card at a time — hold at most one claimed card
-4. keep the heartbeat fresh — renew it every ≤10 minutes; never leave a card idle in `in_progress`
+4. keep the heartbeat fresh — pulse it with `issue heartbeat <ref>` every ≤10 minutes; never leave a card idle in `in_progress`
 5. deliver with a report — the delivery gate refuses `in_review` without a report for the current round
 6. self-review is not acceptance — stop at `in_review`; a human accepts to `done`
 7. never preempt on conflict — on `VERSION_CONFLICT` or staleness re-read once, never blind-retry
