@@ -23,9 +23,9 @@ served by `taskd`. Still planned: the **epic view** and **iteration management**
 roadmap lives in `README.md` / `README.zh-CN.md`.
 
 The agent integration is **skill-only**, driving the `taskctl` CLI (see `docs/install.md`).
-The host-external supervisor is a **skill of its own** (`skills/meerkat-loop/`, never
-installed for OpenClaw; the marketplace lists two plugins, `meerkat-taskpanel` and
-`meerkat-loop`, which version independently).
+The host-external supervisor is a **skill of its own** (`skills/meerkat-loop/`), never
+installed for OpenClaw and **not** distributed through the marketplace: `install.sh
+--target claude|codex|pi` is its only path, and it carries no version of its own.
 
 ## How to work here
 
@@ -117,7 +117,6 @@ meerkat-taskpanel/
 ├── src/shared/             # DTOs, constants, errors, pure helpers + the taskd transport seam
 ├── web/                    # Vue 3 + Vite board frontend (own lockfile) -> web/dist, served by taskd
 ├── skills/                 # the two skills: meerkat-taskpanel (board), meerkat-loop (supervisor)
-├── plugins/                # the bundles that still need a sibling skills/ copy (openclaw, loop)
 ├── .claude-plugin/ .pi/ .opencode/ .cursor-plugin/   # harness markers; the plugin root IS the repo root
 ├── design/                 # DESIGN / BLOCKS, the interactive prototype/, brand/, assets/, fidelity-rNN.md
 ├── scripts/                # build, install/, sync-skills + sync-loop, supervisor, verify/{manifests,skill,
@@ -154,10 +153,12 @@ the **hosted frontend root** is `web/dist`, the static build of `web/` that `tas
   and commit the refreshed cache with the lockfile. Never install frontend deps into the repo root.
 - **The skills are generated, never hand-edited.** Author only under `skills/meerkat-taskpanel/`
   and the loop's hand-written surface (`skills/meerkat-loop/`: `SKILL.md`, `references/`,
-  `scripts/board-check.mjs`). The loop's `body/` + `templates/`, and the copies under
-  `plugins/openclaw/skills/` and `plugins/loop/skills/`, are generated from `scripts/supervisor.mjs`,
-  `scripts/wake-cwd.mjs`, `src/shared/` and `scripts/install/templates/`. After any edit touching
-  those inputs run `node scripts/sync-skills.mjs`; CI runs `--check` and fails on drift.
+  `scripts/board-check.mjs`). The loop's `body/` + `templates/` are generated from
+  `scripts/supervisor.mjs`, `scripts/wake-cwd.mjs`, `src/shared/` and
+  `scripts/install/templates/`. After any edit touching those inputs run
+  `node scripts/sync-skills.mjs`; CI runs `--check` and fails on drift. There are **no committed
+  copies of a skill** anywhere: `skills/` is the only `skills` tree in the repository, and
+  `test/scaffold.test.mjs` asserts it.
 - **Migrations are append-only.** Never edit or delete a committed
   `src/core/storage/migrations/*.sql`; add a new numbered file. The DB runner refuses a database
   whose applied file changed, and adding a migration reds several hand-kept version lists — see

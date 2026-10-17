@@ -134,8 +134,6 @@ meerkat-taskpanel/
 ├── .pi/                          # the Pi extension (declared by package.json's `pi` field)
 ├── .opencode/                    # the OpenCode plugin (reads the one skills/ tree in place)
 ├── .cursor-plugin/               # Cursor's marker — makes the root a Cursor plugin too
-├── plugins/                      # the bundles that still need a sibling skills/
-│                                 #   (openclaw, and the loop's own marketplace entry)
 ├── design/                       # design artifacts: DESIGN / BLOCKS, prototype/, brand/, assets/
 ├── docker/                       # Dockerfile, compose, profiles, verify-in-container.sh
 ├── monitoring/                   # OTel / Prometheus exporter
@@ -181,16 +179,18 @@ the host's own plugin system consumes — registering it needs that host's CLI, 
 | Host | `--target` | Skill directory | Bundle |
 |---|---|---|---|
 | Claude Code | `claude` | `~/.claude/skills/meerkat-taskpanel` | `.claude-plugin/plugin.json` (plugin root = the repository root) |
-| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | `plugins/openclaw/openclaw.plugin.json` (native) |
+| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | the same root bundle |
 | Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | the same root bundle, through the marketplace |
 | Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | the root `package.json`'s `pi` field |
 | OpenCode | `opencode` | `~/.config/opencode/skills/meerkat-taskpanel` | `.opencode/plugins/` (in-process) |
 | Cursor | `cursor` | `~/.cursor/skills/meerkat-taskpanel` | `.` — the root (`.cursor-plugin/plugin.json`) |
 
 The repository root is the board's plugin root, so every harness reads the one `skills/`
-tree instead of receiving a copy. OpenClaw also consumes that Claude-format bundle, which
-is the supported skill-only route; `plugins/openclaw/openclaw.plugin.json` is a *native*
-manifest — see [`docs/install.md`](docs/install.md#openclaw) for the distinction.
+tree instead of receiving a copy. OpenClaw consumes that Claude-format bundle too, which
+is its supported route — see [`docs/install.md`](docs/install.md#openclaw).
+
+The `meerkat-loop` supervisor skill is **not** distributed through the marketplace: it is
+installed by `install.sh --target claude|codex|pi`, and it never reaches OpenClaw.
 
 Useful flags: `--prefix <home>` (override the target home), `--agent-name <name>` (the
 agent's board identity, default `$USER` — must equal its assignee; re-running with a new
@@ -338,7 +338,7 @@ runtime.
 
 ```bash
 node --test                          # run the smoke / contract test suite
-node scripts/sync-skills.mjs         # the loop payload + the two copies under plugins/
+node scripts/sync-skills.mjs         # the loop payload (execution body + installer templates)
 node scripts/sync-skills.mjs --check # verify the generated payload and copies are in sync
 node scripts/verify/manifests.mjs    # validate plugin manifests
 node scripts/verify/skill.mjs        # validate the board skill's SKILL.md frontmatter

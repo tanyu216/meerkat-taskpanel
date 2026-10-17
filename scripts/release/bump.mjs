@@ -48,7 +48,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { findVersionEntry } from "../verify/changelog.mjs";
-import { LOOP_VERSION_SOURCES, VERSION_SOURCES, validateVersions } from "../verify/version.mjs";
+import { VERSION_SOURCES, validateVersions } from "../verify/version.mjs";
 import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
 
 /** Repository root, resolved from this file (`scripts/release/`). */
@@ -77,13 +77,9 @@ const toBumpSources = (sources) =>
     ),
   );
 
-/** The board's six carriers, derived from the checker's declaration so the two agree by
+/** The board's four carriers, derived from the checker's declaration so the two agree by
  * construction. */
 export const SOURCES = toBumpSources(VERSION_SOURCES);
-
-/** The loop's carriers. The board and the loop version independently (O4), so a bump
- * names the group it moves — see {@link BUMP_GROUPS}. */
-export const LOOP_SOURCES = toBumpSources(LOOP_VERSION_SOURCES);
 
 /**
  * The version groups this bumper can move, keyed by the `--group` value.
@@ -91,12 +87,15 @@ export const LOOP_SOURCES = toBumpSources(LOOP_VERSION_SOURCES);
  * Each group carries both halves of the same declaration: `sources` (the splice targets,
  * with the JSON key path) and `checkers` (the same files as the *checker* sees them, with
  * the `pick` that reads the version out). Deriving both from the checker's export means a
- * group can never be bumped against a different set of files than it is validated against,
- * and bumping the loop never asks the board's manifests to agree with the loop's.
+ * group can never be bumped against a different set of files than it is validated against.
+ *
+ * There is one group. The loop used to be a second one, but its only carriers were the
+ * `plugins/loop` manifests this repository no longer ships, and nothing consumes a loop
+ * version — so the loop moves with the board (see `design/plugin-distribution-plan.md`'s
+ * 2026-10-17 decision note). The seam is kept so a second component can be added back.
  */
 export const BUMP_GROUPS = Object.freeze({
   board: Object.freeze({ sources: SOURCES, checkers: VERSION_SOURCES }),
-  loop: Object.freeze({ sources: LOOP_SOURCES, checkers: LOOP_VERSION_SOURCES }),
 });
 
 /**
@@ -321,7 +320,7 @@ export async function planBump({ version, base = ROOT, group = "board" }) {
   // One read pass that both establishes the current version and proves the tree
   // is not already drifted: bumping a group's manifests onto an extra value would
   // quietly bury the drift instead of resolving it. The check is scoped to the group
-  // being bumped, so the board and the loop cannot hold each other back (O4).
+  // being bumped, so one group can never hold another back.
   const checked = await validateVersions(base, checkers);
   if (!checked.ok) {
     return {
@@ -580,10 +579,9 @@ const WRITE_CODES = new Set(["stage-failed", "commit-failed", "tag-failed"]);
  * call. Plan, then apply: no write happens until every write is known to be
  * possible.
  *
- * `group` selects which carriers move: `board` (the default, root `package.json` canonical)
- * or `loop` (the loop bundle). The two are released independently (O4), so a bump moves
- * exactly one of them and validates only that one. `--changelog` and `--tag` are board-side
- * concepts — a release, not a component bump — so they are refused with `group: "loop"`.
+ * `group` selects which carriers move. There is one group, `board` (the default, root
+ * `package.json` canonical); a bump moves exactly that group and validates only it, so a
+ * second component could be added back without the two holding each other's versions.
  *
  * @param {{version: string, base?: string, group?: string, changelog?: boolean, tag?: boolean,
  *          date?: string, io?: Parameters<typeof applyWrites>[1]["io"], run?: typeof spawnSync}} [options]
@@ -666,8 +664,8 @@ const USAGE = `Usage: node scripts/release/bump.mjs <x.y.z> [options]
   --tag          also create the git tag v<x.y.z> after the bump (never pushed; board only)
   --base <dir>   bump a tree rooted at <dir> (default: this checkout)
 
-The board and the loop version independently (O4), so a bump moves one group at a time;
---changelog and --tag belong to a board release and are refused with --group loop.
+A bump moves one group at a time; there is one group today (the board). --changelog and
+--tag belong to a release and are accepted on that group.
 
 Exit: 0 ok · 1 refused · 2 usage · 3 a write or tag failed
 `;

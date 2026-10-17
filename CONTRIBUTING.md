@@ -72,7 +72,7 @@ These are checked, not merely preferred. Skipping one turns CI red.
 | **Commit with explicit paths** (`git commit -- <path>`), never a blanket `git commit -a` | review |
 | **The API contract snapshot is explicit.** A route, error code or wire-field change must update `test/fixtures/contract/api.snapshot.json` via `node scripts/verify/contract.mjs --update` — never let it drift silently | `contract-gate.yml`, `.githooks/pre-push` |
 | **A route's *declared* request shape must equal what its handler reads** | `scripts/verify/route-request.mjs` |
-| **The skills are generated.** Author only under `skills/meerkat-taskpanel/` and the loop's hand-written surface; then run `node scripts/sync-skills.mjs`. The two copies under `plugins/` are generated — every other harness reads `skills/` in place | `npm run check:skills` |
+| **The skills are generated.** Author only under `skills/meerkat-taskpanel/` and the loop's hand-written surface; then run `node scripts/sync-skills.mjs`. No skill is distributed as a committed copy — `skills/` is the only `skills` tree in the repository | `npm run check:skills`, `test/scaffold.test.mjs` |
 | **Migrations are append-only.** Never edit or delete a committed `src/core/storage/migrations/*.sql`; add a new numbered file. The runner refuses a database whose applied file has changed | `migrations-runner.mjs`, `.githooks/pre-commit` |
 | **A version tag needs a `## [X.Y.Z]` CHANGELOG section** | `version-gate.yml`, `.githooks/pre-push` |
 | **Every failure is a domain error with a code** — never a bare `Error` | review |

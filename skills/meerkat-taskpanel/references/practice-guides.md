@@ -282,9 +282,8 @@ openclaw plugins install "$PWD" --force --accept-capabilities
 openclaw plugins inspect meerkat-taskpanel                 # → meerkat-taskpanel, bundle format: cursor
 ```
 
-(`plugins/openclaw/openclaw.plugin.json` is a *native* manifest — a skill-only pack
-that installs through the bundle route above; the repo's `docs/install.md` §OpenClaw
-has the native-vs-bundle distinction.)
+(The board ships no native `openclaw.plugin.json`: a skill-only pack installs through the
+bundle route above. The repo's `docs/install.md` §OpenClaw has the reasoning.)
 
 ### Tracing and triggering
 
