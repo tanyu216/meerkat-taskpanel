@@ -13,7 +13,10 @@ agent, and people face the agents rather than the tool. Agents create the projec
 tasks, claim work, send heartbeats, report progress and wire up dependencies and epics — the
 whole lifecycle, including the delivery gate, runs with no human in the loop. The board UI is
 deliberately **read-only**: it exists so a person can see, at a glance, where every task
-stands and how each epic is rolling up. Nobody files a card by clicking a button.
+stands and how each epic is rolling up. Nobody has to file a card by clicking a button — and
+the dialog the board does carry files plain `task` cards only: it offers no `kind`, so an
+`epic` comes from an agent promoting a card in place (the skill's container protocol) and a
+`deploy` card is never something a form can produce.
 
 ## What it solves
 
