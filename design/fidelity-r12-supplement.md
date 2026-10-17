@@ -420,10 +420,10 @@
 node <本卡工作区>/verify/r12-probe.mjs --shots
 
 # ② 结构/溢出/console 腿（引擎）—— 当前实现：A 腿块未落，只作「无回归」基线
-node ~/.openclaw/team/tools/ui-align/check.mjs --config web/.ui-align.json board-m2 --json
+node <外部框架目录>/tools/ui-align/check.mjs --config web/.ui-align.json board-m2 --json
 
 # ③ 双侧 computed style 腿（非阻塞；含 R12 新增 targets 后才有 R12 行）
-node ~/.openclaw/team/tools/ui-align/check.mjs --config web/.ui-align.json board-m2 --style --json
+node <外部框架目录>/tools/ui-align/check.mjs --config web/.ui-align.json board-m2 --style --json
 
 # ④ B 腿（可声明的 computed 规则；R12 规则由修复卡落）
 node --test test/web/blocks.contract.test.mjs

@@ -7,14 +7,21 @@ CI run the *same code*:
 | Hook | Enforces | Checker |
 |---|---|---|
 | `pre-commit` | SQL migrations are append-only: contiguous from `0001`, unique, an already-committed file neither edited nor deleted | `scripts/verify/migrations.mjs` |
-| `pre-push` | the API contract matches the committed snapshot (routes + error codes + wire field names **and types**, and each route's declared request schema); every route's declared request schema equals what its handler reads; every pushed `refs/tags/vX.Y.Z` has a `## [X.Y.Z]` section in `CHANGELOG.md`; and `main` is not pushed to directly | `scripts/verify/contract.mjs`, `scripts/verify/route-request.mjs`, `scripts/verify/changelog.mjs` |
+| `pre-push` | the API contract matches the committed snapshot (routes + error codes + wire field names **and types**, and each route's declared request schema); every route's declared request schema equals what its handler reads; no tracked file carries a host-absolute path; no tracked file carries a signpost out of the repository; every pushed `refs/tags/vX.Y.Z` has a `## [X.Y.Z]` section in `CHANGELOG.md`; and `main` is not pushed to directly | `scripts/verify/contract.mjs`, `scripts/verify/route-request.mjs`, `scripts/verify/paths.mjs`, `scripts/verify/signposts.mjs`, `scripts/verify/changelog.mjs` |
 | `pre-tag` | the same API + tag rules as `pre-push` (no `main` rule — a tag is not a branch push), run by hand *before* `git tag` | `scripts/verify/contract.mjs`, `scripts/verify/route-request.mjs`, `scripts/verify/changelog.mjs` |
 
-The two API gates run on **every** push, not only a tag: the API ships in every
-commit, and a route or error-code change must be accompanied by an explicit
-snapshot update (`node scripts/verify/contract.mjs --update`). The request lint
-is the pairing half — it proves the declaration the snapshot freezes is the one
-the handler honours. See [`../docs/contract.md`](../docs/contract.md).
+The four static gates run on **every** push, not only a tag. The two API gates:
+the API ships in every commit, and a route or error-code change must be
+accompanied by an explicit snapshot update (`node scripts/verify/contract.mjs
+--update`); the request lint is the pairing half — it proves the declaration the
+snapshot freezes is the one the handler honours (see
+[`../docs/contract.md`](../docs/contract.md)). The two tree gates: a
+host-absolute path is a statement about one machine, and a walkable reference
+into an external framework's private store is an instruction to leave this
+repository, which a session reading the tree will follow (see
+[`../design/contracts/naming-boundary.md`](../design/contracts/naming-boundary.md)
+and the header of each checker). Both are also enforced in CI — by
+`paths-gate.yml` and `signposts-gate.yml`.
 
 ## `main` is not pushed to directly
 
