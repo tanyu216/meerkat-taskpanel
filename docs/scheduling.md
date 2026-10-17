@@ -1217,8 +1217,9 @@ against mocks. It does not drive the real host CLIs (that is the supplementary
 the real board's claim semantics (`scripts/verify/install-e2e.sh` drives the real
 `taskctl`/`taskd`). Per host, only the forms the bundle actually ships are covered:
 Claude has a hook and no trigger, Codex has a trigger and no hook, and **Pi has neither a
-hook nor a trigger nor a shim** — only the external `wake-pi.sh` applies, which is why
-its row above is the wake form alone.
+hook nor a trigger** — only the external `wake-pi.sh` applies, which is why its row above is
+the wake form alone. (The `taskctl` shim is not one of these forms and is not part of this
+boundary: every host gets one — see `docs/install.md`.)
 
 ## See also
 
