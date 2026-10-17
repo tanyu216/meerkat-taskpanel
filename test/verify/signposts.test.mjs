@@ -20,7 +20,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
@@ -212,6 +212,26 @@ describe("verify/signposts — the allowlist, in both directions", () => {
     assert.equal(problems.some((p) => p.includes("is not one of")), true);
   });
 
+  it("does not read an entry under an absent subtree as a deleted file", () => {
+    // The verification image drops `design/`, and the one exemption this gate needs lives in
+    // there. A view that does not carry the subtree must say nothing about it — otherwise the
+    // container reds on a tree that is clean, which is exactly what the first draft did.
+    const entry = { file: "design/contracts/naming-boundary.md", rule: "mechanism-word", reason: "a test entry" };
+    const root = makeRoot({ files: { "src/a.mjs": "clean\n" }, allowlist: [entry] });
+    const result = analyze(root);
+    assert.deepEqual(result.problems, []);
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.skipped, ["design/contracts/naming-boundary.md"]);
+  });
+
+  it("still fails a missing file inside a subtree this view does carry", () => {
+    // The skip above must not weaken the assertion it exists for.
+    const root = makeRoot({ files: { "src/a.mjs": "clean\n" }, allowlist: [{ ...cleaner, file: "src/gone.mjs" }] });
+    const problems = analyze(root).problems;
+    assert.equal(problems.length, 1);
+    assert.match(problems[0], /no longer exists/);
+  });
+
   it("fails a malformed allowlist rather than treating it as empty", () => {
     const root = makeRoot({ files: { "docs/n.md": `the ${MECHANISM.cardWriter} step\n` }, allowlist: "{ not json" });
     const problems = analyze(root).problems;
@@ -234,10 +254,21 @@ describe("verify/signposts — the real tree", () => {
     const result = analyze(ROOT);
     assert.deepEqual(result.problems, []);
     assert.equal(result.ok, true);
-    assert.deepEqual(
-      result.findings,
-      [{ file: "design/contracts/naming-boundary.md", rules: ["mechanism-word"] }],
-      "only the contract that bans the terms may name them — a second finding means a new signpost",
-    );
+
+    // The one exemption is the contract that bans the terms, and nothing else. The list is
+    // asserted exactly where the contract is present; the image drops `design/`, so in the
+    // container this view is partial and the file is simply not there to be found — which
+    // must read as "skipped", never as "clean".
+    if (existsSync(join(ROOT, "design"))) {
+      assert.deepEqual(
+        result.findings,
+        [{ file: "design/contracts/naming-boundary.md", rules: ["mechanism-word"] }],
+        "only the contract that bans the terms may name them — a second finding means a new signpost",
+      );
+      assert.deepEqual(result.skipped, []);
+    } else {
+      assert.deepEqual(result.findings, []);
+      assert.deepEqual(result.skipped, ["design/contracts/naming-boundary.md"]);
+    }
   });
 });
