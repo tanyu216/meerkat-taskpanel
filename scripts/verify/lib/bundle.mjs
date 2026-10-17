@@ -68,13 +68,13 @@ export const CLAUDE_DEFAULT_ROOTS = [
 export const HOST_BUNDLES = {
   // The repository root IS the board's plugin root. `.claude-plugin/plugin.json` is the
   // board manifest and the root marketplace resolves `meerkat-taskpanel` to `./`, so
-  // Claude Code and Codex install the very same bundle. Codex ships no marker of its
-  // own, which is why its row names the Claude manifest.
+  // Claude Code, Codex and OpenClaw all install the very same bundle. Codex and OpenClaw
+  // ship no marker of their own, which is why their rows name the Claude manifest.
   //
   // `openclawFormat` is what the detector reports for the row's `dir` — not what the host
-  // calls itself. Four hosts share this one directory, and the root carries two client
+  // calls itself. Five hosts share this one directory, and the root carries two client
   // markers (`.cursor-plugin/` and `.claude-plugin/`), so OpenClaw's precedence picks
-  // cursor for all four. Measured: adding the Cursor marker changes exactly one line of
+  // cursor for all five. Measured: adding the Cursor marker changes exactly one line of
   // `openclaw plugins inspect` — `Bundle format: claude` → `cursor` — while
   // `Format: bundle`, `Shape`, `Capability mode` and `Bundle capabilities: skills` are
   // unchanged.
@@ -90,11 +90,16 @@ export const HOST_BUNDLES = {
     openclawKind: "bundle",
     openclawFormat: "cursor",
   },
+  // OpenClaw used to get its own native bundle (`plugins/openclaw/`). A native OpenClaw
+  // plugin is an in-process runtime module needing `package.json#openclaw.extensions` and
+  // an entry point that imports the OpenClaw SDK — a runtime dependency this project does
+  // not take — so that manifest could never be installed as one. What OpenClaw actually
+  // installs is the root bundle, exactly like Claude Code and Codex.
   openclaw: {
-    dir: "plugins/openclaw",
-    manifest: NATIVE_MANIFEST,
-    openclawKind: "native",
-    openclawFormat: "native",
+    dir: ".",
+    manifest: CLAUDE_MANIFEST,
+    openclawKind: "bundle",
+    openclawFormat: "cursor",
   },
   pi: {
     dir: ".",

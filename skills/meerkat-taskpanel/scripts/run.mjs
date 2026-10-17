@@ -21,13 +21,21 @@
  *                                   the one the loop's `board-check.mjs` resolves through
  *                                   (same vocabulary, deliberately)
  *   3. this file's own checkout   — `here/../../..`, the rung that works in a checkout
- *   4. `taskctl` on `PATH`        — a CLI installed for the host, checkout or not
- *   5. none of the above          — a clear, actionable refusal (below), never a stack
+ *   4. **the host's own shim**    — `<host>/bin/taskctl`, the `taskctl` wrapper
+ *                                   `install.sh` writes beside this skill
+ *   5. `taskctl` on `PATH`        — a CLI installed for the host, checkout or not
+ *   6. none of the above          — a clear, actionable refusal (below), never a stack
  *
- * Rungs 1–2 come first because they are explicit; rung 4 is last because it is the only
- * one that cannot say *which* board engine it will find. No business logic lives here:
- * the CLI is spawned with the caller's arguments, stdio is piped through, and the exit
- * code is propagated.
+ * Rungs 1–3 are the checkout rungs, most explicit first. **Rung 4 is why this ladder has
+ * six rungs**: the shim is the only `taskctl` that arrives with the caller's identity
+ * already pinned (`--agent <name> --actor-kind <host>`), so it is preferred over a bare
+ * `PATH` CLI — which is the only rung that cannot say *which* board engine it will find,
+ * nor what kind the write will be recorded as. Rung 4 is checked *after* the checkout
+ * rungs and not before them: an explicit root, and a checkout this file is lying in, are
+ * both more specific than a wrapper written at install time.
+ *
+ * No business logic lives here: the CLI is spawned with the caller's arguments, stdio is
+ * piped through, and the exit code is propagated.
  */
 
 import { spawn } from "node:child_process";
@@ -109,10 +117,30 @@ function findOnPath(env, name) {
 }
 
 /**
+ * The `taskctl` shim `install.sh` writes **beside this skill**, or `null`.
+ *
+ * A skill is installed at `<host>/skills/meerkat-taskpanel/`, and the shim at
+ * `<host>/bin/taskctl` — the same `here/../../..` walk that lands on the host directory.
+ * It is the one `taskctl` that carries the caller's identity, so the ladder prefers it
+ * over a bare `PATH` CLI.
+ *
+ * `null` when there is no such file, or it is not executable: a shim `spawn` cannot
+ * execute would be a rung that shadows the ones below it and then fails, which is the
+ * opposite of what this ladder promises.
+ *
+ * @returns {string|null}
+ */
+function shimBesideSkill() {
+  const candidate = join(resolve(here, "..", "..", ".."), "bin", CLI_NAME);
+  return isExecutableFile(candidate) ? candidate : null;
+}
+
+/**
  * Resolve what to run.
  *
  * @param {Record<string, string|undefined>} env
  * @returns {{kind: "checkout", command: string, args: string[]}
+ *          |{kind: "shim", command: string, args: string[]}
  *          |{kind: "path", command: string, args: string[]}
  *          |{kind: "missing", roots: Array<{origin: string, root: string}>}}
  */
@@ -122,6 +150,11 @@ function resolveTarget(env) {
     const cli = join(root, CLI_REL);
     if (isFile(cli)) return { kind: "checkout", command: process.execPath, args: [cli] };
   }
+
+  // The host's own shim — the rung that carries the identity. See the ladder above for
+  // why it sits here and not above the checkout rungs.
+  const shim = shimBesideSkill();
+  if (shim !== null) return { kind: "shim", command: shim, args: [] };
 
   const onPath = findOnPath(env, CLI_NAME);
   if (onPath) return { kind: "path", command: onPath, args: [] };
@@ -143,6 +176,7 @@ function refusal(roots) {
     "This skill ships only SKILL.md, references/ and scripts/ — it does not carry the taskpanel source tree.",
     "looked for it at:",
     ...roots.map(({ origin, root }) => `  - ${origin}: ${join(root, CLI_REL)}`),
+    `  - this host's shim: ${join(resolve(here, "..", "..", ".."), "bin", CLI_NAME)}`,
     `  - PATH: no executable \`${CLI_NAME}\` on it`,
     `try: install the CLI and put it on your PATH — bash <taskpanel-checkout>/install.sh --target <host>`,
     `  or: name the checkout here — MEERKAT_TASKPANEL_ROOT=<taskpanel-checkout> node ${join("scripts", "run.mjs")} …`,

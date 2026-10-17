@@ -98,8 +98,6 @@ meerkat-taskpanel/
 ├── .pi/                          # Pi 扩展（由 package.json 的 `pi` 字段声明）
 ├── .opencode/                    # OpenCode 插件（就地读那一份 skills/）
 ├── .cursor-plugin/               # Cursor 标记 —— 让仓根同时也是一个 Cursor 插件
-├── plugins/                      # 仍需自备 skills/ 的 bundle
-│                                 #   （openclaw，以及 loop 自己的 marketplace 条目）
 ├── design/                       # 设计文档：DESIGN / BLOCKS、prototype/、brand/、assets/
 ├── docker/                       # Dockerfile、compose、profiles、verify-in-container.sh
 ├── monitoring/                   # OTel / Prometheus 导出器
@@ -140,16 +138,18 @@ skill 目录 —— 对 **Claude Code** 与 **Codex** 还会部署宿主 bundle 
 | 宿主 | `--target` | Skill 落点 | Bundle |
 |---|---|---|---|
 | Claude Code | `claude` | `~/.claude/skills/meerkat-taskpanel` | `.claude-plugin/plugin.json`（插件根 = 仓根） |
-| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | `plugins/openclaw/openclaw.plugin.json`（原生） |
+| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | 同一个仓根 bundle |
 | Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | 同一个仓根 bundle，经 marketplace 解析 |
 | Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | 仓根 `package.json` 的 `pi` 字段 |
 | OpenCode | `opencode` | `~/.config/opencode/skills/meerkat-taskpanel` | `.opencode/plugins/`（进程内注册） |
 | Cursor | `cursor` | `~/.cursor/skills/meerkat-taskpanel` | `.` —— 仓根（`.cursor-plugin/plugin.json`） |
 
 仓根就是 board 的插件根，每个 harness 都**就地读**那一份 `skills/`，不再各拿一份副本。
-OpenClaw 也可消费这个 Claude 格式的 bundle，这是受支持的 skill-only
-路线；`plugins/openclaw/openclaw.plugin.json` 是*原生*清单 —— 两者的区别见
+OpenClaw 同样消费这个 Claude 格式的 bundle，这就是它受支持的安装路线 —— 见
 [`docs/install.md`](docs/install.md#openclaw)。
+
+`meerkat-loop` 监督进程**不走** marketplace 分发：它由 `install.sh --target claude|codex|pi`
+安装，且永不进入 OpenClaw。
 
 常用参数：`--prefix <home>`（覆盖目标 home）、`--agent-name <名>`（该 Agent 在看板上的身份，
 默认 `$USER`，须与其 assignee 一致；对既有安装改名需配 `--force` 才生效）、`--no-automation`
@@ -259,8 +259,8 @@ claim-first 片段、写入可调度的认领触发脚本 `~/.codex/meerkat-task
 
 ```bash
 node --test                          # 运行冒烟 / 契约测试
-node scripts/sync-skills.mjs         # 生成 loop 载荷 + plugins/ 下那两份副本
-node scripts/sync-skills.mjs --check # 校验生成载荷与各宿主 skill 副本是否同步
+node scripts/sync-skills.mjs         # 生成 loop 载荷（执行体 + 安装模板）
+node scripts/sync-skills.mjs --check # 校验生成载荷是否与来源同步
 node scripts/verify/manifests.mjs    # 校验插件清单
 node scripts/verify/skill.mjs        # 校验看板 skill 的 SKILL.md frontmatter
 node scripts/build.mjs               # 产出 dist/

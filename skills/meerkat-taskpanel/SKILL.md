@@ -35,12 +35,21 @@ exists, and never assuming one:
 2. `$MEERKAT_TASKPANEL_REPO/src/cli/index.mjs` — the key `install.sh` records in the host
    config;
 3. the checkout this skill sits in, when it is in one;
-4. `taskctl` on your `PATH`.
+4. **the `taskctl` shim `install.sh` writes beside this skill** (`<host>/bin/taskctl`);
+5. `taskctl` on your `PATH`.
 
 So inside a checkout it runs the CLI beside it; installed on its own — which is how
-`install.sh` distributes it, and how every host consumes it — it uses a `taskctl` you have
-installed or a checkout you name. When it finds none of the four it **stops with a message
-saying where it looked and the three ways to fix it**, rather than dying inside Node.
+`install.sh` distributes it, and how every host consumes it — it uses the host's own shim,
+or a `taskctl` you have installed, or a checkout you name. When it finds none of the five it
+**stops with a message saying where it looked and the ways to fix it**, rather than dying
+inside Node.
+
+Rung 4 is the one that carries your identity, and it is why the ladder prefers it over a
+bare `taskctl`: the shim spawns the CLI with `--agent <name> --actor-kind <host>` on every
+call, so a write from this skill is recorded as *this agent* rather than as the person the
+board would otherwise assume. It sits below the checkout rungs because an explicit root —
+and a checkout the skill is lying in — is more specific than a wrapper written at install
+time.
 
 If `taskctl` is on your `PATH` (installed via `install.sh` or `npm link`), call it directly:
 
