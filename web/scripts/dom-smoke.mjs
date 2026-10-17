@@ -31,6 +31,7 @@ import { dirname, extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { BROWSER_LAYER_RULES, IMPLEMENTED_CONTRACT_ITEMS } from "../../test/web/blocks.contract.mjs";
+import { applyPxVerdicts } from "./px-assert.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB = resolve(HERE, "..");
@@ -540,7 +541,6 @@ export function evaluateRules(rules) {
     probe.remove();
     return value;
   };
-  const px = (value) => Number.parseFloat(value);
   /**
    * Count the tracks of a computed `grid-template-columns`. Splitting on
    * whitespace is wrong: a track may be `minmax(0px, 1fr)`, which contains a
@@ -561,8 +561,9 @@ export function evaluateRules(rules) {
     return inToken ? count + 1 : count;
   };
   const out = [];
-  for (const { block, rule } of rules) {
-    const record = { block, kind: rule.kind, selector: rule.selector ?? null, probe: rule.probe ?? null, within: rule.within ?? null, ok: true, detail: "" };
+  for (let index = 0; index < rules.length; index++) {
+    const { block, rule } = rules[index];
+    const record = { index, block, kind: rule.kind, selector: rule.selector ?? null, probe: rule.probe ?? null, within: rule.within ?? null, ok: true, detail: "" };
     try {
       switch (rule.kind) {
         case "count": {
@@ -639,9 +640,17 @@ export function evaluateRules(rules) {
           const expected = rule.equalsVar !== undefined ? resolveVar(rule.equalsVar)
             : rule.notEqualsVar !== undefined ? resolveVar(rule.notEqualsVar)
             : undefined;
+          // The px comparators are settled in Node (`px-assert.mjs`): the page
+          // reports each matched node's raw computed value and whether it has a
+          // layout box. `parseFloat` in here cannot tell `"auto"` (NaN ⇒ every
+          // comparison false ⇒ silent pass) from a real length, nor `"100%"` (a
+          // fake `100`) — T-20261016-130046-3.
+          const pxComparators = rule.equalsPx !== undefined || rule.minPx !== undefined || rule.maxPx !== undefined;
+          const pxReadings = [];
           for (const node of nodes) {
             const actual = getComputedStyle(node)[rule.property];
             const fail = (why) => { record.ok = false; record.detail = `${rule.property} = ${actual} ${why}`; };
+            if (pxComparators) pxReadings.push({ value: actual, hasBox: node.isConnected && node.getClientRects().length > 0 });
             if (rule.equals !== undefined && actual !== rule.equals) { fail(`!= ${rule.equals}`); break; }
             if (rule.equalsVar !== undefined && actual !== expected) { fail(`!= var(${rule.equalsVar}) = ${expected}`); break; }
             if (rule.notEquals !== undefined && actual === rule.notEquals) { fail(`== ${rule.notEquals}`); break; }
@@ -650,14 +659,12 @@ export function evaluateRules(rules) {
             if (rule.startsWith !== undefined && !actual.startsWith(rule.startsWith)) { fail(`does not start with ${rule.startsWith}`); break; }
             if (rule.endsWith !== undefined && !actual.endsWith(rule.endsWith)) { fail(`does not end with ${rule.endsWith}`); break; }
             if (rule.tokens !== undefined && trackCount(actual) !== rule.tokens) { fail(`is not ${rule.tokens} tracks`); break; }
-            if (rule.equalsPx !== undefined && Math.abs(px(actual) - rule.equalsPx) > 0.5) { fail(`!= ${rule.equalsPx}px`); break; }
-            if (rule.maxPx !== undefined && px(actual) > rule.maxPx) { fail(`> ${rule.maxPx}px`); break; }
-            if (rule.minPx !== undefined && px(actual) < rule.minPx) { fail(`< ${rule.minPx}px`); break; }
             if (rule.differsFrom !== undefined) {
               const other = doc.querySelector(rule.differsFrom);
               if (!other || getComputedStyle(other)[rule.property] === actual) { fail(`is not distinguishable from ${rule.differsFrom}`); break; }
             }
           }
+          if (pxReadings.length > 0) record.px = pxReadings;
           break;
         }
         case "classes": {
@@ -710,6 +717,14 @@ export async function run() {
   try {
     const context = await browser.newContext();
     const page = await context.newPage();
+
+    /**
+     * Run the in-page evaluator, then settle every px comparator in Node. The
+     * page cannot judge them safely — see `web/scripts/px-assert.mjs` — so it
+     * reports `record.px` readings and this folds them back into the records.
+     */
+    const evaluateRuleSet = async (rules) => applyPxVerdicts(await page.evaluate(evaluateRules, rules), rules);
+
     const consoleErrors = [];
     const pageErrors = [];
     page.on("console", (msg) => {
@@ -765,11 +780,11 @@ export async function run() {
     // section below (the two views are mutually exclusive, so it cannot be both).
     const waitingRules = EVALUATED_RULES.filter((e) => e.rule.when === "waiting view").map((e) => ({ block: e.block, rule: e.rule }));
 
-    const boardResults = await page.evaluate(evaluateRules, boardRules);
+    const boardResults = await evaluateRuleSet(boardRules);
     await page.click('[data-view="list"]');
     await waitForListSettled();
     await page.waitForTimeout(120);
-    const listResults = await page.evaluate(evaluateRules, listRules);
+    const listResults = await evaluateRuleSet(listRules);
     // The list's own geometry that a per-element rule cannot state: one dot per
     // status chip, and a rule *between* rows (the first draws no top edge).
     const listDetail = await page.evaluate(() => {
@@ -849,7 +864,7 @@ export async function run() {
       block: entry.block,
       rule: entry.rule,
     }));
-    const drawerResults = await page.evaluate(evaluateRules, drawerRules);
+    const drawerResults = await evaluateRuleSet(drawerRules);
 
     /* ---- R14 ①② — the drawer's focus hand-off and its category words --------
        Both leftovers live on the drawer that is open right here (TD-1), so both
@@ -1175,7 +1190,7 @@ export async function run() {
     // metrics; this is where they are evaluated.
     await page.setViewportSize({ width: 980, height: 900 });
     await page.waitForTimeout(150);
-    const railResults = await page.evaluate(evaluateRules, railRules);
+    const railResults = await evaluateRuleSet(railRules);
     const rail = await page.evaluate(() => {
       const caret = document.querySelector("[data-lang-select] svg.td-caret");
       return {
@@ -1267,7 +1282,7 @@ export async function run() {
     await page.waitForTimeout(150);
     await page.click("[data-access-open]");
     await page.waitForTimeout(200);
-    const panelResults = await page.evaluate(evaluateRules, panelRules);
+    const panelResults = await evaluateRuleSet(panelRules);
     const panelGeometry = await page.evaluate(() => {
       const panel = document.querySelector("[data-access-panel]");
       const box = panel.getBoundingClientRect();
@@ -2078,7 +2093,7 @@ export async function run() {
       await page.click('[data-view="list"]');
       await page.waitForTimeout(180);
       const loading = await readListPair();
-      const loadingResults = await page.evaluate(evaluateRules, listLoadingRules);
+      const loadingResults = await evaluateRuleSet(listLoadingRules);
       tasksDelayMs = 0;
       await waitForListSettled();
       await page.waitForTimeout(120);
@@ -3762,7 +3777,7 @@ export async function run() {
       };
     });
     // The contract's own B27 rules, read while the queue is on screen.
-    const waitingResults = await page.evaluate(evaluateRules, waitingRules);
+    const waitingResults = await evaluateRuleSet(waitingRules);
     await page.click('[data-nav-item="board"]');
     await page.waitForTimeout(120);
 
@@ -3850,7 +3865,7 @@ export async function run() {
 
     // The contract's own B26 rules, read here and nowhere else: the view is open
     // and the ledger has been read.
-    const activityResults = await page.evaluate(evaluateRules, activityRules);
+    const activityResults = await evaluateRuleSet(activityRules);
 
     const b26Rest = await page.evaluate(() => {
       const root = document.querySelector("[data-activity-view]");
@@ -4801,6 +4816,10 @@ export async function run() {
       ...waitingResults,
     ];
     const failures = results.filter((r) => !r.ok);
+    // A px comparator read off an element with no layout box (a closed subtree)
+    // degrades to the probe's existence criterion — it is not a pass *as a
+    // measurement*, so it is reported rather than hidden. See px-assert.mjs.
+    const notMeasured = results.filter((r) => r.notMeasured === true);
     const viewportFailures = viewports.filter((v) => !v.ok);
     return {
       consoleErrors,
@@ -4870,7 +4889,8 @@ export async function run() {
         afterAnchor: r16AfterAnchor,
       },
       geometry,
-      counts: { rules: results.length, failed: failures.length, ...geometry },
+      notMeasured,
+      counts: { rules: results.length, failed: failures.length, notMeasured: notMeasured.length, ...geometry },
       fixtureTasks: data.tasks.length,
     };
   } finally {
@@ -4908,6 +4928,10 @@ if (isEntryPoint) run().then(
       console.log(`console errors=${report.consoleErrors.length} page errors=${report.pageErrors.length}`);
       for (const error of [...report.consoleErrors, ...report.pageErrors]) console.log(`  ! ${error}`);
       for (const failure of report.failures) console.log(`  ✗ ${failure.block} ${failure.kind} ${failure.selector ?? failure.probe ?? ""} — ${failure.detail}`);
+      if (report.notMeasured.length > 0) {
+        console.log(`not measured (no layout box): ${report.notMeasured.length} px assertion(s)`);
+        for (const record of report.notMeasured) console.log(`  · ${record.block} ${record.probe} — ${record.detail}`);
+      }
       console.log(`viewports: ${report.viewports.map((v) => `${v.width}${v.ok ? "ok" : "OVERFLOW"}`).join(" ")}`);
       console.log(`interactions: ${JSON.stringify(report.interactions)}`);
       if (report.m1Failures.length > 0) {
