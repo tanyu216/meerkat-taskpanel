@@ -9,6 +9,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A container closes itself: the epic rollup.** When the last child of an `epic` is accepted to
+  `done`, the board writes the container's rollup report — one acceptance line per child, plus the
+  children's own delivery evidence, authored by the board itself (`system` / `taskd`) — and moves
+  the epic to `in_review` in the same transaction as that child's move. Human acceptance still
+  gates the tree: a nested container reaches `in_review`, never `done`, so its parent keeps
+  waiting until a human accepts the inner one. Two cases stay manual by design: a container whose
+  children were **all** delivered under `--no-report` has no evidence to roll up and stays open,
+  and a **`canceled` child** stops the rollup — whether a container is finished despite a
+  cancellation is a human's call.
+- **A `todo` epic may now be delivered (`0024`).** An epic is never claimable, so `todo` was a
+  state with no exit: `done` is reachable only from `in_review`, and `todo` had no edge there —
+  `issue create --kind epic`, which births a container in `todo`, produced a card no legal path
+  could close. Migration `0024_epic_deliver_from_todo.sql` adds the pair **for `kind = epic`
+  only** and re-arms the delivery gate for the new source status: the report is still required,
+  and a `task` in `todo` still cannot reach `in_review`.
 - **A gate against signposts out of the repository: `scripts/verify/signposts.mjs`.** This
   project interoperates with an external development framework that keeps its own task store
   in a private directory under the user's home. A document that names one of that framework's

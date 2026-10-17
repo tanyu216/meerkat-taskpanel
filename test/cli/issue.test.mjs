@@ -654,7 +654,22 @@ describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells i
   const AS = ["--agent", "linus"];
   const forLinus = ["--assignee", "linus", "--assignee-kind", "agent", ...AS];
 
-  it("promotes the claimed card, splits it, parks it and closes it", async () => {
+  const childReport = (sha) => ({
+    conclusion: `Piece delivered (${sha}).`,
+    acceptance: [{ text: "the piece works", status: "met" }],
+    evidence: [{ kind: "commit", sha }],
+  });
+
+  /** Claim, deliver with a report, and accept — the whole life of one child. */
+  const finishChild = (run, identifier, sha) => {
+    dataOf(run(["issue", "move", identifier, "in_progress", ...AS, "--json"]));
+    dataOf(run(["issue", "deliver", identifier, "--report-file", "-", ...AS, "--json"], {
+      input: JSON.stringify(childReport(sha)),
+    }));
+    dataOf(run(["issue", "move", identifier, "done", ...AS, "--json"]));
+  };
+
+  it("closes the container itself when its last child is accepted", async () => {
     await board(async ({ run }) => {
       // 1. the card is in hand and claimed — while it is still a `task`
       const card = createIssue(run, forLinus);
@@ -677,20 +692,50 @@ describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells i
       }
       assert.equal(dataOf(run(["relation", "list", card.task.identifier, "--json"])).children.length, 2);
 
-      // 5. park the container on the one claim-free route it can be closed from
-      const parked = dataOf(
-        run(["issue", "move", card.task.identifier, "blocked", "--blocked-reason", "dependency", ...AS, "--json"]),
+      // 5. work the children. No parking move: the container is delivered out of
+      //    whichever status the claim left it in (0024).
+      finishChild(run, first.task.identifier, "abc1234");
+      assert.equal(
+        dataOf(run(["issue", "get", card.task.identifier, "--json"])).task.status,
+        "in_progress",
+        "one child is not the whole set",
       );
-      assert.equal(parked.task.status, "blocked");
-      assert.equal(parked.task.blocked_reason, "dependency");
 
-      // 6. and close it with a rollup report, exactly like a leaf
+      finishChild(run, second.task.identifier, "def5678");
+
+      // 6. the board closed the container itself: the transition is spent, so a
+      //    second, manual delivery is refused.
+      const closed = dataOf(run(["issue", "get", card.task.identifier, "--json"])).task;
+      assert.equal(closed.status, "in_review", "a human accepts the container to done");
+      const again = run(["issue", "deliver", card.task.identifier, "--report-file", "-", ...AS, "--json"], {
+        input: JSON.stringify(REPORT),
+      });
+      assert.equal(again.status, 1);
+      assert.equal(JSON.parse(again.stdout).error.code, "INVALID_TRANSITION");
+    });
+  });
+
+  it("leaves the container open when its children were all waived, so a human can close it", async () => {
+    await board(async ({ run }) => {
+      const card = createIssue(run, forLinus);
+      dataOf(run(["issue", "update", card.task.identifier, "--kind", "epic", ...AS, "--json"]));
+      const child = createIssue(run, ["--title", "Waived piece", "--target", "src/w", ...forLinus]);
+      dataOf(run(["relation", "add", card.task.identifier, "--type", "parent", "--target", child.task.identifier, ...AS, "--json"]));
+
+      // A waiver leaves no report, so there is no evidence to roll up.
+      dataOf(run(["issue", "move", child.task.identifier, "in_progress", ...AS, "--json"]));
+      dataOf(run(["issue", "move", child.task.identifier, "in_review", "--no-report", "--reason", "audited waiver, no commit", ...AS, "--json"]));
+      dataOf(run(["issue", "move", child.task.identifier, "done", ...AS, "--json"]));
+
+      assert.equal(dataOf(run(["issue", "get", card.task.identifier, "--json"])).task.status, "todo");
+
+      // The manual path still works — the container is a human's to close here.
       const delivered = dataOf(
         run(["issue", "deliver", card.task.identifier, "--report-file", "-", ...AS, "--json"], {
           input: JSON.stringify(REPORT),
         }),
       );
-      assert.equal(delivered.task.status, "in_review", "a human accepts the container to done");
+      assert.equal(delivered.task.status, "in_review");
       assert.equal(delivered.report.round, 1);
     });
   });

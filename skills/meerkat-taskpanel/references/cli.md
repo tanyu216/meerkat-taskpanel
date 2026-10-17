@@ -257,12 +257,15 @@ Three board facts decide the order you split in:
 - **An epic cannot be claimed.** `issue move <epic> in_progress` is refused `not_claimable`, and
   `issue candidates` withholds epics from all three pools. So a card that must end up
   `in_progress` has to be claimed **while it is still a `task`**, and promoted afterwards.
-- **`todo → in_review` is not a transition.** `todo` reaches only `backlog`, `in_progress`,
-  `blocked` and `canceled`, and `done` is reachable only from `in_review` — so a promoted card
-  left in `todo` cannot be delivered. `todo → blocked → in_review` is its one claim-free route
-  out, which is why a container is parked with
-  `issue move PROJ-0007 blocked --blocked-reason dependency` until its children land. That block
-  class is **visibility only** — the SLA patrol gives it no due point.
+- **An epic's route into review is its own.** `todo → in_review` *is* a transition for an `epic`
+  — a container is never claimed, so its `todo` row carries the delivery edge a task's does not,
+  and `issue deliver PROJ-0007 --report-file -` closes it from there. For a `task`, `todo` still
+  reaches only `backlog`, `in_progress`, `blocked` and `canceled`; the exception is scoped to the
+  kind. `done` is reachable only from `in_review` in both cases. A container that really is
+  waiting on something external is still parked with
+  `issue move PROJ-0007 blocked --blocked-reason dependency` (visibility only — the SLA patrol
+  gives it no due point), but that is now a statement about the container, not a way around the
+  state machine.
 
 Linking a child is its own command: `issue create` writes no relation, and its `--parent` flag
 fills the **idempotency key's source slot** and nothing else. A child created with
@@ -290,9 +293,16 @@ Only the **downgrade** is fenced: an epic that still has children cannot go back
 (`VALIDATION_FAILED`, "an epic with children cannot be downgraded"). Remove the `parent` edges
 first if you really meant to undo it.
 
-The container is closed exactly like a leaf — `report template` → `issue deliver <ref>
---report-file -`, with a report that rolls the children up, one line each. The delivery gate
-applies to an epic as it does to a task, and it is still `in_review`: a human accepts to `done`.
+The container **closes itself**: when the last child is accepted to `done`, the board writes the
+rollup report — one acceptance line per child, carrying the children's own delivery evidence — and
+moves the epic to `in_review` in the same transaction. The delivery gate applies to that report
+exactly as it does to a leaf's, and the result is still `in_review`: a human accepts to `done` —
+which is also why a nested container's parent waits for its child container to be accepted.
+
+Two cases stay manual: a container whose children were **all** delivered under `--no-report` has
+no evidence to roll up and stays open (`report template` → `issue deliver` closes it by hand), and
+a **`canceled` child** stops the rollup on purpose — whether a container is finished despite a
+cancellation is a human's call.
 
 ### The delivery gate
 

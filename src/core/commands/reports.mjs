@@ -11,11 +11,13 @@
 
 import { DomainError } from "../../shared/errors.mjs";
 import { assertWaiverRequest } from "../domain/delivery-gate.mjs";
+import { STATUS } from "../domain/enums.mjs";
 import { normalizeReportCreate } from "../domain/report.mjs";
 import { assertTransition } from "../domain/status.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { actorOf } from "./context.mjs";
 import { resolveActorId } from "./dictionary.mjs";
+import { advanceContainerForChild } from "./rollup.mjs";
 
 /** The task must exist, and its delivery round is what the report is judged against. */
 function loadTask(ctx, taskRef) {
@@ -131,7 +133,7 @@ export function deliver(ctx, input) {
       // (or stamping the waiver) below. The database trigger still checks that
       // it really happened — if the ordering here were wrong, the status update
       // would be refused.
-      assertTransition(task.status, to);
+      assertTransition(task.status, to, task.kind);
 
       if (waived) {
         const waiver = { round: task.deliveryRound, reason: waiverReason, at: now };
@@ -150,6 +152,9 @@ export function deliver(ctx, input) {
           },
           createdAt: now,
         });
+        // A waived delivery can still finish a child — the container rolls up
+        // on `done`, however the child got there (commands/rollup.mjs).
+        if (moved.status === STATUS.DONE) advanceContainerForChild(ctx, task.id, now);
         return { task: moved, report: null, waived: true };
       }
 
@@ -191,6 +196,9 @@ export function deliver(ctx, input) {
         },
         createdAt: now,
       });
+      // Same hook as the waived branch: `deliver` may land a card on `done`
+      // (a rework accepted straight through), and that can finish a container.
+      if (moved.status === STATUS.DONE) advanceContainerForChild(ctx, task.id, now);
       return { task: moved, report, waived: false };
     },
     { op: "reports.deliver" },

@@ -65,12 +65,13 @@ dispatched to you: wait for the dispatch rather than looking for it yourself.
 filed is a `task`; if it holds several deliverables, `issue update <ref> --kind epic` makes it
 the container (only an `epic` may be a parent), then one `issue create` per deliverable — each
 with its own `--target`, or the create guard reads the second as a retry of the first — and a
-`relation add <ref> --type parent --target <child>` per edge. An epic can be neither claimed nor
-moved `todo → in_review`, so park it where it can still reach review — `issue move <ref> blocked
---blocked-reason dependency`, a container waiting on its own children — and close it with a
-rollup report when they land. Claim it *while it is still a `task`* only when you want the
-container visibly `in_progress`. The full order, and the three commands that surprise people,
-are in [`SKILL.md`](../SKILL.md#when-the-card-is-a-container-promote-it-to-an-epic).
+`relation add <ref> --type parent --target <child>` per edge. An epic can never be claimed, but
+it *is* deliverable from `todo`: `todo → in_review` is the epic's own edge (a task's `todo` row
+does not have it), so the container waits while its children are worked — and **the board closes
+it**: when the last child is accepted to `done`, the rollup report is written for you. Claim it
+*while it is still a `task`* only when you want the container visibly `in_progress`. The full
+order, and the three commands that surprise people, are in
+[`SKILL.md`](../SKILL.md#when-the-card-is-a-container-promote-it-to-an-epic).
 
 ### 3. One card at a time
 

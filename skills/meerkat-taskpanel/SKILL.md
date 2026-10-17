@@ -120,7 +120,6 @@ taskctl issue update <ref> --kind epic                          # the card becom
 taskctl comment add <ref> --kind change --body "split into N cards: …"
 taskctl issue create --project <p> --title "…" --target <t> --acceptance "…"   # one card per piece
 taskctl relation add <ref> --type parent --target <child>        # <ref> is the parent
-taskctl issue move <ref> blocked --blocked-reason dependency     # park it: waiting on its children
 ```
 
 Four board facts decide that order:
@@ -128,9 +127,11 @@ Four board facts decide that order:
 - **An epic can never be claimed.** `issue move <epic> in_progress` is refused (`not_claimable`)
   and `issue candidates` never offers one — so a card that should end up `in_progress` must be
   claimed **while it is still a `task`**, and promoted after.
-- **`todo → in_review` is not a transition.** An epic left in `todo` would have no way back into
-  the work cycle, so the container is parked on `blocked --blocked-reason dependency` — a
-  container waiting on its own children, a block class that carries no SLA due point.
+- **An epic's route into review is its own.** `todo → in_review` is legal **for an `epic` only**
+  — a container never enters the work cycle, so its `todo` row carries the delivery edge a task's
+  does not. Nothing has to be parked first: the container waits in `todo` while its children are
+  worked, and is closed from there. (A `task` in `todo` still cannot reach `in_review`; the
+  exception is scoped to the kind, not to the status.)
 - **`issue create --parent <epic>` does not link anything.** On create, `--parent` only fills the
   idempotency key's source slot; the edge is `relation add … --type parent`, and only an `epic`
   may be the parent.
@@ -147,16 +148,26 @@ are the *same card* — the second create is read as a retry of the first, not a
 `--allow-dup` when a target genuinely does not apply. Then claim exactly **one** child and work it
 as usual: the container holds no work of its own, so it does not count against your one card.
 
-When the children are done, close the container the way you close any card — with a report that
-rolls them up, one line per child (what it delivered, where it stands):
+**The board closes the container for you.** When the last child is accepted to `done`, the board
+writes the container's rollup report — one acceptance line per child, carrying the children's own
+delivery evidence — and moves the epic to `in_review` in the same transaction as that child's
+move. You do not deliver it; "who closes it" is answered by the board, not by whoever happened to
+finish last. A human still accepts `in_review → done`, which is why a **nested** container's parent
+keeps waiting until the inner container is accepted.
 
-```bash
-taskctl report template <ref>
-taskctl issue deliver <ref> --report-file -   # → in_review; a human accepts to done
-```
+Two cases are left to you:
 
-**Never move the epic back to `todo`.** It cannot be claimed there and cannot reach `in_review`:
-a `todo` epic sits where nothing can advance it.
+- **A waived child** (`--no-report`) contributes no evidence. If every child was waived there is
+  nothing to roll up and the container stays open — close it by hand:
+  `taskctl report template <ref>` then `taskctl issue deliver <ref> --report-file -` (the delivery
+  gate still applies).
+- **A `canceled` child** stops the rollup on purpose: whether a container is finished despite a
+  cancellation is a human's call.
+
+**The container may sit in `todo`.** An epic is not claimed, so `todo` is a resting place rather
+than a queue position, and the close arrives from there. Moving it to `blocked` is still legal,
+and still right when the container really is waiting on something external; it is no longer a
+detour.
 
 ## When to use it
 
@@ -177,9 +188,9 @@ a `todo` epic sits where nothing can advance it.
   [`references/cli.md`](references/cli.md#editing-a-card-status-priority-description-attachments-dependencies).
 - **Delegating** — make the card a container and split it: `taskctl issue update <ref> --kind epic`
   to promote one you already hold (or `taskctl issue create --kind epic …` for one you are filing
-  fresh), then one `taskctl issue create` per child, a
-  `taskctl relation add <ref> --type parent --target <child>` per edge, and
-  `taskctl issue move <ref> blocked --blocked-reason dependency` to park it. See
+  fresh), then one `taskctl issue create` per child and a
+  `taskctl relation add <ref> --type parent --target <child>` per edge. The container needs no
+  parking move — an `epic` may be delivered out of `todo`. See
   [When the card is a container](#when-the-card-is-a-container-promote-it-to-an-epic).
 - **Finishing** — `taskctl report template <id>` to get a report, fill in the TODO
   lines, then `taskctl issue deliver <id> --report-file -`. **The board will not let a
