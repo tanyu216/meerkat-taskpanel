@@ -17,7 +17,7 @@
  * `[data-detail-labels]` with no `when` precondition, so they must exist while
  * the drawer is closed; only their values are empty at rest.
  */
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 
 import {
   board,
@@ -168,10 +168,122 @@ const commentRows = computed(() =>
   }),
 );
 
-const session = computed(() => {
-  const sessions = detail.value?.sessions ?? [];
-  return sessions.find((row) => row.status === "running") ?? sessions[0] ?? null;
+/* ---------------------------------------------------------- v4 · tab shell */
+/**
+ * The drawer's six tabs, in the prototype's order (Sessions last: at 430px the
+ * five existing tabs still fit one row, and only the new one wraps). The
+ * Sessions tab is data-driven — `sessions.length > 0` — not assignee-kind:
+ * the server does not tie a session to the card's assignee, so a human card can
+ * carry real session rows and must show them.
+ */
+const TAB_ORDER = ["details", "activity", "reports", "acceptance", "leftovers", "sessions"];
+const activeTab = ref("details");
+const tabEls = new Map();
+function setTabRef(name, el) {
+  if (el) tabEls.set(name, el);
+  else tabEls.delete(name);
+}
+const sessions = computed(() => detail.value?.sessions ?? []);
+const hasSessions = computed(() => sessions.value.length > 0);
+const tabs = computed(() =>
+  TAB_ORDER.map((name) => ({
+    name,
+    key: `drawer.tab.${name}`,
+    visible: name !== "sessions" || hasSessions.value,
+  })),
+);
+function selectTab(name) {
+  if (!tabs.value.find((tab) => tab.name === name)?.visible) return;
+  activeTab.value = name;
+}
+function onTabKeydown(event) {
+  const visible = tabs.value.filter((tab) => tab.visible).map((tab) => tab.name);
+  const index = visible.indexOf(activeTab.value);
+  if (index === -1) return;
+  let next = null;
+  if (event.key === "ArrowRight") next = (index + 1) % visible.length;
+  else if (event.key === "ArrowLeft") next = (index - 1 + visible.length) % visible.length;
+  else if (event.key === "Home") next = 0;
+  else if (event.key === "End") next = visible.length - 1;
+  if (next === null) return;
+  event.preventDefault();
+  selectTab(visible[next]);
+  nextTick(() => tabEls.get(visible[next])?.focus());
+}
+/* A different card starts on Details; a card without sessions can never leave
+   a hidden Sessions tab selected. */
+watch(() => task.value?.id, () => { activeTab.value = "details"; });
+watch(hasSessions, (present) => {
+  if (!present && activeTab.value === "sessions") activeTab.value = "details";
 });
+
+/**
+ * The session trail: the running session first, then the closed/failed ones
+ * newest-first. The API returns `ts ASC`, so the client owns this order; the
+ * old single-session view picked `sessions[0]` — the OLDEST — when nothing was
+ * running, which is the wrong handle to resume from.
+ */
+const sessionTrail = computed(() => {
+  const rows = [...sessions.value];
+  rows.sort((a, b) => {
+    const ar = a.status === "running" ? 0 : 1;
+    const br = b.status === "running" ? 0 : 1;
+    if (ar !== br) return ar - br;
+    return String(b.ts ?? "").localeCompare(String(a.ts ?? ""));
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    status: row.status,
+    backend: row.backend ?? "—",
+    sessionId: row.session_id ?? "—",
+    owner: row.owner ?? "—",
+    seg: row.seg ?? null,
+    phase: row.phase ?? null,
+    running: row.status === "running",
+    stamp: relativeTime(row.ts),
+  }));
+});
+
+/* ------------------------------------------------------- v4 · report family */
+/**
+ * The report family (`GET /api/v1/tasks/:ref/reports`, `reportToWire`): the
+ * Reports tab lists every round in the API's own ASC order; Acceptance reads
+ * the latest round's criteria; Leftovers lists each round's remaining note.
+ * The read is best-effort in `openDetail` (a board that predates the route
+ * answers `[]`, which is the empty state — never an error).
+ */
+const reports = computed(() => detail.value?.reports ?? []);
+const reportRows = computed(() =>
+  reports.value.map((report) => {
+    const name = report.author?.display_name ?? report.author_id ?? "—";
+    return {
+      id: report.id,
+      round: report.round,
+      conclusion: report.conclusion ?? "",
+      author: name,
+      agent: isAgentKind(report.author_kind),
+      stamp: relativeTime(report.created_at),
+    };
+  }),
+);
+const latestReport = computed(() => {
+  const rows = [...reports.value].sort((a, b) => (b.round ?? 0) - (a.round ?? 0));
+  return rows[0] ?? null;
+});
+const acceptanceRows = computed(() =>
+  (latestReport.value?.acceptance ?? []).map((item, index) => ({
+    id: `${latestReport.value?.id ?? "latest"}-${index}`,
+    text: item?.text ?? "",
+    status: item?.status ?? "not_applicable",
+  })),
+);
+const leftoverRows = computed(() =>
+  reports.value.map((report) => ({
+    id: report.id,
+    round: report.round,
+    text: report.leftovers ?? "",
+  })),
+);
 
 const peopleOptions = computed(() => board.assignees.map((entry) => ({ name: entry.display_name, kind: kindLabel(entry.kind), platform: platformOf(entry.display_name) })));
 const reporterOptions = computed(() => reporterRoster.value.map((name) => ({ name })));
@@ -707,6 +819,29 @@ function copyId() {
       <span data-detail-save :data-save-state="saveState" hidden></span>
       <span class="td-save-error" data-detail-save-error :hidden="!saveError" role="alert" data-i18n="detail.saveError">{{ $t("detail.saveError") }}</span>
 
+      <!-- v4 — the drawer's tab shell. The panels stay in the DOM (`hidden`,
+           not `v-if`): the contract counts hooks while the drawer is closed.
+           Sessions is hidden by data (`hasSessions`), not by assignee kind. -->
+      <div class="tabs td-drawer-tabs" role="tablist" :aria-label="$t('drawer.tabs.label')" data-detail-tabs @keydown="onTabKeydown">
+        <button
+          v-for="tab in tabs"
+          :key="tab.name"
+          v-show="tab.visible"
+          :ref="(el) => setTabRef(tab.name, el)"
+          type="button"
+          class="tab td-drawer-tab"
+          role="tab"
+          :id="`td-dv-tab-${tab.name}`"
+          :data-detail-tab="tab.name"
+          :aria-controls="`td-dv-panel-${tab.name}`"
+          :aria-selected="activeTab === tab.name ? 'true' : 'false'"
+          :tabindex="activeTab === tab.name ? 0 : -1"
+          @click="selectTab(tab.name)"
+        >{{ $t(tab.key) }}</button>
+      </div>
+
+      <div class="td-dv-panel" role="tabpanel" id="td-dv-panel-details" data-detail-panel="details" aria-labelledby="td-dv-tab-details" tabindex="0" :hidden="activeTab !== 'details'">
+
       <section class="td-section">
         <h3 class="td-section-title" data-i18n="drawer.properties">{{ $t("drawer.properties") }}</h3>
         <!-- The property grid is the prototype's plain two-column `<div>` grid
@@ -1033,32 +1168,6 @@ function copyId() {
         </div>
       </section>
 
-      <section class="td-section" data-detail-agent-session :hidden="!isAgent">
-        <h3 class="td-section-title" data-i18n="drawer.session">{{ $t("drawer.session") }}</h3>
-        <div data-detail-agent-session-body>
-          <!-- R14 D43/D44/D45 — the session is one sunken box in two rows:
-               platform badge + that session's **platform id** (e.g. `claude`) +
-               the Resume button pushed to the row's end, then the id under the
-               prototype's own `.td-copy` face. The seat is the id, not a CLI
-               flag: the prototype's static sample reads `--agent-platform claude`,
-               but that declaration is a prototype-only expression — `--agent-platform`
-               is neither this seat's content nor a CSS custom property this repo
-               defines or uses (DF-4). `data-agent-platform` is stated only for an
-               agent card — a human card has no platform to name (B16's domain rule). -->
-          <div class="td-session" data-agent-session>
-            <div class="flex items-center gap-2">
-              <span class="badge badge-xs td-agent-badge" :data-agent-platform="isAgent ? platform : undefined">{{ isAgent ? platform : "" }}</span>
-              <span class="td-mono text-xs text-(--brand-text-2)" data-agent-platform-value>{{ platform }}</span>
-              <button type="button" class="btn btn-outline btn-xs ms-auto" data-agent-resume data-i18n="drawer.resume">{{ $t("drawer.resume") }}</button>
-            </div>
-            <div class="mt-2 flex items-center gap-2">
-              <span class="text-xs text-(--brand-text-3)" data-i18n="session.id">{{ $t("session.id") }}</span>
-              <span class="td-copy" data-agent-session-id>{{ session?.session_id ?? "—" }}</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <section class="td-section" data-detail-attachments-section data-detail-save-field="attachments">
         <div class="td-section-head">
           <h3 class="td-section-title" data-i18n="drawer.attachments">{{ $t("drawer.attachments") }}</h3>
@@ -1137,6 +1246,10 @@ function copyId() {
         </div>
       </section>
 
+      </div><!-- /Details panel -->
+
+      <div class="td-dv-panel" role="tabpanel" id="td-dv-panel-activity" data-detail-panel="activity" aria-labelledby="td-dv-tab-activity" tabindex="0" :hidden="activeTab !== 'activity'">
+
       <section class="td-section">
         <h3 class="td-section-title" data-i18n="drawer.comments">{{ $t("drawer.comments") }}</h3>
         <div data-detail-comments>
@@ -1189,6 +1302,102 @@ function copyId() {
           </div>
         </div>
       </section>
+
+      </div><!-- /Activity panel -->
+
+      <div class="td-dv-panel" role="tabpanel" id="td-dv-panel-reports" data-detail-panel="reports" aria-labelledby="td-dv-tab-reports" tabindex="0" :hidden="activeTab !== 'reports'">
+        <section class="td-section" data-dv-tab-block="reports">
+          <h3 class="td-section-title" data-i18n="drawer.tab.reports">{{ $t("drawer.tab.reports") }}</h3>
+          <div class="td-dv-reports">
+            <article v-for="row in reportRows" :key="row.id" class="td-dv-report" :data-dv-round="row.round">
+              <div class="td-dv-report-head">
+                <span class="badge badge-sm td-chip td-dv-round">{{ $t("drawer.report.round", row.round) }}</span>
+                <span class="td-dv-author td-mono">{{ row.author }}</span>
+                <span class="td-dv-kind">{{ $t(row.agent ? "comment.agent" : "comment.human") }}</span>
+                <span v-if="row.stamp" class="td-dv-ts td-mono" :title="row.stamp.absolute">{{ row.stamp.absolute }}</span>
+              </div>
+              <p class="td-dv-conclusion">{{ row.conclusion }}</p>
+            </article>
+            <p v-if="reportRows.length === 0" class="td-dv-empty" data-i18n="drawer.reports.empty">{{ $t("drawer.reports.empty") }}</p>
+          </div>
+        </section>
+      </div>
+
+      <div class="td-dv-panel" role="tabpanel" id="td-dv-panel-acceptance" data-detail-panel="acceptance" aria-labelledby="td-dv-tab-acceptance" tabindex="0" :hidden="activeTab !== 'acceptance'">
+        <section class="td-section" data-dv-tab-block="acceptance">
+          <h3 class="td-section-title" data-i18n="drawer.tab.acceptance">{{ $t("drawer.tab.acceptance") }}</h3>
+          <ul class="td-dv-list">
+            <li v-for="row in acceptanceRows" :key="row.id" class="td-dv-item">
+              <span class="td-dv-mark" :data-acceptance-status="row.status" role="img" :aria-label="$t(`drawer.acceptance.${row.status}`)">
+                <svg v-if="row.status === 'met'" class="td-dv-tick" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 13l4.5 4.5L19 7" /></svg>
+                <svg v-else-if="row.status === 'not_met'" class="td-dv-tick" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                <svg v-else class="td-dv-tick" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 12h12" /></svg>
+              </span>
+              <span class="td-dv-text">{{ row.text }}</span>
+            </li>
+          </ul>
+          <p v-if="acceptanceRows.length === 0" class="td-dv-empty" data-i18n="drawer.acceptance.empty">{{ $t("drawer.acceptance.empty") }}</p>
+        </section>
+      </div>
+
+      <div class="td-dv-panel" role="tabpanel" id="td-dv-panel-leftovers" data-detail-panel="leftovers" aria-labelledby="td-dv-tab-leftovers" tabindex="0" :hidden="activeTab !== 'leftovers'">
+        <section class="td-section" data-dv-tab-block="leftovers">
+          <h3 class="td-section-title" data-i18n="drawer.tab.leftovers">{{ $t("drawer.tab.leftovers") }}</h3>
+          <ul class="td-dv-list">
+            <li v-for="row in leftoverRows" :key="row.id" class="td-dv-item" :data-dv-leftover-round="row.round" :data-dv-leftover-empty="row.text ? undefined : 'true'">
+              <span class="td-dv-round-mono td-mono">{{ $t("drawer.leftovers.round", row.round) }}</span>
+              <span v-if="row.text" class="td-dv-text">{{ row.text }}</span>
+              <span v-else class="td-dv-empty" data-i18n="drawer.leftovers.empty">{{ $t("drawer.leftovers.empty") }}</span>
+            </li>
+          </ul>
+          <p v-if="leftoverRows.length === 0" class="td-dv-empty" data-i18n="drawer.leftovers.empty">{{ $t("drawer.leftovers.empty") }}</p>
+        </section>
+      </div>
+
+      <div class="td-dv-panel" role="tabpanel" id="td-dv-panel-sessions" data-detail-panel="sessions" aria-labelledby="td-dv-tab-sessions" tabindex="0" :hidden="activeTab !== 'sessions'">
+        <section class="td-section" data-detail-agent-session :hidden="!hasSessions">
+          <h3 class="td-section-title" data-i18n="drawer.session">{{ $t("drawer.session") }}</h3>
+          <div data-detail-agent-session-body>
+            <!-- The trail: running first, then newest-first. The first row
+                 carries B16's platform seat; historical rows name their own
+                 backend in a plain badge. Resume is stated only for a running
+                 session (kept in the DOM with v-show so the contract's hook
+                 survives a card whose sessions have all closed). -->
+            <div v-for="(row, index) in sessionTrail" :key="row.id" class="td-session" :class="{ 'mt-2': index > 0 }" data-agent-session>
+              <div class="flex items-center gap-2">
+                <span v-if="index === 0" class="badge badge-xs td-agent-badge" :data-agent-platform="isAgent ? platform : undefined">{{ isAgent ? platform : row.backend }}</span>
+                <span v-else class="badge badge-xs td-agent-badge">{{ row.backend }}</span>
+                <span class="td-mono text-xs text-(--brand-text-2)" :data-agent-platform-value="index === 0 ? platform || row.backend : undefined">{{ index === 0 ? (platform || row.backend) : row.backend }}</span>
+                <span class="badge badge-xs" :data-session-status="row.status">{{ $t(`drawer.session.status.${row.status}`) }}</span>
+                <button v-if="index === 0" v-show="row.running" type="button" class="btn btn-outline btn-xs ms-auto" data-agent-resume data-i18n="drawer.resume">{{ $t("drawer.resume") }}</button>
+              </div>
+              <div class="mt-2 flex items-center gap-2">
+                <span class="text-xs text-(--brand-text-3)" data-i18n="session.id">{{ $t("session.id") }}</span>
+                <span class="td-copy" data-agent-session-id>{{ row.sessionId }}</span>
+              </div>
+              <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-(--brand-text-3)" :data-session-owner="row.owner" :data-session-seg="row.seg ?? undefined" :data-session-phase="row.phase ?? undefined">
+                <span>{{ $t("drawer.session.owner") }} <span class="font-medium td-mono">{{ row.owner }}</span></span>
+                <span v-if="row.seg !== null">{{ $t("drawer.session.seg") }} {{ row.seg }}</span>
+                <span v-if="row.phase">{{ $t("drawer.session.phase") }} {{ row.phase }}</span>
+                <span v-if="row.stamp" class="td-activity-ts" :title="row.stamp.absolute">{{ $t(row.stamp.key, row.stamp.arg) }}</span>
+              </div>
+            </div>
+            <!-- The contract's B16 hooks must exist at rest even when the card
+                 has no session rows; the section is hidden in that case. -->
+            <div v-if="sessionTrail.length === 0" class="td-session" data-agent-session hidden>
+              <div class="flex items-center gap-2">
+                <span class="badge badge-xs td-agent-badge" :data-agent-platform="isAgent ? platform : undefined">{{ isAgent ? platform : "" }}</span>
+                <span class="td-mono text-xs text-(--brand-text-2)" data-agent-platform-value>{{ platform }}</span>
+                <button type="button" class="btn btn-outline btn-xs ms-auto" data-agent-resume data-i18n="drawer.resume">{{ $t("drawer.resume") }}</button>
+              </div>
+              <div class="mt-2 flex items-center gap-2">
+                <span class="text-xs text-(--brand-text-3)" data-i18n="session.id">{{ $t("session.id") }}</span>
+                <span class="td-copy" data-agent-session-id>—</span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
 
     <!-- The contract's inert slot templates: the hooks survive the framework,

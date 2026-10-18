@@ -98,6 +98,32 @@ export const EXTRA = {
     // so it has no catalogue key to reuse: it lives here, like every other
     // implementation-authored state, and reaches the block through `data-i18n`.
     "detail.saveError": "Couldn’t save — try again.",
+    // v4 — the drawer's six-tab shell. The prototype's tab labels are
+    // literals, but the shipped board is localised, so the same six words live
+    // here (the prototype has no copy for a live session trail or a reports
+    // panel at all).
+    "drawer.tabs.label": "Task detail sections",
+    "drawer.tab.details": "Details",
+    "drawer.tab.activity": "Activity",
+    "drawer.tab.reports": "Reports",
+    "drawer.tab.acceptance": "Acceptance",
+    "drawer.tab.leftovers": "Leftovers",
+    "drawer.tab.sessions": "Sessions",
+    "drawer.report.round": "round %s",
+    "drawer.reports.empty": "No reports yet.",
+    "drawer.acceptance.empty": "No acceptance criteria yet.",
+    "drawer.leftovers.empty": "No leftovers — this round closed with nothing outstanding.",
+    "drawer.leftovers.round": "round %s",
+    "drawer.acceptance.met": "Met",
+    "drawer.acceptance.partial": "Partial",
+    "drawer.acceptance.not_met": "Not met",
+    "drawer.acceptance.not_applicable": "Not applicable",
+    "drawer.session.status.running": "Running",
+    "drawer.session.status.closed": "Closed",
+    "drawer.session.status.failed": "Failed",
+    "drawer.session.owner": "owner",
+    "drawer.session.seg": "seg",
+    "drawer.session.phase": "phase",
     // M1 · first-class `awaiting` and the 「等你回复」view (design §5). The
     // count key uses `%s` because the runtime fills positionally — `{n}` would
     // print itself (design §10-C2).
@@ -150,6 +176,29 @@ export const EXTRA = {
     "attach.placeholder": "无附件",
     "activity.filters.label": "动态筛选",
     "detail.saveError": "保存失败 —— 请重试。",
+    // 同上：抽屉的六枚 tab 与报告/验收/会话轨迹文案。
+    "drawer.tabs.label": "任务详情分区",
+    "drawer.tab.details": "详情",
+    "drawer.tab.activity": "活动",
+    "drawer.tab.reports": "报告",
+    "drawer.tab.acceptance": "验收",
+    "drawer.tab.leftovers": "遗留",
+    "drawer.tab.sessions": "会话",
+    "drawer.report.round": "第 %s 轮",
+    "drawer.reports.empty": "暂无报告。",
+    "drawer.acceptance.empty": "暂无验收项。",
+    "drawer.leftovers.empty": "本轮无遗留。",
+    "drawer.leftovers.round": "第 %s 轮",
+    "drawer.acceptance.met": "已满足",
+    "drawer.acceptance.partial": "部分满足",
+    "drawer.acceptance.not_met": "未满足",
+    "drawer.acceptance.not_applicable": "不适用",
+    "drawer.session.status.running": "运行中",
+    "drawer.session.status.closed": "已关闭",
+    "drawer.session.status.failed": "失败",
+    "drawer.session.owner": "负责人",
+    "drawer.session.seg": "分段",
+    "drawer.session.phase": "阶段",
     "status.awaiting": "等你回复",
     "waiting.aria.badge": "等待你的回复",
     "waiting.reason.E1": "范围变更",

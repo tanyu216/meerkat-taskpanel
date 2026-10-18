@@ -15,12 +15,18 @@
  *
  * Every docker invocation passes an argument array to spawnSync — never a shell string.
  *
- * Prerequisite: a running Docker daemon. Image pulls happen on first build.
+ * Prerequisite: a running Docker daemon. The Dockerfile's base image is
+ * preflighted against the local image store before anything is built: a cached
+ * image means the run never touches the network, and a missing one means a single
+ * explicit `docker pull` (forbidden under MEERKAT_TASKPANEL_OFFLINE=1). The build
+ * itself is given the builder's no-pull flag, so it cannot re-fetch implicitly.
  */
 
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { preflightBaseImages, resolvePullFlag } from "./lib/base-image.mjs";
 import {
   buildArgs,
   composeDownArgs,
@@ -44,9 +50,13 @@ const COMPOSE_SERVICE = "taskd";
  * the same name however the runner was reached.
  */
 const COMPOSE_PROJECT = composeProjectName(resolve(import.meta.dirname, "../.."));
+const DOCKERFILE_PATH = resolve(import.meta.dirname, "../../docker/Dockerfile");
 // Overridable so the failure path can be exercised without a 60s wall-clock wait.
 const HEALTH_TIMEOUT_MS = Number(process.env.MEERKAT_TASKPANEL_HEALTH_TIMEOUT_MS ?? 60_000);
 const HEALTH_POLL_MS = 2_000;
+// Refuse even the preflight's one-time pull: the run must work from the local
+// image store alone (an air-gapped host, or a deliberately offline gate).
+const OFFLINE = process.env.MEERKAT_TASKPANEL_OFFLINE === "1";
 
 /** @type {Array<{name: string, ok: boolean, detail: string, ms: number}>} */
 const steps = [];
@@ -110,8 +120,32 @@ process.stdout.write(`verify:docker — docker server ${(daemon.stdout ?? "").tr
 let container = null;
 
 try {
-  phase(`docker build -t ${imageTag()}`, () => {
-    const res = run("docker", buildArgs("."));
+  // -------------------------------------------------------------------------
+  // Base image preflight — local cache first, one explicit pull only if absent
+  // -------------------------------------------------------------------------
+
+  phase("base image preflight (local image store first; network only if absent)", () => {
+    const result = preflightBaseImages({
+      run,
+      dockerfileText: readFileSync(DOCKERFILE_PATH, "utf8"),
+      offline: OFFLINE,
+    });
+    const output = result.lines.map((line) => `  ${line}\n`).join("");
+    return result.ok
+      ? { ok: true, status: 0, stdout: output }
+      : { ok: false, status: 1, stdout: output, detail: result.error };
+  });
+
+  if (!steps.at(-1).ok) {
+    throw new Error("base image preflight failed — no build was attempted");
+  }
+
+  // The builder's own no-pull form; `null` means the probe failed and the flag is
+  // omitted (the preflight above is then the guarantee).
+  const pullFlag = resolvePullFlag({ run });
+
+  phase(`docker build -t ${imageTag()}${pullFlag ? ` (${pullFlag})` : ""}`, () => {
+    const res = run("docker", buildArgs(".", { pullFlag }));
     return { ...res, ok: !res.error && res.status === 0, detail: res.error?.message ?? tail(res.stderr) };
   });
 

@@ -22,9 +22,10 @@
 
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { preflightBaseImages, resolvePullFlag } from "../verify/lib/base-image.mjs";
 import { buildArgs, imageTag } from "../verify/lib/docker-plan.mjs";
 import { isEntryPoint } from "../../src/shared/entry-guard.mjs";
 
@@ -144,8 +145,22 @@ export function main(argv) {
     return 1;
   }
   if (wantBuild) {
+    // Same policy as `verify:docker`: the base image comes from the local store,
+    // and only a genuinely missing one causes one explicit pull (never under
+    // MEERKAT_TASKPANEL_OFFLINE=1). The build is told not to pull at all.
+    const preflight = preflightBaseImages({
+      run,
+      dockerfileText: readFileSync(resolve(import.meta.dirname, "../../docker/Dockerfile"), "utf8"),
+      offline: process.env.MEERKAT_TASKPANEL_OFFLINE === "1",
+    });
+    if (!preflight.ok) {
+      process.stderr.write(`${preflight.error}\nimage not built — nothing was reconciled\n`);
+      return 1;
+    }
+    for (const line of preflight.lines) process.stdout.write(`  ${line}\n`);
+
     process.stdout.write(`== docker build -t ${image} ==\n`);
-    const build = run("docker", buildArgs("."));
+    const build = run("docker", buildArgs(".", { pullFlag: resolvePullFlag({ run }) }));
     process.stdout.write(build.stdout ?? "");
     process.stderr.write(build.stderr ?? "");
     if (build.status !== 0) {

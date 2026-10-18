@@ -52,7 +52,19 @@ async function skillDirsUnder(dir, rel = "") {
   const out = [];
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
-    if (entry.name === ".git" || entry.name === "node_modules" || entry.name === "dist") continue;
+    // `.worktrees/` holds parallel-task checkouts *inside* this checkout (CLAUDE.md
+    // Branch & worktree workflow). It is gitignored, so nothing under it can be a
+    // committed skill copy — but the walk would otherwise find
+    // `.worktrees/<lane>/skills` and read it as one, reding this gate for as long as
+    // any lane is running.
+    if (
+      entry.name === ".git" ||
+      entry.name === ".worktrees" ||
+      entry.name === "node_modules" ||
+      entry.name === "dist"
+    ) {
+      continue;
+    }
     const child = rel === "" ? entry.name : `${rel}/${entry.name}`;
     if (entry.name === "skills") out.push(child);
     out.push(...(await skillDirsUnder(join(dir, entry.name), child)));

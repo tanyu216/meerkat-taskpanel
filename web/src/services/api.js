@@ -161,6 +161,7 @@ export const api = {
   taskRelations: (ref) => get(`/tasks/${encodeURIComponent(ref)}/relations`),
   taskActivities: (ref, query) => get(`/tasks/${encodeURIComponent(ref)}/activities`, query),
   taskSessions: (ref) => get(`/tasks/${encodeURIComponent(ref)}/sessions`),
+  taskReports: (ref) => get(`/tasks/${encodeURIComponent(ref)}/reports`),
 
   // Relations are add/remove only (the board keeps history readable): a
   // `depends_on` edge is written as `blocks` with **source = the prerequisite**

@@ -569,8 +569,14 @@ the distinction.
 | Head | `[data-detail-identifier]` (**R12**: the whole id, carrying `.td-id-full`) · `[data-detail-title]` · `[data-detail-status-chip]` → `[data-detail-status-chip-label]` · `[data-detail-close]` |
 | Save state (R10) | `[data-detail-save][data-save-state="idle \| saving \| saved \| error"]` (attribute carrier, `hidden`, no copy of its own) · `[data-detail-save-error][role="alert"]` (its only visible half) |
 | Properties | `[data-detail-props]` → status `[data-detail-status]` / `[data-detail-status-label]` · priority `[data-detail-priority]` / `[data-detail-priority-label]` · assignee `[data-detail-assignee]` / `[data-detail-assignee-avatar]` / `[data-detail-assignee-label]` (**an input**, see B22) / `[data-detail-assignee-platform]` (platform badge, hidden for the human owner) · **reporter** `[data-detail-reporter]` / `[data-detail-reporter-avatar]` / `[data-detail-reporter-label]` (an editable control — see B22) · project `[data-detail-project]` / `[data-detail-project-label]` · **labels** `[data-detail-labels]` (editable label combo — see B25) · internal id `[data-detail-id]` + `[data-detail-id-copy]` (`data-copy-value`) · `[data-detail-version]` |
-| Body | `[data-detail-description]` (rendered GFM) · `[data-detail-relations]` → `[data-relation-link]` · `[data-detail-agent-session]` → `[data-detail-agent-session-body]` → `[data-agent-session]` · `[data-detail-attachments]` · `[data-detail-comments]` · `[data-comment-form]` → `[data-comment-input]`, `[data-comment-submit]` · `[data-detail-activity]` |
+| Tabs | `[data-detail-tabs][role="tablist"]` → `[data-detail-tab]` ×6 (`details` · `activity` · `reports` · `acceptance` · `leftovers` · `sessions`) → `[data-detail-panel]` ×6. Details holds Properties / Description / Relations / Attachments; Activity holds Comments + Activity; Sessions holds the Agent-session trail; Reports / Acceptance / Leftovers read `task_reports`. `sessions` is hidden when the card has no session rows; the other five are always present |
+| Body | `[data-detail-description]` (rendered GFM) · `[data-detail-relations]` → `[data-relation-link]` · `[data-detail-agent-session]` → `[data-detail-agent-session-body]` → `[data-agent-session]` (**inside the Sessions panel**) · `[data-detail-attachments]` · `[data-detail-comments]` · `[data-comment-form]` → `[data-comment-input]`, `[data-comment-submit]` · `[data-detail-activity]` |
 | Source | `template[data-detail-for="TD-…"]` holds one `[data-slot="description \| relations \| agent-session \| attachments \| comments \| activity"]` per card, wrapped by `[data-detail-templates]` |
+
+**Implementation width.** The shipped drawer opens at **780px** — a deliberate
+product override of the prototype's 520px `--shell-drawer`. The `100vw` ceiling
+keeps a narrow viewport full-width exactly as before; every other box in this
+block follows the prototype.
 
 **R14 — the relations area names its three kinds.** `[data-detail-relations]` groups its
 `[data-relation-link]`s by kind, each group led by that kind's own name, and the kind is
@@ -821,15 +827,22 @@ every status and priority is visible in one screenshot.
 
 ## B16 · Agent session provenance
 
-`[data-agent-session]` — rendered inside `[data-detail-agent-session]` from the
-card's template, with `[data-agent-platform]`, `[data-agent-platform-value]`
-(the session's **platform id**, e.g. `claude` — `[data-agent-platform]` is the
-id's badge; the prototype's static sample renders a CLI-style declaration there,
-a prototype-only expression registered in `design/fidelity-r14.md` §8.3 `DF-4`),
-`[data-agent-session-id]` and `[data-agent-resume]`.
-All **15 agent cards** carry a session block whose platform matches the card's
-`data-agent-platform` and whose session id is prefixed with that platform; the three
-human cards carry none and the drawer hides the section for them.
+`[data-agent-session]` — one row per session inside `[data-detail-agent-session]`,
+rendered from the card's session list (`GET /api/v1/tasks/:ref/sessions`), with
+`[data-agent-platform]`, `[data-agent-platform-value]` (the card's **platform
+id**, e.g. `claude` — `[data-agent-platform]` is the id's badge; the prototype's
+static sample renders a CLI-style declaration there, a prototype-only expression
+registered in `design/fidelity-r14.md` §8.3 `DF-4`), `[data-agent-session-id]`
+and `[data-agent-resume]` (the running row only; the hook stays in the DOM,
+hidden, when no row is running).
+
+The trail is ordered **running first, then `ts` descending**. Visibility is
+**data-driven** (`sessions.length > 0`): the section and the Sessions tab are
+hidden together when the card has no session rows. The assignee kind is not the
+switch — a human-assigned card can carry real session rows, and the server
+enforces no assignee/session relationship. Historical rows name their own
+`backend` in a plain badge; the `data-agent-platform` seat states the card's own
+platform.
 
 ## B17 · Error state
 

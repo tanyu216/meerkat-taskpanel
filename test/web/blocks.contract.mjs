@@ -1498,6 +1498,9 @@ const BLOCKS = [
       "[data-detail-id]",
       "[data-detail-id-copy]",
       "[data-detail-version]",
+      "[data-detail-tabs]",
+      "[data-detail-tab]",
+      "[data-detail-panel]",
       "[data-detail-description]",
       "[data-detail-relations]",
       "[data-relation-link]",
@@ -1830,14 +1833,17 @@ const BLOCKS = [
       // R14 D05/D06 (A22) — the pair's two rungs: the veil one *under* the drawer.
       { kind: "computed", probe: "[data-detail-overlay]", property: "zIndex", equals: "40" },
       { kind: "computed", probe: "[data-detail-drawer]", property: "zIndex", equals: "50" },
-      // R14 D01 (B1/B21) — the prototype's `--shell-drawer`. Stated as a **px
-      // string** rather than with `equalsPx`, for the reason `strokeWidth` above
-      // is: the stale-prose guard (`web/blocks.contract.test.mjs`) forbids a
-      // *numeric* rule value that could be mistaken for one of the recorded prose
-      // counts, and 520 is inside that range. Its `max-width: 100vw` companion was
-      // already `对齐` before this round and is not re-pinned here — a rule for it
-      // would be measuring the viewport, not the drawer.
-      { kind: "computed", probe: "[data-detail-drawer]", property: "width", equals: "520px" },
+      // R14 D01 (B1/B21) — the drawer's reading width. The prototype's
+      // `--shell-drawer` is 520px; the implementation deliberately opens at
+      // 780px (product override, registered in `design/BLOCKS.md` §B09). Stated
+      // as a **px string** rather than with `equalsPx`, for the reason
+      // `strokeWidth` above is: the stale-prose guard
+      // (`web/blocks.contract.test.mjs`) forbids a *numeric* rule value that
+      // could be mistaken for one of the recorded prose counts. The
+      // `max-width: 100vw` companion keeps a narrow viewport full-width and is
+      // not re-pinned here — a rule for it would be measuring the viewport, not
+      // the drawer.
+      { kind: "computed", probe: "[data-detail-drawer]", property: "width", equals: "780px" },
       // R14 D10/D12 (B4/B6) — the head and the scrolling host are the
       // prototype's own boxes, worn by their own classes.
       { kind: "computed", probe: ".td-drawer-head", count: 1 },
@@ -1864,6 +1870,12 @@ const BLOCKS = [
       // stream hooks are on a `div`, and the session hook is on the `section`
       // itself. A tag in a probe is part of the grammar (PROBE GRAMMAR), so the
       // element kind is declarable even though the hook is not.
+      // v4 — the six-tab shell. All six panels stay in the DOM (`hidden`, not
+      // `v-if`), so the hook counts hold while the drawer is closed; the
+      // Sessions tab itself is hidden by data, not removed.
+      { kind: "computed", probe: "[data-detail-tabs]", count: 1 },
+      { kind: "computed", probe: "[data-detail-tab]", count: 6 },
+      { kind: "computed", probe: "[data-detail-panel]", count: 6 },
       { kind: "computed", probe: "div.td-gfm[data-detail-description]", count: 1 },
       { kind: "computed", probe: "div[data-detail-relations]", count: 1 },
       { kind: "computed", probe: "div[data-detail-attachments]", count: 1 },
@@ -2230,15 +2242,19 @@ const BLOCKS = [
       {
         kind: "manual",
         note:
-          "Every agent card carries a session block whose platform matches the card's own " +
-          "`data-agent-platform` and whose session id is prefixed with that platform; human " +
-          "cards carry none and the drawer hides the section for them. How many cards are agent " +
-          "cards is fixture data. [data-agent-platform-value] seats that session's **platform " +
-          "id** (e.g. `claude`) — the seat is the id, not a CLI flag, and that is what the app " +
-          "renders there. The prototype's static sample reads `--agent-platform claude`, but " +
-          "that CLI-style declaration is a prototype-only expression: `--agent-platform` is " +
-          "neither this seat's content nor a CSS custom property this repo defines or uses. " +
-          "Registered as the deviation `design/fidelity-r14.md` §8.3 `DF-4`.",
+          "The trail is ordered running first, then `ts` descending. Visibility is " +
+          "**data-driven** (`sessions.length > 0`): the section and the Sessions tab hide " +
+          "together when the card has no session rows; the assignee kind is not the switch " +
+          "(a human-assigned card can carry sessions — the server enforces no " +
+          "assignee/session relationship). The `data-agent-platform` seat states the card's " +
+          "own platform; historical rows name their own `backend` in a plain badge. How many " +
+          "cards carry sessions is fixture data. [data-agent-platform-value] seats the " +
+          "session's **platform id** (e.g. `claude`) — the seat is the id, not a CLI flag, " +
+          "and that is what the app renders there. The prototype's static sample reads " +
+          "`--agent-platform claude`, but that CLI-style declaration is a prototype-only " +
+          "expression: `--agent-platform` is neither this seat's content nor a CSS custom " +
+          "property this repo defines or uses. Registered as the deviation " +
+          "`design/fidelity-r14.md` §8.3 `DF-4`.",
       },
     ],
   },

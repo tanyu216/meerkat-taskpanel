@@ -27,7 +27,7 @@ runtime image. See [The web build stage](#the-web-build-stage).
 |---|---|
 | Docker Engine ≥ 20.10 | `docker version` must reach a daemon. Docker Desktop, colima and rootless Docker all work. |
 | Docker Compose v2 ≥ 2.4 | `docker compose` (space, not hyphen). Used for the deploy smoke test only. |
-| Network (first build only) | Pulling `node:22-bookworm-slim`. Nothing else: the `web/` devDependencies are restored from the committed cache with `npm ci --offline`, so the image build itself needs no network. The runtime image and every verification step are offline. |
+| Network (only if the base image is absent) | `node:22-bookworm-slim`. Nothing else: the `web/` devDependencies are restored from the committed cache with `npm ci --offline`, so the image build itself needs no network. `verify:docker` **preflights** the base image against the local image store — a cached image means the run never touches the network, and only a genuinely missing one causes a single explicit `docker pull`. See [Base image cache](#base-image-cache). The runtime image and every verification step are offline. |
 
 No Node install is required on the host to build or run the image — the image brings
 its own. (You *do* need Node on the host for the [host-allowed checks](#host-allowed-checks)
@@ -54,6 +54,38 @@ no `design/`, no `node_modules`). The image:
 - carries `web/dist` — the built board frontend — copied from the `webbuild` stage. `taskd`
   serves that directory as the hosted root (`STATIC_DIR_REL = "web/dist"`). There is no
   `node_modules` in the image.
+
+## Base image cache
+
+`node:22-bookworm-slim` is the only external artefact the build needs, and Docker's
+default build policy is `--pull=missing`: a pruned image store, a fresh CI runner or a new
+machine silently re-downloads it before the gate can start. The base image is ~80 MB
+compressed, and on a host whose daemon proxy or DNS is broken that pull does not just cost
+time — it turns a healthy tree into a red gate.
+
+`npm run verify:docker` therefore runs a **preflight** before any build
+(`scripts/verify/lib/base-image.mjs`), and `npm run verify:migrate:container` uses the same
+policy:
+
+1. every base image named by a `FROM` line is inspected in the local image store
+   (`docker image inspect`). Present → the run never touches the network;
+2. missing → one explicit `docker pull`, announced in the step header, and nothing else;
+3. `MEERKAT_TASKPANEL_OFFLINE=1` forbids even that one pull. The failure tells you how to
+   seed the local store from a tarball:
+   ```bash
+   docker pull node:22-bookworm-slim && docker save node:22-bookworm-slim -o node-22-bookworm-slim.tar
+   docker load -i node-22-bookworm-slim.tar
+   ```
+4. the build is given the builder's no-pull flag — `--pull=false` on the legacy builder,
+   `--pull=never` on BuildKit, chosen from the `docker build --help` text — so the build
+   itself can never fetch implicitly, even if the image disappeared between the preflight
+   and the build.
+
+The preflight is per-image and per-run, not per-layer: the build cache still decides how
+much of the image is rebuilt. It is also deliberately **not** a freshness check — a cached
+`node:22-bookworm-slim` is used as-is, however old. Refreshing it is an explicit act:
+`docker pull node:22-bookworm-slim`, then re-run (or `docker rmi` it first to have the
+preflight do the one pull).
 
 ## The web build stage
 
@@ -417,17 +449,24 @@ docker ps -a --filter ancestor=meerkat-taskpanel:verify --filter ancestor=meerka
 The daemon is not running. Start Docker Desktop / `colima start`, confirm with
 `docker version`, then re-run. Nothing was changed.
 
-**The image build hangs, or the pull of `node:22-bookworm-slim` stalls.**
-This is usually the host's proxy plus a fake-IP DNS resolver: the daemon resolves
-`registry-1.docker.io` to a synthetic address it cannot reach. Options, in order:
+**The base-image preflight fails, or its one pull stalls.**
+If the image is already local the preflight never pulls, so a stall here means the image is
+genuinely missing *and* the daemon cannot reach the registry. That is usually the host's
+proxy plus a fake-IP DNS resolver: the daemon resolves `registry-1.docker.io` to a synthetic
+address it cannot reach. Options, in order:
 
-1. Build with a mirror, e.g.
-   `docker build --build-arg HTTP_PROXY=... `, or configure the daemon's proxy in the
-   Docker Desktop settings / `~/.docker/config.json`;
-2. Pull the base image separately and let the build hit the local cache:
-   `docker pull node:22-bookworm-slim`;
-3. Retry — the first pull is the slow part; afterwards the image is cached and the build
-   never touches the network.
+1. Configure the daemon's proxy in the Docker Desktop settings / `~/.docker/config.json`,
+   or seed the image through a mirror;
+2. Seed the local store once from a host that can reach the registry, then re-run — the
+   preflight will find it and the build will never touch the network:
+   ```bash
+   docker pull node:22-bookworm-slim
+   docker save node:22-bookworm-slim -o node-22-bookworm-slim.tar   # or copy this file over
+   docker load -i node-22-bookworm-slim.tar
+   ```
+3. If you want the gate to prove it is fully offline, run it with
+   `MEERKAT_TASKPANEL_OFFLINE=1 npm run verify:docker` — a missing image is then a clear
+   failure instead of a silent download.
 
 **A container cannot resolve DNS.**
 Do not rely on the host's DNS inside the container. The verification suite needs no
