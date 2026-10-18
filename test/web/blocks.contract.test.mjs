@@ -41,6 +41,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import test, { describe, it } from "node:test";
 
 import * as contract from "./blocks.contract.mjs";
+import { applyPxVerdicts, parsePxValue, pxVerdict } from "../../web/scripts/px-assert.mjs";
 import {
   ALL_CONTRACT_ITEMS,
   AUXILIARY_HOOKS,
@@ -750,5 +751,91 @@ describe("web/blocks.contract — the derived selector surface", () => {
         "validateContract",
       ],
     );
+  });
+});
+
+/* ---------------------------------------- the px comparators are not vacuous */
+
+/**
+ * `equalsPx` / `minPx` / `maxPx` mean "this computed value is *this many pixels*".
+ * The old evaluator ran `Math.abs(parseFloat(actual) - expected) > 0.5` (and the
+ * `<` / `>` siblings) with no unit check, so a computed `auto` became `NaN` and
+ * every comparison was false — a **green assertion that measured nothing** — while
+ * `100%` became the fake length `100`. T-20261016-130046-3.
+ *
+ * The judgement lives in `web/scripts/px-assert.mjs` and runs in Node (the page
+ * only reports the raw computed value and whether the element has a layout box),
+ * so it is testable without a browser. These cases are the reproduction: the
+ * values are the raw readings the browser produced for a rendered inline box, a
+ * closed (`display:none`) subtree and a percentage.
+ */
+describe("web/blocks.contract — a px comparator measures a px length, never NaN", () => {
+  const rule = (value) => ({ kind: "computed", property: "width", ...value });
+  const reading = (value, hasBox) => ({ value, hasBox });
+
+  it("reads only a px-unit computed value as a length", () => {
+    assert.equal(parsePxValue("20px"), 20);
+    assert.equal(parsePxValue("0px"), 0);
+    assert.equal(parsePxValue("1.5px"), 1.5);
+    assert.equal(parsePxValue("-2px"), -2);
+    for (const notPx of ["auto", "100%", "normal", "none", "calc(1px + 1em)", "20", ""]) {
+      assert.equal(parsePxValue(notPx), null, `${JSON.stringify(notPx)} is not a px length`);
+    }
+  });
+
+  it("fails a rendered box whose computed value is auto (the NaN silent pass)", () => {
+    const verdict = pxVerdict(rule({ equalsPx: 20 }), reading("auto", true));
+    assert.equal(verdict.ok, false, "equalsPx against a rendered `width:auto` must fail, not pass");
+    assert.match(verdict.detail, /not a px length/);
+    for (const comparator of [{ minPx: 20 }, { maxPx: 20 }]) {
+      assert.equal(pxVerdict(rule(comparator), reading("auto", true)).ok, false);
+    }
+  });
+
+  it("fails a rendered box whose computed value is a percentage, not its parseFloat (100% ≠ 100px)", () => {
+    const verdict = pxVerdict(rule({ equalsPx: 100 }), reading("100%", true));
+    assert.equal(verdict.ok, false, "100% must not read as 100px");
+    assert.match(verdict.detail, /"100%"/);
+  });
+
+  it("does not turn a closed subtree into a false red: no box ⇒ the existence half stands, the length is not measured", () => {
+    for (const actual of ["auto", "100%"]) {
+      const verdict = pxVerdict(rule({ equalsPx: 20 }), reading(actual, false));
+      assert.equal(verdict.ok, true, `${actual} in a non-rendered subtree must not red`);
+      assert.match(verdict.note, /not measured/);
+      assert.match(verdict.note, /no layout box/);
+    }
+  });
+
+  it("keeps the 0.5px tolerance on a real length", () => {
+    assert.equal(pxVerdict(rule({ equalsPx: 20 }), reading("20.4px", true)).ok, true);
+    assert.equal(pxVerdict(rule({ equalsPx: 20 }), reading("20.6px", true)).ok, false);
+    assert.equal(pxVerdict(rule({ maxPx: 20 }), reading("20.5px", true)).ok, false);
+    assert.equal(pxVerdict(rule({ minPx: 20 }), reading("19.5px", true)).ok, false);
+  });
+
+  it("applies the verdicts to the harness's records and leaves no px payload behind", () => {
+    const rules = [
+      { block: "B24", rule: rule({ equalsPx: 20 }) },
+      { block: "B24", rule: rule({ equalsPx: 20 }) },
+    ];
+    const records = [
+      { index: 0, block: "B24", ok: true, detail: "", px: [reading("auto", true)] },
+      { index: 1, block: "B24", ok: true, detail: "", px: [reading("auto", false)] },
+    ];
+    applyPxVerdicts(records, rules);
+    assert.equal(records[0].ok, false, "the rendered auto must red");
+    assert.equal(records[1].ok, true, "the closed subtree must stay green");
+    assert.match(records[1].detail, /not measured/);
+    assert.equal(records[1].notMeasured, true, "the degradation is reported, not silent");
+    assert.equal(records[0].notMeasured, undefined, "a real failure is not also a not-measured pass");
+    assert.ok(records.every((record) => record.px === undefined), "px readings are consumed, not left on the record");
+  });
+
+  it("does not overwrite a failure another comparator already found", () => {
+    const rules = [{ block: "B01", rule: rule({ equalsPx: 20 }) }];
+    const records = [{ index: 0, block: "B01", ok: false, detail: "count 0 != 1", px: [reading("20px", true)] }];
+    applyPxVerdicts(records, rules);
+    assert.equal(records[0].detail, "count 0 != 1");
   });
 });

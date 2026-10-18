@@ -252,6 +252,15 @@ export const DOMAINS = Object.freeze({
  *                      computed value belongs to a rendered box (a chip's height,
  *                      a cell's row direction), and the design names some of
  *                      those boxes by class, not by attribute.
+ *                      `equalsPx` / `minPx` / `maxPx` are **pixel lengths**: the
+ *                      computed value must be spelled with a `px` unit, so a
+ *                      rendered `width:auto` (`"auto"` → `NaN`) or a percentage
+ *                      (`"100%"` → a fake `100`) **fails** rather than passing
+ *                      vacuously. The one exception is an element with no layout
+ *                      box at all (a closed subtree): there is nothing to
+ *                      measure, so the rule degrades to the probe's existence
+ *                      criterion and the harness reports it as not-measured
+ *                      (T-20261016-130046-3, `web/scripts/px-assert.mjs`).
  *   classes            `{probe, includes, when?}`
  *                      Every match's class list contains all of `includes`.
  *   text               `{probe, equals|oneOf|matches, when?}`
