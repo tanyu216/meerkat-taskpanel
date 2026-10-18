@@ -104,6 +104,7 @@ the map names.
 | `issue assign <ref> [--assignee <text>] [--assignee-id <id>] [--reporter <text>] [--force-create]` | Assign. |
 | `issue archive <ref> [--days <n>]` | Archive finished work (done/canceled; 7-day window by default). |
 | `issue deliver <ref> --report-file <file\|->` | **Write the report and move to `in_review`, in one transaction.** |
+| `issue reconcile [--dry-run]` | **The container backstop.** Replays the epic rules over every non-terminal container: start a `todo` epic whose child has entered the work, close an epic whose children are all `done`. `--dry-run` reports the plan and writes nothing. Idempotent — a second run over the same board writes nothing; the same sweep runs once at `taskd` startup. Each transition it applies leaves a `kind=note` comment naming its source (`sweep`). |
 
 ### The weight order (`--order weight`)
 
@@ -293,16 +294,20 @@ Only the **downgrade** is fenced: an epic that still has children cannot go back
 (`VALIDATION_FAILED`, "an epic with children cannot be downgraded"). Remove the `parent` edges
 first if you really meant to undo it.
 
-The container **closes itself**: when the last child is accepted to `done`, the board writes the
-rollup report — one acceptance line per child, carrying the children's own delivery evidence — and
-moves the epic to `in_review` in the same transaction. The delivery gate applies to that report
-exactly as it does to a leaf's, and the result is still `in_review`: a human accepts to `done` —
-which is also why a nested container's parent waits for its child container to be accepted.
+The container **closes itself**: when every child is finished (`done` or `canceled`) and at least
+one is `done`, the board writes the rollup report — one acceptance line per child, carrying the
+children's own delivery evidence — and moves the epic to `in_review` in the same transaction. A
+`canceled` child is terminal and does not block the close; its acceptance line is
+`not_applicable`, with the cancellation reason taken from its own newest comment. The delivery
+gate applies to that report exactly as it does to a leaf's, and the result is still `in_review`:
+a human accepts to `done` — which is also why a nested container's parent waits for its child
+container to be accepted.
 
-Two cases stay manual: a container whose children were **all** delivered under `--no-report` has
-no evidence to roll up and stays open (`report template` → `issue deliver` closes it by hand), and
-a **`canceled` child** stops the rollup on purpose — whether a container is finished despite a
-cancellation is a human's call.
+A container with **nothing delivered** stays open: every child canceled, or every delivered child
+waived under `--no-report` (no evidence to roll up). Close that one by hand (`report template` →
+`issue deliver`). `issue reconcile` reports a close-refusal with the children that caused it —
+`identifier` and `status` — so a sweep that does nothing still says which card is holding the
+container open.
 
 ### The delivery gate
 

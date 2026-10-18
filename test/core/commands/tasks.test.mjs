@@ -437,7 +437,11 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
       const epic = epicWith(commands, [one, two]);
 
       finish(commands, one, "abc1234");
-      assert.equal(commands.getTask({ id: epic.id }).status, "todo", "one child is not the whole set");
+      assert.equal(
+        commands.getTask({ id: epic.id }).status,
+        "in_progress",
+        "one child is not the whole set — but the container has started",
+      );
 
       finish(commands, two, "def5678");
       const closed = commands.getTask({ id: epic.id });
@@ -455,7 +459,36 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
       // The children's evidence, unioned and de-duplicated: the work happened
       // there, not in the container.
       assert.equal(JSON.parse(reports[0].evidence_json).length, 2);
-      assert.deepEqual(activitiesFor(db, epic.id), ["task_created", "task_delivered"]);
+      assert.deepEqual(activitiesFor(db, epic.id), [
+        "task_created",
+        "epic_auto_start",
+        "comment_added",
+        "task_delivered",
+        "comment_added",
+      ]);
+      // The two comments are the container's own account: start (event) and
+      // rollup (event), both authored by the board.
+      // `rowid`, not `id`: comment ids are UUIDs, so the primary key is not
+      // insertion order (the activity trail is what says what happened, but the
+      // two notes are also read in the order the board wrote them).
+      const notes = db
+        .prepare("SELECT kind, author_kind, body FROM comments WHERE task_id = ? ORDER BY rowid")
+        .all(epic.id);
+      assert.equal(notes.length, 2);
+      assert.deepEqual(
+        notes.map((note) => note.kind),
+        ["note", "note"],
+      );
+      assert.deepEqual(
+        notes.map((note) => note.author_kind),
+        ["system", "system"],
+      );
+      assert.match(notes[0].body, /^Auto-start \(event\): child PROJ-\d+ is in progress/);
+      assert.match(
+        notes[1].body,
+        /^Auto-rollup \(event\): 2\/2 child card\(s\) terminal — 2 done \(PROJ-\d+, PROJ-\d+\), 0 canceled \(none\)/,
+      );
+      assert.match(notes[1].body, /awaiting human acceptance/);
     });
   });
 
@@ -466,20 +499,127 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
       const epic = epicWith(commands, [one, two]);
 
       finish(commands, one, "abc1234");
-      assert.equal(commands.getTask({ id: epic.id }).status, "todo");
+      assert.equal(commands.getTask({ id: epic.id }).status, "in_progress");
       assert.equal(db.prepare("SELECT count(*) AS c FROM task_reports WHERE task_id = ?").get(epic.id).c, 0);
     });
   });
 
-  it("waits while a child is canceled — that call is a human's", async () => {
-    await board(async ({ commands }) => {
+  it("closes with a canceled child and lists it — with its reason — in the rollup report", async () => {
+    await board(async ({ db, commands }) => {
       const done = linusTask(commands, { title: "Done" });
-      const canceled = linusTask(commands, { title: "Canceled", allowDup: true });
-      const epic = epicWith(commands, [done, canceled]);
-      commands.moveStatus({ id: canceled.id, to: "canceled", actor: AGENT });
+      const canceled = linusTask(commands, { title: "Dropped", allowDup: true });
+      const quiet = linusTask(commands, { title: "Silent drop", allowDup: true });
+      const epic = epicWith(commands, [done, canceled, quiet]);
+      for (const child of [canceled, quiet]) {
+        commands.moveStatus({ id: child.id, to: "canceled", actor: AGENT });
+      }
+      commands.addComment({
+        taskId: canceled.id,
+        body: "Scope dropped by the operator; the third-party API was withdrawn.",
+        kind: "change",
+        actor: HUMAN,
+      });
 
       finish(commands, done, "abc1234");
-      assert.equal(commands.getTask({ id: epic.id }).status, "todo", "a canceled child is not a delivered one");
+      assert.equal(
+        commands.getTask({ id: epic.id }).status,
+        "in_review",
+        "canceled is terminal, so it does not hold the container open",
+      );
+
+      const stored = db
+        .prepare("SELECT acceptance_json, evidence_json FROM task_reports WHERE task_id = ?")
+        .get(epic.id);
+      const acceptance = JSON.parse(stored.acceptance_json);
+      assert.equal(acceptance.length, 3, "one criterion per child, every canceled child included");
+      const doneLine = acceptance.find((item) => item.text.includes("Done"));
+      const canceledLine = acceptance.find((item) => item.text.includes("Dropped"));
+      const quietLine = acceptance.find((item) => item.text.includes("Silent drop"));
+      assert.equal(doneLine.status, "met");
+      assert.equal(canceledLine.status, "not_applicable", "a canceled child is not a met criterion");
+      assert.match(
+        canceledLine.note,
+        /Scope dropped by the operator; the third-party API was withdrawn\./,
+        "the cancellation reason comes from the card's own trail",
+      );
+      assert.equal(
+        quietLine.note,
+        "canceled: no reason recorded on the card",
+        "a card with no comments says so instead of inventing a reason",
+      );
+      assert.equal(
+        JSON.parse(stored.evidence_json).length,
+        1,
+        "the delivered child's evidence still stands the report up",
+      );
+
+      const [rollup] = db
+        .prepare("SELECT body FROM comments WHERE task_id = ? AND body LIKE 'Auto-rollup%'")
+        .all(epic.id);
+      assert.match(rollup.body, /3\/3 child card\(s\) terminal — 1 done \(PROJ-\d+\), 2 canceled \(PROJ-\d+, PROJ-\d+\)/);
+    });
+  });
+
+  it("closes when the last unfinished child is canceled — cancellation ends the set", async () => {
+    await board(async ({ db, commands }) => {
+      const done = linusTask(commands, { title: "Done" });
+      const pending = linusTask(commands, { title: "Pending", allowDup: true });
+      const epic = epicWith(commands, [done, pending]);
+
+      finish(commands, done, "abc1234");
+      assert.equal(commands.getTask({ id: epic.id }).status, "in_progress");
+
+      commands.moveStatus({ id: pending.id, to: "canceled", actor: AGENT });
+      assert.equal(
+        commands.getTask({ id: epic.id }).status,
+        "in_review",
+        "a canceled child is terminal: with the done child, the set is complete",
+      );
+      assert.equal(db.prepare("SELECT count(*) AS c FROM task_reports WHERE task_id = ?").get(epic.id).c, 1);
+    });
+  });
+
+  it("does not close a container whose children were all canceled — nothing was delivered", async () => {
+    await board(async ({ db, commands }) => {
+      const one = linusTask(commands, { title: "One" });
+      const two = linusTask(commands, { title: "Two", allowDup: true });
+      const epic = epicWith(commands, [one, two]);
+      for (const child of [one, two]) {
+        commands.moveStatus({ id: child.id, to: "canceled", actor: AGENT });
+      }
+
+      assert.equal(commands.getTask({ id: epic.id }).status, "todo", "an empty delivery is not a delivery");
+
+      const plan = commands.reconcileContainers({ dryRun: true });
+      const entry = plan.actions.find((candidate) => candidate.epic === epic.identifier);
+      assert.deepEqual(
+        { action: entry.action, reason: entry.reason },
+        { action: "none", reason: "no_child_done" },
+      );
+      assert.deepEqual(
+        entry.blocking.map((child) => child.status),
+        ["canceled", "canceled"],
+        "the refusal names the children, not just 'not closeable'",
+      );
+      assert.equal(db.prepare("SELECT count(*) AS c FROM task_reports WHERE task_id = ?").get(epic.id).c, 0);
+    });
+  });
+
+  it("names the unfinished child in the sweep report", async () => {
+    await board(async ({ commands }) => {
+      const done = linusTask(commands, { title: "Done" });
+      const pending = linusTask(commands, { title: "Pending", allowDup: true });
+      const epic = epicWith(commands, [done, pending]);
+      finish(commands, done, "abc1234");
+      assert.equal(commands.getTask({ id: epic.id }).status, "in_progress");
+
+      const plan = commands.reconcileContainers({ dryRun: true });
+      const entry = plan.actions.find((candidate) => candidate.epic === epic.identifier);
+      assert.deepEqual(
+        { action: entry.action, reason: entry.reason },
+        { action: "none", reason: "children_unfinished" },
+      );
+      assert.deepEqual(entry.blocking, [{ identifier: pending.identifier, status: "todo" }]);
     });
   });
 
@@ -503,7 +643,11 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
 
       finish(commands, grand, "abc1234");
       assert.equal(commands.getTask({ id: inner.id }).status, "in_review", "the inner container rolls up");
-      assert.equal(commands.getTask({ id: outer.id }).status, "todo", "but a human has not accepted it yet");
+      assert.equal(
+        commands.getTask({ id: outer.id }).status,
+        "in_progress",
+        "the outer container started when its child did, but a human has not accepted the inner one",
+      );
 
       // The human accepts the inner container: only then is the outer one whole.
       commands.moveStatus({ id: inner.id, to: "done", actor: AGENT });
@@ -528,8 +672,9 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
         commands.moveStatus({ id: child.id, to: "done", actor: AGENT });
       }
 
-      // No report of theirs to stand on: the container is left for a human.
-      assert.equal(commands.getTask({ id: epic.id }).status, "todo");
+      // No report of theirs to stand on: the container is left for a human
+      // (started, because its children were worked, but not delivered).
+      assert.equal(commands.getTask({ id: epic.id }).status, "in_progress");
       const manual = commands.deliver({ taskId: epic.id, report: report(), actor: AGENT });
       assert.equal(manual.task.status, "in_review", "the manual path still works");
     });
@@ -555,11 +700,232 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
       const pending = linusTask(commands, { title: "Pending", allowDup: true });
       const epic = epicWith(commands, [done, pending]);
       finish(commands, done, "abc1234");
-      assert.equal(commands.getTask({ id: epic.id }).status, "todo");
+      assert.equal(commands.getTask({ id: epic.id }).status, "in_progress");
 
       const edge = repos.relations.listChildren(epic.id).find((relation) => relation.target === pending.id);
       commands.removeRelation({ relationId: edge.id, actor: AGENT });
       assert.equal(commands.getTask({ id: epic.id }).status, "in_review", "the remaining children are all done");
+    });
+  });
+});
+
+describe("commands/tasks — the container lifecycle (system start, notes, reconcile)", () => {
+  // The A′ lifecycle: a child entering the work starts its container
+  // (`todo → in_progress`, a *system* move — no claim), and the last child's
+  // acceptance delivers it (`→ in_review`). Both transitions leave a system
+  // note naming their source; `reconcileContainers` replays the rules for a
+  // write that bypassed the hooks.
+  const linusTask = (commands, extra = {}) =>
+    commands.createTask({ projectId: "proj", title: "Child", assignee: "linus", assigneeKind: "agent", actor: AGENT, ...extra });
+
+  const epicWith = (commands, children) => {
+    const epic = commands.createTask({ projectId: "proj", title: "Container", kind: "epic", actor: AGENT });
+    for (const child of children) {
+      commands.addRelation({ type: "parent", source: epic.id, target: child.id, actor: AGENT });
+    }
+    return epic;
+  };
+
+  const finish = (commands, task, sha) => {
+    commands.claim({ id: task.id, actor: AGENT });
+    commands.deliver({ taskId: task.id, report: report({ evidence: [{ kind: "commit", sha }] }), actor: AGENT });
+    return commands.moveStatus({ id: task.id, to: "done", actor: AGENT });
+  };
+
+  const notesFor = (db, taskId) =>
+    db.prepare("SELECT body, kind, author_kind FROM comments WHERE task_id = ? ORDER BY rowid").all(taskId);
+
+  it("starts the container when its first child enters the work — a system move, not a claim", async () => {
+    await board(async ({ db, commands }) => {
+      const child = linusTask(commands);
+      const epic = epicWith(commands, [child]);
+      assert.equal(epic.status, "todo");
+
+      commands.claim({ id: child.id, actor: AGENT });
+
+      const started = commands.getTask({ id: epic.id });
+      assert.equal(started.status, "in_progress", "the container is live while a child works");
+      assert.equal(started.claimedBy, null, "an epic is nobody's work card");
+      assert.equal(started.claimedAt, null);
+      assert.deepEqual(activitiesFor(db, epic.id), ["task_created", "epic_auto_start", "comment_added"]);
+
+      const [note] = notesFor(db, epic.id);
+      assert.equal(note.kind, "note");
+      assert.equal(note.author_kind, "system", "the board wrote it");
+      assert.match(note.body, /^Auto-start \(event\): child PROJ-\d+ is in progress; epic moved todo → in_progress at /);
+    });
+  });
+
+  it("starts it once: a second child's claim writes no second note", async () => {
+    await board(async ({ db, commands }) => {
+      const one = linusTask(commands, { title: "One" });
+      const two = linusTask(commands, { title: "Two", allowDup: true });
+      const epic = epicWith(commands, [one, two]);
+
+      commands.claim({ id: one.id, actor: AGENT });
+      commands.claim({ id: two.id, actor: AGENT });
+
+      assert.equal(commands.getTask({ id: epic.id }).status, "in_progress");
+      assert.equal(notesFor(db, epic.id).length, 1, "the start is recorded once");
+      assert.deepEqual(activitiesFor(db, epic.id), ["task_created", "epic_auto_start", "comment_added"]);
+    });
+  });
+
+  it("starts the container on a rework back into the work, not only on a claim", async () => {
+    await board(async ({ commands }) => {
+      const child = linusTask(commands);
+      const epic = epicWith(commands, [child]);
+      // `todo → blocked` proves no work happened, so it does not start the epic.
+      commands.moveStatus({ id: child.id, to: "blocked", actor: AGENT });
+      assert.equal(commands.getTask({ id: epic.id }).status, "todo");
+
+      commands.moveStatus({ id: child.id, to: "in_progress", actor: AGENT });
+      assert.equal(commands.getTask({ id: epic.id }).status, "in_progress");
+    });
+  });
+
+  it("reconciles a child attached after it finished — dry run writes nothing, the sweep closes once", async () => {
+    await board(async ({ db, commands }) => {
+      const child = linusTask(commands);
+      finish(commands, child, "abc1234");
+      const epic = epicWith(commands, [child]); // attached after the fact: addRelation fires no hook
+      assert.equal(commands.getTask({ id: epic.id }).status, "todo");
+
+      const plan = commands.reconcileContainers({ dryRun: true });
+      const planned = plan.actions.find((entry) => entry.epic === epic.identifier);
+      assert.deepEqual({ action: planned.action, reason: planned.reason }, {
+        action: "close",
+        reason: "all_children_terminal",
+      });
+      assert.equal(commands.getTask({ id: epic.id }).status, "todo", "a dry run writes nothing");
+      assert.equal(db.prepare("SELECT count(*) AS c FROM task_reports WHERE task_id = ?").get(epic.id).c, 0);
+      assert.equal(notesFor(db, epic.id).length, 0);
+      assert.deepEqual(activitiesFor(db, epic.id), ["task_created"]);
+
+      const applied = commands.reconcileContainers({});
+      assert.equal(applied.actions.find((entry) => entry.epic === epic.identifier).action, "close");
+      assert.equal(commands.getTask({ id: epic.id }).status, "in_review");
+      const [note] = notesFor(db, epic.id);
+      assert.match(note.body, /^Auto-rollup \(sweep\): 1\/1 child card\(s\) terminal — 1 done \(PROJ-\d+\), 0 canceled \(none\)/);
+
+      const roundAfterClose = commands.getTask({ id: epic.id }).deliveryRound;
+      const again = commands.reconcileContainers({});
+      const againEntry = again.actions.find((entry) => entry.epic === epic.identifier);
+      assert.deepEqual({ action: againEntry.action, reason: againEntry.reason }, {
+        action: "none",
+        reason: "awaiting_acceptance",
+      });
+      assert.equal(db.prepare("SELECT count(*) AS c FROM task_reports WHERE task_id = ?").get(epic.id).c, 1);
+      assert.equal(
+        commands.getTask({ id: epic.id }).deliveryRound,
+        roundAfterClose,
+        "a container already in_review is a no-op: no second round",
+      );
+      assert.equal(notesFor(db, epic.id).length, 1, "a second sweep writes no duplicate note");
+    });
+  });
+
+  it("reconciles a child attached after it started — the sweep starts the container", async () => {
+    await board(async ({ db, commands }) => {
+      const child = linusTask(commands);
+      commands.claim({ id: child.id, actor: AGENT });
+      const epic = epicWith(commands, [child]);
+      assert.equal(commands.getTask({ id: epic.id }).status, "todo");
+
+      const plan = commands.reconcileContainers({ dryRun: true });
+      assert.equal(plan.actions.find((entry) => entry.epic === epic.identifier).action, "start");
+      assert.equal(commands.getTask({ id: epic.id }).status, "todo");
+
+      commands.reconcileContainers({});
+      assert.equal(commands.getTask({ id: epic.id }).status, "in_progress");
+      assert.equal(commands.getTask({ id: epic.id }).claimedBy, null);
+      const [note] = notesFor(db, epic.id);
+      assert.match(note.body, /^Auto-start \(sweep\): child PROJ-\d+ is in progress; epic moved todo → in_progress at /);
+    });
+  });
+
+  it("never closes an empty epic on its own", async () => {
+    await board(async ({ commands, ctx }) => {
+      const epic = commands.createTask({ projectId: "proj", title: "Empty container", kind: "epic", actor: AGENT });
+      assert.equal(advanceContainer(ctx, epic.id, ctx.now()), null, "an empty epic has no basis for a rollup");
+
+      const plan = commands.reconcileContainers({ dryRun: true });
+      const entry = plan.actions.find((candidate) => candidate.epic === epic.identifier);
+      assert.deepEqual({ action: entry.action, reason: entry.reason }, {
+        action: "none",
+        reason: "empty_epic",
+      });
+      commands.reconcileContainers({});
+      assert.equal(commands.getTask({ id: epic.id }).status, "todo", "the sweep leaves it exactly where it was");
+    });
+  });
+
+  it("does not start a container for a child that only went blocked", async () => {
+    await board(async ({ commands }) => {
+      const child = linusTask(commands);
+      const epic = epicWith(commands, [child]);
+      commands.moveStatus({ id: child.id, to: "blocked", actor: AGENT });
+
+      const plan = commands.reconcileContainers({ dryRun: true });
+      const entry = plan.actions.find((candidate) => candidate.epic === epic.identifier);
+      assert.deepEqual({ action: entry.action, reason: entry.reason }, {
+        action: "none",
+        reason: "no_child_started",
+      });
+    });
+  });
+
+  it("closes once when the last child is written twice — the second write loses on the terminal guard", async () => {
+    await board(async ({ db, commands }) => {
+      const one = linusTask(commands, { title: "One" });
+      const two = linusTask(commands, { title: "Two", allowDup: true });
+      const epic = epicWith(commands, [one, two]);
+      for (const child of [one, two]) {
+        commands.claim({ id: child.id, actor: AGENT });
+        commands.deliver({ taskId: child.id, report: report(), actor: AGENT });
+      }
+
+      commands.moveStatus({ id: one.id, to: "done", actor: AGENT });
+      assert.equal(commands.getTask({ id: epic.id }).status, "in_progress", "one of two is not the set");
+
+      commands.moveStatus({ id: two.id, to: "done", actor: AGENT });
+      // The racing second write targets a card the first one already finished.
+      assert.throws(
+        () => commands.moveStatus({ id: two.id, to: "done", actor: AGENT }),
+        (err) => err.code === "TERMINAL_STATE",
+      );
+
+      assert.equal(commands.getTask({ id: epic.id }).status, "in_review");
+      assert.equal(db.prepare("SELECT count(*) AS c FROM task_reports WHERE task_id = ?").get(epic.id).c, 1, "exactly one rollup");
+      const notes = notesFor(db, epic.id);
+      assert.equal(notes.length, 2, "one start note and one closure note");
+      assert.match(notes[1].body, /^Auto-rollup \(event\): 2\/2 child card\(s\) terminal/);
+    });
+  });
+});
+
+describe("commands/tasks — the creation gate (S3)", () => {
+  it("refuses creating any card in_progress", async () => {
+    await board(async ({ commands }) => {
+      assert.throws(
+        () => commands.createTask({ projectId: "proj", title: "Born working", status: "in_progress", actor: AGENT }),
+        (err) => err.code === "VALIDATION_FAILED" && err.details.field === "status",
+      );
+    });
+  });
+
+  it("refuses creating an epic outside backlog/todo", async () => {
+    await board(async ({ commands }) => {
+      for (const status of ["in_progress", "in_review", "done", "canceled", "blocked"]) {
+        assert.throws(
+          () => commands.createTask({ projectId: "proj", title: `Born ${status}`, kind: "epic", status, actor: AGENT }),
+          (err) => err.code === "VALIDATION_FAILED" && err.details.field === "status",
+          status,
+        );
+      }
+      const backlog = commands.createTask({ projectId: "proj", title: "Born backlog", kind: "epic", status: "backlog", actor: AGENT });
+      const todo = commands.createTask({ projectId: "proj", title: "Born todo", kind: "epic", actor: AGENT });
+      assert.deepEqual([backlog.status, todo.status], ["backlog", "todo"]);
     });
   });
 });

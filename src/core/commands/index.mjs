@@ -13,6 +13,7 @@ import * as labels from "./labels.mjs";
 import * as projects from "./projects.mjs";
 import * as relations from "./relations.mjs";
 import * as reports from "./reports.mjs";
+import * as rollup from "./rollup.mjs";
 import * as tasks from "./tasks.mjs";
 
 export { createContext, actorOf, SYSTEM_ACTOR } from "./context.mjs";
@@ -47,6 +48,9 @@ export function createCommands(ctx) {
     listOrderedCandidates: (input) => tasks.listOrderedCandidates(ctx, input),
     getTask: (input) => ctx.repos.tasks.get(input.id ?? input.taskId),
     getTaskByIdentifier: (input) => ctx.repos.tasks.findByIdentifierAnyProject(input.identifier),
+    // The container backstop: replay the epic start/close rules over the board
+    // (commands/rollup.mjs). Idempotent; `dryRun` writes nothing.
+    reconcileContainers: (input) => rollup.reconcileContainers(ctx, input),
 
     // reports ----------------------------------------------------------------
     writeReport: (input) => reports.writeReport(ctx, input),

@@ -161,6 +161,12 @@ export function createTasksRepository(db) {
         clauses.push("project_id = ?");
         values.push(filter.projectId);
       }
+      // `kind` is the container reconciler's scope read (commands/rollup.mjs):
+      // it needs every non-terminal epic without paging the whole board.
+      if (filter.kind !== undefined) {
+        clauses.push("kind = ?");
+        values.push(filter.kind);
+      }
       if (filter.status !== undefined) {
         const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
         clauses.push(`status IN (${statuses.map(() => "?").join(", ")})`);

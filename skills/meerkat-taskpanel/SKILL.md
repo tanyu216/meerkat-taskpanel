@@ -127,11 +127,16 @@ Four board facts decide that order:
 - **An epic can never be claimed.** `issue move <epic> in_progress` is refused (`not_claimable`)
   and `issue candidates` never offers one — so a card that should end up `in_progress` must be
   claimed **while it is still a `task`**, and promoted after.
+- **The board starts the epic for you.** The first child to enter `in_progress` moves the
+  container `todo → in_progress` — a **system** move (no `claimed_by`, a `epic_auto_start`
+  activity, and a `kind=note` comment saying which child started it). An epic that is already
+  `in_progress` is left alone, so the transition happens once however many children are claimed.
 - **An epic's route into review is its own.** `todo → in_review` is legal **for an `epic` only**
   — a container never enters the work cycle, so its `todo` row carries the delivery edge a task's
-  does not. Nothing has to be parked first: the container waits in `todo` while its children are
-  worked, and is closed from there. (A `task` in `todo` still cannot reach `in_review`; the
-  exception is scoped to the kind, not to the status.)
+  does not. In practice the container is started by its first child and closed from
+  `in_progress`; the direct edge remains the repair path for a child attached after it finished.
+  (A `task` in `todo` still cannot reach `in_review`; the exception is scoped to the kind, not to
+  the status.)
 - **`issue create --parent <epic>` does not link anything.** On create, `--parent` only fills the
   idempotency key's source slot; the edge is `relation add … --type parent`, and only an `epic`
   may be the parent.
@@ -148,26 +153,36 @@ are the *same card* — the second create is read as a retry of the first, not a
 `--allow-dup` when a target genuinely does not apply. Then claim exactly **one** child and work it
 as usual: the container holds no work of its own, so it does not count against your one card.
 
-**The board closes the container for you.** When the last child is accepted to `done`, the board
-writes the container's rollup report — one acceptance line per child, carrying the children's own
-delivery evidence — and moves the epic to `in_review` in the same transaction as that child's
-move. You do not deliver it; "who closes it" is answered by the board, not by whoever happened to
-finish last. A human still accepts `in_review → done`, which is why a **nested** container's parent
-keeps waiting until the inner container is accepted.
+**The board closes the container for you.** When the set becomes complete — the last child
+accepted to `done`, or the `canceled` that finishes the set, with every other child `done` or
+`canceled` — the board writes the container's rollup report (one acceptance line per child,
+carrying the children's own delivery evidence) and moves the epic to `in_review` in the same
+transaction as that child's move. It also leaves a `kind=note` comment
+naming the source (`event`), the basis (`N/N` children terminal, how many done/canceled), and the
+instant. You do not deliver it; "who closes it" is answered by the board, not by whoever happened
+to finish last. A human still accepts `in_review → done`, which is why a **nested** container's
+parent keeps waiting until the inner container is accepted.
 
-Two cases are left to you:
+- **A `canceled` child does not block the close** — it is terminal, like `done`. The rollup report
+  lists it as `not_applicable` with the cancellation reason from its own comment trail, so the
+  person accepting the container can decide whether finishing without it was right. Write that
+  reason as a comment on the child when you cancel it; a card with no trail says so explicitly.
+- **A container with nothing delivered stays open.** If every child was canceled, or every
+  delivered child was waived (`--no-report`, no evidence), there is nothing to roll up; close it
+  by hand: `taskctl report template <ref>` then `taskctl issue deliver <ref> --report-file -`
+  (the delivery gate still applies).
 
-- **A waived child** (`--no-report`) contributes no evidence. If every child was waived there is
-  nothing to roll up and the container stays open — close it by hand:
-  `taskctl report template <ref>` then `taskctl issue deliver <ref> --report-file -` (the delivery
-  gate still applies).
-- **A `canceled` child** stops the rollup on purpose: whether a container is finished despite a
-  cancellation is a human's call.
+**The reconciler is the backstop, not a step you owe.** A child attached *after* it started or
+finished fires no status transition, and a write that bypassed the service layer (a direct edit)
+can leave the container behind. `taskctl issue reconcile --dry-run` reports what the board would
+do; `taskctl issue reconcile` applies it. It scans every non-terminal epic, writes only start/close
+transitions that the rules allow, and is idempotent — a second run over the same board writes
+nothing. The same sweep runs once at `taskd` startup; you never need it for the ordinary path.
 
-**The container may sit in `todo`.** An epic is not claimed, so `todo` is a resting place rather
-than a queue position, and the close arrives from there. Moving it to `blocked` is still legal,
-and still right when the container really is waiting on something external; it is no longer a
-detour.
+**The container rests in `todo` until work starts.** An epic is not claimed, so `todo` is a
+resting place rather than a queue position; its first child's claim starts it. Moving it to
+`blocked` is still legal, and still right when the container really is waiting on something
+external.
 
 ## When to use it
 

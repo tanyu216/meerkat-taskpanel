@@ -29,7 +29,7 @@
 
 import { DomainError } from "../../shared/errors.mjs";
 import { deliverCommandHint } from "../../shared/deliver-hint.mjs";
-import { STATUS } from "./enums.mjs";
+import { STATUS, TASK_KIND } from "./enums.mjs";
 import { requiresReport } from "./status.mjs";
 
 /** Shortest reason that counts as a reason (`--no-report --reason <why>`). */
@@ -44,6 +44,18 @@ export const WAIVER_MIN_REASON_CHARS = 8;
  * there without a report.
  */
 export const CREATION_GATE_STATUSES = Object.freeze([STATUS.IN_REVIEW, STATUS.DONE]);
+
+/**
+ * The statuses an `epic` may be **born** in (S3).
+ *
+ * A container's `in_progress` is written by the board itself when its first
+ * child starts (a system move, no claim — see `commands/rollup.mjs`), so a
+ * caller creating an epic directly in `in_progress` would produce a live
+ * container with no child behind it and no system record explaining the state.
+ * `backlog` and `todo` are the two honest starting points: unreleased, or
+ * released but not yet started.
+ */
+export const EPIC_INITIAL_STATUSES = Object.freeze([STATUS.BACKLOG, STATUS.TODO]);
 
 /**
  * Refuse an *initial* status a task may not start in.
@@ -64,6 +76,31 @@ export const CREATION_GATE_STATUSES = Object.freeze([STATUS.IN_REVIEW, STATUS.DO
  */
 export function assertCreationGate(input) {
   const { task, status } = input;
+
+  // S3 — a card is never born *in progress*. `in_progress` is a claim (the
+  // execution lock stamps `claimed_by` in the same write; `commands/tasks.mjs`)
+  // or a system start (an epic, `commands/rollup.mjs`). A create can be
+  // neither, so accepting the status would mint a card whose work cycle never
+  // began — the G2 hole (a holderless `in_progress` epic).
+  if (status === STATUS.IN_PROGRESS) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: "a task cannot be created in_progress — create it in todo and claim it",
+      details: { field: "status", received: status, entry: `${STATUS.TODO} → ${STATUS.IN_PROGRESS}` },
+      hint: { fix: "create it in todo, then: taskctl issue move <ref> in_progress" },
+    });
+  }
+
+  // S3 — an epic's initial status is `backlog` or `todo`. Anything else either
+  // presupposes a delivery (`in_review`/`done`, refused below with the gate's
+  // own error) or a system transition the board has not performed.
+  if (task.kind === TASK_KIND.EPIC && !EPIC_INITIAL_STATUSES.includes(status)) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: `an epic cannot be created in ${status} — its initial status is backlog or todo`,
+      details: { field: "status", received: status, allowed: [...EPIC_INITIAL_STATUSES] },
+      hint: { fix: "create the container in todo; the board starts it when its first child starts" },
+    });
+  }
+
   if (!CREATION_GATE_STATUSES.includes(status)) return true;
 
   const round = task.deliveryRound ?? 1;

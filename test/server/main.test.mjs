@@ -260,6 +260,77 @@ describe("server/index — the label GC timer (F1-C)", () => {
   });
 });
 
+describe("server/main — the container reconcile at startup", () => {
+  const AGENT = { kind: "agent", id: "linus" };
+
+  it("repairs a missed closure when the board restarts, and says so", async () => {
+    const dataDir = tempDir();
+    const report = {
+      conclusion: "done",
+      acceptance: [{ text: "a", status: "met" }],
+      evidence: [{ kind: "path", path: "x" }],
+    };
+
+    // Build the missed-event shape: a child finished with no container above it,
+    // then an epic attached after the fact (`relation add` fires no status hook).
+    const first = await createTaskd({ dataDir, host: "127.0.0.1", port: 0, env: {} });
+    let epicId;
+    try {
+      const { commands } = first.board;
+      commands.createProject({ id: "proj", name: "P", actor: AGENT });
+      const child = commands.createTask({ projectId: "proj", title: "child", actor: AGENT });
+      commands.claim({ id: child.id, actor: AGENT });
+      commands.deliver({ taskId: child.id, report, actor: AGENT });
+      commands.moveStatus({ id: child.id, to: "done", actor: AGENT });
+      const epic = commands.createTask({ projectId: "proj", title: "container", kind: "epic", actor: AGENT });
+      commands.addRelation({ type: "parent", source: epic.id, target: child.id, actor: AGENT });
+      assert.equal(commands.getTask({ id: epic.id }).status, "todo");
+      epicId = epic.id;
+    } finally {
+      await first.close();
+    }
+
+    const logs = [];
+    const second = await createTaskd({
+      dataDir,
+      host: "127.0.0.1",
+      port: 0,
+      env: {},
+      logger: (event) => logs.push(event),
+    });
+    try {
+      assert.equal(second.containerSweep.ran, true);
+      assert.equal(second.board.repos.tasks.get(epicId).status, "in_review", "the startup sweep repaired the container");
+      assert.equal(
+        second.containerSweep.last.actions.filter((entry) => entry.action === "close").length,
+        1,
+        "one container was closed",
+      );
+      assert.equal(logs.filter((entry) => entry.event === "container_sweep").length, 1);
+      const note = second.board.repos.comments.list({ taskId: epicId })[0];
+      assert.match(note.body, /^Auto-rollup \(sweep\): 1\/1 child card/);
+    } finally {
+      await second.close();
+    }
+  });
+
+  it("can be switched off for a board that wants no startup write", async () => {
+    const taskd = await createTaskd({
+      dataDir: tempDir(),
+      host: "127.0.0.1",
+      port: 0,
+      env: {},
+      containerSweep: false,
+    });
+    try {
+      assert.equal(taskd.containerSweep.ran, false);
+      assert.equal(taskd.containerSweep.last, null);
+    } finally {
+      await taskd.close();
+    }
+  });
+});
+
 describe("server/main — the URL a client is told to use", () => {
   it("maps a wildcard bind to loopback and brackets an IPv6 literal", () => {
     assert.equal(boardUrl("0.0.0.0", 9527), "http://127.0.0.1:9527");

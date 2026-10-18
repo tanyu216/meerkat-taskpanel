@@ -382,7 +382,7 @@ describe("route-request.mjs — the CLI", () => {
     // three attachment metadata routes (POST|GET /tasks/:ref/attachments,
     // DELETE /attachments/:id); 33 again after T-20261017-063818 added
     // POST /tasks/:ref/heartbeat.
-    assert.match(result.stdout, /route-request: OK — 33 routes/);
+    assert.match(result.stdout, /route-request: OK — 34 routes/);
     // Seven since T-20261017-063818 declared `tasks.heartbeat` alongside the six
     // commands that already projected their input.
     assert.match(result.stdout, /7 command inputs paired/);

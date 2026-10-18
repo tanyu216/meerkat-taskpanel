@@ -114,8 +114,14 @@ Four properties are load-bearing:
   so `todo` was otherwise a state with no exit — and `done` sits behind `in_review`. The
   exception is scoped to **`kind`**, not to the status: a `task` in `todo` still cannot reach
   `in_review`, and the delivery gate applies to the epic's report exactly as it does to a leaf's.
-  When every child of an epic reaches `done`, the board closes the container itself (the rollup
-  report, authored by the board), so the epic's delivery is not an agent's step.
+  In practice the board drives the container: the first child entering `in_progress` makes a
+  **system** move `todo → in_progress` (no claim, an `epic_auto_start` activity, and a
+  `kind=note` comment), and when every child is finished (`done` or `canceled`, at least one
+  `done`) the board writes the rollup report and delivers it to `in_review` — the epic's
+  delivery is never an agent's step. A `canceled` child is terminal and is listed in the report
+  with its cancellation reason, not treated as outstanding work. `todo → in_review` remains the
+  repair edge for a child attached after the fact; `issue reconcile` replays both rules and
+  records its source as `sweep` in the note.
 - **Leaving `in_review`** (to `in_progress` or `blocked`) **starts a new delivery round**; the
   previous round's report stops counting. `awaiting → in_progress` is *not* such an exit: it
   resumes the same attempt, round untouched.

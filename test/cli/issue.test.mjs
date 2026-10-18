@@ -727,7 +727,11 @@ describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells i
       dataOf(run(["issue", "move", child.task.identifier, "in_review", "--no-report", "--reason", "audited waiver, no commit", ...AS, "--json"]));
       dataOf(run(["issue", "move", child.task.identifier, "done", ...AS, "--json"]));
 
-      assert.equal(dataOf(run(["issue", "get", card.task.identifier, "--json"])).task.status, "todo");
+      assert.equal(
+        dataOf(run(["issue", "get", card.task.identifier, "--json"])).task.status,
+        "in_progress",
+        "the container started when its child did; there is no evidence to deliver it",
+      );
 
       // The manual path still works — the container is a human's to close here.
       const delivered = dataOf(
@@ -749,6 +753,96 @@ describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells i
         asked.task.identifier,
         "same kind, assignee, source and target: the second create is a retry of the first, not a sibling",
       );
+    });
+  });
+});
+
+describe("cli/issue — reconcile (the container backstop)", () => {
+  it("plans a missed closure with --dry-run, applies it once, and is idempotent", async () => {
+    await board(async ({ run }) => {
+      // A child finished with no container above it: the event path never saw a
+      // parent, and the epic below is attached after the fact (`relation add`
+      // fires no status hook by design). This is the missed-event shape the
+      // sweep exists for.
+      const child = createIssue(run, ["--title", "Child"]);
+      dataOf(run(["issue", "move", child.task.identifier, "in_progress", "--json"]));
+      dataOf(
+        run(["issue", "deliver", child.task.identifier, "--report-file", "-", "--json"], {
+          input: JSON.stringify({
+            conclusion: "done",
+            acceptance: [{ text: "a", status: "met" }],
+            evidence: [{ kind: "path", path: "x" }],
+          }),
+        }),
+      );
+      dataOf(run(["issue", "move", child.task.identifier, "done", "--json"]));
+
+      const epic = createIssue(run, ["--title", "Container", "--kind", "epic", "--allow-dup"]);
+      dataOf(
+        run(["relation", "add", epic.task.identifier, "--type", "parent", "--target", child.task.identifier, "--json"]),
+      );
+      assert.equal(dataOf(run(["issue", "get", epic.task.identifier, "--json"])).task.status, "todo");
+
+      const dry = dataOf(run(["issue", "reconcile", "--dry-run", "--json"]));
+      assert.equal(dry.dry_run, true);
+      assert.equal(dry.actions.find((entry) => entry.epic === epic.task.identifier).action, "close");
+      assert.equal(
+        dataOf(run(["issue", "get", epic.task.identifier, "--json"])).task.status,
+        "todo",
+        "a dry run writes nothing",
+      );
+
+      const applied = dataOf(run(["issue", "reconcile", "--json"]));
+      assert.equal(applied.actions.find((entry) => entry.epic === epic.task.identifier).action, "close");
+      assert.equal(dataOf(run(["issue", "get", epic.task.identifier, "--json"])).task.status, "in_review");
+
+      const comments = dataOf(run(["comment", "list", epic.task.identifier, "--json"])).comments;
+      assert.equal(comments.length, 1);
+      assert.equal(comments[0].kind, "note");
+      assert.match(comments[0].body, /^Auto-rollup \(sweep\): 1\/1 child card\(s\) terminal /);
+
+      // A second sweep sees a container already waiting for a human and writes
+      // nothing: same state, same answer.
+      const again = dataOf(run(["issue", "reconcile", "--json"]));
+      assert.equal(again.actions.find((entry) => entry.epic === epic.task.identifier).action, "none");
+      assert.equal(dataOf(run(["comment", "list", epic.task.identifier, "--json"])).comments.length, 1);
+    });
+  });
+
+  it("names the child holding a container open in the human report too", async () => {
+    await board(async ({ run }) => {
+      // The epic is started by the first child, then a second child is attached
+      // afterwards: the container is in_progress with work still outstanding.
+      const epic = createIssue(run, ["--title", "Container", "--kind", "epic", "--allow-dup"]);
+      const done = createIssue(run, ["--title", "Done"]);
+      const pending = createIssue(run, ["--title", "Pending", "--allow-dup"]);
+      dataOf(
+        run(["relation", "add", epic.task.identifier, "--type", "parent", "--target", done.task.identifier, "--json"]),
+      );
+      // The claim starts the container; the second child is attached after that,
+      // so the container is in_progress with work still outstanding.
+      dataOf(run(["issue", "move", done.task.identifier, "in_progress", "--json"]));
+      dataOf(
+        run(["relation", "add", epic.task.identifier, "--type", "parent", "--target", pending.task.identifier, "--json"]),
+      );
+      dataOf(
+        run(["issue", "deliver", done.task.identifier, "--report-file", "-", "--json"], {
+          input: JSON.stringify({
+            conclusion: "done",
+            acceptance: [{ text: "a", status: "met" }],
+            evidence: [{ kind: "path", path: "x" }],
+          }),
+        }),
+      );
+      dataOf(run(["issue", "move", done.task.identifier, "done", "--json"]));
+
+      const human = run(["issue", "reconcile", "--dry-run"]);
+      assert.match(human.stdout, /children_unfinished/);
+      assert.ok(
+        human.stdout.includes(`${pending.task.identifier} (todo)`),
+        `the report must name the child, got:\n${human.stdout}`,
+      );
+      assert.ok(!human.stdout.includes(`${done.task.identifier} (done)`), "a finished child is not blocking");
     });
   });
 });
