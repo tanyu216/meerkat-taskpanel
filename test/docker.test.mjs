@@ -42,6 +42,7 @@ import {
   imageTag,
   runVerifyInContainerArgs,
 } from "../scripts/verify/lib/docker-plan.mjs";
+import { parseBaseImages, pullFlagFor, resolvePullFlag } from "../scripts/verify/lib/base-image.mjs";
 import { SKILL_NAME, VERSION } from "../src/shared/constants.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -311,6 +312,87 @@ describe("profiles: runProfiles", () => {
 });
 
 // ---------------------------------------------------------------------------
+// base image preflight — cached first, explicit pull only when absent
+//
+// The base image (`node:22-bookworm-slim`) is the *only* external artefact the
+// image build needs. A build that silently re-pulls it burns network and time on
+// every verification run, and on a host whose daemon proxy is broken it turns a
+// green gate into a network failure. The policy is therefore:
+//
+//   1. inspect the local image store — present means no network is touched;
+//   2. missing means exactly one explicit `docker pull`, never an implicit one;
+//   3. `MEERKAT_TASKPANEL_OFFLINE=1` refuses even that one pull;
+//   4. the build itself carries the builder's no-pull flag.
+// ---------------------------------------------------------------------------
+
+describe("base-image: parseBaseImages", () => {
+  it("returns the external FROM refs, deduped, in file order", () => {
+    const text = [
+      "# a comment",
+      "FROM node:22-bookworm-slim AS webbuild",
+      "RUN echo hi",
+      "FROM node:22-bookworm-slim",
+    ].join("\n");
+    assert.deepEqual(parseBaseImages(text), ["node:22-bookworm-slim"]);
+  });
+
+  it("strips --platform flags and ignores a stage alias as a source", () => {
+    const text = [
+      "FROM --platform=linux/amd64 node:22-bookworm-slim AS base",
+      "FROM base AS built",
+      "FROM --platform=$BUILDPLATFORM scratch",
+    ].join("\n");
+    assert.deepEqual(parseBaseImages(text), ["node:22-bookworm-slim"]);
+  });
+
+  it("ignores blank lines, comments and a trailing comment", () => {
+    const text = ["", "  # FROM debian:12", "FROM node:22-bookworm-slim # pin later", ""].join("\n");
+    assert.deepEqual(parseBaseImages(text), ["node:22-bookworm-slim"]);
+  });
+
+  it("is case-insensitive on the FROM keyword", () => {
+    assert.deepEqual(parseBaseImages("from node:22-bookworm-slim"), ["node:22-bookworm-slim"]);
+  });
+
+  it("returns an empty list when the file has no FROM", () => {
+    assert.deepEqual(parseBaseImages("# empty\n"), []);
+  });
+});
+
+describe("base-image: pullFlagFor", () => {
+  it("uses --pull=false on the legacy builder (boolean flag)", () => {
+    const help = "      --pull                    Always attempt to pull a newer version of\n                                the image\n";
+    assert.equal(pullFlagFor(help), "--pull=false");
+  });
+
+  it("uses --pull=never on BuildKit (policy-string flag)", () => {
+    const help = '      --pull string             Pull image before building (default "missing")\n';
+    assert.equal(pullFlagFor(help), "--pull=never");
+  });
+
+  it("defaults to the legacy form when the help text is unrecognised", () => {
+    assert.equal(pullFlagFor(""), "--pull=false");
+  });
+});
+
+describe("base-image: resolvePullFlag", () => {
+  it("probes `docker build --help` and maps the flag form", () => {
+    const calls = [];
+    const run = (command, args) => {
+      calls.push([command, ...args]);
+      return { status: 0, stdout: '      --pull string             Pull image before building (default "missing")\n', stderr: "" };
+    };
+    assert.equal(resolvePullFlag({ run }), "--pull=never");
+    assert.deepEqual(calls, [["docker", "build", "--help"]]);
+  });
+
+  it("omits the flag when the probe fails (the preflight is still the guarantee)", () => {
+    const run = () => ({ status: 1, stdout: "", stderr: "boom", error: new Error("boom") });
+    assert.equal(resolvePullFlag({ run }), null);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // docker-plan — pure argument builders
 // ---------------------------------------------------------------------------
 
@@ -327,6 +409,16 @@ describe("docker-plan", () => {
     assert.equal(args[fileIndex + 1], "docker/Dockerfile");
     assert.ok(args.includes(imageTag()), "expected the image tag");
     assert.equal(args.at(-1), ".", "build context must be the repo root");
+  });
+
+  it("carries the builder's no-pull flag when one is resolved", () => {
+    const args = buildArgs(".", { pullFlag: "--pull=never" });
+    assert.ok(args.includes("--pull=never"), "the build must never pull a base image implicitly");
+    assert.equal(args.at(-1), ".", "the context stays last");
+
+    // Absent a resolved flag (probe failed), the argument shape is unchanged — the
+    // preflight is still what keeps the build off the network.
+    assert.ok(!buildArgs(".").some((a) => a.startsWith("--pull")));
   });
 
   it("builds a docker run command that is removed afterwards and runs the in-container script", () => {
@@ -426,10 +518,10 @@ async function stubDocker(script) {
   return { dir, path: `${dir}:${process.env.PATH}` };
 }
 
-function runOrchestrator(path) {
+function runOrchestrator(path, env = {}) {
   return spawnSync(process.execPath, [join(ROOT, "scripts", "verify", "docker.mjs")], {
     encoding: "utf8",
-    env: { ...process.env, PATH: path },
+    env: { ...process.env, PATH: path, ...env },
     timeout: 60_000,
   });
 }
@@ -446,9 +538,90 @@ describe("verify/docker.mjs (stubbed docker)", () => {
     assert.doesNotMatch(res.stdout, /== docker build/);
   });
 
+  it("reuses a cached base image and never pulls it", async () => {
+    const { path } = await stubDocker(
+      [
+        'case "$1" in',
+        '  version) echo "20.10.14"; exit 0;;',
+        '  image) echo "sha256:deadbeef"; exit 0;;',
+        '  build)',
+        '    for a in "$@"; do',
+        `      if [ "$a" = "--help" ]; then echo '      --pull string  Pull image before building (default "missing")'; exit 0; fi`,
+        '    done',
+        '    echo "build args: $*"; exit 1;;',
+        'esac',
+        'exit 1',
+      ].join("\n"),
+    );
+    const res = runOrchestrator(path);
+
+    assert.match(res.stdout, /PASS {2}base image preflight/);
+    assert.match(res.stdout, /cached\s+node:22-bookworm-slim/);
+    // The local store answered: no pull, and the build is told not to pull either.
+    assert.doesNotMatch(res.stdout, /== docker pull/);
+    assert.match(res.stdout, /--pull=never/, "BuildKit help must map to --pull=never");
+    assert.match(res.stdout, /== docker build/);
+  });
+
+  it("pulls a missing base image exactly once, then builds", async () => {
+    const { path } = await stubDocker(
+      [
+        'case "$1" in',
+        '  version) echo "20.10.14"; exit 0;;',
+        '  image) exit 1;;',
+        '  pull)',
+        '    [ "$2" = "node:22-bookworm-slim" ] || { echo "wrong ref: $2" >&2; exit 2; }',
+        '    echo "pulled"; exit 0;;',
+        '  build) echo "build args: $*"; exit 1;;',
+        'esac',
+        'exit 1',
+      ].join("\n"),
+    );
+    const res = runOrchestrator(path);
+
+    assert.match(res.stdout, /missing\s+node:22-bookworm-slim/);
+    assert.match(res.stdout, /pulling once/);
+    assert.match(res.stdout, /PASS {2}base image preflight/);
+    // The preflight announces the pull once, and its success line proves the stub was
+    // invoked with the Dockerfile's ref (the stub rejects any other).
+    const pulls = res.stdout.match(/pulling once/g) ?? [];
+    assert.equal(pulls.length, 1, "the network is touched at most once");
+    assert.match(res.stdout, /pulled\s+node:22-bookworm-slim/);
+    assert.match(res.stdout, /== docker build/);
+  });
+
+  it("refuses the one-time pull when MEERKAT_TASKPANEL_OFFLINE=1", async () => {
+    const { path } = await stubDocker(
+      [
+        'case "$1" in',
+        '  version) echo "20.10.14"; exit 0;;',
+        '  image) exit 1;;',
+        '  pull) echo "should not pull"; exit 0;;',
+        '  build) echo "should not build"; exit 0;;',
+        'esac',
+        'exit 1',
+      ].join("\n"),
+    );
+    const res = runOrchestrator(path, { MEERKAT_TASKPANEL_OFFLINE: "1" });
+
+    assert.equal(res.status, 1);
+    assert.match(res.stdout, /FAIL {2}base image preflight/);
+    assert.match(res.stdout, /MEERKAT_TASKPANEL_OFFLINE=1/);
+    assert.match(res.stdout, /docker load/);
+    assert.doesNotMatch(res.stdout, /== docker pull/);
+    assert.doesNotMatch(res.stdout, /== docker build/);
+  });
+
   it("aborts after a failed build, skips compose, and reports a SUMMARY", async () => {
     const { path } = await stubDocker(
-      'case "$1" in version) echo "20.10.14"; exit 0;; esac; echo "stub build failed" >&2; exit 1',
+      [
+        'case "$1" in',
+        '  version) echo "20.10.14"; exit 0;;',
+        '  image) echo "sha256:deadbeef"; exit 0;;',
+        '  build) echo "stub build failed" >&2; exit 1;;',
+        'esac',
+        'exit 1',
+      ].join("\n"),
     );
     const res = runOrchestrator(path);
 
@@ -465,6 +638,7 @@ describe("verify/docker.mjs (stubbed docker)", () => {
       [
         'case "$1" in',
         '  version) echo "20.10.14"; exit 0;;',
+        '  image) echo "sha256:deadbeef"; exit 0;;',
         '  build) echo "built"; exit 0;;',
         '  run) echo "suite ok"; exit 0;;',
         '  compose)',

@@ -26,11 +26,44 @@ export function imageTag() {
 /**
  * `docker build` arguments.
  *
+ * `pullFlag` is the builder's no-pull form (`--pull=false` or `--pull=never`,
+ * resolved by `base-image.mjs`). It is supplied by the caller rather than baked
+ * in because the flag's *type* differs between the legacy builder and BuildKit;
+ * when the probe could not run, passing nothing is still safe — the base-image
+ * preflight has already put the image in the local store, so Docker's default
+ * `missing` policy has nothing to fetch.
+ *
  * @param {string} [ctx] build context; the repository root by default
+ * @param {{pullFlag?: string|null}} [options]
  * @returns {string[]}
  */
-export function buildArgs(ctx = ".") {
-  return ["build", "-f", "docker/Dockerfile", "-t", imageTag(), ctx];
+export function buildArgs(ctx = ".", options = {}) {
+  const args = ["build", "-f", "docker/Dockerfile", "-t", imageTag()];
+  if (options.pullFlag) args.push(options.pullFlag);
+  return [...args, ctx];
+}
+
+/**
+ * `docker image inspect` printing the image id.
+ *
+ * A non-zero exit is the daemon saying "not in the local store", which is exactly
+ * the preflight's input — no separate `docker images` text parsing.
+ *
+ * @param {string} ref
+ * @returns {string[]}
+ */
+export function imageInspectArgs(ref) {
+  return ["image", "inspect", "--format", "{{.Id}}", ref];
+}
+
+/**
+ * `docker pull` — the one explicit network access the preflight may perform.
+ *
+ * @param {string} ref
+ * @returns {string[]}
+ */
+export function pullArgs(ref) {
+  return ["pull", ref];
 }
 
 /**
