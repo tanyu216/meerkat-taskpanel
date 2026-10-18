@@ -280,6 +280,86 @@ svg[data-token-icon][hidden] { display: none; }
   border: 1px solid var(--brand-border);
 }
 
+/* v4 · the detail drawer's six-tab strip (B09). daisyUI owns `.tabs`/`.tab`;
+   these rules state the prototype's own face: a hairline under the strip, a
+   12px label and an accent underline on the selected tab. The panel wrappers
+   carry no display rule, so `[hidden]` hides them as the prototype does. */
+.td-drawer-tabs {
+  border-bottom: 1px solid var(--brand-border);
+  margin-bottom: 4px;
+}
+.td-drawer-tab {
+  font-size: 12px;
+}
+.td-drawer-tab[aria-selected="true"] {
+  color: var(--brand-accent);
+}
+.td-drawer-tab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background-color: var(--brand-accent);
+}
+.td-dv-panel {
+  outline: none;
+}
+.td-dv-panel:focus-visible {
+  outline: 2px solid var(--brand-accent);
+  outline-offset: 2px;
+}
+
+/* The report family (v4). It reuses the prototype's `.td-dv-*` names so the
+   design origin stays greppable; every colour is a brand token. */
+.td-dv-report {
+  padding: 10px 12px;
+  border: 1px solid var(--brand-border);
+  border-radius: var(--radius-field);
+  background-color: var(--brand-sunken);
+}
+.td-dv-report + .td-dv-report { margin-top: 8px; }
+.td-dv-report-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.td-dv-round {
+  font-family: var(--font-mono);
+  color: var(--brand-text);
+  background-color: var(--brand-surface);
+  border-color: var(--brand-border);
+}
+.td-dv-author { font-size: 12px; font-weight: 500; color: var(--brand-text); }
+.td-dv-kind { font-size: 11px; color: var(--brand-text-3); }
+.td-dv-ts { margin-left: auto; font-size: 11px; color: var(--brand-text-3); }
+.td-dv-conclusion { margin: 0; font-size: 13px; line-height: 1.5; color: var(--brand-text-2); }
+.td-dv-list { margin: 0; padding: 0; list-style: none; }
+.td-dv-item { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; }
+.td-dv-item + .td-dv-item { border-top: 1px solid var(--brand-border); }
+.td-dv-mark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  color: var(--brand-text-3);
+  border: 1px solid var(--brand-border);
+  border-radius: 3px;
+}
+.td-dv-mark[data-acceptance-status="met"] { color: var(--color-success); border-color: var(--color-success); }
+.td-dv-mark[data-acceptance-status="partial"] { color: var(--color-warning); border-color: var(--color-warning); }
+.td-dv-mark[data-acceptance-status="not_met"] { color: var(--brand-st-blocked); border-color: var(--brand-st-blocked); }
+.td-dv-tick { width: 9px; height: 9px; }
+.td-dv-text { font-size: 13px; line-height: 1.5; color: var(--brand-text-2); }
+.td-dv-empty { font-size: 12px; line-height: 1.5; color: var(--brand-text-3); font-style: italic; }
+.td-dv-round-mono { flex: none; width: 52px; font-size: 11px; color: var(--brand-text-3); }
+
 /* ------------------------------------------------- sidebar footer cells -- */
 
 /* B03 · the footer's three equal thirds (≥1024px; the rail block below turns
@@ -1653,7 +1733,11 @@ html[data-theme="dark"] [data-create-project-panel] {
   z-index: 50;
   display: flex;
   flex-direction: column;
-  width: min(520px, 100vw);
+  /* The product's default reading width. The prototype's `--shell-drawer` is
+     520px; 780px is a deliberate product override (registered in
+     `design/BLOCKS.md` §B09), and the `100vw` ceiling keeps a narrow viewport
+     full-width exactly as before. */
+  width: min(780px, 100vw);
   max-width: 100vw;
   background-color: var(--brand-surface);
   border-inline-start: var(--border) solid var(--brand-border);

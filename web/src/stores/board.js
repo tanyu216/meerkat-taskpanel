@@ -940,11 +940,12 @@ export async function openDetail(identifier) {
   board.drawerState = "open";
   board.detail = null;
   try {
-    const [taskData, relations, activities, sessions] = await Promise.all([
+    const [taskData, relations, activities, sessions, reports] = await Promise.all([
       api.task(identifier),
       api.taskRelations(identifier).catch(() => ({ relations: [] })),
       api.taskActivities(identifier, { limit: 50 }).catch(() => ({ activities: [] })),
       api.taskSessions(identifier).catch(() => ({ sessions: [] })),
+      api.taskReports(identifier).catch(() => ({ reports: [] })),
     ]);
     const comments = await api.taskComments(identifier, { limit: 200 }).catch(() => ({ comments: [] }));
     // T-20261014-212017-4 / G2 — the attachment rows come from the `attachments`
@@ -958,6 +959,7 @@ export async function openDetail(identifier) {
       relations,
       activities: activities.activities ?? [],
       sessions: sessions.sessions ?? [],
+      reports: reports.reports ?? [],
       comments: comments.comments ?? [],
       attachments: attachments.attachments ?? [],
     };

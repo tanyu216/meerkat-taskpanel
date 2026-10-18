@@ -293,7 +293,53 @@ export function fixtureApi() {
       { id: "att-2", task_id: "td_TD_1", comment_id: null, filename: "focus-order-record.png", content_type: "image/png", size: 248 * 1024, kind: "attachment", created_at: minutes(46 * 60) },
     ],
   };
-  return { projects, orderDebug, tasks, entries, labels, comments, activities, relations, attachments };
+  // v4 — TD-1 is the card the interaction pass opens, so it carries the session
+  // trail (one running, one closed) and the report family (two rounds; the
+  // latest closes both criteria). The server routes are scoped by the task's
+  // internal id, exactly as `agent-sessions.mjs` / `reports.mjs` list them.
+  const sessions = {
+    td_TD_1: [
+      { id: "sess-2", task_id: "td_TD_1", seg: "3", owner: "turing", backend: "pi", session_id: "sess_pi_01HQ8ZM4K2", phase: "implement", pid: 4242, status: "running", ts: minutes(4) },
+      { id: "sess-1", task_id: "td_TD_1", seg: "2", owner: "linus", backend: "claude", session_id: "sess_claude_01HQ18W7T4M2", phase: "review", pid: null, status: "closed", ts: minutes(60) },
+    ],
+  };
+  const reports = {
+    td_TD_1: [
+      {
+        id: "rp-1",
+        task_id: "td_TD_1",
+        round: 1,
+        seg: "1",
+        session_id: "sess-1",
+        conclusion: "First round shipped.",
+        acceptance: [{ text: "Criterion one", status: "met" }, { text: "Criterion two", status: "partial" }],
+        evidence: [],
+        evidence_truncated: false,
+        leftovers: "Finish the second criterion.",
+        author_kind: "agent",
+        author_id: "a1",
+        author: { id: "a1", display_name: "linus", kind: "agent" },
+        created_at: minutes(120),
+      },
+      {
+        id: "rp-2",
+        task_id: "td_TD_1",
+        round: 2,
+        seg: "3",
+        session_id: "sess-2",
+        conclusion: "Second round closed the gap.",
+        acceptance: [{ text: "Criterion one", status: "met" }, { text: "Criterion two", status: "met" }],
+        evidence: [],
+        evidence_truncated: false,
+        leftovers: null,
+        author_kind: "agent",
+        author_id: "a2",
+        author: { id: "a2", display_name: "jobs", kind: "agent" },
+        created_at: minutes(30),
+      },
+    ],
+  };
+  return { projects, orderDebug, tasks, entries, labels, comments, activities, relations, attachments, sessions, reports };
 }
 
 /**
@@ -441,6 +487,20 @@ export function startServer() {
       const ref = decodeURIComponent(attachmentsFor[1]);
       const task = data.tasks.find((entry) => entry.identifier === ref || entry.id === ref);
       return ok({ task_id: task?.id ?? ref, attachments: data.attachments[task?.id] ?? [] });
+    }
+    // v4 — the drawer's session trail and report family. Both are scoped to the
+    // card asked for; a card with none answers `[]`, which is the empty state.
+    const sessionsFor = /^\/api\/v1\/tasks\/([^/]+)\/sessions$/.exec(path);
+    if (sessionsFor) {
+      const ref = decodeURIComponent(sessionsFor[1]);
+      const task = data.tasks.find((entry) => entry.identifier === ref || entry.id === ref);
+      return ok({ sessions: data.sessions[task?.id] ?? [] });
+    }
+    const reportsFor = /^\/api\/v1\/tasks\/([^/]+)\/reports$/.exec(path);
+    if (reportsFor) {
+      const ref = decodeURIComponent(reportsFor[1]);
+      const task = data.tasks.find((entry) => entry.identifier === ref || entry.id === ref);
+      return ok({ reports: data.reports[task?.id] ?? [] });
     }
     // Resolve the task the caller actually asked for (by identifier or by id)
     // rather than always the first one. Answering every ref with the first
@@ -856,6 +916,148 @@ export async function run() {
         },
       };
     });
+
+    /* ---- v4 — the drawer's six tabs and the session trail -----------------
+       Measured on the open drawer (TD-1), then returned to Details so every
+       rule below sees the face it was written against. The fixture's TD-1 is an
+       agent card with two sessions and two reports, so the Sessions tab is
+       visible and its trail has real rows. */
+    const drawerTabsFailures = [];
+    const drawerTabsCheck = (ok, message) => { if (!ok) drawerTabsFailures.push(message); };
+
+    const tabsRead = await page.evaluate(() => {
+      const tabs = [...document.querySelectorAll("[data-detail-tab]")];
+      const sessionsTab = document.querySelector('[data-detail-tab="sessions"]');
+      const sessionsPanel = document.querySelector('[data-detail-panel="sessions"]');
+      const detailsPanel = document.querySelector('[data-detail-panel="details"]');
+      return {
+        count: tabs.length,
+        order: tabs.map((t) => t.getAttribute("data-detail-tab")),
+        selected: tabs.filter((t) => t.getAttribute("aria-selected") === "true").map((t) => t.getAttribute("data-detail-tab")),
+        sessionsShown: sessionsTab ? !sessionsTab.hidden && getComputedStyle(sessionsTab).display !== "none" : false,
+        sessionsInDetails: !!detailsPanel?.querySelector("[data-detail-agent-session]"),
+        sessionsInSessions: !!sessionsPanel?.querySelector("[data-detail-agent-session]"),
+      };
+    });
+    drawerTabsCheck(tabsRead.count === 6, `six tabs expected, read ${tabsRead.count}`);
+    drawerTabsCheck(
+      tabsRead.order.join(",") === "details,activity,reports,acceptance,leftovers,sessions",
+      `tab order is ${tabsRead.order.join("/")}`,
+    );
+    drawerTabsCheck(tabsRead.selected.join(",") === "details", `the drawer opens on ${tabsRead.selected.join("/")}, expected details`);
+    drawerTabsCheck(tabsRead.sessionsShown, "the Sessions tab is hidden on a card that carries sessions");
+    drawerTabsCheck(
+      !tabsRead.sessionsInDetails && tabsRead.sessionsInSessions,
+      `the session section is in Details=${tabsRead.sessionsInDetails} and Sessions=${tabsRead.sessionsInSessions}`,
+    );
+
+    await page.click('[data-detail-tab="sessions"]');
+    await page.waitForTimeout(120);
+    const trailRead = await page.evaluate(() => ({
+      selected: [...document.querySelectorAll("[data-detail-tab]")].filter((t) => t.getAttribute("aria-selected") === "true").map((t) => t.getAttribute("data-detail-tab")),
+      visiblePanels: [...document.querySelectorAll("[data-detail-panel]")].filter((p) => !p.hidden).map((p) => p.getAttribute("data-detail-panel")),
+      ids: [...document.querySelectorAll("[data-detail-agent-session-body] [data-agent-session-id]")].map((e) => e.textContent.trim()),
+      statuses: [...document.querySelectorAll("[data-detail-agent-session-body] [data-session-status]")].map((e) => e.getAttribute("data-session-status")),
+      resumes: document.querySelectorAll("[data-detail-agent-session-body] [data-agent-resume]").length,
+    }));
+    drawerTabsCheck(
+      trailRead.selected.join(",") === "sessions" && trailRead.visiblePanels.join(",") === "sessions",
+      `opening Sessions selected ${trailRead.selected.join("/")} and showed ${trailRead.visiblePanels.join("/")}`,
+    );
+    drawerTabsCheck(
+      trailRead.ids.length === 2 && trailRead.statuses.join(",") === "running,closed",
+      `trail rows ${trailRead.ids.length} / ${trailRead.statuses.join("/")}`,
+    );
+    drawerTabsCheck(trailRead.resumes === 1, `Resume count is ${trailRead.resumes}, expected 1 (running only)`);
+
+    await page.click('[data-detail-tab="reports"]');
+    await page.waitForTimeout(120);
+    const reportsRead = await page.evaluate(() => ({
+      rows: document.querySelectorAll('[data-detail-panel="reports"] [data-dv-round]').length,
+      text: document.querySelector('[data-detail-panel="reports"]')?.textContent ?? "",
+    }));
+    drawerTabsCheck(reportsRead.rows === 2, `Reports rows ${reportsRead.rows}, expected 2`);
+    drawerTabsCheck(reportsRead.text.includes("Second round closed the gap."), "the latest report's conclusion is missing from Reports");
+
+    await page.click('[data-detail-tab="acceptance"]');
+    await page.waitForTimeout(120);
+    const acceptanceRead = await page.evaluate(() => ({
+      items: document.querySelectorAll('[data-detail-panel="acceptance"] .td-dv-item').length,
+      statuses: [...document.querySelectorAll('[data-detail-panel="acceptance"] [data-acceptance-status]')].map((e) => e.getAttribute("data-acceptance-status")),
+    }));
+    drawerTabsCheck(
+      acceptanceRead.items === 2 && acceptanceRead.statuses.join(",") === "met,met",
+      `Acceptance read ${acceptanceRead.items} item(s) / ${acceptanceRead.statuses.join("/")}`,
+    );
+
+    await page.click('[data-detail-tab="leftovers"]');
+    await page.waitForTimeout(120);
+    const leftoversRead = await page.evaluate(() => ({
+      rows: document.querySelectorAll('[data-detail-panel="leftovers"] .td-dv-item').length,
+      empty: document.querySelectorAll('[data-detail-panel="leftovers"] [data-dv-leftover-empty="true"]').length,
+    }));
+    drawerTabsCheck(
+      leftoversRead.rows === 2 && leftoversRead.empty === 1,
+      `Leftovers read ${leftoversRead.rows} row(s), ${leftoversRead.empty} empty round(s)`,
+    );
+
+    /* Data-driven visibility, the other half: a card with no session rows has
+       five tabs, no Sessions tab, a hidden section, and the empty report
+       family. PROJ-0007 is such a card in the fixture; return to TD-1 after. */
+    await page.evaluate(() => {
+      const card = [...document.querySelectorAll("[data-card]")].find(
+        (el) => (el.querySelector("[data-card-identifier]")?.textContent ?? "").trim() === "PROJ-0007",
+      );
+      card?.click();
+    });
+    await page.waitForTimeout(300);
+    const noSessionsRead = await page.evaluate(() => {
+      const tabs = [...document.querySelectorAll("[data-detail-tab]")];
+      const sessionsTab = document.querySelector('[data-detail-tab="sessions"]');
+      return {
+        visibleTabs: tabs
+          .filter((tab) => !tab.hidden && getComputedStyle(tab).display !== "none")
+          .map((tab) => tab.getAttribute("data-detail-tab")),
+        sessionsHidden: sessionsTab
+          ? sessionsTab.hidden || getComputedStyle(sessionsTab).display === "none"
+          : true,
+        sectionHidden: document.querySelector("[data-detail-agent-session]")?.hidden ?? null,
+        selected: tabs.filter((tab) => tab.getAttribute("aria-selected") === "true").map((tab) => tab.getAttribute("data-detail-tab")),
+        reports: document.querySelector('[data-detail-panel="reports"]')?.textContent ?? "",
+      };
+    });
+    drawerTabsCheck(
+      noSessionsRead.visibleTabs.length === 5 && !noSessionsRead.visibleTabs.includes("sessions"),
+      `a card with no sessions shows ${noSessionsRead.visibleTabs.join("/")}`,
+    );
+    drawerTabsCheck(
+      noSessionsRead.sessionsHidden === true && noSessionsRead.sectionHidden === true,
+      `a card with no sessions: tab hidden=${noSessionsRead.sessionsHidden}, section hidden=${noSessionsRead.sectionHidden}`,
+    );
+    drawerTabsCheck(
+      noSessionsRead.selected.join(",") === "details",
+      `opening a card with no sessions selected ${noSessionsRead.selected.join("/")}`,
+    );
+    drawerTabsCheck(
+      noSessionsRead.reports.includes("No reports yet."),
+      "a card with no reports does not say so in the Reports panel",
+    );
+
+    await page.evaluate(() => {
+      const card = [...document.querySelectorAll("[data-card]")].find(
+        (el) => (el.querySelector("[data-card-identifier]")?.textContent ?? "").trim() === "TD-1",
+      );
+      card?.click();
+    });
+    await page.waitForTimeout(300);
+    await page.click('[data-detail-tab="details"]');
+    await page.waitForTimeout(120);
+    /* These tab interactions are a browser focus model of their own: clicking a
+       tab moves focus to that tab. The R14 check below reads the drawer's
+       OPENING hand-off, which this block necessarily displaced, so hand the
+       focus back to the close button before it runs. */
+    await page.evaluate(() => document.querySelector("[data-detail-close]")?.focus());
+    await page.waitForTimeout(60);
 
     // The contract rules whose precondition is the *open drawer* — its attachment
     // and activity rows are projected from the task on screen, so they exist here
@@ -4937,6 +5139,14 @@ export async function run() {
       },
       r12Id: { failures: r12IdFailures, longId: LONG_ID, clamped: CLAMPED, longHead, spill, listRead },
       r14: { failures: r14Failures, focus: r14Focus, relations: r14Relations, close: r14Close, ring: r14Ring },
+      drawerTabs: {
+        failures: drawerTabsFailures,
+        tabs: tabsRead,
+        trail: trailRead,
+        reports: reportsRead,
+        acceptance: acceptanceRead,
+        leftovers: leftoversRead,
+      },
       m7: {
         failures: m7Failures,
         cases: m7.cases,
@@ -5089,6 +5299,16 @@ if (isEntryPoint) run().then(
             `and the relation rows read ${report.r14.relations.join(" / ")}`,
         );
       }
+      if (report.drawerTabs.failures.length > 0) {
+        console.log(`v4 (drawer tabs) — ${report.drawerTabs.failures.length} failed:`);
+        for (const failure of report.drawerTabs.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log(
+          `v4 (drawer tabs) — six tabs, Sessions last; the session section is inside the Sessions panel; ` +
+            `the trail reads ${report.drawerTabs.trail.statuses.join("/")} with ${report.drawerTabs.trail.resumes} Resume; ` +
+            `Reports ${report.drawerTabs.reports.rows}, Acceptance ${report.drawerTabs.acceptance.items}, Leftovers ${report.drawerTabs.leftovers.rows}`,
+        );
+      }
       if (report.m7.failures.length > 0) {
         console.log(`M7 · C-PREFIX-1 (create-project refusal) — ${report.m7.failures.length} failed:`);
         for (const failure of report.m7.failures) console.log(`  ✗ ${failure}`);
@@ -5136,6 +5356,7 @@ if (isEntryPoint) run().then(
       report.b26.failures.length === 0 &&
       report.r12Id.failures.length === 0 &&
       report.r14.failures.length === 0 &&
+      report.drawerTabs.failures.length === 0 &&
       report.m7.failures.length === 0 &&
       report.r16.failures.length === 0 &&
       interactionOk;
