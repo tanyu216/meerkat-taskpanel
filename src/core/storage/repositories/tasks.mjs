@@ -20,7 +20,7 @@
 
 import { DomainError } from "../../../shared/errors.mjs";
 import { HEARTBEAT_FRESH_MS, TASK_LIST_DEFAULT_LIMIT } from "../../../shared/constants.mjs";
-import { holderLabel } from "../../domain/claim.mjs";
+import { holderLabel, isUnownedContainer } from "../../domain/claim.mjs";
 import { holdsClaim } from "../../domain/status.mjs";
 import { TASK_COLUMNS, taskFromRow, taskToRow } from "../../domain/task.mjs";
 import { mapSqliteError } from "../sqlite-errors.mjs";
@@ -484,6 +484,15 @@ export function createTasksRepository(db) {
             });
           }
           if (current.claimedBy === null || current.claimedBy === "") {
+            // An epic in `in_progress` with no holder is the container
+            // auto-start, by design — not the I2 corruption of a work card
+            // that lost its holder (T-20261018-060214).
+            if (isUnownedContainer(current)) {
+              throw new DomainError("INVALID_TRANSITION", {
+                message: `task ${current.identifier} is an epic; a container carries no claim — nothing to pulse`,
+                details,
+              });
+            }
             throw new DomainError("EXECUTION_STATE_CORRUPT", {
               message: `task ${current.identifier} is in_progress but nobody claims it`,
               details,

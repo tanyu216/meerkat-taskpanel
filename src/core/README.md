@@ -26,6 +26,19 @@ Rules that are enforced, not just documented:
   one;
 * the delivery gate is a database trigger *and* a domain check, and the two are
   tested against each other (`test/contract/`);
+* an `epic` is never claimable, **in every status**. Its container auto-start
+  (`commands/rollup.mjs#startContainer`) enters `in_progress` with
+  `claimed_by = NULL` by design, so the I2 `EXECUTION_STATE_CORRUPT` report is
+  scoped to *work* cards: the heartbeat pre-check, `setHeartbeat`'s zero-row
+  explainer and `decideClaim` all read one predicate
+  (`domain/claim.mjs#isUnownedContainer`). What is deliberately **not** pushed
+  into the schema is the reverse guard (`kind = 'epic' AND status = 'in_progress'
+  ⇒ claimed_by IS NULL`): a raw trigger would refuse two legitimate public
+  surfaces — `issue update --kind epic` on a claimed card, which keeps its claim
+  in place, and an md import of a legacy claimed epic. Bare SQL can therefore
+  still write a `claimed_by` onto an epic; after the service scoping that value
+  is inert (the card can be neither claimed nor pulsed), and closing it needs
+  the promotion/import semantics decided first (T-20261018-060214);
 * a task command's **input** is declared once, in `commands/tasks-input.mjs`, in
   wire terms — field name, type, vocabulary, multiplicity, and which surface
   carries it. The route's request shape and the CLI's flags and body are

@@ -133,6 +133,23 @@ describe("domain/claim — decide", () => {
     }
   });
 
+  it("refuses an epic in in_progress as unclaimable, not as I2 corruption", () => {
+    // T-20261018-060214. The container auto-start leaves `claimed_by = NULL` in
+    // `in_progress` on purpose; the claim gate must answer "an epic is not
+    // claimable" — its standing public rule — rather than reading the designed
+    // state as a corrupt work card. The same holds for a promoted-in-place epic
+    // that still carries an old holder.
+    for (const claimedBy of [null, "a-9"]) {
+      const verdict = decideClaim(
+        task({ kind: "epic", status: "in_progress", claimedBy, heartbeatAt: claimedBy === null ? null : FRESH }),
+        { actor: "linus", now: NOW, resolveAssignee: resolveNone },
+      );
+      assert.equal(verdict.action, CLAIM_ACTIONS.INVALID);
+      assert.equal(verdict.code, "not_claimable");
+      assert.notEqual(verdict.code, "EXECUTION_STATE_CORRUPT");
+    }
+  });
+
   it("allows a deploy card — the marker withholds it from the poll's read, not from a dispatch", () => {
     // T-20261013-232004. The asymmetry with `epic` is the whole design: a
     // deployment card has to be runnable (Elon assigns it, `issue move <ref>
