@@ -106,6 +106,16 @@ describe("verify/paths — the allowlist, in both directions", () => {
     assert.equal(result.ok, true);
   });
 
+  it("skips a nested worktree directory, mirroring .gitignore", () => {
+    // `.worktrees/` holds parallel-task checkouts (CLAUDE.md). The no-git walk must not
+    // descend into another branch's tree — one lane's files would otherwise become the
+    // other's findings.
+    const root = makeRoot({ files: { ".worktrees/lane/docs/notes.md": INSTRUCTION }, allowlist: [] });
+    const result = analyze(root);
+    assert.deepEqual(result.problems, []);
+    assert.equal(result.ok, true);
+  });
+
   it("fails a file that carries a host path and is not on the list", () => {
     const root = makeRoot({ files: { "docs/notes.md": INSTRUCTION }, allowlist: [] });
     const result = analyze(root);

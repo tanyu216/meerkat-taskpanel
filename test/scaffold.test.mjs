@@ -254,9 +254,9 @@ describe("install.sh", () => {
 });
 
 describe("repository guard files", () => {
-  it(".gitignore covers build output, runtime data and OS noise", async () => {
+  it(".gitignore covers build output, runtime data, nested worktrees and OS noise", async () => {
     const ignore = await readFile(join(ROOT, ".gitignore"), "utf8");
-    for (const entry of ["node_modules/", "dist/", ".data/", ".DS_Store"]) {
+    for (const entry of ["node_modules/", "dist/", ".data/", ".worktrees/", ".DS_Store"]) {
       assert.ok(ignore.includes(entry), `.gitignore must contain ${entry}`);
     }
   });

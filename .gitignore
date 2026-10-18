@@ -8,6 +8,10 @@ dist/
 # runtime data (local SQLite board database, etc.)
 .data/
 
+# parallel-task worktrees — the convention in CLAUDE.md keeps them inside the checkout,
+# so they must never appear as untracked files in the primary one
+.worktrees/
+
 # test / coverage output
 coverage/
 
