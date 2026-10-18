@@ -971,6 +971,15 @@ describe("spawnWorkerReal — the wake goes through the resolved glue (R1)", () 
     }
   }
 
+  /** A marker's text so far — empty while it does not exist yet. */
+  function readMarker(path) {
+    try {
+      return readFileSync(path, "utf8");
+    } catch {
+      return "";
+    }
+  }
+
   it("runs the installed glue — not the direct fallback — and hands it the project identity", async () => {
     const dir = tempDir("meerkat-wake-glue-");
     // Two mutually exclusive stubs, so the case reports *which* branch ran rather than
@@ -1000,7 +1009,15 @@ describe("spawnWorkerReal — the wake goes through the resolved glue (R1)", () 
         { identifier: "T-1", agent: "alice" },
         { identifier: "T-1", title: "wire the glue", project: "TaskPanel" },
       );
-      assert.ok(await waitFor(() => existsSync(glueMarker)), "the installed glue never ran");
+      // Wait for the *complete* record, not merely for the file to appear. The stub
+      // writes `argv=` and `project=` as two separate opens, so a poll can land between
+      // them and the reads below would see a half-written file — `existsSync` is true
+      // from the first line on, which is exactly the race that made this case red under
+      // load. The glue's last line is the completion signal.
+      assert.ok(
+        await waitFor(() => /^project=TaskPanel$/m.test(readMarker(glueMarker))),
+        "the installed glue never ran to completion",
+      );
     } finally {
       process.env.PATH = originalPath;
     }
