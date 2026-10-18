@@ -925,6 +925,50 @@ export async function run() {
     const drawerTabsFailures = [];
     const drawerTabsCheck = (ok, message) => { if (!ok) drawerTabsFailures.push(message); };
 
+    /* The drawer's compact buttons are the prototype's 22px `.btn-xs` and the
+       32px `.td-iconbtn` — daisyUI's own `.btn-xs` is 24px, and the 2px gap was
+       the reported misalignment on the Description Save/Cancel pair and the
+       Attachments Upload button. Measured in the open drawer, before the tab
+       probes move focus. */
+    const compactButtons = await page.evaluate(() => {
+      const read = (selector) => {
+        const el = document.querySelector(selector);
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        const c = getComputedStyle(el);
+        return { w: Math.round(r.width), h: Math.round(r.height), height: c.height, minHeight: c.minHeight, font: c.fontSize };
+      };
+      return { upload: read("[data-attachment-upload]"), edit: read("[data-detail-description-edit]") };
+    });
+    drawerTabsCheck(
+      compactButtons.upload?.height === "22px" && compactButtons.upload?.minHeight === "22px" &&
+        compactButtons.upload?.font === "11px",
+      `Upload is ${compactButtons.upload?.height}/${compactButtons.upload?.minHeight} at ${compactButtons.upload?.font}, expected 22px/22px at 11px`,
+    );
+    drawerTabsCheck(
+      compactButtons.edit?.w === 32 && compactButtons.edit?.h === 32,
+      `the Description edit control is ${compactButtons.edit?.w}×${compactButtons.edit?.h}, expected 32×32`,
+    );
+    await page.click("[data-detail-description-edit]");
+    await page.waitForTimeout(200);
+    const descActions = await page.evaluate(() => {
+      const read = (selector) => {
+        const el = document.querySelector(selector);
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        const c = getComputedStyle(el);
+        return { h: Math.round(r.height), height: c.height, minHeight: c.minHeight, font: c.fontSize };
+      };
+      return { row: read(".td-desc-actions"), save: read("[data-detail-description-save]"), cancel: read("[data-detail-description-cancel]") };
+    });
+    drawerTabsCheck(
+      descActions.save?.height === "22px" && descActions.cancel?.height === "22px" &&
+        descActions.save?.font === "11px" && descActions.row?.h === 39,
+      `Save/Cancel are ${descActions.save?.height}/${descActions.cancel?.height} in a ${descActions.row?.h}px row, expected 22px each in 39px`,
+    );
+    await page.click("[data-detail-description-cancel]");
+    await page.waitForTimeout(150);
+
     const tabsRead = await page.evaluate(() => {
       const tabs = [...document.querySelectorAll("[data-detail-tab]")];
       const sessionsTab = document.querySelector('[data-detail-tab="sessions"]');
@@ -1055,8 +1099,8 @@ export async function run() {
     /* These tab interactions are a browser focus model of their own: clicking a
        tab moves focus to that tab. The R14 check below reads the drawer's
        OPENING hand-off, which this block necessarily displaced, so hand the
-       focus back to the close button before it runs. */
-    await page.evaluate(() => document.querySelector("[data-detail-close]")?.focus());
+       focus back to the panel before it runs. */
+    await page.evaluate(() => document.querySelector("[data-detail-drawer]")?.focus());
     await page.waitForTimeout(60);
 
     // The contract rules whose precondition is the *open drawer* — its attachment
@@ -1072,12 +1116,13 @@ export async function run() {
        Both leftovers live on the drawer that is open right here (TD-1), so both
        are measured on the same screen, between the open and the Escape.
 
-       ② C2 — the prototype hands the keyboard into the panel the moment it is
-       up (`focusWhenOpen($("[data-detail-close]"), $panel)`,
-       `design/prototype/app.js`; there `[data-detail-close]` reads back
-       `focused: true`). `document.activeElement` is the only reader of that: a
-       static probe reads a document, it cannot open a drawer, so the contract's
-       declarable half stops at the hook and the *move* is measured here.
+       ② C2 — the keyboard enters the panel the moment it is up, but the product
+       override puts the default seat on the drawer root (`tabindex="-1"`), NOT
+       on `[data-detail-close]` — the prototype's
+       `focusWhenOpen($("[data-detail-close]"), $panel)` would put it on the ✕.
+       `document.activeElement` is the only reader of that: a static probe reads
+       a document, it cannot open a drawer, so the contract's declarable half
+       stops at the hook and the *move* is measured here.
 
        ① (the R14 leftover of the same number) — the relation row's category word
        is the catalogue's, not the wire's enum. The fixture's TD-1 carries one
@@ -1097,11 +1142,12 @@ export async function run() {
           ? "null"
           : el === document.body
             ? "body"
-            : `<${el.tagName.toLowerCase()}${el.hasAttribute("data-detail-close") ? " data-detail-close" : ""}>`;
+            : `<${el.tagName.toLowerCase()}${el.hasAttribute("data-detail-close") ? " data-detail-close" : ""}${el.hasAttribute("data-detail-drawer") ? " data-detail-drawer" : ""}>`;
       return {
         state: drawer?.getAttribute("data-state") ?? null,
         hidden: drawer?.hasAttribute("hidden") ?? true,
         isClose: close !== null && active === close,
+        isDrawer: drawer !== null && active === drawer,
         active: name(active),
       };
     });
@@ -1111,7 +1157,10 @@ export async function run() {
       r14Focus.state === "open" && !r14Focus.hidden,
       `the focus probe needs the drawer open: data-state=${JSON.stringify(r14Focus.state)}${r14Focus.hidden ? ", still hidden" : ""}`,
     );
-    r14Check(r14Focus.isClose, `document.activeElement after the drawer opened is ${r14Focus.active}, expected [data-detail-close]`);
+    r14Check(
+      !r14Focus.isClose && r14Focus.isDrawer,
+      `document.activeElement after the drawer opened is ${r14Focus.active}, expected the drawer panel (never [data-detail-close])`,
+    );
 
     /* ---- ① I-1 (T-20261014-154730) — the close button's box ---------------
        Read as **computed long-hand**, not as a hook count and not as a rect
@@ -5293,7 +5342,7 @@ if (isEntryPoint) run().then(
         for (const failure of report.r14.failures) console.log(`  ✗ ${failure}`);
       } else {
         console.log(
-          `R14 (drawer) — opening hands focus to [data-detail-close] (activeElement ${report.r14.focus.active}), ` +
+          `R14 (drawer) — opening focuses the drawer panel, never [data-detail-close] (activeElement ${report.r14.focus.active}), ` +
             `its box computes ${report.r14.close.width}×${report.r14.close.height} with the head at ${report.r14.close.headHeight}px, ` +
             `its focus ring is ${report.r14.ring.width} ${report.r14.ring.style} ${report.r14.ring.color}, ` +
             `and the relation rows read ${report.r14.relations.join(" / ")}`,
