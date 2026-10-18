@@ -22,6 +22,7 @@ import { computed, ref } from "vue";
 import {
   assigneeFilterValue,
   board,
+  isAgentKind,
   platformOf,
   selectProject,
   waitingCount,
@@ -84,11 +85,12 @@ const agents = computed(() => {
   );
   const byPlatform = new Map();
   for (const entry of board.assignees) {
-    if (entry.kind !== "agent") continue;
-    // The dictionary's `platform` column is gone (0019); an actor's platform is
-    // its kind when the kind names one. Every agent the board knows today is the
-    // generic `agent`, so they fall back to the prototype's default row — the
-    // same grouping the old `?? "claude"` produced.
+    // An **agent** is anyone the board has not recorded as the human, and since
+    // 0023 the kind a roster entry shows is aggregated from the references that
+    // named them — so the platform is a real one rather than the generic `agent`
+    // this used to skip. An entry nothing has ever named has no kind, and cannot
+    // be placed on a platform row at all.
+    if (!isAgentKind(entry.kind)) continue;
     const platform = platformOf(entry.display_name) ?? "claude";
     if (!byPlatform.has(platform)) byPlatform.set(platform, { platform, handles: [], presence: "idle" });
     const row = byPlatform.get(platform);
@@ -266,17 +268,34 @@ function onAssignee(name) {
         <div v-for="agent in agents" :key="agent.platform" class="flex items-center gap-2 py-0.5" :data-agent-row="agent.platform">
           <span class="badge badge-xs td-mono normal-case" :data-agent-platform="agent.platform">{{ agent.platform }}</span>
           <!-- R11 ② · R13 — the row's text is the names themselves, each a real
-               `<button>` inside its own `[data-assignee-item]` wrapper, with the
-               commas left as static text between them: the row still reads as one
-               sentence. The wrapper is the capsule's shell (never the button), so
-               the name's face stays the text it replaces. The host drops the
-               project row's `overflow-hidden`/`text-ellipsis` on purpose — the
-               capsule is **width-neutral** (6px padding cancelled by −6px inline
-               margin), so its left cap bleeds 6px past the row's edge, and a
-               clipped host would shear it off (R13 §8 U-6, corrected here). -->
-          <span class="td-mono flex-1 whitespace-nowrap" data-side-name data-agent-text>
+               `<button>` inside its own `[data-assignee-item]` wrapper: the row
+               still reads as one sentence. The wrapper is the capsule's shell
+               (never the button), so the name's face stays the text it replaces.
+               The host drops the project row's `overflow-hidden`/`text-ellipsis`
+               on purpose — the capsule is **width-neutral** (6px padding
+               cancelled by −6px inline margin), so its left cap bleeds 6px past
+               the row's edge, and a clipped host would shear it off (R13 §8 U-6,
+               corrected here). The host's own `min-width` / `white-space` are
+               stated in the stylesheet with that correction (`app.css`,
+               `[data-agent-row] [data-agent-text]`): an unclipped flex item
+               falls back to its min-content width, so without them a roster
+               wider than the 248px rail escaped the rail and scrolled it
+               (T-20261016-130046). No `whitespace-nowrap` utility is left here —
+               the rule owns the wrap, and a utility the rule contradicts is a
+               trap.
+
+               T-20261017-021412 ② — the comma is bound to the name it follows,
+               not a free text node between names. A separator that lives
+               *between* two items is its own box for line breaking, so a greedy
+               wrap could put `", assistant"` alone at the head of a line — the
+               defect `text-wrap: balance` used to mask and could not promise
+               away. Here the comma is the last child of the item (and the item
+               is `white-space: nowrap` in the stylesheet), while the collapsible
+               space that gives the engine a break opportunity is rendered
+               *between* items: a break can only land after the comma, never
+               before it. -->
+          <span class="td-mono flex-1" data-side-name data-agent-text>
             <template v-for="(handle, index) in agent.handles" :key="handle">
-              <span v-if="index > 0">, </span>
               <span
                 class="td-assignee-item"
                 :data-assignee-item="handle"
@@ -291,11 +310,13 @@ function onAssignee(name) {
                   :aria-pressed="assigneeFilterValue() === handle ? 'true' : 'false'"
                   @click="onAssignee(handle)"
                 >{{ handle }}</button>
+                <span v-if="index < agent.handles.length - 1">,</span>
               </span>
+              <template v-if="index < agent.handles.length - 1">{{ " " }}</template>
             </template>
           </span>
           <span
-            class="size-2 rounded-[999px] bg-(--brand-text-4) ms-auto data-[presence=running]:bg-success data-[presence=idle]:bg-(--brand-text-4)"
+            class="size-1.5 rounded-[999px] bg-(--brand-text-4) ms-auto data-[presence=running]:bg-success data-[presence=idle]:bg-(--brand-text-4)"
             :data-presence="agent.presence"
             role="img"
             :aria-label="$t(`presence.${agent.presence}`)"

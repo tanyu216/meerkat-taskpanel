@@ -137,7 +137,7 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
       seedLegacyBoard(board.db);
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024"]);
       assert.deepEqual(up.skipped.slice(-2), ["0011", "0012"]);
 
       // 1 — the enum: the new word is storable, the old ones still are, and an
@@ -309,12 +309,15 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
       // that same cursor's domain again when the `tasks` columns move, and removes
       // the two old tables' triggers. (`tr_dict_actors_delete` is 0019's, so it is
       // an *addition* to this baseline, not a change; 0020 widens it in place and
-      // re-declares every trigger it parks verbatim.) Everything else must be
+      // re-declares every trigger it parks verbatim.) 0024 then rewrites two of
+      // them in place: the whitelist gains the epic's one pair and the delivery
+      // gate gains the matching arming clause — a *change*, never a new name, so
+      // `LATER_MIGRATION_TRIGGERS` above is untouched. Everything else must be
       // identical.
       const changed = Object.keys(oldTriggers).filter((name) => oldTriggers[name] !== newTriggers[name]).sort();
       assert.deepEqual(
         changed,
-        [...LATER_MIGRATION_TRIGGERS_REMOVED, "tr_rev_tasks_upd", "tr_tasks_transition"].sort(),
+        [...LATER_MIGRATION_TRIGGERS_REMOVED, "tr_rev_tasks_upd", "tr_tasks_transition", "tr_deliver_gate"].sort(),
         "only these may change",
       );
 

@@ -53,7 +53,7 @@ const AGENT = "alice";
 const HOSTS = {
   claude: { dir: ".claude", hook: ".claude/hooks/meerkat-taskpanel-session-start.sh", trigger: null, wake: ".claude/bin/wake-claude.sh", shim: ".claude/bin/taskctl", cli: "claude" },
   codex: { dir: ".codex", hook: null, trigger: ".codex/meerkat-taskpanel-claim.sh", wake: ".codex/bin/wake-codex.sh", shim: ".codex/bin/taskctl", cli: "codex" },
-  pi: { dir: ".agents", hook: null, trigger: null, wake: ".agents/bin/wake-pi.sh", shim: null, cli: "pi" },
+  pi: { dir: ".agents", hook: null, trigger: null, wake: ".agents/bin/wake-pi.sh", shim: ".agents/bin/taskctl", cli: "pi" },
 };
 
 /**
@@ -288,6 +288,39 @@ function checkWake(host) {
     return null;
   }, "exit 3");
 
+  check(section, "entry naming no directory → exit 3, no worker started (a map's answer, not a wake's)", () => {
+    // The map is happy: an entry that names no directory is the complete answer
+    // "this project has no local directory". A *worker* still needs a cwd, so the
+    // wake refuses — and refuses with its own reason, not the unmapped one.
+    writeMap([{ project: PROJECT, kind: "ops" }]);
+    writeFileSync(log, "");
+    const res = run(["bash", wakePath, "do T-1"], { env: { FAKE_HOST_LOG: log, TP_PROJECT: PROJECT } });
+    writeMap([{ project: PROJECT, local_path: target }]);
+    if (res.status !== 3) return `exit ${res.status} (want 3); stderr=${JSON.stringify(res.stderr)}`;
+    if (!/no usable directory for project/.test(res.stderr)) {
+      return `stderr did not name the missing directory: ${JSON.stringify(res.stderr)}`;
+    }
+    const calls = readJsonl(log);
+    if (calls.length) return `started a worker anyway: ${JSON.stringify(calls)}`;
+    return null;
+  }, "exit 3");
+
+  check(section, "run_dir-only entry → exit 0, worker runs in the launch directory", () => {
+    const launch = join(ctx.tmp, `launch-${host}`);
+    mkdirSync(launch, { recursive: true });
+    writeMap([{ project: PROJECT, run_dir: launch }]);
+    writeFileSync(log, "");
+    const res = run(["bash", wakePath, "do T-1"], { env: { FAKE_HOST_LOG: log, TP_PROJECT: PROJECT } });
+    writeMap([{ project: PROJECT, local_path: target }]);
+    if (res.status !== 0) return `exit ${res.status}; stderr=${JSON.stringify(res.stderr)}`;
+    const calls = readJsonl(log);
+    if (calls.length !== 1) return `want 1 host-CLI call, got ${calls.length}: ${JSON.stringify(calls)}`;
+    if (realpathSync(calls[0].cwd) !== realpathSync(launch)) {
+      return `ran in ${calls[0].cwd}, expected the launch directory ${launch}`;
+    }
+    return null;
+  }, `exit 0 in ${join(ctx.tmp, `launch-${host}`)}`);
+
   check(section, "no permission-bypass flag in any executed command", () => {
     // Comment lines are dropped first: the scripts *document* the boundary by naming the
     // flag they must not use, and a naive substring scan would flag that comment.
@@ -437,12 +470,18 @@ function checkAbsences() {
     return existsSync(join(ctx.home, ".codex/hooks")) ? "unexpected codex hooks dir" : null;
   }, "N/A — Codex has no hooks; the trigger is the automation");
 
-  check("coverage map", "pi ships no hook, trigger or shim", () => {
-    for (const rel of [".agents/hooks", ".agents/meerkat-taskpanel-claim.sh", ".agents/bin/taskctl"]) {
+  // Pi is the host where the **absence family** was conflated: this assertion used to read
+  // "no hook, trigger **or shim**", with the shim lumped in beside the two *automation*
+  // forms. The shim is not one of them — it is the identity wrapper around a command the
+  // agent already runs itself, so it is orthogonal to which automation a host has (see
+  // `docs/install.md`, where every host gets one). Pi has none of the automation; it does
+  // have a shim, and `HOSTS.pi.shim` above says so.
+  check("coverage map", "pi ships no hook and no trigger", () => {
+    for (const rel of [".agents/hooks", ".agents/meerkat-taskpanel-claim.sh"]) {
       if (existsSync(join(ctx.home, rel))) return `unexpected ${rel}`;
     }
     return null;
-  }, "N/A — pi has no hooks and no shim; only its external wake path applies");
+  }, "N/A — pi has no hooks and no claim trigger; only its external wake path applies");
 }
 
 // ---------------------------------------------------------------------------

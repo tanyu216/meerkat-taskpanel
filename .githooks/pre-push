@@ -1,7 +1,7 @@
 #!/bin/sh
 # Meerkat TaskPanel pre-push hook.
 #
-# Three gates, all offline and Node-builtins-only:
+# Six gates, all offline and Node-builtins-only:
 #
 #   1. the API contract snapshot — the live surface (routes + error codes + wire
 #      fields) must match `test/fixtures/contract/api.snapshot.json`.
@@ -11,23 +11,52 @@
 #   2. the route-request lint — every route's *declared* request schema must equal
 #      what its handler actually reads (`scripts/verify/route-request.mjs`). The
 #      snapshot freezes the declaration; this proves the declaration is true;
-#   3. every version tag being pushed (`refs/tags/vX.Y.Z`) must have a `## [X.Y.Z]`
-#      section in CHANGELOG.md. Git supplies one line per ref on stdin:
+#   3. no tracked file carries a host-absolute path (`scripts/verify/paths.mjs`) —
+#      a `/Users/<someone>/…` path is a statement about one machine;
+#   4. no tracked file carries a signpost out of the repository
+#      (`scripts/verify/signposts.mjs`) — a walkable path into an external
+#      framework's private store, or one of its internal mechanism names;
+#   5. every version tag being pushed (`refs/tags/vX.Y.Z`) must have a `## [X.Y.Z]`
+#      section in CHANGELOG.md;
+#   6. `main` is not pushed directly. It advances through a pull request, so a
+#      direct push (and a deletion) is refused. A release push that really does
+#      want the direct route says so: `ALLOW_PUSH_MAIN=1 git push origin main`.
 #
-#        <local ref> <local sha> <remote ref> <remote sha>
+# Git supplies one line per ref on stdin:
 #
-# Both API gates run first and unconditionally — every push carries the API, not
-# only a tag. Neither reads stdin, so the ref loop below still sees every line.
+#   <local ref> <local sha> <remote ref> <remote sha>
+#
+# Every rule that reads stdin must share the ONE loop below. A second `while read`
+# would silently starve this one, because the first loop consumes the whole stream
+# — a later rule would then never see a ref, and pass.
+#
+# The four static gates run first and unconditionally: every push carries the API
+# and the tree, not only a tag. None of them reads stdin, so the ref loop below
+# still sees every line.
 # Git has no native `pre-tag` hook (a tag is a ref, not a commit), so the
 # changelog rule is also enforced by `.githooks/pre-tag` when run by hand and
-# authoritatively in CI (`.github/workflows/version-gate.yml`).
+# authoritatively in CI (`.github/workflows/version-gate.yml`). The `main` rule is
+# a local courtesy as well: the real enforcement is the branch-protection rule on
+# GitHub, and this hook is what makes the mistake cheap to undo.
 status=0
 node scripts/verify/contract.mjs || status=1
 node scripts/verify/route-request.mjs || status=1
+node scripts/verify/paths.mjs || status=1
+node scripts/verify/signposts.mjs || status=1
 while read -r _local_ref _local_sha remote_ref _remote_sha; do
   case "$remote_ref" in
     refs/tags/v*)
       node scripts/verify/changelog.mjs "${remote_ref#refs/tags/}" || status=1
+      ;;
+    refs/heads/main)
+      if [ "${ALLOW_PUSH_MAIN:-0}" = "1" ]; then
+        echo "pre-push: pushing $remote_ref directly (ALLOW_PUSH_MAIN=1)." >&2
+      else
+        echo "pre-push: refusing to push $remote_ref directly — main advances through a pull request." >&2
+        echo "          push a branch and open a pull request instead." >&2
+        echo "          deliberate release push? re-run as: ALLOW_PUSH_MAIN=1 git push origin main" >&2
+        status=1
+      fi
       ;;
   esac
 done

@@ -61,6 +61,20 @@ and `issue get <ref>` shows whether it is a deployment card, which is the other
 reason it will not appear. A `deploy` card is still claimable when it is
 dispatched to you: wait for the dispatch rather than looking for it yourself.
 
+**When the card turns out to be a container, promote it — do not claim it.** A card a human
+filed is a `task`; if it holds several deliverables, `issue update <ref> --kind epic` makes it
+the container (only an `epic` may be a parent), then one `issue create` per deliverable — each
+with its own `--target`, or the create guard reads the second as a retry of the first — and a
+`relation add <ref> --type parent --target <child>` per edge. An epic can never be claimed, but
+**the board drives it**: the first child entering `in_progress` moves the container
+`todo → in_progress` (a system move, with a `kind=note` comment), and when every child is
+finished — `done` or `canceled`, with at least one `done` — the rollup report is written and the
+container delivered to `in_review` for you. `todo → in_review` is still the epic's own edge (a
+task's `todo` row does not have it) — it is the repair path for a child attached after the fact,
+which `issue reconcile` replays. The
+full order, and the three commands that surprise people, are in
+[`SKILL.md`](../SKILL.md#when-the-card-is-a-container-promote-it-to-an-epic).
+
 ### 3. One card at a time
 
 Hold **at most one** claimed card. A second concurrent claim is how two agents
@@ -68,15 +82,31 @@ end up half-editing the same files, and how a board acquires `in_progress` cards
 nobody is actually working. Finish (or explicitly hand back) the current card
 before you claim another.
 
+A **container** you promoted is not a second card: an epic carries no work of its
+own, so parking it (§2) leaves your budget untouched — its children are the cards
+you claim, one at a time.
+
 ### 4. Keep the heartbeat fresh (≤ 10 minutes)
 
 The board stamps a claim with a **heartbeat** and treats the claim as *fresh* for
 **10 minutes**. A claim whose heartbeat goes cold is **stale** — recoverable by
 its own holder after 30 minutes and by anyone after 6 hours — so a crashed agent
 never wedges a card. The practical obligation while you work is: keep the claim
-live, and never leave a card `in_progress` while you go idle. `issue candidates
---stale` is how a later reader surfaces a claim whose heartbeat expired
-(`cli.md` §`issue`).
+live, and never leave a card `in_progress` while you go idle.
+
+**The pulse is a command you run — the board never sends one for you:**
+
+```bash
+node scripts/run.mjs issue heartbeat <ref> --agent <me> --actor-kind <host>
+```
+
+Run it at least every 10 minutes while a card is `in_progress`. It resets the
+heartbeat and **nothing else** — the status, the claimer and the delivery round
+are untouched — and only the holder may send it. Nothing else knows the work is
+still going; a claim you stop pulsing is meant to read as abandoned, so a card
+parked in `in_progress` over a long task alerts until you pulse it or take it out
+of the cycle. `issue candidates --stale` is how a later reader surfaces a claim
+whose heartbeat expired (`cli.md` §`issue`).
 
 ### 5. Deliver with a report (the delivery gate)
 
@@ -114,7 +144,7 @@ agents overwrite each other.
 ### 8. Stay traceable — carry the session id
 
 Every write can name the actor and the conversation behind it
-(`--agent-platform <host> --session-id <id>`). That is what turns a card back into
+(`--actor-kind <host> --session-id <id>`). That is what turns a card back into
 "which agent session did this", and it is what lets a resumed conversation
 re-attach to the same work instead of starting over. Always pass the session id.
 
@@ -147,8 +177,19 @@ the board project's **id** (preferred) or name. The file is **local and agent-si
 it is never written into the board**, and it is not part of the skill's source. The
 full schema is in [`projects-json.md`](projects-json.md).
 
-**There is no fallback — ask.** A project absent from `projects.json` has **no target
-directory** — the board cannot supply one. Do not invent, guess, or derive a
+That directory is where a **worker starts** — not where the project's results live.
+Where a project keeps what it produces (a repository, a vault, nowhere at all) is its
+own business; see the boundaries below.
+
+**No directory is an answer — and the map says so.** A project whose work needs no
+checkout is registered with an entry that names no directory
+(`{ "project": "Community" }`), and `taskctl project dir <project>` reports that and
+succeeds. Do not invent a directory for it; if a worker must start somewhere, give the
+entry a `run_dir` — the launch directory, consulted only when `local_path` is absent
+(`dir = local_path ?? run_dir`).
+
+**There is no fallback — ask.** A project **absent** from `projects.json` has no
+registered directory — the board cannot supply one. Do not invent, guess, or derive a
 directory, and do not go looking for one on the board. When a step needs the directory,
 stop and **ask the user**, rather than continuing without an answer:
 
@@ -158,21 +199,26 @@ Which directory does it work in? I will add it to projects.json beside this skil
 (references/projects-json.md) — the board cannot supply one.
 ```
 
-`local_path` is required **and checked** (absolute, exists, is a directory): an entry
+A directory that *is* named is checked (absolute, exists, is a directory): an entry
 that points nowhere — a moved checkout, a typo, a file — is as unusable as no entry,
 and gets the same question with what is wrong named. `taskctl project dir <project>` is
-the command form: it prints the directory, or exits non-zero asking rather than
-proceeding. A directory that maps to nothing gets the same prompt. Work that needs no
-directory — claiming, moving, commenting, delivering (§1–§6) — is unaffected; a missing
-mapping is "no directory known", never "cannot work".
+the command form: it prints the directory, prints that the entry names none, or exits
+non-zero asking rather than proceeding. A directory that maps to nothing gets the same
+prompt. Work that needs no directory — claiming, moving, commenting, delivering (§1–§6)
+— is unaffected; a missing mapping is "no directory known", never "cannot work".
 
-Two boundaries this respects, on purpose:
+Three boundaries this respects, on purpose:
 
 1. **TaskPanel does no project-directory management** — not a column, not a route, not
    a command. A board project simply has no directory; directories are a local concern.
-2. **Whether you manage a project's source data with `meta` is your own call.**
+2. **TaskPanel does not manage project data** — where a task's results live, and
+   whether they are kept at all, is the business's decision. The board keeps task data
+   complete, reliable, traceable and auditable, and nothing else.
+3. **Whether you manage a project's source data with `meta` is your own call.**
    TaskPanel does not prescribe it and does not advise it — and **this skill takes no
-   position either**. Use `meta`, or don't, by your own convention.
+   position either**. Use `meta`, or don't, by your own convention. The metadata keys
+   an entry in `projects.json` carries beyond `project`/`local_path`/`run_dir` are the
+   same kind of call: yours, read by the agent from the file.
 
 ## Waking & patrol (唤醒与巡检)
 
@@ -204,10 +250,11 @@ Three things that keep it honest:
   all; a live claim is invisible to the next scan.
 - **A broken heartbeat is never silent.** If patrol cannot read a heartbeat, it
   *reports* that instead of going quiet — the state that used to vanish.
-- **A woken worker runs in its project's directory — or is not woken at all.** The
+- **A woken worker runs in the directory the map names — or is not woken at all.** The
   wake goes through the host's own glue, which resolves the card's project against
-  this skill's `projects.json` and `cd`s there; a project with no usable directory
-  refuses the wake instead of running somewhere unintended
+  this skill's `projects.json` (its `local_path`, else its `run_dir` launch directory)
+  and `cd`s there; a project with no usable directory — an unregistered one, or an
+  entry that names none — refuses the wake instead of running somewhere unintended
   ([§Where a directory's project lives](#where-a-directorys-project-lives-目录归属)).
 
 Installers drop per-host scheduling units (launchd / systemd / cron) and a wake
@@ -238,9 +285,8 @@ openclaw plugins install "$PWD" --force --accept-capabilities
 openclaw plugins inspect meerkat-taskpanel                 # → meerkat-taskpanel, bundle format: cursor
 ```
 
-(`plugins/openclaw/openclaw.plugin.json` is a *native* manifest — a skill-only pack
-that installs through the bundle route above; the repo's `docs/install.md` §OpenClaw
-has the native-vs-bundle distinction.)
+(The board ships no native `openclaw.plugin.json`: a skill-only pack installs through the
+bundle route above. The repo's `docs/install.md` §OpenClaw has the reasoning.)
 
 ### Tracing and triggering
 
@@ -250,7 +296,7 @@ has the native-vs-bundle distinction.)
   `todo` / `stale` cards through the board's own criteria. §1–§3 and §7 happen
   around the agent rather than by it.
 - **The session id still travels with every write.** Pass
-  `--agent-platform openclaw --session-id <id>` so a card's trail points back at the
+  `--actor-kind openclaw --session-id <id>` so a card's trail points back at the
   session that did the work (§8); the framework keeps that id stable across resumes.
 - **No supervisor to build.** OpenClaw is the one host that installs **no**
   scheduler of its own: `install.sh --target openclaw` writes this skill only — not
@@ -279,7 +325,7 @@ claude plugin list                                 # → meerkat-taskpanel, enab
   in the `projects.json` beside this skill
   ([§Where a directory's project lives](#where-a-directorys-project-lives)). The board
   holds no directory, so there is nothing to ask it.
-- **Stamp every write with the host and session:** `--agent-platform claude
+- **Stamp every write with the host and session:** `--actor-kind claude
   --session-id <id>`. Use the id of the Claude Code session, so the card's trail
   points back at the conversation that did the work.
 - **Bind the card to the branch / worktree** you are working in: record it once
@@ -313,7 +359,7 @@ codex plugin list                                  # → meerkat-taskpanel
 - **Session ownership comes from the thread.** Codex exposes the running thread as
   **`CODEX_THREAD_ID`**; read it and use it as the session id, so a card's trail
   is attributable at the conversation level:
-  `--agent-platform codex --session-id "$CODEX_THREAD_ID"`.
+  `--actor-kind codex --session-id "$CODEX_THREAD_ID"`.
 - **Same claim-first order**, same board checks (§1). Resolve a directory's project
   from the `projects.json` beside this skill before creating or claiming anything
   ([§Where a directory's project lives](#where-a-directorys-project-lives)).
@@ -327,7 +373,7 @@ codex plugin list                                  # → meerkat-taskpanel
 ## A minimal worked example
 
 From the skill directory, the shortest complete loop (Claude Code shown; on Codex
-swap the actor flags for `--agent-platform codex --session-id "$CODEX_THREAD_ID"`).
+swap the actor flags for `--actor-kind codex --session-id "$CODEX_THREAD_ID"`).
 
 **Prerequisites for the placeholder names below.** `PROJ-0007` stands for a real
 card on *your* board and `linus` for the assignee it belongs to — substitute the
@@ -340,12 +386,12 @@ launched with, or `$CODEX_THREAD_ID` on Codex.
 #    this skill (references/projects-json.md); the board holds no directory
 
 # 1. claim-first: read the claimable set, then take exactly one
-node scripts/run.mjs issue candidates --assignee linus --agent-platform claude --session-id "$SESSION"
-node scripts/run.mjs issue move PROJ-0007 in_progress --agent-platform claude --session-id "$SESSION"
+node scripts/run.mjs issue candidates --assignee linus --actor-kind claude --session-id "$SESSION"
+node scripts/run.mjs issue move PROJ-0007 in_progress --actor-kind claude --session-id "$SESSION"
 
 # 2. register the session (which conversation is on this card) — the resume key
 node scripts/run.mjs session set PROJ-0007 --seg seg1 --backend claude \
-  --agent-platform claude --session-id "$SESSION"
+  --actor-kind claude --session-id "$SESSION"
 
 # 3. …do the work; leave a decision trail while you go…
 node scripts/run.mjs comment add PROJ-0007 --kind decision --body "Chose the SQLite trigger path."
@@ -353,7 +399,7 @@ node scripts/run.mjs comment add PROJ-0007 --kind decision --body "Chose the SQL
 # 4. deliver with a report — the gate refuses an empty round
 node scripts/run.mjs report template PROJ-0007
 node scripts/run.mjs issue deliver PROJ-0007 --report-file - \
-  --agent-platform claude --session-id "$SESSION"
+  --actor-kind claude --session-id "$SESSION"
 # → status in_review; a human accepts to done (self-review ≠ acceptance, §6)
 ```
 

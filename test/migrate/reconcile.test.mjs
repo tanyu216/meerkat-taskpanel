@@ -115,9 +115,15 @@ describe("migrate/reconcile — a lossy directory reports differences", () => {
     assert.equal(report.idempotent, true, "the diff fixture still imports idempotently");
 
     const kinds = new Set(report.unmappable.map((item) => item.kind));
-    for (const kind of ["project-unresolved", "non-epic-parent", "missing-report", "status-alias", "field-drift", "unresolved-depends-on"]) {
+    for (const kind of ["project-unresolved", "non-epic-parent", "missing-report", "status-alias", "unresolved-depends-on"]) {
       assert.ok(kinds.has(kind), `expected an unmappable item of kind ${kind}`);
     }
+    // `field-drift` is **not** among them any more. It used to be, for a card that
+    // declared `assignee_kind`: the column had no export home, so the value came
+    // back differently. `0023` gave it one, and this fixture's card still declares
+    // the key — so the absence here is the drift being closed, not the fixture
+    // having stopped exercising it.
+    assert.equal(kinds.has("field-drift"), false, "assignee_kind now round-trips, so it is not unmappable");
     const unresolved = report.unmappable.find((item) => item.kind === "project-unresolved");
     assert.equal(unresolved.value, "Missing");
     assert.equal(unresolved.card, "DIFF-0005");

@@ -44,11 +44,12 @@ running it** — an uncommitted tree is not what CI will see.
    `contract-gate.yml` and `security-scan.yml`. Green CI is the entry bar.
 4. Merge.
 
-> **Repository settings this depends on** (GitHub-side; not enforceable from the tree):
+> **Repository settings this depends on** (GitHub-side; the tree cannot switch them on):
 > on `main`, enable *Require a pull request before merging* and require the `check`,
-> `contract` and `security` status checks. Nothing in the tree can enforce a PR on its own:
-> the `pre-push` hook runs the contract and changelog gates, but a hook is a courtesy —
-> `git push --no-verify` bypasses it. The branch protection rule is the actual enforcement.
+> `contract` and `security` status checks. The rule is the actual enforcement; the
+> `pre-push` hook now refuses a direct push to `main` as the local half, but it is still a
+> courtesy — `git push --no-verify` bypasses it, and a fresh clone has no hooks at all until
+> you install them (below).
 
 ### Install the local hooks
 
@@ -71,7 +72,7 @@ These are checked, not merely preferred. Skipping one turns CI red.
 | **Commit with explicit paths** (`git commit -- <path>`), never a blanket `git commit -a` | review |
 | **The API contract snapshot is explicit.** A route, error code or wire-field change must update `test/fixtures/contract/api.snapshot.json` via `node scripts/verify/contract.mjs --update` — never let it drift silently | `contract-gate.yml`, `.githooks/pre-push` |
 | **A route's *declared* request shape must equal what its handler reads** | `scripts/verify/route-request.mjs` |
-| **The skills are generated.** Author only under `skills/meerkat-taskpanel/` and the loop's hand-written surface; then run `node scripts/sync-skills.mjs`. The two copies under `plugins/` are generated — every other harness reads `skills/` in place | `npm run check:skills` |
+| **The skills are generated.** Author only under `skills/meerkat-taskpanel/` and the loop's hand-written surface; then run `node scripts/sync-skills.mjs`. No skill is distributed as a committed copy — `skills/` is the only `skills` tree in the repository | `npm run check:skills`, `test/scaffold.test.mjs` |
 | **Migrations are append-only.** Never edit or delete a committed `src/core/storage/migrations/*.sql`; add a new numbered file. The runner refuses a database whose applied file has changed | `migrations-runner.mjs`, `.githooks/pre-commit` |
 | **A version tag needs a `## [X.Y.Z]` CHANGELOG section** | `version-gate.yml`, `.githooks/pre-push` |
 | **Every failure is a domain error with a code** — never a bare `Error` | review |

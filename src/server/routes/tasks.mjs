@@ -19,7 +19,7 @@ import {
   taskToWire,
   waiversFromActivities,
 } from "../../shared/wire.mjs";
-import { project, REQUEST, shape, str } from "../requests.mjs";
+import { bool, project, REQUEST, shape, str } from "../requests.mjs";
 import { intOrUndefined, truthy } from "./projects.mjs";
 
 // Declared request schemas — what the contract snapshot freezes
@@ -62,6 +62,14 @@ const CANDIDATES_QUERY = shape(
 const CREATE_BODY = project(TASK_OPS.create);
 
 /**
+ * `POST /api/v1/tasks/reconcile` — the container sweep (`--dry-run` on the wire).
+ *
+ * `dry_run` is the only input: the sweep takes no scope, because "every
+ * non-terminal epic" is the scope (commands/rollup.mjs#reconcileContainers).
+ */
+const RECONCILE_BODY = shape({ dry_run: bool() });
+
+/**
  * `PATCH /api/v1/tasks/:ref` — a partial update.
  *
  * `status` is deliberately absent: the route **refuses** it (`INVALID_TRANSITION`,
@@ -87,6 +95,16 @@ const ASSIGN_BODY = project(TASK_OPS.assign);
 
 /** `POST /api/v1/tasks/:ref/archive` — a soft delete, optionally backdated. */
 const ARCHIVE_BODY = project(TASK_OPS.archive);
+
+/**
+ * `POST /api/v1/tasks/:ref/heartbeat` — the pulse of a live claim.
+ *
+ * The body is empty by design: the card is the path's `:ref` and the pulsing
+ * actor is the caller's own identity, so there is nothing for a caller to send.
+ * The declaration rides along anyway — it is what pairs this route with
+ * `issue heartbeat` in `scripts/verify/route-request.mjs`.
+ */
+const HEARTBEAT_BODY = project(TASK_OPS.heartbeat);
 
 /**
  * `PROJ-0007` or a UUID — whichever the caller has.
@@ -176,6 +194,17 @@ export function registerTaskRoutes(router, surface) {
     });
     return taskPayload(repos, task);
   }, { body: CREATE_BODY });
+
+  // The container backstop: replay "a child started ⇒ start the epic" and "all
+  // children done ⇒ deliver the epic" over the board. Idempotent; `dry_run`
+  // computes the plan and writes nothing. This is the repair path for writes
+  // that bypassed the service hooks and for children attached after the fact.
+  router.post("/api/v1/tasks/reconcile", ({ body }) => {
+    const result = commands.reconcileContainers({ dryRun: body.dry_run === true });
+    // The wire is snake_case like every other route; the command layer is
+    // camelCase like every other command.
+    return { dry_run: result.dryRun, scanned: result.scanned, actions: result.actions };
+  }, { body: RECONCILE_BODY });
 
   // The poll's read: which claimable cards does `assignee` have? Registered
   // before `/api/v1/tasks/:ref` so the literal `candidates` segment wins over
@@ -288,6 +317,17 @@ export function registerTaskRoutes(router, surface) {
       waived: result.waived,
     };
   }, { body: DELIVER_BODY });
+
+  // The other half of a claim: the pulse a long-running card owes the board, so
+  // its `heartbeat_at` stays inside the fresh window and the `heartbeat_stale`
+  // SLA row never opens. It refreshes the heartbeat and **nothing else** — never
+  // the status, never the holder — so pulsing cannot resurrect work somebody
+  // else has finished, and only the holder can pulse at all (the repository's
+  // `claimed_by = ?` predicate; a non-holder gets `EXECUTION_ACTIVE`).
+  router.post("/api/v1/tasks/:ref/heartbeat", ({ params, actor }) => {
+    const current = resolveTask(repos, params.ref);
+    return taskPayload(repos, commands.heartbeat({ id: current.id, actor }));
+  }, { body: HEARTBEAT_BODY });
 
   // `assign` is `update` with the dictionary in play. An id bypasses the
   // dictionary entirely (`patch`), a name goes through it (`assignee`/`reporter`)

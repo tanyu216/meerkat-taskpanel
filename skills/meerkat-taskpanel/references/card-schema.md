@@ -72,12 +72,13 @@ mapped — see §Unknown keys are preserved.
 | `title` | **Required.** One-line summary. | Non-empty string. |
 | `status` | Where the card sits in the lifecycle. | `backlog` · `todo` · `in_progress` · `in_review` · `blocked` · `done` · `canceled`, plus the overlay `awaiting`. Absent ⇒ `todo`. The seven stage statuses are the board's columns; `awaiting` is an **attention overlay**, not an eighth column. Read aliases (never stored): `ready`→`todo`, `failed`→`canceled`, `cancelled`→`canceled`, `in-review`→`in_review`, `in-progress`→`in_progress`. See §The status machine. |
 | `priority` | Urgency. | `low` · `medium` · `high` · `urgent`, case-insensitive. Absent/empty ⇒ `medium`. Anything else is refused (`VALIDATION_FAILED`). |
-| `kind` | The card's role. | `task` · `epic` · `deploy`. Anything the vocabulary does not name is read as `task`. **Only an `epic` may be a parent** (`parent:` and `relation add --type parent`); a `deploy` card is a work card no automatic read may offer. |
+| `kind` | The card's role. | `task` · `epic` · `deploy`. Anything the vocabulary does not name is read as `task`. **Only an `epic` may be a parent** (`parent:` and `relation add --type parent`); a `deploy` card is a work card no automatic read may offer. `kind` is **patchable**: a `task` can be promoted in place (`issue update --kind epic`), which is what lets it parent children, while an `epic` that still has children cannot go back to `task`. |
 | `labels` | Free-form tags, shown in order. | Inline array `[a, b]` (or a comma-separated scalar). Trimmed, de-duplicated, order kept. Each label ≤ 64 chars, at most 32 labels. Labels register in the project's label registry, so an imported card ends up with the same first-seen spelling a CLI write would produce. |
 | `project` | **Required** — which board project the card belongs to. | The project's **registered name** (a key in `projects.json`) or its id; resolved to the project id. May be supplied by `--project` instead. An unresolvable name is a warning + skip, never a silently created project. |
 | `assignee` | Who is on the hook. | A dictionary name. Empty ⇒ unassigned. |
 | `assignee_kind` | The kind of the actor a **new** name becomes (the dictionary is one table; `agent` · `human`). Ignored on an exact reuse — the stored kind wins. | `agent` · `human`. Absent ⇒ `agent`. **Not re-emitted on export** (see §Round-trip rules). |
-| `created_by` | Who created the card. | A name → the actor dictionary + `tasks.reporter_id`. The importer infers the actor kind from a small name list (`elon`, `terry`, `tanyu` ⇒ human, otherwise agent) — a card author who is a human but not on that list arrives as an agent. |
+| `created_by` | Who created the card. | A name → the `actors` registry + `tasks.reporter_id` (the provenance key: `0019` collapsed the card's creator into its reporter). The kind recorded is `human` unless `created_by_kind` says otherwise — the role's own definition, since a card's provenance key is who filed it. |
+| `created_by_kind` | What that provenance key is. | `human` · a platform (`claude`, `codex`, `pi`, …) · `taskd` · whatever a host calls itself. Absent ⇒ `human`. Fills `reporter_kind`. Written back on export only when it is **not** the default, so a card that never carried one does not grow a line. |
 | `created_at` | When the card was created. | ISO 8601. Absent ⇒ the import clock. Always normalised to the canonical ms-Z form (`2026-10-08T15:31:25.161Z`) — `2026-10-08T14:03Z` and `…+08:00` are coerced, and the coercion is recorded as a notice, not silently swallowed. |
 | `updated_at` | Last content change. | Same coercion. Absent ⇒ `created_at`. |
 | `status_changed_at` | When `status` last changed. | Same coercion. Absent ⇒ `created_at`, else the import clock. |
@@ -97,7 +98,7 @@ re-encodes the same table as a trigger — the two are tested against each other
 
 ```
 backlog      → todo | canceled
-todo         → backlog | in_progress | blocked | canceled
+todo         → backlog | in_progress | blocked | canceled        (an `epic` also → in_review)
 in_progress  → in_review | blocked | todo | canceled | awaiting
 awaiting     → in_progress | canceled
 in_review    → done | in_progress | blocked
@@ -106,9 +107,21 @@ done         → (terminal — I3)
 canceled     → (terminal — I3)
 ```
 
-Three properties are load-bearing:
+Four properties are load-bearing:
 
 - **`done` is reachable only from `in_review`** — no delivery without review.
+- **An `epic` may be delivered straight from `todo`** (`0024`). A container is never claimable,
+  so `todo` was otherwise a state with no exit — and `done` sits behind `in_review`. The
+  exception is scoped to **`kind`**, not to the status: a `task` in `todo` still cannot reach
+  `in_review`, and the delivery gate applies to the epic's report exactly as it does to a leaf's.
+  In practice the board drives the container: the first child entering `in_progress` makes a
+  **system** move `todo → in_progress` (no claim, an `epic_auto_start` activity, and a
+  `kind=note` comment), and when every child is finished (`done` or `canceled`, at least one
+  `done`) the board writes the rollup report and delivers it to `in_review` — the epic's
+  delivery is never an agent's step. A `canceled` child is terminal and is listed in the report
+  with its cancellation reason, not treated as outstanding work. `todo → in_review` remains the
+  repair edge for a child attached after the fact; `issue reconcile` replays both rules and
+  records its source as `sweep` in the note.
 - **Leaving `in_review`** (to `in_progress` or `blocked`) **starts a new delivery round**; the
   previous round's report stops counting. `awaiting → in_progress` is *not* such an exit: it
   resumes the same attempt, round untouched.

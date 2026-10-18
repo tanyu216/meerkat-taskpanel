@@ -22,6 +22,10 @@ web/dist
 # runtime state — bind-mounted at run time via docker-compose.yml, never baked in
 .data
 
+# parallel-task worktrees (CLAUDE.md keeps them inside the checkout) — another branch's
+# whole tree must never enter this build context
+.worktrees
+
 # test / coverage output
 coverage
 

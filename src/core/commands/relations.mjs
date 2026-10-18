@@ -7,9 +7,11 @@
  */
 
 import { DomainError } from "../../shared/errors.mjs";
+import { RELATION_TYPE } from "../domain/enums.mjs";
 import { assertBlockEdgeAllowed, assertParentEdgeAllowed, normalizeRelation, parentChainOf } from "../domain/relation.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { actorOf } from "./context.mjs";
+import { advanceContainer } from "./rollup.mjs";
 
 /** Look a task up by id or by identifier, since callers legitimately have either. */
 function loadTask(ctx, ref) {
@@ -128,6 +130,10 @@ export function removeRelation(ctx, input) {
         changes: { relationId: relation.id, type: relation.type },
         createdAt: now,
       });
+      // Detaching the last unfinished child can finish the container: the set
+      // of children that matters is the one *after* the removal
+      // (commands/rollup.mjs).
+      if (relation.type === RELATION_TYPE.PARENT) advanceContainer(ctx, relation.source, now);
       return { removed: true, relation };
     },
     { op: "relations.remove" },

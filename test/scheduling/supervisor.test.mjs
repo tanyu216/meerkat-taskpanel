@@ -50,6 +50,8 @@ import {
   saveSlaLedger,
   spawnWorkerReal,
 } from "../../scripts/supervisor.mjs";
+import { resolveWakeDir } from "../../scripts/wake-cwd.mjs";
+import { PROJECT_DIR_CODES } from "../../src/shared/project-dir.mjs";
 
 /** A tiny collector standing in for a "spy" — records every call. */
 function spy(impl = () => undefined) {
@@ -466,7 +468,7 @@ describe("buildHandoff (pure)", () => {
     assert.match(text, /T-1/);
     assert.match(text, /Wire the supervisor/);
     assert.match(text, /--agent alice/);
-    assert.match(text, /--agent-platform claude/);
+    assert.match(text, /--actor-kind claude/);
     assert.match(text, /--session-id sid-9/);
     assert.match(text, /report/i);
     assert.ok(text.length < 2000, "the handoff must be bounded");
@@ -969,6 +971,15 @@ describe("spawnWorkerReal — the wake goes through the resolved glue (R1)", () 
     }
   }
 
+  /** A marker's text so far — empty while it does not exist yet. */
+  function readMarker(path) {
+    try {
+      return readFileSync(path, "utf8");
+    } catch {
+      return "";
+    }
+  }
+
   it("runs the installed glue — not the direct fallback — and hands it the project identity", async () => {
     const dir = tempDir("meerkat-wake-glue-");
     // Two mutually exclusive stubs, so the case reports *which* branch ran rather than
@@ -998,7 +1009,15 @@ describe("spawnWorkerReal — the wake goes through the resolved glue (R1)", () 
         { identifier: "T-1", agent: "alice" },
         { identifier: "T-1", title: "wire the glue", project: "TaskPanel" },
       );
-      assert.ok(await waitFor(() => existsSync(glueMarker)), "the installed glue never ran");
+      // Wait for the *complete* record, not merely for the file to appear. The stub
+      // writes `argv=` and `project=` as two separate opens, so a poll can land between
+      // them and the reads below would see a half-written file — `existsSync` is true
+      // from the first line on, which is exactly the race that made this case red under
+      // load. The glue's last line is the completion signal.
+      assert.ok(
+        await waitFor(() => /^project=TaskPanel$/m.test(readMarker(glueMarker))),
+        "the installed glue never ran to completion",
+      );
     } finally {
       process.env.PATH = originalPath;
     }
@@ -1049,6 +1068,68 @@ describe("spawnWorkerReal — the wake goes through the resolved glue (R1)", () 
     assert.ok(warning, "a missing glue must still be announced");
     assert.ok(warning.includes(missing), `the warning must name the configured glue, got: ${warning}`);
     assert.ok(!warning.includes("(unset)"), "an unassigned opts field made the warning name '(unset)' instead");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The glue's directory resolver: `wake-cwd.mjs`
+//
+// The map has three answers and the *wake* can only use two of them: a project
+// absent from `projects.json` is unmapped (ask the user), and an entry that
+// exists but names no directory is a complete answer for the map — a project may
+// legitimately keep nothing on disk — but it is still no answer for a worker,
+// which has to be started somewhere. Both refuse the wake, and they refuse it
+// with their own reason rather than one generic message.
+// ---------------------------------------------------------------------------
+
+describe("wake-cwd — the directory a woken worker runs in", () => {
+  const tempDirs = [];
+  function tempDir(prefix) {
+    const dir = mkdtempSync(join(tmpdir(), prefix));
+    tempDirs.push(dir);
+    return dir;
+  }
+  after(() => {
+    for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** A map file (in a fresh temp dir) holding the given entries. */
+  function writeMap(entries) {
+    const dir = tempDir("meerkat-wake-cwd-");
+    const file = join(dir, "projects.json");
+    writeFileSync(file, JSON.stringify({ projects: entries }, null, 2), "utf8");
+    return file;
+  }
+
+  it("resolves `run_dir` — the launch pad of a project with no local directory", () => {
+    const launch = tempDir("meerkat-wake-launch-");
+    const projectsJson = writeMap([{ project: "Ops", run_dir: launch }]);
+
+    const result = resolveWakeDir({ project: "Ops", projectsJson });
+    assert.equal(result.ok, true, result.message);
+    assert.equal(result.dir, launch);
+  });
+
+  it("refuses the wake when the entry names no directory, even though the map allows it", () => {
+    const projectsJson = writeMap([{ project: "Ops", kind: "ops" }]);
+
+    const result = resolveWakeDir({ project: "Ops", projectsJson });
+    assert.equal(result.ok, false, "a worker needs a cwd; ‘no directory’ is not one");
+    assert.equal(result.code, PROJECT_DIR_CODES.REQUIRED);
+    assert.match(result.message, /no usable directory for project Ops/);
+    assert.match(result.message, /`local_path`/);
+  });
+
+  it("keeps ‘no entry’ and ‘no directory’ as two different refusals", () => {
+    const projectsJson = writeMap([{ project: "Ops", kind: "ops" }]);
+
+    const unmapped = resolveWakeDir({ project: "Ghost", projectsJson });
+    assert.equal(unmapped.ok, false);
+    assert.equal(unmapped.code, PROJECT_DIR_CODES.UNMAPPED);
+    assert.match(unmapped.message, /no local directory is registered for project Ghost/);
+
+    const directoryless = resolveWakeDir({ project: "Ops", projectsJson });
+    assert.equal(directoryless.code, PROJECT_DIR_CODES.REQUIRED, "the two must not collapse");
   });
 });
 

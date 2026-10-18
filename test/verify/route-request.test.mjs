@@ -380,9 +380,12 @@ describe("route-request.mjs — the CLI", () => {
     // 32 since 0019 merged the two dictionary reads (`/assignees`, `/reporters`)
     // into one `/actors` route; it was 33 after T-20261014-212017-4 added the
     // three attachment metadata routes (POST|GET /tasks/:ref/attachments,
-    // DELETE /attachments/:id).
-    assert.match(result.stdout, /route-request: OK — 32 routes/);
-    assert.match(result.stdout, /6 command inputs paired/);
+    // DELETE /attachments/:id); 33 again after T-20261017-063818 added
+    // POST /tasks/:ref/heartbeat.
+    assert.match(result.stdout, /route-request: OK — 34 routes/);
+    // Seven since T-20261017-063818 declared `tasks.heartbeat` alongside the six
+    // commands that already projected their input.
+    assert.match(result.stdout, /7 command inputs paired/);
     assert.match(result.stdout, /5 out-of-router endpoints acknowledged/);
   });
 

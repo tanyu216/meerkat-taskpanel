@@ -1,7 +1,7 @@
 /**
  * Bundle / marketplace inspection + the per-host profile bundle assertions.
  *
- * The container cannot run the four host CLIs (they are not in the image and there is
+ * The container cannot run the six host CLIs (they are not in the image and there is
  * no network), so `scripts/verify/lib/bundle.mjs` reproduces the hosts' detection
  * contract offline. These tests pin that reproduction: the shipped bundles must be
  * detected with the format each host's profile declares, and the detector must follow
@@ -196,39 +196,35 @@ describe("bundle: parseMarketplace", () => {
     }
   });
 
-  it("lists both skills as plugins, each sourced at a bundle that exposes its own", () => {
-    // The marketplace is the per-skill distribution surface: `meerkat-taskpanel` and
-    // `meerkat-loop` are installable separately, so each entry's source must resolve to a
-    // bundle carrying *its* skill — and the loop's own bundle must carry nothing else, or
-    // installing `meerkat-loop` alone would quietly bring the board with it.
+  it("lists the board, sourced at the repository root, and nothing else", () => {
+    // The marketplace used to list two plugins — the board and the loop, the latter sourced
+    // at a `plugins/loop` bundle that carried the loop skill and nothing else, so that
+    // installing `meerkat-loop` alone could not quietly bring the board with it. The loop's
+    // bundle is gone: `meerkat-loop` is installed by `install.sh --target claude|codex|pi`
+    // only, and the marketplace now has a single entry.
     const market = parseMarketplace(ROOT);
     assert.equal(market.ok, true, market.error);
 
-    const expected = [
-      // `source: "./"` — the board's plugin root IS the repository root, which is what
-      // lets claude / codex / cursor / pi share the one `skills/` tree.
-      { name: SKILL_NAME, skill: SKILL_NAME, dir: "" },
-      { name: LOOP_SKILL_NAME, skill: LOOP_SKILL_NAME, dir: "plugins/loop" },
-    ];
+    // `source: "./"` — the board's plugin root IS the repository root, which is what lets
+    // claude / codex / cursor / pi / openclaw share the one `skills/` tree. It is the
+    // shared tree, so it exposes both skills; that is not a second marketplace plugin.
+    assert.deepEqual(market.entries.map((entry) => entry.name), [SKILL_NAME]);
+    assert.equal(market.entries[0].dir, "", "the board's source directory");
+
+    const names = inspectBundle(ROOT).skills.map((skill) => skill.name);
+    assert.ok(names.includes(SKILL_NAME), `./ must expose ${SKILL_NAME}`);
     assert.deepEqual(
-      market.entries.map((entry) => entry.name),
-      expected.map((entry) => entry.name),
+      [...names].sort(),
+      [LOOP_SKILL_NAME, SKILL_NAME].sort(),
+      "the root bundle is the shared tree and carries both skills",
     );
 
-    for (const [index, want] of expected.entries()) {
-      const entry = market.entries[index];
-      assert.equal(entry.dir, want.dir, `${want.name}: source directory`);
-      const names = inspectBundle(join(ROOT, entry.dir)).skills.map((skill) => skill.name);
-      assert.ok(names.includes(want.skill), `${want.name}: ${entry.dir} must expose ${want.skill}`);
-    }
-
-    // The loop bundle is loop-only: installing `meerkat-loop` alone must not quietly bring
-    // the board with it. The board's bundle is the repository root, so it exposes both
-    // skills — that is the shared tree, not a second marketplace plugin — and only the
-    // loop bundle has to stay narrow.
-    assert.deepEqual(
-      inspectBundle(join(ROOT, "plugins/loop")).skills.map((skill) => skill.name),
-      [LOOP_SKILL_NAME],
+    // No entry may be sourced at a bundle directory: with `plugins/` gone, a second entry
+    // could only point at a directory that does not exist.
+    assert.equal(
+      market.entries.some((entry) => entry.dir !== ""),
+      false,
+      "every marketplace entry must resolve to the repository root",
     );
   });
 

@@ -1,0 +1,10 @@
+{
+  "note": "Files allowed to carry a signpost out of this repository — a walkable path into the external development framework's private store, or one of its internal mechanism names. Each entry is a {file, rule} PAIR, not a file: the exemption is granted per rule, because the contract that bans these terms must be able to write them, while no file may spell the store path. Every entry must still exist AND still offend under its own rule (scripts/verify/signposts.mjs checks both), so this list can only shrink without a deliberate edit. The store-root rule needs no entry at all: its carve-out for the two documented integration subpaths is structural (written into the rule), and the walkable paths that used to sit in the design documents were rewritten to describe the location instead of naming it. There is exactly one entry, and it should stay that way: a second one means some file has a reason to point at the framework's internals, which no shipped surface does.",
+  "entries": [
+    {
+      "file": "design/contracts/naming-boundary.md",
+      "rule": "mechanism-word",
+      "reason": "The contract itself: it draws the boundary by naming the framework's internal mechanism terms as forbidden, so it has to write them. Exempted for this rule only — the file must stay free of the store path, which is the whole reason the gate exists."
+    }
+  ]
+}

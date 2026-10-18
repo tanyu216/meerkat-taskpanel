@@ -13,7 +13,9 @@ same state on a kanban board (deliberately read-only). Persistence is a single S
 database (Node's built-in `node:sqlite`) — no external services. Node **>= 22**,
 **zero runtime dependencies**, MIT, public repo.
 
-**Status (honest):** landed through **M6**. `src/core/` has the domain model, SQLite storage
+**Status (honest):** the engine has landed in full — the core engine, the `taskctl` CLI and
+its local `taskd`, the six-host installers, the markdown migrator, and the board HTTP API +
+SSE plus the `web/` frontend. `src/core/` has the domain model, SQLite storage
 + migrations, use-cases and `openBoard()`; `src/cli/` is the real `taskctl` command surface
 and auto-starts the local `taskd` (`TASKD_NO_AUTOSTART=1` disables it); `src/server/` is the
 board HTTP API + SSE; `web/` is the Vue 3 + Vite frontend that builds to `web/dist` and is
@@ -21,9 +23,9 @@ served by `taskd`. Still planned: the **epic view** and **iteration management**
 roadmap lives in `README.md` / `README.zh-CN.md`.
 
 The agent integration is **skill-only**, driving the `taskctl` CLI (see `docs/install.md`).
-The host-external supervisor is a **skill of its own** (`skills/meerkat-loop/`, never
-installed for OpenClaw; the marketplace lists two plugins, `meerkat-taskpanel` and
-`meerkat-loop`, which version independently).
+The host-external supervisor is a **skill of its own** (`skills/meerkat-loop/`), never
+installed for OpenClaw and **not** distributed through the marketplace: `install.sh
+--target claude|codex|pi` is its only path, and it carries no version of its own.
 
 ## How to work here
 
@@ -56,9 +58,13 @@ branch, and branch parallel work off `dev`. `main` is the release line: it advan
 merging `dev`, and only after the user has confirmed.
 
 - **A parallel task gets a worktree, not another branch in this checkout:**
-  `git worktree add ../meerkat-taskpanel-wt-<slug> -b <branch> dev`. One worktree per task;
-  the primary checkout stays where it is. (The board's own lanes — `lane/<ref>-segN` — are the
-  automated instance of this pattern; you will find many of them in `git worktree list`.)
+  `git worktree add .worktrees/<slug> -b <branch> dev`. One worktree per task; the primary
+  checkout stays where it is, and the tree lives under the checkout's gitignored
+  `.worktrees/` (also dockerignored, so it never enters the image's build context). Before
+  creating one, follow the `using-git-worktrees` skill's Step 0 (isolation detection);
+  `.worktrees/` here is the declared preference that skill honors over its own default.
+  (The board's own lanes — `lane/<ref>-segN` — are the automated instance of this pattern;
+  older ones live beside the checkout and you will find them in `git worktree list`.)
 - **Report, confirm, then integrate.** When the work is done, say so and wait — the user
   decides whether it lands. Nothing here is self-closing.
 - **On confirmation, land it into `dev` and clean up** (a worktree *and* any branch that is
@@ -88,7 +94,7 @@ node --test test/core/index.test.mjs         # one file
 node --test "test/contract/**/*.test.mjs"    # one directory (a bare dir arg does NOT work here)
 npm run test:coverage                        # tap reporter + 80% line/branch/function floors
 npm run check                                # check:skills + verify + test (fast, host-static)
-npm run verify                               # manifests + skill + migrations + paths checkers
+npm run verify                               # manifests + skill + migrations + paths + signposts checkers
 npm run verify:docker                        # AUTHORITATIVE gate: build image + in-container suite
 npm run verify:docker:container              # run docker/verify-in-container.sh inside the image
 node scripts/sync-skills.mjs                 # regenerate the loop payload + plugin skill copies
@@ -115,7 +121,6 @@ meerkat-taskpanel/
 ├── src/shared/             # DTOs, constants, errors, pure helpers + the taskd transport seam
 ├── web/                    # Vue 3 + Vite board frontend (own lockfile) -> web/dist, served by taskd
 ├── skills/                 # the two skills: meerkat-taskpanel (board), meerkat-loop (supervisor)
-├── plugins/                # the bundles that still need a sibling skills/ copy (openclaw, loop)
 ├── .claude-plugin/ .pi/ .opencode/ .cursor-plugin/   # harness markers; the plugin root IS the repo root
 ├── design/                 # DESIGN / BLOCKS, the interactive prototype/, brand/, assets/, fidelity-rNN.md
 ├── scripts/                # build, install/, sync-skills + sync-loop, supervisor, verify/{manifests,skill,
@@ -152,10 +157,12 @@ the **hosted frontend root** is `web/dist`, the static build of `web/` that `tas
   and commit the refreshed cache with the lockfile. Never install frontend deps into the repo root.
 - **The skills are generated, never hand-edited.** Author only under `skills/meerkat-taskpanel/`
   and the loop's hand-written surface (`skills/meerkat-loop/`: `SKILL.md`, `references/`,
-  `scripts/board-check.mjs`). The loop's `body/` + `templates/`, and the copies under
-  `plugins/openclaw/skills/` and `plugins/loop/skills/`, are generated from `scripts/supervisor.mjs`,
-  `scripts/wake-cwd.mjs`, `src/shared/` and `scripts/install/templates/`. After any edit touching
-  those inputs run `node scripts/sync-skills.mjs`; CI runs `--check` and fails on drift.
+  `scripts/board-check.mjs`). The loop's `body/` + `templates/` are generated from
+  `scripts/supervisor.mjs`, `scripts/wake-cwd.mjs`, `src/shared/` and
+  `scripts/install/templates/`. After any edit touching those inputs run
+  `node scripts/sync-skills.mjs`; CI runs `--check` and fails on drift. There are **no committed
+  copies of a skill** anywhere: `skills/` is the only `skills` tree in the repository, and
+  `test/scaffold.test.mjs` asserts it.
 - **Migrations are append-only.** Never edit or delete a committed
   `src/core/storage/migrations/*.sql`; add a new numbered file. The DB runner refuses a database
   whose applied file changed, and adding a migration reds several hand-kept version lists — see
@@ -186,11 +193,17 @@ to get them). Hook and CI run the same checkers:
 | Hook | Enforces |
 |---|---|
 | `pre-commit` | migrations append-only, contiguous from `0001`, none edited or deleted (`verify/migrations.mjs`) |
-| `pre-push` | contract snapshot matches the live surface; declared request schema equals what the handler reads; every pushed `refs/tags/vX.Y.Z` has a `## [X.Y.Z]` CHANGELOG section |
-| `pre-tag` | the same three rules, run by hand before `git tag` (git has no native pre-tag hook) |
+| `pre-push` | contract snapshot matches the live surface; declared request schema equals what the handler reads; no tracked file carries a host-absolute path (`verify/paths.mjs`) or a signpost out of the repository (`verify/signposts.mjs`); every pushed `refs/tags/vX.Y.Z` has a `## [X.Y.Z]` CHANGELOG section |
+| `pre-tag` | the same API + tag rules, run by hand before `git tag` (git has no native pre-tag hook) |
 
-There is also `paths-gate.yml`: a host-absolute `/Users/<someone>/…` path fails the build —
-its allowlist (`test/fixtures/host-paths-allowlist.json`) is checked in both directions.
+Two workflows guard the tree itself. `paths-gate.yml`: a host-absolute `/Users/<someone>/…`
+path fails the build — its allowlist (`test/fixtures/host-paths-allowlist.json`) is checked in
+both directions. `signposts-gate.yml`: a walkable path into an external framework's private
+store, or one of its internal mechanism names, fails the build — its allowlist
+(`test/fixtures/framework-signposts-allowlist.json`) is keyed by `{file, rule}` and checked in
+both directions too. The rule behind the second is `design/contracts/naming-boundary.md`
+(which is **retired and narrowed**, not the unexecuted work order it once was); CI is its
+authoritative home, because the container image drops `design/`.
 
 ## Key invariants to remember
 
@@ -208,9 +221,15 @@ its allowlist (`test/fixtures/host-paths-allowlist.json`) is checked in both dir
 - **The board holds no project directory.** A project carries no `workspace_path`, the CLI has no
   `context` command (`src/core/commands/context.mjs` is actor/execution context, unrelated) and no
   registry `root` anchor; a card's `target` is an opaque per-card value, never derived from a
-  project. The directory→project map lives in a `projects.json` beside the installed skill
+  project. The directory↔project map lives in a `projects.json` beside the installed skill
   (`skills/meerkat-taskpanel/references/projects-json.md`); whether a project's source data is
   managed with `meta` is the agent's own decision and taskpanel neither prescribes nor advises it.
+  An entry names its directory as `local_path`, else as the `run_dir` launch pad, or names **none** —
+  a project with no local directory is a complete answer (`dir: null`, exit 0), distinct from the
+  `PROJECT_DIR_UNMAPPED` "no entry — ask the user" case; a *wake* needs a directory, so it refuses
+  both of those. Both keys are **worker** directories, not data locations — where a task's results
+  live is the business's call, and the entry's other keys (the metadata an agent reads) are the
+  business's to define, never validated or interpreted here.
 - **Auth:** a loopback caller is trusted; a remote caller must be inside `TASKD_ALLOW_CIDRS` and
   present the token. `POST /token` is loopback-only. The built board injects no token, so serving
   it to a remote browser is 401 by design (`docs/web-local-first.md`).
@@ -219,6 +238,7 @@ its allowlist (`test/fixtures/host-paths-allowlist.json`) is checked in both dir
 
 ## Docs to read next (do not re-paste)
 
+- `GLOSSARY.md` — the canonical vocabulary: one word per concept, the words to avoid, and the terms that are *not* in the model.
 - `README.md` / `README.zh-CN.md` — what the project is, install, roadmap.
 - `CONTRIBUTING.md` — the container gate, PR flow, conventions the gates enforce.
 - `docs/development.md` — layout, commands, the two build layers, skills generation, constraints.

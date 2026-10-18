@@ -117,7 +117,10 @@ describe("task-order — assertion 7: the default order did not move", () => {
     // board order is creation order, the weight order is urgency first. Without
     // that disagreement the first half of this suite would prove nothing.
     ["low", "low", "medium", "high", "urgent"].forEach((priority, index) => {
-      createTask({ projectId: "ord", title: `card ${index + 1}`, priority, status: "in_progress" });
+      // `todo`, not `in_progress`: a card cannot be *created* in progress
+      // (delivery-gate.mjs#assertCreationGate), and this fixture needs neither a
+      // claim nor a holder — only five same-tier cards with inverted priority.
+      createTask({ projectId: "ord", title: `card ${index + 1}`, priority });
     });
   });
 

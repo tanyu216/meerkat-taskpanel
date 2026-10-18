@@ -41,9 +41,9 @@
  */
 
 import { DomainError } from "../../shared/errors.mjs";
-import { DICT_KINDS, PRIORITIES, STATUSES, TASK_KINDS } from "../domain/enums.mjs";
+import { PRIORITIES, STATUSES, TASK_KINDS } from "../domain/enums.mjs";
 
-/** The six operations this module covers. */
+/** The seven operations this module covers. */
 export const TASK_OPS = Object.freeze({
   create: "tasks.create",
   update: "tasks.update",
@@ -51,6 +51,7 @@ export const TASK_OPS = Object.freeze({
   deliver: "tasks.deliver",
   assign: "tasks.assign",
   archive: "tasks.archive",
+  heartbeat: "tasks.heartbeat",
 });
 
 /** The primitive types a field can carry. */
@@ -109,10 +110,13 @@ const CREATE = Object.freeze([
   both("meta", { type: OBJECT }),
   sugar("acceptance", "meta.acceptance", { repeat: true }),
   both("assignee"),
-  both("assignee_kind", { vocab: DICT_KINDS }),
+  // `assignee_kind` / `reporter_kind` say what that name *is* — `human`, or the
+  // platform it runs on. There is no list to check them against; `isActorKind`
+  // refuses a blank one, and that is the whole vocabulary.
+  both("assignee_kind"),
   both("assignee_id"),
   both("reporter"),
-  both("reporter_kind", { vocab: DICT_KINDS }),
+  both("reporter_kind"),
   both("reporter_id"),
   both("force_create", { type: BOOLEAN }),
   both("idem"),
@@ -179,6 +183,18 @@ const ARCHIVE = Object.freeze([
   both("days", { type: INTEGER }),
 ]);
 
+/**
+ * `tasks.heartbeat` carries **no body field at all**, and that is the honest
+ * declaration rather than a missing one: the card is the route's `:ref`, and the
+ * pulsing actor is the caller's own identity — which every write already carries
+ * and no caller should have to restate. The empty list is still written down,
+ * because it is the record that pairs the route with `issue heartbeat`
+ * (`scripts/verify/route-request.mjs`): a command absent from here would be a
+ * command the lint cannot see, which is the silent hole the declaration exists to
+ * close.
+ */
+const HEARTBEAT = Object.freeze([]);
+
 const FIELDS = Object.freeze({
   [TASK_OPS.create]: CREATE,
   [TASK_OPS.update]: UPDATE,
@@ -186,6 +202,7 @@ const FIELDS = Object.freeze({
   [TASK_OPS.deliver]: DELIVER,
   [TASK_OPS.assign]: ASSIGN,
   [TASK_OPS.archive]: ARCHIVE,
+  [TASK_OPS.heartbeat]: HEARTBEAT,
 });
 
 /**
@@ -201,6 +218,7 @@ const REQUIRED = Object.freeze({
   [TASK_OPS.deliver]: Object.freeze([]),
   [TASK_OPS.assign]: Object.freeze([]),
   [TASK_OPS.archive]: Object.freeze([]),
+  [TASK_OPS.heartbeat]: Object.freeze([]),
 });
 
 /**

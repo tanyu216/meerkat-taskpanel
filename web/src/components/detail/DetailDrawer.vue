@@ -27,8 +27,11 @@ import {
   closeDetail,
   dependsCandidates,
   detailDepends,
+  isAgentKind,
+  kindLabel,
   labelRoster,
   platformOf,
+  platformOfKind,
   priorityOf,
   removeAttachment,
   removeDepends,
@@ -78,15 +81,18 @@ const versionText = computed(() => task.value?.version ?? "");
 const idText = computed(() => task.value?.id ?? "");
 const assigneeName = computed(() => task.value?.assignee?.display_name ?? "");
 const reporterName = computed(() => task.value?.reporter?.display_name ?? "");
-const isAgent = computed(() => (task.value?.assignee?.kind ?? "human") === "agent");
+// A kind is a platform since 0023, so "is this an agent" is "is it not the human".
+const isAgent = computed(() => isAgentKind(task.value?.assignee?.kind));
 /**
  * The assignee's kind as the contract's own attribute value. The prototype
  * carries `data-assignee-kind="agent"` on the value row **and** on its avatar
  * (R14 §2.4 / A19); only an agent has a kind to state, so a human card leaves
  * the attribute off rather than writing an empty one.
  */
-const assigneeKind = computed(() => (isAgent.value ? "agent" : "human"));
-const platform = computed(() => platformOf(assigneeName.value));
+const assigneeKind = computed(() => kindLabel(task.value?.assignee?.kind));
+// The card's own reference first (the act's platform), the registry aggregate as
+// the fallback for a reference that recorded none.
+const platform = computed(() => platformOfKind(task.value?.assignee?.kind) ?? platformOf(assigneeName.value));
 const projectLabel = computed(() => board.projects.find((p) => p.id === task.value?.project_id)?.name ?? "");
 const initial = (name) => (name ? name.charAt(0).toUpperCase() : "?");
 
@@ -167,7 +173,7 @@ const session = computed(() => {
   return sessions.find((row) => row.status === "running") ?? sessions[0] ?? null;
 });
 
-const peopleOptions = computed(() => board.assignees.map((entry) => ({ name: entry.display_name, kind: entry.kind, platform: platformOf(entry.display_name) })));
+const peopleOptions = computed(() => board.assignees.map((entry) => ({ name: entry.display_name, kind: kindLabel(entry.kind), platform: platformOf(entry.display_name) })));
 const reporterOptions = computed(() => reporterRoster.value.map((name) => ({ name })));
 const labelOptions = computed(() => labelRoster.value.map((name) => ({ name })));
 
@@ -658,7 +664,7 @@ function copyId() {
              carried (`ml-auto shrink-0 border-0 bg-transparent
              text-(--brand-text-3) cursor-pointer`) described a 16×16 box with no
              edge and the wrong ink, which is what the visual leg measured
-             (`docs/verify/T-20261014-150729`, impl `16×16` vs proto `32×32`).
+             (`T-20261014-150729`, impl `16×16` vs proto `32×32`).
              `.td-iconbtn` is unlayered in `app.css`, so it outranks the `ml-auto`
              utility it still needs for the row-end push. -->
         <button

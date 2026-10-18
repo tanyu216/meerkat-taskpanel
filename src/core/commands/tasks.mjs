@@ -43,6 +43,7 @@ import { actorOf } from "./context.mjs";
 import { addComment } from "./comments.mjs";
 import { resolveActorId, resolveAssignment } from "./dictionary.mjs";
 import { resolveLabels } from "./labels.mjs";
+import { advanceContainerForChild, startContainerForChild } from "./rollup.mjs";
 
 /**
  * @param {object} ctx
@@ -141,7 +142,10 @@ export function createTask(ctx, input) {
           actorKind: input.reporterKind ?? "human",
           forceCreate: input.forceCreate,
         });
-        candidate.reporterId = resolved.patch.reporterId;
+        // Both columns, not just the id: `resolveAssignment` carries the kind the
+        // reference was made under, and assigning only the id here was how the
+        // kind went missing on this path before `0023` put it back on the record.
+        Object.assign(candidate, resolved.patch);
         dictionaryAudit.push(...resolved.audit);
       }
 
@@ -226,7 +230,7 @@ export function updateTask(ctx, input) {
       }
       if (input.reporter !== undefined) {
         const resolved = resolveAssignment({ repos: ctx.repos, now }, { kind: "reporter", name: input.reporter, actorKind: "human", forceCreate: input.forceCreate });
-        patch.reporterId = resolved.patch.reporterId;
+        Object.assign(patch, resolved.patch);
         dictionaryAudit.push(...resolved.audit);
       }
 
@@ -406,11 +410,20 @@ function performClaim(ctx, input) {
       id: current.id,
       ifVersion,
       actor: claimantId,
+      // The claim is a record, so it records the kind it was made under — the
+      // acting platform, beside the holder (0023).
+      claimedKind: actor.kind,
       now,
       staleBefore: staleBound(now, verdict.steal === true),
     });
   } else {
-    const result = ctx.repos.tasks.claimCas({ id: current.id, ifVersion, actor: claimantId, now });
+    const result = ctx.repos.tasks.claimCas({
+      id: current.id,
+      ifVersion,
+      actor: claimantId,
+      claimedKind: actor.kind,
+      now,
+    });
     if (!result.claimed) {
       throw explainLostClaim({
         before: current,
@@ -449,6 +462,14 @@ function performClaim(ctx, input) {
       body: stealCommentBody(task, { ...verdict, stolenFrom: readableHolder(ctx, verdict.stolenFrom) }, actor, stealReason),
       actor,
     });
+  }
+
+  // A child that enters the work starts its container (commands/rollup.mjs).
+  // This is the claim path — `issue claim` and `issue move <ref> in_progress`
+  // both land here — and it is guarded on a real transition so a re-claim of a
+  // card already in progress does not write a second note.
+  if (task.status === STATUS.IN_PROGRESS && current.status !== STATUS.IN_PROGRESS) {
+    startContainerForChild(ctx, task.id, now);
   }
 
   return { task, reused: false, stole: verdict.steal === true };
@@ -585,7 +606,7 @@ export function moveStatus(ctx, input) {
         throw new DomainError("NOT_FOUND", { message: `no task ${input.id}`, details: { taskId: input.id } });
       }
 
-      assertTransition(current.status, input.to);
+      assertTransition(current.status, input.to, current.kind);
 
       // `todo → in_progress` **is** a claim (T-20261009-230500): it must respect
       // the routing lock and stamp `claimed_by/claimed_at/heartbeat_at`, so the
@@ -661,6 +682,18 @@ export function moveStatus(ctx, input) {
               },
         createdAt: now,
       });
+      // A card that re-enters the work (a rework from `in_review`, an unblock)
+      // starts its container too: the claim path above is not the only way into
+      // `in_progress` (commands/rollup.mjs).
+      if (task.status === STATUS.IN_PROGRESS) startContainerForChild(ctx, task.id, now);
+      // The container closes itself when its last child lands
+      // (commands/rollup.mjs): the same transaction, so a child can never be
+      // `done` on a board where its epic still looks unfinished. `canceled` is
+      // terminal too, so a cancellation can be the transition that completes the
+      // set — it re-checks the container for the same reason `done` does.
+      if (task.status === STATUS.DONE || task.status === STATUS.CANCELED) {
+        advanceContainerForChild(ctx, task.id, now);
+      }
       return task;
     },
     { op: "tasks.move" },
@@ -1053,7 +1086,7 @@ export function canMove(ctx, input) {
   });
   if (!verdict.ok) return verdict;
   try {
-    assertTransition(task.status, input.to);
+    assertTransition(task.status, input.to, task.kind);
   } catch (err) {
     return { ok: false, reason: err.code, details: err.details };
   }

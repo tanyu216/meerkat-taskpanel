@@ -45,7 +45,11 @@
  *
  * `test/fixtures/host-paths-allowlist.json` lists the files that are allowed to carry a
  * path, because they are *records* of verification runs that really did happen on one
- * machine — `docs/verify/<card>/…` evidence. Three assertions keep that list honest:
+ * machine. It is **empty, and that is the intended state**: the class it was written for
+ * — the per-card run records that used to land under `docs/verify/<card>/…` — was moved
+ * out of the repository to each card's own workspace (see `docs/README.md`). Three
+ * assertions keep the list honest, and they are what will catch that material if it ever
+ * comes back:
  *
  *   1. every offending file is on the list;
  *   2. every entry on the list still exists — so a deleted file's entry is a red, not
@@ -93,7 +97,7 @@ export const RESERVED_NAMES = Object.freeze(["you", "op", "alice", "tester", "te
  * Directories the walk skips. They mirror `.gitignore`, so the no-git file set matches
  * the tracked set rather than picking up build output and runtime state.
  */
-const SKIP_DIRS = Object.freeze(new Set([".git", "node_modules", "dist", ".data", "coverage"]));
+const SKIP_DIRS = Object.freeze(new Set([".git", "node_modules", "dist", ".data", "coverage", ".worktrees"]));
 
 /** `[/Users|/home]/<name>` — the name is what decides whether it is a finding. */
 const HOST_PATH = /\/(?:Users|home)\/([A-Za-z0-9_.-]+)/g;

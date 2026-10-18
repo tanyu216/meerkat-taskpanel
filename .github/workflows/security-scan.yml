@@ -30,9 +30,14 @@ on:
   pull_request:
   schedule:
     # Weekly, full: every lockfile in the tree, plus the SBOM.
+    # Day-of-week is 0-6 in Actions (Sunday is 0), so 1 is Monday.
     - cron: "17 3 * * 1"
     # Daily, incremental: only what changed in the last 24 hours — alert-only.
-    - cron: "17 3 * * 2-7"
+    # The remaining six days: 0 is Sunday, 2-6 are Tuesday..Saturday. Writing
+    # `2-7` here is not a near miss — Actions refuses the *whole file* over an
+    # out-of-range day-of-week, and the run then reports zero jobs with no
+    # status checks, so nothing tells you why the scan stopped happening.
+    - cron: "17 3 * * 0,2-6"
   workflow_dispatch:
     inputs:
       mode:

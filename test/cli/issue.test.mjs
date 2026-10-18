@@ -283,7 +283,7 @@ describe("cli/issue — every flag the command declares", () => {
         evidence: [{ kind: "path", path: "x" }],
       };
       const delivered = dataOf(
-        run(["issue", "deliver", "DEMO-0001", "--report-file", "-", "--seg", "seg2", "--session-id", "session-2", "--json"], {
+        run(["issue", "deliver", "DEMO-0001", "--report-file", "-", "--seg", "seg2", "--actor-kind", "claude", "--session-id", "session-2", "--json"], {
           input: JSON.stringify(report),
         }),
       );
@@ -506,6 +506,65 @@ describe("cli/issue — move enforces the assignee (T-20261009-230500)", () => {
   });
 });
 
+describe("cli/issue — `issue heartbeat` (T-20261017-063818)", () => {
+  // Until this command existed the rule "keep the heartbeat fresh (≤10 minutes)"
+  // named no command at all, and the only way to reset the clock was to re-claim
+  // the card. The board has no background pulse: whoever holds the claim is the
+  // only thing that knows the work is still going, so the pulse is the holder's
+  // to send — and these legs are the proof the holder can.
+  const assignLinus = (run) => dataOf(run(["issue", "assign", "DEMO-0001", "--assignee", "Linus", "--json"]));
+
+  it("pulses a claimed card without moving it, and prints the refreshed heartbeat", async () => {
+    await board(async ({ run }) => {
+      createIssue(run);
+      assignLinus(run);
+      const before = dataOf(run(["issue", "move", "DEMO-0001", "in_progress", "--agent", "linus", "--json"]));
+
+      const pulsed = dataOf(run(["issue", "heartbeat", "DEMO-0001", "--agent", "linus", "--json"]));
+      assert.equal(pulsed.task.status, "in_progress", "a pulse never moves the card");
+      assert.equal(pulsed.task.claimed_by_actor.display_name, "Linus", "…nor changes who holds it");
+      assert.equal(pulsed.task.claimed_at, before.task.claimed_at, "the claim itself is not re-stamped");
+      assert.equal(pulsed.task.version, before.task.version + 1, "the pulse is exactly one write");
+
+      // A separate process reads it back, so the pulse is on the card.
+      const read = dataOf(run(["issue", "get", "DEMO-0001", "--json"])).task;
+      assert.equal(read.heartbeat_at, pulsed.task.heartbeat_at);
+
+      const human = run(["issue", "heartbeat", "DEMO-0001", "--agent", "linus"]);
+      assert.equal(human.status, 0, human.stderr);
+      assert.match(human.stdout, /DEMO-0001/);
+      assert.match(human.stdout, /in_progress/);
+    });
+  });
+
+  it("refuses a card that is not in_progress — there is nothing to pulse", async () => {
+    await board(async ({ run }) => {
+      createIssue(run);
+      const refused = run(["issue", "heartbeat", "DEMO-0001", "--agent", "linus", "--json"]);
+      assert.equal(refused.status, 1);
+      const error = JSON.parse(refused.stdout).error;
+      assert.equal(error.code, "INVALID_TRANSITION");
+      assert.equal(error.http, 409);
+      assert.match(error.message, /nothing to pulse/);
+    });
+  });
+
+  it("refuses a non-holder with EXECUTION_ACTIVE, naming the holder", async () => {
+    await board(async ({ run }) => {
+      createIssue(run);
+      assignLinus(run);
+      dataOf(run(["issue", "move", "DEMO-0001", "in_progress", "--agent", "linus", "--json"]));
+
+      const refused = run(["issue", "heartbeat", "DEMO-0001", "--agent", "elon", "--json"]);
+      assert.equal(refused.status, 1);
+      const error = JSON.parse(refused.stdout).error;
+      assert.equal(error.code, "EXECUTION_ACTIVE");
+      assert.equal(error.http, 409);
+      assert.match(error.message, /Linus/);
+    });
+  });
+});
+
 describe("cli/issue — `issue move --blocked-reason` (0016)", () => {
   // The CLI half of the write path. The column itself is asserted over HTTP in
   // test/server/routes.test.mjs; the point here is that the flag exists, that it
@@ -580,6 +639,210 @@ describe("cli/issue — `issue move --blocked-reason` (0016)", () => {
         headers: { authorization: `Bearer ${token}` },
       });
       assert.equal((await read.json()).data.task.blocked_reason, null);
+    });
+  });
+});
+
+describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells it", () => {
+  const REPORT = {
+    conclusion: "Rolled up: both pieces delivered, nothing outstanding.",
+    acceptance: [{ text: "the container is whole", status: "met" }],
+    evidence: [{ kind: "commit", sha: "dcd7d15" }],
+  };
+  // Rule 8: every write carries the agent's attribution, so the claim below is
+  // made *by* the card's assignee rather than by whatever actor the host defaulted to.
+  const AS = ["--agent", "linus"];
+  const forLinus = ["--assignee", "linus", "--assignee-kind", "agent", ...AS];
+
+  const childReport = (sha) => ({
+    conclusion: `Piece delivered (${sha}).`,
+    acceptance: [{ text: "the piece works", status: "met" }],
+    evidence: [{ kind: "commit", sha }],
+  });
+
+  /** Claim, deliver with a report, and accept — the whole life of one child. */
+  const finishChild = (run, identifier, sha) => {
+    dataOf(run(["issue", "move", identifier, "in_progress", ...AS, "--json"]));
+    dataOf(run(["issue", "deliver", identifier, "--report-file", "-", ...AS, "--json"], {
+      input: JSON.stringify(childReport(sha)),
+    }));
+    dataOf(run(["issue", "move", identifier, "done", ...AS, "--json"]));
+  };
+
+  it("closes the container itself when its last child is accepted", async () => {
+    await board(async ({ run }) => {
+      // 1. the card is in hand and claimed — while it is still a `task`
+      const card = createIssue(run, forLinus);
+      dataOf(run(["issue", "move", card.task.identifier, "in_progress", ...AS, "--json"]));
+
+      // 2. promote it in place: the kind changes, the status does not
+      const promoted = dataOf(run(["issue", "update", card.task.identifier, "--kind", "epic", ...AS, "--json"]));
+      assert.equal(promoted.task.kind, "epic");
+      assert.equal(promoted.task.status, "in_progress");
+
+      // 3. one create per deliverable, each naming its own `target` — the retry
+      //    guard would otherwise read two children for one owner as one card
+      const first = createIssue(run, ["--title", "Piece one", "--target", "src/a", ...forLinus]);
+      const second = createIssue(run, ["--title", "Piece two", "--target", "src/b", ...forLinus]);
+      assert.notEqual(first.task.identifier, second.task.identifier);
+
+      // 4. the edge is its own command — `issue create` links nothing
+      for (const child of [first, second]) {
+        dataOf(run(["relation", "add", card.task.identifier, "--type", "parent", "--target", child.task.identifier, ...AS, "--json"]));
+      }
+      assert.equal(dataOf(run(["relation", "list", card.task.identifier, "--json"])).children.length, 2);
+
+      // 5. work the children. No parking move: the container is delivered out of
+      //    whichever status the claim left it in (0024).
+      finishChild(run, first.task.identifier, "abc1234");
+      assert.equal(
+        dataOf(run(["issue", "get", card.task.identifier, "--json"])).task.status,
+        "in_progress",
+        "one child is not the whole set",
+      );
+
+      finishChild(run, second.task.identifier, "def5678");
+
+      // 6. the board closed the container itself: the transition is spent, so a
+      //    second, manual delivery is refused.
+      const closed = dataOf(run(["issue", "get", card.task.identifier, "--json"])).task;
+      assert.equal(closed.status, "in_review", "a human accepts the container to done");
+      const again = run(["issue", "deliver", card.task.identifier, "--report-file", "-", ...AS, "--json"], {
+        input: JSON.stringify(REPORT),
+      });
+      assert.equal(again.status, 1);
+      assert.equal(JSON.parse(again.stdout).error.code, "INVALID_TRANSITION");
+    });
+  });
+
+  it("leaves the container open when its children were all waived, so a human can close it", async () => {
+    await board(async ({ run }) => {
+      const card = createIssue(run, forLinus);
+      dataOf(run(["issue", "update", card.task.identifier, "--kind", "epic", ...AS, "--json"]));
+      const child = createIssue(run, ["--title", "Waived piece", "--target", "src/w", ...forLinus]);
+      dataOf(run(["relation", "add", card.task.identifier, "--type", "parent", "--target", child.task.identifier, ...AS, "--json"]));
+
+      // A waiver leaves no report, so there is no evidence to roll up.
+      dataOf(run(["issue", "move", child.task.identifier, "in_progress", ...AS, "--json"]));
+      dataOf(run(["issue", "move", child.task.identifier, "in_review", "--no-report", "--reason", "audited waiver, no commit", ...AS, "--json"]));
+      dataOf(run(["issue", "move", child.task.identifier, "done", ...AS, "--json"]));
+
+      assert.equal(
+        dataOf(run(["issue", "get", card.task.identifier, "--json"])).task.status,
+        "in_progress",
+        "the container started when its child did; there is no evidence to deliver it",
+      );
+
+      // The manual path still works — the container is a human's to close here.
+      const delivered = dataOf(
+        run(["issue", "deliver", card.task.identifier, "--report-file", "-", ...AS, "--json"], {
+          input: JSON.stringify(REPORT),
+        }),
+      );
+      assert.equal(delivered.task.status, "in_review");
+      assert.equal(delivered.report.round, 1);
+    });
+  });
+
+  it("collapses two creates for one owner — which is why a child names its own target", async () => {
+    await board(async ({ run }) => {
+      const asked = createIssue(run, ["--title", "Piece one", ...forLinus]);
+      const again = createIssue(run, ["--title", "Piece two", ...forLinus]);
+      assert.equal(
+        again.task.identifier,
+        asked.task.identifier,
+        "same kind, assignee, source and target: the second create is a retry of the first, not a sibling",
+      );
+    });
+  });
+});
+
+describe("cli/issue — reconcile (the container backstop)", () => {
+  it("plans a missed closure with --dry-run, applies it once, and is idempotent", async () => {
+    await board(async ({ run }) => {
+      // A child finished with no container above it: the event path never saw a
+      // parent, and the epic below is attached after the fact (`relation add`
+      // fires no status hook by design). This is the missed-event shape the
+      // sweep exists for.
+      const child = createIssue(run, ["--title", "Child"]);
+      dataOf(run(["issue", "move", child.task.identifier, "in_progress", "--json"]));
+      dataOf(
+        run(["issue", "deliver", child.task.identifier, "--report-file", "-", "--json"], {
+          input: JSON.stringify({
+            conclusion: "done",
+            acceptance: [{ text: "a", status: "met" }],
+            evidence: [{ kind: "path", path: "x" }],
+          }),
+        }),
+      );
+      dataOf(run(["issue", "move", child.task.identifier, "done", "--json"]));
+
+      const epic = createIssue(run, ["--title", "Container", "--kind", "epic", "--allow-dup"]);
+      dataOf(
+        run(["relation", "add", epic.task.identifier, "--type", "parent", "--target", child.task.identifier, "--json"]),
+      );
+      assert.equal(dataOf(run(["issue", "get", epic.task.identifier, "--json"])).task.status, "todo");
+
+      const dry = dataOf(run(["issue", "reconcile", "--dry-run", "--json"]));
+      assert.equal(dry.dry_run, true);
+      assert.equal(dry.actions.find((entry) => entry.epic === epic.task.identifier).action, "close");
+      assert.equal(
+        dataOf(run(["issue", "get", epic.task.identifier, "--json"])).task.status,
+        "todo",
+        "a dry run writes nothing",
+      );
+
+      const applied = dataOf(run(["issue", "reconcile", "--json"]));
+      assert.equal(applied.actions.find((entry) => entry.epic === epic.task.identifier).action, "close");
+      assert.equal(dataOf(run(["issue", "get", epic.task.identifier, "--json"])).task.status, "in_review");
+
+      const comments = dataOf(run(["comment", "list", epic.task.identifier, "--json"])).comments;
+      assert.equal(comments.length, 1);
+      assert.equal(comments[0].kind, "note");
+      assert.match(comments[0].body, /^Auto-rollup \(sweep\): 1\/1 child card\(s\) terminal /);
+
+      // A second sweep sees a container already waiting for a human and writes
+      // nothing: same state, same answer.
+      const again = dataOf(run(["issue", "reconcile", "--json"]));
+      assert.equal(again.actions.find((entry) => entry.epic === epic.task.identifier).action, "none");
+      assert.equal(dataOf(run(["comment", "list", epic.task.identifier, "--json"])).comments.length, 1);
+    });
+  });
+
+  it("names the child holding a container open in the human report too", async () => {
+    await board(async ({ run }) => {
+      // The epic is started by the first child, then a second child is attached
+      // afterwards: the container is in_progress with work still outstanding.
+      const epic = createIssue(run, ["--title", "Container", "--kind", "epic", "--allow-dup"]);
+      const done = createIssue(run, ["--title", "Done"]);
+      const pending = createIssue(run, ["--title", "Pending", "--allow-dup"]);
+      dataOf(
+        run(["relation", "add", epic.task.identifier, "--type", "parent", "--target", done.task.identifier, "--json"]),
+      );
+      // The claim starts the container; the second child is attached after that,
+      // so the container is in_progress with work still outstanding.
+      dataOf(run(["issue", "move", done.task.identifier, "in_progress", "--json"]));
+      dataOf(
+        run(["relation", "add", epic.task.identifier, "--type", "parent", "--target", pending.task.identifier, "--json"]),
+      );
+      dataOf(
+        run(["issue", "deliver", done.task.identifier, "--report-file", "-", "--json"], {
+          input: JSON.stringify({
+            conclusion: "done",
+            acceptance: [{ text: "a", status: "met" }],
+            evidence: [{ kind: "path", path: "x" }],
+          }),
+        }),
+      );
+      dataOf(run(["issue", "move", done.task.identifier, "done", "--json"]));
+
+      const human = run(["issue", "reconcile", "--dry-run"]);
+      assert.match(human.stdout, /children_unfinished/);
+      assert.ok(
+        human.stdout.includes(`${pending.task.identifier} (todo)`),
+        `the report must name the child, got:\n${human.stdout}`,
+      );
+      assert.ok(!human.stdout.includes(`${done.task.identifier} (done)`), "a finished child is not blocking");
     });
   });
 });

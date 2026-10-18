@@ -308,8 +308,8 @@ export function wakeCommand(input = {}) {
  * The supervisor knows a card's board **project identity** and nothing about
  * directories: the board holds none (O3). So the directory is not decided here.
  * It is decided by the host's own wake glue, which reads the host-local
- * `projects.json` and `cd`s into the card's project target directory before
- * exec'ing the host CLI (R1).
+ * `projects.json` and `cd`s into the directory it names for the card's project —
+ * `local_path`, else `run_dir` — before exec'ing the host CLI (R1).
  *
  * Three shapes follow from that, in the order an operator's intent wins:
  *
@@ -403,17 +403,19 @@ export function planWakeInvocation(input = {}) {
 export function buildHandoff(input) {
   const card = input.card ?? {};
   const title = String(card.title ?? "").slice(0, 300);
-  const attribution = [`--agent ${input.agent}`, `--agent-platform ${input.host}`];
+  const attribution = [`--agent ${input.agent}`, `--actor-kind ${input.host}`];
   if (input.sessionId) attribution.push(`--session-id ${input.sessionId}`);
   return [
     `You have been woken by the Meerkat TaskPanel supervisor to work one card: ${card.identifier}.`,
     `Title: ${title}`,
     "",
     `Read it first:  taskctl issue get ${card.identifier} ${attribution.join(" ")}`,
+    `Keep the claim alive while you work:  taskctl issue heartbeat ${card.identifier} ${attribution.join(" ")}`,
     `Work it, then deliver with a report:  taskctl issue deliver ${card.identifier} --report-file - ${attribution.join(" ")}`,
     "",
     "Rules: claim first (the supervisor already claimed this card for you); keep the heartbeat",
-    "fresh (<=10 minutes); deliver with a report for the current round; stop at in_review — a",
-    "human accepts to done. Carry the attribution flags above on every write.",
+    "fresh (<=10 minutes) with the pulse command above; deliver with a report for the current",
+    "round; stop at in_review — a human accepts to done. Carry the attribution flags above on",
+    "every write.",
   ].join("\n");
 }

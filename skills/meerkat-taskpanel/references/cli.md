@@ -54,9 +54,10 @@ never the token itself) so any shell in any directory finds the same board.
 | `--url <url>` | Board to talk to. Wins over the runtime pointer, and never triggers autostart. |
 | `--token <token>` | Access token. Priority: `--token` > `$TASKD_TOKEN` > the pointer's token file > none (loopback needs no token). |
 | `--if-version <n>` | Optimistic concurrency: the write is refused with `VERSION_CONFLICT` if the task moved on. |
-| `--agent-platform <name>` | Host platform (`claude`, `codex`, …). Makes the actor an `agent`. |
-| `--session-id <id>` | Agent session identifier. Also makes the actor an `agent`. |
-| `--agent <name>` | Name the actor without claiming to be an agent platform. |
+| `--actor-kind <name>` | Who or what is writing: `human`, or the platform (`claude`, `codex`, …). This **is** the identity — there is no separate platform flag. Absent ⇒ `human`. |
+| `--as-human` | Write as the configured human (`$TASKCTL_HUMAN`). The one write that is not the agent's own. |
+| `--session-id <id>` | Agent session identifier. Requires `--actor-kind` — a session with no kind has nothing to attribute it to. |
+| `--agent <name>` | Name the actor. |
 | `--version` | Print the release version and exit. With `--json`, print `{"version", "schema_version"}` — the contract schema generation beside it. Never contacts a board. |
 | `-h`, `--help` | Help for the CLI, a group, or one command. |
 
@@ -75,7 +76,7 @@ an error message.
 | `project create --id <id> --name <n> [--meta k=v]… [--label <l>]… [--readme <text>]` | Create a project. The id becomes the identifier prefix (`demo` → `DEMO-0001`). |
 | `project update <id> [--name] [--meta k=v]… [--label]… [--readme]` | Update it. `--meta` **merges**. |
 | `project list [--include-archived]` | List projects. |
-| `project dir <id>` | Print the local directory the project works in, resolved from `projects.json` (`--projects-json <path>` or `$MEERKAT_TASKPANEL_PROJECTS_JSON` picks another map). Exits non-zero — asking which directory it should be — when none is registered, or when the registered path is relative, missing, or not a directory. |
+| `project dir <id>` | Print the local directory work for the project happens in, resolved from `projects.json` (`--projects-json <path>` or `$MEERKAT_TASKPANEL_PROJECTS_JSON` picks another map): the entry's `local_path`, else its `run_dir`. Prints that the entry names no directory — and still succeeds — for a project that has none. Exits non-zero, asking which directory it should be, only when no entry is registered or the registered path is relative, missing, not a directory, or blank. |
 | `project readme <id>` | Print the readme. |
 | `project readme <id> --set <text>` / `--file <path\|->` | Set it. |
 
@@ -85,8 +86,9 @@ names a project's target directory. The local map from a directory to a board
 project is the `projects.json` kept beside this skill — see
 [`projects-json.md`](projects-json.md). `project dir` is that map's read side, and it
 is local: it resolves and validates the path, and **stops to ask** rather than
-guessing one. The wake glue resolves the same map to run a woken worker in the
-project's directory.
+guessing one — while an entry that deliberately names no directory is an answer, not a
+question. The wake glue resolves the same map to run a woken worker in the directory
+the map names.
 
 ### `issue`
 
@@ -98,9 +100,11 @@ project's directory.
 | `issue get <id\|identifier>` | One task, plus `report_waivers[]`. |
 | `issue update <ref> [--title] [--description] [--priority] [--kind] [--label]… [--meta k=v]… [--acceptance <text>]…` | Patch. `--status` is refused here on purpose. |
 | `issue move <ref> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"] [--awaiting-reason E1..E5] [--blocked-reason <clarify\|decision\|dependency\|out_of_bounds\|defect\|external\|resource\|unknown>]` | Move, subject to the delivery gate. A `todo → in_progress` move is a **claim**: only the card's assignee, unless `--allow-steal`. `--awaiting-reason` is **required** by a move to `awaiting` — see [The `awaiting` state](#the-awaiting-state--asking-a-human-a-question). `--blocked-reason` is **optional** and records *what* a `blocked` card is waiting for — see [The `blocked` state](#the-blocked-state--what-the-card-is-waiting-for). |
+| `issue heartbeat <ref>` | **Pulse a claim you hold**, so its heartbeat stays inside the fresh window and the card does not read as abandoned. Takes no flags of its own — the card is the positional and the pulsing actor is you (the global attribution flags). It refreshes `heartbeat_at` and **nothing else**: the status and the claimer are untouched, so it cannot resurrect a card somebody else moved. Only the holder may pulse — anybody else gets `EXECUTION_ACTIVE`; a card that is not `in_progress` gets `INVALID_TRANSITION` ("nothing to pulse"). The pulse is recorded as a `task_heartbeat` activity, which the board treats as **noise** (it never wakes an SSE client). |
 | `issue assign <ref> [--assignee <text>] [--assignee-id <id>] [--reporter <text>] [--force-create]` | Assign. |
 | `issue archive <ref> [--days <n>]` | Archive finished work (done/canceled; 7-day window by default). |
 | `issue deliver <ref> --report-file <file\|->` | **Write the report and move to `in_review`, in one transaction.** |
+| `issue reconcile [--dry-run]` | **The container backstop.** Replays the epic rules over every non-terminal container: start a `todo` epic whose child has entered the work, close an epic whose children are all `done`. `--dry-run` reports the plan and writes nothing. Idempotent — a second run over the same board writes nothing; the same sweep runs once at `taskd` startup. Each transition it applies leaves a `kind=note` comment naming its source (`sweep`). |
 
 ### The weight order (`--order weight`)
 
@@ -184,6 +188,13 @@ $ echo $?
   *is* the reason, so no `--reason` is needed). A **rework**
   (`in_review`/`blocked → in_progress`) is *not* a claim: it keeps the existing
   executor and their lock.
+- **Keeping the heartbeat fresh is the holder's own job, and it has its own
+  command.** `issue heartbeat <ref>` resets the clock and changes nothing else —
+  not the status, not the claimer, not the delivery round — so it is the honest
+  way to say "still working" and it can never resurrect a card somebody else has
+  moved. Only the holder may send it. The board runs **no background pulse**:
+  nothing but the holder knows the work is still going, so a claim whose holder
+  goes quiet *should* read as abandoned.
 
 **The lock lasts the whole work cycle.** The claim is held while the card is in
 any of `in_progress`, `awaiting`, `in_review` or `blocked` — the set is
@@ -229,6 +240,74 @@ in_progress`, by its assignee (or `--allow-steal`) — it just will not be picke
 up on its own. When a card you expected is missing from your candidates and you
 believe it is deployment work, check `issue get <ref>`: a `kind: deploy` card is
 the reason it is not there.
+
+### Promoting an existing card to an epic
+
+`kind` is a patchable field, so a card that turns out to be a container is promoted in place —
+and it has to be, because the web UI cannot set `kind`: a card filed from the board UI is always
+a `task`.
+
+```console
+$ taskctl issue update PROJ-0007 --kind epic
+```
+
+Three board facts decide the order you split in:
+
+- **Only an `epic` may be a parent.** `relation add PROJ-0007 --type parent --target <child>` is
+  refused `VALIDATION_FAILED` (`details.field: kind`) until the card has been promoted.
+- **An epic cannot be claimed.** `issue move <epic> in_progress` is refused `not_claimable`, and
+  `issue candidates` withholds epics from all three pools. So a card that must end up
+  `in_progress` has to be claimed **while it is still a `task`**, and promoted afterwards.
+- **An epic's route into review is its own.** `todo → in_review` *is* a transition for an `epic`
+  — a container is never claimed, so its `todo` row carries the delivery edge a task's does not,
+  and `issue deliver PROJ-0007 --report-file -` closes it from there. For a `task`, `todo` still
+  reaches only `backlog`, `in_progress`, `blocked` and `canceled`; the exception is scoped to the
+  kind. `done` is reachable only from `in_review` in both cases. A container that really is
+  waiting on something external is still parked with
+  `issue move PROJ-0007 blocked --blocked-reason dependency` (visibility only — the SLA patrol
+  gives it no due point), but that is now a statement about the container, not a way around the
+  state machine.
+
+Linking a child is its own command: `issue create` writes no relation, and its `--parent` flag
+fills the **idempotency key's source slot** and nothing else. A child created with
+`--parent PROJ-0007` is not linked to PROJ-0007.
+
+```console
+$ taskctl issue create --project PROJ --title "…" --target <t> --assignee <owner>   # the child
+$ taskctl relation add PROJ-0007 --type parent --target PROJ-0008                   # the edge
+```
+
+Give each child a `--target` of its own. The create guard keys on
+kind + assignee + source + target, so a second create repeating all four is read as the **same
+request retried** and returns the existing card rather than a sibling — `--allow-dup` is the
+escape when a target genuinely does not apply.
+
+The promotion itself is an ordinary patch: it bumps `version`, writes one `task_updated`
+activity naming `kind`, and changes nothing else — `status`, the execution claim, the heartbeat
+and `delivery_round` all stay put, and the `idem` key (frozen at create, with the card's kind in
+its first slot) is **not** rewritten. It therefore leaves no comment: write the split down
+yourself (`issue update --description` for the container's intent, `comment add --kind change`
+for what you cut it into). One caveat — `issue update` does not forward `--if-version`, so a
+promotion cannot be made race-safe from the CLI; re-read the card if that matters.
+
+Only the **downgrade** is fenced: an epic that still has children cannot go back to `task`
+(`VALIDATION_FAILED`, "an epic with children cannot be downgraded"). Remove the `parent` edges
+first if you really meant to undo it.
+
+The container **closes itself**: when every child is finished (`done` or `canceled`) and at least
+one is `done`, the board writes the rollup report — one acceptance line per child, carrying the
+children's own delivery evidence — and moves the epic to `in_review` in the same transaction. A
+`canceled` child is terminal and does not block the close; its acceptance line is
+`not_applicable`, with the cancellation reason taken from its own newest comment. The delivery
+gate applies to that report exactly as it does to a leaf's, and the result is still `in_review`:
+a human accepts to `done` — which is also why a nested container's parent waits for its child
+container to be accepted.
+
+A container with **nothing delivered** stays open: every child canceled, or every delivered child
+waived under `--no-report` (no evidence to roll up). Close that one by hand (`report template` →
+`issue deliver`). `issue reconcile` reports a close-refusal with the children that caused it —
+`identifier` and `status` — so a sweep that does nothing still says which card is holding the
+container open.
 
 ### The delivery gate
 
@@ -383,7 +462,7 @@ Append-only: there is no edit and no delete, by design.
 
 | Command | Purpose |
 |---|---|
-| `relation add <ref> --type parent\|blocks\|related --target <ref> [--force]` | Add an edge. For `parent`, **the task you name is the parent** and only an `epic` may be one. |
+| `relation add <ref> --type parent\|blocks\|related --target <ref> [--force]` | Add an edge. For `parent`, **the task you name is the parent** and only an `epic` may be one — promote the card first (§Promoting an existing card to an epic). |
 | `relation remove <ref> <relation-id>` | Remove it. |
 | `relation list <ref>` | Edges, children, ancestors, blockers. |
 

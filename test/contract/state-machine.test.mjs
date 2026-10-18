@@ -1,14 +1,20 @@
 /**
- * Step 6: the state machine, down both paths.
+ * Step 6: the state machine, down both paths — and, since 0024, for every kind.
  *
- * `domain/status.mjs` is the fact source and `0013_awaiting_status.sql`
- * re-encodes it as a trigger (0002's, rebuilt with M1's `awaiting` clause). This
- * test walks **every ordered pair** — `statuses²`, so 64 today and 81 the day a
- * ninth status lands — through the service helper *and* through raw SQL, and
- * requires the two verdicts to agree. No count is written out by hand: the pair
- * set is derived from `STATUSES` and the whitelist total from the table itself,
- * so adding a status extends the walk automatically instead of quietly leaving
- * a stale `49` behind.
+ * `domain/status.mjs` is the fact source and `0024_epic_deliver_from_todo.sql`
+ * re-encodes it as a trigger (0002's, rebuilt with M1's `awaiting` clause and
+ * then with the epic overlay). This test walks **every ordered pair for every
+ * kind** — `kinds × statuses²`, so 192 cells today — through the service helper
+ * *and* through raw SQL, and requires the two verdicts to agree. No count is
+ * written out by hand: the pair set is derived from `STATUSES`, the kind set
+ * from `TASK_KINDS`, and the whitelist total from the table itself, so a new
+ * status or a new kind extends the walk automatically instead of quietly
+ * leaving a stale number behind.
+ *
+ * The kind axis is what keeps the epic overlay (0024) honest. `task` and
+ * `deploy` must read the base table exactly as they did before — the walk is run
+ * for them too, so "an epic gained one pair" cannot have quietly become "every
+ * card gained one pair".
  *
  * Two conventions worth stating, because they are the only places where the DB
  * is deliberately more permissive than the JS:
@@ -27,9 +33,10 @@
 import assert from "node:assert/strict";
 import test, { after, describe, it } from "node:test";
 
-import { STATUSES } from "../../src/core/domain/enums.mjs";
+import { STATUSES, TASK_KINDS } from "../../src/core/domain/enums.mjs";
 import {
   ALLOWED_TRANSITIONS,
+  EPIC_ONLY_TRANSITIONS,
   allowedTargets,
   canTransition,
   holdsClaim,
@@ -50,19 +57,26 @@ const WHITELISTED = Object.values(ALLOWED_TRANSITIONS).reduce((sum, list) => sum
 const STATUS_COUNT = STATUSES.length;
 
 /**
- * Prepare a board holding one task in `from`, plus (when the whitelist allows
- * the move) the report the delivery gate demands.
+ * Prepare a board holding one card of `kind` in `from`, plus (when the whitelist
+ * allows the move) the report the delivery gate demands.
  *
- * Each pair gets its own task: reports are append-only and cannot be cleaned up
- * between iterations, which is itself the invariant under test.
+ * Each pair gets its own card — keyed by kind as well, so the `epic` cell and
+ * the `task` cell of one pair are two rows: reports are append-only and cannot
+ * be cleaned up between iterations, which is itself the invariant under test.
  *
+ * @param {string} kind the card's `kind` (`TASK_KINDS`)
  * @returns {string} the task id
  */
-function boardWith(db, from, to, suffix = "") {
-  const id = `t_${from}_${to}${suffix}`;
+function boardWith(db, from, to, suffix = "", kind = "task") {
+  const id = `t_${from}_${to}${suffix}_${kind}`;
   insertProject(db);
-  insertTask(db, { id, identifier: `PROJ-${from}-${to}${suffix}`.toUpperCase(), status: from });
-  if (canTransition(from, to) && to === "in_review") {
+  insertTask(db, {
+    id,
+    identifier: `PROJ-${from}-${to}${suffix}-${kind}`.toUpperCase(),
+    status: from,
+    kind,
+  });
+  if (canTransition(from, to, kind) && to === "in_review") {
     insertReport(db, { task_id: id, round: 1 });
   }
   return id;
@@ -95,29 +109,63 @@ describe("contract/state-machine — every pair, two paths", () => {
     }
   });
 
-  it("every pair is allowed or rejected identically by JS and by SQL", async () => {
+  it("every pair is allowed or rejected identically by JS and by SQL — for every kind", async () => {
     await withBoard(({ db }) => {
       const disagreements = [];
       const codeMismatches = [];
-      for (const [from, to] of PAIRS) {
-        if (from === to) continue; // a no-op is not a transition — asserted below
-        const taskId = boardWith(db, from, to);
-        const dbVerdict = move(db, taskId, to);
-        const dbAllowed = dbVerdict === "NO_ERROR";
-        const jsAllowed = canTransition(from, to);
+      for (const kind of TASK_KINDS) {
+        for (const [from, to] of PAIRS) {
+          if (from === to) continue; // a no-op is not a transition — asserted below
+          const taskId = boardWith(db, from, to, "", kind);
+          const dbVerdict = move(db, taskId, to);
+          const dbAllowed = dbVerdict === "NO_ERROR";
+          const jsAllowed = canTransition(from, to, kind);
 
-        if (dbAllowed !== jsAllowed) {
-          disagreements.push(`${from} → ${to}: js=${jsAllowed ? "allow" : "reject"} sql=${dbVerdict}`);
-        }
-        if (!jsAllowed) {
-          const expected = transitionReasonCode(from, to);
-          if (dbVerdict !== expected) {
-            codeMismatches.push(`${from} → ${to}: sql=${dbVerdict} js=${expected}`);
+          if (dbAllowed !== jsAllowed) {
+            disagreements.push(`${kind} ${from} → ${to}: js=${jsAllowed ? "allow" : "reject"} sql=${dbVerdict}`);
+          }
+          if (!jsAllowed) {
+            const expected = transitionReasonCode(from, to, kind);
+            if (dbVerdict !== expected) {
+              codeMismatches.push(`${kind} ${from} → ${to}: sql=${dbVerdict} js=${expected}`);
+            }
           }
         }
       }
-      assert.deepEqual(disagreements, [], "service and trigger must agree on every pair");
+      assert.deepEqual(disagreements, [], "service and trigger must agree on every pair, for every kind");
       assert.deepEqual(codeMismatches, [], "and must report the same reason code");
+    });
+  });
+
+  it("grants the epic exactly one pair, and grants nothing to the other kinds", async () => {
+    await withBoard(({ db }) => {
+      // Stated as a difference rather than as a list, so the walk above is what
+      // pins the pair and this is the sentence a reader can check by eye.
+      const extra = [];
+      for (const [from, to] of PAIRS) {
+        if (canTransition(from, to, "epic") && !canTransition(from, to)) extra.push(`${from} → ${to}`);
+      }
+      assert.deepEqual(extra, ["todo → in_review"], "the epic overlay is exactly one pair");
+      assert.deepEqual([...EPIC_ONLY_TRANSITIONS.todo], ["in_review"]);
+      // ...and it is the *only* kind that gained anything: the DB walk above
+      // would have caught a wider trigger, and this catches a wider table.
+      for (const kind of ["task", "deploy"]) {
+        for (const [from, to] of PAIRS) {
+          assert.equal(canTransition(from, to, kind), canTransition(from, to), `${kind} ${from} → ${to}`);
+        }
+      }
+      // The pair under the trigger *with and without* the report, so the allow
+      // above is the whitelist and not a gate that happened to be satisfied.
+      const noReport = `t_todo_in_review_noreport_epic`;
+      insertProject(db);
+      insertTask(db, {
+        id: noReport,
+        identifier: "PROJ-EPIC-NOREPORT",
+        status: "todo",
+        kind: "epic",
+      });
+      assert.equal(move(db, noReport, "in_review"), "REPORT_REQUIRED", "the gate follows the pair");
+      assert.equal(move(db, boardWith(db, "todo", "in_review", "_ok", "epic"), "in_review"), "NO_ERROR");
     });
   });
 
@@ -133,20 +181,23 @@ describe("contract/state-machine — every pair, two paths", () => {
     });
   });
 
-  it("makes done reachable only from in_review — down both paths", async () => {
+  it("makes done reachable only from in_review — down both paths, for every kind", async () => {
     await withBoard(({ db }) => {
-      const viaSql = [];
-      for (const from of STATUSES) {
-        if (from === "done") continue; // done → done is a no-op, not an entry
-        const taskId = boardWith(db, from, "done", "_r");
-        const verdict = move(db, taskId, "done");
-        if (verdict === "NO_ERROR") viaSql.push(from);
+      for (const kind of TASK_KINDS) {
+        const viaSql = [];
+        for (const from of STATUSES) {
+          if (from === "done") continue; // done → done is a no-op, not an entry
+          const taskId = boardWith(db, from, "done", "_r", kind);
+          const verdict = move(db, taskId, "done");
+          if (verdict === "NO_ERROR") viaSql.push(from);
+        }
+        assert.deepEqual(viaSql, ["in_review"], kind);
+        assert.deepEqual(
+          STATUSES.filter((from) => canTransition(from, "done", kind)),
+          ["in_review"],
+          kind,
+        );
       }
-      assert.deepEqual(viaSql, ["in_review"]);
-      assert.deepEqual(
-        STATUSES.filter((from) => canTransition(from, "done")),
-        ["in_review"],
-      );
     });
   });
 
@@ -268,27 +319,31 @@ describe("contract/state-machine — the `awaiting` invariants (M1)", () => {
     // Not a spot check: from every status, the whole reachable set is expanded
     // **without ever stepping through `in_review`**, and `done` must never be in
     // it. This is "no delivery without review" stated as reachability rather
-    // than as a list of edges, so a future status cannot open a side door.
+    // than as a list of edges, so a future status cannot open a side door —
+    // including the epic overlay's, which is why the walk is run per kind.
     //
     // `in_review` itself is exempt from the start set — it *is* the review, and
     // `in_review → done` is precisely the exit the invariant is built on.
-    for (const start of STATUSES) {
-      if (start === "in_review") continue;
-      const seen = new Set();
-      const queue = [...allowedTargets(start)];
-      while (queue.length > 0) {
-        const next = queue.shift();
-        if (next === "in_review" || seen.has(next)) continue;
-        seen.add(next);
-        queue.push(...allowedTargets(next));
+    for (const kind of TASK_KINDS) {
+      for (const start of STATUSES) {
+        if (start === "in_review") continue;
+        const seen = new Set();
+        const queue = [...allowedTargets(start, kind)];
+        while (queue.length > 0) {
+          const next = queue.shift();
+          if (next === "in_review" || seen.has(next)) continue;
+          seen.add(next);
+          queue.push(...allowedTargets(next, kind));
+        }
+        assert.equal(seen.has("done"), false, `${kind} ${start} reaches done without passing in_review`);
       }
-      assert.equal(seen.has("done"), false, `${start} reaches done without passing in_review`);
+      // And the direct-predicate form, down both paths.
+      assert.deepEqual(
+        STATUSES.filter((from) => canTransition(from, "done", kind)),
+        ["in_review"],
+        kind,
+      );
     }
-    // And the direct-predicate form, down both paths.
-    assert.deepEqual(
-      STATUSES.filter((from) => canTransition(from, "done")),
-      ["in_review"],
-    );
   });
 
   it("does not start a delivery round on awaiting → in_progress (M1)", async () => {
@@ -335,13 +390,14 @@ describe("contract/state-machine — one move, one revision (plan §3.3.6③)", 
  *
  * `holdsClaim` is the domain fact — the claim lives while the card is inside the
  * work cycle and is released by the very UPDATE that takes it out — and this
- * test is the storage half of it: one claimed card per whitelisted pair, moved
- * through `repos.tasks.moveCas`, then the **row** is read back and compared with
- * the predicate. A pair the trigger refuses (there are several: `done` only from
- * `in_review`, `in_review` only with a report, terminal states not at all) is
- * recorded as not-exercised rather than counted as a pass — the assertion at the
- * end requires every destination status to have been reached by at least one
- * pair, so "the move was refused" can never quietly become "the claim was fine".
+ * test is the storage half of it: one claimed card per whitelisted pair **of
+ * every kind**, moved through `repos.tasks.moveCas`, then the **row** is read
+ * back and compared with the predicate. A pair the trigger refuses (there are
+ * several: `done` only from `in_review`, `in_review` only with a report,
+ * terminal states not at all) is recorded as not-exercised rather than counted
+ * as a pass — the assertion at the end requires every destination status to have
+ * been reached by at least one pair, so "the move was refused" can never quietly
+ * become "the claim was fine".
  */
 describe("contract/state-machine — the execution claim follows the work cycle", () => {
   it("releases the claim on every destination outside the cycle, keeps it inside", async () => {
@@ -351,33 +407,36 @@ describe("contract/state-machine — the execution claim follows the work cycle"
       const refused = [];
       const reached = new Set();
 
-      for (const from of STATUSES) {
-        for (const to of allowedTargets(from)) {
-          const id = `t_${from}_${to}`;
-          insertProject(db, { id: `p-${from}-${to}` });
-          insertTask(db, {
-            id,
-            identifier: `${from}-${to}`.toUpperCase(),
-            project_id: `p-${from}-${to}`,
-            status: from,
-            // A `backlog` card may not hold a claim (the CHECK this card fixes);
-            // every other status seeds the claim the move must carry.
-            ...(from === "backlog" ? {} : { claimed_by: "linus", claimed_at: TS, heartbeat_at: TS }),
-          });
-          if (to === "in_review") insertReport(db, { task_id: id, round: 1 });
+      for (const kind of TASK_KINDS) {
+        for (const from of STATUSES) {
+          for (const to of allowedTargets(from, kind)) {
+            const id = `t_${from}_${to}_${kind}`;
+            insertProject(db, { id: `p-${from}-${to}-${kind}` });
+            insertTask(db, {
+              id,
+              identifier: `${from}-${to}-${kind}`.toUpperCase(),
+              project_id: `p-${from}-${to}-${kind}`,
+              status: from,
+              kind,
+              // A `backlog` card may not hold a claim (the CHECK this card fixes);
+              // every other status seeds the claim the move must carry.
+              ...(from === "backlog" ? {} : { claimed_by: "linus", claimed_at: TS, heartbeat_at: TS }),
+            });
+            if (to === "in_review") insertReport(db, { task_id: id, round: 1 });
 
-          try {
-            repos.tasks.moveCas({ id, to, now: TS2 });
-          } catch (err) {
-            refused.push(`${from} → ${to}: ${err.code}`);
-            continue;
-          }
-          reached.add(to);
-          const after = db.prepare("SELECT status, claimed_by FROM tasks WHERE id = ?").get(id);
-          assert.equal(after.status, to);
-          const expected = holdsClaim(to) ? "linus" : null;
-          if (after.claimed_by !== expected) {
-            wrong.push(`${from} → ${to}: claimed_by=${JSON.stringify(after.claimed_by)}, expected ${JSON.stringify(expected)}`);
+            try {
+              repos.tasks.moveCas({ id, to, now: TS2 });
+            } catch (err) {
+              refused.push(`${kind} ${from} → ${to}: ${err.code}`);
+              continue;
+            }
+            reached.add(to);
+            const after = db.prepare("SELECT status, claimed_by FROM tasks WHERE id = ?").get(id);
+            assert.equal(after.status, to);
+            const expected = holdsClaim(to) ? "linus" : null;
+            if (after.claimed_by !== expected) {
+              wrong.push(`${kind} ${from} → ${to}: claimed_by=${JSON.stringify(after.claimed_by)}, expected ${JSON.stringify(expected)}`);
+            }
           }
         }
       }

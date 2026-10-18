@@ -123,7 +123,7 @@ describe("storage/migrations — 0018 opens the actor-kind columns (comments, ta
       const up = applyMigrations(board.db);
       // 0018 is the last file in the set today; when a later migration lands this
       // list grows by one, as the 0013/0015 suites' equivalents did.
-      assert.deepEqual(up.applied.map((m) => m.version), ["0018", "0019", "0020", "0021", "0022"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0018", "0019", "0020", "0021", "0022", "0023", "0024"]);
       assert.deepEqual(up.skipped.slice(-2), ["0016", "0017"]);
 
       // 1 — the enumeration is gone from both tables, and nothing replaced it.
@@ -279,19 +279,23 @@ describe("storage/migrations — 0018 opens the actor-kind columns (comments, ta
       const changed = Object.keys(oldTriggers).filter((name) => oldTriggers[name] !== newTriggers[name]).sort();
       assert.deepEqual(
         changed,
-        [...DICTIONARY_TRIGGERS_REMOVED, "tr_rev_tasks_upd"].sort(),
-        "0018 must change no trigger — only 0019's own `tasks` rebuild moves `tr_rev_tasks_upd`; 0020 re-declares every trigger it parks verbatim",
+        [...DICTIONARY_TRIGGERS_REMOVED, "tr_rev_tasks_upd", "tr_tasks_transition", "tr_deliver_gate"].sort(),
+        "0018 must change no trigger — 0019's own `tasks` rebuild moves `tr_rev_tasks_upd`, 0020 re-declares every trigger it parks verbatim, and 0024 rewrites the whitelist and the delivery gate in place for the epic overlay",
       );
 
-      // The four that a careless rebuild would be most likely to mangle, named so a
-      // failure says which one rather than only that the set differs.
+      // The guards a careless rebuild would be most likely to mangle, named so a
+      // failure says which one rather than only that the set differs. (The two
+      // that 0024 legitimately rewrites — `tr_tasks_transition` and
+      // `tr_deliver_gate` — are deliberately absent: they are what the `changed`
+      // assertion above accounts for, one list above, and pinning them here as
+      // "verbatim" would only be asserting that no later migration ever moves
+      // them again.)
       for (const name of [
         "tr_comments_no_update",
         "tr_comments_no_delete",
         "tr_reports_no_update",
         "tr_reports_no_delete",
         "tr_latest_report_belongs",
-        "tr_deliver_gate",
       ]) {
         assert.equal(newTriggers[name], oldTriggers[name], `${name} must survive the rebuild verbatim`);
       }

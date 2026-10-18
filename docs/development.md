@@ -28,7 +28,6 @@
 | `.pi/` | The Pi extension, declared by the root `package.json`'s `pi` field (which also names the skills directory) |
 | `.opencode/` | The OpenCode plugin — a Shape-B host: it registers the shared `skills/` directory at runtime, so it too needs no copy |
 | `.cursor-plugin/` | Cursor's marker. Cursor reads `skills` out of its plugin root, which is why the repository root is a Cursor plugin root as well |
-| `plugins/` | The bundles that still need a sibling `skills/`: OpenClaw's native manifest, and the loop's own marketplace entry |
 | `scripts/` | Build, install, sync and verify scripts |
 | `test/` | Smoke / contract tests |
 | `design/` | Product design artifacts — the DESIGN / BLOCKS documents, the interactive `prototype/`, brand assets and exported assets (see `design/README.md`) |
@@ -41,7 +40,7 @@ nothing imports from `cli` or `server`; `shared` imports nothing from `src/`.
 
 ```bash
 node --test                          # smoke / contract test suite
-node scripts/sync-skills.mjs         # regenerate the loop payload + every plugin skill copy
+node scripts/sync-skills.mjs         # regenerate the loop payload (body + templates)
 node scripts/sync-skills.mjs --check # verify both are in sync
 node scripts/verify/manifests.mjs    # validate the host + loop + marketplace manifests
 node scripts/verify/skill.mjs        # validate the board skill's SKILL.md frontmatter
@@ -102,24 +101,32 @@ The mechanics:
    - `.github/workflows/security-scan.yml`.
 4. Merge once green.
 
-Nothing in the tree can *require* step 2. The `pre-push` hook is a local courtesy and
-`git push --no-verify` bypasses it (and a fresh clone has no hooks at all until
-`git config core.hooksPath .githooks` — see [.githooks/README.md](../.githooks/README.md)).
+Nothing in the tree can *require* step 2 — that is GitHub's rule to set (below). The
+`pre-push` hook refuses a direct push to `main` as the local half, so the mistake surfaces
+before the network; it is still a courtesy, `git push --no-verify` bypasses it, and a fresh
+clone has no hooks at all until `git config core.hooksPath .githooks` — see
+[.githooks/README.md](../.githooks/README.md).
 
 ### Repository settings a maintainer must set by hand
 
 These live in GitHub, not in the repository, so nothing here can assert them. On `main`:
 
 - **Require a pull request before merging.**
-- **Require status checks to pass.** The job ids, exactly as they appear on a check run:
-  `check` and `docker` (from `check.yml`), `contract` (from `contract-gate.yml`), and
-  `dependency-scan` (from `security-scan.yml`). `docker` is the authoritative job — a rule
+- **Require status checks to pass.** The names, exactly as they appear on a check run —
+  search for them by these strings, not by job id: `check (22)` and `check (24)` and
+  `docker` (from `check.yml`), `contract` (from `contract-gate.yml`), and
+  `Dependency scan (osv-scanner + npm audit)` and `SBOM (syft)` (from `security-scan.yml`,
+  which spell their jobs out with a `name:`). `docker` is the authoritative job — a rule
   that requires `check` but not `docker` gates the fast half and not the real one.
-  `security-scan.yml`'s other job, `sbom`, also runs on every trigger, but it exists to
-  publish a release artefact rather than to judge a change; requiring it is defensible but
-  it is slower than the rest, so it is a per-repository call.
+  `sbom` also runs on every trigger, but it exists to publish a release artefact rather than
+  to judge a change; requiring it is defensible but slower than the rest, so it is a
+  per-repository call. A check can only be required once it has *reported* — a workflow
+  GitHub rejects never registers one, so an invalid workflow file leaves its two checks
+  absent from the picker with no trace anywhere in the UI.
 - **Do not allow bypassing the above settings**, if the intent is that `main` is genuinely
-  protected rather than advisory.
+  protected rather than advisory. Check who can approve first: with **no** second
+  collaborator, a required approval can never be given (GitHub does not let you approve your
+  own pull request), so this combination freezes `main` outright.
 
 ## Two build layers: engine and web
 
@@ -130,7 +137,7 @@ are **not** the same directory:
 |---|---|---|---|
 | Engine | `src/**`, `scripts/**` | nothing — Node runs the sources directly | *(no build step)* |
 | Web board | `web/**` | Vite (`npm --prefix web run build`) | `web/dist` — the **hosted frontend root**, served by `taskd` (`STATIC_DIR_REL`) |
-| Release tree | skills + host plugins | `node scripts/build.mjs` | `dist/` — the npm **release tree**; never served |
+| Release tree | the tree as the npm whitelist sees it | `node scripts/build.mjs` | `dist/` — the npm **release tree**; never served |
 
 The web layer is the only part with dependencies. Vue/Vite/Tailwind/daisyUI are
 **build-time devDependencies**: they are installed by the image's `webbuild` stage from the
@@ -306,19 +313,22 @@ around them (it delegates the payload half to `scripts/sync-loop.mjs`):
 
 | Skill | Authored in | Generated into |
 |---|---|---|
-| `meerkat-taskpanel` (the board) | `skills/meerkat-taskpanel/` | `plugins/openclaw/skills/meerkat-taskpanel/` — every other harness reads `skills/` in place |
-| `meerkat-loop` (the supervisor) | `skills/meerkat-loop/` — `SKILL.md`, `references/`, `scripts/board-check.mjs` | its own `body/` + `templates/`, then `plugins/loop/skills/meerkat-loop/` |
+| `meerkat-taskpanel` (the board) | `skills/meerkat-taskpanel/` | nothing — every harness reads `skills/` in place |
+| `meerkat-loop` (the supervisor) | `skills/meerkat-loop/` — `SKILL.md`, `references/`, `scripts/board-check.mjs` | its own `body/` + `templates/` |
+
+There is exactly one `skills` tree in the repository. No harness receives a copy: each reads
+`skills/` in place through a manifest at the repository root, which is the board's plugin
+root. `test/scaffold.test.mjs` asserts that, since with no copy targets left
+`sync-skills.mjs --check` has nothing to compare and could not notice an orphan tree.
 
 The loop's `body/` and `templates/` are generated *from this repository*: `body/` is the
 transitive import closure of `scripts/supervisor.mjs` and `scripts/wake-cwd.mjs` (written out
 as `body/manifest.txt`, the list the installer copies), and `templates/` mirrors the
 loop-side files under `scripts/install/templates/`. That direction matters — the shared
 modules in `src/shared/` are **not** moved into the skill; they stay where the CLI imports
-them, and the skill's copy is generated and guarded. OpenClaw never receives the loop copy,
-by ruling: its framework already ships an equivalent supervisor.
-
-Those two copies are generated artifacts and are committed so that each bundle directory is
-self-contained — but they must always match their sources.
+them, and the skill's copy is generated and guarded. OpenClaw never receives the loop at all,
+by ruling: its framework already ships an equivalent supervisor, and `install.sh --target
+openclaw` copies the board skill only.
 
 **After editing anything under `skills/`, `scripts/supervisor.mjs`, `scripts/wake-cwd.mjs`,
 `src/shared/`, or `scripts/install/templates/`, run:**
@@ -327,7 +337,7 @@ self-contained — but they must always match their sources.
 node scripts/sync-skills.mjs
 ```
 
-CI runs `node scripts/sync-skills.mjs --check` and fails if a generated payload or copy has
+CI runs `node scripts/sync-skills.mjs --check` and fails if the generated payload has
 drifted. The same reasoning applies to `dist/`: build output is never edited by hand and is
 gitignored.
 
@@ -336,16 +346,16 @@ link inside `skills/**` must resolve wherever the skill is *installed*, not wher
 authored. A host's skill store holds `skills/<name>/` and nothing above it, so a
 `../../../docs/…` link dangles in every install — link out by absolute URL instead. (Sharing
 the tree across harnesses does not relax this: `install.sh` still lands one skill directory
-in the host's store, and the bundles under `plugins/` still carry only their own copy.)
-`test/skill/loop.test.mjs` asserts no link climbs out of the skill tree.
+in the host's store.) `test/skill/loop.test.mjs` asserts no link climbs out of the skill
+tree.
 
 ## Build output
 
-`node scripts/build.mjs` deletes and recreates `dist/`, writes a `dist/web/.gitkeep`
-placeholder, and syncs every skill into `dist/plugins/<target>/skills/`. It verifies the
-loop payload is current (`sync-loop --check`) rather than regenerating it: a build must not
-rewrite the source tree, so a stale payload is a red build instead of a silent divergence.
-`dist/` is gitignored, and
+`node scripts/build.mjs` deletes and recreates `dist/` and writes a `dist/web/.gitkeep`
+placeholder. It verifies the loop payload is current (`sync-loop --check`) rather than
+regenerating it: a build must not rewrite the source tree, so a stale payload is a red build
+instead of a silent divergence. It copies no skill — every harness reads `skills/` in place,
+so `dist/` carries the tree as-is through the npm `files` whitelist. `dist/` is gitignored, and
 **it is the npm release tree — not the hosted frontend.** The `dist/web/` placeholder is
 left over from the M0 scaffold; the real board frontend builds to `web/dist` (see
 [Two build layers](#two-build-layers-engine-and-web)).

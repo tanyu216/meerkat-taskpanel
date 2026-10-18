@@ -35,6 +35,8 @@ import {
   buildArgs,
   composeDownArgs,
   composeFile,
+  composeProjectName,
+  composePsArgs,
   composeUpArgs,
   healthInspectArgs,
   imageTag,
@@ -337,19 +339,62 @@ describe("docker-plan", () => {
 
   it("builds compose up/down commands against docker/docker-compose.yml", () => {
     assert.equal(composeFile(), "docker/docker-compose.yml");
+    const project = composeProjectName("/somewhere/meerkat-taskpanel");
 
-    const up = composeUpArgs();
+    const up = composeUpArgs(project);
     assert.equal(up[0], "compose");
+    assert.deepEqual(up.slice(1, 3), ["-p", project], "the project is named, not derived from the directory");
     assert.ok(up.includes("-f"));
     assert.ok(up.includes(composeFile()));
     assert.ok(up.includes("up"));
     assert.ok(up.includes("-d"));
 
-    const down = composeDownArgs();
+    const down = composeDownArgs(project);
     assert.equal(down[0], "compose");
+    assert.deepEqual(down.slice(1, 3), ["-p", project]);
     assert.ok(down.includes(composeFile()));
     assert.ok(down.includes("down"));
     assert.ok(down.includes("-v"), "teardown must remove volumes");
+  });
+
+  it("names the compose project per checkout, so two worktrees cannot collide", () => {
+    // `docker compose` derives the project from the **directory** when it is not
+    // given, and every worktree has a directory called `docker/` — so two lanes
+    // verifying at once shared the container name `docker-taskd-1`, and the second
+    // one to start failed with "already in use" while the two teardowns fought over
+    // it. The name is therefore derived from the checkout's absolute path.
+    const a = composeProjectName("/Users/you/meerkat-taskpanel");
+    const b = composeProjectName("/Users/you/meerkat-taskpanel-wt-other-lane");
+    assert.notEqual(a, b, "two worktrees must not share a project");
+
+    // ...and it is *stable* for one checkout, which is what makes an `up` and the
+    // `down` that follows it agree — including when one of them is reached through
+    // a path that is merely spelled differently.
+    assert.equal(composeProjectName("/Users/you/meerkat-taskpanel"), a);
+    assert.equal(composeProjectName("/Users/you/./meerkat-taskpanel"), a, "resolved first");
+
+    // A compose project name must match `[a-z0-9][a-z0-9_-]*`, and a path does not.
+    assert.match(a, /^[a-z0-9][a-z0-9_-]*$/);
+    assert.ok(a.startsWith("meerkat-taskpanel-"), a);
+  });
+
+  it("names the project on `ps` too — the one whose omission would be silent", () => {
+    // The healthcheck discovers the container through `compose ps -q <service>`
+    // rather than by name. Against the wrong project that prints *nothing*, and the
+    // gate would report "no container found for service" — a failure that looks
+    // like a broken deploy and is really a naming slip.
+    const project = composeProjectName("/somewhere/meerkat-taskpanel");
+    const ps = composePsArgs(project, "taskd");
+    assert.deepEqual(ps, ["compose", "-p", project, "-f", "docker/docker-compose.yml", "ps", "-q", "taskd"]);
+  });
+
+  it("refuses to build a compose command with no project", () => {
+    // A default here would silently restore the collision the day a fourth caller
+    // appears, so there is none.
+    for (const build of [composeUpArgs, composeDownArgs]) {
+      assert.throws(() => build(undefined), /compose project name is required/);
+      assert.throws(() => build(""), /compose project name is required/);
+    }
   });
 
   it("builds a health inspect command for a named container", () => {
@@ -579,7 +624,7 @@ describe("static: Dockerfile", () => {
 describe("static: .dockerignore", () => {
   it("exists and trims the build context", async () => {
     const text = await read(".dockerignore");
-    for (const entry of [".git", "node_modules", "dist", "web/dist", ".data", "coverage", "*.tgz", "design", ".DS_Store"]) {
+    for (const entry of [".git", "node_modules", "dist", "web/dist", ".data", "coverage", "*.tgz", "design", ".worktrees", ".DS_Store"]) {
       assert.ok(
         text.split("\n").map((l) => l.trim()).includes(entry),
         `.dockerignore should contain ${entry}`,

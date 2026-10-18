@@ -31,6 +31,17 @@ const props = defineProps({
   hookChip: { type: String, default: "" },
   hookChipValue: { type: String, default: "" },
   hookChipRemove: { type: String, default: "" },
+  /**
+   * The clear affordance's own hook (T-20261016-113131 ③.1) — **opt-in**, and
+   * the only class in this component that is not shared by all nine instances.
+   * The prototype draws `.td-combo-clear` **once** in its whole document (the
+   * create dialog's Parent), so the box-plus-✕ row is not a generic part of the
+   * control: a control that does not pass this renders exactly the bare box it
+   * has always rendered. That keeps the other eight (assignee / reporter /
+   * labels / depends-on here, and the drawer's four) out of a change that has
+   * no ruling behind it.
+   */
+  hookClear: { type: String, default: "" },
   kindAttr: { type: String, default: "" },
   platformAttr: { type: String, default: "" },
   taskMode: { type: Boolean, default: false },
@@ -99,6 +110,39 @@ function chipTitle(value) {
 }
 
 const inputHooks = computed(() => ({ [props.hookInput]: "", ...(props.hookLabel ? { [props.hookLabel]: "" } : {}) }));
+
+/**
+ * The box's whole attribute set, so the two rows in the template (the field row
+ * that carries the ✕, and the bare box every other control renders) can share
+ * one definition: they differ in their **wrapper**, not in the box. `t()` reads
+ * the language ref, so each value here tracks the language exactly as the `$t`
+ * calls it replaces did.
+ */
+const inputAttrs = computed(() => ({
+  type: "text",
+  class: "w-full border border-(--brand-border-strong) rounded-[6px] bg-(--brand-surface) px-2 py-1 text-(--brand-text)",
+  autocomplete: "off",
+  spellcheck: "false",
+  ...inputHooks.value,
+  "aria-label": props.ariaKey ? t(props.ariaKey) : undefined,
+  "aria-expanded": open.value ? "true" : "false",
+  placeholder: t(props.placeholderKey),
+  disabled: props.disabled || undefined,
+  "aria-disabled": props.disabled ? "true" : undefined,
+}));
+
+/**
+ * The clear affordance's click (T-20261016-113131 ③.2): it empties the **value**
+ * as well as the box. While the ✕ was the dialog's sibling button the two halves
+ * lived in two places — the dialog cleared the model and called into here for
+ * the query — and inside the control there is nothing to reach back for, so it
+ * emits. It never re-opens the menu: the box it just emptied must not
+ * immediately offer to fill itself (T-20261014-001418 ②).
+ */
+function clearValue() {
+  emit("update:modelValue", props.multi ? [] : "");
+  clear();
+}
 
 function optionHooks(entry, isNew) {
   const hooks = { [props.hookOption]: "", [props.hookValue]: entry.name };
@@ -212,10 +256,10 @@ function focus() {
 }
 
 /**
- * The field's own way out, for the relation controls whose chip carries the
- * value: the clear affordance beside the box empties the **box** as well as the
- * value, so no half-typed query outlives the choice it was looking for
- * (T-20261014-001418 ②, design §3.5). It never re-opens the menu.
+ * The box's own way out: no half-typed query outlives the choice it was looking
+ * for (T-20261014-001418 ②, design §3.5). It never re-opens the menu. The clear
+ * affordance is `clearValue` above — it drops the value too, and is what the ✕
+ * in the field row calls.
  */
 function clear() {
   query.value = "";
@@ -246,7 +290,12 @@ defineExpose({ focus, clear });
 </script>
 
 <template>
-  <div class="relative" :data-drop="dropUp ? 'up' : 'down'">
+  <!-- The root. `.td-combo` is opt-in with the clear row, because it is what
+       names the control in the design layer: it is the popup's positioning
+       ancestor (`.td-combo-menu` is `width: max(100%, …)`, so the popup is as
+       wide as the box it belongs to) and the anchor the prototype's two `:has()`
+       rules hang off. T-20261016-113131 ③.2. -->
+  <div class="relative" :class="{ 'td-combo': hookClear }" :data-drop="dropUp ? 'up' : 'down'">
     <!-- The accepted values read as chips *above* the field, which is where the
          prototype puts `.td-chips` for all four controls that carry them (the
          parent, depends-on, the create dialog's labels and the drawer's).
@@ -288,19 +337,54 @@ defineExpose({ focus, clear });
       </span>
     </div>
 
+    <!-- The field row — the box and its ✕ on one line, the prototype's
+         `.td-combo-field` (T-20261016-113131 ③.1). It is what makes the track
+         an arithmetic identity rather than a width someone has to remember:
+         `box + gap + ✕ == track`. Before it, the box sat in a `flex items-end`
+         row shell as a `flex: 0 1 auto` item with `width: auto`, so it took its
+         *content's* max-content width — 172px for the default `size=20` box,
+         218.734 with a chip, against a 405.391px track and against every other
+         control in the same column (T-20261015-233122 §①).
+
+         The ✕ is the prototype's `.td-combo-clear`: the same 20×20 SVG box as
+         the chips' own remove control, `display: none` until the field carries
+         something to clear — which the two stylesheet rules decide, from the
+         input's own state (`.td-combo-field:has(> input:not(:placeholder-shown))`)
+         and from the chip row above it (`.td-combo:has([data-parent-chip])`).
+
+         Only a control that asks for the affordance gets the row; the box is
+         written from `inputAttrs` in both branches so the two cannot drift. -->
+    <div v-if="hookClear" class="td-combo-field">
+      <input
+        ref="inputEl"
+        v-model="query"
+        v-bind="inputAttrs"
+        @input="onInput"
+        @focus="onInput"
+        @keydown="onKeydown"
+        @blur="onBlur"
+      />
+      <button
+        type="button"
+        class="td-combo-clear"
+        v-bind="{ [hookClear]: '' }"
+        :aria-label="$t('combo.clear')"
+        :title="$t('combo.clear')"
+        :disabled="disabled"
+        :aria-disabled="disabled ? 'true' : undefined"
+        @click="clearValue"
+      >
+        <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M6 6l12 12M18 6 6 18" />
+        </svg>
+      </button>
+    </div>
+
     <input
+      v-else
       ref="inputEl"
       v-model="query"
-      type="text"
-      class="w-full border border-(--brand-border-strong) rounded-[6px] bg-(--brand-surface) px-2 py-1 text-(--brand-text)"
-      autocomplete="off"
-      spellcheck="false"
-      v-bind="inputHooks"
-      :aria-label="ariaKey ? $t(ariaKey) : undefined"
-      :aria-expanded="open ? 'true' : 'false'"
-      :placeholder="$t(placeholderKey)"
-      :disabled="disabled"
-      :aria-disabled="disabled ? 'true' : undefined"
+      v-bind="inputAttrs"
       @input="onInput"
       @focus="onInput"
       @keydown="onKeydown"

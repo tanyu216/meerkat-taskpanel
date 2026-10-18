@@ -2,7 +2,7 @@
 
 ## Why
 
-Local verification, deployment and the four-host skill installs all happen **inside a
+Local verification, deployment and the six-host skill installs all happen **inside a
 container**, never on the host machine. This is a hard constraint for this repository
 (Terry, 2026-10-08) and it is recorded in `ARCHITECTURE.md §9.1`:
 
@@ -164,10 +164,15 @@ missing from the cache for that architecture.
 The `taskd` service is described by `docker/docker-compose.yml`:
 
 ```bash
-docker compose -f docker/docker-compose.yml up -d --build
-docker compose -f docker/docker-compose.yml ps        # wait for "healthy"
+# -p: one project per checkout. Without it compose derives the name from the
+# directory — and every worktree has a `docker/` — so two lanes verifying at once
+# share `docker-taskd-1` and the later one fails with "container name ... is
+# already in use". `verify:docker` passes this itself (`composeProjectName`); the
+# line below shows what to type by hand.
+docker compose -p meerkat-taskpanel-local -f docker/docker-compose.yml up -d --build
+docker compose -p meerkat-taskpanel-local -f docker/docker-compose.yml ps   # wait for "healthy"
 curl -s http://127.0.0.1:9527/health
-docker compose -f docker/docker-compose.yml down -v
+docker compose -p meerkat-taskpanel-local -f docker/docker-compose.yml down -v
 ```
 
 `/health` answers:
@@ -205,6 +210,9 @@ This is the whole suite, host-side, in one command. It:
 3. brings the compose service up, polls `docker inspect` until the `/health`
    healthcheck reports `healthy` (60 s budget), then always tears down with
    `docker compose down -v` — teardown is in a `finally` block, so a failure does not
+   leak a container or a volume. Both are addressed by a **per-checkout project
+   name** (`composeProjectName`), which is what lets two worktrees verify
+   concurrently
    leave containers or volumes behind;
 4. prints a `SUMMARY` of every phase and exits non-zero if any of them failed.
 
@@ -279,7 +287,7 @@ node scripts/verify/profiles.mjs --home "$(mktemp -d)"
 The default is `$TMPDIR/meerkat-taskpanel-profiles-<pid>`, and the installer is driven through
 the same `MEERKAT_TASKPANEL_TARGET_HOME` variable that `install.sh --prefix <dir>` sets — so the
 check is equivalent to a real install while touching only a temp directory. This is how
-the four-host matrix is verified on a machine that does not (and should not) have those
+the six-host matrix is verified on a machine that does not (and should not) have those
 hosts installed: the profile's `target_dir` and `installer` are exercised for real, and
 the installed skill is executed through its own wrapper.
 

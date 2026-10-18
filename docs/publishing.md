@@ -1,8 +1,8 @@
 # Publishing
 
-How a Meerkat TaskPanel version is packaged and published across the five distribution
-surfaces: **npm**, **git + GitHub Release**, and the four host bundles (Claude Code
-marketplace, OpenClaw, Codex, Pi).
+How a Meerkat TaskPanel version is packaged and published across its distribution surfaces:
+**npm**, **git + GitHub Release**, and the per-host bundles — Claude Code's marketplace,
+OpenClaw, Codex, Pi, Cursor and OpenCode.
 
 > **Scope.** This page documents the steps only. **The actual `push`, tag and release are
 > performed by Elon** — nothing here is run as part of writing this document, and CI does
@@ -11,46 +11,39 @@ marketplace, OpenClaw, Codex, Pi).
 
 ## 1. Version consistency
 
-Two components are shipped and they version **independently** (ruling O4): the **board** and
-the **loop**. Each component's manifests must agree with each other; the two components are
-not compared with one another.
-
-**Board** — five files, root `package.json` canonical:
+**Board** — four files, root `package.json` canonical:
 
 | # | File | Field |
 |---|---|---|
 | 1 | `package.json` | `version` |
 | 2 | `.claude-plugin/plugin.json` | `version` |
 | 3 | `.cursor-plugin/plugin.json` | `version` |
-| 4 | `plugins/openclaw/openclaw.plugin.json` | `version` |
-| 5 | `.claude-plugin/marketplace.json` | `metadata.version` |
+| 4 | `.claude-plugin/marketplace.json` | `metadata.version` |
 
-Two hosts are not carriers. Codex installs the same `.claude-plugin/plugin.json` bundle
-through the repository-root marketplace, and Pi declares itself in the canonical
-`package.json` itself (its `pi` field) — a row for either would only restate one above.
+Three hosts are not carriers. Codex and OpenClaw install the same
+`.claude-plugin/plugin.json` bundle through the repository-root marketplace, and Pi declares
+itself in the canonical `package.json` itself (its `pi` field) — a row for any would only
+restate one above.
 
-**Loop** — two files, its own plugin manifest canonical:
+There is **no loop version**. `meerkat-loop` is distributed by `install.sh` from
+`skills/meerkat-loop/` rather than as a plugin, and it declares the *board interface
+generation* it requires (`task-interface v1`, enforced by its own `board-check.mjs`) instead
+of a version of its own. Its two former carriers were the `plugins/loop` manifests, which
+this repository no longer ships — so ruling O4 (independent versions) is retired: the loop
+moves with the board.
 
-| # | File | Field |
-|---|---|---|
-| 1 | `plugins/loop/.claude-plugin/plugin.json` | `version` |
-| 2 | `plugins/loop/package.json` | `version` |
-
-**Bump them with one command, one group at a time.** Editing these files by hand is exactly
-how drift starts; `scripts/release/bump.mjs` moves a whole group at once:
+**Bump them with one command.** Editing these files by hand is exactly how drift starts;
+`scripts/release/bump.mjs` moves the whole group at once:
 
 ```bash
 node scripts/release/bump.mjs 1.1.0                    # or: npm run release:bump 1.1.0
 node scripts/release/bump.mjs 1.1.0 --changelog        # + an empty CHANGELOG scaffold
 node scripts/release/bump.mjs 1.1.0 --changelog --tag
-
-node scripts/release/bump.mjs 1.2.0 --group loop       # the loop alone
 ```
 
-`--changelog` and `--tag` belong to a **board release** and are refused with
-`--group loop`: a release is tagged, a component bump is not. If the loop needs a version
-the board never had, that is `--group loop` and nothing else — the first split shipped one
-linked version, by ruling (O7), but nothing keeps them together after that.
+`--group` still exists as a seam — `--group loop` is now an unknown group rather than a
+silent no-op — so a second independently-versioned component could be added back without
+re-deriving the bump or the check.
 
 It edits each manifest **in place**: the one version string token is spliced, so key order,
 indentation, inline objects and single-line arrays survive exactly as authored — no
@@ -86,9 +79,9 @@ confirm.
 ## 2. npm
 
 The published tarball's contents are decided by the `files` whitelist in the root
-`package.json` — `src/`, `skills/`, `plugins/`, `scripts/`, `docs/`, `install.sh`,
-`CHANGELOG.md`, `LICENSE` and the two READMEs. `web/`, `dist/` and the test/CI directories
-are **not** in it (the hosted board is a separate build; see
+`package.json` — `src/`, `skills/`, `scripts/`, `docs/`, `install.sh`, `CHANGELOG.md`,
+`LICENSE` and the two READMEs. `web/`, `dist/` and the test/CI directories are **not** in it
+(the hosted board is a separate build; see
 [development.md](development.md#two-build-layers-engine-and-web)).
 
 **Precondition — already enabled.** The root manifest is publishable: it carries no
@@ -221,7 +214,9 @@ prove any of them (reading branch protection takes an API scope this repository 
 does not hand its workflows). They are stated as policy, with the human steps that apply them.
 
 1. **`main` changes only through a pull request.** No direct pushes, no force pushes, no
-   deletions: an unreviewed commit must not become reachable from `main`.
+   deletions: an unreviewed commit must not become reachable from `main`. The `pre-push` hook
+   refuses a direct push to `main` locally ([.githooks/README.md](../.githooks/README.md)),
+   which is a courtesy — the rule below is the enforcement.
 2. **The required checks are green before the merge.** The checks are this repository's own
    workflows, so the list is short and closed — from `check.yml` the `check` job (both matrix
    legs) and the `docker` job, from `contract-gate.yml` the `contract` job, and from
@@ -242,7 +237,11 @@ run *because* a tag was pushed, which is exactly why rule 3 matters.
 - **Branches.** Settings → Branches → **Add branch protection rule** for `main` (a ruleset
   under Settings → Rules is the newer equivalent), then:
   - **Require a pull request before merging** — at least one approval, and enable *Dismiss
-    stale pull request approvals when new commits are pushed*;
+    stale pull request approvals when new commits are pushed*. **Check the collaborator count
+    first.** With no second contributor a required approval can never be satisfied (GitHub
+    does not let you approve your own pull request), and pairing it with *Do not allow
+    bypassing* below freezes `main` outright; a single-maintainer repository is better served
+    by requiring the pull request and keeping the administrative bypass;
   - **Require status checks to pass before merging** — search for and add `check` (both
     matrix legs), `docker`, `contract`, `Dependency scan (osv-scanner + npm audit)` and
     `SBOM (syft)`, then tick *Require branches to be up to date before merging*;
@@ -267,44 +266,41 @@ git merge-base --is-ancestor "$(git rev-parse v1.2.3^{commit})" origin/main \
 ## 4. Claude Code marketplace
 
 `.claude-plugin/marketplace.json` (marketplace name `meerkat-taskpanel-marketplace`) lists
-**two plugins**, one per skill:
+**one plugin**:
 
 | Plugin | Source | Carries |
 |---|---|---|
-| `meerkat-taskpanel` | `./` | the board skill, and the loop alongside it |
-| `meerkat-loop` | `./plugins/loop` | the loop skill, and nothing else |
+| `meerkat-taskpanel` | `./` | both skills — the repository's one `skills/` tree, read in place |
 
-They are separate entries on purpose: a source directory carrying both skills could not be
-installed for the loop alone, and the loop is never installed for OpenClaw, which runs the
-openclaw-team framework's own supervisor instead.
+The loop used to be a second entry, sourced at a `plugins/loop` bundle that carried the loop
+skill and nothing else so it could be installed alone. That bundle is gone: `meerkat-loop`
+is installed by `install.sh --target claude|codex|pi`, and a marketplace install of the board
+brings the loop with it (the shared tree is not filtered per entry).
 
 ```bash
-# consumer: register this repository as the marketplace, then install what you need
+# consumer: register this repository as the marketplace
 claude plugin marketplace add <path-or-git-url>
 claude plugin install meerkat-taskpanel@meerkat-taskpanel-marketplace -y
-claude plugin install meerkat-loop@meerkat-taskpanel-marketplace -y    # on claude/codex/pi
 
 # verify
-claude plugin list                  # → both plugins, enabled
+claude plugin list                  # → the plugin, enabled
 claude plugin validate <path>       # validates the plugin + marketplace manifests
 ```
 
-The generated plugin copies must match `skills/` — `npm run check:skills` fails CI on drift,
-so run `node scripts/sync-skills.mjs` after any skill edit. That one command also regenerates
-the loop skill's **payload** (`skills/meerkat-loop/{body,templates}/`), which is generated
-from `scripts/supervisor.mjs`, `scripts/wake-cwd.mjs`, `src/shared/` and
-`scripts/install/templates/`; `--check` guards both directions.
+Nothing under `skills/` is a generated copy any more, so there is nothing for
+`npm run check:skills` to compare against a plugin bundle. It still guards the loop skill's
+**payload** (`skills/meerkat-loop/{body,templates}/`), which is generated from
+`scripts/supervisor.mjs`, `scripts/wake-cwd.mjs`, `src/shared/` and
+`scripts/install/templates/`; run `node scripts/sync-skills.mjs` after any edit there.
 
 ## 5. OpenClaw
 
-OpenClaw has two routes, and they are not interchangeable:
+OpenClaw has one supported route. There is **no native manifest**: a *native* OpenClaw plugin
+is an in-process runtime module that must additionally ship `package.json#openclaw.extensions`
+and an entry point importing the OpenClaw plugin SDK — a real runtime dependency this
+zero-dependency project deliberately does not take. Such a manifest could not be installed as
+what it claimed to be, so the repository ships none (it did until `plugins/` was emptied).
 
-- **Native manifest** — `plugins/openclaw/openclaw.plugin.json`. A *native* OpenClaw plugin
-  is an in-process runtime module: it must additionally ship `package.json#openclaw.extensions`
-  and an entry point that imports the OpenClaw plugin SDK. That SDK is a real runtime
-  dependency this zero-dependency project deliberately does not take, so `plugins/openclaw`
-  is a manifest only — OpenClaw's detector still classifies it as native, which is why the
-  repository verifies the *bundle* contract against the repository root instead.
 - **Bundle (the supported skill-only route)** — OpenClaw consumes the Claude-format bundle:
 
 ```bash
@@ -319,8 +315,8 @@ does) is enough for the skill to be found.
 
 Codex reads the same repository-root marketplace manifest as Claude
 (`.claude-plugin/marketplace.json`), and installs the same `./` bundle. It ships no manifest
-of its own — which is why it appears in neither the version-carrier table nor
-`plugins/`.
+of its own, which is why it appears in neither the version-carrier table nor any bundle
+directory of its own.
 
 ```bash
 codex plugin marketplace add <path-or-git-url>
@@ -335,30 +331,87 @@ codex plugin list
 The board's Pi package **is the repository's own `package.json`**: its `pi` object declares
 `skills` (the one tree) and `extensions` (the module in `.pi/extensions/` that re-registers
 that directory at runtime). Pi reads `extensions`, `skills`, `prompts` and `themes` from a
-package's `pi` object, so there is no `plugins/pi` copy of the skill tree to publish. The
-loop keeps its own package under `plugins/loop/` so a Pi host can install it alone.
+package's `pi` object, so no separate Pi package or copy of the skill tree is published. The
+loop reaches Pi through `install.sh --target pi` (`~/.agents/skills/meerkat-loop`), like on
+claude and codex.
 
 ```bash
 pi install <path>                   # the board
-pi install <path>/plugins/loop      # the loop
 
 # verify
 pi list
 ```
 
-## 8. Skill wrappers ship with the bundle
+## 8. Cursor
+
+`.cursor-plugin/plugin.json` declares `"skills": "./skills/"` — the repository's one
+`skills/` tree, read in place. Cursor registers a *directory*, so nothing is copied and both
+skills arrive together.
+
+```bash
+# consumer: in Cursor's agent chat
+/add-plugin meerkat-taskpanel     # or find it in the plugin marketplace
+
+# what this repository can verify without Cursor installed
+node scripts/verify/manifests.mjs   # the .cursor-plugin manifest row
+node scripts/verify/version.mjs     # the cursor row in the version-carrier table (§1)
+```
+
+Unlike Codex, Cursor **is** a version carrier: `.cursor-plugin/plugin.json` is a row in the
+table in §1, and the release runs `scripts/verify/version.mjs` before `npm pack`.
+`docker/profiles/cursor.yml` declares `bundle: .` / `bundle_kind: bundle` /
+`bundle_format: cursor`, so `scripts/verify/profiles.mjs` also asserts the repository root is
+detected as a cursor-format bundle exposing a loadable `meerkat-taskpanel` skill.
+
+**No hooks are shipped, deliberately.** Cursor's hook contract is its own schema (a lowercase
+`sessionStart` key, a relative `command`, `additional_context` rather than Claude Code's
+`hookSpecificOutput.additionalContext`), and upstream documents no uninstall or update path
+to follow — so rather than invent one, the plugin stays skills-only.
+
+**Unverified, and flagged as such.** Cursor's CLI is not installed in this repository's
+container or on the development host, so the *host integration* above has never been run from
+here; the in-chat gesture is transcribed from `obra/superpowers` rather than reproduced.
+
+## 9. OpenCode
+
+OpenCode is a *directory-granular* host: it is handed a skills directory, not a list of skill
+names, so `.opencode/plugins/meerkat-taskpanel.js` points it at the repository's own
+`skills/` and both skills arrive together. Nothing is copied — the directory is resolved from
+the plugin's own location, so it follows the package wherever OpenCode fetched it.
+
+```jsonc
+// opencode.json — consumer-side registration (V2 >= 2.0.4; V1 uses the singular `plugin` key)
+{
+  "plugin": ["meerkat-taskpanel@git+https://github.com/tanyu216/meerkat-taskpanel.git"]
+}
+```
+
+The plugin is dual-compatible: on V1 the named export pushes the directory into
+`config.skills.paths`; on V2 `default.setup(ctx)` registers one `Skill.Info` per
+`skills/<name>/SKILL.md`, because V2 dropped the directory form and made `config.skills` a
+flat array.
+
+OpenCode is **not** a version carrier and ships no manifest of its own — like Codex, it
+appears in neither the table in §1 nor a bundle directory of its own.
+`package.json#files` must still name `.opencode`, or the plugin never reaches the tarball.
+
+**Unverified, and flagged as such.** OpenCode's CLI is not installed in this repository's
+container or on the development host, so the host integration above has never been run from
+here. What *is* covered is the plugin's own logic:
+`test/install/opencode-plugin.test.mjs` drives it against a fake plugin context.
+
+## 10. Skill wrappers ship with the bundle
 
 Every manifest points at the repository's one `skills/` tree, so the npm whitelist ships the
-skills directly and only OpenClaw and the loop's own marketplace bundle still carry a
-generated copy (see
+skills directly and no bundle carries a generated copy of its own (see
 [development.md](development.md#the-skill-is-generated-never-hand-edited)). A publish is
-only correct if `node scripts/sync-skills.mjs --check` is green — the generated copies and
-the source under `skills/<skill>/` must be identical, and the loop skill's generated payload
-must match the repository modules it is generated from.
+still only correct if `node scripts/sync-skills.mjs --check` is green: the loop skill's
+generated payload (`body/` + `templates/`) must match the repository modules it is generated
+from.
 
 The `files` whitelist must also name each dot-directory the plugins live in
-(`.claude-plugin`, and later `.cursor-plugin` / `.opencode` / `.pi`): npm does not include
-dot files by default, so a manifest that is not listed never reaches the tarball, and
+(`.claude-plugin`, `.cursor-plugin`, `.opencode`, `.pi`): npm does not include dot files by
+default, so a manifest that is not listed never reaches the tarball, and
 `node scripts/release/pack-manifest.mjs` fails the release on it.
 
 ## See also
@@ -367,4 +420,4 @@ dot files by default, so a manifest that is not listed never reaches the tarball
 - [development.md](development.md) — the two build layers, the offline policy and the
   generated-skill rule.
 - [`../README.md`](../README.md) / [`../README.zh-CN.md`](../README.zh-CN.md) — status and
-  the four-host support matrix.
+  the six-host support matrix.

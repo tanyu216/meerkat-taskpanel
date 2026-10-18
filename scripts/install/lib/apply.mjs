@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Host-bundle file writer used by the per-host installers (claude / codex).
+ * Host-bundle file writer used by the per-host installers.
  *
  * The installers are thin bash orchestrators; everything that is fiddly to do in
  * `sh` — JSON merging, idempotent template rendering, delimited-block upserts —
@@ -181,25 +181,48 @@ export function cmdSnippet(argv, env = process.env) {
  * Every other key — including unrelated hooks — is preserved untouched.
  *
  * @param {object} data existing settings (parsed) or `{}`
- * @param {{agent: string, hookCommand: string, force?: boolean}} [opts]
+ * @param {{agent: string, kind?: string, human?: string, hookCommand: string, force?: boolean}} [opts]
  * @returns {{data: object, changed: boolean}}
  */
 export function mergeSettings(data, opts) {
-  const { agent, hookCommand, force = false } = opts;
+  const { agent, kind, human, hookCommand, force = false } = opts;
   const out = structuredClone(data);
   let changed = false;
 
-  // env.TASKCTL_AGENT — add if missing; --force overwrites.
+  // The three identity keys, each with a job:
+  //
+  //   TASKCTL_AGENT        which agent a write belongs to
+  //   TASKCTL_ACTOR_KIND   *what* it is — `claude` here. Without it the session's
+  //                        writes are attributed to nobody the board can place,
+  //                        and the default it falls back to is `human`; a human's
+  //                        `decision` is the one kind the board acts on (it goes
+  //                        on the record, resumes an `awaiting` card, and counts
+  //                        as the leader acting for the patrol). So a settings
+  //                        file that names an agent but not its kind records
+  //                        every one of that agent's writes as a person's.
+  //   TASKCTL_HUMAN        the person `--as-human` signs as, so an agent recording
+  //                        something the user said can put the right name on it
+  //
+  // Added when missing; `--force` overwrites. A key with no value is skipped
+  // rather than written empty — an empty kind is worse than none, and the board
+  // refuses one outright.
   const envIsObject = out.env === null || out.env === undefined || (typeof out.env === "object" && !Array.isArray(out.env));
   if (envIsObject) {
     const env = out.env && typeof out.env === "object" ? out.env : {};
-    if (force || env.TASKCTL_AGENT === undefined) {
-      if (env.TASKCTL_AGENT !== agent) {
-        env.TASKCTL_AGENT = agent;
-        changed = true;
+    for (const [key, value] of Object.entries({
+      TASKCTL_AGENT: agent,
+      TASKCTL_ACTOR_KIND: kind,
+      TASKCTL_HUMAN: human,
+    })) {
+      if (typeof value !== "string" || value === "") continue;
+      if (force || env[key] === undefined) {
+        if (env[key] !== value) {
+          env[key] = value;
+          changed = true;
+        }
       }
-      if (Object.keys(env).length > 0) out.env = env;
     }
+    if (Object.keys(env).length > 0) out.env = env;
   } else {
     // A malformed `env` (array/string/…) is left alone rather than clobbered.
     warn(`merge-settings: env has an unexpected shape; left untouched`);
@@ -242,7 +265,7 @@ export function mergeSettings(data, opts) {
 export function cmdMergeSettings(argv) {
   const opts = parseFlags(argv, {
     boolean: new Set(["force"]),
-    valueFlags: new Set(["agent", "hook"]),
+    valueFlags: new Set(["agent", "kind", "human", "hook"]),
     positionals: ["file"],
   });
   if (typeof opts.agent !== "string" || opts.agent === "") {
@@ -250,6 +273,11 @@ export function cmdMergeSettings(argv) {
   }
   if (typeof opts.hook !== "string" || opts.hook === "") {
     throw new Error("merge-settings: --hook <cmd> is required");
+  }
+  // Required, not defaulted: a settings file that names an agent but not what it
+  // is would leave every write in that session reading as a human's.
+  if (typeof opts.kind !== "string" || opts.kind === "") {
+    throw new Error("merge-settings: --kind <name> is required (the host platform)");
   }
 
   let data = {};
@@ -266,6 +294,8 @@ export function cmdMergeSettings(argv) {
 
   const { data: merged, changed } = mergeSettings(data, {
     agent: opts.agent,
+    kind: opts.kind,
+    human: opts.human,
     hookCommand: opts.hook,
     force: opts.force,
   });

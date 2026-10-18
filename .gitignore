@@ -8,8 +8,17 @@ dist/
 # runtime data (local SQLite board database, etc.)
 .data/
 
+# parallel-task worktrees — the convention in CLAUDE.md keeps them inside the checkout,
+# so they must never appear as untracked files in the primary one
+.worktrees/
+
 # test / coverage output
 coverage/
+
+# verification-run records — these belong in the card's own workspace, never in the
+# repository (docs/README.md § "On `docs/verify/`"). An ignore rule cannot stop a
+# `git add -f`, so the real gate is the now-empty host-paths allowlist.
+docs/verify/
 
 # macOS
 .DS_Store

@@ -31,6 +31,7 @@ import { dirname, extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { BROWSER_LAYER_RULES, IMPLEMENTED_CONTRACT_ITEMS } from "../../test/web/blocks.contract.mjs";
+import { applyPxVerdicts } from "./px-assert.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB = resolve(HERE, "..");
@@ -540,7 +541,6 @@ export function evaluateRules(rules) {
     probe.remove();
     return value;
   };
-  const px = (value) => Number.parseFloat(value);
   /**
    * Count the tracks of a computed `grid-template-columns`. Splitting on
    * whitespace is wrong: a track may be `minmax(0px, 1fr)`, which contains a
@@ -561,8 +561,9 @@ export function evaluateRules(rules) {
     return inToken ? count + 1 : count;
   };
   const out = [];
-  for (const { block, rule } of rules) {
-    const record = { block, kind: rule.kind, selector: rule.selector ?? null, probe: rule.probe ?? null, within: rule.within ?? null, ok: true, detail: "" };
+  for (let index = 0; index < rules.length; index++) {
+    const { block, rule } = rules[index];
+    const record = { index, block, kind: rule.kind, selector: rule.selector ?? null, probe: rule.probe ?? null, within: rule.within ?? null, ok: true, detail: "" };
     try {
       switch (rule.kind) {
         case "count": {
@@ -639,9 +640,17 @@ export function evaluateRules(rules) {
           const expected = rule.equalsVar !== undefined ? resolveVar(rule.equalsVar)
             : rule.notEqualsVar !== undefined ? resolveVar(rule.notEqualsVar)
             : undefined;
+          // The px comparators are settled in Node (`px-assert.mjs`): the page
+          // reports each matched node's raw computed value and whether it has a
+          // layout box. `parseFloat` in here cannot tell `"auto"` (NaN ⇒ every
+          // comparison false ⇒ silent pass) from a real length, nor `"100%"` (a
+          // fake `100`) — T-20261016-130046-3.
+          const pxComparators = rule.equalsPx !== undefined || rule.minPx !== undefined || rule.maxPx !== undefined;
+          const pxReadings = [];
           for (const node of nodes) {
             const actual = getComputedStyle(node)[rule.property];
             const fail = (why) => { record.ok = false; record.detail = `${rule.property} = ${actual} ${why}`; };
+            if (pxComparators) pxReadings.push({ value: actual, hasBox: node.isConnected && node.getClientRects().length > 0 });
             if (rule.equals !== undefined && actual !== rule.equals) { fail(`!= ${rule.equals}`); break; }
             if (rule.equalsVar !== undefined && actual !== expected) { fail(`!= var(${rule.equalsVar}) = ${expected}`); break; }
             if (rule.notEquals !== undefined && actual === rule.notEquals) { fail(`== ${rule.notEquals}`); break; }
@@ -650,14 +659,12 @@ export function evaluateRules(rules) {
             if (rule.startsWith !== undefined && !actual.startsWith(rule.startsWith)) { fail(`does not start with ${rule.startsWith}`); break; }
             if (rule.endsWith !== undefined && !actual.endsWith(rule.endsWith)) { fail(`does not end with ${rule.endsWith}`); break; }
             if (rule.tokens !== undefined && trackCount(actual) !== rule.tokens) { fail(`is not ${rule.tokens} tracks`); break; }
-            if (rule.equalsPx !== undefined && Math.abs(px(actual) - rule.equalsPx) > 0.5) { fail(`!= ${rule.equalsPx}px`); break; }
-            if (rule.maxPx !== undefined && px(actual) > rule.maxPx) { fail(`> ${rule.maxPx}px`); break; }
-            if (rule.minPx !== undefined && px(actual) < rule.minPx) { fail(`< ${rule.minPx}px`); break; }
             if (rule.differsFrom !== undefined) {
               const other = doc.querySelector(rule.differsFrom);
               if (!other || getComputedStyle(other)[rule.property] === actual) { fail(`is not distinguishable from ${rule.differsFrom}`); break; }
             }
           }
+          if (pxReadings.length > 0) record.px = pxReadings;
           break;
         }
         case "classes": {
@@ -710,6 +717,14 @@ export async function run() {
   try {
     const context = await browser.newContext();
     const page = await context.newPage();
+
+    /**
+     * Run the in-page evaluator, then settle every px comparator in Node. The
+     * page cannot judge them safely — see `web/scripts/px-assert.mjs` — so it
+     * reports `record.px` readings and this folds them back into the records.
+     */
+    const evaluateRuleSet = async (rules) => applyPxVerdicts(await page.evaluate(evaluateRules, rules), rules);
+
     const consoleErrors = [];
     const pageErrors = [];
     page.on("console", (msg) => {
@@ -765,11 +780,11 @@ export async function run() {
     // section below (the two views are mutually exclusive, so it cannot be both).
     const waitingRules = EVALUATED_RULES.filter((e) => e.rule.when === "waiting view").map((e) => ({ block: e.block, rule: e.rule }));
 
-    const boardResults = await page.evaluate(evaluateRules, boardRules);
+    const boardResults = await evaluateRuleSet(boardRules);
     await page.click('[data-view="list"]');
     await waitForListSettled();
     await page.waitForTimeout(120);
-    const listResults = await page.evaluate(evaluateRules, listRules);
+    const listResults = await evaluateRuleSet(listRules);
     // The list's own geometry that a per-element rule cannot state: one dot per
     // status chip, and a rule *between* rows (the first draws no top edge).
     const listDetail = await page.evaluate(() => {
@@ -849,7 +864,7 @@ export async function run() {
       block: entry.block,
       rule: entry.rule,
     }));
-    const drawerResults = await page.evaluate(evaluateRules, drawerRules);
+    const drawerResults = await evaluateRuleSet(drawerRules);
 
     /* ---- R14 ①② — the drawer's focus hand-off and its category words --------
        Both leftovers live on the drawer that is open right here (TD-1), so both
@@ -906,9 +921,9 @@ export async function run() {
        has a rect at all, so the pair is read together and asserted together.
 
        The head's own height rides here because a taller button is the only thing
-       that moves it: `docs/verify/T-20261014-150729` measured prototype 32×32 ·
+       that moves it: `T-20261014-150729` measured prototype 32×32 ·
        head 78.59 against implementation 16×16 · head 67, and the probe next door
-       (`docs/verify/T-20261014-154730/probe-close-focus.mjs`) re-measures both
+       (`T-20261014-154730/probe-close-focus.mjs`) re-measures both
        sides' head down to its two children. */
     const r14Close = await page.evaluate(() => {
       const close = document.querySelector("[data-detail-close]");
@@ -1175,7 +1190,7 @@ export async function run() {
     // metrics; this is where they are evaluated.
     await page.setViewportSize({ width: 980, height: 900 });
     await page.waitForTimeout(150);
-    const railResults = await page.evaluate(evaluateRules, railRules);
+    const railResults = await evaluateRuleSet(railRules);
     const rail = await page.evaluate(() => {
       const caret = document.querySelector("[data-lang-select] svg.td-caret");
       return {
@@ -1267,7 +1282,7 @@ export async function run() {
     await page.waitForTimeout(150);
     await page.click("[data-access-open]");
     await page.waitForTimeout(200);
-    const panelResults = await page.evaluate(evaluateRules, panelRules);
+    const panelResults = await evaluateRuleSet(panelRules);
     const panelGeometry = await page.evaluate(() => {
       const panel = document.querySelector("[data-access-panel]");
       const box = panel.getBoundingClientRect();
@@ -2078,7 +2093,7 @@ export async function run() {
       await page.click('[data-view="list"]');
       await page.waitForTimeout(180);
       const loading = await readListPair();
-      const loadingResults = await page.evaluate(evaluateRules, listLoadingRules);
+      const loadingResults = await evaluateRuleSet(listLoadingRules);
       tasksDelayMs = 0;
       await waitForListSettled();
       await page.waitForTimeout(120);
@@ -2501,9 +2516,31 @@ export async function run() {
     const r8cFailures = [];
     const r8cCheck = (ok, message) => { if (!ok) r8cFailures.push(message); };
 
-    // 980px is where the right-hand column is narrow enough that a 41-character
-    // title cannot fit its row — the reading the design lane measured there.
-    await page.setViewportSize({ width: 980, height: 900 });
+    // The viewport where the right-hand column is narrow enough that the
+    // fixture's 40-character title cannot fit its row.
+    //
+    // It used to be 980, and — this is the part that changed — that number was
+    // never really about the viewport. The popup took its width from its
+    // positioning ancestor, which was the *shrink-wrapped* control (172px), so
+    // `.td-combo-menu` resolved `max(100%, 220px)` to **220px at every width**:
+    // the same row was clipped at 1512 as at 980, and the design lane's 980 was
+    // one reading of a viewport-independent fact.
+    //
+    // T-20261016-113131 puts the control on its track, so the popup now *is* the
+    // track (`max(100%, 220px)` with 100% = the control = the field's column) and
+    // the clipping is genuinely viewport-dependent: the track is
+    // `(width − 98) / 2.6` above 760 (98 = the 2px hairline + 2×20 gutter + 24 gap
+    // + the overlay's 2×16 gutter — 114 until T-20261016-130046-2 widened the
+    // dialog to the prototype's own box, which moved 980 to 339.23 and 900 to
+    // 308.47). At 980 the title fits (0 of 13 rows clipped); at 900 it does not
+    // (1 of 13 — the 40-character row needs 248px of a 238px box, so 10px of
+    // overflow, measured on the widened track). The assertion below is the design
+    // criterion — "a title that does not fit is ellipsised, not wrapped and not
+    // lost" — so its breakpoint follows the reading down one rung rather than the
+    // assertion being dropped: **980 → 900**.
+    // (T-20261015-233122 A6 #5 anticipated exactly this flip and forbade deleting
+    // the assertion; the numbers above are the re-derivation it asked for.)
+    await page.setViewportSize({ width: 900, height: 900 });
     await page.click("[data-new-task]");
     await page.waitForTimeout(300);
 
@@ -2553,7 +2590,7 @@ export async function run() {
     }
     r8cCheck(
       optionRows.some((row) => row.clipped === true),
-      "no option row is actually clipped at 980px — the ellipsis has nothing to fire on",
+      "no option row is actually clipped at 900px — the ellipsis has nothing to fire on",
     );
 
     // ② — accepting a row puts the task in the field as a chip: identifier (same
@@ -2668,6 +2705,111 @@ export async function run() {
     await page.waitForTimeout(250);
     await page.setViewportSize({ width: 1512, height: 950 });
     await page.waitForTimeout(150);
+
+    // --- B24 · the parent control on its field's whole track --------------------
+    //
+    // T-20261016-113131. The **geometry** half of the seven structural rules the
+    // contract states for this control (B24), read at the two viewports the
+    // design lane measured the defect at (T-20261015-233122 §①).
+    //
+    // Everything here is written against `track` — the width of the field group
+    // itself — and never against a literal 405.391. That is not tidiness: the
+    // track is the one reading the prototype and the implementation already
+    // agree on, so a constant would make the identity below true by
+    // construction and hide the very defect the leg exists to catch. The defect
+    // was never the track; it was that the control inside it ignored it.
+    //
+    // Why not in the contract layer: B24's rules carry no `when`, so they
+    // evaluate in the **board** state, where the create dialog is `hidden` and
+    // every `getBoundingClientRect` reads 0 — a box rule there would fail on
+    // `0 != 405.391` for reasons that have nothing to do with the layout. And a
+    // *computed-width* rule is worse than useless here: before this change the
+    // box computes to `flex: 1 1 auto`, i.e. `width: auto`, `parseFloat → NaN`,
+    // and `Math.abs(NaN − 405.391) > 0.5` is **false** — the rule passes
+    // silently, which is exactly how the bug survived (T-20261015-233122 §③.4).
+    const round2 = (n) => Math.round(n * 100) / 100;
+    const near = (a, b) => Math.abs(a - b) <= 0.5;
+
+    /** Open a fresh dialog at a viewport and read the parent field twice. */
+    const parentTrackAt = async (width, height) => {
+      await page.setViewportSize({ width, height });
+      await page.click("[data-new-task]");
+      await page.waitForTimeout(300);
+      const read = () =>
+        page.evaluate(() => {
+          const r = (n) => Math.round(n * 100) / 100;
+          const group = document.querySelector("[data-create-task-parent]");
+          const row = document.querySelector(".td-combo-field");
+          const input = document.querySelector("[data-parent-input]");
+          const clear = document.querySelector("[data-parent-clear]");
+          const menu = document.querySelector("[data-parent-menu]");
+          const track = group.getBoundingClientRect();
+          const box = input.getBoundingClientRect();
+          const cross = clear.getBoundingClientRect();
+          return {
+            track: r(track.width),
+            trackRight: r(track.right),
+            gap: row ? Number.parseFloat(getComputedStyle(row).columnGap) : null,
+            input: r(box.width),
+            clearDisplay: getComputedStyle(clear).display,
+            clearWidth: r(cross.width),
+            clearHeight: r(cross.height),
+            clearRight: r(cross.right),
+            menuDisplay: getComputedStyle(menu).display,
+            menuWidth: r(menu.getBoundingClientRect().width),
+          };
+        });
+      // A true rest: the dialog's `reset()` clears the form, but the box's own
+      // query lives in the control, which is never unmounted (the dialog is
+      // toggled by `hidden`) — so a query left behind by an earlier pass
+      // survives the reopen and the field is not empty. Empty it by hand rather
+      // than assert on whatever the previous leg typed.
+      await page.evaluate(() => {
+        const input = document.querySelector("[data-parent-input]");
+        input.focus(); // a `blur()` on an unfocused input fires nothing, and the menu would stay open
+        input.value = "";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.blur();
+      });
+      await page.waitForTimeout(150);
+      const rest = await read();
+      // Type into the box. The field now carries a value, so the ✕ is drawn —
+      // and the menu is open, which is the only state its width can be read in.
+      await page.evaluate(() => {
+        const input = document.querySelector("[data-parent-input]");
+        input.focus();
+        input.value = "td";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await page.waitForTimeout(200);
+      const valued = await read();
+      await page.click("[data-create-task] [data-modal-close]");
+      await page.waitForTimeout(250);
+      return { rest, valued };
+    };
+
+    const parentTrackReadings = {};
+    for (const [label, width, height] of [["1512×950", 1512, 950], ["980×900", 980, 900]]) {
+      const { rest, valued } = await parentTrackAt(width, height);
+      parentTrackReadings[label] = { rest, valued };
+      r8cCheck(rest.track > 0, `at ${label} the parent field group measures ${rest.track}px — the dialog did not lay out`);
+      // Rest: the box takes the whole track, and an empty field draws no ✕.
+      r8cCheck(near(rest.input, rest.track), `at ${label} the empty box is ${rest.input}px inside a ${rest.track}px track`);
+      r8cCheck(rest.clearDisplay === "none", `at ${label} the ✕ is drawn (display: ${rest.clearDisplay}) on an empty field`);
+      // The identity — the arithmetic the prototype's own numbers satisfy.
+      r8cCheck(rest.gap === 4, `at ${label} the field row's gap is ${rest.gap}px, expected 4`);
+      r8cCheck(
+        near(valued.input + valued.gap + valued.clearWidth, valued.track),
+        `at ${label} the valued field is ${valued.input} + ${valued.gap} + ${valued.clearWidth} = ${round2(valued.input + valued.gap + valued.clearWidth)}px against a ${valued.track}px track`,
+      );
+      r8cCheck(valued.clearDisplay !== "none", `at ${label} the ✕ is not drawn (display: ${valued.clearDisplay}) on a field that carries a value`);
+      // The ✕ itself: the 20×20 box, its right edge on the track's right edge.
+      r8cCheck(near(valued.clearWidth, 20) && near(valued.clearHeight, 20), `at ${label} the ✕ box is ${valued.clearWidth}×${valued.clearHeight}, expected 20×20`);
+      r8cCheck(near(valued.clearRight, valued.trackRight), `at ${label} the ✕'s right edge is at ${valued.clearRight}, the track's at ${valued.trackRight}`);
+      // The popup: positioned from the control, so it is as wide as the track.
+      r8cCheck(valued.menuDisplay !== "none", `at ${label} the parent menu is not open (display: ${valued.menuDisplay})`);
+      r8cCheck(near(valued.menuWidth, valued.track), `at ${label} the menu is ${valued.menuWidth}px wide against a ${valued.track}px track`);
+    }
 
     // --- R12 · the filters bar's one line, and the board's equal-height chain ---
     //
@@ -3129,8 +3271,18 @@ export async function run() {
       const cs = active ? getComputedStyle(active) : null;
       const nameCs = activeName ? getComputedStyle(activeName) : null;
       const hostCs = host ? getComputedStyle(host) : null;
+      const railEl = document.querySelector("[data-sidebar]");
       return {
         rows: hosts.map((el) => ({ clip: el.scrollWidth - el.clientWidth, overflow: getComputedStyle(el).overflowX })),
+        // The rail's own box. `rows[].clip === 0` above is satisfied by a host
+        // that simply *grew*, which is how the roster escaped the rail: the host
+        // is a flex item with `overflow: visible`, so its `min-width: auto` floor
+        // was its whole one-line run, and the run's right edge landed past the
+        // 248px column's `overflow-x: auto` cut. The box the names must actually
+        // fit in is this one (T-20261016-130046).
+        rail: railEl
+          ? { clip: railEl.scrollWidth - railEl.clientWidth, scrollWidth: railEl.scrollWidth, clientWidth: railEl.clientWidth }
+          : null,
         rowHeights: [...document.querySelectorAll("[data-agent-row]")].map((el) => round(el.getBoundingClientRect().height)),
         activeCount: document.querySelectorAll('[data-assignee-item][data-assignee-active="true"]').length,
         capsule: cs ? {
@@ -3154,12 +3306,83 @@ export async function run() {
         firstItemPainted: !!firstItem && firstItem.getClientRects().length > 0,
         accent: getComputedStyle(document.documentElement).getPropertyValue("--brand-accent").trim(),
         accentSoft: getComputedStyle(document.documentElement).getPropertyValue("--brand-accent-soft").trim(),
+        // T-20261017-021412 ② — the comma is the roster's separator, and its
+        // correctness is two properties at once:
+        //   * **line** — no rendered line may begin with one (`", assistant"`
+        //     was what a greedy wrap produced while the separator was a free
+        //     text node between items);
+        //   * **structure** — the comma belongs to the item whose name it
+        //     follows, so it travels with that name across a wrap.
+        // Character rects group into lines (the row may wrap); every
+        // comma-bearing text node is traced to its nearest element ancestor, and
+        // the items' own text is read to see which of them carry the separator.
+        separator: (() => {
+          const hosts = [...document.querySelectorAll("[data-agent-row] [data-agent-text]")];
+          const lineHeads = hosts.map((host) => {
+            const chars = [];
+            const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+            for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+              for (let i = 0; i < node.data.length; i += 1) {
+                const range = document.createRange();
+                range.setStart(node, i);
+                range.setEnd(node, i + 1);
+                const rect = range.getBoundingClientRect();
+                if (!rect.width && !rect.height) continue;
+                chars.push({ ch: node.data[i], x: rect.x, y: Math.round(rect.y) });
+              }
+            }
+            const lines = new Map();
+            for (const char of chars) {
+              if (!lines.has(char.y)) lines.set(char.y, []);
+              lines.get(char.y).push(char);
+            }
+            return [...lines.entries()]
+              .sort((a, b) => a[0] - b[0])
+              .map(([, line]) => line.sort((a, b) => a.x - b.x).map((char) => char.ch).join(""));
+          });
+          const strayCommas = [];
+          const scope = document.querySelector("[data-agents-presence]") ?? document.body;
+          const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
+          for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            if (!node.data.includes(",")) continue;
+            if (!node.parentElement?.closest("[data-assignee-item]")) strayCommas.push(node.data.trim());
+          }
+          const items = [...scope.querySelectorAll("[data-assignee-item]")].map((item) => {
+            const siblings = [...(item.parentElement?.querySelectorAll(":scope > [data-assignee-item]") ?? [])];
+            return {
+              name: item.getAttribute("data-assignee-item"),
+              endsWithComma: /,\s*$/.test(item.textContent ?? ""),
+              last: siblings.at(-1) === item,
+            };
+          });
+          return { lineHeads, strayCommas, items };
+        })(),
       };
     });
 
     const restR11 = await readR11();
     const restRoster = await measureRoster();
     const R11_KEYS = ["backlog", "todo", "in_progress", "in_review", "blocked", "done", "canceled"];
+
+    // T-20261017-021412 ② — the separator is bound to the name it follows.
+    // A line-head comma is the visible defect (`", assistant"` alone on a
+    // wrapped line); a comma outside `[data-assignee-item]` is its cause, and
+    // the per-item separator distribution says the comma is attached to exactly
+    // the items that need one (every item but the last).
+    for (const [rowIndex, lines] of restRoster.separator.lineHeads.entries()) {
+      for (const [lineIndex, text] of lines.entries()) {
+        const head = text.trimStart()[0] ?? "";
+        r11Check(head !== ",", `roster row ${rowIndex} line ${lineIndex} begins with a comma: ${JSON.stringify(text)}`);
+      }
+    }
+    r11Check(
+      restRoster.separator.strayCommas.length === 0,
+      `comma text outside [data-assignee-item]: ${JSON.stringify(restRoster.separator.strayCommas)}`,
+    );
+    r11Check(
+      restRoster.separator.items.every((item) => item.endsWithComma === !item.last),
+      `roster item separators: ${restRoster.separator.items.map((item) => `${item.name}=${item.endsWithComma ? "comma" : "bare"}${item.last ? "(last)" : ""}`).join(", ")}`,
+    );
 
     // A · structure (R11 §5.1 A1–A3′, R13 §5 A1–A3, R2.1)
     r11Check(restR11.statusCount === 1, `[data-filter-status] count ${restR11.statusCount} !== 1`);
@@ -3379,6 +3602,13 @@ export async function run() {
       `the first-in-row capsule bleeds ${r11Capsule.activeBleed}px (first=${r11Capsule.activeIsFirst}, painted=${r11Capsule.activePainted})`,
     );
     r11Check(restRoster.rows.every((r) => r.clip === 0), `at rest the roster clips ${restRoster.rows.map((r) => r.clip).join(",")}`);
+    // B03 · R-1 — the rail is the box the names must fit in. A host that grows
+    // instead of wrapping passes `rows[].clip === 0` and still hands the overflow
+    // to `.td-sidebar`'s own `overflow-x: auto`, which is a 248px column hiding
+    // real content behind a scrollbar most readers never take. Both observations
+    // are needed; neither alone says the names are on screen.
+    r11Check(restRoster.rail?.clip === 0, `at rest the sidebar rail scrolls ${restRoster.rail?.clip}px (scrollWidth ${restRoster.rail?.scrollWidth} > clientWidth ${restRoster.rail?.clientWidth}) — the roster is escaping the rail instead of fitting it`);
+    r11Check(r11Capsule.rail?.clip === 0, `with a capsule the sidebar rail scrolls ${r11Capsule.rail?.clip}px (scrollWidth ${r11Capsule.rail?.scrollWidth} > clientWidth ${r11Capsule.rail?.clientWidth})`);
 
     // R13 §10.3 C4 — switching names moves the capsule, never doubles it, and
     // still writes nothing but the assignee.
@@ -3618,7 +3848,7 @@ export async function run() {
       };
     });
     // The contract's own B27 rules, read while the queue is on screen.
-    const waitingResults = await page.evaluate(evaluateRules, waitingRules);
+    const waitingResults = await evaluateRuleSet(waitingRules);
     await page.click('[data-nav-item="board"]');
     await page.waitForTimeout(120);
 
@@ -3706,7 +3936,7 @@ export async function run() {
 
     // The contract's own B26 rules, read here and nowhere else: the view is open
     // and the ledger has been read.
-    const activityResults = await page.evaluate(evaluateRules, activityRules);
+    const activityResults = await evaluateRuleSet(activityRules);
 
     const b26Rest = await page.evaluate(() => {
       const root = document.querySelector("[data-activity-view]");
@@ -4657,6 +4887,10 @@ export async function run() {
       ...waitingResults,
     ];
     const failures = results.filter((r) => !r.ok);
+    // A px comparator read off an element with no layout box (a closed subtree)
+    // degrades to the probe's existence criterion — it is not a pass *as a
+    // measurement*, so it is reported rather than hidden. See px-assert.mjs.
+    const notMeasured = results.filter((r) => r.notMeasured === true);
     const viewportFailures = viewports.filter((v) => !v.ok);
     return {
       consoleErrors,
@@ -4670,7 +4904,7 @@ export async function run() {
       r6: { failures: r6Failures, themeSweep, titleGeometry, listDetail, panel: panelGeometry, rail },
       r7: { failures: r7Failures, wide, rail: railBand, drawerHead: closeR7 },
       r8: { failures: r8Failures, headWide, headNarrow, identifiers, drawerIdentifier, dark, light },
-      r8c: { failures: r8cFailures, optionRows, parentPicked, afterClear, dependsChips },
+      r8c: { failures: r8cFailures, optionRows, parentPicked, afterClear, dependsChips, parentTrack: parentTrackReadings },
       r9: { failures: r9Failures, register, controls, listEn, listZh, loadingRules: listLoadingRules.length },
       r10: {
         failures: r10Failures,
@@ -4726,7 +4960,8 @@ export async function run() {
         afterAnchor: r16AfterAnchor,
       },
       geometry,
-      counts: { rules: results.length, failed: failures.length, ...geometry },
+      notMeasured,
+      counts: { rules: results.length, failed: failures.length, notMeasured: notMeasured.length, ...geometry },
       fixtureTasks: data.tasks.length,
     };
   } finally {
@@ -4764,6 +4999,10 @@ if (isEntryPoint) run().then(
       console.log(`console errors=${report.consoleErrors.length} page errors=${report.pageErrors.length}`);
       for (const error of [...report.consoleErrors, ...report.pageErrors]) console.log(`  ! ${error}`);
       for (const failure of report.failures) console.log(`  ✗ ${failure.block} ${failure.kind} ${failure.selector ?? failure.probe ?? ""} — ${failure.detail}`);
+      if (report.notMeasured.length > 0) {
+        console.log(`not measured (no layout box): ${report.notMeasured.length} px assertion(s)`);
+        for (const record of report.notMeasured) console.log(`  · ${record.block} ${record.probe} — ${record.detail}`);
+      }
       console.log(`viewports: ${report.viewports.map((v) => `${v.width}${v.ok ? "ok" : "OVERFLOW"}`).join(" ")}`);
       console.log(`interactions: ${JSON.stringify(report.interactions)}`);
       if (report.m1Failures.length > 0) {
@@ -4807,6 +5046,9 @@ if (isEntryPoint) run().then(
         for (const failure of report.r8c.failures) console.log(`  ✗ ${failure}`);
       } else {
         console.log(`B24 (fidelity) — ${report.r8c.optionRows.length} relation rows carry identifier + one-line title (${report.r8c.optionRows.filter((row) => row.clipped).length} actually clipped), the parent field shows one chip (${JSON.stringify(report.r8c.parentPicked.mono)} …) and the depends-on field ${report.r8c.dependsChips.length} chips, all pass`);
+        for (const [label, reading] of Object.entries(report.r8c.parentTrack)) {
+          console.log(`B24 (fidelity) — parent field @${label}: track ${reading.rest.track}px, box ${reading.rest.input}px and no ✕ at rest (${reading.rest.clearDisplay}); with a value box ${reading.valued.input} + gap ${reading.valued.gap} + ✕ ${reading.valued.clearWidth} = ${Math.round((reading.valued.input + reading.valued.gap + reading.valued.clearWidth) * 100) / 100}px (${reading.valued.clearDisplay}), ✕ right edge ${reading.valued.clearRight} vs track right ${reading.valued.trackRight}, menu ${reading.valued.menuWidth}px — all pass`);
+        }
       }
       if (report.r12.failures.length > 0) {
         console.log(`R12 (fidelity) — ${report.r12.failures.length} failed:`);

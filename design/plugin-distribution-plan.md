@@ -716,7 +716,7 @@ written for a **future implementation card**, and is marked as such by being ins
 "the implementation card does" framing — none of them were run here.
 
 Read-only research performed: a shallow clone of `obra/superpowers` to
-`~/.openclaw/team/workspace/T-20261015-035514/superpowers-src` (outside the repository), and
+`<本卡工作区>/superpowers-src` (outside the repository), and
 reads of this repository. No agent CLI config directory was installed into or modified.
 
 ---
@@ -741,6 +741,45 @@ reads of this repository. No agent CLI config directory was installed into or mo
    harness lets a plugin install *not* land a copy in the host's store, and superpowers says so
    twice (§1.3). If Terry's expectation was "install once, used everywhere", this is the item
    where that expectation has to be re-set — the reachable win is the **repo**, not the host.
+
+---
+
+## ⑨ Decision note — 2026-10-17: the floor is gone
+
+**§7 decision 2 is reversed, and §3.3's floor with it.** The two residual copies this plan
+kept are both removed; the repository ships **zero** committed copies of any skill, and
+`plugins/` no longer exists.
+
+- **`plugins/openclaw/` (1 manifest + 8 skill files)** — `openclaw.plugin.json` was never an
+  install path. A *native* OpenClaw plugin is an in-process runtime module needing
+  `package.json#openclaw.extensions` plus an entry point importing the OpenClaw plugin SDK —
+  a runtime dependency this project deliberately does not take — so the manifest could not be
+  installed as what it claimed. What OpenClaw actually installs is the repository-root bundle
+  (`openclaw plugins install "$PWD"`), exactly like claude, codex and cursor. The 8-file
+  `skills/` copy existed only so the `bundleDetected` assertion could resolve a skill out of
+  that directory. Both are gone; `HOST_BUNDLES.openclaw` now names the root, and
+  `docker/profiles/openclaw.yml` asserts `bundle`/`cursor` like every other row.
+- **`plugins/loop/` (2 manifests + 25 skill files)** — the standalone `meerkat-loop`
+  marketplace entry this plan kept so a Claude user could install the supervisor. It is
+  dropped: `install.sh --target claude|codex|pi` is the loop's distribution path, and it
+  always was for codex and pi. The cost is stated in `docs/install.md`: a marketplace install
+  no longer exists for the loop.
+- **The loop stops being an independently-versioned component.** Its only two carriers were
+  the `plugins/loop` manifests, and nothing consumes a loop version — `board-check.mjs`
+  enforces the *board's* interface floor, and `install.sh` writes no version into a unit or
+  env file. `LOOP_VERSION_SOURCES` and `BUMP_GROUPS.loop` are removed, so ruling O4
+  (board and loop version independently) is retired; the board group keeps its seam.
+- **What guards it now.** With no copy targets left, `sync-skills.mjs --check` has nothing to
+  compare and cannot notice an orphan `plugins/` tree — so the invariant moved entirely into
+  `test/scaffold.test.mjs`: `skills/` is the only `skills` directory in the checkout, and
+  `plugins/` must not exist. That is the assertion a future harness adding a copy trips.
+- **Not at risk from this:** the OpenClaw exclusion (O3). The board-only guarantee lives in
+  `install.sh --target openclaw`, which copies `skills/meerkat-taskpanel` and nothing else —
+  it never depended on `plugins/openclaw`. The root bundle has always exposed both skills
+  (`test/install/bundle.test.mjs`), so OpenClaw's bundle route is unchanged in that respect.
+
+The remaining §7 decisions stand as written: opencode/cursor do receive the loop through the
+shared tree, and the host-side copies are still out of scope.
 
 ---
 

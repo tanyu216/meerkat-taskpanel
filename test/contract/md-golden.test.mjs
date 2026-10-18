@@ -37,10 +37,21 @@ const FIXTURE_FILES = readdirSync(FIXTURES)
   .sort();
 
 /** Import a directory into a fresh board. */
+/**
+ * The fixture board's human.
+ *
+ * `elon` filed every fixture card and wrote the comments that are decisions on
+ * the record — the fixture set's own fact, stated here rather than inferred from
+ * a roster of person-names in the importer. The board reads *one* human, and this
+ * is the one this board was configured with (a real board gets it from
+ * `TASKCTL_HUMAN`, set at install time).
+ */
+const FIXTURE_HUMAN = "elon";
+
 async function importFixtures(dir = FIXTURES) {
   const board = await createTempBoard();
   const repos = createRepositories(board.db);
-  const stats = importMd({ db: board.db, repos, dir, now: TS });
+  const stats = importMd({ db: board.db, repos, dir, now: TS, human: FIXTURE_HUMAN });
   return { ...board, repos, stats };
 }
 
@@ -128,8 +139,11 @@ function snapshot(db) {
       created_at: activity.created_at,
     })),
     // One table since 0019 — the `table` label is gone with the two tables it
-    // distinguished.
-    dictionary: rows("SELECT kind, display_name, normalized_name, use_count FROM actors ORDER BY normalized_name"),
+    // distinguished. **No `kind`**: since `0023` the row holds none (a kind
+    // describes an act, and this is one row per person). What the two boards must
+    // agree on here is *who exists*; the kind a reader sees is aggregated from the
+    // references, and `repositories.test.mjs` pins that rule.
+    dictionary: rows("SELECT display_name, normalized_name, use_count FROM actors ORDER BY normalized_name"),
   };
 }
 
@@ -231,7 +245,7 @@ describe("contract/md-golden — export → import rebuilds the same board", () 
 
       // Idempotency: a third pass over the same directory changes nothing.
       const third = { db: second.db, repos: second.repos };
-      const again = importMd({ db: third.db, repos: third.repos, dir: out, now: TS });
+      const again = importMd({ db: third.db, repos: third.repos, dir: out, now: TS, human: FIXTURE_HUMAN });
       assert.equal(again.skipped, FIXTURE_FILES.length, "every card is recognised");
       assert.equal(again.tasks, 0);
       assert.equal(again.comments, 0);
@@ -246,7 +260,7 @@ describe("contract/md-golden — export → import rebuilds the same board", () 
     const board = await importFixtures();
     try {
       const before = snapshot(board.db);
-      const again = importMd({ db: board.db, repos: board.repos, dir: FIXTURES, now: TS });
+      const again = importMd({ db: board.db, repos: board.repos, dir: FIXTURES, now: TS, human: FIXTURE_HUMAN });
       assert.equal(again.skipped, FIXTURE_FILES.length);
       assert.deepEqual(snapshot(board.db), before, "the second import is a no-op");
     } finally {
@@ -368,7 +382,7 @@ describe("contract/md-golden — notify_leader, and the read-only notify_elon al
     const board = await createTempBoard();
     const repos = createRepositories(board.db);
     try {
-      importMd({ db: board.db, repos, dir, now: TS });
+      importMd({ db: board.db, repos, dir, now: TS, human: FIXTURE_HUMAN });
       const epic = repos.tasks.getByIdentifier("proj", "PROJ-0001");
       assert.equal(epic.meta.notify_leader, "yes", "the alias value lands on the canonical key");
       assert.equal(epic.meta.notify_elon, undefined);
@@ -392,7 +406,7 @@ describe("contract/md-golden — notify_leader, and the read-only notify_elon al
     try {
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, "PROJ-0001.md"), both, "utf8");
-      importMd({ db: board.db, repos, dir, now: TS });
+      importMd({ db: board.db, repos, dir, now: TS, human: FIXTURE_HUMAN });
       const epic = repos.tasks.getByIdentifier("proj", "PROJ-0001");
       assert.equal(epic.meta.notify_leader, "yes");
       assert.equal(epic.meta.notify_elon, undefined);
@@ -412,12 +426,12 @@ describe("contract/md-golden — source changes are not silently swallowed", () 
       mkdirSync(dir, { recursive: true });
       const source = readFileSync(join(FIXTURES, "PROJ-0003.md"), "utf8");
       writeFileSync(join(dir, "PROJ-0003.md"), source, "utf8");
-      importMd({ db: board.db, repos, dir, now: TS });
+      importMd({ db: board.db, repos, dir, now: TS, human: FIXTURE_HUMAN });
 
       writeFileSync(join(dir, "PROJ-0003.md"), source.replace("md migrator", "md migrator (revised)"), "utf8");
       assert.equal(reasonCode(() => importMd({ db: board.db, repos, dir, now: TS })), "SOURCE_CHANGED");
 
-      const resumed = importMd({ db: board.db, repos, dir, now: TS, resume: true });
+      const resumed = importMd({ db: board.db, repos, dir, now: TS, resume: true, human: FIXTURE_HUMAN });
       assert.equal(resumed.updated, 1);
       assert.equal(repos.tasks.getByIdentifier("proj", "PROJ-0003").title, "md migrator (revised)");
     } finally {
@@ -451,11 +465,11 @@ describe("contract/md-golden — optional real-card smoke (never asserts content
     const dir = realDir;
     const board = await createTempBoard();
     try {
-      const first = importMd({ db: board.db, repos: board.repos, dir, now: TS });
+      const first = importMd({ db: board.db, repos: board.repos, dir, now: TS, human: FIXTURE_HUMAN });
       assert.ok(first.cards > 0, "expected at least one card");
       const out = join(mkdtempSync(join(tmpdir(), "md-real-")), "cards");
       exportMd({ repos: board.repos, outDir: out, now: TS });
-      const second = importMd({ db: board.db, repos: board.repos, dir, now: TS });
+      const second = importMd({ db: board.db, repos: board.repos, dir, now: TS, human: FIXTURE_HUMAN });
       assert.equal(second.skipped, first.cards, "the second pass recognises every card");
     } finally {
       board.close();

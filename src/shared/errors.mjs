@@ -98,17 +98,19 @@ export const ERROR_CODES = Object.freeze({
   LABEL_CONFLICT: spec(409, "Label already exists in this project."),
 
   // ---- Project directories (host-local map) ---------------------------------
-  // The board holds no directory (O3), so "which directory does this project
-  // work in?" is answered on the host, by `projects.json`, and *checked* before
-  // it is used. These codes say why a directory could not be used; every one of
-  // them stops the caller — the alternative is a worker running in the wrong
-  // checkout, which is worse than not starting one.
+  // The board holds no directory (O3), so "which directory does work for this
+  // project happen in?" is answered on the host, by `projects.json`, and
+  // *checked* before it is used. These codes say why a directory could not be
+  // used; every one of them stops the caller — the alternative is a worker
+  // running in the wrong checkout, which is worse than not starting one. (An
+  // entry that names no directory at all is not one of these: that is the
+  // complete answer "this project has no local directory".)
   PROJECT_MAP_UNREADABLE: spec(422, "The local project map (projects.json) is missing or malformed."),
   PROJECT_DIR_UNMAPPED: spec(422, "No local directory is registered for this project."),
-  PROJECT_DIR_REQUIRED: spec(422, "The project map entry carries no target directory."),
-  PROJECT_DIR_NOT_ABSOLUTE: spec(422, "The project target directory is not an absolute path."),
-  PROJECT_DIR_MISSING: spec(422, "The project target directory does not exist."),
-  PROJECT_DIR_NOT_A_DIRECTORY: spec(422, "The project target directory is not a directory."),
+  PROJECT_DIR_REQUIRED: spec(422, "The project map entry carries no usable directory."),
+  PROJECT_DIR_NOT_ABSOLUTE: spec(422, "The project directory is not an absolute path."),
+  PROJECT_DIR_MISSING: spec(422, "The project directory does not exist."),
+  PROJECT_DIR_NOT_A_DIRECTORY: spec(422, "The project directory is not a directory."),
 
   // ---- Persistence / migrations ---------------------------------------------
   // `DB_BUSY` (R2): SQLite's `SQLITE_BUSY`/`SQLITE_LOCKED` after a bounded

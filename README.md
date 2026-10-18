@@ -13,7 +13,10 @@ agent, and people face the agents rather than the tool. Agents create the projec
 tasks, claim work, send heartbeats, report progress and wire up dependencies and epics — the
 whole lifecycle, including the delivery gate, runs with no human in the loop. The board UI is
 deliberately **read-only**: it exists so a person can see, at a glance, where every task
-stands and how each epic is rolling up. Nobody files a card by clicking a button.
+stands and how each epic is rolling up. Nobody has to file a card by clicking a button — and
+the dialog the board does carry files plain `task` cards only: it offers no `kind`, so an
+`epic` comes from an agent promoting a card in place (the skill's container protocol) and a
+`deploy` card is never something a form can produce.
 
 ## What it solves
 
@@ -43,8 +46,9 @@ rather than something locked inside a model's context. The mechanisms that do th
 append-only audit trail, first-class dependency and epic edges, resumable sessions — are what
 the [Highlights](#highlights) below describe.
 
-> **Status: the engine has landed through M6 — core (M1), CLI (M2), and the full board
-> backend plus the `web/` frontend (M6).**
+> **Status: the engine has landed in full — the core engine, the `taskctl` CLI and its
+> local `taskd`, the six-host installers, the markdown migrator, and the full board
+> backend plus the `web/` frontend.**
 > `src/core/` holds the domain model, SQLite storage and migrations, use-cases and
 > `openBoard()`; `src/cli/` + `src/server/` provide the real `taskctl` command surface and
 > the local `taskd` HTTP service the CLI auto-starts on loopback
@@ -76,7 +80,8 @@ the [Highlights](#highlights) below describe.
    `node:sqlite`) is the only persistence. The engine needs no other dependencies and works
    fully offline.
 7. **One board, many front doors.** Drive it from the `taskctl` CLI or over the local
-   `taskd` HTTP API — with skill/plugin installers for Claude Code, Codex, OpenClaw and pi.
+   `taskd` HTTP API — with skill/plugin installers for Claude Code, Codex, OpenClaw, pi,
+   OpenCode and Cursor.
 8. **Provider-agnostic by design.** Meerkat TaskPanel is the default board base for the
    openclaw-team framework — its claim and candidate criteria are kept in lockstep with the
    framework's poll, so the board can be swapped (Jira, Plane, Linear, …) without changing
@@ -117,24 +122,24 @@ Product prototype screenshots (the visual baseline for the board frontend):
 ```text
 meerkat-taskpanel/
 ├── README.md / README.zh-CN.md   # docs (English default, Chinese mirror)
+├── CHANGELOG.md / CONTRIBUTING.md
 ├── LICENSE / PRIVACY.md
 ├── package.json                  # workspace root, bin(taskctl), scripts
 ├── install.sh                    # install dispatcher: --target claude|openclaw|codex|pi|opencode|cursor|all
-├── .claude-plugin/               # Claude marketplace manifest
 ├── src/                          # engineering source
-│   ├── core/                     #   domain model / SQLite repo / state machine / invariants
+│   ├── core/                     #   domain model / SQLite repo / state machine / invariants / md migrator
 │   ├── cli/                      #   taskctl (CLI entry)
 │   ├── server/                   #   local HTTP API + SSE
 │   └── shared/                   #   shared DTOs / constants
 ├── web/                          # board frontend (Vue 3 + Vite) → web/dist (hosted root)
-├── skills/meerkat-taskpanel/        # skill — single source of truth
-├── .claude-plugin/               # the board plugin manifest (root = the plugin root)
+├── skills/                       # the two skills: meerkat-taskpanel (board), meerkat-loop (supervisor)
+├── .claude-plugin/               # marketplace + the board plugin manifest (plugin root = the repo root)
 ├── .pi/                          # the Pi extension (declared by package.json's `pi` field)
 ├── .opencode/                    # the OpenCode plugin (reads the one skills/ tree in place)
 ├── .cursor-plugin/               # Cursor's marker — makes the root a Cursor plugin too
-├── plugins/                      # the bundles that still need a sibling skills/
-│                                 #   (openclaw, and the loop's own marketplace entry)
 ├── design/                       # design artifacts: DESIGN / BLOCKS, prototype/, brand/, assets/
+├── docker/                       # Dockerfile, compose, profiles, verify-in-container.sh
+├── monitoring/                   # OTel / Prometheus exporter
 ├── scripts/                      # build / install / sync / verify
 ├── test/                         # contract + smoke tests
 ├── docs/                         # usage and development docs
@@ -146,7 +151,7 @@ meerkat-taskpanel/
 - **Node >= 22** — the runtime floor. The engine persists to a local SQLite database
   through the built-in [`node:sqlite`](https://nodejs.org/api/sqlite.html) module, which
   the 22.x line is the first to ship. `install.sh` checks this **before** installing and
-  fails loudly when `node` is missing or older (`--skip-node-check` bypasses it), and the
+  fails loudly when `node` is missing or older (`--skip-node-check` bypasses it), and
   `taskctl` refuses to start on an older runtime instead of failing
   later, mid-command.
 - **Runtime zero-dependency, no network** — everything under `src/` uses Node builtins
@@ -177,16 +182,18 @@ the host's own plugin system consumes — registering it needs that host's CLI, 
 | Host | `--target` | Skill directory | Bundle |
 |---|---|---|---|
 | Claude Code | `claude` | `~/.claude/skills/meerkat-taskpanel` | `.claude-plugin/plugin.json` (plugin root = the repository root) |
-| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | `plugins/openclaw/openclaw.plugin.json` (native) |
+| OpenClaw | `openclaw` | `~/.openclaw/skills/meerkat-taskpanel` | the same root bundle |
 | Codex | `codex` | `~/.codex/skills/meerkat-taskpanel` | the same root bundle, through the marketplace |
 | Pi / Agent Skills | `pi` | `~/.agents/skills/meerkat-taskpanel` | the root `package.json`'s `pi` field |
 | OpenCode | `opencode` | `~/.config/opencode/skills/meerkat-taskpanel` | `.opencode/plugins/` (in-process) |
 | Cursor | `cursor` | `~/.cursor/skills/meerkat-taskpanel` | `.` — the root (`.cursor-plugin/plugin.json`) |
 
 The repository root is the board's plugin root, so every harness reads the one `skills/`
-tree instead of receiving a copy. OpenClaw also consumes that Claude-format bundle, which
-is the supported skill-only route; `plugins/openclaw/openclaw.plugin.json` is a *native*
-manifest — see [`docs/install.md`](docs/install.md#openclaw) for the distinction.
+tree instead of receiving a copy. OpenClaw consumes that Claude-format bundle too, which
+is its supported route — see [`docs/install.md`](docs/install.md#openclaw).
+
+The `meerkat-loop` supervisor skill is **not** distributed through the marketplace: it is
+installed by `install.sh --target claude|codex|pi`, and it never reaches OpenClaw.
 
 Useful flags: `--prefix <home>` (override the target home), `--agent-name <name>` (the
 agent's board identity, default `$USER` — must equal its assignee; re-running with a new
@@ -206,7 +213,8 @@ not an `epic`, not a deployment card (`kind: deploy` — the poll never offers o
 it is dispatched explicitly), and not a card whose `depends_on` blockers are
 unfinished); **one
 card at a time**; keep a **fresh heartbeat** (the board treats a claim as live for
-10 minutes); **deliver with a report** (the delivery gate); **self-review is not
+10 minutes, and `issue heartbeat <ref>` is the pulse — the board never sends one
+for you); **deliver with a report** (the delivery gate); **self-review is not
 acceptance** (an agent reaches `in_review`, a human accepts to `done`); **never
 preempt a conflict** (re-read once, retry only if still claimable); and **stay
 traceable** (carry the session id). What differs between hosts is *who applies
@@ -262,7 +270,9 @@ already *are* the design in [`docs/scheduling.md`](docs/scheduling.md). So the
 OpenClaw path has three distinct layers; take the one you actually need:
 
 1. **Board base only** — `install.sh --target openclaw` installs the **skill
-   only**: the board and its rules, with nothing that dispatches work to agents.
+   only**: the board and its rules, not the `meerkat-loop` skill, and nothing that
+   dispatches work to agents (a permanent ruling, not a pending gap: two supervisors on
+   one board would only race each other for the same cards).
 2. **Build an agent team** — to get a team that actually claims and works cards,
    build one **to fit your own situation** following
    [**openclaw-team**](https://github.com/tanyu216/openclaw-team), a file-based,
@@ -331,7 +341,7 @@ runtime.
 
 ```bash
 node --test                          # run the smoke / contract test suite
-node scripts/sync-skills.mjs         # the loop payload + the two copies under plugins/
+node scripts/sync-skills.mjs         # the loop payload (execution body + installer templates)
 node scripts/sync-skills.mjs --check # verify the generated payload and copies are in sync
 node scripts/verify/manifests.mjs    # validate plugin manifests
 node scripts/verify/skill.mjs        # validate the board skill's SKILL.md frontmatter
@@ -350,14 +360,19 @@ Contributions land under the MIT license.
 
 ## Roadmap
 
-| Milestone | Contents |
-|---|---|
-| **M0** | Scaffold: layout, manifests, sync/verify scripts, tests *(landed)* |
-| M1 | `src/core`: domain model, SQLite repository, state machine, invariants *(landed)* |
-| M2 | `taskctl` command surface aligned with `task-interface v1`; minimal local `taskd` *(landed)* |
-| M6 | Full board HTTP API + SSE backend (`src/server/`), and the `web` board frontend → `web/dist` *(landed)* |
-| **Epic view** | Visual view of epic hierarchy / progress / rollup — see an epic and how the statuses of its child cards aggregate *(planned)* |
-| **Iteration management** | Iteration (sprint) cycle management: group tasks into iterations, with in-iteration progress and capacity *(planned)* |
+| Area | Contents | Status |
+|---|---|---|
+| **Engine** | `src/core/` — domain model, SQLite storage + migrations, state machine, invariants pushed down into database triggers, `openBoard()` | *landed* |
+| **CLI & local service** | `src/cli/` — the `taskctl` command surface aligned with `task-interface v1`; the loopback `taskd` it auto-starts | *landed* |
+| **Installers** | `install.sh` + `scripts/install/<host>.sh` — the six host targets, idempotent and merge-style | *landed* |
+| **Markdown migrator** | `src/core/storage/md/` — import/export cards as markdown, with reconcile and a post-import invariants check | *landed* |
+| **Board API & frontend** | `src/server/` — the full board HTTP API and its SSE stream; `web/` — the Vue 3 board built to `web/dist` | *landed* |
+| **Epic view** | Visual view of epic hierarchy / progress / rollup — see an epic and how the statuses of its child cards aggregate | *(planned)* |
+| **Iteration management** | Iteration (sprint) cycle management: group tasks into iterations, with in-iteration progress and capacity | *(planned)* |
+
+> The `M0`–`M6` labels are retired from this table: `M3` (the stdio MCP server) was landed
+> and then removed outright — see
+> [the migration note](docs/migration.md#separate-migration-the-mcp-integration-is-gone).
 
 ## License
 

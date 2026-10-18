@@ -660,6 +660,15 @@ where the stamp is `[data-activity-at]` — 实测全文档 `[data-activity-row]
 | Left — the work | `[data-create-left]` | `[data-create-task-title]` (+ hint) · `[data-create-task-description]`, which is `[data-md-source]` inside **B23** |
 | Right — its routing | `[data-create-right]` | `[data-create-task-priority]` · **assignee** (**B22**) · `[data-create-task-project]` · `[data-create-task-status]` · **reporter** (**B22**) · **labels** (**B25**) · **parent** (**B24**) · **depends-on** (**B24**) |
 
+> **No `kind` field — ruling C-KIND-1 (T-20261017-063826).** The routing column is exactly
+> those eight fields: the dialog files plain `task` cards, and that is a decision rather than a
+> missing control. `deploy` is dispatched explicitly and must never be a form option; and an
+> `epic` made here would be born `todo` — the one state an epic provably cannot leave
+> (T-20261017-063808). An `epic` comes from an agent promoting a card in place, which is what
+> `skills/meerkat-taskpanel/SKILL.md` §"When the card is a container" already assumes. The
+> machine face is `test/web/create-dialog-kind.test.mjs` (K1–K3) — adding the field is a design
+> round, not a ninth `<select>`.
+
 **R4 — the dialog grew and the left column leads.** `.td-modal-box` is
 `min(1120px, 100vw − 32px)` tall to `100vh − 48px` with its own scroller (R3: 880px
 wide, sized to its content). The two tracks are `minmax(0, 1.6fr)` / `minmax(0, 1fr)`,

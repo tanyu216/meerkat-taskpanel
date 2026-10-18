@@ -163,11 +163,42 @@ export const COMMENT_KINDS = Object.freeze([
   "defect",
 ]);
 
-/** Actor kinds — agents, humans, or the system itself. */
-export const ACTOR_KINDS = Object.freeze(["agent", "human", "system"]);
+/**
+ * **There is no actor-kind vocabulary.** An actor's kind is `human`, or the
+ * platform an agent runs on (`claude`, `codex`, `pi`, `opencode`, …), or
+ * whatever a host calls itself — and `0018` already dropped the enumeration from
+ * `comments.author_kind` and `task_reports.author_kind` for exactly that reason.
+ *
+ * What stood here instead was `ACTOR_KINDS = ["agent", "human", "system"]`, and
+ * `DICT_KINDS = ["agent", "human"]` — a closed list re-imposed **in the app
+ * layer** on top of the open column. That is not "being stricter than the
+ * schema is safe"; it is a second answer to a question the schema had already
+ * stopped asking, and it had two consequences worth naming:
+ *
+ *   * **A platform was unrepresentable.** `--actor-kind claude` was refused by
+ *     the dictionary and rewritten to `human` at the server, so the board could
+ *     not record *which* agent did the work — the one thing the kind is for.
+ *   * **`agent` was not a kind either.** It is a *category* — "not the human" —
+ *     and every decision the board makes from a kind is `kind === HUMAN_KIND`.
+ *     A three-valued list therefore carried one bit and two ways to spell the
+ *     other one.
+ *
+ * The one value with meaning is `HUMAN_KIND`. Everything else is an agent.
+ */
+export { HUMAN_KIND } from "../../shared/constants.mjs";
 
-/** Human-or-agent only (dictionary entries and task assignees). */
-export const DICT_KINDS = Object.freeze(["agent", "human"]);
+/**
+ * Is this usable as an actor kind? Anything non-blank.
+ *
+ * The app layer enforces this where the schema cannot: the column is
+ * `TEXT NOT NULL`, which permits `""`, and an empty kind would read as neither
+ * human nor any platform.
+ *
+ * @param {unknown} value
+ */
+export function isActorKind(value) {
+  return typeof value === "string" && value.trim() !== "";
+}
 
 /** Dictionary tables that grow from usage (§4.4). */
 export const DICTIONARY_KINDS = Object.freeze(["assignee", "reporter"]);
@@ -215,6 +246,9 @@ export const ACTIVITY_EVENTS = Object.freeze([
   "report_written",
   "task_delivered",
   "report_waived",
+  // The container's own start: a child entered the work and the board moved
+  // its epic `todo → in_progress` (a system move, never a claim).
+  "epic_auto_start",
   "comment_added",
   "relation_added",
   "relation_removed",

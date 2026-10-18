@@ -53,7 +53,22 @@ describe("install.sh: targets", () => {
     for (const hostDir of [".claude", ".codex"]) {
       assert.ok(existsSync(join(home, hostDir, "skills", "meerkat-taskpanel", "SKILL.md")), `${hostDir} install missing`);
     }
-    for (const hostDir of [".openclaw", ".agents"]) {
+    for (const hostDir of [".openclaw", ".agents", ".config/opencode", ".cursor"]) {
+      assert.equal(existsSync(join(home, hostDir)), false, `${hostDir} must not be installed`);
+    }
+  });
+
+  it("accepts the later two hosts in a comma-separated --target list", () => {
+    // opencode and cursor joined the target set after claude/codex/pi, so the comma path
+    // is pinned for them too: their skill must land, and nothing else may come along.
+    const home = makeTempDir();
+    const run = runInstall(["--target", "opencode,cursor", "--prefix", home]);
+
+    assert.equal(run.status, 0, run.stderr);
+    for (const hostDir of [".config/opencode", ".cursor"]) {
+      assert.ok(existsSync(join(home, hostDir, "skills", "meerkat-taskpanel", "SKILL.md")), `${hostDir} install missing`);
+    }
+    for (const hostDir of [".claude", ".codex", ".openclaw", ".agents"]) {
       assert.equal(existsSync(join(home, hostDir)), false, `${hostDir} must not be installed`);
     }
   });

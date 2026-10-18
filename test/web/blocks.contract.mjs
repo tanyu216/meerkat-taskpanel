@@ -252,6 +252,15 @@ export const DOMAINS = Object.freeze({
  *                      computed value belongs to a rendered box (a chip's height,
  *                      a cell's row direction), and the design names some of
  *                      those boxes by class, not by attribute.
+ *                      `equalsPx` / `minPx` / `maxPx` are **pixel lengths**: the
+ *                      computed value must be spelled with a `px` unit, so a
+ *                      rendered `width:auto` (`"auto"` → `NaN`) or a percentage
+ *                      (`"100%"` → a fake `100`) **fails** rather than passing
+ *                      vacuously. The one exception is an element with no layout
+ *                      box at all (a closed subtree): there is nothing to
+ *                      measure, so the rule degrades to the probe's existence
+ *                      criterion and the harness reports it as not-measured
+ *                      (T-20261016-130046-3, `web/scripts/px-assert.mjs`).
  *   classes            `{probe, includes, when?}`
  *                      Every match's class list contains all of `includes`.
  *   text               `{probe, equals|oneOf|matches, when?}`
@@ -556,6 +565,14 @@ const BLOCKS = [
       { kind: "count", selector: "[data-lang-option]", equals: 2 },
       { kind: "domain", selector: "[data-nav-item]", attribute: "data-nav-item", subset: DOMAINS.NAV },
       { kind: "domain", selector: "[data-presence]", attribute: "data-presence", subset: DOMAINS.PRESENCE },
+      // T-20261017-021412 ① — the presence dot's **box**, which the domain rule
+      // above cannot state: the prototype's `.td-presence` is 6×6
+      // (`design/prototype/src/input.css`, `.td-presence`), while the
+      // implementation wore Tailwind's `size-2` (8×8). Both axes are asserted
+      // because `size-*` writes both, so a one-axis rule would leave half the
+      // defect gate-invisible.
+      { kind: "computed", probe: "[data-presence]", property: "width", equalsPx: 6 },
+      { kind: "computed", probe: "[data-presence]", property: "height", equalsPx: 6 },
       { kind: "domain", selector: "[data-theme-icon]", attribute: "data-theme-icon", subset: DOMAINS.THEME_MODE },
       { kind: "domain", selector: "[data-lang-option]", attribute: "data-lang-option", subset: DOMAINS.LANG },
       {
@@ -610,6 +627,12 @@ const BLOCKS = [
       // (`app.css` `[data-agent-row] [data-agent-text]`), and `[data-agent-text]`
       // is the roster's host alone.
       { kind: "computed", probe: "[data-agent-text]", property: "overflowX", equals: "visible" },
+      // T-20261017-021412 ③ — the row's type. The prototype states `font-size:
+      // 12px` on `.td-agent-row`; the implementation carried no rule and
+      // inherited the 14px `body` baseline, so every roster name was 2px larger
+      // than the design's. `.td-agent-assignee` is `font-size: inherit`, so the
+      // row rule is the one that decides the names as well as the row.
+      { kind: "computed", probe: "[data-agent-row]", property: "fontSize", equalsPx: 12 },
       // R6 ② — the selected nav row: accent copy on the accent's 10% tint, and
       // *not* the grey `.td-brand-active` the implementation used to paint. The
       // base metrics (32px row, 6px radius) come with it, because a selected row
@@ -2593,6 +2616,36 @@ const BLOCKS = [
       { kind: "count", selector: "[data-create-task-depends]", equals: 1 },
       { kind: "count", selector: "[data-parent-clear]", equals: 1 },
       { kind: "count", selector: "[data-parent-chips]", equals: 1 },
+      // --- the parent control's own structure, against the prototype --------
+      //
+      // T-20261016-113131. The clear ✕ used to be the field group's **sibling**
+      // — a `btn btn-ghost btn-sm` text glyph outside the control, next to a
+      // ComboField whose root shrank to its content (172px against the track's
+      // 405.391). The prototype puts box and ✕ in **one row** (`.td-combo-field`,
+      // the pair that makes `input + gap + ✕ == track` an arithmetic identity),
+      // and draws the ✕ as the same 20×20 `svg.td-icon-sm` box every other
+      // chip-remove in the board is.
+      //
+      // These seven are the **structure** half: what exists, inside what. They
+      // read `querySelectorAll` / `classList` / the computed box, none of which
+      // needs the element to have a box — which matters, because B24's rules
+      // carry no `when` and therefore evaluate in the **board** state, where the
+      // create dialog is `hidden` and every `getBoundingClientRect` is 0
+      // (T-20261015-233122 A6). The **geometry** half — the identity, the 20×20
+      // box, the right edge on the track's right edge, the menu's width — is
+      // measured in `web/scripts/dom-smoke.mjs#r8c`, where the dialog is open.
+      //
+      // A probe may name a design class, so `.td-combo-field` is expressible;
+      // the ✕ itself is addressed by its hook, not by the class the `classes`
+      // rule asserts (that rule is what keeps a Tailwind utility from replacing
+      // it — the design namespace is closed).
+      { kind: "computed", probe: ".td-combo-field [data-parent-input]", count: 1 },
+      { kind: "computed", probe: ".td-combo-field [data-parent-clear]", count: 1 },
+      { kind: "classes", probe: "[data-parent-clear]", includes: ["td-combo-clear"] },
+      { kind: "computed", probe: "[data-parent-clear] svg.td-icon", count: 1 },
+      { kind: "computed", probe: "[data-parent-clear] svg.td-icon-sm", count: 1 },
+      { kind: "computed", probe: "[data-parent-clear]", property: "width", equalsPx: 20 },
+      { kind: "computed", probe: "[data-parent-clear]", property: "height", equalsPx: 20 },
       {
         kind: "manual",
         note:

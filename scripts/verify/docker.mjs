@@ -19,11 +19,14 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { resolve } from "node:path";
 
 import {
   buildArgs,
   composeDownArgs,
   composeFile,
+  composeProjectName,
+  composePsArgs,
   composeUpArgs,
   healthInspectArgs,
   imageTag,
@@ -31,6 +34,16 @@ import {
 } from "./lib/docker-plan.mjs";
 
 const COMPOSE_SERVICE = "taskd";
+
+/**
+ * The compose project for **this checkout**.
+ *
+ * Named explicitly so two worktrees can verify at the same time — see
+ * `composeProjectName` for what happens without it. Derived from the repository
+ * root (this file lives in `scripts/verify/`), not from `process.cwd()`, so it is
+ * the same name however the runner was reached.
+ */
+const COMPOSE_PROJECT = composeProjectName(resolve(import.meta.dirname, "../.."));
 // Overridable so the failure path can be exercised without a 60s wall-clock wait.
 const HEALTH_TIMEOUT_MS = Number(process.env.MEERKAT_TASKPANEL_HEALTH_TIMEOUT_MS ?? 60_000);
 const HEALTH_POLL_MS = 2_000;
@@ -119,13 +132,13 @@ try {
   // Compose smoke test
   // -------------------------------------------------------------------------
 
-  phase(`docker compose up -d --build (${composeFile()})`, () => {
-    const res = run("docker", composeUpArgs());
+  phase(`docker compose -p ${COMPOSE_PROJECT} up -d --build (${composeFile()})`, () => {
+    const res = run("docker", composeUpArgs(COMPOSE_PROJECT));
     return { ...res, ok: !res.error && res.status === 0, detail: res.error?.message ?? tail(res.stderr) };
   });
 
   if (steps.at(-1).ok) {
-    const ps = run("docker", ["compose", "-f", composeFile(), "ps", "-q", COMPOSE_SERVICE]);
+    const ps = run("docker", composePsArgs(COMPOSE_PROJECT, COMPOSE_SERVICE));
     container = (ps.stdout ?? "").trim().split("\n").filter(Boolean)[0] ?? null;
 
     phase(`healthcheck: ${COMPOSE_SERVICE} → healthy (≤ ${HEALTH_TIMEOUT_MS / 1000}s)`, () => {
@@ -160,9 +173,9 @@ try {
   steps.push({ name: "aborted", ok: false, detail: err.message, ms: 0 });
 } finally {
   // Always tear down, even after a failure or an exception.
-  if (container || steps.some((s) => s.name.startsWith("docker compose up"))) {
-    phase(`${composeDownArgs().join(" ")}`, () => {
-      const res = run("docker", composeDownArgs());
+  if (container || steps.some((s) => s.name.startsWith("docker compose -p"))) {
+    phase(`${composeDownArgs(COMPOSE_PROJECT).join(" ")}`, () => {
+      const res = run("docker", composeDownArgs(COMPOSE_PROJECT));
       return { ...res, ok: !res.error && res.status === 0, detail: res.error?.message ?? tail(res.stderr) };
     });
   }

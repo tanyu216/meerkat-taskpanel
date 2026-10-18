@@ -9,24 +9,74 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A container closes itself: the epic rollup.** When the container's children are all finished
+  — every child `done` or `canceled`, and **at least one `done`** — the board writes the
+  container's rollup report (one acceptance line per child, plus the children's own delivery
+  evidence, authored by the board itself as `system` / `taskd`) and moves the epic to `in_review`
+  in the same transaction as the move that completed the set — the last child's `done`, or the
+  `canceled` that finishes it. A `canceled` child is terminal, so it does not
+  hold the container open; the report lists it as `not_applicable` with the reason the card's own
+  comment trail records, because whether finishing without that work was right is a human's call
+  — the acceptance material states the cancellation instead of hiding it. Human acceptance still
+  gates the tree: a nested container reaches `in_review`, never `done`, so its parent keeps
+  waiting until a human accepts the inner one. Two cases stay manual by design: a container with
+  **nothing delivered** (every child canceled, or every delivered child waived under
+  `--no-report`) has no evidence to roll up and stays open.
+- **The container starts itself, and a reconciler repairs both transitions.** The first child to
+  enter `in_progress` moves its epic `todo → in_progress` — a **system** move, not a claim
+  (`claimed_by` stays NULL, an `epic_auto_start` activity is recorded, and the board writes a
+  `kind=note` comment naming the child). The rollup close now writes the same note, naming its
+  source (`event` | `sweep`), the basis (`N/N` children) and the instant. `taskctl issue
+  reconcile [--dry-run]` replays both rules over every non-terminal epic: it is the backstop for
+  a child attached after it started or finished (which fires no status transition) and for a
+  write that bypassed the service layer. It is idempotent — a second run writes nothing — and
+  the same sweep runs once at `taskd` startup. A create can no longer be born `in_progress`
+  (any kind), and an epic's initial status is `backlog` or `todo`; this closes the
+  holderless-`in_progress` epic hole.
+- **A `todo` epic may now be delivered (`0024`).** An epic is never claimable, so `todo` was a
+  state with no exit: `done` is reachable only from `in_review`, and `todo` had no edge there —
+  `issue create --kind epic`, which births a container in `todo`, produced a card no legal path
+  could close. Migration `0024_epic_deliver_from_todo.sql` adds the pair **for `kind = epic`
+  only** and re-arms the delivery gate for the new source status: the report is still required,
+  and a `task` in `todo` still cannot reach `in_review`.
+- **A gate against signposts out of the repository: `scripts/verify/signposts.mjs`.** This
+  project interoperates with an external development framework that keeps its own task store
+  in a private directory under the user's home. A document that names one of that framework's
+  internals *in a walkable form* is an instruction to go there, and this repository is
+  greppable — so a session reading it follows. That is not hypothetical: a design contract
+  that spelled the framework's card-writer path **in order to declare the word forbidden**
+  became the signpost, and a session followed it out of the repository and created cards in
+  the external store. The gate fails on either shape — a **home-relative path** into that
+  private store (the two subpaths a shipped feature legitimately integrates with, the card
+  directory and the project registry file, are carved out inside the rule rather than parked
+  on an allowlist), or one of the framework's **internal mechanism names**. What it
+  deliberately does *not* ban is the larger half: framework names that name somebody else's
+  thing, attributed and not used as our own — the project name, the interface-generation
+  codename the loop declares, and the protocol anchors the SLA patrol publishes as a wire
+  field and the test suite asserts. Its one exemption
+  (`test/fixtures/framework-signposts-allowlist.json`) is keyed by `{file, rule}` rather than
+  by file, so that the contract which must write the forbidden terms is not thereby also
+  allowed to spell the store path. It runs in `npm run verify`, in `.githooks/pre-push`
+  (which now also runs the host-path gate — its documented claim to do so had been false),
+  and in CI as `signposts-gate.yml`; CI is authoritative, because the container image drops
+  `design/`.
+
 - **The host-external supervisor is a skill of its own: `meerkat-loop`.** The loop was an
   implicit side effect of installing the board; it is now a self-contained, separately
   distributed skill (`skills/meerkat-loop/`) carrying the execution body, the unit / wake /
   host-config templates and an operator reference. It is distributed to **claude, codex and
-  pi**, and **never to OpenClaw** — permanently, by ruling: the openclaw-team framework
-  already ships a per-agent poll / a `task-patrol`, which is the same design, and two
-  supervisors on one board would only race each other for the same cards. The board skill
-  still goes to all four hosts, so `sync-skills.mjs` now models two skills with two
-  distribution surfaces (plus a `plugins/loop` bundle target, so the marketplace can list
-  the loop as its own plugin: `.claude-plugin/marketplace.json` now lists
-  `meerkat-taskpanel` → `./plugins/claude` and `meerkat-loop` → `./plugins/loop`).
+  pi** by `install.sh --target claude|codex|pi`, and **never to OpenClaw** — permanently, by
+  ruling: the openclaw-team framework already ships a per-agent poll / a `task-patrol`, which
+  is the same design, and two supervisors on one board would only race each other for the
+  same cards. The board skill still goes to all six hosts, and every one of them reads the
+  repository's own `skills/` tree in place through a manifest at the repository root — the
+  board's plugin root *is* the repository root.
   The loop skill **declares the board interface generation it requires** —
   `task-interface v1`, the surface the board first shipped in release 1.0.0 — and its
   `scripts/board-check.mjs` enforces that against the board's own `taskctl --version --json`
-  answer, exiting 3 rather than guessing when the board is too old or cannot be asked.
-  Board and loop **version independently** (a `board` and a `loop` group in
-  `scripts/verify/version.mjs`, and `scripts/release/bump.mjs --group loop`): the first split
-  ships one linked version, but nothing holds them together after that.
+  answer, exiting 3 rather than guessing when the board is too old or cannot be asked. That
+  interface floor is the only coupling: the loop carries **no version of its own** and moves
+  with the board (see *Removed* below).
 - **The loop payload is generated and guarded, not hand-copied.** `scripts/sync-loop.mjs`
   computes the transitive import closure of `scripts/supervisor.mjs` and
   `scripts/wake-cwd.mjs` and writes it into the skill as `body/manifest.txt` — the list the
@@ -135,8 +185,170 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `test/scaffold.test.mjs` asserts they exist **and** that the two carrying meaning say the
   right thing rather than merely being present. `docs/development.md` gains the
   pull-request section, including the repository settings a maintainer has to set by hand.
+- **Two more harnesses: OpenCode and Cursor.** Both read the repository's own `skills/` tree
+  in place and add no committed copy — the rule the distribution refactor below established.
+  - **OpenCode** (`.opencode/plugins/meerkat-taskpanel.js`) registers the shared directory
+    through the host's plugin API: on V1 the `config` hook pushes `<root>/skills` into
+    `config.skills.paths`, on V2 (`>= 2.0.4`) `default.setup(ctx)` adds one `Skill.Info` per
+    `skills/<name>/SKILL.md`. Since V2 dropped the directory form, the V1 hook recognises
+    V2's flat `config.skills` array and stands down. Nothing is injected into bootstrap: the
+    board's session opener stays an install-side concern.
+  - **Cursor** (`.cursor-plugin/plugin.json`, `"skills": "./skills/"`) makes the repository
+    root a Cursor plugin root too. No hooks, deliberately — Cursor's hook contract is its own
+    schema and the upstream reference implementation has no uninstall/update path for it yet,
+    so the delivery is skills-only, as the Claude plugin and the OpenClaw bundle are.
+  - Both are **directory-granular**: a host handed a directory gets both skills, so OpenCode
+    and Cursor receive the board and the loop together.
+  - **A contract change this forced.** The root now carries two client markers and OpenClaw's
+    detection precedence is codex → cursor → claude, so OpenClaw reports the root bundle as
+    `Bundle format: cursor` instead of `claude`. Measured on OpenClaw 2026.9.8 with and
+    without the marker: that is the only line that changes — `Format: bundle`,
+    `Shape`, `Capability mode` and `Bundle capabilities: skills` are byte-identical, and the
+    skills load either way.
+  - **Honest gap, documented rather than papered over:** neither the OpenCode nor the Cursor
+    CLI is available on the development host or in the container, so neither host integration
+    has ever been run from here. OpenCode's plugin logic is covered offline by
+    `test/install/opencode-plugin.test.mjs` against a fake plugin context; Cursor's marker is
+    covered by the manifest and bundle assertions. See `docs/install.md`.
+- **`issue heartbeat <ref>` — the heartbeat finally has a write surface.** The eight shared
+  rules have always told an agent to "keep the heartbeat fresh (≤10 minutes)", but no CLI
+  flag, route or request schema could write `heartbeat_at`: the core op existed
+  (`tasks.heartbeat`, with `setHeartbeat`'s holder-only CAS behind it) and the rule named a
+  command nobody could run. The only way to move the timestamp was a full round-trip out of
+  `in_progress` and back — and inside the 10-minute window even that is a `reuse` that does
+  **not** reset it — so a card parked in `in_progress` alerted as abandoned with no way to say
+  otherwise. The pulse is reachable end to end now: the op is declared in `TASK_OPS`
+  (`src/core/commands/tasks-input.mjs`), the route is
+  `POST /api/v1/tasks/:ref/heartbeat` (frozen in the contract snapshot), and the CLI is
+  `taskctl issue heartbeat <ref>`. It takes **no body field** — the card is the path's `:ref`
+  and the pulsing actor is the caller — and it refreshes `heartbeat_at` and nothing else: not
+  the status, not the claimer, not the delivery round, so it can never resurrect a card
+  somebody else has moved. Only the holder may send it (`EXECUTION_ACTIVE` otherwise); a card
+  that is not `in_progress` is refused `INVALID_TRANSITION` ("nothing to pulse"). The write is
+  recorded as a `task_heartbeat` activity, which the board already classified as SSE noise
+  (`SSE_NOISE_EVENTS`), so a pulse never wakes a board client.
+  **The ruling it settles:** the heartbeat belongs to the **agent**, not to the loop. A
+  supervisor-written pulse would be a proxy lie, and it would permanently silence the
+  `heartbeat_stale` SLA row — the one mechanism that notices a worker has stopped.
 
 ### Changed
+
+- **The naming-boundary contract is retired and narrowed, not executed.**
+  `design/contracts/naming-boundary.md` adjudicated which words of the external framework may
+  appear in this repository, and laid out a three-batch cleanup plus independent acceptance
+  criteria. It was written on 2026-10-14, **never double-signed, and never executed**: when
+  it was reviewed on 2026-10-17 the sign-off boxes were still empty, two of its five criteria
+  had never held (the protocol anchors are *published* data — a wire field the SLA patrol
+  emits and the suite asserts — and the framework's project name is a sanctioned pointer),
+  and the vocabulary it meant to shrink had grown from 6 files to 29. It is now marked
+  **retired and narrowed**: the batch plan and the criteria are kept as history, a current-state
+  table says where each framework word legitimately lives today, and only two bans remain
+  live — the private store path and the internal mechanism names — with
+  `scripts/verify/signposts.mjs` as their enforcement. The walkable paths it used to spell
+  (in it and in three other design documents) were rewritten to describe the location
+  instead of naming it, and its stale `plugins/**` targets and baseline counts are marked
+  void.
+
+- **The repository root is the board's plugin root; three bundle directories were deleted.**
+  `plugins/claude/`, `plugins/codex/` and `plugins/pi/` are gone, and the marketplace source
+  moved from `./plugins/claude` to `./`. Each harness's manifest now sits next to the one
+  `skills/` tree and points at it, so claude, codex, cursor, pi and opencode need no generated
+  copy: `.claude-plugin/plugin.json` was lifted out of `plugins/claude/` unchanged, and Codex
+  turned out to need nothing of its own at all — it reads the same repository-root
+  marketplace and installs the same `./` bundle, so `plugins/codex/` was dead weight.
+  - **Pi** declares itself in the root `package.json` — `pi.skills` names the shared tree and
+    `pi.extensions` names `.pi/extensions/meerkat-taskpanel.ts`, which re-registers that
+    directory at load time through Pi's `resources_discover` event, resolving its own path so
+    it follows the install location. `plugins/pi/` is deleted with it.
+  - Together: **6 → 3 `skills` directories** (68 → 35 committed copy files, as measured when
+    this landed). What remained was the floor the plan called irreducible — the OpenClaw
+    native manifest and the loop's own marketplace bundle — both since removed as well, so
+    the repository is down to **one `skills` directory and no copies at all** (see
+    *Removed*).
+  - Gates followed the move: `HOST_BUNDLES`' claude/codex/pi rows point at `.`, the OpenClaw
+    probe re-points at the repository root, and `manifests` / `version` / `profiles` /
+    `pack-manifest` / `host-cli` and their tests were re-pathed. `package.json#files` names
+    each dot-directory explicitly, since npm does not include dot files by default
+    (verified with a real `npm pack`).
+
+- **`sync-skills.mjs` generates, but copies nothing.** With the last two bundles gone it has
+  one job — generating the loop skill's payload (`body/` + `templates/`) from the repository's
+  own modules and installer templates — and `--check` guards that alone. The "exactly one
+  `skills` tree" invariant therefore moved out of it entirely and into
+  `test/scaffold.test.mjs`, which asserts against the checkout that `skills/` is the only
+  `skills` directory and that no `plugins/` tree exists. That is deliberate: a table can only
+  describe the copies it knows about, and with no copy targets left `--check` could not notice
+  an orphan tree a future harness added.
+- **The heartbeat rule now names the command that satisfies it.** `buildHandoff` (the
+  supervisor's wake prompt) lists `taskctl issue heartbeat <ref>` beside the read and the
+  deliver; the Claude `session-start.sh` rule 4 and the Codex `AGENTS.md` snippet name it; and
+  `README` / `SKILL.md` / `references/cli.md` / `references/practice-guides.md` say plainly
+  that the board sends **no** pulse of its own — nothing but the holder knows the work is still
+  going. Before this, four surfaces stated an obligation with no command behind it.
+- **A `projects.json` entry no longer has to name a directory — and a project that has none
+  may still be woken through a `run_dir` launch pad.** The map's rule is now
+  `dir = local_path ?? run_dir`: `local_path` stays the project's own directory (unchanged for
+  every entry that has one), and the new optional `run_dir` names where a worker starts for a
+  project that has no directory of its own. An entry that names **neither** is the complete
+  answer *"this project has no local directory"* — for operations or coordination work that
+  never touches the disk — and `taskctl project dir <id>` now reports it and succeeds
+  (`dir: null`, exit 0) instead of failing with `PROJECT_DIR_REQUIRED`. That code survives for
+  a genuinely unusable value (a key that is present but blank, or a path that is relative,
+  missing or not a directory), and a project with **no entry at all** still fails
+  `PROJECT_DIR_UNMAPPED` and asks which directory it should be — the two answers stay
+  distinguishable. A **wake** needs somewhere to start a worker, so both of the "no directory"
+  answers refuse it (exit 3, with its own reason), as before. Two boundaries restated alongside
+  it: the keys beyond `project`/`local_path`/`run_dir` are **the business's metadata** — read by
+  the agent from the file, never prescribed, validated or interpreted here — and the directory is
+  where a **worker** runs, not where results are stored: where a task's output lives, or whether
+  it is kept at all, is not the board's business. `run_dir` deliberately takes no part in the
+  directory → project lookup, and a `local_path` that is *omitted* (or `null`) falls through to
+  `run_dir` while one that is given but blank is a failure to fix rather than a reason to fall
+  through. See
+  [`references/projects-json.md`](skills/meerkat-taskpanel/references/projects-json.md).
+- **`pre-push` now refuses a direct push to `main`.** `main` advances through a pull request,
+  so a mistaken `git push origin main` (or a `--delete` of it) is caught locally, before the
+  round trip, instead of by the branch-protection rule on the remote. A deliberate release
+  push says so — `ALLOW_PUSH_MAIN=1 git push origin main` — and only that rule is silenced;
+  the two API gates still run. The hook remains a courtesy (`git push --no-verify` bypasses
+  everything here), and the GitHub rule is the enforcement. See
+  [`.githooks/README.md`](.githooks/README.md).
+- **An actor's `kind` is a platform, and it lives on the record** (migration **`0023`**).
+  `0019` put the kind on the `actors` row and removed the per-reference copies. That row is
+  `UNIQUE(normalized_name)` — **one row per person** — and a kind describes an *act*: the same
+  handle works from `claude` today and from `codex` tomorrow, and one row cannot hold both. It
+  also kept the **first** kind it was ever given, so the column could be *wrong* with nothing
+  able to tell. The kind moves back onto the three references that record an act —
+  `tasks.assignee_kind`, `tasks.reporter_kind`, and a new `tasks.claimed_kind` — and
+  `actors.kind` is dropped. `creator_id` does not come back: `0019` collapsed provenance to
+  `reporter_id`, and nothing here needs a second provenance column.
+- **The kind vocabulary is no longer narrowed in the application layer either.** `0018` opened
+  the two author-kind columns in SQL, but five places re-imposed a `agent | human | system`
+  list on top: the domain's `ACTOR_KINDS` / `DICT_KINDS`, `actorOf`, `actorFromRequest` (which
+  **rewrote** any other kind to `human`), and the declared request schemas. So a platform was
+  unrepresentable, and — because the board reads `kind === human` to decide whether a comment
+  goes on the record as a decision (I5), whether an `awaiting` card resumes, and whether the
+  patrol counts the leader as acting — a write naming a platform was recorded as a person's.
+  The rule is now the schema's own: **any non-empty string, with `human` the one reserved
+  value**. `--actor-kind` states what a writer is; `human` is refused, and `--as-human` is the
+  one write made in the person's voice.
+- **The registry read reports a kind it derives, not one it stores.** With `actors.kind` gone,
+  `GET /api/v1/actors` aggregates each actor's kind from the references that recorded one (the
+  latest wins; `human` breaks a tie, because reading a person as an agent opens the agent-only
+  affordances where reading an agent as a person only costs a badge). An actor nothing has ever
+  named reports `null`. Nothing is denormalised, so nothing goes stale.
+- **The markdown importer no longer carries a roster of person-names.** It recognised a human by
+  a hardcoded, case-insensitive list of names and filed every other author as an agent — a
+  machine's list of who its people are, in a public repository, and a silent misread for anyone
+  it did not name. The rule is now: **the board knows exactly one human**, the one
+  `install.sh --human-name` recorded (`TASKCTL_HUMAN`), matched through `norm`; everything else
+  is an agent. A card that knows better declares it — `created_by_kind`, a new frontmatter key
+  beside `created_by`, isomorphic to `assignee_kind`.
+- **`assignee_kind` and two new keys round-trip through a card.** The drill used to report
+  every `assignee_kind` as an unmappable field-drift, because the column had no export home.
+  `assignee_kind`, `created_by_kind` and `claimed_kind` are now written back — each **only when
+  it differs from that column's default**, so a card that never carried one does not grow a
+  line and the checked-in goldens are untouched. The drill's false `field-drift` item is gone.
 
 - **The patrol's `leader_stalled` row now counts the *author* of an event, not its *kind* — and
   `heartbeat_stale` emits the shared SLA tuple beside the legacy alert.** Both are `v1.1`
@@ -305,6 +517,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   table whose column is open from birth. Rebuilding those five columns' tables here would be
   work done twice — on the two tables that carry inbound foreign keys from `tasks`.
 
+  **`0023` partly reverses this paragraph, and the reason is worth reading.** `0019` did remove
+  those copies and put the kind on the `actors` row — but that row is `UNIQUE(normalized_name)`,
+  **one row per person**, and a kind describes an *act*: the same handle works from `claude`
+  today and `codex` tomorrow. Worse, the row keeps the first kind it is ever given, so the
+  column was not merely lossy but could be **wrong**. `0023` moves it back onto the reference
+  (`tasks.assignee_kind` / `reporter_kind`, plus a new `claimed_kind`) and drops `actors.kind`.
+  `creator_id` does **not** come back: `0019` collapsed provenance to `reporter_id`, and
+  nothing in the kind argument needs a second provenance column.
+
   **No data step, and no board migration to run by hand:** `agent`, `human` and `system`
   remain legal values of an open string, so every existing row is already valid. The
   migration is a pure widening, which is why it ships with no accompanying code change.
@@ -339,10 +560,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   The board's platform badge reads an actor's `kind`, but only a kind that *names* a platform
   (`claude`, `codex`, …); the generic `agent`/`human` deliberately fill nothing in, so the
-  badge is absent exactly as it was while the `platform` column was never written. That is a
+  badge is absent exactly as it was while the `platform` column was never written. That was a
   holding position, not a finished rule: the DOM contract reads `[data-card]`'s
   `data-assignee-kind` off the same value and requires `human` or `agent`, so no single value
   satisfies both until an actor's kind carries a platform name.
+
+  **`0023` is where that is settled, and it settles it by splitting the value rather than by
+  making one value serve two rules.** The kind now lives on the *reference*, so the app derives
+  both attributes from it on its own terms: `data-assignee-kind` is the **two-valued** question
+  ("is this not the human?") that the closed domain and the stylesheet ask for, and
+  `data-agent-platform` is the platform, emitted only when the kind names one the design has a
+  face for. The two no longer contend, and the badge is filled in for the first time.
 - **Every attribution column is now a reference to `actors(id)`** (migration **`0020`**).
   `tasks.claimed_by`, `comments.author_id` and `task_reports.author_id` join
   `tasks.assignee_id`/`reporter_id` as foreign keys, so "who claimed this", "who wrote this"
@@ -393,6 +621,29 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+- **The `plugins/` directory, and the last committed copies of a skill.** `skills/` is now the
+  only `skills` tree in the repository: nothing is distributed as a generated copy, because
+  every harness reads that one tree in place through a manifest at the repository root. Two
+  directories were removed with it, and each needs calling out separately:
+  - **`plugins/openclaw/` — the native OpenClaw manifest** (1 manifest + an 8-file skill
+    copy). A *native* OpenClaw plugin is an in-process runtime module needing
+    `package.json#openclaw.extensions` plus an entry point importing the OpenClaw plugin SDK,
+    a runtime dependency this zero-dependency project does not take — so the manifest could
+    not be installed as what it claimed to be. What OpenClaw installs is the repository-root
+    bundle (`openclaw plugins install "$PWD"`), as it always did. The skill copy under it
+    existed only so the bundle assertion could resolve a skill out of that directory.
+  - **`plugins/loop/` — the standalone `meerkat-loop` marketplace entry.** The marketplace
+    (`.claude-plugin/marketplace.json`) now lists a single plugin, `meerkat-taskpanel` at
+    `./`. `meerkat-loop` is installed by `install.sh --target claude|codex|pi`; **a
+    marketplace install of the supervisor no longer exists.** A marketplace install of the
+    board still brings the loop with it, since the shared tree is not filtered per entry.
+- **The loop's independent version.** `meerkat-loop` no longer carries a version of its own:
+  its only two carriers were the `plugins/loop` manifests, and nothing consumes a loop
+  version — `board-check.mjs` enforces the *board's* interface floor, and `install.sh` writes
+  no version into any unit or env file. `scripts/verify/version.mjs` has one group (the
+  board, now **four** carriers), `scripts/release/bump.mjs` has one bump group, and
+  `--group loop` is an unknown group rather than a silent no-op. Ruling O4 — board and loop
+  version independently — is retired with them.
 - **Three denormalised columns on `tasks`.** `assignee_kind`, `creator_kind` and `creator_id`
   are gone (migration `0019`): the kind belongs to the actor row, and a copy of a value that
   can now change goes stale. A card's creator **is** its reporter — `created_by` already
@@ -451,6 +702,28 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The `install.sh --supervisor=enable` systemd case failed on any machine that exports
+  `XDG_CONFIG_HOME`, which is why `check` was red in CI and green on a developer machine.** The
+  test's `installEnv` helper builds the child environment as `{ ...process.env, HOME: <temp>, … }`,
+  and `systemdUserDir` prefers an absolute `XDG_CONFIG_HOME` over `$HOME/.config` — correct for
+  systemd, but it meant an inherited value decided where the units landed while the assertion still
+  looked in `$HOME/.config`. The failure therefore reads as a broken installer
+  ("`meerkat-taskpanel-poll.service` must be copied into …/.config/systemd/user") rather than as an
+  environment leak, and it reproduces only where the variable is set: GitHub's `ubuntu` runner
+  exports it, macOS does not, and the container image does not. The helper now pins
+  `XDG_CONFIG_HOME` to the directory the suite asserts, so a case that wants the variable asks for
+  it; a second case pins the XDG branch itself, so the fix cannot be "delete the variable from the
+  installer".
+- **`security-scan.yml` was rejected by GitHub, so the dependency scan never once ran.** Its
+  daily entry was `17 3 * * 2-7`, and Actions accepts only `0-6` for day-of-week — and an
+  out-of-range cron does not red a *job*, it voids the **whole workflow file**. Every run
+  since the workflow landed completed with **zero jobs** and registered no status checks at
+  all, which is precisely why nothing surfaced: a check that never reports looks like a check
+  that was never configured, and the run page that would have explained it is one nobody had
+  reason to open. The daily entry is now `0,2-6` (Sunday is 0, `1` stays the weekly Monday),
+  and `scripts/security/workflow.test.mjs` now validates every cron against Actions' per-field
+  bounds rather than the old `[\d,-]+`, which let the `7` through — it is what would have
+  caught this on the day it was written.
 - **An absent host CLI is SKIPPED even when a `PATH` entry is not a directory.**
   `scripts/verify/host-cli.mjs` treated only `ENOENT` as "this CLI is not here"; when a `PATH`
   element is a regular file rather than a directory, the bare-name lookup dies with `ENOTDIR`

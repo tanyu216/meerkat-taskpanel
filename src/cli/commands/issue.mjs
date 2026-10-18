@@ -1,5 +1,5 @@
 /**
- * `issue create|list|get|update|move|assign|archive|deliver` (A1–A5).
+ * `issue create|list|get|update|move|heartbeat|assign|archive|deliver` (A1–A5).
  *
  * This module owns the two commands the milestone is really about:
  *
@@ -270,6 +270,30 @@ export const COMMANDS = [
   },
 
   {
+    name: "heartbeat",
+    summary: "Pulse a claimed card so its heartbeat stays inside the fresh window.",
+    op: TASK_OPS.heartbeat,
+    usage: "issue heartbeat <id|identifier>",
+    positionals: [{ name: "ref", summary: "Task id or identifier." }],
+    // No flags of its own: the card is the positional and the pulsing actor is
+    // the caller, whom the global attribution flags (`--agent`, `--actor-kind`,
+    // `--session-id`) already name. `projectFlags` returns `[]` here, and that
+    // empty list is asserted against the declaration by the route-request gate.
+    flags: projectFlags(TASK_OPS.heartbeat),
+    async run(ctx) {
+      const payload = await ctx.client.post(
+        `/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/heartbeat`,
+        projectBody(TASK_OPS.heartbeat, {}),
+      );
+      const task = payload.task;
+      return {
+        data: payload,
+        human: `pulsed ${task.identifier}  ${task.status}  heartbeat ${task.heartbeat_at}`,
+      };
+    },
+  },
+
+  {
     name: "assign",
     summary: "Assign (or reassign) a task's assignee and reporter.",
     op: TASK_OPS.assign,
@@ -361,6 +385,53 @@ export const COMMANDS = [
         ? `delivered ${payload.task.identifier} → ${payload.task.status} (waived, round ${payload.round})`
         : `delivered ${payload.task.identifier} → ${payload.task.status} (report #${payload.report_id}, round ${payload.round})`;
       return { data: payload, human, warnings };
+    },
+  },
+
+  {
+    name: "reconcile",
+    summary: "Replay the epic start/close rules over the board (the idempotent backstop).",
+    usage: "issue reconcile [--dry-run]",
+    positionals: [],
+    flags: [
+      {
+        flag: "dry-run",
+        key: "dryRun",
+        as: "boolean",
+        summary: "Report what would change; write nothing.",
+      },
+    ],
+    async run(ctx) {
+      const payload = await ctx.client.post("/api/v1/tasks/reconcile", {
+        dry_run: ctx.flags.dryRun === true,
+      });
+      const changed = payload.actions.filter((entry) => entry.action !== "none");
+      // An open container the sweep could not close carries the children that
+      // held it open. Printing only the actions would let "nothing to
+      // reconcile" hide the answer ("which child?").
+      const blocked = payload.actions.filter(
+        (entry) => entry.action === "none" && Array.isArray(entry.blocking) && entry.blocking.length > 0,
+      );
+      const verb = payload.dry_run ? "would reconcile" : "reconciled";
+      const lines = [
+        ...changed.map(
+          (entry) =>
+            `  ${entry.epic.padEnd(14)} ${entry.action.padEnd(6)} ${entry.reason}` +
+            (entry.child === undefined ? "" : `  ${entry.child}`),
+        ),
+        ...blocked.map(
+          (entry) =>
+            `  ${entry.epic.padEnd(14)} ${"none".padEnd(6)} ${entry.reason}  ` +
+            entry.blocking.map((child) => `${child.identifier} (${child.status})`).join(", "),
+        ),
+      ];
+      const human =
+        lines.length === 0
+          ? `nothing to reconcile (${payload.scanned} container(s) scanned)`
+          : `${verb} ${changed.length} container(s) of ${payload.scanned} scanned` +
+            (blocked.length === 0 ? "" : `; ${blocked.length} still waiting`) +
+            `\n${lines.join("\n")}`;
+      return { data: payload, human };
     },
   },
 ];

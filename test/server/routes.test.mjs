@@ -19,6 +19,7 @@ import { join } from "node:path";
 import test, { after, before, describe, it } from "node:test";
 
 import { createTaskd } from "../../src/server/index.mjs";
+import { SSE_NOISE_EVENTS } from "../../src/shared/constants.mjs";
 
 const tempDirs = [];
 let taskd;
@@ -231,6 +232,111 @@ describe("server/routes — tasks, the gate and deliver", () => {
   });
 });
 
+describe("server/routes — the heartbeat write surface (T-20261017-063818)", () => {
+  /** The caller identity every write below carries, as the CLI sends it. */
+  const LINUS = { "x-taskctl-actor": JSON.stringify({ kind: "agent", id: "linus" }) };
+
+  /**
+   * `demo` is this suite's working project. The cases used to lean on the
+   * `projects` describe above having created it; running one case alone filters
+   * that fixture out and every write here 404s with `no project demo`. Stand it
+   * up in this describe instead — the create is idempotent for our purpose (a
+   * full run already has the row, a focused run gets it now), so no case below
+   * depends on another describe's side effects.
+   */
+  const PROJECT = "demo";
+
+  before(async () => {
+    const created = await call("POST", "/api/v1/projects", { id: PROJECT, name: "Demo" });
+    if (created.body.ok !== true) {
+      assert.equal(created.body.error.code, "ID_CONFLICT", JSON.stringify(created.body));
+    }
+  });
+
+  /** A card `linus` has claimed, ready to pulse. */
+  async function claimedCard(title) {
+    // `allow_dup` on purpose: the idempotency key is `kind|assignee|source|target`
+    // and does **not** look at the title, so three fixture cards for one assignee
+    // would otherwise collapse onto the first.
+    const created = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: PROJECT,
+        title,
+        assignee: "linus",
+        assignee_kind: "agent",
+        allow_dup: true,
+      }),
+    );
+    const ref = created.task.identifier;
+    const moved = dataOf(await call("POST", `/api/v1/tasks/${ref}/move`, { to: "in_progress" }, LINUS));
+    return { ref, task: moved.task };
+  }
+
+  it("pulses the claim without touching status or the claimer, and bumps the revision", async () => {
+    const { ref, task } = await claimedCard("Pulse me");
+    const pulsed = dataOf(await call("POST", `/api/v1/tasks/${ref}/heartbeat`, {}, LINUS));
+
+    assert.equal(pulsed.task.status, "in_progress", "a pulse never moves the card");
+    assert.equal(pulsed.task.claimed_by_actor.display_name, "linus", "…nor changes who holds it");
+    assert.equal(pulsed.task.claimed_at, task.claimed_at, "the claim itself is not re-stamped");
+    assert.equal(pulsed.task.version, task.version + 1, "the pulse is exactly one write");
+    assert.ok(
+      new Date(pulsed.task.heartbeat_at).getTime() >= new Date(task.heartbeat_at).getTime(),
+      `the heartbeat moved forward: ${task.heartbeat_at} → ${pulsed.task.heartbeat_at}`,
+    );
+  });
+
+  it("records a task_heartbeat activity, which the SSE stream classifies as noise", async () => {
+    const { ref } = await claimedCard("Noisy");
+    await call("POST", `/api/v1/tasks/${ref}/heartbeat`, {}, LINUS);
+
+    const activities = dataOf(await call("GET", `/api/v1/tasks/${ref}/activities`));
+    assert.deepEqual(
+      activities.activities.map((activity) => activity.event),
+      ["task_created", "task_claimed", "task_heartbeat"],
+    );
+    assert.ok(SSE_NOISE_EVENTS.includes("task_heartbeat"), "a pulse must not wake the board");
+  });
+
+  it("refuses a card that is not in_progress — there is nothing to pulse", async () => {
+    const created = dataOf(
+      await call("POST", "/api/v1/tasks", { project_id: PROJECT, title: "Still todo", allow_dup: true }),
+    );
+    const result = await call("POST", `/api/v1/tasks/${created.task.identifier}/heartbeat`, {}, LINUS);
+
+    assert.equal(result.status, 409, JSON.stringify(result.body));
+    assert.equal(result.body.error.code, "INVALID_TRANSITION");
+    assert.match(result.body.error.message, /nothing to pulse/);
+  });
+
+  it("refuses a card that reached a terminal state under the holder — a pulse is not an un-cancel", async () => {
+    const { ref, task } = await claimedCard("Canceled under me");
+    dataOf(await call("POST", `/api/v1/tasks/${ref}/move`, { to: "canceled" }, LINUS));
+
+    const result = await call("POST", `/api/v1/tasks/${ref}/heartbeat`, {}, LINUS);
+    assert.equal(result.status, 409, JSON.stringify(result.body));
+    assert.equal(result.body.error.code, "INVALID_TRANSITION");
+    assert.match(result.body.error.message, /canceled, not in_progress/);
+    // The holder is the one who canceled it, so this is not a permissions
+    // refusal — it is the status guard, and the card stays where it was.
+    const after = dataOf(await call("GET", `/api/v1/tasks/${ref}`));
+    assert.equal(after.task.status, "canceled");
+    assert.equal(after.task.version, task.version + 1, "the cancel, and no pulse write");
+  });
+
+  it("refuses a non-holder with EXECUTION_ACTIVE, naming the holder rather than their id", async () => {
+    const { ref } = await claimedCard("Somebody else's");
+    const result = await call("POST", `/api/v1/tasks/${ref}/heartbeat`, {}, {
+      "x-taskctl-actor": JSON.stringify({ kind: "agent", id: "elon" }),
+    });
+
+    assert.equal(result.status, 409, JSON.stringify(result.body));
+    assert.equal(result.body.error.code, "EXECUTION_ACTIVE");
+    assert.match(result.body.error.message, /linus/);
+    assert.doesNotMatch(result.body.error.message, /[0-9a-f]{8}-[0-9a-f]{4}/, "…and not their uuid");
+  });
+});
+
 describe("server/routes — comments, relations, sessions, dictionary, export", () => {
   const REF = "DEMO-0001";
   let sibling;
@@ -351,7 +457,11 @@ describe("server/routes — comments, relations, sessions, dictionary, export", 
 
   it("returns markdown from /export rather than writing files", async () => {
     const exported = dataOf(await call("POST", "/api/v1/export", { project_id: "demo" }));
-    assert.equal(exported.cards.length, 3);
+    // Against the board's own count rather than a literal: the export must cover
+    // every card of the project, and a fixture added anywhere above moves that
+    // number without saying anything about the export.
+    const listed = dataOf(await call("GET", "/api/v1/tasks?project_id=demo&include_archived=1"));
+    assert.equal(exported.cards.length, listed.tasks.length);
     const card = exported.cards.find((c) => c.identifier === REF);
     assert.match(card.markdown, /^---\n/);
     assert.match(card.markdown, /id: DEMO-0001/);
@@ -558,7 +668,7 @@ describe("server/routes — the edges a happy path never reaches", () => {
     const odd = dataOf(
       await call("POST", "/api/v1/tasks/DEMO-0001/comments", { body: "y" }, { "x-taskctl-actor": JSON.stringify({ kind: "wizard", id: "z" }) }),
     );
-    assert.equal(odd.comment.author_kind, "human", "an unknown kind is not trusted");
+    assert.equal(odd.comment.author_kind, "wizard", "an unfamiliar kind reaches the board as itself");
     assert.equal(odd.comment.author.display_name, "z");
   });
 
