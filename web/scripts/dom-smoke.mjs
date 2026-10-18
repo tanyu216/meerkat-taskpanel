@@ -3306,12 +3306,83 @@ export async function run() {
         firstItemPainted: !!firstItem && firstItem.getClientRects().length > 0,
         accent: getComputedStyle(document.documentElement).getPropertyValue("--brand-accent").trim(),
         accentSoft: getComputedStyle(document.documentElement).getPropertyValue("--brand-accent-soft").trim(),
+        // T-20261017-021412 ② — the comma is the roster's separator, and its
+        // correctness is two properties at once:
+        //   * **line** — no rendered line may begin with one (`", assistant"`
+        //     was what a greedy wrap produced while the separator was a free
+        //     text node between items);
+        //   * **structure** — the comma belongs to the item whose name it
+        //     follows, so it travels with that name across a wrap.
+        // Character rects group into lines (the row may wrap); every
+        // comma-bearing text node is traced to its nearest element ancestor, and
+        // the items' own text is read to see which of them carry the separator.
+        separator: (() => {
+          const hosts = [...document.querySelectorAll("[data-agent-row] [data-agent-text]")];
+          const lineHeads = hosts.map((host) => {
+            const chars = [];
+            const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+            for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+              for (let i = 0; i < node.data.length; i += 1) {
+                const range = document.createRange();
+                range.setStart(node, i);
+                range.setEnd(node, i + 1);
+                const rect = range.getBoundingClientRect();
+                if (!rect.width && !rect.height) continue;
+                chars.push({ ch: node.data[i], x: rect.x, y: Math.round(rect.y) });
+              }
+            }
+            const lines = new Map();
+            for (const char of chars) {
+              if (!lines.has(char.y)) lines.set(char.y, []);
+              lines.get(char.y).push(char);
+            }
+            return [...lines.entries()]
+              .sort((a, b) => a[0] - b[0])
+              .map(([, line]) => line.sort((a, b) => a.x - b.x).map((char) => char.ch).join(""));
+          });
+          const strayCommas = [];
+          const scope = document.querySelector("[data-agents-presence]") ?? document.body;
+          const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
+          for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            if (!node.data.includes(",")) continue;
+            if (!node.parentElement?.closest("[data-assignee-item]")) strayCommas.push(node.data.trim());
+          }
+          const items = [...scope.querySelectorAll("[data-assignee-item]")].map((item) => {
+            const siblings = [...(item.parentElement?.querySelectorAll(":scope > [data-assignee-item]") ?? [])];
+            return {
+              name: item.getAttribute("data-assignee-item"),
+              endsWithComma: /,\s*$/.test(item.textContent ?? ""),
+              last: siblings.at(-1) === item,
+            };
+          });
+          return { lineHeads, strayCommas, items };
+        })(),
       };
     });
 
     const restR11 = await readR11();
     const restRoster = await measureRoster();
     const R11_KEYS = ["backlog", "todo", "in_progress", "in_review", "blocked", "done", "canceled"];
+
+    // T-20261017-021412 ② — the separator is bound to the name it follows.
+    // A line-head comma is the visible defect (`", assistant"` alone on a
+    // wrapped line); a comma outside `[data-assignee-item]` is its cause, and
+    // the per-item separator distribution says the comma is attached to exactly
+    // the items that need one (every item but the last).
+    for (const [rowIndex, lines] of restRoster.separator.lineHeads.entries()) {
+      for (const [lineIndex, text] of lines.entries()) {
+        const head = text.trimStart()[0] ?? "";
+        r11Check(head !== ",", `roster row ${rowIndex} line ${lineIndex} begins with a comma: ${JSON.stringify(text)}`);
+      }
+    }
+    r11Check(
+      restRoster.separator.strayCommas.length === 0,
+      `comma text outside [data-assignee-item]: ${JSON.stringify(restRoster.separator.strayCommas)}`,
+    );
+    r11Check(
+      restRoster.separator.items.every((item) => item.endsWithComma === !item.last),
+      `roster item separators: ${restRoster.separator.items.map((item) => `${item.name}=${item.endsWithComma ? "comma" : "bare"}${item.last ? "(last)" : ""}`).join(", ")}`,
+    );
 
     // A · structure (R11 §5.1 A1–A3′, R13 §5 A1–A3, R2.1)
     r11Check(restR11.statusCount === 1, `[data-filter-status] count ${restR11.statusCount} !== 1`);

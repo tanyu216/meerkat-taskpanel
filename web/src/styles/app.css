@@ -458,20 +458,40 @@ svg[data-token-icon][hidden] { display: none; }
    only one that keeps every name whole. Each name is an inline-block `<button>`,
    so a wrap can only land on a separator, never inside a name.
 
-   `text-wrap: balance` is the comma's keeper, not decoration. The separator is
-   static text *between* the items (R13 §10.1), so the last break before the
-   overflowing separator is the item boundary itself — plain greedy wrapping
-   therefore puts `", assistant"` alone on the second line, starting a line with
-   its own separator. Balancing moves the break one item back (`"linus, jobs,"` /
-   `"elon, assistant"`, measured at 1512), which is the same two lines with the
-   punctuation where a reader expects it. Where the engine declines to balance
-   (more lines than it will re-flow) the run degrades to the greedy wrap above —
-   still whole names, still inside the rail. */
+   The comma's position is **structural**, not a balancing accident
+   (T-20261017-021412 ②). The separator is the last child of the item it
+   follows, and the item is `white-space: nowrap`, so the name and its comma are
+   one unbreakable unit; the collapsible space *between* items is the only break
+   opportunity the run offers. A wrap therefore lands after a comma, never before
+   one — the `", assistant"` line head that greedy wrapping used to produce is
+   gone by construction. `text-wrap: balance` was the earlier mitigation for
+   exactly that defect, and it was only ever a mitigation: where the engine
+   declines to balance, the run degraded to the greedy wrap and the comma moved
+   to the line head. With the separator bound it has nothing left to fix, so it
+   is **removed** rather than kept as a second, independent thing that could
+   change the line count. */
 [data-agent-row] [data-agent-text] {
   min-width: 0;
   overflow: visible;
-  text-wrap: balance;
   white-space: normal;
+}
+
+/* T-20261017-021412 ③ — the row's type is the prototype's `.td-agent-row`
+   (12px, `design/prototype/src/input.css`). The implementation stated no size
+   and inherited the 14px `body` baseline, so every roster name was 2px larger
+   than the design's. `.td-agent-assignee` is `font-size: inherit`, so this one
+   declaration decides the row and its names together. */
+[data-agent-row] {
+  font-size: var(--text-12);
+}
+
+/* T-20261017-021412 ② — the item is the separator's keeper. Its own text is
+   `name` + `,` (the comma is rendered inside it), and `nowrap` means the engine
+   may not break between the name's button and that comma. The break opportunity
+   is the space rendered between items by the template, so a line can only start
+   with a name. */
+[data-agent-row] [data-assignee-item] {
+  white-space: nowrap;
 }
 
 /* R13 修订（seg3 · 决定甲）— the `[data-assignee-clear]` `x` and its `:hover` /
