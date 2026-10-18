@@ -936,18 +936,47 @@ export async function run() {
         if (!el) return null;
         const r = el.getBoundingClientRect();
         const c = getComputedStyle(el);
-        return { w: Math.round(r.width), h: Math.round(r.height), height: c.height, minHeight: c.minHeight, font: c.fontSize };
+        return {
+          w: Math.round(r.width),
+          h: Math.round(r.height),
+          height: c.height,
+          minHeight: c.minHeight,
+          font: c.fontSize,
+          weight: c.fontWeight,
+          bg: c.backgroundColor,
+          borderColor: c.borderTopColor,
+        };
       };
-      return { upload: read("[data-attachment-upload]"), edit: read("[data-detail-description-edit]") };
+      const readGlyph = (selector) => {
+        const el = document.querySelector(selector);
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { w: Math.round(r.width), h: Math.round(r.height) };
+      };
+      return {
+        upload: read("[data-attachment-upload]"),
+        edit: read("[data-detail-description-edit]"),
+        editGlyph: readGlyph("[data-detail-description-edit] svg"),
+      };
     });
     drawerTabsCheck(
       compactButtons.upload?.height === "22px" && compactButtons.upload?.minHeight === "22px" &&
-        compactButtons.upload?.font === "11px",
-      `Upload is ${compactButtons.upload?.height}/${compactButtons.upload?.minHeight} at ${compactButtons.upload?.font}, expected 22px/22px at 11px`,
+        compactButtons.upload?.font === "11px" && compactButtons.upload?.weight === "500" &&
+        compactButtons.upload?.bg === "rgb(255, 255, 255)" &&
+        compactButtons.upload?.borderColor === "rgb(207, 213, 217)",
+      `Upload is ${compactButtons.upload?.height}/${compactButtons.upload?.minHeight} at ${compactButtons.upload?.font}/${compactButtons.upload?.weight}, ` +
+        `bg ${compactButtons.upload?.bg}, border ${compactButtons.upload?.borderColor}; expected the design's 22px surface outline`,
     );
     drawerTabsCheck(
       compactButtons.edit?.w === 32 && compactButtons.edit?.h === 32,
       `the Description edit control is ${compactButtons.edit?.w}×${compactButtons.edit?.h}, expected 32×32`,
+    );
+    /* The prototype's `.td-icon` is 16×16 (`design/prototype/src/input.css`);
+       without a size utility the SVG takes its 300px intrinsic width and flex-
+       shrinks to ~30px inside the 32px box, which is what read as "too big". */
+    drawerTabsCheck(
+      compactButtons.editGlyph?.w === 16 && compactButtons.editGlyph?.h === 16,
+      `the Description edit glyph is ${compactButtons.editGlyph?.w}×${compactButtons.editGlyph?.h}, expected 16×16`,
     );
     await page.click("[data-detail-description-edit]");
     await page.waitForTimeout(200);
@@ -957,7 +986,15 @@ export async function run() {
         if (!el) return null;
         const r = el.getBoundingClientRect();
         const c = getComputedStyle(el);
-        return { h: Math.round(r.height), height: c.height, minHeight: c.minHeight, font: c.fontSize };
+        return {
+          h: Math.round(r.height),
+          height: c.height,
+          minHeight: c.minHeight,
+          font: c.fontSize,
+          weight: c.fontWeight,
+          bg: c.backgroundColor,
+          borderColor: c.borderTopColor,
+        };
       };
       return { row: read(".td-desc-actions"), save: read("[data-detail-description-save]"), cancel: read("[data-detail-description-cancel]") };
     });
@@ -965,6 +1002,15 @@ export async function run() {
       descActions.save?.height === "22px" && descActions.cancel?.height === "22px" &&
         descActions.save?.font === "11px" && descActions.row?.h === 39,
       `Save/Cancel are ${descActions.save?.height}/${descActions.cancel?.height} in a ${descActions.row?.h}px row, expected 22px each in 39px`,
+    );
+    drawerTabsCheck(
+      descActions.save?.weight === "500" && descActions.save?.bg === "rgb(245, 246, 247)",
+      `Save is ${descActions.save?.weight}/${descActions.save?.bg}, expected the design's 500-weight base button`,
+    );
+    drawerTabsCheck(
+      descActions.cancel?.weight === "500" && descActions.cancel?.bg === "rgb(255, 255, 255)" &&
+        descActions.cancel?.borderColor === "rgb(207, 213, 217)",
+      `Cancel is ${descActions.cancel?.weight}/${descActions.cancel?.bg}/${descActions.cancel?.borderColor}, expected the design's surface outline`,
     );
     await page.click("[data-detail-description-cancel]");
     await page.waitForTimeout(150);

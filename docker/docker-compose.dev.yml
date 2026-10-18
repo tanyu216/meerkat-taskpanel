@@ -1,0 +1,46 @@
+# Manual-preview / dev environment: taskd + Vite's dev server in one container.
+#
+# Distinct from `docker-compose.yml` (the deploy smoke test): this one builds the
+# Dockerfile's `dev` target, serves the frontend through Vite with HMR, and
+# proxies `/api` + `/health` to the loopback taskd. It is for a human to open in
+# a browser and inspect changes live — it is not the verification gate.
+#
+#   # optional: reuse an existing board's data directory
+#   export TASKD_DATA_DIR=/path/to/.board-test
+#   docker compose -p meerkat-taskpanel-dev -f docker/docker-compose.dev.yml up -d --build
+#   # http://127.0.0.1:19527/
+#   docker compose -p meerkat-taskpanel-dev -f docker/docker-compose.dev.yml down
+#
+# `web/node_modules` is the image's own (anonymous volume); the bind mounts cover
+# source only. Compose v2.4 compatible: no top-level `version:` key.
+
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: dev
+    image: meerkat-taskpanel:dev
+    environment:
+      TASKD_HOST: 127.0.0.1
+      TASKD_PORT: "9527"
+      TASKD_DATA_DIR: /app/.data
+      VITE_USE_POLLING: "1"
+    ports:
+      # Host 19527 is deliberately distinct from both system defaults: taskd's
+      # 9527 and Vite's 5173. The internal ports stay at their defaults.
+      - "19527:5173"
+    volumes:
+      # The board's data directory. Unset TASKD_DATA_DIR to use the repository's
+      # gitignored `.data/`; point it at an existing board to preview real cards.
+      - ${TASKD_DATA_DIR:-../.data}:/app/.data
+      # Live sources for HMR. Backend changes are picked up by taskd's Node
+      # `--watch`; frontend changes by Vite. The anonymous volume below keeps
+      # the image's node_modules from being shadowed by the host's
+      # web/node_modules.
+      - ../src:/app/src
+      - ../web/src:/app/web/src
+      - ../web/index.html:/app/web/index.html
+      - ../web/public:/app/web/public
+      - ../web/vite.config.js:/app/web/vite.config.js
+      - /app/web/node_modules

@@ -829,6 +829,43 @@ describe("static: docker-compose.yml", () => {
   });
 });
 
+describe("static: the dev / manual-preview environment", () => {
+  it("builds the Dockerfile's dev target and publishes Vite on 19527", async () => {
+    const text = await read("docker/docker-compose.dev.yml");
+    assert.match(text, /target:\s*dev/);
+    assert.match(text, /19527:5173/);
+    assert.match(text, /\.\.\/src:\/app\/src/, "backend sources are mounted for taskd's --watch");
+    assert.match(text, /\.\.\/web\/src:\/app\/web\/src/);
+    assert.match(text, /VITE_USE_POLLING/);
+    assert.match(text, /TASKD_DATA_DIR/);
+    // Compose v2.4 compatibility: no top-level `version:` key.
+    assert.doesNotMatch(text, /^version:/m);
+  });
+
+  it("keeps the dev stage before the runtime stage, so a plain build still ships the runtime image", async () => {
+    const text = await read("docker/Dockerfile");
+    const dev = text.indexOf("FROM webbuild AS dev");
+    const runtime = text.indexOf("# ── Stage 2: runtime");
+    assert.notEqual(dev, -1, "expected a `FROM webbuild AS dev` stage");
+    assert.notEqual(runtime, -1, "expected the stage-2 runtime marker");
+    assert.ok(dev < runtime, "the dev stage must precede the runtime stage");
+    // The shipping image's own CMD still ends the file.
+    assert.match(text.slice(runtime), /CMD \["node","src\/cli\/index\.mjs","--help"\]/);
+  });
+
+  it("keeps the dev entry parseable and free of an install step", async () => {
+    const path = join(ROOT, "docker", "dev-entry.mjs");
+    assert.ok(existsSync(path), "docker/dev-entry.mjs must exist");
+    const syntax = spawnSync(process.execPath, ["--check", path], { encoding: "utf8" });
+    assert.equal(syntax.status, 0, `node --check failed: ${syntax.stderr}`);
+    const text = await read("docker/dev-entry.mjs");
+    assert.match(text, /src\/server\/main\.mjs/);
+    assert.match(text, /--watch/, "the dev entry restarts taskd on backend changes");
+    assert.match(text, /npm/, "the dev entry starts Vite through npm");
+    assert.doesNotMatch(text, /npm ci|npm install/, "the dev entry must not install anything");
+  });
+});
+
 describe("static: serve-skeleton", () => {
   it("exists, parses, and only serves /health", async () => {
     const path = join(ROOT, "docker", "serve-skeleton.mjs");

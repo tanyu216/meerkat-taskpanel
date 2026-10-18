@@ -85,6 +85,34 @@ RUN if [ -f web/package.json ] && [ -d web/.vendor/npm-cache ]; then \
     fi \
  && mkdir -p /app/web/dist
 
+# ── Stage 1b: dev (manual preview; NOT the default target) ───────────────────────────
+#
+# The shipping image is the runtime stage and installs nothing at run time. This
+# sibling reuses `webbuild` — it already holds the committed-cache `npm ci`
+# result and the frontend source — and starts taskd + Vite's dev server through
+# `docker/dev-entry.mjs`. It is deliberately placed before the runtime stage so
+# the runtime stays the final/default target: a plain `docker build` still
+# produces the shipping image, and only `--target dev` (or the dev compose file)
+# builds this one.
+#
+# Source is bind-mounted by `docker/docker-compose.dev.yml` for HMR; the image's
+# `web/node_modules` stays in place behind an anonymous volume.
+FROM webbuild AS dev
+
+ENV TASKD_HOST=127.0.0.1
+ENV TASKD_PORT=9527
+ENV TASKD_DATA_DIR=/app/.data
+# Vite watches bind-mounted sources through polling on Docker Desktop/macOS.
+ENV VITE_USE_POLLING=1
+
+RUN mkdir -p /app/.data && chown -R node:node /app
+
+USER node
+
+EXPOSE 5173
+
+CMD ["node","docker/dev-entry.mjs"]
+
 # ── Stage 2: runtime (the shipped image) ──────────────────────────────────────────────
 FROM node:22-bookworm-slim
 
