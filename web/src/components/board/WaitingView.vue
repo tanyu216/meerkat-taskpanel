@@ -36,7 +36,7 @@
 import { computed, watch } from "vue";
 
 import { waitingRows } from "../../lib/waiting-queue.js";
-import { board, loadWaitingPayloads, openDetail, waitingTasks } from "../../stores/board.js";
+import { board, loadWaitingPayloads, openDetail, projectLoading, waitingTasks } from "../../stores/board.js";
 import { view } from "../../stores/ui.js";
 
 /** The queue: one row per awaiting card, oldest first (§30.2). */
@@ -60,6 +60,16 @@ watch(awaitingIds, () => loadWaitingPayloads(), { immediate: true });
 const isEmpty = computed(() => rows.value.length === 0);
 
 /**
+ * The queue's loading window. Two reads make a row: the project's task list
+ * (`projectLoading`, which a switch restarts) and that card's triggering comment
+ * (`board.waitingPending`, which supplies the row's `since` and therefore the
+ * oldest-first order). A queue read halfway through either is not a queue yet —
+ * `isEmpty` on its own would announce "nothing is waiting on you" for a project
+ * that has simply not been read.
+ */
+const loadingNow = computed(() => projectLoading.value || board.waitingPending > 0);
+
+/**
  * The row body is the pointer's affordance and `[data-waiting-open]` its keyboard
  * twin — the same pair B26's rows are. A press that lands on the row's own button
  * is the button's, not the row's (the button stops its own propagation anyway;
@@ -72,7 +82,13 @@ function onRow(event, row) {
 </script>
 
 <template>
-  <section class="td-waiting-view" data-waiting-view :hidden="view !== 'waiting'">
+  <section
+    class="td-waiting-view"
+    data-waiting-view
+    :data-view-loading="loadingNow ? 'true' : 'false'"
+    :aria-busy="loadingNow ? 'true' : 'false'"
+    :hidden="view !== 'waiting'"
+  >
     <!-- B27.2 · the head: the destination's name, what the view *is* and the
          queue's tally. Both read one derivation (`rows`), so the heading and the
          count cannot disagree — and `waiting.title` is byte-identical to
@@ -102,7 +118,20 @@ function onRow(event, row) {
       >{{ $t("waiting.count", rows.length) }}</span>
     </header>
 
-    <ul class="td-waiting-list" data-waiting-list>
+    <!-- The queue's loading window. The rows carry no `[data-waiting-item]`:
+         that hook's identical-set rule means "a real row", and a placeholder is
+         not one. `aria-hidden` — the view's `aria-busy` is the announcement. -->
+    <ul v-if="loadingNow" class="td-waiting-list td-waiting-skeleton" data-view-skeleton="waiting" aria-hidden="true">
+      <li v-for="n in 4" :key="n" class="td-waiting-skeleton-row">
+        <span class="skeleton" style="height: 10px; width: 56px"></span>
+        <span class="skeleton" style="height: 18px; width: 56px; border-radius: 999px"></span>
+        <span class="skeleton" style="height: 10px; width: 48px"></span>
+        <span class="skeleton" style="height: 10px; width: 220px; max-width: 34%"></span>
+        <span class="skeleton" style="height: 10px; width: 48px; margin-left: auto"></span>
+      </li>
+    </ul>
+
+    <ul class="td-waiting-list" data-waiting-list :hidden="loadingNow">
       <li
         v-for="row in rows"
         :key="row.id"
@@ -155,7 +184,7 @@ function onRow(event, row) {
          owed but not where owed work lands; `waiting.empty.hint` is the second
          line B12's own two-part state gave it. No button: this view has no filter
          to clear (§30.1), so there is nothing a control here could do. -->
-    <div class="td-empty td-empty-lg td-waiting-empty" data-waiting-empty :hidden="!isEmpty">
+    <div class="td-empty td-empty-lg td-waiting-empty" data-waiting-empty :hidden="loadingNow || !isEmpty">
       <!-- The brand mark stands in for a generic empty glyph. Its two lead
            meerkats drop to `--brand-text-3` (the design's `--color-td-ink-3`) so
            the on-duty sentinel and its watch signal stay the only lit elements on

@@ -799,6 +799,54 @@ svg[data-token-icon][hidden] { display: none; }
 .td-card[data-canceled="true"] .td-card-title { color: var(--brand-text-3); }
 .td-card[data-canceled="true"] .td-card-title { text-decoration: line-through; }
 
+/* The loading card (B13's skeleton, at the card's own box). The composition is
+   the prototype's (`.td-skel-card` / `.td-skel-row`, its B18 loading demo); the
+   values here are the app's brand tokens for the same numbers. The shimmer and
+   the bar's box come from daisyUI's `.skeleton`, exactly as the list's loading
+   rows do, so there is one shimmer in the product, not two. */
+.td-skel-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  background-color: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  border-radius: var(--radius-field);
+}
+.td-skel-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+/* The activity/waiting row placeholders reuse the real rows' metrics so the
+   skeleton and the data it replaces occupy the same lines. */
+.td-activity-skeleton-day {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 10px;
+}
+.td-activity-skeleton-row { border-top: 1px solid var(--brand-border); }
+.td-activity-skeleton-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px;
+}
+.td-waiting-skeleton-row {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px;
+  border-top: 1px solid var(--brand-border);
+}
+.td-waiting-skeleton-row:first-child { border-top: 0; }
+
 /* The status chip. daisyUI's `badge badge-sm` owns the box, the inline flex and
    the shrink behaviour; this states the brand's metrics on top — and it states
    the *measured* set: the prototype declares `.td-chip` twice in one cascade

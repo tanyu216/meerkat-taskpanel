@@ -1899,6 +1899,18 @@ const BLOCKS = [
           "`data-copy-value` and writes to the clipboard (a browser API); [data-detail-description] " +
           "renders sanitised GFM.",
       },
+      {
+        kind: "manual",
+        note:
+          "Implementation supplement: the panel opens before its card is read. `openDetail()` " +
+          "clears the detail and sets `drawerState` to `open` in one act, so `data-state` is " +
+          "`open` while the detail is null and the drawer renders `[data-detail-skeleton]` " +
+          "(head + body, daisyUI `skeleton` bars in the drawer's own shells) instead of the " +
+          "`[data-detail-*]` parts. The root carries `aria-busy`; the loading head keeps the " +
+          "`#td-detail-title` seat, and `[data-detail-close]` is live throughout. This branch is " +
+          "not resident at rest, so every count above is unchanged; measured in " +
+          "`web/scripts/dom-smoke.mjs` (the skeleton section's S6).",
+      },
     ],
   },
 
@@ -2164,6 +2176,19 @@ const BLOCKS = [
           "own states gallery carried a second, static copy of this loading state " +
           "([data-loading-state]); that gallery is prototype-only and does not ship, which is why " +
           "the count above is one and not two.",
+      },
+      {
+        kind: "manual",
+        note:
+          "Implementation supplement (product ruling, not a prototype page): the board, the " +
+          "activity feed and the waiting queue hold their own skeletons while a real read is in " +
+          "flight — `.td-skel-card` (the shape B18's loading demo draws) inside each of the seven " +
+          "columns for B05, a day caption + six rows for B26, four rows for B27. The carriers are " +
+          "`[data-view-loading]` on the view root and `[data-view-skeleton=\"board|activity|waiting\"]` " +
+          "on the placeholder block; neither is a value of `data-board-state` or `data-list-state`, " +
+          "and the activity placeholders add no `data-activity-*` name. The trigger is the read, " +
+          "never a timer. Measured in `web/scripts/dom-smoke.mjs` (the skeleton section), not by a " +
+          "resting-document count — the placeholders are rendered only in the loading branch.",
       },
     ],
   },

@@ -51,7 +51,7 @@ import {
   unreadCount,
   writeActivityFilter,
 } from "../../stores/activity.js";
-import { board, openDetail } from "../../stores/board.js";
+import { board, openDetail, projectLoading } from "../../stores/board.js";
 import { pushToast, view } from "../../stores/ui.js";
 
 /**
@@ -75,6 +75,21 @@ const CONTROLS = Object.freeze(["actor", "event", "task"]);
 
 const days = computed(() => feed.value.days);
 const taskOptions = computed(() => feed.value.taskOptions);
+
+/**
+ * The feed's loading window. Two reads can be behind it, and the view shows its
+ * skeleton while either is in the air:
+ *
+ *   * `projectLoading` — the current project's task list has not landed, so the
+ *     fan-out has nothing complete to read (a project switch starts here);
+ *   * `activity.loading` for **this** project — the per-card fan-out itself.
+ *
+ * The project guard matters: `activity.loading` can still be true for the ledger
+ * of a project the reader has left, and that is not this view's read.
+ */
+const loadingNow = computed(
+  () => projectLoading.value || (activity.loading && activity.projectId === board.currentProjectId),
+);
 
 /** The catalogue's copy for a filter row: `activity.filter.<slot>.<value>`. */
 const optionText = (slot, value) => t(`activity.filter.${slot}.${value}`);
@@ -241,7 +256,13 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="td-activity-view" data-activity-view :hidden="view !== 'activity'">
+  <section
+    class="td-activity-view"
+    data-activity-view
+    :data-view-loading="loadingNow ? 'true' : 'false'"
+    :aria-busy="loadingNow ? 'true' : 'false'"
+    :hidden="view !== 'activity'"
+  >
     <header class="td-activity-head">
       <div class="td-activity-head-text">
         <h1 class="td-activity-title" data-activity-title data-i18n="activity.title">{{ $t("activity.title") }}</h1>
@@ -320,6 +341,28 @@ onUnmounted(() => {
 
     <!-- B26.2 · the feed -->
     <div class="td-activity-feed" data-activity-feed>
+      <!-- The ledger's loading window — a day caption and six 30px rows, the
+           shape the feed will replace it with. It carries no `data-activity-*`
+           name: that vocabulary is closed at 39 (B26), and a placeholder is not
+           an event. The view's `aria-busy` is the announcement. -->
+      <div v-if="loadingNow" class="td-activity-skeleton" data-view-skeleton="activity" aria-hidden="true">
+        <div class="td-activity-skeleton-day">
+          <span class="skeleton" style="height: 12px; width: 72px"></span>
+        </div>
+        <ol class="td-activity-rows">
+          <li v-for="n in 6" :key="n" class="td-activity-skeleton-row">
+            <div class="td-activity-skeleton-line">
+              <span class="skeleton" style="height: 6px; width: 6px; border-radius: 999px"></span>
+              <span class="skeleton" style="height: 10px; width: 56px"></span>
+              <span class="skeleton" style="height: 10px; width: 84px"></span>
+              <span class="skeleton" style="height: 10px; width: 48px"></span>
+              <span class="skeleton" style="height: 10px; width: 200px; max-width: 30%"></span>
+              <span class="skeleton" style="height: 10px; width: 40px; margin-left: auto"></span>
+            </div>
+          </li>
+        </ol>
+      </div>
+
       <section
         v-for="day in days"
         :key="day.day"
@@ -328,6 +371,7 @@ onUnmounted(() => {
         :data-day="day.day"
         :data-activity-day-kind="day.kind"
         :data-activity-page="day.page"
+        :hidden="loadingNow"
       >
         <!-- The two relative headings are catalogue sentences, so they are the two
              static hooks; an absolute day is a *date* and has no sentence to
@@ -468,7 +512,7 @@ onUnmounted(() => {
         class="td-empty td-empty-lg td-activity-empty"
         data-activity-empty
         data-activity-empty-kind="project"
-        :hidden="!projectEmpty"
+        :hidden="loadingNow || !projectEmpty"
       >
         <!-- The brand mark stands in for a generic empty glyph. Its two lead
              meerkats drop to `--brand-text-3` (the design's `--color-td-ink-3`)
@@ -523,7 +567,7 @@ onUnmounted(() => {
         class="td-empty td-empty-lg td-activity-empty"
         data-activity-empty
         data-activity-empty-kind="filter"
-        :hidden="feed.emptyKind !== 'filter'"
+        :hidden="loadingNow || feed.emptyKind !== 'filter'"
       >
         <!-- Same mark, its own mask id (this block is resident beside the
              project one, so the two cannot share `face-knockout-b-lg`). -->

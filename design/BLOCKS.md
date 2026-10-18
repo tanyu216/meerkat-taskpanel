@@ -578,6 +578,14 @@ product override of the prototype's 520px `--shell-drawer`. The `100vw` ceiling
 keeps a narrow viewport full-width exactly as before; every other box in this
 block follows the prototype.
 
+**Implementation supplement — the panel opens before its card is read.** Opening a card
+clears the detail and flips the drawer to `open` in one act, so the panel now slides in at
+once with a skeleton head and body (`[data-detail-skeleton]`, daisyUI `skeleton` bars in
+the drawer's own `.td-drawer-head` / `.td-drawer-body` shells) and the real branch replaces
+it when the fan-out lands. The close button stays live throughout, the root carries
+`aria-busy`, and the loading head keeps the `td-detail-title` seat so the dialog is named.
+Skeleton, drawer state and the `detail === null` window are one fact; no timer is involved.
+
 **R14 — the relations area names its three kinds.** `[data-detail-relations]` groups its
 `[data-relation-link]`s by kind, each group led by that kind's own name, and the kind is
 one of three — `parent` | `blocks` | `related`. Each names itself from the catalogue:
@@ -811,6 +819,23 @@ the settle (the probe in `design/fidelity-r9.md` §6 waits 900ms).
 
 (The showcase in B18 has its own `[data-loading-state]` demo — a static, card-level copy
 that is not this state and carries no `[data-skeleton]`.)
+
+**Implementation supplement — the per-view skeletons.** The product asks every view to hold
+a skeleton while **its own** data is being read, not only B13's list. They are resident
+branches rather than new prototype pages, and the prototype is **not** retro-fitted with
+them (it has no network; its B18 loading demo is where the card composition comes from):
+
+| View | While the read is in flight | Carrier |
+|---|---|---|
+| Board (B05) | each of the seven columns keeps its header and shows the design's own `.td-skel-card` composition in its body; real cards, column counts and column empty states stand down | `[data-view-loading]` on `[data-board-view]`, skeletons under `[data-view-skeleton="board"]` |
+| Activity (B26) | a day caption and six 30px row placeholders in the feed; day groups and both empty states stand down | `[data-view-skeleton="activity"]` |
+| Waiting (B27) | four 30px row placeholders; the queue and its empty state stand down | `[data-view-skeleton="waiting"]` |
+| Drawer (B09) | the panel slides in with a skeleton head and body, then the same shell renders the card | `[data-detail-skeleton]` |
+
+`data-view-loading` is `true | false` and follows **a real read only** — a pure view switch
+with nothing to fetch (board ↔ waiting on an already-read project) shows no skeleton. It is
+not a third value of `data-board-state` or `data-list-state`: a loading board is still in
+the `data` state, unread.
 
 ## B14 · Toast region
 

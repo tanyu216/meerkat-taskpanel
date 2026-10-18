@@ -594,6 +594,191 @@ describe("web/board — loads", () => {
   });
 });
 
+/* ------------------------------------------------------- loading the board */
+/*
+ * The skeleton screens read one signal: "the current project's read is in
+ * flight". These cases pin the signal and the concurrency rules it needs to be
+ * honest — a stale response from a project already left must never repaint the
+ * new project or clear its loading flag.
+ */
+describe("web/board — the loading window", () => {
+  it("reports projectLoading while a switched project's read is in flight", async () => {
+    const { board, projectLoading, selectProject } = await freshBoard();
+    board.currentProjectId = "p1";
+    board.tasks = [{ id: "old", project_id: "p1" }];
+    board.loaded = true;
+
+    let release;
+    const calls = installFetch({
+      "GET /api/v1/tasks": () => new Promise((resolve) => (release = resolve)),
+    });
+
+    const pending = selectProject("p2");
+    assert.equal(board.currentProjectId, "p2");
+    assert.equal(board.loaded, false, "the previous reading was withdrawn");
+    assert.deepEqual(board.tasks, [], "the previous project's cards are gone at once");
+    assert.equal(board.loading, true);
+    assert.equal(projectLoading.value, true);
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].url, /project_id=p2/);
+
+    release(ok({ tasks: [{ id: "t2", project_id: "p2" }] }));
+    await pending;
+    assert.equal(board.loading, false);
+    assert.equal(board.loaded, true);
+    assert.equal(projectLoading.value, false);
+    assert.deepEqual(board.tasks.map((task) => task.id), ["t2"]);
+  });
+
+  it("treats a press on the project already in force as a no-op", async () => {
+    const { board, projectLoading, selectProject } = await freshBoard();
+    board.currentProjectId = "p1";
+    board.tasks = [{ id: "keep", project_id: "p1" }];
+    board.loaded = true;
+    const calls = installFetch({});
+
+    await selectProject("p1");
+    assert.equal(calls.length, 0, "no read is issued");
+    assert.deepEqual(board.tasks.map((task) => task.id), ["keep"]);
+    assert.equal(board.loaded, true);
+    assert.equal(projectLoading.value, false);
+  });
+
+  it("ignores a late response for a project the board has already left", async () => {
+    const { board, projectLoading, selectProject } = await freshBoard();
+    board.currentProjectId = "p1";
+    board.loaded = true;
+
+    const releases = {};
+    installFetch({
+      "GET /api/v1/tasks": (call) =>
+        new Promise((resolve) => {
+          // `call.url` is the app's own relative URL (`/api/v1/tasks?project_id=…`).
+          releases[new URL(call.url, "http://board.test").searchParams.get("project_id")] = resolve;
+        }),
+    });
+
+    const toP2 = selectProject("p2");
+    const toP3 = selectProject("p3");
+
+    // p3 lands first: it is the current project, so it owns the board.
+    releases.p3(ok({ tasks: [{ id: "t3", project_id: "p3" }] }));
+    await toP3;
+    assert.equal(board.loaded, true);
+    assert.equal(board.loading, false);
+    assert.equal(projectLoading.value, false);
+
+    // …and p2's stale response arrives afterwards: it must change nothing.
+    releases.p2(ok({ tasks: [{ id: "t2", project_id: "p2" }] }));
+    await toP2;
+    assert.deepEqual(board.tasks.map((task) => task.id), ["t3"]);
+    assert.equal(board.loaded, true);
+    assert.equal(board.loading, false);
+    assert.equal(projectLoading.value, false);
+  });
+
+  it("leaves no previous project's cards behind when a switch read fails", async () => {
+    const { board, projectLoading, selectProject } = await freshBoard();
+    board.currentProjectId = "p1";
+    board.tasks = [{ id: "old", project_id: "p1" }];
+    board.loaded = true;
+    installFetch({ "GET /api/v1/tasks": () => failure(500, "INTERNAL", "boom") });
+
+    await assert.rejects(() => selectProject("p2"));
+    assert.deepEqual(board.tasks, [], "the failed switch does not resurrect the old cards");
+    assert.equal(board.loaded, false);
+    assert.equal(board.loading, false);
+    assert.equal(projectLoading.value, false);
+    assert.ok(board.error instanceof ApiError, "the shell's B17 surface carries the failure");
+  });
+
+  it("counts the comments read a waiting row is missing", async () => {
+    const { board, loadWaitingPayloads } = await freshBoard();
+    seedTask(board, { status: "awaiting", awaiting_reason: "E1" });
+
+    let release;
+    installFetch({
+      "GET /api/v1/tasks/TD-1/comments": () => new Promise((resolve) => (release = resolve)),
+    });
+
+    const pending = loadWaitingPayloads();
+    assert.equal(board.waitingPending, 1);
+    release(ok({ comments: [{ author_kind: "human", body: "?", created_at: "2026-01-01T00:00:00Z" }] }));
+    await pending;
+    assert.equal(board.waitingPending, 0);
+  });
+});
+
+/* --------------------------------------------------------- the open drawer */
+
+/** Every read `openDetail()` fans out, happy-path. */
+function detailRoutes(ref, task) {
+  return {
+    [`GET /api/v1/tasks/${ref}`]: () => ok({ task }),
+    [`GET /api/v1/tasks/${ref}/relations`]: () => ok({ relations: [] }),
+    [`GET /api/v1/tasks/${ref}/activities`]: () => ok({ activities: [] }),
+    [`GET /api/v1/tasks/${ref}/sessions`]: () => ok({ sessions: [] }),
+    [`GET /api/v1/tasks/${ref}/reports`]: () => ok({ reports: [] }),
+    [`GET /api/v1/tasks/${ref}/comments`]: () => ok({ comments: [] }),
+    [`GET /api/v1/tasks/${ref}/attachments`]: () => ok({ attachments: [] }),
+  };
+}
+
+const wireTask = (identifier, over = {}) => ({
+  id: `td_${identifier}`,
+  identifier,
+  project_id: "p1",
+  status: "todo",
+  version: 1,
+  title: identifier,
+  labels: [],
+  ...over,
+});
+
+describe("web/board — opening the detail drawer", () => {
+  it("opens the panel before the card's read lands", async () => {
+    const { board, openDetail } = await freshBoard();
+    board.currentProjectId = "p1";
+
+    let release;
+    installFetch({
+      ...detailRoutes("TD-1", wireTask("TD-1")),
+      "GET /api/v1/tasks/TD-1": () => new Promise((resolve) => (release = resolve)),
+    });
+
+    const pending = openDetail("TD-1");
+    assert.equal(board.drawerState, "open", "the panel slides in immediately");
+    assert.equal(board.detail, null, "…with no content yet — the view shows its skeleton");
+    assert.equal(board.selectedRef, "TD-1");
+
+    release(ok({ task: wireTask("TD-1") }));
+    await pending;
+    assert.equal(board.detail.task.identifier, "TD-1");
+  });
+
+  it("does not let a late card read replace the card opened after it", async () => {
+    const { board, openDetail } = await freshBoard();
+    board.currentProjectId = "p1";
+
+    let releaseOne;
+    installFetch({
+      ...detailRoutes("TD-1", wireTask("TD-1")),
+      ...detailRoutes("TD-2", wireTask("TD-2")),
+      "GET /api/v1/tasks/TD-1": () => new Promise((resolve) => (releaseOne = resolve)),
+    });
+
+    const first = openDetail("TD-1");
+    await openDetail("TD-2");
+    assert.equal(board.detail.task.identifier, "TD-2");
+
+    releaseOne(ok({ task: wireTask("TD-1") }));
+    await first;
+
+    assert.equal(board.selectedRef, "TD-2", "the reader is still on the second card");
+    assert.equal(board.detail.task.identifier, "TD-2", "the late read is dropped");
+  });
+});
+
 /* ------------------------------------------------ the drawer's prerequisite list */
 
 /**

@@ -9,6 +9,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Every read shows its skeleton.** Switching projects — from the sidebar or the top bar's
+  dropdown — puts the board, list, activity and 「等你回复」 views into their skeletons until the
+  new project's read lands, instead of briefly drawing the previous project's cards (and a failed
+  switch no longer leaves them behind). The activity backfill and the waiting queue's comment
+  reads do the same, and opening a card now slides the drawer in immediately with a skeleton
+  head and body while its detail loads, where it used to stay invisible until every read
+  returned. Skeletons follow **reads, never a timer**: a view switch with its data already in
+  hand stays instant.
 - **A container closes itself: the epic rollup.** When the container's children are all finished
   — every child `done` or `canceled`, and **at least one `done`** — the board writes the
   container's rollup report (one acceptance line per child, plus the children's own delivery

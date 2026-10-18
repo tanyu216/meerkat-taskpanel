@@ -13,12 +13,31 @@ import { computed, ref } from "vue";
 import { totalVisible } from "../../stores/board.js";
 import Card from "./Card.vue";
 
-const props = defineProps({ column: { type: Object, required: true }, dragging: { type: Object, default: null } });
+const props = defineProps({
+  column: { type: Object, required: true },
+  dragging: { type: Object, default: null },
+  /**
+   * The current project's read is in flight (`stores/board.js#projectLoading`).
+   * The column keeps its header and shows the design's skeleton-card composition
+   * in place of its cards — an old project's cards must never paint under a new
+   * project's name, and the count/progress read zero until the read lands.
+   */
+  loading: { type: Boolean, default: false },
+});
 const emit = defineEmits(["open", "drop", "add", "dragstart", "dragend"]);
 
 const dragOver = ref(false);
-const count = computed(() => props.column.tasks.length);
+const count = computed(() => (props.loading ? 0 : props.column.tasks.length));
 const progressMax = computed(() => Math.max(totalVisible.value, 1));
+
+// The prototype's own loading demo (B18 `[data-loading-state]`,
+// `design/prototype/index.html`): two skeleton cards' title-line widths, plus one
+// more variation so a column of three does not read as one block repeated.
+const SKELETON_CARDS = Object.freeze([
+  ["78%", "56%"],
+  ["64%", "42%"],
+  ["70%", "50%"],
+]);
 
 function onDragOver(event) {
   event.preventDefault();
@@ -75,15 +94,34 @@ function onDrop(event) {
     <progress class="progress progress-xs mb-2 h-1 accent-(--status-color)" data-column-progress aria-hidden="true" :value="count" :max="progressMax"></progress>
 
     <div class="flex min-h-[120px] flex-col gap-2 mt-1 overflow-y-auto p-0.5" data-column-body @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
-      <Card
-        v-for="task in column.tasks"
-        :key="task.id"
-        :task="task"
-        :dragging="dragging === task.id"
-        @open="emit('open', $event)"
-        @dragstart="(t, e) => emit('dragstart', t, e)"
-        @dragend="emit('dragend')"
-      />
+      <!-- The project-switch skeleton. It is the design's own loading card
+           (`.td-skel-card`, B18's `[data-loading-state]` demo) rather than a new
+           object, and it carries **no** `[data-card]`: that hook means "a real
+           card" to the filters, the counters and the contract. `aria-hidden` —
+           the view's `aria-busy` is the announcement. -->
+      <div v-if="loading" class="flex flex-col gap-2" data-view-skeleton="board" aria-hidden="true">
+        <div v-for="(lines, index) in SKELETON_CARDS" :key="index" class="td-skel-card">
+          <span class="skeleton" style="height: 10px; width: 44px"></span>
+          <span class="skeleton" :style="{ height: '12px', width: lines[0] }"></span>
+          <span class="skeleton" :style="{ height: '12px', width: lines[1] }"></span>
+          <div class="td-skel-row">
+            <span class="skeleton" style="height: 18px; width: 18px; border-radius: 999px"></span>
+            <span class="skeleton" style="height: 10px; width: 40px"></span>
+          </div>
+        </div>
+      </div>
+
+      <template v-if="!loading">
+        <Card
+          v-for="task in column.tasks"
+          :key="task.id"
+          :task="task"
+          :dragging="dragging === task.id"
+          @open="emit('open', $event)"
+          @dragstart="(t, e) => emit('dragstart', t, e)"
+          @dragend="emit('dragend')"
+        />
+      </template>
 
       <!-- B12 · the column-level empty state. The design's face
            (`.td-empty` + `.td-empty-title` / `.td-empty-hint`, `app.css`) and the
@@ -113,7 +151,7 @@ function onDrop(event) {
         class="td-empty"
         data-empty
         data-empty-kind="column"
-        :hidden="count > 0"
+        :hidden="loading || count > 0"
       >
         <span class="td-empty-title" data-i18n="column.empty.title">{{ $t("column.empty.title") }}</span>
         <span class="td-empty-hint" data-i18n="column.empty.hint" :data-i18n-arg="`status.${column.status}`">
