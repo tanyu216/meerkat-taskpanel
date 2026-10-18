@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 /* =====================================================================
-   check-drawer-tabs.mjs — the machine check for the two drawer-tab variants
-   of task T-20261015-171422 ("conclusion 归位 + comments/activity 独立成 tab").
+   check-drawer-tabs.mjs — the machine check for the drawer-tab variants.
+
+   Rounds:
+     T-20261015-171422  v2 (甲) / v3 (丙) — comments / activity leave Details.
+     v4                 the sixth, last tab `Sessions`: the Agent-session block
+                        leaves Details for a session TRAIL, and the tab is
+                        visible only when the card has at least one session.
 
    Usage
      node design/prototype/check-drawer-tabs.mjs                 # static + render
@@ -47,6 +52,7 @@ const INDEX_PATH = join(HERE, "index.html");
 const BASE_PATH = join(HERE, "index-detail-tabs.html");
 const V2_PATH = join(HERE, "index-detail-tabs-v2.html");
 const V3_PATH = join(HERE, "index-detail-tabs-v3.html");
+const V4_PATH = join(HERE, "index-detail-tabs-v4.html");
 const SHOTS_DIR = join(HERE, "screenshots");
 
 const argv = process.argv.slice(2);
@@ -54,11 +60,18 @@ const STATIC_ONLY = argv.includes("--static-only");
 const SHOTS = argv.includes("--shots");
 
 const VIEWPORT = { width: 1512, height: 950 };
+const MID = { width: 760, height: 950 };
 const NARROW = { width: 430, height: 932 };
 
-/* The tab set the two variants share, in the order the panel script walks it. */
+/* The tab set v2/v3 share, in the order the panel script walks it. */
 const ORDER = ["details", "activity", "reports", "acceptance", "leftovers"];
 const BASE_ORDER = ["details", "reports", "acceptance", "leftovers"];
+
+/* v4 adds the session trail as the LAST tab: on a 430px viewport the five
+   existing tabs still fit one row (365px of 389px), and only the new one
+   wraps. Measured, not assumed. */
+const ORDER6 = [...ORDER, "sessions"];
+const SESSIONS_LABEL = "Sessions";
 
 /* The drawer's seven regions, by the i18n key their heading wears. Each occurs
    exactly once in index.html and must still occur exactly once per variant: the
@@ -100,6 +113,8 @@ const sources = {
   "index-detail-tabs-v2.html": readFileSync(V2_PATH, "utf8"),
   "index-detail-tabs-v3.html": readFileSync(V3_PATH, "utf8"),
 };
+/* v4 is this round's new artefact; a missing file is a readable red, not ENOENT. */
+const v4 = existsSync(V4_PATH) ? readFileSync(V4_PATH, "utf8") : null;
 
 /* One element's opening tag, as text — null when it is not there. */
 function openTag(source, predicate) {
@@ -170,6 +185,56 @@ function insertionWalk(baseText, variantText) {
     else inserted += 1;
   }
   return { matched: i, total: b.length, inserted, ok: i === b.length };
+}
+
+/* --- the one registered move (v4) --------------------------------------
+   The Agent-session block sits BEFORE Attachments in the母本, so moving it to
+   the last panel reorders lines and cannot pass the insertion-only walk. v4
+   registers exactly that one move: the 18-line span must be byte-identical to
+   the母本's, must occur once, must live in the Sessions panel, and — when put
+   back before the blank line that precedes Attachments — must restore the
+  母本's 5602-line order (v4's own insertions remain, as they should). */
+const MOVE_START = '        <section class="td-section" data-detail-agent-session>';
+const MOVE_END = "        </section>";
+const MOVE_ANCHOR =
+  '        <section class="td-section" data-detail-attachments-section data-detail-save-field="attachments">';
+
+/** The slice, its 0-based start line, and the full line list. */
+function spanOf(text) {
+  const lines = text.split("\n");
+  const start = lines.indexOf(MOVE_START);
+  if (start === -1) return null;
+  const end = lines.indexOf(MOVE_END, start + 1);
+  if (end === -1) return null;
+  return { lines, start, end, span: lines.slice(start, end + 1) };
+}
+
+/** How many times a contiguous slice occurs in a line list, and where first. */
+function sliceCount(lines, span) {
+  let count = 0;
+  let first = -1;
+  for (let i = 0; i <= lines.length - span.length; i += 1) {
+    let hit = true;
+    for (let j = 0; j < span.length; j += 1) {
+      if (lines[i + j] !== span[j]) { hit = false; break; }
+    }
+    if (hit) { count += 1; if (first === -1) first = i; }
+  }
+  return { count, first };
+}
+
+/** Remove the moved span, then put it back before the blank line immediately
+    preceding the Attachments opener. Returns the restored text, or null when
+    the span is not there (which is exactly what the negative control wants). */
+function restoreMoved(variantText, span) {
+  const lines = variantText.split("\n");
+  const at = sliceCount(lines, span);
+  if (at.count !== 1) return null;
+  const removed = [...lines.slice(0, at.first), ...lines.slice(at.first + span.length)];
+  const anchor = removed.indexOf(MOVE_ANCHOR);
+  if (anchor === -1) return null;
+  const insertAt = anchor > 0 && removed[anchor - 1] === "" ? anchor - 1 : anchor;
+  return [...removed.slice(0, insertAt), ...span, ...removed.slice(insertAt)].join("\n");
 }
 
 /* =====================================================================
@@ -388,6 +453,303 @@ for (const [name, source] of Object.entries(sources)) {
 
 function panelNameOf(panelId) {
   return panelId.replace(/^td-dv-panel-/, "");
+}
+
+/* --- A8–A11 · v4: the sixth tab and the registered move ----------------- */
+
+if (!v4) {
+  check("A0.0 index-detail-tabs-v4.html exists", false, `missing ${V4_PATH}`);
+} else {
+  check("A0.0 index-detail-tabs-v4.html exists", true);
+
+  /* A8 · the one registered move, proved byte-for-byte. */
+  const baseSpan = spanOf(html);
+  check(
+    "A8.0 the母本's Agent-session block is locatable and 18 lines long",
+    !!baseSpan && baseSpan.span.length === 18,
+    baseSpan ? `${baseSpan.start + 1}–${baseSpan.end + 1} (${baseSpan.span.length} lines)` : "not found",
+  );
+  const baseSpanText = baseSpan ? baseSpan.span.join("\n") : null;
+  const v4Lines = v4.split("\n");
+  const movedAt = baseSpan ? sliceCount(v4Lines, baseSpan.span) : { count: 0, first: -1 };
+  check(
+    "A8.1 the exact 18-line block occurs exactly once in v4 (moved, not cloned or dropped)",
+    !!baseSpan && movedAt.count === 1,
+    `occurrences=${movedAt.count}`,
+  );
+
+  const v4Details = panelSegment(v4, "details", "<!-- /Details panel -->");
+  const v4Sessions = panelSegment(v4, "sessions", "<!-- /Sessions panel -->");
+  check(
+    "A8.2 the moved block sits inside the Sessions panel and not inside Details",
+    !!baseSpan && !!v4Sessions && !!v4Details &&
+      v4Sessions.includes(baseSpanText) && !v4Details.includes(baseSpanText),
+    `sessions panel ${v4Sessions ? v4Sessions.length : 0} chars · details panel ${v4Details ? v4Details.length : 0} chars`,
+  );
+  check(
+    "A8.3 the moved block is byte-identical to the母本's (whitespace included)",
+    !!baseSpan && !!v4Sessions && v4Sessions.includes(baseSpanText) &&
+      v4Sessions.indexOf(baseSpanText) !== -1,
+    baseSpan ? `${baseSpanText.length} chars compared` : "no span",
+  );
+
+  const restored = baseSpan ? restoreMoved(v4, baseSpan.span) : null;
+  const restoredWalk = restored ? insertionWalk(html, restored) : null;
+  check(
+    "A8.4 putting the block back before the Attachments blank line restores the母本's line order (5602/5602)",
+    !!restoredWalk && restoredWalk.ok,
+    restoredWalk ? `${restoredWalk.matched}/${restoredWalk.total} · ${restoredWalk.inserted} inserted (v4's own additions)` : "restore failed",
+  );
+  /* Falsifiability: one changed character must make the same restore fail. */
+  const tampered = baseSpan ? baseSpan.span.map((line) => line.replace("Agent session", "Agent sessions")) : null;
+  const tamperedRestore = tampered ? restoreMoved(v4, tampered) : null;
+  check(
+    "A8.5 negative control — a one-character change to the span makes the move proof fail",
+    !!baseSpan && tamperedRestore === null,
+    tamperedRestore === null ? "tampered span not found (expected)" : "tampered span was accepted",
+  );
+  const hookCounts = [
+    ["data-detail-agent-session", countAttr(v4, "data-detail-agent-session")],
+    ["data-detail-agent-session-body", countAttr(v4, "data-detail-agent-session-body")],
+    ['data-i18n="drawer.session"', (v4.match(/data-i18n="drawer\.session"/g) || []).length],
+  ];
+  check(
+    "A8.6 the three session-section hooks survive exactly once each",
+    hookCounts.every(([, n]) => n === 1),
+    hookCounts.map(([k, n]) => `${k}=${n}`).join(" "),
+  );
+
+  /* A9 · placement. */
+  check(
+    "A9.1 the Details and Sessions panel segments are both locatable and non-empty",
+    !!v4Details && !!v4Sessions &&
+      v4Details.includes('data-detail-panel="details"') &&
+      v4Sessions.includes('data-detail-panel="sessions"'),
+    `details ${v4Details ? v4Details.length : 0} · sessions ${v4Sessions ? v4Sessions.length : 0}`,
+  );
+  check(
+    "A9.2 Details drops the Agent-session section; the Sessions panel holds it",
+    !!v4Details && !!v4Sessions &&
+      !v4Details.includes("data-detail-agent-session") &&
+      v4Sessions.includes("data-detail-agent-session"),
+    `details has=${v4Details ? v4Details.includes("data-detail-agent-session") : "?"} · sessions has=${v4Sessions ? v4Sessions.includes("data-detail-agent-session") : "?"}`,
+  );
+  check(
+    "A9.3 the Sessions panel carries no comments / activity / attachments / write-form hooks",
+    !!v4Sessions &&
+      !v4Sessions.includes("data-detail-comments") &&
+      !v4Sessions.includes("data-detail-activity") &&
+      !v4Sessions.includes("data-detail-attachments") &&
+      !v4Sessions.includes("data-comment-form"),
+    v4Sessions
+      ? `comments=${v4Sessions.includes("data-detail-comments")} activity=${v4Sessions.includes("data-detail-activity")} attachments=${v4Sessions.includes("data-detail-attachments")} form=${v4Sessions.includes("data-comment-form")}`
+      : "no sessions panel",
+  );
+  {
+    const panelNames = [...v4.matchAll(/<div[^>]*data-detail-panel="([^"]+)"[^>]*>/g)].map((m) => m[1]);
+    check(
+      "A9.4 the Sessions panel follows Leftovers and is the last panel",
+      panelNames.indexOf("sessions") > panelNames.indexOf("leftovers") &&
+        panelNames[panelNames.length - 1] === "sessions",
+      panelNames.join(" / "),
+    );
+  }
+  {
+    const counts = SECTIONS.map((k) => [k, (v4.match(new RegExp(`data-i18n="${k}"`, "g")) || []).length]);
+    const bad = counts.filter(([, n]) => n !== 1);
+    check(
+      "A9.5 each of the母本's seven region headings survives exactly once in v4",
+      bad.length === 0,
+      counts.map(([k, n]) => `${k.split(".")[1]}=${n}`).join(" "),
+    );
+  }
+
+  /* A10 · the TD-134 sample trail. */
+  const tpl134 = (() => {
+    const start = v4.indexOf('<template data-detail-for="TD-134">');
+    if (start === -1) return null;
+    const slot = v4.indexOf('<div data-slot="agent-session">', start);
+    if (slot === -1) return null;
+    /* the slot's own close, not the whole template: the activity slot below it
+       also uses .td-activity-ts, and counting that would be a false positive. */
+    const nextSlot = v4.indexOf('<div data-slot="', slot + 1);
+    return nextSlot === -1 ? null : v4.slice(slot, nextSlot);
+  })();
+  const trailRows = tpl134 ? (tpl134.match(/class="td-session"/g) || []).length : 0;
+  const statuses = tpl134 ? [...tpl134.matchAll(/data-session-status="([^"]+)"/g)].map((m) => m[1]) : [];
+  const stamps = tpl134 ? [...tpl134.matchAll(/data-session-ts="([^"]+)"/g)].map((m) => m[1]) : [];
+  const countIn = (text, re) => (text ? (text.match(re) || []).length : 0);
+  check(
+    "A10.1 TD-134's template carries a trail of at least three .td-session rows",
+    !!tpl134 && trailRows >= 3,
+    `${trailRows} row(s)`,
+  );
+  check(
+    "A10.2 the trail's source order is running / closed / failed",
+    statuses.join(",") === "running,closed,failed",
+    statuses.join(" / "),
+  );
+  check(
+    "A10.3 data-session-ts is non-increasing (running first, then newest-first)",
+    stamps.length === trailRows && stamps.every((s, i) => i === 0 || stamps[i - 1] >= s),
+    stamps.join(" / "),
+  );
+  check(
+    "A10.4 exactly one Resume, inside the running row; every row has a copyable session id",
+    countIn(tpl134, /data-agent-resume/g) === 1 &&
+      countIn(tpl134, /data-agent-session-id/g) === trailRows,
+    `resume=${countIn(tpl134, /data-agent-resume/g)} · ids=${countIn(tpl134, /data-agent-session-id/g)}`,
+  );
+  check(
+    "A10.5 every row carries owner / seg / phase / a relative timestamp",
+    countIn(tpl134, /data-session-owner=/g) === trailRows &&
+      countIn(tpl134, /data-session-seg=/g) === trailRows &&
+      countIn(tpl134, /data-session-phase=/g) === trailRows &&
+      countIn(tpl134, /td-activity-ts/g) === trailRows,
+    `owner=${countIn(tpl134, /data-session-owner=/g)} seg=${countIn(tpl134, /data-session-seg=/g)} phase=${countIn(tpl134, /data-session-phase=/g)} ts=${countIn(tpl134, /td-activity-ts/g)}`,
+  );
+  check(
+    "A10.6 no pid is shown anywhere in the trail",
+    !!tpl134 && !/\bpid\b/.test(tpl134),
+    tpl134 ? "pid absent" : "no template",
+  );
+  check(
+    "A10.7 the SAMPLE DATA marker appears at least twice (Sessions panel + TD-134 slot)",
+    (v4.match(/SAMPLE DATA/g) || []).length >= 2,
+    `${(v4.match(/SAMPLE DATA/g) || []).length} marker(s)`,
+  );
+  check(
+    "A10.8 the status labels are literals, with no data-i18n hook",
+    !!(tpl134 && /<span(?![^>]*data-i18n)[^>]*>Running<\/span>/.test(tpl134) &&
+      /<span(?![^>]*data-i18n)[^>]*>Closed<\/span>/.test(tpl134) &&
+      /<span(?![^>]*data-i18n)[^>]*>Failed<\/span>/.test(tpl134)),
+    tpl134 ? "Running / Closed / Failed present as literals" : "no template",
+  );
+
+  /* A11 · tab set / script mechanics / shared surface. */
+  /* Count tags, not attribute names: the inline script carries selectors such
+     as [data-detail-tab="…"], which a raw attribute scan would count as tabs. */
+  const v4Tabs = [...v4.matchAll(/<button[^>]*data-detail-tab="[^"]+"/g)].length;
+  const v4Panels = [...v4.matchAll(/<div[^>]*data-detail-panel="[^"]+"/g)].length;
+  const v4Order = (v4.match(/var ORDER = (\[[^\]]*\]);/) || [])[1];
+  const v4Parsed = v4Order ? JSON.parse(v4Order) : null;
+  const listed4 = [...v4.matchAll(/<button[^>]*data-detail-tab="([^"]+)"/g)].map((m) => m[1]);
+  check(
+    "A11.1 v4 has six tabs and six panels",
+    v4Tabs === 6 && v4Panels === 6,
+    `${v4Tabs} tab(s), ${v4Panels} panel(s)`,
+  );
+  check(
+    "A11.2 ORDER has exactly the six names and puts sessions last",
+    !!v4Parsed && v4Parsed.join(",") === ORDER6.join(","),
+    `ORDER = ${v4Order}`,
+  );
+  check(
+    "A11.3 the buttons are listed in ORDER's order, sessions last",
+    listed4.join(",") === ORDER6.join(","),
+    listed4.join(" / "),
+  );
+  check(
+    "A11.4 Details is the tab selected at rest and the only one in the tab order",
+    (v4.match(/<button[^>]*aria-selected="true"/g) || []).length === 1 &&
+      /<button[^>]*data-detail-tab="details"[^>]*aria-selected="true"/.test(v4) &&
+      (v4.match(/<button[^>]*data-detail-tab="[^"]+"[^>]*tabindex="0"/g) || []).length === 1,
+    "one aria-selected=\"true\" · one tabindex=\"0\"",
+  );
+  {
+    const openTags = [...v4.matchAll(/<div[^>]*data-detail-panel="([^"]+)"[^>]*>/g)];
+    const hidden = Object.fromEntries(
+      openTags.map((m) => [m[1], /(?:^|\s)hidden(?=[\s>])/.test(m[0]) ? "hidden" : "shown"]),
+    );
+    const others = ORDER6.filter((n) => n !== "details");
+    check(
+      "A11.5 Details is shown at rest and the other five panels are hidden",
+      openTags.length === 6 && hidden.details === "shown" && others.every((n) => hidden[n] === "hidden"),
+      Object.entries(hidden).map(([k, v]) => `${k}:${v}`).join(" "),
+    );
+    const sessionsTag = openTag(v4, (t) => t.attrs["data-detail-tab"] === "sessions");
+    check(
+      "A11.6 the Sessions tab is visible at rest (the static no-JS row is its floor)",
+      !!sessionsTag && sessionsTag.attrs.hidden === undefined,
+      sessionsTag ? `hidden=${sessionsTag.attrs.hidden === undefined ? "absent" : "present"}` : "no sessions tab",
+    );
+  }
+  {
+    const ids = new Set([...v4.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]));
+    const tabs = [...v4.matchAll(/<button[^>]*data-detail-tab="([^"]+)"[^>]*>/g)];
+    const panels = [...v4.matchAll(/<div[^>]*data-detail-panel="([^"]+)"[^>]*>/g)];
+    const controls = tabs.map((m) => (m[0].match(/aria-controls="([^"]+)"/) || [])[1]);
+    const labelled = panels.map((m) => (m[0].match(/aria-labelledby="([^"]+)"/) || [])[1]);
+    const tabIds = tabs.map((m) => (m[0].match(/\bid="([^"]+)"/) || [])[1]);
+    const ok = tabs.length === 6 && panels.length === 6 &&
+      new Set(tabs.map((m) => m[1])).size === 6 &&
+      new Set(panels.map((m) => m[1])).size === 6 &&
+      controls.every((c) => ids.has(c) && new RegExp(`data-detail-panel="${panelNameOf(c)}"`).test(v4)) &&
+      labelled.every((l) => ids.has(l) && tabIds.includes(l));
+    check(
+      "A11.7 with the script off the markup still stands: six tabs, six panels, every ARIA pointer resolves",
+      ok,
+      `tabs=${tabs.length} panels=${panels.length}`,
+    );
+  }
+  {
+    const baseKeys = i18nKeys(base);
+    const extra = [...i18nKeys(v4)].filter((k) => !baseKeys.has(k));
+    check(
+      "A11.8 v4 adds no i18n key the base does not already carry",
+      extra.length === 0,
+      extra.length ? extra.slice(0, 5).join(", ") : `0 new key(s) over the base's ${baseKeys.size}`,
+    );
+    const tag = openTag(v4, (t) => t.attrs["data-detail-tab"] === "sessions");
+    const labelAt = tag ? tag.index + tag.raw.length : -1;
+    const labelled = labelAt > 0 && v4.startsWith(`${SESSIONS_LABEL}</button>`, labelAt);
+    check(
+      "A11.9 the Sessions tab is a literal, like the five it joins — no data-i18n hook",
+      !!tag && tag.attrs["data-i18n"] === undefined && labelled,
+      tag ? `label "${SESSIONS_LABEL}" · data-i18n: ${tag.attrs["data-i18n"] === undefined ? "absent" : "present"}` : "no sessions tab",
+    );
+  }
+  {
+    /* The card templates legitimately carry data-assignee-kind on avatars; the
+       claim is about the TAB SCRIPT, so read only that slice. */
+    const scriptFrom = v4.indexOf('var ORDER = ["details"');
+    const scriptText = scriptFrom === -1 ? "" : v4.slice(scriptFrom, v4.indexOf("</script>", scriptFrom));
+    check(
+      "A11.10 the tab script reads the session body's children and never the assignee kind",
+      scriptText.includes('$("[data-detail-agent-session-body]").children()') &&
+        !scriptText.includes("assignee-kind"),
+      "hasSessions = body children · assignee-kind absent from the tab script",
+    );
+  }
+  check(
+    "A11.11 the script writes no address (需求 F)",
+    !/location\.hash\s*=/.test(v4) && !/pushState\s*\(/.test(v4) && !/replaceState\s*\(/.test(v4),
+    "no location.hash= / pushState( / replaceState(",
+  );
+  check(
+    "A11.12 a hidden tab is display:none, not just the hidden property (daisyUI sets display:inline-flex)",
+    /\[hidden\][^{}]*\{[^}]*display:\s*none/.test(v4),
+    "author [hidden] display:none rule present",
+  );
+  {
+    const linksTw = (v4.match(/href="tw\.css"/g) || []).length;
+    const loadsApp = (v4.match(/src="app\.js"/g) || []).length;
+    const inlinesCss = /<style[^>]*>[\s\S]{0,400}tailwindcss/i.test(v4);
+    const inlinesApp = v4.includes("function identifierText(");
+    check(
+      "A11.13 v4 references the shared tw.css and app.js, and inlines neither",
+      linksTw === 1 && loadsApp === 1 && !inlinesCss && !inlinesApp,
+      `tw.css link=${linksTw} · app.js src=${loadsApp} · inlined css=${inlinesCss} · inlined app=${inlinesApp}`,
+    );
+  }
+  /* The raw walk must fail; A8.4 is the normalized proof, and this is the note
+     that keeps the allowance honest. */
+  const rawWalk = insertionWalk(html, v4);
+  check(
+    "A8.7 the un-normalized insertion walk is expected to fail (the registered move is real)",
+    !rawWalk.ok,
+    `${rawWalk.matched}/${rawWalk.total} — the move reorders the blocked span`,
+  );
 }
 
 /* =====================================================================
@@ -644,6 +1006,294 @@ async function renderSuite() {
   }
 }
 
+/* =====================================================================
+   v4 RENDER SUITE — the Sessions tab
+   ===================================================================== */
+
+/* Open a named card, not the "first with comments" heuristic: the trail sample
+   lives on TD-134, and the no-session case on TD-126. */
+const OPEN_CARD_BY_ID = (id) => {
+  const cards = [...document.querySelectorAll("[data-card]")];
+  const card = cards.find(
+    (c) => ((c.querySelector("[data-card-identifier]") || {}).textContent || "").trim() === id,
+  );
+  (card || cards[0]).click();
+};
+
+const READ_V4_TABS = () => {
+  const tabs = [...document.querySelectorAll("[data-detail-tab]")];
+  const visible = tabs.filter((t) => !t.hidden && getComputedStyle(t).display !== "none");
+  const boxes = visible.map((t) => t.getBoundingClientRect());
+  const bar = document.querySelector("[data-detail-tabs]");
+  const sessions = document.querySelector('[data-detail-tab="sessions"]');
+  const body = document.querySelector("[data-detail-agent-session-body]");
+  const section = document.querySelector("[data-detail-agent-session]");
+  const drawerBody = document.querySelector("[data-detail-drawer] .td-drawer-body");
+  return {
+    order: tabs.map((t) => t.getAttribute("data-detail-tab")),
+    visibleOrder: visible.map((t) => t.getAttribute("data-detail-tab")),
+    selected: tabs.filter((t) => t.getAttribute("aria-selected") === "true").map((t) => t.getAttribute("data-detail-tab")),
+    roving: tabs.filter((t) => t.getAttribute("tabindex") === "0").map((t) => t.getAttribute("data-detail-tab")),
+    visiblePanels: [...document.querySelectorAll("[data-detail-panel]")].filter((p) => !p.hidden).map((p) => p.getAttribute("data-detail-panel")),
+    onScreenPanels: [...document.querySelectorAll("[data-detail-panel]")].filter((p) => p.offsetParent !== null).map((p) => p.getAttribute("data-detail-panel")),
+    sessions: sessions
+      ? { hidden: sessions.hidden, display: getComputedStyle(sessions).display, offsetParent: sessions.offsetParent !== null }
+      : null,
+    sessionBodyChildren: body ? body.children.length : null,
+    sectionHidden: section ? section.hidden : null,
+    rows: new Set(boxes.map((b) => Math.round(b.top))).size,
+    heights: [...new Set(boxes.map((b) => Math.round(b.height)))],
+    fontSize: visible[0] ? getComputedStyle(visible[0]).fontSize : null,
+    barWidth: Math.round(bar.getBoundingClientRect().width),
+    barScrollWidth: bar.scrollWidth,
+    docOverflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    drawerBodyOverflowX: drawerBody ? drawerBody.scrollWidth - drawerBody.clientWidth : null,
+  };
+};
+
+async function renderSessionsSuite() {
+  suite("render-v4");
+
+  const chromium = await loadPlaywright();
+  if (!chromium) {
+    check("S0.0 Playwright reachable for v4", false, "no playwright module on this host");
+    return;
+  }
+  check("S0.0 Playwright reachable for v4", true);
+  if (!v4) {
+    check("S0.1 index-detail-tabs-v4.html exists for the v4 render suite", false, `missing ${V4_PATH}`);
+    return;
+  }
+  check("S0.1 index-detail-tabs-v4.html exists for the v4 render suite", true);
+
+  const server = await serveDesignRoot();
+  const { port } = server.address();
+  const at = (file) => `http://127.0.0.1:${port}/prototype/${file}`;
+  const browser = await chromium.launch();
+  const V4 = "index-detail-tabs-v4.html";
+
+  const open = async (viewport, cardId) => {
+    const errors = [];
+    const page = await browser.newPage({ viewport });
+    page.on("console", (msg) => { if (msg.type() === "error") errors.push(msg.text()); });
+    page.on("pageerror", (err) => errors.push(String(err)));
+    await page.goto(at(V4), { waitUntil: "load" });
+    await page.waitForFunction(() => !!window.jQuery);
+    await page.evaluate(OPEN_CARD_BY_ID, cardId);
+    await page.waitForTimeout(300);
+    return { page, errors };
+  };
+
+  try {
+    /* B4/B5 · geometry at three tiers for the agent card, and the human card at 430 */
+    for (const [tier, viewport, rows] of [
+      ["1512×950", VIEWPORT, 1],
+      ["760×950", MID, 1],
+      ["430×932", NARROW, 2],
+    ]) {
+      const { page } = await open(viewport, "TD-134");
+      const t = await page.evaluate(READ_V4_TABS);
+      check(
+        `B4 v4 @ ${tier} — six tabs share ${rows} row(s) and nothing overflows`,
+        t.visibleOrder.length === 6 && t.rows === rows &&
+          t.barScrollWidth <= t.barWidth + 1 && t.docOverflowX === 0,
+        `${t.visibleOrder.length} visible · ${t.rows} row(s) · bar ${t.barWidth}px / ${t.barScrollWidth}px · page overflow-x ${t.docOverflowX}px`,
+      );
+      check(
+        `B5 v4 @ ${tier} — every visible tab is the same height and 12px`,
+        t.heights.length === 1 && t.fontSize === "12px",
+        `heights ${t.heights.join("/")} · font ${t.fontSize}`,
+      );
+      await page.close();
+    }
+    {
+      const { page } = await open(NARROW, "TD-126");
+      const t = await page.evaluate(READ_V4_TABS);
+      check(
+        "B6 v4 @ 430×932 human card — five tabs, one row; the Sessions tab is display:none",
+        t.visibleOrder.length === 5 && !t.visibleOrder.includes("sessions") &&
+          t.sessions && t.sessions.display === "none" && t.sessions.offsetParent === false &&
+          t.rows === 1 && t.docOverflowX === 0,
+        `${t.visibleOrder.join("/")} · sessions display=${t.sessions ? t.sessions.display : "?"} · ${t.rows} row(s)`,
+      );
+      await page.close();
+    }
+
+    /* C7 · the Sessions face and the six-tab keyboard walk */
+    {
+      const { page, errors } = await open(VIEWPORT, "TD-134");
+      const initial = await page.evaluate(READ_V4_TABS);
+      check(
+        "C7.1 v4 agent card — opens on Details with the Sessions tab visible and its panel hidden",
+        initial.selected.join(",") === "details" &&
+          initial.visiblePanels.join(",") === "details" &&
+          initial.visibleOrder.includes("sessions") &&
+          initial.sessions && initial.sessions.display !== "none",
+        `selected ${initial.selected.join("/")} · visible ${initial.visiblePanels.join("/")} · sessions ${initial.sessions ? initial.sessions.display : "?"}`,
+      );
+      await page.evaluate(PICK_TAB, "sessions");
+      await page.waitForTimeout(200);
+      const s = await page.evaluate(READ_V4_TABS);
+      check(
+        "C7.2 v4 agent card — clicking Sessions moves selection, panel and roving tabindex together",
+        s.selected.join(",") === "sessions" && s.visiblePanels.join(",") === "sessions" &&
+          s.onScreenPanels.join(",") === "sessions" && s.roving.join(",") === "sessions",
+        `selected ${s.selected.join("/")} · visible ${s.visiblePanels.join("/")} · on screen ${s.onScreenPanels.join("/")}`,
+      );
+      await page.evaluate(PICK_TAB, "details");
+      await page.focus('[data-detail-tab="details"]');
+      const walked = [];
+      for (let i = 0; i < ORDER6.length; i += 1) {
+        await page.keyboard.press("ArrowRight");
+        await page.waitForTimeout(60);
+        walked.push(await page.evaluate(() => document.activeElement.getAttribute("data-detail-tab")));
+      }
+      await page.keyboard.press("ArrowLeft");
+      await page.waitForTimeout(60);
+      const back = await page.evaluate(() => document.activeElement.getAttribute("data-detail-tab"));
+      await page.keyboard.press("Home");
+      await page.waitForTimeout(60);
+      const home = await page.evaluate(() => document.activeElement.getAttribute("data-detail-tab"));
+      await page.keyboard.press("End");
+      await page.waitForTimeout(60);
+      const end = await page.evaluate(() => document.activeElement.getAttribute("data-detail-tab"));
+      const expected = [...ORDER6.slice(1), ORDER6[0]];
+      check(
+        "C7.3 v4 agent card — ←/→ rove over all six (wrapping) and Home/End take the ends",
+        walked.join(",") === expected.join(",") && back === "sessions" && home === "details" && end === "sessions",
+        `→ ${walked.join("/")} · ← ${back} · Home ${home} · End ${end}`,
+      );
+
+      /* C8 · the trail itself */
+      await page.evaluate(PICK_TAB, "sessions");
+      await page.waitForTimeout(200);
+      const trail = await page.evaluate(() => ({
+        ids: [...document.querySelectorAll("[data-detail-agent-session-body] [data-agent-session-id]")]
+          .map((e) => e.textContent.trim()),
+        statuses: [...document.querySelectorAll("[data-detail-agent-session-body] [data-session-status]")]
+          .map((e) => e.getAttribute("data-session-status")),
+        resumes: document.querySelectorAll("[data-detail-agent-session-body] [data-agent-resume]").length,
+        text: (document.querySelector("[data-detail-agent-session-body]") || {}).textContent || "",
+      }));
+      check(
+        "C8.1 v4 agent card — the trail renders three sessions, running / closed / failed",
+        trail.ids.length === 3 && trail.statuses.join(",") === "running,closed,failed",
+        `${trail.ids.length} row(s) · ${trail.statuses.join("/")}`,
+      );
+      check(
+        "C8.2 v4 agent card — exactly one Resume and no pid",
+        trail.resumes === 1 && !/\bpid\b/.test(trail.text),
+        `resume=${trail.resumes} · pid=${/\bpid\b/.test(trail.text)}`,
+      );
+      await page.evaluate(() => document.querySelector("[data-detail-agent-session-body] [data-agent-session-id]").click());
+      await page.waitForTimeout(200);
+      const toast = await page.evaluate(() => {
+        const items = [...document.querySelectorAll("[data-toast-region] [data-toast-text]")];
+        return items.length ? items[items.length - 1].textContent : null;
+      });
+      check(
+        "C8.3 v4 agent card — clicking a session id runs the existing copy path",
+        !!toast && trail.ids.length > 0 && toast.includes(trail.ids[0]),
+        `toast ${JSON.stringify(toast)}`,
+      );
+      check(
+        "C8.4 v4 agent card — the whole sequence raises no console or page error",
+        errors.length === 0,
+        errors.length ? errors.slice(0, 3).join(" | ") : "0 error(s)",
+      );
+      await page.close();
+    }
+
+    /* C9 · a human card: five tabs, no Sessions tab, no empty tab */
+    {
+      const { page, errors } = await open(VIEWPORT, "TD-126");
+      const t = await page.evaluate(READ_V4_TABS);
+      check(
+        "C9.1 v4 human card — Sessions is hidden, its section is empty/hidden, and Details is selected",
+        t.visibleOrder.length === 5 && !t.visibleOrder.includes("sessions") &&
+          t.sessions && t.sessions.hidden === true && t.sessions.display === "none" &&
+          t.sessionBodyChildren === 0 && t.sectionHidden === true &&
+          t.selected.join(",") === "details" && t.visiblePanels.join(",") === "details",
+        `${t.visibleOrder.join("/")} · body children=${t.sessionBodyChildren} · section hidden=${t.sectionHidden}`,
+      );
+      await page.evaluate(PICK_TAB, "details");
+      await page.focus('[data-detail-tab="details"]');
+      const walked = [];
+      for (let i = 0; i < ORDER.length; i += 1) {
+        await page.keyboard.press("ArrowRight");
+        await page.waitForTimeout(60);
+        walked.push(await page.evaluate(() => document.activeElement.getAttribute("data-detail-tab")));
+      }
+      await page.keyboard.press("End");
+      await page.waitForTimeout(60);
+      const end = await page.evaluate(() => document.activeElement.getAttribute("data-detail-tab"));
+      check(
+        "C9.2 v4 human card — the keyboard walk is five tabs long and never reaches Sessions",
+        walked.join(",") === [...ORDER.slice(1), ORDER[0]].join(",") && end === "leftovers" &&
+          !walked.includes("sessions"),
+        `→ ${walked.join("/")} · End ${end}`,
+      );
+      check(
+        "C9.3 v4 human card — no console or page error",
+        errors.length === 0,
+        errors.length ? errors.slice(0, 3).join(" | ") : "0 error(s)",
+      );
+      await page.close();
+    }
+
+    /* C10 · switching cards: selected-Sessions falls back, then the tab returns */
+    {
+      const { page, errors } = await open(VIEWPORT, "TD-134");
+      await page.evaluate(PICK_TAB, "sessions");
+      await page.waitForTimeout(150);
+      const before = await page.evaluate(READ_V4_TABS);
+      await page.evaluate(OPEN_CARD_BY_ID, "TD-126");
+      await page.waitForTimeout(300);
+      const human = await page.evaluate(READ_V4_TABS);
+      await page.evaluate(OPEN_CARD_BY_ID, "TD-134");
+      await page.waitForTimeout(300);
+      const again = await page.evaluate(READ_V4_TABS);
+      check(
+        "C10.1 v4 switching to a human card falls back to Details and hides Sessions",
+        before.selected.join(",") === "sessions" &&
+          human.selected.join(",") === "details" &&
+          human.visiblePanels.join(",") === "details" &&
+          human.visibleOrder.length === 5 && !human.visibleOrder.includes("sessions"),
+        `before ${before.selected.join("/")} · human ${human.selected.join("/")} / ${human.visibleOrder.join("/")}`,
+      );
+      check(
+        "C10.2 v4 switching back to the agent card brings the Sessions tab back (Details stays selected)",
+        again.visibleOrder.length === 6 && again.visibleOrder.includes("sessions") &&
+          again.selected.join(",") === "details" && again.visiblePanels.join(",") === "details",
+        `${again.visibleOrder.join("/")} · selected ${again.selected.join("/")}`,
+      );
+      check(
+        "C10.3 v4 the card-switch sequence raises no console or page error",
+        errors.length === 0,
+        errors.length ? errors.slice(0, 3).join(" | ") : "0 error(s)",
+      );
+      await page.close();
+    }
+
+    /* C11 · the narrow viewport with the Sessions panel open */
+    {
+      const { page } = await open(NARROW, "TD-134");
+      await page.evaluate(PICK_TAB, "sessions");
+      await page.waitForTimeout(200);
+      const t = await page.evaluate(READ_V4_TABS);
+      check(
+        "C11 v4 @ 430×932 — the open Sessions panel causes no horizontal overflow",
+        t.docOverflowX === 0 && t.drawerBodyOverflowX !== null && t.drawerBodyOverflowX <= 1,
+        `page overflow-x ${t.docOverflowX}px · drawer body ${t.drawerBodyOverflowX}px`,
+      );
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+    server.close();
+  }
+}
+
 /* ---------------------------------------------------------- screenshots */
 
 async function shots() {
@@ -660,20 +1310,22 @@ async function shots() {
   const browser = await chromium.launch();
   const freeze = "*, *::before, *::after { transition: none !important; animation: none !important; }";
 
-  const shoot = async (variant, viewport, face, file) => {
+  const shoot = async (variant, viewport, face, file, opener = OPEN_CARD, openerArg = undefined) => {
     const context = await browser.newContext({ viewport, colorScheme: "light" });
     const page = await context.newPage();
     await page.goto(at(variant), { waitUntil: "load" });
     await page.waitForFunction(() => !!window.jQuery);
     await page.addStyleTag({ content: freeze });
     await page.waitForTimeout(150);
-    await page.evaluate(OPEN_CARD);
-    await page.waitForTimeout(250);
-    if (face !== "details") await page.evaluate(PICK_TAB, face);
+    await page.evaluate(opener, openerArg);
+    await page.waitForTimeout(300);
+    const tabName = face.startsWith("sessions") ? "sessions" : face;
+    if (tabName !== "details") await page.evaluate(PICK_TAB, tabName);
     await page.waitForTimeout(200);
-    if (file.endsWith("-tail.png")) {
+    if (file.endsWith("-tail.png") || face === "sessions-trail") {
       /* the difference between the variants is at the END of the Details panel —
-         what the tab strip's top-of-page view cannot show. */
+         what the tab strip's top-of-page view cannot show. The trail shot uses
+         the same move to bring the lower session rows into the frame. */
       await page.evaluate(() => {
         const body = document.querySelector("[data-detail-drawer] .td-drawer-body");
         body.scrollTop = body.scrollHeight;
@@ -695,6 +1347,20 @@ async function shots() {
     }
   }
 
+  /* v4 — the Sessions tab and its trail, on the card that carries the sample */
+  for (const [tier, viewport] of [["1512", VIEWPORT], ["430", NARROW]]) {
+    for (const face of ["details", "sessions", "sessions-trail"]) {
+      await shoot(
+        "index-detail-tabs-v4.html",
+        viewport,
+        face,
+        `d2v4-${tier}-${face}.png`,
+        OPEN_CARD_BY_ID,
+        "TD-134",
+      );
+    }
+  }
+
   await browser.close();
   server.close();
 }
@@ -709,9 +1375,12 @@ if (SHOTS) {
 
 if (!STATIC_ONLY) {
   await renderSuite();
+  await renderSessionsSuite();
 } else {
   suite("render");
   check("R0.0 render suite", true, "skipped by --static-only");
+  suite("render-v4");
+  check("S0.0 v4 render suite", true, "skipped by --static-only");
 }
 
 const failed = results.filter((r) => !r.ok);
