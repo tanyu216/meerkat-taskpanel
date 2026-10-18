@@ -153,22 +153,23 @@ are the *same card* — the second create is read as a retry of the first, not a
 `--allow-dup` when a target genuinely does not apply. Then claim exactly **one** child and work it
 as usual: the container holds no work of its own, so it does not count against your one card.
 
-**The board closes the container for you.** When the last child is accepted to `done`, the board
-writes the container's rollup report — one acceptance line per child, carrying the children's own
-delivery evidence — and moves the epic to `in_review` in the same transaction as that child's
-move. It also leaves a `kind=note` comment naming the source (`event`), the basis (`N/N` children),
-and the instant. You do not deliver it; "who closes it" is answered by the board, not by whoever
-happened to finish last. A human still accepts `in_review → done`, which is why a **nested**
-container's parent keeps waiting until the inner container is accepted.
+**The board closes the container for you.** When the last child is accepted to `done` and every
+other child is finished — `done` or `canceled` — the board writes the container's rollup report
+(one acceptance line per child, carrying the children's own delivery evidence) and moves the epic
+to `in_review` in the same transaction as that child's move. It also leaves a `kind=note` comment
+naming the source (`event`), the basis (`N/N` children terminal, how many done/canceled), and the
+instant. You do not deliver it; "who closes it" is answered by the board, not by whoever happened
+to finish last. A human still accepts `in_review → done`, which is why a **nested** container's
+parent keeps waiting until the inner container is accepted.
 
-Two cases are left to you:
-
-- **A waived child** (`--no-report`) contributes no evidence. If every child was waived there is
-  nothing to roll up and the container stays open — close it by hand:
-  `taskctl report template <ref>` then `taskctl issue deliver <ref> --report-file -` (the delivery
-  gate still applies).
-- **A `canceled` child** stops the rollup on purpose: whether a container is finished despite a
-  cancellation is a human's call.
+- **A `canceled` child does not block the close** — it is terminal, like `done`. The rollup report
+  lists it as `not_applicable` with the cancellation reason from its own comment trail, so the
+  person accepting the container can decide whether finishing without it was right. Write that
+  reason as a comment on the child when you cancel it; a card with no trail says so explicitly.
+- **A container with nothing delivered stays open.** If every child was canceled, or every
+  delivered child was waived (`--no-report`, no evidence), there is nothing to roll up; close it
+  by hand: `taskctl report template <ref>` then `taskctl issue deliver <ref> --report-file -`
+  (the delivery gate still applies).
 
 **The reconciler is the backstop, not a step you owe.** A child attached *after* it started or
 finished fires no status transition, and a write that bypassed the service layer (a direct edit)

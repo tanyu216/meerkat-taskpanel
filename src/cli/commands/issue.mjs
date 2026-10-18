@@ -406,18 +406,31 @@ export const COMMANDS = [
         dry_run: ctx.flags.dryRun === true,
       });
       const changed = payload.actions.filter((entry) => entry.action !== "none");
+      // An open container the sweep could not close carries the children that
+      // held it open. Printing only the actions would let "nothing to
+      // reconcile" hide the answer ("which child?").
+      const blocked = payload.actions.filter(
+        (entry) => entry.action === "none" && Array.isArray(entry.blocking) && entry.blocking.length > 0,
+      );
       const verb = payload.dry_run ? "would reconcile" : "reconciled";
+      const lines = [
+        ...changed.map(
+          (entry) =>
+            `  ${entry.epic.padEnd(14)} ${entry.action.padEnd(6)} ${entry.reason}` +
+            (entry.child === undefined ? "" : `  ${entry.child}`),
+        ),
+        ...blocked.map(
+          (entry) =>
+            `  ${entry.epic.padEnd(14)} ${"none".padEnd(6)} ${entry.reason}  ` +
+            entry.blocking.map((child) => `${child.identifier} (${child.status})`).join(", "),
+        ),
+      ];
       const human =
-        changed.length === 0
+        lines.length === 0
           ? `nothing to reconcile (${payload.scanned} container(s) scanned)`
-          : `${verb} ${changed.length} container(s) of ${payload.scanned} scanned\n` +
-            changed
-              .map(
-                (entry) =>
-                  `  ${entry.epic.padEnd(14)} ${entry.action.padEnd(6)} ${entry.reason}` +
-                  (entry.child === undefined ? "" : `  ${entry.child}`),
-              )
-              .join("\n");
+          : `${verb} ${changed.length} container(s) of ${payload.scanned} scanned` +
+            (blocked.length === 0 ? "" : `; ${blocked.length} still waiting`) +
+            `\n${lines.join("\n")}`;
       return { data: payload, human };
     },
   },

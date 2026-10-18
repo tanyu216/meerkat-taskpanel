@@ -9,11 +9,17 @@
  *     epic is nobody's work card; `0024` already leaves `todo → in_progress` on
  *     the whitelist for every kind). This is what makes the board show the
  *     container as live while its children are being worked.
- *   * **close** — when every child of the container is `done`, the board writes
- *     the container's rollup report and moves it to `in_review` **in the same
- *     transaction as the child's own move**. A human still accepts `in_review →
- *     done`, so acceptance gates the tree from the bottom up: a nested epic
- *     reaches `in_review`, not `done`, and its parent therefore keeps waiting.
+ *   * **close** — when every child of the container is *terminal* (`done` or
+ *     `canceled`) **and at least one is `done`**, the board writes the
+ *     container's rollup report and moves it to `in_review` **in the same
+ *     transaction as the child's own move**. `canceled` is finished, so it does
+ *     not hold the container open; the report lists it with the reason the
+ *     card's own trail records, and the human who accepts the container decides
+ *     whether that was acceptable. A container with nothing delivered — every
+ *     child canceled — is *not* a delivery and stays where it is. A human still
+ *     accepts `in_review → done`, so acceptance gates the tree from the bottom
+ *     up: a nested epic reaches `in_review`, not `done`, and its parent
+ *     therefore keeps waiting.
  *
  * Both moves leave a system-authored `kind=note` comment naming **where the
  * transition came from** (`event` — a child's write; `sweep` — the reconciler),
@@ -55,18 +61,21 @@
  *     `in_review` or `done`) — a child that merely went `todo → blocked` proves
  *     nothing, so it does not start the container;
  *   * **close**: the container's status is one it may be closed from (`todo`,
- *     `in_progress`, `blocked`), **every** child is `done` (a `canceled` child
- *     stops the rollup: whether a container is finished is a human's call, not
- *     the board's), and the children's delivery evidence, taken together, is
- *     non-empty (a delivery report needs at least one anchor; a container whose
- *     children were all delivered under `--no-report` has nothing to stand a
- *     report on, and is left for a human to close).
+ *     `in_progress`, `blocked`), **every** child is terminal (`done` or
+ *     `canceled`) **and at least one is `done`**, and the children's delivery
+ *     evidence, taken together, is non-empty (a delivery report needs at least
+ *     one anchor; a container whose children were all delivered under
+ *     `--no-report` has nothing to stand a report on, and is left for a human to
+ *     close). The two halves of the predicate live once, in
+ *     {@link allChildrenTerminal} and {@link hasDoneChild}, and both the event
+ *     hook and the sweep read them — a refusal names the children that held the
+ *     container open (`identifier` + `status`), never a bare "not closeable".
  */
 
 import { normalizeCommentCreate } from "../domain/comment.mjs";
 import { STATUS, TASK_KIND } from "../domain/enums.mjs";
 import { normalizeReportCreate } from "../domain/report.mjs";
-import { assertTransition } from "../domain/status.mjs";
+import { assertTransition, isTerminalStatus } from "../domain/status.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { SYSTEM_ACTOR } from "./context.mjs";
 import { resolveActorId } from "./dictionary.mjs";
@@ -97,6 +106,40 @@ const CHILD_STARTED_STATUSES = Object.freeze([
   STATUS.DONE,
 ]);
 
+/** Longest cancellation reason carried into a rollup report. */
+const CANCEL_REASON_MAX_CHARS = 200;
+
+/**
+ * The first half of the close predicate — **the** definition, shared by the
+ * event hook and the reconcile sweep (`assessClose` and the sweep both call it;
+ * nothing else spells the rule out again).
+ *
+ * A `done` or `canceled` child is finished. Every other status — `backlog`,
+ * `todo`, `in_progress`, `awaiting`, `in_review`, `blocked` — is still in the
+ * pipeline and holds the container open.
+ *
+ * @param {object[]} children
+ * @returns {boolean}
+ */
+export function allChildrenTerminal(children) {
+  return children.every((child) => isTerminalStatus(child.status));
+}
+
+/**
+ * The second half of the close predicate: a container needs at least one
+ * delivery.
+ *
+ * A set made only of `canceled` children is terminal but empty; delivering it
+ * to review would hand a human an acceptance with no work behind it, so the
+ * container stays open at that point.
+ *
+ * @param {object[]} children
+ * @returns {boolean}
+ */
+export function hasDoneChild(children) {
+  return children.some((child) => child.status === STATUS.DONE);
+}
+
 /**
  * Advance the container a card belongs to, if that card's completion finished it.
  *
@@ -115,7 +158,8 @@ export function advanceContainerForChild(ctx, childId, now, options = {}) {
 }
 
 /**
- * Close `containerId` if every one of its children is `done`.
+ * Close `containerId` when every child is terminal and at least one was
+ * delivered.
  *
  * @param {object} ctx
  * @param {string} containerId the epic's id
@@ -128,15 +172,15 @@ export function advanceContainer(ctx, containerId, now, options = {}) {
   if (container === null || container === undefined) return null;
   if (container.kind !== TASK_KIND.EPIC) return null;
 
-  const plan = planClose(ctx, container);
-  if (plan === null) return null;
+  const plan = assessClose(ctx, container);
+  if (!plan.ok) return null;
 
   const author = {
     kind: SYSTEM_ACTOR.kind,
     id: resolveActorId({ repos: ctx.repos, now }, { name: SYSTEM_ACTOR.id, actorKind: SYSTEM_ACTOR.kind }),
   };
   const prepared = normalizeReportCreate(
-    { ...rollupReport(container, plan.children, plan.evidence), author },
+    { ...rollupReport(ctx, container, plan.children, plan.evidence), author },
     { taskRound: container.deliveryRound, now },
   );
   const report = ctx.repos.reports.insert({
@@ -154,6 +198,8 @@ export function advanceContainer(ctx, containerId, now, options = {}) {
     reportLatestId: report.id,
   });
   const refs = plan.children.map((child) => child.identifier);
+  const done = plan.children.filter((child) => child.status === STATUS.DONE);
+  const canceled = plan.children.filter((child) => child.status === STATUS.CANCELED);
   ctx.repos.activities.append({
     taskId: container.id,
     actorKind: SYSTEM_ACTOR.kind,
@@ -166,6 +212,7 @@ export function advanceContainer(ctx, containerId, now, options = {}) {
       reportId: report.id,
       deliveryRound: moved.deliveryRound,
       rollup: refs,
+      canceled: canceled.map((child) => child.identifier),
       source: options.source ?? "event",
     },
     createdAt: now,
@@ -173,8 +220,9 @@ export function advanceContainer(ctx, containerId, now, options = {}) {
   appendSystemNote(
     ctx,
     container.id,
-    `Auto-rollup (${options.source ?? "event"}): ${refs.length}/${refs.length} child card(s) done ` +
-      `(${refs.join(", ")}); epic delivered to ${moved.status} at ${now}; awaiting human acceptance.`,
+    `Auto-rollup (${options.source ?? "event"}): ${refs.length}/${refs.length} child card(s) terminal — ` +
+      `${done.length} done (${joinRefs(done)}), ${canceled.length} canceled (${joinRefs(canceled)}). ` +
+      `Epic delivered to ${moved.status} at ${now}; awaiting human acceptance.`,
     now,
     refs,
   );
@@ -264,11 +312,18 @@ export function startContainer(ctx, containerId, now, options = {}) {
  * the same plan and writes nothing at all (no report, no note, no activity).
  *
  * `in_review` containers are scanned (they are non-terminal) and reported as
- * `none`: a container already waiting for a human has nothing to reconcile.
+ * `none`: a container already waiting for a human has nothing to reconcile —
+ * re-triggering it writes no second report and bumps no delivery round.
+ *
+ * A container that is open but not closeable reports *why*, and `blocking`
+ * names the children responsible (`{identifier, status}[]`) — never a bare
+ * "not closeable". `canceled` children do not block; `done` children do not
+ * either; only a non-terminal child (or a container with nothing delivered)
+ * does.
  *
  * @param {object} ctx
  * @param {{dryRun?: boolean}} [options]
- * @returns {{dryRun: boolean, scanned: number, actions: {epic: string, action: "start"|"close"|"none", reason: string, child?: string}[]}}
+ * @returns {{dryRun: boolean, scanned: number, actions: {epic: string, action: "start"|"close"|"none", reason: string, child?: string, blocking?: {identifier: string, status: string}[]}[]}}
  */
 export function reconcileContainers(ctx, options = {}) {
   const dryRun = options.dryRun === true;
@@ -301,18 +356,12 @@ export function reconcileContainers(ctx, options = {}) {
       continue;
     }
 
-    const allDone = children.every((child) => child.status === STATUS.DONE);
-    if (allDone) {
-      if (!OPEN_CONTAINER_STATUSES.includes(epic.status)) {
-        record("none", "not_open_for_rollup");
-        continue;
-      }
-      const plan = planClose(ctx, epic);
-      if (plan === null) {
-        record("none", "no_delivery_evidence");
-        continue;
-      }
-      record("close", "all_children_done", { children: children.length });
+    const assessment = assessClose(ctx, epic);
+    if (assessment.ok) {
+      record("close", "all_children_terminal", {
+        children: children.length,
+        canceled: children.filter((child) => child.status === STATUS.CANCELED).length,
+      });
       // One transaction per repaired container: the report, the move and the
       // system note either all land or none do (nested as a savepoint when a
       // caller already opened one).
@@ -324,21 +373,39 @@ export function reconcileContainers(ctx, options = {}) {
       continue;
     }
 
-    if (epic.status !== STATUS.TODO) {
-      record("none", epic.status === STATUS.IN_REVIEW ? "awaiting_acceptance" : "not_startable");
+    if (epic.status === STATUS.IN_REVIEW) {
+      record("none", "awaiting_acceptance");
       continue;
     }
-    const started = children.find((child) => CHILD_STARTED_STATUSES.includes(child.status));
-    if (started === undefined) {
-      record("none", "no_child_started");
+
+    if (epic.status === STATUS.TODO) {
+      // Every child is finished but the container cannot close (no evidence, or
+      // nothing delivered): starting it would only make it look live while it
+      // waits for a human. Report the close verdict instead.
+      if (allChildrenTerminal(children)) {
+        record("none", assessment.reason, blockingOf(assessment));
+        continue;
+      }
+      const started = children.find((child) => CHILD_STARTED_STATUSES.includes(child.status));
+      if (started === undefined) {
+        // Not a close attempt: nothing has been worked, so the close verdict
+        // (which would say `children_unfinished`) is the wrong answer here.
+        record("none", "no_child_started", blockingOf(assessment));
+        continue;
+      }
+      record("start", "child_in_progress", { child: started.identifier });
+      if (!dryRun) {
+        transaction(ctx.db, () => startContainer(ctx, epic.id, now, { source: "sweep" }), {
+          op: "containers.reconcile.start",
+        });
+      }
       continue;
     }
-    record("start", "child_in_progress", { child: started.identifier });
-    if (!dryRun) {
-      transaction(ctx.db, () => startContainer(ctx, epic.id, now, { source: "sweep" }), {
-        op: "containers.reconcile.start",
-      });
-    }
+
+    // Open, not closeable, and past the start branch: report the verdict — and
+    // name every child that held the container open, so a reader never gets a
+    // bare "not closeable".
+    record("none", assessment.reason, blockingOf(assessment));
   }
 
   return { dryRun, scanned: epics.length, actions };
@@ -365,24 +432,99 @@ function childrenOf(ctx, containerId) {
 }
 
 /**
- * The close plan for a container, or `null` when it is not closeable.
+ * The close verdict for a container: a plan, or a refusal that names what held
+ * it open.
+ *
+ * Returned rather than thrown because the sweep reports every epic it scans —
+ * a refusal there is data (`reason`, `blocking`), not an error. `blocking` is
+ * `[{identifier, status}]`: the exact children a reader has to look at. The
+ * predicate itself lives once, in {@link allChildrenTerminal} and
+ * {@link hasDoneChild}; this function only applies it.
  *
  * @param {object} ctx
  * @param {object} container
- * @returns {{children: object[], evidence: object[]}|null}
+ * @returns {{ok: true, children: object[], evidence: object[]}
+ *   | {ok: false, reason: string, blocking?: {identifier: string, status: string}[]}}
  */
-function planClose(ctx, container) {
-  if (!OPEN_CONTAINER_STATUSES.includes(container.status)) return null;
+function assessClose(ctx, container) {
+  if (!OPEN_CONTAINER_STATUSES.includes(container.status)) {
+    return { ok: false, reason: "not_open_for_rollup" };
+  }
 
   const children = childrenOf(ctx, container.id);
-  if (children === null || children.length === 0) return null;
-  if (children.some((child) => child.status !== STATUS.DONE)) return null;
+  if (children === null) return { ok: false, reason: "dangling_child_edge" };
+  if (children.length === 0) return { ok: false, reason: "empty_epic" };
+  if (!allChildrenTerminal(children)) {
+    return {
+      ok: false,
+      reason: "children_unfinished",
+      blocking: namedChildren(children.filter((child) => !isTerminalStatus(child.status))),
+    };
+  }
+  if (!hasDoneChild(children)) {
+    // Terminal but empty: every child was canceled. There is no delivery to
+    // hand to acceptance, so the container stays open for a human.
+    return { ok: false, reason: "no_child_done", blocking: namedChildren(children) };
+  }
 
   const evidence = rollupEvidence(ctx, children);
-  // No evidence at all means every child was delivered under `--no-report`:
-  // there is nothing the gate should accept, so the container stays open.
-  if (evidence.length === 0) return null;
-  return { children, evidence };
+  // No evidence at all means every delivered child was delivered under
+  // `--no-report`: there is nothing the gate should accept, so the container
+  // stays open.
+  if (evidence.length === 0) {
+    return {
+      ok: false,
+      reason: "no_delivery_evidence",
+      blocking: namedChildren(children.filter((child) => child.status === STATUS.DONE)),
+    };
+  }
+  return { ok: true, children, evidence };
+}
+
+/**
+ * The refusal's child list, shaped for the reconcile report.
+ * @param {object[]} children
+ * @returns {{identifier: string, status: string}[]}
+ */
+function namedChildren(children) {
+  return children.map((child) => ({ identifier: child.identifier, status: child.status }));
+}
+
+/**
+ * The `blocking` member of a reconcile action, or nothing when the verdict has
+ * no children to name.
+ * @param {{blocking?: {identifier: string, status: string}[]}} assessment
+ */
+function blockingOf(assessment) {
+  return assessment.blocking === undefined ? {} : { blocking: assessment.blocking };
+}
+
+/** `PROJ-1, PROJ-2`, or `none` for an empty list. */
+function joinRefs(children) {
+  return children.length === 0 ? "none" : children.map((child) => child.identifier).join(", ");
+}
+
+/**
+ * The cancellation reason a canceled child left on its own trail.
+ *
+ * The schema has no cancel-reason column (`blocked_reason` is the only
+ * classified one), so the card's newest comment is the only place the decision
+ * can be written down. Take its first non-blank line and clip it; a card with
+ * no comments contributes an explicit "no reason recorded" rather than silence.
+ *
+ * @param {object} ctx
+ * @param {object} child
+ * @returns {string}
+ */
+function cancellationReason(ctx, child) {
+  const comments = ctx.repos.comments.list({ taskId: child.id });
+  const latest = comments.length === 0 ? null : comments[comments.length - 1];
+  const line =
+    latest === null
+      ? ""
+      : (latest.body.split("\n").find((text) => text.trim() !== "") ?? "").trim();
+  if (line === "") return "no reason recorded on the card";
+  return line.length > CANCEL_REASON_MAX_CHARS ? `${line.slice(0, CANCEL_REASON_MAX_CHARS)}…` : line;
 }
 
 /**
@@ -426,23 +568,39 @@ function appendSystemNote(ctx, taskId, body, now, refs) {
  * The rollup report for a finished container.
  *
  * The acceptance list is what makes this a *rollup* rather than a summary: one
- * criterion per child, and the only claim each makes — "this child is `done`" —
- * is a fact the board itself holds. It asserts nothing about the children's own
- * acceptance; each of those was accepted by a human already.
+ * criterion per child, and the only claim each makes about a `done` child —
+ * "this child is `done`" — is a fact the board itself holds. It asserts nothing
+ * about the children's own acceptance; each of those was accepted by a human
+ * already.
  *
+ * A `canceled` child is listed too, and not as a met criterion: it is
+ * `not_applicable`, with the reason the child's own trail records, because the
+ * person accepting the container is the one who has to decide whether finishing
+ * without that work was right. That listing is the price of letting `canceled`
+ * close a container — the cancellation must be visible in the acceptance
+ * material, not merely tolerated by the predicate.
+ *
+ * @param {object} ctx
  * @param {object} container
  * @param {object[]} children
  * @param {object[]} evidence
  */
-function rollupReport(container, children, evidence) {
-  const delivered = children.map((child) => child.identifier).join(", ");
+function rollupReport(ctx, container, children, evidence) {
+  const done = children.filter((child) => child.status === STATUS.DONE);
+  const canceled = children.filter((child) => child.status === STATUS.CANCELED);
   return {
     conclusion:
-      `Auto-rollup: all ${children.length} child card(s) of ${container.identifier} are done — ${delivered}.`,
-    acceptance: children.map((child) => ({
-      text: `${child.identifier} ${child.title} — done`,
-      status: "met",
-    })),
+      `Auto-rollup: all ${children.length} child card(s) of ${container.identifier} are terminal — ` +
+      `${done.length} done (${joinRefs(done)}), ${canceled.length} canceled (${joinRefs(canceled)}).`,
+    acceptance: children.map((child) =>
+      child.status === STATUS.DONE
+        ? { text: `${child.identifier} ${child.title} — done`, status: "met" }
+        : {
+            text: `${child.identifier} ${child.title} — canceled`,
+            status: "not_applicable",
+            note: `canceled: ${cancellationReason(ctx, child)}`,
+          },
+    ),
     evidence,
   };
 }

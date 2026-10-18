@@ -799,13 +799,50 @@ describe("cli/issue — reconcile (the container backstop)", () => {
       const comments = dataOf(run(["comment", "list", epic.task.identifier, "--json"])).comments;
       assert.equal(comments.length, 1);
       assert.equal(comments[0].kind, "note");
-      assert.match(comments[0].body, /^Auto-rollup \(sweep\): 1\/1 child card\(s\) done /);
+      assert.match(comments[0].body, /^Auto-rollup \(sweep\): 1\/1 child card\(s\) terminal /);
 
       // A second sweep sees a container already waiting for a human and writes
       // nothing: same state, same answer.
       const again = dataOf(run(["issue", "reconcile", "--json"]));
       assert.equal(again.actions.find((entry) => entry.epic === epic.task.identifier).action, "none");
       assert.equal(dataOf(run(["comment", "list", epic.task.identifier, "--json"])).comments.length, 1);
+    });
+  });
+
+  it("names the child holding a container open in the human report too", async () => {
+    await board(async ({ run }) => {
+      // The epic is started by the first child, then a second child is attached
+      // afterwards: the container is in_progress with work still outstanding.
+      const epic = createIssue(run, ["--title", "Container", "--kind", "epic", "--allow-dup"]);
+      const done = createIssue(run, ["--title", "Done"]);
+      const pending = createIssue(run, ["--title", "Pending", "--allow-dup"]);
+      dataOf(
+        run(["relation", "add", epic.task.identifier, "--type", "parent", "--target", done.task.identifier, "--json"]),
+      );
+      // The claim starts the container; the second child is attached after that,
+      // so the container is in_progress with work still outstanding.
+      dataOf(run(["issue", "move", done.task.identifier, "in_progress", "--json"]));
+      dataOf(
+        run(["relation", "add", epic.task.identifier, "--type", "parent", "--target", pending.task.identifier, "--json"]),
+      );
+      dataOf(
+        run(["issue", "deliver", done.task.identifier, "--report-file", "-", "--json"], {
+          input: JSON.stringify({
+            conclusion: "done",
+            acceptance: [{ text: "a", status: "met" }],
+            evidence: [{ kind: "path", path: "x" }],
+          }),
+        }),
+      );
+      dataOf(run(["issue", "move", done.task.identifier, "done", "--json"]));
+
+      const human = run(["issue", "reconcile", "--dry-run"]);
+      assert.match(human.stdout, /children_unfinished/);
+      assert.ok(
+        human.stdout.includes(`${pending.task.identifier} (todo)`),
+        `the report must name the child, got:\n${human.stdout}`,
+      );
+      assert.ok(!human.stdout.includes(`${done.task.identifier} (done)`), "a finished child is not blocking");
     });
   });
 });

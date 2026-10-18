@@ -484,7 +484,10 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
         ["system", "system"],
       );
       assert.match(notes[0].body, /^Auto-start \(event\): child PROJ-\d+ is in progress/);
-      assert.match(notes[1].body, /^Auto-rollup \(event\): 2\/2 child card\(s\) done \(PROJ-\d+, PROJ-\d+\)/);
+      assert.match(
+        notes[1].body,
+        /^Auto-rollup \(event\): 2\/2 child card\(s\) terminal — 2 done \(PROJ-\d+, PROJ-\d+\), 0 canceled \(none\)/,
+      );
       assert.match(notes[1].body, /awaiting human acceptance/);
     });
   });
@@ -501,19 +504,103 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
     });
   });
 
-  it("waits while a child is canceled — that call is a human's", async () => {
-    await board(async ({ commands }) => {
+  it("closes with a canceled child and lists it — with its reason — in the rollup report", async () => {
+    await board(async ({ db, commands }) => {
       const done = linusTask(commands, { title: "Done" });
-      const canceled = linusTask(commands, { title: "Canceled", allowDup: true });
-      const epic = epicWith(commands, [done, canceled]);
-      commands.moveStatus({ id: canceled.id, to: "canceled", actor: AGENT });
+      const canceled = linusTask(commands, { title: "Dropped", allowDup: true });
+      const quiet = linusTask(commands, { title: "Silent drop", allowDup: true });
+      const epic = epicWith(commands, [done, canceled, quiet]);
+      for (const child of [canceled, quiet]) {
+        commands.moveStatus({ id: child.id, to: "canceled", actor: AGENT });
+      }
+      commands.addComment({
+        taskId: canceled.id,
+        body: "Scope dropped by the operator; the third-party API was withdrawn.",
+        kind: "change",
+        actor: HUMAN,
+      });
 
       finish(commands, done, "abc1234");
       assert.equal(
         commands.getTask({ id: epic.id }).status,
-        "in_progress",
-        "a canceled child is not a delivered one — the container stays open",
+        "in_review",
+        "canceled is terminal, so it does not hold the container open",
       );
+
+      const stored = db
+        .prepare("SELECT acceptance_json, evidence_json FROM task_reports WHERE task_id = ?")
+        .get(epic.id);
+      const acceptance = JSON.parse(stored.acceptance_json);
+      assert.equal(acceptance.length, 3, "one criterion per child, every canceled child included");
+      const doneLine = acceptance.find((item) => item.text.includes("Done"));
+      const canceledLine = acceptance.find((item) => item.text.includes("Dropped"));
+      const quietLine = acceptance.find((item) => item.text.includes("Silent drop"));
+      assert.equal(doneLine.status, "met");
+      assert.equal(canceledLine.status, "not_applicable", "a canceled child is not a met criterion");
+      assert.match(
+        canceledLine.note,
+        /Scope dropped by the operator; the third-party API was withdrawn\./,
+        "the cancellation reason comes from the card's own trail",
+      );
+      assert.equal(
+        quietLine.note,
+        "canceled: no reason recorded on the card",
+        "a card with no comments says so instead of inventing a reason",
+      );
+      assert.equal(
+        JSON.parse(stored.evidence_json).length,
+        1,
+        "the delivered child's evidence still stands the report up",
+      );
+
+      const [rollup] = db
+        .prepare("SELECT body FROM comments WHERE task_id = ? AND body LIKE 'Auto-rollup%'")
+        .all(epic.id);
+      assert.match(rollup.body, /3\/3 child card\(s\) terminal — 1 done \(PROJ-\d+\), 2 canceled \(PROJ-\d+, PROJ-\d+\)/);
+    });
+  });
+
+  it("does not close a container whose children were all canceled — nothing was delivered", async () => {
+    await board(async ({ db, commands }) => {
+      const one = linusTask(commands, { title: "One" });
+      const two = linusTask(commands, { title: "Two", allowDup: true });
+      const epic = epicWith(commands, [one, two]);
+      for (const child of [one, two]) {
+        commands.moveStatus({ id: child.id, to: "canceled", actor: AGENT });
+      }
+
+      assert.equal(commands.getTask({ id: epic.id }).status, "todo", "an empty delivery is not a delivery");
+
+      const plan = commands.reconcileContainers({ dryRun: true });
+      const entry = plan.actions.find((candidate) => candidate.epic === epic.identifier);
+      assert.deepEqual(
+        { action: entry.action, reason: entry.reason },
+        { action: "none", reason: "no_child_done" },
+      );
+      assert.deepEqual(
+        entry.blocking.map((child) => child.status),
+        ["canceled", "canceled"],
+        "the refusal names the children, not just 'not closeable'",
+      );
+      assert.equal(db.prepare("SELECT count(*) AS c FROM task_reports WHERE task_id = ?").get(epic.id).c, 0);
+    });
+  });
+
+  it("names the unfinished child in the sweep report", async () => {
+    await board(async ({ commands }) => {
+      const done = linusTask(commands, { title: "Done" });
+      const pending = linusTask(commands, { title: "Pending", allowDup: true });
+      const epic = epicWith(commands, [done, pending]);
+      finish(commands, done, "abc1234");
+      assert.equal(commands.getTask({ id: epic.id }).status, "in_progress");
+
+      const plan = commands.reconcileContainers({ dryRun: true });
+      const entry = plan.actions.find((candidate) => candidate.epic === epic.identifier);
+      assert.deepEqual(
+        { action: entry.action, reason: entry.reason },
+        { action: "none", reason: "children_unfinished" },
+      );
+      assert.deepEqual(entry.blocking, [{ identifier: pending.identifier, status: "todo" }]);
     });
   });
 
@@ -689,7 +776,7 @@ describe("commands/tasks — the container lifecycle (system start, notes, recon
       const planned = plan.actions.find((entry) => entry.epic === epic.identifier);
       assert.deepEqual({ action: planned.action, reason: planned.reason }, {
         action: "close",
-        reason: "all_children_done",
+        reason: "all_children_terminal",
       });
       assert.equal(commands.getTask({ id: epic.id }).status, "todo", "a dry run writes nothing");
       assert.equal(db.prepare("SELECT count(*) AS c FROM task_reports WHERE task_id = ?").get(epic.id).c, 0);
@@ -700,11 +787,21 @@ describe("commands/tasks — the container lifecycle (system start, notes, recon
       assert.equal(applied.actions.find((entry) => entry.epic === epic.identifier).action, "close");
       assert.equal(commands.getTask({ id: epic.id }).status, "in_review");
       const [note] = notesFor(db, epic.id);
-      assert.match(note.body, /^Auto-rollup \(sweep\): 1\/1 child card\(s\) done /);
+      assert.match(note.body, /^Auto-rollup \(sweep\): 1\/1 child card\(s\) terminal — 1 done \(PROJ-\d+\), 0 canceled \(none\)/);
 
+      const roundAfterClose = commands.getTask({ id: epic.id }).deliveryRound;
       const again = commands.reconcileContainers({});
-      assert.equal(again.actions.find((entry) => entry.epic === epic.identifier).action, "none");
+      const againEntry = again.actions.find((entry) => entry.epic === epic.identifier);
+      assert.deepEqual({ action: againEntry.action, reason: againEntry.reason }, {
+        action: "none",
+        reason: "awaiting_acceptance",
+      });
       assert.equal(db.prepare("SELECT count(*) AS c FROM task_reports WHERE task_id = ?").get(epic.id).c, 1);
+      assert.equal(
+        commands.getTask({ id: epic.id }).deliveryRound,
+        roundAfterClose,
+        "a container already in_review is a no-op: no second round",
+      );
       assert.equal(notesFor(db, epic.id).length, 1, "a second sweep writes no duplicate note");
     });
   });
@@ -783,7 +880,7 @@ describe("commands/tasks — the container lifecycle (system start, notes, recon
       assert.equal(db.prepare("SELECT count(*) AS c FROM task_reports WHERE task_id = ?").get(epic.id).c, 1, "exactly one rollup");
       const notes = notesFor(db, epic.id);
       assert.equal(notes.length, 2, "one start note and one closure note");
-      assert.match(notes[1].body, /^Auto-rollup \(event\): 2\/2 child card\(s\) done/);
+      assert.match(notes[1].body, /^Auto-rollup \(event\): 2\/2 child card\(s\) terminal/);
     });
   });
 });
