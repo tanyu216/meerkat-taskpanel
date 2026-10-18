@@ -21,7 +21,13 @@ import {
   TASK_ORDER_MODES,
 } from "../../shared/constants.mjs";
 import { orderTasks, taskOrderDebugEntry } from "../../shared/task-order.mjs";
-import { assertClaimable, decideClaim, explainLostClaim, isAutoClaimableKind } from "../domain/claim.mjs";
+import {
+  assertClaimable,
+  decideClaim,
+  explainLostClaim,
+  isAutoClaimableKind,
+  isUnownedContainer,
+} from "../domain/claim.mjs";
 import {
   assertCreationGate,
   assertDeliveryGate,
@@ -539,6 +545,16 @@ export function heartbeat(ctx, input) {
       }
       // Decide first so a corrupt row is reported rather than half-repaired.
       if (existing.status === "in_progress" && (existing.claimedBy === null || existing.claimedBy === "")) {
+        // An epic's unowned `in_progress` is the container auto-start, by
+        // design (`rollup.mjs#startContainer`). There is still nothing to
+        // pulse — an epic is never anybody's work card — but it is not I2
+        // corruption, which is about a work card that lost its holder.
+        if (isUnownedContainer(existing)) {
+          throw new DomainError("INVALID_TRANSITION", {
+            message: `${existing.identifier} is an epic; a container carries no claim — nothing to pulse`,
+            details: { taskId: existing.id, status: existing.status, kind: existing.kind },
+          });
+        }
         throw new DomainError("EXECUTION_STATE_CORRUPT", {
           message: `${existing.identifier} is in_progress but nobody claims it`,
           details: { taskId: existing.id, status: existing.status },

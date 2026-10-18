@@ -48,7 +48,7 @@
 import { CLAIM_STALE_ANY_MS, HEARTBEAT_FRESH_MS } from "../../shared/constants.mjs";
 import { DomainError } from "../../shared/errors.mjs";
 import { norm } from "../../shared/norm.mjs";
-import { TASK_KIND } from "./enums.mjs";
+import { STATUS, TASK_KIND } from "./enums.mjs";
 import { isClaimable } from "./status.mjs";
 
 /**
@@ -144,6 +144,29 @@ export function holderLabel(holder, describeHolder) {
   return name === undefined || name === null || name === "" ? holder : name;
 }
 
+/**
+ * The designed, unowned container state: an epic in `in_progress` with nobody
+ * holding it. `commands/rollup.mjs#startContainer` moves a container there when
+ * a child enters the work — it is a **system** move, not a claim, so
+ * `claimed_by` stays NULL.
+ *
+ * The distinction is load-bearing: `in_progress` with no holder is I2
+ * corruption for a **work card**, and the service reports it as
+ * `EXECUTION_STATE_CORRUPT`. A container is never anybody's work card, so the
+ * same row shape is its designed state. Both the command-layer pre-check and
+ * the repository's zero-row explainer read this one predicate (T-20261018-060214).
+ *
+ * @param {{kind?: string, status?: string, claimedBy?: unknown}} task
+ * @returns {boolean}
+ */
+export function isUnownedContainer(task) {
+  return (
+    task?.kind === TASK_KIND.EPIC &&
+    task.status === STATUS.IN_PROGRESS &&
+    (task.claimedBy === null || task.claimedBy === undefined || task.claimedBy === "")
+  );
+}
+
 /** Heartbeat age in ms, or `null` when there is no usable heartbeat. */
 function heartbeatAgeMs(task, now) {
   const at = task.heartbeatAt;
@@ -166,6 +189,19 @@ export function decideClaim(task, options) {
     resolveAssignee = null,
     describeHolder = undefined,
   } = options;
+
+  // An epic is a grouping card and is never claimable, **in any status**. The
+  // check comes before the `in_progress` branch on purpose: the container
+  // auto-start (`rollup.mjs#startContainer`) puts an epic in `in_progress` with
+  // `claimed_by = NULL` by design, and the I2 corrupt report is about a *work*
+  // card that lost its holder — an unowned container is not that.
+  if (task.kind === TASK_KIND.EPIC) {
+    return {
+      action: CLAIM_ACTIONS.INVALID,
+      code: "not_claimable",
+      reason: "an epic is a grouping card and cannot be claimed",
+    };
+  }
 
   if (task.status === "in_progress") {
     const holder = task.claimedBy;
@@ -220,13 +256,6 @@ export function decideClaim(task, options) {
   }
 
   if (isClaimable(task.status)) {
-    if (task.kind === TASK_KIND.EPIC) {
-      return {
-        action: CLAIM_ACTIONS.INVALID,
-        code: "not_claimable",
-        reason: "an epic is a grouping card and cannot be claimed",
-      };
-    }
     // A `deploy` card is deliberately *not* refused here: it is withheld from
     // the automatic candidate read only, so its explicit dispatch still claims
     // it (see `AUTO_CLAIM_EXCLUDED_KINDS` above).

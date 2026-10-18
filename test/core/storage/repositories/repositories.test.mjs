@@ -308,6 +308,20 @@ describe("repositories/tasks", () => {
         () => repos.tasks.setHeartbeat({ id: task.id, actor: "elon", now: TS2 }),
         (err) => err.code === "EXECUTION_STATE_CORRUPT",
       );
+
+      // T-20261018-060214 — the same row shape on an epic is *designed*: the
+      // container auto-start (`commands/rollup.mjs#startContainer`) moves an
+      // epic into `in_progress` with nobody holding it. The zero-row explainer
+      // must not call that I2 corruption.
+      const epic = makeTask(repos, { kind: "epic" });
+      db.prepare("UPDATE tasks SET status = 'in_progress', claimed_by = NULL WHERE id = ?").run(epic.id);
+      assert.throws(
+        () => repos.tasks.setHeartbeat({ id: epic.id, actor: "elon", now: TS2 }),
+        (err) => {
+          assert.equal(err.code, "INVALID_TRANSITION", "a container carries no claim — nothing to pulse");
+          return true;
+        },
+      );
     });
   });
 

@@ -756,6 +756,42 @@ describe("commands/tasks — the container lifecycle (system start, notes, recon
     });
   });
 
+  it("reads the auto-started epic as a designed state, never as I2 corruption", async () => {
+    // T-20261018-060214. The container's `in_progress` has `claimed_by = NULL`
+    // by design (`startContainer`): an epic is nobody's work card. The I2
+    // corrupt-state report is about *work* cards that lost their holder, so a
+    // container must not be reported as corrupt by any of the three readers:
+    // the read itself, the heartbeat, and the claim decision.
+    await board(async ({ commands }) => {
+      const child = linusTask(commands);
+      const epic = epicWith(commands, [child]);
+      commands.claim({ id: child.id, actor: AGENT });
+
+      const started = commands.getTask({ id: epic.id });
+      assert.equal(started.status, "in_progress");
+      assert.equal(started.claimedBy, null);
+      assert.equal(started.kind, "epic");
+
+      assert.throws(
+        () => commands.heartbeat({ id: epic.id, actor: AGENT }),
+        (err) => {
+          assert.notEqual(err.code, "EXECUTION_STATE_CORRUPT", "an unowned epic is designed, not corrupt");
+          assert.equal(err.code, "INVALID_TRANSITION", "there is no claim to pulse");
+          return true;
+        },
+      );
+
+      assert.throws(
+        () => commands.claim({ id: epic.id, actor: AGENT }),
+        (err) => {
+          assert.notEqual(err.code, "EXECUTION_STATE_CORRUPT", "an unowned epic is designed, not corrupt");
+          assert.equal(err.code, "not_claimable", "the epic refusal is the same in every status");
+          return true;
+        },
+      );
+    });
+  });
+
   it("starts it once: a second child's claim writes no second note", async () => {
     await board(async ({ db, commands }) => {
       const one = linusTask(commands, { title: "One" });
