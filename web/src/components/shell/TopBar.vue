@@ -30,7 +30,7 @@ const viewIcons = {
  *  — the prototype's own handler clears `open` before it switches. */
 function switchProject(id, event) {
   dismissMemberFrom(event);
-  if (id !== board.currentProjectId) selectProject(id);
+  if (id !== board.currentProjectId) selectProject(id).catch(() => {});
 }
 </script>
 

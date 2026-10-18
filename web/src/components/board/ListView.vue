@@ -27,7 +27,7 @@
 import { computed, watch } from "vue";
 
 import { identifierText } from "../../lib/identifier.js";
-import { board, kindLabel, loadTasks, openDetail, priorityOf, visibleTasks } from "../../stores/board.js";
+import { board, kindLabel, loadTasks, openDetail, priorityOf, projectLoading, visibleTasks } from "../../stores/board.js";
 import { listState, setListState, view } from "../../stores/ui.js";
 
 /**
@@ -57,6 +57,19 @@ watch(
     }
   },
 );
+
+/**
+ * The one value the whole view reads. Two things enter the loading window: the
+ * view's own entry read (`listState`, set by the watcher above) and a project
+ * switch while the list is already open (`projectLoading` — `selectProject`
+ * withdraws the reading and empties the list, and nothing touches `listState`).
+ *
+ * All three bindings — the state attribute, the skeleton's `hidden`, and the
+ * rows' `v-if` — must come off **this** value. Reading the raw `listState` in
+ * any of them would put the attribute on `loading` while leaving the rows
+ * mounted and the skeleton hidden: a blank list.
+ */
+const listLoading = computed(() => projectLoading.value || listState.value === "loading");
 
 const rows = computed(() =>
   visibleTasks.value.map((task) => ({
@@ -91,7 +104,7 @@ const SKELETON_HIDE = [false, false, true, true, true, false];
   <div
     class="flex min-w-0 flex-col gap-3 p-3"
     data-list
-    :data-list-state="listState"
+    :data-list-state="listLoading ? 'loading' : 'data'"
     :hidden="view !== 'list'"
   >
     <!-- B13 · loading skeleton: the same group shell and the same row grid as
@@ -112,7 +125,7 @@ const SKELETON_HIDE = [false, false, true, true, true, false];
          by attribute here (the `hidden` the contract's B10 asserts) and by the
          rule on `[data-list][data-list-state="data"]` in `app.css`, which is
          what makes the pair exclusive even before the script runs. -->
-    <div class="td-list-group" data-skeleton aria-hidden="true" :hidden="listState === 'data'">
+    <div class="td-list-group" data-skeleton aria-hidden="true" :hidden="!listLoading">
       <div class="td-list-head">
         <span>{{ $t("list.loading") }}</span>
       </div>
@@ -167,7 +180,7 @@ const SKELETON_HIDE = [false, false, true, true, true, false];
              in it: the state rule hides this group, and the rows *inside* it are
              absent rather than merely invisible, which is what the contract's
              A5 states (a loading list holds no rows to read). -->
-        <template v-if="listState === 'data'">
+        <template v-if="!listLoading">
           <button
             v-for="row in rows"
             :key="row.id"

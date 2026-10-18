@@ -152,6 +152,14 @@ export const board = reactive({
    * its summary line as absent rather than as an invented one.
    */
   waitingPayload: {},
+  /**
+   * How many waiting-payload reads are in flight. The 「等你回复」view's own read:
+   * `waitingTasks` comes off the task list, but each row's `since` comes from its
+   * triggering comment, so a queue whose comments are still being read is not yet
+   * a queue — the view shows its skeleton until this reaches zero. A counter, not
+   * a flag, because the watcher can start a second read before the first lands.
+   */
+  waitingPending: 0,
 });
 
 /* --------------------------------------------------------------- accessors */
@@ -345,6 +353,20 @@ export const totalVisible = computed(() => visibleTasks.value.length);
 export const boardEmpty = computed(() => board.loaded && totalVisible.value === 0);
 
 /**
+ * Is the current project's task read still in flight? This is the single signal
+ * every view skeleton reads (`Board` / `List` / `Activity` / `Waiting`), and its
+ * whole meaning is the pair: a read is running **and** its reading has not landed.
+ *
+ * `board.loaded` is what makes that distinction: the list re-reads the same
+ * project every time its view is entered, and the live stream re-reads it on a
+ * project-level event — neither is a reason to replace the cards on screen with
+ * placeholders. A project switch (`selectProject`) is: it withdraws `loaded` and
+ * clears `tasks` before the request leaves, so the previous project's cards can
+ * never paint under the new project's name.
+ */
+export const projectLoading = computed(() => board.loading && !board.loaded);
+
+/**
  * The cards the 「等你回复」view shows, and the number its nav pill prints.
  *
  * One predicate for both (design §8-05): the view and the count read the same
@@ -386,20 +408,30 @@ export function firstSentence(body) {
  */
 export async function loadWaitingPayloads() {
   const pending = waitingTasks.value.filter((task) => board.waitingPayload[task.id] === undefined);
-  await Promise.all(
-    pending.map(async (task) => {
-      try {
-        const data = await api.taskComments(task.identifier, { limit: 50 });
-        const comments = data.comments ?? [];
-        // The payload is the *newest human* comment (design §2.2/§2.3): an agent
-        // comment written afterwards is commentary, not the question.
-        const payload = [...comments].reverse().find((comment) => comment.author_kind === "human") ?? null;
-        board.waitingPayload = { ...board.waitingPayload, [task.id]: payload };
-      } catch {
-        board.waitingPayload = { ...board.waitingPayload, [task.id]: null };
-      }
-    }),
-  );
+  if (pending.length === 0) return;
+  // This read is the queue's own: a row's `since` (and therefore the oldest-first
+  // order) is unknown until its comment arrives, so the view shows its skeleton
+  // while this is above zero. A counter because the awaiting set can change again
+  // before the first fan-out lands.
+  board.waitingPending += 1;
+  try {
+    await Promise.all(
+      pending.map(async (task) => {
+        try {
+          const data = await api.taskComments(task.identifier, { limit: 50 });
+          const comments = data.comments ?? [];
+          // The payload is the *newest human* comment (design §2.2/§2.3): an agent
+          // comment written afterwards is commentary, not the question.
+          const payload = [...comments].reverse().find((comment) => comment.author_kind === "human") ?? null;
+          board.waitingPayload = { ...board.waitingPayload, [task.id]: payload };
+        } catch {
+          board.waitingPayload = { ...board.waitingPayload, [task.id]: null };
+        }
+      }),
+    );
+  } finally {
+    board.waitingPending = Math.max(0, board.waitingPending - 1);
+  }
 }
 
 export const activeFilterCount = computed(() => {
@@ -499,6 +531,11 @@ export const dependsCandidates = computed(() => {
 /* -------------------------------------------------------------- mutations */
 
 function replaceTask(task) {
+  // A card that names another project does not belong in this list. The live
+  // stream can deliver a `task_updated` for the project the reader just left
+  // (and a switch empties the list before its own read lands), so an unguarded
+  // insert would prepend a foreign card into the new project's board.
+  if (task?.project_id !== undefined && task.project_id !== board.currentProjectId) return;
   const index = board.tasks.findIndex((item) => item.id === task.id);
   if (index === -1) board.tasks = [task, ...board.tasks];
   else board.tasks = board.tasks.map((item) => (item.id === task.id ? task : item));
@@ -517,7 +554,16 @@ export async function loadProjects() {
   board.projects = data.projects ?? [];
   board.orderDebug = Object.fromEntries((data.order_debug ?? []).map((entry) => [entry.id, entry]));
   if (!board.projects.some((p) => p.id === board.currentProjectId)) {
-    board.currentProjectId = board.projects[0]?.id ?? null;
+    const next = board.projects[0]?.id ?? null;
+    if (next !== board.currentProjectId) {
+      // A project that vanished (removed by another writer, delivered by the live
+      // stream) is a switch like any other: withdraw the reading and the cards, so
+      // the view holds its skeleton until the adopted project's own read lands
+      // rather than painting the gone project's data under the new name.
+      board.currentProjectId = next;
+      board.loaded = false;
+      board.tasks = [];
+    }
   }
 }
 
@@ -530,22 +576,39 @@ export async function loadRosters() {
   board.labels = labels.labels ?? [];
 }
 
+/**
+ * Which task read owns the board. Two can overlap (a view entry and a project
+ * switch, two quick project presses, the live stream and either), and only the
+ * newest may commit: an older response that lands last must not repaint the list
+ * with a project the reader has already left, nor clear the `loading` flag of a
+ * read still in flight.
+ */
+let loadToken = 0;
+
 export async function loadTasks() {
-  if (!board.currentProjectId) {
+  const projectId = board.currentProjectId;
+  if (!projectId) {
     board.tasks = [];
     return;
   }
+  const token = ++loadToken;
   board.loading = true;
   try {
-    const data = await api.tasks({ project_id: board.currentProjectId, include_archived: 0, limit: 500 });
+    const data = await api.tasks({ project_id: projectId, include_archived: 0, limit: 500 });
+    if (token !== loadToken || board.currentProjectId !== projectId) return;
     board.tasks = data.tasks ?? [];
     // The read landed, so the board may now say what it read — including "nothing"
     // (see `boardEmpty`). A throw skips this on purpose: a failed read is not a
     // reading, and the shell's error surface carries it instead.
     board.loaded = true;
     board.error = null;
+  } catch (err) {
+    // The shell's B17 panel is the document's one load-failure surface; a failed
+    // project switch must not leave an empty board with no explanation.
+    if (token === loadToken && board.currentProjectId === projectId) board.error = err;
+    throw err;
   } finally {
-    board.loading = false;
+    if (token === loadToken) board.loading = false;
   }
 }
 
@@ -575,6 +638,9 @@ export async function loadBoard() {
 }
 
 export async function selectProject(projectId) {
+  // A press on the project already in force is not a switch: re-reading it would
+  // withdraw the reading and flash the skeleton for a change nobody asked for.
+  if (projectId === board.currentProjectId) return;
   board.currentProjectId = projectId;
   board.selectedRef = null;
   board.drawerState = "closed";
@@ -582,6 +648,10 @@ export async function selectProject(projectId) {
   /** one project's reading never describes another — the view holds `data` until
    *  this project's own read lands (see `boardEmpty`). */
   board.loaded = false;
+  // …and the cards go with the reading. Order matters only for the synchronous
+  // window: `loaded` first, so no instant exists in which the emptied list reads
+  // as "this project is empty" (`boardEmpty` needs both).
+  board.tasks = [];
   await loadTasks();
 }
 
@@ -939,6 +1009,14 @@ export async function openDetail(identifier) {
   board.selectedRef = identifier;
   board.drawerState = "open";
   board.detail = null;
+  /**
+   * The card this read is *for* is still the card the reader is on. A switch to
+   * another card while this one's fan-out is in flight makes this response
+   * history: adopting it would put the first card's head over the second card's
+   * name. (The drawer's loading skeleton is the same window — `detail === null`
+   * while `drawerState === "open"`.)
+   */
+  const current = () => board.selectedRef === identifier;
   try {
     const [taskData, relations, activities, sessions, reports] = await Promise.all([
       api.task(identifier),
@@ -947,12 +1025,15 @@ export async function openDetail(identifier) {
       api.taskSessions(identifier).catch(() => ({ sessions: [] })),
       api.taskReports(identifier).catch(() => ({ reports: [] })),
     ]);
+    if (!current()) return;
     const comments = await api.taskComments(identifier, { limit: 200 }).catch(() => ({ comments: [] }));
+    if (!current()) return;
     // T-20261014-212017-4 / G2 — the attachment rows come from the `attachments`
     // **table**, not from `task.meta`. A board that predates the write surface
     // (or a card with none) answers `[]`, which is the drawer's empty state —
     // never an error, because "this card has no files" is not a failure.
     const attachments = await api.taskAttachments(identifier).catch(() => ({ attachments: [] }));
+    if (!current()) return;
     board.detail = {
       task: taskData.task,
       reportWaivers: taskData.report_waivers ?? [],
@@ -964,6 +1045,7 @@ export async function openDetail(identifier) {
       attachments: attachments.attachments ?? [],
     };
   } catch (err) {
+    if (!current()) return;
     board.drawerState = "closed";
     // The wire's message is never shown (④) — the code names the sentence, and
     // the card's own ref makes it answer "which one?".

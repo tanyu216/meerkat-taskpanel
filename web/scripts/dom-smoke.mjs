@@ -807,6 +807,20 @@ export async function run() {
       if (tasksDelayMs > 0) await new Promise((resolveDelay) => setTimeout(resolveDelay, tasksDelayMs));
       await route.continue();
     });
+    // The skeleton legs need the *other* two reads held open as well. Playwright's
+    // `*` does not cross a `/`, so the task-list pattern above matches neither the
+    // per-card activity fan-out nor the card read (only the list request, whose
+    // `?project_id=` follows the path directly). Three knobs, three patterns.
+    let activitiesDelayMs = 0;
+    await page.route("**/api/v1/tasks/*/activities*", async (route) => {
+      if (activitiesDelayMs > 0) await new Promise((resolveDelay) => setTimeout(resolveDelay, activitiesDelayMs));
+      await route.continue();
+    });
+    let detailDelayMs = 0;
+    await page.route("**/api/v1/tasks/*", async (route) => {
+      if (detailDelayMs > 0) await new Promise((resolveDelay) => setTimeout(resolveDelay, detailDelayMs));
+      await route.continue();
+    });
 
     /**
      * Enter the list view and wait for its read to land. Every `when: "list
@@ -4967,6 +4981,257 @@ export async function run() {
     // that discriminates — with the old `navigate("board")` in place it reports
     // "left the address at /board" and goes red.
 
+    // ---- the loading skeletons ------------------------------------------------
+    //
+    // Every view shows a skeleton **only while a real read is in flight** (the
+    // product ruling behind the screens): a project switch, the list's entry read,
+    // the activity backfill, the waiting payloads, and the drawer's card read. The
+    // harness holds each request open and samples inside the window — nothing in
+    // `web/src` is slowed down.
+    //
+    // It runs **after** R16 on purpose: its view switches push history entries, and
+    // R16's own "a view change writes one entry" check reads `history.length`,
+    // which Chromium caps at 50. R16 leaves the page on the activity feed with a
+    // drawer open, so the section starts by returning to the board. Every delay
+    // is restored in `finally`.
+    const skeletonFailures = [];
+    const skeletonCheck = (ok, message) => { if (!ok) skeletonFailures.push(message); };
+    let skeletonReadings = {};
+
+    /** Everything the legs read, in one round trip. "Painted" = has a client rect. */
+    const readSkeletons = () =>
+      page.evaluate(() => {
+        const painted = (el) => !!el && el.getClientRects().length > 0;
+        const paintedAll = (sel) => [...document.querySelectorAll(sel)].filter(painted).length;
+        const view = document.querySelector("[data-board-view]");
+        const list = document.querySelector("[data-list]");
+        const activityRoot = document.querySelector("[data-activity-view]");
+        const waitingRoot = document.querySelector("[data-waiting-view]");
+        const drawer = document.querySelector("[data-detail-drawer]");
+        return {
+          board: {
+            loading: view?.getAttribute("data-view-loading") ?? null,
+            busy: view?.getAttribute("aria-busy") ?? null,
+            state: view?.getAttribute("data-board-state") ?? null,
+            groups: paintedAll('[data-view-skeleton="board"]'),
+            skeletonCards: paintedAll('[data-view-skeleton="board"] .td-skel-card'),
+            cards: paintedAll("[data-board] [data-card]"),
+            columnEmpties: paintedAll('[data-empty][data-empty-kind="column"]'),
+            columns: paintedAll("[data-board] [data-column]"),
+            counts: [...document.querySelectorAll("[data-column-count]")].map((el) => el.textContent.trim()),
+          },
+          list: {
+            state: list?.getAttribute("data-list-state") ?? null,
+            skeleton: painted(document.querySelector("[data-skeleton]")),
+            rowsShown: painted(document.querySelector("[data-list-rows]")),
+            rows: document.querySelectorAll("[data-list-rows] [data-list-row]").length,
+          },
+          activity: {
+            loading: activityRoot?.getAttribute("data-view-loading") ?? null,
+            busy: activityRoot?.getAttribute("aria-busy") ?? null,
+            skeleton: painted(document.querySelector('[data-view-skeleton="activity"]')),
+            days: paintedAll("[data-activity-day]"),
+            empties: paintedAll("[data-activity-empty]"),
+            rows: paintedAll("[data-activity-row]"),
+          },
+          waiting: {
+            loading: waitingRoot?.getAttribute("data-view-loading") ?? null,
+            busy: waitingRoot?.getAttribute("aria-busy") ?? null,
+            skeleton: painted(document.querySelector('[data-view-skeleton="waiting"]')),
+            listPainted: painted(document.querySelector("[data-waiting-list]")),
+            emptyPainted: painted(document.querySelector("[data-waiting-empty]")),
+            rows: paintedAll("[data-waiting-item]"),
+          },
+          detail: {
+            state: drawer?.getAttribute("data-state") ?? null,
+            busy: drawer?.getAttribute("aria-busy") ?? null,
+            skeletons: paintedAll("[data-detail-skeleton]"),
+            realTitle: !!document.querySelector("[data-detail-title]"),
+            overlay: painted(document.querySelector("[data-detail-overlay]")),
+          },
+        };
+      });
+
+    /** Wait until a view root says its read has landed (`data-view-loading`). */
+    const waitForViewSettled = (selector) =>
+      page.waitForFunction(
+        (sel) => document.querySelector(sel)?.getAttribute("data-view-loading") === "false",
+        selector,
+        { timeout: 20_000 },
+      );
+
+    const pickProject = async (name) => {
+      await page.click("[data-project-switcher] > summary");
+      await page.waitForTimeout(150);
+      await page.click(`[data-project-option="${name}"]`);
+    };
+
+    try {
+      await page.setViewportSize({ width: 1512, height: 950 });
+      // R16's last leg opens a drawer in place on the activity feed.
+      await page.evaluate(() => document.querySelector("[data-detail-close]")?.click());
+      await page.waitForTimeout(250);
+      await page.click('[data-nav-item="board"]');
+      await page.waitForTimeout(150);
+      await waitForViewSettled("[data-board-view]");
+      await page.waitForTimeout(120);
+      const settledBoard = await readSkeletons();
+      const cardsBefore = settledBoard.board.cards;
+      skeletonCheck(cardsBefore > 0, "the populated board draws no card to compare against");
+
+      // S1 — board, top-bar dropdown, populated → empty project.
+      tasksDelayMs = 900;
+      await pickProject("Orchestrator");
+      await page.waitForTimeout(200);
+      const s1 = await readSkeletons();
+      skeletonCheck(s1.board.loading === "true", `S1 board: data-view-loading is ${s1.board.loading}`);
+      skeletonCheck(s1.board.busy === "true", `S1 board: aria-busy is ${s1.board.busy}`);
+      skeletonCheck(s1.board.state === "data", `S1 board: data-board-state is ${s1.board.state}`);
+      skeletonCheck(s1.board.groups === 7, `S1 board: ${s1.board.groups} column skeletons, expected 7`);
+      skeletonCheck(s1.board.skeletonCards === 21, `S1 board: ${s1.board.skeletonCards} skeleton cards, expected 21 (3 per column)`);
+      skeletonCheck(s1.board.cards === 0, `S1 board: ${s1.board.cards} cards painted during the read`);
+      skeletonCheck(s1.board.columnEmpties === 0, `S1 board: ${s1.board.columnEmpties} column empty states painted during the read`);
+      skeletonCheck(s1.board.counts.every((text) => text === "0"), `S1 board: column counts read ${s1.board.counts.join(",")} during the read`);
+      tasksDelayMs = 0;
+      await waitForViewSettled("[data-board-view]");
+      await page.waitForTimeout(120);
+      const s1Done = await readSkeletons();
+      skeletonCheck(s1Done.board.groups === 0, `S1 board: ${s1Done.board.groups} skeletons survive the settled read`);
+      skeletonCheck(s1Done.board.state === "empty", `S1 board: the empty project settles to ${s1Done.board.state}`);
+
+      // S2 — board, sidebar row, empty → populated project.
+      tasksDelayMs = 900;
+      await page.click('[data-project-list] [data-project="MeerkatTaskPanel"]');
+      await page.waitForTimeout(200);
+      const s2 = await readSkeletons();
+      skeletonCheck(s2.board.loading === "true" && s2.board.groups === 7, `S2 board: ${s2.board.loading}/${s2.board.groups} during the sidebar switch`);
+      skeletonCheck(s2.board.cards === 0, `S2 board: ${s2.board.cards} cards painted during the sidebar switch`);
+      tasksDelayMs = 0;
+      await waitForViewSettled("[data-board-view]");
+      await page.waitForTimeout(150);
+      const s2Done = await readSkeletons();
+      skeletonCheck(s2Done.board.cards === cardsBefore, `S2 board: ${s2Done.board.cards} cards after the switch, expected ${cardsBefore}`);
+      skeletonCheck(
+        s2Done.board.counts.reduce((sum, text) => sum + Number(text), 0) === cardsBefore,
+        `S2 board: the column counts sum to ${s2Done.board.counts.reduce((sum, text) => sum + Number(text), 0)}, expected ${cardsBefore}`,
+      );
+
+      // S3 — list, a project switch while the view is already open. This is the
+      // regression the single `listLoading` computed exists for: the attribute,
+      // the skeleton and the rows must all follow the *combined* state.
+      await page.click('[data-view="list"]');
+      await waitForListSettled();
+      await page.waitForTimeout(120);
+      tasksDelayMs = 900;
+      await pickProject("Orchestrator");
+      await page.waitForTimeout(200);
+      const s3 = await readSkeletons();
+      skeletonCheck(s3.list.state === "loading", `S3 list: data-list-state is ${s3.list.state} during a project switch`);
+      skeletonCheck(s3.list.skeleton && !s3.list.rowsShown, `S3 list: skeleton ${s3.list.skeleton} / rows host ${s3.list.rowsShown} during the read`);
+      skeletonCheck(s3.list.rows === 0, `S3 list: the loading list holds ${s3.list.rows} row(s)`);
+      tasksDelayMs = 0;
+      await waitForListSettled();
+      await page.waitForTimeout(120);
+      const s3Done = await readSkeletons();
+      skeletonCheck(s3Done.list.state === "data" && !s3Done.list.skeleton, `S3 list: settles to ${s3Done.list.state} (skeleton ${s3Done.list.skeleton})`);
+      await pickProject("MeerkatTaskPanel");
+      await waitForListSettled();
+      await page.waitForTimeout(120);
+      await page.click('[data-view="board"]');
+      await page.waitForTimeout(120);
+
+      // S4 — activity: the per-card fan-out. Switch away from the ledger first so
+      // the next entry is a real backfill, then hold the fan-out open.
+      await page.click('[data-nav-item="activity"]');
+      await waitForViewSettled("[data-activity-view]");
+      await page.waitForTimeout(150);
+      await pickProject("Orchestrator");
+      await waitForViewSettled("[data-activity-view]");
+      await page.waitForTimeout(150);
+
+      activitiesDelayMs = 900;
+      await pickProject("MeerkatTaskPanel");
+      await page.waitForTimeout(250);
+      const s4 = await readSkeletons();
+      skeletonCheck(s4.activity.loading === "true", `S4 activity: data-view-loading is ${s4.activity.loading}`);
+      skeletonCheck(s4.activity.busy === "true", `S4 activity: aria-busy is ${s4.activity.busy}`);
+      skeletonCheck(s4.activity.skeleton, "S4 activity: the skeleton is not painted");
+      skeletonCheck(s4.activity.days === 0, `S4 activity: ${s4.activity.days} day group(s) painted during the read`);
+      skeletonCheck(s4.activity.empties === 0, `S4 activity: ${s4.activity.empties} empty state(s) painted during the read`);
+      activitiesDelayMs = 0;
+      await waitForViewSettled("[data-activity-view]");
+      await page.waitForTimeout(200);
+      const s4Done = await readSkeletons();
+      skeletonCheck(!s4Done.activity.skeleton && s4Done.activity.rows > 0, `S4 activity: settles with ${s4Done.activity.rows} rows (skeleton ${s4Done.activity.skeleton})`);
+
+      // S5 — waiting: a pure view entry issues no read (no skeleton), a project
+      // switch does (skeleton), and the empty state waits for the read.
+      await page.click('[data-nav-item="waiting"]');
+      await waitForViewSettled("[data-waiting-view]");
+      await page.waitForTimeout(150);
+      const s5Rest = await readSkeletons();
+      skeletonCheck(s5Rest.waiting.loading === "false", `S5 waiting: a view entry is in a read (${s5Rest.waiting.loading})`);
+      skeletonCheck(!s5Rest.waiting.skeleton && s5Rest.waiting.listPainted, "S5 waiting: the settled queue is not the list");
+
+      tasksDelayMs = 900;
+      await pickProject("Orchestrator");
+      await page.waitForTimeout(200);
+      const s5 = await readSkeletons();
+      skeletonCheck(s5.waiting.loading === "true", `S5 waiting: data-view-loading is ${s5.waiting.loading}`);
+      skeletonCheck(s5.waiting.busy === "true", `S5 waiting: aria-busy is ${s5.waiting.busy}`);
+      skeletonCheck(s5.waiting.skeleton, "S5 waiting: the skeleton is not painted");
+      skeletonCheck(!s5.waiting.listPainted && !s5.waiting.emptyPainted, `S5 waiting: queue ${s5.waiting.listPainted} / empty ${s5.waiting.emptyPainted} painted during the read`);
+      tasksDelayMs = 0;
+      await waitForViewSettled("[data-waiting-view]");
+      await page.waitForTimeout(150);
+      const s5Done = await readSkeletons();
+      skeletonCheck(!s5Done.waiting.skeleton && s5Done.waiting.emptyPainted, `S5 waiting: the empty project settles to queue ${s5Done.waiting.listPainted} / empty ${s5Done.waiting.emptyPainted}`);
+
+      await pickProject("MeerkatTaskPanel");
+      await waitForViewSettled("[data-waiting-view]");
+      await page.waitForTimeout(200);
+      const s5Back = await readSkeletons();
+      skeletonCheck(s5Back.waiting.rows >= 1 && !s5Back.waiting.emptyPainted, `S5 waiting: back on the populated project, ${s5Back.waiting.rows} row(s)`);
+
+      // S6 — the drawer: the panel opens with its skeleton before the card read
+      // lands (it used to stay invisible until every read returned).
+      await page.click('[data-nav-item="board"]');
+      await page.waitForTimeout(150);
+      detailDelayMs = 900;
+      await page.click("[data-board] [data-card]");
+      await page.waitForTimeout(250);
+      const s6 = await readSkeletons();
+      skeletonCheck(s6.detail.state === "open", `S6 drawer: data-state is ${s6.detail.state} during the card read`);
+      skeletonCheck(s6.detail.busy === "true", `S6 drawer: aria-busy is ${s6.detail.busy}`);
+      skeletonCheck(s6.detail.skeletons === 2, `S6 drawer: ${s6.detail.skeletons} skeleton blocks painted, expected 2 (head + body)`);
+      skeletonCheck(!s6.detail.realTitle, "S6 drawer: the real title is already rendered during the read");
+      skeletonCheck(s6.detail.overlay, "S6 drawer: the scrim is not painted with the panel");
+      detailDelayMs = 0;
+      await page.waitForSelector("[data-detail-title]", { state: "attached", timeout: 20_000 });
+      await page.waitForTimeout(150);
+      const s6Done = await readSkeletons();
+      skeletonCheck(s6Done.detail.skeletons === 0, `S6 drawer: ${s6Done.detail.skeletons} skeleton blocks survive the read`);
+      skeletonCheck(s6Done.detail.busy === "false" && s6Done.detail.realTitle, `S6 drawer: settles to busy ${s6Done.detail.busy}, title ${s6Done.detail.realTitle}`);
+      await page.click("[data-detail-close]");
+      await page.waitForTimeout(250);
+
+      skeletonReadings = { cardsBefore, s1, s1Done, s2, s2Done, s3, s3Done, s4, s4Done, s5Rest, s5, s5Done, s5Back, s6, s6Done };
+    } catch (err) {
+      skeletonFailures.push(`the skeleton legs could not run: ${err.message}`);
+    } finally {
+      tasksDelayMs = 0;
+      activitiesDelayMs = 0;
+      detailDelayMs = 0;
+      // Leave the run where the following sections expect it: board view, the
+      // populated project, no overlay. A failure above may leave the drawer open.
+      await page.evaluate(() => document.querySelector("[data-detail-close]")?.click()).catch(() => {});
+      await page.click('[data-nav-item="board"]').catch(() => {});
+      await page.waitForTimeout(150);
+      const current = await page.evaluate(() => document.querySelector('[data-project-list] [aria-current="page"]')?.getAttribute("data-project") ?? null);
+      if (current !== "MeerkatTaskPanel") await pickProject("MeerkatTaskPanel").catch(() => {});
+      await page.waitForTimeout(150);
+    }
+
     // ---- M7 · C-PREFIX-1 — a refused create is visible (T-20261014-042811) ---
     //
     // The round's own question, one layer above the wire: when `POST /api/v1/projects`
@@ -5214,6 +5479,7 @@ export async function run() {
         fill,
         narrowFill,
       },
+      skeleton: { failures: skeletonFailures, readings: skeletonReadings },
       r12: {
         failures: r12Failures,
         tiers: R12_TIERS.map((t) => `${t.width}x${t.height}`),
@@ -5346,6 +5612,18 @@ if (isEntryPoint) run().then(
       } else {
         console.log("R10 (fidelity) — the board's two states, the drawer's four save states and the description's fill all pass");
       }
+      if (report.skeleton.failures.length > 0) {
+        console.log(`Skeletons (loading) — ${report.skeleton.failures.length} failed:`);
+        for (const failure of report.skeleton.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        const read = report.skeleton.readings;
+        console.log(
+          `Skeletons (loading) — project switch: ${read.s1?.board.groups} column skeletons / ${read.s1?.board.skeletonCards} cards over ${read.cardsBefore} real cards, ` +
+            `list ${read.s3?.list.state}, activity ${read.s4?.activity.skeleton ? "skeleton" : "—"} then ${read.s4Done?.activity.rows} rows, ` +
+            `waiting ${read.s5?.waiting.skeleton ? "skeleton" : "—"} then ${read.s5Done?.waiting.emptyPainted ? "empty" : "—"}, ` +
+            `drawer ${read.s6?.detail.skeletons} blocks then the real head — all pass`,
+        );
+      }
       if (report.r8c.failures.length > 0) {
         console.log(`B24 (fidelity) — ${report.r8c.failures.length} failed:`);
         for (const failure of report.r8c.failures) console.log(`  ✗ ${failure}`);
@@ -5446,6 +5724,7 @@ if (isEntryPoint) run().then(
       report.r8c.failures.length === 0 &&
       report.r9.failures.length === 0 &&
       report.r10.failures.length === 0 &&
+      report.skeleton.failures.length === 0 &&
       report.r12.failures.length === 0 &&
       report.r11.failures.length === 0 &&
       report.b26.failures.length === 0 &&

@@ -25,7 +25,16 @@
  */
 import { computed, ref, watch } from "vue";
 
-import { allowedTargets, board, boardEmpty, columns, moveTask, openDetail, writeStatusFilter } from "../../stores/board.js";
+import {
+  allowedTargets,
+  board,
+  boardEmpty,
+  columns,
+  moveTask,
+  openDetail,
+  projectLoading,
+  writeStatusFilter,
+} from "../../stores/board.js";
 import { closeMoveMenu, moveMenu, openCreateTask, view } from "../../stores/ui.js";
 import Column from "./Column.vue";
 
@@ -38,6 +47,16 @@ const dragging = ref(null);
  * tell the two apart (T-20261013-160505 — see that derivation's note).
  */
 const boardState = computed(() => (boardEmpty.value ? "empty" : "data"));
+
+/**
+ * The board's own loading window — the current project's task read, not a
+ * view-entry beat. `data-view-loading` is the probe (and what `aria-busy`
+ * follows); the cards themselves are replaced inside each `Column`, so the seven
+ * columns and their headers stay put while the skeleton fills their bodies.
+ * `data-board-state` deliberately keeps its two values: a loading board is still
+ * in the `data` state — it has simply not read yet.
+ */
+const loadingNow = computed(() => projectLoading.value);
 
 /**
  * The move menu offers exactly the moves the state machine allows from the
@@ -102,13 +121,20 @@ watch(view, closeMoveMenu);
        children (`[data-board]` and the no-results block), and switching the view
        away takes the **whole** root out — hiding only the board would strand the
        board-level empty state above the list. -->
-  <div data-board-view :data-board-state="boardState" :hidden="view !== 'board'">
+  <div
+    data-board-view
+    :data-board-state="boardState"
+    :data-view-loading="loadingNow ? 'true' : 'false'"
+    :aria-busy="loadingNow ? 'true' : 'false'"
+    :hidden="view !== 'board'"
+  >
     <div class="flex min-h-0 min-w-0 flex-1 items-stretch gap-4 overflow-x-auto overflow-y-hidden pb-1" data-board :hidden="boardState === 'empty'">
       <Column
         v-for="column in columns"
         :key="column.status"
         :column="column"
         :dragging="dragging"
+        :loading="loadingNow"
         @open="openCard"
         @drop="onDrop"
         @dragstart="onDragStart"

@@ -103,6 +103,10 @@ export const EXTRA = {
     // here (the prototype has no copy for a live session trail or a reports
     // panel at all).
     "drawer.tabs.label": "Task detail sections",
+    // The panel's accessible name while its card is being read. The real title is
+    // not available yet, so the loading branch names the dialog by what it is
+    // doing; the skeleton itself is decorative.
+    "drawer.loading": "Loading card",
     "drawer.tab.details": "Details",
     "drawer.tab.activity": "Activity",
     "drawer.tab.reports": "Reports",
@@ -178,6 +182,7 @@ export const EXTRA = {
     "detail.saveError": "保存失败 —— 请重试。",
     // 同上：抽屉的六枚 tab 与报告/验收/会话轨迹文案。
     "drawer.tabs.label": "任务详情分区",
+    "drawer.loading": "正在加载卡片",
     "drawer.tab.details": "详情",
     "drawer.tab.activity": "活动",
     "drawer.tab.reports": "报告",
