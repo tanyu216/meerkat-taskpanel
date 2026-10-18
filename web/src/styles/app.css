@@ -2774,6 +2774,11 @@ button.td-prop-value:hover {
    defaults are 32px / 24px, which is what made the Description Save/Cancel pair
    and the Attachments Upload button 2px taller than the design. Scoped to the
    drawer: the rest of the board keeps the boxes its own rounds measured. */
+.td-drawer .btn {
+  /* daisyUI's own `.btn` is 600-weight; the design states 500. */
+  font-family: inherit;
+  font-weight: 500;
+}
 .td-drawer .btn-sm {
   height: 28px;
   min-height: 28px;
@@ -2784,6 +2789,26 @@ button.td-prop-value:hover {
   min-height: 22px;
   padding-inline: 8px;
   font-size: 11px;
+}
+/* daisyUI's `.btn-outline` is a transparent box with a currentColor edge; the
+   design's outline is the surface fill plus the emphasis hairline
+   (`design/prototype/src/input.css` `.btn-outline`). Scoped with the sizes
+   above: the rest of the board keeps the boxes its own rounds measured. */
+.td-drawer .btn-outline {
+  color: var(--brand-text);
+  border-color: var(--brand-border-strong);
+  background-color: var(--brand-surface);
+}
+.td-drawer .btn-outline:hover {
+  background-color: var(--brand-hover);
+  border-color: var(--brand-text-3);
+}
+.td-drawer .btn:disabled,
+.td-drawer .btn[disabled] {
+  color: var(--brand-text-4);
+  background-color: var(--brand-sunken);
+  border-color: var(--brand-border);
+  cursor: not-allowed;
 }
 
 /* The file row's actions. With them present the size gives up its push to the

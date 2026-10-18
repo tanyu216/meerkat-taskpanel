@@ -1065,7 +1065,7 @@ function copyId() {
             :aria-disabled="readonly ? 'true' : undefined"
             @click="startDescriptionEdit"
           >
-            <svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <svg class="td-icon size-4" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               <path d="M4 20h4l10-10-4-4L4 16z" />
               <path d="M14 6l4 4" />
             </svg>
@@ -1225,7 +1225,7 @@ function copyId() {
                 :aria-disabled="readonly ? 'true' : undefined"
                 @click="downloadAttachment(file)"
               >
-                <svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <svg class="td-icon size-4" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                   <path d="M12 4v11M7 11l5 5 5-5M5 20h14" />
                 </svg>
               </button>
@@ -1239,7 +1239,7 @@ function copyId() {
                 :aria-disabled="readonly ? 'true' : undefined"
                 @click="removeAttachmentRow(file)"
               >
-                <svg class="td-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <svg class="td-icon size-4" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                   <path d="M6 6l12 12M18 6 6 18" />
                 </svg>
               </button>
