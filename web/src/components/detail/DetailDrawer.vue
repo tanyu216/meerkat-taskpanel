@@ -66,8 +66,8 @@ const fileInput = ref(null);
 /** The id of the attachment whose download is in flight (the row's busy beat). */
 const busyAttachment = ref("");
 
-/** The head's ✕ — the element the drawer hands focus to when it opens (C2). */
-const closeButton = ref(null);
+/** The drawer panel itself — the seat that takes focus when it opens (C2). */
+const drawerEl = ref(null);
 
 const detail = computed(() => board.detail);
 const task = computed(() => detail.value?.task ?? null);
@@ -318,10 +318,12 @@ const relationLinks = computed(() => {
 /* ----------------------------------------- R14 §2.1 C2 · focus enters the drawer */
 
 /**
- * Opening the drawer moves focus to its close button, the way the prototype's
- * `focusWhenOpen($("[data-detail-close]"), $panel)` does
- * (`design/prototype/app.js`, which measures `[data-detail-close]` `focused:
- * true` once the drawer is up).
+ * Focus enters the drawer, but **not** on the ✕. The prototype's
+ * `focusWhenOpen($("[data-detail-close]"), $panel)` seats the default focus on
+ * the close button; the product override is to put it on the drawer panel
+ * itself instead (`tabindex="-1"` on the root: programmatically focusable, not
+ * in the tab order). Keyboard focus still enters the dialog, and the ✕ stays
+ * reachable with Tab — only the default seat changed.
  *
  * The move waits **one transition length** and only then focuses — and only if
  * the panel still reads `data-state === "open"`, which is the prototype's own
@@ -351,7 +353,7 @@ const FOCUS_BEAT_MS = 200;
 watch(open, (isOpen) => {
   if (!isOpen) return;
   window.setTimeout(() => {
-    if (board.drawerState === "open") closeButton.value?.focus();
+    if (board.drawerState === "open") drawerEl.value?.focus();
   }, FOCUS_BEAT_MS);
 });
 
@@ -731,8 +733,10 @@ function copyId() {
        never had it, and the section is what "off screen" already means there.
        The scrim keeps `hidden`: that half of the pair *is* the contract's. -->
   <aside
+    ref="drawerEl"
     class="td-drawer"
     data-detail-drawer
+    tabindex="-1"
     :data-identifier="identifier"
     :data-state="board.drawerState"
     role="dialog"
@@ -780,7 +784,6 @@ function copyId() {
              `.td-iconbtn` is unlayered in `app.css`, so it outranks the `ml-auto`
              utility it still needs for the row-end push. -->
         <button
-          ref="closeButton"
           type="button"
           class="td-iconbtn ml-auto"
           data-detail-close

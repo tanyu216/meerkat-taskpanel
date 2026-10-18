@@ -2769,6 +2769,23 @@ button.td-prop-value:hover {
   margin-left: auto;
 }
 
+/* B09 · the drawer's compact buttons. The prototype states its own `.btn-sm` /
+   `.btn-xs` boxes (`design/prototype/src/input.css`: 28px / 22px); daisyUI's
+   defaults are 32px / 24px, which is what made the Description Save/Cancel pair
+   and the Attachments Upload button 2px taller than the design. Scoped to the
+   drawer: the rest of the board keeps the boxes its own rounds measured. */
+.td-drawer .btn-sm {
+  height: 28px;
+  min-height: 28px;
+  font-size: 12px;
+}
+.td-drawer .btn-xs {
+  height: 22px;
+  min-height: 22px;
+  padding-inline: 8px;
+  font-size: 11px;
+}
+
 /* The file row's actions. With them present the size gives up its push to the
    right — the buttons take it — so name and size read as one group on the left
    and the row's own affordances sit at the far edge. */
