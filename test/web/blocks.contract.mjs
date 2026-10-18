@@ -565,6 +565,14 @@ const BLOCKS = [
       { kind: "count", selector: "[data-lang-option]", equals: 2 },
       { kind: "domain", selector: "[data-nav-item]", attribute: "data-nav-item", subset: DOMAINS.NAV },
       { kind: "domain", selector: "[data-presence]", attribute: "data-presence", subset: DOMAINS.PRESENCE },
+      // T-20261017-021412 ① — the presence dot's **box**, which the domain rule
+      // above cannot state: the prototype's `.td-presence` is 6×6
+      // (`design/prototype/src/input.css`, `.td-presence`), while the
+      // implementation wore Tailwind's `size-2` (8×8). Both axes are asserted
+      // because `size-*` writes both, so a one-axis rule would leave half the
+      // defect gate-invisible.
+      { kind: "computed", probe: "[data-presence]", property: "width", equalsPx: 6 },
+      { kind: "computed", probe: "[data-presence]", property: "height", equalsPx: 6 },
       { kind: "domain", selector: "[data-theme-icon]", attribute: "data-theme-icon", subset: DOMAINS.THEME_MODE },
       { kind: "domain", selector: "[data-lang-option]", attribute: "data-lang-option", subset: DOMAINS.LANG },
       {
@@ -619,6 +627,12 @@ const BLOCKS = [
       // (`app.css` `[data-agent-row] [data-agent-text]`), and `[data-agent-text]`
       // is the roster's host alone.
       { kind: "computed", probe: "[data-agent-text]", property: "overflowX", equals: "visible" },
+      // T-20261017-021412 ③ — the row's type. The prototype states `font-size:
+      // 12px` on `.td-agent-row`; the implementation carried no rule and
+      // inherited the 14px `body` baseline, so every roster name was 2px larger
+      // than the design's. `.td-agent-assignee` is `font-size: inherit`, so the
+      // row rule is the one that decides the names as well as the row.
+      { kind: "computed", probe: "[data-agent-row]", property: "fontSize", equalsPx: 12 },
       // R6 ② — the selected nav row: accent copy on the accent's 10% tint, and
       // *not* the grey `.td-brand-active` the implementation used to paint. The
       // base metrics (32px row, 6px radius) come with it, because a selected row
