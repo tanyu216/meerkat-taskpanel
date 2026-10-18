@@ -369,7 +369,7 @@ Contributions land under the MIT license.
 | **Board API & frontend** | `src/server/` — the full board HTTP API and its SSE stream; `web/` — the Vue 3 board built to `web/dist` | *landed* |
 | **Epic view** | Visual view of epic hierarchy / progress / rollup — see an epic and how the statuses of its child cards aggregate | *(planned)* |
 | **Iteration management** | Iteration (sprint) cycle management: group tasks into iterations, with in-iteration progress and capacity | *(planned)* |
-| **Notification subscriptions** | Built-in delivery to WhatsApp, Telegram, WeChat, Feishu, WeCom and plain webhooks. A subscription picks its channels and subscribes to any combination of the periodic report (**daily / weekly / monthly**) and chosen card events — `created`, plus status changes to `backlog`, `todo`, `in_progress`, `in_review`, `blocked`, `done`, `canceled` and `awaiting` — with any number of events selectable per subscription | *(planned)* |
+| **Notification subscriptions** | Built-in delivery to WhatsApp, Telegram, Slack, WeChat, Feishu, WeCom and plain webhooks. A subscription picks its channels and subscribes to any combination of the periodic report (**daily / weekly / monthly**) and chosen card events — `created`, plus status changes to `backlog`, `todo`, `in_progress`, `in_review`, `blocked`, `done`, `canceled` and `awaiting` — with any number of events selectable per subscription | *(planned)* |
 
 > The `M0`–`M6` labels are retired from this table: `M3` (the stdio MCP server) was landed
 > and then removed outright — see
