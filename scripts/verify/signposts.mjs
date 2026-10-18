@@ -114,7 +114,7 @@ export const RULE_IDS = Object.freeze(["store-root", "mechanism-word"]);
  * Directories the walk skips. They mirror `.gitignore`, so the no-git file set matches
  * the tracked set rather than picking up build output and runtime state.
  */
-const SKIP_DIRS = Object.freeze(new Set([".git", "node_modules", "dist", ".data", "coverage"]));
+const SKIP_DIRS = Object.freeze(new Set([".git", "node_modules", "dist", ".data", "coverage", ".worktrees"]));
 
 // The terms are assembled from fragments on purpose: this file is itself tracked text
 // under this gate, so spelling them here would make the gate its own first finding.

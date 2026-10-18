@@ -58,9 +58,13 @@ branch, and branch parallel work off `dev`. `main` is the release line: it advan
 merging `dev`, and only after the user has confirmed.
 
 - **A parallel task gets a worktree, not another branch in this checkout:**
-  `git worktree add ../meerkat-taskpanel-wt-<slug> -b <branch> dev`. One worktree per task;
-  the primary checkout stays where it is. (The board's own lanes — `lane/<ref>-segN` — are the
-  automated instance of this pattern; you will find many of them in `git worktree list`.)
+  `git worktree add .worktrees/<slug> -b <branch> dev`. One worktree per task; the primary
+  checkout stays where it is, and the tree lives under the checkout's gitignored
+  `.worktrees/` (also dockerignored, so it never enters the image's build context). Before
+  creating one, follow the `using-git-worktrees` skill's Step 0 (isolation detection);
+  `.worktrees/` here is the declared preference that skill honors over its own default.
+  (The board's own lanes — `lane/<ref>-segN` — are the automated instance of this pattern;
+  older ones live beside the checkout and you will find them in `git worktree list`.)
 - **Report, confirm, then integrate.** When the work is done, say so and wait — the user
   decides whether it lands. Nothing here is self-closing.
 - **On confirmation, land it into `dev` and clean up** (a worktree *and* any branch that is
