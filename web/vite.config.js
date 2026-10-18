@@ -29,6 +29,10 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
+    // Bind-mounted sources on Docker Desktop / macOS do not always deliver
+    // filesystem events; the dev container sets VITE_USE_POLLING=1. A plain
+    // host `npm run dev` keeps the default (event-based) watcher.
+    watch: { usePolling: process.env.VITE_USE_POLLING === "1" },
     // The board's own `taskd` (src/server). Local-only.
     proxy: {
       // NOTE: `/api/v1/events` is a Server-Sent Events stream. Vite's proxy

@@ -229,6 +229,40 @@ The board's runtime state is bind-mounted from the repository (`../.data` →
 `/app/.data`), so `docker compose down -v` never destroys it. Only named volumes are
 removed; the bind mount is a host directory.
 
+## Dev / manual preview (Vite HMR)
+
+The verification image is deliberately install-free at run time. For **manual
+preview**, `docker/Dockerfile` carries a separate `dev` target (placed before the
+runtime stage, so a plain build still produces the shipping image): it reuses the
+`webbuild` stage's offline `npm ci`, starts `taskd` on loopback and Vite's dev
+server in the same container, and bind-mounts `web/src` (plus the HTML / public /
+config) for HMR. The browser talks only to Vite at **19527**; `/api` and `/health`
+are proxied to the container's taskd by `web/vite.config.js`.
+
+```bash
+# Optional: point the container at an existing board's data directory. Unset it
+# to use the repository's gitignored .data/.
+export TASKD_DATA_DIR=/path/to/.board-test
+
+docker compose -p meerkat-taskpanel-dev -f docker/docker-compose.dev.yml up -d --build
+curl -s http://127.0.0.1:19527/health       # proxied to the container's taskd
+# open http://127.0.0.1:19527/
+docker compose -p meerkat-taskpanel-dev -f docker/docker-compose.dev.yml logs -f
+docker compose -p meerkat-taskpanel-dev -f docker/docker-compose.dev.yml down
+```
+
+- `web/node_modules` stays the image's own (anonymous volume); the bind mounts
+  cover source only.
+- `VITE_USE_POLLING=1` is set for Docker Desktop / macOS file watching. A plain
+  host `npm run dev` keeps the event-based watcher.
+- **Live on both halves.** `web/src` updates through Vite HMR; `src/**` is
+  bind-mounted too and restarts taskd in place through Node's `--watch` (the
+  dev entry runs `node --watch --watch-preserve-output src/server/main.mjs`).
+  No rebuild or republish is needed for either. Changes to `docker/`, `web/vite.config.js`,
+  `web/package.json` or dependencies still need a compose restart/rebuild.
+- This environment is for a human to inspect changes live; it is not the
+  verification gate (`npm run verify:docker`).
+
 ## One-click verify
 
 ```bash
