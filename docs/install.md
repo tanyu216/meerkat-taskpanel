@@ -36,7 +36,7 @@ There are three layers, and it is worth keeping them straight:
 > **Status: the engine has landed in full.** The skill is discoverable, the `taskctl`
 > commands it describes are implemented, and the board backend (`src/server/`, HTTP + SSE)
 > plus the `web/` frontend are in place. See `CLAUDE.md` for what is still planned (the
-> Epic view and iteration management).
+> Epic view, iteration management and notification subscriptions).
 
 ## Quick start
 
