@@ -13,7 +13,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   — every child `done` or `canceled`, and **at least one `done`** — the board writes the
   container's rollup report (one acceptance line per child, plus the children's own delivery
   evidence, authored by the board itself as `system` / `taskd`) and moves the epic to `in_review`
-  in the same transaction as that child's move. A `canceled` child is terminal, so it does not
+  in the same transaction as the move that completed the set — the last child's `done`, or the
+  `canceled` that finishes it. A `canceled` child is terminal, so it does not
   hold the container open; the report lists it as `not_applicable` with the reason the card's own
   comment trail records, because whether finishing without that work was right is a human's call
   — the acceptance material states the cancellation instead of hiding it. Human acceptance still

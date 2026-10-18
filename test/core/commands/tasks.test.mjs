@@ -560,6 +560,25 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
     });
   });
 
+  it("closes when the last unfinished child is canceled — cancellation ends the set", async () => {
+    await board(async ({ db, commands }) => {
+      const done = linusTask(commands, { title: "Done" });
+      const pending = linusTask(commands, { title: "Pending", allowDup: true });
+      const epic = epicWith(commands, [done, pending]);
+
+      finish(commands, done, "abc1234");
+      assert.equal(commands.getTask({ id: epic.id }).status, "in_progress");
+
+      commands.moveStatus({ id: pending.id, to: "canceled", actor: AGENT });
+      assert.equal(
+        commands.getTask({ id: epic.id }).status,
+        "in_review",
+        "a canceled child is terminal: with the done child, the set is complete",
+      );
+      assert.equal(db.prepare("SELECT count(*) AS c FROM task_reports WHERE task_id = ?").get(epic.id).c, 1);
+    });
+  });
+
   it("does not close a container whose children were all canceled — nothing was delivered", async () => {
     await board(async ({ db, commands }) => {
       const one = linusTask(commands, { title: "One" });

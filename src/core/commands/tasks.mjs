@@ -688,8 +688,12 @@ export function moveStatus(ctx, input) {
       if (task.status === STATUS.IN_PROGRESS) startContainerForChild(ctx, task.id, now);
       // The container closes itself when its last child lands
       // (commands/rollup.mjs): the same transaction, so a child can never be
-      // `done` on a board where its epic still looks unfinished.
-      if (task.status === STATUS.DONE) advanceContainerForChild(ctx, task.id, now);
+      // `done` on a board where its epic still looks unfinished. `canceled` is
+      // terminal too, so a cancellation can be the transition that completes the
+      // set — it re-checks the container for the same reason `done` does.
+      if (task.status === STATUS.DONE || task.status === STATUS.CANCELED) {
+        advanceContainerForChild(ctx, task.id, now);
+      }
       return task;
     },
     { op: "tasks.move" },
