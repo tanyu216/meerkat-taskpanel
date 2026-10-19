@@ -17,7 +17,7 @@ import { TASK_OPS } from "../../core/index.mjs";
 import { DomainError } from "../../shared/errors.mjs";
 import { reportToWire, taskToWire } from "../../shared/wire.mjs";
 import { bool, intOrUndefined, project, REQUEST, shape, str, truthy } from "../requests.mjs";
-import { lookupFor, parentIdOf, resolveTask, taskPayload } from "../task-view.mjs";
+import { lookupFor, resolveTask, taskPayload } from "../task-view.mjs";
 
 // Declared request schemas — what the contract snapshot freezes
 // (`routes[].request`); `src/server/requests.mjs` owns the vocabulary and the

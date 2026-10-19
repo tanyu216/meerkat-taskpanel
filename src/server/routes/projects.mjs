@@ -21,7 +21,7 @@
 
 import { orderDebugEntry, rankProjects } from "../../shared/project-order.mjs";
 import { projectToWire } from "../../shared/wire.mjs";
-import { arr, intOrUndefined, obj, shape, str, truthy } from "../requests.mjs";
+import { arr, obj, shape, str, truthy } from "../requests.mjs";
 
 // Declared request schemas — the shape the contract snapshot freezes
 // (`routes[].request`). See `src/server/requests.mjs` for the vocabulary and the
