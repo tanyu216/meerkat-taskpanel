@@ -1633,13 +1633,200 @@ export async function run() {
       panelGeometry.tokenIconsVisible.length === 1,
       `${panelGeometry.tokenIconsVisible.length} token glyphs visible, expected 1`,
     );
+
+    // ③ continued — B19's **internal** layout is the prototype's own. The R6
+    // round restored the panel's outer form only; the body order, the
+    // allow-list / token boxes and the icon controls were left to arbitrary
+    // utilities. `design/prototype/index.html` B19 (measured at 1512×950 on
+    // 2026-10-19) is the oracle for every value below.
+    const b19 = await page.evaluate(() => {
+      const panel = document.querySelector("[data-access-panel]");
+      const body = panel?.querySelector(".td-access-body");
+      const kids = body ? [...body.children] : [];
+      const indexOf = (selector) => kids.findIndex((el) => el.matches(selector));
+      const css = (el, props) => {
+        if (!el) return null;
+        const style = getComputedStyle(el);
+        return Object.fromEntries(props.map((prop) => [prop, style[prop]]));
+      };
+      const q = (selector) => panel?.querySelector(selector) ?? null;
+      const scrimProbe = document.createElement("div");
+      scrimProbe.style.backgroundColor = "var(--brand-scrim)";
+      document.body.append(scrimProbe);
+      const expectedScrim = getComputedStyle(scrimProbe).backgroundColor;
+      scrimProbe.remove();
+      const overlay = document.querySelector("[data-access-overlay]");
+      return {
+        order: {
+          bind: indexOf('[data-i18n="access.model.bind"]'),
+          cidr: indexOf("[data-cidr-whitelist]"),
+          tokenLead: indexOf('[data-i18n="access.model.token"]'),
+          token: indexOf("[data-token-block]"),
+        },
+        title: css(q("#td-access-title"), ["fontSize", "fontWeight"]),
+        lead: css(q('[data-i18n="access.model.bind"]'), ["fontSize", "lineHeight", "color"]),
+        close: { cls: q("[data-access-close]")?.className ?? null, svg: Boolean(q("[data-access-close] svg")) },
+        reveal: { cls: q("[data-token-reveal]")?.className ?? null },
+        copy: {
+          cls: q("[data-token-copy]")?.className ?? null,
+          text: q("[data-token-copy]")?.textContent.trim() ?? null,
+          svg: Boolean(q("[data-token-copy] svg")),
+        },
+        reset: {
+          cls: q("[data-token-reset]")?.className ?? null,
+          text: q("[data-token-reset]")?.textContent.trim() ?? null,
+          svg: Boolean(q("[data-token-reset] svg")),
+        },
+        token: css(q("[data-token-block]"), ["marginTop", "padding", "backgroundColor", "borderTopWidth", "borderTopColor", "borderRadius"]),
+        tokenTitle: css(q(".td-token-title"), ["fontSize", "fontWeight", "color"]),
+        tokenValue: css(q("[data-token-value]"), ["height", "fontSize", "color", "backgroundColor", "borderTopWidth", "borderRadius", "padding"]),
+        notes: {
+          count: panel?.querySelectorAll(".td-token-notes").length ?? 0,
+          font: css(q(".td-token-notes"), ["fontSize", "color"]),
+          spans: [...(panel?.querySelectorAll(".td-token-notes > span") ?? [])].map((span) => getComputedStyle(span).display),
+        },
+        cidrList: css(q(".td-cidr-list"), ["borderTopWidth", "borderRadius"]),
+        cidrRow: css(q("[data-cidr-row]"), ["padding", "gap"]),
+        cidrRow2: css(panel?.querySelectorAll("[data-cidr-row]")[1], ["borderTopWidth"]),
+        switch: { disabled: q("[data-cidr-switch]")?.disabled ?? null, cls: q("[data-cidr-switch]")?.className ?? null },
+        overlay: {
+          state: overlay?.getAttribute("data-state") ?? null,
+          background: overlay ? getComputedStyle(overlay).backgroundColor : null,
+          expectedScrim,
+        },
+        ariaHidden: panel?.getAttribute("aria-hidden") ?? null,
+        focusClose: document.activeElement === q("[data-access-close]"),
+      };
+    });
+    r6Check(
+      b19.order.bind === 0 &&
+        b19.order.bind < b19.order.cidr &&
+        b19.order.cidr < b19.order.tokenLead &&
+        b19.order.tokenLead < b19.order.token,
+      `B19 body order is bind=${b19.order.bind}, cidr=${b19.order.cidr}, token-lead=${b19.order.tokenLead}, token=${b19.order.token}; expected bind → cidr → token-lead → token`,
+    );
+    r6Check(
+      b19.title?.fontSize === "16px" && b19.title?.fontWeight === "600",
+      `the panel title is ${b19.title?.fontSize}/${b19.title?.fontWeight}, expected the prototype's 16px/600`,
+    );
+    r6Check(
+      b19.lead?.fontSize === "13px" && b19.lead?.color === "rgb(74, 85, 94)",
+      `the bind lead is ${b19.lead?.fontSize}/${b19.lead?.color}, expected the prototype's 13px/rgb(74, 85, 94)`,
+    );
+    r6Check(
+      /td-iconbtn/.test(b19.close.cls ?? "") && b19.close.svg,
+      `the close control is ${b19.close.cls}${b19.close.svg ? "" : " without a glyph"}, expected an icon-only .td-iconbtn`,
+    );
+    r6Check(/td-iconbtn/.test(b19.reveal.cls ?? ""), `the reveal control is ${b19.reveal.cls}, expected .td-iconbtn`);
+    for (const [name, control] of [["copy", b19.copy], ["reset", b19.reset]]) {
+      r6Check(
+        /td-iconbtn/.test(control.cls ?? "") && control.svg && control.text === "",
+        `the ${name} control is ${control.cls} with text ${JSON.stringify(control.text)}; expected an icon-only .td-iconbtn`,
+      );
+    }
+    r6Check(
+      b19.token?.backgroundColor === "rgb(245, 246, 247)" &&
+        b19.token?.padding === "12px" &&
+        b19.token?.borderTopWidth === "1px" &&
+        b19.token?.borderRadius === "8px",
+      `the token block is ${b19.token?.backgroundColor}, ${b19.token?.padding}, ${b19.token?.borderTopWidth}/${b19.token?.borderRadius}; expected the prototype's sunken 12px box`,
+    );
+    r6Check(
+      b19.tokenTitle?.fontSize === "12px" && b19.tokenTitle?.fontWeight === "600",
+      `the token title is ${b19.tokenTitle?.fontSize}/${b19.tokenTitle?.fontWeight}, expected 12px/600`,
+    );
+    r6Check(
+      b19.tokenValue?.height === "32px" &&
+        b19.tokenValue?.borderTopWidth === "1px" &&
+        b19.tokenValue?.borderRadius === "6px",
+      `the token value is ${b19.tokenValue?.height} high, border ${b19.tokenValue?.borderTopWidth}/${b19.tokenValue?.borderRadius}; expected the prototype's 32px field`,
+    );
+    r6Check(
+      b19.notes.count === 1 && b19.notes.font?.fontSize === "11px" && b19.notes.spans.join(",") === "block,block",
+      `the token notes are ${b19.notes.count} block(s) at ${b19.notes.font?.fontSize} with spans ${b19.notes.spans.join(",")}; expected one .td-token-notes holding two block spans at 11px`,
+    );
+    r6Check(
+      b19.cidrList?.borderTopWidth === "1px" && b19.cidrList?.borderRadius === "6px",
+      `the allow-list box has border ${b19.cidrList?.borderTopWidth}/${b19.cidrList?.borderRadius}, expected 1px/6px`,
+    );
+    r6Check(
+      b19.cidrRow?.padding === "6px 8px" && b19.cidrRow2?.borderTopWidth === "1px",
+      `the allow-list row padding is ${b19.cidrRow?.padding} and the second row's rule is ${b19.cidrRow2?.borderTopWidth}; expected 6px 8px and 1px`,
+    );
+    r6Check(
+      b19.switch.disabled === false && /td-toggle/.test(b19.switch.cls ?? ""),
+      `the allow-list switch is ${b19.switch.disabled ? "disabled" : "enabled"} with class ${b19.switch.cls}; expected the prototype's movable .td-toggle`,
+    );
+    r6Check(
+      b19.overlay.state === "open" && b19.overlay.background === b19.overlay.expectedScrim,
+      `the scrim is data-state=${b19.overlay.state} at ${b19.overlay.background}, expected open and --brand-scrim (${b19.overlay.expectedScrim})`,
+    );
+    r6Check(b19.ariaHidden === "false", `the open panel carries aria-hidden=${b19.ariaHidden}, expected false`);
+    r6Check(b19.focusClose, "opening the settings panel did not move focus to its close control");
+
+    // The allow-list switch is display-only in the prototype's own sense: it
+    // moves, dims the list and announces the state — nothing is written or
+    // enforced. Use an in-page click: the control is disabled in the old tree,
+    // and Playwright's actionability wait would turn this red into a 30s stall.
+    await page.evaluate(() => document.querySelector("[data-cidr-switch]").click());
+    await page.waitForTimeout(120);
+    const cidrOff = await page.evaluate(() => ({
+      enabled: document.querySelector("[data-cidr-whitelist]").getAttribute("data-cidr-enabled"),
+      listOpacity: getComputedStyle(document.querySelector("[data-cidr-list]")).opacity,
+      toast: document.querySelector("[data-toast-region] [data-toast]:last-child")?.getAttribute("data-toast-kind") ?? null,
+    }));
+    r6Check(
+      cidrOff.enabled === "false" && cidrOff.listOpacity === "0.45",
+      `the allow-list switch left data-cidr-enabled=${cidrOff.enabled} and the list at opacity ${cidrOff.listOpacity}; expected false/0.45`,
+    );
+    r6Check(cidrOff.toast === "info", `the allow-list switch announced ${cidrOff.toast}, expected an info toast`);
+    await page.evaluate(() => document.querySelector("[data-cidr-switch]").click());
+
+    // Reset mirrors the prototype: a new in-memory value, revealed (not
+    // re-masked), and a success toast.
+    await page.evaluate(() => document.querySelector("[data-token-reset]").click());
+    await page.waitForTimeout(60);
+    const resetState = await page.evaluate(() => ({
+      revealed: document.querySelector("[data-token-block]").getAttribute("data-token-revealed"),
+      token: document.querySelector("[data-token-value]").textContent.trim(),
+      toasts: [...document.querySelectorAll("[data-toast-region] [data-toast]")].map(
+        (toast) => `${toast.getAttribute("data-toast-kind")}:${toast.textContent.trim()}`,
+      ),
+    }));
+    r6Check(resetState.revealed === "true", "reset left the token masked; the prototype reveals the new value");
+    r6Check(/^td_[a-z0-9]{12}$/.test(resetState.token), `reset produced ${JSON.stringify(resetState.token)}, expected td_ + 12 characters`);
+    r6Check(
+      resetState.toasts.at(-1)?.startsWith("success:"),
+      `reset announced ${resetState.toasts.at(-1)}, expected a success toast (stack: ${resetState.toasts.join(" | ")})`,
+    );
+
+    await page.evaluate(() => document.querySelector("[data-token-copy]").click());
+    await page.waitForTimeout(60);
+    const copyToasts = await page.evaluate(() =>
+      [...document.querySelectorAll("[data-toast-region] [data-toast]")].map(
+        (toast) => `${toast.getAttribute("data-toast-kind")}:${toast.textContent.trim()}`,
+      ),
+    );
+    r6Check(
+      copyToasts.at(-1)?.startsWith("success:"),
+      `copy announced ${copyToasts.at(-1)}, expected a success toast (stack: ${copyToasts.join(" | ")})`,
+    );
+
     await page.click("[data-access-close]");
     await page.waitForTimeout(200);
     const panelClosed = await page.evaluate(() => ({
       state: document.querySelector("[data-access-panel]")?.getAttribute("data-state"),
       hidden: document.querySelector("[data-access-panel]")?.hasAttribute("hidden"),
+      overlayState: document.querySelector("[data-access-overlay]")?.getAttribute("data-state"),
+      overlayHidden: document.querySelector("[data-access-overlay]")?.hasAttribute("hidden"),
+      focusOpener: document.activeElement?.hasAttribute("data-access-open") ?? false,
     }));
     r6Check(panelClosed.state === "closed" && panelClosed.hidden === true, "the settings panel did not close");
+    r6Check(
+      panelClosed.overlayState === "closed" && panelClosed.overlayHidden === true,
+      `the scrim closed as data-state=${panelClosed.overlayState}, hidden=${panelClosed.overlayHidden}; expected closed/true`,
+    );
+    r6Check(panelClosed.focusOpener, "closing the settings panel did not return focus to [data-access-open]");
 
     // ⑤ — the list's own relations: one dot per status chip, and a rule that runs
     // *between* rows (the first row draws no top edge).

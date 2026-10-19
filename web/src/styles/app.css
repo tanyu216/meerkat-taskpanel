@@ -2114,7 +2114,10 @@ button.td-prop-value:hover {
    showcase, narrowed to a settings column. `[hidden]` has to be restated because
    the `display:flex` below is an author declaration and the UA sheet's
    `[hidden]{display:none}` is not. The measured width is 480px — the spec's
-   920px belonged to the *shared* rule the panel overrides (R2). */
+   920px belonged to the *shared* rule the panel overrides (R2).
+   The closed face (`opacity` / `visibility` / `scale(.98)`) and the 180ms pair
+   are the prototype's own: the component keeps the panel mounted for one frame
+   after `data-state` flips so the transition has a start point. */
 .td-access-panel {
   position: fixed;
   top: 50%;
@@ -2127,7 +2130,18 @@ button.td-prop-value:hover {
   border: 1px solid var(--brand-border);
   border-radius: var(--radius-box);
   box-shadow: var(--shadow-pop);
-  transform: translate(-50%, -50%);
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, -50%) scale(0.98);
+  transition:
+    opacity var(--dur-2) var(--ease-brand),
+    transform var(--dur-2) var(--ease-brand),
+    visibility var(--dur-2) var(--ease-brand);
+}
+.td-access-panel[data-state="open"] {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, -50%) scale(1);
 }
 .td-access-panel[hidden] { display: none; }
 .td-access-head {
@@ -2144,6 +2158,144 @@ button.td-prop-value:hover {
   padding: var(--space-4) var(--space-5) var(--space-5);
   overflow-y: auto;
 }
+
+/* B19 · the scrim. `z-index` stays with the call site (`z-[80]`): this app has
+   more layers above the board than the prototype's one dialog, so the stacking
+   value is ours while the veil itself is `--brand-scrim`, as everywhere else. */
+.td-scrim {
+  position: fixed;
+  inset: 0;
+  background-color: var(--brand-scrim);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-2) var(--ease-brand);
+}
+.td-scrim[data-state="open"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* B19 · the panel's inner surface is transcribed from the prototype
+   (`design/prototype/src/input.css`, the B19 + token + CIDR + switch rules).
+   Token map: --color-td-ink → --brand-text, ink-2 → --brand-text-2,
+   ink-3 → --brand-text-3, sunken → --brand-sunken, surface → --brand-surface,
+   line → --brand-border, line-strong → --brand-border-strong, accent →
+   --brand-accent, --r-lg/--r-md → --radius-box/--radius-field. */
+.td-access-lead {
+  margin: 0;
+  font-size: var(--text-13);
+  line-height: 1.5;
+  color: var(--brand-text-2);
+}
+.td-access-lead + .td-access-lead { margin-top: var(--space-1); }
+
+/* --- token block ------------------------------------------------------ */
+.td-token {
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  background-color: var(--brand-sunken);
+  border: var(--border) solid var(--brand-border);
+  border-radius: var(--radius-box);
+}
+.td-token-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-12);
+  font-weight: var(--weight-semibold);
+  color: var(--brand-text);
+}
+.td-token-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.td-token-value {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  height: var(--space-7);
+  padding: 0 10px;
+  overflow: hidden;
+  font-size: var(--text-12);
+  color: var(--brand-text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background-color: var(--brand-surface);
+  border: var(--border) solid var(--brand-border);
+  border-radius: var(--radius-field);
+}
+.td-token-row .td-iconbtn {
+  background-color: var(--brand-surface);
+  border-color: var(--brand-border);
+}
+.td-token-notes {
+  margin: var(--space-2) 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--brand-text-3);
+}
+.td-token-notes > span { display: block; }
+
+/* --- CIDR whitelist --------------------------------------------------- */
+/* Ruling O6 keeps the list read-only: add/remove controls are deliberately
+   absent, so `.td-cidr-head` holds the note alone. Everything else — the
+   bordered list, the 6/8px rows, the row rule — is the prototype's. */
+.td-cidr { margin-top: var(--space-4); }
+.td-cidr-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.td-cidr-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--text-12);
+  line-height: 1.5;
+  color: var(--brand-text-3);
+}
+.td-cidr-list {
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  border: var(--border) solid var(--brand-border);
+  border-radius: var(--radius-field);
+  overflow: hidden;
+}
+.td-cidr-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 6px var(--space-2);
+  background-color: var(--brand-surface);
+}
+.td-cidr-row + .td-cidr-row { border-top: var(--border) solid var(--brand-border); }
+.td-cidr-value { flex: 1 1 auto; min-width: 0; }
+/* the token rule reads under the whitelist, not under another lead */
+.td-cidr + .td-access-lead { margin-top: var(--space-4); }
+
+/* --- allow-list switch (daisyUI `toggle`) ----------------------------- */
+.td-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+.td-switch-text {
+  font-size: var(--text-12);
+  color: var(--brand-text-2);
+}
+.td-toggle {
+  color: var(--brand-text-3);
+  --input-color: var(--brand-border-strong);
+}
+.td-toggle:checked {
+  color: var(--brand-accent);
+  --input-color: var(--brand-accent);
+}
+/* switched off, the list stays legible but stops asking to be read */
+.td-cidr[data-cidr-enabled="false"] .td-cidr-list { opacity: 0.45; }
 
 /* ----------------------------------------------------------------- toasts */
 
