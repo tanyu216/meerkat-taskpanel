@@ -53,14 +53,23 @@ MEERKAT_TASKPANEL_NO_AUTOMATION="${MEERKAT_TASKPANEL_NO_AUTOMATION:-${TASKPANEL_
 MEERKAT_TASKPANEL_MIN_NODE="${MEERKAT_TASKPANEL_MIN_NODE:-${TASKPANEL_MIN_NODE:-}}"
 MEERKAT_TASKPANEL_SKIP_NODE_CHECK="${MEERKAT_TASKPANEL_SKIP_NODE_CHECK:-${TASKPANEL_SKIP_NODE_CHECK:-}}"
 MEERKAT_TASKPANEL_CLAIM_UNASSIGNED="${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-${TASKPANEL_CLAIM_UNASSIGNED:-}}"
-# No pre-rename alias for these two: the supervisor's flag surface is new in the opt-in
+# No pre-rename alias for these: the supervisor's flag surface is new in the opt-in
 # contract, so there is no TASKPANEL_SUPERVISOR spelling in the wild to keep working.
 MEERKAT_TASKPANEL_SUPERVISOR="${MEERKAT_TASKPANEL_SUPERVISOR:-}"
 MEERKAT_TASKPANEL_SCHEDULER="${MEERKAT_TASKPANEL_SCHEDULER:-}"
+# The workflow channel's persisted answers. Empty means "not given" and falls back to
+# the supervisor's default (workflow on, auto-accept on, no reviewer).
+MEERKAT_TASKPANEL_WORKFLOW="${MEERKAT_TASKPANEL_WORKFLOW:-}"
+MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS="${MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS:-}"
+MEERKAT_TASKPANEL_REVIEWER="${MEERKAT_TASKPANEL_REVIEWER:-}"
+MEERKAT_TASKPANEL_ACCEPTANCE_POLICY="${MEERKAT_TASKPANEL_ACCEPTANCE_POLICY:-}"
+MEERKAT_TASKPANEL_RECOVER_STALE="${MEERKAT_TASKPANEL_RECOVER_STALE:-}"
 export MEERKAT_TASKPANEL_TARGET_HOME MEERKAT_TASKPANEL_AGENT_NAME MEERKAT_TASKPANEL_LINK \
   MEERKAT_TASKPANEL_FORCE MEERKAT_TASKPANEL_DRY_RUN MEERKAT_TASKPANEL_NO_AUTOMATION \
   MEERKAT_TASKPANEL_MIN_NODE MEERKAT_TASKPANEL_SKIP_NODE_CHECK MEERKAT_TASKPANEL_CLAIM_UNASSIGNED \
-  MEERKAT_TASKPANEL_SUPERVISOR MEERKAT_TASKPANEL_SCHEDULER
+  MEERKAT_TASKPANEL_SUPERVISOR MEERKAT_TASKPANEL_SCHEDULER \
+  MEERKAT_TASKPANEL_WORKFLOW MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS MEERKAT_TASKPANEL_REVIEWER \
+  MEERKAT_TASKPANEL_ACCEPTANCE_POLICY MEERKAT_TASKPANEL_RECOVER_STALE
 
 # is_int64 <value> — 0 when <value> is a non-negative integer that fits in a
 # signed 64-bit integer (the width bash's `[ … -lt … ]` test arithmetic uses),
@@ -256,6 +265,66 @@ export_tp_env() {
   TP_SCHED="$(target_home)/$host_dir/scheduling"
   TP_WAKE="$(target_home)/$host_dir/bin/wake-$label.sh"
   TP_CLAIM_UNASSIGNED="${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-yes}"
+  TP_RECOVER_STALE="${MEERKAT_TASKPANEL_RECOVER_STALE:-yes}"
+  # The workflow channel's remembered answers. An empty reviewer is deliberate and
+  # renders as `KEY=`, which the supervisor reads as "not configured".
+  TP_WORKFLOW="${MEERKAT_TASKPANEL_WORKFLOW:-yes}"
+  TP_AUTO_ACCEPT_REVIEWS="${MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS:-yes}"
+  TP_REVIEWER="${MEERKAT_TASKPANEL_REVIEWER:-}"
+  # Who may close a task (`human-only` | `both` | `agent-only`). The board reads
+  # its own copy from `<dataDir>/taskd.env`; this is the loop's remembered copy.
+  TP_ACCEPTANCE_POLICY="${MEERKAT_TASKPANEL_ACCEPTANCE_POLICY:-both}"
+  case "$TP_ACCEPTANCE_POLICY" in
+    human-only | both | agent-only) ;;
+    *)
+      echo "$TP_HOST: MEERKAT_TASKPANEL_ACCEPTANCE_POLICY must be human-only, both or agent-only (got '$TP_ACCEPTANCE_POLICY')" >&2
+      return 1
+      ;;
+  esac
+  # The scheduler's two clocks. Ping only prunes dead worker pids; continue is
+  # the bounded `继续` judgment turn that runs poll/patrol/workflow.
+  TP_PING_INTERVAL="${MEERKAT_TASKPANEL_PING_INTERVAL:-60}"
+  TP_CONTINUE_INTERVAL="${MEERKAT_TASKPANEL_CONTINUE_INTERVAL:-600}"
+  TP_CONTINUE="${MEERKAT_TASKPANEL_CONTINUE:-yes}"
+  case "$TP_PING_INTERVAL" in
+    "" | *[!0-9]*)
+      echo "$TP_HOST: MEERKAT_TASKPANEL_PING_INTERVAL must be a positive integer (got '$TP_PING_INTERVAL')" >&2
+      return 1
+      ;;
+  esac
+  case "$TP_CONTINUE_INTERVAL" in
+    "" | *[!0-9]*)
+      echo "$TP_HOST: MEERKAT_TASKPANEL_CONTINUE_INTERVAL must be a positive integer (got '$TP_CONTINUE_INTERVAL')" >&2
+      return 1
+      ;;
+  esac
+  if [ "$TP_PING_INTERVAL" -le 0 ] || [ "$TP_CONTINUE_INTERVAL" -le 0 ]; then
+    echo "$TP_HOST: the ping and continue intervals must be positive" >&2
+    return 1
+  fi
+  case "$TP_CONTINUE" in
+    yes | no | true | false | 1 | 0 | y | n | on | off) ;;
+    *)
+      echo "$TP_HOST: MEERKAT_TASKPANEL_CONTINUE must be yes or no (got '$TP_CONTINUE')" >&2
+      return 1
+      ;;
+  esac
+  TP_PING_CRON="* * * * *"
+  if [ "$TP_CONTINUE_INTERVAL" -ge 60 ] && [ $((TP_CONTINUE_INTERVAL % 60)) -eq 0 ]; then
+    continue_minutes=$((TP_CONTINUE_INTERVAL / 60))
+    if [ "$continue_minutes" -lt 60 ]; then
+      TP_CONTINUE_CRON="*/$continue_minutes * * * *"
+    elif [ "$continue_minutes" -eq 60 ]; then
+      TP_CONTINUE_CRON="0 * * * *"
+    elif [ $((continue_minutes % 60)) -eq 0 ] && [ $((continue_minutes / 60)) -lt 24 ]; then
+      TP_CONTINUE_CRON="0 */$((continue_minutes / 60)) * * *"
+    else
+      TP_CONTINUE_CRON="*/10 * * * *"
+    fi
+  else
+    TP_CONTINUE_CRON="*/10 * * * *"
+    echo "$TP_HOST: continue interval ${TP_CONTINUE_INTERVAL}s is not a whole number of minutes; cron falls back to */10" >&2
+  fi
 
   # --- what the scheduling units run with -------------------------------------
   #
@@ -297,6 +366,8 @@ export_tp_env() {
 
   export TP_AGENT TP_HUMAN TP_REPO TP_SHIM TP_HOOK TP_TRIGGER
   export TP_HOST TP_HOST_BASE TP_LOOP TP_SUPERVISOR TP_LOG TP_STATE TP_ENV TP_SCHED TP_WAKE TP_CLAIM_UNASSIGNED
+  export TP_RECOVER_STALE TP_WORKFLOW TP_AUTO_ACCEPT_REVIEWS TP_REVIEWER TP_ACCEPTANCE_POLICY
+  export TP_PING_INTERVAL TP_CONTINUE_INTERVAL TP_CONTINUE TP_PING_CRON TP_CONTINUE_CRON
   export TP_NODE TP_UNIT_PATH_LAUNCHD TP_UNIT_PATH_CRON TP_CLI_ON_PATH
 }
 
@@ -340,6 +411,48 @@ claim_unassigned_value() {
   printf 'yes\n'
 }
 
+# acceptance_policy_value <flag> <interactive> — decide "who may close a task?".
+# Prints `human-only`, `both` or `agent-only`:
+#
+#   * an explicit <flag> wins, verbatim;
+#   * otherwise, when <interactive> is "1" (stdin is a TTY), ask once — default
+#     `both` on a blank answer (the historical rule);
+#   * otherwise (including --dry-run) default `both`.
+#
+# An unrecognised <flag> is a hard error, never a silent default: a misspelt
+# policy must not install a board that closes differently than asked.
+acceptance_policy_value() {
+  flag="$1"
+  interactive="$2"
+  case "$flag" in
+    human-only | both | agent-only)
+      printf '%s\n' "$flag"
+      return 0
+      ;;
+    "")
+      ;;
+    *)
+      echo "--acceptance must be human-only, both or agent-only (got '$flag')." >&2
+      return 1
+      ;;
+  esac
+
+  if [ "$interactive" = "1" ]; then
+    printf 'Who may close a task? [1] human (top-level only) [2] human or loop [3] agent only (default 2): ' >&2
+    answer=""
+    read -r answer || answer=""
+    case "$answer" in
+      "" | [2]*) printf 'both\n' ;;
+      [1]*) printf 'human-only\n' ;;
+      [3]*) printf 'agent-only\n' ;;
+      *) printf 'both\n' ;;
+    esac
+    return 0
+  fi
+
+  printf 'both\n'
+}
+
 # supervisor_value <flag> <interactive> — decide the opt-in supervisor action. Prints
 # `enable`, `disable`, `status`, or **empty** for "do nothing" (a plain install):
 #
@@ -368,7 +481,7 @@ supervisor_value() {
   esac
 
   if [ "$interactive" = "1" ]; then
-    printf 'Enable the supervisor now? It runs headless in the background (poll 60s / patrol 300s). [y/N] ' >&2
+    printf 'Enable the supervisor now? It runs headless in the background (ping 60s / continue 600s). [y/N] ' >&2
     answer=""
     read -r answer || answer=""
     case "$answer" in
@@ -516,6 +629,27 @@ install_loop_body() {
 # installer's own templates: the units, the wake glues and the host config are the loop's
 # payload, and deploying the copy the loop skill distributes is what keeps "what shipped"
 # and "what was verified" the same bytes.
+# remove_legacy_unit_files — drop the poll/patrol templates this installer used to
+# write. A loaded legacy unit is taken down by `apply_supervisor enable`; these are
+# the on-disk copies, removed only after that so a user cannot accidentally reload
+# the old topology. `--dry-run` reports instead of deleting.
+remove_legacy_unit_files() {
+  for legacy in \
+    "$TP_SCHED/launchd/com.meerkat-taskpanel.poll.plist" \
+    "$TP_SCHED/launchd/com.meerkat-taskpanel.patrol.plist" \
+    "$TP_SCHED/systemd/meerkat-taskpanel-poll.service" \
+    "$TP_SCHED/systemd/meerkat-taskpanel-poll.timer" \
+    "$TP_SCHED/systemd/meerkat-taskpanel-patrol.service" \
+    "$TP_SCHED/systemd/meerkat-taskpanel-patrol.timer"; do
+    [ -e "$legacy" ] || continue
+    if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
+      echo "would remove $legacy"
+    else
+      rm -f "$legacy"
+    fi
+  done
+}
+
 install_scheduling() {
   install_loop_body
 
@@ -526,12 +660,14 @@ install_scheduling() {
     echo "$TP_HOST:   so a woken $TP_HOST would not resolve. Install it, then re-run this install with --force."
   fi
 
-  emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.poll.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.poll.plist"
-  emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.patrol.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.patrol.plist"
-  emit_loop_file "scheduling/systemd/meerkat-taskpanel-poll.service" "$TP_SCHED/systemd/meerkat-taskpanel-poll.service"
-  emit_loop_file "scheduling/systemd/meerkat-taskpanel-poll.timer" "$TP_SCHED/systemd/meerkat-taskpanel-poll.timer"
-  emit_loop_file "scheduling/systemd/meerkat-taskpanel-patrol.service" "$TP_SCHED/systemd/meerkat-taskpanel-patrol.service"
-  emit_loop_file "scheduling/systemd/meerkat-taskpanel-patrol.timer" "$TP_SCHED/systemd/meerkat-taskpanel-patrol.timer"
+  emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.ping.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.ping.plist"
+  emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.continue.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.continue.plist"
+  emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.subscribe.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.subscribe.plist"
+  emit_loop_file "scheduling/systemd/meerkat-taskpanel-ping.service" "$TP_SCHED/systemd/meerkat-taskpanel-ping.service"
+  emit_loop_file "scheduling/systemd/meerkat-taskpanel-ping.timer" "$TP_SCHED/systemd/meerkat-taskpanel-ping.timer"
+  emit_loop_file "scheduling/systemd/meerkat-taskpanel-continue.service" "$TP_SCHED/systemd/meerkat-taskpanel-continue.service"
+  emit_loop_file "scheduling/systemd/meerkat-taskpanel-continue.timer" "$TP_SCHED/systemd/meerkat-taskpanel-continue.timer"
+  emit_loop_file "scheduling/systemd/meerkat-taskpanel-subscribe.service" "$TP_SCHED/systemd/meerkat-taskpanel-subscribe.service"
   emit_loop_file "scheduling/cron/meerkat-taskpanel.cron" "$TP_SCHED/cron/meerkat-taskpanel.cron"
   emit_loop_file "$TP_HOST/wake-$TP_HOST.sh" "$TP_WAKE" --exec
 
@@ -539,13 +675,19 @@ install_scheduling() {
 
   if [ -n "${MEERKAT_TASKPANEL_SUPERVISOR:-}" ]; then
     apply_supervisor
+    remove_legacy_unit_files
     return 0
   fi
 
+  if [ -e "$TP_SCHED/launchd/com.meerkat-taskpanel.poll.plist" ] ||
+    [ -e "$TP_SCHED/systemd/meerkat-taskpanel-poll.timer" ]; then
+    echo "$TP_HOST: legacy poll/patrol units are still present — re-run with --supervisor=enable to migrate them to ping/continue"
+  fi
+
   echo "$TP_HOST: to start the supervisor, load one of these (nothing is loaded for you):"
-  echo "  launchd:  launchctl load $TP_SCHED/launchd/com.meerkat-taskpanel.poll.plist   # and .patrol.plist"
-  echo "  systemd:  mkdir -p ~/.config/systemd/user && cp $TP_SCHED/systemd/* ~/.config/systemd/user/ && systemctl --user enable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer"
-  echo "  cron:     crontab $TP_SCHED/cron/meerkat-taskpanel.cron"
+  echo "  launchd:  launchctl load $TP_SCHED/launchd/com.meerkat-taskpanel.ping.plist   # and .continue.plist + .subscribe.plist"
+  echo "  systemd:  mkdir -p ~/.config/systemd/user && cp $TP_SCHED/systemd/* ~/.config/systemd/user/ && systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-subscribe.service"
+  echo "  cron:     crontab $TP_SCHED/cron/meerkat-taskpanel.cron   # no event daemon: cron cannot host one"
 }
 
 # ensure_env_key <key> <value> — add a KEY=value line to the host config when the key
@@ -574,13 +716,26 @@ ensure_env_key() {
   echo "$TP_HOST: recorded $key in $TP_ENV"
 }
 
-# write_host_config — persist the claim policy the supervisor reads by default, and the
-# location of the board engine a host-installed executor drives. Requires export_tp_env
-# first (TP_ENV, TP_CLAIM_UNASSIGNED, TP_REPO). The template belongs to the loop skill:
-# the supervisor is what reads it.
+# write_host_config — persist the claim policy the supervisor reads by default, the
+# location of the board engine a host-installed executor drives, and the workflow
+# channel's answers. Requires export_tp_env first (TP_ENV, TP_CLAIM_UNASSIGNED,
+# TP_REPO, TP_WORKFLOW, TP_AUTO_ACCEPT_REVIEWS, TP_REVIEWER). The template belongs to
+# the loop skill: the supervisor is what reads it.
+#
+# The three workflow keys are added with `ensure_env_key` as well, so an install that
+# predates them learns them on the next run without any existing value being touched —
+# a host that had deliberately set `AUTO_ACCEPT_REVIEWS=no` keeps it.
 write_host_config() {
   emit_loop_file "host/meerkat-taskpanel.env" "$TP_ENV"
   ensure_env_key "MEERKAT_TASKPANEL_REPO" "$TP_REPO"
+  ensure_env_key "MEERKAT_TASKPANEL_RECOVER_STALE" "$TP_RECOVER_STALE"
+  ensure_env_key "MEERKAT_TASKPANEL_WORKFLOW" "$TP_WORKFLOW"
+  ensure_env_key "MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS" "$TP_AUTO_ACCEPT_REVIEWS"
+  ensure_env_key "MEERKAT_TASKPANEL_REVIEWER" "$TP_REVIEWER"
+  ensure_env_key "MEERKAT_TASKPANEL_ACCEPTANCE_POLICY" "$TP_ACCEPTANCE_POLICY"
+  ensure_env_key "MEERKAT_TASKPANEL_PING_INTERVAL" "$TP_PING_INTERVAL"
+  ensure_env_key "MEERKAT_TASKPANEL_CONTINUE_INTERVAL" "$TP_CONTINUE_INTERVAL"
+  ensure_env_key "MEERKAT_TASKPANEL_CONTINUE" "$TP_CONTINUE"
 }
 
 # ---------------------------------------------------------------------------

@@ -21,6 +21,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const PLANNED = [
   "index.mjs",
   "bootstrap.mjs",
+  // M6 — the board's acceptance policy (read from taskd.env, per decision).
+  "acceptance-policy.mjs",
   "domain/enums.mjs",
   "domain/status.mjs",
   "domain/awaiting.mjs",
@@ -70,12 +72,18 @@ const PLANNED = [
   "commands/tasks.mjs",
   "commands/tasks-input.mjs",
   "commands/reports.mjs",
+  // The one delivery-shaped report insert, shared by reports/ and rollup/.
+  "commands/delivery-report.mjs",
+  // M6 — the acceptance guards shared by moveStatus and deliver.
+  "commands/acceptance.mjs",
   "commands/comments.mjs",
   "commands/relations.mjs",
   "commands/rollup.mjs",
   "commands/dictionary.mjs",
   "commands/labels.mjs",
   "commands/agent-sessions.mjs",
+  // The attachment surface's write half (bytes + row, one transaction).
+  "commands/attachments.mjs",
   "commands/index.mjs",
 ];
 

@@ -19,6 +19,7 @@ import { join } from "node:path";
 import test, { after, before, describe, it } from "node:test";
 
 import { createTaskd } from "../../src/server/index.mjs";
+import { intOrUndefined, truthy } from "../../src/server/requests.mjs";
 import { SSE_NOISE_EVENTS } from "../../src/shared/constants.mjs";
 
 const tempDirs = [];
@@ -828,7 +829,18 @@ describe("server/routes — candidates (the poll read)", () => {
     );
     assert.deepEqual(
       Object.keys(candidates.candidates[0]).sort(),
-      ["id", "identifier", "priority", "project", "reason", "sort", "status", "title"],
+      [
+        "id",
+        "identifier",
+        "priority",
+        "project",
+        "reason",
+        "review_of",
+        "review_round",
+        "sort",
+        "status",
+        "title",
+      ],
       "no `target` — the board owns no project directory (O3)",
     );
     assert.equal(candidates.candidates[0].status, "todo");
@@ -1059,5 +1071,71 @@ describe("server/routes — a blocks edge may not join an ancestor and a descend
       [[sibling.id, child.id]],
       "only the sibling edge the previous case accepted was written",
     );
+  });
+});
+
+describe("server/routes — the acceptance wire (M6)", () => {
+  it("projects parent_id and the structural review marker", async () => {
+    const epic = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "demo",
+        title: "Wire container",
+        kind: "epic",
+        allow_dup: true,
+      }),
+    ).task;
+    const child = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "demo",
+        title: "Wire child",
+        allow_dup: true,
+      }),
+    ).task;
+    dataOf(
+      await call("POST", `/api/v1/tasks/${epic.identifier}/relations`, {
+        type: "parent",
+        target: child.id,
+      }),
+    );
+    const review = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "demo",
+        title: "Wire review",
+        allow_dup: true,
+        review_of: child.identifier,
+        meta: { review_round: 2, flow: "B" },
+      }),
+    ).task;
+
+    assert.equal(child.review_of_id, null, "an ordinary card carries no marker");
+    assert.equal(epic.parent_id, null);
+
+    const listed = dataOf(await call("GET", "/api/v1/tasks?project_id=demo&limit=500"));
+    const byId = new Map(listed.tasks.map((task) => [task.id, task]));
+    assert.equal(byId.get(child.id).parent_id, epic.id, "the child names its container");
+    assert.equal(byId.get(epic.id).parent_id, null);
+    assert.equal(byId.get(review.id).review_of_id, child.id, "the id, not the identifier");
+    assert.equal(byId.get(review.id).review_round, 2);
+    assert.equal(byId.get(review.id).parent_id, null);
+
+    const single = dataOf(await call("GET", `/api/v1/tasks/${child.identifier}`));
+    assert.equal(single.task.parent_id, epic.id, "the single read projects it too");
+  });
+});
+
+describe("server/requests — query-string coercions", () => {
+  it("reads the liberal boolean vocabulary", () => {
+    for (const word of ["1", "true", "yes", "on"]) assert.equal(truthy(word), true, word);
+    for (const word of ["0", "false", "no", "off", "", null, undefined]) {
+      assert.equal(truthy(word), false, String(word));
+    }
+  });
+
+  it("parses an integer or says nothing", () => {
+    assert.equal(intOrUndefined("12"), 12);
+    assert.equal(intOrUndefined(" 7 "), 7);
+    for (const value of ["", null, undefined, "x"]) {
+      assert.equal(intOrUndefined(value), undefined, String(value));
+    }
   });
 });

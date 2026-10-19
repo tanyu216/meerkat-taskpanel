@@ -196,10 +196,21 @@ export function absorb(entry) {
  * the time they open it — no second connection, no second poll. */
 onActivityStream(absorb);
 
+/**
+ * Which fan-out owns the ledger. Two reads can overlap — a project switch starts
+ * the next one while the previous project's is still in the air — and only the
+ * newest may commit or clear `loading`: a stale `finally` hiding the skeleton
+ * mid-read (or a stale merge replacing the new project's rows) is exactly the
+ * flash this store must not produce.
+ */
+let loadToken = 0;
+
 /** Drop everything and forget the project the entries came from. */
 export function resetActivity() {
+  loadToken += 1;
   activity.entries = [];
   activity.loaded = false;
+  activity.loading = false;
   activity.page = 1;
   activity.projectId = null;
   activity.error = null;
@@ -215,6 +226,7 @@ export function resetActivity() {
  * empty state is what says whether anything came back.
  */
 export async function loadActivities() {
+  const token = ++loadToken;
   const projectId = board.currentProjectId;
   if (projectId === null || projectId === undefined) {
     resetActivity();
@@ -245,6 +257,9 @@ export async function loadActivities() {
       }
     });
     await Promise.all(workers);
+    // A fan-out the store has already left behind (another project, or a reset)
+    // is history: it may not merge into the ledger that replaced it.
+    if (token !== loadToken) return activity.entries;
     // The stream may have delivered rows while the fan-out was in flight; the
     // merge is by id, so nothing is counted twice and nothing is lost.
     const byId = new Map(activity.entries.map((entry) => [entry.id, entry]));
@@ -257,10 +272,10 @@ export async function loadActivities() {
     // settles on `loaded` the moment the board stops loading.
     activity.loaded = !board.loading;
   } catch (err) {
-    activity.error = err;
+    if (token === loadToken) activity.error = err;
     throw err;
   } finally {
-    activity.loading = false;
+    if (token === loadToken) activity.loading = false;
   }
   return activity.entries;
 }

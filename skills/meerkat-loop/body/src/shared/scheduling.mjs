@@ -7,7 +7,7 @@
  * load-bearing rules are decided without a clock, a process or a database:
  *
  *   * **fire-only.** A scan with no candidates plans no work, so no worker is
- *     ever started for an empty tick — the whole point of the cheap 1-minute poll.
+ *     ever started for an empty scan — the whole point of the cheap poll entry.
  *   * **atomic claim = the only dispatch.** The plan says *what* to wake; the
  *     runner claims first and only wakes a card whose claim was accepted.
  *   * **idempotent.** A card already in the running registry — or offered twice
@@ -20,20 +20,42 @@
  * `errors.mjs` (both pure) are used here.
  */
 
-import { CLAIM_STALE_SAME_MS } from "./constants.mjs";
+import { ACCEPTANCE_POLICIES, CLAIM_STALE_SAME_MS, DEFAULT_ACCEPTANCE_POLICY } from "./constants.mjs";
+import { parseEnvBool, parseEnvText } from "./env-file.mjs";
 import { DomainError } from "./errors.mjs";
 
 /** Default cap on concurrently running workers. */
 export const DEFAULT_MAX_CONCURRENCY = 8;
-/** Default poll cadence, seconds — the cheap 1-minute scan. */
-export const DEFAULT_POLL_SECONDS = 60;
-/** Default patrol cadence, seconds — the 5-minute fallback. */
+/** The SLA measurement period, seconds — no longer a scheduling cadence. */
 export const DEFAULT_PATROL_SECONDS = 300;
+/**
+ * Default ping cadence, seconds — the scheduler's liveness clock. Ping only
+ * prunes dead worker pids from the registry; it never reads the board.
+ */
+export const DEFAULT_PING_SECONDS = 60;
+/**
+ * Default continue cadence, seconds — the scheduler's judgment clock. A
+ * continue turn wakes the host agent with a bounded prompt; that turn runs the
+ * deterministic poll, patrol and workflow entries.
+ */
+export const DEFAULT_CONTINUE_SECONDS = 600; // 10 minutes
 /** A claim older than this is "stale" for patrol (same-holder recovery window). */
 export const PATROL_STALE_MS = CLAIM_STALE_SAME_MS;
 
-const TRUE_WORDS = new Set(["yes", "true", "1", "y", "on"]);
-const FALSE_WORDS = new Set(["no", "false", "0", "n", "off"]);
+
+/**
+ * Quote one argv element for a shell command line. The continue prompt embeds
+ * the deterministic entries' argv, so a path with a space must survive a copy
+ * into a shell unchanged.
+ *
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function quoteArg(value) {
+  const text = String(value ?? "");
+  if (text !== "" && /^[A-Za-z0-9_./:=@%+-]+$/.test(text)) return text;
+  return `'${text.replace(/'/g, "'\\''")}'`;
+}
 
 /**
  * Parse a yes/no-ish string into a boolean, or `null` when it says nothing.
@@ -41,11 +63,7 @@ const FALSE_WORDS = new Set(["no", "false", "0", "n", "off"]);
  * @returns {boolean|null}
  */
 export function parseYesNo(value) {
-  if (typeof value !== "string") return null;
-  const word = value.trim().toLowerCase();
-  if (TRUE_WORDS.has(word)) return true;
-  if (FALSE_WORDS.has(word)) return false;
-  return null;
+  return parseEnvBool(value, { shortForms: true });
 }
 
 /**
@@ -56,21 +74,7 @@ export function parseYesNo(value) {
  * @returns {Record<string, string>}
  */
 export function parseEnvFile(text) {
-  const out = {};
-  for (const raw of String(text ?? "").split("\n")) {
-    const line = raw.trim();
-    if (line === "" || line.startsWith("#")) continue;
-    const body = line.startsWith("export ") ? line.slice(7).trim() : line;
-    const eq = body.indexOf("=");
-    if (eq === -1) continue;
-    const key = body.slice(0, eq).trim();
-    let value = body.slice(eq + 1).trim();
-    if (value.length >= 2 && ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))) {
-      value = value.slice(1, -1);
-    }
-    if (key !== "") out[key] = value;
-  }
-  return out;
+  return Object.fromEntries(parseEnvText(text, { quoteMinLength: 2, skipEmptyKey: true }));
 }
 
 /**
@@ -101,6 +105,175 @@ export function resolveClaimUnassigned(input = {}) {
 }
 
 /**
+ * The effective stale-recovery policy.
+ *
+ * A stale `in_progress` card (heartbeat past the same-holder bound, or past the
+ * six-hour takeover bound) is offered by `issue candidates --stale` and claimed
+ * through `issue claim`. Like the public pool, it is an opt-out: a supervisor
+ * that should never take over somebody else's card runs with `no`.
+ *
+ * Precedence is the same as `resolveClaimUnassigned`: **flag > environment >
+ * installer's host config > default on**.
+ *
+ * @param {{flag?: unknown, env?: unknown, file?: Record<string, string>|null}} [input]
+ * @returns {boolean}
+ */
+export function resolveRecoverStale(input = {}) {
+  const fromFlag = parseYesNo(input.flag);
+  if (fromFlag !== null) return fromFlag;
+  const fromEnv = parseYesNo(input.env);
+  if (fromEnv !== null) return fromEnv;
+  const file = input.file ?? null;
+  const fromFile = parseYesNo(file === null ? undefined : file.MEERKAT_TASKPANEL_RECOVER_STALE);
+  if (fromFile !== null) return fromFile;
+  return true;
+}
+
+/**
+ * Whether the scheduler wakes the host's periodic judgment turn.
+ *
+ * Precedence is the same as `resolveClaimUnassigned`: **flag > environment >
+ * installer's host config > default on**. Turning it off leaves the ping clock
+ * running (worker liveness) but discovers no new work until a human runs the
+ * poll entry.
+ *
+ * @param {{flag?: unknown, env?: unknown, file?: Record<string, string>|null}} [input]
+ * @returns {boolean}
+ */
+export function resolveContinueEnabled(input = {}) {
+  const fromFlag = parseYesNo(input.flag);
+  if (fromFlag !== null) return fromFlag;
+  const fromEnv = parseYesNo(input.env);
+  if (fromEnv !== null) return fromEnv;
+  const file = input.file ?? null;
+  const fromFile = parseYesNo(file === null ? undefined : file.MEERKAT_TASKPANEL_CONTINUE);
+  if (fromFile !== null) return fromFile;
+  return true;
+}
+
+/**
+ * A positive cadence in seconds. `file` is the *value* read from the host
+ * config (not the whole map); invalid values are ignored rather than allowed
+ * to wedge a clock.
+ *
+ * @param {{flag?: unknown, env?: unknown, file?: unknown, fallback?: number}} [input]
+ * @returns {number}
+ */
+export function resolveIntervalSeconds(input = {}) {
+  const fallback =
+    Number.isInteger(input.fallback) && input.fallback > 0 ? input.fallback : DEFAULT_CONTINUE_SECONDS;
+  for (const value of [input.flag, input.env, input.file]) {
+    if (value === undefined || value === null || value === "") continue;
+    const number = typeof value === "number" ? value : Number.parseInt(String(value).trim(), 10);
+    if (Number.isInteger(number) && number > 0) return number;
+  }
+  return fallback;
+}
+
+/** Default cap on writes one workflow pass may perform. */
+export const DEFAULT_WORKFLOW_MAX_ACTIONS = 20;
+/** Default age, in minutes, before a silent review card is reported. */
+export const DEFAULT_REVIEW_AGING_MINUTES = 60;
+
+/**
+ * The workflow sub-pass's configuration.
+ *
+ * Same precedence as `resolveClaimUnassigned` — **flag > environment > host
+ * config file > default** — and the same tolerance: an unrecognised yes/no word
+ * is ignored rather than treated as `false`, so a stray value cannot silently
+ * disable the channel. The two booleans mean different things:
+ *
+ *   * `workflow` is the whole channel. Off means the loop writes no card at all.
+ *   * `autoAcceptReviews` gates **only** the review card's own
+ *     `in_review → done`. With it off the loop still applies the verdict to the
+ *     original card and leaves the review card for a human to accept — the
+ *     documented escape hatch back to manual acceptance.
+ *
+ * An empty reviewer is "not configured", not an empty name: review dispatch is
+ * skipped and the rest of the channel (reconcile + outcomes) still runs, so a
+ * deployment that later drops its reviewer can still finish the reviews already
+ * in flight.
+ *
+ * @param {{flags?: object, env?: object, file?: Record<string, string>|null}} [input]
+ * @returns {{workflow: boolean, reviewer: string|null, autoAcceptReviews: boolean, maxActions: number, reviewAgingMs: number}}
+ */
+export function resolveWorkflowConfig(input = {}) {
+  const flags = input.flags ?? {};
+  const env = input.env ?? {};
+  const file = input.file ?? {};
+
+  const firstYesNo = (...values) => {
+    for (const value of values) {
+      const parsed = parseYesNo(value);
+      if (parsed !== null) return parsed;
+    }
+    return null;
+  };
+  const firstText = (...values) => {
+    for (const value of values) {
+      if (typeof value !== "string") continue;
+      const trimmed = value.trim();
+      if (trimmed !== "") return trimmed;
+    }
+    return null;
+  };
+  const firstPositive = (...values) => {
+    for (const value of values) {
+      const number = typeof value === "number" ? value : Number.parseInt(String(value ?? "").trim(), 10);
+      if (Number.isInteger(number) && number > 0) return number;
+    }
+    return null;
+  };
+  const firstAcceptancePolicy = (...values) => {
+    for (const value of values) {
+      if (typeof value !== "string") continue;
+      const text = value.trim().toLowerCase();
+      if (ACCEPTANCE_POLICIES.includes(text)) return text;
+    }
+    return DEFAULT_ACCEPTANCE_POLICY;
+  };
+
+  return {
+    workflow:
+      firstYesNo(flags.workflow, env.MEERKAT_TASKPANEL_WORKFLOW, file.MEERKAT_TASKPANEL_WORKFLOW) ?? true,
+    // The board's acceptance policy, as the loop believes it. The board is
+    // authoritative (`<dataDir>/taskd.env`); this copy is what the installer
+    // remembered. A drift is visible: the board refuses the loop's move with
+    // `ACCEPTANCE_FORBIDDEN`, and the runner leaves the review card in place.
+    // An unrecognised value falls back to the default rather than wedging the
+    // loop — the board will still refuse what it must.
+    acceptancePolicy: firstAcceptancePolicy(
+      flags.acceptance,
+      env.MEERKAT_TASKPANEL_ACCEPTANCE_POLICY,
+      file.MEERKAT_TASKPANEL_ACCEPTANCE_POLICY,
+    ),
+    reviewer: firstText(
+      flags.reviewer,
+      env.MEERKAT_TASKPANEL_REVIEWER,
+      file.MEERKAT_TASKPANEL_REVIEWER,
+    ),
+    autoAcceptReviews:
+      firstYesNo(
+        flags.autoAcceptReviews,
+        env.MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS,
+        file.MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS,
+      ) ?? true,
+    maxActions:
+      firstPositive(
+        flags.workflowMaxActions,
+        env.MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS,
+        file.MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS,
+      ) ?? DEFAULT_WORKFLOW_MAX_ACTIONS,
+    reviewAgingMs:
+      (firstPositive(
+        flags.reviewAgingMinutes,
+        env.MEERKAT_TASKPANEL_REVIEW_AGING_MINUTES,
+        file.MEERKAT_TASKPANEL_REVIEW_AGING_MINUTES,
+      ) ?? DEFAULT_REVIEW_AGING_MINUTES) * 60_000,
+  };
+}
+
+/**
  * Classify a stored `heartbeat_at`.
  *
  * Returns a *reason* rather than `null` for a heartbeat that is absent or
@@ -127,14 +300,6 @@ export function parseHeartbeat(value) {
  * @param {string|number} now
  * @returns {number|null}
  */
-export function heartbeatAge(value, now) {
-  const parsed = parseHeartbeat(value);
-  if (!parsed.ok) return null;
-  const age = new Date(now).getTime() - parsed.at;
-  if (!Number.isFinite(age) || age < 0) return null;
-  return age;
-}
-
 /** The number of cards a registry currently records as running. */
 function runningCount(registry) {
   const running = registry?.running;
@@ -242,17 +407,23 @@ export function pruneRegistry(registry, isAlive) {
 }
 
 /**
- * The `taskctl issue candidates` argv for one agent. `--include-unassigned`
- * asks the board for the public pool (unassigned, claimable cards) as well as
- * the agent's own — the same read, one process, no extra policy here.
+ * The `taskctl issue candidates` argv for one agent.
+ *
+ * `--include-unassigned` asks the board for the public pool (unassigned,
+ * claimable cards) as well as the agent's own; `--stale` asks for the recovery
+ * pool (in_progress cards whose heartbeat is past the holder bound, or past the
+ * six-hour takeover bound for anyone). Each is a read flag — the *claim* is
+ * still the board's decision, via `issue claim`.
  *
  * @param {string} agent
  * @param {boolean} claimUnassigned
+ * @param {boolean} [recoverStale]
  * @returns {string[]}
  */
-export function candidateArgs(agent, claimUnassigned) {
+export function candidateArgs(agent, claimUnassigned, recoverStale = false) {
   const args = ["issue", "candidates", "--assignee", String(agent)];
   if (claimUnassigned) args.push("--include-unassigned");
+  if (recoverStale) args.push("--stale");
   return args;
 }
 
@@ -390,32 +561,196 @@ export function planWakeInvocation(input = {}) {
 }
 
 /**
+ * What the scheduler spawns for one **continue** turn.
+ *
+ * A continue turn is not a card wake: it has no card, no project identity and
+ * no session to resume. So it always takes the host's built-in headless form
+ * and never the wake glue — the glue exists to resolve a card's project target
+ * directory, and `wake-cwd.mjs` refuses an empty project rather than guessing
+ * one. `TP_NODE` is still carried so a nested glue (started by the workers the
+ * turn wakes) finds the interpreter this scheduler is running on.
+ *
+ * @param {{host: string, prompt: string, cwd?: string|null, nodePath?: string|null}} input
+ * @returns {{command: string, args: string[], env: Record<string,string>, cwd: string|null, via: "direct"}}
+ */
+export function planContinueInvocation(input = {}) {
+  const prompt = String(input.prompt ?? "");
+  const cwd = input.cwd ?? null;
+  const env = {};
+  if (input.nodePath !== undefined && input.nodePath !== null && String(input.nodePath) !== "") {
+    env.TP_NODE = String(input.nodePath);
+  }
+  return { ...wakeCommand({ host: input.host, prompt }), env, cwd, via: "direct" };
+}
+
+/**
  * The fresh handoff handed to a woken worker — bounded so a wake never carries
  * an unbounded context. It names the card, the attribution flags every write
- * should carry, and the compliant next step (read, work, report).
+ * should carry, and the compliant next step (triage, read, work, report).
+ *
+ * **Step 0 is the epic-triage decision**, and it lives in the handoff rather
+ * than in a separate planner process: the worker is the only process that has
+ * already read the card when the answer is cheap, and the claim→wake path is
+ * the one place the loop can afford to ask. A card with several independent
+ * deliverables is promoted to `epic` and split into children *before* any work
+ * starts; a card with one deliverable proceeds untouched.
  *
  * The handoff names no workspace (O3): a card carries no board-owned directory,
  * so the wake must not hand one to the worker.
  *
- * @param {{card?: object, agent: string, host: string, sessionId?: string|null}} input
+ * @param {{card?: object, agent: string, host: string, sessionId?: string|null, review?: boolean}} input
  * @returns {string}
  */
 export function buildHandoff(input) {
   const card = input.card ?? {};
   const title = String(card.title ?? "").slice(0, 300);
+  const ref = card.identifier;
+  const project = card.project ?? "<project id>";
   const attribution = [`--agent ${input.agent}`, `--actor-kind ${input.host}`];
   if (input.sessionId) attribution.push(`--session-id ${input.sessionId}`);
+  const flags = attribution.join(" ");
+  const acceptanceRule = input.review === true
+    ? "stop at in_review — the loop dispatches an independent reviewer; do not move it to done yourself."
+    : "stop at in_review — a human accepts to done.";
   return [
-    `You have been woken by the Meerkat TaskPanel supervisor to work one card: ${card.identifier}.`,
+    `You have been woken by the Meerkat TaskPanel supervisor to work one card: ${ref}.`,
     `Title: ${title}`,
     "",
-    `Read it first:  taskctl issue get ${card.identifier} ${attribution.join(" ")}`,
-    `Keep the claim alive while you work:  taskctl issue heartbeat ${card.identifier} ${attribution.join(" ")}`,
-    `Work it, then deliver with a report:  taskctl issue deliver ${card.identifier} --report-file - ${attribution.join(" ")}`,
+    "Step 0 — before working, decide whether this card is a container:",
+    `  taskctl issue get ${ref} ${flags}    # read the description and the acceptance list`,
+    "  If it contains several independent deliverables, promote it and split it FIRST:",
+    `    taskctl issue update ${ref} --kind epic ${flags}`,
+    `    taskctl issue move ${ref} todo ${flags}      # an epic is never claimed; release this wake's claim`,
+    `    taskctl comment add ${ref} --kind change --body "split into: ..." ${flags}`,
+    `    taskctl issue create --project ${project} --title "..." --acceptance "..." --target "<piece>" ${flags}`,
+    `    taskctl relation add ${ref} --type parent --target <child> ${flags}`,
+    `    taskctl issue move <child> in_progress ${flags}    # claim ONE piece and work that`,
+    "    Give every child its own --target: the create guard dedupes on kind+assignee+source+target.",
+    "    meta.epic_triage=off means do not promote; if you split, record the plan in a change comment.",
+    "  If there is one deliverable, work this card as it is (the epic is then never claimed).",
     "",
-    "Rules: claim first (the supervisor already claimed this card for you); keep the heartbeat",
-    "fresh (<=10 minutes) with the pulse command above; deliver with a report for the current",
-    "round; stop at in_review — a human accepts to done. Carry the attribution flags above on",
-    "every write.",
+    `Read it first:  taskctl issue get ${ref} ${flags}`,
+    `Keep the claim alive:  taskctl issue heartbeat ${ref} ${flags}`,
+    `Deliver with a report:  taskctl issue deliver ${ref} --report-file - ${flags}`,
+    "",
+    "Rules: the supervisor already claimed this card for you; after a split, the heartbeat and",
+    "the delivery apply to the claimed CHILD, not to the epic. Keep the heartbeat fresh",
+    "(<=10 minutes) with the pulse command above; deliver with a report for the current round;",
+    `${acceptanceRule} Carry the attribution flags above on every write.`,
+  ].join("\n");
+}
+
+/**
+ * The handoff handed to a **reviewer** woken for a review card.
+ *
+ * A reviewer is an independent agent, not the card's worker: it reads the
+ * original, the delivery report, the comment trail and the container's children,
+ * and delivers exactly one thing — a verdict report on the review card. It moves
+ * nothing: the loop is the acceptor (`autoAcceptReviews` is the escape hatch
+ * back to a human). The `review_not_ready` check is first because the board may
+ * have moved between the dispatch and the wake, and a verdict on a card that is
+ * no longer delivered is worse than no verdict at all.
+ *
+ * @param {{card?: object, agent: string, host: string, sessionId?: string|null}} input
+ * @returns {string}
+ */
+export function buildReviewHandoff(input) {
+  const card = input.card ?? {};
+  const ref = card.identifier;
+  const original = card.review_of ?? "<card under review>";
+  const round = card.review_round ?? "the round recorded on the review card";
+  const attribution = [`--agent ${input.agent}`, `--actor-kind ${input.host}`];
+  if (input.sessionId) attribution.push(`--session-id ${input.sessionId}`);
+  const flags = attribution.join(" ");
+  return [
+    `You have been woken by the Meerkat TaskPanel supervisor to review one delivered card.`,
+    `Review card: ${ref}`,
+    `Card under review: ${original} (round ${round})`,
+    "",
+    "Step 0 — the review_not_ready check; do it before reading anything else:",
+    `  taskctl issue get ${original} ${flags}`,
+    "  If its status is not in_review, or its delivery_round is not the round above:",
+    `    taskctl comment add ${ref} --kind note --body "review target is no longer in_review / the round changed" ${flags}`,
+    "    and stop. Do not deliver a verdict; the loop will close this review card.",
+    "",
+    "Read:",
+    `  taskctl issue get ${ref} ${flags}`,
+    `  taskctl report list ${original} ${flags}`,
+    `  taskctl comment list ${original} --limit 200 ${flags}`,
+    `  taskctl relation list ${original} ${flags}     # an epic's children`,
+    "Audit the description, every acceptance item, the delivery report for this round and its",
+    "evidence, the comment trail (unresolved decision/defect entries), and — for an epic — the",
+    "rollup report and each child's state.",
+    "",
+    "Deliver:",
+    `  taskctl report template ${ref}   # fill it in, then:`,
+    `  taskctl issue deliver ${ref} --report-file - ${flags}`,
+    "The report's FIRST line must be exactly `VERDICT: APPROVE` or `VERDICT: REJECT`.",
+    "Put the findings after that line and in `leftovers`.",
+    "",
+    "Rules: claim and heartbeat only this review card, never the card under review. Do not move",
+    "the card under review and do not move this review card: the loop applies the verdict and",
+    "closes this card. Carry the attribution flags above on every write.",
+  ].join("\n");
+}
+
+/**
+ * The bounded prompt for the scheduler's periodic **continue** turn.
+ *
+ * The loop's deterministic work is no longer scheduled as its own units: this
+ * turn is where poll, patrol and workflow are invoked. The prompt is therefore
+ * self-contained — absolute entry paths, the order to run them in, and the
+ * board rules that must not be broken — because a headless host may run it
+ * without the loop skill loaded.
+ *
+ * Order is **patrol → workflow → poll**: the workflow pass dispatches a review
+ * card, and the poll that follows in the same turn can claim and wake its
+ * reviewer immediately; polling first would delay that review by a whole
+ * cadence.
+ *
+ * It names no card and no project directory on purpose. A continue turn is
+ * not a worker wake, and the board holds no project directory to name.
+ *
+ * @param {{
+ *   host?: string,
+ *   agent?: string,
+ *   nodePath?: string|null,
+ *   scripts?: {poll?: string, patrol?: string, workflow?: string},
+ *   commonArgs?: string[],
+ *   continueIntervalSeconds?: number,
+ * }} [input]
+ * @returns {string}
+ */
+export function buildContinuePrompt(input = {}) {
+  const node = quoteArg(input.nodePath ?? "node");
+  const agent = String(input.agent ?? "agent");
+  const host = String(input.host ?? "claude");
+  const scripts = input.scripts ?? {};
+  const common = (input.commonArgs ?? []).map(quoteArg).join(" ");
+  const minutes = Math.max(
+    1,
+    Math.round((input.continueIntervalSeconds ?? DEFAULT_CONTINUE_SECONDS) / 60),
+  );
+  const run = (script) => `${node} ${quoteArg(script)}${common === "" ? "" : ` ${common}`}`;
+
+  return [
+    "继续 — Meerkat TaskPanel loop, judgment turn.",
+    "No card and no project directory: this is the loop's periodic turn, not a worker wake.",
+    "",
+    "Run in order, each one pass:",
+    `  1) ${run(scripts.patrol)}   # notify-only SLA; never moves a card`,
+    `  2) ${run(scripts.workflow)}   # reconcile / review dispatch / verdicts (system)`,
+    `  3) ${run(scripts.poll)}   # scan → atomic claim → wake a worker`,
+    "",
+    `You may claim a ready card yourself (\`taskctl issue claim <ref> --agent ${agent}\`)`,
+    "when judgment says it must start now; never claim work you will not start.",
+    "",
+    "Rules:",
+    "- Never move a card to done. in_review → done is the workflow entry's system acceptance.",
+    "- A reviewer moves nothing; it delivers a VERDICT report on its review card.",
+    "- Stop work at in_review: deliver a report, do not self-accept.",
+    "- Keep this turn bounded: start workers and return; do not wait for them.",
+    "- At the concurrency cap, leave the card for the next turn.",
+    `- Host: ${host}. This turn repeats every ${minutes} minute${minutes === 1 ? "" : "s"}.`,
   ].join("\n");
 }

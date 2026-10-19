@@ -381,11 +381,14 @@ describe("route-request.mjs — the CLI", () => {
     // into one `/actors` route; it was 33 after T-20261014-212017-4 added the
     // three attachment metadata routes (POST|GET /tasks/:ref/attachments,
     // DELETE /attachments/:id); 33 again after T-20261017-063818 added
-    // POST /tasks/:ref/heartbeat.
-    assert.match(result.stdout, /route-request: OK — 34 routes/);
-    // Seven since T-20261017-063818 declared `tasks.heartbeat` alongside the six
+    // POST /tasks/:ref/heartbeat. 36 since the Access panel gained its
+    // loopback-only GET + PUT /api/v1/access pair.
+    // 37 since the claim/reclaim verb added POST /tasks/:ref/claim — the one
+    // claim path that is not a status transition (`in_progress → in_progress`).
+    assert.match(result.stdout, /route-request: OK — 37 routes/);
+    // Eight since the claim verb declared `tasks.claim` beside the seven
     // commands that already projected their input.
-    assert.match(result.stdout, /7 command inputs paired/);
+    assert.match(result.stdout, /8 command inputs paired/);
     assert.match(result.stdout, /5 out-of-router endpoints acknowledged/);
   });
 

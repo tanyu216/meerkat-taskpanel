@@ -34,10 +34,10 @@
  */
 
 import { kindLabel } from "./actor-kind.js";
+import { TIME_RUNGS_THREE, timeLadder } from "./time.js";
 
 const MINUTE = 60_000;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
+const DAY = 24 * 60 * MINUTE;
 
 /** §5 — the fold window: one "operating round" of edits. */
 export const BURST_WINDOW_MS = 5 * MINUTE;
@@ -82,13 +82,21 @@ export const ADMITTED_EVENTS = Object.freeze({
   task_created: Object.freeze({ kind: "created", verb: "created", group: "meta" }),
   task_claimed: Object.freeze({ kind: "claimed", verb: "claimed", group: "meta" }),
   task_moved: Object.freeze({ kind: "status", verb: "status", group: "status" }),
-  task_archived: Object.freeze({ kind: "status", verb: "status", group: "status" }),
+  // Archive is a terminal act, not a transition to a status of its own; its
+  // `changes.from` names the stage it left.
+  task_archived: Object.freeze({ kind: "archived", verb: "status", group: "status" }),
   task_delivered: Object.freeze({ kind: "delivery", verb: "delivered", group: "delivery" }),
   report_written: Object.freeze({ kind: "delivery", verb: "delivered", group: "delivery" }),
   report_waived: Object.freeze({ kind: "delivery", verb: "delivered", group: "delivery" }),
   comment_added: Object.freeze({ kind: "comment", verb: "commented", group: "comment" }),
   relation_added: Object.freeze({ kind: "relation", verb: "linked", group: "meta" }),
   relation_removed: Object.freeze({ kind: "relation", verb: "linked", group: "meta" }),
+  // The parent's own start: a child entered work and the board moved the epic.
+  epic_auto_start: Object.freeze({ kind: "status", verb: "status", group: "status" }),
+  attachment_added: Object.freeze({ kind: "attachment", verb: "attached", group: "meta" }),
+  attachment_removed: Object.freeze({ kind: "attachment", verb: "attached", group: "meta" }),
+  // `attachment_updated` is a content replace, not a new file: it stays out of
+  // the human feed (the drawer's attachment list still refreshes from it).
 });
 
 /**
@@ -98,6 +106,12 @@ export const ADMITTED_EVENTS = Object.freeze({
  */
 export const TASK_UPDATED_KINDS = Object.freeze({
   labels: Object.freeze({ kind: "label", verb: "label" }),
+  // The command layer writes the **database field names**; the older role words
+  // are kept so a test or a historical frame still classifies.
+  assigneeId: Object.freeze({ kind: "assignee", verb: "assignee" }),
+  assigneeKind: Object.freeze({ kind: "assignee", verb: "assignee" }),
+  reporterId: Object.freeze({ kind: "assignee", verb: "assignee" }),
+  reporterKind: Object.freeze({ kind: "assignee", verb: "assignee" }),
   assignee: Object.freeze({ kind: "assignee", verb: "assignee" }),
   reporter: Object.freeze({ kind: "assignee", verb: "assignee" }),
   title: Object.freeze({ kind: "updated", verb: "updated" }),
@@ -117,11 +131,7 @@ export const BURST_KINDS = Object.freeze(["label", "assignee", "updated", "statu
 const pad = (n) => String(n).padStart(2, "0");
 
 /** `2026-10-05 11:20` — the absolute stamp the row's `title` carries. */
-export function absoluteStamp(iso) {
-  const date = new Date(iso);
-  if (!Number.isFinite(date.getTime())) return "";
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
+export { absoluteStamp } from "./time.js";
 
 /**
  * The row's visible time, on the feed's three-rung ladder: minutes under an
@@ -135,16 +145,7 @@ export function absoluteStamp(iso) {
  * @returns {{key: string, arg: number, absolute: string}|null}
  */
 export function feedTime(iso, now = Date.now()) {
-  const then = new Date(iso ?? NaN).getTime();
-  if (!Number.isFinite(then)) return null;
-  const delta = Math.max(0, now - then);
-  const step =
-    delta < HOUR
-      ? { key: "time.minutesAgo", arg: Math.round(delta / MINUTE) }
-      : delta < DAY
-        ? { key: "time.hoursAgo", arg: Math.round(delta / HOUR) }
-        : { key: "time.daysAgo", arg: Math.round(delta / DAY) };
-  return { ...step, arg: Math.max(1, step.arg), absolute: absoluteStamp(iso) };
+  return timeLadder(iso, now, TIME_RUNGS_THREE);
 }
 
 /** The local calendar day of an instant, as `YYYY-MM-DD` (§4 L1 `data-day`). */
@@ -362,6 +363,10 @@ export function changeLines(item) {
       if (changes.awaitingReason) lines.push({ field: "activity.detail.reason", kind: "status", value: String(changes.awaitingReason) });
       return lines;
     }
+    case "archived":
+      return changes.from
+        ? [{ field: "activity.detail.archived", kind: "status", value: String(changes.from) }]
+        : [];
     case "delivery": {
       const lines = [{ field: "activity.detail.delivery", kind: "delivery", value: `Round ${changes.round ?? changes.deliveryRound ?? ""}`.trim() }];
       if (changes.reason) lines.push({ field: "activity.detail.reason", kind: "delivery", value: String(changes.reason) });
@@ -375,6 +380,8 @@ export function changeLines(item) {
       return [{ field: "activity.detail.claimed", kind: "claimed", transition: { from: changes.from ?? "", to: changes.to ?? "" } }];
     case "relation":
       return [{ field: "activity.detail.relation", kind: "relation", value: `${changes.type ?? ""} ${changes.target ?? ""}`.trim() }];
+    case "attachment":
+      return [{ field: "activity.detail.attachment", kind: "attachment", value: String(changes.filename ?? "") }];
     case "label":
       return [{ field: "activity.detail.labels", kind: "label", tokens: (changes.labels ?? []).map((entry) => `+ ${entry.displayName ?? entry.norm ?? ""}`) }];
     case "assignee":

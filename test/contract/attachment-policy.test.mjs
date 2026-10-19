@@ -11,6 +11,7 @@
 import assert from "node:assert/strict";
 import test, { describe, it } from "node:test";
 
+import { sizeLabel } from "../../src/cli/commands/attachment.mjs";
 import {
   assertAttachmentSize,
   attachmentTooLargeError,
@@ -18,6 +19,7 @@ import {
   downloadContentType,
   normalizeAttachmentContentType,
 } from "../../src/shared/attachments.mjs";
+import { formatFileSize } from "../../web/src/lib/attachments.js";
 import { ATTACHMENT_CONTENT_TYPES, ATTACHMENT_MAX_BYTES } from "../../src/shared/constants.mjs";
 import { DomainError, toErrorPayload } from "../../src/shared/errors.mjs";
 
@@ -144,5 +146,18 @@ describe("shared/attachments — the byte ceiling", () => {
     assert.equal(payload.code, "ATTACHMENT_TOO_LARGE");
     assert.equal(payload.http, 413);
     assert.equal(payload.details.maxBytes, ATTACHMENT_MAX_BYTES);
+  });
+});
+
+describe("the two file-size formatters are one rule", () => {
+  // The CLI's `sizeLabel` and the web drawer's `formatFileSize` are separate
+  // copies because the web build cannot import `src/`. This is the pin that
+  // makes them one rule anyway: change either and this fails, rather than the
+  // drawer and the terminal quietly disagreeing about how big a file is.
+  it("renders the same bytes the same way on both sides of the build boundary", () => {
+    const cases = [0, 1, 512, 1023, 1024, 1536, 2048, 1024 * 1024 - 1, 1024 * 1024, 1.2 * 1024 * 1024, -1, "big", undefined, null];
+    for (const bytes of cases) {
+      assert.equal(sizeLabel(bytes), formatFileSize(bytes), String(bytes));
+    }
   });
 });

@@ -19,7 +19,7 @@ import test, { after, describe, it } from "node:test";
 import { createContext, readStdin, run, wantsJson } from "../../src/cli/index.mjs";
 import { COMMANDS as tokenCommands } from "../../src/cli/commands/token.mjs";
 import { allCommands, groups, registry } from "../../src/cli/commands/index.mjs";
-import { actorLabel, fields, orNone, table, taskLine } from "../../src/cli/output/human.mjs";
+import { actorLabel, fields, table, taskLine } from "../../src/cli/output/human.mjs";
 import { commandSynopsis, flagSynopsis, commandUsage, groupUsage, topLevelUsage, versionLine } from "../../src/cli/usage.mjs";
 import { CONTRACT_SCHEMA_VERSION, VERSION } from "../../src/shared/constants.mjs";
 
@@ -240,8 +240,6 @@ describe("cli/output/human", () => {
     assert.equal(fields([["a", 1], ["bb", null]]), "a   1\nbb  -");
     assert.equal(table(["only"], [["x"]]), "only\nx");
     assert.equal(table(["a", "b"], [[null, undefined]]), "a  b\n-  -");
-    assert.equal(orNone([]), "none");
-    assert.equal(orNone(["x", "y"]), "x\ny");
     assert.equal(actorLabel({ id: "a", display_name: "linus" }), "linus#a");
     assert.equal(actorLabel({ id: "a" }), "a#a");
     assert.equal(actorLabel(null), "-");

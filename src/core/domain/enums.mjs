@@ -45,12 +45,6 @@ export const STATUS = Object.freeze({
 });
 
 /**
- * The **stage** statuses — every canonical status except the `awaiting` overlay.
- * This is the board's column set; `awaiting` is never a member.
- */
-export const STAGE_STATUSES = Object.freeze(STATUSES.filter((status) => status !== STATUS.AWAITING));
-
-/**
  * Why a card needed a human (M1 · design §2.1). An **enumeration, never free
  * text** — `E1..E5` is the whole vocabulary:
  *
@@ -237,6 +231,7 @@ export const REPORT_ORIGINS = Object.freeze(["delivery", "import"]);
 /** Activity event names written to `task_activities`. */
 export const ACTIVITY_EVENTS = Object.freeze([
   "project_created",
+  "project_updated",
   "task_created",
   "task_updated",
   "task_claimed",
@@ -247,18 +242,25 @@ export const ACTIVITY_EVENTS = Object.freeze([
   "task_delivered",
   "report_waived",
   // The container's own start: a child entered the work and the board moved
-  // its epic `todo → in_progress` (a system move, never a claim).
+  // its epic `todo → in_progress` (an automated move, never a claim).
   "epic_auto_start",
   "comment_added",
   "relation_added",
   "relation_removed",
-  "dictionary_upsert",
   // The label GC's own audit row (§4.4: soft-delete + `task_activities`).
   "label_gc",
   "session_registered",
   "session_closed",
   "progress",
-  "anomaly",
+  // The attachment surface writes through its own routes, so its changes need
+  // their own rows: the activity stream is a cursor over this table, and a
+  // `global_revision` bump alone produces no frame.
+  "attachment_added",
+  "attachment_updated",
+  "attachment_removed",
+  // One row at the end of a whole-directory import. Per-card imports would
+  // storm the stream; the counters are enough to make a client reload.
+  "import_completed",
 ]);
 
 /**

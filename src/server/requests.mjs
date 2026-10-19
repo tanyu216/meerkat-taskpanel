@@ -138,3 +138,23 @@ export function project(op) {
   // it, and with the declaration both project.
   return { ...shape(properties, required), op };
 }
+
+// ---------------------------------------------------------------------------
+// Reading a query string
+//
+// The vocabulary above declares what a route accepts; these coerce what the
+// handler read. They live here rather than in a route module because five
+// sibling routes use them — a feature route is not the request-utils module.
+// ---------------------------------------------------------------------------
+
+/** `?include_archived=1|true|yes` — query strings have no types, so be liberal. */
+export function truthy(value) {
+  return value === "1" || value === "true" || value === "yes" || value === "on";
+}
+
+/** `?limit=50` — an integer, or undefined so the repository default applies. */
+export function intOrUndefined(value) {
+  if (value === null || value === undefined || value === "") return undefined;
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isInteger(parsed) ? parsed : undefined;
+}

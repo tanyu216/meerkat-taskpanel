@@ -19,23 +19,16 @@
  */
 
 import assert from "node:assert/strict";
-import { copyFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
-import { applyMigrations, defaultMigrationsDir } from "../../../src/core/storage/migrations-runner.mjs";
-import { TS, cleanupTempDirs, createTempBoard, insertTask, makeTempDir, reasonCode } from "../../helpers/sqlite-fixture.mjs";
+import { applyMigrations } from "../../../src/core/storage/migrations-runner.mjs";
+import { indexShapesOf, migrationsBefore, migrationsThrough, triggersOf } from "../../helpers/migration-shapes.mjs";
+import { TS, cleanupTempDirs, createTempBoard, insertTask, reasonCode } from "../../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);
 
 /** The shipped set **before** 0019 — a board as the previous build left it. */
-function before0019() {
-  const dir = makeTempDir("meerkat-taskpanel-pre0019-");
-  for (const name of readdirSync(defaultMigrationsDir()).filter((n) => n.endsWith(".sql") && n.slice(0, 4) < "0019")) {
-    copyFileSync(join(defaultMigrationsDir(), name), join(dir, name));
-  }
-  return dir;
-}
+const before0019 = migrationsBefore("0019", { prefix: "meerkat-taskpanel-pre0019-" });
 
 /**
  * The shipped set **through 0022** — everything this file's migration did, and
@@ -47,40 +40,16 @@ function before0019() {
  * migration's own test asserts the state *that migration* produces; `0023` has
  * its own (`migrations-0023.test.mjs`).
  */
-function through0022() {
-  const dir = makeTempDir("meerkat-taskpanel-through0022-");
-  for (const name of readdirSync(defaultMigrationsDir()).filter((n) => n.endsWith(".sql") && n.slice(0, 4) <= "0022")) {
-    copyFileSync(join(defaultMigrationsDir(), name), join(dir, name));
-  }
-  return dir;
-}
+const through0022 = migrationsThrough("0022", { prefix: "meerkat-taskpanel-through0022-" });
 
 const d = (n) => `2026-01-${String(n).padStart(2, "0")}T00:00:00.000Z`;
 const EARLY = "2025-12-01T00:00:00.000Z";
 const LATE = "2026-02-01T00:00:00.000Z";
 
-/** The named indexes on `tasks` — name, uniqueness, partiality, columns. */
-const indexShapes = (db) =>
-  db
-    .prepare("SELECT name, \"unique\" AS uniq, partial AS part FROM pragma_index_list('tasks')")
-    .all()
-    .filter((row) => !row.name.startsWith("sqlite_autoindex"))
-    .sort((a, b) => (a.name < b.name ? -1 : 1))
-    .map((row) => ({
-      name: row.name,
-      unique: Number(row.uniq),
-      partial: Number(row.part),
-      columns: db.prepare("SELECT name FROM pragma_index_info(?)").all(row.name).map((c) => c.name),
-    }));
-
-/** Every trigger's text, whitespace-normalised (whitespace is not meaning). */
-const triggersOf = (db) =>
-  Object.fromEntries(
-    db
-      .prepare("SELECT name, sql FROM sqlite_master WHERE type = 'trigger'")
-      .all()
-      .map((r) => [r.name, String(r.sql).replace(/\s+/g, " ").replace(/CREATE TRIGGER IF NOT EXISTS /i, "CREATE TRIGGER ").trim()]),
-  );
+// 0025 adds a review-marker index of its own. This comparison is about the
+// *rebuilt* table keeping the indexes it had; a later migration's own new index
+// is named here rather than the rule being loosened.
+const indexShapes = (db) => indexShapesOf(db, "tasks", { exclude: ["ix_tasks_review_of"] });
 
 const tableNames = (db) =>
   db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all().map((r) => r.name);

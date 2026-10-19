@@ -46,17 +46,6 @@ const STYLE_DIR = resolve(ROOT, "web/src/styles");
 
 const SKIP_BUILD = HAS_DIST ? false : "web/dist is not built — run `npm -w web run build`";
 
-/**
- * Hooks the contract lists but that a **ruling** deliberately drops.
- *
- * Ruling O6 renders B19's CIDR allow-list read-only: §5.1 defines no CIDR
- * read/write route and `/meta` exposes only `capabilities.allow_list` as a
- * boolean, so the "add range" / "remove range" controls are omitted rather than
- * shipped as dead buttons. The check below stays strict for everything else and
- * asserts this list is exactly these two, so the exemption cannot silently grow.
- */
-const READ_ONLY_EXEMPT = Object.freeze(["data-cidr-add", "data-cidr-remove"]);
-
 /** Every authored stylesheet, concatenated, with its filename for messages. */
 function readStyles() {
   const files = readdirSync(STYLE_DIR).filter((name) => name.endsWith(".css"));
@@ -131,10 +120,10 @@ describe("web/blocks.bundle — the hook surface survives the build", { skip: SK
 
     const missing = [...names].filter((name) => !bundle.includes(name)).sort();
     t.diagnostic(`scanned ${names.size} distinct hook attribute names against the bundle`);
-    const unexpected = missing.filter((name) => !READ_ONLY_EXEMPT.includes(name));
-    assert.deepEqual(unexpected, [], `these hooks are absent from the bundle: ${unexpected.join(", ")}`);
-    // The exemption must stay exactly the two O6 hooks — no silent growth.
-    assert.deepEqual(missing, [...READ_ONLY_EXEMPT].sort(), "the read-only exemption drifted");
+    // The B19 allow-list is editable since the access policy was persisted:
+    // `data-cidr-add` / `data-cidr-remove` are real controls now, so there is
+    // no exemption left to hold.
+    assert.deepEqual(missing, [], `these hooks are absent from the bundle: ${missing.join(", ")}`);
   });
 
   it("keeps every retired/forbidden hook out of the bundle", (t) => {

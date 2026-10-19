@@ -11,7 +11,8 @@ Documentation for Meerkat TaskPanel.
 | [migration.md](migration.md) | Taking over the team's markdown cards: the dry run, shadow (read-only) mode, the single-point switch and the rollback. |
 | [projects.md](projects.md) | What a project is, how its id becomes the identifier prefix, and why that prefix must be unique across projects. |
 | [contract.md](contract.md) | The API contract snapshot (routes + error codes + wire fields): what it freezes, the `--update` workflow, and the pre-push / pre-tag / CI gates. |
-| [scheduling.md](scheduling.md) | The two-layer poll/patrol model, the fire-only cost gate, the atomic-claim dispatch, the host-external supervisor, the three-host trigger differences, and why OpenClaw uses openclaw-team instead. |
+| [scheduling.md](scheduling.md) | The ping/continue scheduler, the deterministic loop entries, the fire-only cost gate, the atomic-claim dispatch, the event subscriber, the three-host trigger differences, and why OpenClaw uses openclaw-team instead. |
+| [events.md](events.md) | The live stream's event catalogue: every activity, its writer and payload, which surface consumes it, the feed's admission policy, the loop's dispatch whitelist, and the actor-kind rule. |
 | [web-local-first.md](web-local-first.md) | The board frontend is loopback-only: why a remote browser gets 401 (no token injection) and what implementing it would take. |
 | [`../skills/meerkat-taskpanel/SKILL.md`](../skills/meerkat-taskpanel/SKILL.md) | The agent-facing skill definition. |
 | [`../skills/meerkat-taskpanel/references/cli.md`](../skills/meerkat-taskpanel/references/cli.md) | The `taskctl` command surface (implemented). |

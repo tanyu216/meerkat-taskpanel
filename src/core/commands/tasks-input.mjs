@@ -43,11 +43,12 @@
 import { DomainError } from "../../shared/errors.mjs";
 import { PRIORITIES, STATUSES, TASK_KINDS } from "../domain/enums.mjs";
 
-/** The seven operations this module covers. */
+/** The eight operations this module covers. */
 export const TASK_OPS = Object.freeze({
   create: "tasks.create",
   update: "tasks.update",
   move: "tasks.move",
+  claim: "tasks.claim",
   deliver: "tasks.deliver",
   assign: "tasks.assign",
   archive: "tasks.archive",
@@ -159,6 +160,21 @@ const MOVE = Object.freeze([
   both("blocked_reason"),
 ]);
 
+/**
+ * `tasks.claim` — the claim/reclaim verb.
+ *
+ * A `todo → in_progress` move is a claim, but a claim is **not** a transition:
+ * it is also how a stale `in_progress` claim is reused, re-claimed or taken
+ * over (`domain/claim.mjs#decideClaim`). The status does not change, so the
+ * transition route cannot express it, and this operation is the wire shape of
+ * `commands.claim`.
+ */
+const CLAIM = Object.freeze([
+  both("allow_steal", { type: BOOLEAN }),
+  both("reason"),
+  both("if_version", { type: INTEGER }),
+]);
+
 const DELIVER = Object.freeze([
   wireOnly("to", { vocab: STATUSES }),
   both("report", { type: OBJECT, nested: REPORT }),
@@ -199,6 +215,7 @@ const FIELDS = Object.freeze({
   [TASK_OPS.create]: CREATE,
   [TASK_OPS.update]: UPDATE,
   [TASK_OPS.move]: MOVE,
+  [TASK_OPS.claim]: CLAIM,
   [TASK_OPS.deliver]: DELIVER,
   [TASK_OPS.assign]: ASSIGN,
   [TASK_OPS.archive]: ARCHIVE,
@@ -215,6 +232,7 @@ const REQUIRED = Object.freeze({
   [TASK_OPS.create]: Object.freeze([]),
   [TASK_OPS.update]: Object.freeze([]),
   [TASK_OPS.move]: Object.freeze(["to"]),
+  [TASK_OPS.claim]: Object.freeze([]),
   [TASK_OPS.deliver]: Object.freeze([]),
   [TASK_OPS.assign]: Object.freeze([]),
   [TASK_OPS.archive]: Object.freeze([]),

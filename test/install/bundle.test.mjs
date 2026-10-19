@@ -11,38 +11,20 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { after, describe, it } from "node:test";
+import { createInstallHarness } from "./helpers/install-harness.mjs";
 
-import {
-  AGENT_BUNDLE_SCHEMA,
-  CLAUDE_MANIFEST,
-  CODEX_MANIFEST,
-  HOST_BUNDLES,
-  NATIVE_MANIFEST,
-  detectBundle,
-  findSkills,
-  inspectBundle,
-  normalizePathList,
-  parseMarketplace,
-  resolveSkillRoots,
-} from "../../scripts/verify/lib/bundle.mjs";
+import { AGENT_BUNDLE_SCHEMA, CLAUDE_MANIFEST, CODEX_MANIFEST, HOST_BUNDLES, NATIVE_MANIFEST, detectBundle, findSkills, inspectBundle, normalizePathList, parseMarketplace, resolveSkillRoots } from "../../scripts/verify/lib/bundle.mjs";
 import { PROFILE_HOSTS, loadProfiles, runProfiles } from "../../scripts/verify/lib/profiles.mjs";
 import { LOOP_SKILL_NAME } from "../../scripts/sync-loop.mjs";
 import { SKILL_NAME } from "../../src/shared/constants.mjs";
 
+const { makeTempDir, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-bundle-" });
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-
-const tempDirs = [];
-
-async function makeTempDir(prefix = "meerkat-taskpanel-bundle-") {
-  const dir = await mkdtemp(join(tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
 
 /** Write a file into `dir`, creating parent directories. */
 async function put(dir, rel, contents) {
@@ -56,9 +38,7 @@ function skillMd(name = SKILL_NAME) {
   return `---\nname: ${name}\ndescription: a test skill with a long enough description\n---\n\n# ${name}\n`;
 }
 
-after(async () => {
-  for (const dir of tempDirs) await rm(dir, { recursive: true, force: true });
-});
+after(cleanup);
 
 // ---------------------------------------------------------------------------
 // normalizePathList

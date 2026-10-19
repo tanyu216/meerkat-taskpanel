@@ -65,6 +65,11 @@ export const TASK_COLUMNS = Object.freeze([
   // 0016 — what a `blocked` card is waiting for (SLA-inspection contract §7).
   // NULL unless a reason was written; appended by ALTER, so it is last.
   "blocked_reason",
+  // 0025 — a review card's structural identity: the card it audits (an internal
+  // task id, not the identifier `meta.review_of` carries) and the delivery round
+  // it audits. Written once at creation; the trigger refuses every later change.
+  "review_of_id",
+  "review_round",
 ]);
 
 const ISO_MILLIS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
@@ -326,6 +331,11 @@ export function normalizeTaskCreate(input, context) {
     reportWaivedAt: null,
     // M1 — a new card is not waiting on anybody (see the create guard above).
     awaitingReason: null,
+    // 0025 — the structural review marker. `createTask` resolves the caller's
+    // reference and stamps both fields; `normalizeTaskCreate` itself takes no
+    // reference (the importer stamps its own after resolving).
+    reviewOfId: null,
+    reviewRound: null,
     version: 1,
     idem: normalizeIdem(input.idem),
     createdAt: now,
@@ -476,6 +486,9 @@ const CAMEL = {
   updated_at: "updatedAt",
   awaiting_reason: "awaitingReason",
   blocked_reason: "blockedReason",
+  // 0025 — the review marker's structural half.
+  review_of_id: "reviewOfId",
+  review_round: "reviewRound",
 };
 
 /**

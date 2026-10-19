@@ -33,7 +33,7 @@ import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
 import { defaultMigrationsDir } from "../../src/core/storage/migrations-runner.mjs";
-import { SYSTEM_ACTOR } from "../../src/core/commands/index.mjs";
+import { BOARD_ACTOR } from "../../src/core/commands/index.mjs";
 import { TS, cleanupTempDirs, createTempBoard } from "../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);
@@ -134,7 +134,8 @@ describe("contract/attribution-boundary — what 0020 does and does not referenc
       assert.deepEqual(reserved, [], "a log-only synthetic id must not become a roster entry");
 
       // And the names really are the ones the code writes.
-      assert.equal(SYSTEM_ACTOR.id, "taskd");
+      assert.equal(BOARD_ACTOR.id, "taskd");
+      assert.equal(BOARD_ACTOR.kind, "taskd");
     } finally {
       board.close();
     }

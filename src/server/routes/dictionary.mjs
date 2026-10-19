@@ -13,8 +13,7 @@
  */
 
 import { dictionaryEntryToWire } from "../../shared/wire.mjs";
-import { shape, str } from "../requests.mjs";
-import { intOrUndefined } from "./projects.mjs";
+import { intOrUndefined, shape, str } from "../requests.mjs";
 
 // The declared request schema the read takes — frozen by the contract snapshot
 // (`routes[].request`); see `src/server/requests.mjs`.

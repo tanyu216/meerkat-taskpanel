@@ -51,19 +51,17 @@
  * refusal that exhausts the budget puts the bytes back before re-throwing.
  */
 
-import { createReadStream, existsSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { createReadStream } from "node:fs";
 import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
-import { transaction } from "../../core/index.mjs";
 import { attachmentTooLargeError, downloadContentType, normalizeAttachmentContentType } from "../../shared/attachments.mjs";
 import { ATTACHMENTS_DIRNAME, ATTACHMENT_MAX_BYTES } from "../../shared/constants.mjs";
 import { DomainError } from "../../shared/errors.mjs";
-import { newId } from "../../shared/ids.mjs";
 import { attachmentToWire } from "../../shared/wire.mjs";
 import { int, shape, str } from "../requests.mjs";
 import { errorResponse, readRawBody, sendJson } from "../router.mjs";
-import { resolveTask } from "./tasks.mjs";
+import { resolveTask } from "../task-view.mjs";
 
 // Declared request schemas, frozen by the contract snapshot (`routes[].request`);
 // the vocabulary lives in `src/server/requests.mjs`.
@@ -89,7 +87,7 @@ export function registerAttachmentRoutes(router, surface) {
 
   router.post(
     "/api/v1/tasks/:ref/attachments",
-    ({ params, body }) => {
+    ({ params, body, actor }) => {
       const task = resolveTask(repos, params.ref);
       const contentType = normalizeAttachmentContentType(body.content_type);
       const size = body.size === undefined ? 0 : body.size;
@@ -99,14 +97,15 @@ export function registerAttachmentRoutes(router, surface) {
         // the message is the shared one (see `attachmentTooLargeError`).
         throw attachmentTooLargeError(ATTACHMENT_MAX_BYTES, Number.isFinite(size) ? size : null);
       }
-      const attachment = repos.attachments.insert({
+      // The row, its audit entry, the clock and the transaction belong to the
+      // command layer; this adapter's job is the request and the policy above.
+      const { attachment } = board.commands.addAttachment({
         taskId: task.id,
-        commentId: body.comment_id ?? null,
-        filename: String(body.filename),
+        commentId: body.comment_id,
+        filename: body.filename,
         contentType,
         size,
-        kind: "attachment",
-        createdAt: new Date().toISOString(),
+        actor,
       });
       return { attachment: attachmentToWire(attachment), upload_url: `/api/v1/attachments/${attachment.id}/content` };
     },
@@ -118,7 +117,7 @@ export function registerAttachmentRoutes(router, surface) {
     return { task_id: task.id, attachments: repos.attachments.listByTask(task.id).map(attachmentToWire) };
   });
 
-  router.delete("/api/v1/attachments/:id", ({ params }) => {
+  router.delete("/api/v1/attachments/:id", ({ params, actor }) => {
     const id = params.id;
     const attachment = repos.attachments.get(id);
     if (attachment === null) {
@@ -131,7 +130,7 @@ export function registerAttachmentRoutes(router, surface) {
         details: { attachmentId: id },
       });
     }
-    removeAttachmentRow(board.db, repos.attachments, id, path);
+    board.commands.removeAttachment({ attachment, path, actor });
     return { removed: true, attachment: attachmentToWire(attachment) };
   });
 }
@@ -149,8 +148,9 @@ export function attachmentContentPath(dataDir, id) {
  * @param {import('node:http').ServerResponse} res
  * @param {{board: object}} surface
  * @param {string} id
+ * @param {{kind: string, id: string}} actor
  */
-export async function handleAttachmentContent(req, res, board, id) {
+export async function handleAttachmentContent(req, res, board, id, actor) {
   try {
     const attachment = board.repos.attachments.get(id);
     if (attachment === null) {
@@ -181,7 +181,7 @@ export async function handleAttachmentContent(req, res, board, id) {
         onOverLimit: (maxBytes) => attachmentTooLargeError(maxBytes),
       });
       await mkdir(join(board.dataDir, ATTACHMENTS_DIRNAME), { recursive: true });
-      storeContent(board.db, board.repos.attachments, id, path, body);
+      board.commands.storeAttachmentContent({ attachment, path, body, actor });
       sendJson(res, 200, { ok: true, data: { attachment_id: id, size: body.length, stored: true } });
       return;
     }
@@ -229,145 +229,6 @@ export async function handleAttachmentContent(req, res, board, id) {
     }
     const { status, payload, headers } = errorResponse(err);
     sendJson(res, status, payload, headers);
-  }
-}
-
-/**
- * Put the bytes and the row on disk together, and **take the write lock first**
- * (T-20261013-014304).
- *
- * The order is the whole point. This handler used to `writeFile` first and take
- * the lock second, so a PUT that lost the contention race answered 503 *after*
- * its payload had already replaced the stored file: bytes nobody would ever
- * read, on top of a row whose `size` now described a file that was no longer
- * there. GET kept serving the truth — it goes by `stat`, not by the row — so the
- * damage was quiet: disk growth and a listing that lied.
- *
- * Now the payload is written *inside* the transaction that holds the lock, to a
- * staging name beside the attachment, and only a body that has already updated
- * the row swaps it into place. Every way this write can be refused therefore
- * leaves the board exactly as it was: nothing stored, nothing staged, and a
- * `size` that still matches the bytes on disk.
- *
- * Three things are load-bearing:
- *
- *   * the body is **synchronous** on purpose. An `await` between `BEGIN
- *     IMMEDIATE` and `COMMIT` would let another request run; the unit of work
- *     turns a nested call into a SAVEPOINT, so that request would be enrolled in
- *     *this* transaction and rolled back with it — after it was answered.
- *   * the bytes go to a **staging file**, and `path` is only ever replaced by a
- *     rename. A payload that fails halfway (a full disk, say) can therefore
- *     truncate a staging file, never the attachment that is already stored.
- *   * one window is left open and it is deliberately not a contention window: if
- *     `COMMIT` itself fails *after* the body ran, the rollback restores the row
- *     while the file keeps the new bytes. The retry re-runs the body and heals
- *     that; only a budget exhausted by repeated COMMIT failures would leave the
- *     row and the disk disagreeing — and then with no bytes leaked, which is the
- *     failure this ordering exists to prevent.
- *
- * The lock is also taken like every other write takes it (R2): one transaction
- * boundary and the repository's `mapSqliteError`, so contention is retried a
- * bounded number of times and then reported as `DB_BUSY` (503 + `Retry-After`)
- * rather than escaping as the 500 a bare `.run()` produced.
- *
- * @param {import('node:sqlite').DatabaseSync} db
- * @param {{setSize: (id: string, size: number) => void}} attachments
- * @param {string} id
- * @param {string} path
- * @param {Buffer} body
- */
-function storeContent(db, attachments, id, path, body) {
-  const staged = `${path}.${newId()}.part`;
-  try {
-    transaction(
-      db,
-      () => {
-        writeFileSync(staged, body);
-        // Keeping the row's `size` honest so a listing can render it without a
-        // stat is a write like any other: the trigger bumps `global_revision`,
-        // so the SSE stream sees it.
-        attachments.setSize(id, body.length);
-        renameSync(staged, path);
-      },
-      { op: "attachments.setSize" },
-    );
-  } catch (err) {
-    // A refused write leaves nothing of its own behind — the staged bytes go
-    // with it. (`path` is untouched unless the swap itself succeeded.)
-    //
-    // The cleanup must never *replace* the failure it is cleaning up after: a
-    // `DB_BUSY` that reached the client as a filesystem error would be the R2
-    // bug wearing a different hat, so a cleanup that cannot run is swallowed
-    // and the original error is what propagates.
-    try {
-      rmSync(staged, { force: true });
-    } catch {
-      /* the staging file is the lesser problem */
-    }
-    throw err;
-  }
-}
-
-/**
- * Remove an attachment **for good**: its bytes and its row, in one act.
- *
- * The order is the whole point, and it is the mirror of `storeContent`'s. The
- * bytes are renamed to a staging name and the row is deleted inside a single
- * transaction that holds the write lock; the staged file is discarded only after
- * that transaction committed. So:
- *
- *   * a refused write (a `DB_BUSY` that exhausts the retry budget, a row that
- *     vanished under us) leaves the board exactly as it was — the catch puts the
- *     bytes back, and the rollback restores the row;
- *   * a **retry** re-runs the body. The rename is the one step that is not
- *     idempotent, so it is guarded by `existsSync`: on the second pass the bytes
- *     are already staged and there is nothing left to move, which is exactly the
- *     state the commit wants;
- *   * a row with no stored bytes (the `PUT` never arrived) is the ordinary case,
- *     not an error — there is nothing to rename and the row still goes.
- *
- * A file that could not be discarded after the commit is swallowed on purpose: a
- * leftover `.part` is garbage, while a throw here would report a delete that
- * *did* happen as a failure.
- *
- * @param {import('node:sqlite').DatabaseSync} db
- * @param {{remove: (id: string) => boolean}} attachments
- * @param {string} id
- * @param {string} path
- */
-function removeAttachmentRow(db, attachments, id, path) {
-  const staged = `${path}.${newId()}.part`;
-  let stagedBytes = false;
-  try {
-    transaction(
-      db,
-      () => {
-        if (!stagedBytes && existsSync(path)) {
-          renameSync(path, staged);
-          stagedBytes = true;
-        }
-        if (!attachments.remove(id)) {
-          throw new DomainError("NOT_FOUND", { message: `no attachment ${id}`, details: { attachmentId: id } });
-        }
-      },
-      { op: "attachments.remove" },
-    );
-  } catch (err) {
-    if (stagedBytes) {
-      try {
-        renameSync(staged, path);
-      } catch {
-        /* the row is intact; the bytes' exact name matters less than the throw */
-      }
-    }
-    throw err;
-  }
-  if (stagedBytes) {
-    try {
-      rmSync(staged, { force: true });
-    } catch {
-      /* the staged bytes are the lesser problem */
-    }
   }
 }
 

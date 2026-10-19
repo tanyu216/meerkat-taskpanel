@@ -3,7 +3,6 @@
  * UPDATE and DELETE (I4), so exposing either here would only be a trap.
  */
 
-import { DomainError } from "../../../shared/errors.mjs";
 import { COMMENT_COLUMNS, commentFromRow, commentToRow } from "../../domain/comment.mjs";
 import { mapSqliteError } from "../sqlite-errors.mjs";
 
@@ -88,12 +87,4 @@ export function createCommentsRepository(db) {
         .map(commentFromRow);
     },
   };
-}
-
-/** Never implemented, on purpose — kept next to the repository as a signpost. */
-export function updateComment() {
-  throw new DomainError("COMMENT_APPEND_ONLY", {
-    message: "comments are append-only; add a new comment of kind 'change'",
-    details: {},
-  });
 }

@@ -127,11 +127,23 @@ gate.
 
 ### 6. Self-review is not acceptance
 
-An agent takes a card **at most to `in_review`**. Only a human (or a designated
-acceptance role) moves it to `done`. Reporting your own work as delivered is not
-the same as the work being accepted, and the board keeps the two apart on
-purpose: `in_review` is "evidence attached, awaiting a verdict", `done` is "a
-verdict was given".
+An agent takes a card **at most to `in_review`**. Only an independent acceptor —
+the loop (as the board's `system` actor, after a reviewer's verdict) or a human —
+moves it to `done`. Reporting your own work as delivered is not the same as the
+work being accepted, and the board keeps the two apart on purpose: `in_review` is
+"evidence attached, awaiting a verdict", `done` is "a verdict was given". This is
+enforced: an agent's move to `done` is refused with `ACCEPTANCE_FORBIDDEN`, even
+on the agent's own card.
+
+When the loop runs with a reviewer (`install.sh --reviewer <agent>`), `in_review`
+is dispatched as a **review card** (`meta.review_of`, `meta.flow=B`) to that
+independent agent. The reviewer reads your description, acceptance list, delivery
+report, evidence and comments, and delivers a report whose first line is
+`VERDICT: APPROVE` or `VERDICT: REJECT`. The reviewer moves nothing; the loop
+applies the verdict and closes the review card. A `REJECT` comes back to you as a
+`kind=change` comment plus a new delivery round — read the findings, fix them, and
+deliver again. With no reviewer configured, a human does the same job directly on
+the card.
 
 ### 7. Never preempt on conflict or staleness
 
@@ -223,30 +235,33 @@ Three boundaries this respects, on purpose:
 ## Waking & patrol (唤醒与巡检)
 
 Rule 1 says *claim first*; it does not say *wait to be told*. Work starts when a
-small **host-external supervisor** finds claimable cards and wakes a worker for
-one. Nothing inside an agent does the polling.
+small **host-external scheduler** wakes a worker, and the deterministic entries that
+find it run inside a bounded judgment turn the scheduler starts.
 
-That supervisor is **not part of this skill**. It ships as its own skill,
+That scheduler is **not part of this skill**. It ships as its own skill,
 [`meerkat-loop`](https://github.com/tanyu216/meerkat-taskpanel/blob/main/skills/meerkat-loop/SKILL.md)
 — its execution body is installed under `<host>/meerkat-taskpanel/`, and its
 `references/operation.md` is the operator's view of install, paths, flags and the
 headless permission boundary. The host-agnostic design is at
 [scheduling.md](https://github.com/tanyu216/meerkat-taskpanel/blob/main/docs/scheduling.md).
 
-Two layers, kept apart:
+Two clocks, and four entries the continue turn runs:
 
-| Layer | Cadence | Job | Cost |
+| Clock / entry | Cadence | Job | Cost |
 |---|---|---|---|
-| **poll** | 1 minute | `issue candidates` → claim → wake a worker | the scan is a $0 local CLI; a model turn starts **only** when a card was actually claimed |
-| **patrol** | 5 minutes | `issue list --status in_progress` → escalate a stale claim; report an unreadable heartbeat | $0 (no LLM by default) |
+| **ping** | 60 seconds | prune worker-registry entries whose pid is gone | $0; no board read, no LLM |
+| **continue** | 10 minutes | wake the host with a bounded `继续` prompt | one bounded LLM turn |
+| `loop/patrol.mjs` | in the turn | `issue list --status in_progress` → escalate a stale claim; report an unreadable heartbeat | $0 (no LLM by default) |
+| `loop/workflow.mjs` | in the turn | reconcile containers, dispatch reviews, apply verdicts | $0; writes as `system` |
+| `loop/poll.mjs` | in the turn | `issue candidates` → claim → wake a worker | $0 scan; a worker turn starts **only** when a card was actually claimed |
 
-Three things that keep it honest:
+Things that keep it honest:
 
-- **The atomic claim is the only dispatch.** `issue move <ref> in_progress` is
-  compare-and-swap: whoever wins the claim is who works the card, and the loser
-  starts **no** worker. A wake is therefore idempotent and bounded by a
-  concurrency cap (`--max-concurrency`, default 8).
-- **A fresh heartbeat means do nothing.** An empty poll tick starts no worker at
+- **The atomic claim is the only dispatch.** `issue claim <ref>` is compare-and-swap:
+  whoever wins the claim is who works the card, and the loser starts **no** worker. A
+  wake is therefore idempotent and bounded by a concurrency cap
+  (`--max-concurrency`, default 8).
+- **A fresh heartbeat means do nothing.** An empty poll pass starts no worker at
   all; a live claim is invisible to the next scan.
 - **A broken heartbeat is never silent.** If patrol cannot read a heartbeat, it
   *reports* that instead of going quiet — the state that used to vanish.
@@ -265,6 +280,10 @@ installer also asks once whether the supervisor may claim **unassigned** cards
 They install the loop for **claude, codex and pi only**. OpenClaw is excluded on
 purpose — the openclaw-team framework already runs an equivalent poll / patrol, and a
 second supervisor would only race the first.
+
+A host with no loop — or an application that owns its own timer — drives the board
+directly; the board-side recipe is in
+[scheduling-integration.md](scheduling-integration.md).
 
 A wake runs the worker **headlessly**, so it runs under a pre-declared tool
 allowlist / permission mode / sandbox and must **not** default to bypassing
@@ -332,11 +351,12 @@ claude plugin list                                 # → meerkat-taskpanel, enab
   when you claim (`session set <ref> --seg <seg> --backend claude`), so a card
   names the checkout it belongs to.
 - **No timers of its own — the loop lives outside.** Claude Code hooks fire only
-  on session events, so the claim in §1 is driven by the supervisor
-  ([Waking & patrol](#waking--patrol-唤醒与巡检)): a launchd / systemd / cron unit
-  runs the **host-installed** copy of the loop's `scripts/supervisor.mjs`, which wakes a
-  headless `claude -p` session (`--resume <sid>` to continue one). `install.sh` installs
-  the `meerkat-loop` skill, drops the units and the `wake-claude.sh` glue, and prints the
+  on session events, so the claim in §1 is driven by the scheduler
+  ([Waking & patrol](#waking--patrol-唤醒与巡检)): launchd / systemd / cron units run
+  the **host-installed** copy of the loop's `scripts/supervisor.mjs` — a 10-minute
+  continue turn, whose poll entry claims the card and wakes a headless `claude -p`
+  session (`--resume <sid>` to continue one). `install.sh` installs the
+  `meerkat-loop` skill, drops the units and the `wake-claude.sh` glue, and prints the
   load command.
 
 ## Codex
@@ -400,7 +420,8 @@ node scripts/run.mjs comment add PROJ-0007 --kind decision --body "Chose the SQL
 node scripts/run.mjs report template PROJ-0007
 node scripts/run.mjs issue deliver PROJ-0007 --report-file - \
   --actor-kind claude --session-id "$SESSION"
-# → status in_review; a human accepts to done (self-review ≠ acceptance, §6)
+# → status in_review; the independent reviewer (or a human) accepts to done
+#   (self-review ≠ acceptance, §6)
 ```
 
 ## See also

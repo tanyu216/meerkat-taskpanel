@@ -12,7 +12,6 @@
 
 export const CLI_NAME = "taskctl";
 export const SKILL_NAME = "meerkat-taskpanel";
-export const PACKAGE_NAME = "meerkat-taskpanel";
 export const VERSION = "1.0.0";
 
 /**
@@ -95,8 +94,6 @@ export const DEFAULT_PORT = 9527;
 /** Default listen host (ARCHITECTURE §7: welcome LAN access). */
 export const DEFAULT_HOST = "0.0.0.0";
 
-/** Default host for a CLI-spawned `taskd`: a spawned daemon serves this machine. */
-export const DEFAULT_DAEMON_HOST = "127.0.0.1";
 /** How long the CLI waits for a freshly spawned `taskd` to answer `/health`. */
 export const AUTOSTART_TIMEOUT_MS = 5_000;
 /** How often it retries while waiting. */
@@ -284,6 +281,23 @@ export const SSE_REPLAY_LIMIT = 500;
  */
 export const SSE_NOISE_EVENTS = Object.freeze(["task_heartbeat"]);
 
+/**
+ * How long the loop's SSE subscriber tolerates a silent stream before it
+ * reconnects. Three missed 15 s heartbeats is a dead connection, not a quiet
+ * board.
+ */
+export const SSE_SUBSCRIBE_IDLE_MS = 45_000;
+/** Coalesce a burst of board events into one dispatch decision. */
+export const EVENT_DEBOUNCE_MS = 300;
+/** ...but never delay a dispatch longer than this, however busy the stream is. */
+export const EVENT_DEBOUNCE_MAX_MS = 2_000;
+/** At most one event-triggered continue turn per this interval. */
+export const EVENT_CONTINUE_MIN_MS = 60_000;
+/** How soon to retry a dispatch whose continue turn was already in flight. */
+export const SUBSCRIBE_RETRY_MS = 5_000;
+/** The reconnect ladder's ceiling, matching the web client's 30 s. */
+export const SUBSCRIBE_BACKOFF_MAX_MS = 30_000;
+
 // ---------------------------------------------------------------------------
 // Static hosting (ARCHITECTURE §8, M6a)
 // ---------------------------------------------------------------------------
@@ -455,3 +469,37 @@ export const TASK_ORDER_CAPABILITY = "weights-v1";
  * `src/core/domain/enums.mjs` re-exports it for the domain layer.
  */
 export const HUMAN_KIND = "human";
+
+/**
+ * The board's own platform name.
+ *
+ * `taskd` is a concrete writer, not a role: it names the process that performs
+ * the board's housekeeping (rollup, the label GC, the markdown importer) and
+ * the automation that applies an acceptance verdict. It is the value
+ * `HUMAN_KIND`'s documentation has always pointed at — "or `taskd` for the board
+ * itself" — and the one the `system` placeholder in older rows is replaced by.
+ *
+ * The actor-kind column stays open; this constant exists so our own writes name
+ * a platform instead of a vague role word.
+ */
+export const TASKD_KIND = "taskd";
+
+/**
+ * The board's acceptance policies — "who may move a card to `done`".
+ *
+ * Declared in `shared` because **both** sides of the board read the same
+ * vocabulary: `src/core/domain/status.mjs` enforces it, and
+ * `src/shared/scheduling.mjs` resolves the loop's copy from its host config
+ * (which is what the loop believes before the board tells it otherwise).
+ *
+ *   * `human-only` — only a human accepts a top-level original;
+ *   * `both` — a human or the board (`taskd`);
+ *   * `agent-only` — any non-human writer.
+ *
+ * In every mode a human closes only **top-level** cards, and a review card is
+ * closed by the human or the board (any non-human under `agent-only`).
+ */
+export const ACCEPTANCE_POLICIES = Object.freeze(["human-only", "both", "agent-only"]);
+
+/** The policy used when none is configured (`both`, the historical rule). */
+export const DEFAULT_ACCEPTANCE_POLICY = "both";

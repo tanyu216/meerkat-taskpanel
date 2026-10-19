@@ -8,19 +8,16 @@
  * refuse it in the same places the core does, because this layer *is* core
  * called over HTTP — it validates nothing the commands do not.
  *
- * `resolveTask` is exported because comments, relations and sessions all address
- * a task by the same `id-or-identifier` reference the CLI hands them.
+ * Addressing a card and projecting it to the wire are not this module's
+ * business: `server/task-view.mjs` owns that seam, because five sibling routes
+ * answer with a task too.
  */
 
 import { TASK_OPS } from "../../core/index.mjs";
 import { DomainError } from "../../shared/errors.mjs";
-import {
-  reportToWire,
-  taskToWire,
-  waiversFromActivities,
-} from "../../shared/wire.mjs";
-import { bool, project, REQUEST, shape, str } from "../requests.mjs";
-import { intOrUndefined, truthy } from "./projects.mjs";
+import { reportToWire, taskToWire } from "../../shared/wire.mjs";
+import { bool, intOrUndefined, project, REQUEST, shape, str, truthy } from "../requests.mjs";
+import { lookupFor, resolveTask, taskPayload } from "../task-view.mjs";
 
 // Declared request schemas — what the contract snapshot freezes
 // (`routes[].request`); `src/server/requests.mjs` owns the vocabulary and the
@@ -80,6 +77,15 @@ const PATCH_BODY = project(TASK_OPS.update);
 
 /** `POST /api/v1/tasks/:ref/move` — the transition, plus the audited waiver (F-B1). */
 const MOVE_BODY = project(TASK_OPS.move);
+/**
+ * `POST /api/v1/tasks/:ref/claim` — the claim/reclaim verb.
+ *
+ * A claim is not always a transition: a stale `in_progress` claim is reused,
+ * re-claimed or taken over **without the status changing**, so it cannot ride
+ * the move route (the transition table has no `in_progress → in_progress`).
+ * This is the wire face of `commands.claim`.
+ */
+const CLAIM_BODY = project(TASK_OPS.claim);
 
 /**
  * `POST /api/v1/tasks/:ref/deliver` — the report, or the waiver that replaces it.
@@ -106,32 +112,6 @@ const ARCHIVE_BODY = project(TASK_OPS.archive);
  */
 const HEARTBEAT_BODY = project(TASK_OPS.heartbeat);
 
-/**
- * `PROJ-0007` or a UUID — whichever the caller has.
- * @param {object} repos
- * @param {string} ref
- */
-export function resolveTask(repos, ref) {
-  const task = repos.tasks.get(ref) ?? repos.tasks.findByIdentifierAnyProject(ref);
-  if (task === null) {
-    throw new DomainError("NOT_FOUND", { message: `no task ${ref}`, details: { taskRef: ref } });
-  }
-  return task;
-}
-
-/** Dictionary lookup for the wire projection (`display_name` for an id). */
-export function lookupFor(repos) {
-  return (kind, id) => repos.dictionary.getById(kind, id);
-}
-
-/** A task plus the audit trail a reviewer needs: who waived delivery, and why. */
-export function taskPayload(repos, task) {
-  return {
-    task: taskToWire(task, { lookup: lookupFor(repos) }),
-    report_waivers: waiversFromActivities(repos.activities.list({ taskId: task.id, limit: 1000 })),
-  };
-}
-
 /** @param {object} router @param {{board: object}} surface */
 export function registerTaskRoutes(router, surface) {
   const { commands, repos } = surface.board;
@@ -152,8 +132,14 @@ export function registerTaskRoutes(router, surface) {
       order: query.get("order") ?? undefined,
       orderDebug: truthy(query.get("order_debug")),
     });
+    // One batched edge read: `parent_id` rides on every card so a client can
+    // derive "is this a child?" without a second request (the waiting view does
+    // exactly that). Scoped to the project when the read is.
+    const parents = new Map(
+      repos.relations.listParentEdges(filter.projectId).map((edge) => [edge.target, edge.source]),
+    );
     return {
-      tasks: tasks.map((task) => taskToWire(task, { lookup })),
+      tasks: tasks.map((task) => taskToWire(task, { lookup, parentId: parents.get(task.id) ?? null })),
       // Only present when asked for: the diagnostic is opt-in, and an always-on
       // re-derivation of every card's score would be paid by every board poll.
       ...(orderDebug === null ? {} : { order_debug: orderDebug }),
@@ -294,6 +280,25 @@ export function registerTaskRoutes(router, surface) {
     });
     return { ...taskPayload(repos, task), status: task.status };
   }, { body: MOVE_BODY });
+
+  // The claim/reclaim verb. `performClaim` decides between reuse, a stale
+  // re-claim, and a takeover; the route only forwards the actor's intent.
+  router.post("/api/v1/tasks/:ref/claim", ({ params, body, actor }) => {
+    const current = resolveTask(repos, params.ref);
+    const result = commands.claim({
+      id: current.id,
+      ifVersion: body.if_version,
+      allowSteal: body.allow_steal === true,
+      reason: body.reason,
+      actor,
+    });
+    return {
+      ...taskPayload(repos, result.task),
+      status: result.task.status,
+      reused: result.reused === true,
+      stole: result.stole === true,
+    };
+  }, { body: CLAIM_BODY });
 
   router.post("/api/v1/tasks/:ref/deliver", ({ params, body, actor, session, seg }) => {
     const current = resolveTask(repos, params.ref);

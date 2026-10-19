@@ -7,7 +7,6 @@
  * re-implements a rule; it just reads and writes edges.
  */
 
-import { DomainError } from "../../../shared/errors.mjs";
 import { normalizeRelation } from "../../domain/relation.mjs";
 import { mapSqliteError } from "../sqlite-errors.mjs";
 
@@ -248,15 +247,4 @@ export function createRelationsRepository(db) {
       return { children: Number(row.children), blockers: Number(row.blockers) };
     },
   };
-}
-
-/** Guard for callers that only have a task id and a type. */
-export function assertRelationType(type) {
-  if (!["parent", "blocks", "related"].includes(type)) {
-    throw new DomainError("VALIDATION_FAILED", {
-      message: `unknown relation type ${JSON.stringify(type)}`,
-      details: { field: "type", received: type },
-    });
-  }
-  return type;
 }

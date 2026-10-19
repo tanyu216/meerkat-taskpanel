@@ -87,13 +87,21 @@ const COPY_TASK_FIELDS = Object.freeze({
   // a reason was written, so a client reads "is there a reason, and which" from
   // one field, exactly as it does for `awaiting_reason`.
   blocked_reason: "blockedReason",
+  // 0025 — the structural review marker. `review_of_id` is an internal task id;
+  // `review_round` is the delivery round the review audits (`null` = written
+  // before the field existed, and conservatively covers every round). The
+  // board's waiting projection derives "does this review still hold the
+  // original open" from these, client-side, so the value is always current
+  // even when only the review card's own event arrived.
+  review_of_id: "reviewOfId",
+  review_round: "reviewRound",
 });
 
 /**
  * A task, as the CLI/HTTP surface shows it.
  *
  * @param {object} task a core Task DTO
- * @param {{lookup?: (kind: string, id: string) => object|null}} [options]
+ * @param {{lookup?: (kind: string, id: string) => object|null, parentId?: string|null}} [options]
  */
 export function taskToWire(task, options = {}) {
   const lookup = options.lookup ?? NO_LOOKUP;
@@ -117,6 +125,11 @@ export function taskToWire(task, options = {}) {
   // adjacent — same shape as `assignee`/`reporter`, one name apart.
   out.claimed_by_actor = actorRef(task.claimedBy, task.claimedKind, lookup);
   out.report_waiver = waiverOf(task);
+  // The parent edge is a relation, not a column, so the caller supplies it (a
+  // list read batches the edges; a single read asks `getParent`). `null` means
+  // "no parent" — and also "the caller did not ask", which is the same answer
+  // for every projection that does not read it.
+  out.parent_id = options.parentId ?? null;
   return out;
 }
 

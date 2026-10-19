@@ -71,7 +71,16 @@ const drawerEl = ref(null);
 
 const detail = computed(() => board.detail);
 const task = computed(() => detail.value?.task ?? null);
-const open = computed(() => board.drawerState !== "closed" && task.value !== null);
+/**
+ * The panel is open the moment the reader asks for it, **before** its card has
+ * been read. `openDetail()` clears `detail` and flips `drawerState` in one act,
+ * so `detail === null` while the state is not `closed` *is* the loading window:
+ * the panel slides in with a skeleton and swaps in the real content when the
+ * fan-out lands. (Previously `open` also required `task`, so a click on a card
+ * did nothing visible until every read had returned.)
+ */
+const open = computed(() => board.drawerState !== "closed");
+const loadingDetail = computed(() => open.value && task.value === null);
 
 const identifier = computed(() => task.value?.identifier ?? "");
 const title = computed(() => task.value?.title ?? "");
@@ -420,6 +429,13 @@ let savedTimer = null;
  * constantly and none of that is a write (contract ②-11).
  */
 let saveBaseline = { assignee: "", reporter: "", labels: [] };
+/**
+ * The version the drawer opened with. When a remote edit arrives while a draft
+ * is dirty, this deliberately stays behind: the next save carries the older
+ * `if_version` and the server answers `VERSION_CONFLICT`, which is the visible
+ * "someone changed this too" instead of a silent overwrite.
+ */
+let saveBaselineVersion = null;
 
 /**
  * `assignee` and `reporter` are committed on focus loss; `labels` on a chip
@@ -448,9 +464,10 @@ async function save(field, value) {
   clearTimeout(savedTimer);
   saveState.value = "saving";
   try {
-    await saveDetailField(field, value);
+    await saveDetailField(field, value, { ifVersion: saveBaselineVersion ?? undefined });
     if (token !== saveToken) return;
     saveBaseline = { ...saveBaseline, [field]: field === "labels" ? [...value] : value };
+    saveBaselineVersion = board.detail?.task?.version ?? saveBaselineVersion;
     saveState.value = "saved";
     savedTimer = setTimeout(() => {
       if (token === saveToken) saveState.value = "idle";
@@ -659,6 +676,7 @@ function resetSave() {
   saveToken += 1;
   saveState.value = "idle";
   saveBaseline = { assignee: assigneeName.value, reporter: reporterName.value, labels: [...labelNames.value] };
+  saveBaselineVersion = task.value?.version ?? null;
 }
 
 // Keep the drafts in step with whichever task is open.
@@ -682,6 +700,51 @@ watch(
     resetSave();
   },
   { immediate: true },
+);
+
+// A remote edit to the **same** open card must reach the fields too. A clean
+// field adopts the new value, and its baseline moves in the same act so the
+// draft watcher below sees no commit; a dirty field keeps its text and its old
+// baseline, so saving surfaces the remote change as VERSION_CONFLICT rather
+// than silently overwriting it.
+watch(
+  () => [
+    task.value?.assignee?.display_name ?? "",
+    task.value?.reporter?.display_name ?? "",
+    (task.value?.labels ?? []).join("\u0000"),
+    task.value?.description ?? "",
+  ],
+  () => {
+    const nextAssignee = assigneeName.value;
+    const assigneeDirty = assigneeDraft.value !== saveBaseline.assignee;
+    if (!assigneeDirty) {
+      saveBaseline = { ...saveBaseline, assignee: nextAssignee };
+      assigneeDraft.value = nextAssignee;
+    }
+    const nextReporter = reporterName.value;
+    const reporterDirty = reporterDraft.value !== saveBaseline.reporter;
+    if (!reporterDirty) {
+      saveBaseline = { ...saveBaseline, reporter: nextReporter };
+      reporterDraft.value = nextReporter;
+    }
+    const nextLabels = [...labelNames.value];
+    const labelsDirty = !sameSet(labelDraft.value, saveBaseline.labels);
+    if (!labelsDirty) {
+      saveBaseline = { ...saveBaseline, labels: nextLabels };
+      labelDraft.value = nextLabels;
+    }
+    const descriptionDirty =
+      descriptionMode.value === "edit" && descriptionDraft.value !== (task.value?.description ?? "");
+    // Edit mode is a local draft on purpose; read mode follows the card.
+    if (descriptionMode.value === "read") descriptionDraft.value = task.value?.description ?? "";
+
+    // No dirty draft: the drawer is a pure view of the new card, so its next
+    // save may use the new version. A dirty draft keeps the old version and
+    // will be refused visibly by the server.
+    if (!assigneeDirty && !reporterDirty && !labelsDirty && !descriptionDirty) {
+      saveBaselineVersion = task.value?.version ?? saveBaselineVersion;
+    }
+  },
 );
 
 // The chips follow the board's own relations whenever they are re-read (an
@@ -742,9 +805,38 @@ function copyId() {
     role="dialog"
     aria-modal="true"
     aria-labelledby="td-detail-title"
+    :aria-busy="loadingDetail ? 'true' : 'false'"
     :data-readonly="readonly && open ? 'true' : undefined"
   >
-    <header class="td-drawer-head">
+    <!-- The loading branch: the panel keeps its shell (a `.td-drawer-head` and a
+         `.td-drawer-body`), its close button and its `aria-labelledby` seat, and
+         shows the design's `skeleton` bars where the card's fields will be. It
+         carries no `[data-detail-*]` hook beyond `data-detail-skeleton`: those
+         hooks name the real card's parts, and the contract counts them on the
+         resting document (where this branch is not rendered). -->
+    <header v-if="loadingDetail" class="td-drawer-head" data-detail-skeleton="head">
+      <div class="flex items-center gap-2">
+        <span class="skeleton" style="height: 12px; width: 64px" aria-hidden="true"></span>
+        <span class="skeleton" style="height: 18px; width: 72px; border-radius: 999px" aria-hidden="true"></span>
+        <button
+          type="button"
+          class="td-iconbtn ml-auto"
+          data-detail-close
+          :aria-label="$t('drawer.close')"
+          @click="closeDetail"
+        >
+          <svg class="td-icon size-4" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6 6l12 12M18 6 6 18" />
+          </svg>
+        </button>
+      </div>
+      <h2 id="td-detail-title" class="text-[16px] leading-(--leading-title) font-semibold">
+        <span class="td-sr">{{ $t("drawer.loading") }}</span>
+        <span class="skeleton" style="height: 16px; width: 60%; display: block" aria-hidden="true"></span>
+      </h2>
+    </header>
+
+    <header v-else class="td-drawer-head">
       <!-- R7 ④ — identifier, chip and the close button share one flex row, with
            the close pushed to its inline end (`ml-auto`). It used to be the
            header's third line, *below* the title: the prototype puts it in the
@@ -812,7 +904,30 @@ function copyId() {
       <h2 id="td-detail-title" class="text-[16px] leading-(--leading-title) font-semibold" data-detail-title>{{ title }}</h2>
     </header>
 
-    <div class="td-drawer-body">
+    <div v-if="loadingDetail" class="td-drawer-body" data-detail-skeleton="body" aria-hidden="true">
+      <!-- The six tab pills, six property rows, a description and two comments —
+           the page the real branch will draw, at the same metrics. -->
+      <div class="flex flex-wrap items-center gap-2">
+        <span v-for="n in 6" :key="n" class="skeleton" style="height: 26px; width: 64px; border-radius: var(--radius-field)"></span>
+      </div>
+      <div class="flex flex-col gap-3 mt-5">
+        <div v-for="n in 6" :key="n" class="td-skel-row">
+          <span class="skeleton" style="height: 12px; width: 72px"></span>
+          <span class="skeleton" style="height: 12px; width: 40%"></span>
+        </div>
+        <div class="flex flex-col gap-2 mt-2">
+          <span class="skeleton" style="height: 12px; width: 90%"></span>
+          <span class="skeleton" style="height: 12px; width: 78%"></span>
+          <span class="skeleton" style="height: 12px; width: 56%"></span>
+        </div>
+        <div v-for="n in 2" :key="n" class="td-skel-row mt-2">
+          <span class="skeleton" style="height: 18px; width: 18px; border-radius: 999px"></span>
+          <span class="skeleton" style="height: 12px; width: 60%"></span>
+        </div>
+      </div>
+    </div>
+
+    <div v-else class="td-drawer-body">
       <!-- R10 ② — the drawer's save state, one region for all three editable
            fields. `data-save-state` is the source of truth (`idle` ships, as the
            resting state) and the alert below is its only visible half: hidden

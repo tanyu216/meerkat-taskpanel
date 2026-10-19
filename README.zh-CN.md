@@ -165,29 +165,34 @@ OpenClaw 同样消费这个 Claude 格式的 bundle，这就是它受支持的�
 或 leader 显式派发）/ `depends_on` 未满足 ⇒ 不领）；
 **一次一卡**；**心跳新鲜**（看板把认领视为存活 10 分钟，`issue heartbeat <ref>` 就是续期命令，
 看板不会代你续期）；**交付带报告**（交付门禁）；
-**自评≠验收**（Agent 只到 `in_review`，人接受才 `done`）；**冲突不抢占**（重读一次，
+**自评≠验收**（Agent 只到 `in_review`；由循环应用审核员结论、或由人验收 `done`；Agent 自己移入 `done` 会被 `ACCEPTANCE_FORBIDDEN` 拒绝）；**冲突不抢占**（重读一次，
 仍可领才重试）；**可追溯**（携带会话 id）。宿主之间的差异，只在**由谁来执行这些规则**。
 
-### 调度：轮询与巡检
+### 调度：ping 与 continue
 
-**简言之**：这个循环是一个**活在宿主之外**的**监督进程**。它**每分钟**扫描看板，**只有真正
-认领到卡**时才唤醒 worker（空转一次 $0）；**每五分钟**巡检一次，对心跳过期的认领告警 —— 并覆盖
-`PROTOCOL §⑮` 超时表的其余各项：停在 leader 手上的卡、无人应答的确认门、没建出修复卡的缺陷、
-没人排验收的交付，以及 leader 自身巡检静默。每一条都是**发给 leader 的通知**，绝不对卡动手。
-Claude Code 与 Codex **本身没有定时器**，因此循环活在它们**之外**，只负责唤醒 worker
-（`claude -p`、`codex exec`、`pi --print`）。**启用方式**：运行
+**简言之**：这个循环是一个**活在宿主之外**的**调度器**，拥有两个时钟。
+**每 60 秒**做一次 **ping**：清掉 registry 中进程已退出的 worker 条目 —— 不读看板、不启动模型。
+**每十分钟**做一次 **continue** 回合：用有界的 `继续` 提示词唤醒宿主，由这一回合运行循环的
+确定性入口 —— 只通知的 SLA 巡检（心跳过期、无人应答的确认门、没人排验收的交付，以及
+`PROTOCOL §⑮` 的其余各项）、唯一会写卡的工作流通道（重放容器规则、为每笔交付派出独立审核员、
+应用结论），以及**只有真正认领成功**才唤醒 worker 的 poll（空扫描 $0）。SLA 的每一条都是
+**发给 leader 的通知**，绝不对卡动手；工作流入口是唯一写卡的一方（`--reviewer` 启用派发，
+`--workflow=no` 整条通道关闭）。Claude Code 与 Codex **本身没有定时器**，因此循环活在它们
+**之外**，被唤醒的只是 worker（`claude -p`、`codex exec`、`pi --print`）。在 launchd/systemd
+上，可选的 **subscribe 守护进程**保持一条 SSE 连接，收到可派发事件时请求一个 continue 回合，
+因此工作发现是事件驱动的；continue 周期仍是兜底，也是基于时间的检查（过期认领、审核老化、
+SLA）的唯一路径。cron 无法承载长驻进程，仍按一个 continue 周期发现工作；
+`--continue-interval` 是旋钮。**启用方式**：运行
 `install.sh --target claude|codex|pi` —— 它会安装 `meerkat-loop` skill、投放该宿主的
 launchd / systemd / cron 单元，并**打印加载命令**（绝不替你启动守护进程；安装时还会问一次
 是否允许认领**未分配**的卡，默认允许）。OpenClaw 无需这套循环：框架已自带一个。
 
-认领不靠 Agent 的记忆。一个**宿主外部**的小型**监督进程**
-（独立 skill [`skills/meerkat-loop/`](skills/meerkat-loop/SKILL.md)，其执行体为
-[`scripts/supervisor.mjs`](scripts/supervisor.mjs)）运行两层：**每分钟轮询** —— 一次
-$0 的本地 CLI 扫描，**只有真正认领到卡**时才启动模型回合（原子认领是唯一的派单源）；
-以及**每五分钟巡检** —— 对心跳过期的认领升级告警，并把**无法解析的心跳如实上报**
-（绝不静默），且以与 openclaw 侧 inspector 相同的告警元组覆盖 `PROTOCOL §⑮` 超时表的其余
-各项。Claude Code 与 Codex **本身没有定时器**，因此这个循环活在它们**之外**，
-被唤醒的只是 worker（`claude -p`、`codex exec`、`pi --print`）。
+认领不靠 Agent 的记忆。一个**宿主外部**的小型**调度器**
+（独立 skill [`skills/meerkat-loop/`](skills/meerkat-loop/SKILL.md)，执行体为
+[`scripts/supervisor.mjs`](scripts/supervisor.mjs) 与 `scripts/loop/`）运行两个时钟：
+ping 只读一个小 registry，$0；continue 每个周期产生一个有界模型回合，回合内的 poll 仍是
+确定性的成本闸门 —— **只有真正认领到卡**才启动 worker 回合（原子认领是唯一的派单源）。
+确定性入口都是普通程序，可单独运行；continue 提示词用绝对路径点名它们。
 
 这个循环本身也是一个 skill（`skills/meerkat-loop/`），并且 `install.sh` **只为 claude / codex / pi
 安装它**；OpenClaw 只拿到看板、不拿 loop —— openclaw-team 框架已自带等价实现。除 skill 之外，
@@ -195,7 +200,7 @@ $0 的本地 CLI 扫描，**只有真正认领到卡**时才启动模型回合�
 命令 —— 绝不替你启用守护进程。安装时还会问一次是否允许认领**未分配**的卡（默认允许），
 并把答案记到 `<宿主目录>/meerkat-taskpanel.env`。loop skill 会声明它所需的 board
 `task-interface` 版本，并由 `scripts/board-check.mjs` 对着看板自己的 `--version --json` 强制执行；
-完整设计 —— 两层模型、仅触发才计费的成本闸门、
+完整设计 —— 两个时钟、仅触发才计费的成本闸门、
 幂等唤醒、并发上限、失效兜底，以及 claude / codex / pi 三宿主的触发差异 —— 见
 [`docs/scheduling.md`](docs/scheduling.md)。
 
@@ -238,7 +243,7 @@ Claude Code、Codex 与 `pi` 都直接操作同一块看板。
 `--agent <名>` 的 `taskctl` 包装脚本。随后用 `taskctl` 驱动
 看板，并在每次写入时带上宿主与会话 —— `--agent-platform claude --session-id <id>` —— 让卡的
 轨迹指回动手的那段对话。Claude Code **本身没有定时器**，因此规则 1 的认领由外部驱动：
-[监督进程](#调度轮询与巡检)唤醒一个 `claude -p` 无头会话（用 `--resume <sid>` 续接同一会话），
+[监督进程](#调度ping-与-continue)唤醒一个 `claude -p` 无头会话（用 `--resume <sid>` 续接同一会话），
 你也可以从 SessionStart hook 或 slash 命令手动触发。
 
 ### Codex
@@ -247,7 +252,7 @@ Claude Code、Codex 与 `pi` 都直接操作同一块看板。
 claim-first 片段、写入可调度的认领触发脚本 `~/.codex/meerkat-taskpanel-claim.sh`（`--no-automation`
 跳过），并随包提供 `taskctl` 包装脚本。以同样方式操作
 看板，并用当前线程作为会话 id —— `--agent-platform codex --session-id "$CODEX_THREAD_ID"` ——
-做会话级归属。Codex **本身没有定时器**，因此规则 1 由[监督进程](#调度轮询与巡检)唤醒
+做会话级归属。Codex **本身没有定时器**，因此规则 1 由[监督进程](#调度ping-与-continue)唤醒
 `codex exec` 回合（或使用 Codex 应用自动化）来驱动，随包的认领触发脚本作为最小后备。
 
 完整指南 —— 八条规则的展开、各宿主的安装与触发差异，以及一个实战示例 —— 在 skill 内：

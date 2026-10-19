@@ -158,7 +158,7 @@ the **hosted frontend root** is `web/dist`, the static build of `web/` that `tas
 - **The skills are generated, never hand-edited.** Author only under `skills/meerkat-taskpanel/`
   and the loop's hand-written surface (`skills/meerkat-loop/`: `SKILL.md`, `references/`,
   `scripts/board-check.mjs`). The loop's `body/` + `templates/` are generated from
-  `scripts/supervisor.mjs`, `scripts/wake-cwd.mjs`, `src/shared/` and
+  `scripts/supervisor.mjs`, `scripts/loop/`, `scripts/wake-cwd.mjs`, `src/shared/` and
   `scripts/install/templates/`. After any edit touching those inputs run
   `node scripts/sync-skills.mjs`; CI runs `--check` and fails on drift. There are **no committed
   copies of a skill** anywhere: `skills/` is the only `skills` tree in the repository, and

@@ -6,9 +6,10 @@
  * `server/`) are thin adapters over this module and import nothing else from
  * `src/core`.
  *
- * `STAGE` is kept from the M0 scaffold — `test/scaffold.test.mjs` asserts the
- * scaffold constants still exist, and removing it would break a surface that
- * this milestone does not own.
+ * `STAGE` is kept from the M0 scaffold. No surface reads it; the only thing
+ * that pins it is `test/core/index.test.mjs` ("keeps `STAGE` so the M0 scaffold
+ * tests stay meaningful"), so it is a fixture of the test suite rather than an
+ * API of the engine.
  */
 
 export const STAGE = "core";
@@ -49,7 +50,7 @@ export { exportMd, renderCard } from "./storage/md/export.mjs";
 export { importMd, parseCard } from "./storage/md/import.mjs";
 
 // Commands ----------------------------------------------------------------
-export { createCommands, createContext, actorOf, SYSTEM_ACTOR } from "./commands/index.mjs";
+export { createCommands, createContext, actorOf, BOARD_ACTOR } from "./commands/index.mjs";
 // A command's input, declared once — the record both surfaces project from
 // (`commands/tasks-input.mjs`). Not a command: no `ctx`, no write.
 export { inputOf, TASK_OPS } from "./commands/tasks-input.mjs";

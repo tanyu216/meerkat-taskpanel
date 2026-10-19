@@ -54,6 +54,14 @@ after(async () => {
 /** The one attachment the fixture inserted. */
 const theAttachment = () => taskd.board.repos.attachments.listByTask(taskId)[0];
 
+/** The audit rows one attachment's route writes produced, in order. */
+function attachmentActivities(attachmentId) {
+  return taskd.board.db
+    .prepare("SELECT event, task_id, changes_json FROM task_activities WHERE task_id = ? AND event LIKE 'attachment_%' ORDER BY id")
+    .all(taskId)
+    .filter((row) => JSON.parse(row.changes_json).attachmentId === attachmentId);
+}
+
 describe("attachments — path and header safety", () => {
   it("builds a content path only for a safe id", () => {
     assert.equal(attachmentContentPath("/data", "abc-123"), join("/data", "attachments", "abc-123"));
@@ -199,6 +207,11 @@ describe("attachments — the write surface (metadata routes)", () => {
     assert.equal(get.headers.get("x-content-type-options"), "nosniff");
     assert.equal(get.headers.get("cache-control"), "no-store");
     assert.equal(Buffer.from(await get.arrayBuffer()).toString(), "hello world");
+
+    const audit = attachmentActivities(attachment.id);
+    assert.deepEqual(audit.map((row) => row.event), ["attachment_added", "attachment_updated"]);
+    assert.equal(audit[0].task_id, taskId, "the trail names the card");
+    assert.equal(JSON.parse(audit[1].changes_json).size, 11, "the content write records its size");
   });
 
   it("refuses a content type outside the allow-list", async () => {
@@ -302,6 +315,11 @@ describe("attachments — the write surface (metadata routes)", () => {
     assert.equal(statSync(path, { throwIfNoEntry: false }), undefined);
     const after = await fetch(`${base}/api/v1/attachments/${attachment.id}/content`);
     assert.equal(after.status, 404);
+
+    assert.deepEqual(
+      attachmentActivities(attachment.id).map((row) => row.event),
+      ["attachment_added", "attachment_updated", "attachment_removed"],
+    );
   });
 
   it("removes a row that never got its bytes", async () => {

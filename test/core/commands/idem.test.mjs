@@ -115,11 +115,14 @@ describe("commands/idem — derived key", () => {
       );
 
       // review_of takes the `source` slot; a differing parent must not change it.
-      const reviewed = commands.createTask({ projectId: "proj", title: "R", reviewOf: "REV-1", parent: "P-1", actor: AGENT });
-      assert.equal(reviewed.idem, "task |  | REV-1 | ");
-      const reReviewed = commands.createTask({ projectId: "proj", title: "R", reviewOf: "REV-1", parent: "P-2", actor: AGENT });
+      // The reference must resolve (0025 resolves it to the marker), so the
+      // reviewed card is a real one — its identifier is the discriminator.
+      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      const reviewed = commands.createTask({ projectId: "proj", title: "R", reviewOf: original.identifier, parent: "P-1", actor: AGENT });
+      assert.equal(reviewed.idem, `task |  | ${original.identifier} | `);
+      const reReviewed = commands.createTask({ projectId: "proj", title: "R", reviewOf: original.identifier, parent: "P-2", actor: AGENT });
       assert.equal(reReviewed.id, reviewed.id);
-      assert.equal(countRows(db, "tasks"), 2);
+      assert.equal(countRows(db, "tasks"), 3);
     });
   });
 
@@ -136,21 +139,22 @@ describe("commands/idem — derived key", () => {
 
   it("reads the discriminators from meta too, when the callers omit the top-level ones", async () => {
     await board(async ({ db, commands }) => {
+      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
       const first = commands.createTask({
         projectId: "proj",
         title: "From meta",
-        meta: { review_of: "REV-7" },
+        meta: { review_of: original.identifier },
         actor: AGENT,
       });
-      assert.equal(first.idem, "task |  | REV-7 | ");
+      assert.equal(first.idem, `task |  | ${original.identifier} | `);
       const second = commands.createTask({
         projectId: "proj",
         title: "From meta (retry)",
-        meta: { review_of: "REV-7" },
+        meta: { review_of: original.identifier },
         actor: AGENT,
       });
       assert.equal(second.id, first.id);
-      assert.equal(countRows(db, "tasks"), 1);
+      assert.equal(countRows(db, "tasks"), 2);
     });
   });
 });

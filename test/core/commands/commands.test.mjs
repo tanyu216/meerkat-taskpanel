@@ -5,10 +5,15 @@
  */
 
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
 import * as commandsModule from "../../../src/core/commands/index.mjs";
 import { FORBIDDEN_DICTIONARY_COMMANDS, createCommands, createContext } from "../../../src/core/commands/index.mjs";
+import { insertDeliveryReport } from "../../../src/core/commands/delivery-report.mjs";
+import { resolveActorId } from "../../../src/core/commands/dictionary.mjs";
+import { normalizeReportCreate } from "../../../src/core/domain/report.mjs";
 import { createRepositories } from "../../../src/core/storage/repositories/index.mjs";
 import {
   TS,
@@ -17,6 +22,7 @@ import {
   cleanupTempDirs,
   countRows,
   ensureActor,
+  makeTempDir,
   revision,
   withBoard,
 } from "../../helpers/sqlite-fixture.mjs";
@@ -152,6 +158,16 @@ describe("commands/relations", () => {
       assert.equal(relation.target, child.id);
       const activity = db.prepare("SELECT * FROM task_activities WHERE event='relation_added'").get();
       assert.equal(activity.task_id, child.id, "the activity hangs off the child");
+
+      commands.removeRelation({ relationId: relation.id, actor: AGENT });
+      const removed = db.prepare("SELECT * FROM task_activities WHERE event='relation_removed'").get();
+      assert.equal(removed.task_id, child.id, "removal also hangs off the target");
+      assert.deepEqual(JSON.parse(removed.changes_json), {
+        relationId: relation.id,
+        type: "parent",
+        source: epic.id,
+        target: child.id,
+      });
     });
   });
 
@@ -330,7 +346,7 @@ describe("commands/agent-sessions", () => {
 
 describe("commands — the project surface", () => {
   it("creates, reads back and owns a README", async () => {
-    await board(({ commands }) => {
+    await board(({ db, commands }) => {
       assert.equal(commands.getProject({ id: "proj" }).name, "Project");
       assert.deepEqual(commands.listProjects().map((p) => p.id), ["proj"]);
       commands.readmeSet({ id: "proj", readme: "# Architecture\n" });
@@ -338,6 +354,16 @@ describe("commands — the project surface", () => {
       assert.throws(() => commands.readmeGet({ id: "nope" }), (err) => err.code === "NOT_FOUND");
       const updated = commands.updateProject({ id: "proj", patch: { meta: { git: "x" } } });
       assert.deepEqual(updated.meta, { git: "x" });
+
+      // A project write is an event too: the activity stream is a cursor over
+      // this table, so a change with no row produces no frame.
+      const rows = db
+        .prepare("SELECT task_id, changes_json FROM task_activities WHERE event = 'project_updated' ORDER BY id")
+        .all();
+      assert.deepEqual(rows.map((row) => ({ task_id: row.task_id, changes: JSON.parse(row.changes_json) })), [
+        { task_id: null, changes: { project: "proj", fields: ["readme"] } },
+        { task_id: null, changes: { project: "proj", fields: ["meta"] } },
+      ]);
     });
   });
 
@@ -367,6 +393,90 @@ describe("commands — the project surface", () => {
     await board(({ commands }) => {
       assert.equal(commands.getProject({ id: "proj" }).createdAt, TS2);
     }, { clock: () => TS2 });
+  });
+});
+
+describe("commands/attachments — the write half of the attachment surface", () => {
+  it("records the row and its audit entry from the injected clock", async () => {
+    await board(({ repos, commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "x", actor: AGENT });
+      const { attachment } = commands.addAttachment({
+        taskId: task.id,
+        filename: "a.txt",
+        contentType: "text/plain",
+        size: 3,
+        actor: AGENT,
+      });
+      assert.equal(attachment.createdAt, TS);
+      assert.equal(attachment.kind, "attachment");
+      assert.equal(attachment.size, 3);
+      assert.deepEqual(
+        repos.activities.list({ taskId: task.id }).map((row) => row.event).filter((e) => e.startsWith("attachment")),
+        ["attachment_added"],
+      );
+      assert.throws(
+        () => commands.addAttachment({ taskId: "nope", filename: "b.txt", actor: AGENT }),
+        (err) => err.code === "NOT_FOUND",
+      );
+    }, { clock: () => TS });
+  });
+
+  it("stores the bytes and removes them, keeping the row and the disk in step", async () => {
+    await board(({ repos, commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "x", actor: AGENT });
+      const { attachment } = commands.addAttachment({ taskId: task.id, filename: "a.txt", actor: AGENT });
+      const path = join(makeTempDir("attach-"), attachment.id);
+
+      commands.storeAttachmentContent({ attachment, path, body: Buffer.from("hey"), actor: AGENT });
+      assert.equal(readFileSync(path, "utf8"), "hey");
+      assert.equal(repos.attachments.get(attachment.id).size, 3);
+      assert.deepEqual(
+        repos.activities.list({ taskId: task.id }).map((row) => row.event).filter((e) => e.startsWith("attachment")),
+        ["attachment_added", "attachment_updated"],
+      );
+
+      const stored = repos.attachments.get(attachment.id);
+      commands.removeAttachment({ attachment: stored, path, actor: AGENT });
+      assert.equal(repos.attachments.get(attachment.id), null);
+      assert.equal(existsSync(path), false);
+      assert.deepEqual(
+        repos.activities.list({ taskId: task.id }).map((row) => row.event).filter((e) => e.startsWith("attachment")),
+        ["attachment_added", "attachment_updated", "attachment_removed"],
+      );
+    });
+  });
+});
+
+describe("commands/delivery-report — the one delivery-shaped insert", () => {
+  it("stamps origin=delivery and threads seg/sessionId through", async () => {
+    await board(({ ctx, repos, commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "x", actor: AGENT });
+      // `task_reports.author_id` references `actors(id)` (0020), so the author
+      // is resolved the way every delivery path resolves it before preparing.
+      const authorId = resolveActorId({ repos, now: TS }, { name: AGENT.id, actorKind: AGENT.kind });
+      const prepared = normalizeReportCreate(
+        { ...report(), author: { kind: AGENT.kind, id: authorId } },
+        { taskRound: task.deliveryRound, now: TS },
+      );
+
+      const withSession = insertDeliveryReport(ctx, {
+        taskId: task.id,
+        prepared,
+        seg: "s1",
+        sessionId: "sess",
+      });
+      assert.equal(withSession.origin, "delivery");
+      assert.equal(withSession.taskId, task.id);
+      assert.equal(withSession.seg, "s1");
+      assert.equal(withSession.sessionId, "sess");
+
+      // One report per (task, round), so the no-session half gets its own card.
+      const other = commands.createTask({ projectId: "proj", title: "y", actor: AGENT });
+      const bare = insertDeliveryReport(ctx, { taskId: other.id, prepared });
+      assert.equal(bare.origin, "delivery");
+      assert.equal(bare.seg, null);
+      assert.equal(bare.sessionId, null);
+    });
   });
 });
 

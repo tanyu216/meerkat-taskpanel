@@ -19,6 +19,7 @@
  */
 
 import { LABEL_PALETTE, LABEL_TTL_DAYS_DEFAULT } from "../../shared/constants.mjs";
+import { BOARD_ACTOR } from "./context.mjs";
 import { isCollectable, labelDisplayName, nextColor, normalizeLabelName } from "../domain/labels.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 
@@ -188,8 +189,8 @@ export function collectUnusedLabels(ctx, input = {}) {
       if (archived.length > 0) {
         repos.activities.append({
           taskId: null,
-          actorKind: "system",
-          actorId: "taskd",
+          actorKind: BOARD_ACTOR.kind,
+          actorId: BOARD_ACTOR.id,
           event: "label_gc",
           changes: {
             archived,

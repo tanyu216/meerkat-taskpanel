@@ -22,18 +22,16 @@
  */
 
 import assert from "node:assert/strict";
-import { copyFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
-import { applyMigrations, defaultMigrationsDir } from "../../../src/core/storage/migrations-runner.mjs";
+import { applyMigrations } from "../../../src/core/storage/migrations-runner.mjs";
+import { indexShapesOf, migrationsBefore } from "../../helpers/migration-shapes.mjs";
 import {
   TS,
   TS2,
   cleanupTempDirs,
   createTempBoard,
   insertTask,
-  makeTempDir,
   reasonCode,
 } from "../../helpers/sqlite-fixture.mjs";
 
@@ -46,13 +44,7 @@ after(cleanupTempDirs);
  * 0014, which runs *after* 0013 and so cannot belong to a board the previous
  * build left behind. A pre-0013 board is 0001 … 0012, and nothing later.
  */
-function before0013() {
-  const dir = makeTempDir("meerkat-taskpanel-pre0013-");
-  for (const name of readdirSync(defaultMigrationsDir()).filter((n) => n.endsWith(".sql") && n.slice(0, 4) < "0013")) {
-    copyFileSync(join(defaultMigrationsDir(), name), join(dir, name));
-  }
-  return dir;
-}
+const before0013 = migrationsBefore("0013", { prefix: "meerkat-taskpanel-pre0013-" });
 
 const columnsOf = (db) => db.prepare("SELECT name FROM pragma_table_info('tasks')").all().map((r) => r.name);
 /**
@@ -69,21 +61,10 @@ const columnsOf = (db) => db.prepare("SELECT name FROM pragma_table_info('tasks'
  * right name with the wrong predicate would be a different index wearing the
  * same label.
  */
-const indexShapes = (db) =>
-  db
-    .prepare("SELECT name, \"unique\" AS uniq, partial AS part FROM pragma_index_list('tasks')")
-    .all()
-    .filter((row) => !row.name.startsWith("sqlite_autoindex"))
-    .sort((a, b) => (a.name < b.name ? -1 : 1))
-    .map((row) => ({
-      name: row.name,
-      unique: Number(row.uniq),
-      partial: Number(row.part),
-      columns: db
-        .prepare("SELECT name FROM pragma_index_info(?)")
-        .all(row.name)
-        .map((column) => column.name),
-    }));
+// 0025 adds a review-marker index of its own. This comparison is about the
+// *rebuilt* table keeping the indexes it had; a later migration's own new index
+// is named here rather than the rule being loosened.
+const indexShapes = (db) => indexShapesOf(db, "tasks", { exclude: ["ix_tasks_review_of"] });
 const triggerNames = (db) =>
   db.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'tasks'").all().map((r) => r.name);
 const tasksSql = (db) => db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get().sql;
@@ -97,6 +78,9 @@ const EXPECTED_TRIGGERS = [
   "tr_latest_report_belongs",
   "tr_deliver_gate",
   "tr_tasks_round_bump",
+  // 0025/0026 — the head's review-marker and children-terminal guards.
+  "tr_tasks_review_marker_immutable",
+  "tr_tasks_children_terminal",
   "tr_rev_tasks_ins",
   "tr_rev_tasks_upd",
   "tr_rev_tasks_del",
@@ -137,7 +121,7 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
       seedLegacyBoard(board.db);
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026"]);
       assert.deepEqual(up.skipped.slice(-2), ["0011", "0012"]);
 
       // 1 — the enum: the new word is storable, the old ones still are, and an
@@ -281,6 +265,8 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
         "tr_rev_actors_del",
         "tr_rev_actors_ins",
         "tr_rev_actors_upd",
+        "tr_tasks_children_terminal",
+        "tr_tasks_review_marker_immutable",
       ];
       const LATER_MIGRATION_TRIGGERS_REMOVED = [
         "tr_dict_assignees_delete",

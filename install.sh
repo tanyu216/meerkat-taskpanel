@@ -58,6 +58,14 @@ PREFIX_HOME=""
 AGENT_NAME=""
 NO_AUTOMATION=""
 CLAIM_UNASSIGNED_FLAG=""
+RECOVER_STALE_FLAG=""
+WORKFLOW_FLAG=""
+AUTO_ACCEPT_REVIEWS_FLAG=""
+REVIEWER_FLAG=""
+ACCEPTANCE_FLAG=""
+PING_INTERVAL_FLAG=""
+CONTINUE_INTERVAL_FLAG=""
+CONTINUE_FLAG=""
 SUPERVISOR_FLAG=""
 SUPERVISOR_HOSTS_FLAG=""
 SCHEDULER_FLAG=""
@@ -83,6 +91,38 @@ Options:
                     May the supervisor claim unassigned cards? Persisted to the
                     host config; also asked interactively on a TTY (default yes).
   --assignee-only   Alias for --claim-unassigned=no (claim only my own cards)
+  --recover-stale=yes|no
+                    Recover stale in_progress claims (same holder after 30 min,
+                    any agent after 6 hours). Persisted to the host config;
+                    default yes.
+  --workflow=yes|no Run the supervisor's workflow sub-pass (reconcile, review
+                    dispatch, applying verdicts). Persisted to the host config;
+                    default yes.
+  --reviewer <agent>
+                    The independent reviewer that audits delivered cards. Unset
+                    (the default) leaves deliveries for a human to accept.
+  --auto-accept-reviews=yes|no
+                    Let the loop close a review card after applying its verdict.
+                    Persisted to the host config; default yes. `no` leaves the
+                    review card for a human.
+  --acceptance=human-only|both|agent-only
+                    Who may close a task. `human-only` accepts only a human on a
+                    top-level card; `both` (the default) a human or the loop;
+                    `agent-only` any non-human writer. Written to
+                    <dataDir>/taskd.env (the board is authoritative) and to the
+                    host config the loop reads. Asked interactively on a TTY.
+                    Alias: --acceptance-policy.
+  --ping-interval <sec>
+                    The liveness clock (default 60). It only prunes dead worker
+                    pids from the registry: no board read, no LLM.
+  --continue-interval <sec>
+                    The judgment clock (default 600 = 10 minutes). It wakes the
+                    host with a bounded "继续" prompt; that turn runs the poll,
+                    patrol and workflow entries.
+  --continue=yes|no
+                    Enable the continue turn (default yes). Persisted to the
+                    host config; `no` keeps the ping clock but discovers no work
+                    until a human runs the poll entry.
   --supervisor=enable|disable|status
                     Opt in to the supervisor daemon: load / unload / report the
                     loop units the install just wrote. There is no silent default
@@ -145,6 +185,9 @@ Environment (set for each host installer):
   MEERKAT_TASKPANEL_AGENT_NAME   agent identity (default: $USER)
   MEERKAT_TASKPANEL_NO_AUTOMATION "1" to skip the Codex claim trigger + scheduling
   MEERKAT_TASKPANEL_CLAIM_UNASSIGNED  "yes"/"no" default for the claim policy
+  MEERKAT_TASKPANEL_PING_INTERVAL      liveness clock, seconds (default 60)
+  MEERKAT_TASKPANEL_CONTINUE_INTERVAL  judgment clock, seconds (default 600)
+  MEERKAT_TASKPANEL_CONTINUE           "yes"/"no" (default yes)
   MEERKAT_TASKPANEL_SUPERVISOR   "enable"/"disable"/"status" — the non-interactive
                                  form of --supervisor (an explicit flag wins)
   MEERKAT_TASKPANEL_SCHEDULER    "auto"/"launchd"/"systemd"/"cron" (default auto)
@@ -250,6 +293,87 @@ while [ "$#" -gt 0 ]; do
       ;;
     --assignee-only)
       CLAIM_UNASSIGNED_FLAG="no"
+      shift
+      ;;
+    --recover-stale)
+      [ "$#" -ge 2 ] || die "--recover-stale requires a value (yes|no)"
+      RECOVER_STALE_FLAG="$2"
+      shift 2
+      ;;
+    --recover-stale=*)
+      RECOVER_STALE_FLAG="${1#*=}"
+      shift
+      ;;
+    --workflow)
+      [ "$#" -ge 2 ] || die "--workflow requires a value (yes|no)"
+      WORKFLOW_FLAG="$2"
+      shift 2
+      ;;
+    --workflow=*)
+      WORKFLOW_FLAG="${1#*=}"
+      shift
+      ;;
+    --reviewer)
+      [ "$#" -ge 2 ] || die "--reviewer requires an agent name"
+      REVIEWER_FLAG="$2"
+      shift 2
+      ;;
+    --reviewer=*)
+      REVIEWER_FLAG="${1#*=}"
+      shift
+      ;;
+    --auto-accept-reviews)
+      [ "$#" -ge 2 ] || die "--auto-accept-reviews requires a value (yes|no)"
+      AUTO_ACCEPT_REVIEWS_FLAG="$2"
+      shift 2
+      ;;
+    --auto-accept-reviews=*)
+      AUTO_ACCEPT_REVIEWS_FLAG="${1#*=}"
+      shift
+      ;;
+    --acceptance)
+      [ "$#" -ge 2 ] || die "--acceptance requires a value (human-only|both|agent-only)"
+      ACCEPTANCE_FLAG="$2"
+      shift 2
+      ;;
+    --acceptance=*)
+      ACCEPTANCE_FLAG="${1#*=}"
+      shift
+      ;;
+    --acceptance-policy)
+      [ "$#" -ge 2 ] || die "--acceptance-policy requires a value (human-only|both|agent-only)"
+      ACCEPTANCE_FLAG="$2"
+      shift 2
+      ;;
+    --acceptance-policy=*)
+      ACCEPTANCE_FLAG="${1#*=}"
+      shift
+      ;;
+    --ping-interval)
+      [ "$#" -ge 2 ] || die "--ping-interval requires a number of seconds"
+      PING_INTERVAL_FLAG="$2"
+      shift 2
+      ;;
+    --ping-interval=*)
+      PING_INTERVAL_FLAG="${1#*=}"
+      shift
+      ;;
+    --continue-interval)
+      [ "$#" -ge 2 ] || die "--continue-interval requires a number of seconds"
+      CONTINUE_INTERVAL_FLAG="$2"
+      shift 2
+      ;;
+    --continue-interval=*)
+      CONTINUE_INTERVAL_FLAG="${1#*=}"
+      shift
+      ;;
+    --continue)
+      [ "$#" -ge 2 ] || die "--continue requires a value (yes|no)"
+      CONTINUE_FLAG="$2"
+      shift 2
+      ;;
+    --continue=*)
+      CONTINUE_FLAG="${1#*=}"
       shift
       ;;
     --supervisor)
@@ -397,6 +521,51 @@ if ! CLAIM_UNASSIGNED="$(claim_unassigned_value "$CLAIM_FLAG" "$TTY")"; then
 fi
 echo "install.sh: claim unassigned tasks: $CLAIM_UNASSIGNED"
 
+# The workflow channel's three answers. Like the claim policy, an explicit flag wins,
+# then the environment, then the default. A bad yes/no value is a hard error before
+# any host is dispatched — a misspelt policy must install nothing.
+RECOVER_STALE="${RECOVER_STALE_FLAG:-${MEERKAT_TASKPANEL_RECOVER_STALE:-yes}}"
+WORKFLOW="${WORKFLOW_FLAG:-${MEERKAT_TASKPANEL_WORKFLOW:-yes}}"
+AUTO_ACCEPT_REVIEWS="${AUTO_ACCEPT_REVIEWS_FLAG:-${MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS:-yes}}"
+REVIEWER="${REVIEWER_FLAG:-${MEERKAT_TASKPANEL_REVIEWER:-}}"
+case "$RECOVER_STALE" in
+  yes | no) ;;
+  *) die "--recover-stale must be yes or no (got '$RECOVER_STALE')" ;;
+esac
+case "$WORKFLOW" in
+  yes | no) ;;
+  *) die "--workflow must be yes or no (got '$WORKFLOW')" ;;
+esac
+case "$AUTO_ACCEPT_REVIEWS" in
+  yes | no) ;;
+  *) die "--auto-accept-reviews must be yes or no (got '$AUTO_ACCEPT_REVIEWS')" ;;
+esac
+echo "install.sh: recover stale claims: $RECOVER_STALE"
+
+# Who may close a task. The board's own copy is written after the hosts, below;
+# this is the value every host's config records for the loop.
+ACC_SAID="${ACCEPTANCE_FLAG:-${MEERKAT_TASKPANEL_ACCEPTANCE_POLICY:-}}"
+if ! ACCEPTANCE="$(acceptance_policy_value "$ACC_SAID" "$TTY")"; then
+  exit 2
+fi
+echo "install.sh: acceptance policy: $ACCEPTANCE"
+echo "install.sh: workflow: $WORKFLOW; reviewer: ${REVIEWER:-none}; auto-accept reviews: $AUTO_ACCEPT_REVIEWS"
+
+# The scheduler's two clocks. The interval is rendered into the units, so it must
+# be known here; the continue switch is persisted and read by the entry itself.
+PING_INTERVAL="${PING_INTERVAL_FLAG:-${MEERKAT_TASKPANEL_PING_INTERVAL:-60}}"
+CONTINUE_INTERVAL="${CONTINUE_INTERVAL_FLAG:-${MEERKAT_TASKPANEL_CONTINUE_INTERVAL:-600}}"
+CONTINUE="${CONTINUE_FLAG:-${MEERKAT_TASKPANEL_CONTINUE:-yes}}"
+case "$PING_INTERVAL" in "" | *[!0-9]*) die "--ping-interval must be a positive integer (got '$PING_INTERVAL')" ;; esac
+case "$CONTINUE_INTERVAL" in "" | *[!0-9]*) die "--continue-interval must be a positive integer (got '$CONTINUE_INTERVAL')" ;; esac
+[ "$PING_INTERVAL" -gt 0 ] || die "--ping-interval must be positive"
+[ "$CONTINUE_INTERVAL" -gt 0 ] || die "--continue-interval must be positive"
+case "$CONTINUE" in
+  yes | no) ;;
+  *) die "--continue must be yes or no (got '$CONTINUE')" ;;
+esac
+echo "install.sh: ping every ${PING_INTERVAL}s; continue every ${CONTINUE_INTERVAL}s ($CONTINUE)"
+
 # Resolve the supervisor request (per-host, opt-in). An explicit flag wins; else the
 # environment; else ask on a TTY — where the default is **no**, the opposite of the
 # claim question above, because the supervisor is a daemon that runs unattended. An
@@ -482,6 +651,14 @@ FAIL $host — installer not found"
       MEERKAT_TASKPANEL_AGENT_NAME="$AGENT_NAME" \
       MEERKAT_TASKPANEL_NO_AUTOMATION="$NO_AUTOMATION" \
       MEERKAT_TASKPANEL_CLAIM_UNASSIGNED="$CLAIM_UNASSIGNED" \
+      MEERKAT_TASKPANEL_RECOVER_STALE="$RECOVER_STALE" \
+      MEERKAT_TASKPANEL_WORKFLOW="$WORKFLOW" \
+      MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS="$AUTO_ACCEPT_REVIEWS" \
+      MEERKAT_TASKPANEL_REVIEWER="$REVIEWER" \
+      MEERKAT_TASKPANEL_ACCEPTANCE_POLICY="$ACCEPTANCE" \
+      MEERKAT_TASKPANEL_PING_INTERVAL="$PING_INTERVAL" \
+      MEERKAT_TASKPANEL_CONTINUE_INTERVAL="$CONTINUE_INTERVAL" \
+      MEERKAT_TASKPANEL_CONTINUE="$CONTINUE" \
       MEERKAT_TASKPANEL_SUPERVISOR="$host_supervisor" \
       MEERKAT_TASKPANEL_SCHEDULER="$SCHEDULER" \
       MEERKAT_TASKPANEL_LINK="$LINK" \
@@ -505,6 +682,44 @@ done
 echo
 if ! install_taskd_guard; then
   echo "install.sh: the taskd guard step failed (see the message above)" >&2
+fi
+
+# The board's own copy of the policy. The host config above is what the loop
+# *believes*; `<dataDir>/taskd.env` is what the board enforces, and it is the
+# same file the Access panel writes (the writer merges, never rewrites).
+if [ "$ACCEPTANCE" = "agent-only" ]; then
+  # Warnings, not refusals: *which* agent closes a card is the deployment's
+  # business, but each of these leaves the board with no automated closer at all.
+  if [ "$WORKFLOW" != "yes" ]; then
+    echo "install.sh: warning: agent-only with --workflow=no — nothing will close a delivered card" >&2
+  fi
+  if [ "$AUTO_ACCEPT_REVIEWS" != "yes" ]; then
+    echo "install.sh: warning: agent-only with --auto-accept-reviews=no — review cards will pile up for a human who may not close them" >&2
+  fi
+  if [ -z "$REVIEWER" ]; then
+    echo "install.sh: warning: agent-only with no --reviewer — deliveries will not be reviewed automatically" >&2
+  fi
+  if [ -n "$NO_AUTOMATION" ]; then
+    echo "install.sh: warning: agent-only with --no-automation — only an external agent can close a card" >&2
+  fi
+  loop_host=""
+  for candidate in $HOSTS; do
+    case "$candidate" in
+      claude | codex | pi) loop_host="1" ;;
+    esac
+  done
+  if [ -z "$loop_host" ]; then
+    echo "install.sh: warning: agent-only with no loop host installed — only an external agent can close a card" >&2
+  fi
+fi
+
+if [ -n "$DRY_RUN" ]; then
+  echo "install.sh: would write TASKD_ACCEPTANCE_POLICY=$ACCEPTANCE to <dataDir>/taskd.env"
+else
+  if ! node "$ROOT/scripts/install/lib/acceptance.mjs" write --policy "$ACCEPTANCE"; then
+    echo "install.sh: could not write the board's acceptance policy (see above)" >&2
+    status=1
+  fi
 fi
 
 echo

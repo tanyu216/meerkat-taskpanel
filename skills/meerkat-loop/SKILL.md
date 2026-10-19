@@ -1,20 +1,57 @@
 ---
 name: meerkat-loop
-description: Run the host-external supervisor loop that keeps a Meerkat TaskPanel board moving — the 1-minute candidate scan, the atomic claim, the worker wake and the 5-minute patrol that Claude Code, Codex and Pi cannot run themselves because they have no timer. The patrol covers the whole PROTOCOL §⑮ timeout table (stale heartbeat, blocked-on-leader, confirmation gate, defect fix card, acceptance queued, leader stalled), emitting the shared alert tuple and never moving a card. Installs launchd / systemd / cron units plus the per-host wake glue, carries the supervisor's execution body and its shared modules, and declares the board interface generation it requires. Install for claude / codex / pi only; OpenClaw runs the openclaw-team framework instead.
+description: Run the host-external scheduler that keeps a Meerkat TaskPanel board moving — a 60-second process-liveness ping, and a 10-minute `继续` judgment turn that wakes the host and runs the deterministic entries: the atomic claim and worker wake (poll), the notify-only SLA patrol, and the workflow pass that reconciles containers, dispatches an independent reviewer for each delivered card, applies the reviewer's verdict and closes the review card. The SLA rows stay notify-only; the workflow entry is the one that writes. Installs launchd / systemd / cron units plus the per-host wake glue, carries the scheduler's execution body, the loop entries and their shared modules, and declares the board interface generation it requires. Install for claude / codex / pi only; OpenClaw runs the openclaw-team framework instead.
 ---
 
 # Meerkat Loop
 
-The **loop** is the part of Meerkat TaskPanel that runs when no agent is looking: a cheap
-1-minute scan for claimable cards, an atomic claim, a wake that starts exactly one worker,
-and a slower 5-minute patrol that escalates stale claims, reports unreadable heartbeats,
-and covers the rest of the `PROTOCOL §⑮` timeout table — a card parked on the leader, an
-unanswered confirmation gate, a defect whose fix card was never created, a delivery nobody
-queued an acceptance review for, and the leader's own patrol going quiet. Every one of
-those alerts is a **notification to the leader**: the patrol never moves a card, never
-releases a blocked one and never starts a model turn for a new row. Claude Code, Codex and
-Pi have no clock and no timers — their hooks fire only on session events — so the loop
-lives **outside** the host and the host is only ever the worker that gets woken.
+The **loop** is the part of Meerkat TaskPanel that runs when no agent is looking. Its
+scheduler owns two clocks:
+
+| Clock | Cadence | Job |
+|---|---|---|
+| **ping** | 60s | prune worker-registry entries whose pid is gone. No board read, no claim, no LLM |
+| **continue** | 600s (10 min) | wake the host with a bounded `继续` prompt; that turn runs the deterministic entries |
+
+The deterministic entries are separate programs under `scripts/loop/`, not scheduled
+units. The continue turn runs them in this order:
+
+1. **patrol** — the notify-only SLA pass. It escalates stale claims, reports unreadable
+   heartbeats, and covers the rest of the `PROTOCOL §⑮` timeout table. No alert moves a
+   card, and no LLM turn starts by default.
+2. **workflow** — the channel that writes: `issue reconcile` (container rules), an
+   independent reviewer for each flow-A card awaiting acceptance, and the reviewer's
+   `VERDICT:` report applied to the original. The review card is closed last. On by
+   default; `--workflow=no` turns it off, and `--reviewer` enables dispatch at all.
+
+   **Who it may close** follows the board's acceptance policy (the board is
+   authoritative; `--acceptance` / `MEERKAT_TASKPANEL_ACCEPTANCE_POLICY` is this
+   loop's copy):
+
+   | policy | top-level original | child card | review card |
+   |---|---|---|---|
+   | `human-only` | **hold** — record the verdict, close the review card, leave the card `in_review` | close | close |
+   | `both` (default) | close | close | close |
+   | `agent-only` | close | close | close |
+
+   Under `agent-only` the board only requires a **non-human** writer; *which* agent
+   applies the verdict is this deployment's business (the loop, an operator's own
+   automation, the reviewer itself), not the board's. Under `human-only` a held
+   approval is idempotent: the marker `review_verdict=approve` +
+   `review_verdict_round` means a second pass rewrites neither the comment nor the
+   marker, and only retries the review card's close. A worker still always stops at
+   `in_review`; review cards are never held (the loop closes its own bookkeeping).
+3. **poll** — the cheap scan, the atomic claim, and the wake that starts exactly one
+   worker. Poll runs last so a review card dispatched by workflow in the same turn can be
+   claimed and woken immediately.
+
+Claude Code, Codex and Pi have no clock and no timers — their hooks fire only on session
+events — so the loop lives **outside** the host and the host is only ever the worker that
+gets woken. On launchd/systemd the optional **subscribe daemon** (`--subscribe`) holds one
+SSE connection and asks for a continue turn when a dispatch-relevant event arrives; the
+continue clock remains the fallback and the only path for time-based work. On cron,
+discovery stays at most one continue cadence. `--continue-interval` is the lever for that
+fallback.
 
 This skill is that loop, packaged so it can be installed and distributed on its own
 (repository: [`meerkat-taskpanel`](https://github.com/tanyu216/meerkat-taskpanel)). The
@@ -58,10 +95,19 @@ references/operation.md   install, run, paths, permissions, compatibility
 scripts/board-check.mjs   the interface gate above
 body/                     the execution body (generated)
   manifest.txt              the file closure the body is closed under
-  scripts/supervisor.mjs    the tick: scan → claim → wake → patrol
+  scripts/supervisor.mjs    the scheduler: ping + continue clocks, mode dispatch
+  scripts/loop/options.mjs  the shared option surface (one parser for every entry)
+  scripts/loop/runtime.mjs  registry, log, taskctl shell-out, SLA ledger, continue lock
+  scripts/loop/runners.mjs  injected-dependency runners + worker/continue spawners
+  scripts/loop/board.mjs    the real board reads and the SLA/workflow passes
+  scripts/loop/poll.mjs     scan → atomic claim → wake a worker
+  scripts/loop/patrol.mjs   notify-only SLA rows
+  scripts/loop/workflow.mjs reconcile / review dispatch / verdicts
+  scripts/loop/continue.mjs one judgment turn (the `继续` wake)
   scripts/wake-cwd.mjs      what the wake glue calls to resolve the card's directory
-  src/shared/*.mjs          the shared modules those two import
+  src/shared/*.mjs          the shared modules those import
   src/shared/sla-patrol.mjs   the PROTOCOL §⑮ rows: thresholds, tiers, tuple, ledger
+  src/shared/workflow.mjs     the workflow decisions: reconcile, review dispatch, verdicts
 templates/                what the installer renders (generated)
   scheduling/{launchd,systemd,cron}/   the units
   {claude,codex,pi}/wake-<host>.sh     the wake glue
@@ -70,7 +116,7 @@ templates/                what the installer renders (generated)
 
 `body/` and `templates/` are **generated** — by `node scripts/sync-skills.mjs` in the
 repository this was split from, guarded by `--check`. Do not hand-edit them: edit
-`scripts/supervisor.mjs`, `scripts/wake-cwd.mjs`, `src/shared/` or
+`scripts/supervisor.mjs`, `scripts/loop/`, `scripts/wake-cwd.mjs`, `src/shared/` or
 `scripts/install/templates/` and regenerate. Anything else in this directory
 (`SKILL.md`, `references/`, `scripts/board-check.mjs`) is authored here.
 

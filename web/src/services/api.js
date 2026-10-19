@@ -62,12 +62,13 @@ function buildQuery(query) {
 /**
  * @param {"GET"|"POST"|"PATCH"|"PUT"|"DELETE"} method
  * @param {string} path e.g. `/tasks/TD-1`
- * @param {{body?: object, query?: object, signal?: AbortSignal}} [options]
+ * @param {{body?: object, query?: object, signal?: AbortSignal, root?: boolean}} [options]
+ *   `root` addresses a route outside `/api/v1` — only `/meta` today.
  * @returns {Promise<any>} the unwrapped `data`
  */
 export async function request(method, path, options = {}) {
-  const { body, query, signal } = options;
-  const url = `${BASE}${path}${buildQuery(query)}`;
+  const { body, query, signal, root = false } = options;
+  const url = `${root ? "" : BASE}${path}${buildQuery(query)}`;
   let response;
   try {
     response = await fetch(url, {
@@ -144,8 +145,15 @@ export async function health() {
 /* --------------------------------------------------------------- endpoints */
 
 export const api = {
-  meta: () => get("/meta"),
+  // `/meta` is a root route, not `/api/v1/meta` (`src/server/index.mjs`).
+  meta: () => request("GET", "/meta", { root: true }),
   health,
+
+  // B19 — the access policy and the persisted token. Both verbs are
+  // loopback-only server-side; the read answers the token because the panel
+  // shows the credential a refresh must keep showing.
+  access: () => get("/access"),
+  saveAccess: (body) => request("PUT", "/access", { body }),
 
   projects: (query) => get("/projects", query),
   project: (id) => get(`/projects/${encodeURIComponent(id)}`),

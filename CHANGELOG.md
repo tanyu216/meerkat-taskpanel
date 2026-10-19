@@ -9,6 +9,49 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Acceptance is a board policy: `human-only` | `both` | `agent-only`.** `in_review →
+  done` is no longer a fixed "human or taskd" rule. `both` (the default) keeps the
+  historical behaviour; `human-only` lets only a human close a **top-level** card (children
+  and review cards are still the agents'/loop's to close); `agent-only` lets any non-human
+  writer close one. The policy lives in `<dataDir>/taskd.env` (`TASKD_ACCEPTANCE_POLICY`,
+  merged beside the Access panel's keys and re-read per decision), and `install.sh
+  --acceptance=` writes both the board's copy and the loop's. The loop records a
+  `human-only` top-level approval, closes the review card and leaves the card `in_review`
+  for the human (a `meta.review_verdict` marker makes the hold idempotent); "Waiting on
+  me" now lists those deliveries. Two new structural gates make the flow safe: a card may
+  not enter `in_review`/`done` with a non-terminal child (`CHILDREN_OPEN`, migration 0026),
+  and a human closing a top-level card needs the current round's reviews resolved
+  (`REVIEW_PENDING`). Review identity moves from the writable `meta.review_of` into the
+  immutable `tasks.review_of_id` / `review_round` columns (migration 0025).
+- **The loop can be event-driven.** `supervisor.mjs --subscribe` holds one SSE connection
+  to the board and asks for a continue turn when a dispatch-relevant event arrives
+  (coalesced, at most one turn per minute). It does not claim or wake by itself: the
+  existing continue turn still scans, claims and dispatches, so there is one dispatch
+  path. launchd and systemd get a long-lived subscribe unit; cron stays on the continue
+  cadence, which also remains the only path for time-based work (stale claims, review
+  aging, SLA).
+- **Every surface that can change now records an event.** Project metadata/README,
+  attachment create/content/delete, and a completed markdown import (one
+  `import_completed` row with counters, not one per card) join the activity stream;
+  `relation_removed` carries both endpoints and `task_archived` carries the status it
+  left. The web board consumes them: the open drawer refreshes its relations, reports,
+  sessions, attachments and trail; the waiting queue re-reads the question when it can
+  change; archived cards leave the board; project counts and the actor/label rosters
+  refresh on a trailing debounce; and the first stream connection seeds from
+  `/meta.revision` instead of replaying the whole audit trail.
+- **Actor kinds name a platform.** The board writes `taskd` (its own concrete platform
+  name) rather than the vague `system`, automated acceptance recognises `human`/`taskd`,
+  and the command layer no longer invents an `agent` kind when the caller did not name
+  one. `test/contract/actor-kind.test.mjs` keeps new `system`/`agent` kinds out of the
+  source; historical rows are left as recorded.
+- **Every read shows its skeleton.** Switching projects — from the sidebar or the top bar's
+  dropdown — puts the board, list, activity and 「等你回复」 views into their skeletons until the
+  new project's read lands, instead of briefly drawing the previous project's cards (and a failed
+  switch no longer leaves them behind). The activity backfill and the waiting queue's comment
+  reads do the same, and opening a card now slides the drawer in immediately with a skeleton
+  head and body while its detail loads, where it used to stay invisible until every read
+  returned. Skeletons follow **reads, never a timer**: a view switch with its data already in
+  hand stays instant.
 - **A container closes itself: the epic rollup.** When the container's children are all finished
   — every child `done` or `canceled`, and **at least one `done`** — the board writes the
   container's rollup report (one acceptance line per child, plus the children's own delivery
@@ -233,6 +276,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The loop is now a scheduler with two clocks.** `scripts/supervisor.mjs` no longer reads the
+  board: it owns a 60-second **ping** (prune dead worker pids; no board read, no LLM) and a
+  10-minute **continue** turn (wake the host with a bounded `继续` prompt). Poll, patrol and
+  workflow are independent entries under `scripts/loop/`, invoked by the continue turn in the
+  order patrol → workflow → poll. The installed units are now `ping`/`continue` (60s / 600s);
+  `--supervisor=enable` takes the legacy `poll`/`patrol` units down before loading them, and a
+  bare `--once` still runs the legacy poll pass so a partially upgraded host keeps discovering
+  work. The trade-off is a work-discovery latency of at most one continue cadence
+  (`--continue-interval`).
 - **The naming-boundary contract is retired and narrowed, not executed.**
   `design/contracts/naming-boundary.md` adjudicated which words of the external framework may
   appear in this repository, and laid out a three-batch cleanup plus independent acceptance

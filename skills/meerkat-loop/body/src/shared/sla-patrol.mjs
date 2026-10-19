@@ -162,6 +162,21 @@ const MAX_DAYS = 3_660;
 /** Statuses a card never leaves — used by the releasability hint. */
 export const TERMINAL_STATUSES = Object.freeze(["done", "canceled"]);
 
+/**
+ * The `meta.accepted_by` marker the workflow pass writes when it (not a human)
+ * moves a card to `done` after a review verdict. A `done` card carrying it is
+ * **not** a leader event: `leader_stalled` counts leader acts, and an automated
+ * acceptance must not reset the leader's clock (nor hide a real stall).
+ */
+export const LOOP_ACCEPTOR = "loop-review";
+
+/** A meta / wire value as a non-negative integer, or `null`. */
+function intOrNull(value) {
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) return value;
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) return Number.parseInt(value, 10);
+  return null;
+}
+
 /** `blocked_reason` values the contract gives **no** `§⑮` row (gap G-3). */
 const VISIBILITY_ONLY_BLOCK_REASONS = new Set(["dependency", "external", "resource"]);
 
@@ -266,12 +281,6 @@ export const SLA_ROWS = Object.freeze({
 /** A `PROTOCOL §⑮`-stamped constant, for the drift check and for error messages. */
 export function slaRowRef(row) {
   return SLA_ROWS[row]?.ref ?? null;
-}
-
-/** The runtime limit for a row, in working minutes (`null` when the row has none). */
-export function slaLimitMin(row) {
-  const spec = SLA_ROWS[row];
-  return spec === undefined || spec.limitMin === null ? null : spec.limitMin;
 }
 
 /**
@@ -867,7 +876,17 @@ function acceptanceDetection(card, context) {
   if (card?.status !== "in_review") return null;
   const flow = card?.meta?.flow ?? "A";
   if (String(flow).toUpperCase() !== "A") return null;
-  if (context.reviewOfRefs.size > 0 && idsOf(card).some((id) => context.reviewOfRefs.has(id))) return null;
+  // A review card suppresses this row only for the round it audits. A card that
+  // was rejected and re-delivered is a *new* round with no review card yet — a
+  // last round's review card must not silence it (the rejection path relies on
+  // this: the next delivery has to be reviewed again). A review card written
+  // before `review_round` existed carries `null`, which still suppresses — that
+  // was the pre-round behaviour and the only honest reading of such a card.
+  const round = intOrNull(card?.delivery_round);
+  for (const id of idsOf(card)) {
+    const rounds = context.reviewOfRefs.get(id);
+    if (rounds !== undefined && (rounds.has(null) || rounds.has(round))) return null;
+  }
 
   const changedAt = instant(card?.status_changed_at) === null ? null : card.status_changed_at;
   const spec = SLA_ROWS.acceptance_card_creation;
@@ -1141,7 +1160,10 @@ const LEADER_OWED_ROWS = new Set([
  * silence.
  */
 function boardContext(cards, trails, options = {}) {
-  const reviewOfRefs = new Set();
+  // `<original ref> → the delivery rounds this board has a review card for`.
+  // A set rather than a boolean: a stale review card from round 1 must not
+  // suppress the round-2 delivery (see `acceptanceDetection`).
+  const reviewOfRefs = new Map();
   const terminalRefs = new Set();
   const leaderId = options.leaderId ?? null;
   const truncated = options.boardTruncated === true;
@@ -1183,7 +1205,15 @@ function boardContext(cards, trails, options = {}) {
 
   for (const card of cards) {
     const reviewOf = card?.meta?.review_of;
-    if (typeof reviewOf === "string" && reviewOf.trim() !== "") reviewOfRefs.add(reviewOf.trim());
+    if (typeof reviewOf === "string" && reviewOf.trim() !== "") {
+      const ref = reviewOf.trim();
+      const rounds = reviewOfRefs.get(ref) ?? new Set();
+      // No `review_round` on an older card is `null`, not 0: it means "the
+      // round this card audits was never recorded", which suppresses every
+      // round (the conservative reading — silence, not a false alarm).
+      rounds.add(intOrNull(card?.meta?.review_round));
+      reviewOfRefs.set(ref, rounds);
+    }
     if (TERMINAL_STATUSES.includes(card?.status)) {
       for (const id of idsOf(card)) terminalRefs.add(id);
     }
@@ -1191,8 +1221,13 @@ function boardContext(cards, trails, options = {}) {
     // attributed like every other leader event: by who did it.
     if (createdByLeader(card)) note(instant(card?.created_at), "created_at", "frontmatter");
     // `done` is a leader-only transition (task-interface §4), so no author test
-    // can narrow it further: the transition itself is the attribution.
-    if (card?.status === "done") note(instant(card?.status_changed_at), "status_changed_at", "frontmatter");
+    // can narrow it further: the transition itself is the attribution. The one
+    // exception is the loop's own automated acceptance: a `done` the workflow
+    // pass wrote carries `meta.accepted_by = "loop-review"`, and counting it
+    // would let the loop mask a stalled leader indefinitely.
+    if (card?.status === "done" && card?.meta?.accepted_by !== LOOP_ACCEPTOR) {
+      note(instant(card?.status_changed_at), "status_changed_at", "frontmatter");
+    }
 
     // A trail entry is leader-attributed when its **author** is the leader
     // (§6.3-D). The kinds are `{confirm, decision, change}`; `change` is in the

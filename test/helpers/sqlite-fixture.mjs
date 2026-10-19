@@ -245,6 +245,13 @@ export function insertTask(db, overrides = {}) {
     ["creator_id", row.creator_id ?? null],
     ["awaiting_reason", row.awaiting_reason ?? null],
     ["blocked_reason", row.blocked_reason ?? null],
+    // 0025 — a review card's structural marker. Absent before 0025, so the
+    // schema is asked first (the same rule the columns above follow).
+    ["review_of_id", row.review_of_id ?? null],
+    ["review_round", row.review_round ?? null],
+    // 0005 — carried explicitly so a migration test can seed the JSON a
+    // backfill reads. Absent before 0005, hence the schema probe.
+    ["meta_json", row.meta_json ?? "{}"],
   ];
   for (const [column, value] of optional) {
     if (columns.has(column)) pairs.push([column, value]);

@@ -25,8 +25,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { basename, join, relative } from "node:path";
 
 import { DomainError, isDomainError } from "../../../shared/errors.mjs";
-import { LABEL_PALETTE } from "../../../shared/constants.mjs";
-import { contentHash, newId, sha256Hex } from "../../../shared/ids.mjs";
+import { LABEL_PALETTE, TASKD_KIND } from "../../../shared/constants.mjs";
+import { newId, sha256Hex } from "../../../shared/ids.mjs";
 import { ACCEPTANCE_STATUSES, TASK_KINDS } from "../../domain/enums.mjs";
 import { resolveActorId, resolveOrCreate } from "../../commands/dictionary.mjs";
 import { labelDisplayName, nextColor, normalizeLabelName } from "../../domain/labels.mjs";
@@ -35,7 +35,7 @@ import { normalizeName } from "../../domain/dictionary.mjs";
 import { normalizeCommentCreate } from "../../domain/comment.mjs";
 import { normalizeImportedReport, normalizeReportCreate } from "../../domain/report.mjs";
 import { parsePriority } from "../../domain/priority.mjs";
-import { identifierFor, normalizeLabels, normalizeTaskCreate, toIsoMillis } from "../../domain/task.mjs";
+import { normalizeLabels, normalizeTaskCreate, toIsoMillis } from "../../domain/task.mjs";
 import { transaction } from "../unit-of-work.mjs";
 import { parseFrontmatter } from "./frontmatter.mjs";
 import { checkRelationInvariants } from "./invariants-check.mjs";
@@ -138,8 +138,6 @@ const META_KEYS = Object.freeze(["notify_leader"]);
  * `meta_json.legacy` as if it were an unknown key.
  */
 const CARD_KEY_ALIASES = Object.freeze({ notify_elon: "notify_leader" });
-
-const TS_FALLBACK = "1970-01-01T00:00:00.000Z";
 
 /**
  * Cards write `claimed_by: ""` for "nobody" — the database stores NULL. Empty
@@ -371,11 +369,39 @@ export function importMd(input) {
         mergeReportWarnings(entry.parsed, entry.reportPlans);
       }
 
-      // Pass 2: tasks.
+      // Pass 1.8 (0025): reserve every task id and build the card plan, so a
+      // review card can resolve its original to the id it is *about to* get.
+      // `review_of_id` is not nullable-by-luck: it is a foreign key, so the id
+      // must be known before either row is written. The plan is also what lets
+      // the loop below write review cards last (an original must exist first).
+      const plannedByRef = new Map();
       for (const entry of parsed) {
+        if (entry.projectSkipped === true) continue;
+        const card = entry.parsed;
+        entry.plannedExisting = findExisting(repos, card.projectId, entry.rel);
+        entry.plannedId = entry.plannedExisting?.id ?? newId();
+        if (!plannedByRef.has(`${card.projectId}\u0000${card.identifier}`)) {
+          plannedByRef.set(`${card.projectId}\u0000${card.identifier}`, entry);
+        }
+      }
+      const resolveReviewId = (projectId, ref) => {
+        const stored = repos.tasks.resolve(projectId, ref);
+        if (stored !== null) return stored.id;
+        const planned = plannedByRef.get(`${projectId}\u0000${ref}`);
+        return planned === undefined ? null : planned.plannedId;
+      };
+
+      // Pass 2: tasks. A card carrying `review_of` is written after every card
+      // that could be its original, so the foreign key is satisfied by the time
+      // the INSERT runs (review-of-review chains are not part of the format).
+      const taskEntries = [
+        ...parsed.filter((entry) => entry.parsed.reviewOf === null || entry.parsed.reviewOf === undefined),
+        ...parsed.filter((entry) => entry.parsed.reviewOf !== null && entry.parsed.reviewOf !== undefined),
+      ];
+      for (const entry of taskEntries) {
         const card = entry.parsed;
         if (entry.projectSkipped === true) continue;
-        const existing = findExisting(repos, card.projectId, entry.rel);
+        const existing = entry.plannedExisting ?? findExisting(repos, card.projectId, entry.rel);
 
         if (existing !== null && existing.sourceHash === entry.hash) {
           stats.skipped += 1;
@@ -401,19 +427,36 @@ export function importMd(input) {
 
         ensureProject(repos, projectPlans.get(card.projectId), now, stats);
         const dictionary = resolveCardDictionaries(repos, card, now);
-        stats.dictionaries += dictionary.writes;
+        stats.dictionaries += dictionary.count;
         // Historical cards register their labels too, so the registry reflects an
         // imported board rather than only boards built through the CLI (§3.7).
         const labels = resolveCardLabels(repos, card, existing, now);
         stats.labels += labels.writes;
 
+        // 0025 — resolve the review reference to the id the planned board will
+        // carry. A dangling name leaves the marker empty (fail closed) and is
+        // reported: the card is imported, it just is not exempt from acceptance.
+        const reviewOfId =
+          card.reviewOf === null || card.reviewOf === undefined
+            ? null
+            : resolveReviewId(card.projectId, card.reviewOf);
+        if (card.reviewOf !== null && card.reviewOf !== undefined && reviewOfId === null) {
+          stats.warnings.push(
+            `${entry.file}: review_of ${JSON.stringify(card.reviewOf)} does not resolve to a card — the review marker stays empty`,
+          );
+        }
+        const reviewRound = reviewOfId === null ? null : positiveInt(card.meta?.legacy?.review_round ?? card.meta?.review_round);
+
         const task = buildTask(repos, card, {
           now,
+          id: entry.plannedId,
           rel: entry.rel,
           hash: entry.hash,
           dictionary,
           labels: labels.names,
           existing,
+          reviewOfId,
+          reviewRound,
         });
         if (existing === null) {
           const inserted = repos.tasks.insert(task);
@@ -626,6 +669,38 @@ export function importMd(input) {
       }
 
       stats.cards = parsed.length;
+      // A second import of unchanged files is a no-op, and a no-op must not
+      // leave an audit row (the idempotency contract). Emit only when at least
+      // one thing was actually written.
+      const wroteAnything =
+        stats.tasks + stats.updated + stats.comments + stats.relations + stats.sessions +
+          stats.reports + stats.activities + stats.labels + stats.dictionaries >
+        0;
+      if (!check && wroteAnything) {
+        // One completion row, not one per card: a large import would otherwise
+        // storm the event stream. The counters are enough for a client to know
+        // it must reload; `check` writes nothing at all.
+        repos.activities.append({
+          taskId: null,
+          actorKind: TASKD_KIND,
+          actorId: "md-import",
+          event: "import_completed",
+          changes: {
+            cards: stats.cards,
+            tasks: stats.tasks,
+            updated: stats.updated,
+            skipped: stats.skipped,
+            comments: stats.comments,
+            relations: stats.relations,
+            sessions: stats.sessions,
+            reports: stats.reports,
+            progress: stats.activities,
+            labels: stats.labels,
+            dictionaries: stats.dictionaries,
+          },
+          createdAt: now,
+        });
+      }
       return stats;
     },
     { op: "md.import" },
@@ -954,7 +1029,7 @@ function planReportImport(report, now) {
     acceptance: report.acceptance.map((item) => ({ ...item, status: canonicalReportStatus(item.status) })),
     evidence: report.evidence,
     leftovers: report.leftovers,
-    author: report.author ?? { kind: "agent", id: report.authorId ?? "unknown" },
+    author: report.author ?? { kind: TASKD_KIND, id: report.authorId ?? "md-import" },
   };
   const context = { taskRound: round, now };
   try {
@@ -1168,9 +1243,18 @@ function resolveCardLabels(repos, card, existing, now) {
   return { names: stored, writes };
 }
 
+/** A positive integer from a frontmatter value, or `null` (MIG-04). */
+function positiveInt(value) {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) return value;
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    const parsed = Number.parseInt(value.trim(), 10);
+    return parsed > 0 ? parsed : null;
+  }
+  return null;
+}
+
 function buildTask(repos, card, context) {
-  const { now, rel, hash, dictionary, labels } = context;
-  const serial = repos.projects.get(card.projectId)?.nextTaskNumber ?? 1;
+  const { now, rel, hash, dictionary, labels, reviewOfId = null, reviewRound = null } = context;
   const identifier = card.identifier;
 
   const task = normalizeTaskCreate(
@@ -1193,7 +1277,9 @@ function buildTask(repos, card, context) {
     },
     {
       now,
-      id: newId(),
+      // The id reserved in pass 1.8: a review card's target may be a card this
+      // import has not inserted yet, and the foreign key needs the id up front.
+      id: context.id ?? newId(),
       identifier,
       projectId: card.projectId,
     },
@@ -1201,6 +1287,10 @@ function buildTask(repos, card, context) {
 
   return {
     ...task,
+    // 0025 — the structural marker, resolved by the caller (which is the only
+    // layer that can see the whole planned board).
+    reviewOfId,
+    reviewRound,
     status: card.status,
     statusChangedAt: card.statusChangedAt ?? card.createdAt ?? now,
     createdAt: card.createdAt ?? now,
@@ -1242,17 +1332,3 @@ function patchFrom(task) {
     blockedReason: task.blockedReason,
   };
 }
-
-/** Stable identity for a card, used by `check` output. */
-export function cardFingerprint(card) {
-  return contentHash({
-    identifier: card.identifier,
-    title: card.title,
-    status: card.status,
-    comments: card.comments.length,
-    reports: card.reports.length,
-    sessions: card.sessions.length,
-  });
-}
-
-export { identifierFor, TS_FALLBACK };

@@ -93,10 +93,18 @@ _Avoid_: approval, verdict
 ### Claim and execution
 
 **Claim**:
-Taking a card to work on it — the move from `todo` to `in_progress`. Claiming is atomic:
-one claimer, or none.
+Taking a card to work on it — normally the move from `todo` to `in_progress`, and also
+re-taking a stale `in_progress` claim (where the status does not change). Claiming is
+atomic: one claimer, or none.
 _中文_: 认领
 _Avoid_: assign, take, lock
+
+**Stale recovery**:
+Re-claiming an `in_progress` card whose heartbeat has expired — by its own holder after 30
+minutes, or by anyone after six hours. It is a claim, not a transition, so it goes through
+`issue claim`; a takeover leaves an audit comment naming the previous holder.
+_中文_: 过期恢复
+_Avoid_: takeover, steal, rebirth
 
 **Assignee**:
 The actor a card is routed to — whose job it is. Assignment is responsibility, not
@@ -154,6 +162,13 @@ delivery round. It is enforced both in the database and in the application, and 
 tested against each other.
 _中文_: 交付门禁
 _Avoid_: review gate, checklist, policy
+
+**Acceptance authority**:
+The actor kinds permitted to move a card into `done` — a human, or the board itself
+(`system`). A worker agent may not accept, including on its own card: acceptance is a
+separate act from delivery, and the board refuses the shortcut.
+_中文_: 验收权限
+_Avoid_: approver role, reviewer (the reviewer reports; it does not accept)
 
 **Report**:
 The record of what was delivered — a conclusion, the acceptance items and their verdicts,
@@ -250,21 +265,64 @@ The loop is the part that keeps a board moving when no agent is watching. Its vo
 its own and does not appear in the board's wire surface.
 
 **Supervisor**:
-The host-external process that watches the board and starts workers. It runs outside the
-agent host, but it is neither the board service nor an agent itself.
-_中文_: 监督进程
-_Avoid_: daemon (that is the board service), scheduler, cron
+The host-external **scheduler**. It owns two clocks — ping and continue — and performs no
+board I/O of its own. It runs outside the agent host, but it is neither the board service
+nor an agent itself.
+_中文_: 监督进程（调度器）
+_Avoid_: daemon (that is the board service), cron; and do not call it the thing that polls
+
+**Ping**:
+The high-frequency liveness clock. It prunes worker-registry entries whose pid is gone:
+no board read, no claim, no LLM turn.
+_中文_: 存活检查
+_Avoid_: poll (it finds no work), heartbeat (that is the card's, not the process's)
+
+**Continue**:
+The low-frequency judgment clock. It wakes the host with a bounded `继续` prompt; that
+turn runs the deterministic entries (patrol, workflow, poll). It is the one LLM turn the
+scheduler pays for per cadence.
+_中文_: 继续回合
+_Avoid_: patrol (patrol is one of the entries the turn runs), wake (a wake is for a card)
 
 **Poll**:
-The frequent scan for new claimable work. Its only job is to find work and dispatch it.
+The deterministic entry that scans for new claimable work, claims atomically and wakes a
+worker. It is **not scheduled**; the continue turn runs it, and a human can run it too.
 _中文_: 轮询
-_Avoid_: tick, scan, sweep
+_Avoid_: tick, scan, sweep; do not call the scheduler's ping clock a poll
 
 **Patrol**:
-The slower pass that finds work already *stuck* — stale claims, overdue waits, a silent
-inspector. A patrol raises alerts and never moves a card.
+The deterministic entry for work already *stuck* — stale claims, overdue waits, a silent
+inspector. It raises alerts and moves no card. It is not scheduled; the continue turn runs
+it. The writing channel is a separate entry, **workflow**.
 _中文_: 巡检
-_Avoid_: audit, sweep, health check
+_Avoid_: audit, sweep, health check; do not call the whole loop "the patrol"
+
+**Workflow**:
+The loop's writing entry: reconcile containers, dispatch review cards, apply a reviewer's
+verdict and close the review card. It runs as `system` and is not scheduled; the continue
+turn runs it after patrol.
+_中文_: 工作流通道
+_Avoid_: workflow engine, pipeline; SLA alerts are not part of it
+
+**Review card**:
+An ordinary `task` card that audits another card: it records `review_of` (the original),
+`flow=B` and the delivery round it audits, and carries the reviewer's verdict report. It is
+not a `kind` of its own, and it reaches `done` through `in_review` like every other card.
+_中文_: 审核卡
+_Avoid_: review task kind, acceptance card, approval
+
+**Reviewer**:
+The independent agent a review card is assigned to. It reads the original's evidence and
+reports a verdict; it moves no card. The loop is the acceptor.
+_中文_: 审核员
+_Avoid_: approver, acceptor, QA
+
+**Epic triage**:
+The worker's Step 0 decision — before starting, does this card contain several independent
+deliverables, and should it therefore become an `epic` split into children? It happens in
+the worker's own first turn, not in a separate planner.
+_中文_: 升格判断
+_Avoid_: planning, decomposition, estimation
 
 **Wake**:
 Starting one worker, once, with a bounded prompt. A wake is dispatched only for work the

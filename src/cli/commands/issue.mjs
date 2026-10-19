@@ -1,5 +1,5 @@
 /**
- * `issue create|list|get|update|move|heartbeat|assign|archive|deliver` (A1–A5).
+ * `issue create|list|get|update|meta|move|heartbeat|assign|archive|deliver` (A1–A5).
  *
  * This module owns the two commands the milestone is really about:
  *
@@ -14,6 +14,7 @@
  * in the CLI, so the refusal a user sees is the one the service raised.
  */
 
+import { reportWarnings } from "../../shared/report-warning.mjs";
 import { usageError } from "../../shared/transport/errors.mjs";
 import { TASK_OPS } from "../../core/commands/tasks-input.mjs";
 import { fields, table, taskLine } from "../output/human.mjs";
@@ -216,6 +217,32 @@ export const COMMANDS = [
   },
 
   {
+    name: "meta",
+    summary: "Merge metadata keys into a task, leaving every other key untouched.",
+    usage: "issue meta <id|identifier> --meta <key>=<value> [--meta <key>=<value>]…",
+    positionals: [{ name: "ref", summary: "Task id or identifier." }],
+    flags: [
+      { flag: "meta", key: "meta", as: "kv", required: true, summary: "Repeatable key=value metadata." },
+    ],
+    async run(ctx) {
+      // The PATCH route replaces `meta` wholesale, so a merge spelled with
+      // `issue update --meta` would erase `acceptance`, `target` and every other
+      // key. Merging has to happen here, where the current object (and its value
+      // types) is visible; the result is sent as one ordinary update.
+      const task = (await ctx.client.get(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}`)).task;
+      const meta = { ...(task.meta ?? {}), ...ctx.flags.meta };
+      // The version read above is the CAS guard: if the card moved between the
+      // read and this write, the board refuses rather than silently dropping
+      // the other writer's change (a merge cannot be expressed on the wire).
+      const payload = await ctx.client.patch(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}`, {
+        meta,
+        if_version: task.version,
+      });
+      return { data: payload, human: `updated metadata on ${payload.task.identifier}` };
+    },
+  },
+
+  {
     name: "move",
     summary: "Move a task to another status (this is where the delivery gate bites).",
     op: TASK_OPS.move,
@@ -266,6 +293,36 @@ export const COMMANDS = [
         ? `moved ${payload.task.identifier} → ${payload.task.status}`
         : `moved ${payload.task.identifier} → ${payload.task.status} (waived, round ${payload.task.report_waiver.round})`;
       return { data: payload, human, warnings };
+    },
+  },
+
+  {
+    name: "claim",
+    summary: "Claim a card — including a stale in_progress claim (reuse, re-claim or takeover).",
+    op: TASK_OPS.claim,
+    usage: 'issue claim <id|identifier> [--allow-steal --reason "<why>"]',
+    positionals: [{ name: "ref", summary: "Task id or identifier." }],
+    flags: projectFlags(TASK_OPS.claim),
+    async run(ctx) {
+      const allowSteal = ctx.flags.allowSteal === true;
+      // Same audited exception as a `todo → in_progress` move: taking a card
+      // from its assignee must say why (8 characters, service-enforced again).
+      if (allowSteal && (typeof ctx.flags.reason !== "string" || ctx.flags.reason.trim().length < 8)) {
+        throw usageError('issue claim: --allow-steal needs --reason "<why>" (at least 8 characters)', {
+          fix: "say why the card is being taken from its assignee",
+        });
+      }
+      const payload = await ctx.client.post(
+        `/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/claim`,
+        projectBody(TASK_OPS.claim, {
+          if_version: ctx.flags.ifVersion,
+          allow_steal: allowSteal,
+          reason: ctx.flags.reason,
+        }),
+      );
+      // `reuse` is not an error: the same holder asking again keeps the claim.
+      const verb = payload.reused === true ? "reused the claim on" : payload.stole === true ? "took over" : "claimed";
+      return { data: payload, human: `${verb} ${payload.task.identifier}` };
     },
   },
 
@@ -361,9 +418,7 @@ export const COMMANDS = [
       if (!waived) {
         const raw = flags.reportFile === "-" ? await ctx.readStdin() : await ctx.readFile(flags.reportFile);
         report = parseReport(raw);
-        if (typeof report.leftovers === "string" && report.leftovers.includes("TODO:")) {
-          warnings.push("delivering a template that still contains TODO placeholders");
-        }
+        warnings.push(...reportWarnings(report));
         // The author is whoever is running the command, unless the report says.
         // `== null` on purpose: that is both `undefined` and `null`, and the
         // distinction carries no meaning here.

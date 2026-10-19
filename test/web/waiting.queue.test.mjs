@@ -58,7 +58,9 @@ describe("B27 · the reason is a two-value attribute", () => {
     assert.equal(reasonKindOf(card("1", "TD-1", { awaiting_reason: "nonsense" })), "question");
     assert.equal(reasonKindOf(undefined), "question");
     assert.equal(reasonKeyOf("nonsense"), "waiting.reason.question");
-    assert.deepEqual([...WAITING_REASON_KINDS], ["question", "blocked"]);
+    // M6 adds `acceptance`: the third thing that can be on a human's side.
+    assert.deepEqual([...WAITING_REASON_KINDS], ["question", "blocked", "acceptance"]);
+    assert.equal(reasonKeyOf("acceptance"), "waiting.reason.acceptance");
   });
 });
 
@@ -133,3 +135,111 @@ describe("B27 · the queue", () => {
     assert.equal(waitingRow(card("2", "TD-2", { assignee: null })).actor, "");
   });
 });
+
+describe("M6 · acceptance waiting (who still owes an acceptance)", () => {
+  /** A top-level delivered card, with the wire fields the derivation reads. */
+  function delivered(id, overrides = {}) {
+    return {
+      id,
+      identifier: `TD-${id}`,
+      title: `Delivered ${id}`,
+      status: "in_review",
+      delivery_round: 1,
+      parent_id: null,
+      review_of_id: null,
+      review_round: null,
+      status_changed_at: at(30),
+      updated_at: at(30),
+      assignee: { id: "a1", display_name: "linus", kind: "agent" },
+      ...overrides,
+    };
+  }
+
+  /** A review card for `original`, on `round`. */
+  function review(id, original, status, round = 1) {
+    return delivered(id, { review_of_id: original.id, review_round: round, status, identifier: `TD-R${id}` });
+  }
+
+  const waitIds = (tasks, policy) => {
+    // Imported lazily through the same module the view uses.
+    return acceptanceWaitingTasksFor(tasks, policy).map((task) => task.id);
+  };
+
+  it("lists a top-level delivered card under human-only and both, never agent-only", () => {
+    const tasks = [delivered("1")];
+    assert.deepEqual(waitIds(tasks, "human-only"), ["1"]);
+    assert.deepEqual(waitIds(tasks, "both"), ["1"]);
+    assert.deepEqual(waitIds(tasks, "agent-only"), []);
+  });
+
+  it("hides a card whose current-round review is still open, and shows it once resolved", () => {
+    for (const status of ["todo", "in_progress", "in_review", "blocked", "awaiting"]) {
+      const original = delivered("1");
+      const tasks = [original, review("2", original, status)];
+      assert.deepEqual(waitIds(tasks, "both"), [], `a ${status} review holds it back`);
+    }
+    for (const status of ["done", "canceled"]) {
+      const original = delivered("1");
+      const tasks = [original, review("2", original, status)];
+      assert.deepEqual(waitIds(tasks, "both"), ["1"], `a ${status} review releases it`);
+    }
+  });
+
+  it("ignores an old round, and treats a NULL round as covering every round", () => {
+    const original = delivered("1");
+    assert.deepEqual(waitIds([original, review("2", original, "todo", 2)], "both"), ["1"], "round 2 is history on round 1");
+    const unrounded = delivered("2", { review_of_id: original.id, review_round: null, status: "todo", identifier: "TD-2" });
+    assert.deepEqual(waitIds([original, unrounded], "both"), [], "a NULL round is conservative");
+  });
+
+  it("hides review cards and child cards, and waits for every child", () => {
+    const original = delivered("1");
+    const child = delivered("2", { parent_id: "1", status: "todo", identifier: "TD-2" });
+    assert.deepEqual(waitIds([original, child], "both"), [], "an open child holds the container");
+    child.status = "canceled";
+    assert.deepEqual(waitIds([original, child], "both"), ["1"], "a canceled child counts as finished");
+
+    // A child (even one in review) is never the human's to accept.
+    assert.deepEqual(waitIds([delivered("3", { parent_id: "1" })], "both"), []);
+    // A review card is never an acceptance item.
+    assert.deepEqual(waitIds([original, review("4", original, "in_review")], "both"), []);
+  });
+
+  it("does not list anything that is not in_review", () => {
+    for (const status of ["todo", "blocked", "awaiting", "in_progress", "done", "canceled"]) {
+      assert.deepEqual(waitIds([delivered("1", { status })], "both"), [], status);
+    }
+  });
+
+  it("orders acceptance rows with awaiting rows, oldest first", () => {
+    const awaiting = waitingRows(
+      [
+        {
+          id: "a",
+          identifier: "TD-A",
+          title: "A question",
+          status: "awaiting",
+          awaiting_reason: "E1",
+          assignee: { id: "a1", display_name: "linus", kind: "agent" },
+          updated_at: at(120),
+        },
+      ],
+      {},
+      NOW,
+    );
+    const acceptance = acceptanceRows([delivered("1", { status_changed_at: at(10) })], "both", NOW);
+    const merged = mergeWaitingRows(awaiting, acceptance);
+    assert.deepEqual(merged.map((row) => row.identifier), ["TD-A", "TD-1"]);
+    assert.equal(merged[0].kind, "question");
+    assert.equal(merged[1].kind, "acceptance");
+    assert.equal(merged[1].reasonKind, "acceptance");
+    assert.equal(merged[1].stamp.key, "time.minutesAgo");
+  });
+});
+
+// The import is at the bottom so the file's shape stays "helpers, then rules".
+import {
+  acceptanceRows,
+  acceptanceWaitingTasks as acceptanceWaitingTasksFor,
+  mergeWaitingRows,
+} from "../../web/src/lib/waiting-queue.js";

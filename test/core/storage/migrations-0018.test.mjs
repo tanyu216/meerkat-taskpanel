@@ -28,34 +28,25 @@
  */
 
 import assert from "node:assert/strict";
-import { copyFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
 import { SQL_ENUM_SETS } from "../../../src/core/domain/enums.mjs";
-import { applyMigrations, defaultMigrationsDir } from "../../../src/core/storage/migrations-runner.mjs";
+import { applyMigrations } from "../../../src/core/storage/migrations-runner.mjs";
+import { indexShapesOf, migrationsBefore, triggersOf } from "../../helpers/migration-shapes.mjs";
 import {
-  TS,
   cleanupTempDirs,
   createTempBoard,
   insertComment,
   insertProject,
   insertReport,
   insertTask,
-  makeTempDir,
   reasonCode,
 } from "../../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);
 
 /** The shipped set **before** 0018 — a board as the previous build left it. */
-function before0018() {
-  const dir = makeTempDir("meerkat-taskpanel-pre0018-");
-  for (const name of readdirSync(defaultMigrationsDir()).filter((n) => n.endsWith(".sql") && n.slice(0, 4) < "0018")) {
-    copyFileSync(join(defaultMigrationsDir(), name), join(dir, name));
-  }
-  return dir;
-}
+const before0018 = migrationsBefore("0018", { prefix: "meerkat-taskpanel-pre0018-" });
 
 const tableSql = (db, table) =>
   db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(table).sql;
@@ -72,27 +63,6 @@ const tableNames = (db) =>
  * carries none of its own (its `UNIQUE (task_id, round)` is an implicit index, which
  * the `sqlite_autoindex` filter drops, exactly as the 0015 suite does for `tasks`).
  */
-const indexShapesOf = (db, table) =>
-  db
-    .prepare(`SELECT name, "unique" AS uniq, partial AS part FROM pragma_index_list(?)`)
-    .all(table)
-    .filter((row) => !row.name.startsWith("sqlite_autoindex"))
-    .sort((a, b) => (a.name < b.name ? -1 : 1))
-    .map((row) => ({
-      name: row.name,
-      unique: Number(row.uniq),
-      partial: Number(row.part),
-      columns: db.prepare("SELECT name FROM pragma_index_info(?)").all(row.name).map((c) => c.name),
-    }));
-
-/** Every trigger's text, whitespace-normalised (whitespace is not meaning). */
-const triggersOf = (db) =>
-  Object.fromEntries(
-    db
-      .prepare("SELECT name, sql FROM sqlite_master WHERE type = 'trigger'")
-      .all()
-      .map((r) => [r.name, String(r.sql).replace(/\s+/g, " ").replace(/CREATE TRIGGER IF NOT EXISTS /i, "CREATE TRIGGER ").trim()]),
-  );
 
 /** Build the "previous build" board with rows the migration must not lose. */
 function seedLegacyBoard(db) {
@@ -123,7 +93,7 @@ describe("storage/migrations — 0018 opens the actor-kind columns (comments, ta
       const up = applyMigrations(board.db);
       // 0018 is the last file in the set today; when a later migration lands this
       // list grows by one, as the 0013/0015 suites' equivalents did.
-      assert.deepEqual(up.applied.map((m) => m.version), ["0018", "0019", "0020", "0021", "0022", "0023", "0024"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026"]);
       assert.deepEqual(up.skipped.slice(-2), ["0016", "0017"]);
 
       // 1 — the enumeration is gone from both tables, and nothing replaced it.
@@ -267,7 +237,7 @@ describe("storage/migrations — 0018 opens the actor-kind columns (comments, ta
         Object.keys(newTriggers)
           .filter((name) => !(name in oldTriggers))
           .sort(),
-        ["tr_dict_actors_delete", "tr_rel_block_chain", "tr_rel_parent_block_pair", "tr_rev_actors_del", "tr_rev_actors_ins", "tr_rev_actors_upd"],
+        ["tr_dict_actors_delete", "tr_rel_block_chain", "tr_rel_parent_block_pair", "tr_rev_actors_del", "tr_rev_actors_ins", "tr_rev_actors_upd", "tr_tasks_children_terminal", "tr_tasks_review_marker_immutable"],
         "0018 invents no trigger; 0019's actor triggers and 0021/0022's relation guards are the later additions",
       );
       assert.deepEqual(

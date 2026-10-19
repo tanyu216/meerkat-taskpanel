@@ -41,7 +41,6 @@ const PLANNED_CLI = [
   "index.mjs",
   "usage.mjs",
   "argv.mjs",
-  "wire.mjs",
   "output/index.mjs",
   "output/json.mjs",
   "output/human.mjs",

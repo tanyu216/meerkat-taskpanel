@@ -11,6 +11,7 @@
  * one transaction, or two concurrent creates hand out the same number.
  */
 
+import { PROJECT_ACTIVITY_WINDOW_DAYS, SSE_NOISE_EVENTS } from "../../../shared/constants.mjs";
 import { DomainError } from "../../../shared/errors.mjs";
 import { newId, projectPrefix } from "../../../shared/ids.mjs";
 import { identifierForPrefix, assertIsoMillis } from "../../domain/task.mjs";
@@ -176,6 +177,72 @@ export function createProjectsRepository(db) {
         .prepare("SELECT status, COUNT(*) AS n FROM tasks WHERE project_id = ? GROUP BY status")
         .all(projectId);
       return Object.fromEntries(rows.map((row) => [String(row.status), Number(row.n)]));
+    },
+
+    /**
+     * Per-project **task counts** — what the sidebar badge prints.
+     *
+     * This is deliberately *not* a ranking input and deliberately not the
+     * activity count below: DESIGN.md §20 orders by trailing-window activity,
+     * while the badge is the project's **total** number of tasks (every status,
+     * archived included). A project with no tasks is simply absent from the
+     * map — the caller defaults it to `0` rather than inventing a row here.
+     *
+     * @param {string} [projectId] restrict to one project (the single-project route)
+     * @returns {Map<string, number>} project id → task count
+     */
+    taskCountByProject(projectId) {
+      const where = projectId === undefined ? "" : " WHERE project_id = ?";
+      const rows = db
+        .prepare(`SELECT project_id, COUNT(*) AS n FROM tasks${where} GROUP BY project_id`)
+        .all(...(projectId === undefined ? [] : [projectId]));
+
+      const out = new Map();
+      for (const row of rows) out.set(row.project_id, Number(row.n ?? 0));
+      return out;
+    },
+
+    /**
+     * Per-project activity in the two DESIGN.md §20 windows.
+     *
+     * "Activity" is the reproducible definition the architecture fixes: the
+     * number of `task_activities` rows in the window that belong to a task of
+     * the project, **excluding pure heartbeats** (they bump the revision but
+     * change no board state). Timestamps are ISO-8601 UTC, so a lexicographic
+     * `>=` is a chronological one and no date parsing is needed.
+     *
+     * Rows with no task (`project_created`, the label GC's own entries) do not
+     * belong to any project and are correctly absent from the join.
+     *
+     * @param {{now?: Date}} [options]
+     * @returns {Map<string, {a7: number, a30: number, lastActivityAt: string|null}>}
+     */
+    activityByProject(options = {}) {
+      const now = options.now ?? new Date();
+      const since = (days) => new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
+      const noise = SSE_NOISE_EVENTS.map(() => "?").join(", ");
+      const rows = db
+        .prepare(
+          `SELECT t.project_id AS project_id,
+                  SUM(CASE WHEN a.created_at >= ? THEN 1 ELSE 0 END) AS a7,
+                  COUNT(*) AS a30,
+                  MAX(a.created_at) AS last_activity
+             FROM task_activities a
+             JOIN tasks t ON t.id = a.task_id
+            WHERE a.event NOT IN (${noise}) AND a.created_at >= ?
+            GROUP BY t.project_id`,
+        )
+        .all(since(PROJECT_ACTIVITY_WINDOW_DAYS.a7), ...SSE_NOISE_EVENTS, since(PROJECT_ACTIVITY_WINDOW_DAYS.a30));
+
+      const out = new Map();
+      for (const row of rows) {
+        out.set(row.project_id, {
+          a7: Number(row.a7 ?? 0),
+          a30: Number(row.a30 ?? 0),
+          lastActivityAt: row.last_activity ?? null,
+        });
+      }
+      return out;
     },
   };
 }

@@ -96,10 +96,12 @@ describe("storage/migrations — 0023 moves the kind onto the record", () => {
         assert.equal(column.dflt_value, null, `and it defaults to nothing`);
       }
       // Appended, like `blocked_reason` before them, so nothing that reads `tasks`
-      // positionally has to be re-taught where a column sits.
+      // positionally has to be re-taught where a column sits. 0025 appends its
+      // two review-marker columns *after* these, so the three this suite owns are
+      // the tail only when the later migration's pair is counted.
       assert.deepEqual(
-        tasks.slice(-3).map((c) => c.name),
-        ["assignee_kind", "reporter_kind", "claimed_kind"],
+        tasks.slice(-5).map((c) => c.name),
+        ["assignee_kind", "reporter_kind", "claimed_kind", "review_of_id", "review_round"],
       );
     } finally {
       board.close();

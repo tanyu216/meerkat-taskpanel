@@ -19,11 +19,18 @@
  */
 export const EXTRA = {
   en: {
-    "connection.reconnecting": "Reconnecting…",
-    "connection.resync": "Resync",
-    "connection.resyncTitle": "Replay anything missed since the last event",
-    "connection.title": "Connection",
-    "connection.hint": "The board follows the live stream. Replay anything missed if a change did not arrive.",
+    // B19 · the access panel's persistent states. The prototype has no network,
+    // so its catalogue stops at the demo strings; these are the save/load and
+    // staged-rotation sentences the shipped panel needs.
+    "access.token.placeholder": "A new token will be generated on save",
+    "access.save": "Save",
+    "access.saving": "Saving…",
+    "access.saved": "Access settings saved",
+    "access.loading": "Loading access settings…",
+    "access.loadFailed": "Could not load the access settings.",
+    "access.envManaged": "Managed by TASKD_ALLOW_CIDRS on the host — edit the service environment to change it.",
+    "access.cidr.empty": "Every range needs a value before it can be saved.",
+    "access.cidr.none": "No ranges — every remote address will be refused.",
     "conflict.title": "This task changed elsewhere",
     "conflict.hint": "Your change was not applied. Reload the task to see the current version, then try again.",
     "conflict.reload": "Reload task",
@@ -62,6 +69,9 @@ export const EXTRA = {
     "error.notAssignee": "%s is assigned to somebody else.",
     "error.executionActive": "%s is being worked on by somebody else right now.",
     "error.claimOnBacklog": "%s is in Backlog, where nothing can be claimed.",
+    "error.acceptanceForbidden": "%s cannot be closed by you under this board's acceptance policy.",
+    "error.reviewPending": "%s still has an open review for this delivery round — finish or cancel it first.",
+    "error.childrenOpen": "%s still has an unfinished child card — finish or cancel it first.",
     // T-20261014-212017-4 — the sentences the drawer's four new edit surfaces
     // need. Each names a refusal the reader can act on: a status that the state
     // machine will not take, a dependency that would close a loop, a file the
@@ -103,6 +113,10 @@ export const EXTRA = {
     // here (the prototype has no copy for a live session trail or a reports
     // panel at all).
     "drawer.tabs.label": "Task detail sections",
+    // The panel's accessible name while its card is being read. The real title is
+    // not available yet, so the loading branch names the dialog by what it is
+    // doing; the skeleton itself is decorative.
+    "drawer.loading": "Loading card",
     "drawer.tab.details": "Details",
     "drawer.tab.activity": "Activity",
     "drawer.tab.reports": "Reports",
@@ -141,13 +155,24 @@ export const EXTRA = {
     "waiting.reason.E3": "Design / aesthetic direction",
     "waiting.reason.E4": "Security / data safety",
     "waiting.reason.E5": "Architecture direction",
+    // The event vocabulary the prototype never had: archive, sessions, import
+    // progress, and the generic fallback an unknown event reads as.
+    "activity.archived": "archived this task",
+    "activity.session": "recorded a session",
+    "activity.progress": "recorded progress",
+    "activity.other": "recorded an event",
+    "activity.detail.archived": "Archived from",
   },
   zh: {
-    "connection.reconnecting": "正在重连…",
-    "connection.resync": "补齐",
-    "connection.resyncTitle": "重放自上次事件以来遗漏的更新",
-    "connection.title": "连接",
-    "connection.hint": "看板跟随实时事件流。若有更新未到达，可在此补齐。",
+    "access.token.placeholder": "保存时将重新生成 access token",
+    "access.save": "保存",
+    "access.saving": "保存中…",
+    "access.saved": "访问设置已保存",
+    "access.loading": "正在读取访问设置…",
+    "access.loadFailed": "无法读取访问设置。",
+    "access.envManaged": "由主机上的 TASKD_ALLOW_CIDRS 管理；请修改服务环境变量。",
+    "access.cidr.empty": "每个网段都需要填写内容后才能保存。",
+    "access.cidr.none": "列表为空 —— 所有远程地址都将被拒绝。",
     "conflict.title": "此任务已在别处被修改",
     "conflict.hint": "你的修改未生效。请重新载入该任务以获取最新版本，然后再试一次。",
     "conflict.reload": "重新载入任务",
@@ -167,6 +192,9 @@ export const EXTRA = {
     "error.notAssignee": "%s 已指派给他人。",
     "error.executionActive": "%s 正由他人处理中。",
     "error.claimOnBacklog": "%s 位于 Backlog，其中的卡片不能认领。",
+    "error.acceptanceForbidden": "按本看板的收口策略，%s 不能由你关闭。",
+    "error.reviewPending": "%s 本轮仍有一张未解决的审核卡 —— 请先完成或取消它。",
+    "error.childrenOpen": "%s 仍有未完成的子任务卡 —— 请先完成或取消它。",
     "error.relationCycle": "该依赖会形成环 —— 卡片不能等待自己。",
     // 同上：`RELATION_CYCLE` 的第三种形状（祖先/后代），与「环 / 自环」那句分开。
     "error.relationAncestor": "该依赖会把祖先与后代连起来 —— 同一条父链上的卡片不能互相依赖。",
@@ -178,6 +206,7 @@ export const EXTRA = {
     "detail.saveError": "保存失败 —— 请重试。",
     // 同上：抽屉的六枚 tab 与报告/验收/会话轨迹文案。
     "drawer.tabs.label": "任务详情分区",
+    "drawer.loading": "正在加载卡片",
     "drawer.tab.details": "详情",
     "drawer.tab.activity": "活动",
     "drawer.tab.reports": "报告",
@@ -206,5 +235,10 @@ export const EXTRA = {
     "waiting.reason.E3": "设计 / 美学方向",
     "waiting.reason.E4": "安全 / 数据安全",
     "waiting.reason.E5": "架构方向",
+    "activity.archived": "归档了任务",
+    "activity.session": "记录了会话",
+    "activity.progress": "记录了进度",
+    "activity.other": "记录了一次事件",
+    "activity.detail.archived": "归档前状态",
   },
 };

@@ -31,7 +31,6 @@ import { fileURLToPath } from "node:url";
 
 import { currentRevision, openBoard, readToken } from "../core/index.mjs";
 import {
-  ALLOW_CIDRS_ENV,
   LABEL_GC_ENV,
   HUMAN_KIND,
   LABEL_GC_INTERVAL_MS,
@@ -43,10 +42,11 @@ import {
   TASK_ORDER_CAPABILITY,
   VERSION,
 } from "../shared/constants.mjs";
+import { allowListFrom, readAccessConfig } from "./access-config.mjs";
 import { authorize } from "./auth.mjs";
-import { parseAllowList } from "./cidr.mjs";
 import { shape, str } from "./requests.mjs";
 import { createRouter, errorResponse, readJsonBody, sendJson } from "./router.mjs";
+import { registerAccessRoutes } from "./routes/access.mjs";
 import { registerActivityRoutes } from "./routes/activities.mjs";
 import { handleAttachmentContent, registerAttachmentRoutes } from "./routes/attachments.mjs";
 import { registerCommentRoutes } from "./routes/comments.mjs";
@@ -106,6 +106,7 @@ export const OUT_OF_ROUTER_ENDPOINTS = Object.freeze([
  */
 export function registerApiRoutes(router, surface) {
   registerTokenRoutes(router, surface);
+  registerAccessRoutes(router, surface);
   registerProjectRoutes(router, surface);
   registerTaskRoutes(router, surface);
   registerActivityRoutes(router, surface);
@@ -193,14 +194,6 @@ export async function createTaskd(options = {}) {
     authorize: authorizeRequest = authorize,
   } = options;
 
-  // §7: a CIDR list is *optional* — absent means "serve every address". When it
-  // is present, a malformed entry is dropped and logged rather than silently
-  // widening the list.
-  const allowList = parseAllowList(options.allowCidrs ?? env[ALLOW_CIDRS_ENV]);
-  if (allowList.invalid.length > 0 && typeof logger === "function") {
-    logger({ event: "allow_list_invalid", entries: allowList.invalid });
-  }
-
   // The pointer is *never* written here: it must carry the port the OS actually
   // assigned, which is only known after `listen`.
   const board = await openBoard({
@@ -214,6 +207,28 @@ export async function createTaskd(options = {}) {
     ...(options.busyTimeoutMs === undefined ? {} : { busyTimeoutMs: options.busyTimeoutMs }),
   });
 
+  // §7 / the Access panel: the allow-list is *optional*. It comes from the
+  // process environment when an operator set one, else from the panel's
+  // `<dataDir>/taskd.env`, else the safe defaults (off + two private ranges).
+  // The policy is mutable because a loopback save applies without a restart;
+  // `allowList` is the parsed projection `auth.mjs` reads on every request.
+  let access = readAccessConfig({
+    dataDir: board.dataDir,
+    env,
+    ...(options.allowCidrs === undefined ? {} : { allowCidrs: options.allowCidrs }),
+  });
+  let allowList = allowListFrom(access);
+  if (access.invalid?.length > 0 && typeof logger === "function") {
+    logger({ event: "allow_list_invalid", entries: access.invalid });
+  }
+  const accessState = {
+    get: () => access,
+    set: (next) => {
+      access = next;
+      allowList = allowListFrom(next);
+    },
+  };
+
   // The label GC (F1-C): one sweep now, then on a timer. `taskd` is the single
   // writer, so it is the one process that may prune the registry.
   const labelGc = startLabelGc({ board, env, logger, options });
@@ -226,10 +241,10 @@ export async function createTaskd(options = {}) {
   // `POST /api/v1/tasks/reconcile` (`taskctl issue reconcile`).
   const containerSweep = startContainerSweep({ board, logger, options });
 
-  const token = board.token === null ? null : readTokenFile(board.dataDir);
+  const token = board.token === null ? null : readToken(board.dataDir);
   const startedAt = Date.now();
   const router = createRouter();
-  const surface = { board, token, logger };
+  const surface = { board, token, logger, access: accessState };
   const staticHost = createStaticHost({
     root: options.staticDir === undefined || options.staticDir === null
       ? resolve(REPO_ROOT, STATIC_DIR_REL)
@@ -283,6 +298,11 @@ export async function createTaskd(options = {}) {
       // is what this capability's `upload_url` points at.
       attachments: true,
       allow_list: allowList.configured,
+      // The acceptance policy in force (`human-only` | `both` | `agent-only`).
+      // A client feature-detects the closing rule instead of assuming one; an
+      // unreadable policy reports `policy: null` here while every acceptance
+      // write still fails closed (`ACCESS_CONFIG_INVALID`).
+      acceptance: acceptanceCapability(board),
     },
   }));
 
@@ -317,7 +337,18 @@ export async function createTaskd(options = {}) {
       return;
     }
 
-    const decision = authorizeRequest({ req, url, token, rotate: pathname === "/api/v1/token", allowList });
+    const decision = authorizeRequest({
+      req,
+      url,
+      // Read the **live** copy: a loopback rotate/save replaces `surface.token`
+      // and this same process must accept the new credential immediately.
+      token: surface.token,
+      rotate: pathname === "/api/v1/token",
+      // Both access verbs read or replace the bearer credential's policy, so
+      // they are the owner's console, exactly like `token rotate`.
+      loopbackOnly: pathname === "/api/v1/token" || pathname === "/api/v1/access",
+      allowList,
+    });
     if (!decision.ok) {
       sendJson(res, decision.status, decision.payload);
       return;
@@ -327,7 +358,7 @@ export async function createTaskd(options = {}) {
     // envelope, so it is matched and handled before the router (see the module).
     const attachment = ATTACHMENT_CONTENT_PATH.exec(pathname);
     if (attachment !== null && (req.method === "GET" || req.method === "PUT")) {
-      await handleAttachmentContent(req, res, board, safeDecode(attachment[1]));
+      await handleAttachmentContent(req, res, board, safeDecode(attachment[1]), actorFromRequest(req));
       return;
     }
 
@@ -385,7 +416,7 @@ export async function createTaskd(options = {}) {
       session: headerOf(req, "x-taskctl-session"),
       seg: headerOf(req, "x-taskctl-seg"),
       board,
-      token,
+      token: surface.token,
     });
     sendJson(res, 200, { ok: true, data: data === undefined ? null : data });
   }
@@ -408,7 +439,10 @@ export async function createTaskd(options = {}) {
     host,
     port: boundPort,
     url,
-    token,
+    /** The live token: a rotate through either owner verb is visible here at once. */
+    get token() {
+      return surface.token;
+    },
     /** The label GC, exposed so a test can trigger a sweep without waiting out the timer. */
     labelGc,
     /** The startup container reconcile, exposed so a test can read what it did. */
@@ -503,6 +537,23 @@ export async function closeServer(server, graceMs = SHUTDOWN_GRACE_MS) {
  * `decodeURIComponent` throws on `%zz`; a URL a client mangled is a 404, not a
  * 500, so the raw text is returned and fails the id lookup instead.
  */
+/**
+ * The `/meta` view of the acceptance policy.
+ *
+ * Read through the board's own resolver so `/meta` reports exactly the policy a
+ * write would use (explicit option → env → `taskd.env` → default). It is
+ * re-read per request on purpose: a re-install may rewrite the file while the
+ * server keeps running. A malformed value reports `null` instead of failing the
+ * whole meta read; the acceptance write is where it fails closed.
+ */
+function acceptanceCapability(board) {
+  try {
+    return { policy: board.ctx.acceptancePolicy() };
+  } catch (err) {
+    return { policy: null, error: err?.code ?? "ACCESS_CONFIG_INVALID" };
+  }
+}
+
 function safeDecode(segment) {
   try {
     return decodeURIComponent(segment);
@@ -645,9 +696,4 @@ export function startLabelGc(input) {
 export function boardUrl(host, port) {
   const dialable = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
   return `http://${dialable.includes(":") ? `[${dialable}]` : dialable}:${port}`;
-}
-
-/** Read the token core generated at `openBoard` time (never echoed in a response). */
-function readTokenFile(dataDir) {
-  return readToken(dataDir);
 }

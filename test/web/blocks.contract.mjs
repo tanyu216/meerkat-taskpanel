@@ -144,8 +144,15 @@ export const DOMAINS = Object.freeze({
   ACTIVITY_GROUP: Object.freeze(["status", "comment", "delivery", "meta"]),
   /** B26 — the two mutually exclusive empty states (§8). */
   ACTIVITY_EMPTY: Object.freeze(["project", "filter"]),
-  /** B27 — the waiting queue's reason kinds (§30). */
-  WAITING_REASON: Object.freeze(["question", "blocked"]),
+  /**
+   * B27 — the waiting queue's reason kinds (§30).
+   *
+   * `acceptance` is M6's third kind: an `in_review` top-level card the board's
+   * policy leaves to a human. The prototype predates it, and the contract's
+   * `subset` direction is what lets the oracle stay a *sample* rather than a
+   * closed list (the same reading `data-status` takes).
+   */
+  WAITING_REASON: Object.freeze(["question", "blocked", "acceptance"]),
   /** `html[data-theme]` — what the stylesheet reads. Note the different vocabulary. */
   THEME_DOC: Object.freeze(["meerkat-taskpanel", "dark", "auto"]),
   /** Toast kinds (B14). */
@@ -409,9 +416,10 @@ const BLOCKS = [
           "prototype has no concurrent writers — now carrying `data-conflict` so it is at least " +
           "machine-visible), the live stream's state on the revision dot (B02's " +
           "`data-connection`, an attribute-level addition to an element the prototype has), and " +
-          "the manual `?after=` resync, which left the board's main path for the access panel " +
-          "on the same ruling. None of the four is blessed as a block: they are recorded, not " +
-          "asserted into existence.",
+          "the manual `?after=` resync, which left the board's main path for the access panel on " +
+          "the same ruling and has since been removed from the panel as well (the transport's " +
+          "automatic reconnect still uses `?after=`). None of the four is blessed as a block: " +
+          "they are recorded, not asserted into existence.",
       },
     ],
   },
@@ -1899,6 +1907,18 @@ const BLOCKS = [
           "`data-copy-value` and writes to the clipboard (a browser API); [data-detail-description] " +
           "renders sanitised GFM.",
       },
+      {
+        kind: "manual",
+        note:
+          "Implementation supplement: the panel opens before its card is read. `openDetail()` " +
+          "clears the detail and sets `drawerState` to `open` in one act, so `data-state` is " +
+          "`open` while the detail is null and the drawer renders `[data-detail-skeleton]` " +
+          "(head + body, daisyUI `skeleton` bars in the drawer's own shells) instead of the " +
+          "`[data-detail-*]` parts. The root carries `aria-busy`; the loading head keeps the " +
+          "`#td-detail-title` seat, and `[data-detail-close]` is live throughout. This branch is " +
+          "not resident at rest, so every count above is unchanged; measured in " +
+          "`web/scripts/dom-smoke.mjs` (the skeleton section's S6).",
+      },
     ],
   },
 
@@ -2165,6 +2185,19 @@ const BLOCKS = [
           "([data-loading-state]); that gallery is prototype-only and does not ship, which is why " +
           "the count above is one and not two.",
       },
+      {
+        kind: "manual",
+        note:
+          "Implementation supplement (product ruling, not a prototype page): the board, the " +
+          "activity feed and the waiting queue hold their own skeletons while a real read is in " +
+          "flight — `.td-skel-card` (the shape B18's loading demo draws) inside each of the seven " +
+          "columns for B05, a day caption + six rows for B26, four rows for B27. The carriers are " +
+          "`[data-view-loading]` on the view root and `[data-view-skeleton=\"board|activity|waiting\"]` " +
+          "on the placeholder block; neither is a value of `data-board-state` or `data-list-state`, " +
+          "and the activity placeholders add no `data-activity-*` name. The trigger is the read, " +
+          "never a timer. Measured in `web/scripts/dom-smoke.mjs` (the skeleton section), not by a " +
+          "resting-document count — the placeholders are rendered only in the loading branch.",
+      },
     ],
   },
 
@@ -2415,14 +2448,16 @@ const BLOCKS = [
       // The token's mask is `td_` + twelve dots — the prefix stays readable and
       // the mask is the design's, not the credential's length (R6 ③).
       { kind: "text", probe: "[data-token-value]", matches: "^td_[•]+$" },
-      { kind: "count", selector: "[data-cidr-row]", equals: 3 },
+      // The rows are the loaded draft, not static markup: they exist only after
+      // `GET /api/v1/access` answers, so the rule belongs to the driven pass.
+      { kind: "count", selector: "[data-cidr-row]", equals: 2, when: "panel open" },
       {
         kind: "manual",
         note:
-          "BLOCKS.md documents the CIDR whitelist as a front-end placeholder (rows live in the " +
-          "DOM only) and the switch as display-only. Open decision D5: §5.1 of the plan defines " +
-          "no CIDR read/write route and `/meta` exposes only `capabilities.allow_list` as a " +
-          "boolean, so in the real implementation this block renders **read-only** with a note.",
+          "The allow-list is persisted, not a placeholder: `GET|PUT /api/v1/access` read and " +
+          "write `<dataDir>/taskd.env`, the switch and every row are a draft, and the panel's one " +
+          "Save commits them. The two default rows are 192.168.0.0/16 and 10.0.0.0/8; the list " +
+          "starts **off** so an upgrade never silently narrows remote access.",
       },
       {
         kind: "manual",
@@ -2434,9 +2469,11 @@ const BLOCKS = [
       {
         kind: "manual",
         note:
-          "The token is a stand-in (`td_` + mask) produced in memory and written to the DOM " +
-          "nowhere else: no storage, no transport, no credential. Reveal toggles the mask only; " +
-          "Copy reports a toast without touching the clipboard.",
+          "The token is the **persisted credential**, read from `GET /api/v1/access` (loopback " +
+          "only), so a refresh shows the same value. The masked face stays `td_` + twelve dots; " +
+          "Reveal shows the real token and Copy copies it. A Reset clears the field and shows a " +
+          "placeholder saying the credential is minted on save; the panel's Save rotates it with " +
+          "the allow-list and closes the dialog.",
       },
       {
         kind: "manual",
@@ -3237,8 +3274,8 @@ export const STALE_PROSE_COUNTS = Object.freeze([
   }),
   Object.freeze({
     claim: "198 catalogue keys",
-    measured: 288,
-    detail: "en = 288 and zh = 288, mirrored 1:1 — the prototype `MESSAGES` count the body states; the shipped extraction drops the 17 prototype-only keys, so it ships 271",
+    measured: 289,
+    detail: "en = 289 and zh = 289, mirrored 1:1 — the prototype `MESSAGES` count the body states (M6 adds `waiting.reason.acceptance`); the shipped extraction drops the 17 prototype-only keys, so it ships 272",
     verdict: "stale",
   }),
   Object.freeze({

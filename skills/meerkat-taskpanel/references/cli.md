@@ -96,10 +96,11 @@ the map names.
 |---|---|
 | `issue create --project <id> --title <t> [--acceptance <text>]… [--assignee <text>] [--reporter <text>] …` | Create a task. |
 | `issue list [--project] [--status <s>]… [--assignee-id] [--limit] [--include-archived] [--order board\|weight] [--order-debug]` | List tasks. `--order weight` is the **assignee weight order** (below); the default is the board's own deterministic order, so nothing changes unless you ask. |
-| `issue candidates --assignee <name> [--stale] [--include-unassigned] [--order board\|weight] [--order-debug]` | The poll's read: claimable cards for an assignee (`todo`, **auto-claimable** — not an `epic`, not a `deploy` —, every `depends_on` done; `--stale` adds `in_progress` cards whose heartbeat expired; `--include-unassigned` adds the **public pool** — unassigned claimable cards — for a supervisor whose policy allows them). Read-only — claiming still goes through `issue move`/claim semantics. `--order weight` refines the order *within* each claimability bucket, which stays the first key. |
+| `issue candidates --assignee <name> [--stale] [--include-unassigned] [--order board\|weight] [--order-debug]` | The poll's read: claimable cards for an assignee (`todo`, **auto-claimable** — not an `epic`, not a `deploy` —, every `depends_on` done; `--stale` adds the **recovery pool** — `in_progress` cards whose heartbeat is past the 30-minute holder window (`stale_same`) or past the six-hour takeover window for anyone (`stale_any`); `--include-unassigned` adds the **public pool** — unassigned claimable cards — for a supervisor whose policy allows them). Read-only — claiming still goes through `issue claim` (or `issue move … in_progress` for a `todo` card). `--order weight` refines the order *within* each claimability bucket, which stays the first key. |
 | `issue get <id\|identifier>` | One task, plus `report_waivers[]`. |
 | `issue update <ref> [--title] [--description] [--priority] [--kind] [--label]… [--meta k=v]… [--acceptance <text>]…` | Patch. `--status` is refused here on purpose. |
-| `issue move <ref> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"] [--awaiting-reason E1..E5] [--blocked-reason <clarify\|decision\|dependency\|out_of_bounds\|defect\|external\|resource\|unknown>]` | Move, subject to the delivery gate. A `todo → in_progress` move is a **claim**: only the card's assignee, unless `--allow-steal`. `--awaiting-reason` is **required** by a move to `awaiting` — see [The `awaiting` state](#the-awaiting-state--asking-a-human-a-question). `--blocked-reason` is **optional** and records *what* a `blocked` card is waiting for — see [The `blocked` state](#the-blocked-state--what-the-card-is-waiting-for). |
+| `issue move <ref> <status> [--allow-steal --reason "<why>"] [--no-report --reason "<why>"] [--awaiting-reason E1..E5] [--blocked-reason <clarify\|decision\|dependency\|out_of_bounds\|defect\|external\|resource\|unknown>]` | Move, subject to the delivery gate. A `todo → in_progress` move is a **claim**: only the card's assignee, unless `--allow-steal`. A move to `done` is an **acceptance**: only a `human` or the board itself (`system`) may perform it — an agent gets `ACCEPTANCE_FORBIDDEN`, even on its own card. `--awaiting-reason` is **required** by a move to `awaiting` — see [The `awaiting` state](#the-awaiting-state--asking-a-human-a-question). `--blocked-reason` is **optional** and records *what* a `blocked` card is waiting for — see [The `blocked` state](#the-blocked-state--what-the-card-is-waiting-for). |
+| `issue claim <ref> [--allow-steal --reason "<why>"]` | **Claim, re-claim or take over** — the one claim verb. On a `todo` card it behaves like `issue move <ref> in_progress`; on an `in_progress` card it is the only way to recover a stale claim (`in_progress → in_progress` is not a transition): the same holder after 30 minutes, anyone after 6 hours. A fresh claim by another actor is refused with `EXECUTION_ACTIVE`; `--allow-steal --reason` is the audited exception for a `todo` card assigned elsewhere. |
 | `issue heartbeat <ref>` | **Pulse a claim you hold**, so its heartbeat stays inside the fresh window and the card does not read as abandoned. Takes no flags of its own — the card is the positional and the pulsing actor is you (the global attribution flags). It refreshes `heartbeat_at` and **nothing else**: the status and the claimer are untouched, so it cannot resurrect a card somebody else moved. Only the holder may pulse — anybody else gets `EXECUTION_ACTIVE`; a card that is not `in_progress` gets `INVALID_TRANSITION` ("nothing to pulse"). The pulse is recorded as a `task_heartbeat` activity, which the board treats as **noise** (it never wakes an SSE client). |
 | `issue assign <ref> [--assignee <text>] [--assignee-id <id>] [--reporter <text>] [--force-create]` | Assign. |
 | `issue archive <ref> [--days <n>]` | Archive finished work (done/canceled; 7-day window by default). |
@@ -300,8 +301,8 @@ children's own delivery evidence — and moves the epic to `in_review` in the sa
 `canceled` child is terminal and does not block the close; its acceptance line is
 `not_applicable`, with the cancellation reason taken from its own newest comment. The delivery
 gate applies to that report exactly as it does to a leaf's, and the result is still `in_review`:
-a human accepts to `done` — which is also why a nested container's parent waits for its child
-container to be accepted.
+the loop's independent reviewer (or a human, when none is configured) accepts to `done` — which
+is also why a nested container's parent waits for its child container to reach `done`.
 
 A container with **nothing delivered** stays open: every child canceled, or every delivered child
 waived under `--no-report` (no evidence to roll up). Close that one by hand (`report template` →
@@ -508,6 +509,8 @@ skips the fuzzy step; `--assignee-id` bypasses the dictionary entirely.
 
 | Command | Purpose |
 |---|---|
+| `issue meta <ref> --meta <k>=<v>…` | Merge metadata keys into a card, leaving every other key (and its value type) intact. `issue update --meta` replaces the whole object; this is the additive form the loop uses for its own markers. |
+| `report list <ref> [--round <n>]` | List a card's delivery reports (round, author, conclusion), newest round last. This is how a reviewer reads the report it audits; `issue get` carries only the task and its waivers. |
 | `report template <ref> [--commit <sha>] [--path <p>]… [--command <cmd:exit>]… [--coverage <pct[@scope]>]…` | Print a report to fill in. |
 
 The template is built from the card: `meta.acceptance` (what `--acceptance`

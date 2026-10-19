@@ -16,6 +16,7 @@
  */
 
 import { DomainError } from "../shared/errors.mjs";
+import { createAcceptancePolicy } from "./acceptance-policy.mjs";
 import { createCommands, createContext } from "./commands/index.mjs";
 import { closeDatabase, openDatabase, sqliteVersion } from "./storage/driver.mjs";
 import { applyMigrations, assertSchemaCurrent, listMigrations } from "./storage/migrations-runner.mjs";
@@ -39,6 +40,7 @@ import { readRuntimePointer, writeRuntimePointer } from "./storage/secrets/runti
  *   readonly?: boolean,
  *   allowStale?: boolean,
  *   busyTimeoutMs?: number,
+ *   acceptancePolicy?: string,
  *   logger?: Function,
  * }} [options]
  * @returns {Promise<object>}
@@ -124,7 +126,15 @@ export async function openBoard(options = {}) {
     schema.ok === false
       ? staleRepositoriesTrap(schema)
       : createRepositories(db);
-  const ctx = createContext({ db, repos, ...(clock === undefined ? {} : { clock }), ...(idFactory === undefined ? {} : { idFactory }), logger });
+  // The acceptance policy is read per decision (`ctx.acceptancePolicy()`), not
+  // frozen here: `taskd.env` may be rewritten by a re-install while the board
+  // keeps running, and a policy must apply from the next write.
+  const acceptancePolicy = createAcceptancePolicy({
+    dataDir,
+    env,
+    ...(options.acceptancePolicy === undefined ? {} : { acceptancePolicy: options.acceptancePolicy }),
+  });
+  const ctx = createContext({ db, repos, acceptancePolicy, ...(clock === undefined ? {} : { clock }), ...(idFactory === undefined ? {} : { idFactory }), logger });
   const commands = createCommands(ctx);
 
   return {

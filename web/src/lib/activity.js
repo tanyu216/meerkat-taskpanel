@@ -13,9 +13,7 @@
  * as unknown, not as a plausible lie.
  */
 
-const MINUTE = 60_000;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
+import { TIME_RUNGS_TWO, timeLadder } from "./time.js";
 
 /**
  * The three events the prototype gives a localised sentence, as the **suffix**
@@ -26,14 +24,20 @@ export const ACTIVITY_SENTENCES = Object.freeze({
   task_created: "created",
   task_claimed: "claimed",
   comment_added: "commented",
+  task_archived: "archived",
+  task_updated: "verb.updated",
+  task_delivered: "verb.delivered",
+  report_written: "verb.delivered",
+  report_waived: "verb.delivered",
+  relation_added: "verb.linked",
+  relation_removed: "verb.linked",
+  epic_auto_start: "verb.status",
+  attachment_added: "verb.attached",
+  attachment_removed: "verb.attached",
+  session_registered: "session",
+  session_closed: "session",
+  progress: "progress",
 });
-
-const pad = (n) => String(n).padStart(2, "0");
-
-/** `2026-10-05 11:20` — the prototype's absolute stamp, read in local time. */
-function absoluteStamp(date) {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
 
 /**
  * The row's timestamp: the prototype's two-step ladder — `time.hoursAgo` under a
@@ -48,12 +52,7 @@ function absoluteStamp(date) {
  * @returns {{key: string, arg: number, absolute: string}|null}
  */
 export function relativeTime(iso, now = Date.now()) {
-  const parsed = new Date(iso ?? NaN);
-  const then = parsed.getTime();
-  if (!Number.isFinite(then)) return null;
-  const delta = Math.max(0, now - then);
-  const step = delta < DAY ? { key: "time.hoursAgo", arg: Math.round(delta / HOUR) } : { key: "time.daysAgo", arg: Math.round(delta / DAY) };
-  return { ...step, arg: Math.max(1, step.arg), absolute: absoluteStamp(parsed) };
+  return timeLadder(iso, now, TIME_RUNGS_TWO);
 }
 
 /**
@@ -70,5 +69,7 @@ export function activityLine(activity) {
     const { from, to } = activity?.changes ?? {};
     if (from && to) return { text: `status: ${from} → ${to}` };
   }
-  return { text: event };
+  // An unknown event reads as a generic "recorded an event", never as a raw
+  // English identifier in a Chinese UI.
+  return event === "" ? { text: "" } : { sentence: "other" };
 }

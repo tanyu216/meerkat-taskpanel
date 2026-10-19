@@ -49,7 +49,7 @@ describe("loop skill: the generated payload", () => {
     assert.equal(report.manifest.state, "equal", "body/manifest.txt must match the computed closure");
   });
 
-  it("generates the body as the closure of its two entry points", async () => {
+  it("generates the body as the closure of its entry points", async () => {
     const report = await syncLoop({ root: ROOT, check: true });
 
     for (const root of LOOP_BODY_ROOTS) {
@@ -79,15 +79,33 @@ describe("loop skill: the generated payload", () => {
     const body = bodyClosure();
     for (const rel of [
       "scripts/supervisor.mjs",
+      "scripts/loop/options.mjs",
+      "scripts/loop/runtime.mjs",
+      "scripts/loop/runners.mjs",
+      "scripts/loop/board.mjs",
+      "scripts/loop/poll.mjs",
+      "scripts/loop/patrol.mjs",
+      "scripts/loop/workflow.mjs",
+      "scripts/loop/continue.mjs",
+      "scripts/loop/subscribe.mjs",
+      "scripts/loop/sse-parse.mjs",
+      "scripts/loop/sse-client.mjs",
+      "scripts/loop/endpoint.mjs",
+      "scripts/loop/event-rules.mjs",
       "scripts/wake-cwd.mjs",
       "src/shared/scheduling.mjs",
       "src/shared/sla-patrol.mjs",
+      "src/shared/workflow.mjs",
       "src/shared/constants.mjs",
       "src/shared/errors.mjs",
       "src/shared/redact.mjs",
       "src/shared/project-dir.mjs",
       "src/shared/runtime-locator.mjs",
       "src/shared/entry-guard.mjs",
+      "src/shared/transport/autostart.mjs",
+      "src/shared/transport/errors.mjs",
+      "src/shared/transport/runtime.mjs",
+      "src/shared/transport/token.mjs",
     ]) {
       assert.ok(body.includes(rel), `${rel} must be part of the loop body`);
     }
@@ -271,6 +289,7 @@ describe("board skill: references resolve where the skill is installed", () => {
   const files = [
     "skills/meerkat-taskpanel/references/practice-guides.md",
     "skills/meerkat-taskpanel/references/projects-json.md",
+    "skills/meerkat-taskpanel/references/scheduling-integration.md",
   ];
 
   it("has no link that climbs out of the skill into the repository root", () => {

@@ -122,6 +122,24 @@ describe("repositories/projects", () => {
       assert.deepEqual(repos.projects.countByStatus("proj"), { todo: 2 });
     });
   });
+
+  it("aggregates task counts and trailing-window activity per project", async () => {
+    await board(({ repos }) => {
+      const task = makeTask(repos, { title: "one" });
+      makeTask(repos, { title: "two", id: "t2" });
+      repos.activities.append({ taskId: task.id, event: "task_updated", createdAt: TS });
+      // A pure heartbeat bumps the revision but changes no board state, so it is
+      // not "activity" for the window.
+      repos.activities.append({ taskId: task.id, event: "task_heartbeat", createdAt: TS });
+
+      assert.deepEqual(repos.projects.taskCountByProject(), new Map([["proj", 2]]));
+      assert.deepEqual(repos.projects.taskCountByProject("proj"), new Map([["proj", 2]]));
+      assert.deepEqual(repos.projects.taskCountByProject("other"), new Map());
+
+      const activity = repos.projects.activityByProject({ now: new Date(TS) });
+      assert.deepEqual(activity.get("proj"), { a7: 1, a30: 1, lastActivityAt: TS });
+    });
+  });
 });
 
 describe("repositories/tasks", () => {
@@ -136,6 +154,23 @@ describe("repositories/tasks", () => {
       assert.deepEqual(repos.tasks.getByIdentifier("proj", "PROJ-0001"), task);
       assert.deepEqual(repos.tasks.resolve("proj", "PROJ-0001"), task);
       assert.equal(repos.tasks.get("nope"), null);
+    });
+  });
+
+  it("resolves a reference as an id or an identifier, and refuses a miss uniformly", async () => {
+    await board(({ repos }) => {
+      const task = makeTask(repos);
+      assert.deepEqual(repos.tasks.getByAnyRef(task.id), task);
+      assert.deepEqual(repos.tasks.getByAnyRef(task.identifier), task);
+      assert.equal(repos.tasks.getByAnyRef("NOPE-9999"), null);
+      assert.throws(
+        () => repos.tasks.requireAnyRef("NOPE-9999"),
+        (err) => {
+          assert.equal(err.code, "NOT_FOUND");
+          assert.equal(err.details.taskRef, "NOPE-9999");
+          return true;
+        },
+      );
     });
   });
 

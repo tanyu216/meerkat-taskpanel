@@ -635,6 +635,38 @@ describe("acceptance_card_creation", () => {
     assert.deepEqual(rowsOf(result).filter((row) => row === "acceptance_card_creation"), []);
   });
 
+  it("suppresses only the round the review card audits", () => {
+    // Round 2 is a re-delivery after a rejection: the round-1 review card is
+    // history and must not silence the new wait.
+    const stale = card({
+      identifier: "T-1",
+      status: "in_review",
+      status_changed_at: "2026-10-01T04:00:00.000Z",
+      delivery_round: 2,
+    });
+    const oldReview = card({ identifier: "T-9", status: "done", meta: { review_of: "T-1", review_round: 1 } });
+    assert.deepEqual(
+      rowsOf(plan([stale, oldReview])).filter((row) => row === "acceptance_card_creation"),
+      ["acceptance_card_creation"],
+      "a last-round review card no longer covers this delivery",
+    );
+
+    const currentReview = card({ identifier: "T-10", status: "todo", meta: { review_of: "T-1", review_round: 2 } });
+    assert.deepEqual(
+      rowsOf(plan([stale, currentReview])).filter((row) => row === "acceptance_card_creation"),
+      [],
+      "a review card for this round suppresses it",
+    );
+
+    // A review card from before `review_round` existed records no round; the
+    // conservative reading is that it still covers the delivery.
+    const legacyReview = card({ identifier: "T-11", status: "todo", meta: { review_of: "T-1" } });
+    assert.deepEqual(
+      rowsOf(plan([stale, legacyReview])).filter((row) => row === "acceptance_card_creation"),
+      [],
+    );
+  });
+
   it("does not apply to a flow B card", () => {
     const result = plan([card({ status: "in_review", status_changed_at: "2026-10-01T04:00:00.000Z", meta: { flow: "B" } })]);
     assert.deepEqual(result.alerts, []);
@@ -714,6 +746,19 @@ describe("leader_stalled", () => {
       assert.equal(hasStalled(silent), true, `${kind}: the quiet board stalls`);
       assert.equal(hasStalled(active), false, `${kind}: a leader's ${kind} resets the clock`);
     }
+  });
+
+  it("does not count the loop's own automated acceptance as leader activity", () => {
+    // The workflow pass writes `meta.accepted_by = "loop-review"` when it closes
+    // a card after a verdict. Counting that `done` would let the loop's own
+    // activity mask a stalled leader — so the marker is excluded, and the same
+    // card *without* it still proves the control case.
+    const stale = blocked("T-1", "2026-09-01T04:00:00.000Z");
+    const accepted = (meta) =>
+      card({ identifier: "T-2", status: "done", created_at: "2026-09-01T04:00:00.000Z", status_changed_at: ago(1), meta });
+
+    assert.equal(hasStalled(plan([stale, accepted({ accepted_by: "loop-review" })])), true);
+    assert.equal(hasStalled(plan([stale, accepted({})])), false, "a leader's own done still resets the clock");
   });
 
   it("does not count a worker's kind=change entry as leader activity (F2)", () => {

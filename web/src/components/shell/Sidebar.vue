@@ -17,7 +17,7 @@
  * carries neither (see `test/web/blocks.contract.mjs`, where both blocks are
  * `prototype-only`).
  */
-import { computed, ref } from "vue";
+import { computed } from "vue";
 
 import {
   assigneeFilterValue,
@@ -218,7 +218,7 @@ function onAssignee(name) {
           :data-order-score="project.score"
           :aria-current="project.id === board.currentProjectId ? 'page' : undefined"
           :title="project.name"
-          @click="selectProject(project.id)"
+          @click="selectProject(project.id).catch(() => {})"
         >
           <!-- The prefix monogram is the rail's stand-in for the name, so it is
                desktop-hidden and rail-visible — one element, two faces

@@ -281,7 +281,7 @@ describe("server/main — the container reconcile at startup", () => {
       const child = commands.createTask({ projectId: "proj", title: "child", actor: AGENT });
       commands.claim({ id: child.id, actor: AGENT });
       commands.deliver({ taskId: child.id, report, actor: AGENT });
-      commands.moveStatus({ id: child.id, to: "done", actor: AGENT });
+      commands.moveStatus({ id: child.id, to: "done", actor: { kind: "human", id: "Terry" } });
       const epic = commands.createTask({ projectId: "proj", title: "container", kind: "epic", actor: AGENT });
       commands.addRelation({ type: "parent", source: epic.id, target: child.id, actor: AGENT });
       assert.equal(commands.getTask({ id: epic.id }).status, "todo");

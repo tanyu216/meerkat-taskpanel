@@ -6,6 +6,8 @@
  */
 
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
+import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
 import { cleanupTempDirs, dataOf, errorOf, withCli } from "./helpers/cli-harness.mjs";
@@ -666,7 +668,9 @@ describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells i
     dataOf(run(["issue", "deliver", identifier, "--report-file", "-", ...AS, "--json"], {
       input: JSON.stringify(childReport(sha)),
     }));
-    dataOf(run(["issue", "move", identifier, "done", ...AS, "--json"]));
+    // A child card is accepted by a non-human writer under every policy; the
+    // worker's own attribution is what closes it.
+    dataOf(run(["issue", "move", identifier, "done", "--actor-kind", "agent", ...AS, "--json"]));
   };
 
   it("closes the container itself when its last child is accepted", async () => {
@@ -725,7 +729,7 @@ describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells i
       // A waiver leaves no report, so there is no evidence to roll up.
       dataOf(run(["issue", "move", child.task.identifier, "in_progress", ...AS, "--json"]));
       dataOf(run(["issue", "move", child.task.identifier, "in_review", "--no-report", "--reason", "audited waiver, no commit", ...AS, "--json"]));
-      dataOf(run(["issue", "move", child.task.identifier, "done", ...AS, "--json"]));
+      dataOf(run(["issue", "move", child.task.identifier, "done", "--actor-kind", "agent", "--json"]));
 
       assert.equal(
         dataOf(run(["issue", "get", card.task.identifier, "--json"])).task.status,
@@ -753,6 +757,233 @@ describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells i
         asked.task.identifier,
         "same kind, assignee, source and target: the second create is a retry of the first, not a sibling",
       );
+    });
+  });
+});
+
+describe("cli/issue — `issue meta` is a merge, not a replace", () => {
+  it("writes one key and leaves the rest of the metadata — and its types — intact", async () => {
+    await board(async ({ run }) => {
+      const created = createIssue(run, [
+        "--acceptance", "cli works",
+        "--target", "src/x",
+        "--meta", "flow=A",
+      ]);
+      const merged = dataOf(
+        run(["issue", "meta", created.task.identifier, "--meta", "accepted_by=loop-review", "--meta", "accepted_round=1", "--json"]),
+      );
+      assert.deepEqual(merged.task.meta.acceptance, ["cli works"], "the acceptance list survives as a list");
+      assert.equal(merged.task.meta.target, "src/x");
+      assert.equal(merged.task.meta.flow, "A");
+      assert.equal(merged.task.meta.accepted_by, "loop-review");
+      assert.equal(merged.task.meta.accepted_round, "1");
+
+      const again = dataOf(run(["issue", "meta", created.task.identifier, "--meta", "rework_round=2", "--json"]));
+      assert.equal(again.task.meta.rework_round, "2");
+      assert.deepEqual(again.task.meta.acceptance, ["cli works"], "a second merge is still additive");
+      assert.equal(again.task.meta.accepted_by, "loop-review");
+    });
+  });
+});
+
+describe("cli/issue — claim and stale recovery", () => {
+  /** Age a card's heartbeat directly; no CLI verb exists for making one stale. */
+  function ageHeartbeat(dataDir, identifier, iso) {
+    const db = new DatabaseSync(join(dataDir, "board.sqlite"));
+    try {
+      db.exec("PRAGMA busy_timeout = 5000");
+      db.prepare("UPDATE tasks SET heartbeat_at = ? WHERE identifier = ?").run(iso, identifier);
+    } finally {
+      db.close();
+    }
+  }
+
+  const forLinus = ["--assignee", "linus", "--assignee-kind", "agent"];
+  const asLinus = ["--agent", "linus", "--actor-kind", "claude"];
+
+  it("claims a ready card and reuses the same holder's fresh claim", async () => {
+    await board(async ({ run }) => {
+      const card = createIssue(run, forLinus);
+      const first = dataOf(run(["issue", "claim", card.task.identifier, ...asLinus, "--json"]));
+      assert.equal(first.task.status, "in_progress");
+      assert.equal(first.reused, false);
+      assert.equal(first.stole, false);
+
+      const again = dataOf(run(["issue", "claim", card.task.identifier, ...asLinus, "--json"]));
+      assert.equal(again.reused, true, "a second claim by the same holder keeps the claim");
+      assert.equal(again.task.status, "in_progress");
+    });
+  });
+
+  it("re-claims a stale claim for its holder — the one thing `move` cannot do", async () => {
+    await board(async ({ run, dataDir }) => {
+      const card = createIssue(run, forLinus);
+      dataOf(run(["issue", "claim", card.task.identifier, ...asLinus, "--json"]));
+      ageHeartbeat(dataDir, card.task.identifier, "2020-01-01T00:00:00.000Z");
+
+      // Same status is not a transition: the move route refuses it.
+      const viaMove = run(["issue", "move", card.task.identifier, "in_progress", ...asLinus, "--json"]);
+      assert.equal(viaMove.status, 1);
+      assert.equal(errorOf(viaMove).code, "INVALID_TRANSITION");
+
+      const recovered = dataOf(run(["issue", "claim", card.task.identifier, ...asLinus, "--json"]));
+      assert.equal(recovered.task.status, "in_progress");
+      assert.equal(recovered.reused, false, "the stale lock is re-taken, not reused");
+    });
+  });
+
+  it("lets another agent discover and take over past six hours", async () => {
+    await board(async ({ run, dataDir }) => {
+      const card = createIssue(run, forLinus);
+      dataOf(run(["issue", "claim", card.task.identifier, ...asLinus, "--json"]));
+      ageHeartbeat(dataDir, card.task.identifier, "2020-01-01T00:00:00.000Z");
+
+      // The recovery pool is not scoped to the asker: jobs has never seen this card.
+      const candidates = dataOf(run(["issue", "candidates", "--assignee", "jobs", "--stale", "--json"])).candidates;
+      const entry = candidates.find((candidate) => candidate.identifier === card.task.identifier);
+      assert.ok(entry, "the six-hour takeover must be discoverable by any agent");
+      assert.equal(entry.reason, "stale_any");
+
+      const took = dataOf(
+        run(["issue", "claim", card.task.identifier, "--agent", "jobs", "--actor-kind", "claude", "--json"]),
+      );
+      assert.equal(took.stole, true);
+      assert.equal(took.task.claimed_by_actor.display_name, "jobs");
+
+      // The takeover is audited as a change comment naming the previous holder.
+      const comments = dataOf(run(["comment", "list", card.task.identifier, "--json"])).comments;
+      assert.ok(comments.some((comment) => comment.kind === "change" && /linus|Linus/.test(comment.body)));
+    });
+  });
+
+  it("refuses --allow-steal without a real reason, as a usage error", async () => {
+    await board(async ({ run }) => {
+      const card = createIssue(run);
+      const refused = run(["issue", "claim", card.task.identifier, "--allow-steal", "--json"]);
+      assert.equal(refused.status, 2);
+      assert.equal(errorOf(refused).code, "CLI_USAGE");
+    });
+  });
+});
+
+describe("cli/issue — acceptance authority", () => {
+  const report = JSON.stringify({
+    conclusion: "delivered",
+    acceptance: [{ text: "a", status: "met" }],
+    evidence: [{ kind: "path", path: "x" }],
+  });
+
+  it("refuses an agent closing its own delivery, and a human may close it", async () => {
+    await board(async ({ run }) => {
+      const card = createIssue(run);
+      dataOf(run(["issue", "move", card.task.identifier, "in_progress", "--agent", "linus", "--actor-kind", "claude", "--json"]));
+      dataOf(
+        run(["issue", "deliver", card.task.identifier, "--report-file", "-", "--agent", "linus", "--actor-kind", "claude", "--json"], {
+          input: report,
+        }),
+      );
+
+      const refused = run([
+        "issue", "move", card.task.identifier, "done",
+        "--agent", "linus", "--actor-kind", "claude", "--json",
+      ]);
+      assert.equal(refused.status, 1);
+      const error = errorOf(refused);
+      assert.equal(error.code, "ACCEPTANCE_FORBIDDEN");
+      assert.equal(error.http, 409);
+      assert.match(error.hint.fix, /in_review/);
+      assert.equal(
+        dataOf(run(["issue", "get", card.task.identifier, "--json"])).task.status,
+        "in_review",
+        "the refusal moves nothing",
+      );
+
+      const accepted = dataOf(run(["issue", "move", card.task.identifier, "done", "--json"]));
+      assert.equal(accepted.task.status, "done");
+    });
+  });
+});
+
+describe("cli/issue — the loop's two lifecycle counter-proofs", () => {
+  const report = (conclusion = "delivered") =>
+    JSON.stringify({
+      conclusion,
+      acceptance: [{ text: "a", status: "met" }],
+      evidence: [{ kind: "path", path: "x" }],
+    });
+
+  it("re-closes a reopened epic unless a fix child exists first (the safe rejection path)", async () => {
+    await board(async ({ run }) => {
+      const epic = createIssue(run, ["--title", "Container", "--kind", "epic", "--allow-dup"]);
+      const child = createIssue(run, ["--title", "Piece", "--allow-dup"]);
+      dataOf(run(["relation", "add", epic.task.identifier, "--type", "parent", "--target", child.task.identifier, "--json"]));
+      dataOf(run(["issue", "move", child.task.identifier, "in_progress", "--json"]));
+      dataOf(run(["issue", "deliver", child.task.identifier, "--report-file", "-", "--json"], { input: report() }));
+      dataOf(run(["issue", "move", child.task.identifier, "done", "--actor-kind", "agent", "--json"]));
+      assert.equal(
+        dataOf(run(["issue", "get", epic.task.identifier, "--json"])).task.status,
+        "in_review",
+        "the board rolled the container up",
+      );
+
+      // Reopening without creating anything new: reconcile closes it straight back.
+      // This is why a rejection must create the fix child BEFORE it reopens.
+      dataOf(run(["issue", "move", epic.task.identifier, "in_progress", "--json"]));
+      const unsafe = dataOf(run(["issue", "reconcile", "--json"]));
+      const unsafeAction = unsafe.actions.find((entry) => entry.epic === epic.task.identifier);
+      assert.equal(unsafeAction.action, "close");
+      assert.equal(unsafeAction.reason, "all_children_terminal");
+      assert.equal(
+        dataOf(run(["issue", "get", epic.task.identifier, "--json"])).task.status,
+        "in_review",
+        "without a fix child the sweep immediately re-closes the container",
+      );
+
+      // The safe path: a non-terminal fix child holds the container open.
+      dataOf(run(["issue", "move", epic.task.identifier, "in_progress", "--json"]));
+      const fix = createIssue(run, ["--title", "Fix the gap", "--allow-dup"]);
+      dataOf(run(["relation", "add", epic.task.identifier, "--type", "parent", "--target", fix.task.identifier, "--json"]));
+
+      const safe = dataOf(run(["issue", "reconcile", "--json"]));
+      const safeAction = safe.actions.find((entry) => entry.epic === epic.task.identifier);
+      assert.equal(safeAction.action, "none");
+      assert.equal(safeAction.reason, "children_unfinished");
+      assert.deepEqual(safeAction.blocking, [{ identifier: fix.task.identifier, status: "todo" }]);
+      assert.equal(
+        dataOf(run(["issue", "get", epic.task.identifier, "--json"])).task.status,
+        "in_progress",
+        "with a fix child in flight the container stays open",
+      );
+    });
+  });
+
+  it("cannot skip in_review: a review card goes in_progress → in_review → done", async () => {
+    await board(async ({ run }) => {
+      // 0025 resolves `review_of` to a real card at creation.
+      const original = createIssue(run, ["--title", "Original"]);
+      const review = createIssue(run, [
+        "--title", `Review ${original.task.identifier}`,
+        "--meta", `review_of=${original.task.identifier}`,
+        "--meta", "flow=B",
+        "--meta", "review_round=1",
+        "--target", `review:${original.task.identifier}:r1`,
+        "--allow-dup",
+      ]);
+      dataOf(run(["issue", "move", review.task.identifier, "in_progress", "--json"]));
+
+      const refused = run(["issue", "move", review.task.identifier, "done", "--json"]);
+      assert.equal(refused.status, 1, "done is reachable only from in_review");
+      assert.equal(errorOf(refused).code, "INVALID_TRANSITION");
+
+      const delivered = dataOf(
+        run(["issue", "deliver", review.task.identifier, "--report-file", "-", "--json"], {
+          input: report("VERDICT: APPROVE"),
+        }),
+      );
+      assert.equal(delivered.task.status, "in_review", "the verdict report is the evidence");
+
+      const accepted = dataOf(run(["issue", "move", review.task.identifier, "done", "--json"]));
+      assert.equal(accepted.task.status, "done");
     });
   });
 });
@@ -834,7 +1065,7 @@ describe("cli/issue — reconcile (the container backstop)", () => {
           }),
         }),
       );
-      dataOf(run(["issue", "move", done.task.identifier, "done", "--json"]));
+      dataOf(run(["issue", "move", done.task.identifier, "done", "--actor-kind", "agent", "--json"]));
 
       const human = run(["issue", "reconcile", "--dry-run"]);
       assert.match(human.stdout, /children_unfinished/);

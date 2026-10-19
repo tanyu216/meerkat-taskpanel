@@ -47,6 +47,28 @@ export const ERROR_CODES = Object.freeze({
 
   // ---- Task state machine + lifecycle ---------------------------------------
   INVALID_TRANSITION: spec(409, "Status transition is not allowed."),
+  // Acceptance authority: `done` is a human's or the board's act, never a worker
+  // agent's — including on its own card. Raised in the service layer because the
+  // actor is not a column of the `tasks` row (see `domain/status.mjs`).
+  ACCEPTANCE_FORBIDDEN: spec(409, "Only a human or the board itself may accept a delivery to done.", {
+    fix:
+      "a worker stops at in_review; an independent reviewer reports a verdict and the loop " +
+      "(or a human) applies it",
+  }),
+  // The card's structural review marker (`review_of_id` / `review_round`, 0025) is
+  // set once, at creation, and never rewritten — the review-card exemption is a
+  // privilege, so it must not be obtainable by editing a card afterwards.
+  REVIEW_OF_IMMUTABLE: spec(409, "A card's review marker is set at creation and cannot be changed."),
+  // A human closing a top-level card before the review cards for its current
+  // delivery round have resolved. `canceled` counts as resolved (an abandoned
+  // review must not deadlock the original).
+  REVIEW_PENDING: spec(
+    409,
+    "This card still has an open review for its current delivery round; close or cancel it first.",
+  ),
+  // A card may not enter `in_review`/`done` while one of its children is still
+  // in flight. Manual and automatic paths apply the same rule.
+  CHILDREN_OPEN: spec(409, "This card still has non-terminal child cards."),
   TERMINAL_STATE: spec(409, "done/canceled are terminal; they cannot be left."),
   VERSION_CONFLICT: spec(409, "Version conflict — re-read the task and retry once."),
   CLAIM_LOST: spec(409, "Claim could not be taken: the task was taken concurrently."),
@@ -161,6 +183,10 @@ export const ERROR_CODES = Object.freeze({
   // ---- Secrets ---------------------------------------------------------------
   TOKEN_FILE_CORRUPT: spec(500, "Token file exists but is malformed; fix it by hand."),
   RUNTIME_POINTER_TOKEN_LEAK: spec(500, "Refusing to write a runtime pointer that contains a token."),
+  // The access policy's env file (`<dataDir>/taskd.env`): written by the Access
+  // panel, read by `taskd` at start-up. A malformed or unwritable file is a
+  // server-side fault, not a bad request — the panel validates before writing.
+  ACCESS_CONFIG_INVALID: spec(500, "Access configuration is malformed or could not be written."),
 
   // ---- CLI surface (M2) ------------------------------------------------------
   // Raised only by `src/cli`. They exist so a script can tell "you typed it
@@ -185,6 +211,9 @@ export const DB_RAISE_CODES = Object.freeze([
   "RELATION_IMMUTABLE",
   "COMMENT_APPEND_ONLY",
   "DICTIONARY_ENTRY_IN_USE",
+  // 0025 / 0026
+  "REVIEW_OF_IMMUTABLE",
+  "CHILDREN_OPEN",
 ]);
 
 /** Codes produced by mapping SQLite failures (constraints, and lock contention). */
@@ -211,6 +240,13 @@ export const SQL_CONSTRAINT_CODES = Object.freeze([
 export const JS_ONLY_CODES = Object.freeze([
   "REPORT_INVALID",
   "REPORT_TOO_LARGE",
+  // Acceptance authority reads the *actor*, which is not a row fact a trigger
+  // can see — so this one is enforced only by the service layer.
+  "ACCEPTANCE_FORBIDDEN",
+  // The review-ready check is the same kind of fact (it combines the actor, the
+  // policy and the review cards' current state), and the loop's own protocol is
+  // exempt from it by design.
+  "REVIEW_PENDING",
   "REPORT_ROUND_MISMATCH",
   "VERSION_CONFLICT",
   "CLAIM_LOST",
@@ -232,6 +268,7 @@ export const JS_ONLY_CODES = Object.freeze([
   "ATTACHMENT_TOO_LARGE",
   "TOKEN_FILE_CORRUPT",
   "RUNTIME_POINTER_TOKEN_LEAK",
+  "ACCESS_CONFIG_INVALID",
   // The single-writer guard: raised in JS, before any database is opened.
   "BOARD_ALREADY_RUNNING",
   // Project directories: read from a host-local JSON file, never from a table,

@@ -1,6 +1,14 @@
 {
   "errors": [
     {
+      "code": "ACCEPTANCE_FORBIDDEN",
+      "http": 409
+    },
+    {
+      "code": "ACCESS_CONFIG_INVALID",
+      "http": 500
+    },
+    {
       "code": "ARCHIVE_NOT_TERMINAL",
       "http": 409
     },
@@ -19,6 +27,10 @@
     {
       "code": "CHAIN_TOO_LONG",
       "http": 422
+    },
+    {
+      "code": "CHILDREN_OPEN",
+      "http": 409
     },
     {
       "code": "CLAIM_LOST",
@@ -181,6 +193,14 @@
       "http": 413
     },
     {
+      "code": "REVIEW_OF_IMMUTABLE",
+      "http": 409
+    },
+    {
+      "code": "REVIEW_PENDING",
+      "http": 409
+    },
+    {
       "code": "RUNTIME_POINTER_TOKEN_LEAK",
       "http": 500
     },
@@ -234,6 +254,52 @@
     }
   ],
   "routes": [
+    {
+      "method": "GET",
+      "path": "/api/v1/access",
+      "request": {
+        "body": null,
+        "query": null
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/access",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "allow_list": {
+              "additionalProperties": true,
+              "properties": {
+                "cidrs": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "enabled": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "cidrs",
+                "enabled"
+              ],
+              "type": "object"
+            },
+            "rotate_token": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "allow_list"
+          ],
+          "type": "object"
+        },
+        "query": null
+      }
+    },
     {
       "method": "GET",
       "path": "/api/v1/actors",
@@ -780,6 +846,29 @@
             },
             "size": {
               "type": "integer"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tasks/:ref/claim",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "allow_steal": {
+              "type": "boolean"
+            },
+            "if_version": {
+              "type": "integer"
+            },
+            "reason": {
+              "type": "string"
             }
           },
           "required": [],
@@ -1340,6 +1429,7 @@
         "kind": "string",
         "labels": "array",
         "meta": "object",
+        "parent_id": "null",
         "priority": "string",
         "project_id": "string",
         "report_latest_id": "string",
@@ -1347,6 +1437,8 @@
         "reporter": "object",
         "reporter_id": "string",
         "reporter_kind": "null",
+        "review_of_id": "null",
+        "review_round": "null",
         "sort_order": "number",
         "source_path": "string",
         "status": "string",

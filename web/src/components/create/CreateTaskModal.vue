@@ -15,7 +15,6 @@ import { computed, reactive, watch } from "vue";
 
 import {
   board,
-  assigneeRoster,
   createTask,
   kindLabel,
   labelRoster,

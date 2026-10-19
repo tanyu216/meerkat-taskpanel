@@ -183,22 +183,33 @@ browser?" is printed rather than inferred. See
 | `/events` | GET (SSE) | `global_revision` increments; `?after=<rev>` replays; a deliberate stop sends a named `shutdown` frame (see [Stopping the daemon](#stopping-the-daemon)) |
 | `/actors`, `/labels` | GET | read-only by design (§4.4) |
 | `/token` | POST | rotate; loopback only |
+| `/access` | GET/PUT | the persisted token + allow-list policy; loopback only (the read answers the credential) |
 | `/` and everything else | GET/HEAD | built frontend from `web/dist`, when it exists |
 
 Beyond `/health`, every request is authorised before it is routed (§7):
 
 - a **loopback** caller is trusted — no token, never filtered by the allow-list;
-- a **remote** caller must be inside `TASKD_ALLOW_CIDRS` (when set; unset = allow
-  all) and must present the token, as `Authorization: Bearer <token>` or
+- a **remote** caller must be inside the allow-list (when one is enabled; see
+  below) and must present the token, as `Authorization: Bearer <token>` or
   `?token=<token>` (the query form exists for `EventSource`);
-- `POST /token` is refused (403) from anywhere but this machine.
+- `POST /token` and both `/access` verbs are refused (403, `loopback_only`) from
+  anywhere but this machine.
+
+The allow-list is server configuration, persisted **outside the database** in
+`<dataDir>/taskd.env` (`TASKD_ALLOW_LIST_ENABLED` + `TASKD_ALLOW_CIDRS`). The
+precedence is: an explicit process-environment value (an operator override, and
+the Access panel turns read-only), then that file, then the defaults — the list
+**off**, seeded with `192.168.0.0/16` and `10.0.0.0/8`. A loopback save through
+`PUT /access` writes the file and applies the policy to the next request without
+a restart; `rotate_token: true` rotates the token in the same save.
 
 Security-relevant environment variables:
 
 | Variable | Meaning |
 |---|---|
 | `TASKD_HOST` / `TASKD_PORT` | bind address / port (defaults `0.0.0.0:9527`) |
-| `TASKD_ALLOW_CIDRS` | comma-separated CIDR allow-list for non-loopback callers; unset = allow all, malformed entries fail closed |
+| `TASKD_ALLOW_CIDRS` | comma-separated CIDR allow-list for non-loopback callers; unset = no list (allow all), malformed entries fail closed. Setting it (or `TASKD_ALLOW_LIST_ENABLED`) makes the process environment own the policy, so the Access panel is read-only |
+| `TASKD_ALLOW_LIST_ENABLED` | `true`/`false`: whether the list is in force. Both keys are also read from `<dataDir>/taskd.env`, which the Access panel writes |
 | `TASKD_DATA_DIR` / `TASKD_DB` | data directory / database file |
 | `TASKD_TOKEN` | token a client presents (`--token` outranks it) |
 | `TASKD_LABEL_GC`, `TASKD_LABEL_TTL_DAYS` | label housekeeping (§4.4) |
@@ -322,16 +333,17 @@ root. `test/scaffold.test.mjs` asserts that, since with no copy targets left
 `sync-skills.mjs --check` has nothing to compare and could not notice an orphan tree.
 
 The loop's `body/` and `templates/` are generated *from this repository*: `body/` is the
-transitive import closure of `scripts/supervisor.mjs` and `scripts/wake-cwd.mjs` (written out
-as `body/manifest.txt`, the list the installer copies), and `templates/` mirrors the
+transitive import closure of `scripts/supervisor.mjs`, `scripts/loop/*.mjs` and
+`scripts/wake-cwd.mjs` (written out as `body/manifest.txt`, the list the installer copies),
+and `templates/` mirrors the
 loop-side files under `scripts/install/templates/`. That direction matters — the shared
 modules in `src/shared/` are **not** moved into the skill; they stay where the CLI imports
 them, and the skill's copy is generated and guarded. OpenClaw never receives the loop at all,
 by ruling: its framework already ships an equivalent supervisor, and `install.sh --target
 openclaw` copies the board skill only.
 
-**After editing anything under `skills/`, `scripts/supervisor.mjs`, `scripts/wake-cwd.mjs`,
-`src/shared/`, or `scripts/install/templates/`, run:**
+**After editing anything under `skills/`, `scripts/supervisor.mjs`, `scripts/loop/`,
+`scripts/wake-cwd.mjs`, `src/shared/`, or `scripts/install/templates/`, run:**
 
 ```bash
 node scripts/sync-skills.mjs

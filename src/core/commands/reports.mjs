@@ -15,18 +15,15 @@ import { STATUS } from "../domain/enums.mjs";
 import { normalizeReportCreate } from "../domain/report.mjs";
 import { assertTransition } from "../domain/status.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
+import { assertAcceptance, assertChildrenTerminal, assertReviewReady } from "./acceptance.mjs";
 import { actorOf } from "./context.mjs";
+import { insertDeliveryReport } from "./delivery-report.mjs";
 import { resolveActorId } from "./dictionary.mjs";
-import { advanceContainerForChild } from "./rollup.mjs";
+import { advanceContainerForChild, hasChildStarted, startContainerForChild } from "./rollup.mjs";
 
 /** The task must exist, and its delivery round is what the report is judged against. */
 function loadTask(ctx, taskRef) {
-  const task =
-    ctx.repos.tasks.get(taskRef) ?? ctx.repos.tasks.findByIdentifierAnyProject(taskRef);
-  if (task === null) {
-    throw new DomainError("NOT_FOUND", { message: `no task ${taskRef}`, details: { taskId: taskRef } });
-  }
-  return task;
+  return ctx.repos.tasks.requireAnyRef(taskRef);
 }
 
 /**
@@ -69,12 +66,9 @@ export function writeReport(ctx, input) {
         },
       );
 
-      const report = ctx.repos.reports.insert({
-        ...prepared,
+      const report = insertDeliveryReport(ctx, {
         taskId: task.id,
-        // An explicit origin: this is the delivery writer, and the gate must
-        // never have to guess that (0008).
-        origin: "delivery",
+        prepared,
         seg: prepared.seg ?? input.seg ?? null,
         sessionId: prepared.sessionId ?? input.sessionId ?? null,
       });
@@ -134,6 +128,14 @@ export function deliver(ctx, input) {
       // it really happened — if the ordering here were wrong, the status update
       // would be refused.
       assertTransition(task.status, to, task.kind);
+      // `deliver` accepts a wire-only `to`; a delivery that lands on `done`
+      // (from `in_review`) is still an acceptance and obeys the same policy and
+      // scope as `moveStatus`.
+      if (to === STATUS.DONE) assertAcceptance(ctx, task, actor);
+      // No delivery to review, and no acceptance, while a child is in flight.
+      // Checked before the report is written, so a refusal costs nothing.
+      assertChildrenTerminal(ctx, task, to);
+      if (to === STATUS.DONE) assertReviewReady(ctx, task, actor);
 
       if (waived) {
         const waiver = { round: task.deliveryRound, reason: waiverReason, at: now };
@@ -152,8 +154,10 @@ export function deliver(ctx, input) {
           },
           createdAt: now,
         });
-        // A waived delivery can still finish a child — the container rolls up
-        // on `done`, however the child got there (commands/rollup.mjs).
+        // A waived delivery enters the work (`in_review` counts — a nested epic
+        // can be delivered straight out of `todo`), and can still finish a
+        // child; both hooks live in commands/rollup.mjs.
+        if (hasChildStarted(moved.status)) startContainerForChild(ctx, task.id, now);
         if (moved.status === STATUS.DONE) advanceContainerForChild(ctx, task.id, now);
         return { task: moved, report: null, waived: true };
       }
@@ -165,11 +169,9 @@ export function deliver(ctx, input) {
           now,
         },
       );
-      const report = ctx.repos.reports.insert({
-        ...prepared,
+      const report = insertDeliveryReport(ctx, {
         taskId: task.id,
-        // The delivery writer: this row is what the gate will accept (0008).
-        origin: "delivery",
+        prepared,
         seg: prepared.seg ?? input.seg ?? null,
         sessionId: prepared.sessionId ?? input.sessionId ?? null,
       });
@@ -196,8 +198,9 @@ export function deliver(ctx, input) {
         },
         createdAt: now,
       });
-      // Same hook as the waived branch: `deliver` may land a card on `done`
-      // (a rework accepted straight through), and that can finish a container.
+      // Same hooks as the waived branch: a delivery enters the work (so a nested
+      // container can start), and a delivery straight to `done` can finish one.
+      if (hasChildStarted(moved.status)) startContainerForChild(ctx, task.id, now);
       if (moved.status === STATUS.DONE) advanceContainerForChild(ctx, task.id, now);
       return { task: moved, report, waived: false };
     },

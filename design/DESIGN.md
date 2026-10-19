@@ -2066,21 +2066,24 @@ Three things the rows state, and how:
 | The identifier | `[data-waiting-task]` renders at most ten characters plus `…`, whole value on `title` — R8 ③'s rule, the one B07's cards and B08's rows follow. Waiting is the first surface that can *prove* the rule without a script: `PROJ-0007` is the board's longest identifier at nine characters, so at the ten-character cap (§24.3, revision 2026-10-14) its cell reads `PROJ-0007` in the markup itself, whole |
 | The open press | `[data-waiting-open]` is the keyboard affordance and the row body its pointer twin, and both land on the board's own **B09** for the task the row names. The queue is a way *into* a task, never a second task page |
 
-### 30.3 The two kinds, and how a colour reaches the chip without a new hue
+### 30.3 The kinds, and how a colour reaches the chip without a new hue
 
-`data-waiting-reason-kind` is the whole domain, and it has two values:
+`data-waiting-reason-kind` is the whole domain, and it has three values:
 
 | Kind | What it means | Its dot |
 |---|---|---|
-| `question` | someone asked, and the answer is yours — a delivery waiting on a verdict reads this way | `--color-td-st-review`, through `--status-color` |
+| `question` | someone asked, and the answer is yours — an `awaiting` card | `--color-td-st-review`, through `--status-color` |
 | `blocked` | the task cannot move without you | `--color-td-st-blocked`, through `--status-color` |
+| `acceptance` | the work is delivered and the board's policy leaves the closing to you — an `in_review` top-level card (`human-only` / `both`) | `--color-td-st-done`, through `--status-color` |
 
-Two, because the ruling fixes two: a third kind is a change to the ruling, not an addition to a
-list. The chip is read from the row's own attribute — one attribute → one custom property, the
-rule the `[data-status]` and `[data-priority]` bindings already follow — so the component that
-draws the dot never names a colour, and both kinds read a *status* token because the reason
-**is** the task's own state. The declared token registry is byte-identical to the round's base;
-no hue enters the sheet.
+The third kind is a **ruling change, recorded here** (revision 2026-10-19, M6): the queue asks
+"what is on my side", and on a policy-driven board a delivered card waiting for a human to close
+it is on the reader's side in exactly that sense. It is not a fourth stage and not a second
+`awaiting`: the card keeps its `in_review` column and only the queue lists it. Each kind reads a
+*status* token because the reason **is** the task's own state; `acceptance` borrows the `done`
+token because the work is delivered and the outstanding act is the acceptance. The chip is still
+one attribute → one custom property, the rule the `[data-status]` and `[data-priority]` bindings
+already follow, so no component names a colour and no hue enters the sheet.
 
 The header states the queue's size — `[data-waiting-count]` is `waiting.count` around a number
 — and its heading is `waiting.title`, byte-identical to `nav.waiting`: the destination pressed

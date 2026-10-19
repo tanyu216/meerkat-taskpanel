@@ -215,40 +215,46 @@ unfinished); **one
 card at a time**; keep a **fresh heartbeat** (the board treats a claim as live for
 10 minutes, and `issue heartbeat <ref>` is the pulse — the board never sends one
 for you); **deliver with a report** (the delivery gate); **self-review is not
-acceptance** (an agent reaches `in_review`, a human accepts to `done`); **never
+acceptance** (an agent reaches `in_review`; the loop — applying its configured
+reviewer's verdict — or a human accepts to `done`; the board refuses an agent's
+own move with `ACCEPTANCE_FORBIDDEN`); **never
 preempt a conflict** (re-read once, retry only if still claimable); and **stay
 traceable** (carry the session id). What differs between hosts is *who applies
 them*.
 
-### Scheduling: poll & patrol
+### Scheduling: ping & continue
 
-**In short:** the loop is a **supervisor that runs outside the host**. It scans
-the board **every minute** and wakes a worker **only when a card was actually
-claimed** ($0 on an empty tick); every **five minutes** it patrols for claims
-whose heartbeat has gone stale — and for the rest of the `PROTOCOL §⑮` timeout
-table: a card parked on the leader, an unanswered confirmation gate, a defect
-whose fix card was never created, a delivery nobody queued an acceptance review
-for, and the leader's own patrol going quiet. Each of those is a **notification
-to the leader**, never an action on a card. Claude Code and Codex have **no timers of their
-own**, so the loop sits *outside* them and only ever wakes the worker
-(`claude -p`, `codex exec`, `pi --print`). **To turn it on,** run
+**In short:** the loop is a **scheduler that runs outside the host**. It owns two clocks.
+Every **60 seconds** it **pings**: it drops worker-registry entries whose pid is gone — no
+board read and no model turn. Every **ten minutes** it runs a **continue** turn: it wakes
+the host with a bounded `继续` prompt, and that turn runs the loop's deterministic entries —
+the notify-only SLA patrol (stale heartbeats, an unanswered confirmation gate, a delivery
+nobody reviewed, the rest of `PROTOCOL §⑮`), the workflow channel (container rules, an
+independent reviewer per delivery, the verdict applied), and the poll that claims a card
+and wakes a worker **only when the claim succeeded** ($0 on an empty scan). The SLA rows
+are **notifications to the leader**, never actions on a card; the workflow entry is the
+one that writes (`--reviewer` enables dispatch; `--workflow=no` turns it off). Claude Code
+and Codex have **no timers of their own**, so the loop sits *outside* them and only ever
+wakes the worker (`claude -p`, `codex exec`, `pi --print`). On launchd/systemd the optional
+**subscribe daemon** holds one SSE connection and asks for a continue turn when a
+dispatch-relevant board event arrives, so discovery is event-driven; the continue cadence
+remains the fallback and the only path for time-based work (stale claims, review aging, SLA).
+On cron — which cannot host a long-lived process — discovery stays within one continue
+cadence; `--continue-interval` is the lever. **To turn it on,** run
 `install.sh --target claude|codex|pi`: it installs the `meerkat-loop` skill and
-drops that host's launchd / systemd / cron units, then **prints the load
-command** — it never starts a daemon for you (it also asks once whether the
-supervisor may claim **unassigned** cards, default yes). OpenClaw needs no loop:
-its framework already carries one.
+drops that host's launchd / systemd / cron units, then **prints the load command** — it
+never starts a daemon for you (it also asks once whether the supervisor may claim
+**unassigned** cards, default yes). OpenClaw needs no loop: its framework already carries
+one.
 
-Claiming is not left to an agent's memory. A small **host-external supervisor**
+Claiming is not left to an agent's memory. A small **host-external scheduler**
 ([`skills/meerkat-loop/`](skills/meerkat-loop/SKILL.md), whose execution body is
-[`scripts/supervisor.mjs`](scripts/supervisor.mjs)) runs a cheap **1-minute poll**
-— a $0 local CLI scan, where a model turn starts **only** when a card was actually
-claimed (the atomic claim is the single dispatch source) — and a **5-minute
-patrol** that escalates a claim whose heartbeat has gone stale, reports a
-heartbeat it cannot read (never silently), and covers the rest of the
-`PROTOCOL §⑮` timeout table with the same alert tuple the openclaw-side inspector
-emits. Claude Code and Codex have **no
-timers**, so the loop lives *outside* them and only the worker is woken
-(`claude -p`, `codex exec`, `pi --print`).
+[`scripts/supervisor.mjs`](scripts/supervisor.mjs) plus `scripts/loop/`) runs the two
+clocks. The ping is one small registry read, $0. The continue turn is one bounded LLM
+turn per cadence; inside it, the poll is still the deterministic cost gate — a worker turn
+starts **only** when a card was actually claimed (the atomic claim is the single dispatch
+source). The deterministic entries are ordinary programs, runnable by hand, and the
+continue prompt names them by absolute path.
 
 The loop ships as **its own skill** (`skills/meerkat-loop/`), and `install.sh` installs it
 for **claude, codex and pi only** — OpenClaw gets the board and nothing else, because the
@@ -258,7 +264,7 @@ the exact load command — it never enables a daemon for you. The installer also
 whether the supervisor may claim **unassigned** cards (default yes) and remembers the
 answer in `<host>/meerkat-taskpanel.env`. The loop skill declares the board interface
 generation it requires (and its `scripts/board-check.mjs` enforces it against a board's own
-`--version --json`); the full design — the two layers, the fire-only cost gate, idempotent
+`--version --json`); the full design — the two clocks, the fire-only cost gate, idempotent
 wakes, the concurrency cap, the fail-safe, and the per-host trigger differences — is in
 [`docs/scheduling.md`](docs/scheduling.md).
 
@@ -311,7 +317,7 @@ hook that starts the board and lists your claimable cards), installs
 board with `taskctl`, stamping each write with the host and session —
 `--agent-platform claude --session-id <id>` — so a card's trail points back at the
 conversation that did the work. Claude Code has **no timers of its own**, so the claim in
-rule 1 is driven from outside: the [supervisor](#scheduling-poll--patrol) wakes a headless
+rule 1 is driven from outside: the [supervisor](#scheduling-ping--continue) wakes a headless
 `claude -p` session (`--resume <sid>` to continue one), or you trigger it by hand from the
 SessionStart hook or a slash command.
 
@@ -323,7 +329,7 @@ claim-first snippet to `~/.codex/AGENTS.md`, writes the schedulable claim trigge
 `taskctl` shim. Work the board the same way,
 using the running thread as the session id — `--agent-platform codex --session-id
 "$CODEX_THREAD_ID"` — for conversation-level attribution. Codex has **no timers of its
-own**, so rule 1 is driven by the [supervisor](#scheduling-poll--patrol) waking a
+own**, so rule 1 is driven by the [supervisor](#scheduling-ping--continue) waking a
 `codex exec` turn (or a Codex app automation), with the bundled claim trigger as the
 minimal fallback.
 

@@ -23,7 +23,7 @@
 
 import { DomainError } from "../../shared/errors.mjs";
 import { norm } from "../../shared/norm.mjs";
-import { DICTIONARY_KINDS, isActorKind } from "./enums.mjs";
+import { DICTIONARY_KINDS } from "./enums.mjs";
 
 /**
  * Fuzzy matching is prefix/substring on the normalised name.

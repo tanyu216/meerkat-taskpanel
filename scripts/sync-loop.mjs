@@ -42,14 +42,28 @@ import { isEntryPoint } from "../src/shared/entry-guard.mjs";
 export const LOOP_SKILL_NAME = "meerkat-loop";
 
 /**
- * The two entry points whose transitive relative imports make up the loop body.
+ * The entry points whose transitive relative imports make up the loop body.
  *
- * `supervisor.mjs` is the tick itself; `wake-cwd.mjs` is what the generated wake glue
- * calls to answer "which directory does this card's project live in?". Both must travel
- * with the body, or a host's glue names the checkout it was installed from — which is
- * exactly the coupling this generation removes.
+ * `supervisor.mjs` is the scheduler; `wake-cwd.mjs` is what the generated wake glue
+ * calls to answer "which directory does this card's project live in?"; and
+ * `scripts/loop/*.mjs` are the deterministic entries the continue turn invokes.
+ * Every root must travel with the body, or an installed unit names a file the host
+ * does not have. Listing the shared modules explicitly is harmless (the closure
+ * dedupes) and protects the shipped tree from a future computed import.
  */
-export const LOOP_BODY_ROOTS = Object.freeze(["scripts/supervisor.mjs", "scripts/wake-cwd.mjs"]);
+export const LOOP_BODY_ROOTS = Object.freeze([
+  "scripts/supervisor.mjs",
+  "scripts/loop/options.mjs",
+  "scripts/loop/runtime.mjs",
+  "scripts/loop/runners.mjs",
+  "scripts/loop/board.mjs",
+  "scripts/loop/poll.mjs",
+  "scripts/loop/patrol.mjs",
+  "scripts/loop/workflow.mjs",
+  "scripts/loop/continue.mjs",
+  "scripts/loop/subscribe.mjs",
+  "scripts/wake-cwd.mjs",
+]);
 
 /**
  * The installer templates the loop owns, as repository-relative paths under
@@ -62,12 +76,14 @@ export const LOOP_BODY_ROOTS = Object.freeze(["scripts/supervisor.mjs", "scripts
  * they wire a board into a host, which is the board skill's job.
  */
 export const LOOP_TEMPLATE_FILES = Object.freeze([
-  "scheduling/launchd/com.meerkat-taskpanel.poll.plist",
-  "scheduling/launchd/com.meerkat-taskpanel.patrol.plist",
-  "scheduling/systemd/meerkat-taskpanel-poll.service",
-  "scheduling/systemd/meerkat-taskpanel-poll.timer",
-  "scheduling/systemd/meerkat-taskpanel-patrol.service",
-  "scheduling/systemd/meerkat-taskpanel-patrol.timer",
+  "scheduling/launchd/com.meerkat-taskpanel.ping.plist",
+  "scheduling/launchd/com.meerkat-taskpanel.continue.plist",
+  "scheduling/launchd/com.meerkat-taskpanel.subscribe.plist",
+  "scheduling/systemd/meerkat-taskpanel-ping.service",
+  "scheduling/systemd/meerkat-taskpanel-ping.timer",
+  "scheduling/systemd/meerkat-taskpanel-continue.service",
+  "scheduling/systemd/meerkat-taskpanel-continue.timer",
+  "scheduling/systemd/meerkat-taskpanel-subscribe.service",
   "scheduling/cron/meerkat-taskpanel.cron",
   "claude/wake-claude.sh",
   "codex/wake-codex.sh",
