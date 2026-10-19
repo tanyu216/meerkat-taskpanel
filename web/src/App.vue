@@ -148,10 +148,9 @@ onUnmounted(() => {
       <WaitingView v-show="view === 'waiting'" />
 
       <!-- The manual `?after=` resync used to sit here as a lone button in a
-           second `.td-filters` strip. The prototype has no such row, and the
-           control belongs to the transport, not to the board: it now lives in
-           the access panel (B19), beside the other connection settings. The
-           function is unchanged — it is only off the main path. -->
+           second `.td-filters` strip, then in the Access panel (B19); it has
+           been removed from the UI entirely. The transport's automatic
+           reconnect still replays from the cursor with `?after=`. -->
     </main>
 
     <DetailDrawer />

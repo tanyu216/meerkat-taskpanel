@@ -1761,6 +1761,16 @@ export async function run() {
         },
         ariaHidden: panel?.getAttribute("aria-hidden") ?? null,
         focusClose: document.activeElement === q("[data-access-close]"),
+        foot: css(q(".td-access-foot"), ["justifyContent", "paddingRight"]),
+        // The Save is the only child of a clean footer; its right edge must sit
+        // on the footer's content edge, not the panel's left.
+        saveOffset: (() => {
+          const foot = q(".td-access-foot");
+          const save = q("[data-access-save]");
+          if (!foot || !save) return null;
+          const paddingRight = Number.parseFloat(getComputedStyle(foot).paddingRight);
+          return Math.round(foot.getBoundingClientRect().right - paddingRight - save.getBoundingClientRect().right);
+        })(),
       };
     });
     r6Check(
@@ -1828,6 +1838,10 @@ export async function run() {
     );
     r6Check(b19.ariaHidden === "false", `the open panel carries aria-hidden=${b19.ariaHidden}, expected false`);
     r6Check(b19.focusClose, "opening the settings panel did not move focus to its close control");
+    r6Check(
+      b19.foot?.justifyContent === "flex-end" && b19.saveOffset === 0,
+      `the Save footer is ${b19.foot?.justifyContent} with the button ${b19.saveOffset}px from the content edge; expected flex-end and 0`,
+    );
 
     // The panel is persistent: the draft starts clean, the token is the saved
     // credential, Copy copies it, and one Save writes the switch, the ranges
@@ -1895,60 +1909,53 @@ export async function run() {
     );
     r6Check(editedDraft.saveDisabled === false, "a filled, dirty draft still has Save disabled");
 
-    // A Reset is staged: it must not touch the credential before Save.
+    // A Reset clears the field and shows the "generated on save" placeholder;
+    // it must not touch the credential before Save.
     await page.evaluate(() => document.querySelector("[data-token-reset]").click());
     await page.waitForTimeout(60);
-    const pendingRotate = await page.evaluate(() => ({
-      pending: Boolean(document.querySelector("[data-token-pending]")),
+    const stagedReset = await page.evaluate(() => ({
       revealed: document.querySelector("[data-token-block]").getAttribute("data-token-revealed"),
+      placeholder: Boolean(document.querySelector("[data-token-placeholder]")),
       token: document.querySelector("[data-token-value]").textContent.trim(),
+      revealDisabled: document.querySelector("[data-token-reveal]").disabled,
+      copyDisabled: document.querySelector("[data-token-copy]").disabled,
     }));
-    r6Check(pendingRotate.pending, "Reset did not stage a rotation note");
-    r6Check(pendingRotate.revealed === "false", "a staged Reset revealed a token that does not exist yet");
+    r6Check(stagedReset.revealed === "false", "a staged Reset revealed a token that does not exist yet");
+    r6Check(stagedReset.placeholder, "Reset did not clear the field and show its placeholder");
     r6Check(
-      pendingRotate.token === "td_••••••••••••",
-      `a staged Reset changed the displayed token to ${JSON.stringify(pendingRotate.token)}`,
+      stagedReset.token !== "" && stagedReset.token !== "td_••••••••••••" && !stagedReset.token.startsWith("td_"),
+      `a staged Reset left ${JSON.stringify(stagedReset.token)} in the field, expected only the placeholder`,
     );
+    r6Check(stagedReset.revealDisabled && stagedReset.copyDisabled, "a staged Reset left Reveal/Copy active on an empty field");
     r6Check(data.access.rotations === 0, "Reset rotated the token before Save");
 
-    // One Save commits the switch, every range and the rotation.
+    // One Save commits the switch, every range and the rotation, then closes.
     await page.evaluate(() => document.querySelector("[data-access-save]").click());
-    await page.waitForTimeout(250);
+    await page.waitForTimeout(300);
     const savedDraft = await page.evaluate(() => ({
-      values: [...document.querySelectorAll("[data-cidr-value]")].map((el) => el.value),
-      enabled: document.querySelector("[data-cidr-whitelist]").getAttribute("data-cidr-enabled"),
-      revealed: document.querySelector("[data-token-block]").getAttribute("data-token-revealed"),
-      token: document.querySelector("[data-token-value]").textContent.trim(),
-      pending: Boolean(document.querySelector("[data-token-pending]")),
-      saveDisabled: document.querySelector("[data-access-save]").disabled,
-    }));
-    r6Check(savedDraft.values.join(",") === "192.168.0.0/16,172.16.0.0/12", `Save left the rows as ${savedDraft.values.join(",")}`);
-    r6Check(savedDraft.enabled === "true", `Save left the switch at ${savedDraft.enabled}`);
-    r6Check(savedDraft.pending === false, "the pending-rotation note survived Save");
-    r6Check(savedDraft.saveDisabled === true, "Save stayed enabled after a clean save");
-    r6Check(savedDraft.revealed === "true", "Save did not reveal the newly minted token");
-    r6Check(savedDraft.token === data.access.token, `Save displayed ${JSON.stringify(savedDraft.token)}, expected the new token`);
-    r6Check(
-      data.access.allow_list.enabled === true && data.access.allow_list.cidrs.join(",") === "192.168.0.0/16,172.16.0.0/12",
-      `the fixture received ${JSON.stringify(data.access.allow_list)}`,
-    );
-    r6Check(data.access.rotations === 1, `the fixture saw ${data.access.rotations} rotations, expected 1`);
-
-    await page.click("[data-access-close]");
-    await page.waitForTimeout(200);
-    const panelClosed = await page.evaluate(() => ({
       state: document.querySelector("[data-access-panel]")?.getAttribute("data-state"),
       hidden: document.querySelector("[data-access-panel]")?.hasAttribute("hidden"),
       overlayState: document.querySelector("[data-access-overlay]")?.getAttribute("data-state"),
       overlayHidden: document.querySelector("[data-access-overlay]")?.hasAttribute("hidden"),
       focusOpener: document.activeElement?.hasAttribute("data-access-open") ?? false,
+      rows: [...document.querySelectorAll("[data-cidr-value]")].map((el) => el.value),
+      enabled: document.querySelector("[data-cidr-whitelist]").getAttribute("data-cidr-enabled"),
+      token: document.querySelector("[data-token-value]").textContent.trim(),
     }));
-    r6Check(panelClosed.state === "closed" && panelClosed.hidden === true, "the settings panel did not close");
+    r6Check(savedDraft.state === "closed" && savedDraft.hidden === true, "Save did not close the settings panel");
     r6Check(
-      panelClosed.overlayState === "closed" && panelClosed.overlayHidden === true,
-      `the scrim closed as data-state=${panelClosed.overlayState}, hidden=${panelClosed.overlayHidden}; expected closed/true`,
+      savedDraft.overlayState === "closed" && savedDraft.overlayHidden === true,
+      `Save left the scrim at ${savedDraft.overlayState}, hidden=${savedDraft.overlayHidden}`,
     );
-    r6Check(panelClosed.focusOpener, "closing the settings panel did not return focus to [data-access-open]");
+    r6Check(savedDraft.focusOpener, "Save did not return focus to [data-access-open]");
+    r6Check(savedDraft.rows.join(",") === "192.168.0.0/16,172.16.0.0/12", `Save left the rows as ${savedDraft.rows.join(",")}`);
+    r6Check(savedDraft.enabled === "true", `Save left the switch at ${savedDraft.enabled}`);
+    r6Check(savedDraft.token === data.access.token, `Save left ${JSON.stringify(savedDraft.token)} in the field, expected the new token`);
+    r6Check(
+      data.access.allow_list.enabled === true && data.access.allow_list.cidrs.join(",") === "192.168.0.0/16,172.16.0.0/12",
+      `the fixture received ${JSON.stringify(data.access.allow_list)}`,
+    );
+    r6Check(data.access.rotations === 1, `the fixture saw ${data.access.rotations} rotations, expected 1`);
 
     // Persistence across a close/reopen (the same code path a refresh takes):
     // the saved policy and the rotated token are read back, and the draft is

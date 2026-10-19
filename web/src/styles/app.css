@@ -2164,6 +2164,7 @@ button.td-prop-value:hover {
   flex: none;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-5);
   border-top: 1px solid var(--brand-border);
@@ -2251,13 +2252,11 @@ button.td-prop-value:hover {
   color: var(--brand-text-3);
 }
 .td-token-notes > span { display: block; }
-/* A staged Reset has not touched the credential yet; the note says so instead
-   of showing a token that does not exist. */
-.td-token-pending {
-  margin: var(--space-2) 0 0;
-  font-size: 11px;
-  line-height: 1.5;
+/* A staged Reset has cleared the field: the placeholder is the hint that the
+   credential will be minted when the panel is saved. */
+.td-token-placeholder {
   color: var(--brand-text-3);
+  font-style: italic;
 }
 
 /* --- CIDR whitelist --------------------------------------------------- */

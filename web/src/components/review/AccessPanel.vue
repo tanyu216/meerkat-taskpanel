@@ -11,10 +11,12 @@
  * Unlike the prototype's DOM-only demo, this panel **persists**:
  *
  *   * the token is the installed credential (`GET /api/v1/access`), so a
- *     refresh shows the same one; Copy copies it and Reset stages a rotation;
+ *     refresh shows the same one; Copy copies it, and Reset clears the field
+ *     and leaves a placeholder saying the credential is minted on save;
  *   * the allow-list switch and rows are a draft, and the one **Save** button
  *     writes the switch, every range and a pending token rotation together
- *     (`PUT /api/v1/access` → `<dataDir>/taskd.env` + the token file);
+ *     (`PUT /api/v1/access` → `<dataDir>/taskd.env` + the token file), then
+ *     closes the dialog;
  *   * add/remove are real controls over that draft.
  *
  * Both access verbs are loopback-only, so a remote browser never sees the
@@ -25,7 +27,6 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 
 import { errorTextKey } from "../../i18n/messages.mjs";
-import { resync } from "../../stores/board.js";
 import { accessOpen, pushToast } from "../../stores/ui.js";
 import { api } from "../../services/api.js";
 import { t } from "../../i18n/index.js";
@@ -126,6 +127,9 @@ async function save() {
     if (data.rotated) revealed.value = true;
     pendingRotate.value = false;
     pushToast(t("access.saved"), "success");
+    // A successful save is the end of the task: close the dialog at once (the
+    // opener regains focus in the `accessOpen` watcher).
+    accessOpen.value = false;
   } catch (err) {
     pushToast(t(errorTextKey(err)), "danger");
   } finally {
@@ -297,12 +301,16 @@ onBeforeUnmount(() => clearTimeout(closeTimer));
         <h3 class="td-token-title" data-i18n="access.token.title">{{ $t("access.token.title") }}</h3>
 
         <div class="td-token-row">
-          <code class="td-token-value td-mono" data-token-value>{{ revealed && token !== "" ? token : masked }}</code>
+          <code class="td-token-value td-mono" data-token-value>
+            <span v-if="pendingRotate" class="td-token-placeholder" data-token-placeholder>{{ $t("access.token.placeholder") }}</span>
+            <template v-else>{{ revealed && token !== "" ? token : masked }}</template>
+          </code>
 
           <button
             type="button"
             class="td-iconbtn"
             data-token-reveal
+            :disabled="pendingRotate"
             :aria-pressed="revealed ? 'true' : 'false'"
             :aria-label="revealed ? $t('access.token.hide') : $t('access.token.reveal')"
             :title="revealed ? $t('access.token.hide') : $t('access.token.reveal')"
@@ -326,7 +334,7 @@ onBeforeUnmount(() => clearTimeout(closeTimer));
             type="button"
             class="td-iconbtn"
             data-token-copy
-            :disabled="token === ''"
+            :disabled="token === '' || pendingRotate"
             :aria-label="$t('access.token.copy')"
             :title="$t('access.token.copy')"
             @click="copy"
@@ -347,25 +355,12 @@ onBeforeUnmount(() => clearTimeout(closeTimer));
           </button>
         </div>
 
-        <p v-if="pendingRotate" class="td-token-pending" data-token-pending>{{ $t("access.token.pending") }}</p>
-
         <p class="td-token-notes">
           <span data-i18n="access.token.generated">{{ $t("access.token.generated") }}</span>
           <span data-i18n="access.token.private">{{ $t("access.token.private") }}</span>
         </p>
       </section>
 
-      <!-- The transport's manual resync (`?after=` replay). It is an M6b addition
-           with no prototype counterpart, so it is a written deviation — and it
-           lives here rather than as a standing control on the board, which is
-           where a connection affordance belongs (surface-disposition.md #3). -->
-      <section class="mt-4 mb-4" data-connection-block>
-        <h3 data-i18n="connection.title">{{ $t("connection.title") }}</h3>
-        <p class="text-[12px] text-(--brand-text-3)" data-i18n="connection.hint">{{ $t("connection.hint") }}</p>
-        <button type="button" class="btn btn-ghost btn-sm" data-resync :title="$t('connection.resyncTitle')" @click="resync">
-          {{ $t("connection.resync") }}
-        </button>
-      </section>
     </div>
 
     <!-- One Save for every pending edit: the allow-list draft and a staged

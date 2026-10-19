@@ -409,9 +409,10 @@ const BLOCKS = [
           "prototype has no concurrent writers — now carrying `data-conflict` so it is at least " +
           "machine-visible), the live stream's state on the revision dot (B02's " +
           "`data-connection`, an attribute-level addition to an element the prototype has), and " +
-          "the manual `?after=` resync, which left the board's main path for the access panel " +
-          "on the same ruling. None of the four is blessed as a block: they are recorded, not " +
-          "asserted into existence.",
+          "the manual `?after=` resync, which left the board's main path for the access panel on " +
+          "the same ruling and has since been removed from the panel as well (the transport's " +
+          "automatic reconnect still uses `?after=`). None of the four is blessed as a block: " +
+          "they are recorded, not asserted into existence.",
       },
     ],
   },
@@ -2463,8 +2464,9 @@ const BLOCKS = [
         note:
           "The token is the **persisted credential**, read from `GET /api/v1/access` (loopback " +
           "only), so a refresh shows the same value. The masked face stays `td_` + twelve dots; " +
-          "Reveal shows the real token and Copy copies it. A Reset is staged, and the panel's " +
-          "Save rotates it together with the allow-list.",
+          "Reveal shows the real token and Copy copies it. A Reset clears the field and shows a " +
+          "placeholder saying the credential is minted on save; the panel's Save rotates it with " +
+          "the allow-list and closes the dialog.",
       },
       {
         kind: "manual",

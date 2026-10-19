@@ -19,15 +19,10 @@
  */
 export const EXTRA = {
   en: {
-    "connection.reconnecting": "Reconnecting…",
-    "connection.resync": "Resync",
-    "connection.resyncTitle": "Replay anything missed since the last event",
-    "connection.title": "Connection",
-    "connection.hint": "The board follows the live stream. Replay anything missed if a change did not arrive.",
     // B19 · the access panel's persistent states. The prototype has no network,
     // so its catalogue stops at the demo strings; these are the save/load and
     // staged-rotation sentences the shipped panel needs.
-    "access.token.pending": "A new token will be generated when you save.",
+    "access.token.placeholder": "A new token will be generated on save",
     "access.save": "Save",
     "access.saving": "Saving…",
     "access.saved": "Access settings saved",
@@ -159,12 +154,7 @@ export const EXTRA = {
     "waiting.reason.E5": "Architecture direction",
   },
   zh: {
-    "connection.reconnecting": "正在重连…",
-    "connection.resync": "补齐",
-    "connection.resyncTitle": "重放自上次事件以来遗漏的更新",
-    "connection.title": "连接",
-    "connection.hint": "看板跟随实时事件流。若有更新未到达，可在此补齐。",
-    "access.token.pending": "保存时将生成新 token。",
+    "access.token.placeholder": "保存时将重新生成 access token",
     "access.save": "保存",
     "access.saving": "保存中…",
     "access.saved": "访问设置已保存",
