@@ -20,26 +20,19 @@
  */
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
+import { createInstallHarness } from "./helpers/install-harness.mjs";
+
+const { makeTempDir, runInstall, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-supervisor-", installDefaults: {} });
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const UID = process.getuid?.() ?? 0;
 const PLATFORM_DEFAULT = process.platform === "darwin" ? "launchd" : process.platform === "linux" ? "systemd" : "cron";
 
-const tempDirs = [];
-function makeTempDir(prefix = "meerkat-taskpanel-supervisor-") {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-after(() => {
-  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
-});
+after(cleanup);
 
 // ---------------------------------------------------------------------------
 // The faked service manager
@@ -172,10 +165,6 @@ function installEnv(home, manager, extra = {}) {
     ...manager.env,
     ...extra,
   };
-}
-
-function runInstall(args, env) {
-  return spawnSync("bash", [join(ROOT, "install.sh"), ...args], { cwd: ROOT, encoding: "utf8", env });
 }
 
 /** Every line the fake manager was asked to run. */

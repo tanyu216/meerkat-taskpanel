@@ -13,24 +13,16 @@
 
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
+import { createInstallHarness } from "./helpers/install-harness.mjs";
 
 import { cmdSnippet } from "../../scripts/install/lib/apply.mjs";
 
-const tempDirs = [];
+const { makeTempDir, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-apply-idem-" });
 
-function makeTempDir(prefix = "meerkat-taskpanel-apply-idem-") {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-
-after(() => {
-  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
-});
+after(cleanup);
 
 /** sha256 of a string, hex — the byte-identity oracle for this suite. */
 function sha256(text) {

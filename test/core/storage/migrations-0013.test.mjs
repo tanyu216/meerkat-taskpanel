@@ -22,18 +22,16 @@
  */
 
 import assert from "node:assert/strict";
-import { copyFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
-import { applyMigrations, defaultMigrationsDir } from "../../../src/core/storage/migrations-runner.mjs";
+import { applyMigrations } from "../../../src/core/storage/migrations-runner.mjs";
+import { indexShapesOf, migrationsBefore } from "../../helpers/migration-shapes.mjs";
 import {
   TS,
   TS2,
   cleanupTempDirs,
   createTempBoard,
   insertTask,
-  makeTempDir,
   reasonCode,
 } from "../../helpers/sqlite-fixture.mjs";
 
@@ -46,13 +44,7 @@ after(cleanupTempDirs);
  * 0014, which runs *after* 0013 and so cannot belong to a board the previous
  * build left behind. A pre-0013 board is 0001 … 0012, and nothing later.
  */
-function before0013() {
-  const dir = makeTempDir("meerkat-taskpanel-pre0013-");
-  for (const name of readdirSync(defaultMigrationsDir()).filter((n) => n.endsWith(".sql") && n.slice(0, 4) < "0013")) {
-    copyFileSync(join(defaultMigrationsDir(), name), join(dir, name));
-  }
-  return dir;
-}
+const before0013 = migrationsBefore("0013", { prefix: "meerkat-taskpanel-pre0013-" });
 
 const columnsOf = (db) => db.prepare("SELECT name FROM pragma_table_info('tasks')").all().map((r) => r.name);
 /**
@@ -69,25 +61,10 @@ const columnsOf = (db) => db.prepare("SELECT name FROM pragma_table_info('tasks'
  * right name with the wrong predicate would be a different index wearing the
  * same label.
  */
-const indexShapes = (db) =>
-  db
-    .prepare("SELECT name, \"unique\" AS uniq, partial AS part FROM pragma_index_list('tasks')")
-    .all()
-    .filter((row) => !row.name.startsWith("sqlite_autoindex"))
-    // 0025 adds a review-marker index of its own. This comparison is about
-    // the *rebuilt* table keeping the indexes it had; a later migration's
-    // own new index is named here rather than loosening the rule.
-    .filter((row) => row.name !== "ix_tasks_review_of")
-    .sort((a, b) => (a.name < b.name ? -1 : 1))
-    .map((row) => ({
-      name: row.name,
-      unique: Number(row.uniq),
-      partial: Number(row.part),
-      columns: db
-        .prepare("SELECT name FROM pragma_index_info(?)")
-        .all(row.name)
-        .map((column) => column.name),
-    }));
+// 0025 adds a review-marker index of its own. This comparison is about the
+// *rebuilt* table keeping the indexes it had; a later migration's own new index
+// is named here rather than the rule being loosened.
+const indexShapes = (db) => indexShapesOf(db, "tasks", { exclude: ["ix_tasks_review_of"] });
 const triggerNames = (db) =>
   db.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'tasks'").all().map((r) => r.name);
 const tasksSql = (db) => db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get().sql;

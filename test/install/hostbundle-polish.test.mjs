@@ -18,45 +18,22 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
+import { createInstallHarness } from "./helpers/install-harness.mjs";
+
+const { makeTempDir, runInstall, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-polish-" });
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
-const tempDirs = [];
-
-function makeTempDir(prefix = "meerkat-taskpanel-polish-") {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-
-after(() => {
-  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
-});
+after(cleanup);
 
 // The taskd keepalive guard is skipped here (its own cases live in
 // `taskd-guard.test.mjs`): an install loads a real OS unit, and these cases are
 // about the host bundle, not the guard. `MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE` is
 // the contract's test-only bypass.
-function runInstall(args, env = {}) {
-  return spawnSync("bash", [join(ROOT, "install.sh"), ...args], {
-    cwd: ROOT,
-    encoding: "utf8",
-    env: { ...process.env, MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1", ...env },
-  });
-}
 
 /** An executable fake host CLI that records its argv to `$FAKE_LOG` and exits 0. */
 function makeFakeCli(binDir, name) {

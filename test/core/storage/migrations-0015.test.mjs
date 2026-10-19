@@ -20,31 +20,16 @@
  */
 
 import assert from "node:assert/strict";
-import { copyFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
-import { applyMigrations, defaultMigrationsDir } from "../../../src/core/storage/migrations-runner.mjs";
-import {
-  TS,
-  TS2,
-  cleanupTempDirs,
-  createTempBoard,
-  insertTask,
-  makeTempDir,
-  reasonCode,
-} from "../../helpers/sqlite-fixture.mjs";
+import { applyMigrations } from "../../../src/core/storage/migrations-runner.mjs";
+import { indexShapesOf, migrationsBefore, triggersOf } from "../../helpers/migration-shapes.mjs";
+import { TS, cleanupTempDirs, createTempBoard, insertTask, reasonCode } from "../../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);
 
 /** The shipped set **before** 0015 — a board as the previous build left it. */
-function before0015() {
-  const dir = makeTempDir("meerkat-taskpanel-pre0015-");
-  for (const name of readdirSync(defaultMigrationsDir()).filter((n) => n.endsWith(".sql") && n.slice(0, 4) < "0015")) {
-    copyFileSync(join(defaultMigrationsDir(), name), join(dir, name));
-  }
-  return dir;
-}
+const before0015 = migrationsBefore("0015", { prefix: "meerkat-taskpanel-pre0015-" });
 
 const columnsOf = (db) => db.prepare("SELECT name FROM pragma_table_info('tasks')").all().map((r) => r.name);
 const tasksSql = (db) => db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get().sql;
@@ -55,31 +40,10 @@ const tasksSql = (db) => db.prepare("SELECT sql FROM sqlite_master WHERE type = 
  * 0013's rebuild lost, so it is the first thing this comparison will catch if
  * 0015 repeats the mistake.
  */
-const indexShapes = (db) =>
-  db
-    .prepare("SELECT name, \"unique\" AS uniq, partial AS part FROM pragma_index_list('tasks')")
-    .all()
-    .filter((row) => !row.name.startsWith("sqlite_autoindex"))
-    // 0025 adds a review-marker index of its own. This comparison is about
-    // the *rebuilt* table keeping the indexes it had; a later migration's
-    // own new index is named here rather than loosening the rule.
-    .filter((row) => row.name !== "ix_tasks_review_of")
-    .sort((a, b) => (a.name < b.name ? -1 : 1))
-    .map((row) => ({
-      name: row.name,
-      unique: Number(row.uniq),
-      partial: Number(row.part),
-      columns: db.prepare("SELECT name FROM pragma_index_info(?)").all(row.name).map((c) => c.name),
-    }));
-
-/** Every trigger's text, whitespace-normalised (whitespace is not meaning). */
-const triggersOf = (db) =>
-  Object.fromEntries(
-    db
-      .prepare("SELECT name, sql FROM sqlite_master WHERE type = 'trigger'")
-      .all()
-      .map((r) => [r.name, String(r.sql).replace(/\s+/g, " ").replace(/CREATE TRIGGER IF NOT EXISTS /i, "CREATE TRIGGER ").trim()]),
-  );
+// 0025 adds a review-marker index of its own. This comparison is about the
+// *rebuilt* table keeping the indexes it had; a later migration's own new index
+// is named here rather than the rule being loosened.
+const indexShapes = (db) => indexShapesOf(db, "tasks", { exclude: ["ix_tasks_review_of"] });
 
 /** Build the "previous build" board with rows the migration must not lose. */
 function seedLegacyBoard(db) {

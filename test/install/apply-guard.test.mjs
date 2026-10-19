@@ -26,22 +26,16 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import {
-  copyFileSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { after, describe, it } from "node:test";
+import { createInstallHarness } from "./helpers/install-harness.mjs";
 
 import { listModuleFiles, readSource, stripComments } from "../helpers/source-scan.mjs";
+
+const { makeTempDir, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-" });
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const APPLY = join(ROOT, "scripts/install/lib/apply.mjs");
@@ -49,17 +43,7 @@ const APPLY = join(ROOT, "scripts/install/lib/apply.mjs");
 /** A template with no `{{TOKEN}}`, so the child needs no TP_* environment. */
 const TEMPLATE_BODY = "managed by the installer\n";
 
-const tempDirs = [];
-
-function makeTempDir(prefix) {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-
-after(() => {
-  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
-});
+after(cleanup);
 
 /**
  * A fixture where `linkApply` and `realApply` are the same file and the only difference is

@@ -14,23 +14,17 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
+import { createInstallHarness } from "./helpers/install-harness.mjs";
+
+const { makeTempDir, runInstall, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-claim-" });
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
-const tempDirs = [];
-function makeTempDir(prefix = "meerkat-taskpanel-claim-") {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-after(() => {
-  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
-});
+after(cleanup);
 
 /** An executable fake host CLI that does nothing and exits 0. */
 function makeFakeCli(binDir, name) {
@@ -50,14 +44,6 @@ function installEnv(home, bin) {
     MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1",
     PATH: `${bin}:${process.env.PATH}`,
   };
-}
-
-function runInstall(args, env = {}) {
-  return spawnSync("bash", [join(ROOT, "install.sh"), ...args], {
-    cwd: ROOT,
-    encoding: "utf8",
-    env: { ...process.env, MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1", ...env },
-  });
 }
 
 function configOf(home, hostDir) {

@@ -12,23 +12,17 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, existsSync, lstatSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { after, describe, it } from "node:test";
+import { createInstallHarness } from "./helpers/install-harness.mjs";
+
+const { makeTempDir, runInstall, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-sched-" });
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
-const tempDirs = [];
-function makeTempDir(prefix = "meerkat-taskpanel-sched-") {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-after(() => {
-  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
-});
+after(cleanup);
 
 function makeFakeCli(binDir, name) {
   const dest = join(binDir, name);
@@ -45,13 +39,6 @@ function installEnv(home, bin) {
 // cases are about the host's *loop* units (which are written, never loaded — the rule
 // the guard is the one exception to). `MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE` is the
 // contract's test-only bypass; the guard's own cases live in `taskd-guard.test.mjs`.
-function runInstall(args, env = {}) {
-  return spawnSync("bash", [join(ROOT, "install.sh"), ...args], {
-    cwd: ROOT,
-    encoding: "utf8",
-    env: { ...process.env, MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1", ...env },
-  });
-}
 
 function isExecutable(path) {
   return (statSync(path).mode & 0o111) !== 0;

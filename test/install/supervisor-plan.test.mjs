@@ -13,38 +13,19 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
+import { createInstallHarness } from "./helpers/install-harness.mjs";
 
-import {
-  ACTIONS,
-  LOOP_HOSTS,
-  SCHEDULERS,
-  cronBlock,
-  cronContentLines,
-  cronMarkers,
-  lingerState,
-  resolveScheduler,
-  stripBlock,
-  supervisorBase,
-  supervisorLabel,
-  supervisorPaths,
-} from "../../scripts/install/lib/supervisor.mjs";
+import { ACTIONS, LOOP_HOSTS, SCHEDULERS, cronBlock, cronContentLines, cronMarkers, lingerState, resolveScheduler, stripBlock, supervisorBase, supervisorLabel, supervisorPaths } from "../../scripts/install/lib/supervisor.mjs";
+
+const { makeTempDir, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-plan-" });
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
-const tempDirs = [];
-function makeTempDir(prefix = "meerkat-taskpanel-plan-") {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-after(() => {
-  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
-});
+after(cleanup);
 
 /** The files of a doc, for the contract pins below. */
 const doc = (relative) => readFileSync(join(ROOT, relative), "utf8");
