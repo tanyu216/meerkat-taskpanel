@@ -19,7 +19,6 @@
  * camelCase happens here and in `shared/wire.mjs`, nowhere else.
  */
 
-import { PROJECT_ACTIVITY_WINDOW_DAYS, SSE_NOISE_EVENTS } from "../../shared/constants.mjs";
 import { orderDebugEntry, rankProjects } from "../../shared/project-order.mjs";
 import { projectToWire } from "../../shared/wire.mjs";
 import { arr, obj, shape, str } from "../requests.mjs";
@@ -53,12 +52,12 @@ const README_BODY = shape({ readme: str() });
 
 /** @param {object} router @param {{board: object}} surface */
 export function registerProjectRoutes(router, surface) {
-  const { commands } = surface.board;
+  const { commands, repos } = surface.board;
 
   router.get("/api/v1/projects", ({ query }) => {
     const includeArchived = truthy(query.get("include_archived"));
-    const activity = activityByProject(surface.board, { now: new Date(surface.board.ctx.now()) });
-    const taskCounts = taskCountByProject(surface.board);
+    const activity = repos.projects.activityByProject({ now: new Date(surface.board.ctx.now()) });
+    const taskCounts = repos.projects.taskCountByProject();
     const ranked = rankProjects(
       commands.listProjects({ includeArchived }).map((project) => ({
         ...project,
@@ -94,7 +93,7 @@ export function registerProjectRoutes(router, surface) {
     if (project === null || project === undefined) return { project: null };
     // Same badge number as the list route, so the single-project wire and the
     // list entry cannot disagree about how many tasks the project owns.
-    const counts = taskCountByProject(surface.board, params.id);
+    const counts = repos.projects.taskCountByProject(params.id);
     return { project: projectToWire({ ...project, taskCount: counts.get(project.id) ?? 0 }) };
   });
 
@@ -139,72 +138,3 @@ export function intOrUndefined(value) {
 
 /** What a project with no activity in either window looks like (DESIGN.md §20). */
 const EMPTY_ACTIVITY = Object.freeze({ a7: 0, a30: 0, lastActivityAt: null });
-
-/**
- * Per-project activity counts for the DESIGN.md §20 windows.
- *
- * "Activity" is the reproducible definition the architecture fixes: the number
- * of `task_activities` rows in the window that belong to a task of the project,
- * **excluding pure heartbeats** (they bump the revision but change no board
- * state). Timestamps are ISO-8601 UTC, so a lexicographic `>=` is a
- * chronological one and no date parsing is needed.
- *
- * Rows with no task (`project_created`, the label GC's own entries) do not
- * belong to any project and are correctly absent from the join.
- *
- * @param {{db: object}} board
- * @param {{now?: Date}} [options]
- * @returns {Map<string, {a7: number, a30: number, lastActivityAt: string|null}>}
- */
-export function activityByProject(board, options = {}) {
-  const now = options.now ?? new Date();
-  const since = (days) => new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
-  const noise = SSE_NOISE_EVENTS.map(() => "?").join(", ");
-  const rows = board.db
-    .prepare(
-      `SELECT t.project_id AS project_id,
-              SUM(CASE WHEN a.created_at >= ? THEN 1 ELSE 0 END) AS a7,
-              COUNT(*) AS a30,
-              MAX(a.created_at) AS last_activity
-         FROM task_activities a
-         JOIN tasks t ON t.id = a.task_id
-        WHERE a.event NOT IN (${noise}) AND a.created_at >= ?
-        GROUP BY t.project_id`,
-    )
-    .all(since(PROJECT_ACTIVITY_WINDOW_DAYS.a7), ...SSE_NOISE_EVENTS, since(PROJECT_ACTIVITY_WINDOW_DAYS.a30));
-
-  const out = new Map();
-  for (const row of rows) {
-    out.set(row.project_id, {
-      a7: Number(row.a7 ?? 0),
-      a30: Number(row.a30 ?? 0),
-      lastActivityAt: row.last_activity ?? null,
-    });
-  }
-  return out;
-}
-
-/**
- * Per-project **task counts** — what the sidebar badge prints.
- *
- * This is deliberately *not* a ranking input and deliberately not the activity
- * count above: DESIGN.md §20 orders by trailing-window activity, while the badge is the
- * project's **total** number of tasks (every status, archived included, and
- * whatever order the list happens to be in). A project with no tasks is simply
- * absent from the map — the caller defaults it to `0` rather than inventing a
- * row here.
- *
- * @param {{db: object}} board
- * @param {string} [projectId] restrict to one project (the single-project route)
- * @returns {Map<string, number>} project id → task count
- */
-export function taskCountByProject(board, projectId) {
-  const where = projectId === undefined ? "" : " WHERE project_id = ?";
-  const rows = board.db
-    .prepare(`SELECT project_id, COUNT(*) AS n FROM tasks${where} GROUP BY project_id`)
-    .all(...(projectId === undefined ? [] : [projectId]));
-
-  const out = new Map();
-  for (const row of rows) out.set(row.project_id, Number(row.n ?? 0));
-  return out;
-}
