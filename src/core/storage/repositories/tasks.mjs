@@ -84,6 +84,23 @@ export function createTasksRepository(db) {
       ORDER BY created_at ASC, identifier ASC`,
   );
 
+  /** Identifier across projects — an ambiguous one is refused, never guessed. */
+  const findAnyByIdentifier = (identifier) => {
+    const rows = db
+      .prepare(`SELECT ${SELECT_LIST} FROM tasks WHERE identifier = ? ORDER BY created_at ASC, project_id ASC LIMIT 2`)
+      .all(identifier);
+    if (rows.length > 1) {
+      throw new DomainError("VALIDATION_FAILED", {
+        message: `identifier ${identifier} exists in more than one project — pass the project id`,
+        details: { identifier, candidates: rows.length },
+      });
+    }
+    return taskFromRow(rows[0]);
+  };
+
+  /** @param {string} ref a row id or an identifier */
+  const byAnyRef = (ref) => taskFromRow(selectById.get(ref)) ?? findAnyByIdentifier(ref);
+
   /** @param {string} id */
   const requireTask = (id) => {
     const task = taskFromRow(selectById.get(id));
@@ -112,6 +129,33 @@ export function createTasksRepository(db) {
       return taskFromRow(selectById.get(id));
     },
 
+    /**
+     * A card by either spelling a caller has: its row id, or its identifier.
+     *
+     * `PROJ-0007` and a UUID are the two things a CLI argument or a URL segment
+     * can carry, and no caller should have to ask which one it was handed. A
+     * miss is `null`; `requireAnyRef` is the throwing half.
+     *
+     * @param {string} ref
+     */
+    getByAnyRef(ref) {
+      return byAnyRef(ref);
+    },
+
+    /**
+     * `getByAnyRef`, refusing a miss with the one `NOT_FOUND` shape every
+     * id-or-identifier caller shares.
+     *
+     * @param {string} ref
+     */
+    requireAnyRef(ref) {
+      const task = byAnyRef(ref);
+      if (task === null) {
+        throw new DomainError("NOT_FOUND", { message: `no task ${ref}`, details: { taskRef: ref } });
+      }
+      return task;
+    },
+
     getByIdentifier(projectId, identifier) {
       return taskFromRow(selectByIdentifier.get(projectId, identifier));
     },
@@ -133,16 +177,7 @@ export function createTasksRepository(db) {
      * @param {string} identifier
      */
     findByIdentifierAnyProject(identifier) {
-      const rows = db
-        .prepare(`SELECT ${SELECT_LIST} FROM tasks WHERE identifier = ? ORDER BY created_at ASC, project_id ASC LIMIT 2`)
-        .all(identifier);
-      if (rows.length > 1) {
-        throw new DomainError("VALIDATION_FAILED", {
-          message: `identifier ${identifier} exists in more than one project — pass the project id`,
-          details: { identifier, candidates: rows.length },
-        });
-      }
-      return taskFromRow(rows[0]);
+      return findAnyByIdentifier(identifier);
     },
 
     /**

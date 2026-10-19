@@ -12,37 +12,23 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { after, describe, it } from "node:test";
+import { createInstallHarness } from "./helpers/install-harness.mjs";
+
+const { makeTempDir, runInstall, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-install-" });
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const NODE = process.execPath;
 
-const tempDirs = [];
-function makeTempDir(prefix = "meerkat-taskpanel-install-") {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-
-after(() => {
-  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
-});
+after(cleanup);
 
 // MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE is the contract's own test-only bypass for the
 // taskd keepalive guard (`docs/scheduling.md`): an install really does load an OS unit,
 // and a test must never do that. The guard has its own cases in `taskd-guard.test.mjs`,
 // where the supervisor is faked on PATH.
-function runInstall(args, env = {}) {
-  return spawnSync("bash", [join(ROOT, "install.sh"), ...args], {
-    cwd: ROOT,
-    encoding: "utf8",
-    env: { ...process.env, MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1", ...env },
-  });
-}
 
 describe("install.sh: targets", () => {
   it("accepts a comma-separated --target list", () => {

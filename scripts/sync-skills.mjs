@@ -41,9 +41,6 @@ import { isEntryPoint } from "../src/shared/entry-guard.mjs";
 /** The board skill — the default for every function that takes a skill name. */
 export const DEFAULT_SKILL = "meerkat-taskpanel";
 
-/** Directory name of the board skill, inside the repository's one `skills/` tree. */
-export const SKILL_DIR_NAME = DEFAULT_SKILL;
-
 /**
  * Absolute path to a skill source of truth.
  * @param {string} root repository root

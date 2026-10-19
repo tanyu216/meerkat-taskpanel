@@ -4,11 +4,12 @@
  * `report template` fills in a document whose every line starts with `TODO:` so
  * that an unfilled template is obviously unfilled. Delivering one anyway is
  * legal — the gate asks whether a report exists for the round, not whether it is
- * good — but it deserves a warning, and every surface owes the caller the same
- * sentence.
+ * good — but it deserves a warning, and the writer and the checker owe the
+ * caller the same sentence.
  *
- * It lives in `shared` because both surfaces need it and neither may import the
- * other (plan G4). Pure: no `node:` specifiers.
+ * It lives in `shared` so the template writer (`cli/commands/report.mjs`) and
+ * the delivery checker (`cli/commands/issue.mjs`) read one rule rather than two
+ * copies of it. Pure: no `node:` specifiers.
  */
 
 /** What an unfilled template says; the string `reportWarnings` looks for. */

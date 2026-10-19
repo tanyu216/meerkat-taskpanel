@@ -21,13 +21,15 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
+import { createInstallHarness } from "./helpers/install-harness.mjs";
 
 import { SCHEDULER_DEFAULT_PATH, unitPath } from "../../scripts/install/lib/unit-path.mjs";
+
+const { makeTempDir, runInstall, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-unitpath-", installDefaults: {} });
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const HELPER = join(ROOT, "scripts", "install", "lib", "unit-path.mjs");
@@ -37,15 +39,7 @@ const NODE_DIR = dirname(NODE);
 /** `/usr/bin/env`, the binary the units used to start node through. Always present. */
 const ENV_BIN = "/usr/bin/env";
 
-const tempDirs = [];
-function makeTempDir(prefix = "meerkat-taskpanel-unitpath-") {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-after(() => {
-  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
-});
+after(cleanup);
 
 /** A fake host CLI: enough to be *found* by name on PATH, which is the whole question. */
 function makeFakeCli(binDir, name) {
@@ -165,10 +159,6 @@ function installEnv(home, path) {
     MEERKAT_TASKPANEL_TARGET_HOME: home,
     MEERKAT_TASKPANEL_SKIP_TASKD_SERVICE: "1",
   };
-}
-
-function runInstall(args, env) {
-  return spawnSync("bash", [join(ROOT, "install.sh"), ...args], { cwd: ROOT, encoding: "utf8", env });
 }
 
 /** `<key>PATH</key><string>…</string>` — the plist's exported PATH. */

@@ -180,7 +180,6 @@ export const board = reactive({
 /* --------------------------------------------------------------- accessors */
 
 export const currentProject = computed(() => board.projects.find((p) => p.id === board.currentProjectId) ?? null);
-export const currentProjectName = computed(() => currentProject.value?.name ?? "");
 
 /** id → project name, for a card's `data-project` scalar. */
 const projectNames = computed(() => Object.fromEntries(board.projects.map((p) => [p.id, p.name])));

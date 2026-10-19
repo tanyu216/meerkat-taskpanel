@@ -32,8 +32,7 @@ import { chmodSync, closeSync, fsyncSync, openSync, readFileSync, renameSync, rm
 import { basename, dirname, join } from "node:path";
 
 import { ensureDir } from "../core/index.mjs";
-import { readAcceptancePolicy, writeAcceptancePolicy } from "../core/acceptance-policy.mjs";
-import { mergeEnvText } from "../shared/env-file.mjs";
+import { mergeEnvText, parseEnvBool, parseEnvText } from "../shared/env-file.mjs";
 import { ALLOW_CIDRS_ENV, SECRET_DIR_MODE, SECRET_FILE_MODE } from "../shared/constants.mjs";
 import { DomainError } from "../shared/errors.mjs";
 import { redactText } from "../shared/redact.mjs";
@@ -58,43 +57,15 @@ export function accessEnvPath(dataDir) {
   return join(dataDir, ACCESS_ENV_FILE);
 }
 
-/**
- * Parse the file's `KEY=VALUE` lines. Comments (`#`) and blank lines are
- * ignored; a key may be repeated, in which case the last write wins (env-file
- * convention).
- *
- * @param {string} text
- * @returns {Map<string, string>}
- */
-function parseEnvText(text) {
-  const values = new Map();
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
-    if (line === "" || line.startsWith("#")) continue;
-    const equals = line.indexOf("=");
-    if (equals === -1) {
-      throw new DomainError("ACCESS_CONFIG_INVALID", {
-        message: `the access configuration line ${JSON.stringify(line)} is not KEY=VALUE`,
-      });
-    }
-    const key = line.slice(0, equals).trim().replace(/^export\s+/, "");
-    let value = line.slice(equals + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-    values.set(key, value);
-  }
-  return values;
-}
-
 /** @param {string} value @param {string} key */
 function parseBoolean(value, key) {
-  const normalized = value.trim().toLowerCase();
-  if (["true", "1", "yes", "on"].includes(normalized)) return true;
-  if (["false", "0", "no", "off"].includes(normalized)) return false;
-  throw new DomainError("ACCESS_CONFIG_INVALID", {
-    message: `${key} must be true or false, not ${JSON.stringify(value)}`,
-  });
+  const parsed = parseEnvBool(value);
+  if (parsed === null) {
+    throw new DomainError("ACCESS_CONFIG_INVALID", {
+      message: `${key} must be true or false, not ${JSON.stringify(value)}`,
+    });
+  }
+  return parsed;
 }
 
 /** Split a comma/space/semicolon separated CIDR list. @param {string} value */
@@ -192,7 +163,7 @@ export function readAccessConfig(input) {
     });
   }
 
-  const values = parseEnvText(text);
+  const values = parseEnvText(text, { strict: true });
   const rawCidrs = values.get(ALLOW_CIDRS_ENV);
   const entries = rawCidrs === undefined ? [] : splitCidrs(rawCidrs);
   const cidrs = [];
@@ -310,23 +281,6 @@ export function writeEnvKeys(dataDir, patch) {
       : "";
   writeAtomic(file, header + mergeEnvText(existing, patch));
   return file;
-}
-
-/**
- * Save the board's acceptance policy into the shared env file.
- *
- * Re-exported from `core/acceptance-policy.mjs`, which owns the vocabulary and
- * the merge: the installer reaches the same function without going through the
- * server (and therefore without opening a database module).
- *
- * @param {{dataDir: string, policy: string}} input
- * @returns {{policy: string, file: string}}
- */
-export { writeAcceptancePolicy };
-
-/** The acceptance policy this data directory's file records (env/file/default). */
-export function readStoredAcceptancePolicy(input) {
-  return readAcceptancePolicy({ dataDir: input.dataDir, env: input.env ?? {} });
 }
 
 /** @param {string} file @param {string} text */

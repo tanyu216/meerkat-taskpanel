@@ -7,6 +7,7 @@
  */
 
 import * as agentSessions from "./agent-sessions.mjs";
+import * as attachments from "./attachments.mjs";
 import * as comments from "./comments.mjs";
 import * as dictionary from "./dictionary.mjs";
 import * as labels from "./labels.mjs";
@@ -80,6 +81,11 @@ export function createCommands(ctx) {
     registerSession: (input) => agentSessions.registerSession(ctx, input),
     closeSession: (input) => agentSessions.closeSession(ctx, input),
     listSessions: (input) => agentSessions.listSessions(ctx, input),
+
+    // attachments (the write half; reads stay on the repository) -------------
+    addAttachment: (input) => attachments.addAttachment(ctx, input),
+    storeAttachmentContent: (input) => attachments.storeAttachmentContent(ctx, input),
+    removeAttachment: (input) => attachments.removeAttachment(ctx, input),
   };
 }
 

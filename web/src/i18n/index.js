@@ -17,10 +17,10 @@
  */
 import { computed, ref } from "vue";
 
-import { CATALOGUE, DEFAULT_LANGUAGE, LANGUAGES, hasKey, tableFor, translate } from "./catalogue.mjs";
+import { CATALOGUE, DEFAULT_LANGUAGE, LANGUAGES, hasKey, tableFor } from "./catalogue.mjs";
 import { EXTRA } from "./extra.mjs";
 import { resolveText } from "./messages.mjs";
-import { LANG_STORAGE_KEY, readLang, nextLang as cycleLang } from "../stores/prefs.js";
+import { LANG_STORAGE_KEY, readLang } from "../stores/prefs.js";
 
 export { CATALOGUE, DEFAULT_LANGUAGE, LANGUAGES, EXTRA };
 
@@ -46,11 +46,6 @@ export function has(key) {
 
 /** The catalogue table for the active language. */
 export const table = computed(() => tableFor(lang.value));
-
-/** The next language in the two-entry cycle (en ⇄ zh). */
-export function nextLang() {
-  return cycleLang(lang.value);
-}
 
 /**
  * The single writer: set the active language, mirror it onto `<html lang>` and

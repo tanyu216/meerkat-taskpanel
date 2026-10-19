@@ -17,7 +17,7 @@
  * carries neither (see `test/web/blocks.contract.mjs`, where both blocks are
  * `prototype-only`).
  */
-import { computed, ref } from "vue";
+import { computed } from "vue";
 
 import {
   assigneeFilterValue,

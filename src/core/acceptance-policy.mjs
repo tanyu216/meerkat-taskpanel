@@ -44,7 +44,7 @@ import {
 import { basename, dirname, join } from "node:path";
 
 import { SECRET_DIR_MODE, SECRET_FILE_MODE } from "../shared/constants.mjs";
-import { mergeEnvText } from "../shared/env-file.mjs";
+import { mergeEnvText, parseEnvText } from "../shared/env-file.mjs";
 import { DomainError } from "../shared/errors.mjs";
 import {
   ACCEPTANCE_POLICIES,
@@ -74,21 +74,7 @@ export function acceptanceEnvPath(dataDir) {
  * @returns {string|null}
  */
 function readEnvKey(text, key) {
-  let found = null;
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
-    if (line === "" || line.startsWith("#")) continue;
-    const equals = line.indexOf("=");
-    if (equals === -1) continue;
-    const name = line.slice(0, equals).trim().replace(/^export\s+/, "");
-    if (name !== key) continue;
-    let value = line.slice(equals + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-    found = value;
-  }
-  return found;
+  return parseEnvText(text).get(key) ?? null;
 }
 
 /** @param {string|null|undefined} raw @param {string} origin */

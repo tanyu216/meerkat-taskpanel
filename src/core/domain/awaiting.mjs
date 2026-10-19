@@ -38,9 +38,6 @@ import { AWAITING_REASONS, STATUS } from "./enums.mjs";
 
 export { AWAITING_REASONS };
 
-/** The status a card must be in to be waiting on a human. */
-export const AWAITING_STATUS = STATUS.AWAITING;
-
 /** @param {unknown} value */
 export function isAwaitingReason(value) {
   return AWAITING_REASONS.includes(/** @type {string} */ (value));

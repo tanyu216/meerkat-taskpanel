@@ -35,34 +35,17 @@
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
+import { createInstallHarness } from "./helpers/install-harness.mjs";
 
-import {
-  READY_TIMEOUT_MS,
-  TASKD_LABEL,
-  TASKD_TEMPLATE_FILES,
-  TASKD_UNIT,
-  enablePlan,
-  exitCode,
-  guardPaths,
-  installGuard,
-  isOurBoard,
-  plistEnvBlock,
-  servedBoard,
-  systemdEnvBlock,
-  systemdUserDir,
-  unitBoard,
-  unitEnv,
-  unitPath,
-  unitVars,
-  waitForHealth,
-} from "../../scripts/install/lib/taskd-guard.mjs";
+import { READY_TIMEOUT_MS, TASKD_LABEL, TASKD_TEMPLATE_FILES, TASKD_UNIT, enablePlan, exitCode, guardPaths, installGuard, isOurBoard, plistEnvBlock, servedBoard, systemdEnvBlock, systemdUserDir, unitBoard, unitEnv, unitPath, unitVars, waitForHealth } from "../../scripts/install/lib/taskd-guard.mjs";
 import { render } from "../../scripts/install/lib/apply.mjs";
 import { AUTOSTART_TIMEOUT_MS } from "../../src/shared/constants.mjs";
+
+const { makeTempDir, runInstall, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-guard-", installDefaults: {} });
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const TEMPLATES = join(ROOT, "scripts", "install", "templates");
@@ -74,16 +57,10 @@ const FAKE_PID = 4242;
 const launchdTemplate = readFileSync(join(TEMPLATES, TASKD_TEMPLATE_FILES.launchd), "utf8");
 const systemdTemplate = readFileSync(join(TEMPLATES, TASKD_TEMPLATE_FILES.systemd), "utf8");
 
-const tempDirs = [];
 const healthServers = [];
 
-function makeTempDir(prefix = "meerkat-taskpanel-guard-") {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
 after(() => {
-  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+  cleanup();
   for (const child of healthServers) child.kill();
 });
 
@@ -1026,10 +1003,6 @@ describe("taskd guard: the readiness gate", () => {
 /** Run `install.sh` for one host into `prefix`, with the guard's paths isolated. */
 function runGuardInstall(prefix, env, extra = []) {
   return runInstall(["--target", "claude", "--prefix", prefix, ...extra], env);
-}
-
-function runInstall(args, env) {
-  return spawnSync("bash", [join(ROOT, "install.sh"), ...args], { cwd: ROOT, encoding: "utf8", env });
 }
 
 /**

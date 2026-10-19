@@ -25,10 +25,8 @@
 import { spawnSync } from "node:child_process";
 
 import { DomainError } from "../../shared/errors.mjs";
+import { TODO_PLACEHOLDER } from "../../shared/report-warning.mjs";
 import { table } from "../output/human.mjs";
-
-/** What an unfilled template says, and what `deliver` warns about. */
-export const TODO_PLACEHOLDER = "TODO: say what is left";
 
 /** Parse the report JSON a caller handed us — the one place a bad file is named. */
 export function parseReport(raw) {

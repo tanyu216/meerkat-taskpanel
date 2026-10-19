@@ -10,9 +10,8 @@
  */
 
 import { activityToWire } from "../../shared/wire.mjs";
-import { shape, str } from "../requests.mjs";
-import { intOrUndefined } from "./projects.mjs";
-import { resolveTask } from "./tasks.mjs";
+import { intOrUndefined, shape, str } from "../requests.mjs";
+import { resolveTask } from "../task-view.mjs";
 
 // Declared request schema, frozen by the contract snapshot (`routes[].request`);
 // the vocabulary lives in `src/server/requests.mjs`.

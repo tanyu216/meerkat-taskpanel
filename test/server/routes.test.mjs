@@ -19,6 +19,7 @@ import { join } from "node:path";
 import test, { after, before, describe, it } from "node:test";
 
 import { createTaskd } from "../../src/server/index.mjs";
+import { intOrUndefined, truthy } from "../../src/server/requests.mjs";
 import { SSE_NOISE_EVENTS } from "../../src/shared/constants.mjs";
 
 const tempDirs = [];
@@ -1119,5 +1120,22 @@ describe("server/routes — the acceptance wire (M6)", () => {
 
     const single = dataOf(await call("GET", `/api/v1/tasks/${child.identifier}`));
     assert.equal(single.task.parent_id, epic.id, "the single read projects it too");
+  });
+});
+
+describe("server/requests — query-string coercions", () => {
+  it("reads the liberal boolean vocabulary", () => {
+    for (const word of ["1", "true", "yes", "on"]) assert.equal(truthy(word), true, word);
+    for (const word of ["0", "false", "no", "off", "", null, undefined]) {
+      assert.equal(truthy(word), false, String(word));
+    }
+  });
+
+  it("parses an integer or says nothing", () => {
+    assert.equal(intOrUndefined("12"), 12);
+    assert.equal(intOrUndefined(" 7 "), 7);
+    for (const value of ["", null, undefined, "x"]) {
+      assert.equal(intOrUndefined(value), undefined, String(value));
+    }
   });
 });

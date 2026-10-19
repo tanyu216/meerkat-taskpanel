@@ -351,8 +351,6 @@ function buildReport(context) {
     warnings,
   } = context;
 
-  const byIdentifier = new Map(sourceCards.map((entry) => [entry.identifier, entry]));
-
   // --- per-field parity ---------------------------------------------------
   const perField = FIELD_SPECS.map((spec) => ({
     field: spec.field,

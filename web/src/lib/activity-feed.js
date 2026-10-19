@@ -34,10 +34,10 @@
  */
 
 import { kindLabel } from "./actor-kind.js";
+import { TIME_RUNGS_THREE, timeLadder } from "./time.js";
 
 const MINUTE = 60_000;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
+const DAY = 24 * 60 * MINUTE;
 
 /** §5 — the fold window: one "operating round" of edits. */
 export const BURST_WINDOW_MS = 5 * MINUTE;
@@ -131,11 +131,7 @@ export const BURST_KINDS = Object.freeze(["label", "assignee", "updated", "statu
 const pad = (n) => String(n).padStart(2, "0");
 
 /** `2026-10-05 11:20` — the absolute stamp the row's `title` carries. */
-export function absoluteStamp(iso) {
-  const date = new Date(iso);
-  if (!Number.isFinite(date.getTime())) return "";
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
+export { absoluteStamp } from "./time.js";
 
 /**
  * The row's visible time, on the feed's three-rung ladder: minutes under an
@@ -149,16 +145,7 @@ export function absoluteStamp(iso) {
  * @returns {{key: string, arg: number, absolute: string}|null}
  */
 export function feedTime(iso, now = Date.now()) {
-  const then = new Date(iso ?? NaN).getTime();
-  if (!Number.isFinite(then)) return null;
-  const delta = Math.max(0, now - then);
-  const step =
-    delta < HOUR
-      ? { key: "time.minutesAgo", arg: Math.round(delta / MINUTE) }
-      : delta < DAY
-        ? { key: "time.hoursAgo", arg: Math.round(delta / HOUR) }
-        : { key: "time.daysAgo", arg: Math.round(delta / DAY) };
-  return { ...step, arg: Math.max(1, step.arg), absolute: absoluteStamp(iso) };
+  return timeLadder(iso, now, TIME_RUNGS_THREE);
 }
 
 /** The local calendar day of an instant, as `YYYY-MM-DD` (§4 L1 `data-day`). */

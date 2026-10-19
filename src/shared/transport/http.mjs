@@ -20,7 +20,7 @@
  * domain raised — one error mapping, not two.
  */
 
-import { DomainError, ERROR_CODES, isDomainError } from "../errors.mjs";
+import { DomainError, ERROR_CODES } from "../errors.mjs";
 import { redactText } from "../redact.mjs";
 
 /** How long a single request may take before it is reported as a timeout. */

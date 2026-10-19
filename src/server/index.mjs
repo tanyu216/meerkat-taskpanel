@@ -241,7 +241,7 @@ export async function createTaskd(options = {}) {
   // `POST /api/v1/tasks/reconcile` (`taskctl issue reconcile`).
   const containerSweep = startContainerSweep({ board, logger, options });
 
-  const token = board.token === null ? null : readTokenFile(board.dataDir);
+  const token = board.token === null ? null : readToken(board.dataDir);
   const startedAt = Date.now();
   const router = createRouter();
   const surface = { board, token, logger, access: accessState };
@@ -696,9 +696,4 @@ export function startLabelGc(input) {
 export function boardUrl(host, port) {
   const dialable = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
   return `http://${dialable.includes(":") ? `[${dialable}]` : dialable}:${port}`;
-}
-
-/** Read the token core generated at `openBoard` time (never echoed in a response). */
-function readTokenFile(dataDir) {
-  return readToken(dataDir);
 }

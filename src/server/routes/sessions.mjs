@@ -8,7 +8,7 @@
 
 import { sessionToWire } from "../../shared/wire.mjs";
 import { int, REQUEST, shape, str } from "../requests.mjs";
-import { resolveTask } from "./tasks.mjs";
+import { resolveTask } from "../task-view.mjs";
 
 // Declared request schemas, frozen by the contract snapshot (`routes[].request`)
 // — see `src/server/requests.mjs` for the vocabulary.

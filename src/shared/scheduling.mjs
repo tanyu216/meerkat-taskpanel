@@ -21,12 +21,11 @@
  */
 
 import { ACCEPTANCE_POLICIES, CLAIM_STALE_SAME_MS, DEFAULT_ACCEPTANCE_POLICY } from "./constants.mjs";
+import { parseEnvBool, parseEnvText } from "./env-file.mjs";
 import { DomainError } from "./errors.mjs";
 
 /** Default cap on concurrently running workers. */
 export const DEFAULT_MAX_CONCURRENCY = 8;
-/** Legacy poll cadence, seconds — kept for older callers; the clock is `DEFAULT_PING_SECONDS`. */
-export const DEFAULT_POLL_SECONDS = 60;
 /** The SLA measurement period, seconds — no longer a scheduling cadence. */
 export const DEFAULT_PATROL_SECONDS = 300;
 /**
@@ -43,8 +42,6 @@ export const DEFAULT_CONTINUE_SECONDS = 600; // 10 minutes
 /** A claim older than this is "stale" for patrol (same-holder recovery window). */
 export const PATROL_STALE_MS = CLAIM_STALE_SAME_MS;
 
-const TRUE_WORDS = new Set(["yes", "true", "1", "y", "on"]);
-const FALSE_WORDS = new Set(["no", "false", "0", "n", "off"]);
 
 /**
  * Quote one argv element for a shell command line. The continue prompt embeds
@@ -66,11 +63,7 @@ export function quoteArg(value) {
  * @returns {boolean|null}
  */
 export function parseYesNo(value) {
-  if (typeof value !== "string") return null;
-  const word = value.trim().toLowerCase();
-  if (TRUE_WORDS.has(word)) return true;
-  if (FALSE_WORDS.has(word)) return false;
-  return null;
+  return parseEnvBool(value, { shortForms: true });
 }
 
 /**
@@ -81,21 +74,7 @@ export function parseYesNo(value) {
  * @returns {Record<string, string>}
  */
 export function parseEnvFile(text) {
-  const out = {};
-  for (const raw of String(text ?? "").split("\n")) {
-    const line = raw.trim();
-    if (line === "" || line.startsWith("#")) continue;
-    const body = line.startsWith("export ") ? line.slice(7).trim() : line;
-    const eq = body.indexOf("=");
-    if (eq === -1) continue;
-    const key = body.slice(0, eq).trim();
-    let value = body.slice(eq + 1).trim();
-    if (value.length >= 2 && ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))) {
-      value = value.slice(1, -1);
-    }
-    if (key !== "") out[key] = value;
-  }
-  return out;
+  return Object.fromEntries(parseEnvText(text, { quoteMinLength: 2, skipEmptyKey: true }));
 }
 
 /**
@@ -321,14 +300,6 @@ export function parseHeartbeat(value) {
  * @param {string|number} now
  * @returns {number|null}
  */
-export function heartbeatAge(value, now) {
-  const parsed = parseHeartbeat(value);
-  if (!parsed.ok) return null;
-  const age = new Date(now).getTime() - parsed.at;
-  if (!Number.isFinite(age) || age < 0) return null;
-  return age;
-}
-
 /** The number of cards a registry currently records as running. */
 function runningCount(registry) {
   const running = registry?.running;

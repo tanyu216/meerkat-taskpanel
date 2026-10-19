@@ -30,13 +30,15 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test, { after, before, describe, it } from "node:test";
+import { createInstallHarness } from "./helpers/install-harness.mjs";
 
 import { VERSION } from "../../src/shared/constants.mjs";
+
+const { makeTempDir, cleanup } = createInstallHarness({ prefix: "meerkat-taskpanel-installed-" });
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const NODE = process.execPath;
@@ -59,16 +61,7 @@ const HOSTS = Object.freeze([
   { host: "cursor", dir: ".cursor" },
 ]);
 
-const tempDirs = [];
-function makeTempDir(prefix = "meerkat-taskpanel-installed-") {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
-
-after(() => {
-  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
-});
+after(cleanup);
 
 /** The throwaway `$HOME` the hosts are installed into, and the `bin` holding the fake CLI. */
 let home;

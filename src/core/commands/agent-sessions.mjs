@@ -3,13 +3,8 @@
  * trail, and the resume key (§4.1).
  */
 
-import { DomainError } from "../../shared/errors.mjs";
-import { sessionId as deriveSessionId } from "../../shared/ids.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { BOARD_ACTOR, actorOf } from "./context.mjs";
-
-/** The deterministic session id for a (task, owner, seg) triple. */
-export const sessionId = deriveSessionId;
 
 /**
  * @param {object} ctx
@@ -22,10 +17,7 @@ export function registerSession(ctx, input) {
   return transaction(
     ctx.db,
     () => {
-      const task = ctx.repos.tasks.get(input.taskId) ?? ctx.repos.tasks.findByIdentifierAnyProject(input.taskId);
-      if (task === null) {
-        throw new DomainError("NOT_FOUND", { message: `no task ${input.taskId}`, details: { taskId: input.taskId } });
-      }
+      const task = ctx.repos.tasks.requireAnyRef(input.taskId);
       const session = ctx.repos.sessions.upsertByNaturalKey({
         taskId: task.id,
         seg: input.seg,
