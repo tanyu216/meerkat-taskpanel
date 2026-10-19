@@ -119,8 +119,8 @@ export function registerProjectRoutes(router, surface) {
     readme: commands.readmeGet({ id: params.id }),
   }));
 
-  router.put("/api/v1/projects/:id/readme", ({ params, body }) => {
-    const project = commands.readmeSet({ id: params.id, readme: body.readme ?? null });
+  router.put("/api/v1/projects/:id/readme", ({ params, body, actor }) => {
+    const project = commands.readmeSet({ id: params.id, readme: body.readme ?? null, actor });
     return { project: projectToWire(project), readme: project.readme };
   }, { body: README_BODY });
 }

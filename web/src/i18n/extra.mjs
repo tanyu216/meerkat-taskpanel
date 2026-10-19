@@ -152,6 +152,13 @@ export const EXTRA = {
     "waiting.reason.E3": "Design / aesthetic direction",
     "waiting.reason.E4": "Security / data safety",
     "waiting.reason.E5": "Architecture direction",
+    // The event vocabulary the prototype never had: archive, sessions, import
+    // progress, and the generic fallback an unknown event reads as.
+    "activity.archived": "archived this task",
+    "activity.session": "recorded a session",
+    "activity.progress": "recorded progress",
+    "activity.other": "recorded an event",
+    "activity.detail.archived": "Archived from",
   },
   zh: {
     "access.token.placeholder": "保存时将重新生成 access token",
@@ -222,5 +229,10 @@ export const EXTRA = {
     "waiting.reason.E3": "设计 / 美学方向",
     "waiting.reason.E4": "安全 / 数据安全",
     "waiting.reason.E5": "架构方向",
+    "activity.archived": "归档了任务",
+    "activity.session": "记录了会话",
+    "activity.progress": "记录了进度",
+    "activity.other": "记录了一次事件",
+    "activity.detail.archived": "归档前状态",
   },
 };

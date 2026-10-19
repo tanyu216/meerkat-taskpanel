@@ -453,7 +453,7 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
         .all(epic.id);
       assert.equal(reports.length, 1, "the board wrote exactly one rollup report");
       assert.equal(reports[0].origin, "delivery");
-      assert.equal(reports[0].author_kind, "system", "the board wrote it, not the last agent");
+      assert.equal(reports[0].author_kind, "taskd", "the board wrote it, not the last agent");
       assert.equal(reports[0].round, 1);
       assert.equal(JSON.parse(reports[0].acceptance_json).length, 2, "one criterion per child");
       // The children's evidence, unioned and de-duplicated: the work happened
@@ -481,7 +481,7 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
       );
       assert.deepEqual(
         notes.map((note) => note.author_kind),
-        ["system", "system"],
+        ["taskd", "taskd"],
       );
       assert.match(notes[0].body, /^Auto-start \(event\): child PROJ-\d+ is in progress/);
       assert.match(
@@ -751,7 +751,7 @@ describe("commands/tasks — the container lifecycle (system start, notes, recon
 
       const [note] = notesFor(db, epic.id);
       assert.equal(note.kind, "note");
-      assert.equal(note.author_kind, "system", "the board wrote it");
+      assert.equal(note.author_kind, "taskd", "the board wrote it");
       assert.match(note.body, /^Auto-start \(event\): child PROJ-\d+ is in progress; epic moved todo → in_progress at /);
     });
   });
@@ -1302,6 +1302,8 @@ describe("commands/tasks — archive (I6)", () => {
       const archived = commands2.archive({ id: task.id, actor: HUMAN });
       assert.equal(archived.archivedAt, later);
       assert.equal(archived.status, "done", "archiving never changes status");
+      const row = db.prepare("SELECT changes_json FROM task_activities WHERE event = 'task_archived'").get();
+      assert.equal(JSON.parse(row.changes_json).from, "done", "the trail names the status it left");
       assert.deepEqual(commands2.listTasks().map((t) => t.id), [], "archived tasks leave the default list");
       assert.equal(commands2.listTasks({ includeArchived: true }).length, 1);
     });
@@ -1522,7 +1524,7 @@ describe("commands/tasks — acceptance authority (done is human/system only)", 
         (err) => {
           assert.equal(err.code, "ACCEPTANCE_FORBIDDEN");
           assert.equal(err.http, 409);
-          assert.deepEqual(err.details.allowed, ["human", "system"]);
+          assert.deepEqual(err.details.allowed, ["human", "taskd"]);
           assert.equal(err.details.actorKind, "agent");
           assert.match(err.hint.fix, /in_review/);
           return true;
@@ -1548,7 +1550,7 @@ describe("commands/tasks — acceptance authority (done is human/system only)", 
       commands.claim({ id: bySystem.id, actor: AGENT });
       commands.deliver({ taskId: bySystem.id, report: report(), actor: AGENT });
       assert.equal(
-        commands.moveStatus({ id: bySystem.id, to: "done", actor: { kind: "system", id: "taskd" } }).status,
+        commands.moveStatus({ id: bySystem.id, to: "done", actor: { kind: "taskd", id: "taskd" } }).status,
         "done",
       );
     });

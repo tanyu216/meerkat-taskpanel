@@ -160,7 +160,7 @@ export function collectErrors() {
 }
 
 /** A lookup that answers every actor, so the probe task yields a populated ref. */
-const PROBE_ACTOR_LOOKUP = () => ({ displayName: "probe", kind: "agent" });
+const PROBE_ACTOR_LOOKUP = () => ({ displayName: "probe", kind: "taskd" });
 
 /**
  * The wire probes: one subject per projection, with **every** field the

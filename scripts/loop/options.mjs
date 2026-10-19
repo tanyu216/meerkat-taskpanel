@@ -17,6 +17,12 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  EVENT_CONTINUE_MIN_MS,
+  EVENT_DEBOUNCE_MAX_MS,
+  EVENT_DEBOUNCE_MS,
+  SSE_SUBSCRIBE_IDLE_MS,
+} from "../../src/shared/constants.mjs";
+import {
   DEFAULT_CONTINUE_SECONDS,
   DEFAULT_MAX_CONCURRENCY,
   DEFAULT_PATROL_SECONDS,
@@ -101,6 +107,14 @@ export function parseArgs(argv, env = process.env) {
     pingOnly: false,
     continueOnly: false,
     patrolOnly: false,
+    subscribe: false,
+    url: null,
+    token: null,
+    sseIdleMs: undefined,
+    eventDebounceMs: undefined,
+    eventDebounceMaxMs: undefined,
+    eventContinue: undefined,
+    eventContinueMinMs: undefined,
     legacyPollInterval: false,
     patrolLlm: false,
     notify: null,
@@ -182,6 +196,21 @@ export function parseArgs(argv, env = process.env) {
     else if (arg === "--ping-only") opts.pingOnly = true;
     else if (arg === "--continue-only") opts.continueOnly = true;
     else if (arg === "--patrol-only") opts.patrolOnly = true;
+    else if (arg === "--subscribe") opts.subscribe = true;
+    else if (arg === "--url") opts.url = take("--url");
+    else if (arg.startsWith("--url=")) opts.url = arg.slice(6);
+    else if (arg === "--token") opts.token = take("--token");
+    else if (arg.startsWith("--token=")) opts.token = arg.slice(8);
+    else if (arg === "--sse-idle-ms") opts.sseIdleMs = number("--sse-idle-ms", take("--sse-idle-ms"));
+    else if (arg.startsWith("--sse-idle-ms=")) opts.sseIdleMs = number("--sse-idle-ms", arg.slice(14));
+    else if (arg === "--event-debounce-ms") opts.eventDebounceMs = number("--event-debounce-ms", take("--event-debounce-ms"));
+    else if (arg.startsWith("--event-debounce-ms=")) opts.eventDebounceMs = number("--event-debounce-ms", arg.slice(20));
+    else if (arg === "--event-debounce-max-ms") opts.eventDebounceMaxMs = number("--event-debounce-max-ms", take("--event-debounce-max-ms"));
+    else if (arg.startsWith("--event-debounce-max-ms=")) opts.eventDebounceMaxMs = number("--event-debounce-max-ms", arg.slice(24));
+    else if (arg === "--event-continue") opts.eventContinue = take("--event-continue");
+    else if (arg.startsWith("--event-continue=")) opts.eventContinue = arg.slice(17);
+    else if (arg === "--event-continue-min-ms") opts.eventContinueMinMs = number("--event-continue-min-ms", take("--event-continue-min-ms"));
+    else if (arg.startsWith("--event-continue-min-ms=")) opts.eventContinueMinMs = number("--event-continue-min-ms", arg.slice(24));
     else if (arg === "--patrol-llm") opts.patrolLlm = true;
     else if (arg.startsWith("--patrol-llm=")) opts.patrolLlm = /^(yes|true|1|y|on)$/i.test(arg.slice(13));
     else if (arg === "--notify") opts.notify = take("--notify");
@@ -270,6 +299,12 @@ export function parseArgs(argv, env = process.env) {
   // under the host's dot-directory, exactly where `install.sh` put them.
   opts.glue ??= join(opts.home, hostDir, "bin", `wake-${opts.host}.sh`);
   opts.projectsJson ??= join(opts.home, hostDir, "skills", "meerkat-taskpanel", "projects.json");
+  // Event-subscriber defaults. A flag always wins; these are the values a
+  // deployment never normally states.
+  opts.sseIdleMs ??= SSE_SUBSCRIBE_IDLE_MS;
+  opts.eventDebounceMs ??= EVENT_DEBOUNCE_MS;
+  opts.eventDebounceMaxMs ??= EVENT_DEBOUNCE_MAX_MS;
+  opts.eventContinueMinMs ??= EVENT_CONTINUE_MIN_MS;
   return opts;
 }
 
@@ -283,9 +318,18 @@ export function parseArgs(argv, env = process.env) {
  * (`--ping-only` / `--continue-only`).
  *
  * @param {object} opts
- * @returns {"ping"|"continue"|"patrol"|"poll"|null}
+ * @returns {"ping"|"continue"|"patrol"|"poll"|"subscribe"|null}
  */
 export function selectMode(opts) {
+  if (opts.subscribe) {
+    if (opts.once || opts.pingOnly || opts.continueOnly || opts.patrolOnly) {
+      throw new Error("--subscribe is a daemon mode; it cannot be combined with --once or another selector");
+    }
+    if (opts.dryRun) {
+      throw new Error("--subscribe is a daemon mode; --dry-run is not supported");
+    }
+    return "subscribe";
+  }
   const selectors = [
     opts.pingOnly ? "ping" : null,
     opts.continueOnly ? "continue" : null,
@@ -374,6 +418,11 @@ export function resolveLoopConfig(opts, env = process.env) {
       env: env.MEERKAT_TASKPANEL_CONTINUE,
       file: configFile,
     }),
+    eventContinueEnabled: resolveContinueEnabled({
+      flag: opts.eventContinue,
+      env: env.MEERKAT_TASKPANEL_EVENT_CONTINUE,
+      file: configFile,
+    }),
   };
 }
 
@@ -448,6 +497,10 @@ The loop's scheduler. It owns two clocks and nothing else:
   continue   every ${DEFAULT_CONTINUE_SECONDS}s — wake the host agent with a bounded
              "继续" prompt; that turn runs the poll, patrol and workflow entries.
 
+--subscribe adds an optional event daemon beside those clocks: it holds one SSE
+connection and asks for a continue turn when a dispatch-relevant event arrives.
+The clocks stay as the fallback (and as the only path for time-based work).
+
 Options:
   --agent <name>            Agent(s) to work for. Repeatable / comma-separated.
                             Default: $TASKCTL_AGENT, then $USER.
@@ -464,6 +517,19 @@ Options:
   --ping-only               With --once, prune the worker registry and exit.
   --continue-only           With --once, run one continue turn.
   --patrol-only             With --once, run one SLA patrol pass (legacy units).
+  --subscribe               Run the event subscriber daemon (SSE -> one continue
+                            turn per burst). launchd/systemd only; cron cannot
+                            host a long-lived process. Cannot be combined with
+                            --once or another selector.
+  --url <url>               Board URL for the subscriber (default: runtime pointer).
+  --token <token>           Board token (default: $TASKD_TOKEN / pointer tokenFile).
+  --sse-idle-ms <ms>        Reconnect after this much stream silence (default: 45000).
+  --event-debounce-ms <ms>  Coalesce a burst of events (default: 300).
+  --event-debounce-max-ms <ms>
+                            Never delay the first pending event past this (default: 2000).
+  --event-continue=yes|no   Let events wake a continue turn (default: yes).
+  --event-continue-min-ms <ms>
+                            At most one event-triggered turn per interval (default: 60000).
   --patrol-interval <sec>   SLA measurement period (default: ${DEFAULT_PATROL_SECONDS}); it no
                             longer schedules anything.
   --max-concurrency <n>     Max concurrent workers (default: ${DEFAULT_MAX_CONCURRENCY}).

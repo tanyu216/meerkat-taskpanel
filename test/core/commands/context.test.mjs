@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import test, { after, describe, it } from "node:test";
 
-import { SYSTEM_ACTOR, actorOf, createContext } from "../../../src/core/commands/context.mjs";
+import { BOARD_ACTOR, actorOf, createContext } from "../../../src/core/commands/context.mjs";
 import { createRepositories } from "../../../src/core/storage/repositories/index.mjs";
 import { DomainError } from "../../../src/shared/errors.mjs";
 import { TS, cleanupTempDirs, createTempBoard } from "../../helpers/sqlite-fixture.mjs";
@@ -63,10 +63,8 @@ describe("commands/context", () => {
 
   it("normalises actors, and refuses a write with nobody behind it", () => {
     assert.deepEqual(actorOf({ kind: "human", id: "Terry" }), { kind: "human", id: "Terry" });
-    assert.deepEqual(actorOf({ id: "linus" }), { kind: "agent", id: "linus" }, "agents are the default");
-    assert.deepEqual(actorOf("linus"), { kind: "agent", id: "linus" }, "a bare string is an actor id");
-    assert.deepEqual(actorOf("linus", { defaultKind: "human" }), { kind: "human", id: "linus" });
-    assert.deepEqual(actorOf({ kind: "system", id: "taskd" }), SYSTEM_ACTOR);
+    assert.deepEqual(actorOf("linus", { defaultKind: "claude" }), { kind: "claude", id: "linus" });
+    assert.deepEqual(actorOf({ kind: "taskd", id: "taskd" }), BOARD_ACTOR);
 
     for (const bad of [null, undefined]) {
       assert.throws(() => actorOf(bad), (err) => {
@@ -75,8 +73,12 @@ describe("commands/context", () => {
         return true;
       });
     }
-    assert.throws(() => actorOf({ kind: "agent" }), (err) => err.details.field === "actor.id");
-    assert.throws(() => actorOf({ kind: "agent", id: "  " }), (err) => err.details.field === "actor.id");
+    // A kind must be a concrete writer. There is no implicit `agent`/`system`
+    // fallback: the caller names the platform, or the write has nobody behind it.
+    assert.throws(() => actorOf({ id: "linus" }), (err) => err.details.field === "actor.kind");
+    assert.throws(() => actorOf("linus"), (err) => err.details.field === "actor.kind");
+    assert.throws(() => actorOf({ kind: "claude" }), (err) => err.details.field === "actor.id");
+    assert.throws(() => actorOf({ kind: "claude", id: "  " }), (err) => err.details.field === "actor.id");
     // A kind is open — `human`, a platform, or whatever a host calls itself — so
     // an unfamiliar one is the caller's to name. Only a *blank* one is refused,
     // because that reads as neither.

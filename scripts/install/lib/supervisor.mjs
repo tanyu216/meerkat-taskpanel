@@ -46,14 +46,17 @@ export const SYSTEMD_UNITS = Object.freeze([
   "meerkat-taskpanel-ping.timer",
   "meerkat-taskpanel-continue.service",
   "meerkat-taskpanel-continue.timer",
+  "meerkat-taskpanel-subscribe.service",
 ]);
 /** The timers `enable --now` / `disable --now` act on. */
 export const SYSTEMD_TIMERS = Object.freeze([
   "meerkat-taskpanel-ping.timer",
   "meerkat-taskpanel-continue.timer",
 ]);
-/** The loop's two clocks, in the order the units are written. */
-export const KINDS = Object.freeze(["ping", "continue"]);
+/** The long-lived service beside the two timers (the event subscriber). */
+export const SYSTEMD_SERVICES = Object.freeze(["meerkat-taskpanel-subscribe.service"]);
+/** The loop's two clocks plus the optional event daemon, in write order. */
+export const KINDS = Object.freeze(["ping", "continue", "subscribe"]);
 /**
  * The topology this installer used to ship. `enable` takes these down before it
  * loads the new units, because a loaded launchd/systemd job does not notice its
@@ -291,7 +294,7 @@ export function launchdMechanism({ paths, uid, run }) {
 
   return {
     name: "launchd",
-    unitsReport: `${supervisorBase(paths.agent, paths.host)}.ping,.continue`,
+    unitsReport: `${supervisorBase(paths.agent, paths.host)}.ping,.continue,.subscribe`,
 
     plan() {
       return [
@@ -357,7 +360,7 @@ export function launchdMechanism({ paths, uid, run }) {
 export function systemdMechanism({ paths, run }) {
   return {
     name: "systemd",
-    unitsReport: SYSTEMD_TIMERS.join(","),
+    unitsReport: [...SYSTEMD_TIMERS, ...SYSTEMD_SERVICES].join(","),
 
     plan() {
       return [
@@ -365,7 +368,7 @@ export function systemdMechanism({ paths, run }) {
         `mkdir -p ${paths.systemdUnitDir}`,
         `cp ${paths.systemdSrcDir}/* ${paths.systemdUnitDir}/`,
         "systemctl --user daemon-reload",
-        `systemctl --user enable --now ${SYSTEMD_TIMERS.join(" ")}`,
+        `systemctl --user enable --now ${[...SYSTEMD_TIMERS, ...SYSTEMD_SERVICES].join(" ")}`,
       ];
     },
 
@@ -388,7 +391,7 @@ export function systemdMechanism({ paths, run }) {
     },
 
     probe() {
-      const states = SYSTEMD_TIMERS.map((unit) => ({
+      const states = [...SYSTEMD_TIMERS, ...SYSTEMD_SERVICES].map((unit) => ({
         unit,
         loaded: runStep({ command: "systemctl", args: ["--user", "is-enabled", unit] }, run).ok,
       }));
@@ -426,7 +429,7 @@ export function systemdMechanism({ paths, run }) {
 
       if (this.probe().loaded) return { ok: true, already: true };
       const outcome = runStep(
-        { command: "systemctl", args: ["--user", "enable", "--now", ...SYSTEMD_TIMERS] },
+        { command: "systemctl", args: ["--user", "enable", "--now", ...SYSTEMD_TIMERS, ...SYSTEMD_SERVICES] },
         run,
       );
       if (outcome.ok) return { ok: true, already: false };
@@ -453,7 +456,7 @@ export function systemdMechanism({ paths, run }) {
       // `is-enabled` first: `systemctl disable` is happy to be told to disable something
       // that was never enabled, and calling that "disabled" would overstate what happened.
       const wasEnabled = this.probe().loaded || this.legacyProbe().loaded;
-      const outcome = this.disableTimers([...SYSTEMD_TIMERS, ...LEGACY_SYSTEMD_TIMERS]);
+      const outcome = this.disableTimers([...SYSTEMD_TIMERS, ...SYSTEMD_SERVICES, ...LEGACY_SYSTEMD_TIMERS]);
       if (outcome.ok) return { ok: true, already: !wasEnabled };
       return outcome;
     },

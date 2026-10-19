@@ -82,13 +82,21 @@ export const ADMITTED_EVENTS = Object.freeze({
   task_created: Object.freeze({ kind: "created", verb: "created", group: "meta" }),
   task_claimed: Object.freeze({ kind: "claimed", verb: "claimed", group: "meta" }),
   task_moved: Object.freeze({ kind: "status", verb: "status", group: "status" }),
-  task_archived: Object.freeze({ kind: "status", verb: "status", group: "status" }),
+  // Archive is a terminal act, not a transition to a status of its own; its
+  // `changes.from` names the stage it left.
+  task_archived: Object.freeze({ kind: "archived", verb: "status", group: "status" }),
   task_delivered: Object.freeze({ kind: "delivery", verb: "delivered", group: "delivery" }),
   report_written: Object.freeze({ kind: "delivery", verb: "delivered", group: "delivery" }),
   report_waived: Object.freeze({ kind: "delivery", verb: "delivered", group: "delivery" }),
   comment_added: Object.freeze({ kind: "comment", verb: "commented", group: "comment" }),
   relation_added: Object.freeze({ kind: "relation", verb: "linked", group: "meta" }),
   relation_removed: Object.freeze({ kind: "relation", verb: "linked", group: "meta" }),
+  // The parent's own start: a child entered work and the board moved the epic.
+  epic_auto_start: Object.freeze({ kind: "status", verb: "status", group: "status" }),
+  attachment_added: Object.freeze({ kind: "attachment", verb: "attached", group: "meta" }),
+  attachment_removed: Object.freeze({ kind: "attachment", verb: "attached", group: "meta" }),
+  // `attachment_updated` is a content replace, not a new file: it stays out of
+  // the human feed (the drawer's attachment list still refreshes from it).
 });
 
 /**
@@ -98,6 +106,12 @@ export const ADMITTED_EVENTS = Object.freeze({
  */
 export const TASK_UPDATED_KINDS = Object.freeze({
   labels: Object.freeze({ kind: "label", verb: "label" }),
+  // The command layer writes the **database field names**; the older role words
+  // are kept so a test or a historical frame still classifies.
+  assigneeId: Object.freeze({ kind: "assignee", verb: "assignee" }),
+  assigneeKind: Object.freeze({ kind: "assignee", verb: "assignee" }),
+  reporterId: Object.freeze({ kind: "assignee", verb: "assignee" }),
+  reporterKind: Object.freeze({ kind: "assignee", verb: "assignee" }),
   assignee: Object.freeze({ kind: "assignee", verb: "assignee" }),
   reporter: Object.freeze({ kind: "assignee", verb: "assignee" }),
   title: Object.freeze({ kind: "updated", verb: "updated" }),
@@ -362,6 +376,10 @@ export function changeLines(item) {
       if (changes.awaitingReason) lines.push({ field: "activity.detail.reason", kind: "status", value: String(changes.awaitingReason) });
       return lines;
     }
+    case "archived":
+      return changes.from
+        ? [{ field: "activity.detail.archived", kind: "status", value: String(changes.from) }]
+        : [];
     case "delivery": {
       const lines = [{ field: "activity.detail.delivery", kind: "delivery", value: `Round ${changes.round ?? changes.deliveryRound ?? ""}`.trim() }];
       if (changes.reason) lines.push({ field: "activity.detail.reason", kind: "delivery", value: String(changes.reason) });
@@ -375,6 +393,8 @@ export function changeLines(item) {
       return [{ field: "activity.detail.claimed", kind: "claimed", transition: { from: changes.from ?? "", to: changes.to ?? "" } }];
     case "relation":
       return [{ field: "activity.detail.relation", kind: "relation", value: `${changes.type ?? ""} ${changes.target ?? ""}`.trim() }];
+    case "attachment":
+      return [{ field: "activity.detail.attachment", kind: "attachment", value: String(changes.filename ?? "") }];
     case "label":
       return [{ field: "activity.detail.labels", kind: "label", tokens: (changes.labels ?? []).map((entry) => `+ ${entry.displayName ?? entry.norm ?? ""}`) }];
     case "assignee":

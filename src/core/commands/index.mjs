@@ -16,7 +16,7 @@ import * as reports from "./reports.mjs";
 import * as rollup from "./rollup.mjs";
 import * as tasks from "./tasks.mjs";
 
-export { createContext, actorOf, SYSTEM_ACTOR } from "./context.mjs";
+export { createContext, actorOf, BOARD_ACTOR } from "./context.mjs";
 
 /**
  * Bind every command to a context.

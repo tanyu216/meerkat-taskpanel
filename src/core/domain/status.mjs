@@ -40,6 +40,7 @@
  * Pure: no `node:` specifiers.
  */
 
+import { HUMAN_KIND, TASKD_KIND } from "../../shared/constants.mjs";
 import { DomainError } from "../../shared/errors.mjs";
 import { STATUS, STATUSES, TASK_KIND } from "./enums.mjs";
 
@@ -267,7 +268,7 @@ export function isClaimable(value) {
 }
 
 /** The acceptance authority's allowed kinds, exported for tests and docs. */
-export const ACCEPTANCE_ACTOR_KINDS = Object.freeze(["human", "system"]);
+export const ACCEPTANCE_ACTOR_KINDS = Object.freeze([HUMAN_KIND, TASKD_KIND]);
 
 /**
  * The actor kinds that may move a card into `done`.
@@ -275,7 +276,7 @@ export const ACCEPTANCE_ACTOR_KINDS = Object.freeze(["human", "system"]);
  * `done` is the board's *acceptance* act, and acceptance is the one transition
  * a worker must never perform on its own work. The rule is therefore positive
  * rather than a self-review comparison: only a **human** or the **board itself**
- * (`system` — the loop's workflow pass) may accept. A worker agent cannot close
+ * (`taskd` — the loop's workflow pass) may accept. A worker agent cannot close
  * its own card, and cannot close somebody else's either; if an agent is ever the
  * legitimate acceptor, that is a role the board would have to model explicitly,
  * and today it does not.

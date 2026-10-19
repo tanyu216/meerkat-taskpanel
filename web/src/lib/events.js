@@ -47,6 +47,136 @@ export function eventTargets(activity) {
   return { scope: "all", taskId: null };
 }
 
+/* ------------------------------------------------------- refresh decisions */
+
+/**
+ * Task-scoped events that change the card row itself. Comments, sessions,
+ * relations and attachments are task-scoped too, but they change a sub-resource
+ * (or nothing the board renders), so they are handled by `detailRefetch` and do
+ * not cost a task read on every keystroke.
+ */
+const TASK_REFRESH_EVENTS = new Set([
+  "task_created",
+  "task_updated",
+  "task_claimed",
+  "task_moved",
+  "task_archived",
+  "task_delivered",
+  "report_written",
+  "report_waived",
+  "epic_auto_start",
+]);
+
+/** Events with no task: an unknown one is treated as a full reload, the safe direction. */
+const TASKLESS_RELOAD_EVENTS = new Set([
+  "project_created",
+  "project_updated",
+  "label_gc",
+  "import_completed",
+]);
+
+/** Events that can change the waiting queue's question / `since`. */
+const WAITING_INVALIDATING_EVENTS = new Set([
+  "task_created",
+  "task_updated",
+  "task_claimed",
+  "task_moved",
+  "task_archived",
+  "task_delivered",
+  "report_waived",
+  "comment_added",
+]);
+
+/**
+ * @param {string|null|undefined} event
+ * @returns {boolean}
+ */
+export function taskEventNeedsRefresh(event) {
+  return TASK_REFRESH_EVENTS.has(event);
+}
+
+/**
+ * A task-less event that should reload the board's shared lists. Unknown
+ * task-less events take the same path — never a silent drop.
+ *
+ * @param {string|null|undefined} event
+ * @returns {boolean}
+ */
+export function tasklessNeedsReload(event) {
+  return TASKLESS_RELOAD_EVENTS.has(event) || !isKnownEvent(event);
+}
+
+/**
+ * @param {string|null|undefined} event
+ * @returns {boolean}
+ */
+export function invalidatesWaitingPayload(event) {
+  return WAITING_INVALIDATING_EVENTS.has(event);
+}
+
+/** Every event the UI understands, for the unknown-event warning. */
+const KNOWN_EVENTS = new Set([
+  ...TASK_REFRESH_EVENTS,
+  ...TASKLESS_RELOAD_EVENTS,
+  "comment_added",
+  "relation_added",
+  "relation_removed",
+  "session_registered",
+  "session_closed",
+  "progress",
+  "attachment_added",
+  "attachment_updated",
+  "attachment_removed",
+  "task_heartbeat",
+]);
+
+/** @param {string|null|undefined} event */
+export function isKnownEvent(event) {
+  return KNOWN_EVENTS.has(event);
+}
+
+/**
+ * Which drawer sub-resources an activity invalidates. The drawer is a snapshot
+ * loaded in `openDetail`; this is the map that keeps it live without refetching
+ * everything on every frame.
+ *
+ * `activities` is on every row because the drawer's trail is a projection of the
+ * same stream.
+ *
+ * @param {{event?: string}} activity
+ * @returns {string[]} a subset of `task|comments|relations|activities|sessions|reports|attachments`
+ */
+export function detailRefetch(activity) {
+  const event = activity?.event ?? "";
+  switch (event) {
+    case "comment_added":
+      return ["comments", "activities"];
+    case "relation_added":
+    case "relation_removed":
+      return ["relations", "activities"];
+    case "session_registered":
+    case "session_closed":
+      return ["sessions", "activities"];
+    case "report_written":
+      return ["task", "reports", "activities"];
+    case "task_delivered":
+    case "report_waived":
+      return ["task", "reports", "activities"];
+    case "attachment_added":
+    case "attachment_updated":
+    case "attachment_removed":
+      return ["attachments", "activities"];
+    case "progress":
+      return ["activities"];
+    case "epic_auto_start":
+      return ["task", "relations", "activities"];
+    default:
+      // task_created/updated/claimed/moved/archived and any unknown event: the
+      // task row is the safe, bounded thing to reread.
+      return ["task", "activities"];
+  }
+}
+
 /** The `?after=` query string for a resync, or `""` when there is no cursor yet. */
 export function resyncQuery(cursor) {
   if (cursor === null || cursor === undefined) return "";

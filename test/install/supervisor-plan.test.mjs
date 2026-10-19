@@ -160,11 +160,13 @@ describe("supervisor: the scheduler and the identifiers", () => {
       [
         "/home/op/.claude/scheduling/launchd/com.meerkat-taskpanel.ping.plist",
         "/home/op/.claude/scheduling/launchd/com.meerkat-taskpanel.continue.plist",
+        "/home/op/.claude/scheduling/launchd/com.meerkat-taskpanel.subscribe.plist",
       ],
     );
     assert.deepEqual(paths.launchd.map((unit) => unit.label), [
       "com.meerkat-taskpanel.alice.claude.ping",
       "com.meerkat-taskpanel.alice.claude.continue",
+      "com.meerkat-taskpanel.alice.claude.subscribe",
     ]);
     // The old topology is still addressable, so enable can boot it out.
     assert.deepEqual(paths.legacyLaunchd.map((unit) => unit.label), [
@@ -328,7 +330,7 @@ describe("supervisor: the docs and the implementation agree", () => {
     assert.notEqual(documented, null, "the enable report must be quoted in docs/install.md");
     assert.equal(
       documented[1].replace("<agent>", "alice"),
-      `${supervisorBase("alice", "claude")}.ping,.continue`,
+      `${supervisorBase("alice", "claude")}.ping,.continue,.subscribe`,
       "the documented units= is the one the plan reports",
     );
   });
@@ -338,7 +340,7 @@ describe("supervisor: the docs and the implementation agree", () => {
     assert.ok(scheduling.includes("launchctl bootstrap gui/$(id -u)"), "launchd bootstrap");
     assert.ok(scheduling.includes("launchctl bootout gui/$(id -u)/com.meerkat-taskpanel.<agent>.claude.ping"), "launchd bootout");
     assert.ok(
-      scheduling.includes("systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer"),
+      scheduling.includes("systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-subscribe.service"),
       "systemd enable",
     );
     assert.ok(scheduling.includes("loginctl enable-linger"), "the lingering remedy");

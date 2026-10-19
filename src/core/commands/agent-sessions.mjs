@@ -6,7 +6,7 @@
 import { DomainError } from "../../shared/errors.mjs";
 import { sessionId as deriveSessionId } from "../../shared/ids.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
-import { actorOf } from "./context.mjs";
+import { BOARD_ACTOR, actorOf } from "./context.mjs";
 
 /** The deterministic session id for a (task, owner, seg) triple. */
 export const sessionId = deriveSessionId;
@@ -16,7 +16,7 @@ export const sessionId = deriveSessionId;
  * @param {{taskId: string, seg: string, owner?: string, actor?: object, backend: string, sessionId: string, phase?: string|null, pid?: number|null, status?: string}} input
  */
 export function registerSession(ctx, input) {
-  const actor = actorOf(input.actor ?? { kind: "agent", id: input.owner ?? "unknown" });
+  const actor = actorOf(input.actor ?? { kind: BOARD_ACTOR.kind, id: input.owner ?? BOARD_ACTOR.id });
   const now = ctx.now();
 
   return transaction(
@@ -56,7 +56,7 @@ export function registerSession(ctx, input) {
  * @param {{sessionId: string, actor?: object, status?: "closed"|"failed"}} input
  */
 export function closeSession(ctx, input) {
-  const actor = actorOf(input.actor ?? { kind: "system", id: "taskd" });
+  const actor = actorOf(input.actor ?? BOARD_ACTOR);
   const now = ctx.now();
 
   return transaction(

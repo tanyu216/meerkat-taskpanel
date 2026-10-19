@@ -10,6 +10,7 @@
  * Node builtins only; no network, no dependencies.
  */
 
+import { TASKD_KIND } from "../../src/shared/constants.mjs";
 import { MECHANISM, pruneSlaLedger, trailReadCandidates } from "../../src/shared/sla-patrol.mjs";
 
 import { runSlaPatrolTick, runWorkflowTick, notifyReal } from "./runners.mjs";
@@ -161,14 +162,15 @@ export function readReviewCards(opts, log) {
 
 /**
  * The real-I/O half of the workflow pass. Every write goes through `taskctl`
- * with `--actor-kind system`: an automated acceptance must be attributable as
- * the loop's act, not a human's (the board's default actor kind is `human`).
+ * with `--actor-kind taskd`: an automated acceptance must be attributable as
+ * the board's act, not a human's (the board's default actor kind is `human`),
+ * and `taskd` names the concrete platform rather than a vague role word.
  */
 export async function runWorkflowPass(opts, config, log, { tasks = [], boardTruncated = false } = {}) {
   if (config.workflow !== true) return null;
   const agent = opts.agents[0];
-  const system = { actorKind: "system" };
-  const invoke = (args) => runCli(opts, agent, args, system);
+  const automation = { actorKind: TASKD_KIND };
+  const invoke = (args) => runCli(opts, agent, args, automation);
 
   const result = await runWorkflowTick({
     tasks,

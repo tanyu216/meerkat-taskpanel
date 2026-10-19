@@ -36,6 +36,7 @@
  *   node scripts/supervisor.mjs --host claude --agent alice
  *   node scripts/supervisor.mjs --host claude --agent alice --ping-only --once
  *   node scripts/supervisor.mjs --host claude --agent alice --continue-only --once
+ *   node scripts/supervisor.mjs --host claude --agent alice --subscribe
  *
  * Run with: node scripts/supervisor.mjs --help
  */
@@ -47,6 +48,7 @@ import { isEntryPoint } from "../src/shared/entry-guard.mjs";
 import * as continueEntry from "./loop/continue.mjs";
 import * as patrolEntry from "./loop/patrol.mjs";
 import * as pollEntry from "./loop/poll.mjs";
+import * as subscribeEntry from "./loop/subscribe.mjs";
 import { parseArgs, resolveLoopConfig, selectMode, USAGE } from "./loop/options.mjs";
 import { createLogger, isProcessAlive, loadRegistry, runPingTick, saveRegistry } from "./loop/runtime.mjs";
 
@@ -106,6 +108,7 @@ export {
   spawnContinueTurn,
   spawnWorkerReal,
 } from "./loop/runners.mjs";
+export { createDispatchScheduler, runSubscribe } from "./loop/subscribe.mjs";
 export {
   readBoard,
   readLiveCard,
@@ -240,6 +243,10 @@ async function main(argv, env = process.env) {
       // handled above. Say so, because the new units never use it.
       log("mode: bare --once runs the legacy poll pass; new units use --ping-only/--continue-only");
       return pollEntry.runOnce(opts, env);
+    case "subscribe":
+      // A daemon alongside the two clocks: it holds one SSE connection and
+      // asks for a continue turn when the board says something happened.
+      return subscribeEntry.runOnce(opts, env);
     default:
       return runDaemon(opts, env, log);
   }

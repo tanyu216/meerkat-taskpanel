@@ -49,7 +49,7 @@ export { exportMd, renderCard } from "./storage/md/export.mjs";
 export { importMd, parseCard } from "./storage/md/import.mjs";
 
 // Commands ----------------------------------------------------------------
-export { createCommands, createContext, actorOf, SYSTEM_ACTOR } from "./commands/index.mjs";
+export { createCommands, createContext, actorOf, BOARD_ACTOR } from "./commands/index.mjs";
 // A command's input, declared once — the record both surfaces project from
 // (`commands/tasks-input.mjs`). Not a command: no `ctx`, no write.
 export { inputOf, TASK_OPS } from "./commands/tasks-input.mjs";

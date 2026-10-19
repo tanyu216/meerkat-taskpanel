@@ -9,14 +9,14 @@
  *     record, so the same activity can be re-read under any language.
  *   * `activityLine` — an activity row's sentence: a catalogue key for the
  *     events the prototype names (`activity.created` / `claimed` / `commented`),
- *     the prototype's `status: <from> → <to>` mono line for a move, and the raw
- *     event name for anything else (never an invented sentence).
+ *     the prototype's `status: <from> → <to>` mono line for a move, and a
+ *     generic fallback for anything else (never a raw identifier).
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { ACTIVITY_SENTENCES, activityLine, relativeTime } from "../../web/src/lib/activity.js";
-import { CATALOGUE } from "../../web/src/i18n/catalogue.mjs";
+import { resolveText } from "../../web/src/i18n/messages.mjs";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -71,7 +71,8 @@ describe("web/activity — the row sentence", () => {
     // scanner can read as a literal — so the key family is pinned here instead.
     for (const sentence of Object.values(ACTIVITY_SENTENCES)) {
       for (const language of ["en", "zh"]) {
-        assert.equal(typeof CATALOGUE[language][`activity.${sentence}`], "string", `activity.${sentence} missing in ${language}`);
+        const key = `activity.${sentence}`;
+        assert.notEqual(resolveText(language, key), key, `${key} missing in ${language}`);
       }
     }
   });
@@ -82,9 +83,10 @@ describe("web/activity — the row sentence", () => {
     });
   });
 
-  it("falls back to the raw event name rather than inventing a sentence", () => {
-    assert.deepEqual(activityLine({ event: "report_waived" }), { text: "report_waived" });
-    assert.deepEqual(activityLine({ event: "task_moved", changes: {} }), { text: "task_moved" });
+  it("uses a generic sentence for an event it does not know, never a raw identifier", () => {
+    assert.deepEqual(activityLine({ event: "report_waived" }), { sentence: "verb.delivered" });
+    assert.deepEqual(activityLine({ event: "task_moved", changes: {} }), { sentence: "other" });
+    assert.deepEqual(activityLine({ event: "brand_new_event" }), { sentence: "other" });
     assert.deepEqual(activityLine(null), { text: "" });
   });
 });

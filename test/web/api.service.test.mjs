@@ -45,6 +45,12 @@ describe("web/api — request shaping", () => {
     assert.deepEqual(calls[0].options.headers, {});
   });
 
+  it("addresses /meta as a root route, not under /api/v1", async () => {
+    const calls = installFetch(() => okEnvelope({ revision: 7 }));
+    await api.meta();
+    assert.equal(calls[0].url, "/meta");
+  });
+
   it("serialises a JSON body and sets content-type on a write", async () => {
     const calls = installFetch(() => okEnvelope({ id: "td_1" }));
     await post("/tasks", { title: "wire it" });

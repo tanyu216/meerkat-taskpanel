@@ -609,10 +609,12 @@ install_scheduling() {
 
   emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.ping.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.ping.plist"
   emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.continue.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.continue.plist"
+  emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.subscribe.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.subscribe.plist"
   emit_loop_file "scheduling/systemd/meerkat-taskpanel-ping.service" "$TP_SCHED/systemd/meerkat-taskpanel-ping.service"
   emit_loop_file "scheduling/systemd/meerkat-taskpanel-ping.timer" "$TP_SCHED/systemd/meerkat-taskpanel-ping.timer"
   emit_loop_file "scheduling/systemd/meerkat-taskpanel-continue.service" "$TP_SCHED/systemd/meerkat-taskpanel-continue.service"
   emit_loop_file "scheduling/systemd/meerkat-taskpanel-continue.timer" "$TP_SCHED/systemd/meerkat-taskpanel-continue.timer"
+  emit_loop_file "scheduling/systemd/meerkat-taskpanel-subscribe.service" "$TP_SCHED/systemd/meerkat-taskpanel-subscribe.service"
   emit_loop_file "scheduling/cron/meerkat-taskpanel.cron" "$TP_SCHED/cron/meerkat-taskpanel.cron"
   emit_loop_file "$TP_HOST/wake-$TP_HOST.sh" "$TP_WAKE" --exec
 
@@ -630,9 +632,9 @@ install_scheduling() {
   fi
 
   echo "$TP_HOST: to start the supervisor, load one of these (nothing is loaded for you):"
-  echo "  launchd:  launchctl load $TP_SCHED/launchd/com.meerkat-taskpanel.ping.plist   # and .continue.plist"
-  echo "  systemd:  mkdir -p ~/.config/systemd/user && cp $TP_SCHED/systemd/* ~/.config/systemd/user/ && systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer"
-  echo "  cron:     crontab $TP_SCHED/cron/meerkat-taskpanel.cron"
+  echo "  launchd:  launchctl load $TP_SCHED/launchd/com.meerkat-taskpanel.ping.plist   # and .continue.plist + .subscribe.plist"
+  echo "  systemd:  mkdir -p ~/.config/systemd/user && cp $TP_SCHED/systemd/* ~/.config/systemd/user/ && systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-subscribe.service"
+  echo "  cron:     crontab $TP_SCHED/cron/meerkat-taskpanel.cron   # no event daemon: cron cannot host one"
 }
 
 # ensure_env_key <key> <value> — add a KEY=value line to the host config when the key

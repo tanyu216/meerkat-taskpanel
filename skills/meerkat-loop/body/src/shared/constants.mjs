@@ -284,6 +284,23 @@ export const SSE_REPLAY_LIMIT = 500;
  */
 export const SSE_NOISE_EVENTS = Object.freeze(["task_heartbeat"]);
 
+/**
+ * How long the loop's SSE subscriber tolerates a silent stream before it
+ * reconnects. Three missed 15 s heartbeats is a dead connection, not a quiet
+ * board.
+ */
+export const SSE_SUBSCRIBE_IDLE_MS = 45_000;
+/** Coalesce a burst of board events into one dispatch decision. */
+export const EVENT_DEBOUNCE_MS = 300;
+/** ...but never delay a dispatch longer than this, however busy the stream is. */
+export const EVENT_DEBOUNCE_MAX_MS = 2_000;
+/** At most one event-triggered continue turn per this interval. */
+export const EVENT_CONTINUE_MIN_MS = 60_000;
+/** How soon to retry a dispatch whose continue turn was already in flight. */
+export const SUBSCRIBE_RETRY_MS = 5_000;
+/** The reconnect ladder's ceiling, matching the web client's 30 s. */
+export const SUBSCRIBE_BACKOFF_MAX_MS = 30_000;
+
 // ---------------------------------------------------------------------------
 // Static hosting (ARCHITECTURE §8, M6a)
 // ---------------------------------------------------------------------------
@@ -455,3 +472,17 @@ export const TASK_ORDER_CAPABILITY = "weights-v1";
  * `src/core/domain/enums.mjs` re-exports it for the domain layer.
  */
 export const HUMAN_KIND = "human";
+
+/**
+ * The board's own platform name.
+ *
+ * `taskd` is a concrete writer, not a role: it names the process that performs
+ * the board's housekeeping (rollup, the label GC, the markdown importer) and
+ * the automation that applies an acceptance verdict. It is the value
+ * `HUMAN_KIND`'s documentation has always pointed at — "or `taskd` for the board
+ * itself" — and the one the `system` placeholder in older rows is replaced by.
+ *
+ * The actor-kind column stays open; this constant exists so our own writes name
+ * a platform instead of a vague role word.
+ */
+export const TASKD_KIND = "taskd";

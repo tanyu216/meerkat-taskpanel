@@ -108,6 +108,14 @@ they name an absolute interpreter and set their own `PATH`.
 | `--once` | off | one pass, then exit. With no selector this is the **legacy poll pass**; the installed units use `--ping-only` / `--continue-only` |
 | `--ping-only` / `--continue-only` | off | with `--once`, run only that clock's pass |
 | `--patrol-only` | off | with `--once`, run only the SLA patrol pass (legacy units) |
+| `--subscribe` | off | run the event-subscriber daemon: one SSE connection → one continue turn per coalesced burst. launchd/systemd only; cannot be combined with `--once` or another selector |
+| `--url <url>` | the runtime pointer | board URL for the subscriber |
+| `--token <token>` | `$TASKD_TOKEN` → the pointer's token file | board token for the subscriber |
+| `--sse-idle-ms <ms>` | `45000` | reconnect after this much stream silence (three missed heartbeats) |
+| `--event-debounce-ms <ms>` | `300` | coalesce a burst of events |
+| `--event-debounce-max-ms <ms>` | `2000` | never delay the first pending event past this |
+| `--event-continue=yes\|no` | from the host config → `yes` | let events wake a continue turn |
+| `--event-continue-min-ms <ms>` | `60000` | at most one event-triggered turn per interval |
 | `--notify <cmd>` | — | run `<cmd>` with each patrol alert as JSON on stdin (the legacy heartbeat alert and the SLA tuple) |
 | `--dry-run` | off | print intended actions; claim nothing, spawn nothing |
 | `--sla-ledger <path>` | `sla-ledger.json` beside `--state` | the SLA de-duplication ledger; an unreadable one suppresses nothing |
@@ -117,6 +125,12 @@ they name an absolute interpreter and set their own `PATH`.
 | `--board-limit <n>` / `--trail-limit <n>` | `500` / `200` | caps on the two reads one patrol pass makes |
 
 The full table, and the tick's flow, are in the repository's `docs/scheduling.md`.
+
+The **event subscriber** is optional and does not add a second dispatch path: it holds one
+SSE connection and asks the existing continue turn to run, so the scan → claim → wake
+authority stays where it always was. It reacts to card-lifecycle events and
+`import_completed`; comments, sessions, progress and attachments are UI-only. Cron cannot
+host a long-lived process, so a cron deployment stays on the continue cadence.
 
 ## The workflow channel
 

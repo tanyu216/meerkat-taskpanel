@@ -152,6 +152,16 @@ describe("commands/relations", () => {
       assert.equal(relation.target, child.id);
       const activity = db.prepare("SELECT * FROM task_activities WHERE event='relation_added'").get();
       assert.equal(activity.task_id, child.id, "the activity hangs off the child");
+
+      commands.removeRelation({ relationId: relation.id, actor: AGENT });
+      const removed = db.prepare("SELECT * FROM task_activities WHERE event='relation_removed'").get();
+      assert.equal(removed.task_id, child.id, "removal also hangs off the target");
+      assert.deepEqual(JSON.parse(removed.changes_json), {
+        relationId: relation.id,
+        type: "parent",
+        source: epic.id,
+        target: child.id,
+      });
     });
   });
 
@@ -330,7 +340,7 @@ describe("commands/agent-sessions", () => {
 
 describe("commands — the project surface", () => {
   it("creates, reads back and owns a README", async () => {
-    await board(({ commands }) => {
+    await board(({ db, commands }) => {
       assert.equal(commands.getProject({ id: "proj" }).name, "Project");
       assert.deepEqual(commands.listProjects().map((p) => p.id), ["proj"]);
       commands.readmeSet({ id: "proj", readme: "# Architecture\n" });
@@ -338,6 +348,16 @@ describe("commands — the project surface", () => {
       assert.throws(() => commands.readmeGet({ id: "nope" }), (err) => err.code === "NOT_FOUND");
       const updated = commands.updateProject({ id: "proj", patch: { meta: { git: "x" } } });
       assert.deepEqual(updated.meta, { git: "x" });
+
+      // A project write is an event too: the activity stream is a cursor over
+      // this table, so a change with no row produces no frame.
+      const rows = db
+        .prepare("SELECT task_id, changes_json FROM task_activities WHERE event = 'project_updated' ORDER BY id")
+        .all();
+      assert.deepEqual(rows.map((row) => ({ task_id: row.task_id, changes: JSON.parse(row.changes_json) })), [
+        { task_id: null, changes: { project: "proj", fields: ["readme"] } },
+        { task_id: null, changes: { project: "proj", fields: ["meta"] } },
+      ]);
     });
   });
 

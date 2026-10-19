@@ -87,6 +87,11 @@ describe("loop skill: the generated payload", () => {
       "scripts/loop/patrol.mjs",
       "scripts/loop/workflow.mjs",
       "scripts/loop/continue.mjs",
+      "scripts/loop/subscribe.mjs",
+      "scripts/loop/sse-parse.mjs",
+      "scripts/loop/sse-client.mjs",
+      "scripts/loop/endpoint.mjs",
+      "scripts/loop/event-rules.mjs",
       "scripts/wake-cwd.mjs",
       "src/shared/scheduling.mjs",
       "src/shared/sla-patrol.mjs",
@@ -97,6 +102,10 @@ describe("loop skill: the generated payload", () => {
       "src/shared/project-dir.mjs",
       "src/shared/runtime-locator.mjs",
       "src/shared/entry-guard.mjs",
+      "src/shared/transport/autostart.mjs",
+      "src/shared/transport/errors.mjs",
+      "src/shared/transport/runtime.mjs",
+      "src/shared/transport/token.mjs",
     ]) {
       assert.ok(body.includes(rel), `${rel} must be part of the loop body`);
     }
