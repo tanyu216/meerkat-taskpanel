@@ -31,7 +31,7 @@ Meerkat TaskPanel 是**为 AI Agent 团队而生**的任务看板。它的主题
 > `taskd` HTTP 服务（`TASKD_NO_AUTOSTART=1` 可禁用）；`src/server/` 提供完整的看板 HTTP API
 > 及其 SSE 事件流；`web/` 是 Vue 3 看板前端，构建到 `web/dist`，由 `taskd` 作为托管根对外
 > 提供。Agent 集成**仅走 skill**，即驱动 `taskctl` CLI（见
-> [`docs/install.md`](docs/install.md)）。仍待实现：Epic 视图、迭代管理与通知订阅（见路线图）。详见
+> [`docs/install.md`](docs/install.md)）。仍待实现：Epic 视图与迭代管理（见路线图）。详见
 > `CLAUDE.md` / `docs/development.md`，各阶段见下方路线图。
 
 ## 亮点
@@ -291,7 +291,6 @@ PR 流程，以及 CI 强制执行的约定。贡献以 MIT 许可落库。
 | **看板 API 与前端** | `src/server/` —— 完整的看板 HTTP API 及其 SSE 流；`web/` —— 构建到 `web/dist` 的 Vue 3 看板 | *已落地* |
 | **Epic 视图** | epic 层级 / 进展 / rollup 的可视化视图 —— 查看 epic 及其子卡状态的聚合 | *（规划中）* |
 | **迭代管理** | 迭代（sprint）周期管理：任务归入迭代、迭代内进度与容量 | *（规划中）* |
-| **通知订阅** | 内置投递到 WhatsApp、Telegram、Slack、微信、飞书、企业微信与普通 webhook。一条订阅选择自己的渠道，可同时订阅**周期报表**（**日报 / 周报 / 月报**）与所选卡片事件 —— `created`（创建），以及状态变更为 `backlog`、`todo`、`in_progress`、`in_review`、`blocked`、`done`、`canceled`、`awaiting` —— 每条订阅的事件可多选 | *（规划中）* |
 
 > 本表已弃用 `M0`–`M6` 编号：`M3`（stdio MCP 服务器）是先落地、后被整体移除的 —— 见
 > [迁移记录](docs/migration.md#separate-migration-the-mcp-integration-is-gone)。

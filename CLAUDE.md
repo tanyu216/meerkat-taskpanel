@@ -19,8 +19,8 @@ SSE plus the `web/` frontend. `src/core/` has the domain model, SQLite storage
 + migrations, use-cases and `openBoard()`; `src/cli/` is the real `taskctl` command surface
 and auto-starts the local `taskd` (`TASKD_NO_AUTOSTART=1` disables it); `src/server/` is the
 board HTTP API + SSE; `web/` is the Vue 3 + Vite frontend that builds to `web/dist` and is
-served by `taskd`. Still planned: the **epic view**, **iteration management** and
-**notification subscriptions** — the roadmap lives in `README.md` / `README.zh-CN.md`.
+served by `taskd`. Still planned: the **epic view** and **iteration management** — the
+roadmap lives in `README.md` / `README.zh-CN.md`.
 
 The agent integration is **skill-only**, driving the `taskctl` CLI (see `docs/install.md`).
 The host-external supervisor is a **skill of its own** (`skills/meerkat-loop/`), never
