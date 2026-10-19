@@ -8,8 +8,7 @@
  */
 
 import { labelToWire } from "../../shared/wire.mjs";
-import { shape, str } from "../requests.mjs";
-import { intOrUndefined, truthy } from "./projects.mjs";
+import { intOrUndefined, shape, str, truthy } from "../requests.mjs";
 
 // Declared request schema, frozen by the contract snapshot (`routes[].request`);
 // the vocabulary lives in `src/server/requests.mjs`.

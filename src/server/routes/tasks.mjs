@@ -19,8 +19,7 @@ import {
   taskToWire,
   waiversFromActivities,
 } from "../../shared/wire.mjs";
-import { bool, project, REQUEST, shape, str } from "../requests.mjs";
-import { intOrUndefined, truthy } from "./projects.mjs";
+import { bool, intOrUndefined, project, REQUEST, shape, str, truthy } from "../requests.mjs";
 
 // Declared request schemas — what the contract snapshot freezes
 // (`routes[].request`); `src/server/requests.mjs` owns the vocabulary and the

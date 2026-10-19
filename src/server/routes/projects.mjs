@@ -21,7 +21,7 @@
 
 import { orderDebugEntry, rankProjects } from "../../shared/project-order.mjs";
 import { projectToWire } from "../../shared/wire.mjs";
-import { arr, obj, shape, str } from "../requests.mjs";
+import { arr, intOrUndefined, obj, shape, str, truthy } from "../requests.mjs";
 
 // Declared request schemas — the shape the contract snapshot freezes
 // (`routes[].request`). See `src/server/requests.mjs` for the vocabulary and the
@@ -122,18 +122,6 @@ export function registerProjectRoutes(router, surface) {
     const project = commands.readmeSet({ id: params.id, readme: body.readme ?? null, actor });
     return { project: projectToWire(project), readme: project.readme };
   }, { body: README_BODY });
-}
-
-/** `?include_archived=1|true|yes` — query strings have no types, so be liberal. */
-export function truthy(value) {
-  return value === "1" || value === "true" || value === "yes" || value === "on";
-}
-
-/** `?limit=50` — an integer, or undefined so the repository default applies. */
-export function intOrUndefined(value) {
-  if (value === null || value === undefined || value === "") return undefined;
-  const parsed = Number.parseInt(String(value), 10);
-  return Number.isInteger(parsed) ? parsed : undefined;
 }
 
 /** What a project with no activity in either window looks like (DESIGN.md §20). */

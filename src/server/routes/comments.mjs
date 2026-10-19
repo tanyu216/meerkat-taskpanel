@@ -5,8 +5,7 @@
  */
 
 import { commentToWire } from "../../shared/wire.mjs";
-import { arr, REQUEST, shape, str } from "../requests.mjs";
-import { intOrUndefined } from "./projects.mjs";
+import { arr, intOrUndefined, REQUEST, shape, str } from "../requests.mjs";
 import { lookupFor, resolveTask } from "./tasks.mjs";
 
 // Declared request schemas, frozen by the contract snapshot (`routes[].request`)
