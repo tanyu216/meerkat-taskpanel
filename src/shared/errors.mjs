@@ -161,6 +161,10 @@ export const ERROR_CODES = Object.freeze({
   // ---- Secrets ---------------------------------------------------------------
   TOKEN_FILE_CORRUPT: spec(500, "Token file exists but is malformed; fix it by hand."),
   RUNTIME_POINTER_TOKEN_LEAK: spec(500, "Refusing to write a runtime pointer that contains a token."),
+  // The access policy's env file (`<dataDir>/taskd.env`): written by the Access
+  // panel, read by `taskd` at start-up. A malformed or unwritable file is a
+  // server-side fault, not a bad request — the panel validates before writing.
+  ACCESS_CONFIG_INVALID: spec(500, "Access configuration is malformed or could not be written."),
 
   // ---- CLI surface (M2) ------------------------------------------------------
   // Raised only by `src/cli`. They exist so a script can tell "you typed it
@@ -232,6 +236,7 @@ export const JS_ONLY_CODES = Object.freeze([
   "ATTACHMENT_TOO_LARGE",
   "TOKEN_FILE_CORRUPT",
   "RUNTIME_POINTER_TOKEN_LEAK",
+  "ACCESS_CONFIG_INVALID",
   // The single-writer guard: raised in JS, before any database is opened.
   "BOARD_ALREADY_RUNNING",
   // Project directories: read from a host-local JSON file, never from a table,

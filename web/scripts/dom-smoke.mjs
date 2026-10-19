@@ -339,7 +339,28 @@ export function fixtureApi() {
       },
     ],
   };
-  return { projects, orderDebug, tasks, entries, labels, comments, activities, relations, attachments, sessions, reports };
+  return {
+    projects,
+    orderDebug,
+    tasks,
+    entries,
+    labels,
+    comments,
+    activities,
+    relations,
+    attachments,
+    sessions,
+    reports,
+    // B19 — the access policy the fixture API serves and `PUT` mutates. The
+    // token is a well-formed 64-hex credential so the panel's copy/reveal and
+    // rotation paths exercise the real shapes.
+    access: {
+      token: `td_${"0123456789abcdef".repeat(4)}`,
+      rotations: 0,
+      allow_list: { enabled: false, cidrs: ["192.168.0.0/16", "10.0.0.0/8"] },
+      source: "file",
+    },
+  };
 }
 
 /**
@@ -526,6 +547,42 @@ export function startServer() {
     // roster.
     if (path === "/api/v1/actors") return ok({ entries: data.entries });
     if (path === "/api/v1/labels") return ok({ labels: data.labels });
+    if (path === "/api/v1/access") {
+      const snapshot = () => ({
+        token: data.access.token,
+        token_file: "/fixture/token",
+        config_file: "/fixture/taskd.env",
+        allow_list: { enabled: data.access.allow_list.enabled, cidrs: [...data.access.allow_list.cidrs] },
+        source: data.access.source,
+      });
+      if (req.method === "GET") return ok(snapshot());
+      if (req.method === "PUT") {
+        const chunks = [];
+        req.on("data", (chunk) => chunks.push(chunk));
+        req.on("end", () => {
+          let body = {};
+          try {
+            body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+          } catch {
+            res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+            return res.end(JSON.stringify({ ok: false, error: { code: "VALIDATION_FAILED", http: 400 } }));
+          }
+          const list = body.allow_list ?? {};
+          data.access.allow_list = {
+            enabled: list.enabled === true,
+            cidrs: Array.isArray(list.cidrs) ? list.cidrs.map((entry) => String(entry).trim()) : [],
+          };
+          let rotated = false;
+          if (body.rotate_token === true) {
+            data.access.rotations += 1;
+            data.access.token = `td_${String(data.access.rotations).padStart(64, "0")}`;
+            rotated = true;
+          }
+          ok({ ...snapshot(), rotated });
+        });
+        return;
+      }
+    }
     if (path.startsWith("/api/v1/")) return ok({});
 
     const rel = normalize(path).replace(/^(\.\.[/\\])+/, "");
@@ -775,7 +832,9 @@ export async function run() {
   }
 
   try {
-    const context = await browser.newContext();
+    // B19's Copy writes the real persisted token: grant the clipboard to the
+    // harness so the assertion reads what the reader would paste.
+    const context = await browser.newContext({ permissions: ["clipboard-read", "clipboard-write"] });
     const page = await context.newPage();
 
     /**
@@ -1592,6 +1651,12 @@ export async function run() {
     await page.setViewportSize({ width: 1512, height: 950 });
     await page.waitForTimeout(150);
     await page.click("[data-access-open]");
+    // The panel is persistent now: wait for `GET /api/v1/access` to fill the
+    // draft before measuring anything that depends on it (rows, switch, Save).
+    await page.waitForFunction(
+      () => document.querySelector("[data-access-panel]")?.getAttribute("data-access-loaded") === "true",
+      { timeout: 5_000 },
+    );
     await page.waitForTimeout(200);
     const panelResults = await evaluateRuleSet(panelRules);
     const panelGeometry = await page.evaluate(() => {
@@ -1627,7 +1692,7 @@ export async function run() {
       );
     }
     r6Check(panelGeometry.labelledbyTarget, `the panel's aria-labelledby="${panelGeometry.labelledby}" has no target`);
-    r6Check(panelGeometry.cidrRows === 3, `the CIDR list has ${panelGeometry.cidrRows} rows, expected 3`);
+    r6Check(panelGeometry.cidrRows === 2, `the CIDR list has ${panelGeometry.cidrRows} rows, expected 2`);
     r6Check(/^td_•+$/.test(panelGeometry.tokenMask), `the token mask is ${JSON.stringify(panelGeometry.tokenMask)}`);
     r6Check(
       panelGeometry.tokenIconsVisible.length === 1,
@@ -1764,53 +1829,110 @@ export async function run() {
     r6Check(b19.ariaHidden === "false", `the open panel carries aria-hidden=${b19.ariaHidden}, expected false`);
     r6Check(b19.focusClose, "opening the settings panel did not move focus to its close control");
 
-    // The allow-list switch is display-only in the prototype's own sense: it
-    // moves, dims the list and announces the state — nothing is written or
-    // enforced. Use an in-page click: the control is disabled in the old tree,
-    // and Playwright's actionability wait would turn this red into a 30s stall.
-    await page.evaluate(() => document.querySelector("[data-cidr-switch]").click());
-    await page.waitForTimeout(120);
-    const cidrOff = await page.evaluate(() => ({
-      enabled: document.querySelector("[data-cidr-whitelist]").getAttribute("data-cidr-enabled"),
-      listOpacity: getComputedStyle(document.querySelector("[data-cidr-list]")).opacity,
-      toast: document.querySelector("[data-toast-region] [data-toast]:last-child")?.getAttribute("data-toast-kind") ?? null,
+    // The panel is persistent: the draft starts clean, the token is the saved
+    // credential, Copy copies it, and one Save writes the switch, the ranges
+    // and a staged rotation together.
+    const loadedDraft = await page.evaluate(() => ({
+      values: [...document.querySelectorAll("[data-cidr-value]")].map((el) => el.value),
+      checked: document.querySelector("[data-cidr-switch]").checked,
+      saveDisabled: document.querySelector("[data-access-save]").disabled,
     }));
     r6Check(
-      cidrOff.enabled === "false" && cidrOff.listOpacity === "0.45",
-      `the allow-list switch left data-cidr-enabled=${cidrOff.enabled} and the list at opacity ${cidrOff.listOpacity}; expected false/0.45`,
+      loadedDraft.values.join(",") === "192.168.0.0/16,10.0.0.0/8",
+      `the loaded ranges are ${loadedDraft.values.join(",")}, expected the two defaults`,
     );
-    r6Check(cidrOff.toast === "info", `the allow-list switch announced ${cidrOff.toast}, expected an info toast`);
-    await page.evaluate(() => document.querySelector("[data-cidr-switch]").click());
+    r6Check(loadedDraft.checked === false, "the default allow-list switch loaded checked; it starts off");
+    r6Check(loadedDraft.saveDisabled === true, "Save is enabled on a clean draft");
 
-    // Reset mirrors the prototype: a new in-memory value, revealed (not
-    // re-masked), and a success toast.
-    await page.evaluate(() => document.querySelector("[data-token-reset]").click());
+    await page.evaluate(() => document.querySelector("[data-token-reveal]").click());
     await page.waitForTimeout(60);
-    const resetState = await page.evaluate(() => ({
-      revealed: document.querySelector("[data-token-block]").getAttribute("data-token-revealed"),
-      token: document.querySelector("[data-token-value]").textContent.trim(),
-      toasts: [...document.querySelectorAll("[data-toast-region] [data-toast]")].map(
-        (toast) => `${toast.getAttribute("data-toast-kind")}:${toast.textContent.trim()}`,
-      ),
-    }));
-    r6Check(resetState.revealed === "true", "reset left the token masked; the prototype reveals the new value");
-    r6Check(/^td_[a-z0-9]{12}$/.test(resetState.token), `reset produced ${JSON.stringify(resetState.token)}, expected td_ + 12 characters`);
+    const revealedToken = await page.evaluate(() => document.querySelector("[data-token-value]").textContent.trim());
     r6Check(
-      resetState.toasts.at(-1)?.startsWith("success:"),
-      `reset announced ${resetState.toasts.at(-1)}, expected a success toast (stack: ${resetState.toasts.join(" | ")})`,
+      revealedToken === data.access.token,
+      `Reveal shows ${JSON.stringify(revealedToken)}, expected the persisted fixture token`,
     );
 
     await page.evaluate(() => document.querySelector("[data-token-copy]").click());
     await page.waitForTimeout(60);
-    const copyToasts = await page.evaluate(() =>
-      [...document.querySelectorAll("[data-toast-region] [data-toast]")].map(
-        (toast) => `${toast.getAttribute("data-toast-kind")}:${toast.textContent.trim()}`,
-      ),
-    );
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    r6Check(copied === data.access.token, `Copy put ${JSON.stringify(copied)} on the clipboard, expected the token`);
+    await page.evaluate(() => document.querySelector("[data-token-reveal]").click());
+
+    // The switch is a draft: it moves and dims the list, but nothing is
+    // persisted until Save.
+    await page.evaluate(() => document.querySelector("[data-cidr-switch]").click());
+    await page.waitForTimeout(120);
+    const cidrOn = await page.evaluate(() => ({
+      enabled: document.querySelector("[data-cidr-whitelist]").getAttribute("data-cidr-enabled"),
+      listOpacity: getComputedStyle(document.querySelector("[data-cidr-list]")).opacity,
+      saveDisabled: document.querySelector("[data-access-save]").disabled,
+    }));
     r6Check(
-      copyToasts.at(-1)?.startsWith("success:"),
-      `copy announced ${copyToasts.at(-1)}, expected a success toast (stack: ${copyToasts.join(" | ")})`,
+      cidrOn.enabled === "true" && cidrOn.listOpacity === "1",
+      `the allow-list switch left data-cidr-enabled=${cidrOn.enabled} and the list at opacity ${cidrOn.listOpacity}; expected true/1`,
     );
+    r6Check(cidrOn.saveDisabled === false, "toggling the switch did not dirty the draft");
+    r6Check(data.access.allow_list.enabled === false, "the switch persisted before Save");
+
+    // Remove the second row, add a new one and fill it.
+    await page.evaluate(() => document.querySelectorAll("[data-cidr-remove]")[1].click());
+    await page.waitForTimeout(60);
+    r6Check(
+      (await page.evaluate(() => document.querySelectorAll("[data-cidr-row]").length)) === 1,
+      "removing a range did not drop its row",
+    );
+    await page.evaluate(() => document.querySelector("[data-cidr-add]").click());
+    await page.waitForTimeout(60);
+    await page.fill("[data-cidr-row]:last-child [data-cidr-value]", "172.16.0.0/12");
+    await page.waitForTimeout(60);
+    const editedDraft = await page.evaluate(() => ({
+      values: [...document.querySelectorAll("[data-cidr-value]")].map((el) => el.value),
+      saveDisabled: document.querySelector("[data-access-save]").disabled,
+    }));
+    r6Check(
+      editedDraft.values.join(",") === "192.168.0.0/16,172.16.0.0/12",
+      `the edited draft is ${editedDraft.values.join(",")}`,
+    );
+    r6Check(editedDraft.saveDisabled === false, "a filled, dirty draft still has Save disabled");
+
+    // A Reset is staged: it must not touch the credential before Save.
+    await page.evaluate(() => document.querySelector("[data-token-reset]").click());
+    await page.waitForTimeout(60);
+    const pendingRotate = await page.evaluate(() => ({
+      pending: Boolean(document.querySelector("[data-token-pending]")),
+      revealed: document.querySelector("[data-token-block]").getAttribute("data-token-revealed"),
+      token: document.querySelector("[data-token-value]").textContent.trim(),
+    }));
+    r6Check(pendingRotate.pending, "Reset did not stage a rotation note");
+    r6Check(pendingRotate.revealed === "false", "a staged Reset revealed a token that does not exist yet");
+    r6Check(
+      pendingRotate.token === "td_••••••••••••",
+      `a staged Reset changed the displayed token to ${JSON.stringify(pendingRotate.token)}`,
+    );
+    r6Check(data.access.rotations === 0, "Reset rotated the token before Save");
+
+    // One Save commits the switch, every range and the rotation.
+    await page.evaluate(() => document.querySelector("[data-access-save]").click());
+    await page.waitForTimeout(250);
+    const savedDraft = await page.evaluate(() => ({
+      values: [...document.querySelectorAll("[data-cidr-value]")].map((el) => el.value),
+      enabled: document.querySelector("[data-cidr-whitelist]").getAttribute("data-cidr-enabled"),
+      revealed: document.querySelector("[data-token-block]").getAttribute("data-token-revealed"),
+      token: document.querySelector("[data-token-value]").textContent.trim(),
+      pending: Boolean(document.querySelector("[data-token-pending]")),
+      saveDisabled: document.querySelector("[data-access-save]").disabled,
+    }));
+    r6Check(savedDraft.values.join(",") === "192.168.0.0/16,172.16.0.0/12", `Save left the rows as ${savedDraft.values.join(",")}`);
+    r6Check(savedDraft.enabled === "true", `Save left the switch at ${savedDraft.enabled}`);
+    r6Check(savedDraft.pending === false, "the pending-rotation note survived Save");
+    r6Check(savedDraft.saveDisabled === true, "Save stayed enabled after a clean save");
+    r6Check(savedDraft.revealed === "true", "Save did not reveal the newly minted token");
+    r6Check(savedDraft.token === data.access.token, `Save displayed ${JSON.stringify(savedDraft.token)}, expected the new token`);
+    r6Check(
+      data.access.allow_list.enabled === true && data.access.allow_list.cidrs.join(",") === "192.168.0.0/16,172.16.0.0/12",
+      `the fixture received ${JSON.stringify(data.access.allow_list)}`,
+    );
+    r6Check(data.access.rotations === 1, `the fixture saw ${data.access.rotations} rotations, expected 1`);
 
     await page.click("[data-access-close]");
     await page.waitForTimeout(200);
@@ -1827,6 +1949,39 @@ export async function run() {
       `the scrim closed as data-state=${panelClosed.overlayState}, hidden=${panelClosed.overlayHidden}; expected closed/true`,
     );
     r6Check(panelClosed.focusOpener, "closing the settings panel did not return focus to [data-access-open]");
+
+    // Persistence across a close/reopen (the same code path a refresh takes):
+    // the saved policy and the rotated token are read back, and the draft is
+    // clean again.
+    await page.click("[data-access-open]");
+    await page.waitForFunction(
+      () => document.querySelector("[data-access-panel]")?.getAttribute("data-access-loaded") === "true",
+      { timeout: 5_000 },
+    );
+    await page.waitForTimeout(120);
+    const accessReopened = await page.evaluate(() => ({
+      values: [...document.querySelectorAll("[data-cidr-value]")].map((el) => el.value),
+      enabled: document.querySelector("[data-cidr-whitelist]").getAttribute("data-cidr-enabled"),
+      masked: document.querySelector("[data-token-value]").textContent.trim(),
+      saveDisabled: document.querySelector("[data-access-save]").disabled,
+    }));
+    r6Check(
+      accessReopened.values.join(",") === "192.168.0.0/16,172.16.0.0/12",
+      `a reopened panel shows ${accessReopened.values.join(",")}, expected the saved ranges`,
+    );
+    r6Check(accessReopened.enabled === "true", `a reopened panel shows the switch at ${accessReopened.enabled}, expected true`);
+    r6Check(accessReopened.masked === "td_••••••••••••", `a reopened panel did not re-mask: ${JSON.stringify(accessReopened.masked)}`);
+    r6Check(accessReopened.saveDisabled === true, "a reopened panel is dirty without an edit");
+
+    await page.evaluate(() => document.querySelector("[data-token-reveal]").click());
+    await page.waitForTimeout(60);
+    const accessReopenedToken = await page.evaluate(() => document.querySelector("[data-token-value]").textContent.trim());
+    r6Check(
+      accessReopenedToken === data.access.token,
+      `a reopened panel shows ${JSON.stringify(accessReopenedToken)}, expected the persisted token`,
+    );
+    await page.click("[data-access-close]");
+    await page.waitForTimeout(200);
 
     // ⑤ — the list's own relations: one dot per status chip, and a rule that runs
     // *between* rows (the first row draws no top edge).

@@ -6,76 +6,148 @@
  * B19 + `src/input.css` `.td-access-*` / `.td-cidr-*` / `.td-token-*` /
  * `.td-switch`): the body order is bind lead → allow-list → token lead →
  * token box, and every face below is transcribed rather than approximated
- * with utilities. The measured oracle is 16px/600 title, 13px `--brand-text-2`
- * leads, a sunken token box, a bordered allow-list and icon-only
- * `.td-iconbtn` controls.
+ * with utilities.
  *
- * Two written deviations remain, both already ruled:
+ * Unlike the prototype's DOM-only demo, this panel **persists**:
  *
- *   * The CIDR allow-list is rendered **read-only** (ruling O6): §5.1 defines
- *     no CIDR read/write route and `/meta` exposes only
- *     `capabilities.allow_list` as a boolean, so the add/remove controls are
- *     deliberately absent rather than faked as dead buttons. The switch stays
- *     display-only in the prototype's own sense — it moves, dims the list and
- *     announces the state, and writes nothing.
- *   * The token is a stand-in produced in memory (`td_` + 12 characters): no
- *     storage, no transport, no credential. Reveal toggles the mask; Copy
- *     reports a toast without touching the clipboard; Reset mints a new value
- *     and reveals it, as the prototype does.
+ *   * the token is the installed credential (`GET /api/v1/access`), so a
+ *     refresh shows the same one; Copy copies it and Reset stages a rotation;
+ *   * the allow-list switch and rows are a draft, and the one **Save** button
+ *     writes the switch, every range and a pending token rotation together
+ *     (`PUT /api/v1/access` → `<dataDir>/taskd.env` + the token file);
+ *   * add/remove are real controls over that draft.
  *
- * The transport's manual resync (`?after=` replay) is an M6b addition with no
- * prototype counterpart; it stays a written deviation (`surface-disposition.md`
- * #3) and lives here rather than as a standing board control.
+ * Both access verbs are loopback-only, so a remote browser never sees the
+ * token. When the process environment owns the policy (`TASKD_ALLOW_CIDRS`),
+ * the response says `source: "env"`; the panel then states that and disables
+ * editing, because a save would be undone by the next process start.
  */
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 
+import { errorTextKey } from "../../i18n/messages.mjs";
 import { resync } from "../../stores/board.js";
 import { accessOpen, pushToast } from "../../stores/ui.js";
+import { api } from "../../services/api.js";
 import { t } from "../../i18n/index.js";
 
-// Stand-in ranges and a stand-in token; nothing leaves the page. The three
-// ranges are the prototype's own seed values (`design/BLOCKS.md` B19) — the
-// third one is a documentation range, which is why it says `203.0.113.0/24`
-// rather than a real loopback address.
-const ranges = ref(["192.168.0.0/16", "10.0.0.0/8", "203.0.113.0/24"]);
+/* --------------------------------------------------------------- the draft */
 
-function makeToken() {
-  const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
-  const length = 12; // the prototype's TOKEN_LENGTH
-  let body = "";
-  const bytes = globalThis.crypto?.getRandomValues?.(new Uint8Array(length));
-  for (let i = 0; i < length; i++) body += alphabet[(bytes ? bytes[i] : i * 7) % alphabet.length];
-  return `td_${body}`;
-}
+const loading = ref(false);
+const loaded = ref(false);
+const loadError = ref(null);
+const saving = ref(false);
 
-const token = ref(makeToken());
+const token = ref("");
+const source = ref("default");
+const savedEnabled = ref(false);
+const savedCidrs = ref([]);
+const draftEnabled = ref(false);
+const draftCidrs = ref([]);
+const pendingRotate = ref(false);
 const revealed = ref(false);
+
 // The mask is `td_` + twelve dots — the prototype's own mask, and deliberately
-// **not** derived from the credential's length: the stand-in's length is an
-// implementation detail, the masked face is design (`design/DESIGN.md` §12).
-const masked = computed(() => `td_${"•".repeat(12)}`);
+// **not** derived from the credential's length (`design/DESIGN.md` §12).
+const masked = `td_${"•".repeat(12)}`;
 
-// Display-only, as in the prototype: the switch moves, the list dims and the
-// toast says so. Nothing is written, sent or enforced.
-const cidrEnabled = ref(true);
+const canEdit = computed(() => loaded.value && source.value !== "env" && !saving.value);
+const dirty = computed(() => {
+  if (pendingRotate.value) return true;
+  if (draftEnabled.value !== savedEnabled.value) return true;
+  if (draftCidrs.value.length !== savedCidrs.value.length) return true;
+  return draftCidrs.value.some((entry, index) => entry.trim() !== savedCidrs.value[index]);
+});
+const blankRow = computed(() => draftCidrs.value.some((entry) => entry.trim() === ""));
+const canSave = computed(() => canEdit.value && dirty.value && !blankRow.value);
 
-function onCidrChange(event) {
-  cidrEnabled.value = event.target.checked;
-  pushToast(
-    t(cidrEnabled.value ? "access.cidr.enabled" : "access.cidr.disabled"),
-    cidrEnabled.value ? "success" : "info",
-  );
+const note = computed(() => {
+  if (loadError.value !== null) return t(loadError.value);
+  if (loading.value) return t("access.loading");
+  if (source.value === "env") return t("access.envManaged");
+  if (blankRow.value) return t("access.cidr.empty");
+  if (draftEnabled.value && draftCidrs.value.length === 0) return t("access.cidr.none");
+  return "";
+});
+
+async function load() {
+  loading.value = true;
+  loaded.value = false;
+  loadError.value = null;
+  try {
+    const data = await api.access();
+    token.value = data.token;
+    source.value = data.source;
+    savedEnabled.value = data.allow_list.enabled;
+    savedCidrs.value = [...data.allow_list.cidrs];
+    draftEnabled.value = data.allow_list.enabled;
+    draftCidrs.value = [...data.allow_list.cidrs];
+    pendingRotate.value = false;
+    revealed.value = false;
+    loaded.value = true;
+  } catch (err) {
+    loadError.value = errorTextKey(err);
+    loaded.value = false;
+  } finally {
+    loading.value = false;
+  }
 }
 
-function copy() {
-  // Announced, not performed — the prototype never touches the clipboard.
-  pushToast(t("toast.tokenCopied"), "success");
+function addRange() {
+  if (!canEdit.value) return;
+  draftCidrs.value = [...draftCidrs.value, ""];
+  nextTick(() => {
+    const inputs = document.querySelectorAll("[data-access-panel] [data-cidr-value]");
+    inputs[inputs.length - 1]?.focus();
+  });
 }
+
+function removeRange(index) {
+  if (!canEdit.value) return;
+  draftCidrs.value = draftCidrs.value.filter((_, at) => at !== index);
+}
+
+async function save() {
+  if (!canSave.value) return;
+  saving.value = true;
+  try {
+    const data = await api.saveAccess({
+      allow_list: {
+        enabled: draftEnabled.value,
+        cidrs: draftCidrs.value.map((entry) => entry.trim()),
+      },
+      rotate_token: pendingRotate.value,
+    });
+    token.value = data.token;
+    source.value = data.source;
+    savedEnabled.value = data.allow_list.enabled;
+    savedCidrs.value = [...data.allow_list.cidrs];
+    draftEnabled.value = data.allow_list.enabled;
+    draftCidrs.value = [...data.allow_list.cidrs];
+    if (data.rotated) revealed.value = true;
+    pendingRotate.value = false;
+    pushToast(t("access.saved"), "success");
+  } catch (err) {
+    pushToast(t(errorTextKey(err)), "danger");
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function copy() {
+  if (token.value === "") return;
+  try {
+    await navigator.clipboard.writeText(token.value);
+    pushToast(t("toast.tokenCopied"), "success");
+  } catch {
+    pushToast(t("error.generic"), "danger");
+  }
+}
+
 function reset() {
-  token.value = makeToken();
-  // The prototype reveals the newly minted value rather than re-masking it.
-  revealed.value = true;
-  pushToast(t("toast.tokenReset"), "success");
+  if (!canEdit.value) return;
+  // Staged, not performed: the one Save submits the rotation with the policy.
+  pendingRotate.value = true;
+  revealed.value = false;
 }
 
 /* ------------------------------------------------------------- open/close -- */
@@ -96,6 +168,7 @@ function openerElement() {
 watch(accessOpen, async (open) => {
   clearTimeout(closeTimer);
   if (open) {
+    void load();
     rendered.value = true;
     await nextTick();
     // One frame with the closed face painted, then open — same forced-start
@@ -137,6 +210,7 @@ onBeforeUnmount(() => clearTimeout(closeTimer));
     class="td-access-panel z-[85]"
     data-access-panel
     :data-state="state"
+    :data-access-loaded="loaded ? 'true' : 'false'"
     :aria-hidden="state === 'open' ? 'false' : 'true'"
     :hidden="!rendered"
     role="dialog"
@@ -160,35 +234,59 @@ onBeforeUnmount(() => clearTimeout(closeTimer));
     <div class="td-access-body">
       <p class="td-access-lead" data-i18n="access.model.bind">{{ $t("access.model.bind") }}</p>
 
-      <section class="td-cidr" data-cidr-whitelist :data-cidr-enabled="cidrEnabled ? 'true' : 'false'">
+      <section class="td-cidr" data-cidr-whitelist :data-cidr-enabled="draftEnabled ? 'true' : 'false'">
         <!-- daisyUI `toggle` — the allow-list is a switch, so the panel says
-             whether the list is in force before it lists anything. Display
-             only: the switch moves and the list dims, nothing else happens. -->
+             whether the list is in force before it lists anything. -->
         <label class="td-switch">
           <input
             type="checkbox"
             class="toggle toggle-sm td-toggle"
             data-cidr-switch
-            :checked="cidrEnabled"
-            @change="onCidrChange"
+            :checked="draftEnabled"
+            :disabled="!canEdit"
+            @change="draftEnabled = $event.target.checked"
           />
           <span class="td-switch-text" data-i18n="access.cidr.enabled">{{ $t("access.cidr.enabled") }}</span>
         </label>
         <div class="td-cidr-head">
           <p class="td-cidr-note" data-i18n="access.cidr.note">{{ $t("access.cidr.note") }}</p>
+          <button
+            type="button"
+            class="td-iconbtn"
+            data-cidr-add
+            :disabled="!canEdit"
+            :aria-label="$t('access.cidr.add')"
+            :title="$t('access.cidr.add')"
+            @click="addRange"
+          >
+            <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" /></svg>
+          </button>
         </div>
 
         <ul class="td-cidr-list" data-cidr-list>
-          <li v-for="range in ranges" :key="range" class="td-cidr-row" data-cidr-row>
+          <li v-for="(range, index) in draftCidrs" :key="index" class="td-cidr-row" data-cidr-row>
             <input
+              v-model="draftCidrs[index]"
               class="td-input td-mono td-cidr-value"
               type="text"
-              :value="range"
-              readonly
-              disabled
+              autocomplete="off"
+              spellcheck="false"
+              :readonly="!canEdit"
+              :disabled="!canEdit"
               data-cidr-value
               :aria-label="$t('access.cidr.value')"
             />
+            <button
+              type="button"
+              class="td-iconbtn"
+              data-cidr-remove
+              :disabled="!canEdit"
+              :aria-label="$t('access.cidr.remove')"
+              :title="$t('access.cidr.remove')"
+              @click="removeRange(index)"
+            >
+              <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6 6 18" /></svg>
+            </button>
           </li>
         </ul>
       </section>
@@ -199,7 +297,7 @@ onBeforeUnmount(() => clearTimeout(closeTimer));
         <h3 class="td-token-title" data-i18n="access.token.title">{{ $t("access.token.title") }}</h3>
 
         <div class="td-token-row">
-          <code class="td-token-value td-mono" data-token-value>{{ revealed ? token : masked }}</code>
+          <code class="td-token-value td-mono" data-token-value>{{ revealed && token !== "" ? token : masked }}</code>
 
           <button
             type="button"
@@ -228,6 +326,7 @@ onBeforeUnmount(() => clearTimeout(closeTimer));
             type="button"
             class="td-iconbtn"
             data-token-copy
+            :disabled="token === ''"
             :aria-label="$t('access.token.copy')"
             :title="$t('access.token.copy')"
             @click="copy"
@@ -239,6 +338,7 @@ onBeforeUnmount(() => clearTimeout(closeTimer));
             type="button"
             class="td-iconbtn"
             data-token-reset
+            :disabled="!canEdit"
             :aria-label="$t('access.token.reset')"
             :title="$t('access.token.reset')"
             @click="reset"
@@ -246,6 +346,8 @@ onBeforeUnmount(() => clearTimeout(closeTimer));
             <svg class="td-icon td-icon-sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5" /></svg>
           </button>
         </div>
+
+        <p v-if="pendingRotate" class="td-token-pending" data-token-pending>{{ $t("access.token.pending") }}</p>
 
         <p class="td-token-notes">
           <span data-i18n="access.token.generated">{{ $t("access.token.generated") }}</span>
@@ -265,5 +367,15 @@ onBeforeUnmount(() => clearTimeout(closeTimer));
         </button>
       </section>
     </div>
+
+    <!-- One Save for every pending edit: the allow-list draft and a staged
+         token rotation. The token itself is the persisted credential, so a
+         refresh never mints a new one. -->
+    <footer class="td-access-foot">
+      <p v-if="note !== ''" class="td-access-foot-note" data-access-note>{{ note }}</p>
+      <button type="button" class="btn btn-primary btn-sm" data-access-save :disabled="!canSave" @click="save">
+        {{ saving ? $t("access.saving") : $t("access.save") }}
+      </button>
+    </footer>
   </section>
 </template>

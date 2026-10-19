@@ -2440,14 +2440,16 @@ const BLOCKS = [
       // The token's mask is `td_` + twelve dots — the prefix stays readable and
       // the mask is the design's, not the credential's length (R6 ③).
       { kind: "text", probe: "[data-token-value]", matches: "^td_[•]+$" },
-      { kind: "count", selector: "[data-cidr-row]", equals: 3 },
+      // The rows are the loaded draft, not static markup: they exist only after
+      // `GET /api/v1/access` answers, so the rule belongs to the driven pass.
+      { kind: "count", selector: "[data-cidr-row]", equals: 2, when: "panel open" },
       {
         kind: "manual",
         note:
-          "BLOCKS.md documents the CIDR whitelist as a front-end placeholder (rows live in the " +
-          "DOM only) and the switch as display-only. Open decision D5: §5.1 of the plan defines " +
-          "no CIDR read/write route and `/meta` exposes only `capabilities.allow_list` as a " +
-          "boolean, so in the real implementation this block renders **read-only** with a note.",
+          "The allow-list is persisted, not a placeholder: `GET|PUT /api/v1/access` read and " +
+          "write `<dataDir>/taskd.env`, the switch and every row are a draft, and the panel's one " +
+          "Save commits them. The two default rows are 192.168.0.0/16 and 10.0.0.0/8; the list " +
+          "starts **off** so an upgrade never silently narrows remote access.",
       },
       {
         kind: "manual",
@@ -2459,9 +2461,10 @@ const BLOCKS = [
       {
         kind: "manual",
         note:
-          "The token is a stand-in (`td_` + mask) produced in memory and written to the DOM " +
-          "nowhere else: no storage, no transport, no credential. Reveal toggles the mask only; " +
-          "Copy reports a toast without touching the clipboard.",
+          "The token is the **persisted credential**, read from `GET /api/v1/access` (loopback " +
+          "only), so a refresh shows the same value. The masked face stays `td_` + twelve dots; " +
+          "Reveal shows the real token and Copy copies it. A Reset is staged, and the panel's " +
+          "Save rotates it together with the allow-list.",
       },
       {
         kind: "manual",

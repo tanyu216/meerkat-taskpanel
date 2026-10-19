@@ -1,6 +1,10 @@
 {
   "errors": [
     {
+      "code": "ACCESS_CONFIG_INVALID",
+      "http": 500
+    },
+    {
       "code": "ARCHIVE_NOT_TERMINAL",
       "http": 409
     },
@@ -234,6 +238,52 @@
     }
   ],
   "routes": [
+    {
+      "method": "GET",
+      "path": "/api/v1/access",
+      "request": {
+        "body": null,
+        "query": null
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/access",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "allow_list": {
+              "additionalProperties": true,
+              "properties": {
+                "cidrs": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "enabled": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "cidrs",
+                "enabled"
+              ],
+              "type": "object"
+            },
+            "rotate_token": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "allow_list"
+          ],
+          "type": "object"
+        },
+        "query": null
+      }
+    },
     {
       "method": "GET",
       "path": "/api/v1/actors",

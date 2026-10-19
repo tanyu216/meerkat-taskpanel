@@ -147,6 +147,12 @@ export const api = {
   meta: () => get("/meta"),
   health,
 
+  // B19 — the access policy and the persisted token. Both verbs are
+  // loopback-only server-side; the read answers the token because the panel
+  // shows the credential a refresh must keep showing.
+  access: () => get("/access"),
+  saveAccess: (body) => request("PUT", "/access", { body }),
+
   projects: (query) => get("/projects", query),
   project: (id) => get(`/projects/${encodeURIComponent(id)}`),
   createProject: (body) => post("/projects", body),

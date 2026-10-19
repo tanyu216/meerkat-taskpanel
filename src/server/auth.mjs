@@ -71,13 +71,15 @@ export function presentedToken(req, url) {
 }
 
 /**
- * @param {{req: object, url: URL, token: string|null, rotate?: boolean, allowList?: object}} input
- *   `allowList` is the parsed `TASKD_ALLOW_CIDRS` policy (`cidr.mjs`). Absent or
+ * @param {{req: object, url: URL, token: string|null, rotate?: boolean, loopbackOnly?: boolean, allowList?: object}} input
+ *   `allowList` is the parsed access policy (`cidr.mjs`). Absent or
  *   `configured: false` means "no list was set" ⇒ every address is allowed.
+ *   `loopbackOnly` names an owner action (`rotate` is the token spelling kept
+ *   for its callers); a remote caller is refused before its token is checked.
  * @returns {{ok: true, loopback: boolean}|{ok: false, status: number, payload: object}}
  */
 export function authorize(input) {
-  const { req, url, token, rotate = false, allowList } = input;
+  const { req, url, token, rotate = false, loopbackOnly = rotate, allowList } = input;
   const loopback = isLoopbackRequest(req);
 
   if (loopback) return { ok: true, loopback: true };
@@ -93,12 +95,17 @@ export function authorize(input) {
     );
   }
 
-  if (rotate) {
+  if (loopbackOnly) {
     // Not a missing credential — a forbidden action. Say which, so a caller can
-    // tell "rotate this locally" from "your token is wrong".
-    return forbid(403, "rotating the board token is a loopback-only action", "loopback_only", {
-      fix: "run `taskctl token rotate` on the machine hosting the board",
-    });
+    // tell "do this locally" from "your token is wrong".
+    return forbid(
+      403,
+      rotate
+        ? "rotating the board token is a loopback-only action"
+        : "changing the access settings is a loopback-only action",
+      "loopback_only",
+      { fix: rotate ? "run `taskctl token rotate` on the machine hosting the board" : "open the board on the machine hosting it" },
+    );
   }
 
   const presented = presentedToken(req, url);

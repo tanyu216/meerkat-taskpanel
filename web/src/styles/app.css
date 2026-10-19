@@ -2158,6 +2158,22 @@ button.td-prop-value:hover {
   padding: var(--space-4) var(--space-5) var(--space-5);
   overflow-y: auto;
 }
+/* The one Save is the panel's own addition (the prototype has no persistent
+   state to commit): a fixed footer, aligned with the head's rhythm. */
+.td-access-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--brand-border);
+}
+.td-access-foot-note {
+  margin: 0 auto 0 0;
+  font-size: var(--text-12);
+  line-height: 1.5;
+  color: var(--brand-text-3);
+}
 
 /* B19 · the scrim. `z-index` stays with the call site (`z-[80]`): this app has
    more layers above the board than the prototype's one dialog, so the stacking
@@ -2235,6 +2251,14 @@ button.td-prop-value:hover {
   color: var(--brand-text-3);
 }
 .td-token-notes > span { display: block; }
+/* A staged Reset has not touched the credential yet; the note says so instead
+   of showing a token that does not exist. */
+.td-token-pending {
+  margin: var(--space-2) 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--brand-text-3);
+}
 
 /* --- CIDR whitelist --------------------------------------------------- */
 /* Ruling O6 keeps the list read-only: add/remove controls are deliberately
@@ -2271,6 +2295,12 @@ button.td-prop-value:hover {
 }
 .td-cidr-row + .td-cidr-row { border-top: var(--border) solid var(--brand-border); }
 .td-cidr-value { flex: 1 1 auto; min-width: 0; }
+.td-cidr-row .td-iconbtn {
+  width: 28px;
+  height: 28px;
+  background-color: var(--brand-surface);
+  border-color: var(--brand-border);
+}
 /* the token rule reads under the whitelist, not under another lead */
 .td-cidr + .td-access-lead { margin-top: var(--space-4); }
 
