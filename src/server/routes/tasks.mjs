@@ -175,6 +175,7 @@ export function registerTaskRoutes(router, surface) {
       idem: body.idem,
       allowDup: body.allow_dup === true,
       reviewOf: body.review_of,
+      reviewRound: body.review_round,
       parent: body.parent,
       actor,
     });

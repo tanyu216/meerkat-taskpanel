@@ -1117,9 +1117,36 @@ describe("server/routes — the acceptance wire (M6)", () => {
     assert.equal(byId.get(review.id).review_of_id, child.id, "the id, not the identifier");
     assert.equal(byId.get(review.id).review_round, 2);
     assert.equal(byId.get(review.id).parent_id, null);
+    assert.equal(review.meta.review_of, child.identifier, "creation stamps the identifier into meta");
+    assert.equal(review.meta.review_round, 2, "and the integer round");
+    assert.equal(review.meta.flow, "B", "other meta keys survive");
 
     const single = dataOf(await call("GET", `/api/v1/tasks/${child.identifier}`));
     assert.equal(single.task.parent_id, epic.id, "the single read projects it too");
+  });
+
+  it("accepts review_round as a top-level create field", async () => {
+    const original = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "demo",
+        title: "Wire original",
+        allow_dup: true,
+      }),
+    ).task;
+    const review = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "demo",
+        title: "Wire review round",
+        allow_dup: true,
+        review_of: original.identifier,
+        review_round: 3,
+      }),
+    ).task;
+
+    assert.equal(review.review_of_id, original.id);
+    assert.equal(review.review_round, 3, "the top-level field reached the marker resolver");
+    assert.equal(review.meta.review_of, original.identifier);
+    assert.equal(review.meta.review_round, 3);
   });
 });
 

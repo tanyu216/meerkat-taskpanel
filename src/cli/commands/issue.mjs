@@ -77,6 +77,7 @@ export const COMMANDS = [
         allow_dup: flags.allowDup === true,
         target: flags.target,
         review_of: flags.reviewOf,
+        review_round: flags.reviewRound,
         parent: flags.parent,
       }));
       return { data: payload, human: `created ${payload.task.identifier}  ${payload.task.title}` };

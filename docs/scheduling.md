@@ -245,10 +245,18 @@ It does three things, in this order:
 
 ### The review card, and who closes it
 
-A review card is an ordinary `kind=task` card — `meta.review_of`, `meta.flow=B`,
-`meta.review_round`, and a `review` label for discoverability. Detection reads the meta
-keys, never the label. There is no `kind=review`: the board's kinds are `task`/`epic`/
-`deploy`, and a review is a task like any other.
+A review card is an ordinary `kind=task` card, created with `review_of` (the original's
+identifier or id) and, optionally, `review_round` (a positive integer), plus `meta.flow=B`
+and a `review` label for discoverability. At creation the board resolves that reference and
+stamps **both** the immutable structural marker (`review_of_id` / `review_round`, 0025) and
+its readable mirror in `meta` (`meta.review_of` = the original's identifier,
+`meta.review_round` = the integer round). Detection reads the structural column first and
+falls back to `meta.review_of` for a snapshot written before 0025; the acceptance gate reads
+the column only. A caller-supplied `meta.review_of` given as an id, or a string round, is
+normalized to the resolved identifier and an integer, and a meta patch is canonicalized
+from the column, so a later PATCH cannot make the two spellings disagree. There is no
+`kind=review`: the board's kinds are `task`/`epic`/`deploy`, and a review is a task like
+any other.
 
 Its lifecycle cannot skip `in_review`:
 

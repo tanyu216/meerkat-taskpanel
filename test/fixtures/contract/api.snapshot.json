@@ -647,6 +647,9 @@
             "review_of": {
               "type": "string"
             },
+            "review_round": {
+              "type": "integer"
+            },
             "source_path": {
               "type": "string"
             },

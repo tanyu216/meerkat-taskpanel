@@ -85,7 +85,14 @@ export const SPELLING = Object.freeze({
       value: "<t>",
       summary: "The card's target — stored in its meta; also the idempotency key's target slot.",
     },
-    review_of: { value: "<id>", summary: "Idempotency key's source slot (a card under review)." },
+    review_of: {
+      value: "<id>",
+      summary: "Mark this card as a review of that card (identifier or id); resolved and stamped at creation.",
+    },
+    review_round: {
+      value: "<n>",
+      summary: "The delivery round this review card audits (positive integer; needs --review-of).",
+    },
     parent: { value: "<id>", summary: "Idempotency key's source slot (a parent card)." },
   }),
   [TASK_OPS.update]: Object.freeze({

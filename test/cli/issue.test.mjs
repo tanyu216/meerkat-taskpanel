@@ -46,6 +46,22 @@ describe("cli/issue — create, list, get", () => {
     });
   });
 
+  it("create accepts --review-of and --review-round end to end", async () => {
+    await board(async ({ run }) => {
+      const original = createIssue(run, ["--title", "Original"]);
+      const review = createIssue(run, [
+        "--title", "Review",
+        "--review-of", original.task.identifier,
+        "--review-round", "2",
+      ]);
+
+      assert.equal(review.task.review_of_id, original.task.id);
+      assert.equal(review.task.review_round, 2);
+      assert.equal(review.task.meta.review_of, original.task.identifier);
+      assert.equal(review.task.meta.review_round, 2);
+    });
+  });
+
   it("lists with filters, and prints one line per task", async () => {
     await board(async ({ run }) => {
       createIssue(run);
