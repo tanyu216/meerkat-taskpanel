@@ -82,6 +82,8 @@ const PLANNED = [
   "commands/dictionary.mjs",
   "commands/labels.mjs",
   "commands/agent-sessions.mjs",
+  // The attachment surface's write half (bytes + row, one transaction).
+  "commands/attachments.mjs",
   "commands/index.mjs",
 ];
 

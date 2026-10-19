@@ -5,6 +5,8 @@
  */
 
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
 import * as commandsModule from "../../../src/core/commands/index.mjs";
@@ -20,6 +22,7 @@ import {
   cleanupTempDirs,
   countRows,
   ensureActor,
+  makeTempDir,
   revision,
   withBoard,
 } from "../../helpers/sqlite-fixture.mjs";
@@ -390,6 +393,57 @@ describe("commands — the project surface", () => {
     await board(({ commands }) => {
       assert.equal(commands.getProject({ id: "proj" }).createdAt, TS2);
     }, { clock: () => TS2 });
+  });
+});
+
+describe("commands/attachments — the write half of the attachment surface", () => {
+  it("records the row and its audit entry from the injected clock", async () => {
+    await board(({ repos, commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "x", actor: AGENT });
+      const { attachment } = commands.addAttachment({
+        taskId: task.id,
+        filename: "a.txt",
+        contentType: "text/plain",
+        size: 3,
+        actor: AGENT,
+      });
+      assert.equal(attachment.createdAt, TS);
+      assert.equal(attachment.kind, "attachment");
+      assert.equal(attachment.size, 3);
+      assert.deepEqual(
+        repos.activities.list({ taskId: task.id }).map((row) => row.event).filter((e) => e.startsWith("attachment")),
+        ["attachment_added"],
+      );
+      assert.throws(
+        () => commands.addAttachment({ taskId: "nope", filename: "b.txt", actor: AGENT }),
+        (err) => err.code === "NOT_FOUND",
+      );
+    }, { clock: () => TS });
+  });
+
+  it("stores the bytes and removes them, keeping the row and the disk in step", async () => {
+    await board(({ repos, commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "x", actor: AGENT });
+      const { attachment } = commands.addAttachment({ taskId: task.id, filename: "a.txt", actor: AGENT });
+      const path = join(makeTempDir("attach-"), attachment.id);
+
+      commands.storeAttachmentContent({ attachment, path, body: Buffer.from("hey"), actor: AGENT });
+      assert.equal(readFileSync(path, "utf8"), "hey");
+      assert.equal(repos.attachments.get(attachment.id).size, 3);
+      assert.deepEqual(
+        repos.activities.list({ taskId: task.id }).map((row) => row.event).filter((e) => e.startsWith("attachment")),
+        ["attachment_added", "attachment_updated"],
+      );
+
+      const stored = repos.attachments.get(attachment.id);
+      commands.removeAttachment({ attachment: stored, path, actor: AGENT });
+      assert.equal(repos.attachments.get(attachment.id), null);
+      assert.equal(existsSync(path), false);
+      assert.deepEqual(
+        repos.activities.list({ taskId: task.id }).map((row) => row.event).filter((e) => e.startsWith("attachment")),
+        ["attachment_added", "attachment_updated", "attachment_removed"],
+      );
+    });
   });
 });
 
