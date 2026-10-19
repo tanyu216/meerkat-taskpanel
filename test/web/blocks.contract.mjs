@@ -144,8 +144,15 @@ export const DOMAINS = Object.freeze({
   ACTIVITY_GROUP: Object.freeze(["status", "comment", "delivery", "meta"]),
   /** B26 — the two mutually exclusive empty states (§8). */
   ACTIVITY_EMPTY: Object.freeze(["project", "filter"]),
-  /** B27 — the waiting queue's reason kinds (§30). */
-  WAITING_REASON: Object.freeze(["question", "blocked"]),
+  /**
+   * B27 — the waiting queue's reason kinds (§30).
+   *
+   * `acceptance` is M6's third kind: an `in_review` top-level card the board's
+   * policy leaves to a human. The prototype predates it, and the contract's
+   * `subset` direction is what lets the oracle stay a *sample* rather than a
+   * closed list (the same reading `data-status` takes).
+   */
+  WAITING_REASON: Object.freeze(["question", "blocked", "acceptance"]),
   /** `html[data-theme]` — what the stylesheet reads. Note the different vocabulary. */
   THEME_DOC: Object.freeze(["meerkat-taskpanel", "dark", "auto"]),
   /** Toast kinds (B14). */
@@ -3267,8 +3274,8 @@ export const STALE_PROSE_COUNTS = Object.freeze([
   }),
   Object.freeze({
     claim: "198 catalogue keys",
-    measured: 288,
-    detail: "en = 288 and zh = 288, mirrored 1:1 — the prototype `MESSAGES` count the body states; the shipped extraction drops the 17 prototype-only keys, so it ships 271",
+    measured: 289,
+    detail: "en = 289 and zh = 289, mirrored 1:1 — the prototype `MESSAGES` count the body states (M6 adds `waiting.reason.acceptance`); the shipped extraction drops the 17 prototype-only keys, so it ships 272",
     verdict: "stale",
   }),
   Object.freeze({

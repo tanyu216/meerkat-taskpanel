@@ -40,7 +40,12 @@
  * Pure: no `node:` specifiers.
  */
 
-import { HUMAN_KIND, TASKD_KIND } from "../../shared/constants.mjs";
+import {
+  ACCEPTANCE_POLICIES,
+  DEFAULT_ACCEPTANCE_POLICY,
+  HUMAN_KIND,
+  TASKD_KIND,
+} from "../../shared/constants.mjs";
 import { DomainError } from "../../shared/errors.mjs";
 import { STATUS, STATUSES, TASK_KIND } from "./enums.mjs";
 
@@ -267,19 +272,100 @@ export function isClaimable(value) {
   return value === CLAIMABLE_STATUS;
 }
 
-/** The acceptance authority's allowed kinds, exported for tests and docs. */
-export const ACCEPTANCE_ACTOR_KINDS = Object.freeze([HUMAN_KIND, TASKD_KIND]);
+/**
+ * The acceptance policies a board may run under (T-20261019 acceptance).
+ *
+ *   * `human-only` — only a human closes a top-level card (children and review
+ *     cards are still closed by agents/the loop);
+ *   * `both` (the default, and the historical rule) — a human or the board;
+ *   * `agent-only` — any non-human writer (the board, or any agent platform).
+ *
+ * `agent-only` deliberately does **not** name *which* agent closes a card: that
+ * is the deployment's business (the loop's skill, a reviewer, an operator's own
+ * script). The board's only claim is the one bit it can see — "this writer is
+ * not the human".
+ */
+export { ACCEPTANCE_POLICIES, DEFAULT_ACCEPTANCE_POLICY };
 
 /**
- * The actor kinds that may move a card into `done`.
+ * The historical allowed-kinds pair, kept as an export for the `both` policy and
+ * for callers that still describe the old rule. New code should ask
+ * {@link acceptanceAllows} instead.
+ */
+export const ACCEPTANCE_ACTOR_KINDS = Object.freeze([HUMAN_KIND, TASKD_KIND]);
+
+/** Normalise a configured policy string, or `null` when it is not one of ours. */
+export function normalizeAcceptancePolicy(value) {
+  const text = String(value ?? "").trim().toLowerCase();
+  return ACCEPTANCE_POLICIES.includes(text) ? text : null;
+}
+
+/**
+ * Which acceptance rule applies to this card.
  *
- * `done` is the board's *acceptance* act, and acceptance is the one transition
- * a worker must never perform on its own work. The rule is therefore positive
- * rather than a self-review comparison: only a **human** or the **board itself**
- * (`taskd` — the loop's workflow pass) may accept. A worker agent cannot close
- * its own card, and cannot close somebody else's either; if an agent is ever the
- * legitimate acceptor, that is a role the board would have to model explicitly,
- * and today it does not.
+ * Precedence is deliberate: **a card with a parent is a child, whatever else it
+ * is**. A human never closes a child card (the children are the agents' work to
+ * finish), and that rule is stronger than the review-card exemption — a review
+ * card that somehow acquired a parent is treated as a child, which is the
+ * conservative reading of both rules.
+ *
+ * @param {{reviewCard?: boolean, hasParent?: boolean}} [input]
+ * @returns {"child"|"review"|"top_level"}
+ */
+export function acceptanceScopeOf(input = {}) {
+  if (input.hasParent === true) return "child";
+  if (input.reviewCard === true) return "review";
+  return "top_level";
+}
+
+/**
+ * May `kind` accept a card in `scope` under `policy`?
+ *
+ * "Any non-human" is the whole test for `agent-only` and for child cards: the
+ * board does not model agent roles, so it cannot and must not distinguish
+ * `taskd` from `claude` there.
+ *
+ * @param {string|null|undefined} kind the writer's declared actor kind
+ * @param {string} policy one of {@link ACCEPTANCE_POLICIES}
+ * @param {"child"|"review"|"top_level"} scope
+ * @returns {boolean}
+ */
+export function acceptanceAllows(kind, policy, scope) {
+  const who = String(kind ?? "").trim();
+  if (who === "") return false;
+  if (scope === "child") return who !== HUMAN_KIND;
+  if (scope === "review") {
+    return policy === "agent-only" ? who !== HUMAN_KIND : ACCEPTANCE_ACTOR_KINDS.includes(who);
+  }
+  switch (policy) {
+    case "human-only":
+      return who === HUMAN_KIND;
+    case "agent-only":
+      return who !== HUMAN_KIND;
+    case "both":
+    default:
+      return ACCEPTANCE_ACTOR_KINDS.includes(who);
+  }
+}
+
+/** The kinds a refusal should name: `any non-human`, or a concrete pair. */
+function allowedKindsFor(policy, scope) {
+  if (scope === "child") return "any non-human";
+  if (scope === "review") {
+    return policy === "agent-only" ? "any non-human" : [...ACCEPTANCE_ACTOR_KINDS];
+  }
+  if (policy === "human-only") return [HUMAN_KIND];
+  if (policy === "agent-only") return "any non-human";
+  return [...ACCEPTANCE_ACTOR_KINDS];
+}
+
+/**
+ * Assert that this writer may move a card into `done`.
+ *
+ * `done` is the board's *acceptance* act, and acceptance is the one transition a
+ * worker must never perform on its own work by default. What "the acceptor" means
+ * is a board policy (see {@link ACCEPTANCE_POLICIES}); the actor's declared kind
+ * is the only input, because the board does not model agent roles.
  *
  * This is a service-layer invariant, and deliberately so: the actor of a write
  * is not a column of the `tasks` row, so — unlike the delivery gate, which a
@@ -289,27 +375,41 @@ export const ACCEPTANCE_ACTOR_KINDS = Object.freeze([HUMAN_KIND, TASKD_KIND]);
  *
  * The check reads the actor's **declared** kind. The board trusts a caller's
  * attribution (a loopback caller is trusted, and `--actor-kind human` is
- * refused), so this raises the bar to "you must claim to be the human or the
- * board", not to a cryptographic guarantee.
+ * refused), so this raises the bar to "you must claim to be the allowed kind",
+ * not to a cryptographic guarantee.
  *
  * @param {{kind?: string, id?: string}|null|undefined} actor
+ * @param {{policy?: string, reviewCard?: boolean, hasParent?: boolean}} [options]
  * @returns {true}
  * @throws {DomainError} ACCEPTANCE_FORBIDDEN
  */
-export function assertAcceptanceAuthority(actor) {
+export function assertAcceptanceAuthority(actor, options = {}) {
   const kind = String(actor?.kind ?? "").trim();
-  if (ACCEPTANCE_ACTOR_KINDS.includes(kind)) return true;
+  const policy = normalizeAcceptancePolicy(options.policy) ?? DEFAULT_ACCEPTANCE_POLICY;
+  const scope = acceptanceScopeOf(options);
+  if (acceptanceAllows(kind, policy, scope)) return true;
+
+  const allowed = allowedKindsFor(policy, scope);
   throw new DomainError("ACCEPTANCE_FORBIDDEN", {
-    message: "Only a human or the board itself may accept a delivery to done.",
+    message:
+      scope === "child"
+        ? "Only a non-human writer may accept a child card; a human closes the top-level card."
+        : policy === "human-only"
+          ? "This board is human-only: only a human may accept a delivered card."
+          : "This writer may not accept a delivery to done under the board's acceptance policy.",
     details: {
       actorKind: kind === "" ? null : kind,
       actorId: actor?.id ?? null,
-      allowed: ACCEPTANCE_ACTOR_KINDS,
+      policy,
+      scope,
+      allowed,
     },
     hint: {
       fix:
-        "a worker stops at in_review; an independent reviewer reports a verdict and the loop " +
-        "(or a human) applies it",
+        scope === "child"
+          ? "let the agent/loop close the child; a human accepts the top-level card"
+          : "a worker stops at in_review; an independent reviewer reports a verdict and the loop " +
+            "(or a human) applies it",
     },
   });
 }

@@ -62,6 +62,7 @@ RECOVER_STALE_FLAG=""
 WORKFLOW_FLAG=""
 AUTO_ACCEPT_REVIEWS_FLAG=""
 REVIEWER_FLAG=""
+ACCEPTANCE_FLAG=""
 PING_INTERVAL_FLAG=""
 CONTINUE_INTERVAL_FLAG=""
 CONTINUE_FLAG=""
@@ -104,6 +105,13 @@ Options:
                     Let the loop close a review card after applying its verdict.
                     Persisted to the host config; default yes. `no` leaves the
                     review card for a human.
+  --acceptance=human-only|both|agent-only
+                    Who may close a task. `human-only` accepts only a human on a
+                    top-level card; `both` (the default) a human or the loop;
+                    `agent-only` any non-human writer. Written to
+                    <dataDir>/taskd.env (the board is authoritative) and to the
+                    host config the loop reads. Asked interactively on a TTY.
+                    Alias: --acceptance-policy.
   --ping-interval <sec>
                     The liveness clock (default 60). It only prunes dead worker
                     pids from the registry: no board read, no LLM.
@@ -323,6 +331,24 @@ while [ "$#" -gt 0 ]; do
       AUTO_ACCEPT_REVIEWS_FLAG="${1#*=}"
       shift
       ;;
+    --acceptance)
+      [ "$#" -ge 2 ] || die "--acceptance requires a value (human-only|both|agent-only)"
+      ACCEPTANCE_FLAG="$2"
+      shift 2
+      ;;
+    --acceptance=*)
+      ACCEPTANCE_FLAG="${1#*=}"
+      shift
+      ;;
+    --acceptance-policy)
+      [ "$#" -ge 2 ] || die "--acceptance-policy requires a value (human-only|both|agent-only)"
+      ACCEPTANCE_FLAG="$2"
+      shift 2
+      ;;
+    --acceptance-policy=*)
+      ACCEPTANCE_FLAG="${1#*=}"
+      shift
+      ;;
     --ping-interval)
       [ "$#" -ge 2 ] || die "--ping-interval requires a number of seconds"
       PING_INTERVAL_FLAG="$2"
@@ -515,6 +541,14 @@ case "$AUTO_ACCEPT_REVIEWS" in
   *) die "--auto-accept-reviews must be yes or no (got '$AUTO_ACCEPT_REVIEWS')" ;;
 esac
 echo "install.sh: recover stale claims: $RECOVER_STALE"
+
+# Who may close a task. The board's own copy is written after the hosts, below;
+# this is the value every host's config records for the loop.
+ACC_SAID="${ACCEPTANCE_FLAG:-${MEERKAT_TASKPANEL_ACCEPTANCE_POLICY:-}}"
+if ! ACCEPTANCE="$(acceptance_policy_value "$ACC_SAID" "$TTY")"; then
+  exit 2
+fi
+echo "install.sh: acceptance policy: $ACCEPTANCE"
 echo "install.sh: workflow: $WORKFLOW; reviewer: ${REVIEWER:-none}; auto-accept reviews: $AUTO_ACCEPT_REVIEWS"
 
 # The scheduler's two clocks. The interval is rendered into the units, so it must
@@ -621,6 +655,7 @@ FAIL $host — installer not found"
       MEERKAT_TASKPANEL_WORKFLOW="$WORKFLOW" \
       MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS="$AUTO_ACCEPT_REVIEWS" \
       MEERKAT_TASKPANEL_REVIEWER="$REVIEWER" \
+      MEERKAT_TASKPANEL_ACCEPTANCE_POLICY="$ACCEPTANCE" \
       MEERKAT_TASKPANEL_PING_INTERVAL="$PING_INTERVAL" \
       MEERKAT_TASKPANEL_CONTINUE_INTERVAL="$CONTINUE_INTERVAL" \
       MEERKAT_TASKPANEL_CONTINUE="$CONTINUE" \
@@ -647,6 +682,44 @@ done
 echo
 if ! install_taskd_guard; then
   echo "install.sh: the taskd guard step failed (see the message above)" >&2
+fi
+
+# The board's own copy of the policy. The host config above is what the loop
+# *believes*; `<dataDir>/taskd.env` is what the board enforces, and it is the
+# same file the Access panel writes (the writer merges, never rewrites).
+if [ "$ACCEPTANCE" = "agent-only" ]; then
+  # Warnings, not refusals: *which* agent closes a card is the deployment's
+  # business, but each of these leaves the board with no automated closer at all.
+  if [ "$WORKFLOW" != "yes" ]; then
+    echo "install.sh: warning: agent-only with --workflow=no — nothing will close a delivered card" >&2
+  fi
+  if [ "$AUTO_ACCEPT_REVIEWS" != "yes" ]; then
+    echo "install.sh: warning: agent-only with --auto-accept-reviews=no — review cards will pile up for a human who may not close them" >&2
+  fi
+  if [ -z "$REVIEWER" ]; then
+    echo "install.sh: warning: agent-only with no --reviewer — deliveries will not be reviewed automatically" >&2
+  fi
+  if [ -n "$NO_AUTOMATION" ]; then
+    echo "install.sh: warning: agent-only with --no-automation — only an external agent can close a card" >&2
+  fi
+  loop_host=""
+  for candidate in $HOSTS; do
+    case "$candidate" in
+      claude | codex | pi) loop_host="1" ;;
+    esac
+  done
+  if [ -z "$loop_host" ]; then
+    echo "install.sh: warning: agent-only with no loop host installed — only an external agent can close a card" >&2
+  fi
+fi
+
+if [ -n "$DRY_RUN" ]; then
+  echo "install.sh: would write TASKD_ACCEPTANCE_POLICY=$ACCEPTANCE to <dataDir>/taskd.env"
+else
+  if ! node "$ROOT/scripts/install/lib/acceptance.mjs" write --policy "$ACCEPTANCE"; then
+    echo "install.sh: could not write the board's acceptance policy (see above)" >&2
+    status=1
+  fi
 fi
 
 echo

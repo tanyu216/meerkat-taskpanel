@@ -357,6 +357,7 @@
       "waiting.count": "%s waiting on you",
       "waiting.reason.question": "Question",
       "waiting.reason.blocked": "Blocked",
+      "waiting.reason.acceptance": "Ready for acceptance",
       "waiting.open": "Open %s",
       "waiting.empty": "Nothing is waiting on you",
       /* The second line the state was missing: B12's empty states read as a
@@ -667,6 +668,7 @@
       "waiting.count": "%s 项等你回复",
       "waiting.reason.question": "待回答",
       "waiting.reason.blocked": "已阻塞",
+      "waiting.reason.acceptance": "待你验收",
       "waiting.open": "打开 %s",
       "waiting.empty": "没有等你处理的事",
       /* B12 的空态是「标题 + 提示」两段式；这一态原本只有一行。第二行只说明

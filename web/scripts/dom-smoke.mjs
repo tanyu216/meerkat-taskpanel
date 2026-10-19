@@ -4405,7 +4405,11 @@ export async function run() {
       const awaitingCard = document.querySelector('[data-card][data-identifier="TD-13"]');
       const countPill = document.querySelector('[data-nav-count="waiting"]');
       const rows = [...document.querySelectorAll("[data-waiting-item]")];
-      const item = rows[0] ?? null;
+      // M6 — the queue now has two producers: the awaiting card (TD-13) and the
+      // delivered top-level cards the board's `both` policy leaves to a human
+      // (TD-7, TD-8). The six-field rule below is about the awaiting row, so it
+      // selects that row explicitly; the order rule is asserted separately.
+      const item = rows.find((row) => row.getAttribute("data-task") === "TD-13") ?? null;
       // Resolve the accent the same way the stylesheet does, so the comparison is
       // value-to-value rather than hex-vs-rgb.
       const probe = document.createElement("span");
@@ -4445,6 +4449,17 @@ export async function run() {
         // has: actor (+ kind), reason (+ kind), identifier (with the whole value
         // on `title`), title, the stamp, the opener.
         itemTask: item?.getAttribute("data-task") ?? null,
+        itemIds: rows.map((row) => row.getAttribute("data-task")),
+        acceptance: (() => {
+          const row = rows.find((candidate) => candidate.getAttribute("data-task") === "TD-7");
+          if (!row) return null;
+          return {
+            reason: row.querySelector("[data-waiting-reason]")?.textContent?.trim() ?? null,
+            reasonKind: row.querySelector("[data-waiting-reason]")?.getAttribute("data-waiting-reason-kind") ?? null,
+            actor: row.querySelector("[data-waiting-actor]")?.textContent?.trim() ?? null,
+            since: row.getAttribute("data-since"),
+          };
+        })(),
         itemSince: item?.getAttribute("data-since") ?? null,
         actor: item?.querySelector("[data-waiting-actor]")?.textContent?.trim() ?? null,
         actorKind: item?.querySelector("[data-waiting-actor]")?.getAttribute("data-assignee-kind") ?? null,
@@ -4529,16 +4544,27 @@ export async function run() {
     check(m1.columns === 7, `[data-column] count ${m1.columns} !== 7`);
     check(m1.cardsWithAwaitingStatus === 0, "no card root may carry data-status=awaiting");
     check(m1.navItems.length === 4 && m1.navItems.includes("waiting"), `nav items ${m1.navItems.join(",")}`);
-    check(m1.countText === "1", `count pill ${m1.countText} !== 1`);
+    check(m1.countText === "3", `count pill ${m1.countText} !== 3 (one question + two acceptances)`);
     check(m1.countHidden === false, "a non-zero count must not be hidden");
     check(m1.freshnessHooks === 0, "no freshness hook may exist inside a card");
     check(!awaitingMenuLabels.some((label) => /In Review|Done|Blocked/i.test(label)), `awaiting menu offers ${awaitingMenuLabels.join("|")}`);
     check(awaitingMenuLabels.some((label) => /Canceled/i.test(label)), "awaiting menu must offer Canceled");
 
-    // B27 — the queue. One row per awaiting card, the six fields it owes, the
-    // stamp it carries stated twice (attribute + `datetime`), and the head's own
-    // name and tally.
-    check(m1.rows === 1, `[data-waiting-item] count ${m1.rows} !== 1`);
+    // B27 — the queue. Three rows (one awaiting question, two accepted-waiting
+    // deliveries), the awaiting row's six fields, the stamp it carries stated
+    // twice (attribute + `datetime`), and the head's own name and tally.
+    check(m1.rows === 3, `[data-waiting-item] count ${m1.rows} !== 3`);
+    // Oldest first: TD-7/TD-8 are delivered cards from the fixture's older
+    // stamp, TD-13 is the awaiting question. The order is the queue's rule, not
+    // the fixture's listing order.
+    check(
+      JSON.stringify(m1.itemIds) === JSON.stringify(["TD-7", "TD-8", "TD-13"]),
+      `waiting row order ${JSON.stringify(m1.itemIds)}`,
+    );
+    check(m1.acceptance !== null, "the delivered top-level card must be in the queue");
+    check(m1.acceptance.reason === "Ready for acceptance" && m1.acceptance.reasonKind === "acceptance", `acceptance reason ${m1.acceptance?.reason} (${m1.acceptance?.reasonKind})`);
+    check(m1.acceptance.actor === "elon", `acceptance row's actor ${m1.acceptance?.actor} — the assignee that delivered it`);
+    check(m1.acceptance.since === "2026-10-01T00:00:00Z", `acceptance row's since ${m1.acceptance?.since} — the delivery instant`);
     check(m1.itemTask === "TD-13", `the row names ${m1.itemTask}, expected TD-13`);
     check(m1.actor === "linus" && m1.actorKind === "agent", `actor ${m1.actor} (${m1.actorKind}) — the card's assignee waits`);
     check(m1.reason === "Question" && m1.reasonKind === "question", `reason ${m1.reason} (${m1.reasonKind})`);
@@ -4556,7 +4582,7 @@ export async function run() {
       m1.headSubHooks.includes("data-i18n") && !m1.headSubHooks.some((name) => name.startsWith("data-waiting-")),
       `R15 ④: the description's hooks are ${JSON.stringify(m1.headSubHooks)} — a \`data-i18n\` seat and no \`data-waiting-*\` of its own`,
     );
-    check(m1.headCount === "1 waiting on you", `head count ${m1.headCount}`);
+    check(m1.headCount === "3 waiting on you", `head count ${m1.headCount}`);
     check(m1.headCountHidden === false, "a non-empty queue must show its tally");
     check(waitingView.current === "page", "the waiting nav item must carry aria-current");
     check(waitingView.viewVisible === true, "the waiting view must be visible");

@@ -298,6 +298,11 @@ export async function createTaskd(options = {}) {
       // is what this capability's `upload_url` points at.
       attachments: true,
       allow_list: allowList.configured,
+      // The acceptance policy in force (`human-only` | `both` | `agent-only`).
+      // A client feature-detects the closing rule instead of assuming one; an
+      // unreadable policy reports `policy: null` here while every acceptance
+      // write still fails closed (`ACCESS_CONFIG_INVALID`).
+      acceptance: acceptanceCapability(board),
     },
   }));
 
@@ -532,6 +537,23 @@ export async function closeServer(server, graceMs = SHUTDOWN_GRACE_MS) {
  * `decodeURIComponent` throws on `%zz`; a URL a client mangled is a 404, not a
  * 500, so the raw text is returned and fails the id lookup instead.
  */
+/**
+ * The `/meta` view of the acceptance policy.
+ *
+ * Read through the board's own resolver so `/meta` reports exactly the policy a
+ * write would use (explicit option → env → `taskd.env` → default). It is
+ * re-read per request on purpose: a re-install may rewrite the file while the
+ * server keeps running. A malformed value reports `null` instead of failing the
+ * whole meta read; the acceptance write is where it fails closed.
+ */
+function acceptanceCapability(board) {
+  try {
+    return { policy: board.ctx.acceptancePolicy() };
+  } catch (err) {
+    return { policy: null, error: err?.code ?? "ACCESS_CONFIG_INVALID" };
+  }
+}
+
 function safeDecode(segment) {
   try {
     return decodeURIComponent(segment);

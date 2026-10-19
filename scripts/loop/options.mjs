@@ -101,6 +101,7 @@ export function parseArgs(argv, env = process.env) {
     workflow: undefined,
     reviewer: undefined,
     autoAcceptReviews: undefined,
+    acceptance: undefined,
     workflowMaxActions: undefined,
     reviewAgingMinutes: undefined,
     once: false,
@@ -188,6 +189,12 @@ export function parseArgs(argv, env = process.env) {
     else if (arg.startsWith("--reviewer=")) opts.reviewer = arg.slice(11);
     else if (arg === "--auto-accept-reviews") opts.autoAcceptReviews = take("--auto-accept-reviews");
     else if (arg.startsWith("--auto-accept-reviews=")) opts.autoAcceptReviews = arg.slice(22);
+    // "Who closes a task" — the board's policy, mirrored here so the loop's
+    // approval plan knows when a human-only board expects it to HOLD.
+    else if (arg === "--acceptance") opts.acceptance = take("--acceptance");
+    else if (arg.startsWith("--acceptance=")) opts.acceptance = arg.slice(13);
+    else if (arg === "--acceptance-policy") opts.acceptance = take("--acceptance-policy");
+    else if (arg.startsWith("--acceptance-policy=")) opts.acceptance = arg.slice(20);
     else if (arg === "--workflow-max-actions") opts.workflowMaxActions = take("--workflow-max-actions");
     else if (arg.startsWith("--workflow-max-actions=")) opts.workflowMaxActions = arg.slice(23);
     else if (arg === "--review-aging-minutes") opts.reviewAgingMinutes = take("--review-aging-minutes");
@@ -388,6 +395,7 @@ export function resolveLoopConfig(opts, env = process.env) {
       workflow: opts.workflow,
       reviewer: opts.reviewer,
       autoAcceptReviews: opts.autoAcceptReviews,
+      acceptance: opts.acceptance,
       workflowMaxActions: opts.workflowMaxActions,
       reviewAgingMinutes: opts.reviewAgingMinutes,
     },
@@ -406,6 +414,7 @@ export function resolveLoopConfig(opts, env = process.env) {
     reviewer: workflow.reviewer,
     reviewerIsWorker,
     autoAcceptReviews: workflow.autoAcceptReviews,
+    acceptancePolicy: workflow.acceptancePolicy,
     maxActions: workflow.maxActions,
     reviewAgingMs: workflow.reviewAgingMs,
   };
@@ -477,6 +486,7 @@ export function loopCommandArgs(opts) {
     ["--workflow", opts.workflow],
     ["--reviewer", opts.reviewer],
     ["--auto-accept-reviews", opts.autoAcceptReviews],
+    ["--acceptance", opts.acceptance],
     ["--workflow-max-actions", opts.workflowMaxActions],
     ["--review-aging-minutes", opts.reviewAgingMinutes],
   ]) {
@@ -540,6 +550,10 @@ Options:
   --reviewer <agent>        The independent reviewer. Unset disables review dispatch.
   --auto-accept-reviews=yes|no
                             Close a review card after applying its verdict (default: yes).
+  --acceptance <policy>     human-only | both | agent-only (default: both). The board is
+                            authoritative; this is what the loop believes. human-only makes
+                            the loop HOLD a top-level approval for a human (children and
+                            review cards are still closed by the loop).
   --workflow-max-actions <n> Max workflow writes per pass (default: 20).
   --review-aging-minutes <n> Report a silent review card after this long (default: 60).
   --patrol-llm=yes|no       Allow patrol to start an LLM turn (default: no).

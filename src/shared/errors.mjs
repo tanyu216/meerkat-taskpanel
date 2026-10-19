@@ -55,6 +55,20 @@ export const ERROR_CODES = Object.freeze({
       "a worker stops at in_review; an independent reviewer reports a verdict and the loop " +
       "(or a human) applies it",
   }),
+  // The card's structural review marker (`review_of_id` / `review_round`, 0025) is
+  // set once, at creation, and never rewritten — the review-card exemption is a
+  // privilege, so it must not be obtainable by editing a card afterwards.
+  REVIEW_OF_IMMUTABLE: spec(409, "A card's review marker is set at creation and cannot be changed."),
+  // A human closing a top-level card before the review cards for its current
+  // delivery round have resolved. `canceled` counts as resolved (an abandoned
+  // review must not deadlock the original).
+  REVIEW_PENDING: spec(
+    409,
+    "This card still has an open review for its current delivery round; close or cancel it first.",
+  ),
+  // A card may not enter `in_review`/`done` while one of its children is still
+  // in flight. Manual and automatic paths apply the same rule.
+  CHILDREN_OPEN: spec(409, "This card still has non-terminal child cards."),
   TERMINAL_STATE: spec(409, "done/canceled are terminal; they cannot be left."),
   VERSION_CONFLICT: spec(409, "Version conflict — re-read the task and retry once."),
   CLAIM_LOST: spec(409, "Claim could not be taken: the task was taken concurrently."),
@@ -197,6 +211,9 @@ export const DB_RAISE_CODES = Object.freeze([
   "RELATION_IMMUTABLE",
   "COMMENT_APPEND_ONLY",
   "DICTIONARY_ENTRY_IN_USE",
+  // 0025 / 0026
+  "REVIEW_OF_IMMUTABLE",
+  "CHILDREN_OPEN",
 ]);
 
 /** Codes produced by mapping SQLite failures (constraints, and lock contention). */
@@ -226,6 +243,10 @@ export const JS_ONLY_CODES = Object.freeze([
   // Acceptance authority reads the *actor*, which is not a row fact a trigger
   // can see — so this one is enforced only by the service layer.
   "ACCEPTANCE_FORBIDDEN",
+  // The review-ready check is the same kind of fact (it combines the actor, the
+  // policy and the review cards' current state), and the loop's own protocol is
+  // exempt from it by design.
+  "REVIEW_PENDING",
   "REPORT_ROUND_MISMATCH",
   "VERSION_CONFLICT",
   "CLAIM_LOST",

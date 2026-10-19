@@ -133,10 +133,21 @@ export function lookupFor(repos) {
   return (kind, id) => repos.dictionary.getById(kind, id);
 }
 
+/**
+ * The parent edge of one card, as a wire value.
+ *
+ * `parent_id` is deliberately a projection and not a column: the board models
+ * parenthood as a `parent` relation in `task_relations`, and copying it onto the
+ * card would be a second answer that could drift.
+ */
+export function parentIdOf(repos, taskId) {
+  return repos.relations.getParent(taskId)?.source ?? null;
+}
+
 /** A task plus the audit trail a reviewer needs: who waived delivery, and why. */
 export function taskPayload(repos, task) {
   return {
-    task: taskToWire(task, { lookup: lookupFor(repos) }),
+    task: taskToWire(task, { lookup: lookupFor(repos), parentId: parentIdOf(repos, task.id) }),
     report_waivers: waiversFromActivities(repos.activities.list({ taskId: task.id, limit: 1000 })),
   };
 }
@@ -161,8 +172,14 @@ export function registerTaskRoutes(router, surface) {
       order: query.get("order") ?? undefined,
       orderDebug: truthy(query.get("order_debug")),
     });
+    // One batched edge read: `parent_id` rides on every card so a client can
+    // derive "is this a child?" without a second request (the waiting view does
+    // exactly that). Scoped to the project when the read is.
+    const parents = new Map(
+      repos.relations.listParentEdges(filter.projectId).map((edge) => [edge.target, edge.source]),
+    );
     return {
-      tasks: tasks.map((task) => taskToWire(task, { lookup })),
+      tasks: tasks.map((task) => taskToWire(task, { lookup, parentId: parents.get(task.id) ?? null })),
       // Only present when asked for: the diagnostic is opt-in, and an always-on
       // re-derivation of every card's score would be paid by every board poll.
       ...(orderDebug === null ? {} : { order_debug: orderDebug }),

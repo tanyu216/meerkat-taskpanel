@@ -13,11 +13,12 @@ import { DomainError } from "../../shared/errors.mjs";
 import { assertWaiverRequest } from "../domain/delivery-gate.mjs";
 import { STATUS } from "../domain/enums.mjs";
 import { normalizeReportCreate } from "../domain/report.mjs";
-import { assertAcceptanceAuthority, assertTransition } from "../domain/status.mjs";
+import { assertTransition } from "../domain/status.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
+import { assertAcceptance, assertChildrenTerminal, assertReviewReady } from "./acceptance.mjs";
 import { actorOf } from "./context.mjs";
 import { resolveActorId } from "./dictionary.mjs";
-import { advanceContainerForChild } from "./rollup.mjs";
+import { advanceContainerForChild, hasChildStarted, startContainerForChild } from "./rollup.mjs";
 
 /** The task must exist, and its delivery round is what the report is judged against. */
 function loadTask(ctx, taskRef) {
@@ -135,8 +136,13 @@ export function deliver(ctx, input) {
       // would be refused.
       assertTransition(task.status, to, task.kind);
       // `deliver` accepts a wire-only `to`; a delivery that lands on `done`
-      // (from `in_review`) is still an acceptance and obeys the same authority.
-      if (to === STATUS.DONE) assertAcceptanceAuthority(actor);
+      // (from `in_review`) is still an acceptance and obeys the same policy and
+      // scope as `moveStatus`.
+      if (to === STATUS.DONE) assertAcceptance(ctx, task, actor);
+      // No delivery to review, and no acceptance, while a child is in flight.
+      // Checked before the report is written, so a refusal costs nothing.
+      assertChildrenTerminal(ctx, task, to);
+      if (to === STATUS.DONE) assertReviewReady(ctx, task, actor);
 
       if (waived) {
         const waiver = { round: task.deliveryRound, reason: waiverReason, at: now };
@@ -155,8 +161,10 @@ export function deliver(ctx, input) {
           },
           createdAt: now,
         });
-        // A waived delivery can still finish a child — the container rolls up
-        // on `done`, however the child got there (commands/rollup.mjs).
+        // A waived delivery enters the work (`in_review` counts — a nested epic
+        // can be delivered straight out of `todo`), and can still finish a
+        // child; both hooks live in commands/rollup.mjs.
+        if (hasChildStarted(moved.status)) startContainerForChild(ctx, task.id, now);
         if (moved.status === STATUS.DONE) advanceContainerForChild(ctx, task.id, now);
         return { task: moved, report: null, waived: true };
       }
@@ -199,8 +207,9 @@ export function deliver(ctx, input) {
         },
         createdAt: now,
       });
-      // Same hook as the waived branch: `deliver` may land a card on `done`
-      // (a rework accepted straight through), and that can finish a container.
+      // Same hooks as the waived branch: a delivery enters the work (so a nested
+      // container can start), and a delivery straight to `done` can finish one.
+      if (hasChildStarted(moved.status)) startContainerForChild(ctx, task.id, now);
       if (moved.status === STATUS.DONE) advanceContainerForChild(ctx, task.id, now);
       return { task: moved, report, waived: false };
     },

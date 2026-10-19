@@ -486,3 +486,23 @@ export const HUMAN_KIND = "human";
  * a platform instead of a vague role word.
  */
 export const TASKD_KIND = "taskd";
+
+/**
+ * The board's acceptance policies — "who may move a card to `done`".
+ *
+ * Declared in `shared` because **both** sides of the board read the same
+ * vocabulary: `src/core/domain/status.mjs` enforces it, and
+ * `src/shared/scheduling.mjs` resolves the loop's copy from its host config
+ * (which is what the loop believes before the board tells it otherwise).
+ *
+ *   * `human-only` — only a human accepts a top-level original;
+ *   * `both` — a human or the board (`taskd`);
+ *   * `agent-only` — any non-human writer.
+ *
+ * In every mode a human closes only **top-level** cards, and a review card is
+ * closed by the human or the board (any non-human under `agent-only`).
+ */
+export const ACCEPTANCE_POLICIES = Object.freeze(["human-only", "both", "agent-only"]);
+
+/** The policy used when none is configured (`both`, the historical rule). */
+export const DEFAULT_ACCEPTANCE_POLICY = "both";

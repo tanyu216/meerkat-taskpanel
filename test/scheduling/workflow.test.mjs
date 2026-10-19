@@ -562,6 +562,7 @@ describe("planWorkflowTick", () => {
     assert.deepEqual(result.summary, {
       reconciled: 0,
       approved: 1,
+      held: 0,
       rejected: 0,
       dispatched: 0,
       closed: 0,
@@ -602,6 +603,7 @@ describe("resolveWorkflowConfig", () => {
   it("defaults to on, no reviewer, auto-accept, 20 writes", () => {
     assert.deepEqual(resolveWorkflowConfig(), {
       workflow: true,
+      acceptancePolicy: "both",
       reviewer: null,
       autoAcceptReviews: true,
       maxActions: 20,
@@ -624,6 +626,7 @@ describe("resolveWorkflowConfig", () => {
     };
     assert.deepEqual(resolveWorkflowConfig({ env, file }), {
       workflow: true,
+      acceptancePolicy: "both",
       reviewer: "env-reviewer",
       autoAcceptReviews: true,
       maxActions: 9,
@@ -641,10 +644,11 @@ describe("resolveWorkflowConfig", () => {
         env,
         file,
       }),
-      { workflow: false, reviewer: "flag-reviewer", autoAcceptReviews: false, maxActions: 3, reviewAgingMs: 1_800_000 },
+      { workflow: false, acceptancePolicy: "both", reviewer: "flag-reviewer", autoAcceptReviews: false, maxActions: 3, reviewAgingMs: 1_800_000 },
     );
     assert.deepEqual(resolveWorkflowConfig({ file }), {
       workflow: false,
+      acceptancePolicy: "both",
       reviewer: "file-reviewer",
       autoAcceptReviews: false,
       maxActions: 7,
@@ -662,5 +666,57 @@ describe("resolveWorkflowConfig", () => {
     assert.equal(resolved.reviewer, null, "whitespace is not a name");
     assert.equal(resolved.autoAcceptReviews, true);
     assert.equal(resolved.maxActions, 20, "a non-positive cap is not a cap");
+  });
+});
+
+describe("acceptance policy (human-only holds a top-level approval)", () => {
+  const verdict = { ok: true, verdict: "APPROVE", findings: "", report: REVIEWER_REPORT };
+
+  const plan = (config, fields = {}) =>
+    planReviewOutcomes({
+      tasks: [card({ parent_id: null, ...fields }), reviewCard()],
+      verdicts: { "T-2": verdict },
+      config: { ...CONFIG, ...config },
+      now: NOW,
+    });
+
+  it("reads the structural review marker before the meta fallback", () => {
+    assert.equal(isReviewCard({ review_of_id: "id-T-1" }), true);
+    assert.equal(isReviewCard({ review_of_id: "id-T-1", meta: {} }), true);
+    assert.equal(reviewRoundOf({ review_round: 3, meta: { review_round: 9 } }), 3, "the column wins");
+    assert.equal(reviewRoundOf({ review_round: null, meta: { review_round: 9 } }), 9, "meta is the fallback");
+  });
+
+  it("both (the default) approves the original itself", () => {
+    assert.deepEqual(types(plan({})), ["approve"]);
+    assert.deepEqual(types(plan({ acceptancePolicy: "both" })), ["approve"]);
+    assert.deepEqual(types(plan({ acceptancePolicy: "agent-only" })), ["approve"]);
+  });
+
+  it("human-only holds a top-level original, and closes only the review card", () => {
+    const result = plan({ acceptancePolicy: "human-only" });
+    assert.deepEqual(types(result), ["approve_hold"]);
+    const action = result.actions[0];
+    assert.equal(action.originalRef, "T-1");
+    assert.equal(action.reviewRef, "T-2");
+    assert.equal(action.round, 1);
+    const tick = planWorkflowTick({
+      tasks: [card({ parent_id: null }), reviewCard()],
+      verdicts: { "T-2": verdict },
+      config: { ...CONFIG, acceptancePolicy: "human-only" },
+      now: NOW,
+    });
+    assert.equal(tick.summary.held, 1);
+    assert.equal(tick.summary.approved, 1, "a held approval still counts as an approval");
+  });
+
+  it("human-only still closes a child original automatically", () => {
+    assert.deepEqual(types(plan({ acceptancePolicy: "human-only" }, { parent_id: "id-epic" })), ["approve"]);
+  });
+
+  it("human-only obeys autoAcceptReviews for the review card only", () => {
+    const result = plan({ acceptancePolicy: "human-only", autoAcceptReviews: false });
+    assert.deepEqual(types(result), ["approve_hold"]);
+    assert.equal(result.actions[0].closeReview, false);
   });
 });

@@ -42,6 +42,11 @@ export const ERROR_TEXT_KEYS = Object.freeze({
   TERMINAL_STATE: "toast.moveFailed",
   REPORT_REQUIRED: "toast.reportRequired",
   VERSION_CONFLICT: "toast.moveConflict",
+  // M6 — the acceptance policy and its two readiness gates. A human sees these
+  // when they close a card too early; the sentence names the repair.
+  ACCEPTANCE_FORBIDDEN: "error.acceptanceForbidden",
+  REVIEW_PENDING: "error.reviewPending",
+  CHILDREN_OPEN: "error.childrenOpen",
   // The routing lock and the two states a claim can be refused from.
   not_assignee: "error.notAssignee",
   EXECUTION_ACTIVE: "error.executionActive",
@@ -119,6 +124,9 @@ const TAKES_REF = new Set([
   "error.notAssignee",
   "error.executionActive",
   "error.claimOnBacklog",
+  "error.acceptanceForbidden",
+  "error.reviewPending",
+  "error.childrenOpen",
 ]);
 
 /** The implementation's own table for a language, falling back to the default. */

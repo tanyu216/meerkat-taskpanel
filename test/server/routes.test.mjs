@@ -1072,3 +1072,52 @@ describe("server/routes — a blocks edge may not join an ancestor and a descend
     );
   });
 });
+
+describe("server/routes — the acceptance wire (M6)", () => {
+  it("projects parent_id and the structural review marker", async () => {
+    const epic = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "demo",
+        title: "Wire container",
+        kind: "epic",
+        allow_dup: true,
+      }),
+    ).task;
+    const child = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "demo",
+        title: "Wire child",
+        allow_dup: true,
+      }),
+    ).task;
+    dataOf(
+      await call("POST", `/api/v1/tasks/${epic.identifier}/relations`, {
+        type: "parent",
+        target: child.id,
+      }),
+    );
+    const review = dataOf(
+      await call("POST", "/api/v1/tasks", {
+        project_id: "demo",
+        title: "Wire review",
+        allow_dup: true,
+        review_of: child.identifier,
+        meta: { review_round: 2, flow: "B" },
+      }),
+    ).task;
+
+    assert.equal(child.review_of_id, null, "an ordinary card carries no marker");
+    assert.equal(epic.parent_id, null);
+
+    const listed = dataOf(await call("GET", "/api/v1/tasks?project_id=demo&limit=500"));
+    const byId = new Map(listed.tasks.map((task) => [task.id, task]));
+    assert.equal(byId.get(child.id).parent_id, epic.id, "the child names its container");
+    assert.equal(byId.get(epic.id).parent_id, null);
+    assert.equal(byId.get(review.id).review_of_id, child.id, "the id, not the identifier");
+    assert.equal(byId.get(review.id).review_round, 2);
+    assert.equal(byId.get(review.id).parent_id, null);
+
+    const single = dataOf(await call("GET", `/api/v1/tasks/${child.identifier}`));
+    assert.equal(single.task.parent_id, epic.id, "the single read projects it too");
+  });
+});

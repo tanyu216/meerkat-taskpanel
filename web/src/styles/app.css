@@ -1490,6 +1490,11 @@ svg[data-token-icon][hidden] { display: none; }
 [data-waiting-reason-kind="blocked"] {
   --status-color: var(--brand-st-blocked);
 }
+/* A finished delivery waiting for acceptance: the `done` token, because the
+   work is delivered — what is outstanding is the acceptance, not the work. */
+[data-waiting-reason-kind="acceptance"] {
+  --status-color: var(--brand-st-done);
+}
 
 /* R12x · B27 — the Waiting view's own rules. Its row shell is B26's by
    measurement, not by class: the same 30px line, the same 12px/11px type,

@@ -16,9 +16,10 @@
  *     began — the human comment that triggered it when M1 has read one, the card's
  *     own last change otherwise — and it is both the row's `data-since` and the
  *     `datetime` its visible stamp is printed from, so the two cannot disagree.
- *   * **The reason is a two-value attribute.** `data-waiting-reason-kind` is
- *     `question` or `blocked` (the design's whole domain) and the chip's copy comes
- *     from `waiting.reason.<kind>`.
+ *   * **The reason is an attribute.** `data-waiting-reason-kind` is `question`
+ *     or `blocked` for the `awaiting` overlay, and `acceptance` for an
+ *     `in_review` card the board's policy leaves to a human; the chip's copy
+ *     comes from `waiting.reason.<kind>`.
  *
  * **One data note, stated rather than papered over.** The core's awaiting
  * categories are `E1`–`E5` (`src/core/domain/enums.mjs#AWAITING_REASONS`), and
@@ -38,8 +39,79 @@ import { kindLabel } from "./actor-kind.js";
 import { feedTime } from "./activity-feed.js";
 import { identifierText } from "./identifier.js";
 
-/** B27's reason domain — both values, whatever the data can currently produce. */
-export const WAITING_REASON_KINDS = Object.freeze(["question", "blocked"]);
+/**
+ * B27's reason domain.
+ *
+ * `question` and `blocked` are the `awaiting` overlay's two readings; M6 adds
+ * `acceptance` — an `in_review` top-level card the board's policy says a human
+ * must close (`human-only` / `both`). It shares the view (both are "on my
+ * side") but not the trigger: nothing was asked, a delivery is waiting.
+ */
+export const WAITING_REASON_KINDS = Object.freeze(["question", "blocked", "acceptance"]);
+
+/** The policies under which a human still has acceptance work on the board. */
+export const HUMAN_ACCEPTANCE_POLICIES = Object.freeze(["human-only", "both"]);
+
+const TERMINAL = new Set(["done", "canceled"]);
+
+/** Is this card terminal? */
+export function isTerminalTask(task) {
+  return TERMINAL.has(task?.status);
+}
+
+/**
+ * Does this card still have acceptance work for a human?
+ *
+ * The predicate is the client-side twin of the board's gates
+ * (`commands/acceptance.mjs`), deliberately: the board refuses the human's
+ * accept when these are false, so listing the card would be offering an action
+ * that cannot succeed. It is derived from the **whole task list** rather than a
+ * server-computed flag because the live stream refreshes one card at a time —
+ * when a review card or a child lands, only *that* card arrives, and the
+ * original's derived value must change with it.
+ *
+ * @param {object} task a wire task
+ * @param {object[]} tasks the whole board reading
+ * @param {string} policy `human-only` | `both` | `agent-only`
+ * @returns {boolean}
+ */
+export function isAcceptanceWaiting(task, tasks, policy) {
+  if (!HUMAN_ACCEPTANCE_POLICIES.includes(policy)) return false;
+  if (task?.status !== "in_review") return false;
+  // A review card is the loop's/human's bookkeeping, never an acceptance item.
+  if (task.review_of_id !== null && task.review_of_id !== undefined) return false;
+  // Children are the agents' to close; only top-level cards are a human's.
+  if (task.parent_id !== null && task.parent_id !== undefined) return false;
+
+  const others = Array.isArray(tasks) ? tasks : [];
+  const children = others.filter((other) => other?.parent_id === task.id);
+  if (children.some((child) => !isTerminalTask(child))) return false;
+
+  const round = Number.isInteger(task.delivery_round) ? task.delivery_round : 0;
+  const currentReviews = others.filter(
+    (other) =>
+      other?.review_of_id === task.id &&
+      (other.review_round === null || other.review_round === undefined || other.review_round === round),
+  );
+  return currentReviews.every(isTerminalTask);
+}
+
+/**
+ * The cards a human still has to accept, oldest first (the queue's own order
+ * applies later).
+ *
+ * @param {object[]} tasks the whole board reading
+ * @param {string} policy
+ * @returns {object[]}
+ */
+export function acceptanceWaitingTasks(tasks, policy) {
+  return (Array.isArray(tasks) ? tasks : []).filter((task) => isAcceptanceWaiting(task, tasks, policy));
+}
+
+/** The instant an acceptance wait began: the delivery that put it in review. */
+export function acceptanceSinceOf(task) {
+  return task?.status_changed_at ?? task?.updated_at ?? "";
+}
 
 /** The awaiting categories the core writes, all of them questions to a human. */
 export const AWAITING_CATEGORIES = Object.freeze(["E1", "E2", "E3", "E4", "E5"]);
@@ -113,4 +185,56 @@ export function waitingRows(tasks, payloads = {}, now = Date.now()) {
     .map((task) => waitingRow(task, payloads[task.id] ?? null))
     .map((row) => ({ ...row, stamp: feedTime(row.since, now) }))
     .sort((a, b) => (a.since === b.since ? 0 : a.since < b.since ? -1 : 1));
+}
+
+/**
+ * One acceptance card → one queue row. Same six fields as an awaiting row, so
+ * the view renders one table; `reasonKind` is what tells the two apart.
+ *
+ * @param {object} task a wire card whose `in_review` delivery is the human's
+ */
+export function acceptanceRow(task) {
+  return {
+    id: task.id,
+    identifier: task.identifier,
+    display: identifierText(task.identifier),
+    title: task.title ?? "",
+    // The agent that delivered it, not the human it waits for.
+    actor: task.assignee?.display_name ?? "",
+    actorKind: kindLabel(task.assignee?.kind),
+    reasonKind: "acceptance",
+    reasonKey: reasonKeyOf("acceptance"),
+    since: acceptanceSinceOf(task),
+    payload: null,
+    kind: "acceptance",
+  };
+}
+
+/**
+ * The acceptance half of the queue, ordered with the awaiting half.
+ *
+ * @param {object[]} tasks the **whole** board reading (the derivation needs
+ *   children and review cards, not only the cards it returns)
+ * @param {string} policy
+ * @param {number} [now]
+ */
+export function acceptanceRows(tasks, policy, now = Date.now()) {
+  return acceptanceWaitingTasks(tasks, policy)
+    .map(acceptanceRow)
+    .map((row) => ({ ...row, stamp: feedTime(row.since, now) }));
+}
+
+/**
+ * The merged queue: waiting questions and waiting acceptances, oldest first.
+ * Rows tie on `since` keep their input order (awaiting rows first), so re-reads
+ * are stable.
+ *
+ * @param {object[]} awaitingRows
+ * @param {object[]} acceptanceRows
+ */
+export function mergeWaitingRows(awaitingRows, acceptanceRows) {
+  const row = (item) => item.since ?? "";
+  return [...(Array.isArray(awaitingRows) ? awaitingRows : []), ...(Array.isArray(acceptanceRows) ? acceptanceRows : [])]
+    .map((item) => ({ ...item, kind: item.kind ?? "question" }))
+    .sort((a, b) => (row(a) === row(b) ? 0 : row(a) < row(b) ? -1 : 1));
 }

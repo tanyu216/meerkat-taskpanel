@@ -32,6 +32,8 @@ import { chmodSync, closeSync, fsyncSync, openSync, readFileSync, renameSync, rm
 import { basename, dirname, join } from "node:path";
 
 import { ensureDir } from "../core/index.mjs";
+import { readAcceptancePolicy, writeAcceptancePolicy } from "../core/acceptance-policy.mjs";
+import { mergeEnvText } from "../shared/env-file.mjs";
 import { ALLOW_CIDRS_ENV, SECRET_DIR_MODE, SECRET_FILE_MODE } from "../shared/constants.mjs";
 import { DomainError } from "../shared/errors.mjs";
 import { redactText } from "../shared/redact.mjs";
@@ -252,17 +254,79 @@ export function writeAccessConfig(input) {
     });
   }
   const ranges = validateCidrs(cidrs);
+  const file = writeEnvKeys(dataDir, {
+    [ALLOW_LIST_ENABLED_ENV]: enabled ? "true" : "false",
+    [ALLOW_CIDRS_ENV]: ranges.join(","),
+  });
+  return { enabled, cidrs: ranges, source: "file", file };
+}
+
+/**
+ * Persist one or more keys into `<dataDir>/taskd.env`, **merging** with what is
+ * already there.
+ *
+ * The file is shared by independent settings — the access policy
+ * (`TASKD_ALLOW_CIDRS`) and the acceptance policy
+ * (`TASKD_ACCEPTANCE_POLICY`) — so a whole-file rewrite by one writer would
+ * silently erase the other's answer. Unknown lines (including an operator's
+ * comments) are preserved; a key in `patch` is replaced in place (the last
+ * occurrence wins, and earlier duplicates are dropped), and new keys are
+ * appended.
+ *
+ * @param {string} dataDir
+ * @param {Record<string, string>} patch
+ * @returns {string} the file written
+ */
+export function writeEnvKeys(dataDir, patch) {
+  if (patch === null || typeof patch !== "object") {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: "taskd.env patch must be an object of KEY=VALUE strings",
+      details: { field: "patch" },
+    });
+  }
   ensureDir(dataDir, { mode: SECRET_DIR_MODE });
   const file = accessEnvPath(dataDir);
-  const text = [
-    "# Meerkat TaskPanel access policy — written by the Access panel.",
-    "# taskd reads this at start-up; the panel applies a save immediately.",
-    `${ALLOW_LIST_ENABLED_ENV}=${enabled ? "true" : "false"}`,
-    `${ALLOW_CIDRS_ENV}=${ranges.join(",")}`,
-    "",
-  ].join("\n");
-  writeAtomic(file, text);
-  return { enabled, cidrs: ranges, source: "file", file };
+
+  let existing = "";
+  try {
+    existing = readFileSync(file, "utf8");
+  } catch (err) {
+    if (err.code !== "ENOENT") {
+      throw new DomainError("ACCESS_CONFIG_INVALID", {
+        message: `cannot read the access configuration: ${redactText(err.message)}`,
+        details: { file },
+        cause: err,
+      });
+    }
+  }
+
+  // A file created for the first time gets the panel's header, so a reader knows
+  // who writes it. A pre-existing hand-written file keeps its own lines
+  // (comments included) and only gains the new key.
+  const header =
+    existing === ""
+      ? "# Meerkat TaskPanel board configuration — written by the Access panel and install.sh.\n" +
+        "# taskd reads this file; the acceptance policy is re-read on every decision.\n"
+      : "";
+  writeAtomic(file, header + mergeEnvText(existing, patch));
+  return file;
+}
+
+/**
+ * Save the board's acceptance policy into the shared env file.
+ *
+ * Re-exported from `core/acceptance-policy.mjs`, which owns the vocabulary and
+ * the merge: the installer reaches the same function without going through the
+ * server (and therefore without opening a database module).
+ *
+ * @param {{dataDir: string, policy: string}} input
+ * @returns {{policy: string, file: string}}
+ */
+export { writeAcceptancePolicy };
+
+/** The acceptance policy this data directory's file records (env/file/default). */
+export function readStoredAcceptancePolicy(input) {
+  return readAcceptancePolicy({ dataDir: input.dataDir, env: input.env ?? {} });
 }
 
 /** @param {string} file @param {string} text */

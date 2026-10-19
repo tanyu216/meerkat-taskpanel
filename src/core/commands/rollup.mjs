@@ -99,12 +99,25 @@ const STARTABLE_CONTAINER_STATUSES = Object.freeze([STATUS.TODO]);
  * happened, so it must not start a container. `awaiting` is reached only from
  * `in_progress`, so it does prove work began (it matters after a lost event).
  */
-const CHILD_STARTED_STATUSES = Object.freeze([
+export const CHILD_STARTED_STATUSES = Object.freeze([
   STATUS.IN_PROGRESS,
   STATUS.AWAITING,
   STATUS.IN_REVIEW,
   STATUS.DONE,
 ]);
+
+/**
+ * Does this child status prove the child entered the work?
+ *
+ * Exported because `moveStatus` must fire the same hook as the claim path: a
+ * nested epic delivered straight out of `todo` (`todo → in_review`, the 0024
+ * overlay) has entered the work too, and its own parent container must start.
+ *
+ * @param {string} status
+ */
+export function hasChildStarted(status) {
+  return CHILD_STARTED_STATUSES.includes(status);
+}
 
 /** Longest cancellation reason carried into a rollup report. */
 const CANCEL_REASON_MAX_CHARS = 200;

@@ -365,11 +365,20 @@ the container; with it, the container stays `in_progress` and names the child bl
 | close the review card | `--auto-accept-reviews=yes\|no` | `MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS` | `yes` |
 | writes per pass | `--workflow-max-actions <n>` | `MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS` | `20` |
 | silent-review threshold | `--review-aging-minutes <n>` | `MEERKAT_TASKPANEL_REVIEW_AGING_MINUTES` | `60` |
+| who may close a task | `--acceptance <policy>` | `MEERKAT_TASKPANEL_ACCEPTANCE_POLICY` | `both` |
 
 Precedence is flag → environment → host config → default, the same as the claim policy.
 `workflow` gates the whole channel; `auto-accept-reviews` gates only the review card's own
 close; the reviewer gates only **dispatch** — outcomes still run without one, so reviews
 already in flight can finish after a deployment removes its reviewer.
+
+`acceptance` is the loop's **copy** of the board's policy; the board is authoritative
+(`<dataDir>/taskd.env`, written by `install.sh` and re-read on every acceptance decision).
+Under `human-only` the loop records a top-level `APPROVE` as a comment plus
+`meta.review_verdict=approve` / `review_verdict_round`, closes the review card, and leaves
+the original `in_review` for a human; the marker makes the hold idempotent. Child cards and
+review cards are still closed by the loop. Under `agent-only` the board only requires a
+non-human writer — which agent applies the verdict is the deployment's business.
 
 ## Continuity: a fresh handoff, not a resumed pile
 
@@ -1388,6 +1397,7 @@ it:
 MEERKAT_TASKPANEL_WORKFLOW=yes
 MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=yes
 MEERKAT_TASKPANEL_REVIEWER=
+MEERKAT_TASKPANEL_ACCEPTANCE_POLICY=both
 ```
 
 An empty `MEERKAT_TASKPANEL_REVIEWER` is a complete answer — "no independent reviewer" —

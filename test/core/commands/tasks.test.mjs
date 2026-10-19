@@ -35,10 +35,15 @@ const AGENT = { kind: "agent", id: "linus" };
 const HUMAN = { kind: "human", id: "Terry" };
 
 /** A board with repositories, commands and one project. */
-async function board(fn, { clock } = {}) {
+async function board(fn, { clock, policy } = {}) {
   return withBoard(({ db }) => {
     const repos = createRepositories(db);
-    const ctx = createContext({ db, repos, ...(clock === undefined ? {} : { clock }) });
+    const ctx = createContext({
+      db,
+      repos,
+      ...(clock === undefined ? {} : { clock }),
+      ...(policy === undefined ? {} : { acceptancePolicy: policy }),
+    });
     const commands = createCommands(ctx);
     commands.createProject({ id: "proj", name: "Project", actor: HUMAN });
     return fn({ db, repos, ctx, commands });
@@ -423,11 +428,17 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
     return epic;
   };
 
-  /** Walk a child to `done` the way the board allows: claim, deliver, accept. */
-  const finish = (commands, task, sha) => {
+  /**
+   * Walk a child to `done` the way the board allows: claim, deliver, accept.
+   *
+   * A child card is accepted by a **non-human** writer under every policy —
+   * humans close top-level originals only — so the acceptance step is the agent
+   * that did the work, not the human who later accepts the container.
+   */
+  const finish = (commands, task, sha, acceptActor = AGENT) => {
     commands.claim({ id: task.id, actor: AGENT });
     commands.deliver({ taskId: task.id, report: report({ evidence: [{ kind: "commit", sha }] }), actor: AGENT });
-    return commands.moveStatus({ id: task.id, to: "done", actor: HUMAN });
+    return commands.moveStatus({ id: task.id, to: "done", actor: acceptActor });
   };
 
   it("closes the container on the last child, with a system rollup report", async () => {
@@ -626,7 +637,9 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
   it("leaves a card with no parent untouched", async () => {
     await board(async ({ db, commands }) => {
       const solo = linusTask(commands, { title: "Solo" });
-      finish(commands, solo, "abc1234");
+      // A top-level card is the human's to accept (the child rule does not
+      // apply); that is exactly what this case pins.
+      finish(commands, solo, "abc1234", HUMAN);
 
       assert.deepEqual(activitiesFor(db, solo.id), ["task_created", "task_claimed", "task_delivered", "task_moved"]);
       assert.equal(db.prepare("SELECT count(*) AS c FROM task_reports").get().c, 1, "its own report, and nothing else");
@@ -646,11 +659,13 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
       assert.equal(
         commands.getTask({ id: outer.id }).status,
         "in_progress",
-        "the outer container started when its child did, but a human has not accepted the inner one",
+        "the outer container started when its child did, but the inner one is not accepted",
       );
 
-      // The human accepts the inner container: only then is the outer one whole.
-      commands.moveStatus({ id: inner.id, to: "done", actor: HUMAN });
+      // The inner container is a **child** of the outer one, so a non-human
+      // accepts it — a human closes only the top-level card. Only then is the
+      // outer one whole.
+      commands.moveStatus({ id: inner.id, to: "done", actor: AGENT });
       assert.equal(commands.getTask({ id: outer.id }).status, "in_review");
     });
   });
@@ -669,7 +684,7 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
           reason: "delivered under an audited waiver",
           actor: AGENT,
         });
-        commands.moveStatus({ id: child.id, to: "done", actor: HUMAN });
+        commands.moveStatus({ id: child.id, to: "done", actor: AGENT });
       }
 
       // No report of theirs to stand on: the container is left for a human
@@ -921,10 +936,10 @@ describe("commands/tasks — the container lifecycle (system start, notes, recon
         commands.deliver({ taskId: child.id, report: report(), actor: AGENT });
       }
 
-      commands.moveStatus({ id: one.id, to: "done", actor: HUMAN });
+      commands.moveStatus({ id: one.id, to: "done", actor: AGENT });
       assert.equal(commands.getTask({ id: epic.id }).status, "in_progress", "one of two is not the set");
 
-      commands.moveStatus({ id: two.id, to: "done", actor: HUMAN });
+      commands.moveStatus({ id: two.id, to: "done", actor: AGENT });
       // The racing second write targets a card the first one already finished.
       assert.throws(
         () => commands.moveStatus({ id: two.id, to: "done", actor: AGENT }),
@@ -1650,15 +1665,20 @@ describe("commands/tasks — listCandidates (poll read)", () => {
       assert.equal(projected.review_round, 2, "a string meta value is coerced to an integer");
       assert.equal(projected.status, "todo", "the review card runs through the normal claim→wake path");
 
-      // A malformed round is `null`, never a wrong number.
-      const malformed = linusTodo(commands, {
-        title: "Review it badly",
-        allowDup: true,
-        meta: { review_of: original.identifier, review_round: "round-two" },
-      });
-      const bad = commands.listCandidates({ assignee: "linus" }).find((c) => c.identifier === malformed.identifier);
-      assert.equal(bad.review_of, original.identifier);
-      assert.equal(bad.review_round, null);
+      // A malformed round is refused at creation (0025): a marker describes a
+      // real audit, so an unreadable round may not be stored as "any round".
+      assert.throws(
+        () =>
+          linusTodo(commands, {
+            title: "Review it badly",
+            allowDup: true,
+            meta: { review_of: original.identifier, review_round: "round-two" },
+          }),
+        (err) => err.code === "VALIDATION_FAILED" && err.details.field === "review_round",
+      );
+      // The structural marker is the id, not the identifier the meta carries.
+      assert.equal(review.reviewOfId, original.id);
+      assert.equal(review.reviewRound, 2);
     });
   });
 
@@ -2147,6 +2167,343 @@ describe("commands/tasks — the execution claim follows the work cycle (T-20261
       assert.equal(actorName(db, blocked.claimedBy), "linus", "a stopped card is still the same executor's card");
       const unblocked = commands.moveStatus({ id: task.id, to: "in_progress", actor: AGENT });
       assert.equal(actorName(db, unblocked.claimedBy), "linus");
+    });
+  });
+});
+
+describe("commands/tasks — acceptance policy and the two terminality gates", () => {
+  const TASKD = { kind: "taskd", id: "taskd" };
+
+  /** Put a card in `in_review` the legal way (claim, then deliver). */
+  const deliverCard = (commands, task, actor = AGENT) => {
+    commands.claim({ id: task.id, actor });
+    return commands.deliver({ taskId: task.id, report: report(), actor });
+  };
+
+  /** Put a top-level epic in `in_review` (it cannot be claimed). */
+  const deliverEpic = (commands, epic) =>
+    commands.deliver({ taskId: epic.id, report: report(), actor: AGENT });
+
+  /** Is the acceptance of this card refused, and with which code? */
+  const refusal = (fn) => {
+    try {
+      fn();
+      return null;
+    } catch (err) {
+      assert.ok(err instanceof DomainError, err?.stack ?? String(err));
+      return err.code;
+    }
+  };
+
+  /* -------------------------------------------------------------- policy */
+
+  it("both (the default) accepts from a human or the board, never from an agent", async () => {
+    for (const actor of [HUMAN, TASKD]) {
+      await board(async ({ commands }) => {
+        const task = commands.createTask({ projectId: "proj", title: "Top", actor: AGENT });
+        deliverCard(commands, task);
+        assert.equal(commands.moveStatus({ id: task.id, to: "done", actor }).status, "done");
+      });
+    }
+    await board(async ({ commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "Top", actor: AGENT });
+      deliverCard(commands, task);
+      assert.equal(refusal(() => commands.moveStatus({ id: task.id, to: "done", actor: AGENT })), "ACCEPTANCE_FORBIDDEN");
+    });
+  });
+
+  it("human-only accepts only from a human on a top-level original", async () => {
+    await board(async ({ commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "Top", actor: AGENT });
+      deliverCard(commands, task);
+      assert.equal(refusal(() => commands.moveStatus({ id: task.id, to: "done", actor: TASKD })), "ACCEPTANCE_FORBIDDEN");
+      assert.equal(commands.moveStatus({ id: task.id, to: "done", actor: HUMAN }).status, "done");
+    }, { policy: () => "human-only" });
+  });
+
+  it("agent-only accepts from any non-human, and refuses the human", async () => {
+    for (const actor of [TASKD, { kind: "claude", id: "claude" }, AGENT]) {
+      await board(async ({ commands }) => {
+        const task = commands.createTask({ projectId: "proj", title: "Top", actor: AGENT });
+        deliverCard(commands, task);
+        assert.equal(commands.moveStatus({ id: task.id, to: "done", actor }).status, "done");
+      }, { policy: () => "agent-only" });
+    }
+    await board(async ({ commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "Top", actor: AGENT });
+      deliverCard(commands, task);
+      assert.equal(refusal(() => commands.moveStatus({ id: task.id, to: "done", actor: HUMAN })), "ACCEPTANCE_FORBIDDEN");
+    }, { policy: () => "agent-only" });
+  });
+
+  it("a human may never accept a child card — under any policy", async () => {
+    for (const policy of ["human-only", "both", "agent-only"]) {
+      await board(async ({ commands }) => {
+        const epic = commands.createTask({ projectId: "proj", title: "Container", kind: "epic", actor: AGENT });
+        const child = commands.createTask({ projectId: "proj", title: "Child", allowDup: true, actor: AGENT });
+        commands.addRelation({ type: "parent", source: epic.id, target: child.id, actor: AGENT });
+        deliverCard(commands, child);
+        assert.equal(
+          refusal(() => commands.moveStatus({ id: child.id, to: "done", actor: HUMAN })),
+          "ACCEPTANCE_FORBIDDEN",
+          policy,
+        );
+        assert.equal(commands.moveStatus({ id: child.id, to: "done", actor: AGENT }).status, "done", policy);
+      }, { policy: () => policy });
+    }
+  });
+
+  it("a review card is closed by the human or the board, and by any non-human under agent-only", async () => {
+    const makeReview = (commands) => {
+      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "Review",
+        allowDup: true,
+        meta: { review_of: original.identifier, review_round: 1 },
+        actor: AGENT,
+      });
+      deliverCard(commands, review);
+      return review;
+    };
+
+    for (const actor of [HUMAN, TASKD]) {
+      await board(async ({ commands }) => {
+        const review = makeReview(commands);
+        assert.equal(commands.moveStatus({ id: review.id, to: "done", actor }).status, "done");
+      });
+    }
+    await board(async ({ commands }) => {
+      const review = makeReview(commands);
+      assert.equal(refusal(() => commands.moveStatus({ id: review.id, to: "done", actor: AGENT })), "ACCEPTANCE_FORBIDDEN");
+    });
+    await board(async ({ commands }) => {
+      const review = makeReview(commands);
+      assert.equal(commands.moveStatus({ id: review.id, to: "done", actor: AGENT }).status, "done");
+    }, { policy: () => "agent-only" });
+    await board(async ({ commands }) => {
+      const review = makeReview(commands);
+      assert.equal(refusal(() => commands.moveStatus({ id: review.id, to: "done", actor: HUMAN })), "ACCEPTANCE_FORBIDDEN");
+    }, { policy: () => "agent-only" });
+  });
+
+  it("authority is decided before the review/children gates", async () => {
+    await board(async ({ commands }) => {
+      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      deliverCard(commands, original);
+      commands.createTask({
+        projectId: "proj",
+        title: "Review",
+        allowDup: true,
+        meta: { review_of: original.identifier, review_round: 1 },
+        actor: AGENT,
+      });
+      // An agent is refused as an acceptor before the pending review is read.
+      assert.equal(refusal(() => commands.moveStatus({ id: original.id, to: "done", actor: AGENT })), "ACCEPTANCE_FORBIDDEN");
+    });
+  });
+
+  /* --------------------------------------------------------- review-ready */
+
+  it("a human closing a top-level card needs the current round's reviews resolved", async () => {
+    for (const status of ["todo", "in_progress", "in_review", "blocked", "awaiting"]) {
+      await board(async ({ commands }) => {
+        const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+        deliverCard(commands, original);
+        const review = commands.createTask({
+          projectId: "proj",
+          title: "Review",
+          allowDup: true,
+          meta: { review_of: original.identifier, review_round: 1 },
+          actor: AGENT,
+        });
+        if (status !== "todo") {
+          // `in_review`/`blocked` are reached through the work; the other
+          // statuses directly from `todo`.
+          if (status === "awaiting" || status === "in_review" || status === "in_progress") {
+            commands.claim({ id: review.id, actor: AGENT });
+            if (status === "awaiting") {
+              commands.moveStatus({ id: review.id, to: "awaiting", awaitingReason: "E1", actor: AGENT });
+            } else if (status === "in_review") {
+              commands.deliver({ taskId: review.id, report: report(), actor: AGENT });
+            }
+          } else {
+            commands.moveStatus({ id: review.id, to: "blocked", actor: AGENT });
+          }
+        }
+        assert.equal(commands.getTask({ id: review.id }).status, status);
+        assert.equal(
+          refusal(() => commands.moveStatus({ id: original.id, to: "done", actor: HUMAN })),
+          "REVIEW_PENDING",
+          `a ${status} review holds the original open`,
+        );
+      });
+    }
+  });
+
+  it("a done or canceled review releases the original; an old round does not hold it", async () => {
+    for (const resolved of ["done", "canceled"]) {
+      await board(async ({ commands }) => {
+        const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+        deliverCard(commands, original);
+        const review = commands.createTask({
+          projectId: "proj",
+          title: "Review",
+          allowDup: true,
+          meta: { review_of: original.identifier, review_round: 1 },
+          actor: AGENT,
+        });
+        if (resolved === "done") {
+          deliverCard(commands, review);
+          commands.moveStatus({ id: review.id, to: "done", actor: HUMAN });
+        } else {
+          commands.moveStatus({ id: review.id, to: "canceled", actor: AGENT });
+        }
+        assert.equal(commands.moveStatus({ id: original.id, to: "done", actor: HUMAN }).status, "done");
+      });
+    }
+
+    await board(async ({ commands }) => {
+      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      deliverCard(commands, original);
+      // Round 2 while the card is on round 1: history, not a hold.
+      commands.createTask({
+        projectId: "proj",
+        title: "Old review",
+        allowDup: true,
+        meta: { review_of: original.identifier, review_round: 2 },
+        actor: AGENT,
+      });
+      assert.equal(commands.moveStatus({ id: original.id, to: "done", actor: HUMAN }).status, "done");
+    });
+  });
+
+  it("a NULL-round review covers every round (the conservative reading)", async () => {
+    await board(async ({ commands }) => {
+      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      deliverCard(commands, original);
+      commands.createTask({
+        projectId: "proj",
+        title: "Review without a round",
+        allowDup: true,
+        meta: { review_of: original.identifier },
+        actor: AGENT,
+      });
+      assert.equal(refusal(() => commands.moveStatus({ id: original.id, to: "done", actor: HUMAN })), "REVIEW_PENDING");
+    });
+  });
+
+  it("deliver(to: done) applies the same review-ready gate", async () => {
+    await board(async ({ commands }) => {
+      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      deliverCard(commands, original);
+      commands.createTask({
+        projectId: "proj",
+        title: "Review",
+        allowDup: true,
+        meta: { review_of: original.identifier, review_round: 1 },
+        actor: AGENT,
+      });
+      assert.equal(
+        refusal(() => commands.deliver({ taskId: original.id, to: "done", report: report(), actor: HUMAN })),
+        "REVIEW_PENDING",
+      );
+    });
+  });
+
+  it("a system/agent acceptance is not held by a pending review (the loop's write order)", async () => {
+    await board(async ({ commands }) => {
+      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      deliverCard(commands, original);
+      commands.createTask({
+        projectId: "proj",
+        title: "Review",
+        allowDup: true,
+        meta: { review_of: original.identifier, review_round: 1 },
+        actor: AGENT,
+      });
+      assert.equal(commands.moveStatus({ id: original.id, to: "done", actor: TASKD }).status, "done");
+    });
+  });
+
+  /* ------------------------------------------------- children-terminal gate */
+
+  it("refuses in_review and done while a child is non-terminal", async () => {
+    await board(async ({ commands }) => {
+      const epic = commands.createTask({ projectId: "proj", title: "Container", kind: "epic", actor: AGENT });
+      const child = commands.createTask({ projectId: "proj", title: "Child", allowDup: true, actor: AGENT });
+      commands.addRelation({ type: "parent", source: epic.id, target: child.id, actor: AGENT });
+
+      assert.equal(refusal(() => deliverEpic(commands, epic)), "CHILDREN_OPEN");
+      // `done` is only reachable from in_review; start the epic there directly
+      // through the legal delivery once the child is finished below.
+      assert.equal(commands.getTask({ id: epic.id }).status, "todo", "a refused delivery writes nothing");
+    });
+  });
+
+  it("passes once every child is terminal, and re-opens when a child is added", async () => {
+    await board(async ({ commands }) => {
+      const epic = commands.createTask({ projectId: "proj", title: "Container", kind: "epic", actor: AGENT });
+      const child = commands.createTask({ projectId: "proj", title: "Child", allowDup: true, actor: AGENT });
+      commands.addRelation({ type: "parent", source: epic.id, target: child.id, actor: AGENT });
+
+      deliverCard(commands, child);
+      commands.moveStatus({ id: child.id, to: "done", actor: AGENT });
+      // The last child landing closes the container automatically; if it did
+      // not, the manual delivery must pass.
+      assert.equal(commands.getTask({ id: epic.id }).status, "in_review");
+
+      const late = commands.createTask({ projectId: "proj", title: "Late", allowDup: true, actor: AGENT });
+      commands.addRelation({ type: "parent", source: epic.id, target: late.id, actor: AGENT });
+      assert.equal(refusal(() => commands.moveStatus({ id: epic.id, to: "done", actor: HUMAN })), "CHILDREN_OPEN");
+
+      commands.moveStatus({ id: late.id, to: "canceled", actor: AGENT });
+      assert.equal(commands.moveStatus({ id: epic.id, to: "done", actor: HUMAN }).status, "done");
+    });
+  });
+
+  it("a leaf card and an empty epic are not affected", async () => {
+    await board(async ({ commands }) => {
+      const leaf = commands.createTask({ projectId: "proj", title: "Leaf", actor: AGENT });
+      deliverCard(commands, leaf);
+      assert.equal(commands.moveStatus({ id: leaf.id, to: "done", actor: HUMAN }).status, "done");
+
+      const empty = commands.createTask({ projectId: "proj", title: "Empty", kind: "epic", allowDup: true, actor: AGENT });
+      const moved = deliverEpic(commands, empty);
+      assert.equal(moved.task.status, "in_review", "an empty epic may be delivered manually");
+    });
+  });
+
+  /* --------------------------------------------------- creation + marker */
+
+  it("a card cannot be created awaiting, and a review marker must resolve", async () => {
+    await board(async ({ commands }) => {
+      assert.equal(
+        refusal(() => commands.createTask({ projectId: "proj", title: "Awaiting", status: "awaiting", actor: AGENT })),
+        "VALIDATION_FAILED",
+      );
+      const original = commands.createTask({ projectId: "proj", title: "Original", actor: AGENT });
+      const review = commands.createTask({
+        projectId: "proj",
+        title: "Review",
+        allowDup: true,
+        meta: { review_of: original.identifier, review_round: "1" },
+        actor: AGENT,
+      });
+      assert.equal(review.reviewOfId, original.id);
+      assert.equal(review.reviewRound, 1);
+      assert.equal(
+        refusal(() =>
+          commands.createTask({
+            projectId: "proj",
+            title: "Dangling",
+            allowDup: true,
+            reviewOf: "PROJ-9999",
+            actor: AGENT,
+          }),
+        ),
+        "VALIDATION_FAILED",
+      );
     });
   });
 });

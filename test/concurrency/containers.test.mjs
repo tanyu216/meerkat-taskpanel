@@ -51,7 +51,8 @@ function acceptInChildProcess(dbPath, childId) {
       commands.moveStatus({
         id: process.env.TASKD_TEST_CHILD,
         to: "done",
-        actor: { kind: "human", id: "Terry" },
+        // A child card is accepted by a non-human writer under every policy.
+        actor: { kind: "agent", id: "linus" },
       });
       result = "done";
     } catch (err) {

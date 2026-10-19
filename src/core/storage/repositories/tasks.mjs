@@ -68,6 +68,21 @@ export function createTasksRepository(db) {
       WHERE idem = ? AND status NOT IN ('done','canceled')
       ORDER BY created_at ASC LIMIT 1`,
   );
+  // 0025 — the review cards of one original. `review_of_id` is an internal id,
+  // so this read never depends on how a caller spells a reference.
+  const selectReviewsOf = db.prepare(
+    `SELECT ${SELECT_LIST} FROM tasks WHERE review_of_id = ? ORDER BY created_at ASC, identifier ASC`,
+  );
+  const selectReviewCardsByProject = db.prepare(
+    `SELECT ${SELECT_LIST} FROM tasks
+      WHERE review_of_id IS NOT NULL AND project_id = ?
+      ORDER BY created_at ASC, identifier ASC`,
+  );
+  const selectReviewCards = db.prepare(
+    `SELECT ${SELECT_LIST} FROM tasks
+      WHERE review_of_id IS NOT NULL
+      ORDER BY created_at ASC, identifier ASC`,
+  );
 
   /** @param {string} id */
   const requireTask = (id) => {
@@ -128,6 +143,26 @@ export function createTasksRepository(db) {
         });
       }
       return taskFromRow(rows[0]);
+    },
+
+    /**
+     * The cards that audit `originalId` (0025's structural read).
+     * @param {string} originalId
+     */
+    listReviewsOf(originalId) {
+      return selectReviewsOf.all(originalId).map(taskFromRow);
+    },
+
+    /**
+     * Every review card — optionally one project's. Used by the read surfaces
+     * that need the whole marker set (the board's waiting projection does its
+     * own derivation client-side; this is for server/tests).
+     * @param {string} [projectId]
+     */
+    listReviewCards(projectId) {
+      return (projectId === undefined ? selectReviewCards : selectReviewCardsByProject)
+        .all(...(projectId === undefined ? [] : [projectId]))
+        .map(taskFromRow);
     },
 
     /** Either id or identifier — whichever the caller has. */

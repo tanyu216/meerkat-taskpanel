@@ -1128,3 +1128,88 @@ describe("web/board — filtered board (visible branches)", () => {
     assert.deepEqual(columns.value.find((c) => c.status === "blocked").tasks, []);
   });
 });
+
+/* ------------------------------------------------- waiting: acceptance */
+
+describe("board store — the acceptance half of the waiting queue", () => {
+  const original = (over = {}) => ({
+    id: "o1",
+    identifier: "TD-1",
+    title: "Delivered",
+    status: "in_review",
+    delivery_round: 1,
+    parent_id: null,
+    review_of_id: null,
+    review_round: null,
+    version: 1,
+    labels: [],
+    ...over,
+  });
+  const review = (status, over = {}) => ({
+    id: "r1",
+    identifier: "TD-R",
+    title: "Review TD-1",
+    status,
+    delivery_round: 1,
+    parent_id: null,
+    review_of_id: "o1",
+    review_round: 1,
+    version: 1,
+    labels: [],
+    ...over,
+  });
+
+  it("derives from the whole board reading, and the count adds both halves", async () => {
+    const mod = await freshBoard();
+    mod.board.currentProjectId = "p1";
+    mod.board.loaded = true;
+    mod.board.tasks = [original()];
+    mod.board.acceptancePolicy = "both";
+    assert.deepEqual(mod.acceptanceTasks.value.map((task) => task.id), ["o1"]);
+    assert.equal(mod.waitingCount.value, 1);
+
+    // The status filter hides the card from the board but not from the queue.
+    mod.writeStatusFilter(["todo"]);
+    assert.equal(mod.visibleTasks.value.length, 0);
+    assert.deepEqual(mod.acceptanceTasks.value.map((task) => task.id), ["o1"]);
+
+    mod.board.acceptancePolicy = "agent-only";
+    assert.deepEqual(mod.acceptanceTasks.value, [], "an agent-only board asks the human for nothing");
+    assert.equal(mod.waitingCount.value, 0);
+    mod.writeStatusFilter(["all"]);
+  });
+
+  it("holds the card while its review is open, and updates when the review's own event arrives", async () => {
+    const mod = await freshBoard();
+    mod.board.currentProjectId = "p1";
+    mod.board.loaded = true;
+    mod.board.acceptancePolicy = "both";
+    mod.board.tasks = [original(), review("todo")];
+    assert.deepEqual(mod.acceptanceTasks.value, [], "a todo review holds it");
+
+    // Only the review card is re-read — the original's row must appear anyway.
+    const calls = installFetch({
+      "GET /api/v1/tasks/TD-R": () => ok({ task: review("done"), report_waivers: [] }),
+    });
+    await mod.refreshTask(review("done").identifier);
+    assert.equal(calls.length, 1, "one card re-read, not a whole-board reload");
+    assert.equal(mod.board.tasks.find((task) => task.id === "r1").status, "done");
+    assert.deepEqual(mod.acceptanceTasks.value.map((task) => task.id), ["o1"]);
+  });
+
+  it("waits for children, and a child's own event releases it", async () => {
+    const mod = await freshBoard();
+    mod.board.currentProjectId = "p1";
+    mod.board.loaded = true;
+    mod.board.acceptancePolicy = "both";
+    const child = { ...original({ id: "c1", identifier: "TD-C", status: "todo", parent_id: "o1" }) };
+    mod.board.tasks = [original(), child];
+    assert.deepEqual(mod.acceptanceTasks.value, [], "an open child holds the container");
+
+    installFetch({
+      "GET /api/v1/tasks/TD-C": () => ok({ task: { ...child, status: "canceled" }, report_waivers: [] }),
+    });
+    await mod.refreshTask("TD-C");
+    assert.deepEqual(mod.acceptanceTasks.value.map((task) => task.id), ["o1"]);
+  });
+});

@@ -26,6 +26,7 @@ import { isAgentKind, kindLabel, platformOfKind } from "../lib/actor-kind.js";
 
 export { isAgentKind, kindLabel, platformOfKind };
 import { safeFileName } from "../lib/attachments.js";
+import { acceptanceWaitingTasks } from "../lib/waiting-queue.js";
 import {
   detailRefetch,
   invalidatesWaitingPayload,
@@ -167,6 +168,13 @@ export const board = reactive({
    * a flag, because the watcher can start a second read before the first lands.
    */
   waitingPending: 0,
+  /**
+   * The board's acceptance policy (`human-only` | `both` | `agent-only`), read
+   * from `/meta` (`capabilities.acceptance.policy`). `both` is the fallback for
+   * a board that predates the capability — the historical rule, and the one
+   * under which a human still has acceptance work.
+   */
+  acceptancePolicy: "both",
 });
 
 /* --------------------------------------------------------------- accessors */
@@ -381,7 +389,24 @@ export const projectLoading = computed(() => board.loading && !board.loaded);
  * a card hidden by an active filter is in neither.
  */
 export const waitingTasks = computed(() => visibleTasks.value.filter(isAwaiting));
-export const waitingCount = computed(() => waitingTasks.value.length);
+
+/**
+ * The cards whose **delivery** waits on this human: an `in_review` top-level
+ * original whose current-round reviews and children are resolved, under a
+ * policy that still asks a human to accept (`human-only` / `both`).
+ *
+ * Derived from `board.tasks` — the whole reading, unfiltered — rather than
+ * `visibleTasks`: an acceptance is not a board column, so a status filter must
+ * not make it disappear, and the derivation needs the children and review cards
+ * that no filter was asked to show. It is a computed value, so when the live
+ * stream replaces a review card or a child, the original's row appears without
+ * re-reading the original.
+ */
+export const acceptanceTasks = computed(() =>
+  acceptanceWaitingTasks(board.tasks, board.acceptancePolicy),
+);
+
+export const waitingCount = computed(() => waitingTasks.value.length + acceptanceTasks.value.length);
 
 /**
  * The first sentence of a payload comment — the text up to the first
@@ -1368,6 +1393,12 @@ export async function initBoard() {
   try {
     const meta = await api.meta();
     board.revision = Number(meta?.revision) || board.revision;
+    // The acceptance policy decides whether an `in_review` top-level card is a
+    // "waiting on me" item at all. A board that cannot read its policy reports
+    // `null`; fall back to the historical rule rather than hiding work.
+    const policy = meta?.capabilities?.acceptance?.policy;
+    board.acceptancePolicy =
+      policy === "human-only" || policy === "both" || policy === "agent-only" ? policy : "both";
   } catch {
     /* the board may be down; loadBoard reports it */
   }

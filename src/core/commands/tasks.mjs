@@ -35,7 +35,7 @@ import {
   checkDeliveryGate,
   WAIVER_MIN_REASON_CHARS,
 } from "../domain/delivery-gate.mjs";
-import { assertAcceptanceAuthority, assertTransition } from "../domain/status.mjs";
+import { assertTransition } from "../domain/status.mjs";
 import { assertAwaitingReason } from "../domain/awaiting.mjs";
 import { normalizeBlockedReason } from "../domain/blocked-reason.mjs";
 import { STATUS } from "../domain/enums.mjs";
@@ -45,11 +45,12 @@ import { assertEpicDowngradeAllowed } from "../domain/relation.mjs";
 import { normalizeLabelName } from "../domain/labels.mjs";
 import { normalizeName } from "../domain/dictionary.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
+import { assertAcceptance, assertChildrenTerminal, assertReviewReady } from "./acceptance.mjs";
 import { actorOf } from "./context.mjs";
 import { addComment } from "./comments.mjs";
 import { resolveActorId, resolveAssignment } from "./dictionary.mjs";
 import { resolveLabels } from "./labels.mjs";
-import { advanceContainerForChild, startContainerForChild } from "./rollup.mjs";
+import { advanceContainerForChild, hasChildStarted, startContainerForChild } from "./rollup.mjs";
 
 /**
  * @param {object} ctx
@@ -170,6 +171,13 @@ export function createTask(ctx, input) {
         labelAudit = resolved.audit;
       }
 
+      // 0025 — the structural review marker. `meta.review_of` holds an
+      // identifier (`PROJ-0007`), which is what the loop and the SLA patrol
+      // match on; the column holds the internal id, and that is what the
+      // acceptance policy reads. Resolve once, here, so a dangling reference is
+      // refused instead of silently producing a card that is not exempt.
+      Object.assign(candidate, resolveReviewMarker(ctx, input.projectId, input));
+
       let task;
       try {
         task = ctx.repos.tasks.insert(candidate);
@@ -205,6 +213,70 @@ export function createTask(ctx, input) {
     },
     { op: "tasks.create" },
   );
+}
+
+/**
+ * Resolve a create's review reference into the structural marker (0025).
+ *
+ * `input.reviewOf` (the command/wire field) and `input.meta.review_of` (the
+ * loop's metadata convention) are both **identifiers or ids**; the column wants
+ * the internal id, resolved in the card's own project. A reference that resolves
+ * to nothing, or to another project, is refused: the marker grants the card the
+ * review-card acceptance exemption, and that must never be inferred from a name
+ * the board cannot confirm.
+ *
+ * `review_round` is optional and must be a positive integer when present. A
+ * round without a reference is refused for the same reason: it would describe an
+ * audit that does not exist.
+ *
+ * @param {object} ctx
+ * @param {string} projectId
+ * @param {{reviewOf?: unknown, reviewRound?: unknown, meta?: object}} input
+ * @returns {{reviewOfId: string|null, reviewRound: number|null}}
+ */
+function resolveReviewMarker(ctx, projectId, input) {
+  const rawRef = input.reviewOf ?? input.meta?.review_of;
+  const ref = rawRef === undefined || rawRef === null ? "" : String(rawRef).trim();
+  const rawRound = input.reviewRound ?? input.meta?.review_round;
+  const roundText = rawRound === undefined || rawRound === null ? "" : String(rawRound).trim();
+
+  if (ref === "") {
+    if (roundText !== "") {
+      throw new DomainError("VALIDATION_FAILED", {
+        message: "review_round requires review_of — a round without a reviewed card describes nothing",
+        details: { field: "review_round", received: rawRound },
+        hint: { fix: "pass review_of together with review_round, or drop the round" },
+      });
+    }
+    return { reviewOfId: null, reviewRound: null };
+  }
+
+  const original = ctx.repos.tasks.resolve(projectId, ref);
+  if (original === null) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: `review_of ${JSON.stringify(ref)} does not name a card in this project`,
+      details: { field: "review_of", received: rawRef, projectId },
+      hint: { fix: "pass the reviewed card's identifier (e.g. PROJ-0007) or its id" },
+    });
+  }
+  if (original.projectId !== projectId) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: `review_of ${JSON.stringify(ref)} names a card in another project`,
+      details: { field: "review_of", received: rawRef, projectId, originalProjectId: original.projectId },
+    });
+  }
+
+  let round = null;
+  if (roundText !== "") {
+    round = Number(roundText);
+    if (!Number.isInteger(round) || round <= 0) {
+      throw new DomainError("VALIDATION_FAILED", {
+        message: `review_round must be a positive integer (got ${JSON.stringify(rawRound)})`,
+        details: { field: "review_round", received: rawRound },
+      });
+    }
+  }
+  return { reviewOfId: original.id, reviewRound: round };
 }
 
 /**
@@ -623,10 +695,14 @@ export function moveStatus(ctx, input) {
       }
 
       assertTransition(current.status, input.to, current.kind);
-      // `done` is acceptance, not delivery: only a human or the board itself may
-      // perform it. A worker stops at `in_review` (the review card is how the
-      // loop's independent reviewer reports; the loop — `system` — applies it).
-      if (input.to === STATUS.DONE) assertAcceptanceAuthority(actor);
+      // `done` is acceptance, not delivery. Who may perform it is the board's
+      // policy (`human-only` | `both` | `agent-only`) and the card's scope
+      // (child / review card / top-level original) — see
+      // `commands/acceptance.mjs` and `domain/status.mjs`.
+      if (input.to === STATUS.DONE) assertAcceptance(ctx, current, actor);
+      // A card is not delivered or accepted while a child is still in flight.
+      // The same rule the automatic rollup applies; the DB trigger is 0026.
+      assertChildrenTerminal(ctx, current, input.to);
 
       // `todo → in_progress` **is** a claim (T-20261009-230500): it must respect
       // the routing lock and stamp `claimed_by/claimed_at/heartbeat_at`, so the
@@ -666,6 +742,12 @@ export function moveStatus(ctx, input) {
         });
       }
 
+      // Last, after the delivery gate: a human accepting a top-level original
+      // needs the review cards of the current round resolved. The loop's own
+      // write order is original-first, review-last, so system/agent acceptances
+      // are deliberately exempt (the function checks the actor).
+      if (input.to === STATUS.DONE) assertReviewReady(ctx, current, actor);
+
       const task = ctx.repos.tasks.moveCas({
         id: input.id,
         ifVersion: input.ifVersion,
@@ -704,8 +786,11 @@ export function moveStatus(ctx, input) {
       });
       // A card that re-enters the work (a rework from `in_review`, an unblock)
       // starts its container too: the claim path above is not the only way into
-      // `in_progress` (commands/rollup.mjs).
-      if (task.status === STATUS.IN_PROGRESS) startContainerForChild(ctx, task.id, now);
+      // `in_progress` (commands/rollup.mjs). The test is `hasChildStarted`, not
+      // `status === in_progress`: a nested epic delivered straight out of `todo`
+      // (`todo → in_review`, 0024) has entered the work as surely as a claimed
+      // task, and its parent container must start.
+      if (hasChildStarted(task.status)) startContainerForChild(ctx, task.id, now);
       // The container closes itself when its last child lands
       // (commands/rollup.mjs): the same transaction, so a child can never be
       // `done` on a board where its epic still looks unfinished. `canceled` is
@@ -1143,6 +1228,11 @@ export function canMove(ctx, input) {
   if (!verdict.ok) return verdict;
   try {
     assertTransition(task.status, input.to, task.kind);
+    // The structural half of the new gates is actor-independent, so the
+    // pre-flight answer can carry it. The acceptance policy and the review-ready
+    // check need the writer's declared kind, which `canMove` is not given — the
+    // write itself still refuses those.
+    assertChildrenTerminal(ctx, task, input.to);
   } catch (err) {
     return { ok: false, reason: err.code, details: err.details };
   }

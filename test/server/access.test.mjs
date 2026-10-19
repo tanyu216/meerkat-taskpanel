@@ -24,7 +24,9 @@ import {
   allowListFrom,
   readAccessConfig,
   validateCidrs,
+  writeAccessConfig,
 } from "../../src/server/access-config.mjs";
+import { readAcceptancePolicy, writeAcceptancePolicy } from "../../src/core/acceptance-policy.mjs";
 import { createTaskd } from "../../src/server/index.mjs";
 import { ALLOW_CIDRS_ENV } from "../../src/shared/constants.mjs";
 
@@ -213,5 +215,43 @@ describe("server/access — the HTTP surface", () => {
     assert.equal(verdict.ok, false);
     assert.equal(verdict.status, 403);
     assert.equal(verdict.payload.error.details.reason, "loopback_only");
+  });
+});
+
+describe("server/access-config — the shared taskd.env", () => {
+  it("a policy save keeps the acceptance policy, and vice versa", () => {
+    const dir = tempDir();
+    writeAcceptancePolicy({ dataDir: dir, policy: "human-only" });
+    writeAccessConfig({ dataDir: dir, enabled: true, cidrs: ["10.0.0.0/8"] });
+    assert.equal(readAcceptancePolicy({ dataDir: dir, env: {} }).policy, "human-only", "the access save merged");
+
+    writeAcceptancePolicy({ dataDir: dir, policy: "agent-only" });
+    assert.deepEqual(
+      readAccessConfig({ dataDir: dir, env: {} }).cidrs,
+      ["10.0.0.0/8"],
+      "the acceptance save merged too",
+    );
+    const text = readFileSync(accessEnvPath(dir), "utf8");
+    assert.equal((text.match(/^TASKD_ACCEPTANCE_POLICY=/gm) ?? []).length, 1);
+    assert.equal((text.match(/^TASKD_ALLOW_CIDRS=/gm) ?? []).length, 1);
+  });
+});
+
+describe("server/meta — the acceptance capability", () => {
+  it("reports the policy in force, and re-reads it on each request", async () => {
+    const dir = tempDir();
+    writeAcceptancePolicy({ dataDir: dir, policy: "human-only" });
+    const taskd = await start({ dataDir: dir });
+    assert.equal(
+      dataOf(await call(taskd, "GET", "/meta")).capabilities.acceptance.policy,
+      "human-only",
+    );
+    // A re-install rewrites the file; the running board reports the new value
+    // without a restart (the policy is read per decision, not cached).
+    writeAcceptancePolicy({ dataDir: dir, policy: "agent-only" });
+    assert.equal(
+      dataOf(await call(taskd, "GET", "/meta")).capabilities.acceptance.policy,
+      "agent-only",
+    );
   });
 });

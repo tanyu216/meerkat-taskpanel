@@ -29,6 +29,10 @@
       "http": 422
     },
     {
+      "code": "CHILDREN_OPEN",
+      "http": 409
+    },
+    {
       "code": "CLAIM_LOST",
       "http": 409
     },
@@ -187,6 +191,14 @@
     {
       "code": "REPORT_TOO_LARGE",
       "http": 413
+    },
+    {
+      "code": "REVIEW_OF_IMMUTABLE",
+      "http": 409
+    },
+    {
+      "code": "REVIEW_PENDING",
+      "http": 409
     },
     {
       "code": "RUNTIME_POINTER_TOKEN_LEAK",
@@ -1417,6 +1429,7 @@
         "kind": "string",
         "labels": "array",
         "meta": "object",
+        "parent_id": "null",
         "priority": "string",
         "project_id": "string",
         "report_latest_id": "string",
@@ -1424,6 +1437,8 @@
         "reporter": "object",
         "reporter_id": "string",
         "reporter_kind": "null",
+        "review_of_id": "null",
+        "review_round": "null",
         "sort_order": "number",
         "source_path": "string",
         "status": "string",

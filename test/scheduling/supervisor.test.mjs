@@ -965,6 +965,97 @@ describe("runWorkflowTick (injected deps)", () => {
     assert.equal(result.failed, 0);
   });
 
+  it("human-only holds a top-level approval: records it, closes the review, moves nothing", async () => {
+    const order = [];
+    const result = await runWorkflowTick(
+      baseDeps({
+        tasks: [task({ parent_id: null }), review()],
+        config: { ...WORKFLOW_CONFIG, acceptancePolicy: "human-only" },
+        comment: async (ref, input) => (order.push(`comment:${ref}:${input.kind}`), { ok: true }),
+        setMeta: async (ref, meta) => (order.push(`meta:${ref}:${JSON.stringify(meta)}`), { ok: true }),
+        move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
+      }),
+    );
+    assert.deepEqual(order, [
+      "comment:T-1:note",
+      'meta:T-1:{"review_verdict":"approve","review_verdict_round":"1"}',
+      "comment:T-2:note",
+      "move:T-2:done",
+    ]);
+    assert.equal(result.actions[0].type, "approve_hold");
+    assert.equal(result.failed, 0);
+  });
+
+  it("human-only still closes a child original", async () => {
+    const order = [];
+    await runWorkflowTick(
+      baseDeps({
+        tasks: [task({ parent_id: "id-epic" }), review()],
+        config: { ...WORKFLOW_CONFIG, acceptancePolicy: "human-only" },
+        comment: async (ref, input) => (order.push(`comment:${ref}:${input.kind}`), { ok: true }),
+        setMeta: async (ref, meta) => (order.push(`meta:${ref}:${JSON.stringify(meta)}`), { ok: true }),
+        move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
+      }),
+    );
+    assert.deepEqual(order, [
+      "comment:T-1:note",
+      'meta:T-1:{"accepted_by":"loop-review","accepted_round":"1"}',
+      "move:T-1:done",
+      "comment:T-2:note",
+      "move:T-2:done",
+    ]);
+  });
+
+  it("a second pass over a held approval rewrites neither the comment nor the marker", async () => {
+    const order = [];
+    const result = await runWorkflowTick(
+      baseDeps({
+        tasks: [
+          task({ parent_id: null, meta: { review_verdict: "approve", review_verdict_round: "1" } }),
+          review(),
+        ],
+        config: { ...WORKFLOW_CONFIG, acceptancePolicy: "human-only" },
+        comment: async (ref, input) => (order.push(`comment:${ref}:${input.kind}`), { ok: true }),
+        setMeta: async (ref, meta) => (order.push(`meta:${ref}:${JSON.stringify(meta)}`), { ok: true }),
+        move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
+      }),
+    );
+    assert.deepEqual(order, ["comment:T-2:note", "move:T-2:done"], "only the review card is finished");
+    assert.equal(result.failed, 0);
+  });
+
+  it("human-only + auto-accept=no leaves the review card for the human too", async () => {
+    const move = spy(async () => ({ ok: true }));
+    await runWorkflowTick(
+      baseDeps({
+        tasks: [task({ parent_id: null }), review()],
+        config: { ...WORKFLOW_CONFIG, acceptancePolicy: "human-only", autoAcceptReviews: false },
+        move,
+      }),
+    );
+    assert.equal(move.count(), 0, "nothing is moved: not the original, not the review card");
+  });
+
+  it("notifies when a write is refused — a policy drift is a standing alarm", async () => {
+    const notify = spy();
+    const result = await runWorkflowTick(
+      baseDeps({
+        tasks: [task(), review()],
+        // The board is human-only while this loop believes `both`.
+        move: async (ref, to) =>
+          ref === "T-1" && to === "done" ? { ok: false, error: "ACCEPTANCE_FORBIDDEN" } : { ok: true },
+        notify,
+      }),
+    );
+    assert.equal(result.failed, 1);
+    assert.deepEqual(
+      notify.calls.map(([alert]) => alert.type),
+      ["workflow_action_failed"],
+      "the refusal is notified, not silently retried",
+    );
+    assert.equal(notify.calls[0][0].error, "ACCEPTANCE_FORBIDDEN");
+  });
+
   it("rejects a task through in_progress → todo and records the rework round", async () => {
     const order = [];
     const result = await runWorkflowTick(
@@ -1258,6 +1349,7 @@ describe("parseArgs — the workflow surface", () => {
     assert.equal(opts.workflow, undefined);
     assert.equal(opts.reviewer, undefined);
     assert.equal(opts.autoAcceptReviews, undefined);
+    assert.equal(opts.acceptance, undefined);
     assert.equal(opts.workflowMaxActions, undefined);
     assert.equal(opts.recoverStale, undefined);
   });
@@ -1282,6 +1374,13 @@ describe("parseArgs — the workflow surface", () => {
     assert.equal(joined.reviewer, "jobs");
     assert.equal(joined.autoAcceptReviews, "yes");
     assert.equal(joined.workflowMaxActions, "9");
+  });
+
+  it("takes the acceptance policy under both names", () => {
+    assert.equal(parseArgs(["--acceptance", "human-only", "--once"], ENV).acceptance, "human-only");
+    assert.equal(parseArgs(["--acceptance=agent-only", "--once"], ENV).acceptance, "agent-only");
+    assert.equal(parseArgs(["--acceptance-policy", "both", "--once"], ENV).acceptance, "both");
+    assert.equal(parseArgs(["--acceptance-policy=agent-only", "--once"], ENV).acceptance, "agent-only");
   });
 });
 

@@ -103,6 +103,7 @@ they name an absolute interpreter and set their own `PATH`.
 | `--workflow=yes\|no` | from the host config → `yes` | run the workflow sub-pass (reconcile → outcomes → dispatch). Off means the loop writes no card |
 | `--reviewer <agent>` | `$MEERKAT_TASKPANEL_REVIEWER` → unset | the independent reviewer. Unset disables review dispatch only; verdicts already in flight still get applied |
 | `--auto-accept-reviews=yes\|no` | from the host config → `yes` | let the loop close a review card after applying its verdict. `no` leaves it in `in_review` for a human; the verdict on the original is still applied |
+| `--acceptance <policy>` | from the host config → `both` | `human-only` \| `both` \| `agent-only`. The board is authoritative (`<dataDir>/taskd.env`); this is the loop's copy. `human-only` makes the loop **hold** a top-level approval for a human (see below) |
 | `--workflow-max-actions <n>` | `20` | cap on writes one workflow pass performs |
 | `--review-aging-minutes <n>` | `60` | report a review card that has had no readable verdict this long |
 | `--once` | off | one pass, then exit. With no selector this is the **legacy poll pass**; the installed units use `--ping-only` / `--continue-only` |
@@ -145,7 +146,8 @@ Two passes with two different powers, and the distinction is load-bearing:
 A delivery that lands in `in_review` on **flow A** is dispatched to the configured
 reviewer as a **review card** — an ordinary `kind=task` card with `meta.review_of=<the
 original>`, `meta.flow=B`, `meta.review_round=<round>`, and a label `review` for
-discoverability (detection reads the meta keys, never the label). The reviewer is woken by
+discoverability (detection reads the structural marker `review_of_id` the board resolves
+at creation, falling back to the meta key; never the label). The reviewer is woken by
 the poll entry in the continue turn, through the normal atomic claim; a dedicated reviewer is scanned only for
 review cards and never claims the public pool. It reads the original's description, every
 acceptance item, the current round's delivery report, the comment trail and (for an epic)
@@ -156,7 +158,8 @@ The reviewer moves nothing. The loop is the acceptor:
 
 | Verdict | The loop does |
 |---|---|
-| `APPROVE` | note + `meta.accepted_by=loop-review` on the original, `in_review → done`; then closes the review card |
+| `APPROVE` (`both` / `agent-only`, or any child card) | note + `meta.accepted_by=loop-review` on the original, `in_review → done`; then closes the review card |
+| `APPROVE` (`human-only`, top-level original) | **hold**: note + `meta.review_verdict=approve` / `review_verdict_round`, then closes the review card — the original stays `in_review` for the human |
 | `REJECT` on a task | findings as a `kind=change` comment, `meta.rework_round=<new round>`, `in_review → in_progress → todo` (releasing the claim); then closes the review card |
 | `REJECT` on an epic | **first** creates a fix child and links it, then comments/marks and reopens the epic `in_review → in_progress`. The fix child is what stops `reconcile` from re-closing the container immediately |
 
@@ -174,9 +177,21 @@ Rules that make it safe to run unattended:
 - **a silent reviewer is reported** — one that produces no readable verdict within
   `--review-aging-minutes` (default 60) raises `review_aging`; the original's SLA row is
   suppressed while the review card exists, so this is the only watcher that row has.
-- **the board enforces acceptance** — `in_review → done` is allowed only for a `human` or
-  the board itself (`system`); an agent gets `ACCEPTANCE_FORBIDDEN`. The reviewer never
-  closes a card; the loop accepts as `system`.
+- **the board enforces acceptance** — who may move a card to `done` is the board's
+  acceptance policy: `human-only` (a human, top level), `both` (a human or the board) or
+  `agent-only` (any non-human writer). A human never closes a **child** card under any
+  policy — children are the agents' to finish — and a review card is exempt from the
+  human-only rule so the loop can close its own bookkeeping. A refused writer gets
+  `ACCEPTANCE_FORBIDDEN`; the loop leaves the review card in place and retries (a policy
+  drift is an alert, not a crash). The reviewer never closes a card; the loop accepts as
+  `taskd`.
+- **the hold is idempotent** — under `human-only`, `meta.review_verdict=approve` +
+  `review_verdict_round` on a top-level original means a later pass rewrites neither the
+  comment nor the marker and only retries the review card's close.
+- **`agent-only` does not name the closer.** The board's only test is `kind !== "human"`.
+  Whether the loop, a separate automation or the reviewer applies the verdict is the
+  deployment's choice; the loop keeps applying it as `taskd` unless the operator says
+  otherwise.
 - **the review card is closed last.** A crash between the original's move and the card's
   close is recovered next pass (`original done + APPROVE`, `rework_round` matching, …).
 - **`--auto-accept-reviews=no`** is the escape hatch back to manual acceptance: the

@@ -20,7 +20,7 @@
  * `errors.mjs` (both pure) are used here.
  */
 
-import { CLAIM_STALE_SAME_MS } from "./constants.mjs";
+import { ACCEPTANCE_POLICIES, CLAIM_STALE_SAME_MS, DEFAULT_ACCEPTANCE_POLICY } from "./constants.mjs";
 import { DomainError } from "./errors.mjs";
 
 /** Default cap on concurrently running workers. */
@@ -245,10 +245,29 @@ export function resolveWorkflowConfig(input = {}) {
     }
     return null;
   };
+  const firstAcceptancePolicy = (...values) => {
+    for (const value of values) {
+      if (typeof value !== "string") continue;
+      const text = value.trim().toLowerCase();
+      if (ACCEPTANCE_POLICIES.includes(text)) return text;
+    }
+    return DEFAULT_ACCEPTANCE_POLICY;
+  };
 
   return {
     workflow:
       firstYesNo(flags.workflow, env.MEERKAT_TASKPANEL_WORKFLOW, file.MEERKAT_TASKPANEL_WORKFLOW) ?? true,
+    // The board's acceptance policy, as the loop believes it. The board is
+    // authoritative (`<dataDir>/taskd.env`); this copy is what the installer
+    // remembered. A drift is visible: the board refuses the loop's move with
+    // `ACCEPTANCE_FORBIDDEN`, and the runner leaves the review card in place.
+    // An unrecognised value falls back to the default rather than wedging the
+    // loop — the board will still refuse what it must.
+    acceptancePolicy: firstAcceptancePolicy(
+      flags.acceptance,
+      env.MEERKAT_TASKPANEL_ACCEPTANCE_POLICY,
+      file.MEERKAT_TASKPANEL_ACCEPTANCE_POLICY,
+    ),
     reviewer: firstText(
       flags.reviewer,
       env.MEERKAT_TASKPANEL_REVIEWER,

@@ -371,11 +371,39 @@ export function importMd(input) {
         mergeReportWarnings(entry.parsed, entry.reportPlans);
       }
 
-      // Pass 2: tasks.
+      // Pass 1.8 (0025): reserve every task id and build the card plan, so a
+      // review card can resolve its original to the id it is *about to* get.
+      // `review_of_id` is not nullable-by-luck: it is a foreign key, so the id
+      // must be known before either row is written. The plan is also what lets
+      // the loop below write review cards last (an original must exist first).
+      const plannedByRef = new Map();
       for (const entry of parsed) {
+        if (entry.projectSkipped === true) continue;
+        const card = entry.parsed;
+        entry.plannedExisting = findExisting(repos, card.projectId, entry.rel);
+        entry.plannedId = entry.plannedExisting?.id ?? newId();
+        if (!plannedByRef.has(`${card.projectId}\u0000${card.identifier}`)) {
+          plannedByRef.set(`${card.projectId}\u0000${card.identifier}`, entry);
+        }
+      }
+      const resolveReviewId = (projectId, ref) => {
+        const stored = repos.tasks.resolve(projectId, ref);
+        if (stored !== null) return stored.id;
+        const planned = plannedByRef.get(`${projectId}\u0000${ref}`);
+        return planned === undefined ? null : planned.plannedId;
+      };
+
+      // Pass 2: tasks. A card carrying `review_of` is written after every card
+      // that could be its original, so the foreign key is satisfied by the time
+      // the INSERT runs (review-of-review chains are not part of the format).
+      const taskEntries = [
+        ...parsed.filter((entry) => entry.parsed.reviewOf === null || entry.parsed.reviewOf === undefined),
+        ...parsed.filter((entry) => entry.parsed.reviewOf !== null && entry.parsed.reviewOf !== undefined),
+      ];
+      for (const entry of taskEntries) {
         const card = entry.parsed;
         if (entry.projectSkipped === true) continue;
-        const existing = findExisting(repos, card.projectId, entry.rel);
+        const existing = entry.plannedExisting ?? findExisting(repos, card.projectId, entry.rel);
 
         if (existing !== null && existing.sourceHash === entry.hash) {
           stats.skipped += 1;
@@ -407,13 +435,30 @@ export function importMd(input) {
         const labels = resolveCardLabels(repos, card, existing, now);
         stats.labels += labels.writes;
 
+        // 0025 — resolve the review reference to the id the planned board will
+        // carry. A dangling name leaves the marker empty (fail closed) and is
+        // reported: the card is imported, it just is not exempt from acceptance.
+        const reviewOfId =
+          card.reviewOf === null || card.reviewOf === undefined
+            ? null
+            : resolveReviewId(card.projectId, card.reviewOf);
+        if (card.reviewOf !== null && card.reviewOf !== undefined && reviewOfId === null) {
+          stats.warnings.push(
+            `${entry.file}: review_of ${JSON.stringify(card.reviewOf)} does not resolve to a card — the review marker stays empty`,
+          );
+        }
+        const reviewRound = reviewOfId === null ? null : positiveInt(card.meta?.legacy?.review_round ?? card.meta?.review_round);
+
         const task = buildTask(repos, card, {
           now,
+          id: entry.plannedId,
           rel: entry.rel,
           hash: entry.hash,
           dictionary,
           labels: labels.names,
           existing,
+          reviewOfId,
+          reviewRound,
         });
         if (existing === null) {
           const inserted = repos.tasks.insert(task);
@@ -1200,8 +1245,18 @@ function resolveCardLabels(repos, card, existing, now) {
   return { names: stored, writes };
 }
 
+/** A positive integer from a frontmatter value, or `null` (MIG-04). */
+function positiveInt(value) {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) return value;
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    const parsed = Number.parseInt(value.trim(), 10);
+    return parsed > 0 ? parsed : null;
+  }
+  return null;
+}
+
 function buildTask(repos, card, context) {
-  const { now, rel, hash, dictionary, labels } = context;
+  const { now, rel, hash, dictionary, labels, reviewOfId = null, reviewRound = null } = context;
   const serial = repos.projects.get(card.projectId)?.nextTaskNumber ?? 1;
   const identifier = card.identifier;
 
@@ -1225,7 +1280,9 @@ function buildTask(repos, card, context) {
     },
     {
       now,
-      id: newId(),
+      // The id reserved in pass 1.8: a review card's target may be a card this
+      // import has not inserted yet, and the foreign key needs the id up front.
+      id: context.id ?? newId(),
       identifier,
       projectId: card.projectId,
     },
@@ -1233,6 +1290,10 @@ function buildTask(repos, card, context) {
 
   return {
     ...task,
+    // 0025 — the structural marker, resolved by the caller (which is the only
+    // layer that can see the whole planned board).
+    reviewOfId,
+    reviewRound,
     status: card.status,
     statusChangedAt: card.statusChangedAt ?? card.createdAt ?? now,
     createdAt: card.createdAt ?? now,

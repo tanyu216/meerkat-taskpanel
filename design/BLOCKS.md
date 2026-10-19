@@ -1284,14 +1284,14 @@ rows follow. Waiting is the first surface that *proves* it without a script: `PR
 the board's longest identifier at nine characters, so at the ten-character cap its cell
 reads `PROJ-0007` in the markup itself, whole.
 
-**The reason chip is a two-value attribute.** `[data-waiting-reason]` carries
-`data-waiting-reason-kind="question" | "blocked"` and reads its copy from
-`waiting.reason.question` / `waiting.reason.blocked`; those two are the whole domain. Its dot
-is coloured the way every other dot on this board is coloured — an attribute rule sets
-`--status-color` (`[data-waiting-reason-kind]`, declared beside the `[data-status]` and
-`[data-priority]` bindings in `src/input.css`) and the component reads the variable, so no
-component names a colour. Both kinds read a status token, because the reason *is* the task's
-state: a block, or a delivery waiting on an answer.
+**The reason chip is an attribute with three values.** `[data-waiting-reason]` carries
+`data-waiting-reason-kind="question" | "blocked" | "acceptance"` and reads its copy from
+`waiting.reason.<kind>`; those three are the whole domain (`acceptance` is M6's ruling change,
+recorded in `DESIGN.md` §30.3). Its dot is coloured the way every other dot on this board is
+coloured — an attribute rule sets `--status-color` (`[data-waiting-reason-kind]`, declared
+beside the `[data-status]` and `[data-priority]` bindings in `src/input.css`) and the component
+reads the variable, so no component names a colour. Every kind reads a status token, because
+the reason *is* the task's state: a block, a question, or a delivery waiting on acceptance.
 
 **A row opens B09.** `[data-waiting-open]` is the keyboard affordance and the row body its
 pointer twin, and both land on the board's own detail surface for the task the row names —

@@ -11,13 +11,22 @@ import { TASKD_KIND } from "../../shared/constants.mjs";
 import { DomainError } from "../../shared/errors.mjs";
 import { newId } from "../../shared/ids.mjs";
 import { isActorKind } from "../domain/enums.mjs";
+import { DEFAULT_ACCEPTANCE_POLICY } from "../domain/status.mjs";
 import { toIsoMillis } from "../domain/task.mjs";
 
 /**
- * @param {{db: import('node:sqlite').DatabaseSync, repos: object, clock?: () => Date|string, idFactory?: () => string, logger?: Function}} input
+ * @param {{db: import('node:sqlite').DatabaseSync, repos: object, clock?: () => Date|string, idFactory?: () => string, logger?: Function, acceptancePolicy?: () => string}} input
  */
 export function createContext(input) {
   const { db, repos, clock, idFactory = newId, logger } = input;
+  // The board's acceptance policy (`human-only` | `both` | `agent-only`). A
+  // resolver rather than a value: the policy file may change while the board
+  // runs, and a decision must read the policy in force *now*. A context built
+  // without one (tests, embedding callers) runs the historical `both` rule.
+  const acceptancePolicy =
+    typeof input.acceptancePolicy === "function"
+      ? input.acceptancePolicy
+      : () => input.acceptancePolicy ?? DEFAULT_ACCEPTANCE_POLICY;
   if (db === undefined || repos === undefined) {
     throw new DomainError("VALIDATION_FAILED", {
       message: "createContext needs a database and a repository bag",
@@ -28,6 +37,8 @@ export function createContext(input) {
     db,
     repos,
     logger,
+    /** The acceptance policy in force for the next acceptance decision. */
+    acceptancePolicy,
     /** The one clock in the process. Always an ISO-8601 UTC millisecond string. */
     now() {
       return clock === undefined ? new Date().toISOString() : toIsoMillis(clock(), "clock");

@@ -9,6 +9,20 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Acceptance is a board policy: `human-only` | `both` | `agent-only`.** `in_review →
+  done` is no longer a fixed "human or taskd" rule. `both` (the default) keeps the
+  historical behaviour; `human-only` lets only a human close a **top-level** card (children
+  and review cards are still the agents'/loop's to close); `agent-only` lets any non-human
+  writer close one. The policy lives in `<dataDir>/taskd.env` (`TASKD_ACCEPTANCE_POLICY`,
+  merged beside the Access panel's keys and re-read per decision), and `install.sh
+  --acceptance=` writes both the board's copy and the loop's. The loop records a
+  `human-only` top-level approval, closes the review card and leaves the card `in_review`
+  for the human (a `meta.review_verdict` marker makes the hold idempotent); "Waiting on
+  me" now lists those deliveries. Two new structural gates make the flow safe: a card may
+  not enter `in_review`/`done` with a non-terminal child (`CHILDREN_OPEN`, migration 0026),
+  and a human closing a top-level card needs the current round's reviews resolved
+  (`REVIEW_PENDING`). Review identity moves from the writable `meta.review_of` into the
+  immutable `tasks.review_of_id` / `review_round` columns (migration 0025).
 - **The loop can be event-driven.** `supervisor.mjs --subscribe` holds one SSE connection
   to the board and asks for a continue turn when a dispatch-relevant event arrives
   (coalesced, at most one turn per minute). It does not claim or wake by itself: the

@@ -69,6 +69,9 @@ export const EXTRA = {
     "error.notAssignee": "%s is assigned to somebody else.",
     "error.executionActive": "%s is being worked on by somebody else right now.",
     "error.claimOnBacklog": "%s is in Backlog, where nothing can be claimed.",
+    "error.acceptanceForbidden": "%s cannot be closed by you under this board's acceptance policy.",
+    "error.reviewPending": "%s still has an open review for this delivery round — finish or cancel it first.",
+    "error.childrenOpen": "%s still has an unfinished child card — finish or cancel it first.",
     // T-20261014-212017-4 — the sentences the drawer's four new edit surfaces
     // need. Each names a refusal the reader can act on: a status that the state
     // machine will not take, a dependency that would close a loop, a file the
@@ -189,6 +192,9 @@ export const EXTRA = {
     "error.notAssignee": "%s 已指派给他人。",
     "error.executionActive": "%s 正由他人处理中。",
     "error.claimOnBacklog": "%s 位于 Backlog，其中的卡片不能认领。",
+    "error.acceptanceForbidden": "按本看板的收口策略，%s 不能由你关闭。",
+    "error.reviewPending": "%s 本轮仍有一张未解决的审核卡 —— 请先完成或取消它。",
+    "error.childrenOpen": "%s 仍有未完成的子任务卡 —— 请先完成或取消它。",
     "error.relationCycle": "该依赖会形成环 —— 卡片不能等待自己。",
     // 同上：`RELATION_CYCLE` 的第三种形状（祖先/后代），与「环 / 自环」那句分开。
     "error.relationAncestor": "该依赖会把祖先与后代连起来 —— 同一条父链上的卡片不能互相依赖。",

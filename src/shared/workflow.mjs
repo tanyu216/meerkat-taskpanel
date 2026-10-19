@@ -30,8 +30,30 @@
  * writes.
  */
 
+import {
+  ACCEPTANCE_POLICIES,
+  DEFAULT_ACCEPTANCE_POLICY,
+} from "./constants.mjs";
+
 /** Default cap on writes one workflow pass may perform. */
 export const DEFAULT_WORKFLOW_MAX_ACTIONS = 20;
+
+/** The policy the loop believes the board runs, from its own config. */
+function acceptancePolicyOf(config) {
+  const value = String(config?.acceptancePolicy ?? "").trim().toLowerCase();
+  return ACCEPTANCE_POLICIES.includes(value) ? value : DEFAULT_ACCEPTANCE_POLICY;
+}
+
+/**
+ * Is this original a **top-level** card?
+ *
+ * The board sends `parent_id` on every task since 0025. A snapshot that does
+ * not carry it reads as top-level, which is the conservative direction for a
+ * human-only board: the loop holds instead of closing on the human's behalf.
+ */
+function isTopLevel(task) {
+  return task?.parent_id === null || task?.parent_id === undefined;
+}
 
 /** How long a childless epic may exist before `empty_epic` is worth a notice. */
 export const EMPTY_EPIC_GRACE_MS = 30 * 60_000;
@@ -105,13 +127,18 @@ export function flowOf(task) {
 }
 
 /**
- * Is this a review card? Detection reads `meta.review_of` only: a label is a
- * discovery aid, never the predicate (a human may label anything).
+ * Is this a review card?
+ *
+ * Detection reads the **structural marker** first (`review_of_id`, 0025), and
+ * falls back to `meta.review_of` for a board that has not migrated yet or a
+ * snapshot assembled without the column. A label is a discovery aid, never the
+ * predicate (a human may label anything).
  *
  * @param {object} task a wire task
  * @returns {boolean}
  */
 export function isReviewCard(task) {
+  if (nonEmpty(task?.review_of_id) !== null) return true;
   return nonEmpty(task?.meta?.review_of) !== null;
 }
 
@@ -140,7 +167,9 @@ export function roundOf(task) {
  * @returns {number|null}
  */
 export function reviewRoundOf(task) {
-  return intOrNull(task?.meta?.review_round);
+  // 0025 — the structural column wins; the meta value is the compatibility
+  // fallback for a snapshot/board written before it existed.
+  return intOrNull(task?.review_round) ?? intOrNull(task?.meta?.review_round);
 }
 
 /** The idempotency key for one review card: one per original per round. */
@@ -489,6 +518,11 @@ export function planReviewOutcomes(input = {}) {
   const tasks = Array.isArray(input.tasks) ? input.tasks : [];
   const verdicts = input.verdicts ?? {};
   const autoAccept = input.config?.autoAcceptReviews !== false;
+  // `human-only` means the board expects the **human** to close a top-level
+  // original. The loop still applies the verdict (a comment and an idempotent
+  // marker) and still closes the review card — what it declines to do is move
+  // the original. Children are not held: a child is always the agents' to close.
+  const policy = acceptancePolicyOf(input.config);
   const now = instant(input.now);
   const agingMs =
     Number.isFinite(input.config?.reviewAgingMs) && input.config.reviewAgingMs > 0
@@ -630,8 +664,12 @@ export function planReviewOutcomes(input = {}) {
 
     if (original.status === "in_review") {
       if (verdict.verdict === "APPROVE") {
+        // `human-only` + a top-level original: the loop records the verdict and
+        // stops. The human decides; the review card is still closed here so the
+        // human's own acceptance is not blocked by a review they already read.
+        const hold = policy === "human-only" && isTopLevel(original);
         actions.push({
-          type: "approve",
+          type: hold ? "approve_hold" : "approve",
           reviewRef,
           originalRef,
           round: originalRound,
@@ -770,7 +808,8 @@ export function planWorkflowTick(input = {}) {
     changes: reconcile.changes,
     summary: {
       reconciled: reconcile.changes.length,
-      approved: count("approve"),
+      approved: count("approve") + count("approve_hold"),
+      held: count("approve_hold"),
       rejected: count("reject_task") + count("reject_task_finish") + count("reject_epic"),
       dispatched: count("create_review"),
       closed: count("close_review") + count("cancel_review"),

@@ -74,6 +74,10 @@ const indexShapes = (db) =>
     .prepare("SELECT name, \"unique\" AS uniq, partial AS part FROM pragma_index_list('tasks')")
     .all()
     .filter((row) => !row.name.startsWith("sqlite_autoindex"))
+    // 0025 adds a review-marker index of its own. This comparison is about
+    // the *rebuilt* table keeping the indexes it had; a later migration's
+    // own new index is named here rather than loosening the rule.
+    .filter((row) => row.name !== "ix_tasks_review_of")
     .sort((a, b) => (a.name < b.name ? -1 : 1))
     .map((row) => ({
       name: row.name,
@@ -97,6 +101,9 @@ const EXPECTED_TRIGGERS = [
   "tr_latest_report_belongs",
   "tr_deliver_gate",
   "tr_tasks_round_bump",
+  // 0025/0026 — the head's review-marker and children-terminal guards.
+  "tr_tasks_review_marker_immutable",
+  "tr_tasks_children_terminal",
   "tr_rev_tasks_ins",
   "tr_rev_tasks_upd",
   "tr_rev_tasks_del",
@@ -137,7 +144,7 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
       seedLegacyBoard(board.db);
 
       const up = applyMigrations(board.db);
-      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026"]);
       assert.deepEqual(up.skipped.slice(-2), ["0011", "0012"]);
 
       // 1 — the enum: the new word is storable, the old ones still are, and an
@@ -281,6 +288,8 @@ describe("storage/migrations — 0013 makes `awaiting` a first-class status (M1)
         "tr_rev_actors_del",
         "tr_rev_actors_ins",
         "tr_rev_actors_upd",
+        "tr_tasks_children_terminal",
+        "tr_tasks_review_marker_immutable",
       ];
       const LATER_MIGRATION_TRIGGERS_REMOVED = [
         "tr_dict_assignees_delete",

@@ -138,7 +138,7 @@ worker's own tool tree, resolve on that same set. If the host CLI is not on `PAT
 install time, the installer says so and renders node's directory alone rather than guessing.
 See [`scheduling.md` §What the loop's units run with](scheduling.md#what-the-loops-units-run-with).
 | wake glue | `<host>/bin/wake-<host>.sh` | resolves the directory a worker for the card's project runs in (`local_path`, else `run_dir`) from the board skill's `projects.json` via the host-local `meerkat-taskpanel/scripts/wake-cwd.mjs`, `cd`s there (refusing the wake if it cannot), then runs `claude -p` (+`--resume`), `codex exec`, or `pi --print` |
-| host config | `<host>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no`, `MEERKAT_TASKPANEL_RECOVER_STALE=yes\|no`, `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives), the workflow channel's `MEERKAT_TASKPANEL_WORKFLOW`, `MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS` and `MEERKAT_TASKPANEL_REVIEWER`, and the clocks' `MEERKAT_TASKPANEL_PING_INTERVAL`, `MEERKAT_TASKPANEL_CONTINUE_INTERVAL` and `MEERKAT_TASKPANEL_CONTINUE` |
+| host config | `<host>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no`, `MEERKAT_TASKPANEL_RECOVER_STALE=yes\|no`, `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives), the workflow channel's `MEERKAT_TASKPANEL_WORKFLOW`, `MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS`, `MEERKAT_TASKPANEL_REVIEWER` and `MEERKAT_TASKPANEL_ACCEPTANCE_POLICY`, and the clocks' `MEERKAT_TASKPANEL_PING_INTERVAL`, `MEERKAT_TASKPANEL_CONTINUE_INTERVAL` and `MEERKAT_TASKPANEL_CONTINUE` |
 | log (runtime) | `<host>/meerkat-taskpanel/supervisor.log` | the supervisor's tick log |
 | state (runtime) | `<host>/meerkat-taskpanel/supervisor.state.json` | the running registry |
 
@@ -361,7 +361,14 @@ when the file is created and added only when missing on an upgrade:
 MEERKAT_TASKPANEL_WORKFLOW=yes
 MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=yes
 MEERKAT_TASKPANEL_REVIEWER=
+MEERKAT_TASKPANEL_ACCEPTANCE_POLICY=both
 ```
+
+The board's own copy — what it actually enforces — is `TASKD_ACCEPTANCE_POLICY` in
+`<dataDir>/taskd.env`, written by the installer next to the token. `both` is the default;
+`human-only` makes the loop hold a top-level approval for a human, and `agent-only` lets any
+non-human writer close a card. The file is shared with the Access panel and is merged, never
+rewritten.
 
 `--reviewer` (or `MEERKAT_TASKPANEL_REVIEWER`) is what turns review dispatch on. With it
 unset the supervisor still reconciles containers and applies verdicts already in flight —

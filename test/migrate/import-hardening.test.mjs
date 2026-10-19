@@ -438,6 +438,44 @@ describe("md/import — legacy fields stay verbatim (§4.8 ①)", () => {
     }
   });
 
+  it("resolves review_of to the structural marker, even when the review card sorts first", async () => {
+    // `A-review.md` sorts before `B-original.md`, so the reference is resolved
+    // before the original is inserted — the id the import planned is what the
+    // foreign key needs (0025).
+    const board = await boardWithCards({
+      "A-review.md": cardText({ id: "DEMO-0002", title: "Review", review_of: "DEMO-0001", review_round: 2 }),
+      "B-original.md": cardText({ id: "DEMO-0001", title: "Original", status: "in_review" }),
+    });
+    try {
+      importCards(board);
+      const original = board.repos.tasks.getByIdentifier("demo", "DEMO-0001");
+      const review = board.repos.tasks.getByIdentifier("demo", "DEMO-0002");
+      assert.equal(review.reviewOfId, original.id, "the identifier resolves to the internal id");
+      assert.equal(review.reviewRound, 2, "the round comes from meta.legacy, coerced to an integer");
+      assert.equal(original.reviewOfId, null);
+
+      // The compatibility key is still in meta (the loop/SLA match on it).
+      assert.equal(review.meta.legacy.review_of, "DEMO-0001");
+    } finally {
+      board.close();
+    }
+  });
+
+  it("leaves the marker empty for a dangling review_of, and says so", async () => {
+    const board = await boardWithCards({ "A.md": cardText({ review_of: "DEMO-9999" }) });
+    try {
+      const stats = importCards(board);
+      const task = board.repos.tasks.getByIdentifier("demo", "DEMO-0001");
+      assert.equal(task.reviewOfId, null, "fail closed: an unresolvable name is not an exemption");
+      assert.ok(
+        stats.warnings.some((warning) => /review_of .* does not resolve/.test(warning)),
+        "and the import reports it",
+      );
+    } finally {
+      board.close();
+    }
+  });
+
   it("parses a card whose goal/review_of/target are no longer 'known' keys", () => {
     const card = parseCard(cardText({ goal: "g", review_of: "R" }), { file: "a.md" });
     assert.deepEqual(card.legacy, {

@@ -23,6 +23,24 @@ units. The continue turn runs them in this order:
    independent reviewer for each flow-A card awaiting acceptance, and the reviewer's
    `VERDICT:` report applied to the original. The review card is closed last. On by
    default; `--workflow=no` turns it off, and `--reviewer` enables dispatch at all.
+
+   **Who it may close** follows the board's acceptance policy (the board is
+   authoritative; `--acceptance` / `MEERKAT_TASKPANEL_ACCEPTANCE_POLICY` is this
+   loop's copy):
+
+   | policy | top-level original | child card | review card |
+   |---|---|---|---|
+   | `human-only` | **hold** — record the verdict, close the review card, leave the card `in_review` | close | close |
+   | `both` (default) | close | close | close |
+   | `agent-only` | close | close | close |
+
+   Under `agent-only` the board only requires a **non-human** writer; *which* agent
+   applies the verdict is this deployment's business (the loop, an operator's own
+   automation, the reviewer itself), not the board's. Under `human-only` a held
+   approval is idempotent: the marker `review_verdict=approve` +
+   `review_verdict_round` means a second pass rewrites neither the comment nor the
+   marker, and only retries the review card's close. A worker still always stops at
+   `in_review`; review cards are never held (the loop closes its own bookkeeping).
 3. **poll** — the cheap scan, the atomic claim, and the wake that starts exactly one
    worker. Poll runs last so a review card dispatched by workflow in the same turn can be
    claimed and woken immediately.

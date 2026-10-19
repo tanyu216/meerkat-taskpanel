@@ -462,6 +462,35 @@ export async function runWorkflowTick(deps) {
           );
           break;
 
+        // `human-only` + a top-level original: record the verdict, close the
+        // review card, and leave the acceptance to the human. The marker makes
+        // the hold idempotent — a crash after the comment/meta, or a second
+        // pass before the human acts, rewrites neither. The close is still the
+        // last write, so a failure there is retried without repeating the rest.
+        case "approve_hold": {
+          const original = byRef.get(action.originalRef);
+          const held =
+            String(original?.meta?.review_verdict ?? "") === "approve" &&
+            String(original?.meta?.review_verdict_round ?? "") === String(action.round);
+          if (!held) {
+            await step(comment, "comment", action.originalRef, {
+              kind: "note",
+              body:
+                `Review ${action.reviewRef} (round ${action.round}): VERDICT: APPROVE. ` +
+                `This board accepts top-level cards by a human, so the card is left in in_review for acceptance.`,
+            });
+            await step(setMeta, "setMeta", action.originalRef, {
+              review_verdict: "approve",
+              review_verdict_round: String(action.round),
+            });
+          }
+          await closeReviewCard(
+            action,
+            `Loop recorded VERDICT: APPROVE for ${action.originalRef}; the card awaits human acceptance.`,
+          );
+          break;
+        }
+
         case "reject_task": {
           const body = `VERDICT: REJECT (review ${action.reviewRef}, round ${action.round}).\n\n${
             action.findings === "" ? "(the reviewer recorded no findings)" : action.findings
@@ -514,10 +543,16 @@ export async function runWorkflowTick(deps) {
       executed += 1;
     } catch (err) {
       failed += 1;
+      const ref = action.originalRef ?? action.reviewRef;
       log(
-        `workflow: ${action.type} failed for ${action.originalRef ?? action.reviewRef} ` +
+        `workflow: ${action.type} failed for ${ref} ` +
           `(${err.message}) — leaving the review card for the next pass`,
       );
+      // A refusal that repeats every pass is a standing alarm, not a one-off:
+      // `ACCEPTANCE_FORBIDDEN`/`CHILDREN_OPEN` mean this deployment's copy of
+      // the policy (or the board's state) disagrees with the plan, and the loop
+      // deliberately leaves the review card in place rather than forcing it.
+      notify({ type: "workflow_action_failed", action: action.type, ref, error: err.message });
     }
   }
 
@@ -563,6 +598,8 @@ function describeWorkflowAction(action) {
       return `create review ${action.idem} for ${action.originalRef}`;
     case "approve":
       return `approve ${action.originalRef} (round ${action.round}) and close ${action.reviewRef}`;
+    case "approve_hold":
+      return `record approval of ${action.originalRef} (round ${action.round}) and leave it for a human`;
     case "reject_task":
     case "reject_epic":
       return `${action.type} ${action.originalRef} (round ${action.round})`;

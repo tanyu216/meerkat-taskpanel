@@ -18,7 +18,7 @@
  *     text uses B26's three `time.*` keys — one time vocabulary across the two
  *     views, so the two read the same way.
  *   * **The reason is an attribute, the colour a variable.** The chip carries
- *     `data-waiting-reason-kind="question"|"blocked"` and the stylesheet's
+ *     `data-waiting-reason-kind="question"|"blocked"|"acceptance"` and the stylesheet's
  *     attribute rule sets `--status-color`; no component names a colour (B27's
  *     "zero new hues").
  *   * **A row opens B09.** The row body is the pointer's affordance and
@@ -35,12 +35,23 @@
  */
 import { computed, watch } from "vue";
 
-import { waitingRows } from "../../lib/waiting-queue.js";
+import { acceptanceRows, mergeWaitingRows, waitingRows } from "../../lib/waiting-queue.js";
 import { board, loadWaitingPayloads, openDetail, projectLoading, waitingTasks } from "../../stores/board.js";
 import { view } from "../../stores/ui.js";
 
-/** The queue: one row per awaiting card, oldest first (§30.2). */
-const rows = computed(() => waitingRows(waitingTasks.value, board.waitingPayload));
+/**
+ * The queue: awaiting questions and waiting acceptances, oldest first (§30.2).
+ *
+ * Two producers, one table. An awaiting row's `since` is the triggering comment;
+ * an acceptance row's is the delivery that put the card in review, so the two
+ * share the age ladder and the ordering without sharing the trigger.
+ */
+const rows = computed(() =>
+  mergeWaitingRows(
+    waitingRows(waitingTasks.value, board.waitingPayload),
+    acceptanceRows(board.tasks, board.acceptancePolicy),
+  ),
+);
 
 /**
  * The payloads load as soon as an awaiting card *exists*, not when the view is
@@ -149,6 +160,7 @@ function onRow(event, row) {
              wearing `.td-chip` would hand all three to another family. -->
         <span class="td-waiting-reason" data-waiting-reason :data-waiting-reason-kind="row.reasonKind">
           <span v-if="row.reasonKind === 'blocked'" data-i18n="waiting.reason.blocked">{{ $t("waiting.reason.blocked") }}</span>
+          <span v-else-if="row.reasonKind === 'acceptance'" data-i18n="waiting.reason.acceptance">{{ $t("waiting.reason.acceptance") }}</span>
           <span v-else data-i18n="waiting.reason.question">{{ $t("waiting.reason.question") }}</span>
         </span>
         <span class="td-waiting-task-cell">

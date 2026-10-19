@@ -65,6 +65,10 @@ const indexShapes = (db) =>
     .prepare("SELECT name, \"unique\" AS uniq, partial AS part FROM pragma_index_list('tasks')")
     .all()
     .filter((row) => !row.name.startsWith("sqlite_autoindex"))
+    // 0025 adds a review-marker index of its own. This comparison is about
+    // the *rebuilt* table keeping the indexes it had; a later migration's
+    // own new index is named here rather than loosening the rule.
+    .filter((row) => row.name !== "ix_tasks_review_of")
     .sort((a, b) => (a.name < b.name ? -1 : 1))
     .map((row) => ({
       name: row.name,

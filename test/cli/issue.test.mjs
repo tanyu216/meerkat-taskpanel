@@ -668,9 +668,9 @@ describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells i
     dataOf(run(["issue", "deliver", identifier, "--report-file", "-", ...AS, "--json"], {
       input: JSON.stringify(childReport(sha)),
     }));
-    // Acceptance is the human's act — the worker's `...AS` attribution is for
-    // the claim and the delivery, not for `done` (`ACCEPTANCE_FORBIDDEN`).
-    dataOf(run(["issue", "move", identifier, "done", "--json"]));
+    // A child card is accepted by a non-human writer under every policy; the
+    // worker's own attribution is what closes it.
+    dataOf(run(["issue", "move", identifier, "done", "--actor-kind", "agent", ...AS, "--json"]));
   };
 
   it("closes the container itself when its last child is accepted", async () => {
@@ -729,7 +729,7 @@ describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells i
       // A waiver leaves no report, so there is no evidence to roll up.
       dataOf(run(["issue", "move", child.task.identifier, "in_progress", ...AS, "--json"]));
       dataOf(run(["issue", "move", child.task.identifier, "in_review", "--no-report", "--reason", "audited waiver, no commit", ...AS, "--json"]));
-      dataOf(run(["issue", "move", child.task.identifier, "done", "--json"]));
+      dataOf(run(["issue", "move", child.task.identifier, "done", "--actor-kind", "agent", "--json"]));
 
       assert.equal(
         dataOf(run(["issue", "get", card.task.identifier, "--json"])).task.status,
@@ -919,7 +919,7 @@ describe("cli/issue — the loop's two lifecycle counter-proofs", () => {
       dataOf(run(["relation", "add", epic.task.identifier, "--type", "parent", "--target", child.task.identifier, "--json"]));
       dataOf(run(["issue", "move", child.task.identifier, "in_progress", "--json"]));
       dataOf(run(["issue", "deliver", child.task.identifier, "--report-file", "-", "--json"], { input: report() }));
-      dataOf(run(["issue", "move", child.task.identifier, "done", "--json"]));
+      dataOf(run(["issue", "move", child.task.identifier, "done", "--actor-kind", "agent", "--json"]));
       assert.equal(
         dataOf(run(["issue", "get", epic.task.identifier, "--json"])).task.status,
         "in_review",
@@ -959,12 +959,14 @@ describe("cli/issue — the loop's two lifecycle counter-proofs", () => {
 
   it("cannot skip in_review: a review card goes in_progress → in_review → done", async () => {
     await board(async ({ run }) => {
+      // 0025 resolves `review_of` to a real card at creation.
+      const original = createIssue(run, ["--title", "Original"]);
       const review = createIssue(run, [
-        "--title", "Review DEMO-1",
-        "--meta", "review_of=DEMO-1",
+        "--title", `Review ${original.task.identifier}`,
+        "--meta", `review_of=${original.task.identifier}`,
         "--meta", "flow=B",
         "--meta", "review_round=1",
-        "--target", "review:DEMO-1:r1",
+        "--target", `review:${original.task.identifier}:r1`,
         "--allow-dup",
       ]);
       dataOf(run(["issue", "move", review.task.identifier, "in_progress", "--json"]));
@@ -1063,7 +1065,7 @@ describe("cli/issue — reconcile (the container backstop)", () => {
           }),
         }),
       );
-      dataOf(run(["issue", "move", done.task.identifier, "done", "--json"]));
+      dataOf(run(["issue", "move", done.task.identifier, "done", "--actor-kind", "agent", "--json"]));
 
       const human = run(["issue", "reconcile", "--dry-run"]);
       assert.match(human.stdout, /children_unfinished/);
