@@ -23,7 +23,7 @@ import {
   readAcceptancePolicy,
   writeAcceptancePolicy,
 } from "../../src/core/acceptance-policy.mjs";
-import { envLineKey, mergeEnvText } from "../../src/shared/env-file.mjs";
+import { envLineKey, mergeEnvText, parseEnvBool, parseEnvText } from "../../src/shared/env-file.mjs";
 import { cleanupTempDirs, makeTempDir } from "../helpers/sqlite-fixture.mjs";
 
 after(cleanupTempDirs);
@@ -45,6 +45,40 @@ describe("shared/env-file — the merge writer", () => {
 
   it("creates a well-formed file from nothing", () => {
     assert.equal(mergeEnvText("", { A: "1" }), "A=1\n");
+  });
+});
+
+describe("shared/env-file — the reader", () => {
+  it("skips malformed lines by default and throws on them when strict", () => {
+    assert.deepEqual(parseEnvText("A=1\nnot-an-assignment\n"), new Map([["A", "1"]]));
+    assert.throws(
+      () => parseEnvText("not-an-assignment", { strict: true }),
+      (err) => err.code === "ACCESS_CONFIG_INVALID",
+    );
+  });
+
+  it("lets the last write win, strips `export`, and unquotes", () => {
+    assert.deepEqual(parseEnvText("A=1\nA=2\n"), new Map([["A", "2"]]));
+    assert.deepEqual(parseEnvText('export Q="x y"\n'), new Map([["Q", "x y"]]));
+    assert.deepEqual(parseEnvText("  export R='z'\n"), new Map([["R", "z"]]));
+  });
+
+  it("keeps the lenient reader's two documented differences", () => {
+    // scheduling's reader skips a key-less line; the panel's keeps it.
+    assert.deepEqual(parseEnvText("=v\n", { skipEmptyKey: true }), new Map());
+    assert.deepEqual(parseEnvText("=v\n"), new Map([["", "v"]]));
+    // A lone quote is stripped by the panel's rule and kept by the installer's.
+    assert.deepEqual(parseEnvText('A="\n'), new Map([["A", ""]]));
+    assert.deepEqual(parseEnvText('A="\n', { quoteMinLength: 2 }), new Map([["A", '"']]));
+  });
+
+  it("parses the two boolean vocabularies", () => {
+    assert.equal(parseEnvBool("true"), true);
+    assert.equal(parseEnvBool("off"), false);
+    assert.equal(parseEnvBool("y"), null);
+    assert.equal(parseEnvBool("y", { shortForms: true }), true);
+    assert.equal(parseEnvBool("maybe"), null);
+    assert.equal(parseEnvBool(undefined), null);
   });
 });
 
