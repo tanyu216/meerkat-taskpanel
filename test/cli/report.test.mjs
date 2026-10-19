@@ -179,6 +179,63 @@ describe("cli/report template", () => {
   });
 });
 
+describe("cli/report list", () => {
+  function reportJson(conclusion) {
+    return JSON.stringify({
+      conclusion,
+      acceptance: [{ text: "cli works", status: "met" }],
+      evidence: [{ kind: "path", path: "src/cli/index.mjs" }],
+      leftovers: null,
+    });
+  }
+
+  it("lists every round, and narrows to the current one with --round", async () => {
+    await boardWithIssue(
+      async ({ run }) => {
+        run(["issue", "move", "DEMO-0001", "in_progress", "--json"]);
+        const first = run(["issue", "deliver", "DEMO-0001", "--report-file", "-", "--json"], {
+          input: reportJson("VERDICT: REJECT — the gate is untested"),
+        });
+        assert.equal(first.status, 0, first.stderr);
+        // Reworking bumps the delivery round, so the second report is round 2.
+        run(["issue", "move", "DEMO-0001", "in_progress", "--json"]);
+        const second = run(["issue", "deliver", "DEMO-0001", "--report-file", "-", "--json"], {
+          input: reportJson("VERDICT: APPROVE"),
+        });
+        assert.equal(second.status, 0, second.stderr);
+
+        const all = dataOf(run(["report", "list", "DEMO-0001", "--json"]));
+        assert.equal(all.ref, "DEMO-0001");
+        assert.deepEqual(all.reports.map((r) => r.round), [1, 2]);
+        assert.match(all.reports[0].conclusion, /^VERDICT: REJECT/);
+        assert.equal(all.reports[1].conclusion, "VERDICT: APPROVE");
+
+        const current = dataOf(run(["report", "list", "DEMO-0001", "--round", "2", "--json"]));
+        assert.deepEqual(current.reports.map((r) => r.conclusion), ["VERDICT: APPROVE"]);
+
+        const human = run(["report", "list", "DEMO-0001"]);
+        assert.equal(human.status, 0);
+        assert.match(human.stdout, /VERDICT: APPROVE/);
+        assert.match(human.stdout, /VERDICT: REJECT/);
+      },
+      ["--acceptance", "cli works"],
+    );
+  });
+
+  it("says so when a card has no reports (and for a round with none)", async () => {
+    await boardWithIssue(async ({ run }) => {
+      const empty = run(["report", "list", "DEMO-0001", "--json"]);
+      assert.equal(empty.status, 0, empty.stderr);
+      assert.deepEqual(dataOf(empty).reports, []);
+
+      const human = run(["report", "list", "DEMO-0001"]);
+      assert.equal(human.stdout.trim(), "no reports");
+
+      assert.deepEqual(dataOf(run(["report", "list", "DEMO-0001", "--round", "7", "--json"])).reports, []);
+    });
+  });
+});
+
 describe("cli/report — the parse and probe edges", () => {
   it("refuses a report that is not a JSON object", () => {
     assert.throws(() => parseReport("{oops"), (err) => err.code === "CLI_IO" && /not valid JSON/.test(err.message));

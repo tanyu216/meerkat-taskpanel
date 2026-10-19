@@ -374,6 +374,8 @@ describe("task-order — the candidate projection is unchanged by the order", ()
       "priority",
       "project",
       "reason",
+      "review_of",
+      "review_round",
       "sort",
       "status",
       "title",

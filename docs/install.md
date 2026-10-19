@@ -138,7 +138,7 @@ worker's own tool tree, resolve on that same set. If the host CLI is not on `PAT
 install time, the installer says so and renders node's directory alone rather than guessing.
 See [`scheduling.md` §What the loop's units run with](scheduling.md#what-the-loops-units-run-with).
 | wake glue | `<host>/bin/wake-<host>.sh` | resolves the directory a worker for the card's project runs in (`local_path`, else `run_dir`) from the board skill's `projects.json` via the host-local `meerkat-taskpanel/scripts/wake-cwd.mjs`, `cd`s there (refusing the wake if it cannot), then runs `claude -p` (+`--resume`), `codex exec`, or `pi --print` |
-| host config | `<host>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no` + `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives) |
+| host config | `<host>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no` + `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives) + the workflow channel's `MEERKAT_TASKPANEL_WORKFLOW`, `MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS` and `MEERKAT_TASKPANEL_REVIEWER` |
 | log (runtime) | `<host>/meerkat-taskpanel/supervisor.log` | the supervisor's tick log |
 | state (runtime) | `<host>/meerkat-taskpanel/supervisor.state.json` | the running registry |
 
@@ -350,12 +350,28 @@ lives (`MEERKAT_TASKPANEL_REPO=<checkout>`) — a key the installer adds when it
 missing, so an install made before that key existed still learns it (see
 [`scheduling.md §The loop body is installed, not referenced`](scheduling.md#the-loop-body-is-installed-not-referenced)).
 
+The same merge rule covers the workflow channel's three keys, written with their defaults
+when the file is created and added only when missing on an upgrade:
+
+```ini
+MEERKAT_TASKPANEL_WORKFLOW=yes
+MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=yes
+MEERKAT_TASKPANEL_REVIEWER=
+```
+
+`--reviewer` (or `MEERKAT_TASKPANEL_REVIEWER`) is what turns review dispatch on. With it
+unset the supervisor still reconciles containers and applies verdicts already in flight —
+it simply creates no new review cards, and deliveries wait for a human.
+[`scheduling.md §The workflow channel`](scheduling.md#the-workflow-channel-review-acceptance-and-containers)
+is the full contract.
+
 ## install.sh reference
 
 ```text
 install.sh [--target claude|openclaw|codex|pi|opencode|cursor|all] [--prefix <home>]
            [--agent-name <name>] [--no-automation]
            [--claim-unassigned=yes|no] [--assignee-only]
+           [--workflow=yes|no] [--reviewer <agent>] [--auto-accept-reviews=yes|no]
            [--supervisor=enable|disable|status] [--supervisor-hosts <list>]
            [--scheduler auto|launchd|systemd|cron]
            [--link] [--force] [--dry-run] [--skip-node-check] [-h|--help]
@@ -370,6 +386,9 @@ install.sh [--target claude|openclaw|codex|pi|opencode|cursor|all] [--prefix <ho
 | `MEERKAT_TASKPANEL_NO_AUTOMATION=1` | The environment form of the `--no-automation` bypass — `install.sh` sets exactly this variable for each host installer, and `scripts/install/_common.sh` reads it, so a direct installer run honours it too. Internal bypass, not a user option. |
 | `--claim-unassigned=yes\|no` | May the supervisor claim **unassigned** cards (the public pool)? Persisted to `<home>/<host>/meerkat-taskpanel.env`; overrides the interactive answer. Default `yes`. |
 | `--assignee-only` | Alias for `--claim-unassigned=no`. |
+| `--workflow=yes\|no` | Run the supervisor's workflow sub-pass — container reconcile, review dispatch and applying verdicts. Persisted to the host config; default `yes`. `no` means the loop writes no card at all. |
+| `--reviewer <agent>` | The independent agent that reviews delivered cards. Persisted to the host config. Unset (the default) disables **dispatch** only; a delivery then waits for a human to accept it. |
+| `--auto-accept-reviews=yes\|no` | Let the loop close a review card after applying its verdict. Persisted; default `yes`. `no` is the escape hatch: the verdict is still applied, but the review card stays in `in_review` for a human. |
 | `--supervisor=enable\|disable\|status` | Opt-in control of the supervisor **daemon** (the units above): `enable` loads/enables it, `disable` unloads/removes it, `status` prints the per-host load state and changes nothing. Off by default — a plain install still only *prints* the load command. Aliases: `--enable-supervisor`, `--disable-supervisor`, `--supervisor-status`. See [Enabling the supervisor (opt-in)](#enabling-the-supervisor-opt-in). |
 | `--supervisor-hosts <list>` | Which loop hosts the `--supervisor` action applies to — a comma list ⊆ `{claude,codex,pi}` (default: the loop hosts present in `--target`). Deliberately **not** a `--host` flag: `--host` already means the **wake** selector in `scripts/supervisor.mjs`, so reusing the name here would collide. `openclaw` is **rejected** (reason on stderr, exit 2). |
 | `--scheduler <auto\|launchd\|systemd\|cron>` | Which mechanism the `--supervisor` action acts on (default `auto`: launchd on macOS, systemd on Linux, cron elsewhere). Only one mechanism may be loaded per host — see [`scheduling.md §Enabling the supervisor (opt-in)`](scheduling.md#enabling-the-supervisor-opt-in). |

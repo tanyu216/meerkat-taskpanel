@@ -757,6 +757,88 @@ describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells i
   });
 });
 
+describe("cli/issue — the loop's two lifecycle counter-proofs", () => {
+  const report = (conclusion = "delivered") =>
+    JSON.stringify({
+      conclusion,
+      acceptance: [{ text: "a", status: "met" }],
+      evidence: [{ kind: "path", path: "x" }],
+    });
+
+  it("re-closes a reopened epic unless a fix child exists first (the safe rejection path)", async () => {
+    await board(async ({ run }) => {
+      const epic = createIssue(run, ["--title", "Container", "--kind", "epic", "--allow-dup"]);
+      const child = createIssue(run, ["--title", "Piece", "--allow-dup"]);
+      dataOf(run(["relation", "add", epic.task.identifier, "--type", "parent", "--target", child.task.identifier, "--json"]));
+      dataOf(run(["issue", "move", child.task.identifier, "in_progress", "--json"]));
+      dataOf(run(["issue", "deliver", child.task.identifier, "--report-file", "-", "--json"], { input: report() }));
+      dataOf(run(["issue", "move", child.task.identifier, "done", "--json"]));
+      assert.equal(
+        dataOf(run(["issue", "get", epic.task.identifier, "--json"])).task.status,
+        "in_review",
+        "the board rolled the container up",
+      );
+
+      // Reopening without creating anything new: reconcile closes it straight back.
+      // This is why a rejection must create the fix child BEFORE it reopens.
+      dataOf(run(["issue", "move", epic.task.identifier, "in_progress", "--json"]));
+      const unsafe = dataOf(run(["issue", "reconcile", "--json"]));
+      const unsafeAction = unsafe.actions.find((entry) => entry.epic === epic.task.identifier);
+      assert.equal(unsafeAction.action, "close");
+      assert.equal(unsafeAction.reason, "all_children_terminal");
+      assert.equal(
+        dataOf(run(["issue", "get", epic.task.identifier, "--json"])).task.status,
+        "in_review",
+        "without a fix child the sweep immediately re-closes the container",
+      );
+
+      // The safe path: a non-terminal fix child holds the container open.
+      dataOf(run(["issue", "move", epic.task.identifier, "in_progress", "--json"]));
+      const fix = createIssue(run, ["--title", "Fix the gap", "--allow-dup"]);
+      dataOf(run(["relation", "add", epic.task.identifier, "--type", "parent", "--target", fix.task.identifier, "--json"]));
+
+      const safe = dataOf(run(["issue", "reconcile", "--json"]));
+      const safeAction = safe.actions.find((entry) => entry.epic === epic.task.identifier);
+      assert.equal(safeAction.action, "none");
+      assert.equal(safeAction.reason, "children_unfinished");
+      assert.deepEqual(safeAction.blocking, [{ identifier: fix.task.identifier, status: "todo" }]);
+      assert.equal(
+        dataOf(run(["issue", "get", epic.task.identifier, "--json"])).task.status,
+        "in_progress",
+        "with a fix child in flight the container stays open",
+      );
+    });
+  });
+
+  it("cannot skip in_review: a review card goes in_progress → in_review → done", async () => {
+    await board(async ({ run }) => {
+      const review = createIssue(run, [
+        "--title", "Review DEMO-1",
+        "--meta", "review_of=DEMO-1",
+        "--meta", "flow=B",
+        "--meta", "review_round=1",
+        "--target", "review:DEMO-1:r1",
+        "--allow-dup",
+      ]);
+      dataOf(run(["issue", "move", review.task.identifier, "in_progress", "--json"]));
+
+      const refused = run(["issue", "move", review.task.identifier, "done", "--json"]);
+      assert.equal(refused.status, 1, "done is reachable only from in_review");
+      assert.equal(errorOf(refused).code, "INVALID_TRANSITION");
+
+      const delivered = dataOf(
+        run(["issue", "deliver", review.task.identifier, "--report-file", "-", "--json"], {
+          input: report("VERDICT: APPROVE"),
+        }),
+      );
+      assert.equal(delivered.task.status, "in_review", "the verdict report is the evidence");
+
+      const accepted = dataOf(run(["issue", "move", review.task.identifier, "done", "--json"]));
+      assert.equal(accepted.task.status, "done");
+    });
+  });
+});
+
 describe("cli/issue — reconcile (the container backstop)", () => {
   it("plans a missed closure with --dry-run, applies it once, and is idempotent", async () => {
     await board(async ({ run }) => {

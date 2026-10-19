@@ -215,7 +215,8 @@ unfinished); **one
 card at a time**; keep a **fresh heartbeat** (the board treats a claim as live for
 10 minutes, and `issue heartbeat <ref>` is the pulse — the board never sends one
 for you); **deliver with a report** (the delivery gate); **self-review is not
-acceptance** (an agent reaches `in_review`, a human accepts to `done`); **never
+acceptance** (an agent reaches `in_review`; the loop's configured independent
+reviewer — or a human, when none is — accepts to `done`); **never
 preempt a conflict** (re-read once, retry only if still claimable); and **stay
 traceable** (carry the session id). What differs between hosts is *who applies
 them*.
@@ -229,7 +230,10 @@ whose heartbeat has gone stale — and for the rest of the `PROTOCOL §⑮` time
 table: a card parked on the leader, an unanswered confirmation gate, a defect
 whose fix card was never created, a delivery nobody queued an acceptance review
 for, and the leader's own patrol going quiet. Each of those is a **notification
-to the leader**, never an action on a card. Claude Code and Codex have **no timers of their
+to the leader**, never an action on a card. Beside that notify-only half, a **workflow
+channel** in the same patrol is the one that writes: it replays the container rules,
+dispatches an independent reviewer for each delivery and applies the verdict (`--reviewer`
+enables dispatch; `--workflow=no` turns the channel off). Claude Code and Codex have **no timers of their
 own**, so the loop sits *outside* them and only ever wakes the worker
 (`claude -p`, `codex exec`, `pi --print`). **To turn it on,** run
 `install.sh --target claude|codex|pi`: it installs the `meerkat-loop` skill and

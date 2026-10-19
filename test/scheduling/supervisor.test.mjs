@@ -28,6 +28,7 @@ import { after, describe, it } from "node:test";
 import {
   DEFAULT_MAX_CONCURRENCY,
   buildHandoff,
+  buildReviewHandoff,
   candidateArgs,
   parseEnvFile,
   parseHeartbeat,
@@ -46,6 +47,7 @@ import {
   readPeerLastOk,
   runPatrolTick,
   runPollTick,
+  runWorkflowTick,
   saveLastOk,
   saveSlaLedger,
   spawnWorkerReal,
@@ -471,7 +473,7 @@ describe("buildHandoff (pure)", () => {
     assert.match(text, /--actor-kind claude/);
     assert.match(text, /--session-id sid-9/);
     assert.match(text, /report/i);
-    assert.ok(text.length < 2000, "the handoff must be bounded");
+    assert.ok(text.length < 2500, "the handoff must be bounded");
   });
 
   it("truncates an absurdly long title so the handoff stays bounded", () => {
@@ -480,7 +482,69 @@ describe("buildHandoff (pure)", () => {
       agent: "alice",
       host: "codex",
     });
-    assert.ok(text.length < 2000);
+    assert.ok(text.length < 2500);
+  });
+
+  it("carries the epic-triage step, and says an epic is never claimed", () => {
+    const text = buildHandoff({
+      card: { identifier: "T-1", title: "Wire the supervisor", project: "P1" },
+      agent: "alice",
+      host: "claude",
+    });
+    assert.match(text, /Step 0/);
+    assert.match(text, /--kind epic/);
+    assert.match(text, /an epic is never claimed/);
+    assert.match(text, /relation add T-1 --type parent/);
+    assert.match(text, /meta\.epic_triage=off/);
+    assert.match(text, /stop at in_review — a human accepts to done/, "the default has no reviewer");
+  });
+
+  it("points the worker at the reviewer when one is configured", () => {
+    const text = buildHandoff({
+      card: { identifier: "T-1", title: "Wire the supervisor", project: "P1" },
+      agent: "alice",
+      host: "claude",
+      review: true,
+    });
+    assert.match(text, /the loop dispatches an independent reviewer/);
+    assert.match(text, /do not move it to done yourself/);
+  });
+});
+
+describe("buildReviewHandoff (pure)", () => {
+  const text = buildReviewHandoff({
+    card: { identifier: "T-2", review_of: "T-1", review_round: 3 },
+    agent: "jobs",
+    host: "claude",
+  });
+
+  it("names both cards, the round and the attribution flags, bounded", () => {
+    assert.match(text, /Review card: T-2/);
+    assert.match(text, /Card under review: T-1 \(round 3\)/);
+    assert.match(text, /--agent jobs/);
+    assert.match(text, /--actor-kind claude/);
+    assert.ok(text.length < 2500, "the handoff must be bounded");
+  });
+
+  it("checks review_not_ready before reading anything else", () => {
+    assert.match(text, /review_not_ready/);
+    assert.match(text, /taskctl issue get T-1/);
+    assert.match(text, /no longer in_review \/ the round changed/);
+    assert.match(text, /Do not deliver a verdict/);
+  });
+
+  it("reads the delivery report and the trail, and names the verdict protocol", () => {
+    assert.match(text, /taskctl report list T-1/);
+    assert.match(text, /comment list T-1 --limit 200/);
+    assert.match(text, /relation list T-1/);
+    assert.match(text, /VERDICT: APPROVE/);
+    assert.match(text, /VERDICT: REJECT/);
+    assert.match(text, /issue deliver T-2 --report-file -/);
+  });
+
+  it("moves nothing — the loop is the acceptor", () => {
+    assert.match(text, /Do not move\s+the card under review and do not move this review card/);
+    assert.match(text, /the loop applies the verdict and\s+closes this card/);
   });
 });
 
@@ -720,6 +784,262 @@ describe("runPatrolTick (injected deps)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Tick runner: workflow
+// ---------------------------------------------------------------------------
+
+describe("runWorkflowTick (injected deps)", () => {
+  const NOW = "2026-10-19T10:00:00.000Z";
+  const WORKFLOW_CONFIG = {
+    workflow: true,
+    reviewer: "jobs",
+    reviewerIsWorker: false,
+    autoAcceptReviews: true,
+    maxActions: 20,
+  };
+
+  function task(fields = {}) {
+    const identifier = fields.identifier ?? "T-1";
+    return {
+      id: `id-${identifier}`,
+      identifier,
+      title: "Do the thing",
+      status: "in_review",
+      kind: "task",
+      project_id: "proj",
+      assignee_id: "agent-1",
+      assignee: { id: "agent-1", display_name: "linus", kind: "agent" },
+      delivery_round: 1,
+      status_changed_at: "2026-10-19T09:00:00.000Z",
+      created_at: "2026-10-18T09:00:00.000Z",
+      meta: {},
+      ...fields,
+    };
+  }
+
+  function review(fields = {}) {
+    return task({
+      identifier: "T-2",
+      title: "Review T-1",
+      delivery_round: 0,
+      meta: { review_of: "T-1", flow: "B", review_round: 1 },
+      ...fields,
+    });
+  }
+
+  function baseDeps(overrides = {}) {
+    return {
+      tasks: [],
+      reviewCards: [],
+      config: WORKFLOW_CONFIG,
+      boardTruncated: false,
+      dryRun: false,
+      reconcile: async () => ({ ok: true, actions: [] }),
+      readCard: async (ref) => ({ ok: true, card: task({ identifier: ref }) }),
+      readReports: async () => ({ ok: true, reports: [{ round: 1, conclusion: "VERDICT: APPROVE" }] }),
+      createReview: async () => ({ ok: true, ref: "T-9" }),
+      createFixChild: async () => ({ ok: true, ref: "T-8" }),
+      linkFixChild: async () => ({ ok: true }),
+      move: async () => ({ ok: true }),
+      comment: async () => ({ ok: true }),
+      setMeta: async () => ({ ok: true }),
+      notify: () => {},
+      now: () => NOW,
+      log: () => {},
+      ...overrides,
+    };
+  }
+
+  it("is a no-op when the workflow channel is off — and never even reconciles", async () => {
+    const reconcile = spy(async () => ({ ok: true, actions: [] }));
+    const createReview = spy(async () => ({ ok: true }));
+    const result = await runWorkflowTick(
+      baseDeps({ config: { ...WORKFLOW_CONFIG, workflow: false }, tasks: [task()], reconcile, createReview }),
+    );
+    assert.deepEqual(result.actions, []);
+    assert.equal(reconcile.count(), 0);
+    assert.equal(createReview.count(), 0);
+  });
+
+  it("still dispatches after a reconcile failure", async () => {
+    const createReview = spy(async () => ({ ok: true, ref: "T-9" }));
+    const logs = [];
+    const result = await runWorkflowTick(
+      baseDeps({
+        tasks: [task()],
+        reconcile: async () => ({ ok: false, error: "board busy" }),
+        createReview,
+        log: (line) => logs.push(line),
+      }),
+    );
+    assert.equal(createReview.count(), 1);
+    assert.equal(result.executed, 1);
+    assert.ok(logs.some((line) => /reconcile failed/.test(line)));
+  });
+
+  it("dry-run reads but writes nothing, and says what it would do", async () => {
+    const createReview = spy(async () => ({ ok: true }));
+    const move = spy(async () => ({ ok: true }));
+    const logs = [];
+    const result = await runWorkflowTick(
+      baseDeps({ tasks: [task()], dryRun: true, createReview, move, log: (line) => logs.push(line) }),
+    );
+    assert.equal(createReview.count(), 0);
+    assert.equal(move.count(), 0);
+    assert.equal(result.executed, 0);
+    assert.equal(result.actions.length, 1);
+    assert.ok(logs.some((line) => /would create review loop-review\|T-1\|r1/.test(line)));
+  });
+
+  it("approves the original, marks the acceptance, then closes the review card last", async () => {
+    const order = [];
+    const result = await runWorkflowTick(
+      baseDeps({
+        tasks: [task(), review()],
+        readReports: async () => ({ ok: true, reports: [{ round: 1, conclusion: "VERDICT: APPROVE" }] }),
+        comment: async (ref, input) => (order.push(`comment:${ref}:${input.kind}`), { ok: true }),
+        setMeta: async (ref, meta) => (order.push(`meta:${ref}:${JSON.stringify(meta)}`), { ok: true }),
+        move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
+      }),
+    );
+    assert.deepEqual(order, [
+      "comment:T-1:note",
+      'meta:T-1:{"accepted_by":"loop-review","accepted_round":"1"}',
+      "move:T-1:done",
+      "comment:T-2:note",
+      "move:T-2:done",
+    ]);
+    assert.equal(result.executed, 1);
+    assert.equal(result.failed, 0);
+  });
+
+  it("rejects a task through in_progress → todo and records the rework round", async () => {
+    const order = [];
+    const result = await runWorkflowTick(
+      baseDeps({
+        tasks: [task(), review()],
+        readReports: async () => ({ ok: true, reports: [{ round: 1, conclusion: "VERDICT: REJECT\nthe gate is untested" }] }),
+        comment: async (ref, input) => (order.push(`comment:${ref}:${input.kind}`), { ok: true }),
+        setMeta: async (ref, meta) => (order.push(`meta:${ref}:${JSON.stringify(meta)}`), { ok: true }),
+        move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
+      }),
+    );
+    assert.deepEqual(order, [
+      "comment:T-1:change",
+      'meta:T-1:{"rework_round":"2"}',
+      "move:T-1:in_progress",
+      "move:T-1:todo",
+      "comment:T-2:note",
+      "move:T-2:done",
+    ]);
+    assert.equal(result.executed, 1);
+  });
+
+  it("rejects an epic by creating and linking the fix child BEFORE reopening it", async () => {
+    const order = [];
+    const result = await runWorkflowTick(
+      baseDeps({
+        tasks: [task({ identifier: "E-1", kind: "epic" }), review({ identifier: "T-2", meta: { review_of: "E-1", flow: "B", review_round: 1 } })],
+        readReports: async () => ({ ok: true, reports: [{ round: 1, conclusion: "VERDICT: REJECT" }] }),
+        createFixChild: async () => (order.push("create_fix"), { ok: true, ref: "E-2" }),
+        linkFixChild: async (epic, child) => (order.push(`link:${epic}:${child}`), { ok: true }),
+        comment: async (ref) => (order.push(`comment:${ref}`), { ok: true }),
+        setMeta: async (ref) => (order.push(`meta:${ref}`), { ok: true }),
+        move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
+      }),
+    );
+    assert.deepEqual(order, [
+      "create_fix",
+      "link:E-1:E-2",
+      "comment:E-1",
+      "meta:E-1",
+      "move:E-1:in_progress",
+      "comment:T-2",
+      "move:T-2:done",
+    ]);
+    assert.equal(result.executed, 1);
+  });
+
+  it("applies the verdict but leaves the review card for a human with auto-accept off", async () => {
+    const move = spy(async () => ({ ok: true }));
+    const notify = spy();
+    const result = await runWorkflowTick(
+      baseDeps({
+        tasks: [task(), review()],
+        config: { ...WORKFLOW_CONFIG, autoAcceptReviews: false },
+        move,
+        notify,
+      }),
+    );
+    assert.deepEqual(
+      move.calls.map(([ref, to]) => `${ref}:${to}`),
+      ["T-1:done"],
+      "the original is accepted; the review card is not closed",
+    );
+    assert.equal(result.executed, 1);
+    assert.ok(result.alerts.some((alert) => alert.type === "review_awaiting_human_acceptance"));
+    assert.equal(notify.count(), 0, "a standing state is logged, not re-notified every pass");
+  });
+
+  it("keeps going after one action fails, and leaves that card for the next pass", async () => {
+    let call = 0;
+    const createReview = spy(async () => (++call === 1 ? { ok: false, error: "board busy" } : { ok: true, ref: "T-9" }));
+    const result = await runWorkflowTick(
+      baseDeps({
+        tasks: [
+          task({ identifier: "T-1", status_changed_at: "2026-10-19T08:00:00.000Z" }),
+          task({ identifier: "T-3", status_changed_at: "2026-10-19T09:00:00.000Z" }),
+        ],
+        createReview,
+      }),
+    );
+    assert.equal(result.actions.length, 2);
+    assert.equal(result.failed, 1);
+    assert.equal(result.executed, 1);
+  });
+
+  it("reads an original the snapshot omits, once, and bounds the read", async () => {
+    const readCard = spy(async (ref) => ({ ok: true, card: task({ identifier: ref }) }));
+    const result = await runWorkflowTick(baseDeps({ tasks: [review()], readCard }));
+    assert.equal(readCard.count(), 1);
+    assert.deepEqual(result.actions.map((action) => action.type), ["approve"], "read, then decided — not re-dispatched");
+
+    // With no budget left, the original is not read and the plan reports it unseen.
+    const capped = await runWorkflowTick(
+      baseDeps({ tasks: [review()], config: { ...WORKFLOW_CONFIG, maxActions: 0 }, readCard: spy() }),
+    );
+    assert.ok(capped.alerts.some((alert) => alert.type === "original_unseen"));
+  });
+
+  it("never moves a card when the verdict cannot be read — and notifies the operator", async () => {
+    const move = spy(async () => ({ ok: true }));
+    const notify = spy();
+    const result = await runWorkflowTick(
+      baseDeps({
+        tasks: [task(), review()],
+        readReports: async () => ({ ok: false, error: "read failed" }),
+        move,
+        notify,
+      }),
+    );
+    assert.equal(move.count(), 0);
+    assert.deepEqual(result.alerts.map((alert) => alert.type), ["verdict_unreadable"]);
+    assert.equal(result.executed, 0);
+    assert.deepEqual(notify.calls.map(([alert]) => alert.type), ["verdict_unreadable"]);
+  });
+
+  it("closes a review card of a vanished original by canceling it, not moving it to done", async () => {
+    const move = spy(async () => ({ ok: true }));
+    await runWorkflowTick(
+      baseDeps({
+        tasks: [review({ status: "todo" }), task({ status: "canceled" })],
+        move,
+      }),
+    );
+    assert.deepEqual(move.calls.map(([ref, to]) => `${ref}:${to}`), ["T-2:canceled"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Pure: crash recovery
 // ---------------------------------------------------------------------------
 
@@ -870,6 +1190,39 @@ describe("parseArgs — the SLA attribution and liveness surface", () => {
     });
     assert.equal(opts.slaLeader, "elon");
     assert.equal(opts.slaPeer, "/team/.sla-scan-state.json");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseArgs — the workflow surface
+// ---------------------------------------------------------------------------
+
+describe("parseArgs — the workflow surface", () => {
+  const ENV = { HOME: "/home/alice" };
+
+  it("leaves the settings unresolved, so the host config can decide them", () => {
+    const opts = parseArgs(["--host", "claude", "--once"], ENV);
+    assert.equal(opts.workflow, undefined);
+    assert.equal(opts.reviewer, undefined);
+    assert.equal(opts.autoAcceptReviews, undefined);
+    assert.equal(opts.workflowMaxActions, undefined);
+  });
+
+  it("takes every workflow flag in both spellings", () => {
+    const spaced = parseArgs(
+      ["--workflow", "no", "--reviewer", "jobs", "--auto-accept-reviews", "no", "--workflow-max-actions", "5"],
+      ENV,
+    );
+    assert.equal(spaced.workflow, "no");
+    assert.equal(spaced.reviewer, "jobs");
+    assert.equal(spaced.autoAcceptReviews, "no");
+    assert.equal(spaced.workflowMaxActions, "5");
+
+    const joined = parseArgs(["--workflow=yes", "--reviewer=jobs", "--auto-accept-reviews=yes", "--workflow-max-actions=9"], ENV);
+    assert.equal(joined.workflow, "yes");
+    assert.equal(joined.reviewer, "jobs");
+    assert.equal(joined.autoAcceptReviews, "yes");
+    assert.equal(joined.workflowMaxActions, "9");
   });
 });
 
@@ -1030,6 +1383,37 @@ describe("spawnWorkerReal — the wake goes through the resolved glue (R1)", () 
     // The silent half of the defect: the fallback announces itself, so a glue that
     // exists and is still not used must never look like an ordinary wake.
     assert.deepEqual(logs.filter((line) => /no wake glue/.test(line)), []);
+  });
+
+  it("hands a review card the reviewer handoff, not the worker handoff", async () => {
+    const dir = tempDir("meerkat-wake-review-");
+    const marker = join(dir, "prompt.txt");
+    const glue = stub(dir, "wake-claude.sh", [`printf '%s' "$*" > "${marker}"`]);
+    const spawnWorker = spawnWorkerReal(
+      { host: "claude", repo: dir, glue, projectsJson: join(dir, "projects.json"), log: join(dir, "supervisor.log") },
+      { wakeCommand: null, reviewer: "jobs", reviewerIsWorker: false },
+      () => {},
+    );
+
+    const originalPath = process.env.PATH;
+    // An empty PATH would make a regression to the direct branch fail loudly rather
+    // than reach a real host CLI; the glue path is absolute, so it still runs.
+    process.env.PATH = `${tempDir("meerkat-wake-review-bin-")}:${originalPath}`;
+    let result;
+    try {
+      result = await spawnWorker(
+        { identifier: "T-2", agent: "jobs" },
+        { identifier: "T-2", review_of: "T-1", review_round: 1, project: "P1" },
+      );
+      assert.ok(await waitFor(() => readMarker(marker).includes("review_not_ready")));
+    } finally {
+      process.env.PATH = originalPath;
+    }
+
+    assert.equal(result.ok, true, result.error);
+    const recorded = readFileSync(marker, "utf8");
+    assert.match(recorded, /Card under review: T-1 \(round 1\)/);
+    assert.doesNotMatch(recorded, /Step 0 — before working/, "a reviewer is not told to split the card");
   });
 
   it("names the configured glue, and probes no undefined path (DEP0187)", () => {

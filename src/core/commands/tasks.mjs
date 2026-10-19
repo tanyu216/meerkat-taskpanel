@@ -1071,6 +1071,7 @@ function staleReason(task, assigneeIds, now) {
  * @param {string} reason
  */
 function candidateOf(task, reason) {
+  const meta = task.meta ?? {};
   return {
     id: task.id,
     identifier: task.identifier,
@@ -1080,7 +1081,28 @@ function candidateOf(task, reason) {
     project: task.projectId,
     sort: task.sortOrder ?? 0,
     reason,
+    // A review card names the card it audits (`meta.review_of`) and the round it
+    // audits (`meta.review_round`), so the supervisor can pick the review
+    // handoff at wake time without a second `issue get`. Both are `null` for a
+    // normal card; the round is coerced because `--meta` values arrive as
+    // strings while a JSON metadata write may carry a number.
+    review_of: nonEmptyString(meta.review_of),
+    review_round: integerOrNull(meta.review_round),
   };
+}
+
+/** A meta value as a non-empty string, or `null`. */
+function nonEmptyString(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+/** A meta value as an integer, or `null` — numbers and digit strings both. */
+function integerOrNull(value) {
+  if (typeof value === "number" && Number.isInteger(value)) return value;
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) return Number.parseInt(value, 10);
+  return null;
 }
 
 /**

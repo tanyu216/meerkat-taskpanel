@@ -33,6 +33,14 @@
  *      consumer, the §4 tuple for the shared ledger — §10.4 leaves no other way
  *      for the two mechanisms to de-duplicate the row between them). No LLM turn
  *      by default, and **no alert ever moves a card**.
+ *   5. **workflow** — beside the notify-only SLA pass, the one channel that
+ *      writes: `issue reconcile`, the review outcomes (apply a reviewer's
+ *      `VERDICT:` report to the card it audits), and review dispatch for every
+ *      flow-A delivery. It runs inside the same patrol tick, writes as
+ *      `--actor-kind system`, and closes the review card last so a crash between
+ *      the two halves is recoverable. Off with `--workflow=no`; dispatch needs
+ *      `--reviewer`; `--auto-accept-reviews=no` leaves the review card for a
+ *      human.
  *
  * The pass also holds one end of the **mutual liveness watchdog** (§8.4): it
  * writes its own last-successful-run marker every pass, and — when `--sla-peer`
@@ -72,6 +80,7 @@ import {
   DEFAULT_PATROL_SECONDS,
   DEFAULT_POLL_SECONDS,
   buildHandoff,
+  buildReviewHandoff,
   candidateArgs,
   parseEnvFile,
   planPatrol,
@@ -79,8 +88,17 @@ import {
   planWakeInvocation,
   pruneRegistry,
   resolveClaimUnassigned,
+  resolveWorkflowConfig,
   wakeCommand,
 } from "../src/shared/scheduling.mjs";
+import {
+  LOOP_ACCEPTOR,
+  isReviewCard,
+  parseReviewVerdict,
+  planWorkflowTick,
+  reviewOf,
+  reviewRoundOf,
+} from "../src/shared/workflow.mjs";
 import {
   BOARD_CARD_ID,
   DEFAULT_BOARD_LIMIT,
@@ -103,6 +121,7 @@ import { isEntryPoint } from "../src/shared/entry-guard.mjs";
 // Re-exported so a caller can import the whole supervisor surface from one place.
 export {
   buildHandoff,
+  buildReviewHandoff,
   candidateArgs,
   planPatrol,
   planSlaPatrol,
@@ -110,6 +129,7 @@ export {
   planWakeInvocation,
   pruneRegistry,
   resolveClaimUnassigned,
+  resolveWorkflowConfig,
   wakeCommand,
 };
 
@@ -131,6 +151,15 @@ Options:
   --max-concurrency <n>   Max concurrently running workers (default: ${DEFAULT_MAX_CONCURRENCY}).
   --claim-unassigned=yes|no   Also claim unassigned cards (the public pool). Default: yes.
   --assignee-only         Alias for --claim-unassigned=no.
+  --workflow=yes|no       Run the workflow sub-pass (reconcile, review dispatch, verdicts).
+                          Default: yes.
+  --reviewer <agent>      The independent agent that reviews delivered cards. Unset
+                          means review dispatch is off and deliveries wait for a human.
+  --auto-accept-reviews=yes|no
+                          Let the loop close a review card after applying its verdict.
+                          Default: yes; 'no' leaves the review card for a human.
+  --workflow-max-actions <n>
+                          Max workflow writes per pass (default: 20).
   --once                  Run a single tick and exit (for tests / cron): the poll
                           pass, or the patrol pass with --patrol-only.
   --patrol-only           With --once, run only the patrol pass.
@@ -398,6 +427,325 @@ export async function runSlaPatrolTick(deps) {
   };
 }
 
+/**
+ * One workflow pass — the loop's *write* channel, beside the notify-only SLA
+ * pass.
+ *
+ * This is the one place in the supervisor that moves cards, and the order is
+ * the recovery protocol:
+ *
+ *   1. **reconcile** — `issue reconcile` decides container start/close; the
+ *      pass only classifies what it reported. A failed reconcile is logged and
+ *      the pass continues: outcomes do not depend on it.
+ *   2. **read** — the originals a review card names but the snapshot lacks, and
+ *      the reports of every `in_review` review card. Both are bounded.
+ *   3. **plan** — `planWorkflowTick`; no write happens before it returns.
+ *   4. **execute** — each action independently; one failure never stops the
+ *      rest. A review card is closed *last*, so a crash between the original's
+ *      move and the card's close is recovered on the next pass, never lost.
+ *
+ * `autoAcceptReviews = false` removes only step 4's review-card close: the
+ * verdict on the original is still applied, and the card stays in `in_review`
+ * for a human.
+ *
+ * @param {{
+ *   tasks?: object[],
+ *   reviewCards?: object[],
+ *   config?: object,
+ *   boardTruncated?: boolean,
+ *   dryRun?: boolean,
+ *   reconcile?: () => Promise<{ok: boolean, actions?: object[], error?: string}>,
+ *   readCard?: (ref: string) => Promise<{ok: boolean, card?: object, error?: string}>,
+ *   readReports?: (ref: string) => Promise<{ok: boolean, reports?: object[], error?: string}>,
+ *   createReview?: (action: object) => Promise<{ok: boolean, ref?: string, error?: string}>,
+ *   createFixChild?: (action: object) => Promise<{ok: boolean, ref?: string, error?: string}>,
+ *   linkFixChild?: (epicRef: string, childRef: string) => Promise<{ok: boolean, error?: string}>,
+ *   move?: (ref: string, to: string) => Promise<{ok: boolean, error?: string}>,
+ *   comment?: (ref: string, input: {kind: string, body: string}) => Promise<{ok: boolean, error?: string}>,
+ *   setMeta?: (ref: string, meta: Record<string, string>) => Promise<{ok: boolean, error?: string}>,
+ *   notify?: (alert: object) => void,
+ *   now: () => string,
+ *   log: (line: string) => void,
+ * }} deps
+ */
+export async function runWorkflowTick(deps) {
+  const {
+    tasks = [],
+    reviewCards = [],
+    config = {},
+    boardTruncated = false,
+    dryRun = false,
+    reconcile = null,
+    readCard = null,
+    readReports = null,
+    createReview = null,
+    createFixChild = null,
+    linkFixChild = null,
+    move = null,
+    comment = null,
+    setMeta = null,
+    notify = () => {},
+    now,
+    log,
+  } = deps;
+
+  const stamp = now();
+  const disabled = { dryRun, actions: [], alerts: [], changes: [], executed: 0, failed: 0, summary: { actions: 0, alerts: 0 } };
+  if (config.workflow !== true) return disabled;
+
+  let reconcileActions = [];
+  if (typeof reconcile === "function") {
+    const result = await reconcile();
+    if (result?.ok === false) {
+      log(`workflow: reconcile failed (${result.error ?? "unknown"}) — continuing with outcomes`);
+    } else {
+      reconcileActions = Array.isArray(result?.actions) ? result.actions : [];
+    }
+  }
+
+  // One snapshot, keyed by both identifier and id: `meta.review_of` may name
+  // either, and the caller should never have to know which.
+  const all = [];
+  const byRef = new Map();
+  const add = (task) => {
+    const key = String(task?.identifier ?? "");
+    if (key === "" || byRef.has(key)) return;
+    all.push(task);
+    byRef.set(key, task);
+    if (typeof task.id === "string" && task.id !== "") byRef.set(task.id, task);
+  };
+  for (const task of tasks) add(task);
+  for (const card of reviewCards) add(card);
+
+  const budget = Number.isFinite(config.maxActions) && config.maxActions >= 0 ? config.maxActions : 20;
+
+  // An original the board read did not include is read on demand — a review
+  // card only names a string, and "unseen" must mean unread, not merely paged out.
+  let cardReads = 0;
+  for (const review of [...all]) {
+    if (!isReviewCard(review) || review.status === "done" || review.status === "canceled") continue;
+    const ref = reviewOf(review);
+    if (byRef.has(ref)) continue;
+    if (cardReads >= budget) {
+      log(`workflow: original reads capped at ${budget} — ${ref} not read this pass`);
+      break;
+    }
+    cardReads += 1;
+    const read = typeof readCard === "function" ? await readCard(ref) : { ok: false, error: "readCard unavailable" };
+    if (read?.ok === true && read.card) add(read.card);
+    else log(`workflow: could not read original ${ref} (${read?.error ?? "not found"})`);
+  }
+
+  const verdicts = {};
+  let reportReads = 0;
+  for (const review of all) {
+    if (!isReviewCard(review) || review.status !== "in_review") continue;
+    const ref = String(review.identifier ?? "");
+    if (ref === "") continue;
+    if (reportReads >= budget) {
+      verdicts[ref] = { ok: false, reason: "read_capped" };
+      continue;
+    }
+    reportReads += 1;
+    const read = typeof readReports === "function"
+      ? await readReports(ref)
+      : { ok: false, error: "readReports unavailable" };
+    if (read?.ok !== true) {
+      log(`workflow: report read failed for ${ref} (${read?.error ?? "unknown"})`);
+      continue;
+    }
+    verdicts[ref] = parseReviewVerdict(read.reports ?? [], reviewRoundOf(review));
+  }
+
+  const plan = planWorkflowTick({
+    tasks: all,
+    verdicts,
+    reconcileActions,
+    config,
+    boardTruncated,
+    now: stamp,
+  });
+
+  for (const alert of plan.alerts) {
+    log(`workflow: ${describeWorkflowAlert(alert)}`);
+    // Standing-state notices (no reviewer configured, a capped pass, a review
+    // waiting for a human by the operator's own `--auto-accept-reviews=no`)
+    // would otherwise re-notify on every 5-minute pass forever. They are logged;
+    // only findings an operator can act on are notified.
+    if (WORKFLOW_NOTIFY_TYPES.has(alert.type)) notify(alert);
+  }
+  for (const change of plan.changes) {
+    log(`workflow: reconcile ${change.action} ${change.epic} (${change.reason})`);
+  }
+
+  let executed = 0;
+  let failed = 0;
+
+  const step = async (fn, name, ...args) => {
+    if (typeof fn !== "function") throw new Error(`${name} is not wired`);
+    const result = await fn(...args);
+    if (result?.ok === false) throw new Error(result.error ?? `${name} failed`);
+    return result;
+  };
+
+  // Closing the review card is the LAST write of every outcome, and the half
+  // `autoAcceptReviews=no` removes. A review card that never started can only be
+  // `canceled` (the state machine forbids `todo → done`); one waiting for
+  // acceptance becomes `done`.
+  const closeReviewCard = async (action, note) => {
+    if (action.closeReview === false) {
+      log(`workflow: review ${action.reviewRef} left in_review for human acceptance`);
+      return;
+    }
+    const status = byRef.get(action.reviewRef)?.status;
+    if (status === "done" || status === "canceled") return;
+    if (status === "in_review") {
+      if (note !== null) await step(comment, "comment", action.reviewRef, { kind: "note", body: note });
+      await step(move, "move", action.reviewRef, "done");
+      return;
+    }
+    await step(move, "move", action.reviewRef, "canceled");
+  };
+
+  for (const action of plan.actions) {
+    if (dryRun) {
+      log(`workflow: would ${describeWorkflowAction(action)}`);
+      continue;
+    }
+    try {
+      switch (action.type) {
+        case "create_review":
+          await step(createReview, "create_review", action);
+          break;
+
+        case "approve":
+          await step(comment, "comment", action.originalRef, {
+            kind: "note",
+            body: `Loop acceptance after review ${action.reviewRef} (round ${action.round}): VERDICT: APPROVE.`,
+          });
+          await step(setMeta, "setMeta", action.originalRef, {
+            accepted_by: LOOP_ACCEPTOR,
+            accepted_round: String(action.round),
+          });
+          await step(move, "move", action.originalRef, "done");
+          await closeReviewCard(
+            action,
+            `Loop auto-accepted this review card after applying VERDICT: APPROVE to ${action.originalRef}.`,
+          );
+          break;
+
+        case "reject_task": {
+          const body = `VERDICT: REJECT (review ${action.reviewRef}, round ${action.round}).\n\n${
+            action.findings === "" ? "(the reviewer recorded no findings)" : action.findings
+          }`;
+          await step(comment, "comment", action.originalRef, { kind: "change", body });
+          await step(setMeta, "setMeta", action.originalRef, { rework_round: String(action.reworkRound) });
+          await step(move, "move", action.originalRef, "in_progress");
+          await step(move, "move", action.originalRef, "todo");
+          await closeReviewCard(
+            action,
+            `Loop closed this review card after moving ${action.originalRef} back to rework.`,
+          );
+          break;
+        }
+
+        case "reject_epic": {
+          const body = `VERDICT: REJECT (review ${action.reviewRef}, round ${action.round}).\n\n${
+            action.findings === "" ? "(the reviewer recorded no findings)" : action.findings
+          }`;
+          const created = await step(createFixChild, "create_fix_child", action);
+          const childRef = created?.ref ?? created?.identifier ?? created?.task?.identifier ?? null;
+          if (childRef === null) throw new Error("create_fix_child returned no ref");
+          await step(linkFixChild, "link_fix_child", action.originalRef, childRef);
+          await step(comment, "comment", action.originalRef, { kind: "change", body });
+          await step(setMeta, "setMeta", action.originalRef, { rework_round: String(action.reworkRound) });
+          await step(move, "move", action.originalRef, "in_progress");
+          await closeReviewCard(
+            action,
+            `Loop closed this review card after reopening ${action.originalRef} with fix child ${childRef}.`,
+          );
+          break;
+        }
+
+        case "reject_task_finish":
+          await step(move, "move", action.originalRef, "todo");
+          await closeReviewCard(action, `Loop closed this review card after completing the rework move.`);
+          break;
+
+        case "close_review":
+          await closeReviewCard(action, `Loop closed this review card (${action.reason}).`);
+          break;
+
+        case "cancel_review":
+          await closeReviewCard(action, `Loop canceled this review card: ${action.reason}.`);
+          break;
+
+        default:
+          throw new Error(`unknown workflow action '${action.type}'`);
+      }
+      executed += 1;
+    } catch (err) {
+      failed += 1;
+      log(
+        `workflow: ${action.type} failed for ${action.originalRef ?? action.reviewRef} ` +
+          `(${err.message}) — leaving the review card for the next pass`,
+      );
+    }
+  }
+
+  return {
+    dryRun,
+    actions: plan.actions,
+    alerts: plan.alerts,
+    changes: plan.changes,
+    executed,
+    failed,
+    summary: { ...plan.summary, executed, failed },
+  };
+}
+
+/**
+ * The workflow alerts worth a notification. The rest are log-only standing
+ * state: `dispatch_skipped` (no reviewer configured, or a truncated read),
+ * `dispatch_capped` (a bounded pass did less than asked) and
+ * `review_awaiting_human_acceptance` (the operator chose `auto-accept=no`) are
+ * conditions a tick cannot resolve and would repeat every period.
+ */
+const WORKFLOW_NOTIFY_TYPES = new Set([
+  "reconcile",
+  "self_review_not_independent",
+  "review_done_but_original_open",
+  "verdict_unreadable",
+  "verdict_conflict",
+  "original_unseen",
+  "original_unexpected_status",
+  "review_stale_round",
+]);
+
+function describeWorkflowAlert(alert) {
+  const detail = alert.original ?? alert.epic ?? "";
+  return `alert ${alert.type}${alert.reason === undefined ? "" : ` (${alert.reason})`}${detail === "" ? "" : ` ${detail}`}`;
+}
+
+function describeWorkflowAction(action) {
+  switch (action.type) {
+    case "create_review":
+      return `create review ${action.idem} for ${action.originalRef}`;
+    case "approve":
+      return `approve ${action.originalRef} (round ${action.round}) and close ${action.reviewRef}`;
+    case "reject_task":
+    case "reject_epic":
+      return `${action.type} ${action.originalRef} (round ${action.round})`;
+    case "reject_task_finish":
+      return `finish the rework move for ${action.originalRef}`;
+    case "close_review":
+    case "cancel_review":
+      return `${action.type} ${action.reviewRef} (${action.reason})`;
+    default:
+      return action.type;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Registry (crash survival) + process liveness
 // ---------------------------------------------------------------------------
@@ -473,6 +821,10 @@ export function parseArgs(argv, env = process.env) {
     patrolInterval: DEFAULT_PATROL_SECONDS,
     maxConcurrency: DEFAULT_MAX_CONCURRENCY,
     claimUnassigned: undefined,
+    workflow: undefined,
+    reviewer: undefined,
+    autoAcceptReviews: undefined,
+    workflowMaxActions: undefined,
     once: false,
     patrolOnly: false,
     patrolLlm: false,
@@ -524,6 +876,14 @@ export function parseArgs(argv, env = process.env) {
     else if (arg === "--claim-unassigned") opts.claimUnassigned = take("--claim-unassigned");
     else if (arg.startsWith("--claim-unassigned=")) opts.claimUnassigned = arg.slice(19);
     else if (arg === "--assignee-only") opts.claimUnassigned = "no";
+    else if (arg === "--workflow") opts.workflow = take("--workflow");
+    else if (arg.startsWith("--workflow=")) opts.workflow = arg.slice(11);
+    else if (arg === "--reviewer") opts.reviewer = take("--reviewer");
+    else if (arg.startsWith("--reviewer=")) opts.reviewer = arg.slice(11);
+    else if (arg === "--auto-accept-reviews") opts.autoAcceptReviews = take("--auto-accept-reviews");
+    else if (arg.startsWith("--auto-accept-reviews=")) opts.autoAcceptReviews = arg.slice(22);
+    else if (arg === "--workflow-max-actions") opts.workflowMaxActions = take("--workflow-max-actions");
+    else if (arg.startsWith("--workflow-max-actions=")) opts.workflowMaxActions = arg.slice(23);
     else if (arg === "--once") opts.once = true;
     else if (arg === "--patrol-only") opts.patrolOnly = true;
     else if (arg === "--patrol-llm") opts.patrolLlm = true;
@@ -601,9 +961,18 @@ export function parseArgs(argv, env = process.env) {
 // Real (default) dependencies
 // ---------------------------------------------------------------------------
 
-/** Run the taskctl CLI and parse its `--json` envelope. Returns `{ok, data|error}`. */
-function runCli(opts, agent, args, { input = null } = {}) {
-  const run = spawnSync(process.execPath, [opts.cli, "--json", "--agent", agent, ...args], {
+/**
+ * Run the taskctl CLI and parse its `--json` envelope. Returns `{ok, data|error}`.
+ *
+ * `actorKind` is not cosmetic: without it every write this supervisor performs
+ * defaults to `human` on the board, which is how a loop claim used to read as a
+ * person's act. Claims pass the host (`claude`/`codex`/`pi`); the workflow
+ * pass's writes pass `system`, so an automated acceptance is attributable and
+ * the SLA attribution rules can exclude it.
+ */
+function runCli(opts, agent, args, { input = null, actorKind = null } = {}) {
+  const globals = ["--json", "--agent", agent, ...(actorKind === null ? [] : ["--actor-kind", actorKind])];
+  const run = spawnSync(process.execPath, [opts.cli, ...globals, ...args], {
     encoding: "utf8",
     input,
     env: process.env,
@@ -637,7 +1006,22 @@ function openAppendFd(path) {
 
 export function spawnWorkerReal(opts, config, log) {
   return (action, card) => {
-    const prompt = buildHandoff({ card: card ?? { identifier: action.identifier }, agent: action.agent, host: opts.host });
+    // A review card takes the reviewer handoff. The candidate projection carries
+    // `review_of`, so the decision needs no second read; the agent-name fallback
+    // keeps an older projection (one written before those fields existed) working
+    // for a dedicated reviewer.
+    const reviewer = config.reviewer ?? null;
+    const dedicatedReviewer =
+      reviewer !== null && config.reviewerIsWorker !== true && action.agent === reviewer;
+    const isReview = (typeof card?.review_of === "string" && card.review_of !== "") || dedicatedReviewer;
+    const prompt = isReview
+      ? buildReviewHandoff({ card: card ?? { identifier: action.identifier }, agent: action.agent, host: opts.host })
+      : buildHandoff({
+          card: card ?? { identifier: action.identifier },
+          agent: action.agent,
+          host: opts.host,
+          review: reviewer !== null,
+        });
     // The resolved glue is `opts.glue` — the `--glue` flag, else the host default
     // `parseArgs` fills in. There is **no** `opts.gluePath`, and reading one here
     // handed the planner `undefined`: `existsSync(undefined)` (DEP0187) is false, so
@@ -810,6 +1194,20 @@ async function main(argv, env = process.env) {
     env: env.MEERKAT_TASKPANEL_CLAIM_UNASSIGNED ?? env.TASKPANEL_CLAIM_UNASSIGNED,
     file: configFile,
   });
+  const workflow = resolveWorkflowConfig({
+    flags: {
+      workflow: opts.workflow,
+      reviewer: opts.reviewer,
+      autoAcceptReviews: opts.autoAcceptReviews,
+      workflowMaxActions: opts.workflowMaxActions,
+    },
+    env,
+    file: configFile,
+  });
+  // A reviewer that is also listed as a worker keeps the normal worker lane (and
+  // claims from the public pool); a dedicated reviewer is scanned for review
+  // cards only.
+  const reviewerIsWorker = workflow.reviewer !== null && opts.agents.includes(workflow.reviewer);
   const config = {
     maxConcurrency: opts.maxConcurrency,
     claimUnassigned,
@@ -818,27 +1216,49 @@ async function main(argv, env = process.env) {
     // The escape hatch the docs promise (and the Pi glue points at): an operator
     // who needs a wake form this repo does not ship supplies their own command.
     wakeCommand: opts.wakeCommand,
+    workflow: workflow.workflow,
+    reviewer: workflow.reviewer,
+    reviewerIsWorker,
+    autoAcceptReviews: workflow.autoAcceptReviews,
+    maxActions: workflow.maxActions,
   };
 
   const registry = opts.dryRun
     ? { version: 1, running: {} }
     : pruneRegistry(loadRegistry(opts.state), isProcessAlive);
 
+  // The poll scans the workers, plus a dedicated reviewer when one is configured
+  // — a review card is an ordinary claimable card, so the reviewer's wake rides
+  // the same 1-minute scan and the same cost gate as any worker.
+  const scanAgents =
+    workflow.workflow && workflow.reviewer !== null && !reviewerIsWorker
+      ? [...opts.agents, workflow.reviewer]
+      : [...opts.agents];
+
   const deps = {
-    agents: opts.agents,
+    agents: scanAgents,
     registry,
     config,
     readCandidates: (agent, { claimUnassigned: pool }) => {
-      const read = runCli(opts, agent, candidateArgs(agent, pool));
+      const dedicatedReviewer = config.reviewer !== null && agent === config.reviewer && !reviewerIsWorker;
+      // A dedicated reviewer never takes the public pool, and only sees review
+      // cards: handing it an ordinary card would be a self-review waiting to
+      // happen (the card's own assignee is not necessarily the reviewer, but the
+      // reviewer's lane is read-and-verdict, not work).
+      const read = runCli(opts, agent, candidateArgs(agent, dedicatedReviewer ? false : pool));
       if (!read.ok) {
         log(`scan failed for ${agent}: ${read.error}`);
         return [];
       }
-      return read.data.candidates ?? [];
+      const found = read.data.candidates ?? [];
+      if (!dedicatedReviewer) return found;
+      return found.filter((candidate) => typeof candidate.review_of === "string" && candidate.review_of !== "");
     },
     claim: (identifier, agent) => {
       if (opts.dryRun) return { ok: true };
-      const moved = runCli(opts, agent, ["issue", "move", identifier, "in_progress"]);
+      // The claim is the host's act, not a person's: the board defaults an
+      // unlabelled write to `human`, which made every loop claim look manual.
+      const moved = runCli(opts, agent, ["issue", "move", identifier, "in_progress"], { actorKind: opts.host });
       return moved.ok ? { ok: true } : { ok: false, error: moved.error };
     },
     spawnWorker: opts.dryRun ? async () => ({ ok: true, pid: null }) : spawnWorkerReal(opts, config, log),
@@ -866,6 +1286,14 @@ async function main(argv, env = process.env) {
     `sla: leader=${opts.slaLeader === null ? "board-authority(author_kind=human)" : opts.slaLeader} ` +
       `last_ok=${opts.slaLastOk} peer=${opts.slaPeer === null ? "not configured (dependency registered)" : opts.slaPeer}`,
   );
+  // The workflow channel is the one that writes cards, so its two policy
+  // settings are stated the same way: a deployment must never have to infer
+  // "who reviews" or "who closes the review card" from a quiet board.
+  log(
+    `workflow: ${config.workflow ? "on" : "off"} ` +
+      `reviewer=${config.reviewer === null ? "not configured" : `${config.reviewer}${reviewerIsWorker ? " (also a worker)" : ""}`} ` +
+      `auto_accept_reviews=${config.autoAcceptReviews ? "yes" : "no"} max_actions=${config.maxActions}`,
+  );
 
   let failed = 0;
 
@@ -880,7 +1308,9 @@ async function main(argv, env = process.env) {
     // patrol pass here. Keeping them separate is the whole point of the two-layer
     // design — a 1-minute poll must not sweep every in_progress card every minute.
     if (opts.patrolOnly) {
-      const read = opts.dryRun ? { ok: false } : readBoard(opts, log);
+      // A dry run reads the board too: every read below is free and read-only,
+      // and the workflow pass's whole output in dry-run is what it *would* do.
+      const read = readBoard(opts, log);
       const tasks = read.ok ? read.data.tasks ?? [] : [];
       const patrol = await runPatrolTick({
         tasks,
@@ -897,7 +1327,19 @@ async function main(argv, env = process.env) {
       log(`patrol: ${patrol.alerts.length} alert(s), ${patrol.spawns} LLM turn(s)`);
       // Same guard as the heartbeat pass: `--dry-run` reads nothing, so it
       // reports nothing. The SLA pass is a notification pass, not a planner.
-      if (read.ok) await runSlaPass(opts, log, tasks, opts.patrolInterval, { boardTruncated: read.truncated === true });
+      if (read.ok) {
+        await runSlaPass(opts, log, tasks, opts.patrolInterval, { boardTruncated: read.truncated === true });
+        // The workflow pass is isolated: a failure here must not turn a patrol
+        // tick into an error, and the poll's exit code still decides the run.
+        try {
+          await runWorkflowPass(opts, config, log, {
+            tasks,
+            boardTruncated: read.truncated === true,
+          });
+        } catch (err) {
+          log(`workflow error: ${err.message}`);
+        }
+      }
     }
     if (!opts.dryRun) saveRegistry(opts.state, registry);
     return failed > 0 ? 1 : 0;
@@ -926,7 +1368,20 @@ async function main(argv, env = process.env) {
         now: () => new Date().toISOString(),
         log,
       });
-      if (read.ok) await runSlaPass(opts, log, tasks, opts.patrolInterval, { boardTruncated: read.truncated === true });
+      if (read.ok) {
+        await runSlaPass(opts, log, tasks, opts.patrolInterval, { boardTruncated: read.truncated === true });
+        // Overlap is tolerable here: reconcile is idempotent and the state
+        // machine refuses an illegal transition, so two passes racing over one
+        // card produce at most a refused move, never a duplicate write.
+        try {
+          await runWorkflowPass(opts, config, log, {
+            tasks,
+            boardTruncated: read.truncated === true,
+          });
+        } catch (err) {
+          log(`workflow error: ${err.message}`);
+        }
+      }
     } catch (err) {
       log(`patrol error: ${err.message}`);
     }
@@ -1061,6 +1516,125 @@ async function runSlaPass(opts, log, tasks, periodSeconds, { boardTruncated = fa
     `patrol: sla ${result.alerts.length} alert(s), ${result.suppressed.length} suppressed, ` +
       `${result.dropped.length} dropped, ${trailFailures} trail read(s) failed` +
       `${opts.slaPeer === null ? " [liveness: peer marker not configured — registered as a dependency]" : ""}`,
+  );
+  return result;
+}
+
+/**
+ * The review cards currently waiting for acceptance.
+ *
+ * A targeted read rather than a filter over the large board read: a workflow
+ * pass must not miss a review card because the unfiltered snapshot was capped,
+ * and "which cards still owe a verdict" is exactly a status query.
+ */
+function readReviewCards(opts, log) {
+  const read = runCli(opts, opts.agents[0], [
+    "issue", "list", "--status", "in_review", "--limit", String(opts.boardLimit),
+  ]);
+  if (!read.ok) {
+    log(`workflow: review-card read failed: ${read.error}`);
+    return [];
+  }
+  return Array.isArray(read.data?.tasks) ? read.data.tasks : [];
+}
+
+/**
+ * The real-I/O half of the workflow pass. Every write goes through `taskctl`
+ * with `--actor-kind system`: an automated acceptance must be attributable as
+ * the loop's act, not a human's (the board's default actor kind is `human`).
+ */
+async function runWorkflowPass(opts, config, log, { tasks = [], boardTruncated = false } = {}) {
+  if (config.workflow !== true) return null;
+  const agent = opts.agents[0];
+  const system = { actorKind: "system" };
+  const invoke = (args) => runCli(opts, agent, args, system);
+
+  const result = await runWorkflowTick({
+    tasks,
+    reviewCards: readReviewCards(opts, log),
+    config,
+    boardTruncated,
+    dryRun: opts.dryRun,
+    reconcile: () => {
+      const read = invoke(["issue", "reconcile", ...(opts.dryRun ? ["--dry-run"] : [])]);
+      return read.ok ? { ok: true, actions: read.data.actions ?? [] } : { ok: false, error: read.error };
+    },
+    readCard: (ref) => {
+      const read = runCli(opts, agent, ["issue", "get", ref]);
+      return read.ok ? { ok: true, card: read.data.task ?? null } : { ok: false, error: read.error };
+    },
+    readReports: (ref) => {
+      const read = runCli(opts, agent, ["report", "list", ref]);
+      return read.ok ? { ok: true, reports: read.data.reports ?? [] } : { ok: false, error: read.error };
+    },
+    createReview: (action) => {
+      const read = invoke([
+        "issue", "create",
+        "--project", String(action.projectId ?? ""),
+        "--kind", "task",
+        "--title", action.title,
+        "--description", action.description,
+        "--assignee", action.reviewer,
+        "--assignee-kind", "agent",
+        "--label", "review",
+        "--meta", `review_of=${action.originalRef}`,
+        "--meta", "flow=B",
+        "--meta", `review_round=${action.round}`,
+        "--target", action.target,
+        "--idem", action.idem,
+        ...action.acceptance.flatMap((text) => ["--acceptance", text]),
+      ]);
+      return read.ok ? { ok: true, ref: read.data.task?.identifier ?? null } : { ok: false, error: read.error };
+    },
+    createFixChild: (action) => {
+      const read = invoke([
+        "issue", "create",
+        "--project", String(action.projectId ?? ""),
+        "--kind", "task",
+        "--title", `Rework ${action.originalRef}: ${String(action.originalTitle ?? "").slice(0, 100)}`,
+        "--description",
+        `Rejected by review ${action.reviewRef} (round ${action.round}).\n\n${
+          action.findings === "" ? "(the reviewer recorded no findings)" : action.findings
+        }`,
+        ...(action.assigneeId === null ? [] : ["--assignee-id", String(action.assigneeId)]),
+        "--meta", `rework_of=${action.originalRef}`,
+        "--meta", `rework_round=${action.reworkRound}`,
+        "--target", `rework:${action.originalRef}:r${action.reworkRound}`,
+        "--idem", `loop-rework|${action.originalRef}|r${action.reworkRound}`,
+      ]);
+      return read.ok ? { ok: true, ref: read.data.task?.identifier ?? null } : { ok: false, error: read.error };
+    },
+    linkFixChild: (epicRef, childRef) => {
+      const listed = runCli(opts, agent, ["relation", "list", epicRef]);
+      if (listed.ok && Array.isArray(listed.data.children) && listed.data.children.some((edge) => edge.target === childRef)) {
+        return { ok: true };
+      }
+      const added = invoke(["relation", "add", epicRef, "--type", "parent", "--target", childRef]);
+      return added.ok ? { ok: true } : { ok: false, error: added.error };
+    },
+    move: (ref, to) => {
+      const read = invoke(["issue", "move", ref, to]);
+      return read.ok ? { ok: true } : { ok: false, error: read.error };
+    },
+    comment: (ref, { kind, body }) => {
+      const read = invoke(["comment", "add", ref, "--kind", kind, "--body", body]);
+      return read.ok ? { ok: true } : { ok: false, error: read.error };
+    },
+    setMeta: (ref, meta) => {
+      const read = invoke([
+        "issue", "update", ref,
+        ...Object.entries(meta).flatMap(([key, value]) => ["--meta", `${key}=${value}`]),
+      ]);
+      return read.ok ? { ok: true } : { ok: false, error: read.error };
+    },
+    notify: opts.dryRun ? () => {} : notifyReal(opts, log),
+    now: () => new Date().toISOString(),
+    log,
+  });
+
+  log(
+    `workflow: ${result.executed} action(s) executed, ${result.failed} failed, ` +
+      `${result.alerts.length} alert(s)${opts.dryRun ? " (dry-run)" : ""}`,
   );
   return result;
 }

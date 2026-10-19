@@ -100,6 +100,82 @@ export function resolveClaimUnassigned(input = {}) {
   return true;
 }
 
+/** Default cap on writes one workflow pass may perform. */
+export const DEFAULT_WORKFLOW_MAX_ACTIONS = 20;
+
+/**
+ * The workflow sub-pass's configuration.
+ *
+ * Same precedence as `resolveClaimUnassigned` — **flag > environment > host
+ * config file > default** — and the same tolerance: an unrecognised yes/no word
+ * is ignored rather than treated as `false`, so a stray value cannot silently
+ * disable the channel. The two booleans mean different things:
+ *
+ *   * `workflow` is the whole channel. Off means the loop writes no card at all.
+ *   * `autoAcceptReviews` gates **only** the review card's own
+ *     `in_review → done`. With it off the loop still applies the verdict to the
+ *     original card and leaves the review card for a human to accept — the
+ *     documented escape hatch back to manual acceptance.
+ *
+ * An empty reviewer is "not configured", not an empty name: review dispatch is
+ * skipped and the rest of the channel (reconcile + outcomes) still runs, so a
+ * deployment that later drops its reviewer can still finish the reviews already
+ * in flight.
+ *
+ * @param {{flags?: object, env?: object, file?: Record<string, string>|null}} [input]
+ * @returns {{workflow: boolean, reviewer: string|null, autoAcceptReviews: boolean, maxActions: number}}
+ */
+export function resolveWorkflowConfig(input = {}) {
+  const flags = input.flags ?? {};
+  const env = input.env ?? {};
+  const file = input.file ?? {};
+
+  const firstYesNo = (...values) => {
+    for (const value of values) {
+      const parsed = parseYesNo(value);
+      if (parsed !== null) return parsed;
+    }
+    return null;
+  };
+  const firstText = (...values) => {
+    for (const value of values) {
+      if (typeof value !== "string") continue;
+      const trimmed = value.trim();
+      if (trimmed !== "") return trimmed;
+    }
+    return null;
+  };
+  const firstPositive = (...values) => {
+    for (const value of values) {
+      const number = typeof value === "number" ? value : Number.parseInt(String(value ?? "").trim(), 10);
+      if (Number.isInteger(number) && number > 0) return number;
+    }
+    return null;
+  };
+
+  return {
+    workflow:
+      firstYesNo(flags.workflow, env.MEERKAT_TASKPANEL_WORKFLOW, file.MEERKAT_TASKPANEL_WORKFLOW) ?? true,
+    reviewer: firstText(
+      flags.reviewer,
+      env.MEERKAT_TASKPANEL_REVIEWER,
+      file.MEERKAT_TASKPANEL_REVIEWER,
+    ),
+    autoAcceptReviews:
+      firstYesNo(
+        flags.autoAcceptReviews,
+        env.MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS,
+        file.MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS,
+      ) ?? true,
+    maxActions:
+      firstPositive(
+        flags.workflowMaxActions,
+        env.MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS,
+        file.MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS,
+      ) ?? DEFAULT_WORKFLOW_MAX_ACTIONS,
+  };
+}
+
 /**
  * Classify a stored `heartbeat_at`.
  *
@@ -392,30 +468,110 @@ export function planWakeInvocation(input = {}) {
 /**
  * The fresh handoff handed to a woken worker — bounded so a wake never carries
  * an unbounded context. It names the card, the attribution flags every write
- * should carry, and the compliant next step (read, work, report).
+ * should carry, and the compliant next step (triage, read, work, report).
+ *
+ * **Step 0 is the epic-triage decision**, and it lives in the handoff rather
+ * than in a separate planner process: the worker is the only process that has
+ * already read the card when the answer is cheap, and the claim→wake path is
+ * the one place the loop can afford to ask. A card with several independent
+ * deliverables is promoted to `epic` and split into children *before* any work
+ * starts; a card with one deliverable proceeds untouched.
  *
  * The handoff names no workspace (O3): a card carries no board-owned directory,
  * so the wake must not hand one to the worker.
  *
- * @param {{card?: object, agent: string, host: string, sessionId?: string|null}} input
+ * @param {{card?: object, agent: string, host: string, sessionId?: string|null, review?: boolean}} input
  * @returns {string}
  */
 export function buildHandoff(input) {
   const card = input.card ?? {};
   const title = String(card.title ?? "").slice(0, 300);
+  const ref = card.identifier;
+  const project = card.project ?? "<project id>";
   const attribution = [`--agent ${input.agent}`, `--actor-kind ${input.host}`];
   if (input.sessionId) attribution.push(`--session-id ${input.sessionId}`);
+  const flags = attribution.join(" ");
+  const acceptanceRule = input.review === true
+    ? "stop at in_review — the loop dispatches an independent reviewer; do not move it to done yourself."
+    : "stop at in_review — a human accepts to done.";
   return [
-    `You have been woken by the Meerkat TaskPanel supervisor to work one card: ${card.identifier}.`,
+    `You have been woken by the Meerkat TaskPanel supervisor to work one card: ${ref}.`,
     `Title: ${title}`,
     "",
-    `Read it first:  taskctl issue get ${card.identifier} ${attribution.join(" ")}`,
-    `Keep the claim alive while you work:  taskctl issue heartbeat ${card.identifier} ${attribution.join(" ")}`,
-    `Work it, then deliver with a report:  taskctl issue deliver ${card.identifier} --report-file - ${attribution.join(" ")}`,
+    "Step 0 — before working, decide whether this card is a container:",
+    `  taskctl issue get ${ref} ${flags}    # read the description and the acceptance list`,
+    "  If it contains several independent deliverables, promote it and split it FIRST:",
+    `    taskctl issue update ${ref} --kind epic ${flags}`,
+    `    taskctl issue move ${ref} todo ${flags}      # an epic is never claimed; release this wake's claim`,
+    `    taskctl comment add ${ref} --kind change --body "split into: ..." ${flags}`,
+    `    taskctl issue create --project ${project} --title "..." --acceptance "..." --target "<piece>" ${flags}`,
+    `    taskctl relation add ${ref} --type parent --target <child> ${flags}`,
+    `    taskctl issue move <child> in_progress ${flags}    # claim ONE piece and work that`,
+    "    Give every child its own --target: the create guard dedupes on kind+assignee+source+target.",
+    "    meta.epic_triage=off means do not promote; if you split, record the plan in a change comment.",
+    "  If there is one deliverable, work this card as it is (the epic is then never claimed).",
     "",
-    "Rules: claim first (the supervisor already claimed this card for you); keep the heartbeat",
-    "fresh (<=10 minutes) with the pulse command above; deliver with a report for the current",
-    "round; stop at in_review — a human accepts to done. Carry the attribution flags above on",
-    "every write.",
+    `Read it first:  taskctl issue get ${ref} ${flags}`,
+    `Keep the claim alive:  taskctl issue heartbeat ${ref} ${flags}`,
+    `Deliver with a report:  taskctl issue deliver ${ref} --report-file - ${flags}`,
+    "",
+    "Rules: the supervisor already claimed this card for you; after a split, the heartbeat and",
+    "the delivery apply to the claimed CHILD, not to the epic. Keep the heartbeat fresh",
+    "(<=10 minutes) with the pulse command above; deliver with a report for the current round;",
+    `${acceptanceRule} Carry the attribution flags above on every write.`,
+  ].join("\n");
+}
+
+/**
+ * The handoff handed to a **reviewer** woken for a review card.
+ *
+ * A reviewer is an independent agent, not the card's worker: it reads the
+ * original, the delivery report, the comment trail and the container's children,
+ * and delivers exactly one thing — a verdict report on the review card. It moves
+ * nothing: the loop is the acceptor (`autoAcceptReviews` is the escape hatch
+ * back to a human). The `review_not_ready` check is first because the board may
+ * have moved between the dispatch and the wake, and a verdict on a card that is
+ * no longer delivered is worse than no verdict at all.
+ *
+ * @param {{card?: object, agent: string, host: string, sessionId?: string|null}} input
+ * @returns {string}
+ */
+export function buildReviewHandoff(input) {
+  const card = input.card ?? {};
+  const ref = card.identifier;
+  const original = card.review_of ?? "<card under review>";
+  const round = card.review_round ?? "the round recorded on the review card";
+  const attribution = [`--agent ${input.agent}`, `--actor-kind ${input.host}`];
+  if (input.sessionId) attribution.push(`--session-id ${input.sessionId}`);
+  const flags = attribution.join(" ");
+  return [
+    `You have been woken by the Meerkat TaskPanel supervisor to review one delivered card.`,
+    `Review card: ${ref}`,
+    `Card under review: ${original} (round ${round})`,
+    "",
+    "Step 0 — the review_not_ready check; do it before reading anything else:",
+    `  taskctl issue get ${original} ${flags}`,
+    "  If its status is not in_review, or its delivery_round is not the round above:",
+    `    taskctl comment add ${ref} --kind note --body "review target is no longer in_review / the round changed" ${flags}`,
+    "    and stop. Do not deliver a verdict; the loop will close this review card.",
+    "",
+    "Read:",
+    `  taskctl issue get ${ref} ${flags}`,
+    `  taskctl report list ${original} ${flags}`,
+    `  taskctl comment list ${original} --limit 200 ${flags}`,
+    `  taskctl relation list ${original} ${flags}     # an epic's children`,
+    "Audit the description, every acceptance item, the delivery report for this round and its",
+    "evidence, the comment trail (unresolved decision/defect entries), and — for an epic — the",
+    "rollup report and each child's state.",
+    "",
+    "Deliver:",
+    `  taskctl report template ${ref}   # fill it in, then:`,
+    `  taskctl issue deliver ${ref} --report-file - ${flags}`,
+    "The report's FIRST line must be exactly `VERDICT: APPROVE` or `VERDICT: REJECT`.",
+    "Put the findings after that line and in `leftovers`.",
+    "",
+    "Rules: claim and heartbeat only this review card, never the card under review. Do not move",
+    "the card under review and do not move this review card: the loop applies the verdict and",
+    "closes this card. Carry the attribution flags above on every write.",
   ].join("\n");
 }

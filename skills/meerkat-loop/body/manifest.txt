@@ -8,3 +8,4 @@ src/shared/redact.mjs
 src/shared/runtime-locator.mjs
 src/shared/scheduling.mjs
 src/shared/sla-patrol.mjs
+src/shared/workflow.mjs

@@ -39,7 +39,7 @@ carried the board's constraints. Split apart:
 | execution body | `<host>/meerkat-taskpanel/scripts/supervisor.mjs` + `.../scripts/wake-cwd.mjs` + `.../src/shared/*.mjs` | the copy the units run; its closure is listed in this skill's `body/manifest.txt` |
 | units | `<host>/scheduling/{launchd,systemd,cron}/` | `StartInterval` 60 (poll) and 300 (patrol) units. Each names the **absolute `node`** it was rendered with and carries a **`PATH`** (host CLI's directory + node's, then the scheduler's default) — a scheduler runs a unit with a minimal `PATH` that has neither, so `env node` is exit 127 and the wake glue's `exec claude` fails on it too |
 | wake glue | `<host>/bin/wake-<host>.sh` | resolves the card's project directory from the skill's `projects.json`, then runs `claude -p` / `codex exec` / `pi --print` |
-| host config | `<host>/meerkat-taskpanel.env` | the claim-unassigned policy, and `MEERKAT_TASKPANEL_REPO` — where the board engine lives |
+| host config | `<host>/meerkat-taskpanel.env` | the claim-unassigned policy, `MEERKAT_TASKPANEL_REPO` — where the board engine lives — and the workflow channel's three answers (`WORKFLOW`, `AUTO_ACCEPT_REVIEWS`, `REVIEWER`) |
 | runtime | `<host>/meerkat-taskpanel/{supervisor.log,supervisor.state.json}` | the tick log and the running registry |
 
 `--link` applies to the **board** skill only. The loop is always copied: a symlinked body
@@ -88,6 +88,10 @@ they name an absolute interpreter and set their own `PATH`.
 | `--poll-interval <sec>` / `--patrol-interval <sec>` | `60` / `300` | loop cadences |
 | `--max-concurrency <n>` | `8` | cap on simultaneously running workers |
 | `--claim-unassigned=yes\|no` | from the host config → `yes` | also claim unassigned cards (the public pool) |
+| `--workflow=yes\|no` | from the host config → `yes` | run the workflow sub-pass (reconcile → outcomes → dispatch). Off means the loop writes no card |
+| `--reviewer <agent>` | `$MEERKAT_TASKPANEL_REVIEWER` → unset | the independent reviewer. Unset disables review dispatch only; verdicts already in flight still get applied |
+| `--auto-accept-reviews=yes\|no` | from the host config → `yes` | let the loop close a review card after applying its verdict. `no` leaves it in `in_review` for a human; the verdict on the original is still applied |
+| `--workflow-max-actions <n>` | `20` | cap on writes one workflow pass performs |
 | `--once` / `--patrol-only` | off | one tick (for cron / launchd / systemd); patrol pass only |
 | `--notify <cmd>` | — | run `<cmd>` with each patrol alert as JSON on stdin (the legacy heartbeat alert and the SLA tuple) |
 | `--dry-run` | off | print intended actions; claim nothing, spawn nothing |
@@ -98,6 +102,48 @@ they name an absolute interpreter and set their own `PATH`.
 | `--board-limit <n>` / `--trail-limit <n>` | `500` / `200` | caps on the two reads one patrol pass makes |
 
 The full table, and the tick's flow, are in the repository's `docs/scheduling.md`.
+
+## The workflow channel
+
+The patrol has two halves with two different powers, and the distinction is load-bearing:
+
+- **the SLA rows are notify-only.** No alert moves a card, releases a blocked one or starts
+  a model turn for a new row.
+- **the workflow sub-pass writes.** It runs after the SLA pass in the same patrol tick:
+  `issue reconcile` (container start/close), the review outcomes, then review dispatch.
+
+A delivery that lands in `in_review` on **flow A** is dispatched to the configured
+reviewer as a **review card** — an ordinary `kind=task` card with `meta.review_of=<the
+original>`, `meta.flow=B`, `meta.review_round=<round>`, and a label `review` for
+discoverability (detection reads the meta keys, never the label). The reviewer is woken by
+the normal 1-minute poll and the normal claim; a dedicated reviewer is scanned only for
+review cards and never claims the public pool. It reads the original's description, every
+acceptance item, the current round's delivery report, the comment trail and (for an epic)
+its children; it then delivers a report on the review card whose **first line** is
+`VERDICT: APPROVE` or `VERDICT: REJECT`.
+
+The reviewer moves nothing. The loop is the acceptor:
+
+| Verdict | The loop does |
+|---|---|
+| `APPROVE` | note + `meta.accepted_by=loop-review` on the original, `in_review → done`; then closes the review card |
+| `REJECT` on a task | findings as a `kind=change` comment, `meta.rework_round=<new round>`, `in_review → in_progress → todo` (releasing the claim); then closes the review card |
+| `REJECT` on an epic | **first** creates a fix child and links it, then comments/marks and reopens the epic `in_review → in_progress`. The fix child is what stops `reconcile` from re-closing the container immediately |
+
+Rules that make it safe to run unattended:
+
+- **one review card per (original, delivery round)** — the idempotency key is
+  `loop-review|<ref>|r<round>`. A re-delivery after a rejection is a new round and is
+  reviewed again; a stale verdict is never applied to it.
+- **fail-safe** — an unreadable verdict, an unseen original, a round mismatch or a
+  conflicting verdict produces an alert and **no write**. The review card stays in
+  `in_review` and the next pass retries.
+- **the review card is closed last.** A crash between the original's move and the card's
+  close is recovered next pass (`original done + APPROVE`, `rework_round` matching, …).
+- **`--auto-accept-reviews=no`** is the escape hatch back to manual acceptance: the
+  verdict is still applied to the original, but the review card is left for a human.
+- **a truncated board read dispatches nothing**, and a reviewer that equals the card's own
+  assignee/claimer is refused (`self_review_not_independent`).
 
 ## The headless permission boundary
 

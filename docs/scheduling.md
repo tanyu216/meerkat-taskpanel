@@ -129,11 +129,13 @@ What that means concretely:
   Asia/Shanghai 09:00–23:00 window, off-hours rolled over — a card blocked at the
   end of a working day cannot be "overdue" overnight, and a host in another
   timezone measures the same `T`.
-- **Notify-only, always.** Every alert is addressed to the **leader**
-  (`target: "leader"`; the card field is `notify_leader`, never a person's name).
-  The releasability hint (`releasable` / `releasable_basis`) points at a card that
-  *looks* releasable — releasing it stays the leader's `§⑦` action, and no code
-  path in the patrol writes card state or starts an LLM turn for a new row.
+- **The SLA half is notify-only, always.** Every alert is addressed to the
+  **leader** (`target: "leader"`; the card field is `notify_leader`, never a
+  person's name). The releasability hint (`releasable` / `releasable_basis`)
+  points at a card that *looks* releasable — releasing it stays the leader's `§⑦`
+  action, and no code path in this half writes card state or starts an LLM turn
+  for a new row. The **workflow half** ([below](#the-workflow-channel-review-acceptance-and-containers))
+  is the loop's one writing channel, and it is a separate pass with its own plan.
 - **Leader attribution is an *author* test, not a *kind* test.** The
   `leader_stalled` row counts an event as the leader's by **who did it** — a
   `confirm` / `decision` / `change` comment whose author is the leader, a card
@@ -180,6 +182,118 @@ What that means concretely:
   half is a registered dependency, not an alarm**: the peer inspector's marker
   does not exist on this board yet, and alarming every pass on that would be the
   permanently-red failure this contract exists to prevent.
+
+## The workflow channel: review, acceptance and containers
+
+The SLA half notifies. Everything after that — accepting a delivery, rejecting it and
+opening a rework, rolling a container up, splitting a card into one — used to wait for a
+human. The **workflow sub-pass** is the loop's channel for it. It runs in the same patrol
+tick, after the SLA pass, and it is the only path in the supervisor that moves a card.
+
+It does three things, in this order:
+
+1. **reconcile.** `issue reconcile` replays the container rules
+   (`src/core/commands/rollup.mjs`); the loop only *classifies* what it reports. Normal
+   in-flight verdicts (`children_unfinished`, `no_child_started`, `awaiting_acceptance`)
+   are silent — the SLA pass already watches stuck children. `empty_epic` waits out a
+   30-minute grace period; `no_delivery_evidence`, `no_child_done` and
+   `dangling_child_edge` are notified, naming the blocking children.
+2. **outcomes.** For every review card whose verdict report is readable, apply it to the
+   card it audits (below).
+3. **dispatch.** For every flow-A card still in `in_review`, create a review card for the
+   configured reviewer — one per `(original, delivery round)`, with the deterministic
+   idempotency key `loop-review|<ref>|r<round>`.
+
+### The review card, and who closes it
+
+A review card is an ordinary `kind=task` card — `meta.review_of`, `meta.flow=B`,
+`meta.review_round`, and a `review` label for discoverability. Detection reads the meta
+keys, never the label. There is no `kind=review`: the board's kinds are `task`/`epic`/
+`deploy`, and a review is a task like any other.
+
+Its lifecycle cannot skip `in_review`:
+
+```text
+todo --(claim)--> in_progress --(reviewer delivers VERDICT report)--> in_review --(loop)--> done
+```
+
+`done` is reachable only from `in_review`, and a card cannot be *created* in `in_review`
+or `done` (`REPORT_REQUIRED` — there is no evidence yet). So the only question was **who
+applies the last transition**. The answer here is the **loop**, not the reviewer:
+
+- the reviewer reads the original, its acceptance list, the current round's delivery
+  report, the comment trail and (for an epic) the rollup and children; it delivers a
+  report whose first line is `VERDICT: APPROVE` or `VERDICT: REJECT`; it moves nothing.
+- the loop applies the verdict as `--actor-kind system`. An `APPROVE` writes
+  `meta.accepted_by=loop-review` and moves the original `in_review → done`; a `REJECT`
+  comments the findings, writes `meta.rework_round`, and moves it back to rework. Only
+  after that does it close the review card.
+- `--auto-accept-reviews=no` is the escape hatch: the verdict is still applied, but the
+  review card is left in `in_review` for a human to accept.
+
+Why not let the reviewer close its own card (or skip the card entirely)? A reviewer that
+both produces the verdict and accepts it is not a second pair of eyes, and a card is the
+retryable artefact: a crash between "apply the verdict" and "close the review" is
+recovered on the next pass, whereas a missing card leaves nothing to recover from. The
+separation is the same one the openclaw-team review protocol uses (`review_of` cards, the
+leader accepts); the loop is just the leader's automated stand-in.
+
+### Rejecting an epic: the fix child comes first
+
+`rollup.mjs#assessClose` closes a container from `todo` / `in_progress` / `blocked` the
+moment every child is terminal and at least one is done. Moving a rejected `in_review`
+epic straight to `in_progress` therefore leaves a container that the **very next
+reconcile re-closes**. So a rejection creates and links a non-terminal **fix child**
+before it reopens the epic; `assessClose` then refuses with `children_unfinished`, and the
+container stays open while the fix is worked. When the fix child completes, the event hook
+rolls the epic back to `in_review` on the new round, and a fresh review is dispatched.
+`test/cli/issue.test.mjs` proves both halves: without the fix child the sweep re-closes
+the container; with it, the container stays `in_progress` and names the child blocking it.
+
+### Cost, bounds and failure
+
+- **No new LLM cost at patrol time.** The workflow pass runs plain CLI reads and writes;
+  the reviewer is woken by the normal 1-minute poll and the normal claim, so the cost gate
+  is unchanged. A dedicated reviewer is scanned for review cards only and never claims the
+  public pool; a reviewer that is also a worker keeps the ordinary lane.
+- **Bounded.** At most `--workflow-max-actions` (default 20) writes per pass, and the
+  same number bounds the on-demand reads (a missing original, a verdict report). A cap is
+  logged.
+- **Fail-safe.** An unreadable verdict, an unseen original, a round mismatch or a
+  conflicting verdict (`done` + `REJECT`) produces an alert and **no write**; the review
+  card stays put and the next pass retries. A truncated board read dispatches nothing.
+- **Notified only when actionable.** Standing state — no reviewer configured, a capped
+  pass, a review card the operator deliberately left for a human — is logged, not sent to
+  `--notify` on every period. Findings an operator can act on are notified.
+- **One action failing never stops the rest**; the review card is always closed last, so
+  every half-applied outcome is recoverable (`original done + APPROVE`,
+  `rework_round` matching a rework in progress, …).
+- **Idempotent.** Deterministic `--idem` keys plus the SQLite partial unique index; a
+  terminal (`canceled`) review card releases its key, a `done` one does not. Illegal
+  transitions are refused by the state machine, so two overlapping passes are wasteful at
+  worst, never duplicating.
+- **A transient SLA alert is possible.** In the tick that dispatches a review, the SLA
+  pass may not yet see the review card and can emit one `acceptance_card_creation` notice;
+  the next tick suppresses it (for that round only — see below). The reverse ordering
+  would delay every dispatch by a tick for no benefit.
+- **Round-aware suppression.** `acceptance_card_creation` is silenced by a review card for
+  the **same delivery round**, or by a legacy review card with no `review_round` (the
+  conservative reading). A review card from a previous round does not silence a fresh
+  delivery, which is what makes the rejection → rework → re-review loop work.
+
+### Configuration
+
+| Setting | Flag | Env / host config | Default |
+|---|---|---|---|
+| workflow channel | `--workflow=yes\|no` | `MEERKAT_TASKPANEL_WORKFLOW` | `yes` |
+| reviewer | `--reviewer <agent>` | `MEERKAT_TASKPANEL_REVIEWER` | unset |
+| close the review card | `--auto-accept-reviews=yes\|no` | `MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS` | `yes` |
+| writes per pass | `--workflow-max-actions <n>` | `MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS` | `20` |
+
+Precedence is flag → environment → host config → default, the same as the claim policy.
+`workflow` gates the whole channel; `auto-accept-reviews` gates only the review card's own
+close; the reviewer gates only **dispatch** — outcomes still run without one, so reviews
+already in flight can finish after a deployment removes its reviewer.
 
 ## Continuity: a fresh handoff, not a resumed pile
 
@@ -1111,6 +1225,10 @@ takes the board's location from `MEERKAT_TASKPANEL_REPO` in the host config.
 | `--max-concurrency <n>` | `8` | cap on simultaneously running workers |
 | `--claim-unassigned=yes\|no` | from host config → `yes` | also claim unassigned cards (the public pool) |
 | `--assignee-only` | — | alias for `--claim-unassigned=no` |
+| `--workflow=yes\|no` | from host config → `yes` | run the workflow sub-pass (reconcile → outcomes → dispatch) |
+| `--reviewer <agent>` | from `$MEERKAT_TASKPANEL_REVIEWER`, else unset | the independent reviewer; unset disables dispatch only |
+| `--auto-accept-reviews=yes\|no` | from host config → `yes` | let the loop close a review card after applying its verdict; `no` leaves it for a human |
+| `--workflow-max-actions <n>` | `20` | max workflow writes (and bounded reads) per pass |
 | `--once` | off | one tick, then exit (for cron / launchd / systemd / tests) |
 | `--patrol-only` | off | with `--once`, run only the patrol pass |
 | `--patrol-llm=yes\|no` | `no` | let patrol start an LLM turn on a stale card |
@@ -1157,6 +1275,20 @@ Precedence when the supervisor resolves it: `--claim-unassigned` flag →
 `$MEERKAT_TASKPANEL_CLAIM_UNASSIGNED` → the config file → default `yes`. A non-interactive
 install defaults to **yes**; `--claim-unassigned=no` / `--assignee-only`
 persist `no`.
+
+The same three-source precedence governs the workflow channel's answers, persisted beside
+it:
+
+```ini
+MEERKAT_TASKPANEL_WORKFLOW=yes
+MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=yes
+MEERKAT_TASKPANEL_REVIEWER=
+```
+
+An empty `MEERKAT_TASKPANEL_REVIEWER` is a complete answer — "no independent reviewer" —
+not a missing one: the board still gets the container rules and the verdicts already in
+flight, and a delivery waits for a human to accept it. Re-running the installer adds keys
+an older config lacks and never overwrites one it already has.
 
 ## The end-to-end path
 

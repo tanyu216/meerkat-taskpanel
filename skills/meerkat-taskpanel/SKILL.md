@@ -88,7 +88,8 @@ Do **not** claim a card that any of these is true of — it is not yours:
 `issue candidates --assignee <me>` already withholds the last three; use
 `taskctl relation list <ref>` when a card you expected is missing. Hold **one
 card at a time**, keep its claim fresh, deliver with a report, and stop at
-`in_review` — a human accepts to `done`.
+`in_review` — acceptance is somebody else's act: the loop's independent reviewer
+when one is configured, otherwise a human. Never move your own delivery to `done`.
 
 Keeping that claim fresh is a **command you run**, not a hope — the board sends
 no pulse of its own, because nothing but you knows the work is still going:
@@ -160,8 +161,9 @@ carrying the children's own delivery evidence) and moves the epic to `in_review`
 transaction as that child's move. It also leaves a `kind=note` comment
 naming the source (`event`), the basis (`N/N` children terminal, how many done/canceled), and the
 instant. You do not deliver it; "who closes it" is answered by the board, not by whoever happened
-to finish last. A human still accepts `in_review → done`, which is why a **nested** container's
-parent keeps waiting until the inner container is accepted.
+to finish last. Acceptance stays a separate act — the loop's independent reviewer when one is
+configured, otherwise a human — which is why a **nested** container's parent keeps waiting
+until the inner container reaches `done`.
 
 - **A `canceled` child does not block the close** — it is terminal, like `done`. The rollup report
   lists it as `not_applicable` with the cancellation reason from its own comment trail, so the

@@ -1519,15 +1519,56 @@ describe("commands/tasks — listCandidates (poll read)", () => {
       assert.deepEqual(candidates.map((c) => c.identifier), [candidate.identifier]);
       assert.deepEqual(
         Object.keys(candidates[0]).sort(),
-        ["id", "identifier", "priority", "project", "reason", "sort", "status", "title"],
+        [
+          "id",
+          "identifier",
+          "priority",
+          "project",
+          "reason",
+          "review_of",
+          "review_round",
+          "sort",
+          "status",
+          "title",
+        ],
         "exactly the card's fields plus reason — no `target`, the board owns no directory (O3)",
       );
+      assert.equal(candidates[0].review_of, null, "a normal card carries no review target");
+      assert.equal(candidates[0].review_round, null);
       assert.equal(candidates[0].status, "todo", "the canonical status, never the ready alias");
       assert.equal(candidates[0].priority, "medium");
       assert.equal(candidates[0].project, "proj");
       assert.equal(candidates[0].sort, 0);
       assert.equal(candidates[0].reason, "ready");
       assert.equal(revision(db), before, "the poll read writes nothing");
+    });
+  });
+
+  it("projects a review card's target and audited round", async () => {
+    await board(async ({ commands }) => {
+      const original = linusTodo(commands, { title: "Audit me", allowDup: true });
+      const review = linusTodo(commands, {
+        title: "Review it",
+        allowDup: true,
+        meta: { review_of: original.identifier, review_round: "2", flow: "B" },
+      });
+
+      const candidates = commands.listCandidates({ assignee: "linus" });
+      const projected = candidates.find((c) => c.identifier === review.identifier);
+      assert.ok(projected, "the review card is a normal todo candidate for its reviewer");
+      assert.equal(projected.review_of, original.identifier);
+      assert.equal(projected.review_round, 2, "a string meta value is coerced to an integer");
+      assert.equal(projected.status, "todo", "the review card runs through the normal claim→wake path");
+
+      // A malformed round is `null`, never a wrong number.
+      const malformed = linusTodo(commands, {
+        title: "Review it badly",
+        allowDup: true,
+        meta: { review_of: original.identifier, review_round: "round-two" },
+      });
+      const bad = commands.listCandidates({ assignee: "linus" }).find((c) => c.identifier === malformed.identifier);
+      assert.equal(bad.review_of, original.identifier);
+      assert.equal(bad.review_round, null);
     });
   });
 

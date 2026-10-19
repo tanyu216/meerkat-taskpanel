@@ -261,10 +261,33 @@ _中文_: 轮询
 _Avoid_: tick, scan, sweep
 
 **Patrol**:
-The slower pass that finds work already *stuck* — stale claims, overdue waits, a silent
-inspector. A patrol raises alerts and never moves a card.
+The slower pass with two halves. Its **SLA half** finds work already *stuck* — stale
+claims, overdue waits, a silent inspector — and raises alerts without moving a card. Its
+**workflow half** is the loop's one writing channel: it reconciles containers, dispatches
+reviews and applies verdicts. Say which half a sentence is about; "the patrol never moves
+a card" is only true of the SLA half.
 _中文_: 巡检
 _Avoid_: audit, sweep, health check
+
+**Review card**:
+An ordinary `task` card that audits another card: it records `review_of` (the original),
+`flow=B` and the delivery round it audits, and carries the reviewer's verdict report. It is
+not a `kind` of its own, and it reaches `done` through `in_review` like every other card.
+_中文_: 审核卡
+_Avoid_: review task kind, acceptance card, approval
+
+**Reviewer**:
+The independent agent a review card is assigned to. It reads the original's evidence and
+reports a verdict; it moves no card. The loop is the acceptor.
+_中文_: 审核员
+_Avoid_: approver, acceptor, QA
+
+**Epic triage**:
+The worker's Step 0 decision — before starting, does this card contain several independent
+deliverables, and should it therefore become an `epic` split into children? It happens in
+the worker's own first turn, not in a separate planner.
+_中文_: 升格判断
+_Avoid_: planning, decomposition, estimation
 
 **Wake**:
 Starting one worker, once, with a bounded prompt. A wake is dispatched only for work the

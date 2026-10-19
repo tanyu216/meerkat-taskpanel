@@ -127,11 +127,21 @@ gate.
 
 ### 6. Self-review is not acceptance
 
-An agent takes a card **at most to `in_review`**. Only a human (or a designated
-acceptance role) moves it to `done`. Reporting your own work as delivered is not
-the same as the work being accepted, and the board keeps the two apart on
-purpose: `in_review` is "evidence attached, awaiting a verdict", `done` is "a
-verdict was given".
+An agent takes a card **at most to `in_review`**. Only an independent acceptor —
+the loop's configured reviewer, or a human — moves it to `done`. Reporting your
+own work as delivered is not the same as the work being accepted, and the board
+keeps the two apart on purpose: `in_review` is "evidence attached, awaiting a
+verdict", `done` is "a verdict was given".
+
+When the loop runs with a reviewer (`install.sh --reviewer <agent>`), `in_review`
+is dispatched as a **review card** (`meta.review_of`, `meta.flow=B`) to that
+independent agent. The reviewer reads your description, acceptance list, delivery
+report, evidence and comments, and delivers a report whose first line is
+`VERDICT: APPROVE` or `VERDICT: REJECT`. The reviewer moves nothing; the loop
+applies the verdict and closes the review card. A `REJECT` comes back to you as a
+`kind=change` comment plus a new delivery round — read the findings, fix them, and
+deliver again. With no reviewer configured, a human does the same job directly on
+the card.
 
 ### 7. Never preempt on conflict or staleness
 
@@ -400,7 +410,8 @@ node scripts/run.mjs comment add PROJ-0007 --kind decision --body "Chose the SQL
 node scripts/run.mjs report template PROJ-0007
 node scripts/run.mjs issue deliver PROJ-0007 --report-file - \
   --actor-kind claude --session-id "$SESSION"
-# → status in_review; a human accepts to done (self-review ≠ acceptance, §6)
+# → status in_review; the independent reviewer (or a human) accepts to done
+#   (self-review ≠ acceptance, §6)
 ```
 
 ## See also

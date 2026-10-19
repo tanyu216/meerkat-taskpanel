@@ -828,7 +828,18 @@ describe("server/routes — candidates (the poll read)", () => {
     );
     assert.deepEqual(
       Object.keys(candidates.candidates[0]).sort(),
-      ["id", "identifier", "priority", "project", "reason", "sort", "status", "title"],
+      [
+        "id",
+        "identifier",
+        "priority",
+        "project",
+        "reason",
+        "review_of",
+        "review_round",
+        "sort",
+        "status",
+        "title",
+      ],
       "no `target` — the board owns no project directory (O3)",
     );
     assert.equal(candidates.candidates[0].status, "todo");

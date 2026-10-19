@@ -300,8 +300,8 @@ children's own delivery evidence — and moves the epic to `in_review` in the sa
 `canceled` child is terminal and does not block the close; its acceptance line is
 `not_applicable`, with the cancellation reason taken from its own newest comment. The delivery
 gate applies to that report exactly as it does to a leaf's, and the result is still `in_review`:
-a human accepts to `done` — which is also why a nested container's parent waits for its child
-container to be accepted.
+the loop's independent reviewer (or a human, when none is configured) accepts to `done` — which
+is also why a nested container's parent waits for its child container to reach `done`.
 
 A container with **nothing delivered** stays open: every child canceled, or every delivered child
 waived under `--no-report` (no evidence to roll up). Close that one by hand (`report template` →
@@ -508,6 +508,7 @@ skips the fuzzy step; `--assignee-id` bypasses the dictionary entirely.
 
 | Command | Purpose |
 |---|---|
+| `report list <ref> [--round <n>]` | List a card's delivery reports (round, author, conclusion), newest round last. This is how a reviewer reads the report it audits; `issue get` carries only the task and its waivers. |
 | `report template <ref> [--commit <sha>] [--path <p>]… [--command <cmd:exit>]… [--coverage <pct[@scope]>]…` | Print a report to fill in. |
 
 The template is built from the card: `meta.acceptance` (what `--acceptance`

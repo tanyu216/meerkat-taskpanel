@@ -1,18 +1,22 @@
 ---
 name: meerkat-loop
-description: Run the host-external supervisor loop that keeps a Meerkat TaskPanel board moving — the 1-minute candidate scan, the atomic claim, the worker wake and the 5-minute patrol that Claude Code, Codex and Pi cannot run themselves because they have no timer. The patrol covers the whole PROTOCOL §⑮ timeout table (stale heartbeat, blocked-on-leader, confirmation gate, defect fix card, acceptance queued, leader stalled), emitting the shared alert tuple and never moving a card. Installs launchd / systemd / cron units plus the per-host wake glue, carries the supervisor's execution body and its shared modules, and declares the board interface generation it requires. Install for claude / codex / pi only; OpenClaw runs the openclaw-team framework instead.
+description: Run the host-external supervisor loop that keeps a Meerkat TaskPanel board moving — the 1-minute candidate scan, the atomic claim, the worker wake, the 5-minute patrol that Claude Code, Codex and Pi cannot run themselves because they have no timer, and a workflow sub-pass that reconciles containers, dispatches an independent reviewer for each delivered card, applies the reviewer's verdict and closes the review card. The SLA rows stay notify-only; the workflow channel is the one that writes. Installs launchd / systemd / cron units plus the per-host wake glue, carries the supervisor's execution body and its shared modules, and declares the board interface generation it requires. Install for claude / codex / pi only; OpenClaw runs the openclaw-team framework instead.
 ---
 
 # Meerkat Loop
 
 The **loop** is the part of Meerkat TaskPanel that runs when no agent is looking: a cheap
 1-minute scan for claimable cards, an atomic claim, a wake that starts exactly one worker,
-and a slower 5-minute patrol that escalates stale claims, reports unreadable heartbeats,
-and covers the rest of the `PROTOCOL §⑮` timeout table — a card parked on the leader, an
-unanswered confirmation gate, a defect whose fix card was never created, a delivery nobody
-queued an acceptance review for, and the leader's own patrol going quiet. Every one of
-those alerts is a **notification to the leader**: the patrol never moves a card, never
-releases a blocked one and never starts a model turn for a new row. Claude Code, Codex and
+and a slower 5-minute patrol with two halves. The **SLA half** escalates stale claims,
+reports unreadable heartbeats, and covers the rest of the `PROTOCOL §⑮` timeout table — a
+card parked on the leader, an unanswered confirmation gate, a defect whose fix card was
+never created, a delivery nobody queued an acceptance review for, and the leader's own
+patrol going quiet; every one of those is a **notification to the leader** and never moves
+a card. The **workflow half** is the channel that does write: it replays the container
+rules (`issue reconcile`), dispatches an independent reviewer for each flow-A card awaiting
+acceptance, reads the reviewer's `VERDICT:` report, applies it to the original card and
+closes the review card as the loop's own act. It is on by default; `--workflow=no` turns
+it off, and `--reviewer` is what enables review dispatch at all. Claude Code, Codex and
 Pi have no clock and no timers — their hooks fire only on session events — so the loop
 lives **outside** the host and the host is only ever the worker that gets woken.
 
@@ -62,6 +66,7 @@ body/                     the execution body (generated)
   scripts/wake-cwd.mjs      what the wake glue calls to resolve the card's directory
   src/shared/*.mjs          the shared modules those two import
   src/shared/sla-patrol.mjs   the PROTOCOL §⑮ rows: thresholds, tiers, tuple, ledger
+  src/shared/workflow.mjs     the workflow decisions: reconcile, review dispatch, verdicts
 templates/                what the installer renders (generated)
   scheduling/{launchd,systemd,cron}/   the units
   {claude,codex,pi}/wake-<host>.sh     the wake glue

@@ -179,6 +179,91 @@ describe("install.sh: claim-unassigned flags and persisted config", () => {
   });
 });
 
+describe("install.sh: the workflow config", () => {
+  it("persists the defaults: workflow on, auto-accept on, no reviewer", () => {
+    const home = makeTempDir();
+    const bin = makeTempDir();
+    makeFakeCli(bin, "claude");
+    const run = runInstall(["--target", "claude", "--agent-name", "alice"], installEnv(home, bin));
+    assert.equal(run.status, 0, run.stderr);
+    const text = configOf(home, ".claude");
+    assert.match(text, /^MEERKAT_TASKPANEL_WORKFLOW=yes$/m);
+    assert.match(text, /^MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=yes$/m);
+    assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=$/m, "empty is 'not configured', deliberately");
+  });
+
+  it("persists --reviewer / --workflow=no / --auto-accept-reviews=no", () => {
+    const home = makeTempDir();
+    const bin = makeTempDir();
+    makeFakeCli(bin, "codex");
+    const run = runInstall(
+      ["--target", "codex", "--agent-name", "alice", "--reviewer", "jobs", "--workflow=no", "--auto-accept-reviews=no"],
+      installEnv(home, bin),
+    );
+    assert.equal(run.status, 0, run.stderr);
+    const text = configOf(home, ".codex");
+    assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=jobs$/m);
+    assert.match(text, /^MEERKAT_TASKPANEL_WORKFLOW=no$/m);
+    assert.match(text, /^MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=no$/m);
+  });
+
+  it("takes the values from the environment when no flag is given", () => {
+    const home = makeTempDir();
+    const bin = makeTempDir();
+    makeFakeCli(bin, "claude");
+    const run = runInstall(["--target", "claude", "--agent-name", "alice"], {
+      ...installEnv(home, bin),
+      MEERKAT_TASKPANEL_WORKFLOW: "no",
+      MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS: "no",
+      MEERKAT_TASKPANEL_REVIEWER: "jobs",
+    });
+    assert.equal(run.status, 0, run.stderr);
+    const text = configOf(home, ".claude");
+    assert.match(text, /^MEERKAT_TASKPANEL_WORKFLOW=no$/m);
+    assert.match(text, /^MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=no$/m);
+    assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=jobs$/m);
+  });
+
+  it("rejects an invalid yes/no before installing anything", () => {
+    const home = makeTempDir();
+    const bin = makeTempDir();
+    makeFakeCli(bin, "claude");
+    for (const flag of ["--workflow=maybe", "--auto-accept-reviews=perhaps"]) {
+      const run = runInstall(["--target", "claude", "--prefix", home, flag], {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+      });
+      assert.equal(run.status, 2, `${flag} must be a usage error`);
+      assert.match(run.stderr, flag.startsWith("--workflow") ? /--workflow/ : /--auto-accept-reviews/);
+      assert.equal(existsSync(join(home, ".claude")), false);
+    }
+  });
+
+  it("upgrades an older config by adding only the missing keys", () => {
+    const home = makeTempDir();
+    const bin = makeTempDir();
+    makeFakeCli(bin, "claude");
+    const env = installEnv(home, bin);
+    assert.equal(runInstall(["--target", "claude", "--agent-name", "alice", "--claim-unassigned=no"], env).status, 0);
+
+    // Rewrite the file as a pre-workflow install: the two keys it always had, and a
+    // deliberate auto-accept choice the upgrade must not touch.
+    const path = join(home, ".claude", "meerkat-taskpanel.env");
+    writeFileSync(
+      path,
+      "MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=no\nMEERKAT_TASKPANEL_REPO=/old/checkout\nMEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=no\n",
+      "utf8",
+    );
+
+    assert.equal(runInstall(["--target", "claude", "--agent-name", "alice", "--reviewer", "jobs"], env).status, 0);
+    const text = readFileSync(path, "utf8");
+    assert.match(text, /^MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=no$/m, "the existing choice is kept");
+    assert.match(text, /^MEERKAT_TASKPANEL_WORKFLOW=yes$/m, "the missing key is added");
+    assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=jobs$/m);
+    assert.equal(text.match(/^MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=/gm).length, 1, "never duplicated");
+  });
+});
+
 describe("_common.sh: claim_unassigned_value decision matrix", () => {
   it("returns an explicit flag verbatim", () => {
     assert.equal(runCommon('claim_unassigned_value yes ""').stdout.trim(), "yes");

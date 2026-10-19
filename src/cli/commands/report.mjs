@@ -25,6 +25,7 @@
 import { spawnSync } from "node:child_process";
 
 import { DomainError } from "../../shared/errors.mjs";
+import { table } from "../output/human.mjs";
 
 /** What an unfilled template says, and what `deliver` warns about. */
 export const TODO_PLACEHOLDER = "TODO: say what is left";
@@ -173,7 +174,59 @@ export function buildTemplate(task, options = {}) {
   return { report, warnings, acceptanceSource: acceptance.source, evidenceSource: evidence.source };
 }
 
+/**
+ * The first line of a report's conclusion, which is where a review verdict
+ * lives (`VERDICT: APPROVE|REJECT`). The human listing keeps it short; the JSON
+ * keeps the whole report.
+ *
+ * @param {string} conclusion
+ * @param {number} [limit]
+ */
+export function conclusionHeadline(conclusion, limit = 72) {
+  const first = String(conclusion ?? "").split("\n")[0].trim();
+  return first.length > limit ? `${first.slice(0, limit - 3)}...` : first;
+}
+
 export const COMMANDS = [
+  {
+    name: "list",
+    summary: "List a task's delivery reports, newest round last.",
+    usage: "report list <id|identifier> [--round <n>]",
+    positionals: [{ name: "ref", summary: "Task id or identifier." }],
+    flags: [
+      {
+        flag: "round",
+        key: "round",
+        as: "number",
+        value: "<n>",
+        summary: "Only reports for this delivery round.",
+      },
+    ],
+    async run(ctx) {
+      const { reports } = await ctx.client.get(
+        `/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/reports`,
+      );
+      // The route serves every round; `--round` narrows locally rather than
+      // growing the HTTP surface (a reviewer asks for the current round, and it
+      // is one read either way).
+      const filtered = ctx.flags.round === undefined
+        ? reports
+        : reports.filter((report) => report.round === ctx.flags.round);
+      const human = filtered.length === 0
+        ? "no reports"
+        : table(
+            ["round", "created_at", "author", "conclusion"],
+            filtered.map((report) => [
+              report.round,
+              report.created_at,
+              `${report.author?.display_name ?? report.author_id} (${report.author?.kind ?? report.author_kind})`,
+              conclusionHeadline(report.conclusion),
+            ]),
+          );
+      return { data: { ref: ctx.args.ref, reports: filtered }, human };
+    },
+  },
+
   {
     name: "template",
     summary: "Print a report template for a task, ready to fill in and deliver.",

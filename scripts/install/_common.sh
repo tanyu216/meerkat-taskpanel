@@ -53,14 +53,20 @@ MEERKAT_TASKPANEL_NO_AUTOMATION="${MEERKAT_TASKPANEL_NO_AUTOMATION:-${TASKPANEL_
 MEERKAT_TASKPANEL_MIN_NODE="${MEERKAT_TASKPANEL_MIN_NODE:-${TASKPANEL_MIN_NODE:-}}"
 MEERKAT_TASKPANEL_SKIP_NODE_CHECK="${MEERKAT_TASKPANEL_SKIP_NODE_CHECK:-${TASKPANEL_SKIP_NODE_CHECK:-}}"
 MEERKAT_TASKPANEL_CLAIM_UNASSIGNED="${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-${TASKPANEL_CLAIM_UNASSIGNED:-}}"
-# No pre-rename alias for these two: the supervisor's flag surface is new in the opt-in
+# No pre-rename alias for these: the supervisor's flag surface is new in the opt-in
 # contract, so there is no TASKPANEL_SUPERVISOR spelling in the wild to keep working.
 MEERKAT_TASKPANEL_SUPERVISOR="${MEERKAT_TASKPANEL_SUPERVISOR:-}"
 MEERKAT_TASKPANEL_SCHEDULER="${MEERKAT_TASKPANEL_SCHEDULER:-}"
+# The workflow channel's persisted answers. Empty means "not given" and falls back to
+# the supervisor's default (workflow on, auto-accept on, no reviewer).
+MEERKAT_TASKPANEL_WORKFLOW="${MEERKAT_TASKPANEL_WORKFLOW:-}"
+MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS="${MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS:-}"
+MEERKAT_TASKPANEL_REVIEWER="${MEERKAT_TASKPANEL_REVIEWER:-}"
 export MEERKAT_TASKPANEL_TARGET_HOME MEERKAT_TASKPANEL_AGENT_NAME MEERKAT_TASKPANEL_LINK \
   MEERKAT_TASKPANEL_FORCE MEERKAT_TASKPANEL_DRY_RUN MEERKAT_TASKPANEL_NO_AUTOMATION \
   MEERKAT_TASKPANEL_MIN_NODE MEERKAT_TASKPANEL_SKIP_NODE_CHECK MEERKAT_TASKPANEL_CLAIM_UNASSIGNED \
-  MEERKAT_TASKPANEL_SUPERVISOR MEERKAT_TASKPANEL_SCHEDULER
+  MEERKAT_TASKPANEL_SUPERVISOR MEERKAT_TASKPANEL_SCHEDULER \
+  MEERKAT_TASKPANEL_WORKFLOW MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS MEERKAT_TASKPANEL_REVIEWER
 
 # is_int64 <value> — 0 when <value> is a non-negative integer that fits in a
 # signed 64-bit integer (the width bash's `[ … -lt … ]` test arithmetic uses),
@@ -256,6 +262,11 @@ export_tp_env() {
   TP_SCHED="$(target_home)/$host_dir/scheduling"
   TP_WAKE="$(target_home)/$host_dir/bin/wake-$label.sh"
   TP_CLAIM_UNASSIGNED="${MEERKAT_TASKPANEL_CLAIM_UNASSIGNED:-yes}"
+  # The workflow channel's remembered answers. An empty reviewer is deliberate and
+  # renders as `KEY=`, which the supervisor reads as "not configured".
+  TP_WORKFLOW="${MEERKAT_TASKPANEL_WORKFLOW:-yes}"
+  TP_AUTO_ACCEPT_REVIEWS="${MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS:-yes}"
+  TP_REVIEWER="${MEERKAT_TASKPANEL_REVIEWER:-}"
 
   # --- what the scheduling units run with -------------------------------------
   #
@@ -297,6 +308,7 @@ export_tp_env() {
 
   export TP_AGENT TP_HUMAN TP_REPO TP_SHIM TP_HOOK TP_TRIGGER
   export TP_HOST TP_HOST_BASE TP_LOOP TP_SUPERVISOR TP_LOG TP_STATE TP_ENV TP_SCHED TP_WAKE TP_CLAIM_UNASSIGNED
+  export TP_WORKFLOW TP_AUTO_ACCEPT_REVIEWS TP_REVIEWER
   export TP_NODE TP_UNIT_PATH_LAUNCHD TP_UNIT_PATH_CRON TP_CLI_ON_PATH
 }
 
@@ -574,13 +586,21 @@ ensure_env_key() {
   echo "$TP_HOST: recorded $key in $TP_ENV"
 }
 
-# write_host_config — persist the claim policy the supervisor reads by default, and the
-# location of the board engine a host-installed executor drives. Requires export_tp_env
-# first (TP_ENV, TP_CLAIM_UNASSIGNED, TP_REPO). The template belongs to the loop skill:
-# the supervisor is what reads it.
+# write_host_config — persist the claim policy the supervisor reads by default, the
+# location of the board engine a host-installed executor drives, and the workflow
+# channel's answers. Requires export_tp_env first (TP_ENV, TP_CLAIM_UNASSIGNED,
+# TP_REPO, TP_WORKFLOW, TP_AUTO_ACCEPT_REVIEWS, TP_REVIEWER). The template belongs to
+# the loop skill: the supervisor is what reads it.
+#
+# The three workflow keys are added with `ensure_env_key` as well, so an install that
+# predates them learns them on the next run without any existing value being touched —
+# a host that had deliberately set `AUTO_ACCEPT_REVIEWS=no` keeps it.
 write_host_config() {
   emit_loop_file "host/meerkat-taskpanel.env" "$TP_ENV"
   ensure_env_key "MEERKAT_TASKPANEL_REPO" "$TP_REPO"
+  ensure_env_key "MEERKAT_TASKPANEL_WORKFLOW" "$TP_WORKFLOW"
+  ensure_env_key "MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS" "$TP_AUTO_ACCEPT_REVIEWS"
+  ensure_env_key "MEERKAT_TASKPANEL_REVIEWER" "$TP_REVIEWER"
 }
 
 # ---------------------------------------------------------------------------

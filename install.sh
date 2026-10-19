@@ -58,6 +58,9 @@ PREFIX_HOME=""
 AGENT_NAME=""
 NO_AUTOMATION=""
 CLAIM_UNASSIGNED_FLAG=""
+WORKFLOW_FLAG=""
+AUTO_ACCEPT_REVIEWS_FLAG=""
+REVIEWER_FLAG=""
 SUPERVISOR_FLAG=""
 SUPERVISOR_HOSTS_FLAG=""
 SCHEDULER_FLAG=""
@@ -83,6 +86,16 @@ Options:
                     May the supervisor claim unassigned cards? Persisted to the
                     host config; also asked interactively on a TTY (default yes).
   --assignee-only   Alias for --claim-unassigned=no (claim only my own cards)
+  --workflow=yes|no Run the supervisor's workflow sub-pass (reconcile, review
+                    dispatch, applying verdicts). Persisted to the host config;
+                    default yes.
+  --reviewer <agent>
+                    The independent reviewer that audits delivered cards. Unset
+                    (the default) leaves deliveries for a human to accept.
+  --auto-accept-reviews=yes|no
+                    Let the loop close a review card after applying its verdict.
+                    Persisted to the host config; default yes. `no` leaves the
+                    review card for a human.
   --supervisor=enable|disable|status
                     Opt in to the supervisor daemon: load / unload / report the
                     loop units the install just wrote. There is no silent default
@@ -252,6 +265,33 @@ while [ "$#" -gt 0 ]; do
       CLAIM_UNASSIGNED_FLAG="no"
       shift
       ;;
+    --workflow)
+      [ "$#" -ge 2 ] || die "--workflow requires a value (yes|no)"
+      WORKFLOW_FLAG="$2"
+      shift 2
+      ;;
+    --workflow=*)
+      WORKFLOW_FLAG="${1#*=}"
+      shift
+      ;;
+    --reviewer)
+      [ "$#" -ge 2 ] || die "--reviewer requires an agent name"
+      REVIEWER_FLAG="$2"
+      shift 2
+      ;;
+    --reviewer=*)
+      REVIEWER_FLAG="${1#*=}"
+      shift
+      ;;
+    --auto-accept-reviews)
+      [ "$#" -ge 2 ] || die "--auto-accept-reviews requires a value (yes|no)"
+      AUTO_ACCEPT_REVIEWS_FLAG="$2"
+      shift 2
+      ;;
+    --auto-accept-reviews=*)
+      AUTO_ACCEPT_REVIEWS_FLAG="${1#*=}"
+      shift
+      ;;
     --supervisor)
       [ "$#" -ge 2 ] || die "--supervisor requires a value (enable|disable|status)"
       SUPERVISOR_FLAG="$2"
@@ -397,6 +437,22 @@ if ! CLAIM_UNASSIGNED="$(claim_unassigned_value "$CLAIM_FLAG" "$TTY")"; then
 fi
 echo "install.sh: claim unassigned tasks: $CLAIM_UNASSIGNED"
 
+# The workflow channel's three answers. Like the claim policy, an explicit flag wins,
+# then the environment, then the default. A bad yes/no value is a hard error before
+# any host is dispatched — a misspelt policy must install nothing.
+WORKFLOW="${WORKFLOW_FLAG:-${MEERKAT_TASKPANEL_WORKFLOW:-yes}}"
+AUTO_ACCEPT_REVIEWS="${AUTO_ACCEPT_REVIEWS_FLAG:-${MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS:-yes}}"
+REVIEWER="${REVIEWER_FLAG:-${MEERKAT_TASKPANEL_REVIEWER:-}}"
+case "$WORKFLOW" in
+  yes | no) ;;
+  *) die "--workflow must be yes or no (got '$WORKFLOW')" ;;
+esac
+case "$AUTO_ACCEPT_REVIEWS" in
+  yes | no) ;;
+  *) die "--auto-accept-reviews must be yes or no (got '$AUTO_ACCEPT_REVIEWS')" ;;
+esac
+echo "install.sh: workflow: $WORKFLOW; reviewer: ${REVIEWER:-none}; auto-accept reviews: $AUTO_ACCEPT_REVIEWS"
+
 # Resolve the supervisor request (per-host, opt-in). An explicit flag wins; else the
 # environment; else ask on a TTY — where the default is **no**, the opposite of the
 # claim question above, because the supervisor is a daemon that runs unattended. An
@@ -482,6 +538,9 @@ FAIL $host — installer not found"
       MEERKAT_TASKPANEL_AGENT_NAME="$AGENT_NAME" \
       MEERKAT_TASKPANEL_NO_AUTOMATION="$NO_AUTOMATION" \
       MEERKAT_TASKPANEL_CLAIM_UNASSIGNED="$CLAIM_UNASSIGNED" \
+      MEERKAT_TASKPANEL_WORKFLOW="$WORKFLOW" \
+      MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS="$AUTO_ACCEPT_REVIEWS" \
+      MEERKAT_TASKPANEL_REVIEWER="$REVIEWER" \
       MEERKAT_TASKPANEL_SUPERVISOR="$host_supervisor" \
       MEERKAT_TASKPANEL_SCHEDULER="$SCHEDULER" \
       MEERKAT_TASKPANEL_LINK="$LINK" \
