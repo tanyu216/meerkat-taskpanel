@@ -15,11 +15,7 @@ import { advanceContainer } from "./rollup.mjs";
 
 /** Look a task up by id or by identifier, since callers legitimately have either. */
 function loadTask(ctx, ref) {
-  const task = ctx.repos.tasks.get(ref) ?? ctx.repos.tasks.findByIdentifierAnyProject(ref);
-  if (task === null) {
-    throw new DomainError("NOT_FOUND", { message: `no task ${ref}`, details: { taskRef: ref } });
-  }
-  return task;
+  return ctx.repos.tasks.requireAnyRef(ref);
 }
 
 /**

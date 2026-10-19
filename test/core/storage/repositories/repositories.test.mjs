@@ -139,6 +139,23 @@ describe("repositories/tasks", () => {
     });
   });
 
+  it("resolves a reference as an id or an identifier, and refuses a miss uniformly", async () => {
+    await board(({ repos }) => {
+      const task = makeTask(repos);
+      assert.deepEqual(repos.tasks.getByAnyRef(task.id), task);
+      assert.deepEqual(repos.tasks.getByAnyRef(task.identifier), task);
+      assert.equal(repos.tasks.getByAnyRef("NOPE-9999"), null);
+      assert.throws(
+        () => repos.tasks.requireAnyRef("NOPE-9999"),
+        (err) => {
+          assert.equal(err.code, "NOT_FOUND");
+          assert.equal(err.details.taskRef, "NOPE-9999");
+          return true;
+        },
+      );
+    });
+  });
+
   it("refuses a duplicate identifier in the same project", async () => {
     await board(({ repos }) => {
       const task = makeTask(repos);

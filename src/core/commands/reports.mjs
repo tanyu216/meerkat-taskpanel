@@ -22,12 +22,7 @@ import { advanceContainerForChild, hasChildStarted, startContainerForChild } fro
 
 /** The task must exist, and its delivery round is what the report is judged against. */
 function loadTask(ctx, taskRef) {
-  const task =
-    ctx.repos.tasks.get(taskRef) ?? ctx.repos.tasks.findByIdentifierAnyProject(taskRef);
-  if (task === null) {
-    throw new DomainError("NOT_FOUND", { message: `no task ${taskRef}`, details: { taskId: taskRef } });
-  }
-  return task;
+  return ctx.repos.tasks.requireAnyRef(taskRef);
 }
 
 /**

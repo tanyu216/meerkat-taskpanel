@@ -121,11 +121,7 @@ const HEARTBEAT_BODY = project(TASK_OPS.heartbeat);
  * @param {string} ref
  */
 export function resolveTask(repos, ref) {
-  const task = repos.tasks.get(ref) ?? repos.tasks.findByIdentifierAnyProject(ref);
-  if (task === null) {
-    throw new DomainError("NOT_FOUND", { message: `no task ${ref}`, details: { taskRef: ref } });
-  }
-  return task;
+  return repos.tasks.requireAnyRef(ref);
 }
 
 /** Dictionary lookup for the wire projection (`display_name` for an id). */
