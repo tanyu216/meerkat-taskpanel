@@ -104,6 +104,42 @@ not the delivery round — and only the holder may send it. A claim you stop
 pulsing is meant to read as abandoned (see
 [`references/practice-guides.md`](references/practice-guides.md) rule 4).
 
+### Read the acceptance list before you work
+
+`issue get <ref>` prints the status and the actors, not the description or the acceptance
+list; read the JSON:
+
+```bash
+taskctl issue get <ref> --json     # description, labels, meta.acceptance, meta.acceptance_legacy
+```
+
+- **`meta.acceptance` is a non-empty array** — that is the list you work to. Do not rewrite
+  it. If a reviewer's rejection adds a requirement, append it by re-sending the whole
+  existing list plus the new item; never replace it with a weaker one.
+- **`meta.acceptance_legacy` is non-empty** (an imported card) — use it. The checkboxes are
+  the author's intent, not evidence; `report template` starts every item `not_met`. Do not
+  migrate or append to a legacy list: if more items are needed, ask with
+  `issue move <ref> awaiting --awaiting-reason E2` (E2 is exactly the acceptance baseline).
+- **Both are empty** — before writing code, derive **1–6 concrete, externally checkable,
+  non-empty acceptance items** (usually 2–6; never pad) from the title, description, labels
+  and comment trail, then persist them once:
+
+```bash
+taskctl issue update <ref> --acceptance "…" --acceptance "…" \
+  --meta acceptance_derived=yes
+taskctl comment add <ref> --kind change \
+  --body "acceptance list derived at claim: 1) … 2) …"
+```
+
+The comment body must list the items: the drawer's Acceptance tab reads reports, not the
+card's meta, so the Activity trail is the human's pre-delivery view. If the card is too
+thin to yield checkable items, do not invent them:
+`issue move <ref> awaiting --awaiting-reason E2`.
+
+Never derive on an **epic** (it is never claimed; its acceptance is its child set, see
+below) or on a **review card** (it is not yours to work). Say in the delivery report that
+the list was derived when it was.
+
 These are the eight shared rules: claim-first, claim only what you should, one
 card at a time, a fresh heartbeat, deliver with a report, self-review ≠
 acceptance, never preempt a conflict, and stay traceable. The full statement, the
@@ -154,6 +190,10 @@ kind + assignee + source + target, so two children for one owner with nothing to
 are the *same card* — the second create is read as a retry of the first, not a sibling. Use
 `--allow-dup` when a target genuinely does not apply. Then claim exactly **one** child and work it
 as usual: the container holds no work of its own, so it does not count against your one card.
+
+**The container itself carries no acceptance list.** Its acceptance is its children: the
+rollup report writes one line per child. The children carry the acceptance lists; the epic's
+description is the overall goal the reviewer checks the children against.
 
 **The board closes the container for you.** When the set becomes complete — the last child
 accepted to `done`, or the `canceled` that finishes the set, with every other child `done` or

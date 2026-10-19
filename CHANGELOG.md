@@ -9,6 +9,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Workers derive the acceptance list when a card has none.** The wake handoff and the
+  board skill now tell a worker to read the card with `issue get --json`; when both
+  `meta.acceptance` and an imported `meta.acceptance_legacy` are empty, it derives 1–6
+  externally checkable acceptance items from the title, description, labels and comments,
+  persists them with `--acceptance`, marks them `meta.acceptance_derived=yes`, and leaves a
+  `change` comment listing them. Existing lists are never rewritten, epics and review cards
+  are skipped, and a reviewer audits a derived list for coverage; `report template` warns
+  when it seeds that list.
 - **The loop can be event-driven.** `supervisor.mjs --subscribe` holds one SSE connection
   to the board and asks for a continue turn when a dispatch-relevant event arrives
   (coalesced, at most one turn per minute). It does not claim or wake by itself: the

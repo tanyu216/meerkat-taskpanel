@@ -268,6 +268,14 @@ describe("planReviewDispatch", () => {
     assert.equal(action.acceptance.length, 3);
   });
 
+  it("tells the reviewer when the original's acceptance list was worker-derived", () => {
+    const action = planReviewDispatch({ tasks: [card()], config: CONFIG }).actions[0];
+    assert.match(action.description, /acceptance_derived/);
+    assert.match(action.description, /narrowed/);
+    assert.match(action.description, /REJECT/);
+    assert.equal(action.acceptance.length, 3, "the generic review checklist is unchanged");
+  });
+
   it("never reviews a review card, a flow-B card, or a card not in review", () => {
     const result = planReviewDispatch({
       tasks: [

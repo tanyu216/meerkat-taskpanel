@@ -140,6 +140,10 @@ knowing before reading its output as a verdict:
 - **Everything else, where a card does import, round-trips.** Field, section,
   relation and label parity, plus idempotency, are the properties the drill
   actually measures — and they are what "zero diff" means.
+- **Board-only acceptance metadata does not round-trip.** A modern `meta.acceptance` list
+  and its `meta.acceptance_derived` marker are board state; `export md` renders the
+  `## Acceptance` checkboxes from `meta.acceptance_legacy` only. A list derived on the board
+  therefore exports without those items — expected, not a drill failure.
 
 None of these are fatal to the drill: it reports them and exits 3. They *are*
 fatal to the claim "the card set is ready to switch", so treat a non-zero diff

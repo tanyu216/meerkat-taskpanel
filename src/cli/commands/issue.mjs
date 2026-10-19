@@ -224,10 +224,11 @@ export const COMMANDS = [
       { flag: "meta", key: "meta", as: "kv", required: true, summary: "Repeatable key=value metadata." },
     ],
     async run(ctx) {
-      // The PATCH route replaces `meta` wholesale, so a merge spelled with
-      // `issue update --meta` would erase `acceptance`, `target` and every other
-      // key. Merging has to happen here, where the current object (and its value
-      // types) is visible; the result is sent as one ordinary update.
+      // The PATCH route merges `meta` into what the card already carries, so a
+      // plain `issue update --meta` is additive. This command exists for the two
+      // things `--meta` cannot express: an explicit read-modify-write with the
+      // `--if-version` CAS below, and preserving the existing value types (the
+      // CLI's `--meta` values are strings).
       const task = (await ctx.client.get(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}`)).task;
       const meta = { ...(task.meta ?? {}), ...ctx.flags.meta };
       // The version read above is the CAS guard: if the card moved between the

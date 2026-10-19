@@ -42,6 +42,16 @@ the claim, not silently reassigned. `issue candidates --assignee <me>` is built 
 that criterion, so the read is not optional politeness — it is the step that tells
 you which cards will accept you.
 
+**Read the acceptance list before the work.** `issue get <ref>` omits the description and
+the list; use `issue get <ref> --json`. A non-empty `meta.acceptance` is the list you work
+to — do not rewrite it. An imported card's `meta.acceptance_legacy` is used as-is. When both
+are empty, derive 1–6 externally checkable acceptance items from the title, description,
+labels and comments, persist them with `issue update <ref> --acceptance "…" --meta
+acceptance_derived=yes`, and leave a `change` comment listing them. Never do this on an epic
+or a review card; if the card is too thin, ask with `issue move <ref> awaiting
+--awaiting-reason E2`. The full statement is in
+[`../SKILL.md`](../SKILL.md#read-the-acceptance-list-before-you-work).
+
 ### 2. Only claim what you should
 
 A card is claimable only when **all** of these hold. Each failing case is a "do
@@ -408,6 +418,16 @@ launched with, or `$CODEX_THREAD_ID` on Codex.
 # 1. claim-first: read the claimable set, then take exactly one
 node scripts/run.mjs issue candidates --assignee linus --actor-kind claude --session-id "$SESSION"
 node scripts/run.mjs issue move PROJ-0007 in_progress --actor-kind claude --session-id "$SESSION"
+
+# 1b. read the card; if it carries no acceptance list, derive one and persist it
+node scripts/run.mjs issue get PROJ-0007 --json --actor-kind claude --session-id "$SESSION"
+#   meta.acceptance non-empty → work to it; both lists empty → derive 1–6
+#   checkable items, then persist once:
+#   node scripts/run.mjs issue update PROJ-0007 --acceptance "…" --acceptance "…" \
+#     --meta acceptance_derived=yes --actor-kind claude --session-id "$SESSION"
+#   node scripts/run.mjs comment add PROJ-0007 --kind change \
+#     --body "acceptance list derived at claim: 1) … 2) …" \
+#     --actor-kind claude --session-id "$SESSION"
 
 # 2. register the session (which conversation is on this card) — the resume key
 node scripts/run.mjs session set PROJ-0007 --seg seg1 --backend claude \

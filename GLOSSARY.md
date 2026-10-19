@@ -183,7 +183,9 @@ _Avoid_: source, channel
 
 **Acceptance**:
 A stated condition for a card being done, together with whether it was met, partially met,
-not met, or not applicable. It is what a report is evidence against.
+not met, or not applicable. It is what a report is evidence against. When a card carries no
+list, its worker may derive one at claim; `meta.acceptance_derived=yes` records that, and an
+independent acceptor still has to audit its coverage.
 _中文_: 验收
 _Avoid_: criterion, requirement, DoD
 

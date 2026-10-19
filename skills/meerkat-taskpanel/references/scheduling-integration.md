@@ -109,6 +109,17 @@ worker runs.
   a complete board.
 - `--assignee-id` takes an actor **id**, not a display name.
 
+### Acceptance list
+
+Before working, read the card with `taskctl issue get <ref> --json` — the human output omits
+the description and the list. If `meta.acceptance` (or an imported card's
+`meta.acceptance_legacy`) is non-empty, work to it and do not rewrite it. If both are empty,
+derive 1–6 externally checkable acceptance items from the card, persist them with
+`issue update <ref> --acceptance … --meta acceptance_derived=yes`, and leave a `change`
+comment listing them. Never derive on an epic (its acceptance is its children) or a review
+card; if the card is too thin, ask with `issue move <ref> awaiting --awaiting-reason E2`.
+See the board skill's `SKILL.md` for the full rule.
+
 ### Progress and delivery
 
 There is no `progress` command. While working, append a comment:

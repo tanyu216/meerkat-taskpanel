@@ -119,6 +119,27 @@ describe("cli/issue — update, move, assign, archive", () => {
     });
   });
 
+  it("derives the acceptance list in one PATCH on a claimed card, preserving meta", async () => {
+    await board(async ({ run }) => {
+      createIssue(run, ["--target", "src/x", "--meta", "epic_triage=off"]);
+      dataOf(run(["issue", "move", "DEMO-0001", "in_progress", "--json"]));
+
+      const updated = dataOf(
+        run([
+          "issue", "update", "DEMO-0001",
+          "--acceptance", "a", "--acceptance", "b",
+          "--meta", "acceptance_derived=yes", "--json",
+        ]),
+      );
+
+      assert.equal(updated.task.status, "in_progress");
+      assert.deepEqual(updated.task.meta.acceptance, ["a", "b"]);
+      assert.equal(updated.task.meta.acceptance_derived, "yes");
+      assert.equal(updated.task.meta.target, "src/x");
+      assert.equal(updated.task.meta.epic_triage, "off");
+    });
+  });
+
   it("never lets --status through update: it points at move/deliver", async () => {
     await board(async ({ run }) => {
       createIssue(run);

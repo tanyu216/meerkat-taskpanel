@@ -260,9 +260,12 @@ todo --(claim)--> in_progress --(reviewer delivers VERDICT report)--> in_review 
 or `done` (`REPORT_REQUIRED` — there is no evidence yet). So the only question was **who
 applies the last transition**. The answer here is the **loop**, not the reviewer:
 
-- the reviewer reads the original, its acceptance list, the current round's delivery
-  report, the comment trail and (for an epic) the rollup and children; it delivers a
-  report whose first line is `VERDICT: APPROVE` or `VERDICT: REJECT`; it moves nothing.
+- the reviewer reads the original with `issue get --json` (the human form omits the
+  description and the list), its acceptance list, the current round's delivery report, the
+  comment trail and (for an epic) the rollup and children. If the original carries
+  `meta.acceptance_derived=yes`, it checks the list covers the description and comments — a
+  list that narrows the card is grounds for `REJECT`. It delivers a report whose first line
+  is `VERDICT: APPROVE` or `VERDICT: REJECT`; it moves nothing.
 - the loop applies the verdict as `--actor-kind taskd`. An `APPROVE` writes
   `meta.accepted_by=loop-review` and moves the original `in_review → done`; a `REJECT`
   comments the findings, writes `meta.rework_round`, and moves it back to rework. Only
@@ -374,10 +377,12 @@ already in flight can finish after a deployment removes its reviewer.
 ## Continuity: a fresh handoff, not a resumed pile
 
 Every wake hands the worker a **bounded, fresh handoff** built by
-`buildHandoff()`: the card id and title, the exact `taskctl` commands to read and
-deliver it, and the attribution flags
-`--agent <name> --actor-kind <host> --session-id <id>`. The handoff is capped
-(≈1–2 KB) so a wake never drags an unbounded context into the model. It names no
+`buildHandoff()`: the card id and title, the acceptance-list step (read the card with
+`issue get --json`, work to an existing list, or derive one and persist it with
+`meta.acceptance_derived=yes`), the exact `taskctl` commands to read and deliver it, and
+the attribution flags `--agent <name> --actor-kind <host> --session-id <id>`. The handoff
+is capped at **under 2500 characters** (a test pins it, including a maximum title and a
+UUID session id) so a wake never drags an unbounded context into the model. It names no
 directory: the board holds none (O3), and the working directory is the host's
 business — see [Where a worker runs](#where-a-worker-runs).
 

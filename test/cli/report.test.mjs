@@ -43,6 +43,29 @@ describe("cli/report template", () => {
     );
   });
 
+  it("flags a worker-derived acceptance list without treating it as evidence", () => {
+    const derived = acceptanceFrom({ meta: { acceptance: ["a", "b"], acceptance_derived: "yes" } });
+    assert.equal(derived.source, "meta.acceptance");
+    assert.match(derived.warning, /derived at claim/);
+    const human = acceptanceFrom({ meta: { acceptance: ["a"] } });
+    assert.equal(human.warning, null);
+  });
+
+  it("warns on the template when the acceptance list was derived", async () => {
+    await boardWithIssue(async ({ run }) => {
+      run([
+        "issue", "update", "DEMO-0001",
+        "--acceptance", "a", "--acceptance", "b",
+        "--meta", "acceptance_derived=yes", "--json",
+      ]);
+      const result = run(["report", "template", "DEMO-0001", "--commit", "dcd7d15", "--json"]);
+      assert.match(result.stderr, /derived at claim/);
+      const data = dataOf(result);
+      assert.deepEqual(data.report.acceptance.map((item) => item.text), ["a", "b"]);
+      assert.deepEqual(data.report.acceptance.map((item) => item.status), ["not_met", "not_met"]);
+    });
+  });
+
   it("falls back to the imported card's acceptance checkboxes, and says so", () => {
     // The legacy list is what the md migrator writes, so it is asserted against
     // the real shape rather than round-tripped through `--meta` (whose values
