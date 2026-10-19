@@ -311,3 +311,19 @@ describe("board skill: references resolve where the skill is installed", () => {
     assert.equal(text.includes("scripts/supervisor.mjs]("), false, "no relative link to the executor");
   });
 });
+
+describe("board skill: the acceptance list rule", () => {
+  const text = readFileSync(join(ROOT, "skills/meerkat-taskpanel/SKILL.md"), "utf8");
+
+  it("reads the card as JSON and derives only when the list is empty", () => {
+    assert.match(text, /issue get <ref> --json/);
+    assert.match(text, /acceptance_derived=yes/);
+    assert.match(text, /1[–-]6/);
+    assert.match(text, /do not rewrite/i);
+  });
+
+  it("says an epic's acceptance is its children", () => {
+    assert.match(text, /epic[^\n]*child/i);
+    assert.match(text, /rollup/);
+  });
+});

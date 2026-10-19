@@ -58,7 +58,13 @@ export function acceptanceFrom(task) {
     return {
       items: modern.map((text) => ({ text: String(text), status: "not_met", note: "TODO: met / partial / not_met" })),
       source: "meta.acceptance",
-      warning: null,
+      // The marker is a flag, not a verdict (see `meta.epic_triage=off`): it
+      // says the worker derived the list when the card had none, so the report
+      // is still evidence against items the acceptor may want to re-check.
+      warning:
+        meta.acceptance_derived === "yes"
+          ? "these acceptance items were derived at claim (meta.acceptance_derived=yes); make sure your report answers each one"
+          : null,
     };
   }
 

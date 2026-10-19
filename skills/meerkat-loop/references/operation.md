@@ -152,7 +152,10 @@ the poll entry in the continue turn, through the normal atomic claim; a dedicate
 review cards and never claims the public pool. It reads the original's description, every
 acceptance item, the current round's delivery report, the comment trail and (for an epic)
 its children; it then delivers a report on the review card whose **first line** is
-`VERDICT: APPROVE` or `VERDICT: REJECT`.
+`VERDICT: APPROVE` or `VERDICT: REJECT`. If the original carries
+`meta.acceptance_derived=yes`, the list is agent-derived: the reviewer checks that it covers
+every requirement in the description and the comment trail, and treats a list that narrows
+the card as grounds for `REJECT`.
 
 The reviewer moves nothing. The loop is the acceptor:
 

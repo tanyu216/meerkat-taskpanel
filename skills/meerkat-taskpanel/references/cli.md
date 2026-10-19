@@ -509,7 +509,7 @@ skips the fuzzy step; `--assignee-id` bypasses the dictionary entirely.
 
 | Command | Purpose |
 |---|---|
-| `issue meta <ref> --meta <k>=<v>…` | Merge metadata keys into a card, leaving every other key (and its value type) intact. `issue update --meta` replaces the whole object; this is the additive form the loop uses for its own markers. |
+| `issue meta <ref> --meta <k>=<v>…` | Merge metadata keys into a card, leaving every other key (and its value type) intact. The PATCH route merges `issue update --meta` too; `issue meta` is the read-modify-write form with `--if-version` CAS, used for the loop's own markers. |
 | `report list <ref> [--round <n>]` | List a card's delivery reports (round, author, conclusion), newest round last. This is how a reviewer reads the report it audits; `issue get` carries only the task and its waivers. |
 | `report template <ref> [--commit <sha>] [--path <p>]… [--command <cmd:exit>]… [--coverage <pct[@scope]>]…` | Print a report to fill in. |
 
@@ -522,6 +522,16 @@ imported card is the author's intent, not this delivery's evidence — and
 Evidence anchors are explicit flags first, then a read-only `git rev-parse HEAD`,
 then the task's `source_path`, then a placeholder you must replace. It never fails
 because git is missing (a container has no `.git`).
+
+### The acceptance list
+
+`meta.acceptance` is the card's acceptance list (`string[]`), written by
+`issue create/update --acceptance` and replaced wholesale by `issue update`. Imported cards
+carry `meta.acceptance_legacy` instead; `report template` reads both.
+`meta.acceptance_derived=yes` is a marker, not policy: it records that an agent derived the
+list at claim because the card had none, and `report template` adds a warning when it sees
+it. A human who rewrites the list can set `acceptance_derived=no`; `issue update --meta`
+merges keys, so one update can write both the list and the marker.
 
 ### `export`
 

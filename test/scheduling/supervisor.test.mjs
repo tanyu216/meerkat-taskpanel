@@ -542,6 +542,34 @@ describe("buildHandoff (pure)", () => {
     assert.match(text, /stop at in_review — a human accepts to done/, "the default has no reviewer");
   });
 
+  it("sets the acceptance list before work and never rewrites an existing one", () => {
+    const text = buildHandoff({
+      card: { identifier: "T-1", title: "Wire the supervisor", project: "P1" },
+      agent: "alice",
+      host: "claude",
+      sessionId: "sid-9",
+    });
+    assert.match(text, /Step 1/);
+    assert.match(text, /issue get T-1 --json/);
+    assert.match(text, /comment list/);
+    assert.match(text, /--limit 200/);
+    assert.match(text, /meta\.acceptance/);
+    assert.match(text, /meta\.acceptance_legacy/);
+    assert.match(text, /NEVER rewrite/);
+    assert.match(text, /acceptance_derived=yes/);
+    assert.match(text, /--awaiting-reason E2/);
+  });
+
+  it("stays bounded with a maximum title and a UUID session id", () => {
+    const text = buildHandoff({
+      card: { identifier: "T-1", title: "x".repeat(300), project: "P1" },
+      agent: "alice",
+      host: "claude",
+      sessionId: "550e8400-e29b-41d4-a716-446655440000",
+    });
+    assert.ok(text.length < 2500, `the handoff must be bounded (was ${text.length})`);
+  });
+
   it("points the worker at the reviewer when one is configured", () => {
     const text = buildHandoff({
       card: { identifier: "T-1", title: "Wire the supervisor", project: "P1" },
@@ -571,9 +599,16 @@ describe("buildReviewHandoff (pure)", () => {
 
   it("checks review_not_ready before reading anything else", () => {
     assert.match(text, /review_not_ready/);
-    assert.match(text, /taskctl issue get T-1/);
+    assert.match(text, /taskctl issue get T-1 --json/);
     assert.match(text, /no longer in_review \/ the round changed/);
     assert.match(text, /Do not deliver a verdict/);
+  });
+
+  it("audits a worker-derived acceptance list for coverage", () => {
+    assert.match(text, /acceptance_derived/);
+    assert.match(text, /covers every requirement/);
+    assert.match(text, /narrows/);
+    assert.match(text, /VERDICT: REJECT/);
   });
 
   it("reads the delivery report and the trail, and names the verdict protocol", () => {

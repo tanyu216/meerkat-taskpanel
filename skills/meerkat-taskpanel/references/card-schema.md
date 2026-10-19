@@ -325,6 +325,10 @@ Two asymmetries worth knowing, both deliberate:
 - **`meta_json` is where the non-column values live**: `notify_leader` is a *known* key with
   its own meta slot (it has no column), while every unknown key — `target`, `goal`, … — lives
   under `meta_json.legacy`.
+- **`acceptance_derived` is board meta, not a card key.** `issue update --acceptance …
+  --meta acceptance_derived=yes` records that an agent derived the list at claim. It lives in
+  `meta_json` like `target`, is not a markdown frontmatter key, and is not re-emitted by
+  `export md` (which renders the `## Acceptance` checkboxes from `acceptance_legacy`).
 
 ---
 
