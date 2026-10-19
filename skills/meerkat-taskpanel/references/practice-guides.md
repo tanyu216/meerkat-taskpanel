@@ -281,6 +281,10 @@ They install the loop for **claude, codex and pi only**. OpenClaw is excluded on
 purpose — the openclaw-team framework already runs an equivalent poll / patrol, and a
 second supervisor would only race the first.
 
+A host with no loop — or an application that owns its own timer — drives the board
+directly; the board-side recipe is in
+[scheduling-integration.md](scheduling-integration.md).
+
 A wake runs the worker **headlessly**, so it runs under a pre-declared tool
 allowlist / permission mode / sandbox and must **not** default to bypassing
 permissions (`--dangerously-skip-permissions` or equivalent); a bypass needs

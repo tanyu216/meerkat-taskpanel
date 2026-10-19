@@ -221,6 +221,11 @@ external.
   the shipped `software` preset is one example, and the statistics are domain-agnostic.
   The templates, the counting rules and how to define your own metrics live in
   [`references/reports.md`](references/reports.md).
+- **Owning the clock** — the board has no timer. On a host where the loop is installed,
+  the `meerkat-loop` skill owns the scheduler; do not add a second one. On a host or
+  service that owns its own timer, the board-side tick recipe (candidates → atomic claim →
+  heartbeat → patrol read), the `--json` contract and the cron environment are in
+  [`references/scheduling-integration.md`](references/scheduling-integration.md).
 
 ## Configuring project directories
 
@@ -301,6 +306,8 @@ reads back (the known keys, what an empty value means, and how a card round-trip
 [`references/cli.md`](references/cli.md) for the command surface, the delivery gate,
 the report template and the `--json` contract,
 [`references/reports.md`](references/reports.md) for periodic reports and statistics,
+[`references/scheduling-integration.md`](references/scheduling-integration.md) for owning
+the clock (the tick recipe, the `--json` contract and the cron environment),
 [`references/projects-json.md`](references/projects-json.md) for the local
 project ↔ board project map, and
 [`references/practice-guides.md`](references/practice-guides.md) for the claim-first

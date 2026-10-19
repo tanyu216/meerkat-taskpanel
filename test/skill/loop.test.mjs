@@ -280,6 +280,7 @@ describe("board skill: references resolve where the skill is installed", () => {
   const files = [
     "skills/meerkat-taskpanel/references/practice-guides.md",
     "skills/meerkat-taskpanel/references/projects-json.md",
+    "skills/meerkat-taskpanel/references/scheduling-integration.md",
   ];
 
   it("has no link that climbs out of the skill into the repository root", () => {
