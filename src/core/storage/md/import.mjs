@@ -26,7 +26,7 @@ import { basename, join, relative } from "node:path";
 
 import { DomainError, isDomainError } from "../../../shared/errors.mjs";
 import { LABEL_PALETTE, TASKD_KIND } from "../../../shared/constants.mjs";
-import { contentHash, newId, sha256Hex } from "../../../shared/ids.mjs";
+import { newId, sha256Hex } from "../../../shared/ids.mjs";
 import { ACCEPTANCE_STATUSES, TASK_KINDS } from "../../domain/enums.mjs";
 import { resolveActorId, resolveOrCreate } from "../../commands/dictionary.mjs";
 import { labelDisplayName, nextColor, normalizeLabelName } from "../../domain/labels.mjs";
@@ -35,7 +35,7 @@ import { normalizeName } from "../../domain/dictionary.mjs";
 import { normalizeCommentCreate } from "../../domain/comment.mjs";
 import { normalizeImportedReport, normalizeReportCreate } from "../../domain/report.mjs";
 import { parsePriority } from "../../domain/priority.mjs";
-import { identifierFor, normalizeLabels, normalizeTaskCreate, toIsoMillis } from "../../domain/task.mjs";
+import { normalizeLabels, normalizeTaskCreate, toIsoMillis } from "../../domain/task.mjs";
 import { transaction } from "../unit-of-work.mjs";
 import { parseFrontmatter } from "./frontmatter.mjs";
 import { checkRelationInvariants } from "./invariants-check.mjs";
@@ -138,8 +138,6 @@ const META_KEYS = Object.freeze(["notify_leader"]);
  * `meta_json.legacy` as if it were an unknown key.
  */
 const CARD_KEY_ALIASES = Object.freeze({ notify_elon: "notify_leader" });
-
-const TS_FALLBACK = "1970-01-01T00:00:00.000Z";
 
 /**
  * Cards write `claimed_by: ""` for "nobody" — the database stores NULL. Empty
@@ -1257,7 +1255,6 @@ function positiveInt(value) {
 
 function buildTask(repos, card, context) {
   const { now, rel, hash, dictionary, labels, reviewOfId = null, reviewRound = null } = context;
-  const serial = repos.projects.get(card.projectId)?.nextTaskNumber ?? 1;
   const identifier = card.identifier;
 
   const task = normalizeTaskCreate(
@@ -1335,17 +1332,3 @@ function patchFrom(task) {
     blockedReason: task.blockedReason,
   };
 }
-
-/** Stable identity for a card, used by `check` output. */
-export function cardFingerprint(card) {
-  return contentHash({
-    identifier: card.identifier,
-    title: card.title,
-    status: card.status,
-    comments: card.comments.length,
-    reports: card.reports.length,
-    sessions: card.sessions.length,
-  });
-}
-
-export { identifierFor, TS_FALLBACK };

@@ -6,9 +6,10 @@
  * `server/`) are thin adapters over this module and import nothing else from
  * `src/core`.
  *
- * `STAGE` is kept from the M0 scaffold — `test/scaffold.test.mjs` asserts the
- * scaffold constants still exist, and removing it would break a surface that
- * this milestone does not own.
+ * `STAGE` is kept from the M0 scaffold. No surface reads it; the only thing
+ * that pins it is `test/core/index.test.mjs` ("keeps `STAGE` so the M0 scaffold
+ * tests stay meaningful"), so it is a fixture of the test suite rather than an
+ * API of the engine.
  */
 
 export const STAGE = "core";

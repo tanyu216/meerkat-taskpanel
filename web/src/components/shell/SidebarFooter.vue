@@ -29,7 +29,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 
-import { applyLang, lang, nextLang, t } from "../../i18n/index.js";
+import { applyLang, lang, t } from "../../i18n/index.js";
 import { applyTheme, nextTheme, readTheme } from "../../stores/prefs.js";
 import { accessOpen, pushToast } from "../../stores/ui.js";
 

@@ -283,12 +283,6 @@ export function slaRowRef(row) {
   return SLA_ROWS[row]?.ref ?? null;
 }
 
-/** The runtime limit for a row, in working minutes (`null` when the row has none). */
-export function slaLimitMin(row) {
-  const spec = SLA_ROWS[row];
-  return spec === undefined || spec.limitMin === null ? null : spec.limitMin;
-}
-
 /**
  * The working-minute point at which a row's `warn` fires: `L − P`, clamped at 0,
  * or `L` itself for the one row exempt from the lead (§5.2).

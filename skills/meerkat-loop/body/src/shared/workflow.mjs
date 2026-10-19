@@ -72,8 +72,6 @@ export const DEFAULT_REVIEW_AGING_MS = 60 * 60_000;
 
 /** The `meta.flow` a worker card runs (and the only flow reviewed here). */
 export const WORK_FLOW = "A";
-/** The `meta.flow` a review card runs — excluded from review dispatch itself. */
-export const REVIEW_FLOW = "B";
 
 /** The `meta.accepted_by` marker this loop writes on an automated acceptance. */
 export const LOOP_ACCEPTOR = "loop-review";

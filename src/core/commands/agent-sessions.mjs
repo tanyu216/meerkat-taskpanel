@@ -4,12 +4,8 @@
  */
 
 import { DomainError } from "../../shared/errors.mjs";
-import { sessionId as deriveSessionId } from "../../shared/ids.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { BOARD_ACTOR, actorOf } from "./context.mjs";
-
-/** The deterministic session id for a (task, owner, seg) triple. */
-export const sessionId = deriveSessionId;
 
 /**
  * @param {object} ctx

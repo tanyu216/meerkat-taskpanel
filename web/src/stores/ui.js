@@ -131,13 +131,7 @@ export function pushToast(text, kind = "info", options = {}) {
   return id;
 }
 
-export function dismissToast(id) {
-  toasts.value = toasts.value.filter((toast) => toast.id !== id);
-}
-
 /** A danger toast that stays until dismissed — used for a version conflict. */
 export function pushStickyToast(text, kind = "danger") {
   return pushToast(text, kind, { timeout: 0 });
 }
-
-export const hasToasts = computed(() => toasts.value.length > 0);

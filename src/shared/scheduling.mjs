@@ -25,8 +25,6 @@ import { DomainError } from "./errors.mjs";
 
 /** Default cap on concurrently running workers. */
 export const DEFAULT_MAX_CONCURRENCY = 8;
-/** Legacy poll cadence, seconds — kept for older callers; the clock is `DEFAULT_PING_SECONDS`. */
-export const DEFAULT_POLL_SECONDS = 60;
 /** The SLA measurement period, seconds — no longer a scheduling cadence. */
 export const DEFAULT_PATROL_SECONDS = 300;
 /**
@@ -321,14 +319,6 @@ export function parseHeartbeat(value) {
  * @param {string|number} now
  * @returns {number|null}
  */
-export function heartbeatAge(value, now) {
-  const parsed = parseHeartbeat(value);
-  if (!parsed.ok) return null;
-  const age = new Date(now).getTime() - parsed.at;
-  if (!Number.isFinite(age) || age < 0) return null;
-  return age;
-}
-
 /** The number of cards a registry currently records as running. */
 function runningCount(registry) {
   const running = registry?.running;

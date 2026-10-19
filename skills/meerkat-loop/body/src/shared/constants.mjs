@@ -12,7 +12,6 @@
 
 export const CLI_NAME = "taskctl";
 export const SKILL_NAME = "meerkat-taskpanel";
-export const PACKAGE_NAME = "meerkat-taskpanel";
 export const VERSION = "1.0.0";
 
 /**
@@ -95,8 +94,6 @@ export const DEFAULT_PORT = 9527;
 /** Default listen host (ARCHITECTURE §7: welcome LAN access). */
 export const DEFAULT_HOST = "0.0.0.0";
 
-/** Default host for a CLI-spawned `taskd`: a spawned daemon serves this machine. */
-export const DEFAULT_DAEMON_HOST = "127.0.0.1";
 /** How long the CLI waits for a freshly spawned `taskd` to answer `/health`. */
 export const AUTOSTART_TIMEOUT_MS = 5_000;
 /** How often it retries while waiting. */

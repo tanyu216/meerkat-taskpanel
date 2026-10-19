@@ -51,8 +51,3 @@ export function taskLine(task) {
     actorLabel(task.reporter),
   ].join("  ");
 }
-
-/** `none` for an empty list — an empty line reads like a bug. */
-export function orNone(lines) {
-  return lines.length === 0 ? "none" : lines.join("\n");
-}

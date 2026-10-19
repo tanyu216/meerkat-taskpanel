@@ -14,6 +14,7 @@
  * in the CLI, so the refusal a user sees is the one the service raised.
  */
 
+import { reportWarnings } from "../../shared/report-warning.mjs";
 import { usageError } from "../../shared/transport/errors.mjs";
 import { TASK_OPS } from "../../core/commands/tasks-input.mjs";
 import { fields, table, taskLine } from "../output/human.mjs";
@@ -417,9 +418,7 @@ export const COMMANDS = [
       if (!waived) {
         const raw = flags.reportFile === "-" ? await ctx.readStdin() : await ctx.readFile(flags.reportFile);
         report = parseReport(raw);
-        if (typeof report.leftovers === "string" && report.leftovers.includes("TODO:")) {
-          warnings.push("delivering a template that still contains TODO placeholders");
-        }
+        warnings.push(...reportWarnings(report));
         // The author is whoever is running the command, unless the report says.
         // `== null` on purpose: that is both `undefined` and `null`, and the
         // distinction carries no meaning here.

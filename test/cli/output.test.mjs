@@ -29,7 +29,7 @@ import {
   taskToWire,
   waiverOf,
   waiversFromActivities,
-} from "../../src/cli/wire.mjs";
+} from "../../src/shared/wire.mjs";
 import { DomainError } from "../../src/shared/errors.mjs";
 
 const TOKEN = `td_${"ab".repeat(32)}`;

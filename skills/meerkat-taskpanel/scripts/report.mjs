@@ -47,14 +47,6 @@ export const PERIODS = Object.freeze(["daily", "weekly", "monthly"]);
 /** The fixed grouping dimensions; `label:<namespace>` is the fifth form. */
 export const GROUP_DIMENSIONS = Object.freeze(["kind", "project", "assignee", "status"]);
 
-/** Label namespaces the board convention reserves (see references/reports.md). */
-export const LABEL_NAMESPACES = Object.freeze({
-  CATEGORY: "category",
-  AREA: "area",
-  ENV: "env",
-  SEV: "sev",
-});
-
 /** Freeze a value and everything under it, so a preset cannot be mutated. */
 function deepFreeze(value) {
   if (value && typeof value === "object" && !Object.isFrozen(value)) {

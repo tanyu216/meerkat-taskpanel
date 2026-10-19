@@ -45,12 +45,6 @@ export const STATUS = Object.freeze({
 });
 
 /**
- * The **stage** statuses — every canonical status except the `awaiting` overlay.
- * This is the board's column set; `awaiting` is never a member.
- */
-export const STAGE_STATUSES = Object.freeze(STATUSES.filter((status) => status !== STATUS.AWAITING));
-
-/**
  * Why a card needed a human (M1 · design §2.1). An **enumeration, never free
  * text** — `E1..E5` is the whole vocabulary:
  *

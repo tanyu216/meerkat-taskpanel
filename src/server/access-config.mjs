@@ -32,7 +32,6 @@ import { chmodSync, closeSync, fsyncSync, openSync, readFileSync, renameSync, rm
 import { basename, dirname, join } from "node:path";
 
 import { ensureDir } from "../core/index.mjs";
-import { readAcceptancePolicy, writeAcceptancePolicy } from "../core/acceptance-policy.mjs";
 import { mergeEnvText } from "../shared/env-file.mjs";
 import { ALLOW_CIDRS_ENV, SECRET_DIR_MODE, SECRET_FILE_MODE } from "../shared/constants.mjs";
 import { DomainError } from "../shared/errors.mjs";
@@ -310,23 +309,6 @@ export function writeEnvKeys(dataDir, patch) {
       : "";
   writeAtomic(file, header + mergeEnvText(existing, patch));
   return file;
-}
-
-/**
- * Save the board's acceptance policy into the shared env file.
- *
- * Re-exported from `core/acceptance-policy.mjs`, which owns the vocabulary and
- * the merge: the installer reaches the same function without going through the
- * server (and therefore without opening a database module).
- *
- * @param {{dataDir: string, policy: string}} input
- * @returns {{policy: string, file: string}}
- */
-export { writeAcceptancePolicy };
-
-/** The acceptance policy this data directory's file records (env/file/default). */
-export function readStoredAcceptancePolicy(input) {
-  return readAcceptancePolicy({ dataDir: input.dataDir, env: input.env ?? {} });
 }
 
 /** @param {string} file @param {string} text */
