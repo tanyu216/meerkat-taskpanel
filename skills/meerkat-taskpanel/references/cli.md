@@ -508,6 +508,7 @@ skips the fuzzy step; `--assignee-id` bypasses the dictionary entirely.
 
 | Command | Purpose |
 |---|---|
+| `issue meta <ref> --meta <k>=<v>…` | Merge metadata keys into a card, leaving every other key (and its value type) intact. `issue update --meta` replaces the whole object; this is the additive form the loop uses for its own markers. |
 | `report list <ref> [--round <n>]` | List a card's delivery reports (round, author, conclusion), newest round last. This is how a reviewer reads the report it audits; `issue get` carries only the task and its waivers. |
 | `report template <ref> [--commit <sha>] [--path <p>]… [--command <cmd:exit>]… [--coverage <pct[@scope]>]…` | Print a report to fill in. |
 

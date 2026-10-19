@@ -757,6 +757,31 @@ describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells i
   });
 });
 
+describe("cli/issue — `issue meta` is a merge, not a replace", () => {
+  it("writes one key and leaves the rest of the metadata — and its types — intact", async () => {
+    await board(async ({ run }) => {
+      const created = createIssue(run, [
+        "--acceptance", "cli works",
+        "--target", "src/x",
+        "--meta", "flow=A",
+      ]);
+      const merged = dataOf(
+        run(["issue", "meta", created.task.identifier, "--meta", "accepted_by=loop-review", "--meta", "accepted_round=1", "--json"]),
+      );
+      assert.deepEqual(merged.task.meta.acceptance, ["cli works"], "the acceptance list survives as a list");
+      assert.equal(merged.task.meta.target, "src/x");
+      assert.equal(merged.task.meta.flow, "A");
+      assert.equal(merged.task.meta.accepted_by, "loop-review");
+      assert.equal(merged.task.meta.accepted_round, "1");
+
+      const again = dataOf(run(["issue", "meta", created.task.identifier, "--meta", "rework_round=2", "--json"]));
+      assert.equal(again.task.meta.rework_round, "2");
+      assert.deepEqual(again.task.meta.acceptance, ["cli works"], "a second merge is still additive");
+      assert.equal(again.task.meta.accepted_by, "loop-review");
+    });
+  });
+});
+
 describe("cli/issue — the loop's two lifecycle counter-proofs", () => {
   const report = (conclusion = "delivered") =>
     JSON.stringify({

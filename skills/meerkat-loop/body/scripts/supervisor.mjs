@@ -1621,8 +1621,10 @@ async function runWorkflowPass(opts, config, log, { tasks = [], boardTruncated =
       return read.ok ? { ok: true } : { ok: false, error: read.error };
     },
     setMeta: (ref, meta) => {
+      // `issue meta` merges. `issue update --meta` replaces the whole object,
+      // which would erase the card's acceptance list, target and review keys.
       const read = invoke([
-        "issue", "update", ref,
+        "issue", "meta", ref,
         ...Object.entries(meta).flatMap(([key, value]) => ["--meta", `${key}=${value}`]),
       ]);
       return read.ok ? { ok: true } : { ok: false, error: read.error };

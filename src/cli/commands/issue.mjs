@@ -1,5 +1,5 @@
 /**
- * `issue create|list|get|update|move|heartbeat|assign|archive|deliver` (A1–A5).
+ * `issue create|list|get|update|meta|move|heartbeat|assign|archive|deliver` (A1–A5).
  *
  * This module owns the two commands the milestone is really about:
  *
@@ -212,6 +212,26 @@ export const COMMANDS = [
       }
       const payload = await ctx.client.patch(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}`, body);
       return { data: payload, human: `updated ${payload.task.identifier}` };
+    },
+  },
+
+  {
+    name: "meta",
+    summary: "Merge metadata keys into a task, leaving every other key untouched.",
+    usage: "issue meta <id|identifier> --meta <key>=<value> [--meta <key>=<value>]…",
+    positionals: [{ name: "ref", summary: "Task id or identifier." }],
+    flags: [
+      { flag: "meta", key: "meta", as: "kv", required: true, summary: "Repeatable key=value metadata." },
+    ],
+    async run(ctx) {
+      // The PATCH route replaces `meta` wholesale, so a merge spelled with
+      // `issue update --meta` would erase `acceptance`, `target` and every other
+      // key. Merging has to happen here, where the current object (and its value
+      // types) is visible; the result is sent as one ordinary update.
+      const task = (await ctx.client.get(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}`)).task;
+      const meta = { ...(task.meta ?? {}), ...ctx.flags.meta };
+      const payload = await ctx.client.patch(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}`, { meta });
+      return { data: payload, human: `updated metadata on ${payload.task.identifier}` };
     },
   },
 
