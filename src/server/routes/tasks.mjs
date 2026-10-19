@@ -8,18 +8,16 @@
  * refuse it in the same places the core does, because this layer *is* core
  * called over HTTP — it validates nothing the commands do not.
  *
- * `resolveTask` is exported because comments, relations and sessions all address
- * a task by the same `id-or-identifier` reference the CLI hands them.
+ * Addressing a card and projecting it to the wire are not this module's
+ * business: `server/task-view.mjs` owns that seam, because five sibling routes
+ * answer with a task too.
  */
 
 import { TASK_OPS } from "../../core/index.mjs";
 import { DomainError } from "../../shared/errors.mjs";
-import {
-  reportToWire,
-  taskToWire,
-  waiversFromActivities,
-} from "../../shared/wire.mjs";
+import { reportToWire, taskToWire } from "../../shared/wire.mjs";
 import { bool, intOrUndefined, project, REQUEST, shape, str, truthy } from "../requests.mjs";
+import { lookupFor, parentIdOf, resolveTask, taskPayload } from "../task-view.mjs";
 
 // Declared request schemas — what the contract snapshot freezes
 // (`routes[].request`); `src/server/requests.mjs` owns the vocabulary and the
@@ -113,39 +111,6 @@ const ARCHIVE_BODY = project(TASK_OPS.archive);
  * `issue heartbeat` in `scripts/verify/route-request.mjs`.
  */
 const HEARTBEAT_BODY = project(TASK_OPS.heartbeat);
-
-/**
- * `PROJ-0007` or a UUID — whichever the caller has.
- * @param {object} repos
- * @param {string} ref
- */
-export function resolveTask(repos, ref) {
-  return repos.tasks.requireAnyRef(ref);
-}
-
-/** Dictionary lookup for the wire projection (`display_name` for an id). */
-export function lookupFor(repos) {
-  return (kind, id) => repos.dictionary.getById(kind, id);
-}
-
-/**
- * The parent edge of one card, as a wire value.
- *
- * `parent_id` is deliberately a projection and not a column: the board models
- * parenthood as a `parent` relation in `task_relations`, and copying it onto the
- * card would be a second answer that could drift.
- */
-export function parentIdOf(repos, taskId) {
-  return repos.relations.getParent(taskId)?.source ?? null;
-}
-
-/** A task plus the audit trail a reviewer needs: who waived delivery, and why. */
-export function taskPayload(repos, task) {
-  return {
-    task: taskToWire(task, { lookup: lookupFor(repos), parentId: parentIdOf(repos, task.id) }),
-    report_waivers: waiversFromActivities(repos.activities.list({ taskId: task.id, limit: 1000 })),
-  };
-}
 
 /** @param {object} router @param {{board: object}} surface */
 export function registerTaskRoutes(router, surface) {

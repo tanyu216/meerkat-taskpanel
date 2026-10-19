@@ -63,7 +63,7 @@ import { newId } from "../../shared/ids.mjs";
 import { attachmentToWire } from "../../shared/wire.mjs";
 import { int, shape, str } from "../requests.mjs";
 import { errorResponse, readRawBody, sendJson } from "../router.mjs";
-import { resolveTask } from "./tasks.mjs";
+import { resolveTask } from "../task-view.mjs";
 
 // Declared request schemas, frozen by the contract snapshot (`routes[].request`);
 // the vocabulary lives in `src/server/requests.mjs`.
