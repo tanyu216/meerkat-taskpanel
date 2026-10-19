@@ -190,6 +190,7 @@ describe("install.sh: the workflow config", () => {
     assert.match(text, /^MEERKAT_TASKPANEL_WORKFLOW=yes$/m);
     assert.match(text, /^MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=yes$/m);
     assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=$/m, "empty is 'not configured', deliberately");
+    assert.match(text, /^MEERKAT_TASKPANEL_RECOVER_STALE=yes$/m);
   });
 
   it("persists --reviewer / --workflow=no / --auto-accept-reviews=no", () => {
@@ -197,7 +198,10 @@ describe("install.sh: the workflow config", () => {
     const bin = makeTempDir();
     makeFakeCli(bin, "codex");
     const run = runInstall(
-      ["--target", "codex", "--agent-name", "alice", "--reviewer", "jobs", "--workflow=no", "--auto-accept-reviews=no"],
+      [
+        "--target", "codex", "--agent-name", "alice", "--reviewer", "jobs",
+        "--workflow=no", "--auto-accept-reviews=no", "--recover-stale=no",
+      ],
       installEnv(home, bin),
     );
     assert.equal(run.status, 0, run.stderr);
@@ -205,6 +209,7 @@ describe("install.sh: the workflow config", () => {
     assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=jobs$/m);
     assert.match(text, /^MEERKAT_TASKPANEL_WORKFLOW=no$/m);
     assert.match(text, /^MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=no$/m);
+    assert.match(text, /^MEERKAT_TASKPANEL_RECOVER_STALE=no$/m);
   });
 
   it("takes the values from the environment when no flag is given", () => {
@@ -228,13 +233,13 @@ describe("install.sh: the workflow config", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
     makeFakeCli(bin, "claude");
-    for (const flag of ["--workflow=maybe", "--auto-accept-reviews=perhaps"]) {
+    for (const flag of ["--workflow=maybe", "--auto-accept-reviews=perhaps", "--recover-stale=sometimes"]) {
       const run = runInstall(["--target", "claude", "--prefix", home, flag], {
         ...process.env,
         PATH: `${bin}:${process.env.PATH}`,
       });
       assert.equal(run.status, 2, `${flag} must be a usage error`);
-      assert.match(run.stderr, flag.startsWith("--workflow") ? /--workflow/ : /--auto-accept-reviews/);
+      assert.match(run.stderr, flag.startsWith("--workflow") ? /--workflow/ : flag.startsWith("--recover") ? /--recover-stale/ : /--auto-accept-reviews/);
       assert.equal(existsSync(join(home, ".claude")), false);
     }
   });
@@ -259,6 +264,7 @@ describe("install.sh: the workflow config", () => {
     const text = readFileSync(path, "utf8");
     assert.match(text, /^MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=no$/m, "the existing choice is kept");
     assert.match(text, /^MEERKAT_TASKPANEL_WORKFLOW=yes$/m, "the missing key is added");
+    assert.match(text, /^MEERKAT_TASKPANEL_RECOVER_STALE=yes$/m);
     assert.match(text, /^MEERKAT_TASKPANEL_REVIEWER=jobs$/m);
     assert.equal(text.match(/^MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS=/gm).length, 1, "never duplicated");
   });

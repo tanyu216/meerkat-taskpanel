@@ -138,7 +138,7 @@ worker's own tool tree, resolve on that same set. If the host CLI is not on `PAT
 install time, the installer says so and renders node's directory alone rather than guessing.
 See [`scheduling.md` §What the loop's units run with](scheduling.md#what-the-loops-units-run-with).
 | wake glue | `<host>/bin/wake-<host>.sh` | resolves the directory a worker for the card's project runs in (`local_path`, else `run_dir`) from the board skill's `projects.json` via the host-local `meerkat-taskpanel/scripts/wake-cwd.mjs`, `cd`s there (refusing the wake if it cannot), then runs `claude -p` (+`--resume`), `codex exec`, or `pi --print` |
-| host config | `<host>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no` + `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives) + the workflow channel's `MEERKAT_TASKPANEL_WORKFLOW`, `MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS` and `MEERKAT_TASKPANEL_REVIEWER` |
+| host config | `<host>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no`, `MEERKAT_TASKPANEL_RECOVER_STALE=yes\|no`, `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives), and the workflow channel's `MEERKAT_TASKPANEL_WORKFLOW`, `MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS` and `MEERKAT_TASKPANEL_REVIEWER` |
 | log (runtime) | `<host>/meerkat-taskpanel/supervisor.log` | the supervisor's tick log |
 | state (runtime) | `<host>/meerkat-taskpanel/supervisor.state.json` | the running registry |
 
@@ -344,7 +344,10 @@ The answer is persisted to `<host>/meerkat-taskpanel.env` as
 `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes|no`; the supervisor reads it as its default (an
 explicit `--claim-unassigned` flag or `$MEERKAT_TASKPANEL_CLAIM_UNASSIGNED` overrides it).
 Non-interactive installs default to **yes**; `--claim-unassigned=no` /
-`--assignee-only` persist `no`. The file is merge-style: a re-run without
+`--assignee-only` persist `no`. **Stale recovery is a separate opt-out**:
+`--recover-stale=no` (or `$MEERKAT_TASKPANEL_RECOVER_STALE=no`) persists
+`MEERKAT_TASKPANEL_RECOVER_STALE=no`, and the supervisor then never takes over an
+`in_progress` card — the same holder's 30-minute re-claim included. The file is merge-style: a re-run without
 `--force` keeps the existing value, and it also records where the board engine
 lives (`MEERKAT_TASKPANEL_REPO=<checkout>`) — a key the installer adds when it is
 missing, so an install made before that key existed still learns it (see
@@ -370,7 +373,7 @@ is the full contract.
 ```text
 install.sh [--target claude|openclaw|codex|pi|opencode|cursor|all] [--prefix <home>]
            [--agent-name <name>] [--no-automation]
-           [--claim-unassigned=yes|no] [--assignee-only]
+           [--claim-unassigned=yes|no] [--assignee-only] [--recover-stale=yes|no]
            [--workflow=yes|no] [--reviewer <agent>] [--auto-accept-reviews=yes|no]
            [--supervisor=enable|disable|status] [--supervisor-hosts <list>]
            [--scheduler auto|launchd|systemd|cron]
@@ -386,6 +389,7 @@ install.sh [--target claude|openclaw|codex|pi|opencode|cursor|all] [--prefix <ho
 | `MEERKAT_TASKPANEL_NO_AUTOMATION=1` | The environment form of the `--no-automation` bypass — `install.sh` sets exactly this variable for each host installer, and `scripts/install/_common.sh` reads it, so a direct installer run honours it too. Internal bypass, not a user option. |
 | `--claim-unassigned=yes\|no` | May the supervisor claim **unassigned** cards (the public pool)? Persisted to `<home>/<host>/meerkat-taskpanel.env`; overrides the interactive answer. Default `yes`. |
 | `--assignee-only` | Alias for `--claim-unassigned=no`. |
+| `--recover-stale=yes\|no` | May the supervisor recover stale `in_progress` claims — the same holder after 30 minutes, any agent after 6 hours? Persisted to the host config; default `yes`. |
 | `--workflow=yes\|no` | Run the supervisor's workflow sub-pass — container reconcile, review dispatch and applying verdicts. Persisted to the host config; default `yes`. `no` means the loop writes no card at all. |
 | `--reviewer <agent>` | The independent agent that reviews delivered cards. Persisted to the host config. Unset (the default) disables **dispatch** only; a delivery then waits for a human to accept it. |
 | `--auto-accept-reviews=yes\|no` | Let the loop close a review card after applying its verdict. Persisted; default `yes`. `no` is the escape hatch: the verdict is still applied, but the review card stays in `in_review` for a human. |

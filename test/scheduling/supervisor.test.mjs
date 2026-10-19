@@ -37,6 +37,7 @@ import {
   planWakeInvocation,
   pruneRegistry,
   resolveClaimUnassigned,
+  resolveRecoverStale,
   wakeCommand,
 } from "../../src/shared/scheduling.mjs";
 import { emptySlaLedger, planSlaPatrol } from "../../src/shared/sla-patrol.mjs";
@@ -323,6 +324,47 @@ describe("candidateArgs (pure)", () => {
       "--include-unassigned",
     ]);
     assert.deepEqual(candidateArgs("alice", false), ["issue", "candidates", "--assignee", "alice"]);
+  });
+
+  it("adds --stale only for the recovery policy", () => {
+    assert.deepEqual(candidateArgs("alice", false, true), [
+      "issue",
+      "candidates",
+      "--assignee",
+      "alice",
+      "--stale",
+    ]);
+    assert.deepEqual(candidateArgs("alice", true, true), [
+      "issue",
+      "candidates",
+      "--assignee",
+      "alice",
+      "--include-unassigned",
+      "--stale",
+    ]);
+  });
+});
+
+describe("resolveRecoverStale (pure)", () => {
+  it("prefers flag > environment > host config, and defaults to on", () => {
+    assert.equal(resolveRecoverStale(), true);
+    assert.equal(resolveRecoverStale({ file: { MEERKAT_TASKPANEL_RECOVER_STALE: "no" } }), false);
+    assert.equal(
+      resolveRecoverStale({
+        env: "yes",
+        file: { MEERKAT_TASKPANEL_RECOVER_STALE: "no" },
+      }),
+      true,
+    );
+    assert.equal(
+      resolveRecoverStale({
+        flag: "no",
+        env: "yes",
+        file: { MEERKAT_TASKPANEL_RECOVER_STALE: "yes" },
+      }),
+      false,
+    );
+    assert.equal(resolveRecoverStale({ flag: "maybe", env: "nonsense" }), true, "unreadable values are ignored");
   });
 });
 
@@ -1216,6 +1258,12 @@ describe("parseArgs — the workflow surface", () => {
     assert.equal(opts.reviewer, undefined);
     assert.equal(opts.autoAcceptReviews, undefined);
     assert.equal(opts.workflowMaxActions, undefined);
+    assert.equal(opts.recoverStale, undefined);
+  });
+
+  it("takes --recover-stale in both spellings", () => {
+    assert.equal(parseArgs(["--recover-stale", "no", "--once"], ENV).recoverStale, "no");
+    assert.equal(parseArgs(["--recover-stale=yes", "--once"], ENV).recoverStale, "yes");
   });
 
   it("takes every workflow flag in both spellings", () => {

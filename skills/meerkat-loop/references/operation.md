@@ -39,7 +39,7 @@ carried the board's constraints. Split apart:
 | execution body | `<host>/meerkat-taskpanel/scripts/supervisor.mjs` + `.../scripts/wake-cwd.mjs` + `.../src/shared/*.mjs` | the copy the units run; its closure is listed in this skill's `body/manifest.txt` |
 | units | `<host>/scheduling/{launchd,systemd,cron}/` | `StartInterval` 60 (poll) and 300 (patrol) units. Each names the **absolute `node`** it was rendered with and carries a **`PATH`** (host CLI's directory + node's, then the scheduler's default) — a scheduler runs a unit with a minimal `PATH` that has neither, so `env node` is exit 127 and the wake glue's `exec claude` fails on it too |
 | wake glue | `<host>/bin/wake-<host>.sh` | resolves the card's project directory from the skill's `projects.json`, then runs `claude -p` / `codex exec` / `pi --print` |
-| host config | `<host>/meerkat-taskpanel.env` | the claim-unassigned policy, `MEERKAT_TASKPANEL_REPO` — where the board engine lives — and the workflow channel's three answers (`WORKFLOW`, `AUTO_ACCEPT_REVIEWS`, `REVIEWER`) |
+| host config | `<host>/meerkat-taskpanel.env` | the claim-unassigned and stale-recovery policies, `MEERKAT_TASKPANEL_REPO` — where the board engine lives — and the workflow channel's three answers (`WORKFLOW`, `AUTO_ACCEPT_REVIEWS`, `REVIEWER`) |
 | runtime | `<host>/meerkat-taskpanel/{supervisor.log,supervisor.state.json}` | the tick log and the running registry |
 
 `--link` applies to the **board** skill only. The loop is always copied: a symlinked body
@@ -88,6 +88,7 @@ they name an absolute interpreter and set their own `PATH`.
 | `--poll-interval <sec>` / `--patrol-interval <sec>` | `60` / `300` | loop cadences |
 | `--max-concurrency <n>` | `8` | cap on simultaneously running workers |
 | `--claim-unassigned=yes\|no` | from the host config → `yes` | also claim unassigned cards (the public pool) |
+| `--recover-stale=yes\|no` | from the host config → `yes` | also claim stale `in_progress` cards — the same holder after 30 min, any agent after 6 h — through `issue claim` |
 | `--workflow=yes\|no` | from the host config → `yes` | run the workflow sub-pass (reconcile → outcomes → dispatch). Off means the loop writes no card |
 | `--reviewer <agent>` | `$MEERKAT_TASKPANEL_REVIEWER` → unset | the independent reviewer. Unset disables review dispatch only; verdicts already in flight still get applied |
 | `--auto-accept-reviews=yes\|no` | from the host config → `yes` | let the loop close a review card after applying its verdict. `no` leaves it in `in_review` for a human; the verdict on the original is still applied |

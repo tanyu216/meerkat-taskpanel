@@ -11,9 +11,11 @@
  *
  *   1. **scan** — for each agent, run `taskctl issue candidates` (a local CLI
  *      read: $0, no LLM). An empty scan plans no work, so nothing is spawned.
- *   2. **claim** — for every planned wake, move the card to `in_progress` first.
+ *   2. **claim** — for every planned wake, claim the card first (`issue claim`).
  *      The board's CAS is the *only* dispatch: if the claim is refused, no
- *      worker is started. Waking is therefore idempotent and bounded.
+ *      worker is started. Waking is therefore idempotent and bounded. The same
+ *      verb recovers a stale `in_progress` claim (a re-claim or takeover, which
+ *      is not a status transition); `--recover-stale=no` opts out.
  *   3. **wake** — start the host worker with a fresh, bounded handoff, then
  *      record its pid in the state file. The wake goes through the host's own
  *      glue (`<host-dir>/bin/wake-<host>.sh`) when one is installed, so the
@@ -88,6 +90,7 @@ import {
   planWakeInvocation,
   pruneRegistry,
   resolveClaimUnassigned,
+  resolveRecoverStale,
   resolveWorkflowConfig,
   wakeCommand,
 } from "../src/shared/scheduling.mjs";
@@ -129,6 +132,7 @@ export {
   planWakeInvocation,
   pruneRegistry,
   resolveClaimUnassigned,
+  resolveRecoverStale,
   resolveWorkflowConfig,
   wakeCommand,
 };
@@ -151,6 +155,8 @@ Options:
   --max-concurrency <n>   Max concurrently running workers (default: ${DEFAULT_MAX_CONCURRENCY}).
   --claim-unassigned=yes|no   Also claim unassigned cards (the public pool). Default: yes.
   --assignee-only         Alias for --claim-unassigned=no.
+  --recover-stale=yes|no  Also recover stale in_progress claims: the same holder after
+                          30 minutes, any agent after 6 hours. Default: yes.
   --workflow=yes|no       Run the workflow sub-pass (reconcile, review dispatch, verdicts).
                           Default: yes.
   --reviewer <agent>      The independent agent that reviews delivered cards. Unset
@@ -826,6 +832,7 @@ export function parseArgs(argv, env = process.env) {
     patrolInterval: DEFAULT_PATROL_SECONDS,
     maxConcurrency: DEFAULT_MAX_CONCURRENCY,
     claimUnassigned: undefined,
+    recoverStale: undefined,
     workflow: undefined,
     reviewer: undefined,
     autoAcceptReviews: undefined,
@@ -882,6 +889,8 @@ export function parseArgs(argv, env = process.env) {
     else if (arg === "--claim-unassigned") opts.claimUnassigned = take("--claim-unassigned");
     else if (arg.startsWith("--claim-unassigned=")) opts.claimUnassigned = arg.slice(19);
     else if (arg === "--assignee-only") opts.claimUnassigned = "no";
+    else if (arg === "--recover-stale") opts.recoverStale = take("--recover-stale");
+    else if (arg.startsWith("--recover-stale=")) opts.recoverStale = arg.slice(16);
     else if (arg === "--workflow") opts.workflow = take("--workflow");
     else if (arg.startsWith("--workflow=")) opts.workflow = arg.slice(11);
     else if (arg === "--reviewer") opts.reviewer = take("--reviewer");
@@ -1202,6 +1211,11 @@ async function main(argv, env = process.env) {
     env: env.MEERKAT_TASKPANEL_CLAIM_UNASSIGNED ?? env.TASKPANEL_CLAIM_UNASSIGNED,
     file: configFile,
   });
+  const recoverStale = resolveRecoverStale({
+    flag: opts.recoverStale,
+    env: env.MEERKAT_TASKPANEL_RECOVER_STALE,
+    file: configFile,
+  });
   const workflow = resolveWorkflowConfig({
     flags: {
       workflow: opts.workflow,
@@ -1220,6 +1234,7 @@ async function main(argv, env = process.env) {
   const config = {
     maxConcurrency: opts.maxConcurrency,
     claimUnassigned,
+    recoverStale,
     patrolLlm: opts.patrolLlm,
     host: opts.host,
     // The escape hatch the docs promise (and the Pi glue points at): an operator
@@ -1255,7 +1270,11 @@ async function main(argv, env = process.env) {
       // cards: handing it an ordinary card would be a self-review waiting to
       // happen (the card's own assignee is not necessarily the reviewer, but the
       // reviewer's lane is read-and-verdict, not work).
-      const read = runCli(opts, agent, candidateArgs(agent, dedicatedReviewer ? false : pool));
+      const read = runCli(
+        opts,
+        agent,
+        candidateArgs(agent, dedicatedReviewer ? false : pool, recoverStale),
+      );
       if (!read.ok) {
         log(`scan failed for ${agent}: ${read.error}`);
         return [];
@@ -1266,10 +1285,12 @@ async function main(argv, env = process.env) {
     },
     claim: (identifier, agent) => {
       if (opts.dryRun) return { ok: true };
-      // The claim is the host's act, not a person's: the board defaults an
-      // unlabelled write to `human`, which made every loop claim look manual.
-      const moved = runCli(opts, agent, ["issue", "move", identifier, "in_progress"], { actorKind: opts.host });
-      return moved.ok ? { ok: true } : { ok: false, error: moved.error };
+      // `issue claim` is the one claim path: it handles a ready `todo` card the
+      // same way `move … in_progress` did, **and** the stale re-claim/takeover
+      // that the transition table cannot express (`in_progress → in_progress`
+      // is not a transition). The claim is the host's act, not a person's.
+      const claimed = runCli(opts, agent, ["issue", "claim", identifier], { actorKind: opts.host });
+      return claimed.ok ? { ok: true } : { ok: false, error: claimed.error };
     },
     spawnWorker: opts.dryRun ? async () => ({ ok: true, pid: null }) : spawnWorkerReal(opts, config, log),
     now: () => new Date().toISOString(),
@@ -1283,6 +1304,7 @@ async function main(argv, env = process.env) {
   const wakeForm = opts.wakeCommand === null ? `glue=${gluePresent ? opts.glue : "none"}` : `wake_command=${opts.wakeCommand}`;
   log(
     `tick: host=${opts.host} agents=${opts.agents.join(",")} claim_unassigned=${claimUnassigned ? "yes" : "no"} ` +
+      `recover_stale=${recoverStale ? "yes" : "no"} ` +
       `${wakeForm} projects_json=${opts.projectsJson}${opts.dryRun ? " (dry-run)" : ""}`,
   );
   if (!gluePresent && opts.wakeCommand === null && !opts.dryRun) {

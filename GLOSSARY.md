@@ -93,10 +93,18 @@ _Avoid_: approval, verdict
 ### Claim and execution
 
 **Claim**:
-Taking a card to work on it — the move from `todo` to `in_progress`. Claiming is atomic:
-one claimer, or none.
+Taking a card to work on it — normally the move from `todo` to `in_progress`, and also
+re-taking a stale `in_progress` claim (where the status does not change). Claiming is
+atomic: one claimer, or none.
 _中文_: 认领
 _Avoid_: assign, take, lock
+
+**Stale recovery**:
+Re-claiming an `in_progress` card whose heartbeat has expired — by its own holder after 30
+minutes, or by anyone after six hours. It is a claim, not a transition, so it goes through
+`issue claim`; a takeover leaves an audit comment naming the previous holder.
+_中文_: 过期恢复
+_Avoid_: takeover, steal, rebirth
 
 **Assignee**:
 The actor a card is routed to — whose job it is. Assignment is responsibility, not

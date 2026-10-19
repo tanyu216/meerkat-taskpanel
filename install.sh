@@ -58,6 +58,7 @@ PREFIX_HOME=""
 AGENT_NAME=""
 NO_AUTOMATION=""
 CLAIM_UNASSIGNED_FLAG=""
+RECOVER_STALE_FLAG=""
 WORKFLOW_FLAG=""
 AUTO_ACCEPT_REVIEWS_FLAG=""
 REVIEWER_FLAG=""
@@ -86,6 +87,10 @@ Options:
                     May the supervisor claim unassigned cards? Persisted to the
                     host config; also asked interactively on a TTY (default yes).
   --assignee-only   Alias for --claim-unassigned=no (claim only my own cards)
+  --recover-stale=yes|no
+                    Recover stale in_progress claims (same holder after 30 min,
+                    any agent after 6 hours). Persisted to the host config;
+                    default yes.
   --workflow=yes|no Run the supervisor's workflow sub-pass (reconcile, review
                     dispatch, applying verdicts). Persisted to the host config;
                     default yes.
@@ -265,6 +270,15 @@ while [ "$#" -gt 0 ]; do
       CLAIM_UNASSIGNED_FLAG="no"
       shift
       ;;
+    --recover-stale)
+      [ "$#" -ge 2 ] || die "--recover-stale requires a value (yes|no)"
+      RECOVER_STALE_FLAG="$2"
+      shift 2
+      ;;
+    --recover-stale=*)
+      RECOVER_STALE_FLAG="${1#*=}"
+      shift
+      ;;
     --workflow)
       [ "$#" -ge 2 ] || die "--workflow requires a value (yes|no)"
       WORKFLOW_FLAG="$2"
@@ -440,9 +454,14 @@ echo "install.sh: claim unassigned tasks: $CLAIM_UNASSIGNED"
 # The workflow channel's three answers. Like the claim policy, an explicit flag wins,
 # then the environment, then the default. A bad yes/no value is a hard error before
 # any host is dispatched — a misspelt policy must install nothing.
+RECOVER_STALE="${RECOVER_STALE_FLAG:-${MEERKAT_TASKPANEL_RECOVER_STALE:-yes}}"
 WORKFLOW="${WORKFLOW_FLAG:-${MEERKAT_TASKPANEL_WORKFLOW:-yes}}"
 AUTO_ACCEPT_REVIEWS="${AUTO_ACCEPT_REVIEWS_FLAG:-${MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS:-yes}}"
 REVIEWER="${REVIEWER_FLAG:-${MEERKAT_TASKPANEL_REVIEWER:-}}"
+case "$RECOVER_STALE" in
+  yes | no) ;;
+  *) die "--recover-stale must be yes or no (got '$RECOVER_STALE')" ;;
+esac
 case "$WORKFLOW" in
   yes | no) ;;
   *) die "--workflow must be yes or no (got '$WORKFLOW')" ;;
@@ -451,6 +470,7 @@ case "$AUTO_ACCEPT_REVIEWS" in
   yes | no) ;;
   *) die "--auto-accept-reviews must be yes or no (got '$AUTO_ACCEPT_REVIEWS')" ;;
 esac
+echo "install.sh: recover stale claims: $RECOVER_STALE"
 echo "install.sh: workflow: $WORKFLOW; reviewer: ${REVIEWER:-none}; auto-accept reviews: $AUTO_ACCEPT_REVIEWS"
 
 # Resolve the supervisor request (per-host, opt-in). An explicit flag wins; else the
@@ -538,6 +558,7 @@ FAIL $host — installer not found"
       MEERKAT_TASKPANEL_AGENT_NAME="$AGENT_NAME" \
       MEERKAT_TASKPANEL_NO_AUTOMATION="$NO_AUTOMATION" \
       MEERKAT_TASKPANEL_CLAIM_UNASSIGNED="$CLAIM_UNASSIGNED" \
+      MEERKAT_TASKPANEL_RECOVER_STALE="$RECOVER_STALE" \
       MEERKAT_TASKPANEL_WORKFLOW="$WORKFLOW" \
       MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS="$AUTO_ACCEPT_REVIEWS" \
       MEERKAT_TASKPANEL_REVIEWER="$REVIEWER" \

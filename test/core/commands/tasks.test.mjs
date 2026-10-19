@@ -1787,6 +1787,24 @@ describe("commands/tasks — listCandidates (poll read)", () => {
         ],
       );
       assert.ok(withStale.every((c) => c.status === "in_progress"), "recovery candidates report in_progress");
+
+      // The recovery pool is not scoped to the asker's own cards: past six hours
+      // any agent may take the claim over, so a third agent must be able to
+      // discover it. The 30-minute window stays holder-only.
+      ensureActor(db, "jobs");
+      const thirdParty = commands.listCandidates({ assignee: "jobs", stale: true });
+      assert.deepEqual(
+        thirdParty.map((c) => [c.identifier, c.reason]),
+        [[staleAny.identifier, "stale_any"]],
+        "another agent sees only the six-hour takeover, never the holder's 30-minute window",
+      );
+
+      // …and a name that resolves to no dictionary entry still gets the takeover
+      // pool: the six-hour rule does not depend on who is asking.
+      assert.deepEqual(
+        commands.listCandidates({ assignee: "ghost", stale: true }).map((c) => [c.identifier, c.reason]),
+        [[staleAny.identifier, "stale_any"]],
+      );
     }, { clock });
   });
 

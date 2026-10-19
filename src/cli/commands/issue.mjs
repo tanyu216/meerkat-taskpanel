@@ -296,6 +296,36 @@ export const COMMANDS = [
   },
 
   {
+    name: "claim",
+    summary: "Claim a card — including a stale in_progress claim (reuse, re-claim or takeover).",
+    op: TASK_OPS.claim,
+    usage: 'issue claim <id|identifier> [--allow-steal --reason "<why>"]',
+    positionals: [{ name: "ref", summary: "Task id or identifier." }],
+    flags: projectFlags(TASK_OPS.claim),
+    async run(ctx) {
+      const allowSteal = ctx.flags.allowSteal === true;
+      // Same audited exception as a `todo → in_progress` move: taking a card
+      // from its assignee must say why (8 characters, service-enforced again).
+      if (allowSteal && (typeof ctx.flags.reason !== "string" || ctx.flags.reason.trim().length < 8)) {
+        throw usageError('issue claim: --allow-steal needs --reason "<why>" (at least 8 characters)', {
+          fix: "say why the card is being taken from its assignee",
+        });
+      }
+      const payload = await ctx.client.post(
+        `/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}/claim`,
+        projectBody(TASK_OPS.claim, {
+          if_version: ctx.flags.ifVersion,
+          allow_steal: allowSteal,
+          reason: ctx.flags.reason,
+        }),
+      );
+      // `reuse` is not an error: the same holder asking again keeps the claim.
+      const verb = payload.reused === true ? "reused the claim on" : payload.stole === true ? "took over" : "claimed";
+      return { data: payload, human: `${verb} ${payload.task.identifier}` };
+    },
+  },
+
+  {
     name: "heartbeat",
     summary: "Pulse a claimed card so its heartbeat stays inside the fresh window.",
     op: TASK_OPS.heartbeat,

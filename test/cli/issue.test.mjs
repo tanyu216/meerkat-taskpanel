@@ -6,6 +6,8 @@
  */
 
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
+import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
 
 import { cleanupTempDirs, dataOf, errorOf, withCli } from "./helpers/cli-harness.mjs";
@@ -780,6 +782,86 @@ describe("cli/issue — `issue meta` is a merge, not a replace", () => {
       assert.equal(again.task.meta.rework_round, "2");
       assert.deepEqual(again.task.meta.acceptance, ["cli works"], "a second merge is still additive");
       assert.equal(again.task.meta.accepted_by, "loop-review");
+    });
+  });
+});
+
+describe("cli/issue — claim and stale recovery", () => {
+  /** Age a card's heartbeat directly; no CLI verb exists for making one stale. */
+  function ageHeartbeat(dataDir, identifier, iso) {
+    const db = new DatabaseSync(join(dataDir, "board.sqlite"));
+    try {
+      db.exec("PRAGMA busy_timeout = 5000");
+      db.prepare("UPDATE tasks SET heartbeat_at = ? WHERE identifier = ?").run(iso, identifier);
+    } finally {
+      db.close();
+    }
+  }
+
+  const forLinus = ["--assignee", "linus", "--assignee-kind", "agent"];
+  const asLinus = ["--agent", "linus", "--actor-kind", "claude"];
+
+  it("claims a ready card and reuses the same holder's fresh claim", async () => {
+    await board(async ({ run }) => {
+      const card = createIssue(run, forLinus);
+      const first = dataOf(run(["issue", "claim", card.task.identifier, ...asLinus, "--json"]));
+      assert.equal(first.task.status, "in_progress");
+      assert.equal(first.reused, false);
+      assert.equal(first.stole, false);
+
+      const again = dataOf(run(["issue", "claim", card.task.identifier, ...asLinus, "--json"]));
+      assert.equal(again.reused, true, "a second claim by the same holder keeps the claim");
+      assert.equal(again.task.status, "in_progress");
+    });
+  });
+
+  it("re-claims a stale claim for its holder — the one thing `move` cannot do", async () => {
+    await board(async ({ run, dataDir }) => {
+      const card = createIssue(run, forLinus);
+      dataOf(run(["issue", "claim", card.task.identifier, ...asLinus, "--json"]));
+      ageHeartbeat(dataDir, card.task.identifier, "2020-01-01T00:00:00.000Z");
+
+      // Same status is not a transition: the move route refuses it.
+      const viaMove = run(["issue", "move", card.task.identifier, "in_progress", ...asLinus, "--json"]);
+      assert.equal(viaMove.status, 1);
+      assert.equal(errorOf(viaMove).code, "INVALID_TRANSITION");
+
+      const recovered = dataOf(run(["issue", "claim", card.task.identifier, ...asLinus, "--json"]));
+      assert.equal(recovered.task.status, "in_progress");
+      assert.equal(recovered.reused, false, "the stale lock is re-taken, not reused");
+    });
+  });
+
+  it("lets another agent discover and take over past six hours", async () => {
+    await board(async ({ run, dataDir }) => {
+      const card = createIssue(run, forLinus);
+      dataOf(run(["issue", "claim", card.task.identifier, ...asLinus, "--json"]));
+      ageHeartbeat(dataDir, card.task.identifier, "2020-01-01T00:00:00.000Z");
+
+      // The recovery pool is not scoped to the asker: jobs has never seen this card.
+      const candidates = dataOf(run(["issue", "candidates", "--assignee", "jobs", "--stale", "--json"])).candidates;
+      const entry = candidates.find((candidate) => candidate.identifier === card.task.identifier);
+      assert.ok(entry, "the six-hour takeover must be discoverable by any agent");
+      assert.equal(entry.reason, "stale_any");
+
+      const took = dataOf(
+        run(["issue", "claim", card.task.identifier, "--agent", "jobs", "--actor-kind", "claude", "--json"]),
+      );
+      assert.equal(took.stole, true);
+      assert.equal(took.task.claimed_by_actor.display_name, "jobs");
+
+      // The takeover is audited as a change comment naming the previous holder.
+      const comments = dataOf(run(["comment", "list", card.task.identifier, "--json"])).comments;
+      assert.ok(comments.some((comment) => comment.kind === "change" && /linus|Linus/.test(comment.body)));
+    });
+  });
+
+  it("refuses --allow-steal without a real reason, as a usage error", async () => {
+    await board(async ({ run }) => {
+      const card = createIssue(run);
+      const refused = run(["issue", "claim", card.task.identifier, "--allow-steal", "--json"]);
+      assert.equal(refused.status, 2);
+      assert.equal(errorOf(refused).code, "CLI_USAGE");
     });
   });
 });

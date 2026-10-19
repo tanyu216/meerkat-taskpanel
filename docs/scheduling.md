@@ -54,13 +54,23 @@ prints the plan and starts neither a claim nor a worker.
 
 ## Atomic claim = the single dispatch source
 
-The board, not the supervisor, decides who gets a card. Moving a card to
-`in_progress` is compare-and-swap in SQLite, so when several agents (or several
-supervisor ticks) race the same card **exactly one claim succeeds**; every loser
-gets a conflict and, crucially, **no worker is started**. That is what makes the
-claim the *only* dispatch path — a supervisor never "reserves" a card out of band,
-never wakes a worker for a card it did not win, and never claims success on a
-failed spawn.
+The board, not the supervisor, decides who gets a card. A claim is
+compare-and-swap in SQLite (`issue claim`, or `issue move … in_progress` for a
+`todo` card), so when several agents (or several supervisor ticks) race the same
+card **exactly one claim succeeds**; every loser gets a conflict and, crucially,
+**no worker is started**. That is what makes the claim the *only* dispatch path —
+a supervisor never "reserves" a card out of band, never wakes a worker for a card
+it did not win, and never claims success on a failed spawn.
+
+`issue claim` is also the **stale-recovery** path. A claim is not always a
+transition: re-taking an `in_progress` card does not change its status, so the
+move route (whose table has no `in_progress → in_progress`) cannot express it.
+The claim verb decides between *reuse* (the same holder, fresh heartbeat),
+*re-claim* (the same holder past the 30-minute window) and *takeover* (anyone
+past the six-hour bound), and it audits a takeover with a `change` comment. The
+supervisor runs with `--recover-stale=yes` by default, adds `--stale` to the
+candidate read, and claims every candidate through `issue claim` — one path for
+ready and recovered work.
 
 This is also why there is no supervisor lock file: the service model is
 single-writer and the CAS already serialises dispatch. Two supervisors racing
@@ -1262,6 +1272,7 @@ takes the board's location from `MEERKAT_TASKPANEL_REPO` in the host config.
 | `--max-concurrency <n>` | `8` | cap on simultaneously running workers |
 | `--claim-unassigned=yes\|no` | from host config → `yes` | also claim unassigned cards (the public pool) |
 | `--assignee-only` | — | alias for `--claim-unassigned=no` |
+| `--recover-stale=yes\|no` | from host config → `yes` | also claim stale `in_progress` cards: the same holder after 30 min, any agent after 6 h |
 | `--workflow=yes\|no` | from host config → `yes` | run the workflow sub-pass (reconcile → outcomes → dispatch) |
 | `--reviewer <agent>` | from `$MEERKAT_TASKPANEL_REVIEWER`, else unset | the independent reviewer; unset disables dispatch only |
 | `--auto-accept-reviews=yes\|no` | from host config → `yes` | let the loop close a review card after applying its verdict; `no` leaves it for a human |
@@ -1307,12 +1318,20 @@ and remembers the answer in the host config file:
 ```ini
 # <home>/<host-dir>/meerkat-taskpanel.env
 MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes
+MEERKAT_TASKPANEL_RECOVER_STALE=yes
 ```
 
 Precedence when the supervisor resolves it: `--claim-unassigned` flag →
 `$MEERKAT_TASKPANEL_CLAIM_UNASSIGNED` → the config file → default `yes`. A non-interactive
 install defaults to **yes**; `--claim-unassigned=no` / `--assignee-only`
 persist `no`.
+
+**Stale recovery is a second opt-out**, resolved the same way:
+`--recover-stale` → `$MEERKAT_TASKPANEL_RECOVER_STALE` → the config file → `yes`. With it
+on, the poll's candidate read includes `--stale` and every wake claims through
+`issue claim`; with it off, the loop never takes over an `in_progress` card and the SLA
+alert is the only signal. The two policies are independent: an assignee-only supervisor can
+still recover its own stale claims, and a public-pool supervisor can refuse takeovers.
 
 The same three-source precedence governs the workflow channel's answers, persisted beside
 it:

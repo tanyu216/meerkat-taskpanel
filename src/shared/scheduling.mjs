@@ -100,6 +100,31 @@ export function resolveClaimUnassigned(input = {}) {
   return true;
 }
 
+/**
+ * The effective stale-recovery policy.
+ *
+ * A stale `in_progress` card (heartbeat past the same-holder bound, or past the
+ * six-hour takeover bound) is offered by `issue candidates --stale` and claimed
+ * through `issue claim`. Like the public pool, it is an opt-out: a supervisor
+ * that should never take over somebody else's card runs with `no`.
+ *
+ * Precedence is the same as `resolveClaimUnassigned`: **flag > environment >
+ * installer's host config > default on**.
+ *
+ * @param {{flag?: unknown, env?: unknown, file?: Record<string, string>|null}} [input]
+ * @returns {boolean}
+ */
+export function resolveRecoverStale(input = {}) {
+  const fromFlag = parseYesNo(input.flag);
+  if (fromFlag !== null) return fromFlag;
+  const fromEnv = parseYesNo(input.env);
+  if (fromEnv !== null) return fromEnv;
+  const file = input.file ?? null;
+  const fromFile = parseYesNo(file === null ? undefined : file.MEERKAT_TASKPANEL_RECOVER_STALE);
+  if (fromFile !== null) return fromFile;
+  return true;
+}
+
 /** Default cap on writes one workflow pass may perform. */
 export const DEFAULT_WORKFLOW_MAX_ACTIONS = 20;
 /** Default age, in minutes, before a silent review card is reported. */
@@ -326,17 +351,23 @@ export function pruneRegistry(registry, isAlive) {
 }
 
 /**
- * The `taskctl issue candidates` argv for one agent. `--include-unassigned`
- * asks the board for the public pool (unassigned, claimable cards) as well as
- * the agent's own — the same read, one process, no extra policy here.
+ * The `taskctl issue candidates` argv for one agent.
+ *
+ * `--include-unassigned` asks the board for the public pool (unassigned,
+ * claimable cards) as well as the agent's own; `--stale` asks for the recovery
+ * pool (in_progress cards whose heartbeat is past the holder bound, or past the
+ * six-hour takeover bound for anyone). Each is a read flag — the *claim* is
+ * still the board's decision, via `issue claim`.
  *
  * @param {string} agent
  * @param {boolean} claimUnassigned
+ * @param {boolean} [recoverStale]
  * @returns {string[]}
  */
-export function candidateArgs(agent, claimUnassigned) {
+export function candidateArgs(agent, claimUnassigned, recoverStale = false) {
   const args = ["issue", "candidates", "--assignee", String(agent)];
   if (claimUnassigned) args.push("--include-unassigned");
+  if (recoverStale) args.push("--stale");
   return args;
 }
 

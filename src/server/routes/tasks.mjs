@@ -80,6 +80,15 @@ const PATCH_BODY = project(TASK_OPS.update);
 
 /** `POST /api/v1/tasks/:ref/move` — the transition, plus the audited waiver (F-B1). */
 const MOVE_BODY = project(TASK_OPS.move);
+/**
+ * `POST /api/v1/tasks/:ref/claim` — the claim/reclaim verb.
+ *
+ * A claim is not always a transition: a stale `in_progress` claim is reused,
+ * re-claimed or taken over **without the status changing**, so it cannot ride
+ * the move route (the transition table has no `in_progress → in_progress`).
+ * This is the wire face of `commands.claim`.
+ */
+const CLAIM_BODY = project(TASK_OPS.claim);
 
 /**
  * `POST /api/v1/tasks/:ref/deliver` — the report, or the waiver that replaces it.
@@ -294,6 +303,25 @@ export function registerTaskRoutes(router, surface) {
     });
     return { ...taskPayload(repos, task), status: task.status };
   }, { body: MOVE_BODY });
+
+  // The claim/reclaim verb. `performClaim` decides between reuse, a stale
+  // re-claim, and a takeover; the route only forwards the actor's intent.
+  router.post("/api/v1/tasks/:ref/claim", ({ params, body, actor }) => {
+    const current = resolveTask(repos, params.ref);
+    const result = commands.claim({
+      id: current.id,
+      ifVersion: body.if_version,
+      allowSteal: body.allow_steal === true,
+      reason: body.reason,
+      actor,
+    });
+    return {
+      ...taskPayload(repos, result.task),
+      status: result.task.status,
+      reused: result.reused === true,
+      stole: result.stole === true,
+    };
+  }, { body: CLAIM_BODY });
 
   router.post("/api/v1/tasks/:ref/deliver", ({ params, body, actor, session, seg }) => {
     const current = resolveTask(repos, params.ref);

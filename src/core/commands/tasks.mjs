@@ -949,7 +949,11 @@ function orderedCandidates(ctx, input = {}) {
   const includeUnassigned = input.includeUnassigned === true;
   const ids = assigneeEntryIds(ctx, assignee);
   const order = resolveOrder(input.order, input.orderDebug === true);
-  if (ids.length === 0 && !includeUnassigned) return { candidates: [], orderDebug: order === "weight" ? [] : null };
+  // An unknown assignee still has a recovery pool: the 6-hour takeover does not
+  // depend on the asker owning the card.
+  if (ids.length === 0 && !includeUnassigned && input.stale !== true) {
+    return { candidates: [], orderDebug: order === "weight" ? [] : null };
+  }
 
   const now = ctx.now();
   const isAssignee = (task) => isAutoClaimableKind(task.kind) && ids.includes(task.assigneeId);
@@ -961,11 +965,17 @@ function orderedCandidates(ctx, input = {}) {
         .list({ status: STATUS.TODO, unassignedOnly: true, limit: null })
         .filter((task) => isAutoClaimableKind(task.kind))
     : [];
+  // The recovery pool is **not** scoped to the asker's own cards: past the
+  // six-hour bound any agent may take a stale claim over, so an agent that has
+  // never seen the card must be able to discover it. `staleReason` keeps the
+  // 30-minute window holder-only (`stale_same`) — an agent cannot take a card
+  // from a live holder early.
   const stale =
-    input.stale === true && ids.length > 0
+    input.stale === true
       ? ctx.repos.tasks
-          .list({ status: STATUS.IN_PROGRESS, assigneeId: ids, limit: null })
-          .filter((task) => isAssignee(task) && staleReason(task, ids, now) !== null)
+          .list({ status: STATUS.IN_PROGRESS, limit: null })
+          .filter((task) => isAutoClaimableKind(task.kind))
+          .filter((task) => staleReason(task, ids, now) !== null)
       : [];
 
   // One batched edge read for every pool, not one per card (R16).
