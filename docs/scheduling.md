@@ -255,6 +255,17 @@ unlike the delivery gate, whose evidence is the report table — no `tasks` trig
 it. Both limits are properties of the board's attribution model, and improving them means
 authenticating agents, not adding a rule to the same layer.
 
+### Known limits
+
+- **One host per supervisor.** The reviewer is woken by the same supervisor and the same
+  host CLI as the workers; a cross-host reviewer (`--reviewer-host`) is not implemented.
+  If review needs a different runtime, run a second supervisor with its own `--reviewer`
+  on that host.
+- **The reviewer's tool surface is a prompt boundary.** The board enforces acceptance
+  authority, and the loop checks report attribution, but the reviewer's own permission
+  model is the host's (the wake handoff tells it to move nothing; a hard tool allowlist is
+  deployment work, not something this loop configures).
+
 ### Rejecting an epic: the fix child comes first
 
 `rollup.mjs#assessClose` closes a container from `todo` / `in_progress` / `blocked` the
