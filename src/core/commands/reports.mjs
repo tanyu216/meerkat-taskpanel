@@ -17,6 +17,7 @@ import { assertTransition } from "../domain/status.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { assertAcceptance, assertChildrenTerminal, assertReviewReady } from "./acceptance.mjs";
 import { actorOf } from "./context.mjs";
+import { insertDeliveryReport } from "./delivery-report.mjs";
 import { resolveActorId } from "./dictionary.mjs";
 import { advanceContainerForChild, hasChildStarted, startContainerForChild } from "./rollup.mjs";
 
@@ -65,12 +66,9 @@ export function writeReport(ctx, input) {
         },
       );
 
-      const report = ctx.repos.reports.insert({
-        ...prepared,
+      const report = insertDeliveryReport(ctx, {
         taskId: task.id,
-        // An explicit origin: this is the delivery writer, and the gate must
-        // never have to guess that (0008).
-        origin: "delivery",
+        prepared,
         seg: prepared.seg ?? input.seg ?? null,
         sessionId: prepared.sessionId ?? input.sessionId ?? null,
       });
@@ -171,11 +169,9 @@ export function deliver(ctx, input) {
           now,
         },
       );
-      const report = ctx.repos.reports.insert({
-        ...prepared,
+      const report = insertDeliveryReport(ctx, {
         taskId: task.id,
-        // The delivery writer: this row is what the gate will accept (0008).
-        origin: "delivery",
+        prepared,
         seg: prepared.seg ?? input.seg ?? null,
         sessionId: prepared.sessionId ?? input.sessionId ?? null,
       });

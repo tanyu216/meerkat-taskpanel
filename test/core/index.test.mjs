@@ -72,6 +72,8 @@ const PLANNED = [
   "commands/tasks.mjs",
   "commands/tasks-input.mjs",
   "commands/reports.mjs",
+  // The one delivery-shaped report insert, shared by reports/ and rollup/.
+  "commands/delivery-report.mjs",
   // M6 — the acceptance guards shared by moveStatus and deliver.
   "commands/acceptance.mjs",
   "commands/comments.mjs",

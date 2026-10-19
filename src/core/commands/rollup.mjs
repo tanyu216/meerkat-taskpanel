@@ -78,6 +78,7 @@ import { normalizeReportCreate } from "../domain/report.mjs";
 import { assertTransition, isTerminalStatus } from "../domain/status.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { BOARD_ACTOR } from "./context.mjs";
+import { insertDeliveryReport } from "./delivery-report.mjs";
 import { resolveActorId } from "./dictionary.mjs";
 
 /** The container statuses the board may close from. */
@@ -196,14 +197,7 @@ export function advanceContainer(ctx, containerId, now, options = {}) {
     { ...rollupReport(ctx, container, plan.children, plan.evidence), author },
     { taskRound: container.deliveryRound, now },
   );
-  const report = ctx.repos.reports.insert({
-    ...prepared,
-    taskId: container.id,
-    // The delivery writer: this row is what the gate accepts (0008 / 0020).
-    origin: "delivery",
-    seg: null,
-    sessionId: null,
-  });
+  const report = insertDeliveryReport(ctx, { taskId: container.id, prepared });
   const moved = ctx.repos.tasks.moveCas({
     id: container.id,
     to: STATUS.IN_REVIEW,

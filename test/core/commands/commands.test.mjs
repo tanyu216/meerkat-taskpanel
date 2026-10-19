@@ -9,6 +9,9 @@ import test, { after, describe, it } from "node:test";
 
 import * as commandsModule from "../../../src/core/commands/index.mjs";
 import { FORBIDDEN_DICTIONARY_COMMANDS, createCommands, createContext } from "../../../src/core/commands/index.mjs";
+import { insertDeliveryReport } from "../../../src/core/commands/delivery-report.mjs";
+import { resolveActorId } from "../../../src/core/commands/dictionary.mjs";
+import { normalizeReportCreate } from "../../../src/core/domain/report.mjs";
 import { createRepositories } from "../../../src/core/storage/repositories/index.mjs";
 import {
   TS,
@@ -387,6 +390,39 @@ describe("commands — the project surface", () => {
     await board(({ commands }) => {
       assert.equal(commands.getProject({ id: "proj" }).createdAt, TS2);
     }, { clock: () => TS2 });
+  });
+});
+
+describe("commands/delivery-report — the one delivery-shaped insert", () => {
+  it("stamps origin=delivery and threads seg/sessionId through", async () => {
+    await board(({ ctx, repos, commands }) => {
+      const task = commands.createTask({ projectId: "proj", title: "x", actor: AGENT });
+      // `task_reports.author_id` references `actors(id)` (0020), so the author
+      // is resolved the way every delivery path resolves it before preparing.
+      const authorId = resolveActorId({ repos, now: TS }, { name: AGENT.id, actorKind: AGENT.kind });
+      const prepared = normalizeReportCreate(
+        { ...report(), author: { kind: AGENT.kind, id: authorId } },
+        { taskRound: task.deliveryRound, now: TS },
+      );
+
+      const withSession = insertDeliveryReport(ctx, {
+        taskId: task.id,
+        prepared,
+        seg: "s1",
+        sessionId: "sess",
+      });
+      assert.equal(withSession.origin, "delivery");
+      assert.equal(withSession.taskId, task.id);
+      assert.equal(withSession.seg, "s1");
+      assert.equal(withSession.sessionId, "sess");
+
+      // One report per (task, round), so the no-session half gets its own card.
+      const other = commands.createTask({ projectId: "proj", title: "y", actor: AGENT });
+      const bare = insertDeliveryReport(ctx, { taskId: other.id, prepared });
+      assert.equal(bare.origin, "delivery");
+      assert.equal(bare.seg, null);
+      assert.equal(bare.sessionId, null);
+    });
   });
 });
 
