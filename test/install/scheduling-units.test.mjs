@@ -61,12 +61,12 @@ function isExecutable(path) {
 function scheduledPaths(home, hostDir, host) {
   const base = join(home, hostDir);
   return {
-    pollPlist: join(base, "scheduling", "launchd", "com.meerkat-taskpanel.poll.plist"),
-    patrolPlist: join(base, "scheduling", "launchd", "com.meerkat-taskpanel.patrol.plist"),
-    pollService: join(base, "scheduling", "systemd", "meerkat-taskpanel-poll.service"),
-    pollTimer: join(base, "scheduling", "systemd", "meerkat-taskpanel-poll.timer"),
-    patrolService: join(base, "scheduling", "systemd", "meerkat-taskpanel-patrol.service"),
-    patrolTimer: join(base, "scheduling", "systemd", "meerkat-taskpanel-patrol.timer"),
+    pingPlist: join(base, "scheduling", "launchd", "com.meerkat-taskpanel.ping.plist"),
+    continuePlist: join(base, "scheduling", "launchd", "com.meerkat-taskpanel.continue.plist"),
+    pingService: join(base, "scheduling", "systemd", "meerkat-taskpanel-ping.service"),
+    pingTimer: join(base, "scheduling", "systemd", "meerkat-taskpanel-ping.timer"),
+    continueService: join(base, "scheduling", "systemd", "meerkat-taskpanel-continue.service"),
+    continueTimer: join(base, "scheduling", "systemd", "meerkat-taskpanel-continue.timer"),
     cron: join(base, "scheduling", "cron", "meerkat-taskpanel.cron"),
     wake: join(base, "bin", `wake-${host}.sh`),
   };
@@ -116,7 +116,7 @@ describe("install.sh: scheduling units", () => {
       { ...process.env, PATH: `${bin}:${process.env.PATH}` },
     );
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, /scheduling[\\/]launchd[\\/]com\.meerkat-taskpanel\.poll\.plist/);
+    assert.match(run.stdout, /scheduling[\\/]launchd[\\/]com\.meerkat-taskpanel\.ping\.plist/);
     assert.equal(existsSync(join(home, ".claude")), false, "dry run must not write");
   });
 
@@ -139,28 +139,35 @@ describe("install.sh: scheduling units", () => {
     // moved, renamed or removed (T-20261012-163500-loopdecouple-c).
     const supervisorPath = join(loopDir, "scripts", "supervisor.mjs");
 
-    // launchd — poll every 60s, patrol every 300s, both pointing at the supervisor.
-    const pollPlist = readFileSync(paths.pollPlist, "utf8");
-    assert.match(pollPlist, /<key>StartInterval<\/key>\s*<integer>60<\/integer>/);
-    assert.ok(pollPlist.includes("--once"), "the poll unit runs a single tick");
-    assert.ok(pollPlist.includes(supervisorPath), "the poll unit names the host's supervisor copy");
-    assert.ok(pollPlist.includes(logPath), "the fixed log path must be rendered in");
+    // launchd — ping every 60s, continue every 600s, both pointing at the supervisor.
+    const pingPlist = readFileSync(paths.pingPlist, "utf8");
+    assert.match(pingPlist, /<key>StartInterval<\/key>\s*<integer>60<\/integer>/);
+    assert.ok(pingPlist.includes("--ping-only"), "the ping unit runs the liveness pass only");
+    assert.ok(pingPlist.includes("--once"), "the ping unit runs a single pass");
+    assert.ok(pingPlist.includes(supervisorPath), "the ping unit names the host's supervisor copy");
+    assert.ok(pingPlist.includes(logPath), "the fixed log path must be rendered in");
 
-    const patrolPlist = readFileSync(paths.patrolPlist, "utf8");
-    assert.match(patrolPlist, /<key>StartInterval<\/key>\s*<integer>300<\/integer>/);
-    assert.ok(patrolPlist.includes("--patrol-only"), "the patrol unit runs the patrol pass only");
+    const continuePlist = readFileSync(paths.continuePlist, "utf8");
+    assert.match(continuePlist, /<key>StartInterval<\/key>\s*<integer>600<\/integer>/);
+    assert.ok(continuePlist.includes("--continue-only"), "the continue unit runs the judgment turn only");
 
     // systemd — a oneshot service driven by a timer.
-    assert.match(readFileSync(paths.pollTimer, "utf8"), /OnUnitActiveSec=60s/);
-    assert.match(readFileSync(paths.patrolTimer, "utf8"), /OnUnitActiveSec=300s/);
-    assert.match(readFileSync(paths.pollService, "utf8"), /Type=oneshot/);
-    assert.ok(readFileSync(paths.patrolService, "utf8").includes("--patrol-only"));
+    assert.match(readFileSync(paths.pingTimer, "utf8"), /OnUnitActiveSec=60s/);
+    assert.match(readFileSync(paths.continueTimer, "utf8"), /OnUnitActiveSec=600s/);
+    assert.match(readFileSync(paths.pingService, "utf8"), /Type=oneshot/);
+    assert.ok(readFileSync(paths.continueService, "utf8").includes("--continue-only"));
 
-    // cron — a 1-minute poll line and a 5-minute patrol line.
+    // cron — a 1-minute ping line and a 10-minute continue line.
     const cron = readFileSync(paths.cron, "utf8");
-    assert.match(cron, /^\* \* \* \* \*/m);
-    assert.match(cron, /^\*\/5 \* \* \* \*/m);
+    assert.match(cron, /^\* \* \* \* \* .*--ping-only --once/m);
+    assert.match(cron, /^\*\/10 \* \* \* \* .*--continue-only --once/m);
     assert.ok(cron.includes(supervisorPath));
+    assert.ok(!cron.includes("--patrol-only"));
+    assert.doesNotMatch(
+      cron,
+      /supervisor\.mjs --host claude --agent alice --once --log/,
+      "the bare legacy poll line must be gone",
+    );
 
     // No unit names the checkout. Before the host-local copy every unit carried the
     // absolute `<checkout>/scripts/supervisor.mjs`, which is exactly what made moving
@@ -170,6 +177,16 @@ describe("install.sh: scheduling units", () => {
       const body = readFileSync(path, "utf8");
       assert.ok(!body.includes(ROOT), `${name} must not name the checkout (${ROOT})`);
       assert.ok(!body.includes("{{"), `${name} must be fully rendered`);
+    }
+
+    // The old topology is gone from a fresh install.
+    for (const legacy of [
+      join(home, ".claude", "scheduling", "launchd", "com.meerkat-taskpanel.poll.plist"),
+      join(home, ".claude", "scheduling", "launchd", "com.meerkat-taskpanel.patrol.plist"),
+      join(home, ".claude", "scheduling", "systemd", "meerkat-taskpanel-poll.timer"),
+      join(home, ".claude", "scheduling", "systemd", "meerkat-taskpanel-patrol.timer"),
+    ]) {
+      assert.equal(existsSync(legacy), false, `legacy unit must not be written: ${legacy}`);
     }
 
     // wake glue — headless claude with resume support.
@@ -301,7 +318,7 @@ describe("install.sh: scheduling units", () => {
 
     const paths = scheduledPaths(home, ".agents", "pi");
     assert.ok(existsSync(paths.wake), "wake-pi.sh missing");
-    assert.ok(existsSync(paths.pollPlist), "pi scheduling units missing");
+    assert.ok(existsSync(paths.pingPlist), "pi scheduling units missing");
     assert.ok(existsSync(join(home, ".agents", "meerkat-taskpanel.env")), "pi config missing");
   });
 
@@ -394,10 +411,10 @@ describe("install.sh: scheduling units", () => {
     assert.equal(runInstall(["--target", "claude", "--agent-name", "alice"], env).status, 0);
 
     const paths = scheduledPaths(home, ".claude", "claude");
-    const before = readFileSync(paths.pollPlist, "utf8");
+    const before = readFileSync(paths.pingPlist, "utf8");
     const again = runInstall(["--target", "claude", "--agent-name", "alice"], env);
     assert.equal(again.status, 0, again.stderr);
-    assert.equal(readFileSync(paths.pollPlist, "utf8"), before);
+    assert.equal(readFileSync(paths.pingPlist, "utf8"), before);
   });
 });
 

@@ -49,7 +49,7 @@ describe("loop skill: the generated payload", () => {
     assert.equal(report.manifest.state, "equal", "body/manifest.txt must match the computed closure");
   });
 
-  it("generates the body as the closure of its two entry points", async () => {
+  it("generates the body as the closure of its entry points", async () => {
     const report = await syncLoop({ root: ROOT, check: true });
 
     for (const root of LOOP_BODY_ROOTS) {
@@ -79,6 +79,14 @@ describe("loop skill: the generated payload", () => {
     const body = bodyClosure();
     for (const rel of [
       "scripts/supervisor.mjs",
+      "scripts/loop/options.mjs",
+      "scripts/loop/runtime.mjs",
+      "scripts/loop/runners.mjs",
+      "scripts/loop/board.mjs",
+      "scripts/loop/poll.mjs",
+      "scripts/loop/patrol.mjs",
+      "scripts/loop/workflow.mjs",
+      "scripts/loop/continue.mjs",
       "scripts/wake-cwd.mjs",
       "src/shared/scheduling.mjs",
       "src/shared/sla-patrol.mjs",

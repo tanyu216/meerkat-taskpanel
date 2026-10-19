@@ -265,24 +265,44 @@ The loop is the part that keeps a board moving when no agent is watching. Its vo
 its own and does not appear in the board's wire surface.
 
 **Supervisor**:
-The host-external process that watches the board and starts workers. It runs outside the
-agent host, but it is neither the board service nor an agent itself.
-_中文_: 监督进程
-_Avoid_: daemon (that is the board service), scheduler, cron
+The host-external **scheduler**. It owns two clocks — ping and continue — and performs no
+board I/O of its own. It runs outside the agent host, but it is neither the board service
+nor an agent itself.
+_中文_: 监督进程（调度器）
+_Avoid_: daemon (that is the board service), cron; and do not call it the thing that polls
+
+**Ping**:
+The high-frequency liveness clock. It prunes worker-registry entries whose pid is gone:
+no board read, no claim, no LLM turn.
+_中文_: 存活检查
+_Avoid_: poll (it finds no work), heartbeat (that is the card's, not the process's)
+
+**Continue**:
+The low-frequency judgment clock. It wakes the host with a bounded `继续` prompt; that
+turn runs the deterministic entries (patrol, workflow, poll). It is the one LLM turn the
+scheduler pays for per cadence.
+_中文_: 继续回合
+_Avoid_: patrol (patrol is one of the entries the turn runs), wake (a wake is for a card)
 
 **Poll**:
-The frequent scan for new claimable work. Its only job is to find work and dispatch it.
+The deterministic entry that scans for new claimable work, claims atomically and wakes a
+worker. It is **not scheduled**; the continue turn runs it, and a human can run it too.
 _中文_: 轮询
-_Avoid_: tick, scan, sweep
+_Avoid_: tick, scan, sweep; do not call the scheduler's ping clock a poll
 
 **Patrol**:
-The slower pass with two halves. Its **SLA half** finds work already *stuck* — stale
-claims, overdue waits, a silent inspector — and raises alerts without moving a card. Its
-**workflow half** is the loop's one writing channel: it reconciles containers, dispatches
-reviews and applies verdicts. Say which half a sentence is about; "the patrol never moves
-a card" is only true of the SLA half.
+The deterministic entry for work already *stuck* — stale claims, overdue waits, a silent
+inspector. It raises alerts and moves no card. It is not scheduled; the continue turn runs
+it. The writing channel is a separate entry, **workflow**.
 _中文_: 巡检
-_Avoid_: audit, sweep, health check
+_Avoid_: audit, sweep, health check; do not call the whole loop "the patrol"
+
+**Workflow**:
+The loop's writing entry: reconcile containers, dispatch review cards, apply a reviewer's
+verdict and close the review card. It runs as `system` and is not scheduled; the continue
+turn runs it after patrol.
+_中文_: 工作流通道
+_Avoid_: workflow engine, pipeline; SLA alerts are not part of it
 
 **Review card**:
 An ordinary `task` card that audits another card: it records `review_of` (the original),

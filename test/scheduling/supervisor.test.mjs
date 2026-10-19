@@ -49,6 +49,7 @@ import {
   runPatrolTick,
   runPollTick,
   runWorkflowTick,
+  selectMode,
   saveLastOk,
   saveSlaLedger,
   spawnWorkerReal,
@@ -1592,8 +1593,87 @@ describe("supervisor module", () => {
     // directory is *not* named "meerkat-taskpanel". Loading by URL proves the module is
     // importable in place; the export check proves it is the runner, not a stub.
     const mod = await import(SUPERVISOR_URL.href);
-    for (const name of ["runPollTick", "runPatrolTick", "parseArgs", "loadRegistry", "saveRegistry", "planWakeInvocation", "spawnWorkerReal"]) {
+    for (const name of [
+      "runPollTick", "runPatrolTick", "parseArgs", "loadRegistry", "saveRegistry",
+      "planWakeInvocation", "spawnWorkerReal", "selectMode", "runPingTick",
+      "buildContinuePrompt", "planContinueInvocation",
+    ]) {
       assert.equal(typeof mod[name], "function", `missing export: ${name}`);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The scheduler's two clocks
+// ---------------------------------------------------------------------------
+
+describe("the scheduler's two clocks", () => {
+  const ENV = { HOME: "/home/alice" };
+
+  it("selects ping / continue / patrol / the legacy poll / daemon", () => {
+    assert.equal(selectMode(parseArgs(["--host", "claude", "--ping-only", "--once"], ENV)), "ping");
+    assert.equal(selectMode(parseArgs(["--host", "claude", "--continue-only", "--once"], ENV)), "continue");
+    assert.equal(selectMode(parseArgs(["--host", "claude", "--patrol-only", "--once"], ENV)), "patrol");
+    assert.equal(selectMode(parseArgs(["--host", "claude", "--once"], ENV)), "poll");
+    assert.equal(selectMode(parseArgs(["--host", "claude"], ENV)), null);
+  });
+
+  it("defaults to a 60s ping and a 600s continue", () => {
+    const opts = parseArgs(["--host", "claude"], ENV);
+    assert.equal(opts.pingInterval, 60);
+    assert.equal(opts.continueInterval, 600);
+    assert.equal(opts.patrolInterval, 300, "the SLA measurement period did not move");
+  });
+
+  it("takes the cadences from flags, environment and the host config", () => {
+    const flagged = parseArgs(["--host", "claude", "--ping-interval", "30", "--continue-interval", "900"], ENV);
+    assert.equal(flagged.pingInterval, 30);
+    assert.equal(flagged.continueInterval, 900);
+
+    const fromEnv = parseArgs(["--host", "claude"], {
+      ...ENV,
+      MEERKAT_TASKPANEL_PING_INTERVAL: "45",
+      MEERKAT_TASKPANEL_CONTINUE_INTERVAL: "120",
+    });
+    assert.equal(fromEnv.pingInterval, 45);
+    assert.equal(fromEnv.continueInterval, 120);
+
+    const dir = mkdtempSync(join(tmpdir(), "tp-clocks-"));
+    try {
+      const config = join(dir, "meerkat-taskpanel.env");
+      writeFileSync(config, "MEERKAT_TASKPANEL_CONTINUE_INTERVAL=240\nMEERKAT_TASKPANEL_PING_INTERVAL=90\n");
+      const opts = parseArgs(["--host", "claude", "--config", config], ENV);
+      assert.equal(opts.continueInterval, 240);
+      assert.equal(opts.pingInterval, 90);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("carries --continue=no as the raw flag the policy resolver reads", () => {
+    assert.equal(parseArgs(["--host", "claude", "--continue=no"], ENV).continue, "no");
+  });
+
+  it("rejects a selector without --once, and two selectors", () => {
+    assert.throws(
+      () => selectMode(parseArgs(["--host", "claude", "--ping-only"], ENV)),
+      /requires --once/,
+    );
+    assert.throws(
+      () => selectMode(parseArgs(["--host", "claude", "--ping-only", "--continue-only", "--once"], ENV)),
+      /choose one of/,
+    );
+  });
+
+  it("maps the deprecated --poll-interval onto the ping clock", () => {
+    const opts = parseArgs(["--host", "claude", "--poll-interval", "45"], ENV);
+    assert.equal(opts.pingInterval, 45);
+    assert.equal(opts.legacyPollInterval, true);
+  });
+
+  it("places the continue lock beside the state file, never inside it", () => {
+    const opts = parseArgs(["--host", "claude", "--state", "/tmp/state.json"], ENV);
+    assert.equal(opts.continueState, "/tmp/continue.state.json");
+    assert.notEqual(opts.continueState, opts.state);
   });
 });

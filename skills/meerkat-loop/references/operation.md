@@ -36,8 +36,8 @@ carried the board's constraints. Split apart:
 | Artefact | Where | What it is |
 |---|---|---|
 | loop skill | `<host>/skills/meerkat-loop/` | this skill — body, templates, gate. Always **copied**, never symlinked |
-| execution body | `<host>/meerkat-taskpanel/scripts/supervisor.mjs` + `.../scripts/wake-cwd.mjs` + `.../src/shared/*.mjs` | the copy the units run; its closure is listed in this skill's `body/manifest.txt` |
-| units | `<host>/scheduling/{launchd,systemd,cron}/` | `StartInterval` 60 (poll) and 300 (patrol) units. Each names the **absolute `node`** it was rendered with and carries a **`PATH`** (host CLI's directory + node's, then the scheduler's default) — a scheduler runs a unit with a minimal `PATH` that has neither, so `env node` is exit 127 and the wake glue's `exec claude` fails on it too |
+| execution body | `<host>/meerkat-taskpanel/scripts/supervisor.mjs` + `.../scripts/loop/*.mjs` + `.../scripts/wake-cwd.mjs` + `.../src/shared/*.mjs` | the copy the units run; its closure is listed in this skill's `body/manifest.txt` |
+| units | `<host>/scheduling/{launchd,systemd,cron}/` | `StartInterval` 60 (ping) and 600 (continue) units. Each names the **absolute `node`** it was rendered with and carries a **`PATH`** (host CLI's directory + node's, then the scheduler's default) — a scheduler runs a unit with a minimal `PATH` that has neither, so `env node` is exit 127 and the continue turn's host CLI fails on it too |
 | wake glue | `<host>/bin/wake-<host>.sh` | resolves the card's project directory from the skill's `projects.json`, then runs `claude -p` / `codex exec` / `pi --print` |
 | host config | `<host>/meerkat-taskpanel.env` | the claim-unassigned and stale-recovery policies, `MEERKAT_TASKPANEL_REPO` — where the board engine lives — and the workflow channel's three answers (`WORKFLOW`, `AUTO_ACCEPT_REVIEWS`, `REVIEWER`) |
 | runtime | `<host>/meerkat-taskpanel/{supervisor.log,supervisor.state.json}` | the tick log and the running registry |
@@ -50,10 +50,10 @@ a daemon is the operator's call:
 
 ```bash
 # macOS
-launchctl load ~/.claude/scheduling/launchd/com.meerkat-taskpanel.poll.plist   # and .patrol.plist
+launchctl load ~/.claude/scheduling/launchd/com.meerkat-taskpanel.ping.plist   # and .continue.plist
 # Linux (user units)
 mkdir -p ~/.config/systemd/user && cp ~/.claude/scheduling/systemd/* ~/.config/systemd/user/
-systemctl --user enable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer
+systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer
 # Anywhere
 crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 ```
@@ -72,8 +72,15 @@ the checkout does not invalidate them and reloading is never required.
 ## Running the supervisor by hand
 
 ```bash
-node <host>/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --once
-node <host>/meerkat-taskpanel/scripts/supervisor.mjs --agent alice --dry-run --once
+# The scheduler owns both clocks; no board work happens here.
+node <host>/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice
+node <host>/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --ping-only --once
+node <host>/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --continue-only --once
+
+# The deterministic entries run on their own too — this is what the continue turn does.
+node <host>/meerkat-taskpanel/scripts/loop/patrol.mjs   --host claude --agent alice
+node <host>/meerkat-taskpanel/scripts/loop/workflow.mjs --host claude --agent alice
+node <host>/meerkat-taskpanel/scripts/loop/poll.mjs     --host claude --agent alice
 ```
 
 A bare `node` is right *here*, because you are in your own shell and it is your `PATH` that
@@ -85,7 +92,11 @@ they name an absolute interpreter and set their own `PATH`.
 | `--agent <name>` | `$TASKCTL_AGENT` → `$USER` | agent(s) to work for; repeatable / comma-separated |
 | `--host claude\|codex\|pi` | `claude` | which worker to wake |
 | `--repo <path>` | the host config's `MEERKAT_TASKPANEL_REPO` | where `--cli` is resolved from, and the fallback working directory |
-| `--poll-interval <sec>` / `--patrol-interval <sec>` | `60` / `300` | loop cadences |
+| `--ping-interval <sec>` | `60` | liveness clock: prune dead worker pids; no board read |
+| `--continue-interval <sec>` | `600` | judgment clock: wake the host for one `继续` turn |
+| `--continue=yes\|no` | from the host config → `yes` | enable the continue turn |
+| `--continue-state <path>` | `continue.state.json` beside `--state` | the single-flight continue lock |
+| `--patrol-interval <sec>` | `300` | the SLA **measurement** period; it no longer schedules anything |
 | `--max-concurrency <n>` | `8` | cap on simultaneously running workers |
 | `--claim-unassigned=yes\|no` | from the host config → `yes` | also claim unassigned cards (the public pool) |
 | `--recover-stale=yes\|no` | from the host config → `yes` | also claim stale `in_progress` cards — the same holder after 30 min, any agent after 6 h — through `issue claim` |
@@ -94,7 +105,9 @@ they name an absolute interpreter and set their own `PATH`.
 | `--auto-accept-reviews=yes\|no` | from the host config → `yes` | let the loop close a review card after applying its verdict. `no` leaves it in `in_review` for a human; the verdict on the original is still applied |
 | `--workflow-max-actions <n>` | `20` | cap on writes one workflow pass performs |
 | `--review-aging-minutes <n>` | `60` | report a review card that has had no readable verdict this long |
-| `--once` / `--patrol-only` | off | one tick (for cron / launchd / systemd); patrol pass only |
+| `--once` | off | one pass, then exit. With no selector this is the **legacy poll pass**; the installed units use `--ping-only` / `--continue-only` |
+| `--ping-only` / `--continue-only` | off | with `--once`, run only that clock's pass |
+| `--patrol-only` | off | with `--once`, run only the SLA patrol pass (legacy units) |
 | `--notify <cmd>` | — | run `<cmd>` with each patrol alert as JSON on stdin (the legacy heartbeat alert and the SLA tuple) |
 | `--dry-run` | off | print intended actions; claim nothing, spawn nothing |
 | `--sla-ledger <path>` | `sla-ledger.json` beside `--state` | the SLA de-duplication ledger; an unreadable one suppresses nothing |
@@ -107,18 +120,19 @@ The full table, and the tick's flow, are in the repository's `docs/scheduling.md
 
 ## The workflow channel
 
-The patrol has two halves with two different powers, and the distinction is load-bearing:
+Two passes with two different powers, and the distinction is load-bearing:
 
 - **the SLA rows are notify-only.** No alert moves a card, releases a blocked one or starts
   a model turn for a new row.
-- **the workflow sub-pass writes.** It runs after the SLA pass in the same patrol tick:
-  `issue reconcile` (container start/close), the review outcomes, then review dispatch.
+- **the workflow entry writes.** It is its own program (`scripts/loop/workflow.mjs`), run
+  by the continue turn after patrol: `issue reconcile` (container start/close), the review
+  outcomes, then review dispatch.
 
 A delivery that lands in `in_review` on **flow A** is dispatched to the configured
 reviewer as a **review card** — an ordinary `kind=task` card with `meta.review_of=<the
 original>`, `meta.flow=B`, `meta.review_round=<round>`, and a label `review` for
 discoverability (detection reads the meta keys, never the label). The reviewer is woken by
-the normal 1-minute poll and the normal claim; a dedicated reviewer is scanned only for
+the poll entry in the continue turn, through the normal atomic claim; a dedicated reviewer is scanned only for
 review cards and never claims the public pool. It reads the original's description, every
 acceptance item, the current round's delivery report, the comment trail and (for an epic)
 its children; it then delivers a report on the review card whose **first line** is

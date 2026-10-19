@@ -94,11 +94,21 @@ function fakeManager() {
       "#!/usr/bin/env bash",
       'printf "systemctl %s\\n" "$*" >> "$FAKE_LOG"',
       'if [ "${FAKE_FAIL:-}" = "1" ]; then echo "fake systemctl: refusing" >&2; exit 1; fi',
-      'case "$*" in',
-      '  *is-enabled*) if [ -f "$FAKE_SYSTEMD_STATE" ]; then echo enabled; exit 0; fi; echo disabled >&2; exit 1 ;;',
-      '  *"enable --now"*) : > "$FAKE_SYSTEMD_STATE"; exit 0 ;;',
-      '  *disable*) if [ -f "$FAKE_SYSTEMD_STATE" ]; then rm -f "$FAKE_SYSTEMD_STATE"; echo "Removed 2 units." >&2; exit 0; fi',
-      '             echo "0 units disabled." >&2; exit 0 ;;',
+      // Keyed by unit name, like the real manager: enable/disable of one timer must not
+      // change another's state. The legacy migration calls disable on timers that are not
+      // enabled, and a coarse one-file state would make that look like "everything off".
+      'case "$1 $2" in',
+      '  "--user is-enabled") if [ -f "$FAKE_SYSTEMD_STATE" ] && grep -qxF "$3" "$FAKE_SYSTEMD_STATE"; then echo enabled; exit 0; fi; echo disabled >&2; exit 1 ;;',
+      '  "--user enable") shift 3',
+      '    for unit in "$@"; do grep -qxF "$unit" "$FAKE_SYSTEMD_STATE" 2>/dev/null || echo "$unit" >> "$FAKE_SYSTEMD_STATE"; done',
+      "    exit 0 ;;",
+      '  "--user disable") shift 3',
+      '    for unit in "$@"; do',
+      '      [ -f "$FAKE_SYSTEMD_STATE" ] || continue',
+      '      grep -vxF "$unit" "$FAKE_SYSTEMD_STATE" > "$FAKE_SYSTEMD_STATE.next" || true',
+      '      if [ -s "$FAKE_SYSTEMD_STATE.next" ]; then mv "$FAKE_SYSTEMD_STATE.next" "$FAKE_SYSTEMD_STATE"; else rm -f "$FAKE_SYSTEMD_STATE" "$FAKE_SYSTEMD_STATE.next"; fi',
+      "    done",
+      "    exit 0 ;;",
       "esac",
       "exit 0",
       "",
@@ -285,7 +295,7 @@ describe("install.sh: the supervisor flag surface", () => {
     );
 
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, enabledLine("claude", "launchd", "com.meerkat-taskpanel.alice.claude.poll,.patrol"));
+    assert.match(run.stdout, enabledLine("claude", "launchd", "com.meerkat-taskpanel.alice.claude.ping,.continue"));
   });
 });
 
@@ -303,15 +313,15 @@ describe("install.sh: enable — launchd", () => {
     );
 
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, enabledLine("claude", "launchd", "com.meerkat-taskpanel.alice.claude.poll,.patrol"));
+    assert.match(run.stdout, enabledLine("claude", "launchd", "com.meerkat-taskpanel.alice.claude.ping,.continue"));
     assert.match(run.stdout, disableHintLine("launchd"));
 
     const scheduling = join(home, ".claude", "scheduling", "launchd");
     assert.deepEqual(
       loads(manager),
       [
-        `launchctl bootstrap gui/${UID} ${join(scheduling, "com.meerkat-taskpanel.poll.plist")}`,
-        `launchctl bootstrap gui/${UID} ${join(scheduling, "com.meerkat-taskpanel.patrol.plist")}`,
+        `launchctl bootstrap gui/${UID} ${join(scheduling, "com.meerkat-taskpanel.ping.plist")}`,
+        `launchctl bootstrap gui/${UID} ${join(scheduling, "com.meerkat-taskpanel.continue.plist")}`,
       ],
       "one bootstrap per unit, in order",
     );
@@ -359,7 +369,7 @@ describe("install.sh: enable — launchd", () => {
     assert.doesNotMatch(run.stdout, /supervisor: enabled/);
     // The host's own install is unaffected — the units are written, and the summary is OK.
     assert.match(run.stdout, /OK   claude/);
-    assert.ok(existsSync(join(home, ".claude", "scheduling", "launchd", "com.meerkat-taskpanel.poll.plist")));
+    assert.ok(existsSync(join(home, ".claude", "scheduling", "launchd", "com.meerkat-taskpanel.ping.plist")));
   });
 
   it("disable boots both jobs out, and a second disable is a no-op", () => {
@@ -374,8 +384,8 @@ describe("install.sh: enable — launchd", () => {
     assert.equal(existsSync(manager.launchdState), false, "the job is gone");
     assert.equal(
       calls(manager).filter((line) => line.startsWith("launchctl bootout")).length,
-      2,
-      "one bootout per unit",
+      6,
+      "two legacy bootouts during enable, then four during disable (legacy + new)",
     );
 
     const again = runInstall([...base, "--supervisor=disable"], installEnv(home, manager));
@@ -391,7 +401,7 @@ describe("install.sh: enable — launchd", () => {
     const before = runInstall([...base, "--supervisor=status"], installEnv(home, manager));
     assert.equal(before.status, 0, before.stderr);
     assert.match(before.stdout, /^supervisor: status \(host=claude\)$/m);
-    assert.match(before.stdout, /^supervisor:   launchd: not loaded \(com\.meerkat-taskpanel\.alice\.claude\.poll=not loaded, /m);
+    assert.match(before.stdout, /^supervisor:   launchd: not loaded \(com\.meerkat-taskpanel\.alice\.claude\.ping=not loaded, /m);
     assert.deepEqual(loads(manager), [], "status loads nothing");
 
     assert.equal(runInstall([...base, "--supervisor=enable"], installEnv(home, manager)).status, 0);
@@ -414,25 +424,26 @@ describe("install.sh: enable — systemd", () => {
     );
 
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, enabledLine("claude", "systemd", "meerkat-taskpanel-poll.timer,meerkat-taskpanel-patrol.timer"));
+    assert.match(run.stdout, enabledLine("claude", "systemd", "meerkat-taskpanel-ping.timer,meerkat-taskpanel-continue.timer"));
 
     // The units must land where systemd reads them (HOME, not --prefix-in-the-abstract).
     const unitDir = join(home, ".config", "systemd", "user");
     for (const name of [
-      "meerkat-taskpanel-poll.service",
-      "meerkat-taskpanel-poll.timer",
-      "meerkat-taskpanel-patrol.service",
-      "meerkat-taskpanel-patrol.timer",
+      "meerkat-taskpanel-ping.service",
+      "meerkat-taskpanel-ping.timer",
+      "meerkat-taskpanel-continue.service",
+      "meerkat-taskpanel-continue.timer",
     ]) {
       assert.ok(existsSync(join(unitDir, name)), `${name} must be copied into ${unitDir}`);
     }
 
     const sequence = calls(manager).filter((line) => line.startsWith("systemctl"));
     assert.deepEqual(sequence, [
+      "systemctl --user disable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer",
       "systemctl --user daemon-reload",
-      "systemctl --user is-enabled meerkat-taskpanel-poll.timer",
-      "systemctl --user is-enabled meerkat-taskpanel-patrol.timer",
-      "systemctl --user enable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer",
+      "systemctl --user is-enabled meerkat-taskpanel-ping.timer",
+      "systemctl --user is-enabled meerkat-taskpanel-continue.timer",
+      "systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer",
     ]);
     assert.match(run.stdout, /supervisor: warning — lingering is off.*loginctl enable-linger alice/s);
   });
@@ -475,7 +486,7 @@ describe("install.sh: enable — systemd", () => {
 
     assert.equal(run.status, 0, run.stderr);
     assert.ok(
-      existsSync(join(home, ".config", "systemd", "user", "meerkat-taskpanel-poll.service")),
+      existsSync(join(home, ".config", "systemd", "user", "meerkat-taskpanel-ping.service")),
       "the units must land in $HOME/.config regardless of an ambient XDG_CONFIG_HOME",
     );
   });
@@ -491,7 +502,7 @@ describe("install.sh: enable — systemd", () => {
     const run = runInstall(args, installEnv(home, manager, { FAKE_LINGER: "yes", USER: "alice", XDG_CONFIG_HOME: xdg }));
 
     assert.equal(run.status, 0, run.stderr);
-    assert.ok(existsSync(join(xdg, "systemd", "user", "meerkat-taskpanel-poll.service")), `the unit must follow ${xdg}`);
+    assert.ok(existsSync(join(xdg, "systemd", "user", "meerkat-taskpanel-ping.service")), `the unit must follow ${xdg}`);
   });
 
   it("disable disables and stops the timers", () => {
@@ -505,7 +516,7 @@ describe("install.sh: enable — systemd", () => {
     assert.equal(disabled.status, 0, disabled.stderr);
     assert.match(disabled.stdout, /^supervisor: disabled \(host=claude, scheduler=systemd, units=/m);
     assert.ok(
-      calls(manager).includes("systemctl --user disable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer"),
+      calls(manager).includes("systemctl --user disable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer"),
     );
 
     const again = runInstall([...base, "--supervisor=disable"], env);
@@ -545,8 +556,8 @@ describe("install.sh: enable — cron", () => {
     // PATH line sits *inside* the block, so `disable` takes it away with the block.
     const blockLines = table.split("# >>> meerkat-taskpanel (~/.claude) >>>\n")[1].split("\n");
     assert.match(blockLines[0], /^PATH=\S+$/);
-    assert.match(blockLines[1], /^\* \* \* \* \* \/[^ ]*node .*supervisor\.mjs --host claude --agent alice --once --log .* >\/dev\/null 2>&1$/);
-    assert.match(blockLines[2], /^\*\/5 \* \* \* \* \/[^ ]*node .*supervisor\.mjs --host claude --agent alice --patrol-only --once /);
+    assert.match(blockLines[1], /^\* \* \* \* \* \/[^ ]*node .*supervisor\.mjs --host claude --agent alice --ping-only --once --log .* >\/dev\/null 2>&1$/);
+    assert.match(blockLines[2], /^\*\/10 \* \* \* \* \/[^ ]*node .*supervisor\.mjs --host claude --agent alice --continue-only --once /);
     assert.equal(blockLines[3], "# <<< meerkat-taskpanel (~/.claude) <<<");
     assert.match(table, /^# <<< meerkat-taskpanel \(~\/\.claude\) <<<$/m);
 
@@ -641,8 +652,8 @@ describe("install.sh: enable — cron", () => {
 describe("install.sh: --dry-run and per-host selection", () => {
   it("--dry-run prints the exact commands it would run, for every mechanism, and changes nothing", () => {
     const cases = [
-      ["launchd", new RegExp(`^supervisor: would run: launchctl bootstrap gui/${UID} .*com\\.meerkat-taskpanel\\.poll\\.plist$`, "m")],
-      ["systemd", /^supervisor: would run: systemctl --user enable --now meerkat-taskpanel-poll\.timer meerkat-taskpanel-patrol\.timer$/m],
+      ["launchd", new RegExp(`^supervisor: would run: launchctl bootstrap gui/${UID} .*com\\.meerkat-taskpanel\\.ping\\.plist$`, "m")],
+      ["systemd", /^supervisor: would run: systemctl --user enable --now meerkat-taskpanel-ping\.timer meerkat-taskpanel-continue\.timer$/m],
       ["cron", /^supervisor: would run:   # >>> meerkat-taskpanel \(~\/\.claude\) >>>$/m],
     ];
     for (const [scheduler, expected] of cases) {
@@ -677,7 +688,7 @@ describe("install.sh: --dry-run and per-host selection", () => {
     );
 
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, enabledLine("claude", "launchd", "com.meerkat-taskpanel.alice.claude.poll,.patrol"));
+    assert.match(run.stdout, enabledLine("claude", "launchd", "com.meerkat-taskpanel.alice.claude.ping,.continue"));
     assert.doesNotMatch(run.stdout, /supervisor: enabled \(host=codex/);
     assert.doesNotMatch(run.stdout, /supervisor: enabled \(host=pi/);
 
@@ -718,9 +729,9 @@ describe("install.sh: --dry-run and per-host selection", () => {
     assert.equal(run.status, 0, run.stderr);
     const units =
       PLATFORM_DEFAULT === "launchd"
-        ? "com.meerkat-taskpanel.alice.claude.poll,.patrol"
+        ? "com.meerkat-taskpanel.alice.claude.ping,.continue"
         : PLATFORM_DEFAULT === "systemd"
-          ? "meerkat-taskpanel-poll.timer,meerkat-taskpanel-patrol.timer"
+          ? "meerkat-taskpanel-ping.timer,meerkat-taskpanel-continue.timer"
           : "crontab block (~/.claude)";
     assert.match(run.stdout, enabledLine("claude", PLATFORM_DEFAULT, units));
     // With `auto`, the printed remedy is the doc's own line — no `--scheduler` suffix, on

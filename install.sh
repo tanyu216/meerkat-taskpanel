@@ -62,6 +62,9 @@ RECOVER_STALE_FLAG=""
 WORKFLOW_FLAG=""
 AUTO_ACCEPT_REVIEWS_FLAG=""
 REVIEWER_FLAG=""
+PING_INTERVAL_FLAG=""
+CONTINUE_INTERVAL_FLAG=""
+CONTINUE_FLAG=""
 SUPERVISOR_FLAG=""
 SUPERVISOR_HOSTS_FLAG=""
 SCHEDULER_FLAG=""
@@ -101,6 +104,17 @@ Options:
                     Let the loop close a review card after applying its verdict.
                     Persisted to the host config; default yes. `no` leaves the
                     review card for a human.
+  --ping-interval <sec>
+                    The liveness clock (default 60). It only prunes dead worker
+                    pids from the registry: no board read, no LLM.
+  --continue-interval <sec>
+                    The judgment clock (default 600 = 10 minutes). It wakes the
+                    host with a bounded "继续" prompt; that turn runs the poll,
+                    patrol and workflow entries.
+  --continue=yes|no
+                    Enable the continue turn (default yes). Persisted to the
+                    host config; `no` keeps the ping clock but discovers no work
+                    until a human runs the poll entry.
   --supervisor=enable|disable|status
                     Opt in to the supervisor daemon: load / unload / report the
                     loop units the install just wrote. There is no silent default
@@ -163,6 +177,9 @@ Environment (set for each host installer):
   MEERKAT_TASKPANEL_AGENT_NAME   agent identity (default: $USER)
   MEERKAT_TASKPANEL_NO_AUTOMATION "1" to skip the Codex claim trigger + scheduling
   MEERKAT_TASKPANEL_CLAIM_UNASSIGNED  "yes"/"no" default for the claim policy
+  MEERKAT_TASKPANEL_PING_INTERVAL      liveness clock, seconds (default 60)
+  MEERKAT_TASKPANEL_CONTINUE_INTERVAL  judgment clock, seconds (default 600)
+  MEERKAT_TASKPANEL_CONTINUE           "yes"/"no" (default yes)
   MEERKAT_TASKPANEL_SUPERVISOR   "enable"/"disable"/"status" — the non-interactive
                                  form of --supervisor (an explicit flag wins)
   MEERKAT_TASKPANEL_SCHEDULER    "auto"/"launchd"/"systemd"/"cron" (default auto)
@@ -304,6 +321,33 @@ while [ "$#" -gt 0 ]; do
       ;;
     --auto-accept-reviews=*)
       AUTO_ACCEPT_REVIEWS_FLAG="${1#*=}"
+      shift
+      ;;
+    --ping-interval)
+      [ "$#" -ge 2 ] || die "--ping-interval requires a number of seconds"
+      PING_INTERVAL_FLAG="$2"
+      shift 2
+      ;;
+    --ping-interval=*)
+      PING_INTERVAL_FLAG="${1#*=}"
+      shift
+      ;;
+    --continue-interval)
+      [ "$#" -ge 2 ] || die "--continue-interval requires a number of seconds"
+      CONTINUE_INTERVAL_FLAG="$2"
+      shift 2
+      ;;
+    --continue-interval=*)
+      CONTINUE_INTERVAL_FLAG="${1#*=}"
+      shift
+      ;;
+    --continue)
+      [ "$#" -ge 2 ] || die "--continue requires a value (yes|no)"
+      CONTINUE_FLAG="$2"
+      shift 2
+      ;;
+    --continue=*)
+      CONTINUE_FLAG="${1#*=}"
       shift
       ;;
     --supervisor)
@@ -473,6 +517,21 @@ esac
 echo "install.sh: recover stale claims: $RECOVER_STALE"
 echo "install.sh: workflow: $WORKFLOW; reviewer: ${REVIEWER:-none}; auto-accept reviews: $AUTO_ACCEPT_REVIEWS"
 
+# The scheduler's two clocks. The interval is rendered into the units, so it must
+# be known here; the continue switch is persisted and read by the entry itself.
+PING_INTERVAL="${PING_INTERVAL_FLAG:-${MEERKAT_TASKPANEL_PING_INTERVAL:-60}}"
+CONTINUE_INTERVAL="${CONTINUE_INTERVAL_FLAG:-${MEERKAT_TASKPANEL_CONTINUE_INTERVAL:-600}}"
+CONTINUE="${CONTINUE_FLAG:-${MEERKAT_TASKPANEL_CONTINUE:-yes}}"
+case "$PING_INTERVAL" in "" | *[!0-9]*) die "--ping-interval must be a positive integer (got '$PING_INTERVAL')" ;; esac
+case "$CONTINUE_INTERVAL" in "" | *[!0-9]*) die "--continue-interval must be a positive integer (got '$CONTINUE_INTERVAL')" ;; esac
+[ "$PING_INTERVAL" -gt 0 ] || die "--ping-interval must be positive"
+[ "$CONTINUE_INTERVAL" -gt 0 ] || die "--continue-interval must be positive"
+case "$CONTINUE" in
+  yes | no) ;;
+  *) die "--continue must be yes or no (got '$CONTINUE')" ;;
+esac
+echo "install.sh: ping every ${PING_INTERVAL}s; continue every ${CONTINUE_INTERVAL}s ($CONTINUE)"
+
 # Resolve the supervisor request (per-host, opt-in). An explicit flag wins; else the
 # environment; else ask on a TTY — where the default is **no**, the opposite of the
 # claim question above, because the supervisor is a daemon that runs unattended. An
@@ -562,6 +621,9 @@ FAIL $host — installer not found"
       MEERKAT_TASKPANEL_WORKFLOW="$WORKFLOW" \
       MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS="$AUTO_ACCEPT_REVIEWS" \
       MEERKAT_TASKPANEL_REVIEWER="$REVIEWER" \
+      MEERKAT_TASKPANEL_PING_INTERVAL="$PING_INTERVAL" \
+      MEERKAT_TASKPANEL_CONTINUE_INTERVAL="$CONTINUE_INTERVAL" \
+      MEERKAT_TASKPANEL_CONTINUE="$CONTINUE" \
       MEERKAT_TASKPANEL_SUPERVISOR="$host_supervisor" \
       MEERKAT_TASKPANEL_SCHEDULER="$SCHEDULER" \
       MEERKAT_TASKPANEL_LINK="$LINK" \

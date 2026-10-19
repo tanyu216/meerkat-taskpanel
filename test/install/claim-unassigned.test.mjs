@@ -270,6 +270,86 @@ describe("install.sh: the workflow config", () => {
   });
 });
 
+describe("install.sh: the scheduler's two clocks", () => {
+  it("persists the defaults: ping 60s, continue 600s, continue on", () => {
+    const home = makeTempDir();
+    const bin = makeTempDir();
+    makeFakeCli(bin, "claude");
+    const run = runInstall(["--target", "claude", "--agent-name", "alice"], installEnv(home, bin));
+    assert.equal(run.status, 0, run.stderr);
+    const text = configOf(home, ".claude");
+    assert.match(text, /^MEERKAT_TASKPANEL_PING_INTERVAL=60$/m);
+    assert.match(text, /^MEERKAT_TASKPANEL_CONTINUE_INTERVAL=600$/m);
+    assert.match(text, /^MEERKAT_TASKPANEL_CONTINUE=yes$/m);
+  });
+
+  it("persists --ping-interval / --continue-interval / --continue=no", () => {
+    const home = makeTempDir();
+    const bin = makeTempDir();
+    makeFakeCli(bin, "codex");
+    const run = runInstall(
+      [
+        "--target", "codex", "--agent-name", "alice",
+        "--ping-interval", "30", "--continue-interval", "900", "--continue=no",
+      ],
+      installEnv(home, bin),
+    );
+    assert.equal(run.status, 0, run.stderr);
+    const text = configOf(home, ".codex");
+    assert.match(text, /^MEERKAT_TASKPANEL_PING_INTERVAL=30$/m);
+    assert.match(text, /^MEERKAT_TASKPANEL_CONTINUE_INTERVAL=900$/m);
+    assert.match(text, /^MEERKAT_TASKPANEL_CONTINUE=no$/m);
+  });
+
+  it("takes the clocks from the environment when no flag is given", () => {
+    const home = makeTempDir();
+    const bin = makeTempDir();
+    makeFakeCli(bin, "claude");
+    const run = runInstall(["--target", "claude", "--agent-name", "alice"], {
+      ...installEnv(home, bin),
+      MEERKAT_TASKPANEL_PING_INTERVAL: "45",
+      MEERKAT_TASKPANEL_CONTINUE_INTERVAL: "120",
+      MEERKAT_TASKPANEL_CONTINUE: "no",
+    });
+    assert.equal(run.status, 0, run.stderr);
+    const text = configOf(home, ".claude");
+    assert.match(text, /^MEERKAT_TASKPANEL_PING_INTERVAL=45$/m);
+    assert.match(text, /^MEERKAT_TASKPANEL_CONTINUE_INTERVAL=120$/m);
+    assert.match(text, /^MEERKAT_TASKPANEL_CONTINUE=no$/m);
+  });
+
+  it("rejects an invalid interval or continue value before installing anything", () => {
+    const home = makeTempDir();
+    const bin = makeTempDir();
+    makeFakeCli(bin, "claude");
+    for (const flag of ["--ping-interval=0", "--continue-interval=abc", "--continue=maybe"]) {
+      const run = runInstall(["--target", "claude", "--prefix", home, flag], {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+      });
+      assert.equal(run.status, 2, `${flag} must be a usage error`);
+      assert.equal(existsSync(join(home, ".claude")), false);
+    }
+  });
+
+  it("adds the clock keys to an older host config without touching existing values", () => {
+    const home = makeTempDir();
+    const bin = makeTempDir();
+    makeFakeCli(bin, "claude");
+    const env = installEnv(home, bin);
+    assert.equal(runInstall(["--target", "claude", "--agent-name", "alice"], env).status, 0);
+
+    const path = join(home, ".claude", "meerkat-taskpanel.env");
+    writeFileSync(path, "MEERKAT_TASKPANEL_CONTINUE=no\n", "utf8");
+    const again = runInstall(["--target", "claude", "--agent-name", "alice", "--continue-interval", "900"], env);
+    assert.equal(again.status, 0, again.stderr);
+    const text = readFileSync(path, "utf8");
+    assert.match(text, /^MEERKAT_TASKPANEL_CONTINUE=no$/m, "the existing choice is kept");
+    assert.match(text, /^MEERKAT_TASKPANEL_PING_INTERVAL=60$/m, "the missing key is added");
+    assert.equal(text.match(/^MEERKAT_TASKPANEL_CONTINUE_INTERVAL=/gm).length, 1, "never duplicated");
+  });
+});
+
 describe("_common.sh: claim_unassigned_value decision matrix", () => {
   it("returns an explicit flag verbatim", () => {
     assert.equal(runCommon('claim_unassigned_value yes ""').stdout.trim(), "yes");

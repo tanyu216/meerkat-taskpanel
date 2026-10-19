@@ -125,10 +125,10 @@ version control.
 | Artefact | Where | What |
 |---|---|---|
 | loop skill | `<host>/skills/meerkat-loop/` | the loop as a skill: its `SKILL.md`, the generated execution body (`body/`), the unit/wake/config templates it is deployed with, and the board-interface gate (`scripts/board-check.mjs`). Always **copied**, never symlinked |
-| loop body | `<host>/meerkat-taskpanel/scripts/supervisor.mjs` + `.../scripts/wake-cwd.mjs` + `.../src/shared/*.mjs` | a **copy** of the executor, the glue's directory resolver and the modules they import — what the units run, so a loaded unit survives this checkout being moved, renamed or removed (see [`scheduling.md §The loop body is installed, not referenced`](scheduling.md#the-loop-body-is-installed-not-referenced)). The exact file list is the loop skill's generated `body/manifest.txt` |
-| launchd | `<host>/scheduling/launchd/com.meerkat-taskpanel.{poll,patrol}.plist` | `StartInterval` 60 / 300 |
-| systemd | `<host>/scheduling/systemd/meerkat-taskpanel-{poll,patrol}.{service,timer}` | 60s / 300s timers |
-| cron | `<host>/scheduling/cron/meerkat-taskpanel.cron` | `* * * * *` poll, `*/5 * * * *` patrol |
+| loop body | `<host>/meerkat-taskpanel/scripts/supervisor.mjs` + `.../scripts/loop/*.mjs` + `.../scripts/wake-cwd.mjs` + `.../src/shared/*.mjs` | a **copy** of the scheduler, the deterministic entries, the glue's directory resolver and the modules they import — what the units run, so a loaded unit survives this checkout being moved, renamed or removed (see [`scheduling.md §The loop body is installed, not referenced`](scheduling.md#the-loop-body-is-installed-not-referenced)). The exact file list is the loop skill's generated `body/manifest.txt` |
+| launchd | `<host>/scheduling/launchd/com.meerkat-taskpanel.{ping,continue}.plist` | `StartInterval` 60 / 600 |
+| systemd | `<host>/scheduling/systemd/meerkat-taskpanel-{ping,continue}.{service,timer}` | 60s / 600s timers |
+| cron | `<host>/scheduling/cron/meerkat-taskpanel.cron` | `* * * * *` ping, `*/10 * * * *` continue |
 
 Each unit names the **absolute `node`** that rendered it and carries a **`PATH`** holding
 the host CLI's directory and node's ahead of the scheduler's own default. Neither is
@@ -138,7 +138,7 @@ worker's own tool tree, resolve on that same set. If the host CLI is not on `PAT
 install time, the installer says so and renders node's directory alone rather than guessing.
 See [`scheduling.md` §What the loop's units run with](scheduling.md#what-the-loops-units-run-with).
 | wake glue | `<host>/bin/wake-<host>.sh` | resolves the directory a worker for the card's project runs in (`local_path`, else `run_dir`) from the board skill's `projects.json` via the host-local `meerkat-taskpanel/scripts/wake-cwd.mjs`, `cd`s there (refusing the wake if it cannot), then runs `claude -p` (+`--resume`), `codex exec`, or `pi --print` |
-| host config | `<host>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no`, `MEERKAT_TASKPANEL_RECOVER_STALE=yes\|no`, `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives), and the workflow channel's `MEERKAT_TASKPANEL_WORKFLOW`, `MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS` and `MEERKAT_TASKPANEL_REVIEWER` |
+| host config | `<host>/meerkat-taskpanel.env` | `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED=yes\|no`, `MEERKAT_TASKPANEL_RECOVER_STALE=yes\|no`, `MEERKAT_TASKPANEL_REPO=<checkout>` (where the board engine the executor drives lives), the workflow channel's `MEERKAT_TASKPANEL_WORKFLOW`, `MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS` and `MEERKAT_TASKPANEL_REVIEWER`, and the clocks' `MEERKAT_TASKPANEL_PING_INTERVAL`, `MEERKAT_TASKPANEL_CONTINUE_INTERVAL` and `MEERKAT_TASKPANEL_CONTINUE` |
 | log (runtime) | `<host>/meerkat-taskpanel/supervisor.log` | the supervisor's tick log |
 | state (runtime) | `<host>/meerkat-taskpanel/supervisor.state.json` | the running registry |
 
@@ -152,10 +152,10 @@ install stops here (nothing is loaded for you):
 
 ```bash
 # macOS
-launchctl load ~/.claude/scheduling/launchd/com.meerkat-taskpanel.poll.plist    # and .patrol.plist
+launchctl load ~/.claude/scheduling/launchd/com.meerkat-taskpanel.ping.plist    # and .continue.plist
 # Linux (user units)
 mkdir -p ~/.config/systemd/user && cp ~/.claude/scheduling/systemd/* ~/.config/systemd/user/
-systemctl --user enable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer
+systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer
 # Anywhere
 crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 ```
@@ -194,7 +194,7 @@ wins), the same precedence style as `MEERKAT_TASKPANEL_CLAIM_UNASSIGNED`.
 installer asks once:
 
 ```text
-Enable the supervisor now? It runs headless in the background (poll 60s / patrol 300s). [y/N]
+Enable the supervisor now? It runs headless in the background (ping 60s / continue 600s). [y/N]
 ```
 
 The default is **N** — deliberately the opposite of the `--claim-unassigned` question
@@ -209,13 +209,14 @@ always wins: with it, `--supervisor=enable` prints the exact commands it would r
 changes nothing. On success the installer reports what it enabled **and how to stop it**:
 
 ```text
-supervisor: enabled (host=claude, scheduler=launchd, units=com.meerkat-taskpanel.<agent>.claude.poll,.patrol)
+supervisor: enabled (host=claude, scheduler=launchd, units=com.meerkat-taskpanel.<agent>.claude.ping,.continue)
 to disable:  install.sh --supervisor=disable --supervisor-hosts claude
 ```
 
-Enabling changes **nothing** about the cost model: the poll tick is still the $0 local scan,
-and an LLM turn still starts only when a claim succeeded (see
-[`scheduling.md §The cost gate`](scheduling.md#the-cost-gate-a-turn-starts-only-on-fire)).
+Enabling installs the two clocks described above: a $0 ping and one bounded `继续`
+judgment turn per continue cadence. Inside that turn the poll is still the $0 local
+scan, and a worker turn still starts only when a claim succeeded (see
+[`scheduling.md §The cost gate`](scheduling.md#the-cost-gate-a-worker-turn-starts-only-on-fire)).
 
 The exact per-OS commands, their failure modes, and the `loginctl enable-linger` caveat are
 in [`scheduling.md §Enabling the supervisor (opt-in)`](scheduling.md#enabling-the-supervisor-opt-in).
@@ -375,6 +376,7 @@ install.sh [--target claude|openclaw|codex|pi|opencode|cursor|all] [--prefix <ho
            [--agent-name <name>] [--no-automation]
            [--claim-unassigned=yes|no] [--assignee-only] [--recover-stale=yes|no]
            [--workflow=yes|no] [--reviewer <agent>] [--auto-accept-reviews=yes|no]
+           [--ping-interval <sec>] [--continue-interval <sec>] [--continue=yes|no]
            [--supervisor=enable|disable|status] [--supervisor-hosts <list>]
            [--scheduler auto|launchd|systemd|cron]
            [--link] [--force] [--dry-run] [--skip-node-check] [-h|--help]
@@ -393,6 +395,9 @@ install.sh [--target claude|openclaw|codex|pi|opencode|cursor|all] [--prefix <ho
 | `--workflow=yes\|no` | Run the supervisor's workflow sub-pass — container reconcile, review dispatch and applying verdicts. Persisted to the host config; default `yes`. `no` means the loop writes no card at all. |
 | `--reviewer <agent>` | The independent agent that reviews delivered cards. Persisted to the host config. Unset (the default) disables **dispatch** only; a delivery then waits for a human to accept it. |
 | `--auto-accept-reviews=yes\|no` | Let the loop close a review card after applying its verdict. Persisted; default `yes`. `no` is the escape hatch: the verdict is still applied, but the review card stays in `in_review` for a human. |
+| `--ping-interval <sec>` | The liveness clock, rendered into the units; default `60`. It only prunes dead worker pids — no board read, no LLM. |
+| `--continue-interval <sec>` | The judgment clock, rendered into the units; default `600` (10 minutes). It wakes the host with a bounded `继续` prompt; that turn runs poll, patrol and workflow. |
+| `--continue=yes\|no` | Enable the continue turn. Persisted to the host config; default `yes`. `no` keeps the ping clock but discovers no work until a human runs the poll entry. |
 | `--supervisor=enable\|disable\|status` | Opt-in control of the supervisor **daemon** (the units above): `enable` loads/enables it, `disable` unloads/removes it, `status` prints the per-host load state and changes nothing. Off by default — a plain install still only *prints* the load command. Aliases: `--enable-supervisor`, `--disable-supervisor`, `--supervisor-status`. See [Enabling the supervisor (opt-in)](#enabling-the-supervisor-opt-in). |
 | `--supervisor-hosts <list>` | Which loop hosts the `--supervisor` action applies to — a comma list ⊆ `{claude,codex,pi}` (default: the loop hosts present in `--target`). Deliberately **not** a `--host` flag: `--host` already means the **wake** selector in `scripts/supervisor.mjs`, so reusing the name here would collide. `openclaw` is **rejected** (reason on stderr, exit 2). |
 | `--scheduler <auto\|launchd\|systemd\|cron>` | Which mechanism the `--supervisor` action acts on (default `auto`: launchd on macOS, systemd on Linux, cron elsewhere). Only one mechanism may be loaded per host — see [`scheduling.md §Enabling the supervisor (opt-in)`](scheduling.md#enabling-the-supervisor-opt-in). |

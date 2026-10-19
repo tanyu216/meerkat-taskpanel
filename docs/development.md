@@ -333,16 +333,17 @@ root. `test/scaffold.test.mjs` asserts that, since with no copy targets left
 `sync-skills.mjs --check` has nothing to compare and could not notice an orphan tree.
 
 The loop's `body/` and `templates/` are generated *from this repository*: `body/` is the
-transitive import closure of `scripts/supervisor.mjs` and `scripts/wake-cwd.mjs` (written out
-as `body/manifest.txt`, the list the installer copies), and `templates/` mirrors the
+transitive import closure of `scripts/supervisor.mjs`, `scripts/loop/*.mjs` and
+`scripts/wake-cwd.mjs` (written out as `body/manifest.txt`, the list the installer copies),
+and `templates/` mirrors the
 loop-side files under `scripts/install/templates/`. That direction matters — the shared
 modules in `src/shared/` are **not** moved into the skill; they stay where the CLI imports
 them, and the skill's copy is generated and guarded. OpenClaw never receives the loop at all,
 by ruling: its framework already ships an equivalent supervisor, and `install.sh --target
 openclaw` copies the board skill only.
 
-**After editing anything under `skills/`, `scripts/supervisor.mjs`, `scripts/wake-cwd.mjs`,
-`src/shared/`, or `scripts/install/templates/`, run:**
+**After editing anything under `skills/`, `scripts/supervisor.mjs`, `scripts/loop/`,
+`scripts/wake-cwd.mjs`, `src/shared/`, or `scripts/install/templates/`, run:**
 
 ```bash
 node scripts/sync-skills.mjs

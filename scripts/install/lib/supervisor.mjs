@@ -26,7 +26,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,18 +42,35 @@ export const SCHEDULERS = Object.freeze(["auto", "launchd", "systemd", "cron"]);
 export const LOOP_HOSTS = Object.freeze(["claude", "codex", "pi"]);
 /** Every systemd user unit the loop installs — copied before `daemon-reload`. */
 export const SYSTEMD_UNITS = Object.freeze([
+  "meerkat-taskpanel-ping.service",
+  "meerkat-taskpanel-ping.timer",
+  "meerkat-taskpanel-continue.service",
+  "meerkat-taskpanel-continue.timer",
+]);
+/** The timers `enable --now` / `disable --now` act on. */
+export const SYSTEMD_TIMERS = Object.freeze([
+  "meerkat-taskpanel-ping.timer",
+  "meerkat-taskpanel-continue.timer",
+]);
+/** The loop's two clocks, in the order the units are written. */
+export const KINDS = Object.freeze(["ping", "continue"]);
+/**
+ * The topology this installer used to ship. `enable` takes these down before it
+ * loads the new units, because a loaded launchd/systemd job does not notice its
+ * plist/unit file changing — leaving them loaded would keep the old 60s poll
+ * running beside the new continue turn.
+ */
+export const LEGACY_KINDS = Object.freeze(["poll", "patrol"]);
+export const LEGACY_SYSTEMD_UNITS = Object.freeze([
   "meerkat-taskpanel-poll.service",
   "meerkat-taskpanel-poll.timer",
   "meerkat-taskpanel-patrol.service",
   "meerkat-taskpanel-patrol.timer",
 ]);
-/** The timers `enable --now` / `disable --now` act on. */
-export const SYSTEMD_TIMERS = Object.freeze([
+export const LEGACY_SYSTEMD_TIMERS = Object.freeze([
   "meerkat-taskpanel-poll.timer",
   "meerkat-taskpanel-patrol.timer",
 ]);
-/** The loop's two tick kinds, in the order the units are written. */
-export const KINDS = Object.freeze(["poll", "patrol"]);
 
 /**
  * The launchd label / systemd-name stem for one host — `com.meerkat-taskpanel.<agent>.<host>`.
@@ -117,6 +134,11 @@ export function supervisorPaths(options) {
     log: join(hostBase, "meerkat-taskpanel", "supervisor.log"),
     state: join(hostBase, "meerkat-taskpanel", "supervisor.state.json"),
     launchd: KINDS.map((kind) => ({
+      kind,
+      label: supervisorLabel(options.agent, options.host, kind),
+      plist: join(hostBase, "scheduling", "launchd", `com.meerkat-taskpanel.${kind}.plist`),
+    })),
+    legacyLaunchd: LEGACY_KINDS.map((kind) => ({
       kind,
       label: supervisorLabel(options.agent, options.host, kind),
       plist: join(hostBase, "scheduling", "launchd", `com.meerkat-taskpanel.${kind}.plist`),
@@ -188,22 +210,22 @@ export function cronContentLines(paths) {
   const node = env.TP_NODE || process.execPath;
   const cronPath = env.TP_UNIT_PATH_CRON || unitPath(dirname(node), { scheduler: "cron" });
 
-  const line = (schedule, patrol) =>
+  const line = (schedule, mode) =>
     [
       schedule,
       node,
       paths.supervisor,
       `--host ${paths.host}`,
       `--agent ${paths.agent}`,
-      patrol ? "--patrol-only" : null,
+      mode,
       "--once",
       `--log ${paths.log}`,
       `--state ${paths.state}`,
       ">/dev/null 2>&1",
-    ]
-      .filter((part) => part !== null)
-      .join(" ");
-  return [`PATH=${cronPath}`, line("* * * * *", false), line("*/5 * * * *", true)];
+    ].join(" ");
+  const pingCron = env.TP_PING_CRON || "* * * * *";
+  const continueCron = env.TP_CONTINUE_CRON || "*/10 * * * *";
+  return [`PATH=${cronPath}`, line(pingCron, "--ping-only"), line(continueCron, "--continue-only")];
 }
 
 /** The full cron block (markers + content lines). */
@@ -240,23 +262,58 @@ export function launchdMechanism({ paths, uid, run }) {
   const domain = `gui/${uid}`;
   const jobId = (unit) => `${domain}/${unit.label}`;
 
+  /**
+   * Boot out a set of jobs. `Could not find service` (and a machine with no
+   * launchctl at all) means the job was not loaded: the documented idempotent
+   * no-op, not a failure.
+   */
+  const takeDown = (units) => {
+    let removed = false;
+    for (const unit of units) {
+      const outcome = runStep({ command: "launchctl", args: ["bootout", jobId(unit)] }, run);
+      if (outcome.ok) {
+        removed = true;
+        continue;
+      }
+      if (outcome.missing || /could not find service|not found|no such process/i.test(outcome.stderr)) continue;
+      return { ok: false, reason: `launchctl exited ${outcome.status}: ${firstLine(outcome.stderr)}` };
+    }
+    return { ok: true, already: !removed };
+  };
+
+  const probeUnits = (units) => {
+    const states = units.map((unit) => ({
+      unit: unit.label,
+      loaded: runStep({ command: "launchctl", args: ["print", jobId(unit)] }, run).ok,
+    }));
+    return { loaded: states.every((state) => state.loaded), units: states };
+  };
+
   return {
     name: "launchd",
-    unitsReport: `${supervisorBase(paths.agent, paths.host)}.poll,.patrol`,
+    unitsReport: `${supervisorBase(paths.agent, paths.host)}.ping,.continue`,
 
     plan() {
-      return paths.launchd.map((unit) => `launchctl bootstrap ${domain} ${unit.plist}`);
+      return [
+        ...paths.legacyLaunchd.map((unit) => `launchctl bootout ${jobId(unit)}   # legacy poll/patrol`),
+        ...paths.launchd.map((unit) => `launchctl bootstrap ${domain} ${unit.plist}`),
+      ];
     },
 
     probe() {
-      const states = paths.launchd.map((unit) => ({
-        unit: unit.label,
-        loaded: runStep({ command: "launchctl", args: ["print", jobId(unit)] }, run).ok,
-      }));
-      return { loaded: states.every((state) => state.loaded), units: states };
+      return probeUnits(paths.launchd);
+    },
+
+    legacyProbe() {
+      return probeUnits(paths.legacyLaunchd);
     },
 
     enable() {
+      // A loaded job does not notice its plist changing. Take the old topology
+      // down first, or its 60s poll keeps running beside the new continue turn.
+      const legacy = takeDown(paths.legacyLaunchd);
+      if (!legacy.ok) return legacy;
+
       let allAlready = true;
       for (const unit of paths.launchd) {
         if (runStep({ command: "launchctl", args: ["print", jobId(unit)] }, run).ok) continue;
@@ -286,19 +343,7 @@ export function launchdMechanism({ paths, uid, run }) {
     },
 
     disable() {
-      let removed = false;
-      for (const unit of paths.launchd) {
-        const outcome = runStep({ command: "launchctl", args: ["bootout", jobId(unit)] }, run);
-        if (outcome.ok) {
-          removed = true;
-          continue;
-        }
-        // `Could not find service` (and a machine with no launchctl at all) mean the job
-        // was not loaded: the documented idempotent no-op, not a failure.
-        if (outcome.missing || /could not find service|not found|no such process/i.test(outcome.stderr)) continue;
-        return { ok: false, reason: `launchctl exited ${outcome.status}: ${firstLine(outcome.stderr)}` };
-      }
-      return { ok: true, already: !removed };
+      return takeDown([...paths.legacyLaunchd, ...paths.launchd]);
     },
   };
 }
@@ -316,6 +361,7 @@ export function systemdMechanism({ paths, run }) {
 
     plan() {
       return [
+        `rm -f ${LEGACY_SYSTEMD_UNITS.map((name) => join(paths.systemdUnitDir, name)).join(" ")}`,
         `mkdir -p ${paths.systemdUnitDir}`,
         `cp ${paths.systemdSrcDir}/* ${paths.systemdUnitDir}/`,
         "systemctl --user daemon-reload",
@@ -326,6 +372,14 @@ export function systemdMechanism({ paths, run }) {
     /** Copy the units where systemd reads them, then reload — nothing works before this. */
     install() {
       mkdirSync(paths.systemdUnitDir, { recursive: true });
+      // The old files would be picked up by a later `enable --now` if they stayed.
+      for (const name of LEGACY_SYSTEMD_UNITS) {
+        try {
+          rmSync(join(paths.systemdUnitDir, name), { force: true });
+        } catch {
+          // A unit directory we cannot fully clean is still worth copying into.
+        }
+      }
       for (const name of SYSTEMD_UNITS) {
         const source = join(paths.systemdSrcDir, name);
         if (existsSync(source)) copyFileSync(source, join(paths.systemdUnitDir, name));
@@ -341,7 +395,32 @@ export function systemdMechanism({ paths, run }) {
       return { loaded: states.every((state) => state.loaded), units: states };
     },
 
+    legacyProbe() {
+      const states = LEGACY_SYSTEMD_TIMERS.map((unit) => ({
+        unit,
+        loaded: runStep({ command: "systemctl", args: ["--user", "is-enabled", unit] }, run).ok,
+      }));
+      return { loaded: states.some((state) => state.loaded), units: states };
+    },
+
+    disableTimers(timers) {
+      const outcome = runStep(
+        { command: "systemctl", args: ["--user", "disable", "--now", ...timers] },
+        run,
+      );
+      if (outcome.ok) return { ok: true };
+      if (outcome.missing) return { ok: true, already: true };
+      if (/not found|no such file|does not exist/i.test(outcome.stderr)) return { ok: true, already: true };
+      return { ok: false, reason: `systemctl exited ${outcome.status}: ${firstLine(outcome.stderr)}` };
+    },
+
     enable() {
+      // Take the old topology down before installing the new one: otherwise its
+      // 60s poll keeps running beside the continue turn until the operator
+      // notices. An absent legacy timer is a no-op.
+      const legacy = this.disableTimers(LEGACY_SYSTEMD_TIMERS);
+      if (!legacy.ok) return legacy;
+
       const prepared = this.install();
       if (prepared.missing) return { ok: false, reason: "systemctl is not available on this machine" };
 
@@ -373,15 +452,10 @@ export function systemdMechanism({ paths, run }) {
     disable() {
       // `is-enabled` first: `systemctl disable` is happy to be told to disable something
       // that was never enabled, and calling that "disabled" would overstate what happened.
-      const wasEnabled = this.probe().loaded;
-      const outcome = runStep(
-        { command: "systemctl", args: ["--user", "disable", "--now", ...SYSTEMD_TIMERS] },
-        run,
-      );
+      const wasEnabled = this.probe().loaded || this.legacyProbe().loaded;
+      const outcome = this.disableTimers([...SYSTEMD_TIMERS, ...LEGACY_SYSTEMD_TIMERS]);
       if (outcome.ok) return { ok: true, already: !wasEnabled };
-      if (outcome.missing) return { ok: true, already: true };
-      if (/not found|no such file|does not exist/i.test(outcome.stderr)) return { ok: true, already: true };
-      return { ok: false, reason: `systemctl exited ${outcome.status}: ${firstLine(outcome.stderr)}` };
+      return outcome;
     },
   };
 }
@@ -521,6 +595,14 @@ export function runSupervisorAction(options) {
       const probe = all[name].probe();
       const listed = probe.units.map((u) => `${u.unit}=${u.loaded ? "loaded" : "not loaded"}`).join(", ");
       log(`supervisor:   ${name}: ${probe.loaded ? "loaded" : "not loaded"} (${listed})`);
+      const legacy = typeof all[name].legacyProbe === "function" ? all[name].legacyProbe() : null;
+      if (legacy?.loaded) {
+        const legacyListed = legacy.units.map((u) => `${u.unit}=${u.loaded ? "loaded" : "not loaded"}`).join(", ");
+        log(
+          `supervisor:   ${name}: legacy poll/patrol still loaded (${legacyListed}) — ` +
+            "re-run --supervisor=enable to migrate to ping/continue",
+        );
+      }
     }
     return 0;
   }
@@ -557,7 +639,8 @@ export function runSupervisorAction(options) {
   for (const name of ["launchd", "systemd", "cron"]) {
     if (name === requested) continue;
     const other = all[name];
-    if (!other.probe().loaded) continue;
+    const legacyLoaded = typeof other.legacyProbe === "function" ? other.legacyProbe().loaded : false;
+    if (!other.probe().loaded && !legacyLoaded) continue;
     const taken = other.disable();
     if (taken.ok) {
       log(`supervisor: disabled (host=${paths.host}, scheduler=${name}, units=${other.unitsReport}) — one mechanism per host`);

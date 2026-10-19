@@ -235,30 +235,33 @@ Three boundaries this respects, on purpose:
 ## Waking & patrol (唤醒与巡检)
 
 Rule 1 says *claim first*; it does not say *wait to be told*. Work starts when a
-small **host-external supervisor** finds claimable cards and wakes a worker for
-one. Nothing inside an agent does the polling.
+small **host-external scheduler** wakes a worker, and the deterministic entries that
+find it run inside a bounded judgment turn the scheduler starts.
 
-That supervisor is **not part of this skill**. It ships as its own skill,
+That scheduler is **not part of this skill**. It ships as its own skill,
 [`meerkat-loop`](https://github.com/tanyu216/meerkat-taskpanel/blob/main/skills/meerkat-loop/SKILL.md)
 — its execution body is installed under `<host>/meerkat-taskpanel/`, and its
 `references/operation.md` is the operator's view of install, paths, flags and the
 headless permission boundary. The host-agnostic design is at
 [scheduling.md](https://github.com/tanyu216/meerkat-taskpanel/blob/main/docs/scheduling.md).
 
-Two layers, kept apart:
+Two clocks, and four entries the continue turn runs:
 
-| Layer | Cadence | Job | Cost |
+| Clock / entry | Cadence | Job | Cost |
 |---|---|---|---|
-| **poll** | 1 minute | `issue candidates` → claim → wake a worker | the scan is a $0 local CLI; a model turn starts **only** when a card was actually claimed |
-| **patrol** | 5 minutes | `issue list --status in_progress` → escalate a stale claim; report an unreadable heartbeat | $0 (no LLM by default) |
+| **ping** | 60 seconds | prune worker-registry entries whose pid is gone | $0; no board read, no LLM |
+| **continue** | 10 minutes | wake the host with a bounded `继续` prompt | one bounded LLM turn |
+| `loop/patrol.mjs` | in the turn | `issue list --status in_progress` → escalate a stale claim; report an unreadable heartbeat | $0 (no LLM by default) |
+| `loop/workflow.mjs` | in the turn | reconcile containers, dispatch reviews, apply verdicts | $0; writes as `system` |
+| `loop/poll.mjs` | in the turn | `issue candidates` → claim → wake a worker | $0 scan; a worker turn starts **only** when a card was actually claimed |
 
-Three things that keep it honest:
+Things that keep it honest:
 
-- **The atomic claim is the only dispatch.** `issue move <ref> in_progress` is
-  compare-and-swap: whoever wins the claim is who works the card, and the loser
-  starts **no** worker. A wake is therefore idempotent and bounded by a
-  concurrency cap (`--max-concurrency`, default 8).
-- **A fresh heartbeat means do nothing.** An empty poll tick starts no worker at
+- **The atomic claim is the only dispatch.** `issue claim <ref>` is compare-and-swap:
+  whoever wins the claim is who works the card, and the loser starts **no** worker. A
+  wake is therefore idempotent and bounded by a concurrency cap
+  (`--max-concurrency`, default 8).
+- **A fresh heartbeat means do nothing.** An empty poll pass starts no worker at
   all; a live claim is invisible to the next scan.
 - **A broken heartbeat is never silent.** If patrol cannot read a heartbeat, it
   *reports* that instead of going quiet — the state that used to vanish.
@@ -344,11 +347,12 @@ claude plugin list                                 # → meerkat-taskpanel, enab
   when you claim (`session set <ref> --seg <seg> --backend claude`), so a card
   names the checkout it belongs to.
 - **No timers of its own — the loop lives outside.** Claude Code hooks fire only
-  on session events, so the claim in §1 is driven by the supervisor
-  ([Waking & patrol](#waking--patrol-唤醒与巡检)): a launchd / systemd / cron unit
-  runs the **host-installed** copy of the loop's `scripts/supervisor.mjs`, which wakes a
-  headless `claude -p` session (`--resume <sid>` to continue one). `install.sh` installs
-  the `meerkat-loop` skill, drops the units and the `wake-claude.sh` glue, and prints the
+  on session events, so the claim in §1 is driven by the scheduler
+  ([Waking & patrol](#waking--patrol-唤醒与巡检)): launchd / systemd / cron units run
+  the **host-installed** copy of the loop's `scripts/supervisor.mjs` — a 10-minute
+  continue turn, whose poll entry claims the card and wakes a headless `claude -p`
+  session (`--resume <sid>` to continue one). `install.sh` installs the
+  `meerkat-loop` skill, drops the units and the `wake-claude.sh` glue, and prints the
   load command.
 
 ## Codex

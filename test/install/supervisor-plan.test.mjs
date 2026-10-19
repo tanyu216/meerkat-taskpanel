@@ -85,7 +85,7 @@ describe("_common.sh: supervisor_value decides the opt-in", () => {
     const asked = runCommon('supervisor_value "" 1', { input: "n\n" });
     // (The trailing space is the prompt's own, like the claim question's — a TTY answer
     // is typed at the cursor, not on the next line.)
-    assert.match(asked.stderr, /Enable the supervisor now\? It runs headless in the background \(poll 60s \/ patrol 300s\)\. \[y\/N\] $/);
+    assert.match(asked.stderr, /Enable the supervisor now\? It runs headless in the background \(ping 60s \/ continue 600s\)\. \[y\/N\] $/);
   });
 
   it("rejects an unknown action instead of silently installing the opposite", () => {
@@ -132,12 +132,12 @@ describe("supervisor: the scheduler and the identifiers", () => {
 
   it("the launchd label is the one the unit template renders", () => {
     assert.equal(supervisorBase("alice", "claude"), "com.meerkat-taskpanel.alice.claude");
-    assert.equal(supervisorLabel("alice", "claude", "poll"), "com.meerkat-taskpanel.alice.claude.poll");
-    assert.equal(supervisorLabel("alice", "claude", "patrol"), "com.meerkat-taskpanel.alice.claude.patrol");
+    assert.equal(supervisorLabel("alice", "claude", "ping"), "com.meerkat-taskpanel.alice.claude.ping");
+    assert.equal(supervisorLabel("alice", "claude", "continue"), "com.meerkat-taskpanel.alice.claude.continue");
 
     // The template the installer writes is the single source of truth for the Label.
-    const plist = doc("skills/meerkat-loop/templates/scheduling/launchd/com.meerkat-taskpanel.poll.plist");
-    assert.match(plist, /<string>com\.meerkat-taskpanel\.\{\{AGENT\}\}\.\{\{HOST\}\}\.poll<\/string>/);
+    const plist = doc("skills/meerkat-loop/templates/scheduling/launchd/com.meerkat-taskpanel.ping.plist");
+    assert.match(plist, /<string>com\.meerkat-taskpanel\.\{\{AGENT\}\}\.\{\{HOST\}\}\.ping<\/string>/);
   });
 
   it("the three actions and the three hosts are the contract's, and openclaw is never one", () => {
@@ -158,11 +158,16 @@ describe("supervisor: the scheduler and the identifiers", () => {
     assert.deepEqual(
       paths.launchd.map((unit) => unit.plist),
       [
-        "/home/op/.claude/scheduling/launchd/com.meerkat-taskpanel.poll.plist",
-        "/home/op/.claude/scheduling/launchd/com.meerkat-taskpanel.patrol.plist",
+        "/home/op/.claude/scheduling/launchd/com.meerkat-taskpanel.ping.plist",
+        "/home/op/.claude/scheduling/launchd/com.meerkat-taskpanel.continue.plist",
       ],
     );
     assert.deepEqual(paths.launchd.map((unit) => unit.label), [
+      "com.meerkat-taskpanel.alice.claude.ping",
+      "com.meerkat-taskpanel.alice.claude.continue",
+    ]);
+    // The old topology is still addressable, so enable can boot it out.
+    assert.deepEqual(paths.legacyLaunchd.map((unit) => unit.label), [
       "com.meerkat-taskpanel.alice.claude.poll",
       "com.meerkat-taskpanel.alice.claude.patrol",
     ]);
@@ -238,8 +243,8 @@ describe("supervisor: the cron marker block is the idempotency key", () => {
     const built = cronContentLines(paths);
     assert.equal(built.length, 3);
     assert.match(built[0], /^PATH=\S+$/);
-    assert.match(built[1], /^\* \* \* \* \* \/[^ ]*node \/home\/op\/\.claude\/meerkat-taskpanel\/scripts\/supervisor\.mjs --host claude --agent alice --once /);
-    assert.match(built[2], /^\*\/5 \* \* \* \* .* --patrol-only --once /);
+    assert.match(built[1], /^\* \* \* \* \* \/[^ ]*node \/home\/op\/\.claude\/meerkat-taskpanel\/scripts\/supervisor\.mjs --host claude --agent alice --ping-only --once /);
+    assert.match(built[2], /^\*\/10 \* \* \* \* .* --continue-only --once /);
     assert.match(built[1], />\/dev\/null 2>&1$/);
 
     // Exported by `install.sh` before it calls this module: the preview then carries the
@@ -254,8 +259,8 @@ describe("supervisor: the cron marker block is the idempotency key", () => {
     exported.cronFile = join(makeTempDir(), "meerkat-taskpanel.cron");
     assert.deepEqual(cronContentLines(exported), [
       "PATH=/opt/cli/bin:/opt/node/bin:/usr/bin:/bin",
-      "* * * * * /opt/node/bin/node /home/op/.claude/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --once --log /home/op/.claude/meerkat-taskpanel/supervisor.log --state /home/op/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1",
-      "*/5 * * * * /opt/node/bin/node /home/op/.claude/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --patrol-only --once --log /home/op/.claude/meerkat-taskpanel/supervisor.log --state /home/op/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1",
+      "* * * * * /opt/node/bin/node /home/op/.claude/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --ping-only --once --log /home/op/.claude/meerkat-taskpanel/supervisor.log --state /home/op/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1",
+      "*/10 * * * * /opt/node/bin/node /home/op/.claude/meerkat-taskpanel/scripts/supervisor.mjs --host claude --agent alice --continue-only --once --log /home/op/.claude/meerkat-taskpanel/supervisor.log --state /home/op/.claude/meerkat-taskpanel/supervisor.state.json >/dev/null 2>&1",
     ]);
 
     // Once the installer has written the unit, that file is the source: the enable path
@@ -323,7 +328,7 @@ describe("supervisor: the docs and the implementation agree", () => {
     assert.notEqual(documented, null, "the enable report must be quoted in docs/install.md");
     assert.equal(
       documented[1].replace("<agent>", "alice"),
-      `${supervisorBase("alice", "claude")}.poll,.patrol`,
+      `${supervisorBase("alice", "claude")}.ping,.continue`,
       "the documented units= is the one the plan reports",
     );
   });
@@ -331,9 +336,9 @@ describe("supervisor: the docs and the implementation agree", () => {
   it("the per-OS commands the docs give are the ones the plans run", () => {
     const scheduling = doc("docs/scheduling.md");
     assert.ok(scheduling.includes("launchctl bootstrap gui/$(id -u)"), "launchd bootstrap");
-    assert.ok(scheduling.includes("launchctl bootout gui/$(id -u)/com.meerkat-taskpanel.<agent>.claude.poll"), "launchd bootout");
+    assert.ok(scheduling.includes("launchctl bootout gui/$(id -u)/com.meerkat-taskpanel.<agent>.claude.ping"), "launchd bootout");
     assert.ok(
-      scheduling.includes("systemctl --user enable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer"),
+      scheduling.includes("systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer"),
       "systemd enable",
     );
     assert.ok(scheduling.includes("loginctl enable-linger"), "the lingering remedy");

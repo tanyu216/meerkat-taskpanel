@@ -7,7 +7,7 @@
  * load-bearing rules are decided without a clock, a process or a database:
  *
  *   * **fire-only.** A scan with no candidates plans no work, so no worker is
- *     ever started for an empty tick — the whole point of the cheap 1-minute poll.
+ *     ever started for an empty scan — the whole point of the cheap poll entry.
  *   * **atomic claim = the only dispatch.** The plan says *what* to wake; the
  *     runner claims first and only wakes a card whose claim was accepted.
  *   * **idempotent.** A card already in the running registry — or offered twice
@@ -25,15 +25,40 @@ import { DomainError } from "./errors.mjs";
 
 /** Default cap on concurrently running workers. */
 export const DEFAULT_MAX_CONCURRENCY = 8;
-/** Default poll cadence, seconds — the cheap 1-minute scan. */
+/** Legacy poll cadence, seconds — kept for older callers; the clock is `DEFAULT_PING_SECONDS`. */
 export const DEFAULT_POLL_SECONDS = 60;
-/** Default patrol cadence, seconds — the 5-minute fallback. */
+/** The SLA measurement period, seconds — no longer a scheduling cadence. */
 export const DEFAULT_PATROL_SECONDS = 300;
+/**
+ * Default ping cadence, seconds — the scheduler's liveness clock. Ping only
+ * prunes dead worker pids from the registry; it never reads the board.
+ */
+export const DEFAULT_PING_SECONDS = 60;
+/**
+ * Default continue cadence, seconds — the scheduler's judgment clock. A
+ * continue turn wakes the host agent with a bounded prompt; that turn runs the
+ * deterministic poll, patrol and workflow entries.
+ */
+export const DEFAULT_CONTINUE_SECONDS = 600; // 10 minutes
 /** A claim older than this is "stale" for patrol (same-holder recovery window). */
 export const PATROL_STALE_MS = CLAIM_STALE_SAME_MS;
 
 const TRUE_WORDS = new Set(["yes", "true", "1", "y", "on"]);
 const FALSE_WORDS = new Set(["no", "false", "0", "n", "off"]);
+
+/**
+ * Quote one argv element for a shell command line. The continue prompt embeds
+ * the deterministic entries' argv, so a path with a space must survive a copy
+ * into a shell unchanged.
+ *
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function quoteArg(value) {
+  const text = String(value ?? "");
+  if (text !== "" && /^[A-Za-z0-9_./:=@%+-]+$/.test(text)) return text;
+  return `'${text.replace(/'/g, "'\\''")}'`;
+}
 
 /**
  * Parse a yes/no-ish string into a boolean, or `null` when it says nothing.
@@ -123,6 +148,47 @@ export function resolveRecoverStale(input = {}) {
   const fromFile = parseYesNo(file === null ? undefined : file.MEERKAT_TASKPANEL_RECOVER_STALE);
   if (fromFile !== null) return fromFile;
   return true;
+}
+
+/**
+ * Whether the scheduler wakes the host's periodic judgment turn.
+ *
+ * Precedence is the same as `resolveClaimUnassigned`: **flag > environment >
+ * installer's host config > default on**. Turning it off leaves the ping clock
+ * running (worker liveness) but discovers no new work until a human runs the
+ * poll entry.
+ *
+ * @param {{flag?: unknown, env?: unknown, file?: Record<string, string>|null}} [input]
+ * @returns {boolean}
+ */
+export function resolveContinueEnabled(input = {}) {
+  const fromFlag = parseYesNo(input.flag);
+  if (fromFlag !== null) return fromFlag;
+  const fromEnv = parseYesNo(input.env);
+  if (fromEnv !== null) return fromEnv;
+  const file = input.file ?? null;
+  const fromFile = parseYesNo(file === null ? undefined : file.MEERKAT_TASKPANEL_CONTINUE);
+  if (fromFile !== null) return fromFile;
+  return true;
+}
+
+/**
+ * A positive cadence in seconds. `file` is the *value* read from the host
+ * config (not the whole map); invalid values are ignored rather than allowed
+ * to wedge a clock.
+ *
+ * @param {{flag?: unknown, env?: unknown, file?: unknown, fallback?: number}} [input]
+ * @returns {number}
+ */
+export function resolveIntervalSeconds(input = {}) {
+  const fallback =
+    Number.isInteger(input.fallback) && input.fallback > 0 ? input.fallback : DEFAULT_CONTINUE_SECONDS;
+  for (const value of [input.flag, input.env, input.file]) {
+    if (value === undefined || value === null || value === "") continue;
+    const number = typeof value === "number" ? value : Number.parseInt(String(value).trim(), 10);
+    if (Number.isInteger(number) && number > 0) return number;
+  }
+  return fallback;
 }
 
 /** Default cap on writes one workflow pass may perform. */
@@ -505,6 +571,29 @@ export function planWakeInvocation(input = {}) {
 }
 
 /**
+ * What the scheduler spawns for one **continue** turn.
+ *
+ * A continue turn is not a card wake: it has no card, no project identity and
+ * no session to resume. So it always takes the host's built-in headless form
+ * and never the wake glue — the glue exists to resolve a card's project target
+ * directory, and `wake-cwd.mjs` refuses an empty project rather than guessing
+ * one. `TP_NODE` is still carried so a nested glue (started by the workers the
+ * turn wakes) finds the interpreter this scheduler is running on.
+ *
+ * @param {{host: string, prompt: string, cwd?: string|null, nodePath?: string|null}} input
+ * @returns {{command: string, args: string[], env: Record<string,string>, cwd: string|null, via: "direct"}}
+ */
+export function planContinueInvocation(input = {}) {
+  const prompt = String(input.prompt ?? "");
+  const cwd = input.cwd ?? null;
+  const env = {};
+  if (input.nodePath !== undefined && input.nodePath !== null && String(input.nodePath) !== "") {
+    env.TP_NODE = String(input.nodePath);
+  }
+  return { ...wakeCommand({ host: input.host, prompt }), env, cwd, via: "direct" };
+}
+
+/**
  * The fresh handoff handed to a woken worker — bounded so a wake never carries
  * an unbounded context. It names the card, the attribution flags every write
  * should carry, and the compliant next step (triage, read, work, report).
@@ -612,5 +701,66 @@ export function buildReviewHandoff(input) {
     "Rules: claim and heartbeat only this review card, never the card under review. Do not move",
     "the card under review and do not move this review card: the loop applies the verdict and",
     "closes this card. Carry the attribution flags above on every write.",
+  ].join("\n");
+}
+
+/**
+ * The bounded prompt for the scheduler's periodic **continue** turn.
+ *
+ * The loop's deterministic work is no longer scheduled as its own units: this
+ * turn is where poll, patrol and workflow are invoked. The prompt is therefore
+ * self-contained — absolute entry paths, the order to run them in, and the
+ * board rules that must not be broken — because a headless host may run it
+ * without the loop skill loaded.
+ *
+ * Order is **patrol → workflow → poll**: the workflow pass dispatches a review
+ * card, and the poll that follows in the same turn can claim and wake its
+ * reviewer immediately; polling first would delay that review by a whole
+ * cadence.
+ *
+ * It names no card and no project directory on purpose. A continue turn is
+ * not a worker wake, and the board holds no project directory to name.
+ *
+ * @param {{
+ *   host?: string,
+ *   agent?: string,
+ *   nodePath?: string|null,
+ *   scripts?: {poll?: string, patrol?: string, workflow?: string},
+ *   commonArgs?: string[],
+ *   continueIntervalSeconds?: number,
+ * }} [input]
+ * @returns {string}
+ */
+export function buildContinuePrompt(input = {}) {
+  const node = quoteArg(input.nodePath ?? "node");
+  const agent = String(input.agent ?? "agent");
+  const host = String(input.host ?? "claude");
+  const scripts = input.scripts ?? {};
+  const common = (input.commonArgs ?? []).map(quoteArg).join(" ");
+  const minutes = Math.max(
+    1,
+    Math.round((input.continueIntervalSeconds ?? DEFAULT_CONTINUE_SECONDS) / 60),
+  );
+  const run = (script) => `${node} ${quoteArg(script)}${common === "" ? "" : ` ${common}`}`;
+
+  return [
+    "继续 — Meerkat TaskPanel loop, judgment turn.",
+    "No card and no project directory: this is the loop's periodic turn, not a worker wake.",
+    "",
+    "Run in order, each one pass:",
+    `  1) ${run(scripts.patrol)}   # notify-only SLA; never moves a card`,
+    `  2) ${run(scripts.workflow)}   # reconcile / review dispatch / verdicts (system)`,
+    `  3) ${run(scripts.poll)}   # scan → atomic claim → wake a worker`,
+    "",
+    `You may claim a ready card yourself (\`taskctl issue claim <ref> --agent ${agent}\`)`,
+    "when judgment says it must start now; never claim work you will not start.",
+    "",
+    "Rules:",
+    "- Never move a card to done. in_review → done is the workflow entry's system acceptance.",
+    "- A reviewer moves nothing; it delivers a VERDICT report on its review card.",
+    "- Stop work at in_review: deliver a report, do not self-accept.",
+    "- Keep this turn bounded: start workers and return; do not wait for them.",
+    "- At the concurrency cap, leave the card for the next turn.",
+    `- Host: ${host}. This turn repeats every ${minutes} minute${minutes === 1 ? "" : "s"}.`,
   ].join("\n");
 }

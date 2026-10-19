@@ -189,7 +189,7 @@ describe("install.sh: the units carry their own PATH instead of borrowing the ho
 
     const expected = unitPath(NODE_DIR, { cliDir: bin, scheduler: "launchd" });
 
-    for (const kind of ["poll", "patrol"]) {
+    for (const kind of ["ping", "continue"]) {
       const file = join(home, ".claude", "scheduling", "launchd", `com.meerkat-taskpanel.${kind}.plist`);
       const text = readFileSync(file, "utf8");
       // The defect itself: `/usr/bin/env node` is resolved against launchd's
@@ -222,7 +222,7 @@ describe("install.sh: the units carry their own PATH instead of borrowing the ho
     assert.equal(setting, `PATH=${unitPath(NODE_DIR, { cliDir: bin, scheduler: "cron" })}`);
 
     const jobs = text.split("\n").filter((line) => !line.startsWith("#") && /^\S+ \S+ \S+ \S+ \S+ /.test(line));
-    assert.equal(jobs.length, 2, "a poll line and a patrol line");
+    assert.equal(jobs.length, 2, "a ping line and a continue line");
     for (const job of jobs) {
       assert.ok(!job.includes("/usr/bin/env"), "cron resolves a bare name against its own minimal PATH");
       assert.ok(job.includes(NODE), `the job must name the absolute interpreter: ${job}`);
@@ -242,7 +242,7 @@ describe("install.sh: the units carry their own PATH instead of borrowing the ho
     );
 
     const rendered = plistPath(
-      readFileSync(join(home, ".claude", "scheduling", "launchd", "com.meerkat-taskpanel.poll.plist"), "utf8"),
+      readFileSync(join(home, ".claude", "scheduling", "launchd", "com.meerkat-taskpanel.ping.plist"), "utf8"),
     );
     const minimal = { PATH: rendered };
 
@@ -275,7 +275,7 @@ describe("install.sh: the units carry their own PATH instead of borrowing the ho
     assert.match(run.stdout, /claude is not on PATH/);
     assert.match(run.stdout, /re-run this install with --force/);
 
-    const text = readFileSync(join(home, ".claude", "scheduling", "launchd", "com.meerkat-taskpanel.poll.plist"), "utf8");
+    const text = readFileSync(join(home, ".claude", "scheduling", "launchd", "com.meerkat-taskpanel.ping.plist"), "utf8");
     const rendered = plistPath(text);
     assert.ok(!rendered.split(":").includes(bin), "the unresolvable CLI directory must not be invented");
     assert.equal(rendered.split(":")[0], NODE_DIR, "node's own directory is still the head");
@@ -301,8 +301,8 @@ describe("install.sh: --supervisor=enable previews the lines it would install", 
     const loop = join(home, ".claude", "meerkat-taskpanel");
     const expected = [
       `PATH=${unitPath(NODE_DIR, { cliDir: bin, scheduler: "cron" })}`,
-      `* * * * * ${NODE} ${loop}/scripts/supervisor.mjs --host claude --agent alice --once --log ${loop}/supervisor.log --state ${loop}/supervisor.state.json >/dev/null 2>&1`,
-      `*/5 * * * * ${NODE} ${loop}/scripts/supervisor.mjs --host claude --agent alice --patrol-only --once --log ${loop}/supervisor.log --state ${loop}/supervisor.state.json >/dev/null 2>&1`,
+      `* * * * * ${NODE} ${loop}/scripts/supervisor.mjs --host claude --agent alice --ping-only --once --log ${loop}/supervisor.log --state ${loop}/supervisor.state.json >/dev/null 2>&1`,
+      `*/10 * * * * ${NODE} ${loop}/scripts/supervisor.mjs --host claude --agent alice --continue-only --once --log ${loop}/supervisor.log --state ${loop}/supervisor.state.json >/dev/null 2>&1`,
     ];
 
     const dry = runInstall(

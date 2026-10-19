@@ -241,6 +241,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The loop is now a scheduler with two clocks.** `scripts/supervisor.mjs` no longer reads the
+  board: it owns a 60-second **ping** (prune dead worker pids; no board read, no LLM) and a
+  10-minute **continue** turn (wake the host with a bounded `继续` prompt). Poll, patrol and
+  workflow are independent entries under `scripts/loop/`, invoked by the continue turn in the
+  order patrol → workflow → poll. The installed units are now `ping`/`continue` (60s / 600s);
+  `--supervisor=enable` takes the legacy `poll`/`patrol` units down before loading them, and a
+  bare `--once` still runs the legacy poll pass so a partially upgraded host keeps discovering
+  work. The trade-off is a work-discovery latency of at most one continue cadence
+  (`--continue-interval`).
 - **The naming-boundary contract is retired and narrowed, not executed.**
   `design/contracts/naming-boundary.md` adjudicated which words of the external framework may
   appear in this repository, and laid out a three-batch cleanup plus independent acceptance

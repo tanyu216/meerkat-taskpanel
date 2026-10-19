@@ -270,6 +270,50 @@ export_tp_env() {
   TP_WORKFLOW="${MEERKAT_TASKPANEL_WORKFLOW:-yes}"
   TP_AUTO_ACCEPT_REVIEWS="${MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS:-yes}"
   TP_REVIEWER="${MEERKAT_TASKPANEL_REVIEWER:-}"
+  # The scheduler's two clocks. Ping only prunes dead worker pids; continue is
+  # the bounded `继续` judgment turn that runs poll/patrol/workflow.
+  TP_PING_INTERVAL="${MEERKAT_TASKPANEL_PING_INTERVAL:-60}"
+  TP_CONTINUE_INTERVAL="${MEERKAT_TASKPANEL_CONTINUE_INTERVAL:-600}"
+  TP_CONTINUE="${MEERKAT_TASKPANEL_CONTINUE:-yes}"
+  case "$TP_PING_INTERVAL" in
+    "" | *[!0-9]*)
+      echo "$TP_HOST: MEERKAT_TASKPANEL_PING_INTERVAL must be a positive integer (got '$TP_PING_INTERVAL')" >&2
+      return 1
+      ;;
+  esac
+  case "$TP_CONTINUE_INTERVAL" in
+    "" | *[!0-9]*)
+      echo "$TP_HOST: MEERKAT_TASKPANEL_CONTINUE_INTERVAL must be a positive integer (got '$TP_CONTINUE_INTERVAL')" >&2
+      return 1
+      ;;
+  esac
+  if [ "$TP_PING_INTERVAL" -le 0 ] || [ "$TP_CONTINUE_INTERVAL" -le 0 ]; then
+    echo "$TP_HOST: the ping and continue intervals must be positive" >&2
+    return 1
+  fi
+  case "$TP_CONTINUE" in
+    yes | no | true | false | 1 | 0 | y | n | on | off) ;;
+    *)
+      echo "$TP_HOST: MEERKAT_TASKPANEL_CONTINUE must be yes or no (got '$TP_CONTINUE')" >&2
+      return 1
+      ;;
+  esac
+  TP_PING_CRON="* * * * *"
+  if [ "$TP_CONTINUE_INTERVAL" -ge 60 ] && [ $((TP_CONTINUE_INTERVAL % 60)) -eq 0 ]; then
+    continue_minutes=$((TP_CONTINUE_INTERVAL / 60))
+    if [ "$continue_minutes" -lt 60 ]; then
+      TP_CONTINUE_CRON="*/$continue_minutes * * * *"
+    elif [ "$continue_minutes" -eq 60 ]; then
+      TP_CONTINUE_CRON="0 * * * *"
+    elif [ $((continue_minutes % 60)) -eq 0 ] && [ $((continue_minutes / 60)) -lt 24 ]; then
+      TP_CONTINUE_CRON="0 */$((continue_minutes / 60)) * * *"
+    else
+      TP_CONTINUE_CRON="*/10 * * * *"
+    fi
+  else
+    TP_CONTINUE_CRON="*/10 * * * *"
+    echo "$TP_HOST: continue interval ${TP_CONTINUE_INTERVAL}s is not a whole number of minutes; cron falls back to */10" >&2
+  fi
 
   # --- what the scheduling units run with -------------------------------------
   #
@@ -312,6 +356,7 @@ export_tp_env() {
   export TP_AGENT TP_HUMAN TP_REPO TP_SHIM TP_HOOK TP_TRIGGER
   export TP_HOST TP_HOST_BASE TP_LOOP TP_SUPERVISOR TP_LOG TP_STATE TP_ENV TP_SCHED TP_WAKE TP_CLAIM_UNASSIGNED
   export TP_RECOVER_STALE TP_WORKFLOW TP_AUTO_ACCEPT_REVIEWS TP_REVIEWER
+  export TP_PING_INTERVAL TP_CONTINUE_INTERVAL TP_CONTINUE TP_PING_CRON TP_CONTINUE_CRON
   export TP_NODE TP_UNIT_PATH_LAUNCHD TP_UNIT_PATH_CRON TP_CLI_ON_PATH
 }
 
@@ -383,7 +428,7 @@ supervisor_value() {
   esac
 
   if [ "$interactive" = "1" ]; then
-    printf 'Enable the supervisor now? It runs headless in the background (poll 60s / patrol 300s). [y/N] ' >&2
+    printf 'Enable the supervisor now? It runs headless in the background (ping 60s / continue 600s). [y/N] ' >&2
     answer=""
     read -r answer || answer=""
     case "$answer" in
@@ -531,6 +576,27 @@ install_loop_body() {
 # installer's own templates: the units, the wake glues and the host config are the loop's
 # payload, and deploying the copy the loop skill distributes is what keeps "what shipped"
 # and "what was verified" the same bytes.
+# remove_legacy_unit_files — drop the poll/patrol templates this installer used to
+# write. A loaded legacy unit is taken down by `apply_supervisor enable`; these are
+# the on-disk copies, removed only after that so a user cannot accidentally reload
+# the old topology. `--dry-run` reports instead of deleting.
+remove_legacy_unit_files() {
+  for legacy in \
+    "$TP_SCHED/launchd/com.meerkat-taskpanel.poll.plist" \
+    "$TP_SCHED/launchd/com.meerkat-taskpanel.patrol.plist" \
+    "$TP_SCHED/systemd/meerkat-taskpanel-poll.service" \
+    "$TP_SCHED/systemd/meerkat-taskpanel-poll.timer" \
+    "$TP_SCHED/systemd/meerkat-taskpanel-patrol.service" \
+    "$TP_SCHED/systemd/meerkat-taskpanel-patrol.timer"; do
+    [ -e "$legacy" ] || continue
+    if [ -n "${MEERKAT_TASKPANEL_DRY_RUN:-}" ]; then
+      echo "would remove $legacy"
+    else
+      rm -f "$legacy"
+    fi
+  done
+}
+
 install_scheduling() {
   install_loop_body
 
@@ -541,12 +607,12 @@ install_scheduling() {
     echo "$TP_HOST:   so a woken $TP_HOST would not resolve. Install it, then re-run this install with --force."
   fi
 
-  emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.poll.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.poll.plist"
-  emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.patrol.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.patrol.plist"
-  emit_loop_file "scheduling/systemd/meerkat-taskpanel-poll.service" "$TP_SCHED/systemd/meerkat-taskpanel-poll.service"
-  emit_loop_file "scheduling/systemd/meerkat-taskpanel-poll.timer" "$TP_SCHED/systemd/meerkat-taskpanel-poll.timer"
-  emit_loop_file "scheduling/systemd/meerkat-taskpanel-patrol.service" "$TP_SCHED/systemd/meerkat-taskpanel-patrol.service"
-  emit_loop_file "scheduling/systemd/meerkat-taskpanel-patrol.timer" "$TP_SCHED/systemd/meerkat-taskpanel-patrol.timer"
+  emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.ping.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.ping.plist"
+  emit_loop_file "scheduling/launchd/com.meerkat-taskpanel.continue.plist" "$TP_SCHED/launchd/com.meerkat-taskpanel.continue.plist"
+  emit_loop_file "scheduling/systemd/meerkat-taskpanel-ping.service" "$TP_SCHED/systemd/meerkat-taskpanel-ping.service"
+  emit_loop_file "scheduling/systemd/meerkat-taskpanel-ping.timer" "$TP_SCHED/systemd/meerkat-taskpanel-ping.timer"
+  emit_loop_file "scheduling/systemd/meerkat-taskpanel-continue.service" "$TP_SCHED/systemd/meerkat-taskpanel-continue.service"
+  emit_loop_file "scheduling/systemd/meerkat-taskpanel-continue.timer" "$TP_SCHED/systemd/meerkat-taskpanel-continue.timer"
   emit_loop_file "scheduling/cron/meerkat-taskpanel.cron" "$TP_SCHED/cron/meerkat-taskpanel.cron"
   emit_loop_file "$TP_HOST/wake-$TP_HOST.sh" "$TP_WAKE" --exec
 
@@ -554,12 +620,18 @@ install_scheduling() {
 
   if [ -n "${MEERKAT_TASKPANEL_SUPERVISOR:-}" ]; then
     apply_supervisor
+    remove_legacy_unit_files
     return 0
   fi
 
+  if [ -e "$TP_SCHED/launchd/com.meerkat-taskpanel.poll.plist" ] ||
+    [ -e "$TP_SCHED/systemd/meerkat-taskpanel-poll.timer" ]; then
+    echo "$TP_HOST: legacy poll/patrol units are still present — re-run with --supervisor=enable to migrate them to ping/continue"
+  fi
+
   echo "$TP_HOST: to start the supervisor, load one of these (nothing is loaded for you):"
-  echo "  launchd:  launchctl load $TP_SCHED/launchd/com.meerkat-taskpanel.poll.plist   # and .patrol.plist"
-  echo "  systemd:  mkdir -p ~/.config/systemd/user && cp $TP_SCHED/systemd/* ~/.config/systemd/user/ && systemctl --user enable --now meerkat-taskpanel-poll.timer meerkat-taskpanel-patrol.timer"
+  echo "  launchd:  launchctl load $TP_SCHED/launchd/com.meerkat-taskpanel.ping.plist   # and .continue.plist"
+  echo "  systemd:  mkdir -p ~/.config/systemd/user && cp $TP_SCHED/systemd/* ~/.config/systemd/user/ && systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer"
   echo "  cron:     crontab $TP_SCHED/cron/meerkat-taskpanel.cron"
 }
 
@@ -605,6 +677,9 @@ write_host_config() {
   ensure_env_key "MEERKAT_TASKPANEL_WORKFLOW" "$TP_WORKFLOW"
   ensure_env_key "MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS" "$TP_AUTO_ACCEPT_REVIEWS"
   ensure_env_key "MEERKAT_TASKPANEL_REVIEWER" "$TP_REVIEWER"
+  ensure_env_key "MEERKAT_TASKPANEL_PING_INTERVAL" "$TP_PING_INTERVAL"
+  ensure_env_key "MEERKAT_TASKPANEL_CONTINUE_INTERVAL" "$TP_CONTINUE_INTERVAL"
+  ensure_env_key "MEERKAT_TASKPANEL_CONTINUE" "$TP_CONTINUE"
 }
 
 # ---------------------------------------------------------------------------

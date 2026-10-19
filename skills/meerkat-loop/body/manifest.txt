@@ -1,3 +1,11 @@
+scripts/loop/board.mjs
+scripts/loop/continue.mjs
+scripts/loop/options.mjs
+scripts/loop/patrol.mjs
+scripts/loop/poll.mjs
+scripts/loop/runners.mjs
+scripts/loop/runtime.mjs
+scripts/loop/workflow.mjs
 scripts/supervisor.mjs
 scripts/wake-cwd.mjs
 src/shared/constants.mjs
