@@ -35,7 +35,7 @@ import {
   checkDeliveryGate,
   WAIVER_MIN_REASON_CHARS,
 } from "../domain/delivery-gate.mjs";
-import { assertTransition } from "../domain/status.mjs";
+import { assertAcceptanceAuthority, assertTransition } from "../domain/status.mjs";
 import { assertAwaitingReason } from "../domain/awaiting.mjs";
 import { normalizeBlockedReason } from "../domain/blocked-reason.mjs";
 import { STATUS } from "../domain/enums.mjs";
@@ -623,6 +623,10 @@ export function moveStatus(ctx, input) {
       }
 
       assertTransition(current.status, input.to, current.kind);
+      // `done` is acceptance, not delivery: only a human or the board itself may
+      // perform it. A worker stops at `in_review` (the review card is how the
+      // loop's independent reviewer reports; the loop — `system` — applies it).
+      if (input.to === STATUS.DONE) assertAcceptanceAuthority(actor);
 
       // `todo → in_progress` **is** a claim (T-20261009-230500): it must respect
       // the routing lock and stamp `claimed_by/claimed_at/heartbeat_at`, so the

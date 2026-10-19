@@ -1,6 +1,10 @@
 {
   "errors": [
     {
+      "code": "ACCEPTANCE_FORBIDDEN",
+      "http": 409
+    },
+    {
       "code": "ACCESS_CONFIG_INVALID",
       "http": 500
     },

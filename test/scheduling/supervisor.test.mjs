@@ -821,10 +821,20 @@ describe("runWorkflowTick (injected deps)", () => {
       identifier: "T-2",
       title: "Review T-1",
       delivery_round: 0,
+      assignee_id: "agent-jobs",
+      assignee: { id: "agent-jobs", display_name: "jobs", kind: "agent" },
       meta: { review_of: "T-1", flow: "B", review_round: 1 },
       ...fields,
     });
   }
+
+  /** A verdict report authored by the configured reviewer. */
+  const byJobs = (conclusion) => ({
+    round: 1,
+    conclusion,
+    author_id: "agent-jobs",
+    author: { id: "agent-jobs", display_name: "jobs", kind: "agent" },
+  });
 
   function baseDeps(overrides = {}) {
     return {
@@ -835,7 +845,7 @@ describe("runWorkflowTick (injected deps)", () => {
       dryRun: false,
       reconcile: async () => ({ ok: true, actions: [] }),
       readCard: async (ref) => ({ ok: true, card: task({ identifier: ref }) }),
-      readReports: async () => ({ ok: true, reports: [{ round: 1, conclusion: "VERDICT: APPROVE" }] }),
+      readReports: async () => ({ ok: true, reports: [byJobs("VERDICT: APPROVE")] }),
       createReview: async () => ({ ok: true, ref: "T-9" }),
       createFixChild: async () => ({ ok: true, ref: "T-8" }),
       linkFixChild: async () => ({ ok: true }),
@@ -895,7 +905,7 @@ describe("runWorkflowTick (injected deps)", () => {
     const result = await runWorkflowTick(
       baseDeps({
         tasks: [task(), review()],
-        readReports: async () => ({ ok: true, reports: [{ round: 1, conclusion: "VERDICT: APPROVE" }] }),
+        readReports: async () => ({ ok: true, reports: [byJobs("VERDICT: APPROVE")] }),
         comment: async (ref, input) => (order.push(`comment:${ref}:${input.kind}`), { ok: true }),
         setMeta: async (ref, meta) => (order.push(`meta:${ref}:${JSON.stringify(meta)}`), { ok: true }),
         move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
@@ -917,7 +927,7 @@ describe("runWorkflowTick (injected deps)", () => {
     const result = await runWorkflowTick(
       baseDeps({
         tasks: [task(), review()],
-        readReports: async () => ({ ok: true, reports: [{ round: 1, conclusion: "VERDICT: REJECT\nthe gate is untested" }] }),
+        readReports: async () => ({ ok: true, reports: [byJobs("VERDICT: REJECT\nthe gate is untested")] }),
         comment: async (ref, input) => (order.push(`comment:${ref}:${input.kind}`), { ok: true }),
         setMeta: async (ref, meta) => (order.push(`meta:${ref}:${JSON.stringify(meta)}`), { ok: true }),
         move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
@@ -939,7 +949,7 @@ describe("runWorkflowTick (injected deps)", () => {
     const result = await runWorkflowTick(
       baseDeps({
         tasks: [task({ identifier: "E-1", kind: "epic" }), review({ identifier: "T-2", meta: { review_of: "E-1", flow: "B", review_round: 1 } })],
-        readReports: async () => ({ ok: true, reports: [{ round: 1, conclusion: "VERDICT: REJECT" }] }),
+        readReports: async () => ({ ok: true, reports: [byJobs("VERDICT: REJECT")] }),
         createFixChild: async () => (order.push("create_fix"), { ok: true, ref: "E-2" }),
         linkFixChild: async (epic, child) => (order.push(`link:${epic}:${child}`), { ok: true }),
         comment: async (ref) => (order.push(`comment:${ref}`), { ok: true }),

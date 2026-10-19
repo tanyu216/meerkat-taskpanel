@@ -68,10 +68,18 @@ function reviewCard(fields = {}) {
     title: "Review T-1",
     status: "in_review",
     delivery_round: 0,
+    assignee_id: "agent-jobs",
+    assignee: { id: "agent-jobs", display_name: "jobs", kind: "agent" },
     meta: { review_of: "T-1", flow: "B", review_round: 1 },
     ...fields,
   });
 }
+
+/** The author a verdict report must carry to be the configured reviewer's. */
+const REVIEWER_REPORT = {
+  author: { id: "agent-jobs", display_name: "jobs", kind: "agent" },
+  author_id: "agent-jobs",
+};
 
 const CONFIG = { reviewer: "jobs", maxActions: 20, autoAcceptReviews: true };
 
@@ -361,8 +369,8 @@ describe("planReviewDispatch", () => {
 // ---------------------------------------------------------------------------
 
 describe("planReviewOutcomes", () => {
-  const approve = { ok: true, verdict: "APPROVE", findings: "" };
-  const reject = { ok: true, verdict: "REJECT", findings: "- the gate is untested" };
+  const approve = { ok: true, verdict: "APPROVE", findings: "", report: REVIEWER_REPORT };
+  const reject = { ok: true, verdict: "REJECT", findings: "- the gate is untested", report: REVIEWER_REPORT };
 
   it("approves the original and closes the review card", () => {
     const result = planReviewOutcomes({ tasks: [card(), reviewCard()], verdicts: { "T-2": approve }, config: CONFIG });
@@ -462,6 +470,46 @@ describe("planReviewOutcomes", () => {
     assert.deepEqual(result.alerts.map((alert) => alert.type), ["original_unexpected_status"]);
   });
 
+  it("refuses a verdict report written by somebody other than the reviewer", () => {
+    const result = planReviewOutcomes({
+      tasks: [card(), reviewCard()],
+      verdicts: {
+        "T-2": {
+          ok: true,
+          verdict: "APPROVE",
+          findings: "",
+          report: { author: { id: "linus", display_name: "linus", kind: "agent" }, author_id: "linus" },
+        },
+      },
+      config: CONFIG,
+    });
+    assert.deepEqual(result.actions, []);
+    assert.deepEqual(result.alerts.map((alert) => alert.type), ["review_report_not_by_reviewer"]);
+    assert.equal(result.alerts[0].expected, "jobs");
+    assert.equal(result.alerts[0].author, "linus");
+  });
+
+  it("reports a review card that has produced no verdict for too long", () => {
+    const stale = reviewCard({ status: "todo", status_changed_at: "2026-10-19T08:00:00.000Z" });
+    const reported = planReviewOutcomes({ tasks: [card(), stale], verdicts: {}, config: CONFIG, now: NOW });
+    assert.deepEqual(reported.alerts.map((alert) => alert.type), ["review_aging"]);
+    assert.equal(reported.alerts[0].thresholdMs, 3_600_000);
+
+    const fresh = reviewCard({ status: "todo", status_changed_at: "2026-10-19T09:30:00.000Z" });
+    assert.deepEqual(planReviewOutcomes({ tasks: [card(), fresh], verdicts: {}, config: CONFIG, now: NOW }).alerts, []);
+
+    // A configured threshold is honoured.
+    assert.deepEqual(
+      planReviewOutcomes({
+        tasks: [card(), fresh],
+        verdicts: {},
+        config: { ...CONFIG, reviewAgingMs: 5 * 60_000 },
+        now: NOW,
+      }).alerts.map((alert) => alert.type),
+      ["review_aging"],
+    );
+  });
+
   it("still applies the verdict with auto-accept off, but leaves the review card to a human", () => {
     const result = outcomes({
       tasks: [card(), reviewCard()],
@@ -506,7 +554,7 @@ describe("planWorkflowTick", () => {
   it("runs outcomes before dispatch, so a card approved this tick is not re-dispatched", () => {
     const result = planWorkflowTick({
       tasks: [card(), reviewCard()],
-      verdicts: { "T-2": { ok: true, verdict: "APPROVE", findings: "" } },
+      verdicts: { "T-2": { ok: true, verdict: "APPROVE", findings: "", report: REVIEWER_REPORT } },
       config: CONFIG,
       now: NOW,
     });
@@ -557,6 +605,7 @@ describe("resolveWorkflowConfig", () => {
       reviewer: null,
       autoAcceptReviews: true,
       maxActions: 20,
+      reviewAgingMs: 3_600_000,
     });
   });
 
@@ -578,20 +627,28 @@ describe("resolveWorkflowConfig", () => {
       reviewer: "env-reviewer",
       autoAcceptReviews: true,
       maxActions: 9,
+      reviewAgingMs: 3_600_000,
     });
     assert.deepEqual(
       resolveWorkflowConfig({
-        flags: { workflow: "no", reviewer: "flag-reviewer", autoAcceptReviews: "no", workflowMaxActions: "3" },
+        flags: {
+          workflow: "no",
+          reviewer: "flag-reviewer",
+          autoAcceptReviews: "no",
+          workflowMaxActions: "3",
+          reviewAgingMinutes: "30",
+        },
         env,
         file,
       }),
-      { workflow: false, reviewer: "flag-reviewer", autoAcceptReviews: false, maxActions: 3 },
+      { workflow: false, reviewer: "flag-reviewer", autoAcceptReviews: false, maxActions: 3, reviewAgingMs: 1_800_000 },
     );
     assert.deepEqual(resolveWorkflowConfig({ file }), {
       workflow: false,
       reviewer: "file-reviewer",
       autoAcceptReviews: false,
       maxActions: 7,
+      reviewAgingMs: 3_600_000,
     });
   });
 

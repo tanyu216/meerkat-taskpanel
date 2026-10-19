@@ -238,6 +238,23 @@ recovered on the next pass, whereas a missing card leaves nothing to recover fro
 separation is the same one the openclaw-team review protocol uses (`review_of` cards, the
 leader accepts); the loop is just the leader's automated stand-in.
 
+### Acceptance authority is enforced by the board
+
+The separation is not only a prompt rule. `in_review → done` now has a **board-level
+acceptance authority**: only a `human` or the board itself (`system` — the loop's workflow
+pass) may perform it. A worker agent cannot close its own card, and cannot close somebody
+else's either; the refusal is `ACCEPTANCE_FORBIDDEN` (409) and it changes nothing. This is
+what makes "a worker stops at `in_review`" a machine rule rather than a habit, and it is
+why the loop's automated acceptance is attributable as `system`.
+
+Two honest limits. First, the check reads the actor's **declared** kind: a loopback caller
+is trusted and `--actor-kind human` is refused, but the board has no cryptographic identity
+— an agent that omits `--actor-kind` writes as `human` by default. Second, it is a
+service-layer invariant, not a trigger: the actor is not a column of the `tasks` row, so —
+unlike the delivery gate, whose evidence is the report table — no `tasks` trigger can see
+it. Both limits are properties of the board's attribution model, and improving them means
+authenticating agents, not adding a rule to the same layer.
+
 ### Rejecting an epic: the fix child comes first
 
 `rollup.mjs#assessClose` closes a container from `todo` / `in_progress` / `blocked` the
@@ -262,9 +279,17 @@ the container; with it, the container stays `in_progress` and names the child bl
 - **Fail-safe.** An unreadable verdict, an unseen original, a round mismatch or a
   conflicting verdict (`done` + `REJECT`) produces an alert and **no write**; the review
   card stays put and the next pass retries. A truncated board read dispatches nothing.
+- **The verdict must come from the reviewer.** The report's author is checked against the
+  configured reviewer (else the review card's assignee), by id and display name. A report
+  written by anybody else is `review_report_not_by_reviewer` and is not applied.
+- **A silent reviewer is not silent forever.** Creating the review card suppresses the
+  original's `acceptance_card_creation` row, so a reviewer that is never woken would
+  otherwise have no watcher at all. A review card with no readable verdict older than
+  `--review-aging-minutes` (default 60) raises `review_aging`.
 - **Notified only when actionable.** Standing state — no reviewer configured, a capped
   pass, a review card the operator deliberately left for a human — is logged, not sent to
-  `--notify` on every period. Findings an operator can act on are notified.
+  `--notify` on every period. Findings an operator can act on (including `review_aging`
+  and an unattributable verdict) are notified.
 - **One action failing never stops the rest**; the review card is always closed last, so
   every half-applied outcome is recoverable (`original done + APPROVE`,
   `rework_round` matching a rework in progress, …).
@@ -289,6 +314,7 @@ the container; with it, the container stays `in_progress` and names the child bl
 | reviewer | `--reviewer <agent>` | `MEERKAT_TASKPANEL_REVIEWER` | unset |
 | close the review card | `--auto-accept-reviews=yes\|no` | `MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS` | `yes` |
 | writes per pass | `--workflow-max-actions <n>` | `MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS` | `20` |
+| silent-review threshold | `--review-aging-minutes <n>` | `MEERKAT_TASKPANEL_REVIEW_AGING_MINUTES` | `60` |
 
 Precedence is flag → environment → host config → default, the same as the claim policy.
 `workflow` gates the whole channel; `auto-accept-reviews` gates only the review card's own
@@ -1229,6 +1255,7 @@ takes the board's location from `MEERKAT_TASKPANEL_REPO` in the host config.
 | `--reviewer <agent>` | from `$MEERKAT_TASKPANEL_REVIEWER`, else unset | the independent reviewer; unset disables dispatch only |
 | `--auto-accept-reviews=yes\|no` | from host config → `yes` | let the loop close a review card after applying its verdict; `no` leaves it for a human |
 | `--workflow-max-actions <n>` | `20` | max workflow writes (and bounded reads) per pass |
+| `--review-aging-minutes <n>` | `60` | report a review card that has had no readable verdict this long |
 | `--once` | off | one tick, then exit (for cron / launchd / systemd / tests) |
 | `--patrol-only` | off | with `--once`, run only the patrol pass |
 | `--patrol-llm=yes\|no` | `no` | let patrol start an LLM turn on a stale card |

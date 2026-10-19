@@ -92,6 +92,7 @@ they name an absolute interpreter and set their own `PATH`.
 | `--reviewer <agent>` | `$MEERKAT_TASKPANEL_REVIEWER` → unset | the independent reviewer. Unset disables review dispatch only; verdicts already in flight still get applied |
 | `--auto-accept-reviews=yes\|no` | from the host config → `yes` | let the loop close a review card after applying its verdict. `no` leaves it in `in_review` for a human; the verdict on the original is still applied |
 | `--workflow-max-actions <n>` | `20` | cap on writes one workflow pass performs |
+| `--review-aging-minutes <n>` | `60` | report a review card that has had no readable verdict this long |
 | `--once` / `--patrol-only` | off | one tick (for cron / launchd / systemd); patrol pass only |
 | `--notify <cmd>` | — | run `<cmd>` with each patrol alert as JSON on stdin (the legacy heartbeat alert and the SLA tuple) |
 | `--dry-run` | off | print intended actions; claim nothing, spawn nothing |
@@ -138,6 +139,15 @@ Rules that make it safe to run unattended:
 - **fail-safe** — an unreadable verdict, an unseen original, a round mismatch or a
   conflicting verdict produces an alert and **no write**. The review card stays in
   `in_review` and the next pass retries.
+- **the verdict is the reviewer's** — the report's author is checked against the configured
+  reviewer (else the review card's assignee). A report from anybody else is
+  `review_report_not_by_reviewer` and is not applied.
+- **a silent reviewer is reported** — one that produces no readable verdict within
+  `--review-aging-minutes` (default 60) raises `review_aging`; the original's SLA row is
+  suppressed while the review card exists, so this is the only watcher that row has.
+- **the board enforces acceptance** — `in_review → done` is allowed only for a `human` or
+  the board itself (`system`); an agent gets `ACCEPTANCE_FORBIDDEN`. The reviewer never
+  closes a card; the loop accepts as `system`.
 - **the review card is closed last.** A crash between the original's move and the card's
   close is recovered next pass (`original done + APPROVE`, `rework_round` matching, …).
 - **`--auto-accept-reviews=no`** is the escape hatch back to manual acceptance: the

@@ -155,6 +155,13 @@ tested against each other.
 _中文_: 交付门禁
 _Avoid_: review gate, checklist, policy
 
+**Acceptance authority**:
+The actor kinds permitted to move a card into `done` — a human, or the board itself
+(`system`). A worker agent may not accept, including on its own card: acceptance is a
+separate act from delivery, and the board refuses the shortcut.
+_中文_: 验收权限
+_Avoid_: approver role, reviewer (the reviewer reports; it does not accept)
+
 **Report**:
 The record of what was delivered — a conclusion, the acceptance items and their verdicts,
 and at least one piece of evidence. A report is evidence of work, not a promise of it.

@@ -13,7 +13,7 @@ import { DomainError } from "../../shared/errors.mjs";
 import { assertWaiverRequest } from "../domain/delivery-gate.mjs";
 import { STATUS } from "../domain/enums.mjs";
 import { normalizeReportCreate } from "../domain/report.mjs";
-import { assertTransition } from "../domain/status.mjs";
+import { assertAcceptanceAuthority, assertTransition } from "../domain/status.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { actorOf } from "./context.mjs";
 import { resolveActorId } from "./dictionary.mjs";
@@ -134,6 +134,9 @@ export function deliver(ctx, input) {
       // it really happened — if the ordering here were wrong, the status update
       // would be refused.
       assertTransition(task.status, to, task.kind);
+      // `deliver` accepts a wire-only `to`; a delivery that lands on `done`
+      // (from `in_review`) is still an acceptance and obeys the same authority.
+      if (to === STATUS.DONE) assertAcceptanceAuthority(actor);
 
       if (waived) {
         const waiver = { round: task.deliveryRound, reason: waiverReason, at: now };

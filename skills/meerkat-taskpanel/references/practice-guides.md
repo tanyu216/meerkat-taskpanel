@@ -128,10 +128,12 @@ gate.
 ### 6. Self-review is not acceptance
 
 An agent takes a card **at most to `in_review`**. Only an independent acceptor —
-the loop's configured reviewer, or a human — moves it to `done`. Reporting your
-own work as delivered is not the same as the work being accepted, and the board
-keeps the two apart on purpose: `in_review` is "evidence attached, awaiting a
-verdict", `done` is "a verdict was given".
+the loop (as the board's `system` actor, after a reviewer's verdict) or a human —
+moves it to `done`. Reporting your own work as delivered is not the same as the
+work being accepted, and the board keeps the two apart on purpose: `in_review` is
+"evidence attached, awaiting a verdict", `done` is "a verdict was given". This is
+enforced: an agent's move to `done` is refused with `ACCEPTANCE_FORBIDDEN`, even
+on the agent's own card.
 
 When the loop runs with a reviewer (`install.sh --reviewer <agent>`), `in_review`
 is dispatched as a **review card** (`meta.review_of`, `meta.flow=B`) to that

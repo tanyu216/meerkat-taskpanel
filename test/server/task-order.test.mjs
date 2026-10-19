@@ -353,7 +353,7 @@ describe("task-order — assertion 10: the scope reaches SQL before the order do
       noReport: true,
       reason: "fan-out fixture",
     });
-    commands().moveStatus({ id: leaves[0].id, to: "done", actor: AGENT });
+    commands().moveStatus({ id: leaves[0].id, to: "done", actor: { kind: "human", id: "Terry" } });
 
     const data = dataOf(await call("GET", "/api/v1/tasks?project_id=fan&order_debug=1"));
     const entry = data.order_debug.find((row) => row.id === hub.id);

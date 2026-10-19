@@ -51,7 +51,7 @@ function acceptInChildProcess(dbPath, childId) {
       commands.moveStatus({
         id: process.env.TASKD_TEST_CHILD,
         to: "done",
-        actor: { kind: "agent", id: "linus" },
+        actor: { kind: "human", id: "Terry" },
       });
       result = "done";
     } catch (err) {

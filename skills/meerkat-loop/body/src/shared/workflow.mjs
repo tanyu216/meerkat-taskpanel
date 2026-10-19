@@ -36,6 +36,18 @@ export const DEFAULT_WORKFLOW_MAX_ACTIONS = 20;
 /** How long a childless epic may exist before `empty_epic` is worth a notice. */
 export const EMPTY_EPIC_GRACE_MS = 30 * 60_000;
 
+/**
+ * How long a review card may sit without a readable verdict before the loop
+ * says so.
+ *
+ * This is a real gap the SLA pass cannot cover: creating the review card
+ * suppresses the original's `acceptance_card_creation` row, so a reviewer that
+ * is never woken (or keeps failing to report) would otherwise be silent. The
+ * default is generous: an hour of wall clock is well inside the `§⑮` day-long
+ * acceptance limit, and a faster threshold would page on a normal queue.
+ */
+export const DEFAULT_REVIEW_AGING_MS = 60 * 60_000;
+
 /** The `meta.flow` a worker card runs (and the only flow reviewed here). */
 export const WORK_FLOW = "A";
 /** The `meta.flow` a review card runs — excluded from review dispatch itself. */
@@ -212,6 +224,31 @@ export function parseReviewVerdict(reports, round) {
     findings,
     report,
   };
+}
+
+/** The readable name/id of a report's author, or `null`. */
+function reportAuthor(report) {
+  return nonEmpty(report?.author?.display_name) ?? nonEmpty(report?.author_id) ?? nonEmpty(report?.author?.id);
+}
+
+/**
+ * Did this reviewer write the report? Compared on the id and the display name
+ * the wire carries, case-insensitively — the dictionary may have normalised a
+ * spelling, and a reviewer configured as `jobs` must match the recorded
+ * `Jobs`. A report with no readable author cannot be attributed and therefore
+ * does not match (fail-safe: an unattributable verdict is not applied).
+ */
+function reportAuthorMatches(report, expected) {
+  const who = String(expected ?? "").trim().toLowerCase();
+  if (who === "") return true;
+  const candidates = [
+    report?.author?.id,
+    report?.author?.display_name,
+    report?.author_id,
+  ];
+  return candidates.some(
+    (value) => typeof value === "string" && value.trim() !== "" && value.trim().toLowerCase() === who,
+  );
 }
 
 function boundedFindings(text) {
@@ -442,8 +479,9 @@ function reviewAction(task, ref, round, reviewer) {
  *
  * @param {{
  *   tasks?: object[],
- *   verdicts?: Record<string, {ok: boolean, verdict?: string, findings?: string, reason?: string}>,
+ *   verdicts?: Record<string, {ok: boolean, verdict?: string, findings?: string, reason?: string, report?: object}>,
  *   config?: object,
+ *   now?: string|number,
  * }} input
  * @returns {{alerts: object[], actions: object[]}}
  */
@@ -451,6 +489,11 @@ export function planReviewOutcomes(input = {}) {
   const tasks = Array.isArray(input.tasks) ? input.tasks : [];
   const verdicts = input.verdicts ?? {};
   const autoAccept = input.config?.autoAcceptReviews !== false;
+  const now = instant(input.now);
+  const agingMs =
+    Number.isFinite(input.config?.reviewAgingMs) && input.config.reviewAgingMs > 0
+      ? input.config.reviewAgingMs
+      : DEFAULT_REVIEW_AGING_MS;
 
   const byRef = new Map();
   for (const task of tasks) {
@@ -534,7 +577,10 @@ export function planReviewOutcomes(input = {}) {
     if (verdict === undefined || verdict?.ok !== true) {
       // A review card that has not reported yet is simply in flight. One that
       // *has* a report the loop cannot read is a fail-safe alarm: move nothing,
-      // retry (or let a human read it) next pass.
+      // retry (or let a human read it) next pass. And one that never reports at
+      // all is now the loop's own wait — the SLA pass stopped watching the
+      // original when this card was created, so the aging check is what keeps
+      // a silent reviewer from disappearing.
       if (review.status === "in_review") {
         alerts.push({
           type: "verdict_unreadable",
@@ -542,7 +588,37 @@ export function planReviewOutcomes(input = {}) {
           original: originalRef,
           reason: verdict?.reason ?? "not_read",
         });
+      } else if (now !== null) {
+        const age = now - (instant(review.status_changed_at) ?? instant(review.created_at) ?? now);
+        if (age >= agingMs) {
+          alerts.push({
+            type: "review_aging",
+            review: reviewRef,
+            original: originalRef,
+            status: review.status ?? null,
+            ageMs: age,
+            thresholdMs: agingMs,
+          });
+        }
       }
+      continue;
+    }
+
+    // The verdict must come from the card's own reviewer. The board has no
+    // per-agent ACL, so this is the loop's half of the separation: a report
+    // written by anybody else is not a verdict, whatever it says.
+    const expectedReviewer =
+      nonEmpty(input.config?.reviewer)
+      ?? nonEmpty(review.assignee?.display_name)
+      ?? nonEmpty(review.assignee_id);
+    if (expectedReviewer !== null && !reportAuthorMatches(verdict.report, expectedReviewer)) {
+      alerts.push({
+        type: "review_report_not_by_reviewer",
+        review: reviewRef,
+        original: originalRef,
+        expected: expectedReviewer,
+        author: reportAuthor(verdict.report),
+      });
       continue;
     }
 
@@ -667,7 +743,12 @@ export function planWorkflowTick(input = {}) {
     byRef,
     now: input.now ?? null,
   });
-  const outcomes = planReviewOutcomes({ tasks, verdicts: input.verdicts ?? {}, config });
+  const outcomes = planReviewOutcomes({
+    tasks,
+    verdicts: input.verdicts ?? {},
+    config,
+    now: input.now ?? null,
+  });
 
   const handled = new Set(outcomes.actions.map((action) => action.originalRef));
   const dispatch = planReviewDispatch({

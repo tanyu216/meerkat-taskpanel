@@ -160,6 +160,9 @@ Options:
                           Default: yes; 'no' leaves the review card for a human.
   --workflow-max-actions <n>
                           Max workflow writes per pass (default: 20).
+  --review-aging-minutes <n>
+                          Report a review card that has had no readable verdict
+                          for this long (default: 60).
   --once                  Run a single tick and exit (for tests / cron): the poll
                           pass, or the patrol pass with --patrol-only.
   --patrol-only           With --once, run only the patrol pass.
@@ -717,6 +720,8 @@ const WORKFLOW_NOTIFY_TYPES = new Set([
   "review_done_but_original_open",
   "verdict_unreadable",
   "verdict_conflict",
+  "review_report_not_by_reviewer",
+  "review_aging",
   "original_unseen",
   "original_unexpected_status",
   "review_stale_round",
@@ -825,6 +830,7 @@ export function parseArgs(argv, env = process.env) {
     reviewer: undefined,
     autoAcceptReviews: undefined,
     workflowMaxActions: undefined,
+    reviewAgingMinutes: undefined,
     once: false,
     patrolOnly: false,
     patrolLlm: false,
@@ -884,6 +890,8 @@ export function parseArgs(argv, env = process.env) {
     else if (arg.startsWith("--auto-accept-reviews=")) opts.autoAcceptReviews = arg.slice(22);
     else if (arg === "--workflow-max-actions") opts.workflowMaxActions = take("--workflow-max-actions");
     else if (arg.startsWith("--workflow-max-actions=")) opts.workflowMaxActions = arg.slice(23);
+    else if (arg === "--review-aging-minutes") opts.reviewAgingMinutes = take("--review-aging-minutes");
+    else if (arg.startsWith("--review-aging-minutes=")) opts.reviewAgingMinutes = arg.slice(23);
     else if (arg === "--once") opts.once = true;
     else if (arg === "--patrol-only") opts.patrolOnly = true;
     else if (arg === "--patrol-llm") opts.patrolLlm = true;
@@ -1200,6 +1208,7 @@ async function main(argv, env = process.env) {
       reviewer: opts.reviewer,
       autoAcceptReviews: opts.autoAcceptReviews,
       workflowMaxActions: opts.workflowMaxActions,
+      reviewAgingMinutes: opts.reviewAgingMinutes,
     },
     env,
     file: configFile,
@@ -1221,6 +1230,7 @@ async function main(argv, env = process.env) {
     reviewerIsWorker,
     autoAcceptReviews: workflow.autoAcceptReviews,
     maxActions: workflow.maxActions,
+    reviewAgingMs: workflow.reviewAgingMs,
   };
 
   const registry = opts.dryRun
@@ -1292,8 +1302,18 @@ async function main(argv, env = process.env) {
   log(
     `workflow: ${config.workflow ? "on" : "off"} ` +
       `reviewer=${config.reviewer === null ? "not configured" : `${config.reviewer}${reviewerIsWorker ? " (also a worker)" : ""}`} ` +
-      `auto_accept_reviews=${config.autoAcceptReviews ? "yes" : "no"} max_actions=${config.maxActions}`,
+      `auto_accept_reviews=${config.autoAcceptReviews ? "yes" : "no"} max_actions=${config.maxActions} ` +
+      `review_aging=${Math.round(config.reviewAgingMs / 60_000)}m`,
   );
+  if (config.workflow && config.reviewer !== null && reviewerIsWorker) {
+    log(
+      `warning: reviewer ${config.reviewer} is also a worker — the review lane and the work lane ` +
+        "share one identity; a dedicated reviewer keeps the two apart",
+    );
+  }
+  if (!config.workflow && config.reviewer !== null) {
+    log(`warning: reviewer ${config.reviewer} is configured but workflow is off — no review card will be dispatched`);
+  }
 
   let failed = 0;
 

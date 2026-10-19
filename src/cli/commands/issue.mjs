@@ -230,7 +230,13 @@ export const COMMANDS = [
       // types) is visible; the result is sent as one ordinary update.
       const task = (await ctx.client.get(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}`)).task;
       const meta = { ...(task.meta ?? {}), ...ctx.flags.meta };
-      const payload = await ctx.client.patch(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}`, { meta });
+      // The version read above is the CAS guard: if the card moved between the
+      // read and this write, the board refuses rather than silently dropping
+      // the other writer's change (a merge cannot be expressed on the wire).
+      const payload = await ctx.client.patch(`/api/v1/tasks/${encodeURIComponent(ctx.args.ref)}`, {
+        meta,
+        if_version: task.version,
+      });
       return { data: payload, human: `updated metadata on ${payload.task.identifier}` };
     },
   },

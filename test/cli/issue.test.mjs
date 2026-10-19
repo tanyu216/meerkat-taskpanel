@@ -666,7 +666,9 @@ describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells i
     dataOf(run(["issue", "deliver", identifier, "--report-file", "-", ...AS, "--json"], {
       input: JSON.stringify(childReport(sha)),
     }));
-    dataOf(run(["issue", "move", identifier, "done", ...AS, "--json"]));
+    // Acceptance is the human's act — the worker's `...AS` attribution is for
+    // the claim and the delivery, not for `done` (`ACCEPTANCE_FORBIDDEN`).
+    dataOf(run(["issue", "move", identifier, "done", "--json"]));
   };
 
   it("closes the container itself when its last child is accepted", async () => {
@@ -725,7 +727,7 @@ describe("cli/issue — the container recipe, run exactly as `SKILL.md` spells i
       // A waiver leaves no report, so there is no evidence to roll up.
       dataOf(run(["issue", "move", child.task.identifier, "in_progress", ...AS, "--json"]));
       dataOf(run(["issue", "move", child.task.identifier, "in_review", "--no-report", "--reason", "audited waiver, no commit", ...AS, "--json"]));
-      dataOf(run(["issue", "move", child.task.identifier, "done", ...AS, "--json"]));
+      dataOf(run(["issue", "move", child.task.identifier, "done", "--json"]));
 
       assert.equal(
         dataOf(run(["issue", "get", card.task.identifier, "--json"])).task.status,
@@ -778,6 +780,44 @@ describe("cli/issue — `issue meta` is a merge, not a replace", () => {
       assert.equal(again.task.meta.rework_round, "2");
       assert.deepEqual(again.task.meta.acceptance, ["cli works"], "a second merge is still additive");
       assert.equal(again.task.meta.accepted_by, "loop-review");
+    });
+  });
+});
+
+describe("cli/issue — acceptance authority", () => {
+  const report = JSON.stringify({
+    conclusion: "delivered",
+    acceptance: [{ text: "a", status: "met" }],
+    evidence: [{ kind: "path", path: "x" }],
+  });
+
+  it("refuses an agent closing its own delivery, and a human may close it", async () => {
+    await board(async ({ run }) => {
+      const card = createIssue(run);
+      dataOf(run(["issue", "move", card.task.identifier, "in_progress", "--agent", "linus", "--actor-kind", "claude", "--json"]));
+      dataOf(
+        run(["issue", "deliver", card.task.identifier, "--report-file", "-", "--agent", "linus", "--actor-kind", "claude", "--json"], {
+          input: report,
+        }),
+      );
+
+      const refused = run([
+        "issue", "move", card.task.identifier, "done",
+        "--agent", "linus", "--actor-kind", "claude", "--json",
+      ]);
+      assert.equal(refused.status, 1);
+      const error = errorOf(refused);
+      assert.equal(error.code, "ACCEPTANCE_FORBIDDEN");
+      assert.equal(error.http, 409);
+      assert.match(error.hint.fix, /in_review/);
+      assert.equal(
+        dataOf(run(["issue", "get", card.task.identifier, "--json"])).task.status,
+        "in_review",
+        "the refusal moves nothing",
+      );
+
+      const accepted = dataOf(run(["issue", "move", card.task.identifier, "done", "--json"]));
+      assert.equal(accepted.task.status, "done");
     });
   });
 });

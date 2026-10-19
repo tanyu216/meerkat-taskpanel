@@ -215,8 +215,9 @@ unfinished); **one
 card at a time**; keep a **fresh heartbeat** (the board treats a claim as live for
 10 minutes, and `issue heartbeat <ref>` is the pulse — the board never sends one
 for you); **deliver with a report** (the delivery gate); **self-review is not
-acceptance** (an agent reaches `in_review`; the loop's configured independent
-reviewer — or a human, when none is — accepts to `done`); **never
+acceptance** (an agent reaches `in_review`; the loop — applying its configured
+reviewer's verdict — or a human accepts to `done`; the board refuses an agent's
+own move with `ACCEPTANCE_FORBIDDEN`); **never
 preempt a conflict** (re-read once, retry only if still claimable); and **stay
 traceable** (carry the session id). What differs between hosts is *who applies
 them*.

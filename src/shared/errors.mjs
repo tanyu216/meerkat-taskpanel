@@ -47,6 +47,14 @@ export const ERROR_CODES = Object.freeze({
 
   // ---- Task state machine + lifecycle ---------------------------------------
   INVALID_TRANSITION: spec(409, "Status transition is not allowed."),
+  // Acceptance authority: `done` is a human's or the board's act, never a worker
+  // agent's — including on its own card. Raised in the service layer because the
+  // actor is not a column of the `tasks` row (see `domain/status.mjs`).
+  ACCEPTANCE_FORBIDDEN: spec(409, "Only a human or the board itself may accept a delivery to done.", {
+    fix:
+      "a worker stops at in_review; an independent reviewer reports a verdict and the loop " +
+      "(or a human) applies it",
+  }),
   TERMINAL_STATE: spec(409, "done/canceled are terminal; they cannot be left."),
   VERSION_CONFLICT: spec(409, "Version conflict — re-read the task and retry once."),
   CLAIM_LOST: spec(409, "Claim could not be taken: the task was taken concurrently."),
@@ -215,6 +223,9 @@ export const SQL_CONSTRAINT_CODES = Object.freeze([
 export const JS_ONLY_CODES = Object.freeze([
   "REPORT_INVALID",
   "REPORT_TOO_LARGE",
+  // Acceptance authority reads the *actor*, which is not a row fact a trigger
+  // can see — so this one is enforced only by the service layer.
+  "ACCEPTANCE_FORBIDDEN",
   "REPORT_ROUND_MISMATCH",
   "VERSION_CONFLICT",
   "CLAIM_LOST",

@@ -102,6 +102,8 @@ export function resolveClaimUnassigned(input = {}) {
 
 /** Default cap on writes one workflow pass may perform. */
 export const DEFAULT_WORKFLOW_MAX_ACTIONS = 20;
+/** Default age, in minutes, before a silent review card is reported. */
+export const DEFAULT_REVIEW_AGING_MINUTES = 60;
 
 /**
  * The workflow sub-pass's configuration.
@@ -123,7 +125,7 @@ export const DEFAULT_WORKFLOW_MAX_ACTIONS = 20;
  * in flight.
  *
  * @param {{flags?: object, env?: object, file?: Record<string, string>|null}} [input]
- * @returns {{workflow: boolean, reviewer: string|null, autoAcceptReviews: boolean, maxActions: number}}
+ * @returns {{workflow: boolean, reviewer: string|null, autoAcceptReviews: boolean, maxActions: number, reviewAgingMs: number}}
  */
 export function resolveWorkflowConfig(input = {}) {
   const flags = input.flags ?? {};
@@ -173,6 +175,12 @@ export function resolveWorkflowConfig(input = {}) {
         env.MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS,
         file.MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS,
       ) ?? DEFAULT_WORKFLOW_MAX_ACTIONS,
+    reviewAgingMs:
+      (firstPositive(
+        flags.reviewAgingMinutes,
+        env.MEERKAT_TASKPANEL_REVIEW_AGING_MINUTES,
+        file.MEERKAT_TASKPANEL_REVIEW_AGING_MINUTES,
+      ) ?? DEFAULT_REVIEW_AGING_MINUTES) * 60_000,
   };
 }
 

@@ -324,7 +324,7 @@ describe("commands/tasks — promoting a card into an epic (the container protoc
       assert.deepEqual(activitiesFor(db, epic.id), ["task_created", "task_delivered"]);
       // ...and review is still the only way on: `done` is one move away, from
       // `in_review`, exactly as it is for a task.
-      assert.equal(commands.moveStatus({ id: epic.id, to: "done", actor: AGENT }).status, "done");
+      assert.equal(commands.moveStatus({ id: epic.id, to: "done", actor: HUMAN }).status, "done");
     });
   });
 
@@ -427,7 +427,7 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
   const finish = (commands, task, sha) => {
     commands.claim({ id: task.id, actor: AGENT });
     commands.deliver({ taskId: task.id, report: report({ evidence: [{ kind: "commit", sha }] }), actor: AGENT });
-    return commands.moveStatus({ id: task.id, to: "done", actor: AGENT });
+    return commands.moveStatus({ id: task.id, to: "done", actor: HUMAN });
   };
 
   it("closes the container on the last child, with a system rollup report", async () => {
@@ -650,7 +650,7 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
       );
 
       // The human accepts the inner container: only then is the outer one whole.
-      commands.moveStatus({ id: inner.id, to: "done", actor: AGENT });
+      commands.moveStatus({ id: inner.id, to: "done", actor: HUMAN });
       assert.equal(commands.getTask({ id: outer.id }).status, "in_review");
     });
   });
@@ -669,7 +669,7 @@ describe("commands/tasks — the container rollup (a container closes itself)", 
           reason: "delivered under an audited waiver",
           actor: AGENT,
         });
-        commands.moveStatus({ id: child.id, to: "done", actor: AGENT });
+        commands.moveStatus({ id: child.id, to: "done", actor: HUMAN });
       }
 
       // No report of theirs to stand on: the container is left for a human
@@ -729,7 +729,7 @@ describe("commands/tasks — the container lifecycle (system start, notes, recon
   const finish = (commands, task, sha) => {
     commands.claim({ id: task.id, actor: AGENT });
     commands.deliver({ taskId: task.id, report: report({ evidence: [{ kind: "commit", sha }] }), actor: AGENT });
-    return commands.moveStatus({ id: task.id, to: "done", actor: AGENT });
+    return commands.moveStatus({ id: task.id, to: "done", actor: HUMAN });
   };
 
   const notesFor = (db, taskId) =>
@@ -921,10 +921,10 @@ describe("commands/tasks — the container lifecycle (system start, notes, recon
         commands.deliver({ taskId: child.id, report: report(), actor: AGENT });
       }
 
-      commands.moveStatus({ id: one.id, to: "done", actor: AGENT });
+      commands.moveStatus({ id: one.id, to: "done", actor: HUMAN });
       assert.equal(commands.getTask({ id: epic.id }).status, "in_progress", "one of two is not the set");
 
-      commands.moveStatus({ id: two.id, to: "done", actor: AGENT });
+      commands.moveStatus({ id: two.id, to: "done", actor: HUMAN });
       // The racing second write targets a card the first one already finished.
       assert.throws(
         () => commands.moveStatus({ id: two.id, to: "done", actor: AGENT }),
@@ -1495,6 +1495,94 @@ describe("commands/tasks — the audited waiver (M2 F-B1)", () => {
       assert.equal(delivered.task.reportWaiverRound, null, "the normal path is not marked waived");
       assert.equal(countRows(db, "task_reports"), 1);
       assert.deepEqual(activitiesFor(db, task.id), ["task_created", "task_claimed", "task_delivered"]);
+    });
+  });
+});
+
+describe("commands/tasks — acceptance authority (done is human/system only)", () => {
+  /** A card delivered to `in_review` by its worker — one move from acceptance. */
+  const delivered = (commands) => {
+    const task = commands.createTask({
+      projectId: "proj",
+      title: "Work",
+      assignee: "linus",
+      assigneeKind: "agent",
+      actor: AGENT,
+    });
+    commands.claim({ id: task.id, actor: AGENT });
+    commands.deliver({ taskId: task.id, report: report(), actor: AGENT });
+    return task;
+  };
+
+  it("refuses an agent accepting its own delivery, and says which kinds may", async () => {
+    await board(async ({ commands }) => {
+      const task = delivered(commands);
+      assert.throws(
+        () => commands.moveStatus({ id: task.id, to: "done", actor: AGENT }),
+        (err) => {
+          assert.equal(err.code, "ACCEPTANCE_FORBIDDEN");
+          assert.equal(err.http, 409);
+          assert.deepEqual(err.details.allowed, ["human", "system"]);
+          assert.equal(err.details.actorKind, "agent");
+          assert.match(err.hint.fix, /in_review/);
+          return true;
+        },
+      );
+      assert.equal(commands.getTask({ id: task.id }).status, "in_review", "the refusal moves nothing");
+    });
+  });
+
+  it("lets a human accept, and lets the board itself accept (the loop's path)", async () => {
+    await board(async ({ commands }) => {
+      const byHuman = delivered(commands);
+      assert.equal(commands.moveStatus({ id: byHuman.id, to: "done", actor: HUMAN }).status, "done");
+
+      const bySystem = commands.createTask({
+        projectId: "proj",
+        title: "Loop-accepted",
+        assignee: "linus",
+        assigneeKind: "agent",
+        actor: AGENT,
+        allowDup: true,
+      });
+      commands.claim({ id: bySystem.id, actor: AGENT });
+      commands.deliver({ taskId: bySystem.id, report: report(), actor: AGENT });
+      assert.equal(
+        commands.moveStatus({ id: bySystem.id, to: "done", actor: { kind: "system", id: "taskd" } }).status,
+        "done",
+      );
+    });
+  });
+
+  it("applies the same rule to `deliver --to done` (the wire-only shortcut)", async () => {
+    await board(async ({ commands }) => {
+      // A waived delivery leaves round 1 with no report, so the round's one
+      // report can still be written by the `deliver --to done` call.
+      const task = commands.createTask({
+        projectId: "proj",
+        title: "Waived, then accepted",
+        assignee: "linus",
+        assigneeKind: "agent",
+        actor: AGENT,
+      });
+      commands.claim({ id: task.id, actor: AGENT });
+      commands.moveStatus({
+        id: task.id,
+        to: "in_review",
+        noReport: true,
+        reason: "audited waiver, no commit",
+        actor: AGENT,
+      });
+
+      assert.throws(
+        () => commands.deliver({ taskId: task.id, to: "done", report: report(), actor: AGENT }),
+        (err) => err.code === "ACCEPTANCE_FORBIDDEN",
+      );
+      assert.equal(commands.getTask({ id: task.id }).status, "in_review");
+      assert.equal(
+        commands.deliver({ taskId: task.id, to: "done", report: report(), actor: HUMAN }).task.status,
+        "done",
+      );
     });
   });
 });

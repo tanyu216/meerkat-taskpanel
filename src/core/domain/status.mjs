@@ -266,6 +266,53 @@ export function isClaimable(value) {
   return value === CLAIMABLE_STATUS;
 }
 
+/** The acceptance authority's allowed kinds, exported for tests and docs. */
+export const ACCEPTANCE_ACTOR_KINDS = Object.freeze(["human", "system"]);
+
+/**
+ * The actor kinds that may move a card into `done`.
+ *
+ * `done` is the board's *acceptance* act, and acceptance is the one transition
+ * a worker must never perform on its own work. The rule is therefore positive
+ * rather than a self-review comparison: only a **human** or the **board itself**
+ * (`system` — the loop's workflow pass) may accept. A worker agent cannot close
+ * its own card, and cannot close somebody else's either; if an agent is ever the
+ * legitimate acceptor, that is a role the board would have to model explicitly,
+ * and today it does not.
+ *
+ * This is a service-layer invariant, and deliberately so: the actor of a write
+ * is not a column of the `tasks` row, so — unlike the delivery gate, which a
+ * trigger can decide from the report table — no `tasks` trigger can see it.
+ * `SQL_CONSTRAINT_CODES`/`DB_RAISE_CODES` in `shared/errors.mjs` name the codes
+ * a trigger *can* raise; this one is `JS_ONLY_CODES` for exactly that reason.
+ *
+ * The check reads the actor's **declared** kind. The board trusts a caller's
+ * attribution (a loopback caller is trusted, and `--actor-kind human` is
+ * refused), so this raises the bar to "you must claim to be the human or the
+ * board", not to a cryptographic guarantee.
+ *
+ * @param {{kind?: string, id?: string}|null|undefined} actor
+ * @returns {true}
+ * @throws {DomainError} ACCEPTANCE_FORBIDDEN
+ */
+export function assertAcceptanceAuthority(actor) {
+  const kind = String(actor?.kind ?? "").trim();
+  if (ACCEPTANCE_ACTOR_KINDS.includes(kind)) return true;
+  throw new DomainError("ACCEPTANCE_FORBIDDEN", {
+    message: "Only a human or the board itself may accept a delivery to done.",
+    details: {
+      actorKind: kind === "" ? null : kind,
+      actorId: actor?.id ?? null,
+      allowed: ACCEPTANCE_ACTOR_KINDS,
+    },
+    hint: {
+      fix:
+        "a worker stops at in_review; an independent reviewer reports a verdict and the loop " +
+        "(or a human) applies it",
+    },
+  });
+}
+
 /**
  * Does moving `from → to` start a new delivery round?
  * @param {string} from
