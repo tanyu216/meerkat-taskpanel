@@ -77,7 +77,7 @@ import { STATUS, TASK_KIND } from "../domain/enums.mjs";
 import { normalizeReportCreate } from "../domain/report.mjs";
 import { assertTransition, isTerminalStatus } from "../domain/status.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
-import { SYSTEM_ACTOR } from "./context.mjs";
+import { BOARD_ACTOR } from "./context.mjs";
 import { resolveActorId } from "./dictionary.mjs";
 
 /** The container statuses the board may close from. */
@@ -176,8 +176,8 @@ export function advanceContainer(ctx, containerId, now, options = {}) {
   if (!plan.ok) return null;
 
   const author = {
-    kind: SYSTEM_ACTOR.kind,
-    id: resolveActorId({ repos: ctx.repos, now }, { name: SYSTEM_ACTOR.id, actorKind: SYSTEM_ACTOR.kind }),
+    kind: BOARD_ACTOR.kind,
+    id: resolveActorId({ repos: ctx.repos, now }, { name: BOARD_ACTOR.id, actorKind: BOARD_ACTOR.kind }),
   };
   const prepared = normalizeReportCreate(
     { ...rollupReport(ctx, container, plan.children, plan.evidence), author },
@@ -202,8 +202,8 @@ export function advanceContainer(ctx, containerId, now, options = {}) {
   const canceled = plan.children.filter((child) => child.status === STATUS.CANCELED);
   ctx.repos.activities.append({
     taskId: container.id,
-    actorKind: SYSTEM_ACTOR.kind,
-    actorId: SYSTEM_ACTOR.id,
+    actorKind: BOARD_ACTOR.kind,
+    actorId: BOARD_ACTOR.id,
     event: "task_delivered",
     changes: {
       from: container.status,
@@ -279,8 +279,8 @@ export function startContainer(ctx, containerId, now, options = {}) {
   });
   ctx.repos.activities.append({
     taskId: container.id,
-    actorKind: SYSTEM_ACTOR.kind,
-    actorId: SYSTEM_ACTOR.id,
+    actorKind: BOARD_ACTOR.kind,
+    actorId: BOARD_ACTOR.id,
     event: "epic_auto_start",
     changes: {
       from: container.status,
@@ -546,17 +546,17 @@ function cancellationReason(ctx, child) {
 function appendSystemNote(ctx, taskId, body, now, refs) {
   const authorId = resolveActorId(
     { repos: ctx.repos, now },
-    { name: SYSTEM_ACTOR.id, actorKind: SYSTEM_ACTOR.kind },
+    { name: BOARD_ACTOR.id, actorKind: BOARD_ACTOR.kind },
   );
   const comment = normalizeCommentCreate(
-    { body, kind: "note", author: { kind: SYSTEM_ACTOR.kind, id: authorId }, refs },
+    { body, kind: "note", author: { kind: BOARD_ACTOR.kind, id: authorId }, refs },
     { now, id: ctx.newId(), taskId },
   );
   ctx.repos.comments.append(comment);
   ctx.repos.activities.append({
     taskId,
-    actorKind: SYSTEM_ACTOR.kind,
-    actorId: SYSTEM_ACTOR.id,
+    actorKind: BOARD_ACTOR.kind,
+    actorId: BOARD_ACTOR.id,
     event: "comment_added",
     changes: { commentId: comment.id, kind: comment.kind },
     createdAt: now,

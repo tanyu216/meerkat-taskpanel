@@ -212,6 +212,48 @@ describe("server/events — increments over a real socket", () => {
     }
   });
 
+  it("streams a project update, which carries no task id", async () => {
+    const stream = await subscribe();
+    try {
+      taskd.board.commands.readmeSet({ id: "proj", readme: "# Architecture\n" });
+      const event = await stream.next((frame) => frame.event === "project_updated");
+      assert.equal(event.task_id, null);
+      assert.equal(event.changes.project, "proj");
+      assert.deepEqual(event.changes.fields, ["readme"]);
+    } finally {
+      stream.close();
+    }
+  });
+
+  it("streams the attachment surface's create, content and delete", async () => {
+    const task = taskd.board.commands.createTask({ projectId: "proj", title: "with files", actor: AGENT });
+    const stream = await subscribe();
+    try {
+      const created = await fetch(`${base}/api/v1/tasks/${task.id}/attachments`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ filename: "notes.txt", content_type: "text/plain", size: 5 }),
+      });
+      assert.equal(created.status, 200);
+      const { attachment, upload_url } = (await created.json()).data;
+
+      const added = await stream.next((frame) => frame.event === "attachment_added");
+      assert.equal(added.task_id, task.id);
+      assert.equal(added.changes.attachmentId, attachment.id);
+
+      await fetch(`${base}${upload_url}`, { method: "PUT", body: Buffer.from("hello") });
+      const updated = await stream.next((frame) => frame.event === "attachment_updated");
+      assert.equal(updated.changes.size, 5);
+
+      await fetch(`${base}/api/v1/attachments/${attachment.id}`, { method: "DELETE" });
+      const removed = await stream.next((frame) => frame.event === "attachment_removed");
+      assert.equal(removed.task_id, task.id);
+      assert.equal(removed.changes.attachmentId, attachment.id);
+    } finally {
+      stream.close();
+    }
+  });
+
   it("answers 400 for a malformed ?after instead of silently resyncing", async () => {
     const response = await fetch(`${base}/api/v1/events?after=nope`);
     assert.equal(response.status, 400);

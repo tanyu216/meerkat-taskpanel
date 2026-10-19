@@ -1597,6 +1597,7 @@ describe("supervisor module", () => {
       "runPollTick", "runPatrolTick", "parseArgs", "loadRegistry", "saveRegistry",
       "planWakeInvocation", "spawnWorkerReal", "selectMode", "runPingTick",
       "buildContinuePrompt", "planContinueInvocation",
+      "runSubscribe", "createDispatchScheduler",
     ]) {
       assert.equal(typeof mod[name], "function", `missing export: ${name}`);
     }
@@ -1615,6 +1616,7 @@ describe("the scheduler's two clocks", () => {
     assert.equal(selectMode(parseArgs(["--host", "claude", "--continue-only", "--once"], ENV)), "continue");
     assert.equal(selectMode(parseArgs(["--host", "claude", "--patrol-only", "--once"], ENV)), "patrol");
     assert.equal(selectMode(parseArgs(["--host", "claude", "--once"], ENV)), "poll");
+    assert.equal(selectMode(parseArgs(["--host", "claude", "--subscribe"], ENV)), "subscribe");
     assert.equal(selectMode(parseArgs(["--host", "claude"], ENV)), null);
   });
 
@@ -1623,6 +1625,11 @@ describe("the scheduler's two clocks", () => {
     assert.equal(opts.pingInterval, 60);
     assert.equal(opts.continueInterval, 600);
     assert.equal(opts.patrolInterval, 300, "the SLA measurement period did not move");
+    // The event subscriber's own defaults.
+    assert.equal(opts.sseIdleMs, 45_000);
+    assert.equal(opts.eventDebounceMs, 300);
+    assert.equal(opts.eventDebounceMaxMs, 2_000);
+    assert.equal(opts.eventContinueMinMs, 60_000);
   });
 
   it("takes the cadences from flags, environment and the host config", () => {
@@ -1662,6 +1669,14 @@ describe("the scheduler's two clocks", () => {
     assert.throws(
       () => selectMode(parseArgs(["--host", "claude", "--ping-only", "--continue-only", "--once"], ENV)),
       /choose one of/,
+    );
+    assert.throws(
+      () => selectMode(parseArgs(["--host", "claude", "--subscribe", "--once"], ENV)),
+      /daemon mode/,
+    );
+    assert.throws(
+      () => selectMode(parseArgs(["--host", "claude", "--subscribe", "--dry-run"], ENV)),
+      /dry-run/,
     );
   });
 

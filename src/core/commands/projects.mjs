@@ -211,7 +211,23 @@ export function updateProject(ctx, input) {
     patch.meta = withoutPrefix(patch.meta);
     if (stored !== undefined) patch.meta = { ...patch.meta, [PROJECT_PREFIX_META_KEY]: stored };
   }
-  return ctx.repos.projects.update(input.id, { ...patch, now: ctx.now() });
+  const actor = actorOf(input.actor ?? { kind: "human", id: "local" });
+  return transaction(
+    ctx.db,
+    () => {
+      const project = ctx.repos.projects.update(input.id, { ...patch, now: ctx.now() });
+      ctx.repos.activities.append({
+        taskId: null,
+        actorKind: actor.kind,
+        actorId: actor.id,
+        event: "project_updated",
+        changes: { project: input.id, fields: Object.keys(patch) },
+        createdAt: ctx.now(),
+      });
+      return project;
+    },
+    { op: "projects.update" },
+  );
 }
 
 /** @param {object} ctx @param {{id: string}} input */
@@ -224,9 +240,25 @@ export function listProjects(ctx, filter = {}) {
   return ctx.repos.projects.list(filter);
 }
 
-/** @param {object} ctx @param {{id: string, readme: string|null}} input */
+/** @param {object} ctx @param {{id: string, readme: string|null, actor?: object}} input */
 export function readmeSet(ctx, input) {
-  return ctx.repos.projects.update(input.id, { readme: input.readme, now: ctx.now() });
+  const actor = actorOf(input.actor ?? { kind: "human", id: "local" });
+  return transaction(
+    ctx.db,
+    () => {
+      const project = ctx.repos.projects.update(input.id, { readme: input.readme, now: ctx.now() });
+      ctx.repos.activities.append({
+        taskId: null,
+        actorKind: actor.kind,
+        actorId: actor.id,
+        event: "project_updated",
+        changes: { project: input.id, fields: ["readme"] },
+        createdAt: ctx.now(),
+      });
+      return project;
+    },
+    { op: "projects.update" },
+  );
 }
 
 /** @param {object} ctx @param {{id: string}} input */

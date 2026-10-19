@@ -45,6 +45,8 @@ import {
  *   spawn?: (opts: object, invocation: object, log: (line: string) => void) => Promise<{ok: boolean, pid?: number, error?: string}>,
  *   isAlive?: (pid: number) => boolean,
  *   now?: () => number,
+ *   onSkip?: (holder: object|null) => void,
+ *   onAcquired?: (holder: object|null) => void,
  * }} [deps]
  * @returns {Promise<number>} exit code
  */
@@ -54,6 +56,8 @@ export async function runContinue(opts, deps = {}) {
   const spawn = deps.spawn ?? spawnContinueTurn;
   const isAlive = deps.isAlive ?? isProcessAlive;
   const now = deps.now ?? Date.now;
+  const onSkip = deps.onSkip ?? null;
+  const onAcquired = deps.onAcquired ?? null;
 
   if (!continueEnabled) {
     log("continue: disabled (--continue=no)");
@@ -102,8 +106,12 @@ export async function runContinue(opts, deps = {}) {
     const holder = lock.holder;
     const who = holder === null ? "another turn is starting" : `previous turn pid ${holder.pid} still running`;
     log(`continue: skipped — ${who}`);
+    // The event subscriber keeps a pending dispatch instead of dropping one
+    // whose turn happened to be in flight.
+    onSkip?.(holder);
     return 0;
   }
+  onAcquired?.(lock.holder);
 
   try {
     const outcome = await spawn(opts, invocation, log);
@@ -137,12 +145,18 @@ export async function runContinue(opts, deps = {}) {
  *
  * @param {object} opts
  * @param {NodeJS.ProcessEnv} [env]
+ * @param {{onSkip?: Function, onAcquired?: Function}} [hooks]
  * @returns {Promise<number>}
  */
-export async function runOnce(opts, env = process.env) {
+export async function runOnce(opts, env = process.env, hooks = {}) {
   const log = createLogger(opts);
   const { continueEnabled } = resolveLoopConfig(opts, env);
-  return runContinue(opts, { log, continueEnabled });
+  return runContinue(opts, {
+    log,
+    continueEnabled,
+    onSkip: hooks.onSkip,
+    onAcquired: hooks.onAcquired,
+  });
 }
 
 /**

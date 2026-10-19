@@ -353,7 +353,7 @@ export async function createTaskd(options = {}) {
     // envelope, so it is matched and handled before the router (see the module).
     const attachment = ATTACHMENT_CONTENT_PATH.exec(pathname);
     if (attachment !== null && (req.method === "GET" || req.method === "PUT")) {
-      await handleAttachmentContent(req, res, board, safeDecode(attachment[1]));
+      await handleAttachmentContent(req, res, board, safeDecode(attachment[1]), actorFromRequest(req));
       return;
     }
 

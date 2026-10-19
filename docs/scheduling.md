@@ -34,9 +34,14 @@ independent entries under `scripts/loop/`, and the continue turn invokes them.
 
 The split is deliberate. A 60-second clock that read the board would be a poll
 again; a 10-minute clock that ran the entries itself would keep the loop's
-responsibilities inside the scheduler. The cost is a work-discovery latency of
-at most one continue cadence. `--continue-interval` is the lever; lowering it
-raises the LLM cost linearly.
+responsibilities inside the scheduler. On launchd/systemd the optional
+**event subscriber** (`--subscribe`) holds one SSE connection to the board and
+asks for a continue turn when a dispatch-relevant event arrives, so a new card or
+a completed dependency is seen within seconds; the continue clock remains the
+fallback and the only path for time-based work (stale claims, review aging, SLA
+tiers). On cron — which cannot host a long-lived process — discovery stays at
+most one continue cadence. `--continue-interval` is still the lever for that
+fallback; lowering it raises the LLM cost linearly.
 
 The deterministic entries are **not scheduled individually**:
 
@@ -258,7 +263,7 @@ applies the last transition**. The answer here is the **loop**, not the reviewer
 - the reviewer reads the original, its acceptance list, the current round's delivery
   report, the comment trail and (for an epic) the rollup and children; it delivers a
   report whose first line is `VERDICT: APPROVE` or `VERDICT: REJECT`; it moves nothing.
-- the loop applies the verdict as `--actor-kind system`. An `APPROVE` writes
+- the loop applies the verdict as `--actor-kind taskd`. An `APPROVE` writes
   `meta.accepted_by=loop-review` and moves the original `in_review → done`; a `REJECT`
   comments the findings, writes `meta.rework_round`, and moves it back to rework. Only
   after that does it close the review card.
@@ -1025,13 +1030,20 @@ command** — they never enable a daemon or run `crontab` for you:
 
 ```bash
 # macOS
-launchctl load ~/.claude/scheduling/launchd/com.meerkat-taskpanel.ping.plist   # and .continue.plist
+launchctl load ~/.claude/scheduling/launchd/com.meerkat-taskpanel.ping.plist   # and .continue.plist + .subscribe.plist
 # Linux (user units)
 mkdir -p ~/.config/systemd/user && cp ~/.claude/scheduling/systemd/* ~/.config/systemd/user/
-systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer
+systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-subscribe.service
 # Anywhere
 crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 ```
+
+The `.subscribe` unit is the **event daemon**. launchd (`KeepAlive`) and systemd
+(`Type=simple`, `Restart=always`) keep one SSE connection to the board and ask for a
+continue turn when a dispatch-relevant event arrives. It is optional: ping/continue remain
+the fallback, and they are the only path for time-based work (stale claims, review aging,
+SLA tiers). **cron cannot host it** — a crontab entry is not a long-lived process — so a
+cron deployment stays on the continue cadence.
 
 That is the **manual** path, and it is all a plain install does. Loading is a separate,
 explicit act: the opt-in switch is [`--supervisor=enable`](#enabling-the-supervisor-opt-in)
@@ -1101,6 +1113,7 @@ bootstrapping them, one per unit:
 ```bash
 launchctl bootstrap gui/$(id -u) ~/.claude/scheduling/launchd/com.meerkat-taskpanel.ping.plist
 launchctl bootstrap gui/$(id -u) ~/.claude/scheduling/launchd/com.meerkat-taskpanel.continue.plist
+launchctl bootstrap gui/$(id -u) ~/.claude/scheduling/launchd/com.meerkat-taskpanel.subscribe.plist
 ```
 
 `launchctl bootstrap gui/$(id -u)` is the modern, persistent form (the job survives a
@@ -1147,7 +1160,7 @@ systemctl --user daemon-reload
 **Enable / disable / status:**
 
 ```bash
-systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer
+systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-subscribe.service
 systemctl --user disable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer
 systemctl --user is-enabled meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer   # add is-active for "running now"
 ```

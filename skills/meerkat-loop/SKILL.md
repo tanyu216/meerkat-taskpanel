@@ -29,8 +29,11 @@ units. The continue turn runs them in this order:
 
 Claude Code, Codex and Pi have no clock and no timers — their hooks fire only on session
 events — so the loop lives **outside** the host and the host is only ever the worker that
-gets woken. The cost is a work-discovery latency of at most one continue cadence;
-`--continue-interval` is the lever.
+gets woken. On launchd/systemd the optional **subscribe daemon** (`--subscribe`) holds one
+SSE connection and asks for a continue turn when a dispatch-relevant event arrives; the
+continue clock remains the fallback and the only path for time-based work. On cron,
+discovery stays at most one continue cadence. `--continue-interval` is the lever for that
+fallback.
 
 This skill is that loop, packaged so it can be installed and distributed on its own
 (repository: [`meerkat-taskpanel`](https://github.com/tanyu216/meerkat-taskpanel)). The

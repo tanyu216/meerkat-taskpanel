@@ -429,6 +429,13 @@ let savedTimer = null;
  * constantly and none of that is a write (contract ②-11).
  */
 let saveBaseline = { assignee: "", reporter: "", labels: [] };
+/**
+ * The version the drawer opened with. When a remote edit arrives while a draft
+ * is dirty, this deliberately stays behind: the next save carries the older
+ * `if_version` and the server answers `VERSION_CONFLICT`, which is the visible
+ * "someone changed this too" instead of a silent overwrite.
+ */
+let saveBaselineVersion = null;
 
 /**
  * `assignee` and `reporter` are committed on focus loss; `labels` on a chip
@@ -457,9 +464,10 @@ async function save(field, value) {
   clearTimeout(savedTimer);
   saveState.value = "saving";
   try {
-    await saveDetailField(field, value);
+    await saveDetailField(field, value, { ifVersion: saveBaselineVersion ?? undefined });
     if (token !== saveToken) return;
     saveBaseline = { ...saveBaseline, [field]: field === "labels" ? [...value] : value };
+    saveBaselineVersion = board.detail?.task?.version ?? saveBaselineVersion;
     saveState.value = "saved";
     savedTimer = setTimeout(() => {
       if (token === saveToken) saveState.value = "idle";
@@ -668,6 +676,7 @@ function resetSave() {
   saveToken += 1;
   saveState.value = "idle";
   saveBaseline = { assignee: assigneeName.value, reporter: reporterName.value, labels: [...labelNames.value] };
+  saveBaselineVersion = task.value?.version ?? null;
 }
 
 // Keep the drafts in step with whichever task is open.
@@ -691,6 +700,51 @@ watch(
     resetSave();
   },
   { immediate: true },
+);
+
+// A remote edit to the **same** open card must reach the fields too. A clean
+// field adopts the new value, and its baseline moves in the same act so the
+// draft watcher below sees no commit; a dirty field keeps its text and its old
+// baseline, so saving surfaces the remote change as VERSION_CONFLICT rather
+// than silently overwriting it.
+watch(
+  () => [
+    task.value?.assignee?.display_name ?? "",
+    task.value?.reporter?.display_name ?? "",
+    (task.value?.labels ?? []).join("\u0000"),
+    task.value?.description ?? "",
+  ],
+  () => {
+    const nextAssignee = assigneeName.value;
+    const assigneeDirty = assigneeDraft.value !== saveBaseline.assignee;
+    if (!assigneeDirty) {
+      saveBaseline = { ...saveBaseline, assignee: nextAssignee };
+      assigneeDraft.value = nextAssignee;
+    }
+    const nextReporter = reporterName.value;
+    const reporterDirty = reporterDraft.value !== saveBaseline.reporter;
+    if (!reporterDirty) {
+      saveBaseline = { ...saveBaseline, reporter: nextReporter };
+      reporterDraft.value = nextReporter;
+    }
+    const nextLabels = [...labelNames.value];
+    const labelsDirty = !sameSet(labelDraft.value, saveBaseline.labels);
+    if (!labelsDirty) {
+      saveBaseline = { ...saveBaseline, labels: nextLabels };
+      labelDraft.value = nextLabels;
+    }
+    const descriptionDirty =
+      descriptionMode.value === "edit" && descriptionDraft.value !== (task.value?.description ?? "");
+    // Edit mode is a local draft on purpose; read mode follows the card.
+    if (descriptionMode.value === "read") descriptionDraft.value = task.value?.description ?? "";
+
+    // No dirty draft: the drawer is a pure view of the new card, so its next
+    // save may use the new version. A dirty draft keeps the old version and
+    // will be refused visibly by the server.
+    if (!assigneeDirty && !reporterDirty && !labelsDirty && !descriptionDirty) {
+      saveBaselineVersion = task.value?.version ?? saveBaselineVersion;
+    }
+  },
 );
 
 // The chips follow the board's own relations whenever they are re-read (an

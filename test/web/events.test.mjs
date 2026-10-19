@@ -16,8 +16,13 @@ import {
   SHUTDOWN_EVENT,
   advanceCursor,
   backoffDelay,
+  detailRefetch,
   eventTargets,
+  invalidatesWaitingPayload,
+  isKnownEvent,
   resyncQuery,
+  taskEventNeedsRefresh,
+  tasklessNeedsReload,
 } from "../../web/src/lib/events.js";
 import { SSE_SHUTDOWN_EVENT } from "../../src/server/sse.mjs";
 
@@ -49,6 +54,49 @@ describe("web/events — what an activity targets", () => {
     assert.deepEqual(eventTargets({ task_id: null, event: "project_updated" }), { scope: "all", taskId: null });
     assert.deepEqual(eventTargets({ event: "schema" }), { scope: "all", taskId: null });
     assert.deepEqual(eventTargets(null), { scope: "all", taskId: null });
+  });
+});
+
+describe("web/events — the refresh map", () => {
+  it("distinguishes a card edit from a sub-resource edit", () => {
+    assert.equal(taskEventNeedsRefresh("task_updated"), true);
+    assert.equal(taskEventNeedsRefresh("task_moved"), true);
+    assert.equal(taskEventNeedsRefresh("comment_added"), false);
+    assert.equal(taskEventNeedsRefresh("attachment_added"), false);
+    assert.equal(taskEventNeedsRefresh("project_updated"), false);
+  });
+
+  it("maps each event to the drawer resources it invalidates", () => {
+    assert.deepEqual(detailRefetch({ event: "comment_added" }), ["comments", "activities"]);
+    assert.deepEqual(detailRefetch({ event: "relation_added" }), ["relations", "activities"]);
+    assert.deepEqual(detailRefetch({ event: "report_written" }), ["task", "reports", "activities"]);
+    assert.deepEqual(detailRefetch({ event: "session_registered" }), ["sessions", "activities"]);
+    assert.deepEqual(detailRefetch({ event: "attachment_removed" }), ["attachments", "activities"]);
+    assert.deepEqual(detailRefetch({ event: "progress" }), ["activities"]);
+    assert.deepEqual(detailRefetch({ event: "task_moved" }), ["task", "activities"]);
+    assert.deepEqual(detailRefetch({ event: "unknown" }), ["task", "activities"]);
+  });
+
+  it("invalidates the waiting payload only when the question can change", () => {
+    for (const event of ["comment_added", "task_moved", "task_updated", "task_created", "task_archived"]) {
+      assert.equal(invalidatesWaitingPayload(event), true, event);
+    }
+    for (const event of ["relation_added", "session_closed", "attachment_added", "project_updated"]) {
+      assert.equal(invalidatesWaitingPayload(event), false, event);
+    }
+  });
+
+  it("reloads shared lists for a known task-less event, and for an unknown one", () => {
+    assert.equal(tasklessNeedsReload("project_updated"), true);
+    assert.equal(tasklessNeedsReload("import_completed"), true);
+    assert.equal(tasklessNeedsReload("brand_new_event"), true);
+    assert.equal(tasklessNeedsReload("task_created"), false);
+  });
+
+  it("knows its own vocabulary but does not pretend to know another", () => {
+    assert.equal(isKnownEvent("task_created"), true);
+    assert.equal(isKnownEvent("attachment_added"), true);
+    assert.equal(isKnownEvent("brand_new_event"), false);
   });
 });
 

@@ -61,6 +61,7 @@ export const LOOP_BODY_ROOTS = Object.freeze([
   "scripts/loop/patrol.mjs",
   "scripts/loop/workflow.mjs",
   "scripts/loop/continue.mjs",
+  "scripts/loop/subscribe.mjs",
   "scripts/wake-cwd.mjs",
 ]);
 
@@ -77,10 +78,12 @@ export const LOOP_BODY_ROOTS = Object.freeze([
 export const LOOP_TEMPLATE_FILES = Object.freeze([
   "scheduling/launchd/com.meerkat-taskpanel.ping.plist",
   "scheduling/launchd/com.meerkat-taskpanel.continue.plist",
+  "scheduling/launchd/com.meerkat-taskpanel.subscribe.plist",
   "scheduling/systemd/meerkat-taskpanel-ping.service",
   "scheduling/systemd/meerkat-taskpanel-ping.timer",
   "scheduling/systemd/meerkat-taskpanel-continue.service",
   "scheduling/systemd/meerkat-taskpanel-continue.timer",
+  "scheduling/systemd/meerkat-taskpanel-subscribe.service",
   "scheduling/cron/meerkat-taskpanel.cron",
   "claude/wake-claude.sh",
   "codex/wake-codex.sh",

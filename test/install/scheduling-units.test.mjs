@@ -63,10 +63,12 @@ function scheduledPaths(home, hostDir, host) {
   return {
     pingPlist: join(base, "scheduling", "launchd", "com.meerkat-taskpanel.ping.plist"),
     continuePlist: join(base, "scheduling", "launchd", "com.meerkat-taskpanel.continue.plist"),
+    subscribePlist: join(base, "scheduling", "launchd", "com.meerkat-taskpanel.subscribe.plist"),
     pingService: join(base, "scheduling", "systemd", "meerkat-taskpanel-ping.service"),
     pingTimer: join(base, "scheduling", "systemd", "meerkat-taskpanel-ping.timer"),
     continueService: join(base, "scheduling", "systemd", "meerkat-taskpanel-continue.service"),
     continueTimer: join(base, "scheduling", "systemd", "meerkat-taskpanel-continue.timer"),
+    subscribeService: join(base, "scheduling", "systemd", "meerkat-taskpanel-subscribe.service"),
     cron: join(base, "scheduling", "cron", "meerkat-taskpanel.cron"),
     wake: join(base, "bin", `wake-${host}.sh`),
   };
@@ -151,11 +153,21 @@ describe("install.sh: scheduling units", () => {
     assert.match(continuePlist, /<key>StartInterval<\/key>\s*<integer>600<\/integer>/);
     assert.ok(continuePlist.includes("--continue-only"), "the continue unit runs the judgment turn only");
 
-    // systemd — a oneshot service driven by a timer.
+    // The event daemon: a long-lived unit, not an interval one.
+    const subscribePlist = readFileSync(paths.subscribePlist, "utf8");
+    assert.ok(subscribePlist.includes("--subscribe"), "the subscriber runs the daemon mode");
+    assert.match(subscribePlist, /<key>KeepAlive<\/key>\s*<true\/>/);
+    assert.doesNotMatch(subscribePlist, /<key>StartInterval<\/key>/, "a daemon has no interval");
+
+    // systemd — oneshot services driven by timers, plus the subscriber service.
     assert.match(readFileSync(paths.pingTimer, "utf8"), /OnUnitActiveSec=60s/);
     assert.match(readFileSync(paths.continueTimer, "utf8"), /OnUnitActiveSec=600s/);
     assert.match(readFileSync(paths.pingService, "utf8"), /Type=oneshot/);
     assert.ok(readFileSync(paths.continueService, "utf8").includes("--continue-only"));
+    const subscribeService = readFileSync(paths.subscribeService, "utf8");
+    assert.ok(subscribeService.includes("--subscribe"));
+    assert.match(subscribeService, /Type=simple/);
+    assert.match(subscribeService, /Restart=always/);
 
     // cron — a 1-minute ping line and a 10-minute continue line.
     const cron = readFileSync(paths.cron, "utf8");

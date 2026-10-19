@@ -9,6 +9,27 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The loop can be event-driven.** `supervisor.mjs --subscribe` holds one SSE connection
+  to the board and asks for a continue turn when a dispatch-relevant event arrives
+  (coalesced, at most one turn per minute). It does not claim or wake by itself: the
+  existing continue turn still scans, claims and dispatches, so there is one dispatch
+  path. launchd and systemd get a long-lived subscribe unit; cron stays on the continue
+  cadence, which also remains the only path for time-based work (stale claims, review
+  aging, SLA).
+- **Every surface that can change now records an event.** Project metadata/README,
+  attachment create/content/delete, and a completed markdown import (one
+  `import_completed` row with counters, not one per card) join the activity stream;
+  `relation_removed` carries both endpoints and `task_archived` carries the status it
+  left. The web board consumes them: the open drawer refreshes its relations, reports,
+  sessions, attachments and trail; the waiting queue re-reads the question when it can
+  change; archived cards leave the board; project counts and the actor/label rosters
+  refresh on a trailing debounce; and the first stream connection seeds from
+  `/meta.revision` instead of replaying the whole audit trail.
+- **Actor kinds name a platform.** The board writes `taskd` (its own concrete platform
+  name) rather than the vague `system`, automated acceptance recognises `human`/`taskd`,
+  and the command layer no longer invents an `agent` kind when the caller did not name
+  one. `test/contract/actor-kind.test.mjs` keeps new `system`/`agent` kinds out of the
+  source; historical rows are left as recorded.
 - **Every read shows its skeleton.** Switching projects — from the sidebar or the top bar's
   dropdown — puts the board, list, activity and 「等你回复」 views into their skeletons until the
   new project's read lands, instead of briefly drawing the previous project's cards (and a failed

@@ -103,8 +103,12 @@ describe("B26 · admission is an allow-list", () => {
     assert.deepEqual(kindOf(wire("a1", "comment_added")), { kind: "comment", verb: "commented", group: "comment" });
     assert.deepEqual(kindOf(wire("a1", "relation_added")), { kind: "relation", verb: "linked", group: "meta" });
     assert.deepEqual(kindOf(wire("a1", "relation_removed")), { kind: "relation", verb: "linked", group: "meta" });
+    assert.deepEqual(kindOf(wire("a1", "epic_auto_start")), { kind: "status", verb: "status", group: "status" });
+    assert.deepEqual(kindOf(wire("a1", "attachment_added")), { kind: "attachment", verb: "attached", group: "meta" });
+    assert.deepEqual(kindOf(wire("a1", "attachment_removed")), { kind: "attachment", verb: "attached", group: "meta" });
+    assert.deepEqual(kindOf(wire("a1", "task_archived")), { kind: "archived", verb: "status", group: "status" });
 
-    for (const noise of ["task_heartbeat", "session_registered", "session_closed", "progress", "anomaly", "label_gc", "dictionary_upsert", "project_created"]) {
+    for (const noise of ["task_heartbeat", "session_registered", "session_closed", "progress", "anomaly", "label_gc", "dictionary_upsert", "project_created", "project_updated", "attachment_updated", "import_completed"]) {
       assert.equal(kindOf(wire("a1", noise)), null, `${noise} must not be admitted`);
     }
     assert.equal(kindOf(wire("a1", "task_updated", { changes: {} })), null, "a field-less update is a revision tick, not an event");
@@ -115,6 +119,10 @@ describe("B26 · admission is an allow-list", () => {
     assert.equal(kind(["labels"]).kind, "label");
     assert.equal(kind(["assignee"]).kind, "assignee");
     assert.equal(kind(["reporter"]).kind, "assignee");
+    // The command layer writes these field names (the older role words stay
+    // accepted for historical frames).
+    assert.equal(kind(["assigneeId", "assigneeKind"]).kind, "assignee");
+    assert.equal(kind(["reporterId", "reporterKind"]).kind, "assignee");
     assert.equal(kind(["title"]).kind, "updated");
     assert.equal(kind(["priority"]).kind, "updated");
     // The first *classifiable* field decides: `fields` is the whole patch, so a
@@ -355,6 +363,20 @@ describe("B26 · the change lines a row unfolds", () => {
 
     const labelled = rowFrom(wire("a4", "task_updated", { changes: { fields: ["labels"], labels: [{ displayName: "perf", action: "existing" }] } }), TASKS[0]);
     assert.deepEqual(changeLines(labelled)[0].tokens, ["+ perf"]);
+
+    // The command layer's field names, not the UI's role words.
+    const reassigned = rowFrom(
+      wire("a5", "task_updated", { changes: { fields: ["assigneeId", "assigneeKind"], dictionaries: [{ displayName: "jobs" }] } }),
+      TASKS[0],
+    );
+    assert.deepEqual(changeLines(reassigned), [{ field: "activity.detail.assignee", kind: "assignee", value: "jobs" }]);
+
+    // Archiving records the stage it left, not a transition to an "archived" status.
+    const archived = rowFrom(wire("a6", "task_archived", { changes: { from: "done", archivedAt: at(1) } }), TASKS[0]);
+    assert.deepEqual(changeLines(archived), [{ field: "activity.detail.archived", kind: "status", value: "done" }]);
+
+    const attached = rowFrom(wire("a7", "attachment_added", { changes: { filename: "spec.md" } }), TASKS[0]);
+    assert.deepEqual(changeLines(attached), [{ field: "activity.detail.attachment", kind: "attachment", value: "spec.md" }]);
   });
 });
 

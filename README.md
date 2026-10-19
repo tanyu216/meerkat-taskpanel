@@ -235,9 +235,13 @@ and wakes a worker **only when the claim succeeded** ($0 on an empty scan). The 
 are **notifications to the leader**, never actions on a card; the workflow entry is the
 one that writes (`--reviewer` enables dispatch; `--workflow=no` turns it off). Claude Code
 and Codex have **no timers of their own**, so the loop sits *outside* them and only ever
-wakes the worker (`claude -p`, `codex exec`, `pi --print`). The cost of the split is work
-discovery within one continue cadence; `--continue-interval` is the lever. **To turn it
-on,** run `install.sh --target claude|codex|pi`: it installs the `meerkat-loop` skill and
+wakes the worker (`claude -p`, `codex exec`, `pi --print`). On launchd/systemd the optional
+**subscribe daemon** holds one SSE connection and asks for a continue turn when a
+dispatch-relevant board event arrives, so discovery is event-driven; the continue cadence
+remains the fallback and the only path for time-based work (stale claims, review aging, SLA).
+On cron — which cannot host a long-lived process — discovery stays within one continue
+cadence; `--continue-interval` is the lever. **To turn it on,** run
+`install.sh --target claude|codex|pi`: it installs the `meerkat-loop` skill and
 drops that host's launchd / systemd / cron units, then **prints the load command** — it
 never starts a daemon for you (it also asks once whether the supervisor may claim
 **unassigned** cards, default yes). OpenClaw needs no loop: its framework already carries

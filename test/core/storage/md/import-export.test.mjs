@@ -353,6 +353,31 @@ describe("md/import — a non-ms card timestamp is normalized at the import edge
     }
   });
 
+  it("records one import_completed row, and none for a no-op re-import", async () => {
+    const board = await boardWithCards({
+      "PROJ-0001.md": cardText({}, { Progress: "- 2026-10-08T14:03Z started the work" }),
+    });
+    try {
+      importMd({ db: board.db, repos: board.repos, dir: board.dir, now: TS });
+      const completed = board.repos.activities.list().filter((a) => a.event === "import_completed");
+      assert.equal(completed.length, 1, "one row for the whole directory, not one per card");
+      assert.equal(completed[0].taskId, null);
+      assert.equal(completed[0].actorKind, "taskd");
+      assert.equal(completed[0].actorId, "md-import");
+      assert.equal(completed[0].changes.cards, 1);
+
+      // The same files, unchanged: nothing was written, so nothing is announced.
+      importMd({ db: board.db, repos: board.repos, dir: board.dir, now: TS });
+      assert.equal(
+        board.repos.activities.list().filter((a) => a.event === "import_completed").length,
+        1,
+        "a no-op import writes no completion row",
+      );
+    } finally {
+      board.close();
+    }
+  });
+
   it("normalizes a non-ms ## Sessions timestamp", async () => {
     const board = await boardWithCards({
       "PROJ-0001.md": cardText({}, {

@@ -152,10 +152,10 @@ install stops here (nothing is loaded for you):
 
 ```bash
 # macOS
-launchctl load ~/.claude/scheduling/launchd/com.meerkat-taskpanel.ping.plist    # and .continue.plist
+launchctl load ~/.claude/scheduling/launchd/com.meerkat-taskpanel.ping.plist    # and .continue.plist + .subscribe.plist
 # Linux (user units)
 mkdir -p ~/.config/systemd/user && cp ~/.claude/scheduling/systemd/* ~/.config/systemd/user/
-systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer
+systemctl --user enable --now meerkat-taskpanel-ping.timer meerkat-taskpanel-continue.timer meerkat-taskpanel-subscribe.service
 # Anywhere
 crontab ~/.claude/scheduling/cron/meerkat-taskpanel.cron
 ```
@@ -209,7 +209,7 @@ always wins: with it, `--supervisor=enable` prints the exact commands it would r
 changes nothing. On success the installer reports what it enabled **and how to stop it**:
 
 ```text
-supervisor: enabled (host=claude, scheduler=launchd, units=com.meerkat-taskpanel.<agent>.claude.ping,.continue)
+supervisor: enabled (host=claude, scheduler=launchd, units=com.meerkat-taskpanel.<agent>.claude.ping,.continue,.subscribe)
 to disable:  install.sh --supervisor=disable --supervisor-hosts claude
 ```
 

@@ -440,6 +440,9 @@ export function startServer() {
     };
 
     if (path === "/health") return ok({ status: "ok", revision: 5 });
+    // The real board's root route (not `/api/v1/meta`). `initBoard` reads the
+    // revision from it, so a fixture without it would 404 on every page load.
+    if (path === "/meta") return ok({ version: "0.0.0-fixture", revision: 5, capabilities: { sse: true } });
     if (path === "/api/v1/events") {
       res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", connection: "keep-alive" });
       res.write("retry: 3000\n\n: connected\n\n");
@@ -4976,7 +4979,18 @@ export async function run() {
       };
     });
 
-    const noiseEvents = ["task_heartbeat", "session_registered", "session_closed", "progress", "label_gc", "dictionary_upsert"];
+    const noiseEvents = [
+      "task_heartbeat",
+      "session_registered",
+      "session_closed",
+      "progress",
+      "label_gc",
+      "anomaly",
+      "project_created",
+      "project_updated",
+      "attachment_updated",
+      "import_completed",
+    ];
     b26Check(b26Rest.rootHidden === false, "the activity view must not be hidden after its nav press");
     b26Check(b26Rest.rootPainted === true, "the activity view must be painted");
     b26Check(b26Rest.navCurrents.length === 1 && b26Rest.navCurrents[0] === "activity", `nav current ${b26Rest.navCurrents.join(",")}`);

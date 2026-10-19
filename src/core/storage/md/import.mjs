@@ -25,7 +25,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { basename, join, relative } from "node:path";
 
 import { DomainError, isDomainError } from "../../../shared/errors.mjs";
-import { LABEL_PALETTE } from "../../../shared/constants.mjs";
+import { LABEL_PALETTE, TASKD_KIND } from "../../../shared/constants.mjs";
 import { contentHash, newId, sha256Hex } from "../../../shared/ids.mjs";
 import { ACCEPTANCE_STATUSES, TASK_KINDS } from "../../domain/enums.mjs";
 import { resolveActorId, resolveOrCreate } from "../../commands/dictionary.mjs";
@@ -401,7 +401,7 @@ export function importMd(input) {
 
         ensureProject(repos, projectPlans.get(card.projectId), now, stats);
         const dictionary = resolveCardDictionaries(repos, card, now);
-        stats.dictionaries += dictionary.writes;
+        stats.dictionaries += dictionary.count;
         // Historical cards register their labels too, so the registry reflects an
         // imported board rather than only boards built through the CLI (§3.7).
         const labels = resolveCardLabels(repos, card, existing, now);
@@ -626,6 +626,38 @@ export function importMd(input) {
       }
 
       stats.cards = parsed.length;
+      // A second import of unchanged files is a no-op, and a no-op must not
+      // leave an audit row (the idempotency contract). Emit only when at least
+      // one thing was actually written.
+      const wroteAnything =
+        stats.tasks + stats.updated + stats.comments + stats.relations + stats.sessions +
+          stats.reports + stats.activities + stats.labels + stats.dictionaries >
+        0;
+      if (!check && wroteAnything) {
+        // One completion row, not one per card: a large import would otherwise
+        // storm the event stream. The counters are enough for a client to know
+        // it must reload; `check` writes nothing at all.
+        repos.activities.append({
+          taskId: null,
+          actorKind: TASKD_KIND,
+          actorId: "md-import",
+          event: "import_completed",
+          changes: {
+            cards: stats.cards,
+            tasks: stats.tasks,
+            updated: stats.updated,
+            skipped: stats.skipped,
+            comments: stats.comments,
+            relations: stats.relations,
+            sessions: stats.sessions,
+            reports: stats.reports,
+            progress: stats.activities,
+            labels: stats.labels,
+            dictionaries: stats.dictionaries,
+          },
+          createdAt: now,
+        });
+      }
       return stats;
     },
     { op: "md.import" },
@@ -954,7 +986,7 @@ function planReportImport(report, now) {
     acceptance: report.acceptance.map((item) => ({ ...item, status: canonicalReportStatus(item.status) })),
     evidence: report.evidence,
     leftovers: report.leftovers,
-    author: report.author ?? { kind: "agent", id: report.authorId ?? "unknown" },
+    author: report.author ?? { kind: TASKD_KIND, id: report.authorId ?? "md-import" },
   };
   const context = { taskRound: round, now };
   try {

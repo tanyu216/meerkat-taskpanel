@@ -178,8 +178,11 @@ OpenClaw 同样消费这个 Claude 格式的 bundle，这就是它受支持的�
 应用结论），以及**只有真正认领成功**才唤醒 worker 的 poll（空扫描 $0）。SLA 的每一条都是
 **发给 leader 的通知**，绝不对卡动手；工作流入口是唯一写卡的一方（`--reviewer` 启用派发，
 `--workflow=no` 整条通道关闭）。Claude Code 与 Codex **本身没有定时器**，因此循环活在它们
-**之外**，被唤醒的只是 worker（`claude -p`、`codex exec`、`pi --print`）。拆分的代价是
-工作发现最长延迟一个 continue 周期；`--continue-interval` 是唯一旋钮。**启用方式**：运行
+**之外**，被唤醒的只是 worker（`claude -p`、`codex exec`、`pi --print`）。在 launchd/systemd
+上，可选的 **subscribe 守护进程**保持一条 SSE 连接，收到可派发事件时请求一个 continue 回合，
+因此工作发现是事件驱动的；continue 周期仍是兜底，也是基于时间的检查（过期认领、审核老化、
+SLA）的唯一路径。cron 无法承载长驻进程，仍按一个 continue 周期发现工作；
+`--continue-interval` 是旋钮。**启用方式**：运行
 `install.sh --target claude|codex|pi` —— 它会安装 `meerkat-loop` skill、投放该宿主的
 launchd / systemd / cron 单元，并**打印加载命令**（绝不替你启动守护进程；安装时还会问一次
 是否允许认领**未分配**的卡，默认允许）。OpenClaw 无需这套循环：框架已自带一个。

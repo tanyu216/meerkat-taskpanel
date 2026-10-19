@@ -26,6 +26,13 @@ import { isAgentKind, kindLabel, platformOfKind } from "../lib/actor-kind.js";
 
 export { isAgentKind, kindLabel, platformOfKind };
 import { safeFileName } from "../lib/attachments.js";
+import {
+  detailRefetch,
+  invalidatesWaitingPayload,
+  isKnownEvent,
+  taskEventNeedsRefresh,
+  tasklessNeedsReload,
+} from "../lib/events.js";
 import { createEventClient } from "../services/events.js";
 import { t } from "../i18n/index.js";
 import { errorTextKey } from "../i18n/messages.mjs";
@@ -406,8 +413,30 @@ export function firstSentence(body) {
  * summary — and is swallowed per card, because one unreadable comment must not
  * blank the whole view.
  */
+const waitingInflight = new Set();
+const waitingGen = new Map();
+let waitingDirty = false;
+
+/**
+ * Drop a card's cached payload after an event that can change its question.
+ * A read that is already in flight is told to re-run rather than being allowed
+ * to write the pre-event answer.
+ */
+function invalidateWaitingPayload(taskId) {
+  waitingGen.set(taskId, (waitingGen.get(taskId) ?? 0) + 1);
+  if (Object.hasOwn(board.waitingPayload, taskId)) {
+    const next = { ...board.waitingPayload };
+    delete next[taskId];
+    board.waitingPayload = next;
+  }
+  if (waitingInflight.has(taskId)) waitingDirty = true;
+  else void loadWaitingPayloads();
+}
+
 export async function loadWaitingPayloads() {
-  const pending = waitingTasks.value.filter((task) => board.waitingPayload[task.id] === undefined);
+  const pending = waitingTasks.value.filter(
+    (task) => board.waitingPayload[task.id] === undefined && !waitingInflight.has(task.id),
+  );
   if (pending.length === 0) return;
   // This read is the queue's own: a row's `since` (and therefore the oldest-first
   // order) is unknown until its comment arrives, so the view shows its skeleton
@@ -417,20 +446,38 @@ export async function loadWaitingPayloads() {
   try {
     await Promise.all(
       pending.map(async (task) => {
+        // The generation at read time: an event that invalidates the payload
+        // while this request is in flight makes its answer history.
+        const generation = waitingGen.get(task.id) ?? 0;
+        waitingInflight.add(task.id);
         try {
           const data = await api.taskComments(task.identifier, { limit: 50 });
           const comments = data.comments ?? [];
           // The payload is the *newest human* comment (design §2.2/§2.3): an agent
           // comment written afterwards is commentary, not the question.
           const payload = [...comments].reverse().find((comment) => comment.author_kind === "human") ?? null;
-          board.waitingPayload = { ...board.waitingPayload, [task.id]: payload };
+          if ((waitingGen.get(task.id) ?? 0) === generation) {
+            board.waitingPayload = { ...board.waitingPayload, [task.id]: payload };
+          } else {
+            waitingDirty = true;
+          }
         } catch {
-          board.waitingPayload = { ...board.waitingPayload, [task.id]: null };
+          if ((waitingGen.get(task.id) ?? 0) === generation) {
+            board.waitingPayload = { ...board.waitingPayload, [task.id]: null };
+          } else {
+            waitingDirty = true;
+          }
+        } finally {
+          waitingInflight.delete(task.id);
         }
       }),
     );
   } finally {
     board.waitingPending = Math.max(0, board.waitingPending - 1);
+    if (waitingDirty) {
+      waitingDirty = false;
+      void loadWaitingPayloads();
+    }
   }
 }
 
@@ -584,6 +631,9 @@ export async function loadRosters() {
  * read still in flight.
  */
 let loadToken = 0;
+/** Per-task live-refresh sequence: only the newest response may write. */
+const taskRefreshSeq = new Map();
+const taskRefreshTimers = new Map();
 
 export async function loadTasks() {
   const projectId = board.currentProjectId;
@@ -613,12 +663,36 @@ export async function loadTasks() {
 }
 
 export async function refreshTask(taskId) {
+  const seq = (taskRefreshSeq.get(taskId) ?? 0) + 1;
+  taskRefreshSeq.set(taskId, seq);
   try {
     const data = await api.task(taskId);
-    if (data?.task) replaceTask(data.task);
+    // Two events can overlap; a slower earlier response must not regress a card
+    // a newer one already replaced.
+    if (taskRefreshSeq.get(taskId) !== seq) return;
+    const task = data?.task;
+    if (!task) return;
+    if (task.archived_at) {
+      board.tasks = board.tasks.filter((item) => item.id !== taskId);
+      if (board.detail?.task?.id === taskId) closeDetail();
+      return;
+    }
+    replaceTask(task);
   } catch {
     /* a task that vanished mid-flight is not worth a toast */
   }
+}
+
+/** 100 ms per card: a burst of field edits costs one read, not one per frame. */
+function scheduleTaskRefresh(taskId) {
+  if (taskRefreshTimers.has(taskId)) clearTimeout(taskRefreshTimers.get(taskId));
+  taskRefreshTimers.set(
+    taskId,
+    setTimeout(() => {
+      taskRefreshTimers.delete(taskId);
+      void refreshTask(taskId);
+    }, 100),
+  );
 }
 
 /** Full (re)load of the board for the current project. */
@@ -751,10 +825,13 @@ export async function addComment(ref, body) {
  *
  * @param {string} field one of `assignee` | `reporter` | `labels`
  * @param {string|string[]} value the wire value (`assignee`/`reporter` are names)
+ * @param {{ifVersion?: number}} [options] the drawer may pin the version it opened
+ *   with, so a dirty draft loses the race visibly instead of overwriting a remote edit
  */
-export async function saveDetailField(field, value) {
+export async function saveDetailField(field, value, options = {}) {
   const task = board.detail?.task;
   if (!task) return;
+  const ifVersion = options.ifVersion ?? task.version;
 
   // T-20261014-212017-4 — the drawer's four new edit surfaces. Each one keeps
   // the M6b shape: state the new value locally, carry `if_version`, roll back on
@@ -767,8 +844,8 @@ export async function saveDetailField(field, value) {
   // reaches `VERSION_CONFLICT`/`INVALID_TRANSITION`/`REPORT_REQUIRED` as codes
   // the drawer renders as sentences.
   if (field === "status") return saveDetailStatus(task, value);
-  if (field === "priority") return patchDetailField(task, "priority", value, { priority: value });
-  if (field === "description") return patchDetailField(task, "description", value, { description: value });
+  if (field === "priority") return patchDetailField(task, "priority", value, { priority: value }, ifVersion);
+  if (field === "description") return patchDetailField(task, "description", value, { description: value }, ifVersion);
 
   const before = field === "labels" ? { labels: task.labels ?? [] } : { [field]: task[field] ?? null };
   const next =
@@ -778,7 +855,7 @@ export async function saveDetailField(field, value) {
 
   patchTaskLocal(task.id, next);
   try {
-    await adoptPatch(task, await api.patchTask(task.identifier, { [field]: value, if_version: task.version }));
+    await adoptPatch(task, await api.patchTask(task.identifier, { [field]: value, if_version: ifVersion }));
   } catch (err) {
     patchTaskLocal(task.id, before);
     throw err;
@@ -842,11 +919,11 @@ async function saveDetailStatus(task, to) {
  * @param {unknown} value the wire value
  * @param {object} local the optimistic patch
  */
-async function patchDetailField(task, field, value, local) {
+async function patchDetailField(task, field, value, local, ifVersion) {
   const before = { [field]: task[field] ?? null };
   patchTaskLocal(task.id, local);
   try {
-    await adoptPatch(task, await api.patchTask(task.identifier, { [field]: value, if_version: task.version }));
+    await adoptPatch(task, await api.patchTask(task.identifier, { [field]: value, if_version: ifVersion ?? task.version }));
   } catch (err) {
     patchTaskLocal(task.id, before);
     throw err;
@@ -1005,10 +1082,14 @@ function personKind(field, name) {
 
 /* ------------------------------------------------------------------ detail */
 
+/** Monotonic detail generation: an older fan-out may never land over a newer patch. */
+let detailToken = 0;
+
 export async function openDetail(identifier) {
   board.selectedRef = identifier;
   board.drawerState = "open";
   board.detail = null;
+  const token = ++detailToken;
   /**
    * The card this read is *for* is still the card the reader is on. A switch to
    * another card while this one's fan-out is in flight makes this response
@@ -1016,7 +1097,7 @@ export async function openDetail(identifier) {
    * name. (The drawer's loading skeleton is the same window — `detail === null`
    * while `drawerState === "open"`.)
    */
-  const current = () => board.selectedRef === identifier;
+  const current = () => board.selectedRef === identifier && detailToken === token;
   try {
     const [taskData, relations, activities, sessions, reports] = await Promise.all([
       api.task(identifier),
@@ -1054,13 +1135,190 @@ export async function openDetail(identifier) {
 }
 
 export function closeDetail() {
+  detailToken += 1;
   board.drawerState = "closed";
   board.selectedRef = null;
+}
+
+/**
+ * Re-read only the drawer sub-resources an activity invalidated. The drawer is
+ * a snapshot loaded by `openDetail`; this is what keeps it live without turning
+ * every frame into a full fan-out.
+ */
+let detailWanted = new Set();
+let detailTargetId = null;
+let detailTimer = null;
+
+function scheduleDetailRefresh(activity, taskId) {
+  if (board.detail?.task?.id !== taskId) return;
+  detailTargetId = taskId;
+  for (const resource of detailRefetch(activity)) detailWanted.add(resource);
+  if (detailTimer !== null) clearTimeout(detailTimer);
+  detailTimer = setTimeout(() => {
+    detailTimer = null;
+    const wanted = [...detailWanted];
+    const target = detailTargetId;
+    detailWanted = new Set();
+    detailTargetId = null;
+    void refreshDetail(wanted, target);
+  }, 100);
+}
+
+async function refreshDetail(wanted, taskId) {
+  const current = board.detail;
+  if (current?.task?.id !== taskId) return;
+  const identifier = current.task.identifier;
+  const token = ++detailToken;
+  const patch = {};
+  const jobs = [];
+  const want = new Set(wanted);
+
+  const read = (resource, request, apply) => {
+    if (!want.has(resource)) return;
+    jobs.push(
+      request()
+        .then((data) => apply(data))
+        .catch(() => {}),
+    );
+  };
+
+  read("task", () => api.task(identifier), (data) => {
+    if (data?.task) patch.task = data.task;
+  });
+  read("comments", () => api.taskComments(identifier, { limit: 200 }), (data) => {
+    patch.comments = data.comments ?? [];
+  });
+  read("relations", () => api.taskRelations(identifier), (data) => {
+    patch.relations = data;
+  });
+  read("activities", () => api.taskActivities(identifier, { limit: 50 }), (data) => {
+    patch.activities = data.activities ?? [];
+  });
+  read("sessions", () => api.taskSessions(identifier), (data) => {
+    patch.sessions = data.sessions ?? [];
+  });
+  read("reports", () => api.taskReports(identifier), (data) => {
+    patch.reports = data.reports ?? [];
+  });
+  read("attachments", () => api.taskAttachments(identifier), (data) => {
+    patch.attachments = data.attachments ?? [];
+  });
+
+  await Promise.all(jobs);
+  // The drawer may have closed, switched cards, or been overtaken by a newer
+  // refresh while these reads were in flight.
+  if (detailToken !== token || board.detail?.task?.id !== taskId) return;
+
+  if (patch.task) {
+    if (patch.task.archived_at) {
+      board.tasks = board.tasks.filter((item) => item.id !== taskId);
+      closeDetail();
+      return;
+    }
+    replaceTask(patch.task);
+  }
+  board.detail = { ...board.detail, ...patch };
 }
 
 /* -------------------------------------------------------------- live stream */
 
 let client = null;
+/** Unknown event names are warned about once, not once per frame. */
+const unknownEvents = new Set();
+let tasklessTimer = null;
+let sharedTimer = null;
+
+/**
+ * One frame, routed to the smallest refresh that keeps every surface honest.
+ *
+ * Task-scoped events patch the card and the open drawer; task-less events reload
+ * the shared lists. The relation case is the one asymmetry worth naming: the
+ * activity hangs off `target`, so it must refresh `source` too.
+ */
+function handleActivity(activity, revision) {
+  board.revision = Math.max(board.revision, revision);
+  for (const listener of streamListeners) listener(activity);
+
+  const event = activity?.event;
+  if (!isKnownEvent(event) && !unknownEvents.has(event)) {
+    unknownEvents.add(event);
+    console.warn(`[board] unknown activity event: ${event}`);
+  }
+
+  const target = activity?.task_id;
+  if (typeof target === "string" && target !== "") {
+    if (invalidatesWaitingPayload(event)) invalidateWaitingPayload(target);
+    if (taskEventNeedsRefresh(event) || !isKnownEvent(event)) scheduleTaskRefresh(target);
+
+    // A relation names both ends; refreshing only the target would leave the
+    // source card's drawer stale.
+    const endpoints = new Set([target]);
+    if (event === "relation_added" || event === "relation_removed") {
+      for (const key of ["source", "target"]) {
+        const id = activity?.changes?.[key];
+        if (typeof id === "string" && id !== "") endpoints.add(id);
+      }
+    }
+    for (const id of endpoints) {
+      if (board.detail?.task?.id === id) scheduleDetailRefresh(activity, id);
+    }
+
+    // Project counts/order and the actor/label rosters move with task writes.
+    // A trailing refresh keeps them honest without a read per frame.
+    scheduleSharedRefresh();
+  } else if (tasklessNeedsReload(event)) {
+    scheduleTasklessReload();
+  }
+}
+
+/** 250 ms trailing: one project/roster/task reload per burst. */
+function scheduleTasklessReload() {
+  if (tasklessTimer !== null) clearTimeout(tasklessTimer);
+  tasklessTimer = setTimeout(async () => {
+    tasklessTimer = null;
+    try {
+      await loadProjects();
+    } catch {
+      /* the shell's error surface owns a failed read */
+    }
+    try {
+      await loadRosters();
+    } catch {
+      /* the roster is a suggestion; the board still renders */
+    }
+    try {
+      await loadTasks();
+    } catch {
+      /* idem */
+    }
+  }, 250);
+}
+
+/** 2 s trailing: project counts/order and rosters are advisory, not card state. */
+function scheduleSharedRefresh() {
+  if (sharedTimer !== null) return;
+  sharedTimer = setTimeout(async () => {
+    sharedTimer = null;
+    const before = board.currentProjectId;
+    try {
+      await loadProjects();
+    } catch {
+      /* a later event retries */
+    }
+    if (before !== board.currentProjectId) {
+      try {
+        await loadTasks();
+      } catch {
+        /* idem */
+      }
+    }
+    try {
+      await loadRosters();
+    } catch {
+      /* idem */
+    }
+  }, 2000);
+}
 
 /**
  * R12x · B26 — the stream's other consumer.
@@ -1086,26 +1344,11 @@ export function startEvents() {
     onStatus: (status) => {
       board.connection = status;
     },
-    onActivity: (activity, revision) => {
-      board.revision = Math.max(board.revision, revision);
-      for (const listener of streamListeners) listener(activity);
-      const target = activity?.task_id;
-      if (typeof target === "string" && target !== "") {
-        refreshTask(target);
-        if (board.detail?.task?.id === target) {
-          api.taskComments(board.detail.task.identifier, { limit: 200 })
-            .then((data) => {
-              if (board.detail?.task?.id === target) board.detail = { ...board.detail, comments: data.comments ?? [] };
-            })
-            .catch(() => {});
-        }
-      } else {
-        loadProjects().catch(() => {});
-        loadTasks().catch(() => {});
-      }
-    },
+    onActivity: handleActivity,
   });
-  client.seed(board.revision);
+  // Seed only a real reading. `seed(0)` would be a cursor, and the server would
+  // faithfully replay the entire audit trail into a brand-new page.
+  if (board.revision > 0) client.seed(board.revision);
   client.connect();
   return client;
 }
@@ -1119,6 +1362,15 @@ export function resync() {
 
 /** Wire the board up: initial load, then the live stream. Swallows the load error. */
 export async function initBoard() {
+  // `/meta` carries the current revision. Taking it before the stream opens is
+  // what makes the first connection live rather than a replay of every activity
+  // the board has ever recorded.
+  try {
+    const meta = await api.meta();
+    board.revision = Number(meta?.revision) || board.revision;
+  } catch {
+    /* the board may be down; loadBoard reports it */
+  }
   try {
     await loadBoard();
   } catch {

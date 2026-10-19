@@ -380,6 +380,7 @@ describe("web/board — the live stream drives the revision", () => {
 
     startEvents();
     FakeEventSource.instances.at(-1).emit(12, { event: "task_updated", task_id: "td_1" });
+    mock.timers.tick(100);
     await settle();
 
     assert.equal(board.revision, 12);
@@ -394,10 +395,13 @@ describe("web/board — the live stream drives the revision", () => {
     const calls = installFetch({
       "GET /api/v1/projects": () => ok({ projects: [{ id: "p1", name: "Proj" }], order_debug: [{ id: "p1", score: 7, rank: 1 }] }),
       "GET /api/v1/tasks": () => ok({ tasks: [{ id: "td_9", identifier: "TD-9", status: "todo", version: 1 }] }),
+      "GET /api/v1/actors": () => ok({ entries: [] }),
+      "GET /api/v1/labels": () => ok({ labels: [] }),
     });
 
     startEvents();
     FakeEventSource.instances.at(-1).emit(13, { event: "project_updated", task_id: null });
+    mock.timers.tick(250);
     await settle();
 
     assert.equal(board.revision, 13);
@@ -408,10 +412,15 @@ describe("web/board — the live stream drives the revision", () => {
 
   it("a project-level event on a board with no project selected fetches no task list", async () => {
     const { board, startEvents } = await freshBoard();
-    const calls = installFetch({ "GET /api/v1/projects": () => ok({ projects: [] }) });
+    const calls = installFetch({
+      "GET /api/v1/projects": () => ok({ projects: [] }),
+      "GET /api/v1/actors": () => ok({ entries: [] }),
+      "GET /api/v1/labels": () => ok({ labels: [] }),
+    });
 
     startEvents();
     FakeEventSource.instances.at(-1).emit(9, { event: "schema", task_id: null });
+    mock.timers.tick(250);
     await settle();
     // `loadTasks` short-circuits without a project id — the tasks request never fires.
     assert.ok(!calls.some((c) => c.url.startsWith("/api/v1/tasks?")));
@@ -426,6 +435,7 @@ describe("web/board — the live stream drives the revision", () => {
 
     startEvents();
     FakeEventSource.instances.at(-1).emit(7, { event: "task_updated", task_id: "td_1" });
+    mock.timers.tick(100);
     await settle();
     assert.equal(board.revision, 20);
   });
@@ -438,6 +448,7 @@ describe("web/board — the live stream drives the revision", () => {
 
     startEvents();
     FakeEventSource.instances.at(-1).emit(21, { event: "task_updated", task_id: "td_1" });
+    mock.timers.tick(100);
     await settle();
     assert.ok(board.conflict, "a live event must not dismiss the conflict panel");
   });
@@ -447,14 +458,89 @@ describe("web/board — the live stream drives the revision", () => {
     seedTask(board);
     board.detail = { task: { id: "td_1", identifier: "TD-1" }, comments: [] };
     installFetch({
-      "GET /api/v1/tasks/td_1": () => ok({ task: { id: "td_1", identifier: "TD-1", status: "todo", version: 9 } }),
       "GET /api/v1/tasks/TD-1/comments": () => ok({ comments: [{ id: "c1", body: "hi" }] }),
+      "GET /api/v1/tasks/TD-1/activities": () => ok({ activities: [] }),
     });
 
     startEvents();
-    FakeEventSource.instances.at(-1).emit(14, { event: "task_updated", task_id: "td_1" });
+    FakeEventSource.instances.at(-1).emit(14, { event: "comment_added", task_id: "td_1" });
+    mock.timers.tick(100);
     await settle();
     assert.equal(board.detail.comments.length, 1);
+  });
+
+  it("invalidates and re-reads a waiting payload when the card's question can change", async () => {
+    const { board, startEvents } = await freshBoard();
+    board.tasks = [{ id: "td_1", identifier: "TD-1", status: "awaiting", version: 1, title: "waiting", labels: [] }];
+    board.waitingPayload = { td_1: { body: "old question" } };
+    const calls = installFetch({
+      "GET /api/v1/tasks/TD-1/comments": () => ok({ comments: [{ id: "c1", body: "new question", author_kind: "human" }] }),
+    });
+
+    startEvents();
+    FakeEventSource.instances.at(-1).emit(15, { event: "comment_added", task_id: "td_1" });
+    await settle();
+
+    assert.equal(calls.filter((call) => call.url.includes("/comments")).length, 1, "one re-read, not none");
+    assert.equal(board.waitingPayload.td_1.body, "new question");
+  });
+
+  it("removes an archived card from the board", async () => {
+    const { board, startEvents } = await freshBoard();
+    seedTask(board);
+    installFetch({
+      "GET /api/v1/tasks/td_1": () =>
+        ok({ task: { id: "td_1", identifier: "TD-1", status: "done", version: 10, archived_at: "2026-10-19T00:00:00.000Z" } }),
+    });
+
+    startEvents();
+    FakeEventSource.instances.at(-1).emit(16, { event: "task_archived", task_id: "td_1" });
+    mock.timers.tick(100);
+    await settle();
+
+    assert.deepEqual(board.tasks, [], "an archived card is not a board card");
+  });
+
+  it("refreshes an open drawer's relations when a relation changes", async () => {
+    const { board, startEvents } = await freshBoard();
+    seedTask(board);
+    board.detail = {
+      task: { id: "td_1", identifier: "TD-1" },
+      relations: { parent_chain: [] },
+      activities: [],
+    };
+    installFetch({
+      "GET /api/v1/tasks/TD-1/relations": () => ok({ parent_chain: ["TD-2"] }),
+      "GET /api/v1/tasks/TD-1/activities": () => ok({ activities: [] }),
+    });
+
+    startEvents();
+    FakeEventSource.instances.at(-1).emit(17, {
+      event: "relation_added",
+      task_id: "td_1",
+      changes: { source: "td_2", target: "td_1" },
+    });
+    mock.timers.tick(100);
+    await settle();
+
+    assert.deepEqual(board.detail.relations.parent_chain, ["TD-2"]);
+  });
+
+  it("seeds the first stream from /meta.revision instead of replaying from zero", async () => {
+    const { board, initBoard } = await freshBoard();
+    installFetch({
+      "GET /meta": () => ok({ revision: 42 }),
+      "GET /api/v1/projects": () => ok({ projects: [{ id: "p1", name: "P" }] }),
+      "GET /api/v1/tasks": () => ok({ tasks: [] }),
+      "GET /api/v1/actors": () => ok({ entries: [] }),
+      "GET /api/v1/labels": () => ok({ labels: [] }),
+    });
+
+    await initBoard();
+    await settle();
+
+    assert.equal(board.revision, 42);
+    assert.equal(FakeEventSource.instances.at(-1).url, "/api/v1/events?after=42");
   });
 
   it("surfaces the connection status on the board", async () => {
@@ -492,6 +578,7 @@ describe("web/board — the live stream drives the revision", () => {
     startEvents();
     const first = FakeEventSource.instances.at(-1);
     first.emit(8, { event: "task_updated", task_id: "td_1" });
+    mock.timers.tick(100);
     await settle();
 
     resync();

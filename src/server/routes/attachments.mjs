@@ -89,7 +89,7 @@ export function registerAttachmentRoutes(router, surface) {
 
   router.post(
     "/api/v1/tasks/:ref/attachments",
-    ({ params, body }) => {
+    ({ params, body, actor }) => {
       const task = resolveTask(repos, params.ref);
       const contentType = normalizeAttachmentContentType(body.content_type);
       const size = body.size === undefined ? 0 : body.size;
@@ -99,16 +99,38 @@ export function registerAttachmentRoutes(router, surface) {
         // the message is the shared one (see `attachmentTooLargeError`).
         throw attachmentTooLargeError(ATTACHMENT_MAX_BYTES, Number.isFinite(size) ? size : null);
       }
-      const attachment = repos.attachments.insert({
-        taskId: task.id,
-        commentId: body.comment_id ?? null,
-        filename: String(body.filename),
-        contentType,
-        size,
-        kind: "attachment",
-        createdAt: new Date().toISOString(),
-      });
-      return { attachment: attachmentToWire(attachment), upload_url: `/api/v1/attachments/${attachment.id}/content` };
+      const now = new Date().toISOString();
+      return transaction(
+        board.db,
+        () => {
+          const attachment = repos.attachments.insert({
+            taskId: task.id,
+            commentId: body.comment_id ?? null,
+            filename: String(body.filename),
+            contentType,
+            size,
+            kind: "attachment",
+            createdAt: now,
+          });
+          // The row and its audit row land together: an attachment that streams
+          // to a client must also appear in the card's trail.
+          repos.activities.append({
+            taskId: task.id,
+            actorKind: actor.kind,
+            actorId: actor.id,
+            event: "attachment_added",
+            changes: {
+              attachmentId: attachment.id,
+              filename: attachment.filename,
+              content_type: attachment.contentType ?? null,
+              size: attachment.size ?? 0,
+            },
+            createdAt: now,
+          });
+          return { attachment: attachmentToWire(attachment), upload_url: `/api/v1/attachments/${attachment.id}/content` };
+        },
+        { op: "attachments.create" },
+      );
     },
     { body: CREATE_BODY },
   );
@@ -118,7 +140,7 @@ export function registerAttachmentRoutes(router, surface) {
     return { task_id: task.id, attachments: repos.attachments.listByTask(task.id).map(attachmentToWire) };
   });
 
-  router.delete("/api/v1/attachments/:id", ({ params }) => {
+  router.delete("/api/v1/attachments/:id", ({ params, actor }) => {
     const id = params.id;
     const attachment = repos.attachments.get(id);
     if (attachment === null) {
@@ -131,7 +153,7 @@ export function registerAttachmentRoutes(router, surface) {
         details: { attachmentId: id },
       });
     }
-    removeAttachmentRow(board.db, repos.attachments, id, path);
+    removeAttachmentRow(board.db, repos, attachment, path, actor);
     return { removed: true, attachment: attachmentToWire(attachment) };
   });
 }
@@ -149,8 +171,9 @@ export function attachmentContentPath(dataDir, id) {
  * @param {import('node:http').ServerResponse} res
  * @param {{board: object}} surface
  * @param {string} id
+ * @param {{kind: string, id: string}} actor
  */
-export async function handleAttachmentContent(req, res, board, id) {
+export async function handleAttachmentContent(req, res, board, id, actor) {
   try {
     const attachment = board.repos.attachments.get(id);
     if (attachment === null) {
@@ -181,7 +204,7 @@ export async function handleAttachmentContent(req, res, board, id) {
         onOverLimit: (maxBytes) => attachmentTooLargeError(maxBytes),
       });
       await mkdir(join(board.dataDir, ATTACHMENTS_DIRNAME), { recursive: true });
-      storeContent(board.db, board.repos.attachments, id, path, body);
+      storeContent(board.db, board.repos, attachment, path, body, actor);
       sendJson(res, 200, { ok: true, data: { attachment_id: id, size: body.length, stored: true } });
       return;
     }
@@ -271,22 +294,38 @@ export async function handleAttachmentContent(req, res, board, id) {
  * rather than escaping as the 500 a bare `.run()` produced.
  *
  * @param {import('node:sqlite').DatabaseSync} db
- * @param {{setSize: (id: string, size: number) => void}} attachments
- * @param {string} id
+ * @param {object} repos
+ * @param {object} attachment the row whose bytes are being replaced
  * @param {string} path
  * @param {Buffer} body
+ * @param {{kind: string, id: string}} actor
  */
-function storeContent(db, attachments, id, path, body) {
+function storeContent(db, repos, attachment, path, body, actor) {
   const staged = `${path}.${newId()}.part`;
+  const now = new Date().toISOString();
   try {
     transaction(
       db,
       () => {
         writeFileSync(staged, body);
         // Keeping the row's `size` honest so a listing can render it without a
-        // stat is a write like any other: the trigger bumps `global_revision`,
-        // so the SSE stream sees it.
-        attachments.setSize(id, body.length);
+        // stat is a write like any other. The `global_revision` trigger alone
+        // produces no SSE frame (the stream is a cursor over `task_activities`),
+        // so the size change gets its own audit row.
+        repos.attachments.setSize(attachment.id, body.length);
+        repos.activities.append({
+          taskId: attachment.taskId,
+          actorKind: actor.kind,
+          actorId: actor.id,
+          event: "attachment_updated",
+          changes: {
+            attachmentId: attachment.id,
+            filename: attachment.filename,
+            content_type: attachment.contentType ?? null,
+            size: body.length,
+          },
+          createdAt: now,
+        });
         renameSync(staged, path);
       },
       { op: "attachments.setSize" },
@@ -335,9 +374,10 @@ function storeContent(db, attachments, id, path, body) {
  * @param {string} id
  * @param {string} path
  */
-function removeAttachmentRow(db, attachments, id, path) {
+function removeAttachmentRow(db, repos, attachment, path, actor) {
   const staged = `${path}.${newId()}.part`;
   let stagedBytes = false;
+  const now = new Date().toISOString();
   try {
     transaction(
       db,
@@ -346,9 +386,25 @@ function removeAttachmentRow(db, attachments, id, path) {
           renameSync(path, staged);
           stagedBytes = true;
         }
-        if (!attachments.remove(id)) {
-          throw new DomainError("NOT_FOUND", { message: `no attachment ${id}`, details: { attachmentId: id } });
+        if (!repos.attachments.remove(attachment.id)) {
+          throw new DomainError("NOT_FOUND", {
+            message: `no attachment ${attachment.id}`,
+            details: { attachmentId: attachment.id },
+          });
         }
+        repos.activities.append({
+          taskId: attachment.taskId,
+          actorKind: actor.kind,
+          actorId: actor.id,
+          event: "attachment_removed",
+          changes: {
+            attachmentId: attachment.id,
+            filename: attachment.filename,
+            content_type: attachment.contentType ?? null,
+            size: attachment.size ?? 0,
+          },
+          createdAt: now,
+        });
       },
       { op: "attachments.remove" },
     );

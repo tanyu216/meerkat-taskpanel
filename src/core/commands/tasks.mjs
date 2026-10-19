@@ -767,7 +767,11 @@ export function archive(ctx, input) {
         actorKind: actor.kind,
         actorId: actor.id,
         event: "task_archived",
-        changes: { archivedAt: task.archivedAt, ...(released > 0 ? { labelsReleased: released } : {}) },
+        changes: {
+          from: current.status,
+          archivedAt: task.archivedAt,
+          ...(released > 0 ? { labelsReleased: released } : {}),
+        },
         createdAt: now,
       });
       return task;
