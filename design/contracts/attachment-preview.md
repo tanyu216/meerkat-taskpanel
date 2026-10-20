@@ -21,7 +21,7 @@
 
 | 钩子 | 席位 |
 |---|---|
-| `[data-attachment-open]` | 可预览行的文件名（`<button>`，带 `aria-haspopup="dialog"` / `aria-controls`） |
+| `[data-attachment-open]` | 可预览行的**眼睛**按钮，排在下载之前（带 `aria-haspopup="dialog"` / `aria-controls`；文件名保持纯文本 `<span>`） |
 | `[data-attachment-preview]` | 全屏弹窗（`role="dialog"`、`aria-modal="true"`），`data-attachment-preview-kind="image\|video\|pdf\|markdown"` |
 | `[data-attachment-preview-close]` | 弹窗头部的 ✕ |
 | `[data-attachment-preview-loading]` | 弹窗的加载句 |
@@ -34,7 +34,7 @@
 - 纯函数：`node --test test/web/attachments.test.mjs`（四族命中、大小写/参数折叠、其余为 `null`）。
 - 策略：`node --test test/contract/attachment-policy.test.mjs`（视频两容器在册、两处页面类型不在册、扩展名映射、64 MiB、三处文案与常量同值）。
 - HTTP：`node --test test/server/attachments.test.mjs`（视频行可建、字节端点仍答 `attachment` + `nosniff` + `no-store`）。
-- 浏览器：`node web/scripts/dom-smoke.mjs`（四族各开一次、源是 `blob:`、弹窗覆盖整个视口且不在抽屉子树内、焦点落在 ✕ 上、✕ 与 Escape 都只关闭弹窗并把焦点还给行按钮、zip 行没有 `[data-attachment-open]`）。
+- 浏览器：`node web/scripts/dom-smoke.mjs`（四族各开一次、源是 `blob:`、弹窗覆盖整个视口且不在抽屉子树内、焦点落在 ✕ 上、✕ 与 Escape 都只关闭弹窗并把焦点还给眼睛按钮、操作簇顺序为「眼睛 → 下载 → 移除」且文件名是 `<span>`、zip 行没有眼睛）。
 
 ## 3. 明确不做
 

@@ -1536,8 +1536,20 @@ export async function run() {
           viewport: { width: innerWidth, height: innerHeight },
           rows: [...document.querySelectorAll("[data-attachment-row]")].map((row) => ({
             name: row.querySelector("[data-attachment-name]")?.textContent?.trim() ?? "",
+            nameTag: row.querySelector("[data-attachment-name]")?.tagName?.toLowerCase() ?? null,
             open: row.querySelector("[data-attachment-open]") !== null,
             popup: row.querySelector("[data-attachment-open]")?.getAttribute("aria-haspopup") ?? null,
+            // The action cluster's order, read from the DOM rather than assumed:
+            // the eye is the **view** affordance and sits before download.
+            actions: [...row.querySelectorAll("[data-attachment-open], [data-attachment-download], [data-attachment-remove]")]
+              .filter((element) => element.closest(".td-file-actions") !== null)
+              .map((element) =>
+                element.hasAttribute("data-attachment-open")
+                  ? "open"
+                  : element.hasAttribute("data-attachment-download")
+                    ? "download"
+                    : "remove",
+              ),
           })),
           overlays: overlay
             ? [
@@ -1588,6 +1600,17 @@ export async function run() {
       `a previewable row's button does not announce a dialog: ${JSON.stringify(previewRest.rows)}`,
     );
     previewCheck(previewRest.overlays.length === 0, "a preview overlay is present before anything was pressed");
+    for (const row of previewRest.rows) {
+      const expected = row.open ? "open,download,remove" : "download,remove";
+      previewCheck(
+        row.actions.join(",") === expected,
+        `${row.name}: the action cluster reads ${row.actions.join(",") || "(none)"}, expected ${expected}`,
+      );
+      previewCheck(
+        row.nameTag === "span",
+        `${row.name}: the filename is a <${row.nameTag}>, expected a plain span — the eye button is the affordance`,
+      );
+    }
 
     for (const [name, kind, reader] of [
       ["focus-order-record.png", "image", "image"],

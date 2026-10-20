@@ -3060,22 +3060,6 @@ button.td-prop-value:hover {
    arithmetic). A row whose stored type the drawer can render turns its filename
    into a disclosure button, and the region it opens sits directly under that
    row: one at a time, so the drawer never grows two viewers. */
-.td-file-open {
-  padding: 0;
-  border: 0;
-  background: none;
-  /* Only the UA reset is this rule's job: `.td-file-name` (the same element)
-     already states the size, weight and colour, and it stays the one source. */
-  font-family: inherit;
-  text-align: start;
-  cursor: pointer;
-}
-.td-file-open:hover:not(:disabled) {
-  text-decoration: underline;
-}
-.td-file-open:disabled {
-  cursor: default;
-}
 /* The preview dialog — implementation-only (the prototype has no preview
    arithmetic). It is teleported to `<body>` and covers the viewport: the
    drawer's `transform` would otherwise turn it into that box's containing

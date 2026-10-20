@@ -660,8 +660,9 @@ inventories can be compared.
 
 **The drawer's attachment preview dialog (implementation-only).** 〔原型无此交互；由
 `test/web/blocks.contract.mjs` 的 `AUXILIARY_HOOKS` 与 `design/contracts/attachment-preview.md`
-背书〕 A row whose stored `content_type` is one of the four preview families turns its filename
-into a button (`[data-attachment-open]`, with `aria-haspopup="dialog"`) that opens a
+背书〕 A row whose stored `content_type` is one of the four preview families carries an **eye**
+button in its action cluster, before download (`[data-attachment-open]`, with
+`aria-haspopup="dialog"`; the filename itself stays a plain `<span>`), and it opens a
 **full-screen** `[data-attachment-preview]` dialog — teleported to `<body>`, because the drawer's
 `transform` would otherwise become the containing block of a `position: fixed` child. The dialog
 carries `data-attachment-preview-kind`, a `[data-attachment-preview-close]` button, and, while it

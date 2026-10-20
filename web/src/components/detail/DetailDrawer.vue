@@ -1455,23 +1455,27 @@ function copyId() {
               <svg class="td-icon size-4" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M14 3v5h5M7 3h7l5 5v13H7z" />
               </svg>
-              <button
-                v-if="file.previewKind"
-                type="button"
-                class="td-file-name td-file-open"
-                data-attachment-name
-                data-attachment-open
-                aria-haspopup="dialog"
-                :aria-controls="file.id ? `td-attachment-preview-${file.id}` : undefined"
-                :disabled="readonly"
-                :aria-disabled="readonly ? 'true' : undefined"
-                @click="togglePreview(file, $event)"
-              >
-                {{ file.name }}
-              </button>
-              <span v-else class="td-file-name" data-attachment-name>{{ file.name }}</span>
+              <span class="td-file-name" data-attachment-name>{{ file.name }}</span>
               <span class="td-file-size" data-attachment-size>{{ file.size }}</span>
               <span class="td-file-actions">
+                <button
+                  v-if="file.previewKind"
+                  type="button"
+                  class="td-iconbtn"
+                  data-attachment-open
+                  aria-haspopup="dialog"
+                  :aria-controls="file.id ? `td-attachment-preview-${file.id}` : undefined"
+                  :aria-label="$t('attachment.previewOpen')"
+                  :title="$t('attachment.previewOpen')"
+                  :disabled="readonly"
+                  :aria-disabled="readonly ? 'true' : undefined"
+                  @click="togglePreview(file, $event)"
+                >
+                  <svg class="td-icon size-4" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                </button>
                 <button
                   type="button"
                   class="td-iconbtn"

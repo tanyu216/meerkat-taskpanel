@@ -3321,7 +3321,7 @@ export const AUXILIARY_HOOKS = Object.freeze([
   // `[data-attachment-*]` hooks above: the prototype's rows carry download and
   // remove but no preview arithmetic, so the disclosure button and its region
   // exist only in the shipped app (`design/contracts/attachment-preview.md`).
-  Object.freeze({ selector: "[data-attachment-open]", purpose: "a previewable attachment row's filename, which opens the dialog" }),
+  Object.freeze({ selector: "[data-attachment-open]", purpose: "a previewable attachment row's eye button (before download), which opens the dialog" }),
   Object.freeze({ selector: "[data-attachment-preview]", purpose: "the full-screen dialog an attachment's bytes render in" }),
   Object.freeze({ selector: "[data-attachment-preview-close]", purpose: "the dialog's close button" }),
   Object.freeze({ selector: "[data-attachment-preview-loading]", purpose: "the dialog's loading sentence" }),
