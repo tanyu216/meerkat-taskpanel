@@ -184,6 +184,34 @@ Facts that decide that order:
 - **`issue reconcile` is the backstop, not a step you owe** — `--dry-run` reports the plan,
   the plain form applies it, and both are idempotent.
 
+### Choose the container before you split
+
+First decide what the card *is*: if its title and description name the **sum** of the work it
+is the container; if they name **one deliverable** it is a child of that container.
+
+| Card you have | Role | What to do |
+|---|---|---|
+| already an `epic` | — | add children; never convert it |
+| `task`, no parent | the whole job | promote in place (above) |
+| `task`, no parent | one deliverable among several | create a new `--kind epic` container; link it and the new children |
+| `task`, with a parent | the whole job | promote to a nested epic; its parent edge stays |
+| `task`, with a parent | one deliverable among several | keep it as a child; add siblings under the same parent |
+| `in_review`, `done`, `canceled` or archived | — | do **not** promote; create a new container and link the old card as a child (or `related` for history) |
+| a review card, or a `deploy` card | — | do **not** promote; split a separate container |
+
+Promotion is only for a card that has **not delivered its current-round report**. The rollup
+collects the **children's** delivery reports, not the container's own history, and a terminal
+container never rolls up — promoting a card that already delivered strands every child attached
+after it. A card that has delivered starts a *new* container instead.
+
+Before you write, check the shape: all children in the same project; at most **8** direct
+children; at most **8** nodes on a parent chain; an ancestor and a descendant may not `blocks`
+each other; a child has exactly one parent.
+
+The promoted card keeps its status. A `backlog` or `awaiting` epic does not auto-start or
+auto-close — move it to `todo` (or `in_progress`) first. An `in_review` epic that gains a child
+must be moved back to `in_progress`; the board will not roll it up from `in_review`.
+
 Claim exactly **one** child and work it as usual; the container holds no work of its own.
 
 ## Finishing

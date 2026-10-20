@@ -481,3 +481,27 @@ describe("board skill: the acceptance list rule", () => {
     assert.match(text, /rollup/);
   });
 });
+
+describe("board skill: the container decision", () => {
+  const skill = readFileSync(join(ROOT, "skills/meerkat-taskpanel/SKILL.md"), "utf8");
+  const lifecycle = readFileSync(
+    join(ROOT, "skills/meerkat-taskpanel/references/status-lifecycle.md"),
+    "utf8",
+  );
+
+  it("does not promote a card that already delivered", () => {
+    assert.match(skill, /current-round report/i);
+    assert.match(skill, /do \*\*not\*\* promote/i);
+    assert.match(lifecycle, /terminal container never rolls up/i);
+  });
+
+  it("takes rollup evidence from the children only", () => {
+    assert.match(lifecycle, /children's, not the container's/i);
+    assert.match(lifecycle, /delivery report/i);
+  });
+
+  it("names the shape limits", () => {
+    assert.match(skill, /\*\*8\*\* direct\s+children/i);
+    assert.match(skill, /\*\*8\*\* nodes on a parent chain/i);
+  });
+});

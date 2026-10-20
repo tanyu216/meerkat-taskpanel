@@ -168,6 +168,15 @@ is not `done` — literally `status !== "done"`, so a `canceled` predecessor wit
 - **`todo → in_review` is the epic-only repair edge** for a child attached after the container
   finished; it still passes the delivery gate.
 - **No parent closes over an open child.** `CHILDREN_OPEN` guards both `in_review` and `done`.
+- **Evidence is the children's, not the container's.** The rollup reads each child's latest
+  delivery report; the container's own earlier reports prove nothing, and a child delivered
+  under `--no-report` contributes no anchor. With no child evidence the container stays open.
+- **A terminal container never rolls up.** The sweep scans non-terminal epics only, so a
+  `done`/`canceled` card promoted to an epic will never close over children attached later.
+  A delivered card starts a new container instead.
+- **Status at promotion.** The board starts a container only from `todo` and closes it from
+  `todo`, `in_progress` or `blocked`; `backlog` and `awaiting` need a move first, and an
+  `in_review` epic that gains a child needs a rework back to `in_progress`.
 
 `issue reconcile` replays the start/close rules over every non-terminal epic and is
 idempotent; the ordinary path does not need it.
