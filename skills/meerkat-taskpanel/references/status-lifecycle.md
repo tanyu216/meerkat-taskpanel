@@ -191,7 +191,7 @@ Scope precedence is **`hasParent` > review marker > `top_level`**.
 - `REVIEW_PENDING` applies only when a **human** closes a **top-level** card, and only to the
   **current round's** review cards; `taskd` is exempt.
 - `--actor-kind human` is reserved; a human write uses `--as-human`.
-- The policy comes from `TASKD_ACCEPTANCE_POLICY` / the environment / `<dataDir>/taskd.env`,
+- The policy comes from `TASKD_ACCEPTANCE_POLICY` / the environment / the install-root `.env`,
   defaulting to `both`.
 
 ## 8. Creating a card in a status

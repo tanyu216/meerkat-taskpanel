@@ -51,8 +51,82 @@ export const RUNTIME_POINTER_ENV = "TASKD_RUNTIME_POINTER";
 /** Env override for the access token (M2, §7.1: `--token` > this > token file). */
 export const TOKEN_ENV = "TASKD_TOKEN";
 
+/**
+ * A token kept in a file, as an alternative to `TASKD_TOKEN`.
+ *
+ * `TASKD_TOKEN` outranks it: a shell can export the token for one command
+ * without rewriting the config file. The file is read only when it is the
+ * winning source.
+ */
+export const TOKEN_FILE_ENV = "TASKD_TOKEN_FILE";
+
+/**
+ * The preferred board address. Unlike `--url` it is not a pin: it is probed,
+ * and a dead *loopback* address may still fall through to the machine's
+ * running board or a lazy start. A dead non-loopback address is an error.
+ */
+export const URL_ENV = "TASKD_URL";
+
 /** Set to `1` to stop the CLI from spawning `taskd` (M2, §F-A1). */
 export const NO_AUTOSTART_ENV = "TASKD_NO_AUTOSTART";
+
+/**
+ * The one client/server config file, at the program install root.
+ *
+ * `MEERKAT_TASKPANEL_ENV_FILE` overrides the path (tests, containers, a
+ * read-only package root). It is *not* a secret and is inherited by a spawned
+ * `taskd`.
+ */
+export const ENV_FILE_ENV = "MEERKAT_TASKPANEL_ENV_FILE";
+/** Default config file name at the program root. */
+export const ENV_FILE_FILENAME = ".env";
+/** The URL a fresh install seeds into `.env`; a default value, not a code fallback. */
+export const DEFAULT_BOARD_URL = "http://localhost:9527";
+
+/**
+ * Keys `.env` may carry. Anything else in our namespaces is a typo; keys
+ * outside them (Vite's `VITE_*`, `NODE_ENV`, …) are ignored and never merged.
+ */
+export const CLIENT_CONFIG_KEYS = Object.freeze([
+  URL_ENV,
+  TOKEN_ENV,
+  TOKEN_FILE_ENV,
+  NO_AUTOSTART_ENV,
+  DATA_DIR_ENV,
+  DB_PATH_ENV,
+  RUNTIME_POINTER_ENV,
+  HOST_ENV,
+  PORT_ENV,
+  "TASKD_ALLOW_CIDRS",
+  "TASKD_ALLOW_LIST_ENABLED",
+  "TASKD_ACCEPTANCE_POLICY",
+  "TASKD_LABEL_GC",
+  "TASKD_LABEL_TTL_DAYS",
+  "TASKCTL_AGENT",
+  "TASKCTL_HUMAN",
+  "MEERKAT_TASKPANEL_PROJECTS_JSON",
+]);
+
+/** Namespaces that belong to this project; an unknown key in one is an error. */
+export const CONFIG_NAMESPACES = Object.freeze(["TASKD_", "TASKCTL_", "MEERKAT_TASKPANEL_"]);
+
+/**
+ * Client-only keys stripped from a spawned `taskd`'s environment.
+ *
+ * `MEERKAT_TASKPANEL_ENV_FILE` is deliberately *not* here: the child must read
+ * the same config file, including a test/container override.
+ */
+export const SPAWN_ENV_OMIT = Object.freeze([
+  TOKEN_ENV,
+  TOKEN_FILE_ENV,
+  URL_ENV,
+  NO_AUTOSTART_ENV,
+  "TASKCTL_AGENT",
+  "TASKCTL_ACTOR_KIND",
+  "TASKCTL_HUMAN",
+  "TASKCTL_SESSION_ID",
+  "TASKCTL_AGENT_PLATFORM",
+]);
 
 /** `<repo>/.data` — gitignored; overridden by `TASKD_DATA_DIR`. */
 export const DEFAULT_DATA_DIR = ".data";

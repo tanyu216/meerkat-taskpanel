@@ -6,8 +6,8 @@
  * as the token file, and a remote caller that merely holds a valid token must
  * not be able to widen the allow-list or rotate the credential.
  *
- * The policy is server configuration, not board data: `PUT` writes
- * `<dataDir>/taskd.env` (see `access-config.mjs`) and swaps the in-memory policy
+ * The policy is server configuration, not board data: `PUT` writes the
+ * install-root `.env` (see `access-config.mjs`) and swaps the in-memory policy
  * the next request is judged against. `rotate_token: true` rotates the token in
  * the same save, so the panel has one Save for every pending edit — including a
  * Reset the reader has not confirmed yet.
@@ -80,7 +80,7 @@ export function registerAccessRoutes(router, surface) {
       const cidrs = validateCidrs(input.cidrs);
 
       const saved = writeAccessConfig({
-        dataDir: surface.board.dataDir,
+        envFile: surface.board.envFile,
         enabled: input.enabled,
         cidrs,
       });

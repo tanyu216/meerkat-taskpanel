@@ -21,7 +21,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const PLANNED = [
   "index.mjs",
   "bootstrap.mjs",
-  // M6 — the board's acceptance policy (read from taskd.env, per decision).
+  // M6 — the board's acceptance policy (read from the install-root .env, per decision).
   "acceptance-policy.mjs",
   "domain/enums.mjs",
   "domain/status.mjs",

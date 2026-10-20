@@ -15,7 +15,7 @@
  *     and leaves a placeholder saying the credential is minted on save;
  *   * the allow-list switch and rows are a draft, and the one **Save** button
  *     writes the switch, every range and a pending token rotation together
- *     (`PUT /api/v1/access` → `<dataDir>/taskd.env` + the token file), then
+ *     (`PUT /api/v1/access` → the install-root `.env` + the token file), then
  *     closes the dialog;
  *   * add/remove are real controls over that draft.
  *

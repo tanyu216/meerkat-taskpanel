@@ -110,6 +110,7 @@ export function parseArgs(argv, env = process.env) {
     patrolOnly: false,
     subscribe: false,
     url: null,
+    envFile: null,
     token: null,
     sseIdleMs: undefined,
     eventDebounceMs: undefined,
@@ -206,6 +207,8 @@ export function parseArgs(argv, env = process.env) {
     else if (arg === "--subscribe") opts.subscribe = true;
     else if (arg === "--url") opts.url = take("--url");
     else if (arg.startsWith("--url=")) opts.url = arg.slice(6);
+    else if (arg === "--env-file") opts.envFile = take("--env-file");
+    else if (arg.startsWith("--env-file=")) opts.envFile = arg.slice(11);
     else if (arg === "--token") opts.token = take("--token");
     else if (arg.startsWith("--token=")) opts.token = arg.slice(8);
     else if (arg === "--sse-idle-ms") opts.sseIdleMs = number("--sse-idle-ms", take("--sse-idle-ms"));
@@ -477,6 +480,8 @@ export function loopCommandArgs(opts) {
     if (opts[key] !== defaults[key]) add(flag, opts[key]);
   }
   for (const [flag, value] of [
+    ["--url", opts.url],
+    ["--env-file", opts.envFile],
     ["--sla-peer", opts.slaPeer],
     ["--sla-leader", opts.slaLeader],
     ["--notify", opts.notify],
@@ -531,8 +536,12 @@ Options:
                             turn per burst). launchd/systemd only; cron cannot
                             host a long-lived process. Cannot be combined with
                             --once or another selector.
-  --url <url>               Board URL for the subscriber (default: runtime pointer).
-  --token <token>           Board token (default: $TASKD_TOKEN / pointer tokenFile).
+  --url <url>               Board URL (default: TASKD_URL in the process env or
+                            install-root .env, then the runtime pointer).
+  --env-file <path>         Config file (default: MEERKAT_TASKPANEL_ENV_FILE,
+                            then <repo>/.env).
+  --token <token>           Board token (default: $TASKD_TOKEN / TASKD_TOKEN_FILE
+                            / pointer tokenFile).
   --sse-idle-ms <ms>        Reconnect after this much stream silence (default: 45000).
   --event-debounce-ms <ms>  Coalesce a burst of events (default: 300).
   --event-debounce-max-ms <ms>

@@ -47,6 +47,14 @@
       "short": null
     },
     {
+      "flag": "env-file",
+      "as": "string",
+      "value": "<path>",
+      "required": false,
+      "repeat": false,
+      "short": null
+    },
+    {
       "flag": "help",
       "as": "boolean",
       "value": null,

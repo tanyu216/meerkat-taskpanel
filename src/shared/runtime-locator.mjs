@@ -26,6 +26,8 @@ import {
   DB_FILENAME,
   DB_PATH_ENV,
   DEFAULT_DATA_DIR,
+  ENV_FILE_ENV,
+  ENV_FILE_FILENAME,
   LOGS_DIRNAME,
   RUNTIME_FILENAME,
   RUNTIME_POINTER_ENV,
@@ -106,6 +108,28 @@ export function logsDir(dataDir) {
  */
 export function runtimePointerPathForDataDir(dataDir) {
   return join(resolve(dataDir), RUNTIME_FILENAME);
+}
+
+/**
+ * The one config file read by both `taskd` and `taskctl`: `<program root>/.env`.
+ *
+ * `MEERKAT_TASKPANEL_ENV_FILE` overrides the whole path (tests, containers, a
+ * read-only package root). A relative override is resolved against `cwd`, like
+ * every other path a shell hands over.
+ *
+ * Pure path arithmetic, like the rest of this module — the caller reads bytes.
+ *
+ * @param {{root?: string, env?: NodeJS.ProcessEnv, cwd?: string}} [options]
+ * @returns {string} absolute file path
+ */
+export function resolveEnvFilePath(options = {}) {
+  const root = options.root ?? repoRoot();
+  const env = options.env ?? process.env;
+  const cwd = options.cwd ?? process.cwd();
+
+  const override = env[ENV_FILE_ENV];
+  if (typeof override === "string" && override.trim() !== "") return resolve(cwd, override);
+  return join(resolve(root), ENV_FILE_FILENAME);
 }
 
 /**

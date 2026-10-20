@@ -8,6 +8,18 @@ status and priority enums, the `task-interface v1` payload schemas, ID formats, 
 constants exported from `constants.mjs`. Nothing here may import from `src/core` — the
 dependency direction is `core/cli/server → shared`, never the reverse.
 
+## Configuration
+
+| module | what it owns |
+|---|---|
+| `env-file.mjs` | `parseEnvText` — the `KEY=VALUE` text format, no I/O |
+| `env-config.mjs` | `loadEnvFile` — locate the install-root `.env`, parse and validate the allowed keys, and merge file values under the process environment |
+| `runtime-locator.mjs` | `resolveEnvFilePath`, `repoRoot` — the install root and the env-file path |
+
+`loadEnvFile` is called by the entry points only (`src/cli/index.mjs#run`,
+`src/server/main.mjs`, `scripts/loop/endpoint.mjs`); library callers receive the parsed
+values explicitly, so embedding the engine never reads a developer's `.env`.
+
 ## `transport/**`
 
 `shared/transport/**` is the **taskd transport seam**, kept below the CLI surface rather
@@ -20,6 +32,7 @@ than inside it (the charter rule: nothing imports `cli`/`server`):
 | `autostart.mjs` | spawn `taskd`, wait for the pointer, probe `/health` |
 | `runtime.mjs` | `ensureBoard`, `readPointer` — find (or start) the board |
 | `token.mjs` | `resolveToken`, `isTokenShape` — the `--token` > `$TASKD_TOKEN` > tokenFile ladder |
+| `board-url.mjs` | `normalizeBoardUrl`, `isLoopbackUrl` — the board URL's shape and loopback test |
 | `actor.mjs` | `resolveActor` — who is running the command |
 | `errors.mjs` | `usageError`/`ioError`, exit codes, `errorPayload`, `renderErrorText` |
 

@@ -209,22 +209,42 @@ Beyond `/health`, every request is authorised before it is routed (§7):
   anywhere but this machine.
 
 The allow-list is server configuration, persisted **outside the database** in
-`<dataDir>/taskd.env` (`TASKD_ALLOW_LIST_ENABLED` + `TASKD_ALLOW_CIDRS`). The
+the install-root `.env` (`TASKD_ALLOW_LIST_ENABLED` + `TASKD_ALLOW_CIDRS`). The
 precedence is: an explicit process-environment value (an operator override, and
-the Access panel turns read-only), then that file, then the defaults — the list
-**off**, seeded with `192.168.0.0/16` and `10.0.0.0/8`. A loopback save through
-`PUT /access` writes the file and applies the policy to the next request without
-a restart; `rotate_token: true` rotates the token in the same save.
+the Access panel turns read-only), then the `.env` values, then the defaults —
+the list **off**, seeded with `192.168.0.0/16` and `10.0.0.0/8`. A loopback save
+through `PUT /access` writes the file and applies the policy to the next request
+without a restart; `rotate_token: true` rotates the token in the same save.
+
+**One config file, environment first.** `<program root>/.env` is read by both
+`taskd` and `taskctl` (and the loop's SSE subscriber). The process environment
+wins key by key; CLI flags win over both. `--env-file <path>` or
+`MEERKAT_TASKPANEL_ENV_FILE` selects a different file (tests, containers, a
+read-only package root). A file named with `--env-file` that does not exist is an
+error; a missing `MEERKAT_TASKPANEL_ENV_FILE` target or default is "no
+configuration" (the Access panel creates the file on its first save). The file
+grammar is the simple `KEY=VALUE` subset
+(`#` comments, matching quotes; no interpolation or multiline values). Only
+known keys are merged: unknown keys outside the project's namespaces are
+ignored, while a typo inside them is an error.
+
+`.env` is not tracked (`git` and `docker` both ignore it); the Access panel
+writes it 0600. An inline `TASKD_TOKEN` requires that mode. The old
+`<dataDir>/taskd.env` is **no longer read** — this is a hard switch; move its
+keys into `.env`.
 
 Security-relevant environment variables:
 
 | Variable | Meaning |
 |---|---|
 | `TASKD_HOST` / `TASKD_PORT` | bind address / port (defaults `0.0.0.0:9527`) |
+| `TASKD_URL` | client's preferred board address; probed. A dead loopback address may fall through to the pointer or a lazy start; a dead remote address is an error. `--url` is a pin |
 | `TASKD_ALLOW_CIDRS` | comma-separated CIDR allow-list for non-loopback callers; unset = no list (allow all), malformed entries fail closed. Setting it (or `TASKD_ALLOW_LIST_ENABLED`) makes the process environment own the policy, so the Access panel is read-only |
-| `TASKD_ALLOW_LIST_ENABLED` | `true`/`false`: whether the list is in force. Both keys are also read from `<dataDir>/taskd.env`, which the Access panel writes |
+| `TASKD_ALLOW_LIST_ENABLED` | `true`/`false`: whether the list is in force. Both keys are also read from the install-root `.env`, which the Access panel writes |
 | `TASKD_DATA_DIR` / `TASKD_DB` | data directory / database file |
 | `TASKD_TOKEN` | token a client presents (`--token` outranks it) |
+| `TASKD_TOKEN_FILE` | a token file the client reads (`TASKD_TOKEN` outranks it) |
+| `MEERKAT_TASKPANEL_ENV_FILE` | selects the config file; not a secret |
 | `TASKD_LABEL_GC`, `TASKD_LABEL_TTL_DAYS` | label housekeeping (§4.4) |
 
 ### One writer per data directory

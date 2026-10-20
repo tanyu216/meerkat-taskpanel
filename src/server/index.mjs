@@ -179,6 +179,9 @@ function headerOf(req, name) {
  *   eventsPollMs?: number,   // SSE poll period (tests shrink it)
  *   eventsHeartbeatMs?: number,
  *   busyTimeoutMs?: number,  // override the pinned 5000ms lock wait (tests)
+ *   processEnv?: NodeJS.ProcessEnv|null, // the unmerged environment (source decisions)
+ *   envFile?: string|null,   // the config file path (Access panel / errors)
+ *   envVars?: Map<string,string>|Record<string,string>|null, // the parsed `.env` layer
  * }} [options]
  * @returns {Promise<{server: import('node:http').Server, url: string, port: number, host: string, board: object, token: string, close: () => Promise<void>}>}
  */
@@ -192,6 +195,9 @@ export async function createTaskd(options = {}) {
     // a test process cannot genuinely arrive from a non-loopback address
     // (test/server/auth.test.mjs says the same thing in prose).
     authorize: authorizeRequest = authorize,
+    processEnv = null,
+    envFile = null,
+    envVars = null,
   } = options;
 
   // The pointer is *never* written here: it must carry the port the OS actually
@@ -201,6 +207,9 @@ export async function createTaskd(options = {}) {
     dbPath: options.dbPath ?? null,
     env,
     pointer: false,
+    envFile,
+    envVars,
+    processEnv,
     ...(logger === undefined ? {} : { logger }),
     ...(options.clock === undefined ? {} : { clock: options.clock }),
     ...(options.idFactory === undefined ? {} : { idFactory: options.idFactory }),
@@ -208,13 +217,14 @@ export async function createTaskd(options = {}) {
   });
 
   // §7 / the Access panel: the allow-list is *optional*. It comes from the
-  // process environment when an operator set one, else from the panel's
-  // `<dataDir>/taskd.env`, else the safe defaults (off + two private ranges).
-  // The policy is mutable because a loopback save applies without a restart;
-  // `allowList` is the parsed projection `auth.mjs` reads on every request.
+  // process environment when an operator set one, else from the install-root
+  // `.env`, else the safe defaults (off + two private ranges). The policy is
+  // mutable because a loopback save applies without a restart; `allowList` is
+  // the parsed projection `auth.mjs` reads on every request.
   let access = readAccessConfig({
-    dataDir: board.dataDir,
-    env,
+    env: processEnv ?? env,
+    envFile,
+    envVars,
     ...(options.allowCidrs === undefined ? {} : { allowCidrs: options.allowCidrs }),
   });
   let allowList = allowListFrom(access);
@@ -541,8 +551,8 @@ export async function closeServer(server, graceMs = SHUTDOWN_GRACE_MS) {
  * The `/meta` view of the acceptance policy.
  *
  * Read through the board's own resolver so `/meta` reports exactly the policy a
- * write would use (explicit option → env → `taskd.env` → default). It is
- * re-read per request on purpose: a re-install may rewrite the file while the
+ * write would use (explicit option → env → install-root `.env` → default). It
+ * is re-read per request on purpose: a re-install may rewrite the file while the
  * server keeps running. A malformed value reports `null` instead of failing the
  * whole meta read; the acceptance write is where it fails closed.
  */

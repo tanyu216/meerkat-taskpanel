@@ -157,6 +157,15 @@ OpenClaw 同样消费这个 Claude 格式的 bundle，这就是它受支持的�
 不加时既有值一律保留并提示 `left unchanged — use --force to overwrite`）、`--dry-run`
 （预览每次写入、不做任何改动）、`--skip-node-check`（跳过 Node >= 22 检查）。
 
+**配置只有一份文件。** `taskctl` 与 `taskd` 都读程序安装根（checkout 根或 npm 包根）的
+`.env`，取看板 URL、客户端 token、allow-list 与验收策略。进程环境逐键优先，CLI 参数再优先于
+两者；`--env-file <path>` 或 `MEERKAT_TASKPANEL_ENV_FILE` 可另指一个文件。`install.sh` 会
+写入一份含 `TASKD_URL=http://localhost:9527` 的 `.env`，Access 面板也写这个文件。每条
+`taskctl` 命令还需带身份：`--actor-kind claude`（或 `codex`、`pi`……；人类用 `--as-human`），
+安装的包装脚本会自动补上。**破坏性变更：** 旧的 `<dataDir>/taskd.env` 不再读取 —— 请手工把其
+中的键搬进 `.env`。详见 [`docs/install.md`](docs/install.md) 与
+[`docs/development.md`](docs/development.md)。
+
 ## 实践指南
 
 安装 skill 只需一行；把看板用好则是一套习惯。所有宿主共享同一条**八条规则**内核：

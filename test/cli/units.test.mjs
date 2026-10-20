@@ -11,7 +11,7 @@
 
 import assert from "node:assert/strict";
 import { Readable } from "node:stream";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
@@ -110,7 +110,15 @@ describe("cli/index — the program, with injected streams", () => {
   it("reports a runtime failure on the chosen stream, exit 1", async () => {
     const dir = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-unit-"));
     tempDirs.push(dir);
-    const env = { TASKD_NO_AUTOSTART: "1", TASKD_DATA_DIR: dir, TASKD_RUNTIME_POINTER: join(dir, "runtime.json") };
+    const emptyEnvFile = join(dir, "empty.env");
+    writeFileSync(emptyEnvFile, "");
+    const env = {
+      TASKD_NO_AUTOSTART: "1",
+      TASKD_DATA_DIR: dir,
+      TASKD_RUNTIME_POINTER: join(dir, "runtime.json"),
+      TASKCTL_ACTOR_KIND: "claude",
+      MEERKAT_TASKPANEL_ENV_FILE: emptyEnvFile,
+    };
 
     const human = capture();
     assert.equal(await run(["project", "list"], { ...human.io, env }), 1);
@@ -121,6 +129,62 @@ describe("cli/index — the program, with injected streams", () => {
     const envelope = JSON.parse(json.out.join(""));
     assert.equal(envelope.error.code, "CLI_IO");
     assert.equal(envelope.error.details.token_source, "none");
+  });
+
+  it("requires an identity on every command except help/version", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-unit-"));
+    tempDirs.push(dir);
+    const emptyEnvFile = join(dir, "empty.env");
+    writeFileSync(emptyEnvFile, "");
+    const base = {
+      TASKD_NO_AUTOSTART: "1",
+      TASKD_DATA_DIR: dir,
+      TASKD_RUNTIME_POINTER: join(dir, "runtime.json"),
+      MEERKAT_TASKPANEL_ENV_FILE: emptyEnvFile,
+    };
+
+    const missing = capture();
+    assert.equal(await run(["project", "list", "--json"], { ...missing.io, env: base }), 2);
+    const error = JSON.parse(missing.out.join("")).error;
+    assert.equal(error.code, "CLI_USAGE");
+    assert.match(error.message, /--actor-kind is required/);
+
+    // `--as-human` is the explicit human spelling and satisfies the requirement.
+    const asHuman = capture();
+    assert.equal(await run(["project", "list", "--json", "--as-human=true"], { ...asHuman.io, env: base }), 1);
+    assert.equal(JSON.parse(asHuman.out.join("")).error.code, "CLI_IO");
+
+    // Declaring the reserved kind is still refused.
+    const reserved = capture();
+    assert.equal(await run(["project", "list", "--json", "--actor-kind", "human"], { ...reserved.io, env: base }), 1);
+    assert.equal(JSON.parse(reserved.out.join("")).error.code, "VALIDATION_FAILED");
+  });
+
+  it("reads --env-file before resolving the board, and help/version never read it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "meerkat-taskpanel-unit-"));
+    tempDirs.push(dir);
+    const envFile = join(dir, ".env");
+    writeFileSync(
+      envFile,
+      `TASKD_NO_AUTOSTART=1\nTASKD_DATA_DIR=${dir}\nTASKD_RUNTIME_POINTER=${join(dir, "runtime.json")}\nTASKCTL_AGENT=jobs\n`,
+    );
+
+    const cap = capture();
+    assert.equal(
+      await run(["project", "list", "--json", "--actor-kind", "claude", "--env-file", envFile], {
+        ...cap.io,
+        env: {},
+      }),
+      1,
+    );
+    const error = JSON.parse(cap.out.join("")).error;
+    assert.equal(error.code, "CLI_IO");
+    assert.equal(error.details.noAutostart, true, "the file's TASKD_NO_AUTOSTART was read");
+
+    const help = capture();
+    assert.equal(await run(["--help", "--env-file", "/nonexistent/taskctl.env"], help.io), 0);
+    const version = capture();
+    assert.equal(await run(["--version", "--env-file", "/nonexistent/taskctl.env"], version.io), 0);
   });
 });
 

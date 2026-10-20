@@ -7,7 +7,41 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **One config file: `.env` at the program install root.** `taskd`, `taskctl` and the loop's
+  SSE endpoint now read `<program root>/.env` (the checkout root, or the npm package root) for
+  the board URL, the client token, the allow-list and the acceptance policy. Precedence is
+  CLI flag > process environment > `.env` > default, key by key, so `$TASKD_TOKEN` overrides a
+  `TASKD_TOKEN_FILE` in the file. `--env-file <path>` and `MEERKAT_TASKPANEL_ENV_FILE` select
+  another file. Values come only from the known `TASKD_*` / `TASKCTL_*` /
+  `MEERKAT_TASKPANEL_*` keys — a shared `.env` carrying `VITE_*`, `PATH` or `NODE_OPTIONS` is
+  ignored, and an unknown key inside our own namespaces is an error rather than a silent
+  no-op. `install.sh` seeds a `.env` with `TASKD_URL=http://localhost:9527`; the Access panel
+  writes to the same file. Two new codes: `CONFIG_FILE_INVALID` (unreadable, malformed,
+  unknown or conflicting keys, bad URL/port, a missing explicit token file) and
+  `CONFIG_FILE_INSECURE` (an inline token or explicit token file that is group/world
+  readable). `TASKD_URL` also makes a remote board usable without repeating `--url`: a live
+  configured URL is used, a dead non-loopback one is an error rather than an autostart.
+- **Every `taskctl` invocation carries an identity.** `--actor-kind` (platform: `claude`,
+  `codex`, `openclaw`, `pi`, `opencode`, `cursor`, or `system` for automation) — or
+  `TASKCTL_ACTOR_KIND`, or `--as-human` — is required on every command except `--help` and
+  `--version`; omitting it is `CLI_USAGE`. The id is a role: `--agent jobs|linus|turing`
+  overrides the `TASKCTL_AGENT` default, and a non-human id no longer falls back to
+  `TASKCTL_HUMAN`. `--actor-kind human` is still refused; a human write uses `--as-human`.
+
 ### Changed
+
+- **Breaking: `<dataDir>/taskd.env` is no longer read.** The allow-list and acceptance policy
+  now live in the install-root `.env`; there is no runtime fallback. An existing installation
+  must move the keys by hand (`mv <dataDir>/taskd.env <program root>/.env`, merging with any
+  keys already there). `install.sh` prints this hint when it finds the old file; it does not
+  move or read it.
+
+### Removed
+
+- `ACCESS_ENV_FILE` and `ACCEPTANCE_ENV_FILE` and the `<dataDir>/taskd.env` path helpers.
+  Config writers now create a missing parent directory but never `chmod` an existing one.
 
 - **The board skill is now a taskctl manual, not a design archive.** The skill's prose was
   reduced by roughly half: each rule has one home (`status-lifecycle.md` for the state model,

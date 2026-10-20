@@ -203,6 +203,17 @@ and managed keys — without it an existing value is kept and reported as
 `left unchanged — use --force to overwrite`), `--dry-run` (preview every write and change
 nothing), `--skip-node-check` (bypass the Node >= 22 check).
 
+**Configuration is one file.** `taskctl` and `taskd` read `.env` at the program install root
+(the checkout root, or the npm package root) for the board URL, the client token, the
+allow-list and the acceptance policy. The process environment wins key by key and a CLI flag
+wins over both; `--env-file <path>` or `MEERKAT_TASKPANEL_ENV_FILE` selects another file.
+`install.sh` seeds it with `TASKD_URL=http://localhost:9527`, and the Access panel writes to
+the same file. Every `taskctl` command also needs an identity: `--actor-kind claude` (or
+`codex`, `pi`, …; `--as-human` for a person), which the installed shim supplies. **Breaking
+change:** the old `<dataDir>/taskd.env` is no longer read — move its keys into `.env` by
+hand. Details: [`docs/install.md`](docs/install.md) and
+[`docs/development.md`](docs/development.md).
+
 ## Practice guide
 
 Installing the skill is one line; working the board well is a set of habits.

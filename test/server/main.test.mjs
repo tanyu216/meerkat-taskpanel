@@ -142,6 +142,39 @@ describe("server/main — the daemon, started in-process", () => {
       await taskd.close();
     }
   });
+
+  it("reads the install-root .env, while the process environment still wins", async () => {
+    const dir = tempDir();
+    const envFile = join(dir, ".env");
+    const pointerPath = join(dir, "runtime.json");
+    writeFileSync(
+      envFile,
+      [
+        `TASKD_DATA_DIR=${dir}`,
+        `TASKD_RUNTIME_POINTER=${pointerPath}`,
+        "TASKD_PORT=0",
+        "TASKD_HOST=0.0.0.0",
+        "TASKD_LABEL_GC=off",
+        "",
+      ].join("\n"),
+      { mode: 0o600 },
+    );
+
+    const taskd = await main(
+      { MEERKAT_TASKPANEL_ENV_FILE: envFile, TASKD_HOST: "127.0.0.1" },
+      { register: false },
+    );
+    try {
+      assert.equal(taskd.host, "127.0.0.1", "the process environment wins over the file");
+      assert.equal(taskd.board.dataDir, dir);
+      assert.equal(taskd.board.envFile, envFile);
+      const pointer = readRuntimePointer({ path: pointerPath });
+      assert.equal(pointer.url, taskd.url);
+      assert.equal(pointer.port, taskd.port);
+    } finally {
+      await taskd.close();
+    }
+  });
 });
 
 describe("server/index — the label GC timer (F1-C)", () => {

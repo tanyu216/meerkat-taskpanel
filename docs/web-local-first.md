@@ -32,10 +32,12 @@ its error state rather than a board. This is a **missing feature, not a security
 server is doing exactly what §7 says it should. The board has no way to *present* a token, so
 it simply is not a remote client.
 
-The B19 "Access & token" panel in the UI does **not** change this. Its token is authored,
-in-memory stand-in markup (`web/src/components/review/AccessPanel.vue`: a `td_`-prefixed
-string with a mask, "no storage, no network"); it is a states-gallery exhibit, not a client
-credential.
+The B19 "Access & token" panel in the UI does **not** change this. It is a real client of
+`GET` / `PUT /api/v1/access` — it shows the installed credential and writes the allow-list
+back to the server's config file — but it still injects no token into **ordinary** board
+requests, and from a remote browser those calls are 401 before the panel can load. It is
+therefore usable only from loopback, and it never becomes the credential for `/tasks`,
+`/projects` or `/events`.
 
 ## The workaround today
 

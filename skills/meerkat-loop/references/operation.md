@@ -103,7 +103,7 @@ they name an absolute interpreter and set their own `PATH`.
 | `--workflow=yes\|no` | from the host config → `yes` | run the workflow sub-pass (reconcile → outcomes → dispatch). Off means the loop writes no card |
 | `--reviewer <agent>` | `$MEERKAT_TASKPANEL_REVIEWER` → unset | the independent reviewer. Unset disables review dispatch only; verdicts already in flight still get applied |
 | `--auto-accept-reviews=yes\|no` | from the host config → `yes` | let the loop close a review card after applying its verdict. `no` leaves it in `in_review` for a human; the verdict on the original is still applied |
-| `--acceptance <policy>` | from the host config → `both` | `human-only` \| `both` \| `agent-only`. **Advisory**: the board is authoritative (`<dataDir>/taskd.env`), and the plan reflects the board's policy. `human-only` makes the board hold a top-level approval for a human (see below) |
+| `--acceptance <policy>` | from the host config → `both` | `human-only` \| `both` \| `agent-only`. **Advisory**: the board is authoritative (the install-root `.env`), and the plan reflects the board's policy. `human-only` makes the board hold a top-level approval for a human (see below) |
 | `--workflow-max-actions <n>` | `20` | cap on writes one workflow pass performs |
 | `--review-aging-minutes <n>` | `60` | report a review card that has had no readable verdict this long |
 | `--once` | off | one pass, then exit. With no selector this is the **legacy poll pass**; the installed units use `--ping-only` / `--continue-only` |

@@ -6,8 +6,11 @@
  *
  *   1. `--url` — the caller said so; never second-guess it, and never autostart
  *      behind an explicit address;
- *   2. the runtime pointer — if it names a board that answers `/health`, use it;
- *   3. otherwise start one (`TASKD_NO_AUTOSTART=1` forbids this).
+ *   2. `TASKD_URL` — a *preferred* address: use it when `/health` answers. A
+ *      dead loopback address falls through to step 3; a dead remote address is
+ *      an error (never start a local board behind it);
+ *   3. the runtime pointer — if it names a board that answers `/health`, use it;
+ *   4. otherwise start one (`TASKD_NO_AUTOSTART=1` forbids this).
  *
  * Step 2 has two halves, because a board is not always the one holding the
  * machine-wide slot (R1, `core/storage/secrets/runtime-pointer.mjs`): a board
@@ -32,8 +35,12 @@ import { basename, resolve } from "node:path";
 import {
   AUTOSTART_TIMEOUT_MS,
   NO_AUTOSTART_ENV,
+  PORT_ENV,
   RUNTIME_POINTER_ENV,
+  URL_ENV,
 } from "../constants.mjs";
+import { parseEnvBool } from "../env-file.mjs";
+import { DomainError } from "../errors.mjs";
 import {
   resolveDataDir,
   resolveRuntimePointerPath,
@@ -41,6 +48,7 @@ import {
 } from "../runtime-locator.mjs";
 import { ioError } from "./errors.mjs";
 import { probeHealth, spawnTaskd } from "./autostart.mjs";
+import { isLoopbackUrl, loopbackFallbackUrls, normalizeBoardUrl } from "./board-url.mjs";
 
 export { probeHealth };
 
@@ -202,8 +210,35 @@ export async function ensureBoard(options = {}) {
     home,
   } = options;
 
+  // `--url` is a pin: the caller said so, and nothing behind it is consulted or
+  // started. A malformed value is a usage error, not a config-file error.
   if (typeof url === "string" && url.trim() !== "") {
-    return { url: url.replace(/\/+$/, ""), autostarted: false, pointer: null };
+    try {
+      return { url: normalizeBoardUrl(url), autostarted: false, pointer: null };
+    } catch (err) {
+      if (err instanceof DomainError && err.code === "CONFIG_FILE_INVALID") {
+        throw new DomainError("CLI_USAGE", {
+          message: "--url is not a valid board URL",
+          details: { field: "url" },
+          hint: { fix: "use http://host:port (no path, query, credentials, or port 0)" },
+        });
+      }
+      throw err;
+    }
+  }
+
+  // `TASKD_URL` (from the process environment or `.env`) is a *preferred*
+  // address: probe it, but a dead loopback address may still fall through to the
+  // machine's running board or a lazy start. A dead remote address must not.
+  const configured = hasText(env[URL_ENV]) ? normalizeBoardUrl(env[URL_ENV]) : null;
+  if (configured !== null && (await probeConfigured(configured))) {
+    return { url: configured, autostarted: false, pointer: null };
+  }
+  if (configured !== null && !isLoopbackUrl(configured)) {
+    throw ioError(`the board configured by ${URL_ENV} is not answering: ${configured}`, {
+      details: { url: configured, configured: true, autostart: false },
+      hint: { fix: `start that board, pass --url <url>, or change ${URL_ENV}` },
+    });
   }
 
   const pointer = readPointer(pointerPath === undefined ? { env, platform, home } : { env, path: pointerPath });
@@ -216,16 +251,22 @@ export async function ensureBoard(options = {}) {
     return { url: slot.url.replace(/\/+$/, ""), autostarted: false, pointer: slot };
   }
 
-  if (env[NO_AUTOSTART_ENV] === "1" || env[NO_AUTOSTART_ENV] === "true") {
+  if (parseEnvBool(env[NO_AUTOSTART_ENV]) === true) {
     // The pointer's *path* is deliberately not echoed (M3fix D3): it is a host
     // absolute path, and this refusal is surfaced to callers. The file name is
     // kept, because that is what a human needs to fix it and it names no host.
     throw ioError(
-      pointer === null
-        ? `no board is running and ${NO_AUTOSTART_ENV} is set, so none was started`
-        : `the board named by the runtime pointer is not answering and ${NO_AUTOSTART_ENV} is set, so none was started`,
+      configured !== null
+        ? `the board configured by ${URL_ENV} is not answering and ${NO_AUTOSTART_ENV} is set, so none was started`
+        : pointer === null
+          ? `no board is running and ${NO_AUTOSTART_ENV} is set, so none was started`
+          : `the board named by the runtime pointer is not answering and ${NO_AUTOSTART_ENV} is set, so none was started`,
       {
-        details: { noAutostart: true, pointer: pointer?.path === undefined ? null : basename(pointer.path) },
+        details: {
+          ...(configured === null ? {} : { url: configured, configured: true }),
+          noAutostart: true,
+          pointer: pointer?.path === undefined ? null : basename(pointer.path),
+        },
         hint: {
           fix: `start one with \`node src/server/main.mjs\`, or pass --url <url>, or unset ${NO_AUTOSTART_ENV}`,
         },
@@ -233,8 +274,17 @@ export async function ensureBoard(options = {}) {
     );
   }
 
+  // A loopback preferred address with an explicit port names the board the
+  // caller wants; give the lazy start that port unless TASKD_PORT already says
+  // otherwise. The returned URL is still the *started* board's pointer URL.
+  const spawnEnv = { ...env };
+  if (configured !== null && !hasText(env[PORT_ENV])) {
+    const port = new URL(configured).port;
+    if (port !== "") spawnEnv[PORT_ENV] = port;
+  }
+
   const started = await spawnTaskd({
-    env,
+    env: spawnEnv,
     // Handed over only when the caller named it. Without a name the daemon picks
     // its own file — the write side's rule, which the *parent* must not override:
     // naming the machine-wide path here is what let a spawned daemon take the
@@ -246,4 +296,18 @@ export async function ensureBoard(options = {}) {
     waitMs,
   });
   return { url: started.url.replace(/\/+$/, ""), autostarted: true, pointer: started.pointer };
+}
+
+/**
+ * Probe a configured address, including the literal loopback forms of
+ * `localhost` (a dual-stack resolver may try `::1` first).
+ * @param {string} url
+ * @returns {Promise<boolean>}
+ */
+async function probeConfigured(url) {
+  if (await probeHealth(url)) return true;
+  for (const fallback of loopbackFallbackUrls(url)) {
+    if (await probeHealth(fallback)) return true;
+  }
+  return false;
 }

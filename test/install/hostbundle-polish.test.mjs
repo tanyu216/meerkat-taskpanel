@@ -178,9 +178,10 @@ describe("hostbundle polish: SessionStart fallback (D4a)", () => {
     // The fallback must point at the shim by absolute path...
     assert.ok(text.includes(`$shim issue candidates --assignee $name`), text);
     assert.ok(text.includes(shim), "the absolute shim path must be rendered into the hook");
-    // ...and offer the repo CLI when only the shim is missing.
+    // ...and offer the repo CLI when only the shim is missing — with the identity
+    // a direct invocation needs (the shim is what would otherwise inject it).
     assert.ok(
-      text.includes(`node ${join(ROOT, "src", "cli", "index.mjs")} --agent $name issue candidates`),
+      text.includes(`node ${join(ROOT, "src", "cli", "index.mjs")} --actor-kind claude --agent $name issue candidates`),
       text,
     );
     // It must never print the bare, PATH-dependent form.

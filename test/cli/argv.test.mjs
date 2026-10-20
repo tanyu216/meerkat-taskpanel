@@ -112,6 +112,13 @@ describe("cli/argv — parseArgv", () => {
     }
   });
 
+  it("binds --env-file as a string global flag, in both spellings", () => {
+    const spaced = parseArgv(["--env-file", "/tmp/custom.env", "issue", "get", "PROJ-1"], REGISTRY);
+    assert.equal(spaced.flags.envFile, "/tmp/custom.env");
+    const equals = parseArgv(["issue", "get", "PROJ-1", "--env-file=/tmp/custom.env"], REGISTRY);
+    assert.equal(equals.flags.envFile, "/tmp/custom.env");
+  });
+
   it("coerces numbers and kv pairs, and collects repeatable flags", () => {
     const parsed = parseArgv(
       ["issue", "create", "--meta", "a=1", "--meta", "b=two", "--label", "x", "--label", "y", "--if-version", "7"],

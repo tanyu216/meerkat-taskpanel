@@ -100,6 +100,7 @@ describe("loop skill: the generated payload", () => {
       "scripts/wake-cwd.mjs",
       "src/shared/scheduling.mjs",
       "src/shared/sla-patrol.mjs",
+      "src/shared/env-config.mjs",
       "src/shared/constants.mjs",
       "src/shared/errors.mjs",
       "src/shared/redact.mjs",
@@ -110,6 +111,7 @@ describe("loop skill: the generated payload", () => {
       "src/shared/transport/errors.mjs",
       "src/shared/transport/runtime.mjs",
       "src/shared/transport/token.mjs",
+      "src/shared/transport/board-url.mjs",
     ]) {
       assert.ok(body.includes(rel), `${rel} must be part of the loop body`);
     }

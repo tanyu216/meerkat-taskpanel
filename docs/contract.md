@@ -20,6 +20,10 @@ by an explicit snapshot update; drift is a failure, not a warning.
 | `errors` | `ERROR_CODES` in `src/shared/errors.mjs` | the code and its HTTP status |
 | `wire` | every `*ToWire` projection in `src/shared/wire.mjs` | the name **and JSON type** of every field each shape emits, including the nested `task.assignee` / `task.reporter` / `task.report_waiver` |
 
+The config-file codes `CONFIG_FILE_INVALID` and `CONFIG_FILE_INSECURE` are in the
+same `errors` table, and `--env-file` is a frozen global CLI flag. A change to either
+surface is a snapshot update, not a documentation edit.
+
 Nothing is a second copy of a list. The routes are *enumerated* by registering
 them against a stub router (registration only records `{method, pattern, handler,
 request}` — no handler runs), the error codes are read from `ERROR_CODES`, the

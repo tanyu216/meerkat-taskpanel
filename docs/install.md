@@ -364,11 +364,15 @@ MEERKAT_TASKPANEL_REVIEWER=
 MEERKAT_TASKPANEL_ACCEPTANCE_POLICY=both
 ```
 
-The board's own copy — what it actually enforces — is `TASKD_ACCEPTANCE_POLICY` in
-`<dataDir>/taskd.env`, written by the installer next to the token. `both` is the default;
-`human-only` makes the loop hold a top-level approval for a human, and `agent-only` lets any
-non-human writer close a card. The file is shared with the Access panel and is merged, never
-rewritten.
+The board's own copy — what it actually enforces — is `TASKD_ACCEPTANCE_POLICY` in the
+**install-root `.env`**, seeded by the installer (`<program root>/.env`, 0600) and the same
+file the Access panel and the client read. `both` is the default; `human-only` makes the loop
+hold a top-level approval for a human, and `agent-only` lets any non-human writer close a card.
+The file is merged, never rewritten. The old `<dataDir>/taskd.env` is no longer read: move any
+keys it has into `.env`.
+
+`MEERKAT_TASKPANEL_ENV_FILE` points the installer and both binaries at a different file (a
+read-only package root, a container, or the test suite).
 
 `--reviewer` (or `MEERKAT_TASKPANEL_REVIEWER`) is what turns review dispatch on. With it
 unset the supervisor still reconciles containers and applies verdicts already in flight —

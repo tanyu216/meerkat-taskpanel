@@ -70,18 +70,35 @@ export function saveRegistry(path, registry) {
 /**
  * Run the taskctl CLI and parse its `--json` envelope. Returns `{ok, data|error}`.
  *
- * `actorKind` is not cosmetic: without it every write this supervisor performs
- * defaults to `human` on the board, which is how a loop claim used to read as a
- * person's act. Claims pass the host (`claude`/`codex`/`pi`); the workflow
- * pass's writes pass `system`, so an automated acceptance is attributable and
- * the SLA attribution rules can exclude it.
+ * `actorKind` is not cosmetic: the CLI now requires an identity on every call.
+ * Claims and reads default to the loop's host (`claude`/`codex`/`pi`); the
+ * workflow pass's writes pass `system`, so an automated acceptance is
+ * attributable and the SLA attribution rules can exclude it. `--env-file` and
+ * `--url` are forwarded so the child reads the same config and board; a token
+ * is passed through the child environment, never argv.
  */
 export function runCli(opts, agent, args, { input = null, actorKind = null } = {}) {
-  const globals = ["--json", "--agent", agent, ...(actorKind === null ? [] : ["--actor-kind", actorKind])];
+  // Identity is required on every CLI call now. The loop's host (claude/codex/pi)
+  // is the platform for its agent actions; the board's own workflow pass names
+  // `system` explicitly. A caller that forgot gets the host, never `human`.
+  const kind = actorKind ?? opts.host ?? "system";
+  const globals = [
+    "--json",
+    "--agent",
+    agent,
+    "--actor-kind",
+    kind,
+    ...(opts.envFile ? ["--env-file", opts.envFile] : []),
+    ...(opts.url ? ["--url", opts.url] : []),
+  ];
+  // A token never goes on argv (it would be visible in `ps`); the child reads
+  // it from its environment.
+  const childEnv = { ...process.env };
+  if (opts.token) childEnv.TASKD_TOKEN = opts.token;
   const run = spawnSync(process.execPath, [opts.cli, ...globals, ...args], {
     encoding: "utf8",
     input,
-    env: process.env,
+    env: childEnv,
   });
   if (run.error) return { ok: false, error: run.error.message };
   try {

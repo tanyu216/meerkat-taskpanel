@@ -59,6 +59,8 @@ export TASKD_RUNTIME_POINTER="$POINTER"
 export TASKD_PORT=0
 export TASKD_HOST=127.0.0.1
 export TASKCTL_AGENT="$AGENT_ID"
+# Every command needs a platform kind; this script is automation, not a host shim.
+export TASKCTL_ACTOR_KIND=system
 unset TASKD_NO_AUTOSTART
 
 step "install.sh --target all --prefix <throwaway home>"

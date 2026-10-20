@@ -1,12 +1,13 @@
 /**
- * The one `KEY=VALUE` file the board reads — `<dataDir>/taskd.env` — as pure
- * text operations.
+ * `KEY=VALUE` configuration files — the install-root `.env` and the per-host
+ * loop config — as pure text operations.
  *
- * Two writers share the file (the Access panel's allow-list and the installer's
- * acceptance policy), so a whole-file rewrite by either would silently erase the
- * other's answer. Merging is therefore the only write this module offers:
- * unknown lines (an operator's comments included) survive, a key in the patch
- * is replaced in place, and a new key is appended.
+ * Two writers share the install-root file (the Access panel's allow-list and
+ * the installer's acceptance policy), and the client reads the same keys, so a
+ * whole-file rewrite by either would silently erase the others' answers.
+ * Merging is therefore the only write this module offers: unknown lines (an
+ * operator's comments included) survive, a key in the patch is replaced in
+ * place, and a new key is appended.
  *
  * Pure: no `node:` imports, no filesystem. The caller reads and writes the bytes
  * (`core/acceptance-policy.mjs`, `server/access-config.mjs`).

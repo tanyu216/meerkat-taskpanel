@@ -54,6 +54,12 @@ no `design/`, no `node_modules`). The image:
 - carries `web/dist` — the built board frontend — copied from the `webbuild` stage. `taskd`
   serves that directory as the hosted root (`STATIC_DIR_REL = "web/dist"`). There is no
   `node_modules` in the image.
+- reads the install-root `.env` like a host install. `.env` is in `.dockerignore`, so a
+  developer's file (and any token in it) is never baked into the image. The compose files set
+  `MEERKAT_TASKPANEL_ENV_FILE=/app/.data/.env`, so an Access-panel save lands on the data
+  volume and survives a container recreate; the scaffold (`docker/serve-skeleton.mjs`) uses
+  the same loader. `--env-file` / `MEERKAT_TASKPANEL_ENV_FILE` is the escape hatch for a
+  read-only install root.
 
 ## Base image cache
 

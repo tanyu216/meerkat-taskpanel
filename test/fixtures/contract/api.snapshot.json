@@ -57,6 +57,14 @@
       "http": 409
     },
     {
+      "code": "CONFIG_FILE_INSECURE",
+      "http": 400
+    },
+    {
+      "code": "CONFIG_FILE_INVALID",
+      "http": 400
+    },
+    {
       "code": "CROSS_PROJECT_RELATION",
       "http": 422
     },

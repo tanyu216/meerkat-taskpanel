@@ -4,15 +4,15 @@
  * Three properties matter more than any payload:
  *
  *   * **the two defaults** — allow-list off, seeded with the two private ranges;
- *   * **persistence** — a save writes `<dataDir>/taskd.env`, and a fresh `taskd`
- *     on the same directory reads it back;
+ *   * **persistence** — a save writes the install-root `.env`, and a fresh
+ *     `taskd` on the same directory reads it back;
  *   * **locality** — the read returns the bearer token, so both verbs are
  *     loopback-only and an environment-owned policy refuses a save rather than
  *     letting the panel believe it stuck.
  */
 
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { after, describe, it } from "node:test";
@@ -20,7 +20,6 @@ import test, { after, describe, it } from "node:test";
 import { authorize } from "../../src/server/auth.mjs";
 import { isAddressAllowed } from "../../src/server/cidr.mjs";
 import {
-  accessEnvPath,
   allowListFrom,
   readAccessConfig,
   validateCidrs,
@@ -28,6 +27,7 @@ import {
 } from "../../src/server/access-config.mjs";
 import { readAcceptancePolicy, writeAcceptancePolicy } from "../../src/core/acceptance-policy.mjs";
 import { createTaskd } from "../../src/server/index.mjs";
+import { loadEnvFile } from "../../src/shared/env-config.mjs";
 import { ALLOW_CIDRS_ENV } from "../../src/shared/constants.mjs";
 
 const tempDirs = [];
@@ -39,8 +39,23 @@ function tempDir() {
   return dir;
 }
 
+/** The parsed `.env` values a fresh board would see. */
+function varsOf(envFile) {
+  return existsSync(envFile) ? loadEnvFile({ flag: envFile, env: {} }).vars : new Map();
+}
+
 async function start(options = {}) {
-  const taskd = await createTaskd({ host: "127.0.0.1", port: 0, env: {}, ...options });
+  const dataDir = options.dataDir ?? tempDir();
+  const envFile = join(dataDir, ".env");
+  const taskd = await createTaskd({
+    host: "127.0.0.1",
+    port: 0,
+    env: {},
+    dataDir,
+    envFile,
+    envVars: varsOf(envFile),
+    ...options,
+  });
   servers.push(taskd);
   return taskd;
 }
@@ -67,13 +82,13 @@ const dataOf = (result) => {
 
 describe("server/access-config — defaults and validation", () => {
   it("defaults to an off list seeded with the two private ranges", () => {
-    const dir = tempDir();
-    const config = readAccessConfig({ dataDir: dir, env: {} });
+    const envFile = join(tempDir(), ".env");
+    const config = readAccessConfig({ envFile, envVars: new Map(), env: {} });
     assert.deepEqual(config, {
       enabled: false,
       cidrs: ["192.168.0.0/16", "10.0.0.0/8"],
       source: "default",
-      file: accessEnvPath(dir),
+      file: envFile,
     });
     assert.deepEqual(allowListFrom(config), { configured: false, rules: [], invalid: [] });
   });
@@ -85,11 +100,31 @@ describe("server/access-config — defaults and validation", () => {
   });
 
   it("treats a process-environment list as env-owned", () => {
-    const config = readAccessConfig({ dataDir: tempDir(), env: { [ALLOW_CIDRS_ENV]: "10.0.0.0/8, 2001:db8::/32" } });
+    const config = readAccessConfig({
+      envFile: join(tempDir(), ".env"),
+      envVars: new Map(),
+      env: { [ALLOW_CIDRS_ENV]: "10.0.0.0/8, 2001:db8::/32" },
+    });
     assert.equal(config.source, "env");
     assert.equal(config.enabled, true);
     assert.deepEqual(config.cidrs, ["10.0.0.0/8", "2001:db8::/32"]);
     assert.equal(config.file, null);
+  });
+
+  it("reads the file layer and keeps an explicitly empty list as deny-all", () => {
+    const envFile = join(tempDir(), ".env");
+    const config = readAccessConfig({
+      envFile,
+      envVars: new Map([
+        ["TASKD_ALLOW_LIST_ENABLED", "true"],
+        ["TASKD_ALLOW_CIDRS", ""],
+      ]),
+      env: {},
+    });
+    assert.equal(config.source, "file");
+    assert.equal(config.enabled, true);
+    assert.deepEqual(config.cidrs, []);
+    assert.equal(isAddressAllowed("10.0.0.7", allowListFrom(config)), false);
   });
 
   it("refuses an invalid range instead of dropping it", () => {
@@ -112,7 +147,8 @@ describe("server/access-config — defaults and validation", () => {
 
 describe("server/access — the HTTP surface", () => {
   it("answers the persisted token and the default policy", async () => {
-    const taskd = await start({ dataDir: tempDir() });
+    const dataDir = tempDir();
+    const taskd = await start({ dataDir });
     const data = dataOf(await call(taskd, "GET", "/api/v1/access"));
     assert.equal(data.token, taskd.token);
     assert.equal(data.source, "default");
@@ -120,11 +156,12 @@ describe("server/access — the HTTP surface", () => {
       enabled: false,
       cidrs: ["192.168.0.0/16", "10.0.0.0/8"],
     });
-    assert.equal(data.config_file, accessEnvPath(taskd.board.dataDir));
+    assert.equal(data.config_file, join(dataDir, ".env"));
   });
 
   it("saves the switch and the ranges, and a fresh taskd reads them back", async () => {
     const dataDir = tempDir();
+    const envFile = join(dataDir, ".env");
     const first = await start({ dataDir });
     const saved = dataOf(
       await call(first, "PUT", "/api/v1/access", {
@@ -134,11 +171,11 @@ describe("server/access — the HTTP surface", () => {
     assert.deepEqual(saved.allow_list, { enabled: true, cidrs: ["10.0.0.0/8"] });
     assert.equal(saved.source, "file");
 
-    const file = accessEnvPath(dataDir);
-    assert.equal(existsSync(file), true);
-    const text = readFileSync(file, "utf8");
+    assert.equal(existsSync(envFile), true);
+    const text = readFileSync(envFile, "utf8");
     assert.match(text, /^TASKD_ALLOW_LIST_ENABLED=true$/m);
     assert.match(text, /^TASKD_ALLOW_CIDRS=10\.0\.0\.0\/8$/m);
+    assert.equal(statSync(envFile).mode & 0o777, 0o600);
 
     // The running policy took effect without a restart.
     const meta = dataOf(await call(first, "GET", "/meta"));
@@ -154,14 +191,25 @@ describe("server/access — the HTTP surface", () => {
     assert.equal(dataOf(await call(second, "GET", "/meta")).capabilities.allow_list, true);
   });
 
+  it("does not chmod the install root when it writes the config file", async () => {
+    const dataDir = tempDir();
+    const before = statSync(dataDir).mode & 0o777;
+    const taskd = await start({ dataDir });
+    await call(taskd, "PUT", "/api/v1/access", {
+      allow_list: { enabled: false, cidrs: ["10.0.0.0/8"] },
+    });
+    assert.equal(statSync(dataDir).mode & 0o777, before, "the parent directory keeps its mode");
+  });
+
   it("refuses an invalid range and leaves the saved policy untouched", async () => {
-    const taskd = await start({ dataDir: tempDir() });
+    const dataDir = tempDir();
+    const taskd = await start({ dataDir });
     const result = await call(taskd, "PUT", "/api/v1/access", {
       allow_list: { enabled: true, cidrs: ["10.0.0.0/8", "10.0.0.0/99"] },
     });
     assert.equal(result.status, 400);
     assert.equal(result.body.error.code, "VALIDATION_FAILED");
-    assert.equal(existsSync(accessEnvPath(taskd.board.dataDir)), false);
+    assert.equal(existsSync(join(dataDir, ".env")), false);
 
     const current = dataOf(await call(taskd, "GET", "/api/v1/access"));
     assert.deepEqual(current.allow_list, {
@@ -186,8 +234,9 @@ describe("server/access — the HTTP surface", () => {
   });
 
   it("refuses a save when the process environment owns the policy", async () => {
+    const dataDir = tempDir();
     const taskd = await start({
-      dataDir: tempDir(),
+      dataDir,
       env: { [ALLOW_CIDRS_ENV]: "10.0.0.0/8" },
     });
     const current = dataOf(await call(taskd, "GET", "/api/v1/access"));
@@ -200,7 +249,7 @@ describe("server/access — the HTTP surface", () => {
     assert.equal(refused.status, 400);
     assert.equal(refused.body.error.code, "VALIDATION_FAILED");
     assert.equal(refused.body.error.details.reason, "env_managed");
-    assert.equal(existsSync(accessEnvPath(taskd.board.dataDir)), false);
+    assert.equal(existsSync(join(dataDir, ".env")), false);
   });
 
   it("keeps both verbs loopback-only", () => {
@@ -218,20 +267,20 @@ describe("server/access — the HTTP surface", () => {
   });
 });
 
-describe("server/access-config — the shared taskd.env", () => {
+describe("server/access-config — the shared .env", () => {
   it("a policy save keeps the acceptance policy, and vice versa", () => {
-    const dir = tempDir();
-    writeAcceptancePolicy({ dataDir: dir, policy: "human-only" });
-    writeAccessConfig({ dataDir: dir, enabled: true, cidrs: ["10.0.0.0/8"] });
-    assert.equal(readAcceptancePolicy({ dataDir: dir, env: {} }).policy, "human-only", "the access save merged");
+    const envFile = join(tempDir(), ".env");
+    writeAcceptancePolicy({ envFile, policy: "human-only" });
+    writeAccessConfig({ envFile, enabled: true, cidrs: ["10.0.0.0/8"] });
+    assert.equal(readAcceptancePolicy({ envFile, env: {} }).policy, "human-only", "the access save merged");
 
-    writeAcceptancePolicy({ dataDir: dir, policy: "agent-only" });
+    writeAcceptancePolicy({ envFile, policy: "agent-only" });
     assert.deepEqual(
-      readAccessConfig({ dataDir: dir, env: {} }).cidrs,
+      readAccessConfig({ envFile, envVars: varsOf(envFile), env: {} }).cidrs,
       ["10.0.0.0/8"],
       "the acceptance save merged too",
     );
-    const text = readFileSync(accessEnvPath(dir), "utf8");
+    const text = readFileSync(envFile, "utf8");
     assert.equal((text.match(/^TASKD_ACCEPTANCE_POLICY=/gm) ?? []).length, 1);
     assert.equal((text.match(/^TASKD_ALLOW_CIDRS=/gm) ?? []).length, 1);
   });
@@ -239,16 +288,17 @@ describe("server/access-config — the shared taskd.env", () => {
 
 describe("server/meta — the acceptance capability", () => {
   it("reports the policy in force, and re-reads it on each request", async () => {
-    const dir = tempDir();
-    writeAcceptancePolicy({ dataDir: dir, policy: "human-only" });
-    const taskd = await start({ dataDir: dir });
+    const dataDir = tempDir();
+    const envFile = join(dataDir, ".env");
+    writeAcceptancePolicy({ envFile, policy: "human-only" });
+    const taskd = await start({ dataDir });
     assert.equal(
       dataOf(await call(taskd, "GET", "/meta")).capabilities.acceptance.policy,
       "human-only",
     );
     // A re-install rewrites the file; the running board reports the new value
     // without a restart (the policy is read per decision, not cached).
-    writeAcceptancePolicy({ dataDir: dir, policy: "agent-only" });
+    writeAcceptancePolicy({ envFile, policy: "agent-only" });
     assert.equal(
       dataOf(await call(taskd, "GET", "/meta")).capabilities.acceptance.policy,
       "agent-only",

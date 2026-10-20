@@ -109,7 +109,7 @@ Options:
                     Who may close a task. `human-only` accepts only a human on a
                     top-level card; `both` (the default) a human or the loop;
                     `agent-only` any non-human writer. Written to
-                    <dataDir>/taskd.env (the board is authoritative) and to the
+                    install-root .env (the board is authoritative) and to the
                     host config the loop reads. Asked interactively on a TTY.
                     Alias: --acceptance-policy.
   --ping-interval <sec>
@@ -624,6 +624,10 @@ if [ -n "$DRY_RUN" ]; then
   echo "install.sh: dry run — no files will be changed"
 fi
 
+# One install-root config file, shared by taskd and taskctl. Called once, not per
+# host; never overwrites an existing file (it may hold a token).
+seed_env_file
+
 status=0
 summary=""
 
@@ -685,7 +689,7 @@ if ! install_taskd_guard; then
 fi
 
 # The board's own copy of the policy. The host config above is what the loop
-# *believes*; `<dataDir>/taskd.env` is what the board enforces, and it is the
+# *believes*; the install-root `.env` is what the board enforces, and it is the
 # same file the Access panel writes (the writer merges, never rewrites).
 if [ "$ACCEPTANCE" = "agent-only" ]; then
   # Warnings, not refusals: *which* agent closes a card is the deployment's
@@ -714,7 +718,7 @@ if [ "$ACCEPTANCE" = "agent-only" ]; then
 fi
 
 if [ -n "$DRY_RUN" ]; then
-  echo "install.sh: would write TASKD_ACCEPTANCE_POLICY=$ACCEPTANCE to <dataDir>/taskd.env"
+  echo "install.sh: would write TASKD_ACCEPTANCE_POLICY=$ACCEPTANCE to the install-root .env"
 else
   if ! node "$ROOT/scripts/install/lib/acceptance.mjs" write --policy "$ACCEPTANCE"; then
     echo "install.sh: could not write the board's acceptance policy (see above)" >&2
