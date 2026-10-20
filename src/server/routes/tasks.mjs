@@ -15,8 +15,8 @@
 
 import { TASK_OPS } from "../../core/index.mjs";
 import { DomainError } from "../../shared/errors.mjs";
-import { reportToWire, taskToWire } from "../../shared/wire.mjs";
-import { bool, intOrUndefined, project, REQUEST, shape, str, truthy } from "../requests.mjs";
+import { reportToWire, taskToWire, workflowToWire } from "../../shared/wire.mjs";
+import { bool, int, intOrUndefined, project, REQUEST, shape, str, truthy } from "../requests.mjs";
 import { lookupFor, resolveTask, taskPayload } from "../task-view.mjs";
 
 // Declared request schemas — what the contract snapshot freezes
@@ -59,12 +59,23 @@ const CANDIDATES_QUERY = shape(
 const CREATE_BODY = project(TASK_OPS.create);
 
 /**
- * `POST /api/v1/tasks/reconcile` — the container sweep (`--dry-run` on the wire).
+ * `POST /api/v1/tasks/reconcile` — the container sweep, and (with `workflow`)
+ * the board's workflow plan.
  *
- * `dry_run` is the only input: the sweep takes no scope, because "every
- * non-terminal epic" is the scope (commands/rollup.mjs#reconcileContainers).
+ * Without `workflow`, only `dry_run` is read: the sweep takes no scope, because
+ * "every non-terminal epic" is the scope (commands/rollup.mjs#reconcileContainers).
+ * `workflow` adds the review outcomes/dispatch decisions; the loop supplies its
+ * own reviewer/policy knobs, while the acceptance policy stays the board's.
  */
-const RECONCILE_BODY = shape({ dry_run: bool() });
+const RECONCILE_BODY = shape({
+  dry_run: bool(),
+  workflow: bool(),
+  reviewer: str(),
+  auto_accept_reviews: bool(),
+  review_aging_ms: int(),
+  max_actions: int(),
+  board_limit: int(),
+});
 
 /**
  * `PATCH /api/v1/tasks/:ref` — a partial update.
@@ -187,6 +198,22 @@ export function registerTaskRoutes(router, surface) {
   // computes the plan and writes nothing. This is the repair path for writes
   // that bypassed the service hooks and for children attached after the fact.
   router.post("/api/v1/tasks/reconcile", ({ body }) => {
+    if (body.workflow === true) {
+      const result = commands.workflowTick({
+        reviewer: body.reviewer ?? null,
+        autoAcceptReviews: body.auto_accept_reviews,
+        reviewAgingMs: body.review_aging_ms,
+        maxActions: body.max_actions,
+        boardLimit: body.board_limit,
+        dryRun: body.dry_run === true,
+      });
+      return {
+        dry_run: result.dryRun,
+        scanned: result.scanned,
+        actions: result.actions,
+        workflow: workflowToWire(result.workflow),
+      };
+    }
     const result = commands.reconcileContainers({ dryRun: body.dry_run === true });
     // The wire is snake_case like every other route; the command layer is
     // camelCase like every other command.

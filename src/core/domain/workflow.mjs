@@ -1,11 +1,10 @@
 /**
- * The workflow sub-pass — the *decision* half of `meerkat-loop`'s orchestration.
+ * The board's workflow decisions — the *decision* half of a workflow pass.
  *
- * The loop used to be strictly two things: a poll that wakes a worker, and a
- * patrol that notifies. Everything after a delivery — accepting it, rejecting
- * it, rolling a container up, splitting one — stayed with a human. This module
- * is the decision half of the third channel: it reads the board as a snapshot
- * and decides three things, with **no I/O of its own**:
+ * Everything after a delivery — accepting it, rejecting it, rolling a container
+ * up, splitting one — used to be the loop's private policy. It is the board's
+ * decision now: this module reads a snapshot and decides three things, with
+ * **no I/O of its own**:
  *
  *   * **reconcile** — which container verdicts deserve a notification;
  *   * **outcomes** — what a review card's verdict means for the card it audits;
@@ -26,14 +25,16 @@
  *     closed on a guess is not.
  *
  * Pure: no `node:` imports, no clock (`now` is always an input), no board. The
- * runner (`scripts/supervisor.mjs`) supplies the snapshot and performs the
- * writes.
+ * board's use-case (`commands/workflow.mjs`) assembles the snapshot from SQLite
+ * and exposes the plan through `issue reconcile --workflow`; the loop performs
+ * the review writes the plan describes.
  */
 
 import {
   ACCEPTANCE_POLICIES,
   DEFAULT_ACCEPTANCE_POLICY,
-} from "./constants.mjs";
+  LOOP_ACCEPTOR,
+} from "../../shared/constants.mjs";
 
 /** Default cap on writes one workflow pass may perform. */
 export const DEFAULT_WORKFLOW_MAX_ACTIONS = 20;
@@ -73,8 +74,8 @@ export const DEFAULT_REVIEW_AGING_MS = 60 * 60_000;
 /** The `meta.flow` a worker card runs (and the only flow reviewed here). */
 export const WORK_FLOW = "A";
 
-/** The `meta.accepted_by` marker this loop writes on an automated acceptance. */
-export const LOOP_ACCEPTOR = "loop-review";
+/** The `meta.accepted_by` marker an automated acceptance writes. */
+export { LOOP_ACCEPTOR };
 
 /** The most evidence a verdict's findings may carry into a comment. */
 export const FINDINGS_MAX_CHARS = 4_000;
@@ -556,7 +557,7 @@ export function planReviewOutcomes(input = {}) {
     // is not gated by `autoAcceptReviews` — there is no human decision left to
     // make, and a terminal-by-cancellation original must not leave a live card.
     if (original.status === "canceled") {
-      actions.push({ type: "cancel_review", reviewRef, originalRef, reason: "original_canceled" });
+      actions.push({ type: "cancel_review", reviewStatus: review.status, reviewRef, originalRef, reason: "original_canceled" });
       continue;
     }
 
@@ -580,6 +581,7 @@ export function planReviewOutcomes(input = {}) {
         if (original.status === "in_progress" && original.kind !== "epic") {
           actions.push({
             type: "reject_task_finish",
+            reviewStatus: review.status,
             reviewRef,
             originalRef,
             round: originalRound,
@@ -588,6 +590,7 @@ export function planReviewOutcomes(input = {}) {
         } else {
           actions.push({
             type: "close_review",
+            reviewStatus: review.status,
             reviewRef,
             originalRef,
             round,
@@ -601,7 +604,7 @@ export function planReviewOutcomes(input = {}) {
         continue;
       }
       if (autoAccept) {
-        actions.push({ type: "close_review", reviewRef, originalRef, round, reason: "round_mismatch", closeReview: true });
+        actions.push({ type: "close_review", reviewStatus: review.status, reviewRef, originalRef, round, reason: "round_mismatch", closeReview: true });
       } else {
         alerts.push({ type: "review_stale_round", review: reviewRef, original: originalRef, round, originalRound });
       }
@@ -669,12 +672,22 @@ export function planReviewOutcomes(input = {}) {
         // stops. The human decides; the review card is still closed here so the
         // human's own acceptance is not blocked by a review they already read.
         const hold = policy === "human-only" && isTopLevel(original);
+        // The marker is written with the round the original is on now; a crash
+        // after the marker but before the review card's close is recovered on
+        // the next pass. The board decides that here so the loop's executor
+        // never needs the task snapshot.
+        const held =
+          String(original.meta?.review_verdict ?? "") === "approve" &&
+          String(original.meta?.review_verdict_round ?? "") === String(originalRound);
         actions.push({
           type: hold ? "approve_hold" : "approve",
+          reviewStatus: review.status,
           reviewRef,
           originalRef,
           round: originalRound,
           closeReview,
+          acceptedBy: LOOP_ACCEPTOR,
+          ...(hold ? { held } : {}),
         });
         continue;
       }
@@ -686,6 +699,7 @@ export function planReviewOutcomes(input = {}) {
       if (original.kind === "epic") {
         actions.push({
           type: "reject_epic",
+          reviewStatus: review.status,
           reviewRef,
           originalRef,
           round: originalRound,
@@ -699,6 +713,7 @@ export function planReviewOutcomes(input = {}) {
       } else {
         actions.push({
           type: "reject_task",
+          reviewStatus: review.status,
           reviewRef,
           originalRef,
           round: originalRound,
@@ -714,7 +729,7 @@ export function planReviewOutcomes(input = {}) {
     // review card. The state left on the original says which half landed.
     if (original.status === "done") {
       if (verdict.verdict === "APPROVE") {
-        actions.push({ type: "close_review", reviewRef, originalRef, round: originalRound, reason: "already_approved", closeReview });
+        actions.push({ type: "close_review", reviewStatus: review.status, reviewRef, originalRef, round: originalRound, reason: "already_approved", closeReview });
       } else {
         alerts.push({ type: "verdict_conflict", review: reviewRef, original: originalRef, reason: "original_done_but_rejected" });
       }
@@ -725,6 +740,7 @@ export function planReviewOutcomes(input = {}) {
       if (original.status === "in_progress" && original.kind !== "epic") {
         actions.push({
           type: "reject_task_finish",
+          reviewStatus: review.status,
           reviewRef,
           originalRef,
           round: originalRound,
@@ -734,7 +750,7 @@ export function planReviewOutcomes(input = {}) {
       }
       // `todo` for a task, `in_progress` for an epic (its fix child exists and
       // keeps the container from re-closing): the rejection has been applied.
-      actions.push({ type: "close_review", reviewRef, originalRef, round: originalRound, reason: "rework_applied", closeReview });
+      actions.push({ type: "close_review", reviewStatus: review.status, reviewRef, originalRef, round: originalRound, reason: "rework_applied", closeReview });
       continue;
     }
 

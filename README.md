@@ -229,11 +229,13 @@ Every **60 seconds** it **pings**: it drops worker-registry entries whose pid is
 board read and no model turn. Every **ten minutes** it runs a **continue** turn: it wakes
 the host with a bounded `继续` prompt, and that turn runs the loop's deterministic entries —
 the notify-only SLA patrol (stale heartbeats, an unanswered confirmation gate, a delivery
-nobody reviewed, the rest of `PROTOCOL §⑮`), the workflow channel (container rules, an
-independent reviewer per delivery, the verdict applied), and the poll that claims a card
-and wakes a worker **only when the claim succeeded** ($0 on an empty scan). The SLA rows
-are **notifications to the leader**, never actions on a card; the workflow entry is the
-one that writes (`--reviewer` enables dispatch; `--workflow=no` turns it off). Claude Code
+nobody reviewed, the rest of `PROTOCOL §⑮`), the workflow channel (the board computes the
+plan through `issue reconcile --workflow` — container rules, an independent reviewer per
+delivery, the verdict applied; the loop executes the plan's review actions), and the poll
+that claims a card and wakes a worker **only when the claim succeeded** ($0 on an empty
+scan). The SLA rows are **notifications to the leader**, never actions on a card; the
+workflow entry executes the board's plan (`--reviewer` enables dispatch; `--workflow=no`
+turns it off). Claude Code
 and Codex have **no timers of their own**, so the loop sits *outside* them and only ever
 wakes the worker (`claude -p`, `codex exec`, `pi --print`). On launchd/systemd the optional
 **subscribe daemon** holds one SSE connection and asks for a continue turn when a

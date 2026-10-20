@@ -103,7 +103,7 @@ they name an absolute interpreter and set their own `PATH`.
 | `--workflow=yes\|no` | from the host config → `yes` | run the workflow sub-pass (reconcile → outcomes → dispatch). Off means the loop writes no card |
 | `--reviewer <agent>` | `$MEERKAT_TASKPANEL_REVIEWER` → unset | the independent reviewer. Unset disables review dispatch only; verdicts already in flight still get applied |
 | `--auto-accept-reviews=yes\|no` | from the host config → `yes` | let the loop close a review card after applying its verdict. `no` leaves it in `in_review` for a human; the verdict on the original is still applied |
-| `--acceptance <policy>` | from the host config → `both` | `human-only` \| `both` \| `agent-only`. The board is authoritative (`<dataDir>/taskd.env`); this is the loop's copy. `human-only` makes the loop **hold** a top-level approval for a human (see below) |
+| `--acceptance <policy>` | from the host config → `both` | `human-only` \| `both` \| `agent-only`. **Advisory**: the board is authoritative (`<dataDir>/taskd.env`), and the plan reflects the board's policy. `human-only` makes the board hold a top-level approval for a human (see below) |
 | `--workflow-max-actions <n>` | `20` | cap on writes one workflow pass performs |
 | `--review-aging-minutes <n>` | `60` | report a review card that has had no readable verdict this long |
 | `--once` | off | one pass, then exit. With no selector this is the **legacy poll pass**; the installed units use `--ping-only` / `--continue-only` |
@@ -139,9 +139,12 @@ Two passes with two different powers, and the distinction is load-bearing:
 
 - **the SLA rows are notify-only.** No alert moves a card, releases a blocked one or starts
   a model turn for a new row.
-- **the workflow entry writes.** It is its own program (`scripts/loop/workflow.mjs`), run
-  by the continue turn after patrol: `issue reconcile` (container start/close), the review
-  outcomes, then review dispatch.
+- **the board decides; the loop writes the review actions.** The workflow entry
+  (`scripts/loop/workflow.mjs`) is run by the continue turn after patrol. It asks the board
+  for one plan — `issue reconcile --workflow`: the board's own container reconcile (which
+  it writes), then the review outcomes and dispatch decisions — and executes the plan's
+  review actions. The board never moves a review card; the loop never re-derives a
+  decision.
 
 A delivery that lands in `in_review` on **flow A** is dispatched to the configured
 reviewer as a **review card** — an ordinary `kind=task` card with `meta.review_of=<the
@@ -218,7 +221,7 @@ The loop and the board are released independently, so each side states what it n
 
 | Side | Declares | Where |
 |---|---|---|
-| loop | required board interface generation + release floor (`task-interface v1`, board ≥ 1.0.0) | `SKILL.md`, enforced by `scripts/board-check.mjs` |
+| loop | required board interface generation + release floor (`task-interface v1`, board ≥ 1.1.0) | `SKILL.md`, enforced by `scripts/board-check.mjs` |
 | board | its release version and its contract `schema_version`, at runtime via `taskctl --version --json` | the board's own `--version --json` |
 
 Run the gate before pointing a loop at a board:

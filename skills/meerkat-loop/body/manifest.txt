@@ -26,4 +26,3 @@ src/shared/transport/autostart.mjs
 src/shared/transport/errors.mjs
 src/shared/transport/runtime.mjs
 src/shared/transport/token.mjs
-src/shared/workflow.mjs

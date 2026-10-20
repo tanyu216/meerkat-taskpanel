@@ -866,64 +866,13 @@ describe("runPatrolTick (injected deps)", () => {
 // ---------------------------------------------------------------------------
 
 describe("runWorkflowTick (injected deps)", () => {
-  const NOW = "2026-10-19T10:00:00.000Z";
-  const WORKFLOW_CONFIG = {
-    workflow: true,
-    reviewer: "jobs",
-    reviewerIsWorker: false,
-    autoAcceptReviews: true,
-    maxActions: 20,
-  };
-
-  function task(fields = {}) {
-    const identifier = fields.identifier ?? "T-1";
-    return {
-      id: `id-${identifier}`,
-      identifier,
-      title: "Do the thing",
-      status: "in_review",
-      kind: "task",
-      project_id: "proj",
-      assignee_id: "agent-1",
-      assignee: { id: "agent-1", display_name: "linus", kind: "agent" },
-      delivery_round: 1,
-      status_changed_at: "2026-10-19T09:00:00.000Z",
-      created_at: "2026-10-18T09:00:00.000Z",
-      meta: {},
-      ...fields,
-    };
-  }
-
-  function review(fields = {}) {
-    return task({
-      identifier: "T-2",
-      title: "Review T-1",
-      delivery_round: 0,
-      assignee_id: "agent-jobs",
-      assignee: { id: "agent-jobs", display_name: "jobs", kind: "agent" },
-      meta: { review_of: "T-1", flow: "B", review_round: 1 },
-      ...fields,
-    });
-  }
-
-  /** A verdict report authored by the configured reviewer. */
-  const byJobs = (conclusion) => ({
-    round: 1,
-    conclusion,
-    author_id: "agent-jobs",
-    author: { id: "agent-jobs", display_name: "jobs", kind: "agent" },
-  });
+  const WORKFLOW_CONFIG = { workflow: true };
 
   function baseDeps(overrides = {}) {
     return {
-      tasks: [],
-      reviewCards: [],
+      plan: { alerts: [], actions: [], changes: [], summary: { actions: 0, alerts: 0 } },
       config: WORKFLOW_CONFIG,
-      boardTruncated: false,
       dryRun: false,
-      reconcile: async () => ({ ok: true, actions: [] }),
-      readCard: async (ref) => ({ ok: true, card: task({ identifier: ref }) }),
-      readReports: async () => ({ ok: true, reports: [byJobs("VERDICT: APPROVE")] }),
       createReview: async () => ({ ok: true, ref: "T-9" }),
       createFixChild: async () => ({ ok: true, ref: "T-8" }),
       linkFixChild: async () => ({ ok: true }),
@@ -931,45 +880,52 @@ describe("runWorkflowTick (injected deps)", () => {
       comment: async () => ({ ok: true }),
       setMeta: async () => ({ ok: true }),
       notify: () => {},
-      now: () => NOW,
       log: () => {},
       ...overrides,
     };
   }
 
-  it("is a no-op when the workflow channel is off — and never even reconciles", async () => {
-    const reconcile = spy(async () => ({ ok: true, actions: [] }));
-    const createReview = spy(async () => ({ ok: true }));
+  const approve = (overrides = {}) => ({
+    type: "approve",
+    review_status: "in_review",
+    review_ref: "T-2",
+    original_ref: "T-1",
+    round: 1,
+    close_review: true,
+    accepted_by: "loop-review",
+    ...overrides,
+  });
+
+  it("does nothing when the workflow channel is off", async () => {
+    const createReview = spy(async () => ({ ok: true, ref: "T-9" }));
     const result = await runWorkflowTick(
-      baseDeps({ config: { ...WORKFLOW_CONFIG, workflow: false }, tasks: [task()], reconcile, createReview }),
+      baseDeps({
+        config: { workflow: false },
+        plan: { actions: [{ type: "create_review" }], alerts: [], changes: [], summary: {} },
+        createReview,
+      }),
     );
     assert.deepEqual(result.actions, []);
-    assert.equal(reconcile.count(), 0);
     assert.equal(createReview.count(), 0);
   });
 
-  it("still dispatches after a reconcile failure", async () => {
-    const createReview = spy(async () => ({ ok: true, ref: "T-9" }));
-    const logs = [];
-    const result = await runWorkflowTick(
-      baseDeps({
-        tasks: [task()],
-        reconcile: async () => ({ ok: false, error: "board busy" }),
-        createReview,
-        log: (line) => logs.push(line),
-      }),
-    );
-    assert.equal(createReview.count(), 1);
-    assert.equal(result.executed, 1);
-    assert.ok(logs.some((line) => /reconcile failed/.test(line)));
-  });
-
-  it("dry-run reads but writes nothing, and says what it would do", async () => {
+  it("logs would-do and writes nothing in dry-run", async () => {
     const createReview = spy(async () => ({ ok: true }));
     const move = spy(async () => ({ ok: true }));
     const logs = [];
     const result = await runWorkflowTick(
-      baseDeps({ tasks: [task()], dryRun: true, createReview, move, log: (line) => logs.push(line) }),
+      baseDeps({
+        plan: {
+          alerts: [],
+          changes: [],
+          summary: { actions: 1 },
+          actions: [{ type: "create_review", original_ref: "T-1", idem: "loop-review|T-1|r1" }],
+        },
+        dryRun: true,
+        createReview,
+        move,
+        log: (line) => logs.push(line),
+      }),
     );
     assert.equal(createReview.count(), 0);
     assert.equal(move.count(), 0);
@@ -978,12 +934,11 @@ describe("runWorkflowTick (injected deps)", () => {
     assert.ok(logs.some((line) => /would create review loop-review\|T-1\|r1/.test(line)));
   });
 
-  it("approves the original, marks the acceptance, then closes the review card last", async () => {
+  it("approves the original, marks the action's acceptedBy, and closes the review card last", async () => {
     const order = [];
     const result = await runWorkflowTick(
       baseDeps({
-        tasks: [task(), review()],
-        readReports: async () => ({ ok: true, reports: [byJobs("VERDICT: APPROVE")] }),
+        plan: { alerts: [], changes: [], summary: { approved: 1 }, actions: [approve()] },
         comment: async (ref, input) => (order.push(`comment:${ref}:${input.kind}`), { ok: true }),
         setMeta: async (ref, meta) => (order.push(`meta:${ref}:${JSON.stringify(meta)}`), { ok: true }),
         move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
@@ -1000,103 +955,66 @@ describe("runWorkflowTick (injected deps)", () => {
     assert.equal(result.failed, 0);
   });
 
-  it("human-only holds a top-level approval: records it, closes the review, moves nothing", async () => {
+  it("holds an approval, and skips the marker when the board says it is already held", async () => {
     const order = [];
-    const result = await runWorkflowTick(
+    const hold = {
+      type: "approve_hold",
+      review_status: "in_review",
+      review_ref: "T-2",
+      original_ref: "T-1",
+      round: 1,
+      close_review: true,
+      accepted_by: "loop-review",
+      held: false,
+    };
+    await runWorkflowTick(
       baseDeps({
-        tasks: [task({ parent_id: null }), review()],
-        config: { ...WORKFLOW_CONFIG, acceptancePolicy: "human-only" },
-        comment: async (ref, input) => (order.push(`comment:${ref}:${input.kind}`), { ok: true }),
+        plan: { alerts: [], changes: [], summary: {}, actions: [hold] },
+        comment: async (ref) => (order.push(`comment:${ref}`), { ok: true }),
         setMeta: async (ref, meta) => (order.push(`meta:${ref}:${JSON.stringify(meta)}`), { ok: true }),
         move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
       }),
     );
     assert.deepEqual(order, [
-      "comment:T-1:note",
+      "comment:T-1",
       'meta:T-1:{"review_verdict":"approve","review_verdict_round":"1"}',
-      "comment:T-2:note",
+      "comment:T-2",
       "move:T-2:done",
     ]);
-    assert.equal(result.actions[0].type, "approve_hold");
-    assert.equal(result.failed, 0);
-  });
 
-  it("human-only still closes a child original", async () => {
-    const order = [];
+    order.length = 0;
     await runWorkflowTick(
       baseDeps({
-        tasks: [task({ parent_id: "id-epic" }), review()],
-        config: { ...WORKFLOW_CONFIG, acceptancePolicy: "human-only" },
-        comment: async (ref, input) => (order.push(`comment:${ref}:${input.kind}`), { ok: true }),
-        setMeta: async (ref, meta) => (order.push(`meta:${ref}:${JSON.stringify(meta)}`), { ok: true }),
+        plan: { alerts: [], changes: [], summary: {}, actions: [{ ...hold, held: true }] },
+        comment: async (ref) => (order.push(`comment:${ref}`), { ok: true }),
+        setMeta: async (ref) => (order.push(`meta:${ref}`), { ok: true }),
         move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
       }),
     );
-    assert.deepEqual(order, [
-      "comment:T-1:note",
-      'meta:T-1:{"accepted_by":"loop-review","accepted_round":"1"}',
-      "move:T-1:done",
-      "comment:T-2:note",
-      "move:T-2:done",
-    ]);
-  });
-
-  it("a second pass over a held approval rewrites neither the comment nor the marker", async () => {
-    const order = [];
-    const result = await runWorkflowTick(
-      baseDeps({
-        tasks: [
-          task({ parent_id: null, meta: { review_verdict: "approve", review_verdict_round: "1" } }),
-          review(),
-        ],
-        config: { ...WORKFLOW_CONFIG, acceptancePolicy: "human-only" },
-        comment: async (ref, input) => (order.push(`comment:${ref}:${input.kind}`), { ok: true }),
-        setMeta: async (ref, meta) => (order.push(`meta:${ref}:${JSON.stringify(meta)}`), { ok: true }),
-        move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
-      }),
-    );
-    assert.deepEqual(order, ["comment:T-2:note", "move:T-2:done"], "only the review card is finished");
-    assert.equal(result.failed, 0);
-  });
-
-  it("human-only + auto-accept=no leaves the review card for the human too", async () => {
-    const move = spy(async () => ({ ok: true }));
-    await runWorkflowTick(
-      baseDeps({
-        tasks: [task({ parent_id: null }), review()],
-        config: { ...WORKFLOW_CONFIG, acceptancePolicy: "human-only", autoAcceptReviews: false },
-        move,
-      }),
-    );
-    assert.equal(move.count(), 0, "nothing is moved: not the original, not the review card");
-  });
-
-  it("notifies when a write is refused — a policy drift is a standing alarm", async () => {
-    const notify = spy();
-    const result = await runWorkflowTick(
-      baseDeps({
-        tasks: [task(), review()],
-        // The board is human-only while this loop believes `both`.
-        move: async (ref, to) =>
-          ref === "T-1" && to === "done" ? { ok: false, error: "ACCEPTANCE_FORBIDDEN" } : { ok: true },
-        notify,
-      }),
-    );
-    assert.equal(result.failed, 1);
-    assert.deepEqual(
-      notify.calls.map(([alert]) => alert.type),
-      ["workflow_action_failed"],
-      "the refusal is notified, not silently retried",
-    );
-    assert.equal(notify.calls[0][0].error, "ACCEPTANCE_FORBIDDEN");
+    assert.deepEqual(order, ["comment:T-2", "move:T-2:done"], "a second pass rewrites neither the comment nor the marker");
   });
 
   it("rejects a task through in_progress → todo and records the rework round", async () => {
     const order = [];
     const result = await runWorkflowTick(
       baseDeps({
-        tasks: [task(), review()],
-        readReports: async () => ({ ok: true, reports: [byJobs("VERDICT: REJECT\nthe gate is untested")] }),
+        plan: {
+          alerts: [],
+          changes: [],
+          summary: {},
+          actions: [
+            {
+              type: "reject_task",
+              review_status: "in_review",
+              review_ref: "T-2",
+              original_ref: "T-1",
+              round: 1,
+              rework_round: 2,
+              findings: "the gate is untested",
+              close_review: true,
+            },
+          ],
+        },
         comment: async (ref, input) => (order.push(`comment:${ref}:${input.kind}`), { ok: true }),
         setMeta: async (ref, meta) => (order.push(`meta:${ref}:${JSON.stringify(meta)}`), { ok: true }),
         move: async (ref, to) => (order.push(`move:${ref}:${to}`), { ok: true }),
@@ -1113,12 +1031,30 @@ describe("runWorkflowTick (injected deps)", () => {
     assert.equal(result.executed, 1);
   });
 
-  it("rejects an epic by creating and linking the fix child BEFORE reopening it", async () => {
+  it("rejects an epic by creating and linking the fix child before reopening it", async () => {
     const order = [];
     const result = await runWorkflowTick(
       baseDeps({
-        tasks: [task({ identifier: "E-1", kind: "epic" }), review({ identifier: "T-2", meta: { review_of: "E-1", flow: "B", review_round: 1 } })],
-        readReports: async () => ({ ok: true, reports: [byJobs("VERDICT: REJECT")] }),
+        plan: {
+          alerts: [],
+          changes: [],
+          summary: {},
+          actions: [
+            {
+              type: "reject_epic",
+              review_status: "in_review",
+              review_ref: "T-2",
+              original_ref: "E-1",
+              round: 1,
+              rework_round: 2,
+              project_id: "proj",
+              assignee_id: "agent-1",
+              original_title: "Epic",
+              findings: "",
+              close_review: true,
+            },
+          ],
+        },
         createFixChild: async () => (order.push("create_fix"), { ok: true, ref: "E-2" }),
         linkFixChild: async (epic, child) => (order.push(`link:${epic}:${child}`), { ok: true }),
         comment: async (ref) => (order.push(`comment:${ref}`), { ok: true }),
@@ -1138,83 +1074,114 @@ describe("runWorkflowTick (injected deps)", () => {
     assert.equal(result.executed, 1);
   });
 
-  it("applies the verdict but leaves the review card for a human with auto-accept off", async () => {
+  it("leaves the review card for a human when closeReview is false", async () => {
     const move = spy(async () => ({ ok: true }));
-    const notify = spy();
     const result = await runWorkflowTick(
       baseDeps({
-        tasks: [task(), review()],
-        config: { ...WORKFLOW_CONFIG, autoAcceptReviews: false },
+        plan: { alerts: [], changes: [], summary: {}, actions: [approve({ close_review: false })] },
         move,
-        notify,
       }),
     );
-    assert.deepEqual(
-      move.calls.map(([ref, to]) => `${ref}:${to}`),
-      ["T-1:done"],
-      "the original is accepted; the review card is not closed",
-    );
+    assert.deepEqual(move.calls.map(([ref, to]) => `${ref}:${to}`), ["T-1:done"]);
     assert.equal(result.executed, 1);
-    assert.ok(result.alerts.some((alert) => alert.type === "review_awaiting_human_acceptance"));
-    assert.equal(notify.count(), 0, "a standing state is logged, not re-notified every pass");
   });
 
-  it("keeps going after one action fails, and leaves that card for the next pass", async () => {
-    let call = 0;
-    const createReview = spy(async () => (++call === 1 ? { ok: false, error: "board busy" } : { ok: true, ref: "T-9" }));
+  it("keeps going after one action fails, and notifies the operator", async () => {
+    const notify = spy();
+    const createReview = spy(async () => ({ ok: false, error: "board busy" }));
     const result = await runWorkflowTick(
       baseDeps({
-        tasks: [
-          task({ identifier: "T-1", status_changed_at: "2026-10-19T08:00:00.000Z" }),
-          task({ identifier: "T-3", status_changed_at: "2026-10-19T09:00:00.000Z" }),
-        ],
+        plan: {
+          alerts: [],
+          changes: [],
+          summary: {},
+          actions: [
+            { type: "create_review", original_ref: "T-1" },
+            { type: "create_review", original_ref: "T-3" },
+          ],
+        },
         createReview,
-      }),
-    );
-    assert.equal(result.actions.length, 2);
-    assert.equal(result.failed, 1);
-    assert.equal(result.executed, 1);
-  });
-
-  it("reads an original the snapshot omits, once, and bounds the read", async () => {
-    const readCard = spy(async (ref) => ({ ok: true, card: task({ identifier: ref }) }));
-    const result = await runWorkflowTick(baseDeps({ tasks: [review()], readCard }));
-    assert.equal(readCard.count(), 1);
-    assert.deepEqual(result.actions.map((action) => action.type), ["approve"], "read, then decided — not re-dispatched");
-
-    // With no budget left, the original is not read and the plan reports it unseen.
-    const capped = await runWorkflowTick(
-      baseDeps({ tasks: [review()], config: { ...WORKFLOW_CONFIG, maxActions: 0 }, readCard: spy() }),
-    );
-    assert.ok(capped.alerts.some((alert) => alert.type === "original_unseen"));
-  });
-
-  it("never moves a card when the verdict cannot be read — and notifies the operator", async () => {
-    const move = spy(async () => ({ ok: true }));
-    const notify = spy();
-    const result = await runWorkflowTick(
-      baseDeps({
-        tasks: [task(), review()],
-        readReports: async () => ({ ok: false, error: "read failed" }),
-        move,
         notify,
       }),
     );
-    assert.equal(move.count(), 0);
-    assert.deepEqual(result.alerts.map((alert) => alert.type), ["verdict_unreadable"]);
+    assert.equal(result.failed, 2);
     assert.equal(result.executed, 0);
-    assert.deepEqual(notify.calls.map(([alert]) => alert.type), ["verdict_unreadable"]);
+    assert.deepEqual(
+      notify.calls.map(([alert]) => alert.type),
+      ["workflow_action_failed", "workflow_action_failed"],
+    );
   });
 
-  it("closes a review card of a vanished original by canceling it, not moving it to done", async () => {
+  it("closes a review card by status: done from in_review, canceled from todo, nothing from done", async () => {
     const move = spy(async () => ({ ok: true }));
     await runWorkflowTick(
       baseDeps({
-        tasks: [review({ status: "todo" }), task({ status: "canceled" })],
+        plan: {
+          alerts: [],
+          changes: [],
+          summary: {},
+          actions: [
+            { type: "close_review", review_status: "in_review", review_ref: "T-2", reason: "x", close_review: true },
+            { type: "cancel_review", review_status: "todo", review_ref: "T-3", reason: "y", close_review: true },
+            { type: "close_review", review_status: "done", review_ref: "T-4", reason: "z", close_review: true },
+          ],
+        },
+        comment: async () => ({ ok: true }),
         move,
       }),
     );
-    assert.deepEqual(move.calls.map(([ref, to]) => `${ref}:${to}`), ["T-2:canceled"]);
+    assert.deepEqual(move.calls.map(([ref, to]) => `${ref}:${to}`), ["T-2:done", "T-3:canceled"]);
+  });
+
+  it("notifies only findings, not standing-state alerts", async () => {
+    const notify = spy();
+    const logs = [];
+    const result = await runWorkflowTick(
+      baseDeps({
+        plan: {
+          alerts: [
+            { type: "verdict_unreadable", review: "T-2" },
+            { type: "review_awaiting_human_acceptance", review: "T-2" },
+          ],
+          changes: [],
+          summary: { alerts: 2 },
+          actions: [],
+        },
+        notify,
+        log: (line) => logs.push(line),
+      }),
+    );
+    assert.deepEqual(notify.calls.map(([alert]) => alert.type), ["verdict_unreadable"]);
+    assert.equal(result.alerts.length, 2);
+    assert.ok(logs.some((line) => /review_awaiting_human_acceptance/.test(line)));
+  });
+
+  it("logs reconcile changes", async () => {
+    const logs = [];
+    await runWorkflowTick(
+      baseDeps({
+        plan: {
+          alerts: [],
+          actions: [],
+          summary: {},
+          changes: [{ action: "close", epic: "E-1", reason: "all_children_terminal" }],
+        },
+        log: (line) => logs.push(line),
+      }),
+    );
+    assert.ok(logs.some((line) => /reconcile close E-1/.test(line)));
+  });
+
+  it("fails an approve action that carries no acceptedBy", async () => {
+    const notify = spy();
+    const result = await runWorkflowTick(
+      baseDeps({
+        plan: { alerts: [], changes: [], summary: {}, actions: [{ ...approve(), accepted_by: undefined }] },
+        notify,
+      }),
+    );
+    assert.equal(result.failed, 1);
+    assert.equal(notify.calls[0][0].error, "approve action is missing accepted_by");
   });
 });
 

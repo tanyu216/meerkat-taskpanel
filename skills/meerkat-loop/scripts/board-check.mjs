@@ -9,7 +9,7 @@
  *
  * The board publishes both numbers at runtime:
  *
- *   taskctl --version --json  →  {"ok":true,"data":{"version":"1.0.0","schema_version":4}}
+ *   taskctl --version --json  →  {"ok":true,"data":{"version":"1.1.0","schema_version":4}}
  *
  * so the check is a real query against the board, not a comparison against a constant
  * somebody typed here twice. What it proves is deliberately narrow:
@@ -47,7 +47,7 @@ import { fileURLToPath } from "node:url";
 export const REQUIRED_BOARD_INTERFACE = "task-interface v1";
 
 /** The board release that first shipped that generation — the floor this gate enforces. */
-export const REQUIRED_BOARD_VERSION = "1.0.0";
+export const REQUIRED_BOARD_VERSION = "1.1.0";
 
 const USAGE = `Usage: node scripts/board-check.mjs [options]
 

@@ -146,7 +146,7 @@ stream at `GET /api/v1/events?after=<revision>`; cron-style integration polls in
 An event may be the loop's own trigger for its continue turn — that is the loop's internal
 mechanism, not an invitation to add a second dispatch path.
 
-## SLA and workflow belong to the loop
+## SLA belongs to the loop; the workflow plan belongs to the board
 
 The SLA rows, their thresholds, the working-hours window, the tier ladder and the
 de-duplication ledger live in the loop (provenance: the repository's
@@ -157,9 +157,12 @@ would immediately drift. Do not reproduce them here or in a skill script.
   turn for a new row.
 - `--notify <cmd>` runs `<cmd>` once per patrol alert, with that alert as a JSON document
   on stdin. That is the supported way for an external sink to receive SLA alerts.
-- Within the loop, the **workflow** entry is the only channel that writes cards
-  (container reconcile, review dispatch, verdict application), and it writes as `system`.
-  Do not copy that logic into a dispatcher.
+- The **workflow decisions** belong to the board:
+  `taskctl issue reconcile --workflow` returns the reconcile/outcomes/dispatch plan. The
+  loop's workflow entry **executes** that plan's review actions (creates the review card,
+  moves the original, comments, closes the review card last) and writes as `taskd`. Do not
+  re-derive the decisions in a dispatcher; ask the board, or run the loop. The decision
+  model is in [`status-lifecycle.md`](status-lifecycle.md#11-the-boards-workflow-decisions).
 - If you need SLA data, run the loop or consume its `--notify` output. Do not recompute
   the rows from `issue list`.
 

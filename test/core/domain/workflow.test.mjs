@@ -1,5 +1,5 @@
 /**
- * The workflow sub-pass (`src/shared/workflow.mjs`) — the loop's orchestration
+ * The workflow sub-pass (`src/core/domain/workflow.mjs`) — the loop's orchestration
  * decisions, proven without a board.
  *
  * The properties that matter, and why they are counter-proofs rather than
@@ -38,8 +38,7 @@ import {
   reviewRoundOf,
   reworkIdemKey,
   roundOf,
-} from "../../src/shared/workflow.mjs";
-import { resolveWorkflowConfig } from "../../src/shared/scheduling.mjs";
+} from "../../../src/core/domain/workflow.mjs";
 
 const NOW = "2026-10-19T10:00:00.000Z";
 
@@ -383,7 +382,7 @@ describe("planReviewOutcomes", () => {
   it("approves the original and closes the review card", () => {
     const result = planReviewOutcomes({ tasks: [card(), reviewCard()], verdicts: { "T-2": approve }, config: CONFIG });
     assert.deepEqual(result.actions, [
-      { type: "approve", reviewRef: "T-2", originalRef: "T-1", round: 1, closeReview: true },
+      { type: "approve", reviewStatus: "in_review", reviewRef: "T-2", originalRef: "T-1", round: 1, closeReview: true, acceptedBy: LOOP_ACCEPTOR },
     ]);
     assert.deepEqual(result.alerts, []);
   });
@@ -603,80 +602,6 @@ describe("planWorkflowTick", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Configuration
-// ---------------------------------------------------------------------------
-
-describe("resolveWorkflowConfig", () => {
-  it("defaults to on, no reviewer, auto-accept, 20 writes", () => {
-    assert.deepEqual(resolveWorkflowConfig(), {
-      workflow: true,
-      acceptancePolicy: "both",
-      reviewer: null,
-      autoAcceptReviews: true,
-      maxActions: 20,
-      reviewAgingMs: 3_600_000,
-    });
-  });
-
-  it("prefers flag > env > file > default", () => {
-    const file = {
-      MEERKAT_TASKPANEL_WORKFLOW: "no",
-      MEERKAT_TASKPANEL_REVIEWER: "file-reviewer",
-      MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS: "no",
-      MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS: "7",
-    };
-    const env = {
-      MEERKAT_TASKPANEL_WORKFLOW: "yes",
-      MEERKAT_TASKPANEL_REVIEWER: "env-reviewer",
-      MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS: "yes",
-      MEERKAT_TASKPANEL_WORKFLOW_MAX_ACTIONS: "9",
-    };
-    assert.deepEqual(resolveWorkflowConfig({ env, file }), {
-      workflow: true,
-      acceptancePolicy: "both",
-      reviewer: "env-reviewer",
-      autoAcceptReviews: true,
-      maxActions: 9,
-      reviewAgingMs: 3_600_000,
-    });
-    assert.deepEqual(
-      resolveWorkflowConfig({
-        flags: {
-          workflow: "no",
-          reviewer: "flag-reviewer",
-          autoAcceptReviews: "no",
-          workflowMaxActions: "3",
-          reviewAgingMinutes: "30",
-        },
-        env,
-        file,
-      }),
-      { workflow: false, acceptancePolicy: "both", reviewer: "flag-reviewer", autoAcceptReviews: false, maxActions: 3, reviewAgingMs: 1_800_000 },
-    );
-    assert.deepEqual(resolveWorkflowConfig({ file }), {
-      workflow: false,
-      acceptancePolicy: "both",
-      reviewer: "file-reviewer",
-      autoAcceptReviews: false,
-      maxActions: 7,
-      reviewAgingMs: 3_600_000,
-    });
-  });
-
-  it("ignores an unreadable value and falls through", () => {
-    const resolved = resolveWorkflowConfig({
-      flags: { workflow: "maybe", reviewer: "   ", workflowMaxActions: "0" },
-      env: { MEERKAT_TASKPANEL_AUTO_ACCEPT_REVIEWS: "perhaps" },
-      file: { MEERKAT_TASKPANEL_WORKFLOW: "no" },
-    });
-    assert.equal(resolved.workflow, false, "the file's value is the next readable one");
-    assert.equal(resolved.reviewer, null, "whitespace is not a name");
-    assert.equal(resolved.autoAcceptReviews, true);
-    assert.equal(resolved.maxActions, 20, "a non-positive cap is not a cap");
-  });
-});
-
 describe("acceptance policy (human-only holds a top-level approval)", () => {
   const verdict = { ok: true, verdict: "APPROVE", findings: "", report: REVIEWER_REPORT };
 
@@ -708,6 +633,8 @@ describe("acceptance policy (human-only holds a top-level approval)", () => {
     assert.equal(action.originalRef, "T-1");
     assert.equal(action.reviewRef, "T-2");
     assert.equal(action.round, 1);
+    assert.equal(action.acceptedBy, LOOP_ACCEPTOR);
+    assert.equal(action.held, false);
     const tick = planWorkflowTick({
       tasks: [card({ parent_id: null }), reviewCard()],
       verdicts: { "T-2": verdict },
@@ -716,6 +643,13 @@ describe("acceptance policy (human-only holds a top-level approval)", () => {
     });
     assert.equal(tick.summary.held, 1);
     assert.equal(tick.summary.approved, 1, "a held approval still counts as an approval");
+  });
+
+  it("reports a held approval that is already on the card", () => {
+    const result = plan({ acceptancePolicy: "human-only" }, {
+      meta: { review_verdict: "approve", review_verdict_round: "1" },
+    });
+    assert.equal(result.actions[0].held, true, "the executor must not rewrite the marker");
   });
 
   it("human-only still closes a child original automatically", () => {

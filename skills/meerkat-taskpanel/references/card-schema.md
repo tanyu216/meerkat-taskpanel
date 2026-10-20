@@ -70,7 +70,7 @@ mapped — see §Unknown keys are preserved.
 |---|---|---|
 | `id` | **Required.** The card's board identifier. | Any non-empty string, but it is the card's permanent handle: the importer stores it **verbatim** as `tasks.identifier` (it does not re-mint it). The board mints `PREFIX-NNNN` for cards created through the CLI/UI — see `cli.md` §`project` for the identifier-prefix convention. A duplicate within a project is refused. |
 | `title` | **Required.** One-line summary. | Non-empty string. |
-| `status` | Where the card sits in the lifecycle. | `backlog` · `todo` · `in_progress` · `in_review` · `blocked` · `done` · `canceled`, plus the overlay `awaiting`. Absent ⇒ `todo`. The seven stage statuses are the board's columns; `awaiting` is an **attention overlay**, not an eighth column. Read aliases (never stored): `ready`→`todo`, `failed`→`canceled`, `cancelled`→`canceled`, `in-review`→`in_review`, `in-progress`→`in_progress`. See §The status machine. |
+| `status` | Where the card sits in the lifecycle. | `backlog` · `todo` · `in_progress` · `in_review` · `blocked` · `done` · `canceled`, plus the overlay `awaiting`. Absent ⇒ `todo`. The seven stage statuses are the board's columns; `awaiting` is an **attention overlay**, not an eighth column. Read aliases (never stored): `ready`→`todo`, `failed`→`canceled`, `cancelled`→`canceled`, `in-review`→`in_review`, `in-progress`→`in_progress`. See [`status-lifecycle.md`](status-lifecycle.md). |
 | `priority` | Urgency. | `low` · `medium` · `high` · `urgent`, case-insensitive. Absent/empty ⇒ `medium`. Anything else is refused (`VALIDATION_FAILED`). |
 | `kind` | The card's role. | `task` · `epic` · `deploy`. Anything the vocabulary does not name is read as `task`. **Only an `epic` may be a parent** (`parent:` and `relation add --type parent`); a `deploy` card is a work card no automatic read may offer. `kind` is **patchable**: a `task` can be promoted in place (`issue update --kind epic`), which is what lets it parent children, while an `epic` that still has children cannot go back to `task`. |
 | `labels` | Free-form tags, shown in order. | Inline array `[a, b]` (or a comma-separated scalar). Trimmed, de-duplicated, order kept. Each label ≤ 64 chars, at most 32 labels. Labels register in the project's label registry, so an imported card ends up with the same first-seen spelling a CLI write would produce. |
@@ -93,44 +93,21 @@ mapped — see §Unknown keys are preserved.
 
 ### The status machine
 
-The whitelist in `src/core/domain/status.mjs` is the only fact source, and the database
-re-encodes the same table as a trigger — the two are tested against each other.
+The status field is documented in full — every status, every legal transition, every guard,
+the delivery gate, the claim rules and the acceptance matrix — in
+[`status-lifecycle.md`](status-lifecycle.md). Three facts belong to the card file:
 
-```
-backlog      → todo | canceled
-todo         → backlog | in_progress | blocked | canceled        (an `epic` also → in_review)
-in_progress  → in_review | blocked | todo | canceled | awaiting
-awaiting     → in_progress | canceled
-in_review    → done | in_progress | blocked
-blocked      → todo | in_progress | in_review | canceled
-done         → (terminal — I3)
-canceled     → (terminal — I3)
-```
+- **A card's `status` is read, not replayed.** The importer writes history; it does not
+  perform moves. A card that says `in_review`/`done` with no report imports as history
+  (`origin: "import"`) and does not satisfy a later delivery gate.
+- **Aliases are read, never written.** `ready` → `todo`, `failed`/`cancelled` → `canceled`,
+  `in-review` → `in_review`, `in-progress` → `in_progress`; an exported card writes the
+  canonical word.
+- **The card's status is an input, not a permission.** A hand-written card may name any
+  status; the board still refuses an illegal move made through `issue move`/`deliver`.
 
-Four properties are load-bearing:
-
-- **`done` is reachable only from `in_review`** — no delivery without review.
-- **An `epic` may be delivered straight from `todo`** (`0024`). A container is never claimable,
-  so `todo` was otherwise a state with no exit — and `done` sits behind `in_review`. The
-  exception is scoped to **`kind`**, not to the status: a `task` in `todo` still cannot reach
-  `in_review`, and the delivery gate applies to the epic's report exactly as it does to a leaf's.
-  In practice the board drives the container: the first child entering `in_progress` makes a
-  **system** move `todo → in_progress` (no claim, an `epic_auto_start` activity, and a
-  `kind=note` comment), and when every child is finished (`done` or `canceled`, at least one
-  `done`) the board writes the rollup report and delivers it to `in_review` — the epic's
-  delivery is never an agent's step. A `canceled` child is terminal and is listed in the report
-  with its cancellation reason, not treated as outstanding work. `todo → in_review` remains the
-  repair edge for a child attached after the fact; `issue reconcile` replays both rules and
-  records its source as `sweep` in the note.
-- **Leaving `in_review`** (to `in_progress` or `blocked`) **starts a new delivery round**; the
-  previous round's report stops counting. `awaiting → in_progress` is *not* such an exit: it
-  resumes the same attempt, round untouched.
-- **`awaiting` is the overlay.** `in_progress → awaiting` is the only way in — the move must
-  carry one of the reason codes `E1`…`E5` (a task attribute, not a frontmatter key) — and
-  `awaiting` cannot reach `in_review` directly: that would be a delivery-gate bypass.
-
-A card may not enter `in_review` without a report **for the current round**. That is the
-delivery gate; `cli.md` §`report` has the command surface and the audited waiver.
+The epic overlay (`todo → in_review`), the delivery-round bump and the `awaiting` overlay
+are all defined on that page.
 
 ---
 

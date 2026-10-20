@@ -1,6 +1,6 @@
 ---
 name: meerkat-loop
-description: Run the host-external scheduler that keeps a Meerkat TaskPanel board moving — a 60-second process-liveness ping, and a 10-minute `继续` judgment turn that wakes the host and runs the deterministic entries: the atomic claim and worker wake (poll), the notify-only SLA patrol, and the workflow pass that reconciles containers, dispatches an independent reviewer for each delivered card, applies the reviewer's verdict and closes the review card. The SLA rows stay notify-only; the workflow entry is the one that writes. Installs launchd / systemd / cron units plus the per-host wake glue, carries the scheduler's execution body, the loop entries and their shared modules, and declares the board interface generation it requires. Install for claude / codex / pi only; OpenClaw runs the openclaw-team framework instead.
+description: Run the host-external scheduler that keeps a Meerkat TaskPanel board moving — a 60-second process-liveness ping, and a 10-minute `继续` judgment turn that wakes the host and runs the deterministic entries: the atomic claim and worker wake (poll), the notify-only SLA patrol, and the workflow pass that asks the board for the reconcile/review plan (`issue reconcile --workflow`), dispatches an independent reviewer for each delivered card, applies the reviewer's verdict and closes the review card. The SLA rows stay notify-only; the board decides the workflow plan and the loop applies it. Installs launchd / systemd / cron units plus the per-host wake glue, carries the scheduler's execution body, the loop entries and their shared modules, and declares the board interface generation it requires. Install for claude / codex / pi only; OpenClaw runs the openclaw-team framework instead.
 ---
 
 # Meerkat Loop
@@ -19,14 +19,17 @@ units. The continue turn runs them in this order:
 1. **patrol** — the notify-only SLA pass. It escalates stale claims, reports unreadable
    heartbeats, and covers the rest of the `PROTOCOL §⑮` timeout table. No alert moves a
    card, and no LLM turn starts by default.
-2. **workflow** — the channel that writes: `issue reconcile` (container rules), an
-   independent reviewer for each flow-A card awaiting acceptance, and the reviewer's
-   `VERDICT:` report applied to the original. The review card is closed last. On by
-   default; `--workflow=no` turns it off, and `--reviewer` enables dispatch at all.
+2. **workflow** — the channel that writes. The **board** computes the plan
+   (`issue reconcile --workflow`: container reconcile, review outcomes and dispatch);
+   the **loop** executes it: an independent reviewer for each flow-A card awaiting
+   acceptance, and the reviewer's `VERDICT:` report applied to the original. The review
+   card is closed last. On by default; `--workflow=no` turns it off, and `--reviewer`
+   enables dispatch at all.
 
-   **Who it may close** follows the board's acceptance policy (the board is
-   authoritative; `--acceptance` / `MEERKAT_TASKPANEL_ACCEPTANCE_POLICY` is this
-   loop's copy):
+   **Who it may close** follows the board's acceptance policy. The board is
+   authoritative and decides it in the plan; `--acceptance` /
+   `MEERKAT_TASKPANEL_ACCEPTANCE_POLICY` is this loop's advisory copy — printed
+   at startup for diagnostics, never used for the decision:
 
    | policy | top-level original | child card | review card |
    |---|---|---|---|
@@ -64,13 +67,15 @@ board it drives is a *different* thing with a different lifecycle: see the
 ## Required board interface
 
 ```text
-requires: board task-interface v1   — board release >= 1.0.0
+requires: board task-interface v1   — board release >= 1.1.0
 ```
 
 The loop drives the board through the `taskctl` CLI (`issue candidates`, `issue move`,
-`issue list`). Those commands are the `task-interface v1` surface, which the board first
-shipped in release **1.0.0** — so the requirement is stated twice on purpose: as the
-interface generation a reader reasons about, and as the release floor a machine can check.
+`issue list`, and `issue reconcile --workflow`). Those commands are the `task-interface v1`
+surface, which the board first shipped in release **1.0.0**. This loop requires **1.1.0**,
+the release that added the board-side workflow plan — so the requirement is stated twice on
+purpose: as the interface generation a reader reasons about, and as the release floor a
+machine can check.
 
 **Gate check.** Before pointing a loop at a board, run:
 
@@ -102,12 +107,11 @@ body/                     the execution body (generated)
   scripts/loop/board.mjs    the real board reads and the SLA/workflow passes
   scripts/loop/poll.mjs     scan → atomic claim → wake a worker
   scripts/loop/patrol.mjs   notify-only SLA rows
-  scripts/loop/workflow.mjs reconcile / review dispatch / verdicts
+  scripts/loop/workflow.mjs apply the board's workflow plan
   scripts/loop/continue.mjs one judgment turn (the `继续` wake)
   scripts/wake-cwd.mjs      what the wake glue calls to resolve the card's directory
   src/shared/*.mjs          the shared modules those import
   src/shared/sla-patrol.mjs   the PROTOCOL §⑮ rows: thresholds, tiers, tuple, ledger
-  src/shared/workflow.mjs     the workflow decisions: reconcile, review dispatch, verdicts
 templates/                what the installer renders (generated)
   scheduling/{launchd,systemd,cron}/   the units
   {claude,codex,pi}/wake-<host>.sh     the wake glue

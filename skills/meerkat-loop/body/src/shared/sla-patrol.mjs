@@ -52,7 +52,7 @@
  * no filesystem. `scripts/supervisor.mjs` owns the I/O half.
  */
 
-import { CLAIM_STALE_ANY_MS, CLAIM_STALE_SAME_MS } from "./constants.mjs";
+import { CLAIM_STALE_ANY_MS, CLAIM_STALE_SAME_MS, LOOP_ACCEPTOR } from "./constants.mjs";
 
 /** This mechanism's identity in the shared tuple (§4 #21). */
 export const MECHANISM = "loop-patrol";
@@ -168,7 +168,7 @@ export const TERMINAL_STATUSES = Object.freeze(["done", "canceled"]);
  * **not** a leader event: `leader_stalled` counts leader acts, and an automated
  * acceptance must not reset the leader's clock (nor hide a real stall).
  */
-export const LOOP_ACCEPTOR = "loop-review";
+export { LOOP_ACCEPTOR };
 
 /** A meta / wire value as a non-negative integer, or `null`. */
 function intOrNull(value) {

@@ -447,8 +447,11 @@ export const COMMANDS = [
 
   {
     name: "reconcile",
-    summary: "Replay the epic start/close rules over the board (the idempotent backstop).",
-    usage: "issue reconcile [--dry-run]",
+    summary: "Replay the epic rules and, with --workflow, return the board's workflow plan.",
+    usage:
+      'issue reconcile [--dry-run] [--workflow] [--reviewer <agent>] ' +
+      "[--auto-accept-reviews yes|no] [--review-aging-ms <n>] [--max-actions <n>] " +
+      "[--board-limit <n>]",
     positionals: [],
     flags: [
       {
@@ -457,10 +460,79 @@ export const COMMANDS = [
         as: "boolean",
         summary: "Report what would change; write nothing.",
       },
+      {
+        flag: "workflow",
+        key: "workflow",
+        as: "boolean",
+        summary: "Also return the board's workflow plan (reconcile → outcomes → dispatch).",
+      },
+      {
+        flag: "reviewer",
+        key: "reviewer",
+        as: "string",
+        value: "<agent>",
+        summary: "The independent reviewer the plan dispatches to.",
+      },
+      {
+        flag: "auto-accept-reviews",
+        key: "autoAcceptReviews",
+        as: "string",
+        value: "yes|no",
+        summary: "Let the loop close a review card after applying its verdict.",
+      },
+      {
+        flag: "review-aging-ms",
+        key: "reviewAgingMs",
+        as: "string",
+        value: "<n>",
+        summary: "Silent-review threshold, in milliseconds.",
+      },
+      {
+        flag: "max-actions",
+        key: "maxActions",
+        as: "string",
+        value: "<n>",
+        summary: "Cap on the plan's actions.",
+      },
+      {
+        flag: "board-limit",
+        key: "boardLimit",
+        as: "string",
+        value: "<n>",
+        summary: "Cap on the board snapshot read.",
+      },
     ],
     async run(ctx) {
+      const autoAccept =
+        ctx.flags.autoAcceptReviews === undefined
+          ? undefined
+          : ctx.flags.autoAcceptReviews === "yes"
+            ? true
+            : ctx.flags.autoAcceptReviews === "no"
+              ? false
+              : null;
+      if (autoAccept === null) {
+        throw usageError("issue reconcile: --auto-accept-reviews takes yes or no", {
+          fix: "pass --auto-accept-reviews yes, or --auto-accept-reviews no",
+        });
+      }
+      const integerFlag = (name, value) => {
+        if (value === undefined) return undefined;
+        if (!/^\d+$/.test(String(value).trim())) {
+          throw usageError(`issue reconcile: ${name} needs a non-negative integer`, {
+            fix: `pass ${name} <n>`,
+          });
+        }
+        return Number(value);
+      };
       const payload = await ctx.client.post("/api/v1/tasks/reconcile", {
         dry_run: ctx.flags.dryRun === true,
+        workflow: ctx.flags.workflow === true ? true : undefined,
+        reviewer: ctx.flags.reviewer,
+        auto_accept_reviews: autoAccept,
+        review_aging_ms: integerFlag("--review-aging-ms", ctx.flags.reviewAgingMs),
+        max_actions: integerFlag("--max-actions", ctx.flags.maxActions),
+        board_limit: integerFlag("--board-limit", ctx.flags.boardLimit),
       });
       const changed = payload.actions.filter((entry) => entry.action !== "none");
       // An open container the sweep could not close carries the children that
@@ -488,7 +560,14 @@ export const COMMANDS = [
           : `${verb} ${changed.length} container(s) of ${payload.scanned} scanned` +
             (blocked.length === 0 ? "" : `; ${blocked.length} still waiting`) +
             `\n${lines.join("\n")}`;
-      return { data: payload, human };
+      const workflow =
+        payload.workflow === undefined
+          ? ""
+          : `\nworkflow: ${changed.length} reconcile change(s), ` +
+            `${payload.workflow.summary.actions} action(s), ` +
+            `${payload.workflow.summary.alerts} alert(s)` +
+            (payload.dry_run ? " (dry-run)" : "");
+      return { data: payload, human: human + workflow };
     },
   },
 ];

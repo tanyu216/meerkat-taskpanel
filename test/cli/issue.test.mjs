@@ -1026,6 +1026,19 @@ describe("cli/issue — the loop's two lifecycle counter-proofs", () => {
 });
 
 describe("cli/issue — reconcile (the container backstop)", () => {
+  it("returns the board's workflow plan when asked", async () => {
+    await board(async ({ run }) => {
+      const data = dataOf(run(["issue", "reconcile", "--workflow", "--json"]));
+      assert.equal(data.dry_run, false);
+      assert.deepEqual(data.workflow.actions, []);
+      assert.equal(data.workflow.summary.actions, 0);
+      // The human form says the workflow half ran too; the JSON shape above is
+      // what the loop consumes.
+      const human = run(["issue", "reconcile", "--workflow", "--dry-run"]);
+      assert.match(human.stdout, /workflow/i);
+    });
+  });
+
   it("plans a missed closure with --dry-run, applies it once, and is idempotent", async () => {
     await board(async ({ run }) => {
       // A child finished with no container above it: the event path never saw a

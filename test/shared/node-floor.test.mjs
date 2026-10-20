@@ -16,7 +16,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -75,7 +75,8 @@ describe("CLI entry — the runtime floor", () => {
       env: { ...process.env, ...boardlessEnv() },
     });
     assert.equal(run.status, 0, run.stderr);
-    assert.equal(run.stdout, "1.0.0\n");
+    const { version } = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+    assert.equal(run.stdout, `${version}\n`);
   });
 });
 

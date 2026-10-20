@@ -550,10 +550,9 @@ Options:
   --reviewer <agent>        The independent reviewer. Unset disables review dispatch.
   --auto-accept-reviews=yes|no
                             Close a review card after applying its verdict (default: yes).
-  --acceptance <policy>     human-only | both | agent-only (default: both). The board is
-                            authoritative; this is what the loop believes. human-only makes
-                            the loop HOLD a top-level approval for a human (children and
-                            review cards are still closed by the loop).
+  --acceptance <policy>     human-only | both | agent-only (default: both). Advisory: the
+                            board decides the plan; the loop prints this copy at startup
+                            for diagnostics and keeps it for compatibility.
   --workflow-max-actions <n> Max workflow writes per pass (default: 20).
   --review-aging-minutes <n> Report a silent review card after this long (default: 60).
   --patrol-llm=yes|no       Allow patrol to start an LLM turn (default: no).
@@ -578,6 +577,6 @@ Options:
 The deterministic entries are also runnable on their own:
   node scripts/loop/poll.mjs       scan → atomic claim → wake a worker
   node scripts/loop/patrol.mjs     notify-only SLA rows (${PEER_MECHANISM}; peer watchdog ${PEER_LIVENESS_K}x${PEER_PERIOD_MIN}min)
-  node scripts/loop/workflow.mjs   reconcile / review dispatch / verdicts
+  node scripts/loop/workflow.mjs   apply the board's workflow plan
   node scripts/loop/continue.mjs   one judgment turn`;
 

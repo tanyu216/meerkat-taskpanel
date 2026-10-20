@@ -62,7 +62,7 @@ function sentinelCli(dir) {
     [
       'import { appendFileSync } from "node:fs";',
       "appendFileSync(process.env.TP_SENTINEL, `${JSON.stringify(process.argv.slice(2))}\\n`);",
-      'process.stdout.write(`${JSON.stringify({ ok: true, data: { candidates: [], tasks: [], actions: [], comments: [], reports: [] } })}\\n`);',
+      'process.stdout.write(`${JSON.stringify({ ok: true, data: { candidates: [], tasks: [], actions: [], comments: [], reports: [], workflow: { alerts: [], actions: [], changes: [], summary: {} } } })}\\n`);',
     ].join("\n"),
     "utf8",
   );
@@ -247,12 +247,18 @@ describe("deterministic entries (dry-run, sentinel CLI)", () => {
     assert.equal(existsSync(join(dir, "state.json")), false);
   });
 
-  it("workflow reconciles and dispatches, but writes nothing in dry-run", () => {
+  it("workflow asks the board for the plan, and writes nothing in dry-run", () => {
     const { run, record } = runWithSentinel("workflow.mjs");
     assert.equal(run.status, 0, run.stderr);
+    // The loop's acceptance copy is advisory — the board decides in the plan.
+    // It is still said out loud at startup, which is the only thing it is for.
+    assert.match(run.stderr, /acceptance=both \(advisory\)/, "the advisory policy is stated");
     const args = calls(record);
-    assert.ok(args.some((call) => call.includes("reconcile")), "the reconcile read must happen");
-    assert.ok(args.some((call) => call.includes("in_review")), "review cards are read");
+    assert.equal(args.length, 1, "one board call: the board computes the plan");
+    const call = args[0];
+    assert.ok(call.includes("issue") && call.includes("reconcile"), JSON.stringify(call));
+    assert.ok(call.includes("--workflow"), JSON.stringify(call));
+    assert.ok(call.includes("--dry-run"), JSON.stringify(call));
   });
 
   it("workflow=no does not read the board at all", () => {

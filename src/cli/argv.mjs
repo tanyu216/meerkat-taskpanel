@@ -40,7 +40,7 @@ export const GLOBAL_FLAGS = Object.freeze([
   { flag: "url", key: "url", as: "string", value: "<url>", summary: "Board to talk to (default: the local taskd)." },
   { flag: "token", key: "token", as: "string", value: "<token>", summary: "Access token (never echoed)." },
   { flag: "if-version", key: "ifVersion", as: "number", value: "<n>", summary: "Optimistic-concurrency guard." },
-  { flag: "actor-kind", key: "actorKind", as: "string", value: "<name>", summary: "Who or what is writing: human, or the platform (claude|codex|…)." },
+  { flag: "actor-kind", key: "actorKind", as: "string", value: "<name>", summary: "The platform writing (claude|codex|…). `human` is reserved; use --as-human." },
   { flag: "as-human", key: "asHuman", as: "boolean", summary: "Write as the configured human, not as yourself." },
   { flag: "session-id", key: "sessionId", as: "string", value: "<id>", summary: "Agent session identifier." },
   { flag: "agent", key: "agent", as: "string", value: "<name>", summary: "Actor id recorded on writes." },

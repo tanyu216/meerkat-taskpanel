@@ -174,10 +174,11 @@ OpenClaw 同样消费这个 Claude 格式的 bundle，这就是它受支持的�
 **每 60 秒**做一次 **ping**：清掉 registry 中进程已退出的 worker 条目 —— 不读看板、不启动模型。
 **每十分钟**做一次 **continue** 回合：用有界的 `继续` 提示词唤醒宿主，由这一回合运行循环的
 确定性入口 —— 只通知的 SLA 巡检（心跳过期、无人应答的确认门、没人排验收的交付，以及
-`PROTOCOL §⑮` 的其余各项）、唯一会写卡的工作流通道（重放容器规则、为每笔交付派出独立审核员、
-应用结论），以及**只有真正认领成功**才唤醒 worker 的 poll（空扫描 $0）。SLA 的每一条都是
-**发给 leader 的通知**，绝不对卡动手；工作流入口是唯一写卡的一方（`--reviewer` 启用派发，
-`--workflow=no` 整条通道关闭）。Claude Code 与 Codex **本身没有定时器**，因此循环活在它们
+`PROTOCOL §⑮` 的其余各项）、工作流通道（看板通过 `issue reconcile --workflow` 计算计划：
+容器规则、为每笔交付派出独立审核员、应用结论；循环执行计划中的审核动作），以及**只有真正
+认领成功**才唤醒 worker 的 poll（空扫描 $0）。SLA 的每一条都是**发给 leader 的通知**，绝不
+对卡动手；工作流入口执行看板的计划（`--reviewer` 启用派发，`--workflow=no` 整条通道关闭）。
+Claude Code 与 Codex **本身没有定时器**，因此循环活在它们
 **之外**，被唤醒的只是 worker（`claude -p`、`codex exec`、`pi --print`）。在 launchd/systemd
 上，可选的 **subscribe 守护进程**保持一条 SSE 连接，收到可派发事件时请求一个 continue 回合，
 因此工作发现是事件驱动的；continue 周期仍是兜底，也是基于时间的检查（过期认领、审核老化、

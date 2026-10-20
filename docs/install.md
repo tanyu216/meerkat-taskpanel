@@ -399,7 +399,7 @@ install.sh [--target claude|openclaw|codex|pi|opencode|cursor|all] [--prefix <ho
 | `--claim-unassigned=yes\|no` | May the supervisor claim **unassigned** cards (the public pool)? Persisted to `<home>/<host>/meerkat-taskpanel.env`; overrides the interactive answer. Default `yes`. |
 | `--assignee-only` | Alias for `--claim-unassigned=no`. |
 | `--recover-stale=yes\|no` | May the supervisor recover stale `in_progress` claims — the same holder after 30 minutes, any agent after 6 hours? Persisted to the host config; default `yes`. |
-| `--workflow=yes\|no` | Run the supervisor's workflow sub-pass — container reconcile, review dispatch and applying verdicts. Persisted to the host config; default `yes`. `no` means the loop writes no card at all. |
+| `--workflow=yes\|no` | Run the supervisor's workflow sub-pass — ask the board for the workflow plan (`issue reconcile --workflow`) and apply its review actions. Persisted to the host config; default `yes`. `no` means the loop writes no card at all. |
 | `--reviewer <agent>` | The independent agent that reviews delivered cards. Persisted to the host config. Unset (the default) disables **dispatch** only; a delivery then waits for a human to accept it. |
 | `--auto-accept-reviews=yes\|no` | Let the loop close a review card after applying its verdict. Persisted; default `yes`. `no` is the escape hatch: the verdict is still applied, but the review card stays in `in_review` for a human. |
 | `--ping-interval <sec>` | The liveness clock, rendered into the units; default `60`. It only prunes dead worker pids — no board read, no LLM. |

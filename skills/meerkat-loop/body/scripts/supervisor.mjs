@@ -28,8 +28,8 @@
  * with `--force`, so the old unit must keep discovering work until the
  * installer's migration boots it out.
  *
- * The decision half lives in `src/shared/`; the I/O half lives in
- * `scripts/loop/`. This file is the dispatcher and the compatibility surface
+ * The decision half lives in `src/core/domain/workflow.mjs` (the board); the
+ * I/O half lives in `scripts/loop/`. This file is the dispatcher and the compatibility surface
  * (it re-exports everything the old monolithic supervisor exported).
  *
  * Usage:
@@ -112,7 +112,6 @@ export { createDispatchScheduler, runSubscribe } from "./loop/subscribe.mjs";
 export {
   readBoard,
   readLiveCard,
-  readReviewCards,
   readTrail,
   runSlaPass,
   runWorkflowPass,

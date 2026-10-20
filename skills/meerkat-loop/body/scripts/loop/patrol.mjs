@@ -4,8 +4,8 @@
  *
  * It reads the board once, runs the legacy heartbeat alerts and the shared SLA
  * rows, and notifies. No alert moves a card, and no LLM turn starts unless
- * `--patrol-llm=yes` explicitly asks for one. The workflow entry is what
- * writes; it is a separate pass on purpose.
+ * `--patrol-llm=yes` explicitly asks for one. The workflow entry applies the
+ * board's review plan; it is a separate pass on purpose.
  *
  * The SLA thresholds are measured in 300-second units (`--patrol-interval`).
  * That is a measurement unit, not a promise of sampling frequency: the
