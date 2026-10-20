@@ -510,7 +510,7 @@ describe("install.sh: the loop skill's distribution", () => {
     assert.match(glue, /exec opencode run --session "\$sid" "\$prompt"/);
   });
 
-  it("wires Cursor's glue to `cursor-agent -p`, and labels the resume form unverified", () => {
+  it("wires Cursor's glue to `cursor-agent -p`, and names the real-CLI probe", () => {
     const home = makeTempDir();
     const bin = makeTempDir();
     makeFakeCli(bin, "cursor-agent");
@@ -520,7 +520,7 @@ describe("install.sh: the loop skill's distribution", () => {
     const glue = readFileSync(join(home, ".cursor", "bin", "wake-cursor.sh"), "utf8");
     assert.match(glue, /exec cursor-agent -p "\$prompt"/);
     assert.match(glue, /exec cursor-agent -p --resume "\$sid" "\$prompt"/);
-    assert.match(glue, /NOT verified/, "the unverified resume form must say so");
+    assert.match(glue, /CURSOR_API_KEY/, "the real-CLI probe must be named, with its credential gate");
   });
 
   it("copies the loop skill even under --link, which names the board skill only", () => {

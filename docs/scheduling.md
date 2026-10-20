@@ -415,9 +415,10 @@ own resume form: Claude resumes with `claude -p … --resume <sid>`, Codex with
 `codex exec resume <sid> <prompt>`, Pi with `pi --print --session <sid>
 <prompt>`, OpenCode with `opencode run --session <sid> <prompt>`, and Cursor with
 `cursor-agent -p --resume <sid> <prompt>`. The first three are verified against the real
-CLIs; OpenCode's shape is recorded in `scripts/verify/host-resume-matrix.mjs`; Cursor's
-resume flag is **unverified** (no Cursor CLI on the machine this was built on), so the
-wake glue labels it and `--wake-command` remains the escape hatch.
+CLIs; OpenCode's and Cursor's shapes are recorded in `scripts/verify/host-resume-matrix.mjs`,
+which probes the real binary's help output when the CLI is installed. For Cursor, `--e2e`
+adds one real `-p` call when `CURSOR_API_KEY` is present; without the CLI or the key the
+probe SKIPs, and `--wake-command` remains the escape hatch.
 
 ## Where a worker runs
 
@@ -1039,7 +1040,7 @@ patrol, registry) is identical.
 | **Codex** | `codex exec "<handoff>"` | external: the same units, or Codex app automation (`intervalMinutes`, `quotaAware`, `model`, `reasoningEffort`) | resume the thread with `codex exec resume <sid> <prompt>`; carry `$CODEX_THREAD_ID` as `--session-id` |
 | **Pi** | `pi --print "<handoff>"` | external units + `wake-pi.sh` | resume with `pi --print --session <sid> <prompt>`; pass the session id through the handoff |
 | **OpenCode** | `opencode run "<handoff>"` | external units + `wake-opencode.sh` | resume with `opencode run --session <sid> <prompt>` (recorded in the flag matrix; the CLI was not run here) |
-| **Cursor** | `cursor-agent -p "<handoff>"` | external units + `wake-cursor.sh` | `cursor-agent -p --resume <sid> <prompt>` — **unverified**; `--wake-command` is the escape hatch |
+| **Cursor** | `cursor-agent -p "<handoff>"` | external units + `wake-cursor.sh` | `cursor-agent -p --resume <sid> <prompt>` (documented flags; matrix probe SKIPs without the CLI) |
 | **OpenClaw** | *n/a — no self-scheduler* | install **openclaw-team**; its `poll`/`patrol` automations are this design | the framework keeps the id stable across resumes |
 
 The wake command column is what the *host CLI* is called with. When the host's glue

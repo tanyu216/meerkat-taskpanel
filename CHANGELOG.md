@@ -23,8 +23,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   loop skill and body, scheduling units, and `wake-opencode.sh` / `wake-cursor.sh`.
   `--host` and `--supervisor-hosts` accept `opencode` and `cursor`; OpenClaw remains
   excluded. OpenCode's wake is `opencode run` (resume `--session`); Cursor's is
-  `cursor-agent -p`, with the resume flag **unverified** and labelled as such in the glue
-  and the scheduling docs, behind the existing `--wake-command` escape hatch.
+  `cursor-agent -p` (resume `--resume <sid>`, `--continue`). The flag-level probe and a
+  real `-p` round trip (`--e2e`, gated on `CURSOR_API_KEY`) live in
+  `scripts/verify/host-resume-matrix.mjs`; `--wake-command` remains the escape hatch.
 - **One config file: `.env` at the program install root.** `taskd`, `taskctl` and the loop's
   SSE endpoint now read `<program root>/.env` (the checkout root, or the npm package root) for
   the board URL, the client token, the allow-list and the acceptance policy. Precedence is

@@ -5,9 +5,11 @@
 #   wake-cursor.sh "<handoff>"            # a fresh headless turn
 #   wake-cursor.sh "<handoff>" <sid>      # resume session <sid>
 #
-# The fresh form (`cursor-agent -p`) is the documented headless entry point. The
-# resume form (`-p --resume <sid>`) is NOT verified against a real Cursor CLI;
-# if yours differs, point the supervisor's `--wake-command` at your own glue.
+# Both forms are Cursor's documented surface: `-p/--print` (headless),
+# `--resume [chatId]` and `--continue`. `scripts/verify/host-resume-matrix.mjs
+# --host cursor --e2e` probes them against the real CLI when CURSOR_API_KEY is
+# set; without that key the probe SKIPs. If your build differs, point the
+# supervisor's `--wake-command` at your own glue.
 #
 # A worker must run in the card's project directory, and only this host-local
 # glue can resolve it. Inputs (set by the supervisor):

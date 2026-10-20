@@ -731,13 +731,14 @@ rm -rf ~/.cursor/skills/meerkat-taskpanel ~/.cursor/skills/meerkat-loop \
        ~/.cursor/bin/wake-cursor.sh ~/.cursor/meerkat-taskpanel.env
 ```
 
-> **The loop, and what is still unverified.** Cursor's fresh headless form is
-> `cursor-agent -p <prompt>`; the **resume** form used by the wake glue
-> (`cursor-agent -p --resume <sid> <prompt>`) has not been run against a real Cursor CLI —
-> there is none on the machine this was built on. The glue says so in its own header, the
-> resume cell in `scripts/verify/host-resume-matrix.mjs` is best-effort (an absent CLI
-> SKIPs), and `--wake-command` is the documented escape hatch. The fresh form itself comes
-> from a third-party experiment table, not a Cursor reference document.
+> **The loop, and how its flags are checked.** Cursor's headless forms are
+> `cursor-agent -p <prompt>` (fresh) and `cursor-agent -p --resume <sid> <prompt>`
+> (resume), alongside `--continue`. Cursor's CLI reference documents those flags; the wake
+> glue labels them as the shapes it builds. `scripts/verify/host-resume-matrix.mjs --host
+> cursor` probes the real binary's help output when `cursor-agent` is installed (an absent
+> CLI SKIPs), and `--e2e` adds one real `-p` call when `CURSOR_API_KEY` is present.
+> `--wake-command` remains the escape hatch for a build that differs. What no CLI probe can
+> prove is Cursor's **hook dispatch**: that half still needs the real host, as noted below.
 
 #### The plugin route
 
@@ -754,10 +755,13 @@ OpenCode, Cursor registers a *directory*, so both skills arrive together.
 still emits valid JSON and exits 0. The hook's output shape and the JSON escape are pinned
 by `test/install/cursor-plugin.test.mjs`; the real host's dispatch is the unverified half.
 
-**Unverified, and flagged as such.** Cursor's CLI is not installed here, so neither the
-hook dispatch nor `cursor-agent`'s flags have been run from this repository. The schema is
-transcribed from `obra/superpowers` (`hooks/hooks-cursor.json` + the manifest's `hooks`
-key), which is the only first-hand copy available.
+**What the probes prove, and what they cannot.** The hook's output shape and the JSON
+escape are pinned by `test/install/cursor-plugin.test.mjs`, and the flag shape is probed by
+`scripts/verify/host-resume-matrix.mjs --host cursor` (plus `--e2e` for a real `-p` call
+when `CURSOR_API_KEY` is set). Cursor's **hook dispatch** — whether the host reads
+`hooks-cursor.json` and delivers `additional_context` to the model — cannot be proved by
+the CLI binary; it needs the real Cursor runtime. The schema itself is transcribed from
+`obra/superpowers` (`hooks/hooks-cursor.json` + the manifest's `hooks` key).
 
 ## The session-start issue-tracker check
 

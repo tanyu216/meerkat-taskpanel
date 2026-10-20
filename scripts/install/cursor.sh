@@ -10,13 +10,13 @@
 # Cursor gets the host-external supervisor too: the loop skill, the loop body, the
 # scheduling units and `wake-cursor.sh`. Its headless entry point is `cursor-agent -p`.
 #
-# Rank of the evidence, stated rather than implied: this whole host is secondary-sourced
-# (Cursor's help index and a third-party agent-skills guide for `~/.cursor/skills/`; the
-# fresh `cursor-agent -p` form from a third-party experiment table). The **resume** form
-# (`-p --resume <sid>`) is unverified — there is no Cursor CLI on the machine this was
-# built on — so the wake glue labels it, `--wake-command` stays the escape hatch, and
-# docs/scheduling.md records the gap. `test/install/scheduling-units.test.mjs` asserts
-# the installed glue's shape.
+# Rank of the evidence, stated rather than implied: `~/.cursor/skills/` is
+# secondary-sourced (Cursor's help index and a third-party agent-skills guide). The
+# headless forms (`-p/--print`, `--resume [chatId]`, `--continue`) are Cursor's
+# documented CLI surface, and `scripts/verify/host-resume-matrix.mjs --host cursor`
+# probes those flags against the real binary when it is installed; `--e2e` adds a real
+# `-p` call when `CURSOR_API_KEY` is present. The glue is asserted by
+# `test/install/scheduling-units.test.mjs`.
 set -eu
 . "$(cd "$(dirname "$0")" && pwd)/_common.sh"
 
