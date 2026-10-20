@@ -1127,3 +1127,49 @@ describe("cli/issue — reconcile (the container backstop)", () => {
     });
   });
 });
+
+describe("cli/issue — `issue reopen` (done/canceled → todo)", () => {
+  /** A card accepted the normal way, so the reopen edge has something to leave. */
+  function doneCard(run) {
+    const created = createIssue(run);
+    const ref = created.task.identifier;
+    dataOf(run(["issue", "move", ref, "in_progress", "--json"]));
+    dataOf(
+      run(["issue", "move", ref, "in_review", "--no-report", "--reason", "no report for this fixture", "--json"]),
+    );
+    dataOf(run(["issue", "move", ref, "done", "--json"]));
+    return ref;
+  }
+
+  it("reopens a done card, requires a reason, and starts a new round", async () => {
+    await board(async ({ run }) => {
+      const ref = doneCard(run);
+
+      const missing = run(["issue", "reopen", ref, "--json"]);
+      assert.equal(missing.status, 2);
+      assert.equal(JSON.parse(missing.stdout).error.code, "CLI_USAGE");
+
+      const short = run(["issue", "reopen", ref, "--reason", "short", "--json"]);
+      assert.equal(short.status, 2);
+      assert.match(JSON.parse(short.stdout).error.message, /--reason/);
+
+      const reopened = dataOf(
+        run(["issue", "reopen", ref, "--reason", "customer found a regression", "--json"]),
+      );
+      assert.equal(reopened.task.status, "todo");
+      assert.equal(reopened.task.delivery_round, 2);
+      assert.equal(reopened.task.archived_at, null);
+    });
+  });
+
+  it("refuses to reopen an already-open card", async () => {
+    await board(async ({ run }) => {
+      const created = createIssue(run);
+      const refused = run([
+        "issue", "reopen", created.task.identifier, "--reason", "not finished yet", "--json",
+      ]);
+      assert.equal(refused.status, 1);
+      assert.equal(JSON.parse(refused.stdout).error.code, "INVALID_TRANSITION");
+    });
+  });
+});

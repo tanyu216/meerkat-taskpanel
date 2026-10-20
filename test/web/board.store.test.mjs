@@ -169,6 +169,48 @@ describe("web/board — optimistic move", () => {
   });
 });
 
+/* ------------------------------------------------------------- reopen (I3) */
+
+describe("web/board — reopening a terminal card", () => {
+  it("posts the reason with if_version, then adopts the returned row", async () => {
+    const { board, reopenTask } = await freshBoard();
+    seedTask(board, { status: "done" });
+    const calls = installFetch({
+      "POST /api/v1/tasks/TD-1/reopen": (call) =>
+        ok({
+          task: {
+            ...board.tasks[0],
+            status: "todo",
+            version: call.body.if_version + 1,
+            delivery_round: 2,
+            archived_at: null,
+          },
+        }),
+    });
+
+    const reopened = await reopenTask(board.tasks[0], "customer found a regression");
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0].body, { reason: "customer found a regression", if_version: 3 });
+    assert.equal(reopened.status, "todo");
+    assert.equal(board.tasks[0].status, "todo");
+    assert.equal(board.tasks[0].delivery_round, 2);
+    assert.equal(toasts.value.at(-1).kind, "success");
+    assert.match(toasts.value.at(-1).text, /TD-1/);
+  });
+
+  it("surfaces a refusal by code and leaves the card terminal", async () => {
+    const { board, reopenTask } = await freshBoard();
+    seedTask(board, { status: "done" });
+    installFetch({
+      "POST /api/v1/tasks/TD-1/reopen": () => failure(409, "INVALID_TRANSITION", "not terminal"),
+    });
+
+    await assert.rejects(() => reopenTask(board.tasks[0], "why not"));
+    assert.equal(board.tasks[0].status, "done");
+    assert.equal(toasts.value.at(-1).kind, "danger");
+  });
+});
+
 /* ------------------------------------------- 409 rollback + conflict panel */
 
 describe("web/board — 409 rollback and the conflict panel", () => {

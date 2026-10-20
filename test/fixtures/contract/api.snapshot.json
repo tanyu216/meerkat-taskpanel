@@ -1130,6 +1130,26 @@
       }
     },
     {
+      "method": "POST",
+      "path": "/api/v1/tasks/:ref/reopen",
+      "request": {
+        "body": {
+          "additionalProperties": true,
+          "properties": {
+            "if_version": {
+              "type": "integer"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "query": null
+      }
+    },
+    {
       "method": "GET",
       "path": "/api/v1/tasks/:ref/reports",
       "request": {

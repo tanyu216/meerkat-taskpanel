@@ -35,7 +35,7 @@ import {
   checkDeliveryGate,
   WAIVER_MIN_REASON_CHARS,
 } from "../domain/delivery-gate.mjs";
-import { assertTransition } from "../domain/status.mjs";
+import { assertTransition, isReopen, isTerminalStatus } from "../domain/status.mjs";
 import { assertAwaitingReason } from "../domain/awaiting.mjs";
 import { normalizeBlockedReason } from "../domain/blocked-reason.mjs";
 import { STATUS } from "../domain/enums.mjs";
@@ -471,6 +471,30 @@ function assertStealReason(reason) {
 }
 
 /**
+ * Reopening a finished card is an audited act — the same rule (and the same
+ * minimum length) as a takeover or a report waiver. The board records it as
+ * `task_reopened`, but the reason is what a reader needs to understand why
+ * accepted work became active again.
+ * @param {unknown} reason
+ * @returns {string} the trimmed reason
+ */
+function assertReopenReason(reason) {
+  const text = typeof reason === "string" ? reason.trim() : "";
+  if (text.length < WAIVER_MIN_REASON_CHARS) {
+    throw new DomainError("VALIDATION_FAILED", {
+      message: `reopening a terminal card needs --reason with at least ${WAIVER_MIN_REASON_CHARS} characters`,
+      details: {
+        field: "reason",
+        received: typeof reason === "string" ? reason : null,
+        minLength: WAIVER_MIN_REASON_CHARS,
+      },
+      hint: { fix: 'e.g. --reason "customer found a regression in the accepted delivery"' },
+    });
+  }
+  return text;
+}
+
+/**
  * The staleness bound a takeover hands to the repository (R3).
  *
  * The verdict already decided *that* the claim may be taken; this says *how
@@ -739,8 +763,13 @@ export function heartbeat(ctx, input) {
  * gate for the current round and is recorded as `report_waived` instead of
  * `task_moved`, so the card's history says what actually happened.
  *
+ * A move out of `done`/`canceled` is a **reopen**: the only legal destination is
+ * `todo`, and it must carry a reason. `requireTerminalSource` is the internal
+ * flag `reopenStatus` sets so the dedicated command cannot be used as a generic
+ * `move … todo` for an already-open card.
+ *
  * @param {object} ctx
- * @param {{id: string, to: string, actor: object, ifVersion?: number, noReport?: boolean, reason?: string, allowSteal?: boolean, awaitingReason?: string|null, blockedReason?: string|null}} input
+ * @param {{id: string, to: string, actor: object, ifVersion?: number, noReport?: boolean, reason?: string, allowSteal?: boolean, awaitingReason?: string|null, blockedReason?: string|null, requireTerminalSource?: boolean}} input
  */
 export function moveStatus(ctx, input) {
   const actor = actorOf(input.actor);
@@ -767,7 +796,33 @@ export function moveStatus(ctx, input) {
         throw new DomainError("NOT_FOUND", { message: `no task ${input.id}`, details: { taskId: input.id } });
       }
 
+      // The dedicated command is terminal-only. Checked before the whitelist so
+      // an already-open card gets the reopen-specific refusal rather than the
+      // generic `todo → todo` one; a terminal card falls through to
+      // `assertTransition`, which is what keeps `done → in_progress` a
+      // `TERMINAL_STATE` on the plain move route too.
+      if (input.requireTerminalSource === true && !isTerminalStatus(current.status)) {
+        throw new DomainError("INVALID_TRANSITION", {
+          message: "only a done/canceled card can be reopened",
+          details: { from: current.status, to: input.to },
+          hint: { fix: "the card is already open; use a normal move" },
+        });
+      }
+
       assertTransition(current.status, input.to, current.kind);
+
+      // Reopening is the `done|canceled → todo` edge. It is audited, and it is
+      // closed to review cards: a review is a loop artifact, and reopening the
+      // original is what produces the next round's review.
+      const reopen = isReopen(current.status, input.to);
+      const reopenReason = reopen ? assertReopenReason(input.reason) : null;
+      if (reopen && current.reviewOfId !== null && current.reviewOfId !== undefined) {
+        throw new DomainError("INVALID_TRANSITION", {
+          message: "a review card cannot be reopened; reopen the original card instead",
+          details: { from: current.status, to: input.to, reviewOf: current.reviewOfId },
+          hint: { fix: "reopen the reviewed card; the loop will issue a review for the new round" },
+        });
+      }
       // `done` is acceptance, not delivery. Who may perform it is the board's
       // policy (`human-only` | `both` | `agent-only`) and the card's scope
       // (child / review card / top-level original) — see
@@ -829,32 +884,46 @@ export function moveStatus(ctx, input) {
         waiver,
         awaitingReason,
         blockedReason,
+        // The repository clears the finished card's `idem`/`archived_at` in the
+        // same UPDATE — one revision, and no idempotency-index collision.
+        reopen,
       });
       ctx.repos.activities.append({
         taskId: task.id,
         actorKind: actor.kind,
         actorId: actor.id,
-        event: waiver === null ? "task_moved" : "report_waived",
+        // Kept on one line: the activity-vocabulary test reads the literals
+        // from the audit row's event-name line itself. Do not put that
+        // colon-suffixed key in a comment above it — the scanner finds the
+        // first matching line and would read the comment instead.
+        event: reopenReason !== null ? "task_reopened" : waiver === null ? "task_moved" : "report_waived",
         changes:
-          waiver === null
+          reopenReason !== null
             ? {
                 from: current.status,
                 to: task.status,
+                reason: reopenReason,
                 deliveryRound: task.deliveryRound,
-                // M1 — record the entry category alongside the move, so the
-                // card's history says *why* it stopped for a human.
-                ...(awaitingReason === null ? {} : { awaitingReason }),
-                // 0016 — and the same for a block's class, so the trail keeps
-                // the reason even after `blocked_reason` is cleared on exit.
-                ...(blockedReason === null ? {} : { blockedReason }),
               }
-            : {
-                from: current.status,
-                to: task.status,
-                round: waiver.round,
-                reason: waiver.reason,
-                deliveryRound: task.deliveryRound,
-              },
+            : waiver === null
+              ? {
+                  from: current.status,
+                  to: task.status,
+                  deliveryRound: task.deliveryRound,
+                  // M1 — record the entry category alongside the move, so the
+                  // card's history says *why* it stopped for a human.
+                  ...(awaitingReason === null ? {} : { awaitingReason }),
+                  // 0016 — and the same for a block's class, so the trail keeps
+                  // the reason even after `blocked_reason` is cleared on exit.
+                  ...(blockedReason === null ? {} : { blockedReason }),
+                }
+              : {
+                  from: current.status,
+                  to: task.status,
+                  round: waiver.round,
+                  reason: waiver.reason,
+                  deliveryRound: task.deliveryRound,
+                },
         createdAt: now,
       });
       // A card that re-enters the work (a rework from `in_review`, an unblock)
@@ -876,6 +945,21 @@ export function moveStatus(ctx, input) {
     },
     { op: "tasks.move" },
   );
+}
+
+/**
+ * Reopen a `done`/`canceled` card to `todo`.
+ *
+ * The edge, the reason, the round bump and the bookkeeping (released `idem`,
+ * cleared `archived_at`) are all `moveStatus`'s; this exists so the command has
+ * its own name and so `requireTerminalSource` makes the dedicated route refuse
+ * an already-open card. Review cards are refused there.
+ *
+ * @param {object} ctx
+ * @param {{id: string, actor: object, ifVersion?: number, reason: string}} input
+ */
+export function reopenStatus(ctx, input) {
+  return moveStatus(ctx, { ...input, to: STATUS.TODO, requireTerminalSource: true });
 }
 
 /**

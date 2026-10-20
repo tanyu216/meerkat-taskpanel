@@ -13,7 +13,7 @@ import { DomainError } from "../../foundation/errors.mjs";
 import { assertWaiverRequest } from "../domain/delivery-gate.mjs";
 import { STATUS } from "../domain/enums.mjs";
 import { normalizeReportCreate } from "../domain/report.mjs";
-import { assertTransition } from "../domain/status.mjs";
+import { assertTransition, isTerminalStatus } from "../domain/status.mjs";
 import { transaction } from "../storage/unit-of-work.mjs";
 import { assertAcceptance, assertChildrenTerminal, assertReviewReady } from "./acceptance.mjs";
 import { actorOf } from "./context.mjs";
@@ -121,6 +121,19 @@ export function deliver(ctx, input) {
     ctx.db,
     () => {
       const task = loadTask(ctx, input.taskId);
+
+      // A terminal card has nothing to deliver. `to` is wire-only (the CLI does
+      // not offer it), and the reopen edge now makes `to: "todo"` a legal
+      // transition — without this guard, `POST /deliver {"to":"todo"}` would be
+      // a reasonless reopen that also writes a report. Reopening is `issue
+      // reopen`, which is audited.
+      if (isTerminalStatus(task.status)) {
+        throw new DomainError("TERMINAL_STATE", {
+          message: `task is ${task.status} (terminal); it cannot be delivered`,
+          details: { from: task.status, to, taskId: task.id },
+          hint: { fix: `taskctl issue reopen ${task.identifier} --reason "<why>"` },
+        });
+      }
 
       // The move must be legal at all. The *gate* is deliberately not consulted
       // here: this transaction is what satisfies it, by inserting the report

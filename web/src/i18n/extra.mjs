@@ -45,6 +45,7 @@ export const EXTRA = {
     "toast.projectPrefixUnusable": "Could not create the project — the identifier prefix has no letters or digits",
     "toast.projectPrefixTaken": "Could not create the project — another project already numbers its cards with that prefix",
     "toast.reportRequired": "Moving %s to In Review needs a report",
+    "toast.reopened": "Reopened",
     "toast.moveConflict": "Conflict on %s — reload and retry",
     "toast.resynced": "Board resynced",
     "toast.relationNone": "No relations",
@@ -145,6 +146,13 @@ export const EXTRA = {
     "drawer.session.owner": "owner",
     "drawer.session.seg": "seg",
     "drawer.session.phase": "phase",
+    // Reopen is implementation-only — the prototype deliberately offers no
+    // terminal action — so its copy lives here, not in the catalogue.
+    "drawer.reopen": "Reopen",
+    "drawer.reopenReason": "Why is this card being reopened? (at least 8 characters)",
+    "drawer.reopenTooShort": "Say why — at least 8 characters.",
+    "drawer.reopenConfirm": "Reopen card",
+    "drawer.reopenCancel": "Cancel",
     // M1 · first-class `awaiting` and the 「等你回复」view (design §5). The
     // count key uses `%s` because the runtime fills positionally — `{n}` would
     // print itself (design §10-C2).
@@ -189,6 +197,7 @@ export const EXTRA = {
     "toast.projectPrefixUnusable": "无法创建项目 —— 标识前缀不含任何字母或数字",
     "toast.projectPrefixTaken": "无法创建项目 —— 已有项目用该前缀编号",
     "toast.reportRequired": "将 %s 移至待评审需要一份报告",
+    "toast.reopened": "已重开",
     "toast.moveConflict": "%s 发生冲突 —— 请重新载入后重试",
     "toast.resynced": "看板已补齐",
     "toast.relationNone": "无关联",
@@ -240,6 +249,11 @@ export const EXTRA = {
     "drawer.session.owner": "负责人",
     "drawer.session.seg": "分段",
     "drawer.session.phase": "阶段",
+    "drawer.reopen": "重开",
+    "drawer.reopenReason": "为什么要重开这张卡？（至少 8 个字符）",
+    "drawer.reopenTooShort": "请说明原因 —— 至少 8 个字符。",
+    "drawer.reopenConfirm": "重开卡片",
+    "drawer.reopenCancel": "取消",
     "status.awaiting": "等你回复",
     "waiting.aria.badge": "等待你的回复",
     "waiting.reason.E1": "范围变更",

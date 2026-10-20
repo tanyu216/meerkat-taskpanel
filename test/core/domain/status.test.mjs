@@ -41,8 +41,11 @@ const EXPECTED_ALLOWED = {
   awaiting: ["in_progress", "canceled"],
   in_review: ["done", "in_progress", "blocked"],
   blocked: ["todo", "in_progress", "in_review", "canceled"],
-  done: [],
-  canceled: [],
+  // The reopen edge: a finished card may go back to the queue, and nowhere
+  // else. `in_progress` is deliberately absent — it would be a work state
+  // without the claim that a `todo → in_progress` move stamps.
+  done: ["todo"],
+  canceled: ["todo"],
 };
 
 /** Every ordered pair, derived: `statuses²`. */
@@ -86,7 +89,9 @@ describe("domain/status — the whitelist table", () => {
     assert.deepEqual([...ROUND_BUMPING_EXITS].sort(), ["blocked", "in_progress"]);
     assert.deepEqual(allowedTargets(STATUS.IN_REVIEW), ["done", "in_progress", "blocked"]);
     for (const [from, to] of ALL_PAIRS) {
-      const expected = from === STATUS.IN_REVIEW && ROUND_BUMPING_EXITS.includes(to);
+      const expected =
+        (from === STATUS.IN_REVIEW && ROUND_BUMPING_EXITS.includes(to)) ||
+        (isTerminalStatus(from) && to === STATUS.TODO);
       assert.equal(bumpsDeliveryRound(from, to), expected, `bump ${from} → ${to}`);
     }
   });
@@ -106,7 +111,11 @@ describe("domain/status — terminals, claimability, gate", () => {
     for (const status of STATUSES) {
       assert.equal(isTerminalStatus(status), TERMINAL_STATUSES.includes(status), status);
     }
-    assert.deepEqual(STATUSES.filter((s) => allowedTargets(s).length === 0), ["done", "canceled"]);
+    // Terminal statuses are no longer "no exit at all": their only exit is the
+    // reopen edge. Everything else still has at least one target.
+    assert.deepEqual(STATUSES.filter((s) => allowedTargets(s).length === 0), []);
+    assert.deepEqual(allowedTargets(STATUS.DONE), [STATUS.TODO]);
+    assert.deepEqual(allowedTargets(STATUS.CANCELED), [STATUS.TODO]);
   });
 
   it("only todo is claimable, and only in_review demands a report", () => {
@@ -169,14 +178,18 @@ describe("domain/status — rejection codes", () => {
 
   it("assertTransition returns the target or throws a DomainError with that code", () => {
     assert.equal(assertTransition("todo", "in_progress"), "in_progress");
+    // The reopen edge is a real transition, for a task and for an epic.
+    assert.equal(assertTransition("done", "todo"), "todo");
+    assert.equal(assertTransition("canceled", "todo"), "todo");
+    assert.equal(assertTransition("done", "todo", TASK_KIND.EPIC), "todo");
 
     assert.throws(
-      () => assertTransition("done", "todo"),
+      () => assertTransition("done", "in_progress"),
       (err) => {
         assert.ok(err instanceof DomainError);
         assert.equal(err.code, "TERMINAL_STATE");
         assert.equal(err.http, 409);
-        assert.deepEqual(err.details.allowed, []);
+        assert.deepEqual(err.details.allowed, ["todo"]);
         return true;
       },
     );

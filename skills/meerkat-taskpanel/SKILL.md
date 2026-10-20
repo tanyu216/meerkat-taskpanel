@@ -48,7 +48,9 @@ forbid that).
 A card has **eight stored status words**, but only **seven are stages** (the board's columns):
 `backlog`, `todo`, `in_progress`, `in_review`, `blocked`, `done`, `canceled`. `awaiting` is an
 **attention overlay** — a card parked on a human question, shown under `in_progress`. `done`
-and `canceled` are terminal; a finished card that needs more work is a new card.
+and `canceled` are terminal, with one audited exit: reopen to `todo`
+(`issue reopen <ref> --reason "<why>"`). Reopening starts a new delivery round; a review card
+cannot be reopened — reopen the card it reviews.
 
 Only these moves exist; every other pair is refused (`INVALID_TRANSITION`, or `TERMINAL_STATE`
 out of a terminal card):
@@ -61,12 +63,12 @@ in_progress → in_review, blocked, todo, canceled, awaiting
 awaiting    → in_progress, canceled
 in_review   → done, in_progress, blocked
 blocked     → todo, in_progress, in_review, canceled
-done        → (terminal)
-canceled    → (terminal)
+done        → todo
+canceled    → todo
 ```
 <!-- status-whitelist:end -->
 
-A legal edge can still be refused. Six rules decide it:
+A legal edge can still be refused. Seven rules decide it:
 
 1. **`in_review` needs evidence for the current round.** A `delivery` report — or the audited
    `--no-report --reason` (≥ 8 characters) — for the card's current `delivery_round`; imported
@@ -88,6 +90,10 @@ A legal edge can still be refused. Six rules decide it:
 6. **The claim follows the status.** Held in `in_progress`, `awaiting`, `in_review` and
    `blocked`; released on `todo`/`backlog`/`done`/`canceled`. `todo → in_progress` is a claim;
    a rework keeps the executor.
+7. **Reopening needs a reason.** `done`/`canceled → todo` is the only terminal exit:
+   `issue reopen <ref> --reason "<why>"` (≥ 8 characters) records `task_reopened`, starts a new
+   delivery round, clears the archive and releases the idem key. `in_progress` is not a reopen
+   target, and a review card is refused — reopen the original.
 
 The full model — every guard in evaluation order, the round table, claim windows, the
 acceptance policy × scope matrix, the creation gate and the refusal codes — is in

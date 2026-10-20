@@ -224,6 +224,52 @@ describe("server/routes — tasks, the gate and deliver", () => {
     assert.match(result.body.error.hint.fix, /issue move/);
   });
 
+  it("reopens a done card to todo with a reason — and only that way", async () => {
+    const created = dataOf(
+      await call("POST", "/api/v1/tasks", { project_id: "demo", title: "Reopen me" }),
+    );
+    const ref = created.task.identifier;
+    dataOf(await call("POST", `/api/v1/tasks/${ref}/move`, { to: "in_progress" }));
+    dataOf(
+      await call("POST", `/api/v1/tasks/${ref}/deliver`, {
+        report: {
+          conclusion: "landed",
+          acceptance: [{ text: "works", status: "met" }],
+          evidence: [{ kind: "path", path: "x" }],
+        },
+      }),
+    );
+    dataOf(await call("POST", `/api/v1/tasks/${ref}/move`, { to: "done" }));
+
+    // `/deliver` is not a reasonless reopen backdoor.
+    const backdoor = await call("POST", `/api/v1/tasks/${ref}/deliver`, {
+      to: "todo",
+      report: {
+        conclusion: "sneaky",
+        acceptance: [{ text: "works", status: "met" }],
+        evidence: [{ kind: "path", path: "x" }],
+      },
+    });
+    assert.equal(backdoor.status, 409, JSON.stringify(backdoor.body));
+    assert.equal(backdoor.body.error.code, "TERMINAL_STATE");
+
+    const noReason = await call("POST", `/api/v1/tasks/${ref}/reopen`, {});
+    assert.equal(noReason.status, 400, JSON.stringify(noReason.body));
+    assert.equal(noReason.body.error.code, "VALIDATION_FAILED");
+
+    const reopened = dataOf(
+      await call("POST", `/api/v1/tasks/${ref}/reopen`, { reason: "customer found a regression" }),
+    );
+    assert.equal(reopened.status, "todo");
+    assert.equal(reopened.task.delivery_round, 2);
+    assert.equal(reopened.task.archived_at, null);
+
+    // The dedicated route is terminal-only: an already-open card is refused.
+    const again = await call("POST", `/api/v1/tasks/${ref}/reopen`, { reason: "still open" });
+    assert.equal(again.status, 409, JSON.stringify(again.body));
+    assert.equal(again.body.error.code, "INVALID_TRANSITION");
+  });
+
   it("merges --acceptance into meta without clobbering the rest", async () => {
     const updated = dataOf(
       await call("PATCH", `/api/v1/tasks/${identifier}`, { acceptance: ["a", "b"], title: "Ship M2 (final)" }),

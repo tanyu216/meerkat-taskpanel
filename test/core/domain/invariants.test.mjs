@@ -49,14 +49,17 @@ describe("domain/invariants", () => {
     }
   });
 
-  it("refuses to leave a terminal state (I3)", () => {
+  it("lets a terminal state leave only to todo (I3)", () => {
     assert.equal(assertNotTerminal("in_progress", "in_review"), true);
     for (const from of ["done", "canceled"]) {
-      assert.throws(() => assertNotTerminal(from, "todo"), (err) => {
-        assert.equal(err.code, "TERMINAL_STATE");
-        assert.deepEqual(err.details, { from, to: "todo" });
-        return true;
-      });
+      assert.equal(assertNotTerminal(from, "todo"), true, `${from} may reopen to todo`);
+      for (const to of ["backlog", "in_progress", "in_review", "blocked", "awaiting", "canceled"]) {
+        assert.throws(() => assertNotTerminal(from, to), (err) => {
+          assert.equal(err.code, "TERMINAL_STATE");
+          assert.deepEqual(err.details, { from, to });
+          return true;
+        });
+      }
     }
   });
 });

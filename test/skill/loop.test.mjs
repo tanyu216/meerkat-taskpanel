@@ -458,8 +458,8 @@ describe("board skill: the status whitelist matches the domain", () => {
         `${status} row`,
       );
     }
-    assert.deepEqual(table.done, []);
-    assert.deepEqual(table.canceled, []);
+    assert.deepEqual(table.done, ["todo"]);
+    assert.deepEqual(table.canceled, ["todo"]);
     assert.equal(epic.length, 1, "exactly one epic-only overlay");
     const [from, to] = epic[0];
     assert.ok(EPIC_ONLY_TRANSITIONS[from]?.includes(to), `epic overlay ${from} → ${to}`);

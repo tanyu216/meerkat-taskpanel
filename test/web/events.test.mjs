@@ -61,6 +61,7 @@ describe("web/events — the refresh map", () => {
   it("distinguishes a card edit from a sub-resource edit", () => {
     assert.equal(taskEventNeedsRefresh("task_updated"), true);
     assert.equal(taskEventNeedsRefresh("task_moved"), true);
+    assert.equal(taskEventNeedsRefresh("task_reopened"), true);
     assert.equal(taskEventNeedsRefresh("comment_added"), false);
     assert.equal(taskEventNeedsRefresh("attachment_added"), false);
     assert.equal(taskEventNeedsRefresh("project_updated"), false);
@@ -74,11 +75,12 @@ describe("web/events — the refresh map", () => {
     assert.deepEqual(detailRefetch({ event: "attachment_removed" }), ["attachments", "activities"]);
     assert.deepEqual(detailRefetch({ event: "progress" }), ["activities"]);
     assert.deepEqual(detailRefetch({ event: "task_moved" }), ["task", "activities"]);
+    assert.deepEqual(detailRefetch({ event: "task_reopened" }), ["task", "activities"]);
     assert.deepEqual(detailRefetch({ event: "unknown" }), ["task", "activities"]);
   });
 
   it("invalidates the waiting payload only when the question can change", () => {
-    for (const event of ["comment_added", "task_moved", "task_updated", "task_created", "task_archived"]) {
+    for (const event of ["comment_added", "task_moved", "task_reopened", "task_updated", "task_created", "task_archived"]) {
       assert.equal(invalidatesWaitingPayload(event), true, event);
     }
     for (const event of ["relation_added", "session_closed", "attachment_added", "project_updated"]) {

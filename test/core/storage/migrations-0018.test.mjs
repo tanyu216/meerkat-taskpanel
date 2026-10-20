@@ -93,7 +93,7 @@ describe("storage/migrations — 0018 opens the actor-kind columns (comments, ta
       const up = applyMigrations(board.db);
       // 0018 is the last file in the set today; when a later migration lands this
       // list grows by one, as the 0013/0015 suites' equivalents did.
-      assert.deepEqual(up.applied.map((m) => m.version), ["0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027"]);
       assert.deepEqual(up.skipped.slice(-2), ["0016", "0017"]);
 
       // 1 — the enumeration is gone from both tables, and nothing replaced it.
@@ -237,7 +237,7 @@ describe("storage/migrations — 0018 opens the actor-kind columns (comments, ta
         Object.keys(newTriggers)
           .filter((name) => !(name in oldTriggers))
           .sort(),
-        ["tr_dict_actors_delete", "tr_rel_block_chain", "tr_rel_parent_block_pair", "tr_rev_actors_del", "tr_rev_actors_ins", "tr_rev_actors_upd", "tr_tasks_children_terminal", "tr_tasks_review_marker_immutable"],
+        ["tr_dict_actors_delete", "tr_rel_block_chain", "tr_rel_parent_block_pair", "tr_rev_actors_del", "tr_rev_actors_ins", "tr_rev_actors_upd", "tr_tasks_children_terminal", "tr_tasks_reopen_state", "tr_tasks_review_marker_immutable"],
         "0018 invents no trigger; 0019's actor triggers and 0021/0022's relation guards are the later additions",
       );
       assert.deepEqual(
@@ -249,8 +249,16 @@ describe("storage/migrations — 0018 opens the actor-kind columns (comments, ta
       const changed = Object.keys(oldTriggers).filter((name) => oldTriggers[name] !== newTriggers[name]).sort();
       assert.deepEqual(
         changed,
-        [...DICTIONARY_TRIGGERS_REMOVED, "tr_rev_tasks_upd", "tr_tasks_transition", "tr_deliver_gate"].sort(),
-        "0018 must change no trigger — 0019's own `tasks` rebuild moves `tr_rev_tasks_upd`, 0020 re-declares every trigger it parks verbatim, and 0024 rewrites the whitelist and the delivery gate in place for the epic overlay",
+        [
+          ...DICTIONARY_TRIGGERS_REMOVED,
+          "tr_rev_tasks_upd",
+          "tr_tasks_transition",
+          "tr_deliver_gate",
+          // 0027 rewrites the terminal guard and the round bump in place.
+          "tr_tasks_terminal",
+          "tr_tasks_round_bump",
+        ].sort(),
+        "0018 must change no trigger — 0019's own `tasks` rebuild moves `tr_rev_tasks_upd`, 0020 re-declares every trigger it parks verbatim, 0024 rewrites the whitelist and the delivery gate in place for the epic overlay, and 0027 rewrites the terminal guard and the round bump for reopen",
       );
 
       // The guards a careless rebuild would be most likely to mangle, named so a

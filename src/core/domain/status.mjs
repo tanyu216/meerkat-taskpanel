@@ -2,9 +2,11 @@
  * The task lifecycle state machine (F1 ruling: whitelist table, option A).
  *
  * The whitelist is the *only* fact source: `domain/status.mjs` decides the
- * service-layer path and `migrations/0002_invariants.sql` re-encodes the exact
- * same table as a trigger, so the DB is the machine guarantee behind the same
- * rules (`test/contract/state-machine.test.mjs` walks every ordered pair, for a
+ * service-layer path and the migrations re-encode the exact same table as
+ * triggers (`0024_epic_deliver_from_todo.sql` for the whitelist, and
+ * `0027_reopen_terminal.sql` for the terminal and round-bump rules), so the DB
+ * is the machine guarantee behind the same rules
+ * (`test/contract/state-machine.test.mjs` walks every ordered pair, for a
  * `task` *and* for an `epic`, down both paths).
  *
  * Since 0024 the whitelist has **two rows per status for one pair**: the base
@@ -15,7 +17,11 @@
  *
  * Key properties:
  *   - `done` is reachable **only** from `in_review` ⇒ "no delivery without review".
- *   - `done`/`canceled` are terminal (I3).
+ *   - `done`/`canceled` are terminal (I3), with one audited exit: **reopen to
+ *     `todo`**. They are still "finished work" everywhere terminality is a
+ *     bookkeeping fact (archive, idempotency, rollup) — only the state machine
+ *     gained the exit. Reopening starts a new delivery round, so the previous
+ *     round's report cannot satisfy the gate for the next delivery.
  *   - Leaving `in_review` (to `in_progress` or `blocked`) starts a new delivery
  *     round (F3), so the previous round's report can no longer satisfy the gate.
  *
@@ -75,8 +81,14 @@ export const ALLOWED_TRANSITIONS = Object.freeze({
   [STATUS.AWAITING]: Object.freeze([STATUS.IN_PROGRESS, STATUS.CANCELED]),
   [STATUS.IN_REVIEW]: Object.freeze([STATUS.DONE, STATUS.IN_PROGRESS, STATUS.BLOCKED]),
   [STATUS.BLOCKED]: Object.freeze([STATUS.TODO, STATUS.IN_PROGRESS, STATUS.IN_REVIEW, STATUS.CANCELED]),
-  [STATUS.DONE]: Object.freeze([]),
-  [STATUS.CANCELED]: Object.freeze([]),
+  // The reopen edge. `todo` is the only target on purpose: `in_progress` is a
+  // *claimed* state, and a reopened card has no claim holder — landing there
+  // would create an `in_progress` row with `claimed_by IS NULL`, the corruption
+  // I2 exists to prevent. The card goes back to the queue and is claimed
+  // normally. The audited reason is a service-layer rule (`commands/tasks.mjs`);
+  // the whitelist is the database guarantee.
+  [STATUS.DONE]: Object.freeze([STATUS.TODO]),
+  [STATUS.CANCELED]: Object.freeze([STATUS.TODO]),
 });
 
 /**
@@ -111,21 +123,41 @@ export const EPIC_ONLY_TRANSITIONS = Object.freeze({
 });
 
 
-/** Statuses nothing may leave (I3). */
+/**
+ * Finished statuses (I3). They hold the "finished work" bookkeeping (archive
+ * eligibility, idempotency release, rollup completion), but they are no longer
+ * unreachable-from: the one exit is {@link REOPEN_TARGET}.
+ */
 export const TERMINAL_STATUSES = Object.freeze([STATUS.DONE, STATUS.CANCELED]);
+
+/** The only status a terminal card may be reopened to. */
+export const REOPEN_TARGET = STATUS.TODO;
+
+/**
+ * Is this pair the reopen edge?
+ * @param {string} from @param {string} to
+ * @returns {boolean}
+ */
+export function isReopen(from, to) {
+  return isTerminalStatus(from) && to === REOPEN_TARGET;
+}
 
 /**
  * Exits from `in_review` that start a new delivery round (F3). Both of these
  * are "the delivery came back" — a rework and a blocker discovered at review
  * time. `in_review → done` is the delivery succeeding and does *not* bump.
  *
- * Membership is keyed on the **source** status: a round only ever starts when a
- * card *leaves `in_review`*. So M1's `awaiting → in_progress` is not in this
- * list and cannot be: `awaiting` is entered from `in_progress`, the round never
- * ended, and resuming therefore keeps the same delivery round — and the report
- * already written for it. Written down because "in_progress" appearing in the
- * list makes the pair look like it might belong here; the `from` is what
- * decides (asserted in `test/contract/state-machine.test.mjs`).
+ * Membership is keyed on the **source** status: this list names the exits from
+ * `in_review`. So M1's `awaiting → in_progress` is not in this list and cannot
+ * be: `awaiting` is entered from `in_progress`, the round never ended, and
+ * resuming therefore keeps the same delivery round — and the report already
+ * written for it. Written down because "in_progress" appearing in the list
+ * makes the pair look like it might belong here; the `from` is what decides
+ * (asserted in `test/contract/state-machine.test.mjs`).
+ *
+ * A terminal reopen is the second round-bumping family, handled separately in
+ * {@link bumpsDeliveryRound}: it is keyed on a different source pair and does
+ * not belong in this `in_review`-only list.
  */
 export const ROUND_BUMPING_EXITS = Object.freeze([STATUS.IN_PROGRESS, STATUS.BLOCKED]);
 
@@ -260,7 +292,7 @@ export function assertTransition(from, to, kind = null) {
       },
       message:
         reason === "TERMINAL_STATE"
-          ? `task is ${from} (terminal); it cannot move to ${to}`
+          ? `task is ${from} (terminal); it may only be reopened to ${REOPEN_TARGET}`
           : `transition ${from} → ${to} is not allowed`,
     });
   }
@@ -416,10 +448,16 @@ export function assertAcceptanceAuthority(actor, options = {}) {
 
 /**
  * Does moving `from → to` start a new delivery round?
+ *
+ * Two families: leaving `in_review` for a rework/blocker (F3), and reopening a
+ * terminal card. The second must bump, or the old round's report would satisfy
+ * the delivery gate on the first delivery after a reopen.
+ *
  * @param {string} from
  * @param {string} to
  */
 export function bumpsDeliveryRound(from, to) {
+  if (isTerminalStatus(from)) return to === REOPEN_TARGET;
   return from === STATUS.IN_REVIEW && ROUND_BUMPING_EXITS.includes(/** @type {string} */ (to));
 }
 

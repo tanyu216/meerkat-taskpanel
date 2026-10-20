@@ -86,6 +86,11 @@ function onDrop(status, event) {
   const task = board.tasks.find((item) => item.id === identifier || item.identifier === identifier);
   dragging.value = null;
   if (!task || task.status === status) return;
+  // The drop is a move command; it may not express the audited reopen edge
+  // (which needs a reason), so an illegal or terminal target is simply not a
+  // drop. Keeping the guard here means a terminal card cannot send a move the
+  // server would refuse for a missing reason.
+  if (!allowedTargets(task.status).includes(status)) return;
   moveTask(task, status).catch(() => {});
 }
 

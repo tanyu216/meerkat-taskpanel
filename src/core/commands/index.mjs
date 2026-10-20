@@ -41,6 +41,7 @@ export function createCommands(ctx) {
     claim: (input) => tasks.claim(ctx, input),
     heartbeat: (input) => tasks.heartbeat(ctx, input),
     moveStatus: (input) => tasks.moveStatus(ctx, input),
+    reopenStatus: (input) => tasks.reopenStatus(ctx, input),
     canMove: (input) => tasks.canMove(ctx, input),
     archive: (input) => tasks.archive(ctx, input),
     listTasks: (filter) => tasks.listTasks(ctx, filter),

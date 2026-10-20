@@ -76,7 +76,7 @@ describe("storage/migrations — 0015 makes `deploy` a task kind (T-20261013-232
       const up = applyMigrations(board.db);
       // 0015 and everything after it: 0016 (`blocked_reason`) is the next file in
       // the set, and this board is below both.
-      assert.deepEqual(up.applied.map((m) => m.version), ["0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026"]);
+      assert.deepEqual(up.applied.map((m) => m.version), ["0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027"]);
       assert.deepEqual(up.skipped.slice(-2), ["0013", "0014"]);
 
       // 1 — the enum: the new word is storable, the old ones still are (they are
@@ -215,6 +215,7 @@ describe("storage/migrations — 0015 makes `deploy` a task kind (T-20261013-232
         "tr_rev_actors_ins",
         "tr_rev_actors_upd",
         "tr_tasks_children_terminal",
+        "tr_tasks_reopen_state",
         "tr_tasks_review_marker_immutable",
       ];
       const LATER_TRIGGERS_REMOVED = [
@@ -242,8 +243,16 @@ describe("storage/migrations — 0015 makes `deploy` a task kind (T-20261013-232
       const changed = Object.keys(oldTriggers).filter((name) => oldTriggers[name] !== newTriggers[name]).sort();
       assert.deepEqual(
         changed,
-        [...LATER_TRIGGERS_REMOVED, "tr_rev_tasks_upd", "tr_tasks_transition", "tr_deliver_gate"].sort(),
-        "0015 must change no trigger — 0019's own `tasks` rebuild moves `tr_rev_tasks_upd`, 0020 re-declares every trigger it parks verbatim, and 0024 rewrites the whitelist and the delivery gate in place for the epic overlay",
+        [
+          ...LATER_TRIGGERS_REMOVED,
+          "tr_rev_tasks_upd",
+          "tr_tasks_transition",
+          "tr_deliver_gate",
+          // 0027 rewrites the terminal guard and the round bump in place.
+          "tr_tasks_terminal",
+          "tr_tasks_round_bump",
+        ].sort(),
+        "0015 must change no trigger — 0019's own `tasks` rebuild moves `tr_rev_tasks_upd`, 0020 re-declares every trigger it parks verbatim, 0024 rewrites the whitelist and the delivery gate in place for the epic overlay, and 0027 rewrites the terminal guard and the round bump for reopen",
       );
 
       for (const name of ["tr_rel_cross_project", "tr_rel_parent_guard", "tr_rel_parent_epic"]) {

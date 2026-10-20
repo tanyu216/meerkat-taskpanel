@@ -13,13 +13,18 @@ A card has **eight stored status words**, but only **seven are stages** — the 
 | `in_progress` | Being worked. Holds the claim; a heartbeat keeps it fresh. |
 | `in_review` | Evidence attached, awaiting a verdict. The delivery gate lands here. |
 | `blocked` | Cannot proceed on its own; `blocked_reason` says what it waits for. |
-| `done` | Accepted. Terminal. |
-| `canceled` | Abandoned. Terminal. |
+| `done` | Accepted. Terminal, with one audited exit: reopen to `todo`. |
+| `canceled` | Abandoned. Terminal, with the same one exit. |
 
 `awaiting` is the **eighth literal but not an eighth column**: an *attention overlay* on an
 in-progress card that has stopped to ask a human a question, displayed under `in_progress`.
 
-- **`done` and `canceled` are terminal** — no reopen. More work means a **new card**.
+- **`done` and `canceled` are terminal, but may be reopened to `todo`.** The reopen is audited
+  (`issue reopen <ref> --reason "<why>"`, at least 8 characters), starts a **new delivery
+  round**, clears the archive and releases the idempotency key. `in_progress` is deliberately
+  not a reopen target: a reopened card has no claim holder and must be claimed again.
+  Review cards are refused — reopen the card they review, and the loop issues the next round's
+  review.
 - **Read aliases exist in the card file only.** `ready→todo`, `failed`/`cancelled→canceled`,
   `in-review→in_review`, `in-progress→in_progress`; the command surface rejects them
   (`VALIDATION_FAILED`). See `card-schema.md`.
@@ -40,10 +45,31 @@ in_progress → in_review, blocked, todo, canceled, awaiting
 awaiting    → in_progress, canceled
 in_review   → done, in_progress, blocked
 blocked     → todo, in_progress, in_review, canceled
-done        → (terminal)
-canceled    → (terminal)
+done        → todo
+canceled    → todo
 ```
 <!-- status-whitelist:end -->
+
+### 2a. Reopen
+
+`done|canceled → todo` is the only exit from a terminal status, and it is an **audited** move:
+
+- `issue reopen <ref> --reason "<why>"` (the same ≥ 8-character rule as `--allow-steal` and
+  `--no-report`); the activity is `task_reopened`, not `task_moved`.
+- `issue move <terminal-ref> todo --reason "<why>"` reaches the same edge and enforces the same
+  reason. There is no reasonless reopen.
+- The card starts a **new delivery round** (`delivery_round + 1`), so the old round's report
+  cannot satisfy the gate for the next delivery.
+- `archived_at` is cleared (the card returns to the board) and `idem` is released (the finished
+  row had already released it; keeping it would re-enter `ux_tasks_idem_active`).
+- **Only `todo`.** `in_progress` would be a work state without a claim.
+- **Review cards are refused** (`INVALID_TRANSITION`): reopening the original is the action
+  that produces the next round's review. `reconcile --workflow` would otherwise close a
+  reopened review card on its next tick.
+- Raw SQL reaches the edge (the trigger allows it) but does not require a reason — the audit is
+  a service rule, exactly like `--allow-steal`.
+- Reopening a child does **not** reopen a terminal parent epic; reopen the container itself
+  (or run `issue reconcile`) if its roll-up should be reviewed again.
 
 ### What is not a transition
 
@@ -60,7 +86,7 @@ A pair on the whitelist can still be refused; the target decides which guard app
 | Target | What must be true as well |
 |---|---|
 | `backlog` | Nothing; leaving the work cycle releases the claim. |
-| `todo` | Nothing; the card must be claimed again. |
+| `todo` | Nothing; the card must be claimed again. From `done`/`canceled` this is a **reopen**: `--reason` of at least 8 characters, review cards refused, and a new delivery round (§2a). |
 | `in_progress` | From `todo` this **is a claim**: the assignee, or an audited `--allow-steal --reason` of at least 8 characters; an `epic` is refused (`not_claimable`). From `in_review`/`blocked` it is **rework/unblock** — keeps the executor. From `awaiting` it is a **resume**; the round does not move. |
 | `in_review` | The **delivery gate**: a `delivery` report for the current `delivery_round`, or an audited waiver for that round (§4). Every child must be terminal (`CHILDREN_OPEN`). |
 | `blocked` | `--blocked-reason` is **optional**. Entering `blocked` does not bump the round; **`in_review → blocked` does**. |
@@ -75,6 +101,8 @@ The first refusal wins, so the error you see is stable:
 1. waiver shape (`--no-report` only to `in_review`, never with a report, reason ≥ 8 chars);
 2. the `awaiting` / `blocked` reason vocabulary;
 3. the whitelist (`INVALID_TRANSITION` / `TERMINAL_STATE`);
+3a. for a terminal source: the audited reopen reason (≥ 8 characters) and the review-card
+   refusal;
 4. for `done`: acceptance authority (`ACCEPTANCE_FORBIDDEN`);
 5. for `in_review` and `done`: children terminal (`CHILDREN_OPEN`);
 6. for `todo → in_progress`: the claim gate (`not_assignee`, `EXECUTION_ACTIVE`,
@@ -214,7 +242,7 @@ The markdown importer is the exception: it writes history directly, importing
 | Code | HTTP | When |
 |---|---|---|
 | `INVALID_TRANSITION` | 409 | The pair is not on the whitelist; `PATCH {status}`; heartbeat on a non-`in_progress` card; `issue claim` on a status other than `todo`. |
-| `TERMINAL_STATE` | 409 | The source is `done` or `canceled`. |
+| `TERMINAL_STATE` | 409 | The source is `done` or `canceled` and the target is not `todo` (or `deliver` is attempted from it). |
 | `REPORT_REQUIRED` | 422 | Entering `in_review` without a current-round report or waiver; creating in `in_review`/`done`. |
 | `ACCEPTANCE_FORBIDDEN` | 409 | The writer may not move the card to `done` under the policy/scope matrix. |
 | `CHILDREN_OPEN` | 409 | `in_review` or `done` while a child is non-terminal. |
@@ -237,7 +265,7 @@ is refused with `INVALID_TRANSITION`.
 |---|---|
 | Transition whitelist | domain `ALLOWED_TRANSITIONS` + DB trigger |
 | Delivery gate | domain + DB trigger |
-| Terminal statuses never leave | domain + DB trigger |
+| Terminal statuses leave only for `todo` | domain + DB trigger (the reason is service-only) |
 | Children terminal before a parent closes | service + DB trigger |
 | Acceptance authority | **service only** — the actor is not a column |
 | Claim routing and freshness | service + compare-and-swap |
@@ -287,7 +315,8 @@ The fail-safe rules are part of the decision:
 - Evidence attached, awaiting a verdict → `in_review` (`issue deliver`).
 - Accepted → `done`, by whoever the policy/scope matrix allows.
 - Abandoned → `canceled`; from `in_review` that is two hops.
-- “Reopen” → there is no reopen. Create a new card.
+- “Reopen” → `done`/`canceled` → `todo`, with `issue reopen <ref> --reason "<why>"` (audited;
+  starts a new round). Review cards cannot be reopened — reopen the original.
 
 `blocked` is the card's own declaration that it cannot proceed; `awaiting` is a question
 addressed to a human. `blocked_reason` is optional and cleared on exit; `blocked_at` is kept

@@ -904,6 +904,25 @@
           ]
         },
         {
+          "name": "reopen",
+          "positionals": [
+            {
+              "name": "ref",
+              "summary": "Task id or identifier."
+            }
+          ],
+          "flags": [
+            {
+              "flag": "reason",
+              "as": "string",
+              "value": "<why>",
+              "required": false,
+              "repeat": false,
+              "short": null
+            }
+          ]
+        },
+        {
           "name": "update",
           "positionals": [
             {

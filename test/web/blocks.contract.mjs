@@ -1680,6 +1680,10 @@ const BLOCKS = [
       // no `data-readonly` until a terminal card is opened, so a drawer that
       // leaked the attribute would red here rather than on the next card.
       { kind: "count", selector: "[data-detail-readonly][hidden]", equals: 1 },
+      // A terminal card's one writable action exists in the document and is
+      // hidden at rest; the reason panel is rendered only while the prompt is
+      // open, so it is not counted here.
+      { kind: "count", selector: "[data-detail-reopen][hidden]", equals: 1 },
       { kind: "count", selector: "[data-detail-drawer][data-readonly=\"true\"]", equals: 0 },
       // R8 ③ — the drawer's identifier wears the same single-line guard as the
       // card's and the list row's (the cap itself is the render-layer slice), and
@@ -3340,6 +3344,14 @@ export const AUXILIARY_HOOKS = Object.freeze([
   Object.freeze({ selector: "[data-attachment-preview-close]", purpose: "the dialog's close button" }),
   Object.freeze({ selector: "[data-attachment-preview-loading]", purpose: "the dialog's loading sentence" }),
   Object.freeze({ selector: "[data-attachment-preview-error]", purpose: "the dialog's failure sentence" }),
+  // The terminal card's one writable action — implementation-only, like the
+  // attachment preview: the prototype's terminal drawer deliberately offers no
+  // action, and the shipped board offers the audited reopen.
+  Object.freeze({ selector: "[data-detail-reopen]", purpose: "the terminal card's audited reopen control" }),
+  Object.freeze({ selector: "[data-detail-reopen-panel]", purpose: "the reopen reason prompt" }),
+  Object.freeze({ selector: "[data-detail-reopen-reason]", purpose: "the reopen reason draft" }),
+  Object.freeze({ selector: "[data-detail-reopen-confirm]", purpose: "the reopen confirmation button" }),
+  Object.freeze({ selector: "[data-detail-reopen-cancel]", purpose: "the reopen cancellation button" }),
   Object.freeze({ selector: "[data-label]", purpose: "one chip per card label" }),
   Object.freeze({ selector: "[data-assignee-value]", purpose: "the name an assignee roster option carries" }),
   Object.freeze({ selector: "[data-reporter-value]", purpose: "the name a reporter roster option carries" }),

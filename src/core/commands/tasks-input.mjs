@@ -43,11 +43,12 @@
 import { DomainError } from "../../foundation/errors.mjs";
 import { PRIORITIES, STATUSES, TASK_KINDS } from "../domain/enums.mjs";
 
-/** The eight operations this module covers. */
+/** The nine operations this module covers. */
 export const TASK_OPS = Object.freeze({
   create: "tasks.create",
   update: "tasks.update",
   move: "tasks.move",
+  reopen: "tasks.reopen",
   claim: "tasks.claim",
   deliver: "tasks.deliver",
   assign: "tasks.assign",
@@ -162,6 +163,17 @@ const MOVE = Object.freeze([
 ]);
 
 /**
+ * `tasks.reopen` — the one destination is `todo`, so it is a positional
+ * characteristic of the operation, not a wire field. The reason is required by
+ * the command layer (the same audited-exception pattern as `--allow-steal`);
+ * `if_version` rides the global flag.
+ */
+const REOPEN = Object.freeze([
+  both("reason"),
+  both("if_version", { type: INTEGER }),
+]);
+
+/**
  * `tasks.claim` — the claim/reclaim verb.
  *
  * A `todo → in_progress` move is a claim, but a claim is **not** a transition:
@@ -216,6 +228,7 @@ const FIELDS = Object.freeze({
   [TASK_OPS.create]: CREATE,
   [TASK_OPS.update]: UPDATE,
   [TASK_OPS.move]: MOVE,
+  [TASK_OPS.reopen]: REOPEN,
   [TASK_OPS.claim]: CLAIM,
   [TASK_OPS.deliver]: DELIVER,
   [TASK_OPS.assign]: ASSIGN,
@@ -233,6 +246,7 @@ const REQUIRED = Object.freeze({
   [TASK_OPS.create]: Object.freeze([]),
   [TASK_OPS.update]: Object.freeze([]),
   [TASK_OPS.move]: Object.freeze(["to"]),
+  [TASK_OPS.reopen]: Object.freeze([]),
   [TASK_OPS.claim]: Object.freeze([]),
   [TASK_OPS.deliver]: Object.freeze([]),
   [TASK_OPS.assign]: Object.freeze([]),
