@@ -2,7 +2,7 @@
 
 > **口径一句话**：抽屉里能否预览，由**已存储的 `content_type`** 决定；预览字节经 **blob URL** 进入页面，下载端点**恒为** `content-disposition: attachment`，board 的 origin 永远不渲染用户内容。
 >
-> 事实源（实读）：`src/shared/constants.mjs`（白名单与上限）、`src/shared/attachments.mjs`（类型归一与扩展名映射）、`src/server/routes/attachments.mjs`（字节端点）、`web/src/lib/attachments.js`（`previewKind`）、`web/src/components/detail/DetailDrawer.vue`（展开区）、`test/contract/**` / `test/server/**` / `test/web/**` / `test/cli/**` 与 `web/scripts/dom-smoke.mjs`（判据）。
+> 事实源（实读）：`src/shared/constants.mjs`（白名单与上限）、`src/shared/attachments.mjs`（类型归一与扩展名映射）、`src/server/routes/attachments.mjs`（字节端点）、`web/src/lib/attachments.js`（`previewKind`）、`web/src/components/detail/DetailDrawer.vue`（预览弹窗）、`test/contract/**` / `test/server/**` / `test/web/**` / `test/cli/**` 与 `web/scripts/dom-smoke.mjs`（判据）。
 > **本文件是新增文件**：不改 `design/prototype/**` 一行；不改 `design/DESIGN.md` / `design/BLOCKS.md` 的既有规则，只在 §B09 尾注补一段实现侧钩子的登记。
 
 ## 0. 结论摘要
@@ -12,7 +12,8 @@
 - **③ 字节通路 = fetch → Blob → `URL.createObjectURL`。** `GET /api/v1/attachments/:id/content` 的三个 header 不变：`content-disposition: attachment`、`x-content-type-options: nosniff`、`cache-control: no-store`。不新增 `inline` 分支、不新增 `/preview` 路由、不加 `Range`（blob 全量缓冲且可 seek）。
 - **④ 白名单 = 封闭集。** `text/html` 与 `image/svg+xml` 仍然**不可存储**；视频只收 `video/mp4` 与 `video/webm`（`video/quicktime`、`video/ogg` 不收：能传不能播比不支持更糟）。
 - **⑤ 单文件上限 = 64 MiB。** 该值在 `ERROR_CODES.ATTACHMENT_TOO_LARGE` 与抽屉两种语言的 `error.attachTooLarge` 里有手抄回声，`test/contract/attachment-policy.test.mjs` 把它们钉到常量上。
-- **⑥ 一次只展开一个预览；关闭抽屉 / 换卡 / 行消失 / 组件卸载都会 revoke blob URL。**
+- **⑥ 预览是覆盖整个视口的弹窗，同一时刻只有一个；✕ 与 Escape 都只关闭弹窗、不关闭抽屉，焦点归还给触发它的行按钮。** 关闭抽屉 / 换卡 / 行消失 / 组件卸载都会 revoke blob URL。
+- **⑦ 弹窗必须 Teleport 到 `<body>`。** `.td-drawer` 带 `transform`，会成为 `position: fixed` 子元素的包含块；留在抽屉里的"全屏"层只会覆盖抽屉自己。
 
 ## 1. 原型偏离（本契约存在的理由）
 
@@ -20,10 +21,11 @@
 
 | 钩子 | 席位 |
 |---|---|
-| `[data-attachment-open]` | 可预览行的文件名（`<button>`，带 `aria-expanded` / `aria-controls`） |
-| `[data-attachment-preview]` | 展开区，`data-attachment-preview-kind="image\|video\|pdf\|markdown"` |
-| `[data-attachment-preview-loading]` | 展开区的加载句 |
-| `[data-attachment-preview-error]` | 展开区的失败句（字节 404 时） |
+| `[data-attachment-open]` | 可预览行的**眼睛**按钮，排在下载之前（带 `aria-haspopup="dialog"` / `aria-controls`；文件名保持纯文本 `<span>`） |
+| `[data-attachment-preview]` | 全屏弹窗（`role="dialog"`、`aria-modal="true"`），`data-attachment-preview-kind="image\|video\|pdf\|markdown"` |
+| `[data-attachment-preview-close]` | 弹窗头部的 ✕ |
+| `[data-attachment-preview-loading]` | 弹窗的加载句 |
+| `[data-attachment-preview-error]` | 弹窗的失败句（字节 404 时） |
 
 登记位置：`test/web/blocks.contract.mjs` 的 `AUXILIARY_HOOKS`、`design/BLOCKS.md` §B09 尾注、本文件。**原型不回填**（契约不是从实现反写原型的）。下一次设计轮需要补这一笔；在补上之前，原型与实现在这一处**有意不一致**。
 
@@ -32,7 +34,7 @@
 - 纯函数：`node --test test/web/attachments.test.mjs`（四族命中、大小写/参数折叠、其余为 `null`）。
 - 策略：`node --test test/contract/attachment-policy.test.mjs`（视频两容器在册、两处页面类型不在册、扩展名映射、64 MiB、三处文案与常量同值）。
 - HTTP：`node --test test/server/attachments.test.mjs`（视频行可建、字节端点仍答 `attachment` + `nosniff` + `no-store`）。
-- 浏览器：`node web/scripts/dom-smoke.mjs`（四族各开一次、源是 `blob:`、zip 行没有 `[data-attachment-open]`、二次点击收起）。
+- 浏览器：`node web/scripts/dom-smoke.mjs`（四族各开一次、源是 `blob:`、弹窗覆盖整个视口且不在抽屉子树内、焦点落在 ✕ 上、✕ 与 Escape 都只关闭弹窗并把焦点还给眼睛按钮、操作簇顺序为「眼睛 → 下载 → 移除」且文件名是 `<span>`、zip 行没有眼睛）。
 
 ## 3. 明确不做
 

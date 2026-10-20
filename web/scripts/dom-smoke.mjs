@@ -1512,33 +1512,70 @@ export async function run() {
     );
 
     /* ---- the attachment preview -------------------------------------------
-       A row whose stored type the drawer can render opens its bytes in place
-       (implementation-only; the prototype has no preview arithmetic, so this
-       interaction is measured rather than declared in the contract — the
-       contract's rule kinds read a document, they cannot press a button).
+       A row whose stored type the drawer can render opens its bytes in a
+       **full-screen dialog** (implementation-only; the prototype has no preview
+       arithmetic, so this interaction is measured rather than declared in the
+       contract — the contract's rule kinds read a document, they cannot press a
+       button).
 
-       One row per family is opened in turn. The assertion is deliberately the
-       *blob* source: the board's content route keeps saying `attachment`, so the
-       preview must never be a direct navigation to that URL. The zip row is the
-       negative: a type the drawer cannot render must not offer to open. */
+       One row per family is opened in turn. The assertions that matter: the
+       overlay covers the viewport and is teleported out of the drawer (whose
+       transform would otherwise become its containing block), the source is a
+       *blob* URL (the content route keeps saying `attachment`, so it must never
+       be a direct navigation), focus lands on the close button, ✕ closes the
+       dialog without closing the drawer and hands focus back to the row, and
+       Escape does the same. The zip row is the negative: a type the drawer
+       cannot render must not offer to open. */
     const previewFailures = [];
     const previewCheck = (ok, message) => { if (!ok) previewFailures.push(message); };
     const readPreview = () =>
-      page.evaluate(() => ({
-        rows: [...document.querySelectorAll("[data-attachment-row]")].map((row) => ({
-          name: row.querySelector("[data-attachment-name]")?.textContent?.trim() ?? "",
-          open: row.querySelector("[data-attachment-open]") !== null,
-          expanded: row.querySelector("[data-attachment-open]")?.getAttribute("aria-expanded") ?? null,
-        })),
-        regions: [...document.querySelectorAll("[data-attachment-preview]")].map((region) => ({
-          kind: region.getAttribute("data-attachment-preview-kind"),
-          image: region.querySelector("img")?.getAttribute("src") ?? null,
-          video: region.querySelector("video")?.getAttribute("src") ?? null,
-          pdf: region.querySelector("iframe")?.getAttribute("src") ?? null,
-          markdown: region.querySelector(".td-gfm")?.innerHTML ?? null,
-          error: region.querySelector("[data-attachment-preview-error]") !== null,
-        })),
-      }));
+      page.evaluate(() => {
+        const overlay = document.querySelector("[data-attachment-preview]");
+        const rect = overlay?.getBoundingClientRect() ?? null;
+        return {
+          viewport: { width: innerWidth, height: innerHeight },
+          rows: [...document.querySelectorAll("[data-attachment-row]")].map((row) => ({
+            name: row.querySelector("[data-attachment-name]")?.textContent?.trim() ?? "",
+            nameTag: row.querySelector("[data-attachment-name]")?.tagName?.toLowerCase() ?? null,
+            open: row.querySelector("[data-attachment-open]") !== null,
+            popup: row.querySelector("[data-attachment-open]")?.getAttribute("aria-haspopup") ?? null,
+            // The action cluster's order, read from the DOM rather than assumed:
+            // the eye is the **view** affordance and sits before download.
+            actions: [...row.querySelectorAll("[data-attachment-open], [data-attachment-download], [data-attachment-remove]")]
+              .filter((element) => element.closest(".td-file-actions") !== null)
+              .map((element) =>
+                element.hasAttribute("data-attachment-open")
+                  ? "open"
+                  : element.hasAttribute("data-attachment-download")
+                    ? "download"
+                    : "remove",
+              ),
+          })),
+          overlays: overlay
+            ? [
+                {
+                  kind: overlay.getAttribute("data-attachment-preview-kind"),
+                  role: overlay.getAttribute("role"),
+                  modal: overlay.getAttribute("aria-modal"),
+                  inDrawer: overlay.closest("[data-detail-drawer]") !== null,
+                  rect: rect && { width: rect.width, height: rect.height, top: rect.top, left: rect.left },
+                  image: overlay.querySelector("img")?.getAttribute("src") ?? null,
+                  video: overlay.querySelector("video")?.getAttribute("src") ?? null,
+                  pdf: overlay.querySelector("iframe")?.getAttribute("src") ?? null,
+                  markdown: overlay.querySelector(".td-gfm")?.innerHTML ?? null,
+                  close: overlay.querySelector("[data-attachment-preview-close]") !== null,
+                  error: overlay.querySelector("[data-attachment-preview-error]") !== null,
+                },
+              ]
+            : [],
+          focus: document.activeElement?.hasAttribute?.("data-attachment-preview-close")
+            ? "close"
+            : document.activeElement?.hasAttribute?.("data-attachment-open")
+              ? "row"
+              : document.activeElement?.tagName?.toLowerCase() ?? null,
+          drawerState: document.querySelector("[data-detail-drawer]")?.getAttribute("data-state") ?? null,
+        };
+      });
     const pressAttachment = (name) =>
       page.evaluate((wanted) => {
         const row = [...document.querySelectorAll("[data-attachment-row]")].find(
@@ -1546,6 +1583,7 @@ export async function run() {
         );
         row?.querySelector("[data-attachment-open]")?.click();
       }, name);
+    const pressSelector = (selector) => page.evaluate((wanted) => document.querySelector(wanted)?.click(), selector);
 
     const previewRest = await readPreview();
     previewCheck(previewRest.rows.length === 5, `expected 5 attachment rows, read ${previewRest.rows.length}`);
@@ -1558,9 +1596,21 @@ export async function run() {
       "the zip row carries an open affordance; a type the drawer cannot render must not",
     );
     previewCheck(
-      previewRest.rows.every((row) => row.expanded !== "true"),
-      "an attachment row claims aria-expanded=true before anything was pressed",
+      previewRest.rows.filter((row) => row.open).every((row) => row.popup === "dialog"),
+      `a previewable row's button does not announce a dialog: ${JSON.stringify(previewRest.rows)}`,
     );
+    previewCheck(previewRest.overlays.length === 0, "a preview overlay is present before anything was pressed");
+    for (const row of previewRest.rows) {
+      const expected = row.open ? "open,download,remove" : "download,remove";
+      previewCheck(
+        row.actions.join(",") === expected,
+        `${row.name}: the action cluster reads ${row.actions.join(",") || "(none)"}, expected ${expected}`,
+      );
+      previewCheck(
+        row.nameTag === "span",
+        `${row.name}: the filename is a <${row.nameTag}>, expected a plain span — the eye button is the affordance`,
+      );
+    }
 
     for (const [name, kind, reader] of [
       ["focus-order-record.png", "image", "image"],
@@ -1571,10 +1621,19 @@ export async function run() {
       await pressAttachment(name);
       await page.waitForTimeout(150);
       const read = await readPreview();
-      const region = read.regions[0];
-      previewCheck(read.regions.length === 1, `${name}: expected exactly one open preview, read ${read.regions.length}`);
-      previewCheck(region?.kind === kind, `${name}: preview kind ${JSON.stringify(region?.kind)}, expected ${kind}`);
-      const source = region?.[reader] ?? null;
+      const overlay = read.overlays[0];
+      previewCheck(read.overlays.length === 1, `${name}: expected exactly one preview dialog, read ${read.overlays.length}`);
+      previewCheck(overlay?.kind === kind, `${name}: preview kind ${JSON.stringify(overlay?.kind)}, expected ${kind}`);
+      previewCheck(overlay?.role === "dialog" && overlay?.modal === "true", `${name}: the overlay is not a modal dialog`);
+      previewCheck(overlay?.inDrawer === false, `${name}: the dialog renders inside the drawer; it must be teleported to the body`);
+      previewCheck(
+        overlay?.rect?.top === 0 &&
+          overlay?.rect?.left === 0 &&
+          Math.abs((overlay?.rect?.width ?? 0) - read.viewport.width) <= 1 &&
+          Math.abs((overlay?.rect?.height ?? 0) - read.viewport.height) <= 1,
+        `${name}: the dialog is ${JSON.stringify(overlay?.rect)} in a ${JSON.stringify(read.viewport)} viewport, expected to cover it`,
+      );
+      const source = overlay?.[reader] ?? null;
       previewCheck(typeof source === "string" && source.length > 0, `${name}: the ${kind} renderer received no source`);
       if (reader !== "markdown") {
         previewCheck(
@@ -1582,18 +1641,24 @@ export async function run() {
           `${name}: the ${kind} source is ${JSON.stringify(source)}, expected a blob: URL (never the content route directly)`,
         );
       }
-      const row = read.rows.find((entry) => entry.name === name);
-      previewCheck(row?.expanded === "true", `${name}: aria-expanded is ${JSON.stringify(row?.expanded)}, expected true`);
+      previewCheck(overlay?.close === true, `${name}: the dialog has no [data-attachment-preview-close]`);
+      previewCheck(read.focus === "close", `${name}: focus after opening is ${read.focus}, expected the close button`);
     }
+
+    await pressSelector("[data-attachment-preview-close]");
+    await page.waitForTimeout(150);
+    const previewClosed = await readPreview();
+    previewCheck(previewClosed.overlays.length === 0, "✕ did not close the preview dialog");
+    previewCheck(previewClosed.drawerState === "open", "closing the preview also closed the drawer");
+    previewCheck(previewClosed.focus === "row", `focus after closing is ${previewClosed.focus}, expected the row's open button`);
 
     await pressAttachment("board-keyboard-spec.md");
     await page.waitForTimeout(150);
-    const previewClosed = await readPreview();
-    previewCheck(previewClosed.regions.length === 0, "the second press on an open row did not close its preview");
-    previewCheck(
-      previewClosed.rows.every((row) => row.expanded !== "true"),
-      "a closed preview left a row claiming aria-expanded=true",
-    );
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    const previewEscaped = await readPreview();
+    previewCheck(previewEscaped.overlays.length === 0, "Escape did not close the preview dialog");
+    previewCheck(previewEscaped.drawerState === "open", "Escape closed the drawer as well as the preview dialog");
 
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
@@ -6389,7 +6454,7 @@ if (isEntryPoint) run().then(
         console.log(`Attachment preview — ${report.attachmentPreview.failures.length} failed:`);
         for (const failure of report.attachmentPreview.failures) console.log(`  ✗ ${failure}`);
       } else {
-        console.log("Attachment preview — image / pdf / video / markdown open as blob-backed renderers, the zip row offers no open affordance and a second press closes");
+        console.log("Attachment preview — image / pdf / video / markdown open in a full-screen blob-backed dialog, ✕ and Escape close it without closing the drawer and hand focus back to the row, and the zip row offers no open affordance");
       }
       if (report.drawerTabs.failures.length > 0) {
         console.log(`v4 (drawer tabs) — ${report.drawerTabs.failures.length} failed:`);

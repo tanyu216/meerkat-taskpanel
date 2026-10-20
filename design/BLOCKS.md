@@ -658,16 +658,18 @@ drawer's activity rows). 实测：原型 18 个 `template[data-detail-for]` 的 
 (a contract is not rewritten from an implementation). Recorded here only so the two surfaces' hook
 inventories can be compared.
 
-**The drawer's inline attachment preview (implementation-only).** 〔原型无此交互；由
+**The drawer's attachment preview dialog (implementation-only).** 〔原型无此交互；由
 `test/web/blocks.contract.mjs` 的 `AUXILIARY_HOOKS` 与 `design/contracts/attachment-preview.md`
-背书〕 A row whose stored `content_type` is one of the four preview families turns its filename
-into a disclosure button (`[data-attachment-open]`, with `aria-expanded`) and opens
-`[data-attachment-preview]` directly beneath it; the region carries
-`data-attachment-preview-kind` and, while it has no bytes to draw, one of
-`[data-attachment-preview-loading]` / `[data-attachment-preview-error]`. The prototype has no
-preview arithmetic (its rows carry only download/remove), so these four hooks are registered
-here as implementation-only and the prototype is **not** retro-fitted. The deviation is the
-contract's, not an oversight — see `design/contracts/attachment-preview.md`.〕
+背书〕 A row whose stored `content_type` is one of the four preview families carries an **eye**
+button in its action cluster, before download (`[data-attachment-open]`, with
+`aria-haspopup="dialog"`; the filename itself stays a plain `<span>`), and it opens a
+**full-screen** `[data-attachment-preview]` dialog — teleported to `<body>`, because the drawer's
+`transform` would otherwise become the containing block of a `position: fixed` child. The dialog
+carries `data-attachment-preview-kind`, a `[data-attachment-preview-close]` button, and, while it
+has no bytes to draw, one of `[data-attachment-preview-loading]` / `[data-attachment-preview-error]`.
+The prototype has no preview arithmetic (its rows carry only download/remove), so these five hooks
+are registered here as implementation-only and the prototype is **not** retro-fitted. The
+deviation is the contract's, not an oversight — see `design/contracts/attachment-preview.md`.〕
 
 ⚠️ `[data-activity-row]` / `[data-activity-actor]` are **also** B26's feed hooks (see **B26.2**),
 where the stamp is `[data-activity-at]` — 实测全文档 `[data-activity-row]` / `[data-activity-actor]`

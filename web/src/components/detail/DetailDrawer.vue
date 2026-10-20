@@ -17,7 +17,7 @@
  * `[data-detail-labels]` with no `when` precondition, so they must exist while
  * the drawer is closed; only their values are empty at rest.
  */
-import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import {
   board,
@@ -66,8 +66,7 @@ const fileInput = ref(null);
 /** The id of the attachment whose download is in flight (the row's busy beat). */
 const busyAttachment = ref("");
 /**
- * The attachment whose inline preview is expanded — **one at a time**, so the
- * drawer can never grow two viewers and push the card's own content off screen.
+ * The attachment whose **full-screen preview dialog** is open — one at a time.
  * `previewToken` invalidates an older fetch when the reader moves to another row
  * before it lands; `previewUrl` is the blob URL for image/video/pdf and
  * `previewHtml` the rendered markdown (the two are never both set).
@@ -76,6 +75,10 @@ const openPreviewId = ref("");
 const previewState = ref("idle");
 const previewUrl = ref("");
 const previewHtml = ref("");
+/** The dialog itself — the seat that takes focus when it opens. */
+const previewDialog = ref(null);
+/** The row button that opened the dialog, so focus can go back to it. */
+let previewTrigger = null;
 let previewToken = 0;
 
 /** The drawer panel itself — the seat that takes focus when it opens (C2). */
@@ -130,6 +133,8 @@ const labelNames = computed(() => task.value?.labels ?? []);
  * the "no attachments" state.
  */
 const attachments = computed(() => attachmentRows(detail.value?.attachments));
+/** The row the dialog is showing (a re-read can remove it; the watcher closes then). */
+const previewRow = computed(() => attachments.value.find((row) => row.id === openPreviewId.value) ?? null);
 
 /**
  * The two property menus' value domains, in the prototype's own order: the
@@ -671,33 +676,44 @@ function releasePreview() {
   previewState.value = "idle";
 }
 
-/** Close the preview and invalidate any fetch still in flight. */
+/**
+ * Close the dialog and invalidate any fetch still in flight.
+ *
+ * Focus goes back to the row button that opened it — the dialog is an overlay,
+ * so the keyboard has nowhere to land if the trigger does not take it back.
+ */
 function closePreview() {
+  const trigger = previewTrigger;
+  previewTrigger = null;
   openPreviewId.value = "";
   previewToken += 1;
   releasePreview();
+  if (trigger && trigger.isConnected) nextTick(() => trigger.focus());
 }
 
 /**
- * Open one attachment in place, or close it when it is already open.
+ * Open one attachment's full-screen dialog, or close it when it is already open.
  *
  * The bytes come through the **download** endpoint and are handed to the browser
  * as a blob URL — the route keeps stating `content-disposition: attachment`, so
  * the board never becomes the origin that renders a stored file as a document.
- * A row whose bytes are missing (an honest 404) becomes the region's own error
- * sentence rather than a toast: the reader is already looking at that row.
+ * A row whose bytes are missing (an honest 404) becomes the dialog's own error
+ * sentence rather than a toast: the reader is already looking at that file.
  */
-async function togglePreview(row) {
+async function togglePreview(row, event) {
   if (readonly.value || !row?.id || !row.previewKind) return;
   if (openPreviewId.value === row.id) {
     closePreview();
     return;
   }
+  previewTrigger = event?.currentTarget ?? null;
   openPreviewId.value = row.id;
   previewToken += 1;
   const token = previewToken;
   releasePreview();
   previewState.value = "loading";
+  await nextTick();
+  previewDialog.value?.querySelector("[data-attachment-preview-close]")?.focus();
   try {
     const blob = await fetchAttachmentBlob(row);
     if (token !== previewToken) return;
@@ -732,7 +748,24 @@ watch(readonly, (value) => {
   if (value) closePreview();
 });
 
-onBeforeUnmount(closePreview);
+/**
+ * Escape belongs to the dialog while it is open. The listener runs in the
+ * **capture** phase, before `App.vue`'s bubble handler, and stops the event
+ * there — otherwise one Escape would close the dialog *and* the drawer behind
+ * it. With no dialog open the handler does nothing and lets the drawer win.
+ */
+function onPreviewKeydown(event) {
+  if (event.key !== "Escape" || !openPreviewId.value) return;
+  event.preventDefault();
+  event.stopPropagation();
+  closePreview();
+}
+
+onMounted(() => document.addEventListener("keydown", onPreviewKeydown, true));
+onBeforeUnmount(() => {
+  document.removeEventListener("keydown", onPreviewKeydown, true);
+  closePreview();
+});
 
 async function removeAttachmentRow(row) {
   if (readonly.value) return;
@@ -1422,23 +1455,27 @@ function copyId() {
               <svg class="td-icon size-4" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M14 3v5h5M7 3h7l5 5v13H7z" />
               </svg>
-              <button
-                v-if="file.previewKind"
-                type="button"
-                class="td-file-name td-file-open"
-                data-attachment-name
-                data-attachment-open
-                :aria-expanded="openPreviewId === file.id ? 'true' : 'false'"
-                :aria-controls="file.id ? `td-attachment-preview-${file.id}` : undefined"
-                :disabled="readonly"
-                :aria-disabled="readonly ? 'true' : undefined"
-                @click="togglePreview(file)"
-              >
-                {{ file.name }}
-              </button>
-              <span v-else class="td-file-name" data-attachment-name>{{ file.name }}</span>
+              <span class="td-file-name" data-attachment-name>{{ file.name }}</span>
               <span class="td-file-size" data-attachment-size>{{ file.size }}</span>
               <span class="td-file-actions">
+                <button
+                  v-if="file.previewKind"
+                  type="button"
+                  class="td-iconbtn"
+                  data-attachment-open
+                  aria-haspopup="dialog"
+                  :aria-controls="file.id ? `td-attachment-preview-${file.id}` : undefined"
+                  :aria-label="$t('attachment.previewOpen')"
+                  :title="$t('attachment.previewOpen')"
+                  :disabled="readonly"
+                  :aria-disabled="readonly ? 'true' : undefined"
+                  @click="togglePreview(file, $event)"
+                >
+                  <svg class="td-icon size-4" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                </button>
                 <button
                   type="button"
                   class="td-iconbtn"
@@ -1469,48 +1506,6 @@ function copyId() {
                   </svg>
                 </button>
               </span>
-            </div>
-            <div
-              v-if="file.previewKind && openPreviewId === file.id"
-              :id="`td-attachment-preview-${file.id}`"
-              class="td-file-preview"
-              data-attachment-preview
-              :data-attachment-preview-kind="file.previewKind"
-              role="region"
-              :aria-label="$t('attachment.preview')"
-            >
-              <span
-                v-if="previewState === 'loading'"
-                class="td-file-preview-status"
-                data-attachment-preview-loading
-                >{{ $t("attachment.previewLoading") }}</span
-              >
-              <span
-                v-else-if="previewState === 'error'"
-                class="td-file-preview-status"
-                data-attachment-preview-error
-                >{{ $t("attachment.previewError") }}</span
-              >
-              <img
-                v-else-if="file.previewKind === 'image' && previewUrl"
-                class="td-file-preview-image"
-                :src="previewUrl"
-                :alt="file.name"
-              />
-              <video
-                v-else-if="file.previewKind === 'video' && previewUrl"
-                class="td-file-preview-video"
-                :src="previewUrl"
-                controls
-                preload="metadata"
-              ></video>
-              <iframe
-                v-else-if="file.previewKind === 'pdf' && previewUrl"
-                class="td-file-preview-pdf"
-                :src="previewUrl"
-                :title="file.name"
-              ></iframe>
-              <div v-else-if="file.previewKind === 'markdown'" class="td-gfm td-file-preview-md" v-html="previewHtml"></div>
             </div>
           </template>
           <span v-if="task && attachments.length === 0" class="text-xs text-(--brand-text-3)" data-i18n="attachments.none">{{ $t("attachments.none") }}</span>
@@ -1693,4 +1688,70 @@ function copyId() {
       </div>
     </div>
   </aside>
+
+  <!-- B09 · the attachment preview dialog. **Teleported to `<body>`** on purpose:
+       `.td-drawer` carries a `transform`, which makes it the containing block for
+       a `position: fixed` descendant — inside the drawer the dialog would cover
+       the drawer's own box, not the viewport. Escaping the drawer also keeps the
+       dialog out of the drawer's scroll container and above it in paint order. -->
+  <Teleport to="body">
+    <div
+      v-if="previewRow"
+      ref="previewDialog"
+      :id="`td-attachment-preview-${previewRow.id}`"
+      class="td-preview"
+      data-attachment-preview
+      :data-attachment-preview-kind="previewRow.previewKind"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="`${$t('attachment.preview')} — ${previewRow.name}`"
+    >
+      <header class="td-preview-head">
+        <span class="td-preview-name" data-attachment-preview-name>{{ previewRow.name }}</span>
+        <button
+          type="button"
+          class="td-iconbtn"
+          data-attachment-preview-close
+          :aria-label="$t('attachment.previewClose')"
+          :title="$t('attachment.previewClose')"
+          @click="closePreview"
+        >
+          <svg class="td-icon size-4" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6 6l12 12M18 6 6 18" />
+          </svg>
+        </button>
+      </header>
+      <div class="td-preview-body">
+        <span
+          v-if="previewState === 'loading'"
+          class="td-preview-status"
+          data-attachment-preview-loading
+          >{{ $t("attachment.previewLoading") }}</span
+        >
+        <span
+          v-else-if="previewState === 'error'"
+          class="td-preview-status"
+          data-attachment-preview-error
+          >{{ $t("attachment.previewError") }}</span
+        >
+        <img
+          v-else-if="previewRow.previewKind === 'image' && previewUrl"
+          :src="previewUrl"
+          :alt="previewRow.name"
+        />
+        <video
+          v-else-if="previewRow.previewKind === 'video' && previewUrl"
+          :src="previewUrl"
+          controls
+          preload="metadata"
+        ></video>
+        <iframe
+          v-else-if="previewRow.previewKind === 'pdf' && previewUrl"
+          :src="previewUrl"
+          :title="previewRow.name"
+        ></iframe>
+        <div v-else-if="previewRow.previewKind === 'markdown'" class="td-gfm td-preview-md" v-html="previewHtml"></div>
+      </div>
+    </div>
+  </Teleport>
 </template>
