@@ -5976,6 +5976,179 @@ export async function run() {
       if (m7Dir) rmSync(m7Dir, { recursive: true, force: true });
     }
 
+    /* ---- UI fixes · dropdown anchoring, combo values, status dots, chips,
+       cross-view narrowing and platform colours ----------------------------
+       A self-contained pass: it reloads the board rather than inheriting the
+       route/theme/language the routing leg left behind. Every assertion targets
+       a behaviour Terry reported, so a regression here is a user-visible one,
+       not a geometry nicety. */
+    const uiFailures = [];
+    const uiCheck = (ok, message) => {
+      if (!ok) uiFailures.push(message);
+    };
+    const ui = {};
+    try {
+      await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "domcontentloaded" });
+      await page.waitForFunction(() => document.querySelectorAll("[data-card]").length > 0, null, { timeout: 10_000 });
+
+      // ① Every filter dropdown opens *visibly*: fixed-position, anchored, and
+      //    the point under its centre is the menu itself. Before the anchoring
+      //    rule the 32px bar clipped the panel and the click fell through.
+      ui.filters = {};
+      for (const hook of ["data-filter-assignee", "data-filter-priority", "data-filter-status", "data-filter-label"]) {
+        const control = page.locator(`[${hook}]`);
+        await control.locator("summary").click();
+        await page.waitForTimeout(60);
+        ui.filters[hook] = await control.locator(".td-details-menu").evaluate((menu) => {
+          const rect = menu.getBoundingClientRect();
+          const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+          return {
+            position: getComputedStyle(menu).position,
+            anchored: menu.getAttribute("data-anchored"),
+            hitInside: hit !== null && menu.contains(hit),
+            top: Math.round(rect.top),
+            bottom: Math.round(rect.bottom),
+          };
+        });
+        const reading = ui.filters[hook];
+        uiCheck(reading.position === "fixed" && reading.anchored === "true", `${hook}: the menu is ${reading.position}/${reading.anchored}, not a fixed anchored panel`);
+        uiCheck(reading.hitInside, `${hook}: the menu's centre is not hit-testable (the bar still clips it)`);
+        await control.locator("summary").click();
+        await page.waitForTimeout(30);
+      }
+      ui.barOverflow = await page.evaluate(() => getComputedStyle(document.querySelector("[data-filters]")).overflowX);
+      uiCheck(ui.barOverflow === "auto", `[data-filters] overflow-x is ${ui.barOverflow}, the contract expects auto`);
+
+      // ② The reporter shows what it holds, for a roster row and for a new name.
+      await page.click("[data-new-task]");
+      await page.waitForTimeout(120);
+      const reporterInput = page.locator("[data-create-task] [data-reporter-input]");
+      await reporterInput.click();
+      await reporterInput.fill("linus");
+      await page.waitForTimeout(80);
+      await page.locator('[data-create-task] [data-reporter-option][data-reporter-value="linus"]').click();
+      await page.waitForTimeout(80);
+      ui.reporterPicked = await reporterInput.inputValue();
+      uiCheck(ui.reporterPicked === "linus", `the reporter box shows ${JSON.stringify(ui.reporterPicked)} after choosing linus`);
+      await reporterInput.click();
+      await reporterInput.fill("New Reporter");
+      await page.waitForTimeout(80);
+      await page.keyboard.press("Enter");
+      await page.waitForTimeout(80);
+      ui.reporterNew = await reporterInput.inputValue();
+      uiCheck(ui.reporterNew === "New Reporter", `the reporter box shows ${JSON.stringify(ui.reporterNew)} after typing a new name`);
+
+      // ③ The status control is a dropdown whose rows (and trigger) wear the
+      //    board's coloured dot.
+      const statusControl = page.locator("[data-create-task-status]");
+      ui.statusTag = await statusControl.evaluate((el) => el.tagName);
+      uiCheck(ui.statusTag === "DETAILS", `[data-create-task-status] is a <${ui.statusTag}>, not the dot-bearing dropdown`);
+      await statusControl.locator("summary").click();
+      await page.waitForTimeout(60);
+      ui.statusRows = await statusControl.locator("[data-create-task-status-option]").count();
+      ui.statusDots = await statusControl.locator("[data-create-task-status-option] .td-status-dot").count();
+      uiCheck(ui.statusRows === 5 && ui.statusDots === 5, `the status menu has ${ui.statusRows} rows and ${ui.statusDots} dots, expected 5/5`);
+      await statusControl.locator('[data-create-task-status-option][data-status-value="blocked"]').click();
+      await page.waitForTimeout(60);
+      ui.statusValue = await statusControl.getAttribute("data-create-task-status-value");
+      ui.statusDot = await statusControl.evaluate((el) => {
+        const dot = el.querySelector("summary .td-status-dot");
+        const probe = document.createElement("span");
+        probe.className = "td-status-dot";
+        probe.setAttribute("data-status", "blocked");
+        document.body.append(probe);
+        const expected = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return { got: getComputedStyle(dot).backgroundColor, expected };
+      });
+      uiCheck(ui.statusValue === "blocked", `the status value is ${ui.statusValue} after choosing blocked`);
+      uiCheck(ui.statusDot.got === ui.statusDot.expected, `the trigger dot is ${ui.statusDot.got}, expected the blocked token ${ui.statusDot.expected}`);
+
+      // ④ A long relation title cannot grow the chip past the routing track.
+      await page.locator("[data-create-task] [data-parent-input]").click();
+      await page.locator("[data-create-task] [data-parent-input]").fill("TD");
+      await page.waitForTimeout(80);
+      await page.locator("[data-create-task] [data-parent-option]").first().click();
+      await page.waitForTimeout(80);
+      ui.chip = await page.evaluate(() => {
+        const chip = document.querySelector("[data-create-task] [data-parent-chip]");
+        const title = chip?.querySelector(".td-combo-title");
+        if (title) title.textContent = "A very long parent title ".repeat(20);
+        const track = document.querySelector("[data-create-right]");
+        const panel = document.querySelector("[data-create-task-panel]");
+        const rect = chip?.getBoundingClientRect();
+        return {
+          chipRight: rect?.right,
+          panelRight: panel?.getBoundingClientRect().right,
+          chipWidth: rect?.width,
+          trackWidth: track?.getBoundingClientRect().width,
+          titleScroll: title?.scrollWidth,
+          titleClient: title?.clientWidth,
+          documentOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      });
+      uiCheck(
+        ui.chip.chipRight !== undefined && ui.chip.chipRight <= ui.chip.panelRight + 1,
+        `the relation chip ends at ${ui.chip.chipRight}, past the dialog's ${ui.chip.panelRight}`,
+      );
+      uiCheck(
+        ui.chip.chipWidth <= ui.chip.trackWidth + 1,
+        `the relation chip is ${ui.chip.chipWidth}px in a ${ui.chip.trackWidth}px track`,
+      );
+      uiCheck(
+        ui.chip.titleScroll > ui.chip.titleClient,
+        `the chip title did not ellipsise (${ui.chip.titleScroll} / ${ui.chip.titleClient})`,
+      );
+      uiCheck(ui.chip.documentOverflow <= 0, `the dialog overflows the document by ${ui.chip.documentOverflow}px`);
+      await page.click("[data-modal-close]");
+      await page.waitForTimeout(80);
+
+      // ⑤ A roster press narrows Activity and Waiting, not only board/list.
+      await page.locator('[data-agent-assignee="linus"]').click();
+      await page.waitForTimeout(80);
+      await page.click('[data-nav-item="activity"]');
+      await page.waitForFunction(() => document.querySelectorAll("[data-activity-row]").length > 0, null, { timeout: 10_000 });
+      ui.activityActors = await page.locator("[data-activity-row]").evaluateAll((rows) => [...new Set(rows.map((row) => row.getAttribute("data-actor")))]);
+      uiCheck(ui.activityActors.length > 0 && ui.activityActors.every((actor) => actor === "linus"), `Activity's narrowed rows name ${JSON.stringify(ui.activityActors)}, expected every row to be linus`);
+      await page.click('[data-nav-item="waiting"]');
+      await page.waitForFunction(() => document.querySelectorAll("[data-waiting-item]").length > 0, null, { timeout: 10_000 });
+      ui.waitingActors = await page.locator("[data-waiting-item] [data-waiting-actor]").evaluateAll((els) => [...new Set(els.map((el) => el.textContent.trim()))]);
+      uiCheck(ui.waitingActors.length > 0 && ui.waitingActors.every((actor) => actor === "linus"), `Waiting's narrowed rows name ${JSON.stringify(ui.waitingActors)}, expected every row to be linus`);
+
+      // ⑥ The platform palette is mapped per theme. A probe row is enough: the
+      //    sidebar's own rows cannot carry nine platforms without reworking the
+      //    fixture, and the rule under test is the attribute → token mapping.
+      ui.brand = await page.evaluate(() => {
+        const root = document.documentElement;
+        const previous = root.getAttribute("data-theme");
+        const row = document.createElement("div");
+        row.setAttribute("data-agent-row", "gemini");
+        row.setAttribute("data-agent-brand", "gemini");
+        const name = document.createElement("button");
+        name.className = "td-agent-assignee";
+        name.setAttribute("data-agent-assignee", "gemini-probe");
+        name.textContent = "gemini";
+        row.append(name);
+        document.body.append(row);
+        root.setAttribute("data-theme", "dark");
+        const dark = getComputedStyle(name).color;
+        if (previous === null) root.removeAttribute("data-theme");
+        else root.setAttribute("data-theme", previous);
+        const light = getComputedStyle(name).color;
+        row.remove();
+        return { light, dark, previous };
+      });
+      uiCheck(ui.brand.light === "rgb(66, 133, 244)", `the light Gemini name is ${ui.brand.light}, expected #4285F4`);
+      uiCheck(ui.brand.dark === "rgb(138, 180, 248)", `the dark Gemini name is ${ui.brand.dark}, expected #8AB4F8`);
+
+      // Back to the resting board for the legs after this one (there are none
+      // today, but the fixtures are shared with future additions).
+      await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "domcontentloaded" });
+      await page.waitForFunction(() => document.querySelectorAll("[data-card]").length > 0, null, { timeout: 10_000 });
+    } catch (err) {
+      uiFailures.push(`the UI-fix pass could not run: ${err.message}`);
+    }
+
     const results = [
       ...boardResults,
       ...listResults,
@@ -6055,6 +6228,7 @@ export async function run() {
         pageErrors: m7.pageErrors,
         resourceNotices: m7.resourceNotices ?? 0,
       },
+      ui: { failures: uiFailures, ...ui },
       r16: {
         failures: r16Failures,
         routes: r16Routes,
@@ -6236,6 +6410,19 @@ if (isEntryPoint) run().then(
             `with the dialog held open and no project written (wire ${report.m7.statuses.join(",")}), a free prefix still creates, and the synthetic 409 lands in the same catch`,
         );
       }
+      if (report.ui.failures.length > 0) {
+        console.log(`UI fixes — ${report.ui.failures.length} failed:`);
+        for (const failure of report.ui.failures) console.log(`  ✗ ${failure}`);
+      } else {
+        console.log(
+          `UI fixes — the four filter dropdowns anchor unclipped (bar overflow ${report.ui.barOverflow}), ` +
+            `reporter holds ${JSON.stringify(report.ui.reporterPicked)} / ${JSON.stringify(report.ui.reporterNew)}, ` +
+            `status is a ${report.ui.statusTag} with ${report.ui.statusDots} dot rows and chooses ${report.ui.statusValue}, ` +
+            `the long parent chip stays in its ${Math.round(report.ui.chip.trackWidth)}px track, ` +
+            `Activity narrows to ${JSON.stringify(report.ui.activityActors)} and Waiting to ${JSON.stringify(report.ui.waitingActors)}, ` +
+            `and the Gemini brand colour resolves ${report.ui.brand.light} / ${report.ui.brand.dark} (light/dark)`,
+        );
+      }
       if (report.r16.failures.length > 0) {
         console.log(`R16 (routing) — ${report.r16.failures.length} failed:`);
         for (const failure of report.r16.failures) console.log(`  ✗ ${failure}`);
@@ -6278,6 +6465,7 @@ if (isEntryPoint) run().then(
       report.attachmentPreview.failures.length === 0 &&
       report.drawerTabs.failures.length === 0 &&
       report.m7.failures.length === 0 &&
+      report.ui.failures.length === 0 &&
       report.r16.failures.length === 0 &&
       interactionOk;
     process.exit(ok ? 0 : 1);

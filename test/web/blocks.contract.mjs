@@ -123,8 +123,22 @@ export const DOMAINS = Object.freeze({
   PRIORITY: Object.freeze(["urgent", "high", "medium", "low", "none"]),
   /** Card identity model (B07/C07). */
   ASSIGNEE_KIND: Object.freeze(["human", "agent"]),
-  /** The four agent platforms (B03/B07/B16/B22/C07). */
-  PLATFORM: Object.freeze(["claude", "openclaw", "codex", "pi"]),
+  /**
+   * The agent platforms the board renders (B03/B07/B16/B22/C07). The original
+   * four hosts plus the five the roster may name today; each carries an official
+   * brand colour in the sidebar (`--brand-agent-*` in `tokens.css`).
+   */
+  PLATFORM: Object.freeze([
+    "claude",
+    "codex",
+    "cursor",
+    "opencode",
+    "pi",
+    "openclaw",
+    "grok",
+    "hermes",
+    "gemini",
+  ]),
   /**
    * Sidebar navigation (B03). M1 appends `waiting` — the one deliberate
    * extension of this frozen baseline, approved with B03's count together

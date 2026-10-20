@@ -12,7 +12,8 @@
  * stylesheet keys on them):
  *
  *   * `data-assignee-kind` is `agent | human` — the category, not the platform;
- *   * `data-agent-platform` is one of the four host platforms.
+ *   * `data-agent-platform` is one of the host platforms the board gives a
+ *     badge and a brand colour to.
  *
  * So neither may carry the kind verbatim. `kindLabel` answers the first by
  * **"is this *not* the human?"**, and `platformOfKind` answers the second by
@@ -25,13 +26,28 @@
  */
 
 /**
- * The four platforms the design gives a badge and a colour to
- * (`DOMAINS.PLATFORM`). A kind is an *open* string on the wire — a host may call
- * itself anything — so this is where the board decides which of them it can
- * render, and anything else leaves the badge **absent** rather than putting an
- * unstyled value into a closed attribute.
+ * The platforms the design gives a badge and a colour to (`DOMAINS.PLATFORM`).
+ * A kind is an *open* string on the wire — a host may call itself anything — so
+ * this is where the board decides which of them it can render, and anything else
+ * leaves the badge **absent** rather than putting an unstyled value into a
+ * closed attribute.
+ *
+ * The list carries the mainstream agent platforms the sidebar pre-styles: the
+ * four original hosts plus the five the roster may name today. A platform is an
+ * identity, not an install target — `cursor` here does not imply a cursor
+ * installer.
  */
-export const DESIGN_PLATFORMS = Object.freeze(["claude", "openclaw", "codex", "pi"]);
+export const DESIGN_PLATFORMS = Object.freeze([
+  "claude",
+  "codex",
+  "cursor",
+  "opencode",
+  "pi",
+  "openclaw",
+  "grok",
+  "hermes",
+  "gemini",
+]);
 
 const DESIGN_PLATFORM_SET = new Set(DESIGN_PLATFORMS);
 
@@ -69,4 +85,27 @@ export function kindLabel(kind) {
 export function platformOfKind(kind) {
   const text = typeof kind === "string" ? kind.trim() : "";
   return DESIGN_PLATFORM_SET.has(text) ? text : null;
+}
+
+/**
+ * The platform an **actor row** belongs to, from its kind or — for an agent
+ * whose kind is only the generic `agent` — from a handle that names a platform.
+ *
+ * The board's actors are often written by automation that records the category
+ * (`agent`) rather than the platform, so a roster of agents named `claude`,
+ * `codex`, … would otherwise all fall into one anonymous row. The name fallback
+ * is deliberately agent-only: a human who happens to be called `cursor` is a
+ * person, and giving them an agent platform badge would be a lie the rest of the
+ * UI (the badge, the colour) then repeats.
+ *
+ * @param {string|null|undefined} displayName
+ * @param {unknown} kind
+ * @returns {string|null}
+ */
+export function platformForActor(displayName, kind) {
+  const fromKind = platformOfKind(kind);
+  if (fromKind !== null) return fromKind;
+  if (!isAgentKind(kind)) return null;
+  const key = typeof displayName === "string" ? displayName.trim().toLowerCase() : "";
+  return DESIGN_PLATFORM_SET.has(key) ? key : null;
 }

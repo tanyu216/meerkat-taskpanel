@@ -35,8 +35,8 @@
  */
 import { computed, watch } from "vue";
 
-import { acceptanceRows, mergeWaitingRows, waitingRows } from "../../lib/waiting-queue.js";
-import { board, loadWaitingPayloads, openDetail, projectLoading, waitingTasks } from "../../stores/board.js";
+import { acceptanceRowsFrom, mergeWaitingRows, waitingRows } from "../../lib/waiting-queue.js";
+import { board, loadWaitingPayloads, openDetail, projectLoading, waitingTasks, visibleAcceptanceTasks } from "../../stores/board.js";
 import { view } from "../../stores/ui.js";
 
 /**
@@ -49,7 +49,10 @@ import { view } from "../../stores/ui.js";
 const rows = computed(() =>
   mergeWaitingRows(
     waitingRows(waitingTasks.value, board.waitingPayload),
-    acceptanceRows(board.tasks, board.acceptancePolicy),
+    // The acceptance set is derived over the **whole** board and then narrowed
+    // by the sidebar's assignee (`visibleAcceptanceTasks`); using
+    // `acceptanceRows(board.tasks, …)` here would ignore the narrowing.
+    acceptanceRowsFrom(visibleAcceptanceTasks.value),
   ),
 );
 

@@ -33,7 +33,7 @@ import { activityQuery, readActivityQuery } from "../lib/route.js";
 import { lang } from "../i18n/index.js";
 import { api } from "../services/api.js";
 
-import { board, onActivityStream } from "./board.js";
+import { assigneeFilterValue, board, ME, onActivityStream } from "./board.js";
 
 /** The read cursor's storage key — the same browser-local surface theme/lang use. */
 export const ACTIVITY_SEEN_KEY = "meerkat-taskpanel.activitySeen";
@@ -78,7 +78,10 @@ export const feed = computed(() =>
   buildFeed({
     activities: activity.entries,
     tasks: board.tasks,
-    filters: activity.filters,
+    // The board's own assignee value joins the three activity slots: the
+    // sidebar roster writes it, and this view is one of the surfaces it
+    // narrows (`design/fidelity-r13.md` §10.1 extended across views).
+    filters: { ...activity.filters, assignee: assigneeFilterValue(), assigneeMe: ME },
     seenAt: activity.seenAt,
     page: activity.page,
     lang: lang.value,

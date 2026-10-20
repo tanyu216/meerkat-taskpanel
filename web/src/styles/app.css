@@ -108,6 +108,22 @@
 [data-priority="low"] { --pri-color: var(--brand-pri-low); }
 [data-priority="none"] { --pri-color: var(--brand-pri-none); }
 
+/* The agent platform's official primary. The sidebar row carries
+   `data-agent-brand`, not `data-agent-platform`: the platform attribute is the
+   badge's own hook, and the ≤1023px rail hides every `[data-agent-platform]`
+   inside the sidebar — putting it on the row would hide the row itself. The
+   values live in `tokens.css` (C08: no brand hex outside the token block) and
+   are restated per theme there. */
+[data-agent-brand="claude"] { --agent-color: var(--brand-agent-claude); }
+[data-agent-brand="codex"] { --agent-color: var(--brand-agent-codex); }
+[data-agent-brand="cursor"] { --agent-color: var(--brand-agent-cursor); }
+[data-agent-brand="opencode"] { --agent-color: var(--brand-agent-opencode); }
+[data-agent-brand="pi"] { --agent-color: var(--brand-agent-pi); }
+[data-agent-brand="openclaw"] { --agent-color: var(--brand-agent-openclaw); }
+[data-agent-brand="grok"] { --agent-color: var(--brand-agent-grok); }
+[data-agent-brand="hermes"] { --agent-color: var(--brand-agent-hermes); }
+[data-agent-brand="gemini"] { --agent-color: var(--brand-agent-gemini); }
+
 /* ------------------------------------------------------------- primitives */
 
 :root {
@@ -472,14 +488,23 @@ svg[data-token-icon][hidden] { display: none; }
   font-weight: inherit;
   line-height: inherit;
   padding: 0;
-  color: inherit;
+  /* The platform's official hue, inherited from the row's `data-agent-brand`;
+     `inherit` is the fallback for a row that names no brand. */
+  color: var(--agent-color, inherit);
   background: none;
   border: 0;
   cursor: pointer;
 }
 .td-agent-assignee:hover {
-  color: var(--brand-text);
+  color: var(--agent-color, var(--brand-text));
   text-decoration: underline;
+}
+/* The row's platform badge wears the same hue as its names, so the row reads as
+   one identity. The dashed edge is the platform badge's own mark; only its
+   colour follows the brand. */
+[data-agent-row] [data-agent-platform] {
+  color: var(--agent-color, inherit);
+  border-color: color-mix(in srgb, var(--agent-color, var(--brand-text-3)) 55%, transparent);
 }
 
 /* R13 ③ — the selected item wears the capsule. The item is the **wrapper**, not
@@ -868,6 +893,16 @@ svg[data-token-icon][hidden] { display: none; }
   background-color: var(--brand-accent-soft);
   border: 1px solid var(--brand-border);
   border-radius: 999px;
+}
+/* A relation chip is a flex item whose `.td-combo-title` is nowrap, so its
+   automatic minimum width was the whole title and the chip painted past the
+   dialog's routing track. Allowing it below min-content lets the title's own
+   `overflow: hidden; text-overflow: ellipsis` do its job. Scoped by the
+   `.td-chips` parent so status/label chips keep their intrinsic width. */
+.td-chips > .td-chip {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 .td-chip-status .td-status-dot {
   width: 6px;
@@ -2355,6 +2390,20 @@ button.td-prop-value:hover {
   padding: var(--space-1);
   margin: 0;
 }
+/* `lib/anchored-menu.js` writes `data-anchored` and the inline coordinates when
+   a member opens. Fixed positioning takes the panel out of the filter bar's
+   `overflow-x: auto` clip (which computed `overflow-y: auto` and hid it); the
+   resting box above stays for a document with no script. The specificity beats
+   the `top: calc(100% + 4px)` in that rule, so there is one box, not a fight. */
+.td-details-menu[data-anchored="true"] {
+  position: fixed;
+  top: auto;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+}
 .td-details-menu button {
   @apply block w-full cursor-pointer border-0 bg-transparent text-left text-inherit;
   padding: var(--space-1) var(--space-2);
@@ -2539,6 +2588,10 @@ button.td-prop-value:hover {
   flex-wrap: wrap;
   gap: var(--space-1);
   margin-bottom: var(--space-1);
+  /* The row lives in the dialog's routing track; without this it would be free
+     to grow past it and the chip cap above would have nothing to cap against. */
+  min-width: 0;
+  max-width: 100%;
 }
 .td-chips:empty { display: none; }
 

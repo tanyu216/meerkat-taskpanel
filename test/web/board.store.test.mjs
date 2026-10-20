@@ -1212,4 +1212,56 @@ describe("board store — the acceptance half of the waiting queue", () => {
     await mod.refreshTask("TD-C");
     assert.deepEqual(mod.acceptanceTasks.value.map((task) => task.id), ["o1"]);
   });
+
+  it("the sidebar assignee narrowing reaches the acceptance half and the pill", async () => {
+    const mod = await freshBoard();
+    mod.board.currentProjectId = "p1";
+    mod.board.loaded = true;
+    mod.board.acceptancePolicy = "both";
+    mod.board.tasks = [original({ assignee: { display_name: "elon", kind: "claude" } })];
+
+    assert.deepEqual(mod.visibleAcceptanceTasks.value.map((task) => task.id), ["o1"]);
+    assert.equal(mod.waitingCount.value, 1);
+
+    mod.writeAssigneeFilter("elon");
+    assert.deepEqual(mod.visibleAcceptanceTasks.value.map((task) => task.id), ["o1"]);
+    assert.equal(mod.waitingCount.value, 1);
+
+    mod.writeAssigneeFilter("jobs");
+    assert.deepEqual(mod.visibleAcceptanceTasks.value, [], "another agent's name leaves no acceptance row");
+    assert.equal(mod.waitingCount.value, 0);
+
+    mod.writeAssigneeFilter("agent");
+    assert.equal(mod.visibleAcceptanceTasks.value.length, 1, "a platform kind is an agent");
+    mod.writeAssigneeFilter("human");
+    assert.deepEqual(mod.visibleAcceptanceTasks.value, [], "the delivering agent is not the human");
+    mod.writeAssigneeFilter("me");
+    assert.deepEqual(mod.visibleAcceptanceTasks.value, [], "me is the human, not the assignee");
+
+    mod.writeAssigneeFilter("all");
+    assert.deepEqual(mod.visibleAcceptanceTasks.value.map((task) => task.id), ["o1"]);
+  });
+
+  it("narrows the acceptance result, never its input", async () => {
+    const mod = await freshBoard();
+    mod.board.currentProjectId = "p1";
+    mod.board.loaded = true;
+    mod.board.acceptancePolicy = "both";
+    const child = original({
+      id: "c1",
+      identifier: "TD-C",
+      status: "todo",
+      parent_id: "o1",
+      assignee: { display_name: "jobs", kind: "claude" },
+    });
+    mod.board.tasks = [original({ assignee: { display_name: "elon", kind: "claude" } }), child];
+
+    // The parent is held by an open child assigned to another agent. A
+    // narrowing applied *before* the acceptance derivation would drop that
+    // child and wrongly release the parent.
+    mod.writeAssigneeFilter("elon");
+    assert.deepEqual(mod.acceptanceTasks.value, [], "the whole reading still sees the child");
+    assert.deepEqual(mod.visibleAcceptanceTasks.value, []);
+    assert.equal(mod.waitingCount.value, 0);
+  });
 });

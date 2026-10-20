@@ -23,7 +23,7 @@ import {
   assigneeFilterValue,
   board,
   isAgentKind,
-  platformOf,
+  platformForActor,
   selectProject,
   waitingCount,
   writeAssigneeFilter,
@@ -91,7 +91,11 @@ const agents = computed(() => {
     // this used to skip. An entry nothing has ever named has no kind, and cannot
     // be placed on a platform row at all.
     if (!isAgentKind(entry.kind)) continue;
-    const platform = platformOf(entry.display_name) ?? "claude";
+    // The kind names the platform when it carries one; an agent written with
+    // only the generic `agent` kind falls back to a platform-shaped handle
+    // (`platformForActor`), then to `claude` — the historical fallback, kept so
+    // a roster with no platform data still renders a row.
+    const platform = platformForActor(entry.display_name, entry.kind) ?? "claude";
     if (!byPlatform.has(platform)) byPlatform.set(platform, { platform, handles: [], presence: "idle" });
     const row = byPlatform.get(platform);
     row.handles.push(entry.display_name);
@@ -265,7 +269,13 @@ function onAssignee(name) {
     <section>
       <h2 class="m-0 mb-2 text-[11px] uppercase tracking-[0.06em] text-(--brand-text-3)" data-side-label data-i18n="sidebar.agents">{{ $t("sidebar.agents") }}</h2>
       <div data-agents-presence>
-        <div v-for="agent in agents" :key="agent.platform" class="flex items-center gap-2 py-0.5" :data-agent-row="agent.platform">
+        <div
+          v-for="agent in agents"
+          :key="agent.platform"
+          class="flex items-center gap-2 py-0.5"
+          :data-agent-row="agent.platform"
+          :data-agent-brand="agent.platform"
+        >
           <span class="badge badge-xs td-mono normal-case" :data-agent-platform="agent.platform">{{ agent.platform }}</span>
           <!-- R11 ② · R13 — the row's text is the names themselves, each a real
                `<button>` inside its own `[data-assignee-item]` wrapper: the row

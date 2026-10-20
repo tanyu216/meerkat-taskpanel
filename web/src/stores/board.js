@@ -22,9 +22,10 @@ import { api, ApiError } from "../services/api.js";
 // The reading of a kind (`human`? a platform? nothing?) lives in `lib/` so the
 // pure row builders can use it without pulling Vue into their unit tests. It is
 // re-exported here so a component has one import site.
-import { isAgentKind, kindLabel, platformOfKind } from "../lib/actor-kind.js";
+import { actorMatches } from "../lib/assignee-filter.js";
+import { isAgentKind, kindLabel, platformForActor, platformOfKind } from "../lib/actor-kind.js";
 
-export { isAgentKind, kindLabel, platformOfKind };
+export { isAgentKind, kindLabel, platformForActor, platformOfKind };
 import { safeFileName } from "../lib/attachments.js";
 import { acceptanceWaitingTasks } from "../lib/waiting-queue.js";
 import {
@@ -196,7 +197,10 @@ const projectNames = computed(() => Object.fromEntries(board.projects.map((p) =>
 const platforms = computed(() =>
   Object.fromEntries(
     board.assignees
-      .map((a) => [a.display_name, platformOfKind(a.kind)])
+      // The kind is the platform when it names one; an agent written with only
+      // the generic `agent` kind still gets a platform when its handle is one
+      // (`platformForActor`). A human is never given one.
+      .map((a) => [a.display_name, platformForActor(a.display_name, a.kind)])
       .filter(([, platform]) => platform !== null),
   ),
 );
@@ -309,20 +313,11 @@ export const visibleTasks = computed(() => {
      * nothing and every row came through, which is the defect Terry reported
      * (`design/fidelity-r13.md` §2.6). */
     if (assignee !== "all") {
-      const name = task.assignee?.display_name ?? "";
-      if (assignee === "me") {
-        if (name !== ME) return false;
-      } else if (assignee === "human" || assignee === "agent") {
-        // An **unassigned** card is in neither row: the chip asks about the
-        // assignee, and there is nobody to ask about.
-        if (task.assignee === null || task.assignee === undefined) return false;
-        // The chip asks the two-valued question the design's attribute asks, and
-        // since 0023 a kind is a platform — so `agent` means "not the human",
-        // never "the literal string `agent`".
-        if (isAgentKind(task.assignee.kind) !== (assignee === "agent")) return false;
-      } else if (name !== assignee) {
-        return false;
-      }
+      // One predicate for the board, the activity feed and the waiting queue
+      // (`lib/assignee-filter.js`): an **unassigned** card is in neither the
+      // human row nor the agent row, and since 0023 a kind is a platform — so
+      // `agent` means "not the human", never "the literal string `agent`".
+      if (!actorMatches(assignee, task.assignee?.display_name ?? "", task.assignee?.kind, ME)) return false;
     }
     if (priority !== "all" && priorityOf(task) !== priority) return false;
     /* R11 ① — multiple choice is **OR** (a card passes when it is in *any* chosen
@@ -405,7 +400,25 @@ export const acceptanceTasks = computed(() =>
   acceptanceWaitingTasks(board.tasks, board.acceptancePolicy),
 );
 
-export const waitingCount = computed(() => waitingTasks.value.length + acceptanceTasks.value.length);
+/**
+ * The acceptance rows the assignee narrowing leaves.
+ *
+ * The **derivation** above runs over the whole reading (it needs children and
+ * review cards no filter was asked to show); the narrowing is applied to its
+ * result, never to its input — filtering the input would let a child assigned to
+ * someone else count as resolved (`lib/waiting-queue.js#acceptanceRowsFrom`).
+ *
+ * Only the assignee condition applies: an acceptance is not a board column, so
+ * a status/priority/label filter must not make it disappear.
+ */
+export const visibleAcceptanceTasks = computed(() =>
+  acceptanceTasks.value.filter((task) =>
+    actorMatches(assigneeFilterValue(), task.assignee?.display_name ?? "", task.assignee?.kind, ME),
+  ),
+);
+
+/** The nav pill: the awaiting rows plus the acceptance rows the narrowing leaves. */
+export const waitingCount = computed(() => waitingTasks.value.length + visibleAcceptanceTasks.value.length);
 
 /**
  * The first sentence of a payload comment — the text up to the first

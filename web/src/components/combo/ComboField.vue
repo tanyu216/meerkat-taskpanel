@@ -163,7 +163,15 @@ function accept(entry) {
     query.value = "";
   } else {
     emit("update:modelValue", name);
-    query.value = "";
+    /**
+     * A single-valued, **chip-less** control (assignee, reporter) shows the
+     * value it holds in its own box. Leaving the box empty after a choice made
+     * a successful pick indistinguishable from a no-op — the defect Terry
+     * reported — while the model had in fact been written. A chip control
+     * (parent / depends-on) keeps the box empty on purpose: its chip is the
+     * value, and `dom-smoke` asserts the empty box.
+     */
+    query.value = props.hookChips ? "" : name;
     open.value = false;
   }
   active.value = 0;
@@ -173,6 +181,19 @@ function onInput() {
   if (props.disabled) return;
   open.value = true;
   active.value = 0;
+}
+
+/**
+ * Focusing a box that already holds its value selects the text, so typing
+ * replaces the name instead of appending to it. A multi/chip control's box is a
+ * search field and stays untouched.
+ */
+function onFocus() {
+  onInput();
+  if (props.multi || props.hookChips || query.value === "") return;
+  // After the click's own caret placement, otherwise the mouseup collapses the
+  // selection back to the pointer.
+  globalThis.setTimeout?.(() => inputEl.value?.select(), 0);
 }
 
 function move(delta) {
@@ -240,14 +261,42 @@ function removeChip(name) {
 }
 
 /**
- * The blur half of R10 ②'s commit: the drawer's single-valued fields save when
- * the reader leaves one whose value moved. `mousedown.prevent` on the menu rows
- * keeps the focus where it is while a row is being accepted, so this fires on a
- * real departure and not on a choice.
+ * Leaving the box.
+ *
+ * The drawer's seeded fields keep R10 ②'s contract: the box carries the value,
+ * and the parent (`@blur`) decides whether to save it. A create-dialog field is
+ * **unseeded** and has no parent handler, so this control owns the box's
+ * consistency there:
+ *
+ *   * an empty box clears the value (the reader deleted the name);
+ *   * text that exactly names a roster entry commits that entry, so a search
+ *     that ends on a real name is a choice;
+ *   * anything else is a half-typed search — it is discarded and the box is
+ *     put back to the value actually held. Committing it would assign `li`
+ *     because the reader clicked the next field mid-search.
+ *
+ * A name the roster does not hold is committed by accepting the `· new` row
+ * (Enter or a click), which is the affordance that exists for exactly that.
+ * `mousedown.prevent` on the menu rows keeps the focus where it is while a row
+ * is being accepted, so this fires on a real departure and not on a choice.
  */
 function onBlur() {
   open.value = false;
-  emit("blur", query.value.trim());
+  const text = query.value.trim();
+  if (!props.seed && !props.multi && !props.hookChips) {
+    const model = String(props.modelValue ?? "");
+    if (text === "") {
+      if (model !== "") emit("update:modelValue", "");
+      query.value = "";
+    } else if (roster.value.has(text)) {
+      const name = roster.value.get(text)?.name ?? text;
+      if (name !== model) emit("update:modelValue", name);
+      query.value = name;
+    } else {
+      query.value = model;
+    }
+  }
+  emit("blur", text);
 }
 
 function focus() {
@@ -267,15 +316,19 @@ function clear() {
 }
 
 /**
- * A seeded field follows its value: accepting a roster row rewrites the model,
- * and the box shows what was accepted rather than the query that found it. A
- * multi-value control keeps an empty box — its values are the chips.
+ * The box follows its value whenever the control is not being typed into.
+ *
+ * This used to be the seeded fields' rule only. It has to be every single-valued
+ * field now that a choice stays visible: `CreateTaskModal.reset()` empties the
+ * model when the dialog reopens, and without this the box would keep showing the
+ * previous reporter forever — a stale value over an empty model. A multi-value
+ * or chip-bearing control keeps an empty box; its values are the chips.
  */
 watch(
   () => props.modelValue,
   (next) => {
-    if (!props.seed || open.value) return;
-    query.value = props.multi ? "" : String(next ?? "");
+    if (open.value) return;
+    query.value = props.multi || props.hookChips ? "" : String(next ?? "");
   },
 );
 
@@ -360,7 +413,7 @@ defineExpose({ focus, clear });
         v-model="query"
         v-bind="inputAttrs"
         @input="onInput"
-        @focus="onInput"
+        @focus="onFocus"
         @keydown="onKeydown"
         @blur="onBlur"
       />
@@ -386,7 +439,7 @@ defineExpose({ focus, clear });
       v-model="query"
       v-bind="inputAttrs"
       @input="onInput"
-      @focus="onInput"
+      @focus="onFocus"
       @keydown="onKeydown"
       @blur="onBlur"
     />

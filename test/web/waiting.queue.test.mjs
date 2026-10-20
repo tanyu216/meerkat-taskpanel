@@ -211,6 +211,19 @@ describe("M6 · acceptance waiting (who still owes an acceptance)", () => {
     }
   });
 
+  it("turns an already-narrowed acceptance set into rows without re-deriving it", () => {
+    // The view narrows the *result* of `acceptanceWaitingTasks` by assignee.
+    // Re-running the predicate on that narrowed list would judge the card
+    // against a subset (its child assigned elsewhere would vanish and the
+    // parent would be released), so the mapper must take the derived set as-is.
+    const derived = acceptanceWaitingTasksFor([delivered("1", { status_changed_at: at(10) })], "both");
+    const rows = acceptanceRowsFrom(derived, NOW);
+    assert.deepEqual(rows.map((row) => row.identifier), ["TD-1"]);
+    assert.equal(rows[0].reasonKind, "acceptance");
+    assert.equal(rows[0].stamp.key, "time.minutesAgo");
+    assert.deepEqual(acceptanceRowsFrom([], NOW), []);
+  });
+
   it("orders acceptance rows with awaiting rows, oldest first", () => {
     const awaiting = waitingRows(
       [
@@ -240,6 +253,7 @@ describe("M6 · acceptance waiting (who still owes an acceptance)", () => {
 // The import is at the bottom so the file's shape stays "helpers, then rules".
 import {
   acceptanceRows,
+  acceptanceRowsFrom,
   acceptanceWaitingTasks as acceptanceWaitingTasksFor,
   mergeWaitingRows,
 } from "../../web/src/lib/waiting-queue.js";

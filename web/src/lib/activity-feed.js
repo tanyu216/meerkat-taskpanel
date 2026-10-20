@@ -34,6 +34,7 @@
  */
 
 import { kindLabel } from "./actor-kind.js";
+import { actorMatches } from "./assignee-filter.js";
 import { TIME_RUNGS_THREE, timeLadder } from "./time.js";
 
 const MINUTE = 60_000;
@@ -394,21 +395,32 @@ export function changeLines(item) {
 /* ------------------------------------------------------------- selection */
 
 /**
- * §6 — the three filters, ANDed. A row passes the actor filter on its actor's
- * kind, the event filter on its group, and the task filter on the identifier it
- * names. `all` in any slot is the un-filtered state, not a value to compare.
+ * §6 — the three filters, ANDed, plus the sidebar's assignee narrowing.
+ *
+ * A row passes the actor filter on its actor's kind, the event filter on its
+ * group, and the task filter on the identifier it names. `all` in any slot is
+ * the un-filtered state, not a value to compare.
+ *
+ * `assignee` is **not** one of B26's three controls: it is the board's own
+ * assignee value, written by the sidebar roster and the board bar. The activity
+ * view reads it as a fourth, ANDed condition — a row survives when the **actor
+ * it already shows** passes the condition (`actorMatches`). The feed's `actor`
+ * slot and this clause can both narrow at once; two conditions on one axis AND,
+ * which is the only reading that does not silently drop one of them.
  *
  * @param {object[]} items
- * @param {{actor?: string, event?: string, task?: string}} filters
+ * @param {{actor?: string, event?: string, task?: string, assignee?: string, assigneeMe?: string}} filters
  */
 export function filterItems(items, filters = {}) {
   const actor = filters.actor ?? "all";
   const event = filters.event ?? "all";
   const task = filters.task ?? "all";
+  const assignee = filters.assignee ?? "all";
   return items.filter((item) => {
     if (actor !== "all" && item.actorKind !== actor) return false;
     if (event !== "all" && item.group !== event) return false;
     if (task !== "all" && item.identifier !== task) return false;
+    if (!actorMatches(assignee, item.actor, item.actorKind, filters.assigneeMe)) return false;
     return true;
   });
 }
@@ -480,7 +492,7 @@ export function markUnread(items, seenAt) {
  * @param {{
  *   activities: object[],
  *   tasks: object[],
- *   filters?: {actor?: string, event?: string, task?: string},
+ *   filters?: {actor?: string, event?: string, task?: string, assignee?: string, assigneeMe?: string},
  *   seenAt?: string|null,
  *   page?: number,
  *   lang?: string,
