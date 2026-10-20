@@ -1036,7 +1036,7 @@ async function reloadDetailRelations() {
  * row is removed before the error propagates, so a failed upload does not leave
  * a zero-byte ghost in the list.
  *
- * All three of the board's refusals — over the 8 MiB limit, a type outside the
+ * All three of the board's refusals — over the 64 MiB limit, a type outside the
  * allow-list, a name that is not a name — arrive as codes and are rendered as
  * sentences by the caller.
  *

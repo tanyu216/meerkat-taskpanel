@@ -169,11 +169,11 @@ export const ERROR_CODES = Object.freeze({
   // The two refusals the upload path can decide on its own. `content_type` used
   // to be whatever the caller sent and was served back from the board's own
   // origin; it is now a closed set (`ATTACHMENT_CONTENT_TYPES`) and a type
-  // outside it names itself here. The size limit is the transport's 8 MiB
-  // (`ATTACHMENT_MAX_BYTES`); the code is what a client branches on when the
-  // refusal has to be stated as a sentence (T-20261014-152924 ④).
+  // outside it names itself here. The size limit is the board's
+  // (`ATTACHMENT_MAX_BYTES`, 64 MiB); the code is what a client branches on when
+  // the refusal has to be stated as a sentence (T-20261014-152924 ④).
   ATTACHMENT_TYPE_UNSUPPORTED: spec(422, "That file type is not allowed on the board."),
-  ATTACHMENT_TOO_LARGE: spec(413, "That file is larger than the board's 8 MiB attachment limit."),
+  ATTACHMENT_TOO_LARGE: spec(413, "That file is larger than the board's 64 MiB attachment limit."),
 
   // ---- md migrator -----------------------------------------------------------
   MD_PARSE_ERROR: spec(422, "Markdown card could not be parsed."),

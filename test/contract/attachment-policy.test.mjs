@@ -21,7 +21,8 @@ import {
 } from "../../src/shared/attachments.mjs";
 import { formatFileSize } from "../../web/src/lib/attachments.js";
 import { ATTACHMENT_CONTENT_TYPES, ATTACHMENT_MAX_BYTES } from "../../src/shared/constants.mjs";
-import { DomainError, toErrorPayload } from "../../src/shared/errors.mjs";
+import { DomainError, ERROR_CODES, toErrorPayload } from "../../src/shared/errors.mjs";
+import { EXTRA } from "../../web/src/i18n/extra.mjs";
 
 describe("shared/attachments — the declared type", () => {
   it("folds case and drops parameters", () => {
@@ -57,6 +58,23 @@ describe("shared/attachments — the declared type", () => {
     for (const type of ATTACHMENT_CONTENT_TYPES) assert.equal(type, type.toLowerCase());
     assert.equal(new Set(ATTACHMENT_CONTENT_TYPES).size, ATTACHMENT_CONTENT_TYPES.length, "no duplicates");
   });
+
+  it("stores the two browser video containers, and no other video family member", () => {
+    // The drawer can preview a video only if the board will store one: before
+    // these two, every `video/*` was an `ATTACHMENT_TYPE_UNSUPPORTED` refusal.
+    assert.equal(normalizeAttachmentContentType("video/mp4"), "video/mp4");
+    assert.equal(normalizeAttachmentContentType("VIDEO/WEBM"), "video/webm");
+    // QuickTime is a container, not a promise: a `.mov` may carry a codec no
+    // browser here plays, and storing it would produce a row that uploads and
+    // then cannot preview. Ogg is left out for the same "it depends" reason.
+    for (const type of ["video/quicktime", "video/ogg"]) {
+      assert.throws(
+        () => normalizeAttachmentContentType(type),
+        (err) => err.code === "ATTACHMENT_TYPE_UNSUPPORTED" && err.details.received === type,
+        type,
+      );
+    }
+  });
 });
 
 describe("shared/attachments — the download type", () => {
@@ -73,12 +91,15 @@ describe("shared/attachments — the type a filename suggests", () => {
     assert.equal(contentTypeForFilename("spec.md"), "text/markdown");
     assert.equal(contentTypeForFilename("SHOT.PNG"), "image/png");
     assert.equal(contentTypeForFilename("rows.csv"), "text/csv");
+    assert.equal(contentTypeForFilename("clip.mp4"), "video/mp4");
+    assert.equal(contentTypeForFilename("CLIP.WEBM"), "video/webm");
   });
 
   it("says 'we do not know' rather than guessing for anything else", () => {
-    // Including the two types the board refuses to *store*: an unknown extension
-    // becomes an opaque download, never a page the origin would render.
-    for (const name of ["page.html", "drawing.svg", "archive.rar", "noextension", "", null]) {
+    // Including the two types the board refuses to *store*, and the video
+    // containers it does not accept: an unknown extension becomes an opaque
+    // download, never a page the origin would render.
+    for (const name of ["page.html", "drawing.svg", "archive.rar", "clip.mov", "clip.ogg", "noextension", "", null]) {
       assert.equal(contentTypeForFilename(name), "application/octet-stream", String(name));
     }
   });
@@ -103,8 +124,8 @@ describe("shared/attachments — the byte ceiling", () => {
     }
   });
 
-  it("states the limit once: 8 MiB", () => {
-    assert.equal(ATTACHMENT_MAX_BYTES, 8 * 1024 * 1024);
+  it("states the limit once: 64 MiB", () => {
+    assert.equal(ATTACHMENT_MAX_BYTES, 64 * 1024 * 1024);
   });
 
   /**
@@ -118,7 +139,7 @@ describe("shared/attachments — the byte ceiling", () => {
    */
   it("is one refusal with one sentence, wherever the ceiling is reached", () => {
     const raised = attachmentTooLargeError(ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_BYTES + 1);
-    assert.equal(raised.message, "attachment is larger than the board's 8388608-byte limit");
+    assert.equal(raised.message, "attachment is larger than the board's 67108864-byte limit");
     assert.equal(raised.code, "ATTACHMENT_TOO_LARGE");
     assert.equal(raised.http, 413);
     assert.deepEqual(raised.details, { field: "size", received: ATTACHMENT_MAX_BYTES + 1, maxBytes: ATTACHMENT_MAX_BYTES });
@@ -134,6 +155,23 @@ describe("shared/attachments — the byte ceiling", () => {
     assert.equal(attachmentTooLargeError(1024).message, "attachment is larger than the board's 1024-byte limit");
     // The ceiling the *message* names and the one `details` reports are one value.
     assert.ok(raised.message.includes(String(raised.details.maxBytes)));
+  });
+
+  /**
+   * The ceiling is stated in three more places than the constant: the
+   * `ERROR_CODES` catalogue's own sentence, and the drawer's two localised
+   * `error.attachTooLarge` strings. They are hand-kept copies (the web build
+   * cannot import `src/`), so they are pinned to the constant here — a moved
+   * limit that left one of them saying "8 MiB" would otherwise be invisible
+   * until a reader saw the wrong number in a toast.
+   */
+  it("keeps every stated ceiling in step with the constant", () => {
+    const mib = ATTACHMENT_MAX_BYTES / (1024 * 1024);
+    assert.equal(mib, 64);
+    assert.match(ERROR_CODES.ATTACHMENT_TOO_LARGE.message, new RegExp(`\\b${mib} MiB\\b`));
+    for (const language of ["en", "zh"]) {
+      assert.match(EXTRA[language]["error.attachTooLarge"], new RegExp(`\\b${mib} MiB\\b`), language);
+    }
   });
 
   it("keeps the refusal a real domain error, not a bare one", () => {

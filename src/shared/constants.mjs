@@ -387,8 +387,14 @@ export const STATIC_INDEX = "index.html";
 
 /** Content bytes live here, under the data directory; the row stays metadata. */
 export const ATTACHMENTS_DIRNAME = "attachments";
-/** Upper bound on an uploaded attachment body (8 MiB). */
-export const ATTACHMENT_MAX_BYTES = 8 * 1024 * 1024;
+/**
+ * Upper bound on an uploaded attachment body (64 MiB).
+ *
+ * Sized for what the drawer now previews: a PDF or a short screen recording.
+ * At the old 8 MiB a video attachment was a few tens of seconds of 720p — a
+ * preview that could be uploaded but was almost never worth watching.
+ */
+export const ATTACHMENT_MAX_BYTES = 64 * 1024 * 1024;
 
 /**
  * The `content_type` values an attachment row may declare (T-20261014-212017-4).
@@ -423,6 +429,11 @@ export const ATTACHMENT_CONTENT_TYPES = Object.freeze([
   "image/gif",
   "image/webp",
   "image/bmp",
+  // The two containers every target browser can play. QuickTime and Ogg are
+  // deliberately absent: a `.mov` or `.ogv` may carry a codec no browser on this
+  // board plays, which would mint a row that uploads and then cannot preview.
+  "video/mp4",
+  "video/webm",
   "application/msword",
   "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

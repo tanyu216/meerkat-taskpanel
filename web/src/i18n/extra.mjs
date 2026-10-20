@@ -89,7 +89,7 @@ export const EXTRA = {
     // refusal vocabulary to contradict or to extend.
     "error.relationAncestor": "That dependency would join an ancestor and a descendant — cards on one parent chain cannot depend on each other.",
     "error.relationCrossProject": "Dependencies must stay inside one project.",
-    "error.attachTooLarge": "That file is larger than the board's 8 MiB limit.",
+    "error.attachTooLarge": "That file is larger than the board's 64 MiB limit.",
     "error.attachType": "That file type is not allowed on the board.",
     "attach.placeholder": "No attachments",
     // R13 修订（seg3 · 决定甲）— `assignee.clear` is gone from here too. R15 ②
@@ -199,7 +199,7 @@ export const EXTRA = {
     // 同上：`RELATION_CYCLE` 的第三种形状（祖先/后代），与「环 / 自环」那句分开。
     "error.relationAncestor": "该依赖会把祖先与后代连起来 —— 同一条父链上的卡片不能互相依赖。",
     "error.relationCrossProject": "依赖必须留在同一个项目内。",
-    "error.attachTooLarge": "该文件超过看板 8 MiB 的上限。",
+    "error.attachTooLarge": "该文件超过看板 64 MiB 的上限。",
     "error.attachType": "看板不接受该文件类型。",
     "attach.placeholder": "无附件",
     "activity.filters.label": "动态筛选",

@@ -204,7 +204,7 @@ app-layer checks.
 | `attachment list <ref>` | `id`, `filename`, `size`, `type`. Empty reads `no attachments`. |
 | `attachment remove <attachment-id>` | Remove a file **for good**: row and bytes, one transaction. |
 
-`add` reads the file from your disk (`CLI_IO` when it cannot) and refuses one over **8 MiB**
+`add` reads the file from your disk (`CLI_IO` when it cannot) and refuses one over **64 MiB**
 (`ATTACHMENT_TOO_LARGE`) before opening a socket. The content type is a closed set; a type
 outside it is `ATTACHMENT_TYPE_UNSUPPORTED`. An unknown extension becomes
 `application/octet-stream`. **Download has no command** — the bytes are a plain

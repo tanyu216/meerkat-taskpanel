@@ -82,6 +82,8 @@ const EXTENSION_TYPES = Object.freeze({
   gif: "image/gif",
   webp: "image/webp",
   bmp: "image/bmp",
+  mp4: "video/mp4",
+  webm: "video/webm",
   doc: "application/msword",
   xls: "application/vnd.ms-excel",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
