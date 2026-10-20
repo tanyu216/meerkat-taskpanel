@@ -17,6 +17,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  DEFAULT_BOARD_LIMIT,
   EVENT_CONTINUE_MIN_MS,
   EVENT_DEBOUNCE_MAX_MS,
   EVENT_DEBOUNCE_MS,
@@ -35,7 +36,6 @@ import {
   resolveWorkflowConfig,
 } from "../../src/shared/scheduling.mjs";
 import {
-  DEFAULT_BOARD_LIMIT,
   DEFAULT_TRAIL_LIMIT,
   LEADER_LOOKBACK_DAYS,
   PEER_LIVENESS_K,

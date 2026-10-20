@@ -33,11 +33,15 @@
 import {
   ACCEPTANCE_POLICIES,
   DEFAULT_ACCEPTANCE_POLICY,
+  DEFAULT_REVIEW_AGING_MS,
+  DEFAULT_WORKFLOW_MAX_ACTIONS,
   LOOP_ACCEPTOR,
 } from "../../shared/constants.mjs";
 
-/** Default cap on writes one workflow pass may perform. */
-export const DEFAULT_WORKFLOW_MAX_ACTIONS = 20;
+// The two workflow defaults are shared with the loop's config resolver, so they
+// live in `shared/constants.mjs` — one number, both sides. Re-exported here
+// because this module's public surface has always named them.
+export { DEFAULT_REVIEW_AGING_MS, DEFAULT_WORKFLOW_MAX_ACTIONS };
 
 /** The policy the loop believes the board runs, from its own config. */
 function acceptancePolicyOf(config) {
@@ -58,18 +62,6 @@ function isTopLevel(task) {
 
 /** How long a childless epic may exist before `empty_epic` is worth a notice. */
 export const EMPTY_EPIC_GRACE_MS = 30 * 60_000;
-
-/**
- * How long a review card may sit without a readable verdict before the loop
- * says so.
- *
- * This is a real gap the SLA pass cannot cover: creating the review card
- * suppresses the original's `acceptance_card_creation` row, so a reviewer that
- * is never woken (or keeps failing to report) would otherwise be silent. The
- * default is generous: an hour of wall clock is well inside the `§⑮` day-long
- * acceptance limit, and a faster threshold would page on a normal queue.
- */
-export const DEFAULT_REVIEW_AGING_MS = 60 * 60_000;
 
 /** The `meta.flow` a worker card runs (and the only flow reviewed here). */
 export const WORK_FLOW = "A";

@@ -11,7 +11,7 @@
  * the plan is a decision, not an effect.
  */
 
-import { DEFAULT_BOARD_LIMIT } from "../../shared/sla-patrol.mjs";
+import { DEFAULT_BOARD_LIMIT } from "../../shared/constants.mjs";
 import { reportToWire, taskToWire } from "../../shared/wire.mjs";
 import {
   isReviewCard,

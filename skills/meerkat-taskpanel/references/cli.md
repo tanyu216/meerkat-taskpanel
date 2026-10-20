@@ -91,7 +91,7 @@ same map to run a woken worker in the directory it names.
 
 | Command | Purpose |
 |---|---|
-| `issue create --project <id> --title <t> [--acceptance <text>]… [--assignee <text>] [--reporter <text>] …` | Create a task. |
+| `issue create --project <id> --title <t> [--acceptance <text>]… [--assignee <text>] [--reporter <text>] [--reporter-id <id>] [--reporter-kind <agent\|human>] [--idem <key>] [--review-of <id> [--review-round <n>]] …` | Create a task. `--review-of` marks the card as a review of that original; the board resolves it, stores `review_of_id` / `review_round`, and mirrors the two meta keys itself (see *Review cards* below). `--idem` supplies the creation idempotency key (a match returns the existing card). |
 | `issue list [--project] [--status <s>]… [--assignee-id] [--limit] [--include-archived] [--order board\|weight] [--order-debug]` | List tasks. `--order weight` is the **assignee weight order** (below); the default is the board's deterministic order, so nothing changes unless you ask. |
 | `issue candidates --assignee <name> [--stale] [--include-unassigned] [--order board\|weight] [--order-debug]` | The poll's read: claimable cards for an assignee — `todo`, **auto-claimable** (not an `epic`, not a `deploy`), every `depends_on` predecessor `done`; a `canceled` predecessor also withholds the card (the test is literally `status !== "done"`). `--stale` adds the **recovery pool**: `in_progress` cards whose heartbeat is past the 30-minute holder window (`stale_same`) or past the six-hour takeover window for anyone (`stale_any`); `--include-unassigned` adds the **public pool** of unassigned claimable cards, for a supervisor whose policy allows them. Read-only — claiming goes through `issue claim` (or `issue move … in_progress` on a `todo` card). `--order weight` refines the order *within* each claimability bucket, which stays the first key. |
 | `issue get <id\|identifier>` | One task, plus `report_waivers[]`. |
@@ -432,6 +432,27 @@ including how a value that is not a literal survives a markdown import. The tran
 — `in_review → blocked` bumps the delivery round; `blocked → in_review` is a legal delivery
 edge — are in [`status-lifecycle.md`](status-lifecycle.md#3-the-guard-on-each-edge).
 
+### Review cards — the declared fields
+
+A review card names the original it audits through the **declared** create fields, not by
+writing the board's meta keys:
+
+```bash
+taskctl issue create --project PROJ --title "Review PROJ-0007" \
+  --assignee <reviewer> --assignee-kind agent --label review \
+  --review-of PROJ-0007 --review-round 1 --meta flow=B
+```
+
+`--review-of` takes an identifier or an id; `--review-round` is a positive integer and
+requires `--review-of`. The board resolves both at creation, stores the structural
+`review_of_id` / `review_round`, and mirrors `meta.review_of` / `meta.review_round` itself.
+Do not hand-write those two meta keys: the flags are the contract the loop builds against,
+and the mirror is the board's business. `--meta flow=B` is the review flow's own marker and
+stays a meta key.
+
+One review card per `(original, delivery round)`; the loop's idempotency key is
+`loop-review|<ref>|r<round>`.
+
 ### `reconcile --workflow` — the board's workflow plan
 
 `issue reconcile --workflow` is the loop/operator channel, not a worker's normal path. It
@@ -508,6 +529,13 @@ Names resolve in the same transaction as the task write: an exact or unique pref
 reused (the dictionary's spelling wins); several matches are refused with `DICTIONARY_AMBIGUOUS`
 and the candidates listed; `--force-create` skips the fuzzy step; `--assignee-id` bypasses
 the dictionary entirely.
+
+### `labels list`
+
+`labels list [--query <text>] [--limit <n>]` — the project's label registry, read-only and
+structurally so. Like the actor dictionary, it grows when a card names a label and the GC
+prunes what stops being named; there is no `labels add`, `labels rm` or `labels rename`,
+because those commands do not exist.
 
 ### `report`
 

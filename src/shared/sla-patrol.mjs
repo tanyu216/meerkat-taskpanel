@@ -313,8 +313,6 @@ export function warnLeadMinutes(row, periodSeconds) {
  */
 export const BOARD_CARD_ID = "board";
 
-/** Default cap on cards read in one patrol pass. */
-export const DEFAULT_BOARD_LIMIT = 500;
 /** Default cap on trails read in one patrol pass (each is one provider read). */
 export const DEFAULT_TRAIL_LIMIT = 200;
 

@@ -178,3 +178,106 @@ describe("cli/imports — the layering rules", () => {
     assert.equal(/(^|\/)server\/index\.mjs/.test(source), false, "the CLI must not spawn the library entry");
   });
 });
+
+/**
+ * The orchestrator boundary: the loop is a *consumer* of the board's public
+ * surface (`taskctl` / HTTP / the shared SDK), never a co-owner of its
+ * implementation. `src/shared/` is the SDK both sides may import; the board's
+ * core, CLI and server are not.
+ */
+describe("cli/imports — the loop consumes the toolkit, it does not implement it", () => {
+  /** A relative specifier resolved against the importing file, as a repo-relative path. */
+  function specifierTarget(file, specifier) {
+    if (!specifier.startsWith(".")) return null;
+    const resolved = resolve(dirname(file), specifier);
+    return resolved.startsWith(`${ROOT}/`) ? resolved.slice(ROOT.length + 1) : resolved;
+  }
+
+  it("scripts/loop and the supervisor never import src/core, src/cli or src/server", () => {
+    const files = [
+      ...listModuleFiles(join(ROOT, "scripts/loop")),
+      join(ROOT, "scripts/supervisor.mjs"),
+      join(ROOT, "scripts/wake-cwd.mjs"),
+    ].filter((file) => existsSync(file));
+    assert.ok(files.length >= 5, `expected the loop module set, found ${files.length}`);
+
+    const violations = [];
+    for (const file of files) {
+      for (const specifier of importedSpecifiers(readSource(file))) {
+        const target = specifierTarget(file, specifier);
+        if (target === null) continue;
+        if (/^src\/(core|cli|server)\//.test(target)) {
+          violations.push(`${file.slice(ROOT.length + 1)} imports ${specifier}`);
+        }
+      }
+    }
+    assert.deepEqual(violations, []);
+  });
+
+  it("src/core, src/cli and src/server never import the loop's policy modules", () => {
+    // `scheduling.mjs` (the loop's clocks/wake) and `sla-patrol.mjs` (the SLA
+    // rules) are loop policy. They may live under `shared/` so the loop payload
+    // can vendor them, but the board must not depend on them: that would make
+    // the toolkit import its own orchestrator.
+    const files = [
+      ...filesUnder("src/core"),
+      ...filesUnder("src/cli"),
+      ...filesUnder("src/server"),
+    ];
+    const loopPolicy = new Set(["src/shared/scheduling.mjs", "src/shared/sla-patrol.mjs"]);
+
+    const violations = [];
+    for (const file of files) {
+      for (const specifier of importedSpecifiers(readSource(file))) {
+        const target = specifierTarget(file, specifier);
+        if (target !== null && loopPolicy.has(target)) {
+          violations.push(`${file.slice(ROOT.length + 1)} imports ${specifier}`);
+        }
+      }
+    }
+    assert.deepEqual(violations, []);
+  });
+
+  it("src/shared imports nothing from src/core, src/cli or src/server", () => {
+    // The SDK is the bottom of the tree. A shared module reaching upward would
+    // make the loop (which vendors shared) carry a board dependency.
+    const violations = [];
+    for (const file of filesUnder("src/shared")) {
+      for (const specifier of importedSpecifiers(readSource(file))) {
+        const target = specifierTarget(file, specifier);
+        if (target !== null && /^src\/(core|cli|server)\//.test(target)) {
+          violations.push(`${file.slice(ROOT.length + 1)} imports ${specifier}`);
+        }
+      }
+    }
+    assert.deepEqual(violations, []);
+  });
+
+  it("no shipped skill imports the board's implementation", () => {
+    // An installed skill and the board's source tree are not co-located.
+    // `skills/**` may only use Node builtins and relative links inside its own
+    // tree — the loop body's vendored `src/shared/**` included. Reaching
+    // `src/core|cli|server` would resolve in a checkout and fail on a host.
+    const files = listModuleFiles(join(ROOT, "skills"));
+    assert.ok(files.length >= 3, `expected the shipped skill modules, found ${files.length}`);
+
+    const violations = [];
+    for (const file of files) {
+      for (const specifier of importedSpecifiers(readSource(file))) {
+        const target = specifierTarget(file, specifier);
+        if (target !== null && /^src\/(core|cli|server)\//.test(target)) {
+          violations.push(`${file.slice(ROOT.length + 1)} imports ${specifier}`);
+        }
+      }
+    }
+    assert.deepEqual(violations, []);
+
+    for (const dir of ["core", "cli", "server"]) {
+      assert.equal(
+        existsSync(join(ROOT, "skills/meerkat-loop/body/src", dir)),
+        false,
+        `the loop payload must not vendor src/${dir}`,
+      );
+    }
+  });
+});

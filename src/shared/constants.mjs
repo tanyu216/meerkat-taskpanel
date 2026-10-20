@@ -510,3 +510,32 @@ export const DEFAULT_ACCEPTANCE_POLICY = "both";
  * One source for the core decision, the SLA patrol and the loop's executor.
  */
 export const LOOP_ACCEPTOR = "loop-review";
+
+/**
+ * Default cap on cards read in one pass — the loop's patrol/board read and the
+ * board's workflow snapshot share it.
+ *
+ * It lives here rather than in `sla-patrol.mjs` because both sides read it: the
+ * SLA pass caps its own read, and `workflowTick` caps the snapshot it plans
+ * from. A loop-only module may not be imported by `src/core`; the shared SDK may.
+ */
+export const DEFAULT_BOARD_LIMIT = 500;
+
+/** Default cap on writes one workflow pass may perform (board plan and loop). */
+export const DEFAULT_WORKFLOW_MAX_ACTIONS = 20;
+
+/**
+ * How long a review card may sit without a readable verdict before the loop
+ * says so.
+ *
+ * This is a real gap the SLA pass cannot cover: creating the review card
+ * suppresses the original's `acceptance_card_creation` row, so a reviewer that
+ * is never woken (or keeps failing to report) would otherwise be silent. The
+ * default is generous: an hour of wall clock is well inside the `§⑮` day-long
+ * acceptance limit, and a faster threshold would page on a normal queue.
+ *
+ * The board's planner and the loop's config resolver both read it — one number,
+ * so a board that decides "aged" and a loop that decides "not yet" cannot
+ * disagree.
+ */
+export const DEFAULT_REVIEW_AGING_MS = 60 * 60_000;

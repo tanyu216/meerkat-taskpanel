@@ -40,6 +40,17 @@ export function wantsJson(argv) {
   return argv.some((token) => token === "--json" || token.startsWith("--json="));
 }
 
+/**
+ * The `--version --json` payload.
+ *
+ * One construction, used by the CLI and read by the CLI contract checker: the
+ * snapshot freezes the payload's *keys*, so it must come from the code that
+ * actually answers the command, never from a second list.
+ */
+export function versionPayload() {
+  return { version: VERSION, schema_version: CONTRACT_SCHEMA_VERSION };
+}
+
 /** Read all of stdin. Used by `--report-file -` and the `--file -` flags. */
 export function readStdin(stream = process.stdin) {
   return new Promise((resolve, reject) => {
@@ -114,10 +125,7 @@ export async function run(argv, io) {
     // directory, and a consumer that needs only the version must not pay for a
     // board (nor fail when there is none).
     if (json) {
-      renderResult(
-        { data: { version: VERSION, schema_version: CONTRACT_SCHEMA_VERSION }, human: "" },
-        { json, out, err },
-      );
+      renderResult({ data: versionPayload(), human: "" }, { json, out, err });
       return CLI_EXIT.OK;
     }
     out(versionLine());

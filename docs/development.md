@@ -35,6 +35,19 @@
 
 Dependency direction: `core`, `cli` and `server` may import from `shared`;
 nothing imports from `cli` or `server`; `shared` imports nothing from `src/`.
+`src/shared/` is the **public SDK**: both the board and the loop may import it.
+
+The loop is an **orchestrator, not a co-owner**. `scripts/loop/**`, the supervisor and
+`scripts/wake-cwd.mjs` may import `shared/` but never `src/core|cli|server`; the board may
+not import the loop's policy modules (`shared/scheduling.mjs`, `shared/sla-patrol.mjs`); and
+no shipped skill imports `src/core|cli|server` at all — an installed skill and a checkout are
+not co-located, so such an import would resolve here and fail on a host. All three directions
+are asserted by `test/cli/imports.test.mjs`.
+
+The ownership rule behind them: a rule that decides **what state is legal or required**
+belongs to the board; a rule that decides **when to act, whom to involve, or where to wake**
+belongs to the loop. The loop reaches the board only through its public surface (`taskctl
+--json` / HTTP), never by importing it.
 
 ## Commands
 
@@ -97,7 +110,7 @@ The mechanics:
 3. Wait for CI. Three workflows already carry a `pull_request` trigger, so no workflow
    change is needed for PR gating:
    - `.github/workflows/check.yml` — the Node 22/24 matrix plus the container job;
-   - `.github/workflows/contract-gate.yml` — the contract snapshot and the route-request lint;
+   - `.github/workflows/contract-gate.yml` — the API and CLI contract snapshots and the route-request lint;
    - `.github/workflows/security-scan.yml`.
 4. Merge once green.
 
@@ -338,7 +351,9 @@ transitive import closure of `scripts/supervisor.mjs`, `scripts/loop/*.mjs` and
 and `templates/` mirrors the
 loop-side files under `scripts/install/templates/`. That direction matters — the shared
 modules in `src/shared/` are **not** moved into the skill; they stay where the CLI imports
-them, and the skill's copy is generated and guarded. The **workflow decisions** are not in
+them, and the skill's copy is generated and guarded. The vendored set is `src/shared/**`
+only: the loop body never contains `src/core`, `src/cli` or `src/server`. The **workflow
+decisions** are not in
 the loop body at all: they live in `src/core/domain/workflow.mjs`, and the loop gets them
 from the board through `issue reconcile --workflow`. OpenClaw never receives the loop at
 all, by ruling: its framework already ships an equivalent supervisor, and `install.sh
