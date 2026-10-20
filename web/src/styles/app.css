@@ -3055,6 +3055,66 @@ button.td-prop-value:hover {
   gap: 2px;
   margin-left: auto;
 }
+
+/* The attachment preview — implementation-only (the prototype has no preview
+   arithmetic). A row whose stored type the drawer can render turns its filename
+   into a disclosure button, and the region it opens sits directly under that
+   row: one at a time, so the drawer never grows two viewers. */
+.td-file-open {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  font-size: var(--text-12);
+  font-weight: var(--weight-medium);
+  color: var(--brand-text);
+  text-align: start;
+  cursor: pointer;
+}
+.td-file-open:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.td-file-open:disabled {
+  cursor: default;
+}
+.td-file-preview {
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  border: var(--border) solid var(--brand-border);
+  border-radius: var(--radius-field);
+  background-color: var(--brand-sunken);
+}
+/* A row that follows an expanded preview still needs the gap `.td-file + .td-file`
+   gives its neighbours — the preview block now sits between them. */
+.td-file-preview + .td-file {
+  margin-top: var(--space-2);
+}
+.td-file-preview-status {
+  font-size: var(--text-12);
+  color: var(--brand-text-3);
+}
+.td-file-preview-image {
+  display: block;
+  max-width: 100%;
+  max-height: 60vh;
+  margin-inline: auto;
+  object-fit: contain;
+}
+.td-file-preview-video {
+  display: block;
+  width: 100%;
+  max-height: 60vh;
+}
+.td-file-preview-pdf {
+  display: block;
+  width: 100%;
+  height: 60vh;
+  border: 0;
+}
+.td-file-preview-md {
+  max-height: 60vh;
+  overflow: auto;
+}
 .td-file:has(.td-file-actions) .td-file-size {
   margin-left: 0;
 }

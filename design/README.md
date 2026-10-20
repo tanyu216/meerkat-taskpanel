@@ -29,7 +29,10 @@ read-only `prefix` field the projects wire hands the sidebar) and
 effective prefix does not fit its 24×24 box) and `contracts/detail-drawer-editing.md` (the
 detail drawer's three editing seats, whose semantics the server owns rather than the
 prototype: which side of a `blocks` edge the `depends_on` chips show, what removing an
-attachment removes, and the declared deviation in the size text).
+attachment removes, and the declared deviation in the size text) and
+`contracts/attachment-preview.md` (which attachment rows the drawer previews in place:
+the family is derived from the stored content type, the bytes arrive as a blob, and the
+preview control is a registered implementation-only deviation from the prototype).
 
 ## Status
 

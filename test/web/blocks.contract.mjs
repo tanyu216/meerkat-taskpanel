@@ -3317,6 +3317,14 @@ export const AUXILIARY_HOOKS = Object.freeze([
   // ⇒ remove", so it left the app (`DetailDrawer.vue`) **and** this table
   // together. The three `[data-attachment-*]` / `[data-activity-*]` hooks stay:
   // U1(a) keeps them, and `test/web/blocks.contract.mjs` §B09 backs them.
+  // The drawer's inline attachment preview — implementation-only, like the three
+  // `[data-attachment-*]` hooks above: the prototype's rows carry download and
+  // remove but no preview arithmetic, so the disclosure button and its region
+  // exist only in the shipped app (`design/contracts/attachment-preview.md`).
+  Object.freeze({ selector: "[data-attachment-open]", purpose: "a previewable attachment row's filename, a disclosure button" }),
+  Object.freeze({ selector: "[data-attachment-preview]", purpose: "the region an attachment's bytes render in" }),
+  Object.freeze({ selector: "[data-attachment-preview-loading]", purpose: "the region's loading sentence" }),
+  Object.freeze({ selector: "[data-attachment-preview-error]", purpose: "the region's failure sentence" }),
   Object.freeze({ selector: "[data-label]", purpose: "one chip per card label" }),
   Object.freeze({ selector: "[data-assignee-value]", purpose: "the name an assignee roster option carries" }),
   Object.freeze({ selector: "[data-reporter-value]", purpose: "the name a reporter roster option carries" }),

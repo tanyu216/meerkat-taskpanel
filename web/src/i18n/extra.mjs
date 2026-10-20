@@ -92,6 +92,11 @@ export const EXTRA = {
     "error.attachTooLarge": "That file is larger than the board's 64 MiB limit.",
     "error.attachType": "That file type is not allowed on the board.",
     "attach.placeholder": "No attachments",
+    // The drawer's inline preview (T-…): a previewable row's filename is a
+    // disclosure button, and the region it opens is a named surface of its own.
+    "attachment.preview": "Attachment preview",
+    "attachment.previewLoading": "Loading preview…",
+    "attachment.previewError": "This attachment could not be loaded.",
     // R13 修订（seg3 · 决定甲）— `assignee.clear` is gone from here too. R15 ②
     // authored it locally (the prototype had already withdrawn the key, while the
     // implementation still shipped the `✕`); with the `✕` withdrawn on **both**
@@ -202,6 +207,9 @@ export const EXTRA = {
     "error.attachTooLarge": "该文件超过看板 64 MiB 的上限。",
     "error.attachType": "看板不接受该文件类型。",
     "attach.placeholder": "无附件",
+    "attachment.preview": "附件预览",
+    "attachment.previewLoading": "正在加载预览…",
+    "attachment.previewError": "该附件无法加载。",
     "activity.filters.label": "动态筛选",
     "detail.saveError": "保存失败 —— 请重试。",
     // 同上：抽屉的六枚 tab 与报告/验收/会话轨迹文案。
