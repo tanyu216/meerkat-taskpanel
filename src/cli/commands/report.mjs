@@ -13,7 +13,7 @@
  *     a costume. `leftovers` gets a TODO placeholder so the shape is still valid.
  *   * **acceptance comes from the card**: `meta.acceptance` first (written by
  *     `issue create --acceptance`), then `meta.acceptance_legacy` (the checkbox
- *     list the md migrator imports), then nothing plus a warning. `checked` is
+ *     list carried by an imported card), then nothing plus a warning. `checked` is
  *     *not* consulted: a ticked box on an imported card is not evidence.
  *   * **evidence anchors are explicit first, guessed second, never invented**:
  *     `--commit`/`--path`/`--command`/`--coverage` become anchors verbatim; with

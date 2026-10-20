@@ -267,7 +267,6 @@ describe("no entry point reverts to a symlink-fragile guard", () => {
   const MUST_BE_SCANNED = [
     "src/cli/index.mjs",
     "src/server/main.mjs",
-    "src/core/storage/md/migrate-cli.mjs",
     "scripts/wake-cwd.mjs",
     "scripts/supervisor.mjs",
     "scripts/loop/poll.mjs",
@@ -276,7 +275,6 @@ describe("no entry point reverts to a symlink-fragile guard", () => {
     "scripts/loop/continue.mjs",
     "scripts/verify/contract.mjs",
     "scripts/verify/web-dist.mjs",
-    "scripts/migrate/drill.mjs",
     "scripts/security/scan-gate.mjs",
     "monitoring/exporter.mjs",
     "skills/meerkat-taskpanel/scripts/report.mjs",

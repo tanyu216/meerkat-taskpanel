@@ -29,9 +29,8 @@
  * ## Why this layer
  *
  * Why not a database trigger: the closure is a *delivery*, and a delivery is a
- * validated report plus a status move. Only this layer can write a report that
- * satisfies the delivery gate, and the md importer (which writes history rather
- * than workflow) must not trigger a closure. The start needs no report, but it
+ * validated report plus a status move. Only this layer writes both, so a raw
+ * move cannot close a container. The start needs no report, but it
  * needs the same one-write-per-transition reasoning and the same system note,
  * so it lives here too.
  *

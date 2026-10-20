@@ -14,8 +14,8 @@ database (Node's built-in `node:sqlite`) — no external services. Node **>= 22*
 **zero runtime dependencies**, MIT, public repo.
 
 **Status (honest):** the engine has landed in full — the core engine, the `taskctl` CLI and
-its local `taskd`, the six-host installers, the markdown migrator, and the board HTTP API +
-SSE plus the `web/` frontend. `src/core/` has the domain model, SQLite storage
+its local `taskd`, the six-host installers, and the board HTTP API + SSE plus the `web/`
+frontend. `src/core/` has the domain model, SQLite storage
 + migrations, use-cases and `openBoard()`; `src/cli/` is the real `taskctl` command surface
 and auto-starts the local `taskd` (`TASKD_NO_AUTOSTART=1` disables it); `src/server/` is the
 board HTTP API + SSE; `web/` is the Vue 3 + Vite frontend that builds to `web/dist` and is
@@ -109,16 +109,14 @@ bash install.sh --target claude|openclaw|codex|pi|opencode|cursor|all   # --pref
 ```
 
 `test:coverage` gates `src/core/**`, `src/shared/**`, `src/cli/**` and `src/server/**`; the
-floors live once, in `package.json`. Other checkers: `verify:migrations`,
-`verify:changelog`, `verify:migrate:container`, `node src/core/storage/md/migrate-cli.mjs
-check --dir <cards>` (also `import` / `export`; exit 3 when `check` finds differences).
+floors live once, in `package.json`. Other checkers: `verify:migrations`, `verify:changelog`.
 
 ## Repository layout
 
 ```text
 meerkat-taskpanel/
 ├── src/core/               # engine: domain (no Node builtins), storage (SQLite + migrations,
-│                           #   repositories, md import/export), commands (use-cases), bootstrap.openBoard()
+│                           #   repositories, md export), commands (use-cases), bootstrap.openBoard()
 ├── src/cli/                # taskctl (argv, usage, commands/, output/); reaches taskd via shared/transport
 ├── src/server/             # taskd: auth + CIDR, router, routes/, sse, static, writer lock, graceful stop
 ├── src/shared/             # DTOs, constants, errors, pure helpers + the taskd transport seam

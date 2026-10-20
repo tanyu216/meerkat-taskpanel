@@ -175,10 +175,9 @@ export const ERROR_CODES = Object.freeze({
   ATTACHMENT_TYPE_UNSUPPORTED: spec(422, "That file type is not allowed on the board."),
   ATTACHMENT_TOO_LARGE: spec(413, "That file is larger than the board's 8 MiB attachment limit."),
 
-  // ---- md migrator -----------------------------------------------------------
+  // ---- markdown cards ---------------------------------------------------------
   MD_PARSE_ERROR: spec(422, "Markdown card could not be parsed."),
   MD_GROWTH_GUARD: spec(422, "Rewriting this card would grow it beyond the guard factor."),
-  SOURCE_CHANGED: spec(409, "Imported source file changed since it was imported."),
 
   // ---- Secrets ---------------------------------------------------------------
   TOKEN_FILE_CORRUPT: spec(500, "Token file exists but is malformed; fix it by hand."),
@@ -266,7 +265,6 @@ export const JS_ONLY_CODES = Object.freeze([
   "SQLITE_UNAVAILABLE",
   "MD_PARSE_ERROR",
   "MD_GROWTH_GUARD",
-  "SOURCE_CHANGED",
   // Attachments: both are decided by `src/shared/attachments.mjs` before any
   // row exists, so no trigger and no SQLite constraint can raise them.
   "ATTACHMENT_TYPE_UNSUPPORTED",

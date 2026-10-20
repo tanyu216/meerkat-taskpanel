@@ -25,7 +25,7 @@ Meerkat TaskPanel 就是回答这些问题的记录：
 Meerkat TaskPanel 是**为 AI Agent 团队而生**的任务看板。它的主题是 **Agent 之间的任务协作** —— 拆分工作、声明依赖、交接结果；而对围绕它们的人来说，它把这种协作变成**可可视化、可追溯**的东西，而不是锁在模型的上下文里。真正干这些事的机制 —— 只增不改的审计轨迹、一等公民的依赖与 epic 关系、可续接的会话 —— 正是下方[亮点](#亮点)所描述的。
 
 > **状态：引擎已整体落地 —— 核心引擎、`taskctl` CLI 与其本地 `taskd`、六宿主安装器、
-> md 迁移器，以及完整的看板后端与 `web/` 前端。**
+> 以及完整的看板后端与 `web/` 前端。**
 > `src/core/` 已包含领域模型、SQLite 存储与迁移、用例与 `openBoard()`；`src/cli/` +
 > `src/server/` 提供了真实的 `taskctl` 命令面，以及 CLI 会在回环地址上自动启动的本地
 > `taskd` HTTP 服务（`TASKD_NO_AUTOSTART=1` 可禁用）；`src/server/` 提供完整的看板 HTTP API
@@ -88,7 +88,7 @@ meerkat-taskpanel/
 ├── package.json                  # 工作区根 + bin(taskctl) + scripts
 ├── install.sh                    # 安装分发器：--target claude|openclaw|codex|pi|opencode|cursor|all
 ├── src/                          # 工程源码
-│   ├── core/                     #   领域模型 / SQLite 仓储 / 状态机 / 不变量 / md 迁移器
+│   ├── core/                     #   领域模型 / SQLite 仓储 / 状态机 / 不变量 / md 导出
 │   ├── cli/                      #   taskctl（CLI 出口）
 │   ├── server/                   #   本地 HTTP API + SSE
 │   └── shared/                   #   共享 DTO / 常量
@@ -298,7 +298,7 @@ PR 流程，以及 CI 强制执行的约定。贡献以 MIT 许可落库。
 | **引擎** | `src/core/` —— 领域模型、SQLite 存储与迁移、状态机、下沉到数据库触发器的各项不变量、`openBoard()` | *已落地* |
 | **CLI 与本地服务** | `src/cli/` —— 对齐 `task-interface v1` 的 `taskctl` 命令面，以及 CLI 自动启动的回环 `taskd` | *已落地* |
 | **安装器** | `install.sh` + `scripts/install/<host>.sh` —— 六个宿主目标，幂等且合并式写入 | *已落地* |
-| **md 迁移器** | `src/core/storage/md/` —— 卡与 markdown 互导，带 reconcile 与导入后不变量检查 | *已落地* |
+| **md 导出** | `src/core/storage/md/` —— `taskctl export md` 为每张卡写一份规范 markdown | *已落地* |
 | **看板 API 与前端** | `src/server/` —— 完整的看板 HTTP API 及其 SSE 流；`web/` —— 构建到 `web/dist` 的 Vue 3 看板 | *已落地* |
 | **Epic 视图** | epic 层级 / 进展 / rollup 的可视化视图 —— 查看 epic 及其子卡状态的聚合 | *（规划中）* |
 | **迭代管理** | 迭代（sprint）周期管理：任务归入迭代、迭代内进度与容量 | *（规划中）* |

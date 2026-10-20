@@ -2,10 +2,9 @@
  * `task-interface v1` ↔ core status aliases (F2 ruling).
  *
  * The card's seven states are canonical. v1 says `ready`/`failed`; those are
- * aliases that are resolved *at the boundary* (md import, CLI in M2) and never
- * stored. The raw legacy value is preserved in `meta_json.legacy_status` so an
- * export can put the original word back — round-tripping old cards must be
- * byte-stable.
+ * aliases resolved *at the boundary* and never stored. The raw legacy value is
+ * preserved in `meta_json.legacy_status` so an export can put the original word
+ * back — a card that once used an alias must export byte-stably.
  *
  * Pure: no `node:` specifiers.
  */

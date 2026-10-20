@@ -8,7 +8,7 @@ Documentation for Meerkat TaskPanel.
 | [publishing.md](publishing.md) | Releasing a version: npm packaging / publish, the git tag + GitHub Release pipeline, and the per-host publication steps (Claude Code marketplace / OpenClaw / Codex / Pi / Cursor / OpenCode). |
 | [development.md](development.md) | Repository layout, Node requirement, test / verify / build commands, the two build layers (engine vs `web/`) and the offline / dependency policy. |
 | [docker.md](docker.md) | Why verification and the six-host installs run in a container; the image build, the offline `web/` build stage, profiles and troubleshooting. |
-| [migration.md](migration.md) | Taking over the team's markdown cards: the dry run, shadow (read-only) mode, the single-point switch and the rollback. |
+| [migration.md](migration.md) | The append-only SQL schema gate, and the note recording the MCP integration's removal. |
 | [projects.md](projects.md) | What a project is, how its id becomes the identifier prefix, and why that prefix must be unique across projects. |
 | [contract.md](contract.md) | The contract snapshots — the HTTP API (routes, error codes, wire fields) and the CLI surface (`taskctl` commands, flags, envelope keys): what each freezes, the `--update` workflow, and the pre-push / pre-tag / CI gates. |
 | [scheduling.md](scheduling.md) | The ping/continue scheduler, the deterministic loop entries, the fire-only cost gate, the atomic-claim dispatch, the event subscriber, the three-host trigger differences, and why OpenClaw uses openclaw-team instead. |

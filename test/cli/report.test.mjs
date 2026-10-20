@@ -67,7 +67,7 @@ describe("cli/report template", () => {
   });
 
   it("falls back to the imported card's acceptance checkboxes, and says so", () => {
-    // The legacy list is what the md migrator writes, so it is asserted against
+    // The legacy list is carried by an imported card, so it is asserted against
     // the real shape rather than round-tripped through `--meta` (whose values
     // are strings).
     const legacy = acceptanceFrom({

@@ -197,7 +197,7 @@ export const DB_BUSY_BACKOFF_MS = 25;
 // CLI exits (§F-C2: 0 ok | 1 runtime | 2 usage | 3 export --md --check differs)
 // ---------------------------------------------------------------------------
 
-/** Process exit codes. `3` is shared with `migrate-cli check` on purpose. */
+/** Process exit codes. `3` is `export md --check` finding stale cards. */
 export const CLI_EXIT = Object.freeze({
   OK: 0,
   ERROR: 1,
@@ -302,7 +302,7 @@ export const REPORT_MAX_ITEMS = 64;
 export const REPORT_MAX_CONCLUSION_CHARS = 16_384;
 
 // ---------------------------------------------------------------------------
-// md migrator (plan §3.7)
+// md export
 // ---------------------------------------------------------------------------
 
 /** Rewriting a card may not grow it beyond input × this factor. */

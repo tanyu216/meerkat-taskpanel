@@ -3,7 +3,7 @@
  *
  * Every failure is a `DomainError` with a code, so the rule is one line: a usage
  * problem exits 2, anything else exits 1, and `export --md --check` with
- * differences exits 3 (the same contract `migrate-cli check` already uses).
+ * differences exits 3.
  *
  * The rendered error is `DomainError.toJSON()` passed straight through — the CLI
  * adds no vocabulary of its own, which is what makes `--json` errors stable for

@@ -444,7 +444,7 @@ still fresh.
 _Avoid_: using state and status interchangeably
 
 **Migration**:
-Deliberately overloaded, and the two senses are unrelated. One is a change to the database
-schema; the other is taking over a team's existing markdown cards. The repository names both
-"migration" on purpose — read the surrounding sentence to tell which is meant.
-_中文_: 迁移（数据库结构与「接管旧卡片」共用一词）
+A numbered, append-only change to the database schema (`src/core/storage/migrations/*.sql`).
+It is not a word for moving cards in or out of the board: cards are created through the
+board, and `taskctl export md` writes them out.
+_中文_: 迁移（仅指数据库结构；不指卡片搬迁）

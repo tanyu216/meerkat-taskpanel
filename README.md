@@ -47,8 +47,8 @@ append-only audit trail, first-class dependency and epic edges, resumable sessio
 the [Highlights](#highlights) below describe.
 
 > **Status: the engine has landed in full — the core engine, the `taskctl` CLI and its
-> local `taskd`, the six-host installers, the markdown migrator, and the full board
-> backend plus the `web/` frontend.**
+> local `taskd`, the six-host installers, and the full board backend plus the `web/`
+> frontend.**
 > `src/core/` holds the domain model, SQLite storage and migrations, use-cases and
 > `openBoard()`; `src/cli/` + `src/server/` provide the real `taskctl` command surface and
 > the local `taskd` HTTP service the CLI auto-starts on loopback
@@ -127,7 +127,7 @@ meerkat-taskpanel/
 ├── package.json                  # workspace root, bin(taskctl), scripts
 ├── install.sh                    # install dispatcher: --target claude|openclaw|codex|pi|opencode|cursor|all
 ├── src/                          # engineering source
-│   ├── core/                     #   domain model / SQLite repo / state machine / invariants / md migrator
+│   ├── core/                     #   domain model / SQLite repo / state machine / invariants / md export
 │   ├── cli/                      #   taskctl (CLI entry)
 │   ├── server/                   #   local HTTP API + SSE
 │   └── shared/                   #   shared DTOs / constants
@@ -385,7 +385,7 @@ Contributions land under the MIT license.
 | **Engine** | `src/core/` — domain model, SQLite storage + migrations, state machine, invariants pushed down into database triggers, `openBoard()` | *landed* |
 | **CLI & local service** | `src/cli/` — the `taskctl` command surface aligned with `task-interface v1`; the loopback `taskd` it auto-starts | *landed* |
 | **Installers** | `install.sh` + `scripts/install/<host>.sh` — the six host targets, idempotent and merge-style | *landed* |
-| **Markdown migrator** | `src/core/storage/md/` — import/export cards as markdown, with reconcile and a post-import invariants check | *landed* |
+| **Markdown export** | `src/core/storage/md/` — `taskctl export md` writes one canonical card per task | *landed* |
 | **Board API & frontend** | `src/server/` — the full board HTTP API and its SSE stream; `web/` — the Vue 3 board built to `web/dist` | *landed* |
 | **Epic view** | Visual view of epic hierarchy / progress / rollup — see an epic and how the statuses of its child cards aggregate | *(planned)* |
 | **Iteration management** | Iteration (sprint) cycle management: group tasks into iterations, with in-iteration progress and capacity | *(planned)* |

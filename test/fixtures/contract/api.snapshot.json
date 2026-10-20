@@ -229,10 +229,6 @@
       "http": 409
     },
     {
-      "code": "SOURCE_CHANGED",
-      "http": 409
-    },
-    {
       "code": "SQLITE_UNAVAILABLE",
       "http": 500
     },

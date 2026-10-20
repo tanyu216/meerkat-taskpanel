@@ -6,10 +6,9 @@
  * A board reachable over the network never writes into a directory a caller
  * named.
  *
- * `--check` is the `migrate-cli` convention reused: compare, write nothing, and
- * exit **3** when something differs. That is the only non-zero exit code that is
- * not an error, and it exists so a CI job can say "the cards are stale" without
- * pretending it crashed.
+ * `--check` compares, writes nothing, and exits **3** when something differs.
+ * That is the only non-zero exit code that is not an error, and it exists so a
+ * CI job can say "the cards are stale" without pretending it crashed.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";

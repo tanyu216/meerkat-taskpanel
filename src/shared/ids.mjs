@@ -86,8 +86,8 @@ export function identifierPrefix(projectId) {
  * is what keeps cards already on the board numbered the way they are.
  *
  * The stored value is re-normalized rather than trusted, so a row written by a
- * path that bypasses the create use-case (an md import carrying a registry meta)
- * still resolves to the same prefix the create use-case would have stored —
+ * path that bypasses the create use-case (a hand-written row, a historical
+ * import) still resolves to the same prefix the create use-case would have stored —
  * `identifierPrefix` is idempotent, so the normal path is unaffected.
  *
  * @param {{id: string, meta?: object|null}} project

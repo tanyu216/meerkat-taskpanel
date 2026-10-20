@@ -20,7 +20,7 @@
  *
  * The last one is the acceptance criterion — "锁超时端到端不再 500" — and it is
  * driven by a *separate process* holding the lock, which is the shape of the
- * real failure (a `migrate-cli` run, a second connection, a stalled disk).
+ * real failure (a second connection, a stalled disk).
  */
 
 import assert from "node:assert/strict";
@@ -176,7 +176,7 @@ describe("concurrency/db-busy — the retry budget", () => {
  *
  * `--input-type=module` because the runtime is ESM; the database handle is a
  * *separate process's* connection, which is exactly how the audit reproduced the
- * failure (and how `migrate-cli` contends with a live daemon).
+ * failure (and how a second connection contends with a live daemon).
  */
 const HOLDER_SOURCE = `
 import { DatabaseSync } from "node:sqlite";

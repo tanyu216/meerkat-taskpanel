@@ -85,12 +85,11 @@ export function createTask(ctx, input) {
         projectId: input.projectId,
       });
 
-      // The gate's INSERT-shaped half (M3fix D1). `createTask` is the single
-      // door the HTTP and CLI faces share; refusing here — before any
-      // row is written — makes `in_review`/`done` unreachable at creation the
-      // same way a reportless `task_move` is refused. The md importer does not
-      // call this use-case (it writes history directly), which is why the guard
-      // cannot be a trigger: an INSERT trigger would abort an `in_review` import.
+      // The gate's INSERT-shaped half. `createTask` is the single door the HTTP
+      // and CLI faces share; refusing here — before any row is written — makes
+      // `in_review`/`done` unreachable at creation the same way a reportless
+      // `task_move` is refused. It is a JS guard, not a trigger, because the
+      // gate belongs to this use-case rather than to every INSERT.
       assertCreationGate({ task: candidate, status: candidate.status });
 
       // --- the mechanical idempotency guard --------------------------------

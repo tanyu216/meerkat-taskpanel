@@ -70,8 +70,7 @@ compressed, and on a host whose daemon proxy or DNS is broken that pull does not
 time — it turns a healthy tree into a red gate.
 
 `npm run verify:docker` therefore runs a **preflight** before any build
-(`scripts/verify/lib/base-image.mjs`), and `npm run verify:migrate:container` uses the same
-policy:
+(`scripts/verify/lib/base-image.mjs`):
 
 1. every base image named by a `FROM` line is inspected in the local image store
    (`docker image inspect`). Present → the run never touches the network;
