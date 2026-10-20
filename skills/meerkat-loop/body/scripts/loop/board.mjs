@@ -3,11 +3,7 @@
  * The real board I/O behind the deterministic entries.
  *
  * `runners.mjs` holds the injected-dependency passes; this module wires them to
- * `taskctl` and to the files the loop owns. It is deliberately separate from
- * the scheduler: the scheduler reads no board, and only the entries import
- * this module.
- *
- * Node builtins only; no network, no dependencies.
+ * `taskctl` and the loop's own files. Only the entries import it.
  */
 
 import { TASKD_KIND } from "../../src/shared/constants.mjs";
@@ -28,11 +24,8 @@ const COMMENTS_PER_CARD = 200;
 /**
  * The `issue create` argv for one review card.
  *
- * `review_of` / `review_round` are **declared** create fields: the board
- * resolves them, stores the structural marker (`review_of_id` / `review_round`)
- * and mirrors the meta keys itself. Writing those meta keys here would copy the
- * board's protocol into the orchestrator — a break the day the board's mirror
- * changes, and invisible to the CLI's own contract.
+ * `review_of` / `review_round` are declared create fields: the board resolves
+ * them and mirrors the meta keys itself. Do not write those meta keys here.
  */
 export function reviewCreateArgs(action) {
   return [
@@ -54,13 +47,10 @@ export function reviewCreateArgs(action) {
 }
 
 /**
- * Read the board — patrol's input.
- *
- * One unfiltered read, not a read per status: the SLA rows span `blocked`,
- * `in_review` and `in_progress`, and the acceptance row needs the whole card set
- * anyway (its open predicate is "no card records `review_of = <this card>`").
- * `planPatrol` then narrows to `in_progress` exactly as it always did, so the
- * heartbeat half sees the same cards it saw before.
+ * Read the board — patrol's input. One unfiltered read: the SLA rows span
+ * `blocked`, `in_review` and `in_progress`, and the acceptance row needs the
+ * whole set. `truncated` travels with the data: a read exactly at the cap may
+ * have been cut off, and one row's predicate is negative over the whole board.
  */
 export function readBoard(opts, log) {
   const read = runCli(opts, opts.agents[0], ["issue", "list", "--limit", String(opts.boardLimit)]);
@@ -68,11 +58,6 @@ export function readBoard(opts, log) {
     log(`patrol scan failed: ${read.error}`);
     return { ok: false };
   }
-  // A board read that came back exactly at the cap may have been cut off, and
-  // one row's open predicate ("no fix card exists") is a *negative* over the
-  // whole board — so the truncation has to travel with the data rather than be
-  // rediscovered. The board's workflow planner then reports the affected row as
-  // open but undecidable instead of quietly calling it decided (§6.3-B).
   const tasks = Array.isArray(read.data?.tasks) ? read.data.tasks : [];
   return { ...read, truncated: tasks.length >= opts.boardLimit };
 }
@@ -117,9 +102,7 @@ export async function runSlaPass(opts, log, tasks, periodSeconds, { boardTruncat
     else trails[identifier] = trail;
   }
 
-  // The peer's marker, read once (§8.4). No path configured means the peer's
-  // half has not landed — the pass records that as an explicit dependency (a
-  // startup line and the `--sla-peer` note) rather than alarming every period.
+  // No peer path means the peer is not installed: record a dependency, not an alarm.
   const peerLastOkAt = opts.slaPeer === null ? null : readPeerLastOk(opts.slaPeer);
 
   const result = await runSlaPatrolTick({
@@ -131,9 +114,6 @@ export async function runSlaPass(opts, log, tasks, periodSeconds, { boardTruncat
     leaderId: opts.slaLeader,
     boardTruncated,
     peerLastOkAt,
-    // With no peer path configured the peer cannot be *required*: there is
-    // nothing to read, and "absent ⇒ down" would be a permanent false alarm in
-    // exactly the deployment that has not installed the peer yet.
     peerRequired: opts.slaPeer !== null,
     lookbackDays: opts.slaLookbackDays,
     recheck: (identifier) => Promise.resolve(readLiveCard(opts, log, identifier)),
@@ -148,9 +128,8 @@ export async function runSlaPass(opts, log, tasks, periodSeconds, { boardTruncat
     } catch (err) {
       log(`patrol: could not persist the SLA ledger (${err.message}) — a duplicate is possible, a lost alert is not`);
     }
-    // Publish our own last-ok marker (§8.4). It is written **after** the pass,
-    // so it means "a pass completed", and a failure to write it is logged but
-    // never fatal — the peer's watchdog is what notices, and that is the point.
+    // Written after the pass, so it means "a pass completed". A failed write is
+    // logged, never fatal — the peer's watchdog is what notices.
     try {
       saveLastOk(opts.slaLastOk, {
         mechanism: MECHANISM,
@@ -172,9 +151,8 @@ export async function runSlaPass(opts, log, tasks, periodSeconds, { boardTruncat
 
 /**
  * The real-I/O half of the workflow pass. Every write goes through `taskctl`
- * with `--actor-kind taskd`: an automated acceptance must be attributable as
- * the board's act, not a human's (the board's default actor kind is `human`),
- * and `taskd` names the concrete platform rather than a vague role word.
+ * as `--actor-kind taskd`, so an automated acceptance is attributable as the
+ * board's act, not a human's.
  */
 export async function runWorkflowPass(opts, config, log) {
   if (config.workflow !== true) return null;
@@ -182,8 +160,7 @@ export async function runWorkflowPass(opts, config, log) {
   const automation = { actorKind: TASKD_KIND };
   const invoke = (args) => runCli(opts, agent, args, automation);
 
-  // The board decides; the loop executes. One call performs the board's own
-  // container reconcile and returns the plan the loop applies below.
+  // One call does the board's container reconcile and returns the plan.
   const args = ["issue", "reconcile", "--workflow"];
   if (opts.dryRun) args.push("--dry-run");
   if (config.reviewer !== null) args.push("--reviewer", config.reviewer);

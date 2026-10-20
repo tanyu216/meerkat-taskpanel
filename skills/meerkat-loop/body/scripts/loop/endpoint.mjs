@@ -1,23 +1,10 @@
 /**
- * Where the loop's event subscriber connects.
+ * Where the event subscriber connects.
  *
- * The board URL and token are the same two facts every other client resolves —
- * now from three layers, in order: an explicit `--url` / `--token`, the
- * process environment, the install-root `.env` (loaded with `root: opts.repo`),
- * and finally the runtime pointer.
- *
- * `opts.repo` is the *program* checkout, not this installed body: the body
- * lives at `<host>/meerkat-taskpanel/`, so its own `repoRoot()` would point at
- * the host directory. The installer records the checkout as
- * `MEERKAT_TASKPANEL_REPO`, and `options.mjs` resolves it into `opts.repo`.
- *
- * **It never calls `ensureBoard`.** The installed loop body has no
- * `src/server/main.mjs`; an autostart from there would point at a file that
- * does not exist. A missing board is a reconnect, not a spawn: the next
- * `taskctl` call (the continue turn) owns the one autostart path, and this
- * resolver simply re-reads the pointer afterwards.
- *
- * Node builtins only; no network, no dependencies.
+ * URL and token come from `--url`/`--token`, the process env, the install-root
+ * `.env` (rooted at `opts.repo`, the board checkout, not this installed body),
+ * then the runtime pointer. It never calls `ensureBoard`: the installed body has
+ * no `src/server/`, so a missing board is a reconnect, not a spawn.
  */
 
 import { join } from "node:path";

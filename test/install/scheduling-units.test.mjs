@@ -259,7 +259,9 @@ describe("install.sh: scheduling units", () => {
     // approximate. It also proves the executor the unit names is a working module, not
     // a file that merely exists.
     const installed = await import(pathToFileURL(copy).href);
-    assert.equal(typeof installed.defaultRepo, "function", "the copy must expose the runner surface");
+    assert.equal(typeof installed.main, "function", "the copy must expose the executor");
+    const installedOptions = await import(pathToFileURL(join(loopDir, "scripts", "loop", "options.mjs")).href);
+    assert.equal(typeof installedOptions.defaultRepo, "function", "the copy must expose its option surface");
 
     // The board engine stays in the checkout, so the copied executor — which has no
     // `src/cli/index.mjs` beside it — reads the location the installer recorded in the
@@ -270,7 +272,7 @@ describe("install.sh: scheduling units", () => {
       readFileSync(configPath, "utf8").includes(`MEERKAT_TASKPANEL_REPO=${ROOT}`),
       "the host config must record where the board engine lives",
     );
-    assert.equal(installed.defaultRepo(configPath), ROOT);
+    assert.equal(installedOptions.defaultRepo(configPath), ROOT);
   });
 
   it("leaves a hand-edited loop body alone unless --force, and refreshes it with it", () => {

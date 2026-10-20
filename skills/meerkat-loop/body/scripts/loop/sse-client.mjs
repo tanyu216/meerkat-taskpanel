@@ -1,18 +1,9 @@
 /**
- * A zero-dependency SSE client for the loop.
+ * A zero-dependency SSE client: reads `text/event-stream` from a `fetch` body
+ * and feeds the parser in `sse-parse.mjs`.
  *
- * Browsers have `EventSource`; Node does not (the global `WebSocket` is a
- * different protocol). The loop therefore reads `text/event-stream` from a
- * `fetch` body — Node 22+ streams it natively — and feeds the chunks to the
- * pure parser in `sse-parse.mjs`.
- *
- * Two timeouts, two different meanings:
- *   * the **read-idle** timer aborts a connection that has sent nothing for
- *     longer than three server heartbeats;
- *   * the **backoff** ladder is the caller's decision between connections.
- *     `nextBackoff` is exported so the subscriber and its tests share it.
- *
- * Node builtins only; no network, no dependencies.
+ * The read-idle timer aborts a stream silent for longer than three heartbeats;
+ * the backoff ladder is the caller's decision between connections.
  */
 
 import { SUBSCRIBE_BACKOFF_MAX_MS } from "../../src/shared/constants.mjs";

@@ -1,30 +1,16 @@
 #!/usr/bin/env node
 /**
- * `wake-cwd` — *where* a woken worker must run, decided locally (R1).
+ * `wake-cwd` — the directory a woken worker must run in.
  *
- * The supervisor knows a card's board project identity; it knows nothing about
- * directories, and it must not: the board holds none (O3). The mapping from a
- * project to a local directory belongs to the host, in the `projects.json` that
- * sits beside the installed skill
- * (`skills/meerkat-taskpanel/references/projects-json.md`).
- *
- * So the wake glue — the one piece of the chain that *is* host-local — asks this
- * helper, and this helper answers with the one thing the glue needs: an absolute
- * directory to `cd` into. When it cannot answer, it **fails loudly**: no
- * directory is printed, a non-zero status is returned, and the reason goes to
- * stderr. A worker that runs in the wrong directory is worse than a worker that
- * never started, so there is deliberately no fallback and no default — an entry
- * that names no directory at all is one of the ways to have no answer here, even
- * though the map itself treats it as the complete answer "this project has no
- * local directory".
+ * The board holds no project directory; the host-local map (`projects.json`,
+ * beside the installed skill) does. This helper answers with an absolute
+ * directory for the glue to `cd` into, and fails loudly rather than guessing:
+ * no directory on stdout, exit 3, the reason on stderr.
  *
  *   node scripts/wake-cwd.mjs --project <identity> [--projects-json <path>]
  *
- * Exit codes: 0 resolved (the directory is the only thing on stdout),
- *             2 the command line is wrong,
- *             3 nothing could be resolved (unmapped project; an entry that names
- *               no directory; or a directory that is missing / relative / not a
- *               directory).
+ * Exit codes: 0 resolved · 2 bad command line · 3 nothing resolved (unmapped
+ * project, an entry naming no directory, or a missing / relative / non-directory).
  */
 
 import { readFileSync } from "node:fs";
@@ -98,11 +84,8 @@ export function resolveWakeDir(opts) {
   const resolved = resolveProjectDir({ entries: map.entries, project: opts.project, file: opts.projectsJson });
   if (!resolved.ok) return { ok: false, code: resolved.code, message: resolved.message };
 
-  // An entry that names no directory is a legitimate answer for the map (`dir:
-  // null`), but not for a *wake*: a worker is started somewhere, so this one
-  // needs a directory the entry does not have. The refusal is the validator's
-  // own — asked here about the value that is missing — so there is one wording
-  // for "no usable directory", not two.
+  // `dir: null` is a complete answer for the map, not for a wake: a worker is
+  // started somewhere. Reuse the validator's wording for the refusal.
   if (resolved.dir === null) {
     const required = checkTargetDirectory(undefined, { project: opts.project, file: opts.projectsJson });
     return { ok: false, code: required.code, message: required.message };

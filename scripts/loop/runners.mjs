@@ -1,14 +1,9 @@
 #!/usr/bin/env node
 /**
- * The loop's injected-dependency runners and process spawners.
+ * The loop's runners and process spawners.
  *
- * Everything in this module is the **I/O half** of a decision made in
- * `src/shared/`: the runners take their side effects as dependencies so tests
- * can prove "an empty scan spawns nothing" without a board. They are also the
- * legacy surface the supervisor re-exports, so existing tests keep importing
- * from `scripts/supervisor.mjs`.
- *
- * Node builtins only; no network, no dependencies.
+ * The runners take their side effects as dependencies, so a test can prove
+ * "an empty scan spawns nothing" without a board.
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -127,26 +122,12 @@ export async function runPatrolTick(deps) {
 }
 
 /**
- * One SLA patrol pass — the `PROTOCOL §⑮` rows beside the heartbeat's.
+ * One SLA patrol pass.
  *
- * The order here is the contract's, and each step exists for a failure it
- * prevents:
- *
- *   1. **plan** — `planSlaPatrol` decides which (card, row) pairs have crossed a
- *      tier. An idle board plans nothing, which is the whole zero-cost property.
- *   2. **de-duplicate** — keys already in the ledger are dropped *before* any
- *      further reading, so a long-standing alert costs no provider read per tick.
- *   3. **re-check** — the survivors are re-read live and dropped if they no
- *      longer qualify, because the snapshot the plan was built from may be
- *      seconds old and notifying a card that just moved is the stale-alert bug
- *      this patrol already refuses to have. A drop is always returned.
- *   4. **notify, then record** — the ledger is written *after* the send. An
- *      alert a re-check removed must leave no marker behind, or the next tick
- *      would suppress an alert that was never delivered.
- *
- * Nothing here writes a card, and nothing here starts an LLM: the new rows are
- * notifications, full stop. (The opt-in `--patrol-llm` turn stays attached to
- * the legacy `stale` alert, where it was.)
+ * The order is load-bearing: plan → drop already-notified keys → re-read the
+ * survivors live (a card that just moved must not alert) → notify, *then*
+ * record. Writing the ledger before the send would suppress an alert that was
+ * never delivered. Nothing here writes a card or starts an LLM.
  *
  * @param {{
  *   cards: object[],
@@ -247,21 +228,13 @@ export async function runSlaPatrolTick(deps) {
 }
 
 /**
- * One workflow pass — the loop's *write* channel, beside the notify-only SLA
- * pass.
+ * One workflow pass — the loop's write channel.
  *
- * The board decides; this function executes. `deps.plan` is the `workflow`
- * object returned by `issue reconcile --workflow` (`commands/workflow.mjs`):
- * reconcile notices, review outcomes and review-dispatch decisions. No write
- * happens before it arrives.
- *
- * Execution order is the recovery protocol: each action independently; one
- * failure never stops the rest; a review card is closed *last*, so a crash
- * between the original's move and the card's close is recovered on the next
- * pass, never lost.
- *
- * `autoAcceptReviews = false` is already reflected in each action's
- * `close_review`; the executor honours it without re-deciding.
+ * `deps.plan` is the `workflow` object from `issue reconcile --workflow`; no
+ * write happens before it arrives. Actions run independently, one failure never
+ * stops the rest, and the review card is closed last, so a crash between the
+ * original's move and the card's close is recovered on the next pass.
+ * `autoAcceptReviews=false` is already in each action's `close_review`.
  *
  * @param {{
  *   plan?: {alerts?: object[], actions?: object[], changes?: object[], summary?: object},
@@ -329,18 +302,14 @@ export async function runWorkflowTick(deps) {
     return result;
   };
 
-  // Closing the review card is the LAST write of every outcome, and the half
-  // `autoAcceptReviews=no` removes. A review card that never started can only be
-  // `canceled` (the state machine forbids `todo → done`); one waiting for
-  // acceptance becomes `done`.
+  // Closing the review card is the last write of every outcome. A card that
+  // never started can only be `canceled`; one awaiting acceptance becomes `done`.
   const closeReviewCard = async (action, note) => {
     if (action.close_review === false) {
       log(`workflow: review ${action.review_ref} left in_review for human acceptance`);
       return;
     }
-    // The board carries the review card's status in the action; the loop no
-    // longer keeps a task snapshot. The fallback keeps an older plan safe:
-    // outcome actions are generated for an in_review card, cleanup is not.
+    // The board carries the status; the fallback keeps an older plan safe.
     const status =
       action.review_status ?? (action.type === "cancel_review" ? "canceled" : "in_review");
     if (status === "done" || status === "canceled") return;
@@ -383,13 +352,9 @@ export async function runWorkflowTick(deps) {
           break;
 
         // `human-only` + a top-level original: record the verdict, close the
-        // review card, and leave the acceptance to the human. The marker makes
-        // the hold idempotent — a crash after the comment/meta, or a second
-        // pass before the human acts, rewrites neither. The close is still the
-        // last write, so a failure there is retried without repeating the rest.
+        // review card, leave acceptance to the human. `held` (from the board,
+        // which compared the marker with the current round) skips the writes.
         case "approve_hold": {
-          // The board already compared the marker with the original's current
-          // round; `held` says whether the comment/meta writes can be skipped.
           if (action.held !== true) {
             await step(comment, "comment", action.original_ref, {
               kind: "note",
@@ -486,11 +451,9 @@ export async function runWorkflowTick(deps) {
 }
 
 /**
- * The workflow alerts worth a notification. The rest are log-only standing
- * state: `dispatch_skipped` (no reviewer configured, or a truncated read),
- * `dispatch_capped` (a bounded pass did less than asked) and
- * `review_awaiting_human_acceptance` (the operator chose `auto-accept=no`) are
- * conditions a tick cannot resolve and would repeat every period.
+ * Alerts worth a notification. The rest are log-only standing state
+ * (`dispatch_skipped`, `dispatch_capped`, `review_awaiting_human_acceptance`):
+ * a tick cannot resolve them, so notifying would repeat every period.
  */
 const WORKFLOW_NOTIFY_TYPES = new Set([
   "reconcile",
@@ -531,6 +494,42 @@ function describeWorkflowAction(action) {
   }
 }
 
+/**
+ * Start a detached child and resolve as soon as it exists. `stderrFd` (or null)
+ * is closed in the parent once spawn resolves or fails.
+ *
+ * @param {{command: string, args: string[], env: Record<string,string>, cwd: string|null}} invocation
+ * @param {number|null} stderrFd
+ * @returns {Promise<{ok: boolean, pid?: number, error?: string}>}
+ */
+function spawnDetached(invocation, stderrFd) {
+  return new Promise((resolveResult) => {
+    const child = spawn(invocation.command, invocation.args, {
+      detached: true,
+      stdio: ["ignore", "ignore", stderrFd ?? "ignore"],
+      env: { ...process.env, ...invocation.env },
+      ...(invocation.cwd === null ? {} : { cwd: invocation.cwd }),
+    });
+    const release = () => {
+      if (stderrFd === null) return;
+      try {
+        closeSync(stderrFd);
+      } catch {
+        // Closing twice must never take the tick down.
+      }
+    };
+    child.once("error", (err) => {
+      release();
+      resolveResult({ ok: false, error: err.message });
+    });
+    child.once("spawn", () => {
+      release();
+      child.unref();
+      resolveResult({ ok: true, pid: child.pid });
+    });
+  });
+}
+
 export function spawnWorkerReal(opts, config, log) {
   return (action, card) => {
     // A review card takes the reviewer handoff. The candidate projection carries
@@ -549,13 +548,7 @@ export function spawnWorkerReal(opts, config, log) {
           host: opts.host,
           review: reviewer !== null,
         });
-    // The resolved glue is `opts.glue` — the `--glue` flag, else the host default
-    // `parseArgs` fills in. There is **no** `opts.gluePath`, and reading one here
-    // handed the planner `undefined`: `existsSync(undefined)` (DEP0187) is false, so
-    // `glueInstalled` was false on every wake and every wake took the direct branch.
-    // An installed glue was named in the tick line and still never used — R1's "the
-    // worker runs in the card's target directory" had silently stopped happening.
-    // Read the field that is actually assigned.
+    // The parsed field is `opts.glue`; there is no `gluePath`.
     const invocation = planWakeInvocation({
       host: opts.host,
       prompt,
@@ -569,42 +562,10 @@ export function spawnWorkerReal(opts, config, log) {
     });
     if (invocation.warning) log(`wake ${action.identifier}: ${invocation.warning}`);
 
-    // The glue is a resolver, not a worker: it either resolves the card's target
-    // directory, `cd`s, and execs the host CLI — or it refuses and exits 3 with
-    // the reason on stderr. That reason has to reach a human, so a glue's stderr
-    // is appended to the supervisor log; a parent process here cannot see it
-    // otherwise (the child is detached), and a refused wake must never be silent.
-    // A directly-spawned host CLI keeps its output discarded: a long-running
-    // worker's chatter does not belong in the supervisor's log.
+    // A glue's refusal explains itself on stderr; append it to the loop log, or
+    // a refused wake is silent. A directly-spawned CLI's chatter is discarded.
     const stderrFd = invocation.via === "glue" ? openAppendFd(opts.log) : null;
-    const release = () => {
-      if (stderrFd === null) return;
-      try {
-        closeSync(stderrFd);
-      } catch {
-        // Closing twice, or after a failed open, must never take the tick down.
-      }
-    };
-
-    return new Promise((resolveResult) => {
-      const child = spawn(invocation.command, invocation.args, {
-        detached: true,
-        stdio: ["ignore", "ignore", stderrFd ?? "ignore"],
-        // The identity rides in the environment so a glue (and the `wake-cwd`
-        // helper behind it) can resolve the card's target directory locally.
-        env: { ...process.env, ...invocation.env },
-        ...(invocation.cwd === null ? {} : { cwd: invocation.cwd }),
-      });
-      child.once("error", (err) => {
-        release();
-        resolveResult({ ok: false, error: err.message });
-      });
-      child.once("spawn", () => {
-        release();
-        child.unref();
-        resolveResult({ ok: true, pid: child.pid });
-      });
-    });
+    return spawnDetached(invocation, stderrFd);
   };
 }
 
@@ -617,12 +578,8 @@ export function notifyReal(opts, log) {
 }
 
 /**
- * Start one continue turn and return as soon as the child exists.
- *
- * A continue turn is detached exactly like a worker wake: the supervisor does
- * not wait for it. Its stderr is appended to the loop log because a failed
- * host CLI is otherwise silent — the parent cannot see a detached child's
- * output.
+ * Start one continue turn and return as soon as the child exists. Its stderr
+ * goes to the loop log, or a failed host CLI would be silent.
  *
  * @param {{log: string}} opts
  * @param {{command: string, args: string[], env: Record<string,string>, cwd: string|null}} invocation
@@ -630,30 +587,5 @@ export function notifyReal(opts, log) {
  * @returns {Promise<{ok: boolean, pid?: number, error?: string}>}
  */
 export function spawnContinueTurn(opts, invocation, log) {
-  const stderrFd = openAppendFd(opts.log);
-  return new Promise((resolveResult) => {
-    const child = spawn(invocation.command, invocation.args, {
-      detached: true,
-      stdio: ["ignore", "ignore", stderrFd ?? "ignore"],
-      env: { ...process.env, ...invocation.env },
-      ...(invocation.cwd === null ? {} : { cwd: invocation.cwd }),
-    });
-    const release = () => {
-      if (stderrFd === null) return;
-      try {
-        closeSync(stderrFd);
-      } catch {
-        // Closing twice must never take the turn down.
-      }
-    };
-    child.once("error", (err) => {
-      release();
-      resolveResult({ ok: false, error: err.message });
-    });
-    child.once("spawn", () => {
-      release();
-      child.unref();
-      resolveResult({ ok: true, pid: child.pid });
-    });
-  });
+  return spawnDetached(invocation, openAppendFd(opts.log));
 }

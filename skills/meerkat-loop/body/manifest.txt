@@ -1,6 +1,7 @@
 scripts/loop/board.mjs
 scripts/loop/continue.mjs
 scripts/loop/endpoint.mjs
+scripts/loop/entry.mjs
 scripts/loop/event-rules.mjs
 scripts/loop/options.mjs
 scripts/loop/patrol.mjs

@@ -41,19 +41,9 @@ import {
   wakeCommand,
 } from "../../src/shared/scheduling.mjs";
 import { emptySlaLedger, planSlaPatrol } from "../../src/shared/sla-patrol.mjs";
-import {
-  defaultRepo,
-  loadSlaLedger,
-  parseArgs,
-  readPeerLastOk,
-  runPatrolTick,
-  runPollTick,
-  runWorkflowTick,
-  selectMode,
-  saveLastOk,
-  saveSlaLedger,
-  spawnWorkerReal,
-} from "../../scripts/supervisor.mjs";
+import { defaultRepo, parseArgs, selectMode } from "../../scripts/loop/options.mjs";
+import { loadSlaLedger, readPeerLastOk, saveLastOk, saveSlaLedger } from "../../scripts/loop/runtime.mjs";
+import { runPatrolTick, runPollTick, runWorkflowTick, spawnWorkerReal } from "../../scripts/loop/runners.mjs";
 import { resolveWakeDir } from "../../scripts/wake-cwd.mjs";
 import { PROJECT_DIR_CODES } from "../../src/shared/project-dir.mjs";
 
@@ -1465,7 +1455,7 @@ describe("spawnWorkerReal — the wake goes through the resolved glue (R1)", () 
     for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
   });
 
-  const SUPERVISOR_URL = new URL("../../scripts/supervisor.mjs", import.meta.url);
+  const RUNNERS_URL = new URL("../../scripts/loop/runners.mjs", import.meta.url);
 
   /** Write an executable stub script: shebang, `set -eu`, the given body, `exit 0`. */
   function stub(dir, name, body) {
@@ -1587,7 +1577,7 @@ describe("spawnWorkerReal — the wake goes through the resolved glue (R1)", () 
     writeFileSync(
       probe,
       [
-        `import { spawnWorkerReal } from ${JSON.stringify(SUPERVISOR_URL.href)};`,
+        `import { spawnWorkerReal } from ${JSON.stringify(RUNNERS_URL.href)};`,
         "const logs = [];",
         "const spawnWorker = spawnWorkerReal(",
         `  { host: "claude", repo: ${JSON.stringify(dir)}, glue: ${JSON.stringify(missing)}, projectsJson: ${JSON.stringify(join(dir, "map.json"))}, log: ${JSON.stringify(join(dir, "supervisor.log"))} },`,
@@ -1689,18 +1679,23 @@ describe("supervisor module", () => {
     assert.ok(existsSync(SUPERVISOR_PATH), SUPERVISOR_PATH);
   });
 
-  it("imports from wherever the checkout lives and exposes the runner surface (container form)", async () => {
+  it("imports from wherever the checkout lives, and every module keeps its own surface (container form)", async () => {
     // Container form: hold under an arbitrary ROOT (e.g. /app), where the parent
-    // directory is *not* named "meerkat-taskpanel". Loading by URL proves the module is
-    // importable in place; the export check proves it is the runner, not a stub.
-    const mod = await import(SUPERVISOR_URL.href);
-    for (const name of [
-      "runPollTick", "runPatrolTick", "parseArgs", "loadRegistry", "saveRegistry",
-      "planWakeInvocation", "spawnWorkerReal", "selectMode", "runPingTick",
-      "buildContinuePrompt", "planContinueInvocation",
-      "runSubscribe", "createDispatchScheduler",
-    ]) {
-      assert.equal(typeof mod[name], "function", `missing export: ${name}`);
+    // directory is *not* named "meerkat-taskpanel". Loading by URL proves each module
+    // is importable in place; the export check proves the modules are real, not stubs.
+    const modules = [
+      [SUPERVISOR_URL, ["main"]],
+      [new URL("../../scripts/loop/options.mjs", import.meta.url), ["parseArgs", "selectMode"]],
+      [new URL("../../scripts/loop/runtime.mjs", import.meta.url), ["loadRegistry", "saveRegistry", "runPingTick"]],
+      [new URL("../../scripts/loop/runners.mjs", import.meta.url), ["runPollTick", "runPatrolTick", "spawnWorkerReal"]],
+      [new URL("../../scripts/loop/subscribe.mjs", import.meta.url), ["runSubscribe", "createDispatchScheduler"]],
+      [new URL("../../src/shared/scheduling.mjs", import.meta.url), ["buildContinuePrompt", "planContinueInvocation", "planWakeInvocation"]],
+    ];
+    for (const [url, names] of modules) {
+      const mod = await import(url.href);
+      for (const name of names) {
+        assert.equal(typeof mod[name], "function", `missing export: ${name} (${url.pathname})`);
+      }
     }
   });
 });
