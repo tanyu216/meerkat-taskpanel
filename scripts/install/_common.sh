@@ -554,11 +554,13 @@ apply_supervisor() {
 #
 #   <home>/<host-dir>/meerkat-taskpanel/scripts/supervisor.mjs   the executor
 #   <home>/<host-dir>/meerkat-taskpanel/scripts/wake-cwd.mjs     the glue's resolver
-#   <home>/<host-dir>/meerkat-taskpanel/src/foundation/*.mjs         their imports
+#   <home>/<host-dir>/meerkat-taskpanel/scripts/foundation/**    their imports
 #
-# The `scripts/` + `src/foundation/` shape is load-bearing, not decoration: the body's
-# modules import each other relatively (`../src/foundation/scheduling.mjs`), so a copy of
+# The `scripts/` + `scripts/foundation/` shape is load-bearing, not decoration: the body's
+# modules import each other relatively (`../foundation/scheduling.mjs`), so a copy of
 # one file would resolve a relative import to nothing and the unit would die at load.
+# Foundation is copied byte-for-byte; the entry scripts are copied with only their
+# foundation specifiers rewritten to that shape.
 # The set to copy is **not** restated here — it is read from the loop skill's generated
 # `manifest.txt` at its root, which is the closure itself (computed from the two entry points'
 # imports by `scripts/sync-loop.mjs` and guarded by `--check`). One source, so a new

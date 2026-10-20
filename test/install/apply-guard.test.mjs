@@ -248,7 +248,7 @@ describe("no entry point reverts to a symlink-fragile guard", () => {
   // is authored and shares that directory, so the exclusion names files and subdirectories
   // rather than the whole `scripts/` tree.
   const GENERATED = [
-    join(ROOT, "skills", "meerkat-loop", "src"),
+    join(ROOT, "skills", "meerkat-loop", "scripts", "foundation"),
     join(ROOT, "skills", "meerkat-loop", "templates"),
     join(ROOT, "skills", "meerkat-loop", "scripts", "loop"),
     join(ROOT, "skills", "meerkat-loop", "scripts", "supervisor.mjs"),

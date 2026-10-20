@@ -25,7 +25,7 @@ import { ACCEPTANCE_ACTOR_KINDS } from "../../src/core/domain/status.mjs";
 import { HUMAN_KIND, TASKD_KIND } from "../../src/foundation/constants.mjs";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
-const SCAN_ROOTS = ["src", "scripts", "skills/meerkat-loop/scripts", "skills/meerkat-loop/src"];
+const SCAN_ROOTS = ["src", "scripts", "skills/meerkat-loop/scripts"];
 const SKIP_DIRS = new Set(["node_modules", "dist", "coverage", ".git", ".worktrees"]);
 
 /** Files this rule reads. Migrations are history, not a writer. */

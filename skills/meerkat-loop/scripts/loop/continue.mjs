@@ -11,8 +11,8 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { isEntryPoint } from "../../src/foundation/entry-guard.mjs";
-import { buildContinuePrompt, planContinueInvocation } from "../../src/foundation/scheduling.mjs";
+import { isEntryPoint } from "../foundation/entry-guard.mjs";
+import { buildContinuePrompt, planContinueInvocation } from "../foundation/scheduling.mjs";
 
 import { runEntry } from "./entry.mjs";
 import { loopCommandArgs, resolveLoopConfig } from "./options.mjs";

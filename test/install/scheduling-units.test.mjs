@@ -220,7 +220,7 @@ describe("install.sh: scheduling units", () => {
     );
 
     // The module graph is closed under the copy. `supervisor.mjs` imports
-    // `../src/foundation/scheduling.mjs`, so the `scripts/` + `src/foundation/` shape has to
+    // `../foundation/scheduling.mjs`, so the `scripts/` + `scripts/foundation/` shape has to
     // travel with it — one file alone would leave a dangling relative import and the
     // unit would die at load. Every relative import inside the copy resolves inside
     // the copy, so loading the body needs nothing from the checkout.
@@ -295,8 +295,8 @@ describe("install.sh: scheduling units", () => {
     assert.equal(forced.status, 0, forced.stderr);
     assert.equal(
       readFileSync(copy, "utf8"),
-      readFileSync(join(ROOT, "scripts", "supervisor.mjs"), "utf8"),
-      "--force must refresh the loop body",
+      readFileSync(join(LOOP_SKILL, "scripts", "supervisor.mjs"), "utf8"),
+      "--force must refresh the loop body from the skill's payload",
     );
   });
 
@@ -452,6 +452,15 @@ describe("install.sh: the loop skill's distribution", () => {
         existsSync(join(dest, "body")),
         false,
         `${host}: a fresh install must not carry the retired body/ wrapper`,
+      );
+      assert.equal(
+        existsSync(join(dest, "src")),
+        false,
+        `${host}: the loop skill must not carry a src/ tree`,
+      );
+      assert.ok(
+        existsSync(join(dest, "scripts", "foundation", "constants.mjs")),
+        `${host}: foundation must land under scripts/foundation/`,
       );
       assert.ok(
         existsSync(join(dest, "templates", "scheduling", "cron", "meerkat-taskpanel.cron")),

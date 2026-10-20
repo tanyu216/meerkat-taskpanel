@@ -289,7 +289,7 @@ claude plugin validate <path>       # validates the plugin + marketplace manifes
 
 Nothing under `skills/` is a generated copy any more, so there is nothing for
 `npm run check:skills` to compare against a plugin bundle. It still guards the loop skill's
-**payload** (`skills/meerkat-loop/{manifest.txt,scripts,src,templates}`), which is generated from
+**payload** (`skills/meerkat-loop/{manifest.txt,scripts,templates}`, with foundation inside `scripts/foundation/`), which is generated from
 `scripts/supervisor.mjs`, `scripts/loop/`, `scripts/wake-cwd.mjs`, `src/foundation/` and
 `scripts/install/templates/`; run `node scripts/sync-skills.mjs` after any edit there.
 

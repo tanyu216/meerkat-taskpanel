@@ -24,8 +24,8 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 
-import { pruneRegistry } from "../../src/foundation/scheduling.mjs";
-import { emptySlaLedger } from "../../src/foundation/sla-patrol.mjs";
+import { pruneRegistry } from "../foundation/scheduling.mjs";
+import { emptySlaLedger } from "../foundation/sla-patrol.mjs";
 
 // ---------------------------------------------------------------------------
 // Registry (crash survival) + process liveness

@@ -15,7 +15,7 @@ import {
   planPatrol,
   planTick,
   planWakeInvocation,
-} from "../../src/foundation/scheduling.mjs";
+} from "../foundation/scheduling.mjs";
 import {
   BOARD_CARD_ID,
   MECHANISM,
@@ -23,7 +23,7 @@ import {
   planSlaPatrol,
   recordSlaAlerts,
   stillQualifies,
-} from "../../src/foundation/sla-patrol.mjs";
+} from "../foundation/sla-patrol.mjs";
 import { openAppendFd } from "./runtime.mjs";
 
 /**

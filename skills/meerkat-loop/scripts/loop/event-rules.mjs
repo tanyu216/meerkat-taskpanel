@@ -7,7 +7,7 @@
  * under `md-import`, so it survives — an import is work to discover.
  */
 
-import { HUMAN_KIND, TASKD_KIND } from "../../src/foundation/constants.mjs";
+import { HUMAN_KIND, TASKD_KIND } from "../foundation/constants.mjs";
 
 /**
  * Events that can make work newly actionable or complete. Everything else is

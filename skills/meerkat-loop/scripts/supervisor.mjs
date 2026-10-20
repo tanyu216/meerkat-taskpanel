@@ -21,7 +21,7 @@
 
 import { existsSync } from "node:fs";
 
-import { isEntryPoint } from "../src/foundation/entry-guard.mjs";
+import { isEntryPoint } from "./foundation/entry-guard.mjs";
 
 import * as continueEntry from "./loop/continue.mjs";
 import * as patrolEntry from "./loop/patrol.mjs";

@@ -272,11 +272,19 @@ describe("cli/imports — the loop consumes the toolkit, it does not implement i
     }
     assert.deepEqual(violations, []);
 
+    // The payload has no `src/` tree at all: foundation travels under scripts/foundation.
+    // Asserting each `src/{core,cli,server}` path separately would pass vacuously once the
+    // parent directory is gone, so assert the parent itself.
+    assert.equal(
+      existsSync(join(ROOT, "skills/meerkat-loop/src")),
+      false,
+      "the loop payload must not carry a src/ tree",
+    );
     for (const dir of ["core", "cli", "server"]) {
       assert.equal(
-        existsSync(join(ROOT, "skills/meerkat-loop/src", dir)),
+        existsSync(join(ROOT, "skills/meerkat-loop/scripts/foundation", dir)),
         false,
-        `the loop payload must not vendor src/${dir}`,
+        `the foundation payload must not vendor ${dir}`,
       );
     }
   });

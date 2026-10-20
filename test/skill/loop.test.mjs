@@ -26,7 +26,15 @@ import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
 import { atLeastVersion, checkBoard, resolveBoardCommand } from "../../skills/meerkat-loop/scripts/board-check.mjs";
-import { LOOP_BODY_ROOTS, LOOP_SKILL_NAME, LOOP_TEMPLATE_FILES, relativeImports, syncLoop } from "../../scripts/sync-loop.mjs";
+import {
+  LOOP_BODY_ROOTS,
+  LOOP_SKILL_NAME,
+  LOOP_TEMPLATE_FILES,
+  loopSource,
+  relativeImports,
+  syncLoop,
+  transformBody,
+} from "../../scripts/sync-loop.mjs";
 import { resolveSkillSource } from "../../scripts/sync-skills.mjs";
 import { readFrontmatterField } from "../../scripts/verify/lib/frontmatter.mjs";
 import {
@@ -78,7 +86,7 @@ describe("loop skill: the generated payload", () => {
     }
   });
 
-  it("carries the shared modules the supervisor and the wake resolver import", () => {
+  it("carries the foundation modules the supervisor and the wake resolver import", () => {
     // Named explicitly as well as derived: the closure is a computation, and a
     // computation with a bug would still look internally consistent.
     const body = bodyClosure();
@@ -98,40 +106,66 @@ describe("loop skill: the generated payload", () => {
       "scripts/loop/endpoint.mjs",
       "scripts/loop/event-rules.mjs",
       "scripts/wake-cwd.mjs",
-      "src/foundation/scheduling.mjs",
-      "src/foundation/sla-patrol.mjs",
-      "src/foundation/env-config.mjs",
-      "src/foundation/constants.mjs",
-      "src/foundation/errors.mjs",
-      "src/foundation/redact.mjs",
-      "src/foundation/project-dir.mjs",
-      "src/foundation/runtime-locator.mjs",
-      "src/foundation/entry-guard.mjs",
-      "src/foundation/transport/autostart.mjs",
-      "src/foundation/transport/errors.mjs",
-      "src/foundation/transport/runtime.mjs",
-      "src/foundation/transport/token.mjs",
-      "src/foundation/transport/board-url.mjs",
+      "scripts/foundation/scheduling.mjs",
+      "scripts/foundation/sla-patrol.mjs",
+      "scripts/foundation/env-config.mjs",
+      "scripts/foundation/constants.mjs",
+      "scripts/foundation/errors.mjs",
+      "scripts/foundation/redact.mjs",
+      "scripts/foundation/project-dir.mjs",
+      "scripts/foundation/runtime-locator.mjs",
+      "scripts/foundation/entry-guard.mjs",
+      "scripts/foundation/transport/autostart.mjs",
+      "scripts/foundation/transport/errors.mjs",
+      "scripts/foundation/transport/runtime.mjs",
+      "scripts/foundation/transport/token.mjs",
+      "scripts/foundation/transport/board-url.mjs",
     ]) {
       assert.ok(body.includes(rel), `${rel} must be part of the loop body`);
     }
   });
 
-  it("copies the body byte for byte from the repository's own modules", () => {
+  it("matches its sources: foundation byte for byte, entries after the documented rewrite", () => {
     for (const rel of bodyClosure()) {
+      const sourceRel = loopSource(rel);
+      const source = readFileSync(join(ROOT, sourceRel), "utf8");
       assert.equal(
         readFileSync(join(LOOP_SKILL, rel), "utf8"),
-        readFileSync(join(ROOT, rel), "utf8"),
-        `${rel} must be an exact copy of the repository's module`,
+        transformBody(source, sourceRel, ROOT),
+        `${rel} must match ${sourceRel} under the payload transform`,
+      );
+    }
+
+    // The transform is a no-op inside the foundation subtree, so those copies are exact.
+    for (const rel of bodyClosure().filter((item) => item.startsWith("scripts/foundation/"))) {
+      assert.equal(
+        readFileSync(join(LOOP_SKILL, rel), "utf8"),
+        readFileSync(join(ROOT, loopSource(rel)), "utf8"),
+        `${rel} must be an exact copy of its repository module`,
+      );
+    }
+
+    // And no generated module still points at the repository layout.
+    for (const rel of bodyClosure()) {
+      const text = readFileSync(join(LOOP_SKILL, rel), "utf8");
+      assert.equal(
+        relativeImports(text).some((specifier) => specifier.includes("/src/foundation/")),
+        false,
+        `${rel} must not import through src/foundation`,
       );
     }
   });
 
-  it("keeps the payload at the skill root, with no body/ wrapper", () => {
+  it("keeps the payload at the skill root, with no body/ or src/ wrapper", () => {
     assert.equal(
       existsSync(join(LOOP_SKILL, "body")),
       false,
       "the legacy body/ wrapper must be gone — the manifest and generated trees sit at the skill root",
+    );
+    assert.equal(
+      existsSync(join(LOOP_SKILL, "src")),
+      false,
+      "foundation lives under scripts/foundation/; the skill has no src/ tree",
     );
     assert.ok(existsSync(join(LOOP_SKILL, "manifest.txt")), "the closure manifest sits at the skill root");
   });

@@ -124,8 +124,8 @@ version control.
 
 | Artefact | Where | What |
 |---|---|---|
-| loop skill | `<host>/skills/meerkat-loop/` | the loop as a skill: its `SKILL.md`, the generated execution body (`manifest.txt` + `scripts/` + `src/`), the unit/wake/config templates it is deployed with, and the authored board-interface gate (`scripts/board-check.mjs`). Always **copied**, never symlinked |
-| loop body | `<host>/meerkat-taskpanel/scripts/supervisor.mjs` + `.../scripts/loop/*.mjs` + `.../scripts/wake-cwd.mjs` + `.../src/foundation/*.mjs` | a **copy** of the scheduler, the deterministic entries, the glue's directory resolver and the modules they import — what the units run, so a loaded unit survives this checkout being moved, renamed or removed (see [`scheduling.md §The loop body is installed, not referenced`](scheduling.md#the-loop-body-is-installed-not-referenced)). The exact file list is the loop skill's generated `manifest.txt` |
+| loop skill | `<host>/skills/meerkat-loop/` | the loop as a skill: its `SKILL.md`, the generated execution body (`manifest.txt` + `scripts/`, including `scripts/foundation/`), the unit/wake/config templates it is deployed with, and the authored board-interface gate (`scripts/board-check.mjs`). Always **copied**, never symlinked |
+| loop body | `<host>/meerkat-taskpanel/scripts/supervisor.mjs` + `.../scripts/loop/*.mjs` + `.../scripts/wake-cwd.mjs` + `.../scripts/foundation/**` | a **copy** of the scheduler, the deterministic entries, the glue's directory resolver and the modules they import — what the units run, so a loaded unit survives this checkout being moved, renamed or removed (see [`scheduling.md §The loop body is installed, not referenced`](scheduling.md#the-loop-body-is-installed-not-referenced)). The exact file list is the loop skill's generated `manifest.txt` |
 | launchd | `<host>/scheduling/launchd/com.meerkat-taskpanel.{ping,continue}.plist` | `StartInterval` 60 / 600 |
 | systemd | `<host>/scheduling/systemd/meerkat-taskpanel-{ping,continue}.{service,timer}` | 60s / 600s timers |
 | cron | `<host>/scheduling/cron/meerkat-taskpanel.cron` | `* * * * *` ping, `*/10 * * * *` continue |
@@ -872,11 +872,12 @@ Nothing is written outside those directories, and nothing is sent over the netwo
   [Idempotence](#idempotence-re-running-and-force).
 - **`skill source not found`** — run `install.sh` from this checkout (it resolves
   `skills/meerkat-taskpanel/` relative to itself); a `dist/` bundle must be unpacked first.
-- **`loop payload out of date`** — `skills/meerkat-loop/manifest.txt`, `scripts/`, `src/`
-  and `templates/` are generated. Run `node scripts/sync-skills.mjs`; `npm run
+- **`loop payload out of date`** — `skills/meerkat-loop/manifest.txt`, `scripts/` and
+  `templates/` are generated. Run `node scripts/sync-skills.mjs`; `npm run
   check:skills` fails CI on drift.
-- **An older install still has `skills/meerkat-loop/body/`** — that wrapper was retired; the
-  leftover is inert (units and wake glue read `<host>/meerkat-taskpanel/`). Re-run the
-  install with `--force` to replace the skill directory.
+- **An older install still has `skills/meerkat-loop/body/` or `src/`** — those layouts were
+  retired. The leftovers are inert (units and wake glue read
+  `<host>/meerkat-taskpanel/scripts/…`); re-run the install with `--force` to replace the
+  skill directory, and delete `<host>/meerkat-taskpanel/src/` by hand if it is still there.
 - **OpenClaw does not list the plugin** — install the bundle at the repository root
   (`openclaw plugins install "$PWD" ...`); see the OpenClaw section above.

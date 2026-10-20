@@ -21,7 +21,7 @@
 | `src/core/` | Domain model, SQLite repository, state machine, invariants (M1) |
 | `src/cli/` | `taskctl` — the CLI entry point |
 | `src/server/` | Local HTTP API + SSE for the board (M6) |
-| `src/foundation/` | Shared DTOs, constants, small pure helpers |
+| `src/foundation/` | Foundation DTOs, constants, small pure helpers |
 | `web/` | Vue 3 + Vite board frontend → `web/dist` (the hosted frontend root) |
 | `skills/meerkat-taskpanel/` | The skill — **single source of truth** |
 | `.claude-plugin/` | The board plugin manifest and the marketplace; the plugin root is the repository root, which is how every harness shares the one `skills/` tree |
@@ -53,7 +53,7 @@ belongs to the loop. The loop reaches the board only through its public surface 
 
 ```bash
 node --test                          # smoke / contract test suite
-node scripts/sync-skills.mjs         # regenerate the loop payload (manifest + scripts/ + src/ + templates/)
+node scripts/sync-skills.mjs         # regenerate the loop payload (manifest + scripts/ + templates/)
 node scripts/sync-skills.mjs --check # verify both are in sync
 node scripts/verify/manifests.mjs    # validate the host + loop + marketplace manifests
 node scripts/verify/skill.mjs        # validate the board skill's SKILL.md frontmatter
@@ -358,23 +358,26 @@ around them (it delegates the payload half to `scripts/sync-loop.mjs`):
 | Skill | Authored in | Generated into |
 |---|---|---|
 | `meerkat-taskpanel` (the board) | `skills/meerkat-taskpanel/` | nothing — every harness reads `skills/` in place |
-| `meerkat-loop` (the supervisor) | `skills/meerkat-loop/` — `SKILL.md`, `references/`, `scripts/board-check.mjs` | its own `manifest.txt` + `scripts/` (except the gate) + `src/` + `templates/` |
+| `meerkat-loop` (the supervisor) | `skills/meerkat-loop/` — `SKILL.md`, `references/`, `scripts/board-check.mjs` | its own `manifest.txt` + `scripts/` (except the gate) + `templates/`; foundation is generated inside `scripts/foundation/` |
 
 There is exactly one `skills` tree in the repository. No harness receives a copy: each reads
 `skills/` in place through a manifest at the repository root, which is the board's plugin
 root. `test/scaffold.test.mjs` asserts that, since with no copy targets left
 `sync-skills.mjs --check` has nothing to compare and could not notice an orphan tree.
 
-The loop's `manifest.txt`, `scripts/` and `src/` are generated *from this repository*:
+The loop's `manifest.txt` and `scripts/` are generated *from this repository*:
 `manifest.txt` is the transitive import closure of `scripts/supervisor.mjs`,
 `scripts/loop/*.mjs` and `scripts/wake-cwd.mjs` (the list the installer copies), `scripts/`
-holds those modules and `src/` holds the foundation modules they import. `templates/` mirrors the
-loop-side files under `scripts/install/templates/`. `scripts/board-check.mjs` is the one
-authored file inside a generated root — `sync-loop.mjs` never writes, prunes or reports it.
-That direction matters — the foundation
-modules in `src/foundation/` are **not** moved into the skill; they stay where the CLI imports
-them, and the skill's copy is generated and guarded. The vendored set is `src/foundation/**`
-only: the loop body never contains `src/core`, `src/cli` or `src/server`. The **workflow
+holds those modules and `scripts/foundation/` holds the foundation modules they import.
+`templates/` mirrors the loop-side files under `scripts/install/templates/`.
+`scripts/board-check.mjs` is the one authored file inside a generated root —
+`sync-loop.mjs` never writes, prunes or reports it. That direction matters — the foundation
+modules in the repository's `src/foundation/` are **not** moved into the skill; they stay
+where the CLI imports them, and the skill's copy is generated and guarded. The vendored set
+is the loop's foundation closure only: the loop body never contains `src/core`, `src/cli`,
+`src/server`, or any foundation module the entry points do not import. Foundation copies are
+byte-for-byte; entry scripts differ only in their foundation import specifiers
+(`../src/foundation/x` → `./foundation/x`), and `--check` compares against that transform. The **workflow
 decisions** are not in
 the loop body at all: they live in `src/core/domain/workflow.mjs`, and the loop gets them
 from the board through `issue reconcile --workflow`. OpenClaw never receives the loop at

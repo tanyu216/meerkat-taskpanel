@@ -954,13 +954,13 @@ this checkout:
 ├── scripts/supervisor.mjs        the scheduler the units run
 ├── scripts/loop/*.mjs            the deterministic entries (poll / patrol / workflow / continue)
 ├── scripts/wake-cwd.mjs          what the wake glue calls to resolve a card's directory
-├── src/foundation/*.mjs              the modules those import
+├── scripts/foundation/*.mjs      the modules those import
 ├── supervisor.log                runtime
 └── supervisor.state.json         runtime
 ```
 
-The `scripts/` + `src/foundation/` shape is load-bearing: `supervisor.mjs` imports
-`../src/foundation/scheduling.mjs`, and that module in turn imports `constants.mjs` and
+The `scripts/` + `scripts/foundation/` shape is load-bearing: `supervisor.mjs` imports
+`./foundation/scheduling.mjs`, and that module in turn imports `constants.mjs` and
 `errors.mjs` (which imports `redact.mjs`). One file alone would leave a relative import
 resolving to nothing, so the transitive closure travels with it.
 

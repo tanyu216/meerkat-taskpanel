@@ -32,6 +32,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Breaking: `src/shared/` is now `src/foundation/`.** The layer's name now describes its
+  role (the dependency floor: `cli|server → core → foundation`, importing nothing from
+  `src/`) instead of its audience. Because the package ships `src` without an `exports` map,
+  deep imports such as `meerkat-taskpanel/src/shared/constants.mjs` must move to
+  `meerkat-taskpanel/src/foundation/constants.mjs`. The loop payload follows: its foundation
+  copy lives at `skills/meerkat-loop/scripts/foundation/**`, and the skill carries no `src/`
+  tree. Foundation copies are byte-for-byte; the 14 generated entry scripts differ only in
+  their foundation import specifiers (`../src/foundation/x` → `./foundation/x`), which
+  `sync-loop --check` verifies. Host-installed paths move from
+  `<host>/meerkat-taskpanel/src/shared/**` to `<host>/meerkat-taskpanel/scripts/foundation/**`;
+  an old tree is inert after the upgrade and can be deleted by hand.
 - **The loop skill no longer wraps its generated payload in `body/`.** `manifest.txt` and
   the generated `scripts/` + `src/` trees now sit at `skills/meerkat-loop/`, alongside the
   authored `scripts/board-check.mjs` (which `sync-loop.mjs` never writes, prunes, or reports
